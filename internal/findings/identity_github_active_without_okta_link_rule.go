@@ -135,14 +135,24 @@ func (r *githubActiveWithoutOktaLinkRule) Evaluate(_ context.Context, _ *cerebro
 // the answer to "is this GitHub identity bridged to any Okta user?" is the
 // same for any github runtime in the tenant.
 //
-// The NOT EXISTS subquery checks whether ANY okta.user in the same tenant
-// shares an identity node with the github.user. The match-type filter
-// (email-only) used by the deprovisioned-okta-active rule is intentionally
-// NOT applied here: this rule asks "is there *any* identity bridge?" and
-// surfacing a github user that only shares a username with an okta user is
-// safer to suppress than a coincidental username collision is to report. A
-// tighter rule would risk flooding the queue every time a brand new external
-// account showed up in the audit log.
+// The cypher OPTIONAL MATCHes a candidate bridge to any okta.user in the
+// same tenant and returns the bridge edges' attributes alongside the github
+// user; EvaluateRows then applies the bridge-recency check in Go. The
+// match-type filter (email-only) used by the deprovisioned-okta-active rule
+// is intentionally NOT applied here: this rule asks "is there *any* fresh
+// identity bridge?" and surfacing a github user that only shares a username
+// with an okta user is safer to suppress than a coincidental username
+// collision is to report as HIGH. A tighter rule would risk flooding the
+// queue every time a brand new external account showed up in the audit log.
+//
+// We deliberately do NOT use a NOT EXISTS subquery to express the absence
+// check: represents_identity edges are upsert-only and never retracted when
+// an Okta login/email or GitHub external_identity_nameid is renamed, so a
+// stale historical bridge would satisfy NOT EXISTS forever and silently
+// suppress this finding even after the live identity link is gone. The
+// projector therefore stamps every represents_identity edge with an `at`
+// attribute, and EvaluateRows rejects bridges whose `at` is outside the
+// recency window so a stale bridge cannot mask current shadow access.
 func (r *githubActiveWithoutOktaLinkRule) QueryFor(runtime *cerebrov1.SourceRuntime) ports.CypherQueryRequest {
 	if runtime == nil {
 		return ports.CypherQueryRequest{}
@@ -152,24 +162,26 @@ func (r *githubActiveWithoutOktaLinkRule) QueryFor(runtime *cerebrov1.SourceRunt
 		return ports.CypherQueryRequest{}
 	}
 	return ports.CypherQueryRequest{
-		// The cypher returns one row per (github_user, target). EvaluateRows
-		// applies the recency filter, the bot-account filter, and the
-		// per-github-user grouping; we deliberately do not push the recency
-		// check into Cypher so the filter lives in one place that has unit-
-		// test coverage (the acted_on attributes JSON is opaque on Neo4j).
+		// The cypher returns one row per (github_user, target,
+		// optional candidate okta bridge). EvaluateRows applies the
+		// recency filter on both acted_on and the bridge edges, the
+		// bot-account filter, and the per-github-user grouping; we
+		// deliberately do not push the recency check into Cypher so
+		// the filter lives in one place that has unit-test coverage
+		// (the attributes_json fields are opaque on Neo4j).
 		Query: `MATCH (g:Entity {entity_type: 'github.user', tenant_id: $tenant_id})
        -[acted:RELATION {relation: 'acted_on'}]->(target:Entity)
-WHERE NOT EXISTS {
-  MATCH (g)-[:RELATION {relation: 'represents_identity'}]->(:Entity)
-        <-[:RELATION {relation: 'represents_identity'}]-(o:Entity {entity_type: 'okta.user', tenant_id: $tenant_id})
-}
+OPTIONAL MATCH (g)-[gi:RELATION {relation: 'represents_identity'}]->(:Entity)
+              <-[oi:RELATION {relation: 'represents_identity'}]-(:Entity {entity_type: 'okta.user', tenant_id: $tenant_id})
 RETURN g.urn AS github_user_urn,
        g.label AS github_user_label,
        coalesce(g.attributes_json, '') AS github_attributes_json,
        target.urn AS target_urn,
        target.entity_type AS target_entity_type,
        target.label AS target_label,
-       coalesce(acted.attributes_json, '') AS acted_attributes_json
+       coalesce(acted.attributes_json, '') AS acted_attributes_json,
+       coalesce(gi.attributes_json, '') AS github_identity_attributes_json,
+       coalesce(oi.attributes_json, '') AS okta_identity_attributes_json
 LIMIT $row_limit`,
 		Params: map[string]any{
 			"tenant_id": tenantID,
@@ -195,10 +207,6 @@ func (r *githubActiveWithoutOktaLinkRule) EvaluateRows(_ context.Context, runtim
 		if githubUserURN == "" {
 			continue
 		}
-		targetURN := cypherRowString(row, "target_urn")
-		if targetURN == "" {
-			continue
-		}
 		// Bot logins (dependabot[bot], github-actions[bot], renovate[bot], etc.)
 		// commit and act on resources but are not real human identities. They
 		// will never be in Okta by design, so emitting on them would flood
@@ -209,14 +217,15 @@ func (r *githubActiveWithoutOktaLinkRule) EvaluateRows(_ context.Context, runtim
 		if isGitHubBotLogin(githubUserLabel) {
 			continue
 		}
-		// `acted_on` edges projected before the at-stamp change have no `at`,
-		// and any edge whose latest action is older than the recency window
-		// is stale history. Either way, this row is not evidence of current
-		// GitHub access for the unlinked identity, so drop it before it can
-		// pin the group open.
-		if !edgeIsRecent(cypherRowString(row, "acted_attributes_json"), now, identityGitHubActiveWithoutOktaRecencyWindow) {
-			continue
-		}
+		// Each row may carry an OPTIONAL MATCH bridge that proves this
+		// github user IS linked to an okta user. We have to evaluate
+		// the bridge BEFORE deciding whether the row's target counts,
+		// because a fresh bridge on any row for this github user
+		// suppresses the entire group regardless of which target row
+		// happened to be observed first. Otherwise a row with no
+		// bridge and a fresh acted_on could create the group, the
+		// group would emit, and a later row carrying the actual fresh
+		// bridge would arrive too late to suppress.
 		group, ok := groups[githubUserURN]
 		if !ok {
 			group = &githubActiveWithoutOktaGroup{
@@ -227,6 +236,38 @@ func (r *githubActiveWithoutOktaLinkRule) EvaluateRows(_ context.Context, runtim
 			}
 			groups[githubUserURN] = group
 			keys = append(keys, githubUserURN)
+		}
+		// represents_identity edges are upsert-only — graph ingest never
+		// retracts them when an Okta email/login or GitHub
+		// external_identity_nameid is renamed. After a rename, both sides
+		// remain joined to the stale identity node and any join through it
+		// would suppress this finding even though the live identifier no
+		// longer matches. The projector therefore stamps every
+		// represents_identity edge with an `at` attribute that the latest
+		// source event re-asserted (chronological max under the neo4j
+		// store's mergeAttribute rule); rows whose okta-side AND github-side
+		// identifier link have both been re-observed inside the recency
+		// window are evidence of a current bridge, and we suppress the
+		// group on them. A row with no bridge at all (OPTIONAL MATCH miss)
+		// has empty attributes JSON on both sides and the recency check
+		// returns false, so it cannot suppress.
+		githubIdentityJSON := cypherRowString(row, "github_identity_attributes_json")
+		oktaIdentityJSON := cypherRowString(row, "okta_identity_attributes_json")
+		if edgeIsRecent(githubIdentityJSON, now, identityGitHubActiveWithoutOktaRecencyWindow) &&
+			edgeIsRecent(oktaIdentityJSON, now, identityGitHubActiveWithoutOktaRecencyWindow) {
+			group.hasFreshBridge = true
+		}
+		// `acted_on` edges projected before the at-stamp change have no
+		// `at`, and any edge whose latest action is older than the recency
+		// window is stale history. Either way, this row is not evidence of
+		// current GitHub access for the unlinked identity, so do not record
+		// it as a target.
+		if !edgeIsRecent(cypherRowString(row, "acted_attributes_json"), now, identityGitHubActiveWithoutOktaRecencyWindow) {
+			continue
+		}
+		targetURN := cypherRowString(row, "target_urn")
+		if targetURN == "" {
+			continue
 		}
 		if _, exists := group.targets[targetURN]; exists {
 			continue
@@ -242,6 +283,14 @@ func (r *githubActiveWithoutOktaLinkRule) EvaluateRows(_ context.Context, runtim
 	for _, key := range keys {
 		group := groups[key]
 		if group == nil || len(group.targets) == 0 {
+			continue
+		}
+		// A current cross-source bridge proves the github user is
+		// linked to an okta user; the rule's premise (shadow access)
+		// no longer applies, so suppress the finding even if the
+		// group accumulated targets. Stale-only bridges leave
+		// hasFreshBridge=false and the group emits as expected.
+		if group.hasFreshBridge {
 			continue
 		}
 		findings = append(findings, r.buildFinding(runtime, tenantID, group, now))
@@ -281,6 +330,14 @@ type githubActiveWithoutOktaGroup struct {
 	githubUserLabel      string
 	githubAttributesJSON string
 	targets              map[string]githubActiveWithoutOktaTarget
+	// hasFreshBridge captures whether ANY row for this github user
+	// carried a represents_identity bridge to an okta.user whose okta-side
+	// AND github-side identifier edges were both re-asserted inside the
+	// recency window. A current bridge proves the github user is linked
+	// to an okta user, so the shadow-access premise no longer applies and
+	// the group is suppressed even if it accumulated targets. Stale-only
+	// bridges leave this false and the finding emits as expected.
+	hasFreshBridge bool
 }
 
 type githubActiveWithoutOktaTarget struct {

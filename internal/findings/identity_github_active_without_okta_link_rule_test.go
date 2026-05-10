@@ -25,14 +25,29 @@ func TestGitHubActiveWithoutOktaLinkRuleQueryScopesByTenant(t *testing.T) {
 	if got := request.Params["tenant_id"]; got != "writer" {
 		t.Fatalf("Params[tenant_id] = %v, want writer", got)
 	}
-	if !strings.Contains(request.Query, "NOT EXISTS") {
-		t.Fatalf("Query missing NOT EXISTS subquery; the rule must check for *absence* of an okta link, not its presence:\n%s", request.Query)
+	// The rule deliberately does NOT use a NOT EXISTS subquery for the
+	// represents_identity bridge: that would treat upsert-only stale
+	// edges as evidence of a current link and silently suppress the
+	// finding after a rename. The cypher must OPTIONAL MATCH the
+	// bridge and surface the edge attributes so EvaluateRows can apply
+	// the recency check.
+	if strings.Contains(request.Query, "NOT EXISTS") {
+		t.Fatalf("Query uses NOT EXISTS for bridge check; stale represents_identity edges would mask shadow access. Must OPTIONAL MATCH and check `at` recency in EvaluateRows:\n%s", request.Query)
+	}
+	if !strings.Contains(request.Query, "OPTIONAL MATCH") {
+		t.Fatalf("Query missing OPTIONAL MATCH for the represents_identity bridge:\n%s", request.Query)
+	}
+	if !strings.Contains(request.Query, "github_identity_attributes_json") {
+		t.Fatalf("Query missing github-side bridge attributes_json projection; EvaluateRows needs it to apply the bridge recency filter:\n%s", request.Query)
+	}
+	if !strings.Contains(request.Query, "okta_identity_attributes_json") {
+		t.Fatalf("Query missing okta-side bridge attributes_json projection; EvaluateRows needs both sides to confirm a fresh bridge:\n%s", request.Query)
 	}
 	if !strings.Contains(request.Query, "github.user") {
 		t.Fatalf("Query missing github.user entity type predicate:\n%s", request.Query)
 	}
 	if !strings.Contains(request.Query, "okta.user") {
-		t.Fatalf("Query missing okta.user entity type predicate inside the NOT EXISTS subquery:\n%s", request.Query)
+		t.Fatalf("Query missing okta.user entity type predicate in the bridge OPTIONAL MATCH:\n%s", request.Query)
 	}
 	if request.RowLimit != identityGitHubActiveWithoutOktaQueryRowLimit {
 		t.Fatalf("RowLimit = %d, want %d", request.RowLimit, identityGitHubActiveWithoutOktaQueryRowLimit)
@@ -221,15 +236,42 @@ func githubActiveWithoutOktaRuleActedAttrs(at time.Time) string {
 }
 
 func githubActiveWithoutOktaRuleRow(actedAttributesJSON, githubUserURN, githubUserLabel, targetURN string) ports.CypherRow {
+	return githubActiveWithoutOktaRuleRowWithBridge(actedAttributesJSON, githubUserURN, githubUserLabel, targetURN, "", "")
+}
+
+// githubActiveWithoutOktaRuleRowWithBridge is the full row builder; tests
+// that exercise the bridge-recency contract use it to inject the
+// represents_identity edge attributes_json on each side. The default
+// helper above passes empty strings on both sides which is exactly what
+// the cypher's OPTIONAL MATCH miss surfaces in production via coalesce(),
+// so existing "no bridge" tests still hit the production code path.
+func githubActiveWithoutOktaRuleRowWithBridge(actedAttributesJSON, githubUserURN, githubUserLabel, targetURN, githubIdentityJSON, oktaIdentityJSON string) ports.CypherRow {
 	return ports.CypherRow{Values: map[string]any{
-		"github_user_urn":        githubUserURN,
-		"github_user_label":      githubUserLabel,
-		"github_attributes_json": `{"login":"` + githubUserLabel + `"}`,
-		"target_urn":             targetURN,
-		"target_entity_type":     "github.repo",
-		"target_label":           "writer/cerebro",
-		"acted_attributes_json":  actedAttributesJSON,
+		"github_user_urn":                 githubUserURN,
+		"github_user_label":               githubUserLabel,
+		"github_attributes_json":          `{"login":"` + githubUserLabel + `"}`,
+		"target_urn":                      targetURN,
+		"target_entity_type":              "github.repo",
+		"target_label":                    "writer/cerebro",
+		"acted_attributes_json":           actedAttributesJSON,
+		"github_identity_attributes_json": githubIdentityJSON,
+		"okta_identity_attributes_json":   oktaIdentityJSON,
 	}}
+}
+
+// githubActiveWithoutOktaRuleBridgeAttrs builds a represents_identity edge's
+// attributes_json with an optional `at` timestamp, matching what the
+// neo4j store persists.
+func githubActiveWithoutOktaRuleBridgeAttrs(at time.Time) string {
+	payload := map[string]string{}
+	if !at.IsZero() {
+		payload["at"] = at.UTC().Format(time.RFC3339)
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		panic(err)
+	}
+	return string(encoded)
 }
 
 // Recent acted_on edges are the only source of truth that an unlinked GitHub
@@ -479,6 +521,164 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsRequiresTenant(t *testing.T)
 	}
 	if len(findings) != 0 {
 		t.Fatalf("EvaluateRows() returned %d findings, want 0 (no tenant id)", len(findings))
+	}
+}
+
+// represents_identity edges are upsert-only: the projector never retracts
+// them when an Okta login/email or GitHub external_identity_nameid is
+// renamed. After a rename, both sides remain joined to the obsolete
+// identity node forever. A NOT EXISTS subquery would treat that stale
+// bridge as evidence of a current link and suppress this finding
+// indefinitely. The rule must therefore reject bridges whose `at` is
+// outside the recency window: stale-only bridges leave hasFreshBridge
+// false and the group emits as expected.
+func TestGitHubActiveWithoutOktaLinkRuleStaleBridgeDoesNotSuppress(t *testing.T) {
+	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	now := time.Now().UTC()
+	staleAt := now.Add(-90 * 24 * time.Hour)
+	row := githubActiveWithoutOktaRuleRowWithBridge(
+		githubActiveWithoutOktaRuleActedAttrs(now.Add(-1*time.Hour)),
+		"urn:cerebro:writer:github.user:alice",
+		"alice",
+		"urn:cerebro:writer:github_repo:writer/cerebro",
+		githubActiveWithoutOktaRuleBridgeAttrs(staleAt),
+		githubActiveWithoutOktaRuleBridgeAttrs(staleAt),
+	)
+	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("EvaluateRows() returned %d findings, want 1; stale bridge edges must NOT suppress shadow access (otherwise renames would silently mask findings forever)", len(findings))
+	}
+}
+
+// A bridge whose okta-side AND github-side identifier edges have BOTH been
+// re-asserted inside the recency window proves the github user is currently
+// linked to an okta user via fresh identifiers. Shadow-access premise no
+// longer applies, so the group must be suppressed.
+func TestGitHubActiveWithoutOktaLinkRuleFreshBridgeOnBothSidesSuppresses(t *testing.T) {
+	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	now := time.Now().UTC()
+	freshAt := now.Add(-1 * time.Hour)
+	row := githubActiveWithoutOktaRuleRowWithBridge(
+		githubActiveWithoutOktaRuleActedAttrs(freshAt),
+		"urn:cerebro:writer:github.user:alice",
+		"alice",
+		"urn:cerebro:writer:github_repo:writer/cerebro",
+		githubActiveWithoutOktaRuleBridgeAttrs(freshAt),
+		githubActiveWithoutOktaRuleBridgeAttrs(freshAt),
+	)
+	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("EvaluateRows() returned %d findings, want 0; a fresh bridge on both sides proves the github user is linked to an okta user, the rule must suppress", len(findings))
+	}
+}
+
+// One-sided fresh bridges (only the github→identity OR only the okta→identity
+// edge has been re-asserted recently) are NOT proof of a current link: the
+// missing side is exactly the kind of stale upsert this rule defends against.
+// Without requiring both sides, a renamed Okta login that left the okta-side
+// edge frozen would be enough to suppress the finding the moment a fresh
+// github.audit event re-asserted the github-side edge.
+func TestGitHubActiveWithoutOktaLinkRuleOneSidedBridgeDoesNotSuppress(t *testing.T) {
+	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	now := time.Now().UTC()
+	freshAt := now.Add(-1 * time.Hour)
+	staleAt := now.Add(-90 * 24 * time.Hour)
+	cases := map[string]struct {
+		githubBridgeJSON string
+		oktaBridgeJSON   string
+	}{
+		"only github side fresh": {
+			githubBridgeJSON: githubActiveWithoutOktaRuleBridgeAttrs(freshAt),
+			oktaBridgeJSON:   githubActiveWithoutOktaRuleBridgeAttrs(staleAt),
+		},
+		"only okta side fresh": {
+			githubBridgeJSON: githubActiveWithoutOktaRuleBridgeAttrs(staleAt),
+			oktaBridgeJSON:   githubActiveWithoutOktaRuleBridgeAttrs(freshAt),
+		},
+		"github side fresh, okta side missing at": {
+			githubBridgeJSON: githubActiveWithoutOktaRuleBridgeAttrs(freshAt),
+			oktaBridgeJSON:   `{}`,
+		},
+		"okta side fresh, github side missing at": {
+			githubBridgeJSON: `{}`,
+			oktaBridgeJSON:   githubActiveWithoutOktaRuleBridgeAttrs(freshAt),
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			row := githubActiveWithoutOktaRuleRowWithBridge(
+				githubActiveWithoutOktaRuleActedAttrs(freshAt),
+				"urn:cerebro:writer:github.user:alice",
+				"alice",
+				"urn:cerebro:writer:github_repo:writer/cerebro",
+				tc.githubBridgeJSON,
+				tc.oktaBridgeJSON,
+			)
+			findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+			if err != nil {
+				t.Fatalf("EvaluateRows() error = %v", err)
+			}
+			if len(findings) != 1 {
+				t.Fatalf("EvaluateRows() returned %d findings, want 1 for %q; one-sided fresh bridge is not proof of a current link", len(findings), name)
+			}
+		})
+	}
+}
+
+// The cypher returns one row per (github_user, target, candidate okta
+// bridge). A given github user can therefore arrive across multiple rows
+// where some have a bridge and some don't (e.g. the OPTIONAL MATCH miss
+// row + a row that hit the bridge). The order rows are processed in is
+// not stable across runs because Neo4j does not guarantee row order.
+//
+// EvaluateRows must therefore set hasFreshBridge=true if ANY row for the
+// github user carries a fresh bridge, regardless of whether the bridge
+// row arrived first or last. Otherwise, suppression would depend on
+// ordering luck and the same offender would oscillate between "suppressed"
+// and "open" across evaluation cycles.
+func TestGitHubActiveWithoutOktaLinkRuleFreshBridgeArrivesAfterNoBridgeRow(t *testing.T) {
+	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	now := time.Now().UTC()
+	freshAt := now.Add(-1 * time.Hour)
+	rowNoBridge := githubActiveWithoutOktaRuleRowWithBridge(
+		githubActiveWithoutOktaRuleActedAttrs(freshAt),
+		"urn:cerebro:writer:github.user:alice",
+		"alice",
+		"urn:cerebro:writer:github_repo:writer/cerebro",
+		"",
+		"",
+	)
+	rowFreshBridge := githubActiveWithoutOktaRuleRowWithBridge(
+		githubActiveWithoutOktaRuleActedAttrs(freshAt),
+		"urn:cerebro:writer:github.user:alice",
+		"alice",
+		"urn:cerebro:writer:github_repo:writer/palmyra",
+		githubActiveWithoutOktaRuleBridgeAttrs(freshAt),
+		githubActiveWithoutOktaRuleBridgeAttrs(freshAt),
+	)
+	for name, rows := range map[string][]ports.CypherRow{
+		"no-bridge row first":    {rowNoBridge, rowFreshBridge},
+		"fresh-bridge row first": {rowFreshBridge, rowNoBridge},
+	} {
+		t.Run(name, func(t *testing.T) {
+			findings, err := rule.EvaluateRows(context.Background(), runtime, rows)
+			if err != nil {
+				t.Fatalf("EvaluateRows() error = %v", err)
+			}
+			if len(findings) != 0 {
+				t.Fatalf("EvaluateRows() returned %d findings, want 0 for %q; ANY fresh bridge across rows for the same github user must suppress regardless of arrival order", len(findings), name)
+			}
+		})
 	}
 }
 
