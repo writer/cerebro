@@ -294,34 +294,39 @@ func TestMergeGraphAttributesKeepsLatestAtAcrossOutOfOrderUpserts(t *testing.T) 
 	newer := time.Date(2025, time.March, 5, 9, 0, 0, 0, time.UTC).Format(time.RFC3339)
 
 	cases := []struct {
-		name     string
-		existing map[string]string
-		incoming map[string]string
-		wantAt   string
+		name       string
+		existing   map[string]string
+		incoming   map[string]string
+		wantAt     string
+		wantAction string
 	}{
 		{
-			name:     "older incoming after newer existing keeps newer",
-			existing: map[string]string{"at": newer, "action": "git.clone"},
-			incoming: map[string]string{"at": older, "action": "git.fetch"},
-			wantAt:   newer,
+			name:       "older incoming after newer existing keeps newer observation",
+			existing:   map[string]string{"at": newer, "action": "git.clone"},
+			incoming:   map[string]string{"at": older, "action": "workflows.completed_workflow_run"},
+			wantAt:     newer,
+			wantAction: "git.clone",
 		},
 		{
-			name:     "newer incoming after older existing wins",
-			existing: map[string]string{"at": older, "action": "git.clone"},
-			incoming: map[string]string{"at": newer, "action": "git.push"},
-			wantAt:   newer,
+			name:       "newer incoming after older existing wins",
+			existing:   map[string]string{"at": older, "action": "git.clone"},
+			incoming:   map[string]string{"at": newer, "action": "git.push"},
+			wantAt:     newer,
+			wantAction: "git.push",
 		},
 		{
-			name:     "missing existing at takes incoming",
-			existing: map[string]string{"action": "git.clone"},
-			incoming: map[string]string{"at": newer, "action": "git.push"},
-			wantAt:   newer,
+			name:       "missing existing at takes incoming",
+			existing:   map[string]string{"action": "git.clone"},
+			incoming:   map[string]string{"at": newer, "action": "git.push"},
+			wantAt:     newer,
+			wantAction: "git.push",
 		},
 		{
-			name:     "missing incoming at preserves existing",
-			existing: map[string]string{"at": newer, "action": "git.clone"},
-			incoming: map[string]string{"action": "git.push"},
-			wantAt:   newer,
+			name:       "missing incoming at preserves existing observation",
+			existing:   map[string]string{"at": newer, "action": "git.clone"},
+			incoming:   map[string]string{"action": "git.push"},
+			wantAt:     newer,
+			wantAction: "git.clone",
 		},
 	}
 	for _, tc := range cases {
@@ -330,12 +335,47 @@ func TestMergeGraphAttributesKeepsLatestAtAcrossOutOfOrderUpserts(t *testing.T) 
 			if got := merged["at"]; got != tc.wantAt {
 				t.Fatalf("merged at = %q, want %q (rule recency check depends on chronological max)", got, tc.wantAt)
 			}
+			if got := merged["action"]; got != tc.wantAction {
+				t.Fatalf("merged action = %q, want %q (action must stay coupled to the winning at timestamp)", got, tc.wantAction)
+			}
 		})
 	}
 }
 
-// Non-`at` keys must keep the default last-write-wins semantics so the special-
-// case in mergeAttributeValue does not silently change merge behavior elsewhere.
+func TestMergeGraphAttributesKeepsObservationMetadataCoupledToLatestAt(t *testing.T) {
+	older := time.Date(2025, time.March, 1, 9, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	newer := time.Date(2025, time.March, 5, 9, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	merged := mergeGraphAttributes(
+		map[string]string{
+			"at":                       newer,
+			"action":                   "git.clone",
+			"event_id":                 "newer-event",
+			"programmatic_access_type": "Fine-grained personal access token",
+			"source_runtime_id":        "writer-github-audit",
+		},
+		map[string]string{
+			"at":                       older,
+			"action":                   "workflows.completed_workflow_run",
+			"event_id":                 "older-event",
+			"programmatic_access_type": "GitHub App server-to-server token",
+			"source_runtime_id":        "writer-github-audit-writerinternal",
+		},
+	)
+	for key, want := range map[string]string{
+		"at":                       newer,
+		"action":                   "git.clone",
+		"event_id":                 "newer-event",
+		"programmatic_access_type": "Fine-grained personal access token",
+		"source_runtime_id":        "writer-github-audit",
+	} {
+		if got := merged[key]; got != want {
+			t.Fatalf("merged[%s] = %q, want %q", key, got, want)
+		}
+	}
+}
+
+// Non-observation keys must keep the default last-write-wins semantics so the
+// special-case for event metadata does not silently change merge behavior elsewhere.
 func TestMergeGraphAttributesKeepsLastWriteWinsForOtherKeys(t *testing.T) {
 	merged := mergeGraphAttributes(
 		map[string]string{"action": "git.clone", "actor": "alice"},

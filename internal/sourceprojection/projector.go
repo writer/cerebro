@@ -241,23 +241,67 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 	resourceID := strings.TrimSpace(attributes["resource_id"])
 	resourceType := strings.TrimSpace(attributes["resource_type"])
 	actor := strings.TrimSpace(attributes["actor"])
+	actorID := strings.TrimSpace(attributes["actor_id"])
+	actorIsBot := strings.TrimSpace(attributes["actor_is_bot"])
+	actorIsAgent := strings.TrimSpace(attributes["actor_is_agent"])
+	actorType := strings.TrimSpace(attributes["actor_type"])
 	actorExternalNameID := strings.TrimSpace(attributes["external_identity_nameid"])
 	actorExternalUsername := strings.TrimSpace(attributes["external_identity_username"])
+	orgID := strings.TrimSpace(attributes["org_id"])
+	programmaticAccessType := strings.TrimSpace(attributes["programmatic_access_type"])
 	targetUser := strings.TrimSpace(attributes["user"])
+	tokenID := strings.TrimSpace(attributes["token_id"])
+
+	// actorIsOrgSelf is true when GitHub stamps the audit event with the org
+	// as its own actor — a pattern that shows up on system-level events such
+	// as `integration_installation.version_updated` where no specific user
+	// triggered the action. We detect it by comparing the audit log's
+	// actor_id against org_id (both numeric and stamped by GitHub itself).
+	// When this is true we route the acted_on edge from the github.org node
+	// rather than minting a phantom `github.user:<org>` node, mirroring
+	// cartography's separation of GitHubOrganization and GitHubUser.
+	actorTypeIsOrg := strings.EqualFold(actorType, "Organization")
+	actorIsOrgSelf := actorID != "" && orgID != "" && actorID == orgID
+	actorIsUnresolvedPublicKey := strings.EqualFold(actorType, "Unresolved") && isGitHubPublicKeyCredential(programmaticAccessType)
+	actorIsAutomation := githubAuditActorIsAutomation(actor, actorType, actorIsBot, actorIsAgent)
 
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 
 	orgURN := projectionURN(tenantID, "github_org", org)
 	if org != "" {
+		orgAttrs := map[string]string{"org": org}
+		// Stamp the numeric org_id onto the github.org node so it stays
+		// available when consumers need to reason about the org as a
+		// first-class actor (e.g. distinguishing org-self events from
+		// user actions in downstream rules).
+		if orgID != "" {
+			orgAttrs["org_id"] = orgID
+		}
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        orgURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
 			EntityType: "github.org",
 			Label:      org,
-			Attributes: map[string]string{"org": org},
+			Attributes: orgAttrs,
 		})
+	}
+	actorOrgURN := orgURN
+	if actorTypeIsOrg {
+		actorOrgURN = projectionURN(tenantID, "github_org", firstNonEmpty(actor, org))
+		if actorOrgURN != "" && actor != "" && !strings.EqualFold(actor, org) {
+			actorOrgAttrs := map[string]string{"org": actor}
+			addProjectedAttribute(actorOrgAttrs, "org_id", actorID)
+			addEntity(entities, &ports.ProjectedEntity{
+				URN:        actorOrgURN,
+				TenantID:   tenantID,
+				SourceID:   event.GetSourceId(),
+				EntityType: "github.org",
+				Label:      actor,
+				Attributes: actorOrgAttrs,
+			})
+		}
 	}
 
 	repoURN := projectionURN(tenantID, "github_repo", firstNonEmpty(repo, resourceID))
@@ -303,54 +347,127 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 		}
 	}
 
-	actorURN := githubUserURN(tenantID, actor)
-	if actorURN != "" {
-		addEntity(entities, &ports.ProjectedEntity{
-			URN:        actorURN,
-			TenantID:   tenantID,
-			SourceID:   event.GetSourceId(),
-			EntityType: "github.user",
-			Label:      actor,
-			Attributes: map[string]string{
+	// `at` carries the audit event's OccurredAt timestamp so graph rules can tell
+	// recent GitHub activity from stale historical edges. mergeGraphAttributes is
+	// latest-wins, so under the normal in-order ingestion path this field always
+	// reflects the most recent action that touched the edge. The
+	// deprovisioned-Okta-active-in-GitHub rule uses this to avoid reporting users as
+	// "still active" purely from pre-offboarding history.
+	actedAttrs := map[string]string{
+		"action":   strings.TrimSpace(attributes["action"]),
+		"event_id": event.GetId(),
+	}
+	addProjectedAttribute(actedAttrs, "actor_type", actorType)
+	addProjectedAttribute(actedAttrs, "programmatic_access_type", programmaticAccessType)
+	addProjectedAttribute(actedAttrs, "source_runtime_id", strings.TrimSpace(attributes["source_runtime_id"]))
+	addProjectedAttribute(actedAttrs, "transport_protocol_name", strings.TrimSpace(attributes["transport_protocol_name"]))
+	if occurredAt := event.GetOccurredAt(); occurredAt != nil && occurredAt.IsValid() {
+		actedAttrs["at"] = occurredAt.AsTime().UTC().Format(time.RFC3339)
+	}
+
+	// When the audit event's actor is the org itself (system-level events),
+	// route the acted_on edge from the github.org node rather than minting a
+	// `github.user:<org>` shadow node. This matches GitHub's data model
+	// (orgs are not users) and prevents identity rules from chasing the org
+	// as if it were a person that should have an Okta link.
+	if (actorIsOrgSelf || actorTypeIsOrg) && actorOrgURN != "" {
+		if resourceURN != "" && resourceURN != actorOrgURN {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), actorOrgURN, resourceURN, relationActedOn, actedAttrs))
+		}
+	} else if actorIsUnresolvedPublicKey {
+		credentialURN := githubCredentialURN(tenantID, githubPublicKeyCredentialID(tokenID, actor, repo, resourceID, org))
+		if credentialURN != "" {
+			credentialAttrs := map[string]string{
+				"actor":                    actor,
+				"credential_type":          "public_key",
+				"programmatic_access_type": programmaticAccessType,
+			}
+			addProjectedAttribute(credentialAttrs, "org", org)
+			addProjectedAttribute(credentialAttrs, "org_id", orgID)
+			addProjectedAttribute(credentialAttrs, "repository", firstNonEmpty(repo, resourceID))
+			addProjectedAttribute(credentialAttrs, "token_id", tokenID)
+			addProjectedAttribute(credentialAttrs, "transport_protocol_name", strings.TrimSpace(attributes["transport_protocol_name"]))
+			addEntity(entities, &ports.ProjectedEntity{
+				URN:        credentialURN,
+				TenantID:   tenantID,
+				SourceID:   event.GetSourceId(),
+				EntityType: "github.credential",
+				Label:      actor,
+				Attributes: credentialAttrs,
+			})
+			if resourceURN != "" {
+				addLink(links, projectedLink(tenantID, event.GetSourceId(), credentialURN, resourceURN, relationActedOn, actedAttrs))
+			}
+		}
+	} else if actorIsAutomation {
+		// Automation actors are GitHub Apps/agents, not human identities. Keep the
+		// audit event in the append log but do not project them into the identity
+		// graph or repeatedly rewrite hot bot->repo acted_on edges.
+	} else {
+		actorURN := githubUserURN(tenantID, actor)
+		if actorURN != "" {
+			actorAttrs := map[string]string{
 				"external_identity_nameid":   actorExternalNameID,
 				"external_identity_username": actorExternalUsername,
 				"login":                      actor,
-			},
-		})
-		if resourceURN != "" {
-			// `at` carries the audit event's OccurredAt timestamp so graph rules can tell
-			// recent GitHub activity from stale historical edges. mergeGraphAttributes is
-			// latest-wins, so under the normal in-order ingestion path this field always
-			// reflects the most recent action that touched the edge. The
-			// deprovisioned-Okta-active-in-GitHub rule uses this to avoid reporting users as
-			// "still active" purely from pre-offboarding history.
-			actedAttrs := map[string]string{
-				"action":   strings.TrimSpace(attributes["action"]),
-				"event_id": event.GetId(),
 			}
-			if occurredAt := event.GetOccurredAt(); occurredAt != nil && occurredAt.IsValid() {
-				actedAttrs["at"] = occurredAt.AsTime().UTC().Format(time.RFC3339)
+			// Stamp the GitHub-native actor classification signals onto
+			// the github.user node so downstream rules can distinguish
+			// real users from bots and integration agents structurally,
+			// without resorting to login-string heuristics. These fields
+			// are stamped by GitHub itself on every audit event; values
+			// are kept verbatim ("true" / "false") and merged latest-wins.
+			if actorID != "" {
+				actorAttrs["actor_id"] = actorID
 			}
-			addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, resourceURN, relationActedOn, actedAttrs))
-		}
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actor, event.GetOccurredAt())
-		if !sameIdentifier(actor, actorExternalNameID) {
-			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorExternalNameID, event.GetOccurredAt())
-		}
-		if !sameIdentifier(actor, actorExternalUsername) && !sameIdentifier(actorExternalNameID, actorExternalUsername) {
-			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorExternalUsername, event.GetOccurredAt())
+			if actorType != "" {
+				actorAttrs["actor_type"] = actorType
+			}
+			if actorIsBot != "" {
+				actorAttrs["actor_is_bot"] = actorIsBot
+			}
+			if actorIsAgent != "" {
+				actorAttrs["actor_is_agent"] = actorIsAgent
+			}
+			if orgID != "" {
+				actorAttrs["org_id"] = orgID
+			}
+			addEntity(entities, &ports.ProjectedEntity{
+				URN:        actorURN,
+				TenantID:   tenantID,
+				SourceID:   event.GetSourceId(),
+				EntityType: "github.user",
+				Label:      actor,
+				Attributes: actorAttrs,
+			})
+			if resourceURN != "" {
+				addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, resourceURN, relationActedOn, actedAttrs))
+			}
+			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actor, event.GetOccurredAt())
+			if !sameIdentifier(actor, actorExternalNameID) {
+				addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorExternalNameID, event.GetOccurredAt())
+			}
+			if !sameIdentifier(actor, actorExternalUsername) && !sameIdentifier(actorExternalNameID, actorExternalUsername) {
+				addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorExternalUsername, event.GetOccurredAt())
+			}
 		}
 	}
 
+	// The previous-version actor URN computed against the github.user
+	// URN scheme is used here only to suppress redundant targeted edges
+	// when actor==targetUser. The org-self path above doesn't create a
+	// github.user actor, so this is purely for the user-actor case.
+	previousActorURN := githubUserURN(tenantID, actor)
 	targetURN := githubUserURN(tenantID, targetUser)
-	if targetURN != "" && targetURN != actorURN {
+	if targetURN != "" && targetURN != previousActorURN && githubSyntheticTargetActorType(targetUser) == "" {
+		targetAttrs := map[string]string{"login": targetUser}
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        targetURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
 			EntityType: "github.user",
 			Label:      targetUser,
-			Attributes: map[string]string{"login": targetUser},
+			Attributes: targetAttrs,
 		})
 		if resourceURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), targetURN, resourceURN, relationTargeted, map[string]string{"event_id": event.GetId()}))
@@ -360,6 +477,80 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
+}
+
+func isGitHubPublicKeyCredential(programmaticAccessType string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(programmaticAccessType))
+	return strings.Contains(normalized, "public key")
+}
+
+func githubAuditActorIsAutomation(actor string, actorType string, actorIsBot string, actorIsAgent string) bool {
+	if strings.EqualFold(strings.TrimSpace(actorIsBot), "true") {
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(actorIsAgent), "true") {
+		return true
+	}
+	if githubActorTypeClassifiesAutomation(actorType) {
+		return true
+	}
+	return githubSyntheticTargetActorType(actor) != ""
+}
+
+func githubActorTypeClassifiesAutomation(actorType string) bool {
+	switch strings.ToLower(strings.TrimSpace(actorType)) {
+	case "bot", "organization", "unresolved":
+		return true
+	}
+	return false
+}
+
+// githubSyntheticTargetActorType returns the automation classification for a
+// structurally synthetic login (i.e. not a real user that could be linked to
+// Okta).
+//
+// Two synthetic shapes are recognised today:
+//
+//   - GitHub reserves the trailing `[bot]` suffix for App-issued
+//     identities (dependabot[bot], github-actions[bot], renovate[bot],
+//     coderabbitai[bot], factory-droid[bot], ...). The suffix is part of
+//     GitHub's public contract; vendor changes don't alter it.
+//
+//   - The literal `deploy_key` login is GitHub's synthetic placeholder
+//     for SSH-key activity (no real /users/{login} resolution). The
+//     actor-side projector path routes these to `github.credential`
+//     via `actorIsUnresolvedPublicKey`.
+//
+// Returns "" when the login is a plain human-shaped GitHub username.
+func githubSyntheticTargetActorType(login string) string {
+	trimmed := strings.TrimSpace(login)
+	if trimmed == "" {
+		return ""
+	}
+	lower := strings.ToLower(trimmed)
+	if strings.HasSuffix(lower, "[bot]") {
+		return "Bot"
+	}
+	switch lower {
+	case "deploy_key", "deploy-key":
+		return "Unresolved"
+	}
+	return ""
+}
+
+func githubPublicKeyCredentialID(tokenID string, actor string, repo string, resourceID string, org string) string {
+	if strings.TrimSpace(tokenID) != "" {
+		return strings.TrimSpace(tokenID)
+	}
+	scope := firstNonEmpty(repo, resourceID, org)
+	if strings.TrimSpace(actor) != "" && scope != "" {
+		return strings.TrimSpace(actor) + "@" + scope
+	}
+	return firstNonEmpty(actor, scope)
+}
+
+func githubCredentialURN(tenantID string, credentialID string) string {
+	return projectionURN(tenantID, "github_credential", credentialID)
 }
 
 func githubDependabotAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -727,6 +918,16 @@ func addLink(links map[string]*ports.ProjectedLink, link *ports.ProjectedLink) {
 	}
 	key := link.FromURN + "|" + link.Relation + "|" + link.ToURN
 	links[key] = link
+}
+
+func addProjectedAttribute(attributes map[string]string, key string, value string) {
+	if attributes == nil {
+		return
+	}
+	if strings.TrimSpace(value) == "" {
+		return
+	}
+	attributes[key] = strings.TrimSpace(value)
 }
 
 func addIdentifierLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, eventID string, fromURN string, value string, occurredAt *timestamppb.Timestamp) {

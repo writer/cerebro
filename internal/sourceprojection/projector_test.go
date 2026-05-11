@@ -585,6 +585,442 @@ func TestProjectGitHubAuditOmitsAtWhenOccurredAtMissing(t *testing.T) {
 	}
 }
 
+func TestProjectGitHubAuditSkipsAutomationActorsFromIdentityGraph(t *testing.T) {
+	cases := []struct {
+		name  string
+		actor string
+		attrs map[string]string
+	}{
+		{
+			name:  "actor_is_bot true",
+			actor: "dependabot[bot]",
+			attrs: map[string]string{"actor_is_bot": "true", "actor_type": "Bot"},
+		},
+		{
+			name:  "bot suffix defense in depth",
+			actor: "coderabbitai[bot]",
+			attrs: map[string]string{"actor_is_bot": "false"},
+		},
+		{
+			name:  "actor_type bot",
+			actor: "renovate",
+			attrs: map[string]string{"actor_type": "Bot"},
+		},
+		{
+			name:  "actor_is_agent true",
+			actor: "fine-grained-token-agent",
+			attrs: map[string]string{"actor_is_agent": "true"},
+		},
+		{
+			name:  "unresolved non public key",
+			actor: "pullrequest[bot]",
+			attrs: map[string]string{"actor_type": "Unresolved"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			attrs := map[string]string{
+				"actor":         tc.actor,
+				"action":        "repository_vulnerability_alert.create",
+				"org":           "writer",
+				"org_id":        "8090724",
+				"repo":          "writer/cerebro",
+				"resource_id":   "writer/cerebro",
+				"resource_type": "repository",
+			}
+			for key, value := range tc.attrs {
+				attrs[key] = value
+			}
+			graph := &projectionRecorder{}
+			_, err := New(nil, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
+				Id:         "github-audit-automation-" + tc.actor,
+				TenantId:   "writer",
+				SourceId:   "github",
+				Kind:       "github.audit",
+				OccurredAt: timestamppb.New(time.Date(2025, time.March, 4, 10, 30, 0, 0, time.UTC)),
+				Attributes: attrs,
+			})
+			if err != nil {
+				t.Fatalf("Project() error = %v", err)
+			}
+			actorURN := "urn:cerebro:writer:github_user:" + tc.actor
+			if _, ok := graph.entities[actorURN]; ok {
+				t.Fatalf("automation actor %q should not be projected as github.user: %#v", actorURN, graph.entities[actorURN])
+			}
+			if _, ok := graph.links[actorURN+"|"+relationActedOn+"|urn:cerebro:writer:github_repo:writer/cerebro"]; ok {
+				t.Fatalf("automation actor %q should not emit acted_on repo links", actorURN)
+			}
+			for key := range graph.links {
+				if strings.HasPrefix(key, actorURN+"|") {
+					t.Fatalf("automation actor %q emitted identity graph link %q", actorURN, key)
+				}
+			}
+		})
+	}
+}
+
+func TestProjectGitHubAuditSkipsSyntheticTargetUsersFromIdentityGraph(t *testing.T) {
+	for _, targetLogin := range []string{"pullrequest[bot]", "Renovate[Bot]", "deploy_key", "deploy-key"} {
+		t.Run(targetLogin, func(t *testing.T) {
+			graph := &projectionRecorder{}
+			_, err := New(nil, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
+				Id:         "github-audit-target-" + targetLogin,
+				TenantId:   "writer",
+				SourceId:   "github",
+				Kind:       "github.audit",
+				OccurredAt: timestamppb.New(time.Date(2025, time.March, 4, 10, 30, 0, 0, time.UTC)),
+				Attributes: map[string]string{
+					"actor":         "alice",
+					"action":        "team.add_member",
+					"org":           "writer",
+					"repo":          "writer/cerebro",
+					"resource_id":   "writer/cerebro",
+					"resource_type": "repository",
+					"user":          targetLogin,
+				},
+			})
+			if err != nil {
+				t.Fatalf("Project() error = %v", err)
+			}
+			targetURN := "urn:cerebro:writer:github_user:" + targetLogin
+			if _, ok := graph.entities[targetURN]; ok {
+				t.Fatalf("synthetic target %q should not be projected as github.user", targetURN)
+			}
+			for key := range graph.links {
+				if strings.HasPrefix(key, targetURN+"|") {
+					t.Fatalf("synthetic target %q emitted identity graph link %q", targetURN, key)
+				}
+			}
+		})
+	}
+}
+
+// Plain human-shaped target logins are still GitHub identities and must keep
+// projecting into the identity graph. Target-context events legitimately have
+// no actor_type because the audit event's actor_* fields describe the issuer,
+// not the recipient.
+func TestProjectGitHubAuditDoesNotStampActorTypeOnHumanTargetUser(t *testing.T) {
+	graph := &projectionRecorder{}
+	_, err := New(nil, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:         "github-audit-target-human",
+		TenantId:   "writer",
+		SourceId:   "github",
+		Kind:       "github.audit",
+		OccurredAt: timestamppb.New(time.Date(2025, time.March, 4, 10, 30, 0, 0, time.UTC)),
+		Attributes: map[string]string{
+			"actor":         "alice",
+			"action":        "team.add_member",
+			"org":           "writer",
+			"repo":          "writer/cerebro",
+			"resource_id":   "writer/cerebro",
+			"resource_type": "repository",
+			"user":          "joechu-writer",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	targetURN := "urn:cerebro:writer:github_user:joechu-writer"
+	entity, ok := graph.entities[targetURN]
+	if !ok {
+		t.Fatalf("github.user target entity %q missing in graph: %#v", targetURN, graph.entities)
+	}
+	if got, exists := entity.Attributes["actor_type"]; exists {
+		t.Fatalf("target github.user attributes[actor_type] = %q present for human-shaped login; rule would silently suppress real shadow accounts", got)
+	}
+}
+
+// `org_id` is a small but important field on the github.org node: it pins
+// the numeric ID GitHub stamps on every audit event for the org. The rule
+// uses it to disambiguate the org-as-actor pattern (where actor_id ==
+// org_id and the event represents a system-level action with no human
+// actor) from real user activity.
+func TestProjectGitHubAuditStampsOrgIDOnGithubOrg(t *testing.T) {
+	graph := &projectionRecorder{}
+	_, err := New(nil, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-audit-org-id",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.audit",
+		Attributes: map[string]string{
+			"actor":         "alice",
+			"action":        "git.clone",
+			"org":           "writer",
+			"org_id":        "8090724",
+			"repo":          "writer/cerebro",
+			"resource_id":   "writer/cerebro",
+			"resource_type": "repository",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	orgURN := "urn:cerebro:writer:github_org:writer"
+	entity, ok := graph.entities[orgURN]
+	if !ok {
+		t.Fatalf("github.org entity %q missing", orgURN)
+	}
+	if got, want := entity.Attributes["org_id"], "8090724"; got != want {
+		t.Fatalf("github.org attributes[org_id] = %q, want %q", got, want)
+	}
+}
+
+// GitHub's audit log API names the org itself as the audit actor on
+// system-level events (e.g. `integration_installation.version_updated`).
+// The actor_id on those events equals the org_id, and there is no human
+// user behind the action. Minting a `github.user:<org>` node would create
+// a phantom identity that no rule could ever bridge back to Okta — the org
+// is not a user. The projector must therefore route the acted_on edge
+// from the github.org node and skip the github.user mint entirely,
+// mirroring cartography's GitHubUser vs GitHubOrganization separation.
+func TestProjectGitHubAuditRoutesActedOnFromOrgWhenActorIsOrgSelf(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &projectionRecorder{}
+	_, err := New(state, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:         "github-audit-org-self",
+		TenantId:   "writer",
+		SourceId:   "github",
+		Kind:       "github.audit",
+		OccurredAt: timestamppb.New(time.Date(2025, time.March, 4, 10, 30, 0, 0, time.UTC)),
+		Attributes: map[string]string{
+			"actor":         "writer",
+			"actor_id":      "8090724",
+			"action":        "integration_installation.version_updated",
+			"org":           "writer",
+			"org_id":        "8090724",
+			"resource_id":   "writer",
+			"resource_type": "integration_installation",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	orgURN := "urn:cerebro:writer:github_org:writer"
+	resourceURN := "urn:cerebro:writer:github_resource:integration_installation:writer"
+	phantomUserURN := "urn:cerebro:writer:github_user:writer"
+	if _, ok := graph.entities[phantomUserURN]; ok {
+		t.Fatalf("phantom github.user %q minted for org-as-actor event; projector must route through github.org instead", phantomUserURN)
+	}
+	if _, ok := graph.entities[orgURN]; !ok {
+		t.Fatalf("github.org entity %q missing", orgURN)
+	}
+	if _, ok := graph.entities[resourceURN]; !ok {
+		t.Fatalf("resource entity %q missing", resourceURN)
+	}
+	link, ok := graph.links[orgURN+"|"+relationActedOn+"|"+resourceURN]
+	if !ok {
+		t.Fatalf("acted_on link missing for %s -> %s (org-as-actor must route the edge from github.org): %#v", orgURN, resourceURN, graph.links)
+	}
+	if got, want := link.Attributes["action"], "integration_installation.version_updated"; got != want {
+		t.Fatalf("acted_on attributes[action] = %q, want %q", got, want)
+	}
+	if link.Attributes["at"] == "" {
+		t.Fatalf("acted_on attributes[at] empty; rule needs the recency stamp on org-as-actor edges too")
+	}
+}
+
+// When actor_id != org_id, the projector must continue to mint a github.user
+// for the actor — this is the normal user-action path. A regression in the
+// org-self detection (e.g. mis-comparing strings or treating empty IDs as
+// equal) would silently drop every real user from the graph; this test
+// pins the correct branch.
+func TestProjectGitHubAuditMintsGithubUserWhenActorIsNotOrgSelf(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &projectionRecorder{}
+	_, err := New(state, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-audit-user-actor",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.audit",
+		Attributes: map[string]string{
+			"actor":         "alice",
+			"actor_id":      "111",
+			"action":        "git.clone",
+			"org":           "writer",
+			"org_id":        "8090724",
+			"repo":          "writer/cerebro",
+			"resource_id":   "writer/cerebro",
+			"resource_type": "repository",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	actorURN := "urn:cerebro:writer:github_user:alice"
+	resourceURN := "urn:cerebro:writer:github_repo:writer/cerebro"
+	if _, ok := graph.entities[actorURN]; !ok {
+		t.Fatalf("github.user entity %q missing for user actor; org-self detection must not trip when IDs differ", actorURN)
+	}
+	if _, ok := graph.links[actorURN+"|"+relationActedOn+"|"+resourceURN]; !ok {
+		t.Fatalf("acted_on link missing for %s -> %s; user actor path must still mint the edge", actorURN, resourceURN)
+	}
+}
+
+// Events arriving with no actor_id at all (e.g. backfilled legacy rows) must
+// fall through to the user-actor mint, not the org-self routing. We
+// explicitly require BOTH actor_id and org_id to be non-empty and equal
+// before suppressing the github.user — equality of two empty strings would
+// otherwise silently route every legacy event from github.org.
+func TestProjectGitHubAuditDoesNotTreatMissingActorIDsAsOrgSelf(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &projectionRecorder{}
+	_, err := New(state, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-audit-no-actor-id",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.audit",
+		Attributes: map[string]string{
+			"actor":         "alice",
+			"action":        "git.clone",
+			"org":           "writer",
+			"repo":          "writer/cerebro",
+			"resource_id":   "writer/cerebro",
+			"resource_type": "repository",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	actorURN := "urn:cerebro:writer:github_user:alice"
+	if _, ok := graph.entities[actorURN]; !ok {
+		t.Fatalf("github.user entity %q missing; legacy events without actor_id must NOT be treated as org-as-actor", actorURN)
+	}
+}
+
+// Git audit rows can name non-user credentials as the actor. Live data shows
+// deploy-key access as actor=deploy_key, actor_id missing, user_id=0, and
+// programmatic_access_type="Public Key (User/Deploy)"; /users/deploy_key
+// returns 404, so the source stamps actor_type=Unresolved. The projector must
+// preserve that access evidence as a github.credential, not as a
+// github.user, otherwise identity rules will chase a non-user credential that
+// can never have an Okta bridge.
+func TestProjectGitHubAuditProjectsUnresolvedPublicKeyAsCredential(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &projectionRecorder{}
+	occurred := time.Date(2026, time.May, 9, 14, 56, 28, 0, time.UTC)
+	_, err := New(state, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:         "github-audit-deploy-key",
+		TenantId:   "writer",
+		SourceId:   "github",
+		Kind:       "github.audit",
+		OccurredAt: timestamppb.New(occurred),
+		Attributes: map[string]string{
+			"actor":                    "deploy_key",
+			"actor_type":               "Unresolved",
+			"action":                   "git.clone",
+			"org":                      "WriterInternal",
+			"org_id":                   "112636266",
+			"programmatic_access_type": "Public Key (User/Deploy)",
+			"repo":                     "WriterInternal/k8s",
+			"resource_id":              "WriterInternal/k8s",
+			"resource_type":            "repository",
+			"transport_protocol_name":  "ssh",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	userURN := "urn:cerebro:writer:github_user:deploy_key"
+	if _, ok := graph.entities[userURN]; ok {
+		t.Fatalf("github.user %q minted for unresolved public-key credential; deploy keys must be modeled as credentials", userURN)
+	}
+	credentialURN := "urn:cerebro:writer:github_credential:deploy_key@WriterInternal/k8s"
+	credential, ok := graph.entities[credentialURN]
+	if !ok {
+		t.Fatalf("github.credential entity %q missing: %#v", credentialURN, graph.entities)
+	}
+	if got, want := credential.EntityType, "github.credential"; got != want {
+		t.Fatalf("credential entity_type = %q, want %q", got, want)
+	}
+	for key, want := range map[string]string{
+		"actor":                    "deploy_key",
+		"credential_type":          "public_key",
+		"programmatic_access_type": "Public Key (User/Deploy)",
+		"repository":               "WriterInternal/k8s",
+		"transport_protocol_name":  "ssh",
+	} {
+		if got := credential.Attributes[key]; got != want {
+			t.Fatalf("credential attributes[%s] = %q, want %q", key, got, want)
+		}
+	}
+	resourceURN := "urn:cerebro:writer:github_repo:WriterInternal/k8s"
+	link, ok := graph.links[credentialURN+"|"+relationActedOn+"|"+resourceURN]
+	if !ok {
+		t.Fatalf("acted_on link missing for credential %s -> %s: %#v", credentialURN, resourceURN, graph.links)
+	}
+	if got, want := link.Attributes["programmatic_access_type"], "Public Key (User/Deploy)"; got != want {
+		t.Fatalf("acted_on attributes[programmatic_access_type] = %q, want %q", got, want)
+	}
+	if got, want := link.Attributes["at"], occurred.Format(time.RFC3339); got != want {
+		t.Fatalf("acted_on attributes[at] = %q, want %q", got, want)
+	}
+
+	_, err = New(state, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:         "github-audit-deploy-key-other-repo",
+		TenantId:   "writer",
+		SourceId:   "github",
+		Kind:       "github.audit",
+		OccurredAt: timestamppb.New(occurred.Add(time.Minute)),
+		Attributes: map[string]string{
+			"actor":                    "deploy_key",
+			"actor_type":               "Unresolved",
+			"action":                   "git.clone",
+			"org":                      "WriterInternal",
+			"programmatic_access_type": "Public Key (User/Deploy)",
+			"repo":                     "WriterInternal/other",
+			"resource_id":              "WriterInternal/other",
+			"resource_type":            "repository",
+			"transport_protocol_name":  "ssh",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() second repo error = %v", err)
+	}
+	otherCredentialURN := "urn:cerebro:writer:github_credential:deploy_key@WriterInternal/other"
+	if _, ok := graph.entities[otherCredentialURN]; !ok {
+		t.Fatalf("github.credential entity %q missing for same deploy_key actor on another repo", otherCredentialURN)
+	}
+}
+
+// Missing actor_id alone is not enough to call an audit actor a credential:
+// GitHub git audit rows for real users can also omit actor_id. The source
+// resolves those actors through /users/{login} and stamps actor_type=User, and
+// the projector must keep the normal github.user path so real user access is
+// still evaluated by identity rules.
+func TestProjectGitHubAuditKeepsResolvedUserPublicKeyAsGithubUser(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &projectionRecorder{}
+	_, err := New(state, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-audit-user-public-key",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.audit",
+		Attributes: map[string]string{
+			"actor":                    "brandon-writer",
+			"actor_type":               "User",
+			"action":                   "git.push",
+			"org":                      "WriterInternal",
+			"org_id":                   "112636266",
+			"programmatic_access_type": "Public Key (User/Deploy)",
+			"repo":                     "WriterInternal/be.llm-gateway",
+			"resource_id":              "WriterInternal/be.llm-gateway",
+			"resource_type":            "repository",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	userURN := "urn:cerebro:writer:github_user:brandon-writer"
+	if _, ok := graph.entities[userURN]; !ok {
+		t.Fatalf("github.user %q missing for resolved User public-key actor", userURN)
+	}
+	for urn := range graph.entities {
+		if strings.Contains(urn, "github_credential:brandon-writer") {
+			t.Fatalf("github.credential %q minted for resolved User actor; public-key users must stay github.user identities", urn)
+		}
+	}
+}
+
 func TestProjectReusesCrossSourceIdentifierWithinTenant(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

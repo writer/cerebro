@@ -2,6 +2,7 @@ package findings
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -182,8 +183,31 @@ func (r *githubActiveWithoutOktaLinkRule) QueryFor(runtime *cerebrov1.SourceRunt
 		// the at-attribute parser lives in one place with unit-test
 		// coverage (the attributes_json values are opaque on Neo4j
 		// pre-5.x without apoc).
+		//
+		// The leading `WHERE NOT EXISTS { ... github.org ... }` clause
+		// suppresses pre-fix phantom `github.user:<org>` nodes that
+		// were minted before the projector started routing
+		// `actor_type=Organization` / `actor_id == org_id` events
+		// through `github.org`. Those phantoms carry no `actor_type`
+		// on their `attributes_json` (the audit-actor resolver did
+		// not run on actor_id-stamped rows on the pre-fix code path)
+		// and would never re-stamp after the projector fix because
+		// every new org-self event now lands on the `github.org` node
+		// instead. Filtering by label-overlap with the tenant's
+		// `github.org` set excludes them at the cypher layer so they
+		// cannot reach EvaluateRows. The match is case-insensitive
+		// to defend against the GitHub username/org-slug case-folding
+		// rule (`writer` vs `Writer` vs `WriterInternal` all surface
+		// in audit logs in their original casing). We keep the
+		// node-side `actor_type=Organization` branch in
+		// `githubActorIsAutomation` as defense in depth in case a
+		// future projector change ever re-stamps the phantom node.
 		Query: `MATCH (g:Entity {entity_type: 'github.user', tenant_id: $tenant_id})
-      -[acted:RELATION {relation: 'acted_on'}]->(target:Entity)
+WHERE NOT EXISTS {
+  MATCH (org:Entity {entity_type: 'github.org', tenant_id: $tenant_id})
+  WHERE toLower(coalesce(org.label, '')) = toLower(coalesce(g.label, ''))
+}
+MATCH (g)-[acted:RELATION {relation: 'acted_on'}]->(target:Entity)
 WITH g, collect(DISTINCT {
        urn: target.urn,
        entity_type: coalesce(target.entity_type, ''),
@@ -226,14 +250,52 @@ func (r *githubActiveWithoutOktaLinkRule) EvaluateRows(_ context.Context, runtim
 		if githubUserURN == "" {
 			continue
 		}
-		// Bot logins (dependabot[bot], github-actions[bot], renovate[bot], etc.)
-		// commit and act on resources but are not real human identities. They
-		// will never be in Okta by design, so emitting on them would flood
-		// the queue with non-actionable findings. The check is on the github
-		// user label (which the projector populates from the audit `actor`
-		// field) so it sees the raw login string the audit log carried.
+		// Suppress automation actors using the GitHub-stamped schema flags
+		// the source projector forwards onto every github.user node:
+		//
+		//   * actor_is_bot=true is GitHub's own classification for GitHub App
+		//     identities (the `<vendor>[bot]` accounts that surface in audit
+		//     `actor` fields — dependabot[bot], github-actions[bot],
+		//     renovate[bot], coderabbitai[bot], factory-droid[bot], etc.).
+		//   * actor_is_agent=true covers fine-grained PAT / installation-token
+		//     agent actions that GitHub categorises as automated.
+		//
+		// These accounts will never be in Okta by design; emitting on them
+		// would flood the queue with non-actionable findings. Trusting the
+		// schema avoids the maintenance burden of a hand-maintained vendor
+		// allowlist (every new GitHub App vendor would otherwise require a
+		// code change) and stays correct as the audit log API gains new
+		// classifications.
+		//
+		// The complementary org-as-actor pattern (audit events whose
+		// `actor_id == org_id`, e.g. `integration_installation.version_updated`
+		// system events) is filtered at the projector layer by routing the
+		// `acted_on` edge from the github.org node instead of minting a
+		// `github.user:<org>` shadow node, so this rule never sees those rows.
 		githubUserLabel := cypherRowString(row, "github_user_label")
-		if isGitHubBotLogin(githubUserLabel) {
+		githubAttributesJSON := cypherRowString(row, "github_attributes_json")
+		if githubActorIsAutomation(githubAttributesJSON) {
+			continue
+		}
+		// Defense in depth for phantom github.user nodes whose
+		// `attributes_json` was projected before audit.go always
+		// resolved the actor (so the node carries no `actor_type`),
+		// but whose `acted_on` edges have since been re-stamped by
+		// the v2.1.14+ projector. The projector writes `actor_type`
+		// onto every `acted_on` edge it merges, so a recent
+		// edge-side automation classification is a reliable signal
+		// that the user is non-linkable even when the node-side
+		// blob has not yet caught up (mergeGraphAttributes is
+		// latest-wins per-key, so the node IS supposed to converge
+		// on the same value — but a single early evaluation cycle
+		// after a fresh audit ingest can run before the per-key
+		// merge has rotated the node blob, especially when the
+		// graph rule eval immediately follows source ingest in the
+		// same orchestrator iteration). We keep this check after
+		// the node-level check so that the cheaper, single-blob
+		// classification still short-circuits before we touch the
+		// per-target list.
+		if githubRecentEdgeMarksAutomation(cypherRowList(row, "targets"), now, identityGitHubActiveWithoutOktaRecencyWindow) {
 			continue
 		}
 		// The cypher emits one row per github user; rows for the same
@@ -247,7 +309,7 @@ func (r *githubActiveWithoutOktaLinkRule) EvaluateRows(_ context.Context, runtim
 			group = &githubActiveWithoutOktaGroup{
 				githubUserURN:        githubUserURN,
 				githubUserLabel:      githubUserLabel,
-				githubAttributesJSON: cypherRowString(row, "github_attributes_json"),
+				githubAttributesJSON: githubAttributesJSON,
 				targets:              map[string]githubActiveWithoutOktaTarget{},
 			}
 			groups[githubUserURN] = group
@@ -287,7 +349,11 @@ func (r *githubActiveWithoutOktaLinkRule) EvaluateRows(_ context.Context, runtim
 		// gives one O(n) pass with the same semantics as the previous
 		// row-per-target form.
 		for _, target := range cypherRowList(row, "targets") {
-			if !edgeIsRecent(cypherListMapString(target, "acted_attributes_json"), now, identityGitHubActiveWithoutOktaRecencyWindow) {
+			actedAttributesJSON := cypherListMapString(target, "acted_attributes_json")
+			if !edgeIsRecent(actedAttributesJSON, now, identityGitHubActiveWithoutOktaRecencyWindow) {
+				continue
+			}
+			if !githubActedOnIsCurrentAccessEvidence(actedAttributesJSON) {
 				continue
 			}
 			targetURN := strings.TrimSpace(cypherListMapString(target, "urn"))
@@ -365,31 +431,139 @@ func cypherListMapString(item any, key string) string {
 	}
 }
 
-// isGitHubBotLogin recognises the subset of GitHub login conventions that
-// flag accounts as automation rather than employee identities. These never
-// belong in Okta and would otherwise emit a CRITICAL-volume of false
-// positives every time the audit log records a bot action.
+// githubActorIsAutomation returns true when a github.user node's
+// attributes_json carries an explicit GitHub-stamped automation flag or
+// is otherwise structurally not a person that could be linked to Okta.
+// The source projector forwards three boolean/enumerated classifications
+// from the audit log API and the GitHub /users resolution onto every
+// github.user node:
 //
-// The patterns are intentionally narrow: the GitHub Apps convention reserves
-// the `[bot]` suffix for App-issued identities (which is why
-// `dependabot[bot]` and `github-actions[bot]` show up in audit `actor`
-// fields), and the prefix list covers the well-known third-party automation
-// vendors that mint GitHub-App-backed bots (Dependabot, GitHub Actions,
-// Renovate, Mergify, RenovateBot via repo-scoped tokens) without sweeping in
-// arbitrary user logins that happen to start with the same letters.
-func isGitHubBotLogin(login string) bool {
-	trimmed := strings.ToLower(strings.TrimSpace(login))
+//   - actor_is_bot is the audit-log boolean GitHub stamps on
+//     first-party App identities (dependabot[bot], github-actions[bot],
+//     coderabbitai[bot], etc.). It is NOT set for many third-party Apps,
+//     so the rule must not depend on it alone.
+//   - actor_is_agent covers fine-grained PAT / installation-token agent
+//     actions GitHub categorises as automated.
+//   - actor_type comes from the /users/{login} resolution and is the
+//     authoritative classifier across all GitHub App accounts. Type=Bot
+//     covers every App-issued identity uniformly; Type=Organization
+//     means the audit row was emitted by the org acting on itself (a
+//     stale phantom github.user node from before the org-self projector
+//     fix) and is never a real person to link; Type=Unresolved means
+//     GitHub returned 404 for the login, which happens for deleted or
+//     retired App accounts (pullrequest[bot] after uninstall, etc.) and
+//     for placeholder logins like deploy_key. None of these are
+//     linkable to a human Okta identity, so all three suppress the
+//     finding.
+//
+// Comparing GitHub-native classifications avoids a hardcoded vendor
+// allowlist and stays correct as new App integrations come online.
+//
+// We accept the values verbatim from the audit log (strings, lower-cased
+// "true"/"false" in practice) and trim/compare case-insensitively so a
+// future API revision that returns "True" or "TRUE" still works. Empty or
+// malformed JSON is treated as "not classified as automation" — better to
+// surface a finding for review than to silently suppress a real shadow
+// account because the attributes blob was corrupt.
+func githubActorIsAutomation(attributesJSON string) bool {
+	trimmed := strings.TrimSpace(attributesJSON)
 	if trimmed == "" {
 		return false
 	}
-	if strings.HasSuffix(trimmed, "[bot]") {
+	var attrs map[string]string
+	if err := json.Unmarshal([]byte(trimmed), &attrs); err != nil {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(attrs["actor_is_bot"]), "true") {
 		return true
 	}
-	switch trimmed {
-	case "dependabot", "github-actions", "renovate", "renovate-bot", "mergify", "mergify-bot":
+	if strings.EqualFold(strings.TrimSpace(attrs["actor_is_agent"]), "true") {
+		return true
+	}
+	return githubActorTypeClassifiesAutomation(attrs["actor_type"])
+}
+
+// githubActorTypeClassifiesAutomation centralises the actor_type → automation
+// mapping so the node-side (`attributes_json` on github.user) and the
+// edge-side (`attributes_json` on acted_on) checks agree on the same set
+// of non-linkable types: Bot (GitHub App), Organization (org acting on
+// itself — stale phantom github.user pre-fix path), and Unresolved (GitHub
+// returned 404 for /users/{login}, e.g. retired GitHub Apps or synthetic
+// placeholder logins like deploy_key). The compare is case-insensitive to
+// defend against future API casing changes.
+func githubActorTypeClassifiesAutomation(actorType string) bool {
+	switch strings.ToLower(strings.TrimSpace(actorType)) {
+	case "bot", "organization", "unresolved":
 		return true
 	}
 	return false
+}
+
+// githubRecentEdgeMarksAutomation returns true when any acted_on edge
+// within the recency window classifies its actor as automation. The
+// projector stamps `actor_type` onto every acted_on edge it merges, so a
+// recent edge with `actor_type=Bot/Organization/Unresolved` is a reliable
+// signal that the user is non-linkable even when the github.user node's
+// `attributes_json` has not yet caught up with the per-key merge.
+func githubRecentEdgeMarksAutomation(targets []any, now time.Time, window time.Duration) bool {
+	for _, target := range targets {
+		attrs := cypherListMapString(target, "acted_attributes_json")
+		if !edgeIsRecent(attrs, now, window) {
+			continue
+		}
+		if githubEdgeActorTypeIsAutomation(attrs) {
+			return true
+		}
+	}
+	return false
+}
+
+// githubEdgeActorTypeIsAutomation parses the acted_on edge's
+// `attributes_json` and reports whether its `actor_type` field classifies
+// the actor as automation. The edge schema does not currently carry
+// `actor_is_bot` or `actor_is_agent` (those are stamped only on the
+// github.user node), so this check focuses on the resolver-stamped
+// `actor_type` field exclusively. Returns false for malformed / empty
+// JSON: the rule defaults to surfacing for review rather than silently
+// suppressing a real shadow account whose edge blob is corrupt.
+func githubEdgeActorTypeIsAutomation(attributesJSON string) bool {
+	trimmed := strings.TrimSpace(attributesJSON)
+	if trimmed == "" {
+		return false
+	}
+	var attrs map[string]string
+	if err := json.Unmarshal([]byte(trimmed), &attrs); err != nil {
+		return false
+	}
+	return githubActorTypeClassifiesAutomation(attrs["actor_type"])
+}
+
+func githubActedOnIsCurrentAccessEvidence(attributesJSON string) bool {
+	trimmed := strings.TrimSpace(attributesJSON)
+	if trimmed == "" {
+		return false
+	}
+	var attrs map[string]string
+	if err := json.Unmarshal([]byte(trimmed), &attrs); err != nil {
+		return false
+	}
+	return githubAuditActionIndicatesCurrentAccess(attrs["action"])
+}
+
+func githubAuditActionIndicatesCurrentAccess(action string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(action))
+	if normalized == "" {
+		return false
+	}
+	switch normalized {
+	case "workflows.completed_workflow_run",
+		"workflows.created_workflow_run",
+		"workflows.prepared_workflow_job",
+		"org_credential_authorization.deauthorize":
+		return false
+	default:
+		return true
+	}
 }
 
 type githubActiveWithoutOktaGroup struct {

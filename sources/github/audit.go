@@ -3,7 +3,9 @@ package github
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +25,7 @@ type auditPayload struct {
 	ActorIP                  string         `json:"actor_ip,omitempty"`
 	ActorIsAgent             bool           `json:"actor_is_agent,omitempty"`
 	ActorIsBot               bool           `json:"actor_is_bot,omitempty"`
+	ActorType                string         `json:"actor_type,omitempty"`
 	Business                 string         `json:"business,omitempty"`
 	BusinessID               int64          `json:"business_id,omitempty"`
 	ExternalIdentityNameID   string         `json:"external_identity_nameid,omitempty"`
@@ -73,8 +76,24 @@ func (s *Source) readAudit(ctx context.Context, client *gogithub.Client, setting
 		return sourcecdk.Pull{}, nil
 	}
 	events := make([]*primitives.Event, 0, len(entries))
+	actorResolutionCache := map[string]auditActorResolution{}
 	for _, entry := range entries {
-		event, err := auditEvent(settings, entry)
+		// Resolve every non-empty actor login. The audit log raw payload
+		// does NOT include an actor_type field; without resolution the
+		// projector sees only entry.ActorID (which GitHub stamps even on
+		// GitHub-App / Bot / Organization-self actors) and therefore
+		// can't tell a bot apart from a user. Resolution returns
+		// Type=Bot for GitHub Apps, Type=Organization for org-self
+		// events, Type=Unresolved for deleted/placeholder logins
+		// (deploy_key, retired bot apps), and Type=User otherwise. The
+		// shared cache keeps the per-pull cost at one /users/{login}
+		// call per unique actor, which is well within the 5000/hour
+		// authenticated rate limit for any realistic audit volume.
+		actorResolution := auditActorResolution{}
+		if strings.TrimSpace(entry.GetActor()) != "" {
+			actorResolution = resolveAuditActor(ctx, client, entry.GetActor(), actorResolutionCache)
+		}
+		event, err := auditEvent(settings, entry, actorResolution)
 		if err != nil {
 			return sourcecdk.Pull{}, err
 		}
@@ -116,7 +135,42 @@ func readAuditCursor(cursor *cerebrov1.SourceCursor) (string, error) {
 	return strings.TrimSpace(cursor.GetOpaque()), nil
 }
 
-func auditEvent(settings settings, entry *gogithub.AuditEntry) (*primitives.Event, error) {
+type auditActorResolution struct {
+	Login string
+	Type  string
+	ID    int64
+}
+
+func resolveAuditActor(ctx context.Context, client *gogithub.Client, actor string, cache map[string]auditActorResolution) auditActorResolution {
+	normalized := strings.TrimSpace(actor)
+	if normalized == "" || client == nil {
+		return auditActorResolution{}
+	}
+	if cached, ok := cache[normalized]; ok {
+		return cached
+	}
+	resolution := auditActorResolution{Login: normalized}
+	user, resp, err := client.Users.Get(ctx, normalized)
+	if err != nil {
+		var errResponse *gogithub.ErrorResponse
+		if resp != nil && resp.StatusCode == http.StatusNotFound {
+			resolution.Type = "Unresolved"
+		} else if errors.As(err, &errResponse) && errResponse.Response != nil && errResponse.Response.StatusCode == http.StatusNotFound {
+			resolution.Type = "Unresolved"
+		}
+		cache[normalized] = resolution
+		return resolution
+	}
+	resolution.Type = strings.TrimSpace(user.GetType())
+	resolution.ID = user.GetID()
+	if login := strings.TrimSpace(user.GetLogin()); login != "" {
+		resolution.Login = login
+	}
+	cache[normalized] = resolution
+	return resolution
+}
+
+func auditEvent(settings settings, entry *gogithub.AuditEntry, actorResolution auditActorResolution) (*primitives.Event, error) {
 	occurredAt := auditOccurredAt(entry)
 	if occurredAt.IsZero() {
 		return nil, fmt.Errorf("github audit event %q missing timestamps", entry.GetDocumentID())
@@ -125,13 +179,15 @@ func auditEvent(settings settings, entry *gogithub.AuditEntry) (*primitives.Even
 	if err != nil {
 		return nil, err
 	}
+	actorID := firstPositiveInt64(entry.GetActorID(), actorResolution.ID)
 	payload, err := json.Marshal(auditPayload{
 		Action:                   entry.GetAction(),
 		Actor:                    entry.GetActor(),
-		ActorID:                  entry.GetActorID(),
+		ActorID:                  actorID,
 		ActorIP:                  rawString(raw, "actor_ip"),
 		ActorIsAgent:             rawBool(raw, "actor_is_agent"),
 		ActorIsBot:               rawBool(raw, "actor_is_bot"),
+		ActorType:                actorResolution.Type,
 		Business:                 entry.GetBusiness(),
 		BusinessID:               entry.GetBusinessID(),
 		ExternalIdentityNameID:   entry.GetExternalIdentityNameID(),
@@ -160,7 +216,7 @@ func auditEvent(settings settings, entry *gogithub.AuditEntry) (*primitives.Even
 		OccurredAt: timestamppb.New(occurredAt.UTC()),
 		SchemaRef:  "github/audit/v1",
 		Payload:    payload,
-		Attributes: auditAttributes(entry, raw, settings),
+		Attributes: auditAttributes(entry, raw, settings, actorResolution),
 	}, nil
 }
 
@@ -223,7 +279,7 @@ func checkpointAuditCursor(_ []*gogithub.AuditEntry, cursor string) string {
 	return strings.TrimSpace(cursor)
 }
 
-func auditAttributes(entry *gogithub.AuditEntry, raw map[string]any, settings settings) map[string]string {
+func auditAttributes(entry *gogithub.AuditEntry, raw map[string]any, settings settings, actorResolution auditActorResolution) map[string]string {
 	attributes := map[string]string{
 		"action":         entry.GetAction(),
 		"family":         familyAudit,
@@ -234,18 +290,37 @@ func auditAttributes(entry *gogithub.AuditEntry, raw map[string]any, settings se
 		"scope":          auditScope(entry, raw, settings),
 	}
 	addAttribute(attributes, "actor", entry.GetActor())
+	addAttribute(attributes, "actor_id", positiveInt64String(firstPositiveInt64(entry.GetActorID(), actorResolution.ID)))
 	addAttribute(attributes, "actor_is_agent", boolString(raw, "actor_is_agent"))
 	addAttribute(attributes, "actor_is_bot", boolString(raw, "actor_is_bot"))
+	addAttribute(attributes, "actor_type", actorResolution.Type)
 	addAttribute(attributes, "external_identity_nameid", entry.GetExternalIdentityNameID())
 	addAttribute(attributes, "external_identity_username", entry.GetExternalIdentityUsername())
+	// org_id is the numeric ID GitHub stamps on every audit event for the org
+	// the action belongs to. We surface it on the event so the projector can
+	// detect the org-as-actor pattern (actor_id == org_id), which occurs on
+	// system-level events like integration_installation.version_updated where
+	// GitHub names the org itself as the audit actor rather than a user.
+	addAttribute(attributes, "org_id", positiveInt64String(rawInt64(raw, "org_id")))
 	addAttribute(attributes, "programmatic_access_type", rawString(raw, "programmatic_access_type"))
 	addAttribute(attributes, "repo", rawString(raw, "repo"))
+	addAttribute(attributes, "token_id", positiveInt64String(rawInt64(raw, "token_id")))
 	addAttribute(attributes, "user", entry.GetUser())
+	addAttribute(attributes, "user_id", positiveInt64String(entry.GetUserID()))
 	addAttribute(attributes, "visibility", rawString(raw, "visibility"))
 	for _, key := range auditAdditionalAttributeKeys {
 		addAttribute(attributes, key, rawScalarString(raw, key))
 	}
 	return attributes
+}
+
+func firstPositiveInt64(values ...int64) int64 {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return 0
 }
 
 var auditAdditionalAttributeKeys = []string{
@@ -371,6 +446,41 @@ func boolString(raw map[string]any, key string) string {
 		return ""
 	}
 	return strconv.FormatBool(boolValue)
+}
+
+// rawInt64 reads a numeric field from the raw audit log payload. The GitHub
+// audit log API returns IDs as JSON numbers, which json.Unmarshal turns into
+// float64 inside map[string]any; encoding/json never falls back to int64 for
+// untyped maps. We round to int64 here so the projector sees stable integer
+// IDs and the actor_id == org_id comparison in the rule is exact.
+func rawInt64(raw map[string]any, key string) int64 {
+	value, ok := raw[key]
+	if !ok || value == nil {
+		return 0
+	}
+	switch typed := value.(type) {
+	case float64:
+		return int64(typed)
+	case int:
+		return int64(typed)
+	case int64:
+		return typed
+	default:
+		return 0
+	}
+}
+
+// positiveInt64String returns the decimal form of a positive int64 or empty
+// when the value is non-positive. We use empty rather than "0" so the
+// downstream addAttribute helper drops the key; "0" is not a valid GitHub
+// numeric ID and is what GitHub returns when no real actor is associated
+// (deploy keys, anonymous webhook events). Suppressing the attribute keeps
+// the projected node free of placeholder zeros that a rule could trip on.
+func positiveInt64String(value int64) string {
+	if value <= 0 {
+		return ""
+	}
+	return strconv.FormatInt(value, 10)
 }
 
 func addAttribute(attributes map[string]string, key string, value string) {

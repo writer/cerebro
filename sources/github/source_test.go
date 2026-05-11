@@ -280,6 +280,14 @@ func TestCheckDiscoverAndReadLiveGitHubAuditPreview(t *testing.T) {
 	if got := first.Events[0].Attributes["external_identity_nameid"]; got != "dependabot@writer.com" {
 		t.Fatalf("first.Events[0].Attributes[external_identity_nameid] = %q, want dependabot@writer.com", got)
 	}
+	// Audit Read must resolve every actor login (not just those without
+	// actor_id) so that GitHub-App identities — which always carry an
+	// actor_id — still get actor_type=Bot stamped. Without resolution
+	// the github.user node attributes_json would never reach the rule's
+	// automation check for these accounts.
+	if got := first.Events[0].Attributes["actor_type"]; got != "Bot" {
+		t.Fatalf("first.Events[0].Attributes[actor_type] = %q, want Bot", got)
+	}
 	var payload map[string]any
 	if err := json.Unmarshal(first.Events[0].Payload, &payload); err != nil {
 		t.Fatalf("unmarshal audit payload: %v", err)
@@ -346,7 +354,7 @@ func TestAuditAttributesForwardRulesetWeakeningMetadata(t *testing.T) {
 		"changes": map[string]any{
 			"required_status_checks": "removed",
 		},
-	}, settings{owner: "writer"})
+	}, settings{owner: "writer"}, auditActorResolution{})
 
 	if got := attributes["required_status_check_removed"]; got != "true" {
 		t.Fatalf("required_status_check_removed = %q, want true", got)
@@ -356,6 +364,36 @@ func TestAuditAttributesForwardRulesetWeakeningMetadata(t *testing.T) {
 	}
 	if got := attributes["changes"]; !strings.Contains(got, "required_status_checks") {
 		t.Fatalf("changes = %q, want encoded ruleset changes", got)
+	}
+}
+
+func TestAuditAttributesForwardResolvedActorTypeForGitEvents(t *testing.T) {
+	attributes := auditAttributes(&gogithub.AuditEntry{
+		Action: gogithub.String("git.clone"),
+		Actor:  gogithub.String("deploy_key"),
+	}, map[string]any{
+		"org":                      "WriterInternal",
+		"org_id":                   112636266,
+		"programmatic_access_type": "Public Key (User/Deploy)",
+		"repo":                     "WriterInternal/k8s",
+		"transport_protocol_name":  "ssh",
+		"user_id":                  0,
+	}, settings{owner: "WriterInternal"}, auditActorResolution{Login: "deploy_key", Type: "Unresolved"})
+
+	if got := attributes["actor_type"]; got != "Unresolved" {
+		t.Fatalf("actor_type = %q, want Unresolved", got)
+	}
+	if got := attributes["programmatic_access_type"]; got != "Public Key (User/Deploy)" {
+		t.Fatalf("programmatic_access_type = %q, want Public Key (User/Deploy)", got)
+	}
+	if got := attributes["org_id"]; got != "112636266" {
+		t.Fatalf("org_id = %q, want 112636266", got)
+	}
+	if got := attributes["actor_id"]; got != "" {
+		t.Fatalf("actor_id = %q, want empty for unresolved deploy-key actor", got)
+	}
+	if got := attributes["transport_protocol_name"]; got != "ssh" {
+		t.Fatalf("transport_protocol_name = %q, want ssh", got)
 	}
 }
 
@@ -769,6 +807,23 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 			}
 			if err := json.NewEncoder(w).Encode([]map[string]any{}); err != nil {
 				t.Fatalf("encode empty pulls page: %v", err)
+			}
+		case "/api/v3/users/dependabot%5Bbot%5D",
+			"/api/v3/users/dependabot[bot]":
+			if err := json.NewEncoder(w).Encode(map[string]any{
+				"login": "dependabot[bot]",
+				"id":    49699333,
+				"type":  "Bot",
+			}); err != nil {
+				t.Fatalf("encode users response: %v", err)
+			}
+		case "/api/v3/users/octocat":
+			if err := json.NewEncoder(w).Encode(map[string]any{
+				"login": "octocat",
+				"id":    1,
+				"type":  "User",
+			}); err != nil {
+				t.Fatalf("encode users response: %v", err)
 			}
 		case "/api/v3/orgs/writer/audit-log":
 			after := r.URL.Query().Get("after")
