@@ -47,15 +47,19 @@ func grcControlTestProjections(event *cerebrov1.EventEnvelope) ([]*ports.Project
 			"status":        firstAttribute(attrs, "status"),
 		}),
 	})
-	for _, controlID := range grcControlReferenceIDs(attrs) {
-		controlURN := projectionURN(tenantID, "policy", provider, "control", controlID)
+	for _, controlRef := range grcControlReferences(attrs) {
+		controlURN := projectionURN(tenantID, "policy", provider, "control", controlRef.id)
+		controlAttrs := map[string]string{"control_id": controlRef.id, "policy_id": controlRef.id, "policy_type": "control", "source_system": provider}
+		if controlRef.externalID != "" {
+			controlAttrs["control_external_id"] = controlRef.externalID
+		}
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        controlURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
 			EntityType: "policy",
-			Label:      controlID,
-			Attributes: map[string]string{"policy_id": controlID, "policy_type": "control", "source_system": provider},
+			Label:      firstNonEmpty(controlRef.externalID, controlRef.id),
+			Attributes: controlAttrs,
 		})
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), testURN, controlURN, relationSupports, map[string]string{"event_id": event.GetId()}))
 	}
@@ -63,12 +67,26 @@ func grcControlTestProjections(event *cerebrov1.EventEnvelope) ([]*ports.Project
 	return projectedEntities, projectedLinks, nil
 }
 
-func grcControlReferenceIDs(attrs map[string]string) []string {
+type grcControlReference struct {
+	id         string
+	externalID string
+}
+
+func grcControlReferences(attrs map[string]string) []grcControlReference {
 	ids := grcAttributeList(attrs["control_id"] + "," + attrs["control_ids"])
+	externalIDs := grcAttributeList(attrs["control_external_id"] + "," + attrs["control_external_ids"])
 	if len(ids) == 0 {
-		ids = grcAttributeList(attrs["control_external_id"] + "," + attrs["control_external_ids"])
+		ids = externalIDs
 	}
-	return ids
+	refs := make([]grcControlReference, 0, len(ids))
+	for index, id := range ids {
+		ref := grcControlReference{id: id}
+		if index < len(externalIDs) {
+			ref.externalID = externalIDs[index]
+		}
+		refs = append(refs, ref)
+	}
+	return refs
 }
 
 func grcAttributeList(value string) []string {

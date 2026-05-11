@@ -53,10 +53,11 @@ func TestProjectGRCControlTestSupportsControlReferences(t *testing.T) {
 		SourceId: "grc",
 		Kind:     "grc.control_test",
 		Attributes: map[string]string{
-			"provider":    "vanta",
-			"test_id":     "test-1",
-			"control_ids": "control-1,control-2",
-			"status":      "FAIL",
+			"provider":             "vanta",
+			"test_id":              "test-1",
+			"control_ids":          "control-1,control-2",
+			"control_external_ids": "CC6.2,CC7.1",
+			"status":               "FAIL",
 		},
 	})
 	if err != nil {
@@ -64,8 +65,16 @@ func TestProjectGRCControlTestSupportsControlReferences(t *testing.T) {
 	}
 
 	testURN := "urn:cerebro:writer:evidence:vanta:control_test:test-1"
-	assertProjectedLink(t, state, testURN, relationSupports, "urn:cerebro:writer:policy:vanta:control:control-1")
-	assertProjectedLink(t, state, testURN, relationSupports, "urn:cerebro:writer:policy:vanta:control:control-2")
+	firstControlURN := "urn:cerebro:writer:policy:vanta:control:control-1"
+	secondControlURN := "urn:cerebro:writer:policy:vanta:control:control-2"
+	assertProjectedLink(t, state, testURN, relationSupports, firstControlURN)
+	assertProjectedLink(t, state, testURN, relationSupports, secondControlURN)
+	if got := state.entities[firstControlURN].Attributes["control_external_id"]; got != "CC6.2" {
+		t.Fatalf("first control_external_id = %q, want CC6.2", got)
+	}
+	if got := state.entities[firstControlURN].Label; got != "CC6.2" {
+		t.Fatalf("first control label = %q, want CC6.2", got)
+	}
 }
 
 func TestProjectGRCRiskScenarioOwnerDoesNotCreatePersonIdentityBridge(t *testing.T) {
