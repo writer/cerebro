@@ -166,6 +166,19 @@ func TestReadVantaVendorPagesAsCanonicalGRCEvents(t *testing.T) {
 	}
 }
 
+func TestPullFromRecordsPreservesNextCursorWithoutEvents(t *testing.T) {
+	pull, err := pullFromRecords(settings{provider: "vanta", tenantID: "writer"}, familyVendor, nil, "next-page")
+	if err != nil {
+		t.Fatalf("pullFromRecords() error = %v", err)
+	}
+	if len(pull.Events) != 0 {
+		t.Fatalf("len(Events) = %d, want 0", len(pull.Events))
+	}
+	if got := pull.NextCursor.GetOpaque(); got != "next-page" {
+		t.Fatalf("NextCursor = %q, want next-page", got)
+	}
+}
+
 func TestReadVantaControlTestEmitsControlReferences(t *testing.T) {
 	server := httptest.NewServer(newTestAPIHandler(t))
 	defer server.Close()

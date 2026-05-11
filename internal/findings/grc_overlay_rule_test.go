@@ -228,6 +228,22 @@ func TestGRCOverdueVulnerabilityLiveOnAssetsRuleSupportsOnlyGCPVulnerabilityRunt
 	}
 }
 
+func TestGRCOverdueVulnerabilityLiveOnAssetsRuleSupportsOnlySentinelOneVulnerabilityRuntime(t *testing.T) {
+	rule := newGRCOverdueVulnerabilityLiveOnAssetsRule().(*grcOverdueVulnerabilityLiveOnAssetsRule)
+	withFamily := func(family string) *cerebrov1.SourceRuntime {
+		return &cerebrov1.SourceRuntime{SourceId: "sentinelone", Config: map[string]string{"family": family}}
+	}
+	if !rule.SupportsRuntime(withFamily("vulnerability")) {
+		t.Fatal("SupportsRuntime(sentinelone vulnerability) = false, want true")
+	}
+	if rule.SupportsRuntime(withFamily("application")) {
+		t.Fatal("SupportsRuntime(sentinelone application) = true, want false")
+	}
+	if rule.SupportsRuntime(withFamily("threat")) {
+		t.Fatal("SupportsRuntime(sentinelone threat) = true, want false")
+	}
+}
+
 func TestGRCOverdueVulnerabilityLiveOnAssetsRuleEvaluateRowsEmits(t *testing.T) {
 	rule := newGRCOverdueVulnerabilityLiveOnAssetsRule().(*grcOverdueVulnerabilityLiveOnAssetsRule)
 	runtime := &cerebrov1.SourceRuntime{Id: "writer-grc-vulnerability", SourceId: "grc", TenantId: "writer", Config: map[string]string{"family": "vulnerability"}}

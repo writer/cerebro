@@ -101,11 +101,51 @@ func TestProjectGRCControlTestKeepsPairedControlReferences(t *testing.T) {
 
 	firstControlURN := "urn:cerebro:writer:policy:vanta:control:control-1"
 	secondControlURN := "urn:cerebro:writer:policy:vanta:control:control-2"
-	if got := state.entities[firstControlURN].Attributes["control_external_id"]; got != "" {
-		t.Fatalf("first control_external_id = %q, want empty", got)
+	if state.entities[firstControlURN] != nil {
+		t.Fatalf("first control entity = %#v, want no placeholder without external ID", state.entities[firstControlURN])
 	}
 	if got := state.entities[secondControlURN].Attributes["control_external_id"]; got != "CC7.1" {
 		t.Fatalf("second control_external_id = %q, want CC7.1", got)
+	}
+}
+
+func TestProjectGRCControlTestDoesNotRegressControlLabelWhenExternalIDMissingLater(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	first := &cerebrov1.EventEnvelope{
+		Id:       "grc-control-test-1",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.control_test",
+		Attributes: map[string]string{
+			"provider":           "vanta",
+			"test_id":            "test-1",
+			"control_references": "control-1=CC6.2",
+			"status":             "FAIL",
+		},
+	}
+	if _, err := service.Project(context.Background(), first); err != nil {
+		t.Fatalf("Project(first) error = %v", err)
+	}
+	second := &cerebrov1.EventEnvelope{
+		Id:       "grc-control-test-2",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.control_test",
+		Attributes: map[string]string{
+			"provider":           "vanta",
+			"test_id":            "test-2",
+			"control_references": "control-1=",
+			"status":             "FAIL",
+		},
+	}
+	if _, err := service.Project(context.Background(), second); err != nil {
+		t.Fatalf("Project(second) error = %v", err)
+	}
+
+	controlURN := "urn:cerebro:writer:policy:vanta:control:control-1"
+	if got := state.entities[controlURN].Label; got != "CC6.2" {
+		t.Fatalf("control label = %q, want CC6.2", got)
 	}
 }
 
@@ -234,7 +274,18 @@ func TestProjectGRCVulnerabilityUsesCanonicalVulnerability(t *testing.T) {
 	if entity := state.entities[vulnerabilityURN]; entity == nil || entity.EntityType != "vulnerability" {
 		t.Fatalf("vulnerability entity missing: %#v", entity)
 	}
-	if got := state.entities[vulnerabilityURN].Attributes["remediate_by_date"]; got != "2026-05-30T00:00:00Z" {
-		t.Fatalf("remediate_by_date = %q, want deadline", got)
+	if got := state.entities[vulnerabilityURN].Attributes["remediate_by_date"]; got != "" {
+		t.Fatalf("canonical vulnerability remediate_by_date = %q, want empty package-specific deadline", got)
+	}
+	if got := state.entities[vulnerabilityURN].Attributes["package"]; got != "" {
+		t.Fatalf("canonical vulnerability package = %q, want empty package-specific package", got)
+	}
+	packageURN := "urn:cerebro:writer:package:grc:pkg:golang/example/module@1.2.3"
+	link := state.links[packageURN+"|"+relationAffectedBy+"|"+vulnerabilityURN]
+	if link == nil {
+		t.Fatalf("GRC package affected_by vulnerability link missing: %#v", state.links)
+	}
+	if got := link.Attributes["remediate_by_date"]; got != "2026-05-30T00:00:00Z" {
+		t.Fatalf("affected_by remediate_by_date = %q, want deadline", got)
 	}
 }

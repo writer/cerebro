@@ -49,18 +49,20 @@ func grcControlTestProjections(event *cerebrov1.EventEnvelope) ([]*ports.Project
 	})
 	for _, controlRef := range grcControlReferences(attrs) {
 		controlURN := projectionURN(tenantID, "policy", provider, "control", controlRef.id)
-		controlAttrs := map[string]string{"control_id": controlRef.id, "policy_id": controlRef.id, "policy_type": "control", "source_system": provider}
-		if controlRef.externalID != "" {
-			controlAttrs["control_external_id"] = controlRef.externalID
+		if controlRef.externalID != "" || !controlRef.paired {
+			controlAttrs := map[string]string{"control_id": controlRef.id, "policy_id": controlRef.id, "policy_type": "control", "source_system": provider}
+			if controlRef.externalID != "" {
+				controlAttrs["control_external_id"] = controlRef.externalID
+			}
+			addEntity(entities, &ports.ProjectedEntity{
+				URN:        controlURN,
+				TenantID:   tenantID,
+				SourceID:   event.GetSourceId(),
+				EntityType: "policy",
+				Label:      firstNonEmpty(controlRef.externalID, controlRef.id),
+				Attributes: controlAttrs,
+			})
 		}
-		addEntity(entities, &ports.ProjectedEntity{
-			URN:        controlURN,
-			TenantID:   tenantID,
-			SourceID:   event.GetSourceId(),
-			EntityType: "policy",
-			Label:      firstNonEmpty(controlRef.externalID, controlRef.id),
-			Attributes: controlAttrs,
-		})
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), testURN, controlURN, relationSupports, map[string]string{"event_id": event.GetId()}))
 	}
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
@@ -70,6 +72,7 @@ func grcControlTestProjections(event *cerebrov1.EventEnvelope) ([]*ports.Project
 type grcControlReference struct {
 	id         string
 	externalID string
+	paired     bool
 }
 
 func grcControlReferences(attrs map[string]string) []grcControlReference {
@@ -101,7 +104,7 @@ func grcPairedControlReferences(raw string) []grcControlReference {
 			continue
 		}
 		id, externalID, _ := strings.Cut(item, "=")
-		ref := grcControlReference{id: strings.TrimSpace(id), externalID: strings.TrimSpace(externalID)}
+		ref := grcControlReference{id: strings.TrimSpace(id), externalID: strings.TrimSpace(externalID), paired: true}
 		if ref.id == "" {
 			ref.id = ref.externalID
 		}
@@ -216,7 +219,7 @@ func grcVulnerabilityProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 			SourceID:   event.GetSourceId(),
 			EntityType: "vulnerability",
 			Label:      firstAttribute(attrs, "name", "vulnerability_id"),
-			Attributes: grcAttributes(attrs, map[string]string{"source_system": grcProvider(attrs)}),
+			Attributes: map[string]string{"source_system": grcProvider(attrs)},
 		})
 	}
 	packageURN := vulnerabilityPackageURN(tenantID, attrs, "grc")

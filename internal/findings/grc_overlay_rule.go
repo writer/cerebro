@@ -621,7 +621,7 @@ func (r *grcOverdueVulnerabilityLiveOnAssetsRule) SupportsRuntime(runtime *cereb
 	case "github":
 		return family == grcOverlayRuntimeFamilyDependabotAlert
 	case "sentinelone":
-		return family == grcOverlayRuntimeFamilyApplication || family == grcOverlayRuntimeFamilyThreat || family == grcOverlayRuntimeFamilyVulnerability
+		return family == grcOverlayRuntimeFamilyVulnerability
 	case "gcp":
 		return family == "container_vulnerability" || family == "container_analysis_vulnerability"
 	case "kandji":
@@ -641,10 +641,11 @@ func (r *grcOverdueVulnerabilityLiveOnAssetsRule) QueryFor(runtime *cerebrov1.So
 		return ports.CypherQueryRequest{}
 	}
 	return ports.CypherQueryRequest{
-		Query: `MATCH (vulnerability:Entity {tenant_id: $tenant_id, entity_type: 'vulnerability'})
+		Query: `MATCH (:Entity {tenant_id: $tenant_id})-[grc_affected:RELATION {relation: 'affected_by'}]->(vulnerability:Entity {tenant_id: $tenant_id, entity_type: 'vulnerability'})
+WHERE coalesce(grc_affected.source_id, '') = 'grc'
 OPTIONAL MATCH (asset:Entity {tenant_id: $tenant_id})-[affected:RELATION {relation: 'affected_by'}]->(vulnerability)
 WHERE coalesce(affected.source_id, '') <> 'grc'
-WITH vulnerability,
+WITH vulnerability, grc_affected,
      collect(DISTINCT {
        asset_urn: coalesce(asset.urn, ''),
        asset_type: coalesce(asset.entity_type, ''),
@@ -654,7 +655,7 @@ WITH vulnerability,
      }) AS assets
 RETURN vulnerability.urn AS vulnerability_urn,
        vulnerability.label AS vulnerability_label,
-       coalesce(vulnerability.attributes_json, '') AS vulnerability_attributes_json,
+       coalesce(grc_affected.attributes_json, '') AS vulnerability_attributes_json,
        assets
 LIMIT $row_limit`,
 		Params: map[string]any{

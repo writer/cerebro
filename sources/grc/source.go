@@ -443,7 +443,11 @@ func urnsFor(settings settings, family string, records []grcRecord) ([]sourcecdk
 
 func pullFromRecords(settings settings, family string, records []grcRecord, next string) (sourcecdk.Pull, error) {
 	if len(records) == 0 {
-		return sourcecdk.Pull{}, nil
+		pull := sourcecdk.Pull{}
+		if strings.TrimSpace(next) != "" {
+			pull.NextCursor = &cerebrov1.SourceCursor{Opaque: strings.TrimSpace(next)}
+		}
+		return pull, nil
 	}
 	events := make([]*primitives.Event, 0, len(records))
 	for _, record := range records {
