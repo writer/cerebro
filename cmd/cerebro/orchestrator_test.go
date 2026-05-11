@@ -70,6 +70,76 @@ func TestOrchestratorShutdownSignalsIncludeSIGTERM(t *testing.T) {
 	}
 }
 
+// A blocked downstream call (e.g. a Neo4j tx waiting on a row lock held
+// by a concurrent runtime, or a source.Read() retry storm against an
+// exhausted upstream rate limit) must not park an orchestrator iteration
+// indefinitely. runOrchestratorPhase wraps each post-sync step in a
+// dedicated context.WithTimeout that fires independently of the
+// runtime-level lease TTL, so a phase that exceeds its budget returns
+// context.DeadlineExceeded and the caller can mark the phase failed,
+// release the lease, and let the next iteration retry from a clean
+// context. Without this, the only path out of a stuck phase is to kill
+// the Fargate task — exactly the symptom that motivated this fix.
+func TestRunOrchestratorPhaseFailsFastOnTimeout(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "github", TenantId: "writer"}
+	start := time.Now()
+	_, err := runOrchestratorPhase[*struct{}](context.Background(), "orchestrator.test_phase", 1, runtime, 5*time.Millisecond, func(phaseCtx context.Context) (*struct{}, error) {
+		<-phaseCtx.Done()
+		return nil, phaseCtx.Err()
+	})
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatal("runOrchestratorPhase() error = nil, want context.DeadlineExceeded")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("runOrchestratorPhase() error = %v, want context.DeadlineExceeded", err)
+	}
+	if elapsed >= 2*time.Second {
+		t.Fatalf("runOrchestratorPhase elapsed = %v, want fail-fast under per-phase budget; without the timeout the phase would block until lease expiry", elapsed)
+	}
+}
+
+// runOrchestratorPhase must propagate the result returned by the wrapped
+// function on success and not paper over the underlying error type when
+// the function fails for non-timeout reasons. This keeps caller error
+// branches (e.g. ErrRuleUnavailable / ErrGraphRuntimeUnavailable
+// short-circuits) working through the phase wrapper.
+func TestRunOrchestratorPhasePassesThroughErrors(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "github", TenantId: "writer"}
+	wantErr := errors.New("downstream failure")
+	result, err := runOrchestratorPhase[int](context.Background(), "orchestrator.test_phase", 1, runtime, time.Second, func(_ context.Context) (int, error) {
+		return 42, wantErr
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("runOrchestratorPhase() error = %v, want %v", err, wantErr)
+	}
+	if result != 42 {
+		t.Fatalf("runOrchestratorPhase() result = %d, want 42 (passed through even on error so callers can apply counters)", result)
+	}
+}
+
+// runOrchestratorPhase must inherit cancellation from the parent runtime
+// context. The orchestrator's lease-renewal goroutine cancels the
+// runtime context when lease renewal fails, and that cancellation must
+// reach the phase function so it doesn't keep working with a stale
+// lease.
+func TestRunOrchestratorPhaseInheritsParentCancellation(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "github", TenantId: "writer"}
+	parent, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := runOrchestratorPhase[*struct{}](parent, "orchestrator.test_phase", 1, runtime, time.Minute, func(phaseCtx context.Context) (*struct{}, error) {
+		select {
+		case <-phaseCtx.Done():
+			return nil, phaseCtx.Err()
+		case <-time.After(time.Second):
+			return nil, errors.New("phase did not observe parent cancellation")
+		}
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("runOrchestratorPhase() error = %v, want context.Canceled (inherited from parent)", err)
+	}
+}
+
 func TestRunOrchestratorIterationStopsAfterSyncFailure(t *testing.T) {
 	store := &orchestratorRuntimeStore{
 		runtime:  &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source"},

@@ -455,13 +455,30 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 	previousActorURN := githubUserURN(tenantID, actor)
 	targetURN := githubUserURN(tenantID, targetUser)
 	if targetURN != "" && targetURN != previousActorURN {
+		targetAttrs := map[string]string{"login": targetUser}
+		// Target-context github.user nodes (e.g. `team.add_member`, where
+		// targetUser is the user being added) carry no actor resolution
+		// because the audit event's actor_* fields describe the issuer of
+		// the action, not the recipient. When the recipient login matches
+		// a structural automation pattern — GitHub's reserved `[bot]`
+		// suffix for App-issued identities, or synthetic placeholder
+		// logins like `deploy_key` for SSH-key activity — stamp the
+		// node's `actor_type` defensively so downstream identity rules
+		// can classify the entity as non-linkable without relying on
+		// later actor-context events to converge the blob via
+		// `mergeGraphAttributes`. Without this, target-only phantoms can
+		// linger indefinitely once the audit-log window scrolls past the
+		// last event that had them as the actor.
+		if classification := githubSyntheticTargetActorType(targetUser); classification != "" {
+			targetAttrs["actor_type"] = classification
+		}
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        targetURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
 			EntityType: "github.user",
 			Label:      targetUser,
-			Attributes: map[string]string{"login": targetUser},
+			Attributes: targetAttrs,
 		})
 		if resourceURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), targetURN, resourceURN, relationTargeted, map[string]string{"event_id": event.GetId()}))
@@ -476,6 +493,51 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 func isGitHubPublicKeyCredential(programmaticAccessType string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(programmaticAccessType))
 	return strings.Contains(normalized, "public key")
+}
+
+// githubSyntheticTargetActorType returns the `actor_type` value to stamp
+// onto a target-context github.user node when its login is structurally
+// synthetic (i.e. not a real user that could be linked to Okta). The
+// returned value is one of the automation classifications recognised by
+// `githubActorTypeClassifiesAutomation` in the findings package — keeping
+// the string set in sync with that helper is part of the suppression
+// contract.
+//
+// Two synthetic shapes are recognised today:
+//
+//   - GitHub reserves the trailing `[bot]` suffix for App-issued
+//     identities (dependabot[bot], github-actions[bot], renovate[bot],
+//     coderabbitai[bot], factory-droid[bot], ...). The suffix is part of
+//     GitHub's public contract; vendor changes don't alter it. We stamp
+//     these as `Bot` so the identity rule treats them like any other
+//     App-issued account even when only target-context events ever
+//     surface them.
+//
+//   - The literal `deploy_key` login is GitHub's synthetic placeholder
+//     for SSH-key activity (no real /users/{login} resolution). The
+//     actor-side projector path routes these to `github.credential`
+//     via `actorIsUnresolvedPublicKey`, but target-context events
+//     (typically deploy-key lifecycle audit entries) still mint a
+//     `github.user:deploy_key` node. We stamp `Unresolved` so the same
+//     classifier short-circuits.
+//
+// Returns "" when the login is a plain human-shaped GitHub username so
+// the existing target-context projection (`{login: <user>}` only) is
+// preserved.
+func githubSyntheticTargetActorType(login string) string {
+	trimmed := strings.TrimSpace(login)
+	if trimmed == "" {
+		return ""
+	}
+	lower := strings.ToLower(trimmed)
+	if strings.HasSuffix(lower, "[bot]") {
+		return "Bot"
+	}
+	switch lower {
+	case "deploy_key", "deploy-key":
+		return "Unresolved"
+	}
+	return ""
 }
 
 func githubPublicKeyCredentialID(tokenID string, actor string, repo string, resourceID string, org string) string {
