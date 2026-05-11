@@ -2,9 +2,11 @@ package sourceprojection
 
 import (
 	"strings"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func grcFrameworkProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -229,7 +231,8 @@ func grcPersonProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 		Label:      firstAttribute(attrs, "email", "job_title", "person_id"),
 		Attributes: grcAttributes(attrs, map[string]string{"person_id": personID, "source_system": provider}),
 	})
-	addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), personURN, firstAttribute(attrs, "email"), event.GetOccurredAt())
+	observedAt := timestamppb.New(time.Now().UTC())
+	addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), personURN, firstAttribute(attrs, "email"), observedAt)
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }

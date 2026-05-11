@@ -3,8 +3,10 @@ package sourceprojection
 import (
 	"context"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestProjectGRCVendorWithOwner(t *testing.T) {
@@ -66,6 +68,48 @@ func TestProjectGRCPersonIdentifier(t *testing.T) {
 		t.Fatalf("person entity missing: %#v", entity)
 	}
 	assertProjectedLink(t, state, personURN, relationHasIdentifier, identifierURN)
+}
+
+func TestProjectGRCPersonStampsIdentifierLinksWithObservationTime(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	historicalEmploymentDate := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	before := time.Now().UTC()
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:         "grc-person-person-1",
+		TenantId:   "writer",
+		SourceId:   "grc",
+		Kind:       "grc.person",
+		OccurredAt: timestamppb.New(historicalEmploymentDate),
+		Attributes: map[string]string{
+			"provider":          "vanta",
+			"person_id":         "person-1",
+			"email":             "alice@writer.com",
+			"employment_status": "CURRENT",
+		},
+	})
+	after := time.Now().UTC()
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	personURN := "urn:cerebro:writer:person:vanta:person-1"
+	identityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
+	link, ok := state.links[personURN+"|"+relationRepresentsIdentity+"|"+identityURN]
+	if !ok {
+		t.Fatalf("represents_identity link missing for %s -> %s: %#v", personURN, identityURN, state.links)
+	}
+	stamped, err := time.Parse(time.RFC3339, link.Attributes["at"])
+	if err != nil {
+		t.Fatalf("represents_identity at = %q is not RFC3339: %v", link.Attributes["at"], err)
+	}
+	if stamped.Equal(historicalEmploymentDate) {
+		t.Fatalf("represents_identity at = %q, want projection observation time", link.Attributes["at"])
+	}
+	if stamped.Before(before.Add(-time.Second)) || stamped.After(after.Add(time.Second)) {
+		t.Fatalf("represents_identity at = %v not within projection window [%v, %v]", stamped, before, after)
+	}
 }
 
 func TestProjectGRCVulnerabilityUsesCanonicalVulnerability(t *testing.T) {
