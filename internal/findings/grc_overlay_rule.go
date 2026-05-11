@@ -235,7 +235,7 @@ func (r *grcInactiveIdentityActiveAccessRule) EvaluateRows(_ context.Context, ru
 		}
 		principalLabel := cypherRowString(row, "principal_label")
 		principalEntityType := cypherRowString(row, "principal_entity_type")
-		if principalEntityType == grcOverlayEntityTypeGitHubUser && isGitHubBotLogin(principalLabel) {
+		if principalEntityType == grcOverlayEntityTypeGitHubUser && githubActorIsAutomation(cypherRowString(row, "principal_attributes_json")) {
 			continue
 		}
 		accesses := grcOverlayAccessesFromRow(row, now, false)
@@ -470,7 +470,7 @@ func (r *grcPrivilegedAccountMissingPersonRule) EvaluateRows(_ context.Context, 
 		}
 		principalLabel := cypherRowString(row, "principal_label")
 		principalEntityType := cypherRowString(row, "principal_entity_type")
-		if principalEntityType == grcOverlayEntityTypeGitHubUser && isGitHubBotLogin(principalLabel) {
+		if principalEntityType == grcOverlayEntityTypeGitHubUser && githubActorIsAutomation(cypherRowString(row, "principal_attributes_json")) {
 			continue
 		}
 		if grcOverlayHasFreshGRCBridge(row, now) {
