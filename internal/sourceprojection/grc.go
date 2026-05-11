@@ -47,7 +47,7 @@ func grcControlTestProjections(event *cerebrov1.EventEnvelope) ([]*ports.Project
 			"status":        firstAttribute(attrs, "status"),
 		}),
 	})
-	if controlID := firstAttribute(attrs, "control_id"); controlID != "" {
+	for _, controlID := range grcControlReferenceIDs(attrs) {
 		controlURN := projectionURN(tenantID, "policy", provider, "control", controlID)
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        controlURN,
@@ -61,6 +61,31 @@ func grcControlTestProjections(event *cerebrov1.EventEnvelope) ([]*ports.Project
 	}
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
+}
+
+func grcControlReferenceIDs(attrs map[string]string) []string {
+	ids := grcAttributeList(attrs["control_id"] + "," + attrs["control_ids"])
+	if len(ids) == 0 {
+		ids = grcAttributeList(attrs["control_external_id"] + "," + attrs["control_external_ids"])
+	}
+	return ids
+}
+
+func grcAttributeList(value string) []string {
+	values := []string{}
+	seen := map[string]struct{}{}
+	for _, part := range strings.Split(value, ",") {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		values = append(values, trimmed)
+		seen[trimmed] = struct{}{}
+	}
+	return values
 }
 
 func grcDocumentProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {

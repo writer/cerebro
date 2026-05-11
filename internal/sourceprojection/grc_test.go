@@ -43,6 +43,31 @@ func TestProjectGRCVendorWithOwner(t *testing.T) {
 	assertProjectedLink(t, state, vendorURN, relationOwnedBy, ownerURN)
 }
 
+func TestProjectGRCControlTestSupportsControlReferences(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-control-test-1",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.control_test",
+		Attributes: map[string]string{
+			"provider":    "vanta",
+			"test_id":     "test-1",
+			"control_ids": "control-1,control-2",
+			"status":      "FAIL",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	testURN := "urn:cerebro:writer:evidence:vanta:control_test:test-1"
+	assertProjectedLink(t, state, testURN, relationSupports, "urn:cerebro:writer:policy:vanta:control:control-1")
+	assertProjectedLink(t, state, testURN, relationSupports, "urn:cerebro:writer:policy:vanta:control:control-2")
+}
+
 func TestProjectGRCPersonIdentifier(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

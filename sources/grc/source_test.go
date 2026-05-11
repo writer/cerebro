@@ -132,6 +132,36 @@ func TestReadVantaVendorPagesAsCanonicalGRCEvents(t *testing.T) {
 	}
 }
 
+func TestReadVantaControlTestEmitsControlReferences(t *testing.T) {
+	server := httptest.NewServer(newTestAPIHandler(t))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := testConfig(server.URL, familyControlTest)
+
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(control_test) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Read(control_test).Events) = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	if got := attrs["control_id"]; got != "control-1" {
+		t.Fatalf("control_id = %q, want first linked control", got)
+	}
+	if got := attrs["control_ids"]; got != "control-1,control-2" {
+		t.Fatalf("control_ids = %q, want linked controls", got)
+	}
+	if got := attrs["control_external_ids"]; got != "CC6.2,CC7.1" {
+		t.Fatalf("control_external_ids = %q, want linked control external ids", got)
+	}
+}
+
 func TestReadVantaVulnerabilityNormalizesFields(t *testing.T) {
 	server := httptest.NewServer(newTestAPIHandler(t))
 	defer server.Close()
@@ -298,6 +328,17 @@ func newTestAPIHandler(t *testing.T) http.Handler {
 				"isFixable":         true,
 				"remediateByDate":   "2026-05-30T00:00:00Z",
 				"lastDetectedDate":  "2026-05-10T00:00:00Z",
+			}})
+		case "/v1/tests":
+			requireBearer(t, r)
+			writePage(t, w, false, "", []map[string]any{{
+				"id":     "test-1",
+				"name":   "Control test 1",
+				"status": "FAIL",
+				"controls": []map[string]any{
+					{"id": "control-1", "externalId": "CC6.2", "name": "Logical access"},
+					{"id": "control-2", "externalId": "CC7.1", "name": "Monitoring"},
+				},
 			}})
 		default:
 			http.NotFound(w, r)

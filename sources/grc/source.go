@@ -514,6 +514,10 @@ func attributesFor(settings settings, family string, record grcRecord) map[strin
 			"test_id":                 "id",
 			"name":                    "name",
 			"description":             "description",
+			"control_id":              "controlId",
+			"control_ids":             "controlIds",
+			"control_external_id":     "controlExternalId",
+			"control_external_ids":    "controlExternalIds",
 			"last_run_at":             "lastTestRunDate",
 			"latest_flip_at":          "latestFlipDate",
 			"failure_description":     "failureDescription",
@@ -524,6 +528,7 @@ func attributesFor(settings settings, family string, record grcRecord) map[strin
 			"status":                  "status",
 			"owner_id":                "owner.id",
 		})
+		copyControlReferenceFields(attrs, values)
 	case familyPolicy:
 		copyFields(attrs, values, map[string]string{
 			"policy_id":             "id",
@@ -655,6 +660,68 @@ func copyFields(attrs map[string]string, values map[string]any, mapping map[stri
 			attrs[target] = value
 		}
 	}
+}
+
+func copyFirstField(attrs map[string]string, values map[string]any, target string, sources ...string) {
+	if strings.TrimSpace(attrs[target]) != "" {
+		return
+	}
+	for _, source := range sources {
+		if value := fieldString(values, source); value != "" {
+			attrs[target] = value
+			return
+		}
+	}
+}
+
+func copyControlReferenceFields(attrs map[string]string, values map[string]any) {
+	copyFirstField(attrs, values, "control_id", "controlID", "control.id")
+	copyFirstField(attrs, values, "control_external_id", "controlExternalID", "control.externalId", "control.externalID")
+	if ids := joinedObjectFieldValues(values, "controls", "id"); ids != "" {
+		attrs["control_ids"] = ids
+		if strings.TrimSpace(attrs["control_id"]) == "" {
+			attrs["control_id"] = firstDelimitedValue(ids)
+		}
+	}
+	if externalIDs := joinedObjectFieldValues(values, "controls", "externalId", "externalID"); externalIDs != "" {
+		attrs["control_external_ids"] = externalIDs
+		if strings.TrimSpace(attrs["control_external_id"]) == "" {
+			attrs["control_external_id"] = firstDelimitedValue(externalIDs)
+		}
+	}
+}
+
+func joinedObjectFieldValues(values map[string]any, arrayKey string, fields ...string) string {
+	items := arrayValue(values, arrayKey)
+	collected := make([]string, 0, len(items))
+	seen := map[string]struct{}{}
+	for _, item := range items {
+		object, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		for _, field := range fields {
+			value := valueString(object[field])
+			if value == "" {
+				continue
+			}
+			if _, exists := seen[value]; !exists {
+				collected = append(collected, value)
+				seen[value] = struct{}{}
+			}
+			break
+		}
+	}
+	return strings.Join(collected, ",")
+}
+
+func firstDelimitedValue(value string) string {
+	for _, part := range strings.Split(value, ",") {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func trimEmpty(values map[string]string) map[string]string {
