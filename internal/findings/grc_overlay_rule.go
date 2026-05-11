@@ -870,8 +870,17 @@ WHERE (toLower(test_attributes_json) CONTAINS 'fail'
     OR toLower(test_attributes_json) CONTAINS 'error')
   AND control_label <> ''
 MATCH (resource:Entity {tenant_id: $tenant_id})-[has_finding:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+WITH test, control, test_attributes_json, control_attributes_json, control_label,
+     resource, has_finding, finding,
+     toUpper(control_label) AS control_label_upper,
+     toUpper(coalesce(finding.attributes_json, '')) AS finding_attributes_upper
 WHERE coalesce(finding.source_id, '') <> 'grc'
-  AND toUpper(coalesce(finding.attributes_json, '')) CONTAINS toUpper(control_label)
+  AND (finding_attributes_upper CONTAINS '"' + control_label_upper + '"'
+    OR finding_attributes_upper CONTAINS '"' + control_label_upper + ','
+    OR finding_attributes_upper CONTAINS ',' + control_label_upper + ','
+    OR finding_attributes_upper CONTAINS ',' + control_label_upper + '"'
+    OR finding_attributes_upper CONTAINS ':' + control_label_upper + ','
+    OR finding_attributes_upper CONTAINS ':' + control_label_upper + '"')
 WITH test, control, test_attributes_json, control_attributes_json,
      collect(DISTINCT {
        finding_urn: coalesce(finding.urn, ''),
@@ -940,6 +949,9 @@ func (r *grcFailingControlOpenOperationalFindingsRule) EvaluateRows(_ context.Co
 			keys = append(keys, key)
 		}
 		for _, finding := range findings {
+			if !grcOverlayOperationalFindingMatchesControl(finding, group.controlLabel, group.controlAttrs) {
+				continue
+			}
 			group.findings[finding.findingURN] = finding
 		}
 	}
@@ -998,7 +1010,7 @@ func (r *grcFailingControlOpenOperationalFindingsRule) buildFinding(runtime *cer
 		ResourceURNs:    resourceURNs,
 		PolicyID:        firstNonEmpty(group.controlLabel, group.controlURN),
 		PolicyName:      firstNonEmpty(group.controlLabel, group.controlTestLabel),
-		ControlRefs:     grcOverlayControlRefs(group.controlAttrs, group.controlLabel, r.definition.ControlRefs),
+		ControlRefs:     grcOverlayControlRefs(group.controlAttrs, group.controlLabel, group.findings, r.definition.ControlRefs),
 		Attributes:      attributes,
 		FirstObservedAt: now,
 		LastObservedAt:  now,
@@ -1067,6 +1079,7 @@ type grcOverlayOperationalFinding struct {
 	resourceLabel string
 	severity      string
 	ruleID        string
+	controlRefs   []ports.FindingControlRef
 }
 
 func grcOverlayIdentityRuntime(runtime *cerebrov1.SourceRuntime) bool {
@@ -1347,6 +1360,7 @@ func grcOverlayOperationalFindingsFromRow(row ports.CypherRow) []grcOverlayOpera
 			resourceLabel: cypherListMapString(item, "resource_label"),
 			severity:      normalizeFindingSeverity(firstNonEmpty(attrs["severity"], attrs["risk_severity"])),
 			ruleID:        ruleID,
+			controlRefs:   grcOverlayParseControlRefs(attrs["control_refs"]),
 		})
 	}
 	return findings
@@ -1409,11 +1423,102 @@ func grcOverlaySeverityRank(severity string) int {
 	}
 }
 
-func grcOverlayControlRefs(attrs map[string]string, controlLabel string, fallbacks []ports.FindingControlRef) []ports.FindingControlRef {
+func grcOverlayOperationalFindingMatchesControl(finding grcOverlayOperationalFinding, controlLabel string, controlAttrs map[string]string) bool {
+	controlIDs := grcOverlayControlIDSet(controlAttrs, controlLabel)
+	for _, ref := range finding.controlRefs {
+		if _, ok := controlIDs[strings.ToUpper(strings.TrimSpace(ref.ControlID))]; ok {
+			return true
+		}
+		full := strings.ToUpper(strings.TrimSpace(ref.FrameworkName) + ":" + strings.TrimSpace(ref.ControlID))
+		if _, ok := controlIDs[full]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func grcOverlayControlIDSet(attrs map[string]string, controlLabel string) map[string]struct{} {
+	values := []string{
+		attrs["control_external_id"],
+		attrs["control_external_ids"],
+		attrs["control_id"],
+		attrs["control_ids"],
+		attrs["policy_id"],
+		controlLabel,
+	}
+	ids := map[string]struct{}{}
+	for _, value := range values {
+		for _, part := range strings.Split(value, ",") {
+			trimmed := strings.TrimSpace(part)
+			if trimmed == "" {
+				continue
+			}
+			ids[strings.ToUpper(trimmed)] = struct{}{}
+			if idx := strings.LastIndex(trimmed, ":"); idx >= 0 && idx+1 < len(trimmed) {
+				ids[strings.ToUpper(strings.TrimSpace(trimmed[idx+1:]))] = struct{}{}
+			}
+		}
+	}
+	return ids
+}
+
+func grcOverlayParseControlRefs(raw string) []ports.FindingControlRef {
+	refs := []ports.FindingControlRef{}
+	seen := map[string]struct{}{}
+	for _, part := range strings.Split(raw, ",") {
+		token := strings.TrimSpace(part)
+		if token == "" {
+			continue
+		}
+		idx := strings.LastIndex(token, ":")
+		if idx <= 0 || idx+1 >= len(token) {
+			continue
+		}
+		ref := ports.FindingControlRef{
+			FrameworkName: strings.TrimSpace(token[:idx]),
+			ControlID:     strings.TrimSpace(token[idx+1:]),
+		}
+		if ref.FrameworkName == "" || ref.ControlID == "" {
+			continue
+		}
+		key := strings.ToUpper(ref.FrameworkName + "\x00" + ref.ControlID)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		refs = append(refs, ref)
+	}
+	return refs
+}
+
+func grcOverlayControlRefs(attrs map[string]string, controlLabel string, findings map[string]grcOverlayOperationalFinding, fallbacks []ports.FindingControlRef) []ports.FindingControlRef {
 	controlID := firstNonEmpty(attrs["control_external_id"], attrs["control_id"], attrs["policy_id"], controlLabel)
 	framework := firstNonEmpty(attrs["framework_name"], attrs["framework"], attrs["framework_id"])
 	if controlID == "" || framework == "" {
+		if refs := grcOverlayMatchedControlRefs(findings, controlLabel, attrs); len(refs) > 0 {
+			return refs
+		}
 		return cloneFindingControlRefs(fallbacks)
 	}
 	return []ports.FindingControlRef{{FrameworkName: framework, ControlID: controlID}}
+}
+
+func grcOverlayMatchedControlRefs(findings map[string]grcOverlayOperationalFinding, controlLabel string, attrs map[string]string) []ports.FindingControlRef {
+	controlIDs := grcOverlayControlIDSet(attrs, controlLabel)
+	refs := []ports.FindingControlRef{}
+	seen := map[string]struct{}{}
+	for _, finding := range findings {
+		for _, ref := range finding.controlRefs {
+			if _, ok := controlIDs[strings.ToUpper(strings.TrimSpace(ref.ControlID))]; !ok {
+				continue
+			}
+			key := strings.ToUpper(strings.TrimSpace(ref.FrameworkName) + "\x00" + strings.TrimSpace(ref.ControlID))
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+			refs = append(refs, ref)
+		}
+	}
+	return refs
 }

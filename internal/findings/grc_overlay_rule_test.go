@@ -258,7 +258,7 @@ func TestGRCFailingControlOpenOperationalFindingsRuleQueryMatchesControlRefs(t *
 	if got := request.Params["tenant_id"]; got != "writer" {
 		t.Fatalf("Params[tenant_id] = %v, want writer", got)
 	}
-	if !strings.Contains(request.Query, "has_finding") || !strings.Contains(request.Query, "CONTAINS toUpper(control_label)") {
+	if !strings.Contains(request.Query, "has_finding") || !strings.Contains(request.Query, "control_label_upper") || !strings.Contains(request.Query, "':' + control_label_upper") {
 		t.Fatalf("query must join failing controls to open non-GRC finding control refs:\n%s", request.Query)
 	}
 }
@@ -302,6 +302,63 @@ func TestGRCFailingControlOpenOperationalFindingsRuleEvaluateRowsEmits(t *testin
 	}
 	if len(finding.ControlRefs) != 1 || finding.ControlRefs[0].FrameworkName != "SOC 2" || finding.ControlRefs[0].ControlID != "CC6.2" {
 		t.Fatalf("ControlRefs = %#v, want SOC 2:CC6.2", finding.ControlRefs)
+	}
+}
+
+func TestGRCFailingControlOpenOperationalFindingsRuleSuppressesPrefixControlRefMatches(t *testing.T) {
+	rule := newGRCFailingControlOpenOperationalFindingsRule().(*grcFailingControlOpenOperationalFindingsRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-grc-control-test", SourceId: "grc", TenantId: "writer", Config: map[string]string{"family": "control_test"}}
+	row := grcFailingControlRow(map[string]string{
+		"source_system": "vanta",
+		"test_id":       "test-1",
+		"status":        "FAIL",
+	}, map[string]string{
+		"source_system":       "vanta",
+		"control_external_id": "A.5.1",
+	}, []any{
+		grcOverlayOperationalFindingMap("urn:cerebro:writer:finding:iso-a516", "ISO A.5.16 finding", "urn:cerebro:writer:github_user:alice", "github.user", "alice", map[string]string{
+			"rule_id":      "identity-github-active-without-okta-link",
+			"severity":     "HIGH",
+			"control_refs": "ISO 27001:2022:A.5.16",
+		}),
+	})
+
+	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("EvaluateRows() returned %d findings, want 0", len(findings))
+	}
+}
+
+func TestGRCFailingControlOpenOperationalFindingsRulePreservesOperationalControlRefWithoutFramework(t *testing.T) {
+	rule := newGRCFailingControlOpenOperationalFindingsRule().(*grcFailingControlOpenOperationalFindingsRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-grc-control-test", SourceId: "grc", TenantId: "writer", Config: map[string]string{"family": "control_test"}}
+	row := grcFailingControlRow(map[string]string{
+		"source_system": "vanta",
+		"test_id":       "test-1",
+		"status":        "FAIL",
+	}, map[string]string{
+		"source_system":       "vanta",
+		"control_external_id": "CC6.2",
+	}, []any{
+		grcOverlayOperationalFindingMap("urn:cerebro:writer:finding:github-shadow", "Active GitHub Identity With No Linked Okta Identity", "urn:cerebro:writer:github_user:alice", "github.user", "alice", map[string]string{
+			"rule_id":      "identity-github-active-without-okta-link",
+			"severity":     "CRITICAL",
+			"control_refs": "SOC 2:CC6.2",
+		}),
+	})
+
+	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("EvaluateRows() returned %d findings, want 1", len(findings))
+	}
+	if len(findings[0].ControlRefs) != 1 || findings[0].ControlRefs[0].FrameworkName != "SOC 2" || findings[0].ControlRefs[0].ControlID != "CC6.2" {
+		t.Fatalf("ControlRefs = %#v, want linked SOC 2:CC6.2", findings[0].ControlRefs)
 	}
 }
 
