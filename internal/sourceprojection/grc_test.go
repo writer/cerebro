@@ -77,6 +77,38 @@ func TestProjectGRCControlTestSupportsControlReferences(t *testing.T) {
 	}
 }
 
+func TestProjectGRCControlTestKeepsPairedControlReferences(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-control-test-1",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.control_test",
+		Attributes: map[string]string{
+			"provider":             "vanta",
+			"test_id":              "test-1",
+			"control_ids":          "control-1,control-2",
+			"control_external_ids": "CC7.1",
+			"control_references":   "control-1=;control-2=CC7.1",
+			"status":               "FAIL",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	firstControlURN := "urn:cerebro:writer:policy:vanta:control:control-1"
+	secondControlURN := "urn:cerebro:writer:policy:vanta:control:control-2"
+	if got := state.entities[firstControlURN].Attributes["control_external_id"]; got != "" {
+		t.Fatalf("first control_external_id = %q, want empty", got)
+	}
+	if got := state.entities[secondControlURN].Attributes["control_external_id"]; got != "CC7.1" {
+		t.Fatalf("second control_external_id = %q, want CC7.1", got)
+	}
+}
+
 func TestProjectGRCRiskScenarioOwnerDoesNotCreatePersonIdentityBridge(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

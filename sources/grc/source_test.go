@@ -196,6 +196,23 @@ func TestReadVantaControlTestEmitsControlReferences(t *testing.T) {
 	}
 }
 
+func TestAttributesForControlTestPreservesControlReferencePairs(t *testing.T) {
+	attrs := attributesFor(settings{provider: "vanta", tenantID: "writer"}, familyControlTest, grcRecord{
+		Values: map[string]any{
+			"id": "test-1",
+			"controls": []any{
+				map[string]any{"id": "control-1"},
+				map[string]any{"id": "control-2", "externalId": "CC7.1"},
+				map[string]any{"id": "control-3", "externalId": "CC7.1"},
+			},
+		},
+	})
+
+	if got := attrs["control_references"]; got != "control-1=;control-2=CC7.1;control-3=CC7.1" {
+		t.Fatalf("control_references = %q, want stable id/external pairs", got)
+	}
+}
+
 func TestEventFromRecordScopesIDByTenantAndRuntimeConfig(t *testing.T) {
 	record := grcRecord{
 		Raw:    json.RawMessage(`{"id":"shared-test"}`),

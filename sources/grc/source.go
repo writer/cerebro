@@ -703,6 +703,9 @@ func copyFirstField(attrs map[string]string, values map[string]any, target strin
 func copyControlReferenceFields(attrs map[string]string, values map[string]any) {
 	copyFirstField(attrs, values, "control_id", "controlID", "control.id")
 	copyFirstField(attrs, values, "control_external_id", "controlExternalID", "control.externalId", "control.externalID")
+	if references := joinedControlReferences(values, "controls"); references != "" {
+		attrs["control_references"] = references
+	}
 	if ids := joinedObjectFieldValues(values, "controls", "id"); ids != "" {
 		attrs["control_ids"] = ids
 		if strings.TrimSpace(attrs["control_id"]) == "" {
@@ -715,6 +718,33 @@ func copyControlReferenceFields(attrs map[string]string, values map[string]any) 
 			attrs["control_external_id"] = firstDelimitedValue(externalIDs)
 		}
 	}
+}
+
+func joinedControlReferences(values map[string]any, arrayKey string) string {
+	items := arrayValue(values, arrayKey)
+	collected := make([]string, 0, len(items))
+	seen := map[string]struct{}{}
+	for _, item := range items {
+		object, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		id := valueString(object["id"])
+		externalID := firstNonEmptyString(valueString(object["externalId"]), valueString(object["externalID"]))
+		if id == "" && externalID == "" {
+			continue
+		}
+		if id == "" {
+			id = externalID
+		}
+		pair := id + "=" + externalID
+		if _, exists := seen[pair]; exists {
+			continue
+		}
+		seen[pair] = struct{}{}
+		collected = append(collected, pair)
+	}
+	return strings.Join(collected, ";")
 }
 
 func joinedObjectFieldValues(values map[string]any, arrayKey string, fields ...string) string {
@@ -744,6 +774,15 @@ func joinedObjectFieldValues(values map[string]any, arrayKey string, fields ...s
 func firstDelimitedValue(value string) string {
 	for _, part := range strings.Split(value, ",") {
 		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
 			return trimmed
 		}
 	}

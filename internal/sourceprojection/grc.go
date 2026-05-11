@@ -73,6 +73,9 @@ type grcControlReference struct {
 }
 
 func grcControlReferences(attrs map[string]string) []grcControlReference {
+	if refs := grcPairedControlReferences(attrs["control_references"]); len(refs) > 0 {
+		return refs
+	}
 	ids := grcAttributeList(attrs["control_id"] + "," + attrs["control_ids"])
 	externalIDs := grcAttributeList(attrs["control_external_id"] + "," + attrs["control_external_ids"])
 	if len(ids) == 0 {
@@ -84,6 +87,32 @@ func grcControlReferences(attrs map[string]string) []grcControlReference {
 		if index < len(externalIDs) {
 			ref.externalID = externalIDs[index]
 		}
+		refs = append(refs, ref)
+	}
+	return refs
+}
+
+func grcPairedControlReferences(raw string) []grcControlReference {
+	refs := []grcControlReference{}
+	seen := map[string]struct{}{}
+	for _, item := range strings.Split(raw, ";") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		id, externalID, _ := strings.Cut(item, "=")
+		ref := grcControlReference{id: strings.TrimSpace(id), externalID: strings.TrimSpace(externalID)}
+		if ref.id == "" {
+			ref.id = ref.externalID
+		}
+		if ref.id == "" {
+			continue
+		}
+		key := ref.id + "\x00" + ref.externalID
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
 		refs = append(refs, ref)
 	}
 	return refs

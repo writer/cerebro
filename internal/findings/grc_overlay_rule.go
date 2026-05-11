@@ -622,7 +622,9 @@ func (r *grcOverdueVulnerabilityLiveOnAssetsRule) SupportsRuntime(runtime *cereb
 		return family == grcOverlayRuntimeFamilyDependabotAlert
 	case "sentinelone":
 		return family == grcOverlayRuntimeFamilyApplication || family == grcOverlayRuntimeFamilyThreat || family == grcOverlayRuntimeFamilyVulnerability
-	case "gcp", "kandji":
+	case "gcp":
+		return family == "container_vulnerability" || family == "container_analysis_vulnerability"
+	case "kandji":
 		return true
 	default:
 		return false

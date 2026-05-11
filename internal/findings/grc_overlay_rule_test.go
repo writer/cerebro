@@ -209,6 +209,25 @@ func TestGRCOverdueVulnerabilityLiveOnAssetsRuleQueryScopesByTenant(t *testing.T
 	}
 }
 
+func TestGRCOverdueVulnerabilityLiveOnAssetsRuleSupportsOnlyGCPVulnerabilityRuntimes(t *testing.T) {
+	rule := newGRCOverdueVulnerabilityLiveOnAssetsRule().(*grcOverdueVulnerabilityLiveOnAssetsRule)
+	withFamily := func(family string) *cerebrov1.SourceRuntime {
+		return &cerebrov1.SourceRuntime{SourceId: "gcp", Config: map[string]string{"family": family}}
+	}
+	if !rule.SupportsRuntime(withFamily("container_vulnerability")) {
+		t.Fatal("SupportsRuntime(gcp container_vulnerability) = false, want true")
+	}
+	if !rule.SupportsRuntime(withFamily("container_analysis_vulnerability")) {
+		t.Fatal("SupportsRuntime(gcp container_analysis_vulnerability) = false, want true")
+	}
+	if rule.SupportsRuntime(withFamily("audit")) {
+		t.Fatal("SupportsRuntime(gcp audit) = true, want false")
+	}
+	if rule.SupportsRuntime(withFamily("iam_role_assignment")) {
+		t.Fatal("SupportsRuntime(gcp iam_role_assignment) = true, want false")
+	}
+}
+
 func TestGRCOverdueVulnerabilityLiveOnAssetsRuleEvaluateRowsEmits(t *testing.T) {
 	rule := newGRCOverdueVulnerabilityLiveOnAssetsRule().(*grcOverdueVulnerabilityLiveOnAssetsRule)
 	runtime := &cerebrov1.SourceRuntime{Id: "writer-grc-vulnerability", SourceId: "grc", TenantId: "writer", Config: map[string]string{"family": "vulnerability"}}
