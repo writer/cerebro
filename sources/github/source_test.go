@@ -280,6 +280,14 @@ func TestCheckDiscoverAndReadLiveGitHubAuditPreview(t *testing.T) {
 	if got := first.Events[0].Attributes["external_identity_nameid"]; got != "dependabot@writer.com" {
 		t.Fatalf("first.Events[0].Attributes[external_identity_nameid] = %q, want dependabot@writer.com", got)
 	}
+	// Audit Read must resolve every actor login (not just those without
+	// actor_id) so that GitHub-App identities — which always carry an
+	// actor_id — still get actor_type=Bot stamped. Without resolution
+	// the github.user node attributes_json would never reach the rule's
+	// automation check for these accounts.
+	if got := first.Events[0].Attributes["actor_type"]; got != "Bot" {
+		t.Fatalf("first.Events[0].Attributes[actor_type] = %q, want Bot", got)
+	}
 	var payload map[string]any
 	if err := json.Unmarshal(first.Events[0].Payload, &payload); err != nil {
 		t.Fatalf("unmarshal audit payload: %v", err)
@@ -799,6 +807,23 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 			}
 			if err := json.NewEncoder(w).Encode([]map[string]any{}); err != nil {
 				t.Fatalf("encode empty pulls page: %v", err)
+			}
+		case "/api/v3/users/dependabot%5Bbot%5D",
+			"/api/v3/users/dependabot[bot]":
+			if err := json.NewEncoder(w).Encode(map[string]any{
+				"login": "dependabot[bot]",
+				"id":    49699333,
+				"type":  "Bot",
+			}); err != nil {
+				t.Fatalf("encode users response: %v", err)
+			}
+		case "/api/v3/users/octocat":
+			if err := json.NewEncoder(w).Encode(map[string]any{
+				"login": "octocat",
+				"id":    1,
+				"type":  "User",
+			}); err != nil {
+				t.Fatalf("encode users response: %v", err)
 			}
 		case "/api/v3/orgs/writer/audit-log":
 			after := r.URL.Query().Get("after")

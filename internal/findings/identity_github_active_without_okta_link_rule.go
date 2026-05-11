@@ -388,21 +388,32 @@ func cypherListMapString(item any, key string) string {
 }
 
 // githubActorIsAutomation returns true when a github.user node's
-// attributes_json carries an explicit GitHub-stamped automation flag. The
-// source projector forwards two booleans from the audit log API onto every
+// attributes_json carries an explicit GitHub-stamped automation flag or
+// is otherwise structurally not a person that could be linked to Okta.
+// The source projector forwards three boolean/enumerated classifications
+// from the audit log API and the GitHub /users resolution onto every
 // github.user node:
 //
-//   - actor_is_bot is GitHub's classification for GitHub App identities
-//     (`<vendor>[bot]` accounts: dependabot[bot], github-actions[bot],
-//     renovate[bot], coderabbitai[bot], factory-droid[bot], and any future
-//     App-issued bot the API decides to classify the same way).
+//   - actor_is_bot is the audit-log boolean GitHub stamps on
+//     first-party App identities (dependabot[bot], github-actions[bot],
+//     coderabbitai[bot], etc.). It is NOT set for many third-party Apps,
+//     so the rule must not depend on it alone.
 //   - actor_is_agent covers fine-grained PAT / installation-token agent
 //     actions GitHub categorises as automated.
+//   - actor_type comes from the /users/{login} resolution and is the
+//     authoritative classifier across all GitHub App accounts. Type=Bot
+//     covers every App-issued identity uniformly; Type=Organization
+//     means the audit row was emitted by the org acting on itself (a
+//     stale phantom github.user node from before the org-self projector
+//     fix) and is never a real person to link; Type=Unresolved means
+//     GitHub returned 404 for the login, which happens for deleted or
+//     retired App accounts (pullrequest[bot] after uninstall, etc.) and
+//     for placeholder logins like deploy_key. None of these are
+//     linkable to a human Okta identity, so all three suppress the
+//     finding.
 //
-// Comparing the schema flag instead of pattern-matching the login string
-// lets the rule stay correct without a hardcoded vendor allowlist and
-// without paying a per-vendor maintenance tax as new GitHub App
-// integrations come online.
+// Comparing GitHub-native classifications avoids a hardcoded vendor
+// allowlist and stays correct as new App integrations come online.
 //
 // We accept the values verbatim from the audit log (strings, lower-cased
 // "true"/"false" in practice) and trim/compare case-insensitively so a
@@ -425,7 +436,8 @@ func githubActorIsAutomation(attributesJSON string) bool {
 	if strings.EqualFold(strings.TrimSpace(attrs["actor_is_agent"]), "true") {
 		return true
 	}
-	if strings.EqualFold(strings.TrimSpace(attrs["actor_type"]), "Bot") {
+	switch strings.ToLower(strings.TrimSpace(attrs["actor_type"])) {
+	case "bot", "organization", "unresolved":
 		return true
 	}
 	return false
