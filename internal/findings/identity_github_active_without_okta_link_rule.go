@@ -317,16 +317,14 @@ func (r *githubActiveWithoutOktaLinkRule) EvaluateRows(_ context.Context, runtim
 		}
 		// represents_identity edges are upsert-only — graph ingest never
 		// retracts them when an Okta email/login or GitHub
-		// external_identity_nameid is renamed. After a rename, both sides
-		// remain joined to the stale identity node and any join through it
-		// would suppress this finding even though the live identifier no
-		// longer matches. The projector therefore stamps every
-		// represents_identity edge with an `at` attribute that the latest
-		// source event re-asserted (chronological max under the neo4j
-		// store's mergeAttribute rule); a bridge whose okta-side AND
-		// github-side identifier link have BOTH been re-observed inside
-		// the recency window is evidence of a current bridge, and we
-		// suppress the group on it.
+		// external_identity_nameid is renamed. A bridge whose okta-side AND
+		// github-side identifier links have BOTH been re-observed inside
+		// the recency window is evidence of a current bridge. Exact-email
+		// GitHub SAML bridges are also durable as long as the Okta email side
+		// is fresh: GitHub audit often omits external identity fields on
+		// subsequent git.fetch/git.clone activity, but a stamped exact email
+		// link to a currently projected Okta email still proves the account is
+		// linkable through corporate identity.
 		//
 		// We must check the pairing on the SAME bridge candidate: a
 		// fresh github-side edge on bridge A combined with a fresh
@@ -335,9 +333,8 @@ func (r *githubActiveWithoutOktaLinkRule) EvaluateRows(_ context.Context, runtim
 		for _, bridge := range cypherRowList(row, "bridges") {
 			githubIdentityJSON := cypherListMapString(bridge, "github_identity_attributes_json")
 			oktaIdentityJSON := cypherListMapString(bridge, "okta_identity_attributes_json")
-			if edgeIsRecent(githubIdentityJSON, now, identityGitHubActiveWithoutOktaRecencyWindow) &&
-				edgeIsRecent(oktaIdentityJSON, now, identityGitHubActiveWithoutOktaRecencyWindow) {
-				group.hasFreshBridge = true
+			if githubBridgeProvesCurrentOktaLink(githubIdentityJSON, oktaIdentityJSON, now) {
+				group.hasCurrentBridge = true
 				break
 			}
 		}
@@ -380,9 +377,9 @@ func (r *githubActiveWithoutOktaLinkRule) EvaluateRows(_ context.Context, runtim
 		// A current cross-source bridge proves the github user is
 		// linked to an okta user; the rule's premise (shadow access)
 		// no longer applies, so suppress the finding even if the
-		// group accumulated targets. Stale-only bridges leave
-		// hasFreshBridge=false and the group emits as expected.
-		if group.hasFreshBridge {
+		// group accumulated targets. Non-current bridges leave
+		// hasCurrentBridge=false and the group emits as expected.
+		if group.hasCurrentBridge {
 			continue
 		}
 		findings = append(findings, r.buildFinding(runtime, tenantID, group, now))
@@ -429,6 +426,65 @@ func cypherListMapString(item any, key string) string {
 	default:
 		return strings.TrimSpace(fmt.Sprintf("%v", typed))
 	}
+}
+
+func githubBridgeProvesCurrentOktaLink(githubIdentityJSON string, oktaIdentityJSON string, now time.Time) bool {
+	if edgeIsRecent(githubIdentityJSON, now, identityGitHubActiveWithoutOktaRecencyWindow) &&
+		edgeIsRecent(oktaIdentityJSON, now, identityGitHubActiveWithoutOktaRecencyWindow) {
+		return true
+	}
+	oktaAttrs := edgeStringAttributes(oktaIdentityJSON)
+	if !edgeIsRecent(oktaIdentityJSON, now, identityGitHubActiveWithoutOktaRecencyWindow) {
+		return false
+	}
+	githubAttrs := edgeStringAttributes(githubIdentityJSON)
+	if !edgeHasValidAt(githubAttrs) {
+		return false
+	}
+	return exactEmailBridgeMatches(githubAttrs, oktaAttrs)
+}
+
+func edgeStringAttributes(attributesJSON string) map[string]string {
+	trimmed := strings.TrimSpace(attributesJSON)
+	if trimmed == "" {
+		return nil
+	}
+	var attrs map[string]string
+	if err := json.Unmarshal([]byte(trimmed), &attrs); err != nil {
+		return nil
+	}
+	return attrs
+}
+
+func edgeHasValidAt(attrs map[string]string) bool {
+	raw := strings.TrimSpace(attrs["at"])
+	if raw == "" {
+		return false
+	}
+	_, err := time.Parse(time.RFC3339, raw)
+	return err == nil
+}
+
+func exactEmailBridgeMatches(githubAttrs map[string]string, oktaAttrs map[string]string) bool {
+	githubValue := normalizedExactEmailIdentifier(githubAttrs)
+	if githubValue == "" {
+		return false
+	}
+	return githubValue == normalizedExactEmailIdentifier(oktaAttrs)
+}
+
+func normalizedExactEmailIdentifier(attrs map[string]string) string {
+	if !strings.EqualFold(strings.TrimSpace(attrs["match_type"]), "exact_email") {
+		return ""
+	}
+	if identifierType := strings.TrimSpace(attrs["identifier_type"]); identifierType != "" && !strings.EqualFold(identifierType, "email") {
+		return ""
+	}
+	value := strings.ToLower(strings.TrimSpace(attrs["identifier_value"]))
+	if !strings.Contains(value, "@") {
+		return ""
+	}
+	return value
 }
 
 // githubActorIsAutomation returns true when a github.user node's
@@ -571,14 +627,10 @@ type githubActiveWithoutOktaGroup struct {
 	githubUserLabel      string
 	githubAttributesJSON string
 	targets              map[string]githubActiveWithoutOktaTarget
-	// hasFreshBridge captures whether ANY row for this github user
-	// carried a represents_identity bridge to an okta.user whose okta-side
-	// AND github-side identifier edges were both re-asserted inside the
-	// recency window. A current bridge proves the github user is linked
-	// to an okta user, so the shadow-access premise no longer applies and
-	// the group is suppressed even if it accumulated targets. Stale-only
-	// bridges leave this false and the finding emits as expected.
-	hasFreshBridge bool
+	// hasCurrentBridge captures whether ANY row for this github user carried
+	// a represents_identity bridge proving the user is linked to an okta user,
+	// so the shadow-access premise no longer applies.
+	hasCurrentBridge bool
 }
 
 type githubActiveWithoutOktaTarget struct {
