@@ -2,6 +2,7 @@ package findings
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -226,14 +227,31 @@ func (r *githubActiveWithoutOktaLinkRule) EvaluateRows(_ context.Context, runtim
 		if githubUserURN == "" {
 			continue
 		}
-		// Bot logins (dependabot[bot], github-actions[bot], renovate[bot], etc.)
-		// commit and act on resources but are not real human identities. They
-		// will never be in Okta by design, so emitting on them would flood
-		// the queue with non-actionable findings. The check is on the github
-		// user label (which the projector populates from the audit `actor`
-		// field) so it sees the raw login string the audit log carried.
+		// Suppress automation actors using the GitHub-stamped schema flags
+		// the source projector forwards onto every github.user node:
+		//
+		//   * actor_is_bot=true is GitHub's own classification for GitHub App
+		//     identities (the `<vendor>[bot]` accounts that surface in audit
+		//     `actor` fields — dependabot[bot], github-actions[bot],
+		//     renovate[bot], coderabbitai[bot], factory-droid[bot], etc.).
+		//   * actor_is_agent=true covers fine-grained PAT / installation-token
+		//     agent actions that GitHub categorises as automated.
+		//
+		// These accounts will never be in Okta by design; emitting on them
+		// would flood the queue with non-actionable findings. Trusting the
+		// schema avoids the maintenance burden of a hand-maintained vendor
+		// allowlist (every new GitHub App vendor would otherwise require a
+		// code change) and stays correct as the audit log API gains new
+		// classifications.
+		//
+		// The complementary org-as-actor pattern (audit events whose
+		// `actor_id == org_id`, e.g. `integration_installation.version_updated`
+		// system events) is filtered at the projector layer by routing the
+		// `acted_on` edge from the github.org node instead of minting a
+		// `github.user:<org>` shadow node, so this rule never sees those rows.
 		githubUserLabel := cypherRowString(row, "github_user_label")
-		if isGitHubBotLogin(githubUserLabel) {
+		githubAttributesJSON := cypherRowString(row, "github_attributes_json")
+		if githubActorIsAutomation(githubAttributesJSON) {
 			continue
 		}
 		// The cypher emits one row per github user; rows for the same
@@ -247,7 +265,7 @@ func (r *githubActiveWithoutOktaLinkRule) EvaluateRows(_ context.Context, runtim
 			group = &githubActiveWithoutOktaGroup{
 				githubUserURN:        githubUserURN,
 				githubUserLabel:      githubUserLabel,
-				githubAttributesJSON: cypherRowString(row, "github_attributes_json"),
+				githubAttributesJSON: githubAttributesJSON,
 				targets:              map[string]githubActiveWithoutOktaTarget{},
 			}
 			groups[githubUserURN] = group
@@ -287,7 +305,11 @@ func (r *githubActiveWithoutOktaLinkRule) EvaluateRows(_ context.Context, runtim
 		// gives one O(n) pass with the same semantics as the previous
 		// row-per-target form.
 		for _, target := range cypherRowList(row, "targets") {
-			if !edgeIsRecent(cypherListMapString(target, "acted_attributes_json"), now, identityGitHubActiveWithoutOktaRecencyWindow) {
+			actedAttributesJSON := cypherListMapString(target, "acted_attributes_json")
+			if !edgeIsRecent(actedAttributesJSON, now, identityGitHubActiveWithoutOktaRecencyWindow) {
+				continue
+			}
+			if !githubActedOnIsCurrentAccessEvidence(actedAttributesJSON) {
 				continue
 			}
 			targetURN := strings.TrimSpace(cypherListMapString(target, "urn"))
@@ -365,31 +387,76 @@ func cypherListMapString(item any, key string) string {
 	}
 }
 
-// isGitHubBotLogin recognises the subset of GitHub login conventions that
-// flag accounts as automation rather than employee identities. These never
-// belong in Okta and would otherwise emit a CRITICAL-volume of false
-// positives every time the audit log records a bot action.
+// githubActorIsAutomation returns true when a github.user node's
+// attributes_json carries an explicit GitHub-stamped automation flag. The
+// source projector forwards two booleans from the audit log API onto every
+// github.user node:
 //
-// The patterns are intentionally narrow: the GitHub Apps convention reserves
-// the `[bot]` suffix for App-issued identities (which is why
-// `dependabot[bot]` and `github-actions[bot]` show up in audit `actor`
-// fields), and the prefix list covers the well-known third-party automation
-// vendors that mint GitHub-App-backed bots (Dependabot, GitHub Actions,
-// Renovate, Mergify, RenovateBot via repo-scoped tokens) without sweeping in
-// arbitrary user logins that happen to start with the same letters.
-func isGitHubBotLogin(login string) bool {
-	trimmed := strings.ToLower(strings.TrimSpace(login))
+//   - actor_is_bot is GitHub's classification for GitHub App identities
+//     (`<vendor>[bot]` accounts: dependabot[bot], github-actions[bot],
+//     renovate[bot], coderabbitai[bot], factory-droid[bot], and any future
+//     App-issued bot the API decides to classify the same way).
+//   - actor_is_agent covers fine-grained PAT / installation-token agent
+//     actions GitHub categorises as automated.
+//
+// Comparing the schema flag instead of pattern-matching the login string
+// lets the rule stay correct without a hardcoded vendor allowlist and
+// without paying a per-vendor maintenance tax as new GitHub App
+// integrations come online.
+//
+// We accept the values verbatim from the audit log (strings, lower-cased
+// "true"/"false" in practice) and trim/compare case-insensitively so a
+// future API revision that returns "True" or "TRUE" still works. Empty or
+// malformed JSON is treated as "not classified as automation" — better to
+// surface a finding for review than to silently suppress a real shadow
+// account because the attributes blob was corrupt.
+func githubActorIsAutomation(attributesJSON string) bool {
+	trimmed := strings.TrimSpace(attributesJSON)
 	if trimmed == "" {
 		return false
 	}
-	if strings.HasSuffix(trimmed, "[bot]") {
+	var attrs map[string]string
+	if err := json.Unmarshal([]byte(trimmed), &attrs); err != nil {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(attrs["actor_is_bot"]), "true") {
 		return true
 	}
-	switch trimmed {
-	case "dependabot", "github-actions", "renovate", "renovate-bot", "mergify", "mergify-bot":
+	if strings.EqualFold(strings.TrimSpace(attrs["actor_is_agent"]), "true") {
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(attrs["actor_type"]), "Bot") {
 		return true
 	}
 	return false
+}
+
+func githubActedOnIsCurrentAccessEvidence(attributesJSON string) bool {
+	trimmed := strings.TrimSpace(attributesJSON)
+	if trimmed == "" {
+		return false
+	}
+	var attrs map[string]string
+	if err := json.Unmarshal([]byte(trimmed), &attrs); err != nil {
+		return false
+	}
+	return githubAuditActionIndicatesCurrentAccess(attrs["action"])
+}
+
+func githubAuditActionIndicatesCurrentAccess(action string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(action))
+	if normalized == "" {
+		return false
+	}
+	switch normalized {
+	case "workflows.completed_workflow_run",
+		"workflows.created_workflow_run",
+		"workflows.prepared_workflow_job",
+		"org_credential_authorization.deauthorize":
+		return false
+	default:
+		return true
+	}
 }
 
 type githubActiveWithoutOktaGroup struct {
