@@ -249,12 +249,18 @@ func parseSettings(cfg sourcecdk.Config, allowLoopbackBaseURL bool) (settings, e
 	if err != nil {
 		return resolved, err
 	}
+	if err := validateTrustedVantaOrigin(normalizedBase, allowLoopbackBaseURL); err != nil {
+		return resolved, err
+	}
 	resolved.baseURL = normalizedBase
 	if resolved.tokenURL == "" {
 		resolved.tokenURL = normalizedBase + "/oauth/token"
 	} else {
 		normalizedTokenURL, err := normalizeAbsoluteURL(resolved.tokenURL, allowLoopbackBaseURL)
 		if err != nil {
+			return resolved, err
+		}
+		if err := validateTrustedVantaOrigin(normalizedTokenURL, allowLoopbackBaseURL); err != nil {
 			return resolved, err
 		}
 		resolved.tokenURL = normalizedTokenURL
@@ -959,6 +965,21 @@ func normalizeAbsoluteURL(raw string, allowLoopback bool) (string, error) {
 		return "", fmt.Errorf("grc url must include a host")
 	}
 	return strings.TrimRight(parsed.String(), "/"), nil
+}
+
+func validateTrustedVantaOrigin(raw string, allowLoopback bool) error {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return fmt.Errorf("parse grc url: %w", err)
+	}
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	if allowLoopback && isLoopbackHost(host) {
+		return nil
+	}
+	if host == "api.vanta.com" || host == "api.eu.vanta.com" {
+		return nil
+	}
+	return fmt.Errorf("grc Vanta host %q is not trusted", host)
 }
 
 type safeRoundTripper struct {
