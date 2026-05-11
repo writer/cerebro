@@ -464,7 +464,7 @@ func eventFromRecord(settings settings, family string, record grcRecord) (*primi
 	occurredAt := occurredAtFor(family, record.Values)
 	payload := append([]byte(nil), record.Raw...)
 	return &primitives.Event{
-		Id:         "grc-" + settings.provider + "-" + family + "-" + record.ID,
+		Id:         grcEventID(settings, family, record.ID),
 		TenantId:   settings.tenantID,
 		SourceId:   sourceID,
 		Kind:       "grc." + family,
@@ -473,6 +473,26 @@ func eventFromRecord(settings settings, family string, record grcRecord) (*primi
 		Payload:    payload,
 		Attributes: attributesFor(settings, family, record),
 	}, nil
+}
+
+func grcEventID(settings settings, family string, recordID string) string {
+	return strings.Join([]string{
+		"grc",
+		normalizeID(settings.provider),
+		normalizeID(settings.tenantID),
+		grcRuntimeScope(settings),
+		normalizeID(family),
+		normalizeID(recordID),
+	}, "-")
+}
+
+func grcRuntimeScope(settings settings) string {
+	sum := sha256.Sum256([]byte(strings.Join([]string{
+		settings.baseURL,
+		settings.clientID,
+		settings.scope,
+	}, "\x00")))
+	return hex.EncodeToString(sum[:])[:12]
 }
 
 func attributesFor(settings settings, family string, record grcRecord) map[string]string {

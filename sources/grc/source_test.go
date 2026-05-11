@@ -162,6 +162,44 @@ func TestReadVantaControlTestEmitsControlReferences(t *testing.T) {
 	}
 }
 
+func TestEventFromRecordScopesIDByTenantAndRuntimeConfig(t *testing.T) {
+	record := grcRecord{
+		Raw:    json.RawMessage(`{"id":"shared-test"}`),
+		Values: map[string]any{"id": "shared-test"},
+		ID:     "shared-test",
+	}
+	base := settings{
+		provider: "vanta",
+		tenantID: "writer",
+		family:   familyControlTest,
+		baseURL:  "https://api.vanta.com",
+		clientID: "client-a",
+		scope:    defaultReadScope,
+	}
+	first, err := eventFromRecord(base, familyControlTest, record)
+	if err != nil {
+		t.Fatalf("eventFromRecord(first) error = %v", err)
+	}
+	otherTenant := base
+	otherTenant.tenantID = "acme"
+	second, err := eventFromRecord(otherTenant, familyControlTest, record)
+	if err != nil {
+		t.Fatalf("eventFromRecord(second) error = %v", err)
+	}
+	otherRuntime := base
+	otherRuntime.baseURL = "https://api.eu.vanta.com"
+	third, err := eventFromRecord(otherRuntime, familyControlTest, record)
+	if err != nil {
+		t.Fatalf("eventFromRecord(third) error = %v", err)
+	}
+	if first.Id == second.Id || first.Id == third.Id {
+		t.Fatalf("event IDs must be scoped per tenant/runtime config, got %q, %q, %q", first.Id, second.Id, third.Id)
+	}
+	if !strings.Contains(first.Id, "writer") || !strings.Contains(second.Id, "acme") {
+		t.Fatalf("event IDs should include tenant scope, got %q and %q", first.Id, second.Id)
+	}
+}
+
 func TestReadVantaVulnerabilityNormalizesFields(t *testing.T) {
 	server := httptest.NewServer(newTestAPIHandler(t))
 	defer server.Close()
