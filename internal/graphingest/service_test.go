@@ -41,6 +41,35 @@ func (s *stubRunStore) ListIngestRuns(_ context.Context, filter graphstore.Inges
 	return runs, nil
 }
 
+type recordProjectorFunc func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)
+
+func (f recordProjectorFunc) ProjectRecords(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return f(event)
+}
+
+type recordingProjectionGraphStore struct {
+	entities map[string]*ports.ProjectedEntity
+	links    map[string]*ports.ProjectedLink
+}
+
+func (s *recordingProjectionGraphStore) Ping(context.Context) error { return nil }
+
+func (s *recordingProjectionGraphStore) UpsertProjectedEntity(_ context.Context, entity *ports.ProjectedEntity) error {
+	if s.entities == nil {
+		s.entities = map[string]*ports.ProjectedEntity{}
+	}
+	s.entities[entity.URN] = entity
+	return nil
+}
+
+func (s *recordingProjectionGraphStore) UpsertProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
+	if s.links == nil {
+		s.links = map[string]*ports.ProjectedLink{}
+	}
+	s.links[link.FromURN+"|"+link.Relation+"|"+link.ToURN] = link
+	return nil
+}
+
 func TestSensitiveConfigKeyTreatsSecretMarkersAsSensitive(t *testing.T) {
 	for _, key := range []string{"key", "api_key", "apiKey", "access_key_id", "secret_access_key", "private_key", "privateKey", "signing_key"} {
 		if !sensitiveConfigKey(key) {
@@ -102,6 +131,73 @@ func TestIngestEventStampsTenantAndRuntime(t *testing.T) {
 	}
 	if got := event.GetAttributes()["existing"]; got != "value" {
 		t.Fatalf("existing attribute = %q, want value", got)
+	}
+}
+
+func TestProjectResponseCoalescedUpsertsUniqueRecords(t *testing.T) {
+	store := &recordingProjectionGraphStore{}
+	service := &Service{graphStore: store}
+	projector := recordProjectorFunc(func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		if event.GetTenantId() != "writer" {
+			t.Fatalf("event tenant = %q, want writer", event.GetTenantId())
+		}
+		if got := event.GetAttributes()[ports.EventAttributeSourceRuntimeID]; got != "writer-github-audit" {
+			t.Fatalf("source_runtime_id = %q, want writer-github-audit", got)
+		}
+		return []*ports.ProjectedEntity{{
+				URN:        "urn:cerebro:writer:github_org:WriterInternal",
+				TenantID:   event.GetTenantId(),
+				SourceID:   event.GetSourceId(),
+				RuntimeID:  event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
+				EntityType: "github.org",
+				Label:      "WriterInternal",
+				Attributes: map[string]string{"event_id": event.GetId()},
+			}},
+			[]*ports.ProjectedLink{{
+				TenantID:  event.GetTenantId(),
+				SourceID:  event.GetSourceId(),
+				RuntimeID: event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
+				FromURN:   "urn:cerebro:writer:github_repo:WriterInternal/k8s",
+				Relation:  "belongs_to",
+				ToURN:     "urn:cerebro:writer:github_org:WriterInternal",
+				Attributes: map[string]string{
+					"event_id": event.GetId(),
+				},
+			}}, nil
+	})
+	result, err := service.projectResponseCoalesced(context.Background(), sourceRequest{
+		SourceID:  "github",
+		RuntimeID: "writer-github-audit",
+		TenantID:  "writer",
+	}, &cerebrov1.ReadSourceResponse{Events: []*cerebrov1.EventEnvelope{
+		{Id: "event-1", SourceId: "github"},
+		{Id: "event-2", SourceId: "github"},
+	}}, projector)
+	if err != nil {
+		t.Fatalf("projectResponseCoalesced() error = %v", err)
+	}
+	if result.EventsRead != 2 {
+		t.Fatalf("EventsRead = %d, want 2", result.EventsRead)
+	}
+	if result.EntitiesProjected != 1 {
+		t.Fatalf("EntitiesProjected = %d, want 1 coalesced org upsert", result.EntitiesProjected)
+	}
+	if result.LinksProjected != 1 {
+		t.Fatalf("LinksProjected = %d, want 1 coalesced repo->org link upsert", result.LinksProjected)
+	}
+	entity := store.entities["urn:cerebro:writer:github_org:WriterInternal"]
+	if entity == nil {
+		t.Fatal("coalesced org entity missing")
+	}
+	if got := entity.Attributes["event_id"]; got != "event-2" {
+		t.Fatalf("coalesced entity event_id = %q, want latest event-2", got)
+	}
+	link := store.links["urn:cerebro:writer:github_repo:WriterInternal/k8s|belongs_to|urn:cerebro:writer:github_org:WriterInternal"]
+	if link == nil {
+		t.Fatal("coalesced repo->org link missing")
+	}
+	if got := link.Attributes["event_id"]; got != "event-2" {
+		t.Fatalf("coalesced link event_id = %q, want latest event-2", got)
 	}
 }
 
