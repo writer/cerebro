@@ -538,6 +538,49 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsSkipsActorIsBot(t *testing.T
 	}
 }
 
+// actor_type=Organization on a github.user node means the audit row
+// surfaced the org acting on itself (org-self events such as
+// integration_installation.version_updated). New events with org-self
+// actors route through the github.org projection path; stale github.user
+// nodes from the pre-fix projection still carry edges but the resolved
+// actor_type lets the rule suppress them rather than asking a human to
+// "link the writer organisation to Okta".
+//
+// actor_type=Unresolved means GitHub returned 404 for /users/{login} when
+// the source resolver tried to classify it. That happens for retired
+// GitHub Apps (pullrequest[bot] after uninstall) and for the deploy_key
+// placeholder login: in both cases the account no longer exists as a
+// linkable identity so the finding is non-actionable.
+func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsSkipsOrganizationAndUnresolvedActorTypes(t *testing.T) {
+	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	cases := []struct {
+		login string
+		attrs map[string]string
+	}{
+		{login: "writer", attrs: map[string]string{"login": "writer", "actor_type": "Organization"}},
+		{login: "writer", attrs: map[string]string{"login": "writer", "actor_type": "organization"}},
+		{login: "deploy_key", attrs: map[string]string{"login": "deploy_key", "actor_type": "Unresolved"}},
+		{login: "pullrequest[bot]", attrs: map[string]string{"login": "pullrequest[bot]", "actor_type": "unresolved"}},
+	}
+	for _, tc := range cases {
+		row := githubActiveWithoutOktaRuleRowWithGitHubAttrs(
+			githubActiveWithoutOktaRuleActedAttrs(time.Now().UTC().Add(-1*time.Hour)),
+			"urn:cerebro:writer:github.user:"+tc.login,
+			tc.login,
+			"urn:cerebro:writer:github_repo:writer/cerebro",
+			tc.attrs,
+		)
+		findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+		if err != nil {
+			t.Fatalf("EvaluateRows() error = %v: attrs=%v", err, tc.attrs)
+		}
+		if len(findings) != 0 {
+			t.Fatalf("EvaluateRows() returned %d findings for actor_type=%q, want 0 (non-user actor_types must be filtered)", len(findings), tc.attrs["actor_type"])
+		}
+	}
+}
+
 // actor_is_agent=true is GitHub's classification for fine-grained PAT and
 // installation-token agent actions. The flag is stamped by the audit log API
 // itself; the rule suppresses on it for the same reason it suppresses
@@ -1078,13 +1121,18 @@ func TestGitHubActorIsAutomation(t *testing.T) {
 		"actor_is_agent TRUE upper":     {`{"actor_is_agent":"TRUE"}`, true},
 		"actor_type bot":                {`{"actor_type":"Bot"}`, true},
 		"actor_type bot lowercase":      {`{"actor_type":"bot"}`, true},
+		"actor_type bot mixed case":     {`{"actor_type":"  Bot  "}`, true},
+		"actor_type organization":       {`{"actor_type":"Organization"}`, true},
+		"actor_type org lowercase":      {`{"actor_type":"organization"}`, true},
+		"actor_type unresolved":         {`{"actor_type":"Unresolved"}`, true},
+		"actor_type unresolved lower":   {`{"actor_type":"unresolved"}`, true},
 		"both flags true":               {`{"actor_is_bot":"true","actor_is_agent":"true"}`, true},
 		"only bot true, agent false":    {`{"actor_is_bot":"true","actor_is_agent":"false"}`, true},
 		"only agent true, bot false":    {`{"actor_is_bot":"false","actor_is_agent":"true"}`, true},
 		"both flags false":              {`{"actor_is_bot":"false","actor_is_agent":"false"}`, false},
 		"bot flag absent":               {`{"login":"alice"}`, false},
 		"actor_type user":               {`{"actor_type":"User"}`, false},
-		"actor_type unresolved":         {`{"actor_type":"Unresolved"}`, false},
+		"actor_type user with id":       {`{"actor_type":"User","actor_id":"42"}`, false},
 		"bot flag empty string":         {`{"actor_is_bot":""}`, false},
 		"bot flag arbitrary value":      {`{"actor_is_bot":"maybe"}`, false},
 		"empty JSON object":             {`{}`, false},

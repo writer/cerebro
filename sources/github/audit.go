@@ -78,8 +78,19 @@ func (s *Source) readAudit(ctx context.Context, client *gogithub.Client, setting
 	events := make([]*primitives.Event, 0, len(entries))
 	actorResolutionCache := map[string]auditActorResolution{}
 	for _, entry := range entries {
+		// Resolve every non-empty actor login. The audit log raw payload
+		// does NOT include an actor_type field; without resolution the
+		// projector sees only entry.ActorID (which GitHub stamps even on
+		// GitHub-App / Bot / Organization-self actors) and therefore
+		// can't tell a bot apart from a user. Resolution returns
+		// Type=Bot for GitHub Apps, Type=Organization for org-self
+		// events, Type=Unresolved for deleted/placeholder logins
+		// (deploy_key, retired bot apps), and Type=User otherwise. The
+		// shared cache keeps the per-pull cost at one /users/{login}
+		// call per unique actor, which is well within the 5000/hour
+		// authenticated rate limit for any realistic audit volume.
 		actorResolution := auditActorResolution{}
-		if strings.TrimSpace(entry.GetActor()) != "" && entry.GetActorID() <= 0 {
+		if strings.TrimSpace(entry.GetActor()) != "" {
 			actorResolution = resolveAuditActor(ctx, client, entry.GetActor(), actorResolutionCache)
 		}
 		event, err := auditEvent(settings, entry, actorResolution)
