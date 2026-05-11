@@ -126,6 +126,18 @@ func TestBuiltinRulePacksFlattenIntoCatalog(t *testing.T) {
 	if _, ok := registry.Get(grcVendorReviewOverdueRuleID); !ok {
 		t.Fatalf("registry missing %q", grcVendorReviewOverdueRuleID)
 	}
+	if _, ok := registry.Get(grcInactiveIdentityActiveAccessRuleID); !ok {
+		t.Fatalf("registry missing %q", grcInactiveIdentityActiveAccessRuleID)
+	}
+	if _, ok := registry.Get(grcPrivilegedAccountMissingPersonRuleID); !ok {
+		t.Fatalf("registry missing %q", grcPrivilegedAccountMissingPersonRuleID)
+	}
+	if _, ok := registry.Get(grcOverdueVulnerabilityLiveOnAssetsRuleID); !ok {
+		t.Fatalf("registry missing %q", grcOverdueVulnerabilityLiveOnAssetsRuleID)
+	}
+	if _, ok := registry.Get(grcFailingControlOpenOperationalFindingsID); !ok {
+		t.Fatalf("registry missing %q", grcFailingControlOpenOperationalFindingsID)
+	}
 	if _, ok := registry.Get(sentinelOneEndpointActiveInfectionRuleID); !ok {
 		t.Fatalf("registry missing %q", sentinelOneEndpointActiveInfectionRuleID)
 	}

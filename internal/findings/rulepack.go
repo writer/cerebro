@@ -66,6 +66,10 @@ func builtinRulePacks() []RulePack {
 				newGRCControlTestNeedsAttentionRule(),
 				newGRCVulnerabilitySLAOverdueRule(),
 				newGRCVendorReviewOverdueRule(),
+				newGRCInactiveIdentityActiveAccessRule(),
+				newGRCPrivilegedAccountMissingPersonRule(),
+				newGRCOverdueVulnerabilityLiveOnAssetsRule(),
+				newGRCFailingControlOpenOperationalFindingsRule(),
 			},
 		},
 		{
