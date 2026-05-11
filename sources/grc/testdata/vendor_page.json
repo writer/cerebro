@@ -1,0 +1,19 @@
+{
+  "results": {
+    "pageInfo": {
+      "endCursor": "",
+      "hasNextPage": false
+    },
+    "data": [
+      {
+        "id": "vendor-1",
+        "name": "Acme SaaS",
+        "securityOwnerUserId": "user-1",
+        "status": "IN_REVIEW",
+        "inherentRiskLevel": "HIGH",
+        "residualRiskLevel": "MEDIUM",
+        "nextSecurityReviewDueDate": "2026-06-01T00:00:00Z"
+      }
+    ]
+  }
+}
