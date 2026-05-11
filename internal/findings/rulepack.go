@@ -59,6 +59,16 @@ func builtinRulePacks() []RulePack {
 			Rules:       []Rule{newRuntimeActiveThreatEvidenceRule()},
 		},
 		{
+			ID:          "grc",
+			Name:        "GRC",
+			Description: "Provider-neutral GRC control, vulnerability, and vendor-risk findings.",
+			Rules: []Rule{
+				newGRCControlTestNeedsAttentionRule(),
+				newGRCVulnerabilitySLAOverdueRule(),
+				newGRCVendorReviewOverdueRule(),
+			},
+		},
+		{
 			ID:          "sentinelone",
 			Name:        "SentinelOne",
 			Description: "SentinelOne endpoint posture, response, and protection-control findings.",

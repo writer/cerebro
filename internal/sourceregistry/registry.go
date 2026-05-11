@@ -9,6 +9,7 @@ import (
 	gcpsource "github.com/writer/cerebro/sources/gcp"
 	githubsource "github.com/writer/cerebro/sources/github"
 	googleworkspacesource "github.com/writer/cerebro/sources/googleworkspace"
+	grcsource "github.com/writer/cerebro/sources/grc"
 	oktasource "github.com/writer/cerebro/sources/okta"
 	sdksource "github.com/writer/cerebro/sources/sdk"
 	sentineloneSource "github.com/writer/cerebro/sources/sentinelone"
@@ -48,6 +49,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "google_workspace",
 		load: func() (sourcecdk.Source, error) {
 			return googleworkspacesource.New()
+		},
+	},
+	{
+		name: "grc",
+		load: func() (sourcecdk.Source, error) {
+			return grcsource.New()
 		},
 	},
 	{

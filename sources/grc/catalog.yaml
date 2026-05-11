@@ -1,0 +1,15 @@
+id: grc
+name: GRC
+description: Provider-neutral GRC framework, control, evidence, vendor, vulnerability, risk, people, and integration source.
+emitted_kinds:
+  - grc.framework
+  - grc.control
+  - grc.control_test
+  - grc.policy
+  - grc.document
+  - grc.vendor
+  - grc.vulnerability
+  - grc.risk_scenario
+  - grc.person
+  - grc.user
+  - grc.integration

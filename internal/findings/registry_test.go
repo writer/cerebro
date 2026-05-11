@@ -88,8 +88,8 @@ func TestRegistryForRuntimeFiltersSupportedRules(t *testing.T) {
 
 func TestBuiltinRulePacksFlattenIntoCatalog(t *testing.T) {
 	packs := builtinRulePacks()
-	if got := len(packs); got != 6 {
-		t.Fatalf("len(builtinRulePacks()) = %d, want 6", got)
+	if got := len(packs); got != 7 {
+		t.Fatalf("len(builtinRulePacks()) = %d, want 7", got)
 	}
 	rules := flattenRulePacks(packs)
 	if got := len(rules); got < 10 {
@@ -116,6 +116,15 @@ func TestBuiltinRulePacksFlattenIntoCatalog(t *testing.T) {
 	}
 	if _, ok := registry.Get(runtimeActiveThreatEvidenceRuleID); !ok {
 		t.Fatalf("registry missing %q", runtimeActiveThreatEvidenceRuleID)
+	}
+	if _, ok := registry.Get(grcControlTestNeedsAttentionRuleID); !ok {
+		t.Fatalf("registry missing %q", grcControlTestNeedsAttentionRuleID)
+	}
+	if _, ok := registry.Get(grcVulnerabilitySLAOverdueRuleID); !ok {
+		t.Fatalf("registry missing %q", grcVulnerabilitySLAOverdueRuleID)
+	}
+	if _, ok := registry.Get(grcVendorReviewOverdueRuleID); !ok {
+		t.Fatalf("registry missing %q", grcVendorReviewOverdueRuleID)
 	}
 	if _, ok := registry.Get(sentinelOneEndpointActiveInfectionRuleID); !ok {
 		t.Fatalf("registry missing %q", sentinelOneEndpointActiveInfectionRuleID)
