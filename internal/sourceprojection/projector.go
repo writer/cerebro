@@ -263,6 +263,7 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 	actorTypeIsOrg := strings.EqualFold(actorType, "Organization")
 	actorIsOrgSelf := actorID != "" && orgID != "" && actorID == orgID
 	actorIsUnresolvedPublicKey := strings.EqualFold(actorType, "Unresolved") && isGitHubPublicKeyCredential(programmaticAccessType)
+	actorIsAutomation := githubAuditActorIsAutomation(actor, actorType, actorIsBot, actorIsAgent)
 
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
@@ -398,6 +399,10 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 				addLink(links, projectedLink(tenantID, event.GetSourceId(), credentialURN, resourceURN, relationActedOn, actedAttrs))
 			}
 		}
+	} else if actorIsAutomation {
+		// Automation actors are GitHub Apps/agents, not human identities. Keep the
+		// audit event in the append log but do not project them into the identity
+		// graph or repeatedly rewrite hot bot->repo acted_on edges.
 	} else {
 		actorURN := githubUserURN(tenantID, actor)
 		if actorURN != "" {
@@ -454,24 +459,8 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 	// github.user actor, so this is purely for the user-actor case.
 	previousActorURN := githubUserURN(tenantID, actor)
 	targetURN := githubUserURN(tenantID, targetUser)
-	if targetURN != "" && targetURN != previousActorURN {
+	if targetURN != "" && targetURN != previousActorURN && githubSyntheticTargetActorType(targetUser) == "" {
 		targetAttrs := map[string]string{"login": targetUser}
-		// Target-context github.user nodes (e.g. `team.add_member`, where
-		// targetUser is the user being added) carry no actor resolution
-		// because the audit event's actor_* fields describe the issuer of
-		// the action, not the recipient. When the recipient login matches
-		// a structural automation pattern — GitHub's reserved `[bot]`
-		// suffix for App-issued identities, or synthetic placeholder
-		// logins like `deploy_key` for SSH-key activity — stamp the
-		// node's `actor_type` defensively so downstream identity rules
-		// can classify the entity as non-linkable without relying on
-		// later actor-context events to converge the blob via
-		// `mergeGraphAttributes`. Without this, target-only phantoms can
-		// linger indefinitely once the audit-log window scrolls past the
-		// last event that had them as the actor.
-		if classification := githubSyntheticTargetActorType(targetUser); classification != "" {
-			targetAttrs["actor_type"] = classification
-		}
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        targetURN,
 			TenantID:   tenantID,
@@ -495,35 +484,44 @@ func isGitHubPublicKeyCredential(programmaticAccessType string) bool {
 	return strings.Contains(normalized, "public key")
 }
 
-// githubSyntheticTargetActorType returns the `actor_type` value to stamp
-// onto a target-context github.user node when its login is structurally
-// synthetic (i.e. not a real user that could be linked to Okta). The
-// returned value is one of the automation classifications recognised by
-// `githubActorTypeClassifiesAutomation` in the findings package — keeping
-// the string set in sync with that helper is part of the suppression
-// contract.
+func githubAuditActorIsAutomation(actor string, actorType string, actorIsBot string, actorIsAgent string) bool {
+	if strings.EqualFold(strings.TrimSpace(actorIsBot), "true") {
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(actorIsAgent), "true") {
+		return true
+	}
+	if githubActorTypeClassifiesAutomation(actorType) {
+		return true
+	}
+	return githubSyntheticTargetActorType(actor) != ""
+}
+
+func githubActorTypeClassifiesAutomation(actorType string) bool {
+	switch strings.ToLower(strings.TrimSpace(actorType)) {
+	case "bot", "organization", "unresolved":
+		return true
+	}
+	return false
+}
+
+// githubSyntheticTargetActorType returns the automation classification for a
+// structurally synthetic login (i.e. not a real user that could be linked to
+// Okta).
 //
 // Two synthetic shapes are recognised today:
 //
 //   - GitHub reserves the trailing `[bot]` suffix for App-issued
 //     identities (dependabot[bot], github-actions[bot], renovate[bot],
 //     coderabbitai[bot], factory-droid[bot], ...). The suffix is part of
-//     GitHub's public contract; vendor changes don't alter it. We stamp
-//     these as `Bot` so the identity rule treats them like any other
-//     App-issued account even when only target-context events ever
-//     surface them.
+//     GitHub's public contract; vendor changes don't alter it.
 //
 //   - The literal `deploy_key` login is GitHub's synthetic placeholder
 //     for SSH-key activity (no real /users/{login} resolution). The
 //     actor-side projector path routes these to `github.credential`
-//     via `actorIsUnresolvedPublicKey`, but target-context events
-//     (typically deploy-key lifecycle audit entries) still mint a
-//     `github.user:deploy_key` node. We stamp `Unresolved` so the same
-//     classifier short-circuits.
+//     via `actorIsUnresolvedPublicKey`.
 //
-// Returns "" when the login is a plain human-shaped GitHub username so
-// the existing target-context projection (`{login: <user>}` only) is
-// preserved.
+// Returns "" when the login is a plain human-shaped GitHub username.
 func githubSyntheticTargetActorType(login string) string {
 	trimmed := strings.TrimSpace(login)
 	if trimmed == "" {

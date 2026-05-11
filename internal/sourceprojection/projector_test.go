@@ -585,106 +585,86 @@ func TestProjectGitHubAuditOmitsAtWhenOccurredAtMissing(t *testing.T) {
 	}
 }
 
-// The audit log API stamps actor_is_bot/actor_is_agent on every event whose
-// actor is a GitHub App identity or an integration agent. Downstream graph
-// rules (e.g. identity-github-active-without-okta-link) use these flags to
-// suppress automation actors without resorting to a hardcoded vendor
-// allowlist. The projector must forward both flags onto the github.user
-// node attrs, alongside the numeric actor_id / org_id GitHub uses to detect
-// the org-as-actor pattern.
-func TestProjectGitHubAuditStampsActorClassificationOnGithubUser(t *testing.T) {
-	state := &projectionRecorder{}
-	graph := &projectionRecorder{}
-	_, err := New(state, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
-		Id:         "github-audit-actor-flags",
-		TenantId:   "writer",
-		SourceId:   "github",
-		Kind:       "github.audit",
-		OccurredAt: timestamppb.New(time.Date(2025, time.March, 4, 10, 30, 0, 0, time.UTC)),
-		Attributes: map[string]string{
-			"actor":          "dependabot[bot]",
-			"actor_id":       "49699333",
-			"actor_is_bot":   "true",
-			"actor_is_agent": "false",
-			"action":         "repository_vulnerability_alert.create",
-			"org":            "writer",
-			"org_id":         "8090724",
-			"repo":           "writer/cerebro",
-			"resource_id":    "writer/cerebro",
-			"resource_type":  "repository",
-		},
-	})
-	if err != nil {
-		t.Fatalf("Project() error = %v", err)
-	}
-	actorURN := "urn:cerebro:writer:github_user:dependabot[bot]"
-	entity, ok := graph.entities[actorURN]
-	if !ok {
-		t.Fatalf("github.user entity %q missing in graph: %#v", actorURN, graph.entities)
-	}
-	for key, want := range map[string]string{
-		"actor_id":       "49699333",
-		"actor_is_bot":   "true",
-		"actor_is_agent": "false",
-		"org_id":         "8090724",
-		"login":          "dependabot[bot]",
-	} {
-		if got := entity.Attributes[key]; got != want {
-			t.Fatalf("github.user attributes[%s] = %q, want %q; rule depends on this signal to suppress automation actors", key, got, want)
-		}
-	}
-}
-
-// When an audit event names a TARGET user (`team_member.added`,
-// `org.add_member`, etc.) the projector mints a github.user node for the
-// target with only `{login: <user>}` because the audit event's actor_*
-// fields describe the issuer, not the recipient. For human targets this
-// is correct — converging actor_type via mergeGraphAttributes will happen
-// later when the target themselves act on something. But for structural
-// automation logins (`[bot]`-suffixed GitHub Apps, the synthetic
-// `deploy_key` placeholder) there is no convergence path: those logins
-// either never act (deploy_key activity is routed to github.credential
-// on the actor side) or only surface in target-context audit events. We
-// must therefore stamp `actor_type` defensively on the target-context
-// node so identity rules can short-circuit them on the very first
-// evaluation cycle.
-func TestProjectGitHubAuditStampsActorTypeOnSyntheticTargetUser(t *testing.T) {
+func TestProjectGitHubAuditSkipsAutomationActorsFromIdentityGraph(t *testing.T) {
 	cases := []struct {
-		name             string
-		targetLogin      string
-		wantActorType    string
-		wantSuppressedBy string
+		name  string
+		actor string
+		attrs map[string]string
 	}{
 		{
-			name:             "bot suffix is classified as Bot",
-			targetLogin:      "pullrequest[bot]",
-			wantActorType:    "Bot",
-			wantSuppressedBy: "githubActorTypeClassifiesAutomation(Bot)",
+			name:  "actor_is_bot true",
+			actor: "dependabot[bot]",
+			attrs: map[string]string{"actor_is_bot": "true", "actor_type": "Bot"},
 		},
 		{
-			name:             "uppercase Bot suffix is classified as Bot",
-			targetLogin:      "Renovate[Bot]",
-			wantActorType:    "Bot",
-			wantSuppressedBy: "githubActorTypeClassifiesAutomation(Bot)",
+			name:  "bot suffix defense in depth",
+			actor: "coderabbitai[bot]",
+			attrs: map[string]string{"actor_is_bot": "false"},
 		},
 		{
-			name:             "deploy_key is classified as Unresolved",
-			targetLogin:      "deploy_key",
-			wantActorType:    "Unresolved",
-			wantSuppressedBy: "githubActorTypeClassifiesAutomation(Unresolved)",
+			name:  "actor_type bot",
+			actor: "renovate",
+			attrs: map[string]string{"actor_type": "Bot"},
 		},
 		{
-			name:             "deploy-key is classified as Unresolved",
-			targetLogin:      "deploy-key",
-			wantActorType:    "Unresolved",
-			wantSuppressedBy: "githubActorTypeClassifiesAutomation(Unresolved)",
+			name:  "actor_is_agent true",
+			actor: "fine-grained-token-agent",
+			attrs: map[string]string{"actor_is_agent": "true"},
+		},
+		{
+			name:  "unresolved non public key",
+			actor: "pullrequest[bot]",
+			attrs: map[string]string{"actor_type": "Unresolved"},
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			attrs := map[string]string{
+				"actor":         tc.actor,
+				"action":        "repository_vulnerability_alert.create",
+				"org":           "writer",
+				"org_id":        "8090724",
+				"repo":          "writer/cerebro",
+				"resource_id":   "writer/cerebro",
+				"resource_type": "repository",
+			}
+			for key, value := range tc.attrs {
+				attrs[key] = value
+			}
 			graph := &projectionRecorder{}
 			_, err := New(nil, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
-				Id:         "github-audit-target-" + tc.targetLogin,
+				Id:         "github-audit-automation-" + tc.actor,
+				TenantId:   "writer",
+				SourceId:   "github",
+				Kind:       "github.audit",
+				OccurredAt: timestamppb.New(time.Date(2025, time.March, 4, 10, 30, 0, 0, time.UTC)),
+				Attributes: attrs,
+			})
+			if err != nil {
+				t.Fatalf("Project() error = %v", err)
+			}
+			actorURN := "urn:cerebro:writer:github_user:" + tc.actor
+			if _, ok := graph.entities[actorURN]; ok {
+				t.Fatalf("automation actor %q should not be projected as github.user: %#v", actorURN, graph.entities[actorURN])
+			}
+			if _, ok := graph.links[actorURN+"|"+relationActedOn+"|urn:cerebro:writer:github_repo:writer/cerebro"]; ok {
+				t.Fatalf("automation actor %q should not emit acted_on repo links", actorURN)
+			}
+			for key := range graph.links {
+				if strings.HasPrefix(key, actorURN+"|") {
+					t.Fatalf("automation actor %q emitted identity graph link %q", actorURN, key)
+				}
+			}
+		})
+	}
+}
+
+func TestProjectGitHubAuditSkipsSyntheticTargetUsersFromIdentityGraph(t *testing.T) {
+	for _, targetLogin := range []string{"pullrequest[bot]", "Renovate[Bot]", "deploy_key", "deploy-key"} {
+		t.Run(targetLogin, func(t *testing.T) {
+			graph := &projectionRecorder{}
+			_, err := New(nil, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
+				Id:         "github-audit-target-" + targetLogin,
 				TenantId:   "writer",
 				SourceId:   "github",
 				Kind:       "github.audit",
@@ -696,32 +676,29 @@ func TestProjectGitHubAuditStampsActorTypeOnSyntheticTargetUser(t *testing.T) {
 					"repo":          "writer/cerebro",
 					"resource_id":   "writer/cerebro",
 					"resource_type": "repository",
-					"user":          tc.targetLogin,
+					"user":          targetLogin,
 				},
 			})
 			if err != nil {
 				t.Fatalf("Project() error = %v", err)
 			}
-			targetURN := "urn:cerebro:writer:github_user:" + tc.targetLogin
-			entity, ok := graph.entities[targetURN]
-			if !ok {
-				t.Fatalf("github.user target entity %q missing in graph: %#v", targetURN, graph.entities)
+			targetURN := "urn:cerebro:writer:github_user:" + targetLogin
+			if _, ok := graph.entities[targetURN]; ok {
+				t.Fatalf("synthetic target %q should not be projected as github.user", targetURN)
 			}
-			if got := entity.Attributes["actor_type"]; got != tc.wantActorType {
-				t.Fatalf("target github.user attributes[actor_type] = %q, want %q so %s short-circuits the identity rule", got, tc.wantActorType, tc.wantSuppressedBy)
-			}
-			if got, want := entity.Attributes["login"], tc.targetLogin; got != want {
-				t.Fatalf("target github.user attributes[login] = %q, want %q (preserved)", got, want)
+			for key := range graph.links {
+				if strings.HasPrefix(key, targetURN+"|") {
+					t.Fatalf("synthetic target %q emitted identity graph link %q", targetURN, key)
+				}
 			}
 		})
 	}
 }
 
-// Plain human-shaped target logins must NOT receive a synthetic actor_type
-// stamp from the projector. They legitimately have no actor info in
-// target-context events, and will converge via mergeGraphAttributes the
-// next time they themselves act. Stamping a non-Bot value here would
-// short-circuit the identity rule against real shadow accounts.
+// Plain human-shaped target logins are still GitHub identities and must keep
+// projecting into the identity graph. Target-context events legitimately have
+// no actor_type because the audit event's actor_* fields describe the issuer,
+// not the recipient.
 func TestProjectGitHubAuditDoesNotStampActorTypeOnHumanTargetUser(t *testing.T) {
 	graph := &projectionRecorder{}
 	_, err := New(nil, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
