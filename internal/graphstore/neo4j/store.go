@@ -1130,10 +1130,40 @@ func mergeGraphAttributes(existing map[string]string, incoming map[string]string
 	for key, value := range existing {
 		merged[key] = value
 	}
+	incomingIsOlderObservation := graphIncomingObservationIsOlder(existing, incoming)
 	for key, value := range incoming {
+		if incomingIsOlderObservation && graphAttributeCoupledToObservationTime(key) {
+			continue
+		}
 		merged[key] = mergeAttributeValue(key, merged[key], value)
 	}
 	return merged
+}
+
+func graphIncomingObservationIsOlder(existing map[string]string, incoming map[string]string) bool {
+	existingAt := strings.TrimSpace(existing["at"])
+	incomingAt := strings.TrimSpace(incoming["at"])
+	if existingAt == "" {
+		return false
+	}
+	if incomingAt == "" {
+		return true
+	}
+	existingT, errExisting := time.Parse(time.RFC3339, existingAt)
+	incomingT, errIncoming := time.Parse(time.RFC3339, incomingAt)
+	if errExisting != nil || errIncoming != nil {
+		return false
+	}
+	return incomingT.Before(existingT)
+}
+
+func graphAttributeCoupledToObservationTime(key string) bool {
+	switch key {
+	case "action", "event_id", "programmatic_access_type", "source_event_id", "source_runtime_id", "transport_protocol_name":
+		return true
+	default:
+		return false
+	}
 }
 
 // mergeAttributeValue lets specific attribute keys override the default
