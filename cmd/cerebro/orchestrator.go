@@ -550,7 +550,7 @@ func runOrchestratorPhase[R any](runtimeCtx context.Context, name string, iterat
 	if err != nil {
 		status = "failed"
 		endAttrs = withTelemetryField(endAttrs, "error", err.Error())
-		if errors.Is(err, context.DeadlineExceeded) {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(phaseCtx.Err(), context.DeadlineExceeded) {
 			endAttrs = withTelemetryField(endAttrs, "timeout_exceeded", true)
 		}
 	}
