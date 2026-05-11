@@ -88,6 +88,7 @@ var (
 		grcOverlayAccessEdgeRelationCanAdmin,
 		grcOverlayAccessEdgeRelationCanAssume,
 		grcOverlayAccessEdgeRelationCanImpersonate,
+		grcOverlayAccessEdgeRelationCanPerform,
 	}
 )
 
@@ -1100,9 +1101,9 @@ func grcOverlayIdentityRuntime(runtime *cerebrov1.SourceRuntime) bool {
 	case "aws":
 		return family == "iam_user" || family == grcOverlayRuntimeFamilyIAMRoleAssignment || family == grcOverlayRuntimeFamilyIAMRoleTrust || family == grcOverlayRuntimeFamilyCloudTrail || family == grcOverlayRuntimeFamilyEffectivePermission
 	case "gcp":
-		return family == grcOverlayRuntimeFamilyIAMRoleAssignment || family == grcOverlayRuntimeFamilyAudit || family == grcOverlayRuntimeFamilyServiceImpersonation
+		return family == grcOverlayRuntimeFamilyIAMRoleAssignment || family == grcOverlayRuntimeFamilyAudit || family == grcOverlayRuntimeFamilyServiceImpersonation || family == grcOverlayRuntimeFamilyEffectivePermission
 	case "azure":
-		return family == grcOverlayRuntimeFamilyUser || family == grcOverlayRuntimeFamilyDirectoryRoleAssign || family == grcOverlayRuntimeFamilyAppRoleAssignment || family == grcOverlayRuntimeFamilyActivityLog || family == grcOverlayRuntimeFamilyDirectoryAudit || family == grcOverlayRuntimeFamilyIAMRoleAssignment
+		return family == grcOverlayRuntimeFamilyUser || family == grcOverlayRuntimeFamilyDirectoryRoleAssign || family == grcOverlayRuntimeFamilyAppRoleAssignment || family == grcOverlayRuntimeFamilyActivityLog || family == grcOverlayRuntimeFamilyDirectoryAudit || family == grcOverlayRuntimeFamilyIAMRoleAssignment || family == grcOverlayRuntimeFamilyEffectivePermission
 	default:
 		return false
 	}

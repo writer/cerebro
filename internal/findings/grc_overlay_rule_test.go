@@ -46,8 +46,11 @@ func TestGRCOverlayIdentityRulesSupportRelevantRuntimes(t *testing.T) {
 		"okta user":                   {withFamily("okta", "user"), true},
 		"google role assignment":      {withFamily("google_workspace", "role_assignment"), true},
 		"aws iam role assignment":     {withFamily("aws", "iam_role_assignment"), true},
+		"aws effective permission":    {withFamily("aws", "effective_permission"), true},
 		"gcp service impersonation":   {withFamily("gcp", "service_account_impersonation"), true},
+		"gcp effective permission":    {withFamily("gcp", "effective_permission"), true},
 		"azure directory role":        {withFamily("azure", "directory_role_assignment"), true},
+		"azure effective permission":  {withFamily("azure", "effective_permission"), true},
 		"grc vendor unrelated":        {withFamily("grc", "vendor"), false},
 		"github dependabot unrelated": {withFamily("github", "dependabot_alert"), false},
 		"sentinelone unrelated":       {withFamily("sentinelone", "activity"), false},
@@ -131,6 +134,21 @@ func TestGRCInactiveIdentityActiveAccessRuleSuppressesCurrentAndStaleBridge(t *t
 	if len(findings) != 0 {
 		t.Fatalf("EvaluateRows() returned %d findings, want 0", len(findings))
 	}
+}
+
+func TestGRCPrivilegedAccountMissingPersonRuleQueryIncludesCanPerform(t *testing.T) {
+	rule := newGRCPrivilegedAccountMissingPersonRule().(*grcPrivilegedAccountMissingPersonRule)
+	request := rule.QueryFor(&cerebrov1.SourceRuntime{Id: "writer-aws-effective-permission", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "effective_permission"}})
+	privilegeRelations, ok := request.Params["privilege_relations"].([]string)
+	if !ok {
+		t.Fatalf("privilege_relations = %#v, want []string", request.Params["privilege_relations"])
+	}
+	for _, relation := range privilegeRelations {
+		if relation == grcOverlayAccessEdgeRelationCanPerform {
+			return
+		}
+	}
+	t.Fatalf("privilege_relations = %#v, want can_perform", privilegeRelations)
 }
 
 func TestGRCPrivilegedAccountMissingPersonRuleEvaluateRowsEmitsWithoutFreshBridge(t *testing.T) {
