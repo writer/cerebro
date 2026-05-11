@@ -30,9 +30,13 @@ func TestGitHubActiveWithoutOktaLinkRuleQueryScopesByTenant(t *testing.T) {
 	// edges as evidence of a current link and silently suppress the
 	// finding after a rename. The cypher must OPTIONAL MATCH the
 	// bridge and surface the edge attributes so EvaluateRows can apply
-	// the recency check.
-	if strings.Contains(request.Query, "NOT EXISTS") {
-		t.Fatalf("Query uses NOT EXISTS for bridge check; stale represents_identity edges would mask shadow access. Must OPTIONAL MATCH and check `at` recency in EvaluateRows:\n%s", request.Query)
+	// the recency check. (NOT EXISTS is still used for the
+	// github.org overlap filter on github.user phantoms — that is a
+	// different node-set entirely and is asserted separately below.)
+	for _, line := range strings.Split(request.Query, "\n") {
+		if strings.Contains(line, "represents_identity") && strings.Contains(line, "NOT EXISTS") {
+			t.Fatalf("Query uses NOT EXISTS for the represents_identity bridge; stale upsert-only edges would mask shadow access after a rename. Must OPTIONAL MATCH and check `at` recency in EvaluateRows. Offending line:\n%s\nFull query:\n%s", line, request.Query)
+		}
 	}
 	if !strings.Contains(request.Query, "OPTIONAL MATCH") {
 		t.Fatalf("Query missing OPTIONAL MATCH for the represents_identity bridge:\n%s", request.Query)
@@ -48,6 +52,27 @@ func TestGitHubActiveWithoutOktaLinkRuleQueryScopesByTenant(t *testing.T) {
 	}
 	if !strings.Contains(request.Query, "okta.user") {
 		t.Fatalf("Query missing okta.user entity type predicate in the bridge OPTIONAL MATCH:\n%s", request.Query)
+	}
+	// Phantom `github.user:<org>` nodes minted before the projector
+	// started routing org-self actor events through `github.org`
+	// stay in the graph forever: they carry no `actor_type` on
+	// `attributes_json` (the audit-actor resolver did not run on
+	// actor_id-stamped rows pre-fix) and every new org-self event
+	// re-routes through `github.org` instead of re-stamping the
+	// phantom. The rule must suppress them at the cypher layer or
+	// they would keep producing false positives until graph
+	// cleanup. The label-overlap filter excludes any github.user
+	// whose label matches an existing github.org label in the same
+	// tenant; this is the only signal that survives a stale
+	// `attributes_json` blob.
+	if !strings.Contains(request.Query, "github.org") {
+		t.Fatalf("Query missing github.org overlap filter; phantom github.user:<org> rows would keep producing false positives until manual graph cleanup. Query:\n%s", request.Query)
+	}
+	if !strings.Contains(request.Query, "NOT EXISTS") {
+		t.Fatalf("Query missing `NOT EXISTS { ... github.org ... }` suppression clause; the rule must reject phantom github.user nodes whose label matches a github.org in the same tenant. Query:\n%s", request.Query)
+	}
+	if !strings.Contains(request.Query, "toLower(") {
+		t.Fatalf("Query missing case-insensitive label comparison; GitHub usernames and org slugs round-trip with original casing (e.g. `writer` vs `WriterInternal`), so the overlap predicate must lower-case both sides. Query:\n%s", request.Query)
 	}
 	// Both target and bridge fan-outs MUST be collapsed via collect()
 	// before LIMIT $row_limit clamps the result set. Without the
@@ -1090,6 +1115,183 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsBridgesListPairing(t *testin
 			}
 			if gotN != wantN {
 				t.Fatalf("EvaluateRows() returned %d findings, want %d for %q", gotN, wantN, name)
+			}
+		})
+	}
+}
+
+// Phantom github.user nodes that survived from before audit.go always
+// resolved actors do not carry `actor_type` on their `attributes_json`,
+// but new audit events under the v2.1.14+ projector stamp `actor_type`
+// onto every acted_on edge they merge. A recent edge that classifies
+// the actor as automation (Bot / Organization / Unresolved) is therefore
+// a reliable signal that the user is non-linkable, even when the node's
+// blob has not yet caught up via mergeGraphAttributes. EvaluateRows
+// must honour the edge-side classification or the rule keeps emitting
+// findings for accounts that have already been classified out by the
+// resolver. The test exercises the canonical phantom logins from live
+// data (deploy_key, pullrequest[bot], socket-security[bot], the writer
+// org acting on itself before the org-self routing fix).
+func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsEdgeActorTypeSuppressesPhantom(t *testing.T) {
+	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	now := time.Now().UTC()
+	freshAt := now.Add(-1 * time.Hour)
+	cases := []struct {
+		name        string
+		login       string
+		edgeAttrs   string
+		nodeAttrs   map[string]string
+		wantEmit    bool
+		description string
+	}{
+		{
+			name:      "phantom node stale, fresh edge Bot",
+			login:     "socket-security[bot]",
+			edgeAttrs: `{"action":"git.clone","actor_type":"Bot","at":"` + freshAt.Format(time.RFC3339) + `"}`,
+			nodeAttrs: map[string]string{"login": "socket-security[bot]"},
+			wantEmit:  false,
+		},
+		{
+			name:      "phantom node stale, fresh edge Unresolved",
+			login:     "deploy_key",
+			edgeAttrs: `{"action":"git.clone","actor_type":"Unresolved","at":"` + freshAt.Format(time.RFC3339) + `"}`,
+			nodeAttrs: map[string]string{"login": "deploy_key"},
+			wantEmit:  false,
+		},
+		{
+			name:      "phantom node stale, fresh edge Organization",
+			login:     "writer",
+			edgeAttrs: `{"action":"git.clone","actor_type":"Organization","at":"` + freshAt.Format(time.RFC3339) + `"}`,
+			nodeAttrs: map[string]string{"login": "writer"},
+			wantEmit:  false,
+		},
+		{
+			name:      "phantom node stale, fresh edge lower-case bot",
+			login:     "pullrequest[bot]",
+			edgeAttrs: `{"action":"git.clone","actor_type":"bot","at":"` + freshAt.Format(time.RFC3339) + `"}`,
+			nodeAttrs: map[string]string{"login": "pullrequest[bot]"},
+			wantEmit:  false,
+		},
+		{
+			name:        "real user, fresh edge User must NOT suppress",
+			login:       "samjulien",
+			edgeAttrs:   `{"action":"git.clone","actor_type":"User","at":"` + freshAt.Format(time.RFC3339) + `"}`,
+			nodeAttrs:   map[string]string{"login": "samjulien", "actor_type": "User"},
+			wantEmit:    true,
+			description: "actor_type=User means a real human actor, finding must emit",
+		},
+		{
+			name:        "phantom node stale, edge actor_type empty must NOT suppress",
+			login:       "alice",
+			edgeAttrs:   `{"action":"git.clone","at":"` + freshAt.Format(time.RFC3339) + `"}`,
+			nodeAttrs:   map[string]string{"login": "alice"},
+			wantEmit:    true,
+			description: "no actor_type classification on either side; rule defaults to surfacing",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			row := githubActiveWithoutOktaRuleRowWithGitHubAttrs(
+				tc.edgeAttrs,
+				"urn:cerebro:writer:github.user:"+tc.login,
+				tc.login,
+				"urn:cerebro:writer:github_repo:writer/cerebro",
+				tc.nodeAttrs,
+			)
+			findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+			if err != nil {
+				t.Fatalf("EvaluateRows() error = %v", err)
+			}
+			gotN := len(findings)
+			wantN := 0
+			if tc.wantEmit {
+				wantN = 1
+			}
+			if gotN != wantN {
+				t.Fatalf("EvaluateRows() returned %d findings, want %d for %s (%s)", gotN, wantN, tc.name, tc.description)
+			}
+		})
+	}
+}
+
+// Edge-side automation classifications must respect the recency window.
+// A stale edge with actor_type=Bot from years ago is not evidence that
+// the user is currently automation — the audit log API could have
+// re-classified the login as a human user since then. We only suppress
+// on automation markers that survived the recency cutoff.
+func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsStaleEdgeAutomationDoesNotSuppress(t *testing.T) {
+	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	now := time.Now().UTC()
+	staleAt := now.Add(-90 * 24 * time.Hour)
+	freshAt := now.Add(-1 * time.Hour)
+	row := githubActiveWithoutOktaRuleRowFull(
+		"urn:cerebro:writer:github.user:alice",
+		"alice",
+		[]githubActiveWithoutOktaTestTarget{
+			{
+				urn:                 "urn:cerebro:writer:github_repo:writer/cerebro",
+				entityType:          "github.repo",
+				label:               "writer/cerebro",
+				actedAttributesJSON: `{"action":"git.clone","actor_type":"Bot","at":"` + staleAt.Format(time.RFC3339) + `"}`,
+			},
+			{
+				urn:                 "urn:cerebro:writer:github_repo:writer/palmyra",
+				entityType:          "github.repo",
+				label:               "writer/palmyra",
+				actedAttributesJSON: `{"action":"git.clone","at":"` + freshAt.Format(time.RFC3339) + `"}`,
+			},
+		},
+		nil,
+	)
+	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("EvaluateRows() returned %d findings, want 1; stale Bot edge must NOT suppress when a fresh non-bot edge exists for the same user", len(findings))
+	}
+	finding := findings[0]
+	if got, want := finding.Attributes["target_count"], "1"; got != want {
+		t.Fatalf("target_count = %q, want %q (only the fresh non-bot edge should remain)", got, want)
+	}
+}
+
+// githubEdgeActorTypeIsAutomation parses the acted_on edge's
+// `attributes_json` and reports whether its `actor_type` field classifies
+// the actor as automation. The helper is shared with the node-side check
+// via githubActorTypeClassifiesAutomation; this table pins:
+//
+//   - the canonical Bot/Organization/Unresolved classifications suppress
+//   - case variations are honoured
+//   - User and other types do NOT suppress
+//   - empty, malformed, or non-actor_type JSON falls open
+func TestGitHubEdgeActorTypeIsAutomation(t *testing.T) {
+	cases := map[string]struct {
+		attributesJSON string
+		want           bool
+	}{
+		"edge actor_type Bot":              {`{"actor_type":"Bot"}`, true},
+		"edge actor_type bot lowercase":    {`{"actor_type":"bot"}`, true},
+		"edge actor_type Organization":     {`{"actor_type":"Organization"}`, true},
+		"edge actor_type org lower":        {`{"actor_type":"organization"}`, true},
+		"edge actor_type Unresolved":       {`{"actor_type":"Unresolved"}`, true},
+		"edge actor_type unresolved lower": {`{"actor_type":"unresolved"}`, true},
+		"edge actor_type whitespace bot":   {`{"actor_type":"  Bot  "}`, true},
+		"edge actor_type User":             {`{"actor_type":"User"}`, false},
+		"edge actor_type empty":            {`{"actor_type":""}`, false},
+		"edge no actor_type":               {`{"action":"git.clone"}`, false},
+		"empty JSON object":                {`{}`, false},
+		"empty string":                     {``, false},
+		"whitespace string":                {`   `, false},
+		"malformed JSON":                   {`{not valid`, false},
+		"non-object JSON":                  {`"string"`, false},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := githubEdgeActorTypeIsAutomation(tc.attributesJSON); got != tc.want {
+				t.Fatalf("githubEdgeActorTypeIsAutomation(%q) = %v, want %v", tc.attributesJSON, got, tc.want)
 			}
 		})
 	}
