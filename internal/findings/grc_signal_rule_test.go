@@ -42,6 +42,40 @@ func TestGRCControlTestNeedsAttentionRule(t *testing.T) {
 	}
 }
 
+func TestGRCControlTestNeedsAttentionRuleFingerprintSeparatesTenants(t *testing.T) {
+	rule := newGRCControlTestNeedsAttentionRule()
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-grc", SourceId: "grc"}
+	eventForTenant := func(tenantID string) *cerebrov1.EventEnvelope {
+		return &cerebrov1.EventEnvelope{
+			Id:       "grc-vanta-control_test-ai-training",
+			TenantId: tenantID,
+			SourceId: "grc",
+			Kind:     "grc.control_test",
+			Attributes: map[string]string{
+				"provider": "vanta",
+				"test_id":  "ai-risk-security-training-records",
+				"name":     "AI risk security awareness training selected",
+				"status":   "NEEDS_ATTENTION",
+			},
+		}
+	}
+
+	first, err := rule.Evaluate(context.Background(), runtime, eventForTenant("writer"))
+	if err != nil {
+		t.Fatalf("Evaluate(first) error = %v", err)
+	}
+	second, err := rule.Evaluate(context.Background(), runtime, eventForTenant("acme"))
+	if err != nil {
+		t.Fatalf("Evaluate(second) error = %v", err)
+	}
+	if len(first) != 1 || len(second) != 1 {
+		t.Fatalf("len(first), len(second) = %d, %d; want 1, 1", len(first), len(second))
+	}
+	if first[0].Fingerprint == second[0].Fingerprint {
+		t.Fatalf("fingerprint collapsed same GRC test across tenants: %q", first[0].Fingerprint)
+	}
+}
+
 func TestGRCVulnerabilitySLAOverdueRule(t *testing.T) {
 	rule := newGRCVulnerabilitySLAOverdueRule()
 	runtime := &cerebrov1.SourceRuntime{Id: "writer-grc", SourceId: "grc"}

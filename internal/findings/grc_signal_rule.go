@@ -137,11 +137,12 @@ func buildGRCFinding(ctx context.Context, runtime *cerebrov1.SourceRuntime, even
 		observedAt = timestamp.AsTime().UTC()
 	}
 	policyID := firstNonEmpty(strings.TrimSpace(attrs[policyKey]), projectedContext.PrimaryResourceURN)
-	fingerprint := hashFindingFingerprint(grcFingerprintParts(definition, attrs, policyID)...)
+	tenantID := strings.TrimSpace(event.GetTenantId())
+	fingerprint := hashFindingFingerprint(grcFingerprintParts(definition, tenantID, attrs, policyID)...)
 	return &ports.FindingRecord{
 		ID:              fingerprint,
 		Fingerprint:     fingerprint,
-		TenantID:        strings.TrimSpace(event.GetTenantId()),
+		TenantID:        tenantID,
 		RuntimeID:       strings.TrimSpace(runtime.GetId()),
 		RuleID:          definition.ID,
 		Title:           title,
@@ -176,8 +177,8 @@ func grcFindingProjectionOptions(event *cerebrov1.EventEnvelope) findingProjecti
 	return options
 }
 
-func grcFingerprintParts(definition RuleDefinition, attrs map[string]string, fallbackPolicyID string) []string {
-	parts := []string{definition.ID}
+func grcFingerprintParts(definition RuleDefinition, tenantID string, attrs map[string]string, fallbackPolicyID string) []string {
+	parts := []string{definition.ID, strings.TrimSpace(tenantID)}
 	if len(definition.FingerprintFields) == 0 {
 		return append(parts, attrs["provider"], fallbackPolicyID)
 	}
