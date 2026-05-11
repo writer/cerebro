@@ -183,8 +183,31 @@ func (r *githubActiveWithoutOktaLinkRule) QueryFor(runtime *cerebrov1.SourceRunt
 		// the at-attribute parser lives in one place with unit-test
 		// coverage (the attributes_json values are opaque on Neo4j
 		// pre-5.x without apoc).
+		//
+		// The leading `WHERE NOT EXISTS { ... github.org ... }` clause
+		// suppresses pre-fix phantom `github.user:<org>` nodes that
+		// were minted before the projector started routing
+		// `actor_type=Organization` / `actor_id == org_id` events
+		// through `github.org`. Those phantoms carry no `actor_type`
+		// on their `attributes_json` (the audit-actor resolver did
+		// not run on actor_id-stamped rows on the pre-fix code path)
+		// and would never re-stamp after the projector fix because
+		// every new org-self event now lands on the `github.org` node
+		// instead. Filtering by label-overlap with the tenant's
+		// `github.org` set excludes them at the cypher layer so they
+		// cannot reach EvaluateRows. The match is case-insensitive
+		// to defend against the GitHub username/org-slug case-folding
+		// rule (`writer` vs `Writer` vs `WriterInternal` all surface
+		// in audit logs in their original casing). We keep the
+		// node-side `actor_type=Organization` branch in
+		// `githubActorIsAutomation` as defense in depth in case a
+		// future projector change ever re-stamps the phantom node.
 		Query: `MATCH (g:Entity {entity_type: 'github.user', tenant_id: $tenant_id})
-      -[acted:RELATION {relation: 'acted_on'}]->(target:Entity)
+WHERE NOT EXISTS {
+  MATCH (org:Entity {entity_type: 'github.org', tenant_id: $tenant_id})
+  WHERE toLower(coalesce(org.label, '')) = toLower(coalesce(g.label, ''))
+}
+MATCH (g)-[acted:RELATION {relation: 'acted_on'}]->(target:Entity)
 WITH g, collect(DISTINCT {
        urn: target.urn,
        entity_type: coalesce(target.entity_type, ''),
@@ -252,6 +275,27 @@ func (r *githubActiveWithoutOktaLinkRule) EvaluateRows(_ context.Context, runtim
 		githubUserLabel := cypherRowString(row, "github_user_label")
 		githubAttributesJSON := cypherRowString(row, "github_attributes_json")
 		if githubActorIsAutomation(githubAttributesJSON) {
+			continue
+		}
+		// Defense in depth for phantom github.user nodes whose
+		// `attributes_json` was projected before audit.go always
+		// resolved the actor (so the node carries no `actor_type`),
+		// but whose `acted_on` edges have since been re-stamped by
+		// the v2.1.14+ projector. The projector writes `actor_type`
+		// onto every `acted_on` edge it merges, so a recent
+		// edge-side automation classification is a reliable signal
+		// that the user is non-linkable even when the node-side
+		// blob has not yet caught up (mergeGraphAttributes is
+		// latest-wins per-key, so the node IS supposed to converge
+		// on the same value — but a single early evaluation cycle
+		// after a fresh audit ingest can run before the per-key
+		// merge has rotated the node blob, especially when the
+		// graph rule eval immediately follows source ingest in the
+		// same orchestrator iteration). We keep this check after
+		// the node-level check so that the cheaper, single-blob
+		// classification still short-circuits before we touch the
+		// per-target list.
+		if githubRecentEdgeMarksAutomation(cypherRowList(row, "targets"), now, identityGitHubActiveWithoutOktaRecencyWindow) {
 			continue
 		}
 		// The cypher emits one row per github user; rows for the same
@@ -436,11 +480,62 @@ func githubActorIsAutomation(attributesJSON string) bool {
 	if strings.EqualFold(strings.TrimSpace(attrs["actor_is_agent"]), "true") {
 		return true
 	}
-	switch strings.ToLower(strings.TrimSpace(attrs["actor_type"])) {
+	return githubActorTypeClassifiesAutomation(attrs["actor_type"])
+}
+
+// githubActorTypeClassifiesAutomation centralises the actor_type → automation
+// mapping so the node-side (`attributes_json` on github.user) and the
+// edge-side (`attributes_json` on acted_on) checks agree on the same set
+// of non-linkable types: Bot (GitHub App), Organization (org acting on
+// itself — stale phantom github.user pre-fix path), and Unresolved (GitHub
+// returned 404 for /users/{login}, e.g. retired GitHub Apps or synthetic
+// placeholder logins like deploy_key). The compare is case-insensitive to
+// defend against future API casing changes.
+func githubActorTypeClassifiesAutomation(actorType string) bool {
+	switch strings.ToLower(strings.TrimSpace(actorType)) {
 	case "bot", "organization", "unresolved":
 		return true
 	}
 	return false
+}
+
+// githubRecentEdgeMarksAutomation returns true when any acted_on edge
+// within the recency window classifies its actor as automation. The
+// projector stamps `actor_type` onto every acted_on edge it merges, so a
+// recent edge with `actor_type=Bot/Organization/Unresolved` is a reliable
+// signal that the user is non-linkable even when the github.user node's
+// `attributes_json` has not yet caught up with the per-key merge.
+func githubRecentEdgeMarksAutomation(targets []any, now time.Time, window time.Duration) bool {
+	for _, target := range targets {
+		attrs := cypherListMapString(target, "acted_attributes_json")
+		if !edgeIsRecent(attrs, now, window) {
+			continue
+		}
+		if githubEdgeActorTypeIsAutomation(attrs) {
+			return true
+		}
+	}
+	return false
+}
+
+// githubEdgeActorTypeIsAutomation parses the acted_on edge's
+// `attributes_json` and reports whether its `actor_type` field classifies
+// the actor as automation. The edge schema does not currently carry
+// `actor_is_bot` or `actor_is_agent` (those are stamped only on the
+// github.user node), so this check focuses on the resolver-stamped
+// `actor_type` field exclusively. Returns false for malformed / empty
+// JSON: the rule defaults to surfacing for review rather than silently
+// suppressing a real shadow account whose edge blob is corrupt.
+func githubEdgeActorTypeIsAutomation(attributesJSON string) bool {
+	trimmed := strings.TrimSpace(attributesJSON)
+	if trimmed == "" {
+		return false
+	}
+	var attrs map[string]string
+	if err := json.Unmarshal([]byte(trimmed), &attrs); err != nil {
+		return false
+	}
+	return githubActorTypeClassifiesAutomation(attrs["actor_type"])
 }
 
 func githubActedOnIsCurrentAccessEvidence(attributesJSON string) bool {
