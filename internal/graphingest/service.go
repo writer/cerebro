@@ -500,10 +500,61 @@ func mergeStringMap(dst map[string]string, src map[string]string) map[string]str
 	if dst == nil {
 		dst = make(map[string]string, len(src))
 	}
+	incomingIsOlderObservation := projectedIncomingObservationIsOlder(dst, src)
 	for key, value := range src {
-		dst[key] = value
+		if incomingIsOlderObservation && projectedAttributeCoupledToObservationTime(key) {
+			continue
+		}
+		dst[key] = mergeProjectedAttributeValue(key, dst[key], value)
 	}
 	return dst
+}
+
+func projectedIncomingObservationIsOlder(existing map[string]string, incoming map[string]string) bool {
+	existingAt := strings.TrimSpace(existing["at"])
+	incomingAt := strings.TrimSpace(incoming["at"])
+	if existingAt == "" {
+		return false
+	}
+	if incomingAt == "" {
+		return true
+	}
+	existingT, errExisting := time.Parse(time.RFC3339, existingAt)
+	incomingT, errIncoming := time.Parse(time.RFC3339, incomingAt)
+	if errExisting != nil || errIncoming != nil {
+		return false
+	}
+	return incomingT.Before(existingT)
+}
+
+func projectedAttributeCoupledToObservationTime(key string) bool {
+	switch key {
+	case "action", "event_id", "programmatic_access_type", "source_event_id", "source_runtime_id", "transport_protocol_name":
+		return true
+	default:
+		return false
+	}
+}
+
+func mergeProjectedAttributeValue(key string, existing string, incoming string) string {
+	if key != "at" {
+		return incoming
+	}
+	if strings.TrimSpace(existing) == "" {
+		return incoming
+	}
+	if strings.TrimSpace(incoming) == "" {
+		return existing
+	}
+	existingT, errExisting := time.Parse(time.RFC3339, existing)
+	incomingT, errIncoming := time.Parse(time.RFC3339, incoming)
+	if errExisting != nil || errIncoming != nil {
+		return incoming
+	}
+	if incomingT.Before(existingT) {
+		return existing
+	}
+	return incoming
 }
 
 func cloneProjectedEntity(entity *ports.ProjectedEntity) *ports.ProjectedEntity {

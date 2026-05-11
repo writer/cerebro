@@ -201,6 +201,81 @@ func TestProjectResponseCoalescedUpsertsUniqueRecords(t *testing.T) {
 	}
 }
 
+func TestProjectResponseCoalescedPreservesNewestObservationAttributes(t *testing.T) {
+	store := &recordingProjectionGraphStore{}
+	service := &Service{graphStore: store}
+	projector := recordProjectorFunc(func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		at := "2026-05-11T10:00:00Z"
+		if event.GetId() == "older-event" {
+			at = "2026-05-10T10:00:00Z"
+		}
+		return []*ports.ProjectedEntity{{
+				URN:        "urn:cerebro:writer:github_user:alice",
+				TenantID:   event.GetTenantId(),
+				SourceID:   event.GetSourceId(),
+				RuntimeID:  event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
+				EntityType: "github.user",
+				Label:      "alice",
+				Attributes: map[string]string{
+					"at":       at,
+					"event_id": event.GetId(),
+					"login":    event.GetId(),
+				},
+			}},
+			[]*ports.ProjectedLink{{
+				TenantID:  event.GetTenantId(),
+				SourceID:  event.GetSourceId(),
+				RuntimeID: event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
+				FromURN:   "urn:cerebro:writer:github_user:alice",
+				Relation:  "acted_on",
+				ToURN:     "urn:cerebro:writer:github_repo:writer/cerebro",
+				Attributes: map[string]string{
+					"action":   "git.clone",
+					"at":       at,
+					"event_id": event.GetId(),
+					"target":   event.GetId(),
+				},
+			}}, nil
+	})
+	_, err := service.projectResponseCoalesced(context.Background(), sourceRequest{
+		SourceID:  "github",
+		RuntimeID: "writer-github-audit",
+		TenantID:  "writer",
+	}, &cerebrov1.ReadSourceResponse{Events: []*cerebrov1.EventEnvelope{
+		{Id: "newer-event", SourceId: "github"},
+		{Id: "older-event", SourceId: "github"},
+	}}, projector)
+	if err != nil {
+		t.Fatalf("projectResponseCoalesced() error = %v", err)
+	}
+	entity := store.entities["urn:cerebro:writer:github_user:alice"]
+	if entity == nil {
+		t.Fatal("coalesced github.user entity missing")
+	}
+	if got := entity.Attributes["at"]; got != "2026-05-11T10:00:00Z" {
+		t.Fatalf("coalesced entity at = %q, want newest timestamp", got)
+	}
+	if got := entity.Attributes["event_id"]; got != "newer-event" {
+		t.Fatalf("coalesced entity event_id = %q, want newer-event coupled to newest observation", got)
+	}
+	if got := entity.Attributes["login"]; got != "older-event" {
+		t.Fatalf("coalesced entity non-observation attribute login = %q, want older-event latest write", got)
+	}
+	link := store.links["urn:cerebro:writer:github_user:alice|acted_on|urn:cerebro:writer:github_repo:writer/cerebro"]
+	if link == nil {
+		t.Fatal("coalesced acted_on link missing")
+	}
+	if got := link.Attributes["at"]; got != "2026-05-11T10:00:00Z" {
+		t.Fatalf("coalesced link at = %q, want newest timestamp", got)
+	}
+	if got := link.Attributes["event_id"]; got != "newer-event" {
+		t.Fatalf("coalesced link event_id = %q, want newer-event coupled to newest observation", got)
+	}
+	if got := link.Attributes["target"]; got != "older-event" {
+		t.Fatalf("coalesced link non-observation attribute target = %q, want older-event latest write", got)
+	}
+}
+
 func TestHealthFailedCountDoesNotDependOnPagingLimit(t *testing.T) {
 	store := &stubRunStore{
 		runs: []graphstore.IngestRun{

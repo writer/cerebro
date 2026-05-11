@@ -76,7 +76,6 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 	if err != nil {
 		return ports.ProjectionResult{}, err
 	}
-	stampProjectionRuntime(event, entities, links)
 	for _, entity := range entities {
 		if s.state != nil {
 			if err := s.state.UpsertProjectedEntity(ctx, entity); err != nil {
