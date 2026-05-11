@@ -93,6 +93,26 @@ func TestGRCInactiveIdentityActiveAccessRuleEvaluateRowsEmits(t *testing.T) {
 	}
 }
 
+func TestGRCInactiveIdentityActiveAccessRuleTreatsInactiveGRCUserBoolean(t *testing.T) {
+	rule := newGRCInactiveIdentityActiveAccessRule().(*grcInactiveIdentityActiveAccessRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-grc-user", SourceId: "grc", TenantId: "writer", Config: map[string]string{"family": "user"}}
+	row := grcInactiveAccessRow(map[string]string{
+		"source_system": "vanta",
+		"user_id":       "user-1",
+		"is_active":     "false",
+	}, grcOverlayBridgeAttrs(time.Now().UTC().Add(-time.Hour)), grcOverlayBridgeAttrs(time.Now().UTC().Add(-time.Hour)), []any{
+		grcOverlayAccessMap(grcOverlayAccessEdgeRelationCanAdmin, "urn:cerebro:writer:github_org:writer", "github.org", "writer", "{}"),
+	})
+
+	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("EvaluateRows() returned %d findings, want 1", len(findings))
+	}
+}
+
 func TestGRCInactiveIdentityActiveAccessRuleSuppressesCurrentAndStaleBridge(t *testing.T) {
 	rule := newGRCInactiveIdentityActiveAccessRule().(*grcInactiveIdentityActiveAccessRule)
 	runtime := &cerebrov1.SourceRuntime{Id: "writer-grc-person", SourceId: "grc", TenantId: "writer", Config: map[string]string{"family": "person"}}

@@ -1119,6 +1119,9 @@ func grcOverlayAttributesAreGRC(attrs map[string]string) bool {
 }
 
 func grcOverlayIdentityInactive(attrs map[string]string) bool {
+	if value := strings.ToLower(strings.TrimSpace(attrs["is_active"])); value == "false" || value == "0" || value == "no" {
+		return true
+	}
 	for _, key := range []string{"employment_status", "status", "lifecycle_status", "lifecycle_state", "state"} {
 		value := strings.ToLower(strings.TrimSpace(attrs[key]))
 		if value == "" {
