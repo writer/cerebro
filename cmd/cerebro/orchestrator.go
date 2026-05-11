@@ -28,6 +28,19 @@ const defaultSourceRuntimeLeaseTTL = 30 * time.Minute
 const sourceRuntimeLeaseReleaseTimeout = 5 * time.Second
 const sourceRuntimeLeaseOverscanLimit = 100
 
+// orchestratorPhaseTimeout bounds each post-sync runtime phase
+// (`finding_rules`, `graph_ingest`, `graph_rules`) independently so a
+// single blocked downstream call (e.g. a Neo4j tx waiting on a row lock,
+// or a source.Read() retrying against an exhausted GitHub rate-limit
+// budget) cannot stall the orchestrator iteration indefinitely. The
+// limit is conservative: writer-org runs in production observe ~2.5 min
+// for all three phases combined, so 15 min/step leaves ~4× headroom for
+// slower tenants and concurrent contention while still cutting off
+// pathologically stuck runs well within the lease TTL. On timeout the
+// phase fails fast, the runtime lease releases, and the next iteration
+// retries from a clean context.
+const orchestratorPhaseTimeout = 15 * time.Minute
+
 type orchestratorOptions struct {
 	Filter         ports.SourceRuntimeFilter `json:"filter"`
 	PageLimit      uint32                    `json:"page_limit,omitempty"`
@@ -406,7 +419,22 @@ func runOrchestratorIteration(
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "pages_read", runtimeResult.PagesRead)
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "events_appended", runtimeResult.EventsAppended)
 		}
-		findingResult, err := findingService.EvaluateSourceRuntimeRules(runtimeCtx, findings.EvaluateRulesRequest{RuntimeID: runtime.GetId(), EventLimit: options.EventLimit})
+		// Each post-sync phase runs under its own telemetry span and a
+		// dedicated context timeout. Both are intentional: the span gives
+		// operators a span_end event per phase so a stall shows up as a
+		// missing span_end on the specific phase rather than an opaque
+		// silence between source_runtime.sync.span_end and
+		// orchestrator.runtime.span_end; the timeout lets a single
+		// pathologically blocked downstream (Neo4j row lock contention
+		// across concurrent runtimes writing the same tenant, or a
+		// source.Read() retry storm against an exhausted upstream rate
+		// limit) fail fast so the lease renews and the next iteration
+		// retries from a clean state. The phase contexts are derived
+		// from runtimeCtx (NOT ctx) so they inherit lease-renewal
+		// cancellation while still being independently bounded.
+		findingResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.finding_rules", iteration, runtime, orchestratorPhaseTimeout, func(phaseCtx context.Context) (*findings.EvaluateRulesResult, error) {
+			return findingService.EvaluateSourceRuntimeRules(phaseCtx, findings.EvaluateRulesRequest{RuntimeID: runtime.GetId(), EventLimit: options.EventLimit})
+		})
 		if err != nil {
 			if errors.Is(err, findings.ErrRuleUnavailable) {
 				runtimeResult.FindingRules = "skipped"
@@ -424,7 +452,9 @@ func runOrchestratorIteration(
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "events_evaluated", runtimeResult.EventsEvaluated)
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "finding_evaluations", runtimeResult.FindingEvaluations)
 		}
-		graphResult, err := graphService.RunRuntime(runtimeCtx, graphingest.RuntimeRequest{RuntimeID: runtime.GetId(), PageLimit: options.GraphPageLimit, Trigger: "orchestrator"})
+		graphResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.graph_ingest", iteration, runtime, orchestratorPhaseTimeout, func(phaseCtx context.Context) (*graphingest.RunResult, error) {
+			return graphService.RunRuntime(phaseCtx, graphingest.RuntimeRequest{RuntimeID: runtime.GetId(), PageLimit: options.GraphPageLimit, Trigger: "orchestrator"})
+		})
 		runtimeSpanAttrs = applyGraphIngestCounters(runtimeResult, graphResult, runtimeSpanAttrs)
 		if err != nil {
 			runtimeResult.GraphIngest = "failed"
@@ -439,7 +469,9 @@ func runOrchestratorIteration(
 		// rules are read-only, so deferring them until the next iteration would needlessly delay
 		// detection and stale-finding auto-resolution.
 		if graphResult != nil && graphResult.Ingest != nil {
-			graphRulesResult, err := findingService.EvaluateSourceRuntimeGraphRules(runtimeCtx, findings.EvaluateGraphRulesRequest{RuntimeID: runtime.GetId()})
+			graphRulesResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.graph_rules", iteration, runtime, orchestratorPhaseTimeout, func(phaseCtx context.Context) (*findings.EvaluateGraphRulesResult, error) {
+				return findingService.EvaluateSourceRuntimeGraphRules(phaseCtx, findings.EvaluateGraphRulesRequest{RuntimeID: runtime.GetId()})
+			})
 			runtimeSpanAttrs = applyGraphRuleCounters(runtimeResult, graphRulesResult, runtimeSpanAttrs)
 			if err != nil {
 				if errors.Is(err, findings.ErrGraphRuntimeUnavailable) || errors.Is(err, findings.ErrRuntimeUnavailable) {
@@ -485,6 +517,45 @@ func runOrchestratorIteration(
 	spanAttributes = withTelemetryField(spanAttributes, "runtimes_attempted", len(result.Runtimes))
 	spanAttributes = withTelemetryField(spanAttributes, "runtimes_acquired", acquiredCount)
 	return result, runErr
+}
+
+// runOrchestratorPhase wraps a single post-sync orchestrator step
+// (`finding_rules`, `graph_ingest`, `graph_rules`) with a named telemetry
+// span and a dedicated context timeout. The span surfaces a span_end
+// event per phase — without it, a stall between source_runtime.sync and
+// orchestrator.runtime is opaque: there's no way to tell which step is
+// blocked from logs alone. The timeout decouples per-phase liveness from
+// the runtime-level lease TTL, so a single Neo4j tx waiting on a row
+// lock or a source.Read() retry storm can't park the iteration
+// indefinitely. On context deadline the phase returns
+// context.DeadlineExceeded, which the caller treats like any other
+// failure (lease releases, next iteration retries).
+//
+// The phase context is derived from runtimeCtx so it still receives
+// lease-renewal cancellation. The generic R parameter lets each phase
+// return its own result type without an interface boxing dance.
+func runOrchestratorPhase[R any](runtimeCtx context.Context, name string, iteration uint32, runtime *cerebrov1.SourceRuntime, timeout time.Duration, fn func(context.Context) (R, error)) (R, error) {
+	phaseCtx, cancel := context.WithTimeout(runtimeCtx, timeout)
+	defer cancel()
+	phaseCtx, span := telemetry.Start(phaseCtx, name, telemetry.Attrs(
+		telemetryField("iteration", iteration),
+		telemetryField("runtime_id", runtime.GetId()),
+		telemetryField("source_id", runtime.GetSourceId()),
+		telemetryField("tenant_id", runtime.GetTenantId()),
+		telemetryField("timeout_ms", timeout.Milliseconds()),
+	))
+	result, err := fn(phaseCtx)
+	status := "completed"
+	endAttrs := telemetry.Attrs()
+	if err != nil {
+		status = "failed"
+		endAttrs = withTelemetryField(endAttrs, "error", err.Error())
+		if errors.Is(err, context.DeadlineExceeded) {
+			endAttrs = withTelemetryField(endAttrs, "timeout_exceeded", true)
+		}
+	}
+	telemetry.End(span, status, endAttrs)
+	return result, err
 }
 
 func applyGraphIngestCounters(runtimeResult *orchestratorRuntimeResult, graphResult *graphingest.RunResult, attrs telemetry.Attributes) telemetry.Attributes {
