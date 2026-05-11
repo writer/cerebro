@@ -809,9 +809,9 @@ func timestampKeys(family string) []string {
 	case familyDocument:
 		return []string{"uploadStatusDate"}
 	case familyVendor:
-		return []string{"lastSecurityReviewCompletionDate", "nextSecurityReviewDueDate", "contractRenewalDate"}
+		return []string{"lastSecurityReviewCompletionDate"}
 	case familyVulnerability:
-		return []string{"lastDetectedDate", "sourceDetectedDate", "firstDetectedDate", "remediateByDate"}
+		return []string{"lastDetectedDate", "sourceDetectedDate", "firstDetectedDate"}
 	case familyRiskScenario:
 		return []string{"identificationDate"}
 	case familyPerson:

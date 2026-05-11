@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
@@ -197,6 +198,27 @@ func TestEventFromRecordScopesIDByTenantAndRuntimeConfig(t *testing.T) {
 	}
 	if !strings.Contains(first.Id, "writer") || !strings.Contains(second.Id, "acme") {
 		t.Fatalf("event IDs should include tenant scope, got %q and %q", first.Id, second.Id)
+	}
+}
+
+func TestOccurredAtForIgnoresDeadlineOnlyFields(t *testing.T) {
+	before := time.Now().UTC()
+	vulnerabilityOccurredAt := occurredAtFor(familyVulnerability, map[string]any{
+		"remediateByDate": "2099-01-01T00:00:00Z",
+	})
+	vendorOccurredAt := occurredAtFor(familyVendor, map[string]any{
+		"nextSecurityReviewDueDate": "2099-01-01T00:00:00Z",
+		"contractRenewalDate":       "2099-02-01T00:00:00Z",
+	})
+	after := time.Now().UTC()
+
+	for name, occurredAt := range map[string]time.Time{
+		"vulnerability": vulnerabilityOccurredAt,
+		"vendor":        vendorOccurredAt,
+	} {
+		if occurredAt.Before(before.Add(-time.Second)) || occurredAt.After(after.Add(time.Second)) {
+			t.Fatalf("%s occurredAt = %v, want current sync time in [%v, %v]", name, occurredAt, before, after)
+		}
 	}
 }
 
