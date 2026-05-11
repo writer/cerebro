@@ -218,17 +218,16 @@ func grcRiskScenarioProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 		}),
 	})
 	if owner := firstAttribute(attrs, "owner"); owner != "" {
-		ownerURN := projectionURN(tenantID, "person", provider, "owner", owner)
+		ownerURN := projectionURN(tenantID, "contact", provider, "owner", owner)
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        ownerURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
-			EntityType: "person",
+			EntityType: "contact",
 			Label:      owner,
 			Attributes: map[string]string{"source_system": provider, "owner": owner},
 		})
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), riskURN, ownerURN, relationAssignedTo, map[string]string{"event_id": event.GetId()}))
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), ownerURN, owner, event.GetOccurredAt())
 	}
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil

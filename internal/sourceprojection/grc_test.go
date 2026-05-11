@@ -68,6 +68,36 @@ func TestProjectGRCControlTestSupportsControlReferences(t *testing.T) {
 	assertProjectedLink(t, state, testURN, relationSupports, "urn:cerebro:writer:policy:vanta:control:control-2")
 }
 
+func TestProjectGRCRiskScenarioOwnerDoesNotCreatePersonIdentityBridge(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-risk-risk-1",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.risk_scenario",
+		Attributes: map[string]string{
+			"provider":    "vanta",
+			"risk_id":     "risk-1",
+			"description": "AI vendor risk",
+			"owner":       "alice@writer.com",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	riskURN := "urn:cerebro:writer:claim:vanta:risk_scenario:risk-1"
+	contactURN := "urn:cerebro:writer:contact:vanta:owner:alice@writer.com"
+	personURN := "urn:cerebro:writer:person:vanta:owner:alice@writer.com"
+	assertProjectedLink(t, state, riskURN, relationAssignedTo, contactURN)
+	if _, ok := state.entities[personURN]; ok {
+		t.Fatalf("risk owner projected as GRC person: %#v", state.entities[personURN])
+	}
+	assertProjectedLinkMissing(t, state, contactURN, relationRepresentsIdentity, "urn:cerebro:writer:identity:email:alice@writer.com")
+}
+
 func TestProjectGRCPersonIdentifier(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
