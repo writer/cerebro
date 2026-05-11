@@ -58,6 +58,16 @@ type Service struct {
 	prepareConfig ConfigPreparer
 }
 
+type projectionRecordProjector interface {
+	ProjectRecords(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)
+}
+
+type pageProjectionResult struct {
+	EventsRead        uint32
+	EntitiesProjected uint32
+	LinksProjected    uint32
+}
+
 type RuntimeRequest struct {
 	RuntimeID       string
 	PageLimit       uint32
@@ -342,14 +352,24 @@ func (s *Service) ingestSource(ctx context.Context, request sourceRequest) (*Ing
 			return nil, err
 		}
 		result.PagesRead++
-		for _, event := range response.GetEvents() {
-			projected, err := s.projector.Project(ctx, ingestEvent(event, request.TenantID, request.RuntimeID))
+		if recordProjector, ok := s.projector.(projectionRecordProjector); ok {
+			projected, err := s.projectResponseCoalesced(ctx, request, response, recordProjector)
 			if err != nil {
-				return nil, fmt.Errorf("project source event %q: %w", event.GetId(), err)
+				return nil, err
 			}
-			result.EventsRead++
+			result.EventsRead += projected.EventsRead
 			result.EntitiesProjected += projected.EntitiesProjected
 			result.LinksProjected += projected.LinksProjected
+		} else {
+			for _, event := range response.GetEvents() {
+				projected, err := s.projector.Project(ctx, ingestEvent(event, request.TenantID, request.RuntimeID))
+				if err != nil {
+					return nil, fmt.Errorf("project source event %q: %w", event.GetId(), err)
+				}
+				result.EventsRead++
+				result.EntitiesProjected += projected.EntitiesProjected
+				result.LinksProjected += projected.LinksProjected
+			}
 		}
 		cursor = response.GetNextCursor()
 		if checkpointStore != nil {
@@ -373,6 +393,155 @@ func (s *Service) ingestSource(ctx context.Context, request sourceRequest) (*Ing
 		result.GraphLinksAfter = counts.Relations
 	}
 	return result, nil
+}
+
+func (s *Service) projectResponseCoalesced(ctx context.Context, request sourceRequest, response *cerebrov1.ReadSourceResponse, projector projectionRecordProjector) (pageProjectionResult, error) {
+	graphStore, ok := s.graphStore.(ports.ProjectionGraphStore)
+	if !ok {
+		return pageProjectionResult{}, ErrRuntimeUnavailable
+	}
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	result := pageProjectionResult{}
+	for _, event := range response.GetEvents() {
+		ingested := ingestEvent(event, request.TenantID, request.RuntimeID)
+		projectedEntities, projectedLinks, err := projector.ProjectRecords(ingested)
+		if err != nil {
+			return result, fmt.Errorf("project source event %q: %w", event.GetId(), err)
+		}
+		for _, entity := range projectedEntities {
+			mergeProjectedEntity(entities, entity)
+		}
+		for _, link := range projectedLinks {
+			mergeProjectedLink(links, link)
+		}
+		result.EventsRead++
+	}
+	entityKeys := sortedMapKeys(entities)
+	for _, key := range entityKeys {
+		if err := graphStore.UpsertProjectedEntity(ctx, entities[key]); err != nil {
+			return result, fmt.Errorf("upsert coalesced projected entity %q: %w", key, err)
+		}
+		result.EntitiesProjected++
+	}
+	linkKeys := sortedMapKeys(links)
+	for _, key := range linkKeys {
+		if err := graphStore.UpsertProjectedLink(ctx, links[key]); err != nil {
+			return result, fmt.Errorf("upsert coalesced projected link %q: %w", key, err)
+		}
+		result.LinksProjected++
+	}
+	return result, nil
+}
+
+func mergeProjectedEntity(entities map[string]*ports.ProjectedEntity, entity *ports.ProjectedEntity) {
+	if entity == nil {
+		return
+	}
+	urn := strings.TrimSpace(entity.URN)
+	if urn == "" {
+		return
+	}
+	existing, ok := entities[urn]
+	if !ok {
+		entities[urn] = cloneProjectedEntity(entity)
+		return
+	}
+	if value := strings.TrimSpace(entity.TenantID); value != "" {
+		existing.TenantID = value
+	}
+	if value := strings.TrimSpace(entity.SourceID); value != "" {
+		existing.SourceID = value
+	}
+	if value := strings.TrimSpace(entity.RuntimeID); value != "" {
+		existing.RuntimeID = value
+	}
+	if value := strings.TrimSpace(entity.EntityType); value != "" {
+		existing.EntityType = value
+	}
+	if value := strings.TrimSpace(entity.Label); value != "" {
+		existing.Label = value
+	}
+	existing.Attributes = mergeStringMap(existing.Attributes, entity.Attributes)
+}
+
+func mergeProjectedLink(links map[string]*ports.ProjectedLink, link *ports.ProjectedLink) {
+	if link == nil {
+		return
+	}
+	fromURN := strings.TrimSpace(link.FromURN)
+	relation := strings.TrimSpace(link.Relation)
+	toURN := strings.TrimSpace(link.ToURN)
+	if fromURN == "" || relation == "" || toURN == "" {
+		return
+	}
+	key := fromURN + "|" + relation + "|" + toURN
+	existing, ok := links[key]
+	if !ok {
+		links[key] = cloneProjectedLink(link)
+		return
+	}
+	if value := strings.TrimSpace(link.TenantID); value != "" {
+		existing.TenantID = value
+	}
+	if value := strings.TrimSpace(link.SourceID); value != "" {
+		existing.SourceID = value
+	}
+	if value := strings.TrimSpace(link.RuntimeID); value != "" {
+		existing.RuntimeID = value
+	}
+	existing.Attributes = mergeStringMap(existing.Attributes, link.Attributes)
+}
+
+func mergeStringMap(dst map[string]string, src map[string]string) map[string]string {
+	if len(src) == 0 {
+		return dst
+	}
+	if dst == nil {
+		dst = make(map[string]string, len(src))
+	}
+	for key, value := range src {
+		dst[key] = value
+	}
+	return dst
+}
+
+func cloneProjectedEntity(entity *ports.ProjectedEntity) *ports.ProjectedEntity {
+	if entity == nil {
+		return nil
+	}
+	clone := *entity
+	clone.Attributes = cloneStringMap(entity.Attributes)
+	return &clone
+}
+
+func cloneProjectedLink(link *ports.ProjectedLink) *ports.ProjectedLink {
+	if link == nil {
+		return nil
+	}
+	clone := *link
+	clone.Attributes = cloneStringMap(link.Attributes)
+	return &clone
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if values == nil {
+		return nil
+	}
+	clone := make(map[string]string, len(values))
+	for key, value := range values {
+		clone[key] = value
+	}
+	return clone
+}
+
+func sortedMapKeys[T any](values map[string]T) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func (s *Service) prepareCheckpoint(ctx context.Context, request sourceRequest, result *IngestResult, cursor **cerebrov1.SourceCursor) (CheckpointStore, error) {

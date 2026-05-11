@@ -72,7 +72,7 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 	if s == nil || (s.state == nil && s.graph == nil) {
 		return ports.ProjectionResult{}, nil
 	}
-	entities, links, err := s.registry.Project(event)
+	entities, links, err := s.ProjectRecords(event)
 	if err != nil {
 		return ports.ProjectionResult{}, err
 	}
@@ -105,6 +105,24 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 		EntitiesProjected: uint32(len(entities)),
 		LinksProjected:    uint32(len(links)),
 	}, nil
+}
+
+// ProjectRecords converts one event into normalized projection records without
+// writing them. Graph ingest uses this to coalesce repeated records before
+// touching Neo4j.
+func (s *Service) ProjectRecords(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	if event == nil {
+		return nil, nil, fmt.Errorf("event is required")
+	}
+	if s == nil || s.registry == nil {
+		return nil, nil, nil
+	}
+	entities, links, err := s.registry.Project(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	stampProjectionRuntime(event, entities, links)
+	return entities, links, nil
 }
 
 func stampProjectionRuntime(event *cerebrov1.EventEnvelope, entities []*ports.ProjectedEntity, links []*ports.ProjectedLink) {
