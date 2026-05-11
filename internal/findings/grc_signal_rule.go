@@ -111,9 +111,7 @@ func matchesGRCVendorReviewOverdue(event *cerebrov1.EventEnvelope) bool {
 }
 
 func buildGRCFinding(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope, definition RuleDefinition, title string, summary string, policyKey string, severity string) (*ports.FindingRecord, error) {
-	projectedContext, err := buildFindingProjectionContext(ctx, event, findingProjectionContextOptions{
-		CollectAllEntities: true,
-	})
+	projectedContext, err := buildFindingProjectionContext(ctx, event, grcFindingProjectionOptions(event))
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +137,7 @@ func buildGRCFinding(ctx context.Context, runtime *cerebrov1.SourceRuntime, even
 		observedAt = timestamp.AsTime().UTC()
 	}
 	policyID := firstNonEmpty(strings.TrimSpace(attrs[policyKey]), projectedContext.PrimaryResourceURN)
-	fingerprint := hashFindingFingerprint(definition.ID, attrs["provider"], policyID)
+	fingerprint := hashFindingFingerprint(grcFingerprintParts(definition, attrs, policyID)...)
 	return &ports.FindingRecord{
 		ID:              fingerprint,
 		Fingerprint:     fingerprint,
@@ -160,6 +158,33 @@ func buildGRCFinding(ctx context.Context, runtime *cerebrov1.SourceRuntime, even
 		FirstObservedAt: observedAt,
 		LastObservedAt:  observedAt,
 	}, nil
+}
+
+func grcFindingProjectionOptions(event *cerebrov1.EventEnvelope) findingProjectionContextOptions {
+	options := findingProjectionContextOptions{CollectAllEntities: true}
+	switch strings.TrimSpace(event.GetKind()) {
+	case "grc.control_test":
+		options.PrimaryEntityType = "evidence"
+		options.ResourceFallbacks = []string{event.GetAttributes()["name"], event.GetAttributes()["test_id"]}
+	case "grc.vulnerability":
+		options.PrimaryEntityType = "vulnerability"
+		options.ResourceFallbacks = []string{event.GetAttributes()["name"], event.GetAttributes()["vulnerability_id"]}
+	case "grc.vendor":
+		options.PrimaryEntityType = "vendor"
+		options.ResourceFallbacks = []string{event.GetAttributes()["name"], event.GetAttributes()["vendor_id"]}
+	}
+	return options
+}
+
+func grcFingerprintParts(definition RuleDefinition, attrs map[string]string, fallbackPolicyID string) []string {
+	parts := []string{definition.ID}
+	if len(definition.FingerprintFields) == 0 {
+		return append(parts, attrs["provider"], fallbackPolicyID)
+	}
+	for _, field := range definition.FingerprintFields {
+		parts = append(parts, attrs[strings.TrimSpace(field)])
+	}
+	return parts
 }
 
 func grcControlTestSummary(attrs map[string]string) string {

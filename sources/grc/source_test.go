@@ -157,8 +157,64 @@ func TestReadVantaVulnerabilityNormalizesFields(t *testing.T) {
 	if got := attrs["package"]; got != "pkg:golang/example/module@1.2.3" {
 		t.Fatalf("package = %q, want purl", got)
 	}
+	if got := attrs["package_purl"]; got != "pkg:golang/example/module@1.2.3" {
+		t.Fatalf("package_purl = %q, want purl", got)
+	}
 	if got := attrs["remediate_by_date"]; got != "2026-05-30T00:00:00Z" {
 		t.Fatalf("remediate_by_date = %q, want deadline", got)
+	}
+}
+
+func TestTokenCacheScopesRuntimeSecretsAndBaseURL(t *testing.T) {
+	tokenRequests := map[string]int{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth/token":
+			var payload map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode token request: %v", err)
+			}
+			secret := payload["client_secret"]
+			tokenRequests[secret]++
+			writeJSON(t, w, map[string]any{
+				"access_token": "token-for-" + secret,
+				"expires_in":   3599,
+				"token_type":   "Bearer",
+			})
+		case "/tenant-a/v1/vendors":
+			if got := r.Header.Get("Authorization"); got != "Bearer token-for-secret-a" {
+				t.Fatalf("tenant-a Authorization = %q, want token for secret-a", got)
+			}
+			writePage(t, w, false, "", []map[string]any{{"id": "vendor-a", "name": "Tenant A"}})
+		case "/tenant-b/v1/vendors":
+			if got := r.Header.Get("Authorization"); got != "Bearer token-for-secret-b" {
+				t.Fatalf("tenant-b Authorization = %q, want token for secret-b", got)
+			}
+			writePage(t, w, false, "", []map[string]any{{"id": "vendor-b", "name": "Tenant B"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfgA := tokenCacheTestConfig(server.URL, "/tenant-a", "secret-a")
+	cfgB := tokenCacheTestConfig(server.URL, "/tenant-b", "secret-b")
+	if _, err := source.Read(context.Background(), cfgA, nil); err != nil {
+		t.Fatalf("Read(tenant-a) error = %v", err)
+	}
+	if _, err := source.Read(context.Background(), cfgB, nil); err != nil {
+		t.Fatalf("Read(tenant-b) error = %v", err)
+	}
+	if got := tokenRequests["secret-a"]; got != 1 {
+		t.Fatalf("secret-a token requests = %d, want 1", got)
+	}
+	if got := tokenRequests["secret-b"]; got != 1 {
+		t.Fatalf("secret-b token requests = %d, want 1", got)
 	}
 }
 
@@ -171,6 +227,19 @@ func testConfig(baseURL string, family string) sourcecdk.Config {
 		"per_page":      "1",
 		"provider":      "vanta",
 		"tenant_id":     "writer",
+	})
+}
+
+func tokenCacheTestConfig(baseURL string, basePath string, clientSecret string) sourcecdk.Config {
+	return sourcecdk.NewConfig(map[string]string{
+		"base_url":      baseURL + basePath,
+		"client_id":     testClientID,
+		"client_secret": clientSecret,
+		"family":        familyVendor,
+		"per_page":      "1",
+		"provider":      "vanta",
+		"tenant_id":     "writer",
+		"token_url":     baseURL + "/oauth/token",
 	})
 }
 

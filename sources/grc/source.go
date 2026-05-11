@@ -318,7 +318,7 @@ func (s *Source) list(ctx context.Context, settings settings, path string, curso
 }
 
 func (s *Source) token(ctx context.Context, settings settings) (string, error) {
-	cacheKey := strings.Join([]string{settings.provider, settings.tokenURL, settings.clientID, settings.scope}, "\x00")
+	cacheKey := tokenCacheKey(settings)
 	now := time.Now()
 	s.mu.Lock()
 	if s.tokenKey == cacheKey && s.accessToken != "" && now.Add(tokenRefreshLeeway).Before(s.tokenExpiresAt) {
@@ -572,6 +572,7 @@ func attributesFor(settings settings, family string, record grcRecord) map[strin
 			"integration_id":      "integrationId",
 			"package_identifier":  "packageIdentifier",
 			"package":             "packageIdentifier",
+			"package_purl":        "packageIdentifier",
 			"vulnerability_type":  "vulnerabilityType",
 			"target_id":           "targetId",
 			"first_detected_at":   "firstDetectedDate",
@@ -635,6 +636,19 @@ func attributesFor(settings settings, family string, record grcRecord) map[strin
 	return trimEmpty(attrs)
 }
 
+func tokenCacheKey(settings settings) string {
+	secretHash := sha256.Sum256([]byte(settings.clientSecret))
+	return strings.Join([]string{
+		settings.provider,
+		settings.tenantID,
+		settings.family,
+		settings.baseURL,
+		settings.tokenURL,
+		settings.clientID,
+		settings.scope,
+		hex.EncodeToString(secretHash[:]),
+	}, "\x00")
+}
 func copyFields(attrs map[string]string, values map[string]any, mapping map[string]string) {
 	for target, source := range mapping {
 		if value := fieldString(values, source); value != "" {
