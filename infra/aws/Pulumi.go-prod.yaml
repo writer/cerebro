@@ -2,7 +2,7 @@ config:
   aws:region: us-east-1
   cerebro:environment: go-production
   cerebro:ecrBaseUri: 837279440628.dkr.ecr.us-east-1.amazonaws.com/cerebro
-  cerebro:imageTag: v2.1.26
+  cerebro:imageTag: v2.1.27
   cerebro:useExistingVpc: true
   cerebro:vpcId: vpc-0bec76c1fba4b8ad2
   cerebro:vpcCidr: "10.20.0.0/16"
