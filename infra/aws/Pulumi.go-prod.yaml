@@ -284,7 +284,7 @@ config:
       prefixes:
         - "s1/cloud_funnel/"
   cerebro:neo4jAuraEnabled: true
-  cerebro:neo4jAuraInstanceName: cerebro-graphdb-go-production-writer
+  cerebro:neo4jAuraInstanceName: cerebro-go-prod-writer
   cerebro:neo4jAuraMemory: 8GB
   cerebro:neo4jAuraType: professional-db
   cerebro:neo4jAuraRegion: us-central1
