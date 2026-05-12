@@ -209,6 +209,7 @@ func grcVulnerabilityProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 		return nil, nil, err
 	}
 	attrs := event.GetAttributes()
+	provider := grcProvider(attrs)
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 	vulnerabilityURN := addCanonicalVulnerabilityEntity(entities, tenantID, event.GetSourceId(), attrs)
@@ -219,13 +220,32 @@ func grcVulnerabilityProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 			SourceID:   event.GetSourceId(),
 			EntityType: "vulnerability",
 			Label:      firstAttribute(attrs, "name", "vulnerability_id"),
-			Attributes: map[string]string{"source_system": grcProvider(attrs)},
+			Attributes: map[string]string{"source_system": provider},
 		})
+	}
+	integrationID := firstAttribute(attrs, "integration_id")
+	integrationURN := grcIntegrationURN(tenantID, provider, integrationID)
+	if integrationURN != "" {
+		addEntity(entities, grcIntegrationReferenceEntity(tenantID, event.GetSourceId(), integrationURN, integrationID, provider))
+	}
+	targetID := firstAttribute(attrs, "target_id", "resource_id", "asset_id", "endpoint_id")
+	targetURN := grcTargetURN(tenantID, provider, targetID)
+	if targetURN != "" {
+		addEntity(entities, grcTargetEntity(tenantID, event.GetSourceId(), targetURN, targetID, attrs, provider))
+		if vulnerabilityURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), targetURN, vulnerabilityURN, relationAffectedBy, vulnerabilityEvidenceAttributes(event, attrs)))
+		}
+		if integrationURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), targetURN, integrationURN, relationBelongsTo, grcIntegrationLinkAttributes(event, integrationID)))
+		}
 	}
 	packageURN := vulnerabilityPackageURN(tenantID, attrs, "grc")
 	canonicalPackageURN := addCanonicalPackageEntity(entities, tenantID, event.GetSourceId(), attrs, "grc")
 	if packageURN != "" {
 		addVulnerablePackageEntity(entities, tenantID, event.GetSourceId(), packageURN, attrs, "grc")
+		if targetURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), targetURN, packageURN, relationContains, grcPackageTargetAttributes(event, attrs)))
+		}
 		if vulnerabilityURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), packageURN, vulnerabilityURN, relationAffectedBy, vulnerabilityEvidenceAttributes(event, attrs)))
 		}
@@ -238,6 +258,79 @@ func grcVulnerabilityProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 	}
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
+}
+
+func grcTargetURN(tenantID string, provider string, targetID string) string {
+	return projectionURN(tenantID, "grc_target", provider, targetID)
+}
+
+func grcTargetEntity(tenantID string, sourceID string, urn string, targetID string, attrs map[string]string, provider string) *ports.ProjectedEntity {
+	return &ports.ProjectedEntity{
+		URN:        urn,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "grc.target",
+		Label:      firstAttribute(attrs, "target_name", "resource_name", "hostname", "target_id", "resource_id"),
+		Attributes: grcAttributes(nil, map[string]string{
+			"integration_id": firstAttribute(attrs, "integration_id"),
+			"source_system":  provider,
+			"target_id":      targetID,
+			"target_type":    firstAttribute(attrs, "target_type", "resource_type", "asset_type"),
+		}),
+	}
+}
+
+func grcIntegrationURN(tenantID string, provider string, integrationID string) string {
+	return projectionURN(tenantID, "source", provider, "integration", integrationID)
+}
+
+func grcIntegrationEntity(tenantID string, sourceID string, urn string, integrationID string, attrs map[string]string, provider string) *ports.ProjectedEntity {
+	return &ports.ProjectedEntity{
+		URN:        urn,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "source",
+		Label:      firstAttribute(attrs, "display_name", "integration_name", "integration_id"),
+		Attributes: grcAttributes(attrs, map[string]string{
+			"canonical_name": integrationID,
+			"source_system":  provider,
+			"source_type":    "grc_integration",
+		}),
+	}
+}
+
+func grcIntegrationReferenceEntity(tenantID string, sourceID string, urn string, integrationID string, provider string) *ports.ProjectedEntity {
+	return &ports.ProjectedEntity{
+		URN:        urn,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "source",
+		Label:      integrationID,
+		Attributes: grcAttributes(nil, map[string]string{
+			"canonical_name": integrationID,
+			"source_system":  provider,
+			"source_type":    "grc_integration",
+		}),
+	}
+}
+
+func grcIntegrationLinkAttributes(event *cerebrov1.EventEnvelope, integrationID string) map[string]string {
+	return map[string]string{
+		"event_id":        event.GetId(),
+		"integration_id":  integrationID,
+		"relationship":    relationBelongsTo,
+		"relationship_by": "grc_vulnerability",
+	}
+}
+
+func grcPackageTargetAttributes(event *cerebrov1.EventEnvelope, attrs map[string]string) map[string]string {
+	return map[string]string{
+		"event_id":      event.GetId(),
+		"package":       vulnerablePackageName(attrs),
+		"target_id":     firstAttribute(attrs, "target_id", "resource_id", "asset_id", "endpoint_id"),
+		"version":       firstAttribute(attrs, "version", "package_version", "application_version", "installed_version"),
+		"source_system": firstAttribute(attrs, "source_system", "provider", "source_provider"),
+	}
 }
 
 func grcRiskScenarioProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -343,19 +436,8 @@ func grcIntegrationProjections(event *cerebrov1.EventEnvelope) ([]*ports.Project
 	}
 	provider := grcProvider(attrs)
 	entities := map[string]*ports.ProjectedEntity{}
-	sourceURN := projectionURN(tenantID, "source", provider, "integration", integrationID)
-	addEntity(entities, &ports.ProjectedEntity{
-		URN:        sourceURN,
-		TenantID:   tenantID,
-		SourceID:   event.GetSourceId(),
-		EntityType: "source",
-		Label:      firstAttribute(attrs, "display_name", "integration_id"),
-		Attributes: grcAttributes(attrs, map[string]string{
-			"canonical_name": integrationID,
-			"source_system":  provider,
-			"source_type":    "grc_integration",
-		}),
-	})
+	sourceURN := grcIntegrationURN(tenantID, provider, integrationID)
+	addEntity(entities, grcIntegrationEntity(tenantID, event.GetSourceId(), sourceURN, integrationID, attrs, provider))
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, nil)
 	return projectedEntities, projectedLinks, nil
 }
