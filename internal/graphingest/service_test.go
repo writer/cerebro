@@ -217,9 +217,10 @@ func TestProjectResponseCoalescedPreservesNewestObservationAttributes(t *testing
 				EntityType: "github.user",
 				Label:      "alice",
 				Attributes: map[string]string{
-					"at":       at,
-					"event_id": event.GetId(),
-					"login":    event.GetId(),
+					"at":             at,
+					"event_id":       event.GetId(),
+					"login":          event.GetId(),
+					"outcome_result": event.GetId(),
 				},
 			}},
 			[]*ports.ProjectedLink{{
@@ -230,10 +231,12 @@ func TestProjectResponseCoalescedPreservesNewestObservationAttributes(t *testing
 				Relation:  "acted_on",
 				ToURN:     "urn:cerebro:writer:github_repo:writer/cerebro",
 				Attributes: map[string]string{
-					"action":   "git.clone",
-					"at":       at,
-					"event_id": event.GetId(),
-					"target":   event.GetId(),
+					"action":         "git.clone",
+					"at":             at,
+					"event_id":       event.GetId(),
+					"event_type":     event.GetId(),
+					"outcome_result": event.GetId(),
+					"target":         event.GetId(),
 				},
 			}}, nil
 	})
@@ -258,6 +261,9 @@ func TestProjectResponseCoalescedPreservesNewestObservationAttributes(t *testing
 	if got := entity.Attributes["event_id"]; got != "newer-event" {
 		t.Fatalf("coalesced entity event_id = %q, want newer-event coupled to newest observation", got)
 	}
+	if got := entity.Attributes["outcome_result"]; got != "newer-event" {
+		t.Fatalf("coalesced entity outcome_result = %q, want newer-event coupled to newest observation", got)
+	}
 	if got := entity.Attributes["login"]; got != "older-event" {
 		t.Fatalf("coalesced entity non-observation attribute login = %q, want older-event latest write", got)
 	}
@@ -271,8 +277,44 @@ func TestProjectResponseCoalescedPreservesNewestObservationAttributes(t *testing
 	if got := link.Attributes["event_id"]; got != "newer-event" {
 		t.Fatalf("coalesced link event_id = %q, want newer-event coupled to newest observation", got)
 	}
+	if got := link.Attributes["event_type"]; got != "newer-event" {
+		t.Fatalf("coalesced link event_type = %q, want newer-event coupled to newest observation", got)
+	}
+	if got := link.Attributes["outcome_result"]; got != "newer-event" {
+		t.Fatalf("coalesced link outcome_result = %q, want newer-event coupled to newest observation", got)
+	}
 	if got := link.Attributes["target"]; got != "older-event" {
 		t.Fatalf("coalesced link non-observation attribute target = %q, want older-event latest write", got)
+	}
+}
+
+func TestMergeStringMapClearsOlderObservationMetadataMissingFromNewerAt(t *testing.T) {
+	merged := mergeStringMap(
+		map[string]string{
+			"at":             "2026-05-10T10:00:00Z",
+			"event_id":       "older-event",
+			"outcome_reason": "older reason",
+			"transaction_id": "older-txn",
+			"target":         "repo",
+		},
+		map[string]string{
+			"at":       "2026-05-11T10:00:00Z",
+			"event_id": "newer-event",
+		},
+	)
+	for key, want := range map[string]string{
+		"at":       "2026-05-11T10:00:00Z",
+		"event_id": "newer-event",
+		"target":   "repo",
+	} {
+		if got := merged[key]; got != want {
+			t.Fatalf("merged[%s] = %q, want %q", key, got, want)
+		}
+	}
+	for _, key := range []string{"outcome_reason", "transaction_id"} {
+		if got, exists := merged[key]; exists {
+			t.Fatalf("merged[%s] = %q, want missing because newer observation omitted it", key, got)
+		}
 	}
 }
 

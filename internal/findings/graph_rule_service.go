@@ -112,6 +112,7 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		if record == nil {
 			continue
 		}
+		graphRows := cloneGraphEvidenceRows(record.GraphEvidenceRows)
 		record, err = s.reconcileLegacyFindingIdentity(ctx, record)
 		if err != nil {
 			evaluationErr := fmt.Errorf("reconcile finding identity for graph rule %q: %w", spec.GetId(), err)
@@ -124,7 +125,7 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		}
 		result.Findings = append(result.Findings, stored)
 		emittedFindingIDs[strings.TrimSpace(stored.ID)] = struct{}{}
-		evidence, err := s.buildFindingEvidence(ctx, stored, run)
+		evidence, err := s.buildFindingEvidence(ctx, stored, run, graphRows...)
 		if err != nil {
 			evaluationErr := fmt.Errorf("build evidence for graph rule %q finding %q: %w", spec.GetId(), stored.ID, err)
 			return result, s.finishFailedRun(ctx, run, 0, findingIDs(result.Findings), evaluationErr)

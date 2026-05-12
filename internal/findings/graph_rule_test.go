@@ -99,6 +99,18 @@ func TestEvaluateSourceRuntimeGraphRulesEmitsAndPersistsFindings(t *testing.T) {
 				Status:       findingStatusOpen,
 				Summary:      "graph rule fired",
 				ResourceURNs: []string{"urn:cerebro:writer:identity:email:alice@writer.com"},
+				GraphEvidenceRows: []*cerebrov1.GraphEvidenceRow{
+					newGraphEvidenceRow("identity_path", map[string]string{"label": "alice@writer.com"}, newGraphEvidencePath(
+						"urn:cerebro:writer:okta_user:alice",
+						"alice@writer.com",
+						"okta.user",
+						"represents_identity",
+						"urn:cerebro:writer:identity:email:alice@writer.com",
+						"alice@writer.com",
+						"identity.email",
+						map[string]string{"match_type": "exact_email"},
+					)),
+				},
 			},
 		},
 	}
@@ -138,6 +150,15 @@ func TestEvaluateSourceRuntimeGraphRulesEmitsAndPersistsFindings(t *testing.T) {
 	}
 	if store.findings == nil || store.findings["finding-graph-1"] == nil {
 		t.Fatalf("finding store should contain persisted finding")
+	}
+	if got := len(evaluation.Evidence); got != 1 {
+		t.Fatalf("len(Evidence) = %d, want 1", got)
+	}
+	if got := len(evaluation.Evidence[0].GetGraphRows()); got != 1 {
+		t.Fatalf("len(Evidence[0].GraphRows) = %d, want 1", got)
+	}
+	if got := evaluation.Evidence[0].GetGraphRows()[0].GetPaths()[0].GetRelation(); got != "represents_identity" {
+		t.Fatalf("graph evidence relation = %q, want represents_identity", got)
 	}
 }
 

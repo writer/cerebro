@@ -159,7 +159,26 @@ message GetFindingEvaluationRunResponse {
   FindingEvaluationRun run = 1;
 }
 
-// FindingEvidence links one persisted finding and one evaluation run to its supporting claims, events, and graph roots.
+// GraphEvidencePath captures one supporting graph edge for a graph-backed finding.
+message GraphEvidencePath {
+  string from_urn = 1;
+  string from_label = 2;
+  string from_type = 3;
+  string relation = 4;
+  string to_urn = 5;
+  string to_label = 6;
+  string to_type = 7;
+  map<string, string> attributes = 8;
+}
+
+// GraphEvidenceRow captures one rule-specific graph row and its supporting paths.
+message GraphEvidenceRow {
+  string label = 1;
+  map<string, string> attributes = 2;
+  repeated GraphEvidencePath paths = 3;
+}
+
+// FindingEvidence links one persisted finding and one evaluation run to its supporting claims, events, graph roots, and graph rows.
 message FindingEvidence {
   string id = 1;
   string runtime_id = 2;
@@ -170,6 +189,7 @@ message FindingEvidence {
   repeated string event_ids = 7;
   repeated string graph_root_urns = 8;
   google.protobuf.Timestamp created_at = 9;
+  repeated GraphEvidenceRow graph_rows = 10;
 }
 
 // ListFindingEvidenceRequest queries persisted finding evidence for one stored runtime.

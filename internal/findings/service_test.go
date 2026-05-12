@@ -2771,6 +2771,7 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 	copy(observedPolicyIDs, finding.ObservedPolicyIDs)
 	controlRefs := make([]ports.FindingControlRef, len(finding.ControlRefs))
 	copy(controlRefs, finding.ControlRefs)
+	graphEvidenceRows := cloneGraphEvidenceRows(finding.GraphEvidenceRows)
 	notes := make([]ports.FindingNote, len(finding.Notes))
 	copy(notes, finding.Notes)
 	tickets := make([]ports.FindingTicket, len(finding.Tickets))
@@ -2797,6 +2798,7 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		CheckID:           finding.CheckID,
 		CheckName:         finding.CheckName,
 		ControlRefs:       controlRefs,
+		GraphEvidenceRows: graphEvidenceRows,
 		FindingWorkflow: ports.FindingWorkflow{
 			Notes:           notes,
 			Tickets:         tickets,

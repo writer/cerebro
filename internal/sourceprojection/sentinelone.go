@@ -2,6 +2,7 @@ package sourceprojection
 
 import (
 	"strings"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
@@ -68,6 +69,8 @@ func sentinelOneAgentProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 			"account_id":        strings.TrimSpace(attrs["account_id"]),
 			"account_name":      strings.TrimSpace(attrs["account_name"]),
 			"tenant_host":       strings.TrimSpace(attrs["tenant_host"]),
+			"event_id":          event.GetId(),
+			"at":                eventObservedAt(event),
 		},
 	})
 
@@ -115,6 +118,11 @@ func sentinelOneThreatProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 			"site_id":               strings.TrimSpace(attrs["site_id"]),
 			"group_id":              strings.TrimSpace(attrs["group_id"]),
 			"tenant_host":           strings.TrimSpace(attrs["tenant_host"]),
+			"threat_name":           strings.TrimSpace(attrs["threat_name"]),
+			"is_infected":           strings.TrimSpace(attrs["is_infected"]),
+			"active_threats":        strings.TrimSpace(attrs["active_threats"]),
+			"event_id":              event.GetId(),
+			"at":                    eventObservedAt(event),
 		},
 	})
 
@@ -128,18 +136,23 @@ func sentinelOneThreatProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 			EntityType: sentinelOneEntityAgent,
 			Label:      firstNonEmpty(attrs["computer_name"], attrs["agent_name"], agentID),
 			Attributes: map[string]string{
-				"agent_id":      agentID,
-				"computer_name": strings.TrimSpace(attrs["computer_name"]),
-				"os_name":       strings.TrimSpace(attrs["agent_os_name"]),
-				"os_type":       strings.TrimSpace(attrs["agent_os_type"]),
-				"is_active":     strings.TrimSpace(attrs["is_active"]),
-				"site_id":       strings.TrimSpace(attrs["site_id"]),
-				"group_id":      strings.TrimSpace(attrs["group_id"]),
-				"tenant_host":   strings.TrimSpace(attrs["tenant_host"]),
+				"agent_id":       agentID,
+				"computer_name":  strings.TrimSpace(attrs["computer_name"]),
+				"os_name":        strings.TrimSpace(attrs["agent_os_name"]),
+				"os_type":        strings.TrimSpace(attrs["agent_os_type"]),
+				"is_active":      strings.TrimSpace(attrs["is_active"]),
+				"is_infected":    strings.TrimSpace(attrs["is_infected"]),
+				"active_threats": strings.TrimSpace(attrs["active_threats"]),
+				"site_id":        strings.TrimSpace(attrs["site_id"]),
+				"group_id":       strings.TrimSpace(attrs["group_id"]),
+				"tenant_host":    strings.TrimSpace(attrs["tenant_host"]),
+				"event_id":       event.GetId(),
+				"at":             eventObservedAt(event),
 			},
 		})
 		addLink(links, projectedLink(tenant, event.GetSourceId(), agentURN, threatURN, relationAffectedBy, map[string]string{
 			"event_id":          event.GetId(),
+			"at":                eventObservedAt(event),
 			"classification":    strings.TrimSpace(attrs["classification"]),
 			"analyst_verdict":   strings.TrimSpace(attrs["analyst_verdict"]),
 			"incident_status":   strings.TrimSpace(attrs["incident_status"]),
@@ -282,16 +295,18 @@ func sentinelOneActivityProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pr
 			"user_id":             strings.TrimSpace(attrs["user_id"]),
 			"os_family":           strings.TrimSpace(attrs["os_family"]),
 			"tenant_host":         strings.TrimSpace(attrs["tenant_host"]),
+			"event_id":            event.GetId(),
+			"at":                  eventObservedAt(event),
 		},
 	})
 
 	if agentID := strings.TrimSpace(attrs["agent_id"]); agentID != "" {
 		agentURN := sentinelOneAgentURN(tenant, agentID)
-		addLink(links, projectedLink(tenant, event.GetSourceId(), activityURN, agentURN, relationObservedOn, map[string]string{"event_id": event.GetId()}))
+		addLink(links, projectedLink(tenant, event.GetSourceId(), activityURN, agentURN, relationObservedOn, map[string]string{"event_id": event.GetId(), "at": eventObservedAt(event)}))
 	}
 	if threatID := strings.TrimSpace(attrs["threat_id"]); threatID != "" {
 		threatURN := sentinelOneThreatURN(tenant, threatID)
-		addLink(links, projectedLink(tenant, event.GetSourceId(), activityURN, threatURN, relationActedOn, map[string]string{"event_id": event.GetId()}))
+		addLink(links, projectedLink(tenant, event.GetSourceId(), activityURN, threatURN, relationActedOn, map[string]string{"event_id": event.GetId(), "at": eventObservedAt(event)}))
 	}
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
@@ -438,4 +453,11 @@ func sentinelOneGroupURN(tenant string, groupID string) string {
 
 func sentinelOneAccountURN(tenant string, accountID string) string {
 	return projectionURN(tenant, "sentinelone_account", accountID)
+}
+
+func eventObservedAt(event *cerebrov1.EventEnvelope) string {
+	if event == nil || event.GetOccurredAt() == nil || !event.GetOccurredAt().IsValid() {
+		return ""
+	}
+	return event.GetOccurredAt().AsTime().UTC().Format(time.RFC3339)
 }

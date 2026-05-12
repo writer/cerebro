@@ -15,6 +15,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/workflowevents"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -1098,7 +1099,7 @@ func containsString(values []string, expected string) bool {
 	return false
 }
 
-func (s *Service) buildFindingEvidence(ctx context.Context, finding *ports.FindingRecord, run *cerebrov1.FindingEvaluationRun) (*cerebrov1.FindingEvidence, error) {
+func (s *Service) buildFindingEvidence(ctx context.Context, finding *ports.FindingRecord, run *cerebrov1.FindingEvaluationRun, graphRows ...*cerebrov1.GraphEvidenceRow) (*cerebrov1.FindingEvidence, error) {
 	if finding == nil {
 		return nil, errors.New("finding is required")
 	}
@@ -1111,6 +1112,9 @@ func (s *Service) buildFindingEvidence(ctx context.Context, finding *ports.Findi
 	}
 	graphRootURNs := uniqueSortedStrings(finding.ResourceURNs)
 	eventIDs := uniqueSortedStrings(finding.EventIDs)
+	if len(graphRows) == 0 {
+		graphRows = finding.GraphEvidenceRows
+	}
 	createdAt := time.Now().UTC()
 	// Evidence is keyed by the runtime that performed THIS evaluation, not by the runtime
 	// the finding happens to be pinned to. For event rules these are identical because the
@@ -1131,7 +1135,22 @@ func (s *Service) buildFindingEvidence(ctx context.Context, finding *ports.Findi
 		EventIds:      eventIDs,
 		GraphRootUrns: graphRootURNs,
 		CreatedAt:     timestamppb.New(createdAt),
+		GraphRows:     cloneGraphEvidenceRows(graphRows),
 	}, nil
+}
+
+func cloneGraphEvidenceRows(rows []*cerebrov1.GraphEvidenceRow) []*cerebrov1.GraphEvidenceRow {
+	if len(rows) == 0 {
+		return nil
+	}
+	cloned := make([]*cerebrov1.GraphEvidenceRow, 0, len(rows))
+	for _, row := range rows {
+		if row == nil {
+			continue
+		}
+		cloned = append(cloned, proto.Clone(row).(*cerebrov1.GraphEvidenceRow))
+	}
+	return cloned
 }
 
 func (s *Service) claimIDsForFinding(ctx context.Context, finding *ports.FindingRecord) ([]string, error) {

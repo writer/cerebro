@@ -501,6 +501,13 @@ func mergeStringMap(dst map[string]string, src map[string]string) map[string]str
 		dst = make(map[string]string, len(src))
 	}
 	incomingIsOlderObservation := projectedIncomingObservationIsOlder(dst, src)
+	if !incomingIsOlderObservation && projectedIncomingObservationIsNewer(dst, src) {
+		for key := range dst {
+			if projectedAttributeCoupledToObservationTime(key) {
+				delete(dst, key)
+			}
+		}
+	}
 	for key, value := range src {
 		if incomingIsOlderObservation && projectedAttributeCoupledToObservationTime(key) {
 			continue
@@ -527,9 +534,23 @@ func projectedIncomingObservationIsOlder(existing map[string]string, incoming ma
 	return incomingT.Before(existingT)
 }
 
+func projectedIncomingObservationIsNewer(existing map[string]string, incoming map[string]string) bool {
+	existingAt := strings.TrimSpace(existing["at"])
+	incomingAt := strings.TrimSpace(incoming["at"])
+	if existingAt == "" || incomingAt == "" {
+		return false
+	}
+	existingT, errExisting := time.Parse(time.RFC3339, existingAt)
+	incomingT, errIncoming := time.Parse(time.RFC3339, incomingAt)
+	if errExisting != nil || errIncoming != nil {
+		return false
+	}
+	return incomingT.After(existingT)
+}
+
 func projectedAttributeCoupledToObservationTime(key string) bool {
 	switch key {
-	case "action", "event_id", "programmatic_access_type", "source_event_id", "source_runtime_id", "transport_protocol_name":
+	case "action", "actor_type", "classification", "client_ip", "event_id", "event_type", "grant_type", "incident_status", "mitigation_status", "oauth_event_category", "outcome_reason", "outcome_result", "programmatic_access_type", "source_event_id", "source_runtime_id", "transaction_id", "transport_protocol_name":
 		return true
 	default:
 		return false
