@@ -7,7 +7,7 @@ config:
   cerebro:certificateDomain: cerebro.adm.dev.qordobadev.com
   cerebro:certificateImportArn: arn:aws:acm:us-east-1:944130631940:certificate/09143d7f-c377-4de4-9127-d8cb5c642ba3
   cerebro:ecrBaseUri: 944130631940.dkr.ecr.us-east-1.amazonaws.com/cerebro
-  cerebro:imageTag: v2.1.27
+  cerebro:imageTag: v2.1.28
   cerebro:useExistingVpc: true
   cerebro:vpcId: vpc-06bac7242cd09af4d
   cerebro:vpcCidr: "10.10.0.0/16"
@@ -41,6 +41,9 @@ config:
     - OKTA_DOMAIN
     - SENTINELONE_API_TOKEN
     - SENTINELONE_BASE_URL
+    - VULNVIEW_PROVIDER_OKTA_ISSUER
+    - VULNVIEW_PROVIDER_CLIENT_ID
+    - VULNVIEW_PROVIDER_CLIENT_SECRET
   cerebro:orchestratorEnabled: true
   cerebro:orchestratorScheduleExpression: "rate(6 hours)"
   cerebro:orchestratorCommand:
@@ -170,6 +173,36 @@ config:
         - page_limit=10
         - graph_page_limit=100
         - event_limit=1000
+    - name: vulnview-vulnerability-live
+      scheduleExpression: rate(30 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-vulnview-vulnerability
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: vulnview-asset-inventory
+      scheduleExpression: rate(1 hour)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-vulnview-asset
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: vulnview-dns-alert-inventory
+      scheduleExpression: rate(1 hour)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-vulnview-dns-alert
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
   cerebro:sourceRuntimes:
     - id: writer-github-audit
       sourceId: github
@@ -274,6 +307,39 @@ config:
         per_page: "200"
         since: "2026-05-01T00:00:00Z"
         token: env:SENTINELONE_API_TOKEN
+    - id: writer-vulnview-vulnerability
+      sourceId: vulnview
+      tenantId: writer
+      config:
+        base_url: https://vulnview.writer-security.com/api
+        client_id: env:VULNVIEW_PROVIDER_CLIENT_ID
+        client_secret: env:VULNVIEW_PROVIDER_CLIENT_SECRET
+        family: vulnerability
+        okta_issuer: env:VULNVIEW_PROVIDER_OKTA_ISSUER
+        per_page: "100"
+        tenant_id: writer
+    - id: writer-vulnview-asset
+      sourceId: vulnview
+      tenantId: writer
+      config:
+        base_url: https://vulnview.writer-security.com/api
+        client_id: env:VULNVIEW_PROVIDER_CLIENT_ID
+        client_secret: env:VULNVIEW_PROVIDER_CLIENT_SECRET
+        family: asset
+        okta_issuer: env:VULNVIEW_PROVIDER_OKTA_ISSUER
+        per_page: "100"
+        tenant_id: writer
+    - id: writer-vulnview-dns-alert
+      sourceId: vulnview
+      tenantId: writer
+      config:
+        base_url: https://vulnview.writer-security.com/api
+        client_id: env:VULNVIEW_PROVIDER_CLIENT_ID
+        client_secret: env:VULNVIEW_PROVIDER_CLIENT_SECRET
+        family: dns_alert
+        okta_issuer: env:VULNVIEW_PROVIDER_OKTA_ISSUER
+        per_page: "100"
+        tenant_id: writer
   cerebro:enableWaf: true
   cerebro:albInternal: true
   cerebro:albIngressCidrs:
