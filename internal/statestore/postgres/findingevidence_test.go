@@ -112,6 +112,19 @@ func TestFindingEvidenceUpsertPreservesCreatedAtOnConflict(t *testing.T) {
 	}
 }
 
+func TestFindingEvidenceAdvisoryLockSerializesHistoryMerges(t *testing.T) {
+	query := findingEvidenceAdvisoryLockSQL()
+	for _, fragment := range []string{
+		"pg_advisory_xact_lock",
+		"hashtext('finding_evidence')",
+		"hashtext($1)",
+	} {
+		if !strings.Contains(query, fragment) {
+			t.Fatalf("finding evidence advisory lock query missing %q:\n%s", fragment, query)
+		}
+	}
+}
+
 func TestFindingEvidenceSchemaPersistsEnrichedEvidence(t *testing.T) {
 	joined := strings.Join(ensureFindingEvidenceStatements, "\n")
 	for _, fragment := range []string{
