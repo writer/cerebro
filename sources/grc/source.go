@@ -52,6 +52,8 @@ const (
 	familyIntegration   = "integration"
 )
 
+var defaultTokenRetryBackoffs = []time.Duration{2 * time.Second, 5 * time.Second, 10 * time.Second, 20 * time.Second}
+
 // Source is the provider-neutral GRC source. Provider-specific APIs are kept
 // behind drivers; emitted event kinds stay canonical grc.*.
 type Source struct {
@@ -60,6 +62,7 @@ type Source struct {
 	families             *sourcecdk.FamilyEngine[settings]
 	allowLoopbackBaseURL bool
 	lookupIPAddrs        func(context.Context, string) ([]net.IPAddr, error)
+	tokenRetryBackoffs   []time.Duration
 	mu                   sync.Mutex
 	tokenKey             string
 	accessToken          string
@@ -360,16 +363,20 @@ func (s *Source) token(ctx context.Context, settings settings) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("marshal grc token request: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, settings.tokenURL, bytes.NewReader(body))
-	if err != nil {
-		return "", fmt.Errorf("build grc token request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
 
 	var response tokenResponse
-	if err := s.doJSON(req, &response); err != nil {
-		return "", fmt.Errorf("request grc token: %w", err)
+	backoffs := s.tokenBackoffs()
+	for attempt := 0; ; attempt++ {
+		response, err = s.requestToken(ctx, settings, body)
+		if err == nil {
+			break
+		}
+		if !isRetryableTokenResponse(err) || attempt >= len(backoffs) {
+			return "", fmt.Errorf("request grc token: %w", err)
+		}
+		if sleepErr := sleepContext(ctx, backoffs[attempt]); sleepErr != nil {
+			return "", fmt.Errorf("request grc token retry: %w", sleepErr)
+		}
 	}
 	if strings.TrimSpace(response.AccessToken) == "" {
 		return "", fmt.Errorf("grc token response missing access_token")
@@ -385,6 +392,28 @@ func (s *Source) token(ctx context.Context, settings settings) (string, error) {
 	s.tokenExpiresAt = time.Now().Add(time.Duration(expiresIn) * time.Second)
 	s.mu.Unlock()
 	return response.AccessToken, nil
+}
+
+func (s *Source) requestToken(ctx context.Context, settings settings, body []byte) (tokenResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, settings.tokenURL, bytes.NewReader(body))
+	if err != nil {
+		return tokenResponse{}, fmt.Errorf("build grc token request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	var response tokenResponse
+	if err := s.doJSON(req, &response); err != nil {
+		return tokenResponse{}, err
+	}
+	return response, nil
+}
+
+func (s *Source) tokenBackoffs() []time.Duration {
+	if s != nil && s.tokenRetryBackoffs != nil {
+		return s.tokenRetryBackoffs
+	}
+	return defaultTokenRetryBackoffs
 }
 
 func (s *Source) invalidateToken(settings settings) {
@@ -404,6 +433,28 @@ func (s *Source) invalidateToken(settings settings) {
 func isUnauthorizedResponse(err error) bool {
 	var responseErr *responseError
 	return errors.As(err, &responseErr) && responseErr.statusCode == http.StatusUnauthorized
+}
+
+func isRetryableTokenResponse(err error) bool {
+	var responseErr *responseError
+	if !errors.As(err, &responseErr) {
+		return false
+	}
+	return responseErr.statusCode == http.StatusTooManyRequests || responseErr.statusCode >= http.StatusInternalServerError
+}
+
+func sleepContext(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (s *Source) doJSON(req *http.Request, target any) error {
