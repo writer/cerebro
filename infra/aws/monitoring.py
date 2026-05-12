@@ -168,6 +168,15 @@ def create_monitoring(
             description="Graph ingestion failures detected",
             alarm_topic_arn=alarm_topic.arn,
         )
+        _custom_metric_alarm(
+            resource_name=f"{name}-finding-evaluation-run-failures-alarm",
+            alarm_name=f"{name}-finding-evaluation-run-failures",
+            namespace=telemetry_namespace,
+            metric_name="FindingEvaluationRunFailures",
+            threshold=0,
+            description="Finding evaluation run failures detected",
+            alarm_topic_arn=alarm_topic.arn,
+        )
 
     if jetstream_lag_alarm_threshold > 0:
         _custom_metric_alarm(
@@ -286,6 +295,78 @@ def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[st
                 name="GraphEntitiesProjected",
                 namespace=namespace,
                 value="$.entities_projected",
+                default_value=0,
+            ),
+        ),
+        "finding_evaluation_failures": aws.cloudwatch.LogMetricFilter(
+            f"{name}-finding-evaluation-failures-filter",
+            name=f"{name}-finding-evaluation-failures",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "finding_evaluation.run" && $.status = "failed" }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="FindingEvaluationRunFailures",
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        ),
+        "finding_evaluation_events_processed": aws.cloudwatch.LogMetricFilter(
+            f"{name}-finding-evaluation-events-processed-filter",
+            name=f"{name}-finding-evaluation-events-processed",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "finding_evaluation.run" && $.events_processed = * }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="FindingEvaluationEventsProcessed",
+                namespace=namespace,
+                value="$.events_processed",
+                default_value=0,
+            ),
+        ),
+        "finding_evaluation_events_matched": aws.cloudwatch.LogMetricFilter(
+            f"{name}-finding-evaluation-events-matched-filter",
+            name=f"{name}-finding-evaluation-events-matched",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "finding_evaluation.run" && $.events_matched = * }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="FindingEvaluationEventsMatched",
+                namespace=namespace,
+                value="$.events_matched",
+                default_value=0,
+            ),
+        ),
+        "finding_evaluation_findings_emitted": aws.cloudwatch.LogMetricFilter(
+            f"{name}-finding-evaluation-findings-emitted-filter",
+            name=f"{name}-finding-evaluation-findings-emitted",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "event" && $.name = "finding_evaluation.run" && $.findings_emitted = * }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="FindingEvaluationFindingsEmitted",
+                namespace=namespace,
+                value="$.findings_emitted",
+                default_value=0,
+            ),
+        ),
+        "graph_rule_rows_read": aws.cloudwatch.LogMetricFilter(
+            f"{name}-graph-rule-rows-read-filter",
+            name=f"{name}-graph-rule-rows-read",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "span_end" && $.name = "orchestrator.runtime" && $.graph_rule_rows_read = * }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="GraphRuleRowsRead",
+                namespace=namespace,
+                value="$.graph_rule_rows_read",
+                default_value=0,
+            ),
+        ),
+        "graph_rule_findings": aws.cloudwatch.LogMetricFilter(
+            f"{name}-graph-rule-findings-filter",
+            name=f"{name}-graph-rule-findings",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "span_end" && $.name = "orchestrator.runtime" && $.graph_rule_findings = * }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="GraphRuleFindingsEmitted",
+                namespace=namespace,
+                value="$.graph_rule_findings",
                 default_value=0,
             ),
         ),
@@ -481,6 +562,34 @@ def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service:
                         [telemetry_namespace, "GraphEntitiesProjected", {"stat": "Sum"}],
                         [".", "GraphIngestFailures", {"stat": "Sum"}],
                         [".", "GraphIngestLagSeconds", {"stat": "Maximum", "yAxis": "right"}],
+                    ],
+                    "period": 300,
+                    "region": aws.get_region().region,
+                },
+            },
+            {
+                "type": "metric",
+                "x": 0, "y": 36, "width": 12, "height": 6,
+                "properties": {
+                    "title": "Finding Evaluation Throughput",
+                    "metrics": [
+                        [telemetry_namespace, "FindingEvaluationEventsProcessed", {"stat": "Sum"}],
+                        [".", "FindingEvaluationEventsMatched", {"stat": "Sum"}],
+                        [".", "FindingEvaluationFindingsEmitted", {"stat": "Sum"}],
+                    ],
+                    "period": 300,
+                    "region": aws.get_region().region,
+                },
+            },
+            {
+                "type": "metric",
+                "x": 12, "y": 36, "width": 12, "height": 6,
+                "properties": {
+                    "title": "Finding Evaluation / Graph Rule Health",
+                    "metrics": [
+                        [telemetry_namespace, "FindingEvaluationRunFailures", {"stat": "Sum"}],
+                        [".", "GraphRuleRowsRead", {"stat": "Sum"}],
+                        [".", "GraphRuleFindingsEmitted", {"stat": "Sum"}],
                     ],
                     "period": 300,
                     "region": aws.get_region().region,
