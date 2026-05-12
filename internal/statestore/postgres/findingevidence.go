@@ -88,6 +88,10 @@ DO UPDATE SET
   updated_at = NOW()`
 }
 
+func findingEvidenceAdvisoryLockSQL() string {
+	return `SELECT pg_advisory_xact_lock(hashtext('finding_evidence'), hashtext($1))`
+}
+
 // PutFindingEvidence upserts one durable finding evidence record.
 func (s *Store) PutFindingEvidence(ctx context.Context, evidence *cerebrov1.FindingEvidence) error {
 	if evidence == nil {
@@ -136,6 +140,10 @@ func (s *Store) PutFindingEvidence(ctx context.Context, evidence *cerebrov1.Find
 			_ = tx.Rollback()
 		}
 	}()
+	// Serialize same-ID first writes before the preflight read so history merges cannot race.
+	if _, err := tx.ExecContext(ctx, findingEvidenceAdvisoryLockSQL(), id); err != nil {
+		return fmt.Errorf("lock finding evidence %q: %w", id, err)
+	}
 	var existingPayload string
 	if err := tx.QueryRowContext(ctx, `SELECT finding_evidence_json::text FROM finding_evidence WHERE id = $1 FOR UPDATE`, id).Scan(&existingPayload); err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
