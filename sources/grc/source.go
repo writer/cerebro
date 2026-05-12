@@ -676,7 +676,6 @@ func tokenCacheKey(settings settings) string {
 	return strings.Join([]string{
 		settings.provider,
 		settings.tenantID,
-		settings.family,
 		settings.baseURL,
 		settings.tokenURL,
 		settings.clientID,

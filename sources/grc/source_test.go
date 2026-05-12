@@ -371,6 +371,46 @@ func TestTokenCacheScopesRuntimeSecretsAndBaseURL(t *testing.T) {
 	}
 }
 
+func TestTokenCacheReusesTokenAcrossFamilies(t *testing.T) {
+	tokenRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth/token":
+			tokenRequests++
+			writeJSON(t, w, map[string]any{
+				"access_token": "shared-token",
+				"expires_in":   3599,
+				"token_type":   "Bearer",
+			})
+		case "/v1/controls", "/v1/vendors":
+			if got := r.Header.Get("Authorization"); got != "Bearer shared-token" {
+				t.Fatalf("Authorization = %q, want shared token", got)
+			}
+			writePage(t, w, false, "", []map[string]any{{"id": "record-1", "name": "Record"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfgControl := testConfig(server.URL, familyControl)
+	cfgVendor := testConfig(server.URL, familyVendor)
+	if _, err := source.Read(context.Background(), cfgControl, nil); err != nil {
+		t.Fatalf("Read(control) error = %v", err)
+	}
+	if _, err := source.Read(context.Background(), cfgVendor, nil); err != nil {
+		t.Fatalf("Read(vendor) error = %v", err)
+	}
+	if tokenRequests != 1 {
+		t.Fatalf("token requests = %d, want 1", tokenRequests)
+	}
+}
+
 func testConfig(baseURL string, family string) sourcecdk.Config {
 	return sourcecdk.NewConfig(map[string]string{
 		"base_url":      baseURL,
