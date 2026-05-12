@@ -96,4 +96,25 @@ func TestFindingEvidenceUpsertPreservesCreatedAtOnConflict(t *testing.T) {
 	if !strings.Contains(query, "jsonb_set(EXCLUDED.finding_evidence_json, '{created_at}'") {
 		t.Fatalf("finding evidence upsert does not preserve payload created_at:\n%s", query)
 	}
+	if !strings.Contains(query, "last_observed_at = GREATEST") {
+		t.Fatalf("finding evidence upsert does not advance last_observed_at:\n%s", query)
+	}
+	if !strings.Contains(query, "'{last_observed_at}'") {
+		t.Fatalf("finding evidence upsert does not persist payload last_observed_at:\n%s", query)
+	}
+}
+
+func TestFindingEvidenceSchemaPersistsEnrichedEvidence(t *testing.T) {
+	joined := strings.Join(ensureFindingEvidenceStatements, "\n")
+	for _, fragment := range []string{
+		"last_observed_at TIMESTAMPTZ",
+		"graph_path_urns_json JSONB",
+		"attributes_json JSONB",
+		"finding_evidence_graph_path_urns_gin_idx",
+		"finding_evidence_attributes_gin_idx",
+	} {
+		if !strings.Contains(joined, fragment) {
+			t.Fatalf("finding evidence schema missing %q:\n%s", fragment, joined)
+		}
+	}
 }

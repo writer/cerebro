@@ -23,10 +23,19 @@ var ensureFindingEvidenceStatements = []string{
   claim_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   event_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   graph_root_urns_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  graph_path_urns_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  attributes_json JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL,
+  last_observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   finding_evidence_json JSONB NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )`,
+	`ALTER TABLE finding_evidence ADD COLUMN IF NOT EXISTS graph_path_urns_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
+	`ALTER TABLE finding_evidence ADD COLUMN IF NOT EXISTS attributes_json JSONB NOT NULL DEFAULT '{}'::jsonb`,
+	`ALTER TABLE finding_evidence ADD COLUMN IF NOT EXISTS last_observed_at TIMESTAMPTZ`,
+	`UPDATE finding_evidence SET last_observed_at = created_at WHERE last_observed_at IS NULL`,
+	`ALTER TABLE finding_evidence ALTER COLUMN last_observed_at SET DEFAULT NOW()`,
+	`ALTER TABLE finding_evidence ALTER COLUMN last_observed_at SET NOT NULL`,
 	`CREATE INDEX IF NOT EXISTS finding_evidence_runtime_idx ON finding_evidence (runtime_id, created_at DESC)`,
 	`CREATE INDEX IF NOT EXISTS finding_evidence_finding_idx ON finding_evidence (finding_id, created_at DESC)`,
 	`CREATE INDEX IF NOT EXISTS finding_evidence_run_idx ON finding_evidence (run_id, created_at DESC)`,
@@ -34,14 +43,17 @@ var ensureFindingEvidenceStatements = []string{
 	`CREATE INDEX IF NOT EXISTS finding_evidence_claim_ids_gin_idx ON finding_evidence USING GIN (claim_ids_json)`,
 	`CREATE INDEX IF NOT EXISTS finding_evidence_event_ids_gin_idx ON finding_evidence USING GIN (event_ids_json)`,
 	`CREATE INDEX IF NOT EXISTS finding_evidence_graph_root_urns_gin_idx ON finding_evidence USING GIN (graph_root_urns_json)`,
+	`CREATE INDEX IF NOT EXISTS finding_evidence_graph_path_urns_gin_idx ON finding_evidence USING GIN (graph_path_urns_json)`,
+	`CREATE INDEX IF NOT EXISTS finding_evidence_attributes_gin_idx ON finding_evidence USING GIN (attributes_json)`,
+	`CREATE INDEX IF NOT EXISTS finding_evidence_last_observed_idx ON finding_evidence (runtime_id, last_observed_at DESC)`,
 }
 
 func findingEvidenceUpsertSQL() string {
 	return `
 INSERT INTO finding_evidence (
-  id, runtime_id, rule_id, finding_id, run_id, claim_ids_json, event_ids_json, graph_root_urns_json, created_at, finding_evidence_json
+  id, runtime_id, rule_id, finding_id, run_id, claim_ids_json, event_ids_json, graph_root_urns_json, graph_path_urns_json, attributes_json, created_at, last_observed_at, finding_evidence_json
 )
-VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10::jsonb)
+VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb, $11, $12, $13::jsonb)
 ON CONFLICT (id)
 DO UPDATE SET
   runtime_id = EXCLUDED.runtime_id,
@@ -51,11 +63,19 @@ DO UPDATE SET
   claim_ids_json = EXCLUDED.claim_ids_json,
   event_ids_json = EXCLUDED.event_ids_json,
   graph_root_urns_json = EXCLUDED.graph_root_urns_json,
-  finding_evidence_json = CASE
-    WHEN finding_evidence.finding_evidence_json ? 'created_at'
-      THEN jsonb_set(EXCLUDED.finding_evidence_json, '{created_at}', finding_evidence.finding_evidence_json->'created_at', true)
-    ELSE EXCLUDED.finding_evidence_json
-  END,
+  graph_path_urns_json = EXCLUDED.graph_path_urns_json,
+  attributes_json = EXCLUDED.attributes_json,
+  last_observed_at = GREATEST(finding_evidence.last_observed_at, EXCLUDED.last_observed_at),
+  finding_evidence_json = jsonb_set(
+    CASE
+      WHEN finding_evidence.finding_evidence_json ? 'created_at'
+        THEN jsonb_set(EXCLUDED.finding_evidence_json, '{created_at}', finding_evidence.finding_evidence_json->'created_at', true)
+      ELSE EXCLUDED.finding_evidence_json
+    END,
+    '{last_observed_at}',
+    to_jsonb(GREATEST(finding_evidence.last_observed_at, EXCLUDED.last_observed_at)),
+    true
+  ),
   updated_at = NOW()`
 }
 
@@ -88,6 +108,9 @@ func (s *Store) PutFindingEvidence(ctx context.Context, evidence *cerebrov1.Find
 	if createdAt == nil || createdAt.AsTime().IsZero() {
 		return errors.New("finding evidence created_at is required")
 	}
+	if evidence.GetLastObservedAt() == nil || evidence.GetLastObservedAt().AsTime().IsZero() {
+		evidence.LastObservedAt = createdAt
+	}
 	if s == nil || s.db == nil {
 		return errors.New("postgres is not configured")
 	}
@@ -106,6 +129,14 @@ func (s *Store) PutFindingEvidence(ctx context.Context, evidence *cerebrov1.Find
 	if err != nil {
 		return fmt.Errorf("marshal finding evidence graph roots: %w", err)
 	}
+	graphPathURNsJSON, err := findingStringsJSON(evidence.GetGraphPathUrns())
+	if err != nil {
+		return fmt.Errorf("marshal finding evidence graph path urns: %w", err)
+	}
+	attributesJSON, err := findingAttributesJSON(evidence.GetAttributes())
+	if err != nil {
+		return fmt.Errorf("marshal finding evidence attributes: %w", err)
+	}
 	payload, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(evidence)
 	if err != nil {
 		return fmt.Errorf("marshal finding evidence: %w", err)
@@ -119,7 +150,10 @@ func (s *Store) PutFindingEvidence(ctx context.Context, evidence *cerebrov1.Find
 		claimIDsJSON,
 		eventIDsJSON,
 		graphRootURNsJSON,
+		graphPathURNsJSON,
+		attributesJSON,
 		evidence.GetCreatedAt().AsTime().UTC(),
+		evidence.GetLastObservedAt().AsTime().UTC(),
 		string(payload),
 	); err != nil {
 		return fmt.Errorf("upsert finding evidence %q: %w", id, err)
@@ -220,7 +254,7 @@ func findingEvidenceListQuery(request ports.ListFindingEvidenceRequest) (string,
 SELECT finding_evidence_json::text
 FROM finding_evidence
 WHERE ` + strings.Join(clauses, " AND ") + `
-ORDER BY created_at DESC, id`
+ORDER BY last_observed_at DESC, created_at DESC, id`
 	if request.Limit != 0 {
 		args = append(args, int64(request.Limit))
 		query += fmt.Sprintf(" LIMIT $%d", len(args))

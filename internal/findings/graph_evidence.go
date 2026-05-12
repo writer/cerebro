@@ -17,6 +17,7 @@ func newGraphEvidenceRow(label string, attributes map[string]string, paths ...*c
 }
 
 func newGraphEvidencePath(fromURN, fromLabel, fromType, relation, toURN, toLabel, toType string, attributes map[string]string) *cerebrov1.GraphEvidencePath {
+	compactAttributes := compactStringMap(attributes)
 	return &cerebrov1.GraphEvidencePath{
 		FromUrn:    strings.TrimSpace(fromURN),
 		FromLabel:  strings.TrimSpace(fromLabel),
@@ -25,8 +26,18 @@ func newGraphEvidencePath(fromURN, fromLabel, fromType, relation, toURN, toLabel
 		ToUrn:      strings.TrimSpace(toURN),
 		ToLabel:    strings.TrimSpace(toLabel),
 		ToType:     strings.TrimSpace(toType),
-		Attributes: compactStringMap(attributes),
+		Attributes: compactAttributes,
+		ObservedAt: graphPathObservedAt(compactAttributes),
 	}
+}
+
+func graphPathObservedAt(attributes map[string]string) string {
+	for _, key := range []string{"at", "observed_at", "last_observed_at", "last_seen_at", "last_active_date", "created_at", "updated_at"} {
+		if value := strings.TrimSpace(attributes[key]); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func compactStringMap(values map[string]string) map[string]string {

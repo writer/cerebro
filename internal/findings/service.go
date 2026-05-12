@@ -270,7 +270,7 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 	})
 	if err != nil {
 		evaluationErr := fmt.Errorf("replay runtime %q events: %w", runtimeID, err)
-		return nil, s.finishFailedRun(ctx, run, 0, nil, evaluationErr)
+		return nil, s.finishFailedRun(ctx, run, 0, 0, nil, evaluationErr)
 	}
 	result := &EvaluateResult{
 		Runtime: runtime,
@@ -280,6 +280,7 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 	evidenceIDs := map[string]struct{}{}
 	evaluatedEventIDs := map[string]struct{}{}
 	emittedFindingIDs := map[string]struct{}{}
+	var eventsMatched uint32
 	for _, event := range events {
 		if eventID := strings.TrimSpace(event.GetId()); eventID != "" {
 			evaluatedEventIDs[eventID] = struct{}{}
@@ -287,49 +288,54 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 		emitted, err := rule.Evaluate(ctx, runtime, event)
 		if err != nil {
 			evaluationErr := fmt.Errorf("evaluate finding rule %q for event %q: %w", result.Rule.GetId(), event.GetId(), err)
-			return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
+			return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
 		}
 		result.EventsEvaluated++
+		matchedEvent := false
 		for _, record := range emitted {
 			if record == nil {
 				continue
 			}
+			if !matchedEvent {
+				eventsMatched++
+				matchedEvent = true
+			}
 			record, err = s.reconcileLegacyFindingIdentity(ctx, record)
 			if err != nil {
 				evaluationErr := fmt.Errorf("reconcile finding identity for rule %q event %q: %w", result.Rule.GetId(), event.GetId(), err)
-				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
+				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
 			}
 			stored, err := s.store.UpsertFinding(ctx, record)
 			if err != nil {
 				evaluationErr := fmt.Errorf("persist finding for rule %q event %q: %w", result.Rule.GetId(), event.GetId(), err)
-				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
+				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
 			}
 			result.Findings = append(result.Findings, stored)
 			emittedFindingIDs[strings.TrimSpace(stored.ID)] = struct{}{}
 			evidence, err := s.buildFindingEvidence(ctx, stored, run)
 			if err != nil {
 				evaluationErr := fmt.Errorf("build evidence for finding %q: %w", stored.ID, err)
-				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
+				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
 			}
 			if _, seen := evidenceIDs[evidence.GetId()]; !seen {
 				if err := s.evidenceStore.PutFindingEvidence(ctx, evidence); err != nil {
 					evaluationErr := fmt.Errorf("persist evidence for finding %q: %w", stored.ID, err)
-					return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
+					return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
 				}
 				evidenceIDs[evidence.GetId()] = struct{}{}
 				result.Evidence = append(result.Evidence, evidence)
 			}
 			if err := s.projectFindingAnchor(ctx, stored); err != nil {
 				evaluationErr := fmt.Errorf("project finding %q graph anchor: %w", stored.ID, err)
-				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
+				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
 			}
 		}
 	}
 	if err := s.resolveStaleOpenFindings(ctx, strings.TrimSpace(runtime.GetTenantId()), runtimeID, rule.Spec().GetId(), evaluatedEventIDs, emittedFindingIDs); err != nil {
 		evaluationErr := fmt.Errorf("resolve stale findings for rule %q: %w", result.Rule.GetId(), err)
-		return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
+		return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
 	}
-	if err := s.finishCompletedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings)); err != nil {
+	if err := s.finishCompletedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings)); err != nil {
 		return nil, err
 	}
 	return result, nil
@@ -403,9 +409,14 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 				continue
 			}
 			state.eventsEvaluated++
+			matchedEvent := false
 			for _, record := range emitted {
 				if record == nil {
 					continue
+				}
+				if !matchedEvent {
+					state.eventsMatched++
+					matchedEvent = true
 				}
 				record, err = s.reconcileLegacyFindingIdentity(ctx, record)
 				if err != nil {
@@ -457,7 +468,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 			evaluationErr := fmt.Errorf("resolve stale findings for rule %q: %w", state.result.Rule.GetId(), err)
 			return nil, s.markRuleEvaluationsFailed(ctx, unfinishedRuleEvaluations(states, state), evaluationErr)
 		}
-		if err := s.finishCompletedRun(ctx, state.result.Run, state.eventsEvaluated, findingIDs(state.result.Findings)); err != nil {
+		if err := s.finishCompletedRun(ctx, state.result.Run, state.eventsEvaluated, state.eventsMatched, findingIDs(state.result.Findings)); err != nil {
 			return nil, s.markRuleEvaluationsFailed(ctx, unfinishedRuleEvaluations(states, state), err)
 		}
 	}
@@ -770,6 +781,7 @@ type ruleEvaluationState struct {
 	rule              Rule
 	result            *RuleEvaluationResult
 	eventsEvaluated   uint32
+	eventsMatched     uint32
 	evidenceIDs       map[string]struct{}
 	emittedFindingIDs map[string]struct{}
 	failed            bool
@@ -943,14 +955,12 @@ func findingNoteID(findingID string, createdAt time.Time) string {
 	return "finding-note-" + replacer.Replace(strings.TrimSpace(findingID)) + "-" + fmt.Sprintf("%d", createdAt.UnixNano())
 }
 
-func (s *Service) finishCompletedRun(ctx context.Context, run *cerebrov1.FindingEvaluationRun, eventsEvaluated uint32, findingIDs []string) error {
+func (s *Service) finishCompletedRun(ctx context.Context, run *cerebrov1.FindingEvaluationRun, eventsProcessed uint32, eventsMatched uint32, findingIDs []string) error {
 	if run == nil {
 		return nil
 	}
 	run.Status = "completed"
-	run.EventsEvaluated = eventsEvaluated
-	run.FindingsUpserted = uint32(len(findingIDs))
-	run.FindingIds = append([]string(nil), findingIDs...)
+	setFindingEvaluationRunMetrics(run, eventsProcessed, eventsMatched, findingIDs)
 	run.Error = ""
 	run.FinishedAt = timestamppb.New(time.Now().UTC())
 	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
@@ -959,14 +969,12 @@ func (s *Service) finishCompletedRun(ctx context.Context, run *cerebrov1.Finding
 	return nil
 }
 
-func (s *Service) finishFailedRun(ctx context.Context, run *cerebrov1.FindingEvaluationRun, eventsEvaluated uint32, findingIDs []string, evaluationErr error) error {
+func (s *Service) finishFailedRun(ctx context.Context, run *cerebrov1.FindingEvaluationRun, eventsProcessed uint32, eventsMatched uint32, findingIDs []string, evaluationErr error) error {
 	if run == nil {
 		return evaluationErr
 	}
 	run.Status = "failed"
-	run.EventsEvaluated = eventsEvaluated
-	run.FindingsUpserted = uint32(len(findingIDs))
-	run.FindingIds = append([]string(nil), findingIDs...)
+	setFindingEvaluationRunMetrics(run, eventsProcessed, eventsMatched, findingIDs)
 	run.Error = strings.TrimSpace(evaluationErr.Error())
 	run.FinishedAt = timestamppb.New(time.Now().UTC())
 	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
@@ -984,9 +992,7 @@ func (s *Service) markRuleEvaluationFailed(ctx context.Context, state *ruleEvalu
 	}
 	run := state.result.Run
 	run.Status = "failed"
-	run.EventsEvaluated = state.eventsEvaluated
-	run.FindingsUpserted = uint32(len(state.result.Findings))
-	run.FindingIds = append([]string(nil), findingIDs(state.result.Findings)...)
+	setFindingEvaluationRunMetrics(run, state.eventsEvaluated, state.eventsMatched, findingIDs(state.result.Findings))
 	run.Error = strings.TrimSpace(evaluationErr.Error())
 	run.FinishedAt = timestamppb.New(time.Now().UTC())
 	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
@@ -997,6 +1003,18 @@ func (s *Service) markRuleEvaluationFailed(ctx context.Context, state *ruleEvalu
 	}
 	state.failed = true
 	return nil
+}
+
+func setFindingEvaluationRunMetrics(run *cerebrov1.FindingEvaluationRun, eventsProcessed uint32, eventsMatched uint32, findingIDs []string) {
+	if run == nil {
+		return
+	}
+	run.EventsEvaluated = eventsProcessed
+	run.EventsProcessed = eventsProcessed
+	run.EventsMatched = eventsMatched
+	run.FindingsUpserted = uint32(len(findingIDs))
+	run.FindingsEmitted = uint32(len(findingIDs))
+	run.FindingIds = append([]string(nil), findingIDs...)
 }
 
 func (s *Service) markRuleEvaluationsFailed(ctx context.Context, states []*ruleEvaluationState, evaluationErr error) error {
@@ -1115,27 +1133,30 @@ func (s *Service) buildFindingEvidence(ctx context.Context, finding *ports.Findi
 	if len(graphRows) == 0 {
 		graphRows = finding.GraphEvidenceRows
 	}
-	createdAt := time.Now().UTC()
+	observedAt := time.Now().UTC()
+	clonedGraphRows := cloneGraphEvidenceRows(graphRows)
 	// Evidence is keyed by the runtime that performed THIS evaluation, not by the runtime
 	// the finding happens to be pinned to. For event rules these are identical because the
 	// fingerprint includes runtime_id. For graph rules the finding's runtime_id is pinned to
 	// the first triggering runtime by UpsertFinding's ON CONFLICT clause, but every
-	// triggering runtime should still record its own evidence so that
-	// `/source-runtimes/{runtime}/finding-evidence?run_id=<runtime-run>` returns rows for
-	// the runtime that produced the run, otherwise the run shows up in evaluation listings
-	// without any matching evidence.
+	// triggering runtime should still record its own evidence. The evidence id intentionally
+	// excludes run_id so repeated same-shape runs update last_observed_at instead of
+	// proliferating rows.
 	evidenceRuntimeID := strings.TrimSpace(run.GetRuntimeId())
 	return &cerebrov1.FindingEvidence{
-		Id:            findingEvidenceID(evidenceRuntimeID, finding.ID, run.GetId(), eventIDs),
-		RuntimeId:     evidenceRuntimeID,
-		RuleId:        strings.TrimSpace(finding.RuleID),
-		FindingId:     strings.TrimSpace(finding.ID),
-		RunId:         strings.TrimSpace(run.GetId()),
-		ClaimIds:      claimIDs,
-		EventIds:      eventIDs,
-		GraphRootUrns: graphRootURNs,
-		CreatedAt:     timestamppb.New(createdAt),
-		GraphRows:     cloneGraphEvidenceRows(graphRows),
+		Id:             findingEvidenceID(evidenceRuntimeID, finding.ID, graphRootURNs, eventIDs),
+		RuntimeId:      evidenceRuntimeID,
+		RuleId:         strings.TrimSpace(finding.RuleID),
+		FindingId:      strings.TrimSpace(finding.ID),
+		RunId:          strings.TrimSpace(run.GetId()),
+		ClaimIds:       claimIDs,
+		EventIds:       eventIDs,
+		GraphRootUrns:  graphRootURNs,
+		CreatedAt:      timestamppb.New(observedAt),
+		GraphRows:      clonedGraphRows,
+		LastObservedAt: timestamppb.New(observedAt),
+		Attributes:     compactStringMap(finding.Attributes),
+		GraphPathUrns:  graphPathURNs(clonedGraphRows),
 	}, nil
 }
 
@@ -1178,6 +1199,25 @@ func (s *Service) claimIDsForFinding(ctx context.Context, finding *ports.Finding
 	return uniqueSortedStrings(claimIDs), nil
 }
 
+func graphPathURNs(rows []*cerebrov1.GraphEvidenceRow) []string {
+	if len(rows) == 0 {
+		return nil
+	}
+	urns := []string{}
+	for _, row := range rows {
+		if row == nil {
+			continue
+		}
+		for _, path := range row.GetPaths() {
+			if path == nil {
+				continue
+			}
+			urns = append(urns, path.GetFromUrn(), path.GetToUrn())
+		}
+	}
+	return uniqueSortedStrings(urns)
+}
+
 func uniqueSortedStrings(values []string) []string {
 	if len(values) == 0 {
 		return nil
@@ -1199,11 +1239,13 @@ func uniqueSortedStrings(values []string) []string {
 	return unique
 }
 
-func findingEvidenceID(runtimeID string, findingID string, runID string, eventIDs []string) string {
+func findingEvidenceID(runtimeID string, findingID string, graphRootURNs []string, eventIDs []string) string {
 	replacer := strings.NewReplacer(" ", "-", "_", "-", "/", "-", ":", "-", ".", "-")
-	parts := []string{strings.TrimSpace(runtimeID), strings.TrimSpace(findingID), strings.TrimSpace(runID)}
-	parts = append(parts, uniqueSortedStrings(eventIDs)...)
-	prefix := replacer.Replace(strings.Join(parts, "-"))
-	digest := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+	identityParts := []string{strings.TrimSpace(runtimeID), strings.TrimSpace(findingID)}
+	fingerprintParts := append([]string{}, identityParts...)
+	fingerprintParts = append(fingerprintParts, uniqueSortedStrings(graphRootURNs)...)
+	fingerprintParts = append(fingerprintParts, uniqueSortedStrings(eventIDs)...)
+	prefix := replacer.Replace(strings.Join(identityParts, "-"))
+	digest := sha256.Sum256([]byte(strings.Join(fingerprintParts, "\x00")))
 	return "finding-evidence-" + prefix + "-" + hex.EncodeToString(digest[:8])
 }

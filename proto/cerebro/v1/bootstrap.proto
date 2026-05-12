@@ -134,6 +134,9 @@ message FindingEvaluationRun {
   google.protobuf.Timestamp started_at = 9;
   google.protobuf.Timestamp finished_at = 10;
   string error = 11;
+  uint32 events_processed = 12;
+  uint32 events_matched = 13;
+  uint32 findings_emitted = 14;
 }
 
 // ListFindingEvaluationRunsRequest requests persisted finding evaluation runs for one stored runtime.
@@ -169,6 +172,7 @@ message GraphEvidencePath {
   string to_label = 6;
   string to_type = 7;
   map<string, string> attributes = 8;
+  string observed_at = 9;
 }
 
 // GraphEvidenceRow captures one rule-specific graph row and its supporting paths.
@@ -190,6 +194,9 @@ message FindingEvidence {
   repeated string graph_root_urns = 8;
   google.protobuf.Timestamp created_at = 9;
   repeated GraphEvidenceRow graph_rows = 10;
+  google.protobuf.Timestamp last_observed_at = 11;
+  map<string, string> attributes = 12;
+  repeated string graph_path_urns = 13;
 }
 
 // ListFindingEvidenceRequest queries persisted finding evidence for one stored runtime.
