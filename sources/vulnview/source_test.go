@@ -37,6 +37,19 @@ func TestParseSettingsRejectsTokenURLOutsideOktaIssuer(t *testing.T) {
 	}
 }
 
+func TestParseSettingsRejectsUntrustedBaseURL(t *testing.T) {
+	_, err := parseSettings(sourcecdk.NewConfig(map[string]string{
+		"tenant_id":     "writer",
+		"base_url":      "https://attacker.example/api",
+		"okta_issuer":   "https://writer.okta.com/oauth2/default",
+		"client_id":     "client",
+		"client_secret": "secret",
+	}), false)
+	if err == nil {
+		t.Fatal("parseSettings() error = nil, want non-nil")
+	}
+}
+
 func TestReadVulnerabilitiesPaginatesAndMapsAttributes(t *testing.T) {
 	var tokenRequests int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -240,6 +253,61 @@ func TestReadDNSAlertsPaginatesWithinAsset(t *testing.T) {
 	}
 	if first.Events[0].Attributes["alert"] == second.Events[0].Attributes["alert"] {
 		t.Fatalf("alerts were not paginated distinctly: %q", first.Events[0].Attributes["alert"])
+	}
+	if assetRequests != 2 {
+		t.Fatalf("assetRequests = %d, want 2", assetRequests)
+	}
+}
+
+func TestReadDNSAlertsSkipsEmptyAssetPages(t *testing.T) {
+	var assetRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "token_type": "Bearer", "expires_in": 3600})
+		case "/assets":
+			assetRequests++
+			cursor := r.URL.Query().Get("cursor")
+			if cursor == "" {
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"items":      []map[string]any{{"asset": "empty.writer.com", "dnsAlerts": []map[string]any{}}},
+					"nextCursor": "1",
+				})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{
+				"asset":     "staging.writer.com",
+				"dnsAlerts": []map[string]any{{"alert": "dangling-cname", "severity": "high"}},
+			}}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id":     "writer",
+		"base_url":      server.URL,
+		"token_url":     server.URL + "/token",
+		"client_id":     "client",
+		"client_secret": "secret",
+		"family":        "dns_alert",
+		"per_page":      "1",
+	})
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(pull.Events) = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["asset_id"]; got != "staging.writer.com" {
+		t.Fatalf("asset_id = %q, want staging.writer.com", got)
 	}
 	if assetRequests != 2 {
 		t.Fatalf("assetRequests = %d, want 2", assetRequests)

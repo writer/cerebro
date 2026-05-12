@@ -261,6 +261,9 @@ func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 		return resolved, err
 	}
 	resolved.baseURL = normalizedBase
+	if err := validateBaseURL(resolved.baseURL, allowLoopback); err != nil {
+		return resolved, err
+	}
 	if resolved.scope == "" {
 		resolved.scope = defaultScope
 	}
@@ -270,8 +273,11 @@ func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 	if resolved.clientSecret == "" {
 		return resolved, fmt.Errorf("vulnview client_secret is required")
 	}
+	issuer := strings.TrimRight(configValue(cfg, "okta_issuer"), "/")
+	if issuer == "" && !allowLoopback {
+		return resolved, fmt.Errorf("vulnview okta_issuer is required")
+	}
 	if resolved.tokenURL == "" {
-		issuer := strings.TrimRight(configValue(cfg, "okta_issuer"), "/")
 		if issuer == "" {
 			return resolved, fmt.Errorf("vulnview okta_issuer or token_url is required")
 		}
@@ -296,6 +302,24 @@ func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 		resolved.perPage = perPage
 	}
 	return resolved, nil
+}
+
+func validateBaseURL(baseURL string, allowLoopback bool) error {
+	if allowLoopback {
+		return nil
+	}
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return fmt.Errorf("parse vulnview base_url: %w", err)
+	}
+	trusted, err := url.Parse(defaultBaseURL)
+	if err != nil {
+		return fmt.Errorf("parse default VulnView base_url: %w", err)
+	}
+	if !strings.EqualFold(parsed.Scheme, trusted.Scheme) || !strings.EqualFold(parsed.Host, trusted.Host) {
+		return fmt.Errorf("vulnview base_url must use the trusted VulnView origin")
+	}
+	return nil
 }
 
 func validateTokenURL(cfg sourcecdk.Config, tokenURL string, allowLoopback bool) error {
@@ -361,55 +385,61 @@ func (s *Source) listDNSAlerts(ctx context.Context, settings settings, cursor st
 	}
 	familySettings := settings
 	familySettings.family = familyAsset
-	var response listResponse
-	query := familySettings.query()
-	query.Set("limit", "1")
-	addQuery(query, "cursor", assetCursor)
-	if err := s.getJSON(ctx, familySettings, "/assets", query, &response); err != nil {
-		return nil, "", err
-	}
-	records := []record{}
-	for _, item := range response.Items {
-		var asset map[string]any
-		if err := json.Unmarshal(item, &asset); err != nil {
-			return nil, "", fmt.Errorf("decode VulnView asset: %w", err)
+	for {
+		var response listResponse
+		query := familySettings.query()
+		query.Set("limit", "1")
+		addQuery(query, "cursor", assetCursor)
+		if err := s.getJSON(ctx, familySettings, "/assets", query, &response); err != nil {
+			return nil, "", err
 		}
-		alerts, _ := asset["dnsAlerts"].([]any)
-		for index, rawAlert := range alerts {
-			alert, ok := rawAlert.(map[string]any)
-			if !ok {
-				continue
+		records := []record{}
+		for _, item := range response.Items {
+			var asset map[string]any
+			if err := json.Unmarshal(item, &asset); err != nil {
+				return nil, "", fmt.Errorf("decode VulnView asset: %w", err)
 			}
-			values := map[string]any{
-				"asset":     asset["asset"],
-				"siteNames": asset["sites"],
-				"scanNames": asset["scanNames"],
+			alerts, _ := asset["dnsAlerts"].([]any)
+			for index, rawAlert := range alerts {
+				alert, ok := rawAlert.(map[string]any)
+				if !ok {
+					continue
+				}
+				values := map[string]any{
+					"asset":     asset["asset"],
+					"siteNames": asset["sites"],
+					"scanNames": asset["scanNames"],
+				}
+				maps.Copy(values, alert)
+				raw, err := json.Marshal(values)
+				if err != nil {
+					return nil, "", fmt.Errorf("marshal VulnView DNS alert: %w", err)
+				}
+				id := firstValueString(values, "id", "alert", "name", "type")
+				assetID := valueString(asset["asset"])
+				records = append(records, record{
+					Raw:    raw,
+					Values: values,
+					ID:     stableID(assetID, id, strconv.Itoa(index)),
+				})
 			}
-			maps.Copy(values, alert)
-			raw, err := json.Marshal(values)
-			if err != nil {
-				return nil, "", fmt.Errorf("marshal VulnView DNS alert: %w", err)
-			}
-			id := firstValueString(values, "id", "alert", "name", "type")
-			assetID := valueString(asset["asset"])
-			records = append(records, record{
-				Raw:    raw,
-				Values: values,
-				ID:     stableID(assetID, id, strconv.Itoa(index)),
-			})
 		}
+		page, nextAlertOffset, err := pageRecords(records, strconv.Itoa(alertOffset), pageSize)
+		if err != nil {
+			return nil, "", err
+		}
+		if len(page) > 0 || strings.TrimSpace(response.NextCursor) == "" {
+			if nextAlertOffset != "" {
+				return page, encodeDNSAlertCursor(assetCursor, nextAlertOffset), nil
+			}
+			if strings.TrimSpace(response.NextCursor) != "" {
+				return page, encodeDNSAlertCursor(response.NextCursor, "0"), nil
+			}
+			return page, "", nil
+		}
+		assetCursor = strings.TrimSpace(response.NextCursor)
+		alertOffset = 0
 	}
-	page, nextAlertOffset, err := pageRecords(records, strconv.Itoa(alertOffset), pageSize)
-	if err != nil {
-		return nil, "", err
-	}
-	if nextAlertOffset != "" {
-		return page, encodeDNSAlertCursor(assetCursor, nextAlertOffset), nil
-	}
-	if strings.TrimSpace(response.NextCursor) != "" {
-		return page, encodeDNSAlertCursor(response.NextCursor, "0"), nil
-	}
-	return page, "", nil
 }
 
 func serverPaged(cursor string, pageSize int, recordCount int, nextCursor string) bool {
