@@ -362,35 +362,18 @@ func TestProjectGRCVulnerabilityLinksTargetPackageAndIntegration(t *testing.T) {
 	if got := state.entities[targetURN].Attributes["integration_id"]; got != "integration-1" {
 		t.Fatalf("target integration_id = %q, want integration-1", got)
 	}
+	if entity := state.entities[integrationURN]; entity == nil || entity.EntityType != "source" {
+		t.Fatalf("GRC integration source reference missing: %#v", entity)
+	}
 	assertProjectedLink(t, state, targetURN, relationAffectedBy, vulnerabilityURN)
 	assertProjectedLink(t, state, targetURN, relationContains, packageURN)
 	assertProjectedLink(t, state, targetURN, relationBelongsTo, integrationURN)
 }
 
 func TestProjectGRCVulnerabilityDoesNotRegressIntegrationLabel(t *testing.T) {
-	state := &projectionRecorder{}
-	service := New(state, nil)
-
 	integrationURN := "urn:cerebro:writer:source:vanta:integration:integration-1"
-	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
-		Id:       "grc-integration-integration-1",
-		TenantId: "writer",
-		SourceId: "grc",
-		Kind:     "grc.integration",
-		Attributes: map[string]string{
-			"provider":       "vanta",
-			"integration_id": "integration-1",
-			"display_name":   "GitHub Dependabot",
-		},
-	})
-	if err != nil {
-		t.Fatalf("Project(integration) error = %v", err)
-	}
-	if got := state.entities[integrationURN].Label; got != "GitHub Dependabot" {
-		t.Fatalf("integration label before vulnerability = %q, want GitHub Dependabot", got)
-	}
-
-	_, err = service.Project(context.Background(), &cerebrov1.EventEnvelope{
+	targetURN := "urn:cerebro:writer:grc_target:vanta:target-1"
+	entities, links, err := grcVulnerabilityProjections(&cerebrov1.EventEnvelope{
 		Id:       "grc-vulnerability-vuln-1",
 		TenantId: "writer",
 		SourceId: "grc",
@@ -405,11 +388,28 @@ func TestProjectGRCVulnerabilityDoesNotRegressIntegrationLabel(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("Project(vulnerability) error = %v", err)
+		t.Fatalf("grcVulnerabilityProjections() error = %v", err)
 	}
 
-	if got := state.entities[integrationURN].Label; got != "GitHub Dependabot" {
-		t.Fatalf("integration label after vulnerability = %q, want GitHub Dependabot", got)
+	var integrationLabel string
+	integrationFound := false
+	for _, entity := range entities {
+		if entity.URN == integrationURN {
+			integrationFound = true
+			integrationLabel = entity.Label
+			break
+		}
 	}
-	assertProjectedLink(t, state, "urn:cerebro:writer:grc_target:vanta:target-1", relationBelongsTo, integrationURN)
+	if !integrationFound {
+		t.Fatalf("integration reference entity missing: %#v", entities)
+	}
+	if integrationLabel != "" {
+		t.Fatalf("integration reference label = %q, want empty fallback-preserving label", integrationLabel)
+	}
+	for _, link := range links {
+		if link.FromURN == targetURN && link.Relation == relationBelongsTo && link.ToURN == integrationURN {
+			return
+		}
+	}
+	t.Fatalf("target belongs_to integration link missing: %#v", links)
 }

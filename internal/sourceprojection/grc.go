@@ -225,6 +225,9 @@ func grcVulnerabilityProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 	}
 	integrationID := firstAttribute(attrs, "integration_id")
 	integrationURN := grcIntegrationURN(tenantID, provider, integrationID)
+	if integrationURN != "" {
+		addEntity(entities, grcIntegrationReferenceEntity(tenantID, event.GetSourceId(), integrationURN, integrationID, provider))
+	}
 	targetID := firstAttribute(attrs, "target_id", "resource_id", "asset_id", "endpoint_id")
 	targetURN := grcTargetURN(tenantID, provider, targetID)
 	if targetURN != "" {
@@ -295,6 +298,20 @@ func grcIntegrationEntity(tenantID string, sourceID string, urn string, integrat
 		EntityType: "source",
 		Label:      firstAttribute(attrs, "display_name", "integration_name", "integration_id"),
 		Attributes: grcAttributes(attrs, map[string]string{
+			"canonical_name": integrationID,
+			"source_system":  provider,
+			"source_type":    "grc_integration",
+		}),
+	}
+}
+
+func grcIntegrationReferenceEntity(tenantID string, sourceID string, urn string, integrationID string, provider string) *ports.ProjectedEntity {
+	return &ports.ProjectedEntity{
+		URN:        urn,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "source",
+		Attributes: grcAttributes(nil, map[string]string{
 			"canonical_name": integrationID,
 			"source_system":  provider,
 			"source_type":    "grc_integration",
