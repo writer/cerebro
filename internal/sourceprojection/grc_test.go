@@ -2,12 +2,31 @@ package sourceprojection
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+type endpointCheckingGraphRecorder struct {
+	projectionRecorder
+}
+
+func (r *endpointCheckingGraphRecorder) UpsertProjectedLink(ctx context.Context, link *ports.ProjectedLink) error {
+	if link == nil {
+		return nil
+	}
+	if r.entities[link.FromURN] == nil {
+		return fmt.Errorf("graph link source entity %q missing", link.FromURN)
+	}
+	if r.entities[link.ToURN] == nil {
+		return fmt.Errorf("graph link target entity %q missing", link.ToURN)
+	}
+	return r.projectionRecorder.UpsertProjectedLink(ctx, link)
+}
 
 func TestProjectGRCVendorWithOwner(t *testing.T) {
 	state := &projectionRecorder{}
@@ -368,6 +387,44 @@ func TestProjectGRCVulnerabilityLinksTargetPackageAndIntegration(t *testing.T) {
 	assertProjectedLink(t, state, targetURN, relationAffectedBy, vulnerabilityURN)
 	assertProjectedLink(t, state, targetURN, relationContains, packageURN)
 	assertProjectedLink(t, state, targetURN, relationBelongsTo, integrationURN)
+}
+
+func TestProjectGRCVulnerabilityWritesGraphTargetIntegrationLinks(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &endpointCheckingGraphRecorder{}
+	service := New(state, graph)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-vulnerability-vuln-1",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.vulnerability",
+		Attributes: map[string]string{
+			"provider":         "vanta",
+			"vulnerability_id": "vuln-1",
+			"name":             "CVE-2026-4242",
+			"package":          "example/module",
+			"target_id":        "target-1",
+			"integration_id":   "integration-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	targetURN := "urn:cerebro:writer:grc_target:vanta:target-1"
+	integrationURN := "urn:cerebro:writer:source:vanta:integration:integration-1"
+	packageURN := "urn:cerebro:writer:package:grc:example/module"
+	vulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
+	if graph.entities[targetURN] == nil {
+		t.Fatalf("graph target entity missing")
+	}
+	if graph.entities[integrationURN] == nil {
+		t.Fatalf("graph integration entity missing")
+	}
+	assertProjectedLink(t, &graph.projectionRecorder, targetURN, relationAffectedBy, vulnerabilityURN)
+	assertProjectedLink(t, &graph.projectionRecorder, targetURN, relationContains, packageURN)
+	assertProjectedLink(t, &graph.projectionRecorder, targetURN, relationBelongsTo, integrationURN)
 }
 
 func TestProjectGRCVulnerabilityDoesNotRegressIntegrationLabel(t *testing.T) {

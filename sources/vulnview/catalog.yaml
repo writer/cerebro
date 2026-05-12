@@ -1,0 +1,9 @@
+id: vulnview
+name: VulnView
+description: VulnView attack-surface, scan, vulnerability, asset, and DNS alert source.
+emitted_kinds:
+  - vulnview.site
+  - vulnview.scan
+  - vulnview.vulnerability
+  - vulnview.asset
+  - vulnview.dns_alert
