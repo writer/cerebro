@@ -3,7 +3,6 @@ config:
   cerebro:environment: go-production
   cerebro:ecrBaseUri: 837279440628.dkr.ecr.us-east-1.amazonaws.com/cerebro
   cerebro:imageTag: v2.1.20
-
   cerebro:useExistingVpc: true
   cerebro:vpcId: vpc-0bec76c1fba4b8ad2
   cerebro:vpcCidr: "10.20.0.0/16"
@@ -13,7 +12,6 @@ config:
   cerebro:publicSubnetIds:
     - subnet-0dee23b7f11d39069
     - subnet-06c3659db5372e941
-
   cerebro:apiCpu: 2048
   cerebro:apiMemory: 4096
   cerebro:apiMinInstances: 1
@@ -258,7 +256,6 @@ config:
         per_page: "100"
         provider: vanta
         tenant_id: writer
-
   cerebro:enableTailscale: true
   cerebro:tailscaleAdvertiseRoutes:
     - "10.20.0.0/18"
@@ -269,7 +266,6 @@ config:
   cerebro:enableAlbDeletionProtection: true
   cerebro:enableKmsLogEncryption: true
   cerebro:natGatewayPerAz: true
-
   # IAM scope retained for internal S3 source runtimes. Runtime source configs
   # provide bucket/prefix details to Cerebro; these entries grant task access.
   cerebro:s3Sources:
@@ -287,3 +283,15 @@ config:
       region: us-east-1
       prefixes:
         - "s1/cloud_funnel/"
+  cerebro:neo4jAuraEnabled: true
+  cerebro:neo4jAuraInstanceName: cerebro-graphdb-go-production-writer
+  cerebro:neo4jAuraMemory: 8GB
+  cerebro:neo4jAuraType: professional-db
+  cerebro:neo4jAuraRegion: us-central1
+  cerebro:neo4jAuraCloudProvider: gcp
+  cerebro:neo4jAuraClientId:
+    secure: AAABAJnWawGx95kLSGBqmI4oZqF2in6rgmU5J7Yj/S7PRCMJ5vltaMYfzZczP2umn6xdy5iO0oG9LDbPmn664w==
+  cerebro:neo4jAuraClientSecret:
+    secure: AAABAE6cfy9Q+OQkmwT0eOEr2lFRBNQ7V+behbdTSxStFh2hsdsie58OjHXGKXwOoSLZK2letaCjXPQA3mM6ilUxdlJHm0E30Ts5+RRqLo9LRga2syvQU07iGRLQxS98
+  cerebro:neo4jAuraProjectId:
+    secure: AAABADcxrl4kflM8elbdIAQyjxtUfL+IJ4ZjJwVods1obI7jhle/VWwelrXsoOGN3qfclvvwE0gS7ZmQo//KXNPYmj8=

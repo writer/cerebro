@@ -134,6 +134,11 @@ jobs:
           set -euo pipefail
           echo "tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
 
+          if aws ecr describe-images --repository-name "${ECR_REPOSITORY}" --image-ids imageTag="${IMAGE_TAG}" >/dev/null 2>&1; then
+            echo "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG} already exists; skipping immutable ECR push"
+            exit 0
+          fi
+
           echo "Pulling ${GHCR_IMAGE}:${IMAGE_TAG} from GHCR..."
           docker pull "${GHCR_IMAGE}:${IMAGE_TAG}"
 
