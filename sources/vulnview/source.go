@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"embed"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -83,6 +84,11 @@ type record struct {
 type listResponse struct {
 	Items      []json.RawMessage `json:"items"`
 	NextCursor string            `json:"nextCursor"`
+}
+
+type dnsAlertCursor struct {
+	AssetCursor string `json:"assetCursor,omitempty"`
+	AlertOffset int    `json:"alertOffset,omitempty"`
 }
 
 type tokenResponse struct {
@@ -276,6 +282,9 @@ func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 		return resolved, err
 	}
 	resolved.tokenURL = normalizedTokenURL
+	if err := validateTokenURL(cfg, resolved.tokenURL, allowLoopback); err != nil {
+		return resolved, err
+	}
 	if rawPerPage, ok := cfg.Lookup("per_page"); ok && strings.TrimSpace(rawPerPage) != "" {
 		perPage, err := strconv.Atoi(strings.TrimSpace(rawPerPage))
 		if err != nil {
@@ -287,6 +296,24 @@ func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 		resolved.perPage = perPage
 	}
 	return resolved, nil
+}
+
+func validateTokenURL(cfg sourcecdk.Config, tokenURL string, allowLoopback bool) error {
+	issuer := strings.TrimRight(configValue(cfg, "okta_issuer"), "/")
+	if issuer == "" {
+		if allowLoopback {
+			return nil
+		}
+		return fmt.Errorf("vulnview okta_issuer is required")
+	}
+	expected, err := normalizeAbsoluteURL(issuer+"/v1/token", allowLoopback)
+	if err != nil {
+		return err
+	}
+	if tokenURL != expected {
+		return fmt.Errorf("vulnview token_url must match okta_issuer token endpoint")
+	}
+	return nil
 }
 
 func isSupportedFamily(family string) bool {
@@ -328,12 +355,16 @@ func (s *Source) list(ctx context.Context, settings settings, path string, curso
 }
 
 func (s *Source) listDNSAlerts(ctx context.Context, settings settings, cursor string, pageSize int) ([]record, string, error) {
+	assetCursor, alertOffset, err := parseDNSAlertCursor(cursor)
+	if err != nil {
+		return nil, "", err
+	}
 	familySettings := settings
 	familySettings.family = familyAsset
 	var response listResponse
 	query := familySettings.query()
-	query.Set("limit", strconv.Itoa(pageSize))
-	addQuery(query, "cursor", cursor)
+	query.Set("limit", "1")
+	addQuery(query, "cursor", assetCursor)
 	if err := s.getJSON(ctx, familySettings, "/assets", query, &response); err != nil {
 		return nil, "", err
 	}
@@ -368,14 +399,55 @@ func (s *Source) listDNSAlerts(ctx context.Context, settings settings, cursor st
 			})
 		}
 	}
-	if serverPaged(cursor, pageSize, len(records), response.NextCursor) {
-		return records, strings.TrimSpace(response.NextCursor), nil
+	page, nextAlertOffset, err := pageRecords(records, strconv.Itoa(alertOffset), pageSize)
+	if err != nil {
+		return nil, "", err
 	}
-	return pageRecords(records, cursor, pageSize)
+	if nextAlertOffset != "" {
+		return page, encodeDNSAlertCursor(assetCursor, nextAlertOffset), nil
+	}
+	if strings.TrimSpace(response.NextCursor) != "" {
+		return page, encodeDNSAlertCursor(response.NextCursor, "0"), nil
+	}
+	return page, "", nil
 }
 
 func serverPaged(cursor string, pageSize int, recordCount int, nextCursor string) bool {
 	return strings.TrimSpace(nextCursor) != "" || (strings.TrimSpace(cursor) != "" && recordCount <= pageSize)
+}
+
+func parseDNSAlertCursor(cursor string) (string, int, error) {
+	trimmed := strings.TrimSpace(cursor)
+	if trimmed == "" {
+		return "", 0, nil
+	}
+	if !strings.HasPrefix(trimmed, "dns:") {
+		return trimmed, 0, nil
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(trimmed, "dns:"))
+	if err != nil {
+		return "", 0, fmt.Errorf("invalid VulnView DNS alert cursor")
+	}
+	var decoded dnsAlertCursor
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		return "", 0, fmt.Errorf("invalid VulnView DNS alert cursor")
+	}
+	if decoded.AlertOffset < 0 {
+		return "", 0, fmt.Errorf("invalid VulnView DNS alert cursor")
+	}
+	return strings.TrimSpace(decoded.AssetCursor), decoded.AlertOffset, nil
+}
+
+func encodeDNSAlertCursor(assetCursor string, alertOffset string) string {
+	offset, err := strconv.Atoi(strings.TrimSpace(alertOffset))
+	if err != nil || offset < 0 {
+		offset = 0
+	}
+	payload, err := json.Marshal(dnsAlertCursor{AssetCursor: strings.TrimSpace(assetCursor), AlertOffset: offset})
+	if err != nil {
+		return ""
+	}
+	return "dns:" + base64.RawURLEncoding.EncodeToString(payload)
 }
 
 func pageRecords(records []record, cursor string, pageSize int) ([]record, string, error) {
@@ -454,7 +526,7 @@ func (s *Source) getJSONWithToken(ctx context.Context, settings settings, reques
 }
 
 func (s *Source) token(ctx context.Context, settings settings) (string, error) {
-	key := strings.Join([]string{settings.tokenURL, settings.clientID, settings.scope}, "\x00")
+	key := tokenCacheKey(settings)
 	now := time.Now().UTC()
 	s.mu.Lock()
 	if key == s.tokenKey && s.accessToken != "" && now.Add(tokenRefreshLeeway).Before(s.tokenExpiresAt) {
@@ -476,7 +548,7 @@ func (s *Source) token(ctx context.Context, settings settings) (string, error) {
 }
 
 func (s *Source) invalidateToken(settings settings) {
-	key := strings.Join([]string{settings.tokenURL, settings.clientID, settings.scope}, "\x00")
+	key := tokenCacheKey(settings)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.tokenKey == key {
@@ -484,6 +556,21 @@ func (s *Source) invalidateToken(settings settings) {
 		s.accessToken = ""
 		s.tokenExpiresAt = time.Time{}
 	}
+}
+
+func tokenCacheKey(settings settings) string {
+	return strings.Join([]string{
+		settings.baseURL,
+		settings.tokenURL,
+		settings.clientID,
+		settings.scope,
+		hashValue(settings.clientSecret),
+	}, "\x00")
+}
+
+func hashValue(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])
 }
 
 func (s *Source) fetchToken(ctx context.Context, settings settings) (string, time.Time, error) {

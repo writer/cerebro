@@ -42,6 +42,7 @@ func buildVulnViewActionableExternalFinding(ctx context.Context, runtime *cerebr
 	attrs := eventAttributes(event)
 	projectedContext, err := buildFindingProjectionContext(ctx, event, findingProjectionContextOptions{
 		PrimaryRelations:   []string{"has_evidence", "observed_on", "affected_by"},
+		PrimaryEntityType:  "external.asset",
 		CollectAllEntities: true,
 		ResourceFallbacks:  []string{attrs["target_name"], attrs["target_id"], attrs["host"], attrs["matched_at"], attrs["asset_id"]},
 	})
@@ -76,7 +77,8 @@ func buildVulnViewActionableExternalFinding(ctx context.Context, runtime *cerebr
 		vulnViewActionableExternalFindingRuleID,
 		strings.TrimSpace(event.GetTenantId()),
 		firstNonEmpty(attrs["template_id"], attrs["alert"], attrs["external_id"]),
-		firstNonEmpty(attrs["target_id"], attrs["host"], attrs["asset_id"], attrs["matched_at"], projectedContext.PrimaryResourceURN),
+		firstNonEmpty(attrs["target_id"], attrs["host"], attrs["asset_id"], projectedContext.PrimaryResourceURN),
+		attrs["matched_at"],
 	)
 	return &ports.FindingRecord{
 		ID:              fingerprint,
