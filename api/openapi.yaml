@@ -168,17 +168,73 @@ paths:
       summary: List finding evidence for one runtime
       parameters:
         - $ref: '#/components/parameters/runtimeID'
+        - name: finding_id
+          in: query
+          schema:
+            type: string
+        - name: run_id
+          in: query
+          schema:
+            type: string
+        - name: rule_id
+          in: query
+          schema:
+            type: string
+        - name: claim_id
+          in: query
+          schema:
+            type: string
+        - name: event_id
+          in: query
+          schema:
+            type: string
+        - name: graph_root_urn
+          in: query
+          schema:
+            type: string
+        - name: graph_path_urn
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/limitQuery'
       responses:
         '200':
           description: Finding evidence list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  evidence:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FindingEvidence'
   /source-runtimes/{runtimeID}/finding-evaluation-runs:
     get:
       summary: List finding evaluation runs for one runtime
       parameters:
         - $ref: '#/components/parameters/runtimeID'
+        - name: rule_id
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/limitQuery'
       responses:
         '200':
           description: Finding evaluation run list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FindingEvaluationRun'
   /findings/{findingID}:
     get:
       summary: Get finding
@@ -249,6 +305,13 @@ paths:
       responses:
         '200':
           description: Finding evaluation run.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  run:
+                    $ref: '#/components/schemas/FindingEvaluationRun'
   /finding-evidence/{evidenceID}:
     get:
       summary: Get finding evidence
@@ -257,6 +320,13 @@ paths:
       responses:
         '200':
           description: Finding evidence.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  evidence:
+                    $ref: '#/components/schemas/FindingEvidence'
   /reports:
     get:
       summary: List report definitions
@@ -737,3 +807,162 @@ components:
               type: object
               additionalProperties:
                 type: string
+    FindingEvaluationRun:
+      type: object
+      properties:
+        id:
+          type: string
+        runtime_id:
+          type: string
+        rule_id:
+          type: string
+        status:
+          type: string
+        event_limit:
+          type: integer
+          minimum: 0
+        events_evaluated:
+          type: integer
+          minimum: 0
+        events_processed:
+          type: integer
+          minimum: 0
+        events_matched:
+          type: integer
+          minimum: 0
+        findings_upserted:
+          type: integer
+          minimum: 0
+        findings_emitted:
+          type: integer
+          minimum: 0
+        finding_ids:
+          type: array
+          items:
+            type: string
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        error:
+          type: string
+    FindingEvidence:
+      type: object
+      properties:
+        id:
+          type: string
+        runtime_id:
+          type: string
+        rule_id:
+          type: string
+        finding_id:
+          type: string
+        run_id:
+          type: string
+        run_ids:
+          type: array
+          items:
+            type: string
+        claim_ids:
+          type: array
+          items:
+            type: string
+        event_ids:
+          type: array
+          items:
+            type: string
+        graph_root_urns:
+          type: array
+          items:
+            type: string
+        graph_path_urns:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        last_observed_at:
+          type: string
+          format: date-time
+        attributes:
+          type: object
+          additionalProperties:
+            type: string
+        graph_rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphEvidenceRow'
+        observation_count:
+          type: integer
+          minimum: 0
+        observations:
+          type: array
+          items:
+            $ref: '#/components/schemas/FindingEvidenceObservation'
+    FindingEvidenceObservation:
+      type: object
+      properties:
+        run_id:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        claim_ids:
+          type: array
+          items:
+            type: string
+        event_ids:
+          type: array
+          items:
+            type: string
+        graph_root_urns:
+          type: array
+          items:
+            type: string
+        graph_path_urns:
+          type: array
+          items:
+            type: string
+        graph_rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphEvidenceRow'
+    GraphEvidenceRow:
+      type: object
+      properties:
+        label:
+          type: string
+        attributes:
+          type: object
+          additionalProperties:
+            type: string
+        paths:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphEvidencePath'
+    GraphEvidencePath:
+      type: object
+      properties:
+        from_urn:
+          type: string
+        from_label:
+          type: string
+        from_type:
+          type: string
+        relation:
+          type: string
+        to_urn:
+          type: string
+        to_label:
+          type: string
+        to_type:
+          type: string
+        observed_at:
+          type: string
+        attributes:
+          type: object
+          additionalProperties:
+            type: string

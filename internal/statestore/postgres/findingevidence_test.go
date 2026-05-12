@@ -58,6 +58,7 @@ func TestFindingEvidenceListQueryIncludesOptionalFilters(t *testing.T) {
 		ClaimID:      "claim-1",
 		EventID:      "okta-audit-2",
 		GraphRootURN: "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+		GraphPathURN: "urn:cerebro:writer:okta_user:00u2",
 		Limit:        25,
 	})
 	if err != nil {
@@ -66,25 +67,26 @@ func TestFindingEvidenceListQueryIncludesOptionalFilters(t *testing.T) {
 	for _, fragment := range []string{
 		"runtime_id = $1",
 		"finding_id = $2",
-		"run_id = $3",
+		"(run_id = $3 OR run_ids_json @> jsonb_build_array($3))",
 		"rule_id = $4",
 		"claim_ids_json @> $5::jsonb",
 		"event_ids_json @> $6::jsonb",
 		"graph_root_urns_json @> $7::jsonb",
-		"LIMIT $8",
+		"graph_path_urns_json @> $8::jsonb",
+		"LIMIT $9",
 	} {
 		if !strings.Contains(query, fragment) {
 			t.Fatalf("findingEvidenceListQuery() query missing %q: %s", fragment, query)
 		}
 	}
-	if got := len(args); got != 8 {
-		t.Fatalf("len(findingEvidenceListQuery().args) = %d, want 8", got)
+	if got := len(args); got != 9 {
+		t.Fatalf("len(findingEvidenceListQuery().args) = %d, want 9", got)
 	}
 	if got := args[0]; got != "writer-okta-audit" {
 		t.Fatalf("findingEvidenceListQuery().args[0] = %#v, want writer-okta-audit", got)
 	}
-	if got := args[7]; got != int64(25) {
-		t.Fatalf("findingEvidenceListQuery().args[7] = %#v, want 25", got)
+	if got := args[8]; got != int64(25) {
+		t.Fatalf("findingEvidenceListQuery().args[8] = %#v, want 25", got)
 	}
 }
 
@@ -99,6 +101,12 @@ func TestFindingEvidenceUpsertPreservesCreatedAtOnConflict(t *testing.T) {
 	if !strings.Contains(query, "last_observed_at = GREATEST") {
 		t.Fatalf("finding evidence upsert does not advance last_observed_at:\n%s", query)
 	}
+	if !strings.Contains(query, "run_ids_json = EXCLUDED.run_ids_json") {
+		t.Fatalf("finding evidence upsert does not persist merged run_ids_json:\n%s", query)
+	}
+	if !strings.Contains(query, "observations_json = EXCLUDED.observations_json") {
+		t.Fatalf("finding evidence upsert does not persist merged observations_json:\n%s", query)
+	}
 	if !strings.Contains(query, "'{last_observed_at}'") {
 		t.Fatalf("finding evidence upsert does not persist payload last_observed_at:\n%s", query)
 	}
@@ -109,8 +117,11 @@ func TestFindingEvidenceSchemaPersistsEnrichedEvidence(t *testing.T) {
 	for _, fragment := range []string{
 		"last_observed_at TIMESTAMPTZ",
 		"graph_path_urns_json JSONB",
+		"run_ids_json JSONB",
+		"observations_json JSONB",
 		"attributes_json JSONB",
 		"finding_evidence_graph_path_urns_gin_idx",
+		"finding_evidence_run_ids_gin_idx",
 		"finding_evidence_attributes_gin_idx",
 	} {
 		if !strings.Contains(joined, fragment) {

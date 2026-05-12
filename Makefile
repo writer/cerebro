@@ -1,4 +1,4 @@
-.PHONY: build serve test workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun lint lint-bootstrap proto-lint proto-generate clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: build serve test workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun lint lint-bootstrap proto-lint proto-generate openapi-check openapi-sync clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
@@ -90,6 +90,12 @@ proto-lint:
 proto-generate:
 	$(BUF) generate
 
+openapi-check:
+	go run ./scripts/openapi_route_parity.go
+
+openapi-sync:
+	go run ./scripts/openapi_route_parity.go --write
+
 clean:
 	rm -rf bin/
 
@@ -115,4 +121,4 @@ check-arch:
 
 check-hook-integrity: check-arch
 
-verify: build test lint proto-lint check-structural check-structural-test check-arch
+verify: build test lint proto-lint openapi-check check-structural check-structural-test check-arch

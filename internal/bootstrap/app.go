@@ -1277,6 +1277,7 @@ func (a *App) handleListFindingEvidence(w http.ResponseWriter, r *http.Request) 
 		ClaimId:      r.URL.Query().Get("claim_id"),
 		EventId:      r.URL.Query().Get("event_id"),
 		GraphRootUrn: r.URL.Query().Get("graph_root_urn"),
+		GraphPathUrn: r.URL.Query().Get("graph_path_urn"),
 	}
 	if limit := r.URL.Query().Get("limit"); limit != "" {
 		body := []byte(`{"limit":` + limit + `}`)
@@ -1291,6 +1292,7 @@ func (a *App) handleListFindingEvidence(w http.ResponseWriter, r *http.Request) 
 		request.ClaimId = r.URL.Query().Get("claim_id")
 		request.EventId = r.URL.Query().Get("event_id")
 		request.GraphRootUrn = r.URL.Query().Get("graph_root_urn")
+		request.GraphPathUrn = r.URL.Query().Get("graph_path_urn")
 	}
 	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetRuntimeId(), false); err != nil {
 		writeFindingError(w, err)
@@ -1711,6 +1713,7 @@ func (s *bootstrapService) ListFindingEvidence(ctx context.Context, req *connect
 		ClaimID:      req.Msg.GetClaimId(),
 		EventID:      req.Msg.GetEventId(),
 		GraphRootURN: req.Msg.GetGraphRootUrn(),
+		GraphPathURN: req.Msg.GetGraphPathUrn(),
 		Limit:        req.Msg.GetLimit(),
 	})
 	if err != nil {

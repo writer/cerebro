@@ -137,6 +137,7 @@ type ListFindingEvidenceRequest struct {
 	ClaimID      string
 	EventID      string
 	GraphRootURN string
+	GraphPathURN string
 	Limit        uint32
 }
 

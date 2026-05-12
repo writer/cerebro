@@ -182,6 +182,17 @@ message GraphEvidenceRow {
   repeated GraphEvidencePath paths = 3;
 }
 
+// FindingEvidenceObservation captures one observed occurrence of a deduplicated evidence record.
+message FindingEvidenceObservation {
+  string run_id = 1;
+  google.protobuf.Timestamp observed_at = 2;
+  repeated string claim_ids = 3;
+  repeated string event_ids = 4;
+  repeated string graph_root_urns = 5;
+  repeated string graph_path_urns = 6;
+  repeated GraphEvidenceRow graph_rows = 7;
+}
+
 // FindingEvidence links one persisted finding and one evaluation run to its supporting claims, events, graph roots, and graph rows.
 message FindingEvidence {
   string id = 1;
@@ -197,6 +208,9 @@ message FindingEvidence {
   google.protobuf.Timestamp last_observed_at = 11;
   map<string, string> attributes = 12;
   repeated string graph_path_urns = 13;
+  repeated string run_ids = 14;
+  uint32 observation_count = 15;
+  repeated FindingEvidenceObservation observations = 16;
 }
 
 // ListFindingEvidenceRequest queries persisted finding evidence for one stored runtime.
@@ -209,6 +223,7 @@ message ListFindingEvidenceRequest {
   string event_id = 6;
   string graph_root_urn = 7;
   uint32 limit = 8;
+  string graph_path_urn = 9;
 }
 
 // ListFindingEvidenceResponse returns the matched persisted finding evidence records.
