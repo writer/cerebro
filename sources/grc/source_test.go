@@ -316,6 +316,12 @@ func TestReadVantaVulnerabilityNormalizesFields(t *testing.T) {
 	if got := attrs["remediate_by_date"]; got != "2026-05-30T00:00:00Z" {
 		t.Fatalf("remediate_by_date = %q, want deadline", got)
 	}
+	if got := attrs["target_id"]; got != "target-1" {
+		t.Fatalf("target_id = %q, want target-1", got)
+	}
+	if got := attrs["integration_id"]; got != "integration-1" {
+		t.Fatalf("integration_id = %q, want integration-1", got)
+	}
 }
 
 func TestTokenCacheScopesRuntimeSecretsAndBaseURL(t *testing.T) {
@@ -598,6 +604,8 @@ func newTestAPIHandler(t *testing.T) http.Handler {
 				"packageIdentifier": "pkg:golang/example/module@1.2.3",
 				"severity":          "HIGH",
 				"cvssSeverityScore": 8.7,
+				"targetId":          "target-1",
+				"integrationId":     "integration-1",
 				"isFixable":         true,
 				"remediateByDate":   "2026-05-30T00:00:00Z",
 				"lastDetectedDate":  "2026-05-10T00:00:00Z",

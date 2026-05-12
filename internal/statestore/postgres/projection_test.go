@@ -52,6 +52,13 @@ func TestProjectionUpsertsMergeAttributes(t *testing.T) {
 	}
 }
 
+func TestProjectionUpsertsPreserveExistingLabelsForFallbackLabels(t *testing.T) {
+	entitySQL := projectedEntityUpsertSQL()
+	if !strings.Contains(entitySQL, "label = CASE WHEN EXCLUDED.label = EXCLUDED.urn THEN entities.label ELSE EXCLUDED.label END") {
+		t.Fatalf("entity upsert does not preserve existing labels for fallback labels:\n%s", entitySQL)
+	}
+}
+
 func TestProjectedLinkDeleteUsesPrimaryKey(t *testing.T) {
 	linkSQL := projectedLinkDeleteSQL()
 	if !strings.Contains(linkSQL, "WHERE from_urn = $1 AND relation = $2 AND to_urn = $3") {
