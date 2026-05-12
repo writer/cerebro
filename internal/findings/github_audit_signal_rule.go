@@ -400,55 +400,14 @@ var githubPrivateRepositoryForkingEnabledDefinition = RuleDefinition{
 	ControlRefs:        githubAuditControlRefs,
 }
 
-var githubSecretScanningDisabledConfig = githubAuditSignalConfig{
-	definition: githubSecretScanningDisabledDefinition,
-	actions: githubAuditActionSet(
-		"business_secret_scanning.disable",
-		"business_secret_scanning.disabled_for_new_repos",
-		"repository_secret_scanning.disable",
-		"secret_scanning_new_repos.disable",
-		"secret_scanning.disable",
-	),
-	summary: func(attributes map[string]string) string {
-		return fmt.Sprintf("%s disabled GitHub secret scanning for %s", githubAuditActor(attributes), githubAuditTarget(attributes))
-	},
-}
-
-var githubPushProtectionDisabledConfig = githubAuditSignalConfig{
-	definition: githubPushProtectionDisabledDefinition,
-	actions: githubAuditActionSet(
-		"business_secret_scanning_custom_pattern_push_protection.disabled",
-		"business_secret_scanning_push_protection.disable",
-		"business_secret_scanning_push_protection.disabled_for_new_repos",
-		"org.secret_scanning_custom_pattern_push_protection_disabled",
-		"org.secret_scanning_push_protection_disable",
-		"org.secret_scanning_push_protection_new_repos_disable",
-		"repository_secret_scanning_custom_pattern_push_protection.disabled",
-	),
-	summary: func(attributes map[string]string) string {
-		return fmt.Sprintf("%s disabled GitHub push protection for %s", githubAuditActor(attributes), githubAuditTarget(attributes))
-	},
-}
-
-var githubBranchProtectionDisabledConfig = githubAuditSignalConfig{
-	definition: githubBranchProtectionDisabledDefinition,
-	actions:    githubAuditActionSet("protected_branch.destroy"),
-	summary: func(attributes map[string]string) string {
-		return fmt.Sprintf("%s removed branch protection from %s", githubAuditActor(attributes), githubAuditTarget(attributes))
-	},
-}
-
-var githubRepositoryMadePublicConfig = githubAuditSignalConfig{
-	definition: githubRepositoryMadePublicDefinition,
-	actions:    githubAuditActionSet("repo.access"),
-	predicate: func(attributes map[string]string) bool {
-		return strings.EqualFold(attributes["previous_visibility"], "private") &&
-			strings.EqualFold(attributes["visibility"], "public")
-	},
-	summary: func(attributes map[string]string) string {
-		return fmt.Sprintf("%s changed %s visibility from private to public", githubAuditActor(attributes), githubAuditTarget(attributes))
-	},
-}
+// Note: the secret-scanning-disabled, push-protection-disabled,
+// branch-protection-disabled, and repository-made-public match configs
+// were removed when these audit-event mirror rules were retired. Their
+// RuleDefinition values (above) are preserved so the retirement wrapper
+// can keep advertising the original output_kind, control refs, and
+// references when the rule appears in the catalog. The forthcoming
+// posture graph rules will reintroduce the trigger logic in a durable
+// state-based form.
 
 var githubSecretScanningAlertCreatedConfig = githubAuditSignalConfig{
 	definition: githubSecretScanningAlertCreatedDefinition,
@@ -598,14 +557,9 @@ var githubPersonalAccessTokenCreatedConfig = githubAuditSignalConfig{
 	},
 }
 
-var githubProtectedBranchPolicyOverrideConfig = githubAuditSignalConfig{
-	definition: githubProtectedBranchPolicyOverrideDefinition,
-	actions:    githubAuditActionSet("protected_branch.policy_override"),
-	summary: func(attributes map[string]string) string {
-		branch := firstNonEmpty(attributes["branch"], "protected branch")
-		return fmt.Sprintf("%s overrode GitHub branch policy %s for %s", githubAuditActor(attributes), branch, githubAuditTarget(attributes))
-	},
-}
+// githubProtectedBranchPolicyOverrideConfig was removed when the
+// per-override mirror rule was retired; see the note near
+// githubSecretScanningAlertCreatedConfig.
 
 var githubRepositoryRulesetModifiedConfig = githubAuditSignalConfig{
 	definition: githubRepositoryRulesetModifiedDefinition,
@@ -646,20 +600,37 @@ var githubPrivateRepositoryForkingEnabledConfig = githubAuditSignalConfig{
 	},
 }
 
+// newGitHubSecretScanningDisabledRule is retired. The mirror produced one
+// finding per audit event, which collapses repeated tampering on the same
+// repo into noise instead of one durable "secret scanning disabled" finding
+// keyed by repo. Posture coverage moves to a future graph rule over the
+// projected `github.repo` entity. The wrapper stays registered so any open
+// mirror findings are auto-resolved by the existing stale-finding sweep on
+// the next replay.
 func newGitHubSecretScanningDisabledRule() Rule {
-	return newGitHubAuditSignalRule(githubSecretScanningDisabledConfig)
+	return newRetiredGitHubAuditRule(githubSecretScanningDisabledDefinition)
 }
 
+// newGitHubPushProtectionDisabledRule is retired. See
+// `newGitHubSecretScanningDisabledRule` for the retirement rationale; the
+// durable replacement is a graph rule over repos missing push protection.
 func newGitHubPushProtectionDisabledRule() Rule {
-	return newGitHubAuditSignalRule(githubPushProtectionDisabledConfig)
+	return newRetiredGitHubAuditRule(githubPushProtectionDisabledDefinition)
 }
 
+// newGitHubBranchProtectionDisabledRule is retired. The durable replacement
+// is a graph rule that reports protected-branch coverage gaps over
+// `github.repo` -> `github.branch` paths.
 func newGitHubBranchProtectionDisabledRule() Rule {
-	return newGitHubAuditSignalRule(githubBranchProtectionDisabledConfig)
+	return newRetiredGitHubAuditRule(githubBranchProtectionDisabledDefinition)
 }
 
+// newGitHubRepositoryMadePublicRule is retired. The durable replacement is
+// a graph rule reporting public repos that violate the org's visibility
+// policy; the visibility-change audit event becomes evidence on that
+// finding rather than an independent mirror finding.
 func newGitHubRepositoryMadePublicRule() Rule {
-	return newGitHubAuditSignalRule(githubRepositoryMadePublicConfig)
+	return newRetiredGitHubAuditRule(githubRepositoryMadePublicDefinition)
 }
 
 func newGitHubSecretScanningAlertCreatedRule() Rule {
@@ -698,8 +669,12 @@ func newGitHubPersonalAccessTokenCreatedRule() Rule {
 	return newGitHubAuditSignalRule(githubPersonalAccessTokenCreatedConfig)
 }
 
+// newGitHubProtectedBranchPolicyOverrideRule is retired. Per-event overrides
+// turn into evidence on the durable "protected branch policy degraded"
+// posture finding (future graph rule) rather than a standalone mirror
+// finding per override event.
 func newGitHubProtectedBranchPolicyOverrideRule() Rule {
-	return newGitHubAuditSignalRule(githubProtectedBranchPolicyOverrideConfig)
+	return newRetiredGitHubAuditRule(githubProtectedBranchPolicyOverrideDefinition)
 }
 
 func newGitHubRepositoryRulesetModifiedRule() Rule {
@@ -924,4 +899,61 @@ func keysOfStringMap(values map[string]string) []string {
 		keys = append(keys, key)
 	}
 	return keys
+}
+
+// githubRetirementTag marks the rule definition so operators reading the
+// rule catalog can see at a glance which mirror rules have been retired.
+const githubRetirementTag = "retired"
+
+// newRetiredGitHubAuditRule replaces a 1:1 audit-event mirror rule with an
+// inert wrapper. The rule keeps its original id, name, output kind, and
+// control refs so:
+//
+//   - Catalog clients still discover the id (no 404 on existing dashboards).
+//   - Stale-finding cleanup in the next replay (`resolveStaleOpenFindings`)
+//     resolves any open findings under this rule id because the wrapper's
+//     emit set is empty.
+//   - The follow-up posture graph rule can use the same control refs and
+//     tags as a starting point, treating audit events as evidence rather
+//     than as standalone findings.
+//
+// The wrapper's `match` and `build` are both no-ops; `build` returns nil for
+// extra safety in case `match` is ever flipped on by accident.
+func newRetiredGitHubAuditRule(original RuleDefinition) Rule {
+	retired := original
+	retired.Description = "Retired GitHub audit-mirror rule retained so stale open findings auto-resolve; durable coverage moved to posture findings."
+	retired.Maturity = "retired"
+	retired.Tags = appendUniqueString(cloneStringSlice(retired.Tags), githubRetirementTag, "cleanup")
+	return newEventRule(eventRuleConfig{
+		definition: retired,
+		sourceID:   "github",
+		match:      func(*cerebrov1.EventEnvelope) bool { return false },
+		build: func(context.Context, *cerebrov1.SourceRuntime, *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
+			return nil, nil
+		},
+	})
+}
+
+func cloneStringSlice(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]string, len(values))
+	copy(out, values)
+	return out
+}
+
+func appendUniqueString(values []string, additions ...string) []string {
+	seen := make(map[string]struct{}, len(values)+len(additions))
+	for _, value := range values {
+		seen[value] = struct{}{}
+	}
+	for _, addition := range additions {
+		if _, exists := seen[addition]; exists {
+			continue
+		}
+		values = append(values, addition)
+		seen[addition] = struct{}{}
+	}
+	return values
 }

@@ -2004,11 +2004,14 @@ func TestEvaluateSourceRuntimeRulesSelectsExplicitRules(t *testing.T) {
 }
 
 func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
-	ruleIDs := []string{
-		githubSecretScanningDisabledRuleID,
-		githubPushProtectionDisabledRuleID,
-		githubBranchProtectionDisabledRuleID,
-		githubRepositoryMadePublicRuleID,
+	retiredRuleIDs := map[string]struct{}{
+		githubSecretScanningDisabledRuleID:        {},
+		githubPushProtectionDisabledRuleID:        {},
+		githubBranchProtectionDisabledRuleID:      {},
+		githubRepositoryMadePublicRuleID:          {},
+		githubProtectedBranchPolicyOverrideRuleID: {},
+	}
+	activeRuleIDs := []string{
 		githubSecretScanningAlertCreatedRuleID,
 		githubSelfHostedRunnerChangeRuleID,
 		githubRepositoryCollaboratorAddedRuleID,
@@ -2018,12 +2021,16 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 		githubOrgIPAllowListModifiedRuleID,
 		githubAppIntegrationInstalledRuleID,
 		githubPersonalAccessTokenCreatedRuleID,
-		githubProtectedBranchPolicyOverrideRuleID,
 		githubRepositoryRulesetModifiedRuleID,
 		githubCriticalResourceDeletedRuleID,
 		githubWebhookModifiedRuleID,
 		githubPrivateRepositoryForkingEnabledRuleID,
 	}
+	ruleIDs := make([]string, 0, len(activeRuleIDs)+len(retiredRuleIDs))
+	for retiredID := range retiredRuleIDs {
+		ruleIDs = append(ruleIDs, retiredID)
+	}
+	ruleIDs = append(ruleIDs, activeRuleIDs...)
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
@@ -2070,12 +2077,20 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 		t.Fatalf("EvaluateSourceRuntimeRules() error = %v", err)
 	}
 	findingsByRule := map[string]*ports.FindingRecord{}
+	findingCountByRule := map[string]int{}
 	for _, evaluation := range result.Evaluations {
+		ruleID := evaluation.Rule.GetId()
+		findingCountByRule[ruleID] += len(evaluation.Findings)
 		if len(evaluation.Findings) == 1 {
-			findingsByRule[evaluation.Rule.GetId()] = evaluation.Findings[0]
+			findingsByRule[ruleID] = evaluation.Findings[0]
 		}
 	}
-	for _, ruleID := range ruleIDs {
+	for retiredID := range retiredRuleIDs {
+		if count := findingCountByRule[retiredID]; count != 0 {
+			t.Fatalf("retired rule %q produced %d findings, want 0", retiredID, count)
+		}
+	}
+	for _, ruleID := range activeRuleIDs {
 		if findingsByRule[ruleID] == nil {
 			t.Fatalf("EvaluateSourceRuntimeRules() missing finding for %q", ruleID)
 		}
@@ -2086,9 +2101,6 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 		if !slices.Contains(findingsByRule[ruleID].ResourceURNs, primaryResourceURN) {
 			t.Fatalf("finding %q ResourceURNs missing primary resource %q: %#v", ruleID, primaryResourceURN, findingsByRule[ruleID].ResourceURNs)
 		}
-	}
-	if got := findingsByRule[githubRepositoryMadePublicRuleID].Summary; got != "admin changed writer/cerebro visibility from private to public" {
-		t.Fatalf("repository public summary = %q", got)
 	}
 	if got := findingsByRule[githubOrganizationOwnerAddedRuleID].Severity; got != "HIGH" {
 		t.Fatalf("organization owner severity = %q, want HIGH", got)
