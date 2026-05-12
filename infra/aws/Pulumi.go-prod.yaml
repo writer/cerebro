@@ -2,7 +2,7 @@ config:
   aws:region: us-east-1
   cerebro:environment: go-production
   cerebro:ecrBaseUri: 837279440628.dkr.ecr.us-east-1.amazonaws.com/cerebro
-  cerebro:imageTag: v2.1.24
+  cerebro:imageTag: v2.1.25
   cerebro:useExistingVpc: true
   cerebro:vpcId: vpc-0bec76c1fba4b8ad2
   cerebro:vpcCidr: "10.20.0.0/16"
@@ -46,17 +46,17 @@ config:
     - event_limit=1000
   cerebro:orchestratorSchedules:
     - name: grc-vulnerability-live
-      scheduleExpression: rate(30 minutes)
+      scheduleExpression: cron(7,37 * * * ? *)
       taskCount: 1
       command:
         - orchestrator
         - run
         - runtime_id=writer-grc-vulnerability
-        - page_limit=20
-        - graph_page_limit=100
-        - event_limit=1000
+        - page_limit=10
+        - graph_page_limit=10
+        - event_limit=500
     - name: grc-control-inventory
-      scheduleExpression: rate(1 hour)
+      scheduleExpression: cron(17 * * * ? *)
       taskCount: 1
       command:
         - orchestrator
@@ -66,7 +66,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: grc-vendor-inventory
-      scheduleExpression: rate(1 hour)
+      scheduleExpression: cron(27 * * * ? *)
       taskCount: 1
       command:
         - orchestrator
@@ -76,7 +76,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: grc-risk-scenario-inventory
-      scheduleExpression: rate(1 hour)
+      scheduleExpression: cron(47 * * * ? *)
       taskCount: 1
       command:
         - orchestrator
@@ -86,7 +86,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: grc-framework-inventory
-      scheduleExpression: rate(6 hours)
+      scheduleExpression: cron(3 0/6 * * ? *)
       taskCount: 1
       command:
         - orchestrator
@@ -96,7 +96,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: grc-policy-inventory
-      scheduleExpression: rate(6 hours)
+      scheduleExpression: cron(13 0/6 * * ? *)
       taskCount: 1
       command:
         - orchestrator
@@ -106,7 +106,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: grc-document-inventory
-      scheduleExpression: rate(6 hours)
+      scheduleExpression: cron(23 0/6 * * ? *)
       taskCount: 1
       command:
         - orchestrator
@@ -116,7 +116,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: grc-person-inventory
-      scheduleExpression: rate(6 hours)
+      scheduleExpression: cron(33 0/6 * * ? *)
       taskCount: 1
       command:
         - orchestrator
@@ -126,7 +126,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: grc-user-inventory
-      scheduleExpression: rate(6 hours)
+      scheduleExpression: cron(43 0/6 * * ? *)
       taskCount: 1
       command:
         - orchestrator
@@ -136,7 +136,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: grc-integration-inventory
-      scheduleExpression: rate(6 hours)
+      scheduleExpression: cron(53 0/6 * * ? *)
       taskCount: 1
       command:
         - orchestrator
