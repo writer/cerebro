@@ -13,7 +13,9 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/findingevidence"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/telemetry"
 	"github.com/writer/cerebro/internal/workflowevents"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -148,6 +150,7 @@ type ListEvidenceRequest struct {
 	ClaimID      string
 	EventID      string
 	GraphRootURN string
+	GraphPathURN string
 	Limit        uint32
 }
 
@@ -753,6 +756,7 @@ func (s *Service) ListEvidence(ctx context.Context, request ListEvidenceRequest)
 		ClaimID:      strings.TrimSpace(request.ClaimID),
 		EventID:      strings.TrimSpace(request.EventID),
 		GraphRootURN: strings.TrimSpace(request.GraphRootURN),
+		GraphPathURN: strings.TrimSpace(request.GraphPathURN),
 		Limit:        request.Limit,
 	})
 	if err != nil {
@@ -966,6 +970,7 @@ func (s *Service) finishCompletedRun(ctx context.Context, run *cerebrov1.Finding
 	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
 		return fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
 	}
+	emitFindingEvaluationRunTelemetry(ctx, run)
 	return nil
 }
 
@@ -983,6 +988,7 @@ func (s *Service) finishFailedRun(ctx context.Context, run *cerebrov1.FindingEva
 			fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err),
 		)
 	}
+	emitFindingEvaluationRunTelemetry(ctx, run)
 	return evaluationErr
 }
 
@@ -1001,6 +1007,7 @@ func (s *Service) markRuleEvaluationFailed(ctx context.Context, state *ruleEvalu
 			fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err),
 		)
 	}
+	emitFindingEvaluationRunTelemetry(ctx, run)
 	state.failed = true
 	return nil
 }
@@ -1015,6 +1022,22 @@ func setFindingEvaluationRunMetrics(run *cerebrov1.FindingEvaluationRun, eventsP
 	run.FindingsUpserted = uint32(len(findingIDs))
 	run.FindingsEmitted = uint32(len(findingIDs))
 	run.FindingIds = append([]string(nil), findingIDs...)
+}
+
+func emitFindingEvaluationRunTelemetry(ctx context.Context, run *cerebrov1.FindingEvaluationRun) {
+	if run == nil {
+		return
+	}
+	telemetry.Event(ctx, "finding_evaluation.run", telemetry.Attrs(
+		telemetry.Field{Key: "run_id", Value: strings.TrimSpace(run.GetId())},
+		telemetry.Field{Key: "runtime_id", Value: strings.TrimSpace(run.GetRuntimeId())},
+		telemetry.Field{Key: "rule_id", Value: strings.TrimSpace(run.GetRuleId())},
+		telemetry.Field{Key: "status", Value: strings.TrimSpace(run.GetStatus())},
+		telemetry.Field{Key: "event_limit", Value: run.GetEventLimit()},
+		telemetry.Field{Key: "events_processed", Value: run.GetEventsProcessed()},
+		telemetry.Field{Key: "events_matched", Value: run.GetEventsMatched()},
+		telemetry.Field{Key: "findings_emitted", Value: run.GetFindingsEmitted()},
+	))
 }
 
 func (s *Service) markRuleEvaluationsFailed(ctx context.Context, states []*ruleEvaluationState, evaluationErr error) error {
@@ -1143,12 +1166,13 @@ func (s *Service) buildFindingEvidence(ctx context.Context, finding *ports.Findi
 	// excludes run_id so repeated same-shape runs update last_observed_at instead of
 	// proliferating rows.
 	evidenceRuntimeID := strings.TrimSpace(run.GetRuntimeId())
-	return &cerebrov1.FindingEvidence{
+	evidence := &cerebrov1.FindingEvidence{
 		Id:             findingEvidenceID(evidenceRuntimeID, finding.ID, graphRootURNs, eventIDs),
 		RuntimeId:      evidenceRuntimeID,
 		RuleId:         strings.TrimSpace(finding.RuleID),
 		FindingId:      strings.TrimSpace(finding.ID),
 		RunId:          strings.TrimSpace(run.GetId()),
+		RunIds:         []string{strings.TrimSpace(run.GetId())},
 		ClaimIds:       claimIDs,
 		EventIds:       eventIDs,
 		GraphRootUrns:  graphRootURNs,
@@ -1157,7 +1181,12 @@ func (s *Service) buildFindingEvidence(ctx context.Context, finding *ports.Findi
 		LastObservedAt: timestamppb.New(observedAt),
 		Attributes:     compactStringMap(finding.Attributes),
 		GraphPathUrns:  graphPathURNs(clonedGraphRows),
-	}, nil
+	}
+	if observation := findingevidence.ObservationFor(evidence); observation != nil {
+		evidence.Observations = []*cerebrov1.FindingEvidenceObservation{observation}
+	}
+	evidence.ObservationCount = uint32(len(evidence.GetObservations()))
+	return evidence, nil
 }
 
 func cloneGraphEvidenceRows(rows []*cerebrov1.GraphEvidenceRow) []*cerebrov1.GraphEvidenceRow {
