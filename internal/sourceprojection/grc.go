@@ -261,6 +261,9 @@ func grcVulnerabilityProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 }
 
 func grcTargetURN(tenantID string, provider string, targetID string) string {
+	if strings.TrimSpace(targetID) == "" {
+		return ""
+	}
 	return projectionURN(tenantID, "grc_target", provider, targetID)
 }
 
@@ -281,6 +284,9 @@ func grcTargetEntity(tenantID string, sourceID string, urn string, targetID stri
 }
 
 func grcIntegrationURN(tenantID string, provider string, integrationID string) string {
+	if strings.TrimSpace(integrationID) == "" {
+		return ""
+	}
 	return projectionURN(tenantID, "source", provider, "integration", integrationID)
 }
 

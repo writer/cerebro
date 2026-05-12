@@ -290,6 +290,42 @@ func TestProjectGRCVulnerabilityUsesCanonicalVulnerability(t *testing.T) {
 	}
 }
 
+func TestProjectGRCVulnerabilitySkipsMissingTargetAndIntegrationIDs(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-vulnerability-vuln-1",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.vulnerability",
+		Attributes: map[string]string{
+			"provider":         "vanta",
+			"vulnerability_id": "vuln-1",
+			"name":             "CVE-2026-4242",
+			"package":          "example/module",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	targetURN := "urn:cerebro:writer:grc_target:vanta"
+	integrationURN := "urn:cerebro:writer:source:vanta:integration"
+	vulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
+	packageURN := "urn:cerebro:writer:package:grc:example/module"
+
+	if entity := state.entities[targetURN]; entity != nil {
+		t.Fatalf("phantom GRC target entity = %#v, want nil", entity)
+	}
+	if entity := state.entities[integrationURN]; entity != nil {
+		t.Fatalf("phantom GRC integration entity = %#v, want nil", entity)
+	}
+	assertProjectedLinkMissing(t, state, targetURN, relationAffectedBy, vulnerabilityURN)
+	assertProjectedLinkMissing(t, state, targetURN, relationContains, packageURN)
+	assertProjectedLinkMissing(t, state, targetURN, relationBelongsTo, integrationURN)
+}
+
 func TestProjectGRCVulnerabilityLinksTargetPackageAndIntegration(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
