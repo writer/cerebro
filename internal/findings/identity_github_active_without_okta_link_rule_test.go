@@ -373,9 +373,22 @@ func githubActiveWithoutOktaRuleRowWithGitHubAttrs(actedAttributesJSON, githubUs
 // attributes_json with an optional `at` timestamp, matching what the
 // neo4j store persists.
 func githubActiveWithoutOktaRuleBridgeAttrs(at time.Time) string {
+	return githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(at, "", "", "")
+}
+
+func githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(at time.Time, matchType string, identifierType string, identifierValue string) string {
 	payload := map[string]string{}
 	if !at.IsZero() {
 		payload["at"] = at.UTC().Format(time.RFC3339)
+	}
+	if matchType != "" {
+		payload["match_type"] = matchType
+	}
+	if identifierType != "" {
+		payload["identifier_type"] = identifierType
+	}
+	if identifierValue != "" {
+		payload["identifier_value"] = identifierValue
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
@@ -866,6 +879,77 @@ func TestGitHubActiveWithoutOktaLinkRuleFreshBridgeOnBothSidesSuppresses(t *test
 	}
 	if len(findings) != 0 {
 		t.Fatalf("EvaluateRows() returned %d findings, want 0; a fresh bridge on both sides proves the github user is linked to an okta user, the rule must suppress", len(findings))
+	}
+}
+
+func TestGitHubActiveWithoutOktaLinkRuleDurableExactEmailBridgeSuppresses(t *testing.T) {
+	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	now := time.Now().UTC()
+	freshAt := now.Add(-1 * time.Hour)
+	staleAt := now.Add(-90 * 24 * time.Hour)
+	row := githubActiveWithoutOktaRuleRowWithBridge(
+		githubActiveWithoutOktaRuleActedAttrs(freshAt),
+		"urn:cerebro:writer:github.user:alice",
+		"alice",
+		"urn:cerebro:writer:github_repo:writer/cerebro",
+		githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(staleAt, "exact_email", "email", "alice@writer.com"),
+		githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(freshAt, "exact_email", "email", "alice@writer.com"),
+	)
+	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("EvaluateRows() returned %d findings, want 0; a stamped exact-email GitHub bridge to a freshly projected Okta email proves the account is linked even when later git activity omits external identity fields", len(findings))
+	}
+}
+
+func TestGitHubActiveWithoutOktaLinkRuleDurableBridgeRequiresExactEmailAndFreshOkta(t *testing.T) {
+	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	now := time.Now().UTC()
+	freshAt := now.Add(-1 * time.Hour)
+	staleAt := now.Add(-90 * 24 * time.Hour)
+	cases := map[string]struct {
+		githubBridgeJSON string
+		oktaBridgeJSON   string
+	}{
+		"login bridge is not durable": {
+			githubBridgeJSON: githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(staleAt, "login", "login", "alice"),
+			oktaBridgeJSON:   githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(freshAt, "login", "login", "alice"),
+		},
+		"fresh okta side is required": {
+			githubBridgeJSON: githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(staleAt, "exact_email", "email", "alice@writer.com"),
+			oktaBridgeJSON:   githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(staleAt, "exact_email", "email", "alice@writer.com"),
+		},
+		"email values must match": {
+			githubBridgeJSON: githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(staleAt, "exact_email", "email", "alice@writer.com"),
+			oktaBridgeJSON:   githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(freshAt, "exact_email", "email", "bob@writer.com"),
+		},
+		"github side still needs a stamped observation": {
+			githubBridgeJSON: githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(time.Time{}, "exact_email", "email", "alice@writer.com"),
+			oktaBridgeJSON:   githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(freshAt, "exact_email", "email", "alice@writer.com"),
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			row := githubActiveWithoutOktaRuleRowWithBridge(
+				githubActiveWithoutOktaRuleActedAttrs(freshAt),
+				"urn:cerebro:writer:github.user:alice",
+				"alice",
+				"urn:cerebro:writer:github_repo:writer/cerebro",
+				tc.githubBridgeJSON,
+				tc.oktaBridgeJSON,
+			)
+			findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+			if err != nil {
+				t.Fatalf("EvaluateRows() error = %v", err)
+			}
+			if len(findings) != 1 {
+				t.Fatalf("EvaluateRows() returned %d findings, want 1 for %q; only stamped exact-email GitHub bridges with a fresh matching Okta email are durable", len(findings), name)
+			}
+		})
 	}
 }
 
