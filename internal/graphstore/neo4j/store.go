@@ -1131,6 +1131,13 @@ func mergeGraphAttributes(existing map[string]string, incoming map[string]string
 		merged[key] = value
 	}
 	incomingIsOlderObservation := graphIncomingObservationIsOlder(existing, incoming)
+	if !incomingIsOlderObservation && graphIncomingObservationIsNewer(existing, incoming) {
+		for key := range merged {
+			if graphAttributeCoupledToObservationTime(key) {
+				delete(merged, key)
+			}
+		}
+	}
 	for key, value := range incoming {
 		if incomingIsOlderObservation && graphAttributeCoupledToObservationTime(key) {
 			continue
@@ -1157,9 +1164,23 @@ func graphIncomingObservationIsOlder(existing map[string]string, incoming map[st
 	return incomingT.Before(existingT)
 }
 
+func graphIncomingObservationIsNewer(existing map[string]string, incoming map[string]string) bool {
+	existingAt := strings.TrimSpace(existing["at"])
+	incomingAt := strings.TrimSpace(incoming["at"])
+	if existingAt == "" || incomingAt == "" {
+		return false
+	}
+	existingT, errExisting := time.Parse(time.RFC3339, existingAt)
+	incomingT, errIncoming := time.Parse(time.RFC3339, incomingAt)
+	if errExisting != nil || errIncoming != nil {
+		return false
+	}
+	return incomingT.After(existingT)
+}
+
 func graphAttributeCoupledToObservationTime(key string) bool {
 	switch key {
-	case "action", "event_id", "programmatic_access_type", "source_event_id", "source_runtime_id", "transport_protocol_name":
+	case "action", "actor_type", "classification", "client_ip", "event_id", "event_type", "grant_type", "incident_status", "mitigation_status", "oauth_event_category", "outcome_reason", "outcome_result", "programmatic_access_type", "source_event_id", "source_runtime_id", "transaction_id", "transport_protocol_name":
 		return true
 	default:
 		return false

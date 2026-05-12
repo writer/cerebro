@@ -58,6 +58,7 @@ type FindingRecord struct {
 	CheckID           string
 	CheckName         string
 	ControlRefs       []FindingControlRef
+	GraphEvidenceRows []*cerebrov1.GraphEvidenceRow
 	FindingWorkflow
 	Attributes      map[string]string
 	FirstObservedAt time.Time

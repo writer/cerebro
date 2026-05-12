@@ -840,12 +840,10 @@ func oktaAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), oauthClientURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
 		if resourceURN != "" {
-			addLink(links, projectedLink(tenantID, event.GetSourceId(), oauthClientURN, resourceURN, relationActedOn, map[string]string{
-				"event_id":             event.GetId(),
-				"event_type":           strings.TrimSpace(attributes["event_type"]),
-				"oauth_event_category": strings.TrimSpace(attributes["oauth_event_category"]),
-				"grant_type":           strings.TrimSpace(attributes["grant_type"]),
-			}))
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), oauthClientURN, resourceURN, relationActedOn, oktaAuditRelationAttributes(event, attributes, map[string]string{
+				"oauth_event_category": attributes["oauth_event_category"],
+				"grant_type":           attributes["grant_type"],
+			})))
 		}
 	}
 
@@ -866,17 +864,33 @@ func oktaAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 		if orgURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
-		if resourceURN != "" {
-			addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, resourceURN, relationActedOn, map[string]string{
-				"event_id":   event.GetId(),
-				"event_type": strings.TrimSpace(attributes["event_type"]),
-			}))
+		if resourceURN != "" && resourceURN != actorURN {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, resourceURN, relationActedOn, oktaAuditRelationAttributes(event, attributes, nil)))
 		}
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorAlternateID, event.GetOccurredAt())
 	}
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
+}
+
+func oktaAuditRelationAttributes(event *cerebrov1.EventEnvelope, attributes map[string]string, extra map[string]string) map[string]string {
+	relationAttrs := map[string]string{
+		"event_id":   event.GetId(),
+		"event_type": strings.TrimSpace(attributes["event_type"]),
+	}
+	addProjectedAttribute(relationAttrs, "outcome_result", strings.TrimSpace(attributes["outcome_result"]))
+	addProjectedAttribute(relationAttrs, "outcome_reason", strings.TrimSpace(attributes["outcome_reason"]))
+	addProjectedAttribute(relationAttrs, "transaction_id", strings.TrimSpace(attributes["transaction_id"]))
+	addProjectedAttribute(relationAttrs, "client_ip", strings.TrimSpace(attributes["client_ip"]))
+	addProjectedAttribute(relationAttrs, "source_runtime_id", strings.TrimSpace(attributes["source_runtime_id"]))
+	if occurredAt := event.GetOccurredAt(); occurredAt != nil && occurredAt.IsValid() {
+		relationAttrs["at"] = occurredAt.AsTime().UTC().Format(time.RFC3339)
+	}
+	for key, value := range extra {
+		addProjectedAttribute(relationAttrs, key, strings.TrimSpace(value))
+	}
+	return relationAttrs
 }
 
 func entitiesAndLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink) ([]*ports.ProjectedEntity, []*ports.ProjectedLink) {

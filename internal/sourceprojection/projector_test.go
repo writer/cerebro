@@ -288,6 +288,78 @@ func TestProjectOktaOAuthGrantAsApplicationTelemetry(t *testing.T) {
 	assertProjectedLink(t, state, clientURN, relationBelongsTo, "urn:cerebro:writer:okta_org:writer.okta.com")
 }
 
+func TestProjectOktaAuditSuppressesSelfActedOnEdge(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "okta-self",
+		TenantId: "writer",
+		SourceId: "okta",
+		Kind:     "okta.audit",
+		Attributes: map[string]string{
+			"domain":             "writer.okta.com",
+			"event_type":         "user.session.start",
+			"actor_id":           "00u-user",
+			"actor_type":         "User",
+			"actor_alternate_id": "alice@writer.com",
+			"resource_id":        "00u-user",
+			"resource_type":      "User",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	userURN := "urn:cerebro:writer:okta_user:00u-user"
+	assertProjectedLinkMissing(t, state, userURN, relationActedOn, userURN)
+}
+
+func TestProjectOktaAuditActedOnEdgesCarryTemporalContext(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	occurred := time.Date(2026, time.May, 12, 1, 2, 3, 0, time.UTC)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:         "okta-action",
+		TenantId:   "writer",
+		SourceId:   "okta",
+		Kind:       "okta.audit",
+		OccurredAt: timestamppb.New(occurred),
+		Attributes: map[string]string{
+			"domain":             "writer.okta.com",
+			"event_type":         "user.lifecycle.update",
+			"actor_id":           "00u-actor",
+			"actor_type":         "User",
+			"actor_alternate_id": "admin@writer.com",
+			"resource_id":        "00u-target",
+			"resource_type":      "User",
+			"outcome_result":     "SUCCESS",
+			"transaction_id":     "txn-1",
+			"client_ip":          "203.0.113.10",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	actorURN := "urn:cerebro:writer:okta_user:00u-actor"
+	targetURN := "urn:cerebro:writer:okta_user:00u-target"
+	link, ok := state.links[actorURN+"|"+relationActedOn+"|"+targetURN]
+	if !ok {
+		t.Fatalf("acted_on link missing for %s -> %s: %#v", actorURN, targetURN, state.links)
+	}
+	for key, want := range map[string]string{
+		"at":             occurred.Format(time.RFC3339),
+		"event_type":     "user.lifecycle.update",
+		"outcome_result": "SUCCESS",
+		"transaction_id": "txn-1",
+		"client_ip":      "203.0.113.10",
+	} {
+		if got := link.Attributes[key]; got != want {
+			t.Fatalf("link.Attributes[%q] = %q, want %q", key, got, want)
+		}
+	}
+}
+
 func TestProjectGitHubAuditSOTASignalsToGraph(t *testing.T) {
 	events := []struct {
 		id       string

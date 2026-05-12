@@ -349,27 +349,68 @@ func TestMergeGraphAttributesKeepsObservationMetadataCoupledToLatestAt(t *testin
 		map[string]string{
 			"at":                       newer,
 			"action":                   "git.clone",
+			"event_type":               "user.lifecycle.update",
 			"event_id":                 "newer-event",
+			"outcome_result":           "SUCCESS",
 			"programmatic_access_type": "Fine-grained personal access token",
 			"source_runtime_id":        "writer-github-audit",
+			"transaction_id":           "newer-txn",
 		},
 		map[string]string{
 			"at":                       older,
 			"action":                   "workflows.completed_workflow_run",
+			"event_type":               "user.session.start",
 			"event_id":                 "older-event",
+			"outcome_result":           "FAILURE",
 			"programmatic_access_type": "GitHub App server-to-server token",
 			"source_runtime_id":        "writer-github-audit-writerinternal",
+			"transaction_id":           "older-txn",
 		},
 	)
 	for key, want := range map[string]string{
 		"at":                       newer,
 		"action":                   "git.clone",
+		"event_type":               "user.lifecycle.update",
 		"event_id":                 "newer-event",
+		"outcome_result":           "SUCCESS",
 		"programmatic_access_type": "Fine-grained personal access token",
 		"source_runtime_id":        "writer-github-audit",
+		"transaction_id":           "newer-txn",
 	} {
 		if got := merged[key]; got != want {
 			t.Fatalf("merged[%s] = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestMergeGraphAttributesClearsOlderObservationMetadataMissingFromNewerAt(t *testing.T) {
+	older := time.Date(2025, time.March, 1, 9, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	newer := time.Date(2025, time.March, 5, 9, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	merged := mergeGraphAttributes(
+		map[string]string{
+			"at":             older,
+			"event_id":       "older-event",
+			"outcome_reason": "older reason",
+			"transaction_id": "older-txn",
+			"target":         "repo",
+		},
+		map[string]string{
+			"at":       newer,
+			"event_id": "newer-event",
+		},
+	)
+	for key, want := range map[string]string{
+		"at":       newer,
+		"event_id": "newer-event",
+		"target":   "repo",
+	} {
+		if got := merged[key]; got != want {
+			t.Fatalf("merged[%s] = %q, want %q", key, got, want)
+		}
+	}
+	for _, key := range []string{"outcome_reason", "transaction_id"} {
+		if got, exists := merged[key]; exists {
+			t.Fatalf("merged[%s] = %q, want missing because newer observation omitted it", key, got)
 		}
 	}
 }

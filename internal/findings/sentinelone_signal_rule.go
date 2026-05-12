@@ -82,14 +82,7 @@ func newSentinelOneEndpointActiveInfectionRule() Rule {
 		[]string{"agent_id"},
 		sentinelOneThreatResponseControlRefs,
 	)
-	return newSentinelOneEventRule(definition, matchesSentinelOneEndpointActiveInfection, sentinelOneFindingOptions{
-		action:             sentinelOneEndpointActiveInfectionAction,
-		primaryEntityType:  sentinelOneAgentEntityType,
-		collectAllLinkURNs: true,
-		severity:           sentinelOneEndpointActiveInfectionSeverity,
-		summary:            sentinelOneEndpointActiveInfectionSummary,
-		policyID:           sentinelOneAgentPolicyID,
-	})
+	return &sentinelOneEndpointActiveInfectionGraphRule{definition: definition}
 }
 
 func newSentinelOneMitigationFailedRule() Rule {
@@ -128,13 +121,7 @@ func newSentinelOneAgentStaleRule() Rule {
 		[]string{"agent_id"},
 		sentinelOneEndpointCoverageControlRefs,
 	)
-	return newSentinelOneEventRule(definition, matchesSentinelOneAgentStale, sentinelOneFindingOptions{
-		action:             sentinelOneAgentStaleAction,
-		primaryEntityType:  sentinelOneAgentEntityType,
-		collectAllLinkURNs: true,
-		summary:            sentinelOneAgentStaleSummary,
-		policyID:           sentinelOneAgentPolicyID,
-	})
+	return &sentinelOneAgentStaleGraphRule{definition: definition}
 }
 
 func newSentinelOneAgentDetectOnlyModeRule() Rule {
@@ -352,34 +339,12 @@ func buildSentinelOneFinding(ctx context.Context, runtime *cerebrov1.SourceRunti
 	}, nil
 }
 
-func matchesSentinelOneEndpointActiveInfection(event *cerebrov1.EventEnvelope) bool {
-	if !eventKindMatcher(sentinelOneThreatEntityType)(event) || !hasRequiredAttributes(event, "agent_id") {
-		return false
-	}
-	attributes := eventAttributes(event)
-	return !sentinelOneFalsePositive(attributes) &&
-		sentinelOneThreatOpen(attributes) &&
-		(findingAttributeBool(attributes, "is_infected", "infected") || sentinelOneIntAttribute(attributes, "active_threats") > 0)
-}
-
 func matchesSentinelOneMitigationFailed(event *cerebrov1.EventEnvelope) bool {
 	if !eventKindMatcher(sentinelOneThreatEntityType)(event) || !hasRequiredAttributes(event, "agent_id", "mitigation_status") {
 		return false
 	}
 	attributes := eventAttributes(event)
 	return !sentinelOneFalsePositive(attributes) && sentinelOneMitigationNeedsAction(attributes["mitigation_status"])
-}
-
-func matchesSentinelOneAgentStale(event *cerebrov1.EventEnvelope) bool {
-	if !eventKindMatcher(sentinelOneAgentEntityType)(event) || !hasRequiredAttributes(event, "agent_id", "last_active_date") {
-		return false
-	}
-	attributes := eventAttributes(event)
-	if sentinelOneAgentRetired(attributes) {
-		return false
-	}
-	lastActive, ok := sentinelOneParseTimestamp(attributes["last_active_date"])
-	return ok && time.Since(lastActive.UTC()) > sentinelOneAgentStaleThreshold
 }
 
 func matchesSentinelOneAgentDetectOnlyMode(event *cerebrov1.EventEnvelope) bool {
@@ -492,13 +457,6 @@ func sentinelOneParseTimestamp(value string) (time.Time, bool) {
 	return time.Time{}, false
 }
 
-func sentinelOneEndpointActiveInfectionSeverity(attributes map[string]string) string {
-	if findingAttributeBool(attributes, "is_fileless") || sentinelOneIntAttribute(attributes, "active_threats") > 1 {
-		return "CRITICAL"
-	}
-	return "HIGH"
-}
-
 func sentinelOneMitigationFailedSeverity(attributes map[string]string) string {
 	switch sentinelOneStatus(attributes["mitigation_status"]) {
 	case "failed", "failure", "action_required", "requires_action":
@@ -541,21 +499,10 @@ func sentinelOneActivityText(attributes map[string]string) string {
 	}, " "))
 }
 
-func sentinelOneEndpointActiveInfectionSummary(attributes map[string]string, context findingProjectionContext) string {
-	endpoint := firstNonEmpty(context.ResourceLabel, attributes["computer_name"], attributes["agent_name"], attributes["agent_id"], "unknown endpoint")
-	threat := firstNonEmpty(attributes["threat_name"], attributes["classification"], attributes["threat_id"], "active threat")
-	return fmt.Sprintf("SentinelOne endpoint %s has active infection evidence from %s", endpoint, threat)
-}
-
 func sentinelOneMitigationFailedSummary(attributes map[string]string, context findingProjectionContext) string {
 	endpoint := firstNonEmpty(context.ResourceLabel, attributes["computer_name"], attributes["agent_name"], attributes["agent_id"], "unknown endpoint")
 	threat := firstNonEmpty(attributes["threat_name"], attributes["classification"], attributes["threat_id"], "threat")
 	return fmt.Sprintf("SentinelOne mitigation %s for %s on %s", firstNonEmpty(attributes["mitigation_status"], "failed"), threat, endpoint)
-}
-
-func sentinelOneAgentStaleSummary(attributes map[string]string, context findingProjectionContext) string {
-	endpoint := firstNonEmpty(context.ResourceLabel, attributes["computer_name"], attributes["agent_id"], "unknown endpoint")
-	return fmt.Sprintf("SentinelOne agent %s has not checked in since %s", endpoint, attributes["last_active_date"])
 }
 
 func sentinelOneAgentDetectOnlyModeSummary(attributes map[string]string, context findingProjectionContext) string {

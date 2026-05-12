@@ -212,11 +212,16 @@ WITH g, collect(DISTINCT {
        urn: target.urn,
        entity_type: coalesce(target.entity_type, ''),
        label: coalesce(target.label, ''),
+       attributes_json: coalesce(target.attributes_json, ''),
        acted_attributes_json: coalesce(acted.attributes_json, '')
      }) AS targets
-OPTIONAL MATCH (g)-[gi:RELATION {relation: 'represents_identity'}]->(:Entity)
-              <-[oi:RELATION {relation: 'represents_identity'}]-(:Entity {entity_type: 'okta.user', tenant_id: $tenant_id})
+OPTIONAL MATCH (g)-[gi:RELATION {relation: 'represents_identity'}]->(identity:Entity)
+              <-[oi:RELATION {relation: 'represents_identity'}]-(okta:Entity {entity_type: 'okta.user', tenant_id: $tenant_id})
 WITH g, targets, collect({
+       identity_urn: coalesce(identity.urn, ''),
+       identity_label: coalesce(identity.label, ''),
+       okta_urn: coalesce(okta.urn, ''),
+       okta_label: coalesce(okta.label, ''),
        github_identity_attributes_json: coalesce(gi.attributes_json, ''),
        okta_identity_attributes_json:   coalesce(oi.attributes_json, '')
      }) AS bridges
@@ -337,6 +342,7 @@ func (r *githubActiveWithoutOktaLinkRule) EvaluateRows(_ context.Context, runtim
 				group.hasCurrentBridge = true
 				break
 			}
+			group.bridgeClues = append(group.bridgeClues, githubBridgeClueFromCypher(bridge, githubIdentityJSON, oktaIdentityJSON))
 		}
 		// `acted_on` edges projected before the at-stamp change have no
 		// `at`, and any edge whose latest action is older than the recency
@@ -360,10 +366,17 @@ func (r *githubActiveWithoutOktaLinkRule) EvaluateRows(_ context.Context, runtim
 			if _, exists := group.targets[targetURN]; exists {
 				continue
 			}
+			actedAttrs := edgeStringAttributes(actedAttributesJSON)
+			targetAttrs := edgeStringAttributes(cypherListMapString(target, "attributes_json"))
 			group.targets[targetURN] = githubActiveWithoutOktaTarget{
 				urn:        targetURN,
 				entityType: cypherListMapString(target, "entity_type"),
 				label:      cypherListMapString(target, "label"),
+				action:     actedAttrs["action"],
+				accessedAt: actedAttrs["at"],
+				eventID:    actedAttrs["event_id"],
+				attributes: targetAttrs,
+				edgeAttrs:  actedAttrs,
 			}
 		}
 	}
@@ -627,6 +640,7 @@ type githubActiveWithoutOktaGroup struct {
 	githubUserLabel      string
 	githubAttributesJSON string
 	targets              map[string]githubActiveWithoutOktaTarget
+	bridgeClues          []map[string]string
 	// hasCurrentBridge captures whether ANY row for this github user carried
 	// a represents_identity bridge proving the user is linked to an okta user,
 	// so the shadow-access premise no longer applies.
@@ -637,6 +651,11 @@ type githubActiveWithoutOktaTarget struct {
 	urn        string
 	entityType string
 	label      string
+	action     string
+	accessedAt string
+	eventID    string
+	attributes map[string]string
+	edgeAttrs  map[string]string
 }
 
 func (r *githubActiveWithoutOktaLinkRule) buildFinding(runtime *cerebrov1.SourceRuntime, tenantID string, group *githubActiveWithoutOktaGroup, now time.Time) *ports.FindingRecord {
@@ -662,6 +681,12 @@ func (r *githubActiveWithoutOktaLinkRule) buildFinding(runtime *cerebrov1.Source
 	targetURNs := make([]string, 0, len(group.targets))
 	targetLabels := make([]string, 0, len(group.targets))
 	targetTypes := make(map[string]struct{}, len(group.targets))
+	accessActions := make(map[string]struct{}, len(group.targets))
+	accessEventIDs := make(map[string]struct{}, len(group.targets))
+	targetDetails := make([]map[string]string, 0, len(group.targets))
+	graphRows := make([]*cerebrov1.GraphEvidenceRow, 0, len(group.targets))
+	var latestAccessAt string
+	githubAttrs := edgeStringAttributes(group.githubAttributesJSON)
 	for urn, target := range group.targets {
 		targetURNs = append(targetURNs, urn)
 		if trimmed := strings.TrimSpace(target.label); trimmed != "" {
@@ -670,9 +695,38 @@ func (r *githubActiveWithoutOktaLinkRule) buildFinding(runtime *cerebrov1.Source
 		if trimmed := strings.TrimSpace(target.entityType); trimmed != "" {
 			targetTypes[trimmed] = struct{}{}
 		}
+		if action := strings.TrimSpace(target.action); action != "" {
+			accessActions[action] = struct{}{}
+		}
+		if eventID := strings.TrimSpace(target.eventID); eventID != "" {
+			accessEventIDs[eventID] = struct{}{}
+		}
+		latestAccessAt = maxRFC3339String(latestAccessAt, target.accessedAt)
+		targetDetails = append(targetDetails, map[string]string{
+			"urn":         target.urn,
+			"label":       target.label,
+			"entity_type": target.entityType,
+			"action":      target.action,
+			"at":          target.accessedAt,
+			"event_id":    target.eventID,
+			"repository":  target.attributes["repository"],
+			"visibility":  target.attributes["visibility"],
+		})
+		graphRows = append(graphRows, newGraphEvidenceRow("github_unlinked_access", map[string]string{
+			"github_user_urn":   group.githubUserURN,
+			"github_user_label": group.githubUserLabel,
+			"target_urn":        target.urn,
+			"target_label":      target.label,
+			"action":            target.action,
+			"at":                target.accessedAt,
+			"event_id":          target.eventID,
+		}, newGraphEvidencePath(group.githubUserURN, group.githubUserLabel, "github.user", "acted_on", target.urn, target.label, target.entityType, target.edgeAttrs)))
 	}
 	sort.Strings(targetURNs)
 	sort.Strings(targetLabels)
+	sort.Slice(targetDetails, func(i, j int) bool {
+		return targetDetails[i]["urn"] < targetDetails[j]["urn"]
+	})
 	resourceURNs = append(resourceURNs, targetURNs...)
 	primaryGitHubLabel := firstNonEmpty(group.githubUserLabel, group.githubUserURN)
 	summary := fmt.Sprintf(
@@ -681,36 +735,86 @@ func (r *githubActiveWithoutOktaLinkRule) buildFinding(runtime *cerebrov1.Source
 		len(targetURNs),
 	)
 	attributes := map[string]string{
-		"primary_resource_urn":  group.githubUserURN,
-		"github_user_urn":       group.githubUserURN,
-		"github_user_label":     group.githubUserLabel,
-		"target_count":          fmt.Sprintf("%d", len(targetURNs)),
-		"target_urns":           strings.Join(targetURNs, ","),
-		"target_labels":         strings.Join(targetLabels, ","),
-		"target_entity_types":   strings.Join(sortedKeys(targetTypes), ","),
-		"source_runtime_id":     triggeringRuntimeID,
-		"source_runtime_tenant": tenantID,
+		"primary_resource_urn":              group.githubUserURN,
+		"github_user_urn":                   group.githubUserURN,
+		"github_user_label":                 group.githubUserLabel,
+		"target_count":                      fmt.Sprintf("%d", len(targetURNs)),
+		"target_urns":                       strings.Join(targetURNs, ","),
+		"target_labels":                     strings.Join(targetLabels, ","),
+		"target_entity_types":               strings.Join(sortedKeys(targetTypes), ","),
+		"latest_access_at":                  latestAccessAt,
+		"access_actions":                    strings.Join(sortedStringSet(accessActions), ","),
+		"access_event_ids":                  strings.Join(sortedStringSet(accessEventIDs), ","),
+		"target_access_details":             stringMapJSON(targetDetails),
+		"bridge_clues":                      stringMapJSON(group.bridgeClues),
+		"github_actor_type":                 githubAttrs["actor_type"],
+		"github_actor_id":                   githubAttrs["actor_id"],
+		"github_external_identity_nameid":   githubAttrs["external_identity_nameid"],
+		"github_external_identity_username": githubAttrs["external_identity_username"],
+		"source_runtime_id":                 triggeringRuntimeID,
+		"source_runtime_tenant":             tenantID,
 	}
 	for key, value := range r.definition.AttributeMap() {
 		attributes["rule_"+key] = value
 	}
 	trimEmptyAttributes(attributes)
 	return &ports.FindingRecord{
-		ID:              fingerprint,
-		Fingerprint:     fingerprint,
-		TenantID:        tenantID,
-		RuntimeID:       triggeringRuntimeID,
-		RuleID:          r.definition.ID,
-		Title:           r.definition.Name,
-		Severity:        r.definition.Severity,
-		Status:          r.definition.Status,
-		Summary:         summary,
-		ResourceURNs:    deduplicateStrings(resourceURNs),
-		ControlRefs:     cloneFindingControlRefs(r.definition.ControlRefs),
-		Attributes:      attributes,
-		FirstObservedAt: now,
-		LastObservedAt:  now,
-		CheckID:         r.definition.ID,
-		CheckName:       r.definition.Name,
+		ID:                fingerprint,
+		Fingerprint:       fingerprint,
+		TenantID:          tenantID,
+		RuntimeID:         triggeringRuntimeID,
+		RuleID:            r.definition.ID,
+		Title:             r.definition.Name,
+		Severity:          r.definition.Severity,
+		Status:            r.definition.Status,
+		Summary:           summary,
+		ResourceURNs:      deduplicateStrings(resourceURNs),
+		EventIDs:          sortedStringSet(accessEventIDs),
+		ControlRefs:       cloneFindingControlRefs(r.definition.ControlRefs),
+		GraphEvidenceRows: graphRows,
+		Attributes:        attributes,
+		FirstObservedAt:   now,
+		LastObservedAt:    now,
+		CheckID:           r.definition.ID,
+		CheckName:         r.definition.Name,
 	}
+}
+
+func githubBridgeClueFromCypher(bridge any, githubIdentityJSON string, oktaIdentityJSON string) map[string]string {
+	githubAttrs := edgeStringAttributes(githubIdentityJSON)
+	oktaAttrs := edgeStringAttributes(oktaIdentityJSON)
+	return map[string]string{
+		"identity_urn":            cypherListMapString(bridge, "identity_urn"),
+		"identity_label":          cypherListMapString(bridge, "identity_label"),
+		"okta_urn":                cypherListMapString(bridge, "okta_urn"),
+		"okta_label":              cypherListMapString(bridge, "okta_label"),
+		"github_match_type":       githubAttrs["match_type"],
+		"github_identifier_type":  githubAttrs["identifier_type"],
+		"github_identifier_value": githubAttrs["identifier_value"],
+		"github_observed_at":      githubAttrs["at"],
+		"okta_match_type":         oktaAttrs["match_type"],
+		"okta_identifier_type":    oktaAttrs["identifier_type"],
+		"okta_identifier_value":   oktaAttrs["identifier_value"],
+		"okta_observed_at":        oktaAttrs["at"],
+	}
+}
+
+func maxRFC3339String(existing string, incoming string) string {
+	existing = strings.TrimSpace(existing)
+	incoming = strings.TrimSpace(incoming)
+	if existing == "" {
+		return incoming
+	}
+	if incoming == "" {
+		return existing
+	}
+	existingT, existingErr := time.Parse(time.RFC3339, existing)
+	incomingT, incomingErr := time.Parse(time.RFC3339, incoming)
+	if existingErr != nil || incomingErr != nil {
+		return incoming
+	}
+	if incomingT.After(existingT) {
+		return incoming
+	}
+	return existing
 }
