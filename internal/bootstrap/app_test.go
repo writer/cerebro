@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -559,6 +560,43 @@ type stubRuntimeStore struct {
 	findingEvaluationRuns           map[string]*cerebrov1.FindingEvaluationRun
 	findingEvaluationRunListRequest ports.ListFindingEvaluationRunsRequest
 	reportRuns                      map[string]*cerebrov1.ReportRun
+}
+
+// leaseAwareRuntimeStore embeds stubRuntimeStore and additionally
+// implements ports.SourceRuntimeLeaseStore so the bootstrap layer's
+// SyncWithLease path can be exercised end-to-end. holdsAll=true makes
+// every Acquire fail; tests use this to drive the lease-held conflict
+// path.
+type leaseAwareRuntimeStore struct {
+	*stubRuntimeStore
+	mu       sync.Mutex
+	holder   string
+	holdsAll bool
+}
+
+func (s *leaseAwareRuntimeStore) AcquireSourceRuntimeLease(_ context.Context, _ string, owner string, _ time.Duration) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.holdsAll && s.holder != owner {
+		return false, nil
+	}
+	s.holder = owner
+	return true, nil
+}
+
+func (s *leaseAwareRuntimeStore) RenewSourceRuntimeLease(_ context.Context, _ string, owner string, _ time.Duration) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.holder == owner, nil
+}
+
+func (s *leaseAwareRuntimeStore) ReleaseSourceRuntimeLease(_ context.Context, _ string, owner string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.holder == owner {
+		s.holder = ""
+	}
+	return nil
 }
 
 func (s *stubRuntimeStore) Ping(context.Context) error { return s.err }
@@ -2661,6 +2699,69 @@ func TestConnectSourceRuntimeEndpointsResolveEnvReferences(t *testing.T) {
 	}
 	if source.readToken != "resolved-token" {
 		t.Fatalf("connect sync read token = %q, want resolved-token", source.readToken)
+	}
+}
+
+func TestSyncSourceRuntimeReturnsConflictWhenLeaseHeld(t *testing.T) {
+	source := &bootstrapTokenSource{id: "runtime_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	runtimeStore := &leaseAwareRuntimeStore{
+		stubRuntimeStore: &stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-runtime-token": {
+					Id:       "writer-runtime-token",
+					SourceId: "runtime_token",
+					TenantId: "writer",
+				},
+			},
+		},
+		holder:   "other-task",
+		holdsAll: true,
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		AppendLog:  &recordingAppendLog{},
+		StateStore: runtimeStore,
+	}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	t.Run("http", func(t *testing.T) {
+		req, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-runtime-token/sync", nil)
+		if err != nil {
+			t.Fatalf("NewRequest() error = %v", err)
+		}
+		resp, err := server.Client().Do(req)
+		if err != nil {
+			t.Fatalf("Do() error = %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusConflict {
+			t.Fatalf("StatusCode = %d, want %d", resp.StatusCode, http.StatusConflict)
+		}
+	})
+
+	t.Run("connect", func(t *testing.T) {
+		client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+		_, err := client.SyncSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.SyncSourceRuntimeRequest{
+			Id: "writer-runtime-token",
+		}))
+		if err == nil {
+			t.Fatal("SyncSourceRuntime() error = nil, want non-nil")
+		}
+		var connectErr *connect.Error
+		if !errors.As(err, &connectErr) {
+			t.Fatalf("SyncSourceRuntime() error %v is not *connect.Error", err)
+		}
+		if connectErr.Code() != connect.CodeAborted {
+			t.Fatalf("SyncSourceRuntime() code = %v, want %v", connectErr.Code(), connect.CodeAborted)
+		}
+	})
+
+	if source.readToken != "" {
+		t.Fatalf("source.Read should not have been called while lease was held; readToken = %q", source.readToken)
 	}
 }
 
