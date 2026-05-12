@@ -118,6 +118,9 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"sentinelone.site":                     sentinelOneSiteProjections,
 	"sentinelone.threat":                   sentinelOneThreatProjections,
 	"sentinelone.vulnerability":            sentinelOneVulnerabilityProjections,
+	"vulnview.asset":                       vulnViewAssetProjections,
+	"vulnview.dns_alert":                   vulnViewDNSAlertProjections,
+	"vulnview.vulnerability":               vulnViewVulnerabilityProjections,
 }}
 
 // BuiltinRegistry returns the default source event projector registry.

@@ -1,0 +1,17 @@
+{
+  "items": [
+    {
+      "type": "vulnerability",
+      "templateId": "cve-2026-1234",
+      "name": "Test CVE",
+      "severity": "high",
+      "host": "app.writer.com",
+      "matchedAt": "https://app.writer.com/login",
+      "scanId": "scan-1",
+      "scanName": "prod-web",
+      "siteId": "site-1",
+      "siteName": "prod",
+      "timestamp": "2026-05-12T00:00:00Z"
+    }
+  ]
+}

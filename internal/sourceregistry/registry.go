@@ -13,6 +13,7 @@ import (
 	oktasource "github.com/writer/cerebro/sources/okta"
 	sdksource "github.com/writer/cerebro/sources/sdk"
 	sentineloneSource "github.com/writer/cerebro/sources/sentinelone"
+	vulnviewsource "github.com/writer/cerebro/sources/vulnview"
 )
 
 type builtinSourceLoader struct {
@@ -73,6 +74,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "sentinelone",
 		load: func() (sourcecdk.Source, error) {
 			return sentineloneSource.New()
+		},
+	},
+	{
+		name: "vulnview",
+		load: func() (sourcecdk.Source, error) {
+			return vulnviewsource.New()
 		},
 	},
 }
