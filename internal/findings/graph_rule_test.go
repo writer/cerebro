@@ -157,6 +157,12 @@ func TestEvaluateSourceRuntimeGraphRulesEmitsAndPersistsFindings(t *testing.T) {
 	if got := len(evaluation.Evidence[0].GetGraphRows()); got != 1 {
 		t.Fatalf("len(Evidence[0].GraphRows) = %d, want 1", got)
 	}
+	if got := evaluation.Evidence[0].GetAttributes()["primary_resource_urn"]; got != "" {
+		t.Fatalf("Evidence[0].Attributes[primary_resource_urn] = %q, want empty for fixture without finding attributes", got)
+	}
+	if len(evaluation.Evidence[0].GetGraphPathUrns()) != 2 {
+		t.Fatalf("Evidence[0].GraphPathUrns = %#v, want two endpoint urns", evaluation.Evidence[0].GetGraphPathUrns())
+	}
 	if got := evaluation.Evidence[0].GetGraphRows()[0].GetPaths()[0].GetRelation(); got != "represents_identity" {
 		t.Fatalf("graph evidence relation = %q, want represents_identity", got)
 	}

@@ -395,7 +395,14 @@ func (s *stubFindingStore) PutFindingEvidence(_ context.Context, evidence *cereb
 	if s.evidence == nil {
 		s.evidence = make(map[string]*cerebrov1.FindingEvidence)
 	}
-	s.evidence[evidence.GetId()] = cloneFindingEvidence(evidence)
+	cloned := cloneFindingEvidence(evidence)
+	if existing := s.evidence[evidence.GetId()]; existing != nil && existing.GetCreatedAt() != nil {
+		cloned.CreatedAt = existing.GetCreatedAt()
+	}
+	if cloned.GetLastObservedAt() == nil || cloned.GetLastObservedAt().AsTime().IsZero() {
+		cloned.LastObservedAt = cloned.GetCreatedAt()
+	}
+	s.evidence[evidence.GetId()] = cloned
 	return nil
 }
 
@@ -625,6 +632,15 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 	}
 	if got := result.Run.GetFindingsUpserted(); got != 1 {
 		t.Fatalf("Run.FindingsUpserted = %d, want 1", got)
+	}
+	if got := result.Run.GetEventsProcessed(); got != 2 {
+		t.Fatalf("Run.EventsProcessed = %d, want 2", got)
+	}
+	if got := result.Run.GetEventsMatched(); got != 1 {
+		t.Fatalf("Run.EventsMatched = %d, want 1", got)
+	}
+	if got := result.Run.GetFindingsEmitted(); got != 1 {
+		t.Fatalf("Run.FindingsEmitted = %d, want 1", got)
 	}
 	if got := len(result.Evidence); got != 1 {
 		t.Fatalf("len(Evidence) = %d, want 1", got)
@@ -1158,6 +1174,122 @@ func TestEvaluateSourceRuntimeFindingsDeduplicatesEvidencePerRun(t *testing.T) {
 	}
 	if got := len(store.evidence); got != 1 {
 		t.Fatalf("len(store.evidence) = %d, want 1", got)
+	}
+}
+
+func TestEvaluateSourceRuntimeFindingsDeduplicatesEvidenceAcrossRuns(t *testing.T) {
+	registry, err := NewRegistry(&emittingRule{
+		spec:               &cerebrov1.RuleSpec{Id: "rule-a", Name: "Rule A"},
+		supportedSourceIDs: map[string]struct{}{"okta": {}},
+		triggerEventID:     "okta-audit-2",
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	replayer := &stubReplayer{
+		events: []*cerebrov1.EventEnvelope{
+			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+		},
+	}
+	store := &stubFindingStore{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+			},
+		},
+		replayer,
+		store,
+		store,
+		store,
+		store,
+		registry,
+	)
+
+	first, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: "writer-okta-audit", RuleID: "rule-a"})
+	if err != nil {
+		t.Fatalf("first EvaluateSourceRuntime() error = %v", err)
+	}
+	second, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: "writer-okta-audit", RuleID: "rule-a"})
+	if err != nil {
+		t.Fatalf("second EvaluateSourceRuntime() error = %v", err)
+	}
+	if got := len(store.evidence); got != 1 {
+		t.Fatalf("len(store.evidence) = %d, want 1", got)
+	}
+	if first.Evidence[0].GetId() != second.Evidence[0].GetId() {
+		t.Fatalf("evidence ids differ across same-shape runs: %q != %q", first.Evidence[0].GetId(), second.Evidence[0].GetId())
+	}
+	stored := store.evidence[first.Evidence[0].GetId()]
+	if got := stored.GetRunId(); got != second.Run.GetId() {
+		t.Fatalf("deduped evidence RunId = %q, want latest run %q", got, second.Run.GetId())
+	}
+	if !stored.GetCreatedAt().AsTime().Equal(first.Evidence[0].GetCreatedAt().AsTime()) {
+		t.Fatalf("deduped evidence CreatedAt = %v, want original %v", stored.GetCreatedAt().AsTime(), first.Evidence[0].GetCreatedAt().AsTime())
+	}
+	if stored.GetLastObservedAt() == nil || stored.GetLastObservedAt().AsTime().IsZero() {
+		t.Fatalf("deduped evidence LastObservedAt missing")
+	}
+}
+
+func TestBuildFindingEvidenceIncludesAttributesGraphPathsAndObservedAt(t *testing.T) {
+	store := &stubFindingStore{
+		claims: map[string]*ports.ClaimRecord{
+			"claim-1": {
+				ID:            "claim-1",
+				RuntimeID:     "runtime-okta",
+				TenantID:      "writer",
+				SourceEventID: "event-1",
+				ObservedAt:    time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
+			},
+		},
+	}
+	service := &Service{claimStore: store}
+	finding := &ports.FindingRecord{
+		ID:           "finding-1",
+		TenantID:     "writer",
+		RuntimeID:    "runtime-okta",
+		RuleID:       "rule-a",
+		ResourceURNs: []string{"urn:cerebro:writer:identity:email:alice@writer.com"},
+		EventIDs:     []string{"event-1"},
+		Attributes: map[string]string{
+			"primary_resource_urn": "urn:cerebro:writer:identity:email:alice@writer.com",
+			"actor":                "alice@writer.com",
+			"empty":                "",
+		},
+		GraphEvidenceRows: []*cerebrov1.GraphEvidenceRow{
+			newGraphEvidenceRow("identity_path", map[string]string{"label": "alice"}, newGraphEvidencePath(
+				"urn:cerebro:writer:github_user:alice",
+				"alice",
+				"github.user",
+				"acted_on",
+				"urn:cerebro:writer:github_repo:repo-1",
+				"repo-1",
+				"github.repository",
+				map[string]string{"at": "2026-05-07T18:09:42Z", "event_id": "event-1"},
+			)),
+		},
+	}
+	run := &cerebrov1.FindingEvaluationRun{Id: "run-1", RuntimeId: "runtime-okta"}
+
+	evidence, err := service.buildFindingEvidence(context.Background(), finding, run)
+	if err != nil {
+		t.Fatalf("buildFindingEvidence() error = %v", err)
+	}
+	if got := evidence.GetAttributes()["actor"]; got != "alice@writer.com" {
+		t.Fatalf("Evidence.Attributes[actor] = %q, want alice@writer.com", got)
+	}
+	if _, ok := evidence.GetAttributes()["empty"]; ok {
+		t.Fatalf("Evidence.Attributes retained empty value: %#v", evidence.GetAttributes())
+	}
+	if !slices.Contains(evidence.GetGraphPathUrns(), "urn:cerebro:writer:github_user:alice") || !slices.Contains(evidence.GetGraphPathUrns(), "urn:cerebro:writer:github_repo:repo-1") {
+		t.Fatalf("Evidence.GraphPathUrns = %#v, want both path endpoints", evidence.GetGraphPathUrns())
+	}
+	if got := evidence.GetGraphRows()[0].GetPaths()[0].GetObservedAt(); got != "2026-05-07T18:09:42Z" {
+		t.Fatalf("Evidence.GraphRows[0].Paths[0].ObservedAt = %q, want edge timestamp", got)
+	}
+	if evidence.GetLastObservedAt() == nil || evidence.GetLastObservedAt().AsTime().IsZero() {
+		t.Fatalf("Evidence.LastObservedAt missing")
 	}
 }
 
@@ -1790,15 +1922,20 @@ func TestEvaluateSourceRuntimeRulesDeduplicatesEvidencePerRun(t *testing.T) {
 }
 
 func TestFindingEvidenceIDIncludesEventIDs(t *testing.T) {
-	first := findingEvidenceID("runtime", "finding", "run", []string{"event-1"})
-	second := findingEvidenceID("runtime", "finding", "run", []string{"event-2"})
+	first := findingEvidenceID("runtime", "finding", []string{"urn:root"}, []string{"event-1"})
+	second := findingEvidenceID("runtime", "finding", []string{"urn:root"}, []string{"event-2"})
 	if first == second {
 		t.Fatalf("findingEvidenceID() = %q for distinct events, want unique IDs", first)
 	}
-	reordered := findingEvidenceID("runtime", "finding", "run", []string{"event-2", "event-1"})
-	sorted := findingEvidenceID("runtime", "finding", "run", []string{"event-1", "event-2"})
+	reordered := findingEvidenceID("runtime", "finding", []string{"urn:root"}, []string{"event-2", "event-1"})
+	sorted := findingEvidenceID("runtime", "finding", []string{"urn:root"}, []string{"event-1", "event-2"})
 	if reordered != sorted {
 		t.Fatalf("findingEvidenceID() depends on event order: %q != %q", reordered, sorted)
+	}
+	firstRoot := findingEvidenceID("runtime", "finding", []string{"urn:root:1"}, []string{"event-1"})
+	secondRoot := findingEvidenceID("runtime", "finding", []string{"urn:root:2"}, []string{"event-1"})
+	if firstRoot == secondRoot {
+		t.Fatalf("findingEvidenceID() = %q for distinct graph roots, want unique IDs", firstRoot)
 	}
 }
 
@@ -3044,8 +3181,8 @@ func TestFindingEvaluationRunIDIsUniqueAcrossSameNanosecond(t *testing.T) {
 
 func TestFindingEvidenceIDDistinguishesNormalizationCollisions(t *testing.T) {
 	t.Parallel()
-	first := findingEvidenceID("rt:a", "finding_x", "run-1", []string{"event-1"})
-	second := findingEvidenceID("rt-a", "finding-x", "run-1", []string{"event-1"})
+	first := findingEvidenceID("rt:a", "finding_x", []string{"urn:root"}, []string{"event-1"})
+	second := findingEvidenceID("rt-a", "finding-x", []string{"urn:root"}, []string{"event-1"})
 	if first == second {
 		t.Fatalf("findingEvidenceID() = %q, want distinct ids for raw inputs that normalize alike", first)
 	}
