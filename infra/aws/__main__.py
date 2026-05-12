@@ -49,6 +49,27 @@ def _config_bool(key: str, default: bool) -> bool:
     return default if value is None else value
 
 
+# The cross-task lease around source-runtime cursor advances landed in
+# writer/cerebro PR #554 and ships in v2.1.25. Below that version the API
+# service still races other API replicas on cursor reads, so the
+# apiMaxInstances guardrail must stay engaged.
+_MIN_CROSS_TASK_SYNC_LOCK_VERSION = "2.1.25"
+
+
+def _supports_cross_task_sync_lock(image_tag: str) -> bool:
+    if not image_tag or not image_tag.startswith("v"):
+        return False
+    semver = image_tag[1:].split("-", 1)[0]
+    try:
+        parts = [int(part) for part in semver.split(".")[:3]]
+    except ValueError:
+        return False
+    if len(parts) != 3:
+        return False
+    minimum = tuple(int(part) for part in _MIN_CROSS_TASK_SYNC_LOCK_VERSION.split("."))
+    return tuple(parts) >= minimum
+
+
 def _config_optional_secret(key: str) -> pulumi.Output[str] | None:
     value = config.get(key)
     if not value:
@@ -122,8 +143,12 @@ orchestrator_command = config.get_object("orchestratorCommand") or ["orchestrato
 orchestrator_task_count = _config_int("orchestratorTaskCount", 1)
 orchestrator_schedules = config.get_object("orchestratorSchedules") or []
 
-if api_max_instances > 1:
-    raise ValueError("Source runtime sync cursors are not cross-task locked yet; set cerebro:apiMaxInstances to 1.")
+if api_max_instances > 1 and not _supports_cross_task_sync_lock(image_tag):
+    raise ValueError(
+        "Source runtime sync cursors are cross-task locked starting with writer/cerebro "
+        f"v{_MIN_CROSS_TASK_SYNC_LOCK_VERSION}; set cerebro:apiMaxInstances to 1 or upgrade "
+        f"cerebro:imageTag (current: {image_tag})."
+    )
 
 log_retention_days = _config_int("logRetentionDays", 30)
 enable_waf = _config_bool("enableWaf", True)

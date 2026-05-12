@@ -45,7 +45,7 @@ config:
   cerebro:apiMaxInstances:
     type: integer
     default: 1
-    description: Maximum API instances; keep at 1 until source-runtime sync has distributed locking
+    description: Maximum API instances; values above 1 require cerebro:imageTag >= v2.1.25 (cross-task source-runtime cursor locking, writer/cerebro PR #554).
 
   cerebro:postgresInstanceClass:
     type: string

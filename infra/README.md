@@ -67,7 +67,7 @@ uv run pulumi up --stack go-prod
 | `cerebro:imageTag` | Yes | Explicit runtime image tag. |
 | `cerebro:environment` | Yes | Runtime environment name. |
 | `cerebro:useExistingVpc` | Usually | Use pre-existing Writer VPC/subnets. |
-| `cerebro:apiMaxInstances` | Yes | Must remain `1` until runtime cursor locking supports multiple API tasks. |
+| `cerebro:apiMaxInstances` | Yes | Defaults to `1`. May be raised above 1 only when `cerebro:imageTag >= v2.1.25` (carries cross-task source-runtime cursor locking, writer/cerebro PR #554). |
 | `cerebro:sourceRuntimes` | Optional | Declarative source runtime definitions. |
 | `cerebro:orchestratorEnabled` | Optional | Enables scheduled ECS orchestrator tasks. |
 | `cerebro:apiKeys` | Shared envs | Pulumi-encrypted API key set. |

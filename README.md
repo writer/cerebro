@@ -38,7 +38,7 @@ This repository is intentionally narrow: it deploys and operates Cerebro for Wri
 
 Image versions are explicit. Change `cerebro:imageTag` in the relevant Pulumi stack file, open a normal PR, review the image mirror/preview results, and then merge or dispatch the deployment workflow. Do not add an automatic promotion workflow between repositories; deployment remains an intentional infrastructure change.
 
-The AWS runtime is singleton by design today: `cerebro:apiMaxInstances` must stay `1` until source runtime sync cursors are safely cross-task locked. The orchestrator runs as scheduled ECS tasks through EventBridge rather than as a second long-running API service.
+The AWS runtime has historically been singleton: `cerebro:apiMaxInstances` defaulted to `1` because source-runtime cursor advances were not cross-task safe. Starting with `cerebro:imageTag >= v2.1.25` the API serializes cursor advances behind the same postgres lease the orchestrator already uses (writer/cerebro PR #554), so `apiMaxInstances` may be raised. Stack validation rejects `apiMaxInstances > 1` on older image tags. The orchestrator still runs as scheduled ECS tasks through EventBridge rather than as a second long-running API service.
 
 ## Local workflow
 
