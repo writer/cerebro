@@ -24,6 +24,7 @@ on:
 
 env:
   AWS_REGION: us-east-1
+  ECR_REPOSITORY: cerebro
   TAILSCALE_OAUTH_CLIENT_ID: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
   TAILSCALE_OAUTH_CLIENT_SECRET: ${{ secrets.TAILSCALE_OAUTH_CLIENT_SECRET }}
 
@@ -187,6 +188,10 @@ jobs:
         shell: bash
         working-directory: infra/aws
         run: uv run pulumi config set --stack go-prod --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
+
+      - name: Wait for ECR image (go-prod)
+        shell: bash
+        run: bash .github/scripts/wait-for-ecr-image.sh go-prod
 
       - name: Pulumi Up (go-prod)
         uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6
@@ -411,6 +416,13 @@ jobs:
         shell: bash
         working-directory: infra/aws
         run: uv run pulumi config set --stack ${{ github.event.inputs.environment }} --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
+
+      - name: Wait for ECR image (AWS)
+        if: "!startsWith(github.event.inputs.environment, 'gcp-')"
+        shell: bash
+        env:
+          STACK_NAME: ${{ github.event.inputs.environment }}
+        run: bash .github/scripts/wait-for-ecr-image.sh "${STACK_NAME}"
 
       - name: Pulumi Up (AWS)
         if: "!startsWith(github.event.inputs.environment, 'gcp-')"
