@@ -3102,6 +3102,12 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := runEntry["findings_emitted"]; got != float64(1) {
 		t.Fatalf("list evaluation run findings_emitted = %#v, want 1", got)
 	}
+	if got, present := runEntry["graph_rule"]; !present || got != false {
+		t.Fatalf("list evaluation run graph_rule = %#v (present=%t), want false present (zero-value scalars must surface for operator triage)", got, present)
+	}
+	if got, present := runEntry["graph_rows_read"]; !present || got != float64(0) {
+		t.Fatalf("list evaluation run graph_rows_read = %#v (present=%t), want 0 present", got, present)
+	}
 	evidenceListResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-audit/finding-evidence?finding_id=" + findingPayload["id"].(string) + "&run_id=" + runID + "&claim_id=claim-1&event_id=okta-audit-2&graph_root_urn=urn:cerebro:writer:okta_resource:policyrule:pol-1&limit=1")
 	if err != nil {
 		t.Fatalf("GET /source-runtimes/{id}/finding-evidence error = %v", err)
@@ -3165,6 +3171,12 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := getRunBody["id"]; got != runID {
 		t.Fatalf("get evaluation run id = %#v, want %q", got, runID)
+	}
+	if got, present := getRunBody["graph_rule"]; !present || got != false {
+		t.Fatalf("get evaluation run graph_rule = %#v (present=%t), want false present (operator triage requires explicit zeros)", got, present)
+	}
+	if got, present := getRunBody["graph_rows_read"]; !present || got != float64(0) {
+		t.Fatalf("get evaluation run graph_rows_read = %#v (present=%t), want 0 present", got, present)
 	}
 	missingRuleResp, err := server.Client().Post(server.URL+"/source-runtimes/writer-okta-audit/findings/evaluate?rule_id=does-not-exist", "application/json", nil)
 	if err != nil {

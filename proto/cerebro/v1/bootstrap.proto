@@ -137,6 +137,15 @@ message FindingEvaluationRun {
   uint32 events_processed = 12;
   uint32 events_matched = 13;
   uint32 findings_emitted = 14;
+  // graph_rule discriminates graph-rule evaluation runs (whose counters live on
+  // graph_rows_read) from event-rule runs (whose counters live on events_*).
+  // Operators reading events_evaluated=0 rely on this flag to tell graph runs
+  // apart from event rules that simply never saw events.
+  bool graph_rule = 15;
+  // graph_rows_read records how many cypher rows the rule's read transaction
+  // returned. It is the graph-rule analog of events_evaluated and lets operators
+  // distinguish "graph rule fetched zero rows" from "graph rule never ran".
+  uint32 graph_rows_read = 16;
 }
 
 // ListFindingEvaluationRunsRequest requests persisted finding evaluation runs for one stored runtime.

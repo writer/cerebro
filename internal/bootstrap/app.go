@@ -452,7 +452,7 @@ func (a *App) handleGetFindingEvaluationRun(w http.ResponseWriter, r *http.Reque
 		writeFindingError(w, err)
 		return
 	}
-	writeProtoJSON(w, http.StatusOK, &cerebrov1.GetFindingEvaluationRunResponse{
+	writeProtoJSONWithDefaults(w, http.StatusOK, &cerebrov1.GetFindingEvaluationRunResponse{
 		Run: response,
 	})
 }
@@ -1345,7 +1345,7 @@ func (a *App) handleListFindingEvaluationRuns(w http.ResponseWriter, r *http.Req
 		writeFindingError(w, err)
 		return
 	}
-	writeProtoJSON(w, http.StatusOK, &cerebrov1.ListFindingEvaluationRunsResponse{
+	writeProtoJSONWithDefaults(w, http.StatusOK, &cerebrov1.ListFindingEvaluationRunsResponse{
 		Runs: response.Runs,
 	})
 }
@@ -2057,6 +2057,22 @@ func healthResponse(ctx context.Context, deps Dependencies) *cerebrov1.CheckHeal
 
 func writeProtoJSON(w http.ResponseWriter, statusCode int, message proto.Message) {
 	payload, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(message)
+	if err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	_, _ = w.Write(payload)
+}
+
+// writeProtoJSONWithDefaults serializes a proto message keeping zero-valued
+// scalar fields in the JSON payload. Operators triaging finding evaluation
+// runs need to distinguish "rule fetched 0 rows" or "graph_rule=false" from
+// "field is missing", which the default protojson behaviour (drops zeros)
+// would conflate.
+func writeProtoJSONWithDefaults(w http.ResponseWriter, statusCode int, message proto.Message) {
+	payload, err := protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: true}.Marshal(message)
 	if err != nil {
 		http.Error(w, "failed to encode response", http.StatusInternalServerError)
 		return
