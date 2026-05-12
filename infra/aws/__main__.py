@@ -49,6 +49,13 @@ def _config_bool(key: str, default: bool) -> bool:
     return default if value is None else value
 
 
+def _config_optional_secret(key: str) -> pulumi.Output[str] | None:
+    value = config.get(key)
+    if not value:
+        return None
+    return config.get_secret(key)
+
+
 def _env_ref(value) -> str:
     text = str(value).strip()
     if not text.startswith("env:"):
@@ -167,7 +174,7 @@ neo4j_aura_instance_name = config.get("neo4jAuraInstanceName") or f"cerebro-grap
 neo4j_aura_client_id = config.get_secret("neo4jAuraClientId")
 neo4j_aura_client_secret = config.get_secret("neo4jAuraClientSecret")
 neo4j_aura_project_id = config.get_secret("neo4jAuraProjectId")
-neo4j_aura_password = config.get_secret("neo4jAuraPassword")
+neo4j_aura_password = _config_optional_secret("neo4jAuraPassword")
 neo4j_aura_cloud_provider = config.get("neo4jAuraCloudProvider") or "gcp"
 neo4j_aura_region = config.get("neo4jAuraRegion") or "us-central1"
 neo4j_aura_memory = config.get("neo4jAuraMemory") or "8GB"
@@ -175,7 +182,7 @@ neo4j_aura_version = config.get("neo4jAuraVersion") or "5"
 neo4j_aura_type = config.get("neo4jAuraType") or "professional-db"
 neo4j_aura_vector_optimized = _config_bool("neo4jAuraVectorOptimized", True)
 neo4j_secret_import_arns = config.get_object("neo4jSecretImportArns") or {}
-api_keys = config.get_secret("apiKeys")
+api_keys = _config_optional_secret("apiKeys")
 api_auth_enabled = _config_bool("apiAuthEnabled", is_production)
 allowed_tenants = config.get_object("allowedTenants") or []
 source_secret_keys = config.get_object("sourceSecretKeys") or []
