@@ -411,6 +411,72 @@ func TestTokenCacheReusesTokenAcrossFamilies(t *testing.T) {
 	}
 }
 
+func TestReadRefreshesTokenAfterUnauthorizedPage(t *testing.T) {
+	tokenRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth/token":
+			tokenRequests++
+			token := "token-1"
+			if tokenRequests == 2 {
+				token = "token-2"
+			}
+			writeJSON(t, w, map[string]any{
+				"access_token": token,
+				"expires_in":   3599,
+				"token_type":   "Bearer",
+			})
+		case "/v1/vendors":
+			cursor := r.URL.Query().Get("pageCursor")
+			switch cursor {
+			case "":
+				if got := r.Header.Get("Authorization"); got != "Bearer token-1" {
+					t.Fatalf("first page Authorization = %q, want token-1", got)
+				}
+				writePage(t, w, true, "cursor-2", []map[string]any{{"id": "vendor-1", "name": "Acme SaaS"}})
+			case "cursor-2":
+				switch got := r.Header.Get("Authorization"); got {
+				case "Bearer token-1":
+					http.Error(w, `{"error":"Unauthorized"}`, http.StatusUnauthorized)
+				case "Bearer token-2":
+					writePage(t, w, false, "", []map[string]any{{"id": "vendor-2", "name": "Beta SaaS"}})
+				default:
+					t.Fatalf("second page Authorization = %q, want token-1 retry then token-2", got)
+				}
+			default:
+				t.Fatalf("unexpected pageCursor = %q", cursor)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := testConfig(server.URL, familyVendor)
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(first page) error = %v", err)
+	}
+	if first.NextCursor == nil {
+		t.Fatalf("Read(first page).NextCursor is nil")
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second page) error = %v", err)
+	}
+	if len(second.Events) != 1 {
+		t.Fatalf("len(Read(second page).Events) = %d, want 1", len(second.Events))
+	}
+	if tokenRequests != 2 {
+		t.Fatalf("token requests = %d, want 2", tokenRequests)
+	}
+}
+
 func testConfig(baseURL string, family string) sourcecdk.Config {
 	return sourcecdk.NewConfig(map[string]string{
 		"base_url":      baseURL,

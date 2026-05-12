@@ -7,6 +7,7 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -289,24 +290,16 @@ func (s *Source) list(ctx context.Context, settings settings, path string, curso
 	if err != nil {
 		return nil, "", err
 	}
-	query := url.Values{}
-	query.Set("pageSize", strconv.Itoa(pageSize))
-	if strings.TrimSpace(cursor) != "" {
-		query.Set("pageCursor", strings.TrimSpace(cursor))
+	response, err := s.listPage(ctx, settings, path, cursor, pageSize, token)
+	if err != nil && isUnauthorizedResponse(err) {
+		s.invalidateToken(settings)
+		token, tokenErr := s.token(ctx, settings)
+		if tokenErr != nil {
+			return nil, "", tokenErr
+		}
+		response, err = s.listPage(ctx, settings, path, cursor, pageSize, token)
 	}
-	endpoint := settings.baseURL + path
-	if encoded := query.Encode(); encoded != "" {
-		endpoint += "?" + encoded
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return nil, "", fmt.Errorf("build request %s: %w", path, err)
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	var response pageResponse
-	if err := s.doJSON(req, &response); err != nil {
 		return nil, "", err
 	}
 	records := make([]grcRecord, 0, len(response.Results.Data))
@@ -321,6 +314,30 @@ func (s *Source) list(ctx context.Context, settings settings, path string, curso
 		return records, strings.TrimSpace(response.Results.PageInfo.EndCursor), nil
 	}
 	return records, "", nil
+}
+
+func (s *Source) listPage(ctx context.Context, settings settings, path string, cursor string, pageSize int, token string) (pageResponse, error) {
+	query := url.Values{}
+	query.Set("pageSize", strconv.Itoa(pageSize))
+	if strings.TrimSpace(cursor) != "" {
+		query.Set("pageCursor", strings.TrimSpace(cursor))
+	}
+	endpoint := settings.baseURL + path
+	if encoded := query.Encode(); encoded != "" {
+		endpoint += "?" + encoded
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return pageResponse{}, fmt.Errorf("build request %s: %w", path, err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	var response pageResponse
+	if err := s.doJSON(req, &response); err != nil {
+		return pageResponse{}, err
+	}
+	return response, nil
 }
 
 func (s *Source) token(ctx context.Context, settings settings) (string, error) {
@@ -368,6 +385,25 @@ func (s *Source) token(ctx context.Context, settings settings) (string, error) {
 	s.tokenExpiresAt = time.Now().Add(time.Duration(expiresIn) * time.Second)
 	s.mu.Unlock()
 	return response.AccessToken, nil
+}
+
+func (s *Source) invalidateToken(settings settings) {
+	if s == nil {
+		return
+	}
+	cacheKey := tokenCacheKey(settings)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.tokenKey != cacheKey {
+		return
+	}
+	s.accessToken = ""
+	s.tokenExpiresAt = time.Time{}
+}
+
+func isUnauthorizedResponse(err error) bool {
+	var responseErr *responseError
+	return errors.As(err, &responseErr) && responseErr.statusCode == http.StatusUnauthorized
 }
 
 func (s *Source) doJSON(req *http.Request, target any) error {
