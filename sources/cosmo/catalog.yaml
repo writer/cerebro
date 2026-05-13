@@ -1,0 +1,8 @@
+id: cosmo
+name: Cosmo
+description: Cosmo agent memory sessions, facts, messages, and survey feedback source.
+emitted_kinds:
+  - cosmo.fact
+  - cosmo.message
+  - cosmo.session
+  - cosmo.survey_feedback

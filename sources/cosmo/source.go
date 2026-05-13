@@ -1,0 +1,972 @@
+package cosmo
+
+import (
+	"bytes"
+	"context"
+	"embed"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"time"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/primitives"
+	"github.com/writer/cerebro/internal/sourcecdk"
+)
+
+//go:embed catalog.yaml
+var catalogFS embed.FS
+
+const (
+	sourceID        = "cosmo"
+	defaultFamily   = familySession
+	defaultPageSize = 100
+	maxPageSize     = 500
+	httpTimeout     = 30 * time.Second
+	maxBodyBytes    = 8 << 20
+
+	familyFact           = "fact"
+	familyMessage        = "message"
+	familySession        = "session"
+	familySurveyFeedback = "survey_feedback"
+)
+
+// Source reads Cosmo memory and feedback data.
+type Source struct {
+	spec                 *cerebrov1.SourceSpec
+	client               *http.Client
+	families             *sourcecdk.FamilyEngine[settings]
+	allowLoopbackBaseURL bool
+	lookupIPAddrs        func(context.Context, string) ([]net.IPAddr, error)
+}
+
+type settings struct {
+	tenantID      string
+	family        string
+	baseURL       string
+	token         string
+	webhookSecret string
+	query         string
+	user          string
+	status        string
+	category      string
+	ticketID      string
+	eventType     string
+	perPage       int
+}
+
+type record struct {
+	Raw    json.RawMessage
+	Values map[string]any
+	ID     string
+}
+
+type listResponse struct {
+	OK       bool              `json:"ok"`
+	Count    int               `json:"count"`
+	Sessions []json.RawMessage `json:"sessions"`
+	Facts    []json.RawMessage `json:"facts"`
+	Messages []json.RawMessage `json:"messages"`
+	Feedback []json.RawMessage `json:"feedback"`
+}
+
+type responseError struct {
+	statusCode int
+	message    string
+}
+
+func (e *responseError) Error() string {
+	return e.message
+}
+
+func (e *responseError) StatusCode() int {
+	return e.statusCode
+}
+
+// New constructs the Cosmo source.
+func New() (*Source, error) {
+	spec, err := loadSpec()
+	if err != nil {
+		return nil, err
+	}
+	source := &Source{
+		spec:          spec,
+		lookupIPAddrs: net.DefaultResolver.LookupIPAddr,
+	}
+	source.families, err = source.newFamilyEngine()
+	if err != nil {
+		return nil, err
+	}
+	return source, nil
+}
+
+// Spec returns static Cosmo source metadata.
+func (s *Source) Spec() *cerebrov1.SourceSpec {
+	return s.spec
+}
+
+// Check validates that the configured Cosmo family is reachable.
+func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
+	return s.families.Check(ctx, cfg)
+}
+
+// Discover returns canonical Cosmo URNs for one configured page.
+func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return s.families.Discover(ctx, cfg)
+}
+
+// Read pages Cosmo records and emits cosmo.* events.
+func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	return s.families.Read(ctx, cfg, cursor)
+}
+
+func loadSpec() (*cerebrov1.SourceSpec, error) {
+	specBytes, err := catalogFS.ReadFile("catalog.yaml")
+	if err != nil {
+		return nil, fmt.Errorf("read catalog: %w", err)
+	}
+	spec, err := sourcecdk.LoadCatalog(specBytes)
+	if err != nil {
+		return nil, fmt.Errorf("load catalog: %w", err)
+	}
+	return spec, nil
+}
+
+func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
+	return sourcecdk.NewFamilyEngine(s.parseSettings, func(settings settings) string {
+		return settings.family
+	},
+		s.memoryFamily(familySession, "/api/ui/memory/sessions", "sessions"),
+		s.memoryFamily(familyFact, "/api/ui/memory/facts", "facts"),
+		s.messageFamily(),
+		s.surveyFeedbackFamily(),
+	)
+}
+
+func (s *Source) memoryFamily(family string, path string, collection string) sourcecdk.Family[settings] {
+	return sourcecdk.Family[settings]{
+		Name: family,
+		Check: func(ctx context.Context, settings settings) error {
+			_, _, err := s.listMemory(ctx, settings, path, collection, 0, 1)
+			if err != nil {
+				return fmt.Errorf("cosmo %s: %w", family, err)
+			}
+			return nil
+		},
+		Discover: func(ctx context.Context, settings settings) ([]sourcecdk.URN, error) {
+			records, _, err := s.listMemory(ctx, settings, path, collection, 0, familyPageSize(settings, family))
+			if err != nil {
+				return nil, fmt.Errorf("cosmo %s: %w", family, err)
+			}
+			return urnsFor(settings, family, records)
+		},
+		Read: func(ctx context.Context, settings settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+			offset, err := readOffset(cursor)
+			if err != nil {
+				return sourcecdk.Pull{}, err
+			}
+			limit := familyPageSize(settings, family)
+			records, next, err := s.listMemory(ctx, settings, path, collection, offset, limit)
+			if err != nil {
+				return sourcecdk.Pull{}, fmt.Errorf("cosmo %s: %w", family, err)
+			}
+			return pullFromRecords(settings, family, records, next)
+		},
+	}
+}
+
+func (s *Source) messageFamily() sourcecdk.Family[settings] {
+	return sourcecdk.Family[settings]{
+		Name: familyMessage,
+		Check: func(ctx context.Context, settings settings) error {
+			_, err := s.listMessages(ctx, settings, 1)
+			if err != nil {
+				return fmt.Errorf("cosmo message: %w", err)
+			}
+			return nil
+		},
+		Discover: func(ctx context.Context, settings settings) ([]sourcecdk.URN, error) {
+			records, err := s.listMessages(ctx, settings, settings.perPage)
+			if err != nil {
+				return nil, fmt.Errorf("cosmo message: %w", err)
+			}
+			return urnsFor(settings, familyMessage, records)
+		},
+		Read: func(ctx context.Context, settings settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+			if _, err := readOffset(cursor); err != nil {
+				return sourcecdk.Pull{}, err
+			}
+			records, err := s.listMessages(ctx, settings, settings.perPage)
+			if err != nil {
+				return sourcecdk.Pull{}, fmt.Errorf("cosmo message: %w", err)
+			}
+			return pullFromRecords(settings, familyMessage, records, "")
+		},
+	}
+}
+
+func (s *Source) surveyFeedbackFamily() sourcecdk.Family[settings] {
+	return sourcecdk.Family[settings]{
+		Name: familySurveyFeedback,
+		Check: func(ctx context.Context, settings settings) error {
+			_, err := s.listSurveyFeedback(ctx, settings)
+			if err != nil {
+				return fmt.Errorf("cosmo survey_feedback: %w", err)
+			}
+			return nil
+		},
+		Discover: func(ctx context.Context, settings settings) ([]sourcecdk.URN, error) {
+			records, err := s.listSurveyFeedback(ctx, settings)
+			if err != nil {
+				return nil, fmt.Errorf("cosmo survey_feedback: %w", err)
+			}
+			page, _ := pageRecords(records, 0, settings.perPage)
+			return urnsFor(settings, familySurveyFeedback, page)
+		},
+		Read: func(ctx context.Context, settings settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+			offset, err := readOffset(cursor)
+			if err != nil {
+				return sourcecdk.Pull{}, err
+			}
+			records, err := s.listSurveyFeedback(ctx, settings)
+			if err != nil {
+				return sourcecdk.Pull{}, fmt.Errorf("cosmo survey_feedback: %w", err)
+			}
+			page, next := pageRecords(records, offset, settings.perPage)
+			return pullFromRecords(settings, familySurveyFeedback, page, next)
+		},
+	}
+}
+
+func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
+	return parseSettings(cfg, s != nil && s.allowLoopbackBaseURL)
+}
+
+func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
+	settings := settings{
+		tenantID:      configValue(cfg, "tenant_id"),
+		family:        configValue(cfg, "family"),
+		baseURL:       configValue(cfg, "base_url"),
+		token:         configValue(cfg, "token"),
+		webhookSecret: configValue(cfg, "webhook_secret"),
+		query:         configValue(cfg, "q"),
+		user:          configValue(cfg, "user"),
+		status:        configValue(cfg, "status"),
+		category:      configValue(cfg, "category"),
+		ticketID:      configValue(cfg, "ticket_id"),
+		eventType:     configValue(cfg, "event_type"),
+		perPage:       defaultPageSize,
+	}
+	if settings.tenantID == "" {
+		return settings, fmt.Errorf("cosmo tenant_id is required")
+	}
+	if settings.family == "" {
+		settings.family = defaultFamily
+	}
+	switch settings.family {
+	case familyFact, familyMessage, familySession, familySurveyFeedback:
+	default:
+		return settings, fmt.Errorf("cosmo family must be one of fact, message, session, or survey_feedback")
+	}
+	if settings.baseURL == "" {
+		return settings, fmt.Errorf("cosmo base_url is required")
+	}
+	normalizedBase, err := normalizeBaseURL(settings.baseURL, allowLoopback)
+	if err != nil {
+		return settings, err
+	}
+	settings.baseURL = normalizedBase
+	if rawPerPage, ok := cfg.Lookup("per_page"); ok && strings.TrimSpace(rawPerPage) != "" {
+		perPage, err := strconv.Atoi(strings.TrimSpace(rawPerPage))
+		if err != nil {
+			return settings, fmt.Errorf("parse cosmo per_page: %w", err)
+		}
+		if perPage < 1 || perPage > maxPageSize {
+			return settings, fmt.Errorf("cosmo per_page must be between 1 and %d", maxPageSize)
+		}
+		settings.perPage = perPage
+	}
+	if settings.family == familySurveyFeedback {
+		if settings.webhookSecret == "" {
+			return settings, fmt.Errorf("cosmo webhook_secret is required when family=%q", familySurveyFeedback)
+		}
+		return settings, nil
+	}
+	if settings.token == "" {
+		return settings, fmt.Errorf("cosmo token is required")
+	}
+	if settings.webhookSecret != "" {
+		return settings, fmt.Errorf("cosmo webhook_secret is only supported when family=%q", familySurveyFeedback)
+	}
+	switch settings.family {
+	case familySession:
+		if settings.category != "" || settings.ticketID != "" || settings.eventType != "" {
+			return settings, fmt.Errorf("cosmo category, ticket_id, and event_type are not supported when family=%q", familySession)
+		}
+	case familyFact:
+		if settings.user != "" || settings.status != "" || settings.ticketID != "" || settings.eventType != "" {
+			return settings, fmt.Errorf("cosmo user, status, ticket_id, and event_type are not supported when family=%q", familyFact)
+		}
+	case familyMessage:
+		if settings.ticketID == "" {
+			return settings, fmt.Errorf("cosmo ticket_id is required when family=%q", familyMessage)
+		}
+		if settings.query != "" || settings.user != "" || settings.status != "" || settings.category != "" {
+			return settings, fmt.Errorf("cosmo q, user, status, and category are not supported when family=%q", familyMessage)
+		}
+	}
+	return settings, nil
+}
+
+func normalizeBaseURL(raw string, allowLoopback bool) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "", fmt.Errorf("parse cosmo base_url: %w", err)
+	}
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	allowInsecureLoopback := allowLoopback && parsed.Scheme == "http" && isLoopbackHost(host)
+	if parsed.Scheme != "https" && !allowInsecureLoopback {
+		return "", fmt.Errorf("cosmo base_url must use https")
+	}
+	if host == "" {
+		return "", fmt.Errorf("cosmo base_url must include a host")
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		return "", fmt.Errorf("cosmo base_url must not include user info, query, or fragment")
+	}
+	if (parsed.Path != "" && parsed.Path != "/") || parsed.RawPath != "" {
+		return "", fmt.Errorf("cosmo base_url must be an origin URL")
+	}
+	allowCustomLoopbackPort := allowLoopback && isLoopbackHost(host)
+	if strings.TrimSpace(parsed.Port()) != "" && parsed.Port() != "443" && !allowCustomLoopbackPort {
+		return "", fmt.Errorf("cosmo base_url must not include a custom port")
+	}
+	if isUnsafeHost(host) && !allowCustomLoopbackPort {
+		return "", fmt.Errorf("cosmo base_url must not target loopback, private, or link-local hosts")
+	}
+	return strings.TrimRight(parsed.String(), "/"), nil
+}
+
+func (s *Source) listMemory(ctx context.Context, settings settings, path string, collection string, offset int, limit int) ([]record, string, error) {
+	query := url.Values{}
+	query.Set("limit", strconv.Itoa(limit))
+	query.Set("offset", strconv.Itoa(offset))
+	addQuery(query, "q", settings.query)
+	addQuery(query, "user", settings.user)
+	addQuery(query, "status", settings.status)
+	addQuery(query, "category", settings.category)
+
+	var response listResponse
+	if err := s.getJSON(ctx, settings, http.MethodGet, path, query, nil, &response); err != nil {
+		return nil, "", err
+	}
+	records, err := responseRecords(response, collection, settings.family)
+	if err != nil {
+		return nil, "", err
+	}
+	next := ""
+	if len(records) == limit {
+		next = strconv.Itoa(offset + limit)
+	}
+	return records, next, nil
+}
+
+func (s *Source) listMessages(ctx context.Context, settings settings, limit int) ([]record, error) {
+	query := url.Values{}
+	query.Set("ticket_id", settings.ticketID)
+	query.Set("limit", strconv.Itoa(limit))
+	addQuery(query, "event_type", settings.eventType)
+
+	var response listResponse
+	if err := s.getJSON(ctx, settings, http.MethodGet, "/api/ui/memory/messages", query, nil, &response); err != nil {
+		return nil, err
+	}
+	return responseRecords(response, "messages", familyMessage)
+}
+
+func (s *Source) listSurveyFeedback(ctx context.Context, settings settings) ([]record, error) {
+	var response listResponse
+	if err := s.getJSON(ctx, settings, http.MethodPost, "/api/survey-results", nil, []byte("{}"), &response); err != nil {
+		return nil, err
+	}
+	return responseRecords(response, "feedback", familySurveyFeedback)
+}
+
+func (s *Source) getJSON(ctx context.Context, settings settings, method string, requestPath string, query url.Values, body []byte, target any) error {
+	endpoint := settings.baseURL + requestPath
+	if encoded := query.Encode(); encoded != "" {
+		endpoint += "?" + encoded
+	}
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, reader)
+	if err != nil {
+		return fmt.Errorf("build request %s: %w", requestPath, err)
+	}
+	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if settings.family == familySurveyFeedback {
+		req.Header.Set("X-Webhook-Secret", settings.webhookSecret)
+	} else {
+		req.Header.Set("Authorization", "Bearer "+settings.token)
+	}
+
+	client := s.client
+	if client == nil {
+		client = httpClientNoRedirect(nil, s != nil && s.allowLoopbackBaseURL, lookupIPAddrs(s))
+	} else {
+		client = httpClientNoRedirect(client, s != nil && s.allowLoopbackBaseURL, lookupIPAddrs(s))
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("request %s: %w", requestPath, err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	payload, err := readLimitedBody(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read %s response: %w", requestPath, err)
+	}
+	if resp.StatusCode >= http.StatusMultipleChoices {
+		return decodeResponseError(resp.StatusCode, payload)
+	}
+	if target == nil || len(payload) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(payload, target); err != nil {
+		return fmt.Errorf("decode %s response: %w", requestPath, err)
+	}
+	return nil
+}
+
+func responseRecords(response listResponse, collection string, family string) ([]record, error) {
+	var rawRecords []json.RawMessage
+	switch collection {
+	case "sessions":
+		rawRecords = response.Sessions
+	case "facts":
+		rawRecords = response.Facts
+	case "messages":
+		rawRecords = response.Messages
+	case "feedback":
+		rawRecords = response.Feedback
+	default:
+		return nil, fmt.Errorf("unsupported cosmo collection %q", collection)
+	}
+	records := make([]record, 0, len(rawRecords))
+	for _, raw := range rawRecords {
+		record, err := parseRecord(family, raw)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	return records, nil
+}
+
+func parseRecord(family string, raw json.RawMessage) (record, error) {
+	var values map[string]any
+	if err := json.Unmarshal(raw, &values); err != nil {
+		return record{}, fmt.Errorf("decode cosmo %s record: %w", family, err)
+	}
+	return record{Raw: cloneRaw(raw), Values: values, ID: recordID(family, values)}, nil
+}
+
+func recordID(family string, values map[string]any) string {
+	switch family {
+	case familySession:
+		return firstValueString(values, "thread_key", "ticket_id", "id")
+	case familyFact:
+		return firstValueString(values, "key", "id")
+	case familyMessage:
+		return firstNonEmpty(firstValueString(values, "id"), stableID(
+			firstValueString(values, "ticket_id"),
+			firstValueString(values, "event_type"),
+			firstValueString(values, "created_at"),
+		))
+	case familySurveyFeedback:
+		return firstNonEmpty(firstValueString(values, "key"), stableID(
+			firstValueString(values, "ticketId"),
+			firstValueString(values, "messageTs"),
+			firstValueString(values, "userId"),
+		))
+	default:
+		return firstValueString(values, "id", "key")
+	}
+}
+
+func urnsFor(settings settings, family string, records []record) ([]sourcecdk.URN, error) {
+	urns := make([]sourcecdk.URN, 0, len(records))
+	for _, record := range records {
+		urn, err := recordURN(settings, family, record.ID)
+		if err != nil {
+			return nil, err
+		}
+		urns = append(urns, urn)
+	}
+	return urns, nil
+}
+
+func recordURN(settings settings, family string, id string) (sourcecdk.URN, error) {
+	return sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:%s:%s", normalizeID(settings.tenantID), family, normalizeID(id)))
+}
+
+func pullFromRecords(settings settings, family string, records []record, next string) (sourcecdk.Pull, error) {
+	if len(records) == 0 {
+		pull := sourcecdk.Pull{}
+		if strings.TrimSpace(next) != "" {
+			pull.NextCursor = &cerebrov1.SourceCursor{Opaque: strings.TrimSpace(next)}
+		}
+		return pull, nil
+	}
+	events := make([]*primitives.Event, 0, len(records))
+	for _, record := range records {
+		event, err := eventFromRecord(settings, family, record)
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		events = append(events, event)
+	}
+	pull := sourcecdk.Pull{
+		Events: events,
+		Checkpoint: &cerebrov1.SourceCheckpoint{
+			Watermark:    events[len(events)-1].OccurredAt,
+			CursorOpaque: checkpointCursor(next, events[len(events)-1].Id),
+		},
+	}
+	if strings.TrimSpace(next) != "" {
+		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: strings.TrimSpace(next)}
+	}
+	return pull, nil
+}
+
+func eventFromRecord(settings settings, family string, record record) (*primitives.Event, error) {
+	occurredAt := occurredAtFor(record.Values)
+	attrs := attributesFor(family, record.Values)
+	attrs["record_id"] = record.ID
+	trimEmptyAttributes(attrs)
+	return &primitives.Event{
+		Id:         eventID(settings, family, record.ID),
+		TenantId:   settings.tenantID,
+		SourceId:   sourceID,
+		Kind:       "cosmo." + family,
+		OccurredAt: timestamppb.New(occurredAt),
+		SchemaRef:  "cosmo/" + family + "/v1",
+		Payload:    cloneRaw(record.Raw),
+		Attributes: attrs,
+	}, nil
+}
+
+func eventID(settings settings, family string, recordID string) string {
+	return strings.Join([]string{
+		sourceID,
+		normalizeID(settings.tenantID),
+		family,
+		normalizeID(recordID),
+	}, "-")
+}
+
+func attributesFor(family string, values map[string]any) map[string]string {
+	attrs := map[string]string{}
+	switch family {
+	case familySession:
+		attrs["ticket_id"] = firstValueString(values, "ticket_id")
+		attrs["thread_key"] = firstValueString(values, "thread_key")
+		attrs["user"] = firstValueString(values, "user")
+		attrs["agent_type"] = firstValueString(values, "agent_type")
+		attrs["status"] = firstValueString(values, "status")
+		attrs["source"] = firstValueString(values, "source")
+	case familyFact:
+		attrs["key"] = firstValueString(values, "key")
+		attrs["category"] = firstValueString(values, "category")
+		attrs["source"] = firstValueString(values, "source")
+		attrs["confidence"] = firstValueString(values, "confidence")
+	case familyMessage:
+		attrs["ticket_id"] = firstValueString(values, "ticket_id")
+		attrs["event_type"] = firstValueString(values, "event_type")
+		attrs["role"] = firstValueString(values, "role")
+		attrs["tool_name"] = firstValueString(values, "tool_name")
+		attrs["agent_type"] = firstValueString(values, "agent_type")
+		attrs["run_url"] = firstValueString(values, "run_url")
+	case familySurveyFeedback:
+		attrs["ticket_id"] = firstValueString(values, "ticketId")
+		attrs["channel"] = firstValueString(values, "channel")
+		attrs["user_id"] = firstValueString(values, "userId")
+		attrs["reaction"] = firstValueString(values, "reaction")
+		attrs["sentiment"] = firstValueString(values, "sentiment")
+		attrs["workflow_run_url"] = firstValueString(values, "workflowRunUrl")
+	}
+	return attrs
+}
+
+func familyPageSize(settings settings, family string) int {
+	limit := settings.perPage
+	switch family {
+	case familySession:
+		if limit > 100 {
+			return 100
+		}
+	case familyFact:
+		if limit > 200 {
+			return 200
+		}
+	}
+	return limit
+}
+
+func pageRecords(records []record, offset int, limit int) ([]record, string) {
+	if offset >= len(records) {
+		return nil, ""
+	}
+	end := offset + limit
+	if end > len(records) {
+		end = len(records)
+	}
+	next := ""
+	if end < len(records) {
+		next = strconv.Itoa(end)
+	}
+	return records[offset:end], next
+}
+
+func readOffset(cursor *cerebrov1.SourceCursor) (int, error) {
+	if cursor == nil || strings.TrimSpace(cursor.Opaque) == "" {
+		return 0, nil
+	}
+	offset, err := strconv.Atoi(strings.TrimSpace(cursor.Opaque))
+	if err != nil {
+		return 0, fmt.Errorf("parse cosmo cursor: %w", err)
+	}
+	if offset < 0 {
+		return 0, fmt.Errorf("cosmo cursor must be non-negative")
+	}
+	return offset, nil
+}
+
+func httpClientNoRedirect(client *http.Client, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) *http.Client {
+	if client == nil {
+		client = &http.Client{Timeout: httpTimeout}
+	}
+	cloned := *client
+	if cloned.CheckRedirect == nil {
+		cloned.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+	}
+	transport := cloned.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	cloned.Transport = safeRoundTripper{base: transport, allowLoopback: allowLoopback, lookupIPAddrs: lookupIPAddrs}
+	return &cloned
+}
+
+func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, error) {
+	if source != nil && source.lookupIPAddrs != nil {
+		return source.lookupIPAddrs
+	}
+	return net.DefaultResolver.LookupIPAddr
+}
+
+type safeRoundTripper struct {
+	base          http.RoundTripper
+	allowLoopback bool
+	lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)
+}
+
+func (rt safeRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req != nil && req.URL != nil {
+		if err := rejectResolvedUnsafeHost(req.Context(), req.URL.Hostname(), rt.allowLoopback, rt.lookupIPAddrs); err != nil {
+			return nil, err
+		}
+	}
+	return rt.base.RoundTrip(req)
+}
+
+func rejectResolvedUnsafeHost(ctx context.Context, host string, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) error {
+	normalized := normalizedIPHost(host)
+	if normalized == "" {
+		return nil
+	}
+	if isUnsafeHost(normalized) {
+		if allowLoopback && isLoopbackHost(normalized) {
+			return nil
+		}
+		return fmt.Errorf("cosmo base_url must not target loopback, private, or link-local hosts")
+	}
+	if lookupIPAddrs == nil {
+		lookupIPAddrs = net.DefaultResolver.LookupIPAddr
+	}
+	addrs, err := lookupIPAddrs(ctx, normalized)
+	if err != nil {
+		return fmt.Errorf("resolve cosmo base_url host %q: %w", normalized, err)
+	}
+	for _, addr := range addrs {
+		if isUnsafeIP(addr.IP) {
+			if allowLoopback && addr.IP != nil && addr.IP.IsLoopback() {
+				continue
+			}
+			return fmt.Errorf("cosmo base_url must not target loopback, private, or link-local hosts")
+		}
+	}
+	return nil
+}
+
+func readLimitedBody(body io.Reader) ([]byte, error) {
+	limited := io.LimitReader(body, maxBodyBytes+1)
+	payload, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, err
+	}
+	if len(payload) > maxBodyBytes {
+		return nil, fmt.Errorf("cosmo response body exceeds %d bytes", maxBodyBytes)
+	}
+	return payload, nil
+}
+
+func decodeResponseError(statusCode int, body []byte) error {
+	message := http.StatusText(statusCode)
+	var apiErr struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(body, &apiErr); err == nil && strings.TrimSpace(apiErr.Error) != "" {
+		message = strings.TrimSpace(apiErr.Error)
+	}
+	return &responseError{
+		statusCode: statusCode,
+		message:    fmt.Sprintf("cosmo API returned %d: %s", statusCode, message),
+	}
+}
+
+func isUnsafeHost(host string) bool {
+	value := normalizedIPHost(host)
+	if value == "" || value == "localhost" || strings.HasSuffix(value, ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(value)
+	if ip == nil {
+		ip = parseNumericIPv4Host(value)
+	}
+	if ip == nil {
+		return false
+	}
+	return isUnsafeIP(ip)
+}
+
+func isUnsafeIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback() ||
+		ip.IsPrivate() ||
+		ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() ||
+		ip.IsUnspecified() ||
+		ip.IsMulticast()
+}
+
+func isLoopbackHost(host string) bool {
+	value := normalizedIPHost(host)
+	if value == "" || value == "localhost" || strings.HasSuffix(value, ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(value)
+	if ip == nil {
+		ip = parseNumericIPv4Host(value)
+	}
+	return ip != nil && ip.IsLoopback()
+}
+
+func normalizedIPHost(host string) string {
+	value := strings.TrimRight(strings.ToLower(strings.TrimSpace(host)), ".")
+	value = strings.Trim(value, "[]")
+	if address, _, ok := strings.Cut(value, "%"); ok {
+		value = address
+	}
+	return value
+}
+
+func parseNumericIPv4Host(host string) net.IP {
+	if strings.Contains(host, ":") {
+		return nil
+	}
+	parts := strings.Split(host, ".")
+	if len(parts) == 0 || len(parts) > 4 {
+		return nil
+	}
+	values := make([]uint64, len(parts))
+	for i, part := range parts {
+		if part == "" {
+			return nil
+		}
+		value, err := strconv.ParseUint(part, 0, 32)
+		if err != nil {
+			return nil
+		}
+		values[i] = value
+	}
+	var ipv4 uint32
+	switch len(values) {
+	case 1:
+		ipv4 = uint32(values[0])
+	case 2:
+		if values[0] > 0xff || values[1] > 0xffffff {
+			return nil
+		}
+		ipv4 = uint32(values[0]<<24 | values[1])
+	case 3:
+		if values[0] > 0xff || values[1] > 0xff || values[2] > 0xffff {
+			return nil
+		}
+		ipv4 = uint32(values[0]<<24 | values[1]<<16 | values[2])
+	case 4:
+		if values[0] > 0xff || values[1] > 0xff || values[2] > 0xff || values[3] > 0xff {
+			return nil
+		}
+		ipv4 = uint32(values[0]<<24 | values[1]<<16 | values[2]<<8 | values[3])
+	}
+	return net.IPv4(byte(ipv4>>24), byte(ipv4>>16), byte(ipv4>>8), byte(ipv4))
+}
+
+func occurredAtFor(values map[string]any) time.Time {
+	for _, key := range []string{"updated_at", "created_at", "feedbackAt", "surveyCreatedAt", "date"} {
+		if parsed, ok := parseTime(valueString(valueAt(values, key))); ok {
+			return parsed.UTC()
+		}
+	}
+	return time.Unix(0, 0).UTC()
+}
+
+func parseTime(value string) (time.Time, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02 15:04:05", "2006-01-02"} {
+		parsed, err := time.Parse(layout, value)
+		if err == nil {
+			return parsed, true
+		}
+	}
+	return time.Time{}, false
+}
+
+func valueAt(values map[string]any, path string) any {
+	current := any(values)
+	for _, part := range strings.Split(path, ".") {
+		object, ok := current.(map[string]any)
+		if !ok {
+			return nil
+		}
+		current = object[part]
+	}
+	return current
+}
+
+func firstValueString(values map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value := valueString(valueAt(values, key)); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func valueString(value any) string {
+	switch v := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return strings.TrimSpace(v)
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	case bool:
+		return strconv.FormatBool(v)
+	case []any:
+		parts := make([]string, 0, len(v))
+		for _, item := range v {
+			if value := valueString(item); value != "" {
+				parts = append(parts, value)
+			}
+		}
+		return strings.Join(parts, ",")
+	default:
+		return strings.TrimSpace(fmt.Sprint(v))
+	}
+}
+
+func configValue(cfg sourcecdk.Config, key string) string {
+	value, _ := cfg.Lookup(key)
+	return strings.TrimSpace(value)
+}
+
+func addQuery(query url.Values, key string, value string) {
+	if strings.TrimSpace(value) != "" {
+		query.Set(key, strings.TrimSpace(value))
+	}
+}
+
+func checkpointCursor(next string, fallback string) string {
+	if strings.TrimSpace(next) != "" {
+		return strings.TrimSpace(next)
+	}
+	return strings.TrimSpace(fallback)
+}
+
+func stableID(parts ...string) string {
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if value := strings.TrimSpace(part); value != "" {
+			values = append(values, value)
+		}
+	}
+	if len(values) == 0 {
+		return ""
+	}
+	return strings.Join(values, ":")
+}
+
+func normalizeID(value string) string {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		return "unknown"
+	}
+	replacer := strings.NewReplacer(" ", "-", "/", "-", ":", "-", "\n", "-", "\t", "-")
+	return replacer.Replace(normalized)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func trimEmptyAttributes(attrs map[string]string) {
+	for key, value := range attrs {
+		if strings.TrimSpace(value) == "" {
+			delete(attrs, key)
+			continue
+		}
+		attrs[key] = strings.TrimSpace(value)
+	}
+}
+
+func cloneRaw(raw json.RawMessage) json.RawMessage {
+	return append(json.RawMessage(nil), raw...)
+}
