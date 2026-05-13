@@ -9,7 +9,7 @@ cd "$repo_root"
 
 mkdir -p "$git_common_dir/hooks"
 
-for hook in pre-commit pre-push; do
+for hook in pre-commit commit-msg pre-push; do
 	if [ ! -f ".githooks/$hook" ]; then
 		echo "missing tracked hook: .githooks/$hook" >&2
 		exit 1

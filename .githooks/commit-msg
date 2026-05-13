@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "${CEREBRO_SKIP_COMMIT_MSG_CHECK:-}" = "1" ]; then
+  exit 0
+fi
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+"$repo_root/scripts/leak_check.sh" commit-msg "$1"

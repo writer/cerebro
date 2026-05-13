@@ -1,0 +1,43 @@
+# Example layout for the user-local tenant-data denylist consumed by
+# scripts/leak_check.sh.
+#
+# Copy this file to (a path that is NOT tracked by git), populate the
+# entries for your environment, and the leak check will pick it up:
+#
+#   mkdir -p "$HOME/.config/cerebro"
+#   cp scripts/leak_patterns.user.example.txt \
+#      "$HOME/.config/cerebro/leak_patterns.txt"
+#   $EDITOR "$HOME/.config/cerebro/leak_patterns.txt"
+#
+# Override the path via $CEREBRO_LEAK_USER_PATTERNS if you keep your
+# secrets denylist elsewhere.
+#
+# One POSIX-ERE pattern per line. Lines starting with '#' and blank
+# lines are ignored. Entries here SHOULD include:
+#
+#   - Specific environment slugs (dev/stg/prod identifiers)
+#   - Internal subdomains and Tailscale / VPN hostnames
+#   - Tenant runtime IDs (the exact ID strings used in your secrets manager)
+#   - Cloud account IDs you own
+#   - Customer / employee handles you do not want appearing in commits
+#
+# Keep these regexes specific enough that they do not collide with
+# public-facing code. The file is consulted only locally, so site-
+# specific entries never leave your workstation.
+
+# ---- Environment slug examples ----
+# \bmycompany-(sec|grc)-(dev|stg|stage|staging|prod|prd|production)\b
+
+# ---- Internal domain examples ----
+# \.mycompany-internal\.example\b
+# \bcerebro\.(dev|stg|prod)\.[a-z0-9.-]+\b
+
+# ---- Runtime ID examples ----
+# \bmycompany-(okta|github|sentinelone)-(audit|signal|graph)\b
+
+# ---- Cloud account ID examples (12-digit AWS account number) ----
+# \b000000000000\b
+
+# ---- Email / handle examples ----
+# \b[A-Za-z0-9._%+-]+@mycompany\.(com|io|ai)\b
+# \bsome-internal-handle\b
