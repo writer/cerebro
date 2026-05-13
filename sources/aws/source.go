@@ -16,6 +16,7 @@ import (
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/apigateway"
 	apigatewaytypes "github.com/aws/aws-sdk-go-v2/service/apigateway/types"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
@@ -32,6 +33,7 @@ import (
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -77,6 +79,9 @@ type settings struct {
 	accessKeyID     string
 	secretAccessKey string
 	sessionToken    string
+	roleARN         string
+	externalID      string
+	roleSessionName string
 	includeGlobal   bool
 	groupName       string
 	principalType   string
@@ -469,6 +474,17 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 	if err != nil {
 		return awsClients{}, fmt.Errorf("load aws config: %w", err)
 	}
+	if settings.roleARN != "" {
+		provider := stscreds.NewAssumeRoleProvider(sts.NewFromConfig(cfg), settings.roleARN, func(options *stscreds.AssumeRoleOptions) {
+			if settings.externalID != "" {
+				options.ExternalID = awssdk.String(settings.externalID)
+			}
+			if settings.roleSessionName != "" {
+				options.RoleSessionName = settings.roleSessionName
+			}
+		})
+		cfg.Credentials = awssdk.NewCredentialsCache(provider)
+	}
 	return awsClients{
 		iam:          iam.NewFromConfig(cfg),
 		cloudTrail:   cloudtrail.NewFromConfig(cfg),
@@ -490,6 +506,9 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		accessKeyID:     configValue(cfg, "access_key_id"),
 		secretAccessKey: configValue(cfg, "secret_access_key"),
 		sessionToken:    configValue(cfg, "session_token"),
+		roleARN:         configValue(cfg, "role_arn"),
+		externalID:      configValue(cfg, "external_id"),
+		roleSessionName: configValue(cfg, "role_session_name"),
 		includeGlobal:   configBool(cfg, "include_global", true),
 		groupName:       configValue(cfg, "group_name"),
 		principalType:   configValue(cfg, "principal_type"),
@@ -507,10 +526,8 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if settings.accountID == "" {
 		return settings, fmt.Errorf("aws account_id is required")
 	}
-	for _, key := range []string{"role_arn", "external_id", "role_session_name"} {
-		if value, ok := cfg.Lookup(key); ok && strings.TrimSpace(value) != "" {
-			return settings, fmt.Errorf("aws %s is no longer supported", key)
-		}
+	if settings.roleARN != "" && (!strings.HasPrefix(settings.roleARN, "arn:") || !strings.Contains(settings.roleARN, ":role/")) {
+		return settings, fmt.Errorf("aws role_arn must be an IAM role ARN")
 	}
 	if settings.region == "" {
 		settings.region = defaultRegion

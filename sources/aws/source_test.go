@@ -48,17 +48,24 @@ func TestCheckRequiresAccountID(t *testing.T) {
 	}
 }
 
-func TestCheckRejectsDeprecatedAssumeRoleConfig(t *testing.T) {
-	source, err := New()
+func TestParseSettingsAllowsAssumeRoleConfig(t *testing.T) {
+	settings, err := parseSettings(sourcecdk.NewConfig(map[string]string{
+		"account_id":        "123456789012",
+		"role_arn":          "arn:aws:iam::123456789012:role/cerebro-org-scan-role",
+		"external_id":       "external",
+		"role_session_name": "cerebro",
+	}))
 	if err != nil {
-		t.Fatalf("New() error = %v", err)
+		t.Fatalf("parseSettings() error = %v, want nil", err)
 	}
-	for _, key := range []string{"role_arn", "external_id", "role_session_name"} {
-		t.Run(key, func(t *testing.T) {
-			if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", key: "legacy"})); err == nil {
-				t.Fatalf("Check() error = nil, want unsupported %s error", key)
-			}
-		})
+	if settings.roleARN == "" || settings.externalID != "external" || settings.roleSessionName != "cerebro" {
+		t.Fatalf("assume-role settings = %#v", settings)
+	}
+}
+
+func TestParseSettingsRejectsInvalidAssumeRoleARN(t *testing.T) {
+	if _, err := parseSettings(sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "role_arn": "not-a-role"})); err == nil {
+		t.Fatal("parseSettings() error = nil, want invalid role_arn error")
 	}
 }
 
