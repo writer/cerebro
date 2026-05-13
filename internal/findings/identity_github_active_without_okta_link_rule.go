@@ -27,8 +27,21 @@ const (
 	// change and have no `at` at all, are treated as stale history rather
 	// than current access. Without this, a single historical commit would
 	// hold the finding open indefinitely.
-	identityGitHubActiveWithoutOktaRecencyWindow = 30 * 24 * time.Hour
+	identityGitHubActiveWithoutOktaRecencyWindow = 14 * 24 * time.Hour
 )
+
+var sensitiveRepoSubstrings = []string{
+	"security",
+	"k8s",
+	"devops-terraform",
+	"cerebro",
+	"terraform",
+	"infra",
+	"billing",
+	"mcp-gateway",
+	"secrets",
+	"keys",
+}
 
 // githubActiveWithoutOktaLinkRule fires when a GitHub identity is currently active
 // against repositories or organization resources but has no represents_identity
@@ -727,6 +740,7 @@ func (r *githubActiveWithoutOktaLinkRule) buildFinding(runtime *cerebrov1.Source
 	sort.Slice(targetDetails, func(i, j int) bool {
 		return targetDetails[i]["urn"] < targetDetails[j]["urn"]
 	})
+	severity := githubActiveWithoutOktaSeverity(r.definition.Severity, group.targets)
 	resourceURNs = append(resourceURNs, targetURNs...)
 	primaryGitHubLabel := firstNonEmpty(group.githubUserLabel, group.githubUserURN)
 	summary := fmt.Sprintf(
@@ -765,7 +779,7 @@ func (r *githubActiveWithoutOktaLinkRule) buildFinding(runtime *cerebrov1.Source
 		RuntimeID:         triggeringRuntimeID,
 		RuleID:            r.definition.ID,
 		Title:             r.definition.Name,
-		Severity:          r.definition.Severity,
+		Severity:          severity,
 		Status:            r.definition.Status,
 		Summary:           summary,
 		ResourceURNs:      deduplicateStrings(resourceURNs),
@@ -778,6 +792,43 @@ func (r *githubActiveWithoutOktaLinkRule) buildFinding(runtime *cerebrov1.Source
 		CheckID:           r.definition.ID,
 		CheckName:         r.definition.Name,
 	}
+}
+
+func githubActiveWithoutOktaSeverity(defaultSeverity string, targets map[string]githubActiveWithoutOktaTarget) string {
+	hasGitHubRepo := false
+	for urn, target := range targets {
+		if githubActiveWithoutOktaSensitiveTargetURN(urn) {
+			return "CRITICAL"
+		}
+		if githubActiveWithoutOktaTargetIsRepo(urn, target.entityType) {
+			hasGitHubRepo = true
+		}
+	}
+	if len(targets) >= 5 && hasGitHubRepo {
+		return "CRITICAL"
+	}
+	return defaultSeverity
+}
+
+func githubActiveWithoutOktaSensitiveTargetURN(urn string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(urn))
+	if marker := ":github_repo:"; strings.Contains(normalized, marker) {
+		normalized = strings.TrimSpace(strings.SplitN(normalized, marker, 2)[1])
+	}
+	for _, substring := range sensitiveRepoSubstrings {
+		if strings.Contains(normalized, strings.ToLower(substring)) {
+			return true
+		}
+	}
+	return false
+}
+
+func githubActiveWithoutOktaTargetIsRepo(urn string, entityType string) bool {
+	normalizedType := strings.ToLower(strings.TrimSpace(entityType))
+	if normalizedType == "github.repo" || normalizedType == "github_repo" {
+		return true
+	}
+	return strings.Contains(strings.ToLower(strings.TrimSpace(urn)), ":github_repo:")
 }
 
 func githubBridgeClueFromCypher(bridge any, githubIdentityJSON string, oktaIdentityJSON string) map[string]string {

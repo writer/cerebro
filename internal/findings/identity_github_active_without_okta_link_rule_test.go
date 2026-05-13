@@ -3,6 +3,7 @@ package findings
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -196,6 +197,72 @@ func TestGitHubActiveWithoutOktaLinkRuleFindingStampsTriggeringRuntimeID(t *test
 	}
 	if got := githubTriggered.Attributes["source_runtime_id"]; got != "writer-github-audit" {
 		t.Fatalf("attributes[source_runtime_id] = %q, want triggering runtime preserved for telemetry", got)
+	}
+}
+
+func TestGitHubActiveWithoutOktaLinkRuleRecencyWindowBoundary(t *testing.T) {
+	now := githubActiveWithoutOktaRuleFixedNow()
+	atBoundary := githubActiveWithoutOktaRuleActedAttrs(now.Add(-14 * 24 * time.Hour))
+	justStale := githubActiveWithoutOktaRuleActedAttrs(now.Add(-14*24*time.Hour - time.Second))
+	if !edgeIsRecent(atBoundary, now, identityGitHubActiveWithoutOktaRecencyWindow) {
+		t.Fatal("edge exactly 14 days old should remain inside the active GitHub access window")
+	}
+	if edgeIsRecent(justStale, now, identityGitHubActiveWithoutOktaRecencyWindow) {
+		t.Fatal("edge older than 14 days should be stale")
+	}
+}
+
+func TestGitHubActiveWithoutOktaLinkRuleSensitiveRepoEscalatesCritical(t *testing.T) {
+	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	group := githubActiveWithoutOktaRuleGroupWithTargets("urn:cerebro:writer:github_repo:writer/security-tools")
+	finding := rule.buildFinding(runtime, "writer", group, githubActiveWithoutOktaRuleFixedNow())
+	if got := finding.Severity; got != "CRITICAL" {
+		t.Fatalf("Severity = %q, want CRITICAL for sensitive repo target", got)
+	}
+}
+
+func TestGitHubActiveWithoutOktaLinkRuleFiveRepoTargetsEscalatesCritical(t *testing.T) {
+	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	cases := []struct {
+		name    string
+		targets []string
+		want    string
+	}{
+		{
+			name: "four boring repos stays high",
+			targets: []string{
+				"urn:cerebro:writer:github_repo:writer/service-a",
+				"urn:cerebro:writer:github_repo:writer/service-b",
+				"urn:cerebro:writer:github_repo:writer/service-c",
+				"urn:cerebro:writer:github_repo:writer/service-d",
+			},
+			want: "HIGH",
+		},
+		{
+			name: "five boring repos escalates critical",
+			targets: []string{
+				"urn:cerebro:writer:github_repo:writer/service-a",
+				"urn:cerebro:writer:github_repo:writer/service-b",
+				"urn:cerebro:writer:github_repo:writer/service-c",
+				"urn:cerebro:writer:github_repo:writer/service-d",
+				"urn:cerebro:writer:github_repo:writer/service-e",
+			},
+			want: "CRITICAL",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			group := githubActiveWithoutOktaRuleGroupWithTargets(tc.targets...)
+			finding := rule.buildFinding(runtime, "writer", group, githubActiveWithoutOktaRuleFixedNow())
+			if got := finding.Severity; got != tc.want {
+				t.Fatalf("Severity = %q, want %s", got, tc.want)
+			}
+			if got, want := finding.Attributes["target_count"], fmt.Sprintf("%d", len(tc.targets)); got != want {
+				t.Fatalf("target_count = %q, want %q", got, want)
+			}
+		})
 	}
 }
 
@@ -409,7 +476,7 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsEmitsForRecentActedOn(t *tes
 		githubActiveWithoutOktaRuleActedAttrs(time.Now().UTC().Add(-1*time.Hour)),
 		"urn:cerebro:writer:github.user:alice",
 		"alice",
-		"urn:cerebro:writer:github_repo:writer/cerebro",
+		"urn:cerebro:writer:github_repo:writer/product-app",
 	)
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
 	if err != nil {
