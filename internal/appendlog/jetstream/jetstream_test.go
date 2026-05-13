@@ -5,10 +5,12 @@ import (
 	"errors"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	natsjetstream "github.com/nats-io/nats.go/jetstream"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
@@ -234,6 +236,12 @@ func TestReplayAppliesDefaultLimit(t *testing.T) {
 	if len(events) != defaultReplayLimit {
 		t.Fatalf("len(events) = %d, want %d", len(events), defaultReplayLimit)
 	}
+	if got := events[0].GetId(); got != "evt-6" {
+		t.Fatalf("first replayed id = %q, want evt-6", got)
+	}
+	if got := events[len(events)-1].GetId(); got != "evt-105" {
+		t.Fatalf("last replayed id = %q, want evt-105", got)
+	}
 }
 
 func TestReplayFiltersWorkflowEventsByKindPrefixTenantAndAttribute(t *testing.T) {
@@ -276,7 +284,7 @@ func TestReplayFiltersWorkflowEventsByKindPrefixTenantAndAttribute(t *testing.T)
 	}
 }
 
-func TestReplayScansSparseStreamsUntilLimitMatches(t *testing.T) {
+func TestReplayScansSparseStreamsUntilLimitOrStreamStart(t *testing.T) {
 	const matchingSeq = uint64(10005)
 	replay := &fakeReplayManager{
 		streams: []*natsjetstream.StreamInfo{
@@ -305,6 +313,106 @@ func TestReplayScansSparseStreamsUntilLimitMatches(t *testing.T) {
 	}
 	if replay.getMsgCalls != int(matchingSeq) {
 		t.Fatalf("getMsgCalls = %d, want %d", replay.getMsgCalls, matchingSeq)
+	}
+}
+
+func TestReplayReturnsLatestMatchesInAppendOrder(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{
+					Name:     "CEREBRO_EVENTS",
+					Subjects: []string{"events.>"},
+				},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: 4},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-1", "github.audit", "writer-github")),
+				2: rawReplayMsg(t, "events.github.audit", replayEvent("evt-2", "github.audit", "writer-github")),
+				3: rawReplayMsg(t, "events.github.audit", replayEvent("evt-3", "github.audit", "other-runtime")),
+				4: rawReplayMsg(t, "events.github.audit", replayEvent("evt-4", "github.audit", "writer-github")),
+			},
+		},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github", Limit: 2})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("len(events) = %d, want 2", len(events))
+	}
+	if events[0].GetId() != "evt-2" || events[1].GetId() != "evt-4" {
+		t.Fatalf("replayed ids = [%q, %q], want [evt-2, evt-4]", events[0].GetId(), events[1].GetId())
+	}
+}
+
+func TestReplayReturnsNewestOccurredEventsWhenAppendedNewestFirst(t *testing.T) {
+	base := time.Date(2026, 5, 13, 18, 0, 0, 0, time.UTC)
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{
+					Name:     "CEREBRO_EVENTS",
+					Subjects: []string{"events.>"},
+				},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: 4},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				1: rawReplayMsg(t, "events.github.audit", replayEventAt("evt-newest", "github.audit", "writer-github", base.Add(4*time.Minute))),
+				2: rawReplayMsg(t, "events.github.audit", replayEventAt("evt-newer", "github.audit", "writer-github", base.Add(3*time.Minute))),
+				3: rawReplayMsg(t, "events.github.audit", replayEventAt("evt-older", "github.audit", "writer-github", base.Add(2*time.Minute))),
+				4: rawReplayMsg(t, "events.github.audit", replayEventAt("evt-oldest", "github.audit", "writer-github", base.Add(time.Minute))),
+			},
+		},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github", Limit: 2})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("len(events) = %d, want 2", len(events))
+	}
+	if events[0].GetId() != "evt-newest" || events[1].GetId() != "evt-newer" {
+		t.Fatalf("replayed ids = [%q, %q], want newest events [evt-newest, evt-newer]", events[0].GetId(), events[1].GetId())
+	}
+}
+
+func TestReplayStopsAfterBoundedCandidateWindow(t *testing.T) {
+	msgs := make(map[uint64]*natsjetstream.RawStreamMsg)
+	for seq := uint64(1); seq <= 100; seq++ {
+		msgs[seq] = rawReplayMsg(t, "events.github.audit", replayEvent("evt-"+strconv.FormatUint(seq, 10), "github.audit", "writer-github"))
+	}
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{
+					Name:     "CEREBRO_EVENTS",
+					Subjects: []string{"events.>"},
+				},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: 100},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{"CEREBRO_EVENTS": msgs},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github", Limit: 2})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("len(events) = %d, want 2", len(events))
+	}
+	if replay.getMsgCalls != 10 {
+		t.Fatalf("getMsgCalls = %d, want bounded candidate window 10", replay.getMsgCalls)
 	}
 }
 
@@ -439,6 +547,12 @@ func replayEvent(id string, kind string, runtimeID string) *cerebrov1.EventEnvel
 			ports.EventAttributeSourceRuntimeID: runtimeID,
 		},
 	}
+}
+
+func replayEventAt(id string, kind string, runtimeID string, occurredAt time.Time) *cerebrov1.EventEnvelope {
+	event := replayEvent(id, kind, runtimeID)
+	event.OccurredAt = timestamppb.New(occurredAt)
+	return event
 }
 
 func rawReplayMsg(t *testing.T, subject string, event *cerebrov1.EventEnvelope) *natsjetstream.RawStreamMsg {

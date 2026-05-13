@@ -10,6 +10,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourceconfig"
 )
 
 type stubRunStore struct {
@@ -99,6 +100,18 @@ func TestConfigHashIgnoresSensitiveKeyValues(t *testing.T) {
 	})
 	if left != right {
 		t.Fatalf("configHash() differed when only sensitive keys changed")
+	}
+}
+
+func TestConfigHashIgnoresInternalRuntimeMetadata(t *testing.T) {
+	base := configHash(map[string]string{"domain": "writer.okta.com"})
+	withInternal := configHash(map[string]string{
+		"domain":                               "writer.okta.com",
+		sourceconfig.RuntimeTenantIDKey:        "writer",
+		sourceconfig.AWSAssumeRoleAllowlistKey: "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role",
+	})
+	if base != withInternal {
+		t.Fatal("configHash() changed when only internal runtime metadata changed")
 	}
 }
 

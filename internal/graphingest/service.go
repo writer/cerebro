@@ -17,6 +17,7 @@ import (
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
 )
 
@@ -117,7 +118,7 @@ type HealthResult struct {
 
 func New(registry *sourcecdk.Registry, runtimeStore ports.SourceRuntimeStore, projector ports.SourceProjector, graphStore ports.GraphStore) *Service {
 	return &Service{
-		sourceService: sourceops.New(registry),
+		sourceService: sourceops.New(registry).WithInternalConfigAllowed(),
 		runtimeStore:  runtimeStore,
 		projector:     projector,
 		graphStore:    graphStore,
@@ -353,7 +354,8 @@ func (s *Service) putTerminalIngestRun(ctx context.Context, runStore RunStore, r
 }
 
 func (s *Service) preparedConfig(ctx context.Context, runtime *cerebrov1.SourceRuntime) (map[string]string, error) {
-	config := cloneConfig(runtime.GetConfig())
+	config := sourceconfig.WithRuntimeTenant(runtime.GetConfig(), runtime.GetTenantId())
+	config = sourceconfig.WithLegacyTenantlessAssumeRole(config, runtime.GetSourceId(), runtime.GetTenantId())
 	if s.prepareConfig == nil {
 		return config, nil
 	}
@@ -832,7 +834,7 @@ func finishRun(run graphstore.IngestRun, result *IngestResult, status string, ru
 func configHash(config map[string]string) string {
 	keys := make([]string, 0, len(config))
 	for key := range config {
-		if !sensitiveConfigKey(key) {
+		if !sourceconfig.InternalKey(key) && !sensitiveConfigKey(key) {
 			keys = append(keys, key)
 		}
 	}
@@ -917,12 +919,4 @@ func validRunStatus(status string) bool {
 	default:
 		return false
 	}
-}
-
-func cloneConfig(config map[string]string) map[string]string {
-	cloned := make(map[string]string, len(config))
-	for key, value := range config {
-		cloned[key] = value
-	}
-	return cloned
 }

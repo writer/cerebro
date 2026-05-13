@@ -257,7 +257,7 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 	if err != nil {
 		return nil, err
 	}
-	rule, err := s.selectRule(runtime, request.RuleID)
+	rule, err := s.selectRule(ctx, runtime, request.RuleID)
 	if err != nil {
 		return nil, err
 	}
@@ -287,6 +287,10 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 	for _, event := range events {
 		if eventID := strings.TrimSpace(event.GetId()); eventID != "" {
 			evaluatedEventIDs[eventID] = struct{}{}
+		}
+		if !rule.SupportsRuntime(runtime) {
+			result.EventsEvaluated++
+			continue
 		}
 		emitted, err := rule.Evaluate(ctx, runtime, event)
 		if err != nil {
@@ -334,7 +338,7 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 			}
 		}
 	}
-	if err := s.resolveStaleOpenFindings(ctx, strings.TrimSpace(runtime.GetTenantId()), runtimeID, rule.Spec().GetId(), evaluatedEventIDs, emittedFindingIDs); err != nil {
+	if err := s.resolveRuleOpenFindings(ctx, runtime, rule, evaluatedEventIDs, emittedFindingIDs); err != nil {
 		evaluationErr := fmt.Errorf("resolve stale findings for rule %q: %w", result.Rule.GetId(), err)
 		return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
 	}
@@ -357,7 +361,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 	if err != nil {
 		return nil, err
 	}
-	rules, err := s.selectRules(runtime, request.RuleIDs)
+	rules, err := s.selectRules(ctx, runtime, request.RuleIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -401,7 +405,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 			evaluatedEventIDs[eventID] = struct{}{}
 		}
 		for _, state := range states {
-			if state.failed {
+			if state.failed || !state.rule.SupportsRuntime(runtime) {
 				continue
 			}
 			emitted, err := state.rule.Evaluate(ctx, runtime, event)
@@ -467,7 +471,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 		if state.failed {
 			continue
 		}
-		if err := s.resolveStaleOpenFindings(ctx, strings.TrimSpace(runtime.GetTenantId()), runtimeID, state.result.Rule.GetId(), evaluatedEventIDs, state.emittedFindingIDs); err != nil {
+		if err := s.resolveRuleOpenFindings(ctx, runtime, state.rule, evaluatedEventIDs, state.emittedFindingIDs); err != nil {
 			evaluationErr := fmt.Errorf("resolve stale findings for rule %q: %w", state.result.Rule.GetId(), err)
 			return nil, s.markRuleEvaluationsFailed(ctx, unfinishedRuleEvaluations(states, state), evaluationErr)
 		}
@@ -530,6 +534,49 @@ func (s *Service) resolveStaleOpenFindings(ctx context.Context, tenantID string,
 			continue
 		}
 		if !findingReferencesEvaluatedEvent(finding, evaluatedEventIDs) {
+			continue
+		}
+		updated, err := s.store.UpdateFindingStatus(ctx, ports.FindingStatusUpdate{
+			FindingID: strings.TrimSpace(finding.ID),
+			Status:    findingStatusResolved,
+			Reason:    workflowevents.FindingStatusReasonNoLongerEmitted,
+			UpdatedAt: time.Now().UTC(),
+		})
+		if err != nil {
+			return fmt.Errorf("resolve stale finding %q: %w", strings.TrimSpace(finding.ID), err)
+		}
+		if err := s.recordFindingStatusWorkflow(ctx, updated, workflowevents.FindingStatusSourceStaleEvaluation); err != nil {
+			return fmt.Errorf("project stale finding %q resolution: %w", strings.TrimSpace(finding.ID), err)
+		}
+	}
+	return nil
+}
+
+func (s *Service) resolveRuleOpenFindings(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule Rule, evaluatedEventIDs map[string]struct{}, emittedFindingIDs map[string]struct{}) error {
+	if runtime == nil || rule == nil {
+		return nil
+	}
+	tenantID := strings.TrimSpace(runtime.GetTenantId())
+	runtimeID := strings.TrimSpace(runtime.GetId())
+	ruleID := strings.TrimSpace(rule.Spec().GetId())
+	if rule.SupportsRuntime(runtime) {
+		return s.resolveStaleOpenFindings(ctx, tenantID, runtimeID, ruleID, evaluatedEventIDs, emittedFindingIDs)
+	}
+	return s.resolveAllOpenFindingsForRule(ctx, tenantID, runtimeID, ruleID)
+}
+
+func (s *Service) resolveAllOpenFindingsForRule(ctx context.Context, tenantID string, runtimeID string, ruleID string) error {
+	findings, err := s.store.ListFindings(ctx, ports.ListFindingsRequest{
+		TenantID:  strings.TrimSpace(tenantID),
+		RuntimeID: strings.TrimSpace(runtimeID),
+		RuleID:    strings.TrimSpace(ruleID),
+		Status:    findingStatusOpen,
+	})
+	if err != nil {
+		return fmt.Errorf("list stale candidates for unsupported rule %q: %w", strings.TrimSpace(ruleID), err)
+	}
+	for _, finding := range findings {
+		if finding == nil {
 			continue
 		}
 		updated, err := s.store.UpdateFindingStatus(ctx, ports.FindingStatusUpdate{
@@ -791,25 +838,42 @@ type ruleEvaluationState struct {
 	failed            bool
 }
 
-func (s *Service) selectRule(runtime *cerebrov1.SourceRuntime, ruleID string) (Rule, error) {
+func (s *Service) selectRule(ctx context.Context, runtime *cerebrov1.SourceRuntime, ruleID string) (Rule, error) {
 	trimmedRuleID := strings.TrimSpace(ruleID)
 	if trimmedRuleID != "" {
 		rule, ok := s.rules.Get(trimmedRuleID)
 		if !ok {
 			return nil, fmt.Errorf("%w: %s", ErrRuleNotFound, trimmedRuleID)
 		}
-		if !rule.SupportsRuntime(runtime) {
-			return nil, fmt.Errorf("%w: %s", ErrRuleUnsupported, trimmedRuleID)
-		}
 		if _, isGraph := asGraphRule(rule); isGraph {
 			return nil, fmt.Errorf("%w: %s is a graph rule and cannot be evaluated via event replay", ErrRuleUnsupported, trimmedRuleID)
+		}
+		if !rule.SupportsRuntime(runtime) {
+			hasStale, err := s.hasOpenFindingsForRule(ctx, runtime, trimmedRuleID)
+			if err != nil {
+				return nil, err
+			}
+			if !hasStale {
+				return nil, fmt.Errorf("%w: %s", ErrRuleUnsupported, trimmedRuleID)
+			}
 		}
 		return rule, nil
 	}
 	applicable := filterEventDrivenRules(s.rules.ForRuntime(runtime))
 	switch len(applicable) {
 	case 0:
-		return nil, fmt.Errorf("%w: %s", ErrRuleUnavailable, strings.TrimSpace(runtime.GetId()))
+		staleRules, err := s.staleOpenRulesForRuntime(ctx, runtime, nil)
+		if err != nil {
+			return nil, err
+		}
+		switch len(staleRules) {
+		case 0:
+			return nil, fmt.Errorf("%w: %s", ErrRuleUnavailable, strings.TrimSpace(runtime.GetId()))
+		case 1:
+			return staleRules[0], nil
+		default:
+			return nil, fmt.Errorf("%w for runtime %q", ErrRuleSelectionRequired, strings.TrimSpace(runtime.GetId()))
+		}
 	case 1:
 		return applicable[0], nil
 	default:
@@ -817,9 +881,12 @@ func (s *Service) selectRule(runtime *cerebrov1.SourceRuntime, ruleID string) (R
 	}
 }
 
-func (s *Service) selectRules(runtime *cerebrov1.SourceRuntime, ruleIDs []string) ([]Rule, error) {
+func (s *Service) selectRules(ctx context.Context, runtime *cerebrov1.SourceRuntime, ruleIDs []string) ([]Rule, error) {
 	if len(ruleIDs) == 0 {
-		applicable := filterEventDrivenRules(s.rules.ForRuntime(runtime))
+		applicable, err := s.eventDrivenRulesForRuntime(ctx, runtime)
+		if err != nil {
+			return nil, err
+		}
 		if len(applicable) == 0 {
 			return nil, fmt.Errorf("%w: %s", ErrRuleUnavailable, strings.TrimSpace(runtime.GetId()))
 		}
@@ -839,11 +906,17 @@ func (s *Service) selectRules(runtime *cerebrov1.SourceRuntime, ruleIDs []string
 		if !ok {
 			return nil, fmt.Errorf("%w: %s", ErrRuleNotFound, trimmedID)
 		}
-		if !rule.SupportsRuntime(runtime) {
-			return nil, fmt.Errorf("%w: %s", ErrRuleUnsupported, trimmedID)
-		}
 		if _, isGraph := asGraphRule(rule); isGraph {
 			return nil, fmt.Errorf("%w: %s is a graph rule and cannot be evaluated via event replay", ErrRuleUnsupported, trimmedID)
+		}
+		if !rule.SupportsRuntime(runtime) {
+			hasStale, err := s.hasOpenFindingsForRule(ctx, runtime, trimmedID)
+			if err != nil {
+				return nil, err
+			}
+			if !hasStale {
+				return nil, fmt.Errorf("%w: %s", ErrRuleUnsupported, trimmedID)
+			}
 		}
 		seen[trimmedID] = struct{}{}
 		selected = append(selected, rule)
@@ -852,6 +925,108 @@ func (s *Service) selectRules(runtime *cerebrov1.SourceRuntime, ruleIDs []string
 		return nil, fmt.Errorf("%w for runtime %q", ErrRuleSelectionRequired, strings.TrimSpace(runtime.GetId()))
 	}
 	return selected, nil
+}
+
+func (s *Service) eventDrivenRulesForRuntime(ctx context.Context, runtime *cerebrov1.SourceRuntime) ([]Rule, error) {
+	applicable := filterEventDrivenRules(s.rules.ForRuntime(runtime))
+	seen := make(map[string]struct{}, len(applicable))
+	for _, rule := range applicable {
+		if rule == nil || rule.Spec() == nil {
+			continue
+		}
+		seen[strings.TrimSpace(rule.Spec().GetId())] = struct{}{}
+	}
+	staleRules, err := s.staleOpenRulesForRuntime(ctx, runtime, seen)
+	if err != nil {
+		return nil, err
+	}
+	return append(applicable, staleRules...), nil
+}
+
+func (s *Service) staleOpenRulesForRuntime(ctx context.Context, runtime *cerebrov1.SourceRuntime, seen map[string]struct{}) ([]Rule, error) {
+	if seen == nil {
+		seen = map[string]struct{}{}
+	}
+	candidates := make(map[string]Rule)
+	staleRules := []Rule{}
+	for _, spec := range s.rules.List() {
+		ruleID := strings.TrimSpace(spec.GetId())
+		if ruleID == "" {
+			continue
+		}
+		if _, ok := seen[ruleID]; ok {
+			continue
+		}
+		rule, ok := s.rules.Get(ruleID)
+		if !ok || rule.SupportsRuntime(runtime) {
+			continue
+		}
+		if _, isGraph := asGraphRule(rule); isGraph {
+			continue
+		}
+		candidates[ruleID] = rule
+	}
+	if len(candidates) == 0 {
+		return staleRules, nil
+	}
+	openRuleIDs, err := s.openFindingRuleIDsForRuntime(ctx, runtime)
+	if err != nil {
+		return nil, err
+	}
+	for _, spec := range s.rules.List() {
+		ruleID := strings.TrimSpace(spec.GetId())
+		rule, ok := candidates[ruleID]
+		if !ok {
+			continue
+		}
+		if _, ok := openRuleIDs[ruleID]; !ok {
+			continue
+		}
+		seen[ruleID] = struct{}{}
+		staleRules = append(staleRules, rule)
+	}
+	return staleRules, nil
+}
+
+func (s *Service) openFindingRuleIDsForRuntime(ctx context.Context, runtime *cerebrov1.SourceRuntime) (map[string]struct{}, error) {
+	ruleIDs := map[string]struct{}{}
+	if s == nil || s.store == nil || runtime == nil {
+		return ruleIDs, nil
+	}
+	findings, err := s.store.ListFindings(ctx, ports.ListFindingsRequest{
+		TenantID:  strings.TrimSpace(runtime.GetTenantId()),
+		RuntimeID: strings.TrimSpace(runtime.GetId()),
+		Status:    findingStatusOpen,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list stale candidates for runtime %q: %w", strings.TrimSpace(runtime.GetId()), err)
+	}
+	for _, finding := range findings {
+		if finding == nil {
+			continue
+		}
+		if ruleID := strings.TrimSpace(finding.RuleID); ruleID != "" {
+			ruleIDs[ruleID] = struct{}{}
+		}
+	}
+	return ruleIDs, nil
+}
+
+func (s *Service) hasOpenFindingsForRule(ctx context.Context, runtime *cerebrov1.SourceRuntime, ruleID string) (bool, error) {
+	if s == nil || s.store == nil || runtime == nil {
+		return false, nil
+	}
+	findings, err := s.store.ListFindings(ctx, ports.ListFindingsRequest{
+		TenantID:  strings.TrimSpace(runtime.GetTenantId()),
+		RuntimeID: strings.TrimSpace(runtime.GetId()),
+		RuleID:    strings.TrimSpace(ruleID),
+		Status:    findingStatusOpen,
+		Limit:     1,
+	})
+	if err != nil {
+		return false, fmt.Errorf("list stale candidates for rule %q: %w", strings.TrimSpace(ruleID), err)
+	}
+	return len(findings) != 0, nil
 }
 
 // filterEventDrivenRules excludes graph rules from a rule slice. Graph rules implement Rule

@@ -39,29 +39,32 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 )
 
 //go:embed catalog.yaml
 var catalogFS embed.FS
 
 var emailPattern = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}`)
+var awsRoleARNPattern = regexp.MustCompile(`^arn:(aws|aws-us-gov|aws-cn):iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+$`)
 
 const (
-	defaultFamily          = familyCloudTrail
-	defaultRegion          = "us-east-1"
-	defaultPageSize        = 10
-	maxPageSize            = 200
-	publicEndpointCursorV2 = 2
-	familyAccessKey        = "access_key"
-	familyCloudTrail       = "cloudtrail"
-	familyIAMGroup         = "iam_group"
-	familyIAMMembership    = "iam_group_membership"
-	familyIAMRoleTrust     = "iam_role_trust"
-	familyIAMRoleAssign    = "iam_role_assignment"
-	familyIAMRole          = "iam_role"
-	familyIAMUser          = "iam_user"
-	familyPublicEndpoint   = "public_endpoint"
-	familyResourceExposure = "resource_exposure"
+	defaultFamily            = familyCloudTrail
+	defaultRegion            = "us-east-1"
+	defaultPageSize          = 10
+	maxPageSize              = 200
+	publicEndpointCursorV2   = 2
+	awsAssumeRoleSessionName = "cerebro-source-runtime"
+	familyAccessKey          = "access_key"
+	familyCloudTrail         = "cloudtrail"
+	familyIAMGroup           = "iam_group"
+	familyIAMMembership      = "iam_group_membership"
+	familyIAMRoleTrust       = "iam_role_trust"
+	familyIAMRoleAssign      = "iam_role_assignment"
+	familyIAMRole            = "iam_role"
+	familyIAMUser            = "iam_user"
+	familyPublicEndpoint     = "public_endpoint"
+	familyResourceExposure   = "resource_exposure"
 )
 
 // Source reads AWS IAM inventory and CloudTrail activity through the AWS SDK for Go v2.
@@ -72,26 +75,28 @@ type Source struct {
 }
 
 type settings struct {
-	family          string
-	accountID       string
-	region          string
-	profile         string
-	accessKeyID     string
-	secretAccessKey string
-	sessionToken    string
-	roleARN         string
-	externalID      string
-	roleSessionName string
-	includeGlobal   bool
-	groupName       string
-	principalType   string
-	principalName   string
-	userName        string
-	lookupKey       string
-	lookupValue     string
-	startTime       string
-	endTime         string
-	perPage         int
+	family                     string
+	accountID                  string
+	region                     string
+	profile                    string
+	accessKeyID                string
+	secretAccessKey            string
+	sessionToken               string
+	roleARN                    string
+	externalID                 string
+	assumeRoleARNs             string
+	tenantID                   string
+	legacyTenantlessAssumeRole bool
+	includeGlobal              bool
+	groupName                  string
+	principalType              string
+	principalName              string
+	userName                   string
+	lookupKey                  string
+	lookupValue                string
+	startTime                  string
+	endTime                    string
+	perPage                    int
 }
 
 type awsClientFactory func(context.Context, settings) (awsClients, error)
@@ -476,11 +481,9 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 	}
 	if settings.roleARN != "" {
 		provider := stscreds.NewAssumeRoleProvider(sts.NewFromConfig(cfg), settings.roleARN, func(options *stscreds.AssumeRoleOptions) {
+			options.RoleSessionName = awsAssumeRoleSessionName
 			if settings.externalID != "" {
 				options.ExternalID = awssdk.String(settings.externalID)
-			}
-			if settings.roleSessionName != "" {
-				options.RoleSessionName = settings.roleSessionName
 			}
 		})
 		cfg.Credentials = awssdk.NewCredentialsCache(provider)
@@ -499,26 +502,28 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 
 func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	settings := settings{
-		family:          configValue(cfg, "family"),
-		accountID:       configValue(cfg, "account_id"),
-		region:          configValue(cfg, "region"),
-		profile:         configValue(cfg, "profile"),
-		accessKeyID:     configValue(cfg, "access_key_id"),
-		secretAccessKey: configValue(cfg, "secret_access_key"),
-		sessionToken:    configValue(cfg, "session_token"),
-		roleARN:         configValue(cfg, "role_arn"),
-		externalID:      configValue(cfg, "external_id"),
-		roleSessionName: configValue(cfg, "role_session_name"),
-		includeGlobal:   configBool(cfg, "include_global", true),
-		groupName:       configValue(cfg, "group_name"),
-		principalType:   configValue(cfg, "principal_type"),
-		principalName:   configValue(cfg, "principal_name"),
-		userName:        configValue(cfg, "user_name"),
-		lookupKey:       configValue(cfg, "lookup_key"),
-		lookupValue:     configValue(cfg, "lookup_value"),
-		startTime:       configValue(cfg, "start_time"),
-		endTime:         configValue(cfg, "end_time"),
-		perPage:         defaultPageSize,
+		family:                     configValue(cfg, "family"),
+		accountID:                  configValue(cfg, "account_id"),
+		region:                     configValue(cfg, "region"),
+		profile:                    configValue(cfg, "profile"),
+		accessKeyID:                configValue(cfg, "access_key_id"),
+		secretAccessKey:            configValue(cfg, "secret_access_key"),
+		sessionToken:               configValue(cfg, "session_token"),
+		roleARN:                    configValue(cfg, "role_arn"),
+		externalID:                 configValue(cfg, "external_id"),
+		assumeRoleARNs:             configValue(cfg, sourceconfig.AWSAssumeRoleAllowlistKey),
+		tenantID:                   configValue(cfg, sourceconfig.RuntimeTenantIDKey),
+		legacyTenantlessAssumeRole: configBool(cfg, sourceconfig.LegacyTenantlessAssumeRoleKey, false),
+		includeGlobal:              configBool(cfg, "include_global", true),
+		groupName:                  configValue(cfg, "group_name"),
+		principalType:              configValue(cfg, "principal_type"),
+		principalName:              configValue(cfg, "principal_name"),
+		userName:                   configValue(cfg, "user_name"),
+		lookupKey:                  configValue(cfg, "lookup_key"),
+		lookupValue:                configValue(cfg, "lookup_value"),
+		startTime:                  configValue(cfg, "start_time"),
+		endTime:                    configValue(cfg, "end_time"),
+		perPage:                    defaultPageSize,
 	}
 	if settings.family == "" {
 		settings.family = defaultFamily
@@ -526,8 +531,12 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if settings.accountID == "" {
 		return settings, fmt.Errorf("aws account_id is required")
 	}
-	if settings.roleARN != "" && (!strings.HasPrefix(settings.roleARN, "arn:") || !strings.Contains(settings.roleARN, ":role/")) {
-		return settings, fmt.Errorf("aws role_arn must be an IAM role ARN")
+	if settings.roleARN != "" {
+		if err := validateAssumeRoleConfig(settings); err != nil {
+			return settings, err
+		}
+	} else if settings.externalID != "" {
+		return settings, fmt.Errorf("aws external_id requires role_arn")
 	}
 	if settings.region == "" {
 		settings.region = defaultRegion
@@ -570,6 +579,62 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		return settings, fmt.Errorf("aws family must be one of access_key, cloudtrail, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, public_endpoint, or resource_exposure")
 	}
 	return settings, nil
+}
+
+func validateAssumeRoleConfig(settings settings) error {
+	matches := awsRoleARNPattern.FindStringSubmatch(settings.roleARN)
+	if len(matches) != 3 {
+		return fmt.Errorf("aws role_arn must be an IAM role ARN")
+	}
+	if matches[2] != settings.accountID {
+		return fmt.Errorf("aws role_arn account must match account_id")
+	}
+	if settings.tenantID == "" {
+		if settings.legacyTenantlessAssumeRole && legacyTenantlessAssumeRoleARNAllowed(settings.roleARN, settings.assumeRoleARNs) {
+			return nil
+		}
+		return fmt.Errorf("aws role_arn requires runtime tenant_id")
+	}
+	if !assumeRoleARNAllowed(settings.tenantID, settings.roleARN, settings.assumeRoleARNs) {
+		return fmt.Errorf("aws role_arn is not allowed")
+	}
+	return nil
+}
+
+func assumeRoleARNAllowed(tenantID string, roleARN string, allowlist string) bool {
+	tenantID = strings.TrimSpace(tenantID)
+	roleARN = strings.TrimSpace(roleARN)
+	if tenantID == "" || roleARN == "" {
+		return false
+	}
+	for _, value := range strings.FieldsFunc(allowlist, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\t' || r == ' '
+	}) {
+		value = strings.TrimSpace(value)
+		tenant, arn, ok := strings.Cut(value, "=")
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(tenant) == tenantID && strings.TrimSpace(arn) == roleARN {
+			return true
+		}
+	}
+	return false
+}
+
+func legacyTenantlessAssumeRoleARNAllowed(roleARN string, allowlist string) bool {
+	roleARN = strings.TrimSpace(roleARN)
+	if roleARN == "" {
+		return false
+	}
+	for _, value := range strings.FieldsFunc(allowlist, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\t' || r == ' '
+	}) {
+		if strings.TrimSpace(value) == roleARN {
+			return true
+		}
+	}
+	return false
 }
 
 func listAccessKeys(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]iamtypes.AccessKeyMetadata, string, error) {

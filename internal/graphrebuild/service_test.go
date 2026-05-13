@@ -14,6 +14,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 )
 
 type runtimeStore struct {
@@ -297,10 +298,14 @@ func TestRebuildDryRunResolvesRuntimeConfigReferences(t *testing.T) {
 		"writer-github": {
 			Id:       "writer-github",
 			SourceId: "github",
+			TenantId: "writer",
 			Config:   map[string]string{"token": "env:TOKEN"},
 		},
 	}}
 	service := New(registry, store, nil).WithConfigPreparer(func(_ context.Context, _ string, values map[string]string) (map[string]string, error) {
+		if got := values[sourceconfig.RuntimeTenantIDKey]; got != "writer" {
+			t.Fatalf("runtime tenant config = %q, want writer", got)
+		}
 		resolved := make(map[string]string, len(values))
 		for key, value := range values {
 			if value == "env:TOKEN" {
