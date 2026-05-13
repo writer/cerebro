@@ -30,15 +30,16 @@ import (
 var catalogFS embed.FS
 
 const (
-	sourceID           = "vulnview"
-	defaultBaseURL     = "https://vulnview.writer-security.com/api"
-	defaultScope       = "vulnview"
-	defaultFamily      = familyVulnerability
-	defaultPageSize    = 100
-	maxPageSize        = 500
-	httpTimeout        = 30 * time.Second
-	maxBodyBytes       = 8 << 20
-	tokenRefreshLeeway = time.Minute
+	sourceID              = "vulnview"
+	defaultBaseURL        = "https://vulnview.writer-security.com/api"
+	defaultScope          = "vulnview"
+	defaultFamily         = familyVulnerability
+	defaultPageSize       = 100
+	maxPageSize           = 500
+	dnsAlertDiscoverPages = 10
+	httpTimeout           = 30 * time.Second
+	maxBodyBytes          = 8 << 20
+	tokenRefreshLeeway    = time.Minute
 
 	familySite          = "site"
 	familyScan          = "scan"
@@ -209,7 +210,7 @@ func (s *Source) dnsAlertFamily() sourcecdk.Family[settings] {
 			return nil
 		},
 		Discover: func(ctx context.Context, settings settings) ([]sourcecdk.URN, error) {
-			records, _, err := s.listDNSAlerts(ctx, settings, "", settings.perPage)
+			records, err := s.discoverDNSAlerts(ctx, settings)
 			if err != nil {
 				return nil, fmt.Errorf("vulnview dns_alert: %w", err)
 			}
@@ -385,61 +386,70 @@ func (s *Source) listDNSAlerts(ctx context.Context, settings settings, cursor st
 	}
 	familySettings := settings
 	familySettings.family = familyAsset
-	for {
-		var response listResponse
-		query := familySettings.query()
-		query.Set("limit", "1")
-		addQuery(query, "cursor", assetCursor)
-		if err := s.getJSON(ctx, familySettings, "/assets", query, &response); err != nil {
-			return nil, "", err
-		}
-		records := []record{}
-		for _, item := range response.Items {
-			var asset map[string]any
-			if err := json.Unmarshal(item, &asset); err != nil {
-				return nil, "", fmt.Errorf("decode VulnView asset: %w", err)
-			}
-			alerts, _ := asset["dnsAlerts"].([]any)
-			for index, rawAlert := range alerts {
-				alert, ok := rawAlert.(map[string]any)
-				if !ok {
-					continue
-				}
-				values := map[string]any{
-					"asset":     asset["asset"],
-					"siteNames": asset["sites"],
-					"scanNames": asset["scanNames"],
-				}
-				maps.Copy(values, alert)
-				raw, err := json.Marshal(values)
-				if err != nil {
-					return nil, "", fmt.Errorf("marshal VulnView DNS alert: %w", err)
-				}
-				id := firstValueString(values, "id", "alert", "name", "type")
-				assetID := valueString(asset["asset"])
-				records = append(records, record{
-					Raw:    raw,
-					Values: values,
-					ID:     stableID(assetID, id, strconv.Itoa(index)),
-				})
-			}
-		}
-		page, nextAlertOffset, err := pageRecords(records, strconv.Itoa(alertOffset), pageSize)
-		if err != nil {
-			return nil, "", err
-		}
-		if len(page) > 0 || strings.TrimSpace(response.NextCursor) == "" {
-			if nextAlertOffset != "" {
-				return page, encodeDNSAlertCursor(assetCursor, nextAlertOffset), nil
-			}
-			if strings.TrimSpace(response.NextCursor) != "" {
-				return page, encodeDNSAlertCursor(response.NextCursor, "0"), nil
-			}
-			return page, "", nil
-		}
-		assetCursor = strings.TrimSpace(response.NextCursor)
-		alertOffset = 0
+	var response listResponse
+	query := familySettings.query()
+	query.Set("limit", strconv.Itoa(familySettings.perPage))
+	addQuery(query, "cursor", assetCursor)
+	if err := s.getJSON(ctx, familySettings, "/assets", query, &response); err != nil {
+		return nil, "", err
 	}
+	records := []record{}
+	for _, item := range response.Items {
+		var asset map[string]any
+		if err := json.Unmarshal(item, &asset); err != nil {
+			return nil, "", fmt.Errorf("decode VulnView asset: %w", err)
+		}
+		alerts, _ := asset["dnsAlerts"].([]any)
+		for index, rawAlert := range alerts {
+			alert, ok := rawAlert.(map[string]any)
+			if !ok {
+				continue
+			}
+			values := map[string]any{
+				"asset":     asset["asset"],
+				"siteNames": asset["sites"],
+				"scanNames": asset["scanNames"],
+			}
+			maps.Copy(values, alert)
+			raw, err := json.Marshal(values)
+			if err != nil {
+				return nil, "", fmt.Errorf("marshal VulnView DNS alert: %w", err)
+			}
+			id := firstValueString(values, "id", "alert", "name", "type")
+			assetID := valueString(asset["asset"])
+			records = append(records, record{
+				Raw:    raw,
+				Values: values,
+				ID:     stableID(assetID, id, strconv.Itoa(index)),
+			})
+		}
+	}
+	page, nextAlertOffset, err := pageRecords(records, strconv.Itoa(alertOffset), pageSize)
+	if err != nil {
+		return nil, "", err
+	}
+	if nextAlertOffset != "" {
+		return page, encodeDNSAlertCursor(assetCursor, nextAlertOffset), nil
+	}
+	if strings.TrimSpace(response.NextCursor) != "" {
+		return page, encodeDNSAlertCursor(response.NextCursor, "0"), nil
+	}
+	return page, "", nil
+}
+
+func (s *Source) discoverDNSAlerts(ctx context.Context, settings settings) ([]record, error) {
+	cursor := ""
+	for page := 0; page < dnsAlertDiscoverPages; page++ {
+		records, next, err := s.listDNSAlerts(ctx, settings, cursor, settings.perPage)
+		if err != nil {
+			return nil, err
+		}
+		if len(records) > 0 || strings.TrimSpace(next) == "" {
+			return records, nil
+		}
+		cursor = next
+	}
+	return nil, nil
 }
 
 func serverPaged(cursor string, pageSize int, recordCount int, nextCursor string) bool {

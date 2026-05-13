@@ -259,7 +259,61 @@ func TestReadDNSAlertsPaginatesWithinAsset(t *testing.T) {
 	}
 }
 
-func TestReadDNSAlertsSkipsEmptyAssetPages(t *testing.T) {
+func TestReadDNSAlertsBatchesAssetPages(t *testing.T) {
+	var assetRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "token_type": "Bearer", "expires_in": 3600})
+		case "/assets":
+			assetRequests++
+			if got := r.URL.Query().Get("limit"); got != "3" {
+				t.Fatalf("limit = %q, want 3", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{
+				{"asset": "empty.writer.com", "dnsAlerts": []map[string]any{}},
+				{
+					"asset":     "staging.writer.com",
+					"dnsAlerts": []map[string]any{{"alert": "dangling-cname", "severity": "high"}},
+				},
+				{
+					"asset":     "prod.writer.com",
+					"dnsAlerts": []map[string]any{{"alert": "stale-a-record", "severity": "medium"}},
+				},
+			}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id":     "writer",
+		"base_url":      server.URL,
+		"token_url":     server.URL + "/token",
+		"client_id":     "client",
+		"client_secret": "secret",
+		"family":        "dns_alert",
+		"per_page":      "3",
+	})
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 2 {
+		t.Fatalf("len(pull.Events) = %d, want 2", len(pull.Events))
+	}
+	if assetRequests != 1 {
+		t.Fatalf("assetRequests = %d, want 1", assetRequests)
+	}
+}
+
+func TestReadDNSAlertsReturnsCursorForEmptyAssetBatch(t *testing.T) {
 	var assetRequests int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -303,11 +357,73 @@ func TestReadDNSAlertsSkipsEmptyAssetPages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Read() error = %v", err)
 	}
-	if len(pull.Events) != 1 {
-		t.Fatalf("len(pull.Events) = %d, want 1", len(pull.Events))
+	if len(pull.Events) != 0 {
+		t.Fatalf("len(pull.Events) = %d, want 0", len(pull.Events))
 	}
-	if got := pull.Events[0].Attributes["asset_id"]; got != "staging.writer.com" {
+	if pull.NextCursor == nil {
+		t.Fatal("NextCursor = nil, want cursor for next asset page")
+	}
+	next, err := source.Read(context.Background(), cfg, pull.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(next) error = %v", err)
+	}
+	if len(next.Events) != 1 {
+		t.Fatalf("len(next.Events) = %d, want 1", len(next.Events))
+	}
+	if got := next.Events[0].Attributes["asset_id"]; got != "staging.writer.com" {
 		t.Fatalf("asset_id = %q, want staging.writer.com", got)
+	}
+	if assetRequests != 2 {
+		t.Fatalf("assetRequests = %d, want 2", assetRequests)
+	}
+}
+
+func TestDiscoverDNSAlertsAdvancesPastEmptyAssetBatch(t *testing.T) {
+	var assetRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "token_type": "Bearer", "expires_in": 3600})
+		case "/assets":
+			assetRequests++
+			cursor := r.URL.Query().Get("cursor")
+			if cursor == "" {
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"items":      []map[string]any{{"asset": "empty.writer.com", "dnsAlerts": []map[string]any{}}},
+					"nextCursor": "1",
+				})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{
+				"asset":     "staging.writer.com",
+				"dnsAlerts": []map[string]any{{"alert": "dangling-cname", "severity": "high"}},
+			}}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id":     "writer",
+		"base_url":      server.URL,
+		"token_url":     server.URL + "/token",
+		"client_id":     "client",
+		"client_secret": "secret",
+		"family":        "dns_alert",
+		"per_page":      "1",
+	})
+	urns, err := source.Discover(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if len(urns) != 1 {
+		t.Fatalf("len(urns) = %d, want 1", len(urns))
 	}
 	if assetRequests != 2 {
 		t.Fatalf("assetRequests = %d, want 2", assetRequests)
