@@ -16,7 +16,6 @@ import (
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/apigateway"
 	apigatewaytypes "github.com/aws/aws-sdk-go-v2/service/apigateway/types"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
@@ -33,7 +32,6 @@ import (
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
-	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -51,6 +49,7 @@ const (
 	defaultRegion          = "us-east-1"
 	defaultPageSize        = 10
 	maxPageSize            = 200
+	publicEndpointCursorV2 = 2
 	familyAccessKey        = "access_key"
 	familyCloudTrail       = "cloudtrail"
 	familyIAMGroup         = "iam_group"
@@ -78,9 +77,6 @@ type settings struct {
 	accessKeyID     string
 	secretAccessKey string
 	sessionToken    string
-	roleARN         string
-	externalID      string
-	roleSessionName string
 	includeGlobal   bool
 	groupName       string
 	principalType   string
@@ -142,9 +138,11 @@ type awsELBV2API interface {
 
 type awsAPIGatewayAPI interface {
 	GetDomainNames(context.Context, *apigateway.GetDomainNamesInput, ...func(*apigateway.Options)) (*apigateway.GetDomainNamesOutput, error)
+	GetRestApis(context.Context, *apigateway.GetRestApisInput, ...func(*apigateway.Options)) (*apigateway.GetRestApisOutput, error)
 }
 
 type awsAPIGatewayV2API interface {
+	GetApis(context.Context, *apigatewayv2.GetApisInput, ...func(*apigatewayv2.Options)) (*apigatewayv2.GetApisOutput, error)
 	GetDomainNames(context.Context, *apigatewayv2.GetDomainNamesInput, ...func(*apigatewayv2.Options)) (*apigatewayv2.GetDomainNamesOutput, error)
 }
 
@@ -200,16 +198,19 @@ type awsPublicEndpoint struct {
 }
 
 const (
-	publicEndpointStageRoute53      = "route53"
-	publicEndpointStageCloudFront   = "cloudfront"
-	publicEndpointStageELB          = "load_balancer"
-	publicEndpointStageAPIGateway   = "apigateway"
-	publicEndpointStageAPIGatewayV2 = "apigatewayv2"
-	publicEndpointStageEIP          = "elastic_ip"
-	publicEndpointStageENI          = "network_interface"
+	publicEndpointStageRoute53           = "route53"
+	publicEndpointStageCloudFront        = "cloudfront"
+	publicEndpointStageELB               = "load_balancer"
+	publicEndpointStageAPIGateway        = "apigateway"
+	publicEndpointStageAPIGatewayRestAPI = "apigateway_rest_api"
+	publicEndpointStageAPIGatewayV2      = "apigatewayv2"
+	publicEndpointStageAPIGatewayV2API   = "apigatewayv2_api"
+	publicEndpointStageEIP               = "elastic_ip"
+	publicEndpointStageENI               = "network_interface"
 )
 
 type publicEndpointCursor struct {
+	Version                 int    `json:"version,omitempty"`
 	Stage                   string `json:"stage,omitempty"`
 	Token                   string `json:"token,omitempty"`
 	Route53ZoneMarker       string `json:"route53_zone_marker,omitempty"`
@@ -468,17 +469,6 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 	if err != nil {
 		return awsClients{}, fmt.Errorf("load aws config: %w", err)
 	}
-	if settings.roleARN != "" {
-		provider := stscreds.NewAssumeRoleProvider(sts.NewFromConfig(cfg), settings.roleARN, func(options *stscreds.AssumeRoleOptions) {
-			if settings.externalID != "" {
-				options.ExternalID = awssdk.String(settings.externalID)
-			}
-			if settings.roleSessionName != "" {
-				options.RoleSessionName = settings.roleSessionName
-			}
-		})
-		cfg.Credentials = awssdk.NewCredentialsCache(provider)
-	}
 	return awsClients{
 		iam:          iam.NewFromConfig(cfg),
 		cloudTrail:   cloudtrail.NewFromConfig(cfg),
@@ -500,9 +490,6 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		accessKeyID:     configValue(cfg, "access_key_id"),
 		secretAccessKey: configValue(cfg, "secret_access_key"),
 		sessionToken:    configValue(cfg, "session_token"),
-		roleARN:         configValue(cfg, "role_arn"),
-		externalID:      configValue(cfg, "external_id"),
-		roleSessionName: configValue(cfg, "role_session_name"),
 		includeGlobal:   configBool(cfg, "include_global", true),
 		groupName:       configValue(cfg, "group_name"),
 		principalType:   configValue(cfg, "principal_type"),
@@ -520,14 +507,13 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if settings.accountID == "" {
 		return settings, fmt.Errorf("aws account_id is required")
 	}
-	if settings.roleARN != "" && (!strings.HasPrefix(settings.roleARN, "arn:") || !strings.Contains(settings.roleARN, ":role/")) {
-		return settings, fmt.Errorf("aws role_arn must be an IAM role ARN")
+	for _, key := range []string{"role_arn", "external_id", "role_session_name"} {
+		if value, ok := cfg.Lookup(key); ok && strings.TrimSpace(value) != "" {
+			return settings, fmt.Errorf("aws %s is no longer supported", key)
+		}
 	}
 	if settings.region == "" {
 		settings.region = defaultRegion
-	}
-	if settings.roleARN != "" && settings.roleSessionName == "" {
-		settings.roleSessionName = awsRoleSessionName(settings.accountID, settings.family)
 	}
 	if rawPerPage, ok := cfg.Lookup("per_page"); ok && strings.TrimSpace(rawPerPage) != "" {
 		perPage, err := strconv.Atoi(strings.TrimSpace(rawPerPage))
@@ -698,9 +684,35 @@ func listPublicEndpoints(ctx context.Context, clients awsClients, settings setti
 				}
 				continue
 			}
+			state = publicEndpointCursor{Stage: publicEndpointStageAPIGatewayRestAPI}
+		case publicEndpointStageAPIGatewayRestAPI:
+			endpoints, next, err := listAPIGatewayRestAPIPublicEndpoints(ctx, clients, settings, state, limit)
+			if err != nil || len(endpoints) != 0 {
+				return endpoints, next, err
+			}
+			if next != "" {
+				state, err = parsePublicEndpointCursor(next)
+				if err != nil {
+					return nil, "", err
+				}
+				continue
+			}
 			state = publicEndpointCursor{Stage: publicEndpointStageAPIGatewayV2}
 		case publicEndpointStageAPIGatewayV2:
 			endpoints, next, err := listAPIGatewayV2PublicEndpoints(ctx, clients, settings, state, limit)
+			if err != nil || len(endpoints) != 0 {
+				return endpoints, next, err
+			}
+			if next != "" {
+				state, err = parsePublicEndpointCursor(next)
+				if err != nil {
+					return nil, "", err
+				}
+				continue
+			}
+			state = publicEndpointCursor{Stage: publicEndpointStageAPIGatewayV2API}
+		case publicEndpointStageAPIGatewayV2API:
+			endpoints, next, err := listAPIGatewayV2APIPublicEndpoints(ctx, clients, settings, state, limit)
 			if err != nil || len(endpoints) != 0 {
 				return endpoints, next, err
 			}
@@ -811,6 +823,9 @@ func listCloudFrontPublicEndpoints(ctx context.Context, clients awsClients, sett
 	}
 	endpoints := make([]awsPublicEndpoint, 0, len(out.DistributionList.Items))
 	for _, distribution := range out.DistributionList.Items {
+		if !awssdk.ToBool(distribution.Enabled) {
+			continue
+		}
 		endpoints = append(endpoints, cloudFrontPublicEndpoint(settings, distribution))
 	}
 	if awssdk.ToBool(out.DistributionList.IsTruncated) && awssdk.ToString(out.DistributionList.NextMarker) != "" {
@@ -852,6 +867,28 @@ func listAPIGatewayPublicEndpoints(ctx context.Context, clients awsClients, sett
 	if awssdk.ToString(out.Position) != "" {
 		return endpoints, encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageAPIGateway, Token: awssdk.ToString(out.Position)}), nil
 	}
+	return endpoints, encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageAPIGatewayRestAPI}), nil
+}
+
+func listAPIGatewayRestAPIPublicEndpoints(ctx context.Context, clients awsClients, settings settings, state publicEndpointCursor, limit int) ([]awsPublicEndpoint, string, error) {
+	out, err := clients.apiGateway.GetRestApis(ctx, &apigateway.GetRestApisInput{Position: stringPtr(state.Token), Limit: int32Ptr(limit)})
+	if err != nil {
+		return nil, "", err
+	}
+	endpoints := make([]awsPublicEndpoint, 0, len(out.Items))
+	for _, api := range out.Items {
+		if api.DisableExecuteApiEndpoint || apiGatewayDomainPrivate(api.EndpointConfiguration) {
+			continue
+		}
+		endpoint := apiGatewayRestAPIPublicEndpoint(settings, api)
+		if endpoint.ResourceID == "" || endpoint.Host == "" {
+			continue
+		}
+		endpoints = append(endpoints, endpoint)
+	}
+	if awssdk.ToString(out.Position) != "" {
+		return endpoints, encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageAPIGatewayRestAPI, Token: awssdk.ToString(out.Position)}), nil
+	}
 	return endpoints, encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageAPIGatewayV2}), nil
 }
 
@@ -866,6 +903,28 @@ func listAPIGatewayV2PublicEndpoints(ctx context.Context, clients awsClients, se
 	}
 	if awssdk.ToString(out.NextToken) != "" {
 		return endpoints, encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageAPIGatewayV2, Token: awssdk.ToString(out.NextToken)}), nil
+	}
+	return endpoints, encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageAPIGatewayV2API}), nil
+}
+
+func listAPIGatewayV2APIPublicEndpoints(ctx context.Context, clients awsClients, settings settings, state publicEndpointCursor, limit int) ([]awsPublicEndpoint, string, error) {
+	out, err := clients.apiGatewayV2.GetApis(ctx, &apigatewayv2.GetApisInput{NextToken: stringPtr(state.Token), MaxResults: stringPtr(strconv.Itoa(limit))})
+	if err != nil {
+		return nil, "", err
+	}
+	endpoints := make([]awsPublicEndpoint, 0, len(out.Items))
+	for _, api := range out.Items {
+		if awssdk.ToBool(api.DisableExecuteApiEndpoint) {
+			continue
+		}
+		endpoint := apiGatewayV2APIPublicEndpoint(settings, api)
+		if endpoint.ResourceID == "" || endpoint.Host == "" {
+			continue
+		}
+		endpoints = append(endpoints, endpoint)
+	}
+	if awssdk.ToString(out.NextToken) != "" {
+		return endpoints, encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageAPIGatewayV2API, Token: awssdk.ToString(out.NextToken)}), nil
 	}
 	return endpoints, encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageEIP}), nil
 }
@@ -1060,6 +1119,22 @@ func apiGatewayPublicEndpoint(settings settings, domain apigatewaytypes.DomainNa
 	}
 }
 
+func apiGatewayRestAPIPublicEndpoint(settings settings, api apigatewaytypes.RestApi) awsPublicEndpoint {
+	apiID := awssdk.ToString(api.Id)
+	host := executeAPIHost(apiID, settings.region)
+	return awsPublicEndpoint{
+		ResourceID:   firstNonEmpty(apiID, host),
+		ResourceName: firstNonEmpty(awssdk.ToString(api.Name), apiID, host),
+		ResourceType: "apigateway_rest_api",
+		EndpointID:   firstNonEmpty(apiID, host),
+		EndpointType: firstNonEmpty(apiGatewayEndpointTypes(api.EndpointConfiguration), "execute_api"),
+		Host:         host,
+		Region:       settings.region,
+		Scope:        settings.accountID,
+		Service:      "apigateway",
+	}
+}
+
 func apiGatewayV2PublicEndpoint(settings settings, domain apigatewayv2types.DomainName) awsPublicEndpoint {
 	targetHosts := make([]string, 0, len(domain.DomainNameConfigurations))
 	endpointTypes := make([]string, 0, len(domain.DomainNameConfigurations))
@@ -1079,6 +1154,26 @@ func apiGatewayV2PublicEndpoint(settings settings, domain apigatewayv2types.Doma
 		Host:         dnsHost(awssdk.ToString(domain.DomainName)),
 		TargetHost:   firstString(targetHosts),
 		TargetHosts:  targetHosts,
+		Region:       settings.region,
+		Scope:        settings.accountID,
+		Service:      "apigatewayv2",
+	}
+}
+
+func apiGatewayV2APIPublicEndpoint(settings settings, api apigatewayv2types.Api) awsPublicEndpoint {
+	apiID := awssdk.ToString(api.ApiId)
+	host := dnsHost(awssdk.ToString(api.ApiEndpoint))
+	if host == "" && apiID != "" {
+		host = executeAPIHost(apiID, settings.region)
+	}
+	protocol := string(api.ProtocolType)
+	return awsPublicEndpoint{
+		ResourceID:   firstNonEmpty(apiID, host),
+		ResourceName: firstNonEmpty(awssdk.ToString(api.Name), apiID, host),
+		ResourceType: "apigatewayv2_api",
+		EndpointID:   firstNonEmpty(apiID, host),
+		EndpointType: firstNonEmpty(protocol, "execute_api"),
+		Host:         host,
 		Region:       settings.region,
 		Scope:        settings.accountID,
 		Service:      "apigatewayv2",
@@ -1530,10 +1625,10 @@ func configBool(cfg sourcecdk.Config, key string, fallback bool) bool {
 func parsePublicEndpointCursor(raw string) (publicEndpointCursor, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return publicEndpointCursor{Stage: publicEndpointStageRoute53}, nil
+		return publicEndpointCursor{Version: publicEndpointCursorV2, Stage: publicEndpointStageRoute53}, nil
 	}
 	if strings.HasPrefix(raw, "eni:") {
-		return publicEndpointCursor{Stage: publicEndpointStageENI, Token: strings.TrimPrefix(raw, "eni:")}, nil
+		return publicEndpointCursor{Version: publicEndpointCursorV2, Stage: publicEndpointStageAPIGatewayRestAPI}, nil
 	}
 	decoded, err := base64.RawURLEncoding.DecodeString(raw)
 	if err != nil {
@@ -1546,6 +1641,7 @@ func parsePublicEndpointCursor(raw string) (publicEndpointCursor, error) {
 	if cursor.Stage == "" {
 		cursor.Stage = publicEndpointStageRoute53
 	}
+	cursor = upgradePublicEndpointCursor(cursor)
 	return cursor, nil
 }
 
@@ -1553,11 +1649,27 @@ func encodePublicEndpointCursor(cursor publicEndpointCursor) string {
 	if cursor.Stage == "" {
 		return ""
 	}
+	if cursor.Version == 0 {
+		cursor.Version = publicEndpointCursorV2
+	}
 	payload, err := json.Marshal(cursor)
 	if err != nil {
 		return ""
 	}
 	return base64.RawURLEncoding.EncodeToString(payload)
+}
+
+func upgradePublicEndpointCursor(cursor publicEndpointCursor) publicEndpointCursor {
+	if cursor.Version != 0 {
+		return cursor
+	}
+	switch cursor.Stage {
+	case publicEndpointStageAPIGatewayV2, publicEndpointStageEIP, publicEndpointStageENI:
+		return publicEndpointCursor{Version: publicEndpointCursorV2, Stage: publicEndpointStageAPIGatewayRestAPI}
+	default:
+		cursor.Version = publicEndpointCursorV2
+		return cursor
+	}
 }
 
 func route53HostedZoneID(raw string) string {
@@ -1669,12 +1781,20 @@ func normalizeAWSResourceType(value string) string {
 	return strings.Trim(normalized, "_")
 }
 
-func awsRoleSessionName(accountID string, family string) string {
-	name := sanitizeEventID("cerebro-" + firstNonEmpty(family, "source") + "-" + accountID)
-	if len(name) > 64 {
-		return name[:64]
+func executeAPIHost(apiID string, region string) string {
+	apiID = strings.TrimSpace(apiID)
+	region = strings.TrimSpace(region)
+	if apiID == "" || region == "" {
+		return ""
 	}
-	return name
+	return fmt.Sprintf("%s.execute-api.%s.%s", apiID, region, awsDNSSuffix(region))
+}
+
+func awsDNSSuffix(region string) string {
+	if strings.HasPrefix(strings.TrimSpace(region), "cn-") {
+		return "amazonaws.com.cn"
+	}
+	return "amazonaws.com"
 }
 
 func cloudTrailActor(event cloudtrailtypes.Event, detail cloudTrailDetail) cloudTrailUserIdentity {

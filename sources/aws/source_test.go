@@ -2,6 +2,7 @@ package aws
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"testing"
 	"time"
@@ -47,6 +48,20 @@ func TestCheckRequiresAccountID(t *testing.T) {
 	}
 }
 
+func TestCheckRejectsDeprecatedAssumeRoleConfig(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	for _, key := range []string{"role_arn", "external_id", "role_session_name"} {
+		t.Run(key, func(t *testing.T) {
+			if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", key: "legacy"})); err == nil {
+				t.Fatalf("Check() error = nil, want unsupported %s error", key)
+			}
+		})
+	}
+}
+
 func TestAWSPullFromRecordsPreservesNextCursorWithoutEvents(t *testing.T) {
 	pull, err := awsPullFromRecords[string](nil, "next-page", nil, nil)
 	if err != nil {
@@ -58,6 +73,56 @@ func TestAWSPullFromRecordsPreservesNextCursorWithoutEvents(t *testing.T) {
 	if got := pull.NextCursor.GetOpaque(); got != "next-page" {
 		t.Fatalf("NextCursor = %q, want next-page", got)
 	}
+}
+
+func TestParsePublicEndpointCursorUpgradesLegacyStages(t *testing.T) {
+	legacyPastAPIGateway := legacyPublicEndpointCursor(t, publicEndpointCursor{Stage: publicEndpointStageEIP, Token: "old-token"})
+	got, err := parsePublicEndpointCursor(legacyPastAPIGateway)
+	if err != nil {
+		t.Fatalf("parsePublicEndpointCursor(legacy eip) error = %v", err)
+	}
+	if got.Stage != publicEndpointStageAPIGatewayRestAPI {
+		t.Fatalf("legacy eip stage = %q, want %q", got.Stage, publicEndpointStageAPIGatewayRestAPI)
+	}
+	if got.Token != "" {
+		t.Fatalf("legacy eip token = %q, want empty backfill token", got.Token)
+	}
+
+	legacyAPIGateway := legacyPublicEndpointCursor(t, publicEndpointCursor{Stage: publicEndpointStageAPIGateway, Token: "domain-page"})
+	got, err = parsePublicEndpointCursor(legacyAPIGateway)
+	if err != nil {
+		t.Fatalf("parsePublicEndpointCursor(legacy apigateway) error = %v", err)
+	}
+	if got.Stage != publicEndpointStageAPIGateway || got.Token != "domain-page" {
+		t.Fatalf("legacy apigateway cursor = %#v, want stage %q token domain-page", got, publicEndpointStageAPIGateway)
+	}
+
+	versioned := encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageEIP, Token: "new-token"})
+	got, err = parsePublicEndpointCursor(versioned)
+	if err != nil {
+		t.Fatalf("parsePublicEndpointCursor(versioned eip) error = %v", err)
+	}
+	if got.Stage != publicEndpointStageEIP || got.Token != "new-token" || got.Version != publicEndpointCursorV2 {
+		t.Fatalf("versioned eip cursor = %#v, want stage %q token new-token version %d", got, publicEndpointStageEIP, publicEndpointCursorV2)
+	}
+
+	got, err = parsePublicEndpointCursor("eni:legacy-token")
+	if err != nil {
+		t.Fatalf("parsePublicEndpointCursor(legacy eni) error = %v", err)
+	}
+	if got.Stage != publicEndpointStageAPIGatewayRestAPI {
+		t.Fatalf("legacy eni stage = %q, want %q", got.Stage, publicEndpointStageAPIGatewayRestAPI)
+	}
+}
+
+func legacyPublicEndpointCursor(t *testing.T, cursor publicEndpointCursor) string {
+	t.Helper()
+	cursor.Version = 0
+	payload, err := json.Marshal(cursor)
+	if err != nil {
+		t.Fatalf("marshal legacy cursor: %v", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(payload)
 }
 
 func TestEmailLikeExtractsSSOSessionEmail(t *testing.T) {
@@ -259,6 +324,11 @@ func TestReadAWSPublicEndpointCollectsDNSAndEdgeHosts(t *testing.T) {
 			DomainName: awssdk.String("d111111abcdef8.cloudfront.net"),
 			Aliases:    &cloudfronttypes.Aliases{Items: []string{"app.writer.com"}},
 			Enabled:    awssdk.Bool(true),
+		}, {
+			ARN:        awssdk.String("arn:aws:cloudfront::123456789012:distribution/DISABLED"),
+			Id:         awssdk.String("DISABLED"),
+			DomainName: awssdk.String("disabled.cloudfront.net"),
+			Enabled:    awssdk.Bool(false),
 		}},
 	})
 
@@ -293,6 +363,84 @@ func TestReadAWSPublicEndpointCollectsDNSAndEdgeHosts(t *testing.T) {
 	}
 	if got := cloudfrontEvent.Attributes["alternate_hosts"]; got != "app.writer.com" {
 		t.Fatalf("cloudfront alternate_hosts = %q, want app.writer.com", got)
+	}
+}
+
+func TestReadAWSPublicEndpointCollectsDefaultAPIGatewayHosts(t *testing.T) {
+	source := newTestSource(t, fakeAWS{
+		restAPIs: []apigatewaytypes.RestApi{{
+			Id:   awssdk.String("rest123"),
+			Name: awssdk.String("orders"),
+			EndpointConfiguration: &apigatewaytypes.EndpointConfiguration{
+				Types: []apigatewaytypes.EndpointType{apigatewaytypes.EndpointTypeRegional},
+			},
+		}, {
+			Id:                        awssdk.String("restdisabled"),
+			Name:                      awssdk.String("disabled"),
+			DisableExecuteApiEndpoint: true,
+		}, {
+			Id:   awssdk.String("restprivate"),
+			Name: awssdk.String("private"),
+			EndpointConfiguration: &apigatewaytypes.EndpointConfiguration{
+				Types: []apigatewaytypes.EndpointType{apigatewaytypes.EndpointTypePrivate},
+			},
+		}},
+		apiV2APIs: []apigatewayv2types.Api{{
+			ApiId:        awssdk.String("v2abc"),
+			ApiEndpoint:  awssdk.String("https://v2abc.execute-api.us-east-1.amazonaws.com"),
+			Name:         awssdk.String("events"),
+			ProtocolType: apigatewayv2types.ProtocolTypeHttp,
+		}, {
+			ApiId:                     awssdk.String("v2disabled"),
+			ApiEndpoint:               awssdk.String("https://v2disabled.execute-api.us-east-1.amazonaws.com"),
+			Name:                      awssdk.String("disabled"),
+			ProtocolType:              apigatewayv2types.ProtocolTypeHttp,
+			DisableExecuteApiEndpoint: awssdk.Bool(true),
+		}},
+	})
+	config := sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyPublicEndpoint})
+
+	pull, err := source.Read(context.Background(), config, nil)
+	if err != nil {
+		t.Fatalf("Read(public_endpoint rest api) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(rest api events) = %d, want 1", len(pull.Events))
+	}
+	restEvent := pull.Events[0]
+	if got := restEvent.Attributes["host"]; got != "rest123.execute-api.us-east-1.amazonaws.com" {
+		t.Fatalf("rest api host = %q, want rest123.execute-api.us-east-1.amazonaws.com", got)
+	}
+	if got := restEvent.Attributes["resource_type"]; got != "apigateway_rest_api" {
+		t.Fatalf("rest api resource_type = %q, want apigateway_rest_api", got)
+	}
+	if pull.NextCursor == nil {
+		t.Fatal("rest api NextCursor = nil, want apigatewayv2 cursor")
+	}
+
+	pull, err = source.Read(context.Background(), config, pull.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(public_endpoint api v2) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(api v2 events) = %d, want 1", len(pull.Events))
+	}
+	apiV2Event := pull.Events[0]
+	if got := apiV2Event.Attributes["host"]; got != "v2abc.execute-api.us-east-1.amazonaws.com" {
+		t.Fatalf("api v2 host = %q, want v2abc.execute-api.us-east-1.amazonaws.com", got)
+	}
+	if got := apiV2Event.Attributes["resource_type"]; got != "apigatewayv2_api" {
+		t.Fatalf("api v2 resource_type = %q, want apigatewayv2_api", got)
+	}
+}
+
+func TestAPIGatewayRestAPIPublicEndpointUsesPartitionSuffix(t *testing.T) {
+	endpoint := apiGatewayRestAPIPublicEndpoint(settings{accountID: "123456789012", region: "cn-north-1"}, apigatewaytypes.RestApi{
+		Id:   awssdk.String("rest123"),
+		Name: awssdk.String("orders"),
+	})
+	if endpoint.Host != "rest123.execute-api.cn-north-1.amazonaws.com.cn" {
+		t.Fatalf("Host = %q, want rest123.execute-api.cn-north-1.amazonaws.com.cn", endpoint.Host)
 	}
 }
 
@@ -344,7 +492,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains}}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -368,7 +516,9 @@ type fakeAWS struct {
 	distributions     []cloudfronttypes.DistributionSummary
 	loadBalancers     []elbv2types.LoadBalancer
 	apiDomains        []apigatewaytypes.DomainName
+	restAPIs          []apigatewaytypes.RestApi
 	apiV2Domains      []apigatewayv2types.DomainName
+	apiV2APIs         []apigatewayv2types.Api
 }
 
 func (f fakeAWS) ListUsers(context.Context, *iam.ListUsersInput, ...func(*iam.Options)) (*iam.ListUsersOutput, error) {
@@ -439,8 +589,17 @@ func (f fakeAWS) GetDomainNames(_ context.Context, _ *apigateway.GetDomainNamesI
 	return &apigateway.GetDomainNamesOutput{Items: f.apiDomains}, nil
 }
 
+func (f fakeAWS) GetRestApis(_ context.Context, _ *apigateway.GetRestApisInput, _ ...func(*apigateway.Options)) (*apigateway.GetRestApisOutput, error) {
+	return &apigateway.GetRestApisOutput{Items: f.restAPIs}, nil
+}
+
 type fakeAPIGatewayV2 struct {
 	domains []apigatewayv2types.DomainName
+	apis    []apigatewayv2types.Api
+}
+
+func (f fakeAPIGatewayV2) GetApis(_ context.Context, _ *apigatewayv2.GetApisInput, _ ...func(*apigatewayv2.Options)) (*apigatewayv2.GetApisOutput, error) {
+	return &apigatewayv2.GetApisOutput{Items: f.apis}, nil
 }
 
 func (f fakeAPIGatewayV2) GetDomainNames(_ context.Context, _ *apigatewayv2.GetDomainNamesInput, _ ...func(*apigatewayv2.Options)) (*apigatewayv2.GetDomainNamesOutput, error) {
