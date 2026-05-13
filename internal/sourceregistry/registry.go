@@ -6,6 +6,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	awssource "github.com/writer/cerebro/sources/aws"
 	azuresource "github.com/writer/cerebro/sources/azure"
+	cosmosource "github.com/writer/cerebro/sources/cosmo"
 	gcpsource "github.com/writer/cerebro/sources/gcp"
 	githubsource "github.com/writer/cerebro/sources/github"
 	googleworkspacesource "github.com/writer/cerebro/sources/googleworkspace"
@@ -32,6 +33,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "azure",
 		load: func() (sourcecdk.Source, error) {
 			return azuresource.New()
+		},
+	},
+	{
+		name: "cosmo",
+		load: func() (sourcecdk.Source, error) {
+			return cosmosource.New()
 		},
 	},
 	{
