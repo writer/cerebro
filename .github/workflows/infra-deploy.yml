@@ -223,6 +223,64 @@ jobs:
           diff: true
           comment-on-pr: true
 
+  # Main merge: keep sec-dev applied to the reviewed stack config
+  deploy-sec-dev-main:
+    name: Deploy sec-dev
+    runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.aws == 'true'
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "infra/pyproject.toml"
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: bash
+        working-directory: infra
+        run: uv sync
+
+      - name: Configure AWS credentials (sec-dev)
+        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
+        with:
+          assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
+
+      - name: Authenticate with Pulumi Cloud
+        uses: pulumi/auth-actions@1c89817aab0c66407723cdef72b05266e7376640 # v1
+        with:
+          organization: writer-ai
+          requested-token-type: urn:pulumi:token-type:access_token:organization
+
+      - name: Set Infisical External ID
+        shell: bash
+        working-directory: infra/aws
+        run: uv run pulumi config set --stack sec-dev --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
+
+      - name: Wait for ECR image (sec-dev)
+        shell: bash
+        run: bash .github/scripts/wait-for-ecr-image.sh sec-dev
+
+      - name: Pulumi Up (sec-dev)
+        uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6
+        with:
+          command: up
+          stack-name: sec-dev
+          work-dir: infra/aws
+          diff: true
+
   # Main merge: Pulumi up for go-prod stack
   deploy-go-prod:
     name: Deploy go-prod

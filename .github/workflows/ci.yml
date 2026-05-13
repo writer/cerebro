@@ -74,6 +74,7 @@ jobs:
         uses: aws-actions/amazon-ecr-login@183a1442edf41672e66566b7fc560e297a290896 # v2
 
       - name: Pull from GHCR, retag, and push to ECR
+        id: publish
         if: steps.ghcr-image.outputs.available == 'true'
         shell: bash
         env:
@@ -81,14 +82,48 @@ jobs:
           IMAGE_TAG: ${{ steps.image-tag.outputs.tag }}
         run: |
           set -euo pipefail
+          ecr_image="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          echo "image=${ecr_image}" >> "$GITHUB_OUTPUT"
+
+          if aws ecr describe-images --repository-name "${ECR_REPOSITORY}" --image-ids imageTag="${IMAGE_TAG}" >/dev/null 2>&1; then
+            echo "${ecr_image} already exists; skipping immutable ECR push"
+            exit 0
+          fi
 
           echo "Pulling ${GHCR_IMAGE}:${IMAGE_TAG} from GHCR..."
           docker pull "${GHCR_IMAGE}:${IMAGE_TAG}"
 
-          docker tag "${GHCR_IMAGE}:${IMAGE_TAG}" "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
-          docker push "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          docker tag "${GHCR_IMAGE}:${IMAGE_TAG}" "${ecr_image}"
+          docker push "${ecr_image}"
 
           echo "Pushed ${IMAGE_TAG} to sec-dev ECR"
+
+      - name: Scan sec-dev ECR image
+        if: steps.ghcr-image.outputs.available == 'true'
+        shell: bash
+        env:
+          ECR_IMAGE: ${{ steps.publish.outputs.image }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.cache/trivy"
+          docker run --rm \
+            -v "${HOME}/.cache/trivy:/root/.cache/" \
+            -v "${HOME}/.docker/config.json:/root/.docker/config.json:ro" \
+            aquasec/trivy:0.66.0 image \
+            --exit-code 0 \
+            --ignore-unfixed \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            "${ECR_IMAGE}"
+          docker run --rm \
+            -v "${HOME}/.cache/trivy:/root/.cache/" \
+            -v "${HOME}/.docker/config.json:/root/.docker/config.json:ro" \
+            aquasec/trivy:0.66.0 image \
+            --exit-code 1 \
+            --ignore-unfixed \
+            --scanners vuln \
+            --severity CRITICAL \
+            "${ECR_IMAGE}"
 
   # Main merge: Pull from GHCR and push to sec-prod ECR
   publish-sec-prod:
@@ -133,16 +168,44 @@ jobs:
         run: |
           set -euo pipefail
           echo "tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          ecr_image="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          echo "image=${ecr_image}" >> "$GITHUB_OUTPUT"
 
           if aws ecr describe-images --repository-name "${ECR_REPOSITORY}" --image-ids imageTag="${IMAGE_TAG}" >/dev/null 2>&1; then
-            echo "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG} already exists; skipping immutable ECR push"
+            echo "${ecr_image} already exists; skipping immutable ECR push"
             exit 0
           fi
 
           echo "Pulling ${GHCR_IMAGE}:${IMAGE_TAG} from GHCR..."
           docker pull "${GHCR_IMAGE}:${IMAGE_TAG}"
 
-          docker tag "${GHCR_IMAGE}:${IMAGE_TAG}" "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
-          docker push "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          docker tag "${GHCR_IMAGE}:${IMAGE_TAG}" "${ecr_image}"
+          docker push "${ecr_image}"
 
           echo "Pushed ${IMAGE_TAG} to sec-prod ECR"
+
+      - name: Scan sec-prod ECR image
+        shell: bash
+        env:
+          ECR_IMAGE: ${{ steps.publish.outputs.image }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.cache/trivy"
+          docker run --rm \
+            -v "${HOME}/.cache/trivy:/root/.cache/" \
+            -v "${HOME}/.docker/config.json:/root/.docker/config.json:ro" \
+            aquasec/trivy:0.66.0 image \
+            --exit-code 0 \
+            --ignore-unfixed \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            "${ECR_IMAGE}"
+          docker run --rm \
+            -v "${HOME}/.cache/trivy:/root/.cache/" \
+            -v "${HOME}/.docker/config.json:/root/.docker/config.json:ro" \
+            aquasec/trivy:0.66.0 image \
+            --exit-code 1 \
+            --ignore-unfixed \
+            --scanners vuln \
+            --severity CRITICAL \
+            "${ECR_IMAGE}"

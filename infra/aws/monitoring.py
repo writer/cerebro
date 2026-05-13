@@ -6,6 +6,21 @@ import pulumi
 import pulumi_aws as aws
 
 
+def _safe_resource_suffix(value: str) -> str:
+    suffix = "".join(ch if ch.isalnum() else "-" for ch in value.lower()).strip("-")
+    return suffix[:80] or "item"
+
+
+def _runtime_id_from_command(command) -> str:
+    if not isinstance(command, list):
+        return ""
+    for arg in command:
+        text = str(arg).strip()
+        if text.startswith("runtime_id="):
+            return text.split("=", 1)[1].strip()
+    return ""
+
+
 def create_monitoring(
     name: str,
     alb_arn_suffix: pulumi.Output[str],
@@ -16,6 +31,10 @@ def create_monitoring(
     log_retention_days: int = 30,
     jetstream_stream_name: str = "CEREBRO_EVENTS",
     jetstream_lag_alarm_threshold: int = 10000,
+    alarm_action_arns: list[str] = None,
+    alarm_email_subscriptions: list[str] = None,
+    orchestrator_schedules: list[dict] = None,
+    orchestrator_rule_names: list[pulumi.Input[str]] = None,
 ) -> dict:
     """
     Create CloudWatch dashboard and alarms.
@@ -26,6 +45,14 @@ def create_monitoring(
         name=f"{name}-alarms",
         tags={"Name": f"{name}-alarms"},
     )
+    for email in sorted(set(alarm_email_subscriptions or [])):
+        aws.sns.TopicSubscription(
+            f"{name}-alarm-email-{_safe_resource_suffix(email)}",
+            topic=alarm_topic.arn,
+            protocol="email",
+            endpoint=email,
+        )
+    alarm_actions = [alarm_topic.arn, *(alarm_action_arns or [])]
 
     # High error rate alarm
     aws.cloudwatch.MetricAlarm(
@@ -39,7 +66,8 @@ def create_monitoring(
         statistic="Sum",
         threshold=10,
         alarm_description="High 5xx error rate",
-        alarm_actions=[alarm_topic.arn],
+        alarm_actions=alarm_actions,
+        treat_missing_data="notBreaching",
         dimensions={
             "LoadBalancer": alb_arn_suffix,
             "TargetGroup": target_group_arn_suffix,
@@ -59,7 +87,8 @@ def create_monitoring(
         statistic="Average",
         threshold=2.0,
         alarm_description="High API latency (>2s)",
-        alarm_actions=[alarm_topic.arn],
+        alarm_actions=alarm_actions,
+        treat_missing_data="notBreaching",
         dimensions={
             "LoadBalancer": alb_arn_suffix,
             "TargetGroup": target_group_arn_suffix,
@@ -79,12 +108,32 @@ def create_monitoring(
         statistic="Average",
         threshold=0,
         alarm_description="Unhealthy ECS tasks",
-        alarm_actions=[alarm_topic.arn],
+        alarm_actions=alarm_actions,
         dimensions={
             "LoadBalancer": alb_arn_suffix,
             "TargetGroup": target_group_arn_suffix,
         },
         tags={"Name": f"{name}-unhealthy-alarm"},
+    )
+
+    aws.cloudwatch.MetricAlarm(
+        f"{name}-no-healthy-targets-alarm",
+        name=f"{name}-no-healthy-targets",
+        comparison_operator="LessThanThreshold",
+        evaluation_periods=2,
+        metric_name="HealthyHostCount",
+        namespace="AWS/ApplicationELB",
+        period=60,
+        statistic="Average",
+        threshold=1,
+        treat_missing_data="breaching",
+        alarm_description="No healthy ALB targets are registered",
+        alarm_actions=alarm_actions,
+        dimensions={
+            "LoadBalancer": alb_arn_suffix,
+            "TargetGroup": target_group_arn_suffix,
+        },
+        tags={"Name": f"{name}-no-healthy-targets-alarm"},
     )
 
     # ECS CPU alarm
@@ -99,7 +148,7 @@ def create_monitoring(
         statistic="Average",
         threshold=85,
         alarm_description="High ECS CPU utilization",
-        alarm_actions=[alarm_topic.arn],
+        alarm_actions=alarm_actions,
         dimensions={
             "ClusterName": ecs_cluster_name,
             "ServiceName": ecs_service_name,
@@ -119,7 +168,7 @@ def create_monitoring(
         statistic="Average",
         threshold=85,
         alarm_description="High ECS memory utilization",
-        alarm_actions=[alarm_topic.arn],
+        alarm_actions=alarm_actions,
         dimensions={
             "ClusterName": ecs_cluster_name,
             "ServiceName": ecs_service_name,
@@ -139,7 +188,7 @@ def create_monitoring(
             metric_name="SourceRuntimeSyncFailures",
             threshold=0,
             description="Source runtime sync failures detected",
-            alarm_topic_arn=alarm_topic.arn,
+            alarm_actions=alarm_actions,
         )
         _custom_metric_alarm(
             resource_name=f"{name}-orchestrator-failures-alarm",
@@ -148,7 +197,7 @@ def create_monitoring(
             metric_name="OrchestratorRuntimeFailures",
             threshold=0,
             description="Orchestrator runtime failures detected",
-            alarm_topic_arn=alarm_topic.arn,
+            alarm_actions=alarm_actions,
         )
         _custom_metric_alarm(
             resource_name=f"{name}-report-failures-alarm",
@@ -157,7 +206,7 @@ def create_monitoring(
             metric_name="ReportGenerationFailures",
             threshold=0,
             description="Report generation failures detected",
-            alarm_topic_arn=alarm_topic.arn,
+            alarm_actions=alarm_actions,
         )
         _custom_metric_alarm(
             resource_name=f"{name}-graph-ingest-failures-alarm",
@@ -166,7 +215,7 @@ def create_monitoring(
             metric_name="GraphIngestFailures",
             threshold=0,
             description="Graph ingestion failures detected",
-            alarm_topic_arn=alarm_topic.arn,
+            alarm_actions=alarm_actions,
         )
         _custom_metric_alarm(
             resource_name=f"{name}-finding-evaluation-run-failures-alarm",
@@ -175,7 +224,7 @@ def create_monitoring(
             metric_name="FindingEvaluationRunFailures",
             threshold=0,
             description="Finding evaluation run failures detected",
-            alarm_topic_arn=alarm_topic.arn,
+            alarm_actions=alarm_actions,
         )
 
     if jetstream_lag_alarm_threshold > 0:
@@ -186,9 +235,44 @@ def create_monitoring(
             metric_name="JetStreamConsumerLag",
             threshold=jetstream_lag_alarm_threshold,
             description="JetStream consumer lag is above the autoscaling readiness threshold",
-            alarm_topic_arn=alarm_topic.arn,
+            alarm_actions=alarm_actions,
             statistic="Maximum",
             dimensions={"Service": name, "Stream": jetstream_stream_name},
+        )
+
+    runtime_ids = sorted({
+        runtime_id
+        for runtime_id in (_runtime_id_from_command(schedule.get("command")) for schedule in orchestrator_schedules or [])
+        if runtime_id
+    })
+    for runtime_id in runtime_ids:
+        _custom_metric_alarm(
+            resource_name=f"{name}-orchestrator-runtime-{_safe_resource_suffix(runtime_id)}-failures-alarm",
+            alarm_name=f"{name}-orchestrator-{runtime_id}-failures",
+            namespace=telemetry_namespace,
+            metric_name="OrchestratorRuntimeFailuresByRuntime",
+            threshold=0,
+            description=f"Orchestrator runtime failures detected for {runtime_id}",
+            alarm_actions=alarm_actions,
+            dimensions={"RuntimeId": runtime_id},
+        )
+
+    for index, rule_name in enumerate(orchestrator_rule_names or []):
+        aws.cloudwatch.MetricAlarm(
+            f"{name}-orchestrator-rule-{index}-failed-invocations",
+            name=pulumi.Output.concat(rule_name, "-failed-invocations"),
+            comparison_operator="GreaterThanThreshold",
+            evaluation_periods=1,
+            metric_name="FailedInvocations",
+            namespace="AWS/Events",
+            period=300,
+            statistic="Sum",
+            threshold=0,
+            treat_missing_data="notBreaching",
+            alarm_description=pulumi.Output.concat("EventBridge failed invocations for ", rule_name),
+            alarm_actions=alarm_actions,
+            dimensions={"RuleName": rule_name},
+            tags={"Name": pulumi.Output.concat(rule_name, "-failed-invocations")},
         )
 
     dashboard = aws.cloudwatch.Dashboard(
@@ -213,7 +297,7 @@ def _custom_metric_alarm(
     metric_name: str,
     threshold: int,
     description: str,
-    alarm_topic_arn: pulumi.Input[str],
+    alarm_actions: list[pulumi.Input[str]],
     statistic: str = "Sum",
     dimensions: dict = None,
 ) -> aws.cloudwatch.MetricAlarm:
@@ -229,7 +313,7 @@ def _custom_metric_alarm(
         threshold=threshold,
         treat_missing_data="notBreaching",
         alarm_description=description,
-        alarm_actions=[alarm_topic_arn],
+        alarm_actions=alarm_actions,
         dimensions=dimensions,
         tags={"Name": alarm_name},
     )
@@ -284,6 +368,18 @@ def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[st
                 namespace=namespace,
                 value="1",
                 default_value=0,
+            ),
+        ),
+        "orchestrator_failures_by_runtime": aws.cloudwatch.LogMetricFilter(
+            f"{name}-orchestrator-failures-by-runtime-filter",
+            name=f"{name}-orchestrator-failures-by-runtime",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "span_end" && $.name = "orchestrator.runtime" && $.status = "failed" && $.runtime_id = * }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="OrchestratorRuntimeFailuresByRuntime",
+                namespace=namespace,
+                value="1",
+                dimensions={"RuntimeId": "$.runtime_id"},
             ),
         ),
         "graph_entities": aws.cloudwatch.LogMetricFilter(

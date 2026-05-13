@@ -150,6 +150,19 @@ def validate_stack(path: Path) -> list[Finding]:
             )
         )
 
+    alarm_action_arns = config.get("alarmActionArns") or []
+    if alarm_action_arns and not isinstance(alarm_action_arns, list):
+        findings.append(_finding("error", stack, "cerebro:alarmActionArns", "must be a list"))
+        alarm_action_arns = []
+    for index, arn in enumerate(alarm_action_arns):
+        if not str(arn).strip().startswith("arn:aws:sns:"):
+            findings.append(_finding("error", stack, f"cerebro:alarmActionArns[{index}]", "must be an SNS topic ARN"))
+
+    alarm_email_subscriptions = config.get("alarmEmailSubscriptions") or []
+    if alarm_email_subscriptions and not isinstance(alarm_email_subscriptions, list):
+        findings.append(_finding("error", stack, "cerebro:alarmEmailSubscriptions", "must be a list"))
+        alarm_email_subscriptions = []
+
     source_runtimes = config.get("sourceRuntimes") or []
     if source_runtimes and not isinstance(source_runtimes, list):
         findings.append(_finding("error", stack, "cerebro:sourceRuntimes", "must be a list"))
@@ -286,6 +299,30 @@ def validate_stack(path: Path) -> list[Finding]:
         allowed_tenants = config.get("allowedTenants") or []
         if not isinstance(allowed_tenants, list) or not allowed_tenants:
             findings.append(_finding("error", stack, "cerebro:allowedTenants", "production must declare allowed tenants"))
+        if not alarm_action_arns and not alarm_email_subscriptions:
+            findings.append(_finding("error", stack, "cerebro:alarmActionArns", "production alarms must have at least one notification route"))
+
+    return findings
+
+
+def validate_cross_stack(paths: list[Path]) -> list[Finding]:
+    by_stack = {_stack_name(path): _load_config(path) for path in paths}
+    findings: list[Finding] = []
+
+    sec_dev = by_stack.get("sec-dev")
+    go_prod = by_stack.get("go-prod")
+    if sec_dev is not None and go_prod is not None:
+        sec_dev_tag = str(sec_dev.get("imageTag", "")).strip()
+        go_prod_tag = str(go_prod.get("imageTag", "")).strip()
+        if sec_dev_tag and go_prod_tag and sec_dev_tag != go_prod_tag:
+            findings.append(
+                _finding(
+                    "error",
+                    "sec-dev",
+                    "cerebro:imageTag",
+                    f"sec-dev image tag {sec_dev_tag} must match go-prod {go_prod_tag}",
+                )
+            )
 
     return findings
 
@@ -305,6 +342,7 @@ def main(argv: list[str] | None = None) -> int:
     findings: list[Finding] = []
     for path in paths:
         findings.extend(validate_stack(path))
+    findings.extend(validate_cross_stack(paths))
 
     for finding in findings:
         print(f"{finding.severity.upper()}: {finding.stack} {finding.path}: {finding.message}")

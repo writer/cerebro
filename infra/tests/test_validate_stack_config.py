@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from scripts.validate_stack_config import validate_stack
+from scripts.validate_stack_config import validate_cross_stack, validate_stack
 
 
 BASE_STACK = """
@@ -20,6 +20,8 @@ config:
   cerebro:apiAuthEnabled: true
   cerebro:allowedTenants:
     - writer
+  cerebro:alarmActionArns:
+    - arn:aws:sns:us-east-1:123456789012:cerebro-alerts
   cerebro:sourceSecretKeys:
     - API_TOKEN
   cerebro:orchestratorSchedules:
@@ -84,6 +86,24 @@ class ValidateStackConfigTest(unittest.TestCase):
         content = BASE_STACK.replace("name: okta-audit", 'name: okta-audit-backfill\n      removeAfter: "2000-01-01"')
         findings = validate_stack(self._write_stack(content))
         self.assertTrue(any(finding.severity == "error" and "past" in finding.message for finding in findings))
+
+    def test_prod_requires_alarm_route(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:alarmActionArns:\n    - arn:aws:sns:us-east-1:123456789012:cerebro-alerts\n",
+            "",
+        )
+        findings = validate_stack(self._write_stack(content))
+        self.assertTrue(any(finding.severity == "error" and "notification route" in finding.message for finding in findings))
+
+    def test_cross_stack_image_tags_must_match(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            prod = root / "Pulumi.go-prod.yaml"
+            dev = root / "Pulumi.sec-dev.yaml"
+            prod.write_text(BASE_STACK, encoding="utf-8")
+            dev.write_text(BASE_STACK.replace("v2.1.29", "v2.1.28", 1), encoding="utf-8")
+            findings = validate_cross_stack([prod, dev])
+        self.assertTrue(any(finding.severity == "error" and "must match go-prod" in finding.message for finding in findings))
 
 
 if __name__ == "__main__":

@@ -100,6 +100,18 @@ config:
     type: integer
     default: 10000
     description: CloudWatch alarm threshold for aggregate JetStream consumer lag
+  cerebro:alarmActionArns:
+    type: array
+    items:
+      type: string
+    default: []
+    description: Additional SNS-compatible CloudWatch alarm action ARNs
+  cerebro:alarmEmailSubscriptions:
+    type: array
+    items:
+      type: string
+    default: []
+    description: Email addresses subscribed to the stack alarm SNS topic
   cerebro:neo4jDatabase:
     type: string
     default: ""

@@ -16,7 +16,7 @@ on:
       max_age_hours:
         description: Warn when runtime activity fields are older than this many hours. Use 0 to disable.
         required: false
-        default: '0'
+        default: '24'
         type: string
 
 permissions:
@@ -30,6 +30,15 @@ jobs:
   drift:
     name: Check source runtime drift
     runs-on: ubuntu-latest
+    env:
+      CEREBRO_API_URL: ${{ secrets.CEREBRO_API_URL }}
+      CEREBRO_API_KEY: ${{ secrets.CEREBRO_API_KEY }}
+      CEREBRO_API_URL_GO_PROD: ${{ secrets.CEREBRO_API_URL_GO_PROD }}
+      CEREBRO_API_KEY_GO_PROD: ${{ secrets.CEREBRO_API_KEY_GO_PROD }}
+      CEREBRO_API_URL_SEC_DEV: ${{ secrets.CEREBRO_API_URL_SEC_DEV }}
+      CEREBRO_API_KEY_SEC_DEV: ${{ secrets.CEREBRO_API_KEY_SEC_DEV }}
+      TAILSCALE_OAUTH_CLIENT_ID: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
+      TAILSCALE_OAUTH_CLIENT_SECRET: ${{ secrets.TAILSCALE_OAUTH_CLIENT_SECRET }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -51,19 +60,45 @@ jobs:
         working-directory: infra
         run: uv sync
 
+      - name: Connect to Tailscale
+        if: env.TAILSCALE_OAUTH_CLIENT_ID != '' && env.TAILSCALE_OAUTH_CLIENT_SECRET != ''
+        uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3
+        with:
+          oauth-client-id: ${{ env.TAILSCALE_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ env.TAILSCALE_OAUTH_CLIENT_SECRET }}
+          tags: tag:github-actions
+          hostname: cerebro-source-runtime-drift
+
       - name: Check runtime drift
         shell: bash
         env:
-          CEREBRO_API_URL: ${{ secrets.CEREBRO_API_URL }}
-          CEREBRO_API_KEY: ${{ secrets.CEREBRO_API_KEY }}
           STACK_NAME: ${{ github.event.inputs.stack || 'go-prod' }}
-          MAX_AGE_HOURS: ${{ github.event.inputs.max_age_hours || '0' }}
+          MAX_AGE_HOURS: ${{ github.event.inputs.max_age_hours || '24' }}
         run: |
           set -euo pipefail
-          if [ -z "${CEREBRO_API_URL}" ] || [ -z "${CEREBRO_API_KEY}" ]; then
-            echo "::warning::CEREBRO_API_URL and CEREBRO_API_KEY secrets are required for live drift checks."
-            exit 0
+
+          case "${STACK_NAME}" in
+            go-prod)
+              api_url="${CEREBRO_API_URL_GO_PROD:-${CEREBRO_API_URL:-}}"
+              api_key="${CEREBRO_API_KEY_GO_PROD:-${CEREBRO_API_KEY:-}}"
+              ;;
+            sec-dev)
+              api_url="${CEREBRO_API_URL_SEC_DEV:-${CEREBRO_API_URL:-}}"
+              api_key="${CEREBRO_API_KEY_SEC_DEV:-${CEREBRO_API_KEY:-}}"
+              ;;
+            *)
+              echo "::error::Unsupported stack ${STACK_NAME}"
+              exit 1
+              ;;
+          esac
+
+          if [ -z "${api_url}" ] || [ -z "${api_key}" ]; then
+            echo "::error::CEREBRO_API_URL_${STACK_NAME^^} and CEREBRO_API_KEY_${STACK_NAME^^} secrets, or generic CEREBRO_API_URL/CEREBRO_API_KEY secrets, are required for live drift checks."
+            exit 1
           fi
+
+          export CEREBRO_API_URL="${api_url}"
+          export CEREBRO_API_KEY="${api_key}"
           uv run --project infra python infra/scripts/check_source_runtime_drift.py \
             --stack-file "infra/aws/Pulumi.${STACK_NAME}.yaml" \
             --tenant-id writer \

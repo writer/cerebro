@@ -191,6 +191,8 @@ jetstream_stream_name = config.get("jetstreamStreamName") or "CEREBRO_EVENTS"
 enable_jetstream_lag_probe = _config_bool("enableJetstreamLagProbe", True)
 jetstream_lag_probe_interval_seconds = _config_int("jetstreamLagProbeIntervalSeconds", 60)
 jetstream_lag_alarm_threshold = _config_int("jetstreamLagAlarmThreshold", 10000)
+alarm_action_arns = config.get_object("alarmActionArns") or []
+alarm_email_subscriptions = config.get_object("alarmEmailSubscriptions") or []
 
 neo4j_database = config.get("neo4jDatabase")
 neo4j_aura_enabled = _config_bool("neo4jAuraEnabled", False)
@@ -480,6 +482,10 @@ monitoring_stack = monitoring.create_monitoring(
     log_retention_days=log_retention_days,
     jetstream_stream_name=jetstream_stream_name,
     jetstream_lag_alarm_threshold=jetstream_lag_alarm_threshold,
+    alarm_action_arns=alarm_action_arns,
+    alarm_email_subscriptions=alarm_email_subscriptions,
+    orchestrator_schedules=orchestrator_schedules,
+    orchestrator_rule_names=[rule.name for rule in ecs_stack.get("orchestrator_rules", [])],
 )
 
 waf_stack = None
