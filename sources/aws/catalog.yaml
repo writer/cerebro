@@ -10,4 +10,5 @@ emitted_kinds:
   - aws.iam_role_assignment
   - aws.iam_role_trust
   - aws.iam_user
+  - aws.public_endpoint
   - aws.resource_exposure

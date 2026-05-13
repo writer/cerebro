@@ -3,8 +3,10 @@ package aws
 import (
 	"context"
 	"embed"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -14,12 +16,24 @@ import (
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
+	"github.com/aws/aws-sdk-go-v2/service/apigateway"
+	apigatewaytypes "github.com/aws/aws-sdk-go-v2/service/apigateway/types"
+	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
+	apigatewayv2types "github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
+	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
 	cloudtrailtypes "github.com/aws/aws-sdk-go-v2/service/cloudtrail/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
+	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/route53"
+	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -45,6 +59,7 @@ const (
 	familyIAMRoleAssign    = "iam_role_assignment"
 	familyIAMRole          = "iam_role"
 	familyIAMUser          = "iam_user"
+	familyPublicEndpoint   = "public_endpoint"
 	familyResourceExposure = "resource_exposure"
 )
 
@@ -63,6 +78,10 @@ type settings struct {
 	accessKeyID     string
 	secretAccessKey string
 	sessionToken    string
+	roleARN         string
+	externalID      string
+	roleSessionName string
+	includeGlobal   bool
 	groupName       string
 	principalType   string
 	principalName   string
@@ -77,9 +96,14 @@ type settings struct {
 type awsClientFactory func(context.Context, settings) (awsClients, error)
 
 type awsClients struct {
-	iam        awsIAMAPI
-	cloudTrail awsCloudTrailAPI
-	ec2        awsEC2API
+	iam          awsIAMAPI
+	cloudTrail   awsCloudTrailAPI
+	ec2          awsEC2API
+	route53      awsRoute53API
+	cloudFront   awsCloudFrontAPI
+	elbv2        awsELBV2API
+	apiGateway   awsAPIGatewayAPI
+	apiGatewayV2 awsAPIGatewayV2API
 }
 
 type awsIAMAPI interface {
@@ -98,7 +122,30 @@ type awsCloudTrailAPI interface {
 }
 
 type awsEC2API interface {
+	DescribeAddresses(context.Context, *ec2.DescribeAddressesInput, ...func(*ec2.Options)) (*ec2.DescribeAddressesOutput, error)
+	DescribeNetworkInterfaces(context.Context, *ec2.DescribeNetworkInterfacesInput, ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error)
 	DescribeSecurityGroups(context.Context, *ec2.DescribeSecurityGroupsInput, ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error)
+}
+
+type awsRoute53API interface {
+	ListHostedZones(context.Context, *route53.ListHostedZonesInput, ...func(*route53.Options)) (*route53.ListHostedZonesOutput, error)
+	ListResourceRecordSets(context.Context, *route53.ListResourceRecordSetsInput, ...func(*route53.Options)) (*route53.ListResourceRecordSetsOutput, error)
+}
+
+type awsCloudFrontAPI interface {
+	ListDistributions(context.Context, *cloudfront.ListDistributionsInput, ...func(*cloudfront.Options)) (*cloudfront.ListDistributionsOutput, error)
+}
+
+type awsELBV2API interface {
+	DescribeLoadBalancers(context.Context, *elbv2.DescribeLoadBalancersInput, ...func(*elbv2.Options)) (*elbv2.DescribeLoadBalancersOutput, error)
+}
+
+type awsAPIGatewayAPI interface {
+	GetDomainNames(context.Context, *apigateway.GetDomainNamesInput, ...func(*apigateway.Options)) (*apigateway.GetDomainNamesOutput, error)
+}
+
+type awsAPIGatewayV2API interface {
+	GetDomainNames(context.Context, *apigatewayv2.GetDomainNamesInput, ...func(*apigatewayv2.Options)) (*apigatewayv2.GetDomainNamesOutput, error)
 }
 
 type awsFamilyOptions[T any] struct {
@@ -128,6 +175,51 @@ type awsResourceExposure struct {
 	Scope        string
 	Group        ec2types.SecurityGroup
 	Permission   ec2types.IpPermission
+}
+
+type awsPublicEndpoint struct {
+	ResourceID     string
+	ResourceName   string
+	ResourceType   string
+	EndpointID     string
+	EndpointType   string
+	Host           string
+	TargetHost     string
+	TargetHosts    []string
+	AlternateHosts []string
+	IP             string
+	TargetIP       string
+	TargetIPs      []string
+	DNSRecordType  string
+	HostedZoneID   string
+	HostedZoneName string
+	PrivateZone    bool
+	Region         string
+	Scope          string
+	Service        string
+}
+
+const (
+	publicEndpointStageRoute53      = "route53"
+	publicEndpointStageCloudFront   = "cloudfront"
+	publicEndpointStageELB          = "load_balancer"
+	publicEndpointStageAPIGateway   = "apigateway"
+	publicEndpointStageAPIGatewayV2 = "apigatewayv2"
+	publicEndpointStageEIP          = "elastic_ip"
+	publicEndpointStageENI          = "network_interface"
+)
+
+type publicEndpointCursor struct {
+	Stage                   string `json:"stage,omitempty"`
+	Token                   string `json:"token,omitempty"`
+	Route53ZoneMarker       string `json:"route53_zone_marker,omitempty"`
+	Route53NextZoneMarker   string `json:"route53_next_zone_marker,omitempty"`
+	Route53ZoneID           string `json:"route53_zone_id,omitempty"`
+	Route53ZoneName         string `json:"route53_zone_name,omitempty"`
+	Route53PrivateZone      bool   `json:"route53_private_zone,omitempty"`
+	Route53RecordName       string `json:"route53_record_name,omitempty"`
+	Route53RecordType       string `json:"route53_record_type,omitempty"`
+	Route53RecordIdentifier string `json:"route53_record_identifier,omitempty"`
 }
 
 type iamRoleTrust struct {
@@ -252,6 +344,15 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:aws_resource_exposure:%s", settings.accountID, firstNonEmpty(exposure.ExposureID, exposure.ResourceID)), nil
 			},
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsPublicEndpoint]{
+			Name:  familyPublicEndpoint,
+			Label: "aws public endpoints",
+			List:  listPublicEndpoints,
+			Event: publicEndpointEvent,
+			URN: func(settings settings, endpoint awsPublicEndpoint) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_public_endpoint:%s", settings.accountID, firstNonEmpty(endpoint.EndpointID, endpoint.ResourceID, endpoint.IP, endpoint.Host)), nil
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[iamtypes.Group]{
 			Name:  familyIAMGroup,
 			Label: "aws iam groups",
@@ -367,7 +468,27 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 	if err != nil {
 		return awsClients{}, fmt.Errorf("load aws config: %w", err)
 	}
-	return awsClients{iam: iam.NewFromConfig(cfg), cloudTrail: cloudtrail.NewFromConfig(cfg), ec2: ec2.NewFromConfig(cfg)}, nil
+	if settings.roleARN != "" {
+		provider := stscreds.NewAssumeRoleProvider(sts.NewFromConfig(cfg), settings.roleARN, func(options *stscreds.AssumeRoleOptions) {
+			if settings.externalID != "" {
+				options.ExternalID = awssdk.String(settings.externalID)
+			}
+			if settings.roleSessionName != "" {
+				options.RoleSessionName = settings.roleSessionName
+			}
+		})
+		cfg.Credentials = awssdk.NewCredentialsCache(provider)
+	}
+	return awsClients{
+		iam:          iam.NewFromConfig(cfg),
+		cloudTrail:   cloudtrail.NewFromConfig(cfg),
+		ec2:          ec2.NewFromConfig(cfg),
+		route53:      route53.NewFromConfig(cfg),
+		cloudFront:   cloudfront.NewFromConfig(cfg),
+		elbv2:        elbv2.NewFromConfig(cfg),
+		apiGateway:   apigateway.NewFromConfig(cfg),
+		apiGatewayV2: apigatewayv2.NewFromConfig(cfg),
+	}, nil
 }
 
 func parseSettings(cfg sourcecdk.Config) (settings, error) {
@@ -379,6 +500,10 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		accessKeyID:     configValue(cfg, "access_key_id"),
 		secretAccessKey: configValue(cfg, "secret_access_key"),
 		sessionToken:    configValue(cfg, "session_token"),
+		roleARN:         configValue(cfg, "role_arn"),
+		externalID:      configValue(cfg, "external_id"),
+		roleSessionName: configValue(cfg, "role_session_name"),
+		includeGlobal:   configBool(cfg, "include_global", true),
 		groupName:       configValue(cfg, "group_name"),
 		principalType:   configValue(cfg, "principal_type"),
 		principalName:   configValue(cfg, "principal_name"),
@@ -395,8 +520,14 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if settings.accountID == "" {
 		return settings, fmt.Errorf("aws account_id is required")
 	}
+	if settings.roleARN != "" && (!strings.HasPrefix(settings.roleARN, "arn:") || !strings.Contains(settings.roleARN, ":role/")) {
+		return settings, fmt.Errorf("aws role_arn must be an IAM role ARN")
+	}
 	if settings.region == "" {
 		settings.region = defaultRegion
+	}
+	if settings.roleARN != "" && settings.roleSessionName == "" {
+		settings.roleSessionName = awsRoleSessionName(settings.accountID, settings.family)
 	}
 	if rawPerPage, ok := cfg.Lookup("per_page"); ok && strings.TrimSpace(rawPerPage) != "" {
 		perPage, err := strconv.Atoi(strings.TrimSpace(rawPerPage))
@@ -409,7 +540,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyCloudTrail, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyResourceExposure:
+	case familyCloudTrail, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyPublicEndpoint, familyResourceExposure:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -433,7 +564,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("aws principal_name is required when family=%q", familyIAMRoleAssign)
 		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of access_key, cloudtrail, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, or resource_exposure")
+		return settings, fmt.Errorf("aws family must be one of access_key, cloudtrail, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, public_endpoint, or resource_exposure")
 	}
 	return settings, nil
 }
@@ -501,6 +632,307 @@ func listResourceExposures(ctx context.Context, clients awsClients, settings set
 	return exposures, awssdk.ToString(out.NextToken), nil
 }
 
+func listPublicEndpoints(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsPublicEndpoint, string, error) {
+	state, err := parsePublicEndpointCursor(cursor)
+	if err != nil {
+		return nil, "", err
+	}
+	for {
+		switch state.Stage {
+		case publicEndpointStageRoute53:
+			if !settings.includeGlobal {
+				state = publicEndpointCursor{Stage: publicEndpointStageCloudFront}
+				continue
+			}
+			endpoints, next, err := listRoute53PublicEndpoints(ctx, clients, settings, state, limit)
+			if err != nil || len(endpoints) != 0 {
+				return endpoints, next, err
+			}
+			if next != "" {
+				state, err = parsePublicEndpointCursor(next)
+				if err != nil {
+					return nil, "", err
+				}
+				continue
+			}
+			state = publicEndpointCursor{Stage: publicEndpointStageCloudFront}
+		case publicEndpointStageCloudFront:
+			if !settings.includeGlobal {
+				state = publicEndpointCursor{Stage: publicEndpointStageELB}
+				continue
+			}
+			endpoints, next, err := listCloudFrontPublicEndpoints(ctx, clients, settings, state, limit)
+			if err != nil || len(endpoints) != 0 {
+				return endpoints, next, err
+			}
+			if next != "" {
+				state, err = parsePublicEndpointCursor(next)
+				if err != nil {
+					return nil, "", err
+				}
+				continue
+			}
+			state = publicEndpointCursor{Stage: publicEndpointStageELB}
+		case publicEndpointStageELB:
+			endpoints, next, err := listELBPublicEndpoints(ctx, clients, settings, state, limit)
+			if err != nil || len(endpoints) != 0 {
+				return endpoints, next, err
+			}
+			if next != "" {
+				state, err = parsePublicEndpointCursor(next)
+				if err != nil {
+					return nil, "", err
+				}
+				continue
+			}
+			state = publicEndpointCursor{Stage: publicEndpointStageAPIGateway}
+		case publicEndpointStageAPIGateway:
+			endpoints, next, err := listAPIGatewayPublicEndpoints(ctx, clients, settings, state, limit)
+			if err != nil || len(endpoints) != 0 {
+				return endpoints, next, err
+			}
+			if next != "" {
+				state, err = parsePublicEndpointCursor(next)
+				if err != nil {
+					return nil, "", err
+				}
+				continue
+			}
+			state = publicEndpointCursor{Stage: publicEndpointStageAPIGatewayV2}
+		case publicEndpointStageAPIGatewayV2:
+			endpoints, next, err := listAPIGatewayV2PublicEndpoints(ctx, clients, settings, state, limit)
+			if err != nil || len(endpoints) != 0 {
+				return endpoints, next, err
+			}
+			if next != "" {
+				state, err = parsePublicEndpointCursor(next)
+				if err != nil {
+					return nil, "", err
+				}
+				continue
+			}
+			state = publicEndpointCursor{Stage: publicEndpointStageEIP}
+		case publicEndpointStageEIP:
+			endpoints, next, err := listAddressPublicEndpoints(ctx, clients, settings)
+			if err != nil || len(endpoints) != 0 {
+				return endpoints, next, err
+			}
+			if next != "" {
+				state, err = parsePublicEndpointCursor(next)
+				if err != nil {
+					return nil, "", err
+				}
+				continue
+			}
+			state = publicEndpointCursor{Stage: publicEndpointStageENI}
+		case publicEndpointStageENI:
+			return listNetworkInterfacePublicEndpoints(ctx, clients, settings, state, limit)
+		default:
+			return nil, "", fmt.Errorf("unknown aws public_endpoint cursor stage %q", state.Stage)
+		}
+	}
+}
+
+func listRoute53PublicEndpoints(ctx context.Context, clients awsClients, settings settings, state publicEndpointCursor, limit int) ([]awsPublicEndpoint, string, error) {
+	zoneID := strings.TrimSpace(state.Route53ZoneID)
+	zoneName := strings.TrimSpace(state.Route53ZoneName)
+	nextZoneMarker := strings.TrimSpace(state.Route53NextZoneMarker)
+	privateZone := state.Route53PrivateZone
+	if zoneID == "" {
+		zones, err := clients.route53.ListHostedZones(ctx, &route53.ListHostedZonesInput{Marker: stringPtr(state.Route53ZoneMarker), MaxItems: int32Ptr(1)})
+		if err != nil {
+			return nil, "", err
+		}
+		if len(zones.HostedZones) == 0 {
+			if zones.IsTruncated && awssdk.ToString(zones.NextMarker) != "" {
+				return nil, encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageRoute53, Route53ZoneMarker: awssdk.ToString(zones.NextMarker)}), nil
+			}
+			return nil, "", nil
+		}
+		zone := zones.HostedZones[0]
+		zoneID = route53HostedZoneID(awssdk.ToString(zone.Id))
+		zoneName = dnsHost(awssdk.ToString(zone.Name))
+		privateZone = zone.Config != nil && zone.Config.PrivateZone
+		nextZoneMarker = awssdk.ToString(zones.NextMarker)
+		if privateZone {
+			if zones.IsTruncated && nextZoneMarker != "" {
+				return nil, encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageRoute53, Route53ZoneMarker: nextZoneMarker}), nil
+			}
+			return nil, "", nil
+		}
+	}
+	input := &route53.ListResourceRecordSetsInput{
+		HostedZoneId: awssdk.String(zoneID),
+		MaxItems:     int32Ptr(ec2PageSize(limit)),
+	}
+	if state.Route53RecordName != "" {
+		input.StartRecordName = awssdk.String(state.Route53RecordName)
+		input.StartRecordType = route53types.RRType(state.Route53RecordType)
+		input.StartRecordIdentifier = stringPtr(state.Route53RecordIdentifier)
+	}
+	records, err := clients.route53.ListResourceRecordSets(ctx, input)
+	if err != nil {
+		return nil, "", err
+	}
+	endpoints := make([]awsPublicEndpoint, 0, len(records.ResourceRecordSets))
+	for _, record := range records.ResourceRecordSets {
+		endpoint := route53PublicEndpoint(settings, zoneID, zoneName, privateZone, record)
+		if endpoint.ResourceID == "" {
+			continue
+		}
+		endpoints = append(endpoints, endpoint)
+	}
+	if records.IsTruncated {
+		return endpoints, encodePublicEndpointCursor(publicEndpointCursor{
+			Stage:                   publicEndpointStageRoute53,
+			Route53ZoneID:           zoneID,
+			Route53ZoneName:         zoneName,
+			Route53ZoneMarker:       state.Route53ZoneMarker,
+			Route53NextZoneMarker:   nextZoneMarker,
+			Route53PrivateZone:      privateZone,
+			Route53RecordName:       awssdk.ToString(records.NextRecordName),
+			Route53RecordType:       string(records.NextRecordType),
+			Route53RecordIdentifier: awssdk.ToString(records.NextRecordIdentifier),
+		}), nil
+	}
+	if nextZoneMarker != "" {
+		return endpoints, encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageRoute53, Route53ZoneMarker: nextZoneMarker}), nil
+	}
+	return endpoints, encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageCloudFront}), nil
+}
+
+func listCloudFrontPublicEndpoints(ctx context.Context, clients awsClients, settings settings, state publicEndpointCursor, limit int) ([]awsPublicEndpoint, string, error) {
+	out, err := clients.cloudFront.ListDistributions(ctx, &cloudfront.ListDistributionsInput{Marker: stringPtr(state.Token), MaxItems: int32Ptr(limit)})
+	if err != nil {
+		return nil, "", err
+	}
+	if out.DistributionList == nil {
+		return nil, "", nil
+	}
+	endpoints := make([]awsPublicEndpoint, 0, len(out.DistributionList.Items))
+	for _, distribution := range out.DistributionList.Items {
+		endpoints = append(endpoints, cloudFrontPublicEndpoint(settings, distribution))
+	}
+	if awssdk.ToBool(out.DistributionList.IsTruncated) && awssdk.ToString(out.DistributionList.NextMarker) != "" {
+		return endpoints, encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageCloudFront, Token: awssdk.ToString(out.DistributionList.NextMarker)}), nil
+	}
+	return endpoints, encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageELB}), nil
+}
+
+func listELBPublicEndpoints(ctx context.Context, clients awsClients, settings settings, state publicEndpointCursor, limit int) ([]awsPublicEndpoint, string, error) {
+	out, err := clients.elbv2.DescribeLoadBalancers(ctx, &elbv2.DescribeLoadBalancersInput{Marker: stringPtr(state.Token), PageSize: int32Ptr(ec2PageSize(limit))})
+	if err != nil {
+		return nil, "", err
+	}
+	endpoints := make([]awsPublicEndpoint, 0, len(out.LoadBalancers))
+	for _, loadBalancer := range out.LoadBalancers {
+		if loadBalancer.Scheme == elbv2types.LoadBalancerSchemeEnumInternal {
+			continue
+		}
+		endpoints = append(endpoints, elbPublicEndpoint(settings, loadBalancer))
+	}
+	if awssdk.ToString(out.NextMarker) != "" {
+		return endpoints, encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageELB, Token: awssdk.ToString(out.NextMarker)}), nil
+	}
+	return endpoints, encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageAPIGateway}), nil
+}
+
+func listAPIGatewayPublicEndpoints(ctx context.Context, clients awsClients, settings settings, state publicEndpointCursor, limit int) ([]awsPublicEndpoint, string, error) {
+	out, err := clients.apiGateway.GetDomainNames(ctx, &apigateway.GetDomainNamesInput{Position: stringPtr(state.Token), Limit: int32Ptr(limit)})
+	if err != nil {
+		return nil, "", err
+	}
+	endpoints := make([]awsPublicEndpoint, 0, len(out.Items))
+	for _, domain := range out.Items {
+		if apiGatewayDomainPrivate(domain.EndpointConfiguration) {
+			continue
+		}
+		endpoints = append(endpoints, apiGatewayPublicEndpoint(settings, domain))
+	}
+	if awssdk.ToString(out.Position) != "" {
+		return endpoints, encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageAPIGateway, Token: awssdk.ToString(out.Position)}), nil
+	}
+	return endpoints, encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageAPIGatewayV2}), nil
+}
+
+func listAPIGatewayV2PublicEndpoints(ctx context.Context, clients awsClients, settings settings, state publicEndpointCursor, limit int) ([]awsPublicEndpoint, string, error) {
+	out, err := clients.apiGatewayV2.GetDomainNames(ctx, &apigatewayv2.GetDomainNamesInput{NextToken: stringPtr(state.Token), MaxResults: stringPtr(strconv.Itoa(limit))})
+	if err != nil {
+		return nil, "", err
+	}
+	endpoints := make([]awsPublicEndpoint, 0, len(out.Items))
+	for _, domain := range out.Items {
+		endpoints = append(endpoints, apiGatewayV2PublicEndpoint(settings, domain))
+	}
+	if awssdk.ToString(out.NextToken) != "" {
+		return endpoints, encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageAPIGatewayV2, Token: awssdk.ToString(out.NextToken)}), nil
+	}
+	return endpoints, encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageEIP}), nil
+}
+
+func listAddressPublicEndpoints(ctx context.Context, clients awsClients, settings settings) ([]awsPublicEndpoint, string, error) {
+	addresses, err := clients.ec2.DescribeAddresses(ctx, &ec2.DescribeAddressesInput{})
+	if err != nil {
+		return nil, "", err
+	}
+	endpoints := make([]awsPublicEndpoint, 0, len(addresses.Addresses))
+	for _, address := range addresses.Addresses {
+		ip := awssdk.ToString(address.PublicIp)
+		if ip == "" {
+			continue
+		}
+		allocationID := awssdk.ToString(address.AllocationId)
+		networkInterfaceID := awssdk.ToString(address.NetworkInterfaceId)
+		endpoints = append(endpoints, awsPublicEndpoint{
+			ResourceID:   firstNonEmpty(allocationID, ip),
+			ResourceName: firstNonEmpty(allocationID, networkInterfaceID, ip),
+			ResourceType: "elastic_ip",
+			EndpointID:   firstNonEmpty(allocationID, ip),
+			EndpointType: "public_ip",
+			IP:           ip,
+			Region:       settings.region,
+			Scope:        settings.accountID,
+			Service:      "ec2",
+		})
+	}
+	return endpoints, encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageENI}), nil
+}
+
+func listNetworkInterfacePublicEndpoints(ctx context.Context, clients awsClients, settings settings, state publicEndpointCursor, limit int) ([]awsPublicEndpoint, string, error) {
+	out, err := clients.ec2.DescribeNetworkInterfaces(ctx, &ec2.DescribeNetworkInterfacesInput{NextToken: stringPtr(state.Token), MaxResults: int32Ptr(ec2PageSize(limit))})
+	if err != nil {
+		return nil, "", err
+	}
+	endpoints := make([]awsPublicEndpoint, 0, len(out.NetworkInterfaces))
+	for _, ni := range out.NetworkInterfaces {
+		if ni.Association == nil {
+			continue
+		}
+		ip := awssdk.ToString(ni.Association.PublicIp)
+		host := dnsHost(awssdk.ToString(ni.Association.PublicDnsName))
+		if ip == "" && host == "" {
+			continue
+		}
+		networkInterfaceID := awssdk.ToString(ni.NetworkInterfaceId)
+		endpoints = append(endpoints, awsPublicEndpoint{
+			ResourceID:   firstNonEmpty(networkInterfaceID, ip, host),
+			ResourceName: firstNonEmpty(tagValue(ni.TagSet, "Name"), awssdk.ToString(ni.Description), networkInterfaceID, ip, host),
+			ResourceType: "network_interface",
+			EndpointID:   firstNonEmpty(networkInterfaceID, ip, host),
+			EndpointType: "public_network_interface",
+			Host:         host,
+			IP:           ip,
+			Region:       settings.region,
+			Scope:        settings.accountID,
+			Service:      "ec2",
+		})
+	}
+	if awssdk.ToString(out.NextToken) != "" {
+		return endpoints, encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageENI, Token: awssdk.ToString(out.NextToken)}), nil
+	}
+	return endpoints, "", nil
+}
+
 func listIAMGroups(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]iamtypes.Group, string, error) {
 	out, err := clients.iam.ListGroups(ctx, &iam.ListGroupsInput{Marker: stringPtr(cursor), MaxItems: int32Ptr(limit)})
 	if err != nil {
@@ -515,6 +947,142 @@ func listIAMGroupMembers(ctx context.Context, clients awsClients, settings setti
 		return nil, "", err
 	}
 	return out.Users, nextMarker(out.IsTruncated, out.Marker), nil
+}
+
+func tagValue(tags []ec2types.Tag, key string) string {
+	for _, tag := range tags {
+		if strings.EqualFold(awssdk.ToString(tag.Key), key) {
+			return awssdk.ToString(tag.Value)
+		}
+	}
+	return ""
+}
+
+func route53PublicEndpoint(settings settings, zoneID string, zoneName string, privateZone bool, record route53types.ResourceRecordSet) awsPublicEndpoint {
+	host := dnsHost(awssdk.ToString(record.Name))
+	recordType := string(record.Type)
+	if host == "" || !route53PublicRecordType(recordType) {
+		return awsPublicEndpoint{}
+	}
+	targetHosts := make([]string, 0)
+	targetIPs := make([]string, 0)
+	if record.AliasTarget != nil {
+		targetHosts = append(targetHosts, dnsHost(awssdk.ToString(record.AliasTarget.DNSName)))
+	}
+	for _, resourceRecord := range record.ResourceRecords {
+		value := strings.Trim(strings.TrimSpace(awssdk.ToString(resourceRecord.Value)), `"`)
+		if ip := normalizeIP(value); ip != "" {
+			targetIPs = append(targetIPs, ip)
+			continue
+		}
+		targetHosts = append(targetHosts, dnsHost(value))
+	}
+	targetHosts = cleanHosts(targetHosts)
+	targetIPs = cleanStrings(targetIPs)
+	setID := awssdk.ToString(record.SetIdentifier)
+	endpointID := firstNonEmpty(setID, host+"-"+recordType)
+	return awsPublicEndpoint{
+		ResourceID:     firstNonEmpty(strings.Join(cleanStrings([]string{zoneID, host, recordType, setID}), ":"), host),
+		ResourceName:   host,
+		ResourceType:   "route53_record",
+		EndpointID:     endpointID,
+		EndpointType:   "dns_record",
+		Host:           host,
+		TargetHost:     firstString(targetHosts),
+		TargetHosts:    targetHosts,
+		TargetIP:       firstString(targetIPs),
+		TargetIPs:      targetIPs,
+		DNSRecordType:  recordType,
+		HostedZoneID:   zoneID,
+		HostedZoneName: zoneName,
+		PrivateZone:    privateZone,
+		Region:         "global",
+		Scope:          settings.accountID,
+		Service:        "route53",
+	}
+}
+
+func cloudFrontPublicEndpoint(settings settings, distribution cloudfronttypes.DistributionSummary) awsPublicEndpoint {
+	id := awssdk.ToString(distribution.Id)
+	host := dnsHost(awssdk.ToString(distribution.DomainName))
+	aliases := []string(nil)
+	if distribution.Aliases != nil {
+		aliases = distribution.Aliases.Items
+	}
+	return awsPublicEndpoint{
+		ResourceID:     firstNonEmpty(awssdk.ToString(distribution.ARN), id, host),
+		ResourceName:   firstNonEmpty(awssdk.ToString(distribution.Comment), id, host),
+		ResourceType:   "cloudfront_distribution",
+		EndpointID:     firstNonEmpty(id, host),
+		EndpointType:   "cloudfront_distribution",
+		Host:           host,
+		AlternateHosts: cleanHosts(aliases),
+		Region:         "global",
+		Scope:          settings.accountID,
+		Service:        "cloudfront",
+	}
+}
+
+func elbPublicEndpoint(settings settings, loadBalancer elbv2types.LoadBalancer) awsPublicEndpoint {
+	host := dnsHost(awssdk.ToString(loadBalancer.DNSName))
+	lbType := string(loadBalancer.Type)
+	resourceType := "load_balancer"
+	if lbType != "" {
+		resourceType = normalizeAWSResourceType(lbType + "_load_balancer")
+	}
+	return awsPublicEndpoint{
+		ResourceID:   firstNonEmpty(awssdk.ToString(loadBalancer.LoadBalancerArn), awssdk.ToString(loadBalancer.LoadBalancerName), host),
+		ResourceName: firstNonEmpty(awssdk.ToString(loadBalancer.LoadBalancerName), host),
+		ResourceType: resourceType,
+		EndpointID:   firstNonEmpty(awssdk.ToString(loadBalancer.LoadBalancerArn), awssdk.ToString(loadBalancer.LoadBalancerName), host),
+		EndpointType: firstNonEmpty(lbType, "load_balancer"),
+		Host:         host,
+		Region:       settings.region,
+		Scope:        settings.accountID,
+		Service:      "elasticloadbalancing",
+	}
+}
+
+func apiGatewayPublicEndpoint(settings settings, domain apigatewaytypes.DomainName) awsPublicEndpoint {
+	targetHosts := cleanHosts([]string{awssdk.ToString(domain.DistributionDomainName), awssdk.ToString(domain.RegionalDomainName)})
+	return awsPublicEndpoint{
+		ResourceID:   firstNonEmpty(awssdk.ToString(domain.DomainNameArn), awssdk.ToString(domain.DomainName)),
+		ResourceName: awssdk.ToString(domain.DomainName),
+		ResourceType: "apigateway_domain",
+		EndpointID:   firstNonEmpty(awssdk.ToString(domain.DomainNameArn), awssdk.ToString(domain.DomainName)),
+		EndpointType: firstNonEmpty(apiGatewayEndpointTypes(domain.EndpointConfiguration), "apigateway_domain"),
+		Host:         dnsHost(awssdk.ToString(domain.DomainName)),
+		TargetHost:   firstString(targetHosts),
+		TargetHosts:  targetHosts,
+		Region:       settings.region,
+		Scope:        settings.accountID,
+		Service:      "apigateway",
+	}
+}
+
+func apiGatewayV2PublicEndpoint(settings settings, domain apigatewayv2types.DomainName) awsPublicEndpoint {
+	targetHosts := make([]string, 0, len(domain.DomainNameConfigurations))
+	endpointTypes := make([]string, 0, len(domain.DomainNameConfigurations))
+	for _, config := range domain.DomainNameConfigurations {
+		targetHosts = append(targetHosts, awssdk.ToString(config.ApiGatewayDomainName))
+		if string(config.EndpointType) != "" {
+			endpointTypes = append(endpointTypes, string(config.EndpointType))
+		}
+	}
+	targetHosts = cleanHosts(targetHosts)
+	return awsPublicEndpoint{
+		ResourceID:   firstNonEmpty(awssdk.ToString(domain.DomainNameArn), awssdk.ToString(domain.DomainName)),
+		ResourceName: awssdk.ToString(domain.DomainName),
+		ResourceType: "apigatewayv2_domain",
+		EndpointID:   firstNonEmpty(awssdk.ToString(domain.DomainNameArn), awssdk.ToString(domain.DomainName)),
+		EndpointType: firstNonEmpty(strings.Join(cleanStrings(endpointTypes), ","), "apigatewayv2_domain"),
+		Host:         dnsHost(awssdk.ToString(domain.DomainName)),
+		TargetHost:   firstString(targetHosts),
+		TargetHosts:  targetHosts,
+		Region:       settings.region,
+		Scope:        settings.accountID,
+		Service:      "apigatewayv2",
+	}
 }
 
 func listIAMPolicyAssignments(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]iamPolicyAssignment, string, error) {
@@ -764,6 +1332,41 @@ func resourceExposureEvent(settings settings, exposure awsResourceExposure) (*pr
 	return sourceEvent(settings, "aws-resource-exposure-"+exposure.ExposureID, "aws.resource_exposure", "aws/resource_exposure/v1", payload, attributes, time.Now().UTC())
 }
 
+func publicEndpointEvent(settings settings, endpoint awsPublicEndpoint) (*primitives.Event, error) {
+	attributes := map[string]string{
+		"alternate_hosts":   strings.Join(cleanHosts(endpoint.AlternateHosts), ","),
+		"dns_record_type":   endpoint.DNSRecordType,
+		"domain":            settings.accountID,
+		"endpoint_id":       endpoint.EndpointID,
+		"endpoint_type":     endpoint.EndpointType,
+		"external_exposure": boolString(!endpoint.PrivateZone),
+		"family":            familyPublicEndpoint,
+		"host":              endpoint.Host,
+		"hosted_zone_id":    endpoint.HostedZoneID,
+		"hosted_zone_name":  endpoint.HostedZoneName,
+		"internet_exposed":  boolString(!endpoint.PrivateZone),
+		"ip":                endpoint.IP,
+		"private_zone":      boolString(endpoint.PrivateZone),
+		"public":            boolString(!endpoint.PrivateZone),
+		"region":            endpoint.Region,
+		"resource_id":       endpoint.ResourceID,
+		"resource_name":     endpoint.ResourceName,
+		"resource_provider": "aws",
+		"resource_type":     endpoint.ResourceType,
+		"scope":             endpoint.Scope,
+		"service":           endpoint.Service,
+		"target_host":       endpoint.TargetHost,
+		"target_hosts":      strings.Join(cleanHosts(endpoint.TargetHosts), ","),
+		"target_ip":         endpoint.TargetIP,
+		"target_ips":        strings.Join(cleanStrings(endpoint.TargetIPs), ","),
+	}
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "endpoint": endpoint})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "aws-public-endpoint-"+firstNonEmpty(endpoint.EndpointID, endpoint.ResourceID, endpoint.IP, endpoint.Host), "aws.public_endpoint", "aws/public_endpoint/v1", payload, attributes, time.Now().UTC())
+}
+
 func cloudTrailEvent(settings settings, event cloudtrailtypes.Event) (*primitives.Event, error) {
 	detail := cloudTrailDetail{}
 	if raw := awssdk.ToString(event.CloudTrailEvent); raw != "" {
@@ -907,6 +1510,171 @@ func stringPtr(value string) *string {
 func configValue(cfg sourcecdk.Config, key string) string {
 	value, _ := cfg.Lookup(key)
 	return strings.TrimSpace(value)
+}
+
+func configBool(cfg sourcecdk.Config, key string, fallback bool) bool {
+	value, ok := cfg.Lookup(key)
+	if !ok || strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "t", "true", "yes", "y":
+		return true
+	case "0", "f", "false", "no", "n":
+		return false
+	default:
+		return fallback
+	}
+}
+
+func parsePublicEndpointCursor(raw string) (publicEndpointCursor, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return publicEndpointCursor{Stage: publicEndpointStageRoute53}, nil
+	}
+	if strings.HasPrefix(raw, "eni:") {
+		return publicEndpointCursor{Stage: publicEndpointStageENI, Token: strings.TrimPrefix(raw, "eni:")}, nil
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		return publicEndpointCursor{}, fmt.Errorf("parse aws public_endpoint cursor: %w", err)
+	}
+	var cursor publicEndpointCursor
+	if err := json.Unmarshal(decoded, &cursor); err != nil {
+		return publicEndpointCursor{}, fmt.Errorf("parse aws public_endpoint cursor: %w", err)
+	}
+	if cursor.Stage == "" {
+		cursor.Stage = publicEndpointStageRoute53
+	}
+	return cursor, nil
+}
+
+func encodePublicEndpointCursor(cursor publicEndpointCursor) string {
+	if cursor.Stage == "" {
+		return ""
+	}
+	payload, err := json.Marshal(cursor)
+	if err != nil {
+		return ""
+	}
+	return base64.RawURLEncoding.EncodeToString(payload)
+}
+
+func route53HostedZoneID(raw string) string {
+	return strings.TrimPrefix(strings.TrimSpace(raw), "/hostedzone/")
+}
+
+func route53PublicRecordType(recordType string) bool {
+	switch strings.ToUpper(strings.TrimSpace(recordType)) {
+	case "A", "AAAA", "CNAME":
+		return true
+	default:
+		return false
+	}
+}
+
+func apiGatewayDomainPrivate(config *apigatewaytypes.EndpointConfiguration) bool {
+	if config == nil || len(config.Types) == 0 {
+		return false
+	}
+	for _, endpointType := range config.Types {
+		if endpointType != apigatewaytypes.EndpointTypePrivate {
+			return false
+		}
+	}
+	return true
+}
+
+func apiGatewayEndpointTypes(config *apigatewaytypes.EndpointConfiguration) string {
+	if config == nil {
+		return ""
+	}
+	values := make([]string, 0, len(config.Types))
+	for _, endpointType := range config.Types {
+		values = append(values, string(endpointType))
+	}
+	return strings.Join(cleanStrings(values), ",")
+}
+
+func cleanHosts(values []string) []string {
+	result := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		host := dnsHost(value)
+		if host == "" {
+			continue
+		}
+		if _, ok := seen[host]; ok {
+			continue
+		}
+		seen[host] = struct{}{}
+		result = append(result, host)
+	}
+	return result
+}
+
+func cleanStrings(values []string) []string {
+	result := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		result = append(result, trimmed)
+	}
+	return result
+}
+
+func firstString(values []string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func dnsHost(raw string) string {
+	value := strings.Trim(strings.TrimSpace(raw), ".")
+	value = strings.Trim(value, `"`)
+	if value == "" {
+		return ""
+	}
+	if parsed, err := url.Parse(value); err == nil && parsed.Hostname() != "" {
+		value = parsed.Hostname()
+	}
+	return strings.ToLower(strings.Trim(strings.TrimSpace(value), "."))
+}
+
+func normalizeIP(raw string) string {
+	parsed := net.ParseIP(strings.TrimSpace(raw))
+	if parsed == nil {
+		return ""
+	}
+	if v4 := parsed.To4(); v4 != nil {
+		return v4.String()
+	}
+	return parsed.String()
+}
+
+func normalizeAWSResourceType(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.ReplaceAll(normalized, "-", "_")
+	normalized = strings.ReplaceAll(normalized, ".", "_")
+	return strings.Trim(normalized, "_")
+}
+
+func awsRoleSessionName(accountID string, family string) string {
+	name := sanitizeEventID("cerebro-" + firstNonEmpty(family, "source") + "-" + accountID)
+	if len(name) > 64 {
+		return name[:64]
+	}
+	return name
 }
 
 func cloudTrailActor(event cloudtrailtypes.Event, detail cloudTrailDetail) cloudTrailUserIdentity {
