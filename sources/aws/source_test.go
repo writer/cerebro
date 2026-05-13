@@ -193,6 +193,7 @@ func TestReadAWSExposureAndTrustPreview(t *testing.T) {
 				IpProtocol: awssdk.String("tcp"), FromPort: awssdk.Int32(443), ToPort: awssdk.Int32(443), IpRanges: []ec2types.IpRange{{CidrIp: awssdk.String("0.0.0.0/0")}},
 			}},
 		}},
+		addresses: []ec2types.Address{{AllocationId: awssdk.String("eipalloc-1"), PublicIp: awssdk.String("203.0.113.10"), NetworkInterfaceId: awssdk.String("eni-1")}},
 	})
 	for _, tt := range []struct {
 		family string
@@ -202,6 +203,7 @@ func TestReadAWSExposureAndTrustPreview(t *testing.T) {
 	}{
 		{family: familyIAMRoleTrust, kind: "aws.iam_role_trust", attr: "relationship", want: "can_assume"},
 		{family: familyResourceExposure, kind: "aws.resource_exposure", attr: "internet_exposed", want: "true"},
+		{family: familyPublicEndpoint, kind: "aws.public_endpoint", attr: "ip", want: "203.0.113.10"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
@@ -279,13 +281,15 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 }
 
 type fakeAWS struct {
-	users            []iamtypes.User
-	groups           []iamtypes.Group
-	roles            []iamtypes.Role
-	accessKeys       []iamtypes.AccessKeyMetadata
-	attachedPolicies []iamtypes.AttachedPolicy
-	cloudTrailEvents []cloudtrailtypes.Event
-	securityGroups   []ec2types.SecurityGroup
+	users             []iamtypes.User
+	groups            []iamtypes.Group
+	roles             []iamtypes.Role
+	accessKeys        []iamtypes.AccessKeyMetadata
+	attachedPolicies  []iamtypes.AttachedPolicy
+	cloudTrailEvents  []cloudtrailtypes.Event
+	securityGroups    []ec2types.SecurityGroup
+	addresses         []ec2types.Address
+	networkInterfaces []ec2types.NetworkInterface
 }
 
 func (f fakeAWS) ListUsers(context.Context, *iam.ListUsersInput, ...func(*iam.Options)) (*iam.ListUsersOutput, error) {
@@ -326,6 +330,14 @@ func (f fakeAWS) LookupEvents(context.Context, *cloudtrail.LookupEventsInput, ..
 
 func (f fakeAWS) DescribeSecurityGroups(context.Context, *ec2.DescribeSecurityGroupsInput, ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
 	return &ec2.DescribeSecurityGroupsOutput{SecurityGroups: f.securityGroups}, nil
+}
+
+func (f fakeAWS) DescribeAddresses(context.Context, *ec2.DescribeAddressesInput, ...func(*ec2.Options)) (*ec2.DescribeAddressesOutput, error) {
+	return &ec2.DescribeAddressesOutput{Addresses: f.addresses}, nil
+}
+
+func (f fakeAWS) DescribeNetworkInterfaces(context.Context, *ec2.DescribeNetworkInterfacesInput, ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error) {
+	return &ec2.DescribeNetworkInterfacesOutput{NetworkInterfaces: f.networkInterfaces}, nil
 }
 
 func timePtr(value string) *time.Time {

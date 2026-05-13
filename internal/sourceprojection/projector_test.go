@@ -1672,6 +1672,26 @@ func TestProjectCloudExposureAndPrivilegePaths(t *testing.T) {
 			},
 		},
 		{
+			Id:       "aws-public-endpoint",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.public_endpoint",
+			Attributes: map[string]string{
+				"domain":            "123456789012",
+				"endpoint_id":       "eni-1",
+				"endpoint_type":     "public_network_interface",
+				"external_exposure": "true",
+				"host":              "ec2-203-0-113-10.compute-1.amazonaws.com",
+				"internet_exposed":  "true",
+				"ip":                "203.0.113.10",
+				"public":            "true",
+				"resource_id":       "eni-1",
+				"resource_name":     "prod-web-eni",
+				"resource_provider": "aws",
+				"resource_type":     "network_interface",
+			},
+		},
+		{
 			Id:       "aws-role-trust",
 			TenantId: "writer",
 			SourceId: "aws",
@@ -1728,6 +1748,8 @@ func TestProjectCloudExposureAndPrivilegePaths(t *testing.T) {
 	}
 
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_public_principal:public_internet", relationCanReach, "urn:cerebro:writer:aws_security_group:arn:aws:ec2:us-east-1:123456789012:security-group/sg-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationRepresents, "urn:cerebro:writer:internet_host:ec2-203-0-113-10.compute-1.amazonaws.com")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationRepresents, "urn:cerebro:writer:internet_ip:203.0.113.10")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_role:arn:aws:iam::999999999999:role/ExternalAdmin", relationCanAssume, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/AdminRole")
 	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_user:admin@writer.com", relationCanImpersonate, "urn:cerebro:writer:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com")
 	assertProjectedLink(t, state, "urn:cerebro:writer:azure_service_principal:sp-1", relationAssignedTo, "urn:cerebro:writer:azure_service_principal:sp-resource-1")

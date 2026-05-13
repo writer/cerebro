@@ -11,6 +11,10 @@ func awsResourceExposureProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pr
 	return cloudResourceExposureProjections(event, awsIdentityProfile)
 }
 
+func awsPublicEndpointProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return cloudPublicEndpointProjections(event, awsIdentityProfile)
+}
+
 func azureResourceExposureProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return cloudResourceExposureProjections(event, azureIdentityProfile)
 }
@@ -98,6 +102,53 @@ func cloudResourceExposureProjections(event *cerebrov1.EventEnvelope, profile id
 			"protocol":      strings.TrimSpace(attributes["protocol"]),
 			"source_cidr":   strings.TrimSpace(attributes["source_cidr"]),
 		}))
+	}
+	return identityProjectionResult(entities, links)
+}
+
+func cloudPublicEndpointProjections(event *cerebrov1.EventEnvelope, profile identityProjectionProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	provider := profile.Provider
+	resourceType := normalizeCloudType(firstNonEmpty(attributes["resource_type"], "public_endpoint"))
+	resourceID := firstNonEmpty(attributes["resource_id"], attributes["endpoint_id"], attributes["host"], attributes["ip"])
+	resourceURN := projectionURN(tenantID, provider+"_"+resourceType, resourceID)
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	if resourceURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        resourceURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: profile.entityType(strings.ReplaceAll(resourceType, "_", ".")),
+			Label:      firstNonEmpty(attributes["resource_name"], attributes["endpoint_id"], attributes["host"], attributes["ip"], resourceID),
+			Attributes: map[string]string{
+				"domain":            strings.TrimSpace(attributes["domain"]),
+				"endpoint_id":       strings.TrimSpace(attributes["endpoint_id"]),
+				"endpoint_type":     strings.TrimSpace(attributes["endpoint_type"]),
+				"external_exposure": strings.TrimSpace(attributes["external_exposure"]),
+				"host":              strings.TrimSpace(attributes["host"]),
+				"internet_exposed":  strings.TrimSpace(attributes["internet_exposed"]),
+				"ip":                strings.TrimSpace(attributes["ip"]),
+				"public":            strings.TrimSpace(attributes["public"]),
+				"resource_id":       resourceID,
+				"resource_provider": strings.TrimSpace(attributes["resource_provider"]),
+				"resource_type":     resourceType,
+			},
+		})
+		addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, relationRepresents, attributes["host"], "aws_public_endpoint_host", "0.95")
+		if ipURN, ip := internetIPURN(tenantID, attributes["ip"]); ipURN != "" {
+			addInternetIPEntity(entities, tenantID, event.GetSourceId(), ipURN, ip)
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, ipURN, relationRepresents, map[string]string{
+				"confidence": "0.95",
+				"event_id":   event.GetId(),
+				"ip":         ip,
+				"match_type": "aws_public_endpoint_ip",
+			}))
+		}
 	}
 	return identityProjectionResult(entities, links)
 }

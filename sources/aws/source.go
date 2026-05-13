@@ -45,6 +45,7 @@ const (
 	familyIAMRoleAssign    = "iam_role_assignment"
 	familyIAMRole          = "iam_role"
 	familyIAMUser          = "iam_user"
+	familyPublicEndpoint   = "public_endpoint"
 	familyResourceExposure = "resource_exposure"
 )
 
@@ -98,6 +99,8 @@ type awsCloudTrailAPI interface {
 }
 
 type awsEC2API interface {
+	DescribeAddresses(context.Context, *ec2.DescribeAddressesInput, ...func(*ec2.Options)) (*ec2.DescribeAddressesOutput, error)
+	DescribeNetworkInterfaces(context.Context, *ec2.DescribeNetworkInterfacesInput, ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error)
 	DescribeSecurityGroups(context.Context, *ec2.DescribeSecurityGroupsInput, ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error)
 }
 
@@ -128,6 +131,18 @@ type awsResourceExposure struct {
 	Scope        string
 	Group        ec2types.SecurityGroup
 	Permission   ec2types.IpPermission
+}
+
+type awsPublicEndpoint struct {
+	ResourceID   string
+	ResourceName string
+	ResourceType string
+	EndpointID   string
+	EndpointType string
+	Host         string
+	IP           string
+	Region       string
+	Scope        string
 }
 
 type iamRoleTrust struct {
@@ -250,6 +265,15 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Event: resourceExposureEvent,
 			URN: func(settings settings, exposure awsResourceExposure) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:aws_resource_exposure:%s", settings.accountID, firstNonEmpty(exposure.ExposureID, exposure.ResourceID)), nil
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsPublicEndpoint]{
+			Name:  familyPublicEndpoint,
+			Label: "aws public endpoints",
+			List:  listPublicEndpoints,
+			Event: publicEndpointEvent,
+			URN: func(settings settings, endpoint awsPublicEndpoint) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_public_endpoint:%s", settings.accountID, firstNonEmpty(endpoint.EndpointID, endpoint.ResourceID, endpoint.IP, endpoint.Host)), nil
 			},
 		}),
 		awsFamily(s.clients, awsFamilyOptions[iamtypes.Group]{
@@ -409,7 +433,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyCloudTrail, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyResourceExposure:
+	case familyCloudTrail, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyPublicEndpoint, familyResourceExposure:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -433,7 +457,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("aws principal_name is required when family=%q", familyIAMRoleAssign)
 		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of access_key, cloudtrail, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, or resource_exposure")
+		return settings, fmt.Errorf("aws family must be one of access_key, cloudtrail, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, public_endpoint, or resource_exposure")
 	}
 	return settings, nil
 }
@@ -501,6 +525,68 @@ func listResourceExposures(ctx context.Context, clients awsClients, settings set
 	return exposures, awssdk.ToString(out.NextToken), nil
 }
 
+func listPublicEndpoints(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsPublicEndpoint, string, error) {
+	networkCursor := strings.TrimPrefix(cursor, "eni:")
+	if cursor == "" {
+		addresses, err := clients.ec2.DescribeAddresses(ctx, &ec2.DescribeAddressesInput{})
+		if err != nil {
+			return nil, "", err
+		}
+		endpoints := make([]awsPublicEndpoint, 0, len(addresses.Addresses))
+		for _, address := range addresses.Addresses {
+			ip := awssdk.ToString(address.PublicIp)
+			if ip == "" {
+				continue
+			}
+			endpoints = append(endpoints, awsPublicEndpoint{
+				ResourceID:   firstNonEmpty(awssdk.ToString(address.NetworkInterfaceId), awssdk.ToString(address.AllocationId), ip),
+				ResourceName: firstNonEmpty(awssdk.ToString(address.NetworkInterfaceId), awssdk.ToString(address.AllocationId), ip),
+				ResourceType: "elastic_ip",
+				EndpointID:   firstNonEmpty(awssdk.ToString(address.AllocationId), ip),
+				EndpointType: "public_ip",
+				IP:           ip,
+				Region:       settings.region,
+				Scope:        settings.accountID,
+			})
+		}
+		if len(endpoints) != 0 {
+			return endpoints, "eni:", nil
+		}
+	}
+	out, err := clients.ec2.DescribeNetworkInterfaces(ctx, &ec2.DescribeNetworkInterfacesInput{NextToken: stringPtr(networkCursor), MaxResults: int32Ptr(ec2PageSize(limit))})
+	if err != nil {
+		return nil, "", err
+	}
+	endpoints := make([]awsPublicEndpoint, 0, len(out.NetworkInterfaces))
+	for _, ni := range out.NetworkInterfaces {
+		if ni.Association == nil {
+			continue
+		}
+		ip := awssdk.ToString(ni.Association.PublicIp)
+		host := awssdk.ToString(ni.Association.PublicDnsName)
+		if ip == "" && host == "" {
+			continue
+		}
+		networkInterfaceID := awssdk.ToString(ni.NetworkInterfaceId)
+		endpoints = append(endpoints, awsPublicEndpoint{
+			ResourceID:   firstNonEmpty(networkInterfaceID, ip, host),
+			ResourceName: firstNonEmpty(tagValue(ni.TagSet, "Name"), awssdk.ToString(ni.Description), networkInterfaceID, ip, host),
+			ResourceType: "network_interface",
+			EndpointID:   firstNonEmpty(networkInterfaceID, ip, host),
+			EndpointType: "public_network_interface",
+			Host:         host,
+			IP:           ip,
+			Region:       settings.region,
+			Scope:        settings.accountID,
+		})
+	}
+	next := ""
+	if out.NextToken != nil && awssdk.ToString(out.NextToken) != "" {
+		next = "eni:" + awssdk.ToString(out.NextToken)
+	}
+	return endpoints, next, nil
+}
+
 func listIAMGroups(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]iamtypes.Group, string, error) {
 	out, err := clients.iam.ListGroups(ctx, &iam.ListGroupsInput{Marker: stringPtr(cursor), MaxItems: int32Ptr(limit)})
 	if err != nil {
@@ -515,6 +601,15 @@ func listIAMGroupMembers(ctx context.Context, clients awsClients, settings setti
 		return nil, "", err
 	}
 	return out.Users, nextMarker(out.IsTruncated, out.Marker), nil
+}
+
+func tagValue(tags []ec2types.Tag, key string) string {
+	for _, tag := range tags {
+		if strings.EqualFold(awssdk.ToString(tag.Key), key) {
+			return awssdk.ToString(tag.Value)
+		}
+	}
+	return ""
 }
 
 func listIAMPolicyAssignments(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]iamPolicyAssignment, string, error) {
@@ -762,6 +857,31 @@ func resourceExposureEvent(settings settings, exposure awsResourceExposure) (*pr
 		return nil, err
 	}
 	return sourceEvent(settings, "aws-resource-exposure-"+exposure.ExposureID, "aws.resource_exposure", "aws/resource_exposure/v1", payload, attributes, time.Now().UTC())
+}
+
+func publicEndpointEvent(settings settings, endpoint awsPublicEndpoint) (*primitives.Event, error) {
+	attributes := map[string]string{
+		"domain":            settings.accountID,
+		"endpoint_id":       endpoint.EndpointID,
+		"endpoint_type":     endpoint.EndpointType,
+		"external_exposure": "true",
+		"family":            familyPublicEndpoint,
+		"host":              endpoint.Host,
+		"internet_exposed":  "true",
+		"ip":                endpoint.IP,
+		"public":            "true",
+		"region":            endpoint.Region,
+		"resource_id":       endpoint.ResourceID,
+		"resource_name":     endpoint.ResourceName,
+		"resource_provider": "aws",
+		"resource_type":     endpoint.ResourceType,
+		"scope":             endpoint.Scope,
+	}
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "endpoint": endpoint})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "aws-public-endpoint-"+firstNonEmpty(endpoint.EndpointID, endpoint.ResourceID, endpoint.IP, endpoint.Host), "aws.public_endpoint", "aws/public_endpoint/v1", payload, attributes, time.Now().UTC())
 }
 
 func cloudTrailEvent(settings settings, event cloudtrailtypes.Event) (*primitives.Event, error) {
