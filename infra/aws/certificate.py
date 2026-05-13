@@ -34,9 +34,17 @@ def create_certificate(
             for option in options
         ]
     )
+    certificate_validation = aws.acm.CertificateValidation(
+        f"{name}-cert-validation",
+        certificate_arn=certificate.arn,
+        validation_record_fqdns=validation_records.apply(
+            lambda records: [record["record_name"] for record in records]
+        ),
+    )
 
     return {
         "certificate": certificate,
-        "certificate_arn": certificate.arn,
+        "certificate_validation": certificate_validation,
+        "certificate_arn": certificate_validation.certificate_arn,
         "validation_records": validation_records,
     }
