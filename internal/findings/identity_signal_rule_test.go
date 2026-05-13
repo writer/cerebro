@@ -413,6 +413,86 @@ func TestIdentitySignalRulesTreatRoutineOAuthGrantsAsTelemetry(t *testing.T) {
 	}
 }
 
+func TestIdentitySignalRulesControlTamperOktaEventTypeFiltering(t *testing.T) {
+	rules := identityRulesByID(t)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"}
+	for _, tt := range []struct {
+		name      string
+		eventType string
+		extra     map[string]string
+		want      int
+	}{
+		{
+			name:      "oauth authorize code",
+			eventType: "app.oauth2.authorize.code",
+			extra: map[string]string{
+				"credential_id":   "grant-1",
+				"credential_type": "authorization_code",
+			},
+			want: 0,
+		},
+		{
+			name:      "oauth access token grant",
+			eventType: "app.oauth2.token.grant.access_token",
+			extra: map[string]string{
+				"credential_id":   "token-1",
+				"credential_type": "access_token",
+			},
+			want: 0,
+		},
+		{
+			name:      "session start",
+			eventType: "user.session.start",
+			want:      0,
+		},
+		{
+			name:      "policy deactivated",
+			eventType: "policy.lifecycle.deactivate",
+			extra: map[string]string{
+				"resource_type": "Policy",
+			},
+			want: 1,
+		},
+		{
+			name:      "all mfa factors reset",
+			eventType: "user.mfa.factor.reset_all",
+			extra: map[string]string{
+				"resource_type": "User",
+			},
+			want: 1,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			attributes := map[string]string{
+				"domain":         "writer.okta.com",
+				"event_type":     tt.eventType,
+				"actor_id":       "00u-admin",
+				"actor_type":     "User",
+				"resource_id":    "00u-user",
+				"resource_type":  "User",
+				"outcome_result": "SUCCESS",
+			}
+			for key, value := range tt.extra {
+				attributes[key] = value
+			}
+			event := &cerebrov1.EventEnvelope{
+				Id:         "okta-" + strings.ReplaceAll(tt.eventType, ".", "-"),
+				TenantId:   "writer",
+				SourceId:   "okta",
+				Kind:       "okta.audit",
+				Attributes: attributes,
+			}
+			records, err := rules[identityControlTamperCredentialChangeRuleID].Evaluate(context.Background(), runtime, event)
+			if err != nil {
+				t.Fatalf("Evaluate(%s) error = %v", tt.eventType, err)
+			}
+			if len(records) != tt.want {
+				t.Fatalf("len(records) = %d, want %d", len(records), tt.want)
+			}
+		})
+	}
+}
+
 func TestIdentitySignalRulesStillDetectOAuthCredentialCreation(t *testing.T) {
 	rules := identityRulesByID(t)
 	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"}

@@ -330,11 +330,53 @@ func identityAction(attributes map[string]string) string {
 	return strings.ToLower(firstNonEmpty(attributes["event_type"], attributes["event_name"], attributes["action"], attributes["family"]))
 }
 
-func matchesIdentityAuthControlTampering(_ *cerebrov1.EventEnvelope, attributes map[string]string) bool {
+var oktaAuthControlEventTypes = map[string]struct{}{
+	"policy.lifecycle.activate":               {},
+	"policy.lifecycle.create":                 {},
+	"policy.lifecycle.deactivate":             {},
+	"policy.lifecycle.delete":                 {},
+	"policy.lifecycle.update":                 {},
+	"policy.rule.activate":                    {},
+	"policy.rule.create":                      {},
+	"policy.rule.deactivate":                  {},
+	"policy.rule.delete":                      {},
+	"policy.rule.lifecycle.activate":          {},
+	"policy.rule.lifecycle.create":            {},
+	"policy.rule.lifecycle.deactivate":        {},
+	"policy.rule.lifecycle.delete":            {},
+	"policy.rule.lifecycle.update":            {},
+	"policy.rule.update":                      {},
+	"security.threat.configuration.update":    {},
+	"security.threat.detected":                {},
+	"system.idp.lifecycle.activate":           {},
+	"system.idp.lifecycle.create":             {},
+	"system.idp.lifecycle.deactivate":         {},
+	"system.idp.lifecycle.delete":             {},
+	"system.idp.lifecycle.update":             {},
+	"user.account.update_two_factor_settings": {},
+	"zone.lifecycle.activate":                 {},
+	"zone.lifecycle.create":                   {},
+	"zone.lifecycle.deactivate":               {},
+	"zone.lifecycle.delete":                   {},
+	"zone.lifecycle.update":                   {},
+}
+
+func identityEventKind(event *cerebrov1.EventEnvelope, attributes map[string]string) string {
+	if event != nil {
+		return strings.ToLower(strings.TrimSpace(event.GetKind()))
+	}
+	return strings.ToLower(strings.TrimSpace(attributes["event_kind"]))
+}
+
+func matchesIdentityAuthControlTampering(event *cerebrov1.EventEnvelope, attributes map[string]string) bool {
 	if !identityOutcomeSuccessfulOrUnknown(attributes) {
 		return false
 	}
 	action := identityAction(attributes)
+	if identityEventKind(event, attributes) == "okta.audit" {
+		_, ok := oktaAuthControlEventTypes[action]
+		return ok
+	}
 	resourceType := strings.ToLower(firstNonEmpty(attributes["resource_type"], attributes["target_type"]))
 	return containsAny(action, "policy", "rule", "network_zone", "zone", "idp", "two_step", "2sv", "saml", "security_setting", "change_two_step") &&
 		containsAny(action+" "+resourceType, "update", "delete", "deactivate", "disable", "change", "remove")
@@ -416,13 +458,20 @@ func matchesIdentityExternalGroupMember(_ *cerebrov1.EventEnvelope, attributes m
 }
 
 func matchesIdentityControlTamperOrCredentialChange(event *cerebrov1.EventEnvelope, attributes map[string]string) bool {
+	action := identityAction(attributes)
+	if routineOAuthRuntimeGrant(action) {
+		return false
+	}
+	if identityEventKind(event, attributes) == "okta.audit" && strings.HasPrefix(action, "app.oauth2.") {
+		return false
+	}
 	if !identityOutcomeSuccessfulOrUnknown(attributes) {
 		return false
 	}
 	return matchesIdentityAuthControlTampering(event, attributes) ||
 		matchesIdentityMFAFactorResetOrDisabled(event, attributes) ||
 		matchesIdentityAPITokenOrOAuthCreated(event, attributes) ||
-		containsAny(identityAction(attributes), "password", "credential", "recovery", "reset")
+		containsAny(action, "password", "credential", "recovery", "reset")
 }
 
 func matchesIdentityPrivilegedNoMFAAccess(event *cerebrov1.EventEnvelope, attributes map[string]string) bool {
