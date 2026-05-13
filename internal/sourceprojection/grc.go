@@ -355,9 +355,22 @@ func grcVulnerableAssetReferenceAttrs(attrs map[string]string) []map[string]stri
 	result := make([]map[string]string, 0, len(references))
 	for _, reference := range references {
 		referenceAttrs := grcProjectionAttrsWith(attrs)
-		delete(referenceAttrs, "vulnerability_ids")
-		delete(referenceAttrs, "vulnerability_names")
-		delete(referenceAttrs, "package_identifiers")
+		for _, key := range []string{
+			"cve_id",
+			"ghsa_id",
+			"identifier",
+			"name",
+			"package",
+			"package_identifiers",
+			"package_purl",
+			"title",
+			"vulnerability_id",
+			"vulnerability_ids",
+			"vulnerability_names",
+			"vulnerability_package_refs",
+		} {
+			delete(referenceAttrs, key)
+		}
 		if strings.TrimSpace(reference.VulnerabilityID) != "" {
 			referenceAttrs["vulnerability_id"] = reference.VulnerabilityID
 		}

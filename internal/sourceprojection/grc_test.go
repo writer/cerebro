@@ -511,6 +511,34 @@ func TestProjectGRCVulnerableAssetPreservesPackageVulnerabilityPairs(t *testing.
 	assertProjectedLinkMissing(t, state, packageTwoURN, relationAffectedBy, vulnerabilityOneURN)
 }
 
+func TestProjectGRCVulnerableAssetDoesNotInferVulnerabilityFromReferenceJSON(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-vulnerable-asset-3",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.vulnerable_asset",
+		Attributes: map[string]string{
+			"provider":  "vanta",
+			"target_id": "target-3",
+			"vulnerability_package_refs": `[` +
+				`{"package_identifier":"pkg:golang/example/one@1.0.0"},` +
+				`{"vulnerability_id":"CVE-2026-4243","package_identifier":"pkg:golang/example/two@2.0.0"}` +
+				`]`,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	packageOneURN := "urn:cerebro:writer:package:grc:pkg:golang/example/one@1.0.0"
+	vulnerabilityTwoURN := "urn:cerebro:writer:vulnerability:cve-2026-4243"
+
+	assertProjectedLinkMissing(t, state, packageOneURN, relationAffectedBy, vulnerabilityTwoURN)
+}
+
 func TestProjectGRCVulnerabilityWritesGraphTargetIntegrationLinks(t *testing.T) {
 	state := &projectionRecorder{}
 	graph := &endpointCheckingGraphRecorder{}
