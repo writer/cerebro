@@ -92,7 +92,10 @@ func builtinRulePacks() []RulePack {
 			ID:          "vulnview",
 			Name:        "VulnView",
 			Description: "VulnView external attack-surface findings.",
-			Rules:       []Rule{newVulnViewActionableExternalFindingRule()},
+			Rules: []Rule{
+				newVulnViewActionableExternalFindingRule(),
+				newVulnViewExternalAssetConcentratedSignalRule(),
+			},
 		},
 		{
 			ID:          "data",

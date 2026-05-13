@@ -41,6 +41,7 @@ func TestProjectGRCVendorWithOwner(t *testing.T) {
 			"provider":               "vanta",
 			"vendor_id":              "vendor-1",
 			"name":                   "Acme SaaS",
+			"website_url":            "https://app.writer.com",
 			"security_owner_user_id": "user-1",
 			"inherent_risk_level":    "HIGH",
 		},
@@ -50,6 +51,7 @@ func TestProjectGRCVendorWithOwner(t *testing.T) {
 	}
 	vendorURN := "urn:cerebro:writer:vendor:vanta:vendor-1"
 	ownerURN := "urn:cerebro:writer:user:vanta:user-1"
+	hostURN := "urn:cerebro:writer:internet_host:app.writer.com"
 	if entity := state.entities[vendorURN]; entity == nil || entity.EntityType != "vendor" {
 		t.Fatalf("vendor entity missing: %#v", entity)
 	}
@@ -59,7 +61,11 @@ func TestProjectGRCVendorWithOwner(t *testing.T) {
 	if entity := state.entities[ownerURN]; entity == nil || entity.EntityType != "user" {
 		t.Fatalf("owner user entity missing: %#v", entity)
 	}
+	if entity := state.entities[hostURN]; entity == nil || entity.EntityType != "internet.host" {
+		t.Fatalf("internet host entity missing: %#v", entity)
+	}
 	assertProjectedLink(t, state, vendorURN, relationOwnedBy, ownerURN)
+	assertProjectedLink(t, state, vendorURN, relationHasIdentifier, hostURN)
 }
 
 func TestProjectGRCControlTestSupportsControlReferences(t *testing.T) {
@@ -387,6 +393,34 @@ func TestProjectGRCVulnerabilityLinksTargetPackageAndIntegration(t *testing.T) {
 	assertProjectedLink(t, state, targetURN, relationAffectedBy, vulnerabilityURN)
 	assertProjectedLink(t, state, targetURN, relationContains, packageURN)
 	assertProjectedLink(t, state, targetURN, relationBelongsTo, integrationURN)
+}
+
+func TestProjectGRCVulnerabilityLinksHostLikeTargetID(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-vulnerability-host-1",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.vulnerability",
+		Attributes: map[string]string{
+			"provider":         "vanta",
+			"vulnerability_id": "vuln-1",
+			"name":             "CVE-2026-4242",
+			"target_id":        "app.writer.com",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	targetURN := "urn:cerebro:writer:grc_target:vanta:app.writer.com"
+	hostURN := "urn:cerebro:writer:internet_host:app.writer.com"
+	if got := state.entities[targetURN].Attributes["host"]; got != "app.writer.com" {
+		t.Fatalf("target host = %q, want app.writer.com", got)
+	}
+	assertProjectedLink(t, state, targetURN, relationRepresents, hostURN)
 }
 
 func TestProjectGRCVulnerabilityWritesGraphTargetIntegrationLinks(t *testing.T) {
