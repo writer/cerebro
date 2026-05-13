@@ -13,12 +13,20 @@ import (
 )
 
 type stubRunStore struct {
-	runs []graphstore.IngestRun
+	runs    []graphstore.IngestRun
+	putRuns []graphstore.IngestRun
+	putFunc func(context.Context, graphstore.IngestRun) error
 }
 
 func (s *stubRunStore) Ping(context.Context) error { return nil }
 
-func (s *stubRunStore) PutIngestRun(context.Context, graphstore.IngestRun) error { return nil }
+func (s *stubRunStore) PutIngestRun(ctx context.Context, run graphstore.IngestRun) error {
+	s.putRuns = append(s.putRuns, run)
+	if s.putFunc != nil {
+		return s.putFunc(ctx, run)
+	}
+	return nil
+}
 
 func (s *stubRunStore) GetIngestRun(context.Context, string) (graphstore.IngestRun, bool, error) {
 	return graphstore.IngestRun{}, false, nil
@@ -341,6 +349,29 @@ func TestHealthFailedCountDoesNotDependOnPagingLimit(t *testing.T) {
 	}
 	if result.Status != "degraded" {
 		t.Fatalf("Health().Status = %q, want degraded", result.Status)
+	}
+}
+
+func TestPutTerminalIngestRunIgnoresParentCancellation(t *testing.T) {
+	parentCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	store := &stubRunStore{
+		putFunc: func(ctx context.Context, _ graphstore.IngestRun) error {
+			if err := ctx.Err(); err != nil {
+				t.Fatalf("PutIngestRun context error = %v, want nil", err)
+			}
+			return nil
+		},
+	}
+	run := graphstore.IngestRun{ID: "run-1", Status: graphstore.IngestRunStatusFailed}
+	if err := New(nil, nil, nil, nil).putTerminalIngestRun(parentCtx, store, run); err != nil {
+		t.Fatalf("putTerminalIngestRun() error = %v", err)
+	}
+	if len(store.putRuns) != 1 {
+		t.Fatalf("PutIngestRun calls = %d, want 1", len(store.putRuns))
+	}
+	if got := store.putRuns[0].Status; got != graphstore.IngestRunStatusFailed {
+		t.Fatalf("persisted status = %q, want failed", got)
 	}
 }
 
