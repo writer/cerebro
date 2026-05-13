@@ -5,7 +5,7 @@ stack_name="${1:?usage: wait-for-ecr-image.sh <stack-name>}"
 config_file="infra/aws/Pulumi.${stack_name}.yaml"
 ecr_repository="${ECR_REPOSITORY:-cerebro}"
 aws_region="${AWS_REGION:-us-east-1}"
-max_attempts="${MAX_ATTEMPTS:-30}"
+max_attempts="${MAX_ATTEMPTS:-60}"
 sleep_seconds="${SLEEP_SECONDS:-10}"
 
 image_tag="$(awk '$1 == "cerebro:imageTag:" { print $2; exit }' "${config_file}")"
