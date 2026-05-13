@@ -148,7 +148,6 @@ func vulnViewScanProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projected
 	for _, scan := range vulnViewScanRefs(event.GetAttributes()) {
 		scanEntity := vulnViewScanEntity(tenantID, event.GetSourceId(), scan, event.GetAttributes())
 		addEntity(entities, scanEntity)
-		addCloudAccountContext(entities, links, tenantID, event.GetSourceId(), event.GetId(), scanEntity.URN, event.GetAttributes())
 		for _, site := range vulnViewSiteRefs(event.GetAttributes()) {
 			siteEntity := vulnViewSiteEntity(tenantID, event.GetSourceId(), site)
 			addEntity(entities, siteEntity)
@@ -225,7 +224,6 @@ func vulnViewAddSiteAndScanContext(entities map[string]*ports.ProjectedEntity, l
 	for _, scan := range scans {
 		scanEntity := vulnViewScanEntity(tenantID, sourceID, scan, attrs)
 		addEntity(entities, scanEntity)
-		addCloudAccountContext(entities, links, tenantID, sourceID, event.GetId(), scanEntity.URN, attrs)
 		if assetURN != "" {
 			addLink(links, projectedLink(tenantID, sourceID, assetURN, scanEntity.URN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
