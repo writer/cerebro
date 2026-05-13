@@ -7,6 +7,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"golang.org/x/net/publicsuffix"
 )
 
 func internetHostURN(tenantID string, raw string) (string, string) {
@@ -81,18 +82,11 @@ func internetDomain(raw string) string {
 	if host == "" || net.ParseIP(host) != nil {
 		return ""
 	}
-	labels := strings.Split(host, ".")
-	clean := make([]string, 0, len(labels))
-	for _, label := range labels {
-		label = strings.TrimSpace(label)
-		if label != "" {
-			clean = append(clean, label)
-		}
-	}
-	if len(clean) < 2 {
+	domain, err := publicsuffix.EffectiveTLDPlusOne(host)
+	if err != nil {
 		return ""
 	}
-	return clean[len(clean)-2] + "." + clean[len(clean)-1]
+	return domain
 }
 
 func normalizeInternetHost(host string) string {
