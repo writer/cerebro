@@ -11,6 +11,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	appconfig "github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/sourceconfig"
 )
 
 const githubSourceID = "github"
@@ -102,7 +103,7 @@ func prepareSourceRuntimeWithCLI(ctx context.Context, runtime *cerebrov1.SourceR
 	if cli == nil {
 		return nil, fmt.Errorf("github local cli is required")
 	}
-	resolvedConfig, err := appconfig.ResolveSourceRuntimeConfigSecretReferences(ctx, cloned.GetSourceId(), cloned.GetConfig())
+	resolvedConfig, err := appconfig.ResolveSourceRuntimeConfigSecretReferences(ctx, cloned.GetSourceId(), sourceconfig.WithRuntimeTenant(cloned.GetConfig(), cloned.GetTenantId()))
 	if err != nil {
 		return nil, err
 	}

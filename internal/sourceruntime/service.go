@@ -498,11 +498,7 @@ func resolvedConfig(config map[string]string) map[string]string {
 }
 
 func sourceRuntimeConfig(config map[string]string, tenantID string) map[string]string {
-	cloned := resolvedConfig(config)
-	if tenantID := strings.TrimSpace(tenantID); tenantID != "" {
-		cloned[sourceconfig.RuntimeTenantIDKey] = tenantID
-	}
-	return cloned
+	return sourceconfig.WithRuntimeTenant(resolvedConfig(config), tenantID)
 }
 
 func withProgressConfigHash(config map[string]string, hash string) map[string]string {

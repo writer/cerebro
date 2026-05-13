@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -155,7 +156,7 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 	return nil
 }
 
-// Replay returns the latest matching stored envelopes in append order.
+// Replay returns the newest matching stored envelopes in append order.
 func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1.EventEnvelope, error) {
 	if l == nil || l.replay == nil {
 		return nil, errors.New("jetstream is not configured")
@@ -177,9 +178,9 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 	if err != nil {
 		return nil, fmt.Errorf("open replay stream %q: %w", stream.Config.Name, err)
 	}
-	events := make([]*cerebrov1.EventEnvelope, 0, limit)
+	candidates := make([]replayCandidate, 0, limit)
 	if stream.State.LastSeq == 0 || stream.State.LastSeq < stream.State.FirstSeq {
-		return events, nil
+		return nil, nil
 	}
 	for seq := stream.State.LastSeq; ; seq-- {
 		raw, err := streamRef.GetMsg(ctx, seq)
@@ -198,24 +199,56 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 				return nil, fmt.Errorf("decode replay message %s:%d: %w", stream.Config.Name, seq, err)
 			}
 			if matchesReplayRequest(event, request) {
-				events = append(events, event)
-				if uint32(len(events)) >= limit {
-					break
-				}
+				candidates = append(candidates, replayCandidate{event: event, seq: seq})
 			}
 		}
 		if seq == stream.State.FirstSeq {
 			break
 		}
 	}
-	reverseEvents(events)
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return replayCandidateNewer(candidates[i], candidates[j])
+	})
+	if uint32(len(candidates)) > limit {
+		candidates = candidates[:limit]
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return candidates[i].seq < candidates[j].seq
+	})
+	events := make([]*cerebrov1.EventEnvelope, 0, len(candidates))
+	for _, candidate := range candidates {
+		events = append(events, candidate.event)
+	}
 	return events, nil
 }
 
-func reverseEvents(events []*cerebrov1.EventEnvelope) {
-	for i, j := 0, len(events)-1; i < j; i, j = i+1, j-1 {
-		events[i], events[j] = events[j], events[i]
+type replayCandidate struct {
+	event *cerebrov1.EventEnvelope
+	seq   uint64
+}
+
+func replayCandidateNewer(left replayCandidate, right replayCandidate) bool {
+	leftTime, leftHasTime := replayEventTime(left.event)
+	rightTime, rightHasTime := replayEventTime(right.event)
+	switch {
+	case leftHasTime && rightHasTime && !leftTime.Equal(rightTime):
+		return leftTime.After(rightTime)
+	case leftHasTime != rightHasTime:
+		return leftHasTime
+	default:
+		return left.seq > right.seq
 	}
+}
+
+func replayEventTime(event *cerebrov1.EventEnvelope) (time.Time, bool) {
+	if event == nil || event.GetOccurredAt() == nil {
+		return time.Time{}, false
+	}
+	occurredAt := event.GetOccurredAt().AsTime().UTC()
+	if occurredAt.IsZero() {
+		return time.Time{}, false
+	}
+	return occurredAt, true
 }
 
 func eventSubject(prefix string, kind string) (string, error) {

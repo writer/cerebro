@@ -35,6 +35,21 @@ func LiteralEnvPrefixKey(key string) bool {
 	}
 }
 
+func InternalKey(key string) bool {
+	return strings.HasPrefix(strings.TrimSpace(key), "__cerebro_")
+}
+
+func WithRuntimeTenant(values map[string]string, tenantID string) map[string]string {
+	cloned := make(map[string]string, len(values)+1)
+	for key, value := range values {
+		cloned[key] = value
+	}
+	if tenantID := strings.TrimSpace(tenantID); tenantID != "" {
+		cloned[RuntimeTenantIDKey] = tenantID
+	}
+	return cloned
+}
+
 func SensitiveKey(key string) bool {
 	value := strings.ToLower(strings.TrimSpace(key))
 	if value == "" {

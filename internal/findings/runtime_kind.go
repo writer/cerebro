@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/sourceconfig"
 )
 
 func runtimeMayEmitEventKind(runtime *cerebrov1.SourceRuntime, allowed []string) bool {
@@ -24,6 +25,9 @@ func runtimeConfiguredEventKind(runtime *cerebrov1.SourceRuntime) string {
 	sourceID := strings.TrimSpace(runtime.GetSourceId())
 	family := strings.TrimSpace(runtime.GetConfig()["family"])
 	if sourceID == "" {
+		return ""
+	}
+	if sourceconfig.IsSecretReference(family) {
 		return ""
 	}
 	if family == "" {

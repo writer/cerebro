@@ -5,10 +5,12 @@ import (
 	"errors"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	natsjetstream "github.com/nats-io/nats.go/jetstream"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
@@ -348,6 +350,41 @@ func TestReplayReturnsLatestMatchesInAppendOrder(t *testing.T) {
 	}
 }
 
+func TestReplayReturnsNewestOccurredEventsWhenAppendedNewestFirst(t *testing.T) {
+	base := time.Date(2026, 5, 13, 18, 0, 0, 0, time.UTC)
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{
+					Name:     "CEREBRO_EVENTS",
+					Subjects: []string{"events.>"},
+				},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: 4},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				1: rawReplayMsg(t, "events.github.audit", replayEventAt("evt-newest", "github.audit", "writer-github", base.Add(4*time.Minute))),
+				2: rawReplayMsg(t, "events.github.audit", replayEventAt("evt-newer", "github.audit", "writer-github", base.Add(3*time.Minute))),
+				3: rawReplayMsg(t, "events.github.audit", replayEventAt("evt-older", "github.audit", "writer-github", base.Add(2*time.Minute))),
+				4: rawReplayMsg(t, "events.github.audit", replayEventAt("evt-oldest", "github.audit", "writer-github", base.Add(time.Minute))),
+			},
+		},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github", Limit: 2})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("len(events) = %d, want 2", len(events))
+	}
+	if events[0].GetId() != "evt-newest" || events[1].GetId() != "evt-newer" {
+		t.Fatalf("replayed ids = [%q, %q], want newest events [evt-newest, evt-newer]", events[0].GetId(), events[1].GetId())
+	}
+}
+
 func TestSubjectMatchesRequiresTokenForFullWildcard(t *testing.T) {
 	if subjectMatches("events.>", "events") {
 		t.Fatal("subjectMatches(events.>, events) = true, want false")
@@ -479,6 +516,12 @@ func replayEvent(id string, kind string, runtimeID string) *cerebrov1.EventEnvel
 			ports.EventAttributeSourceRuntimeID: runtimeID,
 		},
 	}
+}
+
+func replayEventAt(id string, kind string, runtimeID string, occurredAt time.Time) *cerebrov1.EventEnvelope {
+	event := replayEvent(id, kind, runtimeID)
+	event.OccurredAt = timestamppb.New(occurredAt)
+	return event
 }
 
 func rawReplayMsg(t *testing.T, subject string, event *cerebrov1.EventEnvelope) *natsjetstream.RawStreamMsg {

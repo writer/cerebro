@@ -115,11 +115,15 @@ func TestResolveSourceRuntimeConfigInjectsAWSAssumeRoleAllowlist(t *testing.T) {
 	t.Setenv(awsAssumeRoleARNsEnv, "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role")
 	resolved, err := ResolveSourceRuntimeConfigSecretReferences(context.Background(), "aws", map[string]string{
 		sourceconfig.AWSAssumeRoleAllowlistKey: "caller-controlled",
+		sourceconfig.RuntimeTenantIDKey:        "writer",
 	})
 	if err != nil {
 		t.Fatalf("ResolveSourceRuntimeConfigSecretReferences() error = %v", err)
 	}
 	if got := resolved[sourceconfig.AWSAssumeRoleAllowlistKey]; got != "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role" {
 		t.Fatalf("resolved assume-role allowlist = %q, want deployment env value", got)
+	}
+	if got := resolved[sourceconfig.RuntimeTenantIDKey]; got != "writer" {
+		t.Fatalf("resolved runtime tenant = %q, want writer", got)
 	}
 }
