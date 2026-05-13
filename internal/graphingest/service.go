@@ -252,23 +252,16 @@ func (s *Service) Health(ctx context.Context, limit uint32) (*HealthResult, erro
 	if err != nil {
 		return nil, err
 	}
-	allFailed, err := runStore.ListIngestRuns(ctx, graphstore.IngestRunFilter{
-		Status: graphstore.IngestRunStatusFailed,
-		Limit:  MaxStatusLimit,
-	})
+	recentRuns, err := runStore.ListIngestRuns(ctx, graphstore.IngestRunFilter{Limit: MaxStatusLimit})
 	if err != nil {
 		return nil, err
 	}
-	failed := allFailed
+	currentRuns := latestRunsByRuntime(recentRuns)
+	failed := filterRunsByStatus(currentRuns, graphstore.IngestRunStatusFailed)
+	running := filterRunsByStatus(currentRuns, graphstore.IngestRunStatusRunning)
+	allFailed := failed
 	if normalizedLimit > 0 && len(failed) > normalizedLimit {
 		failed = failed[:normalizedLimit]
-	}
-	running, err := runStore.ListIngestRuns(ctx, graphstore.IngestRunFilter{
-		Status: graphstore.IngestRunStatusRunning,
-		Limit:  MaxStatusLimit,
-	})
-	if err != nil {
-		return nil, err
 	}
 	status := "ready"
 	if len(allFailed) != 0 {
@@ -281,6 +274,58 @@ func (s *Service) Health(ctx context.Context, limit uint32) (*HealthResult, erro
 		RunningCount: uint32(len(running)),
 		FailedRuns:   failed,
 	}, nil
+}
+
+func latestRunsByRuntime(runs []graphstore.IngestRun) []graphstore.IngestRun {
+	latestByRuntime := map[string]graphstore.IngestRun{}
+	for _, run := range runs {
+		key := strings.TrimSpace(run.RuntimeID)
+		if key == "" {
+			key = strings.TrimSpace(run.ID)
+		}
+		if key == "" {
+			continue
+		}
+		if current, ok := latestByRuntime[key]; !ok || ingestRunStartedAfter(run, current) {
+			latestByRuntime[key] = run
+		}
+	}
+	latest := make([]graphstore.IngestRun, 0, len(latestByRuntime))
+	for _, run := range latestByRuntime {
+		latest = append(latest, run)
+	}
+	sort.SliceStable(latest, func(i, j int) bool {
+		if latest[i].StartedAt == latest[j].StartedAt {
+			return latest[i].ID > latest[j].ID
+		}
+		return ingestRunStartedAfter(latest[i], latest[j])
+	})
+	return latest
+}
+
+func ingestRunStartedAfter(left graphstore.IngestRun, right graphstore.IngestRun) bool {
+	leftStarted, leftErr := time.Parse(time.RFC3339Nano, strings.TrimSpace(left.StartedAt))
+	rightStarted, rightErr := time.Parse(time.RFC3339Nano, strings.TrimSpace(right.StartedAt))
+	if leftErr == nil && rightErr == nil && !leftStarted.Equal(rightStarted) {
+		return leftStarted.After(rightStarted)
+	}
+	if leftErr == nil && rightErr != nil {
+		return true
+	}
+	if leftErr != nil && rightErr == nil {
+		return false
+	}
+	return left.ID > right.ID
+}
+
+func filterRunsByStatus(runs []graphstore.IngestRun, status string) []graphstore.IngestRun {
+	filtered := make([]graphstore.IngestRun, 0, len(runs))
+	for _, run := range runs {
+		if run.Status == status {
+			filtered = append(filtered, run)
+		}
+	}
+	return filtered
 }
 
 func (s *Service) runStore() (RunStore, error) {

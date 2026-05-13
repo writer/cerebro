@@ -352,6 +352,44 @@ func TestHealthFailedCountDoesNotDependOnPagingLimit(t *testing.T) {
 	}
 }
 
+func TestHealthUsesLatestRunPerRuntime(t *testing.T) {
+	store := &stubRunStore{
+		runs: []graphstore.IngestRun{
+			{
+				ID:        "old-failed",
+				RuntimeID: "runtime-a",
+				Status:    graphstore.IngestRunStatusFailed,
+				StartedAt: "2026-05-12T10:00:00Z",
+			},
+			{
+				ID:        "new-completed",
+				RuntimeID: "runtime-a",
+				Status:    graphstore.IngestRunStatusCompleted,
+				StartedAt: "2026-05-12T11:00:00Z",
+			},
+			{
+				ID:        "latest-running",
+				RuntimeID: "runtime-b",
+				Status:    graphstore.IngestRunStatusRunning,
+				StartedAt: "2026-05-12T12:00:00Z",
+			},
+		},
+	}
+	result, err := New(nil, nil, nil, store).Health(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("Health() error = %v", err)
+	}
+	if result.FailedCount != 0 {
+		t.Fatalf("Health().FailedCount = %d, want 0", result.FailedCount)
+	}
+	if result.RunningCount != 1 {
+		t.Fatalf("Health().RunningCount = %d, want 1", result.RunningCount)
+	}
+	if result.Status != "ready" {
+		t.Fatalf("Health().Status = %q, want ready", result.Status)
+	}
+}
+
 func TestPutTerminalIngestRunIgnoresParentCancellation(t *testing.T) {
 	parentCtx, cancel := context.WithCancel(context.Background())
 	cancel()
