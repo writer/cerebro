@@ -31,7 +31,7 @@ func TestHookIntegrityManifestMatchesTrackedHooks(t *testing.T) {
 		entries[parts[1]] = parts[0]
 	}
 
-	for _, path := range []string{".githooks/pre-commit", ".githooks/pre-push"} {
+	for _, path := range []string{".githooks/pre-commit", ".githooks/commit-msg", ".githooks/pre-push"} {
 		want, ok := entries[path]
 		if !ok {
 			t.Fatalf("manifest missing %s", path)

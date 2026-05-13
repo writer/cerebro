@@ -1,0 +1,75 @@
+name: Leak Check
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  leak-check:
+    name: tenant-data leak check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Resolve range
+        id: range
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          zero="0000000000000000000000000000000000000000"
+          case "$EVENT_NAME" in
+            pull_request)
+              if [ -z "${BASE_SHA:-}" ] || [ -z "${HEAD_SHA:-}" ]; then
+                echo "leak-check: missing pull_request base/head sha" >&2
+                exit 1
+              fi
+              range="${BASE_SHA}...${HEAD_SHA}"
+              ;;
+            push)
+              if [ -z "${BEFORE_SHA:-}" ] || [ "${BEFORE_SHA}" = "${zero}" ]; then
+                # New branch push or no parent; scan the new commit's full
+                # diff against the merge base with origin/main (if possible).
+                if git rev-parse --verify origin/main >/dev/null 2>&1; then
+                  base="$(git merge-base origin/main "${AFTER_SHA}" 2>/dev/null || true)"
+                else
+                  base=""
+                fi
+                if [ -n "$base" ]; then
+                  range="${base}...${AFTER_SHA}"
+                else
+                  range="${AFTER_SHA}~1...${AFTER_SHA}"
+                fi
+              else
+                range="${BEFORE_SHA}...${AFTER_SHA}"
+              fi
+              ;;
+            *)
+              # workflow_dispatch / other: scan the diff between current
+              # HEAD and origin/main (no-op if HEAD == origin/main).
+              range="origin/main...HEAD"
+              ;;
+          esac
+          echo "range=${range}"
+          echo "range=${range}" >> "$GITHUB_OUTPUT"
+
+      - name: Run leak check
+        env:
+          RANGE: ${{ steps.range.outputs.range }}
+        run: |
+          set -euo pipefail
+          ./scripts/leak_check.sh range "$RANGE"

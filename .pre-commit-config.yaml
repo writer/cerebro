@@ -1,8 +1,27 @@
 repos:
   - repo: local
     hooks:
+      - id: cerebro-leak-check-staged
+        name: cerebro tenant-data leak check (staged)
+        entry: ./scripts/leak_check.sh staged
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+      - id: cerebro-leak-check-commit-msg
+        name: cerebro tenant-data leak check (commit message)
+        entry: ./scripts/leak_check.sh commit-msg
+        language: system
+        stages: [commit-msg]
       - id: cerebro-pre-commit-checks
         name: cerebro pre-commit checks
         entry: ./scripts/pre_commit_checks.sh
         language: system
         pass_filenames: false
+        stages: [pre-commit]
+      - id: cerebro-leak-check-pre-push
+        name: cerebro tenant-data leak check (pushed refs)
+        entry: ./scripts/leak_check.sh pushed
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+        require_serial: true
