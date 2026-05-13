@@ -1,9 +1,11 @@
-.PHONY: build serve test workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun lint lint-bootstrap proto-lint proto-generate openapi-check openapi-sync clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: build serve test workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun lint lint-bootstrap proto-lint proto-generate openapi-check openapi-lint openapi-sync govulncheck clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.11.4
-BUF := GOFLAGS= GOTOOLCHAIN=go1.26.2 go run github.com/bufbuild/buf/cmd/buf@v1.59.0
+BUF := GOFLAGS= GOTOOLCHAIN=go1.26.3 go run github.com/bufbuild/buf/cmd/buf@v1.59.0
+GOVULNCHECK := GOFLAGS= GOTOOLCHAIN=go1.26.3 go run golang.org/x/vuln/cmd/govulncheck@v1.1.4
+SPECTRAL := npx --yes @stoplight/spectral-cli@6.15.0
 APP_PACKAGES := ./api/... ./cmd/... ./internal/... ./sources/...
 LINTER_MODULE := ./tools/linters
 LINTER_BIN := $(GO_BIN)/cerebrolint
@@ -82,7 +84,7 @@ lint: lint-bootstrap
 	$(GOLANGCI_LINT) run --timeout 5m $(APP_PACKAGES)
 
 lint-bootstrap:
-	@if [ ! -x "$(GOLANGCI_LINT)" ]; then 		GOFLAGS= GOTOOLCHAIN=go1.26.2 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); 	fi
+	@if [ ! -x "$(GOLANGCI_LINT)" ]; then 		GOFLAGS= GOTOOLCHAIN=go1.26.3 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); 	fi
 
 proto-lint:
 	$(BUF) lint
@@ -93,8 +95,14 @@ proto-generate:
 openapi-check:
 	go run ./scripts/openapi_route_parity.go
 
+openapi-lint:
+	$(SPECTRAL) lint api/openapi.yaml
+
 openapi-sync:
 	go run ./scripts/openapi_route_parity.go --write
+
+govulncheck:
+	$(GOVULNCHECK) ./...
 
 clean:
 	rm -rf bin/
@@ -121,4 +129,4 @@ check-arch:
 
 check-hook-integrity: check-arch
 
-verify: build test lint proto-lint openapi-check check-structural check-structural-test check-arch
+verify: build test lint proto-lint openapi-check openapi-lint check-structural check-structural-test check-arch
