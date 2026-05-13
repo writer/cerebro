@@ -947,6 +947,7 @@ func (s *Service) staleOpenRulesForRuntime(ctx context.Context, runtime *cerebro
 	if seen == nil {
 		seen = map[string]struct{}{}
 	}
+	candidates := make(map[string]Rule)
 	staleRules := []Rule{}
 	for _, spec := range s.rules.List() {
 		ruleID := strings.TrimSpace(spec.GetId())
@@ -963,17 +964,52 @@ func (s *Service) staleOpenRulesForRuntime(ctx context.Context, runtime *cerebro
 		if _, isGraph := asGraphRule(rule); isGraph {
 			continue
 		}
-		hasStale, err := s.hasOpenFindingsForRule(ctx, runtime, ruleID)
-		if err != nil {
-			return nil, err
+		candidates[ruleID] = rule
+	}
+	if len(candidates) == 0 {
+		return staleRules, nil
+	}
+	openRuleIDs, err := s.openFindingRuleIDsForRuntime(ctx, runtime)
+	if err != nil {
+		return nil, err
+	}
+	for _, spec := range s.rules.List() {
+		ruleID := strings.TrimSpace(spec.GetId())
+		rule, ok := candidates[ruleID]
+		if !ok {
+			continue
 		}
-		if !hasStale {
+		if _, ok := openRuleIDs[ruleID]; !ok {
 			continue
 		}
 		seen[ruleID] = struct{}{}
 		staleRules = append(staleRules, rule)
 	}
 	return staleRules, nil
+}
+
+func (s *Service) openFindingRuleIDsForRuntime(ctx context.Context, runtime *cerebrov1.SourceRuntime) (map[string]struct{}, error) {
+	ruleIDs := map[string]struct{}{}
+	if s == nil || s.store == nil || runtime == nil {
+		return ruleIDs, nil
+	}
+	findings, err := s.store.ListFindings(ctx, ports.ListFindingsRequest{
+		TenantID:  strings.TrimSpace(runtime.GetTenantId()),
+		RuntimeID: strings.TrimSpace(runtime.GetId()),
+		Status:    findingStatusOpen,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list stale candidates for runtime %q: %w", strings.TrimSpace(runtime.GetId()), err)
+	}
+	for _, finding := range findings {
+		if finding == nil {
+			continue
+		}
+		if ruleID := strings.TrimSpace(finding.RuleID); ruleID != "" {
+			ruleIDs[ruleID] = struct{}{}
+		}
+	}
+	return ruleIDs, nil
 }
 
 func (s *Service) hasOpenFindingsForRule(ctx context.Context, runtime *cerebrov1.SourceRuntime, ruleID string) (bool, error) {

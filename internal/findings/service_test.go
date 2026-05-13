@@ -65,19 +65,20 @@ func (s *recordingAppendLog) Append(_ context.Context, event *cerebrov1.EventEnv
 }
 
 type stubFindingStore struct {
-	findings         map[string]*ports.FindingRecord
-	request          ports.ListFindingsRequest
-	listFindingsErr  error
-	claims           map[string]*ports.ClaimRecord
-	claimListRequest ports.ListClaimsRequest
-	runs             map[string]*cerebrov1.FindingEvaluationRun
-	runList          ports.ListFindingEvaluationRunsRequest
-	runPutCount      int
-	failRunPutOn     int
-	failRunPutErr    error
-	failRunPutByCall map[int]error
-	evidence         map[string]*cerebrov1.FindingEvidence
-	evidenceList     ports.ListFindingEvidenceRequest
+	findings             map[string]*ports.FindingRecord
+	request              ports.ListFindingsRequest
+	listFindingsRequests []ports.ListFindingsRequest
+	listFindingsErr      error
+	claims               map[string]*ports.ClaimRecord
+	claimListRequest     ports.ListClaimsRequest
+	runs                 map[string]*cerebrov1.FindingEvaluationRun
+	runList              ports.ListFindingEvaluationRunsRequest
+	runPutCount          int
+	failRunPutOn         int
+	failRunPutErr        error
+	failRunPutByCall     map[int]error
+	evidence             map[string]*cerebrov1.FindingEvidence
+	evidenceList         ports.ListFindingEvidenceRequest
 }
 
 func (s *stubFindingStore) Ping(context.Context) error { return nil }
@@ -113,6 +114,7 @@ func (s *stubFindingStore) GetFinding(_ context.Context, id string) (*ports.Find
 
 func (s *stubFindingStore) ListFindings(_ context.Context, request ports.ListFindingsRequest) ([]*ports.FindingRecord, error) {
 	s.request = request
+	s.listFindingsRequests = append(s.listFindingsRequests, request)
 	if s.listFindingsErr != nil {
 		return nil, s.listFindingsErr
 	}
@@ -1781,6 +1783,53 @@ func TestEvaluateSourceRuntimeRulesIncludesUnsupportedRulesWithOpenFindings(t *t
 	}
 	if got := store.findings["finding-old"].Status; got != findingStatusResolved {
 		t.Fatalf("stale finding status = %q, want %q", got, findingStatusResolved)
+	}
+}
+
+func TestEvaluateSourceRuntimeRulesProbesStaleUnsupportedRulesOnce(t *testing.T) {
+	registry, err := NewRegistry(
+		&emittingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "live-rule", Name: "Live Rule"},
+			supportedSourceIDs: map[string]struct{}{"aws": {}},
+		},
+		&emittingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "old-rule-a", Name: "Old Rule A"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+		},
+		&emittingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "old-rule-b", Name: "Old Rule B"},
+			supportedSourceIDs: map[string]struct{}{"github": {}},
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &stubFindingStore{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-aws-public-endpoint": {Id: "writer-aws-public-endpoint", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "public_endpoint"}},
+		}},
+		&stubReplayer{},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	)
+
+	result, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-aws-public-endpoint"})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeRules() error = %v", err)
+	}
+	if len(result.Evaluations) != 1 || result.Evaluations[0].Rule.GetId() != "live-rule" {
+		t.Fatalf("evaluations = %#v, want only live-rule", result.Evaluations)
+	}
+	if got := len(store.listFindingsRequests); got != 1 {
+		t.Fatalf("ListFindings calls = %d, want one stale unsupported probe", got)
+	}
+	request := store.listFindingsRequests[0]
+	if request.RuleID != "" || request.RuntimeID != "writer-aws-public-endpoint" || request.Status != findingStatusOpen {
+		t.Fatalf("stale probe request = %#v, want one runtime-wide open-finding query", request)
 	}
 }
 
