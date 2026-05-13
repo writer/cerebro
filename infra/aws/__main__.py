@@ -142,11 +142,37 @@ web_container_port = _config_int("webContainerPort", 3000)
 web_api_base = config.get("webApiBase") or (f"https://{domain}" if domain else "")
 web_forward_auth_headers = _config_bool("webForwardAuthHeaders", False)
 web_api_key_secret_name = config.get("webApiKeySecretName") or "CEREBRO_API_KEYS"
+web_oidc_enabled = _config_bool("webOidcEnabled", False)
+web_oidc_issuer = (config.get("webOidcIssuer") or "").rstrip("/")
+web_oidc_client_id = config.get("webOidcClientId") or ""
+web_oidc_client_secret = _config_optional_secret("webOidcClientSecret")
+web_oidc_session_cookie_name = config.get("webOidcSessionCookieName") or "CerebroWebOidcSession"
+web_oidc_session_timeout_seconds = _config_int("webOidcSessionTimeoutSeconds", 28800)
 
 if web_enabled and not web_container_image:
     raise ValueError("cerebro:webEcrBaseUri and cerebro:webImageTag are required when webEnabled is true")
 if web_enabled and not web_api_base:
     raise ValueError("cerebro:webApiBase or cerebro:domain is required when webEnabled is true")
+if web_oidc_enabled:
+    if not web_enabled:
+        raise ValueError("cerebro:webEnabled must be true when cerebro:webOidcEnabled is true")
+    if not (web_domain and web_certificate_arn):
+        raise ValueError("cerebro:webDomain and cerebro:webCertificateArn are required when cerebro:webOidcEnabled is true")
+    if not (web_oidc_issuer and web_oidc_client_id and web_oidc_client_secret):
+        raise ValueError("cerebro:webOidcIssuer, cerebro:webOidcClientId, and cerebro:webOidcClientSecret are required when webOidcEnabled is true")
+
+web_oidc_auth = None
+if web_oidc_enabled:
+    web_oidc_auth = {
+        "issuer": web_oidc_issuer,
+        "authorization_endpoint": f"{web_oidc_issuer}/v1/authorize",
+        "token_endpoint": f"{web_oidc_issuer}/v1/token",
+        "user_info_endpoint": f"{web_oidc_issuer}/v1/userinfo",
+        "client_id": web_oidc_client_id,
+        "client_secret": web_oidc_client_secret,
+        "session_cookie_name": web_oidc_session_cookie_name,
+        "session_timeout": web_oidc_session_timeout_seconds,
+    }
 
 alb_internal = _config_bool("albInternal", True)
 configured_alb_ingress_cidrs = config.get_object("albIngressCidrs") or None
@@ -419,6 +445,7 @@ alb_stack = load_balancer.create_alb(
     container_port=8080,
     enable_deletion_protection=enable_alb_deletion_protection,
     enable_access_logs=enable_alb_access_logs,
+    allowed_hostnames=[domain] if domain else None,
 )
 
 web_alb_stack = None
@@ -435,6 +462,8 @@ if web_enabled:
         container_port=web_container_port,
         enable_deletion_protection=enable_alb_deletion_protection,
         enable_access_logs=enable_alb_access_logs,
+        allowed_hostnames=[web_domain] if web_domain else None,
+        oidc_auth=web_oidc_auth,
     )
 
 # =============================================================================
@@ -551,6 +580,9 @@ monitoring_stack = monitoring.create_monitoring(
     target_group_arn_suffix=alb_stack["target_group"].arn_suffix,
     ecs_cluster_name=ecs_stack["cluster"].name,
     ecs_service_name=ecs_stack["api_service"].name,
+    web_alb_arn_suffix=web_alb_stack["alb"].arn_suffix if web_alb_stack else None,
+    web_target_group_arn_suffix=web_alb_stack["target_group"].arn_suffix if web_alb_stack else None,
+    web_ecs_service_name=web_stack["service"].name if web_stack else None,
     log_group_name=ecs_stack["log_group"].name,
     log_retention_days=log_retention_days,
     jetstream_stream_name=jetstream_stream_name,
@@ -638,6 +670,8 @@ pulumi.export("api_url", pulumi.Output.concat("https://", domain) if domain else
 if web_alb_stack:
     pulumi.export("web_alb_dns_name", web_alb_stack["alb"].dns_name)
     pulumi.export("web_url", pulumi.Output.concat("https://", web_domain) if web_domain else pulumi.Output.concat("http://", web_alb_stack["alb"].dns_name))
+    if web_domain:
+        pulumi.export("web_oidc_redirect_uri", f"https://{web_domain}/oauth2/idpresponse")
 pulumi.export("kms_key_id", kms_key["key_id"])
 pulumi.export("kms_key_alias", kms_key["alias"].name)
 pulumi.export("postgres_endpoint", postgres_stack["instance"].address)

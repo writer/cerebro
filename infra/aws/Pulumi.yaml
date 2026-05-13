@@ -61,6 +61,30 @@ config:
     type: string
     default: CEREBRO_API_KEYS
     description: Secret key under externalSecretsPrefix mounted into the web console as CEREBRO_API_KEYS
+  cerebro:webOidcEnabled:
+    type: boolean
+    default: false
+    description: Protect the web console ALB HTTPS listener with OIDC authentication
+  cerebro:webOidcIssuer:
+    type: string
+    default: ""
+    description: OIDC issuer URL for the web console ALB authentication action
+  cerebro:webOidcClientId:
+    type: string
+    default: ""
+    description: OIDC client ID for the web console ALB authentication action
+  cerebro:webOidcClientSecret:
+    type: string
+    default: ""
+    description: OIDC client secret for the web console ALB authentication action; set with pulumi config set --secret
+  cerebro:webOidcSessionCookieName:
+    type: string
+    default: CerebroWebOidcSession
+    description: Session cookie name used by ALB OIDC authentication for the web console
+  cerebro:webOidcSessionTimeoutSeconds:
+    type: integer
+    default: 28800
+    description: ALB OIDC session timeout in seconds for the web console
   cerebro:webCpu:
     type: integer
     default: 512

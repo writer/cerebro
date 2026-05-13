@@ -27,6 +27,9 @@ def create_monitoring(
     target_group_arn_suffix: pulumi.Output[str],
     ecs_cluster_name: pulumi.Output[str],
     ecs_service_name: pulumi.Output[str],
+    web_alb_arn_suffix: pulumi.Output[str] = None,
+    web_target_group_arn_suffix: pulumi.Output[str] = None,
+    web_ecs_service_name: pulumi.Output[str] = None,
     log_group_name: pulumi.Output[str] = None,
     log_retention_days: int = 30,
     jetstream_stream_name: str = "CEREBRO_EVENTS",
@@ -175,6 +178,124 @@ def create_monitoring(
         },
         tags={"Name": f"{name}-memory-alarm"},
     )
+
+    if web_alb_arn_suffix and web_target_group_arn_suffix and web_ecs_service_name:
+        aws.cloudwatch.MetricAlarm(
+            f"{name}-web-5xx-alarm",
+            name=f"{name}-web-high-5xx-errors",
+            comparison_operator="GreaterThanThreshold",
+            evaluation_periods=2,
+            metric_name="HTTPCode_Target_5XX_Count",
+            namespace="AWS/ApplicationELB",
+            period=300,
+            statistic="Sum",
+            threshold=10,
+            alarm_description="High web console 5xx error rate",
+            alarm_actions=alarm_actions,
+            treat_missing_data="notBreaching",
+            dimensions={
+                "LoadBalancer": web_alb_arn_suffix,
+                "TargetGroup": web_target_group_arn_suffix,
+            },
+            tags={"Name": f"{name}-web-5xx-alarm"},
+        )
+
+        aws.cloudwatch.MetricAlarm(
+            f"{name}-web-latency-alarm",
+            name=f"{name}-web-high-latency",
+            comparison_operator="GreaterThanThreshold",
+            evaluation_periods=3,
+            metric_name="TargetResponseTime",
+            namespace="AWS/ApplicationELB",
+            period=300,
+            statistic="Average",
+            threshold=2.0,
+            alarm_description="High web console latency (>2s)",
+            alarm_actions=alarm_actions,
+            treat_missing_data="notBreaching",
+            dimensions={
+                "LoadBalancer": web_alb_arn_suffix,
+                "TargetGroup": web_target_group_arn_suffix,
+            },
+            tags={"Name": f"{name}-web-latency-alarm"},
+        )
+
+        aws.cloudwatch.MetricAlarm(
+            f"{name}-web-unhealthy-alarm",
+            name=f"{name}-web-unhealthy-targets",
+            comparison_operator="GreaterThanThreshold",
+            evaluation_periods=2,
+            metric_name="UnHealthyHostCount",
+            namespace="AWS/ApplicationELB",
+            period=60,
+            statistic="Average",
+            threshold=0,
+            alarm_description="Unhealthy web console ECS tasks",
+            alarm_actions=alarm_actions,
+            dimensions={
+                "LoadBalancer": web_alb_arn_suffix,
+                "TargetGroup": web_target_group_arn_suffix,
+            },
+            tags={"Name": f"{name}-web-unhealthy-alarm"},
+        )
+
+        aws.cloudwatch.MetricAlarm(
+            f"{name}-web-no-healthy-targets-alarm",
+            name=f"{name}-web-no-healthy-targets",
+            comparison_operator="LessThanThreshold",
+            evaluation_periods=2,
+            metric_name="HealthyHostCount",
+            namespace="AWS/ApplicationELB",
+            period=60,
+            statistic="Average",
+            threshold=1,
+            treat_missing_data="breaching",
+            alarm_description="No healthy web console ALB targets are registered",
+            alarm_actions=alarm_actions,
+            dimensions={
+                "LoadBalancer": web_alb_arn_suffix,
+                "TargetGroup": web_target_group_arn_suffix,
+            },
+            tags={"Name": f"{name}-web-no-healthy-targets-alarm"},
+        )
+
+        aws.cloudwatch.MetricAlarm(
+            f"{name}-web-cpu-alarm",
+            name=f"{name}-web-high-cpu",
+            comparison_operator="GreaterThanThreshold",
+            evaluation_periods=3,
+            metric_name="CPUUtilization",
+            namespace="AWS/ECS",
+            period=300,
+            statistic="Average",
+            threshold=85,
+            alarm_description="High web console ECS CPU utilization",
+            alarm_actions=alarm_actions,
+            dimensions={
+                "ClusterName": ecs_cluster_name,
+                "ServiceName": web_ecs_service_name,
+            },
+            tags={"Name": f"{name}-web-cpu-alarm"},
+        )
+
+        aws.cloudwatch.MetricAlarm(
+            f"{name}-web-memory-alarm",
+            name=f"{name}-web-high-memory",
+            comparison_operator="GreaterThanThreshold",
+            evaluation_periods=3,
+            metric_name="MemoryUtilization",
+            namespace="AWS/ECS",
+            period=300,
+            statistic="Average",
+            threshold=85,
+            alarm_description="High web console ECS memory utilization",
+            alarm_actions=alarm_actions,
+            dimensions={
+                "ClusterName": ecs_cluster_name,
+                "ServiceName": web_ecs_service_name,
+            },
+            tags={"Name": f"{name}-web-memory-alarm"},
+        )
 
     # CloudWatch Dashboard
     telemetry_filters = {}

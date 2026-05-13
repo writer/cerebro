@@ -21,6 +21,8 @@ def create_alb(
     enable_deletion_protection: bool = False,
     enable_access_logs: bool = False,
     access_logs_retention_days: int = 90,
+    allowed_hostnames: list[str] = None,
+    oidc_auth: dict = None,
 ) -> dict:
     """
     Create Application Load Balancer.
@@ -38,7 +40,83 @@ def create_alb(
         enable_deletion_protection: Prevent accidental ALB deletion
         enable_access_logs: Enable ALB access logs to S3
         access_logs_retention_days: Days to retain access logs
+        allowed_hostnames: Host headers allowed to reach the target group
+        oidc_auth: Optional ALB OIDC authentication settings
     """
+    def oidc_default_action(order: int):
+        return aws.lb.ListenerDefaultActionArgs(
+            type="authenticate-oidc",
+            order=order,
+            authenticate_oidc=aws.lb.ListenerDefaultActionAuthenticateOidcArgs(
+                authorization_endpoint=oidc_auth["authorization_endpoint"],
+                client_id=oidc_auth["client_id"],
+                client_secret=oidc_auth["client_secret"],
+                issuer=oidc_auth["issuer"],
+                token_endpoint=oidc_auth["token_endpoint"],
+                user_info_endpoint=oidc_auth["user_info_endpoint"],
+                on_unauthenticated_request=oidc_auth.get("on_unauthenticated_request", "authenticate"),
+                scope=oidc_auth.get("scope", "openid profile email"),
+                session_cookie_name=oidc_auth.get("session_cookie_name"),
+                session_timeout=oidc_auth.get("session_timeout"),
+            ),
+        )
+
+    def oidc_rule_action(order: int):
+        return aws.lb.ListenerRuleActionArgs(
+            type="authenticate-oidc",
+            order=order,
+            authenticate_oidc=aws.lb.ListenerRuleActionAuthenticateOidcArgs(
+                authorization_endpoint=oidc_auth["authorization_endpoint"],
+                client_id=oidc_auth["client_id"],
+                client_secret=oidc_auth["client_secret"],
+                issuer=oidc_auth["issuer"],
+                token_endpoint=oidc_auth["token_endpoint"],
+                user_info_endpoint=oidc_auth["user_info_endpoint"],
+                on_unauthenticated_request=oidc_auth.get("on_unauthenticated_request", "authenticate"),
+                scope=oidc_auth.get("scope", "openid profile email"),
+                session_cookie_name=oidc_auth.get("session_cookie_name"),
+                session_timeout=oidc_auth.get("session_timeout"),
+            ),
+        )
+
+    def default_forward_actions():
+        actions = []
+        if oidc_auth:
+            actions.append(oidc_default_action(1))
+        actions.append(
+            aws.lb.ListenerDefaultActionArgs(
+                type="forward",
+                target_group_arn=target_group.arn,
+                order=2 if oidc_auth else None,
+            )
+        )
+        return actions
+
+    def rule_forward_actions():
+        actions = []
+        if oidc_auth:
+            actions.append(oidc_rule_action(1))
+        actions.append(
+            aws.lb.ListenerRuleActionArgs(
+                type="forward",
+                target_group_arn=target_group.arn,
+                order=2 if oidc_auth else None,
+            )
+        )
+        return actions
+
+    def fixed_response_default_actions():
+        return [
+            aws.lb.ListenerDefaultActionArgs(
+                type="fixed-response",
+                fixed_response=aws.lb.ListenerDefaultActionFixedResponseArgs(
+                    content_type="text/plain",
+                    message_body="host not allowed",
+                    status_code="404",
+                ),
+            )
+        ]
+
     # Create ALB access logs bucket if enabled
     access_logs_bucket = None
     if enable_access_logs:
@@ -195,13 +273,24 @@ def create_alb(
             protocol="HTTPS",
             ssl_policy="ELBSecurityPolicy-TLS13-1-2-2021-06",
             certificate_arn=listener_certificate_arn,
-            default_actions=[
-                aws.lb.ListenerDefaultActionArgs(
-                    type="forward",
-                    target_group_arn=target_group.arn,
-                )
-            ],
+            default_actions=fixed_response_default_actions() if allowed_hostnames else default_forward_actions(),
         )
+
+        listener_rule = None
+        if allowed_hostnames:
+            listener_rule = aws.lb.ListenerRule(
+                f"{name}-host-forward-rule",
+                listener_arn=listener.arn,
+                priority=100,
+                conditions=[
+                    aws.lb.ListenerRuleConditionArgs(
+                        host_header=aws.lb.ListenerRuleConditionHostHeaderArgs(
+                            values=allowed_hostnames,
+                        ),
+                    )
+                ],
+                actions=rule_forward_actions(),
+            )
 
         # HTTP to HTTPS redirect
         aws.lb.Listener(
@@ -227,16 +316,27 @@ def create_alb(
             load_balancer_arn=alb.arn,
             port=80,
             protocol="HTTP",
-            default_actions=[
-                aws.lb.ListenerDefaultActionArgs(
-                    type="forward",
-                    target_group_arn=target_group.arn,
-                )
-            ],
+            default_actions=fixed_response_default_actions() if allowed_hostnames else default_forward_actions(),
         )
+        listener_rule = None
+        if allowed_hostnames:
+            listener_rule = aws.lb.ListenerRule(
+                f"{name}-host-forward-rule",
+                listener_arn=listener.arn,
+                priority=100,
+                conditions=[
+                    aws.lb.ListenerRuleConditionArgs(
+                        host_header=aws.lb.ListenerRuleConditionHostHeaderArgs(
+                            values=allowed_hostnames,
+                        ),
+                    )
+                ],
+                actions=rule_forward_actions(),
+            )
 
     return {
         "alb": alb,
         "target_group": target_group,
         "listener": listener,
+        "listener_rule": listener_rule,
     }
