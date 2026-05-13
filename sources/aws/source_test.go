@@ -2,6 +2,7 @@ package aws
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"testing"
 	"time"
@@ -47,6 +48,20 @@ func TestCheckRequiresAccountID(t *testing.T) {
 	}
 }
 
+func TestCheckRejectsDeprecatedAssumeRoleConfig(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	for _, key := range []string{"role_arn", "external_id", "role_session_name"} {
+		t.Run(key, func(t *testing.T) {
+			if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", key: "legacy"})); err == nil {
+				t.Fatalf("Check() error = nil, want unsupported %s error", key)
+			}
+		})
+	}
+}
+
 func TestAWSPullFromRecordsPreservesNextCursorWithoutEvents(t *testing.T) {
 	pull, err := awsPullFromRecords[string](nil, "next-page", nil, nil)
 	if err != nil {
@@ -58,6 +73,56 @@ func TestAWSPullFromRecordsPreservesNextCursorWithoutEvents(t *testing.T) {
 	if got := pull.NextCursor.GetOpaque(); got != "next-page" {
 		t.Fatalf("NextCursor = %q, want next-page", got)
 	}
+}
+
+func TestParsePublicEndpointCursorUpgradesLegacyStages(t *testing.T) {
+	legacyPastAPIGateway := legacyPublicEndpointCursor(t, publicEndpointCursor{Stage: publicEndpointStageEIP, Token: "old-token"})
+	got, err := parsePublicEndpointCursor(legacyPastAPIGateway)
+	if err != nil {
+		t.Fatalf("parsePublicEndpointCursor(legacy eip) error = %v", err)
+	}
+	if got.Stage != publicEndpointStageAPIGatewayRestAPI {
+		t.Fatalf("legacy eip stage = %q, want %q", got.Stage, publicEndpointStageAPIGatewayRestAPI)
+	}
+	if got.Token != "" {
+		t.Fatalf("legacy eip token = %q, want empty backfill token", got.Token)
+	}
+
+	legacyAPIGateway := legacyPublicEndpointCursor(t, publicEndpointCursor{Stage: publicEndpointStageAPIGateway, Token: "domain-page"})
+	got, err = parsePublicEndpointCursor(legacyAPIGateway)
+	if err != nil {
+		t.Fatalf("parsePublicEndpointCursor(legacy apigateway) error = %v", err)
+	}
+	if got.Stage != publicEndpointStageAPIGateway || got.Token != "domain-page" {
+		t.Fatalf("legacy apigateway cursor = %#v, want stage %q token domain-page", got, publicEndpointStageAPIGateway)
+	}
+
+	versioned := encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageEIP, Token: "new-token"})
+	got, err = parsePublicEndpointCursor(versioned)
+	if err != nil {
+		t.Fatalf("parsePublicEndpointCursor(versioned eip) error = %v", err)
+	}
+	if got.Stage != publicEndpointStageEIP || got.Token != "new-token" || got.Version != publicEndpointCursorV2 {
+		t.Fatalf("versioned eip cursor = %#v, want stage %q token new-token version %d", got, publicEndpointStageEIP, publicEndpointCursorV2)
+	}
+
+	got, err = parsePublicEndpointCursor("eni:legacy-token")
+	if err != nil {
+		t.Fatalf("parsePublicEndpointCursor(legacy eni) error = %v", err)
+	}
+	if got.Stage != publicEndpointStageAPIGatewayRestAPI {
+		t.Fatalf("legacy eni stage = %q, want %q", got.Stage, publicEndpointStageAPIGatewayRestAPI)
+	}
+}
+
+func legacyPublicEndpointCursor(t *testing.T, cursor publicEndpointCursor) string {
+	t.Helper()
+	cursor.Version = 0
+	payload, err := json.Marshal(cursor)
+	if err != nil {
+		t.Fatalf("marshal legacy cursor: %v", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(payload)
 }
 
 func TestEmailLikeExtractsSSOSessionEmail(t *testing.T) {
@@ -366,6 +431,16 @@ func TestReadAWSPublicEndpointCollectsDefaultAPIGatewayHosts(t *testing.T) {
 	}
 	if got := apiV2Event.Attributes["resource_type"]; got != "apigatewayv2_api" {
 		t.Fatalf("api v2 resource_type = %q, want apigatewayv2_api", got)
+	}
+}
+
+func TestAPIGatewayRestAPIPublicEndpointUsesPartitionSuffix(t *testing.T) {
+	endpoint := apiGatewayRestAPIPublicEndpoint(settings{accountID: "123456789012", region: "cn-north-1"}, apigatewaytypes.RestApi{
+		Id:   awssdk.String("rest123"),
+		Name: awssdk.String("orders"),
+	})
+	if endpoint.Host != "rest123.execute-api.cn-north-1.amazonaws.com.cn" {
+		t.Fatalf("Host = %q, want rest123.execute-api.cn-north-1.amazonaws.com.cn", endpoint.Host)
 	}
 }
 

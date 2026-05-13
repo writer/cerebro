@@ -49,6 +49,7 @@ const (
 	defaultRegion          = "us-east-1"
 	defaultPageSize        = 10
 	maxPageSize            = 200
+	publicEndpointCursorV2 = 2
 	familyAccessKey        = "access_key"
 	familyCloudTrail       = "cloudtrail"
 	familyIAMGroup         = "iam_group"
@@ -209,6 +210,7 @@ const (
 )
 
 type publicEndpointCursor struct {
+	Version                 int    `json:"version,omitempty"`
 	Stage                   string `json:"stage,omitempty"`
 	Token                   string `json:"token,omitempty"`
 	Route53ZoneMarker       string `json:"route53_zone_marker,omitempty"`
@@ -504,6 +506,11 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	}
 	if settings.accountID == "" {
 		return settings, fmt.Errorf("aws account_id is required")
+	}
+	for _, key := range []string{"role_arn", "external_id", "role_session_name"} {
+		if value, ok := cfg.Lookup(key); ok && strings.TrimSpace(value) != "" {
+			return settings, fmt.Errorf("aws %s is no longer supported", key)
+		}
 	}
 	if settings.region == "" {
 		settings.region = defaultRegion
@@ -1114,10 +1121,7 @@ func apiGatewayPublicEndpoint(settings settings, domain apigatewaytypes.DomainNa
 
 func apiGatewayRestAPIPublicEndpoint(settings settings, api apigatewaytypes.RestApi) awsPublicEndpoint {
 	apiID := awssdk.ToString(api.Id)
-	host := ""
-	if apiID != "" {
-		host = fmt.Sprintf("%s.execute-api.%s.amazonaws.com", apiID, settings.region)
-	}
+	host := executeAPIHost(apiID, settings.region)
 	return awsPublicEndpoint{
 		ResourceID:   firstNonEmpty(apiID, host),
 		ResourceName: firstNonEmpty(awssdk.ToString(api.Name), apiID, host),
@@ -1160,7 +1164,7 @@ func apiGatewayV2APIPublicEndpoint(settings settings, api apigatewayv2types.Api)
 	apiID := awssdk.ToString(api.ApiId)
 	host := dnsHost(awssdk.ToString(api.ApiEndpoint))
 	if host == "" && apiID != "" {
-		host = fmt.Sprintf("%s.execute-api.%s.amazonaws.com", apiID, settings.region)
+		host = executeAPIHost(apiID, settings.region)
 	}
 	protocol := string(api.ProtocolType)
 	return awsPublicEndpoint{
@@ -1621,10 +1625,10 @@ func configBool(cfg sourcecdk.Config, key string, fallback bool) bool {
 func parsePublicEndpointCursor(raw string) (publicEndpointCursor, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return publicEndpointCursor{Stage: publicEndpointStageRoute53}, nil
+		return publicEndpointCursor{Version: publicEndpointCursorV2, Stage: publicEndpointStageRoute53}, nil
 	}
 	if strings.HasPrefix(raw, "eni:") {
-		return publicEndpointCursor{Stage: publicEndpointStageENI, Token: strings.TrimPrefix(raw, "eni:")}, nil
+		return publicEndpointCursor{Version: publicEndpointCursorV2, Stage: publicEndpointStageAPIGatewayRestAPI}, nil
 	}
 	decoded, err := base64.RawURLEncoding.DecodeString(raw)
 	if err != nil {
@@ -1637,6 +1641,7 @@ func parsePublicEndpointCursor(raw string) (publicEndpointCursor, error) {
 	if cursor.Stage == "" {
 		cursor.Stage = publicEndpointStageRoute53
 	}
+	cursor = upgradePublicEndpointCursor(cursor)
 	return cursor, nil
 }
 
@@ -1644,11 +1649,27 @@ func encodePublicEndpointCursor(cursor publicEndpointCursor) string {
 	if cursor.Stage == "" {
 		return ""
 	}
+	if cursor.Version == 0 {
+		cursor.Version = publicEndpointCursorV2
+	}
 	payload, err := json.Marshal(cursor)
 	if err != nil {
 		return ""
 	}
 	return base64.RawURLEncoding.EncodeToString(payload)
+}
+
+func upgradePublicEndpointCursor(cursor publicEndpointCursor) publicEndpointCursor {
+	if cursor.Version != 0 {
+		return cursor
+	}
+	switch cursor.Stage {
+	case publicEndpointStageAPIGatewayV2, publicEndpointStageEIP, publicEndpointStageENI:
+		return publicEndpointCursor{Version: publicEndpointCursorV2, Stage: publicEndpointStageAPIGatewayRestAPI}
+	default:
+		cursor.Version = publicEndpointCursorV2
+		return cursor
+	}
 }
 
 func route53HostedZoneID(raw string) string {
@@ -1758,6 +1779,22 @@ func normalizeAWSResourceType(value string) string {
 	normalized = strings.ReplaceAll(normalized, "-", "_")
 	normalized = strings.ReplaceAll(normalized, ".", "_")
 	return strings.Trim(normalized, "_")
+}
+
+func executeAPIHost(apiID string, region string) string {
+	apiID = strings.TrimSpace(apiID)
+	region = strings.TrimSpace(region)
+	if apiID == "" || region == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s.execute-api.%s.%s", apiID, region, awsDNSSuffix(region))
+}
+
+func awsDNSSuffix(region string) string {
+	if strings.HasPrefix(strings.TrimSpace(region), "cn-") {
+		return "amazonaws.com.cn"
+	}
+	return "amazonaws.com"
 }
 
 func cloudTrailActor(event cloudtrailtypes.Event, detail cloudTrailDetail) cloudTrailUserIdentity {
