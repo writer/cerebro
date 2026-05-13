@@ -153,6 +153,7 @@ func vulnViewScanProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projected
 			addEntity(entities, siteEntity)
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), scanEntity.URN, siteEntity.URN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
+		vulnViewAddCloudAccountContext(entities, links, tenantID, event.GetSourceId(), event, scanEntity.URN, event.GetAttributes())
 	}
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
@@ -224,6 +225,7 @@ func vulnViewAddSiteAndScanContext(entities map[string]*ports.ProjectedEntity, l
 	for _, scan := range scans {
 		scanEntity := vulnViewScanEntity(tenantID, sourceID, scan, attrs)
 		addEntity(entities, scanEntity)
+		vulnViewAddCloudAccountContext(entities, links, tenantID, sourceID, event, scanEntity.URN, attrs)
 		if assetURN != "" {
 			addLink(links, projectedLink(tenantID, sourceID, assetURN, scanEntity.URN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
@@ -231,6 +233,10 @@ func vulnViewAddSiteAndScanContext(entities map[string]*ports.ProjectedEntity, l
 			addLink(links, projectedLink(tenantID, sourceID, evidenceURN, scanEntity.URN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
 	}
+}
+
+func vulnViewAddCloudAccountContext(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, attrs map[string]string) {
+	addCloudAccountLink(entities, links, tenantID, sourceID, event, fromURN, firstAttribute(attrs, "cloud_account_id"), firstAttribute(attrs, "cloud_provider", "provider"))
 }
 
 func vulnViewAddTemplateContext(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, findingURN string, attrs map[string]string) {

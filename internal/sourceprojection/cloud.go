@@ -7,6 +7,38 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
+func cloudAccountURN(tenantID string, accountID string) string {
+	return projectionURN(tenantID, "cloud_account", strings.TrimSpace(accountID))
+}
+
+func addCloudAccountLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, accountID string, provider string) {
+	accountID = strings.TrimSpace(accountID)
+	fromURN = strings.TrimSpace(fromURN)
+	if accountID == "" || fromURN == "" {
+		return
+	}
+	accountURN := cloudAccountURN(tenantID, accountID)
+	if accountURN == "" {
+		return
+	}
+	provider = strings.TrimSpace(provider)
+	accountAttrs := map[string]string{"account_id": accountID}
+	linkAttrs := map[string]string{"account_id": accountID, "event_id": event.GetId()}
+	if provider != "" {
+		accountAttrs["provider"] = provider
+		linkAttrs["provider"] = provider
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        accountURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "cloud.account",
+		Label:      accountID,
+		Attributes: accountAttrs,
+	})
+	addLink(links, projectedLink(tenantID, sourceID, fromURN, accountURN, relationBelongsTo, linkAttrs))
+}
+
 func awsResourceExposureProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return cloudResourceExposureProjections(event, awsIdentityProfile)
 }
@@ -87,6 +119,7 @@ func cloudResourceExposureProjections(event *cerebrov1.EventEnvelope, profile id
 				"source_cidr":       strings.TrimSpace(attributes["source_cidr"]),
 			},
 		})
+		addCloudAccountLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, attributes["domain"], provider)
 	}
 	if publicURN != "" && resourceURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), publicURN, resourceURN, relationCanReach, map[string]string{
