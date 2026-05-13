@@ -236,7 +236,7 @@ func vulnViewAddSiteAndScanContext(entities map[string]*ports.ProjectedEntity, l
 }
 
 func vulnViewAddCloudAccountContext(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, attrs map[string]string) {
-	addCloudAccountLink(entities, links, tenantID, sourceID, event, fromURN, firstAttribute(attrs, "cloud_account_id"), firstAttribute(attrs, "cloud_provider", "provider"))
+	addCloudAccountLink(entities, links, tenantID, sourceID, event, fromURN, firstAttribute(attrs, "cloud_account_id"), firstAttribute(attrs, "cloud_provider"))
 }
 
 func vulnViewAddTemplateContext(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, findingURN string, attrs map[string]string) {

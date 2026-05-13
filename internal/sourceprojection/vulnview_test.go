@@ -187,6 +187,9 @@ func TestProjectVulnViewScanLinksSite(t *testing.T) {
 	if entity := state.entities[accountURN]; entity == nil || entity.EntityType != "cloud.account" {
 		t.Fatalf("cloud account entity missing: %#v", entity)
 	}
+	if got := state.entities[accountURN].Attributes["provider"]; got != "" {
+		t.Fatalf("cloud account provider = %q, want blank without explicit cloud_provider", got)
+	}
 	assertProjectedLink(t, state, scanURN, relationBelongsTo, siteURN)
 	assertProjectedLink(t, state, scanURN, relationBelongsTo, accountURN)
 }
