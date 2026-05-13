@@ -244,7 +244,7 @@ def _create_task_definition(
             "healthCheck": {
                 "command": [
                     "CMD-SHELL",
-                    f"node -e \"fetch('http://127.0.0.1:{container_port}/api/health').then((r)=>{{if(!r.ok)process.exit(1)}}).catch(()=>process.exit(1))\"",
+                    f"node -e \"const host=require('os').hostname();fetch('http://'+host+':{container_port}/api/health').then((r)=>{{if(!r.ok)process.exit(1)}}).catch(()=>process.exit(1))\"",
                 ],
                 "interval": 30,
                 "timeout": 5,
