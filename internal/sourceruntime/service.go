@@ -542,7 +542,7 @@ func progressConfigHashForRuntime(rawConfig map[string]string, resolvedConfig ma
 
 func hasProgressConfigReferences(config map[string]string, resolvedConfig map[string]string) bool {
 	for key, value := range config {
-		if key == runtimeProgressConfigHashKey || progressHashSensitiveConfigKey(key) {
+		if key == runtimeProgressConfigHashKey || sourceconfig.InternalKey(key) || progressHashSensitiveConfigKey(key) {
 			continue
 		}
 		if sourceconfig.LiteralEnvPrefixKey(key) && resolvedConfig[key] == value {
@@ -566,7 +566,7 @@ func progressConfigHashChanged(existing map[string]string, incoming map[string]s
 func progressConfigHash(config map[string]string) string {
 	keys := make([]string, 0, len(config))
 	for key := range config {
-		if key == runtimeProgressConfigHashKey || progressHashSensitiveConfigKey(key) {
+		if key == runtimeProgressConfigHashKey || sourceconfig.InternalKey(key) || progressHashSensitiveConfigKey(key) {
 			continue
 		}
 		keys = append(keys, key)

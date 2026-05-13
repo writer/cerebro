@@ -833,7 +833,7 @@ func finishRun(run graphstore.IngestRun, result *IngestResult, status string, ru
 func configHash(config map[string]string) string {
 	keys := make([]string, 0, len(config))
 	for key := range config {
-		if !sensitiveConfigKey(key) {
+		if !sourceconfig.InternalKey(key) && !sensitiveConfigKey(key) {
 			keys = append(keys, key)
 		}
 	}

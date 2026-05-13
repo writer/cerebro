@@ -467,6 +467,21 @@ func TestProgressConfigHashIgnoresAccessKeyIDCredentials(t *testing.T) {
 	}
 }
 
+func TestProgressConfigHashIgnoresInternalRuntimeMetadata(t *testing.T) {
+	base := progressConfigHash(map[string]string{
+		"lookup_key": "inventory",
+	})
+	withInternal := progressConfigHash(map[string]string{
+		"lookup_key":                           "inventory",
+		sourceconfig.RuntimeTenantIDKey:        "writer",
+		sourceconfig.AWSAssumeRoleAllowlistKey: "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role",
+		runtimeProgressConfigHashKey:           "old-hash",
+	})
+	if base != withInternal {
+		t.Fatal("progressConfigHash changed when only internal runtime metadata changed")
+	}
+}
+
 func TestUserConfigStripsInternalAssumeRoleAllowlist(t *testing.T) {
 	config := userConfig(map[string]string{
 		"family":                               "public_endpoint",
