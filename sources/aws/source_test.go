@@ -7,12 +7,22 @@ import (
 	"time"
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/apigateway"
+	apigatewaytypes "github.com/aws/aws-sdk-go-v2/service/apigateway/types"
+	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
+	apigatewayv2types "github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
+	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
 	cloudtrailtypes "github.com/aws/aws-sdk-go-v2/service/cloudtrail/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
+	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/route53"
+	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
@@ -75,6 +85,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyIAMMembership, config: map[string]string{"group_name": "Security"}, kind: "aws.iam_group_membership"},
 		{family: familyIAMRoleAssign, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.iam_role_assignment"},
 		{family: familyCloudTrail, kind: "aws.cloudtrail"},
+		{family: familyPublicEndpoint, kind: "aws.public_endpoint"},
 		{family: familyResourceExposure, kind: "aws.resource_exposure"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
@@ -219,7 +230,69 @@ func TestReadAWSExposureAndTrustPreview(t *testing.T) {
 			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
 				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
 			}
+			if tt.family == familyPublicEndpoint {
+				if got := pull.Events[0].Attributes["resource_id"]; got != "eipalloc-1" {
+					t.Fatalf("resource_id = %q, want eipalloc-1", got)
+				}
+			}
 		})
+	}
+}
+
+func TestReadAWSPublicEndpointCollectsDNSAndEdgeHosts(t *testing.T) {
+	source := newTestSource(t, fakeAWS{
+		hostedZones: []route53types.HostedZone{{
+			Id:     awssdk.String("/hostedzone/Z123"),
+			Name:   awssdk.String("writer.com."),
+			Config: &route53types.HostedZoneConfig{PrivateZone: false},
+		}},
+		recordSets: []route53types.ResourceRecordSet{{
+			Name: awssdk.String("app.writer.com."),
+			Type: route53types.RRTypeCname,
+			ResourceRecords: []route53types.ResourceRecord{{
+				Value: awssdk.String("d111111abcdef8.cloudfront.net."),
+			}},
+		}},
+		distributions: []cloudfronttypes.DistributionSummary{{
+			ARN:        awssdk.String("arn:aws:cloudfront::123456789012:distribution/EDFDVBD632BHDS5"),
+			Id:         awssdk.String("EDFDVBD632BHDS5"),
+			DomainName: awssdk.String("d111111abcdef8.cloudfront.net"),
+			Aliases:    &cloudfronttypes.Aliases{Items: []string{"app.writer.com"}},
+			Enabled:    awssdk.Bool(true),
+		}},
+	})
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyPublicEndpoint}), nil)
+	if err != nil {
+		t.Fatalf("Read(public_endpoint route53) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(route53 events) = %d, want 1", len(pull.Events))
+	}
+	route53Event := pull.Events[0]
+	if got := route53Event.Attributes["host"]; got != "app.writer.com" {
+		t.Fatalf("route53 host = %q, want app.writer.com", got)
+	}
+	if got := route53Event.Attributes["target_host"]; got != "d111111abcdef8.cloudfront.net" {
+		t.Fatalf("route53 target_host = %q, want d111111abcdef8.cloudfront.net", got)
+	}
+	if pull.NextCursor == nil {
+		t.Fatal("route53 NextCursor = nil, want cloudfront cursor")
+	}
+
+	pull, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyPublicEndpoint}), pull.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(public_endpoint cloudfront) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(cloudfront events) = %d, want 1", len(pull.Events))
+	}
+	cloudfrontEvent := pull.Events[0]
+	if got := cloudfrontEvent.Attributes["host"]; got != "d111111abcdef8.cloudfront.net" {
+		t.Fatalf("cloudfront host = %q, want d111111abcdef8.cloudfront.net", got)
+	}
+	if got := cloudfrontEvent.Attributes["alternate_hosts"]; got != "app.writer.com" {
+		t.Fatalf("cloudfront alternate_hosts = %q, want app.writer.com", got)
 	}
 }
 
@@ -271,7 +344,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -290,6 +363,12 @@ type fakeAWS struct {
 	securityGroups    []ec2types.SecurityGroup
 	addresses         []ec2types.Address
 	networkInterfaces []ec2types.NetworkInterface
+	hostedZones       []route53types.HostedZone
+	recordSets        []route53types.ResourceRecordSet
+	distributions     []cloudfronttypes.DistributionSummary
+	loadBalancers     []elbv2types.LoadBalancer
+	apiDomains        []apigatewaytypes.DomainName
+	apiV2Domains      []apigatewayv2types.DomainName
 }
 
 func (f fakeAWS) ListUsers(context.Context, *iam.ListUsersInput, ...func(*iam.Options)) (*iam.ListUsersOutput, error) {
@@ -338,6 +417,34 @@ func (f fakeAWS) DescribeAddresses(context.Context, *ec2.DescribeAddressesInput,
 
 func (f fakeAWS) DescribeNetworkInterfaces(context.Context, *ec2.DescribeNetworkInterfacesInput, ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error) {
 	return &ec2.DescribeNetworkInterfacesOutput{NetworkInterfaces: f.networkInterfaces}, nil
+}
+
+func (f fakeAWS) ListHostedZones(context.Context, *route53.ListHostedZonesInput, ...func(*route53.Options)) (*route53.ListHostedZonesOutput, error) {
+	return &route53.ListHostedZonesOutput{HostedZones: f.hostedZones}, nil
+}
+
+func (f fakeAWS) ListResourceRecordSets(context.Context, *route53.ListResourceRecordSetsInput, ...func(*route53.Options)) (*route53.ListResourceRecordSetsOutput, error) {
+	return &route53.ListResourceRecordSetsOutput{ResourceRecordSets: f.recordSets}, nil
+}
+
+func (f fakeAWS) ListDistributions(context.Context, *cloudfront.ListDistributionsInput, ...func(*cloudfront.Options)) (*cloudfront.ListDistributionsOutput, error) {
+	return &cloudfront.ListDistributionsOutput{DistributionList: &cloudfronttypes.DistributionList{Items: f.distributions}}, nil
+}
+
+func (f fakeAWS) DescribeLoadBalancers(context.Context, *elbv2.DescribeLoadBalancersInput, ...func(*elbv2.Options)) (*elbv2.DescribeLoadBalancersOutput, error) {
+	return &elbv2.DescribeLoadBalancersOutput{LoadBalancers: f.loadBalancers}, nil
+}
+
+func (f fakeAWS) GetDomainNames(_ context.Context, _ *apigateway.GetDomainNamesInput, _ ...func(*apigateway.Options)) (*apigateway.GetDomainNamesOutput, error) {
+	return &apigateway.GetDomainNamesOutput{Items: f.apiDomains}, nil
+}
+
+type fakeAPIGatewayV2 struct {
+	domains []apigatewayv2types.DomainName
+}
+
+func (f fakeAPIGatewayV2) GetDomainNames(_ context.Context, _ *apigatewayv2.GetDomainNamesInput, _ ...func(*apigatewayv2.Options)) (*apigatewayv2.GetDomainNamesOutput, error) {
+	return &apigatewayv2.GetDomainNamesOutput{Items: f.domains}, nil
 }
 
 func timePtr(value string) *time.Time {
