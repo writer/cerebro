@@ -134,6 +134,8 @@ web_image_tag = config.get("webImageTag") or ""
 web_container_image = f"{web_ecr_base_uri}:{web_image_tag}" if web_ecr_base_uri and web_image_tag else ""
 web_domain = config.get("webDomain") or ""
 web_certificate_arn = config.get("webCertificateArn") or ""
+web_certificate_domain = config.get("webCertificateDomain") or ""
+web_certificate_import_arn = config.get("webCertificateImportArn") or ""
 web_cpu = _config_int("webCpu", 512)
 web_memory = _config_int("webMemory", 1024)
 web_min_instances = _config_int("webMinInstances", 1)
@@ -156,8 +158,11 @@ if web_enabled and not web_api_base:
 if web_oidc_enabled:
     if not web_enabled:
         raise ValueError("cerebro:webEnabled must be true when cerebro:webOidcEnabled is true")
-    if not (web_domain and web_certificate_arn):
-        raise ValueError("cerebro:webDomain and cerebro:webCertificateArn are required when cerebro:webOidcEnabled is true")
+    if not (
+        web_domain
+        and (web_certificate_arn or (web_certificate_domain and web_certificate_domain == web_domain))
+    ):
+        raise ValueError("cerebro:webDomain and a web certificate are required when cerebro:webOidcEnabled is true")
     if not (web_oidc_issuer and web_oidc_client_id and web_oidc_client_secret):
         raise ValueError("cerebro:webOidcIssuer, cerebro:webOidcClientId, and cerebro:webOidcClientSecret are required when webOidcEnabled is true")
 
@@ -429,9 +434,25 @@ if certificate_domain:
         },
     )
 
+web_certificate_stack = None
+if web_certificate_domain:
+    web_certificate_stack = cert.create_certificate(
+        name=f"cerebro-{environment}-web",
+        domain=web_certificate_domain,
+        import_arn=web_certificate_import_arn,
+        tags={
+            "Environment": environment,
+            "Service": "cerebro-web",
+        },
+    )
+
 load_balancer_certificate_arn = None
 if certificate_stack and certificate_domain == domain:
     load_balancer_certificate_arn = certificate_stack["certificate_arn"]
+
+web_load_balancer_certificate_arn = web_certificate_arn or None
+if not web_load_balancer_certificate_arn and web_certificate_stack and web_certificate_domain == web_domain:
+    web_load_balancer_certificate_arn = web_certificate_stack["certificate_arn"]
 
 alb_stack = load_balancer.create_alb(
     name=f"cerebro-{environment}",
@@ -456,7 +477,7 @@ if web_enabled:
         subnet_ids=vpc_stack["private_subnet_ids"] if alb_internal else vpc_stack["public_subnet_ids"],
         security_group_id=vpc_stack["alb_security_group_id"],
         certificate_domain=web_domain or None,
-        certificate_arn=web_certificate_arn or None,
+        certificate_arn=web_load_balancer_certificate_arn,
         internal=alb_internal,
         health_check_path="/api/health",
         container_port=web_container_port,
@@ -688,6 +709,9 @@ pulumi.export("ecr_repository_arn", repository.arn)
 if certificate_stack:
     pulumi.export("certificate_arn", certificate_stack["certificate_arn"])
     pulumi.export("certificate_validation_records", certificate_stack["validation_records"])
+if web_certificate_stack:
+    pulumi.export("web_certificate_arn", web_certificate_stack["certificate_arn"])
+    pulumi.export("web_certificate_validation_records", web_certificate_stack["validation_records"])
 if waf_stack:
     pulumi.export("waf_web_acl_arn", waf_stack["web_acl"].arn)
 if logs_kms_key:

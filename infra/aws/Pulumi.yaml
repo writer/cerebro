@@ -49,6 +49,14 @@ config:
     type: string
     default: ""
     description: Existing ACM certificate ARN for the Cerebro web console ALB listener
+  cerebro:webCertificateDomain:
+    type: string
+    default: ""
+    description: Optional ACM certificate domain to request for the Cerebro web console
+  cerebro:webCertificateImportArn:
+    type: string
+    default: ""
+    description: Optional existing ACM certificate ARN to import for cerebro:webCertificateDomain
   cerebro:webApiBase:
     type: string
     default: ""
