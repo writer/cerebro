@@ -1710,6 +1710,25 @@ func TestProjectCloudExposureAndPrivilegePaths(t *testing.T) {
 			},
 		},
 		{
+			Id:       "azure-public-nsg",
+			TenantId: "writer",
+			SourceId: "azure",
+			Kind:     "azure.resource_exposure",
+			Attributes: map[string]string{
+				"domain":            "tenant-1",
+				"exposed_to":        "public_internet",
+				"exposure_id":       "nsg-1-0",
+				"exposure_type":     "public_network_ingress",
+				"internet_exposed":  "true",
+				"resource_id":       "nsg-1",
+				"resource_name":     "prod-nsg",
+				"resource_provider": "azure",
+				"resource_type":     "network_security_group",
+				"source_cidr":       "0.0.0.0/0",
+				"subscription_id":   "sub-1",
+			},
+		},
+		{
 			Id:       "gcp-impersonation",
 			TenantId: "writer",
 			SourceId: "gcp",
@@ -1750,6 +1769,9 @@ func TestProjectCloudExposureAndPrivilegePaths(t *testing.T) {
 	}
 
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_public_principal:public_internet", relationCanReach, "urn:cerebro:writer:aws_security_group:arn:aws:ec2:us-east-1:123456789012:security-group/sg-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_security_group:arn:aws:ec2:us-east-1:123456789012:security-group/sg-1", relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, "urn:cerebro:writer:azure_network_security_group:nsg-1", relationBelongsTo, "urn:cerebro:writer:cloud_account:sub-1")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:azure_network_security_group:nsg-1", relationBelongsTo, "urn:cerebro:writer:cloud_account:tenant-1")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationRepresents, "urn:cerebro:writer:internet_host:ec2-203-0-113-10.compute-1.amazonaws.com")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationRepresents, "urn:cerebro:writer:internet_host:d111111abcdef8.cloudfront.net")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationRepresents, "urn:cerebro:writer:internet_host:app.writer.com")
