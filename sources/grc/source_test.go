@@ -324,6 +324,45 @@ func TestReadVantaVulnerabilityNormalizesFields(t *testing.T) {
 	}
 }
 
+func TestReadVantaVulnerableAssetNormalizesFields(t *testing.T) {
+	server := httptest.NewServer(newTestAPIHandler(t))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := testConfig(server.URL, familyVulnerableAsset)
+
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(vulnerable_asset) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Read(vulnerable_asset).Events) = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	if got := pull.Events[0].Kind; got != "grc.vulnerable_asset" {
+		t.Fatalf("event kind = %q, want grc.vulnerable_asset", got)
+	}
+	if got := attrs["target_id"]; got != "target-1" {
+		t.Fatalf("target_id = %q, want target-1", got)
+	}
+	if got := attrs["hostname"]; got != "app.writer.com" {
+		t.Fatalf("hostname = %q, want app.writer.com", got)
+	}
+	if got := attrs["ip"]; got != "203.0.113.10" {
+		t.Fatalf("ip = %q, want 203.0.113.10", got)
+	}
+	if got := attrs["vulnerability_ids"]; got != "CVE-2026-4242" {
+		t.Fatalf("vulnerability_ids = %q, want CVE-2026-4242", got)
+	}
+	if got := attrs["package_identifiers"]; got != "pkg:golang/example/module@1.2.3" {
+		t.Fatalf("package_identifiers = %q, want purl", got)
+	}
+}
+
 func TestTokenCacheScopesRuntimeSecretsAndBaseURL(t *testing.T) {
 	tokenRequests := map[string]int{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -609,6 +648,22 @@ func newTestAPIHandler(t *testing.T) http.Handler {
 				"isFixable":         true,
 				"remediateByDate":   "2026-05-30T00:00:00Z",
 				"lastDetectedDate":  "2026-05-10T00:00:00Z",
+			}})
+		case "/v1/vulnerable-assets":
+			requireBearer(t, r)
+			writePage(t, w, false, "", []map[string]any{{
+				"id":            "target-1",
+				"displayName":   "App Server",
+				"hostname":      "app.writer.com",
+				"ipAddress":     "203.0.113.10",
+				"assetType":     "server",
+				"integrationId": "integration-1",
+				"vulnerabilities": []map[string]any{{
+					"id":                "CVE-2026-4242",
+					"name":              "CVE-2026-4242",
+					"packageIdentifier": "pkg:golang/example/module@1.2.3",
+				}},
+				"lastSeenDate": "2026-05-11T00:00:00Z",
 			}})
 		case "/v1/tests":
 			requireBearer(t, r)

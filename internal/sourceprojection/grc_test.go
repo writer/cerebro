@@ -423,6 +423,58 @@ func TestProjectGRCVulnerabilityLinksHostLikeTargetID(t *testing.T) {
 	assertProjectedLink(t, state, targetURN, relationRepresents, hostURN)
 }
 
+func TestProjectGRCVulnerableAssetEnrichesVulnerabilityTarget(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-vulnerable-asset-1",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.vulnerable_asset",
+		Attributes: map[string]string{
+			"provider":            "vanta",
+			"target_id":           "target-1",
+			"target_name":         "App Server",
+			"hostname":            "app.writer.com",
+			"ip":                  "203.0.113.10",
+			"integration_id":      "integration-1",
+			"asset_type":          "server",
+			"vulnerability_ids":   "CVE-2026-4242",
+			"package_identifiers": "pkg:golang/example/module@1.2.3",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	targetURN := "urn:cerebro:writer:grc_target:vanta:target-1"
+	hostURN := "urn:cerebro:writer:internet_host:app.writer.com"
+	ipURN := "urn:cerebro:writer:internet_ip:203.0.113.10"
+	integrationURN := "urn:cerebro:writer:source:vanta:integration:integration-1"
+	packageURN := "urn:cerebro:writer:package:grc:pkg:golang/example/module@1.2.3"
+	canonicalPackageURN := "urn:cerebro:writer:package:canonical:pkg:golang/example/module"
+	vulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
+
+	if entity := state.entities[targetURN]; entity == nil || entity.EntityType != "grc.target" {
+		t.Fatalf("GRC target entity missing: %#v", entity)
+	}
+	if got := state.entities[targetURN].Attributes["host"]; got != "app.writer.com" {
+		t.Fatalf("target host = %q, want app.writer.com", got)
+	}
+	if got := state.entities[targetURN].Attributes["target_type"]; got != "server" {
+		t.Fatalf("target_type = %q, want server", got)
+	}
+	assertProjectedLink(t, state, targetURN, relationRepresents, hostURN)
+	assertProjectedLink(t, state, targetURN, relationRepresents, ipURN)
+	assertProjectedLink(t, state, targetURN, relationBelongsTo, integrationURN)
+	assertProjectedLink(t, state, targetURN, relationAffectedBy, vulnerabilityURN)
+	assertProjectedLink(t, state, targetURN, relationContains, packageURN)
+	assertProjectedLink(t, state, packageURN, relationRepresents, canonicalPackageURN)
+	assertProjectedLink(t, state, packageURN, relationAffectedBy, vulnerabilityURN)
+	assertProjectedLink(t, state, canonicalPackageURN, relationAffectedBy, vulnerabilityURN)
+}
+
 func TestProjectGRCVulnerabilityWritesGraphTargetIntegrationLinks(t *testing.T) {
 	state := &projectionRecorder{}
 	graph := &endpointCheckingGraphRecorder{}

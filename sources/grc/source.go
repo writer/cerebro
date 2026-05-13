@@ -29,27 +29,28 @@ import (
 var catalogFS embed.FS
 
 const (
-	sourceID            = "grc"
-	defaultProvider     = "vanta"
-	defaultBaseURL      = "https://api.vanta.com"
-	defaultReadScope    = "vanta-api.all:read"
-	defaultPageSize     = 10
-	maxPageSize         = 100
-	httpTimeout         = 30 * time.Second
-	maxBodyBytes        = 8 << 20
-	tokenRefreshLeeway  = time.Minute
-	defaultFamily       = familyControlTest
-	familyFramework     = "framework"
-	familyControl       = "control"
-	familyControlTest   = "control_test"
-	familyPolicy        = "policy"
-	familyDocument      = "document"
-	familyVendor        = "vendor"
-	familyVulnerability = "vulnerability"
-	familyRiskScenario  = "risk_scenario"
-	familyPerson        = "person"
-	familyUser          = "user"
-	familyIntegration   = "integration"
+	sourceID              = "grc"
+	defaultProvider       = "vanta"
+	defaultBaseURL        = "https://api.vanta.com"
+	defaultReadScope      = "vanta-api.all:read"
+	defaultPageSize       = 10
+	maxPageSize           = 100
+	httpTimeout           = 30 * time.Second
+	maxBodyBytes          = 8 << 20
+	tokenRefreshLeeway    = time.Minute
+	defaultFamily         = familyControlTest
+	familyFramework       = "framework"
+	familyControl         = "control"
+	familyControlTest     = "control_test"
+	familyPolicy          = "policy"
+	familyDocument        = "document"
+	familyVendor          = "vendor"
+	familyVulnerability   = "vulnerability"
+	familyVulnerableAsset = "vulnerable_asset"
+	familyRiskScenario    = "risk_scenario"
+	familyPerson          = "person"
+	familyUser            = "user"
+	familyIntegration     = "integration"
 )
 
 var defaultTokenRetryBackoffs = []time.Duration{2 * time.Second, 5 * time.Second, 10 * time.Second, 20 * time.Second}
@@ -178,6 +179,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 		s.family(familyDocument, "/v1/documents"),
 		s.family(familyVendor, "/v1/vendors"),
 		s.family(familyVulnerability, "/v1/vulnerabilities"),
+		s.family(familyVulnerableAsset, "/v1/vulnerable-assets"),
 		s.family(familyRiskScenario, "/v1/risk-scenarios"),
 		s.family(familyPerson, "/v1/people"),
 		s.family(familyUser, "/v1/users"),
@@ -709,6 +711,20 @@ func attributesFor(settings settings, family string, record grcRecord) map[strin
 			"external_url":        "externalURL",
 			"scan_source":         "scanSource",
 		})
+	case familyVulnerableAsset:
+		copyFirstField(attrs, values, "asset_id", "id", "assetId", "targetId")
+		copyFirstField(attrs, values, "target_id", "id", "assetId", "targetId")
+		copyFirstField(attrs, values, "target_name", "displayName", "name", "hostname", "host", "url")
+		copyFirstField(attrs, values, "resource_name", "displayName", "name", "hostname", "host", "url")
+		copyFirstField(attrs, values, "hostname", "hostname", "host", "dnsName", "fqdn")
+		copyFirstField(attrs, values, "ip", "ipAddress", "publicIp", "publicIP", "ip")
+		copyFirstField(attrs, values, "asset_type", "assetType", "resourceType", "type")
+		copyFirstField(attrs, values, "resource_type", "assetType", "resourceType", "type")
+		copyFirstField(attrs, values, "integration_id", "integrationId", "integration.id")
+		copyFirstField(attrs, values, "external_url", "externalURL", "url")
+		copyFirstField(attrs, values, "operating_system", "operatingSystem", "os")
+		copyFirstField(attrs, values, "last_detected_at", "lastDetectedDate", "lastSeenDate", "updatedAt")
+		copyVulnerableAssetReferences(attrs, values)
 	case familyRiskScenario:
 		copyFields(attrs, values, map[string]string{
 			"risk_id":             "riskId",
@@ -807,6 +823,28 @@ func copyControlReferenceFields(attrs map[string]string, values map[string]any) 
 		if strings.TrimSpace(attrs["control_external_id"]) == "" {
 			attrs["control_external_id"] = firstDelimitedValue(externalIDs)
 		}
+	}
+}
+
+func copyVulnerableAssetReferences(attrs map[string]string, values map[string]any) {
+	if ids := firstNonEmptyString(
+		joinedObjectFieldValues(values, "vulnerabilities", "id", "vulnerabilityId"),
+		fieldString(values, "vulnerabilityIds"),
+	); ids != "" {
+		attrs["vulnerability_ids"] = ids
+	}
+	if names := firstNonEmptyString(
+		joinedObjectFieldValues(values, "vulnerabilities", "name", "title"),
+		fieldString(values, "vulnerabilityNames"),
+	); names != "" {
+		attrs["vulnerability_names"] = names
+	}
+	if packages := firstNonEmptyString(
+		joinedObjectFieldValues(values, "vulnerabilities", "packageIdentifier", "package", "packagePurl"),
+		fieldString(values, "packageIdentifiers"),
+		fieldString(values, "packages"),
+	); packages != "" {
+		attrs["package_identifiers"] = packages
 	}
 }
 
@@ -947,6 +985,8 @@ func timestampKeys(family string) []string {
 		return []string{"lastSecurityReviewCompletionDate"}
 	case familyVulnerability:
 		return []string{"lastDetectedDate", "sourceDetectedDate", "firstDetectedDate"}
+	case familyVulnerableAsset:
+		return []string{"lastDetectedDate", "lastSeenDate", "updatedAt"}
 	case familyRiskScenario:
 		return []string{"identificationDate"}
 	case familyPerson:
@@ -1056,6 +1096,7 @@ func supportedFamilies() []string {
 		familyDocument,
 		familyVendor,
 		familyVulnerability,
+		familyVulnerableAsset,
 		familyRiskScenario,
 		familyPerson,
 		familyUser,
