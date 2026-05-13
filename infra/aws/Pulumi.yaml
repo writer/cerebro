@@ -29,6 +29,58 @@ config:
     type: string
     default: v1.0.0
     description: Container image tag deployed to ECS
+  cerebro:webEnabled:
+    type: boolean
+    default: false
+    description: Deploy the Cerebro web console ECS service
+  cerebro:webEcrBaseUri:
+    type: string
+    default: ""
+    description: ECR repository base URI for the Cerebro web image without tag; defaults to cerebro:ecrBaseUri
+  cerebro:webImageTag:
+    type: string
+    default: ""
+    description: Cerebro web image tag deployed to ECS
+  cerebro:webDomain:
+    type: string
+    default: ""
+    description: Optional custom domain for the Cerebro web console
+  cerebro:webCertificateArn:
+    type: string
+    default: ""
+    description: Existing ACM certificate ARN for the Cerebro web console ALB listener
+  cerebro:webApiBase:
+    type: string
+    default: ""
+    description: Cerebro API base URL used by the web console server-side proxy
+  cerebro:webForwardAuthHeaders:
+    type: boolean
+    default: false
+    description: Forward caller auth headers from the web console to the Cerebro API
+  cerebro:webApiKeySecretName:
+    type: string
+    default: CEREBRO_API_KEYS
+    description: Secret key under externalSecretsPrefix mounted into the web console as CEREBRO_API_KEYS
+  cerebro:webCpu:
+    type: integer
+    default: 512
+    description: Web console task CPU units
+  cerebro:webMemory:
+    type: integer
+    default: 1024
+    description: Web console task memory in MB
+  cerebro:webMinInstances:
+    type: integer
+    default: 1
+    description: Minimum web console instances
+  cerebro:webMaxInstances:
+    type: integer
+    default: 1
+    description: Maximum web console instances
+  cerebro:webContainerPort:
+    type: integer
+    default: 3000
+    description: Web console container port
 
   cerebro:apiCpu:
     type: integer

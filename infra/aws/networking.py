@@ -19,6 +19,7 @@ def create_vpc(
     enable_flow_logs: bool = True,
     flow_logs_retention_days: int = 30,
     flow_logs_kms_key_arn: pulumi.Output[str] = None,
+    app_ingress_ports: list[int] = None,
 ) -> dict:
     """
     Create VPC with public and private subnets.
@@ -359,6 +360,7 @@ def create_vpc(
         tags={"Name": f"{name}-alb-sg"},
     )
 
+    app_ports = sorted(set(app_ingress_ports or [8080]))
     app_sg = aws.ec2.SecurityGroup(
         f"{name}-app-sg",
         vpc_id=vpc.id,
@@ -366,10 +368,11 @@ def create_vpc(
         ingress=[
             aws.ec2.SecurityGroupIngressArgs(
                 protocol="tcp",
-                from_port=8080,
-                to_port=8080,
+                from_port=port,
+                to_port=port,
                 security_groups=[alb_sg.id],
-            ),
+            )
+            for port in app_ports
         ],
         egress=[
             aws.ec2.SecurityGroupEgressArgs(
@@ -403,6 +406,7 @@ def use_existing_vpc(
     public_subnet_ids: list[str],
     private_subnet_ids: list[str],
     alb_ingress_cidrs: list[str] = None,
+    app_ingress_ports: list[int] = None,
 ) -> dict:
     """
     Use an existing VPC and create only security groups.
@@ -447,6 +451,7 @@ def use_existing_vpc(
         tags={"Name": f"{name}-alb-sg"},
     )
 
+    app_ports = sorted(set(app_ingress_ports or [8080]))
     app_sg = aws.ec2.SecurityGroup(
         f"{name}-app-sg",
         vpc_id=vpc_id,
@@ -454,10 +459,11 @@ def use_existing_vpc(
         ingress=[
             aws.ec2.SecurityGroupIngressArgs(
                 protocol="tcp",
-                from_port=8080,
-                to_port=8080,
+                from_port=port,
+                to_port=port,
                 security_groups=[alb_sg.id],
-            ),
+            )
+            for port in app_ports
         ],
         egress=[
             aws.ec2.SecurityGroupEgressArgs(

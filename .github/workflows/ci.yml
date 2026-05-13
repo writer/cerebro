@@ -21,6 +21,7 @@ env:
   SEC_PROD_ACCOUNT_ID: "837279440628"
   ECR_REPOSITORY: cerebro
   GHCR_IMAGE: ghcr.io/writer/cerebro
+  WEB_GHCR_IMAGE: ghcr.io/writerinternal/cerebro-web
 
 jobs:
   # PR: Pull from GHCR and push to sec-dev ECR
@@ -31,6 +32,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      packages: read
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
@@ -62,14 +64,51 @@ jobs:
             echo "::notice::Skipping sec-dev ECR publish because ${GHCR_IMAGE}:${IMAGE_TAG} is not available in GHCR yet"
           fi
 
+      - name: Read web image tag from Pulumi config
+        id: web-image-tag
+        shell: bash
+        run: |
+          tag=$(grep 'cerebro:webImageTag:' infra/aws/Pulumi.sec-dev.yaml | awk '{print $2}' || true)
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          if [ -n "${tag}" ]; then
+            echo "Resolved web image tag: ${tag}"
+          else
+            echo "::notice::cerebro:webImageTag not configured; skipping web image publish"
+          fi
+
+      - name: Log in to GHCR for web image
+        if: steps.web-image-tag.outputs.tag != ''
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check web GHCR image availability
+        id: web-ghcr-image
+        if: steps.web-image-tag.outputs.tag != ''
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ steps.web-image-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          if docker manifest inspect "${WEB_GHCR_IMAGE}:${IMAGE_TAG}" >/dev/null 2>&1; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "Found ${WEB_GHCR_IMAGE}:${IMAGE_TAG}"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping sec-dev web ECR publish because ${WEB_GHCR_IMAGE}:${IMAGE_TAG} is not available in GHCR yet"
+          fi
+
       - name: Configure AWS credentials (sec-dev)
-        if: steps.ghcr-image.outputs.available == 'true'
+        if: steps.ghcr-image.outputs.available == 'true' || steps.web-ghcr-image.outputs.available == 'true'
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
         with:
           assume-role-arn: arn:aws:iam::${{ env.SEC_DEV_ACCOUNT_ID }}:role/writer-aws-deployment-role
 
       - name: Login to Amazon ECR
-        if: steps.ghcr-image.outputs.available == 'true'
+        if: steps.ghcr-image.outputs.available == 'true' || steps.web-ghcr-image.outputs.available == 'true'
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@183a1442edf41672e66566b7fc560e297a290896 # v2
 
@@ -98,11 +137,63 @@ jobs:
 
           echo "Pushed ${IMAGE_TAG} to sec-dev ECR"
 
+      - name: Pull web from GHCR, retag, and push to ECR
+        id: publish-web
+        if: steps.web-ghcr-image.outputs.available == 'true'
+        shell: bash
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.web-image-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          ecr_image="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          echo "image=${ecr_image}" >> "$GITHUB_OUTPUT"
+
+          if aws ecr describe-images --repository-name "${ECR_REPOSITORY}" --image-ids imageTag="${IMAGE_TAG}" >/dev/null 2>&1; then
+            echo "${ecr_image} already exists; skipping immutable ECR push"
+            exit 0
+          fi
+
+          echo "Pulling ${WEB_GHCR_IMAGE}:${IMAGE_TAG} from GHCR..."
+          docker pull "${WEB_GHCR_IMAGE}:${IMAGE_TAG}"
+
+          docker tag "${WEB_GHCR_IMAGE}:${IMAGE_TAG}" "${ecr_image}"
+          docker push "${ecr_image}"
+
+          echo "Pushed web ${IMAGE_TAG} to sec-dev ECR"
+
       - name: Scan sec-dev ECR image
         if: steps.ghcr-image.outputs.available == 'true'
         shell: bash
         env:
           ECR_IMAGE: ${{ steps.publish.outputs.image }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.cache/trivy"
+          docker run --rm \
+            -v "${HOME}/.cache/trivy:/root/.cache/" \
+            -v "${HOME}/.docker/config.json:/root/.docker/config.json:ro" \
+            aquasec/trivy:0.66.0 image \
+            --exit-code 0 \
+            --ignore-unfixed \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            "${ECR_IMAGE}"
+          docker run --rm \
+            -v "${HOME}/.cache/trivy:/root/.cache/" \
+            -v "${HOME}/.docker/config.json:/root/.docker/config.json:ro" \
+            aquasec/trivy:0.66.0 image \
+            --exit-code 1 \
+            --ignore-unfixed \
+            --scanners vuln \
+            --severity CRITICAL \
+            "${ECR_IMAGE}"
+
+      - name: Scan sec-dev web ECR image
+        if: steps.web-ghcr-image.outputs.available == 'true'
+        shell: bash
+        env:
+          ECR_IMAGE: ${{ steps.publish-web.outputs.image }}
         run: |
           set -euo pipefail
           mkdir -p "${HOME}/.cache/trivy"
@@ -133,6 +224,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      packages: read
     outputs:
       image_tag: ${{ steps.publish.outputs.tag }}
     steps:

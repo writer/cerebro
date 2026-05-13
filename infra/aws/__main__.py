@@ -24,6 +24,7 @@ import networking
 import postgres
 import tailscale as ts
 import waf
+import web
 
 config = pulumi.Config()
 
@@ -126,6 +127,26 @@ certificate_import_arn = config.get("certificateImportArn") or ""
 ecr_base_uri = config.require("ecrBaseUri")
 image_tag = config.get("imageTag") or "v1.0.0"
 container_image = f"{ecr_base_uri}:{image_tag}"
+
+web_enabled = _config_bool("webEnabled", False)
+web_ecr_base_uri = config.get("webEcrBaseUri") or ecr_base_uri
+web_image_tag = config.get("webImageTag") or ""
+web_container_image = f"{web_ecr_base_uri}:{web_image_tag}" if web_ecr_base_uri and web_image_tag else ""
+web_domain = config.get("webDomain") or ""
+web_certificate_arn = config.get("webCertificateArn") or ""
+web_cpu = _config_int("webCpu", 512)
+web_memory = _config_int("webMemory", 1024)
+web_min_instances = _config_int("webMinInstances", 1)
+web_max_instances = _config_int("webMaxInstances", 1)
+web_container_port = _config_int("webContainerPort", 3000)
+web_api_base = config.get("webApiBase") or (f"https://{domain}" if domain else "")
+web_forward_auth_headers = _config_bool("webForwardAuthHeaders", False)
+web_api_key_secret_name = config.get("webApiKeySecretName") or "CEREBRO_API_KEYS"
+
+if web_enabled and not web_container_image:
+    raise ValueError("cerebro:webEcrBaseUri and cerebro:webImageTag are required when webEnabled is true")
+if web_enabled and not web_api_base:
+    raise ValueError("cerebro:webApiBase or cerebro:domain is required when webEnabled is true")
 
 alb_internal = _config_bool("albInternal", True)
 configured_alb_ingress_cidrs = config.get_object("albIngressCidrs") or None
@@ -256,6 +277,7 @@ if retain_legacy_jobs_table:
 # =============================================================================
 
 if use_existing_vpc and existing_vpc_id:
+    app_ingress_ports = [8080, web_container_port] if web_enabled else [8080]
     vpc_cidr = existing_vpc_cidr
     alb_ingress_cidrs = (
         configured_alb_ingress_cidrs
@@ -268,8 +290,10 @@ if use_existing_vpc and existing_vpc_id:
         public_subnet_ids=existing_public_subnet_ids,
         private_subnet_ids=existing_private_subnet_ids,
         alb_ingress_cidrs=alb_ingress_cidrs,
+        app_ingress_ports=app_ingress_ports,
     )
 else:
+    app_ingress_ports = [8080, web_container_port] if web_enabled else [8080]
     vpc_cidr = "10.0.0.0/16"
     alb_ingress_cidrs = (
         configured_alb_ingress_cidrs
@@ -286,6 +310,7 @@ else:
         enable_flow_logs=True,
         flow_logs_retention_days=log_retention_days,
         flow_logs_kms_key_arn=logs_kms_key["key_arn"] if logs_kms_key else None,
+        app_ingress_ports=app_ingress_ports,
     )
 
 # =============================================================================
@@ -396,6 +421,22 @@ alb_stack = load_balancer.create_alb(
     enable_access_logs=enable_alb_access_logs,
 )
 
+web_alb_stack = None
+if web_enabled:
+    web_alb_stack = load_balancer.create_alb(
+        name=f"cerebro-{environment}-web",
+        vpc_id=vpc_stack["vpc_id"],
+        subnet_ids=vpc_stack["private_subnet_ids"] if alb_internal else vpc_stack["public_subnet_ids"],
+        security_group_id=vpc_stack["alb_security_group_id"],
+        certificate_domain=web_domain or None,
+        certificate_arn=web_certificate_arn or None,
+        internal=alb_internal,
+        health_check_path="/api/health",
+        container_port=web_container_port,
+        enable_deletion_protection=enable_alb_deletion_protection,
+        enable_access_logs=enable_alb_access_logs,
+    )
+
 # =============================================================================
 # ECS COMPUTE
 # =============================================================================
@@ -467,6 +508,38 @@ ecs_stack = compute.create_ecs_cluster(
     orchestrator_schedules=orchestrator_schedules,
     source_runtimes=source_runtimes,
 )
+
+web_stack = None
+if web_enabled:
+    web_secret_keys = []
+    if web_api_key_secret_name:
+        web_secret_keys.append({"name": "CEREBRO_API_KEYS", "source": web_api_key_secret_name})
+
+    web_stack = web.create_web_service(
+        name=f"cerebro-{environment}-web",
+        cluster_id=ecs_stack["cluster"].id,
+        cluster_name=ecs_stack["cluster"].name,
+        subnet_ids=vpc_stack["private_subnet_ids"],
+        security_group_id=vpc_stack["app_security_group_id"],
+        target_group_arn=web_alb_stack["target_group"].arn,
+        container_image=web_container_image,
+        kms_key_id=kms_key["key_id"],
+        external_secrets_prefix=external_secrets_prefix,
+        cpu=web_cpu,
+        memory=web_memory,
+        min_instances=web_min_instances,
+        max_instances=web_max_instances,
+        container_port=web_container_port,
+        log_retention_days=log_retention_days,
+        log_group_kms_key_id=logs_kms_key["key_arn"] if logs_kms_key else None,
+        environment={
+            "CEREBRO_API_BASE": web_api_base,
+            "CEREBRO_FORWARD_AUTH_HEADERS": str(web_forward_auth_headers).lower(),
+            "NEXT_TELEMETRY_DISABLED": "1",
+        },
+        secret_keys=web_secret_keys,
+        depends_on=[ecs_stack["capacity_providers"], web_alb_stack["listener"]],
+    )
 
 # =============================================================================
 # MONITORING / EDGE
@@ -549,6 +622,8 @@ repository = ecr.create_ecr_repository(
 pulumi.export("vpc_id", vpc_stack["vpc_id"])
 pulumi.export("ecs_cluster_name", ecs_stack["cluster"].name)
 pulumi.export("ecs_service_name", ecs_stack["api_service"].name)
+if web_stack:
+    pulumi.export("web_ecs_service_name", web_stack["service"].name)
 if ecs_stack.get("orchestrator_task_definition"):
     pulumi.export("orchestrator_task_definition_arn", ecs_stack["orchestrator_task_definition"].arn)
 if ecs_stack.get("orchestrator_task_definitions"):
@@ -559,6 +634,9 @@ if ecs_stack.get("orchestrator_rules"):
     pulumi.export("orchestrator_schedule_rule_names", [rule.name for rule in ecs_stack["orchestrator_rules"]])
 pulumi.export("alb_dns_name", alb_stack["alb"].dns_name)
 pulumi.export("api_url", pulumi.Output.concat("https://", domain) if domain else pulumi.Output.concat("http://", alb_stack["alb"].dns_name))
+if web_alb_stack:
+    pulumi.export("web_alb_dns_name", web_alb_stack["alb"].dns_name)
+    pulumi.export("web_url", pulumi.Output.concat("https://", web_domain) if web_domain else pulumi.Output.concat("http://", web_alb_stack["alb"].dns_name))
 pulumi.export("kms_key_id", kms_key["key_id"])
 pulumi.export("kms_key_alias", kms_key["alias"].name)
 pulumi.export("postgres_endpoint", postgres_stack["instance"].address)
