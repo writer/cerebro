@@ -587,9 +587,6 @@ func validateAssumeRoleConfig(settings settings) error {
 	if matches[2] != settings.accountID {
 		return fmt.Errorf("aws role_arn account must match account_id")
 	}
-	if settings.tenantID == "" {
-		return fmt.Errorf("aws role_arn requires runtime tenant_id")
-	}
 	if !assumeRoleARNAllowed(settings.tenantID, settings.roleARN, settings.assumeRoleARNs) {
 		return fmt.Errorf("aws role_arn is not allowed")
 	}
@@ -599,14 +596,18 @@ func validateAssumeRoleConfig(settings settings) error {
 func assumeRoleARNAllowed(tenantID string, roleARN string, allowlist string) bool {
 	tenantID = strings.TrimSpace(tenantID)
 	roleARN = strings.TrimSpace(roleARN)
-	if tenantID == "" || roleARN == "" {
+	if roleARN == "" {
 		return false
 	}
 	for _, value := range strings.FieldsFunc(allowlist, func(r rune) bool {
 		return r == ',' || r == ';' || r == '\n' || r == '\t' || r == ' '
 	}) {
-		tenant, arn, ok := strings.Cut(strings.TrimSpace(value), "=")
+		value = strings.TrimSpace(value)
+		tenant, arn, ok := strings.Cut(value, "=")
 		if !ok {
+			if tenantID == "" && value == roleARN {
+				return true
+			}
 			continue
 		}
 		if strings.TrimSpace(tenant) == tenantID && strings.TrimSpace(arn) == roleARN {

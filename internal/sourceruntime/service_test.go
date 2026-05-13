@@ -235,6 +235,30 @@ func (s *tokenSource) Read(_ context.Context, config sourcecdk.Config, _ *cerebr
 	}}}, nil
 }
 
+type tenantCheckSource struct {
+	checkedTenant string
+}
+
+func (s *tenantCheckSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "tenant_check"}
+}
+
+func (s *tenantCheckSource) Check(_ context.Context, config sourcecdk.Config) error {
+	s.checkedTenant, _ = config.Lookup(sourceconfig.RuntimeTenantIDKey)
+	if s.checkedTenant != "writer" {
+		return sourcecdk.ErrInvalidConfig
+	}
+	return nil
+}
+
+func (s *tenantCheckSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (s *tenantCheckSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	return sourcecdk.Pull{}, nil
+}
+
 func TestPutAndGetRuntimeRedactsSensitiveConfig(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {
@@ -628,6 +652,42 @@ func TestPutPreservesProgressWhenConfigIsUnchanged(t *testing.T) {
 	}
 	if resp.GetRuntime().GetNextCursor().GetOpaque() != "1" {
 		t.Fatalf("Put().Runtime.NextCursor = %#v, want cursor 1", resp.GetRuntime().GetNextCursor())
+	}
+}
+
+func TestPutMergesStoredTenantBeforeValidation(t *testing.T) {
+	source := &tenantCheckSource{}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-tenant-check": {
+				Id:       "writer-tenant-check",
+				SourceId: "tenant_check",
+				TenantId: "writer",
+				Config:   map[string]string{"lookup_key": "inventory"},
+			},
+		},
+	}
+	service := New(registry, store, nil, nil)
+
+	resp, err := service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
+		Runtime: &cerebrov1.SourceRuntime{
+			Id:       "writer-tenant-check",
+			SourceId: "tenant_check",
+			Config:   map[string]string{"lookup_key": "inventory"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if source.checkedTenant != "writer" {
+		t.Fatalf("source checked tenant = %q, want writer", source.checkedTenant)
+	}
+	if resp.GetRuntime().GetTenantId() != "writer" {
+		t.Fatalf("Put().Runtime.TenantId = %q, want writer", resp.GetRuntime().GetTenantId())
 	}
 }
 

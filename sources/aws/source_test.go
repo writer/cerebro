@@ -51,22 +51,34 @@ func TestCheckRequiresAccountID(t *testing.T) {
 
 func TestParseSettingsValidatesAssumeRoleConfig(t *testing.T) {
 	roleARN := "arn:aws:iam::123456789012:role/cerebro-org-scan-role"
-	settings, err := parseSettings(sourcecdk.NewConfig(map[string]string{
-		"account_id":                           "123456789012",
-		"role_arn":                             roleARN,
-		"external_id":                          "external-1",
-		"role_session_name":                    "legacy-session",
-		sourceconfig.AWSAssumeRoleAllowlistKey: "writer=" + roleARN,
-		sourceconfig.RuntimeTenantIDKey:        "writer",
-	}))
-	if err != nil {
-		t.Fatalf("parseSettings() error = %v", err)
-	}
-	if settings.roleARN != roleARN {
-		t.Fatalf("roleARN = %q, want %q", settings.roleARN, roleARN)
-	}
-	if settings.externalID != "external-1" {
-		t.Fatalf("externalID = %q, want external-1", settings.externalID)
+	for _, tt := range []struct {
+		name      string
+		allowlist string
+		tenantID  string
+	}{
+		{name: "tenant scoped", allowlist: "writer=" + roleARN, tenantID: "writer"},
+		{name: "empty tenant scoped", allowlist: "=" + roleARN},
+		{name: "legacy tenantless", allowlist: roleARN},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			settings, err := parseSettings(sourcecdk.NewConfig(map[string]string{
+				"account_id":                           "123456789012",
+				"role_arn":                             roleARN,
+				"external_id":                          "external-1",
+				"role_session_name":                    "legacy-session",
+				sourceconfig.AWSAssumeRoleAllowlistKey: tt.allowlist,
+				sourceconfig.RuntimeTenantIDKey:        tt.tenantID,
+			}))
+			if err != nil {
+				t.Fatalf("parseSettings() error = %v", err)
+			}
+			if settings.roleARN != roleARN {
+				t.Fatalf("roleARN = %q, want %q", settings.roleARN, roleARN)
+			}
+			if settings.externalID != "external-1" {
+				t.Fatalf("externalID = %q, want external-1", settings.externalID)
+			}
+		})
 	}
 }
 

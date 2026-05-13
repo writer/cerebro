@@ -147,6 +147,12 @@ func (s *Service) preparePutRuntime(ctx context.Context, input *cerebrov1.Source
 	switch {
 	case err == nil:
 		restoreRedactedConfig(existing, runtime)
+		if runtime.GetTenantId() == "" {
+			runtime.TenantId = strings.TrimSpace(existing.GetTenantId())
+		}
+		if err := validateRuntimeTenantUnchanged(existing, runtime); err != nil {
+			return nil, err
+		}
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
 		existing = nil
 	default:
@@ -164,9 +170,6 @@ func (s *Service) preparePutRuntime(ctx context.Context, input *cerebrov1.Source
 	}
 	runtime.Config = configWithProgressHash(runtime.GetConfig(), resolvedConfig)
 	if existing != nil {
-		if err := validateRuntimeTenantUnchanged(existing, runtime); err != nil {
-			return nil, err
-		}
 		runtime = mergeRuntime(existing, runtime)
 	}
 	return runtime, nil
