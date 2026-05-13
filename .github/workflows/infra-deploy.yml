@@ -29,6 +29,40 @@ env:
   TAILSCALE_OAUTH_CLIENT_SECRET: ${{ secrets.TAILSCALE_OAUTH_CLIENT_SECRET }}
 
 jobs:
+  static-validation:
+    name: Static infra validation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "infra/pyproject.toml"
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: bash
+        working-directory: infra
+        run: uv sync
+
+      - name: Run static checks
+        shell: bash
+        working-directory: infra
+        run: |
+          uv run python -m compileall aws gcp scripts tests
+          uv run python scripts/validate_stack_config.py
+          uv run python -m unittest discover -s tests
+
   # ===========================================================================
   # AWS jobs
   # ===========================================================================

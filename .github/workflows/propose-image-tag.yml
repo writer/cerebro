@@ -1,0 +1,144 @@
+name: Propose Cerebro Image Tag
+
+on:
+  schedule:
+    - cron: '20 14 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Stack to update
+        required: true
+        default: go-prod
+        type: choice
+        options:
+          - sec-dev
+          - go-prod
+      image_tag:
+        description: Optional explicit image tag. When empty, use the latest stable GHCR tag.
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  packages: read
+  pull-requests: write
+
+concurrency:
+  group: propose-cerebro-image-tag-${{ github.event.inputs.environment || 'go-prod' }}
+  cancel-in-progress: false
+
+env:
+  GHCR_IMAGE: ghcr.io/writer/cerebro
+
+jobs:
+  propose:
+    name: Propose image tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "infra/pyproject.toml"
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: bash
+        working-directory: infra
+        run: uv sync
+
+      - name: Resolve image tag
+        id: image
+        shell: bash
+        env:
+          INPUT_TAG: ${{ github.event.inputs.image_tag || '' }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "${INPUT_TAG}" ]; then
+            tag="${INPUT_TAG}"
+          else
+            token="$(curl -fsSL "https://ghcr.io/token?scope=repository:writer/cerebro:pull" | jq -r '.token')"
+            tags_json="$(curl -fsSL -H "Authorization: Bearer ${token}" "https://ghcr.io/v2/writer/cerebro/tags/list?n=1000")"
+            tag="$(jq -r '.tags[]?' <<<"${tags_json}" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)"
+          fi
+
+          if ! [[ "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Resolved invalid image tag: ${tag}" >&2
+            exit 1
+          fi
+
+          docker manifest inspect "${GHCR_IMAGE}:${tag}" >/dev/null
+          digest="$(docker manifest inspect --verbose "${GHCR_IMAGE}:${tag}" | jq -r 'if type == "array" then .[0].Descriptor.digest // empty else .Descriptor.digest // .config.digest // empty end')"
+
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          echo "Resolved ${GHCR_IMAGE}:${tag} ${digest}"
+
+      - name: Update stack config
+        id: update
+        shell: bash
+        env:
+          STACK_NAME: ${{ github.event.inputs.environment || 'go-prod' }}
+          IMAGE_TAG: ${{ steps.image.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          uv run --project infra python infra/scripts/set_image_tag.py --stack "${STACK_NAME}" --image-tag "${IMAGE_TAG}"
+          uv run --project infra python infra/scripts/validate_stack_config.py "infra/aws/Pulumi.${STACK_NAME}.yaml"
+
+          if git diff --quiet -- "infra/aws/Pulumi.${STACK_NAME}.yaml"; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Stack ${STACK_NAME} already uses ${IMAGE_TAG}"
+            exit 0
+          fi
+
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Open pull request
+        if: steps.update.outputs.changed == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STACK_NAME: ${{ github.event.inputs.environment || 'go-prod' }}
+          IMAGE_TAG: ${{ steps.image.outputs.tag }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+
+          safe_tag="$(printf '%s' "${IMAGE_TAG}" | tr -c 'A-Za-z0-9._-' '-')"
+          branch="automation/cerebro-image-${STACK_NAME}-${safe_tag}"
+          title="chore: bump ${STACK_NAME} Cerebro image to ${IMAGE_TAG}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "${branch}"
+          git add "infra/aws/Pulumi.${STACK_NAME}.yaml"
+          git commit -m "${title}"
+          git push --force-with-lease origin "HEAD:${branch}"
+
+          body="$(mktemp)"
+          {
+            echo "Updates \`${STACK_NAME}\` to \`${GHCR_IMAGE}:${IMAGE_TAG}\`."
+            echo
+            echo "- Image: \`${GHCR_IMAGE}:${IMAGE_TAG}\`"
+            if [ -n "${IMAGE_DIGEST}" ]; then
+              echo "- Digest: \`${IMAGE_DIGEST}\`"
+            fi
+            echo
+            echo "Deployment remains review-gated: merge this PR to let the existing mirror and Pulumi deploy workflows run."
+          } > "${body}"
+
+          existing_pr="$(gh pr list --head "${branch}" --json url --jq '.[0].url // empty')"
+          if [ -n "${existing_pr}" ]; then
+            gh pr edit "${existing_pr}" --title "${title}" --body-file "${body}"
+            echo "Updated ${existing_pr}"
+          else
+            gh pr create --base main --head "${branch}" --title "${title}" --body-file "${body}"
+          fi
