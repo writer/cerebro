@@ -11,6 +11,7 @@ import pulumi_aws as aws
 def create_waf(
     name: str,
     alb_arn: pulumi.Output[str],
+    additional_alb_arns: list[pulumi.Input[str]] | None = None,
     rate_limit: int = 2000,
     enable_logging: bool = True,
     log_retention_days: int = 30,
@@ -22,6 +23,7 @@ def create_waf(
     Args:
         name: WAF name prefix
         alb_arn: ALB ARN to associate
+        additional_alb_arns: Optional additional ALB ARNs to associate
         rate_limit: Requests per 5 minutes per IP
         enable_logging: Enable WAF request logging to CloudWatch
         log_retention_days: Days to retain WAF logs
@@ -126,6 +128,14 @@ def create_waf(
         resource_arn=alb_arn,
         web_acl_arn=web_acl.arn,
     )
+    additional_associations = [
+        aws.wafv2.WebAclAssociation(
+            f"{name}-waf-association-{index}",
+            resource_arn=additional_alb_arn,
+            web_acl_arn=web_acl.arn,
+        )
+        for index, additional_alb_arn in enumerate(additional_alb_arns or [], start=1)
+    ]
 
     # WAF Logging to CloudWatch
     log_group = None
@@ -184,5 +194,6 @@ def create_waf(
     return {
         "web_acl": web_acl,
         "association": waf_association,
+        "additional_associations": additional_associations,
         "log_group": log_group,
     }

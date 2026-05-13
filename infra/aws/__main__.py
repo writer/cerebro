@@ -566,6 +566,7 @@ if enable_waf:
     waf_stack = waf.create_waf(
         name=f"cerebro-{environment}",
         alb_arn=alb_stack["alb"].arn,
+        additional_alb_arns=[web_alb_stack["alb"].arn] if web_alb_stack else None,
         rate_limit=2000,
         enable_logging=True,
         log_retention_days=log_retention_days,
