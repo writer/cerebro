@@ -35,6 +35,9 @@ config:
   cerebro:allowedTenants:
     - writer
   cerebro:sourceSecretKeys:
+    - CEREBRO_SOURCE_COSMO_BASE_URL
+    - CEREBRO_SOURCE_COSMO_TOKEN
+    - CEREBRO_SOURCE_COSMO_WEBHOOK_SECRET
     - VANTA_CLIENT_ID
     - VANTA_CLIENT_SECRET
     - VULNVIEW_PROVIDER_OKTA_ISSUER
@@ -404,6 +407,33 @@ config:
         okta_issuer: env:VULNVIEW_PROVIDER_OKTA_ISSUER
         per_page: "100"
         tenant_id: writer
+    - id: writer-cosmo-session
+      sourceId: cosmo
+      tenantId: writer
+      config:
+        base_url: env:CEREBRO_SOURCE_COSMO_BASE_URL
+        family: session
+        per_page: "100"
+        tenant_id: writer
+        token: env:CEREBRO_SOURCE_COSMO_TOKEN
+    - id: writer-cosmo-fact
+      sourceId: cosmo
+      tenantId: writer
+      config:
+        base_url: env:CEREBRO_SOURCE_COSMO_BASE_URL
+        family: fact
+        per_page: "100"
+        tenant_id: writer
+        token: env:CEREBRO_SOURCE_COSMO_TOKEN
+    - id: writer-cosmo-survey-feedback
+      sourceId: cosmo
+      tenantId: writer
+      config:
+        base_url: env:CEREBRO_SOURCE_COSMO_BASE_URL
+        family: survey_feedback
+        per_page: "100"
+        tenant_id: writer
+        webhook_secret: env:CEREBRO_SOURCE_COSMO_WEBHOOK_SECRET
     - id: writer-aws-sec-prod-us1-public-endpoint
       sourceId: aws
       tenantId: writer
