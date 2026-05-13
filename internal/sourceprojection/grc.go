@@ -1,6 +1,7 @@
 package sourceprojection
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -287,36 +288,89 @@ func grcVulnerableAssetProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), targetURN, integrationURN, relationBelongsTo, grcIntegrationLinkAttributes(event, integrationID)))
 	}
 
-	vulnerabilityAttrsList := grcVulnerableAssetVulnerabilityAttrs(attrs)
-	if len(vulnerabilityAttrsList) == 0 {
-		vulnerabilityAttrsList = []map[string]string{attrs}
+	referenceAttrsList := grcVulnerableAssetReferenceAttrs(attrs)
+	if len(referenceAttrsList) > 0 {
+		for _, referenceAttrs := range referenceAttrsList {
+			vulnerabilityURN := addCanonicalVulnerabilityEntity(entities, tenantID, event.GetSourceId(), referenceAttrs)
+			if vulnerabilityURN != "" {
+				addLink(links, projectedLink(tenantID, event.GetSourceId(), targetURN, vulnerabilityURN, relationAffectedBy, vulnerabilityEvidenceAttributes(event, referenceAttrs)))
+			}
+			for _, packageAttrs := range grcVulnerableAssetPackageAttrs(referenceAttrs) {
+				packageURN := vulnerabilityPackageURN(tenantID, packageAttrs, "grc")
+				canonicalPackageURN := addCanonicalPackageEntity(entities, tenantID, event.GetSourceId(), packageAttrs, "grc")
+				if packageURN != "" {
+					addVulnerablePackageEntity(entities, tenantID, event.GetSourceId(), packageURN, packageAttrs, "grc")
+					addLink(links, projectedLink(tenantID, event.GetSourceId(), targetURN, packageURN, relationContains, grcPackageTargetAttributes(event, packageAttrs)))
+					if vulnerabilityURN != "" {
+						addLink(links, projectedLink(tenantID, event.GetSourceId(), packageURN, vulnerabilityURN, relationAffectedBy, vulnerabilityEvidenceAttributes(event, packageAttrs)))
+					}
+				}
+				if packageURN != "" && canonicalPackageURN != "" {
+					addLink(links, projectedLink(tenantID, event.GetSourceId(), packageURN, canonicalPackageURN, relationRepresents, packageIdentityAttributes(event, packageAttrs, "grc")))
+				}
+				if canonicalPackageURN != "" && vulnerabilityURN != "" {
+					addLink(links, projectedLink(tenantID, event.GetSourceId(), canonicalPackageURN, vulnerabilityURN, relationAffectedBy, vulnerabilityEvidenceAttributes(event, packageAttrs)))
+				}
+			}
+		}
+		projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+		return projectedEntities, projectedLinks, nil
 	}
-	for _, vulnerabilityAttrs := range vulnerabilityAttrsList {
+
+	for _, vulnerabilityAttrs := range grcVulnerableAssetVulnerabilityAttrs(attrs) {
 		vulnerabilityURN := addCanonicalVulnerabilityEntity(entities, tenantID, event.GetSourceId(), vulnerabilityAttrs)
 		if vulnerabilityURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), targetURN, vulnerabilityURN, relationAffectedBy, vulnerabilityEvidenceAttributes(event, vulnerabilityAttrs)))
 		}
-		for _, packageAttrs := range grcVulnerableAssetPackageAttrs(vulnerabilityAttrs) {
-			packageURN := vulnerabilityPackageURN(tenantID, packageAttrs, "grc")
-			canonicalPackageURN := addCanonicalPackageEntity(entities, tenantID, event.GetSourceId(), packageAttrs, "grc")
-			if packageURN != "" {
-				addVulnerablePackageEntity(entities, tenantID, event.GetSourceId(), packageURN, packageAttrs, "grc")
-				addLink(links, projectedLink(tenantID, event.GetSourceId(), targetURN, packageURN, relationContains, grcPackageTargetAttributes(event, packageAttrs)))
-				if vulnerabilityURN != "" {
-					addLink(links, projectedLink(tenantID, event.GetSourceId(), packageURN, vulnerabilityURN, relationAffectedBy, vulnerabilityEvidenceAttributes(event, packageAttrs)))
-				}
-			}
-			if packageURN != "" && canonicalPackageURN != "" {
-				addLink(links, projectedLink(tenantID, event.GetSourceId(), packageURN, canonicalPackageURN, relationRepresents, packageIdentityAttributes(event, packageAttrs, "grc")))
-			}
-			if canonicalPackageURN != "" && vulnerabilityURN != "" {
-				addLink(links, projectedLink(tenantID, event.GetSourceId(), canonicalPackageURN, vulnerabilityURN, relationAffectedBy, vulnerabilityEvidenceAttributes(event, packageAttrs)))
-			}
+	}
+	for _, packageAttrs := range grcVulnerableAssetPackageAttrs(attrs) {
+		packageURN := vulnerabilityPackageURN(tenantID, packageAttrs, "grc")
+		canonicalPackageURN := addCanonicalPackageEntity(entities, tenantID, event.GetSourceId(), packageAttrs, "grc")
+		if packageURN != "" {
+			addVulnerablePackageEntity(entities, tenantID, event.GetSourceId(), packageURN, packageAttrs, "grc")
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), targetURN, packageURN, relationContains, grcPackageTargetAttributes(event, packageAttrs)))
+		}
+		if packageURN != "" && canonicalPackageURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), packageURN, canonicalPackageURN, relationRepresents, packageIdentityAttributes(event, packageAttrs, "grc")))
 		}
 	}
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
+}
+
+func grcVulnerableAssetReferenceAttrs(attrs map[string]string) []map[string]string {
+	rawReferences := strings.TrimSpace(attrs["vulnerability_package_refs"])
+	if rawReferences == "" {
+		return nil
+	}
+	var references []struct {
+		VulnerabilityID   string `json:"vulnerability_id"`
+		VulnerabilityName string `json:"vulnerability_name"`
+		PackageIdentifier string `json:"package_identifier"`
+	}
+	if err := json.Unmarshal([]byte(rawReferences), &references); err != nil {
+		return nil
+	}
+	result := make([]map[string]string, 0, len(references))
+	for _, reference := range references {
+		referenceAttrs := grcProjectionAttrsWith(attrs)
+		delete(referenceAttrs, "vulnerability_ids")
+		delete(referenceAttrs, "vulnerability_names")
+		delete(referenceAttrs, "package_identifiers")
+		if strings.TrimSpace(reference.VulnerabilityID) != "" {
+			referenceAttrs["vulnerability_id"] = reference.VulnerabilityID
+		}
+		if strings.TrimSpace(reference.VulnerabilityName) != "" {
+			referenceAttrs["name"] = reference.VulnerabilityName
+		}
+		if strings.TrimSpace(reference.PackageIdentifier) != "" {
+			referenceAttrs["package"] = reference.PackageIdentifier
+			referenceAttrs["package_purl"] = reference.PackageIdentifier
+		}
+		result = append(result, referenceAttrs)
+	}
+	return result
 }
 
 func grcVulnerableAssetVulnerabilityAttrs(attrs map[string]string) []map[string]string {

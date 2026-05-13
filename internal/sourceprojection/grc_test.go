@@ -433,15 +433,16 @@ func TestProjectGRCVulnerableAssetEnrichesVulnerabilityTarget(t *testing.T) {
 		SourceId: "grc",
 		Kind:     "grc.vulnerable_asset",
 		Attributes: map[string]string{
-			"provider":            "vanta",
-			"target_id":           "target-1",
-			"target_name":         "App Server",
-			"hostname":            "app.writer.com",
-			"ip":                  "203.0.113.10",
-			"integration_id":      "integration-1",
-			"asset_type":          "server",
-			"vulnerability_ids":   "CVE-2026-4242",
-			"package_identifiers": "pkg:golang/example/module@1.2.3",
+			"provider":                   "vanta",
+			"target_id":                  "target-1",
+			"target_name":                "App Server",
+			"hostname":                   "app.writer.com",
+			"ip":                         "203.0.113.10",
+			"integration_id":             "integration-1",
+			"asset_type":                 "server",
+			"vulnerability_ids":          "CVE-2026-4242",
+			"package_identifiers":        "pkg:golang/example/module@1.2.3",
+			"vulnerability_package_refs": `[{"vulnerability_id":"CVE-2026-4242","package_identifier":"pkg:golang/example/module@1.2.3"}]`,
 		},
 	})
 	if err != nil {
@@ -473,6 +474,41 @@ func TestProjectGRCVulnerableAssetEnrichesVulnerabilityTarget(t *testing.T) {
 	assertProjectedLink(t, state, packageURN, relationRepresents, canonicalPackageURN)
 	assertProjectedLink(t, state, packageURN, relationAffectedBy, vulnerabilityURN)
 	assertProjectedLink(t, state, canonicalPackageURN, relationAffectedBy, vulnerabilityURN)
+}
+
+func TestProjectGRCVulnerableAssetPreservesPackageVulnerabilityPairs(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-vulnerable-asset-2",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.vulnerable_asset",
+		Attributes: map[string]string{
+			"provider":            "vanta",
+			"target_id":           "target-2",
+			"vulnerability_ids":   "CVE-2026-4242,CVE-2026-4243",
+			"package_identifiers": "pkg:golang/example/one@1.0.0,pkg:golang/example/two@2.0.0",
+			"vulnerability_package_refs": `[` +
+				`{"vulnerability_id":"CVE-2026-4242","package_identifier":"pkg:golang/example/one@1.0.0"},` +
+				`{"vulnerability_id":"CVE-2026-4243","package_identifier":"pkg:golang/example/two@2.0.0"}` +
+				`]`,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	packageOneURN := "urn:cerebro:writer:package:grc:pkg:golang/example/one@1.0.0"
+	packageTwoURN := "urn:cerebro:writer:package:grc:pkg:golang/example/two@2.0.0"
+	vulnerabilityOneURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
+	vulnerabilityTwoURN := "urn:cerebro:writer:vulnerability:cve-2026-4243"
+
+	assertProjectedLink(t, state, packageOneURN, relationAffectedBy, vulnerabilityOneURN)
+	assertProjectedLink(t, state, packageTwoURN, relationAffectedBy, vulnerabilityTwoURN)
+	assertProjectedLinkMissing(t, state, packageOneURN, relationAffectedBy, vulnerabilityTwoURN)
+	assertProjectedLinkMissing(t, state, packageTwoURN, relationAffectedBy, vulnerabilityOneURN)
 }
 
 func TestProjectGRCVulnerabilityWritesGraphTargetIntegrationLinks(t *testing.T) {

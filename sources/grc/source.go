@@ -846,6 +846,9 @@ func copyVulnerableAssetReferences(attrs map[string]string, values map[string]an
 	); packages != "" {
 		attrs["package_identifiers"] = packages
 	}
+	if references := joinedVulnerableAssetReferences(values); references != "" {
+		attrs["vulnerability_package_refs"] = references
+	}
 }
 
 func joinedControlReferences(values map[string]any, arrayKey string) string {
@@ -873,6 +876,48 @@ func joinedControlReferences(values map[string]any, arrayKey string) string {
 		collected = append(collected, pair)
 	}
 	return strings.Join(collected, ";")
+}
+
+func joinedVulnerableAssetReferences(values map[string]any) string {
+	items := arrayValue(values, "vulnerabilities")
+	refs := make([]map[string]string, 0, len(items))
+	seen := map[string]struct{}{}
+	for _, item := range items {
+		object, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		vulnerabilityID := firstNonEmptyString(valueString(object["id"]), valueString(object["vulnerabilityId"]))
+		vulnerabilityName := firstNonEmptyString(valueString(object["name"]), valueString(object["title"]))
+		packageIdentifier := firstNonEmptyString(valueString(object["packageIdentifier"]), valueString(object["package"]), valueString(object["packagePurl"]))
+		if vulnerabilityID == "" && vulnerabilityName == "" && packageIdentifier == "" {
+			continue
+		}
+		key := strings.Join([]string{vulnerabilityID, vulnerabilityName, packageIdentifier}, "\x00")
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		ref := map[string]string{}
+		if vulnerabilityID != "" {
+			ref["vulnerability_id"] = vulnerabilityID
+		}
+		if vulnerabilityName != "" {
+			ref["vulnerability_name"] = vulnerabilityName
+		}
+		if packageIdentifier != "" {
+			ref["package_identifier"] = packageIdentifier
+		}
+		refs = append(refs, ref)
+	}
+	if len(refs) == 0 {
+		return ""
+	}
+	raw, err := json.Marshal(refs)
+	if err != nil {
+		return ""
+	}
+	return string(raw)
 }
 
 func joinedObjectFieldValues(values map[string]any, arrayKey string, fields ...string) string {

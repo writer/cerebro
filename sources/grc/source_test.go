@@ -361,6 +361,13 @@ func TestReadVantaVulnerableAssetNormalizesFields(t *testing.T) {
 	if got := attrs["package_identifiers"]; got != "pkg:golang/example/module@1.2.3" {
 		t.Fatalf("package_identifiers = %q, want purl", got)
 	}
+	var refs []map[string]string
+	if err := json.Unmarshal([]byte(attrs["vulnerability_package_refs"]), &refs); err != nil {
+		t.Fatalf("vulnerability_package_refs is invalid JSON: %v", err)
+	}
+	if len(refs) != 1 || refs[0]["vulnerability_id"] != "CVE-2026-4242" || refs[0]["package_identifier"] != "pkg:golang/example/module@1.2.3" {
+		t.Fatalf("vulnerability_package_refs = %#v, want CVE/package tuple", refs)
+	}
 }
 
 func TestTokenCacheScopesRuntimeSecretsAndBaseURL(t *testing.T) {
