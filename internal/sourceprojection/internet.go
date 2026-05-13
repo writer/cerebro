@@ -45,6 +45,29 @@ func internetHostIfLikely(raw string) string {
 	return ""
 }
 
+func internetIPURN(tenantID string, raw string) (string, string) {
+	ip := internetIP(raw)
+	if ip == "" {
+		return "", ""
+	}
+	return projectionURN(tenantID, "internet_ip", ip), ip
+}
+
+func internetIP(raw string) string {
+	host := internetHost(raw)
+	if host == "" {
+		return ""
+	}
+	parsed := net.ParseIP(host)
+	if parsed == nil {
+		return ""
+	}
+	if v4 := parsed.To4(); v4 != nil {
+		return v4.String()
+	}
+	return parsed.String()
+}
+
 func normalizeInternetHost(host string) string {
 	normalized := strings.ToLower(strings.TrimSpace(strings.Trim(host, ".")))
 	if normalized == "" || strings.ContainsAny(normalized, " /?#,;@") {
@@ -62,6 +85,19 @@ func addInternetHostEntity(entities map[string]*ports.ProjectedEntity, tenantID 
 		Label:      host,
 		Attributes: map[string]string{
 			"host": host,
+		},
+	})
+}
+
+func addInternetIPEntity(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, urn string, ip string) {
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        urn,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "internet.ip",
+		Label:      ip,
+		Attributes: map[string]string{
+			"ip": ip,
 		},
 	})
 }

@@ -26,6 +26,7 @@ func TestProjectSentinelOneAgentBuildsAgentEntity(t *testing.T) {
 			"is_up_to_date":     "true",
 			"infected":          "false",
 			"active_threats":    "0",
+			"external_ip":       "203.0.113.10",
 			"last_active_date":  "2026-04-23T01:00:00Z",
 			"site_id":           "site-1",
 			"site_name":         "Production",
@@ -37,16 +38,17 @@ func TestProjectSentinelOneAgentBuildsAgentEntity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	if result.EntitiesProjected != 3 {
-		t.Fatalf("EntitiesProjected = %d, want 3", result.EntitiesProjected)
+	if result.EntitiesProjected != 4 {
+		t.Fatalf("EntitiesProjected = %d, want 4", result.EntitiesProjected)
 	}
-	if result.LinksProjected != 2 {
-		t.Fatalf("LinksProjected = %d, want 2", result.LinksProjected)
+	if result.LinksProjected != 3 {
+		t.Fatalf("LinksProjected = %d, want 3", result.LinksProjected)
 	}
 
 	agentURN := "urn:cerebro:writer:sentinelone_agent:agent-1"
 	siteURN := "urn:cerebro:writer:sentinelone_site:site-1"
 	groupURN := "urn:cerebro:writer:sentinelone_group:group-1"
+	ipURN := "urn:cerebro:writer:internet_ip:203.0.113.10"
 	if state.entities[agentURN] == nil {
 		t.Fatalf("agent entity missing: %#v", state.entities)
 	}
@@ -56,8 +58,12 @@ func TestProjectSentinelOneAgentBuildsAgentEntity(t *testing.T) {
 	if state.entities[agentURN].Attributes["computer_name"] != "host-1" {
 		t.Fatalf("agent computer_name = %q, want host-1", state.entities[agentURN].Attributes["computer_name"])
 	}
+	if entity := state.entities[ipURN]; entity == nil || entity.EntityType != "internet.ip" {
+		t.Fatalf("internet ip entity missing: %#v", entity)
+	}
 	assertProjectedLink(t, state, agentURN, relationBelongsTo, siteURN)
 	assertProjectedLink(t, state, agentURN, relationMemberOf, groupURN)
+	assertProjectedLink(t, state, agentURN, relationHasIdentifier, ipURN)
 }
 
 func TestProjectSentinelOneAgentSkipsWhenAgentIDMissing(t *testing.T) {
@@ -92,6 +98,7 @@ func TestProjectSentinelOneThreatLinksThreatToAgent(t *testing.T) {
 			"agent_id":              "agent-1",
 			"agent_name":            "host-1",
 			"computer_name":         "host-1",
+			"external_ip":           "203.0.113.20",
 			"classification":        "Malware",
 			"classification_source": "Engine",
 			"analyst_verdict":       "true_positive",
@@ -111,6 +118,7 @@ func TestProjectSentinelOneThreatLinksThreatToAgent(t *testing.T) {
 	}
 	threatURN := "urn:cerebro:writer:sentinelone_threat:threat-1"
 	agentURN := "urn:cerebro:writer:sentinelone_agent:agent-1"
+	ipURN := "urn:cerebro:writer:internet_ip:203.0.113.20"
 	siteURN := "urn:cerebro:writer:sentinelone_site:site-1"
 	groupURN := "urn:cerebro:writer:sentinelone_group:group-1"
 
@@ -121,6 +129,7 @@ func TestProjectSentinelOneThreatLinksThreatToAgent(t *testing.T) {
 		t.Fatalf("agent entity missing")
 	}
 	assertProjectedLink(t, state, agentURN, relationAffectedBy, threatURN)
+	assertProjectedLink(t, state, agentURN, relationHasIdentifier, ipURN)
 	assertProjectedLink(t, state, threatURN, relationBelongsTo, siteURN)
 	assertProjectedLink(t, state, threatURN, relationMemberOf, groupURN)
 	if got := state.entities[threatURN].Attributes["classification"]; got != "Malware" {
