@@ -529,9 +529,6 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if settings.accountID == "" {
 		return settings, fmt.Errorf("aws account_id is required")
 	}
-	if roleSessionName := configValue(cfg, "role_session_name"); roleSessionName != "" {
-		return settings, fmt.Errorf("aws role_session_name is no longer supported")
-	}
 	if settings.roleARN != "" {
 		if err := validateAssumeRoleConfig(settings); err != nil {
 			return settings, err

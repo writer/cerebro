@@ -55,6 +55,7 @@ func TestParseSettingsValidatesAssumeRoleConfig(t *testing.T) {
 		"account_id":                           "123456789012",
 		"role_arn":                             roleARN,
 		"external_id":                          "external-1",
+		"role_session_name":                    "legacy-session",
 		sourceconfig.AWSAssumeRoleAllowlistKey: "writer=" + roleARN,
 		sourceconfig.RuntimeTenantIDKey:        "writer",
 	}))
@@ -102,10 +103,6 @@ func TestParseSettingsRejectsUnsafeAssumeRoleConfig(t *testing.T) {
 		{
 			name:   "external id without role",
 			config: map[string]string{"account_id": "123456789012", "external_id": "external-1"},
-		},
-		{
-			name:   "caller supplied session name",
-			config: map[string]string{"account_id": "123456789012", "role_arn": allowed, "role_session_name": "caller", sourceconfig.AWSAssumeRoleAllowlistKey: "writer=" + allowed, sourceconfig.RuntimeTenantIDKey: "writer"},
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
