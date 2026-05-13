@@ -144,6 +144,9 @@ func TestBuiltinRulePacksFlattenIntoCatalog(t *testing.T) {
 	if _, ok := registry.Get(vulnViewActionableExternalFindingRuleID); !ok {
 		t.Fatalf("registry missing %q", vulnViewActionableExternalFindingRuleID)
 	}
+	if _, ok := registry.Get(vulnViewExternalAssetConcentratedSignalRuleID); !ok {
+		t.Fatalf("registry missing %q", vulnViewExternalAssetConcentratedSignalRuleID)
+	}
 	if _, ok := registry.Get(dataSensitiveAssetRiskRuleID); !ok {
 		t.Fatalf("registry missing %q", dataSensitiveAssetRiskRuleID)
 	}

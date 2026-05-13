@@ -120,6 +120,8 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"sentinelone.vulnerability":            sentinelOneVulnerabilityProjections,
 	"vulnview.asset":                       vulnViewAssetProjections,
 	"vulnview.dns_alert":                   vulnViewDNSAlertProjections,
+	"vulnview.scan":                        vulnViewScanProjections,
+	"vulnview.site":                        vulnViewSiteProjections,
 	"vulnview.vulnerability":               vulnViewVulnerabilityProjections,
 }}
 

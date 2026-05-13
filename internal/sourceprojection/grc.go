@@ -191,6 +191,7 @@ func grcVendorProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 		Label:      firstAttribute(attrs, "name", "vendor_id"),
 		Attributes: grcAttributes(attrs, map[string]string{"vendor_id": vendorID, "source_system": provider}),
 	})
+	addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, vendorURN, relationHasIdentifier, firstAttribute(attrs, "website_url", "website", "url", "domain"), "grc_vendor_website_host", "0.95")
 	for _, ownerID := range []string{firstAttribute(attrs, "security_owner_user_id"), firstAttribute(attrs, "business_owner_user_id")} {
 		if ownerID == "" {
 			continue
@@ -232,6 +233,7 @@ func grcVulnerabilityProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 	targetURN := grcTargetURN(tenantID, provider, targetID)
 	if targetURN != "" {
 		addEntity(entities, grcTargetEntity(tenantID, event.GetSourceId(), targetURN, targetID, attrs, provider))
+		addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, targetURN, relationRepresents, grcTargetHost(attrs), "grc_target_host", "0.95")
 		if vulnerabilityURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), targetURN, vulnerabilityURN, relationAffectedBy, vulnerabilityEvidenceAttributes(event, attrs)))
 		}
@@ -275,12 +277,20 @@ func grcTargetEntity(tenantID string, sourceID string, urn string, targetID stri
 		EntityType: "grc.target",
 		Label:      firstAttribute(attrs, "target_name", "resource_name", "hostname", "target_id", "resource_id"),
 		Attributes: grcAttributes(nil, map[string]string{
+			"host":           grcTargetHost(attrs),
 			"integration_id": firstAttribute(attrs, "integration_id"),
 			"source_system":  provider,
 			"target_id":      targetID,
 			"target_type":    firstAttribute(attrs, "target_type", "resource_type", "asset_type"),
 		}),
 	}
+}
+
+func grcTargetHost(attrs map[string]string) string {
+	if host := internetHost(firstAttribute(attrs, "hostname", "host", "target_url", "resource_url", "url", "website_url")); host != "" {
+		return host
+	}
+	return internetHostIfLikely(firstAttribute(attrs, "target_id", "resource_id", "asset_id", "endpoint_id"))
 }
 
 func grcIntegrationURN(tenantID string, provider string, integrationID string) string {
