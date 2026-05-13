@@ -130,30 +130,14 @@ func TestReadSessionsPaginatesAndMapsAttributes(t *testing.T) {
 	}
 }
 
-func TestReadMessagesRequiresTicketID(t *testing.T) {
-	source, err := New()
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
-		"tenant_id": "writer",
-		"base_url":  "https://cosmo.example.com",
-		"token":     "gh-token",
-		"family":    "message",
-	}), nil)
-	if err == nil {
-		t.Fatal("Read() error = nil, want ticket_id validation error")
-	}
-}
-
-func TestReadMessagesUsesConfiguredPageSizeWithoutLocalCursor(t *testing.T) {
+func TestReadMessagesPaginatesWithOptionalTicketID(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/ui/memory/messages" {
 			http.NotFound(w, r)
 			return
 		}
-		if got := r.URL.Query().Get("ticket_id"); got != "COSMO-1" {
-			t.Fatalf("ticket_id = %q, want COSMO-1", got)
+		if got := r.URL.Query().Get("ticket_id"); got != "" {
+			t.Fatalf("ticket_id = %q, want empty", got)
 		}
 		if got := r.URL.Query().Get("event_type"); got != "message" {
 			t.Fatalf("event_type = %q, want message", got)
@@ -161,16 +145,23 @@ func TestReadMessagesUsesConfiguredPageSizeWithoutLocalCursor(t *testing.T) {
 		if got := r.URL.Query().Get("limit"); got != "1" {
 			t.Fatalf("limit = %q, want 1", got)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "count": 1, "messages": []map[string]any{
-			{
-				"id":         10,
-				"ticket_id":  "COSMO-1",
-				"event_type": "message",
-				"role":       "assistant",
-				"summary":    "Investigated issue",
-				"created_at": "2026-05-12T12:00:00Z",
-			},
-		}})
+		switch offset := r.URL.Query().Get("offset"); offset {
+		case "0":
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "count": 1, "messages": []map[string]any{
+				{
+					"id":         10,
+					"ticket_id":  "COSMO-1",
+					"event_type": "message",
+					"role":       "assistant",
+					"summary":    "Investigated issue",
+					"created_at": "2026-05-12T12:00:00Z",
+				},
+			}})
+		case "1":
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "count": 0, "messages": []map[string]any{}})
+		default:
+			t.Fatalf("offset = %q, want 0 or 1", offset)
+		}
 	}))
 	defer server.Close()
 
@@ -184,7 +175,6 @@ func TestReadMessagesUsesConfiguredPageSizeWithoutLocalCursor(t *testing.T) {
 		"base_url":   server.URL,
 		"token":      "gh-token",
 		"family":     "message",
-		"ticket_id":  "COSMO-1",
 		"event_type": "message",
 		"per_page":   "1",
 	})
@@ -195,11 +185,21 @@ func TestReadMessagesUsesConfiguredPageSizeWithoutLocalCursor(t *testing.T) {
 	if len(first.Events) != 1 {
 		t.Fatalf("len(first.Events) = %d, want 1", len(first.Events))
 	}
-	if first.NextCursor != nil {
-		t.Fatalf("NextCursor = %#v, want nil", first.NextCursor)
+	if got := first.NextCursor.GetOpaque(); got != "1" {
+		t.Fatalf("NextCursor = %q, want 1", got)
 	}
 	if got := first.Events[0].Attributes["role"]; got != "assistant" {
 		t.Fatalf("role = %q, want assistant", got)
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if len(second.Events) != 0 {
+		t.Fatalf("len(second.Events) = %d, want 0", len(second.Events))
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second.NextCursor = %#v, want nil", second.NextCursor)
 	}
 }
 
