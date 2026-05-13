@@ -385,6 +385,37 @@ func TestReplayReturnsNewestOccurredEventsWhenAppendedNewestFirst(t *testing.T) 
 	}
 }
 
+func TestReplayStopsAfterBoundedCandidateWindow(t *testing.T) {
+	msgs := make(map[uint64]*natsjetstream.RawStreamMsg)
+	for seq := uint64(1); seq <= 100; seq++ {
+		msgs[seq] = rawReplayMsg(t, "events.github.audit", replayEvent("evt-"+strconv.FormatUint(seq, 10), "github.audit", "writer-github"))
+	}
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{
+					Name:     "CEREBRO_EVENTS",
+					Subjects: []string{"events.>"},
+				},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: 100},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{"CEREBRO_EVENTS": msgs},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github", Limit: 2})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("len(events) = %d, want 2", len(events))
+	}
+	if replay.getMsgCalls != 10 {
+		t.Fatalf("getMsgCalls = %d, want bounded candidate window 10", replay.getMsgCalls)
+	}
+}
+
 func TestSubjectMatchesRequiresTokenForFullWildcard(t *testing.T) {
 	if subjectMatches("events.>", "events") {
 		t.Fatal("subjectMatches(events.>, events) = true, want false")

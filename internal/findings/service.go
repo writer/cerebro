@@ -859,13 +859,21 @@ func (s *Service) selectRule(ctx context.Context, runtime *cerebrov1.SourceRunti
 		}
 		return rule, nil
 	}
-	applicable, err := s.eventDrivenRulesForRuntime(ctx, runtime)
-	if err != nil {
-		return nil, err
-	}
+	applicable := filterEventDrivenRules(s.rules.ForRuntime(runtime))
 	switch len(applicable) {
 	case 0:
-		return nil, fmt.Errorf("%w: %s", ErrRuleUnavailable, strings.TrimSpace(runtime.GetId()))
+		staleRules, err := s.staleOpenRulesForRuntime(ctx, runtime, nil)
+		if err != nil {
+			return nil, err
+		}
+		switch len(staleRules) {
+		case 0:
+			return nil, fmt.Errorf("%w: %s", ErrRuleUnavailable, strings.TrimSpace(runtime.GetId()))
+		case 1:
+			return staleRules[0], nil
+		default:
+			return nil, fmt.Errorf("%w for runtime %q", ErrRuleSelectionRequired, strings.TrimSpace(runtime.GetId()))
+		}
 	case 1:
 		return applicable[0], nil
 	default:
@@ -928,6 +936,18 @@ func (s *Service) eventDrivenRulesForRuntime(ctx context.Context, runtime *cereb
 		}
 		seen[strings.TrimSpace(rule.Spec().GetId())] = struct{}{}
 	}
+	staleRules, err := s.staleOpenRulesForRuntime(ctx, runtime, seen)
+	if err != nil {
+		return nil, err
+	}
+	return append(applicable, staleRules...), nil
+}
+
+func (s *Service) staleOpenRulesForRuntime(ctx context.Context, runtime *cerebrov1.SourceRuntime, seen map[string]struct{}) ([]Rule, error) {
+	if seen == nil {
+		seen = map[string]struct{}{}
+	}
+	staleRules := []Rule{}
 	for _, spec := range s.rules.List() {
 		ruleID := strings.TrimSpace(spec.GetId())
 		if ruleID == "" {
@@ -951,9 +971,9 @@ func (s *Service) eventDrivenRulesForRuntime(ctx context.Context, runtime *cereb
 			continue
 		}
 		seen[ruleID] = struct{}{}
-		applicable = append(applicable, rule)
+		staleRules = append(staleRules, rule)
 	}
-	return applicable, nil
+	return staleRules, nil
 }
 
 func (s *Service) hasOpenFindingsForRule(ctx context.Context, runtime *cerebrov1.SourceRuntime, ruleID string) (bool, error) {

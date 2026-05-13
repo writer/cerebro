@@ -19,9 +19,10 @@ import (
 )
 
 const (
-	connectTimeout     = 5 * time.Second
-	defaultReplayLimit = 100
-	maxReplayLimit     = 1000
+	connectTimeout      = 5 * time.Second
+	defaultReplayLimit  = 100
+	maxReplayLimit      = 1000
+	maxReplayCandidates = 5000
 )
 
 type publisher interface {
@@ -174,6 +175,7 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 		return nil, err
 	}
 	limit := normalizeReplayLimit(request.Limit)
+	candidateLimit := normalizeReplayCandidateLimit(limit)
 	streamRef, err := l.replay.Stream(ctx, stream.Config.Name)
 	if err != nil {
 		return nil, fmt.Errorf("open replay stream %q: %w", stream.Config.Name, err)
@@ -200,6 +202,9 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 			}
 			if matchesReplayRequest(event, request) {
 				candidates = append(candidates, replayCandidate{event: event, seq: seq})
+				if uint32(len(candidates)) >= candidateLimit {
+					break
+				}
 			}
 		}
 		if seq == stream.State.FirstSeq {
@@ -249,6 +254,20 @@ func replayEventTime(event *cerebrov1.EventEnvelope) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	return occurredAt, true
+}
+
+func normalizeReplayCandidateLimit(limit uint32) uint32 {
+	if limit == 0 {
+		limit = defaultReplayLimit
+	}
+	candidates := limit * 5
+	if candidates < limit {
+		return maxReplayCandidates
+	}
+	if candidates > maxReplayCandidates {
+		return maxReplayCandidates
+	}
+	return candidates
 }
 
 func eventSubject(prefix string, kind string) (string, error) {

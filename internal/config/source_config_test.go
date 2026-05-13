@@ -127,3 +127,16 @@ func TestResolveSourceRuntimeConfigInjectsAWSAssumeRoleAllowlist(t *testing.T) {
 		t.Fatalf("resolved runtime tenant = %q, want writer", got)
 	}
 }
+
+func TestResolveSourceConfigDoesNotInjectRuntimeAWSAllowlist(t *testing.T) {
+	t.Setenv(awsAssumeRoleARNsEnv, "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role")
+	resolved, err := ResolveSourceConfigSecretReferences(context.Background(), "aws", map[string]string{
+		"account_id": "123456789012",
+	})
+	if err != nil {
+		t.Fatalf("ResolveSourceConfigSecretReferences() error = %v", err)
+	}
+	if _, ok := resolved[sourceconfig.AWSAssumeRoleAllowlistKey]; ok {
+		t.Fatal("direct source config injected runtime AWS assume-role allowlist")
+	}
+}

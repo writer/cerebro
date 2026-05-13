@@ -15,14 +15,14 @@ const (
 )
 
 func ResolveSourceConfigSecretReferences(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
-	return resolveSourceConfigSecretReferences(ctx, sourceID, values, true)
+	return resolveSourceConfigSecretReferences(ctx, sourceID, values, true, false)
 }
 
 func ResolveSourceRuntimeConfigSecretReferences(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
-	return resolveSourceConfigSecretReferences(ctx, sourceID, values, true)
+	return resolveSourceConfigSecretReferences(ctx, sourceID, values, true, true)
 }
 
-func resolveSourceConfigSecretReferences(ctx context.Context, sourceID string, values map[string]string, preserveLiteralQueryValues bool) (map[string]string, error) {
+func resolveSourceConfigSecretReferences(ctx context.Context, sourceID string, values map[string]string, preserveLiteralQueryValues bool, injectRuntimeAllowlist bool) (map[string]string, error) {
 	_ = ctx
 	resolved := make(map[string]string, len(values))
 	for key, value := range values {
@@ -49,7 +49,7 @@ func resolveSourceConfigSecretReferences(ctx context.Context, sourceID string, v
 		}
 		resolved[key] = secret
 	}
-	if strings.EqualFold(strings.TrimSpace(sourceID), "aws") {
+	if injectRuntimeAllowlist && strings.EqualFold(strings.TrimSpace(sourceID), "aws") {
 		resolved[sourceconfig.AWSAssumeRoleAllowlistKey] = strings.TrimSpace(os.Getenv(awsAssumeRoleARNsEnv))
 	}
 	return resolved, nil
