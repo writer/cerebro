@@ -21,10 +21,11 @@ import (
 )
 
 const (
-	DefaultPageLimit   = 1
-	MaxPageLimit       = 100
-	DefaultStatusLimit = 25
-	MaxStatusLimit     = 500
+	DefaultPageLimit         = 1
+	MaxPageLimit             = 100
+	DefaultStatusLimit       = 25
+	MaxStatusLimit           = 500
+	terminalRunUpdateTimeout = 15 * time.Second
 )
 
 var (
@@ -193,7 +194,7 @@ func (s *Service) RunRuntime(ctx context.Context, request RuntimeRequest) (*RunR
 	}
 	completed := finishRun(run, ingest, graphstore.IngestRunStatusCompleted, nil)
 	result.Run = completed
-	if err := runStore.PutIngestRun(ctx, completed); err != nil {
+	if err := s.putTerminalIngestRun(ctx, runStore, completed); err != nil {
 		return result, err
 	}
 	return result, nil
@@ -297,7 +298,13 @@ func (s *Service) failRun(ctx context.Context, runStore RunStore, run graphstore
 	failed := finishRun(run, ingest, graphstore.IngestRunStatusFailed, runErr)
 	result.Run = failed
 	log.Printf("graph ingest runtime failed run_id=%q runtime_id=%q error=%v", failed.ID, failed.RuntimeID, runErr)
-	return result, errors.Join(runErr, runStore.PutIngestRun(ctx, failed))
+	return result, errors.Join(runErr, s.putTerminalIngestRun(ctx, runStore, failed))
+}
+
+func (s *Service) putTerminalIngestRun(ctx context.Context, runStore RunStore, run graphstore.IngestRun) error {
+	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), terminalRunUpdateTimeout)
+	defer cancel()
+	return runStore.PutIngestRun(persistCtx, run)
 }
 
 func (s *Service) preparedConfig(ctx context.Context, runtime *cerebrov1.SourceRuntime) (map[string]string, error) {
