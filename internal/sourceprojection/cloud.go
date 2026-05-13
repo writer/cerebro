@@ -119,7 +119,7 @@ func cloudResourceExposureProjections(event *cerebrov1.EventEnvelope, profile id
 				"source_cidr":       strings.TrimSpace(attributes["source_cidr"]),
 			},
 		})
-		addCloudAccountLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, attributes["domain"], provider)
+		addCloudAccountLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, cloudResourceExposureAccountID(attributes, provider), provider)
 	}
 	if publicURN != "" && resourceURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), publicURN, resourceURN, relationCanReach, map[string]string{
@@ -133,6 +133,13 @@ func cloudResourceExposureProjections(event *cerebrov1.EventEnvelope, profile id
 		}))
 	}
 	return identityProjectionResult(entities, links)
+}
+
+func cloudResourceExposureAccountID(attributes map[string]string, provider string) string {
+	if provider == "azure" {
+		return firstNonEmpty(attributes["subscription_id"], attributes["scope"], attributes["domain"])
+	}
+	return attributes["domain"]
 }
 
 func cloudPrivilegePathProjections(event *cerebrov1.EventEnvelope, profile identityProjectionProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {

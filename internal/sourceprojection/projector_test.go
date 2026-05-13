@@ -1688,6 +1688,25 @@ func TestProjectCloudExposureAndPrivilegePaths(t *testing.T) {
 			},
 		},
 		{
+			Id:       "azure-public-nsg",
+			TenantId: "writer",
+			SourceId: "azure",
+			Kind:     "azure.resource_exposure",
+			Attributes: map[string]string{
+				"domain":            "tenant-1",
+				"exposed_to":        "public_internet",
+				"exposure_id":       "nsg-1-0",
+				"exposure_type":     "public_network_ingress",
+				"internet_exposed":  "true",
+				"resource_id":       "nsg-1",
+				"resource_name":     "prod-nsg",
+				"resource_provider": "azure",
+				"resource_type":     "network_security_group",
+				"source_cidr":       "0.0.0.0/0",
+				"subscription_id":   "sub-1",
+			},
+		},
+		{
 			Id:       "gcp-impersonation",
 			TenantId: "writer",
 			SourceId: "gcp",
@@ -1729,6 +1748,8 @@ func TestProjectCloudExposureAndPrivilegePaths(t *testing.T) {
 
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_public_principal:public_internet", relationCanReach, "urn:cerebro:writer:aws_security_group:arn:aws:ec2:us-east-1:123456789012:security-group/sg-1")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_security_group:arn:aws:ec2:us-east-1:123456789012:security-group/sg-1", relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, "urn:cerebro:writer:azure_network_security_group:nsg-1", relationBelongsTo, "urn:cerebro:writer:cloud_account:sub-1")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:azure_network_security_group:nsg-1", relationBelongsTo, "urn:cerebro:writer:cloud_account:tenant-1")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_role:arn:aws:iam::999999999999:role/ExternalAdmin", relationCanAssume, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/AdminRole")
 	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_user:admin@writer.com", relationCanImpersonate, "urn:cerebro:writer:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com")
 	assertProjectedLink(t, state, "urn:cerebro:writer:azure_service_principal:sp-1", relationAssignedTo, "urn:cerebro:writer:azure_service_principal:sp-resource-1")
