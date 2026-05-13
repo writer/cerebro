@@ -911,6 +911,35 @@ func joinedVulnerableAssetReferences(values map[string]any) string {
 		refs = append(refs, ref)
 	}
 	if len(refs) == 0 {
+		vulnerabilityIDs := splitVulnerableAssetReferenceValues(fieldString(values, "vulnerabilityIds"))
+		vulnerabilityNames := splitVulnerableAssetReferenceValues(fieldString(values, "vulnerabilityNames"))
+		packageIdentifiers := splitVulnerableAssetReferenceValues(firstNonEmptyString(fieldString(values, "packageIdentifiers"), fieldString(values, "packages")))
+		for i := 0; i < maxInt(len(vulnerabilityIDs), len(vulnerabilityNames), len(packageIdentifiers)); i++ {
+			vulnerabilityID := valueAt(vulnerabilityIDs, i)
+			vulnerabilityName := valueAt(vulnerabilityNames, i)
+			packageIdentifier := valueAt(packageIdentifiers, i)
+			if vulnerabilityID == "" && vulnerabilityName == "" && packageIdentifier == "" {
+				continue
+			}
+			key := strings.Join([]string{vulnerabilityID, vulnerabilityName, packageIdentifier}, "\x00")
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+			ref := map[string]string{}
+			if vulnerabilityID != "" {
+				ref["vulnerability_id"] = vulnerabilityID
+			}
+			if vulnerabilityName != "" {
+				ref["vulnerability_name"] = vulnerabilityName
+			}
+			if packageIdentifier != "" {
+				ref["package_identifier"] = packageIdentifier
+			}
+			refs = append(refs, ref)
+		}
+	}
+	if len(refs) == 0 {
 		return ""
 	}
 	raw, err := json.Marshal(refs)
@@ -918,6 +947,36 @@ func joinedVulnerableAssetReferences(values map[string]any) string {
 		return ""
 	}
 	return string(raw)
+}
+
+func splitVulnerableAssetReferenceValues(value string) []string {
+	fields := strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\t'
+	})
+	result := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if trimmed := strings.TrimSpace(field); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
+func valueAt(values []string, index int) string {
+	if index < 0 || index >= len(values) {
+		return ""
+	}
+	return values[index]
+}
+
+func maxInt(values ...int) int {
+	max := 0
+	for _, value := range values {
+		if value > max {
+			max = value
+		}
+	}
+	return max
 }
 
 func joinedObjectFieldValues(values map[string]any, arrayKey string, fields ...string) string {

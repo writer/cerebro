@@ -139,6 +139,36 @@ func grcAttributeList(value string) []string {
 	return values
 }
 
+func grcAttributeSequence(value string) []string {
+	fields := strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\t'
+	})
+	result := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if trimmed := strings.TrimSpace(field); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
+func stringAt(values []string, index int) string {
+	if index < 0 || index >= len(values) {
+		return ""
+	}
+	return values[index]
+}
+
+func maxInt(values ...int) int {
+	max := 0
+	for _, value := range values {
+		if value > max {
+			max = value
+		}
+	}
+	return max
+}
+
 func grcDocumentProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
@@ -342,7 +372,7 @@ func grcVulnerableAssetProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 func grcVulnerableAssetReferenceAttrs(attrs map[string]string) []map[string]string {
 	rawReferences := strings.TrimSpace(attrs["vulnerability_package_refs"])
 	if rawReferences == "" {
-		return nil
+		return grcVulnerableAssetFlatReferenceAttrs(attrs)
 	}
 	var references []struct {
 		VulnerabilityID   string `json:"vulnerability_id"`
@@ -350,27 +380,11 @@ func grcVulnerableAssetReferenceAttrs(attrs map[string]string) []map[string]stri
 		PackageIdentifier string `json:"package_identifier"`
 	}
 	if err := json.Unmarshal([]byte(rawReferences), &references); err != nil {
-		return nil
+		return grcVulnerableAssetFlatReferenceAttrs(attrs)
 	}
 	result := make([]map[string]string, 0, len(references))
 	for _, reference := range references {
-		referenceAttrs := grcProjectionAttrsWith(attrs)
-		for _, key := range []string{
-			"cve_id",
-			"ghsa_id",
-			"identifier",
-			"name",
-			"package",
-			"package_identifiers",
-			"package_purl",
-			"title",
-			"vulnerability_id",
-			"vulnerability_ids",
-			"vulnerability_names",
-			"vulnerability_package_refs",
-		} {
-			delete(referenceAttrs, key)
-		}
+		referenceAttrs := grcVulnerableAssetCleanReferenceAttrs(attrs)
 		if strings.TrimSpace(reference.VulnerabilityID) != "" {
 			referenceAttrs["vulnerability_id"] = reference.VulnerabilityID
 		}
@@ -383,7 +397,57 @@ func grcVulnerableAssetReferenceAttrs(attrs map[string]string) []map[string]stri
 		}
 		result = append(result, referenceAttrs)
 	}
+	if len(result) == 0 {
+		return grcVulnerableAssetFlatReferenceAttrs(attrs)
+	}
 	return result
+}
+
+func grcVulnerableAssetFlatReferenceAttrs(attrs map[string]string) []map[string]string {
+	vulnerabilityIDs := grcAttributeSequence(attrs["vulnerability_ids"])
+	vulnerabilityNames := grcAttributeSequence(attrs["vulnerability_names"])
+	packageIdentifiers := grcAttributeSequence(attrs["package_identifiers"])
+	if (len(vulnerabilityIDs) == 0 && len(vulnerabilityNames) == 0) || len(packageIdentifiers) == 0 {
+		return nil
+	}
+	total := maxInt(len(vulnerabilityIDs), len(vulnerabilityNames), len(packageIdentifiers))
+	result := make([]map[string]string, 0, total)
+	for i := 0; i < total; i++ {
+		referenceAttrs := grcVulnerableAssetCleanReferenceAttrs(attrs)
+		if vulnerabilityID := stringAt(vulnerabilityIDs, i); vulnerabilityID != "" {
+			referenceAttrs["vulnerability_id"] = vulnerabilityID
+		}
+		if vulnerabilityName := stringAt(vulnerabilityNames, i); vulnerabilityName != "" {
+			referenceAttrs["name"] = vulnerabilityName
+		}
+		if packageIdentifier := stringAt(packageIdentifiers, i); packageIdentifier != "" {
+			referenceAttrs["package"] = packageIdentifier
+			referenceAttrs["package_purl"] = packageIdentifier
+		}
+		result = append(result, referenceAttrs)
+	}
+	return result
+}
+
+func grcVulnerableAssetCleanReferenceAttrs(attrs map[string]string) map[string]string {
+	referenceAttrs := grcProjectionAttrsWith(attrs)
+	for _, key := range []string{
+		"cve_id",
+		"ghsa_id",
+		"identifier",
+		"name",
+		"package",
+		"package_identifiers",
+		"package_purl",
+		"title",
+		"vulnerability_id",
+		"vulnerability_ids",
+		"vulnerability_names",
+		"vulnerability_package_refs",
+	} {
+		delete(referenceAttrs, key)
+	}
+	return referenceAttrs
 }
 
 func grcVulnerableAssetVulnerabilityAttrs(attrs map[string]string) []map[string]string {

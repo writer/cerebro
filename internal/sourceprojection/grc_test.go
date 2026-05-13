@@ -511,6 +511,37 @@ func TestProjectGRCVulnerableAssetPreservesPackageVulnerabilityPairs(t *testing.
 	assertProjectedLinkMissing(t, state, packageTwoURN, relationAffectedBy, vulnerabilityOneURN)
 }
 
+func TestProjectGRCVulnerableAssetZipsFlatPackageVulnerabilityFields(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-vulnerable-asset-flat",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.vulnerable_asset",
+		Attributes: map[string]string{
+			"provider":            "vanta",
+			"target_id":           "target-flat",
+			"vulnerability_ids":   "CVE-2026-4242,CVE-2026-4243",
+			"package_identifiers": "pkg:golang/example/one@1.0.0,pkg:golang/example/two@2.0.0",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	packageOneURN := "urn:cerebro:writer:package:grc:pkg:golang/example/one@1.0.0"
+	packageTwoURN := "urn:cerebro:writer:package:grc:pkg:golang/example/two@2.0.0"
+	vulnerabilityOneURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
+	vulnerabilityTwoURN := "urn:cerebro:writer:vulnerability:cve-2026-4243"
+
+	assertProjectedLink(t, state, packageOneURN, relationAffectedBy, vulnerabilityOneURN)
+	assertProjectedLink(t, state, packageTwoURN, relationAffectedBy, vulnerabilityTwoURN)
+	assertProjectedLinkMissing(t, state, packageOneURN, relationAffectedBy, vulnerabilityTwoURN)
+	assertProjectedLinkMissing(t, state, packageTwoURN, relationAffectedBy, vulnerabilityOneURN)
+}
+
 func TestProjectGRCVulnerableAssetDoesNotInferVulnerabilityFromReferenceJSON(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
