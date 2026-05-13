@@ -23,6 +23,7 @@ require (
 	github.com/nats-io/nats.go v1.51.0
 	github.com/neo4j/neo4j-go-driver/v5 v5.28.4
 	github.com/package-url/packageurl-go v0.1.6
+	golang.org/x/net v0.51.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 )

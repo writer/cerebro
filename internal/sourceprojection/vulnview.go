@@ -20,7 +20,9 @@ func vulnViewVulnerabilityProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 	assetURN := vulnViewAssetURN(tenantID, attrs)
 	if assetURN != "" {
 		addEntity(entities, vulnViewAssetEntity(tenantID, event.GetSourceId(), assetURN, attrs))
-		addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, assetURN, relationRepresents, firstAttribute(attrs, "asset_id", "host", "target_id", "matched_at"), "vulnview_asset_host", "0.95")
+		hostRaw := vulnViewAssetHostRaw(attrs)
+		addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, assetURN, relationRepresents, hostRaw, "vulnview_asset_host", "0.95")
+		addInternetHostDomainLink(entities, links, tenantID, event.GetSourceId(), event, hostRaw, "vulnview_asset_domain", "0.85")
 	}
 	vulnViewAddSiteAndScanContext(entities, links, tenantID, event.GetSourceId(), event, assetURN, "")
 
@@ -76,7 +78,9 @@ func vulnViewAssetProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projecte
 	links := map[string]*ports.ProjectedLink{}
 	if assetURN := vulnViewAssetURN(tenantID, attrs); assetURN != "" {
 		addEntity(entities, vulnViewAssetEntity(tenantID, event.GetSourceId(), assetURN, attrs))
-		addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, assetURN, relationRepresents, firstAttribute(attrs, "asset_id", "target_id", "host", "asset_name"), "vulnview_asset_host", "0.95")
+		hostRaw := vulnViewAssetHostRaw(attrs)
+		addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, assetURN, relationRepresents, hostRaw, "vulnview_asset_host", "0.95")
+		addInternetHostDomainLink(entities, links, tenantID, event.GetSourceId(), event, hostRaw, "vulnview_asset_domain", "0.85")
 		vulnViewAddSiteAndScanContext(entities, links, tenantID, event.GetSourceId(), event, assetURN, "")
 	}
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
@@ -94,7 +98,9 @@ func vulnViewDNSAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 	assetURN := vulnViewAssetURN(tenantID, attrs)
 	if assetURN != "" {
 		addEntity(entities, vulnViewAssetEntity(tenantID, event.GetSourceId(), assetURN, attrs))
-		addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, assetURN, relationRepresents, firstAttribute(attrs, "asset_id", "target_id", "target_name", "asset_name"), "vulnview_asset_host", "0.95")
+		hostRaw := vulnViewAssetHostRaw(attrs)
+		addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, assetURN, relationRepresents, hostRaw, "vulnview_asset_host", "0.95")
+		addInternetHostDomainLink(entities, links, tenantID, event.GetSourceId(), event, hostRaw, "vulnview_asset_domain", "0.85")
 		vulnViewAddSiteAndScanContext(entities, links, tenantID, event.GetSourceId(), event, assetURN, "")
 	}
 	alertID := firstAttribute(attrs, "external_id", "alert", "name")
@@ -115,6 +121,7 @@ func vulnViewDNSAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 			},
 		})
 		vulnViewAddDNSAlertTypeContext(entities, links, tenantID, event.GetSourceId(), event, alertURN, attrs)
+		vulnViewAddDNSRecordContext(entities, links, tenantID, event.GetSourceId(), event, attrs)
 		if assetURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), assetURN, alertURN, relationHasEvidence, map[string]string{"event_id": event.GetId()}))
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), alertURN, assetURN, relationObservedOn, map[string]string{"event_id": event.GetId()}))
@@ -164,6 +171,10 @@ func vulnViewAssetURN(tenantID string, attrs map[string]string) string {
 		return ""
 	}
 	return projectionURN(tenantID, "external_asset", assetID)
+}
+
+func vulnViewAssetHostRaw(attrs map[string]string) string {
+	return firstAttribute(attrs, "asset_id", "host", "target_id", "matched_at", "target_name", "asset_name")
 }
 
 func vulnViewAssetID(attrs map[string]string) string {
@@ -273,6 +284,52 @@ func vulnViewAddDNSAlertTypeContext(entities map[string]*ports.ProjectedEntity, 
 		}),
 	})
 	addLink(links, projectedLink(tenantID, sourceID, alertURN, typeURN, relationHasClassification, map[string]string{"alert_type": alertType, "event_id": event.GetId()}))
+}
+
+func vulnViewAddDNSRecordContext(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, attrs map[string]string) {
+	ownerRaw := vulnViewAssetHostRaw(attrs)
+	hostURN, host := internetHostURN(tenantID, ownerRaw)
+	if hostURN == "" {
+		return
+	}
+	recordType := strings.ToUpper(strings.TrimSpace(firstAttribute(attrs, "record_type")))
+	recordValue := dnsRecordValue(recordType, firstAttribute(attrs, "record_value"))
+	recordURN := dnsRecordURN(tenantID, host, recordType, recordValue)
+	if recordURN == "" {
+		return
+	}
+	addDNSRecordEntity(entities, tenantID, sourceID, recordURN, host, recordType, recordValue)
+	addLink(links, projectedLink(tenantID, sourceID, hostURN, recordURN, relationHasDNSRecord, map[string]string{
+		"event_id":      event.GetId(),
+		"record_type":   recordType,
+		"record_value":  recordValue,
+		"source_system": "vulnview",
+	}))
+	switch recordType {
+	case "CNAME":
+		targetURN, targetHost := internetHostURN(tenantID, recordValue)
+		if targetURN == "" {
+			return
+		}
+		addInternetHostEntity(entities, tenantID, sourceID, targetURN, targetHost)
+		addInternetHostDomainLink(entities, links, tenantID, sourceID, event, targetHost, "dns_cname_domain", "0.80")
+		addLink(links, projectedLink(tenantID, sourceID, hostURN, targetURN, relationCNAMETo, map[string]string{
+			"event_id":      event.GetId(),
+			"record_value":  targetHost,
+			"source_system": "vulnview",
+		}))
+	case "A", "AAAA":
+		ipURN, ip := internetIPURN(tenantID, recordValue)
+		if ipURN == "" {
+			return
+		}
+		addInternetIPEntity(entities, tenantID, sourceID, ipURN, ip)
+		addLink(links, projectedLink(tenantID, sourceID, hostURN, ipURN, relationResolvesTo, map[string]string{
+			"event_id":      event.GetId(),
+			"record_value":  ip,
+			"source_system": "vulnview",
+		}))
+	}
 }
 
 func vulnViewSiteRefs(attrs map[string]string) []vulnViewRef {
