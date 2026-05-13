@@ -70,6 +70,91 @@ func TestSentinelOneEndpointActiveInfectionGraphRuleAggregatesThreats(t *testing
 	}
 }
 
+func TestSentinelOneGraphInfectionSeverityBranches(t *testing.T) {
+	now := time.Date(2026, time.May, 12, 12, 0, 0, 0, time.UTC)
+	threat := func(attrs map[string]string) sentinelOneGraphThreat {
+		return sentinelOneGraphThreat{URN: "urn:cerebro:writer:sentinelone_threat:" + firstNonEmpty(attrs["threat_id"], "threat"), Attributes: attrs}
+	}
+	for _, tt := range []struct {
+		name    string
+		threats []sentinelOneGraphThreat
+		want    string
+	}{
+		{
+			name: "fileless threat is critical",
+			threats: []sentinelOneGraphThreat{threat(map[string]string{
+				"threat_id":         "fileless",
+				"is_fileless":       "true",
+				"incident_status":   "unresolved",
+				"mitigation_status": "mitigated",
+			})},
+			want: "CRITICAL",
+		},
+		{
+			name: "multiple threats with unresolved is critical",
+			threats: []sentinelOneGraphThreat{
+				threat(map[string]string{"threat_id": "one", "incident_status": "unresolved", "mitigation_status": "mitigated"}),
+				threat(map[string]string{"threat_id": "two", "incident_status": "in_progress", "mitigation_status": "mitigated"}),
+			},
+			want: "CRITICAL",
+		},
+		{
+			name: "failed mitigation older than twenty four hours is critical",
+			threats: []sentinelOneGraphThreat{threat(map[string]string{
+				"threat_id":         "failed",
+				"incident_status":   "unresolved",
+				"mitigation_status": "failed",
+				"created_at":        now.Add(-25 * time.Hour).Format(time.RFC3339),
+			})},
+			want: "CRITICAL",
+		},
+		{
+			name: "requires action older than twenty four hours is critical",
+			threats: []sentinelOneGraphThreat{threat(map[string]string{
+				"threat_id":         "requires-action",
+				"incident_status":   "unresolved",
+				"mitigation_status": "requires_action",
+				"created_at":        now.Add(-25 * time.Hour).Format(time.RFC3339),
+			})},
+			want: "CRITICAL",
+		},
+		{
+			name: "not mitigated at timestamp older than twenty four hours is critical",
+			threats: []sentinelOneGraphThreat{threat(map[string]string{
+				"threat_id":         "not-mitigated",
+				"incident_status":   "unresolved",
+				"mitigation_status": "not_mitigated",
+				"at":                now.Add(-25 * time.Hour).Format(time.RFC3339),
+			})},
+			want: "CRITICAL",
+		},
+		{
+			name: "single fresh unresolved not mitigated remains high",
+			threats: []sentinelOneGraphThreat{threat(map[string]string{
+				"threat_id":         "fresh",
+				"incident_status":   "unresolved",
+				"mitigation_status": "not_mitigated",
+				"created_at":        now.Add(-1 * time.Hour).Format(time.RFC3339),
+			})},
+			want: "HIGH",
+		},
+		{
+			name: "multiple threats without unresolved remains high",
+			threats: []sentinelOneGraphThreat{
+				threat(map[string]string{"threat_id": "one", "incident_status": "in_progress", "mitigation_status": "mitigated"}),
+				threat(map[string]string{"threat_id": "two", "incident_status": "mitigating", "mitigation_status": "mitigated"}),
+			},
+			want: "HIGH",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := sentinelOneGraphInfectionSeverity(nil, tt.threats, now); got != tt.want {
+				t.Fatalf("sentinelOneGraphInfectionSeverity() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSentinelOneEndpointActiveInfectionGraphRuleSkipsCleanMitigatedAgent(t *testing.T) {
 	graphRule := newSentinelOneEndpointActiveInfectionRule().(GraphRule)
 	runtime := &cerebrov1.SourceRuntime{Id: "writer-sentinelone-threat", SourceId: "sentinelone", TenantId: "writer", Config: map[string]string{"family": "threat"}}
@@ -163,6 +248,7 @@ func TestSentinelOneAgentStaleGraphRuleGroupsByScopeAndBucket(t *testing.T) {
 		sentinelOneStaleAgentRow("agent-1", "mac-1", now.Add(-45*24*time.Hour), map[string]string{"group_id": "group-1", "group_name": "Default Group"}),
 		sentinelOneStaleAgentRow("agent-2", "mac-2", now.Add(-60*24*time.Hour), map[string]string{"group_id": "group-1", "group_name": "Default Group"}),
 		sentinelOneStaleAgentRow("agent-recent", "mac-recent", now.Add(-2*24*time.Hour), map[string]string{"group_id": "group-1", "group_name": "Default Group"}),
+		sentinelOneStaleAgentRow("agent-future", "mac-future", now.Add(24*time.Hour), map[string]string{"group_id": "group-1", "group_name": "Default Group"}),
 		sentinelOneStaleAgentRow("agent-retired", "mac-retired", now.Add(-80*24*time.Hour), map[string]string{"group_id": "group-1", "group_name": "Default Group", "is_decommissioned": "true"}),
 	}
 	findings, err := graphRule.EvaluateRows(context.Background(), runtime, rows)

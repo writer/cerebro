@@ -215,7 +215,7 @@ func (r *sentinelOneEndpointActiveInfectionGraphRule) buildFinding(runtime *cere
 		RuntimeID:         strings.TrimSpace(runtime.GetId()),
 		RuleID:            r.definition.ID,
 		Title:             r.definition.Name,
-		Severity:          sentinelOneGraphInfectionSeverity(agentAttrs, threats),
+		Severity:          sentinelOneGraphInfectionSeverity(agentAttrs, threats, now),
 		Status:            r.definition.Status,
 		Summary:           fmt.Sprintf("SentinelOne endpoint %s has active infection evidence from %s", label, summaryThreat),
 		ResourceURNs:      deduplicateStrings(resourceURNs),
@@ -292,6 +292,9 @@ func (r *sentinelOneAgentStaleGraphRule) EvaluateRows(_ context.Context, runtime
 		}
 		lastActive, ok := sentinelOneParseTimestamp(agentAttrs["last_active_date"])
 		if !ok {
+			continue
+		}
+		if lastActive.After(now) {
 			continue
 		}
 		age := now.Sub(lastActive.UTC())
@@ -460,16 +463,42 @@ func sentinelOneGraphRuleSupportsRuntime(runtime *cerebrov1.SourceRuntime, famil
 	return false
 }
 
-func sentinelOneGraphInfectionSeverity(agentAttrs map[string]string, threats []sentinelOneGraphThreat) string {
-	if sentinelOneIntAttribute(agentAttrs, "active_threats") > 1 || len(threats) > 1 {
-		return "CRITICAL"
-	}
+func sentinelOneGraphInfectionSeverity(_ map[string]string, threats []sentinelOneGraphThreat, now time.Time) string {
+	hasUnresolvedThreat := false
+	hasAgedUnmitigatedThreat := false
+	var oldestThreatAt time.Time
 	for _, threat := range threats {
 		if findingAttributeBool(threat.Attributes, "is_fileless") {
 			return "CRITICAL"
 		}
+		if sentinelOneStatus(threat.Attributes["incident_status"]) == "unresolved" {
+			hasUnresolvedThreat = true
+		}
+		if sentinelOneGraphThreatMitigationAgedCritical(threat.Attributes["mitigation_status"]) {
+			hasAgedUnmitigatedThreat = true
+		}
+		if threatAt, ok := sentinelOneParseTimestamp(firstNonEmpty(threat.Attributes["created_at"], threat.Attributes["at"])); ok {
+			if oldestThreatAt.IsZero() || threatAt.Before(oldestThreatAt) {
+				oldestThreatAt = threatAt
+			}
+		}
+	}
+	if len(threats) >= 2 && hasUnresolvedThreat {
+		return "CRITICAL"
+	}
+	if hasAgedUnmitigatedThreat && !oldestThreatAt.IsZero() && now.Sub(oldestThreatAt.UTC()) > 24*time.Hour {
+		return "CRITICAL"
 	}
 	return "HIGH"
+}
+
+func sentinelOneGraphThreatMitigationAgedCritical(value string) bool {
+	switch sentinelOneStatus(value) {
+	case "failed", "requires_action", "not_mitigated":
+		return true
+	default:
+		return false
+	}
 }
 
 func sentinelOneGraphThreatsHaveInfectionEvidence(threats []sentinelOneGraphThreat) bool {
