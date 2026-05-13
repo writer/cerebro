@@ -688,6 +688,37 @@ paths:
       responses:
         '200':
           description: Asset vulnerability result.
+  /platform/graph/aws-public-endpoint-insights:
+    get:
+      summary: Query AWS public endpoint overlap insights
+      tags:
+        - Graph
+      parameters:
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: account_id
+          in: query
+          schema:
+            type: string
+        - name: region
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: AWS public endpoint overlap insights.
   /platform/graph/ingest-health:
     get:
       summary: Check graph ingest health

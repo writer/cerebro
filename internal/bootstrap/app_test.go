@@ -968,6 +968,8 @@ type stubGraphStore struct {
 	neighborhoodRootURN string
 	neighborhoodLimit   int
 	ingestRunListFilter graphstore.IngestRunFilter
+	cypherRows          [][]ports.CypherRow
+	cypherRequests      []ports.CypherQueryRequest
 }
 
 func (s *stubGraphStore) Ping(context.Context) error {
@@ -1023,9 +1025,15 @@ func (s *stubGraphStore) GetEntityNeighborhood(_ context.Context, rootURN string
 	return cloneNeighborhood(s.neighborhood), nil
 }
 
-func (s *stubGraphStore) ExecuteReadCypher(_ context.Context, _ ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+func (s *stubGraphStore) ExecuteReadCypher(_ context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
 	if s.err != nil {
 		return nil, s.err
+	}
+	s.cypherRequests = append(s.cypherRequests, request)
+	if len(s.cypherRows) > 0 {
+		rows := s.cypherRows[0]
+		s.cypherRows = s.cypherRows[1:]
+		return rows, nil
 	}
 	return nil, nil
 }
@@ -2164,6 +2172,71 @@ func TestGraphImpactEndpointRejectsExplicitZeroBounds(t *testing.T) {
 		if resp.StatusCode != http.StatusBadRequest {
 			t.Fatalf("GET /platform/graph/impact/package?%s status = %d, want %d", query, resp.StatusCode, http.StatusBadRequest)
 		}
+	}
+}
+
+func TestGraphAWSPublicEndpointInsightsEndpoint(t *testing.T) {
+	graph := &stubGraphStore{cypherRows: [][]ports.CypherRow{
+		{{Values: map[string]any{
+			"aws_endpoint_count":                   int64(2),
+			"internet_indicator_count":             int64(2),
+			"internet_host_count":                  int64(1),
+			"internet_ip_count":                    int64(1),
+			"overlapping_aws_endpoint_count":       int64(1),
+			"overlapping_internet_indicator_count": int64(1),
+			"overlapping_vulnview_asset_count":     int64(1),
+		}}},
+		nil,
+		{{Values: map[string]any{
+			"aws_urn":               "urn:cerebro:writer:aws_application_load_balancer:alb",
+			"aws_entity_type":       "aws.application.load.balancer",
+			"aws_label":             "alb",
+			"indicator_urn":         "urn:cerebro:writer:internet_host:app.example.com",
+			"indicator_entity_type": "internet.host",
+			"indicator_label":       "app.example.com",
+			"vulnview_urn":          "urn:cerebro:writer:external_asset:app.example.com",
+			"vulnview_entity_type":  "external.asset",
+			"vulnview_label":        "app.example.com",
+		}}},
+		nil,
+		nil,
+		nil,
+	}}
+	app := New(config.Config{}, Dependencies{GraphStore: graph}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/platform/graph/aws-public-endpoint-insights?tenant_id=writer&account_id=account-a&region=us-east-1&search=app&limit=5")
+	if err != nil {
+		t.Fatalf("GET /platform/graph/aws-public-endpoint-insights error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /platform/graph/aws-public-endpoint-insights status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var body struct {
+		TenantID string `json:"tenant_id"`
+		Counts   struct {
+			AWSEndpoints              int `json:"aws_endpoints"`
+			OverlappingVulnViewAssets int `json:"overlapping_vulnview_assets"`
+		} `json:"counts"`
+		Overlaps []struct {
+			InternetIndicator struct {
+				URN string `json:"urn"`
+			} `json:"internet_indicator"`
+		} `json:"overlaps"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.TenantID != "writer" || body.Counts.AWSEndpoints != 2 || body.Counts.OverlappingVulnViewAssets != 1 {
+		t.Fatalf("body = %#v", body)
+	}
+	if len(body.Overlaps) != 1 || body.Overlaps[0].InternetIndicator.URN != "urn:cerebro:writer:internet_host:app.example.com" {
+		t.Fatalf("overlaps = %#v", body.Overlaps)
+	}
+	if len(graph.cypherRequests) != 6 || graph.cypherRequests[0].Params["tenant_id"] != "writer" {
+		t.Fatalf("cypher requests = %#v", graph.cypherRequests)
 	}
 }
 
