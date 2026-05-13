@@ -154,25 +154,27 @@ func TestProjectVulnViewScanLinksSite(t *testing.T) {
 		SourceId: "vulnview",
 		Kind:     "vulnview.scan",
 		Attributes: map[string]string{
-			"family":    "scan",
-			"name":      "dns-writer.com",
-			"scan_id":   "scan-1",
-			"scan_type": "dns",
-			"site_id":   "site-1",
-			"site_name": "writer.com",
+			"cloud_account_id": "123456789012",
+			"family":           "scan",
+			"name":             "dns-writer.com",
+			"scan_id":          "scan-1",
+			"scan_type":        "dns",
+			"site_id":          "site-1",
+			"site_name":        "writer.com",
 		},
 	})
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	if result.EntitiesProjected != 2 {
-		t.Fatalf("Project().EntitiesProjected = %d, want 2", result.EntitiesProjected)
+	if result.EntitiesProjected != 3 {
+		t.Fatalf("Project().EntitiesProjected = %d, want 3", result.EntitiesProjected)
 	}
-	if result.LinksProjected != 1 {
-		t.Fatalf("Project().LinksProjected = %d, want 1", result.LinksProjected)
+	if result.LinksProjected != 2 {
+		t.Fatalf("Project().LinksProjected = %d, want 2", result.LinksProjected)
 	}
 	scanURN := "urn:cerebro:writer:vulnview_scan:dns-writer.com"
 	siteURN := "urn:cerebro:writer:vulnview_site:writer.com"
+	accountURN := "urn:cerebro:writer:cloud_account:123456789012"
 	if got := state.entities[scanURN].Attributes["scan_name"]; got != "dns-writer.com" {
 		t.Fatalf("scan_name = %q, want dns-writer.com", got)
 	}
@@ -182,5 +184,9 @@ func TestProjectVulnViewScanLinksSite(t *testing.T) {
 	if got := state.entities[siteURN].Attributes["site_id"]; got != "site-1" {
 		t.Fatalf("site_id = %q, want site-1", got)
 	}
+	if entity := state.entities[accountURN]; entity == nil || entity.EntityType != "cloud.account" {
+		t.Fatalf("cloud account entity missing: %#v", entity)
+	}
 	assertProjectedLink(t, state, scanURN, relationBelongsTo, siteURN)
+	assertProjectedLink(t, state, scanURN, relationBelongsTo, accountURN)
 }

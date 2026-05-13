@@ -103,6 +103,7 @@ func cloudResourceExposureProjections(event *cerebrov1.EventEnvelope, profile id
 			"source_cidr":   strings.TrimSpace(attributes["source_cidr"]),
 		}))
 	}
+	addCloudAccountContext(entities, links, tenantID, event.GetSourceId(), event.GetId(), resourceURN, attributes)
 	return identityProjectionResult(entities, links)
 }
 
@@ -153,8 +154,40 @@ func cloudPublicEndpointProjections(event *cerebrov1.EventEnvelope, profile iden
 		for _, ip := range splitCloudAttributeList(strings.Join([]string{attributes["ip"], attributes["target_ips"], attributes["target_ip"]}, ",")) {
 			addInternetIPLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, ip, "aws_public_endpoint_ip", "0.95")
 		}
+		addCloudAccountContext(entities, links, tenantID, event.GetSourceId(), event.GetId(), resourceURN, attributes)
 	}
 	return identityProjectionResult(entities, links)
+}
+
+func addCloudAccountContext(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, eventID string, fromURN string, attrs map[string]string) {
+	accountID := cloudAccountID(attrs)
+	if accountID == "" || fromURN == "" {
+		return
+	}
+	accountURN := projectionURN(tenantID, "cloud_account", accountID)
+	if accountURN == "" {
+		return
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        accountURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "cloud.account",
+		Label:      firstNonEmpty(firstAttribute(attrs, "account_name", "cloud_account_name"), accountID),
+		Attributes: map[string]string{
+			"account_id":        accountID,
+			"account_name":      firstAttribute(attrs, "account_name", "cloud_account_name"),
+			"resource_provider": firstAttribute(attrs, "resource_provider", "provider", "cloud_provider"),
+		},
+	})
+	addLink(links, projectedLink(tenantID, sourceID, fromURN, accountURN, relationBelongsTo, map[string]string{
+		"account_id": accountID,
+		"event_id":   eventID,
+	}))
+}
+
+func cloudAccountID(attrs map[string]string) string {
+	return firstAttribute(attrs, "cloud_account_id", "account_id", "aws_account_id", "domain")
 }
 
 func addInternetIPLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, rawIP string, matchType string, confidence string) {
