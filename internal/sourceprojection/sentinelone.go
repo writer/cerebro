@@ -178,6 +178,7 @@ func addSentinelOneInternetContext(entities map[string]*ports.ProjectedEntity, l
 		addInternetIPEntity(entities, tenant, event.GetSourceId(), ipURN, ip)
 		addLink(links, projectedLink(tenant, event.GetSourceId(), agentURN, ipURN, relationHasIdentifier, map[string]string{
 			"confidence": "0.80",
+			"at":         eventObservedAt(event),
 			"event_id":   event.GetId(),
 			"ip":         ip,
 			"match_type": "sentinelone_agent_ip",
@@ -194,6 +195,7 @@ func addSentinelOneInternetContext(entities map[string]*ports.ProjectedEntity, l
 	addInternetHostEntity(entities, tenant, event.GetSourceId(), hostURN, host)
 	addLink(links, projectedLink(tenant, event.GetSourceId(), agentURN, hostURN, relationHasIdentifier, map[string]string{
 		"confidence": "0.70",
+		"at":         eventObservedAt(event),
 		"event_id":   event.GetId(),
 		"host":       host,
 		"match_type": "sentinelone_agent_hostname",

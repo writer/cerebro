@@ -3,19 +3,23 @@ package sourceprojection
 import (
 	"context"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestProjectSentinelOneAgentBuildsAgentEntity(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
+	occurred := time.Date(2026, time.April, 23, 1, 0, 0, 0, time.UTC)
 
 	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
-		Id:       "s1-agent-1",
-		TenantId: "writer",
-		SourceId: "sentinelone",
-		Kind:     "sentinelone.agent",
+		Id:         "s1-agent-1",
+		TenantId:   "writer",
+		SourceId:   "sentinelone",
+		Kind:       "sentinelone.agent",
+		OccurredAt: timestamppb.New(occurred),
 		Attributes: map[string]string{
 			"agent_id":          "agent-1",
 			"computer_name":     "host-1",
@@ -64,6 +68,9 @@ func TestProjectSentinelOneAgentBuildsAgentEntity(t *testing.T) {
 	assertProjectedLink(t, state, agentURN, relationBelongsTo, siteURN)
 	assertProjectedLink(t, state, agentURN, relationMemberOf, groupURN)
 	assertProjectedLink(t, state, agentURN, relationHasIdentifier, ipURN)
+	if got := state.links[agentURN+"|"+relationHasIdentifier+"|"+ipURN].Attributes["at"]; got != occurred.Format(time.RFC3339) {
+		t.Fatalf("identifier link at = %q, want %q", got, occurred.Format(time.RFC3339))
+	}
 }
 
 func TestProjectSentinelOneAgentSkipsWhenAgentIDMissing(t *testing.T) {
@@ -87,12 +94,14 @@ func TestProjectSentinelOneAgentSkipsWhenAgentIDMissing(t *testing.T) {
 func TestProjectSentinelOneThreatLinksThreatToAgent(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
+	occurred := time.Date(2026, time.April, 24, 2, 0, 0, 0, time.UTC)
 
 	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
-		Id:       "s1-threat-1",
-		TenantId: "writer",
-		SourceId: "sentinelone",
-		Kind:     "sentinelone.threat",
+		Id:         "s1-threat-1",
+		TenantId:   "writer",
+		SourceId:   "sentinelone",
+		Kind:       "sentinelone.threat",
+		OccurredAt: timestamppb.New(occurred),
 		Attributes: map[string]string{
 			"threat_id":             "threat-1",
 			"agent_id":              "agent-1",
@@ -130,6 +139,9 @@ func TestProjectSentinelOneThreatLinksThreatToAgent(t *testing.T) {
 	}
 	assertProjectedLink(t, state, agentURN, relationAffectedBy, threatURN)
 	assertProjectedLink(t, state, agentURN, relationHasIdentifier, ipURN)
+	if got := state.links[agentURN+"|"+relationHasIdentifier+"|"+ipURN].Attributes["at"]; got != occurred.Format(time.RFC3339) {
+		t.Fatalf("identifier link at = %q, want %q", got, occurred.Format(time.RFC3339))
+	}
 	assertProjectedLink(t, state, threatURN, relationBelongsTo, siteURN)
 	assertProjectedLink(t, state, threatURN, relationMemberOf, groupURN)
 	if got := state.entities[threatURN].Attributes["classification"]; got != "Malware" {
