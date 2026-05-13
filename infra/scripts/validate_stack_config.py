@@ -15,6 +15,7 @@ import yaml
 MIN_CROSS_TASK_SYNC_LOCK_VERSION = (2, 1, 25)
 IMAGE_TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?$")
 SECRET_KEY_RE = re.compile(r"(secret|token|password|api_?key|client_secret|private_key)", re.IGNORECASE)
+AWS_ROLE_ARN_RE = re.compile(r"^arn:(aws|aws-us-gov|aws-cn):iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+$")
 
 
 @dataclass(frozen=True)
@@ -192,6 +193,16 @@ def validate_stack(path: Path) -> list[Finding]:
         if not isinstance(runtime_config, dict):
             findings.append(_finding("error", stack, f"{runtime_path}.config", "runtime config must be an object"))
             continue
+
+        if str(runtime.get("sourceId", "")).strip() == "aws":
+            account_id = str(runtime_config.get("account_id", "")).strip()
+            role_arn = str(runtime_config.get("role_arn", "")).strip()
+            if role_arn:
+                match = AWS_ROLE_ARN_RE.match(role_arn)
+                if not match:
+                    findings.append(_finding("error", stack, f"{runtime_path}.config.role_arn", "must be an IAM role ARN"))
+                elif account_id and match.group(2) != account_id:
+                    findings.append(_finding("error", stack, f"{runtime_path}.config.role_arn", "account must match account_id"))
 
         for env_name, env_path in _env_refs(runtime_config, f"{runtime_path}.config"):
             if not env_name:

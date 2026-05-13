@@ -64,6 +64,13 @@ class ValidateStackConfigTest(unittest.TestCase):
         content = BASE_STACK.replace("    - API_TOKEN\n", "")
         self.assertTrue(any("not listed in cerebro:sourceSecretKeys" in message for message in self._messages(content)))
 
+    def test_aws_role_arn_account_must_match_runtime_account(self) -> None:
+        aws_stack = BASE_STACK.replace("sourceId: okta", "sourceId: aws").replace(
+            "        api_token: env:API_TOKEN",
+            "        account_id: \"123456789012\"\n        role_arn: arn:aws:iam::210987654321:role/cerebro-org-scan-role",
+        )
+        self.assertTrue(any("account must match account_id" in message for message in self._messages(aws_stack)))
+
     def test_unknown_scheduled_runtime_is_error(self) -> None:
         content = BASE_STACK.replace("runtime_id=writer-okta-audit", "runtime_id=writer-missing")
         self.assertTrue(any("unknown runtime id" in message for message in self._messages(content)))

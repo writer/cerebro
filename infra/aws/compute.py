@@ -45,6 +45,7 @@ def create_ecs_cluster(
     source_runtimes: list[dict] = None,
 ) -> dict:
     """Create ECS cluster with an API service."""
+    runtime_environment = _source_runtime_environment(environment or {}, source_runtimes or [])
     cluster = aws.ecs.Cluster(
         f"{name}-cluster",
         name=f"{name}-cluster",
@@ -84,7 +85,7 @@ def create_ecs_cluster(
         execution_role_arn=execution_role.arn,
         task_role_arn=task_role.arn,
         log_group_name=log_group.name,
-        environment=environment or {},
+        environment=runtime_environment,
         secret_keys=secret_keys or [],
         external_secrets_prefix=external_secrets_prefix,
         efs_file_system_id=efs_file_system_id,
@@ -118,7 +119,7 @@ def create_ecs_cluster(
                 execution_role_arn=execution_role.arn,
                 task_role_arn=task_role.arn,
                 log_group_name=log_group.name,
-                environment=environment or {},
+                environment=runtime_environment,
                 secret_keys=secret_keys or [],
                 external_secrets_prefix=external_secrets_prefix,
                 efs_file_system_id=efs_file_system_id,
@@ -270,6 +271,32 @@ def create_ecs_cluster(
         "task_role": task_role,
         "log_group": log_group,
     }
+
+
+def _source_runtime_environment(environment: dict, source_runtimes: list[dict]) -> dict:
+    merged = dict(environment or {})
+    role_entries = _source_runtime_aws_role_entries(source_runtimes or [])
+    if role_entries and not merged.get("CEREBRO_AWS_ASSUME_ROLE_ARNS"):
+        merged["CEREBRO_AWS_ASSUME_ROLE_ARNS"] = ",".join(role_entries)
+    return merged
+
+
+def _source_runtime_aws_role_entries(source_runtimes: list[dict]) -> list[str]:
+    role_entries = set()
+    for runtime in source_runtimes:
+        source_id = _runtime_field(runtime, "sourceId", "source_id")
+        if source_id != "aws":
+            continue
+        tenant_id = _runtime_field(runtime, "tenantId", "tenant_id")
+        if not tenant_id:
+            continue
+        runtime_config = runtime.get("config") or {}
+        if not isinstance(runtime_config, dict):
+            continue
+        role_arn = str(runtime_config.get("role_arn", "")).strip()
+        if role_arn:
+            role_entries.add(f"{tenant_id}={role_arn}")
+    return sorted(role_entries)
 
 
 def _create_execution_role(name: str, kms_key_id: pulumi.Input[str], external_secrets_prefix: str) -> aws.iam.Role:
