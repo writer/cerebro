@@ -29,6 +29,50 @@ env:
   TAILSCALE_OAUTH_CLIENT_SECRET: ${{ secrets.TAILSCALE_OAUTH_CLIENT_SECRET }}
 
 jobs:
+  changes:
+    name: Detect infra changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      aws: ${{ steps.filter.outputs.aws }}
+      gcp: ${{ steps.filter.outputs.gcp }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Filter changed paths
+        id: filter
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          head="${{ github.sha }}"
+          if [ -z "${base}" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            git ls-files infra > changed.txt
+          else
+            git diff --name-only "${base}" "${head}" > changed.txt
+          fi
+
+          aws=false
+          gcp=false
+          if grep -Eq '^infra/aws/' changed.txt; then aws=true; fi
+          if grep -Eq '^infra/gcp/' changed.txt; then gcp=true; fi
+          if grep -Eq '^infra/(pyproject.toml|uv.lock)$|^infra/scripts/|^infra/tests/' changed.txt; then
+            aws=true
+            gcp=true
+          fi
+          echo "aws=${aws}" >> "$GITHUB_OUTPUT"
+          echo "gcp=${gcp}" >> "$GITHUB_OUTPUT"
+          printf 'Changed infra paths:\n'
+          cat changed.txt
+
   static-validation:
     name: Static infra validation
     runs-on: ubuntu-latest
@@ -71,7 +115,8 @@ jobs:
   deploy-sec-dev:
     name: Preview sec-dev
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.aws == 'true'
     permissions:
       id-token: write
       contents: read
@@ -126,7 +171,8 @@ jobs:
   preview-go-prod:
     name: Preview go-prod
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.aws == 'true'
     permissions:
       id-token: write
       contents: read
@@ -181,7 +227,8 @@ jobs:
   deploy-go-prod:
     name: Deploy go-prod
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: changes
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.aws == 'true'
     environment: production
     permissions:
       id-token: write
@@ -243,7 +290,8 @@ jobs:
   deploy-gcp-dev:
     name: Preview gcp-dev
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.gcp == 'true'
     permissions:
       id-token: write
       contents: read
@@ -293,7 +341,8 @@ jobs:
   preview-gcp-prod:
     name: Preview gcp-prod
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.gcp == 'true'
     permissions:
       id-token: write
       contents: read
@@ -343,7 +392,8 @@ jobs:
   deploy-gcp-prod:
     name: Deploy gcp-prod
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: changes
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.gcp == 'true'
     environment: production
     permissions:
       id-token: write

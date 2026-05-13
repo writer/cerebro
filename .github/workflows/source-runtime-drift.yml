@@ -1,0 +1,70 @@
+name: Source Runtime Drift
+
+on:
+  schedule:
+    - cron: '35 15 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      stack:
+        description: AWS stack to compare
+        required: true
+        default: go-prod
+        type: choice
+        options:
+          - sec-dev
+          - go-prod
+      max_age_hours:
+        description: Warn when runtime activity fields are older than this many hours. Use 0 to disable.
+        required: false
+        default: '0'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: source-runtime-drift-${{ github.event.inputs.stack || 'go-prod' }}
+  cancel-in-progress: false
+
+jobs:
+  drift:
+    name: Check source runtime drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "infra/pyproject.toml"
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: bash
+        working-directory: infra
+        run: uv sync
+
+      - name: Check runtime drift
+        shell: bash
+        env:
+          CEREBRO_API_URL: ${{ secrets.CEREBRO_API_URL }}
+          CEREBRO_API_KEY: ${{ secrets.CEREBRO_API_KEY }}
+          STACK_NAME: ${{ github.event.inputs.stack || 'go-prod' }}
+          MAX_AGE_HOURS: ${{ github.event.inputs.max_age_hours || '0' }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CEREBRO_API_URL}" ] || [ -z "${CEREBRO_API_KEY}" ]; then
+            echo "::warning::CEREBRO_API_URL and CEREBRO_API_KEY secrets are required for live drift checks."
+            exit 0
+          fi
+          uv run --project infra python infra/scripts/check_source_runtime_drift.py \
+            --stack-file "infra/aws/Pulumi.${STACK_NAME}.yaml" \
+            --tenant-id writer \
+            --max-age-hours "${MAX_AGE_HOURS}"

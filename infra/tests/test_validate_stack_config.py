@@ -75,6 +75,16 @@ class ValidateStackConfigTest(unittest.TestCase):
         findings = validate_stack(self._write_stack(content))
         self.assertTrue(any(finding.severity == "warning" and "backfill schedules" in finding.message for finding in findings))
 
+    def test_backfill_retirement_metadata_clears_warning(self) -> None:
+        content = BASE_STACK.replace("name: okta-audit", 'name: okta-audit-backfill\n      removeAfter: "2099-01-01"')
+        findings = validate_stack(self._write_stack(content))
+        self.assertFalse(any(finding.severity == "warning" and "backfill schedules" in finding.message for finding in findings))
+
+    def test_backfill_retirement_metadata_rejects_past_date(self) -> None:
+        content = BASE_STACK.replace("name: okta-audit", 'name: okta-audit-backfill\n      removeAfter: "2000-01-01"')
+        findings = validate_stack(self._write_stack(content))
+        self.assertTrue(any(finding.severity == "error" and "past" in finding.message for finding in findings))
+
 
 if __name__ == "__main__":
     unittest.main()

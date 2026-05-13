@@ -64,6 +64,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: okta-audit-april-backfill
+      removeAfter: "2026-06-01"
       scheduleExpression: rate(15 minutes)
       taskCount: 1
       command:
@@ -74,6 +75,7 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: okta-audit-q1-backfill
+      removeAfter: "2026-06-01"
       scheduleExpression: rate(15 minutes)
       taskCount: 1
       command:

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import UTC, datetime
 import re
 import sys
 from dataclasses import dataclass
@@ -104,6 +105,23 @@ def _is_plain_secret(key: str, value: Any) -> bool:
         return False
     stripped = value.strip()
     return bool(stripped) and not stripped.startswith("env:") and not stripped.startswith("${")
+
+
+def _parse_retirement_date(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed
 
 
 def _finding(severity: str, stack: str, path: str, message: str) -> Finding:
@@ -219,15 +237,23 @@ def validate_stack(path: Path) -> list[Finding]:
         elif runtime_id not in runtime_ids:
             findings.append(_finding("error", stack, f"{schedule_path}.command", f"unknown runtime id {runtime_id!r}"))
 
-        if "backfill" in name.lower() and not any(key in schedule for key in ("expiresAt", "removeAfter", "expires_after")):
-            findings.append(
-                _finding(
-                    "warning",
-                    stack,
-                    f"{schedule_path}.name",
-                    "backfill schedules should include expiresAt/removeAfter metadata for retirement",
+        if "backfill" in name.lower():
+            retirement_key = next((key for key in ("expiresAt", "removeAfter", "expires_after") if key in schedule), "")
+            if not retirement_key:
+                findings.append(
+                    _finding(
+                        "warning",
+                        stack,
+                        f"{schedule_path}.name",
+                        "backfill schedules should include expiresAt/removeAfter metadata for retirement",
+                    )
                 )
-            )
+            else:
+                retirement_date = _parse_retirement_date(schedule.get(retirement_key))
+                if retirement_date is None:
+                    findings.append(_finding("error", stack, f"{schedule_path}.{retirement_key}", "retirement metadata must be an ISO date"))
+                elif retirement_date < datetime.now(UTC):
+                    findings.append(_finding("error", stack, f"{schedule_path}.{retirement_key}", "retirement date is in the past"))
 
     environment = str(config.get("environment", stack)).lower()
     is_prod = stack.endswith("prod") or "prod" in environment

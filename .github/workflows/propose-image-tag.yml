@@ -48,6 +48,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: "1.26.3"
+
       - name: Install dependencies
         shell: bash
         working-directory: infra
@@ -81,6 +86,32 @@ jobs:
           echo "digest=${digest}" >> "$GITHUB_OUTPUT"
           echo "Resolved ${GHCR_IMAGE}:${tag} ${digest}"
 
+      - name: Verify image signature and attestations
+        id: verify
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ steps.image.outputs.tag }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          set -euo pipefail
+          GOBIN="${RUNNER_TEMP}/cosign" go install github.com/sigstore/cosign/v2/cmd/cosign@v2.6.1
+          image_ref="${GHCR_IMAGE}@${IMAGE_DIGEST}"
+
+          "${RUNNER_TEMP}/cosign/cosign" verify \
+            --certificate-identity-regexp "https://github.com/writer/cerebro/.github/workflows/release.yml@refs/tags/${IMAGE_TAG}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "${image_ref}" > cosign-verify.json
+
+          "${RUNNER_TEMP}/cosign/cosign" tree "${image_ref}" > cosign-tree.txt
+          if ! grep -Eq 'Attestation|SBOM|Provenance' cosign-tree.txt; then
+            echo "No SBOM/provenance attestations found for ${image_ref}" >&2
+            cat cosign-tree.txt >&2
+            exit 1
+          fi
+
+          echo "verify_summary=signature and attestation references verified" >> "$GITHUB_OUTPUT"
+
       - name: Update stack config
         id: update
         shell: bash
@@ -90,6 +121,8 @@ jobs:
         run: |
           set -euo pipefail
 
+          current_tag="$(awk '$1 == "cerebro:imageTag:" { print $2; exit }' "infra/aws/Pulumi.${STACK_NAME}.yaml")"
+          echo "current_tag=${current_tag}" >> "$GITHUB_OUTPUT"
           uv run --project infra python infra/scripts/set_image_tag.py --stack "${STACK_NAME}" --image-tag "${IMAGE_TAG}"
           uv run --project infra python infra/scripts/validate_stack_config.py "infra/aws/Pulumi.${STACK_NAME}.yaml"
 
@@ -107,8 +140,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           STACK_NAME: ${{ github.event.inputs.environment || 'go-prod' }}
+          CURRENT_TAG: ${{ steps.update.outputs.current_tag }}
           IMAGE_TAG: ${{ steps.image.outputs.tag }}
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          VERIFY_SUMMARY: ${{ steps.verify.outputs.verify_summary }}
         run: |
           set -euo pipefail
 
@@ -127,9 +162,19 @@ jobs:
           {
             echo "Updates \`${STACK_NAME}\` to \`${GHCR_IMAGE}:${IMAGE_TAG}\`."
             echo
+            if [ -n "${CURRENT_TAG}" ]; then
+              echo "- Compare: https://github.com/writer/cerebro/compare/${CURRENT_TAG}...${IMAGE_TAG}"
+            fi
             echo "- Image: \`${GHCR_IMAGE}:${IMAGE_TAG}\`"
             if [ -n "${IMAGE_DIGEST}" ]; then
               echo "- Digest: \`${IMAGE_DIGEST}\`"
+            fi
+            echo "- Supply chain: ${VERIFY_SUMMARY}"
+            if gh release view "${IMAGE_TAG}" --repo writer/cerebro --json url --jq '.url' >/tmp/release_url 2>/dev/null; then
+              release_url="$(cat /tmp/release_url)"
+              if [ -n "${release_url}" ]; then
+                echo "- Release: ${release_url}"
+              fi
             fi
             echo
             echo "Deployment remains review-gated: merge this PR to let the existing mirror and Pulumi deploy workflows run."
