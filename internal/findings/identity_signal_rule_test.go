@@ -380,6 +380,12 @@ func TestIdentitySignalRulesRespectRuntimeFamily(t *testing.T) {
 	if rule.SupportsRuntime(&cerebrov1.SourceRuntime{SourceId: "aws", Config: map[string]string{"family": "public_endpoint"}}) {
 		t.Fatal("SupportsRuntime(public_endpoint) = true, want false")
 	}
+	if rule.SupportsRuntime(&cerebrov1.SourceRuntime{SourceId: "aws"}) {
+		t.Fatal("SupportsRuntime(default cloudtrail) = true, want false for user rule")
+	}
+	if !rules[identityControlTamperCredentialChangeRuleID].SupportsRuntime(&cerebrov1.SourceRuntime{SourceId: "aws"}) {
+		t.Fatal("SupportsRuntime(default cloudtrail) = false, want true for audit rule")
+	}
 }
 
 func TestIdentitySignalRulesTreatRoutineOAuthGrantsAsTelemetry(t *testing.T) {

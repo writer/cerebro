@@ -85,6 +85,7 @@ type settings struct {
 	roleARN         string
 	externalID      string
 	assumeRoleARNs  string
+	tenantID        string
 	includeGlobal   bool
 	groupName       string
 	principalType   string
@@ -510,6 +511,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		roleARN:         configValue(cfg, "role_arn"),
 		externalID:      configValue(cfg, "external_id"),
 		assumeRoleARNs:  configValue(cfg, sourceconfig.AWSAssumeRoleAllowlistKey),
+		tenantID:        configValue(cfg, sourceconfig.RuntimeTenantIDKey),
 		includeGlobal:   configBool(cfg, "include_global", true),
 		groupName:       configValue(cfg, "group_name"),
 		principalType:   configValue(cfg, "principal_type"),
@@ -588,17 +590,29 @@ func validateAssumeRoleConfig(settings settings) error {
 	if matches[2] != settings.accountID {
 		return fmt.Errorf("aws role_arn account must match account_id")
 	}
-	if !assumeRoleARNAllowed(settings.roleARN, settings.assumeRoleARNs) {
+	if settings.tenantID == "" {
+		return fmt.Errorf("aws role_arn requires runtime tenant_id")
+	}
+	if !assumeRoleARNAllowed(settings.tenantID, settings.roleARN, settings.assumeRoleARNs) {
 		return fmt.Errorf("aws role_arn is not allowed")
 	}
 	return nil
 }
 
-func assumeRoleARNAllowed(roleARN string, allowlist string) bool {
+func assumeRoleARNAllowed(tenantID string, roleARN string, allowlist string) bool {
+	tenantID = strings.TrimSpace(tenantID)
+	roleARN = strings.TrimSpace(roleARN)
+	if tenantID == "" || roleARN == "" {
+		return false
+	}
 	for _, value := range strings.FieldsFunc(allowlist, func(r rune) bool {
 		return r == ',' || r == ';' || r == '\n' || r == '\t' || r == ' '
 	}) {
-		if strings.TrimSpace(value) == roleARN {
+		tenant, arn, ok := strings.Cut(strings.TrimSpace(value), "=")
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(tenant) == tenantID && strings.TrimSpace(arn) == roleARN {
 			return true
 		}
 	}

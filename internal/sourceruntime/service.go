@@ -152,7 +152,7 @@ func (s *Service) preparePutRuntime(ctx context.Context, input *cerebrov1.Source
 	default:
 		return nil, err
 	}
-	resolvedConfig, err := s.resolveConfig(ctx, runtime.GetSourceId(), runtime.GetConfig())
+	resolvedConfig, err := s.resolveConfig(ctx, runtime.GetSourceId(), runtime.GetTenantId(), runtime.GetConfig())
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +234,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	if err != nil {
 		return nil, err
 	}
-	runtimeConfig, err := s.resolveConfig(ctx, runtime.GetSourceId(), runtime.GetConfig())
+	runtimeConfig, err := s.resolveConfig(ctx, runtime.GetSourceId(), runtime.GetTenantId(), runtime.GetConfig())
 	if err != nil {
 		return nil, err
 	}
@@ -329,16 +329,16 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	}, nil
 }
 
-func (s *Service) resolveConfig(ctx context.Context, sourceID string, config map[string]string) (map[string]string, error) {
+func (s *Service) resolveConfig(ctx context.Context, sourceID string, tenantID string, config map[string]string) (map[string]string, error) {
 	resolver := s.resolver
 	if resolver == nil {
-		return userConfig(config), nil
+		return sourceRuntimeConfig(userConfig(config), tenantID), nil
 	}
 	resolved, err := resolver(ctx, sourceID, userConfig(config))
 	if err != nil {
 		return nil, err
 	}
-	return userConfig(resolved), nil
+	return sourceRuntimeConfig(resolvedConfig(resolved), tenantID), nil
 }
 
 func (s *Service) lookupSource(sourceID string) (sourcecdk.Source, error) {
@@ -478,10 +478,29 @@ func sameConfig(left map[string]string, right map[string]string) bool {
 func userConfig(config map[string]string) map[string]string {
 	cloned := make(map[string]string, len(config))
 	for key, value := range config {
-		if key == runtimeProgressConfigHashKey || key == sourceconfig.AWSAssumeRoleAllowlistKey {
+		if key == runtimeProgressConfigHashKey || key == sourceconfig.AWSAssumeRoleAllowlistKey || key == sourceconfig.RuntimeTenantIDKey {
 			continue
 		}
 		cloned[key] = value
+	}
+	return cloned
+}
+
+func resolvedConfig(config map[string]string) map[string]string {
+	cloned := make(map[string]string, len(config))
+	for key, value := range config {
+		if key == runtimeProgressConfigHashKey {
+			continue
+		}
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func sourceRuntimeConfig(config map[string]string, tenantID string) map[string]string {
+	cloned := resolvedConfig(config)
+	if tenantID := strings.TrimSpace(tenantID); tenantID != "" {
+		cloned[sourceconfig.RuntimeTenantIDKey] = tenantID
 	}
 	return cloned
 }

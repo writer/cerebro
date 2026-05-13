@@ -472,6 +472,7 @@ func TestUserConfigStripsInternalAssumeRoleAllowlist(t *testing.T) {
 		"family":                               "public_endpoint",
 		runtimeProgressConfigHashKey:           "hash",
 		sourceconfig.AWSAssumeRoleAllowlistKey: "caller-controlled",
+		sourceconfig.RuntimeTenantIDKey:        "writer",
 	})
 	if got := config["family"]; got != "public_endpoint" {
 		t.Fatalf("family = %q, want public_endpoint", got)
@@ -481,6 +482,38 @@ func TestUserConfigStripsInternalAssumeRoleAllowlist(t *testing.T) {
 	}
 	if _, ok := config[runtimeProgressConfigHashKey]; ok {
 		t.Fatal("userConfig preserved progress config hash key")
+	}
+	if _, ok := config[sourceconfig.RuntimeTenantIDKey]; ok {
+		t.Fatal("userConfig preserved internal runtime tenant key")
+	}
+}
+
+func TestResolveConfigPreservesTrustedInternalRuntimeConfig(t *testing.T) {
+	service := New(nil, nil, nil, nil).WithConfigResolver(func(_ context.Context, _ string, values map[string]string) (map[string]string, error) {
+		if _, ok := values[sourceconfig.AWSAssumeRoleAllowlistKey]; ok {
+			t.Fatal("resolver input preserved caller-controlled allowlist")
+		}
+		return map[string]string{
+			"family":                               "public_endpoint",
+			runtimeProgressConfigHashKey:           "hash",
+			sourceconfig.AWSAssumeRoleAllowlistKey: "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role",
+		}, nil
+	})
+
+	resolved, err := service.resolveConfig(context.Background(), "aws", "writer", map[string]string{
+		sourceconfig.AWSAssumeRoleAllowlistKey: "caller-controlled",
+	})
+	if err != nil {
+		t.Fatalf("resolveConfig() error = %v", err)
+	}
+	if got := resolved[sourceconfig.AWSAssumeRoleAllowlistKey]; got != "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role" {
+		t.Fatalf("assume-role allowlist = %q, want trusted resolver value", got)
+	}
+	if got := resolved[sourceconfig.RuntimeTenantIDKey]; got != "writer" {
+		t.Fatalf("runtime tenant = %q, want writer", got)
+	}
+	if _, ok := resolved[runtimeProgressConfigHashKey]; ok {
+		t.Fatal("resolveConfig preserved progress hash")
 	}
 }
 

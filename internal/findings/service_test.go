@@ -1534,6 +1534,49 @@ func TestEvaluateSourceRuntimeFindingsRejectsUnsupportedRule(t *testing.T) {
 	}
 }
 
+func TestEvaluateSourceRuntimeFindingsAllowsExplicitUnsupportedRuleWithOpenFindings(t *testing.T) {
+	registry, err := NewRegistry(&emittingRule{
+		spec:               &cerebrov1.RuleSpec{Id: "old-family-rule", Name: "Old Family Rule"},
+		supportedSourceIDs: map[string]struct{}{"okta": {}},
+		triggerEventID:     "old-event",
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{
+		"finding-old": {
+			ID:        "finding-old",
+			TenantID:  "writer",
+			RuntimeID: "writer-aws-public-endpoint",
+			RuleID:    "old-family-rule",
+			Status:    findingStatusOpen,
+			EventIDs:  []string{"old-event"},
+		},
+	}}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-aws-public-endpoint": {Id: "writer-aws-public-endpoint", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "public_endpoint"}},
+		}},
+		&stubReplayer{},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: "writer-aws-public-endpoint", RuleID: "old-family-rule"})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if result.Rule.GetId() != "old-family-rule" {
+		t.Fatalf("Rule.Id = %q, want old-family-rule", result.Rule.GetId())
+	}
+	if got := store.findings["finding-old"].Status; got != findingStatusResolved {
+		t.Fatalf("stale finding status = %q, want %q", got, findingStatusResolved)
+	}
+}
+
 func TestEvaluateSourceRuntimeRulesReplaysOnceAcrossMultipleRules(t *testing.T) {
 	registry, err := NewRegistry(
 		&emittingRule{
@@ -1645,6 +1688,49 @@ func TestEvaluateSourceRuntimeRulesReplaysOnceAcrossMultipleRules(t *testing.T) 
 	}
 	if got := len(store.evidence); got != 2 {
 		t.Fatalf("len(store.evidence) = %d, want 2", got)
+	}
+}
+
+func TestEvaluateSourceRuntimeRulesIncludesUnsupportedRulesWithOpenFindings(t *testing.T) {
+	registry, err := NewRegistry(&emittingRule{
+		spec:               &cerebrov1.RuleSpec{Id: "old-family-rule", Name: "Old Family Rule"},
+		supportedSourceIDs: map[string]struct{}{"okta": {}},
+		triggerEventID:     "old-event",
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{
+		"finding-old": {
+			ID:        "finding-old",
+			TenantID:  "writer",
+			RuntimeID: "writer-aws-public-endpoint",
+			RuleID:    "old-family-rule",
+			Status:    findingStatusOpen,
+			EventIDs:  []string{"old-event"},
+		},
+	}}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-aws-public-endpoint": {Id: "writer-aws-public-endpoint", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "public_endpoint"}},
+		}},
+		&stubReplayer{},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	)
+
+	result, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-aws-public-endpoint"})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeRules() error = %v", err)
+	}
+	if len(result.Evaluations) != 1 || result.Evaluations[0].Rule.GetId() != "old-family-rule" {
+		t.Fatalf("evaluations = %#v, want only old-family-rule", result.Evaluations)
+	}
+	if got := store.findings["finding-old"].Status; got != findingStatusResolved {
+		t.Fatalf("stale finding status = %q, want %q", got, findingStatusResolved)
 	}
 }
 

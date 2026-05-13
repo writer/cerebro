@@ -112,14 +112,14 @@ func TestResolveSourceRuntimeConfigSecretReferencesPreservesLiteralEnvQueryValue
 }
 
 func TestResolveSourceRuntimeConfigInjectsAWSAssumeRoleAllowlist(t *testing.T) {
-	t.Setenv(awsAssumeRoleARNsEnv, "arn:aws:iam::123456789012:role/cerebro-org-scan-role")
+	t.Setenv(awsAssumeRoleARNsEnv, "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role")
 	resolved, err := ResolveSourceRuntimeConfigSecretReferences(context.Background(), "aws", map[string]string{
 		sourceconfig.AWSAssumeRoleAllowlistKey: "caller-controlled",
 	})
 	if err != nil {
 		t.Fatalf("ResolveSourceRuntimeConfigSecretReferences() error = %v", err)
 	}
-	if got := resolved[sourceconfig.AWSAssumeRoleAllowlistKey]; got != "arn:aws:iam::123456789012:role/cerebro-org-scan-role" {
+	if got := resolved[sourceconfig.AWSAssumeRoleAllowlistKey]; got != "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role" {
 		t.Fatalf("resolved assume-role allowlist = %q, want deployment env value", got)
 	}
 }

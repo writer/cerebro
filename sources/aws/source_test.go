@@ -55,7 +55,8 @@ func TestParseSettingsValidatesAssumeRoleConfig(t *testing.T) {
 		"account_id":                           "123456789012",
 		"role_arn":                             roleARN,
 		"external_id":                          "external-1",
-		sourceconfig.AWSAssumeRoleAllowlistKey: roleARN,
+		sourceconfig.AWSAssumeRoleAllowlistKey: "writer=" + roleARN,
+		sourceconfig.RuntimeTenantIDKey:        "writer",
 	}))
 	if err != nil {
 		t.Fatalf("parseSettings() error = %v", err)
@@ -76,15 +77,27 @@ func TestParseSettingsRejectsUnsafeAssumeRoleConfig(t *testing.T) {
 	}{
 		{
 			name:   "unallowlisted role",
-			config: map[string]string{"account_id": "123456789012", "role_arn": "arn:aws:iam::123456789012:role/OtherRole", sourceconfig.AWSAssumeRoleAllowlistKey: allowed},
+			config: map[string]string{"account_id": "123456789012", "role_arn": "arn:aws:iam::123456789012:role/OtherRole", sourceconfig.AWSAssumeRoleAllowlistKey: "writer=" + allowed, sourceconfig.RuntimeTenantIDKey: "writer"},
 		},
 		{
 			name:   "account mismatch",
-			config: map[string]string{"account_id": "123456789012", "role_arn": "arn:aws:iam::210987654321:role/cerebro-org-scan-role", sourceconfig.AWSAssumeRoleAllowlistKey: allowed},
+			config: map[string]string{"account_id": "123456789012", "role_arn": "arn:aws:iam::210987654321:role/cerebro-org-scan-role", sourceconfig.AWSAssumeRoleAllowlistKey: "writer=" + allowed, sourceconfig.RuntimeTenantIDKey: "writer"},
 		},
 		{
 			name:   "invalid role arn",
-			config: map[string]string{"account_id": "123456789012", "role_arn": "legacy", sourceconfig.AWSAssumeRoleAllowlistKey: allowed},
+			config: map[string]string{"account_id": "123456789012", "role_arn": "legacy", sourceconfig.AWSAssumeRoleAllowlistKey: "writer=" + allowed, sourceconfig.RuntimeTenantIDKey: "writer"},
+		},
+		{
+			name:   "tenant mismatch",
+			config: map[string]string{"account_id": "123456789012", "role_arn": allowed, sourceconfig.AWSAssumeRoleAllowlistKey: "other=" + allowed, sourceconfig.RuntimeTenantIDKey: "writer"},
+		},
+		{
+			name:   "bare allowlist entry",
+			config: map[string]string{"account_id": "123456789012", "role_arn": allowed, sourceconfig.AWSAssumeRoleAllowlistKey: allowed, sourceconfig.RuntimeTenantIDKey: "writer"},
+		},
+		{
+			name:   "missing runtime tenant",
+			config: map[string]string{"account_id": "123456789012", "role_arn": allowed, sourceconfig.AWSAssumeRoleAllowlistKey: "writer=" + allowed},
 		},
 		{
 			name:   "external id without role",
@@ -92,7 +105,7 @@ func TestParseSettingsRejectsUnsafeAssumeRoleConfig(t *testing.T) {
 		},
 		{
 			name:   "caller supplied session name",
-			config: map[string]string{"account_id": "123456789012", "role_arn": allowed, "role_session_name": "caller", sourceconfig.AWSAssumeRoleAllowlistKey: allowed},
+			config: map[string]string{"account_id": "123456789012", "role_arn": allowed, "role_session_name": "caller", sourceconfig.AWSAssumeRoleAllowlistKey: "writer=" + allowed, sourceconfig.RuntimeTenantIDKey: "writer"},
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

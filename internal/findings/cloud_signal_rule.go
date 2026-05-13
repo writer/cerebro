@@ -129,7 +129,7 @@ func (r *cloudSignalRule) Evaluate(ctx context.Context, runtime *cerebrov1.Sourc
 	if r == nil || runtime == nil || event == nil {
 		return nil, nil
 	}
-	if !r.SupportsRuntime(runtime) || !identityKindAllowed(event.GetKind(), r.config.eventKinds) {
+	if !identityKindAllowed(event.GetKind(), r.config.eventKinds) {
 		return nil, nil
 	}
 	attributes := eventAttributes(event)

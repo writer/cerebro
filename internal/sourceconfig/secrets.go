@@ -8,6 +8,7 @@ import (
 const (
 	envPrefix                 = "env:"
 	AWSAssumeRoleAllowlistKey = "__cerebro_aws_assume_role_arns"
+	RuntimeTenantIDKey        = "__cerebro_runtime_tenant_id"
 )
 
 type Resolver func(context.Context, string, map[string]string) (map[string]string, error)

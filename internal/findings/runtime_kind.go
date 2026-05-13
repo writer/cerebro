@@ -23,8 +23,35 @@ func runtimeConfiguredEventKind(runtime *cerebrov1.SourceRuntime) string {
 	}
 	sourceID := strings.TrimSpace(runtime.GetSourceId())
 	family := strings.TrimSpace(runtime.GetConfig()["family"])
-	if sourceID == "" || family == "" {
+	if sourceID == "" {
+		return ""
+	}
+	if family == "" {
+		family = defaultRuntimeFamily(sourceID)
+	}
+	if family == "" {
 		return ""
 	}
 	return sourceID + "." + family
+}
+
+func defaultRuntimeFamily(sourceID string) string {
+	switch strings.ToLower(strings.TrimSpace(sourceID)) {
+	case "aws":
+		return "cloudtrail"
+	case "azure":
+		return "directory_audit"
+	case "gcp":
+		return "audit"
+	case "github":
+		return "pull_request"
+	case "google_workspace":
+		return "user"
+	case "okta":
+		return "audit"
+	case "sentinelone":
+		return "threat"
+	default:
+		return ""
+	}
 }
