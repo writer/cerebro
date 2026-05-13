@@ -75,6 +75,7 @@ func sentinelOneAgentProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 	})
 
 	addSentinelOneScopeLinks(entities, links, tenant, event, agentURN, attrs)
+	addSentinelOneInternetContext(entities, links, tenant, event, agentURN, attrs)
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
@@ -143,6 +144,7 @@ func sentinelOneThreatProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 				"is_active":      strings.TrimSpace(attrs["is_active"]),
 				"is_infected":    strings.TrimSpace(attrs["is_infected"]),
 				"active_threats": strings.TrimSpace(attrs["active_threats"]),
+				"external_ip":    firstNonEmpty(strings.TrimSpace(attrs["external_ip"]), strings.TrimSpace(attrs["agent_ip_v4"])),
 				"site_id":        strings.TrimSpace(attrs["site_id"]),
 				"group_id":       strings.TrimSpace(attrs["group_id"]),
 				"tenant_host":    strings.TrimSpace(attrs["tenant_host"]),
@@ -158,12 +160,46 @@ func sentinelOneThreatProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 			"incident_status":   strings.TrimSpace(attrs["incident_status"]),
 			"mitigation_status": strings.TrimSpace(attrs["mitigation_status"]),
 		}))
+		addSentinelOneInternetContext(entities, links, tenant, event, agentURN, attrs)
 	}
 
 	addSentinelOneScopeLinks(entities, links, tenant, event, threatURN, attrs)
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
+}
+
+func addSentinelOneInternetContext(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenant string, event *cerebrov1.EventEnvelope, agentURN string, attrs map[string]string) {
+	for _, rawIP := range []string{attrs["external_ip"], attrs["agent_ip_v4"]} {
+		ipURN, ip := internetIPURN(tenant, rawIP)
+		if ipURN == "" {
+			continue
+		}
+		addInternetIPEntity(entities, tenant, event.GetSourceId(), ipURN, ip)
+		addLink(links, projectedLink(tenant, event.GetSourceId(), agentURN, ipURN, relationHasIdentifier, map[string]string{
+			"confidence": "0.80",
+			"at":         eventObservedAt(event),
+			"event_id":   event.GetId(),
+			"ip":         ip,
+			"match_type": "sentinelone_agent_ip",
+		}))
+	}
+	host := internetHostIfLikely(firstNonEmpty(attrs["computer_name"], attrs["agent_name"], attrs["hostname"]))
+	if host == "" {
+		return
+	}
+	hostURN, host := internetHostURN(tenant, host)
+	if hostURN == "" {
+		return
+	}
+	addInternetHostEntity(entities, tenant, event.GetSourceId(), hostURN, host)
+	addLink(links, projectedLink(tenant, event.GetSourceId(), agentURN, hostURN, relationHasIdentifier, map[string]string{
+		"confidence": "0.70",
+		"at":         eventObservedAt(event),
+		"event_id":   event.GetId(),
+		"host":       host,
+		"match_type": "sentinelone_agent_hostname",
+	}))
 }
 
 func sentinelOneSiteProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
