@@ -77,6 +77,18 @@ config:
     type: string
     default: ""
     description: OIDC issuer URL for the web console ALB authentication action
+  cerebro:webOidcAuthorizationEndpoint:
+    type: string
+    default: ""
+    description: Optional OIDC authorization endpoint override for the web console ALB authentication action
+  cerebro:webOidcTokenEndpoint:
+    type: string
+    default: ""
+    description: Optional OIDC token endpoint override for the web console ALB authentication action
+  cerebro:webOidcUserInfoEndpoint:
+    type: string
+    default: ""
+    description: Optional OIDC user info endpoint override for the web console ALB authentication action
   cerebro:webOidcClientId:
     type: string
     default: ""

@@ -146,6 +146,9 @@ web_forward_auth_headers = _config_bool("webForwardAuthHeaders", False)
 web_api_key_secret_name = config.get("webApiKeySecretName") or "CEREBRO_API_KEYS"
 web_oidc_enabled = _config_bool("webOidcEnabled", False)
 web_oidc_issuer = (config.get("webOidcIssuer") or "").rstrip("/")
+web_oidc_authorization_endpoint = (config.get("webOidcAuthorizationEndpoint") or "").rstrip("/")
+web_oidc_token_endpoint = (config.get("webOidcTokenEndpoint") or "").rstrip("/")
+web_oidc_user_info_endpoint = (config.get("webOidcUserInfoEndpoint") or "").rstrip("/")
 web_oidc_client_id = config.get("webOidcClientId") or ""
 web_oidc_client_secret = _config_optional_secret("webOidcClientSecret")
 web_oidc_session_cookie_name = config.get("webOidcSessionCookieName") or "CerebroWebOidcSession"
@@ -170,9 +173,9 @@ web_oidc_auth = None
 if web_oidc_enabled:
     web_oidc_auth = {
         "issuer": web_oidc_issuer,
-        "authorization_endpoint": f"{web_oidc_issuer}/v1/authorize",
-        "token_endpoint": f"{web_oidc_issuer}/v1/token",
-        "user_info_endpoint": f"{web_oidc_issuer}/v1/userinfo",
+        "authorization_endpoint": web_oidc_authorization_endpoint or f"{web_oidc_issuer}/v1/authorize",
+        "token_endpoint": web_oidc_token_endpoint or f"{web_oidc_issuer}/v1/token",
+        "user_info_endpoint": web_oidc_user_info_endpoint or f"{web_oidc_issuer}/v1/userinfo",
         "client_id": web_oidc_client_id,
         "client_secret": web_oidc_client_secret,
         "session_cookie_name": web_oidc_session_cookie_name,

@@ -11,9 +11,16 @@ config:
   cerebro:webEnabled: true
   cerebro:webEcrBaseUri: 944130631940.dkr.ecr.us-east-1.amazonaws.com/cerebro
   cerebro:webImageTag: sha-ca7ca8a3b44f
+  cerebro:webDomain: cerebro-web.adm.dev.qordobadev.com
   cerebro:webCertificateDomain: cerebro-web.adm.dev.qordobadev.com
   cerebro:webApiBase: https://cerebro.adm.dev.qordobadev.com
   cerebro:webForwardAuthHeaders: false
+  cerebro:webOidcEnabled: true
+  cerebro:webOidcIssuer: https://writer.okta.com
+  cerebro:webOidcAuthorizationEndpoint: https://writer.okta.com/oauth2/v1/authorize
+  cerebro:webOidcTokenEndpoint: https://writer.okta.com/oauth2/v1/token
+  cerebro:webOidcUserInfoEndpoint: https://writer.okta.com/oauth2/v1/userinfo
+  cerebro:webOidcClientId: 0oa234e4mu4Dnot0q1d8
   cerebro:webCpu: 512
   cerebro:webMemory: 1024
   cerebro:webMinInstances: 1
@@ -369,3 +376,5 @@ config:
     CEREBRO_NEO4J_PASSWORD: arn:aws:secretsmanager:us-east-1:944130631940:secret:cerebro-sec-dev/CEREBRO_NEO4J_PASSWORD-7kyHSs
     CEREBRO_NEO4J_URI: arn:aws:secretsmanager:us-east-1:944130631940:secret:cerebro-sec-dev/CEREBRO_NEO4J_URI-iH45QD
     CEREBRO_NEO4J_USERNAME: arn:aws:secretsmanager:us-east-1:944130631940:secret:cerebro-sec-dev/CEREBRO_NEO4J_USERNAME-xLjaEE
+  cerebro:webOidcClientSecret:
+    secure: AAABANy60MD6lI0DPD+mJOVU+KHzFq8g6CxdtpSJKxOUtYink+/APeggIbSPgGW0+7wO7N5eEVKSxJ7Mnh90Ubnv9SxP78ybXGZMbJ/BBGYkTJL2U8buu0wKbzf81C+b
