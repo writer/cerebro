@@ -14,6 +14,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 	githubsource "github.com/writer/cerebro/sources/github"
 	oktasource "github.com/writer/cerebro/sources/okta"
 )
@@ -463,6 +464,23 @@ func TestProgressConfigHashIgnoresAccessKeyIDCredentials(t *testing.T) {
 	}
 	if hashA != hashB {
 		t.Fatal("progress config hash changed when only access_key_id changed")
+	}
+}
+
+func TestUserConfigStripsInternalAssumeRoleAllowlist(t *testing.T) {
+	config := userConfig(map[string]string{
+		"family":                               "public_endpoint",
+		runtimeProgressConfigHashKey:           "hash",
+		sourceconfig.AWSAssumeRoleAllowlistKey: "caller-controlled",
+	})
+	if got := config["family"]; got != "public_endpoint" {
+		t.Fatalf("family = %q, want public_endpoint", got)
+	}
+	if _, ok := config[sourceconfig.AWSAssumeRoleAllowlistKey]; ok {
+		t.Fatal("userConfig preserved internal assume-role allowlist key")
+	}
+	if _, ok := config[runtimeProgressConfigHashKey]; ok {
+		t.Fatal("userConfig preserved progress config hash key")
 	}
 }
 

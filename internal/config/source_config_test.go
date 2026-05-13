@@ -3,6 +3,8 @@ package config
 import (
 	"context"
 	"testing"
+
+	"github.com/writer/cerebro/internal/sourceconfig"
 )
 
 func TestResolveSourceConfigSecretReferencesResolvesEnvValues(t *testing.T) {
@@ -106,5 +108,18 @@ func TestResolveSourceRuntimeConfigSecretReferencesPreservesLiteralEnvQueryValue
 	}
 	if got := resolved["phrase"]; got != "env:prod" {
 		t.Fatalf("resolved phrase = %q, want literal env:prod", got)
+	}
+}
+
+func TestResolveSourceRuntimeConfigInjectsAWSAssumeRoleAllowlist(t *testing.T) {
+	t.Setenv(awsAssumeRoleARNsEnv, "arn:aws:iam::123456789012:role/cerebro-org-scan-role")
+	resolved, err := ResolveSourceRuntimeConfigSecretReferences(context.Background(), "aws", map[string]string{
+		sourceconfig.AWSAssumeRoleAllowlistKey: "caller-controlled",
+	})
+	if err != nil {
+		t.Fatalf("ResolveSourceRuntimeConfigSecretReferences() error = %v", err)
+	}
+	if got := resolved[sourceconfig.AWSAssumeRoleAllowlistKey]; got != "arn:aws:iam::123456789012:role/cerebro-org-scan-role" {
+		t.Fatalf("resolved assume-role allowlist = %q, want deployment env value", got)
 	}
 }

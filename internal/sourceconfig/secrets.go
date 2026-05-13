@@ -5,7 +5,10 @@ import (
 	"strings"
 )
 
-const envPrefix = "env:"
+const (
+	envPrefix                 = "env:"
+	AWSAssumeRoleAllowlistKey = "__cerebro_aws_assume_role_arns"
+)
 
 type Resolver func(context.Context, string, map[string]string) (map[string]string, error)
 

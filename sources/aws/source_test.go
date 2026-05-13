@@ -26,6 +26,7 @@ import (
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 )
 
 func TestNewLoadsCatalog(t *testing.T) {
@@ -48,24 +49,57 @@ func TestCheckRequiresAccountID(t *testing.T) {
 	}
 }
 
-func TestParseSettingsAllowsAssumeRoleConfig(t *testing.T) {
+func TestParseSettingsValidatesAssumeRoleConfig(t *testing.T) {
+	roleARN := "arn:aws:iam::123456789012:role/cerebro-org-scan-role"
 	settings, err := parseSettings(sourcecdk.NewConfig(map[string]string{
-		"account_id":        "123456789012",
-		"role_arn":          "arn:aws:iam::123456789012:role/cerebro-org-scan-role",
-		"external_id":       "external",
-		"role_session_name": "cerebro",
+		"account_id":                           "123456789012",
+		"role_arn":                             roleARN,
+		"external_id":                          "external-1",
+		sourceconfig.AWSAssumeRoleAllowlistKey: roleARN,
 	}))
 	if err != nil {
-		t.Fatalf("parseSettings() error = %v, want nil", err)
+		t.Fatalf("parseSettings() error = %v", err)
 	}
-	if settings.roleARN == "" || settings.externalID != "external" || settings.roleSessionName != "cerebro" {
-		t.Fatalf("assume-role settings = %#v", settings)
+	if settings.roleARN != roleARN {
+		t.Fatalf("roleARN = %q, want %q", settings.roleARN, roleARN)
+	}
+	if settings.externalID != "external-1" {
+		t.Fatalf("externalID = %q, want external-1", settings.externalID)
 	}
 }
 
-func TestParseSettingsRejectsInvalidAssumeRoleARN(t *testing.T) {
-	if _, err := parseSettings(sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "role_arn": "not-a-role"})); err == nil {
-		t.Fatal("parseSettings() error = nil, want invalid role_arn error")
+func TestParseSettingsRejectsUnsafeAssumeRoleConfig(t *testing.T) {
+	allowed := "arn:aws:iam::123456789012:role/cerebro-org-scan-role"
+	for _, tt := range []struct {
+		name   string
+		config map[string]string
+	}{
+		{
+			name:   "unallowlisted role",
+			config: map[string]string{"account_id": "123456789012", "role_arn": "arn:aws:iam::123456789012:role/OtherRole", sourceconfig.AWSAssumeRoleAllowlistKey: allowed},
+		},
+		{
+			name:   "account mismatch",
+			config: map[string]string{"account_id": "123456789012", "role_arn": "arn:aws:iam::210987654321:role/cerebro-org-scan-role", sourceconfig.AWSAssumeRoleAllowlistKey: allowed},
+		},
+		{
+			name:   "invalid role arn",
+			config: map[string]string{"account_id": "123456789012", "role_arn": "legacy", sourceconfig.AWSAssumeRoleAllowlistKey: allowed},
+		},
+		{
+			name:   "external id without role",
+			config: map[string]string{"account_id": "123456789012", "external_id": "external-1"},
+		},
+		{
+			name:   "caller supplied session name",
+			config: map[string]string{"account_id": "123456789012", "role_arn": allowed, "role_session_name": "caller", sourceconfig.AWSAssumeRoleAllowlistKey: allowed},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := parseSettings(sourcecdk.NewConfig(tt.config)); err == nil {
+				t.Fatal("parseSettings() error = nil, want non-nil")
+			}
+		})
 	}
 }
 

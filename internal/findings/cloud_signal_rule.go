@@ -119,7 +119,7 @@ func (r *cloudSignalRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool
 	sourceID := strings.TrimSpace(runtime.GetSourceId())
 	for _, candidate := range r.config.sourceIDs {
 		if strings.EqualFold(sourceID, candidate) {
-			return true
+			return runtimeMayEmitEventKind(runtime, r.config.eventKinds)
 		}
 	}
 	return false

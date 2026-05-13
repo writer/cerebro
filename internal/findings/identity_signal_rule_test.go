@@ -371,6 +371,17 @@ func TestIdentitySignalRulesIgnoreInactiveCloudCredentials(t *testing.T) {
 	}
 }
 
+func TestIdentitySignalRulesRespectRuntimeFamily(t *testing.T) {
+	rules := identityRulesByID(t)
+	rule := rules[identityPrivilegedAccountWithoutMFARuleID]
+	if !rule.SupportsRuntime(&cerebrov1.SourceRuntime{SourceId: "aws", Config: map[string]string{"family": "iam_user"}}) {
+		t.Fatal("SupportsRuntime(iam_user) = false, want true")
+	}
+	if rule.SupportsRuntime(&cerebrov1.SourceRuntime{SourceId: "aws", Config: map[string]string{"family": "public_endpoint"}}) {
+		t.Fatal("SupportsRuntime(public_endpoint) = true, want false")
+	}
+}
+
 func TestIdentitySignalRulesTreatRoutineOAuthGrantsAsTelemetry(t *testing.T) {
 	rules := identityRulesByID(t)
 	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"}

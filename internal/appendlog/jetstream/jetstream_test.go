@@ -234,6 +234,12 @@ func TestReplayAppliesDefaultLimit(t *testing.T) {
 	if len(events) != defaultReplayLimit {
 		t.Fatalf("len(events) = %d, want %d", len(events), defaultReplayLimit)
 	}
+	if got := events[0].GetId(); got != "evt-6" {
+		t.Fatalf("first replayed id = %q, want evt-6", got)
+	}
+	if got := events[len(events)-1].GetId(); got != "evt-105" {
+		t.Fatalf("last replayed id = %q, want evt-105", got)
+	}
 }
 
 func TestReplayFiltersWorkflowEventsByKindPrefixTenantAndAttribute(t *testing.T) {
@@ -276,7 +282,7 @@ func TestReplayFiltersWorkflowEventsByKindPrefixTenantAndAttribute(t *testing.T)
 	}
 }
 
-func TestReplayScansSparseStreamsUntilLimitMatches(t *testing.T) {
+func TestReplayScansSparseStreamsUntilLimitOrStreamStart(t *testing.T) {
 	const matchingSeq = uint64(10005)
 	replay := &fakeReplayManager{
 		streams: []*natsjetstream.StreamInfo{
@@ -305,6 +311,40 @@ func TestReplayScansSparseStreamsUntilLimitMatches(t *testing.T) {
 	}
 	if replay.getMsgCalls != int(matchingSeq) {
 		t.Fatalf("getMsgCalls = %d, want %d", replay.getMsgCalls, matchingSeq)
+	}
+}
+
+func TestReplayReturnsLatestMatchesInAppendOrder(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{
+					Name:     "CEREBRO_EVENTS",
+					Subjects: []string{"events.>"},
+				},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: 4},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-1", "github.audit", "writer-github")),
+				2: rawReplayMsg(t, "events.github.audit", replayEvent("evt-2", "github.audit", "writer-github")),
+				3: rawReplayMsg(t, "events.github.audit", replayEvent("evt-3", "github.audit", "other-runtime")),
+				4: rawReplayMsg(t, "events.github.audit", replayEvent("evt-4", "github.audit", "writer-github")),
+			},
+		},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github", Limit: 2})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("len(events) = %d, want 2", len(events))
+	}
+	if events[0].GetId() != "evt-2" || events[1].GetId() != "evt-4" {
+		t.Fatalf("replayed ids = [%q, %q], want [evt-2, evt-4]", events[0].GetId(), events[1].GetId())
 	}
 }
 

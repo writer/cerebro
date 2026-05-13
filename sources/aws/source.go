@@ -39,29 +39,32 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 )
 
 //go:embed catalog.yaml
 var catalogFS embed.FS
 
 var emailPattern = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}`)
+var awsRoleARNPattern = regexp.MustCompile(`^arn:(aws|aws-us-gov|aws-cn):iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+$`)
 
 const (
-	defaultFamily          = familyCloudTrail
-	defaultRegion          = "us-east-1"
-	defaultPageSize        = 10
-	maxPageSize            = 200
-	publicEndpointCursorV2 = 2
-	familyAccessKey        = "access_key"
-	familyCloudTrail       = "cloudtrail"
-	familyIAMGroup         = "iam_group"
-	familyIAMMembership    = "iam_group_membership"
-	familyIAMRoleTrust     = "iam_role_trust"
-	familyIAMRoleAssign    = "iam_role_assignment"
-	familyIAMRole          = "iam_role"
-	familyIAMUser          = "iam_user"
-	familyPublicEndpoint   = "public_endpoint"
-	familyResourceExposure = "resource_exposure"
+	defaultFamily            = familyCloudTrail
+	defaultRegion            = "us-east-1"
+	defaultPageSize          = 10
+	maxPageSize              = 200
+	publicEndpointCursorV2   = 2
+	awsAssumeRoleSessionName = "cerebro-source-runtime"
+	familyAccessKey          = "access_key"
+	familyCloudTrail         = "cloudtrail"
+	familyIAMGroup           = "iam_group"
+	familyIAMMembership      = "iam_group_membership"
+	familyIAMRoleTrust       = "iam_role_trust"
+	familyIAMRoleAssign      = "iam_role_assignment"
+	familyIAMRole            = "iam_role"
+	familyIAMUser            = "iam_user"
+	familyPublicEndpoint     = "public_endpoint"
+	familyResourceExposure   = "resource_exposure"
 )
 
 // Source reads AWS IAM inventory and CloudTrail activity through the AWS SDK for Go v2.
@@ -81,7 +84,7 @@ type settings struct {
 	sessionToken    string
 	roleARN         string
 	externalID      string
-	roleSessionName string
+	assumeRoleARNs  string
 	includeGlobal   bool
 	groupName       string
 	principalType   string
@@ -476,11 +479,9 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 	}
 	if settings.roleARN != "" {
 		provider := stscreds.NewAssumeRoleProvider(sts.NewFromConfig(cfg), settings.roleARN, func(options *stscreds.AssumeRoleOptions) {
+			options.RoleSessionName = awsAssumeRoleSessionName
 			if settings.externalID != "" {
 				options.ExternalID = awssdk.String(settings.externalID)
-			}
-			if settings.roleSessionName != "" {
-				options.RoleSessionName = settings.roleSessionName
 			}
 		})
 		cfg.Credentials = awssdk.NewCredentialsCache(provider)
@@ -508,7 +509,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		sessionToken:    configValue(cfg, "session_token"),
 		roleARN:         configValue(cfg, "role_arn"),
 		externalID:      configValue(cfg, "external_id"),
-		roleSessionName: configValue(cfg, "role_session_name"),
+		assumeRoleARNs:  configValue(cfg, sourceconfig.AWSAssumeRoleAllowlistKey),
 		includeGlobal:   configBool(cfg, "include_global", true),
 		groupName:       configValue(cfg, "group_name"),
 		principalType:   configValue(cfg, "principal_type"),
@@ -526,8 +527,15 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if settings.accountID == "" {
 		return settings, fmt.Errorf("aws account_id is required")
 	}
-	if settings.roleARN != "" && (!strings.HasPrefix(settings.roleARN, "arn:") || !strings.Contains(settings.roleARN, ":role/")) {
-		return settings, fmt.Errorf("aws role_arn must be an IAM role ARN")
+	if roleSessionName := configValue(cfg, "role_session_name"); roleSessionName != "" {
+		return settings, fmt.Errorf("aws role_session_name is no longer supported")
+	}
+	if settings.roleARN != "" {
+		if err := validateAssumeRoleConfig(settings); err != nil {
+			return settings, err
+		}
+	} else if settings.externalID != "" {
+		return settings, fmt.Errorf("aws external_id requires role_arn")
 	}
 	if settings.region == "" {
 		settings.region = defaultRegion
@@ -570,6 +578,31 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		return settings, fmt.Errorf("aws family must be one of access_key, cloudtrail, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, public_endpoint, or resource_exposure")
 	}
 	return settings, nil
+}
+
+func validateAssumeRoleConfig(settings settings) error {
+	matches := awsRoleARNPattern.FindStringSubmatch(settings.roleARN)
+	if len(matches) != 3 {
+		return fmt.Errorf("aws role_arn must be an IAM role ARN")
+	}
+	if matches[2] != settings.accountID {
+		return fmt.Errorf("aws role_arn account must match account_id")
+	}
+	if !assumeRoleARNAllowed(settings.roleARN, settings.assumeRoleARNs) {
+		return fmt.Errorf("aws role_arn is not allowed")
+	}
+	return nil
+}
+
+func assumeRoleARNAllowed(roleARN string, allowlist string) bool {
+	for _, value := range strings.FieldsFunc(allowlist, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\t' || r == ' '
+	}) {
+		if strings.TrimSpace(value) == roleARN {
+			return true
+		}
+	}
+	return false
 }
 
 func listAccessKeys(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]iamtypes.AccessKeyMetadata, string, error) {

@@ -478,7 +478,7 @@ func sameConfig(left map[string]string, right map[string]string) bool {
 func userConfig(config map[string]string) map[string]string {
 	cloned := make(map[string]string, len(config))
 	for key, value := range config {
-		if key == runtimeProgressConfigHashKey {
+		if key == runtimeProgressConfigHashKey || key == sourceconfig.AWSAssumeRoleAllowlistKey {
 			continue
 		}
 		cloned[key] = value

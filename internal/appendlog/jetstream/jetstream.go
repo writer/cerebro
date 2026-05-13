@@ -155,7 +155,7 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 	return nil
 }
 
-// Replay returns stored envelopes for one source runtime in append order.
+// Replay returns the latest matching stored envelopes in append order.
 func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1.EventEnvelope, error) {
 	if l == nil || l.replay == nil {
 		return nil, errors.New("jetstream is not configured")
@@ -181,30 +181,41 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 	if stream.State.LastSeq == 0 || stream.State.LastSeq < stream.State.FirstSeq {
 		return events, nil
 	}
-	for seq := stream.State.FirstSeq; seq <= stream.State.LastSeq; seq++ {
+	for seq := stream.State.LastSeq; ; seq-- {
 		raw, err := streamRef.GetMsg(ctx, seq)
 		if err != nil {
 			if errors.Is(err, jetstream.ErrMsgNotFound) {
+				if seq == stream.State.FirstSeq {
+					break
+				}
 				continue
 			}
 			return nil, fmt.Errorf("get replay message %s:%d: %w", stream.Config.Name, seq, err)
 		}
-		if raw == nil || !strings.HasPrefix(strings.TrimSpace(raw.Subject), prefix+".") {
-			continue
+		if raw != nil && strings.HasPrefix(strings.TrimSpace(raw.Subject), prefix+".") {
+			event := &cerebrov1.EventEnvelope{}
+			if err := proto.Unmarshal(raw.Data, event); err != nil {
+				return nil, fmt.Errorf("decode replay message %s:%d: %w", stream.Config.Name, seq, err)
+			}
+			if matchesReplayRequest(event, request) {
+				events = append(events, event)
+				if uint32(len(events)) >= limit {
+					break
+				}
+			}
 		}
-		event := &cerebrov1.EventEnvelope{}
-		if err := proto.Unmarshal(raw.Data, event); err != nil {
-			return nil, fmt.Errorf("decode replay message %s:%d: %w", stream.Config.Name, seq, err)
-		}
-		if !matchesReplayRequest(event, request) {
-			continue
-		}
-		events = append(events, event)
-		if uint32(len(events)) >= limit {
+		if seq == stream.State.FirstSeq {
 			break
 		}
 	}
+	reverseEvents(events)
 	return events, nil
+}
+
+func reverseEvents(events []*cerebrov1.EventEnvelope) {
+	for i, j := 0, len(events)-1; i < j; i, j = i+1, j-1 {
+		events[i], events[j] = events[j], events[i]
+	}
 }
 
 func eventSubject(prefix string, kind string) (string, error) {
