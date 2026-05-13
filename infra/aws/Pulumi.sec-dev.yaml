@@ -7,7 +7,7 @@ config:
   cerebro:certificateDomain: cerebro.adm.dev.qordobadev.com
   cerebro:certificateImportArn: arn:aws:acm:us-east-1:944130631940:certificate/09143d7f-c377-4de4-9127-d8cb5c642ba3
   cerebro:ecrBaseUri: 944130631940.dkr.ecr.us-east-1.amazonaws.com/cerebro
-  cerebro:imageTag: v2.1.28
+  cerebro:imageTag: v2.1.29
   cerebro:useExistingVpc: true
   cerebro:vpcId: vpc-06bac7242cd09af4d
   cerebro:vpcCidr: "10.10.0.0/16"
@@ -201,7 +201,7 @@ config:
         - run
         - runtime_id=writer-vulnview-dns-alert
         - page_limit=20
-        - graph_page_limit=10
+        - graph_page_limit=100
         - event_limit=1000
   cerebro:sourceRuntimes:
     - id: writer-github-audit
