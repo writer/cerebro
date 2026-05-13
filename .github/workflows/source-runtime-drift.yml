@@ -37,8 +37,10 @@ jobs:
       CEREBRO_API_KEY_GO_PROD: ${{ secrets.CEREBRO_API_KEY_GO_PROD }}
       CEREBRO_API_URL_SEC_DEV: ${{ secrets.CEREBRO_API_URL_SEC_DEV }}
       CEREBRO_API_KEY_SEC_DEV: ${{ secrets.CEREBRO_API_KEY_SEC_DEV }}
+      TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
       TAILSCALE_OAUTH_CLIENT_ID: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
       TAILSCALE_OAUTH_CLIENT_SECRET: ${{ secrets.TAILSCALE_OAUTH_CLIENT_SECRET }}
+      TAILSCALE_TAGS: ${{ secrets.TAILSCALE_TAGS }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -60,14 +62,33 @@ jobs:
         working-directory: infra
         run: uv sync
 
-      - name: Connect to Tailscale
-        if: env.TAILSCALE_OAUTH_CLIENT_ID != '' && env.TAILSCALE_OAUTH_CLIENT_SECRET != ''
+      - name: Validate Tailscale credentials
+        if: env.TAILSCALE_AUTHKEY == '' && env.TAILSCALE_OAUTH_CLIENT_ID != '' && env.TAILSCALE_OAUTH_CLIENT_SECRET != '' && env.TAILSCALE_TAGS == ''
+        shell: bash
+        run: |
+          echo "::error::TAILSCALE_TAGS is required when using Tailscale OAuth credentials."
+          exit 1
+
+      - name: Connect to Tailscale with auth key
+        if: env.TAILSCALE_AUTHKEY != ''
+        uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3
+        with:
+          authkey: ${{ env.TAILSCALE_AUTHKEY }}
+          hostname: cerebro-source-runtime-drift
+
+      - name: Connect to Tailscale with OAuth
+        if: env.TAILSCALE_AUTHKEY == '' && env.TAILSCALE_OAUTH_CLIENT_ID != '' && env.TAILSCALE_OAUTH_CLIENT_SECRET != '' && env.TAILSCALE_TAGS != ''
         uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3
         with:
           oauth-client-id: ${{ env.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ env.TAILSCALE_OAUTH_CLIENT_SECRET }}
-          tags: tag:github-actions
+          tags: ${{ env.TAILSCALE_TAGS }}
           hostname: cerebro-source-runtime-drift
+
+      - name: Verify Tailscale connection
+        if: env.TAILSCALE_AUTHKEY != '' || (env.TAILSCALE_OAUTH_CLIENT_ID != '' && env.TAILSCALE_OAUTH_CLIENT_SECRET != '' && env.TAILSCALE_TAGS != '')
+        shell: bash
+        run: sudo tailscale status --json | jq -e '.BackendState == "Running"'
 
       - name: Check runtime drift
         shell: bash

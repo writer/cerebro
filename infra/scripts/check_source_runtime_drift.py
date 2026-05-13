@@ -45,7 +45,7 @@ def _load_actual(path: Path | None, api_url: str, api_key: str, tenant_id: str, 
         with path.open("r", encoding="utf-8") as handle:
             payload = json.load(handle)
     else:
-        query = urlencode({"tenant_id": tenant_id, "limit": 1000})
+        query = urlencode({"tenant_id": tenant_id, "limit": 500})
         request = Request(f"{api_url.rstrip('/')}/source-runtimes?{query}", headers={"Accept": "application/json"})
         if api_key:
             request.add_header("Authorization", f"Bearer {api_key}")
