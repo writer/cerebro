@@ -75,27 +75,28 @@ type Source struct {
 }
 
 type settings struct {
-	family          string
-	accountID       string
-	region          string
-	profile         string
-	accessKeyID     string
-	secretAccessKey string
-	sessionToken    string
-	roleARN         string
-	externalID      string
-	assumeRoleARNs  string
-	tenantID        string
-	includeGlobal   bool
-	groupName       string
-	principalType   string
-	principalName   string
-	userName        string
-	lookupKey       string
-	lookupValue     string
-	startTime       string
-	endTime         string
-	perPage         int
+	family                     string
+	accountID                  string
+	region                     string
+	profile                    string
+	accessKeyID                string
+	secretAccessKey            string
+	sessionToken               string
+	roleARN                    string
+	externalID                 string
+	assumeRoleARNs             string
+	tenantID                   string
+	legacyTenantlessAssumeRole bool
+	includeGlobal              bool
+	groupName                  string
+	principalType              string
+	principalName              string
+	userName                   string
+	lookupKey                  string
+	lookupValue                string
+	startTime                  string
+	endTime                    string
+	perPage                    int
 }
 
 type awsClientFactory func(context.Context, settings) (awsClients, error)
@@ -501,27 +502,28 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 
 func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	settings := settings{
-		family:          configValue(cfg, "family"),
-		accountID:       configValue(cfg, "account_id"),
-		region:          configValue(cfg, "region"),
-		profile:         configValue(cfg, "profile"),
-		accessKeyID:     configValue(cfg, "access_key_id"),
-		secretAccessKey: configValue(cfg, "secret_access_key"),
-		sessionToken:    configValue(cfg, "session_token"),
-		roleARN:         configValue(cfg, "role_arn"),
-		externalID:      configValue(cfg, "external_id"),
-		assumeRoleARNs:  configValue(cfg, sourceconfig.AWSAssumeRoleAllowlistKey),
-		tenantID:        configValue(cfg, sourceconfig.RuntimeTenantIDKey),
-		includeGlobal:   configBool(cfg, "include_global", true),
-		groupName:       configValue(cfg, "group_name"),
-		principalType:   configValue(cfg, "principal_type"),
-		principalName:   configValue(cfg, "principal_name"),
-		userName:        configValue(cfg, "user_name"),
-		lookupKey:       configValue(cfg, "lookup_key"),
-		lookupValue:     configValue(cfg, "lookup_value"),
-		startTime:       configValue(cfg, "start_time"),
-		endTime:         configValue(cfg, "end_time"),
-		perPage:         defaultPageSize,
+		family:                     configValue(cfg, "family"),
+		accountID:                  configValue(cfg, "account_id"),
+		region:                     configValue(cfg, "region"),
+		profile:                    configValue(cfg, "profile"),
+		accessKeyID:                configValue(cfg, "access_key_id"),
+		secretAccessKey:            configValue(cfg, "secret_access_key"),
+		sessionToken:               configValue(cfg, "session_token"),
+		roleARN:                    configValue(cfg, "role_arn"),
+		externalID:                 configValue(cfg, "external_id"),
+		assumeRoleARNs:             configValue(cfg, sourceconfig.AWSAssumeRoleAllowlistKey),
+		tenantID:                   configValue(cfg, sourceconfig.RuntimeTenantIDKey),
+		legacyTenantlessAssumeRole: configBool(cfg, sourceconfig.LegacyTenantlessAssumeRoleKey, false),
+		includeGlobal:              configBool(cfg, "include_global", true),
+		groupName:                  configValue(cfg, "group_name"),
+		principalType:              configValue(cfg, "principal_type"),
+		principalName:              configValue(cfg, "principal_name"),
+		userName:                   configValue(cfg, "user_name"),
+		lookupKey:                  configValue(cfg, "lookup_key"),
+		lookupValue:                configValue(cfg, "lookup_value"),
+		startTime:                  configValue(cfg, "start_time"),
+		endTime:                    configValue(cfg, "end_time"),
+		perPage:                    defaultPageSize,
 	}
 	if settings.family == "" {
 		settings.family = defaultFamily
@@ -587,6 +589,12 @@ func validateAssumeRoleConfig(settings settings) error {
 	if matches[2] != settings.accountID {
 		return fmt.Errorf("aws role_arn account must match account_id")
 	}
+	if settings.tenantID == "" {
+		if settings.legacyTenantlessAssumeRole && legacyTenantlessAssumeRoleARNAllowed(settings.roleARN, settings.assumeRoleARNs) {
+			return nil
+		}
+		return fmt.Errorf("aws role_arn requires runtime tenant_id")
+	}
 	if !assumeRoleARNAllowed(settings.tenantID, settings.roleARN, settings.assumeRoleARNs) {
 		return fmt.Errorf("aws role_arn is not allowed")
 	}
@@ -596,7 +604,7 @@ func validateAssumeRoleConfig(settings settings) error {
 func assumeRoleARNAllowed(tenantID string, roleARN string, allowlist string) bool {
 	tenantID = strings.TrimSpace(tenantID)
 	roleARN = strings.TrimSpace(roleARN)
-	if roleARN == "" {
+	if tenantID == "" || roleARN == "" {
 		return false
 	}
 	for _, value := range strings.FieldsFunc(allowlist, func(r rune) bool {
@@ -605,12 +613,24 @@ func assumeRoleARNAllowed(tenantID string, roleARN string, allowlist string) boo
 		value = strings.TrimSpace(value)
 		tenant, arn, ok := strings.Cut(value, "=")
 		if !ok {
-			if tenantID == "" && value == roleARN {
-				return true
-			}
 			continue
 		}
 		if strings.TrimSpace(tenant) == tenantID && strings.TrimSpace(arn) == roleARN {
+			return true
+		}
+	}
+	return false
+}
+
+func legacyTenantlessAssumeRoleARNAllowed(roleARN string, allowlist string) bool {
+	roleARN = strings.TrimSpace(roleARN)
+	if roleARN == "" {
+		return false
+	}
+	for _, value := range strings.FieldsFunc(allowlist, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\t' || r == ' '
+	}) {
+		if strings.TrimSpace(value) == roleARN {
 			return true
 		}
 	}

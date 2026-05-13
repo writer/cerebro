@@ -158,7 +158,7 @@ func (s *Service) preparePutRuntime(ctx context.Context, input *cerebrov1.Source
 	default:
 		return nil, err
 	}
-	resolvedConfig, err := s.resolveConfig(ctx, runtime.GetSourceId(), runtime.GetTenantId(), runtime.GetConfig())
+	resolvedConfig, err := s.resolveConfigWithOptions(ctx, runtime.GetSourceId(), runtime.GetTenantId(), runtime.GetConfig(), legacyTenantlessAssumeRoleUpdate(existing, runtime))
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +237,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	if err != nil {
 		return nil, err
 	}
-	runtimeConfig, err := s.resolveConfig(ctx, runtime.GetSourceId(), runtime.GetTenantId(), runtime.GetConfig())
+	runtimeConfig, err := s.resolveConfigWithOptions(ctx, runtime.GetSourceId(), runtime.GetTenantId(), runtime.GetConfig(), legacyTenantlessAssumeRoleRuntime(runtime))
 	if err != nil {
 		return nil, err
 	}
@@ -333,15 +333,19 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 }
 
 func (s *Service) resolveConfig(ctx context.Context, sourceID string, tenantID string, config map[string]string) (map[string]string, error) {
+	return s.resolveConfigWithOptions(ctx, sourceID, tenantID, config, false)
+}
+
+func (s *Service) resolveConfigWithOptions(ctx context.Context, sourceID string, tenantID string, config map[string]string, legacyTenantlessAssumeRole bool) (map[string]string, error) {
 	resolver := s.resolver
 	if resolver == nil {
-		return sourceRuntimeConfig(userConfig(config), tenantID), nil
+		return sourceRuntimeConfig(userConfig(config), sourceID, tenantID, legacyTenantlessAssumeRole), nil
 	}
 	resolved, err := resolver(ctx, sourceID, userConfig(config))
 	if err != nil {
 		return nil, err
 	}
-	return sourceRuntimeConfig(resolvedConfig(resolved), tenantID), nil
+	return sourceRuntimeConfig(resolvedConfig(resolved), sourceID, tenantID, legacyTenantlessAssumeRole), nil
 }
 
 func (s *Service) lookupSource(sourceID string) (sourcecdk.Source, error) {
@@ -481,7 +485,7 @@ func sameConfig(left map[string]string, right map[string]string) bool {
 func userConfig(config map[string]string) map[string]string {
 	cloned := make(map[string]string, len(config))
 	for key, value := range config {
-		if key == runtimeProgressConfigHashKey || key == sourceconfig.AWSAssumeRoleAllowlistKey || key == sourceconfig.RuntimeTenantIDKey {
+		if key == runtimeProgressConfigHashKey || sourceconfig.InternalKey(key) {
 			continue
 		}
 		cloned[key] = value
@@ -500,8 +504,29 @@ func resolvedConfig(config map[string]string) map[string]string {
 	return cloned
 }
 
-func sourceRuntimeConfig(config map[string]string, tenantID string) map[string]string {
-	return sourceconfig.WithRuntimeTenant(resolvedConfig(config), tenantID)
+func sourceRuntimeConfig(config map[string]string, sourceID string, tenantID string, legacyTenantlessAssumeRole bool) map[string]string {
+	resolved := sourceconfig.WithRuntimeTenant(resolvedConfig(config), tenantID)
+	if legacyTenantlessAssumeRole {
+		resolved = sourceconfig.WithLegacyTenantlessAssumeRole(resolved, sourceID, tenantID)
+	}
+	return resolved
+}
+
+func legacyTenantlessAssumeRoleUpdate(existing *cerebrov1.SourceRuntime, incoming *cerebrov1.SourceRuntime) bool {
+	if !legacyTenantlessAssumeRoleRuntime(existing) || incoming == nil {
+		return false
+	}
+	if strings.TrimSpace(incoming.GetTenantId()) != "" {
+		return false
+	}
+	return strings.TrimSpace(incoming.GetConfig()["role_arn"]) == strings.TrimSpace(existing.GetConfig()["role_arn"])
+}
+
+func legacyTenantlessAssumeRoleRuntime(runtime *cerebrov1.SourceRuntime) bool {
+	if runtime == nil {
+		return false
+	}
+	return sourceconfig.LegacyTenantlessAssumeRoleConfig(runtime.GetSourceId(), runtime.GetTenantId(), runtime.GetConfig())
 }
 
 func withProgressConfigHash(config map[string]string, hash string) map[string]string {
