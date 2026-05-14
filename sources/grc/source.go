@@ -882,14 +882,17 @@ func joinedVulnerableAssetReferences(values map[string]any) string {
 	items := arrayValue(values, "vulnerabilities")
 	refs := make([]map[string]string, 0, len(items))
 	seen := map[string]struct{}{}
-	for _, item := range items {
+	vulnerabilityIDs := splitVulnerableAssetReferenceValues(fieldString(values, "vulnerabilityIds"))
+	vulnerabilityNames := splitVulnerableAssetReferenceValues(fieldString(values, "vulnerabilityNames"))
+	packageIdentifiers := splitVulnerableAssetReferenceValues(firstNonEmptyString(fieldString(values, "packageIdentifiers"), fieldString(values, "packages")))
+	for i, item := range items {
 		object, ok := item.(map[string]any)
 		if !ok {
 			continue
 		}
-		vulnerabilityID := firstNonEmptyString(valueString(object["id"]), valueString(object["vulnerabilityId"]))
-		vulnerabilityName := firstNonEmptyString(valueString(object["name"]), valueString(object["title"]))
-		packageIdentifier := firstNonEmptyString(valueString(object["packageIdentifier"]), valueString(object["package"]), valueString(object["packagePurl"]))
+		vulnerabilityID := firstNonEmptyString(valueString(object["id"]), valueString(object["vulnerabilityId"]), valueAt(vulnerabilityIDs, i))
+		vulnerabilityName := firstNonEmptyString(valueString(object["name"]), valueString(object["title"]), valueAt(vulnerabilityNames, i))
+		packageIdentifier := firstNonEmptyString(valueString(object["packageIdentifier"]), valueString(object["package"]), valueString(object["packagePurl"]), valueAt(packageIdentifiers, i))
 		if vulnerabilityID == "" && vulnerabilityName == "" && packageIdentifier == "" {
 			continue
 		}
@@ -910,10 +913,24 @@ func joinedVulnerableAssetReferences(values map[string]any) string {
 		}
 		refs = append(refs, ref)
 	}
+	for i, ref := range refs {
+		if ref["vulnerability_id"] == "" {
+			if vulnerabilityID := valueAt(vulnerabilityIDs, i); vulnerabilityID != "" {
+				ref["vulnerability_id"] = vulnerabilityID
+			}
+		}
+		if ref["vulnerability_name"] == "" {
+			if vulnerabilityName := valueAt(vulnerabilityNames, i); vulnerabilityName != "" {
+				ref["vulnerability_name"] = vulnerabilityName
+			}
+		}
+		if ref["package_identifier"] == "" {
+			if packageIdentifier := valueAt(packageIdentifiers, i); packageIdentifier != "" {
+				ref["package_identifier"] = packageIdentifier
+			}
+		}
+	}
 	if len(refs) == 0 {
-		vulnerabilityIDs := splitVulnerableAssetReferenceValues(fieldString(values, "vulnerabilityIds"))
-		vulnerabilityNames := splitVulnerableAssetReferenceValues(fieldString(values, "vulnerabilityNames"))
-		packageIdentifiers := splitVulnerableAssetReferenceValues(firstNonEmptyString(fieldString(values, "packageIdentifiers"), fieldString(values, "packages")))
 		for i := 0; i < maxInt(len(vulnerabilityIDs), len(vulnerabilityNames), len(packageIdentifiers)); i++ {
 			vulnerabilityID := valueAt(vulnerabilityIDs, i)
 			vulnerabilityName := valueAt(vulnerabilityNames, i)

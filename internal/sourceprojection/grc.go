@@ -159,6 +159,15 @@ func stringAt(values []string, index int) string {
 	return values[index]
 }
 
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
 func maxInt(values ...int) int {
 	max := 0
 	for _, value := range values {
@@ -382,18 +391,21 @@ func grcVulnerableAssetReferenceAttrs(attrs map[string]string) []map[string]stri
 	if err := json.Unmarshal([]byte(rawReferences), &references); err != nil {
 		return grcVulnerableAssetFlatReferenceAttrs(attrs)
 	}
+	vulnerabilityIDs := grcAttributeSequence(attrs["vulnerability_ids"])
+	vulnerabilityNames := grcAttributeSequence(attrs["vulnerability_names"])
+	packageIdentifiers := grcAttributeSequence(attrs["package_identifiers"])
 	result := make([]map[string]string, 0, len(references))
-	for _, reference := range references {
+	for i, reference := range references {
 		referenceAttrs := grcVulnerableAssetCleanReferenceAttrs(attrs)
-		if strings.TrimSpace(reference.VulnerabilityID) != "" {
-			referenceAttrs["vulnerability_id"] = reference.VulnerabilityID
+		if vulnerabilityID := firstNonEmptyString(reference.VulnerabilityID, stringAt(vulnerabilityIDs, i)); vulnerabilityID != "" {
+			referenceAttrs["vulnerability_id"] = vulnerabilityID
 		}
-		if strings.TrimSpace(reference.VulnerabilityName) != "" {
-			referenceAttrs["name"] = reference.VulnerabilityName
+		if vulnerabilityName := firstNonEmptyString(reference.VulnerabilityName, stringAt(vulnerabilityNames, i)); vulnerabilityName != "" {
+			referenceAttrs["name"] = vulnerabilityName
 		}
-		if strings.TrimSpace(reference.PackageIdentifier) != "" {
-			referenceAttrs["package"] = reference.PackageIdentifier
-			referenceAttrs["package_purl"] = reference.PackageIdentifier
+		if packageIdentifier := firstNonEmptyString(reference.PackageIdentifier, stringAt(packageIdentifiers, i)); packageIdentifier != "" {
+			referenceAttrs["package"] = packageIdentifier
+			referenceAttrs["package_purl"] = packageIdentifier
 		}
 		result = append(result, referenceAttrs)
 	}

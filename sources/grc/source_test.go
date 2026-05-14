@@ -390,6 +390,26 @@ func TestJoinedVulnerableAssetReferencesZipsFlatFields(t *testing.T) {
 	}
 }
 
+func TestJoinedVulnerableAssetReferencesMergesFlatPackages(t *testing.T) {
+	raw := joinedVulnerableAssetReferences(map[string]any{
+		"vulnerabilities":    []any{map[string]any{"id": "CVE-2026-4242"}, map[string]any{"id": "CVE-2026-4243"}},
+		"packageIdentifiers": []any{"pkg:golang/example/one@1.0.0", "pkg:golang/example/two@2.0.0"},
+	})
+	var refs []map[string]string
+	if err := json.Unmarshal([]byte(raw), &refs); err != nil {
+		t.Fatalf("joinedVulnerableAssetReferences() produced invalid JSON: %v", err)
+	}
+	if len(refs) != 2 {
+		t.Fatalf("len(refs) = %d, want 2", len(refs))
+	}
+	if refs[0]["vulnerability_id"] != "CVE-2026-4242" || refs[0]["package_identifier"] != "pkg:golang/example/one@1.0.0" {
+		t.Fatalf("refs[0] = %#v, want merged first pair", refs[0])
+	}
+	if refs[1]["vulnerability_id"] != "CVE-2026-4243" || refs[1]["package_identifier"] != "pkg:golang/example/two@2.0.0" {
+		t.Fatalf("refs[1] = %#v, want merged second pair", refs[1])
+	}
+}
+
 func TestTokenCacheScopesRuntimeSecretsAndBaseURL(t *testing.T) {
 	tokenRequests := map[string]int{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
