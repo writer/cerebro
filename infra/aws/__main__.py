@@ -615,6 +615,7 @@ monitoring_stack = monitoring.create_monitoring(
     alarm_email_subscriptions=alarm_email_subscriptions,
     orchestrator_schedules=orchestrator_schedules,
     orchestrator_rule_names=[rule.name for rule in ecs_stack.get("orchestrator_rules", [])],
+    source_runtimes=source_runtimes,
 )
 
 waf_stack = None

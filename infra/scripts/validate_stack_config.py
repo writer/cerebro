@@ -13,9 +13,18 @@ import yaml
 
 
 MIN_CROSS_TASK_SYNC_LOCK_VERSION = (2, 1, 25)
+MIN_COSMO_TOKEN_AUTH_VERSION = (2, 1, 36)
 IMAGE_TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?$")
 SECRET_KEY_RE = re.compile(r"(secret|token|password|api_?key|client_secret|private_key)", re.IGNORECASE)
 AWS_ROLE_ARN_RE = re.compile(r"^arn:(aws|aws-us-gov|aws-cn):iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+$")
+COSMO_REQUIRED_STACKS = {"sec-dev", "go-prod"}
+COSMO_REQUIRED_SECRETS = {"CEREBRO_SOURCE_COSMO_BASE_URL", "CEREBRO_SOURCE_COSMO_TOKEN"}
+COSMO_RUNTIME_FAMILIES = {
+    "writer-cosmo-session": "session",
+    "writer-cosmo-fact": "fact",
+    "writer-cosmo-message": "message",
+    "writer-cosmo-survey-feedback": "survey_feedback",
+}
 
 
 @dataclass(frozen=True)
@@ -127,6 +136,112 @@ def _parse_retirement_date(value: Any) -> datetime | None:
 
 def _finding(severity: str, stack: str, path: str, message: str) -> Finding:
     return Finding(severity=severity, stack=stack, path=path, message=message)
+
+
+def _validate_cosmo_gitops(
+    stack: str,
+    config: dict[str, Any],
+    source_runtimes: list[Any],
+    schedules: list[Any],
+    source_secret_names: set[str],
+    findings: list[Finding],
+) -> None:
+    if stack not in COSMO_REQUIRED_STACKS:
+        return
+
+    image_tag = str(config.get("imageTag", "")).strip()
+    parsed_tag = _parse_image_tag(image_tag)
+    if parsed_tag is not None and parsed_tag < MIN_COSMO_TOKEN_AUTH_VERSION:
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:imageTag",
+                "Cosmo survey feedback token auth requires cerebro:imageTag >= v2.1.36",
+            )
+        )
+
+    for secret_name in sorted(COSMO_REQUIRED_SECRETS):
+        if secret_name not in source_secret_names:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:sourceSecretKeys",
+                    f"Cosmo secret {secret_name!r} must be declared for GitOps-managed imports",
+                )
+            )
+    if "CEREBRO_SOURCE_COSMO_WEBHOOK_SECRET" in source_secret_names:
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:sourceSecretKeys",
+                "Cosmo survey feedback must use CEREBRO_SOURCE_COSMO_TOKEN, not the legacy webhook secret",
+            )
+        )
+
+    runtimes_by_id: dict[str, tuple[int, dict[str, Any]]] = {}
+    for index, runtime in enumerate(source_runtimes):
+        if isinstance(runtime, dict):
+            runtime_id = str(runtime.get("id", "")).strip()
+            if runtime_id:
+                runtimes_by_id[runtime_id] = (index, runtime)
+
+    schedules_by_runtime: dict[str, list[tuple[int, dict[str, Any]]]] = {}
+    for index, schedule in enumerate(schedules):
+        if isinstance(schedule, dict):
+            runtime_id = _runtime_id_from_command(schedule.get("command"))
+            if runtime_id:
+                schedules_by_runtime.setdefault(runtime_id, []).append((index, schedule))
+
+    for runtime_id, family in COSMO_RUNTIME_FAMILIES.items():
+        runtime_entry = runtimes_by_id.get(runtime_id)
+        if runtime_entry is None:
+            findings.append(_finding("error", stack, "cerebro:sourceRuntimes", f"required Cosmo runtime {runtime_id!r} is missing"))
+        else:
+            runtime_index, runtime = runtime_entry
+            runtime_path = f"cerebro:sourceRuntimes[{runtime_index}]"
+            if str(runtime.get("sourceId", "")).strip() != "cosmo":
+                findings.append(_finding("error", stack, f"{runtime_path}.sourceId", f"{runtime_id} must use sourceId cosmo"))
+            if str(runtime.get("tenantId", "")).strip() != "writer":
+                findings.append(_finding("error", stack, f"{runtime_path}.tenantId", f"{runtime_id} must use tenantId writer"))
+
+            runtime_config = runtime.get("config") or {}
+            if isinstance(runtime_config, dict):
+                expected_values = {
+                    "base_url": "env:CEREBRO_SOURCE_COSMO_BASE_URL",
+                    "token": "env:CEREBRO_SOURCE_COSMO_TOKEN",
+                    "tenant_id": "writer",
+                    "family": family,
+                }
+                for key, expected in expected_values.items():
+                    actual = str(runtime_config.get(key, "")).strip()
+                    if actual != expected:
+                        findings.append(_finding("error", stack, f"{runtime_path}.config.{key}", f"{runtime_id} must set {key} to {expected!r}"))
+                if "webhook_secret" in runtime_config:
+                    findings.append(
+                        _finding(
+                            "error",
+                            stack,
+                            f"{runtime_path}.config.webhook_secret",
+                            "Cosmo survey feedback must use token auth, not webhook_secret",
+                        )
+                    )
+
+        schedule_entries = schedules_by_runtime.get(runtime_id, [])
+        if not schedule_entries:
+            findings.append(_finding("error", stack, "cerebro:orchestratorSchedules", f"required Cosmo schedule for {runtime_id!r} is missing"))
+        elif len(schedule_entries) > 1:
+            findings.append(_finding("error", stack, "cerebro:orchestratorSchedules", f"Cosmo runtime {runtime_id!r} must have exactly one schedule"))
+        else:
+            schedule_index, schedule = schedule_entries[0]
+            schedule_path = f"cerebro:orchestratorSchedules[{schedule_index}]"
+            expected_name = runtime_id.removeprefix("writer-")
+            if str(schedule.get("name", "")).strip() != expected_name:
+                findings.append(_finding("error", stack, f"{schedule_path}.name", f"{runtime_id} schedule must be named {expected_name!r}"))
+            if schedule.get("taskCount", 1) != 1:
+                findings.append(_finding("error", stack, f"{schedule_path}.taskCount", f"{runtime_id} schedule must run exactly one task"))
 
 
 def validate_stack(path: Path) -> list[Finding]:
@@ -278,6 +393,8 @@ def validate_stack(path: Path) -> list[Finding]:
                     findings.append(_finding("error", stack, f"{schedule_path}.{retirement_key}", "retirement metadata must be an ISO date"))
                 elif retirement_date < datetime.now(UTC):
                     findings.append(_finding("error", stack, f"{schedule_path}.{retirement_key}", "retirement date is in the past"))
+
+    _validate_cosmo_gitops(stack, config, source_runtimes, schedules, source_secret_names, findings)
 
     environment = str(config.get("environment", stack)).lower()
     is_prod = stack.endswith("prod") or "prod" in environment

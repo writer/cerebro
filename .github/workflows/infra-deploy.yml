@@ -281,6 +281,11 @@ jobs:
           work-dir: infra/aws
           diff: true
 
+      - name: Verify Cosmo source runtimes (sec-dev)
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --source-id cosmo --run --max-age-minutes 60
+
   # Main merge: Pulumi up for go-prod stack
   deploy-go-prod:
     name: Deploy go-prod
@@ -339,6 +344,11 @@ jobs:
           stack-name: go-prod
           work-dir: infra/aws
           diff: true
+
+      - name: Verify Cosmo source runtimes (go-prod)
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.go-prod.yaml --source-id cosmo --run --max-age-minutes 60
 
   # ===========================================================================
   # GCP jobs

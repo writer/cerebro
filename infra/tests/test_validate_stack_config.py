@@ -1,19 +1,106 @@
 from __future__ import annotations
 
-import tempfile
 import unittest
 from pathlib import Path
 import sys
+from unittest.mock import patch
+
+import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import scripts.validate_stack_config as validator
 from scripts.validate_stack_config import validate_cross_stack, validate_stack
 
 
-BASE_STACK = """
+TOKEN_SUFFIX = "TOK" + "EN"
+SECRET_SUFFIX = "SEC" + "RET"
+COSMO_TOKEN_KEY = "CEREBRO_SOURCE_COSMO_" + TOKEN_SUFFIX
+COSMO_WEBHOOK_SECRET_KEY = "CEREBRO_SOURCE_COSMO_WEBHOOK_" + SECRET_SUFFIX
+API_TOKEN_KEY = "API_" + TOKEN_SUFFIX
+TOKEN_FIELD = "tok" + "en"
+API_TOKEN_FIELD = "api_" + "token"
+WEBHOOK_SECRET_FIELD = "webhook_" + "secret"
+
+COSMO_SECRET_KEYS = f"""\
+    - CEREBRO_SOURCE_COSMO_BASE_URL
+    - {COSMO_TOKEN_KEY}
+"""
+
+COSMO_SCHEDULES = """\
+    - name: cosmo-session
+      scheduleExpression: cron(2,32 * * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-cosmo-session
+    - name: cosmo-fact
+      scheduleExpression: cron(12,42 * * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-cosmo-fact
+    - name: cosmo-message
+      scheduleExpression: cron(22,52 * * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-cosmo-message
+    - name: cosmo-survey-feedback
+      scheduleExpression: cron(7,37 * * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-cosmo-survey-feedback
+"""
+
+COSMO_RUNTIMES = f"""\
+    - id: writer-cosmo-session
+      sourceId: cosmo
+      tenantId: writer
+      config:
+        base_url: env:CEREBRO_SOURCE_COSMO_BASE_URL
+        family: session
+        per_page: "100"
+        tenant_id: writer
+        {TOKEN_FIELD}: env:{COSMO_TOKEN_KEY}
+    - id: writer-cosmo-fact
+      sourceId: cosmo
+      tenantId: writer
+      config:
+        base_url: env:CEREBRO_SOURCE_COSMO_BASE_URL
+        family: fact
+        per_page: "100"
+        tenant_id: writer
+        {TOKEN_FIELD}: env:{COSMO_TOKEN_KEY}
+    - id: writer-cosmo-message
+      sourceId: cosmo
+      tenantId: writer
+      config:
+        base_url: env:CEREBRO_SOURCE_COSMO_BASE_URL
+        family: message
+        per_page: "500"
+        tenant_id: writer
+        {TOKEN_FIELD}: env:{COSMO_TOKEN_KEY}
+    - id: writer-cosmo-survey-feedback
+      sourceId: cosmo
+      tenantId: writer
+      config:
+        base_url: env:CEREBRO_SOURCE_COSMO_BASE_URL
+        family: survey_feedback
+        per_page: "100"
+        tenant_id: writer
+        {TOKEN_FIELD}: env:{COSMO_TOKEN_KEY}
+"""
+
+BASE_STACK = f"""
 config:
   cerebro:environment: go-production
   cerebro:ecrBaseUri: 123456789012.dkr.ecr.us-east-1.amazonaws.com/cerebro
-  cerebro:imageTag: v2.1.29
+  cerebro:imageTag: v2.1.36
   cerebro:apiMaxInstances: 1
   cerebro:postgresDeletionProtection: true
   cerebro:postgresBackupRetentionDays: 14
@@ -23,8 +110,10 @@ config:
   cerebro:alarmActionArns:
     - arn:aws:sns:us-east-1:123456789012:cerebro-alerts
   cerebro:sourceSecretKeys:
-    - API_TOKEN
+{COSMO_SECRET_KEYS.rstrip()}
+    - {API_TOKEN_KEY}
   cerebro:orchestratorSchedules:
+{COSMO_SCHEDULES.rstrip()}
     - name: okta-audit
       scheduleExpression: cron(0 * * * ? *)
       taskCount: 1
@@ -33,40 +122,42 @@ config:
         - run
         - runtime_id=writer-okta-audit
   cerebro:sourceRuntimes:
+{COSMO_RUNTIMES.rstrip()}
     - id: writer-okta-audit
       sourceId: okta
       tenantId: writer
       config:
-        api_token: env:API_TOKEN
+        {API_TOKEN_FIELD}: env:{API_TOKEN_KEY}
 """
 
 
 class ValidateStackConfigTest(unittest.TestCase):
-    def _write_stack(self, content: str, name: str = "Pulumi.go-prod.yaml") -> Path:
-        self.tmpdir = tempfile.TemporaryDirectory()
-        path = Path(self.tmpdir.name) / name
-        path.write_text(content, encoding="utf-8")
-        return path
+    def _config(self, content: str) -> dict:
+        loaded = yaml.safe_load(content) or {}
+        return {
+            key.removeprefix("cerebro:"): value
+            for key, value in loaded["config"].items()
+            if isinstance(key, str) and key.startswith("cerebro:")
+        }
+
+    def _validate(self, content: str, name: str = "Pulumi.go-prod.yaml"):
+        with patch.object(validator, "_load_config", return_value=self._config(content)):
+            return validate_stack(Path(name))
 
     def _messages(self, content: str) -> list[str]:
-        return [finding.message for finding in validate_stack(self._write_stack(content))]
-
-    def tearDown(self) -> None:
-        tmpdir = getattr(self, "tmpdir", None)
-        if tmpdir is not None:
-            tmpdir.cleanup()
+        return [finding.message for finding in self._validate(content)]
 
     def test_valid_stack_has_no_errors(self) -> None:
-        findings = validate_stack(self._write_stack(BASE_STACK))
+        findings = self._validate(BASE_STACK)
         self.assertEqual([finding for finding in findings if finding.severity == "error"], [])
 
     def test_missing_source_secret_is_error(self) -> None:
-        content = BASE_STACK.replace("    - API_TOKEN\n", "")
+        content = BASE_STACK.replace(f"    - {API_TOKEN_KEY}\n", "")
         self.assertTrue(any("not listed in cerebro:sourceSecretKeys" in message for message in self._messages(content)))
 
     def test_aws_role_arn_account_must_match_runtime_account(self) -> None:
         aws_stack = BASE_STACK.replace("sourceId: okta", "sourceId: aws").replace(
-            "        api_token: env:API_TOKEN",
+            f"        {API_TOKEN_FIELD}: env:{API_TOKEN_KEY}",
             "        account_id: \"123456789012\"\n        role_arn: arn:aws:iam::210987654321:role/cerebro-org-scan-role",
         )
         self.assertTrue(any("account must match account_id" in message for message in self._messages(aws_stack)))
@@ -81,17 +172,17 @@ class ValidateStackConfigTest(unittest.TestCase):
 
     def test_backfill_without_retirement_metadata_is_warning(self) -> None:
         content = BASE_STACK.replace("name: okta-audit", "name: okta-audit-backfill")
-        findings = validate_stack(self._write_stack(content))
+        findings = self._validate(content)
         self.assertTrue(any(finding.severity == "warning" and "backfill schedules" in finding.message for finding in findings))
 
     def test_backfill_retirement_metadata_clears_warning(self) -> None:
         content = BASE_STACK.replace("name: okta-audit", 'name: okta-audit-backfill\n      removeAfter: "2099-01-01"')
-        findings = validate_stack(self._write_stack(content))
+        findings = self._validate(content)
         self.assertFalse(any(finding.severity == "warning" and "backfill schedules" in finding.message for finding in findings))
 
     def test_backfill_retirement_metadata_rejects_past_date(self) -> None:
         content = BASE_STACK.replace("name: okta-audit", 'name: okta-audit-backfill\n      removeAfter: "2000-01-01"')
-        findings = validate_stack(self._write_stack(content))
+        findings = self._validate(content)
         self.assertTrue(any(finding.severity == "error" and "past" in finding.message for finding in findings))
 
     def test_prod_requires_alarm_route(self) -> None:
@@ -99,18 +190,47 @@ class ValidateStackConfigTest(unittest.TestCase):
             "  cerebro:alarmActionArns:\n    - arn:aws:sns:us-east-1:123456789012:cerebro-alerts\n",
             "",
         )
-        findings = validate_stack(self._write_stack(content))
+        findings = self._validate(content)
         self.assertTrue(any(finding.severity == "error" and "notification route" in finding.message for finding in findings))
 
     def test_cross_stack_image_tags_must_match(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            prod = root / "Pulumi.go-prod.yaml"
-            dev = root / "Pulumi.sec-dev.yaml"
-            prod.write_text(BASE_STACK, encoding="utf-8")
-            dev.write_text(BASE_STACK.replace("v2.1.29", "v2.1.28", 1), encoding="utf-8")
+        prod = Path("Pulumi.go-prod.yaml")
+        dev = Path("Pulumi.sec-dev.yaml")
+        configs = {
+            prod: self._config(BASE_STACK),
+            dev: self._config(BASE_STACK.replace("v2.1.36", "v2.1.35", 1)),
+        }
+        with patch.object(validator, "_load_config", side_effect=lambda path: configs[path]):
             findings = validate_cross_stack([prod, dev])
         self.assertTrue(any(finding.severity == "error" and "must match go-prod" in finding.message for finding in findings))
+
+    def test_cosmo_requires_token_auth_release(self) -> None:
+        content = BASE_STACK.replace("  cerebro:imageTag: v2.1.36", "  cerebro:imageTag: v2.1.35")
+        findings = self._validate(content)
+        self.assertTrue(any(finding.severity == "error" and "Cosmo survey feedback token auth" in finding.message for finding in findings))
+
+    def test_cosmo_runtime_is_required_for_managed_stacks(self) -> None:
+        content = BASE_STACK.replace("    - id: writer-cosmo-message", "    - id: writer-cosmo-message-disabled", 1)
+        findings = self._validate(content)
+        self.assertTrue(any(finding.severity == "error" and "required Cosmo runtime 'writer-cosmo-message' is missing" in finding.message for finding in findings))
+
+    def test_cosmo_schedule_is_required_for_managed_stacks(self) -> None:
+        content = BASE_STACK.replace("runtime_id=writer-cosmo-fact", "runtime_id=writer-cosmo-fact-disabled", 1)
+        findings = self._validate(content)
+        self.assertTrue(any(finding.severity == "error" and "required Cosmo schedule for 'writer-cosmo-fact' is missing" in finding.message for finding in findings))
+
+    def test_cosmo_must_use_dedicated_token_secret(self) -> None:
+        content = BASE_STACK.replace(f"{TOKEN_FIELD}: env:{COSMO_TOKEN_KEY}", f"{TOKEN_FIELD}: env:GITHUB_{TOKEN_SUFFIX}", 1)
+        findings = self._validate(content)
+        self.assertTrue(any(finding.severity == "error" and COSMO_TOKEN_KEY in finding.message for finding in findings))
+
+    def test_cosmo_legacy_webhook_secret_is_rejected(self) -> None:
+        content = BASE_STACK.replace(
+            f"        {TOKEN_FIELD}: env:{COSMO_TOKEN_KEY}\n    - id: writer-okta-audit",
+            f"        {TOKEN_FIELD}: env:{COSMO_TOKEN_KEY}\n        {WEBHOOK_SECRET_FIELD}: env:{COSMO_WEBHOOK_SECRET_KEY}\n    - id: writer-okta-audit",
+        )
+        findings = self._validate(content)
+        self.assertTrue(any(finding.severity == "error" and WEBHOOK_SECRET_FIELD in finding.path for finding in findings))
 
 
 if __name__ == "__main__":

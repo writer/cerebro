@@ -21,6 +21,18 @@ def _runtime_id_from_command(command) -> str:
     return ""
 
 
+def _cosmo_runtime_ids(source_runtimes: list[dict], scheduled_runtime_ids: set[str]) -> list[str]:
+    runtime_ids = {
+        str(runtime.get("id", "")).strip()
+        for runtime in source_runtimes or []
+        if isinstance(runtime, dict) and str(runtime.get("sourceId") or runtime.get("source_id") or "").strip() == "cosmo"
+    }
+    runtime_ids.discard("")
+    if scheduled_runtime_ids:
+        runtime_ids &= scheduled_runtime_ids
+    return sorted(runtime_ids)
+
+
 def create_monitoring(
     name: str,
     alb_arn_suffix: pulumi.Output[str],
@@ -38,6 +50,8 @@ def create_monitoring(
     alarm_email_subscriptions: list[str] = None,
     orchestrator_schedules: list[dict] = None,
     orchestrator_rule_names: list[pulumi.Input[str]] = None,
+    source_runtimes: list[dict] = None,
+    cosmo_runtime_heartbeat_period_seconds: int = 7200,
 ) -> dict:
     """
     Create CloudWatch dashboard and alarms.
@@ -378,6 +392,17 @@ def create_monitoring(
             dimensions={"RuntimeId": runtime_id},
         )
 
+    for runtime_id in _cosmo_runtime_ids(source_runtimes or [], set(runtime_ids)):
+        _runtime_heartbeat_alarm(
+            resource_name=f"{name}-cosmo-runtime-{_safe_resource_suffix(runtime_id)}-heartbeat-alarm",
+            alarm_name=f"{name}-cosmo-{runtime_id}-stale",
+            namespace=telemetry_namespace,
+            metric_name="SourceRuntimeSyncCompletedByRuntime",
+            runtime_id=runtime_id,
+            period=cosmo_runtime_heartbeat_period_seconds,
+            alarm_actions=alarm_actions,
+        )
+
     for index, rule_name in enumerate(orchestrator_rule_names or []):
         aws.cloudwatch.MetricAlarm(
             f"{name}-orchestrator-rule-{index}-failed-invocations",
@@ -440,6 +465,33 @@ def _custom_metric_alarm(
     )
 
 
+def _runtime_heartbeat_alarm(
+    resource_name: str,
+    alarm_name: str,
+    namespace: str,
+    metric_name: str,
+    runtime_id: str,
+    period: int,
+    alarm_actions: list[pulumi.Input[str]],
+) -> aws.cloudwatch.MetricAlarm:
+    return aws.cloudwatch.MetricAlarm(
+        resource_name,
+        name=alarm_name,
+        comparison_operator="LessThanThreshold",
+        evaluation_periods=1,
+        metric_name=metric_name,
+        namespace=namespace,
+        period=period,
+        statistic="Sum",
+        threshold=1,
+        treat_missing_data="breaching",
+        alarm_description=f"No successful source runtime sync observed for {runtime_id}",
+        alarm_actions=alarm_actions,
+        dimensions={"RuntimeId": runtime_id},
+        tags={"Name": alarm_name},
+    )
+
+
 def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[str]) -> dict:
     namespace = f"Cerebro/{name}"
     filters = {
@@ -477,6 +529,18 @@ def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[st
                 namespace=namespace,
                 value="1",
                 default_value=0,
+            ),
+        ),
+        "source_sync_completed_by_runtime": aws.cloudwatch.LogMetricFilter(
+            f"{name}-source-sync-completed-by-runtime-filter",
+            name=f"{name}-source-sync-completed-by-runtime",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "span_end" && $.name = "source_runtime.sync" && $.status = "completed" && $.runtime_id = * }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="SourceRuntimeSyncCompletedByRuntime",
+                namespace=namespace,
+                value="1",
+                dimensions={"RuntimeId": "$.runtime_id"},
             ),
         ),
         "orchestrator_failures": aws.cloudwatch.LogMetricFilter(
