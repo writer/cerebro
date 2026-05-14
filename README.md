@@ -33,6 +33,7 @@ This repository is intentionally narrow: it deploys and operates Cerebro for Wri
 | `infra/aws/Pulumi.go-prod.yaml` | go-prod stack configuration. |
 | `infra/gcp` | GCP Pulumi program for Workload Identity Federation and scanner IAM. |
 | `renovate.json` | Dependency maintenance for the infrastructure workspace. |
+| `docs/SOURCE_ONBOARDING.md` | Runbook for adding a new source runtime instance to a Cerebro stack. |
 
 ## Operating model
 
