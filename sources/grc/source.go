@@ -930,6 +930,30 @@ func joinedVulnerableAssetReferences(values map[string]any) string {
 			}
 		}
 	}
+	for i := len(refs); i < maxInt(len(vulnerabilityIDs), len(vulnerabilityNames), len(packageIdentifiers)); i++ {
+		vulnerabilityID := valueAt(vulnerabilityIDs, i)
+		vulnerabilityName := valueAt(vulnerabilityNames, i)
+		packageIdentifier := valueAt(packageIdentifiers, i)
+		if vulnerabilityID == "" && vulnerabilityName == "" && packageIdentifier == "" {
+			continue
+		}
+		key := strings.Join([]string{vulnerabilityID, vulnerabilityName, packageIdentifier}, "\x00")
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		ref := map[string]string{}
+		if vulnerabilityID != "" {
+			ref["vulnerability_id"] = vulnerabilityID
+		}
+		if vulnerabilityName != "" {
+			ref["vulnerability_name"] = vulnerabilityName
+		}
+		if packageIdentifier != "" {
+			ref["package_identifier"] = packageIdentifier
+		}
+		refs = append(refs, ref)
+	}
 	if len(refs) == 0 {
 		for i := 0; i < maxInt(len(vulnerabilityIDs), len(vulnerabilityNames), len(packageIdentifiers)); i++ {
 			vulnerabilityID := valueAt(vulnerabilityIDs, i)

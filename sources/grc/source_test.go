@@ -410,6 +410,24 @@ func TestJoinedVulnerableAssetReferencesMergesFlatPackages(t *testing.T) {
 	}
 }
 
+func TestJoinedVulnerableAssetReferencesAppendsTrailingFlatTuples(t *testing.T) {
+	raw := joinedVulnerableAssetReferences(map[string]any{
+		"vulnerabilities":    []any{map[string]any{"id": "CVE-2026-4242"}},
+		"vulnerabilityIds":   []any{"CVE-2026-4242", "CVE-2026-4243"},
+		"packageIdentifiers": []any{"pkg:golang/example/one@1.0.0", "pkg:golang/example/two@2.0.0"},
+	})
+	var refs []map[string]string
+	if err := json.Unmarshal([]byte(raw), &refs); err != nil {
+		t.Fatalf("joinedVulnerableAssetReferences() produced invalid JSON: %v", err)
+	}
+	if len(refs) != 2 {
+		t.Fatalf("len(refs) = %d, want 2", len(refs))
+	}
+	if refs[1]["vulnerability_id"] != "CVE-2026-4243" || refs[1]["package_identifier"] != "pkg:golang/example/two@2.0.0" {
+		t.Fatalf("refs[1] = %#v, want trailing flat pair", refs[1])
+	}
+}
+
 func TestTokenCacheScopesRuntimeSecretsAndBaseURL(t *testing.T) {
 	tokenRequests := map[string]int{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

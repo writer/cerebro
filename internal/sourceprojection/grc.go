@@ -409,6 +409,20 @@ func grcVulnerableAssetReferenceAttrs(attrs map[string]string) []map[string]stri
 		}
 		result = append(result, referenceAttrs)
 	}
+	for i := len(references); i < maxInt(len(vulnerabilityIDs), len(vulnerabilityNames), len(packageIdentifiers)); i++ {
+		referenceAttrs := grcVulnerableAssetCleanReferenceAttrs(attrs)
+		if vulnerabilityID := stringAt(vulnerabilityIDs, i); vulnerabilityID != "" {
+			referenceAttrs["vulnerability_id"] = vulnerabilityID
+		}
+		if vulnerabilityName := stringAt(vulnerabilityNames, i); vulnerabilityName != "" {
+			referenceAttrs["name"] = vulnerabilityName
+		}
+		if packageIdentifier := stringAt(packageIdentifiers, i); packageIdentifier != "" {
+			referenceAttrs["package"] = packageIdentifier
+			referenceAttrs["package_purl"] = packageIdentifier
+		}
+		result = append(result, referenceAttrs)
+	}
 	if len(result) == 0 {
 		return grcVulnerableAssetFlatReferenceAttrs(attrs)
 	}
