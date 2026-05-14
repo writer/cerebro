@@ -748,11 +748,11 @@ type FindingEvaluationRun struct {
 	// graph_rows_read) from event-rule runs (whose counters live on events_*).
 	// Operators reading events_evaluated=0 rely on this flag to tell graph runs
 	// apart from event rules that simply never saw events.
-	GraphRule bool `protobuf:"varint,15,opt,name=graph_rule,json=graphRule,proto3" json:"graph_rule,omitempty"`
+	GraphRule *bool `protobuf:"varint,15,opt,name=graph_rule,json=graphRule,proto3,oneof" json:"graph_rule,omitempty"`
 	// graph_rows_read records how many cypher rows the rule's read transaction
 	// returned. It is the graph-rule analog of events_evaluated and lets operators
 	// distinguish "graph rule fetched zero rows" from "graph rule never ran".
-	GraphRowsRead uint32 `protobuf:"varint,16,opt,name=graph_rows_read,json=graphRowsRead,proto3" json:"graph_rows_read,omitempty"`
+	GraphRowsRead *uint32 `protobuf:"varint,16,opt,name=graph_rows_read,json=graphRowsRead,proto3,oneof" json:"graph_rows_read,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -886,15 +886,15 @@ func (x *FindingEvaluationRun) GetFindingsEmitted() uint32 {
 }
 
 func (x *FindingEvaluationRun) GetGraphRule() bool {
-	if x != nil {
-		return x.GraphRule
+	if x != nil && x.GraphRule != nil {
+		return *x.GraphRule
 	}
 	return false
 }
 
 func (x *FindingEvaluationRun) GetGraphRowsRead() uint32 {
-	if x != nil {
-		return x.GraphRowsRead
+	if x != nil && x.GraphRowsRead != nil {
+		return *x.GraphRowsRead
 	}
 	return 0
 }
@@ -6577,7 +6577,7 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\areports\x18\x01 \x03(\v2\x1c.cerebro.v1.ReportDefinitionR\areports\"\x19\n" +
 	"\x17ListFindingRulesRequest\"F\n" +
 	"\x18ListFindingRulesResponse\x12*\n" +
-	"\x05rules\x18\x01 \x03(\v2\x14.cerebro.v1.RuleSpecR\x05rules\"\xe2\x04\n" +
+	"\x05rules\x18\x01 \x03(\v2\x14.cerebro.v1.RuleSpecR\x05rules\"\x8f\x05\n" +
 	"\x14FindingEvaluationRun\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -6598,10 +6598,12 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\x05error\x18\v \x01(\tR\x05error\x12)\n" +
 	"\x10events_processed\x18\f \x01(\rR\x0feventsProcessed\x12%\n" +
 	"\x0eevents_matched\x18\r \x01(\rR\reventsMatched\x12)\n" +
-	"\x10findings_emitted\x18\x0e \x01(\rR\x0ffindingsEmitted\x12\x1d\n" +
+	"\x10findings_emitted\x18\x0e \x01(\rR\x0ffindingsEmitted\x12\"\n" +
 	"\n" +
-	"graph_rule\x18\x0f \x01(\bR\tgraphRule\x12&\n" +
-	"\x0fgraph_rows_read\x18\x10 \x01(\rR\rgraphRowsRead\"\x88\x01\n" +
+	"graph_rule\x18\x0f \x01(\bH\x00R\tgraphRule\x88\x01\x01\x12+\n" +
+	"\x0fgraph_rows_read\x18\x10 \x01(\rH\x01R\rgraphRowsRead\x88\x01\x01B\r\n" +
+	"\v_graph_ruleB\x12\n" +
+	"\x10_graph_rows_read\"\x88\x01\n" +
 	" ListFindingEvaluationRunsRequest\x12\x1d\n" +
 	"\n" +
 	"runtime_id\x18\x01 \x01(\tR\truntimeId\x12\x17\n" +
@@ -7501,6 +7503,7 @@ func file_cerebro_v1_bootstrap_proto_init() {
 	}
 	file_cerebro_v1_primitives_proto_init()
 	file_cerebro_v1_source_proto_init()
+	file_cerebro_v1_bootstrap_proto_msgTypes[12].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

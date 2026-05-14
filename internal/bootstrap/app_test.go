@@ -182,6 +182,98 @@ func TestConnectInternalErrorsHideDetails(t *testing.T) {
 	}
 }
 
+func TestFindingEvaluationRunJSONSurfacesGraphDefaultsWithoutPresenceFields(t *testing.T) {
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		},
+		findingEvaluationRuns: map[string]*cerebrov1.FindingEvaluationRun{
+			"running-run": {
+				Id:            "running-run",
+				RuntimeId:     "writer-okta-audit",
+				RuleId:        "identity-okta-policy-rule-lifecycle-tampering",
+				Status:        "running",
+				StartedAt:     timestamppb.New(time.Date(2026, 5, 12, 12, 0, 0, 0, time.UTC)),
+				GraphRule:     proto.Bool(false),
+				GraphRowsRead: proto.Uint32(0),
+			},
+		},
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	restResp, err := server.Client().Get(server.URL + "/finding-evaluation-runs/running-run")
+	if err != nil {
+		t.Fatalf("GET /finding-evaluation-runs/{id} error = %v", err)
+	}
+	defer func() {
+		if closeErr := restResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close REST evaluation run response body: %v", closeErr)
+		}
+	}()
+	var restPayload map[string]any
+	if err := json.NewDecoder(restResp.Body).Decode(&restPayload); err != nil {
+		t.Fatalf("decode REST evaluation run response: %v", err)
+	}
+	restRun, ok := restPayload["run"].(map[string]any)
+	if !ok {
+		t.Fatalf("REST run payload = %#v, want object", restPayload["run"])
+	}
+	if got, present := restRun["graph_rule"]; !present || got != false {
+		t.Fatalf("REST graph_rule = %#v (present=%t), want false present", got, present)
+	}
+	if got, present := restRun["graph_rows_read"]; !present || got != float64(0) {
+		t.Fatalf("REST graph_rows_read = %#v (present=%t), want 0 present", got, present)
+	}
+	if _, present := restRun["finished_at"]; present {
+		t.Fatalf("REST finished_at present on running run: %#v", restRun["finished_at"])
+	}
+	if _, present := restRun["finding_ids"]; present {
+		t.Fatalf("REST finding_ids present on running run: %#v", restRun["finding_ids"])
+	}
+
+	connectReq, err := http.NewRequest(
+		http.MethodPost,
+		server.URL+cerebrov1connect.BootstrapServiceGetFindingEvaluationRunProcedure,
+		strings.NewReader(`{"id":"running-run"}`),
+	)
+	if err != nil {
+		t.Fatalf("new Connect evaluation run request: %v", err)
+	}
+	connectReq.Header.Set("Content-Type", "application/json")
+	connectReq.Header.Set("Connect-Protocol-Version", "1")
+	connectResp, err := server.Client().Do(connectReq)
+	if err != nil {
+		t.Fatalf("Connect GetFindingEvaluationRun error = %v", err)
+	}
+	defer func() {
+		if closeErr := connectResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close Connect evaluation run response body: %v", closeErr)
+		}
+	}()
+	var connectPayload map[string]any
+	if err := json.NewDecoder(connectResp.Body).Decode(&connectPayload); err != nil {
+		t.Fatalf("decode Connect evaluation run response: %v", err)
+	}
+	connectRun, ok := connectPayload["run"].(map[string]any)
+	if !ok {
+		t.Fatalf("Connect run payload = %#v, want object", connectPayload["run"])
+	}
+	if got, present := connectRun["graphRule"]; !present || got != false {
+		t.Fatalf("Connect graphRule = %#v (present=%t), want false present", got, present)
+	}
+	if got, present := connectRun["graphRowsRead"]; !present || got != float64(0) {
+		t.Fatalf("Connect graphRowsRead = %#v (present=%t), want 0 present", got, present)
+	}
+	if _, present := connectRun["finishedAt"]; present {
+		t.Fatalf("Connect finishedAt present on running run: %#v", connectRun["finishedAt"])
+	}
+	if _, present := connectRun["findingIds"]; present {
+		t.Fatalf("Connect findingIds present on running run: %#v", connectRun["findingIds"])
+	}
+}
+
 func TestWriteSourceRuntimeErrorDoesNotExposeInternalMessage(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	writeSourceRuntimeError(recorder, errors.New("postgres password leaked"))

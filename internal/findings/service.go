@@ -905,12 +905,14 @@ func (s *Service) updateFindingStatus(ctx context.Context, id string, status str
 func newFindingEvaluationRun(runtimeID string, ruleID string, eventLimit uint32, startedAt time.Time) *cerebrov1.FindingEvaluationRun {
 	normalizedStartedAt := startedAt.UTC()
 	return &cerebrov1.FindingEvaluationRun{
-		Id:         findingEvaluationRunID(runtimeID, ruleID, normalizedStartedAt),
-		RuntimeId:  strings.TrimSpace(runtimeID),
-		RuleId:     strings.TrimSpace(ruleID),
-		Status:     "running",
-		EventLimit: normalizeEventLimit(eventLimit),
-		StartedAt:  timestamppb.New(normalizedStartedAt),
+		Id:            findingEvaluationRunID(runtimeID, ruleID, normalizedStartedAt),
+		RuntimeId:     strings.TrimSpace(runtimeID),
+		RuleId:        strings.TrimSpace(ruleID),
+		Status:        "running",
+		EventLimit:    normalizeEventLimit(eventLimit),
+		StartedAt:     timestamppb.New(normalizedStartedAt),
+		GraphRule:     proto.Bool(false),
+		GraphRowsRead: proto.Uint32(0),
 	}
 }
 
@@ -927,12 +929,13 @@ func newFindingEvaluationRun(runtimeID string, ruleID string, eventLimit uint32,
 func newGraphFindingEvaluationRun(runtimeID string, ruleID string, startedAt time.Time) *cerebrov1.FindingEvaluationRun {
 	normalizedStartedAt := startedAt.UTC()
 	return &cerebrov1.FindingEvaluationRun{
-		Id:        findingEvaluationRunID(runtimeID, ruleID, normalizedStartedAt),
-		RuntimeId: strings.TrimSpace(runtimeID),
-		RuleId:    strings.TrimSpace(ruleID),
-		Status:    "running",
-		StartedAt: timestamppb.New(normalizedStartedAt),
-		GraphRule: true,
+		Id:            findingEvaluationRunID(runtimeID, ruleID, normalizedStartedAt),
+		RuntimeId:     strings.TrimSpace(runtimeID),
+		RuleId:        strings.TrimSpace(ruleID),
+		Status:        "running",
+		StartedAt:     timestamppb.New(normalizedStartedAt),
+		GraphRule:     proto.Bool(true),
+		GraphRowsRead: proto.Uint32(0),
 	}
 }
 
@@ -1070,7 +1073,7 @@ func setGraphFindingEvaluationRunMetrics(run *cerebrov1.FindingEvaluationRun, gr
 	if run == nil {
 		return
 	}
-	run.GraphRowsRead = graphRowsRead
+	run.GraphRowsRead = proto.Uint32(graphRowsRead)
 	run.FindingsUpserted = uint32(len(findingIDs))
 	run.FindingsEmitted = uint32(len(findingIDs))
 	run.FindingIds = append([]string(nil), findingIDs...)
