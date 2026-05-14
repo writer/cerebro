@@ -21,16 +21,50 @@ def _runtime_id_from_command(command) -> str:
     return ""
 
 
-def _cosmo_runtime_ids(source_runtimes: list[dict], scheduled_runtime_ids: set[str]) -> list[str]:
+def _scheduled_source_runtime_ids(source_runtimes: list[dict], scheduled_runtime_ids: set[str]) -> list[str]:
     runtime_ids = {
         str(runtime.get("id", "")).strip()
         for runtime in source_runtimes or []
-        if isinstance(runtime, dict) and str(runtime.get("sourceId") or runtime.get("source_id") or "").strip() == "cosmo"
+        if isinstance(runtime, dict) and str(runtime.get("id", "")).strip()
     }
-    runtime_ids.discard("")
-    if scheduled_runtime_ids:
-        runtime_ids &= scheduled_runtime_ids
+    runtime_ids &= scheduled_runtime_ids
     return sorted(runtime_ids)
+
+
+def _runtime_heartbeat_period_seconds(schedule: dict | None, default_period_seconds: int) -> int:
+    expression = str((schedule or {}).get("scheduleExpression") or "").strip().lower()
+    interval_seconds = _schedule_interval_seconds(expression)
+    if interval_seconds <= 0:
+        return default_period_seconds
+    return max(900, interval_seconds * 3)
+
+
+def _schedule_interval_seconds(expression: str) -> int:
+    if expression.startswith("rate(") and expression.endswith(")"):
+        parts = expression.removeprefix("rate(").removesuffix(")").split()
+        if len(parts) >= 2 and parts[0].isdigit():
+            count = int(parts[0])
+            unit = parts[1].rstrip("s")
+            if unit == "minute":
+                return count * 60
+            if unit == "hour":
+                return count * 3600
+    if expression.startswith("cron(") and expression.endswith(")"):
+        fields = expression.removeprefix("cron(").removesuffix(")").split()
+        if len(fields) >= 2:
+            hour_interval = _cron_interval_value(fields[1])
+            if hour_interval:
+                return hour_interval * 3600
+            if fields[1] == "*":
+                return 3600
+    return 0
+
+
+def _cron_interval_value(field: str) -> int:
+    if "/" not in field:
+        return 0
+    _, interval = field.rsplit("/", 1)
+    return int(interval) if interval.isdigit() else 0
 
 
 def create_monitoring(
@@ -51,7 +85,7 @@ def create_monitoring(
     orchestrator_schedules: list[dict] = None,
     orchestrator_rule_names: list[pulumi.Input[str]] = None,
     source_runtimes: list[dict] = None,
-    cosmo_runtime_heartbeat_period_seconds: int = 7200,
+    source_runtime_heartbeat_period_seconds: int = 28800,
 ) -> dict:
     """
     Create CloudWatch dashboard and alarms.
@@ -392,14 +426,24 @@ def create_monitoring(
             dimensions={"RuntimeId": runtime_id},
         )
 
-    for runtime_id in _cosmo_runtime_ids(source_runtimes or [], set(runtime_ids)):
+    schedules_by_runtime = {
+        runtime_id: schedule
+        for schedule in orchestrator_schedules or []
+        if isinstance(schedule, dict)
+        for runtime_id in [_runtime_id_from_command(schedule.get("command"))]
+        if runtime_id
+    }
+    for runtime_id in _scheduled_source_runtime_ids(source_runtimes or [], set(runtime_ids)):
         _runtime_heartbeat_alarm(
-            resource_name=f"{name}-cosmo-runtime-{_safe_resource_suffix(runtime_id)}-heartbeat-alarm",
-            alarm_name=f"{name}-cosmo-{runtime_id}-stale",
+            resource_name=f"{name}-source-runtime-{_safe_resource_suffix(runtime_id)}-heartbeat-alarm",
+            alarm_name=f"{name}-source-{runtime_id}-stale",
             namespace=telemetry_namespace,
             metric_name="OrchestratorRuntimeCompletedByRuntime",
             runtime_id=runtime_id,
-            period=cosmo_runtime_heartbeat_period_seconds,
+            period=_runtime_heartbeat_period_seconds(
+                schedules_by_runtime.get(runtime_id),
+                source_runtime_heartbeat_period_seconds,
+            ),
             alarm_actions=alarm_actions,
         )
 
