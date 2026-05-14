@@ -371,6 +371,26 @@ func TestIdentitySignalRulesIgnoreInactiveCloudCredentials(t *testing.T) {
 	}
 }
 
+func TestIdentitySignalRulesRespectRuntimeFamily(t *testing.T) {
+	rules := identityRulesByID(t)
+	rule := rules[identityPrivilegedAccountWithoutMFARuleID]
+	if !rule.SupportsRuntime(&cerebrov1.SourceRuntime{SourceId: "aws", Config: map[string]string{"family": "iam_user"}}) {
+		t.Fatal("SupportsRuntime(iam_user) = false, want true")
+	}
+	if rule.SupportsRuntime(&cerebrov1.SourceRuntime{SourceId: "aws", Config: map[string]string{"family": "public_endpoint"}}) {
+		t.Fatal("SupportsRuntime(public_endpoint) = true, want false")
+	}
+	if rule.SupportsRuntime(&cerebrov1.SourceRuntime{SourceId: "aws"}) {
+		t.Fatal("SupportsRuntime(default cloudtrail) = true, want false for user rule")
+	}
+	if !rules[identityControlTamperCredentialChangeRuleID].SupportsRuntime(&cerebrov1.SourceRuntime{SourceId: "aws"}) {
+		t.Fatal("SupportsRuntime(default cloudtrail) = false, want true for audit rule")
+	}
+	if !rule.SupportsRuntime(&cerebrov1.SourceRuntime{SourceId: "aws", Config: map[string]string{"family": "env:CEREBRO_SOURCE_AWS_FAMILY"}}) {
+		t.Fatal("SupportsRuntime(env-backed family) = false, want true until runtime config is resolved")
+	}
+}
+
 func TestIdentitySignalRulesTreatRoutineOAuthGrantsAsTelemetry(t *testing.T) {
 	rules := identityRulesByID(t)
 	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"}

@@ -2,7 +2,10 @@ package findings
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
+	"os"
 	"slices"
 	"sort"
 	"strings"
@@ -13,6 +16,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/findingevidence"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/workflowevents"
 )
@@ -61,19 +65,20 @@ func (s *recordingAppendLog) Append(_ context.Context, event *cerebrov1.EventEnv
 }
 
 type stubFindingStore struct {
-	findings         map[string]*ports.FindingRecord
-	request          ports.ListFindingsRequest
-	listFindingsErr  error
-	claims           map[string]*ports.ClaimRecord
-	claimListRequest ports.ListClaimsRequest
-	runs             map[string]*cerebrov1.FindingEvaluationRun
-	runList          ports.ListFindingEvaluationRunsRequest
-	runPutCount      int
-	failRunPutOn     int
-	failRunPutErr    error
-	failRunPutByCall map[int]error
-	evidence         map[string]*cerebrov1.FindingEvidence
-	evidenceList     ports.ListFindingEvidenceRequest
+	findings             map[string]*ports.FindingRecord
+	request              ports.ListFindingsRequest
+	listFindingsRequests []ports.ListFindingsRequest
+	listFindingsErr      error
+	claims               map[string]*ports.ClaimRecord
+	claimListRequest     ports.ListClaimsRequest
+	runs                 map[string]*cerebrov1.FindingEvaluationRun
+	runList              ports.ListFindingEvaluationRunsRequest
+	runPutCount          int
+	failRunPutOn         int
+	failRunPutErr        error
+	failRunPutByCall     map[int]error
+	evidence             map[string]*cerebrov1.FindingEvidence
+	evidenceList         ports.ListFindingEvidenceRequest
 }
 
 func (s *stubFindingStore) Ping(context.Context) error { return nil }
@@ -109,6 +114,7 @@ func (s *stubFindingStore) GetFinding(_ context.Context, id string) (*ports.Find
 
 func (s *stubFindingStore) ListFindings(_ context.Context, request ports.ListFindingsRequest) ([]*ports.FindingRecord, error) {
 	s.request = request
+	s.listFindingsRequests = append(s.listFindingsRequests, request)
 	if s.listFindingsErr != nil {
 		return nil, s.listFindingsErr
 	}
@@ -395,9 +401,9 @@ func (s *stubFindingStore) PutFindingEvidence(_ context.Context, evidence *cereb
 	if s.evidence == nil {
 		s.evidence = make(map[string]*cerebrov1.FindingEvidence)
 	}
-	cloned := cloneFindingEvidence(evidence)
-	if existing := s.evidence[evidence.GetId()]; existing != nil && existing.GetCreatedAt() != nil {
-		cloned.CreatedAt = existing.GetCreatedAt()
+	cloned := findingevidence.Normalize(evidence)
+	if existing := s.evidence[evidence.GetId()]; existing != nil {
+		cloned = findingevidence.Merge(existing, cloned)
 	}
 	if cloned.GetLastObservedAt() == nil || cloned.GetLastObservedAt().AsTime().IsZero() {
 		cloned.LastObservedAt = cloned.GetCreatedAt()
@@ -1177,6 +1183,70 @@ func TestEvaluateSourceRuntimeFindingsDeduplicatesEvidencePerRun(t *testing.T) {
 	}
 }
 
+func TestFindingEvaluationRunFinalizersEmitTelemetry(t *testing.T) {
+	store := &stubFindingStore{}
+	service := &Service{runStore: store}
+	run := &cerebrov1.FindingEvaluationRun{
+		Id:         "run-1",
+		RuntimeId:  "runtime-okta",
+		RuleId:     "rule-a",
+		EventLimit: 25,
+		StartedAt:  timestamppb.New(time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC)),
+	}
+
+	stderr := captureFindingStderr(t, func() {
+		if err := service.finishCompletedRun(context.Background(), run, 7, 3, []string{"finding-1", "finding-2"}); err != nil {
+			t.Fatalf("finishCompletedRun() error = %v", err)
+		}
+	})
+	payload := decodeTelemetryPayload(t, stderr)
+	for key, want := range map[string]any{
+		"kind":             "event",
+		"name":             "finding_evaluation.run",
+		"run_id":           "run-1",
+		"runtime_id":       "runtime-okta",
+		"rule_id":          "rule-a",
+		"status":           "completed",
+		"event_limit":      float64(25),
+		"events_processed": float64(7),
+		"events_matched":   float64(3),
+		"findings_emitted": float64(2),
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry[%s] = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+}
+
+func TestFailedFindingEvaluationRunFinalizerEmitsTelemetry(t *testing.T) {
+	store := &stubFindingStore{}
+	service := &Service{runStore: store}
+	run := &cerebrov1.FindingEvaluationRun{
+		Id:         "run-1",
+		RuntimeId:  "runtime-okta",
+		RuleId:     "rule-a",
+		EventLimit: 25,
+		StartedAt:  timestamppb.New(time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC)),
+	}
+
+	stderr := captureFindingStderr(t, func() {
+		err := service.finishFailedRun(context.Background(), run, 4, 1, []string{"finding-1"}, errors.New("boom"))
+		if err == nil {
+			t.Fatal("finishFailedRun() error = nil, want non-nil")
+		}
+	})
+	payload := decodeTelemetryPayload(t, stderr)
+	if got := payload["status"]; got != "failed" {
+		t.Fatalf("telemetry status = %#v, want failed; payload=%#v", got, payload)
+	}
+	if got := payload["events_processed"]; got != float64(4) {
+		t.Fatalf("telemetry events_processed = %#v, want 4; payload=%#v", got, payload)
+	}
+	if got := payload["findings_emitted"]; got != float64(1) {
+		t.Fatalf("telemetry findings_emitted = %#v, want 1; payload=%#v", got, payload)
+	}
+}
+
 func TestEvaluateSourceRuntimeFindingsDeduplicatesEvidenceAcrossRuns(t *testing.T) {
 	registry, err := NewRegistry(&emittingRule{
 		spec:               &cerebrov1.RuleSpec{Id: "rule-a", Name: "Rule A"},
@@ -1229,6 +1299,22 @@ func TestEvaluateSourceRuntimeFindingsDeduplicatesEvidenceAcrossRuns(t *testing.
 	}
 	if stored.GetLastObservedAt() == nil || stored.GetLastObservedAt().AsTime().IsZero() {
 		t.Fatalf("deduped evidence LastObservedAt missing")
+	}
+	if !slices.Contains(stored.GetRunIds(), first.Run.GetId()) || !slices.Contains(stored.GetRunIds(), second.Run.GetId()) {
+		t.Fatalf("deduped evidence RunIds = %#v, want both evaluation runs", stored.GetRunIds())
+	}
+	if got := stored.GetObservationCount(); got != 2 {
+		t.Fatalf("deduped evidence ObservationCount = %d, want 2", got)
+	}
+	if got := len(stored.GetObservations()); got != 2 {
+		t.Fatalf("len(deduped evidence Observations) = %d, want 2", got)
+	}
+	historical, err := service.ListEvidence(context.Background(), ListEvidenceRequest{RuntimeID: "writer-okta-audit", RunID: first.Run.GetId()})
+	if err != nil {
+		t.Fatalf("ListEvidence(first run) error = %v", err)
+	}
+	if got := len(historical.Evidence); got != 1 {
+		t.Fatalf("len(ListEvidence(first run).Evidence) = %d, want 1", got)
 	}
 }
 
@@ -1290,6 +1376,15 @@ func TestBuildFindingEvidenceIncludesAttributesGraphPathsAndObservedAt(t *testin
 	}
 	if evidence.GetLastObservedAt() == nil || evidence.GetLastObservedAt().AsTime().IsZero() {
 		t.Fatalf("Evidence.LastObservedAt missing")
+	}
+	if !slices.Contains(evidence.GetRunIds(), "run-1") {
+		t.Fatalf("Evidence.RunIds = %#v, want run-1", evidence.GetRunIds())
+	}
+	if got := evidence.GetObservationCount(); got != 1 {
+		t.Fatalf("Evidence.ObservationCount = %d, want 1", got)
+	}
+	if got := evidence.GetObservations()[0].GetGraphRows()[0].GetPaths()[0].GetObservedAt(); got != "2026-05-07T18:09:42Z" {
+		t.Fatalf("Evidence.Observations[0].GraphRows[0].Paths[0].ObservedAt = %q, want edge timestamp", got)
 	}
 }
 
@@ -1441,6 +1536,99 @@ func TestEvaluateSourceRuntimeFindingsRejectsUnsupportedRule(t *testing.T) {
 	}
 }
 
+func TestEvaluateSourceRuntimeFindingsAllowsExplicitUnsupportedRuleWithOpenFindings(t *testing.T) {
+	registry, err := NewRegistry(&emittingRule{
+		spec:               &cerebrov1.RuleSpec{Id: "old-family-rule", Name: "Old Family Rule"},
+		supportedSourceIDs: map[string]struct{}{"okta": {}},
+		triggerEventID:     "old-event",
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{
+		"finding-old": {
+			ID:        "finding-old",
+			TenantID:  "writer",
+			RuntimeID: "writer-aws-public-endpoint",
+			RuleID:    "old-family-rule",
+			Status:    findingStatusOpen,
+			EventIDs:  []string{"old-event"},
+		},
+	}}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-aws-public-endpoint": {Id: "writer-aws-public-endpoint", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "public_endpoint"}},
+		}},
+		&stubReplayer{},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: "writer-aws-public-endpoint", RuleID: "old-family-rule"})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if result.Rule.GetId() != "old-family-rule" {
+		t.Fatalf("Rule.Id = %q, want old-family-rule", result.Rule.GetId())
+	}
+	if got := store.findings["finding-old"].Status; got != findingStatusResolved {
+		t.Fatalf("stale finding status = %q, want %q", got, findingStatusResolved)
+	}
+}
+
+func TestEvaluateSourceRuntimeFindingsIgnoresStaleOnlyRulesForSingleSelection(t *testing.T) {
+	registry, err := NewRegistry(
+		&emittingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "live-rule", Name: "Live Rule"},
+			supportedSourceIDs: map[string]struct{}{"aws": {}},
+			triggerEventID:     "live-event",
+		},
+		&emittingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "old-family-rule", Name: "Old Family Rule"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+			triggerEventID:     "old-event",
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{
+		"finding-old": {
+			ID:        "finding-old",
+			TenantID:  "writer",
+			RuntimeID: "writer-aws-public-endpoint",
+			RuleID:    "old-family-rule",
+			Status:    findingStatusOpen,
+			EventIDs:  []string{"old-event"},
+		},
+	}}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-aws-public-endpoint": {Id: "writer-aws-public-endpoint", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "public_endpoint"}},
+		}},
+		&stubReplayer{},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: "writer-aws-public-endpoint"})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if got := result.Rule.GetId(); got != "live-rule" {
+		t.Fatalf("Rule.Id = %q, want live-rule", got)
+	}
+	if got := store.findings["finding-old"].Status; got != findingStatusOpen {
+		t.Fatalf("stale finding status = %q, want still open", got)
+	}
+}
+
 func TestEvaluateSourceRuntimeRulesReplaysOnceAcrossMultipleRules(t *testing.T) {
 	registry, err := NewRegistry(
 		&emittingRule{
@@ -1552,6 +1740,96 @@ func TestEvaluateSourceRuntimeRulesReplaysOnceAcrossMultipleRules(t *testing.T) 
 	}
 	if got := len(store.evidence); got != 2 {
 		t.Fatalf("len(store.evidence) = %d, want 2", got)
+	}
+}
+
+func TestEvaluateSourceRuntimeRulesIncludesUnsupportedRulesWithOpenFindings(t *testing.T) {
+	registry, err := NewRegistry(&emittingRule{
+		spec:               &cerebrov1.RuleSpec{Id: "old-family-rule", Name: "Old Family Rule"},
+		supportedSourceIDs: map[string]struct{}{"okta": {}},
+		triggerEventID:     "old-event",
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{
+		"finding-old": {
+			ID:        "finding-old",
+			TenantID:  "writer",
+			RuntimeID: "writer-aws-public-endpoint",
+			RuleID:    "old-family-rule",
+			Status:    findingStatusOpen,
+			EventIDs:  []string{"old-event"},
+		},
+	}}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-aws-public-endpoint": {Id: "writer-aws-public-endpoint", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "public_endpoint"}},
+		}},
+		&stubReplayer{},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	)
+
+	result, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-aws-public-endpoint"})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeRules() error = %v", err)
+	}
+	if len(result.Evaluations) != 1 || result.Evaluations[0].Rule.GetId() != "old-family-rule" {
+		t.Fatalf("evaluations = %#v, want only old-family-rule", result.Evaluations)
+	}
+	if got := store.findings["finding-old"].Status; got != findingStatusResolved {
+		t.Fatalf("stale finding status = %q, want %q", got, findingStatusResolved)
+	}
+}
+
+func TestEvaluateSourceRuntimeRulesProbesStaleUnsupportedRulesOnce(t *testing.T) {
+	registry, err := NewRegistry(
+		&emittingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "live-rule", Name: "Live Rule"},
+			supportedSourceIDs: map[string]struct{}{"aws": {}},
+		},
+		&emittingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "old-rule-a", Name: "Old Rule A"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+		},
+		&emittingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "old-rule-b", Name: "Old Rule B"},
+			supportedSourceIDs: map[string]struct{}{"github": {}},
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &stubFindingStore{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-aws-public-endpoint": {Id: "writer-aws-public-endpoint", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "public_endpoint"}},
+		}},
+		&stubReplayer{},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	)
+
+	result, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-aws-public-endpoint"})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeRules() error = %v", err)
+	}
+	if len(result.Evaluations) != 1 || result.Evaluations[0].Rule.GetId() != "live-rule" {
+		t.Fatalf("evaluations = %#v, want only live-rule", result.Evaluations)
+	}
+	if got := len(store.listFindingsRequests); got != 1 {
+		t.Fatalf("ListFindings calls = %d, want one stale unsupported probe", got)
+	}
+	request := store.listFindingsRequests[0]
+	if request.RuleID != "" || request.RuntimeID != "writer-aws-public-endpoint" || request.Status != findingStatusOpen {
+		t.Fatalf("stale probe request = %#v, want one runtime-wide open-finding query", request)
 	}
 }
 
@@ -2709,6 +2987,7 @@ func TestListEvidenceReturnsFilteredRecords(t *testing.T) {
 				ClaimIds:      []string{"claim-1"},
 				EventIds:      []string{"okta-audit-2"},
 				GraphRootUrns: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+				GraphPathUrns: []string{"urn:cerebro:writer:okta_user:00u2"},
 				CreatedAt:     timestamppb.New(time.Date(2026, 4, 24, 12, 2, 0, 0, time.UTC)),
 			},
 			"finding-evidence-2": {
@@ -2748,6 +3027,7 @@ func TestListEvidenceReturnsFilteredRecords(t *testing.T) {
 		ClaimID:      "claim-1",
 		EventID:      "okta-audit-2",
 		GraphRootURN: "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+		GraphPathURN: "urn:cerebro:writer:okta_user:00u2",
 		Limit:        1,
 	})
 	if err != nil {
@@ -2776,6 +3056,9 @@ func TestListEvidenceReturnsFilteredRecords(t *testing.T) {
 	}
 	if got := store.evidenceList.GraphRootURN; got != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
 		t.Fatalf("ListEvidence().GraphRootURN = %q, want policy rule urn", got)
+	}
+	if got := store.evidenceList.GraphPathURN; got != "urn:cerebro:writer:okta_user:00u2" {
+		t.Fatalf("ListEvidence().GraphPathURN = %q, want graph path urn", got)
 	}
 }
 
@@ -3132,8 +3415,11 @@ func findingEvidenceMatches(request ports.ListFindingEvidenceRequest, evidence *
 	if request.FindingID != "" && strings.TrimSpace(evidence.GetFindingId()) != strings.TrimSpace(request.FindingID) {
 		return false
 	}
-	if request.RunID != "" && strings.TrimSpace(evidence.GetRunId()) != strings.TrimSpace(request.RunID) {
-		return false
+	if request.RunID != "" {
+		runID := strings.TrimSpace(request.RunID)
+		if strings.TrimSpace(evidence.GetRunId()) != runID && !slices.Contains(evidence.GetRunIds(), runID) {
+			return false
+		}
 	}
 	if request.RuleID != "" && strings.TrimSpace(evidence.GetRuleId()) != strings.TrimSpace(request.RuleID) {
 		return false
@@ -3147,6 +3433,9 @@ func findingEvidenceMatches(request ports.ListFindingEvidenceRequest, evidence *
 	if request.GraphRootURN != "" && !containsTrimmed(evidence.GetGraphRootUrns(), request.GraphRootURN) {
 		return false
 	}
+	if request.GraphPathURN != "" && !containsTrimmed(evidence.GetGraphPathUrns(), request.GraphPathURN) {
+		return false
+	}
 	return true
 }
 
@@ -3155,6 +3444,41 @@ func cloneEntityRef(ref *cerebrov1.EntityRef) *cerebrov1.EntityRef {
 		return nil
 	}
 	return proto.Clone(ref).(*cerebrov1.EntityRef)
+}
+
+func captureFindingStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	oldStderr := os.Stderr
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe stderr: %v", err)
+	}
+	os.Stderr = writer
+	defer func() {
+		os.Stderr = oldStderr
+	}()
+	fn()
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close stderr writer: %v", err)
+	}
+	payload, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("read stderr: %v", err)
+	}
+	return string(payload)
+}
+
+func decodeTelemetryPayload(t *testing.T, stderr string) map[string]any {
+	t.Helper()
+	line := strings.TrimSpace(stderr)
+	if line == "" {
+		t.Fatal("telemetry stderr is empty")
+	}
+	payload := map[string]any{}
+	if err := json.Unmarshal([]byte(line), &payload); err != nil {
+		t.Fatalf("decode telemetry JSON %q: %v", line, err)
+	}
+	return payload
 }
 
 func TestFindingEvaluationRunIDIsUniqueAcrossSameNanosecond(t *testing.T) {

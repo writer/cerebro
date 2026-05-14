@@ -2,6 +2,8 @@ extends:
   - spectral:oas
 
 rules:
+  info-contact: error
+  operation-tags: error
   operation-description: off
   operation-operationId: off
 

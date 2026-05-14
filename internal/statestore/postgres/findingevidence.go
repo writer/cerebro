@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/findingevidence"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -24,6 +26,8 @@ var ensureFindingEvidenceStatements = []string{
   event_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   graph_root_urns_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   graph_path_urns_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  run_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  observations_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   attributes_json JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL,
   last_observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -31,6 +35,8 @@ var ensureFindingEvidenceStatements = []string{
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )`,
 	`ALTER TABLE finding_evidence ADD COLUMN IF NOT EXISTS graph_path_urns_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
+	`ALTER TABLE finding_evidence ADD COLUMN IF NOT EXISTS run_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
+	`ALTER TABLE finding_evidence ADD COLUMN IF NOT EXISTS observations_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
 	`ALTER TABLE finding_evidence ADD COLUMN IF NOT EXISTS attributes_json JSONB NOT NULL DEFAULT '{}'::jsonb`,
 	`ALTER TABLE finding_evidence ADD COLUMN IF NOT EXISTS last_observed_at TIMESTAMPTZ`,
 	`UPDATE finding_evidence SET last_observed_at = created_at WHERE last_observed_at IS NULL`,
@@ -44,6 +50,7 @@ var ensureFindingEvidenceStatements = []string{
 	`CREATE INDEX IF NOT EXISTS finding_evidence_event_ids_gin_idx ON finding_evidence USING GIN (event_ids_json)`,
 	`CREATE INDEX IF NOT EXISTS finding_evidence_graph_root_urns_gin_idx ON finding_evidence USING GIN (graph_root_urns_json)`,
 	`CREATE INDEX IF NOT EXISTS finding_evidence_graph_path_urns_gin_idx ON finding_evidence USING GIN (graph_path_urns_json)`,
+	`CREATE INDEX IF NOT EXISTS finding_evidence_run_ids_gin_idx ON finding_evidence USING GIN (run_ids_json)`,
 	`CREATE INDEX IF NOT EXISTS finding_evidence_attributes_gin_idx ON finding_evidence USING GIN (attributes_json)`,
 	`CREATE INDEX IF NOT EXISTS finding_evidence_last_observed_idx ON finding_evidence (runtime_id, last_observed_at DESC)`,
 }
@@ -51,9 +58,9 @@ var ensureFindingEvidenceStatements = []string{
 func findingEvidenceUpsertSQL() string {
 	return `
 INSERT INTO finding_evidence (
-  id, runtime_id, rule_id, finding_id, run_id, claim_ids_json, event_ids_json, graph_root_urns_json, graph_path_urns_json, attributes_json, created_at, last_observed_at, finding_evidence_json
+  id, runtime_id, rule_id, finding_id, run_id, claim_ids_json, event_ids_json, graph_root_urns_json, graph_path_urns_json, run_ids_json, observations_json, attributes_json, created_at, last_observed_at, finding_evidence_json
 )
-VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb, $11, $12, $13::jsonb)
+VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb, $11::jsonb, $12::jsonb, $13, $14, $15::jsonb)
 ON CONFLICT (id)
 DO UPDATE SET
   runtime_id = EXCLUDED.runtime_id,
@@ -64,6 +71,8 @@ DO UPDATE SET
   event_ids_json = EXCLUDED.event_ids_json,
   graph_root_urns_json = EXCLUDED.graph_root_urns_json,
   graph_path_urns_json = EXCLUDED.graph_path_urns_json,
+  run_ids_json = EXCLUDED.run_ids_json,
+  observations_json = EXCLUDED.observations_json,
   attributes_json = EXCLUDED.attributes_json,
   last_observed_at = GREATEST(finding_evidence.last_observed_at, EXCLUDED.last_observed_at),
   finding_evidence_json = jsonb_set(
@@ -77,6 +86,10 @@ DO UPDATE SET
     true
   ),
   updated_at = NOW()`
+}
+
+func findingEvidenceAdvisoryLockSQL() string {
+	return `SELECT pg_advisory_xact_lock(hashtext('finding_evidence'), hashtext($1))`
 }
 
 // PutFindingEvidence upserts one durable finding evidence record.
@@ -117,6 +130,32 @@ func (s *Store) PutFindingEvidence(ctx context.Context, evidence *cerebrov1.Find
 	if err := s.ensureFindingEvidenceTables(ctx); err != nil {
 		return err
 	}
+	evidence = findingevidence.Normalize(evidence)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin finding evidence upsert: %w", err)
+	}
+	defer func() {
+		if tx != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	// Serialize same-ID first writes before the preflight read so history merges cannot race.
+	if _, err := tx.ExecContext(ctx, findingEvidenceAdvisoryLockSQL(), id); err != nil {
+		return fmt.Errorf("lock finding evidence %q: %w", id, err)
+	}
+	var existingPayload string
+	if err := tx.QueryRowContext(ctx, `SELECT finding_evidence_json::text FROM finding_evidence WHERE id = $1 FOR UPDATE`, id).Scan(&existingPayload); err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("load existing finding evidence %q: %w", id, err)
+		}
+	} else {
+		existing := &cerebrov1.FindingEvidence{}
+		if err := protojson.Unmarshal([]byte(existingPayload), existing); err != nil {
+			return fmt.Errorf("decode existing finding evidence %q: %w", id, err)
+		}
+		evidence = findingevidence.Merge(existing, evidence)
+	}
 	claimIDsJSON, err := findingStringsJSON(evidence.GetClaimIds())
 	if err != nil {
 		return fmt.Errorf("marshal finding evidence claim ids: %w", err)
@@ -133,6 +172,14 @@ func (s *Store) PutFindingEvidence(ctx context.Context, evidence *cerebrov1.Find
 	if err != nil {
 		return fmt.Errorf("marshal finding evidence graph path urns: %w", err)
 	}
+	runIDsJSON, err := findingStringsJSON(evidence.GetRunIds())
+	if err != nil {
+		return fmt.Errorf("marshal finding evidence run ids: %w", err)
+	}
+	observationsJSON, err := findingEvidenceObservationsJSON(evidence.GetObservations())
+	if err != nil {
+		return fmt.Errorf("marshal finding evidence observations: %w", err)
+	}
 	attributesJSON, err := findingAttributesJSON(evidence.GetAttributes())
 	if err != nil {
 		return fmt.Errorf("marshal finding evidence attributes: %w", err)
@@ -141,7 +188,7 @@ func (s *Store) PutFindingEvidence(ctx context.Context, evidence *cerebrov1.Find
 	if err != nil {
 		return fmt.Errorf("marshal finding evidence: %w", err)
 	}
-	if _, err := s.db.ExecContext(ctx, findingEvidenceUpsertSQL(),
+	if _, err := tx.ExecContext(ctx, findingEvidenceUpsertSQL(),
 		id,
 		runtimeID,
 		ruleID,
@@ -151,6 +198,8 @@ func (s *Store) PutFindingEvidence(ctx context.Context, evidence *cerebrov1.Find
 		eventIDsJSON,
 		graphRootURNsJSON,
 		graphPathURNsJSON,
+		runIDsJSON,
+		observationsJSON,
 		attributesJSON,
 		evidence.GetCreatedAt().AsTime().UTC(),
 		evidence.GetLastObservedAt().AsTime().UTC(),
@@ -158,6 +207,10 @@ func (s *Store) PutFindingEvidence(ctx context.Context, evidence *cerebrov1.Find
 	); err != nil {
 		return fmt.Errorf("upsert finding evidence %q: %w", id, err)
 	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit finding evidence %q: %w", id, err)
+	}
+	tx = nil
 	return nil
 }
 
@@ -239,7 +292,7 @@ func findingEvidenceListQuery(request ports.ListFindingEvidenceRequest) (string,
 	clauses := []string{"runtime_id = $1"}
 	args := []any{runtimeID}
 	addFindingFilter(&clauses, &args, "finding_id", request.FindingID)
-	addFindingFilter(&clauses, &args, "run_id", request.RunID)
+	addFindingEvidenceRunFilter(&clauses, &args, request.RunID)
 	addFindingFilter(&clauses, &args, "rule_id", request.RuleID)
 	if err := addFindingArrayContainsFilter(&clauses, &args, "claim_ids_json", request.ClaimID); err != nil {
 		return "", nil, err
@@ -248,6 +301,9 @@ func findingEvidenceListQuery(request ports.ListFindingEvidenceRequest) (string,
 		return "", nil, err
 	}
 	if err := addFindingArrayContainsFilter(&clauses, &args, "graph_root_urns_json", request.GraphRootURN); err != nil {
+		return "", nil, err
+	}
+	if err := addFindingArrayContainsFilter(&clauses, &args, "graph_path_urns_json", request.GraphPathURN); err != nil {
 		return "", nil, err
 	}
 	query := `
@@ -260,4 +316,40 @@ ORDER BY last_observed_at DESC, created_at DESC, id`
 		query += fmt.Sprintf(" LIMIT $%d", len(args))
 	}
 	return query, args, nil
+}
+
+func addFindingEvidenceRunFilter(clauses *[]string, args *[]any, runID string) {
+	trimmed := strings.TrimSpace(runID)
+	if trimmed == "" {
+		return
+	}
+	*args = append(*args, trimmed)
+	placeholder := fmt.Sprintf("$%d", len(*args))
+	*clauses = append(*clauses, fmt.Sprintf("(run_id = %[1]s OR run_ids_json @> jsonb_build_array(%[1]s))", placeholder))
+}
+
+func findingEvidenceObservationsJSON(observations []*cerebrov1.FindingEvidenceObservation) (string, error) {
+	if len(observations) == 0 {
+		return `[]`, nil
+	}
+	raw := make([]json.RawMessage, 0, len(observations))
+	marshaler := protojson.MarshalOptions{UseProtoNames: true}
+	for _, observation := range observations {
+		if observation == nil {
+			continue
+		}
+		payload, err := marshaler.Marshal(observation)
+		if err != nil {
+			return "", err
+		}
+		raw = append(raw, json.RawMessage(payload))
+	}
+	if len(raw) == 0 {
+		return `[]`, nil
+	}
+	payload, err := json.Marshal(raw)
+	if err != nil {
+		return "", err
+	}
+	return string(payload), nil
 }

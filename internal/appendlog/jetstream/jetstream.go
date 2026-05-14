@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -18,9 +19,10 @@ import (
 )
 
 const (
-	connectTimeout     = 5 * time.Second
-	defaultReplayLimit = 100
-	maxReplayLimit     = 1000
+	connectTimeout      = 5 * time.Second
+	defaultReplayLimit  = 100
+	maxReplayLimit      = 1000
+	maxReplayCandidates = 5000
 )
 
 type publisher interface {
@@ -155,7 +157,7 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 	return nil
 }
 
-// Replay returns stored envelopes for one source runtime in append order.
+// Replay returns the newest matching stored envelopes in append order.
 func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1.EventEnvelope, error) {
 	if l == nil || l.replay == nil {
 		return nil, errors.New("jetstream is not configured")
@@ -173,38 +175,99 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 		return nil, err
 	}
 	limit := normalizeReplayLimit(request.Limit)
+	candidateLimit := normalizeReplayCandidateLimit(limit)
 	streamRef, err := l.replay.Stream(ctx, stream.Config.Name)
 	if err != nil {
 		return nil, fmt.Errorf("open replay stream %q: %w", stream.Config.Name, err)
 	}
-	events := make([]*cerebrov1.EventEnvelope, 0, limit)
+	candidates := make([]replayCandidate, 0, limit)
 	if stream.State.LastSeq == 0 || stream.State.LastSeq < stream.State.FirstSeq {
-		return events, nil
+		return nil, nil
 	}
-	for seq := stream.State.FirstSeq; seq <= stream.State.LastSeq; seq++ {
+	for seq := stream.State.LastSeq; ; seq-- {
 		raw, err := streamRef.GetMsg(ctx, seq)
 		if err != nil {
 			if errors.Is(err, jetstream.ErrMsgNotFound) {
+				if seq == stream.State.FirstSeq {
+					break
+				}
 				continue
 			}
 			return nil, fmt.Errorf("get replay message %s:%d: %w", stream.Config.Name, seq, err)
 		}
-		if raw == nil || !strings.HasPrefix(strings.TrimSpace(raw.Subject), prefix+".") {
-			continue
+		if raw != nil && strings.HasPrefix(strings.TrimSpace(raw.Subject), prefix+".") {
+			event := &cerebrov1.EventEnvelope{}
+			if err := proto.Unmarshal(raw.Data, event); err != nil {
+				return nil, fmt.Errorf("decode replay message %s:%d: %w", stream.Config.Name, seq, err)
+			}
+			if matchesReplayRequest(event, request) {
+				candidates = append(candidates, replayCandidate{event: event, seq: seq})
+				if uint32(len(candidates)) >= candidateLimit {
+					break
+				}
+			}
 		}
-		event := &cerebrov1.EventEnvelope{}
-		if err := proto.Unmarshal(raw.Data, event); err != nil {
-			return nil, fmt.Errorf("decode replay message %s:%d: %w", stream.Config.Name, seq, err)
-		}
-		if !matchesReplayRequest(event, request) {
-			continue
-		}
-		events = append(events, event)
-		if uint32(len(events)) >= limit {
+		if seq == stream.State.FirstSeq {
 			break
 		}
 	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return replayCandidateNewer(candidates[i], candidates[j])
+	})
+	if uint32(len(candidates)) > limit {
+		candidates = candidates[:limit]
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return candidates[i].seq < candidates[j].seq
+	})
+	events := make([]*cerebrov1.EventEnvelope, 0, len(candidates))
+	for _, candidate := range candidates {
+		events = append(events, candidate.event)
+	}
 	return events, nil
+}
+
+type replayCandidate struct {
+	event *cerebrov1.EventEnvelope
+	seq   uint64
+}
+
+func replayCandidateNewer(left replayCandidate, right replayCandidate) bool {
+	leftTime, leftHasTime := replayEventTime(left.event)
+	rightTime, rightHasTime := replayEventTime(right.event)
+	switch {
+	case leftHasTime && rightHasTime && !leftTime.Equal(rightTime):
+		return leftTime.After(rightTime)
+	case leftHasTime != rightHasTime:
+		return leftHasTime
+	default:
+		return left.seq > right.seq
+	}
+}
+
+func replayEventTime(event *cerebrov1.EventEnvelope) (time.Time, bool) {
+	if event == nil || event.GetOccurredAt() == nil {
+		return time.Time{}, false
+	}
+	occurredAt := event.GetOccurredAt().AsTime().UTC()
+	if occurredAt.IsZero() {
+		return time.Time{}, false
+	}
+	return occurredAt, true
+}
+
+func normalizeReplayCandidateLimit(limit uint32) uint32 {
+	if limit == 0 {
+		limit = defaultReplayLimit
+	}
+	candidates := limit * 5
+	if candidates < limit {
+		return maxReplayCandidates
+	}
+	if candidates > maxReplayCandidates {
+		return maxReplayCandidates
+	}
+	return candidates
 }
 
 func eventSubject(prefix string, kind string) (string, error) {

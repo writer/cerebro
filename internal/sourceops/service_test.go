@@ -7,6 +7,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 	githubsource "github.com/writer/cerebro/sources/github"
 	googleworkspacesource "github.com/writer/cerebro/sources/googleworkspace"
 	oktasource "github.com/writer/cerebro/sources/okta"
@@ -78,6 +79,26 @@ func TestCheckDiscoverAndRead(t *testing.T) {
 	}
 	if !readResp.PreviewEvents[0].PayloadDecoded {
 		t.Fatal("Read().PreviewEvents[0].PayloadDecoded = false, want true")
+	}
+}
+
+func TestCheckRejectsInternalRuntimeConfigKeys(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	service := New(registry)
+
+	_, err = service.Check(context.Background(), &cerebrov1.CheckSourceRequest{
+		SourceId: "github",
+		Config: map[string]string{
+			"token":                                "test",
+			sourceconfig.RuntimeTenantIDKey:        "writer",
+			sourceconfig.AWSAssumeRoleAllowlistKey: "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role",
+		},
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Check() error = %v, want ErrInvalidRequest", err)
 	}
 }
 

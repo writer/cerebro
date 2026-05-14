@@ -14,6 +14,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 	githubsource "github.com/writer/cerebro/sources/github"
 	oktasource "github.com/writer/cerebro/sources/okta"
 )
@@ -232,6 +233,30 @@ func (s *tokenSource) Read(_ context.Context, config sourcecdk.Config, _ *cerebr
 		SourceId: "token_source",
 		Kind:     "token.event",
 	}}}, nil
+}
+
+type tenantCheckSource struct {
+	checkedTenant string
+}
+
+func (s *tenantCheckSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "tenant_check"}
+}
+
+func (s *tenantCheckSource) Check(_ context.Context, config sourcecdk.Config) error {
+	s.checkedTenant, _ = config.Lookup(sourceconfig.RuntimeTenantIDKey)
+	if s.checkedTenant != "writer" {
+		return sourcecdk.ErrInvalidConfig
+	}
+	return nil
+}
+
+func (s *tenantCheckSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (s *tenantCheckSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	return sourcecdk.Pull{}, nil
 }
 
 func TestPutAndGetRuntimeRedactsSensitiveConfig(t *testing.T) {
@@ -466,6 +491,76 @@ func TestProgressConfigHashIgnoresAccessKeyIDCredentials(t *testing.T) {
 	}
 }
 
+func TestProgressConfigHashIgnoresInternalRuntimeMetadata(t *testing.T) {
+	base := progressConfigHash(map[string]string{
+		"lookup_key": "inventory",
+	})
+	withInternal := progressConfigHash(map[string]string{
+		"lookup_key":                               "inventory",
+		sourceconfig.RuntimeTenantIDKey:            "writer",
+		sourceconfig.AWSAssumeRoleAllowlistKey:     "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role",
+		sourceconfig.LegacyTenantlessAssumeRoleKey: "true",
+		runtimeProgressConfigHashKey:               "old-hash",
+	})
+	if base != withInternal {
+		t.Fatal("progressConfigHash changed when only internal runtime metadata changed")
+	}
+}
+
+func TestUserConfigStripsInternalAssumeRoleAllowlist(t *testing.T) {
+	config := userConfig(map[string]string{
+		"family":                                   "public_endpoint",
+		runtimeProgressConfigHashKey:               "hash",
+		sourceconfig.AWSAssumeRoleAllowlistKey:     "caller-controlled",
+		sourceconfig.LegacyTenantlessAssumeRoleKey: "true",
+		sourceconfig.RuntimeTenantIDKey:            "writer",
+	})
+	if got := config["family"]; got != "public_endpoint" {
+		t.Fatalf("family = %q, want public_endpoint", got)
+	}
+	if _, ok := config[sourceconfig.AWSAssumeRoleAllowlistKey]; ok {
+		t.Fatal("userConfig preserved internal assume-role allowlist key")
+	}
+	if _, ok := config[runtimeProgressConfigHashKey]; ok {
+		t.Fatal("userConfig preserved progress config hash key")
+	}
+	if _, ok := config[sourceconfig.RuntimeTenantIDKey]; ok {
+		t.Fatal("userConfig preserved internal runtime tenant key")
+	}
+	if _, ok := config[sourceconfig.LegacyTenantlessAssumeRoleKey]; ok {
+		t.Fatal("userConfig preserved internal legacy tenantless role key")
+	}
+}
+
+func TestResolveConfigPreservesTrustedInternalRuntimeConfig(t *testing.T) {
+	service := New(nil, nil, nil, nil).WithConfigResolver(func(_ context.Context, _ string, values map[string]string) (map[string]string, error) {
+		if _, ok := values[sourceconfig.AWSAssumeRoleAllowlistKey]; ok {
+			t.Fatal("resolver input preserved caller-controlled allowlist")
+		}
+		return map[string]string{
+			"family":                               "public_endpoint",
+			runtimeProgressConfigHashKey:           "hash",
+			sourceconfig.AWSAssumeRoleAllowlistKey: "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role",
+		}, nil
+	})
+
+	resolved, err := service.resolveConfig(context.Background(), "aws", "writer", map[string]string{
+		sourceconfig.AWSAssumeRoleAllowlistKey: "caller-controlled",
+	})
+	if err != nil {
+		t.Fatalf("resolveConfig() error = %v", err)
+	}
+	if got := resolved[sourceconfig.AWSAssumeRoleAllowlistKey]; got != "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role" {
+		t.Fatalf("assume-role allowlist = %q, want trusted resolver value", got)
+	}
+	if got := resolved[sourceconfig.RuntimeTenantIDKey]; got != "writer" {
+		t.Fatalf("runtime tenant = %q, want writer", got)
+	}
+	if _, ok := resolved[runtimeProgressConfigHashKey]; ok {
+		t.Fatal("resolveConfig preserved progress hash")
+	}
+}
+
 func TestListRedactsSensitiveConfigAndFilters(t *testing.T) {
 	service := New(nil, &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
 		"writer-token": {Id: "writer-token", SourceId: "github", TenantId: "writer", Config: map[string]string{"token": "env:CEREBRO_TEST_TOKEN", "lookup_key": "prod", "group_key": "eng"}},
@@ -562,6 +657,42 @@ func TestPutPreservesProgressWhenConfigIsUnchanged(t *testing.T) {
 	}
 	if resp.GetRuntime().GetNextCursor().GetOpaque() != "1" {
 		t.Fatalf("Put().Runtime.NextCursor = %#v, want cursor 1", resp.GetRuntime().GetNextCursor())
+	}
+}
+
+func TestPutMergesStoredTenantBeforeValidation(t *testing.T) {
+	source := &tenantCheckSource{}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-tenant-check": {
+				Id:       "writer-tenant-check",
+				SourceId: "tenant_check",
+				TenantId: "writer",
+				Config:   map[string]string{"lookup_key": "inventory"},
+			},
+		},
+	}
+	service := New(registry, store, nil, nil)
+
+	resp, err := service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
+		Runtime: &cerebrov1.SourceRuntime{
+			Id:       "writer-tenant-check",
+			SourceId: "tenant_check",
+			Config:   map[string]string{"lookup_key": "inventory"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if source.checkedTenant != "writer" {
+		t.Fatalf("source checked tenant = %q, want writer", source.checkedTenant)
+	}
+	if resp.GetRuntime().GetTenantId() != "writer" {
+		t.Fatalf("Put().Runtime.TenantId = %q, want writer", resp.GetRuntime().GetTenantId())
 	}
 }
 

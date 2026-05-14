@@ -316,6 +316,133 @@ func TestReadVantaVulnerabilityNormalizesFields(t *testing.T) {
 	if got := attrs["remediate_by_date"]; got != "2026-05-30T00:00:00Z" {
 		t.Fatalf("remediate_by_date = %q, want deadline", got)
 	}
+	if got := attrs["target_id"]; got != "target-1" {
+		t.Fatalf("target_id = %q, want target-1", got)
+	}
+	if got := attrs["integration_id"]; got != "integration-1" {
+		t.Fatalf("integration_id = %q, want integration-1", got)
+	}
+}
+
+func TestReadVantaVulnerableAssetNormalizesFields(t *testing.T) {
+	server := httptest.NewServer(newTestAPIHandler(t))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := testConfig(server.URL, familyVulnerableAsset)
+
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(vulnerable_asset) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Read(vulnerable_asset).Events) = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	if got := pull.Events[0].Kind; got != "grc.vulnerable_asset" {
+		t.Fatalf("event kind = %q, want grc.vulnerable_asset", got)
+	}
+	if got := attrs["target_id"]; got != "target-1" {
+		t.Fatalf("target_id = %q, want target-1", got)
+	}
+	if got := attrs["hostname"]; got != "app.writer.com" {
+		t.Fatalf("hostname = %q, want app.writer.com", got)
+	}
+	if got := attrs["ip"]; got != "203.0.113.10" {
+		t.Fatalf("ip = %q, want 203.0.113.10", got)
+	}
+	if got := attrs["target_url"]; got != "https://app.writer.com" {
+		t.Fatalf("target_url = %q, want https://app.writer.com", got)
+	}
+	if got := attrs["vulnerability_ids"]; got != "CVE-2026-4242" {
+		t.Fatalf("vulnerability_ids = %q, want CVE-2026-4242", got)
+	}
+	if got := attrs["package_identifiers"]; got != "pkg:golang/example/module@1.2.3" {
+		t.Fatalf("package_identifiers = %q, want purl", got)
+	}
+	var refs []map[string]string
+	if err := json.Unmarshal([]byte(attrs["vulnerability_package_refs"]), &refs); err != nil {
+		t.Fatalf("vulnerability_package_refs is invalid JSON: %v", err)
+	}
+	if len(refs) != 1 || refs[0]["vulnerability_id"] != "CVE-2026-4242" || refs[0]["package_identifier"] != "pkg:golang/example/module@1.2.3" {
+		t.Fatalf("vulnerability_package_refs = %#v, want CVE/package tuple", refs)
+	}
+}
+
+func TestJoinedVulnerableAssetReferencesZipsFlatFields(t *testing.T) {
+	raw := joinedVulnerableAssetReferences(map[string]any{
+		"vulnerabilityIds":   []any{"CVE-2026-4242", "CVE-2026-4243"},
+		"packageIdentifiers": []any{"pkg:golang/example/one@1.0.0", "pkg:golang/example/two@2.0.0"},
+	})
+	var refs []map[string]string
+	if err := json.Unmarshal([]byte(raw), &refs); err != nil {
+		t.Fatalf("joinedVulnerableAssetReferences() produced invalid JSON: %v", err)
+	}
+	if len(refs) != 2 {
+		t.Fatalf("len(refs) = %d, want 2", len(refs))
+	}
+	if refs[0]["vulnerability_id"] != "CVE-2026-4242" || refs[0]["package_identifier"] != "pkg:golang/example/one@1.0.0" {
+		t.Fatalf("refs[0] = %#v, want first vulnerability/package pair", refs[0])
+	}
+	if refs[1]["vulnerability_id"] != "CVE-2026-4243" || refs[1]["package_identifier"] != "pkg:golang/example/two@2.0.0" {
+		t.Fatalf("refs[1] = %#v, want second vulnerability/package pair", refs[1])
+	}
+}
+
+func TestJoinedVulnerableAssetReferencesMergesFlatPackages(t *testing.T) {
+	raw := joinedVulnerableAssetReferences(map[string]any{
+		"vulnerabilities":    []any{map[string]any{"id": "CVE-2026-4242"}, map[string]any{"id": "CVE-2026-4243"}},
+		"packageIdentifiers": []any{"pkg:golang/example/one@1.0.0", "pkg:golang/example/two@2.0.0"},
+	})
+	var refs []map[string]string
+	if err := json.Unmarshal([]byte(raw), &refs); err != nil {
+		t.Fatalf("joinedVulnerableAssetReferences() produced invalid JSON: %v", err)
+	}
+	if len(refs) != 2 {
+		t.Fatalf("len(refs) = %d, want 2", len(refs))
+	}
+	if refs[0]["vulnerability_id"] != "CVE-2026-4242" || refs[0]["package_identifier"] != "pkg:golang/example/one@1.0.0" {
+		t.Fatalf("refs[0] = %#v, want merged first pair", refs[0])
+	}
+	if refs[1]["vulnerability_id"] != "CVE-2026-4243" || refs[1]["package_identifier"] != "pkg:golang/example/two@2.0.0" {
+		t.Fatalf("refs[1] = %#v, want merged second pair", refs[1])
+	}
+}
+
+func TestJoinedVulnerableAssetReferencesAppendsTrailingFlatTuples(t *testing.T) {
+	raw := joinedVulnerableAssetReferences(map[string]any{
+		"vulnerabilities":    []any{map[string]any{"id": "CVE-2026-4242"}},
+		"vulnerabilityIds":   []any{"CVE-2026-4242", "CVE-2026-4243"},
+		"packageIdentifiers": []any{"pkg:golang/example/one@1.0.0", "pkg:golang/example/two@2.0.0"},
+	})
+	var refs []map[string]string
+	if err := json.Unmarshal([]byte(raw), &refs); err != nil {
+		t.Fatalf("joinedVulnerableAssetReferences() produced invalid JSON: %v", err)
+	}
+	if len(refs) != 2 {
+		t.Fatalf("len(refs) = %d, want 2", len(refs))
+	}
+	if refs[1]["vulnerability_id"] != "CVE-2026-4243" || refs[1]["package_identifier"] != "pkg:golang/example/two@2.0.0" {
+		t.Fatalf("refs[1] = %#v, want trailing flat pair", refs[1])
+	}
+}
+
+func TestVulnerableAssetRecordIDUsesAssetID(t *testing.T) {
+	first := recordID(familyVulnerableAsset, map[string]any{
+		"assetId":      "asset-1",
+		"lastSeenDate": "2026-05-11T00:00:00Z",
+	}, json.RawMessage(`{"assetId":"asset-1","lastSeenDate":"2026-05-11T00:00:00Z"}`))
+	second := recordID(familyVulnerableAsset, map[string]any{
+		"assetId":      "asset-1",
+		"lastSeenDate": "2026-05-12T00:00:00Z",
+	}, json.RawMessage(`{"assetId":"asset-1","lastSeenDate":"2026-05-12T00:00:00Z"}`))
+	if first != "asset-1" || second != "asset-1" {
+		t.Fatalf("record IDs = %q and %q, want stable asset-1", first, second)
+	}
 }
 
 func TestTokenCacheScopesRuntimeSecretsAndBaseURL(t *testing.T) {
@@ -477,6 +604,50 @@ func TestReadRefreshesTokenAfterUnauthorizedPage(t *testing.T) {
 	}
 }
 
+func TestTokenRequestRetriesRateLimit(t *testing.T) {
+	tokenRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth/token":
+			tokenRequests++
+			if tokenRequests < 3 {
+				http.Error(w, `{"error":"Too Many Requests"}`, http.StatusTooManyRequests)
+				return
+			}
+			writeJSON(t, w, map[string]any{
+				"access_token": "retry-token",
+				"expires_in":   3599,
+				"token_type":   "Bearer",
+			})
+		case "/v1/vendors":
+			if got := r.Header.Get("Authorization"); got != "Bearer retry-token" {
+				t.Fatalf("Authorization = %q, want retry-token", got)
+			}
+			writePage(t, w, false, "", []map[string]any{{"id": "vendor-1", "name": "Acme SaaS"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	source.tokenRetryBackoffs = []time.Duration{0, 0}
+	pull, err := source.Read(context.Background(), testConfig(server.URL, familyVendor), nil)
+	if err != nil {
+		t.Fatalf("Read(vendor) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Read(vendor).Events) = %d, want 1", len(pull.Events))
+	}
+	if tokenRequests != 3 {
+		t.Fatalf("token requests = %d, want 3", tokenRequests)
+	}
+}
+
 func testConfig(baseURL string, family string) sourcecdk.Config {
 	return sourcecdk.NewConfig(map[string]string{
 		"base_url":      baseURL,
@@ -554,9 +725,28 @@ func newTestAPIHandler(t *testing.T) http.Handler {
 				"packageIdentifier": "pkg:golang/example/module@1.2.3",
 				"severity":          "HIGH",
 				"cvssSeverityScore": 8.7,
+				"targetId":          "target-1",
+				"integrationId":     "integration-1",
 				"isFixable":         true,
 				"remediateByDate":   "2026-05-30T00:00:00Z",
 				"lastDetectedDate":  "2026-05-10T00:00:00Z",
+			}})
+		case "/v1/vulnerable-assets":
+			requireBearer(t, r)
+			writePage(t, w, false, "", []map[string]any{{
+				"id":            "target-1",
+				"displayName":   "App Server",
+				"hostname":      "app.writer.com",
+				"ipAddress":     "203.0.113.10",
+				"url":           "https://app.writer.com",
+				"assetType":     "server",
+				"integrationId": "integration-1",
+				"vulnerabilities": []map[string]any{{
+					"id":                "CVE-2026-4242",
+					"name":              "CVE-2026-4242",
+					"packageIdentifier": "pkg:golang/example/module@1.2.3",
+				}},
+				"lastSeenDate": "2026-05-11T00:00:00Z",
 			}})
 		case "/v1/tests":
 			requireBearer(t, r)

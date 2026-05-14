@@ -57,6 +57,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"aws.iam_role_assignment":              awsIAMRoleAssignmentProjections,
 	"aws.iam_role_trust":                   awsIAMRoleTrustProjections,
 	"aws.iam_user":                         awsIAMUserProjections,
+	"aws.public_endpoint":                  awsPublicEndpointProjections,
 	"aws.resource_exposure":                awsResourceExposureProjections,
 	"azure.activity_log":                   azureAuditProjections,
 	"azure.app_role_assignment":            azureAppRoleAssignmentProjections,
@@ -102,6 +103,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"grc.document":                         grcDocumentProjections,
 	"grc.vendor":                           grcVendorProjections,
 	"grc.vulnerability":                    grcVulnerabilityProjections,
+	"grc.vulnerable_asset":                 grcVulnerableAssetProjections,
 	"grc.risk_scenario":                    grcRiskScenarioProjections,
 	"grc.person":                           grcPersonProjections,
 	"grc.user":                             grcUserProjections,
@@ -118,6 +120,11 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"sentinelone.site":                     sentinelOneSiteProjections,
 	"sentinelone.threat":                   sentinelOneThreatProjections,
 	"sentinelone.vulnerability":            sentinelOneVulnerabilityProjections,
+	"vulnview.asset":                       vulnViewAssetProjections,
+	"vulnview.dns_alert":                   vulnViewDNSAlertProjections,
+	"vulnview.scan":                        vulnViewScanProjections,
+	"vulnview.site":                        vulnViewSiteProjections,
+	"vulnview.vulnerability":               vulnViewVulnerabilityProjections,
 }}
 
 // BuiltinRegistry returns the default source event projector registry.

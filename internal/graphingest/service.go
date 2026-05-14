@@ -17,14 +17,16 @@ import (
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
 )
 
 const (
-	DefaultPageLimit   = 1
-	MaxPageLimit       = 100
-	DefaultStatusLimit = 25
-	MaxStatusLimit     = 500
+	DefaultPageLimit         = 1
+	MaxPageLimit             = 100
+	DefaultStatusLimit       = 25
+	MaxStatusLimit           = 500
+	terminalRunUpdateTimeout = 15 * time.Second
 )
 
 var (
@@ -116,7 +118,7 @@ type HealthResult struct {
 
 func New(registry *sourcecdk.Registry, runtimeStore ports.SourceRuntimeStore, projector ports.SourceProjector, graphStore ports.GraphStore) *Service {
 	return &Service{
-		sourceService: sourceops.New(registry),
+		sourceService: sourceops.New(registry).WithInternalConfigAllowed(),
 		runtimeStore:  runtimeStore,
 		projector:     projector,
 		graphStore:    graphStore,
@@ -193,7 +195,7 @@ func (s *Service) RunRuntime(ctx context.Context, request RuntimeRequest) (*RunR
 	}
 	completed := finishRun(run, ingest, graphstore.IngestRunStatusCompleted, nil)
 	result.Run = completed
-	if err := runStore.PutIngestRun(ctx, completed); err != nil {
+	if err := s.putTerminalIngestRun(ctx, runStore, completed); err != nil {
 		return result, err
 	}
 	return result, nil
@@ -251,23 +253,16 @@ func (s *Service) Health(ctx context.Context, limit uint32) (*HealthResult, erro
 	if err != nil {
 		return nil, err
 	}
-	allFailed, err := runStore.ListIngestRuns(ctx, graphstore.IngestRunFilter{
-		Status: graphstore.IngestRunStatusFailed,
-		Limit:  MaxStatusLimit,
-	})
+	recentRuns, err := runStore.ListIngestRuns(ctx, graphstore.IngestRunFilter{Limit: MaxStatusLimit})
 	if err != nil {
 		return nil, err
 	}
-	failed := allFailed
+	currentRuns := latestRunsByRuntime(recentRuns)
+	failed := filterRunsByStatus(currentRuns, graphstore.IngestRunStatusFailed)
+	running := filterRunsByStatus(currentRuns, graphstore.IngestRunStatusRunning)
+	allFailed := failed
 	if normalizedLimit > 0 && len(failed) > normalizedLimit {
 		failed = failed[:normalizedLimit]
-	}
-	running, err := runStore.ListIngestRuns(ctx, graphstore.IngestRunFilter{
-		Status: graphstore.IngestRunStatusRunning,
-		Limit:  MaxStatusLimit,
-	})
-	if err != nil {
-		return nil, err
 	}
 	status := "ready"
 	if len(allFailed) != 0 {
@@ -280,6 +275,58 @@ func (s *Service) Health(ctx context.Context, limit uint32) (*HealthResult, erro
 		RunningCount: uint32(len(running)),
 		FailedRuns:   failed,
 	}, nil
+}
+
+func latestRunsByRuntime(runs []graphstore.IngestRun) []graphstore.IngestRun {
+	latestByRuntime := map[string]graphstore.IngestRun{}
+	for _, run := range runs {
+		key := strings.TrimSpace(run.RuntimeID)
+		if key == "" {
+			key = strings.TrimSpace(run.ID)
+		}
+		if key == "" {
+			continue
+		}
+		if current, ok := latestByRuntime[key]; !ok || ingestRunStartedAfter(run, current) {
+			latestByRuntime[key] = run
+		}
+	}
+	latest := make([]graphstore.IngestRun, 0, len(latestByRuntime))
+	for _, run := range latestByRuntime {
+		latest = append(latest, run)
+	}
+	sort.SliceStable(latest, func(i, j int) bool {
+		if latest[i].StartedAt == latest[j].StartedAt {
+			return latest[i].ID > latest[j].ID
+		}
+		return ingestRunStartedAfter(latest[i], latest[j])
+	})
+	return latest
+}
+
+func ingestRunStartedAfter(left graphstore.IngestRun, right graphstore.IngestRun) bool {
+	leftStarted, leftErr := time.Parse(time.RFC3339Nano, strings.TrimSpace(left.StartedAt))
+	rightStarted, rightErr := time.Parse(time.RFC3339Nano, strings.TrimSpace(right.StartedAt))
+	if leftErr == nil && rightErr == nil && !leftStarted.Equal(rightStarted) {
+		return leftStarted.After(rightStarted)
+	}
+	if leftErr == nil && rightErr != nil {
+		return true
+	}
+	if leftErr != nil && rightErr == nil {
+		return false
+	}
+	return left.ID > right.ID
+}
+
+func filterRunsByStatus(runs []graphstore.IngestRun, status string) []graphstore.IngestRun {
+	filtered := make([]graphstore.IngestRun, 0, len(runs))
+	for _, run := range runs {
+		if run.Status == status {
+			filtered = append(filtered, run)
+		}
+	}
+	return filtered
 }
 
 func (s *Service) runStore() (RunStore, error) {
@@ -297,11 +344,18 @@ func (s *Service) failRun(ctx context.Context, runStore RunStore, run graphstore
 	failed := finishRun(run, ingest, graphstore.IngestRunStatusFailed, runErr)
 	result.Run = failed
 	log.Printf("graph ingest runtime failed run_id=%q runtime_id=%q error=%v", failed.ID, failed.RuntimeID, runErr)
-	return result, errors.Join(runErr, runStore.PutIngestRun(ctx, failed))
+	return result, errors.Join(runErr, s.putTerminalIngestRun(ctx, runStore, failed))
+}
+
+func (s *Service) putTerminalIngestRun(ctx context.Context, runStore RunStore, run graphstore.IngestRun) error {
+	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), terminalRunUpdateTimeout)
+	defer cancel()
+	return runStore.PutIngestRun(persistCtx, run)
 }
 
 func (s *Service) preparedConfig(ctx context.Context, runtime *cerebrov1.SourceRuntime) (map[string]string, error) {
-	config := cloneConfig(runtime.GetConfig())
+	config := sourceconfig.WithRuntimeTenant(runtime.GetConfig(), runtime.GetTenantId())
+	config = sourceconfig.WithLegacyTenantlessAssumeRole(config, runtime.GetSourceId(), runtime.GetTenantId())
 	if s.prepareConfig == nil {
 		return config, nil
 	}
@@ -780,7 +834,7 @@ func finishRun(run graphstore.IngestRun, result *IngestResult, status string, ru
 func configHash(config map[string]string) string {
 	keys := make([]string, 0, len(config))
 	for key := range config {
-		if !sensitiveConfigKey(key) {
+		if !sourceconfig.InternalKey(key) && !sensitiveConfigKey(key) {
 			keys = append(keys, key)
 		}
 	}
@@ -865,12 +919,4 @@ func validRunStatus(status string) bool {
 	default:
 		return false
 	}
-}
-
-func cloneConfig(config map[string]string) map[string]string {
-	cloned := make(map[string]string, len(config))
-	for key, value := range config {
-		cloned[key] = value
-	}
-	return cloned
 }
