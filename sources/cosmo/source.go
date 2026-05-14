@@ -32,10 +32,15 @@ const (
 	httpTimeout     = 30 * time.Second
 	maxBodyBytes    = 8 << 20
 
-	familyFact           = "fact"
-	familyMessage        = "message"
-	familySession        = "session"
-	familySurveyFeedback = "survey_feedback"
+	familyFact                         = "fact"
+	familyMessage                      = "message"
+	familySession                      = "session"
+	familySurveyFeedback               = "survey_feedback"
+	messageExportCursorSource          = "cosmo.message"
+	defaultMessageExportEventTypes     = "message,completion"
+	defaultMessageExportMaxWindowHours = 24
+	messageExportMaxWindowHours        = 24
+	messageExportMaxPageSize           = 100
 )
 
 // Source reads Cosmo memory and feedback data.
@@ -59,7 +64,27 @@ type settings struct {
 	category      string
 	ticketID      string
 	eventType     string
+	clientID      string
+	exportSecret  string
+	eventTypes    []string
+	maxWindow     time.Duration
 	perPage       int
+}
+
+type messageCursor struct {
+	Source              string `json:"source"`
+	ResumableCheckpoint bool   `json:"resumable_checkpoint,omitempty"`
+	Since               string `json:"since"`
+	Until               string `json:"until,omitempty"`
+	EventTypeIndex      int    `json:"event_type_index,omitempty"`
+	Offset              int    `json:"offset,omitempty"`
+}
+
+type messageWindow struct {
+	since          time.Time
+	until          time.Time
+	eventTypeIndex int
+	offset         int
 }
 
 type record struct {
@@ -186,29 +211,48 @@ func (s *Source) messageFamily() sourcecdk.Family[settings] {
 	return sourcecdk.Family[settings]{
 		Name: familyMessage,
 		Check: func(ctx context.Context, settings settings) error {
-			_, _, err := s.listMessages(ctx, settings, 0, 1)
+			window, ok, err := readMessageCursor(settings, nil, time.Now())
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return nil
+			}
+			_, err = s.listMessages(ctx, settings, window, 1)
 			if err != nil {
 				return fmt.Errorf("cosmo message: %w", err)
 			}
 			return nil
 		},
 		Discover: func(ctx context.Context, settings settings) ([]sourcecdk.URN, error) {
-			records, _, err := s.listMessages(ctx, settings, 0, settings.perPage)
+			window, ok, err := readMessageCursor(settings, nil, time.Now())
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				return nil, nil
+			}
+			records, err := s.listMessages(ctx, settings, window, settings.perPage)
 			if err != nil {
 				return nil, fmt.Errorf("cosmo message: %w", err)
 			}
 			return urnsFor(settings, familyMessage, records)
 		},
 		Read: func(ctx context.Context, settings settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-			offset, err := readOffset(cursor)
+			window, ok, err := readMessageCursor(settings, cursor, time.Now())
 			if err != nil {
 				return sourcecdk.Pull{}, err
 			}
-			records, next, err := s.listMessages(ctx, settings, offset, settings.perPage)
+			if !ok {
+				checkpoint := messageCheckpointCursor(window.since)
+				return messagePullFromRecords(settings, nil, "", checkpoint, window.since)
+			}
+			records, err := s.listMessages(ctx, settings, window, settings.perPage)
 			if err != nil {
 				return sourcecdk.Pull{}, fmt.Errorf("cosmo message: %w", err)
 			}
-			return pullFromRecords(settings, familyMessage, records, next)
+			next, checkpoint := nextMessageCursor(settings, window, len(records), settings.perPage)
+			return messagePullFromRecords(settings, records, next, checkpoint, window.until)
 		},
 	}
 }
@@ -263,6 +307,8 @@ func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 		category:      configValue(cfg, "category"),
 		ticketID:      configValue(cfg, "ticket_id"),
 		eventType:     configValue(cfg, "event_type"),
+		clientID:      configValue(cfg, "client_id"),
+		exportSecret:  configValue(cfg, "export_secret"),
 		perPage:       defaultPageSize,
 	}
 	if settings.tenantID == "" {
@@ -322,8 +368,73 @@ func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 		if settings.query != "" || settings.user != "" || settings.status != "" || settings.category != "" {
 			return settings, fmt.Errorf("cosmo q, user, status, and category are not supported when family=%q", familyMessage)
 		}
+		if settings.ticketID != "" {
+			return settings, fmt.Errorf("cosmo ticket_id is not supported when family=%q", familyMessage)
+		}
+		if settings.clientID == "" {
+			return settings, fmt.Errorf("cosmo client_id is required when family=%q", familyMessage)
+		}
+		if settings.exportSecret == "" {
+			return settings, fmt.Errorf("cosmo export_secret is required when family=%q", familyMessage)
+		}
+		if settings.perPage > messageExportMaxPageSize {
+			return settings, fmt.Errorf("cosmo per_page must be between 1 and %d when family=%q", messageExportMaxPageSize, familyMessage)
+		}
+		eventTypes, err := parseMessageEventTypes(configValue(cfg, "event_types"), settings.eventType)
+		if err != nil {
+			return settings, err
+		}
+		settings.eventTypes = eventTypes
+		maxWindow, err := parseMessageMaxWindow(configValue(cfg, "max_window_hours"))
+		if err != nil {
+			return settings, err
+		}
+		settings.maxWindow = maxWindow
 	}
 	return settings, nil
+}
+
+func parseMessageEventTypes(raw string, fallback string) ([]string, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		value = strings.TrimSpace(fallback)
+	}
+	if value == "" {
+		value = defaultMessageExportEventTypes
+	}
+	seen := map[string]struct{}{}
+	parts := strings.Split(value, ",")
+	eventTypes := make([]string, 0, len(parts))
+	for _, part := range parts {
+		eventType := strings.TrimSpace(part)
+		if eventType == "" {
+			continue
+		}
+		if _, ok := seen[eventType]; ok {
+			continue
+		}
+		seen[eventType] = struct{}{}
+		eventTypes = append(eventTypes, eventType)
+	}
+	if len(eventTypes) == 0 {
+		return nil, fmt.Errorf("cosmo event_types must include at least one value when family=%q", familyMessage)
+	}
+	return eventTypes, nil
+}
+
+func parseMessageMaxWindow(raw string) (time.Duration, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		value = strconv.Itoa(defaultMessageExportMaxWindowHours)
+	}
+	hours, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("parse cosmo max_window_hours: %w", err)
+	}
+	if hours < 1 || hours > messageExportMaxWindowHours {
+		return 0, fmt.Errorf("cosmo max_window_hours must be between 1 and %d when family=%q", messageExportMaxWindowHours, familyMessage)
+	}
+	return time.Duration(hours) * time.Hour, nil
 }
 
 func normalizeBaseURL(raw string, allowLoopback bool) (string, error) {
@@ -379,26 +490,23 @@ func (s *Source) listMemory(ctx context.Context, settings settings, path string,
 	return records, next, nil
 }
 
-func (s *Source) listMessages(ctx context.Context, settings settings, offset int, limit int) ([]record, string, error) {
+func (s *Source) listMessages(ctx context.Context, settings settings, window messageWindow, limit int) ([]record, error) {
 	query := url.Values{}
 	query.Set("limit", strconv.Itoa(limit))
-	query.Set("offset", strconv.Itoa(offset))
-	addQuery(query, "ticket_id", settings.ticketID)
-	addQuery(query, "event_type", settings.eventType)
+	query.Set("offset", strconv.Itoa(window.offset))
+	query.Set("event_type", settings.eventTypes[window.eventTypeIndex])
+	query.Set("since", window.since.Format(time.RFC3339Nano))
+	query.Set("until", window.until.Format(time.RFC3339Nano))
 
 	var response listResponse
 	if err := s.getJSON(ctx, settings, http.MethodGet, "/api/ui/memory/messages", query, nil, &response); err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	records, err := responseRecords(response, "messages", familyMessage)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
-	next := ""
-	if len(records) == limit {
-		next = strconv.Itoa(offset + limit)
-	}
-	return records, next, nil
+	return records, nil
 }
 
 func (s *Source) listSurveyFeedback(ctx context.Context, settings settings) ([]record, error) {
@@ -436,6 +544,10 @@ func (s *Source) getJSON(ctx context.Context, settings settings, method string, 
 		req.Header.Set("X-Webhook-Secret", settings.webhookSecret)
 	} else {
 		req.Header.Set("Authorization", "Bearer "+settings.token)
+	}
+	if settings.family == familyMessage {
+		req.Header.Set("X-Cosmo-Client", settings.clientID)
+		req.Header.Set("X-Cerebro-Export-Secret", settings.exportSecret)
 	}
 
 	client := s.client
@@ -670,6 +782,126 @@ func readOffset(cursor *cerebrov1.SourceCursor) (int, error) {
 		return 0, fmt.Errorf("cosmo cursor must be non-negative")
 	}
 	return offset, nil
+}
+
+func readMessageCursor(settings settings, cursor *cerebrov1.SourceCursor, now time.Time) (messageWindow, bool, error) {
+	now = now.UTC()
+	if cursor == nil || strings.TrimSpace(cursor.Opaque) == "" {
+		since := now.Add(-settings.maxWindow)
+		return messageWindow{since: since, until: now}, true, nil
+	}
+	var payload messageCursor
+	if err := json.Unmarshal([]byte(strings.TrimSpace(cursor.Opaque)), &payload); err != nil {
+		return messageWindow{}, false, fmt.Errorf("parse cosmo message cursor: %w", err)
+	}
+	if payload.Source != messageExportCursorSource {
+		return messageWindow{}, false, fmt.Errorf("cosmo message cursor source = %q, want %q", payload.Source, messageExportCursorSource)
+	}
+	if payload.EventTypeIndex < 0 || payload.EventTypeIndex >= len(settings.eventTypes) {
+		return messageWindow{}, false, fmt.Errorf("cosmo message cursor event_type_index is out of range")
+	}
+	if payload.Offset < 0 {
+		return messageWindow{}, false, fmt.Errorf("cosmo message cursor offset must be non-negative")
+	}
+	since, ok := parseMessageCursorTime(payload.Since)
+	if !ok {
+		return messageWindow{}, false, fmt.Errorf("cosmo message cursor since must be an ISO timestamp")
+	}
+	eventTypeIndex := payload.EventTypeIndex
+	offset := payload.Offset
+	var until time.Time
+	if strings.TrimSpace(payload.Until) == "" {
+		until = minTime(since.Add(settings.maxWindow), now)
+		eventTypeIndex = 0
+		offset = 0
+	} else {
+		var parsed bool
+		until, parsed = parseMessageCursorTime(payload.Until)
+		if !parsed {
+			return messageWindow{}, false, fmt.Errorf("cosmo message cursor until must be an ISO timestamp")
+		}
+		if until.Sub(since) > settings.maxWindow {
+			return messageWindow{}, false, fmt.Errorf("cosmo message cursor window exceeds max_window_hours")
+		}
+	}
+	window := messageWindow{since: since, until: until, eventTypeIndex: eventTypeIndex, offset: offset}
+	if !until.After(since) {
+		return window, false, nil
+	}
+	return window, true, nil
+}
+
+func parseMessageCursorTime(value string) (time.Time, bool) {
+	parsed, ok := parseTime(value)
+	if !ok {
+		return time.Time{}, false
+	}
+	return parsed.UTC(), true
+}
+
+func nextMessageCursor(settings settings, window messageWindow, records int, limit int) (string, string) {
+	if records == limit {
+		next := encodeMessageCursor(window.since, window.until, window.eventTypeIndex, window.offset+limit)
+		return next, next
+	}
+	if window.eventTypeIndex+1 < len(settings.eventTypes) {
+		next := encodeMessageCursor(window.since, window.until, window.eventTypeIndex+1, 0)
+		return next, next
+	}
+	checkpoint := messageCheckpointCursor(window.until)
+	return "", checkpoint
+}
+
+func messageCheckpointCursor(since time.Time) string {
+	return encodeMessageCursor(since, time.Time{}, 0, 0)
+}
+
+func encodeMessageCursor(since time.Time, until time.Time, eventTypeIndex int, offset int) string {
+	payload := messageCursor{
+		Source:              messageExportCursorSource,
+		ResumableCheckpoint: true,
+		Since:               since.UTC().Format(time.RFC3339Nano),
+		EventTypeIndex:      eventTypeIndex,
+		Offset:              offset,
+	}
+	if !until.IsZero() {
+		payload.Until = until.UTC().Format(time.RFC3339Nano)
+	}
+	encoded, _ := json.Marshal(payload)
+	return string(encoded)
+}
+
+func messagePullFromRecords(settings settings, records []record, next string, checkpoint string, watermark time.Time) (sourcecdk.Pull, error) {
+	pull := sourcecdk.Pull{
+		Checkpoint: &cerebrov1.SourceCheckpoint{
+			Watermark:    timestamppb.New(watermark.UTC()),
+			CursorOpaque: strings.TrimSpace(checkpointCursor(next, checkpoint)),
+		},
+	}
+	if strings.TrimSpace(next) != "" {
+		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: strings.TrimSpace(next)}
+	}
+	if len(records) == 0 {
+		return pull, nil
+	}
+	events := make([]*primitives.Event, 0, len(records))
+	for _, record := range records {
+		event, err := eventFromRecord(settings, familyMessage, record)
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		events = append(events, event)
+	}
+	pull.Events = events
+	pull.Checkpoint.Watermark = events[len(events)-1].OccurredAt
+	return pull, nil
+}
+
+func minTime(left time.Time, right time.Time) time.Time {
+	if left.Before(right) {
+		return left
+	}
+	return right
 }
 
 func httpClientNoRedirect(client *http.Client, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) *http.Client {
