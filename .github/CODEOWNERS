@@ -1,0 +1,15 @@
+# Cerebro: Security System of Record
+# Default: anyone on @WriterInternal/security can review
+
+* @WriterInternal/security @jonathanhaaswriter
+
+# Pulumi stack configs (image tags, runtime schedules) -- review by security platform
+/infra/aws/Pulumi.*.yaml         @WriterInternal/security @jonathanhaaswriter
+/infra/gcp/Pulumi.*.yaml         @WriterInternal/security @jonathanhaaswriter
+
+# CI/CD workflows
+/.github/workflows/              @WriterInternal/security @jonathanhaaswriter
+/.github/CODEOWNERS              @WriterInternal/security @jonathanhaaswriter
+
+# Source onboarding runbook -- doc owner same as platform
+/docs/                           @WriterInternal/security @jonathanhaaswriter
