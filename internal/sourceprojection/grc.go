@@ -1,6 +1,7 @@
 package sourceprojection
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -138,6 +139,45 @@ func grcAttributeList(value string) []string {
 	return values
 }
 
+func grcAttributeSequence(value string) []string {
+	fields := strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\t'
+	})
+	result := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if trimmed := strings.TrimSpace(field); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
+func stringAt(values []string, index int) string {
+	if index < 0 || index >= len(values) {
+		return ""
+	}
+	return values[index]
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func maxInt(values ...int) int {
+	max := 0
+	for _, value := range values {
+		if value > max {
+			max = value
+		}
+	}
+	return max
+}
+
 func grcDocumentProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
@@ -262,6 +302,226 @@ func grcVulnerabilityProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 	return projectedEntities, projectedLinks, nil
 }
 
+func grcVulnerableAssetProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attrs := event.GetAttributes()
+	provider := grcProvider(attrs)
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+
+	targetID := firstAttribute(attrs, "target_id", "asset_id", "resource_id", "endpoint_id", "external_id")
+	targetURN := grcTargetURN(tenantID, provider, targetID)
+	if targetURN == "" {
+		return nil, nil, nil
+	}
+	addEntity(entities, grcTargetEntity(tenantID, event.GetSourceId(), targetURN, targetID, attrs, provider))
+	addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, targetURN, relationRepresents, grcTargetHost(attrs), "grc_vulnerable_asset_host", "0.95")
+	addInternetIPLink(entities, links, tenantID, event.GetSourceId(), event, targetURN, firstAttribute(attrs, "ip", "ip_address", "public_ip"), "grc_vulnerable_asset_ip", "0.95")
+
+	integrationID := firstAttribute(attrs, "integration_id")
+	if integrationURN := grcIntegrationURN(tenantID, provider, integrationID); integrationURN != "" {
+		addEntity(entities, grcIntegrationReferenceEntity(tenantID, event.GetSourceId(), integrationURN, integrationID, provider))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), targetURN, integrationURN, relationBelongsTo, grcIntegrationLinkAttributes(event, integrationID)))
+	}
+
+	referenceAttrsList := grcVulnerableAssetReferenceAttrs(attrs)
+	if len(referenceAttrsList) > 0 {
+		for _, referenceAttrs := range referenceAttrsList {
+			vulnerabilityURN := addCanonicalVulnerabilityEntity(entities, tenantID, event.GetSourceId(), referenceAttrs)
+			if vulnerabilityURN != "" {
+				addLink(links, projectedLink(tenantID, event.GetSourceId(), targetURN, vulnerabilityURN, relationAffectedBy, vulnerabilityEvidenceAttributes(event, referenceAttrs)))
+			}
+			for _, packageAttrs := range grcVulnerableAssetPackageAttrs(referenceAttrs) {
+				packageURN := vulnerabilityPackageURN(tenantID, packageAttrs, "grc")
+				canonicalPackageURN := addCanonicalPackageEntity(entities, tenantID, event.GetSourceId(), packageAttrs, "grc")
+				if packageURN != "" {
+					addVulnerablePackageEntity(entities, tenantID, event.GetSourceId(), packageURN, packageAttrs, "grc")
+					addLink(links, projectedLink(tenantID, event.GetSourceId(), targetURN, packageURN, relationContains, grcPackageTargetAttributes(event, packageAttrs)))
+					if vulnerabilityURN != "" {
+						addLink(links, projectedLink(tenantID, event.GetSourceId(), packageURN, vulnerabilityURN, relationAffectedBy, vulnerabilityEvidenceAttributes(event, packageAttrs)))
+					}
+				}
+				if packageURN != "" && canonicalPackageURN != "" {
+					addLink(links, projectedLink(tenantID, event.GetSourceId(), packageURN, canonicalPackageURN, relationRepresents, packageIdentityAttributes(event, packageAttrs, "grc")))
+				}
+				if canonicalPackageURN != "" && vulnerabilityURN != "" {
+					addLink(links, projectedLink(tenantID, event.GetSourceId(), canonicalPackageURN, vulnerabilityURN, relationAffectedBy, vulnerabilityEvidenceAttributes(event, packageAttrs)))
+				}
+			}
+		}
+		projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+		return projectedEntities, projectedLinks, nil
+	}
+
+	for _, vulnerabilityAttrs := range grcVulnerableAssetVulnerabilityAttrs(attrs) {
+		vulnerabilityURN := addCanonicalVulnerabilityEntity(entities, tenantID, event.GetSourceId(), vulnerabilityAttrs)
+		if vulnerabilityURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), targetURN, vulnerabilityURN, relationAffectedBy, vulnerabilityEvidenceAttributes(event, vulnerabilityAttrs)))
+		}
+	}
+	for _, packageAttrs := range grcVulnerableAssetPackageAttrs(attrs) {
+		packageURN := vulnerabilityPackageURN(tenantID, packageAttrs, "grc")
+		canonicalPackageURN := addCanonicalPackageEntity(entities, tenantID, event.GetSourceId(), packageAttrs, "grc")
+		if packageURN != "" {
+			addVulnerablePackageEntity(entities, tenantID, event.GetSourceId(), packageURN, packageAttrs, "grc")
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), targetURN, packageURN, relationContains, grcPackageTargetAttributes(event, packageAttrs)))
+		}
+		if packageURN != "" && canonicalPackageURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), packageURN, canonicalPackageURN, relationRepresents, packageIdentityAttributes(event, packageAttrs, "grc")))
+		}
+	}
+
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
+func grcVulnerableAssetReferenceAttrs(attrs map[string]string) []map[string]string {
+	rawReferences := strings.TrimSpace(attrs["vulnerability_package_refs"])
+	if rawReferences == "" {
+		return grcVulnerableAssetFlatReferenceAttrs(attrs)
+	}
+	var references []struct {
+		VulnerabilityID   string `json:"vulnerability_id"`
+		VulnerabilityName string `json:"vulnerability_name"`
+		PackageIdentifier string `json:"package_identifier"`
+	}
+	if err := json.Unmarshal([]byte(rawReferences), &references); err != nil {
+		return grcVulnerableAssetFlatReferenceAttrs(attrs)
+	}
+	vulnerabilityIDs := grcAttributeSequence(attrs["vulnerability_ids"])
+	vulnerabilityNames := grcAttributeSequence(attrs["vulnerability_names"])
+	packageIdentifiers := grcAttributeSequence(attrs["package_identifiers"])
+	result := make([]map[string]string, 0, len(references))
+	for i, reference := range references {
+		referenceAttrs := grcVulnerableAssetCleanReferenceAttrs(attrs)
+		if vulnerabilityID := firstNonEmptyString(reference.VulnerabilityID, stringAt(vulnerabilityIDs, i)); vulnerabilityID != "" {
+			referenceAttrs["vulnerability_id"] = vulnerabilityID
+		}
+		if vulnerabilityName := firstNonEmptyString(reference.VulnerabilityName, stringAt(vulnerabilityNames, i)); vulnerabilityName != "" {
+			referenceAttrs["name"] = vulnerabilityName
+		}
+		if packageIdentifier := firstNonEmptyString(reference.PackageIdentifier, stringAt(packageIdentifiers, i)); packageIdentifier != "" {
+			referenceAttrs["package"] = packageIdentifier
+			referenceAttrs["package_purl"] = packageIdentifier
+		}
+		result = append(result, referenceAttrs)
+	}
+	for i := len(references); i < maxInt(len(vulnerabilityIDs), len(vulnerabilityNames), len(packageIdentifiers)); i++ {
+		referenceAttrs := grcVulnerableAssetCleanReferenceAttrs(attrs)
+		if vulnerabilityID := stringAt(vulnerabilityIDs, i); vulnerabilityID != "" {
+			referenceAttrs["vulnerability_id"] = vulnerabilityID
+		}
+		if vulnerabilityName := stringAt(vulnerabilityNames, i); vulnerabilityName != "" {
+			referenceAttrs["name"] = vulnerabilityName
+		}
+		if packageIdentifier := stringAt(packageIdentifiers, i); packageIdentifier != "" {
+			referenceAttrs["package"] = packageIdentifier
+			referenceAttrs["package_purl"] = packageIdentifier
+		}
+		result = append(result, referenceAttrs)
+	}
+	if len(result) == 0 {
+		return grcVulnerableAssetFlatReferenceAttrs(attrs)
+	}
+	return result
+}
+
+func grcVulnerableAssetFlatReferenceAttrs(attrs map[string]string) []map[string]string {
+	vulnerabilityIDs := grcAttributeSequence(attrs["vulnerability_ids"])
+	vulnerabilityNames := grcAttributeSequence(attrs["vulnerability_names"])
+	packageIdentifiers := grcAttributeSequence(attrs["package_identifiers"])
+	if (len(vulnerabilityIDs) == 0 && len(vulnerabilityNames) == 0) || len(packageIdentifiers) == 0 {
+		return nil
+	}
+	total := maxInt(len(vulnerabilityIDs), len(vulnerabilityNames), len(packageIdentifiers))
+	result := make([]map[string]string, 0, total)
+	for i := 0; i < total; i++ {
+		referenceAttrs := grcVulnerableAssetCleanReferenceAttrs(attrs)
+		if vulnerabilityID := stringAt(vulnerabilityIDs, i); vulnerabilityID != "" {
+			referenceAttrs["vulnerability_id"] = vulnerabilityID
+		}
+		if vulnerabilityName := stringAt(vulnerabilityNames, i); vulnerabilityName != "" {
+			referenceAttrs["name"] = vulnerabilityName
+		}
+		if packageIdentifier := stringAt(packageIdentifiers, i); packageIdentifier != "" {
+			referenceAttrs["package"] = packageIdentifier
+			referenceAttrs["package_purl"] = packageIdentifier
+		}
+		result = append(result, referenceAttrs)
+	}
+	return result
+}
+
+func grcVulnerableAssetCleanReferenceAttrs(attrs map[string]string) map[string]string {
+	referenceAttrs := grcProjectionAttrsWith(attrs)
+	for _, key := range []string{
+		"cve_id",
+		"ghsa_id",
+		"identifier",
+		"name",
+		"package",
+		"package_identifiers",
+		"package_purl",
+		"title",
+		"vulnerability_id",
+		"vulnerability_ids",
+		"vulnerability_names",
+		"vulnerability_package_refs",
+	} {
+		delete(referenceAttrs, key)
+	}
+	return referenceAttrs
+}
+
+func grcVulnerableAssetVulnerabilityAttrs(attrs map[string]string) []map[string]string {
+	vulnerabilityIDs := grcAttributeSequence(attrs["vulnerability_ids"])
+	vulnerabilityNames := grcAttributeSequence(attrs["vulnerability_names"])
+	if len(vulnerabilityIDs) == 0 && len(vulnerabilityNames) == 0 && canonicalVulnerabilityIdentifier(attrs) != "" {
+		return []map[string]string{attrs}
+	}
+	total := maxInt(len(vulnerabilityIDs), len(vulnerabilityNames))
+	result := make([]map[string]string, 0, total)
+	for i := 0; i < total; i++ {
+		referenceAttrs := grcVulnerableAssetCleanReferenceAttrs(attrs)
+		if vulnerabilityID := stringAt(vulnerabilityIDs, i); vulnerabilityID != "" {
+			referenceAttrs["vulnerability_id"] = vulnerabilityID
+		}
+		if vulnerabilityName := stringAt(vulnerabilityNames, i); vulnerabilityName != "" {
+			referenceAttrs["name"] = vulnerabilityName
+		}
+		if canonicalVulnerabilityIdentifier(referenceAttrs) != "" {
+			result = append(result, referenceAttrs)
+		}
+	}
+	return result
+}
+
+func grcVulnerableAssetPackageAttrs(attrs map[string]string) []map[string]string {
+	packages := grcAttributeList(strings.Join([]string{attrs["package_identifiers"], attrs["package"], attrs["package_purl"]}, ","))
+	if len(packages) == 0 && vulnerablePackageName(attrs) != "" {
+		return []map[string]string{attrs}
+	}
+	result := make([]map[string]string, 0, len(packages))
+	for _, pkg := range packages {
+		result = append(result, grcProjectionAttrsWith(attrs, "package", pkg, "package_purl", pkg))
+	}
+	return result
+}
+
+func grcProjectionAttrsWith(attrs map[string]string, pairs ...string) map[string]string {
+	copy := make(map[string]string, len(attrs)+len(pairs)/2)
+	for key, value := range attrs {
+		copy[key] = value
+	}
+	for i := 0; i+1 < len(pairs); i += 2 {
+		copy[pairs[i]] = pairs[i+1]
+	}
+	return copy
+}
+
 func grcTargetURN(tenantID string, provider string, targetID string) string {
 	if strings.TrimSpace(targetID) == "" {
 		return ""
@@ -287,7 +547,7 @@ func grcTargetEntity(tenantID string, sourceID string, urn string, targetID stri
 }
 
 func grcTargetHost(attrs map[string]string) string {
-	if host := internetHost(firstAttribute(attrs, "hostname", "host", "target_url", "resource_url", "url", "website_url")); host != "" {
+	if host := internetHost(firstAttribute(attrs, "hostname", "host", "target_url", "resource_url", "external_url", "url", "website_url")); host != "" {
 		return host
 	}
 	return internetHostIfLikely(firstAttribute(attrs, "target_id", "resource_id", "asset_id", "endpoint_id"))
