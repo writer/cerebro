@@ -1091,6 +1091,8 @@ func recordIDKeys(family string) []string {
 		return []string{"id", "userId", "emailAddress"}
 	case familyUser:
 		return []string{"id", "email"}
+	case familyVulnerableAsset:
+		return []string{"id", "assetId", "targetId", "externalId", "name"}
 	default:
 		return []string{"id", "externalId", "name"}
 	}

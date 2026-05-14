@@ -428,6 +428,20 @@ func TestJoinedVulnerableAssetReferencesAppendsTrailingFlatTuples(t *testing.T) 
 	}
 }
 
+func TestVulnerableAssetRecordIDUsesAssetID(t *testing.T) {
+	first := recordID(familyVulnerableAsset, map[string]any{
+		"assetId":      "asset-1",
+		"lastSeenDate": "2026-05-11T00:00:00Z",
+	}, json.RawMessage(`{"assetId":"asset-1","lastSeenDate":"2026-05-11T00:00:00Z"}`))
+	second := recordID(familyVulnerableAsset, map[string]any{
+		"assetId":      "asset-1",
+		"lastSeenDate": "2026-05-12T00:00:00Z",
+	}, json.RawMessage(`{"assetId":"asset-1","lastSeenDate":"2026-05-12T00:00:00Z"}`))
+	if first != "asset-1" || second != "asset-1" {
+		t.Fatalf("record IDs = %q and %q, want stable asset-1", first, second)
+	}
+}
+
 func TestTokenCacheScopesRuntimeSecretsAndBaseURL(t *testing.T) {
 	tokenRequests := map[string]int{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
