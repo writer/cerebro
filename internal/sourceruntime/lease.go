@@ -85,10 +85,15 @@ func (s *Service) SyncWithLease(ctx context.Context, req *cerebrov1.SyncSourceRu
 		return nil, fmt.Errorf("acquire source runtime lease %q: %w", runtimeID, err)
 	}
 	if !acquired {
+		if s.store != nil {
+			if _, lookupErr := s.lookupRuntime(ctx, runtimeID); lookupErr != nil {
+				return nil, lookupErr
+			}
+		}
 		return nil, fmt.Errorf("%w: %s", ErrSyncInProgress, runtimeID)
 	}
 	syncCtx, cancelSync := context.WithCancel(ctx)
-	stopRenewal := startLeaseRenewal(ctx, opts.LeaseStore, runtimeID, owner, ttl, cancelSync)
+	stopRenewal := startLeaseRenewal(syncCtx, opts.LeaseStore, runtimeID, owner, ttl, cancelSync)
 	response, syncErr := s.Sync(syncCtx, req)
 	cancelSync()
 	renewalErr := stopRenewal()

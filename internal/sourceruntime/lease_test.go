@@ -9,6 +9,7 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 type leaseEvent struct {
@@ -122,6 +123,15 @@ func TestSyncWithLeaseReturnsErrSyncInProgressWhenNotAcquired(t *testing.T) {
 	}
 }
 
+func TestSyncWithLeasePreservesNotFoundWhenAcquireRejectsMissingRuntime(t *testing.T) {
+	service := New(nil, &runtimeStore{}, nil, nil)
+	store := &stubLeaseStore{rejectNext: true}
+	_, err := service.SyncWithLease(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "missing-runtime"}, SyncWithLeaseOptions{LeaseStore: store})
+	if !errors.Is(err, ports.ErrSourceRuntimeNotFound) {
+		t.Fatalf("SyncWithLease() err = %v, want %v", err, ports.ErrSourceRuntimeNotFound)
+	}
+}
+
 func TestSyncWithLeaseAcquiresAndReleasesAroundSync(t *testing.T) {
 	service := New(nil, nil, nil, nil)
 	store := &stubLeaseStore{}
@@ -163,6 +173,18 @@ func TestSyncWithLeaseRefusesSecondHolderWhileLeased(t *testing.T) {
 		if ev.verb == "release" {
 			t.Fatalf("SyncWithLease() released a lease it never acquired: %#v", events)
 		}
+	}
+}
+
+func TestStartLeaseRenewalStopsWhenSyncContextCancels(t *testing.T) {
+	parent, cancel := context.WithCancel(context.Background())
+	store := &stubLeaseStore{renewErr: errors.New("renew should not run after sync stops")}
+	stopRenewal := startLeaseRenewal(parent, store, "runtime-a", "owner-a", time.Hour, func() {})
+
+	cancel()
+
+	if err := stopRenewal(); err != nil {
+		t.Fatalf("stopRenewal() err = %v, want nil", err)
 	}
 }
 
