@@ -270,3 +270,49 @@ func TestReadSurveyFeedbackUsesWebhookSecret(t *testing.T) {
 		t.Fatalf("NextCursor = %q, want 1", got)
 	}
 }
+
+func TestReadSurveyFeedbackCanUseGitHubToken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/ui/memory/survey-results" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method != http.MethodGet {
+			t.Fatalf("method = %s, want GET", r.Method)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer gh-token" {
+			t.Fatalf("Authorization = %q, want bearer token", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "count": 1, "feedback": []map[string]any{
+			{
+				"key":        "feedback:C1:1",
+				"ticketId":   "COSMO-1",
+				"sentiment":  "positive",
+				"feedbackAt": "2026-05-12T12:00:00Z",
+			},
+		}})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"base_url":  server.URL,
+		"family":    "survey_feedback",
+		"token":     "gh-token",
+	})
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	if got, want := pull.Events[0].Attributes["ticket_id"], "COSMO-1"; got != want {
+		t.Fatalf("ticket_id = %q, want %q", got, want)
+	}
+}

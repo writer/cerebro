@@ -295,8 +295,11 @@ func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 		settings.perPage = perPage
 	}
 	if settings.family == familySurveyFeedback {
-		if settings.webhookSecret == "" {
-			return settings, fmt.Errorf("cosmo webhook_secret is required when family=%q", familySurveyFeedback)
+		if settings.token == "" && settings.webhookSecret == "" {
+			return settings, fmt.Errorf("cosmo token or webhook_secret is required when family=%q", familySurveyFeedback)
+		}
+		if settings.token != "" && settings.webhookSecret != "" {
+			return settings, fmt.Errorf("cosmo token and webhook_secret are mutually exclusive when family=%q", familySurveyFeedback)
 		}
 		return settings, nil
 	}
@@ -400,8 +403,14 @@ func (s *Source) listMessages(ctx context.Context, settings settings, offset int
 
 func (s *Source) listSurveyFeedback(ctx context.Context, settings settings) ([]record, error) {
 	var response listResponse
-	if err := s.getJSON(ctx, settings, http.MethodPost, "/api/survey-results", nil, []byte("{}"), &response); err != nil {
-		return nil, err
+	if settings.token != "" {
+		if err := s.getJSON(ctx, settings, http.MethodGet, "/api/ui/memory/survey-results", nil, nil, &response); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := s.getJSON(ctx, settings, http.MethodPost, "/api/survey-results", nil, []byte("{}"), &response); err != nil {
+			return nil, err
+		}
 	}
 	return responseRecords(response, "feedback", familySurveyFeedback)
 }
@@ -423,7 +432,7 @@ func (s *Source) getJSON(ctx context.Context, settings settings, method string, 
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if settings.family == familySurveyFeedback {
+	if settings.family == familySurveyFeedback && settings.webhookSecret != "" {
 		req.Header.Set("X-Webhook-Secret", settings.webhookSecret)
 	} else {
 		req.Header.Set("Authorization", "Bearer "+settings.token)
