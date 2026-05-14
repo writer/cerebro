@@ -2,27 +2,40 @@ package bootstrap
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
+	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/sourceconfig"
 )
 
 var errTenantForbidden = errors.New("tenant forbidden")
+var errScopeForbidden = errors.New("scope forbidden")
 
 type authContextKey struct{}
 
 type authPrincipal struct {
-	Name     string
-	TenantID string
+	Name           string
+	TenantID       string
+	CredentialID   string
+	ClientID       string
+	AllowedTenants []string
+	Scopes         []string
+	Groups         []string
+	Capability     bool
 }
 
 type authContext struct {
@@ -48,7 +61,12 @@ func authMiddleware(cfg config.AuthConfig, next http.Handler) http.Handler {
 			writeAuthError(w, http.StatusForbidden, "tenant forbidden")
 			return
 		}
-		ctx := context.WithValue(r.Context(), authContextKey{}, authContext{cfg: cfg, principal: principal})
+		auth := authContext{cfg: cfg, principal: principal}
+		if err := authorizeHTTPRequestScope(auth, r); err != nil {
+			writeAuthError(w, http.StatusForbidden, "scope forbidden")
+			return
+		}
+		ctx := context.WithValue(r.Context(), authContextKey{}, auth)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -57,6 +75,9 @@ func authInterceptor(cfg config.AuthConfig) connect.Interceptor {
 	return connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
 			if cfg.Enabled {
+				if err := authorizeConnectProcedureScope(ctx, req.Spec().Procedure); err != nil {
+					return nil, connect.NewError(connect.CodePermissionDenied, nil)
+				}
 				if err := authorizeProtoTenant(ctx, cfg, req.Any()); err != nil {
 					return nil, err
 				}
@@ -88,7 +109,33 @@ func authenticateRequest(cfg config.AuthConfig, r *http.Request) (authPrincipal,
 			return authPrincipal{Name: key.Principal, TenantID: key.TenantID}, true
 		}
 	}
+	for _, credential := range cfg.APICredentials {
+		if apiCredentialMatches(token, credential) {
+			return authPrincipal{
+				Name:           credential.Principal,
+				TenantID:       credential.TenantID,
+				CredentialID:   credential.ID,
+				ClientID:       credential.ClientID,
+				AllowedTenants: credential.AllowedTenants,
+				Scopes:         credential.Scopes,
+			}, true
+		}
+	}
+	if principal, ok := authenticateCapabilityToken(cfg, token, time.Now()); ok {
+		return principal, true
+	}
 	return authPrincipal{}, false
+}
+
+func apiCredentialMatches(token string, credential config.APICredential) bool {
+	if credential.Key != "" && constantTimeEqual(token, credential.Key) {
+		return true
+	}
+	if credential.KeySHA256 == "" {
+		return false
+	}
+	sum := sha256.Sum256([]byte(token))
+	return constantTimeEqual(hex.EncodeToString(sum[:]), strings.ToLower(credential.KeySHA256))
 }
 
 func bearerToken(header string) string {
@@ -104,6 +151,93 @@ func constantTimeEqual(a string, b string) bool {
 		return false
 	}
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
+func authenticateCapabilityToken(cfg config.AuthConfig, token string, now time.Time) (authPrincipal, bool) {
+	if len(cfg.CapabilityTokenSecrets) == 0 || strings.Count(token, ".") != 2 {
+		return authPrincipal{}, false
+	}
+	parts := strings.Split(token, ".")
+	signingInput := parts[0] + "." + parts[1]
+	signature, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil {
+		return authPrincipal{}, false
+	}
+	if !validCapabilitySignature([]byte(signingInput), signature, cfg.CapabilityTokenSecrets) {
+		return authPrincipal{}, false
+	}
+	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return authPrincipal{}, false
+	}
+	var header struct {
+		Algorithm string `json:"alg"`
+		Type      string `json:"typ"`
+	}
+	if err := json.Unmarshal(headerBytes, &header); err != nil || header.Algorithm != "HS256" {
+		return authPrincipal{}, false
+	}
+	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return authPrincipal{}, false
+	}
+	var claims capabilityClaims
+	if err := json.Unmarshal(payloadBytes, &claims); err != nil {
+		return authPrincipal{}, false
+	}
+	if claims.ExpiresAt <= 0 || !now.Before(time.Unix(claims.ExpiresAt, 0)) {
+		return authPrincipal{}, false
+	}
+	if claims.IssuedAt > 0 && now.Add(5*time.Minute).Before(time.Unix(claims.IssuedAt, 0)) {
+		return authPrincipal{}, false
+	}
+	if cfg.CapabilityTokenAudience != "" && strings.TrimSpace(claims.Audience) != cfg.CapabilityTokenAudience {
+		return authPrincipal{}, false
+	}
+	scopes := normalizeAuthList(claims.Scopes)
+	allowedTenants := normalizeAuthList(claims.AllowedTenants)
+	tenantID := strings.TrimSpace(claims.TenantID)
+	if len(scopes) > 0 && tenantID == "" && len(allowedTenants) == 0 {
+		return authPrincipal{}, false
+	}
+	return authPrincipal{
+		Name:           strings.TrimSpace(claims.Subject),
+		TenantID:       tenantID,
+		CredentialID:   strings.TrimSpace(claims.CredentialID),
+		ClientID:       strings.TrimSpace(claims.ClientID),
+		AllowedTenants: allowedTenants,
+		Scopes:         scopes,
+		Groups:         normalizeAuthList(claims.Groups),
+		Capability:     true,
+	}, true
+}
+
+type capabilityClaims struct {
+	Audience       string   `json:"aud"`
+	Subject        string   `json:"sub"`
+	ExpiresAt      int64    `json:"exp"`
+	IssuedAt       int64    `json:"iat,omitempty"`
+	CredentialID   string   `json:"credential_id,omitempty"`
+	ClientID       string   `json:"client_id,omitempty"`
+	TenantID       string   `json:"tenant_id,omitempty"`
+	AllowedTenants []string `json:"allowed_tenants,omitempty"`
+	Scopes         []string `json:"scopes,omitempty"`
+	Groups         []string `json:"groups,omitempty"`
+}
+
+func validCapabilitySignature(signingInput []byte, signature []byte, secrets []string) bool {
+	for _, secret := range secrets {
+		secret = strings.TrimSpace(secret)
+		if secret == "" {
+			continue
+		}
+		mac := hmac.New(sha256.New, []byte(secret))
+		_, _ = mac.Write(signingInput)
+		if hmac.Equal(signature, mac.Sum(nil)) {
+			return true
+		}
+	}
+	return false
 }
 
 func requestTenantHint(r *http.Request) string {
@@ -177,6 +311,100 @@ func authorizeTenantID(ctx context.Context, tenantID string) error {
 	return nil
 }
 
+const scopeCosmoSecurityRead = "cerebro.cosmo.security.read"
+
+func authorizeHTTPRequestScope(auth authContext, r *http.Request) error {
+	if !principalScopeRestricted(auth.principal) || isConnectProcedurePath(r.URL.Path) {
+		return nil
+	}
+	scope := scopeForHTTPRequest(r)
+	return authorizePrincipalScope(auth.principal, scope)
+}
+
+func authorizeConnectProcedureScope(ctx context.Context, procedure string) error {
+	auth, ok := ctx.Value(authContextKey{}).(authContext)
+	if !ok || !principalScopeRestricted(auth.principal) {
+		return nil
+	}
+	return authorizePrincipalScope(auth.principal, scopeForConnectProcedure(procedure))
+}
+
+func authorizePrincipalScope(principal authPrincipal, required string) error {
+	if required == "" || !containsAuthValue(principal.Scopes, required) {
+		return errScopeForbidden
+	}
+	if required == scopeCosmoSecurityRead && principal.Capability && !containsAuthValue(principal.Groups, "security") {
+		return errScopeForbidden
+	}
+	return nil
+}
+
+func principalScopeRestricted(principal authPrincipal) bool {
+	return len(principal.Scopes) > 0
+}
+
+func isConnectProcedurePath(path string) bool {
+	return strings.HasPrefix(path, "/cerebro.v1.BootstrapService/")
+}
+
+func scopeForHTTPRequest(r *http.Request) string {
+	if r.Method != http.MethodGet {
+		return ""
+	}
+	path := strings.TrimSpace(r.URL.Path)
+	switch {
+	case path == "/reports", path == "/finding-rules":
+		return scopeCosmoSecurityRead
+	case path == "/source-runtimes" || strings.HasPrefix(path, "/source-runtimes/"):
+		return scopeCosmoSecurityRead
+	case strings.HasPrefix(path, "/findings/"):
+		return scopeCosmoSecurityRead
+	case strings.HasPrefix(path, "/finding-evaluation-runs/"), strings.HasPrefix(path, "/finding-evidence/"):
+		return scopeCosmoSecurityRead
+	case strings.HasPrefix(path, "/grc/"):
+		return scopeCosmoSecurityRead
+	case path == "/platform/graph/neighborhood", path == "/graph/neighborhood":
+		return scopeCosmoSecurityRead
+	case strings.HasPrefix(path, "/platform/graph/impact/"), strings.HasPrefix(path, "/graph/impact/"):
+		return scopeCosmoSecurityRead
+	case path == "/platform/graph/aws-public-endpoint-insights":
+		return scopeCosmoSecurityRead
+	case path == "/platform/graph/ingest-health", path == "/graph/ingest-health":
+		return scopeCosmoSecurityRead
+	case path == "/platform/graph/ingest-runs", strings.HasPrefix(path, "/platform/graph/ingest-runs/"):
+		return scopeCosmoSecurityRead
+	case path == "/graph/ingest-runs", strings.HasPrefix(path, "/graph/ingest-runs/"):
+		return scopeCosmoSecurityRead
+	case strings.HasPrefix(path, "/report-runs/"):
+		return scopeCosmoSecurityRead
+	default:
+		return ""
+	}
+}
+
+func scopeForConnectProcedure(procedure string) string {
+	switch procedure {
+	case cerebrov1connect.BootstrapServiceListReportDefinitionsProcedure,
+		cerebrov1connect.BootstrapServiceListFindingRulesProcedure,
+		cerebrov1connect.BootstrapServiceGetReportRunProcedure,
+		cerebrov1connect.BootstrapServiceGetSourceRuntimeProcedure,
+		cerebrov1connect.BootstrapServiceListClaimsProcedure,
+		cerebrov1connect.BootstrapServiceListFindingsProcedure,
+		cerebrov1connect.BootstrapServiceGetFindingProcedure,
+		cerebrov1connect.BootstrapServiceListFindingEvaluationRunsProcedure,
+		cerebrov1connect.BootstrapServiceGetFindingEvaluationRunProcedure,
+		cerebrov1connect.BootstrapServiceListFindingEvidenceProcedure,
+		cerebrov1connect.BootstrapServiceGetFindingEvidenceProcedure,
+		cerebrov1connect.BootstrapServiceGetEntityNeighborhoodProcedure,
+		cerebrov1connect.BootstrapServiceGetGraphIngestRunProcedure,
+		cerebrov1connect.BootstrapServiceListGraphIngestRunsProcedure,
+		cerebrov1connect.BootstrapServiceCheckGraphIngestHealthProcedure:
+		return scopeCosmoSecurityRead
+	default:
+		return ""
+	}
+}
+
 func tenantIDFromMetadata(metadata map[string]any) string {
 	if len(metadata) == 0 {
 		return ""
@@ -223,15 +451,40 @@ func tenantAllowed(cfg config.AuthConfig, principal authPrincipal, tenantID stri
 	if principal.TenantID != "" {
 		return tenantID == principal.TenantID
 	}
+	if len(principal.AllowedTenants) > 0 {
+		return containsAuthValue(principal.AllowedTenants, tenantID)
+	}
 	if len(cfg.AllowedTenants) == 0 {
 		return true
 	}
-	for _, allowed := range cfg.AllowedTenants {
-		if tenantID == allowed {
+	return containsAuthValue(cfg.AllowedTenants, tenantID)
+}
+
+func containsAuthValue(values []string, target string) bool {
+	target = strings.TrimSpace(target)
+	for _, value := range values {
+		if strings.TrimSpace(value) == target {
 			return true
 		}
 	}
 	return false
+}
+
+func normalizeAuthList(values []string) []string {
+	seen := map[string]struct{}{}
+	var normalized []string
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		normalized = append(normalized, value)
+	}
+	return normalized
 }
 
 func protoTenantIDs(message proto.Message) []string {

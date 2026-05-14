@@ -3,6 +3,9 @@ package bootstrap
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -1491,6 +1494,260 @@ func TestAuthMiddlewareProtectsNonPublicRoutes(t *testing.T) {
 	if authResp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /sources with auth status = %d, want %d", authResp.StatusCode, http.StatusOK)
 	}
+}
+
+func TestScopedCosmoCredentialAllowsOnlyReadRoutes(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APICredentials: []config.APICredential{{
+				Key:       "scoped-token",
+				Principal: "cosmo-security",
+				TenantID:  "writer",
+				Scopes:    []string{scopeCosmoSecurityRead},
+			}},
+		},
+	}
+	graph := &stubGraphStore{
+		entities: map[string]*ports.ProjectedEntity{
+			"urn:cerebro:writer:asset:app": {
+				URN:        "urn:cerebro:writer:asset:app",
+				TenantID:   "writer",
+				SourceID:   "aws",
+				EntityType: "asset",
+				Label:      "app",
+			},
+		},
+	}
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
+		},
+	}
+	app := New(cfg, Dependencies{GraphStore: graph, StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	for _, path := range []string{
+		"/platform/graph/neighborhood?root_urn=urn:cerebro:writer:asset:app",
+		"/source-runtimes/writer-runtime",
+	} {
+		req, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
+		if err != nil {
+			t.Fatalf("NewRequest(%s): %v", path, err)
+		}
+		req.Header.Set("Authorization", "Bearer scoped-token")
+		resp, err := server.Client().Do(req)
+		if err != nil {
+			t.Fatalf("GET %s error = %v", path, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET %s status = %d, want %d", path, resp.StatusCode, http.StatusOK)
+		}
+	}
+
+	otherTenantReq, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:other:asset:app", nil)
+	if err != nil {
+		t.Fatalf("NewRequest other tenant: %v", err)
+	}
+	otherTenantReq.Header.Set("Authorization", "Bearer scoped-token")
+	otherTenantResp, err := server.Client().Do(otherTenantReq)
+	if err != nil {
+		t.Fatalf("GET other tenant graph error = %v", err)
+	}
+	_ = otherTenantResp.Body.Close()
+	if otherTenantResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("GET other tenant graph status = %d, want %d", otherTenantResp.StatusCode, http.StatusForbidden)
+	}
+
+	for _, tt := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodPost, path: "/source-runtimes/writer-runtime/sync"},
+		{method: http.MethodGet, path: "/sources/github/read"},
+	} {
+		req, err := http.NewRequest(tt.method, server.URL+tt.path, nil)
+		if err != nil {
+			t.Fatalf("NewRequest(%s %s): %v", tt.method, tt.path, err)
+		}
+		req.Header.Set("Authorization", "Bearer scoped-token")
+		resp, err := server.Client().Do(req)
+		if err != nil {
+			t.Fatalf("%s %s error = %v", tt.method, tt.path, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Fatalf("%s %s status = %d, want %d", tt.method, tt.path, resp.StatusCode, http.StatusForbidden)
+		}
+	}
+}
+
+func TestScopedCosmoCredentialEnforcesConnectProcedures(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APICredentials: []config.APICredential{{
+				Key:       "scoped-token",
+				Principal: "cosmo-security",
+				TenantID:  "writer",
+				Scopes:    []string{scopeCosmoSecurityRead},
+			}},
+		},
+	}
+	graph := &stubGraphStore{
+		entities: map[string]*ports.ProjectedEntity{
+			"urn:cerebro:writer:asset:app": {
+				URN:        "urn:cerebro:writer:asset:app",
+				TenantID:   "writer",
+				SourceID:   "aws",
+				EntityType: "asset",
+				Label:      "app",
+			},
+		},
+	}
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
+		},
+	}
+	app := New(cfg, Dependencies{GraphStore: graph, StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	readReq := connect.NewRequest(&cerebrov1.GetEntityNeighborhoodRequest{
+		RootUrn: "urn:cerebro:writer:asset:app",
+	})
+	readReq.Header().Set("Authorization", "Bearer scoped-token")
+	if _, err := client.GetEntityNeighborhood(context.Background(), readReq); err != nil {
+		t.Fatalf("GetEntityNeighborhood() error = %v", err)
+	}
+
+	syncReq := connect.NewRequest(&cerebrov1.SyncSourceRuntimeRequest{Id: "writer-runtime"})
+	syncReq.Header().Set("Authorization", "Bearer scoped-token")
+	if _, err := client.SyncSourceRuntime(context.Background(), syncReq); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("SyncSourceRuntime() code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
+	}
+}
+
+func TestCapabilityTokenRequiresSecurityGroup(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled:                 true,
+			CapabilityTokenSecrets:  []string{"capability-secret"},
+			CapabilityTokenAudience: "cerebro-api",
+		},
+	}
+	graph := &stubGraphStore{
+		entities: map[string]*ports.ProjectedEntity{
+			"urn:cerebro:writer:asset:app": {
+				URN:        "urn:cerebro:writer:asset:app",
+				TenantID:   "writer",
+				SourceID:   "aws",
+				EntityType: "asset",
+				Label:      "app",
+			},
+		},
+	}
+	app := New(cfg, Dependencies{GraphStore: graph}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	authorizedToken := signCapabilityToken(t, "capability-secret", map[string]any{
+		"aud":           "cerebro-api",
+		"sub":           "slack:U123",
+		"exp":           time.Now().Add(time.Hour).Unix(),
+		"iat":           time.Now().Add(-time.Minute).Unix(),
+		"tenant_id":     "writer",
+		"scopes":        []string{scopeCosmoSecurityRead},
+		"groups":        []string{"security"},
+		"client_id":     "cosmo",
+		"credential_id": "cosmo-capability",
+	})
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:writer:asset:app", nil)
+	if err != nil {
+		t.Fatalf("NewRequest authorized: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+authorizedToken)
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET with authorized capability error = %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET with authorized capability status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	nonSecurityToken := signCapabilityToken(t, "capability-secret", map[string]any{
+		"aud":       "cerebro-api",
+		"sub":       "slack:U999",
+		"exp":       time.Now().Add(time.Hour).Unix(),
+		"tenant_id": "writer",
+		"scopes":    []string{scopeCosmoSecurityRead},
+		"groups":    []string{"engineering"},
+	})
+	forbiddenReq, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:writer:asset:app", nil)
+	if err != nil {
+		t.Fatalf("NewRequest forbidden: %v", err)
+	}
+	forbiddenReq.Header.Set("Authorization", "Bearer "+nonSecurityToken)
+	forbiddenResp, err := server.Client().Do(forbiddenReq)
+	if err != nil {
+		t.Fatalf("GET with non-security capability error = %v", err)
+	}
+	_ = forbiddenResp.Body.Close()
+	if forbiddenResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("GET with non-security capability status = %d, want %d", forbiddenResp.StatusCode, http.StatusForbidden)
+	}
+
+	expiredToken := signCapabilityToken(t, "capability-secret", map[string]any{
+		"aud":       "cerebro-api",
+		"sub":       "slack:U123",
+		"exp":       time.Now().Add(-time.Minute).Unix(),
+		"tenant_id": "writer",
+		"scopes":    []string{scopeCosmoSecurityRead},
+		"groups":    []string{"security"},
+	})
+	expiredReq, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:writer:asset:app", nil)
+	if err != nil {
+		t.Fatalf("NewRequest expired: %v", err)
+	}
+	expiredReq.Header.Set("Authorization", "Bearer "+expiredToken)
+	expiredResp, err := server.Client().Do(expiredReq)
+	if err != nil {
+		t.Fatalf("GET with expired capability error = %v", err)
+	}
+	_ = expiredResp.Body.Close()
+	if expiredResp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("GET with expired capability status = %d, want %d", expiredResp.StatusCode, http.StatusUnauthorized)
+	}
+}
+
+func signCapabilityToken(t *testing.T, secret string, claims map[string]any) string {
+	t.Helper()
+	header, err := json.Marshal(map[string]string{"alg": "HS256", "typ": "JWT"})
+	if err != nil {
+		t.Fatalf("marshal token header: %v", err)
+	}
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		t.Fatalf("marshal token claims: %v", err)
+	}
+	encodedHeader := base64.RawURLEncoding.EncodeToString(header)
+	encodedPayload := base64.RawURLEncoding.EncodeToString(payload)
+	signingInput := encodedHeader + "." + encodedPayload
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(signingInput))
+	signature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return signingInput + "." + signature
 }
 
 func TestAuthMiddlewareEnforcesTenantOnHTTPProtoBodies(t *testing.T) {

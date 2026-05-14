@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -60,17 +61,38 @@ type APIKey struct {
 	TenantID  string
 }
 
+// APICredential grants scoped bearer access with stable attribution metadata.
+type APICredential struct {
+	ID             string
+	ClientID       string
+	Name           string
+	Kind           string
+	Key            string
+	KeySHA256      string
+	Principal      string
+	TenantID       string
+	AllowedTenants []string
+	Scopes         []string
+}
+
 // AuthConfig controls optional API authentication and tenant scoping.
 type AuthConfig struct {
-	Enabled        bool
-	APIKeys        []APIKey
-	AllowedTenants []string
+	Enabled                 bool
+	APIKeys                 []APIKey
+	APICredentials          []APICredential
+	CapabilityTokenSecrets  []string
+	CapabilityTokenAudience string
+	AllowedTenants          []string
 }
 
 // Load reads and validates process configuration.
 func Load() (Config, error) {
 	if strings.TrimSpace(os.Getenv("CEREBRO_KUZU_PATH")) != "" {
 		return Config{}, fmt.Errorf("%w; configure Neo4j with CEREBRO_NEO4J_URI, CEREBRO_NEO4J_USERNAME, and CEREBRO_NEO4J_PASSWORD", errLegacyKuzuPath)
+	}
+	apiCredentials, err := parseAPICredentials(os.Getenv("CEREBRO_API_CREDENTIALS_JSON"))
+	if err != nil {
+		return Config{}, err
 	}
 	cfg := Config{
 		HTTPAddr:        strings.TrimSpace(os.Getenv("CEREBRO_HTTP_ADDR")),
@@ -92,8 +114,11 @@ func Load() (Config, error) {
 			Neo4jDatabase: strings.TrimSpace(os.Getenv("CEREBRO_NEO4J_DATABASE")),
 		},
 		Auth: AuthConfig{
-			APIKeys:        parseAPIKeys(os.Getenv("CEREBRO_API_KEYS")),
-			AllowedTenants: parseCSV(os.Getenv("CEREBRO_ALLOWED_TENANTS")),
+			APIKeys:                 parseAPIKeys(os.Getenv("CEREBRO_API_KEYS")),
+			APICredentials:          apiCredentials,
+			CapabilityTokenSecrets:  parseCSV(os.Getenv("CEREBRO_CAPABILITY_TOKEN_SECRETS")),
+			CapabilityTokenAudience: strings.TrimSpace(os.Getenv("CEREBRO_CAPABILITY_TOKEN_AUDIENCE")),
+			AllowedTenants:          parseCSV(os.Getenv("CEREBRO_ALLOWED_TENANTS")),
 		},
 	}
 	authEnabled, err := parseBoolEnv("CEREBRO_API_AUTH_ENABLED", false)
@@ -101,6 +126,9 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	cfg.Auth.Enabled = authEnabled
+	if len(cfg.Auth.CapabilityTokenSecrets) > 0 && cfg.Auth.CapabilityTokenAudience == "" {
+		cfg.Auth.CapabilityTokenAudience = "cerebro-api"
+	}
 	if cfg.HTTPAddr == "" {
 		cfg.HTTPAddr = defaultHTTPAddr
 	}
@@ -159,8 +187,8 @@ func Load() (Config, error) {
 	default:
 		return Config{}, fmt.Errorf("unsupported CEREBRO_GRAPH_STORE_DRIVER %q", cfg.GraphStore.Driver)
 	}
-	if cfg.Auth.Enabled && len(cfg.Auth.APIKeys) == 0 {
-		return Config{}, fmt.Errorf("CEREBRO_API_KEYS is required when CEREBRO_API_AUTH_ENABLED=true")
+	if cfg.Auth.Enabled && len(cfg.Auth.APIKeys) == 0 && len(cfg.Auth.APICredentials) == 0 && len(cfg.Auth.CapabilityTokenSecrets) == 0 {
+		return Config{}, fmt.Errorf("CEREBRO_API_KEYS, CEREBRO_API_CREDENTIALS_JSON, or CEREBRO_CAPABILITY_TOKEN_SECRETS is required when CEREBRO_API_AUTH_ENABLED=true")
 	}
 	return cfg, nil
 }
@@ -198,6 +226,10 @@ func parseCSV(raw string) []string {
 	return values
 }
 
+func normalizeStringSlice(values []string) []string {
+	return parseCSV(strings.Join(values, ","))
+}
+
 func parseAPIKeys(raw string) []APIKey {
 	var keys []APIKey
 	for _, item := range strings.Split(raw, ",") {
@@ -215,4 +247,63 @@ func parseAPIKeys(raw string) []APIKey {
 		keys = append(keys, key)
 	}
 	return keys
+}
+
+func parseAPICredentials(raw string) ([]APICredential, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	type credentialJSON struct {
+		ID             string   `json:"id"`
+		CredentialID   string   `json:"credential_id"`
+		ClientID       string   `json:"client_id"`
+		Name           string   `json:"name"`
+		Kind           string   `json:"kind"`
+		Key            string   `json:"key"`
+		KeySHA256      string   `json:"key_sha256"`
+		Principal      string   `json:"principal"`
+		TenantID       string   `json:"tenant_id"`
+		AllowedTenants []string `json:"allowed_tenants"`
+		Scopes         []string `json:"scopes"`
+	}
+	var entries []credentialJSON
+	if err := json.Unmarshal([]byte(raw), &entries); err != nil {
+		return nil, fmt.Errorf("parse CEREBRO_API_CREDENTIALS_JSON: %w", err)
+	}
+	credentials := make([]APICredential, 0, len(entries))
+	for index, entry := range entries {
+		credential := APICredential{
+			ID:             strings.TrimSpace(firstNonEmpty(entry.CredentialID, entry.ID)),
+			ClientID:       strings.TrimSpace(entry.ClientID),
+			Name:           strings.TrimSpace(entry.Name),
+			Kind:           strings.TrimSpace(entry.Kind),
+			Key:            strings.TrimSpace(entry.Key),
+			KeySHA256:      strings.ToLower(strings.TrimSpace(entry.KeySHA256)),
+			Principal:      strings.TrimSpace(entry.Principal),
+			TenantID:       strings.TrimSpace(entry.TenantID),
+			AllowedTenants: normalizeStringSlice(entry.AllowedTenants),
+			Scopes:         normalizeStringSlice(entry.Scopes),
+		}
+		if credential.Key == "" && credential.KeySHA256 == "" {
+			return nil, fmt.Errorf("CEREBRO_API_CREDENTIALS_JSON[%d] must set key or key_sha256", index)
+		}
+		if len(credential.Scopes) > 0 && credential.TenantID == "" && len(credential.AllowedTenants) == 0 {
+			return nil, fmt.Errorf("CEREBRO_API_CREDENTIALS_JSON[%d] scoped credentials must set tenant_id or allowed_tenants", index)
+		}
+		if credential.Principal == "" {
+			credential.Principal = firstNonEmpty(credential.Name, credential.ClientID, credential.ID)
+		}
+		credentials = append(credentials, credential)
+	}
+	return credentials, nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }

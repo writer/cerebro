@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"testing"
 	"time"
@@ -22,6 +24,9 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_KUZU_PATH", "")
 	t.Setenv("CEREBRO_API_AUTH_ENABLED", "")
 	t.Setenv("CEREBRO_API_KEYS", "")
+	t.Setenv("CEREBRO_API_CREDENTIALS_JSON", "")
+	t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS", "")
+	t.Setenv("CEREBRO_CAPABILITY_TOKEN_AUDIENCE", "")
 	t.Setenv("CEREBRO_ALLOWED_TENANTS", "")
 
 	cfg, err := Load()
@@ -64,6 +69,9 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_KUZU_PATH", "")
 	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
 	t.Setenv("CEREBRO_API_KEYS", "token-1:ci:writer,token-2:ops:security")
+	t.Setenv("CEREBRO_API_CREDENTIALS_JSON", "")
+	t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS", "")
+	t.Setenv("CEREBRO_CAPABILITY_TOKEN_AUDIENCE", "")
 	t.Setenv("CEREBRO_ALLOWED_TENANTS", "security,writer,writer")
 
 	cfg, err := Load()
@@ -119,6 +127,9 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_KUZU_PATH", "")
 	t.Setenv("CEREBRO_API_AUTH_ENABLED", "")
 	t.Setenv("CEREBRO_API_KEYS", "")
+	t.Setenv("CEREBRO_API_CREDENTIALS_JSON", "")
+	t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS", "")
+	t.Setenv("CEREBRO_CAPABILITY_TOKEN_AUDIENCE", "")
 	t.Setenv("CEREBRO_ALLOWED_TENANTS", "")
 }
 
@@ -126,6 +137,79 @@ func TestLoadRejectsAuthEnabledWithoutKeys(t *testing.T) {
 	clearDependencyEnv(t)
 	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
 	t.Setenv("CEREBRO_API_KEYS", "")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadParsesStructuredAPICredentials(t *testing.T) {
+	clearDependencyEnv(t)
+	sum := sha256.Sum256([]byte("scoped-token"))
+	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_API_CREDENTIALS_JSON", `[
+		{
+			"credential_id": "cred-cosmo-security",
+			"client_id": "cosmo",
+			"name": "Cosmo Security",
+			"kind": "agent",
+			"key_sha256": "`+hex.EncodeToString(sum[:])+`",
+			"principal": "cosmo-security",
+			"allowed_tenants": ["writer", "writer"],
+			"scopes": ["cerebro.cosmo.security.read", "cerebro.cosmo.security.read"]
+		}
+	]`)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(cfg.Auth.APICredentials) != 1 {
+		t.Fatalf("Auth.APICredentials length = %d, want 1", len(cfg.Auth.APICredentials))
+	}
+	credential := cfg.Auth.APICredentials[0]
+	if credential.ID != "cred-cosmo-security" || credential.ClientID != "cosmo" || credential.Principal != "cosmo-security" {
+		t.Fatalf("credential attribution = %#v", credential)
+	}
+	if got := credential.AllowedTenants; len(got) != 1 || got[0] != "writer" {
+		t.Fatalf("AllowedTenants = %#v, want [writer]", got)
+	}
+	if got := credential.Scopes; len(got) != 1 || got[0] != "cerebro.cosmo.security.read" {
+		t.Fatalf("Scopes = %#v, want [cerebro.cosmo.security.read]", got)
+	}
+}
+
+func TestLoadParsesCapabilityTokenConfig(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS", "secret-1, secret-1, secret-2")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := cfg.Auth.CapabilityTokenSecrets; len(got) != 2 || got[0] != "secret-1" || got[1] != "secret-2" {
+		t.Fatalf("CapabilityTokenSecrets = %#v, want [secret-1 secret-2]", got)
+	}
+	if cfg.Auth.CapabilityTokenAudience != "cerebro-api" {
+		t.Fatalf("CapabilityTokenAudience = %q, want cerebro-api", cfg.Auth.CapabilityTokenAudience)
+	}
+}
+
+func TestLoadRejectsScopedCredentialWithoutTenant(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_API_CREDENTIALS_JSON", `[{"key":"token","scopes":["cerebro.cosmo.security.read"]}]`)
+
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsMalformedStructuredAPICredentials(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_API_CREDENTIALS_JSON", `{"key":"token"}`)
 
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want non-nil")
