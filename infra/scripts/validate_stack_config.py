@@ -348,6 +348,24 @@ def validate_stack(path: Path) -> list[Finding]:
         findings.append(_finding("error", stack, "cerebro:orchestratorSchedules", "must be a list"))
         schedules = []
 
+    scheduled_runtime_ids: set[str] = set()
+    top_level_command = config.get("orchestratorCommand")
+    top_level_runtime_id = _runtime_id_from_command(top_level_command)
+    if top_level_command:
+        if top_level_runtime_id is None:
+            scheduled_runtime_ids.update(runtime_ids)
+        elif top_level_runtime_id not in runtime_ids:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:orchestratorCommand",
+                    f"unknown runtime id {top_level_runtime_id!r}",
+                )
+            )
+        else:
+            scheduled_runtime_ids.add(top_level_runtime_id)
+
     schedule_names: set[str] = set()
     for index, schedule in enumerate(schedules):
         schedule_path = f"cerebro:orchestratorSchedules[{index}]"
@@ -375,6 +393,8 @@ def validate_stack(path: Path) -> list[Finding]:
             findings.append(_finding("error", stack, f"{schedule_path}.command", "command must include runtime_id=<id>"))
         elif runtime_id not in runtime_ids:
             findings.append(_finding("error", stack, f"{schedule_path}.command", f"unknown runtime id {runtime_id!r}"))
+        else:
+            scheduled_runtime_ids.add(runtime_id)
 
         if "backfill" in name.lower():
             retirement_key = next((key for key in ("expiresAt", "removeAfter", "expires_after") if key in schedule), "")
@@ -393,6 +413,17 @@ def validate_stack(path: Path) -> list[Finding]:
                     findings.append(_finding("error", stack, f"{schedule_path}.{retirement_key}", "retirement metadata must be an ISO date"))
                 elif retirement_date < datetime.now(UTC):
                     findings.append(_finding("error", stack, f"{schedule_path}.{retirement_key}", "retirement date is in the past"))
+
+    if config.get("orchestratorEnabled", True):
+        for runtime_id in sorted(runtime_ids - scheduled_runtime_ids):
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:sourceRuntimes",
+                    f"source runtime {runtime_id!r} is not referenced by cerebro:orchestratorCommand or cerebro:orchestratorSchedules",
+                )
+            )
 
     _validate_cosmo_gitops(stack, config, source_runtimes, schedules, source_secret_names, findings)
 

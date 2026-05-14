@@ -166,6 +166,45 @@ class ValidateStackConfigTest(unittest.TestCase):
         content = BASE_STACK.replace("runtime_id=writer-okta-audit", "runtime_id=writer-missing")
         self.assertTrue(any("unknown runtime id" in message for message in self._messages(content)))
 
+    def test_unscheduled_source_runtime_is_error(self) -> None:
+        content = (
+            BASE_STACK
+            + """    - id: writer-okta-user
+      sourceId: okta
+      tenantId: writer
+      config:
+        api_token: env:API_TOKEN
+"""
+        )
+        self.assertTrue(
+            any("is not referenced by cerebro:orchestratorCommand" in message for message in self._messages(content))
+        )
+
+    def test_global_orchestrator_command_covers_source_runtimes(self) -> None:
+        content = (
+            BASE_STACK.replace(
+                "  cerebro:orchestratorSchedules:",
+                "  cerebro:orchestratorCommand:\n    - orchestrator\n    - run\n  cerebro:orchestratorSchedules:",
+            )
+            + """    - id: writer-okta-user
+      sourceId: okta
+      tenantId: writer
+      config:
+        api_token: env:API_TOKEN
+"""
+        )
+        messages = self._messages(content)
+        self.assertFalse(
+            any("is not referenced by cerebro:orchestratorCommand" in message for message in messages)
+        )
+
+    def test_unknown_top_level_orchestrator_runtime_is_error(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:orchestratorSchedules:",
+            "  cerebro:orchestratorCommand:\n    - orchestrator\n    - run\n    - runtime_id=writer-missing\n  cerebro:orchestratorSchedules:",
+        )
+        self.assertTrue(any("unknown runtime id" in message for message in self._messages(content)))
+
     def test_prod_guardrails_are_errors(self) -> None:
         content = BASE_STACK.replace("  cerebro:postgresDeletionProtection: true", "  cerebro:postgresDeletionProtection: false")
         self.assertTrue(any("deletion protection" in message for message in self._messages(content)))
