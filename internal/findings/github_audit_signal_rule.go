@@ -910,9 +910,9 @@ const githubRetirementTag = "retired"
 // control refs so:
 //
 //   - Catalog clients still discover the id (no 404 on existing dashboards).
-//   - Stale-finding cleanup in the next replay (`resolveStaleOpenFindings`)
-//     resolves any open findings under this rule id because the wrapper's
-//     emit set is empty.
+//   - The finding service sees the retirement marker and resolves any open
+//     findings under this rule id without depending on a bounded replay
+//     containing the original event ids.
 //   - The follow-up posture graph rule can use the same control refs and
 //     tags as a starting point, treating audit events as evidence rather
 //     than as standalone findings.
@@ -925,9 +925,10 @@ func newRetiredGitHubAuditRule(original RuleDefinition) Rule {
 	retired.Maturity = "retired"
 	retired.Tags = appendUniqueString(cloneStringSlice(retired.Tags), githubRetirementTag, "cleanup")
 	return newEventRule(eventRuleConfig{
-		definition: retired,
-		sourceID:   "github",
-		match:      func(*cerebrov1.EventEnvelope) bool { return false },
+		definition:         retired,
+		sourceID:           "github",
+		retireOpenFindings: true,
+		match:              func(*cerebrov1.EventEnvelope) bool { return false },
 		build: func(context.Context, *cerebrov1.SourceRuntime, *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
 			return nil, nil
 		},

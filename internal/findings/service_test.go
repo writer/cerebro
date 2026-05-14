@@ -962,6 +962,67 @@ func TestEvaluateSourceRuntimeResolvesAndPrunesStaleFindings(t *testing.T) {
 	}
 }
 
+func TestEvaluateSourceRuntimeRetiredRuleResolvesOpenFindingsOutsideReplayWindow(t *testing.T) {
+	registry, err := NewRegistry(newGitHubSecretScanningDisabledRule())
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	retiredFinding := &ports.FindingRecord{
+		ID:              "old-github-mirror-finding",
+		Fingerprint:     "old-github-mirror-finding",
+		TenantID:        "writer",
+		RuntimeID:       "writer-github-audit",
+		RuleID:          githubSecretScanningDisabledRuleID,
+		Title:           "GitHub Secret Scanning Disabled",
+		Severity:        "HIGH",
+		Status:          "open",
+		Summary:         "secret scanning was disabled by an old audit event",
+		ResourceURNs:    []string{"urn:cerebro:writer:github_repo:writer/cerebro"},
+		EventIDs:        []string{"github-old-event-outside-replay"},
+		FirstObservedAt: time.Date(2026, 5, 7, 19, 54, 0, 0, time.UTC),
+		LastObservedAt:  time.Date(2026, 5, 7, 19, 54, 0, 0, time.UTC),
+	}
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{retiredFinding.ID: retiredFinding}}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-github-audit": {Id: "writer-github-audit", SourceId: "github", TenantId: "writer"},
+		}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{{
+			Id:       "github-recent-event",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.audit",
+			Attributes: map[string]string{
+				"action": "repo.access",
+			},
+			OccurredAt: timestamppb.New(time.Date(2026, 5, 8, 0, 0, 0, 0, time.UTC)),
+		}}},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "writer-github-audit",
+		RuleID:    githubSecretScanningDisabledRuleID,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if got := len(result.Findings); got != 0 {
+		t.Fatalf("len(Findings) = %d, want 0", got)
+	}
+	resolved := store.findings[retiredFinding.ID]
+	if got := resolved.Status; got != findingStatusResolved {
+		t.Fatalf("retired finding status = %q, want %q", got, findingStatusResolved)
+	}
+	if got := resolved.StatusReason; got != workflowevents.FindingStatusReasonNoLongerEmitted {
+		t.Fatalf("retired finding status reason = %q, want %q", got, workflowevents.FindingStatusReasonNoLongerEmitted)
+	}
+}
+
 func TestEvaluateSourceRuntimeMarksRunFailedWhenStaleCleanupFails(t *testing.T) {
 	registry, err := NewRegistry(&emittingRule{
 		spec:               &cerebrov1.RuleSpec{Id: "routine-oauth-rule", Name: "Routine OAuth Rule"},
