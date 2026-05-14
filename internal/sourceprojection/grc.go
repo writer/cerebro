@@ -477,15 +477,23 @@ func grcVulnerableAssetCleanReferenceAttrs(attrs map[string]string) map[string]s
 }
 
 func grcVulnerableAssetVulnerabilityAttrs(attrs map[string]string) []map[string]string {
-	candidates := grcAttributeList(strings.Join([]string{attrs["vulnerability_ids"], attrs["vulnerability_names"]}, ","))
-	if len(candidates) == 0 && canonicalVulnerabilityIdentifier(attrs) != "" {
+	vulnerabilityIDs := grcAttributeSequence(attrs["vulnerability_ids"])
+	vulnerabilityNames := grcAttributeSequence(attrs["vulnerability_names"])
+	if len(vulnerabilityIDs) == 0 && len(vulnerabilityNames) == 0 && canonicalVulnerabilityIdentifier(attrs) != "" {
 		return []map[string]string{attrs}
 	}
-	result := make([]map[string]string, 0, len(candidates))
-	for _, candidate := range candidates {
-		copy := grcProjectionAttrsWith(attrs, "vulnerability_id", candidate, "name", candidate)
-		if canonicalVulnerabilityIdentifier(copy) != "" {
-			result = append(result, copy)
+	total := maxInt(len(vulnerabilityIDs), len(vulnerabilityNames))
+	result := make([]map[string]string, 0, total)
+	for i := 0; i < total; i++ {
+		referenceAttrs := grcVulnerableAssetCleanReferenceAttrs(attrs)
+		if vulnerabilityID := stringAt(vulnerabilityIDs, i); vulnerabilityID != "" {
+			referenceAttrs["vulnerability_id"] = vulnerabilityID
+		}
+		if vulnerabilityName := stringAt(vulnerabilityNames, i); vulnerabilityName != "" {
+			referenceAttrs["name"] = vulnerabilityName
+		}
+		if canonicalVulnerabilityIdentifier(referenceAttrs) != "" {
+			result = append(result, referenceAttrs)
 		}
 	}
 	return result

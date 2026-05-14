@@ -600,6 +600,39 @@ func TestProjectGRCVulnerableAssetAppendsTrailingFlatTuples(t *testing.T) {
 	assertProjectedLink(t, state, packageTwoURN, relationAffectedBy, vulnerabilityTwoURN)
 }
 
+func TestProjectGRCVulnerableAssetZipsFlatVulnerabilityNames(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-vulnerable-asset-names",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.vulnerable_asset",
+		Attributes: map[string]string{
+			"provider":            "vanta",
+			"target_id":           "target-names",
+			"vulnerability_ids":   "CVE-2026-4242,CVE-2026-4243",
+			"vulnerability_names": "openssl bug,nginx bug",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	targetURN := "urn:cerebro:writer:grc_target:vanta:target-names"
+	firstVulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
+	secondVulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-4243"
+	assertProjectedLink(t, state, targetURN, relationAffectedBy, firstVulnerabilityURN)
+	assertProjectedLink(t, state, targetURN, relationAffectedBy, secondVulnerabilityURN)
+	if got := state.links[targetURN+"|"+relationAffectedBy+"|"+firstVulnerabilityURN].Attributes["name"]; got != "openssl bug" {
+		t.Fatalf("first vulnerability evidence name = %q, want openssl bug", got)
+	}
+	if got := state.links[targetURN+"|"+relationAffectedBy+"|"+secondVulnerabilityURN].Attributes["name"]; got != "nginx bug" {
+		t.Fatalf("second vulnerability evidence name = %q, want nginx bug", got)
+	}
+}
+
 func TestProjectGRCVulnerableAssetDoesNotInferVulnerabilityFromReferenceJSON(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
