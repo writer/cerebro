@@ -17,8 +17,8 @@ Currently configured project: `cerebro` (target: `..`).
    subscription. See
    `node_modules/deepsec/dist/docs/vercel-setup.md` after install.
 3. Open the parent repo in your coding agent (Claude Code, Cursor, …)
-   and have it follow `data/cerebro/SETUP.md` to fill in
-   `data/cerebro/INFO.md`.
+   and have it follow `.deepsec/data/cerebro/SETUP.md` to fill in
+   `.deepsec/data/cerebro/INFO.md`.
 
 ## Daily commands
 

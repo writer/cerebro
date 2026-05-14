@@ -8,6 +8,7 @@
     "policies/**",
     "api/openapi.yaml",
     "api/spec_embed.go",
+    "gen/cerebro/v1/**",
     "**/*_test.go",
     "cerebro",
     "bin/**"
