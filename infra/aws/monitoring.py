@@ -397,7 +397,7 @@ def create_monitoring(
             resource_name=f"{name}-cosmo-runtime-{_safe_resource_suffix(runtime_id)}-heartbeat-alarm",
             alarm_name=f"{name}-cosmo-{runtime_id}-stale",
             namespace=telemetry_namespace,
-            metric_name="SourceRuntimeSyncCompletedByRuntime",
+            metric_name="OrchestratorRuntimeCompletedByRuntime",
             runtime_id=runtime_id,
             period=cosmo_runtime_heartbeat_period_seconds,
             alarm_actions=alarm_actions,
@@ -531,13 +531,13 @@ def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[st
                 default_value=0,
             ),
         ),
-        "source_sync_completed_by_runtime": aws.cloudwatch.LogMetricFilter(
-            f"{name}-source-sync-completed-by-runtime-filter",
-            name=f"{name}-source-sync-completed-by-runtime",
+        "orchestrator_completed_by_runtime": aws.cloudwatch.LogMetricFilter(
+            f"{name}-orchestrator-completed-by-runtime-filter",
+            name=f"{name}-orchestrator-completed-by-runtime",
             log_group_name=log_group_name,
-            pattern='{ $.kind = "span_end" && $.name = "source_runtime.sync" && $.status = "completed" && $.runtime_id = * }',
+            pattern='{ $.kind = "span_end" && $.name = "orchestrator.runtime" && $.status = "completed" }',
             metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
-                name="SourceRuntimeSyncCompletedByRuntime",
+                name="OrchestratorRuntimeCompletedByRuntime",
                 namespace=namespace,
                 value="1",
                 dimensions={"RuntimeId": "$.runtime_id"},
@@ -559,7 +559,7 @@ def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[st
             f"{name}-orchestrator-failures-by-runtime-filter",
             name=f"{name}-orchestrator-failures-by-runtime",
             log_group_name=log_group_name,
-            pattern='{ $.kind = "span_end" && $.name = "orchestrator.runtime" && $.status = "failed" && $.runtime_id = * }',
+            pattern='{ $.kind = "span_end" && $.name = "orchestrator.runtime" && $.status = "failed" }',
             metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
                 name="OrchestratorRuntimeFailuresByRuntime",
                 namespace=namespace,
