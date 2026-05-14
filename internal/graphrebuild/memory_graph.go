@@ -74,8 +74,12 @@ func (s *memoryGraphStore) UpsertProjectedEntity(_ context.Context, entity *port
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	label := strings.TrimSpace(entity.Label)
+	fallbackLabel := label == ""
 	if label == "" {
 		label = urn
+	}
+	if existing, ok := s.entities[urn]; ok && fallbackLabel {
+		label = existing.Label
 	}
 	s.entities[urn] = memoryEntity{
 		URN:        urn,

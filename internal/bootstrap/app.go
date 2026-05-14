@@ -121,6 +121,7 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("GET /graph/impact/package", deprecatedRoute(app.handleGetPackageImpact))
 	mux.HandleFunc("GET /platform/graph/impact/asset", app.handleGetAssetImpact)
 	mux.HandleFunc("GET /graph/impact/asset", deprecatedRoute(app.handleGetAssetImpact))
+	mux.HandleFunc("GET /platform/graph/aws-public-endpoint-insights", app.handleGetAWSPublicEndpointInsights)
 	mux.HandleFunc("GET /platform/graph/ingest-health", app.handleCheckGraphIngestHealth)
 	mux.HandleFunc("GET /graph/ingest-health", deprecatedRoute(app.handleCheckGraphIngestHealth))
 	mux.HandleFunc("GET /platform/graph/ingest-runs", app.handleListGraphIngestRuns)
@@ -824,6 +825,31 @@ func (a *App) handleGetGraphImpact(w http.ResponseWriter, r *http.Request, reque
 	writeJSON(w, http.StatusOK, result)
 }
 
+func (a *App) handleGetAWSPublicEndpointInsights(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.URL.Query().Get("tenant_id")
+	if err := authorizeTenantID(r.Context(), tenantID); err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
+	limit, err := uint32QueryParam(r, "limit")
+	if err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
+	result, err := a.graphQueryService().GetAWSPublicEndpointInsights(r.Context(), graphquery.AWSPublicEndpointInsightsRequest{
+		TenantID:  tenantID,
+		AccountID: r.URL.Query().Get("account_id"),
+		Region:    r.URL.Query().Get("region"),
+		Search:    r.URL.Query().Get("search"),
+		Limit:     limit,
+	})
+	if err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
 func (a *App) handleRunGraphIngestRuntime(w http.ResponseWriter, r *http.Request) {
 	request := &cerebrov1.RunGraphIngestRuntimeRequest{}
 	if err := readProtoJSON(r, request); err != nil {
@@ -1277,6 +1303,7 @@ func (a *App) handleListFindingEvidence(w http.ResponseWriter, r *http.Request) 
 		ClaimId:      r.URL.Query().Get("claim_id"),
 		EventId:      r.URL.Query().Get("event_id"),
 		GraphRootUrn: r.URL.Query().Get("graph_root_urn"),
+		GraphPathUrn: r.URL.Query().Get("graph_path_urn"),
 	}
 	if limit := r.URL.Query().Get("limit"); limit != "" {
 		body := []byte(`{"limit":` + limit + `}`)
@@ -1291,6 +1318,7 @@ func (a *App) handleListFindingEvidence(w http.ResponseWriter, r *http.Request) 
 		request.ClaimId = r.URL.Query().Get("claim_id")
 		request.EventId = r.URL.Query().Get("event_id")
 		request.GraphRootUrn = r.URL.Query().Get("graph_root_urn")
+		request.GraphPathUrn = r.URL.Query().Get("graph_path_urn")
 	}
 	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetRuntimeId(), false); err != nil {
 		writeFindingError(w, err)
@@ -1711,6 +1739,7 @@ func (s *bootstrapService) ListFindingEvidence(ctx context.Context, req *connect
 		ClaimID:      req.Msg.GetClaimId(),
 		EventID:      req.Msg.GetEventId(),
 		GraphRootURN: req.Msg.GetGraphRootUrn(),
+		GraphPathURN: req.Msg.GetGraphPathUrn(),
 		Limit:        req.Msg.GetLimit(),
 	})
 	if err != nil {

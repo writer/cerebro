@@ -32,16 +32,19 @@ const (
 	relationCanReach           = "can_reach"
 	relationContains           = "contains"
 	relationHasClassification  = "has_classification"
+	relationHasDNSRecord       = "has_dns_record"
 	relationHasEvidence        = "has_evidence"
 	relationMemberOf           = "member_of"
 	relationObservedOn         = "observed_on"
 	relationOwnedBy            = "owned_by"
 	relationRepresents         = "represents"
 	relationRepresentsIdentity = "represents_identity"
+	relationResolvesTo         = "resolves_to"
 	relationRunsAs             = "runs_as"
 	relationSupports           = "supports"
 	relationTaggedAs           = "tagged_as"
 	relationTargeted           = "targeted"
+	relationCNAMETo            = "cname_to"
 )
 
 // Service materializes synced source events into current-state and graph stores.

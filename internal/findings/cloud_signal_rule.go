@@ -119,7 +119,7 @@ func (r *cloudSignalRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool
 	sourceID := strings.TrimSpace(runtime.GetSourceId())
 	for _, candidate := range r.config.sourceIDs {
 		if strings.EqualFold(sourceID, candidate) {
-			return true
+			return runtimeMayEmitEventKind(runtime, r.config.eventKinds)
 		}
 	}
 	return false
@@ -129,7 +129,7 @@ func (r *cloudSignalRule) Evaluate(ctx context.Context, runtime *cerebrov1.Sourc
 	if r == nil || runtime == nil || event == nil {
 		return nil, nil
 	}
-	if !r.SupportsRuntime(runtime) || !identityKindAllowed(event.GetKind(), r.config.eventKinds) {
+	if !identityKindAllowed(event.GetKind(), r.config.eventKinds) {
 		return nil, nil
 	}
 	attributes := eventAttributes(event)

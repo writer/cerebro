@@ -3,6 +3,8 @@ package config
 import (
 	"context"
 	"testing"
+
+	"github.com/writer/cerebro/internal/sourceconfig"
 )
 
 func TestResolveSourceConfigSecretReferencesResolvesEnvValues(t *testing.T) {
@@ -106,5 +108,35 @@ func TestResolveSourceRuntimeConfigSecretReferencesPreservesLiteralEnvQueryValue
 	}
 	if got := resolved["phrase"]; got != "env:prod" {
 		t.Fatalf("resolved phrase = %q, want literal env:prod", got)
+	}
+}
+
+func TestResolveSourceRuntimeConfigInjectsAWSAssumeRoleAllowlist(t *testing.T) {
+	t.Setenv(awsAssumeRoleARNsEnv, "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role")
+	resolved, err := ResolveSourceRuntimeConfigSecretReferences(context.Background(), "aws", map[string]string{
+		sourceconfig.AWSAssumeRoleAllowlistKey: "caller-controlled",
+		sourceconfig.RuntimeTenantIDKey:        "writer",
+	})
+	if err != nil {
+		t.Fatalf("ResolveSourceRuntimeConfigSecretReferences() error = %v", err)
+	}
+	if got := resolved[sourceconfig.AWSAssumeRoleAllowlistKey]; got != "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role" {
+		t.Fatalf("resolved assume-role allowlist = %q, want deployment env value", got)
+	}
+	if got := resolved[sourceconfig.RuntimeTenantIDKey]; got != "writer" {
+		t.Fatalf("resolved runtime tenant = %q, want writer", got)
+	}
+}
+
+func TestResolveSourceConfigDoesNotInjectRuntimeAWSAllowlist(t *testing.T) {
+	t.Setenv(awsAssumeRoleARNsEnv, "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role")
+	resolved, err := ResolveSourceConfigSecretReferences(context.Background(), "aws", map[string]string{
+		"account_id": "123456789012",
+	})
+	if err != nil {
+		t.Fatalf("ResolveSourceConfigSecretReferences() error = %v", err)
+	}
+	if _, ok := resolved[sourceconfig.AWSAssumeRoleAllowlistKey]; ok {
+		t.Fatal("direct source config injected runtime AWS assume-role allowlist")
 	}
 }

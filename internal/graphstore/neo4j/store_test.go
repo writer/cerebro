@@ -30,6 +30,12 @@ func TestOpenRejectsIncompleteConfig(t *testing.T) {
 	}
 }
 
+func TestProjectedEntityMergePreservesExistingLabelsForFallbackLabels(t *testing.T) {
+	if !strings.Contains(mergeEntityAndLoadAttributesQuery, "e.label = CASE WHEN $label <> $urn THEN $label ELSE coalesce(e.label, $label) END") {
+		t.Fatalf("entity merge does not preserve existing labels for fallback labels:\n%s", mergeEntityAndLoadAttributesQuery)
+	}
+}
+
 func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 	if os.Getenv("CEREBRO_RUN_NEO4J_DOCKER") != "1" {
 		t.Skip("set CEREBRO_RUN_NEO4J_DOCKER=1 to run Neo4j Docker integration test")

@@ -14,6 +14,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 )
 
 type runtimeStore struct {
@@ -297,10 +298,14 @@ func TestRebuildDryRunResolvesRuntimeConfigReferences(t *testing.T) {
 		"writer-github": {
 			Id:       "writer-github",
 			SourceId: "github",
+			TenantId: "writer",
 			Config:   map[string]string{"token": "env:TOKEN"},
 		},
 	}}
 	service := New(registry, store, nil).WithConfigPreparer(func(_ context.Context, _ string, values map[string]string) (map[string]string, error) {
+		if got := values[sourceconfig.RuntimeTenantIDKey]; got != "writer" {
+			t.Fatalf("runtime tenant config = %q, want writer", got)
+		}
 		resolved := make(map[string]string, len(values))
 		for key, value := range values {
 			if value == "env:TOKEN" {
@@ -765,6 +770,64 @@ func TestRebuildDryRunReplaysRuntimeIntoTemporaryGraph(t *testing.T) {
 	}
 }
 
+func TestRebuildDryRunReplaysGRCVulnerabilityTargetIntegrationGraph(t *testing.T) {
+	replayer := &eventReplayer{
+		events: []*cerebrov1.EventEnvelope{
+			testRuntimeEvent("grc-integration-1", "grc.integration", "writer-grc", map[string]string{
+				"provider":       "vanta",
+				"integration_id": "integration-1",
+				"display_name":   "GitHub Dependabot",
+			}),
+			testRuntimeEvent("grc-vulnerability-1", "grc.vulnerability", "writer-grc", map[string]string{
+				"provider":         "vanta",
+				"vulnerability_id": "vuln-1",
+				"name":             "CVE-2026-4242",
+				"package":          "example/module",
+				"target_id":        "target-1",
+				"integration_id":   "integration-1",
+			}),
+		},
+	}
+	for _, event := range replayer.events {
+		event.SourceId = "grc"
+		event.TenantId = "writer"
+	}
+	service := New(nil, &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-grc": {
+				Id:       "writer-grc",
+				SourceId: "grc",
+				TenantId: "writer",
+			},
+		},
+	}, replayer)
+
+	result, err := service.RebuildDryRun(context.Background(), Request{
+		Mode:         modeReplay,
+		RuntimeID:    "writer-grc",
+		EventLimit:   2,
+		PreviewLimit: 20,
+	})
+	if err != nil {
+		t.Fatalf("RebuildDryRun() error = %v", err)
+	}
+
+	targetURN := "urn:cerebro:writer:grc_target:vanta:target-1"
+	integrationURN := "urn:cerebro:writer:source:vanta:integration:integration-1"
+	if result.GraphNodes != 5 {
+		t.Fatalf("GraphNodes = %d, want 5", result.GraphNodes)
+	}
+	if result.GraphLinks != 6 {
+		t.Fatalf("GraphLinks = %d, want 6", result.GraphLinks)
+	}
+	if !containsEntityPreview(result.PreviewEntities, integrationURN, "source", "GitHub Dependabot") {
+		t.Fatalf("PreviewEntities missing named integration: %#v", result.PreviewEntities)
+	}
+	if !containsLinkPreview(result.PreviewLinks, targetURN, "belongs_to", integrationURN) {
+		t.Fatalf("PreviewLinks missing target belongs_to integration: %#v", result.PreviewLinks)
+	}
+}
+
 func TestRebuildDryRunRejectsNilEventWithPageContext(t *testing.T) {
 	registry, err := sourcecdk.NewRegistry(&testSource{
 		spec:  &cerebrov1.SourceSpec{Id: "github", Name: "GitHub"},
@@ -891,6 +954,24 @@ func containsAssertion(assertions []*AssertionPreview, name string, actual int64
 func containsPathPatternPreview(patterns []*PathPatternPreview, label string, count int64) bool {
 	for _, pattern := range patterns {
 		if pattern != nil && pattern.Pattern == label && pattern.Count == count {
+			return true
+		}
+	}
+	return false
+}
+
+func containsEntityPreview(entities []*EntityPreview, urn string, entityType string, label string) bool {
+	for _, entity := range entities {
+		if entity != nil && entity.URN == urn && entity.EntityType == entityType && entity.Label == label {
+			return true
+		}
+	}
+	return false
+}
+
+func containsLinkPreview(links []*LinkPreview, fromURN string, relation string, toURN string) bool {
+	for _, link := range links {
+		if link != nil && link.FromURN == fromURN && link.Relation == relation && link.ToURN == toURN {
 			return true
 		}
 	}

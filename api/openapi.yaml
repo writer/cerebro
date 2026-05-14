@@ -3,14 +3,28 @@ info:
   title: Cerebro Bootstrap API
   version: v1
   description: Current Writer/Cerebro bootstrap HTTP API. The Connect RPC contract is defined in proto/cerebro/v1/bootstrap.proto.
+  contact:
+    name: Writer Security
 servers:
   - url: http://127.0.0.1:8080
 security:
   - bearerAuth: []
+tags:
+  - name: Findings
+  - name: GRC
+  - name: Graph
+  - name: Health
+  - name: Knowledge
+  - name: Platform
+  - name: Reports
+  - name: Sources
+  - name: Workflow
 paths:
   /health:
     get:
       summary: Health check
+      tags:
+        - Health
       security: []
       responses:
         '200':
@@ -18,6 +32,8 @@ paths:
   /healthz:
     get:
       summary: Health check alias
+      tags:
+        - Health
       security: []
       responses:
         '200':
@@ -25,6 +41,8 @@ paths:
   /openapi.yaml:
     get:
       summary: Current OpenAPI contract
+      tags:
+        - Platform
       security: []
       responses:
         '200':
@@ -32,12 +50,16 @@ paths:
   /sources:
     get:
       summary: List registered sources
+      tags:
+        - Sources
       responses:
         '200':
           description: Source catalog.
   /sources/{sourceID}/check:
     get:
       summary: Check source configuration
+      tags:
+        - Sources
       parameters:
         - $ref: '#/components/parameters/sourceID'
       responses:
@@ -46,6 +68,8 @@ paths:
   /sources/{sourceID}/discover:
     get:
       summary: Discover source URNs
+      tags:
+        - Sources
       parameters:
         - $ref: '#/components/parameters/sourceID'
       responses:
@@ -54,6 +78,8 @@ paths:
   /sources/{sourceID}/read:
     get:
       summary: Read one source preview page
+      tags:
+        - Sources
       parameters:
         - $ref: '#/components/parameters/sourceID'
         - name: cursor
@@ -66,6 +92,8 @@ paths:
   /source-runtimes:
     get:
       summary: List source runtime configurations
+      tags:
+        - Sources
       parameters:
         - name: runtime_id
           in: query
@@ -90,6 +118,8 @@ paths:
   /source-runtimes/{runtimeID}:
     put:
       summary: Store source runtime configuration
+      tags:
+        - Sources
       parameters:
         - $ref: '#/components/parameters/runtimeID'
       requestBody:
@@ -103,6 +133,8 @@ paths:
           description: Stored source runtime.
     get:
       summary: Get source runtime configuration
+      tags:
+        - Sources
       parameters:
         - $ref: '#/components/parameters/runtimeID'
       responses:
@@ -111,6 +143,8 @@ paths:
   /source-runtimes/{runtimeID}/sync:
     post:
       summary: Sync one source runtime through the append log and projections
+      tags:
+        - Sources
       parameters:
         - $ref: '#/components/parameters/runtimeID'
       responses:
@@ -119,6 +153,8 @@ paths:
   /source-runtimes/{runtimeID}/graph-ingest-runs:
     post:
       summary: Run graph ingest for one source runtime
+      tags:
+        - Sources
       parameters:
         - $ref: '#/components/parameters/runtimeID'
       responses:
@@ -127,6 +163,8 @@ paths:
   /source-runtimes/{runtimeID}/claims:
     get:
       summary: List claims for one runtime
+      tags:
+        - Sources
       parameters:
         - $ref: '#/components/parameters/runtimeID'
       responses:
@@ -134,6 +172,8 @@ paths:
           description: Claim list.
     post:
       summary: Write claims for one runtime
+      tags:
+        - Sources
       parameters:
         - $ref: '#/components/parameters/runtimeID'
       responses:
@@ -142,6 +182,8 @@ paths:
   /source-runtimes/{runtimeID}/findings:
     get:
       summary: List findings for one runtime
+      tags:
+        - Sources
       parameters:
         - $ref: '#/components/parameters/runtimeID'
       responses:
@@ -150,6 +192,8 @@ paths:
   /source-runtimes/{runtimeID}/finding-rules/evaluate:
     post:
       summary: Evaluate selected finding rules for one runtime
+      tags:
+        - Sources
       parameters:
         - $ref: '#/components/parameters/runtimeID'
       responses:
@@ -158,6 +202,8 @@ paths:
   /source-runtimes/{runtimeID}/findings/evaluate:
     post:
       summary: Evaluate and persist findings for one runtime
+      tags:
+        - Sources
       parameters:
         - $ref: '#/components/parameters/runtimeID'
       responses:
@@ -166,22 +212,84 @@ paths:
   /source-runtimes/{runtimeID}/finding-evidence:
     get:
       summary: List finding evidence for one runtime
+      tags:
+        - Sources
       parameters:
         - $ref: '#/components/parameters/runtimeID'
+        - name: finding_id
+          in: query
+          schema:
+            type: string
+        - name: run_id
+          in: query
+          schema:
+            type: string
+        - name: rule_id
+          in: query
+          schema:
+            type: string
+        - name: claim_id
+          in: query
+          schema:
+            type: string
+        - name: event_id
+          in: query
+          schema:
+            type: string
+        - name: graph_root_urn
+          in: query
+          schema:
+            type: string
+        - name: graph_path_urn
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/limitQuery'
       responses:
         '200':
           description: Finding evidence list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  evidence:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FindingEvidence'
   /source-runtimes/{runtimeID}/finding-evaluation-runs:
     get:
       summary: List finding evaluation runs for one runtime
+      tags:
+        - Sources
       parameters:
         - $ref: '#/components/parameters/runtimeID'
+        - name: rule_id
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/limitQuery'
       responses:
         '200':
           description: Finding evaluation run list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FindingEvaluationRun'
   /findings/{findingID}:
     get:
       summary: Get finding
+      tags:
+        - Findings
       parameters:
         - $ref: '#/components/parameters/findingID'
       responses:
@@ -190,6 +298,8 @@ paths:
   /findings/{findingID}/resolve:
     post:
       summary: Resolve finding
+      tags:
+        - Findings
       parameters:
         - $ref: '#/components/parameters/findingID'
       responses:
@@ -198,6 +308,8 @@ paths:
   /findings/{findingID}/suppress:
     post:
       summary: Suppress finding
+      tags:
+        - Findings
       parameters:
         - $ref: '#/components/parameters/findingID'
       responses:
@@ -206,6 +318,8 @@ paths:
   /findings/{findingID}/notes:
     post:
       summary: Add finding note
+      tags:
+        - Findings
       parameters:
         - $ref: '#/components/parameters/findingID'
       responses:
@@ -214,6 +328,8 @@ paths:
   /findings/{findingID}/tickets:
     post:
       summary: Link finding ticket
+      tags:
+        - Findings
       parameters:
         - $ref: '#/components/parameters/findingID'
       responses:
@@ -222,6 +338,8 @@ paths:
   /findings/{findingID}/assign:
     put:
       summary: Assign finding
+      tags:
+        - Findings
       parameters:
         - $ref: '#/components/parameters/findingID'
       responses:
@@ -230,6 +348,8 @@ paths:
   /findings/{findingID}/due:
     put:
       summary: Set finding due date
+      tags:
+        - Findings
       parameters:
         - $ref: '#/components/parameters/findingID'
       responses:
@@ -238,34 +358,58 @@ paths:
   /finding-rules:
     get:
       summary: List finding rules
+      tags:
+        - Findings
       responses:
         '200':
           description: Finding rule catalog.
   /finding-evaluation-runs/{runID}:
     get:
       summary: Get finding evaluation run
+      tags:
+        - Platform
       parameters:
         - $ref: '#/components/parameters/runID'
       responses:
         '200':
           description: Finding evaluation run.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  run:
+                    $ref: '#/components/schemas/FindingEvaluationRun'
   /finding-evidence/{evidenceID}:
     get:
       summary: Get finding evidence
+      tags:
+        - Findings
       parameters:
         - $ref: '#/components/parameters/evidenceID'
       responses:
         '200':
           description: Finding evidence.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  evidence:
+                    $ref: '#/components/schemas/FindingEvidence'
   /reports:
     get:
       summary: List report definitions
+      tags:
+        - Reports
       responses:
         '200':
           description: Report definition catalog.
   /reports/{reportID}/runs:
     post:
       summary: Run report
+      tags:
+        - Reports
       parameters:
         - $ref: '#/components/parameters/reportID'
       responses:
@@ -274,6 +418,8 @@ paths:
   /report-runs/{runID}:
     get:
       summary: Get report run
+      tags:
+        - Reports
       parameters:
         - $ref: '#/components/parameters/runID'
       responses:
@@ -282,6 +428,8 @@ paths:
   /grc/dashboard:
     get:
       summary: GRC operator dashboard
+      tags:
+        - GRC
       parameters:
         - $ref: '#/components/parameters/tenantIDQuery'
         - $ref: '#/components/parameters/runtimeIDQuery'
@@ -293,6 +441,8 @@ paths:
   /grc/findings:
     get:
       summary: GRC risk inbox findings
+      tags:
+        - GRC
       parameters:
         - $ref: '#/components/parameters/tenantIDQuery'
         - $ref: '#/components/parameters/runtimeIDQuery'
@@ -324,6 +474,8 @@ paths:
   /grc/controls:
     get:
       summary: GRC control posture
+      tags:
+        - GRC
       parameters:
         - $ref: '#/components/parameters/tenantIDQuery'
         - $ref: '#/components/parameters/runtimeIDQuery'
@@ -335,6 +487,8 @@ paths:
   /grc/evidence:
     get:
       summary: GRC evidence library
+      tags:
+        - GRC
       parameters:
         - $ref: '#/components/parameters/tenantIDQuery'
         - $ref: '#/components/parameters/runtimeIDQuery'
@@ -362,6 +516,8 @@ paths:
   /grc/entities/{entityID}/impact:
     get:
       summary: GRC entity impact map
+      tags:
+        - GRC
       parameters:
         - name: entityID
           in: path
@@ -380,6 +536,8 @@ paths:
   /grc/audit-packets/{packetID}:
     get:
       summary: GRC audit packet for one finding
+      tags:
+        - GRC
       parameters:
         - name: packetID
           in: path
@@ -392,36 +550,48 @@ paths:
   /platform/knowledge/decisions:
     post:
       summary: Record platform decision
+      tags:
+        - Knowledge
       responses:
         '200':
           description: Decision write result.
   /platform/knowledge/actions:
     post:
       summary: Record platform action
+      tags:
+        - Knowledge
       responses:
         '200':
           description: Action write result.
   /platform/knowledge/actions/recommendation:
     post:
       summary: Record recommended action
+      tags:
+        - Knowledge
       responses:
         '200':
           description: Action write result.
   /platform/knowledge/outcomes:
     post:
       summary: Record platform outcome
+      tags:
+        - Knowledge
       responses:
         '200':
           description: Outcome write result.
   /platform/workflow/replay:
     post:
       summary: Replay workflow events
+      tags:
+        - Workflow
       responses:
         '200':
           description: Replay result.
   /platform/graph/neighborhood:
     get:
       summary: Query graph neighborhood
+      tags:
+        - Graph
       parameters:
         - name: root_urn
           in: query
@@ -439,6 +609,8 @@ paths:
   /platform/graph/impact/vulnerability/{id}:
     get:
       summary: Query vulnerability impact graph
+      tags:
+        - Graph
       parameters:
         - name: id
           in: path
@@ -466,6 +638,8 @@ paths:
   /platform/graph/impact/package:
     get:
       summary: Query package exposure graph
+      tags:
+        - Graph
       parameters:
         - name: package
           in: query
@@ -493,6 +667,8 @@ paths:
   /platform/graph/impact/asset:
     get:
       summary: Query asset vulnerability graph
+      tags:
+        - Graph
       parameters:
         - name: urn
           in: query
@@ -512,21 +688,58 @@ paths:
       responses:
         '200':
           description: Asset vulnerability result.
+  /platform/graph/aws-public-endpoint-insights:
+    get:
+      summary: Query AWS public endpoint overlap insights
+      tags:
+        - Graph
+      parameters:
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: account_id
+          in: query
+          schema:
+            type: string
+        - name: region
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: AWS public endpoint overlap insights.
   /platform/graph/ingest-health:
     get:
       summary: Check graph ingest health
+      tags:
+        - Graph
       responses:
         '200':
           description: Graph ingest health.
   /platform/graph/ingest-runs:
     get:
       summary: List graph ingest runs
+      tags:
+        - Graph
       responses:
         '200':
           description: Graph ingest runs.
   /platform/graph/ingest-runs/{runID}:
     get:
       summary: Get graph ingest run
+      tags:
+        - Graph
       parameters:
         - $ref: '#/components/parameters/runID'
       responses:
@@ -536,6 +749,8 @@ paths:
     get:
       deprecated: true
       summary: Legacy alias for /platform/graph/neighborhood
+      tags:
+        - Graph
       responses:
         '200':
           description: Neighborhood result.
@@ -543,6 +758,8 @@ paths:
     get:
       deprecated: true
       summary: Legacy alias for /platform/graph/impact/vulnerability/{id}
+      tags:
+        - Graph
       parameters:
         - name: id
           in: path
@@ -571,6 +788,8 @@ paths:
     get:
       deprecated: true
       summary: Legacy alias for /platform/graph/impact/package
+      tags:
+        - Graph
       parameters:
         - name: package
           in: query
@@ -599,6 +818,8 @@ paths:
     get:
       deprecated: true
       summary: Legacy alias for /platform/graph/impact/asset
+      tags:
+        - Graph
       parameters:
         - name: urn
           in: query
@@ -622,6 +843,8 @@ paths:
     get:
       deprecated: true
       summary: Legacy alias for /platform/graph/ingest-health
+      tags:
+        - Graph
       responses:
         '200':
           description: Graph ingest health.
@@ -629,6 +852,8 @@ paths:
     get:
       deprecated: true
       summary: Legacy alias for /platform/graph/ingest-runs
+      tags:
+        - Graph
       responses:
         '200':
           description: Graph ingest runs.
@@ -636,6 +861,8 @@ paths:
     get:
       deprecated: true
       summary: Legacy alias for /platform/graph/ingest-runs/{runID}
+      tags:
+        - Graph
       parameters:
         - $ref: '#/components/parameters/runID'
       responses:
@@ -645,6 +872,8 @@ paths:
     post:
       deprecated: true
       summary: Legacy alias for /platform/knowledge/actions/recommendation
+      tags:
+        - Graph
       responses:
         '200':
           description: Action write result.
@@ -652,6 +881,8 @@ paths:
     post:
       deprecated: true
       summary: Legacy alias for /platform/knowledge/outcomes
+      tags:
+        - Graph
       responses:
         '200':
           description: Outcome write result.
@@ -737,3 +968,162 @@ components:
               type: object
               additionalProperties:
                 type: string
+    FindingEvaluationRun:
+      type: object
+      properties:
+        id:
+          type: string
+        runtime_id:
+          type: string
+        rule_id:
+          type: string
+        status:
+          type: string
+        event_limit:
+          type: integer
+          minimum: 0
+        events_evaluated:
+          type: integer
+          minimum: 0
+        events_processed:
+          type: integer
+          minimum: 0
+        events_matched:
+          type: integer
+          minimum: 0
+        findings_upserted:
+          type: integer
+          minimum: 0
+        findings_emitted:
+          type: integer
+          minimum: 0
+        finding_ids:
+          type: array
+          items:
+            type: string
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        error:
+          type: string
+    FindingEvidence:
+      type: object
+      properties:
+        id:
+          type: string
+        runtime_id:
+          type: string
+        rule_id:
+          type: string
+        finding_id:
+          type: string
+        run_id:
+          type: string
+        run_ids:
+          type: array
+          items:
+            type: string
+        claim_ids:
+          type: array
+          items:
+            type: string
+        event_ids:
+          type: array
+          items:
+            type: string
+        graph_root_urns:
+          type: array
+          items:
+            type: string
+        graph_path_urns:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        last_observed_at:
+          type: string
+          format: date-time
+        attributes:
+          type: object
+          additionalProperties:
+            type: string
+        graph_rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphEvidenceRow'
+        observation_count:
+          type: integer
+          minimum: 0
+        observations:
+          type: array
+          items:
+            $ref: '#/components/schemas/FindingEvidenceObservation'
+    FindingEvidenceObservation:
+      type: object
+      properties:
+        run_id:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        claim_ids:
+          type: array
+          items:
+            type: string
+        event_ids:
+          type: array
+          items:
+            type: string
+        graph_root_urns:
+          type: array
+          items:
+            type: string
+        graph_path_urns:
+          type: array
+          items:
+            type: string
+        graph_rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphEvidenceRow'
+    GraphEvidenceRow:
+      type: object
+      properties:
+        label:
+          type: string
+        attributes:
+          type: object
+          additionalProperties:
+            type: string
+        paths:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphEvidencePath'
+    GraphEvidencePath:
+      type: object
+      properties:
+        from_urn:
+          type: string
+        from_label:
+          type: string
+        from_type:
+          type: string
+        relation:
+          type: string
+        to_urn:
+          type: string
+        to_label:
+          type: string
+        to_type:
+          type: string
+        observed_at:
+          type: string
+        attributes:
+          type: object
+          additionalProperties:
+            type: string

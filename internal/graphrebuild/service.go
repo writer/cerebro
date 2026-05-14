@@ -563,18 +563,12 @@ func (s *Service) readEvents(ctx context.Context, source sourcecdk.Source, runti
 }
 
 func (s *Service) prepareConfig(ctx context.Context, runtime *cerebrov1.SourceRuntime) (map[string]string, error) {
+	config := sourceconfig.WithRuntimeTenant(runtime.GetConfig(), runtime.GetTenantId())
+	config = sourceconfig.WithLegacyTenantlessAssumeRole(config, runtime.GetSourceId(), runtime.GetTenantId())
 	if s == nil || s.preparer == nil {
-		return cloneConfig(runtime.GetConfig()), nil
+		return config, nil
 	}
-	return s.preparer(ctx, runtime.GetSourceId(), runtime.GetConfig())
-}
-
-func cloneConfig(config map[string]string) map[string]string {
-	cloned := make(map[string]string, len(config))
-	for key, value := range config {
-		cloned[key] = value
-	}
-	return cloned
+	return s.preparer(ctx, runtime.GetSourceId(), config)
 }
 
 type projectSummary struct {

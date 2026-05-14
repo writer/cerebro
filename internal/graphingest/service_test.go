@@ -10,15 +10,24 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourceconfig"
 )
 
 type stubRunStore struct {
-	runs []graphstore.IngestRun
+	runs    []graphstore.IngestRun
+	putRuns []graphstore.IngestRun
+	putFunc func(context.Context, graphstore.IngestRun) error
 }
 
 func (s *stubRunStore) Ping(context.Context) error { return nil }
 
-func (s *stubRunStore) PutIngestRun(context.Context, graphstore.IngestRun) error { return nil }
+func (s *stubRunStore) PutIngestRun(ctx context.Context, run graphstore.IngestRun) error {
+	s.putRuns = append(s.putRuns, run)
+	if s.putFunc != nil {
+		return s.putFunc(ctx, run)
+	}
+	return nil
+}
 
 func (s *stubRunStore) GetIngestRun(context.Context, string) (graphstore.IngestRun, bool, error) {
 	return graphstore.IngestRun{}, false, nil
@@ -91,6 +100,18 @@ func TestConfigHashIgnoresSensitiveKeyValues(t *testing.T) {
 	})
 	if left != right {
 		t.Fatalf("configHash() differed when only sensitive keys changed")
+	}
+}
+
+func TestConfigHashIgnoresInternalRuntimeMetadata(t *testing.T) {
+	base := configHash(map[string]string{"domain": "writer.okta.com"})
+	withInternal := configHash(map[string]string{
+		"domain":                               "writer.okta.com",
+		sourceconfig.RuntimeTenantIDKey:        "writer",
+		sourceconfig.AWSAssumeRoleAllowlistKey: "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role",
+	})
+	if base != withInternal {
+		t.Fatal("configHash() changed when only internal runtime metadata changed")
 	}
 }
 
@@ -341,6 +362,67 @@ func TestHealthFailedCountDoesNotDependOnPagingLimit(t *testing.T) {
 	}
 	if result.Status != "degraded" {
 		t.Fatalf("Health().Status = %q, want degraded", result.Status)
+	}
+}
+
+func TestHealthUsesLatestRunPerRuntime(t *testing.T) {
+	store := &stubRunStore{
+		runs: []graphstore.IngestRun{
+			{
+				ID:        "old-failed",
+				RuntimeID: "runtime-a",
+				Status:    graphstore.IngestRunStatusFailed,
+				StartedAt: "2026-05-12T10:00:00Z",
+			},
+			{
+				ID:        "new-completed",
+				RuntimeID: "runtime-a",
+				Status:    graphstore.IngestRunStatusCompleted,
+				StartedAt: "2026-05-12T11:00:00Z",
+			},
+			{
+				ID:        "latest-running",
+				RuntimeID: "runtime-b",
+				Status:    graphstore.IngestRunStatusRunning,
+				StartedAt: "2026-05-12T12:00:00Z",
+			},
+		},
+	}
+	result, err := New(nil, nil, nil, store).Health(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("Health() error = %v", err)
+	}
+	if result.FailedCount != 0 {
+		t.Fatalf("Health().FailedCount = %d, want 0", result.FailedCount)
+	}
+	if result.RunningCount != 1 {
+		t.Fatalf("Health().RunningCount = %d, want 1", result.RunningCount)
+	}
+	if result.Status != "ready" {
+		t.Fatalf("Health().Status = %q, want ready", result.Status)
+	}
+}
+
+func TestPutTerminalIngestRunIgnoresParentCancellation(t *testing.T) {
+	parentCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	store := &stubRunStore{
+		putFunc: func(ctx context.Context, _ graphstore.IngestRun) error {
+			if err := ctx.Err(); err != nil {
+				t.Fatalf("PutIngestRun context error = %v, want nil", err)
+			}
+			return nil
+		},
+	}
+	run := graphstore.IngestRun{ID: "run-1", Status: graphstore.IngestRunStatusFailed}
+	if err := New(nil, nil, nil, nil).putTerminalIngestRun(parentCtx, store, run); err != nil {
+		t.Fatalf("putTerminalIngestRun() error = %v", err)
+	}
+	if len(store.putRuns) != 1 {
+		t.Fatalf("PutIngestRun calls = %d, want 1", len(store.putRuns))
+	}
+	if got := store.putRuns[0].Status; got != graphstore.IngestRunStatusFailed {
+		t.Fatalf("persisted status = %q, want failed", got)
 	}
 }
 

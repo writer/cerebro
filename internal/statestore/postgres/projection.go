@@ -50,7 +50,7 @@ DO UPDATE SET
   source_id = EXCLUDED.source_id,
   runtime_id = CASE WHEN EXCLUDED.runtime_id <> '' THEN EXCLUDED.runtime_id ELSE entities.runtime_id END,
   entity_type = EXCLUDED.entity_type,
-  label = EXCLUDED.label,
+  label = CASE WHEN EXCLUDED.label = EXCLUDED.urn THEN entities.label ELSE EXCLUDED.label END,
   attributes_json = entities.attributes_json || EXCLUDED.attributes_json,
   updated_at = NOW()`
 }

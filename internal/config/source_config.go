@@ -9,17 +9,20 @@ import (
 	"github.com/writer/cerebro/internal/sourceconfig"
 )
 
-const sourceConfigEnvAllowlistEnv = "CEREBRO_SOURCE_CONFIG_ENV_ALLOWLIST"
+const (
+	sourceConfigEnvAllowlistEnv = "CEREBRO_SOURCE_CONFIG_ENV_ALLOWLIST"
+	awsAssumeRoleARNsEnv        = "CEREBRO_AWS_ASSUME_ROLE_ARNS"
+)
 
 func ResolveSourceConfigSecretReferences(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
-	return resolveSourceConfigSecretReferences(ctx, sourceID, values, true)
+	return resolveSourceConfigSecretReferences(ctx, sourceID, values, true, false)
 }
 
 func ResolveSourceRuntimeConfigSecretReferences(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
-	return resolveSourceConfigSecretReferences(ctx, sourceID, values, true)
+	return resolveSourceConfigSecretReferences(ctx, sourceID, values, true, true)
 }
 
-func resolveSourceConfigSecretReferences(ctx context.Context, sourceID string, values map[string]string, preserveLiteralQueryValues bool) (map[string]string, error) {
+func resolveSourceConfigSecretReferences(ctx context.Context, sourceID string, values map[string]string, preserveLiteralQueryValues bool, injectRuntimeAllowlist bool) (map[string]string, error) {
 	_ = ctx
 	resolved := make(map[string]string, len(values))
 	for key, value := range values {
@@ -45,6 +48,9 @@ func resolveSourceConfigSecretReferences(ctx context.Context, sourceID string, v
 			return nil, fmt.Errorf("source config %q references empty environment variable %q", strings.TrimSpace(key), envName)
 		}
 		resolved[key] = secret
+	}
+	if injectRuntimeAllowlist && strings.EqualFold(strings.TrimSpace(sourceID), "aws") {
+		resolved[sourceconfig.AWSAssumeRoleAllowlistKey] = strings.TrimSpace(os.Getenv(awsAssumeRoleARNsEnv))
 	}
 	return resolved, nil
 }

@@ -20,6 +20,14 @@ import (
 const defaultIngestRunListLimit = 25
 const maxAttributeMergeRetries = 5
 const defaultProjectionCleanupLimit = 1000
+const mergeEntityAndLoadAttributesQuery = `MERGE (e:Entity {urn: $urn})
+ON CREATE SET e.attributes_json = '{}', e.attributes_version = 0
+SET e.tenant_id = $tenant_id,
+    e.source_id = $source_id,
+    e.runtime_id = CASE WHEN $runtime_id <> '' THEN $runtime_id ELSE coalesce(e.runtime_id, '') END,
+    e.entity_type = $entity_type,
+    e.label = CASE WHEN $label <> $urn THEN $label ELSE coalesce(e.label, $label) END
+RETURN coalesce(e.attributes_json, '{}'), coalesce(e.attributes_version, 0)`
 
 var errConcurrentAttributeMerge = errors.New("concurrent attribute merge")
 
@@ -973,14 +981,7 @@ func normalizeCleanupEntityTypes(values []string) []string {
 }
 
 func mergeEntityAndLoadAttributes(ctx context.Context, tx neo4jdriver.ManagedTransaction, params map[string]any) (string, int64, error) {
-	result, err := tx.Run(ctx, `MERGE (e:Entity {urn: $urn})
-ON CREATE SET e.attributes_json = '{}', e.attributes_version = 0
-SET e.tenant_id = $tenant_id,
-    e.source_id = $source_id,
-    e.runtime_id = CASE WHEN $runtime_id <> '' THEN $runtime_id ELSE coalesce(e.runtime_id, '') END,
-    e.entity_type = $entity_type,
-    e.label = $label
-RETURN coalesce(e.attributes_json, '{}'), coalesce(e.attributes_version, 0)`, params)
+	result, err := tx.Run(ctx, mergeEntityAndLoadAttributesQuery, params)
 	if err != nil {
 		return "", 0, err
 	}

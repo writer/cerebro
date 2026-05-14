@@ -5,4 +5,10 @@ if [ "${CEREBRO_SKIP_PRE_PUSH:-}" = "1" ]; then
   exit 0
 fi
 
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+if [ "${CEREBRO_SKIP_LEAK_CHECK:-}" != "1" ]; then
+  "$repo_root/scripts/leak_check.sh" pushed
+fi
+
 make verify

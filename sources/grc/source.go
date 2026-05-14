@@ -29,28 +29,31 @@ import (
 var catalogFS embed.FS
 
 const (
-	sourceID            = "grc"
-	defaultProvider     = "vanta"
-	defaultBaseURL      = "https://api.vanta.com"
-	defaultReadScope    = "vanta-api.all:read"
-	defaultPageSize     = 10
-	maxPageSize         = 100
-	httpTimeout         = 30 * time.Second
-	maxBodyBytes        = 8 << 20
-	tokenRefreshLeeway  = time.Minute
-	defaultFamily       = familyControlTest
-	familyFramework     = "framework"
-	familyControl       = "control"
-	familyControlTest   = "control_test"
-	familyPolicy        = "policy"
-	familyDocument      = "document"
-	familyVendor        = "vendor"
-	familyVulnerability = "vulnerability"
-	familyRiskScenario  = "risk_scenario"
-	familyPerson        = "person"
-	familyUser          = "user"
-	familyIntegration   = "integration"
+	sourceID              = "grc"
+	defaultProvider       = "vanta"
+	defaultBaseURL        = "https://api.vanta.com"
+	defaultReadScope      = "vanta-api.all:read"
+	defaultPageSize       = 10
+	maxPageSize           = 100
+	httpTimeout           = 30 * time.Second
+	maxBodyBytes          = 8 << 20
+	tokenRefreshLeeway    = time.Minute
+	defaultFamily         = familyControlTest
+	familyFramework       = "framework"
+	familyControl         = "control"
+	familyControlTest     = "control_test"
+	familyPolicy          = "policy"
+	familyDocument        = "document"
+	familyVendor          = "vendor"
+	familyVulnerability   = "vulnerability"
+	familyVulnerableAsset = "vulnerable_asset"
+	familyRiskScenario    = "risk_scenario"
+	familyPerson          = "person"
+	familyUser            = "user"
+	familyIntegration     = "integration"
 )
+
+var defaultTokenRetryBackoffs = []time.Duration{2 * time.Second, 5 * time.Second, 10 * time.Second, 20 * time.Second}
 
 // Source is the provider-neutral GRC source. Provider-specific APIs are kept
 // behind drivers; emitted event kinds stay canonical grc.*.
@@ -60,6 +63,7 @@ type Source struct {
 	families             *sourcecdk.FamilyEngine[settings]
 	allowLoopbackBaseURL bool
 	lookupIPAddrs        func(context.Context, string) ([]net.IPAddr, error)
+	tokenRetryBackoffs   []time.Duration
 	mu                   sync.Mutex
 	tokenKey             string
 	accessToken          string
@@ -175,6 +179,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 		s.family(familyDocument, "/v1/documents"),
 		s.family(familyVendor, "/v1/vendors"),
 		s.family(familyVulnerability, "/v1/vulnerabilities"),
+		s.family(familyVulnerableAsset, "/v1/vulnerable-assets"),
 		s.family(familyRiskScenario, "/v1/risk-scenarios"),
 		s.family(familyPerson, "/v1/people"),
 		s.family(familyUser, "/v1/users"),
@@ -360,16 +365,20 @@ func (s *Source) token(ctx context.Context, settings settings) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("marshal grc token request: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, settings.tokenURL, bytes.NewReader(body))
-	if err != nil {
-		return "", fmt.Errorf("build grc token request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
 
 	var response tokenResponse
-	if err := s.doJSON(req, &response); err != nil {
-		return "", fmt.Errorf("request grc token: %w", err)
+	backoffs := s.tokenBackoffs()
+	for attempt := 0; ; attempt++ {
+		response, err = s.requestToken(ctx, settings, body)
+		if err == nil {
+			break
+		}
+		if !isRetryableTokenResponse(err) || attempt >= len(backoffs) {
+			return "", fmt.Errorf("request grc token: %w", err)
+		}
+		if sleepErr := sleepContext(ctx, backoffs[attempt]); sleepErr != nil {
+			return "", fmt.Errorf("request grc token retry: %w", sleepErr)
+		}
 	}
 	if strings.TrimSpace(response.AccessToken) == "" {
 		return "", fmt.Errorf("grc token response missing access_token")
@@ -385,6 +394,28 @@ func (s *Source) token(ctx context.Context, settings settings) (string, error) {
 	s.tokenExpiresAt = time.Now().Add(time.Duration(expiresIn) * time.Second)
 	s.mu.Unlock()
 	return response.AccessToken, nil
+}
+
+func (s *Source) requestToken(ctx context.Context, settings settings, body []byte) (tokenResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, settings.tokenURL, bytes.NewReader(body))
+	if err != nil {
+		return tokenResponse{}, fmt.Errorf("build grc token request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	var response tokenResponse
+	if err := s.doJSON(req, &response); err != nil {
+		return tokenResponse{}, err
+	}
+	return response, nil
+}
+
+func (s *Source) tokenBackoffs() []time.Duration {
+	if s != nil && s.tokenRetryBackoffs != nil {
+		return s.tokenRetryBackoffs
+	}
+	return defaultTokenRetryBackoffs
 }
 
 func (s *Source) invalidateToken(settings settings) {
@@ -404,6 +435,28 @@ func (s *Source) invalidateToken(settings settings) {
 func isUnauthorizedResponse(err error) bool {
 	var responseErr *responseError
 	return errors.As(err, &responseErr) && responseErr.statusCode == http.StatusUnauthorized
+}
+
+func isRetryableTokenResponse(err error) bool {
+	var responseErr *responseError
+	if !errors.As(err, &responseErr) {
+		return false
+	}
+	return responseErr.statusCode == http.StatusTooManyRequests || responseErr.statusCode >= http.StatusInternalServerError
+}
+
+func sleepContext(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (s *Source) doJSON(req *http.Request, target any) error {
@@ -658,6 +711,21 @@ func attributesFor(settings settings, family string, record grcRecord) map[strin
 			"external_url":        "externalURL",
 			"scan_source":         "scanSource",
 		})
+	case familyVulnerableAsset:
+		copyFirstField(attrs, values, "asset_id", "id", "assetId", "targetId")
+		copyFirstField(attrs, values, "target_id", "id", "assetId", "targetId")
+		copyFirstField(attrs, values, "target_name", "displayName", "name", "hostname", "host", "url")
+		copyFirstField(attrs, values, "resource_name", "displayName", "name", "hostname", "host", "url")
+		copyFirstField(attrs, values, "hostname", "hostname", "host", "dnsName", "fqdn")
+		copyFirstField(attrs, values, "ip", "ipAddress", "publicIp", "publicIP", "ip")
+		copyFirstField(attrs, values, "asset_type", "assetType", "resourceType", "type")
+		copyFirstField(attrs, values, "resource_type", "assetType", "resourceType", "type")
+		copyFirstField(attrs, values, "integration_id", "integrationId", "integration.id")
+		copyFirstField(attrs, values, "external_url", "externalURL", "url")
+		copyFirstField(attrs, values, "target_url", "url", "externalURL")
+		copyFirstField(attrs, values, "operating_system", "operatingSystem", "os")
+		copyFirstField(attrs, values, "last_detected_at", "lastDetectedDate", "lastSeenDate", "updatedAt")
+		copyVulnerableAssetReferences(attrs, values)
 	case familyRiskScenario:
 		copyFields(attrs, values, map[string]string{
 			"risk_id":             "riskId",
@@ -759,6 +827,31 @@ func copyControlReferenceFields(attrs map[string]string, values map[string]any) 
 	}
 }
 
+func copyVulnerableAssetReferences(attrs map[string]string, values map[string]any) {
+	if ids := firstNonEmptyString(
+		joinedObjectFieldValues(values, "vulnerabilities", "id", "vulnerabilityId"),
+		fieldString(values, "vulnerabilityIds"),
+	); ids != "" {
+		attrs["vulnerability_ids"] = ids
+	}
+	if names := firstNonEmptyString(
+		joinedObjectFieldValues(values, "vulnerabilities", "name", "title"),
+		fieldString(values, "vulnerabilityNames"),
+	); names != "" {
+		attrs["vulnerability_names"] = names
+	}
+	if packages := firstNonEmptyString(
+		joinedObjectFieldValues(values, "vulnerabilities", "packageIdentifier", "package", "packagePurl"),
+		fieldString(values, "packageIdentifiers"),
+		fieldString(values, "packages"),
+	); packages != "" {
+		attrs["package_identifiers"] = packages
+	}
+	if references := joinedVulnerableAssetReferences(values); references != "" {
+		attrs["vulnerability_package_refs"] = references
+	}
+}
+
 func joinedControlReferences(values map[string]any, arrayKey string) string {
 	items := arrayValue(values, arrayKey)
 	collected := make([]string, 0, len(items))
@@ -784,6 +877,148 @@ func joinedControlReferences(values map[string]any, arrayKey string) string {
 		collected = append(collected, pair)
 	}
 	return strings.Join(collected, ";")
+}
+
+func joinedVulnerableAssetReferences(values map[string]any) string {
+	items := arrayValue(values, "vulnerabilities")
+	refs := make([]map[string]string, 0, len(items))
+	seen := map[string]struct{}{}
+	vulnerabilityIDs := splitVulnerableAssetReferenceValues(fieldString(values, "vulnerabilityIds"))
+	vulnerabilityNames := splitVulnerableAssetReferenceValues(fieldString(values, "vulnerabilityNames"))
+	packageIdentifiers := splitVulnerableAssetReferenceValues(firstNonEmptyString(fieldString(values, "packageIdentifiers"), fieldString(values, "packages")))
+	for i, item := range items {
+		object, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		vulnerabilityID := firstNonEmptyString(valueString(object["id"]), valueString(object["vulnerabilityId"]), valueAt(vulnerabilityIDs, i))
+		vulnerabilityName := firstNonEmptyString(valueString(object["name"]), valueString(object["title"]), valueAt(vulnerabilityNames, i))
+		packageIdentifier := firstNonEmptyString(valueString(object["packageIdentifier"]), valueString(object["package"]), valueString(object["packagePurl"]), valueAt(packageIdentifiers, i))
+		if vulnerabilityID == "" && vulnerabilityName == "" && packageIdentifier == "" {
+			continue
+		}
+		key := strings.Join([]string{vulnerabilityID, vulnerabilityName, packageIdentifier}, "\x00")
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		ref := map[string]string{}
+		if vulnerabilityID != "" {
+			ref["vulnerability_id"] = vulnerabilityID
+		}
+		if vulnerabilityName != "" {
+			ref["vulnerability_name"] = vulnerabilityName
+		}
+		if packageIdentifier != "" {
+			ref["package_identifier"] = packageIdentifier
+		}
+		refs = append(refs, ref)
+	}
+	for i, ref := range refs {
+		if ref["vulnerability_id"] == "" {
+			if vulnerabilityID := valueAt(vulnerabilityIDs, i); vulnerabilityID != "" {
+				ref["vulnerability_id"] = vulnerabilityID
+			}
+		}
+		if ref["vulnerability_name"] == "" {
+			if vulnerabilityName := valueAt(vulnerabilityNames, i); vulnerabilityName != "" {
+				ref["vulnerability_name"] = vulnerabilityName
+			}
+		}
+		if ref["package_identifier"] == "" {
+			if packageIdentifier := valueAt(packageIdentifiers, i); packageIdentifier != "" {
+				ref["package_identifier"] = packageIdentifier
+			}
+		}
+	}
+	for i := len(refs); i < maxInt(len(vulnerabilityIDs), len(vulnerabilityNames), len(packageIdentifiers)); i++ {
+		vulnerabilityID := valueAt(vulnerabilityIDs, i)
+		vulnerabilityName := valueAt(vulnerabilityNames, i)
+		packageIdentifier := valueAt(packageIdentifiers, i)
+		if vulnerabilityID == "" && vulnerabilityName == "" && packageIdentifier == "" {
+			continue
+		}
+		key := strings.Join([]string{vulnerabilityID, vulnerabilityName, packageIdentifier}, "\x00")
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		ref := map[string]string{}
+		if vulnerabilityID != "" {
+			ref["vulnerability_id"] = vulnerabilityID
+		}
+		if vulnerabilityName != "" {
+			ref["vulnerability_name"] = vulnerabilityName
+		}
+		if packageIdentifier != "" {
+			ref["package_identifier"] = packageIdentifier
+		}
+		refs = append(refs, ref)
+	}
+	if len(refs) == 0 {
+		for i := 0; i < maxInt(len(vulnerabilityIDs), len(vulnerabilityNames), len(packageIdentifiers)); i++ {
+			vulnerabilityID := valueAt(vulnerabilityIDs, i)
+			vulnerabilityName := valueAt(vulnerabilityNames, i)
+			packageIdentifier := valueAt(packageIdentifiers, i)
+			if vulnerabilityID == "" && vulnerabilityName == "" && packageIdentifier == "" {
+				continue
+			}
+			key := strings.Join([]string{vulnerabilityID, vulnerabilityName, packageIdentifier}, "\x00")
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+			ref := map[string]string{}
+			if vulnerabilityID != "" {
+				ref["vulnerability_id"] = vulnerabilityID
+			}
+			if vulnerabilityName != "" {
+				ref["vulnerability_name"] = vulnerabilityName
+			}
+			if packageIdentifier != "" {
+				ref["package_identifier"] = packageIdentifier
+			}
+			refs = append(refs, ref)
+		}
+	}
+	if len(refs) == 0 {
+		return ""
+	}
+	raw, err := json.Marshal(refs)
+	if err != nil {
+		return ""
+	}
+	return string(raw)
+}
+
+func splitVulnerableAssetReferenceValues(value string) []string {
+	fields := strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\t'
+	})
+	result := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if trimmed := strings.TrimSpace(field); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
+func valueAt(values []string, index int) string {
+	if index < 0 || index >= len(values) {
+		return ""
+	}
+	return values[index]
+}
+
+func maxInt(values ...int) int {
+	max := 0
+	for _, value := range values {
+		if value > max {
+			max = value
+		}
+	}
+	return max
 }
 
 func joinedObjectFieldValues(values map[string]any, arrayKey string, fields ...string) string {
@@ -857,6 +1092,8 @@ func recordIDKeys(family string) []string {
 		return []string{"id", "userId", "emailAddress"}
 	case familyUser:
 		return []string{"id", "email"}
+	case familyVulnerableAsset:
+		return []string{"id", "assetId", "targetId", "externalId", "name"}
 	default:
 		return []string{"id", "externalId", "name"}
 	}
@@ -896,6 +1133,8 @@ func timestampKeys(family string) []string {
 		return []string{"lastSecurityReviewCompletionDate"}
 	case familyVulnerability:
 		return []string{"lastDetectedDate", "sourceDetectedDate", "firstDetectedDate"}
+	case familyVulnerableAsset:
+		return []string{"lastDetectedDate", "lastSeenDate", "updatedAt"}
 	case familyRiskScenario:
 		return []string{"identificationDate"}
 	case familyPerson:
@@ -1005,6 +1244,7 @@ func supportedFamilies() []string {
 		familyDocument,
 		familyVendor,
 		familyVulnerability,
+		familyVulnerableAsset,
 		familyRiskScenario,
 		familyPerson,
 		familyUser,

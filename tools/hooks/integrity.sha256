@@ -1,2 +1,3 @@
 f38c423c4be0e37f915a9c337e9449dd32756b339469121a3429fea6707084cb  .githooks/pre-commit
-e7a5f841e82e4a03d76cb82b4e397126ec0b646f9e37fead177ec4a5a9781051  .githooks/pre-push
+02d562fd952df6d0b8e7cfa8e4b332f6bfc449fb18e6ada042849ace0cbc3029  .githooks/commit-msg
+45a20a1be273eb3c41ec7a9272e36c137045ef91a04957c58de17a5d9be7c32e  .githooks/pre-push
