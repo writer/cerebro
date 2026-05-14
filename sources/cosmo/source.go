@@ -186,28 +186,29 @@ func (s *Source) messageFamily() sourcecdk.Family[settings] {
 	return sourcecdk.Family[settings]{
 		Name: familyMessage,
 		Check: func(ctx context.Context, settings settings) error {
-			_, err := s.listMessages(ctx, settings, 1)
+			_, _, err := s.listMessages(ctx, settings, 0, 1)
 			if err != nil {
 				return fmt.Errorf("cosmo message: %w", err)
 			}
 			return nil
 		},
 		Discover: func(ctx context.Context, settings settings) ([]sourcecdk.URN, error) {
-			records, err := s.listMessages(ctx, settings, settings.perPage)
+			records, _, err := s.listMessages(ctx, settings, 0, settings.perPage)
 			if err != nil {
 				return nil, fmt.Errorf("cosmo message: %w", err)
 			}
 			return urnsFor(settings, familyMessage, records)
 		},
 		Read: func(ctx context.Context, settings settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-			if _, err := readOffset(cursor); err != nil {
+			offset, err := readOffset(cursor)
+			if err != nil {
 				return sourcecdk.Pull{}, err
 			}
-			records, err := s.listMessages(ctx, settings, settings.perPage)
+			records, next, err := s.listMessages(ctx, settings, offset, settings.perPage)
 			if err != nil {
 				return sourcecdk.Pull{}, fmt.Errorf("cosmo message: %w", err)
 			}
-			return pullFromRecords(settings, familyMessage, records, "")
+			return pullFromRecords(settings, familyMessage, records, next)
 		},
 	}
 }
@@ -315,9 +316,6 @@ func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 			return settings, fmt.Errorf("cosmo user, status, ticket_id, and event_type are not supported when family=%q", familyFact)
 		}
 	case familyMessage:
-		if settings.ticketID == "" {
-			return settings, fmt.Errorf("cosmo ticket_id is required when family=%q", familyMessage)
-		}
 		if settings.query != "" || settings.user != "" || settings.status != "" || settings.category != "" {
 			return settings, fmt.Errorf("cosmo q, user, status, and category are not supported when family=%q", familyMessage)
 		}
@@ -378,17 +376,26 @@ func (s *Source) listMemory(ctx context.Context, settings settings, path string,
 	return records, next, nil
 }
 
-func (s *Source) listMessages(ctx context.Context, settings settings, limit int) ([]record, error) {
+func (s *Source) listMessages(ctx context.Context, settings settings, offset int, limit int) ([]record, string, error) {
 	query := url.Values{}
-	query.Set("ticket_id", settings.ticketID)
 	query.Set("limit", strconv.Itoa(limit))
+	query.Set("offset", strconv.Itoa(offset))
+	addQuery(query, "ticket_id", settings.ticketID)
 	addQuery(query, "event_type", settings.eventType)
 
 	var response listResponse
 	if err := s.getJSON(ctx, settings, http.MethodGet, "/api/ui/memory/messages", query, nil, &response); err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return responseRecords(response, "messages", familyMessage)
+	records, err := responseRecords(response, "messages", familyMessage)
+	if err != nil {
+		return nil, "", err
+	}
+	next := ""
+	if len(records) == limit {
+		next = strconv.Itoa(offset + limit)
+	}
+	return records, next, nil
 }
 
 func (s *Source) listSurveyFeedback(ctx context.Context, settings settings) ([]record, error) {
