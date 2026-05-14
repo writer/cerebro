@@ -37,7 +37,6 @@ config:
   cerebro:sourceSecretKeys:
     - CEREBRO_SOURCE_COSMO_BASE_URL
     - CEREBRO_SOURCE_COSMO_TOKEN
-    - CEREBRO_SOURCE_COSMO_WEBHOOK_SECRET
     - VANTA_CLIENT_ID
     - VANTA_CLIENT_SECRET
     - VULNVIEW_PROVIDER_OKTA_ISSUER
@@ -562,7 +561,7 @@ config:
         family: survey_feedback
         per_page: "100"
         tenant_id: writer
-        webhook_secret: env:CEREBRO_SOURCE_COSMO_WEBHOOK_SECRET
+        token: env:CEREBRO_SOURCE_COSMO_TOKEN
   cerebro:enableTailscale: true
   cerebro:tailscaleAdvertiseRoutes:
     - "10.20.0.0/18"

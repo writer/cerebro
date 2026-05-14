@@ -57,7 +57,6 @@ config:
   cerebro:sourceSecretKeys:
     - CEREBRO_SOURCE_COSMO_BASE_URL
     - CEREBRO_SOURCE_COSMO_TOKEN
-    - CEREBRO_SOURCE_COSMO_WEBHOOK_SECRET
     - GITHUB_TOKEN
     - OKTA_API_TOKEN
     - OKTA_DOMAIN
@@ -413,7 +412,7 @@ config:
         family: survey_feedback
         per_page: "100"
         tenant_id: writer
-        webhook_secret: env:CEREBRO_SOURCE_COSMO_WEBHOOK_SECRET
+        token: env:CEREBRO_SOURCE_COSMO_TOKEN
   cerebro:enableWaf: true
   cerebro:albInternal: true
   cerebro:albIngressCidrs:
