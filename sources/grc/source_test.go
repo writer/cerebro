@@ -355,6 +355,9 @@ func TestReadVantaVulnerableAssetNormalizesFields(t *testing.T) {
 	if got := attrs["ip"]; got != "203.0.113.10" {
 		t.Fatalf("ip = %q, want 203.0.113.10", got)
 	}
+	if got := attrs["target_url"]; got != "https://app.writer.com" {
+		t.Fatalf("target_url = %q, want https://app.writer.com", got)
+	}
 	if got := attrs["vulnerability_ids"]; got != "CVE-2026-4242" {
 		t.Fatalf("vulnerability_ids = %q, want CVE-2026-4242", got)
 	}
@@ -735,6 +738,7 @@ func newTestAPIHandler(t *testing.T) http.Handler {
 				"displayName":   "App Server",
 				"hostname":      "app.writer.com",
 				"ipAddress":     "203.0.113.10",
+				"url":           "https://app.writer.com",
 				"assetType":     "server",
 				"integrationId": "integration-1",
 				"vulnerabilities": []map[string]any{{

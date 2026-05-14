@@ -547,7 +547,7 @@ func grcTargetEntity(tenantID string, sourceID string, urn string, targetID stri
 }
 
 func grcTargetHost(attrs map[string]string) string {
-	if host := internetHost(firstAttribute(attrs, "hostname", "host", "target_url", "resource_url", "url", "website_url")); host != "" {
+	if host := internetHost(firstAttribute(attrs, "hostname", "host", "target_url", "resource_url", "external_url", "url", "website_url")); host != "" {
 		return host
 	}
 	return internetHostIfLikely(firstAttribute(attrs, "target_id", "resource_id", "asset_id", "endpoint_id"))

@@ -722,6 +722,7 @@ func attributesFor(settings settings, family string, record grcRecord) map[strin
 		copyFirstField(attrs, values, "resource_type", "assetType", "resourceType", "type")
 		copyFirstField(attrs, values, "integration_id", "integrationId", "integration.id")
 		copyFirstField(attrs, values, "external_url", "externalURL", "url")
+		copyFirstField(attrs, values, "target_url", "url", "externalURL")
 		copyFirstField(attrs, values, "operating_system", "operatingSystem", "os")
 		copyFirstField(attrs, values, "last_detected_at", "lastDetectedDate", "lastSeenDate", "updatedAt")
 		copyVulnerableAssetReferences(attrs, values)

@@ -633,6 +633,30 @@ func TestProjectGRCVulnerableAssetZipsFlatVulnerabilityNames(t *testing.T) {
 	}
 }
 
+func TestProjectGRCVulnerableAssetLinksURLOnlyHost(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-vulnerable-asset-url",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.vulnerable_asset",
+		Attributes: map[string]string{
+			"provider":     "vanta",
+			"target_id":    "asset-123",
+			"external_url": "https://app.writer.com",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	targetURN := "urn:cerebro:writer:grc_target:vanta:asset-123"
+	hostURN := "urn:cerebro:writer:internet_host:app.writer.com"
+	assertProjectedLink(t, state, targetURN, relationRepresents, hostURN)
+}
+
 func TestProjectGRCVulnerableAssetDoesNotInferVulnerabilityFromReferenceJSON(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
