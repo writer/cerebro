@@ -43,6 +43,7 @@ func TestParseSettingsMessageRequiresScopedExportConfig(t *testing.T) {
 		"family":        "message",
 		"client_id":     "cerebro-runtime",
 		"export_secret": "secret",
+		"since":         "2026-05-01T00:00:00Z",
 	}
 	for _, tc := range []struct {
 		name string
@@ -50,6 +51,7 @@ func TestParseSettingsMessageRequiresScopedExportConfig(t *testing.T) {
 	}{
 		{name: "client id", key: "client_id"},
 		{name: "export secret", key: "export_secret"},
+		{name: "since", key: "since"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := cloneMap(base)
@@ -70,6 +72,7 @@ func TestParseSettingsMessageRejectsUnscopedOrUnboundedConfig(t *testing.T) {
 		"family":        "message",
 		"client_id":     "cerebro-runtime",
 		"export_secret": "secret",
+		"since":         "2026-05-01T00:00:00Z",
 	}
 	for _, tc := range []struct {
 		name string
@@ -303,6 +306,7 @@ func TestReadMessagesUsesScopedExportContractAndPaginatesEventTypes(t *testing.T
 		"event_types":      "message,completion",
 		"max_window_hours": "1",
 		"per_page":         "1",
+		"since":            "2026-05-01T00:00:00Z",
 	})
 	first, err := source.Read(context.Background(), cfg, nil)
 	if err != nil {
@@ -626,6 +630,7 @@ func messageTestConfig(baseURL string) sourcecdk.Config {
 		"event_types":      "message,completion",
 		"max_window_hours": "1",
 		"per_page":         "1",
+		"since":            "2026-05-01T00:00:00Z",
 	})
 }
 
