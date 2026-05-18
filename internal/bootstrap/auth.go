@@ -308,7 +308,14 @@ func authorizeTenantID(ctx context.Context, tenantID string) error {
 	if !ok {
 		return nil
 	}
-	if tenantID := strings.TrimSpace(tenantID); tenantID != "" && !tenantAllowed(auth.cfg, auth.principal, tenantID) {
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		if len(auth.principal.AllowedTenants) > 0 {
+			return errTenantForbidden
+		}
+		return nil
+	}
+	if !tenantAllowed(auth.cfg, auth.principal, tenantID) {
 		return errTenantForbidden
 	}
 	return nil
@@ -387,7 +394,9 @@ func scopeForHTTPRequest(r *http.Request) string {
 
 func scopeForConnectProcedure(procedure string) string {
 	switch procedure {
-	case cerebrov1connect.BootstrapServiceListSourcesProcedure,
+	case cerebrov1connect.BootstrapServiceGetVersionProcedure,
+		cerebrov1connect.BootstrapServiceCheckHealthProcedure,
+		cerebrov1connect.BootstrapServiceListSourcesProcedure,
 		cerebrov1connect.BootstrapServiceListReportDefinitionsProcedure,
 		cerebrov1connect.BootstrapServiceListFindingRulesProcedure,
 		cerebrov1connect.BootstrapServiceGetReportRunProcedure,
@@ -439,7 +448,7 @@ func hasAuthContext(ctx context.Context) bool {
 
 func hasTenantScopedAuth(ctx context.Context) bool {
 	auth, ok := ctx.Value(authContextKey{}).(authContext)
-	return ok && (strings.TrimSpace(auth.principal.TenantID) != "" || len(auth.principal.AllowedTenants) > 0)
+	return ok && principalHasTenantScope(auth.principal)
 }
 
 func requiresTenantFilter(ctx context.Context) bool {
@@ -447,10 +456,14 @@ func requiresTenantFilter(ctx context.Context) bool {
 	return ok && strings.TrimSpace(auth.principal.TenantID) == "" && (len(auth.principal.AllowedTenants) > 0 || len(auth.cfg.AllowedTenants) > 0)
 }
 
+func principalHasTenantScope(principal authPrincipal) bool {
+	return strings.TrimSpace(principal.TenantID) != "" || len(principal.AllowedTenants) > 0
+}
+
 func tenantAllowed(cfg config.AuthConfig, principal authPrincipal, tenantID string) bool {
 	tenantID = strings.TrimSpace(tenantID)
 	if tenantID == "" {
-		return true
+		return len(principal.AllowedTenants) == 0
 	}
 	if principal.TenantID != "" {
 		return tenantID == principal.TenantID

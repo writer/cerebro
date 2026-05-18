@@ -457,7 +457,7 @@ func parseMessageMaxWindow(raw string) (time.Duration, error) {
 func parseMessageInitialSince(raw string) (time.Time, error) {
 	value := strings.TrimSpace(raw)
 	if value == "" {
-		return time.Unix(0, 0).UTC(), nil
+		return time.Time{}, fmt.Errorf("cosmo since is required when family=%q", familyMessage)
 	}
 	parsed, ok := parseMessageCursorTime(value)
 	if !ok {
