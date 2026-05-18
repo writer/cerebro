@@ -249,9 +249,9 @@ class ValidateStackConfigTest(unittest.TestCase):
         self.assertTrue(any(finding.severity == "error" and "Cosmo survey feedback token auth" in finding.message for finding in findings))
 
     def test_cosmo_runtime_is_required_for_managed_stacks(self) -> None:
-        content = BASE_STACK.replace("    - id: writer-cosmo-message", "    - id: writer-cosmo-message-disabled", 1)
+        content = BASE_STACK.replace("    - id: writer-cosmo-survey-feedback", "    - id: writer-cosmo-survey-feedback-disabled", 1)
         findings = self._validate(content)
-        self.assertTrue(any(finding.severity == "error" and "required Cosmo runtime 'writer-cosmo-message' is missing" in finding.message for finding in findings))
+        self.assertTrue(any(finding.severity == "error" and "required Cosmo runtime 'writer-cosmo-survey-feedback' is missing" in finding.message for finding in findings))
 
     def test_cosmo_schedule_is_required_for_managed_stacks(self) -> None:
         content = BASE_STACK.replace("runtime_id=writer-cosmo-fact", "runtime_id=writer-cosmo-fact-disabled", 1)

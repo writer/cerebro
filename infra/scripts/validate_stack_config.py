@@ -22,7 +22,6 @@ COSMO_REQUIRED_SECRETS = {"CEREBRO_SOURCE_COSMO_BASE_URL", "CEREBRO_SOURCE_COSMO
 COSMO_RUNTIME_FAMILIES = {
     "writer-cosmo-session": "session",
     "writer-cosmo-fact": "fact",
-    "writer-cosmo-message": "message",
     "writer-cosmo-survey-feedback": "survey_feedback",
 }
 
