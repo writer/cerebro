@@ -201,7 +201,7 @@ func TestReadMessagesUsesScopedExportContractAndPaginatesEventTypes(t *testing.T
 	var windowSince string
 	var windowUntil string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/ui/memory/messages" {
+		if r.URL.Path != "/api/cerebro/messages" {
 			http.NotFound(w, r)
 			return
 		}
@@ -366,7 +366,7 @@ func TestReadMessagesStartsFirstWindowAtConfiguredSince(t *testing.T) {
 	wantUntil := "2026-05-01T01:00:00Z"
 	var sawRequest bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/ui/memory/messages" {
+		if r.URL.Path != "/api/cerebro/messages" {
 			http.NotFound(w, r)
 			return
 		}
@@ -461,7 +461,7 @@ func TestReadMessagesWithoutSinceUsesStableCompatibilityWindow(t *testing.T) {
 func TestDiscoverMessagesIteratesConfiguredEventTypes(t *testing.T) {
 	var eventTypes []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/ui/memory/messages" {
+		if r.URL.Path != "/api/cerebro/messages" {
 			http.NotFound(w, r)
 			return
 		}
@@ -505,7 +505,7 @@ func TestReadMessagesReturnsHardScopedExportFailures(t *testing.T) {
 	for _, status := range []int{http.StatusBadRequest, http.StatusForbidden} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/api/ui/memory/messages" {
+				if r.URL.Path != "/api/cerebro/messages" {
 					http.NotFound(w, r)
 					return
 				}

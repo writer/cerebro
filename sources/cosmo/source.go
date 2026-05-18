@@ -529,7 +529,7 @@ func (s *Source) listMessages(ctx context.Context, settings settings, window mes
 	query.Set("until", window.until.Format(time.RFC3339Nano))
 
 	var response listResponse
-	if err := s.getJSON(ctx, settings, http.MethodGet, "/api/ui/memory/messages", query, nil, &response); err != nil {
+	if err := s.getJSON(ctx, settings, http.MethodGet, "/api/cerebro/messages", query, nil, &response); err != nil {
 		return nil, err
 	}
 	records, err := responseRecords(response, "messages", familyMessage)
