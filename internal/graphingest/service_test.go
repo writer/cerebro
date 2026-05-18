@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -65,10 +66,36 @@ func (f recordProjectorFunc) ProjectRecords(event *cerebrov1.EventEnvelope) ([]*
 	return f(event)
 }
 
+type cleanupRecordProjector struct {
+	records  func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)
+	cleanup  func(*cerebrov1.EventEnvelope) ([]string, error)
+	requests func(*cerebrov1.EventEnvelope) ([]ports.ProjectionCleanupRequest, error)
+}
+
+func (p cleanupRecordProjector) ProjectRecords(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return p.records(event)
+}
+
+func (p cleanupRecordProjector) ProjectCleanupRecords(event *cerebrov1.EventEnvelope) ([]string, error) {
+	if p.cleanup == nil {
+		return nil, nil
+	}
+	return p.cleanup(event)
+}
+
+func (p cleanupRecordProjector) ProjectCleanupRequests(event *cerebrov1.EventEnvelope) ([]ports.ProjectionCleanupRequest, error) {
+	if p.requests == nil {
+		return nil, nil
+	}
+	return p.requests(event)
+}
+
 type recordingProjectionGraphStore struct {
-	entities      map[string]*ports.ProjectedEntity
-	links         map[string]*ports.ProjectedLink
-	upsertLinkErr error
+	entities        map[string]*ports.ProjectedEntity
+	links           map[string]*ports.ProjectedLink
+	upsertLinkErr   error
+	deletedEntities map[string]struct{}
+	cleanupRequests []ports.ProjectionCleanupRequest
 }
 
 func (s *recordingProjectionGraphStore) Ping(context.Context) error { return nil }
@@ -127,6 +154,72 @@ func (s *singlePageSource) Discover(context.Context, sourcecdk.Config) ([]source
 
 func (s *singlePageSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
 	return sourcecdk.Pull{Events: s.events}, nil
+}
+
+func (s *recordingProjectionGraphStore) DeleteProjectedEntity(_ context.Context, urn string) error {
+	if s.deletedEntities == nil {
+		s.deletedEntities = map[string]struct{}{}
+	}
+	s.deletedEntities[urn] = struct{}{}
+	delete(s.entities, urn)
+	for key, link := range s.links {
+		if link.FromURN == urn || link.ToURN == urn {
+			delete(s.links, key)
+		}
+	}
+	return nil
+}
+
+func (s *recordingProjectionGraphStore) CleanupProjectedEntities(_ context.Context, request ports.ProjectionCleanupRequest) (ports.ProjectionCleanupResult, error) {
+	s.cleanupRequests = append(s.cleanupRequests, request)
+	var result ports.ProjectionCleanupResult
+	limit := projectionCleanupBatchLimit(request)
+	for key, entity := range s.entities {
+		if result.EntitiesDeleted >= limit {
+			break
+		}
+		if !projectionCleanupTestMatches(request, entity) {
+			continue
+		}
+		delete(s.entities, key)
+		result.EntitiesDeleted++
+	}
+	for key, link := range s.links {
+		if _, ok := s.entities[link.FromURN]; !ok {
+			delete(s.links, key)
+			result.LinksDeleted++
+			continue
+		}
+		if _, ok := s.entities[link.ToURN]; !ok {
+			delete(s.links, key)
+			result.LinksDeleted++
+		}
+	}
+	return result, nil
+}
+
+func projectionCleanupTestMatches(request ports.ProjectionCleanupRequest, entity *ports.ProjectedEntity) bool {
+	if request.TenantID != "" && entity.TenantID != request.TenantID {
+		return false
+	}
+	if request.SourceID != "" && entity.SourceID != request.SourceID {
+		return false
+	}
+	if request.RuntimeID != "" && entity.RuntimeID != request.RuntimeID {
+		return false
+	}
+	if len(request.EntityTypes) != 0 && !slices.Contains(request.EntityTypes, entity.EntityType) {
+		return false
+	}
+	if len(request.URNPrefixes) == 0 {
+		return true
+	}
+	for _, prefix := range request.URNPrefixes {
+		if strings.HasPrefix(entity.URN, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestSensitiveConfigKeyTreatsSecretMarkersAsSensitive(t *testing.T) {
@@ -243,7 +336,7 @@ func TestProjectResponseCoalescedUpsertsUniqueRecords(t *testing.T) {
 	}, &cerebrov1.ReadSourceResponse{Events: []*cerebrov1.EventEnvelope{
 		{Id: "event-1", SourceId: "github"},
 		{Id: "event-2", SourceId: "github"},
-	}}, projector)
+	}}, projector, nil)
 	if err != nil {
 		t.Fatalf("projectResponseCoalesced() error = %v", err)
 	}
@@ -269,6 +362,260 @@ func TestProjectResponseCoalescedUpsertsUniqueRecords(t *testing.T) {
 	}
 	if got := link.Attributes["event_id"]; got != "event-2" {
 		t.Fatalf("coalesced link event_id = %q, want latest event-2", got)
+	}
+}
+
+func TestProjectResponseCoalescedDeletesCleanupRecords(t *testing.T) {
+	staleURN := "urn:cerebro:writer:okta_resource:access_token:token-123"
+	staleLink := &ports.ProjectedLink{
+		TenantID: "writer",
+		SourceID: "okta",
+		FromURN:  "urn:cerebro:writer:okta_application:0oa-client",
+		Relation: "acted_on",
+		ToURN:    staleURN,
+	}
+	store := &recordingProjectionGraphStore{
+		entities: map[string]*ports.ProjectedEntity{staleURN: {
+			URN:        staleURN,
+			TenantID:   "writer",
+			SourceID:   "okta",
+			RuntimeID:  "okta-audit-runtime",
+			EntityType: "okta.resource",
+			Label:      "token-123",
+		}},
+		links: map[string]*ports.ProjectedLink{"urn:cerebro:writer:okta_application:0oa-client|acted_on|" + staleURN: staleLink},
+	}
+	service := &Service{graphStore: store}
+	projector := cleanupRecordProjector{
+		records: func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+			return []*ports.ProjectedEntity{{
+					URN:        "urn:cerebro:writer:okta_application:0oa-client",
+					TenantID:   event.GetTenantId(),
+					SourceID:   event.GetSourceId(),
+					RuntimeID:  event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
+					EntityType: "okta.application",
+					Label:      "Production Client",
+				}},
+				[]*ports.ProjectedLink{{
+					TenantID:  event.GetTenantId(),
+					SourceID:  event.GetSourceId(),
+					RuntimeID: event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
+					FromURN:   "urn:cerebro:writer:okta_actor:publicclientapp:0oa-client",
+					Relation:  "acted_on",
+					ToURN:     "urn:cerebro:writer:okta_application:0oa-client",
+				}}, nil
+		},
+		cleanup: func(*cerebrov1.EventEnvelope) ([]string, error) {
+			return []string{staleURN}, nil
+		},
+	}
+
+	_, err := service.projectResponseCoalesced(context.Background(), sourceRequest{
+		SourceID:  "okta",
+		RuntimeID: "okta-audit-runtime",
+		TenantID:  "writer",
+	}, &cerebrov1.ReadSourceResponse{Events: []*cerebrov1.EventEnvelope{{
+		Id:       "okta-oauth-grant",
+		SourceId: "okta",
+	}}}, projector, nil)
+	if err != nil {
+		t.Fatalf("projectResponseCoalesced() error = %v", err)
+	}
+	if _, ok := store.deletedEntities[staleURN]; !ok {
+		t.Fatalf("cleanup entity %q was not deleted", staleURN)
+	}
+	if _, ok := store.entities[staleURN]; ok {
+		t.Fatalf("cleanup entity %q still present", staleURN)
+	}
+	if _, ok := store.links["urn:cerebro:writer:okta_application:0oa-client|acted_on|"+staleURN]; ok {
+		t.Fatalf("stale cleanup link still present")
+	}
+	if _, ok := store.links["urn:cerebro:writer:okta_actor:publicclientapp:0oa-client|acted_on|urn:cerebro:writer:okta_application:0oa-client"]; !ok {
+		t.Fatalf("replacement durable link missing")
+	}
+}
+
+func TestProjectResponseCoalescedRunsCleanupRequestsOnce(t *testing.T) {
+	staleURN := "urn:cerebro:writer:okta_resource:access_token:token-123"
+	appURN := "urn:cerebro:writer:okta_application:0oa-client"
+	store := &recordingProjectionGraphStore{
+		entities: map[string]*ports.ProjectedEntity{
+			staleURN: {
+				URN:        staleURN,
+				TenantID:   "writer",
+				SourceID:   "okta",
+				RuntimeID:  "okta-audit-runtime",
+				EntityType: "okta.resource",
+				Label:      "token-123",
+			},
+			appURN: {
+				URN:        appURN,
+				TenantID:   "writer",
+				SourceID:   "okta",
+				RuntimeID:  "okta-audit-runtime",
+				EntityType: "okta.application",
+				Label:      "Production Client",
+			},
+		},
+		links: map[string]*ports.ProjectedLink{
+			appURN + "|acted_on|" + staleURN: {
+				TenantID: "writer",
+				SourceID: "okta",
+				FromURN:  appURN,
+				Relation: "acted_on",
+				ToURN:    staleURN,
+			},
+		},
+	}
+	service := &Service{graphStore: store}
+	projector := cleanupRecordProjector{
+		records: func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+			return []*ports.ProjectedEntity{{
+				URN:        appURN,
+				TenantID:   event.GetTenantId(),
+				SourceID:   event.GetSourceId(),
+				RuntimeID:  event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
+				EntityType: "okta.application",
+				Label:      "Production Client",
+			}}, nil, nil
+		},
+		requests: func(event *cerebrov1.EventEnvelope) ([]ports.ProjectionCleanupRequest, error) {
+			return []ports.ProjectionCleanupRequest{{
+				TenantID:    event.GetTenantId(),
+				SourceID:    event.GetSourceId(),
+				RuntimeID:   event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
+				EntityTypes: []string{"okta.resource"},
+				URNPrefixes: []string{"urn:cerebro:writer:okta_resource:access_token:"},
+				Limit:       1000,
+			}}, nil
+		},
+	}
+
+	_, err := service.projectResponseCoalesced(context.Background(), sourceRequest{
+		SourceID:  "okta",
+		RuntimeID: "okta-audit-runtime",
+		TenantID:  "writer",
+	}, &cerebrov1.ReadSourceResponse{Events: []*cerebrov1.EventEnvelope{
+		{Id: "okta-oauth-grant-1", SourceId: "okta"},
+		{Id: "okta-oauth-grant-2", SourceId: "okta"},
+	}}, projector, nil)
+	if err != nil {
+		t.Fatalf("projectResponseCoalesced() error = %v", err)
+	}
+	if got := len(store.cleanupRequests); got != 1 {
+		t.Fatalf("cleanup requests = %d, want 1 deduped request", got)
+	}
+	if _, ok := store.entities[staleURN]; ok {
+		t.Fatalf("stale cleanup entity %q still present", staleURN)
+	}
+	if _, ok := store.links[appURN+"|acted_on|"+staleURN]; ok {
+		t.Fatalf("stale cleanup link still present")
+	}
+	if _, ok := store.entities[appURN]; !ok {
+		t.Fatalf("durable app entity was deleted")
+	}
+}
+
+func TestProjectResponseCoalescedSkipsCompletedCleanupRequests(t *testing.T) {
+	store := &recordingProjectionGraphStore{
+		entities: map[string]*ports.ProjectedEntity{
+			"urn:cerebro:writer:okta_resource:access_token:token-123": {
+				URN:        "urn:cerebro:writer:okta_resource:access_token:token-123",
+				TenantID:   "writer",
+				SourceID:   "okta",
+				RuntimeID:  "okta-audit-runtime",
+				EntityType: "okta.resource",
+				Label:      "token-123",
+			},
+		},
+	}
+	service := &Service{graphStore: store}
+	projector := cleanupRecordProjector{
+		records: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+			return nil, nil, nil
+		},
+		requests: func(event *cerebrov1.EventEnvelope) ([]ports.ProjectionCleanupRequest, error) {
+			return []ports.ProjectionCleanupRequest{{
+				TenantID:    event.GetTenantId(),
+				SourceID:    event.GetSourceId(),
+				RuntimeID:   event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
+				EntityTypes: []string{"okta.resource"},
+				URNPrefixes: []string{"urn:cerebro:writer:okta_resource:access_token:"},
+				Limit:       1000,
+			}}, nil
+		},
+	}
+	completedCleanupRequests := map[string]struct{}{}
+	request := sourceRequest{SourceID: "okta", RuntimeID: "okta-audit-runtime", TenantID: "writer"}
+	response := func(id string) *cerebrov1.ReadSourceResponse {
+		return &cerebrov1.ReadSourceResponse{Events: []*cerebrov1.EventEnvelope{{Id: id, SourceId: "okta"}}}
+	}
+
+	if _, err := service.projectResponseCoalesced(context.Background(), request, response("okta-oauth-grant-page-1"), projector, completedCleanupRequests); err != nil {
+		t.Fatalf("projectResponseCoalesced(page 1) error = %v", err)
+	}
+	if _, err := service.projectResponseCoalesced(context.Background(), request, response("okta-oauth-grant-page-2"), projector, completedCleanupRequests); err != nil {
+		t.Fatalf("projectResponseCoalesced(page 2) error = %v", err)
+	}
+	if got := len(store.cleanupRequests); got != 1 {
+		t.Fatalf("cleanup requests = %d, want 1 across pages", got)
+	}
+}
+
+func TestProjectResponseCoalescedRunsCleanupRequestsUntilExhausted(t *testing.T) {
+	store := &recordingProjectionGraphStore{
+		entities: map[string]*ports.ProjectedEntity{
+			"urn:cerebro:writer:okta_resource:access_token:token-1": {
+				URN:        "urn:cerebro:writer:okta_resource:access_token:token-1",
+				TenantID:   "writer",
+				SourceID:   "okta",
+				RuntimeID:  "okta-audit-runtime",
+				EntityType: "okta.resource",
+				Label:      "token-1",
+			},
+			"urn:cerebro:writer:okta_resource:access_token:token-2": {
+				URN:        "urn:cerebro:writer:okta_resource:access_token:token-2",
+				TenantID:   "writer",
+				SourceID:   "okta",
+				RuntimeID:  "okta-audit-runtime",
+				EntityType: "okta.resource",
+				Label:      "token-2",
+			},
+		},
+	}
+	service := &Service{graphStore: store}
+	projector := cleanupRecordProjector{
+		records: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+			return nil, nil, nil
+		},
+		requests: func(event *cerebrov1.EventEnvelope) ([]ports.ProjectionCleanupRequest, error) {
+			return []ports.ProjectionCleanupRequest{{
+				TenantID:    event.GetTenantId(),
+				SourceID:    event.GetSourceId(),
+				RuntimeID:   event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
+				EntityTypes: []string{"okta.resource"},
+				URNPrefixes: []string{"urn:cerebro:writer:okta_resource:access_token:"},
+				Limit:       1,
+			}}, nil
+		},
+	}
+
+	_, err := service.projectResponseCoalesced(context.Background(), sourceRequest{
+		SourceID:  "okta",
+		RuntimeID: "okta-audit-runtime",
+		TenantID:  "writer",
+	}, &cerebrov1.ReadSourceResponse{Events: []*cerebrov1.EventEnvelope{{
+		Id:       "okta-oauth-grant",
+		SourceId: "okta",
+	}}}, projector, nil)
+	if err != nil {
+		t.Fatalf("projectResponseCoalesced() error = %v", err)
+	}
+	if got := len(store.cleanupRequests); got != 3 {
+		t.Fatalf("cleanup calls = %d, want 3 calls to confirm exhaustion", got)
+	}
+	if len(store.entities) != 0 {
+		t.Fatalf("store retained %d cleanup entities", len(store.entities))
 	}
 }
 
@@ -318,7 +665,7 @@ func TestProjectResponseCoalescedPreservesNewestObservationAttributes(t *testing
 	}, &cerebrov1.ReadSourceResponse{Events: []*cerebrov1.EventEnvelope{
 		{Id: "newer-event", SourceId: "github"},
 		{Id: "older-event", SourceId: "github"},
-	}}, projector)
+	}}, projector, nil)
 	if err != nil {
 		t.Fatalf("projectResponseCoalesced() error = %v", err)
 	}

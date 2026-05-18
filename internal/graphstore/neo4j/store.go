@@ -490,13 +490,15 @@ func (s *Store) CleanupProjectedEntities(ctx context.Context, request ports.Proj
 	runtimeID := strings.TrimSpace(request.RuntimeID)
 	findingID := strings.TrimSpace(request.FindingID)
 	entityTypes := normalizeCleanupEntityTypes(request.EntityTypes)
-	if tenantID == "" && sourceID == "" && runtimeID == "" && findingID == "" && len(entityTypes) == 0 {
+	urnPrefixes := normalizeCleanupValues(request.URNPrefixes)
+	if tenantID == "" && sourceID == "" && runtimeID == "" && findingID == "" && len(entityTypes) == 0 && len(urnPrefixes) == 0 {
 		return ports.ProjectionCleanupResult{}, errors.New("projection cleanup scope is required")
 	}
 	conditions := []string{}
 	params := map[string]any{
 		"limit":        limit,
 		"entity_types": entityTypes,
+		"urn_prefixes": urnPrefixes,
 	}
 	if tenantID != "" {
 		conditions = append(conditions, "e.tenant_id = $tenant_id")
@@ -516,6 +518,9 @@ func (s *Store) CleanupProjectedEntities(ctx context.Context, request ports.Proj
 	}
 	if len(entityTypes) != 0 {
 		conditions = append(conditions, "e.entity_type IN $entity_types")
+	}
+	if len(urnPrefixes) != 0 {
+		conditions = append(conditions, "any(prefix IN $urn_prefixes WHERE e.urn STARTS WITH prefix)")
 	}
 	if request.OnlyIsolated && findingID == "" {
 		conditions = append(conditions, "NOT (e)-[:RELATION]-()")
@@ -1057,6 +1062,10 @@ func validateProjectedLinkIdentity(link *ports.ProjectedLink) (fromURN string, t
 }
 
 func normalizeCleanupEntityTypes(values []string) []string {
+	return normalizeCleanupValues(values)
+}
+
+func normalizeCleanupValues(values []string) []string {
 	seen := make(map[string]struct{}, len(values))
 	normalized := make([]string, 0, len(values))
 	for _, value := range values {

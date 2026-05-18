@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -45,13 +47,16 @@ const (
 	relationTaggedAs           = "tagged_as"
 	relationTargeted           = "targeted"
 	relationCNAMETo            = "cname_to"
+	defaultCleanupLimit        = 1000
 )
 
 // Service materializes synced source events into current-state and graph stores.
 type Service struct {
-	state    ports.ProjectionStateStore
-	graph    ports.ProjectionGraphStore
-	registry *Registry
+	state             ports.ProjectionStateStore
+	graph             ports.ProjectionGraphStore
+	registry          *Registry
+	cleanupMu         sync.Mutex
+	cleanupRequestRun map[string]struct{}
 }
 
 // New constructs a source projector.
@@ -79,6 +84,23 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 	if err != nil {
 		return ports.ProjectionResult{}, err
 	}
+	cleanupURNs, err := s.ProjectCleanupRecords(event)
+	if err != nil {
+		return ports.ProjectionResult{}, err
+	}
+	entitiesDeleted, err := s.deleteProjectedEntities(ctx, cleanupURNs)
+	if err != nil {
+		return ports.ProjectionResult{}, err
+	}
+	cleanupRequests, err := s.ProjectCleanupRequests(event)
+	if err != nil {
+		return ports.ProjectionResult{}, err
+	}
+	cleanupDeleted, err := s.cleanupProjectedEntities(ctx, cleanupRequests)
+	if err != nil {
+		return ports.ProjectionResult{}, err
+	}
+	entitiesDeleted += cleanupDeleted.EntitiesDeleted
 	for _, entity := range entities {
 		if s.state != nil {
 			if err := s.state.UpsertProjectedEntity(ctx, entity); err != nil {
@@ -106,6 +128,8 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 	return ports.ProjectionResult{
 		EntitiesProjected: uint32(len(entities)),
 		LinksProjected:    uint32(len(links)),
+		EntitiesDeleted:   entitiesDeleted,
+		LinksDeleted:      cleanupDeleted.LinksDeleted,
 	}, nil
 }
 
@@ -125,6 +149,194 @@ func (s *Service) ProjectRecords(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 	}
 	stampProjectionRuntime(event, entities, links)
 	return entities, links, nil
+}
+
+// ProjectCleanupRecords returns stale projection entity URNs that should be
+// removed while applying this event.
+func (s *Service) ProjectCleanupRecords(event *cerebrov1.EventEnvelope) ([]string, error) {
+	if event == nil {
+		return nil, fmt.Errorf("event is required")
+	}
+	if event.GetKind() != "okta.audit" {
+		return nil, nil
+	}
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, err
+	}
+	attributes := event.GetAttributes()
+	resourceType := strings.TrimSpace(attributes["resource_type"])
+	if !oktaEphemeralOAuthRuntimeResource(resourceType, attributes) {
+		return nil, nil
+	}
+	resourceURN := oktaResourceURN(tenantID, resourceType, strings.TrimSpace(attributes["resource_id"]))
+	if resourceURN == "" {
+		return nil, nil
+	}
+	return []string{resourceURN}, nil
+}
+
+// ProjectCleanupRequests returns scoped cleanup passes that should run while applying this event.
+func (s *Service) ProjectCleanupRequests(event *cerebrov1.EventEnvelope) ([]ports.ProjectionCleanupRequest, error) {
+	if event == nil {
+		return nil, fmt.Errorf("event is required")
+	}
+	if event.GetKind() != "okta.audit" {
+		return nil, nil
+	}
+	attributes := event.GetAttributes()
+	if !oktaRuntimeGrant(attributes) {
+		return nil, nil
+	}
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, err
+	}
+	return []ports.ProjectionCleanupRequest{{
+		TenantID:    tenantID,
+		SourceID:    strings.TrimSpace(event.GetSourceId()),
+		RuntimeID:   strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID]),
+		EntityTypes: []string{"okta.resource"},
+		URNPrefixes: oktaEphemeralOAuthRuntimeResourceURNPrefixes(tenantID),
+		Limit:       1000,
+	}}, nil
+}
+
+func (s *Service) deleteProjectedEntities(ctx context.Context, urns []string) (uint32, error) {
+	if len(urns) == 0 {
+		return 0, nil
+	}
+	deleted := uint32(0)
+	seen := map[string]struct{}{}
+	for _, urn := range urns {
+		normalizedURN := strings.TrimSpace(urn)
+		if normalizedURN == "" {
+			continue
+		}
+		if _, ok := seen[normalizedURN]; ok {
+			continue
+		}
+		seen[normalizedURN] = struct{}{}
+		stateDeleted, err := deleteProjectedEntity(ctx, s.state, normalizedURN)
+		if err != nil {
+			return deleted, err
+		}
+		graphDeleted, err := deleteProjectedEntity(ctx, s.graph, normalizedURN)
+		if err != nil {
+			return deleted, err
+		}
+		if stateDeleted || graphDeleted {
+			deleted++
+		}
+	}
+	return deleted, nil
+}
+
+func (s *Service) cleanupProjectedEntities(ctx context.Context, requests []ports.ProjectionCleanupRequest) (ports.ProjectionCleanupResult, error) {
+	requests = s.pendingCleanupRequests(requests)
+	if len(requests) == 0 {
+		return ports.ProjectionCleanupResult{}, nil
+	}
+	result := ports.ProjectionCleanupResult{}
+	for _, store := range []any{s.state, s.graph} {
+		cleaner, ok := store.(ports.ProjectionCleaner)
+		if !ok {
+			continue
+		}
+		cleanup, err := cleanupProjectedEntitiesInStore(ctx, cleaner, requests)
+		if err != nil {
+			return result, err
+		}
+		result.EntitiesDeleted += cleanup.EntitiesDeleted
+		result.LinksDeleted += cleanup.LinksDeleted
+	}
+	s.markCleanupRequests(requests)
+	return result, nil
+}
+
+func cleanupProjectedEntitiesInStore(ctx context.Context, cleaner ports.ProjectionCleaner, requests []ports.ProjectionCleanupRequest) (ports.ProjectionCleanupResult, error) {
+	result := ports.ProjectionCleanupResult{}
+	for _, request := range requests {
+		limit := cleanupBatchLimit(request)
+		for {
+			cleanup, err := cleaner.CleanupProjectedEntities(ctx, request)
+			if err != nil {
+				return result, err
+			}
+			result.EntitiesDeleted += cleanup.EntitiesDeleted
+			result.LinksDeleted += cleanup.LinksDeleted
+			if cleanup.EntitiesDeleted < limit {
+				break
+			}
+		}
+	}
+	return result, nil
+}
+
+func cleanupBatchLimit(request ports.ProjectionCleanupRequest) uint32 {
+	if request.Limit == 0 {
+		return defaultCleanupLimit
+	}
+	return request.Limit
+}
+
+func (s *Service) pendingCleanupRequests(requests []ports.ProjectionCleanupRequest) []ports.ProjectionCleanupRequest {
+	if s == nil || len(requests) == 0 {
+		return nil
+	}
+	s.cleanupMu.Lock()
+	defer s.cleanupMu.Unlock()
+	pending := make([]ports.ProjectionCleanupRequest, 0, len(requests))
+	for _, request := range requests {
+		if _, ok := s.cleanupRequestRun[projectionCleanupRequestKey(request)]; ok {
+			continue
+		}
+		pending = append(pending, request)
+	}
+	return pending
+}
+
+func (s *Service) markCleanupRequests(requests []ports.ProjectionCleanupRequest) {
+	if s == nil || len(requests) == 0 {
+		return
+	}
+	s.cleanupMu.Lock()
+	defer s.cleanupMu.Unlock()
+	if s.cleanupRequestRun == nil {
+		s.cleanupRequestRun = map[string]struct{}{}
+	}
+	for _, request := range requests {
+		s.cleanupRequestRun[projectionCleanupRequestKey(request)] = struct{}{}
+	}
+}
+
+func projectionCleanupRequestKey(request ports.ProjectionCleanupRequest) string {
+	entityTypes := append([]string(nil), request.EntityTypes...)
+	urnPrefixes := append([]string(nil), request.URNPrefixes...)
+	sort.Strings(entityTypes)
+	sort.Strings(urnPrefixes)
+	values := []string{
+		strings.TrimSpace(request.TenantID),
+		strings.TrimSpace(request.SourceID),
+		strings.TrimSpace(request.RuntimeID),
+		strings.TrimSpace(request.FindingID),
+		strings.Join(entityTypes, ","),
+		strings.Join(urnPrefixes, ","),
+		fmt.Sprintf("%t", request.OnlyIsolated),
+		fmt.Sprintf("%d", request.Limit),
+	}
+	return strings.Join(values, "|")
+}
+
+func deleteProjectedEntity(ctx context.Context, store any, urn string) (bool, error) {
+	deleter, ok := store.(ports.ProjectionEntityDeleter)
+	if !ok {
+		return false, nil
+	}
+	if err := deleter.DeleteProjectedEntity(ctx, urn); err != nil {
+		return true, fmt.Errorf("delete projected entity %q: %w", urn, err)
+	}
+	return true, nil
 }
 
 func stampProjectionRuntime(event *cerebrov1.EventEnvelope, entities []*ports.ProjectedEntity, links []*ports.ProjectedLink) {
@@ -801,7 +1013,11 @@ func oktaAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 		})
 	}
 
-	resourceURN := oktaResourceURN(tenantID, resourceType, resourceID)
+	suppressResource := oktaEphemeralOAuthRuntimeResource(resourceType, attributes)
+	resourceURN := ""
+	if !suppressResource {
+		resourceURN = oktaResourceURN(tenantID, resourceType, resourceID)
+	}
 	if resourceURN != "" {
 		entityType := "okta.resource"
 		if strings.EqualFold(resourceType, "user") {
@@ -843,10 +1059,7 @@ func oktaAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), oauthClientURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
 		if resourceURN != "" {
-			addLink(links, projectedLink(tenantID, event.GetSourceId(), oauthClientURN, resourceURN, relationActedOn, oktaAuditRelationAttributes(event, attributes, map[string]string{
-				"oauth_event_category": attributes["oauth_event_category"],
-				"grant_type":           attributes["grant_type"],
-			})))
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), oauthClientURN, resourceURN, relationActedOn, oktaOAuthRelationAttributes(event, attributes)))
 		}
 	}
 
@@ -869,6 +1082,9 @@ func oktaAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 		}
 		if resourceURN != "" && resourceURN != actorURN {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, resourceURN, relationActedOn, oktaAuditRelationAttributes(event, attributes, nil)))
+		}
+		if suppressResource && oauthClientURN != "" && oauthClientURN != actorURN {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, oauthClientURN, relationActedOn, oktaOAuthRelationAttributes(event, attributes)))
 		}
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorAlternateID, event.GetOccurredAt())
 	}
@@ -894,6 +1110,84 @@ func oktaAuditRelationAttributes(event *cerebrov1.EventEnvelope, attributes map[
 		addProjectedAttribute(relationAttrs, key, strings.TrimSpace(value))
 	}
 	return relationAttrs
+}
+
+func oktaOAuthRelationAttributes(event *cerebrov1.EventEnvelope, attributes map[string]string) map[string]string {
+	return oktaAuditRelationAttributes(event, attributes, map[string]string{
+		"oauth_event_category": attributes["oauth_event_category"],
+		"grant_type":           attributes["grant_type"],
+	})
+}
+
+func oktaEphemeralOAuthRuntimeResource(resourceType string, attributes map[string]string) bool {
+	if !oktaRuntimeGrant(attributes) {
+		return false
+	}
+	switch compactOktaResourceType(resourceType) {
+	case "accesstoken", "refreshtoken", "authorizationcode", "idtoken", "code":
+		return true
+	default:
+		return false
+	}
+}
+
+func oktaEphemeralOAuthRuntimeResourceURNPrefixes(tenantID string) []string {
+	resourceTypes := []string{
+		"access_token",
+		"accesstoken",
+		"access-token",
+		"access token",
+		"refresh_token",
+		"refreshtoken",
+		"refresh-token",
+		"refresh token",
+		"authorization_code",
+		"authorizationcode",
+		"authorization-code",
+		"authorization code",
+		"id_token",
+		"idtoken",
+		"id-token",
+		"id token",
+		"code",
+	}
+	prefixes := make([]string, 0, len(resourceTypes))
+	for _, resourceType := range resourceTypes {
+		prefix := projectionURN(tenantID, "okta_resource", resourceType)
+		if prefix != "" {
+			prefixes = append(prefixes, prefix+":")
+		}
+	}
+	return prefixes
+}
+
+func oktaRuntimeGrant(attributes map[string]string) bool {
+	if strings.EqualFold(strings.TrimSpace(attributes["oauth_event_category"]), "runtime_grant") {
+		return true
+	}
+	eventType := strings.ToLower(strings.TrimSpace(attributes["event_type"]))
+	switch eventType {
+	case "app.oauth2.authorize.code", "app.oauth2.as.authorize.code":
+		return true
+	default:
+		return strings.HasPrefix(eventType, "app.oauth2.token.grant.") ||
+			strings.HasPrefix(eventType, "app.oauth2.as.token.grant.")
+	}
+}
+
+func compactOktaResourceType(resourceType string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z':
+			return r
+		case r >= 'A' && r <= 'Z':
+			return r + ('a' - 'A')
+		case r >= '0' && r <= '9':
+			return r
+		default:
+			return -1
+		}
+	}, strings.TrimSpace(resourceType))
 }
 
 func entitiesAndLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink) ([]*ports.ProjectedEntity, []*ports.ProjectedLink) {
