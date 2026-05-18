@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
@@ -574,5 +575,148 @@ func TestEvaluateSourceRuntimeGraphRulesPersistsRunWithoutEventLimit(t *testing.
 	}
 	if got := run.GetEventLimit(); got != 0 {
 		t.Fatalf("Run.EventLimit = %d, want 0; graph runs have no event-limit input and must not advertise the replay default", got)
+	}
+}
+
+// TestEvaluateSourceRuntimeGraphRulesRecordsGraphTelemetry asserts the
+// graph-rule discriminator and rows-read counter both surface on the persisted
+// run. These two fields let operators triage graph rules separately from event
+// rules without having to join the run record back to the rule catalog.
+func TestEvaluateSourceRuntimeGraphRulesRecordsGraphTelemetry(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	store := &stubFindingStore{}
+	graphStore := &stubGraphStore{cypherRows: []ports.CypherRow{
+		{Values: map[string]any{"label": "alice@writer.com"}},
+		{Values: map[string]any{"label": "bob@writer.com"}},
+		{Values: map[string]any{"label": "carol@writer.com"}},
+	}}
+	rule := &stubGraphRule{
+		spec:     &cerebrov1.RuleSpec{Id: "graph-rule-telemetry"},
+		sourceID: "okta",
+		query:    ports.CypherQueryRequest{Query: "MATCH (n) RETURN n LIMIT 10"},
+	}
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: runtime.GetId()})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
+	}
+	if got := len(result.Evaluations); got != 1 {
+		t.Fatalf("len(Evaluations) = %d, want 1", got)
+	}
+	run := result.Evaluations[0].Run
+	if got := run.GetGraphRule(); !got {
+		t.Fatalf("Run.GraphRule = false, want true on graph rule run")
+	}
+	if got := run.GetGraphRowsRead(); got != 3 {
+		t.Fatalf("Run.GraphRowsRead = %d, want 3 (cypher returned three rows)", got)
+	}
+	if got := run.GetEventsEvaluated(); got != 0 {
+		t.Fatalf("Run.EventsEvaluated = %d, want 0 (graph rules do not replay events)", got)
+	}
+	if got := run.GetEventsMatched(); got != 0 {
+		t.Fatalf("Run.EventsMatched = %d, want 0 (events_matched is the event-rule counter)", got)
+	}
+}
+
+// TestEvaluateSourceRuntimeGraphRulesEmptyQueryPersistsGraphRuleFlag verifies
+// graph rules whose generated cypher is empty (a soft no-op) still leave a run
+// row that announces itself as a graph rule. Operators must not read the empty
+// counters as "missing telemetry from an event rule".
+func TestEvaluateSourceRuntimeGraphRulesEmptyQueryPersistsGraphRuleFlag(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	store := &stubFindingStore{}
+	graphStore := &stubGraphStore{}
+	rule := &stubGraphRule{
+		spec:     &cerebrov1.RuleSpec{Id: "graph-rule-empty-query"},
+		sourceID: "okta",
+		query:    ports.CypherQueryRequest{Query: "   "},
+	}
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	if _, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: runtime.GetId()}); err != nil {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
+	}
+	if got := len(store.runs); got != 1 {
+		t.Fatalf("len(store.runs) = %d, want 1", got)
+	}
+	for _, run := range store.runs {
+		if got := run.GetGraphRule(); !got {
+			t.Fatalf("Run.GraphRule = false, want true even for empty-query graph runs")
+		}
+		if got := run.GetGraphRowsRead(); got != 0 {
+			t.Fatalf("Run.GraphRowsRead = %d, want 0", got)
+		}
+		if got := run.GetStatus(); got != "completed" {
+			t.Fatalf("Run.Status = %q, want completed", got)
+		}
+	}
+}
+
+// TestEvaluateSourceRuntimeGraphRulesFailedRunPreservesGraphTelemetry confirms
+// that even when the cypher query fails the persisted failed run still marks
+// itself as a graph rule, so the rule-class discriminator survives failures
+// and operators can sort failed runs by event-rule vs graph-rule causes.
+func TestEvaluateSourceRuntimeGraphRulesFailedRunPreservesGraphTelemetry(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	store := &stubFindingStore{}
+	graphStore := &stubGraphStore{cypherErr: errors.New("graph store unavailable")}
+	rule := &stubGraphRule{
+		spec:     &cerebrov1.RuleSpec{Id: "graph-rule-failure"},
+		sourceID: "okta",
+		query:    ports.CypherQueryRequest{Query: "MATCH (n) RETURN n LIMIT 1"},
+	}
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	if _, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: runtime.GetId()}); err == nil {
+		t.Fatal("EvaluateSourceRuntimeGraphRules() error = nil, want failure")
+	}
+	if got := len(store.runs); got != 1 {
+		t.Fatalf("len(store.runs) = %d, want 1", got)
+	}
+	for _, run := range store.runs {
+		if got := run.GetStatus(); got != "failed" {
+			t.Fatalf("Run.Status = %q, want failed", got)
+		}
+		if got := run.GetGraphRule(); !got {
+			t.Fatalf("Run.GraphRule = false on failed graph run, want true (discriminator must survive failures)")
+		}
+		if got := run.GetGraphRowsRead(); got != 0 {
+			t.Fatalf("Run.GraphRowsRead = %d, want 0 (failure happened during cypher execution before any rows arrived)", got)
+		}
+	}
+}
+
+func TestNewGraphFindingEvaluationRunSetsGraphRuleFlagAtConstruction(t *testing.T) {
+	t.Parallel()
+	run := newGraphFindingEvaluationRun("writer-okta-audit", "graph-rule-a", time.Now())
+	if got := run.GetGraphRule(); !got {
+		t.Fatalf("Run.GraphRule = false, want true (graph rule discriminator must be present at construction time)")
+	}
+	if got := run.GetStatus(); got != "running" {
+		t.Fatalf("Run.Status = %q, want running", got)
+	}
+	if got := run.GetEventLimit(); got != 0 {
+		t.Fatalf("Run.EventLimit = %d, want 0 (graph rules do not replay events)", got)
+	}
+}
+
+func TestNewFindingEvaluationRunLeavesGraphRuleFlagFalse(t *testing.T) {
+	t.Parallel()
+	run := newFindingEvaluationRun("writer-okta-audit", "event-rule-a", 25, time.Now())
+	if got := run.GetGraphRule(); got {
+		t.Fatalf("Run.GraphRule = true, want false for event-rule run (discriminator must not leak across rule classes)")
+	}
+	if got := run.GetEventLimit(); got != 25 {
+		t.Fatalf("Run.EventLimit = %d, want 25", got)
 	}
 }

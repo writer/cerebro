@@ -89,7 +89,7 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 	}
 	queryRequest := rule.QueryFor(runtime)
 	if strings.TrimSpace(queryRequest.Query) == "" {
-		if err := s.finishCompletedRun(ctx, run, 0, 0, nil); err != nil {
+		if err := s.finishCompletedGraphRun(ctx, run, 0, nil); err != nil {
 			return result, err
 		}
 		return result, nil
@@ -97,14 +97,14 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 	rows, err := s.graphQuery.ExecuteReadCypher(ctx, queryRequest)
 	if err != nil {
 		evaluationErr := fmt.Errorf("execute graph rule %q cypher: %w", spec.GetId(), err)
-		return result, s.finishFailedRun(ctx, run, 0, 0, nil, evaluationErr)
+		return result, s.finishFailedGraphRun(ctx, run, 0, nil, evaluationErr)
 	}
 	result.RowsRead = uint32(len(rows))
 	result.Truncated = cypherRowsTruncated(queryRequest, len(rows))
 	emitted, err := rule.EvaluateRows(ctx, runtime, rows)
 	if err != nil {
 		evaluationErr := fmt.Errorf("evaluate graph rule %q rows: %w", spec.GetId(), err)
-		return result, s.finishFailedRun(ctx, run, 0, 0, nil, evaluationErr)
+		return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, nil, evaluationErr)
 	}
 	evidenceIDs := map[string]struct{}{}
 	emittedFindingIDs := map[string]struct{}{}
@@ -116,40 +116,40 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		record, err = s.reconcileLegacyFindingIdentity(ctx, record)
 		if err != nil {
 			evaluationErr := fmt.Errorf("reconcile finding identity for graph rule %q: %w", spec.GetId(), err)
-			return result, s.finishFailedRun(ctx, run, 0, 0, findingIDs(result.Findings), evaluationErr)
+			return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
 		}
 		stored, err := s.store.UpsertFinding(ctx, record)
 		if err != nil {
 			evaluationErr := fmt.Errorf("persist finding for graph rule %q: %w", spec.GetId(), err)
-			return result, s.finishFailedRun(ctx, run, 0, 0, findingIDs(result.Findings), evaluationErr)
+			return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
 		}
 		result.Findings = append(result.Findings, stored)
 		emittedFindingIDs[strings.TrimSpace(stored.ID)] = struct{}{}
 		evidence, err := s.buildFindingEvidence(ctx, stored, run, graphRows...)
 		if err != nil {
 			evaluationErr := fmt.Errorf("build evidence for graph rule %q finding %q: %w", spec.GetId(), stored.ID, err)
-			return result, s.finishFailedRun(ctx, run, 0, 0, findingIDs(result.Findings), evaluationErr)
+			return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
 		}
 		if _, seen := evidenceIDs[evidence.GetId()]; !seen {
 			if err := s.evidenceStore.PutFindingEvidence(ctx, evidence); err != nil {
 				evaluationErr := fmt.Errorf("persist evidence for graph rule %q finding %q: %w", spec.GetId(), stored.ID, err)
-				return result, s.finishFailedRun(ctx, run, 0, 0, findingIDs(result.Findings), evaluationErr)
+				return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
 			}
 			evidenceIDs[evidence.GetId()] = struct{}{}
 			result.Evidence = append(result.Evidence, evidence)
 		}
 		if err := s.projectFindingAnchor(ctx, stored); err != nil {
 			evaluationErr := fmt.Errorf("project graph rule %q finding %q anchor: %w", spec.GetId(), stored.ID, err)
-			return result, s.finishFailedRun(ctx, run, 0, 0, findingIDs(result.Findings), evaluationErr)
+			return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
 		}
 	}
 	if !result.Truncated {
 		if err := s.resolveStaleGraphFindings(ctx, strings.TrimSpace(runtime.GetTenantId()), strings.TrimSpace(runtime.GetId()), spec.GetId(), emittedFindingIDs); err != nil {
 			evaluationErr := fmt.Errorf("resolve stale graph findings for rule %q: %w", spec.GetId(), err)
-			return result, s.finishFailedRun(ctx, run, 0, 0, findingIDs(result.Findings), evaluationErr)
+			return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
 		}
 	}
-	if err := s.finishCompletedRun(ctx, run, 0, 0, findingIDs(result.Findings)); err != nil {
+	if err := s.finishCompletedGraphRun(ctx, run, result.RowsRead, findingIDs(result.Findings)); err != nil {
 		return result, err
 	}
 	return result, nil

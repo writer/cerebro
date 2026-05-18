@@ -1084,12 +1084,14 @@ func (s *Service) updateFindingStatus(ctx context.Context, id string, status str
 func newFindingEvaluationRun(runtimeID string, ruleID string, eventLimit uint32, startedAt time.Time) *cerebrov1.FindingEvaluationRun {
 	normalizedStartedAt := startedAt.UTC()
 	return &cerebrov1.FindingEvaluationRun{
-		Id:         findingEvaluationRunID(runtimeID, ruleID, normalizedStartedAt),
-		RuntimeId:  strings.TrimSpace(runtimeID),
-		RuleId:     strings.TrimSpace(ruleID),
-		Status:     "running",
-		EventLimit: normalizeEventLimit(eventLimit),
-		StartedAt:  timestamppb.New(normalizedStartedAt),
+		Id:            findingEvaluationRunID(runtimeID, ruleID, normalizedStartedAt),
+		RuntimeId:     strings.TrimSpace(runtimeID),
+		RuleId:        strings.TrimSpace(ruleID),
+		Status:        "running",
+		EventLimit:    normalizeEventLimit(eventLimit),
+		StartedAt:     timestamppb.New(normalizedStartedAt),
+		GraphRule:     proto.Bool(false),
+		GraphRowsRead: proto.Uint32(0),
 	}
 }
 
@@ -1099,14 +1101,20 @@ func newFindingEvaluationRun(runtimeID string, ruleID string, eventLimit uint32,
 // here would make Get/ListFindingEvaluationRun advertise misleading metadata for
 // graph runs (as if they were event replays capped at 100), so we leave EventLimit
 // at zero — the proto-default — for callers to interpret as "n/a for graph rule".
+//
+// GraphRule is set at construction time so failures that abort the run before
+// any rows are read still carry the discriminator that tells operators they
+// are looking at a graph rule rather than an event rule that never saw events.
 func newGraphFindingEvaluationRun(runtimeID string, ruleID string, startedAt time.Time) *cerebrov1.FindingEvaluationRun {
 	normalizedStartedAt := startedAt.UTC()
 	return &cerebrov1.FindingEvaluationRun{
-		Id:        findingEvaluationRunID(runtimeID, ruleID, normalizedStartedAt),
-		RuntimeId: strings.TrimSpace(runtimeID),
-		RuleId:    strings.TrimSpace(ruleID),
-		Status:    "running",
-		StartedAt: timestamppb.New(normalizedStartedAt),
+		Id:            findingEvaluationRunID(runtimeID, ruleID, normalizedStartedAt),
+		RuntimeId:     strings.TrimSpace(runtimeID),
+		RuleId:        strings.TrimSpace(ruleID),
+		Status:        "running",
+		StartedAt:     timestamppb.New(normalizedStartedAt),
+		GraphRule:     proto.Bool(true),
+		GraphRowsRead: proto.Uint32(0),
 	}
 }
 
@@ -1167,6 +1175,47 @@ func (s *Service) finishFailedRun(ctx context.Context, run *cerebrov1.FindingEva
 	return evaluationErr
 }
 
+// finishCompletedGraphRun finalizes a successful graph-rule run. Graph rules
+// track graph_rows_read instead of events_* counters, so a dedicated finalizer
+// keeps the event-rule helper from accidentally overwriting graph telemetry to
+// zero. Callers must pass the cypher row count and the emitted finding ids.
+func (s *Service) finishCompletedGraphRun(ctx context.Context, run *cerebrov1.FindingEvaluationRun, graphRowsRead uint32, findingIDs []string) error {
+	if run == nil {
+		return nil
+	}
+	run.Status = "completed"
+	setGraphFindingEvaluationRunMetrics(run, graphRowsRead, findingIDs)
+	run.Error = ""
+	run.FinishedAt = timestamppb.New(time.Now().UTC())
+	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
+		return fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
+	}
+	emitFindingEvaluationRunTelemetry(ctx, run)
+	return nil
+}
+
+// finishFailedGraphRun finalizes a failed graph-rule run while preserving the
+// graph_rows_read counter accumulated before the failure, so operators can
+// distinguish "failure before any rows were read" (graphRowsRead=0) from
+// "failure after fetching N rows" (graphRowsRead=N).
+func (s *Service) finishFailedGraphRun(ctx context.Context, run *cerebrov1.FindingEvaluationRun, graphRowsRead uint32, findingIDs []string, evaluationErr error) error {
+	if run == nil {
+		return evaluationErr
+	}
+	run.Status = "failed"
+	setGraphFindingEvaluationRunMetrics(run, graphRowsRead, findingIDs)
+	run.Error = strings.TrimSpace(evaluationErr.Error())
+	run.FinishedAt = timestamppb.New(time.Now().UTC())
+	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
+		return errors.Join(
+			evaluationErr,
+			fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err),
+		)
+	}
+	emitFindingEvaluationRunTelemetry(ctx, run)
+	return evaluationErr
+}
+
 func (s *Service) markRuleEvaluationFailed(ctx context.Context, state *ruleEvaluationState, evaluationErr error) error {
 	if state == nil || state.result == nil || state.result.Run == nil {
 		return evaluationErr
@@ -1199,6 +1248,21 @@ func setFindingEvaluationRunMetrics(run *cerebrov1.FindingEvaluationRun, eventsP
 	run.FindingIds = append([]string(nil), findingIDs...)
 }
 
+// setGraphFindingEvaluationRunMetrics records the per-run counters for one
+// graph-rule evaluation. The graph_rule discriminator is set at construction
+// time (newGraphFindingEvaluationRun) so failures before the cypher query
+// still preserve the rule-class signal; this helper only refreshes the
+// counters that change as the run progresses.
+func setGraphFindingEvaluationRunMetrics(run *cerebrov1.FindingEvaluationRun, graphRowsRead uint32, findingIDs []string) {
+	if run == nil {
+		return
+	}
+	run.GraphRowsRead = proto.Uint32(graphRowsRead)
+	run.FindingsUpserted = uint32(len(findingIDs))
+	run.FindingsEmitted = uint32(len(findingIDs))
+	run.FindingIds = append([]string(nil), findingIDs...)
+}
+
 func emitFindingEvaluationRunTelemetry(ctx context.Context, run *cerebrov1.FindingEvaluationRun) {
 	if run == nil {
 		return
@@ -1212,6 +1276,8 @@ func emitFindingEvaluationRunTelemetry(ctx context.Context, run *cerebrov1.Findi
 		telemetry.Field{Key: "events_processed", Value: run.GetEventsProcessed()},
 		telemetry.Field{Key: "events_matched", Value: run.GetEventsMatched()},
 		telemetry.Field{Key: "findings_emitted", Value: run.GetFindingsEmitted()},
+		telemetry.Field{Key: "graph_rule", Value: run.GetGraphRule()},
+		telemetry.Field{Key: "graph_rows_read", Value: run.GetGraphRowsRead()},
 	))
 }
 
