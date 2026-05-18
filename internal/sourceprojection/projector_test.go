@@ -288,6 +288,125 @@ func TestProjectOktaOAuthGrantAsApplicationTelemetry(t *testing.T) {
 	assertProjectedLink(t, state, clientURN, relationBelongsTo, "urn:cerebro:writer:okta_org:writer.okta.com")
 }
 
+func TestProjectOktaAuditSuppressesEphemeralOAuthResources(t *testing.T) {
+	tests := []struct {
+		name         string
+		resourceType string
+		grantType    string
+		resourceURN  string
+	}{
+		{
+			name:         "access token",
+			resourceType: "access_token",
+			grantType:    "access_token",
+			resourceURN:  "urn:cerebro:writer:okta_resource:access_token:token-123",
+		},
+		{
+			name:         "refresh token",
+			resourceType: "refresh_token",
+			grantType:    "refresh_token",
+			resourceURN:  "urn:cerebro:writer:okta_resource:refresh_token:token-123",
+		},
+		{
+			name:         "authorization code",
+			resourceType: "authorization_code",
+			grantType:    "authorization_code",
+			resourceURN:  "urn:cerebro:writer:okta_resource:authorization_code:token-123",
+		},
+		{
+			name:         "id token",
+			resourceType: "id_token",
+			grantType:    "id_token",
+			resourceURN:  "urn:cerebro:writer:okta_resource:id_token:token-123",
+		},
+		{
+			name:         "code",
+			resourceType: "code",
+			grantType:    "authorization_code",
+			resourceURN:  "urn:cerebro:writer:okta_resource:code:token-123",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			state := &projectionRecorder{}
+			service := New(state, nil)
+
+			_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+				Id:       "okta-oauth-token",
+				TenantId: "writer",
+				SourceId: "okta",
+				Kind:     "okta.audit",
+				Attributes: map[string]string{
+					"domain":               "writer.okta.com",
+					"event_type":           "app.oauth2.token.grant.access_token",
+					"actor_id":             "00u-user",
+					"actor_type":           "User",
+					"actor_alternate_id":   "user@writer.com",
+					"resource_id":          "token-123",
+					"resource_type":        tt.resourceType,
+					"oauth_client_id":      "0oa-client",
+					"oauth_client_label":   "Production Client",
+					"oauth_client_type":    "PublicClientApp",
+					"oauth_event_category": "runtime_grant",
+					"grant_type":           tt.grantType,
+				},
+			})
+			if err != nil {
+				t.Fatalf("Project() error = %v", err)
+			}
+
+			clientURN := "urn:cerebro:writer:okta_application:0oa-client"
+			actorURN := "urn:cerebro:writer:okta_user:00u-user"
+			if _, ok := state.entities[tt.resourceURN]; ok {
+				t.Fatalf("ephemeral resource entity %q unexpectedly projected", tt.resourceURN)
+			}
+			assertProjectedLinkMissing(t, state, clientURN, relationActedOn, tt.resourceURN)
+			assertProjectedLinkMissing(t, state, actorURN, relationActedOn, tt.resourceURN)
+			assertProjectedLinkMissing(t, state, tt.resourceURN, relationBelongsTo, "urn:cerebro:writer:okta_org:writer.okta.com")
+			assertProjectedLink(t, state, actorURN, relationActedOn, clientURN)
+
+			link := state.links[actorURN+"|"+relationActedOn+"|"+clientURN]
+			if got := link.Attributes["grant_type"]; got != tt.grantType {
+				t.Fatalf("grant_type = %q, want %q", got, tt.grantType)
+			}
+			if got := link.Attributes["oauth_event_category"]; got != "runtime_grant" {
+				t.Fatalf("oauth_event_category = %q, want runtime_grant", got)
+			}
+		})
+	}
+}
+
+func TestProjectOktaAuditKeepsCredentialChangeResources(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "okta-api-token-create",
+		TenantId: "writer",
+		SourceId: "okta",
+		Kind:     "okta.audit",
+		Attributes: map[string]string{
+			"domain":               "writer.okta.com",
+			"event_type":           "system.api_token.create",
+			"actor_id":             "00u-admin",
+			"actor_type":           "User",
+			"actor_alternate_id":   "admin@writer.com",
+			"resource_id":          "token-123",
+			"resource_type":        "Token",
+			"oauth_event_category": "credential_change",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	resourceURN := "urn:cerebro:writer:okta_resource:token:token-123"
+	if _, ok := state.entities[resourceURN]; !ok {
+		t.Fatalf("credential change resource entity %q missing", resourceURN)
+	}
+	assertProjectedLink(t, state, "urn:cerebro:writer:okta_user:00u-admin", relationActedOn, resourceURN)
+}
+
 func TestProjectOktaAuditSuppressesSelfActedOnEdge(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

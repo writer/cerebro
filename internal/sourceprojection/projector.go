@@ -798,7 +798,11 @@ func oktaAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 		})
 	}
 
-	resourceURN := oktaResourceURN(tenantID, resourceType, resourceID)
+	suppressResource := oktaSuppressEphemeralOAuthResource(resourceType, attributes)
+	resourceURN := ""
+	if !suppressResource {
+		resourceURN = oktaResourceURN(tenantID, resourceType, resourceID)
+	}
 	if resourceURN != "" {
 		entityType := "okta.resource"
 		if strings.EqualFold(resourceType, "user") {
@@ -867,6 +871,12 @@ func oktaAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 		if resourceURN != "" && resourceURN != actorURN {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, resourceURN, relationActedOn, oktaAuditRelationAttributes(event, attributes, nil)))
 		}
+		if suppressResource && oauthClientURN != "" && strings.TrimSpace(actorID) != strings.TrimSpace(oauthClientID) {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, oauthClientURN, relationActedOn, oktaAuditRelationAttributes(event, attributes, map[string]string{
+				"oauth_event_category": attributes["oauth_event_category"],
+				"grant_type":           attributes["grant_type"],
+			})))
+		}
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorAlternateID, event.GetOccurredAt())
 	}
 
@@ -891,6 +901,18 @@ func oktaAuditRelationAttributes(event *cerebrov1.EventEnvelope, attributes map[
 		addProjectedAttribute(relationAttrs, key, strings.TrimSpace(value))
 	}
 	return relationAttrs
+}
+
+func oktaSuppressEphemeralOAuthResource(resourceType string, attributes map[string]string) bool {
+	if !strings.EqualFold(strings.TrimSpace(attributes["oauth_event_category"]), "runtime_grant") {
+		return false
+	}
+	switch normalizeIdentifier(resourceType) {
+	case "access_token", "refresh_token", "authorization_code", "id_token", "code":
+		return true
+	default:
+		return false
+	}
 }
 
 func entitiesAndLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink) ([]*ports.ProjectedEntity, []*ports.ProjectedLink) {
