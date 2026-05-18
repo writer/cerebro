@@ -628,21 +628,6 @@ func addGRCPlatformAssetLinks(entities map[string]*ports.ProjectedEntity, links 
 		if resourceURN == "" {
 			continue
 		}
-		platformSourceID := provider
-		addEntity(entities, &ports.ProjectedEntity{
-			URN:        resourceURN,
-			TenantID:   tenantID,
-			SourceID:   platformSourceID,
-			EntityType: provider + "." + strings.ReplaceAll(resourceType, "_", "."),
-			Label:      firstNonEmpty(ref.ResourceName, resourceID),
-			Attributes: map[string]string{
-				"provider":            provider,
-				"resource_id":         resourceID,
-				"resource_type":       resourceType,
-				"scanner_resource_id": strings.TrimSpace(ref.ScannerResourceID),
-				"source_system":       grcProvider(attrs),
-			},
-		})
 		addLink(links, projectedLink(tenantID, sourceID, targetURN, resourceURN, relationRepresents, map[string]string{
 			"confidence":           "0.99",
 			"event_id":             event.GetId(),
@@ -651,15 +636,6 @@ func addGRCPlatformAssetLinks(entities map[string]*ports.ProjectedEntity, links 
 			"platform_resource_id": resourceID,
 			"resource_type":        resourceType,
 		}))
-		if provider == "aws" {
-			addCloudAccountLink(entities, links, tenantID, platformSourceID, event, resourceURN, grcAWSAccountIDFromARN(resourceID), provider)
-		}
-		for _, host := range splitCloudAttributeList(ref.Hostnames) {
-			addInternetHostLink(entities, links, tenantID, sourceID, event, resourceURN, relationRepresents, host, "grc_platform_resource_host", "0.90")
-		}
-		for _, ip := range splitCloudAttributeList(ref.IPs) {
-			addInternetIPLink(entities, links, tenantID, sourceID, event, resourceURN, ip, "grc_platform_resource_ip", "0.90")
-		}
 	}
 }
 
@@ -754,14 +730,6 @@ func grcAWSResourceTypeFromARN(resourceID string) string {
 		return normalizeCloudType(service + "_" + resourceType)
 	}
 	return normalizeCloudType(service)
-}
-
-func grcAWSAccountIDFromARN(resourceID string) string {
-	_, _, _, accountID, _, ok := grcAWSARNParts(resourceID)
-	if !ok {
-		return ""
-	}
-	return accountID
 }
 
 func grcAWSARNParts(resourceID string) (partition string, service string, region string, accountID string, resource string, ok bool) {
