@@ -1078,7 +1078,9 @@ func (a *App) handleSyncSourceRuntime(w http.ResponseWriter, r *http.Request) {
 		writeSourceRuntimeError(w, err)
 		return
 	}
-	response, err := a.runtimeService().Sync(r.Context(), request)
+	response, err := a.runtimeService().SyncWithLease(r.Context(), request, sourceruntime.SyncWithLeaseOptions{
+		LeaseStore: sourceRuntimeLeaseStore(a.deps.StateStore),
+	})
 	if err != nil {
 		writeSourceRuntimeError(w, err)
 		return
@@ -1495,7 +1497,9 @@ func (s *bootstrapService) SyncSourceRuntime(ctx context.Context, req *connect.R
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId(), false); err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
-	response, err := newRuntimeService(s.deps, s.sources).Sync(ctx, req.Msg)
+	response, err := newRuntimeService(s.deps, s.sources).SyncWithLease(ctx, req.Msg, sourceruntime.SyncWithLeaseOptions{
+		LeaseStore: sourceRuntimeLeaseStore(s.deps.StateStore),
+	})
 	if err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
@@ -2360,6 +2364,8 @@ func writeSourceRuntimeError(w http.ResponseWriter, err error) {
 		statusCode = http.StatusForbidden
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound), errors.Is(err, sourceops.ErrSourceNotFound):
 		statusCode = http.StatusNotFound
+	case errors.Is(err, sourceruntime.ErrSyncInProgress):
+		statusCode = http.StatusConflict
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
 	case errors.Is(err, sourceruntime.ErrInvalidRequest), errors.Is(err, graphquery.ErrInvalidRequest), errors.Is(err, errInvalidHTTPRequest):
@@ -2372,6 +2378,8 @@ func sourceRuntimeConnectError(err error) error {
 	switch {
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound), errors.Is(err, sourceops.ErrSourceNotFound):
 		return connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, sourceruntime.ErrSyncInProgress):
+		return connect.NewError(connect.CodeAborted, err)
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable):
 		return connect.NewError(connect.CodeUnavailable, err)
 	case errors.Is(err, sourceruntime.ErrInvalidRequest):
@@ -2634,6 +2642,18 @@ func sourceRuntimeStore(store ports.StateStore) ports.SourceRuntimeStore {
 		return nil
 	}
 	return runtimeStore
+}
+
+// sourceRuntimeLeaseStore returns the StateStore's lease coordinator when
+// the underlying implementation supports it. The API's Sync handler uses
+// this to serialize cursor advances across replicas; CLI and single-task
+// callers receive nil and fall through to a plain Sync.
+func sourceRuntimeLeaseStore(store ports.StateStore) ports.SourceRuntimeLeaseStore {
+	leaseStore, ok := store.(ports.SourceRuntimeLeaseStore)
+	if !ok || isNilInterface(leaseStore) {
+		return nil
+	}
+	return leaseStore
 }
 
 func sourceProjectionStateStore(store ports.StateStore) ports.ProjectionStateStore {
