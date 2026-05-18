@@ -712,7 +712,7 @@ func grcAWSResourceTypeFromARN(resourceID string) string {
 	if !ok {
 		return ""
 	}
-	resourceType := resource
+	resourceType := strings.TrimLeft(resource, "/")
 	if before, _, ok := strings.Cut(resourceType, "/"); ok {
 		resourceType = before
 	}
@@ -745,7 +745,7 @@ func grcAWSResourceTypeFromARN(resourceID string) string {
 			return "cloudfront_distribution"
 		}
 	case "apigateway":
-		if resourceType == "domainname" {
+		if resourceType == "domainname" || resourceType == "domainnames" {
 			return "apigateway_domain"
 		}
 	}

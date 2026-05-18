@@ -699,6 +699,13 @@ func TestProjectGRCVulnerableAssetLinksPlatformResources(t *testing.T) {
 	assertProjectedLink(t, state, awsInstanceURN, relationRepresents, ipURN)
 }
 
+func TestGRCAWSResourceTypeFromARNHandlesAPIGatewayCustomDomain(t *testing.T) {
+	got := grcAWSResourceTypeFromARN("arn:aws:apigateway:us-east-1::/domainnames/api.writer.com")
+	if got != "apigateway_domain" {
+		t.Fatalf("grcAWSResourceTypeFromARN() = %q, want apigateway_domain", got)
+	}
+}
+
 func TestProjectGRCVulnerableAssetDoesNotInferVulnerabilityFromReferenceJSON(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
