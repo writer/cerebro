@@ -513,6 +513,43 @@ func (s *Service) ListFindings(ctx context.Context, request ListRequest) (*ListR
 	return &ListResult{Findings: findings}, nil
 }
 
+type openFindingRetirementRule interface {
+	RetiresOpenFindings() bool
+}
+
+func (s *Service) resolveRetiredOpenFindings(ctx context.Context, tenantID string, runtimeID string, ruleID string, emittedFindingIDs map[string]struct{}) error {
+	findings, err := s.store.ListFindings(ctx, ports.ListFindingsRequest{
+		TenantID:  strings.TrimSpace(tenantID),
+		RuntimeID: strings.TrimSpace(runtimeID),
+		RuleID:    strings.TrimSpace(ruleID),
+		Status:    findingStatusOpen,
+	})
+	if err != nil {
+		return fmt.Errorf("list retired candidates for rule %q: %w", strings.TrimSpace(ruleID), err)
+	}
+	for _, finding := range findings {
+		if finding == nil {
+			continue
+		}
+		if _, emitted := emittedFindingIDs[strings.TrimSpace(finding.ID)]; emitted {
+			continue
+		}
+		updated, err := s.store.UpdateFindingStatus(ctx, ports.FindingStatusUpdate{
+			FindingID: strings.TrimSpace(finding.ID),
+			Status:    findingStatusResolved,
+			Reason:    workflowevents.FindingStatusReasonNoLongerEmitted,
+			UpdatedAt: time.Now().UTC(),
+		})
+		if err != nil {
+			return fmt.Errorf("resolve retired finding %q: %w", strings.TrimSpace(finding.ID), err)
+		}
+		if err := s.recordFindingStatusWorkflow(ctx, updated, workflowevents.FindingStatusSourceStaleEvaluation); err != nil {
+			return fmt.Errorf("project retired finding %q resolution: %w", strings.TrimSpace(finding.ID), err)
+		}
+	}
+	return nil
+}
+
 func (s *Service) resolveStaleOpenFindings(ctx context.Context, tenantID string, runtimeID string, ruleID string, evaluatedEventIDs map[string]struct{}, emittedFindingIDs map[string]struct{}) error {
 	if len(evaluatedEventIDs) == 0 {
 		return nil
@@ -559,6 +596,9 @@ func (s *Service) resolveRuleOpenFindings(ctx context.Context, runtime *cerebrov
 	tenantID := strings.TrimSpace(runtime.GetTenantId())
 	runtimeID := strings.TrimSpace(runtime.GetId())
 	ruleID := strings.TrimSpace(rule.Spec().GetId())
+	if retirementRule, ok := rule.(openFindingRetirementRule); ok && retirementRule.RetiresOpenFindings() {
+		return s.resolveRetiredOpenFindings(ctx, tenantID, runtimeID, ruleID, emittedFindingIDs)
+	}
 	if rule.SupportsRuntime(runtime) {
 		return s.resolveStaleOpenFindings(ctx, tenantID, runtimeID, ruleID, evaluatedEventIDs, emittedFindingIDs)
 	}

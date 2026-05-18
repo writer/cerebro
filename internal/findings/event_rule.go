@@ -36,11 +36,12 @@ type RuleDefinition struct {
 }
 
 type eventRuleConfig struct {
-	definition RuleDefinition
-	spec       *cerebrov1.RuleSpec
-	sourceID   string
-	match      eventRuleMatcher
-	build      eventRuleBuilder
+	definition         RuleDefinition
+	spec               *cerebrov1.RuleSpec
+	sourceID           string
+	retireOpenFindings bool
+	match              eventRuleMatcher
+	build              eventRuleBuilder
 }
 
 type eventRule struct {
@@ -174,6 +175,10 @@ func (r *eventRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool {
 		return false
 	}
 	return strings.EqualFold(strings.TrimSpace(runtime.GetSourceId()), strings.TrimSpace(r.config.sourceID))
+}
+
+func (r *eventRule) RetiresOpenFindings() bool {
+	return r != nil && r.config.retireOpenFindings
 }
 
 func (r *eventRule) Evaluate(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {

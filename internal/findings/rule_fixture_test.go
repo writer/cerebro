@@ -62,20 +62,27 @@ func TestGitHubDependabotOpenAlertFixture(t *testing.T) {
 	assertRuleFixture(t, newGitHubDependabotOpenAlertRule(), "testdata/rules/github-dependabot-open-alert.json")
 }
 
-func TestGitHubSecretScanningDisabledFixture(t *testing.T) {
-	assertRuleFixture(t, newGitHubSecretScanningDisabledRule(), "testdata/rules/github-secret-scanning-disabled.json")
+// The GitHub mirror-rule fixtures below previously asserted findings; the
+// rules are now retired (match returns false). The fixture path is kept on
+// disk as the canonical event shape that the durable replacement posture
+// graph rule will consume as evidence, so we still load it but assert that
+// the retired wrapper now emits zero findings for every event in the
+// fixture.
+
+func TestGitHubSecretScanningDisabledFixtureRetired(t *testing.T) {
+	assertRetiredEventRuleFixture(t, newGitHubSecretScanningDisabledRule(), "testdata/rules/github-secret-scanning-disabled.json")
 }
 
-func TestGitHubPushProtectionDisabledFixture(t *testing.T) {
-	assertRuleFixture(t, newGitHubPushProtectionDisabledRule(), "testdata/rules/github-push-protection-disabled.json")
+func TestGitHubPushProtectionDisabledFixtureRetired(t *testing.T) {
+	assertRetiredEventRuleFixture(t, newGitHubPushProtectionDisabledRule(), "testdata/rules/github-push-protection-disabled.json")
 }
 
-func TestGitHubBranchProtectionDisabledFixture(t *testing.T) {
-	assertRuleFixture(t, newGitHubBranchProtectionDisabledRule(), "testdata/rules/github-branch-protection-disabled.json")
+func TestGitHubBranchProtectionDisabledFixtureRetired(t *testing.T) {
+	assertRetiredEventRuleFixture(t, newGitHubBranchProtectionDisabledRule(), "testdata/rules/github-branch-protection-disabled.json")
 }
 
-func TestGitHubRepositoryMadePublicFixture(t *testing.T) {
-	assertRuleFixture(t, newGitHubRepositoryMadePublicRule(), "testdata/rules/github-repository-made-public.json")
+func TestGitHubRepositoryMadePublicFixtureRetired(t *testing.T) {
+	assertRetiredEventRuleFixture(t, newGitHubRepositoryMadePublicRule(), "testdata/rules/github-repository-made-public.json")
 }
 
 func TestGitHubSecretScanningAlertCreatedFixture(t *testing.T) {
@@ -114,8 +121,8 @@ func TestGitHubPersonalAccessTokenCreatedFixture(t *testing.T) {
 	assertRuleFixture(t, newGitHubPersonalAccessTokenCreatedRule(), "testdata/rules/github-personal-access-token-created.json")
 }
 
-func TestGitHubProtectedBranchPolicyOverrideFixture(t *testing.T) {
-	assertRuleFixture(t, newGitHubProtectedBranchPolicyOverrideRule(), "testdata/rules/github-protected-branch-policy-override.json")
+func TestGitHubProtectedBranchPolicyOverrideFixtureRetired(t *testing.T) {
+	assertRetiredEventRuleFixture(t, newGitHubProtectedBranchPolicyOverrideRule(), "testdata/rules/github-protected-branch-policy-override.json")
 }
 
 func TestGitHubRepositoryRulesetModifiedFixture(t *testing.T) {
@@ -180,6 +187,167 @@ func TestRetiredSentinelOneRulesDoNotEmitFindings(t *testing.T) {
 		}
 		if len(records) != 0 {
 			t.Fatalf("Evaluate(%q) returned %d findings, want none", rule.Spec().GetId(), len(records))
+		}
+	}
+}
+
+func TestRetiredGitHubMirrorRulesDoNotEmitFindings(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	events := []ruleFixtureEvent{
+		{
+			ID:         "gh-secret-scanning-disabled",
+			TenantID:   "writer",
+			SourceID:   "github",
+			Kind:       "github.audit",
+			OccurredAt: "2026-05-09T07:00:00Z",
+			SchemaRef:  "github/audit/v1",
+			Attributes: map[string]string{
+				"action":        "repository_secret_scanning.disable",
+				"repo":          "writer/cerebro",
+				"resource_type": "repository_secret_scanning",
+				"resource_id":   "writer/cerebro",
+			},
+		},
+		{
+			ID:         "gh-push-protection-disabled",
+			TenantID:   "writer",
+			SourceID:   "github",
+			Kind:       "github.audit",
+			OccurredAt: "2026-05-09T07:01:00Z",
+			SchemaRef:  "github/audit/v1",
+			Attributes: map[string]string{
+				"action":        "org.secret_scanning_push_protection_disable",
+				"resource_id":   "writer",
+				"resource_type": "org",
+			},
+		},
+		{
+			ID:         "gh-branch-protection-disabled",
+			TenantID:   "writer",
+			SourceID:   "github",
+			Kind:       "github.audit",
+			OccurredAt: "2026-05-09T07:02:00Z",
+			SchemaRef:  "github/audit/v1",
+			Attributes: map[string]string{
+				"action":        "protected_branch.destroy",
+				"repo":          "writer/cerebro",
+				"resource_type": "protected_branch",
+			},
+		},
+		{
+			ID:         "gh-repo-made-public",
+			TenantID:   "writer",
+			SourceID:   "github",
+			Kind:       "github.audit",
+			OccurredAt: "2026-05-09T07:03:00Z",
+			SchemaRef:  "github/audit/v1",
+			Attributes: map[string]string{
+				"action":              "repo.access",
+				"repo":                "writer/cerebro",
+				"previous_visibility": "private",
+				"visibility":          "public",
+				"resource_type":       "repo",
+			},
+		},
+		{
+			ID:         "gh-protected-branch-override",
+			TenantID:   "writer",
+			SourceID:   "github",
+			Kind:       "github.audit",
+			OccurredAt: "2026-05-09T07:04:00Z",
+			SchemaRef:  "github/audit/v1",
+			Attributes: map[string]string{
+				"action":        "protected_branch.policy_override",
+				"branch":        "main",
+				"repo":          "writer/cerebro",
+				"resource_type": "protected_branch",
+			},
+		},
+	}
+	rules := []Rule{
+		newGitHubSecretScanningDisabledRule(),
+		newGitHubPushProtectionDisabledRule(),
+		newGitHubBranchProtectionDisabledRule(),
+		newGitHubRepositoryMadePublicRule(),
+		newGitHubProtectedBranchPolicyOverrideRule(),
+	}
+	for _, rule := range rules {
+		ruleID := rule.Spec().GetId()
+		for _, eventFixture := range events {
+			event := eventFixture.proto(t)
+			records, err := rule.Evaluate(context.Background(), runtime, event)
+			if err != nil {
+				t.Fatalf("Evaluate(rule=%q, event=%q) error = %v", ruleID, event.GetId(), err)
+			}
+			if len(records) != 0 {
+				t.Fatalf("Evaluate(rule=%q, event=%q) returned %d findings, want none for retired rule", ruleID, event.GetId(), len(records))
+			}
+		}
+	}
+}
+
+func TestRetiredGitHubMirrorRulesAreCatalogued(t *testing.T) {
+	retiredIDs := []string{
+		githubSecretScanningDisabledRuleID,
+		githubPushProtectionDisabledRuleID,
+		githubBranchProtectionDisabledRuleID,
+		githubRepositoryMadePublicRuleID,
+		githubProtectedBranchPolicyOverrideRuleID,
+	}
+	registry := Builtin()
+	for _, id := range retiredIDs {
+		rule, ok := registry.Get(id)
+		if !ok {
+			t.Fatalf("Builtin().Get(%q) missing; retired rules must remain discoverable so stale findings auto-resolve", id)
+		}
+		if rule == nil {
+			t.Fatalf("Builtin().Get(%q) returned nil rule", id)
+		}
+		runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+		if !rule.SupportsRuntime(runtime) {
+			t.Fatalf("rule %q should still claim github runtimes so the runtime invokes it during replay (stale-finding sweep)", id)
+		}
+	}
+}
+
+// assertRetiredEventRuleFixture loads the same JSON fixture format as
+// assertRuleFixture but asserts that the rule is now retired:
+//
+//   - The rule still advertises the fixture's RuleID via its spec (so
+//     downstream catalog clients keep working).
+//   - For every event in the fixture, the rule emits zero findings.
+//
+// Maturity and tag metadata live on the internal RuleDefinition rather than
+// on the public RuleSpec proto, so retirement is asserted behaviorally
+// (no findings) and exhaustively in TestRetiredGitHubMirrorRulesAreCatalogued.
+//
+// The retained fixture path lets a future posture replacement rule reuse
+// the canonical event payloads as evidence.
+func assertRetiredEventRuleFixture(t *testing.T, rule Rule, path string) {
+	t.Helper()
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read fixture %q: %v", path, err)
+	}
+	var fixture ruleFixture
+	if err := json.Unmarshal(payload, &fixture); err != nil {
+		t.Fatalf("unmarshal fixture %q: %v", path, err)
+	}
+	if rule == nil {
+		t.Fatal("rule = nil")
+	}
+	if got := rule.Spec().GetId(); got != fixture.RuleID {
+		t.Fatalf("RuleSpec().Id = %q, want %q", got, fixture.RuleID)
+	}
+	runtime := fixture.Runtime.proto()
+	for _, eventFixture := range fixture.Events {
+		event := eventFixture.proto(t)
+		records, err := rule.Evaluate(context.Background(), runtime, event)
+		if err != nil {
+			t.Fatalf("Evaluate(%q) error = %v", event.GetId(), err)
+		}
+		if len(records) != 0 {
+			t.Fatalf("Evaluate(%q) returned %d findings, want none for retired rule", event.GetId(), len(records))
 		}
 	}
 }
