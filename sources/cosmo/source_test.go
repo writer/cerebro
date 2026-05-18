@@ -358,6 +358,99 @@ func TestReadMessagesUsesScopedExportContractAndPaginatesEventTypes(t *testing.T
 	}
 }
 
+func TestReadMessagesStartsFirstWindowAtConfiguredSince(t *testing.T) {
+	configuredSince := "2026-05-01T00:00:00Z"
+	wantUntil := "2026-05-01T01:00:00Z"
+	var sawRequest bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/ui/memory/messages" {
+			http.NotFound(w, r)
+			return
+		}
+		sawRequest = true
+		if got := r.URL.Query().Get("since"); got != configuredSince {
+			t.Fatalf("since = %q, want %q", got, configuredSince)
+		}
+		if got := r.URL.Query().Get("until"); got != wantUntil {
+			t.Fatalf("until = %q, want %q", got, wantUntil)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "count": 0, "messages": []map[string]any{}})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id":        "writer",
+		"base_url":         server.URL,
+		"token":            "gh-token",
+		"family":           "message",
+		"client_id":        "cerebro-runtime",
+		"export_secret":    "export-secret",
+		"event_types":      "message",
+		"max_window_hours": "1",
+		"per_page":         "10",
+		"since":            configuredSince,
+	})
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if !sawRequest {
+		t.Fatal("server saw no message export request")
+	}
+	checkpoint := decodeMessageCursor(t, pull.Checkpoint.GetCursorOpaque())
+	if checkpoint.Since != wantUntil {
+		t.Fatalf("checkpoint since = %q, want %q", checkpoint.Since, wantUntil)
+	}
+}
+
+func TestDiscoverMessagesIteratesConfiguredEventTypes(t *testing.T) {
+	var eventTypes []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/ui/memory/messages" {
+			http.NotFound(w, r)
+			return
+		}
+		eventType := r.URL.Query().Get("event_type")
+		eventTypes = append(eventTypes, eventType)
+		if eventType == "completion" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "count": 1, "messages": []map[string]any{
+				{
+					"id":         20,
+					"ticket_id":  "COSMO-2",
+					"event_type": "completion",
+					"role":       "assistant",
+					"summary":    "Completed issue",
+					"created_at": "2026-05-12T12:01:00Z",
+				},
+			}})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "count": 0, "messages": []map[string]any{}})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	urns, err := source.Discover(context.Background(), messageTestConfig(server.URL))
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if got, want := eventTypes, []string{"message", "completion"}; !slicesEqual(got, want) {
+		t.Fatalf("event types queried = %#v, want %#v", got, want)
+	}
+	if len(urns) != 1 {
+		t.Fatalf("len(urns) = %d, want 1", len(urns))
+	}
+}
+
 func TestReadMessagesReturnsHardScopedExportFailures(t *testing.T) {
 	for _, status := range []int{http.StatusBadRequest, http.StatusForbidden} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
@@ -551,4 +644,16 @@ func cloneMap(input map[string]string) map[string]string {
 		clone[key] = value
 	}
 	return clone
+}
+
+func slicesEqual(left []string, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
 }

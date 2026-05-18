@@ -197,7 +197,10 @@ func authenticateCapabilityToken(cfg config.AuthConfig, token string, now time.T
 	scopes := normalizeAuthList(claims.Scopes)
 	allowedTenants := normalizeAuthList(claims.AllowedTenants)
 	tenantID := strings.TrimSpace(claims.TenantID)
-	if len(scopes) > 0 && tenantID == "" && len(allowedTenants) == 0 {
+	if len(scopes) == 0 {
+		return authPrincipal{}, false
+	}
+	if tenantID == "" && len(allowedTenants) == 0 {
 		return authPrincipal{}, false
 	}
 	return authPrincipal{
@@ -353,7 +356,7 @@ func scopeForHTTPRequest(r *http.Request) string {
 	}
 	path := strings.TrimSpace(r.URL.Path)
 	switch {
-	case path == "/reports", path == "/finding-rules":
+	case path == "/sources", path == "/reports", path == "/finding-rules":
 		return scopeCosmoSecurityRead
 	case path == "/source-runtimes" || strings.HasPrefix(path, "/source-runtimes/"):
 		return scopeCosmoSecurityRead
@@ -384,7 +387,8 @@ func scopeForHTTPRequest(r *http.Request) string {
 
 func scopeForConnectProcedure(procedure string) string {
 	switch procedure {
-	case cerebrov1connect.BootstrapServiceListReportDefinitionsProcedure,
+	case cerebrov1connect.BootstrapServiceListSourcesProcedure,
+		cerebrov1connect.BootstrapServiceListReportDefinitionsProcedure,
 		cerebrov1connect.BootstrapServiceListFindingRulesProcedure,
 		cerebrov1connect.BootstrapServiceGetReportRunProcedure,
 		cerebrov1connect.BootstrapServiceGetSourceRuntimeProcedure,
@@ -435,12 +439,12 @@ func hasAuthContext(ctx context.Context) bool {
 
 func hasTenantScopedAuth(ctx context.Context) bool {
 	auth, ok := ctx.Value(authContextKey{}).(authContext)
-	return ok && strings.TrimSpace(auth.principal.TenantID) != ""
+	return ok && (strings.TrimSpace(auth.principal.TenantID) != "" || len(auth.principal.AllowedTenants) > 0)
 }
 
 func requiresTenantFilter(ctx context.Context) bool {
 	auth, ok := ctx.Value(authContextKey{}).(authContext)
-	return ok && strings.TrimSpace(auth.principal.TenantID) == "" && len(auth.cfg.AllowedTenants) > 0
+	return ok && strings.TrimSpace(auth.principal.TenantID) == "" && (len(auth.principal.AllowedTenants) > 0 || len(auth.cfg.AllowedTenants) > 0)
 }
 
 func tenantAllowed(cfg config.AuthConfig, principal authPrincipal, tenantID string) bool {

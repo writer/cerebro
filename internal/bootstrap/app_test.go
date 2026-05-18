@@ -1526,11 +1526,16 @@ func TestScopedCosmoCredentialAllowsOnlyReadRoutes(t *testing.T) {
 			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
 		},
 	}
-	app := New(cfg, Dependencies{GraphStore: graph, StateStore: store}, nil)
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	app := New(cfg, Dependencies{GraphStore: graph, StateStore: store}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
 	for _, path := range []string{
+		"/sources",
 		"/platform/graph/neighborhood?root_urn=urn:cerebro:writer:asset:app",
 		"/source-runtimes/writer-runtime",
 	} {
@@ -1616,11 +1621,25 @@ func TestScopedCosmoCredentialEnforcesConnectProcedures(t *testing.T) {
 			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
 		},
 	}
-	app := New(cfg, Dependencies{GraphStore: graph, StateStore: store}, nil)
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	app := New(cfg, Dependencies{GraphStore: graph, StateStore: store}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	listSourcesReq := connect.NewRequest(&cerebrov1.ListSourcesRequest{})
+	listSourcesReq.Header().Set("Authorization", "Bearer scoped-token")
+	listSourcesResp, err := client.ListSources(context.Background(), listSourcesReq)
+	if err != nil {
+		t.Fatalf("ListSources() error = %v", err)
+	}
+	if len(listSourcesResp.Msg.GetSources()) == 0 {
+		t.Fatal("ListSources() returned no sources, want source catalog")
+	}
+
 	readReq := connect.NewRequest(&cerebrov1.GetEntityNeighborhoodRequest{
 		RootUrn: "urn:cerebro:writer:asset:app",
 	})
@@ -1728,6 +1747,27 @@ func TestCapabilityTokenRequiresSecurityGroup(t *testing.T) {
 	_ = expiredResp.Body.Close()
 	if expiredResp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("GET with expired capability status = %d, want %d", expiredResp.StatusCode, http.StatusUnauthorized)
+	}
+
+	noScopesToken := signCapabilityToken(t, "capability-secret", map[string]any{
+		"aud":       "cerebro-api",
+		"sub":       "slack:U123",
+		"exp":       time.Now().Add(time.Hour).Unix(),
+		"tenant_id": "writer",
+		"groups":    []string{"security"},
+	})
+	noScopesReq, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:writer:asset:app", nil)
+	if err != nil {
+		t.Fatalf("NewRequest no scopes: %v", err)
+	}
+	noScopesReq.Header.Set("Authorization", "Bearer "+noScopesToken)
+	noScopesResp, err := server.Client().Do(noScopesReq)
+	if err != nil {
+		t.Fatalf("GET with no-scope capability error = %v", err)
+	}
+	_ = noScopesResp.Body.Close()
+	if noScopesResp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("GET with no-scope capability status = %d, want %d", noScopesResp.StatusCode, http.StatusUnauthorized)
 	}
 }
 
@@ -1915,6 +1955,72 @@ func TestListSourceRuntimesRequiresTenantFilterWithAllowedTenantAuth(t *testing.
 	}
 	if got := len(payload["runtimes"]); got != 1 {
 		t.Fatalf("listed runtime count = %d, want 1", got)
+	}
+}
+
+func TestListSourceRuntimesRequiresTenantFilterWithPrincipalAllowedTenants(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APICredentials: []config.APICredential{{
+				Key:            "allowed-token",
+				Principal:      "cosmo-security",
+				AllowedTenants: []string{"writer"},
+			}},
+		},
+	}
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
+			"other-runtime":  {Id: "other-runtime", SourceId: "github", TenantId: "other"},
+		},
+	}
+	app := New(cfg, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes", nil)
+	if err != nil {
+		t.Fatalf("NewRequest without tenant: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer allowed-token")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET /source-runtimes without tenant error = %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("GET /source-runtimes without tenant status = %d, want %d", resp.StatusCode, http.StatusForbidden)
+	}
+
+	scopedReq, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes?tenant_id=writer", nil)
+	if err != nil {
+		t.Fatalf("NewRequest with tenant: %v", err)
+	}
+	scopedReq.Header.Set("Authorization", "Bearer allowed-token")
+	scopedResp, err := server.Client().Do(scopedReq)
+	if err != nil {
+		t.Fatalf("GET /source-runtimes with tenant error = %v", err)
+	}
+	defer func() {
+		if closeErr := scopedResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close scoped response body: %v", closeErr)
+		}
+	}()
+	if scopedResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /source-runtimes with tenant status = %d, want %d", scopedResp.StatusCode, http.StatusOK)
+	}
+	var payload map[string][]map[string]any
+	if err := json.NewDecoder(scopedResp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode source runtime list: %v", err)
+	}
+	if got := len(payload["runtimes"]); got != 1 {
+		t.Fatalf("listed runtime count = %d, want 1", got)
+	}
+	if got := payload["runtimes"][0]["id"]; got != "writer-runtime" {
+		t.Fatalf("listed runtime id = %v, want writer-runtime", got)
 	}
 }
 

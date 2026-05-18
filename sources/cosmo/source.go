@@ -67,6 +67,7 @@ type settings struct {
 	clientID      string
 	exportSecret  string
 	eventTypes    []string
+	initialSince  time.Time
 	maxWindow     time.Duration
 	perPage       int
 }
@@ -232,9 +233,20 @@ func (s *Source) messageFamily() sourcecdk.Family[settings] {
 			if !ok {
 				return nil, nil
 			}
-			records, err := s.listMessages(ctx, settings, window, settings.perPage)
-			if err != nil {
-				return nil, fmt.Errorf("cosmo message: %w", err)
+			records := make([]record, 0, settings.perPage)
+			for eventTypeIndex := range settings.eventTypes {
+				if len(records) >= settings.perPage {
+					break
+				}
+				eventWindow := window
+				eventWindow.eventTypeIndex = eventTypeIndex
+				eventWindow.offset = 0
+				remaining := settings.perPage - len(records)
+				page, err := s.listMessages(ctx, settings, eventWindow, remaining)
+				if err != nil {
+					return nil, fmt.Errorf("cosmo message: %w", err)
+				}
+				records = append(records, page...)
 			}
 			return urnsFor(settings, familyMessage, records)
 		},
@@ -390,6 +402,11 @@ func parseSettings(cfg sourcecdk.Config, allowLoopback bool) (settings, error) {
 			return settings, err
 		}
 		settings.maxWindow = maxWindow
+		initialSince, err := parseMessageInitialSince(configValue(cfg, "since"))
+		if err != nil {
+			return settings, err
+		}
+		settings.initialSince = initialSince
 	}
 	return settings, nil
 }
@@ -435,6 +452,18 @@ func parseMessageMaxWindow(raw string) (time.Duration, error) {
 		return 0, fmt.Errorf("cosmo max_window_hours must be between 1 and %d when family=%q", messageExportMaxWindowHours, familyMessage)
 	}
 	return time.Duration(hours) * time.Hour, nil
+}
+
+func parseMessageInitialSince(raw string) (time.Time, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return time.Unix(0, 0).UTC(), nil
+	}
+	parsed, ok := parseMessageCursorTime(value)
+	if !ok {
+		return time.Time{}, fmt.Errorf("cosmo since must be an ISO timestamp when family=%q", familyMessage)
+	}
+	return parsed, nil
 }
 
 func normalizeBaseURL(raw string, allowLoopback bool) (string, error) {
@@ -787,8 +816,10 @@ func readOffset(cursor *cerebrov1.SourceCursor) (int, error) {
 func readMessageCursor(settings settings, cursor *cerebrov1.SourceCursor, now time.Time) (messageWindow, bool, error) {
 	now = now.UTC()
 	if cursor == nil || strings.TrimSpace(cursor.Opaque) == "" {
-		since := now.Add(-settings.maxWindow)
-		return messageWindow{since: since, until: now}, true, nil
+		since := settings.initialSince
+		until := minTime(since.Add(settings.maxWindow), now)
+		window := messageWindow{since: since, until: until}
+		return window, until.After(since), nil
 	}
 	var payload messageCursor
 	if err := json.Unmarshal([]byte(strings.TrimSpace(cursor.Opaque)), &payload); err != nil {
