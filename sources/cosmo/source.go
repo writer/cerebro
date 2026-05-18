@@ -42,6 +42,7 @@ const (
 	defaultMessageExportMaxWindowHours = 24
 	messageExportMaxWindowHours        = 24
 	messageExportMaxPageSize           = 100
+	messageExportMaxOffset             = 10000
 )
 
 // Source reads Cosmo memory and feedback data.
@@ -872,7 +873,7 @@ func parseMessageCursorTime(value string) (time.Time, bool) {
 }
 
 func nextMessageCursor(settings settings, window messageWindow, records int, limit int) (string, string) {
-	if records == limit {
+	if records == limit && window.offset+limit < messageExportMaxOffset {
 		next := encodeMessageCursor(window.since, window.until, window.eventTypeIndex, window.offset+limit)
 		return next, next
 	}
