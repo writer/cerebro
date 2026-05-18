@@ -628,10 +628,11 @@ func addGRCPlatformAssetLinks(entities map[string]*ports.ProjectedEntity, links 
 		if resourceURN == "" {
 			continue
 		}
+		platformSourceID := provider
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        resourceURN,
 			TenantID:   tenantID,
-			SourceID:   sourceID,
+			SourceID:   platformSourceID,
 			EntityType: provider + "." + strings.ReplaceAll(resourceType, "_", "."),
 			Label:      firstNonEmpty(ref.ResourceName, resourceID),
 			Attributes: map[string]string{
@@ -651,7 +652,7 @@ func addGRCPlatformAssetLinks(entities map[string]*ports.ProjectedEntity, links 
 			"resource_type":        resourceType,
 		}))
 		if provider == "aws" {
-			addCloudAccountLink(entities, links, tenantID, sourceID, event, resourceURN, grcAWSAccountIDFromARN(resourceID), provider)
+			addCloudAccountLink(entities, links, tenantID, platformSourceID, event, resourceURN, grcAWSAccountIDFromARN(resourceID), provider)
 		}
 		for _, host := range splitCloudAttributeList(ref.Hostnames) {
 			addInternetHostLink(entities, links, tenantID, sourceID, event, resourceURN, relationRepresents, host, "grc_platform_resource_host", "0.90")
