@@ -393,6 +393,56 @@ func TestJoinedVulnerableAssetReferencesZipsFlatFields(t *testing.T) {
 	}
 }
 
+func TestCopyVulnerableAssetPlatformReferencesFlattensScannerTargets(t *testing.T) {
+	attrs := map[string]string{}
+	copyVulnerableAssetPlatformReferences(attrs, map[string]any{
+		"id":        "vanta-asset-1",
+		"name":      "ip-10-86-43-17.ec2.internal: i-0f359ce073424f8d6",
+		"assetType": "SERVER",
+		"scanners": []any{map[string]any{
+			"resourceId":    "6a0af69035545f545841fe88",
+			"integrationId": "aws",
+			"targetId":      "arn:aws:ec2:us-east-1:381491964434:instance/i-0f359ce073424f8d6",
+			"hostnames":     []any{"ip-10-86-43-17.ec2.internal"},
+			"fqdns":         []any{"asset.writer.test"},
+			"ipv4s":         []any{"10.86.43.17"},
+			"ipv6s":         []any{"2001:db8::1"},
+		}},
+	})
+
+	if got := attrs["integration_id"]; got != "" {
+		t.Fatalf("integration_id = %q, want unset without top-level Vanta integration", got)
+	}
+	if got := attrs["platform_resource_id"]; got != "arn:aws:ec2:us-east-1:381491964434:instance/i-0f359ce073424f8d6" {
+		t.Fatalf("platform_resource_id = %q, want EC2 ARN", got)
+	}
+	if got := attrs["platform_resource_type"]; got != "SERVER" {
+		t.Fatalf("platform_resource_type = %q, want SERVER", got)
+	}
+	if got := attrs["hostname"]; got != "ip-10-86-43-17.ec2.internal" {
+		t.Fatalf("hostname = %q, want scanner hostname", got)
+	}
+	if got := attrs["hostnames"]; got != "ip-10-86-43-17.ec2.internal,asset.writer.test" {
+		t.Fatalf("hostnames = %q, want all scanner host fields", got)
+	}
+	if got := attrs["ip"]; got != "10.86.43.17" {
+		t.Fatalf("ip = %q, want scanner IPv4", got)
+	}
+	if got := attrs["ip_addresses"]; got != "10.86.43.17,2001:db8::1" {
+		t.Fatalf("ip_addresses = %q, want all scanner IP fields", got)
+	}
+	var refs []map[string]string
+	if err := json.Unmarshal([]byte(attrs["platform_asset_refs"]), &refs); err != nil {
+		t.Fatalf("platform_asset_refs is invalid JSON: %v", err)
+	}
+	if len(refs) != 1 || refs[0]["provider"] != "aws" || refs[0]["resource_id"] != "arn:aws:ec2:us-east-1:381491964434:instance/i-0f359ce073424f8d6" {
+		t.Fatalf("platform_asset_refs = %#v, want AWS EC2 resource ref", refs)
+	}
+	if refs[0]["hostnames"] != "ip-10-86-43-17.ec2.internal,asset.writer.test" || refs[0]["ips"] != "10.86.43.17,2001:db8::1" {
+		t.Fatalf("platform_asset_refs network fields = %#v, want all scanner host/IP fields", refs[0])
+	}
+}
+
 func TestJoinedVulnerableAssetReferencesMergesFlatPackages(t *testing.T) {
 	raw := joinedVulnerableAssetReferences(map[string]any{
 		"vulnerabilities":    []any{map[string]any{"id": "CVE-2026-4242"}, map[string]any{"id": "CVE-2026-4243"}},

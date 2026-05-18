@@ -657,6 +657,58 @@ func TestProjectGRCVulnerableAssetLinksURLOnlyHost(t *testing.T) {
 	assertProjectedLink(t, state, targetURN, relationRepresents, hostURN)
 }
 
+func TestProjectGRCVulnerableAssetLinksPlatformResources(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-vulnerable-asset-platform",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.vulnerable_asset",
+		Attributes: map[string]string{
+			"provider":       "vanta",
+			"target_id":      "vanta-asset-1",
+			"target_name":    "ip-10-86-43-17.ec2.internal: i-0f359ce073424f8d6",
+			"hostnames":      "ip-10-86-43-17.ec2.internal",
+			"ip_addresses":   "10.86.43.17",
+			"integration_id": "aws",
+			"platform_asset_refs": `[` +
+				`{"provider":"aws","resource_id":"arn:aws:ec2:us-east-1:381491964434:instance/i-0f359ce073424f8d6","resource_name":"ip-10-86-43-17.ec2.internal","resource_type":"SERVER","scanner_resource_id":"scanner-resource-1","hostnames":"ip-10-86-43-17.ec2.internal","ips":"10.86.43.17"}` +
+				`]`,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	targetURN := "urn:cerebro:writer:grc_target:vanta:vanta-asset-1"
+	awsInstanceURN := "urn:cerebro:writer:aws_ec2_instance:arn:aws:ec2:us-east-1:381491964434:instance/i-0f359ce073424f8d6"
+	hostURN := "urn:cerebro:writer:internet_host:ip-10-86-43-17.ec2.internal"
+	ipURN := "urn:cerebro:writer:internet_ip:10.86.43.17"
+	accountURN := "urn:cerebro:writer:cloud_account:381491964434"
+
+	if entity := state.entities[awsInstanceURN]; entity == nil || entity.EntityType != "aws.ec2.instance" || entity.SourceID != "aws" {
+		t.Fatalf("AWS instance entity missing: %#v", entity)
+	}
+	if entity := state.entities[accountURN]; entity != nil {
+		t.Fatalf("GRC projection must not upsert shared AWS account entity: %#v", entity)
+	}
+	assertProjectedLink(t, state, targetURN, relationRepresents, awsInstanceURN)
+	assertProjectedLink(t, state, targetURN, relationRepresents, hostURN)
+	assertProjectedLink(t, state, targetURN, relationRepresents, ipURN)
+	assertProjectedLinkMissing(t, state, awsInstanceURN, relationBelongsTo, accountURN)
+	assertProjectedLinkMissing(t, state, awsInstanceURN, relationRepresents, hostURN)
+	assertProjectedLinkMissing(t, state, awsInstanceURN, relationRepresents, ipURN)
+}
+
+func TestGRCAWSResourceTypeFromARNHandlesAPIGatewayCustomDomain(t *testing.T) {
+	got := grcAWSResourceTypeFromARN("arn:aws:apigateway:us-east-1::/domainnames/api.writer.com")
+	if got != "apigateway_domain" {
+		t.Fatalf("grcAWSResourceTypeFromARN() = %q, want apigateway_domain", got)
+	}
+}
+
 func TestProjectGRCVulnerableAssetDoesNotInferVulnerabilityFromReferenceJSON(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
