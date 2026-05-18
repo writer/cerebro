@@ -8,6 +8,14 @@ import pulumi
 import pulumi_aws as aws
 
 
+def _redacted_header(name: str) -> aws.wafv2.WebAclLoggingConfigurationRedactedFieldArgs:
+    return aws.wafv2.WebAclLoggingConfigurationRedactedFieldArgs(
+        single_header=aws.wafv2.WebAclLoggingConfigurationRedactedFieldSingleHeaderArgs(
+            name=name,
+        ),
+    )
+
+
 def create_waf(
     name: str,
     alb_arn: pulumi.Output[str],
@@ -39,7 +47,7 @@ def create_waf(
         visibility_config=aws.wafv2.WebAclVisibilityConfigArgs(
             cloudwatch_metrics_enabled=True,
             metric_name=f"{name}-waf",
-            sampled_requests_enabled=True,
+            sampled_requests_enabled=False,
         ),
         rules=[
             # Rate limiting
@@ -58,7 +66,7 @@ def create_waf(
                 visibility_config=aws.wafv2.WebAclRuleVisibilityConfigArgs(
                     cloudwatch_metrics_enabled=True,
                     metric_name="rate-limit",
-                    sampled_requests_enabled=True,
+                    sampled_requests_enabled=False,
                 ),
             ),
             # AWS Managed Rules - Common Rule Set
@@ -77,7 +85,7 @@ def create_waf(
                 visibility_config=aws.wafv2.WebAclRuleVisibilityConfigArgs(
                     cloudwatch_metrics_enabled=True,
                     metric_name="aws-common-rules",
-                    sampled_requests_enabled=True,
+                    sampled_requests_enabled=False,
                 ),
             ),
             # AWS Managed Rules - Known Bad Inputs
@@ -96,7 +104,7 @@ def create_waf(
                 visibility_config=aws.wafv2.WebAclRuleVisibilityConfigArgs(
                     cloudwatch_metrics_enabled=True,
                     metric_name="aws-bad-inputs",
-                    sampled_requests_enabled=True,
+                    sampled_requests_enabled=False,
                 ),
             ),
             # AWS Managed Rules - SQL Injection
@@ -115,7 +123,7 @@ def create_waf(
                 visibility_config=aws.wafv2.WebAclRuleVisibilityConfigArgs(
                     cloudwatch_metrics_enabled=True,
                     metric_name="aws-sqli",
-                    sampled_requests_enabled=True,
+                    sampled_requests_enabled=False,
                 ),
             ),
         ],
@@ -187,6 +195,12 @@ def create_waf(
         aws.wafv2.WebAclLoggingConfiguration(
             f"{name}-waf-logging",
             log_destination_configs=[log_group.arn],
+            redacted_fields=[
+                _redacted_header("authorization"),
+                _redacted_header("cookie"),
+                _redacted_header("x-api-key"),
+                _redacted_header("x-amz-security-token"),
+            ],
             resource_arn=web_acl.arn,
             opts=pulumi.ResourceOptions(depends_on=[log_resource_policy]),
         )
