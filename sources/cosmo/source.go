@@ -37,7 +37,7 @@ const (
 	familySession                      = "session"
 	familySurveyFeedback               = "survey_feedback"
 	messageExportCursorSource          = "cosmo.message"
-	defaultMessageExportInitialSince   = "2026-01-01T00:00:00Z"
+	defaultMessageExportInitialSince   = "1970-01-01T00:00:00Z"
 	defaultMessageExportEventTypes     = "message,completion"
 	defaultMessageExportMaxWindowHours = 24
 	messageExportMaxWindowHours        = 24
