@@ -131,6 +131,9 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 	if got := len(store.findingEvidenceListRequest.RuntimeIDs); got != 2 {
 		t.Fatalf("batched evidence runtime count = %d, want 2", got)
 	}
+	if !store.findingEvidenceListRequest.CreatedOrder {
+		t.Fatalf("GRC dashboard did not request created-at evidence ordering")
+	}
 }
 
 func TestGRCEntityImpactAndAuditPacket(t *testing.T) {

@@ -121,6 +121,32 @@ func TestFindingEvidenceListQuerySupportsRuntimeBatches(t *testing.T) {
 	}
 }
 
+func TestFindingEvidenceListQuerySupportsCreatedOrder(t *testing.T) {
+	query, args, err := findingEvidenceListQuery(ports.ListFindingEvidenceRequest{
+		RuntimeIDs:   []string{"runtime-alpha", "runtime-beta"},
+		Limit:        25,
+		CreatedOrder: true,
+	})
+	if err != nil {
+		t.Fatalf("findingEvidenceListQuery() error = %v", err)
+	}
+	for _, fragment := range []string{
+		"runtime_id IN ($1, $2)",
+		"ORDER BY created_at DESC, id",
+		"LIMIT $3",
+	} {
+		if !strings.Contains(query, fragment) {
+			t.Fatalf("findingEvidenceListQuery() query missing %q: %s", fragment, query)
+		}
+	}
+	if strings.Contains(query, "ORDER BY last_observed_at") {
+		t.Fatalf("findingEvidenceListQuery() used last-observed order for created-order request: %s", query)
+	}
+	if got := len(args); got != 3 {
+		t.Fatalf("len(findingEvidenceListQuery().args) = %d, want 3", got)
+	}
+}
+
 func TestFindingEvidenceUpsertPreservesCreatedAtOnConflict(t *testing.T) {
 	query := findingEvidenceUpsertSQL()
 	if strings.Contains(query, "created_at = EXCLUDED.created_at") {

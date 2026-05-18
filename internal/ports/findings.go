@@ -142,6 +142,7 @@ type ListFindingEvidenceRequest struct {
 	GraphRootURN string
 	GraphPathURN string
 	Limit        uint32
+	CreatedOrder bool
 }
 
 // FindingStore persists normalized findings in the state store.

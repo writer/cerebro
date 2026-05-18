@@ -313,12 +313,19 @@ func findingEvidenceListQuery(request ports.ListFindingEvidenceRequest) (string,
 SELECT finding_evidence_json::text
 FROM finding_evidence
 WHERE ` + strings.Join(clauses, " AND ") + `
-ORDER BY last_observed_at DESC, created_at DESC, id`
+ORDER BY ` + findingEvidenceListOrder(request)
 	if request.Limit != 0 {
 		args = append(args, int64(request.Limit))
 		query += fmt.Sprintf(" LIMIT $%d", len(args))
 	}
 	return query, args, nil
+}
+
+func findingEvidenceListOrder(request ports.ListFindingEvidenceRequest) string {
+	if request.CreatedOrder {
+		return "created_at DESC, id"
+	}
+	return "last_observed_at DESC, created_at DESC, id"
 }
 
 func addFindingEvidenceRunFilter(clauses *[]string, args *[]any, runID string) {

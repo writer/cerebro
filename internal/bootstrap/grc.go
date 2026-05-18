@@ -540,6 +540,7 @@ func (a *App) grcListEvidenceRecords(r *http.Request, runtimes []*cerebrov1.Sour
 		RuleID:       filter.RuleID,
 		GraphRootURN: filter.GraphRootURN,
 		Limit:        limit,
+		CreatedOrder: true,
 	})
 	if err != nil {
 		return nil, err
