@@ -308,14 +308,7 @@ func authorizeTenantID(ctx context.Context, tenantID string) error {
 	if !ok {
 		return nil
 	}
-	tenantID = strings.TrimSpace(tenantID)
-	if tenantID == "" {
-		if len(auth.principal.AllowedTenants) > 0 {
-			return errTenantForbidden
-		}
-		return nil
-	}
-	if !tenantAllowed(auth.cfg, auth.principal, tenantID) {
+	if tenantID := strings.TrimSpace(tenantID); tenantID != "" && !tenantAllowed(auth.cfg, auth.principal, tenantID) {
 		return errTenantForbidden
 	}
 	return nil
@@ -458,6 +451,11 @@ func requiresTenantFilter(ctx context.Context) bool {
 
 func principalHasTenantScope(principal authPrincipal) bool {
 	return strings.TrimSpace(principal.TenantID) != "" || len(principal.AllowedTenants) > 0
+}
+
+func tenantAllowedByContext(ctx context.Context, tenantID string) bool {
+	auth, ok := ctx.Value(authContextKey{}).(authContext)
+	return !ok || tenantAllowed(auth.cfg, auth.principal, tenantID)
 }
 
 func tenantAllowed(cfg config.AuthConfig, principal authPrincipal, tenantID string) bool {

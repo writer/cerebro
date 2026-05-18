@@ -2550,6 +2550,38 @@ func TestAuthMiddlewareEnforcesTenantOnMapBackedProtoFields(t *testing.T) {
 		t.Fatalf("POST /reports/finding-summary/runs status = %d, want %d", resp.StatusCode, http.StatusForbidden)
 	}
 
+	allowedCfg := cfg
+	allowedCfg.Auth.APIKeys = nil
+	allowedCfg.Auth.APICredentials = []config.APICredential{{
+		Key:            "allowed-key",
+		Principal:      "cosmo-security",
+		AllowedTenants: []string{"writer"},
+	}}
+	allowedApp := New(allowedCfg, Dependencies{}, nil)
+	allowedServer := httptest.NewServer(allowedApp.Handler())
+	defer allowedServer.Close()
+
+	allowedBody, err := protojson.Marshal(&cerebrov1.RunReportRequest{
+		Parameters: map[string]string{"tenant_id": "writer"},
+	})
+	if err != nil {
+		t.Fatalf("marshal allowed report request: %v", err)
+	}
+	allowedReq, err := http.NewRequest(http.MethodPost, allowedServer.URL+"/reports/finding-summary/runs", bytes.NewReader(allowedBody))
+	if err != nil {
+		t.Fatalf("NewRequest allowed: %v", err)
+	}
+	allowedReq.Header.Set("Authorization", "Bearer allowed-key")
+	allowedReq.Header.Set("Content-Type", "application/json")
+	allowedResp, err := allowedServer.Client().Do(allowedReq)
+	if err != nil {
+		t.Fatalf("POST /reports/finding-summary/runs allowed error = %v", err)
+	}
+	_ = allowedResp.Body.Close()
+	if allowedResp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("POST /reports/finding-summary/runs allowed status = %d, want %d", allowedResp.StatusCode, http.StatusServiceUnavailable)
+	}
+
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	runReq := connect.NewRequest(&cerebrov1.RunReportRequest{
 		Parameters: map[string]string{"tenant_id": "other"},

@@ -1042,7 +1042,7 @@ func (a *App) handleListSourceRuntimes(w http.ResponseWriter, r *http.Request) {
 			writeSourceRuntimeError(w, err)
 			return
 		}
-		if err := authorizeTenantID(r.Context(), runtime.GetTenantId()); err != nil {
+		if !tenantAllowedByContext(r.Context(), runtime.GetTenantId()) {
 			writeSourceRuntimeListJSON(w, http.StatusOK, nil)
 			return
 		}

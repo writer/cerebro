@@ -51,7 +51,6 @@ func TestParseSettingsMessageRequiresScopedExportConfig(t *testing.T) {
 	}{
 		{name: "client id", key: "client_id"},
 		{name: "export secret", key: "export_secret"},
-		{name: "since", key: "since"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := cloneMap(base)
@@ -409,6 +408,28 @@ func TestReadMessagesStartsFirstWindowAtConfiguredSince(t *testing.T) {
 	checkpoint := decodeMessageCursor(t, pull.Checkpoint.GetCursorOpaque())
 	if checkpoint.Since != wantUntil {
 		t.Fatalf("checkpoint since = %q, want %q", checkpoint.Since, wantUntil)
+	}
+}
+
+func TestReadMessagesWithoutSinceUsesCompatibilityWindow(t *testing.T) {
+	now := time.Date(2026, 5, 18, 12, 0, 0, 0, time.UTC)
+	window, ok, err := readMessageCursor(settings{
+		family:     familyMessage,
+		eventTypes: []string{"message"},
+		maxWindow:  time.Hour,
+		perPage:    10,
+	}, nil, now)
+	if err != nil {
+		t.Fatalf("readMessageCursor() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("readMessageCursor() ok = false, want true")
+	}
+	if want := now.Add(-time.Hour); !window.since.Equal(want) {
+		t.Fatalf("window since = %s, want %s", window.since, want)
+	}
+	if !window.until.Equal(now) {
+		t.Fatalf("window until = %s, want %s", window.until, now)
 	}
 }
 

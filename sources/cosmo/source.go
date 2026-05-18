@@ -457,7 +457,7 @@ func parseMessageMaxWindow(raw string) (time.Duration, error) {
 func parseMessageInitialSince(raw string) (time.Time, error) {
 	value := strings.TrimSpace(raw)
 	if value == "" {
-		return time.Time{}, fmt.Errorf("cosmo since is required when family=%q", familyMessage)
+		return time.Time{}, nil
 	}
 	parsed, ok := parseMessageCursorTime(value)
 	if !ok {
@@ -817,6 +817,9 @@ func readMessageCursor(settings settings, cursor *cerebrov1.SourceCursor, now ti
 	now = now.UTC()
 	if cursor == nil || strings.TrimSpace(cursor.Opaque) == "" {
 		since := settings.initialSince
+		if since.IsZero() {
+			since = now.Add(-settings.maxWindow)
+		}
 		until := minTime(since.Add(settings.maxWindow), now)
 		window := messageWindow{since: since, until: until}
 		return window, until.After(since), nil
