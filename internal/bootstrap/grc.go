@@ -329,6 +329,11 @@ func (a *App) handleGRCAuditPacket(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, fmt.Errorf("%w: finding id is required", errInvalidHTTPRequest))
 		return
 	}
+	limit, err := grcLimitFromRequest(r)
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
 	store := findingStore(a.deps.StateStore)
 	if store == nil {
 		writeGRCError(w, findings.ErrRuntimeUnavailable)
@@ -343,12 +348,12 @@ func (a *App) handleGRCAuditPacket(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	runtimes, err := a.grcListRuntimes(r, grcScope{TenantID: finding.TenantID, RuntimeID: finding.RuntimeID, Limit: grcDefaultLimit})
+	runtimes, err := a.grcListRuntimes(r, grcScope{TenantID: finding.TenantID, RuntimeID: finding.RuntimeID, Limit: limit})
 	if err != nil {
 		writeGRCError(w, err)
 		return
 	}
-	evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingID: finding.ID, Limit: grcDefaultLimit})
+	evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingID: finding.ID, Limit: limit})
 	if err != nil {
 		writeGRCError(w, err)
 		return
@@ -356,7 +361,7 @@ func (a *App) handleGRCAuditPacket(w http.ResponseWriter, r *http.Request) {
 	var graph *ports.EntityNeighborhood
 	if len(finding.ResourceURNs) > 0 {
 		if graphStore := graphQueryStore(a.deps.GraphStore); graphStore != nil {
-			graph, _ = graphStore.GetEntityNeighborhood(r.Context(), finding.ResourceURNs[0], int(grcDefaultLimit))
+			graph, _ = graphStore.GetEntityNeighborhood(r.Context(), finding.ResourceURNs[0], int(limit))
 		}
 	}
 	items := grcFindingItems([]*ports.FindingRecord{finding}, grcRuntimeSourceIDs(runtimes), grcEvidenceCounts(evidence))
@@ -458,22 +463,32 @@ func (a *App) grcListFindingRecords(r *http.Request, runtimes []*cerebrov1.Sourc
 	if limit == 0 {
 		limit = grcDefaultLimit
 	}
-	var records []*ports.FindingRecord
+	runtimeIDsByTenant := map[string][]string{}
 	for _, runtime := range runtimes {
 		if runtime == nil {
 			continue
 		}
+		tenantID := strings.TrimSpace(runtime.GetTenantId())
+		runtimeID := strings.TrimSpace(runtime.GetId())
+		if tenantID == "" || runtimeID == "" {
+			continue
+		}
+		runtimeIDsByTenant[tenantID] = append(runtimeIDsByTenant[tenantID], runtimeID)
+	}
+	var records []*ports.FindingRecord
+	for tenantID, runtimeIDs := range runtimeIDsByTenant {
 		items, err := store.ListFindings(r.Context(), ports.ListFindingsRequest{
-			TenantID:    strings.TrimSpace(runtime.GetTenantId()),
-			RuntimeID:   strings.TrimSpace(runtime.GetId()),
-			FindingID:   filter.FindingID,
-			RuleID:      filter.RuleID,
-			Severity:    filter.Severity,
-			Status:      filter.Status,
-			ResourceURN: filter.ResourceURN,
-			EventID:     filter.EventID,
-			PolicyID:    filter.PolicyID,
-			Limit:       limit,
+			TenantID:      tenantID,
+			RuntimeIDs:    runtimeIDs,
+			FindingID:     filter.FindingID,
+			RuleID:        filter.RuleID,
+			Severity:      filter.Severity,
+			Status:        filter.Status,
+			ResourceURN:   filter.ResourceURN,
+			EventID:       filter.EventID,
+			PolicyID:      filter.PolicyID,
+			Limit:         limit,
+			PriorityOrder: true,
 		})
 		if err != nil {
 			return nil, err
@@ -506,23 +521,29 @@ func (a *App) grcListEvidenceRecords(r *http.Request, runtimes []*cerebrov1.Sour
 	if limit == 0 {
 		limit = grcDefaultLimit
 	}
-	var records []*cerebrov1.FindingEvidence
+	var runtimeIDs []string
 	for _, runtime := range runtimes {
 		if runtime == nil {
 			continue
 		}
-		items, err := store.ListFindingEvidence(r.Context(), ports.ListFindingEvidenceRequest{
-			RuntimeID:    strings.TrimSpace(runtime.GetId()),
-			FindingID:    filter.FindingID,
-			RunID:        filter.RunID,
-			RuleID:       filter.RuleID,
-			GraphRootURN: filter.GraphRootURN,
-			Limit:        limit,
-		})
-		if err != nil {
-			return nil, err
+		if runtimeID := strings.TrimSpace(runtime.GetId()); runtimeID != "" {
+			runtimeIDs = append(runtimeIDs, runtimeID)
 		}
-		records = append(records, items...)
+	}
+	if len(runtimeIDs) == 0 {
+		return nil, nil
+	}
+	records, err := store.ListFindingEvidence(r.Context(), ports.ListFindingEvidenceRequest{
+		RuntimeIDs:   runtimeIDs,
+		FindingID:    filter.FindingID,
+		RunID:        filter.RunID,
+		RuleID:       filter.RuleID,
+		GraphRootURN: filter.GraphRootURN,
+		Limit:        limit,
+		CreatedOrder: true,
+	})
+	if err != nil {
+		return nil, err
 	}
 	sort.Slice(records, func(i, j int) bool {
 		left := records[i].GetCreatedAt().AsTime()

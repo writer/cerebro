@@ -19,6 +19,8 @@ type Store struct {
 	schemaMu                  sync.Mutex
 	claimTablesReady          bool
 	projectionTablesReady     bool
+	findingTablesReady        bool
+	reportRunTableReady       bool
 	sourceRuntimeTableReady   bool
 	findingEvidenceReady      bool
 	findingEvaluationRunReady bool
@@ -69,4 +71,39 @@ func (s *Store) ensureStatements(ctx context.Context, ready *bool, label string,
 	}
 	*ready = true
 	return nil
+}
+
+func normalizedNonEmptyStrings(values []string) []string {
+	seen := map[string]struct{}{}
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		normalized = append(normalized, trimmed)
+	}
+	return normalized
+}
+
+func addStringInFilter(clauses *[]string, args *[]any, column string, values []string) {
+	normalized := normalizedNonEmptyStrings(values)
+	switch len(normalized) {
+	case 0:
+		return
+	case 1:
+		*args = append(*args, normalized[0])
+		*clauses = append(*clauses, fmt.Sprintf("%s = $%d", column, len(*args)))
+	default:
+		placeholders := make([]string, 0, len(normalized))
+		for _, value := range normalized {
+			*args = append(*args, value)
+			placeholders = append(placeholders, fmt.Sprintf("$%d", len(*args)))
+		}
+		*clauses = append(*clauses, fmt.Sprintf("%s IN (%s)", column, strings.Join(placeholders, ", ")))
+	}
 }

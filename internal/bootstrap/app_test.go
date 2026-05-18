@@ -862,6 +862,9 @@ func (s *stubRuntimeStore) ListFindings(_ context.Context, request ports.ListFin
 	sort.Slice(findings, func(i, j int) bool {
 		left := findings[i]
 		right := findings[j]
+		if request.PriorityOrder && severityRank(left.Severity) != severityRank(right.Severity) {
+			return severityRank(left.Severity) < severityRank(right.Severity)
+		}
 		switch {
 		case left.LastObservedAt.Equal(right.LastObservedAt):
 			return left.ID < right.ID
@@ -5333,7 +5336,8 @@ func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRec
 	if request.TenantID != "" && strings.TrimSpace(finding.TenantID) != strings.TrimSpace(request.TenantID) {
 		return false
 	}
-	if strings.TrimSpace(finding.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+	runtimeIDs := normalizedTestStrings(append(request.RuntimeIDs, request.RuntimeID))
+	if len(runtimeIDs) == 0 || !containsTrimmed(runtimeIDs, finding.RuntimeID) {
 		return false
 	}
 	if request.FindingID != "" && strings.TrimSpace(finding.ID) != strings.TrimSpace(request.FindingID) {
@@ -5452,7 +5456,8 @@ func findingEvidenceMatches(request ports.ListFindingEvidenceRequest, evidence *
 	if evidence == nil {
 		return false
 	}
-	if strings.TrimSpace(evidence.GetRuntimeId()) != strings.TrimSpace(request.RuntimeID) {
+	runtimeIDs := normalizedTestStrings(append(request.RuntimeIDs, request.RuntimeID))
+	if len(runtimeIDs) == 0 || !containsTrimmed(runtimeIDs, evidence.GetRuntimeId()) {
 		return false
 	}
 	if request.FindingID != "" && strings.TrimSpace(evidence.GetFindingId()) != strings.TrimSpace(request.FindingID) {
@@ -5474,6 +5479,23 @@ func findingEvidenceMatches(request ports.ListFindingEvidenceRequest, evidence *
 		return false
 	}
 	return true
+}
+
+func normalizedTestStrings(values []string) []string {
+	seen := map[string]struct{}{}
+	normalized := []string{}
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		normalized = append(normalized, trimmed)
+	}
+	return normalized
 }
 
 func cloneReportRun(run *cerebrov1.ReportRun) *cerebrov1.ReportRun {

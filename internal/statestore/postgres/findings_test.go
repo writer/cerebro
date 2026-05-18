@@ -236,6 +236,43 @@ func TestFindingListQueryIncludesOptionalFilters(t *testing.T) {
 	}
 }
 
+func TestFindingListQuerySupportsRuntimeBatchesAndPriorityOrder(t *testing.T) {
+	query, args, err := findingListQuery(ports.ListFindingsRequest{
+		TenantID:      "writer",
+		RuntimeIDs:    []string{"runtime-alpha", "runtime-beta", "runtime-alpha"},
+		Status:        "open",
+		Limit:         25,
+		PriorityOrder: true,
+	})
+	if err != nil {
+		t.Fatalf("findingListQuery() error = %v", err)
+	}
+	for _, fragment := range []string{
+		"tenant_id = $1",
+		"runtime_id IN ($2, $3)",
+		"status = $4",
+		"CASE UPPER(severity)",
+		"last_observed_at DESC, id",
+		"LIMIT $5",
+	} {
+		if !strings.Contains(query, fragment) {
+			t.Fatalf("findingListQuery() query missing %q: %s", fragment, query)
+		}
+	}
+	if got := len(args); got != 5 {
+		t.Fatalf("len(findingListQuery().args) = %d, want 5", got)
+	}
+	if got := args[1]; got != "runtime-alpha" {
+		t.Fatalf("findingListQuery().args[1] = %#v, want first runtime", got)
+	}
+	if got := args[2]; got != "runtime-beta" {
+		t.Fatalf("findingListQuery().args[2] = %#v, want second runtime", got)
+	}
+	if got := args[4]; got != int64(25) {
+		t.Fatalf("findingListQuery().args[4] = %#v, want 25", got)
+	}
+}
+
 func TestFindingRowRecordDecodesCheckAndControlMetadata(t *testing.T) {
 	record, err := (findingRow{
 		ID:                    "finding-1",

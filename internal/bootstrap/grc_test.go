@@ -122,6 +122,18 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 	if len(payload.Connectors) != 2 {
 		t.Fatalf("connectors len = %d, want 2", len(payload.Connectors))
 	}
+	if got := len(store.findingListRequest.RuntimeIDs); got != 2 {
+		t.Fatalf("batched finding runtime count = %d, want 2", got)
+	}
+	if !store.findingListRequest.PriorityOrder {
+		t.Fatalf("GRC dashboard did not request priority finding ordering")
+	}
+	if got := len(store.findingEvidenceListRequest.RuntimeIDs); got != 2 {
+		t.Fatalf("batched evidence runtime count = %d, want 2", got)
+	}
+	if !store.findingEvidenceListRequest.CreatedOrder {
+		t.Fatalf("GRC dashboard did not request created-at evidence ordering")
+	}
 }
 
 func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
