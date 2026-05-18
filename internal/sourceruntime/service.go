@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -248,7 +249,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	if err != nil {
 		return nil, err
 	}
-	cursor := cloneCursor(runtime.GetNextCursor())
+	cursor := runtimeStartCursor(runtime)
 	var (
 		eventsAppended    uint32
 		pagesRead         uint32
@@ -658,6 +659,27 @@ func cloneCursor(cursor *cerebrov1.SourceCursor) *cerebrov1.SourceCursor {
 		return nil
 	}
 	return proto.Clone(cursor).(*cerebrov1.SourceCursor)
+}
+
+func runtimeStartCursor(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceCursor {
+	if cursor := cloneCursor(runtime.GetNextCursor()); cursor != nil {
+		return cursor
+	}
+	opaque := strings.TrimSpace(runtime.GetCheckpoint().GetCursorOpaque())
+	if opaque == "" || !resumableCheckpointCursor(opaque) {
+		return nil
+	}
+	return &cerebrov1.SourceCursor{Opaque: opaque}
+}
+
+func resumableCheckpointCursor(opaque string) bool {
+	var payload struct {
+		ResumableCheckpoint bool `json:"resumable_checkpoint"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(opaque)), &payload); err != nil {
+		return false
+	}
+	return payload.ResumableCheckpoint
 }
 
 func cloneCheckpoint(checkpoint *cerebrov1.SourceCheckpoint) *cerebrov1.SourceCheckpoint {

@@ -157,6 +157,27 @@ func (emptyPageSource) Read(_ context.Context, _ sourcecdk.Config, cursor *cereb
 	}, nil
 }
 
+type checkpointResumeSource struct {
+	seenCursor string
+}
+
+func (s *checkpointResumeSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "checkpoint_resume"}
+}
+
+func (s *checkpointResumeSource) Check(context.Context, sourcecdk.Config) error {
+	return nil
+}
+
+func (s *checkpointResumeSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (s *checkpointResumeSource) Read(_ context.Context, _ sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	s.seenCursor = cursor.GetOpaque()
+	return sourcecdk.Pull{}, nil
+}
+
 type nilEventSource struct{}
 
 func (nilEventSource) Spec() *cerebrov1.SourceSpec {
@@ -950,6 +971,35 @@ func TestSyncRuntimeContinuesPastEmptyPagesWithCursor(t *testing.T) {
 	}
 	if got := store.runtimes["writer-empty-page"].GetNextCursor(); got != nil {
 		t.Fatalf("stored next cursor = %#v, want nil", got)
+	}
+}
+
+func TestSyncRuntimeStartsFromResumableCheckpointCursor(t *testing.T) {
+	source := &checkpointResumeSource{}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	checkpointCursor := `{"source":"cosmo.message","resumable_checkpoint":true,"since":"2026-05-14T00:00:00Z"}`
+	store := &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-checkpoint": {
+				Id:       "writer-checkpoint",
+				SourceId: "checkpoint_resume",
+				TenantId: "writer",
+				Checkpoint: &cerebrov1.SourceCheckpoint{
+					CursorOpaque: checkpointCursor,
+				},
+			},
+		},
+	}
+	service := New(registry, store, &appendLog{}, nil)
+
+	if _, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-checkpoint"}); err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if source.seenCursor != checkpointCursor {
+		t.Fatalf("source cursor = %q, want checkpoint cursor", source.seenCursor)
 	}
 }
 

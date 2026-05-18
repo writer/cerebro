@@ -3,10 +3,13 @@ package cosmo
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
@@ -29,6 +32,67 @@ func TestParseSettingsRejectsBaseURLWithPath(t *testing.T) {
 	}), false)
 	if err == nil {
 		t.Fatal("parseSettings() error = nil, want non-nil")
+	}
+}
+
+func TestParseSettingsMessageRequiresScopedExportConfig(t *testing.T) {
+	base := map[string]string{
+		"tenant_id":     "writer",
+		"base_url":      "https://cosmo.example.com",
+		"token":         "token",
+		"family":        "message",
+		"client_id":     "cerebro-runtime",
+		"export_secret": "secret",
+	}
+	for _, tc := range []struct {
+		name string
+		key  string
+	}{
+		{name: "client id", key: "client_id"},
+		{name: "export secret", key: "export_secret"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := cloneMap(base)
+			delete(cfg, tc.key)
+			_, err := parseSettings(sourcecdk.NewConfig(cfg), false)
+			if err == nil {
+				t.Fatal("parseSettings() error = nil, want non-nil")
+			}
+		})
+	}
+}
+
+func TestParseSettingsMessageRejectsUnscopedOrUnboundedConfig(t *testing.T) {
+	base := map[string]string{
+		"tenant_id":     "writer",
+		"base_url":      "https://cosmo.example.com",
+		"token":         "token",
+		"family":        "message",
+		"client_id":     "cerebro-runtime",
+		"export_secret": "secret",
+	}
+	for _, tc := range []struct {
+		name string
+		key  string
+		val  string
+	}{
+		{name: "ticket id", key: "ticket_id", val: "COSMO-1"},
+		{name: "page size", key: "per_page", val: "101"},
+		{name: "window", key: "max_window_hours", val: "25"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := cloneMap(base)
+			cfg[tc.key] = tc.val
+			_, err := parseSettings(sourcecdk.NewConfig(cfg), false)
+			if err == nil {
+				t.Fatal("parseSettings() error = nil, want non-nil")
+			}
+		})
+	}
+	cfg := cloneMap(base)
+	cfg["per_page"] = "100"
+	if _, err := parseSettings(sourcecdk.NewConfig(cfg), false); err != nil {
+		t.Fatalf("parseSettings(per_page=100) error = %v", err)
 	}
 }
 
@@ -130,23 +194,60 @@ func TestReadSessionsPaginatesAndMapsAttributes(t *testing.T) {
 	}
 }
 
-func TestReadMessagesPaginatesWithOptionalTicketID(t *testing.T) {
+func TestReadMessagesUsesScopedExportContractAndPaginatesEventTypes(t *testing.T) {
+	var requestCount int
+	var windowSince string
+	var windowUntil string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/ui/memory/messages" {
 			http.NotFound(w, r)
 			return
 		}
+		requestCount++
+		if got := r.Header.Get("Authorization"); got != "Bearer gh-token" {
+			t.Fatalf("Authorization = %q, want bearer token", got)
+		}
+		if got := r.Header.Get("X-Cosmo-Client"); got != "cerebro-runtime" {
+			t.Fatalf("X-Cosmo-Client = %q, want approved client", got)
+		}
+		if got := r.Header.Get("X-Cerebro-Export-Secret"); got != "export-secret" {
+			t.Fatalf("X-Cerebro-Export-Secret set = %t, want true", got != "")
+		}
 		if got := r.URL.Query().Get("ticket_id"); got != "" {
 			t.Fatalf("ticket_id = %q, want empty", got)
-		}
-		if got := r.URL.Query().Get("event_type"); got != "message" {
-			t.Fatalf("event_type = %q, want message", got)
 		}
 		if got := r.URL.Query().Get("limit"); got != "1" {
 			t.Fatalf("limit = %q, want 1", got)
 		}
-		switch offset := r.URL.Query().Get("offset"); offset {
-		case "0":
+		since := r.URL.Query().Get("since")
+		until := r.URL.Query().Get("until")
+		if since == "" || until == "" {
+			t.Fatalf("since=%q until=%q, want bounded export window", since, until)
+		}
+		parsedSince, err := time.Parse(time.RFC3339Nano, since)
+		if err != nil {
+			t.Fatalf("parse since: %v", err)
+		}
+		parsedUntil, err := time.Parse(time.RFC3339Nano, until)
+		if err != nil {
+			t.Fatalf("parse until: %v", err)
+		}
+		if !parsedUntil.After(parsedSince) || parsedUntil.Sub(parsedSince) > time.Hour {
+			t.Fatalf("window = %s..%s, want positive <= 1h", parsedSince, parsedUntil)
+		}
+		if windowSince == "" {
+			windowSince = since
+			windowUntil = until
+		} else if since != windowSince || until != windowUntil {
+			t.Fatalf("window changed: %s..%s, want %s..%s", since, until, windowSince, windowUntil)
+		}
+		eventType := r.URL.Query().Get("event_type")
+		offset := r.URL.Query().Get("offset")
+		switch requestCount {
+		case 1:
+			if eventType != "message" || offset != "0" {
+				t.Fatalf("request 1 event_type=%q offset=%q, want message/0", eventType, offset)
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "count": 1, "messages": []map[string]any{
 				{
 					"id":         10,
@@ -157,10 +258,32 @@ func TestReadMessagesPaginatesWithOptionalTicketID(t *testing.T) {
 					"created_at": "2026-05-12T12:00:00Z",
 				},
 			}})
-		case "1":
+		case 2:
+			if eventType != "message" || offset != "1" {
+				t.Fatalf("request 2 event_type=%q offset=%q, want message/1", eventType, offset)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "count": 0, "messages": []map[string]any{}})
+		case 3:
+			if eventType != "completion" || offset != "0" {
+				t.Fatalf("request 3 event_type=%q offset=%q, want completion/0", eventType, offset)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "count": 1, "messages": []map[string]any{
+				{
+					"id":         11,
+					"ticket_id":  "COSMO-2",
+					"event_type": "completion",
+					"role":       "assistant",
+					"summary":    "Completed issue",
+					"created_at": "2026-05-12T12:01:00Z",
+				},
+			}})
+		case 4:
+			if eventType != "completion" || offset != "1" {
+				t.Fatalf("request 4 event_type=%q offset=%q, want completion/1", eventType, offset)
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "count": 0, "messages": []map[string]any{}})
 		default:
-			t.Fatalf("offset = %q, want 0 or 1", offset)
+			t.Fatalf("unexpected request %d", requestCount)
 		}
 	}))
 	defer server.Close()
@@ -171,12 +294,15 @@ func TestReadMessagesPaginatesWithOptionalTicketID(t *testing.T) {
 	}
 	source.allowLoopbackBaseURL = true
 	cfg := sourcecdk.NewConfig(map[string]string{
-		"tenant_id":  "writer",
-		"base_url":   server.URL,
-		"token":      "gh-token",
-		"family":     "message",
-		"event_type": "message",
-		"per_page":   "1",
+		"tenant_id":        "writer",
+		"base_url":         server.URL,
+		"token":            "gh-token",
+		"family":           "message",
+		"client_id":        "cerebro-runtime",
+		"export_secret":    "export-secret",
+		"event_types":      "message,completion",
+		"max_window_hours": "1",
+		"per_page":         "1",
 	})
 	first, err := source.Read(context.Background(), cfg, nil)
 	if err != nil {
@@ -185,8 +311,9 @@ func TestReadMessagesPaginatesWithOptionalTicketID(t *testing.T) {
 	if len(first.Events) != 1 {
 		t.Fatalf("len(first.Events) = %d, want 1", len(first.Events))
 	}
-	if got := first.NextCursor.GetOpaque(); got != "1" {
-		t.Fatalf("NextCursor = %q, want 1", got)
+	firstCursor := decodeMessageCursor(t, first.NextCursor.GetOpaque())
+	if firstCursor.EventTypeIndex != 0 || firstCursor.Offset != 1 || firstCursor.Until == "" {
+		t.Fatalf("first cursor = %#v, want message offset 1 with fixed window", firstCursor)
 	}
 	if got := first.Events[0].Attributes["role"]; got != "assistant" {
 		t.Fatalf("role = %q, want assistant", got)
@@ -198,8 +325,179 @@ func TestReadMessagesPaginatesWithOptionalTicketID(t *testing.T) {
 	if len(second.Events) != 0 {
 		t.Fatalf("len(second.Events) = %d, want 0", len(second.Events))
 	}
-	if second.NextCursor != nil {
-		t.Fatalf("second.NextCursor = %#v, want nil", second.NextCursor)
+	secondCursor := decodeMessageCursor(t, second.NextCursor.GetOpaque())
+	if secondCursor.EventTypeIndex != 1 || secondCursor.Offset != 0 || secondCursor.Since != windowSince || secondCursor.Until != windowUntil {
+		t.Fatalf("second cursor = %#v, want completion offset 0 in same window", secondCursor)
+	}
+	third, err := source.Read(context.Background(), cfg, second.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(third) error = %v", err)
+	}
+	if len(third.Events) != 1 {
+		t.Fatalf("len(third.Events) = %d, want 1", len(third.Events))
+	}
+	if got := third.Events[0].Attributes["event_type"]; got != "completion" {
+		t.Fatalf("third event_type = %q, want completion", got)
+	}
+	fourth, err := source.Read(context.Background(), cfg, third.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(fourth) error = %v", err)
+	}
+	if len(fourth.Events) != 0 {
+		t.Fatalf("len(fourth.Events) = %d, want 0", len(fourth.Events))
+	}
+	if fourth.NextCursor != nil {
+		t.Fatalf("fourth.NextCursor = %#v, want nil", fourth.NextCursor)
+	}
+	checkpoint := decodeMessageCursor(t, fourth.Checkpoint.GetCursorOpaque())
+	if !checkpoint.ResumableCheckpoint || checkpoint.Until != "" || checkpoint.EventTypeIndex != 0 || checkpoint.Offset != 0 {
+		t.Fatalf("checkpoint cursor = %#v, want resumable next-window cursor", checkpoint)
+	}
+	if checkpoint.Since != windowUntil {
+		t.Fatalf("checkpoint since = %q, want previous until %q", checkpoint.Since, windowUntil)
+	}
+}
+
+func TestReadMessagesStartsFirstWindowAtConfiguredSince(t *testing.T) {
+	configuredSince := "2026-05-01T00:00:00Z"
+	wantUntil := "2026-05-01T01:00:00Z"
+	var sawRequest bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/ui/memory/messages" {
+			http.NotFound(w, r)
+			return
+		}
+		sawRequest = true
+		if got := r.URL.Query().Get("since"); got != configuredSince {
+			t.Fatalf("since = %q, want %q", got, configuredSince)
+		}
+		if got := r.URL.Query().Get("until"); got != wantUntil {
+			t.Fatalf("until = %q, want %q", got, wantUntil)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "count": 0, "messages": []map[string]any{}})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id":        "writer",
+		"base_url":         server.URL,
+		"token":            "gh-token",
+		"family":           "message",
+		"client_id":        "cerebro-runtime",
+		"export_secret":    "export-secret",
+		"event_types":      "message",
+		"max_window_hours": "1",
+		"per_page":         "10",
+		"since":            configuredSince,
+	})
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if !sawRequest {
+		t.Fatal("server saw no message export request")
+	}
+	checkpoint := decodeMessageCursor(t, pull.Checkpoint.GetCursorOpaque())
+	if checkpoint.Since != wantUntil {
+		t.Fatalf("checkpoint since = %q, want %q", checkpoint.Since, wantUntil)
+	}
+}
+
+func TestDiscoverMessagesIteratesConfiguredEventTypes(t *testing.T) {
+	var eventTypes []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/ui/memory/messages" {
+			http.NotFound(w, r)
+			return
+		}
+		eventType := r.URL.Query().Get("event_type")
+		eventTypes = append(eventTypes, eventType)
+		if eventType == "completion" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "count": 1, "messages": []map[string]any{
+				{
+					"id":         20,
+					"ticket_id":  "COSMO-2",
+					"event_type": "completion",
+					"role":       "assistant",
+					"summary":    "Completed issue",
+					"created_at": "2026-05-12T12:01:00Z",
+				},
+			}})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "count": 0, "messages": []map[string]any{}})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	urns, err := source.Discover(context.Background(), messageTestConfig(server.URL))
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if got, want := eventTypes, []string{"message", "completion"}; !slicesEqual(got, want) {
+		t.Fatalf("event types queried = %#v, want %#v", got, want)
+	}
+	if len(urns) != 1 {
+		t.Fatalf("len(urns) = %d, want 1", len(urns))
+	}
+}
+
+func TestReadMessagesReturnsHardScopedExportFailures(t *testing.T) {
+	for _, status := range []int{http.StatusBadRequest, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/api/ui/memory/messages" {
+					http.NotFound(w, r)
+					return
+				}
+				w.WriteHeader(status)
+				_ = json.NewEncoder(w).Encode(map[string]any{"error": "scoped export rejected"})
+			}))
+			defer server.Close()
+
+			source, err := New()
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+			source.allowLoopbackBaseURL = true
+			_, err = source.Read(context.Background(), messageTestConfig(server.URL), nil)
+			if err == nil {
+				t.Fatal("Read() error = nil, want non-nil")
+			}
+			var responseErr *responseError
+			if !errors.As(err, &responseErr) {
+				t.Fatalf("Read() error = %T %v, want responseError", err, err)
+			}
+			if responseErr.StatusCode() != status {
+				t.Fatalf("StatusCode() = %d, want %d", responseErr.StatusCode(), status)
+			}
+		})
+	}
+}
+
+func TestReadMessagesRejectsInvalidScopedCursor(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	cfg := messageTestConfig("https://cosmo.example.com")
+	for _, cursor := range []*cerebrov1.SourceCursor{
+		{Opaque: "1"},
+		{Opaque: `{"source":"cosmo.message","resumable_checkpoint":true,"since":"2026-05-14T00:00:00Z","until":"2026-05-14T01:00:00Z","offset":-1}`},
+		{Opaque: `{"source":"other","resumable_checkpoint":true,"since":"2026-05-14T00:00:00Z","until":"2026-05-14T01:00:00Z"}`},
+	} {
+		if _, err := source.Read(context.Background(), cfg, cursor); err == nil {
+			t.Fatalf("Read(cursor=%q) error = nil, want non-nil", cursor.GetOpaque())
+		}
 	}
 }
 
@@ -315,4 +613,47 @@ func TestReadSurveyFeedbackCanUseGitHubToken(t *testing.T) {
 	if got, want := pull.Events[0].Attributes["ticket_id"], "COSMO-1"; got != want {
 		t.Fatalf("ticket_id = %q, want %q", got, want)
 	}
+}
+
+func messageTestConfig(baseURL string) sourcecdk.Config {
+	return sourcecdk.NewConfig(map[string]string{
+		"tenant_id":        "writer",
+		"base_url":         baseURL,
+		"token":            "gh-token",
+		"family":           "message",
+		"client_id":        "cerebro-runtime",
+		"export_secret":    "export-secret",
+		"event_types":      "message,completion",
+		"max_window_hours": "1",
+		"per_page":         "1",
+	})
+}
+
+func decodeMessageCursor(t *testing.T, opaque string) messageCursor {
+	t.Helper()
+	var cursor messageCursor
+	if err := json.Unmarshal([]byte(opaque), &cursor); err != nil {
+		t.Fatalf("decode message cursor %q: %v", opaque, err)
+	}
+	return cursor
+}
+
+func cloneMap(input map[string]string) map[string]string {
+	clone := make(map[string]string, len(input))
+	for key, value := range input {
+		clone[key] = value
+	}
+	return clone
+}
+
+func slicesEqual(left []string, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
 }

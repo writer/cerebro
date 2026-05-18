@@ -3,6 +3,9 @@ package bootstrap
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -1623,6 +1626,300 @@ func TestAuthMiddlewareProtectsNonPublicRoutes(t *testing.T) {
 	}
 }
 
+func TestScopedCosmoCredentialAllowsOnlyReadRoutes(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APICredentials: []config.APICredential{{
+				Key:       "scoped-token",
+				Principal: "cosmo-security",
+				TenantID:  "writer",
+				Scopes:    []string{scopeCosmoSecurityRead},
+			}},
+		},
+	}
+	graph := &stubGraphStore{
+		entities: map[string]*ports.ProjectedEntity{
+			"urn:cerebro:writer:asset:app": {
+				URN:        "urn:cerebro:writer:asset:app",
+				TenantID:   "writer",
+				SourceID:   "aws",
+				EntityType: "asset",
+				Label:      "app",
+			},
+		},
+	}
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
+		},
+	}
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	app := New(cfg, Dependencies{GraphStore: graph, StateStore: store}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	for _, path := range []string{
+		"/sources",
+		"/platform/graph/neighborhood?root_urn=urn:cerebro:writer:asset:app",
+		"/source-runtimes/writer-runtime",
+	} {
+		req, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
+		if err != nil {
+			t.Fatalf("NewRequest(%s): %v", path, err)
+		}
+		req.Header.Set("Authorization", "Bearer scoped-token")
+		resp, err := server.Client().Do(req)
+		if err != nil {
+			t.Fatalf("GET %s error = %v", path, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET %s status = %d, want %d", path, resp.StatusCode, http.StatusOK)
+		}
+	}
+
+	otherTenantReq, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:other:asset:app", nil)
+	if err != nil {
+		t.Fatalf("NewRequest other tenant: %v", err)
+	}
+	otherTenantReq.Header.Set("Authorization", "Bearer scoped-token")
+	otherTenantResp, err := server.Client().Do(otherTenantReq)
+	if err != nil {
+		t.Fatalf("GET other tenant graph error = %v", err)
+	}
+	_ = otherTenantResp.Body.Close()
+	if otherTenantResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("GET other tenant graph status = %d, want %d", otherTenantResp.StatusCode, http.StatusForbidden)
+	}
+
+	for _, tt := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodPost, path: "/source-runtimes/writer-runtime/sync"},
+		{method: http.MethodGet, path: "/sources/github/read"},
+	} {
+		req, err := http.NewRequest(tt.method, server.URL+tt.path, nil)
+		if err != nil {
+			t.Fatalf("NewRequest(%s %s): %v", tt.method, tt.path, err)
+		}
+		req.Header.Set("Authorization", "Bearer scoped-token")
+		resp, err := server.Client().Do(req)
+		if err != nil {
+			t.Fatalf("%s %s error = %v", tt.method, tt.path, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Fatalf("%s %s status = %d, want %d", tt.method, tt.path, resp.StatusCode, http.StatusForbidden)
+		}
+	}
+}
+
+func TestScopedCosmoCredentialEnforcesConnectProcedures(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APICredentials: []config.APICredential{{
+				Key:       "scoped-token",
+				Principal: "cosmo-security",
+				TenantID:  "writer",
+				Scopes:    []string{scopeCosmoSecurityRead},
+			}},
+		},
+	}
+	graph := &stubGraphStore{
+		entities: map[string]*ports.ProjectedEntity{
+			"urn:cerebro:writer:asset:app": {
+				URN:        "urn:cerebro:writer:asset:app",
+				TenantID:   "writer",
+				SourceID:   "aws",
+				EntityType: "asset",
+				Label:      "app",
+			},
+		},
+	}
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
+		},
+	}
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	app := New(cfg, Dependencies{GraphStore: graph, StateStore: store}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	listSourcesReq := connect.NewRequest(&cerebrov1.ListSourcesRequest{})
+	listSourcesReq.Header().Set("Authorization", "Bearer scoped-token")
+	listSourcesResp, err := client.ListSources(context.Background(), listSourcesReq)
+	if err != nil {
+		t.Fatalf("ListSources() error = %v", err)
+	}
+	if len(listSourcesResp.Msg.GetSources()) == 0 {
+		t.Fatal("ListSources() returned no sources, want source catalog")
+	}
+
+	readReq := connect.NewRequest(&cerebrov1.GetEntityNeighborhoodRequest{
+		RootUrn: "urn:cerebro:writer:asset:app",
+	})
+	readReq.Header().Set("Authorization", "Bearer scoped-token")
+	if _, err := client.GetEntityNeighborhood(context.Background(), readReq); err != nil {
+		t.Fatalf("GetEntityNeighborhood() error = %v", err)
+	}
+
+	syncReq := connect.NewRequest(&cerebrov1.SyncSourceRuntimeRequest{Id: "writer-runtime"})
+	syncReq.Header().Set("Authorization", "Bearer scoped-token")
+	if _, err := client.SyncSourceRuntime(context.Background(), syncReq); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("SyncSourceRuntime() code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
+	}
+}
+
+func TestCapabilityTokenRequiresSecurityGroup(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled:                 true,
+			CapabilityTokenSecrets:  []string{"capability-secret"},
+			CapabilityTokenAudience: "cerebro-api",
+		},
+	}
+	graph := &stubGraphStore{
+		entities: map[string]*ports.ProjectedEntity{
+			"urn:cerebro:writer:asset:app": {
+				URN:        "urn:cerebro:writer:asset:app",
+				TenantID:   "writer",
+				SourceID:   "aws",
+				EntityType: "asset",
+				Label:      "app",
+			},
+		},
+	}
+	app := New(cfg, Dependencies{GraphStore: graph}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	authorizedToken := signCapabilityToken(t, "capability-secret", map[string]any{
+		"aud":           "cerebro-api",
+		"sub":           "slack:U123",
+		"exp":           time.Now().Add(time.Hour).Unix(),
+		"iat":           time.Now().Add(-time.Minute).Unix(),
+		"tenant_id":     "writer",
+		"scopes":        []string{scopeCosmoSecurityRead},
+		"groups":        []string{"security"},
+		"client_id":     "cosmo",
+		"credential_id": "cosmo-capability",
+	})
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:writer:asset:app", nil)
+	if err != nil {
+		t.Fatalf("NewRequest authorized: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+authorizedToken)
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET with authorized capability error = %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET with authorized capability status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	nonSecurityToken := signCapabilityToken(t, "capability-secret", map[string]any{
+		"aud":       "cerebro-api",
+		"sub":       "slack:U999",
+		"exp":       time.Now().Add(time.Hour).Unix(),
+		"tenant_id": "writer",
+		"scopes":    []string{scopeCosmoSecurityRead},
+		"groups":    []string{"engineering"},
+	})
+	forbiddenReq, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:writer:asset:app", nil)
+	if err != nil {
+		t.Fatalf("NewRequest forbidden: %v", err)
+	}
+	forbiddenReq.Header.Set("Authorization", "Bearer "+nonSecurityToken)
+	forbiddenResp, err := server.Client().Do(forbiddenReq)
+	if err != nil {
+		t.Fatalf("GET with non-security capability error = %v", err)
+	}
+	_ = forbiddenResp.Body.Close()
+	if forbiddenResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("GET with non-security capability status = %d, want %d", forbiddenResp.StatusCode, http.StatusForbidden)
+	}
+
+	expiredToken := signCapabilityToken(t, "capability-secret", map[string]any{
+		"aud":       "cerebro-api",
+		"sub":       "slack:U123",
+		"exp":       time.Now().Add(-time.Minute).Unix(),
+		"tenant_id": "writer",
+		"scopes":    []string{scopeCosmoSecurityRead},
+		"groups":    []string{"security"},
+	})
+	expiredReq, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:writer:asset:app", nil)
+	if err != nil {
+		t.Fatalf("NewRequest expired: %v", err)
+	}
+	expiredReq.Header.Set("Authorization", "Bearer "+expiredToken)
+	expiredResp, err := server.Client().Do(expiredReq)
+	if err != nil {
+		t.Fatalf("GET with expired capability error = %v", err)
+	}
+	_ = expiredResp.Body.Close()
+	if expiredResp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("GET with expired capability status = %d, want %d", expiredResp.StatusCode, http.StatusUnauthorized)
+	}
+
+	noScopesToken := signCapabilityToken(t, "capability-secret", map[string]any{
+		"aud":       "cerebro-api",
+		"sub":       "slack:U123",
+		"exp":       time.Now().Add(time.Hour).Unix(),
+		"tenant_id": "writer",
+		"groups":    []string{"security"},
+	})
+	noScopesReq, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:writer:asset:app", nil)
+	if err != nil {
+		t.Fatalf("NewRequest no scopes: %v", err)
+	}
+	noScopesReq.Header.Set("Authorization", "Bearer "+noScopesToken)
+	noScopesResp, err := server.Client().Do(noScopesReq)
+	if err != nil {
+		t.Fatalf("GET with no-scope capability error = %v", err)
+	}
+	_ = noScopesResp.Body.Close()
+	if noScopesResp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("GET with no-scope capability status = %d, want %d", noScopesResp.StatusCode, http.StatusUnauthorized)
+	}
+}
+
+func signCapabilityToken(t *testing.T, secret string, claims map[string]any) string {
+	t.Helper()
+	header, err := json.Marshal(map[string]string{"alg": "HS256", "typ": "JWT"})
+	if err != nil {
+		t.Fatalf("marshal token header: %v", err)
+	}
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		t.Fatalf("marshal token claims: %v", err)
+	}
+	encodedHeader := base64.RawURLEncoding.EncodeToString(header)
+	encodedPayload := base64.RawURLEncoding.EncodeToString(payload)
+	signingInput := encodedHeader + "." + encodedPayload
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(signingInput))
+	signature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return signingInput + "." + signature
+}
+
 func TestAuthMiddlewareEnforcesTenantOnHTTPProtoBodies(t *testing.T) {
 	cfg := config.Config{
 		HTTPAddr:        "127.0.0.1:0",
@@ -1788,6 +2085,72 @@ func TestListSourceRuntimesRequiresTenantFilterWithAllowedTenantAuth(t *testing.
 	}
 	if got := len(payload["runtimes"]); got != 1 {
 		t.Fatalf("listed runtime count = %d, want 1", got)
+	}
+}
+
+func TestListSourceRuntimesRequiresTenantFilterWithPrincipalAllowedTenants(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APICredentials: []config.APICredential{{
+				Key:            "allowed-token",
+				Principal:      "cosmo-security",
+				AllowedTenants: []string{"writer"},
+			}},
+		},
+	}
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
+			"other-runtime":  {Id: "other-runtime", SourceId: "github", TenantId: "other"},
+		},
+	}
+	app := New(cfg, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes", nil)
+	if err != nil {
+		t.Fatalf("NewRequest without tenant: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer allowed-token")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET /source-runtimes without tenant error = %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("GET /source-runtimes without tenant status = %d, want %d", resp.StatusCode, http.StatusForbidden)
+	}
+
+	scopedReq, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes?tenant_id=writer", nil)
+	if err != nil {
+		t.Fatalf("NewRequest with tenant: %v", err)
+	}
+	scopedReq.Header.Set("Authorization", "Bearer allowed-token")
+	scopedResp, err := server.Client().Do(scopedReq)
+	if err != nil {
+		t.Fatalf("GET /source-runtimes with tenant error = %v", err)
+	}
+	defer func() {
+		if closeErr := scopedResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close scoped response body: %v", closeErr)
+		}
+	}()
+	if scopedResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /source-runtimes with tenant status = %d, want %d", scopedResp.StatusCode, http.StatusOK)
+	}
+	var payload map[string][]map[string]any
+	if err := json.NewDecoder(scopedResp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode source runtime list: %v", err)
+	}
+	if got := len(payload["runtimes"]); got != 1 {
+		t.Fatalf("listed runtime count = %d, want 1", got)
+	}
+	if got := payload["runtimes"][0]["id"]; got != "writer-runtime" {
+		t.Fatalf("listed runtime id = %v, want writer-runtime", got)
 	}
 }
 
