@@ -43,6 +43,7 @@ func TestParseSettingsMessageRequiresScopedExportConfig(t *testing.T) {
 		"family":        "message",
 		"client_id":     "cerebro-runtime",
 		"export_secret": "secret",
+		"since":         "2026-05-01T00:00:00Z",
 	}
 	for _, tc := range []struct {
 		name string
@@ -70,6 +71,7 @@ func TestParseSettingsMessageRejectsUnscopedOrUnboundedConfig(t *testing.T) {
 		"family":        "message",
 		"client_id":     "cerebro-runtime",
 		"export_secret": "secret",
+		"since":         "2026-05-01T00:00:00Z",
 	}
 	for _, tc := range []struct {
 		name string
@@ -303,6 +305,7 @@ func TestReadMessagesUsesScopedExportContractAndPaginatesEventTypes(t *testing.T
 		"event_types":      "message,completion",
 		"max_window_hours": "1",
 		"per_page":         "1",
+		"since":            "2026-05-01T00:00:00Z",
 	})
 	first, err := source.Read(context.Background(), cfg, nil)
 	if err != nil {
@@ -405,6 +408,53 @@ func TestReadMessagesStartsFirstWindowAtConfiguredSince(t *testing.T) {
 	checkpoint := decodeMessageCursor(t, pull.Checkpoint.GetCursorOpaque())
 	if checkpoint.Since != wantUntil {
 		t.Fatalf("checkpoint since = %q, want %q", checkpoint.Since, wantUntil)
+	}
+}
+
+func TestReadMessagesWithoutSinceUsesStableCompatibilityWindow(t *testing.T) {
+	parsed, ok := parseMessageCursorTime(defaultMessageExportInitialSince)
+	if !ok {
+		t.Fatalf("parse default since %q failed", defaultMessageExportInitialSince)
+	}
+	settings, err := parseSettings(sourcecdk.NewConfig(map[string]string{
+		"tenant_id":        "writer",
+		"base_url":         "https://cosmo.example.com",
+		"token":            "gh-token",
+		"family":           "message",
+		"client_id":        "cerebro-runtime",
+		"export_secret":    "export-secret",
+		"event_types":      "message",
+		"max_window_hours": "1",
+		"per_page":         "10",
+	}), false)
+	if err != nil {
+		t.Fatalf("parseSettings() error = %v", err)
+	}
+	var first messageWindow
+	for _, now := range []time.Time{
+		time.Date(2026, 5, 18, 12, 0, 0, 0, time.UTC),
+		time.Date(2026, 5, 18, 13, 0, 0, 0, time.UTC),
+	} {
+		window, ok, err := readMessageCursor(settings, nil, now)
+		if err != nil {
+			t.Fatalf("readMessageCursor(%s) error = %v", now, err)
+		}
+		if !ok {
+			t.Fatalf("readMessageCursor(%s) ok = false, want true", now)
+		}
+		if !window.since.Equal(parsed) {
+			t.Fatalf("window since = %s, want %s", window.since, parsed)
+		}
+		if !window.until.Equal(parsed.Add(time.Hour)) {
+			t.Fatalf("window until = %s, want %s", window.until, parsed.Add(time.Hour))
+		}
+		if first.since.IsZero() {
+			first = window
+			continue
+		}
+		if !window.since.Equal(first.since) || !window.until.Equal(first.until) {
+			t.Fatalf("window changed across retries: %s..%s then %s..%s", first.since, first.until, window.since, window.until)
+		}
 	}
 }
 
@@ -626,6 +676,7 @@ func messageTestConfig(baseURL string) sourcecdk.Config {
 		"event_types":      "message,completion",
 		"max_window_hours": "1",
 		"per_page":         "1",
+		"since":            "2026-05-01T00:00:00Z",
 	})
 }
 

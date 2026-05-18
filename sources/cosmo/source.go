@@ -37,6 +37,7 @@ const (
 	familySession                      = "session"
 	familySurveyFeedback               = "survey_feedback"
 	messageExportCursorSource          = "cosmo.message"
+	defaultMessageExportInitialSince   = "1970-01-01T00:00:00Z"
 	defaultMessageExportEventTypes     = "message,completion"
 	defaultMessageExportMaxWindowHours = 24
 	messageExportMaxWindowHours        = 24
@@ -457,7 +458,7 @@ func parseMessageMaxWindow(raw string) (time.Duration, error) {
 func parseMessageInitialSince(raw string) (time.Time, error) {
 	value := strings.TrimSpace(raw)
 	if value == "" {
-		return time.Unix(0, 0).UTC(), nil
+		value = defaultMessageExportInitialSince
 	}
 	parsed, ok := parseMessageCursorTime(value)
 	if !ok {

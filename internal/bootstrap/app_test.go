@@ -1760,6 +1760,16 @@ func TestScopedCosmoCredentialEnforcesConnectProcedures(t *testing.T) {
 	defer server.Close()
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	versionReq := connect.NewRequest(&cerebrov1.GetVersionRequest{})
+	versionReq.Header().Set("Authorization", "Bearer scoped-token")
+	if _, err := client.GetVersion(context.Background(), versionReq); err != nil {
+		t.Fatalf("GetVersion() error = %v", err)
+	}
+	healthReq := connect.NewRequest(&cerebrov1.CheckHealthRequest{})
+	healthReq.Header().Set("Authorization", "Bearer scoped-token")
+	if _, err := client.CheckHealth(context.Background(), healthReq); err != nil {
+		t.Fatalf("CheckHealth() error = %v", err)
+	}
 	listSourcesReq := connect.NewRequest(&cerebrov1.ListSourcesRequest{})
 	listSourcesReq.Header().Set("Authorization", "Bearer scoped-token")
 	listSourcesResp, err := client.ListSources(context.Background(), listSourcesReq)
@@ -2105,6 +2115,7 @@ func TestListSourceRuntimesRequiresTenantFilterWithPrincipalAllowedTenants(t *te
 		runtimes: map[string]*cerebrov1.SourceRuntime{
 			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
 			"other-runtime":  {Id: "other-runtime", SourceId: "github", TenantId: "other"},
+			"blank-runtime":  {Id: "blank-runtime", SourceId: "github"},
 		},
 	}
 	app := New(cfg, Dependencies{StateStore: store}, nil)
@@ -2151,6 +2162,31 @@ func TestListSourceRuntimesRequiresTenantFilterWithPrincipalAllowedTenants(t *te
 	}
 	if got := payload["runtimes"][0]["id"]; got != "writer-runtime" {
 		t.Fatalf("listed runtime id = %v, want writer-runtime", got)
+	}
+
+	blankReq, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes?runtime_id=blank-runtime", nil)
+	if err != nil {
+		t.Fatalf("NewRequest with blank runtime_id: %v", err)
+	}
+	blankReq.Header.Set("Authorization", "Bearer allowed-token")
+	blankResp, err := server.Client().Do(blankReq)
+	if err != nil {
+		t.Fatalf("GET /source-runtimes with blank runtime_id error = %v", err)
+	}
+	defer func() {
+		if closeErr := blankResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close blank response body: %v", closeErr)
+		}
+	}()
+	if blankResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /source-runtimes with blank runtime_id status = %d, want %d", blankResp.StatusCode, http.StatusOK)
+	}
+	var blankPayload map[string][]map[string]any
+	if err := json.NewDecoder(blankResp.Body).Decode(&blankPayload); err != nil {
+		t.Fatalf("decode blank source runtime list: %v", err)
+	}
+	if got := len(blankPayload["runtimes"]); got != 0 {
+		t.Fatalf("blank runtime count = %d, want 0", got)
 	}
 }
 
@@ -2512,6 +2548,38 @@ func TestAuthMiddlewareEnforcesTenantOnMapBackedProtoFields(t *testing.T) {
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("POST /reports/finding-summary/runs status = %d, want %d", resp.StatusCode, http.StatusForbidden)
+	}
+
+	allowedCfg := cfg
+	allowedCfg.Auth.APIKeys = nil
+	allowedCfg.Auth.APICredentials = []config.APICredential{{
+		Key:            "allowed-key",
+		Principal:      "cosmo-security",
+		AllowedTenants: []string{"writer"},
+	}}
+	allowedApp := New(allowedCfg, Dependencies{}, nil)
+	allowedServer := httptest.NewServer(allowedApp.Handler())
+	defer allowedServer.Close()
+
+	allowedBody, err := protojson.Marshal(&cerebrov1.RunReportRequest{
+		Parameters: map[string]string{"tenant_id": "writer"},
+	})
+	if err != nil {
+		t.Fatalf("marshal allowed report request: %v", err)
+	}
+	allowedReq, err := http.NewRequest(http.MethodPost, allowedServer.URL+"/reports/finding-summary/runs", bytes.NewReader(allowedBody))
+	if err != nil {
+		t.Fatalf("NewRequest allowed: %v", err)
+	}
+	allowedReq.Header.Set("Authorization", "Bearer allowed-key")
+	allowedReq.Header.Set("Content-Type", "application/json")
+	allowedResp, err := allowedServer.Client().Do(allowedReq)
+	if err != nil {
+		t.Fatalf("POST /reports/finding-summary/runs allowed error = %v", err)
+	}
+	_ = allowedResp.Body.Close()
+	if allowedResp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("POST /reports/finding-summary/runs allowed status = %d, want %d", allowedResp.StatusCode, http.StatusServiceUnavailable)
 	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
