@@ -534,6 +534,35 @@ func TestReadMessagesReturnsHardScopedExportFailures(t *testing.T) {
 	}
 }
 
+func TestNextMessageCursorRespectsScopedExportOffsetLimit(t *testing.T) {
+	settings := settings{eventTypes: []string{"message", "completion"}}
+	window := messageWindow{
+		since:          time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC),
+		until:          time.Date(2026, 5, 1, 1, 0, 0, 0, time.UTC),
+		eventTypeIndex: 0,
+		offset:         messageExportMaxOffset - messageExportMaxPageSize,
+	}
+
+	next, checkpoint := nextMessageCursor(settings, window, messageExportMaxPageSize, messageExportMaxPageSize)
+	if next == "" || checkpoint != next {
+		t.Fatalf("next=%q checkpoint=%q, want next event cursor", next, checkpoint)
+	}
+	cursor := decodeMessageCursor(t, next)
+	if cursor.EventTypeIndex != 1 || cursor.Offset != 0 {
+		t.Fatalf("cursor = %#v, want next event type at offset 0", cursor)
+	}
+
+	settings.eventTypes = []string{"message"}
+	next, checkpoint = nextMessageCursor(settings, window, messageExportMaxPageSize, messageExportMaxPageSize)
+	if next != "" {
+		t.Fatalf("next = %q, want empty after final event type", next)
+	}
+	cursor = decodeMessageCursor(t, checkpoint)
+	if cursor.Since != window.until.Format(time.RFC3339Nano) || cursor.Until != "" || cursor.Offset != 0 {
+		t.Fatalf("checkpoint = %#v, want next window checkpoint", cursor)
+	}
+}
+
 func TestReadMessagesRejectsInvalidScopedCursor(t *testing.T) {
 	source, err := New()
 	if err != nil {
