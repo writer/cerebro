@@ -847,9 +847,6 @@ func copyVulnerableAssetPlatformReferences(attrs map[string]string, values map[s
 		attrs["platform_asset_refs"] = string(raw)
 	}
 	first := refs[0]
-	if attrs["integration_id"] == "" && first.Provider != "" {
-		attrs["integration_id"] = first.Provider
-	}
 	addAttrIfMissing(attrs, "platform_provider", first.Provider)
 	addAttrIfMissing(attrs, "platform_resource_id", first.ResourceID)
 	addAttrIfMissing(attrs, "platform_resource_name", first.ResourceName)

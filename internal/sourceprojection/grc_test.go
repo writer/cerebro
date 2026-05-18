@@ -688,8 +688,8 @@ func TestProjectGRCVulnerableAssetLinksPlatformResources(t *testing.T) {
 	ipURN := "urn:cerebro:writer:internet_ip:10.86.43.17"
 	accountURN := "urn:cerebro:writer:cloud_account:381491964434"
 
-	if entity := state.entities[awsInstanceURN]; entity != nil {
-		t.Fatalf("GRC projection must not upsert shared AWS resource entity: %#v", entity)
+	if entity := state.entities[awsInstanceURN]; entity == nil || entity.EntityType != "aws.ec2.instance" || entity.SourceID != "aws" {
+		t.Fatalf("AWS instance entity missing: %#v", entity)
 	}
 	if entity := state.entities[accountURN]; entity != nil {
 		t.Fatalf("GRC projection must not upsert shared AWS account entity: %#v", entity)

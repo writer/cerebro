@@ -410,8 +410,8 @@ func TestCopyVulnerableAssetPlatformReferencesFlattensScannerTargets(t *testing.
 		}},
 	})
 
-	if got := attrs["integration_id"]; got != "aws" {
-		t.Fatalf("integration_id = %q, want aws", got)
+	if got := attrs["integration_id"]; got != "" {
+		t.Fatalf("integration_id = %q, want unset without top-level Vanta integration", got)
 	}
 	if got := attrs["platform_resource_id"]; got != "arn:aws:ec2:us-east-1:381491964434:instance/i-0f359ce073424f8d6" {
 		t.Fatalf("platform_resource_id = %q, want EC2 ARN", got)

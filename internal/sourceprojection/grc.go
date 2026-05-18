@@ -628,6 +628,18 @@ func addGRCPlatformAssetLinks(entities map[string]*ports.ProjectedEntity, links 
 		if resourceURN == "" {
 			continue
 		}
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        resourceURN,
+			TenantID:   tenantID,
+			SourceID:   provider,
+			EntityType: provider + "." + strings.ReplaceAll(resourceType, "_", "."),
+			Label:      resourceURN,
+			Attributes: map[string]string{
+				"provider":      provider,
+				"resource_id":   resourceID,
+				"resource_type": resourceType,
+			},
+		})
 		addLink(links, projectedLink(tenantID, sourceID, targetURN, resourceURN, relationRepresents, map[string]string{
 			"confidence":           "0.99",
 			"event_id":             event.GetId(),
