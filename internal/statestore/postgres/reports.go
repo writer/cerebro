@@ -13,13 +13,13 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
-const ensureReportRunTableSQL = `
+var ensureReportRunStatements = []string{`
 CREATE TABLE IF NOT EXISTS report_runs (
   id TEXT PRIMARY KEY,
   report_run_json JSONB NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-)`
+)`}
 
 // PutReportRun upserts one durable report run.
 func (s *Store) PutReportRun(ctx context.Context, run *cerebrov1.ReportRun) error {
@@ -85,8 +85,5 @@ func (s *Store) GetReportRun(ctx context.Context, reportRunID string) (*cerebrov
 }
 
 func (s *Store) ensureReportRunTable(ctx context.Context) error {
-	if _, err := s.db.ExecContext(ctx, ensureReportRunTableSQL); err != nil {
-		return fmt.Errorf("ensure report run table: %w", err)
-	}
-	return nil
+	return s.ensureStatements(ctx, &s.reportRunTableReady, "report run", ensureReportRunStatements)
 }

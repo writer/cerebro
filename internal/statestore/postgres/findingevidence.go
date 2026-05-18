@@ -53,6 +53,7 @@ var ensureFindingEvidenceStatements = []string{
 	`CREATE INDEX IF NOT EXISTS finding_evidence_run_ids_gin_idx ON finding_evidence USING GIN (run_ids_json)`,
 	`CREATE INDEX IF NOT EXISTS finding_evidence_attributes_gin_idx ON finding_evidence USING GIN (attributes_json)`,
 	`CREATE INDEX IF NOT EXISTS finding_evidence_last_observed_idx ON finding_evidence (runtime_id, last_observed_at DESC)`,
+	`CREATE INDEX IF NOT EXISTS finding_evidence_runtime_observed_id_idx ON finding_evidence (runtime_id, last_observed_at DESC, created_at DESC, id)`,
 }
 
 func findingEvidenceUpsertSQL() string {
@@ -286,11 +287,13 @@ func (s *Store) ensureFindingEvidenceTables(ctx context.Context) error {
 
 func findingEvidenceListQuery(request ports.ListFindingEvidenceRequest) (string, []any, error) {
 	runtimeID := strings.TrimSpace(request.RuntimeID)
-	if runtimeID == "" {
+	runtimeIDs := normalizedNonEmptyStrings(append(request.RuntimeIDs, runtimeID))
+	if len(runtimeIDs) == 0 {
 		return "", nil, errors.New("finding evidence runtime id is required")
 	}
-	clauses := []string{"runtime_id = $1"}
-	args := []any{runtimeID}
+	clauses := []string{}
+	args := []any{}
+	addStringInFilter(&clauses, &args, "runtime_id", runtimeIDs)
 	addFindingFilter(&clauses, &args, "finding_id", request.FindingID)
 	addFindingEvidenceRunFilter(&clauses, &args, request.RunID)
 	addFindingFilter(&clauses, &args, "rule_id", request.RuleID)

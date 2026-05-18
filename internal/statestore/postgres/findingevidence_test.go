@@ -51,7 +51,7 @@ func TestListFindingEvidenceRejectsUnconfiguredStore(t *testing.T) {
 
 func TestFindingEvidenceListQueryIncludesOptionalFilters(t *testing.T) {
 	query, args, err := findingEvidenceListQuery(ports.ListFindingEvidenceRequest{
-		RuntimeID:    "writer-okta-audit",
+		RuntimeID:    "runtime-alpha",
 		FindingID:    "finding-1",
 		RunID:        "finding-evaluation-run-1",
 		RuleID:       "identity-okta-policy-rule-lifecycle-tampering",
@@ -82,11 +82,42 @@ func TestFindingEvidenceListQueryIncludesOptionalFilters(t *testing.T) {
 	if got := len(args); got != 9 {
 		t.Fatalf("len(findingEvidenceListQuery().args) = %d, want 9", got)
 	}
-	if got := args[0]; got != "writer-okta-audit" {
-		t.Fatalf("findingEvidenceListQuery().args[0] = %#v, want writer-okta-audit", got)
+	if got := args[0]; got != "runtime-alpha" {
+		t.Fatalf("findingEvidenceListQuery().args[0] = %#v, want runtime-alpha", got)
 	}
 	if got := args[8]; got != int64(25) {
 		t.Fatalf("findingEvidenceListQuery().args[8] = %#v, want 25", got)
+	}
+}
+
+func TestFindingEvidenceListQuerySupportsRuntimeBatches(t *testing.T) {
+	query, args, err := findingEvidenceListQuery(ports.ListFindingEvidenceRequest{
+		RuntimeIDs: []string{"runtime-alpha", "runtime-beta", "runtime-alpha"},
+		Limit:      25,
+	})
+	if err != nil {
+		t.Fatalf("findingEvidenceListQuery() error = %v", err)
+	}
+	for _, fragment := range []string{
+		"runtime_id IN ($1, $2)",
+		"ORDER BY last_observed_at DESC, created_at DESC, id",
+		"LIMIT $3",
+	} {
+		if !strings.Contains(query, fragment) {
+			t.Fatalf("findingEvidenceListQuery() query missing %q: %s", fragment, query)
+		}
+	}
+	if got := len(args); got != 3 {
+		t.Fatalf("len(findingEvidenceListQuery().args) = %d, want 3", got)
+	}
+	if got := args[0]; got != "runtime-alpha" {
+		t.Fatalf("findingEvidenceListQuery().args[0] = %#v, want first runtime", got)
+	}
+	if got := args[1]; got != "runtime-beta" {
+		t.Fatalf("findingEvidenceListQuery().args[1] = %#v, want second runtime", got)
+	}
+	if got := args[2]; got != int64(25) {
+		t.Fatalf("findingEvidenceListQuery().args[2] = %#v, want 25", got)
 	}
 }
 

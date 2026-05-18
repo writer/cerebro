@@ -62,6 +62,8 @@ var ensureFindingStatements = []string{
 	`CREATE INDEX IF NOT EXISTS findings_runtime_due_at_idx ON findings (runtime_id, due_at)`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_status_idx ON findings (runtime_id, status)`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_severity_idx ON findings (runtime_id, severity)`,
+	`CREATE INDEX IF NOT EXISTS findings_tenant_runtime_status_observed_idx ON findings (tenant_id, runtime_id, status, last_observed_at DESC, id)`,
+	`CREATE INDEX IF NOT EXISTS findings_tenant_runtime_observed_idx ON findings (tenant_id, runtime_id, last_observed_at DESC, id)`,
 	`CREATE INDEX IF NOT EXISTS findings_resource_urns_gin_idx ON findings USING GIN (resource_urns_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_event_ids_gin_idx ON findings USING GIN (event_ids_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_observed_policy_ids_gin_idx ON findings USING GIN (observed_policy_ids_json)`,
@@ -319,8 +321,9 @@ func (s *Store) ListFindings(ctx context.Context, request ports.ListFindingsRequ
 		return nil, errors.New("finding tenant id is required")
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
+	runtimeIDs := normalizedNonEmptyStrings(append(request.RuntimeIDs, runtimeID))
 	ruleID := strings.TrimSpace(request.RuleID)
-	if runtimeID == "" && ruleID == "" {
+	if len(runtimeIDs) == 0 && ruleID == "" {
 		return nil, errors.New("finding runtime id or rule id is required")
 	}
 	if s == nil || s.db == nil {
@@ -790,16 +793,14 @@ func findingListQuery(request ports.ListFindingsRequest) (string, []any, error) 
 		return "", nil, errors.New("finding tenant id is required")
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
+	runtimeIDs := normalizedNonEmptyStrings(append(request.RuntimeIDs, runtimeID))
 	ruleID := strings.TrimSpace(request.RuleID)
-	if runtimeID == "" && ruleID == "" {
+	if len(runtimeIDs) == 0 && ruleID == "" {
 		return "", nil, errors.New("finding runtime id or rule id is required")
 	}
 	clauses := []string{"tenant_id = $1"}
 	args := []any{tenantID}
-	if runtimeID != "" {
-		args = append(args, runtimeID)
-		clauses = append(clauses, fmt.Sprintf("runtime_id = $%d", len(args)))
-	}
+	addStringInFilter(&clauses, &args, "runtime_id", runtimeIDs)
 	addFindingFilter(&clauses, &args, "id", request.FindingID)
 	addFindingFilter(&clauses, &args, "rule_id", request.RuleID)
 	addFindingFilter(&clauses, &args, "severity", request.Severity)
@@ -819,7 +820,7 @@ SELECT
   status_updated_at, first_observed_at, last_observed_at
 FROM findings
 WHERE ` + strings.Join(clauses, " AND ") + `
-ORDER BY last_observed_at DESC, id`
+ORDER BY ` + findingOrderClause(request.PriorityOrder)
 	if request.Limit != 0 {
 		args = append(args, int64(request.Limit))
 		query += fmt.Sprintf(" LIMIT $%d", len(args))
@@ -828,12 +829,21 @@ ORDER BY last_observed_at DESC, id`
 }
 
 func (s *Store) ensureFindingTables(ctx context.Context) error {
-	for _, statement := range ensureFindingStatements {
-		if _, err := s.db.ExecContext(ctx, statement); err != nil {
-			return fmt.Errorf("ensure findings tables: %w", err)
-		}
+	return s.ensureStatements(ctx, &s.findingTablesReady, "findings", ensureFindingStatements)
+}
+
+func findingOrderClause(priorityOrder bool) string {
+	if !priorityOrder {
+		return "last_observed_at DESC, id"
 	}
-	return nil
+	return `CASE UPPER(severity)
+  WHEN 'CRITICAL' THEN 0
+  WHEN 'HIGH' THEN 1
+  WHEN 'MEDIUM' THEN 2
+  WHEN 'LOW' THEN 3
+  WHEN 'INFO' THEN 4
+  ELSE 5
+END, last_observed_at DESC, id`
 }
 
 func findingStringsJSON(values []string) (string, error) {

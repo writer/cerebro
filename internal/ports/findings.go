@@ -67,16 +67,18 @@ type FindingRecord struct {
 
 // ListFindingsRequest scopes one finding query.
 type ListFindingsRequest struct {
-	TenantID    string
-	RuntimeID   string
-	FindingID   string
-	RuleID      string
-	Severity    string
-	Status      string
-	ResourceURN string
-	EventID     string
-	PolicyID    string
-	Limit       uint32
+	TenantID      string
+	RuntimeID     string
+	RuntimeIDs    []string
+	FindingID     string
+	RuleID        string
+	Severity      string
+	Status        string
+	ResourceURN   string
+	EventID       string
+	PolicyID      string
+	Limit         uint32
+	PriorityOrder bool
 }
 
 // ErrFindingEvaluationRunNotFound indicates that a persisted finding evaluation run does not exist.
@@ -131,6 +133,7 @@ type ListFindingEvaluationRunsRequest struct {
 // ListFindingEvidenceRequest scopes one finding evidence query.
 type ListFindingEvidenceRequest struct {
 	RuntimeID    string
+	RuntimeIDs   []string
 	FindingID    string
 	RunID        string
 	RuleID       string
