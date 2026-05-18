@@ -318,8 +318,13 @@ func grcVulnerableAssetProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 		return nil, nil, nil
 	}
 	addEntity(entities, grcTargetEntity(tenantID, event.GetSourceId(), targetURN, targetID, attrs, provider))
-	addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, targetURN, relationRepresents, grcTargetHost(attrs), "grc_vulnerable_asset_host", "0.95")
-	addInternetIPLink(entities, links, tenantID, event.GetSourceId(), event, targetURN, firstAttribute(attrs, "ip", "ip_address", "public_ip"), "grc_vulnerable_asset_ip", "0.95")
+	for _, host := range grcTargetHosts(attrs) {
+		addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, targetURN, relationRepresents, host, "grc_vulnerable_asset_host", "0.95")
+	}
+	for _, ip := range grcTargetIPs(attrs) {
+		addInternetIPLink(entities, links, tenantID, event.GetSourceId(), event, targetURN, ip, "grc_vulnerable_asset_ip", "0.95")
+	}
+	addGRCPlatformAssetLinks(entities, links, tenantID, event.GetSourceId(), event, targetURN, attrs)
 
 	integrationID := firstAttribute(attrs, "integration_id")
 	if integrationURN := grcIntegrationURN(tenantID, provider, integrationID); integrationURN != "" {
@@ -551,6 +556,219 @@ func grcTargetHost(attrs map[string]string) string {
 		return host
 	}
 	return internetHostIfLikely(firstAttribute(attrs, "target_id", "resource_id", "asset_id", "endpoint_id"))
+}
+
+func grcTargetHosts(attrs map[string]string) []string {
+	values := splitCloudAttributeList(strings.Join([]string{
+		grcTargetHost(attrs),
+		attrs["hostnames"],
+		attrs["hosts"],
+	}, ","))
+	hosts := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		host := internetHost(value)
+		if host == "" {
+			continue
+		}
+		if _, exists := seen[host]; exists {
+			continue
+		}
+		seen[host] = struct{}{}
+		hosts = append(hosts, host)
+	}
+	return hosts
+}
+
+func grcTargetIPs(attrs map[string]string) []string {
+	values := splitCloudAttributeList(strings.Join([]string{
+		attrs["ip"],
+		attrs["ip_address"],
+		attrs["ip_addresses"],
+		attrs["public_ip"],
+		attrs["public_ips"],
+		attrs["private_ip"],
+		attrs["private_ips"],
+	}, ","))
+	ips := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		ip := internetIP(value)
+		if ip == "" {
+			continue
+		}
+		if _, exists := seen[ip]; exists {
+			continue
+		}
+		seen[ip] = struct{}{}
+		ips = append(ips, ip)
+	}
+	return ips
+}
+
+type grcPlatformAssetReference struct {
+	Provider          string `json:"provider"`
+	ResourceID        string `json:"resource_id"`
+	ResourceName      string `json:"resource_name"`
+	ResourceType      string `json:"resource_type"`
+	ScannerResourceID string `json:"scanner_resource_id"`
+	Hostnames         string `json:"hostnames"`
+	IPs               string `json:"ips"`
+}
+
+func addGRCPlatformAssetLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, targetURN string, attrs map[string]string) {
+	for _, ref := range grcPlatformAssetReferences(attrs) {
+		provider := grcPlatformProvider(ref.Provider, ref.ResourceID)
+		resourceID := strings.TrimSpace(ref.ResourceID)
+		if provider == "" || provider == "vanta" || resourceID == "" {
+			continue
+		}
+		resourceType := grcPlatformResourceType(provider, resourceID, ref.ResourceType)
+		resourceURN := projectionURN(tenantID, provider+"_"+resourceType, resourceID)
+		if resourceURN == "" {
+			continue
+		}
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        resourceURN,
+			TenantID:   tenantID,
+			SourceID:   sourceID,
+			EntityType: provider + "." + strings.ReplaceAll(resourceType, "_", "."),
+			Label:      firstNonEmpty(ref.ResourceName, resourceID),
+			Attributes: map[string]string{
+				"provider":            provider,
+				"resource_id":         resourceID,
+				"resource_type":       resourceType,
+				"scanner_resource_id": strings.TrimSpace(ref.ScannerResourceID),
+				"source_system":       grcProvider(attrs),
+			},
+		})
+		addLink(links, projectedLink(tenantID, sourceID, targetURN, resourceURN, relationRepresents, map[string]string{
+			"confidence":           "0.99",
+			"event_id":             event.GetId(),
+			"match_type":           "grc_vulnerable_asset_platform_resource",
+			"platform_provider":    provider,
+			"platform_resource_id": resourceID,
+			"resource_type":        resourceType,
+		}))
+		if provider == "aws" {
+			addCloudAccountLink(entities, links, tenantID, sourceID, event, resourceURN, grcAWSAccountIDFromARN(resourceID), provider)
+		}
+		for _, host := range splitCloudAttributeList(ref.Hostnames) {
+			addInternetHostLink(entities, links, tenantID, sourceID, event, resourceURN, relationRepresents, host, "grc_platform_resource_host", "0.90")
+		}
+		for _, ip := range splitCloudAttributeList(ref.IPs) {
+			addInternetIPLink(entities, links, tenantID, sourceID, event, resourceURN, ip, "grc_platform_resource_ip", "0.90")
+		}
+	}
+}
+
+func grcPlatformAssetReferences(attrs map[string]string) []grcPlatformAssetReference {
+	if raw := strings.TrimSpace(attrs["platform_asset_refs"]); raw != "" {
+		var refs []grcPlatformAssetReference
+		if err := json.Unmarshal([]byte(raw), &refs); err == nil {
+			return refs
+		}
+	}
+	resourceID := firstAttribute(attrs, "platform_resource_id", "cloud_resource_id", "cloud_resource_arn", "target_arn", "resource_arn")
+	if resourceID == "" {
+		return nil
+	}
+	return []grcPlatformAssetReference{{
+		Provider:          firstAttribute(attrs, "platform_provider", "cloud_provider", "integration_id"),
+		ResourceID:        resourceID,
+		ResourceName:      firstAttribute(attrs, "platform_resource_name", "resource_name", "target_name"),
+		ResourceType:      firstAttribute(attrs, "platform_resource_type", "cloud_resource_type", "resource_type", "asset_type"),
+		ScannerResourceID: firstAttribute(attrs, "scanner_resource_id"),
+		Hostnames:         firstAttribute(attrs, "hostnames", "hostname", "host"),
+		IPs:               firstAttribute(attrs, "ip_addresses", "ip", "ip_address", "public_ip"),
+	}}
+}
+
+func grcPlatformProvider(provider string, resourceID string) string {
+	provider = normalizeIdentifier(provider)
+	if provider != "" && provider != "vanta" {
+		return provider
+	}
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(resourceID)), "arn:aws") {
+		return "aws"
+	}
+	return provider
+}
+
+func grcPlatformResourceType(provider string, resourceID string, fallback string) string {
+	if provider == "aws" {
+		if resourceType := grcAWSResourceTypeFromARN(resourceID); resourceType != "" {
+			return resourceType
+		}
+	}
+	if resourceType := normalizeCloudType(fallback); resourceType != "" {
+		return resourceType
+	}
+	return "resource"
+}
+
+func grcAWSResourceTypeFromARN(resourceID string) string {
+	_, service, _, _, resource, ok := grcAWSARNParts(resourceID)
+	if !ok {
+		return ""
+	}
+	resourceType := resource
+	if before, _, ok := strings.Cut(resourceType, "/"); ok {
+		resourceType = before
+	}
+	if before, _, ok := strings.Cut(resourceType, ":"); ok {
+		resourceType = before
+	}
+	switch service {
+	case "ec2":
+		switch resourceType {
+		case "security-group":
+			return "security_group"
+		case "network-interface":
+			return "network_interface"
+		case "instance":
+			return "ec2_instance"
+		default:
+			return normalizeCloudType(resourceType)
+		}
+	case "elasticloadbalancing":
+		switch {
+		case strings.HasPrefix(resource, "loadbalancer/app/"):
+			return "application_load_balancer"
+		case strings.HasPrefix(resource, "loadbalancer/net/"):
+			return "network_load_balancer"
+		default:
+			return "load_balancer"
+		}
+	case "cloudfront":
+		if resourceType == "distribution" {
+			return "cloudfront_distribution"
+		}
+	case "apigateway":
+		if resourceType == "domainname" {
+			return "apigateway_domain"
+		}
+	}
+	if resourceType != "" {
+		return normalizeCloudType(service + "_" + resourceType)
+	}
+	return normalizeCloudType(service)
+}
+
+func grcAWSAccountIDFromARN(resourceID string) string {
+	_, _, _, accountID, _, ok := grcAWSARNParts(resourceID)
+	if !ok {
+		return ""
+	}
+	return accountID
+}
+
+func grcAWSARNParts(resourceID string) (partition string, service string, region string, accountID string, resource string, ok bool) {
+	parts := strings.SplitN(strings.TrimSpace(resourceID), ":", 6)
+	if len(parts) != 6 || parts[0] != "arn" || !strings.HasPrefix(parts[1], "aws") {
+		return "", "", "", "", "", false
+	}
+	return parts[1], parts[2], parts[3], parts[4], parts[5], true
 }
 
 func grcIntegrationURN(tenantID string, provider string, integrationID string) string {
