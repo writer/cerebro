@@ -884,8 +884,8 @@ func vulnerableAssetPlatformReferences(values map[string]any) []vulnerableAssetP
 		if resourceID == "" && platformResourceIDLikelyExternal(scannerResourceID) {
 			resourceID = scannerResourceID
 		}
-		hostnames := firstNonEmptyString(fieldString(object, "hostnames"), fieldString(object, "fqdns"), fieldString(object, "hostname"), fieldString(object, "fqdn"))
-		ips := firstNonEmptyString(fieldString(object, "ipv4s"), fieldString(object, "ipv6s"), fieldString(object, "ipAddresses"), fieldString(object, "ipAddress"), fieldString(object, "publicIp"), fieldString(object, "publicIP"))
+		hostnames := joinedPlatformObjectFieldValues(object, "hostnames", "fqdns", "hostname", "fqdn")
+		ips := joinedPlatformObjectFieldValues(object, "ipv4s", "ipv6s", "ipAddresses", "ipAddress", "publicIp", "publicIP")
 		if provider == "" && resourceID == "" && scannerResourceID == "" && hostnames == "" && ips == "" {
 			continue
 		}
@@ -919,6 +919,14 @@ func addAttrIfMissing(attrs map[string]string, key string, value string) {
 func platformResourceIDLikelyExternal(value string) bool {
 	value = strings.TrimSpace(value)
 	return strings.HasPrefix(value, "arn:") || strings.Contains(value, "://") || strings.Contains(value, "/")
+}
+
+func joinedPlatformObjectFieldValues(object map[string]any, names ...string) string {
+	values := make([]string, 0, len(names))
+	for _, name := range names {
+		values = append(values, splitDelimitedValues(fieldString(object, name))...)
+	}
+	return strings.Join(uniqueStrings(values), ",")
 }
 
 func joinedUniqueDelimitedValues(refs []vulnerableAssetPlatformReference, selectValue func(vulnerableAssetPlatformReference) string) string {

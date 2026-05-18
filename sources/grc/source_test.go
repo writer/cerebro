@@ -404,7 +404,9 @@ func TestCopyVulnerableAssetPlatformReferencesFlattensScannerTargets(t *testing.
 			"integrationId": "aws",
 			"targetId":      "arn:aws:ec2:us-east-1:381491964434:instance/i-0f359ce073424f8d6",
 			"hostnames":     []any{"ip-10-86-43-17.ec2.internal"},
+			"fqdns":         []any{"asset.writer.test"},
 			"ipv4s":         []any{"10.86.43.17"},
+			"ipv6s":         []any{"2001:db8::1"},
 		}},
 	})
 
@@ -420,8 +422,14 @@ func TestCopyVulnerableAssetPlatformReferencesFlattensScannerTargets(t *testing.
 	if got := attrs["hostname"]; got != "ip-10-86-43-17.ec2.internal" {
 		t.Fatalf("hostname = %q, want scanner hostname", got)
 	}
+	if got := attrs["hostnames"]; got != "ip-10-86-43-17.ec2.internal,asset.writer.test" {
+		t.Fatalf("hostnames = %q, want all scanner host fields", got)
+	}
 	if got := attrs["ip"]; got != "10.86.43.17" {
 		t.Fatalf("ip = %q, want scanner IPv4", got)
+	}
+	if got := attrs["ip_addresses"]; got != "10.86.43.17,2001:db8::1" {
+		t.Fatalf("ip_addresses = %q, want all scanner IP fields", got)
 	}
 	var refs []map[string]string
 	if err := json.Unmarshal([]byte(attrs["platform_asset_refs"]), &refs); err != nil {
@@ -429,6 +437,9 @@ func TestCopyVulnerableAssetPlatformReferencesFlattensScannerTargets(t *testing.
 	}
 	if len(refs) != 1 || refs[0]["provider"] != "aws" || refs[0]["resource_id"] != "arn:aws:ec2:us-east-1:381491964434:instance/i-0f359ce073424f8d6" {
 		t.Fatalf("platform_asset_refs = %#v, want AWS EC2 resource ref", refs)
+	}
+	if refs[0]["hostnames"] != "ip-10-86-43-17.ec2.internal,asset.writer.test" || refs[0]["ips"] != "10.86.43.17,2001:db8::1" {
+		t.Fatalf("platform_asset_refs network fields = %#v, want all scanner host/IP fields", refs[0])
 	}
 }
 
