@@ -267,6 +267,8 @@ neo4j_secret_import_arns = config.get_object("neo4jSecretImportArns") or {}
 api_keys = _config_optional_secret("apiKeys")
 api_auth_enabled = _config_bool("apiAuthEnabled", is_production)
 allowed_tenants = config.get_object("allowedTenants") or []
+capability_token_secret_name = config.get("capabilityTokenSecretName") or "CEREBRO_CAPABILITY_TOKEN_SECRETS"
+capability_token_audience = config.get("capabilityTokenAudience") or "cerebro-api"
 source_secret_keys = config.get_object("sourceSecretKeys") or []
 source_runtimes = config.get_object("sourceRuntimes") or []
 source_runtime_env_refs = _source_runtime_env_refs(source_runtimes)
@@ -503,6 +505,8 @@ secret_keys = [
 if api_auth_enabled:
     secret_keys.append("CEREBRO_API_KEYS")
     secret_keys.append({"name": "API_KEYS", "source": "CEREBRO_API_KEYS"})
+    if capability_token_secret_name:
+        secret_keys.append({"name": "CEREBRO_CAPABILITY_TOKEN_SECRETS", "source": capability_token_secret_name})
 secret_keys.extend(source_secret_keys)
 
 app_environment = {
@@ -510,6 +514,7 @@ app_environment = {
     "CEREBRO_SHUTDOWN_TIMEOUT": config.get("shutdownTimeout") or "10s",
     "CEREBRO_API_AUTH_ENABLED": str(api_auth_enabled).lower(),
     "API_AUTH_ENABLED": str(api_auth_enabled).lower(),
+    "CEREBRO_CAPABILITY_TOKEN_AUDIENCE": capability_token_audience,
     "CEREBRO_APPEND_LOG_DRIVER": "jetstream",
     "CEREBRO_JETSTREAM_URL": nats_stack["url"],
     "CEREBRO_JETSTREAM_SUBJECT_PREFIX": jetstream_subject_prefix,

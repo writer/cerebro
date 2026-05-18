@@ -32,10 +32,12 @@ config:
   cerebro:alarmActionArns:
     - arn:aws:sns:us-east-1:837279440628:aws-controltower-SecurityNotifications
   cerebro:apiAuthEnabled: true
+  cerebro:capabilityTokenSecretName: CEREBRO_CAPABILITY_TOKEN_SECRETS_GO_PROD
   cerebro:allowedTenants:
     - writer
   cerebro:sourceSecretKeys:
     - CEREBRO_SOURCE_COSMO_BASE_URL
+    - CEREBRO_SOURCE_COSMO_EXPORT_SECRET
     - CEREBRO_SOURCE_COSMO_TOKEN
     - VANTA_CLIENT_ID
     - VANTA_CLIENT_SECRET
@@ -569,8 +571,13 @@ config:
       tenantId: writer
       config:
         base_url: env:CEREBRO_SOURCE_COSMO_BASE_URL
+        client_id: cerebro-runtime
+        event_types: "message,completion"
+        export_secret: env:CEREBRO_SOURCE_COSMO_EXPORT_SECRET
         family: message
-        per_page: "500"
+        max_window_hours: "24"
+        per_page: "100"
+        since: "2026-01-01T00:00:00Z"
         tenant_id: writer
         token: env:CEREBRO_SOURCE_COSMO_TOKEN
     - id: writer-cosmo-survey-feedback

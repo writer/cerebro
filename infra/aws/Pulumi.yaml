@@ -282,6 +282,14 @@ config:
       type: string
     default: []
     description: Optional tenant allowlist for unscoped API keys
+  cerebro:capabilityTokenSecretName:
+    type: string
+    default: CEREBRO_CAPABILITY_TOKEN_SECRETS
+    description: Secret key under externalSecretsPrefix mounted into the API as CEREBRO_CAPABILITY_TOKEN_SECRETS
+  cerebro:capabilityTokenAudience:
+    type: string
+    default: cerebro-api
+    description: Expected audience for HMAC capability tokens accepted by the API
   cerebro:sourceSecretKeys:
     type: array
     items:
