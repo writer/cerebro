@@ -135,6 +135,7 @@ type ListFindingEvidenceRequest struct {
 	RuntimeID    string
 	RuntimeIDs   []string
 	FindingID    string
+	FindingIDs   []string
 	RunID        string
 	RuleID       string
 	ClaimID      string

@@ -294,7 +294,14 @@ func findingEvidenceListQuery(request ports.ListFindingEvidenceRequest) (string,
 	clauses := []string{}
 	args := []any{}
 	addStringInFilter(&clauses, &args, "runtime_id", runtimeIDs)
-	addFindingFilter(&clauses, &args, "finding_id", request.FindingID)
+	findingIDs := normalizedNonEmptyStrings(append(request.FindingIDs, request.FindingID))
+	if strings.TrimSpace(request.FindingID) != "" || request.FindingIDs != nil {
+		if len(findingIDs) == 0 {
+			clauses = append(clauses, "FALSE")
+		} else {
+			addStringInFilter(&clauses, &args, "finding_id", findingIDs)
+		}
+	}
 	addFindingEvidenceRunFilter(&clauses, &args, request.RunID)
 	addFindingFilter(&clauses, &args, "rule_id", request.RuleID)
 	if err := addFindingArrayContainsFilter(&clauses, &args, "claim_ids_json", request.ClaimID); err != nil {

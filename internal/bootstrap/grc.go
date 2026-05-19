@@ -143,7 +143,7 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{Limit: scope.Limit})
+	evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings), Limit: scope.Limit})
 	if err != nil {
 		writeGRCError(w, err)
 		return
@@ -195,7 +195,7 @@ func (a *App) handleGRCFindings(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{Limit: scope.Limit})
+	evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings), Limit: scope.Limit})
 	if err != nil {
 		writeGRCError(w, err)
 		return
@@ -222,7 +222,7 @@ func (a *App) handleGRCControls(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{Limit: scope.Limit})
+	evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings), Limit: scope.Limit})
 	if err != nil {
 		writeGRCError(w, err)
 		return
@@ -310,7 +310,7 @@ func (a *App) handleGRCEntityImpact(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{Limit: limit})
+	evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings), Limit: limit})
 	if err != nil {
 		writeGRCError(w, err)
 		return
@@ -393,6 +393,7 @@ type grcFindingFilter struct {
 
 type grcEvidenceFilter struct {
 	FindingID    string
+	FindingIDs   []string
 	RunID        string
 	RuleID       string
 	GraphRootURN string
@@ -533,9 +534,13 @@ func (a *App) grcListEvidenceRecords(r *http.Request, runtimes []*cerebrov1.Sour
 	if len(runtimeIDs) == 0 {
 		return nil, nil
 	}
+	if filter.FindingIDs != nil && strings.TrimSpace(filter.FindingID) == "" && len(grcNonEmptyFindingIDs(filter.FindingIDs)) == 0 {
+		return nil, nil
+	}
 	records, err := store.ListFindingEvidence(r.Context(), ports.ListFindingEvidenceRequest{
 		RuntimeIDs:   runtimeIDs,
 		FindingID:    filter.FindingID,
+		FindingIDs:   filter.FindingIDs,
 		RunID:        filter.RunID,
 		RuleID:       filter.RuleID,
 		GraphRootURN: filter.GraphRootURN,
@@ -577,6 +582,34 @@ func grcEvidenceCounts(evidence []*cerebrov1.FindingEvidence) map[string]int {
 		}
 	}
 	return counts
+}
+
+func grcFindingIDs(findings []*ports.FindingRecord) []string {
+	ids := make([]string, 0, len(findings))
+	for _, finding := range findings {
+		if finding == nil {
+			continue
+		}
+		ids = append(ids, finding.ID)
+	}
+	return grcNonEmptyFindingIDs(ids)
+}
+
+func grcNonEmptyFindingIDs(ids []string) []string {
+	values := make([]string, 0, len(ids))
+	seen := map[string]struct{}{}
+	for _, raw := range ids {
+		id := strings.TrimSpace(raw)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		values = append(values, id)
+	}
+	return values
 }
 
 func grcFindingTitleMap(findings []*ports.FindingRecord) map[string]string {
