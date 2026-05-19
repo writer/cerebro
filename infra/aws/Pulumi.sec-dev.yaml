@@ -40,9 +40,9 @@ config:
   cerebro:apiMaxInstances: 1
   cerebro:postgresInstanceClass: db.t4g.micro
   cerebro:postgresAllocatedStorage: 20
-  cerebro:postgresBackupRetentionDays: 3
-  cerebro:postgresDeletionProtection: false
-  cerebro:postgresMultiAz: false
+  cerebro:postgresBackupRetentionDays: 14
+  cerebro:postgresDeletionProtection: true
+  cerebro:postgresMultiAz: true
   cerebro:retainLegacyJobsTableForDeletionProtectionTransition: true
   cerebro:natsCpu: 512
   cerebro:natsMemory: 1024

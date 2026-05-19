@@ -646,6 +646,18 @@ def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[st
                 default_value=0,
             ),
         ),
+        "source_runtime_watermark_lag": aws.cloudwatch.LogMetricFilter(
+            f"{name}-source-runtime-watermark-lag-filter",
+            name=f"{name}-source-runtime-watermark-lag",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "span_end" && $.name = "source_runtime.sync" && $.source_runtime_watermark_lag_seconds = * }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="SourceRuntimeWatermarkLagSeconds",
+                namespace=namespace,
+                value="$.source_runtime_watermark_lag_seconds",
+                dimensions={"RuntimeId": "$.runtime_id"},
+            ),
+        ),
         "orchestrator_completed_by_runtime": aws.cloudwatch.LogMetricFilter(
             f"{name}-orchestrator-completed-by-runtime-filter",
             name=f"{name}-orchestrator-completed-by-runtime",
@@ -783,7 +795,7 @@ def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[st
             f"{name}-graph-ingest-failures-filter",
             name=f"{name}-graph-ingest-failures",
             log_group_name=log_group_name,
-            pattern='{ $.status = "failed" && $.name = "graph.*" }',
+            pattern=_graph_ingest_failure_pattern(),
             metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
                 name="GraphIngestFailures",
                 namespace=namespace,
@@ -805,6 +817,10 @@ def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[st
         ),
     }
     return filters
+
+
+def _graph_ingest_failure_pattern() -> str:
+    return '{ $.kind = "span_end" && $.status = "failed" && ($.name = "graph.*" || $.name = "graph.ingest_runtime" || $.name = "orchestrator.graph_ingest") }'
 
 
 def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service: str, jetstream_stream_name: str) -> str:
@@ -892,6 +908,7 @@ def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service:
                     "metrics": [
                         [telemetry_namespace, "SourceRuntimeEventsAppended", {"stat": "Sum"}],
                         [".", "SourceRuntimePagesRead", {"stat": "Sum"}],
+                        [{"expression": f"SEARCH('{{{telemetry_namespace},RuntimeId}} MetricName=\"SourceRuntimeWatermarkLagSeconds\"', 'Maximum', 300)", "label": "Watermark lag", "id": "e1", "yAxis": "right"}],
                     ],
                     "period": 60,
                     "region": aws.get_region().region,

@@ -85,6 +85,28 @@ class MonitoringRuntimeTest(unittest.TestCase):
             self.assertNotIn("tenant_id", spec["pattern"])
             self.assertNotIn("route", spec["pattern"])
 
+    def test_graph_ingest_failure_filter_matches_runtime_and_orchestrator_spans(self) -> None:
+        pattern = monitoring._graph_ingest_failure_pattern()
+
+        self.assertIn('$.kind = "span_end"', pattern)
+        self.assertIn('$.status = "failed"', pattern)
+        self.assertIn('$.name = "graph.ingest_runtime"', pattern)
+        self.assertIn('$.name = "orchestrator.graph_ingest"', pattern)
+
+    def test_dashboard_searches_dimensioned_watermark_lag_metric(self) -> None:
+        class Region:
+            region = "us-east-1"
+
+        original_get_region = monitoring.aws.get_region
+        monitoring.aws.get_region = lambda: Region()
+        try:
+            body = monitoring._dashboard_body("cerebro-test", "alb", "tg", "cluster", "service", "CEREBRO_EVENTS")
+        finally:
+            monitoring.aws.get_region = original_get_region
+
+        self.assertIn("SourceRuntimeWatermarkLagSeconds", body)
+        self.assertIn("RuntimeId", body)
+
 
 if __name__ == "__main__":
     unittest.main()
