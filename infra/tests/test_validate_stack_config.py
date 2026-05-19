@@ -232,6 +232,19 @@ class ValidateStackConfigTest(unittest.TestCase):
         findings = self._validate(content)
         self.assertTrue(any(finding.severity == "error" and "notification route" in finding.message for finding in findings))
 
+    def test_alb_access_log_retention_must_be_positive(self) -> None:
+        content = BASE_STACK.replace("  cerebro:apiMaxInstances: 1\n", "  cerebro:apiMaxInstances: 1\n  cerebro:albAccessLogsRetentionDays: 0\n")
+        findings = self._validate(content)
+        self.assertTrue(any(finding.severity == "error" and "albAccessLogsRetentionDays" in finding.path for finding in findings))
+
+    def test_access_audit_alarm_thresholds_must_be_non_negative(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:apiMaxInstances: 1\n",
+            "  cerebro:apiMaxInstances: 1\n  cerebro:accessAuditDeniedAlarmThreshold: -1\n",
+        )
+        findings = self._validate(content)
+        self.assertTrue(any(finding.severity == "error" and "accessAuditDeniedAlarmThreshold" in finding.path for finding in findings))
+
     def test_cross_stack_image_tags_must_match(self) -> None:
         prod = Path("Pulumi.go-prod.yaml")
         dev = Path("Pulumi.sec-dev.yaml")

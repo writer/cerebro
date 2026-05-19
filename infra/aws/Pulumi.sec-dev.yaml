@@ -403,7 +403,8 @@ config:
     - "100.64.0.0/10"
   cerebro:logRetentionDays: 14
   cerebro:natGatewayPerAz: false
-  cerebro:enableAlbAccessLogs: false
+  cerebro:enableAlbAccessLogs: true
+  cerebro:albAccessLogsRetentionDays: 14
   cerebro:enableAlbDeletionProtection: false
   cerebro:enableKmsLogEncryption: false
   cerebro:enableTailscale: true

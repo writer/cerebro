@@ -80,6 +80,8 @@ def create_monitoring(
     log_retention_days: int = 30,
     jetstream_stream_name: str = "CEREBRO_EVENTS",
     jetstream_lag_alarm_threshold: int = 10000,
+    access_audit_denied_alarm_threshold: int = 0,
+    access_audit_auth_failure_alarm_threshold: int = 0,
     alarm_action_arns: list[str] = None,
     alarm_email_subscriptions: list[str] = None,
     orchestrator_schedules: list[dict] = None,
@@ -395,6 +397,26 @@ def create_monitoring(
             description="Finding evaluation run failures detected",
             alarm_actions=alarm_actions,
         )
+        if access_audit_denied_alarm_threshold > 0:
+            _custom_metric_alarm(
+                resource_name=f"{name}-access-audit-denied-alarm",
+                alarm_name=f"{name}-access-audit-denied",
+                namespace=telemetry_namespace,
+                metric_name="AccessAuditDenied",
+                threshold=access_audit_denied_alarm_threshold,
+                description="Cerebro API access denials exceeded the configured threshold",
+                alarm_actions=alarm_actions,
+            )
+        if access_audit_auth_failure_alarm_threshold > 0:
+            _custom_metric_alarm(
+                resource_name=f"{name}-access-audit-auth-failures-alarm",
+                alarm_name=f"{name}-access-audit-auth-failures",
+                namespace=telemetry_namespace,
+                metric_name="AccessAuditAuthFailures",
+                threshold=access_audit_auth_failure_alarm_threshold,
+                description="Cerebro API unauthenticated access attempts exceeded the configured threshold",
+                alarm_actions=alarm_actions,
+            )
 
     if jetstream_lag_alarm_threshold > 0:
         _custom_metric_alarm(
@@ -536,6 +558,55 @@ def _runtime_heartbeat_alarm(
     )
 
 
+def _access_audit_metric_filter_specs() -> dict[str, dict[str, str]]:
+    return {
+        "access_audit_events": {
+            "suffix": "access-audit-events",
+            "metric_name": "AccessAuditEvents",
+            "pattern": '{ $.kind = "event" && $.name = "cerebro.api.access" }',
+        },
+        "access_audit_allowed": {
+            "suffix": "access-audit-allowed",
+            "metric_name": "AccessAuditAllowed",
+            "pattern": '{ $.kind = "event" && $.name = "cerebro.api.access" && $.outcome = "allowed" }',
+        },
+        "access_audit_denied": {
+            "suffix": "access-audit-denied",
+            "metric_name": "AccessAuditDenied",
+            "pattern": '{ $.kind = "event" && $.name = "cerebro.api.access" && $.outcome = "denied" }',
+        },
+        "access_audit_auth_failures": {
+            "suffix": "access-audit-auth-failures",
+            "metric_name": "AccessAuditAuthFailures",
+            "pattern": '{ $.kind = "event" && $.name = "cerebro.api.access" && $.denial_reason = "unauthenticated" }',
+        },
+        "access_audit_forbidden": {
+            "suffix": "access-audit-forbidden",
+            "metric_name": "AccessAuditForbidden",
+            "pattern": '{ $.kind = "event" && $.name = "cerebro.api.access" && $.status = 403 }',
+        },
+    }
+
+
+def _create_access_audit_metric_filters(name: str, log_group_name: pulumi.Output[str], namespace: str) -> dict:
+    filters = {}
+    for key, spec in _access_audit_metric_filter_specs().items():
+        suffix = spec["suffix"]
+        filters[key] = aws.cloudwatch.LogMetricFilter(
+            f"{name}-{suffix}-filter",
+            name=f"{name}-{suffix}",
+            log_group_name=log_group_name,
+            pattern=spec["pattern"],
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name=spec["metric_name"],
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        )
+    return filters
+
+
 def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[str]) -> dict:
     namespace = f"Cerebro/{name}"
     filters = {
@@ -611,6 +682,7 @@ def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[st
                 dimensions={"RuntimeId": "$.runtime_id"},
             ),
         ),
+        **_create_access_audit_metric_filters(name, log_group_name, namespace),
         "graph_entities": aws.cloudwatch.LogMetricFilter(
             f"{name}-graph-entities-filter",
             name=f"{name}-graph-entities",
@@ -915,6 +987,33 @@ def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service:
                         [telemetry_namespace, "FindingEvaluationRunFailures", {"stat": "Sum"}],
                         [".", "GraphRuleRowsRead", {"stat": "Sum"}],
                         [".", "GraphRuleFindingsEmitted", {"stat": "Sum"}],
+                    ],
+                    "period": 300,
+                    "region": aws.get_region().region,
+                },
+            },
+            {
+                "type": "metric",
+                "x": 0, "y": 42, "width": 12, "height": 6,
+                "properties": {
+                    "title": "API Access Audit Volume",
+                    "metrics": [
+                        [telemetry_namespace, "AccessAuditEvents", {"stat": "Sum"}],
+                        [".", "AccessAuditAllowed", {"stat": "Sum"}],
+                    ],
+                    "period": 300,
+                    "region": aws.get_region().region,
+                },
+            },
+            {
+                "type": "metric",
+                "x": 12, "y": 42, "width": 12, "height": 6,
+                "properties": {
+                    "title": "API Access Denials",
+                    "metrics": [
+                        [telemetry_namespace, "AccessAuditDenied", {"stat": "Sum"}],
+                        [".", "AccessAuditAuthFailures", {"stat": "Sum"}],
+                        [".", "AccessAuditForbidden", {"stat": "Sum"}],
                     ],
                     "period": 300,
                     "region": aws.get_region().region,

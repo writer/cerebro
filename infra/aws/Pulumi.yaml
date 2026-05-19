@@ -196,6 +196,14 @@ config:
     type: integer
     default: 10000
     description: CloudWatch alarm threshold for aggregate JetStream consumer lag
+  cerebro:accessAuditDeniedAlarmThreshold:
+    type: integer
+    default: 0
+    description: Optional CloudWatch alarm threshold for API access denials per 5-minute period; 0 disables the alarm
+  cerebro:accessAuditAuthFailureAlarmThreshold:
+    type: integer
+    default: 0
+    description: Optional CloudWatch alarm threshold for unauthenticated API access attempts per 5-minute period; 0 disables the alarm
   cerebro:alarmActionArns:
     type: array
     items:
@@ -363,6 +371,14 @@ config:
     type: boolean
     default: true
     description: Enable AWS WAF
+  cerebro:enableAlbAccessLogs:
+    type: boolean
+    default: false
+    description: Enable ALB access logs to S3
+  cerebro:albAccessLogsRetentionDays:
+    type: integer
+    default: 30
+    description: Number of days to retain ALB access log objects in S3
   cerebro:albInternal:
     type: boolean
     default: true

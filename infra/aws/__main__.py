@@ -208,6 +208,7 @@ if api_max_instances > 1 and not _supports_cross_task_sync_lock(image_tag):
 log_retention_days = _config_int("logRetentionDays", 30)
 enable_waf = _config_bool("enableWaf", True)
 enable_alb_access_logs = _config_bool("enableAlbAccessLogs", is_production)
+alb_access_logs_retention_days = _config_int("albAccessLogsRetentionDays", log_retention_days)
 enable_alb_deletion_protection = _config_bool("enableAlbDeletionProtection", is_production)
 enable_kms_log_encryption = _config_bool("enableKmsLogEncryption", is_production)
 nat_gateway_per_az = _config_bool("natGatewayPerAz", is_production)
@@ -246,6 +247,8 @@ jetstream_stream_name = config.get("jetstreamStreamName") or "CEREBRO_EVENTS"
 enable_jetstream_lag_probe = _config_bool("enableJetstreamLagProbe", True)
 jetstream_lag_probe_interval_seconds = _config_int("jetstreamLagProbeIntervalSeconds", 60)
 jetstream_lag_alarm_threshold = _config_int("jetstreamLagAlarmThreshold", 10000)
+access_audit_denied_alarm_threshold = _config_int("accessAuditDeniedAlarmThreshold", 0)
+access_audit_auth_failure_alarm_threshold = _config_int("accessAuditAuthFailureAlarmThreshold", 0)
 alarm_action_arns = config.get_object("alarmActionArns") or []
 alarm_email_subscriptions = config.get_object("alarmEmailSubscriptions") or []
 
@@ -471,6 +474,7 @@ alb_stack = load_balancer.create_alb(
     container_port=8080,
     enable_deletion_protection=enable_alb_deletion_protection,
     enable_access_logs=enable_alb_access_logs,
+    access_logs_retention_days=alb_access_logs_retention_days,
     allowed_hostnames=[domain] if domain else None,
 )
 
@@ -488,6 +492,7 @@ if web_enabled:
         container_port=web_container_port,
         enable_deletion_protection=enable_alb_deletion_protection,
         enable_access_logs=enable_alb_access_logs,
+        access_logs_retention_days=alb_access_logs_retention_days,
         allowed_hostnames=[web_domain] if web_domain else None,
         oidc_auth=web_oidc_auth,
     )
@@ -616,6 +621,8 @@ monitoring_stack = monitoring.create_monitoring(
     log_retention_days=log_retention_days,
     jetstream_stream_name=jetstream_stream_name,
     jetstream_lag_alarm_threshold=jetstream_lag_alarm_threshold,
+    access_audit_denied_alarm_threshold=access_audit_denied_alarm_threshold,
+    access_audit_auth_failure_alarm_threshold=access_audit_auth_failure_alarm_threshold,
     alarm_action_arns=alarm_action_arns,
     alarm_email_subscriptions=alarm_email_subscriptions,
     orchestrator_schedules=orchestrator_schedules,

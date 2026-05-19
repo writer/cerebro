@@ -119,6 +119,7 @@ def create_alb(
 
     # Create ALB access logs bucket if enabled
     access_logs_bucket = None
+    access_logs_bucket_policy = None
     if enable_access_logs:
         caller = aws.get_caller_identity()
         region = aws.get_region()
@@ -140,7 +141,7 @@ def create_alb(
         )
 
         # ALB access logs bucket policy
-        aws.s3.BucketPolicy(
+        access_logs_bucket_policy = aws.s3.BucketPolicy(
             f"{name}-alb-logs-policy",
             bucket=access_logs_bucket.id,
             policy=access_logs_bucket.arn.apply(
@@ -233,6 +234,7 @@ def create_alb(
             else None
         ),
         tags={"Name": f"{name}-alb"},
+        opts=pulumi.ResourceOptions(depends_on=[access_logs_bucket_policy]) if access_logs_bucket_policy else None,
     )
 
     target_group = aws.lb.TargetGroup(

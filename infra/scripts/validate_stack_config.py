@@ -265,6 +265,15 @@ def validate_stack(path: Path) -> list[Finding]:
             )
         )
 
+    alb_access_logs_retention_days = config.get("albAccessLogsRetentionDays", 30)
+    if not isinstance(alb_access_logs_retention_days, int) or alb_access_logs_retention_days < 1:
+        findings.append(_finding("error", stack, "cerebro:albAccessLogsRetentionDays", "must be a positive integer"))
+
+    for key in ("accessAuditDeniedAlarmThreshold", "accessAuditAuthFailureAlarmThreshold"):
+        threshold = config.get(key, 0)
+        if not isinstance(threshold, int) or threshold < 0:
+            findings.append(_finding("error", stack, f"cerebro:{key}", "must be a non-negative integer"))
+
     alarm_action_arns = config.get("alarmActionArns") or []
     if alarm_action_arns and not isinstance(alarm_action_arns, list):
         findings.append(_finding("error", stack, "cerebro:alarmActionArns", "must be a list"))
