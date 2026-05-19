@@ -205,6 +205,22 @@ class ValidateStackConfigTest(unittest.TestCase):
         )
         self.assertTrue(any("unknown runtime id" in message for message in self._messages(content)))
 
+    def test_sec_dev_high_contention_schedule_graph_page_limit_is_bounded(self) -> None:
+        content = BASE_STACK.replace(
+            "        - runtime_id=writer-okta-audit\n",
+            "        - runtime_id=writer-okta-audit\n        - graph_page_limit=100\n",
+        )
+        findings = self._validate(content, name="Pulumi.sec-dev.yaml")
+        self.assertTrue(any(finding.severity == "error" and "graph_page_limit <= 20" in finding.message for finding in findings))
+
+    def test_sec_dev_global_graph_page_limit_is_bounded_for_high_contention_runtimes(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:orchestratorSchedules:",
+            "  cerebro:orchestratorCommand:\n    - orchestrator\n    - run\n    - graph_page_limit=100\n  cerebro:orchestratorSchedules:",
+        )
+        findings = self._validate(content, name="Pulumi.sec-dev.yaml")
+        self.assertTrue(any(finding.severity == "error" and "graph_page_limit <= 20" in finding.message for finding in findings))
+
     def test_prod_guardrails_are_errors(self) -> None:
         content = BASE_STACK.replace("  cerebro:postgresDeletionProtection: true", "  cerebro:postgresDeletionProtection: false")
         self.assertTrue(any("deletion protection" in message for message in self._messages(content)))
