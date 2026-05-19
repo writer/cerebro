@@ -134,6 +134,17 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 	if len(payload.Connectors) != 2 {
 		t.Fatalf("connectors len = %d, want 2", len(payload.Connectors))
 	}
+	connectors := map[string]grcConnector{}
+	for _, connector := range payload.Connectors {
+		connectors[connector.RuntimeID] = connector
+	}
+	githubConnector := connectors["writer-github"]
+	if githubConnector.Status != "healthy" || githubConnector.Freshness == "stale" {
+		t.Fatalf("github connector sync health = %q/%q, want healthy non-stale despite old checkpoint", githubConnector.Status, githubConnector.Freshness)
+	}
+	if githubConnector.WatermarkFreshness != "stale" || githubConnector.WatermarkLagSeconds == nil {
+		t.Fatalf("github connector watermark = %q/%v, want stale lag surfaced separately", githubConnector.WatermarkFreshness, githubConnector.WatermarkLagSeconds)
+	}
 	if got := len(store.findingListRequest.RuntimeIDs); got != 2 {
 		t.Fatalf("batched finding runtime count = %d, want 2", got)
 	}
@@ -149,11 +160,58 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 	if !store.findingEvidenceListRequest.CreatedOrder {
 		t.Fatalf("GRC dashboard did not request created-at evidence ordering")
 	}
-	if payload.Summary.StaleConnectors != 1 {
-		t.Fatalf("stale connectors = %d, want 1", payload.Summary.StaleConnectors)
+	if payload.Summary.StaleConnectors != 0 {
+		t.Fatalf("stale connectors = %d, want 0", payload.Summary.StaleConnectors)
 	}
 	if payload.Connectors[0].CheckpointWatermark == nil && payload.Connectors[1].CheckpointWatermark == nil {
 		t.Fatalf("connector checkpoint watermarks were not surfaced")
+	}
+}
+
+func TestGRCConnectorHealthUsesLastSyncedAtSeparatelyFromWatermark(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	runtimes := []*cerebrov1.SourceRuntime{
+		{
+			Id:           "historical-backfill",
+			SourceId:     "okta",
+			TenantId:     "tenant",
+			LastSyncedAt: timestamppb.New(now.Add(-10 * time.Minute)),
+			Checkpoint:   &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now.Add(-90 * 24 * time.Hour))},
+		},
+		{
+			Id:           "stalled-sync",
+			SourceId:     "github",
+			TenantId:     "tenant",
+			LastSyncedAt: timestamppb.New(now.Add(-48 * time.Hour)),
+			Checkpoint:   &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now.Add(-10 * time.Minute))},
+		},
+	}
+
+	connectors := grcConnectorItems(runtimes)
+	byID := map[string]grcConnector{}
+	for _, connector := range connectors {
+		byID[connector.RuntimeID] = connector
+	}
+
+	historical := byID["historical-backfill"]
+	if historical.Status != "healthy" || historical.Freshness != "fresh" {
+		t.Fatalf("historical sync health = %q/%q, want healthy/fresh", historical.Status, historical.Freshness)
+	}
+	if historical.WatermarkFreshness != "stale" || historical.WatermarkLagSeconds == nil {
+		t.Fatalf("historical watermark health = %q/%v, want stale lag surfaced", historical.WatermarkFreshness, historical.WatermarkLagSeconds)
+	}
+
+	stalled := byID["stalled-sync"]
+	if stalled.Status != "stale" || stalled.Freshness != "stale" {
+		t.Fatalf("stalled sync health = %q/%q, want stale/stale", stalled.Status, stalled.Freshness)
+	}
+	if stalled.WatermarkFreshness != "fresh" {
+		t.Fatalf("stalled watermark freshness = %q, want fresh", stalled.WatermarkFreshness)
+	}
+
+	summary := grcBuildSummary(nil, nil, nil, runtimes, nil, nil)
+	if summary.StaleConnectors != 1 {
+		t.Fatalf("summary stale connectors = %d, want 1", summary.StaleConnectors)
 	}
 }
 

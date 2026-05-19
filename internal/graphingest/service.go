@@ -447,22 +447,22 @@ func (s *Service) ingestSource(ctx context.Context, request sourceRequest) (*Ing
 			Cursor:   cursor,
 		})
 		if err != nil {
-			return nil, err
+			return result, err
 		}
 		result.PagesRead++
 		if recordProjector, ok := s.projector.(projectionRecordProjector); ok {
 			projected, err := s.projectResponseCoalesced(ctx, request, response, recordProjector)
-			if err != nil {
-				return nil, err
-			}
 			result.EventsRead += projected.EventsRead
 			result.EntitiesProjected += projected.EntitiesProjected
 			result.LinksProjected += projected.LinksProjected
+			if err != nil {
+				return result, err
+			}
 		} else {
 			for _, event := range response.GetEvents() {
 				projected, err := s.projector.Project(ctx, ingestEvent(event, request.TenantID, request.RuntimeID))
 				if err != nil {
-					return nil, fmt.Errorf("project source event %q: %w", event.GetId(), err)
+					return result, fmt.Errorf("project source event %q: %w", event.GetId(), err)
 				}
 				result.EventsRead++
 				result.EntitiesProjected += projected.EntitiesProjected
@@ -472,7 +472,7 @@ func (s *Service) ingestSource(ctx context.Context, request sourceRequest) (*Ing
 		cursor = response.GetNextCursor()
 		if checkpointStore != nil {
 			if err := persistCheckpoint(ctx, checkpointStore, request, result, response, cursor); err != nil {
-				return nil, err
+				return result, err
 			}
 		}
 		if cursor == nil {
@@ -485,7 +485,7 @@ func (s *Service) ingestSource(ctx context.Context, request sourceRequest) (*Ing
 	if hasCounts {
 		counts, err := countsStore.Counts(ctx)
 		if err != nil {
-			return nil, err
+			return result, err
 		}
 		result.GraphNodesAfter = counts.Nodes
 		result.GraphLinksAfter = counts.Relations

@@ -10,6 +10,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 )
 
@@ -52,13 +53,22 @@ func (s *stubRunStore) ListIngestRuns(_ context.Context, filter graphstore.Inges
 
 type recordProjectorFunc func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)
 
+func (f recordProjectorFunc) Project(_ context.Context, event *cerebrov1.EventEnvelope) (ports.ProjectionResult, error) {
+	entities, links, err := f(event)
+	return ports.ProjectionResult{
+		EntitiesProjected: uint32(len(entities)),
+		LinksProjected:    uint32(len(links)),
+	}, err
+}
+
 func (f recordProjectorFunc) ProjectRecords(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return f(event)
 }
 
 type recordingProjectionGraphStore struct {
-	entities map[string]*ports.ProjectedEntity
-	links    map[string]*ports.ProjectedLink
+	entities      map[string]*ports.ProjectedEntity
+	links         map[string]*ports.ProjectedLink
+	upsertLinkErr error
 }
 
 func (s *recordingProjectionGraphStore) Ping(context.Context) error { return nil }
@@ -72,11 +82,33 @@ func (s *recordingProjectionGraphStore) UpsertProjectedEntity(_ context.Context,
 }
 
 func (s *recordingProjectionGraphStore) UpsertProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
+	if s.upsertLinkErr != nil {
+		return s.upsertLinkErr
+	}
 	if s.links == nil {
 		s.links = map[string]*ports.ProjectedLink{}
 	}
 	s.links[link.FromURN+"|"+link.Relation+"|"+link.ToURN] = link
 	return nil
+}
+
+type singlePageSource struct {
+	id     string
+	events []*cerebrov1.EventEnvelope
+}
+
+func (s *singlePageSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: s.id, Name: "Single Page"}
+}
+
+func (s *singlePageSource) Check(context.Context, sourcecdk.Config) error { return nil }
+
+func (s *singlePageSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (s *singlePageSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	return sourcecdk.Pull{Events: s.events}, nil
 }
 
 func TestSensitiveConfigKeyTreatsSecretMarkersAsSensitive(t *testing.T) {
@@ -336,6 +368,56 @@ func TestMergeStringMapClearsOlderObservationMetadataMissingFromNewerAt(t *testi
 		if got, exists := merged[key]; exists {
 			t.Fatalf("merged[%s] = %q, want missing because newer observation omitted it", key, got)
 		}
+	}
+}
+
+func TestIngestSourceReturnsPartialCountersOnProjectionFailure(t *testing.T) {
+	upsertErr := errors.New("neo4j timeout")
+	registry, err := sourcecdk.NewRegistry(&singlePageSource{
+		id: "partial",
+		events: []*cerebrov1.EventEnvelope{{
+			Id:       "event-1",
+			SourceId: "partial",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &recordingProjectionGraphStore{upsertLinkErr: upsertErr}
+	projector := recordProjectorFunc(func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		return []*ports.ProjectedEntity{{
+				URN:        "urn:cerebro:tenant:partial_entity:one",
+				TenantID:   event.GetTenantId(),
+				SourceID:   event.GetSourceId(),
+				RuntimeID:  event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
+				EntityType: "partial.entity",
+				Label:      "one",
+			}},
+			[]*ports.ProjectedLink{{
+				TenantID:  event.GetTenantId(),
+				SourceID:  event.GetSourceId(),
+				RuntimeID: event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
+				FromURN:   "urn:cerebro:tenant:partial_entity:one",
+				Relation:  "related_to",
+				ToURN:     "urn:cerebro:tenant:partial_entity:one",
+			}}, nil
+	})
+	service := New(registry, nil, projector, store)
+
+	result, err := service.ingestSource(context.Background(), sourceRequest{
+		SourceID:  "partial",
+		RuntimeID: "tenant-partial",
+		TenantID:  "tenant",
+		PageLimit: 1,
+	})
+	if !errors.Is(err, upsertErr) {
+		t.Fatalf("ingestSource() error = %v, want %v", err, upsertErr)
+	}
+	if result == nil {
+		t.Fatal("ingestSource() result = nil, want partial counters")
+	}
+	if result.PagesRead != 1 || result.EventsRead != 1 || result.EntitiesProjected != 1 || result.LinksProjected != 0 {
+		t.Fatalf("partial counters = pages %d events %d entities %d links %d, want 1/1/1/0", result.PagesRead, result.EventsRead, result.EntitiesProjected, result.LinksProjected)
 	}
 }
 
