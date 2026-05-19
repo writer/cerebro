@@ -1,6 +1,9 @@
 config:
   aws:region: us-east-1
   cerebro:environment: go-production
+  cerebro:domain: cerebro.adm.prod.writer.com
+  cerebro:certificateDomain: cerebro.adm.prod.writer.com
+  cerebro:certificateImportArn: arn:aws:acm:us-east-1:837279440628:certificate/7fcbcda8-da84-4780-8065-6591ae9de3de
   cerebro:ecrBaseUri: 837279440628.dkr.ecr.us-east-1.amazonaws.com/cerebro
   cerebro:imageTag: v2.1.39
   cerebro:useExistingVpc: true
