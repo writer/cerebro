@@ -8,8 +8,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -1626,6 +1628,188 @@ func TestAuthMiddlewareProtectsNonPublicRoutes(t *testing.T) {
 	_ = authResp.Body.Close()
 	if authResp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /sources with auth status = %d, want %d", authResp.StatusCode, http.StatusOK)
+	}
+}
+
+func TestAuthMiddlewareEmitsAccessAuditEvents(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APIKeys: []config.APIKey{{
+				Key:       "test-key",
+				Principal: "ci",
+				TenantID:  "writer",
+			}},
+		},
+	}
+	app := New(cfg, Dependencies{}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	stderr := captureBootstrapStderr(t, func() {
+		req, err := http.NewRequest(http.MethodGet, server.URL+"/sources?tenant_id=writer&api_key=leaked", nil)
+		if err != nil {
+			t.Fatalf("NewRequest: %v", err)
+		}
+		req.Header.Set("Authorization", "Bearer test-key")
+		resp, err := server.Client().Do(req)
+		if err != nil {
+			t.Fatalf("GET /sources with auth error = %v", err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET /sources with auth status = %d, want %d", resp.StatusCode, http.StatusOK)
+		}
+	})
+	payload := decodeBootstrapTelemetryPayload(t, stderr)
+	for key, want := range map[string]any{
+		"kind":      "event",
+		"name":      "cerebro.api.access",
+		"outcome":   "allowed",
+		"status":    float64(http.StatusOK),
+		"method":    http.MethodGet,
+		"route":     "GET /sources",
+		"tenant_id": "writer",
+		"principal": "ci",
+		"auth_mode": "api_key",
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("audit payload[%q] = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	if _, ok := payload["duration_ms"].(float64); !ok {
+		t.Fatalf("audit payload duration_ms = %#v, want numeric; payload=%#v", payload["duration_ms"], payload)
+	}
+	for _, forbidden := range []string{"test-key", "leaked", "api_key=leaked", "Authorization"} {
+		if strings.Contains(stderr, forbidden) {
+			t.Fatalf("audit log leaked %q in %s", forbidden, stderr)
+		}
+	}
+}
+
+func TestAuthMiddlewareEmitsDeniedAccessAuditEvents(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APIKeys: []config.APIKey{{
+				Key:       "test-key",
+				Principal: "ci",
+				TenantID:  "writer",
+			}},
+		},
+	}
+	app := New(cfg, Dependencies{}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	unauthStderr := captureBootstrapStderr(t, func() {
+		resp, err := server.Client().Get(server.URL + "/sources?tenant_id=writer")
+		if err != nil {
+			t.Fatalf("GET /sources without auth error = %v", err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("GET /sources without auth status = %d, want %d", resp.StatusCode, http.StatusUnauthorized)
+		}
+	})
+	unauthPayload := decodeBootstrapTelemetryPayload(t, unauthStderr)
+	for key, want := range map[string]any{
+		"name":          "cerebro.api.access",
+		"outcome":       "denied",
+		"status":        float64(http.StatusUnauthorized),
+		"route":         "GET /sources",
+		"tenant_id":     "writer",
+		"denial_reason": "unauthenticated",
+	} {
+		if got := unauthPayload[key]; got != want {
+			t.Fatalf("unauth audit payload[%q] = %#v, want %#v; payload=%#v", key, got, want, unauthPayload)
+		}
+	}
+	if _, ok := unauthPayload["principal"]; ok {
+		t.Fatalf("unauth audit payload included principal: %#v", unauthPayload)
+	}
+
+	forbiddenStderr := captureBootstrapStderr(t, func() {
+		req, err := http.NewRequest(http.MethodGet, server.URL+"/sources?tenant_id=other", nil)
+		if err != nil {
+			t.Fatalf("NewRequest forbidden: %v", err)
+		}
+		req.Header.Set("Authorization", "Bearer test-key")
+		resp, err := server.Client().Do(req)
+		if err != nil {
+			t.Fatalf("GET /sources forbidden error = %v", err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Fatalf("GET /sources forbidden status = %d, want %d", resp.StatusCode, http.StatusForbidden)
+		}
+	})
+	forbiddenPayload := decodeBootstrapTelemetryPayload(t, forbiddenStderr)
+	for key, want := range map[string]any{
+		"name":                "cerebro.api.access",
+		"outcome":             "denied",
+		"status":              float64(http.StatusForbidden),
+		"route":               "GET /sources",
+		"tenant_id":           "other",
+		"principal":           "ci",
+		"principal_tenant_id": "writer",
+		"auth_mode":           "api_key",
+		"denial_reason":       "tenant_forbidden",
+	} {
+		if got := forbiddenPayload[key]; got != want {
+			t.Fatalf("forbidden audit payload[%q] = %#v, want %#v; payload=%#v", key, got, want, forbiddenPayload)
+		}
+	}
+	if strings.Contains(forbiddenStderr, "test-key") {
+		t.Fatalf("forbidden audit log leaked bearer token: %s", forbiddenStderr)
+	}
+}
+
+func TestAuthMiddlewareSkipsAccessAuditForPublicRoutes(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth:            config.AuthConfig{Enabled: true},
+	}
+	app := New(cfg, Dependencies{}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	stderr := captureBootstrapStderr(t, func() {
+		resp, err := server.Client().Get(server.URL + "/health")
+		if err != nil {
+			t.Fatalf("GET /health error = %v", err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET /health status = %d, want %d", resp.StatusCode, http.StatusOK)
+		}
+	})
+	if strings.Contains(stderr, "cerebro.api.access") {
+		t.Fatalf("public route emitted access audit event: %s", stderr)
+	}
+}
+
+func TestAccessAuditOutcomeClassifiesDownstreamAuthorizationFailures(t *testing.T) {
+	outcome, reason := accessAuditOutcome(http.StatusForbidden, "allowed", "")
+	if outcome != "denied" || reason != "authorization_failed" {
+		t.Fatalf("accessAuditOutcome(403) = (%q, %q), want denied authorization_failed", outcome, reason)
+	}
+	outcome, reason = accessAuditOutcome(http.StatusInternalServerError, "allowed", "")
+	if outcome != "error" || reason != "" {
+		t.Fatalf("accessAuditOutcome(500) = (%q, %q), want error empty reason", outcome, reason)
 	}
 }
 
@@ -5608,4 +5792,39 @@ func cloneEntityRef(ref *cerebrov1.EntityRef) *cerebrov1.EntityRef {
 		return nil
 	}
 	return proto.Clone(ref).(*cerebrov1.EntityRef)
+}
+
+func captureBootstrapStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	oldStderr := os.Stderr
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe stderr: %v", err)
+	}
+	os.Stderr = writer
+	defer func() {
+		os.Stderr = oldStderr
+	}()
+	fn()
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close stderr writer: %v", err)
+	}
+	payload, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("read stderr: %v", err)
+	}
+	return string(payload)
+}
+
+func decodeBootstrapTelemetryPayload(t *testing.T, stderr string) map[string]any {
+	t.Helper()
+	lines := strings.Split(strings.TrimSpace(stderr), "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
+		t.Fatal("telemetry stderr is empty")
+	}
+	payload := map[string]any{}
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &payload); err != nil {
+		t.Fatalf("unmarshal telemetry payload %q: %v", lines[len(lines)-1], err)
+	}
+	return payload
 }

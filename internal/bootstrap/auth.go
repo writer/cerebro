@@ -20,6 +20,7 @@ import (
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/sourceconfig"
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 var errTenantForbidden = errors.New("tenant forbidden")
@@ -32,6 +33,7 @@ type authPrincipal struct {
 	TenantID       string
 	CredentialID   string
 	ClientID       string
+	AuthMode       string
 	AllowedTenants []string
 	Scopes         []string
 	Groups         []string
@@ -52,22 +54,36 @@ func authMiddleware(cfg config.AuthConfig, next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		started := time.Now()
+		recorder := &accessAuditResponseWriter{ResponseWriter: w}
+		principal := authPrincipal{}
+		outcome := "denied"
+		denialReason := ""
+		defer func() {
+			status := recorder.Status()
+			finalOutcome, finalDenialReason := accessAuditOutcome(status, outcome, denialReason)
+			emitAccessAuditEvent(r, principal, status, time.Since(started), finalOutcome, finalDenialReason)
+		}()
 		principal, ok := authenticateRequest(cfg, r)
 		if !ok {
-			writeAuthError(w, http.StatusUnauthorized, "unauthorized")
+			denialReason = "unauthenticated"
+			writeAuthError(recorder, http.StatusUnauthorized, "unauthorized")
 			return
 		}
 		if tenantID := requestTenantHint(r); tenantID != "" && !tenantAllowed(cfg, principal, tenantID) {
-			writeAuthError(w, http.StatusForbidden, "tenant forbidden")
+			denialReason = "tenant_forbidden"
+			writeAuthError(recorder, http.StatusForbidden, "tenant forbidden")
 			return
 		}
 		auth := authContext{cfg: cfg, principal: principal}
 		if err := authorizeHTTPRequestScope(auth, r); err != nil {
-			writeAuthError(w, http.StatusForbidden, "scope forbidden")
+			denialReason = "scope_forbidden"
+			writeAuthError(recorder, http.StatusForbidden, "scope forbidden")
 			return
 		}
+		outcome = "allowed"
 		ctx := context.WithValue(r.Context(), authContextKey{}, auth)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		next.ServeHTTP(recorder, r.WithContext(ctx))
 	})
 }
 
@@ -106,7 +122,7 @@ func authenticateRequest(cfg config.AuthConfig, r *http.Request) (authPrincipal,
 	}
 	for _, key := range cfg.APIKeys {
 		if constantTimeEqual(token, key.Key) {
-			return authPrincipal{Name: key.Principal, TenantID: key.TenantID}, true
+			return authPrincipal{Name: key.Principal, TenantID: key.TenantID, AuthMode: "api_key"}, true
 		}
 	}
 	for _, credential := range cfg.APICredentials {
@@ -116,6 +132,7 @@ func authenticateRequest(cfg config.AuthConfig, r *http.Request) (authPrincipal,
 				TenantID:       credential.TenantID,
 				CredentialID:   credential.ID,
 				ClientID:       credential.ClientID,
+				AuthMode:       "api_credential",
 				AllowedTenants: credential.AllowedTenants,
 				Scopes:         credential.Scopes,
 			}, true
@@ -208,6 +225,7 @@ func authenticateCapabilityToken(cfg config.AuthConfig, token string, now time.T
 		TenantID:       tenantID,
 		CredentialID:   strings.TrimSpace(claims.CredentialID),
 		ClientID:       strings.TrimSpace(claims.ClientID),
+		AuthMode:       "capability_token",
 		AllowedTenants: allowedTenants,
 		Scopes:         scopes,
 		Groups:         normalizeAuthList(claims.Groups),
@@ -600,4 +618,238 @@ func writeAuthError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+type accessAuditResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *accessAuditResponseWriter) WriteHeader(status int) {
+	if w.status == 0 {
+		w.status = status
+		w.ResponseWriter.WriteHeader(status)
+	}
+}
+
+func (w *accessAuditResponseWriter) Write(data []byte) (int, error) {
+	if w.status == 0 {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(data)
+}
+
+func (w *accessAuditResponseWriter) Status() int {
+	if w == nil || w.status == 0 {
+		return http.StatusOK
+	}
+	return w.status
+}
+
+func (w *accessAuditResponseWriter) Unwrap() http.ResponseWriter {
+	if w == nil {
+		return nil
+	}
+	return w.ResponseWriter
+}
+
+func emitAccessAuditEvent(r *http.Request, principal authPrincipal, status int, duration time.Duration, outcome string, denialReason string) {
+	if r == nil {
+		return
+	}
+	attrs := telemetry.Attrs(
+		telemetry.Field{Key: "outcome", Value: outcome},
+		telemetry.Field{Key: "status", Value: status},
+		telemetry.Field{Key: "method", Value: r.Method},
+		telemetry.Field{Key: "route", Value: accessAuditRoute(r)},
+		telemetry.Field{Key: "duration_ms", Value: duration.Milliseconds()},
+	)
+	if remoteAddr := strings.TrimSpace(r.RemoteAddr); remoteAddr != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "remote_addr", Value: remoteAddr})
+	}
+	if tenantID := firstNonEmpty(requestTenantHint(r), principal.TenantID); tenantID != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "tenant_id", Value: tenantID})
+	}
+	if principal.Name != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "principal", Value: principal.Name})
+	}
+	if tenantHint := requestTenantHint(r); tenantHint != "" && principal.TenantID != "" && principal.TenantID != tenantHint {
+		attrs = attrs.WithField(telemetry.Field{Key: "principal_tenant_id", Value: principal.TenantID})
+	}
+	if principal.AuthMode != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "auth_mode", Value: principal.AuthMode})
+	}
+	if principal.CredentialID != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "credential_id", Value: principal.CredentialID})
+	}
+	if principal.ClientID != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "client_id", Value: principal.ClientID})
+	}
+	if procedure := accessAuditConnectProcedure(r.URL.Path); procedure != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "connect_procedure", Value: procedure})
+	}
+	if denialReason != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "denial_reason", Value: denialReason})
+	}
+	telemetry.Event(r.Context(), "cerebro.api.access", attrs)
+}
+
+func accessAuditOutcome(status int, outcome string, denialReason string) (string, string) {
+	switch status {
+	case http.StatusUnauthorized:
+		return "denied", firstNonEmpty(denialReason, "unauthenticated")
+	case http.StatusForbidden:
+		return "denied", firstNonEmpty(denialReason, "authorization_failed")
+	default:
+		if status >= 500 {
+			return "error", denialReason
+		}
+		if status >= 400 {
+			return "rejected", denialReason
+		}
+		return outcome, denialReason
+	}
+}
+
+func accessAuditRoute(r *http.Request) string {
+	if r == nil || r.URL == nil {
+		return "unknown"
+	}
+	path := strings.TrimSpace(r.URL.Path)
+	if isConnectProcedurePath(path) {
+		return "/cerebro.v1.BootstrapService/{Procedure}"
+	}
+	if pattern := strings.TrimSpace(r.Pattern); pattern != "" {
+		if strings.Contains(pattern, " ") {
+			return pattern
+		}
+		return strings.TrimSpace(r.Method + " " + pattern)
+	}
+	return fallbackAccessAuditRoute(r.Method, path)
+}
+
+func accessAuditConnectProcedure(path string) string {
+	if !isConnectProcedurePath(path) {
+		return ""
+	}
+	return strings.Trim(strings.TrimPrefix(path, "/"), "/")
+}
+
+func fallbackAccessAuditRoute(method string, path string) string {
+	prefix := strings.TrimSpace(method) + " "
+	switch {
+	case path == "/sources":
+		return prefix + "/sources"
+	case strings.HasPrefix(path, "/sources/"):
+		parts := strings.Split(strings.Trim(path, "/"), "/")
+		if len(parts) == 3 {
+			switch parts[2] {
+			case "check", "discover", "read":
+				return prefix + "/sources/{sourceID}/" + parts[2]
+			default:
+				return prefix + "/sources/{sourceID}/{subresource}"
+			}
+		}
+	case path == "/source-runtimes":
+		return prefix + "/source-runtimes"
+	case strings.HasPrefix(path, "/source-runtimes/"):
+		return prefix + fallbackRuntimeRoute(path)
+	case path == "/reports":
+		return prefix + "/reports"
+	case strings.HasPrefix(path, "/report-runs/"):
+		return prefix + "/report-runs/{runID}"
+	case path == "/finding-rules":
+		return prefix + "/finding-rules"
+	case strings.HasPrefix(path, "/findings/"):
+		return prefix + fallbackFindingRoute(path)
+	case strings.HasPrefix(path, "/finding-evaluation-runs/"):
+		return prefix + "/finding-evaluation-runs/{runID}"
+	case strings.HasPrefix(path, "/finding-evidence/"):
+		return prefix + "/finding-evidence/{evidenceID}"
+	case strings.HasPrefix(path, "/grc/entities/") && strings.HasSuffix(path, "/impact"):
+		return prefix + "/grc/entities/{entityID}/impact"
+	case strings.HasPrefix(path, "/grc/audit-packets/"):
+		return prefix + "/grc/audit-packets/{packetID}"
+	case strings.HasPrefix(path, "/grc/"):
+		switch path {
+		case "/grc/dashboard", "/grc/findings", "/grc/controls", "/grc/evidence":
+			return prefix + path
+		default:
+			return prefix + "/grc/{subresource}"
+		}
+	case strings.HasPrefix(path, "/platform/graph/ingest-runs/"):
+		return prefix + "/platform/graph/ingest-runs/{runID}"
+	case strings.HasPrefix(path, "/graph/ingest-runs/"):
+		return prefix + "/graph/ingest-runs/{runID}"
+	case isKnownStaticAccessPath(path):
+		return prefix + path
+	}
+	return prefix + "unmatched"
+}
+
+func fallbackRuntimeRoute(path string) string {
+	suffix := strings.TrimPrefix(path, "/source-runtimes/")
+	if !strings.Contains(suffix, "/") {
+		return "/source-runtimes/{runtimeID}"
+	}
+	parts := strings.SplitN(suffix, "/", 2)
+	switch parts[1] {
+	case "sync", "graph-ingest-runs", "claims", "findings", "finding-evidence", "finding-evaluation-runs":
+		return "/source-runtimes/{runtimeID}/" + parts[1]
+	case "finding-rules/evaluate":
+		return "/source-runtimes/{runtimeID}/finding-rules/evaluate"
+	case "findings/evaluate":
+		return "/source-runtimes/{runtimeID}/findings/evaluate"
+	default:
+		return "/source-runtimes/{runtimeID}/{subresource}"
+	}
+}
+
+func fallbackFindingRoute(path string) string {
+	suffix := strings.TrimPrefix(path, "/findings/")
+	if !strings.Contains(suffix, "/") {
+		return "/findings/{findingID}"
+	}
+	parts := strings.SplitN(suffix, "/", 2)
+	switch parts[1] {
+	case "resolve", "suppress", "assign", "due", "notes", "tickets":
+		return "/findings/{findingID}/" + parts[1]
+	default:
+		return "/findings/{findingID}/{subresource}"
+	}
+}
+
+func isKnownStaticAccessPath(path string) bool {
+	switch path {
+	case "/platform/knowledge/decisions",
+		"/platform/knowledge/actions",
+		"/platform/knowledge/actions/recommendation",
+		"/graph/actuate/recommendation",
+		"/platform/knowledge/outcomes",
+		"/graph/write/outcome",
+		"/platform/workflow/replay",
+		"/platform/graph/neighborhood",
+		"/graph/neighborhood",
+		"/platform/graph/impact/package",
+		"/graph/impact/package",
+		"/platform/graph/impact/asset",
+		"/graph/impact/asset",
+		"/platform/graph/aws-public-endpoint-insights",
+		"/platform/graph/ingest-health",
+		"/graph/ingest-health",
+		"/platform/graph/ingest-runs",
+		"/graph/ingest-runs":
+		return true
+	default:
+		return false
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
