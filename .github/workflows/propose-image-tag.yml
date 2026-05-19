@@ -79,8 +79,12 @@ jobs:
             exit 1
           fi
 
-          docker manifest inspect "${GHCR_IMAGE}:${tag}" >/dev/null
-          digest="$(docker manifest inspect --verbose "${GHCR_IMAGE}:${tag}" | jq -r 'if type == "array" then .[0].Descriptor.digest // empty else .Descriptor.digest // .config.digest // empty end')"
+          docker buildx imagetools inspect "${GHCR_IMAGE}:${tag}" >/dev/null
+          digest="$(docker buildx imagetools inspect "${GHCR_IMAGE}:${tag}" --format '{{.Manifest.Digest}}')"
+          if [ -z "${digest}" ]; then
+            echo "Could not resolve manifest-list digest for ${GHCR_IMAGE}:${tag}" >&2
+            exit 1
+          fi
 
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "digest=${digest}" >> "$GITHUB_OUTPUT"
@@ -103,14 +107,14 @@ jobs:
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
             "${image_ref}" > cosign-verify.json
 
-          "${RUNNER_TEMP}/cosign/cosign" tree "${image_ref}" > cosign-tree.txt
-          if ! grep -Eq 'Attestation|SBOM|Provenance' cosign-tree.txt; then
-            echo "No SBOM/provenance attestations found for ${image_ref}" >&2
-            cat cosign-tree.txt >&2
+          docker buildx imagetools inspect "${image_ref}" --raw > image-index.json
+          if ! jq -e '.manifests[]? | select(.annotations["vnd.docker.reference.type"] == "attestation-manifest")' image-index.json >/dev/null; then
+            echo "No SBOM/provenance attestation manifests found for ${image_ref}" >&2
+            cat image-index.json >&2
             exit 1
           fi
 
-          echo "verify_summary=signature and attestation references verified" >> "$GITHUB_OUTPUT"
+          echo "verify_summary=signature and build attestations verified" >> "$GITHUB_OUTPUT"
 
       - name: Update stack config
         id: update
