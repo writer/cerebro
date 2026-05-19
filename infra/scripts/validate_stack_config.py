@@ -24,6 +24,14 @@ COSMO_RUNTIME_FAMILIES = {
     "writer-cosmo-fact": "fact",
     "writer-cosmo-survey-feedback": "survey_feedback",
 }
+SEC_DEV_HIGH_CONTENTION_GRAPH_RUNTIMES = {
+    "writer-github-audit",
+    "writer-github-audit-writerinternal",
+    "writer-okta-audit",
+    "writer-okta-audit-2026-04",
+    "writer-okta-audit-2026-q1",
+}
+SEC_DEV_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT = 20
 
 
 @dataclass(frozen=True)
@@ -104,6 +112,25 @@ def _runtime_id_from_command(command: Any) -> str | None:
         if text.startswith("runtime_id="):
             runtime_id = text.split("=", 1)[1].strip()
             return runtime_id or None
+    return None
+
+
+def _uint_arg_from_command(command: Any, key: str) -> int | None:
+    if not isinstance(command, list):
+        return None
+    prefix = f"{key}="
+    for arg in command:
+        text = str(arg).strip()
+        if not text.startswith(prefix):
+            continue
+        value = text.removeprefix(prefix).strip()
+        if not value:
+            return None
+        try:
+            parsed = int(value)
+        except ValueError:
+            return None
+        return parsed if parsed >= 0 else None
     return None
 
 
@@ -373,6 +400,20 @@ def validate_stack(path: Path) -> list[Finding]:
             )
         else:
             scheduled_runtime_ids.add(top_level_runtime_id)
+        if stack == "sec-dev" and (
+            top_level_runtime_id in SEC_DEV_HIGH_CONTENTION_GRAPH_RUNTIMES
+            or (top_level_runtime_id is None and bool(SEC_DEV_HIGH_CONTENTION_GRAPH_RUNTIMES & runtime_ids))
+        ):
+            graph_page_limit = _uint_arg_from_command(top_level_command, "graph_page_limit")
+            if graph_page_limit is not None and graph_page_limit > SEC_DEV_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT:
+                findings.append(
+                    _finding(
+                        "error",
+                        stack,
+                        "cerebro:orchestratorCommand",
+                        f"high-contention sec-dev graph ingest must set graph_page_limit <= {SEC_DEV_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT}",
+                    )
+                )
 
     schedule_names: set[str] = set()
     for index, schedule in enumerate(schedules):
@@ -403,6 +444,17 @@ def validate_stack(path: Path) -> list[Finding]:
             findings.append(_finding("error", stack, f"{schedule_path}.command", f"unknown runtime id {runtime_id!r}"))
         else:
             scheduled_runtime_ids.add(runtime_id)
+            if stack == "sec-dev" and runtime_id in SEC_DEV_HIGH_CONTENTION_GRAPH_RUNTIMES:
+                graph_page_limit = _uint_arg_from_command(schedule.get("command"), "graph_page_limit")
+                if graph_page_limit is not None and graph_page_limit > SEC_DEV_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT:
+                    findings.append(
+                        _finding(
+                            "error",
+                            stack,
+                            f"{schedule_path}.command",
+                            f"high-contention sec-dev graph ingest must set graph_page_limit <= {SEC_DEV_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT}",
+                        )
+                    )
 
         if "backfill" in name.lower():
             retirement_key = next((key for key in ("expiresAt", "removeAfter", "expires_after") if key in schedule), "")
