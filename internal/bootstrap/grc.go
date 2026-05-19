@@ -108,8 +108,10 @@ type grcConnector struct {
 	TenantID            string     `json:"tenant_id,omitempty"`
 	Status              string     `json:"status"`
 	Freshness           string     `json:"freshness"`
+	SyncLagSeconds      *int64     `json:"sync_lag_seconds,omitempty"`
 	CheckpointWatermark *time.Time `json:"checkpoint_watermark,omitempty"`
 	WatermarkLagSeconds *int64     `json:"watermark_lag_seconds,omitempty"`
+	WatermarkFreshness  string     `json:"watermark_freshness,omitempty"`
 	LastSyncedAt        *time.Time `json:"last_synced_at,omitempty"`
 }
 
@@ -862,10 +864,12 @@ func grcConnectorItems(runtimes []*cerebrov1.SourceRuntime) []grcConnector {
 			RuntimeID:           runtime.GetId(),
 			SourceID:            runtime.GetSourceId(),
 			TenantID:            runtime.GetTenantId(),
-			Status:              connectorStatus(checkpointWatermark),
-			Freshness:           connectorFreshness(checkpointWatermark),
+			Status:              connectorStatus(lastSyncedAt),
+			Freshness:           connectorFreshness(lastSyncedAt),
+			SyncLagSeconds:      timestampLagSeconds(lastSyncedAt),
 			CheckpointWatermark: checkpointWatermark,
-			WatermarkLagSeconds: watermarkLagSeconds(checkpointWatermark),
+			WatermarkLagSeconds: timestampLagSeconds(checkpointWatermark),
+			WatermarkFreshness:  connectorFreshness(checkpointWatermark),
 			LastSyncedAt:        lastSyncedAt,
 		})
 	}
@@ -912,7 +916,7 @@ func grcBuildSummary(findings []grcFindingItem, controls []grcControlItem, evide
 		}
 	}
 	for _, runtime := range runtimes {
-		if connectorStatus(grcRuntimeCheckpointWatermark(runtime)) == "stale" {
+		if connectorStatus(timestampPtr(runtime.GetLastSyncedAt())) == "stale" {
 			summary.StaleConnectors++
 		}
 	}
@@ -1029,7 +1033,7 @@ func grcRuntimeCheckpointWatermark(runtime *cerebrov1.SourceRuntime) *time.Time 
 	return timestampPtr(runtime.GetCheckpoint().GetWatermark())
 }
 
-func watermarkLagSeconds(value *time.Time) *int64 {
+func timestampLagSeconds(value *time.Time) *int64 {
 	if value == nil {
 		return nil
 	}
