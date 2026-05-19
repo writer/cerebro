@@ -121,6 +121,37 @@ func TestFindingEvidenceListQuerySupportsRuntimeBatches(t *testing.T) {
 	}
 }
 
+func TestFindingEvidenceListQuerySupportsFindingBatches(t *testing.T) {
+	query, args, err := findingEvidenceListQuery(ports.ListFindingEvidenceRequest{
+		RuntimeIDs:   []string{"runtime-alpha", "runtime-beta"},
+		FindingIDs:   []string{"finding-high", "finding-critical", "finding-high"},
+		Limit:        25,
+		CreatedOrder: true,
+	})
+	if err != nil {
+		t.Fatalf("findingEvidenceListQuery() error = %v", err)
+	}
+	for _, fragment := range []string{
+		"runtime_id IN ($1, $2)",
+		"finding_id IN ($3, $4)",
+		"ORDER BY created_at DESC, id",
+		"LIMIT $5",
+	} {
+		if !strings.Contains(query, fragment) {
+			t.Fatalf("findingEvidenceListQuery() query missing %q: %s", fragment, query)
+		}
+	}
+	if got := len(args); got != 5 {
+		t.Fatalf("len(findingEvidenceListQuery().args) = %d, want 5", got)
+	}
+	if got := args[2]; got != "finding-high" {
+		t.Fatalf("findingEvidenceListQuery().args[2] = %#v, want first finding", got)
+	}
+	if got := args[3]; got != "finding-critical" {
+		t.Fatalf("findingEvidenceListQuery().args[3] = %#v, want second finding", got)
+	}
+}
+
 func TestFindingEvidenceListQuerySupportsCreatedOrder(t *testing.T) {
 	query, args, err := findingEvidenceListQuery(ports.ListFindingEvidenceRequest{
 		RuntimeIDs:   []string{"runtime-alpha", "runtime-beta"},

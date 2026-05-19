@@ -5460,7 +5460,12 @@ func findingEvidenceMatches(request ports.ListFindingEvidenceRequest, evidence *
 	if len(runtimeIDs) == 0 || !containsTrimmed(runtimeIDs, evidence.GetRuntimeId()) {
 		return false
 	}
-	if request.FindingID != "" && strings.TrimSpace(evidence.GetFindingId()) != strings.TrimSpace(request.FindingID) {
+	findingIDs := normalizedTestStrings(append(request.FindingIDs, request.FindingID))
+	if len(findingIDs) > 0 {
+		if !containsTrimmed(findingIDs, evidence.GetFindingId()) {
+			return false
+		}
+	} else if request.FindingIDs != nil {
 		return false
 	}
 	if request.RunID != "" && strings.TrimSpace(evidence.GetRunId()) != strings.TrimSpace(request.RunID) {

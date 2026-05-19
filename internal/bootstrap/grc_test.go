@@ -80,6 +80,13 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 				GraphRootUrns: []string{"urn:cerebro:writer:okta_user:00u1"},
 				CreatedAt:     timestamppb.New(now),
 			},
+			"evidence-resolved": {
+				Id:        "evidence-resolved",
+				RuntimeId: "writer-" + "okta-audit",
+				FindingId: "finding-resolved",
+				RunId:     "run-1",
+				CreatedAt: timestamppb.New(now.Add(time.Hour)),
+			},
 		},
 	}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
@@ -119,6 +126,9 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 	if payload.Findings[1].EvidenceCount != 1 {
 		t.Fatalf("evidence count = %d, want 1", payload.Findings[1].EvidenceCount)
 	}
+	if len(payload.Evidence) != 1 || payload.Evidence[0].FindingID != "finding-high" {
+		t.Fatalf("dashboard evidence = %#v, want only evidence for visible findings", payload.Evidence)
+	}
 	if len(payload.Connectors) != 2 {
 		t.Fatalf("connectors len = %d, want 2", len(payload.Connectors))
 	}
@@ -130,6 +140,9 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 	}
 	if got := len(store.findingEvidenceListRequest.RuntimeIDs); got != 2 {
 		t.Fatalf("batched evidence runtime count = %d, want 2", got)
+	}
+	if got := store.findingEvidenceListRequest.FindingIDs; len(got) != 2 || got[0] != "finding-critical" || got[1] != "finding-high" {
+		t.Fatalf("batched evidence finding ids = %#v, want visible finding ids", got)
 	}
 	if !store.findingEvidenceListRequest.CreatedOrder {
 		t.Fatalf("GRC dashboard did not request created-at evidence ordering")
