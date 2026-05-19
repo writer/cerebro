@@ -248,7 +248,7 @@ func TestCheckDiscoverAndReadLiveOktaAuditPreview(t *testing.T) {
 
 func TestAuditEventNormalizesOAuthRuntimeGrantTelemetry(t *testing.T) {
 	published := mustParseTime(t, "2026-05-07T19:54:46Z")
-	event, err := auditEvent(settings{domain: "writer.okta.com"}, auditRecord{
+	event, err := auditEvent(settings{domain: "tenant.example"}, auditRecord{
 		UUID:      "evt-oauth",
 		Published: published,
 		EventType: "app.oauth2.token.grant.access_token",
@@ -284,6 +284,36 @@ func TestAuditEventNormalizesOAuthRuntimeGrantTelemetry(t *testing.T) {
 		if got := attrs[key]; got != want {
 			t.Fatalf("attribute %s = %q, want %q", key, got, want)
 		}
+	}
+}
+
+func TestAuditEventDoesNotClassifyRoutineAssignmentAsOAuthCredentialChange(t *testing.T) {
+	published := mustParseTime(t, "2026-05-07T19:54:46Z")
+	event, err := auditEvent(settings{domain: "writer.okta.com"}, auditRecord{
+		UUID:      "evt-assignment",
+		Published: published,
+		EventType: "application.user_membership.add",
+		Actor: map[string]any{
+			"id":          "00u-admin",
+			"type":        "User",
+			"alternateId": "admin@tenant.example",
+		},
+		Outcome: map[string]any{"result": "SUCCESS"},
+		Target: []map[string]any{{
+			"id":          "0oa-app",
+			"type":        "AppInstance",
+			"displayName": "Production App",
+		}},
+		raw: json.RawMessage(`{"uuid":"evt-assignment"}`),
+	})
+	if err != nil {
+		t.Fatalf("auditEvent() error = %v", err)
+	}
+	if got := event.Attributes["oauth_event_category"]; got != "" {
+		t.Fatalf("oauth_event_category = %q, want empty for routine membership assignment", got)
+	}
+	if got := oktaOAuthEventCategory("application.provision.group_push.mapping.created"); got != "" {
+		t.Fatalf("group push mapping category = %q, want empty", got)
 	}
 }
 

@@ -884,6 +884,57 @@ func (s *stubRuntimeStore) ListFindings(_ context.Context, request ports.ListFin
 	return findings, nil
 }
 
+func (s *stubRuntimeStore) SummarizeFindings(_ context.Context, request ports.ListFindingsRequest) (ports.FindingSummary, error) {
+	if s.err != nil {
+		return ports.FindingSummary{}, s.err
+	}
+	var summary ports.FindingSummary
+	controls := map[string]struct{}{}
+	now := time.Now().UTC()
+	for _, finding := range s.findings {
+		if !findingMatches(request, finding) {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(finding.Status), "open") {
+			continue
+		}
+		summary.OpenFindings++
+		if strings.EqualFold(strings.TrimSpace(finding.Severity), "critical") {
+			summary.CriticalFindings++
+		}
+		if strings.EqualFold(strings.TrimSpace(finding.Severity), "high") {
+			summary.HighFindings++
+		}
+		if !finding.DueAt.IsZero() && now.After(finding.DueAt.UTC()) {
+			summary.OverdueFindings++
+		}
+		if strings.TrimSpace(finding.Assignee) == "" {
+			summary.Unassigned++
+		}
+		if len(finding.ControlRefs) == 0 {
+			controls["Unmapped\x00Needs mapping"] = struct{}{}
+			continue
+		}
+		for _, ref := range finding.ControlRefs {
+			framework := strings.TrimSpace(ref.FrameworkName)
+			controlID := strings.TrimSpace(ref.ControlID)
+			if framework == "" {
+				framework = "Unmapped"
+			}
+			if controlID == "" {
+				controlID = "Needs mapping"
+			}
+			controls[framework+"\x00"+controlID] = struct{}{}
+		}
+	}
+	summary.ControlsFailing = len(controls)
+	for control := range controls {
+		summary.FailingControlKeys = append(summary.FailingControlKeys, control)
+	}
+	sort.Strings(summary.FailingControlKeys)
+	return summary, nil
+}
+
 func (s *stubRuntimeStore) UpdateFindingStatus(_ context.Context, request ports.FindingStatusUpdate) (*ports.FindingRecord, error) {
 	if s.err != nil {
 		return nil, s.err
@@ -1016,6 +1067,19 @@ func (s *stubRuntimeStore) ListFindingEvidence(_ context.Context, request ports.
 		evidence = evidence[:int(request.Limit)]
 	}
 	return evidence, nil
+}
+
+func (s *stubRuntimeStore) CountFindingEvidence(_ context.Context, request ports.ListFindingEvidenceRequest) (int, error) {
+	if s.err != nil {
+		return 0, s.err
+	}
+	count := 0
+	for _, record := range s.findingEvidence {
+		if findingEvidenceMatches(request, record) {
+			count++
+		}
+	}
+	return count, nil
 }
 
 func (s *stubRuntimeStore) PutFindingEvaluationRun(_ context.Context, run *cerebrov1.FindingEvaluationRun) error {

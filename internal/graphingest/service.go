@@ -19,6 +19,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 const (
@@ -133,7 +134,25 @@ func (s *Service) WithConfigPreparer(prepare ConfigPreparer) *Service {
 	return s
 }
 
-func (s *Service) RunRuntime(ctx context.Context, request RuntimeRequest) (*RunResult, error) {
+func (s *Service) RunRuntime(ctx context.Context, request RuntimeRequest) (result *RunResult, err error) {
+	ctx, span := telemetry.Start(ctx, "graph.ingest_runtime", telemetry.Attrs(
+		telemetry.Field{Key: "runtime_id", Value: strings.TrimSpace(request.RuntimeID)},
+		telemetry.Field{Key: "page_limit", Value: request.PageLimit},
+		telemetry.Field{Key: "checkpoint_id", Value: strings.TrimSpace(request.CheckpointID)},
+		telemetry.Field{Key: "reset_checkpoint", Value: request.ResetCheckpoint},
+		telemetry.Field{Key: "trigger", Value: strings.TrimSpace(request.Trigger)},
+	))
+	status := "failed"
+	spanAttributes := telemetry.Attrs()
+	defer func() {
+		if result != nil {
+			spanAttributes = graphIngestTelemetryAttributes(spanAttributes, result)
+		}
+		if err != nil {
+			spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "error", Value: err.Error()})
+		}
+		telemetry.End(span, status, spanAttributes)
+	}()
 	if s == nil || s.runtimeStore == nil || s.graphStore == nil || s.projector == nil {
 		return nil, ErrRuntimeUnavailable
 	}
@@ -157,7 +176,7 @@ func (s *Service) RunRuntime(ctx context.Context, request RuntimeRequest) (*RunR
 		Trigger:   ingestTrigger(request.Trigger),
 		StartedAt: startedAt.Format(time.RFC3339Nano),
 	}
-	result := &RunResult{Run: run}
+	result = &RunResult{Run: run}
 	if err := runStore.PutIngestRun(ctx, run); err != nil {
 		return result, err
 	}
@@ -198,7 +217,32 @@ func (s *Service) RunRuntime(ctx context.Context, request RuntimeRequest) (*RunR
 	if err := s.putTerminalIngestRun(ctx, runStore, completed); err != nil {
 		return result, err
 	}
+	status = "completed"
 	return result, nil
+}
+
+func graphIngestTelemetryAttributes(attributes telemetry.Attributes, result *RunResult) telemetry.Attributes {
+	if result == nil {
+		return attributes
+	}
+	run := result.Run
+	for _, field := range []telemetry.Field{
+		{Key: "run_id", Value: run.ID},
+		{Key: "runtime_id", Value: run.RuntimeID},
+		{Key: "source_id", Value: run.SourceID},
+		{Key: "tenant_id", Value: run.TenantID},
+		{Key: "checkpoint_id", Value: run.CheckpointID},
+		{Key: "pages_read", Value: run.PagesRead},
+		{Key: "events_read", Value: run.EventsRead},
+		{Key: "entities_projected", Value: run.EntitiesProjected},
+		{Key: "links_projected", Value: run.LinksProjected},
+		{Key: "checkpoint_persisted", Value: result.Ingest != nil && result.Ingest.CheckpointPersisted},
+		{Key: "checkpoint_complete", Value: result.Ingest != nil && result.Ingest.CheckpointComplete},
+		{Key: "checkpoint_already_fresh", Value: result.Ingest != nil && result.Ingest.CheckpointAlreadyFresh},
+	} {
+		attributes = attributes.WithField(field)
+	}
+	return attributes
 }
 
 func (s *Service) GetRun(ctx context.Context, id string) (graphstore.IngestRun, error) {

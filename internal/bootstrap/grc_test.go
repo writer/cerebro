@@ -15,7 +15,7 @@ import (
 )
 
 func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
-	now := time.Date(2026, 5, 9, 12, 0, 0, 0, time.UTC)
+	now := time.Now().UTC().Truncate(time.Second)
 	store := &stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
 			"writer-okta-audit": {
@@ -23,12 +23,14 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 				SourceId:     "okta",
 				TenantId:     "writer",
 				LastSyncedAt: timestamppb.New(now.Add(-30 * time.Minute)),
+				Checkpoint:   &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now.Add(-30 * time.Minute))},
 			},
 			"writer-github": {
 				Id:           "writer-github",
 				SourceId:     "github",
 				TenantId:     "writer",
-				LastSyncedAt: timestamppb.New(now.Add(-48 * time.Hour)),
+				LastSyncedAt: timestamppb.New(now.Add(-30 * time.Minute)),
+				Checkpoint:   &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now.Add(-48 * time.Hour))},
 			},
 		},
 		findings: map[string]*ports.FindingRecord{
@@ -146,6 +148,115 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 	}
 	if !store.findingEvidenceListRequest.CreatedOrder {
 		t.Fatalf("GRC dashboard did not request created-at evidence ordering")
+	}
+	if payload.Summary.StaleConnectors != 1 {
+		t.Fatalf("stale connectors = %d, want 1", payload.Summary.StaleConnectors)
+	}
+	if payload.Connectors[0].CheckpointWatermark == nil && payload.Connectors[1].CheckpointWatermark == nil {
+		t.Fatalf("connector checkpoint watermarks were not surfaced")
+	}
+}
+
+func TestGRCDashboardSummaryUsesUnpaginatedAggregates(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	runtimeID := "tenant-okta-audit"
+	secondRuntimeID := "tenant-github-audit"
+	tenantID := "tenant"
+	controlRefs := []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.1"}}
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			runtimeID: {
+				Id:           runtimeID,
+				SourceId:     "okta",
+				TenantId:     tenantID,
+				LastSyncedAt: timestamppb.New(now),
+				Checkpoint:   &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now)},
+			},
+			secondRuntimeID: {
+				Id:           secondRuntimeID,
+				SourceId:     "github",
+				TenantId:     tenantID,
+				LastSyncedAt: timestamppb.New(now),
+				Checkpoint:   &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now)},
+			},
+		},
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:             "finding-1",
+				TenantID:       tenantID,
+				RuntimeID:      runtimeID,
+				Title:          "Finding 1",
+				Severity:       "HIGH",
+				Status:         "open",
+				ControlRefs:    controlRefs,
+				LastObservedAt: now.Add(-time.Minute),
+			},
+			"finding-2": {
+				ID:             "finding-2",
+				TenantID:       tenantID,
+				RuntimeID:      runtimeID,
+				Title:          "Finding 2",
+				Severity:       "CRITICAL",
+				Status:         "open",
+				ControlRefs:    controlRefs,
+				LastObservedAt: now.Add(-2 * time.Minute),
+			},
+			"finding-3": {
+				ID:             "finding-3",
+				TenantID:       tenantID,
+				RuntimeID:      runtimeID,
+				Title:          "Finding 3",
+				Severity:       "HIGH",
+				Status:         "open",
+				ControlRefs:    controlRefs,
+				LastObservedAt: now.Add(-3 * time.Minute),
+			},
+			"finding-4": {
+				ID:             "finding-4",
+				TenantID:       tenantID,
+				RuntimeID:      secondRuntimeID,
+				Title:          "Finding 4",
+				Severity:       "HIGH",
+				Status:         "open",
+				ControlRefs:    controlRefs,
+				LastObservedAt: now.Add(-4 * time.Minute),
+			},
+		},
+		findingEvidence: map[string]*cerebrov1.FindingEvidence{
+			"evidence-1": {Id: "evidence-1", RuntimeId: runtimeID, FindingId: "finding-2", CreatedAt: timestamppb.New(now)},
+			"evidence-2": {Id: "evidence-2", RuntimeId: secondRuntimeID, FindingId: "finding-4", CreatedAt: timestamppb.New(now)},
+		},
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/grc/dashboard?tenant_id=" + tenantID + "&limit=1")
+	if err != nil {
+		t.Fatalf("GET /grc/dashboard error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /grc/dashboard status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var payload grcDashboardResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode /grc/dashboard: %v", err)
+	}
+	if len(payload.Findings) != 1 {
+		t.Fatalf("findings len = %d, want paginated row count 1", len(payload.Findings))
+	}
+	if payload.Summary.OpenFindings != 4 {
+		t.Fatalf("summary open findings = %d, want unpaginated total 4", payload.Summary.OpenFindings)
+	}
+	if payload.Summary.CriticalFindings != 1 || payload.Summary.HighFindings != 3 {
+		t.Fatalf("summary severities = critical %d high %d, want 1/3", payload.Summary.CriticalFindings, payload.Summary.HighFindings)
+	}
+	if payload.Summary.ControlsFailing != 1 {
+		t.Fatalf("summary failing controls = %d, want deduplicated total 1", payload.Summary.ControlsFailing)
+	}
+	if payload.Summary.EvidenceItems != 1 {
+		t.Fatalf("summary evidence items = %d, want visible finding evidence total 1", payload.Summary.EvidenceItems)
 	}
 }
 

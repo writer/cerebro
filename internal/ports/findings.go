@@ -81,6 +81,18 @@ type ListFindingsRequest struct {
 	PriorityOrder bool
 }
 
+// FindingSummary captures aggregate counts for one finding query without applying
+// pagination limits intended for UI rows.
+type FindingSummary struct {
+	OpenFindings       int
+	CriticalFindings   int
+	HighFindings       int
+	OverdueFindings    int
+	Unassigned         int
+	ControlsFailing    int
+	FailingControlKeys []string
+}
+
 // ErrFindingEvaluationRunNotFound indicates that a persisted finding evaluation run does not exist.
 var ErrFindingEvaluationRunNotFound = errors.New("finding evaluation run not found")
 

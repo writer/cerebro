@@ -368,6 +368,9 @@ func matchesIdentityAPITokenOrOAuthCreated(_ *cerebrov1.EventEnvelope, attribute
 		return false
 	}
 	action := identityAction(attributes)
+	if routineIdentityAssignmentAction(action) {
+		return false
+	}
 	if strings.TrimSpace(attributes["credential_id"]) != "" || strings.TrimSpace(attributes["credential_type"]) != "" {
 		return identityCredentialActiveOrUnknown(attributes)
 	}
@@ -379,6 +382,29 @@ func matchesIdentityAPITokenOrOAuthCreated(_ *cerebrov1.EventEnvelope, attribute
 	}
 	return containsAny(action, "oauth", "api_client", "client_access", "application") &&
 		containsAny(action, "create", "add")
+}
+
+func routineIdentityAssignmentAction(action string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(action))
+	switch normalized {
+	case "application.user_membership.add",
+		"application.user_membership.remove",
+		"application.user_membership.update",
+		"application.group_membership.add",
+		"application.group_membership.remove",
+		"application.group_membership.update",
+		"group.application_assignment.add",
+		"group.application_assignment.remove",
+		"group.application_assignment.update",
+		"group.user_membership.add",
+		"group.user_membership.remove",
+		"group.user_membership.update",
+		"application.provision.group_push.mapping.created",
+		"application.provision.group_push.mapping.deleted",
+		"application.provision.group_push.mapping.updated":
+		return true
+	}
+	return false
 }
 
 func routineOAuthRuntimeGrant(action string) bool {
@@ -417,6 +443,9 @@ func matchesIdentityExternalGroupMember(_ *cerebrov1.EventEnvelope, attributes m
 
 func matchesIdentityControlTamperOrCredentialChange(event *cerebrov1.EventEnvelope, attributes map[string]string) bool {
 	if !identityOutcomeSuccessfulOrUnknown(attributes) {
+		return false
+	}
+	if routineIdentityAssignmentAction(identityAction(attributes)) {
 		return false
 	}
 	return matchesIdentityAuthControlTampering(event, attributes) ||
