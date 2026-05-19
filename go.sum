@@ -18,12 +18,12 @@ github.com/aws/aws-sdk-go-v2/service/apigateway v1.39.3 h1:7MJlB7KGFd+KNKtnPgoFW
 github.com/aws/aws-sdk-go-v2/service/apigateway v1.39.3/go.mod h1:MwilTAruv11x8EFjsk1R0VfjMdCxB6JHVtanCqsTR5o=
 github.com/aws/aws-sdk-go-v2/service/apigatewayv2 v1.34.3 h1:JqFmDekar5Ije9SKKBUAmvuqardAXgCoJV78dt2BQSI=
 github.com/aws/aws-sdk-go-v2/service/apigatewayv2 v1.34.3/go.mod h1:+ONaMzn4bVIQwVsamP28xDWWZuYO+6cWupJpZOSlUNE=
-github.com/aws/aws-sdk-go-v2/service/cloudfront v1.63.0 h1:YNpvY2mAGhoTHPEvsqPuDb8K5JBjorbVMaitP8i4OXI=
-github.com/aws/aws-sdk-go-v2/service/cloudfront v1.63.0/go.mod h1:brhMG/gR2xEB5lezxL2Cx+hqsEzGUn4LhNUtu7+ePFE=
+github.com/aws/aws-sdk-go-v2/service/cloudfront v1.64.0 h1:a6XmNe8cAvfrXVKwjXzWl9HHtuyE/n4kBroNm2mSOyo=
+github.com/aws/aws-sdk-go-v2/service/cloudfront v1.64.0/go.mod h1:brhMG/gR2xEB5lezxL2Cx+hqsEzGUn4LhNUtu7+ePFE=
 github.com/aws/aws-sdk-go-v2/service/cloudtrail v1.55.11 h1:3IDx7ybn7pyrLgVShEfGmEXec1xsqgoD1ADI1SxqKT0=
 github.com/aws/aws-sdk-go-v2/service/cloudtrail v1.55.11/go.mod h1:iSArc5uhvz1S3EICNNvRzPksb6HPAUhltzMvoCrGyfM=
-github.com/aws/aws-sdk-go-v2/service/ec2 v1.301.0 h1:U+cZAMc8mN0jne8/ae7KrrFuILTXrZReAvc6BIpXGls=
-github.com/aws/aws-sdk-go-v2/service/ec2 v1.301.0/go.mod h1:Y95W0Hm6FYLPa6o0hbnJ+sWgmdc4ifcLFjGkdobWVhY=
+github.com/aws/aws-sdk-go-v2/service/ec2 v1.303.0 h1:qkTLlFVQDSk0tbOqn49pxZjIVY2jy3n0FBXh+PphNkk=
+github.com/aws/aws-sdk-go-v2/service/ec2 v1.303.0/go.mod h1:Y95W0Hm6FYLPa6o0hbnJ+sWgmdc4ifcLFjGkdobWVhY=
 github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.54.12 h1:TJXv7kZjdXA2maPDaJFFEQPBrPmvPtMybN3qYDOpJ4Y=
 github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.54.12/go.mod h1:lwjtb9DHOAmNt7EUW68Zd1Qd+cPyFxacXHN5c9JZ2VY=
 github.com/aws/aws-sdk-go-v2/service/iam v1.53.10 h1:kcN3I3llO7VwIY5w3Pc5FmEonpsr23Ou7Cwk4qf7dik=
