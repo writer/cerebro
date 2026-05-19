@@ -1803,13 +1803,43 @@ func TestAuthMiddlewareSkipsAccessAuditForPublicRoutes(t *testing.T) {
 }
 
 func TestAccessAuditOutcomeClassifiesDownstreamAuthorizationFailures(t *testing.T) {
-	outcome, reason := accessAuditOutcome(http.StatusForbidden, "allowed", "")
+	outcome, reason := accessAuditOutcome(http.StatusForbidden, "allowed", "", "")
 	if outcome != "denied" || reason != "authorization_failed" {
 		t.Fatalf("accessAuditOutcome(403) = (%q, %q), want denied authorization_failed", outcome, reason)
 	}
-	outcome, reason = accessAuditOutcome(http.StatusInternalServerError, "allowed", "")
+	outcome, reason = accessAuditOutcome(http.StatusInternalServerError, "allowed", "", "")
 	if outcome != "error" || reason != "" {
 		t.Fatalf("accessAuditOutcome(500) = (%q, %q), want error empty reason", outcome, reason)
+	}
+	outcome, reason = accessAuditOutcome(http.StatusOK, "allowed", "", "permission_denied")
+	if outcome != "denied" || reason != "authorization_failed" {
+		t.Fatalf("accessAuditOutcome(gRPC permission_denied) = (%q, %q), want denied authorization_failed", outcome, reason)
+	}
+}
+
+func TestAccessAuditConnectProcedureSanitizesUnknownProcedures(t *testing.T) {
+	if got := accessAuditConnectProcedure(cerebrov1connect.BootstrapServiceListSourcesProcedure); got != "cerebro.v1.BootstrapService/ListSources" {
+		t.Fatalf("known connect procedure = %q, want ListSources", got)
+	}
+	raw := "/cerebro.v1.BootstrapService/secret-token-value"
+	if got := accessAuditConnectProcedure(raw); got != "unknown" {
+		t.Fatalf("unknown connect procedure = %q, want unknown", got)
+	}
+}
+
+func TestAccessAuditRemoteIPDropsPort(t *testing.T) {
+	for _, tt := range []struct {
+		raw  string
+		want string
+	}{
+		{raw: "203.0.113.10:54321", want: "203.0.113.10"},
+		{raw: "[2001:db8::1]:443", want: "2001:db8::1"},
+		{raw: "203.0.113.20", want: "203.0.113.20"},
+		{raw: "not an address", want: ""},
+	} {
+		if got := accessAuditRemoteIP(tt.raw); got != tt.want {
+			t.Fatalf("accessAuditRemoteIP(%q) = %q, want %q", tt.raw, got, tt.want)
+		}
 	}
 }
 
@@ -1979,6 +2009,60 @@ func TestScopedCosmoCredentialEnforcesConnectProcedures(t *testing.T) {
 	syncReq.Header().Set("Authorization", "Bearer scoped-token")
 	if _, err := client.SyncSourceRuntime(context.Background(), syncReq); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatalf("SyncSourceRuntime() code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
+	}
+}
+
+func TestScopedCosmoCredentialAuditsGRPCProcedureDenials(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APICredentials: []config.APICredential{{
+				Key:       "scoped-token",
+				Principal: "cosmo-security",
+				TenantID:  "writer",
+				Scopes:    []string{scopeCosmoSecurityRead},
+			}},
+		},
+	}
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
+		},
+	}
+	app := New(cfg, Dependencies{StateStore: store}, nil)
+	server := httptest.NewUnstartedServer(app.Handler())
+	server.EnableHTTP2 = true
+	server.StartTLS()
+	defer server.Close()
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL, connect.WithGRPC())
+	syncReq := connect.NewRequest(&cerebrov1.SyncSourceRuntimeRequest{Id: "writer-runtime"})
+	syncReq.Header().Set("Authorization", "Bearer scoped-token")
+	stderr := captureBootstrapStderr(t, func() {
+		if _, err := client.SyncSourceRuntime(context.Background(), syncReq); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Fatalf("SyncSourceRuntime() code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
+		}
+	})
+	payload := decodeBootstrapTelemetryPayload(t, stderr)
+	for key, want := range map[string]any{
+		"name":              "cerebro.api.access",
+		"outcome":           "denied",
+		"status":            float64(http.StatusOK),
+		"route":             "/cerebro.v1.BootstrapService/{Procedure}",
+		"connect_procedure": "cerebro.v1.BootstrapService/SyncSourceRuntime",
+		"connect_code":      "permission_denied",
+		"denial_reason":     "authorization_failed",
+		"principal":         "cosmo-security",
+		"auth_mode":         "api_credential",
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("gRPC audit payload[%q] = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	if strings.Contains(stderr, "scoped-token") {
+		t.Fatalf("gRPC audit log leaked bearer token: %s", stderr)
 	}
 }
 

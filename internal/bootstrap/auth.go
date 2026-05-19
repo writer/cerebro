@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -27,6 +28,11 @@ var errTenantForbidden = errors.New("tenant forbidden")
 var errScopeForbidden = errors.New("scope forbidden")
 
 type authContextKey struct{}
+type accessAuditContextKey struct{}
+
+type accessAuditResult struct {
+	ConnectCode string
+}
 
 type authPrincipal struct {
 	Name           string
@@ -56,13 +62,14 @@ func authMiddleware(cfg config.AuthConfig, next http.Handler) http.Handler {
 		}
 		started := time.Now()
 		recorder := &accessAuditResponseWriter{ResponseWriter: w}
+		auditResult := &accessAuditResult{}
 		principal := authPrincipal{}
 		outcome := "denied"
 		denialReason := ""
 		defer func() {
 			status := recorder.Status()
-			finalOutcome, finalDenialReason := accessAuditOutcome(status, outcome, denialReason)
-			emitAccessAuditEvent(r, principal, status, time.Since(started), finalOutcome, finalDenialReason)
+			finalOutcome, finalDenialReason := accessAuditOutcome(status, outcome, denialReason, auditResult.ConnectCode)
+			emitAccessAuditEvent(r, principal, status, time.Since(started), finalOutcome, finalDenialReason, auditResult.ConnectCode)
 		}()
 		principal, ok := authenticateRequest(cfg, r)
 		if !ok {
@@ -83,6 +90,7 @@ func authMiddleware(cfg config.AuthConfig, next http.Handler) http.Handler {
 		}
 		outcome = "allowed"
 		ctx := context.WithValue(r.Context(), authContextKey{}, auth)
+		ctx = context.WithValue(ctx, accessAuditContextKey{}, auditResult)
 		next.ServeHTTP(recorder, r.WithContext(ctx))
 	})
 }
@@ -92,13 +100,18 @@ func authInterceptor(cfg config.AuthConfig) connect.Interceptor {
 		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
 			if cfg.Enabled {
 				if err := authorizeConnectProcedureScope(ctx, req.Spec().Procedure); err != nil {
-					return nil, connect.NewError(connect.CodePermissionDenied, nil)
+					connectErr := connect.NewError(connect.CodePermissionDenied, nil)
+					recordConnectAccessAuditResult(ctx, connectErr)
+					return nil, connectErr
 				}
 				if err := authorizeProtoTenant(ctx, cfg, req.Any()); err != nil {
+					recordConnectAccessAuditResult(ctx, err)
 					return nil, err
 				}
 			}
-			return next(ctx, req)
+			response, err := next(ctx, req)
+			recordConnectAccessAuditResult(ctx, err)
+			return response, err
 		}
 	})
 }
@@ -653,7 +666,18 @@ func (w *accessAuditResponseWriter) Unwrap() http.ResponseWriter {
 	return w.ResponseWriter
 }
 
-func emitAccessAuditEvent(r *http.Request, principal authPrincipal, status int, duration time.Duration, outcome string, denialReason string) {
+func recordConnectAccessAuditResult(ctx context.Context, err error) {
+	if err == nil {
+		return
+	}
+	result, _ := ctx.Value(accessAuditContextKey{}).(*accessAuditResult)
+	if result == nil {
+		return
+	}
+	result.ConnectCode = strings.ToLower(connect.CodeOf(err).String())
+}
+
+func emitAccessAuditEvent(r *http.Request, principal authPrincipal, status int, duration time.Duration, outcome string, denialReason string, connectCode string) {
 	if r == nil {
 		return
 	}
@@ -664,8 +688,8 @@ func emitAccessAuditEvent(r *http.Request, principal authPrincipal, status int, 
 		telemetry.Field{Key: "route", Value: accessAuditRoute(r)},
 		telemetry.Field{Key: "duration_ms", Value: duration.Milliseconds()},
 	)
-	if remoteAddr := strings.TrimSpace(r.RemoteAddr); remoteAddr != "" {
-		attrs = attrs.WithField(telemetry.Field{Key: "remote_addr", Value: remoteAddr})
+	if remoteIP := accessAuditRemoteIP(r.RemoteAddr); remoteIP != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "remote_ip", Value: remoteIP})
 	}
 	if tenantID := firstNonEmpty(requestTenantHint(r), principal.TenantID); tenantID != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "tenant_id", Value: tenantID})
@@ -688,13 +712,27 @@ func emitAccessAuditEvent(r *http.Request, principal authPrincipal, status int, 
 	if procedure := accessAuditConnectProcedure(r.URL.Path); procedure != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "connect_procedure", Value: procedure})
 	}
+	if connectCode != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "connect_code", Value: connectCode})
+	}
 	if denialReason != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "denial_reason", Value: denialReason})
 	}
 	telemetry.Event(r.Context(), "cerebro.api.access", attrs)
 }
 
-func accessAuditOutcome(status int, outcome string, denialReason string) (string, string) {
+func accessAuditOutcome(status int, outcome string, denialReason string, connectCode string) (string, string) {
+	switch strings.ToLower(strings.TrimSpace(connectCode)) {
+	case "":
+	case "unauthenticated":
+		return "denied", firstNonEmpty(denialReason, "unauthenticated")
+	case "permission_denied":
+		return "denied", firstNonEmpty(denialReason, "authorization_failed")
+	case "internal", "unavailable", "unknown", "data_loss":
+		return "error", denialReason
+	default:
+		return "rejected", denialReason
+	}
 	switch status {
 	case http.StatusUnauthorized:
 		return "denied", firstNonEmpty(denialReason, "unauthenticated")
@@ -709,6 +747,20 @@ func accessAuditOutcome(status int, outcome string, denialReason string) (string
 		}
 		return outcome, denialReason
 	}
+}
+
+func accessAuditRemoteIP(remoteAddr string) string {
+	remoteAddr = strings.TrimSpace(remoteAddr)
+	if remoteAddr == "" {
+		return ""
+	}
+	if host, _, err := net.SplitHostPort(remoteAddr); err == nil {
+		return strings.Trim(host, "[]")
+	}
+	if parsed := net.ParseIP(remoteAddr); parsed != nil {
+		return parsed.String()
+	}
+	return ""
 }
 
 func accessAuditRoute(r *http.Request) string {
@@ -732,7 +784,52 @@ func accessAuditConnectProcedure(path string) string {
 	if !isConnectProcedurePath(path) {
 		return ""
 	}
-	return strings.Trim(strings.TrimPrefix(path, "/"), "/")
+	procedure := "/" + strings.Trim(path, "/")
+	if _, ok := knownAccessAuditConnectProcedures[procedure]; !ok {
+		return "unknown"
+	}
+	return strings.TrimPrefix(procedure, "/")
+}
+
+var knownAccessAuditConnectProcedures = map[string]struct{}{
+	cerebrov1connect.BootstrapServiceGetVersionProcedure:                        {},
+	cerebrov1connect.BootstrapServiceCheckHealthProcedure:                       {},
+	cerebrov1connect.BootstrapServiceListReportDefinitionsProcedure:             {},
+	cerebrov1connect.BootstrapServiceListFindingRulesProcedure:                  {},
+	cerebrov1connect.BootstrapServiceRunReportProcedure:                         {},
+	cerebrov1connect.BootstrapServiceGetReportRunProcedure:                      {},
+	cerebrov1connect.BootstrapServiceListSourcesProcedure:                       {},
+	cerebrov1connect.BootstrapServiceCheckSourceProcedure:                       {},
+	cerebrov1connect.BootstrapServiceDiscoverSourceProcedure:                    {},
+	cerebrov1connect.BootstrapServiceReadSourceProcedure:                        {},
+	cerebrov1connect.BootstrapServicePutSourceRuntimeProcedure:                  {},
+	cerebrov1connect.BootstrapServiceGetSourceRuntimeProcedure:                  {},
+	cerebrov1connect.BootstrapServiceSyncSourceRuntimeProcedure:                 {},
+	cerebrov1connect.BootstrapServiceWriteClaimsProcedure:                       {},
+	cerebrov1connect.BootstrapServiceListClaimsProcedure:                        {},
+	cerebrov1connect.BootstrapServiceListFindingsProcedure:                      {},
+	cerebrov1connect.BootstrapServiceGetFindingProcedure:                        {},
+	cerebrov1connect.BootstrapServiceResolveFindingProcedure:                    {},
+	cerebrov1connect.BootstrapServiceSuppressFindingProcedure:                   {},
+	cerebrov1connect.BootstrapServiceAssignFindingProcedure:                     {},
+	cerebrov1connect.BootstrapServiceSetFindingDueDateProcedure:                 {},
+	cerebrov1connect.BootstrapServiceAddFindingNoteProcedure:                    {},
+	cerebrov1connect.BootstrapServiceLinkFindingTicketProcedure:                 {},
+	cerebrov1connect.BootstrapServiceListFindingEvaluationRunsProcedure:         {},
+	cerebrov1connect.BootstrapServiceGetFindingEvaluationRunProcedure:           {},
+	cerebrov1connect.BootstrapServiceListFindingEvidenceProcedure:               {},
+	cerebrov1connect.BootstrapServiceGetFindingEvidenceProcedure:                {},
+	cerebrov1connect.BootstrapServiceEvaluateSourceRuntimeFindingRulesProcedure: {},
+	cerebrov1connect.BootstrapServiceEvaluateSourceRuntimeFindingsProcedure:     {},
+	cerebrov1connect.BootstrapServiceWriteDecisionProcedure:                     {},
+	cerebrov1connect.BootstrapServiceWriteActionProcedure:                       {},
+	cerebrov1connect.BootstrapServiceWriteOutcomeProcedure:                      {},
+	cerebrov1connect.BootstrapServiceReplayWorkflowEventsProcedure:              {},
+	cerebrov1connect.BootstrapServiceGetEntityNeighborhoodProcedure:             {},
+	cerebrov1connect.BootstrapServiceRunGraphIngestRuntimeProcedure:             {},
+	cerebrov1connect.BootstrapServiceGetGraphIngestRunProcedure:                 {},
+	cerebrov1connect.BootstrapServiceListGraphIngestRunsProcedure:               {},
+	cerebrov1connect.BootstrapServiceCheckGraphIngestHealthProcedure:            {},
 }
 
 func fallbackAccessAuditRoute(method string, path string) string {
