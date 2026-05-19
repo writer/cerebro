@@ -833,6 +833,25 @@ func TestPutIgnoresClientSuppliedProgress(t *testing.T) {
 	}
 }
 
+func TestRuntimeWatermarkLagUsesCheckpointWatermark(t *testing.T) {
+	now := time.Date(2026, 5, 19, 12, 0, 0, 0, time.UTC)
+	watermark := now.Add(-2 * time.Hour)
+	runtime := &cerebrov1.SourceRuntime{
+		Checkpoint: &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(watermark)},
+	}
+
+	gotWatermark, lagSeconds, ok := runtimeWatermarkLag(runtime, now)
+	if !ok {
+		t.Fatal("runtimeWatermarkLag ok = false, want true")
+	}
+	if !gotWatermark.Equal(watermark) {
+		t.Fatalf("watermark = %s, want %s", gotWatermark, watermark)
+	}
+	if lagSeconds != int64((2 * time.Hour).Seconds()) {
+		t.Fatalf("lagSeconds = %d, want 7200", lagSeconds)
+	}
+}
+
 func TestPutRestoresRedactedSensitiveConfigBeforeMerge(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {

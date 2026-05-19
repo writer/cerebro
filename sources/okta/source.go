@@ -1386,6 +1386,9 @@ func adminRoleAttributes(settings settings, record adminRoleRecord) map[string]s
 
 func oktaOAuthEventCategory(eventType string) string {
 	action := strings.ToLower(strings.TrimSpace(eventType))
+	if routineOktaIdentityAssignmentAction(action) {
+		return ""
+	}
 	switch action {
 	case "app.oauth2.authorize.code", "app.oauth2.as.authorize.code":
 		return "runtime_grant"
@@ -1403,6 +1406,31 @@ func oktaOAuthEventCategory(eventType string) string {
 		return "credential_change"
 	}
 	return ""
+}
+
+func routineOktaIdentityAssignmentAction(action string) bool {
+	switch action {
+	case "application.user_membership.add",
+		"application.user_membership.remove",
+		"application.user_membership.update",
+		"application.group_membership.add",
+		"application.group_membership.remove",
+		"application.group_membership.update",
+		"group.application_assignment.add",
+		"group.application_assignment.remove",
+		"group.application_assignment.update",
+		"group.user_membership.add",
+		"group.user_membership.remove",
+		"group.user_membership.update",
+		"application.provision.group_push.mapping.created",
+		"application.provision.group_push.mapping.deleted",
+		"application.provision.group_push.mapping.updated":
+		return true
+	}
+	return strings.Contains(action, "user_membership") ||
+		strings.Contains(action, "group_membership") ||
+		strings.Contains(action, "application_assignment") ||
+		strings.Contains(action, "group_push.mapping")
 }
 
 func oktaOAuthGrantType(eventType string) string {

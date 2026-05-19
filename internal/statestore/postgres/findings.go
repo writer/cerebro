@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -389,6 +390,81 @@ func (s *Store) ListFindings(ctx context.Context, request ports.ListFindingsRequ
 		return nil, fmt.Errorf("iterate findings rows: %w", err)
 	}
 	return findings, nil
+}
+
+// SummarizeFindings loads aggregate finding counts for one filtered query without
+// applying row pagination.
+func (s *Store) SummarizeFindings(ctx context.Context, request ports.ListFindingsRequest) (ports.FindingSummary, error) {
+	if s == nil || s.db == nil {
+		return ports.FindingSummary{}, errors.New("postgres is not configured")
+	}
+	if err := s.ensureFindingTables(ctx); err != nil {
+		return ports.FindingSummary{}, err
+	}
+	clauses, args, err := findingFilterClauses(request)
+	if err != nil {
+		return ports.FindingSummary{}, err
+	}
+	where := strings.Join(clauses, " AND ")
+	query := `
+SELECT
+  COUNT(*) FILTER (WHERE LOWER(status) = 'open'),
+  COUNT(*) FILTER (WHERE LOWER(status) = 'open' AND UPPER(severity) = 'CRITICAL'),
+  COUNT(*) FILTER (WHERE LOWER(status) = 'open' AND UPPER(severity) = 'HIGH'),
+  COUNT(*) FILTER (WHERE LOWER(status) = 'open' AND due_at IS NOT NULL AND due_at < NOW()),
+  COUNT(*) FILTER (WHERE LOWER(status) = 'open' AND TRIM(assignee) = '')
+FROM findings
+WHERE ` + where
+	var summary ports.FindingSummary
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(
+		&summary.OpenFindings,
+		&summary.CriticalFindings,
+		&summary.HighFindings,
+		&summary.OverdueFindings,
+		&summary.Unassigned,
+	); err != nil {
+		return ports.FindingSummary{}, fmt.Errorf("summarize findings: %w", err)
+	}
+	controlQuery := `
+SELECT framework_name, control_id
+FROM (
+  SELECT DISTINCT
+    COALESCE(NULLIF(TRIM(ref->>'framework_name'), ''), 'Unmapped') AS framework_name,
+    COALESCE(NULLIF(TRIM(ref->>'control_id'), ''), 'Needs mapping') AS control_id
+  FROM findings
+  LEFT JOIN LATERAL jsonb_array_elements(
+    CASE
+      WHEN jsonb_array_length(control_refs_json) = 0
+        THEN '[{"framework_name":"Unmapped","control_id":"Needs mapping"}]'::jsonb
+      ELSE control_refs_json
+    END
+  ) AS ref ON TRUE
+  WHERE ` + where + ` AND LOWER(status) = 'open'
+) controls`
+	rows, err := s.db.QueryContext(ctx, controlQuery, args...)
+	if err != nil {
+		return ports.FindingSummary{}, fmt.Errorf("summarize finding controls: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	controlKeys := map[string]struct{}{}
+	for rows.Next() {
+		var frameworkName string
+		var controlID string
+		if err := rows.Scan(&frameworkName, &controlID); err != nil {
+			return ports.FindingSummary{}, fmt.Errorf("scan summarized finding control: %w", err)
+		}
+		key := frameworkName + "\x00" + controlID
+		controlKeys[key] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return ports.FindingSummary{}, fmt.Errorf("iterate summarized finding controls: %w", err)
+	}
+	for key := range controlKeys {
+		summary.FailingControlKeys = append(summary.FailingControlKeys, key)
+	}
+	sort.Strings(summary.FailingControlKeys)
+	summary.ControlsFailing = len(summary.FailingControlKeys)
+	return summary, nil
 }
 
 // GetFinding loads one persisted finding by durable identifier.
@@ -788,28 +864,8 @@ RETURNING
 }
 
 func findingListQuery(request ports.ListFindingsRequest) (string, []any, error) {
-	tenantID := strings.TrimSpace(request.TenantID)
-	if tenantID == "" {
-		return "", nil, errors.New("finding tenant id is required")
-	}
-	runtimeID := strings.TrimSpace(request.RuntimeID)
-	runtimeIDs := normalizedNonEmptyStrings(append(request.RuntimeIDs, runtimeID))
-	ruleID := strings.TrimSpace(request.RuleID)
-	if len(runtimeIDs) == 0 && ruleID == "" {
-		return "", nil, errors.New("finding runtime id or rule id is required")
-	}
-	clauses := []string{"tenant_id = $1"}
-	args := []any{tenantID}
-	addStringInFilter(&clauses, &args, "runtime_id", runtimeIDs)
-	addFindingFilter(&clauses, &args, "id", request.FindingID)
-	addFindingFilter(&clauses, &args, "rule_id", request.RuleID)
-	addFindingFilter(&clauses, &args, "severity", request.Severity)
-	addFindingFilter(&clauses, &args, "status", request.Status)
-	addFindingFilter(&clauses, &args, "policy_id", request.PolicyID)
-	if err := addFindingArrayContainsFilter(&clauses, &args, "resource_urns_json", request.ResourceURN); err != nil {
-		return "", nil, err
-	}
-	if err := addFindingArrayContainsFilter(&clauses, &args, "event_ids_json", request.EventID); err != nil {
+	clauses, args, err := findingFilterClauses(request)
+	if err != nil {
 		return "", nil, err
 	}
 	query := `
@@ -826,6 +882,34 @@ ORDER BY ` + findingOrderClause(request.PriorityOrder)
 		query += fmt.Sprintf(" LIMIT $%d", len(args))
 	}
 	return query, args, nil
+}
+
+func findingFilterClauses(request ports.ListFindingsRequest) ([]string, []any, error) {
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID == "" {
+		return nil, nil, errors.New("finding tenant id is required")
+	}
+	runtimeID := strings.TrimSpace(request.RuntimeID)
+	runtimeIDs := normalizedNonEmptyStrings(append(request.RuntimeIDs, runtimeID))
+	ruleID := strings.TrimSpace(request.RuleID)
+	if len(runtimeIDs) == 0 && ruleID == "" {
+		return nil, nil, errors.New("finding runtime id or rule id is required")
+	}
+	clauses := []string{"tenant_id = $1"}
+	args := []any{tenantID}
+	addStringInFilter(&clauses, &args, "runtime_id", runtimeIDs)
+	addFindingFilter(&clauses, &args, "id", request.FindingID)
+	addFindingFilter(&clauses, &args, "rule_id", request.RuleID)
+	addFindingFilter(&clauses, &args, "severity", request.Severity)
+	addFindingFilter(&clauses, &args, "status", request.Status)
+	addFindingFilter(&clauses, &args, "policy_id", request.PolicyID)
+	if err := addFindingArrayContainsFilter(&clauses, &args, "resource_urns_json", request.ResourceURN); err != nil {
+		return nil, nil, err
+	}
+	if err := addFindingArrayContainsFilter(&clauses, &args, "event_ids_json", request.EventID); err != nil {
+		return nil, nil, err
+	}
+	return clauses, args, nil
 }
 
 func (s *Store) ensureFindingTables(ctx context.Context) error {

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -323,6 +324,10 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "entities_projected", Value: entitiesProjected})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "links_projected", Value: linksProjected})
 	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "has_next_cursor", Value: runtime.GetNextCursor() != nil})
+	if watermark, lagSeconds, ok := runtimeWatermarkLag(runtime, time.Now().UTC()); ok {
+		spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "checkpoint_watermark", Value: watermark.Format(time.RFC3339Nano)})
+		spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "source_runtime_watermark_lag_seconds", Value: lagSeconds})
+	}
 	return &cerebrov1.SyncSourceRuntimeResponse{
 		Runtime:           redactRuntime(runtime),
 		Source:            source.Spec(),
@@ -331,6 +336,21 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		EntitiesProjected: entitiesProjected,
 		LinksProjected:    linksProjected,
 	}, nil
+}
+
+func runtimeWatermarkLag(runtime *cerebrov1.SourceRuntime, now time.Time) (time.Time, int64, bool) {
+	if runtime == nil || runtime.GetCheckpoint().GetWatermark() == nil {
+		return time.Time{}, 0, false
+	}
+	watermark := runtime.GetCheckpoint().GetWatermark().AsTime().UTC()
+	if watermark.IsZero() {
+		return time.Time{}, 0, false
+	}
+	lag := now.UTC().Sub(watermark)
+	if lag < 0 {
+		lag = 0
+	}
+	return watermark, int64(lag.Seconds()), true
 }
 
 func (s *Service) resolveConfig(ctx context.Context, sourceID string, tenantID string, config map[string]string) (map[string]string, error) {

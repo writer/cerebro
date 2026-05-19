@@ -433,6 +433,69 @@ func TestIdentitySignalRulesTreatRoutineOAuthGrantsAsTelemetry(t *testing.T) {
 	}
 }
 
+func TestIdentitySignalRulesIgnoreRoutineOktaAssignments(t *testing.T) {
+	rules := identityRulesByID(t)
+	runtime := &cerebrov1.SourceRuntime{Id: "tenant-okta-audit", SourceId: "okta", TenantId: "tenant"}
+	for _, action := range []string{
+		"application.user_membership.add",
+		"group.application_assignment.add",
+		"application.provision.group_push.mapping.created",
+	} {
+		for _, ruleID := range []string{
+			identityAPIOrOAuthCredentialCreatedRuleID,
+			identityControlTamperCredentialChangeRuleID,
+		} {
+			t.Run(action+"/"+ruleID, func(t *testing.T) {
+				event := &cerebrov1.EventEnvelope{
+					Id:       strings.ReplaceAll(action, ".", "-") + "-" + ruleID,
+					TenantId: "tenant",
+					SourceId: "okta",
+					Kind:     "okta.audit",
+					Attributes: map[string]string{
+						"domain":         "tenant.example",
+						"event_type":     action,
+						"actor":          "admin@tenant.example",
+						"actor_id":       "00u-admin",
+						"resource_id":    "0oa-app",
+						"resource_type":  "AppInstance",
+						"outcome_result": "SUCCESS",
+					},
+				}
+				records, err := rules[ruleID].Evaluate(context.Background(), runtime, event)
+				if err != nil {
+					t.Fatalf("Evaluate() error = %v", err)
+				}
+				if len(records) != 0 {
+					t.Fatalf("Evaluate(%s) returned %d findings, want routine assignment suppressed", action, len(records))
+				}
+			})
+		}
+	}
+
+	passwordView := &cerebrov1.EventEnvelope{
+		Id:       "application-user-membership-show-password",
+		TenantId: "tenant",
+		SourceId: "okta",
+		Kind:     "okta.audit",
+		Attributes: map[string]string{
+			"domain":         "tenant.example",
+			"event_type":     "application.user_membership.show_password",
+			"actor":          "admin@tenant.example",
+			"actor_id":       "00u-admin",
+			"resource_id":    "0oa-app",
+			"resource_type":  "AppInstance",
+			"outcome_result": "SUCCESS",
+		},
+	}
+	records, err := rules[identityControlTamperCredentialChangeRuleID].Evaluate(context.Background(), runtime, passwordView)
+	if err != nil {
+		t.Fatalf("Evaluate(passwordView) error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("Evaluate(passwordView) returned %d findings, want password access finding", len(records))
+	}
+}
+
 func TestIdentitySignalRulesStillDetectOAuthCredentialCreation(t *testing.T) {
 	rules := identityRulesByID(t)
 	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"}
