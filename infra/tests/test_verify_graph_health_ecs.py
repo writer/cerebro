@@ -13,9 +13,11 @@ from scripts.verify_graph_health_ecs import (
     _declared_aws_families,
     _extract_json_payload,
     _declared_runtime_ids,
+    _graph_command_overrides,
     _graph_path_relations,
     _image_tag_version,
     _ingest_run_limit,
+    _is_graph_paths_timeout,
     _latest_active_task_definition,
     _resource_prefix,
     _supports_attack_path_relations,
@@ -65,6 +67,10 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
     def test_supports_attack_path_relations_uses_minimum_image_tag(self) -> None:
         self.assertFalse(_supports_attack_path_relations({"imageTag": "v2.1.45"}))
         self.assertTrue(_supports_attack_path_relations({"imageTag": "v2.1.46"}))
+
+    def test_is_graph_paths_timeout_matches_neo4j_deadline(self) -> None:
+        self.assertTrue(_is_graph_paths_timeout(RuntimeError("query graph path patterns: ConnectivityError: context deadline exceeded")))
+        self.assertFalse(_is_graph_paths_timeout(RuntimeError("graph paths missing required relation(s): can_reach")))
 
     def test_aws_error_includes_stderr(self) -> None:
         original_run = verify_graph_health_ecs.subprocess.run
@@ -119,6 +125,50 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             self.assertEqual(
                 _latest_active_task_definition("arn:aws:ecs:us-east-1:123:task-definition/cerebro-go-production:44", "us-east-1"),
                 "arn:aws:ecs:us-east-1:123:task-definition/cerebro-go-production:45",
+            )
+        finally:
+            verify_graph_health_ecs._aws = original_aws
+
+    def test_graph_command_overrides_disables_source_runtime_bootstrap_dependency(self) -> None:
+        original_aws = verify_graph_health_ecs._aws
+
+        def fake_aws(args, _region):
+            self.assertIn("describe-task-definition", args)
+            return {
+                "taskDefinition": {
+                    "containerDefinitions": [
+                        {"name": "source-runtime-bootstrap"},
+                        {"name": "cerebro"},
+                    ]
+                }
+            }
+
+        verify_graph_health_ecs._aws = fake_aws
+        try:
+            self.assertEqual(
+                _graph_command_overrides("arn:aws:ecs:us-east-1:123:task-definition/cerebro-sec-dev:72", ["graph", "counts"], "us-east-1"),
+                {
+                    "containerOverrides": [
+                        {"name": "cerebro", "command": ["graph", "counts"]},
+                        {"name": "source-runtime-bootstrap", "command": ["graph", "counts"]},
+                    ]
+                },
+            )
+        finally:
+            verify_graph_health_ecs._aws = original_aws
+
+    def test_graph_command_overrides_preserves_tasks_without_bootstrap_container(self) -> None:
+        original_aws = verify_graph_health_ecs._aws
+
+        def fake_aws(args, _region):
+            self.assertIn("describe-task-definition", args)
+            return {"taskDefinition": {"containerDefinitions": [{"name": "cerebro"}]}}
+
+        verify_graph_health_ecs._aws = fake_aws
+        try:
+            self.assertEqual(
+                _graph_command_overrides("arn:aws:ecs:us-east-1:123:task-definition/cerebro-sec-dev:72", ["graph", "integrity"], "us-east-1"),
+                {"containerOverrides": [{"name": "cerebro", "command": ["graph", "integrity"]}]},
             )
         finally:
             verify_graph_health_ecs._aws = original_aws
