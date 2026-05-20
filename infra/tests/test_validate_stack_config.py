@@ -213,6 +213,14 @@ class ValidateStackConfigTest(unittest.TestCase):
         findings = self._validate(content, name="Pulumi.sec-dev.yaml")
         self.assertTrue(any(finding.severity == "error" and "graph_page_limit <= 20" in finding.message for finding in findings))
 
+    def test_sec_dev_high_contention_schedule_page_limit_is_bounded(self) -> None:
+        content = BASE_STACK.replace(
+            "        - runtime_id=writer-okta-audit\n",
+            "        - runtime_id=writer-okta-audit\n        - page_limit=20\n",
+        )
+        findings = self._validate(content, name="Pulumi.sec-dev.yaml")
+        self.assertTrue(any(finding.severity == "error" and "page_limit <= 10" in finding.message for finding in findings))
+
     def test_sec_dev_global_graph_page_limit_is_bounded_for_high_contention_runtimes(self) -> None:
         content = BASE_STACK.replace(
             "  cerebro:orchestratorSchedules:",
@@ -220,6 +228,14 @@ class ValidateStackConfigTest(unittest.TestCase):
         )
         findings = self._validate(content, name="Pulumi.sec-dev.yaml")
         self.assertTrue(any(finding.severity == "error" and "graph_page_limit <= 20" in finding.message for finding in findings))
+
+    def test_sec_dev_global_page_limit_is_bounded_for_high_contention_runtimes(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:orchestratorSchedules:",
+            "  cerebro:orchestratorCommand:\n    - orchestrator\n    - run\n    - page_limit=20\n  cerebro:orchestratorSchedules:",
+        )
+        findings = self._validate(content, name="Pulumi.sec-dev.yaml")
+        self.assertTrue(any(finding.severity == "error" and "page_limit <= 10" in finding.message for finding in findings))
 
     def test_prod_guardrails_are_errors(self) -> None:
         content = BASE_STACK.replace("  cerebro:postgresDeletionProtection: true", "  cerebro:postgresDeletionProtection: false")
