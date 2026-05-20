@@ -206,8 +206,10 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 		LastObservedAt:     "2026-04-27T11:59:00Z",
 		ResourceCount:      1,
 		EventCount:         2,
-		RiskScore:          47,
-		RiskReasons:        []string{"privileged_actor", "risky_action"},
+		FindingRiskSnapshot: workflowevents.FindingRiskSnapshot{
+			RiskScore:   47,
+			RiskReasons: []string{"privileged_actor", "risky_action"},
+		},
 		Metadata: map[string]string{
 			"actor_urn":     "urn:cerebro:writer:okta_actor:user:00u1",
 			"resource_type": "okta_resource",

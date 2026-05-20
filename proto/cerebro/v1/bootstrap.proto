@@ -420,6 +420,7 @@ message ListFindingsRequest {
   string event_id = 7;
   uint32 limit = 8;
   string policy_id = 9;
+  FindingOrder order = 10;
 }
 
 enum FindingStatus {
@@ -427,6 +428,13 @@ enum FindingStatus {
   FINDING_STATUS_OPEN = 1;
   FINDING_STATUS_RESOLVED = 2;
   FINDING_STATUS_SUPPRESSED = 3;
+}
+
+enum FindingOrder {
+  FINDING_ORDER_UNSPECIFIED = 0;
+  FINDING_ORDER_LAST_OBSERVED = 1;
+  FINDING_ORDER_PRIORITY = 2;
+  FINDING_ORDER_RISK_SCORE = 3;
 }
 
 // FindingControlRef maps one finding to one compliance framework control.
@@ -478,6 +486,14 @@ message Finding {
   google.protobuf.Timestamp due_at = 24;
   repeated FindingNote notes = 25;
   repeated FindingTicket tickets = 26;
+  int32 risk_score = 27;
+  int32 likelihood_score = 28;
+  int32 impact_score = 29;
+  int32 confidence_score = 30;
+  string likelihood_level = 31;
+  string impact_level = 32;
+  repeated string risk_reasons = 33;
+  string risk_model_version = 34;
 }
 
 // GetFindingRequest loads one persisted finding by its durable identifier.

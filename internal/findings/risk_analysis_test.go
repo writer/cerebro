@@ -139,6 +139,99 @@ func TestAnalyzeFindingRiskContextUsesGenericSignals(t *testing.T) {
 	if context.Score < 80 {
 		t.Fatalf("Risk score = %d, want generic contextual score >= 80", context.Score)
 	}
+	if context.LikelihoodScore < 80 {
+		t.Fatalf("LikelihoodScore = %d, want >= 80", context.LikelihoodScore)
+	}
+	if context.ImpactScore < 80 {
+		t.Fatalf("ImpactScore = %d, want >= 80", context.ImpactScore)
+	}
+	if context.ConfidenceScore == 0 {
+		t.Fatal("ConfidenceScore = 0, want populated confidence")
+	}
+	if context.LikelihoodLevel == "" || context.ImpactLevel == "" || context.RiskModelVersion == "" {
+		t.Fatalf("Risk metadata = %#v, want levels and model version", context)
+	}
+}
+
+func TestAnalyzeFindingRiskContextDoesNotTreatNonProductionAsProduction(t *testing.T) {
+	now := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
+	for _, environment := range []string{"nonprod", "non-prod", "preprod", "pre-production", "staging"} {
+		finding := compoundRiskFinding("finding-"+environment, "cloud-env", "MEDIUM", "", "", "urn:cerebro:writer:asset:"+environment, "scan.detected")
+		finding.Attributes["environment"] = environment
+		context := AnalyzeFindingRiskContext(finding, now)
+		if stringSliceContains(context.Reasons, "production_environment") {
+			t.Fatalf("Risk reasons for environment %q = %#v, want no production_environment", environment, context.Reasons)
+		}
+	}
+	production := compoundRiskFinding("finding-prod", "cloud-env", "MEDIUM", "", "", "urn:cerebro:writer:asset:prod", "scan.detected")
+	production.Attributes["environment"] = "writer-prod"
+	context := AnalyzeFindingRiskContext(production, now)
+	if !stringSliceContains(context.Reasons, "production_environment") {
+		t.Fatalf("Risk reasons for production environment = %#v, want production_environment", context.Reasons)
+	}
+}
+
+func TestAnalyzeFindingRiskContextRecognizesActiveThreatSignals(t *testing.T) {
+	now := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
+	for name, attributes := range map[string]map[string]string{
+		"runtime_evidence_type": {
+			"evidence_type": "credential_use",
+		},
+		"runtime_action": {
+			"action": "token_exchange",
+		},
+		"sentinelone_infected": {
+			"is_infected":    "true",
+			"active_threats": "2",
+		},
+	} {
+		finding := compoundRiskFinding("finding-"+name, "runtime-active-threat", "HIGH", "", "", "urn:cerebro:writer:runtime_evidence:"+name, "")
+		finding.Attributes = attributes
+		context := AnalyzeFindingRiskContext(finding, now)
+		if !stringSliceContains(context.Reasons, "active_threat") {
+			t.Fatalf("Risk reasons for %s = %#v, want active_threat", name, context.Reasons)
+		}
+	}
+}
+
+func TestAnalyzeFindingRiskContextDoesNotTreatGenericMalwareClassificationAsActiveThreat(t *testing.T) {
+	now := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
+	finding := compoundRiskFinding("finding-sentinelone-mitigation", "sentinelone-mitigation-failed", "HIGH", "", "", "urn:cerebro:writer:sentinelone_agent:agent-1", "")
+	finding.Attributes = map[string]string{"classification": "Malware"}
+	context := AnalyzeFindingRiskContext(finding, now)
+	if stringSliceContains(context.Reasons, "active_threat") {
+		t.Fatalf("Risk reasons = %#v, want no active_threat for generic malware classification", context.Reasons)
+	}
+}
+
+func TestAnalyzeFindingRiskContextIgnoresExplicitNonSensitiveData(t *testing.T) {
+	now := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
+	for _, classification := range []string{"not_sensitive", "non_sensitive", "no_sensitive_data"} {
+		finding := compoundRiskFinding("finding-"+classification, "data-classification", "MEDIUM", "", "", "urn:cerebro:writer:dataset:"+classification, "")
+		finding.Attributes = map[string]string{"data_classification": classification}
+		context := AnalyzeFindingRiskContext(finding, now)
+		if stringSliceContains(context.Reasons, "sensitive_data") {
+			t.Fatalf("Risk reasons for %q = %#v, want no sensitive_data", classification, context.Reasons)
+		}
+	}
+}
+
+func TestAnalyzeFindingRiskContextCapsPrivateNetworkWithoutReachability(t *testing.T) {
+	now := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
+	finding := compoundRiskFinding("finding-private", "cloud-private-exposure", "CRITICAL", "", "", "urn:cerebro:writer:aws_instance:i-1", "scan.detected")
+	finding.LastObservedAt = now
+	finding.Attributes["network_scope"] = "private"
+	finding.Attributes["is_kev"] = "true"
+	finding.Attributes["epss_score"] = "0.91"
+	finding.Attributes["asset_criticality"] = "critical"
+
+	context := AnalyzeFindingRiskContext(finding, now)
+	if context.LikelihoodScore > 35 {
+		t.Fatalf("LikelihoodScore = %d, want private network cap <= 35 without reachability", context.LikelihoodScore)
+	}
+	if !stringSliceContains(context.Reasons, "private_network_context") {
+		t.Fatalf("Risk reasons = %#v, want private_network_context", context.Reasons)
+	}
 }
 
 func TestAnalyzeFindingAttackPathsUsesRelationWeights(t *testing.T) {

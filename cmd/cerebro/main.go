@@ -90,6 +90,9 @@ func serve() error {
 	}
 
 	app := bootstrap.New(cfg, deps, sources)
+	if err := app.BackfillFindingRisk(context.Background()); err != nil {
+		return fmt.Errorf("backfill finding risk: %w", err)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

@@ -3,6 +3,7 @@ package reports
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -182,6 +183,13 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 				Severity:     "HIGH",
 				Status:       "open",
 				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+				FindingRisk: ports.FindingRisk{
+					RiskScore:        80,
+					LikelihoodScore:  85,
+					ImpactScore:      75,
+					RiskReasons:      []string{"active", "external_exposure"},
+					RiskModelVersion: "likelihood-impact-v1",
+				},
 				Attributes: map[string]string{
 					"primary_resource_urn": "urn:cerebro:writer:okta_resource:policyrule:pol-1",
 				},
@@ -356,6 +364,18 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	if !ok || len(resourceCounts) != 1 {
 		t.Fatalf("Run().Run.Result[resource_counts] = %#v, want 1 entry", result["resource_counts"])
 	}
+	topRiskFindings, ok := result["top_risk_findings"].([]any)
+	if !ok || len(topRiskFindings) != 1 {
+		t.Fatalf("Run().Run.Result[top_risk_findings] = %#v, want 1 entry", result["top_risk_findings"])
+	}
+	topRiskFinding, ok := topRiskFindings[0].(map[string]any)
+	if !ok {
+		t.Fatalf("top risk finding = %#v, want object", topRiskFindings[0])
+	}
+	riskReasons, ok := topRiskFinding["risk_reasons"].([]any)
+	if !ok || len(riskReasons) != 2 {
+		t.Fatalf("top risk reasons = %#v, want serialized reasons", topRiskFinding["risk_reasons"])
+	}
 	graphEvidence, ok := result["graph_evidence"].([]any)
 	if !ok || len(graphEvidence) != 1 {
 		t.Fatalf("Run().Run.Result[graph_evidence] = %#v, want 1 entry", result["graph_evidence"])
@@ -453,6 +473,46 @@ func TestRunFindingSummaryReportWithoutGraphStoreMarksEvidenceUnconfigured(t *te
 	}
 }
 
+func TestTopRiskFindingEntriesKeepsSeverityTieBreakBeforeLimit(t *testing.T) {
+	now := time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC)
+	findings := []*ports.FindingRecord{}
+	for i := 0; i < 11; i++ {
+		findings = append(findings, &ports.FindingRecord{
+			ID:             fmt.Sprintf("low-%02d", i),
+			Title:          "Low risk tie",
+			Severity:       "LOW",
+			LastObservedAt: now.Add(time.Duration(i) * time.Minute),
+			FindingRisk: ports.FindingRisk{
+				RiskScore: 70,
+			},
+		})
+	}
+	findings = append(findings, &ports.FindingRecord{
+		ID:             "critical-old",
+		Title:          "Critical risk tie",
+		Severity:       "CRITICAL",
+		LastObservedAt: now.Add(-time.Hour),
+		FindingRisk: ports.FindingRisk{
+			RiskScore: 70,
+		},
+	})
+	entries := topRiskFindingEntries(findings, 10)
+	foundCritical := false
+	for _, raw := range entries {
+		entry, ok := raw.(map[string]any)
+		if !ok {
+			t.Fatalf("top risk entry = %#v, want object", raw)
+		}
+		if entry["finding_id"] == "critical-old" {
+			foundCritical = true
+			break
+		}
+	}
+	if !foundCritical {
+		t.Fatalf("topRiskFindingEntries() = %#v, want critical tie included before newer lows", entries)
+	}
+}
+
 func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 	if finding == nil {
 		return nil
@@ -482,6 +542,16 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 			DueAt:           finding.DueAt,
 			StatusReason:    finding.StatusReason,
 			StatusUpdatedAt: finding.StatusUpdatedAt,
+		},
+		FindingRisk: ports.FindingRisk{
+			RiskScore:        finding.RiskScore,
+			LikelihoodScore:  finding.LikelihoodScore,
+			ImpactScore:      finding.ImpactScore,
+			ConfidenceScore:  finding.ConfidenceScore,
+			LikelihoodLevel:  finding.LikelihoodLevel,
+			ImpactLevel:      finding.ImpactLevel,
+			RiskReasons:      append([]string(nil), finding.RiskReasons...),
+			RiskModelVersion: finding.RiskModelVersion,
 		},
 		Attributes:      cloneAttributes(finding.Attributes),
 		FirstObservedAt: finding.FirstObservedAt,

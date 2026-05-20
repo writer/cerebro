@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -152,6 +153,32 @@ func TestUpsertFindingStatementPreservesRuntimeIDOnConflict(t *testing.T) {
 	}
 }
 
+func TestFindingBackfillRiskUsesRuntimeScorerSignals(t *testing.T) {
+	now := time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC)
+	risk := findingBackfillRisk(&ports.FindingRecord{
+		ID:             "finding-1",
+		Status:         "open",
+		Severity:       "HIGH",
+		LastObservedAt: now.Add(-30 * time.Minute),
+		Attributes: map[string]string{
+			"epss_score":    "0.9",
+			"network_scope": "private",
+		},
+	}, now)
+	if !slices.Contains(risk.RiskReasons, "epss_high") {
+		t.Fatalf("findingBackfillRisk().RiskReasons = %#v, want epss_high from runtime scorer", risk.RiskReasons)
+	}
+	if !slices.Contains(risk.RiskReasons, "recent_24h") {
+		t.Fatalf("findingBackfillRisk().RiskReasons = %#v, want recent_24h from runtime scorer", risk.RiskReasons)
+	}
+	if !slices.Contains(risk.RiskReasons, "private_network_context") {
+		t.Fatalf("findingBackfillRisk().RiskReasons = %#v, want private_network_context from runtime scorer", risk.RiskReasons)
+	}
+	if risk.RiskModelVersion != "likelihood-impact-v1" {
+		t.Fatalf("findingBackfillRisk().RiskModelVersion = %q, want likelihood-impact-v1", risk.RiskModelVersion)
+	}
+}
+
 func TestFindingListQueryAcceptsTenantAndRuleWithoutRuntime(t *testing.T) {
 	query, args, err := findingListQuery(ports.ListFindingsRequest{
 		TenantID: "writer",
@@ -183,8 +210,8 @@ func TestFindingListQueryAcceptsTenantAndRuleWithoutRuntime(t *testing.T) {
 
 func TestFindingListQueryIncludesOptionalFilters(t *testing.T) {
 	query, args, err := findingListQuery(ports.ListFindingsRequest{
-		TenantID:    "writer",
-		RuntimeID:   "writer-okta-audit",
+		TenantID:    "tenant-a",
+		RuntimeID:   "runtime-audit",
 		FindingID:   "finding-1",
 		RuleID:      "identity-okta-policy-rule-lifecycle-tampering",
 		Severity:    "HIGH",
@@ -216,11 +243,11 @@ func TestFindingListQueryIncludesOptionalFilters(t *testing.T) {
 	if got := len(args); got != 10 {
 		t.Fatalf("len(findingListQuery().args) = %d, want 10", got)
 	}
-	if got := args[0]; got != "writer" {
-		t.Fatalf("findingListQuery().args[0] = %#v, want writer", got)
+	if got := args[0]; got != "tenant-a" {
+		t.Fatalf("findingListQuery().args[0] = %#v, want tenant-a", got)
 	}
-	if got := args[1]; got != "writer-okta-audit" {
-		t.Fatalf("findingListQuery().args[1] = %#v, want writer-okta-audit", got)
+	if got := args[1]; got != "runtime-audit" {
+		t.Fatalf("findingListQuery().args[1] = %#v, want runtime-audit", got)
 	}
 	if got := args[6]; got != "pol-1" {
 		t.Fatalf("findingListQuery().args[6] = %#v, want pol-1", got)
@@ -259,6 +286,9 @@ func TestFindingListQuerySupportsRuntimeBatchesAndPriorityOrder(t *testing.T) {
 			t.Fatalf("findingListQuery() query missing %q: %s", fragment, query)
 		}
 	}
+	if strings.Contains(query, "risk_score DESC") {
+		t.Fatalf("findingListQuery() priority order includes risk score ordering: %s", query)
+	}
 	if got := len(args); got != 5 {
 		t.Fatalf("len(findingListQuery().args) = %d, want 5", got)
 	}
@@ -273,17 +303,47 @@ func TestFindingListQuerySupportsRuntimeBatchesAndPriorityOrder(t *testing.T) {
 	}
 }
 
+func TestFindingListQueryRiskOrderKeepsSeverityTieBreak(t *testing.T) {
+	query, _, err := findingListQuery(ports.ListFindingsRequest{
+		TenantID:  "tenant-a",
+		RuntimeID: "runtime-audit",
+		Order:     ports.FindingOrderRiskScore,
+	})
+	if err != nil {
+		t.Fatalf("findingListQuery() error = %v", err)
+	}
+	riskIndex := strings.Index(query, "risk_score DESC")
+	severityIndex := strings.Index(query, "CASE UPPER(severity)")
+	observedIndex := strings.Index(query, "last_observed_at DESC")
+	if riskIndex == -1 || severityIndex == -1 || observedIndex == -1 {
+		t.Fatalf("findingListQuery() query missing risk/severity/observed ordering: %s", query)
+	}
+	if riskIndex >= severityIndex || severityIndex >= observedIndex {
+		t.Fatalf("findingListQuery() ordering = %s, want risk then severity tie-break then recency", query)
+	}
+}
+
 func TestFindingRowRecordDecodesCheckAndControlMetadata(t *testing.T) {
 	record, err := (findingRow{
-		ID:                    "finding-1",
-		Fingerprint:           "fingerprint-1",
-		TenantID:              "writer",
-		RuntimeID:             "writer-okta-audit",
-		RuleID:                "identity-okta-policy-rule-lifecycle-tampering",
-		Title:                 "Okta Policy Rule Lifecycle Tampering",
-		Severity:              "HIGH",
-		Status:                "open",
-		Summary:               "admin@writer.com performed policy.rule.update on pol-1",
+		ID:          "finding-1",
+		Fingerprint: "fingerprint-1",
+		TenantID:    "tenant-a",
+		RuntimeID:   "runtime-audit",
+		RuleID:      "identity-okta-policy-rule-lifecycle-tampering",
+		Title:       "Okta Policy Rule Lifecycle Tampering",
+		Severity:    "HIGH",
+		Status:      "open",
+		Summary:     "admin@example.invalid performed policy.rule.update on pol-1",
+		findingRiskRow: findingRiskRow{
+			RiskScore:        82,
+			LikelihoodScore:  78,
+			ImpactScore:      86,
+			ConfidenceScore:  93,
+			LikelihoodLevel:  "high",
+			ImpactLevel:      "critical",
+			RiskReasonsJSON:  `["external_exposure","privileged_actor"]`,
+			RiskModelVersion: "likelihood-impact-v1",
+		},
 		ResourceURNsJSON:      `["urn:cerebro:writer:okta_resource:policyrule:pol-1"]`,
 		EventIDsJSON:          `["okta-audit-2"]`,
 		ObservedPolicyIDsJSON: `["pol-1"]`,
@@ -312,6 +372,30 @@ func TestFindingRowRecordDecodesCheckAndControlMetadata(t *testing.T) {
 	}
 	if got := len(record.ControlRefs); got != 2 {
 		t.Fatalf("len(findingRow.record().ControlRefs) = %d, want 2", got)
+	}
+	if got := record.RiskScore; got != 82 {
+		t.Fatalf("findingRow.record().RiskScore = %d, want 82", got)
+	}
+	if got := record.LikelihoodScore; got != 78 {
+		t.Fatalf("findingRow.record().LikelihoodScore = %d, want 78", got)
+	}
+	if got := record.ImpactScore; got != 86 {
+		t.Fatalf("findingRow.record().ImpactScore = %d, want 86", got)
+	}
+	if got := record.ConfidenceScore; got != 93 {
+		t.Fatalf("findingRow.record().ConfidenceScore = %d, want 93", got)
+	}
+	if got := record.LikelihoodLevel; got != "high" {
+		t.Fatalf("findingRow.record().LikelihoodLevel = %q, want high", got)
+	}
+	if got := record.ImpactLevel; got != "critical" {
+		t.Fatalf("findingRow.record().ImpactLevel = %q, want critical", got)
+	}
+	if got := record.RiskModelVersion; got != "likelihood-impact-v1" {
+		t.Fatalf("findingRow.record().RiskModelVersion = %q, want likelihood-impact-v1", got)
+	}
+	if !slices.Contains(record.RiskReasons, "external_exposure") || !slices.Contains(record.RiskReasons, "privileged_actor") {
+		t.Fatalf("findingRow.record().RiskReasons = %#v, want typed risk reasons", record.RiskReasons)
 	}
 	if got := record.ControlRefs[0].FrameworkName; got != "SOC 2" {
 		t.Fatalf("findingRow.record().ControlRefs[0].FrameworkName = %q, want SOC 2", got)

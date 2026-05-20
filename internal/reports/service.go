@@ -161,7 +161,7 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	}
 	parameters[reportParameterResourceLimit] = strconv.Itoa(resourceLimit)
 	parameters[reportParameterGraphLimit] = strconv.Itoa(graphLimit)
-	findings, err := s.findingStore.ListFindings(ctx, ports.ListFindingsRequest{TenantID: tenantID, RuntimeID: runtimeID})
+	findings, err := s.findingStore.ListFindings(ctx, ports.ListFindingsRequest{TenantID: tenantID, RuntimeID: runtimeID, Order: ports.FindingOrderRiskScore})
 	if err != nil {
 		return nil, fmt.Errorf("list findings for tenant %q runtime %q: %w", tenantID, runtimeID, err)
 	}
@@ -173,6 +173,7 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	checkCounts := make(map[string]*checkCountEntry, len(findings))
 	controlCounts := make(map[string]*controlCountEntry, len(findings))
 	resourceCounts := make(map[string]int, len(findings))
+	riskCounts := make(map[string]int, len(findings))
 	noteCount := 0
 	notedFindingCount := 0
 	ticketCount := 0
@@ -234,6 +235,9 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 		if resourceURN := primaryResourceURN(finding); resourceURN != "" {
 			resourceCounts[resourceURN]++
 		}
+		if finding.RiskScore != 0 {
+			riskCounts[reportRiskLevel(finding.RiskScore)]++
+		}
 		if len(finding.Notes) != 0 {
 			notedFindingCount++
 			noteCount += len(finding.Notes)
@@ -268,6 +272,8 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 		"ticketed_finding_count": ticketedFindingCount,
 		"ticket_count":           ticketCount,
 		"resource_counts":        countEntries(resourceCounts, "resource_urn"),
+		"risk_counts":            countEntries(riskCounts, "risk_level"),
+		"top_risk_findings":      topRiskFindingEntries(findings, 10),
 		"graph_evidence_status":  graphEvidenceStatus,
 		"graph_evidence":         graphEvidence,
 	})
@@ -434,6 +440,103 @@ func countEntries(counts map[string]int, keyName string) []any {
 		})
 	}
 	return values
+}
+
+func topRiskFindingEntries(findings []*ports.FindingRecord, limit int) []any {
+	records := append([]*ports.FindingRecord(nil), findings...)
+	slices.SortFunc(records, func(left *ports.FindingRecord, right *ports.FindingRecord) int {
+		if left == nil || right == nil {
+			switch {
+			case left == nil && right == nil:
+				return 0
+			case left == nil:
+				return 1
+			default:
+				return -1
+			}
+		}
+		switch {
+		case left.RiskScore > right.RiskScore:
+			return -1
+		case left.RiskScore < right.RiskScore:
+			return 1
+		case reportSeverityRank(left.Severity) > reportSeverityRank(right.Severity):
+			return -1
+		case reportSeverityRank(left.Severity) < reportSeverityRank(right.Severity):
+			return 1
+		case left.LastObservedAt.After(right.LastObservedAt):
+			return -1
+		case left.LastObservedAt.Before(right.LastObservedAt):
+			return 1
+		case left.ID < right.ID:
+			return -1
+		case left.ID > right.ID:
+			return 1
+		default:
+			return 0
+		}
+	})
+	if len(records) > limit {
+		records = records[:limit]
+	}
+	values := make([]any, 0, len(records))
+	for _, finding := range records {
+		if finding == nil || finding.RiskScore == 0 {
+			continue
+		}
+		values = append(values, map[string]any{
+			"finding_id":       finding.ID,
+			"title":            finding.Title,
+			"severity":         finding.Severity,
+			"risk_score":       finding.RiskScore,
+			"likelihood_score": finding.LikelihoodScore,
+			"impact_score":     finding.ImpactScore,
+			"risk_level":       reportRiskLevel(finding.RiskScore),
+			"risk_reasons":     reportStringValues(finding.RiskReasons),
+		})
+	}
+	return values
+}
+
+func reportSeverityRank(severity string) int {
+	switch strings.ToUpper(strings.TrimSpace(severity)) {
+	case "CRITICAL":
+		return 4
+	case "HIGH":
+		return 3
+	case "MEDIUM":
+		return 2
+	case "LOW":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func reportStringValues(values []string) []any {
+	if len(values) == 0 {
+		return []any{}
+	}
+	converted := make([]any, 0, len(values))
+	for _, value := range values {
+		converted = append(converted, value)
+	}
+	return converted
+}
+
+func reportRiskLevel(score int) string {
+	switch {
+	case score >= 85:
+		return "critical"
+	case score >= 70:
+		return "high"
+	case score >= 40:
+		return "medium"
+	case score > 0:
+		return "low"
+	default:
+		return "unknown"
+	}
 }
 
 func checkCountEntries(counts map[string]*checkCountEntry) []any {

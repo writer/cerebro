@@ -96,6 +96,7 @@ type ListRequest struct {
 	EventID     string
 	PolicyID    string
 	Limit       uint32
+	Order       ports.FindingOrder
 }
 
 // EvaluateResult reports the persisted findings emitted for one runtime evaluation.
@@ -312,7 +313,7 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 				evaluationErr := fmt.Errorf("reconcile finding identity for rule %q event %q: %w", result.Rule.GetId(), event.GetId(), err)
 				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
 			}
-			stored, err := s.store.UpsertFinding(ctx, record)
+			stored, err := s.upsertFindingWithRisk(ctx, record, runtime, startedAt)
 			if err != nil {
 				evaluationErr := fmt.Errorf("persist finding for rule %q event %q: %w", result.Rule.GetId(), event.GetId(), err)
 				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
@@ -432,7 +433,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 					}
 					break
 				}
-				stored, err := s.store.UpsertFinding(ctx, record)
+				stored, err := s.upsertFindingWithRisk(ctx, record, runtime, startedAt)
 				if err != nil {
 					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("persist finding for rule %q event %q: %w", state.result.Rule.GetId(), event.GetId(), err)); failErr != nil {
 						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
@@ -506,6 +507,7 @@ func (s *Service) ListFindings(ctx context.Context, request ListRequest) (*ListR
 		EventID:     strings.TrimSpace(request.EventID),
 		PolicyID:    strings.TrimSpace(request.PolicyID),
 		Limit:       request.Limit,
+		Order:       request.Order,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list findings for tenant %q runtime %q: %w", strings.TrimSpace(runtime.GetTenantId()), runtimeID, err)
@@ -534,7 +536,7 @@ func (s *Service) resolveRetiredOpenFindings(ctx context.Context, tenantID strin
 		if _, emitted := emittedFindingIDs[strings.TrimSpace(finding.ID)]; emitted {
 			continue
 		}
-		updated, err := s.store.UpdateFindingStatus(ctx, ports.FindingStatusUpdate{
+		updated, err := s.updateFindingStatusAndRisk(ctx, ports.FindingStatusUpdate{
 			FindingID: strings.TrimSpace(finding.ID),
 			Status:    findingStatusResolved,
 			Reason:    workflowevents.FindingStatusReasonNoLongerEmitted,
@@ -573,7 +575,7 @@ func (s *Service) resolveStaleOpenFindings(ctx context.Context, tenantID string,
 		if !findingReferencesEvaluatedEvent(finding, evaluatedEventIDs) {
 			continue
 		}
-		updated, err := s.store.UpdateFindingStatus(ctx, ports.FindingStatusUpdate{
+		updated, err := s.updateFindingStatusAndRisk(ctx, ports.FindingStatusUpdate{
 			FindingID: strings.TrimSpace(finding.ID),
 			Status:    findingStatusResolved,
 			Reason:    workflowevents.FindingStatusReasonNoLongerEmitted,
@@ -619,7 +621,7 @@ func (s *Service) resolveAllOpenFindingsForRule(ctx context.Context, tenantID st
 		if finding == nil {
 			continue
 		}
-		updated, err := s.store.UpdateFindingStatus(ctx, ports.FindingStatusUpdate{
+		updated, err := s.updateFindingStatusAndRisk(ctx, ports.FindingStatusUpdate{
 			FindingID: strings.TrimSpace(finding.ID),
 			Status:    findingStatusResolved,
 			Reason:    workflowevents.FindingStatusReasonNoLongerEmitted,
@@ -661,6 +663,40 @@ func (s *Service) GetFinding(ctx context.Context, id string) (*ports.FindingReco
 		return nil, err
 	}
 	return finding, nil
+}
+
+// BackfillFindingRisk refreshes startup-migrated risk fields and graph projections.
+func (s *Service) BackfillFindingRisk(ctx context.Context) error {
+	if s == nil || s.store == nil {
+		return ErrRuntimeUnavailable
+	}
+	backfiller, ok := s.store.(interface {
+		BackfillFindingRisk(context.Context, bool) ([]*ports.FindingRecord, error)
+	})
+	if !ok {
+		return nil
+	}
+	includeUnprojected := s.graph != nil
+	updated, err := backfiller.BackfillFindingRisk(ctx, includeUnprojected)
+	if err != nil {
+		return err
+	}
+	revisionTime := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, finding := range updated {
+		if finding == nil {
+			continue
+		}
+		revision := fmt.Sprintf("startup-risk-backfill|%s|%s", revisionTime, strings.TrimSpace(finding.ID))
+		if err := s.projectFindingAnchorRevision(ctx, finding, revision); err != nil {
+			return fmt.Errorf("project finding %q backfilled risk: %w", finding.ID, err)
+		}
+		if includeUnprojected {
+			if err := s.markFindingRiskProjected(ctx, finding); err != nil {
+				return fmt.Errorf("mark finding %q backfilled risk projected: %w", finding.ID, err)
+			}
+		}
+	}
+	return nil
 }
 
 // ResolveFinding marks one persisted finding as resolved.
@@ -711,6 +747,16 @@ func (s *Service) SetFindingDueDate(ctx context.Context, id string, dueAt time.T
 	})
 	if err != nil {
 		return nil, fmt.Errorf("set finding %q due date: %w", findingID, err)
+	}
+	finding, err = s.persistFindingRisk(ctx, finding, time.Now().UTC())
+	if err != nil {
+		return nil, fmt.Errorf("refresh finding %q risk after due date update: %w", findingID, err)
+	}
+	if err := s.projectFindingAnchorRevision(ctx, finding, "due-risk-refresh|"+time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		return nil, fmt.Errorf("project finding %q due date risk update: %w", findingID, err)
+	}
+	if err := s.markFindingRiskProjected(ctx, finding); err != nil {
+		return nil, fmt.Errorf("mark finding %q due date risk projected: %w", findingID, err)
 	}
 	return finding, nil
 }
@@ -1106,7 +1152,7 @@ func (s *Service) updateFindingStatus(ctx context.Context, id string, status str
 	if findingID == "" {
 		return nil, fmt.Errorf("%w: finding id is required", ErrInvalidRequest)
 	}
-	finding, err := s.store.UpdateFindingStatus(ctx, ports.FindingStatusUpdate{
+	finding, err := s.updateFindingStatusAndRisk(ctx, ports.FindingStatusUpdate{
 		FindingID: findingID,
 		Status:    strings.TrimSpace(status),
 		Reason:    strings.TrimSpace(reason),
@@ -1119,6 +1165,50 @@ func (s *Service) updateFindingStatus(ctx context.Context, id string, status str
 		return nil, fmt.Errorf("record finding %q status workflow: %w", findingID, err)
 	}
 	return finding, nil
+}
+
+func (s *Service) updateFindingStatusAndRisk(ctx context.Context, request ports.FindingStatusUpdate) (*ports.FindingRecord, error) {
+	finding, err := s.store.UpdateFindingStatus(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	return s.persistFindingRisk(ctx, finding, request.UpdatedAt)
+}
+
+func (s *Service) upsertFindingWithRisk(ctx context.Context, finding *ports.FindingRecord, runtime *cerebrov1.SourceRuntime, now time.Time) (*ports.FindingRecord, error) {
+	enriched := enrichFindingRisk(finding, runtime, now)
+	stored, err := s.store.UpsertFinding(ctx, enriched)
+	if err != nil {
+		return nil, err
+	}
+	if stored != nil {
+		stored.GraphEvidenceRows = append([]*cerebrov1.GraphEvidenceRow(nil), enriched.GraphEvidenceRows...)
+	}
+	return s.persistFindingRisk(ctx, stored, now)
+}
+
+func (s *Service) persistFindingRisk(ctx context.Context, finding *ports.FindingRecord, now time.Time) (*ports.FindingRecord, error) {
+	if finding == nil {
+		return nil, errors.New("finding is required")
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	recomputed := recomputeFindingRisk(finding, now)
+	if updater, ok := s.store.(interface {
+		UpdateFindingRisk(context.Context, ports.FindingRiskUpdate) (*ports.FindingRecord, error)
+	}); ok {
+		return updater.UpdateFindingRisk(ctx, ports.FindingRiskUpdate{
+			FindingID:   strings.TrimSpace(recomputed.ID),
+			FindingRisk: recomputed.FindingRisk,
+			Attributes:  findingRiskAttributes(recomputed),
+		})
+	}
+	stored, err := s.store.UpsertFinding(ctx, recomputed)
+	if err != nil {
+		return nil, err
+	}
+	return stored, nil
 }
 
 func newFindingEvaluationRun(runtimeID string, ruleID string, eventLimit uint32, startedAt time.Time) *cerebrov1.FindingEvaluationRun {

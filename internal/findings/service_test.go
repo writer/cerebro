@@ -8,6 +8,7 @@ import (
 	"os"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -65,20 +66,25 @@ func (s *recordingAppendLog) Append(_ context.Context, event *cerebrov1.EventEnv
 }
 
 type stubFindingStore struct {
-	findings             map[string]*ports.FindingRecord
-	request              ports.ListFindingsRequest
-	listFindingsRequests []ports.ListFindingsRequest
-	listFindingsErr      error
-	claims               map[string]*ports.ClaimRecord
-	claimListRequest     ports.ListClaimsRequest
-	runs                 map[string]*cerebrov1.FindingEvaluationRun
-	runList              ports.ListFindingEvaluationRunsRequest
-	runPutCount          int
-	failRunPutOn         int
-	failRunPutErr        error
-	failRunPutByCall     map[int]error
-	evidence             map[string]*cerebrov1.FindingEvidence
-	evidenceList         ports.ListFindingEvidenceRequest
+	findings                   map[string]*ports.FindingRecord
+	request                    ports.ListFindingsRequest
+	listFindingsRequests       []ports.ListFindingsRequest
+	listFindingsErr            error
+	claims                     map[string]*ports.ClaimRecord
+	claimListRequest           ports.ListClaimsRequest
+	runs                       map[string]*cerebrov1.FindingEvaluationRun
+	runList                    ports.ListFindingEvaluationRunsRequest
+	runPutCount                int
+	failRunPutOn               int
+	failRunPutErr              error
+	failRunPutByCall           map[int]error
+	evidence                   map[string]*cerebrov1.FindingEvidence
+	evidenceList               ports.ListFindingEvidenceRequest
+	dropReturnedGraphEvidence  bool
+	upsertCount                int
+	backfillRiskResults        []*ports.FindingRecord
+	backfillRiskErr            error
+	backfillIncludeUnprojected bool
 }
 
 func (s *stubFindingStore) Ping(context.Context) error { return nil }
@@ -87,6 +93,7 @@ func (s *stubFindingStore) UpsertFinding(_ context.Context, finding *ports.Findi
 	if finding == nil {
 		return nil, errors.New("finding is required")
 	}
+	s.upsertCount++
 	if s.findings == nil {
 		s.findings = make(map[string]*ports.FindingRecord)
 	}
@@ -101,7 +108,40 @@ func (s *stubFindingStore) UpsertFinding(_ context.Context, finding *ports.Findi
 		}
 	}
 	s.findings[cloned.ID] = cloned
-	return cloneFinding(cloned), nil
+	returned := cloneFinding(cloned)
+	if s.dropReturnedGraphEvidence {
+		returned.GraphEvidenceRows = nil
+	}
+	return returned, nil
+}
+
+func (s *stubFindingStore) UpdateFindingRisk(_ context.Context, request ports.FindingRiskUpdate) (*ports.FindingRecord, error) {
+	finding, ok := s.findings[strings.TrimSpace(request.FindingID)]
+	if !ok {
+		return nil, ports.ErrFindingNotFound
+	}
+	updated := cloneFinding(finding)
+	updated.FindingRisk = request.FindingRisk
+	if updated.Attributes == nil {
+		updated.Attributes = map[string]string{}
+	}
+	for key, value := range request.Attributes {
+		updated.Attributes[key] = value
+	}
+	s.findings[updated.ID] = updated
+	return cloneFinding(updated), nil
+}
+
+func (s *stubFindingStore) BackfillFindingRisk(_ context.Context, includeUnprojected bool) ([]*ports.FindingRecord, error) {
+	s.backfillIncludeUnprojected = includeUnprojected
+	if s.backfillRiskErr != nil {
+		return nil, s.backfillRiskErr
+	}
+	results := make([]*ports.FindingRecord, 0, len(s.backfillRiskResults))
+	for _, finding := range s.backfillRiskResults {
+		results = append(results, cloneFinding(finding))
+	}
+	return results, nil
 }
 
 func (s *stubFindingStore) GetFinding(_ context.Context, id string) (*ports.FindingRecord, error) {
@@ -2659,6 +2699,52 @@ func TestResolveFindingUpdatesPersistedWorkflow(t *testing.T) {
 	}
 }
 
+func TestResolveFindingRecomputesPersistedRisk(t *testing.T) {
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:       "finding-1",
+				Status:   "open",
+				Severity: "LOW",
+				FindingRisk: ports.FindingRisk{
+					RiskScore:        99,
+					LikelihoodScore:  99,
+					ImpactScore:      99,
+					ConfidenceScore:  99,
+					LikelihoodLevel:  "critical",
+					ImpactLevel:      "critical",
+					RiskReasons:      []string{"active", "stale_reason"},
+					RiskModelVersion: defaultFindingRiskModelVersion,
+				},
+				Attributes:        map[string]string{"risk_score": "99", "risk_reasons": "active,stale_reason"},
+				FirstObservedAt:   time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC),
+				LastObservedAt:    time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC),
+				ResourceURNs:      []string{"urn:cerebro:test:resource:one"},
+				EventIDs:          []string{"event-1"},
+				ObservedPolicyIDs: []string{"policy-1"},
+			},
+		},
+	}
+	service := New(nil, nil, store, store, store, store)
+	finding, err := service.ResolveFinding(context.Background(), "finding-1", "verified remediation")
+	if err != nil {
+		t.Fatalf("ResolveFinding() error = %v", err)
+	}
+	if got := finding.Status; got != "resolved" {
+		t.Fatalf("ResolveFinding().Status = %q, want resolved", got)
+	}
+	if finding.RiskScore == 99 || finding.LikelihoodScore == 99 || finding.ImpactScore == 99 {
+		t.Fatalf("ResolveFinding() kept stale risk = score %d likelihood %d impact %d", finding.RiskScore, finding.LikelihoodScore, finding.ImpactScore)
+	}
+	if slices.Contains(finding.RiskReasons, "active") || slices.Contains(finding.RiskReasons, "stale_reason") {
+		t.Fatalf("ResolveFinding().RiskReasons = %#v, want stale reasons removed", finding.RiskReasons)
+	}
+	stored := store.findings["finding-1"]
+	if stored == nil || stored.RiskScore != finding.RiskScore {
+		t.Fatalf("stored risk score = %#v, want recomputed score %d", stored, finding.RiskScore)
+	}
+}
+
 func TestResolveFindingBridgesDecisionAndOutcomeWhenGraphConfigured(t *testing.T) {
 	store := &stubFindingStore{
 		findings: map[string]*ports.FindingRecord{
@@ -2757,6 +2843,361 @@ func TestSetFindingDueDateUpdatesPersistedWorkflow(t *testing.T) {
 	}
 	if got := finding.DueAt; !got.Equal(dueAt) {
 		t.Fatalf("SetFindingDueDate().DueAt = %v, want %v", got, dueAt)
+	}
+}
+
+func TestSetFindingDueDateRecomputesPersistedRisk(t *testing.T) {
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:       "finding-1",
+				Status:   "open",
+				Severity: "MEDIUM",
+				FindingRisk: ports.FindingRisk{
+					RiskScore:        1,
+					LikelihoodScore:  1,
+					ImpactScore:      1,
+					RiskReasons:      []string{"stale_reason"},
+					RiskModelVersion: defaultFindingRiskModelVersion,
+				},
+				Attributes: map[string]string{"risk_score": "1", "risk_reasons": "stale_reason"},
+			},
+		},
+	}
+	service := New(nil, nil, store, store, store, store)
+	dueAt := time.Now().UTC().Add(-time.Hour)
+	finding, err := service.SetFindingDueDate(context.Background(), "finding-1", dueAt)
+	if err != nil {
+		t.Fatalf("SetFindingDueDate() error = %v", err)
+	}
+	if !slices.Contains(finding.RiskReasons, "overdue") {
+		t.Fatalf("SetFindingDueDate().RiskReasons = %#v, want overdue", finding.RiskReasons)
+	}
+	if slices.Contains(finding.RiskReasons, "stale_reason") {
+		t.Fatalf("SetFindingDueDate().RiskReasons = %#v, want stale reason removed", finding.RiskReasons)
+	}
+	if finding.RiskScore <= 1 {
+		t.Fatalf("SetFindingDueDate().RiskScore = %d, want recomputed score > 1", finding.RiskScore)
+	}
+}
+
+func TestPersistFindingRiskUsesRiskOnlyUpdate(t *testing.T) {
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:         "finding-1",
+				Title:      "Current title",
+				Summary:    "Current summary",
+				Status:     "open",
+				Severity:   "LOW",
+				Attributes: map[string]string{"owner": "secops"},
+			},
+		},
+	}
+	service := New(nil, nil, store, store, store, store)
+	staleSnapshot := cloneFinding(store.findings["finding-1"])
+	staleSnapshot.Title = "Stale title"
+	staleSnapshot.Summary = "Stale summary"
+	stored, err := service.persistFindingRisk(context.Background(), staleSnapshot, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("persistFindingRisk() error = %v", err)
+	}
+	if store.upsertCount != 0 {
+		t.Fatalf("persistFindingRisk() called UpsertFinding %d times, want risk-only update", store.upsertCount)
+	}
+	if got := stored.Summary; got != "Current summary" {
+		t.Fatalf("persistFindingRisk().Summary = %q, want current summary preserved", got)
+	}
+	if got := stored.Attributes["owner"]; got != "secops" {
+		t.Fatalf("persistFindingRisk().Attributes[owner] = %q, want preserved", got)
+	}
+	if stored.RiskScore == 0 {
+		t.Fatal("persistFindingRisk().RiskScore = 0, want refreshed risk")
+	}
+}
+
+func TestBackfillFindingRiskProjectsUpdatedFindings(t *testing.T) {
+	openFinding := &ports.FindingRecord{
+		ID:        "finding-1",
+		TenantID:  "tenant-a",
+		RuntimeID: "runtime-audit",
+		RuleID:    "rule-1",
+		Title:     "Backfilled risk finding",
+		Status:    "open",
+		Severity:  "HIGH",
+		FindingRisk: ports.FindingRisk{
+			RiskScore:        83,
+			LikelihoodScore:  80,
+			ImpactScore:      86,
+			ConfidenceScore:  70,
+			LikelihoodLevel:  "high",
+			ImpactLevel:      "critical",
+			RiskReasons:      []string{"external_exposure"},
+			RiskModelVersion: defaultFindingRiskModelVersion,
+		},
+		LastObservedAt: time.Now().UTC().Add(-7 * 24 * time.Hour),
+	}
+	closedFinding := cloneFinding(openFinding)
+	closedFinding.ID = "finding-closed"
+	closedFinding.Status = findingStatusResolved
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			openFinding.ID:   cloneFinding(openFinding),
+			closedFinding.ID: cloneFinding(closedFinding),
+		},
+		backfillRiskResults: []*ports.FindingRecord{openFinding, closedFinding},
+	}
+	graphStore := &stubGraphStore{}
+	appendLog := &recordingAppendLog{}
+	service := New(nil, nil, store, store, store, store).WithGraphStore(graphStore).WithAppendLog(appendLog)
+	if err := service.BackfillFindingRisk(context.Background()); err != nil {
+		t.Fatalf("BackfillFindingRisk() error = %v", err)
+	}
+	if !store.backfillIncludeUnprojected {
+		t.Fatal("BackfillFindingRisk() did not request unprojected rows with graph configured")
+	}
+	graphFinding := graphStore.entities["urn:cerebro:tenant-a:finding:finding-1"]
+	if graphFinding == nil {
+		t.Fatal("BackfillFindingRisk() did not project finding anchor")
+	}
+	if got := graphFinding.Attributes["risk_score"]; got != "83" {
+		t.Fatalf("projected risk_score = %q, want 83", got)
+	}
+	if closed := graphStore.entities["urn:cerebro:tenant-a:finding:finding-closed"]; closed == nil || closed.Attributes["risk_score"] != "83" {
+		t.Fatalf("closed projected finding = %#v, want risk_score 83", closed)
+	}
+	if got := len(appendLog.events); got != 2 {
+		t.Fatalf("len(appended events) = %d, want 2", got)
+	}
+	if eventTime := appendLog.events[0].GetOccurredAt().AsTime(); time.Since(eventTime) > time.Minute {
+		t.Fatalf("backfill event occurred_at = %s, want startup time", eventTime.Format(time.RFC3339Nano))
+	}
+	if got := appendLog.events[1].GetKind(); got != workflowevents.EventKindFindingStatusChanged {
+		t.Fatalf("closed finding event kind = %q, want status_changed", got)
+	}
+	if got := store.findings["finding-1"].Attributes[FindingRiskGraphProjectedModelVersionAttribute]; got != defaultFindingRiskModelVersion {
+		t.Fatalf("projection marker = %q, want %q", got, defaultFindingRiskModelVersion)
+	}
+}
+
+func TestBackfillFindingRiskDoesNotMarkProjectedWithoutGraph(t *testing.T) {
+	finding := &ports.FindingRecord{
+		ID:        "finding-1",
+		TenantID:  "tenant-a",
+		RuntimeID: "runtime-audit",
+		RuleID:    "rule-1",
+		Title:     "Backfilled risk finding",
+		Status:    "open",
+		Severity:  "HIGH",
+		FindingRisk: ports.FindingRisk{
+			RiskScore:        83,
+			RiskModelVersion: defaultFindingRiskModelVersion,
+		},
+	}
+	store := &stubFindingStore{
+		findings:            map[string]*ports.FindingRecord{finding.ID: cloneFinding(finding)},
+		backfillRiskResults: []*ports.FindingRecord{finding},
+	}
+	service := New(nil, nil, store, store, store, store)
+	if err := service.BackfillFindingRisk(context.Background()); err != nil {
+		t.Fatalf("BackfillFindingRisk() error = %v", err)
+	}
+	if store.backfillIncludeUnprojected {
+		t.Fatal("BackfillFindingRisk() requested unprojected rows without graph configured")
+	}
+	if got := store.findings["finding-1"].Attributes[FindingRiskGraphProjectedModelVersionAttribute]; got != "" {
+		t.Fatalf("projection marker = %q, want empty without graph", got)
+	}
+}
+
+func TestProjectFindingAnchorMarksRiskProjected(t *testing.T) {
+	finding := &ports.FindingRecord{
+		ID:        "finding-1",
+		TenantID:  "tenant-a",
+		RuntimeID: "runtime-audit",
+		RuleID:    "rule-1",
+		Title:     "Projected risk finding",
+		Status:    "open",
+		Severity:  "HIGH",
+		FindingRisk: ports.FindingRisk{
+			RiskScore:        74,
+			RiskModelVersion: defaultFindingRiskModelVersion,
+		},
+		LastObservedAt: time.Now().UTC(),
+	}
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{finding.ID: cloneFinding(finding)}}
+	service := New(nil, nil, store, store, store, store).WithGraphStore(&stubGraphStore{})
+	if err := service.projectFindingAnchor(context.Background(), finding); err != nil {
+		t.Fatalf("projectFindingAnchor() error = %v", err)
+	}
+	if got := store.findings["finding-1"].Attributes[FindingRiskGraphProjectedModelVersionAttribute]; got != defaultFindingRiskModelVersion {
+		t.Fatalf("projection marker = %q, want %q", got, defaultFindingRiskModelVersion)
+	}
+}
+
+func TestSetFindingDueDateProjectsUpdatedRisk(t *testing.T) {
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:        "finding-1",
+				TenantID:  "tenant-a",
+				RuntimeID: "runtime-audit",
+				RuleID:    "rule-1",
+				Title:     "Due date finding",
+				Status:    "open",
+				Severity:  "MEDIUM",
+				FindingRisk: ports.FindingRisk{
+					RiskScore:        1,
+					RiskReasons:      []string{"stale_reason"},
+					RiskModelVersion: defaultFindingRiskModelVersion,
+				},
+				Attributes:     map[string]string{"risk_score": "1", "risk_reasons": "stale_reason"},
+				LastObservedAt: time.Now().UTC().Add(-14 * 24 * time.Hour),
+			},
+		},
+	}
+	graphStore := &stubGraphStore{}
+	appendLog := &recordingAppendLog{}
+	service := New(nil, nil, store, store, store, store).WithGraphStore(graphStore).WithAppendLog(appendLog)
+	finding, err := service.SetFindingDueDate(context.Background(), "finding-1", time.Now().UTC().Add(-time.Hour))
+	if err != nil {
+		t.Fatalf("SetFindingDueDate() error = %v", err)
+	}
+	if len(appendLog.events) == 0 {
+		t.Fatal("SetFindingDueDate() appended no workflow event, want finding anchor refresh")
+	}
+	graphFinding := graphStore.entities["urn:cerebro:tenant-a:finding:finding-1"]
+	if graphFinding == nil {
+		t.Fatal("SetFindingDueDate() did not project finding anchor")
+	}
+	if got := graphFinding.Attributes["risk_score"]; got != strconv.Itoa(finding.RiskScore) {
+		t.Fatalf("projected risk_score = %q, want %d", got, finding.RiskScore)
+	}
+	if !strings.Contains(graphFinding.Attributes["risk_reasons"], "overdue") {
+		t.Fatalf("projected risk_reasons = %q, want overdue", graphFinding.Attributes["risk_reasons"])
+	}
+	if eventTime := appendLog.events[0].GetOccurredAt().AsTime(); time.Since(eventTime) > time.Minute {
+		t.Fatalf("revision event occurred_at = %s, want refresh time", eventTime.Format(time.RFC3339Nano))
+	}
+	firstEventID := appendLog.events[0].GetId()
+	_, err = service.SetFindingDueDate(context.Background(), "finding-1", time.Now().UTC().Add(-2*time.Hour))
+	if err != nil {
+		t.Fatalf("SetFindingDueDate(second) error = %v", err)
+	}
+	if got := len(appendLog.events); got != 2 {
+		t.Fatalf("len(appended events) = %d, want 2", got)
+	}
+	if secondEventID := appendLog.events[1].GetId(); secondEventID == firstEventID {
+		t.Fatalf("SetFindingDueDate() reused finding_record event id %q, want non-deduplicated refresh event", secondEventID)
+	}
+}
+
+func TestFindingWorkflowSnapshotDoesNotMergeFreshReasonsWithStoredRisk(t *testing.T) {
+	dueAt := time.Now().UTC().Add(-time.Hour)
+	snapshot := findingWorkflowSnapshot(&ports.FindingRecord{
+		ID:       "finding-1",
+		TenantID: "tenant-a",
+		Status:   "open",
+		Severity: "LOW",
+		FindingWorkflow: ports.FindingWorkflow{
+			DueAt: dueAt,
+		},
+		FindingRisk: ports.FindingRisk{
+			RiskScore:        20,
+			LikelihoodScore:  20,
+			ImpactScore:      20,
+			ConfidenceScore:  70,
+			LikelihoodLevel:  "low",
+			ImpactLevel:      "low",
+			RiskReasons:      []string{"stored_reason"},
+			RiskModelVersion: defaultFindingRiskModelVersion,
+		},
+	}, "tenant-a", "runtime-audit")
+	if snapshot.RiskScore != 20 || snapshot.ImpactScore != 20 {
+		t.Fatalf("findingWorkflowSnapshot() risk = score %d impact %d, want stored values", snapshot.RiskScore, snapshot.ImpactScore)
+	}
+	if slices.Contains(snapshot.RiskReasons, "overdue") {
+		t.Fatalf("findingWorkflowSnapshot().RiskReasons = %#v, want no mixed fresh overdue reason", snapshot.RiskReasons)
+	}
+	if !slices.Contains(snapshot.RiskReasons, "stored_reason") {
+		t.Fatalf("findingWorkflowSnapshot().RiskReasons = %#v, want stored_reason", snapshot.RiskReasons)
+	}
+}
+
+func TestUpsertFindingWithRiskRecomputesAfterWorkflowPreservation(t *testing.T) {
+	dueAt := time.Now().UTC().Add(-time.Hour)
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:          "finding-1",
+				Fingerprint: "fingerprint-1",
+				TenantID:    "tenant-a",
+				RuntimeID:   "runtime-audit",
+				RuleID:      "rule-1",
+				Title:       "Existing triaged finding",
+				Severity:    "LOW",
+				Status:      "resolved",
+				Summary:     "resolved finding",
+				FindingWorkflow: ports.FindingWorkflow{
+					DueAt:           dueAt,
+					StatusReason:    "triaged",
+					StatusUpdatedAt: dueAt,
+				},
+			},
+		},
+	}
+	service := New(nil, nil, store, store, store, store)
+	emitted := &ports.FindingRecord{
+		ID:          "finding-1",
+		Fingerprint: "fingerprint-1",
+		TenantID:    "tenant-a",
+		RuntimeID:   "runtime-audit",
+		RuleID:      "rule-1",
+		Title:       "Existing triaged finding",
+		Severity:    "LOW",
+		Status:      "open",
+		Summary:     "reemitted finding",
+		Attributes:  map[string]string{},
+	}
+	stored, err := service.upsertFindingWithRisk(context.Background(), emitted, nil, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("upsertFindingWithRisk() error = %v", err)
+	}
+	if got := stored.Status; got != "resolved" {
+		t.Fatalf("upsertFindingWithRisk().Status = %q, want preserved resolved", got)
+	}
+	if !slices.Contains(stored.RiskReasons, "overdue") {
+		t.Fatalf("upsertFindingWithRisk().RiskReasons = %#v, want overdue from preserved due date", stored.RiskReasons)
+	}
+	if slices.Contains(stored.RiskReasons, "active") {
+		t.Fatalf("upsertFindingWithRisk().RiskReasons = %#v, want no active reason after preserved resolution", stored.RiskReasons)
+	}
+}
+
+func TestUpsertFindingWithRiskPreservesGraphEvidenceDuringRecompute(t *testing.T) {
+	store := &stubFindingStore{dropReturnedGraphEvidence: true}
+	service := New(nil, nil, store, store, store, store)
+	emitted := &ports.FindingRecord{
+		ID:          "finding-graph",
+		Fingerprint: "fingerprint-graph",
+		TenantID:    "tenant-a",
+		RuntimeID:   "runtime-graph",
+		RuleID:      "rule-graph",
+		Title:       "Graph-backed finding",
+		Severity:    "MEDIUM",
+		Status:      "open",
+		Summary:     "graph finding",
+		Attributes:  map[string]string{},
+		GraphEvidenceRows: []*cerebrov1.GraphEvidenceRow{
+			newGraphEvidenceRow("identity_path", map[string]string{"label": "path"}),
+		},
+	}
+	stored, err := service.upsertFindingWithRisk(context.Background(), emitted, nil, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("upsertFindingWithRisk() error = %v", err)
+	}
+	if !slices.Contains(stored.RiskReasons, "graph_evidence") {
+		t.Fatalf("upsertFindingWithRisk().RiskReasons = %#v, want graph_evidence", stored.RiskReasons)
 	}
 }
 
@@ -3274,15 +3715,25 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		attributes[key] = value
 	}
 	return &ports.FindingRecord{
-		ID:                finding.ID,
-		Fingerprint:       finding.Fingerprint,
-		TenantID:          finding.TenantID,
-		RuntimeID:         finding.RuntimeID,
-		RuleID:            finding.RuleID,
-		Title:             finding.Title,
-		Severity:          finding.Severity,
-		Status:            finding.Status,
-		Summary:           finding.Summary,
+		ID:          finding.ID,
+		Fingerprint: finding.Fingerprint,
+		TenantID:    finding.TenantID,
+		RuntimeID:   finding.RuntimeID,
+		RuleID:      finding.RuleID,
+		Title:       finding.Title,
+		Severity:    finding.Severity,
+		Status:      finding.Status,
+		Summary:     finding.Summary,
+		FindingRisk: ports.FindingRisk{
+			RiskScore:        finding.RiskScore,
+			LikelihoodScore:  finding.LikelihoodScore,
+			ImpactScore:      finding.ImpactScore,
+			ConfidenceScore:  finding.ConfidenceScore,
+			LikelihoodLevel:  finding.LikelihoodLevel,
+			ImpactLevel:      finding.ImpactLevel,
+			RiskReasons:      append([]string(nil), finding.RiskReasons...),
+			RiskModelVersion: finding.RiskModelVersion,
+		},
 		ResourceURNs:      resourceURNs,
 		EventIDs:          eventIDs,
 		ObservedPolicyIDs: observedPolicyIDs,

@@ -623,6 +623,24 @@ func findingAnchorAttributes(finding workflowevents.FindingSnapshot) map[string]
 	if finding.RiskScore != 0 {
 		attributes["risk_score"] = fmt.Sprintf("%d", finding.RiskScore)
 	}
+	if finding.LikelihoodScore != 0 {
+		attributes["likelihood_score"] = fmt.Sprintf("%d", finding.LikelihoodScore)
+	}
+	if finding.ImpactScore != 0 {
+		attributes["impact_score"] = fmt.Sprintf("%d", finding.ImpactScore)
+	}
+	if finding.ConfidenceScore != 0 {
+		attributes["confidence_score"] = fmt.Sprintf("%d", finding.ConfidenceScore)
+	}
+	if strings.TrimSpace(finding.LikelihoodLevel) != "" {
+		attributes["likelihood_level"] = strings.TrimSpace(finding.LikelihoodLevel)
+	}
+	if strings.TrimSpace(finding.ImpactLevel) != "" {
+		attributes["impact_level"] = strings.TrimSpace(finding.ImpactLevel)
+	}
+	if strings.TrimSpace(finding.RiskModelVersion) != "" {
+		attributes["risk_model_version"] = strings.TrimSpace(finding.RiskModelVersion)
+	}
 	if len(finding.EventIDs) != 0 {
 		attributes["event_ids"] = strings.Join(normalizeIDs(finding.EventIDs), ",")
 	}
@@ -658,6 +676,12 @@ func findingAnchorLinkAttributes(finding workflowevents.FindingSnapshot) map[str
 	}
 	if finding.RiskScore != 0 {
 		attributes["risk_score"] = fmt.Sprintf("%d", finding.RiskScore)
+	}
+	if finding.LikelihoodScore != 0 {
+		attributes["likelihood_score"] = fmt.Sprintf("%d", finding.LikelihoodScore)
+	}
+	if finding.ImpactScore != 0 {
+		attributes["impact_score"] = fmt.Sprintf("%d", finding.ImpactScore)
 	}
 	if finding.EventCount != 0 {
 		attributes["event_count"] = fmt.Sprintf("%d", finding.EventCount)

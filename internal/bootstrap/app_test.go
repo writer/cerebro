@@ -3448,6 +3448,13 @@ func TestBootstrapHealthDegradesOnDependencyError(t *testing.T) {
 	}
 }
 
+func TestBackfillFindingRiskSkipsMissingStateStore(t *testing.T) {
+	app := New(config.Config{}, Dependencies{}, nil)
+	if err := app.BackfillFindingRisk(context.Background()); err != nil {
+		t.Fatalf("BackfillFindingRisk() error = %v, want nil without state store", err)
+	}
+}
+
 func TestBootstrapHealthPingsUseTimeoutContext(t *testing.T) {
 	stateStore := &deadlineAwareStore{}
 	response := healthResponse(context.Background(), Dependencies{StateStore: stateStore})

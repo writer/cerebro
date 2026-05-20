@@ -21,6 +21,13 @@ const (
 )
 
 func (s *Service) projectFindingAnchor(ctx context.Context, finding *ports.FindingRecord) error {
+	if err := s.projectFindingAnchorRevision(ctx, finding, ""); err != nil {
+		return err
+	}
+	return s.markFindingRiskProjected(ctx, finding)
+}
+
+func (s *Service) projectFindingAnchorRevision(ctx context.Context, finding *ports.FindingRecord, revision string) error {
 	if s == nil || s.graph == nil {
 		return nil
 	}
@@ -35,14 +42,56 @@ func (s *Service) projectFindingAnchor(ctx context.Context, finding *ports.Findi
 	if recordedAt.IsZero() {
 		recordedAt = time.Now().UTC()
 	}
-	event, err := workflowevents.NewFindingRecordedEvent(workflowevents.FindingRecorded{
+	payload := workflowevents.FindingRecorded{
 		Finding:    findingWorkflowSnapshot(finding, tenantID, sourceID),
 		RecordedAt: recordedAt.Format(time.RFC3339Nano),
-	})
+	}
+	var event *cerebrov1.EventEnvelope
+	var err error
+	if strings.TrimSpace(revision) == "" {
+		event, err = workflowevents.NewFindingRecordedEvent(payload)
+	} else {
+		refreshTime := time.Now().UTC()
+		if findingClosedStatus(payload.Finding.Status) {
+			event, err = workflowevents.NewFindingStatusChangedEvent(workflowevents.FindingStatusChanged{
+				Finding:   payload.Finding,
+				Status:    payload.Finding.Status,
+				Reason:    strings.TrimSpace(finding.StatusReason),
+				Source:    "risk_refresh",
+				UpdatedAt: refreshTime.Format(time.RFC3339Nano),
+			})
+		} else {
+			event, err = workflowevents.NewFindingRecordedRevisionEvent(payload, revision, refreshTime)
+		}
+	}
 	if err != nil {
 		return err
 	}
 	return s.recordAndProjectWorkflowEvent(ctx, event)
+}
+
+func findingClosedStatus(status string) bool {
+	return strings.EqualFold(strings.TrimSpace(status), findingStatusResolved) || strings.EqualFold(strings.TrimSpace(status), findingStatusSuppressed)
+}
+
+func (s *Service) markFindingRiskProjected(ctx context.Context, finding *ports.FindingRecord) error {
+	if s == nil || s.graph == nil || finding == nil {
+		return nil
+	}
+	riskUpdater, ok := s.store.(interface {
+		UpdateFindingRisk(context.Context, ports.FindingRiskUpdate) (*ports.FindingRecord, error)
+	})
+	if !ok {
+		return nil
+	}
+	_, err := riskUpdater.UpdateFindingRisk(ctx, ports.FindingRiskUpdate{
+		FindingID:   finding.ID,
+		FindingRisk: finding.FindingRisk,
+		Attributes: map[string]string{
+			FindingRiskGraphProjectedModelVersionAttribute: finding.RiskModelVersion,
+		},
+	})
+	return err
 }
 
 func (s *Service) projectFindingNote(ctx context.Context, finding *ports.FindingRecord, note ports.FindingNote) error {
@@ -210,7 +259,33 @@ func (s *Service) recordAndProjectWorkflowEvent(ctx context.Context, event *cere
 func findingWorkflowSnapshot(finding *ports.FindingRecord, tenantID string, sourceID string) workflowevents.FindingSnapshot {
 	resourceURNs := uniqueSortedStrings(finding.ResourceURNs)
 	eventIDs := uniqueSortedStrings(finding.EventIDs)
-	risk := AnalyzeFindingRiskContext(finding, time.Time{})
+	var risk FindingRiskContext
+	if finding.RiskScore == 0 || finding.LikelihoodScore == 0 || finding.ImpactScore == 0 || finding.ConfidenceScore == 0 {
+		risk = AnalyzeFindingRiskContext(finding, time.Time{})
+	}
+	riskScore := finding.RiskScore
+	if riskScore == 0 {
+		riskScore = risk.Score
+	}
+	likelihoodScore := finding.LikelihoodScore
+	if likelihoodScore == 0 {
+		likelihoodScore = risk.LikelihoodScore
+	}
+	impactScore := finding.ImpactScore
+	if impactScore == 0 {
+		impactScore = risk.ImpactScore
+	}
+	confidenceScore := finding.ConfidenceScore
+	if confidenceScore == 0 {
+		confidenceScore = risk.ConfidenceScore
+	}
+	likelihoodLevel := firstNonEmpty(finding.LikelihoodLevel, risk.LikelihoodLevel)
+	impactLevel := firstNonEmpty(finding.ImpactLevel, risk.ImpactLevel)
+	modelVersion := firstNonEmpty(finding.RiskModelVersion, risk.RiskModelVersion)
+	riskReasons := finding.RiskReasons
+	if len(riskReasons) == 0 {
+		riskReasons = risk.Reasons
+	}
 	return workflowevents.FindingSnapshot{
 		TenantID:           strings.TrimSpace(tenantID),
 		SourceSystem:       strings.TrimSpace(sourceID),
@@ -232,9 +307,17 @@ func findingWorkflowSnapshot(finding *ports.FindingRecord, tenantID string, sour
 		ResourceCount:      len(resourceURNs),
 		EventCount:         len(eventIDs),
 		ControlRefs:        findingControlRefSnapshots(finding.ControlRefs),
-		RiskScore:          risk.Score,
-		RiskReasons:        risk.Reasons,
-		Metadata:           findingRiskMetadata(finding),
+		FindingRiskSnapshot: workflowevents.FindingRiskSnapshot{
+			RiskScore:        riskScore,
+			LikelihoodScore:  likelihoodScore,
+			ImpactScore:      impactScore,
+			ConfidenceScore:  confidenceScore,
+			LikelihoodLevel:  likelihoodLevel,
+			ImpactLevel:      impactLevel,
+			RiskModelVersion: modelVersion,
+			RiskReasons:      uniqueSortedStrings(riskReasons),
+		},
+		Metadata: findingRiskMetadata(finding),
 	}
 }
 

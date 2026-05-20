@@ -1252,6 +1252,14 @@ func (a *App) handleListFindings(w http.ResponseWriter, r *http.Request) {
 		}
 		request.Status = status
 	}
+	if rawOrder := r.URL.Query().Get("order"); rawOrder != "" {
+		order, err := parseFindingOrder(rawOrder)
+		if err != nil {
+			writeFindingError(w, err)
+			return
+		}
+		request.Order = order
+	}
 	if limit := r.URL.Query().Get("limit"); limit != "" {
 		body := []byte(`{"limit":` + limit + `}`)
 		if err := unmarshalHTTPProtoJSON(body, request); err != nil {
@@ -1273,6 +1281,14 @@ func (a *App) handleListFindings(w http.ResponseWriter, r *http.Request) {
 			}
 			request.Status = status
 		}
+		if rawOrder := r.URL.Query().Get("order"); rawOrder != "" {
+			order, err := parseFindingOrder(rawOrder)
+			if err != nil {
+				writeFindingError(w, err)
+				return
+			}
+			request.Order = order
+		}
 	}
 	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetRuntimeId(), false); err != nil {
 		writeFindingError(w, err)
@@ -1288,6 +1304,7 @@ func (a *App) handleListFindings(w http.ResponseWriter, r *http.Request) {
 		EventID:     request.GetEventId(),
 		PolicyID:    request.GetPolicyId(),
 		Limit:       request.GetLimit(),
+		Order:       findingOrder(request.GetOrder()),
 	})
 	if err != nil {
 		writeFindingError(w, err)
@@ -1581,6 +1598,7 @@ func (s *bootstrapService) ListFindings(ctx context.Context, req *connect.Reques
 		EventID:     req.Msg.GetEventId(),
 		PolicyID:    req.Msg.GetPolicyId(),
 		Limit:       req.Msg.GetLimit(),
+		Order:       findingOrder(req.Msg.GetOrder()),
 	})
 	if err != nil {
 		return nil, findingConnectError(err)
@@ -2216,6 +2234,14 @@ func (a *App) findingService() *findings.Service {
 		findingEvidenceStore(a.deps.StateStore),
 		claimStore(a.deps.StateStore),
 	).WithGraphStore(sourceProjectionGraphStore(a.deps.GraphStore)).WithGraphQueryStore(graphQueryStore(a.deps.GraphStore)).WithAppendLog(a.deps.AppendLog)
+}
+
+// BackfillFindingRisk runs server-start finding risk migration work.
+func (a *App) BackfillFindingRisk(ctx context.Context) error {
+	if findingStore(a.deps.StateStore) == nil {
+		return nil
+	}
+	return a.findingService().BackfillFindingRisk(ctx)
 }
 
 func (a *App) knowledgeService() *knowledge.Service {
@@ -2854,6 +2880,14 @@ func findingMessage(finding *ports.FindingRecord) *cerebrov1.Finding {
 		ControlRefs:       findingControlRefMessages(finding.ControlRefs),
 		Notes:             findingNoteMessages(finding.Notes),
 		Tickets:           findingTicketMessages(finding.Tickets),
+		RiskScore:         int32(finding.RiskScore),
+		LikelihoodScore:   int32(finding.LikelihoodScore),
+		ImpactScore:       int32(finding.ImpactScore),
+		ConfidenceScore:   int32(finding.ConfidenceScore),
+		LikelihoodLevel:   finding.LikelihoodLevel,
+		ImpactLevel:       finding.ImpactLevel,
+		RiskReasons:       append([]string(nil), finding.RiskReasons...),
+		RiskModelVersion:  finding.RiskModelVersion,
 		Attributes:        make(map[string]string, len(finding.Attributes)),
 		Assignee:          finding.Assignee,
 		StatusReason:      finding.StatusReason,
@@ -2966,6 +3000,19 @@ func findingStatusString(status cerebrov1.FindingStatus) string {
 	}
 }
 
+func findingOrder(order cerebrov1.FindingOrder) ports.FindingOrder {
+	switch order {
+	case cerebrov1.FindingOrder_FINDING_ORDER_PRIORITY:
+		return ports.FindingOrderPriority
+	case cerebrov1.FindingOrder_FINDING_ORDER_RISK_SCORE:
+		return ports.FindingOrderRiskScore
+	case cerebrov1.FindingOrder_FINDING_ORDER_LAST_OBSERVED:
+		return ports.FindingOrderLastObserved
+	default:
+		return ""
+	}
+}
+
 func parseFindingStatus(raw string) (cerebrov1.FindingStatus, error) {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "open", "finding_status_open":
@@ -2976,6 +3023,19 @@ func parseFindingStatus(raw string) (cerebrov1.FindingStatus, error) {
 		return cerebrov1.FindingStatus_FINDING_STATUS_SUPPRESSED, nil
 	default:
 		return cerebrov1.FindingStatus_FINDING_STATUS_UNSPECIFIED, fmt.Errorf("%w: unsupported finding status %q", errInvalidHTTPRequest, raw)
+	}
+}
+
+func parseFindingOrder(raw string) (cerebrov1.FindingOrder, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "last_observed", "finding_order_last_observed":
+		return cerebrov1.FindingOrder_FINDING_ORDER_LAST_OBSERVED, nil
+	case "priority", "finding_order_priority":
+		return cerebrov1.FindingOrder_FINDING_ORDER_PRIORITY, nil
+	case "risk_score", "risk", "finding_order_risk_score":
+		return cerebrov1.FindingOrder_FINDING_ORDER_RISK_SCORE, nil
+	default:
+		return cerebrov1.FindingOrder_FINDING_ORDER_UNSPECIFIED, fmt.Errorf("%w: unsupported finding order %q", errInvalidHTTPRequest, raw)
 	}
 }
 

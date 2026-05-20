@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
+	findingrisk "github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -24,6 +26,14 @@ var ensureFindingStatements = []string{
   severity TEXT NOT NULL,
   status TEXT NOT NULL,
   summary TEXT NOT NULL,
+  risk_score INTEGER NOT NULL DEFAULT 0,
+  likelihood_score INTEGER NOT NULL DEFAULT 0,
+  impact_score INTEGER NOT NULL DEFAULT 0,
+  confidence_score INTEGER NOT NULL DEFAULT 0,
+  likelihood_level TEXT NOT NULL DEFAULT '',
+  impact_level TEXT NOT NULL DEFAULT '',
+  risk_reasons_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  risk_model_version TEXT NOT NULL DEFAULT '',
   resource_urns_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   event_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   observed_policy_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -56,6 +66,14 @@ var ensureFindingStatements = []string{
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS due_at TIMESTAMPTZ`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS status_reason TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS status_updated_at TIMESTAMPTZ`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS risk_score INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS likelihood_score INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS impact_score INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS confidence_score INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS likelihood_level TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS impact_level TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS risk_reasons_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS risk_model_version TEXT NOT NULL DEFAULT ''`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_rule_idx ON findings (runtime_id, rule_id)`,
 	`CREATE INDEX IF NOT EXISTS findings_tenant_rule_idx ON findings (tenant_id, rule_id)`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_policy_idx ON findings (runtime_id, policy_id)`,
@@ -65,6 +83,7 @@ var ensureFindingStatements = []string{
 	`CREATE INDEX IF NOT EXISTS findings_runtime_severity_idx ON findings (runtime_id, severity)`,
 	`CREATE INDEX IF NOT EXISTS findings_tenant_runtime_status_observed_idx ON findings (tenant_id, runtime_id, status, last_observed_at DESC, id)`,
 	`CREATE INDEX IF NOT EXISTS findings_tenant_runtime_observed_idx ON findings (tenant_id, runtime_id, last_observed_at DESC, id)`,
+	`CREATE INDEX IF NOT EXISTS findings_priority_idx ON findings (tenant_id, runtime_id, status, risk_score DESC, last_observed_at DESC, id)`,
 	`CREATE INDEX IF NOT EXISTS findings_resource_urns_gin_idx ON findings USING GIN (resource_urns_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_event_ids_gin_idx ON findings USING GIN (event_ids_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_observed_policy_ids_gin_idx ON findings USING GIN (observed_policy_ids_json)`,
@@ -72,6 +91,12 @@ var ensureFindingStatements = []string{
 	`CREATE INDEX IF NOT EXISTS findings_notes_gin_idx ON findings USING GIN (notes_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_tickets_gin_idx ON findings USING GIN (tickets_json)`,
 }
+
+const findingSelectColumns = `id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
+  risk_score, likelihood_score, impact_score, confidence_score, likelihood_level, impact_level, risk_reasons_json::text, risk_model_version,
+  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
+  notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  status_updated_at, first_observed_at, last_observed_at`
 
 // upsertFindingStatement persists one finding row, preserving runtime_id on conflict.
 //
@@ -86,11 +111,12 @@ var ensureFindingStatements = []string{
 const upsertFindingStatement = `
 INSERT INTO findings (
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
+  risk_score, likelihood_score, impact_score, confidence_score, likelihood_level, impact_level, risk_reasons_json, risk_model_version,
   resource_urns_json, event_ids_json, observed_policy_ids_json, control_refs_json, notes_json, tickets_json, attributes_json,
   policy_id, policy_name, check_id, check_name, assignee, due_at, status_reason,
   status_updated_at, first_observed_at, last_observed_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb, $16::jsonb, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb, $17, $18::jsonb, $19::jsonb, $20::jsonb, $21::jsonb, $22::jsonb, $23::jsonb, $24::jsonb, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34)
 ON CONFLICT (id)
 DO UPDATE SET
   fingerprint = EXCLUDED.fingerprint,
@@ -104,6 +130,14 @@ DO UPDATE SET
     ELSE EXCLUDED.status
   END,
   summary = EXCLUDED.summary,
+  risk_score = EXCLUDED.risk_score,
+  likelihood_score = EXCLUDED.likelihood_score,
+  impact_score = EXCLUDED.impact_score,
+  confidence_score = EXCLUDED.confidence_score,
+  likelihood_level = EXCLUDED.likelihood_level,
+  impact_level = EXCLUDED.impact_level,
+  risk_reasons_json = EXCLUDED.risk_reasons_json,
+  risk_model_version = EXCLUDED.risk_model_version,
   resource_urns_json = EXCLUDED.resource_urns_json,
   event_ids_json = EXCLUDED.event_ids_json,
   observed_policy_ids_json = EXCLUDED.observed_policy_ids_json,
@@ -137,11 +171,7 @@ DO UPDATE SET
   first_observed_at = LEAST(findings.first_observed_at, EXCLUDED.first_observed_at),
   last_observed_at = GREATEST(findings.last_observed_at, EXCLUDED.last_observed_at),
   updated_at = NOW()
-RETURNING
-  id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
-  status_updated_at, first_observed_at, last_observed_at`
+RETURNING ` + findingSelectColumns
 
 // UpsertFinding persists one normalized finding in the current-state store.
 func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord) (*ports.FindingRecord, error) {
@@ -218,6 +248,10 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 	if err != nil {
 		return nil, fmt.Errorf("marshal finding attributes: %w", err)
 	}
+	riskReasonsJSON, err := findingStringsJSON(finding.RiskReasons)
+	if err != nil {
+		return nil, fmt.Errorf("marshal finding risk reasons: %w", err)
+	}
 	policyID := strings.TrimSpace(finding.PolicyID)
 	policyName := strings.TrimSpace(finding.PolicyName)
 	checkID := strings.TrimSpace(finding.CheckID)
@@ -234,7 +268,7 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 	}
 	firstObservedAt, lastObservedAt := normalizeFindingObservationWindow(finding.FirstObservedAt, finding.LastObservedAt, time.Now().UTC())
 	var stored findingRow
-	if err := s.db.QueryRowContext(ctx, upsertFindingStatement,
+	if err := scanFindingRow(s.db.QueryRowContext(ctx, upsertFindingStatement,
 		id,
 		fingerprint,
 		tenantID,
@@ -244,6 +278,14 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 		severity,
 		status,
 		summary,
+		finding.RiskScore,
+		finding.LikelihoodScore,
+		finding.ImpactScore,
+		finding.ConfidenceScore,
+		strings.TrimSpace(finding.LikelihoodLevel),
+		strings.TrimSpace(finding.ImpactLevel),
+		riskReasonsJSON,
+		strings.TrimSpace(finding.RiskModelVersion),
 		resourceURNsJSON,
 		eventIDsJSON,
 		observedPolicyIDsJSON,
@@ -261,34 +303,7 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 		statusUpdatedAt,
 		firstObservedAt,
 		lastObservedAt,
-	).Scan(
-		&stored.ID,
-		&stored.Fingerprint,
-		&stored.TenantID,
-		&stored.RuntimeID,
-		&stored.RuleID,
-		&stored.Title,
-		&stored.Severity,
-		&stored.Status,
-		&stored.Summary,
-		&stored.ResourceURNsJSON,
-		&stored.EventIDsJSON,
-		&stored.ObservedPolicyIDsJSON,
-		&stored.ControlRefsJSON,
-		&stored.NotesJSON,
-		&stored.TicketsJSON,
-		&stored.PolicyID,
-		&stored.PolicyName,
-		&stored.CheckID,
-		&stored.CheckName,
-		&stored.AttributesJSON,
-		&stored.Assignee,
-		&stored.DueAt,
-		&stored.StatusReason,
-		&stored.StatusUpdatedAt,
-		&stored.FirstObservedAt,
-		&stored.LastObservedAt,
-	); err != nil {
+	), &stored); err != nil {
 		return nil, fmt.Errorf("upsert finding %q: %w", id, err)
 	}
 	return stored.record()
@@ -350,34 +365,7 @@ func (s *Store) ListFindings(ctx context.Context, request ports.ListFindingsRequ
 	findings := []*ports.FindingRecord{}
 	for rows.Next() {
 		var row findingRow
-		if err := rows.Scan(
-			&row.ID,
-			&row.Fingerprint,
-			&row.TenantID,
-			&row.RuntimeID,
-			&row.RuleID,
-			&row.Title,
-			&row.Severity,
-			&row.Status,
-			&row.Summary,
-			&row.ResourceURNsJSON,
-			&row.EventIDsJSON,
-			&row.ObservedPolicyIDsJSON,
-			&row.ControlRefsJSON,
-			&row.NotesJSON,
-			&row.TicketsJSON,
-			&row.PolicyID,
-			&row.PolicyName,
-			&row.CheckID,
-			&row.CheckName,
-			&row.AttributesJSON,
-			&row.Assignee,
-			&row.DueAt,
-			&row.StatusReason,
-			&row.StatusUpdatedAt,
-			&row.FirstObservedAt,
-			&row.LastObservedAt,
-		); err != nil {
+		if err := scanFindingRow(rows, &row); err != nil {
 			return nil, fmt.Errorf("scan finding row: %w", err)
 		}
 		record, err := row.record()
@@ -480,43 +468,12 @@ func (s *Store) GetFinding(ctx context.Context, id string) (*ports.FindingRecord
 		return nil, errors.New("finding id is required")
 	}
 	var row findingRow
-	if err := s.db.QueryRowContext(ctx, `
-SELECT
-  id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
-  status_updated_at, first_observed_at, last_observed_at
+	if err := scanFindingRow(s.db.QueryRowContext(ctx, `
+SELECT `+findingSelectColumns+`
 FROM findings
 WHERE id = $1`,
 		findingID,
-	).Scan(
-		&row.ID,
-		&row.Fingerprint,
-		&row.TenantID,
-		&row.RuntimeID,
-		&row.RuleID,
-		&row.Title,
-		&row.Severity,
-		&row.Status,
-		&row.Summary,
-		&row.ResourceURNsJSON,
-		&row.EventIDsJSON,
-		&row.ObservedPolicyIDsJSON,
-		&row.ControlRefsJSON,
-		&row.NotesJSON,
-		&row.TicketsJSON,
-		&row.PolicyID,
-		&row.PolicyName,
-		&row.CheckID,
-		&row.CheckName,
-		&row.AttributesJSON,
-		&row.Assignee,
-		&row.DueAt,
-		&row.StatusReason,
-		&row.StatusUpdatedAt,
-		&row.FirstObservedAt,
-		&row.LastObservedAt,
-	); err != nil {
+	), &row); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ports.ErrFindingNotFound
 		}
@@ -547,47 +504,16 @@ func (s *Store) UpdateFindingStatus(ctx context.Context, request ports.FindingSt
 		updatedAt = time.Now().UTC()
 	}
 	var row findingRow
-	if err := s.db.QueryRowContext(ctx, `
+	if err := scanFindingRow(s.db.QueryRowContext(ctx, `
 UPDATE findings
 SET status = $2, status_reason = $3, status_updated_at = $4, updated_at = NOW()
 WHERE id = $1
-RETURNING
-  id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
-  status_updated_at, first_observed_at, last_observed_at`,
+RETURNING `+findingSelectColumns,
 		findingID,
 		status,
 		statusReason,
 		updatedAt,
-	).Scan(
-		&row.ID,
-		&row.Fingerprint,
-		&row.TenantID,
-		&row.RuntimeID,
-		&row.RuleID,
-		&row.Title,
-		&row.Severity,
-		&row.Status,
-		&row.Summary,
-		&row.ResourceURNsJSON,
-		&row.EventIDsJSON,
-		&row.ObservedPolicyIDsJSON,
-		&row.ControlRefsJSON,
-		&row.NotesJSON,
-		&row.TicketsJSON,
-		&row.PolicyID,
-		&row.PolicyName,
-		&row.CheckID,
-		&row.CheckName,
-		&row.AttributesJSON,
-		&row.Assignee,
-		&row.DueAt,
-		&row.StatusReason,
-		&row.StatusUpdatedAt,
-		&row.FirstObservedAt,
-		&row.LastObservedAt,
-	); err != nil {
+	), &row); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ports.ErrFindingNotFound
 		}
@@ -609,45 +535,14 @@ func (s *Store) UpdateFindingAssignee(ctx context.Context, request ports.Finding
 		return nil, errors.New("finding id is required")
 	}
 	var row findingRow
-	if err := s.db.QueryRowContext(ctx, `
+	if err := scanFindingRow(s.db.QueryRowContext(ctx, `
 UPDATE findings
 SET assignee = $2, updated_at = NOW()
 WHERE id = $1
-RETURNING
-  id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
-  status_updated_at, first_observed_at, last_observed_at`,
+RETURNING `+findingSelectColumns,
 		findingID,
 		strings.TrimSpace(request.Assignee),
-	).Scan(
-		&row.ID,
-		&row.Fingerprint,
-		&row.TenantID,
-		&row.RuntimeID,
-		&row.RuleID,
-		&row.Title,
-		&row.Severity,
-		&row.Status,
-		&row.Summary,
-		&row.ResourceURNsJSON,
-		&row.EventIDsJSON,
-		&row.ObservedPolicyIDsJSON,
-		&row.ControlRefsJSON,
-		&row.NotesJSON,
-		&row.TicketsJSON,
-		&row.PolicyID,
-		&row.PolicyName,
-		&row.CheckID,
-		&row.CheckName,
-		&row.AttributesJSON,
-		&row.Assignee,
-		&row.DueAt,
-		&row.StatusReason,
-		&row.StatusUpdatedAt,
-		&row.FirstObservedAt,
-		&row.LastObservedAt,
-	); err != nil {
+	), &row); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ports.ErrFindingNotFound
 		}
@@ -673,51 +568,42 @@ func (s *Store) UpdateFindingDueDate(ctx context.Context, request ports.FindingD
 		return nil, errors.New("finding due date is required")
 	}
 	var row findingRow
-	if err := s.db.QueryRowContext(ctx, `
+	if err := scanFindingRow(s.db.QueryRowContext(ctx, `
 UPDATE findings
 SET due_at = $2, updated_at = NOW()
 WHERE id = $1
-RETURNING
-  id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
-  status_updated_at, first_observed_at, last_observed_at`,
+RETURNING `+findingSelectColumns,
 		findingID,
 		dueAt,
-	).Scan(
-		&row.ID,
-		&row.Fingerprint,
-		&row.TenantID,
-		&row.RuntimeID,
-		&row.RuleID,
-		&row.Title,
-		&row.Severity,
-		&row.Status,
-		&row.Summary,
-		&row.ResourceURNsJSON,
-		&row.EventIDsJSON,
-		&row.ObservedPolicyIDsJSON,
-		&row.ControlRefsJSON,
-		&row.NotesJSON,
-		&row.TicketsJSON,
-		&row.PolicyID,
-		&row.PolicyName,
-		&row.CheckID,
-		&row.CheckName,
-		&row.AttributesJSON,
-		&row.Assignee,
-		&row.DueAt,
-		&row.StatusReason,
-		&row.StatusUpdatedAt,
-		&row.FirstObservedAt,
-		&row.LastObservedAt,
-	); err != nil {
+	), &row); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ports.ErrFindingNotFound
 		}
 		return nil, fmt.Errorf("update finding %q due date: %w", findingID, err)
 	}
 	return row.record()
+}
+
+// UpdateFindingRisk updates only persisted risk fields for one finding.
+func (s *Store) UpdateFindingRisk(ctx context.Context, request ports.FindingRiskUpdate) (*ports.FindingRecord, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
+	}
+	if err := s.ensureFindingTables(ctx); err != nil {
+		return nil, err
+	}
+	findingID := strings.TrimSpace(request.FindingID)
+	if findingID == "" {
+		return nil, errors.New("finding id is required")
+	}
+	record, err := s.updateFindingRiskColumns(ctx, findingID, request.FindingRisk, request.Attributes)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ports.ErrFindingNotFound
+		}
+		return nil, fmt.Errorf("update finding %q risk: %w", findingID, err)
+	}
+	return record, nil
 }
 
 // AddFindingNote appends one persisted finding note.
@@ -740,45 +626,14 @@ func (s *Store) AddFindingNote(ctx context.Context, request ports.FindingNoteCre
 		return nil, errors.New("finding note is required")
 	}
 	var row findingRow
-	if err := s.db.QueryRowContext(ctx, `
+	if err := scanFindingRow(s.db.QueryRowContext(ctx, `
 UPDATE findings
 SET notes_json = COALESCE(notes_json, '[]'::jsonb) || $2::jsonb, updated_at = NOW()
 WHERE id = $1
-RETURNING
-  id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
-  status_updated_at, first_observed_at, last_observed_at`,
+RETURNING `+findingSelectColumns,
 		findingID,
 		notesJSON,
-	).Scan(
-		&row.ID,
-		&row.Fingerprint,
-		&row.TenantID,
-		&row.RuntimeID,
-		&row.RuleID,
-		&row.Title,
-		&row.Severity,
-		&row.Status,
-		&row.Summary,
-		&row.ResourceURNsJSON,
-		&row.EventIDsJSON,
-		&row.ObservedPolicyIDsJSON,
-		&row.ControlRefsJSON,
-		&row.NotesJSON,
-		&row.TicketsJSON,
-		&row.PolicyID,
-		&row.PolicyName,
-		&row.CheckID,
-		&row.CheckName,
-		&row.AttributesJSON,
-		&row.Assignee,
-		&row.DueAt,
-		&row.StatusReason,
-		&row.StatusUpdatedAt,
-		&row.FirstObservedAt,
-		&row.LastObservedAt,
-	); err != nil {
+	), &row); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ports.ErrFindingNotFound
 		}
@@ -811,7 +666,7 @@ func (s *Store) LinkFindingTicket(ctx context.Context, request ports.FindingTick
 		return nil, fmt.Errorf("marshal finding ticket dedupe: %w", err)
 	}
 	var row findingRow
-	if err := s.db.QueryRowContext(ctx, `
+	if err := scanFindingRow(s.db.QueryRowContext(ctx, `
 UPDATE findings
 SET tickets_json = CASE
       WHEN COALESCE(tickets_json, '[]'::jsonb) @> $3::jsonb THEN COALESCE(tickets_json, '[]'::jsonb)
@@ -819,42 +674,11 @@ SET tickets_json = CASE
     END,
     updated_at = NOW()
 WHERE id = $1
-RETURNING
-  id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
-  status_updated_at, first_observed_at, last_observed_at`,
+RETURNING `+findingSelectColumns,
 		findingID,
 		ticketsJSON,
 		dedupeJSON,
-	).Scan(
-		&row.ID,
-		&row.Fingerprint,
-		&row.TenantID,
-		&row.RuntimeID,
-		&row.RuleID,
-		&row.Title,
-		&row.Severity,
-		&row.Status,
-		&row.Summary,
-		&row.ResourceURNsJSON,
-		&row.EventIDsJSON,
-		&row.ObservedPolicyIDsJSON,
-		&row.ControlRefsJSON,
-		&row.NotesJSON,
-		&row.TicketsJSON,
-		&row.PolicyID,
-		&row.PolicyName,
-		&row.CheckID,
-		&row.CheckName,
-		&row.AttributesJSON,
-		&row.Assignee,
-		&row.DueAt,
-		&row.StatusReason,
-		&row.StatusUpdatedAt,
-		&row.FirstObservedAt,
-		&row.LastObservedAt,
-	); err != nil {
+	), &row); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ports.ErrFindingNotFound
 		}
@@ -869,14 +693,10 @@ func findingListQuery(request ports.ListFindingsRequest) (string, []any, error) 
 		return "", nil, err
 	}
 	query := `
-SELECT
-  id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
-  status_updated_at, first_observed_at, last_observed_at
+SELECT ` + findingSelectColumns + `
 FROM findings
 WHERE ` + strings.Join(clauses, " AND ") + `
-ORDER BY ` + findingOrderClause(request.PriorityOrder)
+ORDER BY ` + findingOrderClause(request)
 	if request.Limit != 0 {
 		args = append(args, int64(request.Limit))
 		query += fmt.Sprintf(" LIMIT $%d", len(args))
@@ -913,14 +733,152 @@ func findingFilterClauses(request ports.ListFindingsRequest) ([]string, []any, e
 }
 
 func (s *Store) ensureFindingTables(ctx context.Context) error {
-	return s.ensureStatements(ctx, &s.findingTablesReady, "findings", ensureFindingStatements)
+	s.schemaMu.Lock()
+	defer s.schemaMu.Unlock()
+	if s.findingTablesReady {
+		return nil
+	}
+	for _, statement := range ensureFindingStatements {
+		if _, err := s.db.ExecContext(ctx, statement); err != nil {
+			return fmt.Errorf("ensure findings tables: %w", err)
+		}
+	}
+	s.findingTablesReady = true
+	return nil
 }
 
-func findingOrderClause(priorityOrder bool) string {
-	if !priorityOrder {
-		return "last_observed_at DESC, id"
+// BackfillFindingRisk updates existing findings with the current risk model.
+func (s *Store) BackfillFindingRisk(ctx context.Context, includeUnprojected bool) ([]*ports.FindingRecord, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
 	}
-	return `CASE UPPER(severity)
+	if err := s.ensureFindingTables(ctx); err != nil {
+		return nil, err
+	}
+	return s.backfillFindingRisk(ctx, includeUnprojected)
+}
+
+func (s *Store) backfillFindingRisk(ctx context.Context, includeUnprojected bool) (updated []*ports.FindingRecord, err error) {
+	query := `SELECT ` + findingSelectColumns + ` FROM findings WHERE risk_model_version <> $1 OR risk_score = 0`
+	if includeUnprojected {
+		query += ` OR COALESCE(attributes_json->>'` + findingrisk.FindingRiskGraphProjectedModelVersionAttribute + `', '') <> $1`
+	}
+	rows, err := s.db.QueryContext(ctx, query, "likelihood-impact-v1")
+	if err != nil {
+		return nil, fmt.Errorf("list findings for risk backfill: %w", err)
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("close finding risk backfill rows: %w", closeErr)
+		}
+	}()
+	type riskBackfill struct {
+		id   string
+		risk ports.FindingRisk
+	}
+	now := time.Now().UTC()
+	updates := []riskBackfill{}
+	for rows.Next() {
+		var row findingRow
+		if err := scanFindingRow(rows, &row); err != nil {
+			return nil, fmt.Errorf("scan finding risk backfill row: %w", err)
+		}
+		record, err := row.record()
+		if err != nil {
+			return nil, fmt.Errorf("decode finding risk backfill row: %w", err)
+		}
+		updates = append(updates, riskBackfill{
+			id:   strings.TrimSpace(record.ID),
+			risk: findingBackfillRisk(record, now),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate finding risk backfill rows: %w", err)
+	}
+	for _, update := range updates {
+		if update.id == "" {
+			continue
+		}
+		stored, err := s.updateFindingRiskColumns(ctx, update.id, update.risk, findingRiskAttributesForUpdate(update.risk))
+		if err != nil {
+			return nil, fmt.Errorf("backfill finding %q risk: %w", update.id, err)
+		}
+		updated = append(updated, stored)
+	}
+	return updated, nil
+}
+
+func (s *Store) updateFindingRiskColumns(ctx context.Context, findingID string, risk ports.FindingRisk, attributes map[string]string) (*ports.FindingRecord, error) {
+	reasonsJSON, err := findingStringsJSON(risk.RiskReasons)
+	if err != nil {
+		return nil, fmt.Errorf("marshal finding risk reasons: %w", err)
+	}
+	attributesJSON, err := findingAttributesJSON(attributes)
+	if err != nil {
+		return nil, fmt.Errorf("marshal finding risk attributes: %w", err)
+	}
+	var row findingRow
+	if err := scanFindingRow(s.db.QueryRowContext(ctx, `
+UPDATE findings
+SET risk_score = $2,
+    likelihood_score = $3,
+    impact_score = $4,
+    confidence_score = $5,
+    likelihood_level = $6,
+    impact_level = $7,
+    risk_reasons_json = $8::jsonb,
+    risk_model_version = $9,
+    attributes_json = attributes_json || $10::jsonb,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING `+findingSelectColumns,
+		strings.TrimSpace(findingID),
+		risk.RiskScore,
+		risk.LikelihoodScore,
+		risk.ImpactScore,
+		risk.ConfidenceScore,
+		strings.TrimSpace(risk.LikelihoodLevel),
+		strings.TrimSpace(risk.ImpactLevel),
+		reasonsJSON,
+		strings.TrimSpace(risk.RiskModelVersion),
+		attributesJSON,
+	), &row); err != nil {
+		return nil, err
+	}
+	return row.record()
+}
+
+func findingBackfillRisk(record *ports.FindingRecord, now time.Time) ports.FindingRisk {
+	risk := findingrisk.AnalyzeFindingRiskContext(record, now)
+	return ports.FindingRisk{
+		RiskScore:        risk.Score,
+		LikelihoodScore:  risk.LikelihoodScore,
+		ImpactScore:      risk.ImpactScore,
+		ConfidenceScore:  risk.ConfidenceScore,
+		LikelihoodLevel:  risk.LikelihoodLevel,
+		ImpactLevel:      risk.ImpactLevel,
+		RiskReasons:      risk.Reasons,
+		RiskModelVersion: risk.RiskModelVersion,
+	}
+}
+
+func findingRiskAttributesForUpdate(risk ports.FindingRisk) map[string]string {
+	attributes := map[string]string{}
+	attributes["risk_score"] = strconv.Itoa(risk.RiskScore)
+	attributes["likelihood_score"] = strconv.Itoa(risk.LikelihoodScore)
+	attributes["impact_score"] = strconv.Itoa(risk.ImpactScore)
+	attributes["confidence_score"] = strconv.Itoa(risk.ConfidenceScore)
+	attributes["likelihood_level"] = strings.TrimSpace(risk.LikelihoodLevel)
+	attributes["impact_level"] = strings.TrimSpace(risk.ImpactLevel)
+	attributes["risk_model_version"] = strings.TrimSpace(risk.RiskModelVersion)
+	attributes["risk_reasons"] = strings.Join(risk.RiskReasons, ",")
+	return attributes
+}
+
+func findingOrderClause(request ports.ListFindingsRequest) string {
+	switch {
+	case request.Order == ports.FindingOrderRiskScore:
+		return `risk_score DESC, CASE UPPER(severity)
   WHEN 'CRITICAL' THEN 0
   WHEN 'HIGH' THEN 1
   WHEN 'MEDIUM' THEN 2
@@ -928,6 +886,18 @@ func findingOrderClause(priorityOrder bool) string {
   WHEN 'INFO' THEN 4
   ELSE 5
 END, last_observed_at DESC, id`
+	case request.Order == ports.FindingOrderPriority || request.PriorityOrder:
+		return `CASE UPPER(severity)
+  WHEN 'CRITICAL' THEN 0
+  WHEN 'HIGH' THEN 1
+  WHEN 'MEDIUM' THEN 2
+  WHEN 'LOW' THEN 3
+  WHEN 'INFO' THEN 4
+  ELSE 5
+END, last_observed_at DESC, id`
+	default:
+		return "last_observed_at DESC, id"
+	}
 }
 
 func findingStringsJSON(values []string) (string, error) {
@@ -1092,16 +1062,32 @@ type findingWorkflowRow struct {
 	StatusUpdatedAt sql.NullTime
 }
 
+type findingRowScanner interface {
+	Scan(dest ...any) error
+}
+
+type findingRiskRow struct {
+	RiskScore        int
+	LikelihoodScore  int
+	ImpactScore      int
+	ConfidenceScore  int
+	LikelihoodLevel  string
+	ImpactLevel      string
+	RiskReasonsJSON  string
+	RiskModelVersion string
+}
+
 type findingRow struct {
-	ID                    string
-	Fingerprint           string
-	TenantID              string
-	RuntimeID             string
-	RuleID                string
-	Title                 string
-	Severity              string
-	Status                string
-	Summary               string
+	ID          string
+	Fingerprint string
+	TenantID    string
+	RuntimeID   string
+	RuleID      string
+	Title       string
+	Severity    string
+	Status      string
+	Summary     string
+	findingRiskRow
 	ResourceURNsJSON      string
 	EventIDsJSON          string
 	ObservedPolicyIDsJSON string
@@ -1114,6 +1100,45 @@ type findingRow struct {
 	findingWorkflowRow
 	FirstObservedAt time.Time
 	LastObservedAt  time.Time
+}
+
+func scanFindingRow(scanner findingRowScanner, row *findingRow) error {
+	return scanner.Scan(
+		&row.ID,
+		&row.Fingerprint,
+		&row.TenantID,
+		&row.RuntimeID,
+		&row.RuleID,
+		&row.Title,
+		&row.Severity,
+		&row.Status,
+		&row.Summary,
+		&row.RiskScore,
+		&row.LikelihoodScore,
+		&row.ImpactScore,
+		&row.ConfidenceScore,
+		&row.LikelihoodLevel,
+		&row.ImpactLevel,
+		&row.RiskReasonsJSON,
+		&row.RiskModelVersion,
+		&row.ResourceURNsJSON,
+		&row.EventIDsJSON,
+		&row.ObservedPolicyIDsJSON,
+		&row.ControlRefsJSON,
+		&row.NotesJSON,
+		&row.TicketsJSON,
+		&row.PolicyID,
+		&row.PolicyName,
+		&row.CheckID,
+		&row.CheckName,
+		&row.AttributesJSON,
+		&row.Assignee,
+		&row.DueAt,
+		&row.StatusReason,
+		&row.StatusUpdatedAt,
+		&row.FirstObservedAt,
+		&row.LastObservedAt,
+	)
 }
 
 func (r findingRow) record() (*ports.FindingRecord, error) {
@@ -1133,6 +1158,12 @@ func (r findingRow) record() (*ports.FindingRecord, error) {
 	if err := json.Unmarshal([]byte(r.ControlRefsJSON), &controlRefs); err != nil {
 		return nil, fmt.Errorf("decode finding control refs: %w", err)
 	}
+	riskReasons := []string{}
+	if strings.TrimSpace(r.RiskReasonsJSON) != "" {
+		if err := json.Unmarshal([]byte(r.RiskReasonsJSON), &riskReasons); err != nil {
+			return nil, fmt.Errorf("decode finding risk reasons: %w", err)
+		}
+	}
 	notes := []ports.FindingNote{}
 	if err := json.Unmarshal([]byte(r.NotesJSON), &notes); err != nil {
 		return nil, fmt.Errorf("decode finding notes: %w", err)
@@ -1146,15 +1177,25 @@ func (r findingRow) record() (*ports.FindingRecord, error) {
 		return nil, fmt.Errorf("decode finding attributes: %w", err)
 	}
 	return &ports.FindingRecord{
-		ID:                r.ID,
-		Fingerprint:       r.Fingerprint,
-		TenantID:          r.TenantID,
-		RuntimeID:         r.RuntimeID,
-		RuleID:            r.RuleID,
-		Title:             r.Title,
-		Severity:          r.Severity,
-		Status:            r.Status,
-		Summary:           r.Summary,
+		ID:          r.ID,
+		Fingerprint: r.Fingerprint,
+		TenantID:    r.TenantID,
+		RuntimeID:   r.RuntimeID,
+		RuleID:      r.RuleID,
+		Title:       r.Title,
+		Severity:    r.Severity,
+		Status:      r.Status,
+		Summary:     r.Summary,
+		FindingRisk: ports.FindingRisk{
+			RiskScore:        r.RiskScore,
+			LikelihoodScore:  r.LikelihoodScore,
+			ImpactScore:      r.ImpactScore,
+			ConfidenceScore:  r.ConfidenceScore,
+			LikelihoodLevel:  r.LikelihoodLevel,
+			ImpactLevel:      r.ImpactLevel,
+			RiskReasons:      riskReasons,
+			RiskModelVersion: r.RiskModelVersion,
+		},
 		ResourceURNs:      resourceURNs,
 		EventIDs:          eventIDs,
 		ObservedPolicyIDs: observedPolicyIDs,

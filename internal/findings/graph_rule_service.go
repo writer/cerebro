@@ -118,7 +118,7 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 			evaluationErr := fmt.Errorf("reconcile finding identity for graph rule %q: %w", spec.GetId(), err)
 			return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
 		}
-		stored, err := s.store.UpsertFinding(ctx, record)
+		stored, err := s.upsertFindingWithRisk(ctx, record, runtime, startedAt)
 		if err != nil {
 			evaluationErr := fmt.Errorf("persist finding for graph rule %q: %w", spec.GetId(), err)
 			return result, s.finishFailedGraphRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
@@ -235,7 +235,7 @@ func (s *Service) resolveStaleGraphFindings(ctx context.Context, tenantID string
 		if _, emitted := emittedFindingIDs[strings.TrimSpace(finding.ID)]; emitted {
 			continue
 		}
-		updated, err := s.store.UpdateFindingStatus(ctx, ports.FindingStatusUpdate{
+		updated, err := s.updateFindingStatusAndRisk(ctx, ports.FindingStatusUpdate{
 			FindingID: strings.TrimSpace(finding.ID),
 			Status:    findingStatusResolved,
 			Reason:    "graph_rule_no_longer_matches",
