@@ -23,6 +23,7 @@ WEBHOOK_SECRET_FIELD = "webhook_" + "secret"
 
 COSMO_SECRET_KEYS = f"""\
     - CEREBRO_SOURCE_COSMO_BASE_URL
+    - CEREBRO_SOURCE_COSMO_EXPORT_{SECRET_SUFFIX}
     - {COSMO_TOKEN_KEY}
 """
 
@@ -81,8 +82,13 @@ COSMO_RUNTIMES = f"""\
       tenantId: writer
       config:
         base_url: env:CEREBRO_SOURCE_COSMO_BASE_URL
+        client_id: cerebro-runtime
+        event_types: "message,completion"
+        export_secret: env:CEREBRO_SOURCE_COSMO_EXPORT_{SECRET_SUFFIX}
         family: message
-        per_page: "500"
+        max_window_hours: "24"
+        per_page: "100"
+        since: "2026-01-01T00:00:00Z"
         tenant_id: writer
         {TOKEN_FIELD}: env:{COSMO_TOKEN_KEY}
     - id: writer-cosmo-survey-feedback
@@ -211,7 +217,7 @@ class ValidateStackConfigTest(unittest.TestCase):
             "        - runtime_id=writer-okta-audit\n        - graph_page_limit=100\n",
         )
         findings = self._validate(content, name="Pulumi.sec-dev.yaml")
-        self.assertTrue(any(finding.severity == "error" and "graph_page_limit <= 20" in finding.message for finding in findings))
+        self.assertTrue(any(finding.severity == "error" and "graph_page_limit <= 5" in finding.message for finding in findings))
 
     def test_sec_dev_high_contention_schedule_page_limit_is_bounded(self) -> None:
         content = BASE_STACK.replace(
@@ -219,7 +225,7 @@ class ValidateStackConfigTest(unittest.TestCase):
             "        - runtime_id=writer-okta-audit\n        - page_limit=20\n",
         )
         findings = self._validate(content, name="Pulumi.sec-dev.yaml")
-        self.assertTrue(any(finding.severity == "error" and "page_limit <= 10" in finding.message for finding in findings))
+        self.assertTrue(any(finding.severity == "error" and "page_limit <= 5" in finding.message for finding in findings))
 
     def test_sec_dev_global_graph_page_limit_is_bounded_for_high_contention_runtimes(self) -> None:
         content = BASE_STACK.replace(
@@ -227,7 +233,7 @@ class ValidateStackConfigTest(unittest.TestCase):
             "  cerebro:orchestratorCommand:\n    - orchestrator\n    - run\n    - graph_page_limit=100\n  cerebro:orchestratorSchedules:",
         )
         findings = self._validate(content, name="Pulumi.sec-dev.yaml")
-        self.assertTrue(any(finding.severity == "error" and "graph_page_limit <= 20" in finding.message for finding in findings))
+        self.assertTrue(any(finding.severity == "error" and "graph_page_limit <= 5" in finding.message for finding in findings))
 
     def test_sec_dev_global_page_limit_is_bounded_for_high_contention_runtimes(self) -> None:
         content = BASE_STACK.replace(
@@ -235,7 +241,19 @@ class ValidateStackConfigTest(unittest.TestCase):
             "  cerebro:orchestratorCommand:\n    - orchestrator\n    - run\n    - page_limit=20\n  cerebro:orchestratorSchedules:",
         )
         findings = self._validate(content, name="Pulumi.sec-dev.yaml")
-        self.assertTrue(any(finding.severity == "error" and "page_limit <= 10" in finding.message for finding in findings))
+        self.assertTrue(any(finding.severity == "error" and "page_limit <= 5" in finding.message for finding in findings))
+
+    def test_prod_high_contention_graph_budgets_are_bounded(self) -> None:
+        content = BASE_STACK.replace(
+            "        - runtime_id=writer-okta-audit\n",
+            "        - runtime_id=writer-vulnview-vulnerability\n        - page_limit=2\n        - graph_page_limit=2\n",
+        ).replace(
+            "    - id: writer-okta-audit\n      sourceId: okta\n",
+            "    - id: writer-vulnview-vulnerability\n      sourceId: vulnview\n",
+        )
+        findings = self._validate(content, name="Pulumi.go-prod.yaml")
+        self.assertTrue(any(finding.severity == "error" and "page_limit <= 1" in finding.message for finding in findings))
+        self.assertTrue(any(finding.severity == "error" and "graph_page_limit <= 1" in finding.message for finding in findings))
 
     def test_prod_guardrails_are_errors(self) -> None:
         content = BASE_STACK.replace("  cerebro:postgresDeletionProtection: true", "  cerebro:postgresDeletionProtection: false")

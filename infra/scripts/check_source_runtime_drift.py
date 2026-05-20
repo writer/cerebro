@@ -16,6 +16,11 @@ from urllib.request import Request, urlopen
 import yaml
 
 
+ALLOWED_UNDECLARED_SOURCE_RUNTIMES = {
+    "sec-dev": {"trusted-endpoint"},
+}
+
+
 @dataclass(frozen=True)
 class Drift:
     severity: str
@@ -36,6 +41,13 @@ def _load_stack_runtimes(path: Path) -> dict[str, dict[str, Any]]:
         if runtime_id:
             result[runtime_id] = runtime
     return result
+
+
+def _stack_name(path: Path) -> str:
+    name = path.name
+    if name.startswith("Pulumi.") and name.endswith(".yaml"):
+        return name.removeprefix("Pulumi.").removesuffix(".yaml")
+    return path.stem
 
 
 def _load_stack_config(path: Path) -> dict[str, Any]:
@@ -130,9 +142,15 @@ def _last_activity(runtime: dict[str, Any]) -> datetime | None:
     return None
 
 
-def find_drift(expected: dict[str, dict[str, Any]], actual: list[dict[str, Any]], max_age_hours: int = 0) -> list[Drift]:
+def find_drift(
+    expected: dict[str, dict[str, Any]],
+    actual: list[dict[str, Any]],
+    max_age_hours: int = 0,
+    allowed_unexpected: set[str] | None = None,
+) -> list[Drift]:
     drift: list[Drift] = []
     actual_by_id = {_runtime_field(runtime, "id"): runtime for runtime in actual if _runtime_field(runtime, "id")}
+    allowed_unexpected = allowed_unexpected or set()
 
     for runtime_id, expected_runtime in expected.items():
         actual_runtime = actual_by_id.get(runtime_id)
@@ -162,7 +180,7 @@ def find_drift(expected: dict[str, dict[str, Any]], actual: list[dict[str, Any]]
             if last_activity is not None and last_activity < datetime.now(UTC) - timedelta(hours=max_age_hours):
                 drift.append(Drift("warning", runtime_id, f"last activity is older than {max_age_hours} hours"))
 
-    unexpected = sorted(set(actual_by_id) - set(expected))
+    unexpected = sorted(set(actual_by_id) - set(expected) - allowed_unexpected)
     for runtime_id in unexpected:
         drift.append(Drift("warning", runtime_id, "live runtime is not declared in stack config"))
 
@@ -186,7 +204,7 @@ def main(argv: list[str] | None = None) -> int:
 
     expected = _load_stack_runtimes(args.stack_file)
     actual = _load_actual(args.actual_json, api_url, args.api_key, args.tenant_id, args.timeout)
-    drift = find_drift(expected, actual, args.max_age_hours)
+    drift = find_drift(expected, actual, args.max_age_hours, ALLOWED_UNDECLARED_SOURCE_RUNTIMES.get(_stack_name(args.stack_file), set()))
 
     for finding in drift:
         print(f"{finding.severity.upper()}: {finding.runtime_id}: {finding.message}")

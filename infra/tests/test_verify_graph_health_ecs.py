@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import sys
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts.verify_graph_health_ecs import (
     _extract_json_payload,
+    _declared_runtime_ids,
     _resource_prefix,
     _verify_counts,
     _verify_current_ingest_runs,
@@ -21,6 +23,12 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
 
     def test_resource_prefix_falls_back_to_stack_name(self) -> None:
         self.assertEqual(_resource_prefix({}, "sec-dev"), "cerebro-sec-dev")
+
+    def test_declared_runtime_ids_reads_source_runtimes(self) -> None:
+        self.assertEqual(
+            _declared_runtime_ids({"sourceRuntimes": [{"id": "runtime-a"}, {"id": "runtime-b"}, {"sourceId": "missing-id"}]}),
+            {"runtime-a", "runtime-b"},
+        )
 
     def test_extract_json_payload_from_pretty_logs(self) -> None:
         payload = _extract_json_payload(['{"nodes": 2,', ' "relations": 3}'])
@@ -65,6 +73,40 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
         }
 
         with self.assertRaisesRegex(RuntimeError, "runtime-a:run-new"):
+            _verify_current_ingest_runs(payload)
+
+    def test_verify_current_ingest_runs_rejects_missing_declared_runtime(self) -> None:
+        payload = {"runs": [{"id": "run-a", "runtime_id": "runtime-a", "status": "completed"}]}
+
+        with self.assertRaisesRegex(RuntimeError, "runtime-b"):
+            _verify_current_ingest_runs(payload, declared_runtime_ids={"runtime-a", "runtime-b"})
+
+    def test_verify_current_ingest_runs_allows_recent_running_runs(self) -> None:
+        payload = {"runs": [{"id": "run-a", "runtime_id": "runtime-a", "status": "running", "started_at": "2026-05-20T00:30:00Z"}]}
+
+        self.assertEqual(_verify_current_ingest_runs(payload, now=datetime(2026, 5, 20, 1, 0, tzinfo=UTC)), 1)
+
+    def test_verify_current_ingest_runs_rejects_stale_running_runs(self) -> None:
+        payload = {"runs": [{"id": "run-a", "runtime_id": "runtime-a", "status": "running", "started_at": "2026-05-20T00:00:00Z"}]}
+
+        with self.assertRaisesRegex(RuntimeError, "stale-running"):
+            _verify_current_ingest_runs(payload, max_running_minutes=30, now=datetime(2026, 5, 20, 1, 0, tzinfo=UTC))
+
+    def test_verify_current_ingest_runs_rejects_completed_zero_projection(self) -> None:
+        payload = {
+            "runs": [
+                {
+                    "id": "run-a",
+                    "runtime_id": "runtime-a",
+                    "status": "completed",
+                    "events_read": 10,
+                    "entities_projected": 0,
+                    "links_projected": 0,
+                }
+            ]
+        }
+
+        with self.assertRaisesRegex(RuntimeError, "projected no graph records"):
             _verify_current_ingest_runs(payload)
 
 
