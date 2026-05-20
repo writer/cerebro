@@ -8,6 +8,7 @@ import (
 	"os"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -2843,6 +2844,48 @@ func TestSetFindingDueDateRecomputesPersistedRisk(t *testing.T) {
 	}
 	if finding.RiskScore <= 1 {
 		t.Fatalf("SetFindingDueDate().RiskScore = %d, want recomputed score > 1", finding.RiskScore)
+	}
+}
+
+func TestSetFindingDueDateProjectsUpdatedRisk(t *testing.T) {
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:        "finding-1",
+				TenantID:  "tenant-a",
+				RuntimeID: "runtime-audit",
+				RuleID:    "rule-1",
+				Title:     "Due date finding",
+				Status:    "open",
+				Severity:  "MEDIUM",
+				FindingRisk: ports.FindingRisk{
+					RiskScore:        1,
+					RiskReasons:      []string{"stale_reason"},
+					RiskModelVersion: defaultFindingRiskModelVersion,
+				},
+				Attributes: map[string]string{"risk_score": "1", "risk_reasons": "stale_reason"},
+			},
+		},
+	}
+	graphStore := &stubGraphStore{}
+	appendLog := &recordingAppendLog{}
+	service := New(nil, nil, store, store, store, store).WithGraphStore(graphStore).WithAppendLog(appendLog)
+	finding, err := service.SetFindingDueDate(context.Background(), "finding-1", time.Now().UTC().Add(-time.Hour))
+	if err != nil {
+		t.Fatalf("SetFindingDueDate() error = %v", err)
+	}
+	if len(appendLog.events) == 0 {
+		t.Fatal("SetFindingDueDate() appended no workflow event, want finding anchor refresh")
+	}
+	graphFinding := graphStore.entities["urn:cerebro:tenant-a:finding:finding-1"]
+	if graphFinding == nil {
+		t.Fatal("SetFindingDueDate() did not project finding anchor")
+	}
+	if got := graphFinding.Attributes["risk_score"]; got != strconv.Itoa(finding.RiskScore) {
+		t.Fatalf("projected risk_score = %q, want %d", got, finding.RiskScore)
+	}
+	if !strings.Contains(graphFinding.Attributes["risk_reasons"], "overdue") {
+		t.Fatalf("projected risk_reasons = %q, want overdue", graphFinding.Attributes["risk_reasons"])
 	}
 }
 

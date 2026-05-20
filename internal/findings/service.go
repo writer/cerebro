@@ -718,6 +718,9 @@ func (s *Service) SetFindingDueDate(ctx context.Context, id string, dueAt time.T
 	if err != nil {
 		return nil, fmt.Errorf("refresh finding %q risk after due date update: %w", findingID, err)
 	}
+	if err := s.projectFindingAnchor(ctx, finding); err != nil {
+		return nil, fmt.Errorf("project finding %q due date risk update: %w", findingID, err)
+	}
 	return finding, nil
 }
 
