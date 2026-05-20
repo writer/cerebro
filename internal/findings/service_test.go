@@ -2943,6 +2943,38 @@ func TestSetFindingDueDateProjectsUpdatedRisk(t *testing.T) {
 	}
 }
 
+func TestFindingWorkflowSnapshotDoesNotMergeFreshReasonsWithStoredRisk(t *testing.T) {
+	dueAt := time.Now().UTC().Add(-time.Hour)
+	snapshot := findingWorkflowSnapshot(&ports.FindingRecord{
+		ID:       "finding-1",
+		TenantID: "tenant-a",
+		Status:   "open",
+		Severity: "LOW",
+		FindingWorkflow: ports.FindingWorkflow{
+			DueAt: dueAt,
+		},
+		FindingRisk: ports.FindingRisk{
+			RiskScore:        20,
+			LikelihoodScore:  20,
+			ImpactScore:      20,
+			ConfidenceScore:  70,
+			LikelihoodLevel:  "low",
+			ImpactLevel:      "low",
+			RiskReasons:      []string{"stored_reason"},
+			RiskModelVersion: defaultFindingRiskModelVersion,
+		},
+	}, "tenant-a", "runtime-audit")
+	if snapshot.RiskScore != 20 || snapshot.ImpactScore != 20 {
+		t.Fatalf("findingWorkflowSnapshot() risk = score %d impact %d, want stored values", snapshot.RiskScore, snapshot.ImpactScore)
+	}
+	if slices.Contains(snapshot.RiskReasons, "overdue") {
+		t.Fatalf("findingWorkflowSnapshot().RiskReasons = %#v, want no mixed fresh overdue reason", snapshot.RiskReasons)
+	}
+	if !slices.Contains(snapshot.RiskReasons, "stored_reason") {
+		t.Fatalf("findingWorkflowSnapshot().RiskReasons = %#v, want stored_reason", snapshot.RiskReasons)
+	}
+}
+
 func TestUpsertFindingWithRiskRecomputesAfterWorkflowPreservation(t *testing.T) {
 	dueAt := time.Now().UTC().Add(-time.Hour)
 	store := &stubFindingStore{

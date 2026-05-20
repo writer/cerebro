@@ -210,7 +210,10 @@ func (s *Service) recordAndProjectWorkflowEvent(ctx context.Context, event *cere
 func findingWorkflowSnapshot(finding *ports.FindingRecord, tenantID string, sourceID string) workflowevents.FindingSnapshot {
 	resourceURNs := uniqueSortedStrings(finding.ResourceURNs)
 	eventIDs := uniqueSortedStrings(finding.EventIDs)
-	risk := AnalyzeFindingRiskContext(finding, time.Time{})
+	var risk FindingRiskContext
+	if finding.RiskScore == 0 || finding.LikelihoodScore == 0 || finding.ImpactScore == 0 || finding.ConfidenceScore == 0 {
+		risk = AnalyzeFindingRiskContext(finding, time.Time{})
+	}
 	riskScore := finding.RiskScore
 	if riskScore == 0 {
 		riskScore = risk.Score
@@ -230,6 +233,10 @@ func findingWorkflowSnapshot(finding *ports.FindingRecord, tenantID string, sour
 	likelihoodLevel := firstNonEmpty(finding.LikelihoodLevel, risk.LikelihoodLevel)
 	impactLevel := firstNonEmpty(finding.ImpactLevel, risk.ImpactLevel)
 	modelVersion := firstNonEmpty(finding.RiskModelVersion, risk.RiskModelVersion)
+	riskReasons := finding.RiskReasons
+	if len(riskReasons) == 0 {
+		riskReasons = risk.Reasons
+	}
 	return workflowevents.FindingSnapshot{
 		TenantID:           strings.TrimSpace(tenantID),
 		SourceSystem:       strings.TrimSpace(sourceID),
@@ -259,7 +266,7 @@ func findingWorkflowSnapshot(finding *ports.FindingRecord, tenantID string, sour
 			LikelihoodLevel:  likelihoodLevel,
 			ImpactLevel:      impactLevel,
 			RiskModelVersion: modelVersion,
-			RiskReasons:      uniqueSortedStrings(append(finding.RiskReasons, risk.Reasons...)),
+			RiskReasons:      uniqueSortedStrings(riskReasons),
 		},
 		Metadata: findingRiskMetadata(finding),
 	}
