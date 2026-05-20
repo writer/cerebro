@@ -18,10 +18,11 @@ IMAGE_TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?$")
 SECRET_KEY_RE = re.compile(r"(secret|token|password|api_?key|client_secret|private_key)", re.IGNORECASE)
 AWS_ROLE_ARN_RE = re.compile(r"^arn:(aws|aws-us-gov|aws-cn):iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+$")
 COSMO_REQUIRED_STACKS = {"sec-dev", "go-prod"}
-COSMO_REQUIRED_SECRETS = {"CEREBRO_SOURCE_COSMO_BASE_URL", "CEREBRO_SOURCE_COSMO_TOKEN"}
+COSMO_REQUIRED_SECRETS = {"CEREBRO_SOURCE_COSMO_BASE_URL", "CEREBRO_SOURCE_COSMO_EXPORT_SECRET", "CEREBRO_SOURCE_COSMO_TOKEN"}
 COSMO_RUNTIME_FAMILIES = {
     "writer-cosmo-session": "session",
     "writer-cosmo-fact": "fact",
+    "writer-cosmo-message": "message",
     "writer-cosmo-survey-feedback": "survey_feedback",
 }
 SEC_DEV_HIGH_CONTENTION_GRAPH_RUNTIMES = {
@@ -31,8 +32,15 @@ SEC_DEV_HIGH_CONTENTION_GRAPH_RUNTIMES = {
     "writer-okta-audit-2026-04",
     "writer-okta-audit-2026-q1",
 }
-SEC_DEV_MAX_HIGH_CONTENTION_PAGE_LIMIT = 10
-SEC_DEV_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT = 20
+SEC_DEV_MAX_HIGH_CONTENTION_PAGE_LIMIT = 5
+SEC_DEV_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT = 5
+PROD_HIGH_CONTENTION_GRAPH_RUNTIMES = {
+    "writer-grc-vulnerable-asset",
+    "writer-vulnview-dns-alert",
+    "writer-vulnview-vulnerability",
+}
+PROD_MAX_HIGH_CONTENTION_PAGE_LIMIT = 1
+PROD_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT = 1
 
 
 @dataclass(frozen=True)
@@ -165,6 +173,38 @@ def _finding(severity: str, stack: str, path: str, message: str) -> Finding:
     return Finding(severity=severity, stack=stack, path=path, message=message)
 
 
+def _validate_graph_page_budget(stack: str, runtime_id: str, command: Any, path: str, findings: list[Finding]) -> None:
+    if stack == "sec-dev" and runtime_id in SEC_DEV_HIGH_CONTENTION_GRAPH_RUNTIMES:
+        max_page_limit = SEC_DEV_MAX_HIGH_CONTENTION_PAGE_LIMIT
+        max_graph_page_limit = SEC_DEV_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT
+    elif stack == "go-prod" and runtime_id in PROD_HIGH_CONTENTION_GRAPH_RUNTIMES:
+        max_page_limit = PROD_MAX_HIGH_CONTENTION_PAGE_LIMIT
+        max_graph_page_limit = PROD_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT
+    else:
+        return
+
+    page_limit = _uint_arg_from_command(command, "page_limit")
+    if page_limit is not None and page_limit > max_page_limit:
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                path,
+                f"high-contention graph source sync for {runtime_id} must set page_limit <= {max_page_limit}",
+            )
+        )
+    graph_page_limit = _uint_arg_from_command(command, "graph_page_limit")
+    if graph_page_limit is not None and graph_page_limit > max_graph_page_limit:
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                path,
+                f"high-contention graph ingest for {runtime_id} must set graph_page_limit <= {max_graph_page_limit}",
+            )
+        )
+
+
 def _validate_cosmo_gitops(
     stack: str,
     config: dict[str, Any],
@@ -242,6 +282,17 @@ def _validate_cosmo_gitops(
                     "tenant_id": "writer",
                     "family": family,
                 }
+                if family == "message":
+                    expected_values.update(
+                        {
+                            "client_id": "cerebro-runtime",
+                            "event_types": "message,completion",
+                            "export_secret": "env:CEREBRO_SOURCE_COSMO_EXPORT_SECRET",
+                            "max_window_hours": "24",
+                            "per_page": "100",
+                            "since": "2026-01-01T00:00:00Z",
+                        }
+                    )
                 for key, expected in expected_values.items():
                     actual = str(runtime_config.get(key, "")).strip()
                     if actual != expected:
@@ -406,30 +457,9 @@ def validate_stack(path: Path) -> list[Finding]:
             )
         else:
             scheduled_runtime_ids.add(top_level_runtime_id)
-        if stack == "sec-dev" and (
-            top_level_runtime_id in SEC_DEV_HIGH_CONTENTION_GRAPH_RUNTIMES
-            or (top_level_runtime_id is None and bool(SEC_DEV_HIGH_CONTENTION_GRAPH_RUNTIMES & runtime_ids))
-        ):
-            page_limit = _uint_arg_from_command(top_level_command, "page_limit")
-            if page_limit is not None and page_limit > SEC_DEV_MAX_HIGH_CONTENTION_PAGE_LIMIT:
-                findings.append(
-                    _finding(
-                        "error",
-                        stack,
-                        "cerebro:orchestratorCommand",
-                        f"high-contention sec-dev source sync must set page_limit <= {SEC_DEV_MAX_HIGH_CONTENTION_PAGE_LIMIT}",
-                    )
-                )
-            graph_page_limit = _uint_arg_from_command(top_level_command, "graph_page_limit")
-            if graph_page_limit is not None and graph_page_limit > SEC_DEV_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT:
-                findings.append(
-                    _finding(
-                        "error",
-                        stack,
-                        "cerebro:orchestratorCommand",
-                        f"high-contention sec-dev graph ingest must set graph_page_limit <= {SEC_DEV_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT}",
-                    )
-                )
+        guarded_runtime_ids = [top_level_runtime_id] if top_level_runtime_id is not None else sorted(runtime_ids)
+        for guarded_runtime_id in guarded_runtime_ids:
+            _validate_graph_page_budget(stack, guarded_runtime_id, top_level_command, "cerebro:orchestratorCommand", findings)
 
     schedule_names: set[str] = set()
     for index, schedule in enumerate(schedules):
@@ -460,27 +490,7 @@ def validate_stack(path: Path) -> list[Finding]:
             findings.append(_finding("error", stack, f"{schedule_path}.command", f"unknown runtime id {runtime_id!r}"))
         else:
             scheduled_runtime_ids.add(runtime_id)
-            if stack == "sec-dev" and runtime_id in SEC_DEV_HIGH_CONTENTION_GRAPH_RUNTIMES:
-                page_limit = _uint_arg_from_command(schedule.get("command"), "page_limit")
-                if page_limit is not None and page_limit > SEC_DEV_MAX_HIGH_CONTENTION_PAGE_LIMIT:
-                    findings.append(
-                        _finding(
-                            "error",
-                            stack,
-                            f"{schedule_path}.command",
-                            f"high-contention sec-dev source sync must set page_limit <= {SEC_DEV_MAX_HIGH_CONTENTION_PAGE_LIMIT}",
-                        )
-                    )
-                graph_page_limit = _uint_arg_from_command(schedule.get("command"), "graph_page_limit")
-                if graph_page_limit is not None and graph_page_limit > SEC_DEV_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT:
-                    findings.append(
-                        _finding(
-                            "error",
-                            stack,
-                            f"{schedule_path}.command",
-                            f"high-contention sec-dev graph ingest must set graph_page_limit <= {SEC_DEV_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT}",
-                        )
-                    )
+            _validate_graph_page_budget(stack, runtime_id, schedule.get("command"), f"{schedule_path}.command", findings)
 
         if "backfill" in name.lower():
             retirement_key = next((key for key in ("expiresAt", "removeAfter", "expires_after") if key in schedule), "")

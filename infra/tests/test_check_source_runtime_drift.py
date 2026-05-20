@@ -73,6 +73,16 @@ class SourceRuntimeDriftTest(unittest.TestCase):
 
         self.assertTrue(any(finding.severity == "warning" and finding.runtime_id == "writer-extra" for finding in drift))
 
+    def test_allowed_unexpected_runtime_is_ignored(self) -> None:
+        actual = [
+            {"id": "writer-okta-audit", "source_id": "okta", "tenant_id": "writer", "config": {"family": "audit"}},
+            {"id": "trusted-endpoint", "source_id": "sdk", "tenant_id": "writer", "config": {"managed_by": "control-plane"}},
+        ]
+
+        drift = find_drift(EXPECTED, actual, allowed_unexpected={"trusted-endpoint"})
+
+        self.assertEqual(drift, [])
+
     def test_normalize_api_url_rewrites_alb_hostname_to_stack_domain(self) -> None:
         self.assertEqual(
             _normalize_api_url(

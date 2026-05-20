@@ -18,6 +18,7 @@ EXPECTED_STACK_ACCOUNTS = {
     "sec-dev": "944130631940",
     "go-prod": "837279440628",
 }
+DEFAULT_MAX_RUNNING_MINUTES = 60
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,13 @@ def _resource_prefix(config: dict[str, Any], stack: str) -> str:
     if not environment:
         raise ValueError("cerebro:environment is required")
     return f"cerebro-{environment}"
+
+
+def _declared_runtime_ids(config: dict[str, Any]) -> set[str]:
+    runtimes = config.get("sourceRuntimes") or []
+    if not isinstance(runtimes, list):
+        return set()
+    return {str(runtime.get("id") or "").strip() for runtime in runtimes if isinstance(runtime, dict) and str(runtime.get("id") or "").strip()}
 
 
 def _aws(args: list[str], region: str) -> Any:
@@ -231,7 +239,25 @@ def _verify_integrity(payload: dict[str, Any]) -> None:
         raise RuntimeError(f"graph integrity failed {failed} checks: {', '.join(failed_checks)}")
 
 
-def _verify_current_ingest_runs(payload: dict[str, Any]) -> int:
+def _parse_time(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def _verify_current_ingest_runs(
+    payload: dict[str, Any],
+    declared_runtime_ids: set[str] | None = None,
+    max_running_minutes: int = DEFAULT_MAX_RUNNING_MINUTES,
+    now: datetime | None = None,
+) -> int:
     runs = payload.get("runs") or []
     if not isinstance(runs, list):
         raise ValueError("graph ingest-runs payload must include a runs list")
@@ -242,10 +268,35 @@ def _verify_current_ingest_runs(payload: dict[str, Any]) -> int:
         runtime_id = str(run.get("runtime_id") or run.get("id") or "").strip()
         if runtime_id and runtime_id not in latest_by_runtime:
             latest_by_runtime[runtime_id] = run
+    declared_runtime_ids = declared_runtime_ids or set()
+    missing = sorted(declared_runtime_ids - set(latest_by_runtime))
+    if missing:
+        raise RuntimeError(f"missing graph ingest run history for {len(missing)} declared runtime(s): {', '.join(missing)}")
     failed = [run for run in latest_by_runtime.values() if str(run.get("status") or "").strip() == "failed"]
     if failed:
         summary = ", ".join(f"{run.get('runtime_id')}:{run.get('id')}" for run in failed)
         raise RuntimeError(f"latest graph ingest run failed for {len(failed)} runtime(s): {summary}")
+    running = [run for run in latest_by_runtime.values() if str(run.get("status") or "").strip() == "running"]
+    now = now or datetime.now(UTC)
+    stale_running = []
+    for run in running:
+        started_at = _parse_time(run.get("started_at"))
+        if started_at is not None and (now - started_at).total_seconds() > max_running_minutes * 60:
+            stale_running.append(run)
+    if stale_running:
+        summary = ", ".join(f"{run.get('runtime_id')}:{run.get('id')}:{run.get('started_at')}" for run in stale_running)
+        raise RuntimeError(f"latest graph ingest run is stale-running for {len(stale_running)} runtime(s): {summary}")
+    zero_projection = [
+        run
+        for run in latest_by_runtime.values()
+        if str(run.get("status") or "").strip() == "completed"
+        and int(run.get("events_read") or 0) > 0
+        and int(run.get("entities_projected") or 0) == 0
+        and int(run.get("links_projected") or 0) == 0
+    ]
+    if zero_projection:
+        summary = ", ".join(f"{run.get('runtime_id')}:{run.get('id')}:events={run.get('events_read')}" for run in zero_projection)
+        raise RuntimeError(f"latest graph ingest projected no graph records for {len(zero_projection)} runtime(s): {summary}")
     return len(latest_by_runtime)
 
 
@@ -255,6 +306,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--region", default="us-east-1")
     parser.add_argument("--wait-timeout-seconds", type=int, default=300)
     parser.add_argument("--poll-seconds", type=int, default=10)
+    parser.add_argument("--max-running-minutes", type=int, default=DEFAULT_MAX_RUNNING_MINUTES)
     args = parser.parse_args(argv)
 
     stack = _stack_name(args.stack_file)
@@ -275,7 +327,11 @@ def main(argv: list[str] | None = None) -> int:
         args.poll_seconds,
         args.region,
     )
-    current_ingest_runtimes = _verify_current_ingest_runs(ingest_runs.payload)
+    current_ingest_runtimes = _verify_current_ingest_runs(
+        ingest_runs.payload,
+        declared_runtime_ids=_declared_runtime_ids(config),
+        max_running_minutes=args.max_running_minutes,
+    )
 
     print("checked_at\tstack\tnodes\trelations\tintegrity_passed\tintegrity_failed\tcurrent_ingest_runtimes\tcounts_task\tintegrity_task\tingest_runs_task")
     print(

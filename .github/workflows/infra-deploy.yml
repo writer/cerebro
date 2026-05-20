@@ -283,15 +283,15 @@ jobs:
           work-dir: infra/aws
           diff: true
 
-      - name: Verify graph health (sec-dev)
-        shell: bash
-        working-directory: infra
-        run: uv run python scripts/verify_graph_health_ecs.py --stack-file aws/Pulumi.sec-dev.yaml
-
       - name: Verify Cosmo source runtimes (sec-dev)
         shell: bash
         working-directory: infra
         run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --source-id cosmo --run --max-age-minutes 60
+
+      - name: Verify graph health (sec-dev)
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/verify_graph_health_ecs.py --stack-file aws/Pulumi.sec-dev.yaml
 
   # Main merge: Pulumi up for go-prod stack
   deploy-go-prod:
@@ -352,15 +352,15 @@ jobs:
           work-dir: infra/aws
           diff: true
 
-      - name: Verify graph health (go-prod)
-        shell: bash
-        working-directory: infra
-        run: uv run python scripts/verify_graph_health_ecs.py --stack-file aws/Pulumi.go-prod.yaml
-
       - name: Verify Cosmo source runtimes (go-prod)
         shell: bash
         working-directory: infra
         run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.go-prod.yaml --source-id cosmo --run --max-age-minutes 60
+
+      - name: Verify graph health (go-prod)
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/verify_graph_health_ecs.py --stack-file aws/Pulumi.go-prod.yaml
 
   # ===========================================================================
   # GCP jobs
@@ -596,6 +596,14 @@ jobs:
           stack-name: ${{ github.event.inputs.environment }}
           work-dir: infra/aws
           diff: true
+
+      - name: Verify Cosmo source runtimes (AWS)
+        if: "!startsWith(github.event.inputs.environment, 'gcp-')"
+        shell: bash
+        working-directory: infra
+        env:
+          STACK_NAME: ${{ github.event.inputs.environment }}
+        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --source-id cosmo --run --max-age-minutes 60
 
       - name: Verify graph health (AWS)
         if: "!startsWith(github.event.inputs.environment, 'gcp-')"
