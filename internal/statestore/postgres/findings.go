@@ -822,7 +822,7 @@ func findingOrderClause(request ports.ListFindingsRequest) string {
   ELSE 5
 END, last_observed_at DESC, id`
 	case request.Order == ports.FindingOrderPriority || request.PriorityOrder:
-		return `risk_score DESC, CASE UPPER(severity)
+		return `CASE UPPER(severity)
   WHEN 'CRITICAL' THEN 0
   WHEN 'HIGH' THEN 1
   WHEN 'MEDIUM' THEN 2

@@ -278,7 +278,6 @@ func TestFindingListQuerySupportsRuntimeBatchesAndPriorityOrder(t *testing.T) {
 		"tenant_id = $1",
 		"runtime_id IN ($2, $3)",
 		"status = $4",
-		"risk_score DESC",
 		"CASE UPPER(severity)",
 		"last_observed_at DESC, id",
 		"LIMIT $5",
@@ -286,6 +285,9 @@ func TestFindingListQuerySupportsRuntimeBatchesAndPriorityOrder(t *testing.T) {
 		if !strings.Contains(query, fragment) {
 			t.Fatalf("findingListQuery() query missing %q: %s", fragment, query)
 		}
+	}
+	if strings.Contains(query, "risk_score DESC") {
+		t.Fatalf("findingListQuery() priority order includes risk score ordering: %s", query)
 	}
 	if got := len(args); got != 5 {
 		t.Fatalf("len(findingListQuery().args) = %d, want 5", got)

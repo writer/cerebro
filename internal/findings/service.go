@@ -1141,6 +1141,9 @@ func (s *Service) upsertFindingWithRisk(ctx context.Context, finding *ports.Find
 	if err != nil {
 		return nil, err
 	}
+	if stored != nil {
+		stored.GraphEvidenceRows = append([]*cerebrov1.GraphEvidenceRow(nil), enriched.GraphEvidenceRows...)
+	}
 	return s.persistFindingRisk(ctx, stored, now)
 }
 

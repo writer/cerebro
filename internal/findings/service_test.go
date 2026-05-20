@@ -65,20 +65,21 @@ func (s *recordingAppendLog) Append(_ context.Context, event *cerebrov1.EventEnv
 }
 
 type stubFindingStore struct {
-	findings             map[string]*ports.FindingRecord
-	request              ports.ListFindingsRequest
-	listFindingsRequests []ports.ListFindingsRequest
-	listFindingsErr      error
-	claims               map[string]*ports.ClaimRecord
-	claimListRequest     ports.ListClaimsRequest
-	runs                 map[string]*cerebrov1.FindingEvaluationRun
-	runList              ports.ListFindingEvaluationRunsRequest
-	runPutCount          int
-	failRunPutOn         int
-	failRunPutErr        error
-	failRunPutByCall     map[int]error
-	evidence             map[string]*cerebrov1.FindingEvidence
-	evidenceList         ports.ListFindingEvidenceRequest
+	findings                  map[string]*ports.FindingRecord
+	request                   ports.ListFindingsRequest
+	listFindingsRequests      []ports.ListFindingsRequest
+	listFindingsErr           error
+	claims                    map[string]*ports.ClaimRecord
+	claimListRequest          ports.ListClaimsRequest
+	runs                      map[string]*cerebrov1.FindingEvaluationRun
+	runList                   ports.ListFindingEvaluationRunsRequest
+	runPutCount               int
+	failRunPutOn              int
+	failRunPutErr             error
+	failRunPutByCall          map[int]error
+	evidence                  map[string]*cerebrov1.FindingEvidence
+	evidenceList              ports.ListFindingEvidenceRequest
+	dropReturnedGraphEvidence bool
 }
 
 func (s *stubFindingStore) Ping(context.Context) error { return nil }
@@ -101,7 +102,11 @@ func (s *stubFindingStore) UpsertFinding(_ context.Context, finding *ports.Findi
 		}
 	}
 	s.findings[cloned.ID] = cloned
-	return cloneFinding(cloned), nil
+	returned := cloneFinding(cloned)
+	if s.dropReturnedGraphEvidence {
+		returned.GraphEvidenceRows = nil
+	}
+	return returned, nil
 }
 
 func (s *stubFindingStore) GetFinding(_ context.Context, id string) (*ports.FindingRecord, error) {
@@ -2888,6 +2893,33 @@ func TestUpsertFindingWithRiskRecomputesAfterWorkflowPreservation(t *testing.T) 
 	}
 	if slices.Contains(stored.RiskReasons, "active") {
 		t.Fatalf("upsertFindingWithRisk().RiskReasons = %#v, want no active reason after preserved resolution", stored.RiskReasons)
+	}
+}
+
+func TestUpsertFindingWithRiskPreservesGraphEvidenceDuringRecompute(t *testing.T) {
+	store := &stubFindingStore{dropReturnedGraphEvidence: true}
+	service := New(nil, nil, store, store, store, store)
+	emitted := &ports.FindingRecord{
+		ID:          "finding-graph",
+		Fingerprint: "fingerprint-graph",
+		TenantID:    "tenant-a",
+		RuntimeID:   "runtime-graph",
+		RuleID:      "rule-graph",
+		Title:       "Graph-backed finding",
+		Severity:    "MEDIUM",
+		Status:      "open",
+		Summary:     "graph finding",
+		Attributes:  map[string]string{},
+		GraphEvidenceRows: []*cerebrov1.GraphEvidenceRow{
+			newGraphEvidenceRow("identity_path", map[string]string{"label": "path"}),
+		},
+	}
+	stored, err := service.upsertFindingWithRisk(context.Background(), emitted, nil, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("upsertFindingWithRisk() error = %v", err)
+	}
+	if !slices.Contains(stored.RiskReasons, "graph_evidence") {
+		t.Fatalf("upsertFindingWithRisk().RiskReasons = %#v, want graph_evidence", stored.RiskReasons)
 	}
 }
 
