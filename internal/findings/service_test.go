@@ -2917,7 +2917,8 @@ func TestSetFindingDueDateProjectsUpdatedRisk(t *testing.T) {
 					RiskReasons:      []string{"stale_reason"},
 					RiskModelVersion: defaultFindingRiskModelVersion,
 				},
-				Attributes: map[string]string{"risk_score": "1", "risk_reasons": "stale_reason"},
+				Attributes:     map[string]string{"risk_score": "1", "risk_reasons": "stale_reason"},
+				LastObservedAt: time.Now().UTC().Add(-14 * 24 * time.Hour),
 			},
 		},
 	}
@@ -2940,6 +2941,9 @@ func TestSetFindingDueDateProjectsUpdatedRisk(t *testing.T) {
 	}
 	if !strings.Contains(graphFinding.Attributes["risk_reasons"], "overdue") {
 		t.Fatalf("projected risk_reasons = %q, want overdue", graphFinding.Attributes["risk_reasons"])
+	}
+	if eventTime := appendLog.events[0].GetOccurredAt().AsTime(); time.Since(eventTime) > time.Minute {
+		t.Fatalf("revision event occurred_at = %s, want refresh time", eventTime.Format(time.RFC3339Nano))
 	}
 	firstEventID := appendLog.events[0].GetId()
 	_, err = service.SetFindingDueDate(context.Background(), "finding-1", time.Now().UTC().Add(-2*time.Hour))

@@ -241,12 +241,15 @@ func NewFindingRecordedEvent(payload FindingRecorded) (*cerebrov1.EventEnvelope,
 }
 
 // NewFindingRecordedRevisionEvent builds a non-deduplicated finding record event.
-func NewFindingRecordedRevisionEvent(payload FindingRecorded, revision string) (*cerebrov1.EventEnvelope, error) {
+func NewFindingRecordedRevisionEvent(payload FindingRecorded, revision string, occurredAt time.Time) (*cerebrov1.EventEnvelope, error) {
 	primaryID := payload.Finding.FindingID
 	if trimmed := strings.TrimSpace(revision); trimmed != "" {
 		primaryID += "|" + trimmed
 	}
-	return newEvent(EventKindFindingRecorded, SchemaFindingRecorded, payload.Finding.TenantID, payload.Finding.SourceSystem, primaryID, payload.RecordedAt, payload, map[string]string{
+	if occurredAt.IsZero() {
+		occurredAt = time.Now().UTC()
+	}
+	return newEvent(EventKindFindingRecorded, SchemaFindingRecorded, payload.Finding.TenantID, payload.Finding.SourceSystem, primaryID, occurredAt.UTC().Format(time.RFC3339Nano), payload, map[string]string{
 		EventAttributeWorkflowKind: "finding_record",
 		EventAttributeFindingID:    payload.Finding.FindingID,
 	})

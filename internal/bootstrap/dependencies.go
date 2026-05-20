@@ -78,15 +78,19 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 	if err := pingDependency(ctx, "state store", deps.StateStore); err != nil {
 		return fail(err)
 	}
-	if backfiller, ok := deps.StateStore.(interface{ BackfillFindingRisk(context.Context) error }); ok {
-		if err := backfiller.BackfillFindingRisk(ctx); err != nil {
-			return fail(fmt.Errorf("backfill finding risk: %w", err))
-		}
-	}
 	if err := pingDependency(ctx, "graph store", deps.GraphStore); err != nil {
 		return fail(err)
 	}
 	return deps, closeAll, nil
+}
+
+// BackfillFindingRisk runs startup-only persisted finding risk migration work.
+func BackfillFindingRisk(ctx context.Context, deps Dependencies) error {
+	backfiller, ok := deps.StateStore.(interface{ BackfillFindingRisk(context.Context) error })
+	if !ok {
+		return nil
+	}
+	return backfiller.BackfillFindingRisk(ctx)
 }
 
 // pingDependency runs Ping with its own dependencyPingTimeout-bounded context so

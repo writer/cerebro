@@ -48,7 +48,7 @@ func (s *Service) projectFindingAnchorRevision(ctx context.Context, finding *por
 	if strings.TrimSpace(revision) == "" {
 		event, err = workflowevents.NewFindingRecordedEvent(payload)
 	} else {
-		event, err = workflowevents.NewFindingRecordedRevisionEvent(payload, revision)
+		event, err = workflowevents.NewFindingRecordedRevisionEvent(payload, revision, time.Now().UTC())
 	}
 	if err != nil {
 		return err
