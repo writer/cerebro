@@ -662,7 +662,7 @@ func (s *Service) GetFinding(ctx context.Context, id string) (*ports.FindingReco
 	if err != nil {
 		return nil, err
 	}
-	return s.persistFindingRisk(ctx, finding, time.Now().UTC())
+	return finding, nil
 }
 
 // ResolveFinding marks one persisted finding as resolved.

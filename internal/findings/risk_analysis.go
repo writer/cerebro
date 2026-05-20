@@ -403,7 +403,7 @@ func AnalyzeFindingRiskContext(finding *ports.FindingRecord, now time.Time) Find
 		}
 	}
 	dataClass := strings.ToLower(firstNonEmpty(attributes["data_classification"], attributes["sensitivity"], attributes["data_sensitivity"]))
-	if containsAny(dataClass, "secret", "sensitive", "confidential", "restricted") {
+	if dataClassificationSensitive(dataClass) {
 		impact += 25
 		reasons = append(reasons, "sensitive_data")
 	}

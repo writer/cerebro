@@ -194,6 +194,18 @@ func TestAnalyzeFindingRiskContextRecognizesActiveThreatSignals(t *testing.T) {
 	}
 }
 
+func TestAnalyzeFindingRiskContextIgnoresExplicitNonSensitiveData(t *testing.T) {
+	now := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
+	for _, classification := range []string{"not_sensitive", "non_sensitive", "no_sensitive_data"} {
+		finding := compoundRiskFinding("finding-"+classification, "data-classification", "MEDIUM", "", "", "urn:cerebro:writer:dataset:"+classification, "")
+		finding.Attributes = map[string]string{"data_classification": classification}
+		context := AnalyzeFindingRiskContext(finding, now)
+		if stringSliceContains(context.Reasons, "sensitive_data") {
+			t.Fatalf("Risk reasons for %q = %#v, want no sensitive_data", classification, context.Reasons)
+		}
+	}
+}
+
 func TestAnalyzeFindingRiskContextCapsPrivateNetworkWithoutReachability(t *testing.T) {
 	now := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
 	finding := compoundRiskFinding("finding-private", "cloud-private-exposure", "CRITICAL", "", "", "urn:cerebro:writer:aws_instance:i-1", "scan.detected")

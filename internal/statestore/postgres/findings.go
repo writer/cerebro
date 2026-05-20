@@ -377,10 +377,6 @@ func (s *Store) ListFindings(ctx context.Context, request ports.ListFindingsRequ
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate findings rows: %w", err)
 	}
-	findings, err = s.refreshFindingRiskRecords(ctx, findings)
-	if err != nil {
-		return nil, err
-	}
 	return findings, nil
 }
 
@@ -747,11 +743,19 @@ func (s *Store) ensureFindingTables(ctx context.Context) error {
 			return fmt.Errorf("ensure findings tables: %w", err)
 		}
 	}
-	if err := s.backfillFindingRisk(ctx); err != nil {
-		return err
-	}
 	s.findingTablesReady = true
 	return nil
+}
+
+// BackfillFindingRisk updates existing findings with the current risk model.
+func (s *Store) BackfillFindingRisk(ctx context.Context) error {
+	if s == nil || s.db == nil {
+		return errors.New("postgres is not configured")
+	}
+	if err := s.ensureFindingTables(ctx); err != nil {
+		return err
+	}
+	return s.backfillFindingRisk(ctx)
 }
 
 func (s *Store) backfillFindingRisk(ctx context.Context) (err error) {
@@ -850,47 +854,6 @@ func findingBackfillRisk(record *ports.FindingRecord, now time.Time) ports.Findi
 		RiskReasons:      risk.Reasons,
 		RiskModelVersion: risk.RiskModelVersion,
 	}
-}
-
-func (s *Store) refreshFindingRiskRecords(ctx context.Context, findings []*ports.FindingRecord) ([]*ports.FindingRecord, error) {
-	if len(findings) == 0 {
-		return findings, nil
-	}
-	now := time.Now().UTC()
-	refreshedFindings := append([]*ports.FindingRecord(nil), findings...)
-	for index, record := range refreshedFindings {
-		if record == nil {
-			continue
-		}
-		refreshed := findingBackfillRisk(record, now)
-		if !findingRiskEqual(record.FindingRisk, refreshed) {
-			stored, err := s.updateFindingRiskColumns(ctx, strings.TrimSpace(record.ID), refreshed, findingRiskAttributesForUpdate(refreshed))
-			if err != nil {
-				return nil, fmt.Errorf("refresh finding %q risk: %w", strings.TrimSpace(record.ID), err)
-			}
-			refreshedFindings[index] = stored
-		}
-	}
-	return refreshedFindings, nil
-}
-
-func findingRiskEqual(left ports.FindingRisk, right ports.FindingRisk) bool {
-	if left.RiskScore != right.RiskScore ||
-		left.LikelihoodScore != right.LikelihoodScore ||
-		left.ImpactScore != right.ImpactScore ||
-		left.ConfidenceScore != right.ConfidenceScore ||
-		strings.TrimSpace(left.LikelihoodLevel) != strings.TrimSpace(right.LikelihoodLevel) ||
-		strings.TrimSpace(left.ImpactLevel) != strings.TrimSpace(right.ImpactLevel) ||
-		strings.TrimSpace(left.RiskModelVersion) != strings.TrimSpace(right.RiskModelVersion) ||
-		len(left.RiskReasons) != len(right.RiskReasons) {
-		return false
-	}
-	for index := range left.RiskReasons {
-		if strings.TrimSpace(left.RiskReasons[index]) != strings.TrimSpace(right.RiskReasons[index]) {
-			return false
-		}
-	}
-	return true
 }
 
 func findingRiskAttributesForUpdate(risk ports.FindingRisk) map[string]string {
