@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -29,6 +30,7 @@ type Config struct {
 	AppendLog       AppendLogConfig
 	StateStore      StateStoreConfig
 	GraphStore      GraphStoreConfig
+	GraphAgentLLM   GraphAgentLLMConfig
 	Auth            AuthConfig
 }
 
@@ -52,6 +54,17 @@ type GraphStoreConfig struct {
 	Neo4jUsername string
 	Neo4jPassword string
 	Neo4jDatabase string
+}
+
+// GraphAgentLLMConfig selects and configures the graph ask LLM adapter.
+type GraphAgentLLMConfig struct {
+	Provider    string
+	Model       string
+	SonnetModel string
+	OpusModel   string
+	HaikuModel  string
+	MaxTokens   int
+	Temperature float64
 }
 
 // APIKey grants one bearer token access to the bootstrap API.
@@ -113,6 +126,13 @@ func Load() (Config, error) {
 			Neo4jPassword: strings.TrimSpace(os.Getenv("CEREBRO_NEO4J_PASSWORD")),
 			Neo4jDatabase: strings.TrimSpace(os.Getenv("CEREBRO_NEO4J_DATABASE")),
 		},
+		GraphAgentLLM: GraphAgentLLMConfig{
+			Provider:    strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_AGENT_LLM_PROVIDER")),
+			Model:       strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_AGENT_LLM_MODEL")),
+			SonnetModel: strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_SONNET")),
+			OpusModel:   strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_OPUS")),
+			HaikuModel:  strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_HAIKU")),
+		},
 		Auth: AuthConfig{
 			APIKeys:                 parseAPIKeys(os.Getenv("CEREBRO_API_KEYS")),
 			APICredentials:          apiCredentials,
@@ -131,6 +151,12 @@ func Load() (Config, error) {
 	}
 	if cfg.HTTPAddr == "" {
 		cfg.HTTPAddr = defaultHTTPAddr
+	}
+	if cfg.GraphAgentLLM.MaxTokens, err = parseIntEnv("CEREBRO_GRAPH_AGENT_LLM_MAX_TOKENS", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.GraphAgentLLM.Temperature, err = parseFloatEnv("CEREBRO_GRAPH_AGENT_LLM_TEMPERATURE", 0); err != nil {
+		return Config{}, err
 	}
 	if raw, ok := os.LookupEnv("CEREBRO_SHUTDOWN_TIMEOUT"); ok && strings.TrimSpace(raw) != "" {
 		duration, err := time.ParseDuration(strings.TrimSpace(raw))
@@ -206,6 +232,36 @@ func parseBoolEnv(name string, defaultValue bool) (bool, error) {
 	default:
 		return false, fmt.Errorf("%s must be a boolean", name)
 	}
+}
+
+func parseIntEnv(name string, defaultValue int) (int, error) {
+	raw, ok := os.LookupEnv(name)
+	if !ok || strings.TrimSpace(raw) == "" {
+		return defaultValue, nil
+	}
+	value, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return 0, fmt.Errorf("parse %s: %w", name, err)
+	}
+	if value < 0 {
+		return 0, fmt.Errorf("%s must be greater than or equal to zero", name)
+	}
+	return value, nil
+}
+
+func parseFloatEnv(name string, defaultValue float64) (float64, error) {
+	raw, ok := os.LookupEnv(name)
+	if !ok || strings.TrimSpace(raw) == "" {
+		return defaultValue, nil
+	}
+	value, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse %s: %w", name, err)
+	}
+	if value < 0 {
+		return 0, fmt.Errorf("%s must be greater than or equal to zero", name)
+	}
+	return value, nil
 }
 
 func parseCSV(raw string) []string {

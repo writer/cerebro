@@ -25,6 +25,7 @@ import (
 	"github.com/writer/cerebro/internal/claims"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/graphstore"
@@ -41,9 +42,10 @@ import (
 
 // Dependencies are the future store/log boundaries that will be wired into the rewrite.
 type Dependencies struct {
-	AppendLog  ports.AppendLog
-	StateStore ports.StateStore
-	GraphStore ports.GraphStore
+	AppendLog     ports.AppendLog
+	StateStore    ports.StateStore
+	GraphStore    ports.GraphStore
+	GraphAgentLLM graphagent.LLMClient
 }
 
 // App is the minimal Connect/bootstrap composition root for the rewrite skeleton.
@@ -88,6 +90,7 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("POST /reports/{reportID}/runs", app.handleRunReport)
 	mux.HandleFunc("GET /report-runs/{runID}", app.handleGetReportRun)
 	mux.HandleFunc("GET /grc/dashboard", app.handleGRCDashboard)
+	mux.HandleFunc("POST /grc/ask", app.handleGRCAsk)
 	mux.HandleFunc("GET /grc/findings", app.handleGRCFindings)
 	mux.HandleFunc("GET /grc/controls", app.handleGRCControls)
 	mux.HandleFunc("GET /grc/evidence", app.handleGRCEvidence)
