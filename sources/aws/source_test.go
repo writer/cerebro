@@ -210,6 +210,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		kind   string
 	}{
 		{family: familyAccessKey, config: map[string]string{"user_name": "admin@writer.com"}, kind: "aws.access_key"},
+		{family: familyEffectivePermission, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.effective_permission"},
 		{family: familyIAMUser, kind: "aws.iam_user"},
 		{family: familyIAMRole, kind: "aws.iam_role"},
 		{family: familyIAMRoleTrust, kind: "aws.iam_role_trust"},
@@ -530,6 +531,7 @@ func TestReadAWSRoleAssignmentAndCloudTrailPreview(t *testing.T) {
 		config map[string]string
 		kind   string
 	}{
+		{family: familyEffectivePermission, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.effective_permission"},
 		{family: familyIAMRoleAssign, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.iam_role_assignment"},
 		{family: familyCloudTrail, kind: "aws.cloudtrail"},
 	} {

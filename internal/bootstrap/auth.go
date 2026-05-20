@@ -405,7 +405,7 @@ func scopeForHTTPRequest(r *http.Request) string {
 		return scopeCosmoSecurityRead
 	case strings.HasPrefix(path, "/platform/graph/impact/"), strings.HasPrefix(path, "/graph/impact/"):
 		return scopeCosmoSecurityRead
-	case path == "/platform/graph/aws-public-endpoint-insights":
+	case path == "/platform/graph/attack-paths", path == "/platform/graph/aws-public-endpoint-insights":
 		return scopeCosmoSecurityRead
 	case path == "/platform/graph/ingest-health", path == "/graph/ingest-health":
 		return scopeCosmoSecurityRead
@@ -1194,6 +1194,7 @@ func isKnownStaticAccessPath(path string) bool {
 		"/graph/impact/package",
 		"/platform/graph/impact/asset",
 		"/graph/impact/asset",
+		"/platform/graph/attack-paths",
 		"/platform/graph/aws-public-endpoint-insights",
 		"/platform/graph/ingest-health",
 		"/graph/ingest-health",

@@ -49,22 +49,23 @@ var emailPattern = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2
 var awsRoleARNPattern = regexp.MustCompile(`^arn:(aws|aws-us-gov|aws-cn):iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+$`)
 
 const (
-	defaultFamily            = familyCloudTrail
-	defaultRegion            = "us-east-1"
-	defaultPageSize          = 10
-	maxPageSize              = 200
-	publicEndpointCursorV2   = 2
-	awsAssumeRoleSessionName = "cerebro-source-runtime"
-	familyAccessKey          = "access_key"
-	familyCloudTrail         = "cloudtrail"
-	familyIAMGroup           = "iam_group"
-	familyIAMMembership      = "iam_group_membership"
-	familyIAMRoleTrust       = "iam_role_trust"
-	familyIAMRoleAssign      = "iam_role_assignment"
-	familyIAMRole            = "iam_role"
-	familyIAMUser            = "iam_user"
-	familyPublicEndpoint     = "public_endpoint"
-	familyResourceExposure   = "resource_exposure"
+	defaultFamily             = familyCloudTrail
+	defaultRegion             = "us-east-1"
+	defaultPageSize           = 10
+	maxPageSize               = 200
+	publicEndpointCursorV2    = 2
+	awsAssumeRoleSessionName  = "cerebro-source-runtime"
+	familyAccessKey           = "access_key"
+	familyCloudTrail          = "cloudtrail"
+	familyEffectivePermission = "effective_permission"
+	familyIAMGroup            = "iam_group"
+	familyIAMMembership       = "iam_group_membership"
+	familyIAMRoleTrust        = "iam_role_trust"
+	familyIAMRoleAssign       = "iam_role_assignment"
+	familyIAMRole             = "iam_role"
+	familyIAMUser             = "iam_user"
+	familyPublicEndpoint      = "public_endpoint"
+	familyResourceExposure    = "resource_exposure"
 )
 
 // Source reads AWS IAM inventory and CloudTrail activity through the AWS SDK for Go v2.
@@ -96,6 +97,7 @@ type settings struct {
 	lookupValue                string
 	startTime                  string
 	endTime                    string
+	since                      string
 	perPage                    int
 }
 
@@ -170,6 +172,16 @@ type iamPolicyAssignment struct {
 	PrincipalType string
 	PrincipalName string
 	Policy        iamtypes.AttachedPolicy
+}
+
+type iamGroupMember struct {
+	GroupName string
+	User      iamtypes.User
+}
+
+type iamPrincipalAssignmentCursor struct {
+	Stage  string `json:"stage,omitempty"`
+	Marker string `json:"marker,omitempty"`
 }
 
 type awsResourceExposure struct {
@@ -346,6 +358,15 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(event cloudtrailtypes.Event) string { return awssdk.ToString(event.EventId) },
 		}),
+		awsFamily(s.clients, awsFamilyOptions[iamPolicyAssignment]{
+			Name:  familyEffectivePermission,
+			Label: "aws effective permissions",
+			List:  listEffectivePermissions,
+			Event: effectivePermissionEvent,
+			URN: func(settings settings, assignment iamPolicyAssignment) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:effective_permission:%s:%s", settings.accountID, assignment.PrincipalName, firstNonEmpty(awssdk.ToString(assignment.Policy.PolicyArn), awssdk.ToString(assignment.Policy.PolicyName))), nil
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[awsResourceExposure]{
 			Name:  familyResourceExposure,
 			Label: "aws resource exposures",
@@ -373,13 +394,13 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:iam_group:%s", settings.accountID, firstNonEmpty(awssdk.ToString(group.GroupId), awssdk.ToString(group.GroupName))), nil
 			},
 		}),
-		awsFamily(s.clients, awsFamilyOptions[iamtypes.User]{
+		awsFamily(s.clients, awsFamilyOptions[iamGroupMember]{
 			Name:  familyIAMMembership,
 			Label: "aws iam group memberships",
 			List:  listIAMGroupMembers,
 			Event: iamGroupMembershipEvent,
-			URN: func(settings settings, user iamtypes.User) (string, error) {
-				return fmt.Sprintf("urn:cerebro:%s:iam_group_membership:%s:%s", settings.accountID, settings.groupName, firstNonEmpty(awssdk.ToString(user.UserId), awssdk.ToString(user.UserName))), nil
+			URN: func(settings settings, member iamGroupMember) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:iam_group_membership:%s:%s", settings.accountID, firstNonEmpty(member.GroupName, settings.groupName), firstNonEmpty(awssdk.ToString(member.User.UserId), awssdk.ToString(member.User.UserName))), nil
 			},
 		}),
 		awsFamily(s.clients, awsFamilyOptions[iamPolicyAssignment]{
@@ -523,6 +544,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		lookupValue:                configValue(cfg, "lookup_value"),
 		startTime:                  configValue(cfg, "start_time"),
 		endTime:                    configValue(cfg, "end_time"),
+		since:                      configValue(cfg, "since"),
 		perPage:                    defaultPageSize,
 	}
 	if settings.family == "" {
@@ -552,18 +574,12 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyCloudTrail, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyPublicEndpoint, familyResourceExposure:
+	case familyCloudTrail, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyPublicEndpoint, familyResourceExposure:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
 		}
-		if settings.userName == "" {
-			return settings, fmt.Errorf("aws user_name is required when family=%q", familyAccessKey)
-		}
 	case familyIAMMembership:
-		if settings.groupName == "" {
-			return settings, fmt.Errorf("aws group_name is required when family=%q", familyIAMMembership)
-		}
 	case familyIAMRoleAssign:
 		if settings.principalType == "" {
 			settings.principalType = "user"
@@ -572,11 +588,8 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		if settings.principalType != "user" && settings.principalType != "group" && settings.principalType != "role" {
 			return settings, fmt.Errorf("aws principal_type must be user, group, or role when family=%q", familyIAMRoleAssign)
 		}
-		if settings.principalName == "" {
-			return settings, fmt.Errorf("aws principal_name is required when family=%q", familyIAMRoleAssign)
-		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of access_key, cloudtrail, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, public_endpoint, or resource_exposure")
+		return settings, fmt.Errorf("aws family must be one of access_key, cloudtrail, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, public_endpoint, or resource_exposure")
 	}
 	return settings, nil
 }
@@ -638,6 +651,30 @@ func legacyTenantlessAssumeRoleARNAllowed(roleARN string, allowlist string) bool
 }
 
 func listAccessKeys(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]iamtypes.AccessKeyMetadata, string, error) {
+	if strings.TrimSpace(settings.userName) == "" {
+		users, next, err := listIAMUsers(ctx, clients, settings, cursor, limit)
+		if err != nil {
+			return nil, "", err
+		}
+		keys := make([]iamtypes.AccessKeyMetadata, 0, len(users))
+		for _, user := range users {
+			userName := awssdk.ToString(user.UserName)
+			if userName == "" {
+				continue
+			}
+			out, err := clients.iam.ListAccessKeys(ctx, &iam.ListAccessKeysInput{UserName: awssdk.String(userName)})
+			if err != nil {
+				return nil, "", err
+			}
+			for _, key := range out.AccessKeyMetadata {
+				if awssdk.ToString(key.UserName) == "" {
+					key.UserName = awssdk.String(userName)
+				}
+				keys = append(keys, key)
+			}
+		}
+		return keys, next, nil
+	}
 	out, err := clients.iam.ListAccessKeys(ctx, &iam.ListAccessKeysInput{UserName: awssdk.String(settings.userName), Marker: stringPtr(cursor), MaxItems: int32Ptr(limit)})
 	if err != nil {
 		return nil, "", err
@@ -1082,12 +1119,37 @@ func listIAMGroups(ctx context.Context, clients awsClients, _ settings, cursor s
 	return out.Groups, nextMarker(out.IsTruncated, out.Marker), nil
 }
 
-func listIAMGroupMembers(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]iamtypes.User, string, error) {
+func listIAMGroupMembers(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]iamGroupMember, string, error) {
+	if strings.TrimSpace(settings.groupName) == "" {
+		groups, next, err := listIAMGroups(ctx, clients, settings, cursor, limit)
+		if err != nil {
+			return nil, "", err
+		}
+		members := make([]iamGroupMember, 0)
+		for _, group := range groups {
+			groupName := awssdk.ToString(group.GroupName)
+			if groupName == "" {
+				continue
+			}
+			out, err := clients.iam.GetGroup(ctx, &iam.GetGroupInput{GroupName: awssdk.String(groupName), MaxItems: awssdk.Int32(1000)})
+			if err != nil {
+				return nil, "", err
+			}
+			for _, user := range out.Users {
+				members = append(members, iamGroupMember{GroupName: groupName, User: user})
+			}
+		}
+		return members, next, nil
+	}
 	out, err := clients.iam.GetGroup(ctx, &iam.GetGroupInput{GroupName: awssdk.String(settings.groupName), Marker: stringPtr(cursor), MaxItems: int32Ptr(limit)})
 	if err != nil {
 		return nil, "", err
 	}
-	return out.Users, nextMarker(out.IsTruncated, out.Marker), nil
+	members := make([]iamGroupMember, 0, len(out.Users))
+	for _, user := range out.Users {
+		members = append(members, iamGroupMember{GroupName: settings.groupName, User: user})
+	}
+	return members, nextMarker(out.IsTruncated, out.Marker), nil
 }
 
 func tagValue(tags []ec2types.Tag, key string) string {
@@ -1263,6 +1325,9 @@ func apiGatewayV2APIPublicEndpoint(settings settings, api apigatewayv2types.Api)
 }
 
 func listIAMPolicyAssignments(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]iamPolicyAssignment, string, error) {
+	if strings.TrimSpace(settings.principalName) == "" {
+		return listAllIAMPolicyAssignments(ctx, clients, settings, cursor, limit)
+	}
 	var policies []iamtypes.AttachedPolicy
 	var next string
 	switch settings.principalType {
@@ -1295,13 +1360,121 @@ func listIAMPolicyAssignments(ctx context.Context, clients awsClients, settings 
 	return assignments, next, nil
 }
 
+func listEffectivePermissions(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]iamPolicyAssignment, string, error) {
+	return listIAMPolicyAssignments(ctx, clients, settings, cursor, limit)
+}
+
+func listAllIAMPolicyAssignments(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]iamPolicyAssignment, string, error) {
+	parsed := parseIAMPrincipalAssignmentCursor(cursor)
+	if parsed.Stage == "" {
+		parsed.Stage = "user"
+	}
+	switch parsed.Stage {
+	case "user":
+		users, next, err := listIAMUsers(ctx, clients, settings, parsed.Marker, limit)
+		if err != nil {
+			return nil, "", err
+		}
+		assignments, err := attachedUserPolicyAssignments(ctx, clients, users)
+		if err != nil {
+			return nil, "", err
+		}
+		if next != "" {
+			return assignments, encodeIAMPrincipalAssignmentCursor(iamPrincipalAssignmentCursor{Stage: "user", Marker: next}), nil
+		}
+		return assignments, encodeIAMPrincipalAssignmentCursor(iamPrincipalAssignmentCursor{Stage: "group"}), nil
+	case "group":
+		groups, next, err := listIAMGroups(ctx, clients, settings, parsed.Marker, limit)
+		if err != nil {
+			return nil, "", err
+		}
+		assignments, err := attachedGroupPolicyAssignments(ctx, clients, groups)
+		if err != nil {
+			return nil, "", err
+		}
+		if next != "" {
+			return assignments, encodeIAMPrincipalAssignmentCursor(iamPrincipalAssignmentCursor{Stage: "group", Marker: next}), nil
+		}
+		return assignments, encodeIAMPrincipalAssignmentCursor(iamPrincipalAssignmentCursor{Stage: "role"}), nil
+	case "role":
+		roles, next, err := listIAMRoles(ctx, clients, settings, parsed.Marker, limit)
+		if err != nil {
+			return nil, "", err
+		}
+		assignments, err := attachedRolePolicyAssignments(ctx, clients, roles)
+		if err != nil {
+			return nil, "", err
+		}
+		if next != "" {
+			return assignments, encodeIAMPrincipalAssignmentCursor(iamPrincipalAssignmentCursor{Stage: "role", Marker: next}), nil
+		}
+		return assignments, "", nil
+	default:
+		return nil, "", fmt.Errorf("invalid iam assignment cursor stage %q", parsed.Stage)
+	}
+}
+
+func attachedUserPolicyAssignments(ctx context.Context, clients awsClients, users []iamtypes.User) ([]iamPolicyAssignment, error) {
+	assignments := make([]iamPolicyAssignment, 0, len(users))
+	for _, user := range users {
+		userName := awssdk.ToString(user.UserName)
+		if userName == "" {
+			continue
+		}
+		out, err := clients.iam.ListAttachedUserPolicies(ctx, &iam.ListAttachedUserPoliciesInput{UserName: awssdk.String(userName), MaxItems: awssdk.Int32(1000)})
+		if err != nil {
+			return nil, err
+		}
+		for _, policy := range out.AttachedPolicies {
+			assignments = append(assignments, iamPolicyAssignment{PrincipalType: "user", PrincipalName: userName, Policy: policy})
+		}
+	}
+	return assignments, nil
+}
+
+func attachedGroupPolicyAssignments(ctx context.Context, clients awsClients, groups []iamtypes.Group) ([]iamPolicyAssignment, error) {
+	assignments := make([]iamPolicyAssignment, 0, len(groups))
+	for _, group := range groups {
+		groupName := awssdk.ToString(group.GroupName)
+		if groupName == "" {
+			continue
+		}
+		out, err := clients.iam.ListAttachedGroupPolicies(ctx, &iam.ListAttachedGroupPoliciesInput{GroupName: awssdk.String(groupName), MaxItems: awssdk.Int32(1000)})
+		if err != nil {
+			return nil, err
+		}
+		for _, policy := range out.AttachedPolicies {
+			assignments = append(assignments, iamPolicyAssignment{PrincipalType: "group", PrincipalName: groupName, Policy: policy})
+		}
+	}
+	return assignments, nil
+}
+
+func attachedRolePolicyAssignments(ctx context.Context, clients awsClients, roles []iamtypes.Role) ([]iamPolicyAssignment, error) {
+	assignments := make([]iamPolicyAssignment, 0, len(roles))
+	for _, role := range roles {
+		roleName := awssdk.ToString(role.RoleName)
+		if roleName == "" {
+			continue
+		}
+		out, err := clients.iam.ListAttachedRolePolicies(ctx, &iam.ListAttachedRolePoliciesInput{RoleName: awssdk.String(roleName), MaxItems: awssdk.Int32(1000)})
+		if err != nil {
+			return nil, err
+		}
+		for _, policy := range out.AttachedPolicies {
+			assignments = append(assignments, iamPolicyAssignment{PrincipalType: "role", PrincipalName: roleName, Policy: policy})
+		}
+	}
+	return assignments, nil
+}
+
 func listCloudTrailEvents(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]cloudtrailtypes.Event, string, error) {
 	input := &cloudtrail.LookupEventsInput{MaxResults: awssdk.Int32(int32(limit)), NextToken: stringPtr(cursor)}
 	if settings.lookupKey != "" && settings.lookupValue != "" {
 		input.LookupAttributes = []cloudtrailtypes.LookupAttribute{{AttributeKey: cloudtrailtypes.LookupAttributeKey(settings.lookupKey), AttributeValue: awssdk.String(settings.lookupValue)}}
 	}
-	if settings.startTime != "" {
-		parsed, err := time.Parse(time.RFC3339, settings.startTime)
+	if firstNonEmpty(settings.startTime, settings.since) != "" {
+		parsed, err := parseAWSTimeSelector(firstNonEmpty(settings.startTime, settings.since), time.Now().UTC())
 		if err != nil {
 			return nil, "", fmt.Errorf("parse aws start_time: %w", err)
 		}
@@ -1357,23 +1530,25 @@ func iamGroupEvent(settings settings, group iamtypes.Group) (*primitives.Event, 
 	return sourceEvent(settings, "aws-iam-group-"+firstNonEmpty(awssdk.ToString(group.GroupId), awssdk.ToString(group.GroupName)), "aws.iam_group", "aws/iam_group/v1", payload, attributes, firstTime(group.CreateDate))
 }
 
-func iamGroupMembershipEvent(settings settings, user iamtypes.User) (*primitives.Event, error) {
+func iamGroupMembershipEvent(settings settings, member iamGroupMember) (*primitives.Event, error) {
+	user := member.User
+	groupName := firstNonEmpty(member.GroupName, settings.groupName)
 	attributes := map[string]string{
 		"domain":         settings.accountID,
 		"family":         familyIAMMembership,
-		"group_id":       settings.groupName,
-		"group_name":     settings.groupName,
+		"group_id":       groupName,
+		"group_name":     groupName,
 		"member_email":   emailLike(awssdk.ToString(user.UserName)),
 		"member_id":      firstNonEmpty(awssdk.ToString(user.UserId), awssdk.ToString(user.Arn), awssdk.ToString(user.UserName)),
 		"member_user_id": firstNonEmpty(awssdk.ToString(user.UserId), awssdk.ToString(user.UserName)),
 		"member_type":    "user",
 		"role":           "member",
 	}
-	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "group_name": settings.groupName, "user": user})
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "group_name": groupName, "user": user})
 	if err != nil {
 		return nil, err
 	}
-	id := fmt.Sprintf("aws-iam-group-membership-%s-%s", settings.groupName, firstNonEmpty(awssdk.ToString(user.UserId), awssdk.ToString(user.UserName)))
+	id := fmt.Sprintf("aws-iam-group-membership-%s-%s", groupName, firstNonEmpty(awssdk.ToString(user.UserId), awssdk.ToString(user.UserName)))
 	return sourceEvent(settings, id, "aws.iam_group_membership", "aws/iam_group_membership/v1", payload, attributes, firstTime(user.CreateDate))
 }
 
@@ -1454,6 +1629,41 @@ func iamRoleAssignmentEvent(settings settings, assignment iamPolicyAssignment) (
 	}
 	id := fmt.Sprintf("aws-iam-role-assignment-%s-%s", assignment.PrincipalName, firstNonEmpty(policyARN, policyName))
 	return sourceEvent(settings, id, "aws.iam_role_assignment", "aws/iam_role_assignment/v1", payload, attributes, time.Now().UTC())
+}
+
+func effectivePermissionEvent(settings settings, assignment iamPolicyAssignment) (*primitives.Event, error) {
+	policyName := awssdk.ToString(assignment.Policy.PolicyName)
+	policyARN := awssdk.ToString(assignment.Policy.PolicyArn)
+	admin := isAdminPolicy(policyName, policyARN)
+	permission := firstNonEmpty(policyName, policyARN)
+	attributes := map[string]string{
+		"actions":         permission,
+		"domain":          settings.accountID,
+		"effect":          "allow",
+		"family":          familyEffectivePermission,
+		"is_admin":        boolString(admin),
+		"permission":      permission,
+		"principal_type":  assignment.PrincipalType,
+		"privilege_level": map[bool]string{true: "admin", false: "policy_attachment"}[admin],
+		"resource_id":     firstNonEmpty(policyARN, policyName, settings.accountID),
+		"resource_name":   firstNonEmpty(policyName, policyARN, settings.accountID),
+		"resource_type":   "aws_iam_policy",
+		"role_id":         firstNonEmpty(policyARN, policyName),
+		"role_name":       policyName,
+		"role_type":       "aws_iam_policy",
+		"scope":           settings.accountID,
+		"subject_email":   emailLike(assignment.PrincipalName),
+		"subject_id":      assignment.PrincipalName,
+		"subject_login":   assignment.PrincipalName,
+		"subject_name":    assignment.PrincipalName,
+		"subject_type":    assignment.PrincipalType,
+	}
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "effective_permission": assignment})
+	if err != nil {
+		return nil, err
+	}
+	id := fmt.Sprintf("aws-effective-permission-%s-%s", assignment.PrincipalName, firstNonEmpty(policyARN, policyName))
+	return sourceEvent(settings, id, "aws.effective_permission", "aws/effective_permission/v1", payload, attributes, time.Now().UTC())
 }
 
 func accessKeyEvent(settings settings, key iamtypes.AccessKeyMetadata) (*primitives.Event, error) {
@@ -1741,6 +1951,30 @@ func encodePublicEndpointCursor(cursor publicEndpointCursor) string {
 	return base64.RawURLEncoding.EncodeToString(payload)
 }
 
+func parseIAMPrincipalAssignmentCursor(cursor string) iamPrincipalAssignmentCursor {
+	trimmed := strings.TrimSpace(cursor)
+	if trimmed == "" {
+		return iamPrincipalAssignmentCursor{}
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(trimmed)
+	if err != nil {
+		return iamPrincipalAssignmentCursor{Stage: "user", Marker: trimmed}
+	}
+	parsed := iamPrincipalAssignmentCursor{}
+	if err := json.Unmarshal(payload, &parsed); err != nil {
+		return iamPrincipalAssignmentCursor{Stage: "user", Marker: trimmed}
+	}
+	return parsed
+}
+
+func encodeIAMPrincipalAssignmentCursor(cursor iamPrincipalAssignmentCursor) string {
+	payload, err := json.Marshal(cursor)
+	if err != nil {
+		return ""
+	}
+	return base64.RawURLEncoding.EncodeToString(payload)
+}
+
 func upgradePublicEndpointCursor(cursor publicEndpointCursor) publicEndpointCursor {
 	if cursor.Version != 0 {
 		return cursor
@@ -1877,6 +2111,59 @@ func awsDNSSuffix(region string) string {
 		return "amazonaws.com.cn"
 	}
 	return "amazonaws.com"
+}
+
+func parseAWSTimeSelector(value string, now time.Time) (time.Time, error) {
+	trimmed := strings.TrimSpace(value)
+	if strings.HasPrefix(strings.ToUpper(trimmed), "P") {
+		duration, err := parseSimpleISODuration(trimmed)
+		if err != nil {
+			return time.Time{}, err
+		}
+		return now.Add(-duration), nil
+	}
+	return time.Parse(time.RFC3339, trimmed)
+}
+
+func parseSimpleISODuration(value string) (time.Duration, error) {
+	normalized := strings.ToUpper(strings.TrimSpace(value))
+	if normalized == "" || normalized[0] != 'P' {
+		return 0, fmt.Errorf("duration must start with P")
+	}
+	remaining := strings.TrimPrefix(normalized, "P")
+	days := 0
+	if index := strings.Index(remaining, "D"); index >= 0 {
+		parsed, err := strconv.Atoi(remaining[:index])
+		if err != nil {
+			return 0, err
+		}
+		days = parsed
+		remaining = remaining[index+1:]
+	}
+	hours := 0
+	minutes := 0
+	if strings.HasPrefix(remaining, "T") {
+		remaining = strings.TrimPrefix(remaining, "T")
+		if index := strings.Index(remaining, "H"); index >= 0 {
+			parsed, err := strconv.Atoi(remaining[:index])
+			if err != nil {
+				return 0, err
+			}
+			hours = parsed
+			remaining = remaining[index+1:]
+		}
+		if index := strings.Index(remaining, "M"); index >= 0 {
+			parsed, err := strconv.Atoi(remaining[:index])
+			if err != nil {
+				return 0, err
+			}
+			minutes = parsed
+		}
+	}
+	if days == 0 && hours == 0 && minutes == 0 {
+		return 0, fmt.Errorf("duration must include days, hours, or minutes")
+	}
+	return time.Duration(days)*24*time.Hour + time.Duration(hours)*time.Hour + time.Duration(minutes)*time.Minute, nil
 }
 
 func cloudTrailActor(event cloudtrailtypes.Event, detail cloudTrailDetail) cloudTrailUserIdentity {

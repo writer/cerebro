@@ -126,7 +126,7 @@ func cloudResourceExposureProjections(event *cerebrov1.EventEnvelope, profile id
 		addCloudAccountLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, cloudResourceExposureAccountID(attributes, provider), provider)
 	}
 	if publicURN != "" && resourceURN != "" {
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), publicURN, resourceURN, relationCanReach, map[string]string{
+		reachabilityAttrs := map[string]string{
 			"action":        strings.TrimSpace(attributes["action"]),
 			"direction":     strings.TrimSpace(attributes["direction"]),
 			"event_id":      event.GetId(),
@@ -134,7 +134,11 @@ func cloudResourceExposureProjections(event *cerebrov1.EventEnvelope, profile id
 			"port_range":    strings.TrimSpace(attributes["port_range"]),
 			"protocol":      strings.TrimSpace(attributes["protocol"]),
 			"source_cidr":   strings.TrimSpace(attributes["source_cidr"]),
-		}))
+		}
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), publicURN, resourceURN, relationCanReach, reachabilityAttrs))
+		reverseAttrs := cloneStringMap(reachabilityAttrs)
+		reverseAttrs["direction"] = firstNonEmpty(reverseAttrs["direction"], "ingress") + "_reverse"
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, publicURN, relationCanReach, reverseAttrs))
 	}
 	return identityProjectionResult(entities, links)
 }
@@ -144,6 +148,14 @@ func cloudResourceExposureAccountID(attributes map[string]string, provider strin
 		return firstNonEmpty(attributes["subscription_id"], attributes["scope"], attributes["domain"])
 	}
 	return attributes["domain"]
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	clone := make(map[string]string, len(values))
+	for key, value := range values {
+		clone[key] = value
+	}
+	return clone
 }
 
 func cloudPublicEndpointProjections(event *cerebrov1.EventEnvelope, profile identityProjectionProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -156,8 +168,19 @@ func cloudPublicEndpointProjections(event *cerebrov1.EventEnvelope, profile iden
 	resourceType := normalizeCloudType(firstNonEmpty(attributes["resource_type"], "public_endpoint"))
 	resourceID := firstNonEmpty(attributes["resource_id"], attributes["endpoint_id"], attributes["host"], attributes["ip"])
 	resourceURN := projectionURN(tenantID, provider+"_"+resourceType, resourceID)
+	publicURN := identityPrincipalURN(tenantID, provider, "public", "public_internet", "")
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
+	if publicURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        publicURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: profile.entityType("public_principal"),
+			Label:      "public internet",
+			Attributes: map[string]string{"principal_type": "public"},
+		})
+	}
 	if resourceURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        resourceURN,
@@ -192,6 +215,20 @@ func cloudPublicEndpointProjections(event *cerebrov1.EventEnvelope, profile iden
 		}
 		for _, ip := range splitCloudAttributeList(strings.Join([]string{attributes["ip"], attributes["target_ips"], attributes["target_ip"]}, ",")) {
 			addInternetIPLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, ip, "aws_public_endpoint_ip", "0.95")
+		}
+		addCloudAccountLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, cloudResourceExposureAccountID(attributes, provider), provider)
+		if publicURN != "" && projectionBool(firstNonEmpty(attributes["internet_exposed"], attributes["public"], attributes["external_exposure"])) {
+			reachabilityAttrs := map[string]string{
+				"direction":     "ingress",
+				"event_id":      event.GetId(),
+				"exposure_type": "public_endpoint",
+				"host":          strings.TrimSpace(attributes["host"]),
+				"ip":            strings.TrimSpace(attributes["ip"]),
+			}
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), publicURN, resourceURN, relationCanReach, reachabilityAttrs))
+			reverseAttrs := cloneStringMap(reachabilityAttrs)
+			reverseAttrs["direction"] = "ingress_reverse"
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, publicURN, relationCanReach, reverseAttrs))
 		}
 	}
 	return identityProjectionResult(entities, links)
@@ -319,6 +356,7 @@ func cloudEffectivePermissionProjections(event *cerebrov1.EventEnvelope, profile
 			Label:      firstNonEmpty(attributes["resource_name"], attributes["target_name"], resourceID),
 			Attributes: map[string]string{"resource_id": resourceID, "resource_type": resourceType, "scope": strings.TrimSpace(attributes["scope"])},
 		})
+		addCloudAccountLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, firstNonEmpty(attributes["scope"], attributes["domain"]), provider)
 	}
 	if subjectURN != "" && resourceURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectURN, resourceURN, relationCanPerform, map[string]string{

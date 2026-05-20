@@ -739,6 +739,29 @@ paths:
       responses:
         '200':
           description: Asset vulnerability result.
+  /platform/graph/attack-paths:
+    get:
+      summary: Query cloud attack paths
+      tags:
+        - Graph
+      parameters:
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: account_id
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Cloud attack paths.
   /platform/graph/aws-public-endpoint-insights:
     get:
       summary: Query AWS public endpoint overlap insights
