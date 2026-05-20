@@ -19,6 +19,10 @@ EXPECTED_STACK_ACCOUNTS = {
     "go-prod": "837279440628",
 }
 DEFAULT_MAX_RUNNING_MINUTES = 60
+MIN_INGEST_RUN_LIMIT = 100
+INGEST_RUN_LIMIT_MULTIPLIER = 3
+REQUIRED_RELATIONS = {"belongs_to", "can_reach", "represents"}
+AWS_ATTACK_PATH_RELATIONS = {"can_perform", "can_assume", "can_admin", "can_impersonate"}
 
 
 @dataclass(frozen=True)
@@ -61,6 +65,26 @@ def _declared_runtime_ids(config: dict[str, Any]) -> set[str]:
     if not isinstance(runtimes, list):
         return set()
     return {str(runtime.get("id") or "").strip() for runtime in runtimes if isinstance(runtime, dict) and str(runtime.get("id") or "").strip()}
+
+
+def _declared_aws_families(config: dict[str, Any]) -> set[str]:
+    runtimes = config.get("sourceRuntimes") or []
+    if not isinstance(runtimes, list):
+        return set()
+    families: set[str] = set()
+    for runtime in runtimes:
+        if not isinstance(runtime, dict) or str(runtime.get("sourceId", "")).strip() != "aws":
+            continue
+        runtime_config = runtime.get("config") or {}
+        if isinstance(runtime_config, dict):
+            family = str(runtime_config.get("family", "")).strip()
+            if family:
+                families.add(family)
+    return families
+
+
+def _ingest_run_limit(declared_runtime_ids: set[str]) -> int:
+    return max(MIN_INGEST_RUN_LIMIT, len(declared_runtime_ids) * INGEST_RUN_LIMIT_MULTIPLIER)
 
 
 def _aws(args: list[str], region: str) -> Any:
@@ -300,6 +324,41 @@ def _verify_current_ingest_runs(
     return len(latest_by_runtime)
 
 
+def _graph_path_relations(payload: dict[str, Any]) -> set[str]:
+    relations: set[str] = set()
+    for pattern in payload.get("patterns") or []:
+        if not isinstance(pattern, dict):
+            continue
+        for key in ("first_relation", "second_relation"):
+            value = str(pattern.get(key) or "").strip()
+            if value:
+                relations.add(value)
+    for traversal in payload.get("traversals") or []:
+        if not isinstance(traversal, dict):
+            continue
+        for key in ("first_relation", "second_relation"):
+            value = str(traversal.get(key) or "").strip()
+            if value:
+                relations.add(value)
+    return relations
+
+
+def _verify_required_graph_relations(payload: dict[str, Any], aws_families: set[str] | None = None) -> set[str]:
+    relations = _graph_path_relations(payload)
+    required = set(REQUIRED_RELATIONS)
+    aws_families = aws_families or set()
+    if "effective_permission" in aws_families:
+        required.add("can_perform")
+    if "iam_role_trust" in aws_families:
+        required.add("can_assume")
+    missing = sorted(required - relations)
+    if missing:
+        raise RuntimeError(f"graph paths missing required relation(s): {', '.join(missing)}")
+    if "effective_permission" in aws_families and not (relations & AWS_ATTACK_PATH_RELATIONS):
+        raise RuntimeError("graph paths missing AWS attack-path privilege relations")
+    return relations
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Verify live Cerebro graph health through a one-off ECS task.")
     parser.add_argument("--stack-file", type=Path, required=True)
@@ -314,26 +373,36 @@ def main(argv: list[str] | None = None) -> int:
     _verify_account(stack, args.region)
     resource_prefix = _resource_prefix(config, stack)
     service = _describe_api_service(resource_prefix, args.region)
+    declared_runtime_ids = _declared_runtime_ids(config)
 
     counts = _run_graph_command(resource_prefix, service, ["graph", "counts"], args.wait_timeout_seconds, args.poll_seconds, args.region)
     _verify_counts(counts.payload)
     integrity = _run_graph_command(resource_prefix, service, ["graph", "integrity"], args.wait_timeout_seconds, args.poll_seconds, args.region)
     _verify_integrity(integrity.payload)
+    paths = _run_graph_command(
+        resource_prefix,
+        service,
+        ["graph", "paths", "limit=100"],
+        args.wait_timeout_seconds,
+        args.poll_seconds,
+        args.region,
+    )
+    graph_relations = _verify_required_graph_relations(paths.payload, _declared_aws_families(config))
     ingest_runs = _run_graph_command(
         resource_prefix,
         service,
-        ["graph", "ingest-runs", "limit=100"],
+        ["graph", "ingest-runs", f"limit={_ingest_run_limit(declared_runtime_ids)}"],
         args.wait_timeout_seconds,
         args.poll_seconds,
         args.region,
     )
     current_ingest_runtimes = _verify_current_ingest_runs(
         ingest_runs.payload,
-        declared_runtime_ids=_declared_runtime_ids(config),
+        declared_runtime_ids=declared_runtime_ids,
         max_running_minutes=args.max_running_minutes,
     )
 
-    print("checked_at\tstack\tnodes\trelations\tintegrity_passed\tintegrity_failed\tcurrent_ingest_runtimes\tcounts_task\tintegrity_task\tingest_runs_task")
+    print("checked_at\tstack\tnodes\trelations\tintegrity_passed\tintegrity_failed\tgraph_relations\tcurrent_ingest_runtimes\tcounts_task\tintegrity_task\tpaths_task\tingest_runs_task")
     print(
         "\t".join(
             [
@@ -343,9 +412,11 @@ def main(argv: list[str] | None = None) -> int:
                 str(counts.payload.get("relations")),
                 str(integrity.payload.get("passed")),
                 str(integrity.payload.get("failed")),
+                ",".join(sorted(graph_relations)),
                 str(current_ingest_runtimes),
                 counts.task_arn,
                 integrity.task_arn,
+                paths.task_arn,
                 ingest_runs.task_arn,
             ]
         )

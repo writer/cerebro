@@ -304,7 +304,18 @@ class ValidateStackConfigTest(unittest.TestCase):
         self.assertFalse(any(finding.severity == "error" and "accessAuditTenantMismatchAlarmThreshold" in finding.path for finding in findings))
         self.assertTrue(any(finding.severity == "error" and "accessAuditSensitiveDeniedAlarmThreshold" in finding.path for finding in findings))
 
-    def test_cross_stack_image_tags_must_match(self) -> None:
+    def test_cross_stack_sec_dev_may_lead_go_prod_image_tag(self) -> None:
+        prod = Path("Pulumi.go-prod.yaml")
+        dev = Path("Pulumi.sec-dev.yaml")
+        configs = {
+            prod: self._config(BASE_STACK),
+            dev: self._config(BASE_STACK.replace("v2.1.36", "v2.1.37", 1)),
+        }
+        with patch.object(validator, "_load_config", side_effect=lambda path: configs[path]):
+            findings = validate_cross_stack([prod, dev])
+        self.assertEqual([finding for finding in findings if finding.severity == "error"], [])
+
+    def test_cross_stack_sec_dev_image_tag_must_not_lag_prod(self) -> None:
         prod = Path("Pulumi.go-prod.yaml")
         dev = Path("Pulumi.sec-dev.yaml")
         configs = {
@@ -313,7 +324,43 @@ class ValidateStackConfigTest(unittest.TestCase):
         }
         with patch.object(validator, "_load_config", side_effect=lambda path: configs[path]):
             findings = validate_cross_stack([prod, dev])
-        self.assertTrue(any(finding.severity == "error" and "must match go-prod" in finding.message for finding in findings))
+        self.assertTrue(any(finding.severity == "error" and "must not lag go-prod" in finding.message for finding in findings))
+
+    def test_sec_dev_aws_public_endpoint_requires_complete_aws_coverage(self) -> None:
+        content = BASE_STACK.replace("  cerebro:imageTag: v2.1.36", "  cerebro:imageTag: v2.1.46").replace(
+            "    - id: writer-okta-audit\n      sourceId: okta\n      tenantId: writer\n      config:\n        api_token: env:API_TOKEN\n",
+            """    - id: writer-aws-sec-dev-us1-public-endpoint
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "944130631940"
+        family: public_endpoint
+        include_global: "true"
+        per_page: "100"
+        region: us-east-1
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+""",
+        ).replace("runtime_id=writer-okta-audit", "runtime_id=writer-aws-sec-dev-us1-public-endpoint")
+        findings = self._validate(content, name="Pulumi.sec-dev.yaml")
+        self.assertTrue(any(finding.severity == "error" and "writer-aws-sec-dev-effective-permission" in finding.message for finding in findings))
+
+    def test_sec_dev_aws_effective_permission_requires_runtime_release(self) -> None:
+        content = BASE_STACK.replace(
+            "    - id: writer-okta-audit\n      sourceId: okta\n      tenantId: writer\n      config:\n        api_token: env:API_TOKEN\n",
+            """    - id: writer-aws-sec-dev-us1-public-endpoint
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "944130631940"
+        family: public_endpoint
+        include_global: "true"
+        per_page: "100"
+        region: us-east-1
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+""",
+        ).replace("runtime_id=writer-okta-audit", "runtime_id=writer-aws-sec-dev-us1-public-endpoint")
+        findings = self._validate(content, name="Pulumi.sec-dev.yaml")
+        self.assertTrue(any(finding.severity == "error" and "effective_permission" in finding.message and "v2.1.46" in finding.message for finding in findings))
 
     def test_cosmo_requires_token_auth_release(self) -> None:
         content = BASE_STACK.replace("  cerebro:imageTag: v2.1.36", "  cerebro:imageTag: v2.1.35")
