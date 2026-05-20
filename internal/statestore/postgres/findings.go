@@ -348,9 +348,6 @@ func (s *Store) ListFindings(ctx context.Context, request ports.ListFindingsRequ
 	if err := s.ensureFindingTables(ctx); err != nil {
 		return nil, err
 	}
-	if err := s.refreshFindingRiskForList(ctx, request); err != nil {
-		return nil, err
-	}
 	query, args, err := findingListQuery(request)
 	if err != nil {
 		return nil, err
@@ -379,6 +376,10 @@ func (s *Store) ListFindings(ctx context.Context, request ports.ListFindingsRequ
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate findings rows: %w", err)
+	}
+	findings, err = s.refreshFindingRiskRecords(ctx, findings)
+	if err != nil {
+		return nil, err
 	}
 	return findings, nil
 }
@@ -469,9 +470,6 @@ func (s *Store) GetFinding(ctx context.Context, id string) (*ports.FindingRecord
 	findingID := strings.TrimSpace(id)
 	if findingID == "" {
 		return nil, errors.New("finding id is required")
-	}
-	if err := s.refreshFindingRiskForID(ctx, findingID); err != nil {
-		return nil, err
 	}
 	var row findingRow
 	if err := scanFindingRow(s.db.QueryRowContext(ctx, `
@@ -854,65 +852,26 @@ func findingBackfillRisk(record *ports.FindingRecord, now time.Time) ports.Findi
 	}
 }
 
-func (s *Store) refreshFindingRiskForID(ctx context.Context, findingID string) error {
-	return s.refreshFindingRiskRows(ctx, `SELECT `+findingSelectColumns+` FROM findings WHERE id = $1 AND `+findingTimeSensitiveRiskPredicate(), strings.TrimSpace(findingID))
-}
-
-func (s *Store) refreshFindingRiskForList(ctx context.Context, request ports.ListFindingsRequest) error {
-	clauses, args, err := findingFilterClauses(request)
-	if err != nil {
-		return err
-	}
-	clauses = append(clauses, findingTimeSensitiveRiskPredicate())
-	return s.refreshFindingRiskRows(ctx, `SELECT `+findingSelectColumns+` FROM findings WHERE `+strings.Join(clauses, " AND "), args...)
-}
-
-func findingTimeSensitiveRiskPredicate() string {
-	return `(due_at IS NOT NULL OR last_observed_at IS NOT NULL)`
-}
-
-func (s *Store) refreshFindingRiskRows(ctx context.Context, query string, args ...any) (err error) {
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return fmt.Errorf("list findings for risk refresh: %w", err)
-	}
-	defer func() {
-		if closeErr := rows.Close(); closeErr != nil && err == nil {
-			err = fmt.Errorf("close finding risk refresh rows: %w", closeErr)
-		}
-	}()
-	type riskRefresh struct {
-		id   string
-		risk ports.FindingRisk
+func (s *Store) refreshFindingRiskRecords(ctx context.Context, findings []*ports.FindingRecord) ([]*ports.FindingRecord, error) {
+	if len(findings) == 0 {
+		return findings, nil
 	}
 	now := time.Now().UTC()
-	updates := []riskRefresh{}
-	for rows.Next() {
-		var row findingRow
-		if err := scanFindingRow(rows, &row); err != nil {
-			return fmt.Errorf("scan finding risk refresh row: %w", err)
-		}
-		record, err := row.record()
-		if err != nil {
-			return fmt.Errorf("decode finding risk refresh row: %w", err)
+	refreshedFindings := append([]*ports.FindingRecord(nil), findings...)
+	for index, record := range refreshedFindings {
+		if record == nil {
+			continue
 		}
 		refreshed := findingBackfillRisk(record, now)
 		if !findingRiskEqual(record.FindingRisk, refreshed) {
-			updates = append(updates, riskRefresh{id: strings.TrimSpace(record.ID), risk: refreshed})
+			stored, err := s.updateFindingRiskColumns(ctx, strings.TrimSpace(record.ID), refreshed, findingRiskAttributesForUpdate(refreshed))
+			if err != nil {
+				return nil, fmt.Errorf("refresh finding %q risk: %w", strings.TrimSpace(record.ID), err)
+			}
+			refreshedFindings[index] = stored
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate finding risk refresh rows: %w", err)
-	}
-	for _, update := range updates {
-		if update.id == "" {
-			continue
-		}
-		if _, err := s.updateFindingRiskColumns(ctx, update.id, update.risk, findingRiskAttributesForUpdate(update.risk)); err != nil {
-			return fmt.Errorf("refresh finding %q risk: %w", update.id, err)
-		}
-	}
-	return nil
+	return refreshedFindings, nil
 }
 
 func findingRiskEqual(left ports.FindingRisk, right ports.FindingRisk) bool {

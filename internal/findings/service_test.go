@@ -2941,6 +2941,17 @@ func TestSetFindingDueDateProjectsUpdatedRisk(t *testing.T) {
 	if !strings.Contains(graphFinding.Attributes["risk_reasons"], "overdue") {
 		t.Fatalf("projected risk_reasons = %q, want overdue", graphFinding.Attributes["risk_reasons"])
 	}
+	firstEventID := appendLog.events[0].GetId()
+	_, err = service.SetFindingDueDate(context.Background(), "finding-1", time.Now().UTC().Add(-2*time.Hour))
+	if err != nil {
+		t.Fatalf("SetFindingDueDate(second) error = %v", err)
+	}
+	if got := len(appendLog.events); got != 2 {
+		t.Fatalf("len(appended events) = %d, want 2", got)
+	}
+	if secondEventID := appendLog.events[1].GetId(); secondEventID == firstEventID {
+		t.Fatalf("SetFindingDueDate() reused finding_record event id %q, want non-deduplicated refresh event", secondEventID)
+	}
 }
 
 func TestFindingWorkflowSnapshotDoesNotMergeFreshReasonsWithStoredRisk(t *testing.T) {

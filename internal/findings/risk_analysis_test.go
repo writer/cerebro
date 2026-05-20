@@ -171,6 +171,29 @@ func TestAnalyzeFindingRiskContextDoesNotTreatNonProductionAsProduction(t *testi
 	}
 }
 
+func TestAnalyzeFindingRiskContextRecognizesActiveThreatSignals(t *testing.T) {
+	now := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
+	for name, attributes := range map[string]map[string]string{
+		"runtime_evidence_type": {
+			"evidence_type": "credential_use",
+		},
+		"runtime_action": {
+			"action": "token_exchange",
+		},
+		"sentinelone_infected": {
+			"is_infected":    "true",
+			"active_threats": "2",
+		},
+	} {
+		finding := compoundRiskFinding("finding-"+name, "runtime-active-threat", "HIGH", "", "", "urn:cerebro:writer:runtime_evidence:"+name, "")
+		finding.Attributes = attributes
+		context := AnalyzeFindingRiskContext(finding, now)
+		if !stringSliceContains(context.Reasons, "active_threat") {
+			t.Fatalf("Risk reasons for %s = %#v, want active_threat", name, context.Reasons)
+		}
+	}
+}
+
 func TestAnalyzeFindingRiskContextCapsPrivateNetworkWithoutReachability(t *testing.T) {
 	now := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
 	finding := compoundRiskFinding("finding-private", "cloud-private-exposure", "CRITICAL", "", "", "urn:cerebro:writer:aws_instance:i-1", "scan.detected")

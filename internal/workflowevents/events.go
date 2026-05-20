@@ -240,6 +240,18 @@ func NewFindingRecordedEvent(payload FindingRecorded) (*cerebrov1.EventEnvelope,
 	})
 }
 
+// NewFindingRecordedRevisionEvent builds a non-deduplicated finding record event.
+func NewFindingRecordedRevisionEvent(payload FindingRecorded, revision string) (*cerebrov1.EventEnvelope, error) {
+	primaryID := payload.Finding.FindingID
+	if trimmed := strings.TrimSpace(revision); trimmed != "" {
+		primaryID += "|" + trimmed
+	}
+	return newEvent(EventKindFindingRecorded, SchemaFindingRecorded, payload.Finding.TenantID, payload.Finding.SourceSystem, primaryID, payload.RecordedAt, payload, map[string]string{
+		EventAttributeWorkflowKind: "finding_record",
+		EventAttributeFindingID:    payload.Finding.FindingID,
+	})
+}
+
 // NewFindingNoteAddedEvent builds the durable event envelope for one finding note.
 func NewFindingNoteAddedEvent(payload FindingNoteAdded) (*cerebrov1.EventEnvelope, error) {
 	return newEvent(EventKindFindingNoteAdded, SchemaFindingNoteAdded, payload.Finding.TenantID, payload.Finding.SourceSystem, payload.Finding.FindingID+"|"+payload.NoteID, payload.CreatedAt, payload, map[string]string{

@@ -662,7 +662,7 @@ func (s *Service) GetFinding(ctx context.Context, id string) (*ports.FindingReco
 	if err != nil {
 		return nil, err
 	}
-	return finding, nil
+	return s.persistFindingRisk(ctx, finding, time.Now().UTC())
 }
 
 // ResolveFinding marks one persisted finding as resolved.
@@ -718,7 +718,7 @@ func (s *Service) SetFindingDueDate(ctx context.Context, id string, dueAt time.T
 	if err != nil {
 		return nil, fmt.Errorf("refresh finding %q risk after due date update: %w", findingID, err)
 	}
-	if err := s.projectFindingAnchor(ctx, finding); err != nil {
+	if err := s.projectFindingAnchorRevision(ctx, finding, "due-risk-refresh|"+time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 		return nil, fmt.Errorf("project finding %q due date risk update: %w", findingID, err)
 	}
 	return finding, nil

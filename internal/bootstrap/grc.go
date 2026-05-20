@@ -370,7 +370,7 @@ func (a *App) handleGRCAuditPacket(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	finding, err := store.GetFinding(r.Context(), findingID)
+	finding, err := a.findingService().GetFinding(r.Context(), findingID)
 	if err != nil {
 		writeGRCError(w, err)
 		return

@@ -362,7 +362,7 @@ func AnalyzeFindingRiskContext(finding *ports.FindingRecord, now time.Time) Find
 		impact += 15
 		reasons = append(reasons, "privileged_actor")
 	}
-	activeExploit := findingAttributeBool(attributes, "active_exploit", "active_threat", "exploit_detected", "credential_use", "token_exchange", "suspicious_process")
+	activeExploit := findingActiveThreatSignal(attributes, action)
 	if activeExploit {
 		likelihood += 25
 		reasons = append(reasons, "active_threat")
@@ -460,6 +460,20 @@ func AnalyzeFindingRiskContext(finding *ports.FindingRecord, now time.Time) Find
 
 func productRiskScore(likelihood int, impact int) int {
 	return clampScore(int(math.Round(math.Sqrt(float64(clampScore(likelihood) * clampScore(impact))))))
+}
+
+func findingActiveThreatSignal(attributes map[string]string, action string) bool {
+	if findingAttributeBool(attributes, "active_exploit", "active_threat", "exploit_detected", "credential_use", "token_exchange", "suspicious_process", "is_infected", "infected") {
+		return true
+	}
+	if count, ok := findingAttributeInt(attributes, "active_threats", "active_threat_count"); ok && count > 0 {
+		return true
+	}
+	evidenceType := strings.ToLower(firstNonEmpty(attributes["evidence_type"], attributes["evidence_kind"], attributes["signal"], attributes["classification"]))
+	if containsAny(evidenceType, "exploit", "secret_access", "credential_use", "token_exchange", "suspicious_process", "active_threat", "infected", "malware") {
+		return true
+	}
+	return containsAny(action, "credential_use", "token_exchange", "suspicious_process", "active_threat", "exploit", "malware")
 }
 
 func isProductionEnvironment(value string) bool {

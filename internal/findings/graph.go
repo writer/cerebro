@@ -21,6 +21,10 @@ const (
 )
 
 func (s *Service) projectFindingAnchor(ctx context.Context, finding *ports.FindingRecord) error {
+	return s.projectFindingAnchorRevision(ctx, finding, "")
+}
+
+func (s *Service) projectFindingAnchorRevision(ctx context.Context, finding *ports.FindingRecord, revision string) error {
 	if s == nil || s.graph == nil {
 		return nil
 	}
@@ -35,10 +39,17 @@ func (s *Service) projectFindingAnchor(ctx context.Context, finding *ports.Findi
 	if recordedAt.IsZero() {
 		recordedAt = time.Now().UTC()
 	}
-	event, err := workflowevents.NewFindingRecordedEvent(workflowevents.FindingRecorded{
+	payload := workflowevents.FindingRecorded{
 		Finding:    findingWorkflowSnapshot(finding, tenantID, sourceID),
 		RecordedAt: recordedAt.Format(time.RFC3339Nano),
-	})
+	}
+	var event *cerebrov1.EventEnvelope
+	var err error
+	if strings.TrimSpace(revision) == "" {
+		event, err = workflowevents.NewFindingRecordedEvent(payload)
+	} else {
+		event, err = workflowevents.NewFindingRecordedRevisionEvent(payload, revision)
+	}
 	if err != nil {
 		return err
 	}
