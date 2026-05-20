@@ -489,6 +489,28 @@ paths:
       responses:
         '200':
           description: GRC dashboard summary, priority findings, controls, evidence, and connector health.
+  /grc/ask:
+    post:
+      summary: Ask natural-language questions over the GRC graph
+      tags:
+        - GRC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GRCAskRequest'
+      responses:
+        '200':
+          description: Server-sent graph answer events in rationale, cypher, rows, summary, done order.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '400':
+          description: Invalid ask request.
+        '503':
+          description: Graph or LLM runtime unavailable.
   /grc/findings:
     get:
       summary: GRC risk inbox findings
@@ -960,6 +982,7 @@ paths:
       responses:
         '200':
           description: Outcome write result.
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1024,6 +1047,32 @@ components:
         type: integer
         minimum: 1
   schemas:
+    GRCAskRequest:
+      type: object
+      required: [tenant_id, question]
+      properties:
+        tenant_id:
+          type: string
+        question:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        scope_urn:
+          type: string
+        model:
+          type: string
+          default: claude-sonnet-4-6
+        history:
+          type: array
+          items:
+            type: object
+            required: [role, content]
+            properties:
+              role:
+                type: string
+                enum: [user, assistant]
+              content:
+                type: string
     PutSourceRuntimeRequest:
       type: object
       required: [runtime]

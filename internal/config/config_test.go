@@ -21,6 +21,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_NEO4J_USERNAME", "")
 	t.Setenv("CEREBRO_NEO4J_PASSWORD", "")
 	t.Setenv("CEREBRO_NEO4J_DATABASE", "")
+	clearGraphAgentEnv(t)
 	t.Setenv("CEREBRO_KUZU_PATH", "")
 	t.Setenv("CEREBRO_API_AUTH_ENABLED", "")
 	t.Setenv("CEREBRO_API_KEYS", "")
@@ -48,6 +49,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.GraphStore.Driver != "" {
 		t.Fatalf("GraphStore.Driver = %q, want empty", cfg.GraphStore.Driver)
 	}
+	if cfg.GraphAgentLLM.Provider != "" || cfg.GraphAgentLLM.MaxTokens != 0 {
+		t.Fatalf("GraphAgentLLM = %#v, want empty/default", cfg.GraphAgentLLM)
+	}
 	if cfg.Auth.Enabled {
 		t.Fatal("Auth.Enabled = true, want false")
 	}
@@ -66,6 +70,13 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_NEO4J_USERNAME", "neo4j")
 	t.Setenv("CEREBRO_NEO4J_PASSWORD", "test-password")
 	t.Setenv("CEREBRO_NEO4J_DATABASE", "cerebro")
+	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_PROVIDER", "stub")
+	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MODEL", "claude-sonnet-4-6")
+	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_SONNET", "anthropic.claude-sonnet-example")
+	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_OPUS", "anthropic.claude-opus-example")
+	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_HAIKU", "anthropic.claude-haiku-example")
+	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MAX_TOKENS", "900")
+	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_TEMPERATURE", "0.25")
 	t.Setenv("CEREBRO_KUZU_PATH", "")
 	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
 	t.Setenv("CEREBRO_API_KEYS", "token-1:ci:writer,token-2:ops:security")
@@ -96,6 +107,12 @@ func TestLoadFromEnv(t *testing.T) {
 	if cfg.GraphStore.Driver != GraphStoreDriverNeo4j {
 		t.Fatalf("GraphStore.Driver = %q, want %q", cfg.GraphStore.Driver, GraphStoreDriverNeo4j)
 	}
+	if cfg.GraphAgentLLM.Provider != "stub" || cfg.GraphAgentLLM.MaxTokens != 900 || cfg.GraphAgentLLM.Temperature != 0.25 {
+		t.Fatalf("GraphAgentLLM = %#v", cfg.GraphAgentLLM)
+	}
+	if cfg.GraphAgentLLM.SonnetModel != "anthropic.claude-sonnet-example" || cfg.GraphAgentLLM.OpusModel == "" || cfg.GraphAgentLLM.HaikuModel == "" {
+		t.Fatalf("GraphAgentLLM model mapping = %#v", cfg.GraphAgentLLM)
+	}
 	if !cfg.Auth.Enabled {
 		t.Fatal("Auth.Enabled = false, want true")
 	}
@@ -124,6 +141,7 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_NEO4J_USERNAME", "")
 	t.Setenv("CEREBRO_NEO4J_PASSWORD", "")
 	t.Setenv("CEREBRO_NEO4J_DATABASE", "")
+	clearGraphAgentEnv(t)
 	t.Setenv("CEREBRO_KUZU_PATH", "")
 	t.Setenv("CEREBRO_API_AUTH_ENABLED", "")
 	t.Setenv("CEREBRO_API_KEYS", "")
@@ -131,6 +149,17 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS", "")
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_AUDIENCE", "")
 	t.Setenv("CEREBRO_ALLOWED_TENANTS", "")
+}
+
+func clearGraphAgentEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_PROVIDER", "")
+	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MODEL", "")
+	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_SONNET", "")
+	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_OPUS", "")
+	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_HAIKU", "")
+	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MAX_TOKENS", "")
+	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_TEMPERATURE", "")
 }
 
 func TestLoadRejectsAuthEnabledWithoutKeys(t *testing.T) {

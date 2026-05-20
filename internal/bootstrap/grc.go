@@ -11,6 +11,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourceruntime"
@@ -1124,10 +1125,12 @@ func writeGRCError(w http.ResponseWriter, err error) {
 		statusCode = http.StatusNotFound
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable),
 		errors.Is(err, findings.ErrRuntimeUnavailable),
+		errors.Is(err, graphagent.ErrRuntimeUnavailable),
 		errors.Is(err, graphquery.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
 	case errors.Is(err, sourceruntime.ErrInvalidRequest),
 		errors.Is(err, findings.ErrInvalidRequest),
+		errors.Is(err, graphagent.ErrInvalidRequest),
 		errors.Is(err, graphquery.ErrInvalidRequest),
 		errors.Is(err, errInvalidHTTPRequest):
 		statusCode = http.StatusBadRequest
