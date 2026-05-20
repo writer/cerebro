@@ -32,6 +32,7 @@ const (
 	defaultGraphIngestPageLimit     = 1
 	maxGraphIngestPageLimit         = 100
 	maxGraphIngestRuntimeIterations = 10000
+	defaultGraphPathsTimeout        = 60 * time.Second
 )
 
 type graphCountsStore interface {
@@ -304,15 +305,17 @@ func runGraphInspect(args []string) error {
 		if !ok {
 			return fmt.Errorf("graph store does not support paths")
 		}
-		patterns, err := store.PathPatterns(ctx, limit)
+		pathCtx, cancel := context.WithTimeout(ctx, defaultGraphPathsTimeout)
+		defer cancel()
+		patterns, err := store.PathPatterns(pathCtx, limit)
 		if err != nil {
 			return err
 		}
-		traversals, err := store.SampleTraversals(ctx, limit)
+		traversals, err := store.SampleTraversals(pathCtx, limit)
 		if err != nil {
 			return err
 		}
-		topology, err := store.Topology(ctx)
+		topology, err := store.Topology(pathCtx)
 		if err != nil {
 			return err
 		}
