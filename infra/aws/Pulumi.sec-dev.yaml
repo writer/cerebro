@@ -69,7 +69,7 @@ config:
   cerebro:orchestratorCommand:
     - orchestrator
     - run
-    - page_limit=20
+    - page_limit=10
     - graph_page_limit=10
     - event_limit=1000
   cerebro:orchestratorSchedules:
@@ -80,7 +80,7 @@ config:
         - orchestrator
         - run
         - runtime_id=writer-okta-audit
-        - page_limit=20
+        - page_limit=10
         - graph_page_limit=10
         - event_limit=1000
     - name: okta-audit-april-backfill
@@ -91,7 +91,7 @@ config:
         - orchestrator
         - run
         - runtime_id=writer-okta-audit-2026-04
-        - page_limit=20
+        - page_limit=10
         - graph_page_limit=10
         - event_limit=1000
     - name: okta-audit-q1-backfill
@@ -102,7 +102,7 @@ config:
         - orchestrator
         - run
         - runtime_id=writer-okta-audit-2026-q1
-        - page_limit=20
+        - page_limit=10
         - graph_page_limit=10
         - event_limit=1000
     - name: okta-user-inventory

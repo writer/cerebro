@@ -31,6 +31,7 @@ SEC_DEV_HIGH_CONTENTION_GRAPH_RUNTIMES = {
     "writer-okta-audit-2026-04",
     "writer-okta-audit-2026-q1",
 }
+SEC_DEV_MAX_HIGH_CONTENTION_PAGE_LIMIT = 10
 SEC_DEV_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT = 20
 
 
@@ -404,6 +405,16 @@ def validate_stack(path: Path) -> list[Finding]:
             top_level_runtime_id in SEC_DEV_HIGH_CONTENTION_GRAPH_RUNTIMES
             or (top_level_runtime_id is None and bool(SEC_DEV_HIGH_CONTENTION_GRAPH_RUNTIMES & runtime_ids))
         ):
+            page_limit = _uint_arg_from_command(top_level_command, "page_limit")
+            if page_limit is not None and page_limit > SEC_DEV_MAX_HIGH_CONTENTION_PAGE_LIMIT:
+                findings.append(
+                    _finding(
+                        "error",
+                        stack,
+                        "cerebro:orchestratorCommand",
+                        f"high-contention sec-dev source sync must set page_limit <= {SEC_DEV_MAX_HIGH_CONTENTION_PAGE_LIMIT}",
+                    )
+                )
             graph_page_limit = _uint_arg_from_command(top_level_command, "graph_page_limit")
             if graph_page_limit is not None and graph_page_limit > SEC_DEV_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT:
                 findings.append(
@@ -445,6 +456,16 @@ def validate_stack(path: Path) -> list[Finding]:
         else:
             scheduled_runtime_ids.add(runtime_id)
             if stack == "sec-dev" and runtime_id in SEC_DEV_HIGH_CONTENTION_GRAPH_RUNTIMES:
+                page_limit = _uint_arg_from_command(schedule.get("command"), "page_limit")
+                if page_limit is not None and page_limit > SEC_DEV_MAX_HIGH_CONTENTION_PAGE_LIMIT:
+                    findings.append(
+                        _finding(
+                            "error",
+                            stack,
+                            f"{schedule_path}.command",
+                            f"high-contention sec-dev source sync must set page_limit <= {SEC_DEV_MAX_HIGH_CONTENTION_PAGE_LIMIT}",
+                        )
+                    )
                 graph_page_limit = _uint_arg_from_command(schedule.get("command"), "graph_page_limit")
                 if graph_page_limit is not None and graph_page_limit > SEC_DEV_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT:
                     findings.append(
