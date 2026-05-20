@@ -153,6 +153,20 @@ func TestUpsertFindingStatementPreservesRuntimeIDOnConflict(t *testing.T) {
 	}
 }
 
+func TestEnsureFindingStatementsBackfillRiskColumns(t *testing.T) {
+	statements := strings.Join(ensureFindingStatements, "\n")
+	for _, fragment := range []string{
+		"UPDATE findings",
+		"risk_model_version = 'likelihood-impact-v1'",
+		"risk_score = LEAST",
+		"risk_reasons_json = risk_scored.risk_reasons_json",
+	} {
+		if !strings.Contains(statements, fragment) {
+			t.Fatalf("ensureFindingStatements missing risk backfill fragment %q", fragment)
+		}
+	}
+}
+
 func TestFindingListQueryAcceptsTenantAndRuleWithoutRuntime(t *testing.T) {
 	query, args, err := findingListQuery(ports.ListFindingsRequest{
 		TenantID: "writer",
@@ -272,6 +286,26 @@ func TestFindingListQuerySupportsRuntimeBatchesAndPriorityOrder(t *testing.T) {
 	}
 	if got := args[4]; got != int64(25) {
 		t.Fatalf("findingListQuery().args[4] = %#v, want 25", got)
+	}
+}
+
+func TestFindingListQueryRiskOrderKeepsSeverityTieBreak(t *testing.T) {
+	query, _, err := findingListQuery(ports.ListFindingsRequest{
+		TenantID:  "tenant-a",
+		RuntimeID: "runtime-audit",
+		Order:     ports.FindingOrderRiskScore,
+	})
+	if err != nil {
+		t.Fatalf("findingListQuery() error = %v", err)
+	}
+	riskIndex := strings.Index(query, "risk_score DESC")
+	severityIndex := strings.Index(query, "CASE UPPER(severity)")
+	observedIndex := strings.Index(query, "last_observed_at DESC")
+	if riskIndex == -1 || severityIndex == -1 || observedIndex == -1 {
+		t.Fatalf("findingListQuery() query missing risk/severity/observed ordering: %s", query)
+	}
+	if riskIndex >= severityIndex || severityIndex >= observedIndex {
+		t.Fatalf("findingListQuery() ordering = %s, want risk then severity tie-break then recency", query)
 	}
 }
 

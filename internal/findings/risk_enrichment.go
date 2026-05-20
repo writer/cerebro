@@ -52,6 +52,31 @@ func enrichFindingRisk(record *ports.FindingRecord, _ *cerebrov1.SourceRuntime, 
 	return record
 }
 
+func recomputeFindingRisk(record *ports.FindingRecord, now time.Time) *ports.FindingRecord {
+	if record == nil {
+		return nil
+	}
+	record.RiskScore = 0
+	record.LikelihoodScore = 0
+	record.ImpactScore = 0
+	record.ConfidenceScore = 0
+	record.LikelihoodLevel = ""
+	record.ImpactLevel = ""
+	record.RiskReasons = nil
+	record.RiskModelVersion = ""
+	if record.Attributes != nil {
+		delete(record.Attributes, "risk_score")
+		delete(record.Attributes, "likelihood_score")
+		delete(record.Attributes, "impact_score")
+		delete(record.Attributes, "confidence_score")
+		delete(record.Attributes, "likelihood_level")
+		delete(record.Attributes, "impact_level")
+		delete(record.Attributes, "risk_reasons")
+		delete(record.Attributes, "risk_model_version")
+	}
+	return enrichFindingRisk(record, nil, now)
+}
+
 func setRiskAttribute(attributes map[string]string, key string, value int) {
 	if value <= 0 {
 		return

@@ -2659,6 +2659,52 @@ func TestResolveFindingUpdatesPersistedWorkflow(t *testing.T) {
 	}
 }
 
+func TestResolveFindingRecomputesPersistedRisk(t *testing.T) {
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:       "finding-1",
+				Status:   "open",
+				Severity: "LOW",
+				FindingRisk: ports.FindingRisk{
+					RiskScore:        99,
+					LikelihoodScore:  99,
+					ImpactScore:      99,
+					ConfidenceScore:  99,
+					LikelihoodLevel:  "critical",
+					ImpactLevel:      "critical",
+					RiskReasons:      []string{"active", "stale_reason"},
+					RiskModelVersion: defaultFindingRiskModelVersion,
+				},
+				Attributes:        map[string]string{"risk_score": "99", "risk_reasons": "active,stale_reason"},
+				FirstObservedAt:   time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC),
+				LastObservedAt:    time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC),
+				ResourceURNs:      []string{"urn:cerebro:test:resource:one"},
+				EventIDs:          []string{"event-1"},
+				ObservedPolicyIDs: []string{"policy-1"},
+			},
+		},
+	}
+	service := New(nil, nil, store, store, store, store)
+	finding, err := service.ResolveFinding(context.Background(), "finding-1", "verified remediation")
+	if err != nil {
+		t.Fatalf("ResolveFinding() error = %v", err)
+	}
+	if got := finding.Status; got != "resolved" {
+		t.Fatalf("ResolveFinding().Status = %q, want resolved", got)
+	}
+	if finding.RiskScore == 99 || finding.LikelihoodScore == 99 || finding.ImpactScore == 99 {
+		t.Fatalf("ResolveFinding() kept stale risk = score %d likelihood %d impact %d", finding.RiskScore, finding.LikelihoodScore, finding.ImpactScore)
+	}
+	if slices.Contains(finding.RiskReasons, "active") || slices.Contains(finding.RiskReasons, "stale_reason") {
+		t.Fatalf("ResolveFinding().RiskReasons = %#v, want stale reasons removed", finding.RiskReasons)
+	}
+	stored := store.findings["finding-1"]
+	if stored == nil || stored.RiskScore != finding.RiskScore {
+		t.Fatalf("stored risk score = %#v, want recomputed score %d", stored, finding.RiskScore)
+	}
+}
+
 func TestResolveFindingBridgesDecisionAndOutcomeWhenGraphConfigured(t *testing.T) {
 	store := &stubFindingStore{
 		findings: map[string]*ports.FindingRecord{
@@ -2757,6 +2803,41 @@ func TestSetFindingDueDateUpdatesPersistedWorkflow(t *testing.T) {
 	}
 	if got := finding.DueAt; !got.Equal(dueAt) {
 		t.Fatalf("SetFindingDueDate().DueAt = %v, want %v", got, dueAt)
+	}
+}
+
+func TestSetFindingDueDateRecomputesPersistedRisk(t *testing.T) {
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:       "finding-1",
+				Status:   "open",
+				Severity: "MEDIUM",
+				FindingRisk: ports.FindingRisk{
+					RiskScore:        1,
+					LikelihoodScore:  1,
+					ImpactScore:      1,
+					RiskReasons:      []string{"stale_reason"},
+					RiskModelVersion: defaultFindingRiskModelVersion,
+				},
+				Attributes: map[string]string{"risk_score": "1", "risk_reasons": "stale_reason"},
+			},
+		},
+	}
+	service := New(nil, nil, store, store, store, store)
+	dueAt := time.Now().UTC().Add(-time.Hour)
+	finding, err := service.SetFindingDueDate(context.Background(), "finding-1", dueAt)
+	if err != nil {
+		t.Fatalf("SetFindingDueDate() error = %v", err)
+	}
+	if !slices.Contains(finding.RiskReasons, "overdue") {
+		t.Fatalf("SetFindingDueDate().RiskReasons = %#v, want overdue", finding.RiskReasons)
+	}
+	if slices.Contains(finding.RiskReasons, "stale_reason") {
+		t.Fatalf("SetFindingDueDate().RiskReasons = %#v, want stale reason removed", finding.RiskReasons)
+	}
+	if finding.RiskScore <= 1 {
+		t.Fatalf("SetFindingDueDate().RiskScore = %d, want recomputed score > 1", finding.RiskScore)
 	}
 }
 
@@ -3274,15 +3355,25 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		attributes[key] = value
 	}
 	return &ports.FindingRecord{
-		ID:                finding.ID,
-		Fingerprint:       finding.Fingerprint,
-		TenantID:          finding.TenantID,
-		RuntimeID:         finding.RuntimeID,
-		RuleID:            finding.RuleID,
-		Title:             finding.Title,
-		Severity:          finding.Severity,
-		Status:            finding.Status,
-		Summary:           finding.Summary,
+		ID:          finding.ID,
+		Fingerprint: finding.Fingerprint,
+		TenantID:    finding.TenantID,
+		RuntimeID:   finding.RuntimeID,
+		RuleID:      finding.RuleID,
+		Title:       finding.Title,
+		Severity:    finding.Severity,
+		Status:      finding.Status,
+		Summary:     finding.Summary,
+		FindingRisk: ports.FindingRisk{
+			RiskScore:        finding.RiskScore,
+			LikelihoodScore:  finding.LikelihoodScore,
+			ImpactScore:      finding.ImpactScore,
+			ConfidenceScore:  finding.ConfidenceScore,
+			LikelihoodLevel:  finding.LikelihoodLevel,
+			ImpactLevel:      finding.ImpactLevel,
+			RiskReasons:      append([]string(nil), finding.RiskReasons...),
+			RiskModelVersion: finding.RiskModelVersion,
+		},
 		ResourceURNs:      resourceURNs,
 		EventIDs:          eventIDs,
 		ObservedPolicyIDs: observedPolicyIDs,

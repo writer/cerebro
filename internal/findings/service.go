@@ -538,7 +538,7 @@ func (s *Service) resolveRetiredOpenFindings(ctx context.Context, tenantID strin
 		if _, emitted := emittedFindingIDs[strings.TrimSpace(finding.ID)]; emitted {
 			continue
 		}
-		updated, err := s.store.UpdateFindingStatus(ctx, ports.FindingStatusUpdate{
+		updated, err := s.updateFindingStatusAndRisk(ctx, ports.FindingStatusUpdate{
 			FindingID: strings.TrimSpace(finding.ID),
 			Status:    findingStatusResolved,
 			Reason:    workflowevents.FindingStatusReasonNoLongerEmitted,
@@ -577,7 +577,7 @@ func (s *Service) resolveStaleOpenFindings(ctx context.Context, tenantID string,
 		if !findingReferencesEvaluatedEvent(finding, evaluatedEventIDs) {
 			continue
 		}
-		updated, err := s.store.UpdateFindingStatus(ctx, ports.FindingStatusUpdate{
+		updated, err := s.updateFindingStatusAndRisk(ctx, ports.FindingStatusUpdate{
 			FindingID: strings.TrimSpace(finding.ID),
 			Status:    findingStatusResolved,
 			Reason:    workflowevents.FindingStatusReasonNoLongerEmitted,
@@ -623,7 +623,7 @@ func (s *Service) resolveAllOpenFindingsForRule(ctx context.Context, tenantID st
 		if finding == nil {
 			continue
 		}
-		updated, err := s.store.UpdateFindingStatus(ctx, ports.FindingStatusUpdate{
+		updated, err := s.updateFindingStatusAndRisk(ctx, ports.FindingStatusUpdate{
 			FindingID: strings.TrimSpace(finding.ID),
 			Status:    findingStatusResolved,
 			Reason:    workflowevents.FindingStatusReasonNoLongerEmitted,
@@ -715,6 +715,10 @@ func (s *Service) SetFindingDueDate(ctx context.Context, id string, dueAt time.T
 	})
 	if err != nil {
 		return nil, fmt.Errorf("set finding %q due date: %w", findingID, err)
+	}
+	finding, err = s.persistFindingRisk(ctx, finding, time.Now().UTC())
+	if err != nil {
+		return nil, fmt.Errorf("refresh finding %q risk after due date update: %w", findingID, err)
 	}
 	return finding, nil
 }
@@ -1110,7 +1114,7 @@ func (s *Service) updateFindingStatus(ctx context.Context, id string, status str
 	if findingID == "" {
 		return nil, fmt.Errorf("%w: finding id is required", ErrInvalidRequest)
 	}
-	finding, err := s.store.UpdateFindingStatus(ctx, ports.FindingStatusUpdate{
+	finding, err := s.updateFindingStatusAndRisk(ctx, ports.FindingStatusUpdate{
 		FindingID: findingID,
 		Status:    strings.TrimSpace(status),
 		Reason:    strings.TrimSpace(reason),
@@ -1123,6 +1127,29 @@ func (s *Service) updateFindingStatus(ctx context.Context, id string, status str
 		return nil, fmt.Errorf("record finding %q status workflow: %w", findingID, err)
 	}
 	return finding, nil
+}
+
+func (s *Service) updateFindingStatusAndRisk(ctx context.Context, request ports.FindingStatusUpdate) (*ports.FindingRecord, error) {
+	finding, err := s.store.UpdateFindingStatus(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	return s.persistFindingRisk(ctx, finding, request.UpdatedAt)
+}
+
+func (s *Service) persistFindingRisk(ctx context.Context, finding *ports.FindingRecord, now time.Time) (*ports.FindingRecord, error) {
+	if finding == nil {
+		return nil, errors.New("finding is required")
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	recomputed := recomputeFindingRisk(finding, now)
+	stored, err := s.store.UpsertFinding(ctx, recomputed)
+	if err != nil {
+		return nil, err
+	}
+	return stored, nil
 }
 
 func newFindingEvaluationRun(runtimeID string, ruleID string, eventLimit uint32, startedAt time.Time) *cerebrov1.FindingEvaluationRun {

@@ -236,7 +236,7 @@ func (s *Service) resolveStaleGraphFindings(ctx context.Context, tenantID string
 		if _, emitted := emittedFindingIDs[strings.TrimSpace(finding.ID)]; emitted {
 			continue
 		}
-		updated, err := s.store.UpdateFindingStatus(ctx, ports.FindingStatusUpdate{
+		updated, err := s.updateFindingStatusAndRisk(ctx, ports.FindingStatusUpdate{
 			FindingID: strings.TrimSpace(finding.ID),
 			Status:    findingStatusResolved,
 			Reason:    "graph_rule_no_longer_matches",
