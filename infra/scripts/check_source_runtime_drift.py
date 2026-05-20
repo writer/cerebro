@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 import yaml
@@ -24,9 +24,7 @@ class Drift:
 
 
 def _load_stack_runtimes(path: Path) -> dict[str, dict[str, Any]]:
-    with path.open("r", encoding="utf-8") as handle:
-        loaded = yaml.safe_load(handle) or {}
-    config = loaded.get("config") or {}
+    config = _load_stack_config(path)
     runtimes = config.get("cerebro:sourceRuntimes") or []
     if not isinstance(runtimes, list):
         raise ValueError(f"{path} cerebro:sourceRuntimes must be a list")
@@ -38,6 +36,39 @@ def _load_stack_runtimes(path: Path) -> dict[str, dict[str, Any]]:
         if runtime_id:
             result[runtime_id] = runtime
     return result
+
+
+def _load_stack_config(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="utf-8") as handle:
+        loaded = yaml.safe_load(handle) or {}
+    config = loaded.get("config") or {}
+    if not isinstance(config, dict):
+        raise ValueError(f"{path} must contain a top-level config mapping")
+    return config
+
+
+def _stack_domain(path: Path) -> str:
+    return str(_load_stack_config(path).get("cerebro:domain") or "").strip()
+
+
+def _is_elb_hostname(hostname: str) -> bool:
+    normalized = hostname.rstrip(".").lower()
+    return normalized.endswith(".elb.amazonaws.com")
+
+
+def _normalize_api_url(api_url: str, stack_file: Path) -> str:
+    domain = _stack_domain(stack_file)
+    if not domain:
+        return api_url
+    if not api_url:
+        return f"https://{domain}"
+
+    parsed = urlsplit(api_url)
+    if not parsed.scheme:
+        parsed = urlsplit(f"//{api_url}")
+    if parsed.hostname and _is_elb_hostname(parsed.hostname):
+        return urlunsplit(("https", domain, "", "", ""))
+    return api_url
 
 
 def _load_actual(path: Path | None, api_url: str, api_key: str, tenant_id: str, timeout: int) -> list[dict[str, Any]]:
@@ -149,11 +180,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-age-hours", type=int, default=0)
     args = parser.parse_args(argv)
 
-    if args.actual_json is None and not args.api_url:
-        raise SystemExit("CEREBRO_API_URL or --actual-json is required")
+    api_url = _normalize_api_url(args.api_url, args.stack_file)
+    if args.actual_json is None and not api_url:
+        raise SystemExit("CEREBRO_API_URL, stack domain, or --actual-json is required")
 
     expected = _load_stack_runtimes(args.stack_file)
-    actual = _load_actual(args.actual_json, args.api_url, args.api_key, args.tenant_id, args.timeout)
+    actual = _load_actual(args.actual_json, api_url, args.api_key, args.tenant_id, args.timeout)
     drift = find_drift(expected, actual, args.max_age_hours)
 
     for finding in drift:

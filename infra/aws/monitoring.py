@@ -580,10 +580,30 @@ def _access_audit_metric_filter_specs() -> dict[str, dict[str, str]]:
             "metric_name": "AccessAuditAuthFailures",
             "pattern": '{ $.kind = "event" && $.name = "cerebro.api.access" && $.denial_reason = "unauthenticated" }',
         },
+        "access_audit_unauthorized": {
+            "suffix": "access-audit-unauthorized",
+            "metric_name": "AccessAuditUnauthorized",
+            "pattern": '{ $.kind = "event" && $.name = "cerebro.api.access" && $.status = 401 }',
+        },
         "access_audit_forbidden": {
             "suffix": "access-audit-forbidden",
             "metric_name": "AccessAuditForbidden",
             "pattern": '{ $.kind = "event" && $.name = "cerebro.api.access" && $.status = 403 }',
+        },
+        "access_audit_rate_limited": {
+            "suffix": "access-audit-rate-limited",
+            "metric_name": "AccessAuditRateLimited",
+            "pattern": '{ $.kind = "event" && $.name = "cerebro.api.access" && $.status = 429 }',
+        },
+        "access_audit_client_errors": {
+            "suffix": "access-audit-client-errors",
+            "metric_name": "AccessAuditClientErrors",
+            "pattern": '{ $.kind = "event" && $.name = "cerebro.api.access" && $.status >= 400 && $.status < 500 }',
+        },
+        "access_audit_server_errors": {
+            "suffix": "access-audit-server-errors",
+            "metric_name": "AccessAuditServerErrors",
+            "pattern": '{ $.kind = "event" && $.name = "cerebro.api.access" && $.status >= 500 }',
         },
     }
 
@@ -1017,6 +1037,8 @@ def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service:
                     "metrics": [
                         [telemetry_namespace, "AccessAuditEvents", {"stat": "Sum"}],
                         [".", "AccessAuditAllowed", {"stat": "Sum"}],
+                        [".", "AccessAuditClientErrors", {"stat": "Sum"}],
+                        [".", "AccessAuditServerErrors", {"stat": "Sum", "yAxis": "right"}],
                     ],
                     "period": 300,
                     "region": aws.get_region().region,
@@ -1030,7 +1052,9 @@ def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service:
                     "metrics": [
                         [telemetry_namespace, "AccessAuditDenied", {"stat": "Sum"}],
                         [".", "AccessAuditAuthFailures", {"stat": "Sum"}],
+                        [".", "AccessAuditUnauthorized", {"stat": "Sum"}],
                         [".", "AccessAuditForbidden", {"stat": "Sum"}],
+                        [".", "AccessAuditRateLimited", {"stat": "Sum"}],
                     ],
                     "period": 300,
                     "region": aws.get_region().region,

@@ -65,7 +65,11 @@ class MonitoringRuntimeTest(unittest.TestCase):
         self.assertIn("AccessAuditAllowed", metric_names)
         self.assertIn("AccessAuditDenied", metric_names)
         self.assertIn("AccessAuditAuthFailures", metric_names)
+        self.assertIn("AccessAuditUnauthorized", metric_names)
         self.assertIn("AccessAuditForbidden", metric_names)
+        self.assertIn("AccessAuditRateLimited", metric_names)
+        self.assertIn("AccessAuditClientErrors", metric_names)
+        self.assertIn("AccessAuditServerErrors", metric_names)
 
     def test_access_audit_metric_filter_specs_are_low_cardinality(self) -> None:
         specs = monitoring._access_audit_metric_filter_specs()
@@ -74,9 +78,13 @@ class MonitoringRuntimeTest(unittest.TestCase):
             [
                 "AccessAuditAllowed",
                 "AccessAuditAuthFailures",
+                "AccessAuditClientErrors",
                 "AccessAuditDenied",
                 "AccessAuditEvents",
                 "AccessAuditForbidden",
+                "AccessAuditRateLimited",
+                "AccessAuditServerErrors",
+                "AccessAuditUnauthorized",
             ],
         )
         for spec in specs.values():
@@ -84,6 +92,7 @@ class MonitoringRuntimeTest(unittest.TestCase):
             self.assertNotIn("principal", spec["pattern"])
             self.assertNotIn("tenant_id", spec["pattern"])
             self.assertNotIn("route", spec["pattern"])
+            self.assertNotIn("dimensions", spec)
 
     def test_graph_ingest_failure_filter_matches_runtime_and_orchestrator_spans(self) -> None:
         pattern = monitoring._graph_ingest_failure_pattern()
