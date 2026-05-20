@@ -145,6 +145,13 @@ type FindingDueDateUpdate struct {
 	DueAt     time.Time
 }
 
+// FindingRiskUpdate scopes a risk-only finding metadata mutation.
+type FindingRiskUpdate struct {
+	FindingID string
+	FindingRisk
+	Attributes map[string]string
+}
+
 // FindingNoteCreate scopes one appended finding note.
 type FindingNoteCreate struct {
 	FindingID string

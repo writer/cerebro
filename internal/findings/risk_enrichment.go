@@ -77,6 +77,22 @@ func recomputeFindingRisk(record *ports.FindingRecord, now time.Time) *ports.Fin
 	return enrichFindingRisk(record, nil, now)
 }
 
+func findingRiskAttributes(record *ports.FindingRecord) map[string]string {
+	if record == nil {
+		return map[string]string{}
+	}
+	attributes := map[string]string{}
+	attributes["risk_score"] = strconv.Itoa(clampScore(record.RiskScore))
+	attributes["likelihood_score"] = strconv.Itoa(clampScore(record.LikelihoodScore))
+	attributes["impact_score"] = strconv.Itoa(clampScore(record.ImpactScore))
+	attributes["confidence_score"] = strconv.Itoa(clampScore(record.ConfidenceScore))
+	attributes["likelihood_level"] = strings.TrimSpace(record.LikelihoodLevel)
+	attributes["impact_level"] = strings.TrimSpace(record.ImpactLevel)
+	attributes["risk_model_version"] = strings.TrimSpace(record.RiskModelVersion)
+	attributes["risk_reasons"] = strings.Join(record.RiskReasons, ",")
+	return attributes
+}
+
 func setRiskAttribute(attributes map[string]string, key string, value int) {
 	if value <= 0 {
 		return

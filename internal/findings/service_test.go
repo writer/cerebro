@@ -81,6 +81,7 @@ type stubFindingStore struct {
 	evidence                  map[string]*cerebrov1.FindingEvidence
 	evidenceList              ports.ListFindingEvidenceRequest
 	dropReturnedGraphEvidence bool
+	upsertCount               int
 }
 
 func (s *stubFindingStore) Ping(context.Context) error { return nil }
@@ -89,6 +90,7 @@ func (s *stubFindingStore) UpsertFinding(_ context.Context, finding *ports.Findi
 	if finding == nil {
 		return nil, errors.New("finding is required")
 	}
+	s.upsertCount++
 	if s.findings == nil {
 		s.findings = make(map[string]*ports.FindingRecord)
 	}
@@ -108,6 +110,23 @@ func (s *stubFindingStore) UpsertFinding(_ context.Context, finding *ports.Findi
 		returned.GraphEvidenceRows = nil
 	}
 	return returned, nil
+}
+
+func (s *stubFindingStore) UpdateFindingRisk(_ context.Context, request ports.FindingRiskUpdate) (*ports.FindingRecord, error) {
+	finding, ok := s.findings[strings.TrimSpace(request.FindingID)]
+	if !ok {
+		return nil, ports.ErrFindingNotFound
+	}
+	updated := cloneFinding(finding)
+	updated.FindingRisk = request.FindingRisk
+	if updated.Attributes == nil {
+		updated.Attributes = map[string]string{}
+	}
+	for key, value := range request.Attributes {
+		updated.Attributes[key] = value
+	}
+	s.findings[updated.ID] = updated
+	return cloneFinding(updated), nil
 }
 
 func (s *stubFindingStore) GetFinding(_ context.Context, id string) (*ports.FindingRecord, error) {
@@ -2844,6 +2863,41 @@ func TestSetFindingDueDateRecomputesPersistedRisk(t *testing.T) {
 	}
 	if finding.RiskScore <= 1 {
 		t.Fatalf("SetFindingDueDate().RiskScore = %d, want recomputed score > 1", finding.RiskScore)
+	}
+}
+
+func TestPersistFindingRiskUsesRiskOnlyUpdate(t *testing.T) {
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:         "finding-1",
+				Title:      "Current title",
+				Summary:    "Current summary",
+				Status:     "open",
+				Severity:   "LOW",
+				Attributes: map[string]string{"owner": "secops"},
+			},
+		},
+	}
+	service := New(nil, nil, store, store, store, store)
+	staleSnapshot := cloneFinding(store.findings["finding-1"])
+	staleSnapshot.Title = "Stale title"
+	staleSnapshot.Summary = "Stale summary"
+	stored, err := service.persistFindingRisk(context.Background(), staleSnapshot, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("persistFindingRisk() error = %v", err)
+	}
+	if store.upsertCount != 0 {
+		t.Fatalf("persistFindingRisk() called UpsertFinding %d times, want risk-only update", store.upsertCount)
+	}
+	if got := stored.Summary; got != "Current summary" {
+		t.Fatalf("persistFindingRisk().Summary = %q, want current summary preserved", got)
+	}
+	if got := stored.Attributes["owner"]; got != "secops" {
+		t.Fatalf("persistFindingRisk().Attributes[owner] = %q, want preserved", got)
+	}
+	if stored.RiskScore == 0 {
+		t.Fatal("persistFindingRisk().RiskScore = 0, want refreshed risk")
 	}
 }
 

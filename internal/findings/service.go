@@ -1158,6 +1158,15 @@ func (s *Service) persistFindingRisk(ctx context.Context, finding *ports.Finding
 		now = time.Now().UTC()
 	}
 	recomputed := recomputeFindingRisk(finding, now)
+	if updater, ok := s.store.(interface {
+		UpdateFindingRisk(context.Context, ports.FindingRiskUpdate) (*ports.FindingRecord, error)
+	}); ok {
+		return updater.UpdateFindingRisk(ctx, ports.FindingRiskUpdate{
+			FindingID:   strings.TrimSpace(recomputed.ID),
+			FindingRisk: recomputed.FindingRisk,
+			Attributes:  findingRiskAttributes(recomputed),
+		})
+	}
 	stored, err := s.store.UpsertFinding(ctx, recomputed)
 	if err != nil {
 		return nil, err

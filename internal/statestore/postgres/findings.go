@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -347,6 +348,9 @@ func (s *Store) ListFindings(ctx context.Context, request ports.ListFindingsRequ
 	if err := s.ensureFindingTables(ctx); err != nil {
 		return nil, err
 	}
+	if err := s.refreshFindingRiskForList(ctx, request); err != nil {
+		return nil, err
+	}
 	query, args, err := findingListQuery(request)
 	if err != nil {
 		return nil, err
@@ -466,6 +470,9 @@ func (s *Store) GetFinding(ctx context.Context, id string) (*ports.FindingRecord
 	if findingID == "" {
 		return nil, errors.New("finding id is required")
 	}
+	if err := s.refreshFindingRiskForID(ctx, findingID); err != nil {
+		return nil, err
+	}
 	var row findingRow
 	if err := scanFindingRow(s.db.QueryRowContext(ctx, `
 SELECT `+findingSelectColumns+`
@@ -581,6 +588,28 @@ RETURNING `+findingSelectColumns,
 		return nil, fmt.Errorf("update finding %q due date: %w", findingID, err)
 	}
 	return row.record()
+}
+
+// UpdateFindingRisk updates only persisted risk fields for one finding.
+func (s *Store) UpdateFindingRisk(ctx context.Context, request ports.FindingRiskUpdate) (*ports.FindingRecord, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
+	}
+	if err := s.ensureFindingTables(ctx); err != nil {
+		return nil, err
+	}
+	findingID := strings.TrimSpace(request.FindingID)
+	if findingID == "" {
+		return nil, errors.New("finding id is required")
+	}
+	record, err := s.updateFindingRiskColumns(ctx, findingID, request.FindingRisk, request.Attributes)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ports.ErrFindingNotFound
+		}
+		return nil, fmt.Errorf("update finding %q risk: %w", findingID, err)
+	}
+	return record, nil
 }
 
 // AddFindingNote appends one persisted finding note.
@@ -764,11 +793,24 @@ func (s *Store) backfillFindingRisk(ctx context.Context) (err error) {
 		if update.id == "" {
 			continue
 		}
-		reasonsJSON, err := findingStringsJSON(update.risk.RiskReasons)
-		if err != nil {
-			return fmt.Errorf("marshal finding %q risk backfill reasons: %w", update.id, err)
+		if _, err := s.updateFindingRiskColumns(ctx, update.id, update.risk, findingRiskAttributesForUpdate(update.risk)); err != nil {
+			return fmt.Errorf("backfill finding %q risk: %w", update.id, err)
 		}
-		if _, err := s.db.ExecContext(ctx, `
+	}
+	return nil
+}
+
+func (s *Store) updateFindingRiskColumns(ctx context.Context, findingID string, risk ports.FindingRisk, attributes map[string]string) (*ports.FindingRecord, error) {
+	reasonsJSON, err := findingStringsJSON(risk.RiskReasons)
+	if err != nil {
+		return nil, fmt.Errorf("marshal finding risk reasons: %w", err)
+	}
+	attributesJSON, err := findingAttributesJSON(attributes)
+	if err != nil {
+		return nil, fmt.Errorf("marshal finding risk attributes: %w", err)
+	}
+	var row findingRow
+	if err := scanFindingRow(s.db.QueryRowContext(ctx, `
 UPDATE findings
 SET risk_score = $2,
     likelihood_score = $3,
@@ -778,22 +820,24 @@ SET risk_score = $2,
     impact_level = $7,
     risk_reasons_json = $8::jsonb,
     risk_model_version = $9,
+    attributes_json = attributes_json || $10::jsonb,
     updated_at = NOW()
-WHERE id = $1 AND (risk_model_version <> $9 OR risk_score = 0)`,
-			update.id,
-			update.risk.RiskScore,
-			update.risk.LikelihoodScore,
-			update.risk.ImpactScore,
-			update.risk.ConfidenceScore,
-			strings.TrimSpace(update.risk.LikelihoodLevel),
-			strings.TrimSpace(update.risk.ImpactLevel),
-			reasonsJSON,
-			strings.TrimSpace(update.risk.RiskModelVersion),
-		); err != nil {
-			return fmt.Errorf("backfill finding %q risk: %w", update.id, err)
-		}
+WHERE id = $1
+RETURNING `+findingSelectColumns,
+		strings.TrimSpace(findingID),
+		risk.RiskScore,
+		risk.LikelihoodScore,
+		risk.ImpactScore,
+		risk.ConfidenceScore,
+		strings.TrimSpace(risk.LikelihoodLevel),
+		strings.TrimSpace(risk.ImpactLevel),
+		reasonsJSON,
+		strings.TrimSpace(risk.RiskModelVersion),
+		attributesJSON,
+	), &row); err != nil {
+		return nil, err
 	}
-	return nil
+	return row.record()
 }
 
 func findingBackfillRisk(record *ports.FindingRecord, now time.Time) ports.FindingRisk {
@@ -808,6 +852,99 @@ func findingBackfillRisk(record *ports.FindingRecord, now time.Time) ports.Findi
 		RiskReasons:      risk.Reasons,
 		RiskModelVersion: risk.RiskModelVersion,
 	}
+}
+
+func (s *Store) refreshFindingRiskForID(ctx context.Context, findingID string) error {
+	return s.refreshFindingRiskRows(ctx, `SELECT `+findingSelectColumns+` FROM findings WHERE id = $1 AND `+findingTimeSensitiveRiskPredicate(), strings.TrimSpace(findingID))
+}
+
+func (s *Store) refreshFindingRiskForList(ctx context.Context, request ports.ListFindingsRequest) error {
+	clauses, args, err := findingFilterClauses(request)
+	if err != nil {
+		return err
+	}
+	clauses = append(clauses, findingTimeSensitiveRiskPredicate())
+	return s.refreshFindingRiskRows(ctx, `SELECT `+findingSelectColumns+` FROM findings WHERE `+strings.Join(clauses, " AND "), args...)
+}
+
+func findingTimeSensitiveRiskPredicate() string {
+	return `(due_at IS NOT NULL OR last_observed_at IS NOT NULL)`
+}
+
+func (s *Store) refreshFindingRiskRows(ctx context.Context, query string, args ...any) (err error) {
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("list findings for risk refresh: %w", err)
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("close finding risk refresh rows: %w", closeErr)
+		}
+	}()
+	type riskRefresh struct {
+		id   string
+		risk ports.FindingRisk
+	}
+	now := time.Now().UTC()
+	updates := []riskRefresh{}
+	for rows.Next() {
+		var row findingRow
+		if err := scanFindingRow(rows, &row); err != nil {
+			return fmt.Errorf("scan finding risk refresh row: %w", err)
+		}
+		record, err := row.record()
+		if err != nil {
+			return fmt.Errorf("decode finding risk refresh row: %w", err)
+		}
+		refreshed := findingBackfillRisk(record, now)
+		if !findingRiskEqual(record.FindingRisk, refreshed) {
+			updates = append(updates, riskRefresh{id: strings.TrimSpace(record.ID), risk: refreshed})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate finding risk refresh rows: %w", err)
+	}
+	for _, update := range updates {
+		if update.id == "" {
+			continue
+		}
+		if _, err := s.updateFindingRiskColumns(ctx, update.id, update.risk, findingRiskAttributesForUpdate(update.risk)); err != nil {
+			return fmt.Errorf("refresh finding %q risk: %w", update.id, err)
+		}
+	}
+	return nil
+}
+
+func findingRiskEqual(left ports.FindingRisk, right ports.FindingRisk) bool {
+	if left.RiskScore != right.RiskScore ||
+		left.LikelihoodScore != right.LikelihoodScore ||
+		left.ImpactScore != right.ImpactScore ||
+		left.ConfidenceScore != right.ConfidenceScore ||
+		strings.TrimSpace(left.LikelihoodLevel) != strings.TrimSpace(right.LikelihoodLevel) ||
+		strings.TrimSpace(left.ImpactLevel) != strings.TrimSpace(right.ImpactLevel) ||
+		strings.TrimSpace(left.RiskModelVersion) != strings.TrimSpace(right.RiskModelVersion) ||
+		len(left.RiskReasons) != len(right.RiskReasons) {
+		return false
+	}
+	for index := range left.RiskReasons {
+		if strings.TrimSpace(left.RiskReasons[index]) != strings.TrimSpace(right.RiskReasons[index]) {
+			return false
+		}
+	}
+	return true
+}
+
+func findingRiskAttributesForUpdate(risk ports.FindingRisk) map[string]string {
+	attributes := map[string]string{}
+	attributes["risk_score"] = strconv.Itoa(risk.RiskScore)
+	attributes["likelihood_score"] = strconv.Itoa(risk.LikelihoodScore)
+	attributes["impact_score"] = strconv.Itoa(risk.ImpactScore)
+	attributes["confidence_score"] = strconv.Itoa(risk.ConfidenceScore)
+	attributes["likelihood_level"] = strings.TrimSpace(risk.LikelihoodLevel)
+	attributes["impact_level"] = strings.TrimSpace(risk.ImpactLevel)
+	attributes["risk_model_version"] = strings.TrimSpace(risk.RiskModelVersion)
+	attributes["risk_reasons"] = strings.Join(risk.RiskReasons, ",")
+	return attributes
 }
 
 func findingOrderClause(request ports.ListFindingsRequest) string {
