@@ -302,6 +302,11 @@ def validate_stack(path: Path) -> list[Finding]:
         if not isinstance(threshold, int) or threshold < 0:
             findings.append(_finding("error", stack, f"cerebro:{key}", "must be a non-negative integer"))
 
+    for key in ("accessAuditTenantMismatchAlarmThreshold", "accessAuditSensitiveDeniedAlarmThreshold"):
+        threshold = config.get(key, -1)
+        if not isinstance(threshold, int) or threshold < -1:
+            findings.append(_finding("error", stack, f"cerebro:{key}", "must be an integer greater than or equal to -1"))
+
     alarm_action_arns = config.get("alarmActionArns") or []
     if alarm_action_arns and not isinstance(alarm_action_arns, list):
         findings.append(_finding("error", stack, "cerebro:alarmActionArns", "must be a list"))

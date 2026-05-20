@@ -204,6 +204,14 @@ config:
     type: integer
     default: 0
     description: Optional CloudWatch alarm threshold for unauthenticated API access attempts per 5-minute period; 0 disables the alarm
+  cerebro:accessAuditTenantMismatchAlarmThreshold:
+    type: integer
+    default: -1
+    description: Optional CloudWatch alarm threshold for API requests whose requested tenant differs from the authenticated principal per 5-minute period; -1 disables the alarm, 0 alerts on any occurrence
+  cerebro:accessAuditSensitiveDeniedAlarmThreshold:
+    type: integer
+    default: -1
+    description: Optional CloudWatch alarm threshold for denied sensitive API actions per 5-minute period; -1 disables the alarm, 0 alerts on any occurrence
   cerebro:alarmActionArns:
     type: array
     items:
@@ -280,6 +288,10 @@ config:
     type: string
     default: ""
     description: Existing API key material for CEREBRO_API_KEYS
+  cerebro:apiCredentialsSecretName:
+    type: string
+    default: CEREBRO_API_CREDENTIALS_JSON
+    description: Optional secret key under externalSecretsPrefix mounted into the API as CEREBRO_API_CREDENTIALS_JSON for structured credentials
   cerebro:apiAuthEnabled:
     type: boolean
     default: false

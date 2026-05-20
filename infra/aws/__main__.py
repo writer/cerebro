@@ -249,6 +249,8 @@ jetstream_lag_probe_interval_seconds = _config_int("jetstreamLagProbeIntervalSec
 jetstream_lag_alarm_threshold = _config_int("jetstreamLagAlarmThreshold", 10000)
 access_audit_denied_alarm_threshold = _config_int("accessAuditDeniedAlarmThreshold", 0)
 access_audit_auth_failure_alarm_threshold = _config_int("accessAuditAuthFailureAlarmThreshold", 0)
+access_audit_tenant_mismatch_alarm_threshold = _config_int("accessAuditTenantMismatchAlarmThreshold", -1)
+access_audit_sensitive_denied_alarm_threshold = _config_int("accessAuditSensitiveDeniedAlarmThreshold", -1)
 alarm_action_arns = config.get_object("alarmActionArns") or []
 alarm_email_subscriptions = config.get_object("alarmEmailSubscriptions") or []
 
@@ -268,6 +270,7 @@ neo4j_aura_type = config.get("neo4jAuraType") or "professional-db"
 neo4j_aura_vector_optimized = _config_bool("neo4jAuraVectorOptimized", True)
 neo4j_secret_import_arns = config.get_object("neo4jSecretImportArns") or {}
 api_keys = _config_optional_secret("apiKeys")
+api_credentials_secret_name = config.get("apiCredentialsSecretName") or "CEREBRO_API_CREDENTIALS_JSON"
 api_auth_enabled = _config_bool("apiAuthEnabled", is_production)
 allowed_tenants = config.get_object("allowedTenants") or []
 capability_token_secret_name = config.get("capabilityTokenSecretName") or "CEREBRO_CAPABILITY_TOKEN_SECRETS"
@@ -510,6 +513,8 @@ secret_keys = [
 if api_auth_enabled:
     secret_keys.append("CEREBRO_API_KEYS")
     secret_keys.append({"name": "API_KEYS", "source": "CEREBRO_API_KEYS"})
+    if api_credentials_secret_name:
+        secret_keys.append({"name": "CEREBRO_API_CREDENTIALS_JSON", "source": api_credentials_secret_name})
     if capability_token_secret_name:
         secret_keys.append({"name": "CEREBRO_CAPABILITY_TOKEN_SECRETS", "source": capability_token_secret_name})
 secret_keys.extend(source_secret_keys)
@@ -623,6 +628,8 @@ monitoring_stack = monitoring.create_monitoring(
     jetstream_lag_alarm_threshold=jetstream_lag_alarm_threshold,
     access_audit_denied_alarm_threshold=access_audit_denied_alarm_threshold,
     access_audit_auth_failure_alarm_threshold=access_audit_auth_failure_alarm_threshold,
+    access_audit_tenant_mismatch_alarm_threshold=access_audit_tenant_mismatch_alarm_threshold,
+    access_audit_sensitive_denied_alarm_threshold=access_audit_sensitive_denied_alarm_threshold,
     alarm_action_arns=alarm_action_arns,
     alarm_email_subscriptions=alarm_email_subscriptions,
     orchestrator_schedules=orchestrator_schedules,

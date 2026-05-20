@@ -277,6 +277,15 @@ class ValidateStackConfigTest(unittest.TestCase):
         findings = self._validate(content)
         self.assertTrue(any(finding.severity == "error" and "accessAuditDeniedAlarmThreshold" in finding.path for finding in findings))
 
+    def test_sensitive_access_audit_alarm_thresholds_allow_minus_one_disable(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:apiMaxInstances: 1\n",
+            "  cerebro:apiMaxInstances: 1\n  cerebro:accessAuditTenantMismatchAlarmThreshold: -1\n  cerebro:accessAuditSensitiveDeniedAlarmThreshold: -2\n",
+        )
+        findings = self._validate(content)
+        self.assertFalse(any(finding.severity == "error" and "accessAuditTenantMismatchAlarmThreshold" in finding.path for finding in findings))
+        self.assertTrue(any(finding.severity == "error" and "accessAuditSensitiveDeniedAlarmThreshold" in finding.path for finding in findings))
+
     def test_cross_stack_image_tags_must_match(self) -> None:
         prod = Path("Pulumi.go-prod.yaml")
         dev = Path("Pulumi.sec-dev.yaml")

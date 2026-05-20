@@ -7,7 +7,7 @@ config:
   cerebro:certificateDomain: cerebro.adm.dev.qordobadev.com
   cerebro:certificateImportArn: arn:aws:acm:us-east-1:944130631940:certificate/09143d7f-c377-4de4-9127-d8cb5c642ba3
   cerebro:ecrBaseUri: 944130631940.dkr.ecr.us-east-1.amazonaws.com/cerebro
-  cerebro:imageTag: v2.1.42
+  cerebro:imageTag: v2.1.43
   cerebro:webEnabled: true
   cerebro:webEcrBaseUri: 944130631940.dkr.ecr.us-east-1.amazonaws.com/cerebro
   cerebro:webImageTag: sha-ca7ca8a3b44f
@@ -54,6 +54,10 @@ config:
   cerebro:alarmActionArns:
     - arn:aws:sns:us-east-1:944130631940:aws-controltower-SecurityNotifications
   cerebro:apiAuthEnabled: true
+  cerebro:accessAuditDeniedAlarmThreshold: 50
+  cerebro:accessAuditAuthFailureAlarmThreshold: 25
+  cerebro:accessAuditTenantMismatchAlarmThreshold: 0
+  cerebro:accessAuditSensitiveDeniedAlarmThreshold: 0
   cerebro:capabilityTokenSecretName: CEREBRO_CAPABILITY_TOKEN_SECRETS_SEC_DEV
   cerebro:sourceSecretKeys:
     - CEREBRO_SOURCE_COSMO_BASE_URL

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import time
 import urllib.error
@@ -26,6 +27,27 @@ REPLACEMENT_INSTANCE_KEYS = (
     "existing_instance_id",
 )
 STATE_ONLY_INSTANCE_KEYS = ("client_id", "client_secret", "timeout_seconds")
+
+
+def _api_credentials_json_from_api_keys(raw: str) -> str:
+    credentials = []
+    for index, item in enumerate(str(raw or "").split(","), start=1):
+        parts = [part.strip() for part in item.strip().split(":")]
+        token = parts[0] if parts else ""
+        if not token:
+            continue
+        principal = parts[1] if len(parts) > 1 and parts[1] else f"legacy-api-key-{index}"
+        tenant_id = parts[2] if len(parts) > 2 and parts[2] else "writer"
+        credentials.append(
+            {
+                "credential_id": f"legacy-api-key-{index}",
+                "client_id": "legacy-api-key",
+                "principal": principal,
+                "tenant_id": tenant_id,
+                "key_sha256": hashlib.sha256(token.encode()).hexdigest(),
+            }
+        )
+    return json.dumps(credentials, separators=(",", ":"), sort_keys=True)
 
 
 class Neo4jAuraProvider(dynamic.ResourceProvider):
@@ -249,11 +271,13 @@ def create_runtime_secrets(
             special=False,
         ).result
 
+    api_credentials_json = pulumi.Output.secret(api_keys).apply(_api_credentials_json_from_api_keys)
     secret_values = {
         "CEREBRO_NEO4J_URI": neo4j_uri,
         "CEREBRO_NEO4J_USERNAME": "neo4j",
         "CEREBRO_NEO4J_PASSWORD": neo4j_password,
         "CEREBRO_API_KEYS": api_keys,
+        "CEREBRO_API_CREDENTIALS_JSON": api_credentials_json,
     }
     secrets = {}
     versions = []

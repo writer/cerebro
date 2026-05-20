@@ -82,6 +82,8 @@ def create_monitoring(
     jetstream_lag_alarm_threshold: int = 10000,
     access_audit_denied_alarm_threshold: int = 0,
     access_audit_auth_failure_alarm_threshold: int = 0,
+    access_audit_tenant_mismatch_alarm_threshold: int = -1,
+    access_audit_sensitive_denied_alarm_threshold: int = -1,
     alarm_action_arns: list[str] = None,
     alarm_email_subscriptions: list[str] = None,
     orchestrator_schedules: list[dict] = None,
@@ -417,6 +419,26 @@ def create_monitoring(
                 description="Cerebro API unauthenticated access attempts exceeded the configured threshold",
                 alarm_actions=alarm_actions,
             )
+        if access_audit_tenant_mismatch_alarm_threshold >= 0:
+            _custom_metric_alarm(
+                resource_name=f"{name}-access-audit-tenant-mismatch-alarm",
+                alarm_name=f"{name}-access-audit-tenant-mismatch",
+                namespace=telemetry_namespace,
+                metric_name="AccessAuditTenantMismatch",
+                threshold=access_audit_tenant_mismatch_alarm_threshold,
+                description="Cerebro API requests included a tenant that differed from the authenticated principal",
+                alarm_actions=alarm_actions,
+            )
+        if access_audit_sensitive_denied_alarm_threshold >= 0:
+            _custom_metric_alarm(
+                resource_name=f"{name}-access-audit-sensitive-denied-alarm",
+                alarm_name=f"{name}-access-audit-sensitive-denied",
+                namespace=telemetry_namespace,
+                metric_name="AccessAuditSensitiveDenied",
+                threshold=access_audit_sensitive_denied_alarm_threshold,
+                description="Cerebro API denied sensitive actions exceeded the configured threshold",
+                alarm_actions=alarm_actions,
+            )
 
     if jetstream_lag_alarm_threshold > 0:
         _custom_metric_alarm(
@@ -604,6 +626,31 @@ def _access_audit_metric_filter_specs() -> dict[str, dict[str, str]]:
             "suffix": "access-audit-server-errors",
             "metric_name": "AccessAuditServerErrors",
             "pattern": '{ $.kind = "event" && $.name = "cerebro.api.access" && $.status >= 500 }',
+        },
+        "access_audit_tenant_mismatch": {
+            "suffix": "access-audit-tenant-mismatch",
+            "metric_name": "AccessAuditTenantMismatch",
+            "pattern": '{ $.kind = "event" && $.name = "cerebro.api.access" && $.tenant_mismatch IS TRUE }',
+        },
+        "access_audit_sensitive_actions": {
+            "suffix": "access-audit-sensitive-actions",
+            "metric_name": "AccessAuditSensitiveActions",
+            "pattern": '{ $.kind = "event" && $.name = "cerebro.api.access" && $.sensitive_action IS TRUE }',
+        },
+        "access_audit_sensitive_denied": {
+            "suffix": "access-audit-sensitive-denied",
+            "metric_name": "AccessAuditSensitiveDenied",
+            "pattern": '{ $.kind = "event" && $.name = "cerebro.api.access" && $.sensitive_action IS TRUE && $.outcome = "denied" }',
+        },
+        "access_audit_write_actions": {
+            "suffix": "access-audit-write-actions",
+            "metric_name": "AccessAuditWriteActions",
+            "pattern": '{ $.kind = "event" && $.name = "cerebro.api.access" && $.operation_type = "write" }',
+        },
+        "access_audit_write_denied": {
+            "suffix": "access-audit-write-denied",
+            "metric_name": "AccessAuditWriteDenied",
+            "pattern": '{ $.kind = "event" && $.name = "cerebro.api.access" && $.operation_type = "write" && $.outcome = "denied" }',
         },
     }
 
@@ -1037,6 +1084,8 @@ def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service:
                     "metrics": [
                         [telemetry_namespace, "AccessAuditEvents", {"stat": "Sum"}],
                         [".", "AccessAuditAllowed", {"stat": "Sum"}],
+                        [".", "AccessAuditSensitiveActions", {"stat": "Sum"}],
+                        [".", "AccessAuditWriteActions", {"stat": "Sum"}],
                         [".", "AccessAuditClientErrors", {"stat": "Sum"}],
                         [".", "AccessAuditServerErrors", {"stat": "Sum", "yAxis": "right"}],
                     ],
@@ -1055,6 +1104,9 @@ def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service:
                         [".", "AccessAuditUnauthorized", {"stat": "Sum"}],
                         [".", "AccessAuditForbidden", {"stat": "Sum"}],
                         [".", "AccessAuditRateLimited", {"stat": "Sum"}],
+                        [".", "AccessAuditTenantMismatch", {"stat": "Sum"}],
+                        [".", "AccessAuditSensitiveDenied", {"stat": "Sum"}],
+                        [".", "AccessAuditWriteDenied", {"stat": "Sum"}],
                     ],
                     "period": 300,
                     "region": aws.get_region().region,

@@ -70,6 +70,11 @@ class MonitoringRuntimeTest(unittest.TestCase):
         self.assertIn("AccessAuditRateLimited", metric_names)
         self.assertIn("AccessAuditClientErrors", metric_names)
         self.assertIn("AccessAuditServerErrors", metric_names)
+        self.assertIn("AccessAuditTenantMismatch", metric_names)
+        self.assertIn("AccessAuditSensitiveActions", metric_names)
+        self.assertIn("AccessAuditSensitiveDenied", metric_names)
+        self.assertIn("AccessAuditWriteActions", metric_names)
+        self.assertIn("AccessAuditWriteDenied", metric_names)
 
     def test_access_audit_metric_filter_specs_are_low_cardinality(self) -> None:
         specs = monitoring._access_audit_metric_filter_specs()
@@ -83,8 +88,13 @@ class MonitoringRuntimeTest(unittest.TestCase):
                 "AccessAuditEvents",
                 "AccessAuditForbidden",
                 "AccessAuditRateLimited",
+                "AccessAuditSensitiveActions",
+                "AccessAuditSensitiveDenied",
                 "AccessAuditServerErrors",
+                "AccessAuditTenantMismatch",
                 "AccessAuditUnauthorized",
+                "AccessAuditWriteActions",
+                "AccessAuditWriteDenied",
             ],
         )
         for spec in specs.values():
