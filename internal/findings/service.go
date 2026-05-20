@@ -96,6 +96,7 @@ type ListRequest struct {
 	EventID     string
 	PolicyID    string
 	Limit       uint32
+	Order       ports.FindingOrder
 }
 
 // EvaluateResult reports the persisted findings emitted for one runtime evaluation.
@@ -312,6 +313,7 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 				evaluationErr := fmt.Errorf("reconcile finding identity for rule %q event %q: %w", result.Rule.GetId(), event.GetId(), err)
 				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
 			}
+			record = enrichFindingRisk(record, runtime, startedAt)
 			stored, err := s.store.UpsertFinding(ctx, record)
 			if err != nil {
 				evaluationErr := fmt.Errorf("persist finding for rule %q event %q: %w", result.Rule.GetId(), event.GetId(), err)
@@ -432,6 +434,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 					}
 					break
 				}
+				record = enrichFindingRisk(record, runtime, startedAt)
 				stored, err := s.store.UpsertFinding(ctx, record)
 				if err != nil {
 					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("persist finding for rule %q event %q: %w", state.result.Rule.GetId(), event.GetId(), err)); failErr != nil {
@@ -506,6 +509,7 @@ func (s *Service) ListFindings(ctx context.Context, request ListRequest) (*ListR
 		EventID:     strings.TrimSpace(request.EventID),
 		PolicyID:    strings.TrimSpace(request.PolicyID),
 		Limit:       request.Limit,
+		Order:       request.Order,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list findings for tenant %q runtime %q: %w", strings.TrimSpace(runtime.GetTenantId()), runtimeID, err)

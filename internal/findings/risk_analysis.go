@@ -1,6 +1,7 @@
 package findings
 
 import (
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -10,6 +11,8 @@ import (
 )
 
 const defaultFindingCorrelationWindow = 24 * time.Hour
+
+const defaultFindingRiskModelVersion = "likelihood-impact-v1"
 
 // FindingExposureAnalysisOptions scopes source-agnostic risk correlation output.
 type FindingExposureAnalysisOptions struct {
@@ -28,8 +31,14 @@ type FindingExposureAnalysisReport struct {
 
 // FindingRiskContext captures contextual scoring signals for one finding or correlated group.
 type FindingRiskContext struct {
-	Score   int      `json:"score"`
-	Reasons []string `json:"reasons,omitempty"`
+	Score            int      `json:"score"`
+	LikelihoodScore  int      `json:"likelihood_score"`
+	ImpactScore      int      `json:"impact_score"`
+	ConfidenceScore  int      `json:"confidence_score"`
+	LikelihoodLevel  string   `json:"likelihood_level,omitempty"`
+	ImpactLevel      string   `json:"impact_level,omitempty"`
+	RiskModelVersion string   `json:"risk_model_version,omitempty"`
+	Reasons          []string `json:"reasons,omitempty"`
 }
 
 // FindingEvidenceBundle is a compact, source-agnostic evidence summary for a finding group or path.
@@ -285,87 +294,197 @@ func AnalyzeFindingRiskContext(finding *ports.FindingRecord, now time.Time) Find
 		now = time.Now().UTC()
 	}
 	attributes := finding.Attributes
-	score := 0
+	likelihood := 10
+	impact := 10
+	confidence := 85
 	reasons := []string{}
 	severity := strings.ToUpper(strings.TrimSpace(finding.Severity))
 	if severityScore := compoundRiskSeverityScore(severity); severityScore > 0 {
-		score += severityScore * 10
+		likelihood += severityScore * 6
+		impact += severityScore * 8
 		reasons = append(reasons, "severity:"+severity)
 	}
 	status := strings.ToLower(strings.TrimSpace(finding.Status))
 	if status == "" || status == findingStatusOpen {
-		score += 2
+		likelihood += 5
 		reasons = append(reasons, "active")
 	}
 	if !finding.DueAt.IsZero() && finding.DueAt.Before(now) {
-		score += 5
+		impact += 5
 		reasons = append(reasons, "overdue")
 	}
 	if observedAt := findingObservedAt(finding); !observedAt.IsZero() {
 		age := now.Sub(observedAt)
 		switch {
 		case age >= 0 && age <= 24*time.Hour:
-			score += 5
+			likelihood += 5
 			reasons = append(reasons, "recent_24h")
 		case age >= 0 && age <= 7*24*time.Hour:
-			score += 2
+			likelihood += 2
 			reasons = append(reasons, "recent_7d")
 		}
 	}
 	if eventCount := len(uniqueSortedStrings(finding.EventIDs)); eventCount > 1 {
-		score += min(eventCount, 10)
+		likelihood += min(eventCount*2, 10)
+		confidence += 3
 		reasons = append(reasons, "multiple_events")
 	}
 	if resourceCount := len(uniqueSortedStrings(finding.ResourceURNs)); resourceCount > 1 {
-		score += min(resourceCount, 8)
+		impact += min(resourceCount*2, 12)
 		reasons = append(reasons, "multiple_resources")
 	}
 	if len(finding.ControlRefs) > 0 {
-		score += min(len(finding.ControlRefs)*2, 8)
+		impact += min(len(finding.ControlRefs)*2, 8)
 		reasons = append(reasons, "mapped_controls")
 	}
 	action := strings.ToLower(compoundRiskAction(finding))
 	if containsAny(action, "disable", "delete", "destroy", "remove", "revoke", "bypass", "override", "public", "expose") {
-		score += 8
+		likelihood += 12
 		reasons = append(reasons, "risky_action")
 	}
 	criticality := strings.ToLower(firstNonEmpty(attributes["asset_criticality"], attributes["criticality"], attributes["business_criticality"], attributes["tier"]))
 	if containsAny(criticality, "critical", "high", "crown", "tier0", "tier-0") {
-		score += 10
+		impact += 35
 		reasons = append(reasons, "critical_asset")
 	}
-	if findingAttributeBool(attributes, "internet_exposed", "public", "externally_exposed", "external_exposure") {
-		score += 8
+	publicExposure := findingAttributeBool(attributes, "internet_exposed", "public", "externally_exposed", "external_exposure", "is_public", "is_internet_facing")
+	reachabilityPath := publicExposure || findingAttributeBool(attributes, "reachable", "directly_reachable", "internet_reachable", "can_reach")
+	if containsAny(action, "can_reach", "public_network_ingress", "internet_facing") {
+		reachabilityPath = true
+	}
+	if publicExposure {
+		likelihood += 35
 		reasons = append(reasons, "external_exposure")
 	}
 	if findingAttributeBool(attributes, "privileged", "actor_privileged", "admin", "is_admin", "has_admin") {
-		score += 7
+		likelihood += 10
+		impact += 15
 		reasons = append(reasons, "privileged_actor")
 	}
+	activeExploit := findingAttributeBool(attributes, "active_exploit", "active_threat", "exploit_detected", "credential_use", "token_exchange", "suspicious_process")
+	if activeExploit {
+		likelihood += 25
+		reasons = append(reasons, "active_threat")
+	}
 	if findingAttributeBool(attributes, "is_kev", "kev", "known_exploited", "known_exploited_vulnerability") {
-		score += 12
+		likelihood += 35
 		reasons = append(reasons, "known_exploited")
 	}
 	if epss, ok := findingAttributeFloat(attributes, "epss_score", "epss", "exploit_probability"); ok {
 		switch {
 		case epss >= 0.7:
-			score += 10
+			likelihood += 25
 			reasons = append(reasons, "epss_high")
 		case epss >= 0.2:
-			score += 5
+			likelihood += 12
 			reasons = append(reasons, "epss_elevated")
+		}
+	}
+	if findingAttributeBool(attributes, "exploit_available", "public_exploit", "weaponized_exploit") {
+		likelihood += 20
+		reasons = append(reasons, "exploit_available")
+	}
+	exploitMaturity := strings.ToLower(firstNonEmpty(attributes["exploit_maturity"], attributes["exploit_status"]))
+	if containsAny(exploitMaturity, "weaponized", "functional", "poc", "proof") {
+		likelihood += 15
+		reasons = append(reasons, "exploit_maturity:"+exploitMaturity)
+	}
+	if cvss, ok := findingAttributeFloat(attributes, "cvss_score", "cvss", "base_score"); ok {
+		switch {
+		case cvss >= 9:
+			likelihood += 10
+			impact += 10
+			reasons = append(reasons, "cvss_critical")
+		case cvss >= 7:
+			likelihood += 5
+			impact += 5
+			reasons = append(reasons, "cvss_high")
 		}
 	}
 	dataClass := strings.ToLower(firstNonEmpty(attributes["data_classification"], attributes["sensitivity"], attributes["data_sensitivity"]))
 	if containsAny(dataClass, "secret", "sensitive", "confidential", "restricted") {
-		score += 6
+		impact += 25
 		reasons = append(reasons, "sensitive_data")
 	}
 	if findingAttributeBool(attributes, "crown_jewel", "contains_secrets") {
-		score += 12
+		impact += 35
 		reasons = append(reasons, "crown_jewel")
 	}
-	return FindingRiskContext{Score: score, Reasons: uniqueSortedStrings(reasons)}
+	if findingAttributeBool(attributes, "contains_pii", "contains_phi", "contains_pci", "has_sensitive_data", "has_sensitive_data_access") {
+		impact += 20
+		reasons = append(reasons, "regulated_or_sensitive_data")
+	}
+	environment := strings.ToLower(firstNonEmpty(attributes["environment"], attributes["env"], attributes["stage"], attributes["site_name"]))
+	if containsAny(environment, "prod", "production") {
+		impact += 15
+		reasons = append(reasons, "production_environment")
+	}
+	if findingAttributeBool(attributes, "can_admin", "admin_reachable", "privileged_access", "has_admin_path") || containsAny(action, "can_admin", "can_assume", "can_impersonate") {
+		impact += 20
+		reasons = append(reasons, "privilege_or_control_plane")
+	}
+	if blastRadius, ok := findingAttributeInt(attributes, "blast_radius", "affected_users", "reachable_resource_count", "admin_reachable_count", "sensitive_data_path_count"); ok && blastRadius > 0 {
+		impact += min(blastRadius, 20)
+		reasons = append(reasons, "blast_radius")
+	}
+	networkScope := strings.ToLower(firstNonEmpty(attributes["network_scope"], attributes["cidr_scope"], attributes["ip_scope"], attributes["subnet_scope"], attributes["exposure_scope"]))
+	privateNetwork := findingAttributeBool(attributes, "private_network", "private_subnet") || containsAny(networkScope, "private", "rfc1918", "loopback", "link-local", "unique-local")
+	if privateNetwork && !reachabilityPath && !activeExploit {
+		likelihood = min(likelihood, 35)
+		reasons = append(reasons, "private_network_context")
+	}
+	if len(finding.GraphEvidenceRows) > 0 {
+		confidence += 5
+		reasons = append(reasons, "graph_evidence")
+	}
+	if len(finding.ResourceURNs) == 0 && len(finding.EventIDs) == 0 {
+		confidence -= 15
+		reasons = append(reasons, "limited_evidence")
+	}
+	likelihood = clampScore(likelihood)
+	impact = clampScore(impact)
+	confidence = clampScore(confidence)
+	riskScore := productRiskScore(likelihood, impact)
+	return FindingRiskContext{
+		Score:            riskScore,
+		LikelihoodScore:  likelihood,
+		ImpactScore:      impact,
+		ConfidenceScore:  confidence,
+		LikelihoodLevel:  riskLevelFromScore(likelihood),
+		ImpactLevel:      riskLevelFromScore(impact),
+		RiskModelVersion: defaultFindingRiskModelVersion,
+		Reasons:          uniqueSortedStrings(reasons),
+	}
+}
+
+func productRiskScore(likelihood int, impact int) int {
+	return clampScore(int(math.Round(math.Sqrt(float64(clampScore(likelihood) * clampScore(impact))))))
+}
+
+func clampScore(score int) int {
+	switch {
+	case score < 0:
+		return 0
+	case score > 100:
+		return 100
+	default:
+		return score
+	}
+}
+
+func riskLevelFromScore(score int) string {
+	switch {
+	case score >= 85:
+		return "critical"
+	case score >= 70:
+		return "high"
+	case score >= 40:
+		return "medium"
+	case score > 0:
+		return "low"
+	default:
+		return ""
+	}
 }
 
 func weightedAttackPathScore(steps []FindingAttackPathStep) (int, []string) {
@@ -708,6 +827,21 @@ func findingAttributeFloat(attributes map[string]string, keys ...string) (float6
 			continue
 		}
 		value, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			continue
+		}
+		return value, true
+	}
+	return 0, false
+}
+
+func findingAttributeInt(attributes map[string]string, keys ...string) (int, bool) {
+	for _, key := range keys {
+		raw := strings.TrimSpace(attributes[key])
+		if raw == "" {
+			continue
+		}
+		value, err := strconv.Atoi(raw)
 		if err != nil {
 			continue
 		}

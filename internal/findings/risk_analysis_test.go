@@ -139,6 +139,36 @@ func TestAnalyzeFindingRiskContextUsesGenericSignals(t *testing.T) {
 	if context.Score < 80 {
 		t.Fatalf("Risk score = %d, want generic contextual score >= 80", context.Score)
 	}
+	if context.LikelihoodScore < 80 {
+		t.Fatalf("LikelihoodScore = %d, want >= 80", context.LikelihoodScore)
+	}
+	if context.ImpactScore < 80 {
+		t.Fatalf("ImpactScore = %d, want >= 80", context.ImpactScore)
+	}
+	if context.ConfidenceScore == 0 {
+		t.Fatal("ConfidenceScore = 0, want populated confidence")
+	}
+	if context.LikelihoodLevel == "" || context.ImpactLevel == "" || context.RiskModelVersion == "" {
+		t.Fatalf("Risk metadata = %#v, want levels and model version", context)
+	}
+}
+
+func TestAnalyzeFindingRiskContextCapsPrivateNetworkWithoutReachability(t *testing.T) {
+	now := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
+	finding := compoundRiskFinding("finding-private", "cloud-private-exposure", "CRITICAL", "", "", "urn:cerebro:writer:aws_instance:i-1", "scan.detected")
+	finding.LastObservedAt = now
+	finding.Attributes["network_scope"] = "private"
+	finding.Attributes["is_kev"] = "true"
+	finding.Attributes["epss_score"] = "0.91"
+	finding.Attributes["asset_criticality"] = "critical"
+
+	context := AnalyzeFindingRiskContext(finding, now)
+	if context.LikelihoodScore > 35 {
+		t.Fatalf("LikelihoodScore = %d, want private network cap <= 35 without reachability", context.LikelihoodScore)
+	}
+	if !stringSliceContains(context.Reasons, "private_network_context") {
+		t.Fatalf("Risk reasons = %#v, want private_network_context", context.Reasons)
+	}
 }
 
 func TestAnalyzeFindingAttackPathsUsesRelationWeights(t *testing.T) {

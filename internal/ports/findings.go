@@ -39,6 +39,18 @@ type FindingWorkflow struct {
 	StatusUpdatedAt time.Time
 }
 
+// FindingRisk carries normalized likelihood × impact scoring metadata.
+type FindingRisk struct {
+	RiskScore        int
+	LikelihoodScore  int
+	ImpactScore      int
+	ConfidenceScore  int
+	LikelihoodLevel  string
+	ImpactLevel      string
+	RiskReasons      []string
+	RiskModelVersion string
+}
+
 // FindingRecord is the normalized persisted finding shape.
 type FindingRecord struct {
 	ID                string
@@ -59,6 +71,7 @@ type FindingRecord struct {
 	CheckName         string
 	ControlRefs       []FindingControlRef
 	GraphEvidenceRows []*cerebrov1.GraphEvidenceRow
+	FindingRisk
 	FindingWorkflow
 	Attributes      map[string]string
 	FirstObservedAt time.Time
@@ -79,7 +92,17 @@ type ListFindingsRequest struct {
 	PolicyID      string
 	Limit         uint32
 	PriorityOrder bool
+	Order         FindingOrder
 }
+
+// FindingOrder controls persisted finding list sort order.
+type FindingOrder string
+
+const (
+	FindingOrderLastObserved FindingOrder = "last_observed"
+	FindingOrderPriority     FindingOrder = "priority"
+	FindingOrderRiskScore    FindingOrder = "risk_score"
+)
 
 // FindingSummary captures aggregate counts for one finding query without applying
 // pagination limits intended for UI rows.

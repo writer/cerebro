@@ -186,6 +186,41 @@ paths:
         - Sources
       parameters:
         - $ref: '#/components/parameters/runtimeID'
+        - name: finding_id
+          in: query
+          schema:
+            type: string
+        - name: rule_id
+          in: query
+          schema:
+            type: string
+        - name: severity
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, resolved, suppressed]
+        - name: resource_urn
+          in: query
+          schema:
+            type: string
+        - name: event_id
+          in: query
+          schema:
+            type: string
+        - name: policy_id
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/limitQuery'
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [last_observed, priority, risk_score]
       responses:
         '200':
           description: Finding list.

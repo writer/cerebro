@@ -51,26 +51,38 @@ type grcSummary struct {
 }
 
 type grcFindingItem struct {
-	ID              string          `json:"id"`
-	Title           string          `json:"title"`
-	Severity        string          `json:"severity"`
-	Status          string          `json:"status"`
-	Summary         string          `json:"summary,omitempty"`
-	TenantID        string          `json:"tenant_id,omitempty"`
-	RuntimeID       string          `json:"runtime_id,omitempty"`
-	SourceID        string          `json:"source_id,omitempty"`
-	Entity          string          `json:"entity,omitempty"`
-	ResourceURNs    []string        `json:"resource_urns,omitempty"`
-	RuleID          string          `json:"rule_id,omitempty"`
-	PolicyID        string          `json:"policy_id,omitempty"`
-	PolicyName      string          `json:"policy_name,omitempty"`
-	Controls        []grcControlRef `json:"controls,omitempty"`
-	EvidenceCount   int             `json:"evidence_count"`
-	Owner           string          `json:"owner"`
-	SLAStatus       string          `json:"sla_status"`
-	DueAt           *time.Time      `json:"due_at,omitempty"`
-	FirstObservedAt *time.Time      `json:"first_observed_at,omitempty"`
-	LastObservedAt  *time.Time      `json:"last_observed_at,omitempty"`
+	ID           string          `json:"id"`
+	Title        string          `json:"title"`
+	Severity     string          `json:"severity"`
+	Status       string          `json:"status"`
+	Summary      string          `json:"summary,omitempty"`
+	TenantID     string          `json:"tenant_id,omitempty"`
+	RuntimeID    string          `json:"runtime_id,omitempty"`
+	SourceID     string          `json:"source_id,omitempty"`
+	Entity       string          `json:"entity,omitempty"`
+	ResourceURNs []string        `json:"resource_urns,omitempty"`
+	RuleID       string          `json:"rule_id,omitempty"`
+	PolicyID     string          `json:"policy_id,omitempty"`
+	PolicyName   string          `json:"policy_name,omitempty"`
+	Controls     []grcControlRef `json:"controls,omitempty"`
+	GRCFindingRisk
+	EvidenceCount   int        `json:"evidence_count"`
+	Owner           string     `json:"owner"`
+	SLAStatus       string     `json:"sla_status"`
+	DueAt           *time.Time `json:"due_at,omitempty"`
+	FirstObservedAt *time.Time `json:"first_observed_at,omitempty"`
+	LastObservedAt  *time.Time `json:"last_observed_at,omitempty"`
+}
+
+type GRCFindingRisk struct {
+	RiskScore       int      `json:"risk_score,omitempty"`
+	LikelihoodScore int      `json:"likelihood_score,omitempty"`
+	ImpactScore     int      `json:"impact_score,omitempty"`
+	ConfidenceScore int      `json:"confidence_score,omitempty"`
+	LikelihoodLevel string   `json:"likelihood_level,omitempty"`
+	ImpactLevel     string   `json:"impact_level,omitempty"`
+	RiskReasons     []string `json:"risk_reasons,omitempty"`
+	RiskModel       string   `json:"risk_model_version,omitempty"`
 }
 
 type grcControlRef struct {
@@ -513,6 +525,7 @@ func (a *App) grcListFindingRecords(r *http.Request, runtimes []*cerebrov1.Sourc
 			PolicyID:      filter.PolicyID,
 			Limit:         limit,
 			PriorityOrder: true,
+			Order:         ports.FindingOrderRiskScore,
 		})
 		if err != nil {
 			return nil, err
@@ -522,6 +535,9 @@ func (a *App) grcListFindingRecords(r *http.Request, runtimes []*cerebrov1.Sourc
 	sort.Slice(records, func(i, j int) bool {
 		left := records[i]
 		right := records[j]
+		if left.RiskScore != right.RiskScore {
+			return left.RiskScore > right.RiskScore
+		}
 		if severityRank(left.Severity) != severityRank(right.Severity) {
 			return severityRank(left.Severity) < severityRank(right.Severity)
 		}
@@ -741,20 +757,30 @@ func grcFindingItems(findings []*ports.FindingRecord, sourceIDs map[string]strin
 			continue
 		}
 		items = append(items, grcFindingItem{
-			ID:              finding.ID,
-			Title:           fallbackString(finding.Title, finding.RuleID, finding.ID),
-			Severity:        strings.ToUpper(strings.TrimSpace(finding.Severity)),
-			Status:          normalizedFindingStatus(finding.Status),
-			Summary:         finding.Summary,
-			TenantID:        finding.TenantID,
-			RuntimeID:       finding.RuntimeID,
-			SourceID:        sourceIDs[finding.RuntimeID],
-			Entity:          primaryEntity(finding),
-			ResourceURNs:    append([]string(nil), finding.ResourceURNs...),
-			RuleID:          finding.RuleID,
-			PolicyID:        finding.PolicyID,
-			PolicyName:      finding.PolicyName,
-			Controls:        grcControlRefs(finding.ControlRefs),
+			ID:           finding.ID,
+			Title:        fallbackString(finding.Title, finding.RuleID, finding.ID),
+			Severity:     strings.ToUpper(strings.TrimSpace(finding.Severity)),
+			Status:       normalizedFindingStatus(finding.Status),
+			Summary:      finding.Summary,
+			TenantID:     finding.TenantID,
+			RuntimeID:    finding.RuntimeID,
+			SourceID:     sourceIDs[finding.RuntimeID],
+			Entity:       primaryEntity(finding),
+			ResourceURNs: append([]string(nil), finding.ResourceURNs...),
+			RuleID:       finding.RuleID,
+			PolicyID:     finding.PolicyID,
+			PolicyName:   finding.PolicyName,
+			Controls:     grcControlRefs(finding.ControlRefs),
+			GRCFindingRisk: GRCFindingRisk{
+				RiskScore:       finding.RiskScore,
+				LikelihoodScore: finding.LikelihoodScore,
+				ImpactScore:     finding.ImpactScore,
+				ConfidenceScore: finding.ConfidenceScore,
+				LikelihoodLevel: finding.LikelihoodLevel,
+				ImpactLevel:     finding.ImpactLevel,
+				RiskReasons:     append([]string(nil), finding.RiskReasons...),
+				RiskModel:       finding.RiskModelVersion,
+			},
 			EvidenceCount:   evidenceCounts[finding.ID],
 			Owner:           fallbackString(finding.Assignee, "Unassigned"),
 			SLAStatus:       grcSLAStatus(finding),
