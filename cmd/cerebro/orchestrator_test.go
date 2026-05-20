@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -137,6 +139,83 @@ func TestRunOrchestratorPhaseInheritsParentCancellation(t *testing.T) {
 	})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("runOrchestratorPhase() error = %v, want context.Canceled (inherited from parent)", err)
+	}
+}
+
+func TestNewOrchestratorRuntimeServiceProjectsSourceSyncToStateOnly(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(orchestratorTestSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &orchestratorRuntimeStore{
+		runtime: &cerebrov1.SourceRuntime{
+			Id:       "runtime-1",
+			SourceId: "github",
+			TenantId: "writer",
+		},
+	}
+	eventLog := &orchestratorEventLog{}
+	stateStore := newGraphTestStore()
+
+	service := newOrchestratorRuntimeService(registry, store, eventLog, stateStore)
+	result, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "runtime-1", PageLimit: 1})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if result.GetEventsAppended() != 1 {
+		t.Fatalf("Sync().EventsAppended = %d, want 1", result.GetEventsAppended())
+	}
+	if result.GetEntitiesProjected() == 0 || result.GetLinksProjected() == 0 {
+		t.Fatalf("Sync() projected entities/links = %d/%d, want state projections", result.GetEntitiesProjected(), result.GetLinksProjected())
+	}
+	if len(stateStore.entities) == 0 || len(stateStore.links) == 0 {
+		t.Fatalf("state projections not stored: entities=%d links=%d", len(stateStore.entities), len(stateStore.links))
+	}
+}
+
+func TestNewOrchestratorSyncProjectorDoesNotCreateGraphOnlyProjector(t *testing.T) {
+	if projector := newOrchestratorSyncProjector(nil); projector != nil {
+		t.Fatalf("newOrchestratorSyncProjector(nil) = %#v, want nil", projector)
+	}
+}
+
+func TestOrchestratorGraphPageLimitCoversSyncedPages(t *testing.T) {
+	tests := []struct {
+		name        string
+		configured  uint32
+		syncedPages uint32
+		want        uint32
+	}{
+		{name: "uses configured when higher", configured: 10, syncedPages: 3, want: 10},
+		{name: "raises unset to synced pages", configured: 0, syncedPages: 3, want: 3},
+		{name: "raises lower configured to synced pages", configured: 1, syncedPages: 3, want: 3},
+		{name: "leaves defaulting to graph ingest when no sync pages", configured: 0, syncedPages: 0, want: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := orchestratorGraphPageLimit(tt.configured, tt.syncedPages); got != tt.want {
+				t.Fatalf("orchestratorGraphPageLimit(%d, %d) = %d, want %d", tt.configured, tt.syncedPages, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestOrchestratorRuntimeStartCursorOpaque(t *testing.T) {
+	if got := orchestratorRuntimeStartCursorOpaque(&cerebrov1.SourceRuntime{
+		NextCursor: &cerebrov1.SourceCursor{Opaque: "next-page"},
+		Checkpoint: &cerebrov1.SourceCheckpoint{
+			CursorOpaque: "checkpoint-page",
+		},
+	}); got != "next-page" {
+		t.Fatalf("start cursor = %q, want next-page", got)
+	}
+	if got := orchestratorRuntimeStartCursorOpaque(&cerebrov1.SourceRuntime{
+		Checkpoint: &cerebrov1.SourceCheckpoint{CursorOpaque: "checkpoint-page"},
+	}); got != "checkpoint-page" {
+		t.Fatalf("start cursor = %q, want checkpoint-page", got)
+	}
+	if got := orchestratorRuntimeStartCursorOpaque(&cerebrov1.SourceRuntime{}); got != "" {
+		t.Fatalf("start cursor = %q, want empty", got)
 	}
 }
 
@@ -298,6 +377,228 @@ func TestRunOrchestratorIterationRunsGraphRulesAfterIngest(t *testing.T) {
 	}
 	if runtimeResult.Error != "" {
 		t.Fatalf("runtime error = %q, want empty", runtimeResult.Error)
+	}
+}
+
+func TestRunOrchestratorIterationRunsFindingRulesAfterGraphIngest(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(orchestratorTestSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	graphStore := newGraphTestStore()
+	resourceURN := "urn:cerebro:writer:github_pull_request:writer/cerebro#515"
+	findingRule := &orchestratorResourceAwareRule{
+		spec:        &cerebrov1.RuleSpec{Id: "resource-aware-rule", Name: "Resource aware rule"},
+		sourceID:    "github",
+		graph:       graphStore,
+		resourceURN: resourceURN,
+	}
+	ruleRegistry, err := findings.NewRegistry(findingRule)
+	if err != nil {
+		t.Fatalf("NewRegistry() finding rule error = %v", err)
+	}
+	store := &orchestratorRuntimeStore{
+		runtime: &cerebrov1.SourceRuntime{
+			Id:       "runtime-1",
+			SourceId: "github",
+			TenantId: "writer",
+		},
+		acquired: true,
+	}
+	eventLog := &orchestratorEventLog{}
+	findingStore := &orchestratorFindingStore{}
+	findingService := findings.NewWithRegistry(store, eventLog, findingStore, findingStore, findingStore, findingStore, ruleRegistry).WithGraphStore(graphStore)
+	graphService := graphingest.New(registry, store, sourceprojection.New(nil, graphStore), graphStore)
+
+	result, err := runOrchestratorIteration(
+		context.Background(),
+		store,
+		store,
+		"test-owner",
+		sourceruntime.New(registry, store, eventLog, nil),
+		findingService,
+		graphService,
+		orchestratorOptions{},
+		1,
+	)
+	if err != nil {
+		t.Fatalf("runOrchestratorIteration() error = %v, want nil", err)
+	}
+	if got := len(result.Runtimes); got != 1 {
+		t.Fatalf("runtime result count = %d, want 1", got)
+	}
+	runtimeResult := result.Runtimes[0]
+	if runtimeResult.GraphIngest != "completed" || runtimeResult.FindingRules != "completed" {
+		t.Fatalf("graph/finding statuses = %q/%q, want completed/completed", runtimeResult.GraphIngest, runtimeResult.FindingRules)
+	}
+	if !findingRule.sawResource {
+		t.Fatal("finding rule ran before graph ingest wrote the source resource")
+	}
+	linkKey := resourceURN + "|has_finding|urn:cerebro:writer:finding:finding-resource-aware"
+	if _, ok := graphStore.links[linkKey]; !ok {
+		t.Fatalf("finding resource link %q missing", linkKey)
+	}
+}
+
+func TestRunOrchestratorIterationKeepsFindingRulesIndependentOfGraphIngestFailure(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(orchestratorTestSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	ruleRegistry, err := findings.NewRegistry(orchestratorNoopRule{})
+	if err != nil {
+		t.Fatalf("NewRegistry() finding rule error = %v", err)
+	}
+	store := &orchestratorRuntimeStore{
+		runtime: &cerebrov1.SourceRuntime{
+			Id:       "runtime-1",
+			SourceId: "github",
+			TenantId: "writer",
+		},
+		acquired: true,
+	}
+	eventLog := &orchestratorEventLog{}
+	findingStore := &orchestratorFindingStore{}
+	graphStore := &failingProjectionGraphStore{
+		graphTestStore: newGraphTestStore(),
+		err:            errors.New("neo4j unavailable"),
+	}
+
+	result, err := runOrchestratorIteration(
+		context.Background(),
+		store,
+		store,
+		"test-owner",
+		sourceruntime.New(registry, store, eventLog, nil),
+		findings.NewWithRegistry(store, eventLog, findingStore, findingStore, findingStore, findingStore, ruleRegistry),
+		graphingest.New(registry, store, sourceprojection.New(nil, graphStore), graphStore),
+		orchestratorOptions{},
+		1,
+	)
+	if err == nil {
+		t.Fatal("runOrchestratorIteration() error = nil, want graph ingest failure")
+	}
+	if got := len(result.Runtimes); got != 1 {
+		t.Fatalf("runtime result count = %d, want 1", got)
+	}
+	runtimeResult := result.Runtimes[0]
+	if runtimeResult.GraphIngest != "failed" {
+		t.Fatalf("graph ingest status = %q, want failed", runtimeResult.GraphIngest)
+	}
+	if runtimeResult.FindingRules != "completed" || runtimeResult.EventsEvaluated != 1 {
+		t.Fatalf("finding status/events = %q/%d, want completed/1", runtimeResult.FindingRules, runtimeResult.EventsEvaluated)
+	}
+}
+
+func TestRunOrchestratorIterationSkipsGraphRulesUntilGraphIngestCatchesSyncCursor(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(orchestratorPagedSource{pages: 3})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	graphRule := &orchestratorGraphRule{
+		spec:     &cerebrov1.RuleSpec{Id: "orchestrator-graph-rule"},
+		sourceID: "github",
+		query:    ports.CypherQueryRequest{Query: "MATCH (n) RETURN n LIMIT 1"},
+	}
+	ruleRegistry, err := findings.NewRegistry(graphRule)
+	if err != nil {
+		t.Fatalf("NewRegistry() finding rule error = %v", err)
+	}
+	store := &orchestratorRuntimeStore{
+		runtime: &cerebrov1.SourceRuntime{
+			Id:         "runtime-1",
+			SourceId:   "github",
+			TenantId:   "writer",
+			NextCursor: &cerebrov1.SourceCursor{Opaque: "2"},
+		},
+		acquired: true,
+	}
+	eventLog := &orchestratorEventLog{}
+	findingStore := &orchestratorFindingStore{}
+	graphStore := newGraphTestStore()
+	findingService := findings.NewWithRegistry(store, eventLog, findingStore, findingStore, findingStore, findingStore, ruleRegistry).WithGraphQueryStore(graphStore)
+	graphService := graphingest.New(registry, store, sourceprojection.New(nil, graphStore), graphStore)
+
+	result, err := runOrchestratorIteration(
+		context.Background(),
+		store,
+		store,
+		"test-owner",
+		sourceruntime.New(registry, store, eventLog, nil),
+		findingService,
+		graphService,
+		orchestratorOptions{PageLimit: 1, GraphPageLimit: 1},
+		1,
+	)
+	if err != nil {
+		t.Fatalf("runOrchestratorIteration() error = %v, want nil", err)
+	}
+	runtimeResult := result.Runtimes[0]
+	if runtimeResult.GraphIngest != "completed" {
+		t.Fatalf("graph ingest status = %q, want completed", runtimeResult.GraphIngest)
+	}
+	if runtimeResult.GraphRules != "skipped" {
+		t.Fatalf("graph rules status = %q, want skipped while graph cursor trails sync cursor", runtimeResult.GraphRules)
+	}
+	if graphRule.calls != 0 {
+		t.Fatalf("graph rule calls = %d, want 0 while graph is still catching up", graphRule.calls)
+	}
+}
+
+func TestRunOrchestratorIterationAlignsGraphIngestWithSyncPageBudget(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(orchestratorPagedSource{pages: 3})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	ruleRegistry, err := findings.NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry() finding rule error = %v", err)
+	}
+	store := &orchestratorRuntimeStore{
+		runtime: &cerebrov1.SourceRuntime{
+			Id:       "runtime-1",
+			SourceId: "github",
+			TenantId: "writer",
+		},
+		acquired: true,
+	}
+	eventLog := &orchestratorEventLog{}
+	findingStore := &orchestratorFindingStore{}
+	graphStore := newGraphTestStore()
+
+	result, err := runOrchestratorIteration(
+		context.Background(),
+		store,
+		store,
+		"test-owner",
+		sourceruntime.New(registry, store, eventLog, nil),
+		findings.NewWithRegistry(store, eventLog, findingStore, findingStore, findingStore, findingStore, ruleRegistry),
+		graphingest.New(registry, store, sourceprojection.New(nil, graphStore), graphStore),
+		orchestratorOptions{PageLimit: 3, GraphPageLimit: 1},
+		1,
+	)
+	if err != nil {
+		t.Fatalf("runOrchestratorIteration() error = %v, want nil", err)
+	}
+	if got := len(result.Runtimes); got != 1 {
+		t.Fatalf("runtime result count = %d, want 1", got)
+	}
+	runtimeResult := result.Runtimes[0]
+	if runtimeResult.PagesRead != 3 || runtimeResult.EventsAppended != 3 {
+		t.Fatalf("sync pages/events = %d/%d, want 3/3", runtimeResult.PagesRead, runtimeResult.EventsAppended)
+	}
+	if runtimeResult.GraphIngest != "completed" {
+		t.Fatalf("graph ingest status = %q, want completed", runtimeResult.GraphIngest)
+	}
+	runs, err := graphStore.ListIngestRuns(context.Background(), graphstore.IngestRunFilter{RuntimeID: "runtime-1", Status: graphstore.IngestRunStatusCompleted})
+	if err != nil {
+		t.Fatalf("ListIngestRuns() error = %v", err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("completed ingest runs = %d, want 1", len(runs))
+	}
+	if runs[0].PagesRead != 3 {
+		t.Fatalf("graph ingest pages read = %d, want synced page budget 3 despite graph_page_limit=1", runs[0].PagesRead)
 	}
 }
 
@@ -684,6 +985,53 @@ func (orchestratorTestSource) Read(context.Context, sourcecdk.Config, *cerebrov1
 	}}}, nil
 }
 
+type orchestratorPagedSource struct {
+	pages int
+}
+
+func (orchestratorPagedSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "github", Name: "GitHub"}
+}
+
+func (orchestratorPagedSource) Check(context.Context, sourcecdk.Config) error {
+	return nil
+}
+
+func (orchestratorPagedSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (s orchestratorPagedSource) Read(_ context.Context, _ sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	page := 1
+	if cursor != nil && cursor.GetOpaque() != "" {
+		parsed, err := strconv.Atoi(cursor.GetOpaque())
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		page = parsed
+	}
+	var nextCursor *cerebrov1.SourceCursor
+	if page < s.pages {
+		nextCursor = &cerebrov1.SourceCursor{Opaque: strconv.Itoa(page + 1)}
+	}
+	return sourcecdk.Pull{
+		Events: []*cerebrov1.EventEnvelope{{
+			Id:       "github-pr-page-" + strconv.Itoa(page),
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.pull_request",
+			Attributes: map[string]string{
+				"author":      "alice-" + strconv.Itoa(page),
+				"owner":       "writer",
+				"pull_number": strconv.Itoa(500 + page),
+				"repository":  "writer/cerebro",
+				"state":       "open",
+			},
+		}},
+		NextCursor: nextCursor,
+	}, nil
+}
+
 type orchestratorNoopRule struct{}
 
 func (orchestratorNoopRule) Spec() *cerebrov1.RuleSpec {
@@ -727,6 +1075,45 @@ func (r *orchestratorGraphRule) EvaluateRows(_ context.Context, _ *cerebrov1.Sou
 	return r.emit, nil
 }
 
+type orchestratorResourceAwareRule struct {
+	spec        *cerebrov1.RuleSpec
+	sourceID    string
+	graph       *graphTestStore
+	resourceURN string
+	sawResource bool
+}
+
+func (r *orchestratorResourceAwareRule) Spec() *cerebrov1.RuleSpec {
+	return r.spec
+}
+
+func (r *orchestratorResourceAwareRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool {
+	return runtime != nil && runtime.GetSourceId() == r.sourceID
+}
+
+func (r *orchestratorResourceAwareRule) Evaluate(_ context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
+	r.graph.mu.Lock()
+	_, ok := r.graph.entities[r.resourceURN]
+	r.graph.mu.Unlock()
+	r.sawResource = ok
+	if !ok {
+		return nil, errors.New("resource graph entity missing before finding evaluation")
+	}
+	return []*ports.FindingRecord{{
+		ID:           "finding-resource-aware",
+		Fingerprint:  "fp-resource-aware",
+		TenantID:     runtime.GetTenantId(),
+		RuntimeID:    runtime.GetId(),
+		RuleID:       r.spec.GetId(),
+		Title:        "Resource-aware finding",
+		Severity:     "HIGH",
+		Status:       "open",
+		Summary:      "resource-aware finding",
+		ResourceURNs: []string{r.resourceURN},
+		EventIDs:     []string{event.GetId()},
+	}}, nil
+}
+
 type orchestratorEventLog struct {
 	events []*cerebrov1.EventEnvelope
 }
@@ -740,8 +1127,24 @@ func (l *orchestratorEventLog) Append(_ context.Context, event *cerebrov1.EventE
 	return nil
 }
 
-func (l *orchestratorEventLog) Replay(context.Context, ports.ReplayRequest) ([]*cerebrov1.EventEnvelope, error) {
-	return nil, nil
+func (l *orchestratorEventLog) Replay(_ context.Context, request ports.ReplayRequest) ([]*cerebrov1.EventEnvelope, error) {
+	events := make([]*cerebrov1.EventEnvelope, 0, len(l.events))
+	for _, event := range l.events {
+		if request.RuntimeID != "" && event.GetAttributes()[ports.EventAttributeSourceRuntimeID] != request.RuntimeID {
+			continue
+		}
+		if request.TenantID != "" && event.GetTenantId() != request.TenantID {
+			continue
+		}
+		if request.KindPrefix != "" && !strings.HasPrefix(event.GetKind(), request.KindPrefix) {
+			continue
+		}
+		events = append(events, event)
+		if request.Limit > 0 && uint32(len(events)) >= request.Limit {
+			break
+		}
+	}
+	return events, nil
 }
 
 type orchestratorFindingStore struct{}
@@ -821,4 +1224,13 @@ func (s *failingCompletedIngestGraphStore) PutIngestRun(ctx context.Context, run
 		return errors.New("run completion failed")
 	}
 	return s.graphTestStore.PutIngestRun(ctx, run)
+}
+
+type failingProjectionGraphStore struct {
+	*graphTestStore
+	err error
+}
+
+func (s *failingProjectionGraphStore) UpsertProjectedEntity(context.Context, *ports.ProjectedEntity) error {
+	return s.err
 }

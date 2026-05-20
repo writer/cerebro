@@ -92,6 +92,24 @@ func (s *recordingProjectionGraphStore) UpsertProjectedLink(_ context.Context, l
 	return nil
 }
 
+type checkpointProjectionGraphStore struct {
+	recordingProjectionGraphStore
+	checkpoints map[string]graphstore.IngestCheckpoint
+}
+
+func (s *checkpointProjectionGraphStore) GetIngestCheckpoint(_ context.Context, id string) (graphstore.IngestCheckpoint, bool, error) {
+	checkpoint, ok := s.checkpoints[id]
+	return checkpoint, ok, nil
+}
+
+func (s *checkpointProjectionGraphStore) PutIngestCheckpoint(_ context.Context, checkpoint graphstore.IngestCheckpoint) error {
+	if s.checkpoints == nil {
+		s.checkpoints = map[string]graphstore.IngestCheckpoint{}
+	}
+	s.checkpoints[checkpoint.ID] = checkpoint
+	return nil
+}
+
 type singlePageSource struct {
 	id     string
 	events []*cerebrov1.EventEnvelope
@@ -418,6 +436,171 @@ func TestIngestSourceReturnsPartialCountersOnProjectionFailure(t *testing.T) {
 	}
 	if result.PagesRead != 1 || result.EventsRead != 1 || result.EntitiesProjected != 1 || result.LinksProjected != 0 {
 		t.Fatalf("partial counters = pages %d events %d entities %d links %d, want 1/1/1/0", result.PagesRead, result.EventsRead, result.EntitiesProjected, result.LinksProjected)
+	}
+}
+
+func TestIngestSourceCanResetCompletedCheckpoint(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(&singlePageSource{
+		id: "checkpointed",
+		events: []*cerebrov1.EventEnvelope{{
+			Id:       "event-1",
+			SourceId: "checkpointed",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &checkpointProjectionGraphStore{
+		checkpoints: map[string]graphstore.IngestCheckpoint{
+			"checkpoint-1": {ID: "checkpoint-1", Completed: true},
+		},
+	}
+	projector := recordProjectorFunc(func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		return []*ports.ProjectedEntity{{
+			URN:        "urn:cerebro:writer:checkpointed:event-1",
+			TenantID:   event.GetTenantId(),
+			SourceID:   event.GetSourceId(),
+			RuntimeID:  event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
+			EntityType: "checkpointed.event",
+			Label:      event.GetId(),
+		}}, nil, nil
+	})
+	service := New(registry, nil, projector, store)
+
+	freshResult, err := service.ingestSource(context.Background(), sourceRequest{
+		SourceID:          "checkpointed",
+		RuntimeID:         "runtime-1",
+		TenantID:          "writer",
+		PageLimit:         1,
+		CheckpointEnabled: true,
+		CheckpointID:      "checkpoint-1",
+	})
+	if err != nil {
+		t.Fatalf("ingestSource(default checkpoint) error = %v", err)
+	}
+	if !freshResult.CheckpointAlreadyFresh || freshResult.EventsRead != 0 {
+		t.Fatalf("default checkpoint result fresh=%v events=%d, want already fresh with no reads", freshResult.CheckpointAlreadyFresh, freshResult.EventsRead)
+	}
+
+	resetResult, err := service.ingestSource(context.Background(), sourceRequest{
+		SourceID:                 "checkpointed",
+		RuntimeID:                "runtime-1",
+		TenantID:                 "writer",
+		PageLimit:                1,
+		CheckpointEnabled:        true,
+		CheckpointID:             "checkpoint-1",
+		ResetCompletedCheckpoint: true,
+	})
+	if err != nil {
+		t.Fatalf("ingestSource(reset completed checkpoint) error = %v", err)
+	}
+	if resetResult.CheckpointAlreadyFresh {
+		t.Fatal("reset completed checkpoint was treated as already fresh")
+	}
+	if resetResult.PagesRead != 1 || resetResult.EventsRead != 1 || !resetResult.CheckpointPersisted {
+		t.Fatalf("reset checkpoint result pages=%d events=%d persisted=%v, want 1/1/persisted", resetResult.PagesRead, resetResult.EventsRead, resetResult.CheckpointPersisted)
+	}
+}
+
+func TestResetCompletedCheckpointClearsStoredFreshnessBeforeProjection(t *testing.T) {
+	projectionErr := errors.New("projection failed")
+	registry, err := sourcecdk.NewRegistry(&singlePageSource{
+		id: "checkpointed",
+		events: []*cerebrov1.EventEnvelope{{
+			Id:       "event-1",
+			SourceId: "checkpointed",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &checkpointProjectionGraphStore{
+		checkpoints: map[string]graphstore.IngestCheckpoint{
+			"checkpoint-1": {ID: "checkpoint-1", Completed: true},
+		},
+	}
+	projector := recordProjectorFunc(func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		return nil, nil, projectionErr
+	})
+	service := New(registry, nil, projector, store)
+
+	result, err := service.ingestSource(context.Background(), sourceRequest{
+		SourceID:                 "checkpointed",
+		RuntimeID:                "runtime-1",
+		TenantID:                 "writer",
+		PageLimit:                1,
+		CheckpointEnabled:        true,
+		CheckpointID:             "checkpoint-1",
+		ResetCompletedCheckpoint: true,
+	})
+	if !errors.Is(err, projectionErr) {
+		t.Fatalf("ingestSource() error = %v, want %v", err, projectionErr)
+	}
+	if result.CheckpointPersisted {
+		t.Fatal("failed projection should not report a persisted page checkpoint")
+	}
+	stored := store.checkpoints["checkpoint-1"]
+	if stored.Completed {
+		t.Fatal("stored checkpoint remained completed after reset marker")
+	}
+
+	freshCheck := &IngestResult{}
+	var cursor *cerebrov1.SourceCursor
+	if _, err := service.prepareCheckpoint(context.Background(), sourceRequest{
+		SourceID:          "checkpointed",
+		RuntimeID:         "runtime-1",
+		TenantID:          "writer",
+		PageLimit:         1,
+		CheckpointEnabled: true,
+		CheckpointID:      "checkpoint-1",
+	}, freshCheck, &cursor); err != nil {
+		t.Fatalf("prepareCheckpoint() error = %v", err)
+	}
+	if freshCheck.CheckpointAlreadyFresh {
+		t.Fatal("cleared checkpoint was still treated as already fresh")
+	}
+}
+
+func TestResetCheckpointClearsPartialCheckpointBeforeProjection(t *testing.T) {
+	projectionErr := errors.New("projection failed")
+	registry, err := sourcecdk.NewRegistry(&singlePageSource{
+		id: "checkpointed",
+		events: []*cerebrov1.EventEnvelope{{
+			Id:       "event-1",
+			SourceId: "checkpointed",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &checkpointProjectionGraphStore{
+		checkpoints: map[string]graphstore.IngestCheckpoint{
+			"checkpoint-1": {ID: "checkpoint-1", CursorOpaque: "2", Completed: false, PagesRead: 1, EventsRead: 1},
+		},
+	}
+	projector := recordProjectorFunc(func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+		return nil, nil, projectionErr
+	})
+	service := New(registry, nil, projector, store)
+
+	result, err := service.ingestSource(context.Background(), sourceRequest{
+		SourceID:          "checkpointed",
+		RuntimeID:         "runtime-1",
+		TenantID:          "writer",
+		PageLimit:         1,
+		CheckpointEnabled: true,
+		CheckpointID:      "checkpoint-1",
+		ResetCheckpoint:   true,
+	})
+	if !errors.Is(err, projectionErr) {
+		t.Fatalf("ingestSource() error = %v, want %v", err, projectionErr)
+	}
+	if result.CheckpointPersisted {
+		t.Fatal("failed projection should not report a persisted page checkpoint")
+	}
+	stored := store.checkpoints["checkpoint-1"]
+	if stored.CursorOpaque != "" || stored.Completed || stored.PagesRead != 0 || stored.EventsRead != 0 {
+		t.Fatalf("stored checkpoint = %#v, want cleared reset marker", stored)
 	}
 }
 

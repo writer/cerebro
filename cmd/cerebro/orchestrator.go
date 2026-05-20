@@ -18,6 +18,7 @@ import (
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceregistry"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/telemetry"
@@ -234,12 +235,7 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (resu
 		return nil, sourceruntime.ErrRuntimeUnavailable
 	}
 	leaseOwner := orchestratorLeaseOwner()
-	runtimeService := sourceruntime.New(
-		registry,
-		lister,
-		deps.AppendLog,
-		sourceProjector(deps.StateStore, deps.GraphStore),
-	).WithConfigResolver(config.ResolveSourceRuntimeConfigSecretReferences)
+	runtimeService := newOrchestratorRuntimeService(registry, lister, deps.AppendLog, deps.StateStore)
 	findingService := findings.New(
 		lister,
 		eventReplayer(deps.AppendLog),
@@ -298,6 +294,52 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (resu
 	}
 	spanAttributes = withTelemetryField(spanAttributes, "iterations_completed", iteration)
 	return result, runErr
+}
+
+func newOrchestratorRuntimeService(registry *sourcecdk.Registry, store ports.SourceRuntimeStore, appendLog ports.AppendLog, stateStore ports.StateStore) *sourceruntime.Service {
+	return sourceruntime.New(
+		registry,
+		store,
+		appendLog,
+		newOrchestratorSyncProjector(stateStore),
+	).WithConfigResolver(config.ResolveSourceRuntimeConfigSecretReferences)
+}
+
+func newOrchestratorSyncProjector(stateStore ports.StateStore) ports.SourceProjector {
+	// Source sync can project current state, but Neo4j writes are handled by
+	// the coalescing graph ingest phase below.
+	return sourceProjector(stateStore, nil)
+}
+
+func orchestratorGraphPageLimit(configured uint32, syncedPages uint32) uint32 {
+	if syncedPages > configured {
+		return syncedPages
+	}
+	return configured
+}
+
+func graphIngestReadyForGraphRules(result *graphingest.RunResult, syncCursor *cerebrov1.SourceCursor) bool {
+	if result == nil || result.Ingest == nil {
+		return false
+	}
+	if !result.Ingest.CheckpointPersisted && !result.Ingest.CheckpointAlreadyFresh {
+		return false
+	}
+	syncCursorOpaque := ""
+	if syncCursor != nil {
+		syncCursorOpaque = strings.TrimSpace(syncCursor.GetOpaque())
+	}
+	return strings.TrimSpace(result.Ingest.CheckpointCursor) == syncCursorOpaque
+}
+
+func orchestratorRuntimeStartCursorOpaque(runtime *cerebrov1.SourceRuntime) string {
+	if runtime == nil {
+		return ""
+	}
+	if cursor := runtime.GetNextCursor(); cursor != nil {
+		return strings.TrimSpace(cursor.GetOpaque())
+	}
+	return strings.TrimSpace(runtime.GetCheckpoint().GetCursorOpaque())
 }
 
 func appendOrchestratorRun(runs []*orchestratorIterationResult, run *orchestratorIterationResult, runForever bool) []*orchestratorIterationResult {
@@ -392,6 +434,7 @@ func runOrchestratorIteration(
 		acquiredCount++
 		runtimeCtx, cancelRuntime := context.WithCancel(runtimeCtx)
 		stopLeaseRenewal := startOrchestratorRuntimeLeaseRenewal(ctx, leaser, runtime, leaseOwner, cancelRuntime)
+		syncStartCursorOpaque := orchestratorRuntimeStartCursorOpaque(runtime)
 		syncResult, err := runtimeService.Sync(runtimeCtx, &cerebrov1.SyncSourceRuntimeRequest{Id: runtime.GetId(), PageLimit: options.PageLimit})
 		if err != nil {
 			runtimeResult.Sync = "failed"
@@ -419,6 +462,12 @@ func runOrchestratorIteration(
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "pages_read", runtimeResult.PagesRead)
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "events_appended", runtimeResult.EventsAppended)
 		}
+		graphPageLimit := orchestratorGraphPageLimit(options.GraphPageLimit, runtimeResult.PagesRead)
+		resetGraphCheckpoint := runtimeResult.EventsAppended > 0 && syncStartCursorOpaque == ""
+		resetCompletedGraphCheckpoint := runtimeResult.EventsAppended > 0
+		runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "effective_graph_page_limit", graphPageLimit)
+		runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "reset_graph_checkpoint", resetGraphCheckpoint)
+		runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "reset_completed_graph_checkpoint", resetCompletedGraphCheckpoint)
 		// Each post-sync phase runs under its own telemetry span and a
 		// dedicated context timeout. Both are intentional: the span gives
 		// operators a span_end event per phase so a stall shows up as a
@@ -432,6 +481,24 @@ func runOrchestratorIteration(
 		// retries from a clean state. The phase contexts are derived
 		// from runtimeCtx (NOT ctx) so they inherit lease-renewal
 		// cancellation while still being independently bounded.
+		graphResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.graph_ingest", iteration, runtime, orchestratorPhaseTimeout, func(phaseCtx context.Context) (*graphingest.RunResult, error) {
+			return graphService.RunRuntime(phaseCtx, graphingest.RuntimeRequest{
+				RuntimeID:                runtime.GetId(),
+				PageLimit:                graphPageLimit,
+				ResetCheckpoint:          resetGraphCheckpoint,
+				ResetCompletedCheckpoint: resetCompletedGraphCheckpoint,
+				Trigger:                  "orchestrator",
+			})
+		})
+		runtimeSpanAttrs = applyGraphIngestCounters(runtimeResult, graphResult, runtimeSpanAttrs)
+		if err != nil {
+			runtimeResult.GraphIngest = "failed"
+			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "graph_ingest", err)
+			runErr = err
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_ingest_error", err.Error())
+		} else {
+			runtimeResult.GraphIngest = "completed"
+		}
 		findingResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.finding_rules", iteration, runtime, orchestratorPhaseTimeout, func(phaseCtx context.Context) (*findings.EvaluateRulesResult, error) {
 			return findingService.EvaluateSourceRuntimeRules(phaseCtx, findings.EvaluateRulesRequest{RuntimeID: runtime.GetId(), EventLimit: options.EventLimit})
 		})
@@ -452,23 +519,10 @@ func runOrchestratorIteration(
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "events_evaluated", runtimeResult.EventsEvaluated)
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "finding_evaluations", runtimeResult.FindingEvaluations)
 		}
-		graphResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.graph_ingest", iteration, runtime, orchestratorPhaseTimeout, func(phaseCtx context.Context) (*graphingest.RunResult, error) {
-			return graphService.RunRuntime(phaseCtx, graphingest.RuntimeRequest{RuntimeID: runtime.GetId(), PageLimit: options.GraphPageLimit, Trigger: "orchestrator"})
-		})
-		runtimeSpanAttrs = applyGraphIngestCounters(runtimeResult, graphResult, runtimeSpanAttrs)
-		if err != nil {
-			runtimeResult.GraphIngest = "failed"
-			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "graph_ingest", err)
-			runErr = err
-			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_ingest_error", err.Error())
-		} else {
-			runtimeResult.GraphIngest = "completed"
-		}
-		// Run graph rules whenever the projection has updated the graph for this runtime, even
-		// if a trailing PutIngestRun(completed) write failed. The graph is already fresh and the
-		// rules are read-only, so deferring them until the next iteration would needlessly delay
-		// detection and stale-finding auto-resolution.
-		if graphResult != nil && graphResult.Ingest != nil {
+		// Run graph rules whenever the projection has caught up to the same cursor
+		// reached by source sync, even if a trailing PutIngestRun(completed) write
+		// failed. The graph is fresh enough for read-only rules at that point.
+		if graphIngestReadyForGraphRules(graphResult, syncResult.GetRuntime().GetNextCursor()) {
 			graphRulesResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.graph_rules", iteration, runtime, orchestratorPhaseTimeout, func(phaseCtx context.Context) (*findings.EvaluateGraphRulesResult, error) {
 				return findingService.EvaluateSourceRuntimeGraphRules(phaseCtx, findings.EvaluateGraphRulesRequest{RuntimeID: runtime.GetId()})
 			})
@@ -488,6 +542,7 @@ func runOrchestratorIteration(
 			}
 		} else {
 			runtimeResult.GraphRules = "skipped"
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_rules_skip_reason", "graph_ingest_not_caught_up")
 		}
 		cancelRuntime()
 		if err := stopLeaseRenewal(); err != nil {
