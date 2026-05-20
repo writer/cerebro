@@ -31,7 +31,8 @@ type authContextKey struct{}
 type accessAuditContextKey struct{}
 
 type accessAuditResult struct {
-	ConnectCode string
+	ConnectCode       string
+	RequestedTenantID string
 }
 
 type authPrincipal struct {
@@ -62,14 +63,14 @@ func authMiddleware(cfg config.AuthConfig, next http.Handler) http.Handler {
 		}
 		started := time.Now()
 		recorder := &accessAuditResponseWriter{ResponseWriter: w}
-		auditResult := &accessAuditResult{}
+		auditResult := &accessAuditResult{RequestedTenantID: requestTenantHint(r)}
 		principal := authPrincipal{}
 		outcome := "denied"
 		denialReason := ""
 		defer func() {
 			status := recorder.Status()
 			finalOutcome, finalDenialReason := accessAuditOutcome(status, outcome, denialReason, auditResult.ConnectCode)
-			emitAccessAuditEvent(r, principal, status, time.Since(started), finalOutcome, finalDenialReason, auditResult.ConnectCode)
+			emitAccessAuditEvent(r, principal, status, time.Since(started), finalOutcome, finalDenialReason, auditResult)
 		}()
 		principal, ok := authenticateRequest(cfg, r)
 		if !ok {
@@ -77,7 +78,7 @@ func authMiddleware(cfg config.AuthConfig, next http.Handler) http.Handler {
 			writeAuthError(recorder, http.StatusUnauthorized, "unauthorized")
 			return
 		}
-		if tenantID := requestTenantHint(r); tenantID != "" && !tenantAllowed(cfg, principal, tenantID) {
+		if tenantID := auditResult.RequestedTenantID; tenantID != "" && !tenantAllowed(cfg, principal, tenantID) {
 			denialReason = "tenant_forbidden"
 			writeAuthError(recorder, http.StatusForbidden, "tenant forbidden")
 			return
@@ -133,11 +134,6 @@ func authenticateRequest(cfg config.AuthConfig, r *http.Request) (authPrincipal,
 	if token == "" {
 		return authPrincipal{}, false
 	}
-	for _, key := range cfg.APIKeys {
-		if constantTimeEqual(token, key.Key) {
-			return authPrincipal{Name: key.Principal, TenantID: key.TenantID, AuthMode: "api_key"}, true
-		}
-	}
 	for _, credential := range cfg.APICredentials {
 		if apiCredentialMatches(token, credential) {
 			return authPrincipal{
@@ -149,6 +145,11 @@ func authenticateRequest(cfg config.AuthConfig, r *http.Request) (authPrincipal,
 				AllowedTenants: credential.AllowedTenants,
 				Scopes:         credential.Scopes,
 			}, true
+		}
+	}
+	for _, key := range cfg.APIKeys {
+		if constantTimeEqual(token, key.Key) {
+			return authPrincipal{Name: key.Principal, TenantID: key.TenantID, AuthMode: "api_key"}, true
 		}
 	}
 	if principal, ok := authenticateCapabilityToken(cfg, token, time.Now()); ok {
@@ -291,6 +292,7 @@ func authorizeProtoTenant(ctx context.Context, cfg config.AuthConfig, message an
 	}
 	auth, _ := ctx.Value(authContextKey{}).(authContext)
 	for _, tenantID := range protoTenantIDs(protoMessage) {
+		recordAccessAuditRequestedTenant(ctx, tenantID)
 		if !tenantAllowed(cfg, auth.principal, tenantID) {
 			return connect.NewError(connect.CodePermissionDenied, nil)
 		}
@@ -339,7 +341,9 @@ func authorizeTenantID(ctx context.Context, tenantID string) error {
 	if !ok {
 		return nil
 	}
-	if tenantID := strings.TrimSpace(tenantID); tenantID != "" && !tenantAllowed(auth.cfg, auth.principal, tenantID) {
+	tenantID = strings.TrimSpace(tenantID)
+	recordAccessAuditRequestedTenant(ctx, tenantID)
+	if tenantID != "" && !tenantAllowed(auth.cfg, auth.principal, tenantID) {
 		return errTenantForbidden
 	}
 	return nil
@@ -677,28 +681,79 @@ func recordConnectAccessAuditResult(ctx context.Context, err error) {
 	result.ConnectCode = strings.ToLower(connect.CodeOf(err).String())
 }
 
-func emitAccessAuditEvent(r *http.Request, principal authPrincipal, status int, duration time.Duration, outcome string, denialReason string, connectCode string) {
+func recordAccessAuditRequestedTenant(ctx context.Context, tenantID string) {
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" || sourceconfig.IsSecretReference(tenantID) {
+		return
+	}
+	result, _ := ctx.Value(accessAuditContextKey{}).(*accessAuditResult)
+	if result == nil {
+		return
+	}
+	result.RequestedTenantID = mergeAccessAuditTenantID(result.RequestedTenantID, tenantID)
+}
+
+func mergeAccessAuditTenantID(existing string, tenantID string) string {
+	existing = strings.TrimSpace(existing)
+	tenantID = strings.TrimSpace(tenantID)
+	if existing == "" {
+		return tenantID
+	}
+	if tenantID == "" || existing == tenantID {
+		return existing
+	}
+	return "multiple"
+}
+
+func emitAccessAuditEvent(r *http.Request, principal authPrincipal, status int, duration time.Duration, outcome string, denialReason string, auditResult *accessAuditResult) {
 	if r == nil {
 		return
 	}
+	if auditResult == nil {
+		auditResult = &accessAuditResult{}
+	}
+	route := accessAuditRoute(r)
+	operation := accessAuditOperation(r, route)
 	attrs := telemetry.Attrs(
 		telemetry.Field{Key: "outcome", Value: outcome},
 		telemetry.Field{Key: "status", Value: status},
 		telemetry.Field{Key: "method", Value: r.Method},
-		telemetry.Field{Key: "route", Value: accessAuditRoute(r)},
+		telemetry.Field{Key: "route", Value: route},
+		telemetry.Field{Key: "operation_family", Value: operation.Family},
+		telemetry.Field{Key: "operation_type", Value: operation.Type},
 		telemetry.Field{Key: "duration_ms", Value: duration.Milliseconds()},
 	)
 	if remoteIP := accessAuditRemoteIP(r.RemoteAddr); remoteIP != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "remote_ip", Value: remoteIP})
 	}
-	if tenantID := firstNonEmpty(requestTenantHint(r), principal.TenantID); tenantID != "" {
+	if clientIP := accessAuditClientIP(r); clientIP != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "client_ip", Value: clientIP})
+	}
+	if requestID := accessAuditRequestID(r); requestID != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "request_id", Value: requestID})
+	}
+	if operation.SensitiveAction {
+		attrs = attrs.WithField(telemetry.Field{Key: "sensitive_action", Value: true})
+	}
+	requestedTenantID := firstNonEmpty(auditResult.RequestedTenantID, requestTenantHint(r))
+	principalTenantID := strings.TrimSpace(principal.TenantID)
+	if tenantID := firstNonEmpty(requestedTenantID, principalTenantID); tenantID != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "tenant_id", Value: tenantID})
+	}
+	if effectiveTenantID := firstNonEmpty(principalTenantID, requestedTenantID); effectiveTenantID != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "effective_tenant_id", Value: effectiveTenantID})
+	}
+	if requestedTenantID != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "requested_tenant_id", Value: requestedTenantID})
+	}
+	if principalTenantID != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "principal_tenant_id", Value: principalTenantID})
+	}
+	if requestedTenantID != "" && principalTenantID != "" && requestedTenantID != principalTenantID {
+		attrs = attrs.WithField(telemetry.Field{Key: "tenant_mismatch", Value: true})
 	}
 	if principal.Name != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "principal", Value: principal.Name})
-	}
-	if tenantHint := requestTenantHint(r); tenantHint != "" && principal.TenantID != "" && principal.TenantID != tenantHint {
-		attrs = attrs.WithField(telemetry.Field{Key: "principal_tenant_id", Value: principal.TenantID})
 	}
 	if principal.AuthMode != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "auth_mode", Value: principal.AuthMode})
@@ -712,8 +767,8 @@ func emitAccessAuditEvent(r *http.Request, principal authPrincipal, status int, 
 	if procedure := accessAuditConnectProcedure(r.URL.Path); procedure != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "connect_procedure", Value: procedure})
 	}
-	if connectCode != "" {
-		attrs = attrs.WithField(telemetry.Field{Key: "connect_code", Value: connectCode})
+	if auditResult.ConnectCode != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "connect_code", Value: auditResult.ConnectCode})
 	}
 	if denialReason != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "denial_reason", Value: denialReason})
@@ -761,6 +816,214 @@ func accessAuditRemoteIP(remoteAddr string) string {
 		return parsed.String()
 	}
 	return ""
+}
+
+func accessAuditClientIP(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	remoteIP := net.ParseIP(accessAuditRemoteIP(r.RemoteAddr))
+	if remoteIP == nil || !accessAuditTrustsForwardedFor(remoteIP) {
+		return ""
+	}
+	for _, part := range strings.Split(r.Header.Get("X-Forwarded-For"), ",") {
+		if ip := net.ParseIP(strings.TrimSpace(part)); ip != nil {
+			return ip.String()
+		}
+	}
+	return ""
+}
+
+func accessAuditTrustsForwardedFor(remoteIP net.IP) bool {
+	return remoteIP != nil && (remoteIP.IsLoopback() || remoteIP.IsPrivate() || remoteIP.IsLinkLocalUnicast())
+}
+
+func accessAuditRequestID(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	for _, header := range []string{"X-Request-ID", "X-Correlation-ID"} {
+		if requestID := sanitizeAccessAuditIdentifier(r.Header.Get(header)); requestID != "" {
+			return requestID
+		}
+	}
+	if traceID := accessAuditAWSRootTraceID(r.Header.Get("X-Amzn-Trace-Id")); traceID != "" {
+		return traceID
+	}
+	if traceID := accessAuditW3CTraceID(r.Header.Get("Traceparent")); traceID != "" {
+		return traceID
+	}
+	return ""
+}
+
+func accessAuditAWSRootTraceID(header string) string {
+	for _, part := range strings.Split(header, ";") {
+		key, value, ok := strings.Cut(strings.TrimSpace(part), "=")
+		if ok && key == "Root" {
+			return sanitizeAccessAuditIdentifier(value)
+		}
+	}
+	return ""
+}
+
+func accessAuditW3CTraceID(header string) string {
+	parts := strings.Split(strings.TrimSpace(header), "-")
+	if len(parts) < 2 {
+		return ""
+	}
+	return sanitizeAccessAuditIdentifier(parts[1])
+}
+
+func sanitizeAccessAuditIdentifier(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || len(raw) > 128 {
+		return ""
+	}
+	for _, ch := range raw {
+		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') {
+			continue
+		}
+		switch ch {
+		case '-', '_', '.', ':', '/', '=':
+			continue
+		default:
+			return ""
+		}
+	}
+	return raw
+}
+
+type accessAuditOperationInfo struct {
+	Family          string
+	Type            string
+	SensitiveAction bool
+}
+
+func accessAuditOperation(r *http.Request, route string) accessAuditOperationInfo {
+	if r == nil {
+		return accessAuditOperationInfo{Family: "unknown", Type: "unknown"}
+	}
+	procedure := accessAuditConnectProcedure(r.URL.Path)
+	if procedure != "" {
+		return accessAuditOperationInfo{
+			Family:          accessAuditConnectFamily(procedure),
+			Type:            accessAuditConnectOperationType(procedure),
+			SensitiveAction: accessAuditConnectSensitiveAction(procedure),
+		}
+	}
+	operationType := accessAuditHTTPOperationType(r.Method)
+	return accessAuditOperationInfo{
+		Family:          accessAuditRouteFamily(route),
+		Type:            operationType,
+		SensitiveAction: operationType == "write" || accessAuditRouteUsesSourceSecret(route),
+	}
+}
+
+func accessAuditHTTPOperationType(method string) string {
+	switch strings.ToUpper(strings.TrimSpace(method)) {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return "read"
+	case "":
+		return "unknown"
+	default:
+		return "write"
+	}
+}
+
+func accessAuditConnectOperationType(procedure string) string {
+	name := accessAuditProcedureName(procedure)
+	switch {
+	case strings.HasPrefix(name, "Get"),
+		strings.HasPrefix(name, "List"),
+		strings.HasPrefix(name, "Check"),
+		strings.HasPrefix(name, "Read"),
+		strings.HasPrefix(name, "Discover"):
+		return "read"
+	default:
+		return "write"
+	}
+}
+
+func accessAuditConnectSensitiveAction(procedure string) bool {
+	if accessAuditConnectOperationType(procedure) == "write" {
+		return true
+	}
+	switch accessAuditProcedureName(procedure) {
+	case "CheckSource", "DiscoverSource", "ReadSource":
+		return true
+	default:
+		return false
+	}
+}
+
+func accessAuditConnectFamily(procedure string) string {
+	name := accessAuditProcedureName(procedure)
+	switch {
+	case strings.Contains(name, "SourceRuntime"):
+		return "source_runtime"
+	case strings.Contains(name, "Source"):
+		return "source"
+	case strings.Contains(name, "Report"):
+		return "report"
+	case strings.Contains(name, "FindingEvaluation"):
+		return "finding_evaluation"
+	case strings.Contains(name, "FindingEvidence"):
+		return "finding_evidence"
+	case strings.Contains(name, "Finding"):
+		return "finding"
+	case strings.Contains(name, "Graph"), strings.Contains(name, "EntityNeighborhood"):
+		return "graph"
+	case strings.Contains(name, "Decision"), strings.Contains(name, "Action"), strings.Contains(name, "Outcome"), strings.Contains(name, "Workflow"):
+		return "workflow"
+	case strings.Contains(name, "Claim"):
+		return "claim"
+	case strings.Contains(name, "Health"), strings.Contains(name, "Version"):
+		return "health"
+	default:
+		return "connect"
+	}
+}
+
+func accessAuditRouteFamily(route string) string {
+	route = strings.TrimSpace(route)
+	switch {
+	case strings.Contains(route, "/source-runtimes"):
+		return "source_runtime"
+	case strings.Contains(route, "/sources"):
+		return "source"
+	case strings.Contains(route, "/report-runs"), strings.Contains(route, "/reports"):
+		return "report"
+	case strings.Contains(route, "/finding-evaluation-runs"):
+		return "finding_evaluation"
+	case strings.Contains(route, "/finding-evidence"):
+		return "finding_evidence"
+	case strings.Contains(route, "/finding-rules"), strings.Contains(route, "/findings"):
+		return "finding"
+	case strings.Contains(route, "/grc/"):
+		return "grc"
+	case strings.Contains(route, "/platform/knowledge"), strings.Contains(route, "/graph/write"), strings.Contains(route, "/graph/actuate"):
+		return "platform_knowledge"
+	case strings.Contains(route, "/platform/workflow"):
+		return "workflow"
+	case strings.Contains(route, "/platform/graph"), strings.Contains(route, "/graph/"):
+		return "graph"
+	case route == "":
+		return "unknown"
+	default:
+		return "other"
+	}
+}
+
+func accessAuditRouteUsesSourceSecret(route string) bool {
+	return strings.HasSuffix(route, "/check") || strings.HasSuffix(route, "/discover") || strings.HasSuffix(route, "/read")
+}
+
+func accessAuditProcedureName(procedure string) string {
+	procedure = strings.TrimSpace(procedure)
+	if index := strings.LastIndex(procedure, "/"); index >= 0 {
+		return procedure[index+1:]
+	}
+	return procedure
 }
 
 func accessAuditRoute(r *http.Request) string {

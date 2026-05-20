@@ -1695,6 +1695,53 @@ func TestAuthMiddlewareProtectsNonPublicRoutes(t *testing.T) {
 	}
 }
 
+func TestAuthenticateRequestPrefersStructuredCredentialMetadata(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/sources", nil)
+	req.Header.Set("Authorization", "Bearer shared-token")
+	principal, ok := authenticateRequest(config.AuthConfig{
+		APIKeys: []config.APIKey{{
+			Key:       "shared-token",
+			Principal: "legacy",
+			TenantID:  "writer",
+		}},
+		APICredentials: []config.APICredential{{
+			Key:            "shared-token",
+			ID:             "legacy-api-key-1",
+			ClientID:       "legacy-api-key",
+			Principal:      "structured",
+			TenantID:       "writer",
+			AllowedTenants: []string{"writer"},
+		}},
+	}, req)
+	if !ok {
+		t.Fatal("authenticateRequest() ok = false, want true")
+	}
+	for key, want := range map[string]string{
+		"auth_mode":     "api_credential",
+		"credential_id": "legacy-api-key-1",
+		"client_id":     "legacy-api-key",
+		"principal":     "structured",
+		"tenant_id":     "writer",
+	} {
+		var got string
+		switch key {
+		case "auth_mode":
+			got = principal.AuthMode
+		case "credential_id":
+			got = principal.CredentialID
+		case "client_id":
+			got = principal.ClientID
+		case "principal":
+			got = principal.Name
+		case "tenant_id":
+			got = principal.TenantID
+		}
+		if got != want {
+			t.Fatalf("principal %s = %q, want %q", key, got, want)
+		}
+	}
+}
+
 func TestAuthMiddlewareEmitsAccessAuditEvents(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {
@@ -1722,6 +1769,8 @@ func TestAuthMiddlewareEmitsAccessAuditEvents(t *testing.T) {
 			t.Fatalf("NewRequest: %v", err)
 		}
 		req.Header.Set("Authorization", "Bearer test-key")
+		req.Header.Set("X-Forwarded-For", "198.51.100.7, 10.0.0.5")
+		req.Header.Set("X-Request-ID", "audit-request-1")
 		resp, err := server.Client().Do(req)
 		if err != nil {
 			t.Fatalf("GET /sources with auth error = %v", err)
@@ -1733,15 +1782,22 @@ func TestAuthMiddlewareEmitsAccessAuditEvents(t *testing.T) {
 	})
 	payload := decodeBootstrapTelemetryPayload(t, stderr)
 	for key, want := range map[string]any{
-		"kind":      "event",
-		"name":      "cerebro.api.access",
-		"outcome":   "allowed",
-		"status":    float64(http.StatusOK),
-		"method":    http.MethodGet,
-		"route":     "GET /sources",
-		"tenant_id": "writer",
-		"principal": "ci",
-		"auth_mode": "api_key",
+		"kind":                "event",
+		"name":                "cerebro.api.access",
+		"outcome":             "allowed",
+		"status":              float64(http.StatusOK),
+		"method":              http.MethodGet,
+		"route":               "GET /sources",
+		"tenant_id":           "writer",
+		"effective_tenant_id": "writer",
+		"requested_tenant_id": "writer",
+		"principal_tenant_id": "writer",
+		"principal":           "ci",
+		"auth_mode":           "api_key",
+		"operation_family":    "source",
+		"operation_type":      "read",
+		"client_ip":           "198.51.100.7",
+		"request_id":          "audit-request-1",
 	} {
 		if got := payload[key]; got != want {
 			t.Fatalf("audit payload[%q] = %#v, want %#v; payload=%#v", key, got, want, payload)
@@ -1790,12 +1846,16 @@ func TestAuthMiddlewareEmitsDeniedAccessAuditEvents(t *testing.T) {
 	})
 	unauthPayload := decodeBootstrapTelemetryPayload(t, unauthStderr)
 	for key, want := range map[string]any{
-		"name":          "cerebro.api.access",
-		"outcome":       "denied",
-		"status":        float64(http.StatusUnauthorized),
-		"route":         "GET /sources",
-		"tenant_id":     "writer",
-		"denial_reason": "unauthenticated",
+		"name":                "cerebro.api.access",
+		"outcome":             "denied",
+		"status":              float64(http.StatusUnauthorized),
+		"route":               "GET /sources",
+		"tenant_id":           "writer",
+		"effective_tenant_id": "writer",
+		"requested_tenant_id": "writer",
+		"operation_family":    "source",
+		"operation_type":      "read",
+		"denial_reason":       "unauthenticated",
 	} {
 		if got := unauthPayload[key]; got != want {
 			t.Fatalf("unauth audit payload[%q] = %#v, want %#v; payload=%#v", key, got, want, unauthPayload)
@@ -1827,9 +1887,14 @@ func TestAuthMiddlewareEmitsDeniedAccessAuditEvents(t *testing.T) {
 		"status":              float64(http.StatusForbidden),
 		"route":               "GET /sources",
 		"tenant_id":           "other",
+		"effective_tenant_id": "writer",
+		"requested_tenant_id": "other",
 		"principal":           "ci",
 		"principal_tenant_id": "writer",
 		"auth_mode":           "api_key",
+		"operation_family":    "source",
+		"operation_type":      "read",
+		"tenant_mismatch":     true,
 		"denial_reason":       "tenant_forbidden",
 	} {
 		if got := forbiddenPayload[key]; got != want {
@@ -1903,6 +1968,43 @@ func TestAccessAuditRemoteIPDropsPort(t *testing.T) {
 	} {
 		if got := accessAuditRemoteIP(tt.raw); got != tt.want {
 			t.Fatalf("accessAuditRemoteIP(%q) = %q, want %q", tt.raw, got, tt.want)
+		}
+	}
+}
+
+func TestAccessAuditClientIPTrustsForwardedForFromPrivateRemote(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/sources", nil)
+	req.RemoteAddr = "10.0.0.5:54321"
+	req.Header.Set("X-Forwarded-For", "198.51.100.10, 10.0.0.5")
+	if got := accessAuditClientIP(req); got != "198.51.100.10" {
+		t.Fatalf("accessAuditClientIP(private remote) = %q, want forwarded client", got)
+	}
+
+	req.RemoteAddr = "203.0.113.20:54321"
+	if got := accessAuditClientIP(req); got != "" {
+		t.Fatalf("accessAuditClientIP(public remote) = %q, want empty", got)
+	}
+}
+
+func TestAccessAuditOperationClassifiesFamiliesAndSensitiveActions(t *testing.T) {
+	for _, tt := range []struct {
+		method        string
+		path          string
+		route         string
+		family        string
+		operationType string
+		sensitive     bool
+	}{
+		{method: http.MethodGet, path: "/sources/github/read", route: "GET /sources/{sourceID}/read", family: "source", operationType: "read", sensitive: true},
+		{method: http.MethodPost, path: "/source-runtimes/runtime-1/sync", route: "POST /source-runtimes/{runtimeID}/sync", family: "source_runtime", operationType: "write", sensitive: true},
+		{method: http.MethodGet, path: "/platform/graph/neighborhood", route: "GET /platform/graph/neighborhood", family: "graph", operationType: "read", sensitive: false},
+		{method: http.MethodPost, path: "/cerebro.v1.BootstrapService/SyncSourceRuntime", route: "/cerebro.v1.BootstrapService/{Procedure}", family: "source_runtime", operationType: "write", sensitive: true},
+		{method: http.MethodPost, path: "/cerebro.v1.BootstrapService/GetEntityNeighborhood", route: "/cerebro.v1.BootstrapService/{Procedure}", family: "graph", operationType: "read", sensitive: false},
+	} {
+		req := httptest.NewRequest(tt.method, tt.path, nil)
+		got := accessAuditOperation(req, tt.route)
+		if got.Family != tt.family || got.Type != tt.operationType || got.SensitiveAction != tt.sensitive {
+			t.Fatalf("accessAuditOperation(%s %s) = %#v, want family=%q type=%q sensitive=%v", tt.method, tt.path, got, tt.family, tt.operationType, tt.sensitive)
 		}
 	}
 }
@@ -2111,15 +2213,19 @@ func TestScopedCosmoCredentialAuditsGRPCProcedureDenials(t *testing.T) {
 	})
 	payload := decodeBootstrapTelemetryPayload(t, stderr)
 	for key, want := range map[string]any{
-		"name":              "cerebro.api.access",
-		"outcome":           "denied",
-		"status":            float64(http.StatusOK),
-		"route":             "/cerebro.v1.BootstrapService/{Procedure}",
-		"connect_procedure": "cerebro.v1.BootstrapService/SyncSourceRuntime",
-		"connect_code":      "permission_denied",
-		"denial_reason":     "authorization_failed",
-		"principal":         "cosmo-security",
-		"auth_mode":         "api_credential",
+		"name":                "cerebro.api.access",
+		"outcome":             "denied",
+		"status":              float64(http.StatusOK),
+		"route":               "/cerebro.v1.BootstrapService/{Procedure}",
+		"connect_procedure":   "cerebro.v1.BootstrapService/SyncSourceRuntime",
+		"connect_code":        "permission_denied",
+		"denial_reason":       "authorization_failed",
+		"principal":           "cosmo-security",
+		"principal_tenant_id": "writer",
+		"auth_mode":           "api_credential",
+		"operation_family":    "source_runtime",
+		"operation_type":      "write",
+		"sensitive_action":    true,
 	} {
 		if got := payload[key]; got != want {
 			t.Fatalf("gRPC audit payload[%q] = %#v, want %#v; payload=%#v", key, got, want, payload)
