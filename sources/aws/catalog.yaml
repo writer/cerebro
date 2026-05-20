@@ -4,6 +4,7 @@ description: AWS IAM inventory and CloudTrail source.
 emitted_kinds:
   - aws.access_key
   - aws.cloudtrail
+  - aws.effective_permission
   - aws.iam_group
   - aws.iam_group_membership
   - aws.iam_role

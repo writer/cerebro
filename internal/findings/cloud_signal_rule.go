@@ -80,6 +80,7 @@ func newCloudSignalRules() []Rule {
 			eventKinds: capabilities.EventKinds(cloudCapabilityPrivilegePath),
 			predicate:  matchesCloudPrivilegePath,
 		}),
+		newCloudPublicExposurePrivilegedPrincipalRule(),
 	}
 }
 

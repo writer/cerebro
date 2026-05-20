@@ -1,0 +1,200 @@
+package findings
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"google.golang.org/protobuf/proto"
+
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
+)
+
+var _ GraphRule = (*cloudPublicExposurePrivilegedPrincipalRule)(nil)
+
+const (
+	cloudPublicExposurePrivilegedPrincipalRuleID   = "cloud-public-exposure-privileged-principal"
+	cloudPublicExposurePrivilegedPrincipalKind     = "finding.cloud_public_exposure_privileged_principal"
+	cloudPublicExposurePrivilegedPrincipalRowLimit = 250
+)
+
+type cloudPublicExposurePrivilegedPrincipalRule struct {
+	definition RuleDefinition
+}
+
+func newCloudPublicExposurePrivilegedPrincipalRule() Rule {
+	return &cloudPublicExposurePrivilegedPrincipalRule{
+		definition: RuleDefinition{
+			ID:          cloudPublicExposurePrivilegedPrincipalRuleID,
+			Name:        "Cloud Public Exposure With Privileged Principal",
+			Description: "Detect cloud accounts where public reachability and admin-equivalent permissions intersect.",
+			SourceID:    "cloud",
+			EventKinds:  []string{"aws.effective_permission", "aws.public_endpoint", "aws.resource_exposure"},
+			OutputKind:  cloudPublicExposurePrivilegedPrincipalKind,
+			Severity:    "CRITICAL",
+			Status:      findingStatusOpen,
+			Maturity:    "test",
+			Tags:        []string{"cloud", "attack-path", "public-exposure", "privilege-escalation", "attack.t1190", "attack.t1098"},
+			FalsePositives: []string{
+				"Approved public endpoint in an account where privileged access is intentionally restricted by compensating controls not yet modeled in the graph.",
+				"Transient deployment or bootstrap permissions during a documented maintenance window.",
+			},
+			Runbook: "Review the public endpoint/resource and privileged principal in the same cloud account. Remove public ingress where unnecessary, reduce the principal permission scope, and document approved exceptions.",
+			FingerprintFields: []string{
+				"cloud_account_urn",
+				"exposed_resource_urn",
+				"principal_urn",
+				"permission_urn",
+			},
+			ControlRefs: []ports.FindingControlRef{
+				{FrameworkName: "SOC 2", ControlID: "CC6.6"},
+				{FrameworkName: "ISO 27001:2022", ControlID: "A.8.20"},
+			},
+		},
+	}
+}
+
+func (r *cloudPublicExposurePrivilegedPrincipalRule) Spec() *cerebrov1.RuleSpec {
+	if r == nil {
+		return nil
+	}
+	return proto.Clone(r.definition.RuleSpec()).(*cerebrov1.RuleSpec)
+}
+
+func (r *cloudPublicExposurePrivilegedPrincipalRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool {
+	if runtime == nil || !strings.EqualFold(strings.TrimSpace(runtime.GetSourceId()), "aws") {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(runtime.GetConfig()["family"]), "effective_permission")
+}
+
+func (r *cloudPublicExposurePrivilegedPrincipalRule) Evaluate(context.Context, *cerebrov1.SourceRuntime, *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
+	return nil, nil
+}
+
+func (r *cloudPublicExposurePrivilegedPrincipalRule) QueryFor(runtime *cerebrov1.SourceRuntime) ports.CypherQueryRequest {
+	if runtime == nil || strings.TrimSpace(runtime.GetTenantId()) == "" {
+		return ports.CypherQueryRequest{}
+	}
+	return ports.CypherQueryRequest{
+		Query: `MATCH (public:Entity {tenant_id: $tenant_id})-[reach:RELATION {relation: 'can_reach'}]->(exposed:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'belongs_to'}]->(account:Entity {tenant_id: $tenant_id, entity_type: 'cloud.account'})
+MATCH (principal:Entity {tenant_id: $tenant_id})-[access:RELATION]->(permission:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'belongs_to'}]->(account)
+WHERE public.entity_type ENDS WITH '.public_principal'
+  AND access.relation IN ['can_admin', 'can_perform', 'can_assume', 'can_impersonate']
+  AND (
+    access.relation <> 'can_perform'
+    OR coalesce(access.attributes_json, '') CONTAINS '"is_admin":"true"'
+    OR coalesce(access.attributes_json, '') CONTAINS '"privilege_level":"admin"'
+    OR coalesce(access.attributes_json, '') CONTAINS 'AdministratorAccess'
+    OR coalesce(access.attributes_json, '') CONTAINS '"permission":"*"'
+  )
+RETURN public.urn AS public_urn,
+       public.entity_type AS public_entity_type,
+       public.label AS public_label,
+       exposed.urn AS exposed_urn,
+       exposed.entity_type AS exposed_entity_type,
+       exposed.label AS exposed_label,
+       account.urn AS account_urn,
+       account.label AS account_label,
+       principal.urn AS principal_urn,
+       principal.entity_type AS principal_entity_type,
+       principal.label AS principal_label,
+       permission.urn AS permission_urn,
+       permission.entity_type AS permission_entity_type,
+       permission.label AS permission_label,
+       reach.relation AS reach_relation,
+       access.relation AS access_relation,
+       coalesce(access.attributes_json, '') AS access_attributes_json
+ORDER BY account.label, exposed.label, principal.label, permission.label
+LIMIT $row_limit`,
+		Params: map[string]any{
+			"tenant_id": strings.TrimSpace(runtime.GetTenantId()),
+			"row_limit": int64(cloudPublicExposurePrivilegedPrincipalRowLimit),
+		},
+		RowLimit: cloudPublicExposurePrivilegedPrincipalRowLimit,
+	}
+}
+
+func (r *cloudPublicExposurePrivilegedPrincipalRule) EvaluateRows(_ context.Context, runtime *cerebrov1.SourceRuntime, rows []ports.CypherRow) ([]*ports.FindingRecord, error) {
+	if r == nil || runtime == nil || len(rows) == 0 {
+		return nil, nil
+	}
+	findings := make([]*ports.FindingRecord, 0, len(rows))
+	now := time.Now().UTC()
+	for _, row := range rows {
+		finding := r.buildFinding(runtime, row, now)
+		if finding != nil {
+			findings = append(findings, finding)
+		}
+	}
+	return findings, nil
+}
+
+func (r *cloudPublicExposurePrivilegedPrincipalRule) buildFinding(runtime *cerebrov1.SourceRuntime, row ports.CypherRow, now time.Time) *ports.FindingRecord {
+	accountURN := cypherRowString(row, "account_urn")
+	exposedURN := cypherRowString(row, "exposed_urn")
+	principalURN := cypherRowString(row, "principal_urn")
+	permissionURN := cypherRowString(row, "permission_urn")
+	if accountURN == "" || exposedURN == "" || principalURN == "" || permissionURN == "" {
+		return nil
+	}
+	accountLabel := cypherRowString(row, "account_label")
+	exposedLabel := cypherRowString(row, "exposed_label")
+	principalLabel := cypherRowString(row, "principal_label")
+	permissionLabel := cypherRowString(row, "permission_label")
+	attributes := map[string]string{
+		"access_relation":       cypherRowString(row, "access_relation"),
+		"cloud_account_label":   accountLabel,
+		"cloud_account_urn":     accountURN,
+		"exposed_resource_type": cypherRowString(row, "exposed_entity_type"),
+		"exposed_resource_urn":  exposedURN,
+		"permission_type":       cypherRowString(row, "permission_entity_type"),
+		"permission_urn":        permissionURN,
+		"principal_type":        cypherRowString(row, "principal_entity_type"),
+		"principal_urn":         principalURN,
+		"public_principal_urn":  cypherRowString(row, "public_urn"),
+		"reach_relation":        cypherRowString(row, "reach_relation"),
+		"source_runtime_id":     strings.TrimSpace(runtime.GetId()),
+	}
+	for key, value := range r.definition.AttributeMap() {
+		attributes["rule_"+key] = value
+	}
+	trimEmptyAttributes(attributes)
+	fingerprint := hashFindingFingerprint(r.definition.ID, accountURN, exposedURN, principalURN, permissionURN)
+	summary := fmt.Sprintf("Publicly reachable cloud resource %s shares account %s with privileged principal %s via %s", firstNonEmpty(exposedLabel, exposedURN), firstNonEmpty(accountLabel, accountURN), firstNonEmpty(principalLabel, principalURN), firstNonEmpty(permissionLabel, permissionURN))
+	graphRows := []*cerebrov1.GraphEvidenceRow{
+		newGraphEvidenceRow("cloud_attack_path", map[string]string{
+			"account":    firstNonEmpty(accountLabel, accountURN),
+			"permission": firstNonEmpty(permissionLabel, permissionURN),
+			"principal":  firstNonEmpty(principalLabel, principalURN),
+			"resource":   firstNonEmpty(exposedLabel, exposedURN),
+		},
+			newGraphEvidencePath(cypherRowString(row, "public_urn"), cypherRowString(row, "public_label"), cypherRowString(row, "public_entity_type"), cypherRowString(row, "reach_relation"), exposedURN, exposedLabel, cypherRowString(row, "exposed_entity_type"), nil),
+			newGraphEvidencePath(principalURN, principalLabel, cypherRowString(row, "principal_entity_type"), cypherRowString(row, "access_relation"), permissionURN, permissionLabel, cypherRowString(row, "permission_entity_type"), edgeStringAttributes(cypherRowString(row, "access_attributes_json"))),
+		),
+	}
+	return &ports.FindingRecord{
+		ID:                fingerprint,
+		Fingerprint:       fingerprint,
+		TenantID:          strings.TrimSpace(runtime.GetTenantId()),
+		RuntimeID:         strings.TrimSpace(runtime.GetId()),
+		RuleID:            r.definition.ID,
+		Title:             r.definition.Name,
+		Severity:          r.definition.Severity,
+		Status:            r.definition.Status,
+		Summary:           summary,
+		ResourceURNs:      deduplicateStrings([]string{exposedURN, principalURN, permissionURN, accountURN}),
+		ObservedPolicyIDs: []string{permissionURN},
+		PolicyID:          permissionURN,
+		PolicyName:        firstNonEmpty(permissionLabel, permissionURN),
+		CheckID:           r.definition.ID,
+		CheckName:         r.definition.Name,
+		ControlRefs:       cloneFindingControlRefs(r.definition.ControlRefs),
+		GraphEvidenceRows: graphRows,
+		Attributes:        attributes,
+		FirstObservedAt:   now,
+		LastObservedAt:    now,
+	}
+}

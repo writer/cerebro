@@ -1769,9 +1769,13 @@ func TestProjectCloudExposureAndPrivilegePaths(t *testing.T) {
 	}
 
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_public_principal:public_internet", relationCanReach, "urn:cerebro:writer:aws_security_group:arn:aws:ec2:us-east-1:123456789012:security-group/sg-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_security_group:arn:aws:ec2:us-east-1:123456789012:security-group/sg-1", relationCanReach, "urn:cerebro:writer:aws_public_principal:public_internet")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_security_group:arn:aws:ec2:us-east-1:123456789012:security-group/sg-1", relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
 	assertProjectedLink(t, state, "urn:cerebro:writer:azure_network_security_group:nsg-1", relationBelongsTo, "urn:cerebro:writer:cloud_account:sub-1")
 	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:azure_network_security_group:nsg-1", relationBelongsTo, "urn:cerebro:writer:cloud_account:tenant-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_public_principal:public_internet", relationCanReach, "urn:cerebro:writer:aws_network_interface:eni-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationCanReach, "urn:cerebro:writer:aws_public_principal:public_internet")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationRepresents, "urn:cerebro:writer:internet_host:ec2-203-0-113-10.compute-1.amazonaws.com")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationRepresents, "urn:cerebro:writer:internet_host:d111111abcdef8.cloudfront.net")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationRepresents, "urn:cerebro:writer:internet_host:app.writer.com")
@@ -1869,6 +1873,7 @@ func TestProjectEffectivePermissionsKubernetesRuntimeAndData(t *testing.T) {
 	}
 
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_user:admin@writer.com", relationCanPerform, "urn:cerebro:writer:aws_account:123456789012")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_account:123456789012", relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
 	assertProjectedLink(t, state, "urn:cerebro:writer:kubernetes_workload:prod-cluster:payments:workload-1", relationRunsAs, "urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:api")
 	assertProjectedLink(t, state, "urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:api", relationCanImpersonate, "urn:cerebro:writer:gcp_service_account:payments-sa@writer-prod.iam.gserviceaccount.com")
 	assertProjectedLink(t, state, "urn:cerebro:writer:kubernetes_workload:prod-cluster:payments:workload-1", relationHasEvidence, "urn:cerebro:writer:runtime_evidence:evidence-1")
