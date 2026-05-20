@@ -748,20 +748,20 @@ func (s *Store) ensureFindingTables(ctx context.Context) error {
 }
 
 // BackfillFindingRisk updates existing findings with the current risk model.
-func (s *Store) BackfillFindingRisk(ctx context.Context) error {
+func (s *Store) BackfillFindingRisk(ctx context.Context) ([]*ports.FindingRecord, error) {
 	if s == nil || s.db == nil {
-		return errors.New("postgres is not configured")
+		return nil, errors.New("postgres is not configured")
 	}
 	if err := s.ensureFindingTables(ctx); err != nil {
-		return err
+		return nil, err
 	}
 	return s.backfillFindingRisk(ctx)
 }
 
-func (s *Store) backfillFindingRisk(ctx context.Context) (err error) {
+func (s *Store) backfillFindingRisk(ctx context.Context) (updated []*ports.FindingRecord, err error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+findingSelectColumns+` FROM findings WHERE risk_model_version <> $1 OR risk_score = 0`, "likelihood-impact-v1")
 	if err != nil {
-		return fmt.Errorf("list findings for risk backfill: %w", err)
+		return nil, fmt.Errorf("list findings for risk backfill: %w", err)
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil && err == nil {
@@ -777,11 +777,11 @@ func (s *Store) backfillFindingRisk(ctx context.Context) (err error) {
 	for rows.Next() {
 		var row findingRow
 		if err := scanFindingRow(rows, &row); err != nil {
-			return fmt.Errorf("scan finding risk backfill row: %w", err)
+			return nil, fmt.Errorf("scan finding risk backfill row: %w", err)
 		}
 		record, err := row.record()
 		if err != nil {
-			return fmt.Errorf("decode finding risk backfill row: %w", err)
+			return nil, fmt.Errorf("decode finding risk backfill row: %w", err)
 		}
 		updates = append(updates, riskBackfill{
 			id:   strings.TrimSpace(record.ID),
@@ -789,17 +789,19 @@ func (s *Store) backfillFindingRisk(ctx context.Context) (err error) {
 		})
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate finding risk backfill rows: %w", err)
+		return nil, fmt.Errorf("iterate finding risk backfill rows: %w", err)
 	}
 	for _, update := range updates {
 		if update.id == "" {
 			continue
 		}
-		if _, err := s.updateFindingRiskColumns(ctx, update.id, update.risk, findingRiskAttributesForUpdate(update.risk)); err != nil {
-			return fmt.Errorf("backfill finding %q risk: %w", update.id, err)
+		stored, err := s.updateFindingRiskColumns(ctx, update.id, update.risk, findingRiskAttributesForUpdate(update.risk))
+		if err != nil {
+			return nil, fmt.Errorf("backfill finding %q risk: %w", update.id, err)
 		}
+		updated = append(updated, stored)
 	}
-	return nil
+	return updated, nil
 }
 
 func (s *Store) updateFindingRiskColumns(ctx context.Context, findingID string, risk ports.FindingRisk, attributes map[string]string) (*ports.FindingRecord, error) {

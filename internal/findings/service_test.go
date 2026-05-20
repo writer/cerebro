@@ -82,6 +82,8 @@ type stubFindingStore struct {
 	evidenceList              ports.ListFindingEvidenceRequest
 	dropReturnedGraphEvidence bool
 	upsertCount               int
+	backfillRiskResults       []*ports.FindingRecord
+	backfillRiskErr           error
 }
 
 func (s *stubFindingStore) Ping(context.Context) error { return nil }
@@ -127,6 +129,17 @@ func (s *stubFindingStore) UpdateFindingRisk(_ context.Context, request ports.Fi
 	}
 	s.findings[updated.ID] = updated
 	return cloneFinding(updated), nil
+}
+
+func (s *stubFindingStore) BackfillFindingRisk(context.Context) ([]*ports.FindingRecord, error) {
+	if s.backfillRiskErr != nil {
+		return nil, s.backfillRiskErr
+	}
+	results := make([]*ports.FindingRecord, 0, len(s.backfillRiskResults))
+	for _, finding := range s.backfillRiskResults {
+		results = append(results, cloneFinding(finding))
+	}
+	return results, nil
 }
 
 func (s *stubFindingStore) GetFinding(_ context.Context, id string) (*ports.FindingRecord, error) {
@@ -2898,6 +2911,52 @@ func TestPersistFindingRiskUsesRiskOnlyUpdate(t *testing.T) {
 	}
 	if stored.RiskScore == 0 {
 		t.Fatal("persistFindingRisk().RiskScore = 0, want refreshed risk")
+	}
+}
+
+func TestBackfillFindingRiskProjectsUpdatedFindings(t *testing.T) {
+	store := &stubFindingStore{
+		backfillRiskResults: []*ports.FindingRecord{
+			{
+				ID:        "finding-1",
+				TenantID:  "tenant-a",
+				RuntimeID: "runtime-audit",
+				RuleID:    "rule-1",
+				Title:     "Backfilled risk finding",
+				Status:    "open",
+				Severity:  "HIGH",
+				FindingRisk: ports.FindingRisk{
+					RiskScore:        83,
+					LikelihoodScore:  80,
+					ImpactScore:      86,
+					ConfidenceScore:  70,
+					LikelihoodLevel:  "high",
+					ImpactLevel:      "critical",
+					RiskReasons:      []string{"external_exposure"},
+					RiskModelVersion: defaultFindingRiskModelVersion,
+				},
+				LastObservedAt: time.Now().UTC().Add(-7 * 24 * time.Hour),
+			},
+		},
+	}
+	graphStore := &stubGraphStore{}
+	appendLog := &recordingAppendLog{}
+	service := New(nil, nil, store, store, store, store).WithGraphStore(graphStore).WithAppendLog(appendLog)
+	if err := service.BackfillFindingRisk(context.Background()); err != nil {
+		t.Fatalf("BackfillFindingRisk() error = %v", err)
+	}
+	graphFinding := graphStore.entities["urn:cerebro:tenant-a:finding:finding-1"]
+	if graphFinding == nil {
+		t.Fatal("BackfillFindingRisk() did not project finding anchor")
+	}
+	if got := graphFinding.Attributes["risk_score"]; got != "83" {
+		t.Fatalf("projected risk_score = %q, want 83", got)
+	}
+	if got := len(appendLog.events); got != 1 {
+		t.Fatalf("len(appended events) = %d, want 1", got)
+	}
+	if eventTime := appendLog.events[0].GetOccurredAt().AsTime(); time.Since(eventTime) > time.Minute {
+		t.Fatalf("backfill event occurred_at = %s, want startup time", eventTime.Format(time.RFC3339Nano))
 	}
 }
 

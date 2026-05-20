@@ -2236,6 +2236,11 @@ func (a *App) findingService() *findings.Service {
 	).WithGraphStore(sourceProjectionGraphStore(a.deps.GraphStore)).WithGraphQueryStore(graphQueryStore(a.deps.GraphStore)).WithAppendLog(a.deps.AppendLog)
 }
 
+// BackfillFindingRisk runs server-start finding risk migration work.
+func (a *App) BackfillFindingRisk(ctx context.Context) error {
+	return a.findingService().BackfillFindingRisk(ctx)
+}
+
 func (a *App) knowledgeService() *knowledge.Service {
 	return knowledge.New(
 		graphQueryStore(a.deps.GraphStore),
