@@ -106,8 +106,8 @@ config:
         - orchestrator
         - run
         - runtime_id=writer-okta-audit-2026-q1
-        - page_limit=10
-        - graph_page_limit=10
+        - page_limit=5
+        - graph_page_limit=5
         - event_limit=1000
     - name: okta-user-inventory
       scheduleExpression: rate(30 minutes)
