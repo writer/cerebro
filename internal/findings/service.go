@@ -671,12 +671,13 @@ func (s *Service) BackfillFindingRisk(ctx context.Context) error {
 		return ErrRuntimeUnavailable
 	}
 	backfiller, ok := s.store.(interface {
-		BackfillFindingRisk(context.Context) ([]*ports.FindingRecord, error)
+		BackfillFindingRisk(context.Context, bool) ([]*ports.FindingRecord, error)
 	})
 	if !ok {
 		return nil
 	}
-	updated, err := backfiller.BackfillFindingRisk(ctx)
+	includeUnprojected := s.graph != nil
+	updated, err := backfiller.BackfillFindingRisk(ctx, includeUnprojected)
 	if err != nil {
 		return err
 	}
@@ -692,7 +693,7 @@ func (s *Service) BackfillFindingRisk(ctx context.Context) error {
 		if err := s.projectFindingAnchorRevision(ctx, finding, revision); err != nil {
 			return fmt.Errorf("project finding %q backfilled risk: %w", finding.ID, err)
 		}
-		if riskUpdater != nil {
+		if includeUnprojected && riskUpdater != nil {
 			_, err := riskUpdater.UpdateFindingRisk(ctx, ports.FindingRiskUpdate{
 				FindingID:   finding.ID,
 				FindingRisk: finding.FindingRisk,

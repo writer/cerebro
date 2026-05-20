@@ -66,24 +66,25 @@ func (s *recordingAppendLog) Append(_ context.Context, event *cerebrov1.EventEnv
 }
 
 type stubFindingStore struct {
-	findings                  map[string]*ports.FindingRecord
-	request                   ports.ListFindingsRequest
-	listFindingsRequests      []ports.ListFindingsRequest
-	listFindingsErr           error
-	claims                    map[string]*ports.ClaimRecord
-	claimListRequest          ports.ListClaimsRequest
-	runs                      map[string]*cerebrov1.FindingEvaluationRun
-	runList                   ports.ListFindingEvaluationRunsRequest
-	runPutCount               int
-	failRunPutOn              int
-	failRunPutErr             error
-	failRunPutByCall          map[int]error
-	evidence                  map[string]*cerebrov1.FindingEvidence
-	evidenceList              ports.ListFindingEvidenceRequest
-	dropReturnedGraphEvidence bool
-	upsertCount               int
-	backfillRiskResults       []*ports.FindingRecord
-	backfillRiskErr           error
+	findings                   map[string]*ports.FindingRecord
+	request                    ports.ListFindingsRequest
+	listFindingsRequests       []ports.ListFindingsRequest
+	listFindingsErr            error
+	claims                     map[string]*ports.ClaimRecord
+	claimListRequest           ports.ListClaimsRequest
+	runs                       map[string]*cerebrov1.FindingEvaluationRun
+	runList                    ports.ListFindingEvaluationRunsRequest
+	runPutCount                int
+	failRunPutOn               int
+	failRunPutErr              error
+	failRunPutByCall           map[int]error
+	evidence                   map[string]*cerebrov1.FindingEvidence
+	evidenceList               ports.ListFindingEvidenceRequest
+	dropReturnedGraphEvidence  bool
+	upsertCount                int
+	backfillRiskResults        []*ports.FindingRecord
+	backfillRiskErr            error
+	backfillIncludeUnprojected bool
 }
 
 func (s *stubFindingStore) Ping(context.Context) error { return nil }
@@ -131,7 +132,8 @@ func (s *stubFindingStore) UpdateFindingRisk(_ context.Context, request ports.Fi
 	return cloneFinding(updated), nil
 }
 
-func (s *stubFindingStore) BackfillFindingRisk(context.Context) ([]*ports.FindingRecord, error) {
+func (s *stubFindingStore) BackfillFindingRisk(_ context.Context, includeUnprojected bool) ([]*ports.FindingRecord, error) {
+	s.backfillIncludeUnprojected = includeUnprojected
 	if s.backfillRiskErr != nil {
 		return nil, s.backfillRiskErr
 	}
@@ -2951,6 +2953,9 @@ func TestBackfillFindingRiskProjectsUpdatedFindings(t *testing.T) {
 	if err := service.BackfillFindingRisk(context.Background()); err != nil {
 		t.Fatalf("BackfillFindingRisk() error = %v", err)
 	}
+	if !store.backfillIncludeUnprojected {
+		t.Fatal("BackfillFindingRisk() did not request unprojected rows with graph configured")
+	}
 	graphFinding := graphStore.entities["urn:cerebro:tenant-a:finding:finding-1"]
 	if graphFinding == nil {
 		t.Fatal("BackfillFindingRisk() did not project finding anchor")
@@ -2972,6 +2977,36 @@ func TestBackfillFindingRiskProjectsUpdatedFindings(t *testing.T) {
 	}
 	if got := store.findings["finding-1"].Attributes[FindingRiskGraphProjectedModelVersionAttribute]; got != defaultFindingRiskModelVersion {
 		t.Fatalf("projection marker = %q, want %q", got, defaultFindingRiskModelVersion)
+	}
+}
+
+func TestBackfillFindingRiskDoesNotMarkProjectedWithoutGraph(t *testing.T) {
+	finding := &ports.FindingRecord{
+		ID:        "finding-1",
+		TenantID:  "tenant-a",
+		RuntimeID: "runtime-audit",
+		RuleID:    "rule-1",
+		Title:     "Backfilled risk finding",
+		Status:    "open",
+		Severity:  "HIGH",
+		FindingRisk: ports.FindingRisk{
+			RiskScore:        83,
+			RiskModelVersion: defaultFindingRiskModelVersion,
+		},
+	}
+	store := &stubFindingStore{
+		findings:            map[string]*ports.FindingRecord{finding.ID: cloneFinding(finding)},
+		backfillRiskResults: []*ports.FindingRecord{finding},
+	}
+	service := New(nil, nil, store, store, store, store)
+	if err := service.BackfillFindingRisk(context.Background()); err != nil {
+		t.Fatalf("BackfillFindingRisk() error = %v", err)
+	}
+	if store.backfillIncludeUnprojected {
+		t.Fatal("BackfillFindingRisk() requested unprojected rows without graph configured")
+	}
+	if got := store.findings["finding-1"].Attributes[FindingRiskGraphProjectedModelVersionAttribute]; got != "" {
+		t.Fatalf("projection marker = %q, want empty without graph", got)
 	}
 }
 
