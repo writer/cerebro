@@ -759,7 +759,7 @@ func (s *Store) BackfillFindingRisk(ctx context.Context) ([]*ports.FindingRecord
 }
 
 func (s *Store) backfillFindingRisk(ctx context.Context) (updated []*ports.FindingRecord, err error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+findingSelectColumns+` FROM findings WHERE risk_model_version <> $1 OR risk_score = 0`, "likelihood-impact-v1")
+	rows, err := s.db.QueryContext(ctx, `SELECT `+findingSelectColumns+` FROM findings WHERE risk_model_version <> $1 OR risk_score = 0 OR COALESCE(attributes_json->>'`+findingrisk.FindingRiskGraphProjectedModelVersionAttribute+`', '') <> $1`, "likelihood-impact-v1")
 	if err != nil {
 		return nil, fmt.Errorf("list findings for risk backfill: %w", err)
 	}

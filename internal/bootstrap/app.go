@@ -2238,6 +2238,9 @@ func (a *App) findingService() *findings.Service {
 
 // BackfillFindingRisk runs server-start finding risk migration work.
 func (a *App) BackfillFindingRisk(ctx context.Context) error {
+	if findingStore(a.deps.StateStore) == nil {
+		return nil
+	}
 	return a.findingService().BackfillFindingRisk(ctx)
 }
 

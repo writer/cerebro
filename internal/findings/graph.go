@@ -48,12 +48,27 @@ func (s *Service) projectFindingAnchorRevision(ctx context.Context, finding *por
 	if strings.TrimSpace(revision) == "" {
 		event, err = workflowevents.NewFindingRecordedEvent(payload)
 	} else {
-		event, err = workflowevents.NewFindingRecordedRevisionEvent(payload, revision, time.Now().UTC())
+		refreshTime := time.Now().UTC()
+		if findingClosedStatus(payload.Finding.Status) {
+			event, err = workflowevents.NewFindingStatusChangedEvent(workflowevents.FindingStatusChanged{
+				Finding:   payload.Finding,
+				Status:    payload.Finding.Status,
+				Reason:    strings.TrimSpace(finding.StatusReason),
+				Source:    "risk_refresh",
+				UpdatedAt: refreshTime.Format(time.RFC3339Nano),
+			})
+		} else {
+			event, err = workflowevents.NewFindingRecordedRevisionEvent(payload, revision, refreshTime)
+		}
 	}
 	if err != nil {
 		return err
 	}
 	return s.recordAndProjectWorkflowEvent(ctx, event)
+}
+
+func findingClosedStatus(status string) bool {
+	return strings.EqualFold(strings.TrimSpace(status), findingStatusResolved) || strings.EqualFold(strings.TrimSpace(status), findingStatusSuppressed)
 }
 
 func (s *Service) projectFindingNote(ctx context.Context, finding *ports.FindingRecord, note ports.FindingNote) error {

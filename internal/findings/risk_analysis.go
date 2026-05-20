@@ -15,6 +15,8 @@ const defaultFindingCorrelationWindow = 24 * time.Hour
 
 const defaultFindingRiskModelVersion = "likelihood-impact-v1"
 
+const FindingRiskGraphProjectedModelVersionAttribute = "risk_graph_projected_model_version"
+
 // FindingExposureAnalysisOptions scopes source-agnostic risk correlation output.
 type FindingExposureAnalysisOptions struct {
 	Limit              int
@@ -469,11 +471,11 @@ func findingActiveThreatSignal(attributes map[string]string, action string) bool
 	if count, ok := findingAttributeInt(attributes, "active_threats", "active_threat_count"); ok && count > 0 {
 		return true
 	}
-	evidenceType := strings.ToLower(firstNonEmpty(attributes["evidence_type"], attributes["evidence_kind"], attributes["signal"], attributes["classification"]))
-	if containsAny(evidenceType, "exploit", "secret_access", "credential_use", "token_exchange", "suspicious_process", "active_threat", "infected", "malware") {
+	evidenceType := strings.ToLower(firstNonEmpty(attributes["evidence_type"], attributes["evidence_kind"], attributes["signal"]))
+	if containsAny(evidenceType, "exploit", "secret_access", "credential_use", "token_exchange", "suspicious_process", "active_threat", "infected") {
 		return true
 	}
-	return containsAny(action, "credential_use", "token_exchange", "suspicious_process", "active_threat", "exploit", "malware")
+	return containsAny(action, "credential_use", "token_exchange", "suspicious_process", "active_threat", "exploit")
 }
 
 func isProductionEnvironment(value string) bool {

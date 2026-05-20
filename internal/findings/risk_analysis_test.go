@@ -194,6 +194,16 @@ func TestAnalyzeFindingRiskContextRecognizesActiveThreatSignals(t *testing.T) {
 	}
 }
 
+func TestAnalyzeFindingRiskContextDoesNotTreatGenericMalwareClassificationAsActiveThreat(t *testing.T) {
+	now := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
+	finding := compoundRiskFinding("finding-sentinelone-mitigation", "sentinelone-mitigation-failed", "HIGH", "", "", "urn:cerebro:writer:sentinelone_agent:agent-1", "")
+	finding.Attributes = map[string]string{"classification": "Malware"}
+	context := AnalyzeFindingRiskContext(finding, now)
+	if stringSliceContains(context.Reasons, "active_threat") {
+		t.Fatalf("Risk reasons = %#v, want no active_threat for generic malware classification", context.Reasons)
+	}
+}
+
 func TestAnalyzeFindingRiskContextIgnoresExplicitNonSensitiveData(t *testing.T) {
 	now := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
 	for _, classification := range []string{"not_sensitive", "non_sensitive", "no_sensitive_data"} {

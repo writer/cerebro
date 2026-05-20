@@ -680,6 +680,9 @@ func (s *Service) BackfillFindingRisk(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	riskUpdater, _ := s.store.(interface {
+		UpdateFindingRisk(context.Context, ports.FindingRiskUpdate) (*ports.FindingRecord, error)
+	})
 	revisionTime := time.Now().UTC().Format(time.RFC3339Nano)
 	for _, finding := range updated {
 		if finding == nil {
@@ -688,6 +691,18 @@ func (s *Service) BackfillFindingRisk(ctx context.Context) error {
 		revision := fmt.Sprintf("startup-risk-backfill|%s|%s", revisionTime, strings.TrimSpace(finding.ID))
 		if err := s.projectFindingAnchorRevision(ctx, finding, revision); err != nil {
 			return fmt.Errorf("project finding %q backfilled risk: %w", finding.ID, err)
+		}
+		if riskUpdater != nil {
+			_, err := riskUpdater.UpdateFindingRisk(ctx, ports.FindingRiskUpdate{
+				FindingID:   finding.ID,
+				FindingRisk: finding.FindingRisk,
+				Attributes: map[string]string{
+					FindingRiskGraphProjectedModelVersionAttribute: finding.RiskModelVersion,
+				},
+			})
+			if err != nil {
+				return fmt.Errorf("mark finding %q backfilled risk projected: %w", finding.ID, err)
+			}
 		}
 	}
 	return nil

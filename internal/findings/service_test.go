@@ -2915,29 +2915,35 @@ func TestPersistFindingRiskUsesRiskOnlyUpdate(t *testing.T) {
 }
 
 func TestBackfillFindingRiskProjectsUpdatedFindings(t *testing.T) {
-	store := &stubFindingStore{
-		backfillRiskResults: []*ports.FindingRecord{
-			{
-				ID:        "finding-1",
-				TenantID:  "tenant-a",
-				RuntimeID: "runtime-audit",
-				RuleID:    "rule-1",
-				Title:     "Backfilled risk finding",
-				Status:    "open",
-				Severity:  "HIGH",
-				FindingRisk: ports.FindingRisk{
-					RiskScore:        83,
-					LikelihoodScore:  80,
-					ImpactScore:      86,
-					ConfidenceScore:  70,
-					LikelihoodLevel:  "high",
-					ImpactLevel:      "critical",
-					RiskReasons:      []string{"external_exposure"},
-					RiskModelVersion: defaultFindingRiskModelVersion,
-				},
-				LastObservedAt: time.Now().UTC().Add(-7 * 24 * time.Hour),
-			},
+	openFinding := &ports.FindingRecord{
+		ID:        "finding-1",
+		TenantID:  "tenant-a",
+		RuntimeID: "runtime-audit",
+		RuleID:    "rule-1",
+		Title:     "Backfilled risk finding",
+		Status:    "open",
+		Severity:  "HIGH",
+		FindingRisk: ports.FindingRisk{
+			RiskScore:        83,
+			LikelihoodScore:  80,
+			ImpactScore:      86,
+			ConfidenceScore:  70,
+			LikelihoodLevel:  "high",
+			ImpactLevel:      "critical",
+			RiskReasons:      []string{"external_exposure"},
+			RiskModelVersion: defaultFindingRiskModelVersion,
 		},
+		LastObservedAt: time.Now().UTC().Add(-7 * 24 * time.Hour),
+	}
+	closedFinding := cloneFinding(openFinding)
+	closedFinding.ID = "finding-closed"
+	closedFinding.Status = findingStatusResolved
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			openFinding.ID:   cloneFinding(openFinding),
+			closedFinding.ID: cloneFinding(closedFinding),
+		},
+		backfillRiskResults: []*ports.FindingRecord{openFinding, closedFinding},
 	}
 	graphStore := &stubGraphStore{}
 	appendLog := &recordingAppendLog{}
@@ -2952,11 +2958,20 @@ func TestBackfillFindingRiskProjectsUpdatedFindings(t *testing.T) {
 	if got := graphFinding.Attributes["risk_score"]; got != "83" {
 		t.Fatalf("projected risk_score = %q, want 83", got)
 	}
-	if got := len(appendLog.events); got != 1 {
-		t.Fatalf("len(appended events) = %d, want 1", got)
+	if closed := graphStore.entities["urn:cerebro:tenant-a:finding:finding-closed"]; closed == nil || closed.Attributes["risk_score"] != "83" {
+		t.Fatalf("closed projected finding = %#v, want risk_score 83", closed)
+	}
+	if got := len(appendLog.events); got != 2 {
+		t.Fatalf("len(appended events) = %d, want 2", got)
 	}
 	if eventTime := appendLog.events[0].GetOccurredAt().AsTime(); time.Since(eventTime) > time.Minute {
 		t.Fatalf("backfill event occurred_at = %s, want startup time", eventTime.Format(time.RFC3339Nano))
+	}
+	if got := appendLog.events[1].GetKind(); got != workflowevents.EventKindFindingStatusChanged {
+		t.Fatalf("closed finding event kind = %q, want status_changed", got)
+	}
+	if got := store.findings["finding-1"].Attributes[FindingRiskGraphProjectedModelVersionAttribute]; got != defaultFindingRiskModelVersion {
+		t.Fatalf("projection marker = %q, want %q", got, defaultFindingRiskModelVersion)
 	}
 }
 
