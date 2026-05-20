@@ -66,7 +66,9 @@ jobs:
           if grep -Eq '^infra/gcp/' changed.txt; then gcp=true; fi
           if grep -Eq '^infra/(pyproject.toml|uv.lock)$|^infra/scripts/|^infra/tests/' changed.txt; then
             aws=true
-            gcp=true
+            if grep -Ev '^infra/scripts/verify_(graph_health|source_runtime)_ecs.py$|^infra/tests/test_verify_(graph_health|source_runtime)_ecs.py$' changed.txt | grep -Eq '^infra/(pyproject.toml|uv.lock)$|^infra/scripts/|^infra/tests/'; then
+              gcp=true
+            fi
           fi
           echo "aws=${aws}" >> "$GITHUB_OUTPUT"
           echo "gcp=${gcp}" >> "$GITHUB_OUTPUT"
@@ -281,6 +283,11 @@ jobs:
           work-dir: infra/aws
           diff: true
 
+      - name: Verify graph health (sec-dev)
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/verify_graph_health_ecs.py --stack-file aws/Pulumi.sec-dev.yaml
+
       - name: Verify Cosmo source runtimes (sec-dev)
         shell: bash
         working-directory: infra
@@ -344,6 +351,11 @@ jobs:
           stack-name: go-prod
           work-dir: infra/aws
           diff: true
+
+      - name: Verify graph health (go-prod)
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/verify_graph_health_ecs.py --stack-file aws/Pulumi.go-prod.yaml
 
       - name: Verify Cosmo source runtimes (go-prod)
         shell: bash
@@ -584,6 +596,14 @@ jobs:
           stack-name: ${{ github.event.inputs.environment }}
           work-dir: infra/aws
           diff: true
+
+      - name: Verify graph health (AWS)
+        if: "!startsWith(github.event.inputs.environment, 'gcp-')"
+        shell: bash
+        working-directory: infra
+        env:
+          STACK_NAME: ${{ github.event.inputs.environment }}
+        run: uv run python scripts/verify_graph_health_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml"
 
       - name: Pulumi Up (GCP)
         if: startsWith(github.event.inputs.environment, 'gcp-')
