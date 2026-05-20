@@ -72,11 +72,12 @@ type pageProjectionResult struct {
 }
 
 type RuntimeRequest struct {
-	RuntimeID       string
-	PageLimit       uint32
-	CheckpointID    string
-	ResetCheckpoint bool
-	Trigger         string
+	RuntimeID                string
+	PageLimit                uint32
+	CheckpointID             string
+	ResetCheckpoint          bool
+	ResetCompletedCheckpoint bool
+	Trigger                  string
 }
 
 type IngestResult struct {
@@ -140,6 +141,7 @@ func (s *Service) RunRuntime(ctx context.Context, request RuntimeRequest) (resul
 		telemetry.Field{Key: "page_limit", Value: request.PageLimit},
 		telemetry.Field{Key: "checkpoint_id", Value: strings.TrimSpace(request.CheckpointID)},
 		telemetry.Field{Key: "reset_checkpoint", Value: request.ResetCheckpoint},
+		telemetry.Field{Key: "reset_completed_checkpoint", Value: request.ResetCompletedCheckpoint},
 		telemetry.Field{Key: "trigger", Value: strings.TrimSpace(request.Trigger)},
 	))
 	status := "failed"
@@ -191,14 +193,15 @@ func (s *Service) RunRuntime(ctx context.Context, request RuntimeRequest) (resul
 		return s.failRun(ctx, runStore, run, result, nil, err)
 	}
 	ingestRequest := sourceRequest{
-		SourceID:          strings.TrimSpace(runtime.GetSourceId()),
-		RuntimeID:         runtimeID,
-		SourceConfig:      runtimeConfig,
-		TenantID:          strings.TrimSpace(runtime.GetTenantId()),
-		PageLimit:         pageLimit,
-		CheckpointEnabled: true,
-		CheckpointID:      runtimeCheckpointID(request, runtime, runtimeConfig),
-		ResetCheckpoint:   request.ResetCheckpoint,
+		SourceID:                 strings.TrimSpace(runtime.GetSourceId()),
+		RuntimeID:                runtimeID,
+		SourceConfig:             runtimeConfig,
+		TenantID:                 strings.TrimSpace(runtime.GetTenantId()),
+		PageLimit:                pageLimit,
+		CheckpointEnabled:        true,
+		CheckpointID:             runtimeCheckpointID(request, runtime, runtimeConfig),
+		ResetCheckpoint:          request.ResetCheckpoint,
+		ResetCompletedCheckpoint: request.ResetCompletedCheckpoint,
 	}
 	run.SourceID = ingestRequest.SourceID
 	run.TenantID = ingestRequest.TenantID
@@ -407,15 +410,16 @@ func (s *Service) preparedConfig(ctx context.Context, runtime *cerebrov1.SourceR
 }
 
 type sourceRequest struct {
-	SourceID          string
-	RuntimeID         string
-	SourceConfig      map[string]string
-	TenantID          string
-	PageLimit         uint32
-	Cursor            *cerebrov1.SourceCursor
-	CheckpointEnabled bool
-	CheckpointID      string
-	ResetCheckpoint   bool
+	SourceID                 string
+	RuntimeID                string
+	SourceConfig             map[string]string
+	TenantID                 string
+	PageLimit                uint32
+	Cursor                   *cerebrov1.SourceCursor
+	CheckpointEnabled        bool
+	CheckpointID             string
+	ResetCheckpoint          bool
+	ResetCompletedCheckpoint bool
 }
 
 func (s *Service) ingestSource(ctx context.Context, request sourceRequest) (*IngestResult, error) {
@@ -724,7 +728,13 @@ func (s *Service) prepareCheckpoint(ctx context.Context, request sourceRequest, 
 	}
 	checkpointID := checkpointID(request)
 	result.CheckpointID = checkpointID
-	if request.ResetCheckpoint || *cursor != nil {
+	if request.ResetCheckpoint {
+		if err := resetStoredCheckpoint(ctx, checkpointStore, request); err != nil {
+			return nil, err
+		}
+		return checkpointStore, nil
+	}
+	if *cursor != nil {
 		return checkpointStore, nil
 	}
 	checkpoint, found, err := checkpointStore.GetIngestCheckpoint(ctx, checkpointID)
@@ -736,6 +746,14 @@ func (s *Service) prepareCheckpoint(ctx context.Context, request sourceRequest, 
 	}
 	result.CheckpointResumed = true
 	result.CheckpointCursor = strings.TrimSpace(checkpoint.CursorOpaque)
+	if request.ResetCompletedCheckpoint && checkpoint.Completed {
+		result.CheckpointResumed = false
+		result.CheckpointCursor = ""
+		if err := resetStoredCheckpoint(ctx, checkpointStore, request); err != nil {
+			return nil, err
+		}
+		return checkpointStore, nil
+	}
 	if checkpoint.Completed && checkpoint.CursorOpaque == "" {
 		result.CheckpointComplete = true
 		result.CheckpointAlreadyFresh = true
@@ -745,6 +763,17 @@ func (s *Service) prepareCheckpoint(ctx context.Context, request sourceRequest, 
 		*cursor = &cerebrov1.SourceCursor{Opaque: checkpoint.CursorOpaque}
 	}
 	return checkpointStore, nil
+}
+
+func resetStoredCheckpoint(ctx context.Context, checkpointStore CheckpointStore, request sourceRequest) error {
+	checkpoint := graphstore.IngestCheckpoint{
+		ID:        checkpointID(request),
+		SourceID:  strings.TrimSpace(request.SourceID),
+		TenantID:  strings.TrimSpace(request.TenantID),
+		Completed: false,
+		UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	return checkpointStore.PutIngestCheckpoint(ctx, checkpoint)
 }
 
 func normalizePageLimit(pageLimit uint32) (uint32, error) {
