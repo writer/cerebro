@@ -8,12 +8,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts.verify_graph_health_ecs import (
+    _declared_aws_families,
     _extract_json_payload,
     _declared_runtime_ids,
+    _graph_path_relations,
+    _ingest_run_limit,
     _resource_prefix,
     _verify_counts,
     _verify_current_ingest_runs,
     _verify_integrity,
+    _verify_required_graph_relations,
 )
 
 
@@ -29,6 +33,24 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             _declared_runtime_ids({"sourceRuntimes": [{"id": "runtime-a"}, {"id": "runtime-b"}, {"sourceId": "missing-id"}]}),
             {"runtime-a", "runtime-b"},
         )
+
+    def test_declared_aws_families_reads_aws_runtime_configs(self) -> None:
+        self.assertEqual(
+            _declared_aws_families(
+                {
+                    "sourceRuntimes": [
+                        {"id": "aws-a", "sourceId": "aws", "config": {"family": "effective_permission"}},
+                        {"id": "okta-a", "sourceId": "okta", "config": {"family": "user"}},
+                        {"id": "aws-b", "sourceId": "aws", "config": {"family": "public_endpoint"}},
+                    ]
+                }
+            ),
+            {"effective_permission", "public_endpoint"},
+        )
+
+    def test_ingest_run_limit_scales_with_declared_runtimes(self) -> None:
+        self.assertEqual(_ingest_run_limit({"a", "b"}), 100)
+        self.assertEqual(_ingest_run_limit({str(index) for index in range(40)}), 120)
 
     def test_extract_json_payload_from_pretty_logs(self) -> None:
         payload = _extract_json_payload(['{"nodes": 2,', ' "relations": 3}'])
@@ -108,6 +130,27 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "projected no graph records"):
             _verify_current_ingest_runs(payload)
+
+    def test_graph_path_relations_reads_patterns_and_traversals(self) -> None:
+        payload = {
+            "patterns": [{"first_relation": "can_reach", "second_relation": "belongs_to"}],
+            "traversals": [{"first_relation": "represents", "second_relation": "can_perform"}],
+        }
+        self.assertEqual(_graph_path_relations(payload), {"belongs_to", "can_perform", "can_reach", "represents"})
+
+    def test_verify_required_graph_relations_requires_attack_path_edges_for_aws(self) -> None:
+        payload = {
+            "patterns": [
+                {"first_relation": "can_reach", "second_relation": "belongs_to"},
+                {"first_relation": "represents", "second_relation": "can_perform"},
+                {"first_relation": "can_assume", "second_relation": "belongs_to"},
+            ]
+        }
+        self.assertIn("can_perform", _verify_required_graph_relations(payload, {"effective_permission", "iam_role_trust"}))
+
+    def test_verify_required_graph_relations_rejects_missing_edges(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "can_reach"):
+            _verify_required_graph_relations({"patterns": [{"first_relation": "belongs_to", "second_relation": "represents"}]})
 
 
 if __name__ == "__main__":

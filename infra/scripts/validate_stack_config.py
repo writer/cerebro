@@ -14,6 +14,7 @@ import yaml
 
 MIN_CROSS_TASK_SYNC_LOCK_VERSION = (2, 1, 25)
 MIN_COSMO_TOKEN_AUTH_VERSION = (2, 1, 36)
+MIN_AWS_EFFECTIVE_PERMISSION_VERSION = (2, 1, 46)
 IMAGE_TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?$")
 SECRET_KEY_RE = re.compile(r"(secret|token|password|api_?key|client_secret|private_key)", re.IGNORECASE)
 AWS_ROLE_ARN_RE = re.compile(r"^arn:(aws|aws-us-gov|aws-cn):iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+$")
@@ -41,6 +42,20 @@ PROD_HIGH_CONTENTION_GRAPH_RUNTIMES = {
 }
 PROD_MAX_HIGH_CONTENTION_PAGE_LIMIT = 1
 PROD_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT = 1
+SEC_DEV_AWS_ACCOUNT_ID = "944130631940"
+SEC_DEV_AWS_ROLE_ARN = "arn:aws:iam::944130631940:role/cerebro-org-scan-role"
+SEC_DEV_AWS_GLOBAL_FAMILIES = {
+    "access_key",
+    "effective_permission",
+    "iam_group",
+    "iam_group_membership",
+    "iam_role",
+    "iam_role_assignment",
+    "iam_role_trust",
+    "iam_user",
+}
+SEC_DEV_AWS_REGIONAL_FAMILIES = {"cloudtrail", "public_endpoint", "resource_exposure"}
+SEC_DEV_AWS_CLOUDTRAIL_SINCE = "PT24H"
 
 
 @dataclass(frozen=True)
@@ -322,6 +337,104 @@ def _validate_cosmo_gitops(
                 findings.append(_finding("error", stack, f"{schedule_path}.taskCount", f"{runtime_id} schedule must run exactly one task"))
 
 
+def _validate_sec_dev_aws_coverage(
+    stack: str,
+    config: dict[str, Any],
+    source_runtimes: list[Any],
+    schedules: list[Any],
+    findings: list[Finding],
+) -> None:
+    if stack != "sec-dev":
+        return
+
+    runtime_entries: dict[str, tuple[int, dict[str, Any]]] = {}
+    aws_public_regions: set[str] = set()
+    for index, runtime in enumerate(source_runtimes):
+        if not isinstance(runtime, dict):
+            continue
+        runtime_id = str(runtime.get("id", "")).strip()
+        if runtime_id:
+            runtime_entries[runtime_id] = (index, runtime)
+        if str(runtime.get("sourceId", "")).strip() != "aws":
+            continue
+        runtime_config = runtime.get("config") or {}
+        if not isinstance(runtime_config, dict):
+            continue
+        if str(runtime_config.get("family", "")).strip() == "public_endpoint":
+            region = str(runtime_config.get("region", "")).strip()
+            if region:
+                aws_public_regions.add(region)
+
+    if not aws_public_regions:
+        return
+
+    image_tag = str(config.get("imageTag", "")).strip()
+    parsed_tag = _parse_image_tag(image_tag)
+    if parsed_tag is not None and parsed_tag < MIN_AWS_EFFECTIVE_PERMISSION_VERSION:
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:imageTag",
+                "AWS effective_permission and since=PT24H CloudTrail runtimes require cerebro:imageTag >= v2.1.46",
+            )
+        )
+
+    schedules_by_runtime: dict[str, list[int]] = {}
+    for index, schedule in enumerate(schedules):
+        if isinstance(schedule, dict):
+            runtime_id = _runtime_id_from_command(schedule.get("command"))
+            if runtime_id:
+                schedules_by_runtime.setdefault(runtime_id, []).append(index)
+
+    required: dict[str, dict[str, str]] = {}
+    for family in sorted(SEC_DEV_AWS_GLOBAL_FAMILIES):
+        required[f"writer-aws-sec-dev-{family.replace('_', '-')}"] = {
+            "account_id": SEC_DEV_AWS_ACCOUNT_ID,
+            "family": family,
+            "include_global": "true",
+            "region": "us-east-1",
+            "role_arn": SEC_DEV_AWS_ROLE_ARN,
+        }
+    for region in sorted(aws_public_regions):
+        region_slug = "us1" if region == "us-east-1" else "us2" if region == "us-west-2" else region.replace("-", "")
+        for family in sorted(SEC_DEV_AWS_REGIONAL_FAMILIES):
+            runtime_id = f"writer-aws-sec-dev-{region_slug}-{family.replace('_', '-')}"
+            required[runtime_id] = {
+                "account_id": SEC_DEV_AWS_ACCOUNT_ID,
+                "family": family,
+                "include_global": "true" if region == "us-east-1" else "false",
+                "per_page": "100",
+                "region": region,
+                "role_arn": SEC_DEV_AWS_ROLE_ARN,
+            }
+            if family == "cloudtrail":
+                required[runtime_id]["since"] = SEC_DEV_AWS_CLOUDTRAIL_SINCE
+
+    for runtime_id, expected_config in sorted(required.items()):
+        runtime_entry = runtime_entries.get(runtime_id)
+        if runtime_entry is None:
+            findings.append(_finding("error", stack, "cerebro:sourceRuntimes", f"required sec-dev AWS coverage runtime {runtime_id!r} is missing"))
+            continue
+        runtime_index, runtime = runtime_entry
+        runtime_path = f"cerebro:sourceRuntimes[{runtime_index}]"
+        if str(runtime.get("sourceId", "")).strip() != "aws":
+            findings.append(_finding("error", stack, f"{runtime_path}.sourceId", f"{runtime_id} must use sourceId aws"))
+        if str(runtime.get("tenantId", "")).strip() != "writer":
+            findings.append(_finding("error", stack, f"{runtime_path}.tenantId", f"{runtime_id} must use tenantId writer"))
+        runtime_config = runtime.get("config") or {}
+        if isinstance(runtime_config, dict):
+            for key, expected in expected_config.items():
+                actual = str(runtime_config.get(key, "")).strip()
+                if actual != expected:
+                    findings.append(_finding("error", stack, f"{runtime_path}.config.{key}", f"{runtime_id} must set {key} to {expected!r}"))
+            if expected_config["family"] == "cloudtrail" and "start_time" in runtime_config:
+                findings.append(_finding("error", stack, f"{runtime_path}.config.start_time", f"{runtime_id} must use rolling since={SEC_DEV_AWS_CLOUDTRAIL_SINCE}, not fixed start_time"))
+
+        if runtime_id not in schedules_by_runtime:
+            findings.append(_finding("error", stack, "cerebro:orchestratorSchedules", f"required sec-dev AWS schedule for {runtime_id!r} is missing"))
+
+
 def validate_stack(path: Path) -> list[Finding]:
     stack = _stack_name(path)
     config = _load_config(path)
@@ -522,6 +635,7 @@ def validate_stack(path: Path) -> list[Finding]:
             )
 
     _validate_cosmo_gitops(stack, config, source_runtimes, schedules, source_secret_names, findings)
+    _validate_sec_dev_aws_coverage(stack, config, source_runtimes, schedules, findings)
 
     environment = str(config.get("environment", stack)).lower()
     is_prod = stack.endswith("prod") or "prod" in environment
@@ -569,13 +683,15 @@ def validate_cross_stack(paths: list[Path]) -> list[Finding]:
     if sec_dev is not None and go_prod is not None:
         sec_dev_tag = str(sec_dev.get("imageTag", "")).strip()
         go_prod_tag = str(go_prod.get("imageTag", "")).strip()
-        if sec_dev_tag and go_prod_tag and sec_dev_tag != go_prod_tag:
+        sec_dev_parsed = _parse_image_tag(sec_dev_tag)
+        go_prod_parsed = _parse_image_tag(go_prod_tag)
+        if sec_dev_parsed is not None and go_prod_parsed is not None and sec_dev_parsed < go_prod_parsed:
             findings.append(
                 _finding(
                     "error",
                     "sec-dev",
                     "cerebro:imageTag",
-                    f"sec-dev image tag {sec_dev_tag} must match go-prod {go_prod_tag}",
+                    f"sec-dev image tag {sec_dev_tag} must not lag go-prod {go_prod_tag}",
                 )
             )
 
