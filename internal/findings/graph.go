@@ -21,7 +21,10 @@ const (
 )
 
 func (s *Service) projectFindingAnchor(ctx context.Context, finding *ports.FindingRecord) error {
-	return s.projectFindingAnchorRevision(ctx, finding, "")
+	if err := s.projectFindingAnchorRevision(ctx, finding, ""); err != nil {
+		return err
+	}
+	return s.markFindingRiskProjected(ctx, finding)
 }
 
 func (s *Service) projectFindingAnchorRevision(ctx context.Context, finding *ports.FindingRecord, revision string) error {
@@ -69,6 +72,26 @@ func (s *Service) projectFindingAnchorRevision(ctx context.Context, finding *por
 
 func findingClosedStatus(status string) bool {
 	return strings.EqualFold(strings.TrimSpace(status), findingStatusResolved) || strings.EqualFold(strings.TrimSpace(status), findingStatusSuppressed)
+}
+
+func (s *Service) markFindingRiskProjected(ctx context.Context, finding *ports.FindingRecord) error {
+	if s == nil || s.graph == nil || finding == nil {
+		return nil
+	}
+	riskUpdater, ok := s.store.(interface {
+		UpdateFindingRisk(context.Context, ports.FindingRiskUpdate) (*ports.FindingRecord, error)
+	})
+	if !ok {
+		return nil
+	}
+	_, err := riskUpdater.UpdateFindingRisk(ctx, ports.FindingRiskUpdate{
+		FindingID:   finding.ID,
+		FindingRisk: finding.FindingRisk,
+		Attributes: map[string]string{
+			FindingRiskGraphProjectedModelVersionAttribute: finding.RiskModelVersion,
+		},
+	})
+	return err
 }
 
 func (s *Service) projectFindingNote(ctx context.Context, finding *ports.FindingRecord, note ports.FindingNote) error {

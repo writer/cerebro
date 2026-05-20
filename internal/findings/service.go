@@ -681,9 +681,6 @@ func (s *Service) BackfillFindingRisk(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	riskUpdater, _ := s.store.(interface {
-		UpdateFindingRisk(context.Context, ports.FindingRiskUpdate) (*ports.FindingRecord, error)
-	})
 	revisionTime := time.Now().UTC().Format(time.RFC3339Nano)
 	for _, finding := range updated {
 		if finding == nil {
@@ -693,15 +690,8 @@ func (s *Service) BackfillFindingRisk(ctx context.Context) error {
 		if err := s.projectFindingAnchorRevision(ctx, finding, revision); err != nil {
 			return fmt.Errorf("project finding %q backfilled risk: %w", finding.ID, err)
 		}
-		if includeUnprojected && riskUpdater != nil {
-			_, err := riskUpdater.UpdateFindingRisk(ctx, ports.FindingRiskUpdate{
-				FindingID:   finding.ID,
-				FindingRisk: finding.FindingRisk,
-				Attributes: map[string]string{
-					FindingRiskGraphProjectedModelVersionAttribute: finding.RiskModelVersion,
-				},
-			})
-			if err != nil {
+		if includeUnprojected {
+			if err := s.markFindingRiskProjected(ctx, finding); err != nil {
 				return fmt.Errorf("mark finding %q backfilled risk projected: %w", finding.ID, err)
 			}
 		}
@@ -764,6 +754,9 @@ func (s *Service) SetFindingDueDate(ctx context.Context, id string, dueAt time.T
 	}
 	if err := s.projectFindingAnchorRevision(ctx, finding, "due-risk-refresh|"+time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 		return nil, fmt.Errorf("project finding %q due date risk update: %w", findingID, err)
+	}
+	if err := s.markFindingRiskProjected(ctx, finding); err != nil {
+		return nil, fmt.Errorf("mark finding %q due date risk projected: %w", findingID, err)
 	}
 	return finding, nil
 }

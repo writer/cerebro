@@ -3010,6 +3010,31 @@ func TestBackfillFindingRiskDoesNotMarkProjectedWithoutGraph(t *testing.T) {
 	}
 }
 
+func TestProjectFindingAnchorMarksRiskProjected(t *testing.T) {
+	finding := &ports.FindingRecord{
+		ID:        "finding-1",
+		TenantID:  "tenant-a",
+		RuntimeID: "runtime-audit",
+		RuleID:    "rule-1",
+		Title:     "Projected risk finding",
+		Status:    "open",
+		Severity:  "HIGH",
+		FindingRisk: ports.FindingRisk{
+			RiskScore:        74,
+			RiskModelVersion: defaultFindingRiskModelVersion,
+		},
+		LastObservedAt: time.Now().UTC(),
+	}
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{finding.ID: cloneFinding(finding)}}
+	service := New(nil, nil, store, store, store, store).WithGraphStore(&stubGraphStore{})
+	if err := service.projectFindingAnchor(context.Background(), finding); err != nil {
+		t.Fatalf("projectFindingAnchor() error = %v", err)
+	}
+	if got := store.findings["finding-1"].Attributes[FindingRiskGraphProjectedModelVersionAttribute]; got != defaultFindingRiskModelVersion {
+		t.Fatalf("projection marker = %q, want %q", got, defaultFindingRiskModelVersion)
+	}
+}
+
 func TestSetFindingDueDateProjectsUpdatedRisk(t *testing.T) {
 	store := &stubFindingStore{
 		findings: map[string]*ports.FindingRecord{
