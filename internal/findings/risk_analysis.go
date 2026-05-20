@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/writer/cerebro/internal/ports"
 )
@@ -415,7 +416,7 @@ func AnalyzeFindingRiskContext(finding *ports.FindingRecord, now time.Time) Find
 		reasons = append(reasons, "regulated_or_sensitive_data")
 	}
 	environment := strings.ToLower(firstNonEmpty(attributes["environment"], attributes["env"], attributes["stage"], attributes["site_name"]))
-	if containsAny(environment, "prod", "production") {
+	if isProductionEnvironment(environment) {
 		impact += 15
 		reasons = append(reasons, "production_environment")
 	}
@@ -459,6 +460,34 @@ func AnalyzeFindingRiskContext(finding *ports.FindingRecord, now time.Time) Find
 
 func productRiskScore(likelihood int, impact int) int {
 	return clampScore(int(math.Round(math.Sqrt(float64(clampScore(likelihood) * clampScore(impact))))))
+}
+
+func isProductionEnvironment(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if normalized == "" {
+		return false
+	}
+	tokens := strings.FieldsFunc(normalized, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+	if len(tokens) == 0 {
+		return false
+	}
+	for i, token := range tokens {
+		switch token {
+		case "nonprod", "nonproduction", "preprod", "preproduction", "staging", "stage", "dev", "development", "test", "testing", "qa", "sandbox", "uat":
+			return false
+		case "prod", "production", "prd", "live":
+			if i > 0 {
+				switch tokens[i-1] {
+				case "non", "not", "pre":
+					return false
+				}
+			}
+			return true
+		}
+	}
+	return false
 }
 
 func clampScore(score int) int {

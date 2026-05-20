@@ -460,6 +460,10 @@ func topRiskFindingEntries(findings []*ports.FindingRecord, limit int) []any {
 			return -1
 		case left.RiskScore < right.RiskScore:
 			return 1
+		case reportSeverityRank(left.Severity) > reportSeverityRank(right.Severity):
+			return -1
+		case reportSeverityRank(left.Severity) < reportSeverityRank(right.Severity):
+			return 1
 		case left.LastObservedAt.After(right.LastObservedAt):
 			return -1
 		case left.LastObservedAt.Before(right.LastObservedAt):
@@ -488,10 +492,36 @@ func topRiskFindingEntries(findings []*ports.FindingRecord, limit int) []any {
 			"likelihood_score": finding.LikelihoodScore,
 			"impact_score":     finding.ImpactScore,
 			"risk_level":       reportRiskLevel(finding.RiskScore),
-			"risk_reasons":     append([]string(nil), finding.RiskReasons...),
+			"risk_reasons":     reportStringValues(finding.RiskReasons),
 		})
 	}
 	return values
+}
+
+func reportSeverityRank(severity string) int {
+	switch strings.ToUpper(strings.TrimSpace(severity)) {
+	case "CRITICAL":
+		return 4
+	case "HIGH":
+		return 3
+	case "MEDIUM":
+		return 2
+	case "LOW":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func reportStringValues(values []string) []any {
+	if len(values) == 0 {
+		return []any{}
+	}
+	converted := make([]any, 0, len(values))
+	for _, value := range values {
+		converted = append(converted, value)
+	}
+	return converted
 }
 
 func reportRiskLevel(score int) string {

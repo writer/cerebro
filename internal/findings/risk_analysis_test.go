@@ -153,6 +153,24 @@ func TestAnalyzeFindingRiskContextUsesGenericSignals(t *testing.T) {
 	}
 }
 
+func TestAnalyzeFindingRiskContextDoesNotTreatNonProductionAsProduction(t *testing.T) {
+	now := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
+	for _, environment := range []string{"nonprod", "non-prod", "preprod", "pre-production", "staging"} {
+		finding := compoundRiskFinding("finding-"+environment, "cloud-env", "MEDIUM", "", "", "urn:cerebro:writer:asset:"+environment, "scan.detected")
+		finding.Attributes["environment"] = environment
+		context := AnalyzeFindingRiskContext(finding, now)
+		if stringSliceContains(context.Reasons, "production_environment") {
+			t.Fatalf("Risk reasons for environment %q = %#v, want no production_environment", environment, context.Reasons)
+		}
+	}
+	production := compoundRiskFinding("finding-prod", "cloud-env", "MEDIUM", "", "", "urn:cerebro:writer:asset:prod", "scan.detected")
+	production.Attributes["environment"] = "writer-prod"
+	context := AnalyzeFindingRiskContext(production, now)
+	if !stringSliceContains(context.Reasons, "production_environment") {
+		t.Fatalf("Risk reasons for production environment = %#v, want production_environment", context.Reasons)
+	}
+}
+
 func TestAnalyzeFindingRiskContextCapsPrivateNetworkWithoutReachability(t *testing.T) {
 	now := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
 	finding := compoundRiskFinding("finding-private", "cloud-private-exposure", "CRITICAL", "", "", "urn:cerebro:writer:aws_instance:i-1", "scan.detected")
