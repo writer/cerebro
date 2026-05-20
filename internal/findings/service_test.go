@@ -2841,6 +2841,56 @@ func TestSetFindingDueDateRecomputesPersistedRisk(t *testing.T) {
 	}
 }
 
+func TestUpsertFindingWithRiskRecomputesAfterWorkflowPreservation(t *testing.T) {
+	dueAt := time.Now().UTC().Add(-time.Hour)
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:          "finding-1",
+				Fingerprint: "fingerprint-1",
+				TenantID:    "tenant-a",
+				RuntimeID:   "runtime-audit",
+				RuleID:      "rule-1",
+				Title:       "Existing triaged finding",
+				Severity:    "LOW",
+				Status:      "resolved",
+				Summary:     "resolved finding",
+				FindingWorkflow: ports.FindingWorkflow{
+					DueAt:           dueAt,
+					StatusReason:    "triaged",
+					StatusUpdatedAt: dueAt,
+				},
+			},
+		},
+	}
+	service := New(nil, nil, store, store, store, store)
+	emitted := &ports.FindingRecord{
+		ID:          "finding-1",
+		Fingerprint: "fingerprint-1",
+		TenantID:    "tenant-a",
+		RuntimeID:   "runtime-audit",
+		RuleID:      "rule-1",
+		Title:       "Existing triaged finding",
+		Severity:    "LOW",
+		Status:      "open",
+		Summary:     "reemitted finding",
+		Attributes:  map[string]string{},
+	}
+	stored, err := service.upsertFindingWithRisk(context.Background(), emitted, nil, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("upsertFindingWithRisk() error = %v", err)
+	}
+	if got := stored.Status; got != "resolved" {
+		t.Fatalf("upsertFindingWithRisk().Status = %q, want preserved resolved", got)
+	}
+	if !slices.Contains(stored.RiskReasons, "overdue") {
+		t.Fatalf("upsertFindingWithRisk().RiskReasons = %#v, want overdue from preserved due date", stored.RiskReasons)
+	}
+	if slices.Contains(stored.RiskReasons, "active") {
+		t.Fatalf("upsertFindingWithRisk().RiskReasons = %#v, want no active reason after preserved resolution", stored.RiskReasons)
+	}
+}
+
 func TestAddFindingNoteUpdatesPersistedWorkflow(t *testing.T) {
 	store := &stubFindingStore{
 		findings: map[string]*ports.FindingRecord{

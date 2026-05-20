@@ -153,17 +153,29 @@ func TestUpsertFindingStatementPreservesRuntimeIDOnConflict(t *testing.T) {
 	}
 }
 
-func TestEnsureFindingStatementsBackfillRiskColumns(t *testing.T) {
-	statements := strings.Join(ensureFindingStatements, "\n")
-	for _, fragment := range []string{
-		"UPDATE findings",
-		"risk_model_version = 'likelihood-impact-v1'",
-		"risk_score = LEAST",
-		"risk_reasons_json = risk_scored.risk_reasons_json",
-	} {
-		if !strings.Contains(statements, fragment) {
-			t.Fatalf("ensureFindingStatements missing risk backfill fragment %q", fragment)
-		}
+func TestFindingBackfillRiskUsesRuntimeScorerSignals(t *testing.T) {
+	now := time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC)
+	risk := findingBackfillRisk(&ports.FindingRecord{
+		ID:             "finding-1",
+		Status:         "open",
+		Severity:       "HIGH",
+		LastObservedAt: now.Add(-30 * time.Minute),
+		Attributes: map[string]string{
+			"epss_score":    "0.9",
+			"network_scope": "private",
+		},
+	}, now)
+	if !slices.Contains(risk.RiskReasons, "epss_high") {
+		t.Fatalf("findingBackfillRisk().RiskReasons = %#v, want epss_high from runtime scorer", risk.RiskReasons)
+	}
+	if !slices.Contains(risk.RiskReasons, "recent_24h") {
+		t.Fatalf("findingBackfillRisk().RiskReasons = %#v, want recent_24h from runtime scorer", risk.RiskReasons)
+	}
+	if !slices.Contains(risk.RiskReasons, "private_network_context") {
+		t.Fatalf("findingBackfillRisk().RiskReasons = %#v, want private_network_context from runtime scorer", risk.RiskReasons)
+	}
+	if risk.RiskModelVersion != "likelihood-impact-v1" {
+		t.Fatalf("findingBackfillRisk().RiskModelVersion = %q, want likelihood-impact-v1", risk.RiskModelVersion)
 	}
 }
 

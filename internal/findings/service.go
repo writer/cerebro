@@ -313,8 +313,7 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 				evaluationErr := fmt.Errorf("reconcile finding identity for rule %q event %q: %w", result.Rule.GetId(), event.GetId(), err)
 				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
 			}
-			record = enrichFindingRisk(record, runtime, startedAt)
-			stored, err := s.store.UpsertFinding(ctx, record)
+			stored, err := s.upsertFindingWithRisk(ctx, record, runtime, startedAt)
 			if err != nil {
 				evaluationErr := fmt.Errorf("persist finding for rule %q event %q: %w", result.Rule.GetId(), event.GetId(), err)
 				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
@@ -434,8 +433,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 					}
 					break
 				}
-				record = enrichFindingRisk(record, runtime, startedAt)
-				stored, err := s.store.UpsertFinding(ctx, record)
+				stored, err := s.upsertFindingWithRisk(ctx, record, runtime, startedAt)
 				if err != nil {
 					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("persist finding for rule %q event %q: %w", state.result.Rule.GetId(), event.GetId(), err)); failErr != nil {
 						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
@@ -1135,6 +1133,15 @@ func (s *Service) updateFindingStatusAndRisk(ctx context.Context, request ports.
 		return nil, err
 	}
 	return s.persistFindingRisk(ctx, finding, request.UpdatedAt)
+}
+
+func (s *Service) upsertFindingWithRisk(ctx context.Context, finding *ports.FindingRecord, runtime *cerebrov1.SourceRuntime, now time.Time) (*ports.FindingRecord, error) {
+	enriched := enrichFindingRisk(finding, runtime, now)
+	stored, err := s.store.UpsertFinding(ctx, enriched)
+	if err != nil {
+		return nil, err
+	}
+	return s.persistFindingRisk(ctx, stored, now)
 }
 
 func (s *Service) persistFindingRisk(ctx context.Context, finding *ports.FindingRecord, now time.Time) (*ports.FindingRecord, error) {

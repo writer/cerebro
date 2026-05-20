@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	findingrisk "github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -72,111 +73,6 @@ var ensureFindingStatements = []string{
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS impact_level TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS risk_reasons_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS risk_model_version TEXT NOT NULL DEFAULT ''`,
-	`WITH risk_signals AS (
-  SELECT
-    id,
-    CASE UPPER(severity)
-      WHEN 'CRITICAL' THEN 4
-      WHEN 'HIGH' THEN 3
-      WHEN 'MEDIUM' THEN 2
-      WHEN 'LOW' THEN 1
-      ELSE 0
-    END AS severity_score,
-    UPPER(severity) AS severity_level,
-    status = 'open' AS is_open,
-    due_at IS NOT NULL AND due_at < NOW() AS is_overdue,
-    jsonb_array_length(event_ids_json) AS event_count,
-    jsonb_array_length(resource_urns_json) AS resource_count,
-    jsonb_array_length(control_refs_json) AS control_count,
-    LOWER(COALESCE(attributes_json->>'internet_exposed', '')) IN ('1', 't', 'true', 'yes', 'y', 'enabled', 'public', 'external')
-      OR LOWER(COALESCE(attributes_json->>'public', '')) IN ('1', 't', 'true', 'yes', 'y', 'enabled', 'public', 'external')
-      OR LOWER(COALESCE(attributes_json->>'externally_exposed', '')) IN ('1', 't', 'true', 'yes', 'y', 'enabled', 'public', 'external')
-      AS external_exposure,
-    LOWER(COALESCE(attributes_json->>'actor_privileged', '')) IN ('1', 't', 'true', 'yes', 'y', 'enabled', 'critical')
-      OR LOWER(COALESCE(attributes_json->>'privileged', '')) IN ('1', 't', 'true', 'yes', 'y', 'enabled', 'critical')
-      AS privileged_actor,
-    LOWER(COALESCE(attributes_json->>'is_kev', '')) IN ('1', 't', 'true', 'yes', 'y', 'enabled')
-      OR LOWER(COALESCE(attributes_json->>'known_exploited', '')) IN ('1', 't', 'true', 'yes', 'y', 'enabled')
-      AS known_exploited,
-    LOWER(COALESCE(attributes_json->>'asset_criticality', attributes_json->>'criticality', '')) IN ('critical', 'high', 'crown', 'tier0', 'tier-0')
-      AS critical_asset,
-    LOWER(COALESCE(attributes_json->>'data_classification', attributes_json->>'sensitivity', attributes_json->>'data_sensitivity', '')) ~ '(secret|sensitive|confidential|restricted)'
-      AS sensitive_data,
-    LOWER(COALESCE(attributes_json->>'crown_jewel', '')) IN ('1', 't', 'true', 'yes', 'y', 'enabled', 'critical')
-      OR LOWER(COALESCE(attributes_json->>'contains_secrets', '')) IN ('1', 't', 'true', 'yes', 'y', 'enabled')
-      AS crown_jewel,
-    LOWER(COALESCE(attributes_json->>'environment', attributes_json->>'env', attributes_json->>'stage', '')) ~ '(prod|production)'
-      AS production_environment
-  FROM findings
-  WHERE risk_model_version = '' OR risk_score = 0
-),
-risk_scored AS (
-  SELECT
-    id,
-    LEAST(100, GREATEST(0,
-      10
-      + severity_score * 6
-      + CASE WHEN is_open THEN 5 ELSE 0 END
-      + CASE WHEN event_count > 1 THEN LEAST(event_count * 2, 10) ELSE 0 END
-      + CASE WHEN external_exposure THEN 35 ELSE 0 END
-      + CASE WHEN privileged_actor THEN 10 ELSE 0 END
-      + CASE WHEN known_exploited THEN 35 ELSE 0 END
-    ))::int AS likelihood_score,
-    LEAST(100, GREATEST(0,
-      10
-      + severity_score * 8
-      + CASE WHEN is_overdue THEN 5 ELSE 0 END
-      + CASE WHEN resource_count > 1 THEN LEAST(resource_count * 2, 12) ELSE 0 END
-      + CASE WHEN control_count > 0 THEN LEAST(control_count * 2, 8) ELSE 0 END
-      + CASE WHEN critical_asset THEN 35 ELSE 0 END
-      + CASE WHEN privileged_actor THEN 15 ELSE 0 END
-      + CASE WHEN sensitive_data THEN 25 ELSE 0 END
-      + CASE WHEN crown_jewel THEN 35 ELSE 0 END
-      + CASE WHEN production_environment THEN 15 ELSE 0 END
-    ))::int AS impact_score,
-    70 AS confidence_score,
-    to_jsonb(array_remove(ARRAY[
-      CASE WHEN severity_score > 0 THEN 'severity:' || severity_level END,
-      CASE WHEN is_open THEN 'active' END,
-      CASE WHEN is_overdue THEN 'overdue' END,
-      CASE WHEN event_count > 1 THEN 'multiple_events' END,
-      CASE WHEN resource_count > 1 THEN 'multiple_resources' END,
-      CASE WHEN control_count > 0 THEN 'mapped_controls' END,
-      CASE WHEN external_exposure THEN 'external_exposure' END,
-      CASE WHEN privileged_actor THEN 'privileged_actor' END,
-      CASE WHEN known_exploited THEN 'known_exploited' END,
-      CASE WHEN critical_asset THEN 'critical_asset' END,
-      CASE WHEN sensitive_data THEN 'sensitive_data' END,
-      CASE WHEN crown_jewel THEN 'crown_jewel' END,
-      CASE WHEN production_environment THEN 'production_environment' END
-    ], NULL)) AS risk_reasons_json
-  FROM risk_signals
-)
-UPDATE findings
-SET
-  likelihood_score = risk_scored.likelihood_score,
-  impact_score = risk_scored.impact_score,
-  confidence_score = risk_scored.confidence_score,
-  risk_score = LEAST(100, GREATEST(0, ROUND(SQRT((risk_scored.likelihood_score * risk_scored.impact_score)::double precision))::int)),
-  likelihood_level = CASE
-    WHEN risk_scored.likelihood_score >= 85 THEN 'critical'
-    WHEN risk_scored.likelihood_score >= 70 THEN 'high'
-    WHEN risk_scored.likelihood_score >= 40 THEN 'medium'
-    WHEN risk_scored.likelihood_score > 0 THEN 'low'
-    ELSE ''
-  END,
-  impact_level = CASE
-    WHEN risk_scored.impact_score >= 85 THEN 'critical'
-    WHEN risk_scored.impact_score >= 70 THEN 'high'
-    WHEN risk_scored.impact_score >= 40 THEN 'medium'
-    WHEN risk_scored.impact_score > 0 THEN 'low'
-    ELSE ''
-  END,
-  risk_reasons_json = risk_scored.risk_reasons_json,
-  risk_model_version = 'likelihood-impact-v1',
-  updated_at = NOW()
-FROM risk_scored
-WHERE findings.id = risk_scored.id`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_rule_idx ON findings (runtime_id, rule_id)`,
 	`CREATE INDEX IF NOT EXISTS findings_tenant_rule_idx ON findings (tenant_id, rule_id)`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_policy_idx ON findings (runtime_id, policy_id)`,
@@ -814,7 +710,104 @@ func findingFilterClauses(request ports.ListFindingsRequest) ([]string, []any, e
 }
 
 func (s *Store) ensureFindingTables(ctx context.Context) error {
-	return s.ensureStatements(ctx, &s.findingTablesReady, "findings", ensureFindingStatements)
+	s.schemaMu.Lock()
+	defer s.schemaMu.Unlock()
+	if s.findingTablesReady {
+		return nil
+	}
+	for _, statement := range ensureFindingStatements {
+		if _, err := s.db.ExecContext(ctx, statement); err != nil {
+			return fmt.Errorf("ensure findings tables: %w", err)
+		}
+	}
+	if err := s.backfillFindingRisk(ctx); err != nil {
+		return err
+	}
+	s.findingTablesReady = true
+	return nil
+}
+
+func (s *Store) backfillFindingRisk(ctx context.Context) (err error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+findingSelectColumns+` FROM findings WHERE risk_model_version <> $1 OR risk_score = 0`, "likelihood-impact-v1")
+	if err != nil {
+		return fmt.Errorf("list findings for risk backfill: %w", err)
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("close finding risk backfill rows: %w", closeErr)
+		}
+	}()
+	type riskBackfill struct {
+		id   string
+		risk ports.FindingRisk
+	}
+	now := time.Now().UTC()
+	updates := []riskBackfill{}
+	for rows.Next() {
+		var row findingRow
+		if err := scanFindingRow(rows, &row); err != nil {
+			return fmt.Errorf("scan finding risk backfill row: %w", err)
+		}
+		record, err := row.record()
+		if err != nil {
+			return fmt.Errorf("decode finding risk backfill row: %w", err)
+		}
+		updates = append(updates, riskBackfill{
+			id:   strings.TrimSpace(record.ID),
+			risk: findingBackfillRisk(record, now),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate finding risk backfill rows: %w", err)
+	}
+	for _, update := range updates {
+		if update.id == "" {
+			continue
+		}
+		reasonsJSON, err := findingStringsJSON(update.risk.RiskReasons)
+		if err != nil {
+			return fmt.Errorf("marshal finding %q risk backfill reasons: %w", update.id, err)
+		}
+		if _, err := s.db.ExecContext(ctx, `
+UPDATE findings
+SET risk_score = $2,
+    likelihood_score = $3,
+    impact_score = $4,
+    confidence_score = $5,
+    likelihood_level = $6,
+    impact_level = $7,
+    risk_reasons_json = $8::jsonb,
+    risk_model_version = $9,
+    updated_at = NOW()
+WHERE id = $1 AND (risk_model_version <> $9 OR risk_score = 0)`,
+			update.id,
+			update.risk.RiskScore,
+			update.risk.LikelihoodScore,
+			update.risk.ImpactScore,
+			update.risk.ConfidenceScore,
+			strings.TrimSpace(update.risk.LikelihoodLevel),
+			strings.TrimSpace(update.risk.ImpactLevel),
+			reasonsJSON,
+			strings.TrimSpace(update.risk.RiskModelVersion),
+		); err != nil {
+			return fmt.Errorf("backfill finding %q risk: %w", update.id, err)
+		}
+	}
+	return nil
+}
+
+func findingBackfillRisk(record *ports.FindingRecord, now time.Time) ports.FindingRisk {
+	risk := findingrisk.AnalyzeFindingRiskContext(record, now)
+	return ports.FindingRisk{
+		RiskScore:        risk.Score,
+		LikelihoodScore:  risk.LikelihoodScore,
+		ImpactScore:      risk.ImpactScore,
+		ConfidenceScore:  risk.ConfidenceScore,
+		LikelihoodLevel:  risk.LikelihoodLevel,
+		ImpactLevel:      risk.ImpactLevel,
+		RiskReasons:      risk.Reasons,
+		RiskModelVersion: risk.RiskModelVersion,
+	}
 }
 
 func findingOrderClause(request ports.ListFindingsRequest) string {
