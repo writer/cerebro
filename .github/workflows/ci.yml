@@ -24,11 +24,11 @@ env:
   WEB_GHCR_IMAGE: ghcr.io/writerinternal/cerebro-web
 
 jobs:
-  # PR: Pull from GHCR and push to sec-dev ECR
+  # Pull from GHCR and push to sec-dev ECR for PR previews and main deploys.
   publish-sec-dev:
     name: Publish to sec-dev ECR
     runs-on: ubuntu-24.04-arm
-    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    if: (github.event_name == 'pull_request' && github.event.pull_request.draft == false) || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     permissions:
       id-token: write
       contents: read

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 import time
@@ -20,8 +21,11 @@ EXPECTED_STACK_ACCOUNTS = {
 }
 DEFAULT_MAX_RUNNING_MINUTES = 60
 MIN_INGEST_RUN_LIMIT = 100
-INGEST_RUN_LIMIT_MULTIPLIER = 3
-REQUIRED_RELATIONS = {"belongs_to", "can_reach", "represents"}
+INGEST_RUN_LIMIT_MULTIPLIER = 20
+MAX_INGEST_RUN_LIMIT = 500
+ATTACK_PATH_RELATION_MIN_TAG = (2, 1, 46)
+REQUIRED_RELATIONS = {"belongs_to", "represents"}
+AWS_REACHABILITY_FAMILIES = {"public_endpoint", "resource_exposure"}
 AWS_ATTACK_PATH_RELATIONS = {"can_perform", "can_assume", "can_admin", "can_impersonate"}
 
 
@@ -84,12 +88,31 @@ def _declared_aws_families(config: dict[str, Any]) -> set[str]:
 
 
 def _ingest_run_limit(declared_runtime_ids: set[str]) -> int:
-    return max(MIN_INGEST_RUN_LIMIT, len(declared_runtime_ids) * INGEST_RUN_LIMIT_MULTIPLIER)
+    return min(MAX_INGEST_RUN_LIMIT, max(MIN_INGEST_RUN_LIMIT, len(declared_runtime_ids) * INGEST_RUN_LIMIT_MULTIPLIER))
+
+
+def _image_tag_version(value: Any) -> tuple[int, int, int] | None:
+    match = re.match(r"^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$", str(value or "").strip())
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2)), int(match.group(3))
+
+
+def _supports_attack_path_relations(config: dict[str, Any]) -> bool:
+    version = _image_tag_version(config.get("imageTag"))
+    return bool(version and version >= ATTACK_PATH_RELATION_MIN_TAG)
 
 
 def _aws(args: list[str], region: str) -> Any:
     command = ["aws", *args, "--region", region, "--output", "json"]
-    completed = subprocess.run(command, check=True, text=True, capture_output=True)
+    try:
+        completed = subprocess.run(command, check=True, text=True, capture_output=True)
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "").strip()
+        message = f"{' '.join(command)} failed with exit code {exc.returncode}"
+        if detail:
+            message = f"{message}: {detail}"
+        raise RuntimeError(message) from exc
     if not completed.stdout.strip():
         return None
     return json.loads(completed.stdout)
@@ -144,6 +167,37 @@ def _describe_tasks(cluster: str, task_arns: list[str], region: str) -> list[dic
     if failures:
         raise RuntimeError(f"failed to describe ECS tasks: {failures}")
     return response.get("tasks") or []
+
+
+def _latest_active_task_definition(task_definition: str, region: str) -> str:
+    response = _aws(["ecs", "describe-task-definition", "--task-definition", task_definition], region)
+    definition = response.get("taskDefinition") or {}
+    if definition.get("status") == "ACTIVE":
+        return str(definition.get("taskDefinitionArn") or task_definition)
+    family = str(definition.get("family") or task_definition.rsplit("/", 1)[-1].rsplit(":", 1)[0]).strip()
+    if not family:
+        raise RuntimeError(f"could not determine ECS task definition family for {task_definition}")
+    active = _aws(
+        [
+            "ecs",
+            "list-task-definitions",
+            "--family-prefix",
+            family,
+            "--status",
+            "ACTIVE",
+            "--sort",
+            "DESC",
+            "--max-items",
+            "1",
+        ],
+        region,
+    )
+    arns = active.get("taskDefinitionArns") or []
+    if not arns:
+        raise RuntimeError(f"no active ECS task definitions found for family {family}")
+    replacement = str(arns[0])
+    print(f"Using latest active ECS task definition {replacement} instead of inactive {task_definition}", file=sys.stderr)
+    return replacement
 
 
 def _wait_for_task(cluster: str, task_arn: str, timeout_seconds: int, poll_seconds: int, region: str) -> None:
@@ -213,7 +267,7 @@ def _run_graph_command(
             "--cluster",
             cluster,
             "--task-definition",
-            service["taskDefinition"],
+            _latest_active_task_definition(service["taskDefinition"], region),
             "--launch-type",
             "FARGATE",
             "--network-configuration",
@@ -343,18 +397,25 @@ def _graph_path_relations(payload: dict[str, Any]) -> set[str]:
     return relations
 
 
-def _verify_required_graph_relations(payload: dict[str, Any], aws_families: set[str] | None = None) -> set[str]:
+def _verify_required_graph_relations(
+    payload: dict[str, Any],
+    aws_families: set[str] | None = None,
+    attack_path_relations_supported: bool = True,
+) -> set[str]:
     relations = _graph_path_relations(payload)
     required = set(REQUIRED_RELATIONS)
     aws_families = aws_families or set()
-    if "effective_permission" in aws_families:
-        required.add("can_perform")
-    if "iam_role_trust" in aws_families:
-        required.add("can_assume")
+    if attack_path_relations_supported:
+        if aws_families & AWS_REACHABILITY_FAMILIES:
+            required.add("can_reach")
+        if "effective_permission" in aws_families:
+            required.add("can_perform")
+        if "iam_role_trust" in aws_families:
+            required.add("can_assume")
     missing = sorted(required - relations)
     if missing:
         raise RuntimeError(f"graph paths missing required relation(s): {', '.join(missing)}")
-    if "effective_permission" in aws_families and not (relations & AWS_ATTACK_PATH_RELATIONS):
+    if attack_path_relations_supported and "effective_permission" in aws_families and not (relations & AWS_ATTACK_PATH_RELATIONS):
         raise RuntimeError("graph paths missing AWS attack-path privilege relations")
     return relations
 
@@ -387,7 +448,11 @@ def main(argv: list[str] | None = None) -> int:
         args.poll_seconds,
         args.region,
     )
-    graph_relations = _verify_required_graph_relations(paths.payload, _declared_aws_families(config))
+    graph_relations = _verify_required_graph_relations(
+        paths.payload,
+        _declared_aws_families(config),
+        attack_path_relations_supported=_supports_attack_path_relations(config),
+    )
     ingest_runs = _run_graph_command(
         resource_prefix,
         service,
@@ -398,7 +463,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     current_ingest_runtimes = _verify_current_ingest_runs(
         ingest_runs.payload,
-        declared_runtime_ids=declared_runtime_ids,
         max_running_minutes=args.max_running_minutes,
     )
 
