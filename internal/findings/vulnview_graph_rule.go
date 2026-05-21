@@ -40,6 +40,7 @@ func newVulnViewExternalAssetConcentratedSignalRule() Rule {
 		Name:        "VulnView External Asset Concentrated Signal",
 		Description: "Aggregate VulnView graph evidence to prioritize external assets with medium-or-higher or repeated attack-surface signals.",
 		SourceID:    "vulnview",
+		EventKinds:  []string{"vulnview.vulnerability", "vulnview.dns_alert"},
 		OutputKind:  "finding.vulnview_external_asset_concentrated_signal",
 		Severity:    "dynamic",
 		Status:      findingStatusOpen,

@@ -66,3 +66,24 @@ func TestBuiltinPublicDetectionCatalogPublishesGRCFingerprintSalts(t *testing.T)
 		t.Fatalf("BuiltinPublicDetectionCatalog() missing GRC detections: %#v", wantByID)
 	}
 }
+
+func TestBuiltinPublicDetectionCatalogPublishesGraphInputKinds(t *testing.T) {
+	wantByID := map[string][]string{
+		sentinelOneEndpointActiveInfectionRuleID:      {"sentinelone.agent", "sentinelone.threat"},
+		vulnViewExternalAssetConcentratedSignalRuleID: {"vulnview.dns_alert", "vulnview.vulnerability"},
+	}
+	catalog := BuiltinPublicDetectionCatalog()
+	for _, detection := range catalog.Detections {
+		want, ok := wantByID[detection.ID]
+		if !ok {
+			continue
+		}
+		if !slices.Equal(detection.EventKinds, want) {
+			t.Fatalf("%s EventKinds = %#v, want %#v", detection.ID, detection.EventKinds, want)
+		}
+		delete(wantByID, detection.ID)
+	}
+	if len(wantByID) != 0 {
+		t.Fatalf("BuiltinPublicDetectionCatalog() missing graph detections: %#v", wantByID)
+	}
+}

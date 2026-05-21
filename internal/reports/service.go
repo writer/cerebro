@@ -281,11 +281,15 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 			return nil, err
 		}
 	}
-	exposureAnalysis, err := jsonPayload(findinganalysis.AnalyzeFindingExposure(findings, findinganalysis.FindingExposureAnalysisOptions{
+	exposureReport := findinganalysis.AnalyzeFindingExposure(findings, findinganalysis.FindingExposureAnalysisOptions{
 		Limit:              10,
 		SampleLimit:        3,
 		GraphNeighborhoods: graphNeighborhoods,
-	}))
+	})
+	if graphEvidenceStatus == graphEvidenceStatusUnconfigured {
+		exposureReport.AttackPaths = nil
+	}
+	exposureAnalysis, err := jsonPayload(exposureReport)
 	if err != nil {
 		return nil, fmt.Errorf("build exposure analysis report payload: %w", err)
 	}

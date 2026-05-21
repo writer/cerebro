@@ -2333,6 +2333,7 @@
       "source_id": "sentinelone",
       "evaluation_mode": "graph",
       "event_kinds": [
+        "sentinelone.agent",
         "sentinelone.threat"
       ],
       "output_kind": "finding.sentinelone_endpoint_active_infection",
@@ -2651,6 +2652,10 @@
       "description": "Aggregate VulnView graph evidence to prioritize external assets with medium-or-higher or repeated attack-surface signals.",
       "source_id": "vulnview",
       "evaluation_mode": "graph",
+      "event_kinds": [
+        "vulnview.dns_alert",
+        "vulnview.vulnerability"
+      ],
       "output_kind": "finding.vulnview_external_asset_concentrated_signal",
       "severity": "dynamic",
       "status": "open",

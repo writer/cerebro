@@ -525,6 +525,9 @@ func TestRunFindingSummaryReportWithoutGraphStoreMarksEvidenceUnconfigured(t *te
 				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
 				Severity:  "HIGH",
 				Status:    "open",
+				ResourceURNs: []string{
+					"urn:cerebro:writer:okta_resource:policyrule:pol-1",
+				},
 			},
 		},
 	}
@@ -542,6 +545,13 @@ func TestRunFindingSummaryReportWithoutGraphStoreMarksEvidenceUnconfigured(t *te
 	}
 	if got := response.GetRun().GetResult().AsMap()["graph_evidence_status"]; got != graphEvidenceStatusUnconfigured {
 		t.Fatalf("graph_evidence_status = %#v, want %q", got, graphEvidenceStatusUnconfigured)
+	}
+	exposureAnalysis, ok := response.GetRun().GetResult().AsMap()["exposure_analysis"].(map[string]any)
+	if !ok {
+		t.Fatalf("exposure_analysis = %#v, want object", response.GetRun().GetResult().AsMap()["exposure_analysis"])
+	}
+	if attackPaths, ok := exposureAnalysis["attack_paths"].([]any); ok && len(attackPaths) != 0 {
+		t.Fatalf("attack_paths = %#v, want empty when graph evidence is unconfigured", attackPaths)
 	}
 }
 

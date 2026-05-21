@@ -74,7 +74,7 @@ func newSentinelOneEndpointActiveInfectionRule() Rule {
 		sentinelOneEndpointActiveInfectionRuleID,
 		"SentinelOne Endpoint Active Infection",
 		"Detect endpoint-level active infection state from SentinelOne without mirroring each threat as a finding.",
-		[]string{sentinelOneThreatEntityType},
+		[]string{sentinelOneAgentEntityType, sentinelOneThreatEntityType},
 		"finding.sentinelone_endpoint_active_infection",
 		"CRITICAL",
 		[]string{"sentinelone", "endpoint", "infection", "malware", "attack.impact"},
