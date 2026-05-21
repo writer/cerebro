@@ -102,7 +102,7 @@ func New() (*Source, error) {
 				Name:    familySoftware,
 				Path:    "/software",
 				URNKind: "kolide_software",
-				IDKeys:  []string{"id", "software_id", "application_id", "name", "bundle_identifier"},
+				IDKeys:  []string{"id", "software_id", "application_id"},
 				TimestampKeys: []string{
 					"updated_at", "installed_at", "last_seen_at",
 				},
@@ -154,7 +154,7 @@ func New() (*Source, error) {
 				Name:    familyVulnerability,
 				Path:    "/vulnerabilities",
 				URNKind: "kolide_vulnerability",
-				IDKeys:  []string{"id", "vulnerability_id", "cve_id", "cve", "advisory_id"},
+				IDKeys:  []string{"id", "vulnerability_id"},
 				TimestampKeys: []string{
 					"updated_at", "detected_at", "last_observed_at", "published_at",
 				},

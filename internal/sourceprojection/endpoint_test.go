@@ -94,6 +94,41 @@ func TestProjectKolideSoftwareDoesNotUseSoftwareExternalIDAsDevice(t *testing.T)
 	}
 }
 
+func TestProjectKolideSoftwareSparseEndpointOmitsEmptyDeviceAttributes(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "kolide-software-1",
+		TenantId: "writer",
+		SourceId: "kolide",
+		Kind:     "kolide.software",
+		Attributes: map[string]string{
+			"device_id":         "device-1",
+			"application_name":  "openssl",
+			"installed_version": "3.0.0",
+			"ecosystem":         "macos",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	deviceURN := "urn:cerebro:writer:kolide_device:device-1"
+	entity := state.entities[deviceURN]
+	if entity == nil {
+		t.Fatalf("device entity %q missing", deviceURN)
+	}
+	for _, key := range []string{"hostname", "serial_number", "platform", "os_version", "status", "compliance_status"} {
+		if value, ok := entity.Attributes[key]; ok {
+			t.Fatalf("sparse endpoint attribute %q = %q, want omitted so existing metadata is preserved", key, value)
+		}
+	}
+	if entity.Attributes["device_id"] != "device-1" || entity.Attributes["source_product"] != "kolide" {
+		t.Fatalf("device attributes = %#v, want stable id/source metadata", entity.Attributes)
+	}
+}
+
 func TestProjectKolideCheckLinksComplianceEvidenceToDevice(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

@@ -164,26 +164,33 @@ func addEndpointEntity(entities map[string]*ports.ProjectedEntity, tenantID stri
 	if endpointURN == "" {
 		return ""
 	}
+	endpointAttrs := map[string]string{
+		"device_id":      endpointID,
+		"source_product": profile.Provider,
+	}
+	addEndpointAttribute(endpointAttrs, "device_uuid", attrs["device_uuid"])
+	addEndpointAttribute(endpointAttrs, "hostname", attrs["hostname"])
+	addEndpointAttribute(endpointAttrs, "serial_number", attrs["serial_number"])
+	addEndpointAttribute(endpointAttrs, "platform", attrs["platform"])
+	addEndpointAttribute(endpointAttrs, "os", firstAttribute(attrs, "os", "os_name"))
+	addEndpointAttribute(endpointAttrs, "os_version", attrs["os_version"])
+	addEndpointAttribute(endpointAttrs, "status", attrs["status"])
+	addEndpointAttribute(endpointAttrs, "compliance_status", attrs["compliance_status"])
 	addEntity(entities, &ports.ProjectedEntity{
 		URN:        endpointURN,
 		TenantID:   tenantID,
 		SourceID:   sourceID,
 		EntityType: profile.EndpointType,
 		Label:      firstNonEmpty(firstAttribute(attrs, profile.EndpointLabelKeys...), endpointID),
-		Attributes: map[string]string{
-			"device_id":         endpointID,
-			"device_uuid":       strings.TrimSpace(attrs["device_uuid"]),
-			"hostname":          strings.TrimSpace(attrs["hostname"]),
-			"serial_number":     strings.TrimSpace(attrs["serial_number"]),
-			"platform":          strings.TrimSpace(attrs["platform"]),
-			"os":                firstAttribute(attrs, "os", "os_name"),
-			"os_version":        strings.TrimSpace(attrs["os_version"]),
-			"status":            strings.TrimSpace(attrs["status"]),
-			"compliance_status": strings.TrimSpace(attrs["compliance_status"]),
-			"source_product":    profile.Provider,
-		},
+		Attributes: endpointAttrs,
 	})
 	return endpointURN
+}
+
+func addEndpointAttribute(attrs map[string]string, key string, value string) {
+	if trimmed := strings.TrimSpace(value); trimmed != "" {
+		attrs[key] = trimmed
+	}
 }
 
 func addEndpointOwnerLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, endpointURN string, attrs map[string]string) {

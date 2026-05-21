@@ -121,6 +121,53 @@ func TestReadSoftwareFamily(t *testing.T) {
 	}
 }
 
+func TestReadSoftwareFamilyKeepsSamePackageOnDifferentDevices(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v0/software" {
+			t.Fatalf("request path = %q, want /api/v0/software", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{
+				{
+					"device_id": "device-1",
+					"name":      "openssl",
+					"version":   "3.0.1",
+				},
+				{
+					"device_id": "device-2",
+					"name":      "openssl",
+					"version":   "3.0.1",
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"base_url":  server.URL + "/api/v0",
+		"token":     "kolide-token",
+		"family":    "software",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 2 {
+		t.Fatalf("len(Events) = %d, want both device package rows", len(pull.Events))
+	}
+	if pull.Events[0].Id == pull.Events[1].Id {
+		t.Fatalf("event IDs are equal %q, want per-row identities", pull.Events[0].Id)
+	}
+	if pull.Events[0].Attributes["external_id"] == pull.Events[1].Attributes["external_id"] {
+		t.Fatalf("external_id values are equal %q, want per-row fallback identities", pull.Events[0].Attributes["external_id"])
+	}
+}
+
 func TestReadVulnerabilityFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v0/vulnerabilities" {

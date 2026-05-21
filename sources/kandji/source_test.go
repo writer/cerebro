@@ -177,3 +177,56 @@ func TestReadVulnerabilityFamily(t *testing.T) {
 		t.Fatalf("attrs = %#v, want CVE/application attributes", attrs)
 	}
 }
+
+func TestReadVulnerabilityFamilyKeepsSameCVEOnDifferentDevices(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/vulnerability-management/detections" {
+			t.Fatalf("request path = %q, want /api/v1/vulnerability-management/detections", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{
+				{
+					"cve_id":            "CVE-2026-0001",
+					"device_id":         "device-1",
+					"installed_version": "1.0.0",
+					"app": map[string]any{
+						"name": "Safari",
+					},
+				},
+				{
+					"cve_id":            "CVE-2026-0001",
+					"device_id":         "device-2",
+					"installed_version": "1.0.0",
+					"app": map[string]any{
+						"name": "Safari",
+					},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"base_url":  server.URL + "/api/v1",
+		"token":     "kandji-token",
+		"family":    "vulnerability",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 2 {
+		t.Fatalf("len(Events) = %d, want both device vulnerability rows", len(pull.Events))
+	}
+	if pull.Events[0].Id == pull.Events[1].Id {
+		t.Fatalf("event IDs are equal %q, want per-row identities", pull.Events[0].Id)
+	}
+	if pull.Events[0].Attributes["external_id"] == pull.Events[1].Attributes["external_id"] {
+		t.Fatalf("external_id values are equal %q, want per-row fallback identities", pull.Events[0].Attributes["external_id"])
+	}
+}

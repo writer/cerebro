@@ -364,7 +364,6 @@ func pullFromRecords(sourceID string, settings settings, family Family, records 
 		pull := sourcecdk.Pull{}
 		if next := strings.TrimSpace(next); next != "" {
 			pull.NextCursor = &cerebrov1.SourceCursor{Opaque: next}
-			pull.Checkpoint = &cerebrov1.SourceCheckpoint{CursorOpaque: next}
 		}
 		return pull, nil
 	}

@@ -77,7 +77,7 @@ func New() (*Source, error) {
 				Name:    familyApplication,
 				Path:    "/prism/apps",
 				URNKind: "kandji_application",
-				IDKeys:  []string{"id", "app_id", "bundle_id", "name"},
+				IDKeys:  []string{"id", "app_id"},
 				TimestampKeys: []string{
 					"updated_at", "installed_at", "last_seen_at",
 				},
@@ -109,7 +109,7 @@ func New() (*Source, error) {
 				Name:    familyVulnerability,
 				Path:    "/vulnerability-management/detections",
 				URNKind: "kandji_vulnerability",
-				IDKeys:  []string{"id", "vulnerability_id", "cve_id", "cve", "advisory_id"},
+				IDKeys:  []string{"id", "vulnerability_id"},
 				TimestampKeys: []string{
 					"updated_at", "detected_at", "last_observed_at", "published_at",
 				},
