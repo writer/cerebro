@@ -41,6 +41,36 @@ func TestProjectKolideDeviceLinksOwnerAndIdentifiers(t *testing.T) {
 	assertProjectedLinkMissing(t, state, endpointURN, relationRepresentsIdentity, "urn:cerebro:writer:identity:login:serial1")
 }
 
+func TestProjectKolideCheckWithoutDeviceIDDoesNotCreateEndpointFromRecordID(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "kolide-check-1",
+		TenantId: "writer",
+		SourceId: "kolide",
+		Kind:     "kolide.check",
+		Attributes: map[string]string{
+			"external_id": "check-1",
+			"check_id":    "check-1",
+			"title":       "Disk encryption enabled",
+			"status":      "failing",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if result.EntitiesProjected == 0 {
+		t.Fatal("EntitiesProjected = 0, want check projection")
+	}
+	if entity := state.entities["urn:cerebro:writer:kolide_check:check-1"]; entity == nil {
+		t.Fatal("expected check entity")
+	}
+	if entity := state.entities["urn:cerebro:writer:kolide_device:check-1"]; entity != nil {
+		t.Fatalf("synthetic endpoint entity = %#v, want none from check external_id", entity)
+	}
+}
+
 func TestProjectKolideSoftwareUsesCanonicalPackage(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
