@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -390,11 +389,12 @@ func isRemoteVulnDBSource(source string) bool {
 }
 
 func vulnDBSourceScheme(source string) string {
-	parsed, err := url.Parse(strings.TrimSpace(source))
-	if err != nil {
+	source = strings.TrimSpace(source)
+	separator := strings.Index(source, "://")
+	if separator <= 0 {
 		return ""
 	}
-	return strings.ToLower(strings.TrimSpace(parsed.Scheme))
+	return strings.ToLower(strings.TrimSpace(source[:separator]))
 }
 
 type openedVulnDBStore struct {

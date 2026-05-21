@@ -199,9 +199,7 @@ func addEndpointOwnerLinks(entities map[string]*ports.ProjectedEntity, links map
 	}
 	for _, identifier := range []string{
 		firstAttribute(attrs, "owner_email"),
-		firstAttribute(attrs, "owner_id"),
 		firstAttribute(attrs, "user_email"),
-		firstAttribute(attrs, "user_id"),
 		firstAttribute(attrs, "primary_email"),
 		firstAttribute(attrs, "assigned_user"),
 	} {
@@ -217,6 +215,19 @@ func addEndpointOwnerLinks(entities map[string]*ports.ProjectedEntity, links map
 				"match_type": "endpoint_owner_identifier",
 			}))
 		}
+	}
+	for _, identifier := range []struct {
+		kind  string
+		value string
+	}{
+		{"owner_id", firstAttribute(attrs, "owner_id")},
+		{"user_id", firstAttribute(attrs, "user_id")},
+	} {
+		identifierType := identifier.kind
+		if normalizedSourceID := normalizeIdentifier(sourceID); normalizedSourceID != "" {
+			identifierType = normalizedSourceID + "_" + identifier.kind
+		}
+		addEndpointIdentifierLink(entities, links, tenantID, sourceID, event, endpointURN, identifierType, identifier.value, "0.75")
 	}
 }
 

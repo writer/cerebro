@@ -375,18 +375,40 @@ func (s *Store) CandidateAffectedPackages(ctx context.Context, query vulndb.Pack
 		return nil, errors.New("postgres is not configured")
 	}
 	ecosystem := normalizeVulnDBEcosystem(query.Ecosystem)
-	packageName := normalizeVulnDBPackageName(query.Name)
-	if ecosystem == "" || packageName == "" {
+	packageNames := vulndb.PackageLookupNames(query.Ecosystem, query.Name)
+	if ecosystem == "" || len(packageNames) == 0 {
+		return nil, nil
+	}
+	packageKeys := make([]string, 0, len(packageNames))
+	seenPackageKeys := map[string]struct{}{}
+	for _, name := range packageNames {
+		key := normalizeVulnDBPackageName(name)
+		if key == "" {
+			continue
+		}
+		if _, ok := seenPackageKeys[key]; ok {
+			continue
+		}
+		seenPackageKeys[key] = struct{}{}
+		packageKeys = append(packageKeys, key)
+	}
+	if len(packageKeys) == 0 {
 		return nil, nil
 	}
 	if err := s.ensureVulnDBTables(ctx); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	args := []any{ecosystem}
+	placeholders := make([]string, 0, len(packageKeys))
+	for _, key := range packageKeys {
+		args = append(args, key)
+		placeholders = append(placeholders, fmt.Sprintf("$%d", len(args)))
+	}
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
 SELECT affected_json::text
 FROM vulndb_affected_packages
-WHERE ecosystem = $1 AND package_name_key = $2
-ORDER BY row_key`, ecosystem, packageName)
+WHERE ecosystem = $1 AND package_name_key IN (%s)
+ORDER BY row_key`, strings.Join(placeholders, ", ")), args...)
 	if err != nil {
 		return nil, fmt.Errorf("query affected packages: %w", err)
 	}

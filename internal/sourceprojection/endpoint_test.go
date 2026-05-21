@@ -58,10 +58,10 @@ func TestProjectKolideDeviceLinksOwnerIDIdentity(t *testing.T) {
 
 	deviceURN := "urn:cerebro:writer:kolide_device:device-1"
 	identityURN := "urn:cerebro:writer:identity:login:user-1"
-	identifierURN := "urn:cerebro:writer:identifier:login:user-1"
+	identifierURN := "urn:cerebro:writer:endpoint_identifier:kolide_user_id:user-1"
 	assertProjectedLink(t, state, deviceURN, relationHasIdentifier, identifierURN)
-	assertProjectedLink(t, state, deviceURN, relationRepresentsIdentity, identityURN)
-	assertProjectedLink(t, state, deviceURN, relationOwnedBy, identityURN)
+	assertProjectedLinkMissing(t, state, deviceURN, relationRepresentsIdentity, identityURN)
+	assertProjectedLinkMissing(t, state, deviceURN, relationOwnedBy, identityURN)
 }
 
 func TestProjectKolideSoftwareLinksDevicePackageAndCanonicalPackage(t *testing.T) {

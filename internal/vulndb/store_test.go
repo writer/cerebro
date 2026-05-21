@@ -1240,6 +1240,43 @@ func TestImportNVDPreservesPlatformQualifiedCPEComponents(t *testing.T) {
 	}
 }
 
+func TestCandidateAffectedPackagesIncludesGenericCPEForQualifiedLookup(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	if err := store.UpsertAffectedPackage(ctx, AffectedPackage{
+		VulnerabilityID: "CVE-2026-44450",
+		Source:          SourceNVD,
+		Ecosystem:       "cpe:application",
+		PackageName:     "vendor:agent",
+		Fixed:           "2.0.0",
+	}); err != nil {
+		t.Fatalf("upsert generic cpe: %v", err)
+	}
+	if err := store.UpsertAffectedPackage(ctx, AffectedPackage{
+		VulnerabilityID: "CVE-2026-44451",
+		Source:          SourceNVD,
+		Ecosystem:       "cpe:application",
+		PackageName:     "vendor:agent:target_sw=android",
+		Fixed:           "3.0.0",
+	}); err != nil {
+		t.Fatalf("upsert qualified cpe: %v", err)
+	}
+	rows, err := store.CandidateAffectedPackages(ctx, PackageQuery{Ecosystem: "cpe:application", Name: "vendor:agent:target_sw=android"})
+	if err != nil {
+		t.Fatalf("candidate qualified cpe package: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("qualified cpe rows = %+v, want qualified and generic rows", rows)
+	}
+	rows, err = store.CandidateAffectedPackages(ctx, PackageQuery{Ecosystem: "cpe:application", Name: "vendor:agent"})
+	if err != nil {
+		t.Fatalf("candidate generic cpe package: %v", err)
+	}
+	if len(rows) != 1 || rows[0].VulnerabilityID != "CVE-2026-44450" {
+		t.Fatalf("generic cpe rows = %+v, want only generic row", rows)
+	}
+}
+
 func TestImportEPSSReturnsCommentScanError(t *testing.T) {
 	ctx := context.Background()
 	store := NewMemoryStore()

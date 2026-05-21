@@ -123,6 +123,34 @@ func normalizePackageName(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
 
+// PackageLookupNames returns package-name keys that should be considered for a query.
+func PackageLookupNames(ecosystem string, packageName string) []string {
+	name := normalizePackageName(packageName)
+	if name == "" {
+		return nil
+	}
+	names := []string{name}
+	if strings.HasPrefix(normalizeEcosystem(ecosystem), "cpe:") {
+		base := cpeBasePackageName(name)
+		if base != "" && base != name {
+			names = append(names, base)
+		}
+	}
+	return names
+}
+
+func cpeBasePackageName(name string) string {
+	parts := strings.Split(name, ":")
+	base := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if strings.Contains(part, "=") {
+			break
+		}
+		base = append(base, part)
+	}
+	return strings.Join(base, ":")
+}
+
 func packageKey(ecosystem string, packageName string) string {
 	return normalizeEcosystem(ecosystem) + "\x00" + normalizePackageName(packageName)
 }

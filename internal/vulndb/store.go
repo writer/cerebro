@@ -241,21 +241,26 @@ func (s *MemoryStore) CandidateAffectedPackages(ctx context.Context, query Packa
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	key := packageKey(query.Ecosystem, query.Name)
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	rows := s.affected[key]
-	if len(rows) == 0 {
+	names := PackageLookupNames(query.Ecosystem, query.Name)
+	if len(names) == 0 {
 		return nil, nil
 	}
-	keys := make([]string, 0, len(rows))
-	for rowKey := range rows {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	merged := map[string]AffectedPackage{}
+	for _, name := range names {
+		for rowKey, row := range s.affected[packageKey(query.Ecosystem, name)] {
+			merged[rowKey] = row
+		}
+	}
+	keys := make([]string, 0, len(merged))
+	for rowKey := range merged {
 		keys = append(keys, rowKey)
 	}
 	sort.Strings(keys)
 	out := make([]AffectedPackage, 0, len(keys))
 	for _, rowKey := range keys {
-		out = append(out, rows[rowKey])
+		out = append(out, merged[rowKey])
 	}
 	return out, nil
 }

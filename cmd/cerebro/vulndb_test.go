@@ -44,6 +44,15 @@ func TestVulnDBInputClientRejectsUnsupportedURLSchemes(t *testing.T) {
 	}
 }
 
+func TestVulnDBSourceSchemeLeavesDriveLetterPathsLocal(t *testing.T) {
+	if got := vulnDBSourceScheme(`C:\feeds\osv.json`); got != "" {
+		t.Fatalf("vulnDBSourceScheme(windows path) = %q, want local file path", got)
+	}
+	if got := vulnDBSourceScheme("ftp://mirror.example/osv.json"); got != "ftp" {
+		t.Fatalf("vulnDBSourceScheme(ftp URL) = %q, want ftp", got)
+	}
+}
+
 func TestParseVulnDBOptionsSyncJobFields(t *testing.T) {
 	options, err := parseVulnDBOptions([]string{
 		"store=file",
