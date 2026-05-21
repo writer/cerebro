@@ -27,6 +27,7 @@ var errLegacyKuzuPath = errors.New("CEREBRO_KUZU_PATH is no longer supported")
 type Config struct {
 	HTTPAddr        string
 	ShutdownTimeout time.Duration
+	ImageTag        string
 	AppendLog       AppendLogConfig
 	StateStore      StateStoreConfig
 	GraphStore      GraphStoreConfig
@@ -110,6 +111,7 @@ func Load() (Config, error) {
 	cfg := Config{
 		HTTPAddr:        strings.TrimSpace(os.Getenv("CEREBRO_HTTP_ADDR")),
 		ShutdownTimeout: defaultShutdownTimeout,
+		ImageTag:        strings.TrimSpace(os.Getenv("CEREBRO_IMAGE_TAG")),
 		AppendLog: AppendLogConfig{
 			Driver:                 strings.TrimSpace(os.Getenv("CEREBRO_APPEND_LOG_DRIVER")),
 			JetStreamURL:           strings.TrimSpace(os.Getenv("CEREBRO_JETSTREAM_URL")),

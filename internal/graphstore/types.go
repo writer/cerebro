@@ -6,6 +6,9 @@ type Counts struct {
 	Relations int64 `json:"relations"`
 }
 
+// RelationCounts summarizes totals keyed by projected relation name.
+type RelationCounts map[string]int64
+
 // Traversal captures one sampled two-hop graph path.
 type Traversal struct {
 	FromURN        string `json:"from_urn"`

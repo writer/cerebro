@@ -41,6 +41,7 @@ type Store struct {
 }
 
 type Counts = graphstore.Counts
+type RelationCounts = graphstore.RelationCounts
 type Traversal = graphstore.Traversal
 type IntegrityCheck = graphstore.IntegrityCheck
 type PathPattern = graphstore.PathPattern
@@ -117,6 +118,40 @@ func (s *Store) Counts(ctx context.Context) (Counts, error) {
 		return nil, nil
 	}); err != nil {
 		return Counts{}, err
+	}
+	return counts, nil
+}
+
+// RelationCounts returns exact totals for the requested projected relation names.
+func (s *Store) RelationCounts(ctx context.Context, relations []string) (_ RelationCounts, err error) {
+	if err := s.requireConfigured(); err != nil {
+		return nil, err
+	}
+	if len(relations) == 0 {
+		return RelationCounts{}, nil
+	}
+	counts := make(RelationCounts, len(relations))
+	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		result, err := tx.Run(ctx, `UNWIND $relations AS relation
+OPTIONAL MATCH ()-[r:RELATION]->()
+WHERE r.relation = relation
+RETURN relation, count(r)
+ORDER BY relation`, map[string]any{"relations": relations})
+		if err != nil {
+			return nil, err
+		}
+		for result.Next(ctx) {
+			record := result.Record()
+			counts[stringValue(record.Values[0])] = toInt64(record.Values[1])
+		}
+		return nil, result.Err()
+	}); err != nil {
+		return nil, fmt.Errorf("count graph relations: %w", err)
+	}
+	for _, relation := range relations {
+		if _, ok := counts[relation]; !ok {
+			counts[relation] = 0
+		}
 	}
 	return counts, nil
 }

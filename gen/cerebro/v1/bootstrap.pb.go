@@ -345,6 +345,12 @@ type CheckHealthResponse struct {
 	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
 	CheckedAt     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=checked_at,json=checkedAt,proto3" json:"checked_at,omitempty"`
 	Components    []*ComponentStatus     `protobuf:"bytes,3,rep,name=components,proto3" json:"components,omitempty"`
+	ServiceName   string                 `protobuf:"bytes,4,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
+	Version       string                 `protobuf:"bytes,5,opt,name=version,proto3" json:"version,omitempty"`
+	Commit        string                 `protobuf:"bytes,6,opt,name=commit,proto3" json:"commit,omitempty"`
+	BuildDate     string                 `protobuf:"bytes,7,opt,name=build_date,json=buildDate,proto3" json:"build_date,omitempty"`
+	ApiVersion    string                 `protobuf:"bytes,8,opt,name=api_version,json=apiVersion,proto3" json:"api_version,omitempty"`
+	ImageTag      string                 `protobuf:"bytes,9,opt,name=image_tag,json=imageTag,proto3" json:"image_tag,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -398,6 +404,48 @@ func (x *CheckHealthResponse) GetComponents() []*ComponentStatus {
 		return x.Components
 	}
 	return nil
+}
+
+func (x *CheckHealthResponse) GetServiceName() string {
+	if x != nil {
+		return x.ServiceName
+	}
+	return ""
+}
+
+func (x *CheckHealthResponse) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *CheckHealthResponse) GetCommit() string {
+	if x != nil {
+		return x.Commit
+	}
+	return ""
+}
+
+func (x *CheckHealthResponse) GetBuildDate() string {
+	if x != nil {
+		return x.BuildDate
+	}
+	return ""
+}
+
+func (x *CheckHealthResponse) GetApiVersion() string {
+	if x != nil {
+		return x.ApiVersion
+	}
+	return ""
+}
+
+func (x *CheckHealthResponse) GetImageTag() string {
+	if x != nil {
+		return x.ImageTag
+	}
+	return ""
 }
 
 // ReportParameter describes one supported report input parameter.
@@ -6790,14 +6838,22 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\x0fComponentStatus\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x16\n" +
-	"\x06detail\x18\x03 \x01(\tR\x06detail\"\xa5\x01\n" +
+	"\x06detail\x18\x03 \x01(\tR\x06detail\"\xd7\x02\n" +
 	"\x13CheckHealthResponse\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x129\n" +
 	"\n" +
 	"checked_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tcheckedAt\x12;\n" +
 	"\n" +
 	"components\x18\x03 \x03(\v2\x1b.cerebro.v1.ComponentStatusR\n" +
-	"components\"_\n" +
+	"components\x12!\n" +
+	"\fservice_name\x18\x04 \x01(\tR\vserviceName\x12\x18\n" +
+	"\aversion\x18\x05 \x01(\tR\aversion\x12\x16\n" +
+	"\x06commit\x18\x06 \x01(\tR\x06commit\x12\x1d\n" +
+	"\n" +
+	"build_date\x18\a \x01(\tR\tbuildDate\x12\x1f\n" +
+	"\vapi_version\x18\b \x01(\tR\n" +
+	"apiVersion\x12\x1b\n" +
+	"\timage_tag\x18\t \x01(\tR\bimageTag\"_\n" +
 	"\x0fReportParameter\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12\x1a\n" +

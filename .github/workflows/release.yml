@@ -160,3 +160,30 @@ jobs:
           GOBIN="${RUNNER_TEMP}/cosign" go install github.com/sigstore/cosign/v2/cmd/cosign@v2.6.1
           "${RUNNER_TEMP}/cosign/cosign" sign --yes "${IMAGE_BASE}:${RELEASE_TAG}"
           "${RUNNER_TEMP}/cosign/cosign" sign --yes "${IMAGE_BASE}:latest"
+
+  promote-aws:
+    runs-on: ubuntu-latest
+    needs: [resolve-tag, ghcr-publish]
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [sec-dev, go-prod]
+    steps:
+      - name: Trigger infra image promotion
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.CEREBRO_INFRA_PROMOTION_TOKEN }}
+          RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
+          STACK_NAME: ${{ matrix.environment }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::warning::CEREBRO_INFRA_PROMOTION_TOKEN is not configured; skipping ${STACK_NAME} promotion for ${RELEASE_TAG}"
+            exit 0
+          fi
+          gh workflow run propose-image-tag.yml \
+            --repo WriterInternal/cerebro \
+            --ref main \
+            -f environment="${STACK_NAME}" \
+            -f image_tag="${RELEASE_TAG}"
+          echo "Requested ${STACK_NAME} promotion for ${RELEASE_TAG}"

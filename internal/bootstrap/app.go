@@ -59,6 +59,7 @@ type App struct {
 }
 
 type bootstrapService struct {
+	cfg     config.Config
 	deps    Dependencies
 	sources *sourcecdk.Registry
 }
@@ -77,7 +78,7 @@ var (
 // New constructs the minimal bootstrap app and registers the Connect handlers.
 func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App {
 	mux := http.NewServeMux()
-	service := &bootstrapService{deps: deps, sources: sources}
+	service := &bootstrapService{cfg: cfg, deps: deps, sources: sources}
 	path, handler := cerebrov1connect.NewBootstrapServiceHandler(service, connect.WithInterceptors(authInterceptor(cfg.Auth)))
 	mux.Handle(path, handler)
 
@@ -173,7 +174,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 }
 
 func (a *App) handleHealth(w http.ResponseWriter, r *http.Request) {
-	response := healthResponse(r.Context(), a.deps)
+	response := publicHealthResponse(r.Context(), a.deps)
 	writeProtoJSON(w, http.StatusOK, response)
 }
 
@@ -1472,7 +1473,7 @@ func (s *bootstrapService) GetVersion(_ context.Context, _ *connect.Request[cere
 }
 
 func (s *bootstrapService) CheckHealth(ctx context.Context, _ *connect.Request[cerebrov1.CheckHealthRequest]) (*connect.Response[cerebrov1.CheckHealthResponse], error) {
-	return connect.NewResponse(healthResponse(ctx, s.deps)), nil
+	return connect.NewResponse(healthResponse(ctx, s.cfg, s.deps)), nil
 }
 
 func (s *bootstrapService) ListReportDefinitions(_ context.Context, _ *connect.Request[cerebrov1.ListReportDefinitionsRequest]) (*connect.Response[cerebrov1.ListReportDefinitionsResponse], error) {
@@ -2150,7 +2151,18 @@ func (s *bootstrapService) CheckGraphIngestHealth(ctx context.Context, req *conn
 	return connect.NewResponse(graphIngestHealthResponse(result)), nil
 }
 
-func healthResponse(ctx context.Context, deps Dependencies) *cerebrov1.CheckHealthResponse {
+func healthResponse(ctx context.Context, cfg config.Config, deps Dependencies) *cerebrov1.CheckHealthResponse {
+	response := publicHealthResponse(ctx, deps)
+	response.ServiceName = buildinfo.ServiceName
+	response.Version = buildinfo.Version
+	response.Commit = buildinfo.Commit
+	response.BuildDate = buildinfo.BuildDate
+	response.ApiVersion = buildinfo.APIVersion
+	response.ImageTag = healthImageTag(cfg)
+	return response
+}
+
+func publicHealthResponse(ctx context.Context, deps Dependencies) *cerebrov1.CheckHealthResponse {
 	components := []*cerebrov1.ComponentStatus{
 		componentStatus(ctx, "append_log", deps.AppendLog),
 		componentStatus(ctx, "state_store", deps.StateStore),
@@ -2168,6 +2180,21 @@ func healthResponse(ctx context.Context, deps Dependencies) *cerebrov1.CheckHeal
 		CheckedAt:  timestamppb.Now(),
 		Components: components,
 	}
+}
+
+func healthImageTag(cfg config.Config) string {
+	imageTag := strings.TrimSpace(cfg.ImageTag)
+	if imageTag != "" {
+		return imageTag
+	}
+	version := strings.TrimSpace(buildinfo.Version)
+	if version == "" || version == "dev" {
+		return ""
+	}
+	if strings.HasPrefix(version, "v") {
+		return version
+	}
+	return "v" + version
 }
 
 func writeProtoJSON(w http.ResponseWriter, statusCode int, message proto.Message) {
