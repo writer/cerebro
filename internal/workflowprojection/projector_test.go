@@ -207,8 +207,9 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 		ResourceCount:      1,
 		EventCount:         2,
 		FindingRiskSnapshot: workflowevents.FindingRiskSnapshot{
-			RiskScore:   47,
-			RiskReasons: []string{"privileged_actor", "risky_action"},
+			RiskScore:         47,
+			EffectiveSeverity: "MEDIUM",
+			RiskReasons:       []string{"privileged_actor", "risky_action"},
 		},
 		Metadata: map[string]string{
 			"actor_urn":     "urn:cerebro:writer:okta_actor:user:00u1",
@@ -232,6 +233,9 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 	}
 	if got := findingEntity.Attributes["risk_score"]; got != "47" {
 		t.Fatalf("finding risk_score attribute = %q, want 47", got)
+	}
+	if got := findingEntity.Attributes["effective_severity"]; got != "MEDIUM" {
+		t.Fatalf("finding effective_severity attribute = %q, want MEDIUM", got)
 	}
 	if got := findingEntity.Attributes["event_count"]; got != "2" {
 		t.Fatalf("finding event_count attribute = %q, want 2", got)

@@ -152,14 +152,15 @@ type FindingSnapshot struct {
 
 // FindingRiskSnapshot captures normalized finding risk scoring metadata in workflow events.
 type FindingRiskSnapshot struct {
-	RiskScore        int      `json:"risk_score,omitempty"`
-	LikelihoodScore  int      `json:"likelihood_score,omitempty"`
-	ImpactScore      int      `json:"impact_score,omitempty"`
-	ConfidenceScore  int      `json:"confidence_score,omitempty"`
-	LikelihoodLevel  string   `json:"likelihood_level,omitempty"`
-	ImpactLevel      string   `json:"impact_level,omitempty"`
-	RiskModelVersion string   `json:"risk_model_version,omitempty"`
-	RiskReasons      []string `json:"risk_reasons,omitempty"`
+	RiskScore         int      `json:"risk_score,omitempty"`
+	EffectiveSeverity string   `json:"effective_severity,omitempty"`
+	LikelihoodScore   int      `json:"likelihood_score,omitempty"`
+	ImpactScore       int      `json:"impact_score,omitempty"`
+	ConfidenceScore   int      `json:"confidence_score,omitempty"`
+	LikelihoodLevel   string   `json:"likelihood_level,omitempty"`
+	ImpactLevel       string   `json:"impact_level,omitempty"`
+	RiskModelVersion  string   `json:"risk_model_version,omitempty"`
+	RiskReasons       []string `json:"risk_reasons,omitempty"`
 }
 
 // FindingControlRefSnapshot captures one generic compliance/control reference for graph projection.

@@ -267,6 +267,7 @@ func findingWorkflowSnapshot(finding *ports.FindingRecord, tenantID string, sour
 	if riskScore == 0 {
 		riskScore = risk.Score
 	}
+	effectiveSeverity := firstNonEmpty(EffectiveSeverityFromRiskScore(riskScore), risk.EffectiveSeverity, finding.Attributes[FindingEffectiveSeverityAttribute])
 	likelihoodScore := finding.LikelihoodScore
 	if likelihoodScore == 0 {
 		likelihoodScore = risk.LikelihoodScore
@@ -308,14 +309,15 @@ func findingWorkflowSnapshot(finding *ports.FindingRecord, tenantID string, sour
 		EventCount:         len(eventIDs),
 		ControlRefs:        findingControlRefSnapshots(finding.ControlRefs),
 		FindingRiskSnapshot: workflowevents.FindingRiskSnapshot{
-			RiskScore:        riskScore,
-			LikelihoodScore:  likelihoodScore,
-			ImpactScore:      impactScore,
-			ConfidenceScore:  confidenceScore,
-			LikelihoodLevel:  likelihoodLevel,
-			ImpactLevel:      impactLevel,
-			RiskModelVersion: modelVersion,
-			RiskReasons:      uniqueSortedStrings(riskReasons),
+			RiskScore:         riskScore,
+			EffectiveSeverity: effectiveSeverity,
+			LikelihoodScore:   likelihoodScore,
+			ImpactScore:       impactScore,
+			ConfidenceScore:   confidenceScore,
+			LikelihoodLevel:   likelihoodLevel,
+			ImpactLevel:       impactLevel,
+			RiskModelVersion:  modelVersion,
+			RiskReasons:       uniqueSortedStrings(riskReasons),
 		},
 		Metadata: findingRiskMetadata(finding),
 	}

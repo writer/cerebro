@@ -139,6 +139,9 @@ func TestAnalyzeFindingRiskContextUsesGenericSignals(t *testing.T) {
 	if context.Score < 80 {
 		t.Fatalf("Risk score = %d, want generic contextual score >= 80", context.Score)
 	}
+	if context.EffectiveSeverity != "CRITICAL" {
+		t.Fatalf("EffectiveSeverity = %q, want CRITICAL", context.EffectiveSeverity)
+	}
 	if context.LikelihoodScore < 80 {
 		t.Fatalf("LikelihoodScore = %d, want >= 80", context.LikelihoodScore)
 	}
@@ -150,6 +153,35 @@ func TestAnalyzeFindingRiskContextUsesGenericSignals(t *testing.T) {
 	}
 	if context.LikelihoodLevel == "" || context.ImpactLevel == "" || context.RiskModelVersion == "" {
 		t.Fatalf("Risk metadata = %#v, want levels and model version", context)
+	}
+}
+
+func TestEffectiveSeverityFromRiskScore(t *testing.T) {
+	for _, tt := range []struct {
+		score int
+		want  string
+	}{
+		{score: 95, want: "CRITICAL"},
+		{score: 75, want: "HIGH"},
+		{score: 50, want: "MEDIUM"},
+		{score: 20, want: "LOW"},
+		{score: 0, want: ""},
+	} {
+		if got := EffectiveSeverityFromRiskScore(tt.score); got != tt.want {
+			t.Fatalf("EffectiveSeverityFromRiskScore(%d) = %q, want %q", tt.score, got, tt.want)
+		}
+	}
+}
+
+func TestAnalyzeFindingRiskContextUsesSourceSeverityForScoring(t *testing.T) {
+	finding := compoundRiskFinding("finding-calibrated", "rule-1", "HIGH", "", "", "urn:cerebro:writer:asset:1", "")
+	finding.Attributes[FindingSourceSeverityAttribute] = "LOW"
+	context := AnalyzeFindingRiskContext(finding, time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC))
+	if stringSliceContains(context.Reasons, "severity:HIGH") {
+		t.Fatalf("Risk reasons = %#v, want source severity to avoid calibrated severity feedback", context.Reasons)
+	}
+	if !stringSliceContains(context.Reasons, "severity:LOW") {
+		t.Fatalf("Risk reasons = %#v, want source severity LOW", context.Reasons)
 	}
 }
 

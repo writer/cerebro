@@ -2914,6 +2914,9 @@ func TestPersistFindingRiskUsesRiskOnlyUpdate(t *testing.T) {
 	if stored.RiskScore == 0 {
 		t.Fatal("persistFindingRisk().RiskScore = 0, want refreshed risk")
 	}
+	if got, want := stored.Attributes[FindingEffectiveSeverityAttribute], EffectiveSeverityFromRiskScore(stored.RiskScore); got != want {
+		t.Fatalf("persistFindingRisk().Attributes[%s] = %q, want %q", FindingEffectiveSeverityAttribute, got, want)
+	}
 }
 
 func TestBackfillFindingRiskProjectsUpdatedFindings(t *testing.T) {
@@ -2962,6 +2965,9 @@ func TestBackfillFindingRiskProjectsUpdatedFindings(t *testing.T) {
 	}
 	if got := graphFinding.Attributes["risk_score"]; got != "83" {
 		t.Fatalf("projected risk_score = %q, want 83", got)
+	}
+	if got := graphFinding.Attributes[FindingEffectiveSeverityAttribute]; got != "HIGH" {
+		t.Fatalf("projected effective_severity = %q, want HIGH", got)
 	}
 	if closed := graphStore.entities["urn:cerebro:tenant-a:finding:finding-closed"]; closed == nil || closed.Attributes["risk_score"] != "83" {
 		t.Fatalf("closed projected finding = %#v, want risk_score 83", closed)
