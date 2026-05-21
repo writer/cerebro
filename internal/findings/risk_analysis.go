@@ -187,25 +187,6 @@ func AnalyzeFindingPatternCorrelations(records []*ports.FindingRecord, options F
 }
 
 func newPatternFindingCorrelation(pattern FindingCorrelationPattern, bucket compoundRiskBucket, options FindingExposureAnalysisOptions) FindingCorrelation {
-	matched := findingsMatchingRuleSet(bucket.findings, pattern.RuleIDs)
-	if len(matched) < len(pattern.RuleIDs) {
-		return FindingCorrelation{}
-	}
-	sort.Slice(matched, func(i int, j int) bool {
-		left := findingObservedAt(matched[i])
-		right := findingObservedAt(matched[j])
-		switch {
-		case left.IsZero() && !right.IsZero():
-			return false
-		case !left.IsZero() && right.IsZero():
-			return true
-		case !left.Equal(right):
-			return left.Before(right)
-		default:
-			return matched[i].ID < matched[j].ID
-		}
-	})
-	timespan := findingBundleTimespan(matched)
 	window := pattern.Window
 	if window <= 0 {
 		window = options.CorrelationWindow
@@ -213,9 +194,11 @@ func newPatternFindingCorrelation(pattern FindingCorrelationPattern, bucket comp
 	if window <= 0 {
 		window = defaultFindingCorrelationWindow
 	}
-	if timespan > window {
+	matched := findingsMatchingRuleSetWithinWindow(bucket.findings, pattern.RuleIDs, window)
+	if len(matched) < len(pattern.RuleIDs) {
 		return FindingCorrelation{}
 	}
+	timespan := findingBundleTimespan(matched)
 	evidence := newFindingEvidenceBundle(matched)
 	if evidence.FindingCount < len(pattern.RuleIDs) {
 		return FindingCorrelation{}
@@ -240,13 +223,58 @@ func newPatternFindingCorrelation(pattern FindingCorrelationPattern, bucket comp
 	}
 }
 
-func findingsMatchingRuleSet(records []*ports.FindingRecord, ruleIDs []string) []*ports.FindingRecord {
-	wanted := map[string]struct{}{}
-	for _, ruleID := range ruleIDs {
-		if trimmed := strings.TrimSpace(ruleID); trimmed != "" {
-			wanted[trimmed] = struct{}{}
+func findingsMatchingRuleSetWithinWindow(records []*ports.FindingRecord, ruleIDs []string, window time.Duration) []*ports.FindingRecord {
+	matched := findingsMatchingRuleSet(records, ruleIDs)
+	if len(matched) < len(ruleIDs) {
+		return nil
+	}
+	sort.Slice(matched, func(i int, j int) bool {
+		left := findingObservedAt(matched[i])
+		right := findingObservedAt(matched[j])
+		switch {
+		case left.IsZero() && !right.IsZero():
+			return false
+		case !left.IsZero() && right.IsZero():
+			return true
+		case !left.Equal(right):
+			return left.Before(right)
+		default:
+			return matched[i].ID < matched[j].ID
+		}
+	})
+	wanted := wantedRuleIDSet(ruleIDs)
+	var best []*ports.FindingRecord
+	bestEnd := time.Time{}
+	bestScore := -1
+	for start := range matched {
+		windowRecords := []*ports.FindingRecord{}
+		seenRules := map[string]struct{}{}
+		for end := start; end < len(matched); end++ {
+			candidate := matched[end]
+			windowRecords = append(windowRecords, candidate)
+			if ruleID := strings.TrimSpace(candidate.RuleID); ruleID != "" {
+				seenRules[ruleID] = struct{}{}
+			}
+			if window > 0 && findingBundleTimespan(windowRecords) > window {
+				break
+			}
+			if !containsWantedRuleSet(seenRules, wanted) {
+				continue
+			}
+			windowEnd := findingObservedAt(windowRecords[len(windowRecords)-1])
+			score := riskContextForFindings(windowRecords).Score + len(windowRecords)
+			if best == nil || windowEnd.After(bestEnd) || (windowEnd.Equal(bestEnd) && score > bestScore) {
+				best = append([]*ports.FindingRecord(nil), windowRecords...)
+				bestEnd = windowEnd
+				bestScore = score
+			}
 		}
 	}
+	return best
+}
+
+func findingsMatchingRuleSet(records []*ports.FindingRecord, ruleIDs []string) []*ports.FindingRecord {
+	wanted := wantedRuleIDSet(ruleIDs)
 	seenRules := map[string]struct{}{}
 	matched := []*ports.FindingRecord{}
 	for _, record := range nonNilFindings(records) {
@@ -261,6 +289,28 @@ func findingsMatchingRuleSet(records []*ports.FindingRecord, ruleIDs []string) [
 		return nil
 	}
 	return matched
+}
+
+func wantedRuleIDSet(ruleIDs []string) map[string]struct{} {
+	wanted := map[string]struct{}{}
+	for _, ruleID := range ruleIDs {
+		if trimmed := strings.TrimSpace(ruleID); trimmed != "" {
+			wanted[trimmed] = struct{}{}
+		}
+	}
+	return wanted
+}
+
+func containsWantedRuleSet(seen map[string]struct{}, wanted map[string]struct{}) bool {
+	if len(seen) < len(wanted) {
+		return false
+	}
+	for ruleID := range wanted {
+		if _, ok := seen[ruleID]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func newFindingCorrelation(bucket compoundRiskBucket, window time.Duration) FindingCorrelation {

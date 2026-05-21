@@ -271,6 +271,7 @@ func (r *vulnViewExternalAssetConcentratedSignalRule) buildFinding(runtime *cere
 		PolicyName:        firstNonEmpty(strings.Join(signalList, ", "), "VulnView graph evidence"),
 		CheckID:           r.definition.ID,
 		CheckName:         r.definition.Name,
+		ControlRefs:       cloneFindingControlRefs(r.definition.ControlRefs),
 		GraphEvidenceRows: graphRows,
 		Attributes:        attributes,
 		FirstObservedAt:   now,

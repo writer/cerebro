@@ -354,7 +354,7 @@
       "pack_id": "github",
       "pack_name": "GitHub",
       "name": "GitHub Code Security Controls Disabled",
-      "description": "Detect GitHub audit events where Dependabot, vulnerability alerts, or GitHub Advanced Security controls are disabled.",
+      "description": "Detect GitHub audit events where Dependabot, vulnerability alerts, secret scanning, or GitHub Advanced Security controls are disabled.",
       "source_id": "github",
       "evaluation_mode": "event",
       "event_kinds": [
@@ -370,6 +370,7 @@
         "defense-evasion",
         "dependabot",
         "github",
+        "secret-scanning",
         "supply-chain"
       ],
       "references": [

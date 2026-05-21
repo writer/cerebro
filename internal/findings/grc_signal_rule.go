@@ -177,6 +177,7 @@ func buildGRCFinding(ctx context.Context, runtime *cerebrov1.SourceRuntime, even
 		PolicyName:      firstNonEmpty(projectedContext.ResourceLabel, attrs["name"], attrs["title"], attrs["description"]),
 		CheckID:         definition.ID,
 		CheckName:       definition.Name,
+		ControlRefs:     cloneFindingControlRefs(definition.ControlRefs),
 		Attributes:      findingAttributes,
 		FirstObservedAt: observedAt,
 		LastObservedAt:  observedAt,

@@ -27,10 +27,10 @@
       ]
     },
     {
-      "id": "github-secret-control-disabled-with-secret-alert",
-      "name": "GitHub secret scanning control disabled with secret alert",
+      "id": "github-code-security-control-disabled-with-secret-alert",
+      "name": "GitHub code security control disabled with secret alert",
       "rule_ids": [
-        "github-secret-scanning-disabled",
+        "github-code-security-controls-disabled",
         "github-secret-scanning-alert-created"
       ],
       "dimensions": [
@@ -46,7 +46,7 @@
       "tests": [
         {
           "name": "shared-repository-positive",
-          "description": "Matches when secret scanning is disabled and a secret alert lands on the same repository inside the window.",
+          "description": "Matches when a code security control is disabled and a secret alert lands on the same repository inside the window.",
           "expect_match": true
         },
         {

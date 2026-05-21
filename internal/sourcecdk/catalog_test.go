@@ -1,6 +1,11 @@
 package sourcecdk
 
-import "testing"
+import (
+	"context"
+	"testing"
+
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+)
 
 func TestLoadCatalog(t *testing.T) {
 	spec, err := LoadCatalog([]byte(`
@@ -85,6 +90,58 @@ event_contracts:
 	if got := catalog.EventContracts[0].SchemaRef; got != "github/audit/v1" {
 		t.Fatalf("EventContracts[0].SchemaRef = %q, want github/audit/v1", got)
 	}
+}
+
+func TestNewRegistryPreservesCatalogEventContracts(t *testing.T) {
+	_, err := LoadSourceCatalog([]byte(`
+id: contract_source
+name: Contract Source
+emitted_kinds:
+  - contract_source.event
+event_contracts:
+  - kind: contract_source.event
+    schema_ref: contract_source/event/v1
+    required_attributes:
+      - required_attribute
+`))
+	if err != nil {
+		t.Fatalf("LoadSourceCatalog() error = %v", err)
+	}
+	registry, err := NewRegistry(catalogTestSource{id: "contract_source"})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	registered, ok := registry.Get("contract_source")
+	if !ok {
+		t.Fatal("registry missing contract_source")
+	}
+	provider, ok := registered.(EventContractProvider)
+	if !ok {
+		t.Fatalf("registered source does not implement EventContractProvider")
+	}
+	if got := provider.EventContracts(); len(got) != 1 || got[0].Kind != "contract_source.event" {
+		t.Fatalf("EventContracts() = %#v, want contract_source.event", got)
+	}
+}
+
+type catalogTestSource struct {
+	id string
+}
+
+func (s catalogTestSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: s.id, Name: "Catalog Test Source"}
+}
+
+func (catalogTestSource) Check(context.Context, Config) error {
+	return nil
+}
+
+func (catalogTestSource) Discover(context.Context, Config) ([]URN, error) {
+	return nil, nil
+}
+
+func (catalogTestSource) Read(context.Context, Config, *cerebrov1.SourceCursor) (Pull, error) {
+	return Pull{}, nil
 }
 
 func TestLoadCatalogRejectsInvalidLifecycleStatus(t *testing.T) {

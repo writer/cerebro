@@ -3,11 +3,14 @@ package sourcecdk
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	"gopkg.in/yaml.v3"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
+
+var catalogEventContracts sync.Map
 
 type catalogFile struct {
 	ID             string                 `yaml:"id"`
@@ -64,12 +67,37 @@ func LoadSourceCatalog(data []byte) (*SourceCatalog, error) {
 	if err != nil {
 		return nil, err
 	}
+	registerCatalogEventContracts(catalog.ID, eventContracts)
 	return &SourceCatalog{Spec: &cerebrov1.SourceSpec{
 		Id:           catalog.ID,
 		Name:         catalog.Name,
 		Description:  catalog.Description,
 		EmittedKinds: emittedKinds,
 	}, EventContracts: eventContracts}, nil
+}
+
+func registerCatalogEventContracts(sourceID string, contracts []EventContract) {
+	sourceID = strings.TrimSpace(sourceID)
+	if sourceID == "" {
+		return
+	}
+	if len(contracts) == 0 {
+		catalogEventContracts.Delete(sourceID)
+		return
+	}
+	catalogEventContracts.Store(sourceID, cloneEventContracts(contracts))
+}
+
+func catalogEventContractsForSource(sourceID string) []EventContract {
+	value, ok := catalogEventContracts.Load(strings.TrimSpace(sourceID))
+	if !ok {
+		return nil
+	}
+	contracts, ok := value.([]EventContract)
+	if !ok {
+		return nil
+	}
+	return cloneEventContracts(contracts)
 }
 
 func normalizeCatalogKinds(values []string) ([]string, error) {

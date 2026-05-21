@@ -101,7 +101,14 @@ func TestAnalyzeFindingExposureCorrelatesCrossSourceFindings(t *testing.T) {
 
 func TestAnalyzeFindingPatternCorrelationsDetectsGitHubSecretExposurePattern(t *testing.T) {
 	base := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
-	controlDisabled := compoundRiskFinding("gh-control", githubSecretScanningDisabledRuleID, "HIGH", "admin@example.com", "example/cerebro", "urn:cerebro:example:github_repo:example/cerebro", "secret_scanning.disable")
+	staleControlDisabled := compoundRiskFinding("gh-stale-control", githubCodeSecurityControlsDisabledRuleID, "HIGH", "admin@example.com", "example/cerebro", "urn:cerebro:example:github_repo:example/cerebro", "repository_secret_scanning.disable")
+	staleControlDisabled.FirstObservedAt = base.Add(-72 * time.Hour)
+	staleControlDisabled.LastObservedAt = base.Add(-72 * time.Hour)
+	staleControlDisabled.EventIDs = []string{"event-stale-control"}
+	staleControlDisabled.Attributes["repository"] = "example/cerebro"
+	delete(staleControlDisabled.Attributes, "repo")
+
+	controlDisabled := compoundRiskFinding("gh-control", githubCodeSecurityControlsDisabledRuleID, "HIGH", "admin@example.com", "example/cerebro", "urn:cerebro:example:github_repo:example/cerebro", "repository_secret_scanning.disable")
 	controlDisabled.FirstObservedAt = base
 	controlDisabled.LastObservedAt = base
 	controlDisabled.EventIDs = []string{"event-control"}
@@ -115,10 +122,10 @@ func TestAnalyzeFindingPatternCorrelationsDetectsGitHubSecretExposurePattern(t *
 	secretAlert.Attributes["repository"] = "example/cerebro"
 	delete(secretAlert.Attributes, "repo")
 
-	correlations := AnalyzeFindingPatternCorrelations([]*ports.FindingRecord{controlDisabled, secretAlert}, FindingExposureAnalysisOptions{
+	correlations := AnalyzeFindingPatternCorrelations([]*ports.FindingRecord{staleControlDisabled, controlDisabled, secretAlert}, FindingExposureAnalysisOptions{
 		CorrelationWindow: time.Hour,
 	})
-	correlation := findingCorrelationByPattern(correlations, "github-secret-control-disabled-with-secret-alert")
+	correlation := findingCorrelationByPattern(correlations, "github-code-security-control-disabled-with-secret-alert")
 	if correlation == nil {
 		t.Fatalf("Correlations = %#v, want GitHub secret exposure pattern", correlations)
 	}
@@ -130,6 +137,9 @@ func TestAnalyzeFindingPatternCorrelationsDetectsGitHubSecretExposurePattern(t *
 	}
 	if got := correlation.Evidence.EventCount; got != 2 {
 		t.Fatalf("Correlation.Evidence.EventCount = %d, want 2", got)
+	}
+	if stringSliceContains(correlation.FindingIDs, staleControlDisabled.ID) {
+		t.Fatalf("Correlation.FindingIDs = %#v, want stale control outside window excluded", correlation.FindingIDs)
 	}
 	if !stringSliceContains(correlation.Reasons, "secret_exposure") {
 		t.Fatalf("Correlation.Reasons = %#v, want secret_exposure", correlation.Reasons)
