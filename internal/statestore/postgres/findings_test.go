@@ -334,6 +334,79 @@ func TestFindingListQueryRiskOrderKeepsSeverityTieBreak(t *testing.T) {
 	}
 }
 
+func TestEndpointVulnerabilityFindingQueryIncludesIdentityFilters(t *testing.T) {
+	query, args := endpointVulnerabilityFindingQuery(ports.EndpointVulnerabilityFindingQuery{
+		TenantID:     "writer",
+		DeviceID:     "device-1",
+		SerialNumber: "serial-1",
+		AgentID:      "agent-1",
+		Limit:        25,
+	})
+	for _, fragment := range []string{
+		"tenant_id = $1",
+		"LOWER(status) = 'open'",
+		"COALESCE(LOWER(attributes_json->>'source_freshness'), '') <> 'stale'",
+		"COALESCE(LOWER(attributes_json->>'freshness'), '') <> 'stale'",
+		"COALESCE(LOWER(attributes_json->>'stale'), '') NOT IN ('1', 't', 'true', 'y', 'yes', 'known', 'listed')",
+		"COALESCE(LOWER(attributes_json->>'source_stale'), '') NOT IN ('1', 't', 'true', 'y', 'yes', 'known', 'listed')",
+		"NULLIF(BTRIM(attributes_json->>'vulnerability_id'), '') IS NOT NULL",
+		"UPPER(BTRIM(attributes_json->>'identifier')) LIKE 'CVE-%'",
+		"UPPER(BTRIM(attributes_json->>'identifier')) LIKE 'GHSA-%'",
+		"attributes_json->>'device_id' = $2",
+		"attributes_json->>'endpoint_id' = $3",
+		"attributes_json->>'asset_id' = $4",
+		"attributes_json->>'serial_number' = $5",
+		"attributes_json->>'agent_id' = $6",
+		"attributes_json->>'agent_uuid' = $7",
+		"LIMIT $8",
+	} {
+		if !strings.Contains(query, fragment) {
+			t.Fatalf("endpointVulnerabilityFindingQuery() query missing %q: %s", fragment, query)
+		}
+	}
+	if got := len(args); got != 8 {
+		t.Fatalf("len(endpointVulnerabilityFindingQuery().args) = %d, want 8", got)
+	}
+	wantIdentityScope := "((attributes_json->>'device_id' = $2 OR attributes_json->>'endpoint_id' = $3 OR attributes_json->>'asset_id' = $4) OR (attributes_json->>'serial_number' = $5) OR (attributes_json->>'agent_id' = $6 OR attributes_json->>'agent_uuid' = $7))"
+	if !strings.Contains(query, wantIdentityScope) {
+		t.Fatalf("endpointVulnerabilityFindingQuery() identity scope = %s, want supplied identifiers to be alternatives", query)
+	}
+	if got := args[0]; got != "writer" {
+		t.Fatalf("endpointVulnerabilityFindingQuery().args[0] = %#v, want writer", got)
+	}
+	if got := args[7]; got != uint32(25) {
+		t.Fatalf("endpointVulnerabilityFindingQuery().args[7] = %#v, want 25", got)
+	}
+}
+
+func TestEndpointVulnerabilityFindingQueryOmitsLimitWhenUnset(t *testing.T) {
+	query, args := endpointVulnerabilityFindingQuery(ports.EndpointVulnerabilityFindingQuery{
+		TenantID: "writer",
+		DeviceID: "device-1",
+	})
+	if strings.Contains(query, "LIMIT") {
+		t.Fatalf("endpointVulnerabilityFindingQuery() query = %s, want no raw row cap without caller limit", query)
+	}
+	if got := len(args); got != 4 {
+		t.Fatalf("len(endpointVulnerabilityFindingQuery().args) = %d, want tenant plus device aliases", got)
+	}
+}
+
+func TestEndpointVulnerabilityFindingQueryIncludeStaleAndLimitClamp(t *testing.T) {
+	query, args := endpointVulnerabilityFindingQuery(ports.EndpointVulnerabilityFindingQuery{
+		TenantID:     "writer",
+		SerialNumber: "serial-1",
+		IncludeStale: true,
+		Limit:        1000,
+	})
+	if !strings.Contains(query, "LOWER(status) NOT IN ('resolved', 'suppressed')") {
+		t.Fatalf("endpointVulnerabilityFindingQuery() missing include_stale status clause: %s", query)
+	}
+	if got := args[len(args)-1]; got != uint32(500) {
+		t.Fatalf("endpointVulnerabilityFindingQuery() limit arg = %#v, want 500", got)
+	}
+}
+
 func TestFindingRowRecordDecodesCheckAndControlMetadata(t *testing.T) {
 	record, err := (findingRow{
 		ID:          "finding-1",

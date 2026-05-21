@@ -884,6 +884,37 @@ func (s *stubRuntimeStore) ListFindings(_ context.Context, request ports.ListFin
 	return findings, nil
 }
 
+func (s *stubRuntimeStore) ListEndpointVulnerabilityFindingRecords(_ context.Context, request ports.EndpointVulnerabilityFindingQuery) ([]*ports.FindingRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	findings := []*ports.FindingRecord{}
+	for _, finding := range s.findings {
+		if !endpointVulnerabilityFindingMatches(request, finding) {
+			continue
+		}
+		findings = append(findings, cloneFinding(finding))
+	}
+	sort.Slice(findings, func(i, j int) bool {
+		left := findings[i]
+		right := findings[j]
+		switch {
+		case left.LastObservedAt.Equal(right.LastObservedAt):
+			return left.ID < right.ID
+		case left.LastObservedAt.IsZero():
+			return false
+		case right.LastObservedAt.IsZero():
+			return true
+		default:
+			return left.LastObservedAt.After(right.LastObservedAt)
+		}
+	})
+	if request.Limit != 0 && len(findings) > int(request.Limit) {
+		findings = findings[:int(request.Limit)]
+	}
+	return findings, nil
+}
+
 func (s *stubRuntimeStore) SummarizeFindings(_ context.Context, request ports.ListFindingsRequest) (ports.FindingSummary, error) {
 	if s.err != nil {
 		return ports.FindingSummary{}, s.err
@@ -1987,6 +2018,20 @@ func TestAccessAuditConnectProcedureSanitizesUnknownProcedures(t *testing.T) {
 	raw := "/cerebro.v1.BootstrapService/secret-token-value"
 	if got := accessAuditConnectProcedure(raw); got != "unknown" {
 		t.Fatalf("unknown connect procedure = %q, want unknown", got)
+	}
+}
+
+func TestFallbackAccessAuditRouteIncludesEndpointVulnerabilityFindings(t *testing.T) {
+	for _, tt := range []struct {
+		path string
+		want string
+	}{
+		{path: "/endpoint-vulnerability-findings", want: "GET /endpoint-vulnerability-findings"},
+		{path: "/platform/endpoints/dev-1/vulnerability-findings", want: "GET /platform/endpoints/{deviceKey}/vulnerability-findings"},
+	} {
+		if got := fallbackAccessAuditRoute(http.MethodGet, tt.path); got != tt.want {
+			t.Fatalf("fallbackAccessAuditRoute(%q) = %q, want %q", tt.path, got, tt.want)
+		}
 	}
 }
 
@@ -4940,6 +4985,198 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 }
 
+func TestEndpointVulnerabilityFindingsHTTPRoute(t *testing.T) {
+	now := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
+	store := &stubRuntimeStore{findings: map[string]*ports.FindingRecord{
+		"endpoint-vuln-1": {
+			ID:              "endpoint-vuln-1",
+			TenantID:        "writer",
+			RuntimeID:       "kandji-runtime",
+			RuleID:          "endpoint-vulnerability-kandji",
+			Title:           "Endpoint vulnerability detected",
+			Severity:        "HIGH",
+			Status:          "open",
+			EventIDs:        []string{"event-1"},
+			ResourceURNs:    []string{"urn:cerebro:writer:kandji_device:dev-1"},
+			Attributes:      map[string]string{"device_id": "dev-1", "vulnerability_id": "CVE-2026-0001", "package_name": "openssl", "installed_version": "3.0.1", "fixed_version": "3.0.12", "source_provider": "kandji"},
+			FirstObservedAt: now.Add(-time.Hour),
+			LastObservedAt:  now,
+		},
+		"endpoint-vuln-2": {
+			ID:              "endpoint-vuln-2",
+			TenantID:        "writer",
+			RuntimeID:       "sentinelone-runtime",
+			RuleID:          "endpoint-vulnerability-sentinelone",
+			Title:           "Endpoint vulnerability detected",
+			Severity:        "CRITICAL",
+			Status:          "open",
+			EventIDs:        []string{"event-2"},
+			ResourceURNs:    []string{"urn:cerebro:writer:sentinelone_agent:agent-1"},
+			Attributes:      map[string]string{"device_id": "dev-1", "vulnerability_id": "CVE-2026-0001", "package_name": "openssl", "installed_version": "3.0.1", "known_exploited": "true", "source_provider": "sentinelone"},
+			FirstObservedAt: now.Add(-time.Hour),
+			LastObservedAt:  now.Add(time.Minute),
+		},
+		"endpoint-vuln-stale": {
+			ID:              "endpoint-vuln-stale",
+			TenantID:        "writer",
+			RuntimeID:       "vulnview-runtime",
+			RuleID:          "endpoint-vulnerability-vulnview",
+			Title:           "Stale endpoint vulnerability source",
+			Severity:        "MEDIUM",
+			Status:          "open",
+			EventIDs:        []string{"event-stale"},
+			ResourceURNs:    []string{"urn:cerebro:writer:kandji_device:dev-1"},
+			Attributes:      map[string]string{"device_id": "dev-1", "serial_number": "serial-1", "vulnerability_id": "CVE-2026-0002", "package_name": "zlib", "installed_version": "1.2.11", "source_freshness": "stale", "source_provider": "vulnview"},
+			FirstObservedAt: now.Add(-2 * time.Hour),
+			LastObservedAt:  now.Add(2 * time.Minute),
+		},
+		"endpoint-vuln-other-device": {
+			ID:              "endpoint-vuln-other-device",
+			TenantID:        "writer",
+			RuntimeID:       "kandji-runtime",
+			RuleID:          "endpoint-vulnerability-kandji",
+			Title:           "Other endpoint vulnerability",
+			Severity:        "LOW",
+			Status:          "open",
+			EventIDs:        []string{"event-other"},
+			ResourceURNs:    []string{"urn:cerebro:writer:kandji_device:dev-2"},
+			Attributes:      map[string]string{"device_id": "dev-2", "vulnerability_id": "CVE-2026-9999", "package_name": "curl", "installed_version": "8.1.0", "source_provider": "kandji"},
+			FirstObservedAt: now.Add(-time.Hour),
+			LastObservedAt:  now,
+		},
+	}}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/endpoint-vulnerability-findings?tenant_id=writer&device_id=dev-1")
+	if err != nil {
+		t.Fatalf("GET /endpoint-vulnerability-findings error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close endpoint vulnerability response body: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /endpoint-vulnerability-findings status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	type endpointFindingResponse struct {
+		Findings []struct {
+			VulnerabilityID string `json:"vulnerability_id"`
+			Severity        string `json:"severity"`
+			Sources         []struct {
+				SourceProvider string `json:"source_provider"`
+			} `json:"sources"`
+			KEV *struct {
+				Listed bool `json:"listed"`
+			} `json:"kev"`
+		} `json:"findings"`
+	}
+	var body endpointFindingResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode endpoint vulnerability response: %v", err)
+	}
+	if got := len(body.Findings); got != 1 {
+		t.Fatalf("len(findings) = %d, want 1", got)
+	}
+	if body.Findings[0].VulnerabilityID != "CVE-2026-0001" || body.Findings[0].Severity != "CRITICAL" {
+		t.Fatalf("finding = %#v, want merged critical CVE-2026-0001", body.Findings[0])
+	}
+	if got := len(body.Findings[0].Sources); got != 2 {
+		t.Fatalf("len(sources) = %d, want 2", got)
+	}
+	if body.Findings[0].KEV == nil || !body.Findings[0].KEV.Listed {
+		t.Fatalf("KEV = %#v, want listed KEV", body.Findings[0].KEV)
+	}
+
+	platformResp, err := server.Client().Get(server.URL + "/platform/endpoints/dev-1/vulnerability-findings?tenant_id=writer")
+	if err != nil {
+		t.Fatalf("GET /platform/endpoints/{deviceKey}/vulnerability-findings error = %v", err)
+	}
+	defer func() {
+		if closeErr := platformResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close platform endpoint vulnerability response body: %v", closeErr)
+		}
+	}()
+	if platformResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /platform/endpoints/{deviceKey}/vulnerability-findings status = %d, want %d", platformResp.StatusCode, http.StatusOK)
+	}
+	var platformBody endpointFindingResponse
+	if err := json.NewDecoder(platformResp.Body).Decode(&platformBody); err != nil {
+		t.Fatalf("decode platform endpoint vulnerability response: %v", err)
+	}
+	if got := len(platformBody.Findings); got != 1 {
+		t.Fatalf("len(platform findings) = %d, want 1", got)
+	}
+	if platformBody.Findings[0].VulnerabilityID != "CVE-2026-0001" {
+		t.Fatalf("platform finding = %#v, want path device dev-1 despite query overrides", platformBody.Findings[0])
+	}
+
+	platformConflictResp, err := server.Client().Get(server.URL + "/platform/endpoints/dev-1/vulnerability-findings?tenant_id=writer&device_id=dev-2")
+	if err != nil {
+		t.Fatalf("GET /platform/endpoints/{deviceKey}/vulnerability-findings conflicting query error = %v", err)
+	}
+	defer func() {
+		if closeErr := platformConflictResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close platform conflict endpoint vulnerability response body: %v", closeErr)
+		}
+	}()
+	if platformConflictResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /platform/endpoints/{deviceKey}/vulnerability-findings conflicting query status = %d, want %d", platformConflictResp.StatusCode, http.StatusOK)
+	}
+	var platformConflictBody endpointFindingResponse
+	if err := json.NewDecoder(platformConflictResp.Body).Decode(&platformConflictBody); err != nil {
+		t.Fatalf("decode platform conflict endpoint vulnerability response: %v", err)
+	}
+	if got := len(platformConflictBody.Findings); got != 1 {
+		t.Fatalf("len(platform conflict findings) = %d, want path-scoped dev-1 findings only", got)
+	}
+	if platformConflictBody.Findings[0].VulnerabilityID != "CVE-2026-0001" {
+		t.Fatalf("platform conflict finding = %#v, want path-scoped dev-1 finding", platformConflictBody.Findings[0])
+	}
+
+	staleResp, err := server.Client().Get(server.URL + "/endpoint-vulnerability-findings?tenant_id=writer&device_id=dev-1&include_stale=true")
+	if err != nil {
+		t.Fatalf("GET /endpoint-vulnerability-findings include_stale error = %v", err)
+	}
+	defer func() {
+		if closeErr := staleResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close endpoint vulnerability stale response body: %v", closeErr)
+		}
+	}()
+	if staleResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /endpoint-vulnerability-findings include_stale status = %d, want %d", staleResp.StatusCode, http.StatusOK)
+	}
+	var staleBody endpointFindingResponse
+	if err := json.NewDecoder(staleResp.Body).Decode(&staleBody); err != nil {
+		t.Fatalf("decode endpoint vulnerability stale response: %v", err)
+	}
+	if got := len(staleBody.Findings); got != 2 {
+		t.Fatalf("len(include_stale findings) = %d, want active plus stale source", got)
+	}
+
+	emptyResp, err := server.Client().Get(server.URL + "/endpoint-vulnerability-findings?tenant_id=writer&serial_number=missing")
+	if err != nil {
+		t.Fatalf("GET /endpoint-vulnerability-findings empty error = %v", err)
+	}
+	defer func() {
+		if closeErr := emptyResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close endpoint vulnerability empty response body: %v", closeErr)
+		}
+	}()
+	if emptyResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /endpoint-vulnerability-findings empty status = %d, want %d", emptyResp.StatusCode, http.StatusOK)
+	}
+	var emptyBody endpointFindingResponse
+	if err := json.NewDecoder(emptyResp.Body).Decode(&emptyBody); err != nil {
+		t.Fatalf("decode endpoint vulnerability empty response: %v", err)
+	}
+	if got := len(emptyBody.Findings); got != 0 {
+		t.Fatalf("len(empty findings) = %d, want 0", got)
+	}
+}
+
 func TestPlatformKnowledgeDecisionAndOutcomeEndpoints(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {
@@ -5919,6 +6156,36 @@ func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRec
 		return false
 	}
 	return true
+}
+
+func endpointVulnerabilityFindingMatches(request ports.EndpointVulnerabilityFindingQuery, finding *ports.FindingRecord) bool {
+	if finding == nil {
+		return false
+	}
+	if request.TenantID != "" && strings.TrimSpace(finding.TenantID) != strings.TrimSpace(request.TenantID) {
+		return false
+	}
+	if !request.IncludeStale && !strings.EqualFold(strings.TrimSpace(finding.Status), "open") {
+		return false
+	}
+	attributes := finding.Attributes
+	if strings.TrimSpace(request.DeviceID) != "" && containsTrimmed([]string{
+		attributes["device_id"],
+		attributes["endpoint_id"],
+		attributes["asset_id"],
+	}, request.DeviceID) {
+		return true
+	}
+	if strings.TrimSpace(request.SerialNumber) != "" && strings.TrimSpace(attributes["serial_number"]) == strings.TrimSpace(request.SerialNumber) {
+		return true
+	}
+	if strings.TrimSpace(request.AgentID) != "" && containsTrimmed([]string{
+		attributes["agent_id"],
+		attributes["agent_uuid"],
+	}, request.AgentID) {
+		return true
+	}
+	return false
 }
 
 func cloneClaim(claim *ports.ClaimRecord) *ports.ClaimRecord {

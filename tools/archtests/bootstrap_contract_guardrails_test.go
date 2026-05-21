@@ -25,12 +25,31 @@ func TestOpenAPIContractDescribesCurrentBootstrapSurface(t *testing.T) {
 		"/openapi.yaml:",
 		"/platform/knowledge/outcomes:",
 		"/platform/graph/neighborhood:",
+		"/platform/endpoints/{deviceKey}/vulnerability-findings:",
+		"x-cerebro-required-any-query:",
 		"deprecated: true",
 		"bearerAuth:",
 	} {
 		if !bytes.Contains(body, []byte(current)) {
 			t.Fatalf("api/openapi.yaml missing current marker %q", current)
 		}
+	}
+	runtimeFindings, endpointFindings, ok := strings.Cut(string(body), "  /endpoint-vulnerability-findings:")
+	if !ok {
+		t.Fatal("api/openapi.yaml missing /endpoint-vulnerability-findings section")
+	}
+	if strings.Contains(runtimeFindings, "#/components/schemas/EndpointVulnerabilityFindingsResponse") {
+		t.Fatal("/source-runtimes/{runtimeID}/findings must keep the ordinary findings response contract")
+	}
+	if !strings.Contains(endpointFindings, "#/components/schemas/EndpointVulnerabilityFindingsResponse") {
+		t.Fatal("/endpoint-vulnerability-findings must use the endpoint vulnerability response contract")
+	}
+	endpointTenantParam, _, ok := strings.Cut(endpointFindings, "        - name: device_id")
+	if !ok {
+		t.Fatal("/endpoint-vulnerability-findings must document the device_id query parameter")
+	}
+	if !strings.Contains(endpointTenantParam, "        - name: tenant_id\n          in: query\n          required: true") {
+		t.Fatal("/endpoint-vulnerability-findings must require tenant_id in the OpenAPI contract")
 	}
 }
 

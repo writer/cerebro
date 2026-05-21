@@ -104,6 +104,7 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("PUT /findings/{findingID}/due", app.handleSetFindingDueDate)
 	mux.HandleFunc("POST /findings/{findingID}/notes", app.handleAddFindingNote)
 	mux.HandleFunc("POST /findings/{findingID}/tickets", app.handleLinkFindingTicket)
+	mux.HandleFunc("GET /endpoint-vulnerability-findings", app.handleListEndpointVulnerabilityFindings)
 	mux.HandleFunc("GET /finding-evaluation-runs/{runID}", app.handleGetFindingEvaluationRun)
 	mux.HandleFunc("GET /finding-evidence/{evidenceID}", app.handleGetFindingEvidence)
 	mux.HandleFunc("/sources", app.handleSources)
@@ -128,6 +129,7 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("GET /platform/graph/attack-paths", app.handleGetAttackPaths)
 	mux.HandleFunc("GET /platform/graph/crown-jewel-rankings", app.handleGetCrownJewelRankings)
 	mux.HandleFunc("GET /platform/graph/aws-public-endpoint-insights", app.handleGetAWSPublicEndpointInsights)
+	mux.HandleFunc("GET /platform/endpoints/{deviceKey}/vulnerability-findings", app.handleListEndpointVulnerabilityFindings)
 	mux.HandleFunc("GET /platform/graph/ingest-health", app.handleCheckGraphIngestHealth)
 	mux.HandleFunc("GET /graph/ingest-health", deprecatedRoute(app.handleCheckGraphIngestHealth))
 	mux.HandleFunc("GET /platform/graph/ingest-runs", app.handleListGraphIngestRuns)
@@ -447,6 +449,53 @@ func (a *App) handleLinkFindingTicket(w http.ResponseWriter, r *http.Request) {
 	writeProtoJSON(w, http.StatusOK, &cerebrov1.LinkFindingTicketResponse{
 		Finding: findingMessage(finding),
 	})
+}
+
+func (a *App) handleListEndpointVulnerabilityFindings(w http.ResponseWriter, r *http.Request) {
+	limit, err := uint32QueryParam(r, "limit")
+	if err != nil {
+		writeFindingError(w, fmt.Errorf("%w: %w", findings.ErrInvalidRequest, err))
+		return
+	}
+	includeStale, err := boolQueryParam(r, "include_stale")
+	if err != nil {
+		writeFindingError(w, fmt.Errorf("%w: %w", findings.ErrInvalidRequest, err))
+		return
+	}
+	tenantID := strings.TrimSpace(r.URL.Query().Get("tenant_id"))
+	if tenantID == "" {
+		if auth, ok := r.Context().Value(authContextKey{}).(authContext); ok && strings.TrimSpace(auth.principal.TenantID) != "" {
+			tenantID = strings.TrimSpace(auth.principal.TenantID)
+		}
+	}
+	if tenantID == "" {
+		tenantID = strings.TrimSpace(r.Header.Get("X-Cerebro-Tenant"))
+	}
+	if tenantID == "" && requiresTenantFilter(r.Context()) {
+		writeFindingError(w, errTenantForbidden)
+		return
+	}
+	if err := authorizeTenantID(r.Context(), tenantID); err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	deviceID := strings.TrimSpace(r.PathValue("deviceKey"))
+	if deviceID == "" {
+		deviceID = strings.TrimSpace(r.URL.Query().Get("device_id"))
+	}
+	response, err := findings.ListEndpointVulnerabilityFindings(r.Context(), endpointVulnerabilityFindingStore(a.deps.StateStore), findings.EndpointVulnerabilityRequest{
+		TenantID:     tenantID,
+		DeviceID:     deviceID,
+		SerialNumber: r.URL.Query().Get("serial_number"),
+		AgentID:      r.URL.Query().Get("agent_id"),
+		Limit:        limit,
+		IncludeStale: includeStale,
+	})
+	if err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (a *App) handleGetFindingEvaluationRun(w http.ResponseWriter, r *http.Request) {
@@ -2247,6 +2296,18 @@ func uint32QueryParam(r *http.Request, key string) (uint32, error) {
 	return uint32(parsed), nil
 }
 
+func boolQueryParam(r *http.Request, key string) (bool, error) {
+	value := strings.TrimSpace(r.URL.Query().Get(key))
+	if value == "" {
+		return false, nil
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("%w: invalid %s", errInvalidHTTPRequest, key)
+	}
+	return parsed, nil
+}
+
 func (a *App) sourceService() *sourceops.Service {
 	return newSourceService(a.sources)
 }
@@ -2828,6 +2889,14 @@ func findingEvidenceStore(store ports.StateStore) ports.FindingEvidenceStore {
 		return nil
 	}
 	return evidenceStore
+}
+
+func endpointVulnerabilityFindingStore(store ports.StateStore) ports.EndpointVulnerabilityFindingStore {
+	endpointStore, ok := store.(ports.EndpointVulnerabilityFindingStore)
+	if !ok || isNilInterface(endpointStore) {
+		return nil
+	}
+	return endpointStore
 }
 
 func claimStore(store ports.StateStore) ports.ClaimStore {

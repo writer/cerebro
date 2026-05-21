@@ -394,7 +394,7 @@ func scopeForHTTPRequest(r *http.Request) string {
 		return ""
 	}
 	switch {
-	case path == "/sources", path == "/reports", path == "/finding-rules":
+	case path == "/sources", path == "/reports", path == "/finding-rules", path == "/endpoint-vulnerability-findings":
 		return scopeCosmoSecurityRead
 	case path == "/source-runtimes" || strings.HasPrefix(path, "/source-runtimes/"):
 		return scopeCosmoSecurityRead
@@ -411,6 +411,8 @@ func scopeForHTTPRequest(r *http.Request) string {
 	case path == "/platform/graph/attack-paths",
 		path == "/platform/graph/aws-public-endpoint-insights",
 		path == "/platform/graph/crown-jewel-rankings":
+		return scopeCosmoSecurityRead
+	case strings.HasPrefix(path, "/platform/endpoints/") && strings.HasSuffix(path, "/vulnerability-findings"):
 		return scopeCosmoSecurityRead
 	case path == "/platform/graph/ingest-health", path == "/graph/ingest-health":
 		return scopeCosmoSecurityRead
@@ -1014,7 +1016,7 @@ func accessAuditRouteFamily(route string) string {
 		return "finding_evaluation"
 	case strings.Contains(route, "/finding-evidence"):
 		return "finding_evidence"
-	case strings.Contains(route, "/finding-rules"), strings.Contains(route, "/findings"):
+	case strings.Contains(route, "/finding-rules"), strings.Contains(route, "/findings"), strings.Contains(route, "/vulnerability-findings"):
 		return "finding"
 	case strings.Contains(route, "/grc/"):
 		return "grc"
@@ -1156,6 +1158,10 @@ func fallbackAccessAuditRoute(method string, path string) string {
 		}
 	case strings.HasPrefix(path, "/platform/graph/ingest-runs/"):
 		return prefix + "/platform/graph/ingest-runs/{runID}"
+	case path == "/endpoint-vulnerability-findings":
+		return prefix + "/endpoint-vulnerability-findings"
+	case strings.HasPrefix(path, "/platform/endpoints/") && strings.HasSuffix(path, "/vulnerability-findings"):
+		return prefix + "/platform/endpoints/{deviceKey}/vulnerability-findings"
 	case strings.HasPrefix(path, "/graph/ingest-runs/"):
 		return prefix + "/graph/ingest-runs/{runID}"
 	case isKnownStaticAccessPath(path):
