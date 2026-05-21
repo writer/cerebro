@@ -139,6 +139,16 @@ config:
         - page_limit=100
         - graph_page_limit=100
         - event_limit=1000
+    - name: okta-dept-security-group-membership
+      scheduleExpression: rate(30 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-okta-dept-security-group-membership
+        - page_limit=100
+        - graph_page_limit=100
+        - event_limit=1000
     - name: sentinelone-threat-live
       scheduleExpression: rate(15 minutes)
       taskCount: 1
@@ -447,6 +457,15 @@ config:
       config:
         domain: env:OKTA_DOMAIN
         family: application
+        per_page: "200"
+        token: env:OKTA_API_TOKEN
+    - id: writer-okta-dept-security-group-membership
+      sourceId: okta
+      tenantId: writer
+      config:
+        domain: env:OKTA_DOMAIN
+        family: group_membership
+        group_id: 00g1zrvrkh58xp8m21d8
         per_page: "200"
         token: env:OKTA_API_TOKEN
     - id: writer-sentinelone-threat
