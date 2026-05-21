@@ -56,13 +56,17 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache, no-transform")
-	w.Header().Set("Connection", "keep-alive")
-	w.WriteHeader(http.StatusOK)
 	flusher, _ := w.(http.Flusher)
 	service := graphagent.NewService(graphStore, llm, graphagent.ValidatorOptions{Explain: true})
-	_ = service.Stream(r.Context(), request, func(event graphagent.Event) error {
+	streamStarted := false
+	if err := service.Stream(r.Context(), request, func(event graphagent.Event) error {
+		if !streamStarted {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache, no-transform")
+			w.Header().Set("Connection", "keep-alive")
+			w.WriteHeader(http.StatusOK)
+			streamStarted = true
+		}
 		if err := graphagent.WriteSSEEvent(w, event); err != nil {
 			return err
 		}
@@ -70,5 +74,7 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 		return nil
-	})
+	}); err != nil && !streamStarted {
+		writeGRCError(w, err)
+	}
 }

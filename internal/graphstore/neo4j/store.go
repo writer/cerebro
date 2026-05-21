@@ -606,6 +606,64 @@ func (s *Store) ExecuteReadCypher(ctx context.Context, request ports.CypherQuery
 	return rows, nil
 }
 
+// ExplainReadCypher returns the Neo4j execution plan for one read-only Cypher query.
+func (s *Store) ExplainReadCypher(ctx context.Context, request ports.CypherQueryRequest) (*ports.CypherPlan, error) {
+	query := strings.TrimSpace(request.Query)
+	if query == "" {
+		return nil, errors.New("cypher query is required")
+	}
+	if err := s.requireConfigured(); err != nil {
+		return nil, err
+	}
+	var plan *ports.CypherPlan
+	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		result, err := tx.Run(ctx, "EXPLAIN "+query, request.Params)
+		if err != nil {
+			return nil, err
+		}
+		summary, err := result.Consume(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if root := cypherPlanNode(summary.Plan()); root != nil {
+			plan = &ports.CypherPlan{Root: root}
+		}
+		return nil, nil
+	}); err != nil {
+		return nil, fmt.Errorf("explain read cypher: %w", err)
+	}
+	return plan, nil
+}
+
+func cypherPlanNode(plan neo4jdriver.Plan) *ports.CypherPlanNode {
+	if plan == nil {
+		return nil
+	}
+	children := plan.Children()
+	node := &ports.CypherPlanNode{
+		Operator:  plan.Operator(),
+		Arguments: clonePlanArguments(plan.Arguments()),
+		Children:  make([]ports.CypherPlanNode, 0, len(children)),
+	}
+	for _, child := range children {
+		if childNode := cypherPlanNode(child); childNode != nil {
+			node.Children = append(node.Children, *childNode)
+		}
+	}
+	return node
+}
+
+func clonePlanArguments(arguments map[string]any) map[string]any {
+	if len(arguments) == 0 {
+		return nil
+	}
+	clone := make(map[string]any, len(arguments))
+	for key, value := range arguments {
+		clone[key] = value
+	}
+	return clone
+}
+
 // GetIngestCheckpoint returns one persisted graph ingest checkpoint.
 func (s *Store) GetIngestCheckpoint(ctx context.Context, id string) (IngestCheckpoint, bool, error) {
 	normalizedID := strings.TrimSpace(id)
