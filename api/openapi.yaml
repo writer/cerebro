@@ -906,7 +906,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
+                $ref: '#/components/schemas/EndpointVulnerabilityFindingsResponse'
   /platform/graph/ingest-health:
     get:
       summary: Check graph ingest health

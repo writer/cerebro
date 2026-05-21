@@ -366,6 +366,10 @@ func TestEndpointVulnerabilityFindingQueryIncludesIdentityFilters(t *testing.T) 
 	if got := len(args); got != 8 {
 		t.Fatalf("len(endpointVulnerabilityFindingQuery().args) = %d, want 8", got)
 	}
+	wantIdentityScope := "(attributes_json->>'device_id' = $2 OR attributes_json->>'endpoint_id' = $3 OR attributes_json->>'asset_id' = $4) AND (attributes_json->>'serial_number' = $5) AND (attributes_json->>'agent_id' = $6 OR attributes_json->>'agent_uuid' = $7)"
+	if !strings.Contains(query, wantIdentityScope) {
+		t.Fatalf("endpointVulnerabilityFindingQuery() identity scope = %s, want all supplied identifiers to be conjunctive", query)
+	}
 	if got := args[0]; got != "writer" {
 		t.Fatalf("endpointVulnerabilityFindingQuery().args[0] = %#v, want writer", got)
 	}
