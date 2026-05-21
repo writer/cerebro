@@ -69,6 +69,9 @@ func (v *Validator) validate(ctx context.Context, cypher string, params map[stri
 	if forbiddenAPOCPattern.MatchString(safeQuery) {
 		return ValidatorResult{OK: false, Reason: "apoc trigger and periodic procedures are forbidden"}, 0, nil
 	}
+	if hasProcedureCall(safeQuery) {
+		return ValidatorResult{OK: false, Reason: "procedure CALL clauses are forbidden"}, 0, nil
+	}
 	limit, ok := queryLimit(safeQuery)
 	if !ok {
 		return ValidatorResult{OK: false, Reason: "read Cypher must include a numeric LIMIT clause"}, 0, nil
@@ -120,15 +123,34 @@ func allNodePatternsTenantScoped(query string) bool {
 		return false
 	}
 	scopedVariables := map[string]struct{}{}
+	var pendingCallImports map[string]struct{}
 	sawNode := false
 	for i := 0; i < len(query); i++ {
+		if keywordAt(query, i, "CALL") {
+			if !callStartsSubquery(query, i+len("CALL")) {
+				return false
+			}
+			pendingCallImports = cloneScopedVariables(scopedVariables)
+			scopedVariables = map[string]struct{}{}
+			i += len("CALL") - 1
+			continue
+		}
 		if keywordAt(query, i, "WITH") {
-			scopedVariables = scopedVariablesAfterWith(query, i+len("WITH"), scopedVariables)
+			baseVariables := scopedVariables
+			if pendingCallImports != nil {
+				baseVariables = pendingCallImports
+			}
+			scopedVariables = scopedVariablesAfterWith(query, i+len("WITH"), baseVariables)
+			pendingCallImports = nil
 			i += len("WITH") - 1
 			continue
 		}
+		if pendingCallImports != nil && !isWhitespaceOrSubqueryStart(query[i]) {
+			pendingCallImports = nil
+		}
 		if boundary, width := queryPartBoundaryAt(query, i); boundary {
 			scopedVariables = map[string]struct{}{}
+			pendingCallImports = nil
 			i += width - 1
 			continue
 		}
@@ -151,6 +173,25 @@ func allNodePatternsTenantScoped(query string) bool {
 		return false
 	}
 	return sawNode
+}
+
+func hasProcedureCall(query string) bool {
+	for i := 0; i < len(query); i++ {
+		if keywordAt(query, i, "CALL") && !callStartsSubquery(query, i+len("CALL")) {
+			return true
+		}
+	}
+	return false
+}
+
+func callStartsSubquery(query string, start int) bool {
+	for i := start; i < len(query); i++ {
+		if isWhitespace(query[i]) {
+			continue
+		}
+		return query[i] == '{'
+	}
+	return false
 }
 
 func matchClausesContainOnlyNodePatterns(query string) bool {
@@ -238,7 +279,7 @@ func nodeHasEntityLabel(labels string) bool {
 }
 
 func queryPartBoundaryAt(query string, index int) (bool, int) {
-	for _, keyword := range []string{"UNION", "CALL"} {
+	for _, keyword := range []string{"UNION"} {
 		if keywordAt(query, index, keyword) {
 			return true, len(keyword)
 		}
@@ -253,6 +294,14 @@ func scopedVariablesAfterWith(query string, start int, scopedVariables map[strin
 		projectScopedVariable(next, scopedVariables, strings.TrimSpace(item))
 	}
 	return next
+}
+
+func cloneScopedVariables(scopedVariables map[string]struct{}) map[string]struct{} {
+	clone := make(map[string]struct{}, len(scopedVariables))
+	for variable := range scopedVariables {
+		clone[variable] = struct{}{}
+	}
+	return clone
 }
 
 func withProjectionEnd(query string, start int) int {
@@ -337,6 +386,19 @@ func keywordAt(query string, index int, keyword string) bool {
 		return false
 	}
 	return true
+}
+
+func isWhitespaceOrSubqueryStart(value byte) bool {
+	return isWhitespace(value) || value == '{'
+}
+
+func isWhitespace(value byte) bool {
+	switch value {
+	case ' ', '\t', '\n', '\r':
+		return true
+	default:
+		return false
+	}
 }
 
 func isIdentifierByte(value byte) bool {
