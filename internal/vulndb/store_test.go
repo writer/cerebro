@@ -163,6 +163,29 @@ func TestMatcherExcludesWithdrawnAdvisories(t *testing.T) {
 	}
 }
 
+func TestImportOSVClearsWithdrawnWhenAdvisoryIsActiveAgain(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	withdrawn := `[{"id":"CVE-2026-99998","summary":"withdrawn advisory","withdrawn":"2026-05-01T00:00:00Z"}]`
+	if _, err := ImportOSV(ctx, store, strings.NewReader(withdrawn)); err != nil {
+		t.Fatalf("import withdrawn osv: %v", err)
+	}
+	active := `[{"id":"CVE-2026-99998","summary":"active advisory"}]`
+	if _, err := ImportOSV(ctx, store, strings.NewReader(active)); err != nil {
+		t.Fatalf("import active osv: %v", err)
+	}
+	vulnerability, ok, err := store.FindVulnerability(ctx, "CVE-2026-99998")
+	if err != nil {
+		t.Fatalf("find vulnerability: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected vulnerability")
+	}
+	if !vulnerability.WithdrawnAt.IsZero() {
+		t.Fatalf("WithdrawnAt = %v, want cleared by active OSV import", vulnerability.WithdrawnAt)
+	}
+}
+
 func TestMatcherComparesNonNumericVersionSegments(t *testing.T) {
 	ctx := context.Background()
 	store := NewMemoryStore()

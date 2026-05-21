@@ -2021,6 +2021,20 @@ func TestAccessAuditConnectProcedureSanitizesUnknownProcedures(t *testing.T) {
 	}
 }
 
+func TestFallbackAccessAuditRouteIncludesEndpointVulnerabilityFindings(t *testing.T) {
+	for _, tt := range []struct {
+		path string
+		want string
+	}{
+		{path: "/endpoint-vulnerability-findings", want: "GET /endpoint-vulnerability-findings"},
+		{path: "/platform/endpoints/dev-1/vulnerability-findings", want: "GET /platform/endpoints/{deviceKey}/vulnerability-findings"},
+	} {
+		if got := fallbackAccessAuditRoute(http.MethodGet, tt.path); got != tt.want {
+			t.Fatalf("fallbackAccessAuditRoute(%q) = %q, want %q", tt.path, got, tt.want)
+		}
+	}
+}
+
 func TestAccessAuditRemoteIPDropsPort(t *testing.T) {
 	for _, tt := range []struct {
 		raw  string
@@ -5060,6 +5074,26 @@ func TestEndpointVulnerabilityFindingsHTTPRoute(t *testing.T) {
 	}
 	if body.Findings[0].KEV == nil || !body.Findings[0].KEV.Listed {
 		t.Fatalf("KEV = %#v, want listed KEV", body.Findings[0].KEV)
+	}
+
+	platformResp, err := server.Client().Get(server.URL + "/platform/endpoints/dev-1/vulnerability-findings?tenant_id=writer")
+	if err != nil {
+		t.Fatalf("GET /platform/endpoints/{deviceKey}/vulnerability-findings error = %v", err)
+	}
+	defer func() {
+		if closeErr := platformResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close platform endpoint vulnerability response body: %v", closeErr)
+		}
+	}()
+	if platformResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /platform/endpoints/{deviceKey}/vulnerability-findings status = %d, want %d", platformResp.StatusCode, http.StatusOK)
+	}
+	var platformBody endpointFindingResponse
+	if err := json.NewDecoder(platformResp.Body).Decode(&platformBody); err != nil {
+		t.Fatalf("decode platform endpoint vulnerability response: %v", err)
+	}
+	if got := len(platformBody.Findings); got != 1 {
+		t.Fatalf("len(platform findings) = %d, want 1", got)
 	}
 
 	staleResp, err := server.Client().Get(server.URL + "/endpoint-vulnerability-findings?tenant_id=writer&device_id=dev-1&include_stale=true")

@@ -349,6 +349,8 @@ func TestEndpointVulnerabilityFindingQueryIncludesIdentityFilters(t *testing.T) 
 		"COALESCE(LOWER(attributes_json->>'freshness'), '') <> 'stale'",
 		"COALESCE(LOWER(attributes_json->>'stale'), '') NOT IN ('1', 't', 'true', 'y', 'yes', 'known', 'listed')",
 		"COALESCE(LOWER(attributes_json->>'source_stale'), '') NOT IN ('1', 't', 'true', 'y', 'yes', 'known', 'listed')",
+		"NULLIF(BTRIM(attributes_json->>'vulnerability_id'), '') IS NOT NULL",
+		"NULLIF(BTRIM(attributes_json->>'identifier'), '') IS NOT NULL",
 		"attributes_json->>'device_id' = $2",
 		"attributes_json->>'endpoint_id' = $3",
 		"attributes_json->>'asset_id' = $4",
