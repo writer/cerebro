@@ -784,6 +784,43 @@ paths:
       responses:
         '200':
           description: Cloud attack paths.
+  /platform/graph/crown-jewel-rankings:
+    get:
+      summary: Query personalized crown-jewel graph rankings
+      tags:
+        - Graph
+      parameters:
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: account_id
+          in: query
+          schema:
+            type: string
+        - name: entity_type
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: depth
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: seed_limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Personalized crown-jewel graph rankings.
   /platform/graph/aws-public-endpoint-insights:
     get:
       summary: Query AWS public endpoint overlap insights

@@ -2079,6 +2079,7 @@ func TestScopedCosmoCredentialAllowsOnlyReadRoutes(t *testing.T) {
 	for _, path := range []string{
 		"/sources",
 		"/platform/graph/neighborhood?root_urn=urn:cerebro:writer:asset:app",
+		"/platform/graph/crown-jewel-rankings?tenant_id=writer",
 		"/source-runtimes/writer-runtime",
 	} {
 		req, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
@@ -3274,6 +3275,59 @@ func TestGraphAWSPublicEndpointInsightsEndpoint(t *testing.T) {
 		t.Fatalf("overlaps = %#v", body.Overlaps)
 	}
 	if len(graph.cypherRequests) != 6 || graph.cypherRequests[0].Params["tenant_id"] != "writer" {
+		t.Fatalf("cypher requests = %#v", graph.cypherRequests)
+	}
+}
+
+func TestGraphCrownJewelRankingsEndpoint(t *testing.T) {
+	graph := &stubGraphStore{cypherRows: [][]ports.CypherRow{
+		{{Values: map[string]any{
+			"seed_urn":         "urn:cerebro:writer:aws_secret_store:prod-secrets",
+			"seed_entity_type": "aws.secret_store",
+			"seed_label":       "prod-secrets",
+		}}},
+		{{Values: map[string]any{
+			"seed_urn":         "urn:cerebro:writer:aws_secret_store:prod-secrets",
+			"from_urn":         "urn:cerebro:writer:aws_public_principal:public_internet",
+			"from_entity_type": "aws.public_principal",
+			"from_label":       "public_internet",
+			"relation":         "can_reach",
+			"to_urn":           "urn:cerebro:writer:aws_secret_store:prod-secrets",
+			"to_entity_type":   "aws.secret_store",
+			"to_label":         "prod-secrets",
+		}}},
+	}}
+	app := New(config.Config{}, Dependencies{GraphStore: graph}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/platform/graph/crown-jewel-rankings?tenant_id=writer&account_id=123456789012&entity_type=aws.secret_store&limit=5&depth=3&seed_limit=5")
+	if err != nil {
+		t.Fatalf("GET /platform/graph/crown-jewel-rankings error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /platform/graph/crown-jewel-rankings status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var body struct {
+		TenantID string `json:"tenant_id"`
+		Counts   struct {
+			Seeds int `json:"seeds"`
+		} `json:"counts"`
+		Rankings []struct {
+			Entity struct {
+				URN string `json:"urn"`
+			} `json:"entity"`
+			Seed bool `json:"seed"`
+		} `json:"rankings"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.TenantID != "writer" || body.Counts.Seeds != 1 || len(body.Rankings) == 0 {
+		t.Fatalf("body = %#v", body)
+	}
+	if len(graph.cypherRequests) != 2 || graph.cypherRequests[0].Params["entity_type"] != "aws.secret_store" {
 		t.Fatalf("cypher requests = %#v", graph.cypherRequests)
 	}
 }
