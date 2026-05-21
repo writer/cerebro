@@ -185,7 +185,8 @@ func (s *Service) ProjectCleanupRequests(event *cerebrov1.EventEnvelope) ([]port
 		return nil, nil
 	}
 	attributes := event.GetAttributes()
-	if !oktaRuntimeGrant(attributes) {
+	runtimeID := strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID])
+	if runtimeID == "" {
 		return nil, nil
 	}
 	tenantID, err := tenantID(event)
@@ -195,7 +196,7 @@ func (s *Service) ProjectCleanupRequests(event *cerebrov1.EventEnvelope) ([]port
 	return []ports.ProjectionCleanupRequest{{
 		TenantID:    tenantID,
 		SourceID:    strings.TrimSpace(event.GetSourceId()),
-		RuntimeID:   strings.TrimSpace(attributes[ports.EventAttributeSourceRuntimeID]),
+		RuntimeID:   runtimeID,
 		EntityTypes: []string{"okta.resource"},
 		URNPrefixes: oktaEphemeralOAuthRuntimeResourceURNPrefixes(tenantID),
 		Limit:       1000,

@@ -639,6 +639,51 @@ func TestProjectOktaAuditRunsScopedEphemeralOAuthResourceCleanup(t *testing.T) {
 	}
 }
 
+func TestProjectOktaAuditRunsScopedEphemeralOAuthCleanupOnNonGrantEvent(t *testing.T) {
+	staleURN := "urn:cerebro:writer:okta_resource:refresh_token:old-token"
+	state := &projectionRecorder{
+		entities: map[string]*ports.ProjectedEntity{
+			staleURN: {
+				URN:        staleURN,
+				TenantID:   "writer",
+				SourceID:   "okta",
+				RuntimeID:  "okta-audit-runtime",
+				EntityType: "okta.resource",
+				Label:      "old-token",
+			},
+		},
+	}
+	service := New(state, nil)
+
+	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "okta-user-update",
+		TenantId: "writer",
+		SourceId: "okta",
+		Kind:     "okta.audit",
+		Attributes: map[string]string{
+			ports.EventAttributeSourceRuntimeID: "okta-audit-runtime",
+			"domain":                            "writer.okta.com",
+			"event_type":                        "user.account.update_profile",
+			"actor_id":                          "00u-admin",
+			"actor_type":                        "User",
+			"resource_id":                       "00u-user",
+			"resource_type":                     "User",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if result.EntitiesDeleted == 0 {
+		t.Fatalf("EntitiesDeleted = 0, want cleanup deletions from non-grant event")
+	}
+	if got := len(state.cleanupRequests); got != 1 {
+		t.Fatalf("state cleanup calls = %d, want 1", got)
+	}
+	if _, ok := state.entities[staleURN]; ok {
+		t.Fatalf("state retained stale cleanup token")
+	}
+}
+
 func TestCleanupProjectedEntitiesRepeatsUntilExhausted(t *testing.T) {
 	graph := &projectionRecorder{
 		entities: map[string]*ports.ProjectedEntity{
