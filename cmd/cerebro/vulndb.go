@@ -20,6 +20,8 @@ import (
 
 const defaultVulnDBStateFile = ".cerebro-vulndb.json"
 
+var errUnsupportedVulnDBURLScheme = errors.New("unsupported vulndb import URL scheme")
+
 func runVulnDB(args []string) error {
 	if len(args) == 0 {
 		return usageError(vulnDBUsage())
@@ -373,7 +375,7 @@ func (vulndbInputClient) Open(ctx context.Context, source string, allowInsecureH
 	}
 	if vulnDBSourceScheme(source) != "" {
 		if !isRemoteVulnDBSource(source) {
-			return nil, vulndb.ValidateFeedURL(source, allowInsecureHTTP)
+			return nil, fmt.Errorf("%w %q", errUnsupportedVulnDBURLScheme, vulnDBSourceScheme(source))
 		}
 		return bootstrap.OpenVulnDBFeed(ctx, source, allowInsecureHTTP)
 	}

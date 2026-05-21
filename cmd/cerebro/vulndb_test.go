@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -38,8 +39,12 @@ func TestVulnDBInputClientOpenTreatsRemoteSchemeCaseInsensitive(t *testing.T) {
 
 func TestVulnDBInputClientRejectsUnsupportedURLSchemes(t *testing.T) {
 	for _, source := range []string{"file:///tmp/osv.json", "ftp://mirror.example/osv.json"} {
-		if _, err := (vulndbInputClient{}).Open(context.Background(), source, true); err == nil {
+		_, err := (vulndbInputClient{}).Open(context.Background(), source, true)
+		if err == nil {
 			t.Fatalf("Open(%q) error = nil, want unsupported scheme rejection", source)
+		}
+		if !errors.Is(err, errUnsupportedVulnDBURLScheme) {
+			t.Fatalf("Open(%q) error = %v, want unsupported scheme", source, err)
 		}
 	}
 }
