@@ -188,7 +188,7 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 					LikelihoodScore:  85,
 					ImpactScore:      75,
 					RiskReasons:      []string{"active", "external_exposure"},
-					RiskModelVersion: "likelihood-impact-v1",
+					RiskModelVersion: "likelihood-impact-v2",
 				},
 				Attributes: map[string]string{
 					"primary_resource_urn": "urn:cerebro:writer:okta_resource:policyrule:pol-1",

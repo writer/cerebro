@@ -174,8 +174,18 @@ func TestFindingBackfillRiskUsesRuntimeScorerSignals(t *testing.T) {
 	if !slices.Contains(risk.RiskReasons, "private_network_context") {
 		t.Fatalf("findingBackfillRisk().RiskReasons = %#v, want private_network_context from runtime scorer", risk.RiskReasons)
 	}
-	if risk.RiskModelVersion != "likelihood-impact-v1" {
-		t.Fatalf("findingBackfillRisk().RiskModelVersion = %q, want likelihood-impact-v1", risk.RiskModelVersion)
+	if risk.RiskModelVersion != "likelihood-impact-v2" {
+		t.Fatalf("findingBackfillRisk().RiskModelVersion = %q, want likelihood-impact-v2", risk.RiskModelVersion)
+	}
+}
+
+func TestFindingRiskAttributesForUpdateIncludesEffectiveSeverity(t *testing.T) {
+	attributes := findingRiskAttributesForUpdate(ports.FindingRisk{RiskScore: 72}, "low")
+	if got := attributes["effective_severity"]; got != "HIGH" {
+		t.Fatalf("effective_severity = %q, want HIGH", got)
+	}
+	if got := attributes["source_severity"]; got != "LOW" {
+		t.Fatalf("source_severity = %q, want LOW", got)
 	}
 }
 
@@ -229,7 +239,8 @@ func TestFindingListQueryIncludesOptionalFilters(t *testing.T) {
 		"runtime_id = $2",
 		"id = $3",
 		"rule_id = $4",
-		"severity = $5",
+		"attributes_json->>'effective_severity'",
+		"= $5",
 		"status = $6",
 		"policy_id = $7",
 		"resource_urns_json @> $8::jsonb",
@@ -278,7 +289,7 @@ func TestFindingListQuerySupportsRuntimeBatchesAndPriorityOrder(t *testing.T) {
 		"tenant_id = $1",
 		"runtime_id IN ($2, $3)",
 		"status = $4",
-		"CASE UPPER(severity)",
+		"CASE UPPER(COALESCE(NULLIF(attributes_json->>'effective_severity'",
 		"last_observed_at DESC, id",
 		"LIMIT $5",
 	} {
@@ -313,7 +324,7 @@ func TestFindingListQueryRiskOrderKeepsSeverityTieBreak(t *testing.T) {
 		t.Fatalf("findingListQuery() error = %v", err)
 	}
 	riskIndex := strings.Index(query, "risk_score DESC")
-	severityIndex := strings.Index(query, "CASE UPPER(severity)")
+	severityIndex := strings.Index(query, "CASE UPPER(COALESCE(NULLIF(attributes_json->>'effective_severity'")
 	observedIndex := strings.Index(query, "last_observed_at DESC")
 	if riskIndex == -1 || severityIndex == -1 || observedIndex == -1 {
 		t.Fatalf("findingListQuery() query missing risk/severity/observed ordering: %s", query)
@@ -342,7 +353,7 @@ func TestFindingRowRecordDecodesCheckAndControlMetadata(t *testing.T) {
 			LikelihoodLevel:  "high",
 			ImpactLevel:      "critical",
 			RiskReasonsJSON:  `["external_exposure","privileged_actor"]`,
-			RiskModelVersion: "likelihood-impact-v1",
+			RiskModelVersion: "likelihood-impact-v2",
 		},
 		ResourceURNsJSON:      `["urn:cerebro:writer:okta_resource:policyrule:pol-1"]`,
 		EventIDsJSON:          `["okta-audit-2"]`,
@@ -352,7 +363,7 @@ func TestFindingRowRecordDecodesCheckAndControlMetadata(t *testing.T) {
 		PolicyName:            "pol-1",
 		CheckID:               "identity-okta-policy-rule-lifecycle-tampering-30d",
 		CheckName:             "Okta Policy Rule Lifecycle Tampering (30 days)",
-		AttributesJSON:        `{"primary_resource_urn":"urn:cerebro:writer:okta_resource:policyrule:pol-1"}`,
+		AttributesJSON:        `{"effective_severity":"MEDIUM","source_severity":"HIGH","primary_resource_urn":"urn:cerebro:writer:okta_resource:policyrule:pol-1"}`,
 		findingWorkflowRow: findingWorkflowRow{
 			NotesJSON:   `[{"id":"note-1","body":"Escalate to identity engineering.","created_at":"2026-05-01T11:00:00Z"}]`,
 			TicketsJSON: `[{"url":"https://jira.writer.com/browse/ENG-123","name":"ENG-123","external_id":"ENG-123","linked_at":"2026-05-01T11:30:00Z"}]`,
@@ -391,8 +402,11 @@ func TestFindingRowRecordDecodesCheckAndControlMetadata(t *testing.T) {
 	if got := record.ImpactLevel; got != "critical" {
 		t.Fatalf("findingRow.record().ImpactLevel = %q, want critical", got)
 	}
-	if got := record.RiskModelVersion; got != "likelihood-impact-v1" {
-		t.Fatalf("findingRow.record().RiskModelVersion = %q, want likelihood-impact-v1", got)
+	if got := record.Severity; got != "MEDIUM" {
+		t.Fatalf("findingRow.record().Severity = %q, want effective severity MEDIUM", got)
+	}
+	if got := record.RiskModelVersion; got != "likelihood-impact-v2" {
+		t.Fatalf("findingRow.record().RiskModelVersion = %q, want likelihood-impact-v2", got)
 	}
 	if !slices.Contains(record.RiskReasons, "external_exposure") || !slices.Contains(record.RiskReasons, "privileged_actor") {
 		t.Fatalf("findingRow.record().RiskReasons = %#v, want typed risk reasons", record.RiskReasons)

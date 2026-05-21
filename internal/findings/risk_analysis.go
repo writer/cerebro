@@ -13,7 +13,13 @@ import (
 
 const defaultFindingCorrelationWindow = 24 * time.Hour
 
-const defaultFindingRiskModelVersion = "likelihood-impact-v1"
+const FindingRiskModelVersion = "likelihood-impact-v2"
+
+const defaultFindingRiskModelVersion = FindingRiskModelVersion
+
+const FindingEffectiveSeverityAttribute = "effective_severity"
+
+const FindingSourceSeverityAttribute = "source_severity"
 
 const FindingRiskGraphProjectedModelVersionAttribute = "risk_graph_projected_model_version"
 
@@ -34,14 +40,15 @@ type FindingExposureAnalysisReport struct {
 
 // FindingRiskContext captures contextual scoring signals for one finding or correlated group.
 type FindingRiskContext struct {
-	Score            int      `json:"score"`
-	LikelihoodScore  int      `json:"likelihood_score"`
-	ImpactScore      int      `json:"impact_score"`
-	ConfidenceScore  int      `json:"confidence_score"`
-	LikelihoodLevel  string   `json:"likelihood_level,omitempty"`
-	ImpactLevel      string   `json:"impact_level,omitempty"`
-	RiskModelVersion string   `json:"risk_model_version,omitempty"`
-	Reasons          []string `json:"reasons,omitempty"`
+	Score             int      `json:"score"`
+	EffectiveSeverity string   `json:"effective_severity,omitempty"`
+	LikelihoodScore   int      `json:"likelihood_score"`
+	ImpactScore       int      `json:"impact_score"`
+	ConfidenceScore   int      `json:"confidence_score"`
+	LikelihoodLevel   string   `json:"likelihood_level,omitempty"`
+	ImpactLevel       string   `json:"impact_level,omitempty"`
+	RiskModelVersion  string   `json:"risk_model_version,omitempty"`
+	Reasons           []string `json:"reasons,omitempty"`
 }
 
 // FindingEvidenceBundle is a compact, source-agnostic evidence summary for a finding group or path.
@@ -301,7 +308,7 @@ func AnalyzeFindingRiskContext(finding *ports.FindingRecord, now time.Time) Find
 	impact := 10
 	confidence := 85
 	reasons := []string{}
-	severity := strings.ToUpper(strings.TrimSpace(finding.Severity))
+	severity := strings.ToUpper(strings.TrimSpace(firstNonEmpty(attributes[FindingSourceSeverityAttribute], attributes["rule_severity"], finding.Severity)))
 	if severityScore := compoundRiskSeverityScore(severity); severityScore > 0 {
 		likelihood += severityScore * 6
 		impact += severityScore * 8
@@ -449,14 +456,15 @@ func AnalyzeFindingRiskContext(finding *ports.FindingRecord, now time.Time) Find
 	confidence = clampScore(confidence)
 	riskScore := productRiskScore(likelihood, impact)
 	return FindingRiskContext{
-		Score:            riskScore,
-		LikelihoodScore:  likelihood,
-		ImpactScore:      impact,
-		ConfidenceScore:  confidence,
-		LikelihoodLevel:  riskLevelFromScore(likelihood),
-		ImpactLevel:      riskLevelFromScore(impact),
-		RiskModelVersion: defaultFindingRiskModelVersion,
-		Reasons:          uniqueSortedStrings(reasons),
+		Score:             riskScore,
+		EffectiveSeverity: EffectiveSeverityFromRiskScore(riskScore),
+		LikelihoodScore:   likelihood,
+		ImpactScore:       impact,
+		ConfidenceScore:   confidence,
+		LikelihoodLevel:   riskLevelFromScore(likelihood),
+		ImpactLevel:       riskLevelFromScore(impact),
+		RiskModelVersion:  defaultFindingRiskModelVersion,
+		Reasons:           uniqueSortedStrings(reasons),
 	}
 }
 
@@ -527,6 +535,21 @@ func riskLevelFromScore(score int) string {
 		return "medium"
 	case score > 0:
 		return "low"
+	default:
+		return ""
+	}
+}
+
+func EffectiveSeverityFromRiskScore(score int) string {
+	switch riskLevelFromScore(score) {
+	case "critical":
+		return "CRITICAL"
+	case "high":
+		return "HIGH"
+	case "medium":
+		return "MEDIUM"
+	case "low":
+		return "LOW"
 	default:
 		return ""
 	}

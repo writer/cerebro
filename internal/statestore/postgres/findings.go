@@ -394,11 +394,12 @@ func (s *Store) SummarizeFindings(ctx context.Context, request ports.ListFinding
 		return ports.FindingSummary{}, err
 	}
 	where := strings.Join(clauses, " AND ")
+	effectiveSeverity := findingEffectiveSeveritySQL()
 	query := `
 SELECT
   COUNT(*) FILTER (WHERE LOWER(status) = 'open'),
-  COUNT(*) FILTER (WHERE LOWER(status) = 'open' AND UPPER(severity) = 'CRITICAL'),
-  COUNT(*) FILTER (WHERE LOWER(status) = 'open' AND UPPER(severity) = 'HIGH'),
+  COUNT(*) FILTER (WHERE LOWER(status) = 'open' AND ` + effectiveSeverity + ` = 'CRITICAL'),
+  COUNT(*) FILTER (WHERE LOWER(status) = 'open' AND ` + effectiveSeverity + ` = 'HIGH'),
   COUNT(*) FILTER (WHERE LOWER(status) = 'open' AND due_at IS NOT NULL AND due_at < NOW()),
   COUNT(*) FILTER (WHERE LOWER(status) = 'open' AND TRIM(assignee) = '')
 FROM findings
@@ -720,7 +721,7 @@ func findingFilterClauses(request ports.ListFindingsRequest) ([]string, []any, e
 	addStringInFilter(&clauses, &args, "runtime_id", runtimeIDs)
 	addFindingFilter(&clauses, &args, "id", request.FindingID)
 	addFindingFilter(&clauses, &args, "rule_id", request.RuleID)
-	addFindingFilter(&clauses, &args, "severity", request.Severity)
+	addFindingSeverityFilter(&clauses, &args, request.Severity)
 	addFindingFilter(&clauses, &args, "status", request.Status)
 	addFindingFilter(&clauses, &args, "policy_id", request.PolicyID)
 	if err := addFindingArrayContainsFilter(&clauses, &args, "resource_urns_json", request.ResourceURN); err != nil {
@@ -763,7 +764,7 @@ func (s *Store) backfillFindingRisk(ctx context.Context, includeUnprojected bool
 	if includeUnprojected {
 		query += ` OR COALESCE(attributes_json->>'` + findingrisk.FindingRiskGraphProjectedModelVersionAttribute + `', '') <> $1`
 	}
-	rows, err := s.db.QueryContext(ctx, query, "likelihood-impact-v1")
+	rows, err := s.db.QueryContext(ctx, query, findingrisk.FindingRiskModelVersion)
 	if err != nil {
 		return nil, fmt.Errorf("list findings for risk backfill: %w", err)
 	}
@@ -773,8 +774,9 @@ func (s *Store) backfillFindingRisk(ctx context.Context, includeUnprojected bool
 		}
 	}()
 	type riskBackfill struct {
-		id   string
-		risk ports.FindingRisk
+		id             string
+		risk           ports.FindingRisk
+		sourceSeverity string
 	}
 	now := time.Now().UTC()
 	updates := []riskBackfill{}
@@ -787,9 +789,17 @@ func (s *Store) backfillFindingRisk(ctx context.Context, includeUnprojected bool
 		if err != nil {
 			return nil, fmt.Errorf("decode finding risk backfill row: %w", err)
 		}
+		sourceSeverity := strings.TrimSpace(record.Attributes[findingrisk.FindingSourceSeverityAttribute])
+		if sourceSeverity == "" {
+			sourceSeverity = strings.TrimSpace(row.Severity)
+		}
+		if sourceSeverity != "" {
+			record.Attributes[findingrisk.FindingSourceSeverityAttribute] = sourceSeverity
+		}
 		updates = append(updates, riskBackfill{
-			id:   strings.TrimSpace(record.ID),
-			risk: findingBackfillRisk(record, now),
+			id:             strings.TrimSpace(record.ID),
+			risk:           findingBackfillRisk(record, now),
+			sourceSeverity: sourceSeverity,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -799,7 +809,7 @@ func (s *Store) backfillFindingRisk(ctx context.Context, includeUnprojected bool
 		if update.id == "" {
 			continue
 		}
-		stored, err := s.updateFindingRiskColumns(ctx, update.id, update.risk, findingRiskAttributesForUpdate(update.risk))
+		stored, err := s.updateFindingRiskColumns(ctx, update.id, update.risk, findingRiskAttributesForUpdate(update.risk, update.sourceSeverity))
 		if err != nil {
 			return nil, fmt.Errorf("backfill finding %q risk: %w", update.id, err)
 		}
@@ -862,9 +872,11 @@ func findingBackfillRisk(record *ports.FindingRecord, now time.Time) ports.Findi
 	}
 }
 
-func findingRiskAttributesForUpdate(risk ports.FindingRisk) map[string]string {
+func findingRiskAttributesForUpdate(risk ports.FindingRisk, sourceSeverity string) map[string]string {
 	attributes := map[string]string{}
 	attributes["risk_score"] = strconv.Itoa(risk.RiskScore)
+	attributes[findingrisk.FindingEffectiveSeverityAttribute] = findingrisk.EffectiveSeverityFromRiskScore(risk.RiskScore)
+	attributes[findingrisk.FindingSourceSeverityAttribute] = strings.ToUpper(strings.TrimSpace(sourceSeverity))
 	attributes["likelihood_score"] = strconv.Itoa(risk.LikelihoodScore)
 	attributes["impact_score"] = strconv.Itoa(risk.ImpactScore)
 	attributes["confidence_score"] = strconv.Itoa(risk.ConfidenceScore)
@@ -878,26 +890,27 @@ func findingRiskAttributesForUpdate(risk ports.FindingRisk) map[string]string {
 func findingOrderClause(request ports.ListFindingsRequest) string {
 	switch {
 	case request.Order == ports.FindingOrderRiskScore:
-		return `risk_score DESC, CASE UPPER(severity)
-  WHEN 'CRITICAL' THEN 0
-  WHEN 'HIGH' THEN 1
-  WHEN 'MEDIUM' THEN 2
-  WHEN 'LOW' THEN 3
-  WHEN 'INFO' THEN 4
-  ELSE 5
-END, last_observed_at DESC, id`
+		return `risk_score DESC, ` + findingSeverityRankSQL(findingEffectiveSeveritySQL()) + `, last_observed_at DESC, id`
 	case request.Order == ports.FindingOrderPriority || request.PriorityOrder:
-		return `CASE UPPER(severity)
-  WHEN 'CRITICAL' THEN 0
-  WHEN 'HIGH' THEN 1
-  WHEN 'MEDIUM' THEN 2
-  WHEN 'LOW' THEN 3
-  WHEN 'INFO' THEN 4
-  ELSE 5
-END, last_observed_at DESC, id`
+		return findingSeverityRankSQL(findingEffectiveSeveritySQL()) + `, last_observed_at DESC, id`
 	default:
 		return "last_observed_at DESC, id"
 	}
+}
+
+func findingEffectiveSeveritySQL() string {
+	return `UPPER(COALESCE(NULLIF(attributes_json->>'` + findingrisk.FindingEffectiveSeverityAttribute + `', ''), severity))`
+}
+
+func findingSeverityRankSQL(expression string) string {
+	return `CASE ` + expression + `
+  WHEN 'CRITICAL' THEN 0
+  WHEN 'HIGH' THEN 1
+  WHEN 'MEDIUM' THEN 2
+  WHEN 'LOW' THEN 3
+  WHEN 'INFO' THEN 4
+  ELSE 5
+END`
 }
 
 func findingStringsJSON(values []string) (string, error) {
@@ -1039,6 +1052,15 @@ func addFindingFilter(clauses *[]string, args *[]any, column string, value strin
 	*clauses = append(*clauses, fmt.Sprintf("%s = $%d", column, len(*args)))
 }
 
+func addFindingSeverityFilter(clauses *[]string, args *[]any, value string) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return
+	}
+	*args = append(*args, strings.ToUpper(trimmed))
+	*clauses = append(*clauses, fmt.Sprintf("%s = $%d", findingEffectiveSeveritySQL(), len(*args)))
+}
+
 func addFindingArrayContainsFilter(clauses *[]string, args *[]any, column string, value string) error {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
@@ -1176,6 +1198,10 @@ func (r findingRow) record() (*ports.FindingRecord, error) {
 	if err := json.Unmarshal([]byte(r.AttributesJSON), &attributes); err != nil {
 		return nil, fmt.Errorf("decode finding attributes: %w", err)
 	}
+	severity := strings.TrimSpace(r.Severity)
+	if effectiveSeverity := strings.TrimSpace(attributes[findingrisk.FindingEffectiveSeverityAttribute]); effectiveSeverity != "" {
+		severity = effectiveSeverity
+	}
 	return &ports.FindingRecord{
 		ID:          r.ID,
 		Fingerprint: r.Fingerprint,
@@ -1183,7 +1209,7 @@ func (r findingRow) record() (*ports.FindingRecord, error) {
 		RuntimeID:   r.RuntimeID,
 		RuleID:      r.RuleID,
 		Title:       r.Title,
-		Severity:    r.Severity,
+		Severity:    severity,
 		Status:      r.Status,
 		Summary:     r.Summary,
 		FindingRisk: ports.FindingRisk{

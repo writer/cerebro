@@ -13,6 +13,11 @@ func enrichFindingRisk(record *ports.FindingRecord, _ *cerebrov1.SourceRuntime, 
 	if record == nil {
 		return nil
 	}
+	if record.Attributes == nil {
+		record.Attributes = map[string]string{}
+	}
+	sourceSeverity := strings.ToUpper(strings.TrimSpace(firstNonEmpty(record.Attributes[FindingSourceSeverityAttribute], record.Attributes["rule_severity"], record.Severity)))
+	setRiskStringAttribute(record.Attributes, FindingSourceSeverityAttribute, sourceSeverity)
 	evaluation := AnalyzeFindingRiskContext(record, now)
 	if record.LikelihoodScore <= 0 {
 		record.LikelihoodScore = evaluation.LikelihoodScore
@@ -35,10 +40,9 @@ func enrichFindingRisk(record *ports.FindingRecord, _ *cerebrov1.SourceRuntime, 
 	if strings.TrimSpace(record.RiskModelVersion) == "" {
 		record.RiskModelVersion = defaultFindingRiskModelVersion
 	}
+	effectiveSeverity := EffectiveSeverityFromRiskScore(record.RiskScore)
 	record.RiskReasons = uniqueSortedStrings(append(record.RiskReasons, evaluation.Reasons...))
-	if record.Attributes == nil {
-		record.Attributes = map[string]string{}
-	}
+	setRiskStringAttribute(record.Attributes, FindingEffectiveSeverityAttribute, effectiveSeverity)
 	setRiskAttribute(record.Attributes, "risk_score", record.RiskScore)
 	setRiskAttribute(record.Attributes, "likelihood_score", record.LikelihoodScore)
 	setRiskAttribute(record.Attributes, "impact_score", record.ImpactScore)
@@ -73,6 +77,7 @@ func recomputeFindingRisk(record *ports.FindingRecord, now time.Time) *ports.Fin
 		delete(record.Attributes, "impact_level")
 		delete(record.Attributes, "risk_reasons")
 		delete(record.Attributes, "risk_model_version")
+		delete(record.Attributes, FindingEffectiveSeverityAttribute)
 	}
 	return enrichFindingRisk(record, nil, now)
 }
@@ -83,6 +88,8 @@ func findingRiskAttributes(record *ports.FindingRecord) map[string]string {
 	}
 	attributes := map[string]string{}
 	attributes["risk_score"] = strconv.Itoa(clampScore(record.RiskScore))
+	attributes[FindingEffectiveSeverityAttribute] = EffectiveSeverityFromRiskScore(record.RiskScore)
+	attributes[FindingSourceSeverityAttribute] = strings.ToUpper(strings.TrimSpace(firstNonEmpty(record.Attributes[FindingSourceSeverityAttribute], record.Attributes["rule_severity"], record.Severity)))
 	attributes["likelihood_score"] = strconv.Itoa(clampScore(record.LikelihoodScore))
 	attributes["impact_score"] = strconv.Itoa(clampScore(record.ImpactScore))
 	attributes["confidence_score"] = strconv.Itoa(clampScore(record.ConfidenceScore))

@@ -623,6 +623,9 @@ func findingAnchorAttributes(finding workflowevents.FindingSnapshot) map[string]
 	if finding.RiskScore != 0 {
 		attributes["risk_score"] = fmt.Sprintf("%d", finding.RiskScore)
 	}
+	if strings.TrimSpace(finding.EffectiveSeverity) != "" {
+		attributes["effective_severity"] = strings.TrimSpace(finding.EffectiveSeverity)
+	}
 	if finding.LikelihoodScore != 0 {
 		attributes["likelihood_score"] = fmt.Sprintf("%d", finding.LikelihoodScore)
 	}
@@ -676,6 +679,9 @@ func findingAnchorLinkAttributes(finding workflowevents.FindingSnapshot) map[str
 	}
 	if finding.RiskScore != 0 {
 		attributes["risk_score"] = fmt.Sprintf("%d", finding.RiskScore)
+	}
+	if strings.TrimSpace(finding.EffectiveSeverity) != "" {
+		attributes["effective_severity"] = strings.TrimSpace(finding.EffectiveSeverity)
 	}
 	if finding.LikelihoodScore != 0 {
 		attributes["likelihood_score"] = fmt.Sprintf("%d", finding.LikelihoodScore)
