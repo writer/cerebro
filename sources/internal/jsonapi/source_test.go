@@ -114,6 +114,34 @@ func TestReadPagesJSONAPIRecords(t *testing.T) {
 	}
 }
 
+func TestReadPreservesNextCursorForEmptyPage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data":        []map[string]any{},
+			"next_cursor": "page-2",
+		})
+	}))
+	defer server.Close()
+
+	source := newTestSource(t, server.URL)
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 0 {
+		t.Fatalf("len(Events) = %d, want empty page", len(pull.Events))
+	}
+	if pull.NextCursor.GetOpaque() != "page-2" {
+		t.Fatalf("NextCursor = %q, want page-2", pull.NextCursor.GetOpaque())
+	}
+	if pull.Checkpoint.GetCursorOpaque() != "page-2" {
+		t.Fatalf("Checkpoint cursor = %q, want page-2", pull.Checkpoint.GetCursorOpaque())
+	}
+}
+
 func TestDiscoverReturnsFamilyURNs(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{

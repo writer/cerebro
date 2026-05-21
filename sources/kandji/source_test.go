@@ -83,8 +83,8 @@ func TestReadDeviceFamily(t *testing.T) {
 
 func TestReadApplicationFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/apps" {
-			t.Fatalf("request path = %q, want /api/v1/apps", r.URL.Path)
+		if r.URL.Path != "/api/v1/prism/apps" {
+			t.Fatalf("request path = %q, want /api/v1/prism/apps", r.URL.Path)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{
@@ -131,8 +131,8 @@ func TestReadApplicationFamily(t *testing.T) {
 
 func TestReadVulnerabilityFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/vulnerabilities" {
-			t.Fatalf("request path = %q, want /api/v1/vulnerabilities", r.URL.Path)
+		if r.URL.Path != "/api/v1/vulnerability-management/detections" {
+			t.Fatalf("request path = %q, want /api/v1/vulnerability-management/detections", r.URL.Path)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{
