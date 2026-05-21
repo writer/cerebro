@@ -89,6 +89,11 @@ type Source interface {
 	Read(context.Context, Config, *cerebrov1.SourceCursor) (Pull, error)
 }
 
+// EventContractProvider lets sources attach catalog-level per-kind validation to emitted events.
+type EventContractProvider interface {
+	EventContracts() []EventContract
+}
+
 // Registry indexes sources by their stable identifier.
 type Registry struct {
 	sources map[string]Source
@@ -116,9 +121,33 @@ func NewRegistry(sources ...Source) (*Registry, error) {
 		if _, exists := indexed[id]; exists {
 			return nil, fmt.Errorf("duplicate source id %q", id)
 		}
+		source = sourceWithCatalogEventContracts(source, id)
 		indexed[id] = source
 	}
 	return &Registry{sources: indexed}, nil
+}
+
+type catalogContractSource struct {
+	Source
+	contracts []EventContract
+}
+
+func (s *catalogContractSource) EventContracts() []EventContract {
+	if s == nil {
+		return nil
+	}
+	return cloneEventContracts(s.contracts)
+}
+
+func sourceWithCatalogEventContracts(source Source, sourceID string) Source {
+	if _, ok := source.(EventContractProvider); ok {
+		return source
+	}
+	contracts := catalogEventContractsForSource(sourceID)
+	if len(contracts) == 0 {
+		return source
+	}
+	return &catalogContractSource{Source: source, contracts: contracts}
 }
 
 func sourceIsNil(source Source) bool {

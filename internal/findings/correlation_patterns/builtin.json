@@ -1,0 +1,84 @@
+{
+  "version": "2026-05-21",
+  "patterns": [
+    {
+      "id": "cloud-public-exposure-with-privilege-path",
+      "name": "Cloud public exposure with privilege path",
+      "rule_ids": [
+        "cloud-public-resource-exposure",
+        "cloud-privilege-path-granted"
+      ],
+      "dimensions": [
+        "resource"
+      ],
+      "window": "24h",
+      "score_bonus": 10,
+      "reasons": [
+        "external_exposure",
+        "privilege_path"
+      ],
+      "tests": [
+        {
+          "name": "shared-resource-positive",
+          "description": "Matches when public exposure and privilege-path findings share a resource inside the window.",
+          "expect_match": true
+        }
+      ]
+    },
+    {
+      "id": "github-code-security-control-disabled-with-secret-alert",
+      "name": "GitHub code security control disabled with secret alert",
+      "rule_ids": [
+        "github-code-security-controls-disabled",
+        "github-secret-scanning-alert-created"
+      ],
+      "dimensions": [
+        "repository",
+        "resource"
+      ],
+      "window": "24h",
+      "score_bonus": 12,
+      "reasons": [
+        "control_disabled",
+        "secret_exposure"
+      ],
+      "tests": [
+        {
+          "name": "shared-repository-positive",
+          "description": "Matches when a code security control is disabled and a secret alert lands on the same repository inside the window.",
+          "expect_match": true
+        },
+        {
+          "name": "window-negative",
+          "description": "Does not match when the control-disable and alert findings exceed the configured window.",
+          "expect_match": false
+        }
+      ]
+    },
+    {
+      "id": "identity-control-tamper-with-credential-change",
+      "name": "Identity control tamper with credential change",
+      "rule_ids": [
+        "identity-auth-control-lifecycle-tampering",
+        "identity-api-token-or-oauth-app-created"
+      ],
+      "dimensions": [
+        "actor",
+        "resource"
+      ],
+      "window": "24h",
+      "score_bonus": 10,
+      "reasons": [
+        "control_tamper",
+        "credential_change"
+      ],
+      "tests": [
+        {
+          "name": "shared-actor-positive",
+          "description": "Matches when the same actor changes an identity control and creates a credential inside the window.",
+          "expect_match": true
+        }
+      ]
+    }
+  ]
+}

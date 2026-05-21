@@ -18,6 +18,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceprojection"
 	"github.com/writer/cerebro/internal/sourceruntime"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestAppendOrchestratorRunBoundsForeverHistory(t *testing.T) {
@@ -970,19 +971,15 @@ func (orchestratorTestSource) Discover(context.Context, sourcecdk.Config) ([]sou
 }
 
 func (orchestratorTestSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-	return sourcecdk.Pull{Events: []*cerebrov1.EventEnvelope{{
-		Id:       "github-pr-515",
-		TenantId: "writer",
-		SourceId: "github",
-		Kind:     "github.pull_request",
-		Attributes: map[string]string{
+	return sourcecdk.Pull{Events: []*cerebrov1.EventEnvelope{
+		orchestratorSourceEvent("github-pr-515", map[string]string{
 			"author":      "alice",
 			"owner":       "writer",
 			"pull_number": "515",
 			"repository":  "writer/cerebro",
 			"state":       "open",
-		},
-	}}}, nil
+		}),
+	}}, nil
 }
 
 type orchestratorPagedSource struct {
@@ -1015,21 +1012,30 @@ func (s orchestratorPagedSource) Read(_ context.Context, _ sourcecdk.Config, cur
 		nextCursor = &cerebrov1.SourceCursor{Opaque: strconv.Itoa(page + 1)}
 	}
 	return sourcecdk.Pull{
-		Events: []*cerebrov1.EventEnvelope{{
-			Id:       "github-pr-page-" + strconv.Itoa(page),
-			TenantId: "writer",
-			SourceId: "github",
-			Kind:     "github.pull_request",
-			Attributes: map[string]string{
+		Events: []*cerebrov1.EventEnvelope{
+			orchestratorSourceEvent("github-pr-page-"+strconv.Itoa(page), map[string]string{
 				"author":      "alice-" + strconv.Itoa(page),
 				"owner":       "writer",
 				"pull_number": strconv.Itoa(500 + page),
 				"repository":  "writer/cerebro",
 				"state":       "open",
-			},
-		}},
+			}),
+		},
 		NextCursor: nextCursor,
 	}, nil
+}
+
+func orchestratorSourceEvent(id string, attributes map[string]string) *cerebrov1.EventEnvelope {
+	return &cerebrov1.EventEnvelope{
+		Id:         id,
+		TenantId:   "writer",
+		SourceId:   "github",
+		Kind:       "github.pull_request",
+		OccurredAt: timestamppb.New(time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)),
+		SchemaRef:  "github/pull_request/v1",
+		Payload:    []byte(`{"fixture":true}`),
+		Attributes: attributes,
+	}
 }
 
 type orchestratorNoopRule struct{}

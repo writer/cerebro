@@ -40,6 +40,9 @@ func TestGRCControlTestNeedsAttentionRule(t *testing.T) {
 	if got := findings[0].PolicyID; got != "ai-risk-security-training-records" {
 		t.Fatalf("PolicyID = %q, want test id", got)
 	}
+	if len(findings[0].ControlRefs) == 0 {
+		t.Fatal("ControlRefs = 0, want rule control refs copied onto finding")
+	}
 }
 
 func TestGRCControlTestNeedsAttentionRuleFingerprintSeparatesTenants(t *testing.T) {

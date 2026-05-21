@@ -74,7 +74,7 @@ func newSentinelOneEndpointActiveInfectionRule() Rule {
 		sentinelOneEndpointActiveInfectionRuleID,
 		"SentinelOne Endpoint Active Infection",
 		"Detect endpoint-level active infection state from SentinelOne without mirroring each threat as a finding.",
-		[]string{sentinelOneThreatEntityType},
+		[]string{sentinelOneAgentEntityType, sentinelOneThreatEntityType},
 		"finding.sentinelone_endpoint_active_infection",
 		"CRITICAL",
 		[]string{"sentinelone", "endpoint", "infection", "malware", "attack.impact"},
@@ -209,10 +209,12 @@ func newRetiredSentinelOneRule(id string, name string, outputKind string) Rule {
 		nil,
 		nil,
 	)
+	definition.Maturity = "retired"
 	return newEventRule(eventRuleConfig{
-		definition: definition,
-		sourceID:   "sentinelone",
-		match:      func(*cerebrov1.EventEnvelope) bool { return false },
+		definition:         definition,
+		sourceID:           "sentinelone",
+		retireOpenFindings: true,
+		match:              func(*cerebrov1.EventEnvelope) bool { return false },
 		build: func(context.Context, *cerebrov1.SourceRuntime, *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
 			return nil, nil
 		},

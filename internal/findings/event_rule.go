@@ -196,6 +196,9 @@ func (r *eventRule) Evaluate(ctx context.Context, runtime *cerebrov1.SourceRunti
 	if !r.config.match(event) {
 		return nil, nil
 	}
+	if len(r.config.definition.RequiredAttributes) != 0 && !hasRequiredAttributes(event, r.config.definition.RequiredAttributes...) {
+		return nil, nil
+	}
 	record, err := r.config.build(ctx, runtime, event)
 	if err != nil {
 		return nil, err

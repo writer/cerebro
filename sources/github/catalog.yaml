@@ -1,8 +1,39 @@
 id: github
 name: GitHub
-description: GitHub audit, pull request, and secret scanning source.
+description: GitHub audit, pull request, and Dependabot alert source.
 emitted_kinds:
   - github.audit
   - github.dependabot_alert
   - github.pull_request
-  - github.secret_scanning
+event_contracts:
+  - kind: github.audit
+    schema_ref: github/audit/v1
+    required_attributes:
+      - action
+      - org
+    required_payload_fields:
+      - action
+      - org
+  - kind: github.dependabot_alert
+    schema_ref: github/dependabot_alert/v1
+    required_attributes:
+      - owner
+      - repo
+      - repository
+      - state
+    required_payload_fields:
+      - number
+      - repository
+      - state
+  - kind: github.pull_request
+    schema_ref: github/pull_request/v1
+    required_attributes:
+      - owner
+      - repo
+      - repository
+    required_payload_fields:
+      - number
+      - repository
+kind_lifecycle:
+  - kind: github.secret_scanning
+    status: planned

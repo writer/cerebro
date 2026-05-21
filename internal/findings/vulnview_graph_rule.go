@@ -40,11 +40,23 @@ func newVulnViewExternalAssetConcentratedSignalRule() Rule {
 		Name:        "VulnView External Asset Concentrated Signal",
 		Description: "Aggregate VulnView graph evidence to prioritize external assets with medium-or-higher or repeated attack-surface signals.",
 		SourceID:    "vulnview",
+		EventKinds:  []string{"vulnview.vulnerability", "vulnview.dns_alert"},
 		OutputKind:  "finding.vulnview_external_asset_concentrated_signal",
 		Severity:    "dynamic",
 		Status:      findingStatusOpen,
 		Maturity:    "test",
 		Tags:        []string{"vulnview", "graph", "attack-surface", "prioritization"},
+		References:  []string{"https://owasp.org/www-project-web-security-testing-guide/", "https://www.cisa.gov/known-exploited-vulnerabilities-catalog"},
+		FalsePositives: []string{
+			"External asset is intentionally exposed and covered by compensating controls.",
+			"Multiple scanner signals represent duplicates for the same vulnerability instance.",
+		},
+		Runbook:           "Prioritize the external asset owner, validate the highest severity evidence, deduplicate repeated findings, and remediate or accept the aggregate risk.",
+		FingerprintFields: []string{"asset_urn"},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC7.1"},
+			{FrameworkName: "ISO 27001:2022", ControlID: "A.8.8"},
+		},
 	}}
 }
 
@@ -260,6 +272,7 @@ func (r *vulnViewExternalAssetConcentratedSignalRule) buildFinding(runtime *cere
 		PolicyName:        firstNonEmpty(strings.Join(signalList, ", "), "VulnView graph evidence"),
 		CheckID:           r.definition.ID,
 		CheckName:         r.definition.Name,
+		ControlRefs:       cloneFindingControlRefs(r.definition.ControlRefs),
 		GraphEvidenceRows: graphRows,
 		Attributes:        attributes,
 		FirstObservedAt:   now,

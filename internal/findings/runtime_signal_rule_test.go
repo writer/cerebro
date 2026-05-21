@@ -58,4 +58,13 @@ func TestRuntimeActiveThreatEvidenceRule(t *testing.T) {
 	if len(records) != 1 {
 		t.Fatalf("len(active records) = %d, want 1", len(records))
 	}
+
+	missingEvidenceType := &cerebrov1.EventEnvelope{Id: "runtime-evidence-missing-evidence-type", TenantId: "example", SourceId: "runtime", Kind: "runtime.evidence", Attributes: map[string]string{"confidence": "0.92", "verdict": "malicious"}}
+	records, err = rule.Evaluate(context.Background(), runtime, missingEvidenceType)
+	if err != nil {
+		t.Fatalf("Evaluate(missing evidence_type) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("len(missing evidence_type records) = %d, want 0", len(records))
+	}
 }

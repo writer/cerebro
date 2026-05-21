@@ -45,6 +45,9 @@ func TestVulnViewExternalAssetConcentratedSignalGraphRuleAggregatesRepeatedEvide
 	if len(finding.GraphEvidenceRows) != 5 {
 		t.Fatalf("len(GraphEvidenceRows) = %d, want 5", len(finding.GraphEvidenceRows))
 	}
+	if len(finding.ControlRefs) == 0 {
+		t.Fatal("ControlRefs = 0, want rule control refs copied onto finding")
+	}
 }
 
 func TestVulnViewExternalAssetConcentratedSignalGraphRuleSupportsEvidenceRuntimesOnly(t *testing.T) {

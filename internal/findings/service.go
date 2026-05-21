@@ -1639,6 +1639,26 @@ func uniqueSortedStrings(values []string) []string {
 	return unique
 }
 
+func uniqueTrimmedStringsPreserveOrder(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	unique := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		unique = append(unique, trimmed)
+	}
+	return unique
+}
+
 func findingEvidenceID(runtimeID string, findingID string, graphRootURNs []string, eventIDs []string) string {
 	replacer := strings.NewReplacer(" ", "-", "_", "-", "/", "-", ":", "-", ".", "-")
 	identityParts := []string{strings.TrimSpace(runtimeID), strings.TrimSpace(findingID)}

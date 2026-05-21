@@ -113,6 +113,26 @@ func TestGitHubIPAllowListModifiedIgnoresEnableOnly(t *testing.T) {
 	}
 }
 
+func TestGitHubCodeSecurityControlsDisabledIncludesSecretScanning(t *testing.T) {
+	rule := newGitHubCodeSecurityControlsDisabledRule()
+	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "example"}
+	event := githubAuditEvent("github-secret-scanning-disable", map[string]string{
+		"action":      "repository_secret_scanning.disable",
+		"repo":        "example/cerebro",
+		"resource_id": "example/cerebro",
+	})
+	records, err := rule.Evaluate(context.Background(), runtime, event)
+	if err != nil {
+		t.Fatalf("Evaluate(secret scanning disable) error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("len(secret scanning disable records) = %d, want 1", len(records))
+	}
+	if got := records[0].RuleID; got != githubCodeSecurityControlsDisabledRuleID {
+		t.Fatalf("RuleID = %q, want %q", got, githubCodeSecurityControlsDisabledRuleID)
+	}
+}
+
 func TestGitHubCriticalResourceDeletedSuppressesLowValueDeletes(t *testing.T) {
 	rule := newGitHubCriticalResourceDeletedRule()
 	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "writer"}

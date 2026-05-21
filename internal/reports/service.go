@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -15,6 +16,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	findinganalysis "github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -24,6 +26,7 @@ const (
 	findingSummaryReportStatus       = "completed"
 	reportParameterTenantID          = "tenant_id"
 	reportParameterRuntimeID         = "runtime_id"
+	reportParameterRuntimeIDs        = "runtime_ids"
 	reportParameterResourceLimit     = "resource_limit"
 	reportParameterGraphLimit        = "graph_limit"
 	defaultResourceEvidenceLimit     = 3
@@ -148,9 +151,15 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 		return nil, fmt.Errorf("%w: report parameter %q is required", ErrInvalidRequest, reportParameterTenantID)
 	}
 	runtimeID := strings.TrimSpace(parameters[reportParameterRuntimeID])
-	if runtimeID == "" {
-		return nil, fmt.Errorf("%w: report parameter %q is required", ErrInvalidRequest, reportParameterRuntimeID)
+	runtimeIDs := normalizeRuntimeIDs(runtimeID, parameters[reportParameterRuntimeIDs])
+	if len(runtimeIDs) == 0 {
+		return nil, fmt.Errorf("%w: report parameter %q or %q is required", ErrInvalidRequest, reportParameterRuntimeID, reportParameterRuntimeIDs)
 	}
+	resultRuntimeID := ""
+	if len(runtimeIDs) == 1 {
+		resultRuntimeID = runtimeIDs[0]
+	}
+	runtimeIDsCSV := strings.Join(runtimeIDs, ",")
 	resourceLimit, err := normalizePositiveLimit(parameters[reportParameterResourceLimit], defaultResourceEvidenceLimit, maxResourceEvidenceLimit, reportParameterResourceLimit)
 	if err != nil {
 		return nil, err
@@ -161,13 +170,22 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	}
 	parameters[reportParameterResourceLimit] = strconv.Itoa(resourceLimit)
 	parameters[reportParameterGraphLimit] = strconv.Itoa(graphLimit)
-	findings, err := s.findingStore.ListFindings(ctx, ports.ListFindingsRequest{TenantID: tenantID, RuntimeID: runtimeID, Order: ports.FindingOrderRiskScore})
+	parameters[reportParameterRuntimeIDs] = runtimeIDsCSV
+	listRequest := ports.ListFindingsRequest{TenantID: tenantID, Order: ports.FindingOrderRiskScore}
+	if len(runtimeIDs) == 1 {
+		listRequest.RuntimeID = runtimeIDs[0]
+	} else {
+		listRequest.RuntimeIDs = runtimeIDs
+	}
+	findings, err := s.findingStore.ListFindings(ctx, listRequest)
 	if err != nil {
-		return nil, fmt.Errorf("list findings for tenant %q runtime %q: %w", tenantID, runtimeID, err)
+		return nil, fmt.Errorf("list findings for tenant %q runtimes %q: %w", tenantID, runtimeIDsCSV, err)
 	}
 	severityCounts := make(map[string]int, len(findings))
 	statusCounts := make(map[string]int, len(findings))
 	dueStatusCounts := make(map[string]int, len(findings))
+	runtimeCounts := make(map[string]int, len(findings))
+	sourceCounts := make(map[string]int, len(findings))
 	ruleCounts := make(map[string]int, len(findings))
 	policyCounts := make(map[string]int, len(findings))
 	checkCounts := make(map[string]*checkCountEntry, len(findings))
@@ -182,6 +200,12 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	for _, finding := range findings {
 		if finding == nil {
 			continue
+		}
+		if findingRuntimeID := strings.TrimSpace(finding.RuntimeID); findingRuntimeID != "" {
+			runtimeCounts[findingRuntimeID]++
+		}
+		if sourceID := findingSourceID(finding); sourceID != "" {
+			sourceCounts[sourceID]++
 		}
 		severity := strings.TrimSpace(finding.Severity)
 		if severity != "" {
@@ -249,33 +273,50 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	}
 	graphEvidenceStatus := graphEvidenceStatusUnconfigured
 	graphEvidence := []any{}
+	graphNeighborhoods := map[string]*ports.EntityNeighborhood{}
 	if s.graphStore != nil {
 		graphEvidenceStatus = graphEvidenceStatusIncluded
-		graphEvidence, err = s.graphEvidence(ctx, resourceCounts, resourceLimit, graphLimit)
+		graphEvidence, graphNeighborhoods, err = s.graphEvidence(ctx, resourceCounts, resourceLimit, graphLimit)
 		if err != nil {
 			return nil, err
 		}
 	}
+	exposureReport := findinganalysis.AnalyzeFindingExposure(findings, findinganalysis.FindingExposureAnalysisOptions{
+		Limit:              10,
+		SampleLimit:        3,
+		GraphNeighborhoods: graphNeighborhoods,
+	})
+	if graphEvidenceStatus == graphEvidenceStatusUnconfigured {
+		exposureReport.AttackPaths = nil
+	}
+	exposureAnalysis, err := jsonPayload(exposureReport)
+	if err != nil {
+		return nil, fmt.Errorf("build exposure analysis report payload: %w", err)
+	}
 	result, err := structpb.NewStruct(map[string]any{
-		reportParameterTenantID:  tenantID,
-		reportParameterRuntimeID: runtimeID,
-		"total_findings":         len(findings),
-		"severity_counts":        countEntries(severityCounts, "severity"),
-		"status_counts":          countEntries(statusCounts, "status"),
-		"due_status_counts":      countEntries(dueStatusCounts, "due_status"),
-		"rule_counts":            countEntries(ruleCounts, "rule_id"),
-		"policy_counts":          countEntries(policyCounts, "policy_id"),
-		"check_counts":           checkCountEntries(checkCounts),
-		"control_counts":         controlCountEntries(controlCounts),
-		"noted_finding_count":    notedFindingCount,
-		"note_count":             noteCount,
-		"ticketed_finding_count": ticketedFindingCount,
-		"ticket_count":           ticketCount,
-		"resource_counts":        countEntries(resourceCounts, "resource_urn"),
-		"risk_counts":            countEntries(riskCounts, "risk_level"),
-		"top_risk_findings":      topRiskFindingEntries(findings, 10),
-		"graph_evidence_status":  graphEvidenceStatus,
-		"graph_evidence":         graphEvidence,
+		reportParameterTenantID:   tenantID,
+		reportParameterRuntimeID:  resultRuntimeID,
+		reportParameterRuntimeIDs: reportStringValues(runtimeIDs),
+		"total_findings":          len(findings),
+		"runtime_counts":          countEntries(runtimeCounts, "runtime_id"),
+		"source_counts":           countEntries(sourceCounts, "source_id"),
+		"severity_counts":         countEntries(severityCounts, "severity"),
+		"status_counts":           countEntries(statusCounts, "status"),
+		"due_status_counts":       countEntries(dueStatusCounts, "due_status"),
+		"rule_counts":             countEntries(ruleCounts, "rule_id"),
+		"policy_counts":           countEntries(policyCounts, "policy_id"),
+		"check_counts":            checkCountEntries(checkCounts),
+		"control_counts":          controlCountEntries(controlCounts),
+		"noted_finding_count":     notedFindingCount,
+		"note_count":              noteCount,
+		"ticketed_finding_count":  ticketedFindingCount,
+		"ticket_count":            ticketCount,
+		"resource_counts":         countEntries(resourceCounts, "resource_urn"),
+		"risk_counts":             countEntries(riskCounts, "risk_level"),
+		"top_risk_findings":       topRiskFindingEntries(findings, 10),
+		"exposure_analysis":       exposureAnalysis,
+		"graph_evidence_status":   graphEvidenceStatus,
+		"graph_evidence":          graphEvidence,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build finding summary report result: %w", err)
@@ -283,12 +324,67 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	return result, nil
 }
 
-func (s *Service) graphEvidence(ctx context.Context, resourceCounts map[string]int, resourceLimit int, graphLimit int) ([]any, error) {
+func jsonPayload(value any) (any, error) {
+	content, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	var decoded any
+	if err := json.Unmarshal(content, &decoded); err != nil {
+		return nil, err
+	}
+	return decoded, nil
+}
+
+func normalizeRuntimeIDs(runtimeID string, runtimeIDs string) []string {
+	values := []string{}
+	if strings.TrimSpace(runtimeID) != "" {
+		values = append(values, runtimeID)
+	}
+	values = append(values, strings.FieldsFunc(runtimeIDs, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\t'
+	})...)
+	seen := map[string]struct{}{}
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		normalized = append(normalized, trimmed)
+	}
+	slices.Sort(normalized)
+	return normalized
+}
+
+func findingSourceID(finding *ports.FindingRecord) string {
+	if finding == nil {
+		return ""
+	}
+	for _, key := range []string{"source_id", "rule_source_id", "source_family"} {
+		if value := strings.TrimSpace(finding.Attributes[key]); value != "" {
+			return value
+		}
+	}
+	for _, metadata := range findinganalysis.BuiltinRuleMetadata() {
+		if metadata.ID == strings.TrimSpace(finding.RuleID) {
+			return strings.TrimSpace(metadata.SourceID)
+		}
+	}
+	return "unknown"
+}
+
+func (s *Service) graphEvidence(ctx context.Context, resourceCounts map[string]int, resourceLimit int, graphLimit int) ([]any, map[string]*ports.EntityNeighborhood, error) {
 	entries := sortedCountEntries(resourceCounts)
 	if len(entries) > resourceLimit {
 		entries = entries[:resourceLimit]
 	}
 	evidence := make([]any, 0, len(entries))
+	neighborhoods := make(map[string]*ports.EntityNeighborhood, len(entries))
 	for _, entry := range entries {
 		neighborhood, err := s.graphStore.GetEntityNeighborhood(ctx, entry.Key, graphLimit)
 		switch {
@@ -296,6 +392,7 @@ func (s *Service) graphEvidence(ctx context.Context, resourceCounts map[string]i
 			if neighborhood == nil {
 				neighborhood = &ports.EntityNeighborhood{}
 			}
+			neighborhoods[entry.Key] = neighborhood
 			evidence = append(evidence, map[string]any{
 				"resource_urn":  entry.Key,
 				"finding_count": entry.Count,
@@ -311,17 +408,17 @@ func (s *Service) graphEvidence(ctx context.Context, resourceCounts map[string]i
 				"status":        graphEvidenceEntryStatusNotFound,
 			})
 		default:
-			return nil, fmt.Errorf("load graph evidence for %q: %w", entry.Key, err)
+			return nil, nil, fmt.Errorf("load graph evidence for %q: %w", entry.Key, err)
 		}
 	}
-	return evidence, nil
+	return evidence, neighborhoods, nil
 }
 
 func findingSummaryDefinition() *cerebrov1.ReportDefinition {
 	return &cerebrov1.ReportDefinition{
 		Id:          findingSummaryReportID,
 		Name:        findingSummaryReportName,
-		Description: "Materialize one tenant/runtime-scoped summary of persisted findings, grouped by severity, status, due-date posture, rule, policy, check, and control, with note and ticket activity plus bounded graph evidence for top resources when the graph is configured.",
+		Description: "Materialize one tenant summary of persisted findings for one or more runtimes, grouped by severity, status, due-date posture, rule, policy, check, source, and control, with note and ticket activity plus bounded graph evidence for top resources when the graph is configured.",
 		Parameters: []*cerebrov1.ReportParameter{
 			{
 				Id:          reportParameterTenantID,
@@ -330,7 +427,12 @@ func findingSummaryDefinition() *cerebrov1.ReportDefinition {
 			},
 			{
 				Id:          reportParameterRuntimeID,
-				Description: "Stored source runtime identifier whose persisted findings should be summarized.",
+				Description: "Optional legacy single stored source runtime identifier. Use runtime_ids as the required runtime selector for new clients.",
+				Required:    false,
+			},
+			{
+				Id:          reportParameterRuntimeIDs,
+				Description: "Required comma-separated stored source runtime identifiers for finding summaries.",
 				Required:    true,
 			},
 			{

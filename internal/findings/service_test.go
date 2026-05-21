@@ -2460,7 +2460,7 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 	for _, evaluation := range result.Evaluations {
 		ruleID := evaluation.Rule.GetId()
 		findingCountByRule[ruleID] += len(evaluation.Findings)
-		if len(evaluation.Findings) == 1 {
+		if len(evaluation.Findings) >= 1 {
 			findingsByRule[ruleID] = evaluation.Findings[0]
 		}
 	}

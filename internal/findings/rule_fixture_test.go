@@ -188,6 +188,10 @@ func TestRetiredSentinelOneRulesDoNotEmitFindings(t *testing.T) {
 		if len(records) != 0 {
 			t.Fatalf("Evaluate(%q) returned %d findings, want none", rule.Spec().GetId(), len(records))
 		}
+		retirementRule, ok := rule.(openFindingRetirementRule)
+		if !ok || !retirementRule.RetiresOpenFindings() {
+			t.Fatalf("RetiresOpenFindings(%q) = false, want true so stale retired findings are resolved", rule.Spec().GetId())
+		}
 	}
 }
 

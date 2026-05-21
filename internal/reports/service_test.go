@@ -45,9 +45,21 @@ func (s *stubFindingStore) ListFindings(_ context.Context, request ports.ListFin
 		if request.RuntimeID != "" && strings.TrimSpace(finding.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
 			continue
 		}
+		if len(request.RuntimeIDs) != 0 && !stringInSlice(request.RuntimeIDs, strings.TrimSpace(finding.RuntimeID)) {
+			continue
+		}
 		findings = append(findings, cloneFinding(finding))
 	}
 	return findings, nil
+}
+
+func stringInSlice(values []string, want string) bool {
+	for _, value := range values {
+		if strings.TrimSpace(value) == want {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *stubFindingStore) UpdateFindingStatus(_ context.Context, request ports.FindingStatusUpdate) (*ports.FindingRecord, error) {
@@ -376,6 +388,16 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	if !ok || len(riskReasons) != 2 {
 		t.Fatalf("top risk reasons = %#v, want serialized reasons", topRiskFinding["risk_reasons"])
 	}
+	exposureAnalysis, ok := result["exposure_analysis"].(map[string]any)
+	if !ok {
+		t.Fatalf("Run().Run.Result[exposure_analysis] = %#v, want object", result["exposure_analysis"])
+	}
+	if _, ok := exposureAnalysis["compound_risks"].(map[string]any); !ok {
+		t.Fatalf("exposure_analysis.compound_risks = %#v, want object", exposureAnalysis["compound_risks"])
+	}
+	if _, ok := exposureAnalysis["correlations"].([]any); !ok {
+		t.Fatalf("exposure_analysis.correlations = %#v, want array", exposureAnalysis["correlations"])
+	}
 	graphEvidence, ok := result["graph_evidence"].([]any)
 	if !ok || len(graphEvidence) != 1 {
 		t.Fatalf("Run().Run.Result[graph_evidence] = %#v, want 1 entry", result["graph_evidence"])
@@ -404,6 +426,41 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	}
 }
 
+func TestRunFindingSummaryReportDoesNotPublishMultiRuntimeListAsRuntimeID(t *testing.T) {
+	findingStore := &stubFindingStore{findings: []*ports.FindingRecord{
+		{ID: "finding-1", TenantID: "example", RuntimeID: "example-github-audit", RuleID: "github-rule", Severity: "HIGH", Status: "OPEN"},
+		{ID: "finding-2", TenantID: "example", RuntimeID: "example-okta-audit", RuleID: "okta-rule", Severity: "MEDIUM", Status: "OPEN"},
+	}}
+	service := New(findingStore, nil, &stubReportStore{})
+
+	response, err := service.Run(context.Background(), &cerebrov1.RunReportRequest{
+		ReportId: findingSummaryReportID,
+		Parameters: map[string]string{
+			reportParameterTenantID:      "example",
+			reportParameterRuntimeIDs:    "example-github-audit,example-okta-audit",
+			reportParameterGraphLimit:    "1",
+			reportParameterResourceLimit: "1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if findingStore.request.RuntimeID != "" {
+		t.Fatalf("ListFindings().RuntimeID = %q, want empty for multi-runtime request", findingStore.request.RuntimeID)
+	}
+	if got := findingStore.request.RuntimeIDs; len(got) != 2 || got[0] != "example-github-audit" || got[1] != "example-okta-audit" {
+		t.Fatalf("ListFindings().RuntimeIDs = %#v, want both runtimes", got)
+	}
+	result := response.GetRun().GetResult().AsMap()
+	if got := result[reportParameterRuntimeID]; got != "" {
+		t.Fatalf("Run().Run.Result[runtime_id] = %#v, want empty for multi-runtime request", got)
+	}
+	runtimeIDs, ok := result[reportParameterRuntimeIDs].([]any)
+	if !ok || len(runtimeIDs) != 2 || runtimeIDs[0] != "example-github-audit" || runtimeIDs[1] != "example-okta-audit" {
+		t.Fatalf("Run().Run.Result[runtime_ids] = %#v, want both runtime ids", result[reportParameterRuntimeIDs])
+	}
+}
+
 func TestGetReportRunRequiresAvailableStore(t *testing.T) {
 	service := New(nil, nil, nil)
 	if _, err := service.Get(context.Background(), &cerebrov1.GetReportRunRequest{Id: "report-run-1"}); !errors.Is(err, ErrRuntimeUnavailable) {
@@ -426,6 +483,21 @@ func TestListReportDefinitionsIncludesFindingSummary(t *testing.T) {
 	if response.GetReports()[0].GetId() != findingSummaryReportID {
 		t.Fatalf("List().Reports[0].ID = %q, want %q", response.GetReports()[0].GetId(), findingSummaryReportID)
 	}
+	parameters := reportParametersByID(response.GetReports()[0].GetParameters())
+	if !parameters[reportParameterRuntimeIDs].GetRequired() {
+		t.Fatalf("runtime_ids parameter Required = false, want true")
+	}
+	if parameters[reportParameterRuntimeID].GetRequired() {
+		t.Fatalf("runtime_id parameter Required = true, want false")
+	}
+}
+
+func reportParametersByID(parameters []*cerebrov1.ReportParameter) map[string]*cerebrov1.ReportParameter {
+	byID := make(map[string]*cerebrov1.ReportParameter, len(parameters))
+	for _, parameter := range parameters {
+		byID[parameter.GetId()] = parameter
+	}
+	return byID
 }
 
 func TestReportRunIDIncludesEntropy(t *testing.T) {
@@ -453,6 +525,9 @@ func TestRunFindingSummaryReportWithoutGraphStoreMarksEvidenceUnconfigured(t *te
 				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
 				Severity:  "HIGH",
 				Status:    "open",
+				ResourceURNs: []string{
+					"urn:cerebro:writer:okta_resource:policyrule:pol-1",
+				},
 			},
 		},
 	}
@@ -470,6 +545,74 @@ func TestRunFindingSummaryReportWithoutGraphStoreMarksEvidenceUnconfigured(t *te
 	}
 	if got := response.GetRun().GetResult().AsMap()["graph_evidence_status"]; got != graphEvidenceStatusUnconfigured {
 		t.Fatalf("graph_evidence_status = %#v, want %q", got, graphEvidenceStatusUnconfigured)
+	}
+	exposureAnalysis, ok := response.GetRun().GetResult().AsMap()["exposure_analysis"].(map[string]any)
+	if !ok {
+		t.Fatalf("exposure_analysis = %#v, want object", response.GetRun().GetResult().AsMap()["exposure_analysis"])
+	}
+	if attackPaths, ok := exposureAnalysis["attack_paths"].([]any); ok && len(attackPaths) != 0 {
+		t.Fatalf("attack_paths = %#v, want empty when graph evidence is unconfigured", attackPaths)
+	}
+}
+
+func TestRunFindingSummaryReportSupportsRuntimeIDs(t *testing.T) {
+	findingStore := &stubFindingStore{
+		findings: []*ports.FindingRecord{
+			{
+				ID:        "okta-finding",
+				TenantID:  "example",
+				RuntimeID: "example-okta-audit",
+				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
+				Severity:  "HIGH",
+				Status:    "open",
+			},
+			{
+				ID:        "github-finding",
+				TenantID:  "example",
+				RuntimeID: "example-github-audit",
+				RuleID:    "github-secret-scanning-alert-created",
+				Severity:  "HIGH",
+				Status:    "open",
+			},
+			{
+				ID:        "other-finding",
+				TenantID:  "example",
+				RuntimeID: "example-aws",
+				RuleID:    "cloud-public-resource-exposure",
+				Severity:  "HIGH",
+				Status:    "open",
+			},
+		},
+	}
+	service := New(findingStore, nil, &stubReportStore{})
+
+	response, err := service.Run(context.Background(), &cerebrov1.RunReportRequest{
+		ReportId: findingSummaryReportID,
+		Parameters: map[string]string{
+			reportParameterTenantID:   "example",
+			reportParameterRuntimeIDs: "example-github-audit, example-okta-audit",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if findingStore.request.RuntimeID != "" {
+		t.Fatalf("ListFindings().RuntimeID = %q, want empty for multi-runtime", findingStore.request.RuntimeID)
+	}
+	if got := findingStore.request.RuntimeIDs; len(got) != 2 {
+		t.Fatalf("ListFindings().RuntimeIDs = %#v, want 2", got)
+	}
+	result := response.GetRun().GetResult().AsMap()
+	if got := result["total_findings"]; got != float64(2) {
+		t.Fatalf("total_findings = %#v, want 2", got)
+	}
+	runtimeCounts, ok := result["runtime_counts"].([]any)
+	if !ok || len(runtimeCounts) != 2 {
+		t.Fatalf("runtime_counts = %#v, want 2 entries", result["runtime_counts"])
+	}
+	sourceCounts, ok := result["source_counts"].([]any)
+	if !ok || len(sourceCounts) != 2 {
+		t.Fatalf("source_counts = %#v, want 2 entries", result["source_counts"])
 	}
 }
 

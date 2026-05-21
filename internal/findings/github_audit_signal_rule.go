@@ -213,14 +213,14 @@ var githubOrganizationOwnerAddedDefinition = RuleDefinition{
 var githubCodeSecurityControlsDisabledDefinition = RuleDefinition{
 	ID:                 githubCodeSecurityControlsDisabledRuleID,
 	Name:               "GitHub Code Security Controls Disabled",
-	Description:        "Detect GitHub audit events where Dependabot, vulnerability alerts, or GitHub Advanced Security controls are disabled.",
+	Description:        "Detect GitHub audit events where Dependabot, vulnerability alerts, secret scanning, or GitHub Advanced Security controls are disabled.",
 	SourceID:           "github",
 	EventKinds:         []string{"github.audit"},
 	OutputKind:         "finding.github_code_security_controls_disabled",
 	Severity:           "HIGH",
 	Status:             findingStatusOpen,
 	Maturity:           "test",
-	Tags:               []string{"github", "advanced-security", "dependabot", "defense-evasion", "supply-chain", "attack.t1562"},
+	Tags:               []string{"github", "advanced-security", "dependabot", "secret-scanning", "defense-evasion", "supply-chain", "attack.t1562"},
 	References:         []string{"https://docs.github.com/en/code-security/getting-started/github-security-features", "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_advanced_security_change.yml", "https://github.com/SigmaHQ/sigma/blob/master/rules/application/github/audit/github_disabled_outdated_dependency_or_vulnerability.yml"},
 	FalsePositives:     []string{"Approved security control migration or temporary configuration rollback by authorized administrators."},
 	Runbook:            "Confirm authorization, re-enable code security controls, review package and secret exposure during the disabled window, and inspect adjacent repository changes by the actor.",
@@ -471,7 +471,9 @@ var githubCodeSecurityControlSeverities = map[string]string{
 	"org.advanced_security_policy_selected_member_disabled":  "HIGH",
 	"repo.advanced_security_disabled":                        "CRITICAL",
 	"repo.advanced_security_policy_selected_member_disabled": "HIGH",
+	"repository_secret_scanning.disable":                     "HIGH",
 	"repository_vulnerability_alerts.disable":                "HIGH",
+	"org.secret_scanning_push_protection_disable":            "HIGH",
 }
 
 var githubCodeSecurityControlsDisabledConfig = githubAuditSignalConfig{

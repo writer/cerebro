@@ -13,7 +13,12 @@ import (
 const runtimeActiveThreatEvidenceRuleID = "runtime-active-threat-evidence"
 
 func newRuntimeActiveThreatEvidenceRule() Rule {
-	definition := RuleDefinition{
+	definition := runtimeActiveThreatEvidenceDefinition()
+	return newEventRule(eventRuleConfig{definition: definition, sourceID: "runtime", match: eventKindMatcher("runtime.evidence"), build: buildRuntimeActiveThreatFinding})
+}
+
+func runtimeActiveThreatEvidenceDefinition() RuleDefinition {
+	return RuleDefinition{
 		ID:                 runtimeActiveThreatEvidenceRuleID,
 		Name:               "Runtime Active Threat Evidence",
 		Description:        "Detect confirmed runtime evidence of active exploitation, credential access, or suspicious execution.",
@@ -24,11 +29,16 @@ func newRuntimeActiveThreatEvidenceRule() Rule {
 		Status:             findingStatusOpen,
 		Maturity:           "test",
 		Tags:               []string{"runtime", "threat", "evidence", "attack.t1059"},
+		References:         []string{"https://attack.mitre.org/techniques/T1059/", "https://attack.mitre.org/tactics/TA0002/"},
+		FalsePositives:     []string{"Approved red-team activity, vulnerability scanner behavior, or expected administrative automation with matching change evidence."},
 		Runbook:            "Review the workload, process, credential access, linked finding, and runtime evidence before containment.",
 		RequiredAttributes: []string{"evidence_type"},
 		FingerprintFields:  []string{"event_id"},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC7.2"},
+			{FrameworkName: "ISO 27001:2022", ControlID: "A.5.24"},
+		},
 	}
-	return newEventRule(eventRuleConfig{definition: definition, sourceID: "runtime", match: eventKindMatcher("runtime.evidence"), build: buildRuntimeActiveThreatFinding})
 }
 
 func buildRuntimeActiveThreatFinding(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
@@ -67,13 +77,13 @@ func buildRuntimeActiveThreatFinding(ctx context.Context, runtime *cerebrov1.Sou
 			findingAttributes[key] = strings.TrimSpace(value)
 		}
 	}
-	definition := RuleDefinition{ID: runtimeActiveThreatEvidenceRuleID, Name: "Runtime Active Threat Evidence", SourceID: "runtime", OutputKind: "finding.runtime_active_threat_evidence", Severity: "HIGH", Status: findingStatusOpen}
+	definition := runtimeActiveThreatEvidenceDefinition()
 	for key, value := range definition.AttributeMap() {
 		findingAttributes["rule_"+key] = value
 	}
 	trimEmptyAttributes(findingAttributes)
 	fingerprint := hashFindingFingerprint(runtimeActiveThreatEvidenceRuleID, event.GetId(), projectedContext.PrimaryResourceURN, compoundRiskAction(&ports.FindingRecord{Attributes: findingAttributes}))
-	return &ports.FindingRecord{ID: fingerprint, Fingerprint: fingerprint, TenantID: strings.TrimSpace(event.GetTenantId()), RuntimeID: strings.TrimSpace(runtime.GetId()), RuleID: runtimeActiveThreatEvidenceRuleID, Title: "Runtime Active Threat Evidence", Severity: "HIGH", Status: findingStatusOpen, Summary: "Runtime evidence indicates active threat activity", ResourceURNs: projectedContext.ResourceURNs, EventIDs: []string{event.GetId()}, PolicyID: firstNonEmpty(findingAttributes["resource_id"], findingAttributes["evidence_id"]), CheckID: runtimeActiveThreatEvidenceRuleID, CheckName: "Runtime Active Threat Evidence", Attributes: findingAttributes, FirstObservedAt: observedAt, LastObservedAt: observedAt}, nil
+	return &ports.FindingRecord{ID: fingerprint, Fingerprint: fingerprint, TenantID: strings.TrimSpace(event.GetTenantId()), RuntimeID: strings.TrimSpace(runtime.GetId()), RuleID: runtimeActiveThreatEvidenceRuleID, Title: "Runtime Active Threat Evidence", Severity: "HIGH", Status: findingStatusOpen, Summary: "Runtime evidence indicates active threat activity", ResourceURNs: projectedContext.ResourceURNs, EventIDs: []string{event.GetId()}, PolicyID: firstNonEmpty(findingAttributes["resource_id"], findingAttributes["evidence_id"]), CheckID: runtimeActiveThreatEvidenceRuleID, CheckName: "Runtime Active Threat Evidence", ControlRefs: cloneFindingControlRefs(definition.ControlRefs), Attributes: findingAttributes, FirstObservedAt: observedAt, LastObservedAt: observedAt}, nil
 }
 
 func matchesRuntimeActiveThreat(attributes map[string]string) bool {

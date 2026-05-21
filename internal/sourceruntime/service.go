@@ -257,6 +257,10 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		entitiesProjected uint32
 		linksProjected    uint32
 	)
+	var eventContracts []sourcecdk.EventContract
+	if provider, ok := source.(sourcecdk.EventContractProvider); ok {
+		eventContracts = provider.EventContracts()
+	}
 	for i := uint32(0); i < pageLimit; i++ {
 		pull, err := source.Read(ctx, sourcecdk.NewConfig(runtimeConfig), cursor)
 		if err != nil {
@@ -286,6 +290,9 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 				syncedEvent.Attributes = make(map[string]string)
 			}
 			telemetry.InjectEventAttributes(ctx, syncedEvent.Attributes)
+			if err := sourcecdk.ValidateEventEnvelopeWithContracts(syncedEvent, eventContracts); err != nil {
+				return nil, fmt.Errorf("validate source event %q: %w", syncedEvent.GetId(), err)
+			}
 			if err := s.appendLog.Append(ctx, syncedEvent); err != nil {
 				return nil, fmt.Errorf("append source event %q: %w", syncedEvent.GetId(), err)
 			}

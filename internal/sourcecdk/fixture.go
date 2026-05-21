@@ -26,6 +26,7 @@ type FixtureFamily struct {
 // FixtureSourceOptions configures a deterministic test source.
 type FixtureSourceOptions struct {
 	Spec          *cerebrov1.SourceSpec
+	Contracts     []EventContract
 	DefaultFamily string
 	Check         func(context.Context, Config) error
 	ResolveFamily func(Config) (string, error)
@@ -34,6 +35,7 @@ type FixtureSourceOptions struct {
 
 type fixtureSource struct {
 	spec          *cerebrov1.SourceSpec
+	contracts     []EventContract
 	defaultFamily string
 	check         func(context.Context, Config) error
 	resolveFamily func(Config) (string, error)
@@ -56,8 +58,13 @@ func NewFixtureSource(options FixtureSourceOptions) (Source, error) {
 	if options.Spec == nil {
 		return nil, fmt.Errorf("fixture source spec is required")
 	}
+	contracts, err := ValidateEventContracts(options.Contracts)
+	if err != nil {
+		return nil, err
+	}
 	source := &fixtureSource{
 		spec:          options.Spec,
+		contracts:     contracts,
 		defaultFamily: strings.TrimSpace(options.DefaultFamily),
 		check:         options.Check,
 		resolveFamily: options.ResolveFamily,
@@ -85,6 +92,13 @@ func NewFixtureSource(options FixtureSourceOptions) (Source, error) {
 
 func (s *fixtureSource) Spec() *cerebrov1.SourceSpec {
 	return s.spec
+}
+
+func (s *fixtureSource) EventContracts() []EventContract {
+	if s == nil {
+		return nil
+	}
+	return cloneEventContracts(s.contracts)
 }
 
 func (s *fixtureSource) Check(ctx context.Context, cfg Config) error {
@@ -185,6 +199,12 @@ func LoadFixtureURNs(fsys fs.FS, path string) ([]URN, error) {
 
 // LoadFixtureEvents loads normalized event fixtures.
 func LoadFixtureEvents(fsys fs.FS, path string) ([]*primitives.Event, error) {
+	return LoadFixtureEventsWithContracts(fsys, path, nil)
+}
+
+// LoadFixtureEventsWithContracts loads normalized event fixtures and enforces
+// optional source-catalog contracts.
+func LoadFixtureEventsWithContracts(fsys fs.FS, path string, contracts []EventContract) ([]*primitives.Event, error) {
 	eventBytes, err := fs.ReadFile(fsys, path)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
@@ -199,7 +219,7 @@ func LoadFixtureEvents(fsys fs.FS, path string) ([]*primitives.Event, error) {
 		if err != nil {
 			return nil, fmt.Errorf("parse event occurred_at from %s: %w", path, err)
 		}
-		events = append(events, &primitives.Event{
+		event := &primitives.Event{
 			Id:         raw.ID,
 			TenantId:   raw.TenantID,
 			SourceId:   raw.SourceID,
@@ -208,7 +228,11 @@ func LoadFixtureEvents(fsys fs.FS, path string) ([]*primitives.Event, error) {
 			SchemaRef:  raw.SchemaRef,
 			Payload:    append([]byte(nil), raw.Payload...),
 			Attributes: raw.Attributes,
-		})
+		}
+		if err := ValidateEventEnvelopeWithContracts(event, contracts); err != nil {
+			return nil, fmt.Errorf("validate event %q from %s: %w", raw.ID, path, err)
+		}
+		events = append(events, event)
 	}
 	return events, nil
 }
@@ -228,5 +252,14 @@ func cloneEvents(values []*primitives.Event) []*primitives.Event {
 		}
 		cloned = append(cloned, proto.Clone(value).(*cerebrov1.EventEnvelope))
 	}
+	return cloned
+}
+
+func cloneEventContracts(values []EventContract) []EventContract {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make([]EventContract, len(values))
+	copy(cloned, values)
 	return cloned
 }

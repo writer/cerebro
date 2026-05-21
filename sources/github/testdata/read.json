@@ -9,9 +9,11 @@
     "payload": {
       "action": "repo.create",
       "actor": "octocat",
+      "org": "writer",
       "repository": "writer/cerebro"
     },
     "attributes": {
+      "action": "repo.create",
       "org": "writer"
     }
   },
@@ -28,7 +30,10 @@
       "repository": "writer/cerebro"
     },
     "attributes": {
-      "org": "writer"
+      "org": "writer",
+      "owner": "writer",
+      "repo": "cerebro",
+      "repository": "writer/cerebro"
     }
   }
 ]

@@ -37,6 +37,7 @@ func newCloudPublicExposurePrivilegedPrincipalRule() Rule {
 			Status:      findingStatusOpen,
 			Maturity:    "test",
 			Tags:        []string{"cloud", "attack-path", "public-exposure", "privilege-escalation", "attack.t1190", "attack.t1098"},
+			References:  []string{"https://www.cisecurity.org/benchmark/amazon_web_services", "https://attack.mitre.org/techniques/T1190/", "https://attack.mitre.org/techniques/T1098/"},
 			FalsePositives: []string{
 				"Approved public endpoint in an account where privileged access is intentionally restricted by compensating controls not yet modeled in the graph.",
 				"Transient deployment or bootstrap permissions during a documented maintenance window.",
