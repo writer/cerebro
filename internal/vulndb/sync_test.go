@@ -131,6 +131,53 @@ func TestSyncRunnerLeasesAndCompletesJob(t *testing.T) {
 	}
 }
 
+func TestSyncRunnerRecordsFailureWithCanceledRunContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	store := NewMemoryStore()
+	if err := store.PutSyncJob(context.Background(), SyncJob{
+		ID:       "osv-hourly",
+		Source:   SourceOSV,
+		FeedURL:  "osv-feed",
+		Interval: time.Hour,
+	}); err != nil {
+		t.Fatalf("put sync job: %v", err)
+	}
+	runner, err := NewSyncRunner(store, store, func(context.Context, SyncJob) (io.ReadCloser, error) {
+		cancel()
+		return nil, context.Canceled
+	})
+	if err != nil {
+		t.Fatalf("new sync runner: %v", err)
+	}
+	run, err := runner.WithOwner("worker-1").RunJob(ctx, "osv-hourly")
+	if err != nil {
+		t.Fatalf("run sync job: %v", err)
+	}
+	if run.Status != "failed" || !strings.Contains(run.Error, "context canceled") {
+		t.Fatalf("unexpected run result: %+v", run)
+	}
+	job, ok, err := store.GetSyncJob(context.Background(), "osv-hourly")
+	if err != nil {
+		t.Fatalf("get sync job: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected stored sync job")
+	}
+	if job.LeaseOwner != "" || !job.LeaseExpiresAt.IsZero() {
+		t.Fatalf("expected canceled failure to release lease, got %+v", job)
+	}
+	if !strings.Contains(job.LastError, "context canceled") || job.LastFinishedAt.IsZero() {
+		t.Fatalf("expected canceled failure metadata, got %+v", job)
+	}
+	state, ok, err := store.GetSyncState(context.Background(), SourceOSV)
+	if err != nil {
+		t.Fatalf("get sync state: %v", err)
+	}
+	if !ok || !strings.Contains(state.LastError, "context canceled") {
+		t.Fatalf("expected canceled sync state, ok=%v state=%+v", ok, state)
+	}
+}
+
 func TestMemoryStoreRejectsZeroIntervalSyncJob(t *testing.T) {
 	ctx := context.Background()
 	store := NewMemoryStore()

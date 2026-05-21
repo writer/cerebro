@@ -358,7 +358,6 @@ func importOSVAdvisory(ctx context.Context, store Store, advisory osvAdvisory) (
 	}
 	if len(advisory.Severity) > 0 {
 		vulnerability.CVSSVector = strings.TrimSpace(advisory.Severity[0].Score)
-		vulnerability.Severity = strings.TrimSpace(advisory.Severity[0].Type)
 	}
 	for _, reference := range advisory.References {
 		vulnerability.References = append(vulnerability.References, Reference{

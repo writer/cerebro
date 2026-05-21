@@ -217,6 +217,34 @@ func TestMatcherTreatsPyPIPreReleaseBeforeFinalRelease(t *testing.T) {
 	}
 }
 
+func TestMatcherIgnoresSemverBuildMetadataInRangeComparisons(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	if err := store.UpsertVulnerability(ctx, Vulnerability{ID: "CVE-2026-10004"}); err != nil {
+		t.Fatalf("upsert vulnerability: %v", err)
+	}
+	if err := store.UpsertAffectedPackage(ctx, AffectedPackage{
+		VulnerabilityID: "CVE-2026-10004",
+		Ecosystem:       "npm",
+		PackageName:     "demo",
+		Introduced:      "0",
+		LastAffected:    "1.0.0",
+	}); err != nil {
+		t.Fatalf("upsert affected package: %v", err)
+	}
+	matcher, err := NewMatcher(store)
+	if err != nil {
+		t.Fatalf("new matcher: %v", err)
+	}
+	matches, err := matcher.MatchPackage(ctx, PackageQuery{Ecosystem: "npm", Name: "demo", Version: "1.0.0+build.7"})
+	if err != nil {
+		t.Fatalf("match build metadata version: %v", err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("expected build metadata to be ignored at inclusive upper bound, got %+v", matches)
+	}
+}
+
 func TestFileStorePersistsSyncStateAndAdvisories(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "vulndb.json")
@@ -445,6 +473,37 @@ func TestImportOSVPreservesExistingEnrichment(t *testing.T) {
 	}
 	if vulnerability.EPSS == nil || vulnerability.EPSS.Score != 0.7 {
 		t.Fatalf("expected epss enrichment to survive osv import, got %+v", vulnerability.EPSS)
+	}
+}
+
+func TestImportOSVDoesNotStoreScoringSchemeAsSeverity(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	if err := store.UpsertVulnerability(ctx, Vulnerability{
+		ID:       "CVE-2026-33341",
+		Severity: "HIGH",
+	}); err != nil {
+		t.Fatalf("upsert existing vulnerability: %v", err)
+	}
+	osv := `[{
+		"id":"CVE-2026-33341",
+		"severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}]
+	}]`
+	if _, err := ImportOSV(ctx, store, strings.NewReader(osv)); err != nil {
+		t.Fatalf("import osv: %v", err)
+	}
+	vulnerability, ok, err := store.FindVulnerability(ctx, "CVE-2026-33341")
+	if err != nil {
+		t.Fatalf("find vulnerability: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected vulnerability")
+	}
+	if vulnerability.Severity != "HIGH" {
+		t.Fatalf("Severity = %q, want existing label HIGH", vulnerability.Severity)
+	}
+	if vulnerability.CVSSVector != "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H" {
+		t.Fatalf("CVSSVector = %q, want OSV score vector", vulnerability.CVSSVector)
 	}
 }
 

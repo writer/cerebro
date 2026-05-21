@@ -236,6 +236,9 @@ func compareVersionPart(left versionPart, right versionPart) int {
 func versionParts(version string) ([]versionPart, bool) {
 	version = normalizeVersion(version)
 	version = strings.TrimPrefix(version, "v")
+	if plus := strings.Index(version, "+"); plus >= 0 {
+		version = version[:plus]
+	}
 	if version == "" {
 		return nil, false
 	}

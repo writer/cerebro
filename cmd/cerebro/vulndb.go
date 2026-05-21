@@ -458,8 +458,19 @@ func putVulnDBSyncJob(ctx context.Context, jobs vulndb.SyncJobStore, options vul
 	if job.Source == "" {
 		return vulndb.SyncJob{}, usageError("feed_source is required")
 	}
+	if !vulndb.IsSupportedFeedSource(job.Source) {
+		return vulndb.SyncJob{}, usageError(fmt.Sprintf("unsupported feed_source %q", job.Source))
+	}
 	if job.FeedURL == "" {
 		return vulndb.SyncJob{}, usageError("url is required")
+	}
+	if job.Interval <= 0 {
+		return vulndb.SyncJob{}, usageError("interval must be positive")
+	}
+	if isRemoteVulnDBSource(job.FeedURL) {
+		if err := vulndb.ValidateFeedURL(job.FeedURL, job.AllowInsecureHTTP); err != nil {
+			return vulndb.SyncJob{}, usageError(err.Error())
+		}
 	}
 	if err := jobs.PutSyncJob(ctx, job); err != nil {
 		return vulndb.SyncJob{}, err

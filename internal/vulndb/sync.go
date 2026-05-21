@@ -272,10 +272,12 @@ func (r *SyncRunner) runJob(ctx context.Context, id string, requireDue bool) (Sy
 	if err == nil {
 		err = fmt.Errorf("sync job failed")
 	}
-	_ = recordSyncFailure(ctx, r.store, job.Source, err)
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	_ = recordSyncFailure(cleanupCtx, r.store, job.Source, err)
 	run.Error = err.Error()
 	run.NextRunAt = nextRunAt
-	if failErr := r.jobs.FailSyncJob(ctx, job.ID, owner, nextRunAt, err); failErr != nil {
+	if failErr := r.jobs.FailSyncJob(cleanupCtx, job.ID, owner, nextRunAt, err); failErr != nil {
 		return run, failErr
 	}
 	return run, nil

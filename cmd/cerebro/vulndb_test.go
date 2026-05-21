@@ -81,6 +81,22 @@ func TestPutVulnDBSyncJobStoresAbsoluteFilePath(t *testing.T) {
 	}
 }
 
+func TestPutVulnDBSyncJobRejectsInsecureHTTPWithoutOptIn(t *testing.T) {
+	ctx := context.Background()
+	store := vulndb.NewMemoryStore()
+	if _, err := putVulnDBSyncJob(ctx, store, vulnDBOptions{
+		JobID:       "osv-hourly",
+		FeedSource:  vulndb.SourceOSV,
+		Source:      "http://localhost/osv.json",
+		JobInterval: time.Hour,
+	}); err == nil {
+		t.Fatal("put sync job error = nil, want insecure HTTP rejection")
+	}
+	if _, ok, err := store.GetSyncJob(ctx, "osv-hourly"); err != nil || ok {
+		t.Fatalf("stored insecure job ok=%v err=%v, want not persisted", ok, err)
+	}
+}
+
 func TestPutVulnDBSyncJobPreservesAllowInsecureHTTPWhenOmitted(t *testing.T) {
 	ctx := context.Background()
 	store := vulndb.NewMemoryStore()
@@ -109,7 +125,7 @@ func TestPutVulnDBSyncJobPreservesAllowInsecureHTTPWhenOmitted(t *testing.T) {
 	job, err = putVulnDBSyncJob(ctx, store, vulnDBOptions{
 		JobID:                     "osv-hourly",
 		FeedSource:                vulndb.SourceOSV,
-		Source:                    "http://localhost/osv-updated.json",
+		Source:                    "https://localhost/osv-updated.json",
 		AllowInsecureHTTP:         false,
 		AllowInsecureHTTPExplicit: true,
 		JobInterval:               time.Hour,
