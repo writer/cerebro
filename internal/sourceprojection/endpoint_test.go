@@ -38,6 +38,32 @@ func TestProjectKolideDeviceLinksOwnerIdentity(t *testing.T) {
 	assertProjectedLink(t, state, deviceURN, relationOwnedBy, identityURN)
 }
 
+func TestProjectKolideDeviceLinksOwnerIDIdentity(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "kolide-device-1",
+		TenantId: "writer",
+		SourceId: "kolide",
+		Kind:     "kolide.device",
+		Attributes: map[string]string{
+			"device_id": "device-1",
+			"user_id":   "user-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	deviceURN := "urn:cerebro:writer:kolide_device:device-1"
+	identityURN := "urn:cerebro:writer:identity:login:user-1"
+	identifierURN := "urn:cerebro:writer:identifier:login:user-1"
+	assertProjectedLink(t, state, deviceURN, relationHasIdentifier, identifierURN)
+	assertProjectedLink(t, state, deviceURN, relationRepresentsIdentity, identityURN)
+	assertProjectedLink(t, state, deviceURN, relationOwnedBy, identityURN)
+}
+
 func TestProjectKolideSoftwareLinksDevicePackageAndCanonicalPackage(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
