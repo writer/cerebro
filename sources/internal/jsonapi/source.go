@@ -503,16 +503,49 @@ type safeRoundTripper struct {
 }
 
 func (rt safeRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req != nil && req.URL != nil {
-		if err := rejectResolvedUnsafeHost(req.Context(), rt.sourceID, req.URL.Hostname(), rt.allowLoopback, rt.lookupIPAddrs); err != nil {
-			return nil, err
-		}
-	}
 	base := rt.base
 	if base == nil {
 		base = http.DefaultTransport
 	}
+	if req != nil && req.URL != nil {
+		addrs, err := safeResolvedHostAddrs(req.Context(), rt.sourceID, req.URL.Hostname(), rt.allowLoopback, rt.lookupIPAddrs)
+		if err != nil {
+			return nil, err
+		}
+		if len(addrs) > 0 {
+			pinned, err := pinnedHostTransport(base, req.URL.Hostname(), addrs[0].IP)
+			if err != nil {
+				return nil, err
+			}
+			base = pinned
+		}
+	}
 	return base.RoundTrip(req)
+}
+
+func pinnedHostTransport(base http.RoundTripper, host string, ip net.IP) (http.RoundTripper, error) {
+	transport, ok := base.(*http.Transport)
+	if !ok {
+		return nil, fmt.Errorf("jsonapi transport must support pinned host dialing")
+	}
+	clone := transport.Clone()
+	clone.Proxy = nil
+	clone.DialTLSContext = nil
+	dialContext := clone.DialContext
+	if dialContext == nil {
+		dialer := &net.Dialer{}
+		dialContext = dialer.DialContext
+	}
+	requestHost := strings.ToLower(strings.Trim(strings.TrimSpace(host), "[]"))
+	pinnedIP := ip.String()
+	clone.DialContext = func(ctx context.Context, network string, address string) (net.Conn, error) {
+		addressHost, addressPort, err := net.SplitHostPort(address)
+		if err == nil && strings.EqualFold(strings.Trim(addressHost, "[]"), requestHost) {
+			return dialContext(ctx, network, net.JoinHostPort(pinnedIP, addressPort))
+		}
+		return dialContext(ctx, network, address)
+	}
+	return clone, nil
 }
 
 func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, error) {
@@ -522,30 +555,33 @@ func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, 
 	return net.DefaultResolver.LookupIPAddr
 }
 
-func rejectResolvedUnsafeHost(ctx context.Context, sourceID string, host string, allowLoopback bool, lookup func(context.Context, string) ([]net.IPAddr, error)) error {
+func safeResolvedHostAddrs(ctx context.Context, sourceID string, host string, allowLoopback bool, lookup func(context.Context, string) ([]net.IPAddr, error)) ([]net.IPAddr, error) {
 	normalized := strings.ToLower(strings.TrimSpace(host))
 	if normalized == "" {
-		return fmt.Errorf("%s host is required", sourceID)
+		return nil, fmt.Errorf("%s host is required", sourceID)
 	}
 	if ip := net.ParseIP(strings.Trim(normalized, "[]")); ip != nil {
 		if unsafeIP(ip, allowLoopback) {
-			return fmt.Errorf("%s host must not target loopback, private, or link-local addresses", sourceID)
+			return nil, fmt.Errorf("%s host must not target loopback, private, or link-local addresses", sourceID)
 		}
-		return nil
+		return nil, nil
 	}
 	if lookup == nil {
 		lookup = net.DefaultResolver.LookupIPAddr
 	}
 	addrs, err := lookup(ctx, normalized)
 	if err != nil {
-		return fmt.Errorf("resolve %s host %q: %w", sourceID, normalized, err)
+		return nil, fmt.Errorf("resolve %s host %q: %w", sourceID, normalized, err)
+	}
+	if len(addrs) == 0 {
+		return nil, fmt.Errorf("resolve %s host %q: no addresses", sourceID, normalized)
 	}
 	for _, addr := range addrs {
 		if unsafeIP(addr.IP, allowLoopback) {
-			return fmt.Errorf("%s host must not resolve to loopback, private, or link-local addresses", sourceID)
+			return nil, fmt.Errorf("%s host must not resolve to loopback, private, or link-local addresses", sourceID)
 		}
 	}
-	return nil
+	return addrs, nil
 }
 
 func isUnsafeHost(host string) bool {

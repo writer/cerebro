@@ -181,7 +181,7 @@ func addEndpointEntity(entities map[string]*ports.ProjectedEntity, tenantID stri
 		TenantID:   tenantID,
 		SourceID:   sourceID,
 		EntityType: profile.EndpointType,
-		Label:      firstNonEmpty(firstAttribute(attrs, profile.EndpointLabelKeys...), endpointID),
+		Label:      firstAttribute(attrs, profile.EndpointLabelKeys...),
 		Attributes: endpointAttrs,
 	})
 	return endpointURN
