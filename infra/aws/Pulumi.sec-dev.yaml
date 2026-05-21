@@ -7,10 +7,10 @@ config:
   cerebro:certificateDomain: cerebro.adm.dev.qordobadev.com
   cerebro:certificateImportArn: arn:aws:acm:us-east-1:944130631940:certificate/09143d7f-c377-4de4-9127-d8cb5c642ba3
   cerebro:ecrBaseUri: 944130631940.dkr.ecr.us-east-1.amazonaws.com/cerebro
-  cerebro:imageTag: v2.1.46
+  cerebro:imageTag: v2.1.47
   cerebro:webEnabled: true
   cerebro:webEcrBaseUri: 944130631940.dkr.ecr.us-east-1.amazonaws.com/cerebro
-  cerebro:webImageTag: sha-131bb718e320
+  cerebro:webImageTag: sha-ffd53275c646
   cerebro:webDomain: cerebro-web.adm.dev.qordobadev.com
   cerebro:webCertificateDomain: cerebro-web.adm.dev.qordobadev.com
   cerebro:webApiBase: https://cerebro.adm.dev.qordobadev.com
