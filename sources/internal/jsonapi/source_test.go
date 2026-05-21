@@ -191,6 +191,33 @@ func TestReadDedupesRecordsByExternalID(t *testing.T) {
 	}
 }
 
+func TestReadKeepsSameRecordIDDifferentDevices(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{
+				{"id": "CVE-2026-0001", "device_id": "device-1", "version": "1.0.0"},
+				{"id": "CVE-2026-0001", "device_id": "device-2", "version": "1.0.0"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	source := newTestSource(t, server.URL)
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"token":     "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 2 {
+		t.Fatalf("len(Events) = %d, want same source ID retained per device", len(pull.Events))
+	}
+	if pull.Events[0].Id == pull.Events[1].Id {
+		t.Fatalf("event IDs are equal %q, want device-scoped identities", pull.Events[0].Id)
+	}
+}
+
 func TestReadRejectsMalformedRecords(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"data":["not-an-object"]}`))

@@ -173,7 +173,7 @@ func TestProjectKolideVulnerabilityUsesCanonicalEndpointPackageAndCVE(t *testing
 	}
 	endpointURN := "urn:cerebro:writer:kolide_device:device-1"
 	packageURN := "urn:cerebro:writer:package:osquery:openssl"
-	canonicalPackageURN := "urn:cerebro:writer:package:canonical:openssl"
+	canonicalPackageURN := "urn:cerebro:writer:package:canonical:pkg:generic/openssl"
 	vulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-0001"
 	assertProjectedLink(t, state, endpointURN, relationAffectedBy, vulnerabilityURN)
 	assertProjectedLink(t, state, endpointURN, relationContains, packageURN)

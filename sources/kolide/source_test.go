@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -24,14 +25,23 @@ func TestSourceSpec(t *testing.T) {
 	}
 }
 
+func TestDefaultBaseURLUsesCurrentAPI(t *testing.T) {
+	if strings.Contains(defaultBaseURL, "/api/v0") {
+		t.Fatalf("defaultBaseURL = %q, want non-deprecated Kolide API", defaultBaseURL)
+	}
+	if !strings.HasSuffix(defaultBaseURL, "/api/v1") {
+		t.Fatalf("defaultBaseURL = %q, want current /api/v1 API", defaultBaseURL)
+	}
+}
+
 func TestReadDeviceFamilyFromFixture(t *testing.T) {
 	fixture, err := os.ReadFile("testdata/device.json")
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v0/devices" {
-			t.Fatalf("request path = %q, want /api/v0/devices", r.URL.Path)
+		if r.URL.Path != "/api/v1/devices" {
+			t.Fatalf("request path = %q, want /api/v1/devices", r.URL.Path)
 		}
 		_, _ = w.Write(fixture)
 	}))
@@ -44,7 +54,7 @@ func TestReadDeviceFamilyFromFixture(t *testing.T) {
 	source.allowLoopbackForTest()
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
 		"tenant_id": "writer",
-		"base_url":  server.URL + "/api/v0",
+		"base_url":  server.URL + "/api/v1",
 		"token":     "kolide-token",
 		"family":    "device",
 	}), nil)
@@ -65,8 +75,8 @@ func TestReadDeviceFamilyFromFixture(t *testing.T) {
 
 func TestReadSoftwareFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v0/software" {
-			t.Fatalf("request path = %q, want /api/v0/software", r.URL.Path)
+		if r.URL.Path != "/api/v1/software" {
+			t.Fatalf("request path = %q, want /api/v1/software", r.URL.Path)
 		}
 		if got := r.Header.Get("Authorization"); got != "Bearer kolide-token" {
 			t.Fatalf("Authorization = %q, want Bearer kolide-token", got)
@@ -96,7 +106,7 @@ func TestReadSoftwareFamily(t *testing.T) {
 	source.allowLoopbackForTest()
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
 		"tenant_id": "writer",
-		"base_url":  server.URL + "/api/v0",
+		"base_url":  server.URL + "/api/v1",
 		"token":     "kolide-token",
 		"family":    "software",
 	}), nil)
@@ -123,8 +133,8 @@ func TestReadSoftwareFamily(t *testing.T) {
 
 func TestReadSoftwareFamilyKeepsSamePackageOnDifferentDevices(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v0/software" {
-			t.Fatalf("request path = %q, want /api/v0/software", r.URL.Path)
+		if r.URL.Path != "/api/v1/software" {
+			t.Fatalf("request path = %q, want /api/v1/software", r.URL.Path)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{
@@ -150,7 +160,7 @@ func TestReadSoftwareFamilyKeepsSamePackageOnDifferentDevices(t *testing.T) {
 	source.allowLoopbackForTest()
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
 		"tenant_id": "writer",
-		"base_url":  server.URL + "/api/v0",
+		"base_url":  server.URL + "/api/v1",
 		"token":     "kolide-token",
 		"family":    "software",
 	}), nil)
@@ -170,8 +180,8 @@ func TestReadSoftwareFamilyKeepsSamePackageOnDifferentDevices(t *testing.T) {
 
 func TestReadVulnerabilityFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v0/vulnerabilities" {
-			t.Fatalf("request path = %q, want /api/v0/vulnerabilities", r.URL.Path)
+		if r.URL.Path != "/api/v1/vulnerabilities" {
+			t.Fatalf("request path = %q, want /api/v1/vulnerabilities", r.URL.Path)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{
@@ -196,7 +206,7 @@ func TestReadVulnerabilityFamily(t *testing.T) {
 	source.allowLoopbackForTest()
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
 		"tenant_id": "writer",
-		"base_url":  server.URL + "/api/v0",
+		"base_url":  server.URL + "/api/v1",
 		"token":     "kolide-token",
 		"family":    "vulnerability",
 	}), nil)
@@ -217,8 +227,8 @@ func TestReadVulnerabilityFamily(t *testing.T) {
 
 func TestReadCheckFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v0/checks" {
-			t.Fatalf("request path = %q, want /api/v0/checks", r.URL.Path)
+		if r.URL.Path != "/api/v1/checks" {
+			t.Fatalf("request path = %q, want /api/v1/checks", r.URL.Path)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{
@@ -241,7 +251,7 @@ func TestReadCheckFamily(t *testing.T) {
 	source.allowLoopbackForTest()
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
 		"tenant_id": "writer",
-		"base_url":  server.URL + "/api/v0",
+		"base_url":  server.URL + "/api/v1",
 		"token":     "kolide-token",
 		"family":    "check",
 	}), nil)
