@@ -22,7 +22,7 @@ func OpenVulnDBFeed(ctx context.Context, rawURL string, allowInsecureHTTP bool) 
 	}
 	initialScheme := strings.ToLower(request.URL.Scheme)
 	client := &http.Client{
-		Timeout: 30 * time.Second,
+		Transport: vulndbFeedTransport(),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if initialScheme == "https" && strings.EqualFold(req.URL.Scheme, "http") {
 				return fmt.Errorf("refusing vulnerability feed redirect from https to http")
@@ -39,4 +39,14 @@ func OpenVulnDBFeed(ctx context.Context, rawURL string, allowInsecureHTTP bool) 
 		return nil, fmt.Errorf("fetch vulnerability feed: %s", response.Status)
 	}
 	return response.Body, nil
+}
+
+func vulndbFeedTransport() http.RoundTripper {
+	transport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return http.DefaultTransport
+	}
+	clone := transport.Clone()
+	clone.ResponseHeaderTimeout = 30 * time.Second
+	return clone
 }

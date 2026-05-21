@@ -2,6 +2,7 @@ package vulndb
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,18 @@ import (
 	"testing/iotest"
 	"time"
 )
+
+type failUpsertStore struct {
+	*MemoryStore
+	failID string
+}
+
+func (s failUpsertStore) UpsertVulnerability(ctx context.Context, vulnerability Vulnerability) error {
+	if NormalizeIdentifier(vulnerability.ID) == NormalizeIdentifier(s.failID) {
+		return errors.New("upsert failed")
+	}
+	return s.MemoryStore.UpsertVulnerability(ctx, vulnerability)
+}
 
 func TestMemoryStoreAliasAndPackageMatching(t *testing.T) {
 	ctx := context.Background()
@@ -77,6 +90,46 @@ func TestMemoryStoreUpsertReplacesStaleAliases(t *testing.T) {
 	}
 	if _, ok, err := store.FindVulnerability(ctx, "GHSA-DDDD-EEEE-FFFF"); err != nil || !ok {
 		t.Fatalf("new alias lookup ok=%v err=%v, want found", ok, err)
+	}
+}
+
+func TestImportOSVDoesNotDeleteDuplicateBeforeCanonicalUpsertSucceeds(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	if err := store.UpsertVulnerability(ctx, Vulnerability{ID: "GHSA-AAAA-BBBB-CCCC"}); err != nil {
+		t.Fatalf("upsert ghsa: %v", err)
+	}
+	if err := store.UpsertVulnerability(ctx, Vulnerability{ID: "CVE-2026-12345"}); err != nil {
+		t.Fatalf("upsert cve: %v", err)
+	}
+	if err := store.UpsertAffectedPackage(ctx, AffectedPackage{
+		VulnerabilityID:   "CVE-2026-12345",
+		Source:            SourceOSV,
+		Ecosystem:         "npm",
+		PackageName:       "demo",
+		VulnerableVersion: "1.0.0",
+	}); err != nil {
+		t.Fatalf("upsert affected package: %v", err)
+	}
+
+	_, err := importOSVAdvisory(ctx, failUpsertStore{MemoryStore: store, failID: "GHSA-AAAA-BBBB-CCCC"}, osvAdvisory{
+		ID:      "GHSA-AAAA-BBBB-CCCC",
+		Aliases: []string{"CVE-2026-12345"},
+		Summary: "merged advisory",
+	})
+	if err == nil {
+		t.Fatal("importOSVAdvisory() error = nil, want upsert failure")
+	}
+
+	if _, ok, err := store.FindVulnerability(ctx, "CVE-2026-12345"); err != nil || !ok {
+		t.Fatalf("duplicate vulnerability lookup ok=%v err=%v, want preserved", ok, err)
+	}
+	packages, err := store.CandidateAffectedPackages(ctx, PackageQuery{Ecosystem: "npm", Name: "demo", Version: "1.0.0"})
+	if err != nil {
+		t.Fatalf("candidate affected packages: %v", err)
+	}
+	if len(packages) != 1 || packages[0].VulnerabilityID != "CVE-2026-12345" {
+		t.Fatalf("duplicate affected package = %+v, want preserved CVE package", packages)
 	}
 }
 

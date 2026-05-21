@@ -34,6 +34,29 @@ func (s brokenGetSyncJobStore) GetSyncJob(context.Context, string) (SyncJob, boo
 	return SyncJob{}, false, errors.New("metadata unavailable")
 }
 
+type cancelAfterSyncStateStore struct {
+	*MemoryStore
+	cancel context.CancelFunc
+}
+
+func (s cancelAfterSyncStateStore) PutSyncState(ctx context.Context, state SyncState) error {
+	if err := s.MemoryStore.PutSyncState(ctx, state); err != nil {
+		return err
+	}
+	s.cancel()
+	return nil
+}
+
+type failingCompleteSyncJobStore struct {
+	*MemoryStore
+}
+
+var errCompleteFailed = errors.New("complete failed")
+
+func (s failingCompleteSyncJobStore) CompleteSyncJob(context.Context, string, string, time.Time) error {
+	return errCompleteFailed
+}
+
 func TestSyncServiceRecordsFailureState(t *testing.T) {
 	ctx := context.Background()
 	store := NewMemoryStore()
@@ -175,6 +198,81 @@ func TestSyncRunnerRecordsFailureWithCanceledRunContext(t *testing.T) {
 	}
 	if !ok || !strings.Contains(state.LastError, "context canceled") {
 		t.Fatalf("expected canceled sync state, ok=%v state=%+v", ok, state)
+	}
+}
+
+func TestSyncRunnerCompletesSuccessfulJobWithCanceledRunContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	store := NewMemoryStore()
+	if err := store.PutSyncJob(context.Background(), SyncJob{
+		ID:       "osv-hourly",
+		Source:   SourceOSV,
+		FeedURL:  "osv-feed",
+		Interval: time.Hour,
+	}); err != nil {
+		t.Fatalf("put sync job: %v", err)
+	}
+	runner, err := NewSyncRunner(cancelAfterSyncStateStore{MemoryStore: store, cancel: cancel}, store, func(context.Context, SyncJob) (io.ReadCloser, error) {
+		return io.NopCloser(strings.NewReader(`[{"id":"CVE-2026-12121","summary":"synced vuln"}]`)), nil
+	})
+	if err != nil {
+		t.Fatalf("new sync runner: %v", err)
+	}
+	run, err := runner.WithOwner("worker-1").RunJob(ctx, "osv-hourly")
+	if err != nil {
+		t.Fatalf("run sync job: %v", err)
+	}
+	if run.Status != "completed" || run.Imported == nil || run.Imported.Vulnerabilities != 1 {
+		t.Fatalf("unexpected run result: %+v", run)
+	}
+	job, ok, err := store.GetSyncJob(context.Background(), "osv-hourly")
+	if err != nil {
+		t.Fatalf("get sync job: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected stored sync job")
+	}
+	if job.LeaseOwner != "" || !job.LeaseExpiresAt.IsZero() || job.LastSuccessAt.IsZero() || job.NextRunAt.IsZero() {
+		t.Fatalf("expected canceled successful run to complete and release lease, got %+v", job)
+	}
+}
+
+func TestSyncRunnerReleasesLeaseWhenSuccessfulCompletionFails(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	if err := store.PutSyncJob(ctx, SyncJob{
+		ID:       "osv-hourly",
+		Source:   SourceOSV,
+		FeedURL:  "osv-feed",
+		Interval: time.Hour,
+	}); err != nil {
+		t.Fatalf("put sync job: %v", err)
+	}
+	runner, err := NewSyncRunner(store, failingCompleteSyncJobStore{MemoryStore: store}, func(context.Context, SyncJob) (io.ReadCloser, error) {
+		return io.NopCloser(strings.NewReader(`[{"id":"CVE-2026-12121","summary":"synced vuln"}]`)), nil
+	})
+	if err != nil {
+		t.Fatalf("new sync runner: %v", err)
+	}
+	run, err := runner.WithOwner("worker-1").RunJob(ctx, "osv-hourly")
+	if err == nil {
+		t.Fatal("RunJob() error = nil, want completion failure")
+	}
+	if !errors.Is(err, errCompleteFailed) {
+		t.Fatalf("RunJob() error = %v, want completion failure", err)
+	}
+	if run.Status != "completed" || run.Imported == nil || run.Imported.Vulnerabilities != 1 {
+		t.Fatalf("unexpected run result after completion failure: %+v", run)
+	}
+	job, ok, err := store.GetSyncJob(ctx, "osv-hourly")
+	if err != nil {
+		t.Fatalf("get sync job: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected stored sync job")
+	}
+	if job.LeaseOwner != "" || !job.LeaseExpiresAt.IsZero() {
+		t.Fatalf("expected completion failure to release lease, got %+v", job)
 	}
 }
 

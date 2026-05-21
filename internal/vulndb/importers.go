@@ -220,7 +220,7 @@ func ImportNVD(ctx context.Context, store Store, reader io.Reader) (ImportResult
 		if sourceID == "" {
 			continue
 		}
-		existing, ok, err := findVulnerabilityByAnyIdentifier(ctx, store, sourceID, nil)
+		existing, ok, duplicateIDs, err := findVulnerabilityByAnyIdentifier(ctx, store, sourceID, nil)
 		if err != nil {
 			return ImportResult{}, err
 		}
@@ -263,6 +263,9 @@ func ImportNVD(ctx context.Context, store Store, reader io.Reader) (ImportResult
 			}
 		}
 		if err := store.UpsertVulnerability(ctx, vulnerability); err != nil {
+			return ImportResult{}, err
+		}
+		if err := mergeDuplicateVulnerabilities(ctx, store, id, duplicateIDs); err != nil {
 			return ImportResult{}, err
 		}
 		result.Vulnerabilities++
@@ -318,7 +321,7 @@ func importOSVAdvisory(ctx context.Context, store Store, advisory osvAdvisory) (
 	if sourceID == "" {
 		return ImportResult{}, nil
 	}
-	existing, ok, err := findVulnerabilityByAnyIdentifier(ctx, store, sourceID, advisory.Aliases)
+	existing, ok, duplicateIDs, err := findVulnerabilityByAnyIdentifier(ctx, store, sourceID, advisory.Aliases)
 	if err != nil {
 		return ImportResult{}, err
 	}
@@ -366,6 +369,9 @@ func importOSVAdvisory(ctx context.Context, store Store, advisory osvAdvisory) (
 		})
 	}
 	if err := store.UpsertVulnerability(ctx, vulnerability); err != nil {
+		return ImportResult{}, err
+	}
+	if err := mergeDuplicateVulnerabilities(ctx, store, id, duplicateIDs); err != nil {
 		return ImportResult{}, err
 	}
 	result := ImportResult{Vulnerabilities: 1}
@@ -417,7 +423,7 @@ func replaceAffectedPackagesForCanonical(ctx context.Context, store Store, canon
 	return store.ReplaceAffectedPackages(ctx, canonicalID, source, packages)
 }
 
-func findVulnerabilityByAnyIdentifier(ctx context.Context, store Store, id string, aliases []string) (Vulnerability, bool, error) {
+func findVulnerabilityByAnyIdentifier(ctx context.Context, store Store, id string, aliases []string) (Vulnerability, bool, []string, error) {
 	identifiers := append([]string{id}, aliases...)
 	seen := map[string]struct{}{}
 	var merged Vulnerability
@@ -434,7 +440,7 @@ func findVulnerabilityByAnyIdentifier(ctx context.Context, store Store, id strin
 		seen[lookup] = struct{}{}
 		vulnerability, ok, err := store.FindVulnerability(ctx, lookup)
 		if err != nil {
-			return Vulnerability{}, false, err
+			return Vulnerability{}, false, nil, err
 		}
 		if ok {
 			if !found {
@@ -449,15 +455,24 @@ func findVulnerabilityByAnyIdentifier(ctx context.Context, store Store, id strin
 			merged = mergeVulnerabilityRecords(merged, vulnerability)
 		}
 	}
+	return merged, found, duplicateIDs, nil
+}
+
+func mergeDuplicateVulnerabilities(ctx context.Context, store Store, canonicalID string, duplicateIDs []string) error {
+	canonicalID = NormalizeIdentifier(canonicalID)
 	for _, duplicateID := range duplicateIDs {
-		if err := store.MoveAffectedPackages(ctx, duplicateID, merged.ID); err != nil {
-			return Vulnerability{}, false, err
+		duplicateID = NormalizeIdentifier(duplicateID)
+		if duplicateID == "" || duplicateID == canonicalID {
+			continue
+		}
+		if err := store.MoveAffectedPackages(ctx, duplicateID, canonicalID); err != nil {
+			return err
 		}
 		if err := store.DeleteVulnerability(ctx, duplicateID); err != nil {
-			return Vulnerability{}, false, err
+			return err
 		}
 	}
-	return merged, found, nil
+	return nil
 }
 
 func mergeVulnerabilityRecords(canonical Vulnerability, duplicate Vulnerability) Vulnerability {

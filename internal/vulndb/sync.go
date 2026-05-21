@@ -263,7 +263,10 @@ func (r *SyncRunner) runJob(ctx context.Context, id string, requireDue bool) (Sy
 			run.Status = "completed"
 			run.Imported = &imported
 			run.NextRunAt = nextRunAt
-			if completeErr := r.jobs.CompleteSyncJob(ctx, job.ID, owner, nextRunAt); completeErr != nil {
+			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+			defer cancel()
+			if completeErr := r.jobs.CompleteSyncJob(cleanupCtx, job.ID, owner, nextRunAt); completeErr != nil {
+				_ = r.jobs.ReleaseSyncJobLease(cleanupCtx, job.ID, owner)
 				return run, completeErr
 			}
 			return run, nil

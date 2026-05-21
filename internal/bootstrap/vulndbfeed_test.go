@@ -6,7 +6,22 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
+
+func TestVulnDBFeedTransportUsesHeaderTimeoutWithoutBodyTimeout(t *testing.T) {
+	client := &http.Client{Transport: vulndbFeedTransport()}
+	if client.Timeout != 0 {
+		t.Fatalf("client.Timeout = %v, want no whole-body timeout", client.Timeout)
+	}
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("transport type = %T, want *http.Transport", client.Transport)
+	}
+	if transport.ResponseHeaderTimeout != 30*time.Second {
+		t.Fatalf("ResponseHeaderTimeout = %v, want 30s", transport.ResponseHeaderTimeout)
+	}
+}
 
 func TestOpenVulnDBFeedFetchesSuccessfulHTTPWhenExplicitlyAllowed(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
