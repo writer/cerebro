@@ -339,6 +339,11 @@ func recordSyncSuccess(ctx context.Context, store Store, source string) error {
 	return store.PutSyncState(ctx, state)
 }
 
+// RecordSyncFailure records a failed feed refresh for direct import callers.
+func RecordSyncFailure(ctx context.Context, store Store, source string, syncErr error) error {
+	return recordSyncFailure(ctx, store, source, syncErr)
+}
+
 func recordSyncFailure(ctx context.Context, store Store, source string, syncErr error) error {
 	state, _, err := store.GetSyncState(ctx, source)
 	if err != nil {

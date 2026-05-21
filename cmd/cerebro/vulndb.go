@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -57,45 +58,45 @@ func runVulnDB(args []string) error {
 	case "import-osv":
 		reader, closeReader, err := openVulnDBInput(ctx, options.Source, options.AllowInsecureHTTP)
 		if err != nil {
-			return err
+			return recordVulnDBCommandFailure(ctx, opened.Store, vulndb.SourceOSV, err)
 		}
 		defer closeReader()
 		result, err := vulndb.ImportOSV(ctx, opened.Store, reader)
 		if err != nil {
-			return err
+			return recordVulnDBCommandFailure(ctx, opened.Store, vulndb.SourceOSV, err)
 		}
 		return printJSON(result)
 	case "import-kev":
 		reader, closeReader, err := openVulnDBInput(ctx, options.Source, options.AllowInsecureHTTP)
 		if err != nil {
-			return err
+			return recordVulnDBCommandFailure(ctx, opened.Store, vulndb.SourceCISAKEV, err)
 		}
 		defer closeReader()
 		result, err := vulndb.ImportCISAKEV(ctx, opened.Store, reader)
 		if err != nil {
-			return err
+			return recordVulnDBCommandFailure(ctx, opened.Store, vulndb.SourceCISAKEV, err)
 		}
 		return printJSON(result)
 	case "import-epss":
 		reader, closeReader, err := openVulnDBInput(ctx, options.Source, options.AllowInsecureHTTP)
 		if err != nil {
-			return err
+			return recordVulnDBCommandFailure(ctx, opened.Store, vulndb.SourceEPSS, err)
 		}
 		defer closeReader()
 		result, err := vulndb.ImportEPSS(ctx, opened.Store, reader)
 		if err != nil {
-			return err
+			return recordVulnDBCommandFailure(ctx, opened.Store, vulndb.SourceEPSS, err)
 		}
 		return printJSON(result)
 	case "import-nvd":
 		reader, closeReader, err := openVulnDBInput(ctx, options.Source, options.AllowInsecureHTTP)
 		if err != nil {
-			return err
+			return recordVulnDBCommandFailure(ctx, opened.Store, vulndb.SourceNVD, err)
 		}
 		defer closeReader()
 		result, err := vulndb.ImportNVD(ctx, opened.Store, reader)
 		if err != nil {
-			return err
+			return recordVulnDBCommandFailure(ctx, opened.Store, vulndb.SourceNVD, err)
 		}
 		return printJSON(result)
 	case "sync":
@@ -334,10 +335,24 @@ func runVulnDBSync(ctx context.Context, store vulndb.Store, options vulnDBOption
 func runVulnDBFeedSync(ctx context.Context, store vulndb.Store, source string, location string, allowInsecureHTTP bool) (vulndb.ImportResult, error) {
 	reader, closeReader, err := openVulnDBInput(ctx, location, allowInsecureHTTP)
 	if err != nil {
-		return vulndb.ImportResult{}, err
+		return vulndb.ImportResult{}, recordVulnDBCommandFailure(ctx, store, source, err)
 	}
 	defer closeReader()
-	return vulndb.ImportFeed(ctx, store, source, reader)
+	result, err := vulndb.ImportFeed(ctx, store, source, reader)
+	if err != nil {
+		return vulndb.ImportResult{}, recordVulnDBCommandFailure(ctx, store, source, err)
+	}
+	return result, nil
+}
+
+func recordVulnDBCommandFailure(ctx context.Context, store vulndb.Store, source string, syncErr error) error {
+	if syncErr == nil {
+		return nil
+	}
+	if err := vulndb.RecordSyncFailure(ctx, store, source, syncErr); err != nil {
+		return errors.Join(syncErr, fmt.Errorf("record vulndb sync failure: %w", err))
+	}
+	return syncErr
 }
 
 func openVulnDBInput(ctx context.Context, source string, allowInsecureHTTP bool) (io.Reader, func(), error) {
