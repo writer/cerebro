@@ -122,6 +122,11 @@ func allNodePatternsTenantScoped(query string) bool {
 	scopedVariables := map[string]struct{}{}
 	sawNode := false
 	for i := 0; i < len(query); i++ {
+		if keywordAt(query, i, "WITH") {
+			scopedVariables = scopedVariablesAfterWith(query, i+len("WITH"), scopedVariables)
+			i += len("WITH") - 1
+			continue
+		}
 		if boundary, width := queryPartBoundaryAt(query, i); boundary {
 			scopedVariables = map[string]struct{}{}
 			i += width - 1
@@ -233,12 +238,92 @@ func nodeHasEntityLabel(labels string) bool {
 }
 
 func queryPartBoundaryAt(query string, index int) (bool, int) {
-	for _, keyword := range []string{"WITH", "UNION"} {
+	for _, keyword := range []string{"UNION", "CALL"} {
 		if keywordAt(query, index, keyword) {
 			return true, len(keyword)
 		}
 	}
 	return false, 0
+}
+
+func scopedVariablesAfterWith(query string, start int, scopedVariables map[string]struct{}) map[string]struct{} {
+	clause := query[start:withProjectionEnd(query, start)]
+	next := map[string]struct{}{}
+	for _, item := range splitProjectionItems(clause) {
+		projectScopedVariable(next, scopedVariables, strings.TrimSpace(item))
+	}
+	return next
+}
+
+func withProjectionEnd(query string, start int) int {
+	depth := 0
+	for i := start; i < len(query); i++ {
+		switch query[i] {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			if depth > 0 {
+				depth--
+			}
+		}
+		if depth == 0 && withClauseEndAt(query, i) {
+			return i
+		}
+	}
+	return len(query)
+}
+
+func withClauseEndAt(query string, index int) bool {
+	for _, keyword := range []string{"OPTIONAL MATCH", "MATCH", "RETURN", "UNION", "CALL", "WHERE", "ORDER", "LIMIT", "SKIP"} {
+		if keywordAt(query, index, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+func splitProjectionItems(clause string) []string {
+	var items []string
+	depth := 0
+	start := 0
+	for i := 0; i < len(clause); i++ {
+		switch clause[i] {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			if depth > 0 {
+				depth--
+			}
+		case ',':
+			if depth == 0 {
+				items = append(items, clause[start:i])
+				start = i + 1
+			}
+		}
+	}
+	items = append(items, clause[start:])
+	return items
+}
+
+func projectScopedVariable(next map[string]struct{}, scopedVariables map[string]struct{}, item string) {
+	item = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(item), "DISTINCT "))
+	if item == "*" {
+		for variable := range scopedVariables {
+			next[variable] = struct{}{}
+		}
+		return
+	}
+	fields := strings.Fields(item)
+	switch {
+	case len(fields) == 1:
+		if _, ok := scopedVariables[fields[0]]; ok {
+			next[fields[0]] = struct{}{}
+		}
+	case len(fields) == 3 && strings.EqualFold(fields[1], "AS"):
+		if _, ok := scopedVariables[fields[0]]; ok {
+			next[fields[2]] = struct{}{}
+		}
+	}
 }
 
 func keywordAt(query string, index int, keyword string) bool {

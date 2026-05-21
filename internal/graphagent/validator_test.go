@@ -74,6 +74,11 @@ func TestValidatorRejectsUnsafeCypher(t *testing.T) {
 			cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e.urn AS urn LIMIT 25 UNION MATCH (e) RETURN e.urn AS urn LIMIT 25`,
 			reason: "inline tenant_id",
 		},
+		{
+			name:   "call subquery has independent scope",
+			cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) CALL { MATCH (e) RETURN e.urn AS leaked LIMIT 25 } RETURN leaked LIMIT 25`,
+			reason: "inline tenant_id",
+		},
 	}
 
 	validator := NewValidator(nil, ValidatorOptions{})
@@ -135,6 +140,24 @@ func TestValidatorAcceptsBoundVariableReuse(t *testing.T) {
 	validator := NewValidator(nil, ValidatorOptions{})
 	result, limit, err := validator.validate(context.Background(), `MATCH (e:Entity {tenant_id: $tenant_id})
 OPTIONAL MATCH (e)-[:RELATION]->(b:Entity {tenant_id: $tenant_id})
+RETURN b.urn AS urn
+LIMIT 25`, map[string]any{"tenant_id": "example"})
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if !result.OK {
+		t.Fatalf("Validate() = %#v, want ok", result)
+	}
+	if limit != 25 {
+		t.Fatalf("limit = %d, want 25", limit)
+	}
+}
+
+func TestValidatorAcceptsWithProjectedBoundVariable(t *testing.T) {
+	validator := NewValidator(nil, ValidatorOptions{})
+	result, limit, err := validator.validate(context.Background(), `MATCH (e:Entity {tenant_id: $tenant_id})
+WITH e
+MATCH (e)-[:RELATION]->(b:Entity {tenant_id: $tenant_id})
 RETURN b.urn AS urn
 LIMIT 25`, map[string]any{"tenant_id": "example"})
 	if err != nil {
