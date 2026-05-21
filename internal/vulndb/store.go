@@ -20,6 +20,7 @@ type Store interface {
 	FindVulnerability(context.Context, string) (Vulnerability, bool, error)
 	UpsertAffectedPackage(context.Context, AffectedPackage) error
 	ReplaceAffectedPackages(context.Context, string, string, []AffectedPackage) error
+	MoveAffectedPackages(context.Context, string, string) error
 	CandidateAffectedPackages(context.Context, PackageQuery) ([]AffectedPackage, error)
 	GetSyncState(context.Context, string) (SyncState, bool, error)
 	PutSyncState(context.Context, SyncState) error
@@ -199,6 +200,38 @@ func (s *MemoryStore) ReplaceAffectedPackages(ctx context.Context, vulnerability
 			s.affected[key] = map[string]AffectedPackage{}
 		}
 		s.affected[key][affectedPackageKey(pkg)] = pkg
+	}
+	return nil
+}
+
+// MoveAffectedPackages reassigns all affected package rows from one advisory ID to another.
+func (s *MemoryStore) MoveAffectedPackages(ctx context.Context, fromID string, toID string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	fromID = NormalizeIdentifier(fromID)
+	toID = NormalizeIdentifier(toID)
+	if fromID == "" || toID == "" || fromID == toID {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key, rows := range s.affected {
+		moved := []AffectedPackage{}
+		for rowKey, row := range rows {
+			if row.VulnerabilityID != fromID {
+				continue
+			}
+			delete(rows, rowKey)
+			row.VulnerabilityID = toID
+			moved = append(moved, row)
+		}
+		for _, row := range moved {
+			rows[affectedPackageKey(row)] = row
+		}
+		if len(rows) == 0 {
+			delete(s.affected, key)
+		}
 	}
 	return nil
 }

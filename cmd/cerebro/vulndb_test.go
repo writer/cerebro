@@ -56,6 +56,47 @@ func TestPutVulnDBSyncJobStoresAbsoluteFilePath(t *testing.T) {
 	}
 }
 
+func TestPutVulnDBSyncJobPreservesAllowInsecureHTTPWhenOmitted(t *testing.T) {
+	ctx := context.Background()
+	store := vulndb.NewMemoryStore()
+	if _, err := putVulnDBSyncJob(ctx, store, vulnDBOptions{
+		JobID:                     "osv-hourly",
+		FeedSource:                vulndb.SourceOSV,
+		Source:                    "http://localhost/osv.json",
+		AllowInsecureHTTP:         true,
+		AllowInsecureHTTPExplicit: true,
+		JobInterval:               time.Hour,
+	}); err != nil {
+		t.Fatalf("put initial sync job: %v", err)
+	}
+	job, err := putVulnDBSyncJob(ctx, store, vulnDBOptions{
+		JobID:       "osv-hourly",
+		FeedSource:  vulndb.SourceOSV,
+		Source:      "http://localhost/osv-updated.json",
+		JobInterval: time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("put updated sync job: %v", err)
+	}
+	if !job.AllowInsecureHTTP {
+		t.Fatal("AllowInsecureHTTP = false, want preserved true when option omitted")
+	}
+	job, err = putVulnDBSyncJob(ctx, store, vulnDBOptions{
+		JobID:                     "osv-hourly",
+		FeedSource:                vulndb.SourceOSV,
+		Source:                    "http://localhost/osv-updated.json",
+		AllowInsecureHTTP:         false,
+		AllowInsecureHTTPExplicit: true,
+		JobInterval:               time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("put explicit sync job update: %v", err)
+	}
+	if job.AllowInsecureHTTP {
+		t.Fatal("AllowInsecureHTTP = true, want explicit false to clear")
+	}
+}
+
 func TestParseVulnDBOptionsQueryFields(t *testing.T) {
 	options, err := parseVulnDBOptions([]string{
 		"id=cve-2026-12345",

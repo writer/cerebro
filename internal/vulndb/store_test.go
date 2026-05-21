@@ -508,6 +508,59 @@ func TestImportOSVRemovesAliasSupersededAffectedPackages(t *testing.T) {
 	}
 }
 
+func TestImportOSVMigratesDuplicateAffectedPackages(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	if _, err := ImportOSV(ctx, store, strings.NewReader(`[{"id":"GHSA-3333-4444-8888"}]`)); err != nil {
+		t.Fatalf("import initial osv: %v", err)
+	}
+	if err := store.UpsertVulnerability(ctx, Vulnerability{ID: "CVE-2026-33340"}); err != nil {
+		t.Fatalf("upsert standalone nvd advisory: %v", err)
+	}
+	if err := store.UpsertAffectedPackage(ctx, AffectedPackage{
+		VulnerabilityID: "CVE-2026-33340",
+		Source:          SourceNVD,
+		Ecosystem:       "npm",
+		PackageName:     "nvd-demo",
+		Introduced:      "0",
+		Fixed:           "1.0.0",
+	}); err != nil {
+		t.Fatalf("upsert standalone nvd affected package: %v", err)
+	}
+	refreshed := `[{
+		"id":"GHSA-3333-4444-8888",
+		"aliases":["CVE-2026-33340"]
+	}]`
+	if _, err := ImportOSV(ctx, store, strings.NewReader(refreshed)); err != nil {
+		t.Fatalf("import refreshed osv: %v", err)
+	}
+	stats, err := store.Stats(ctx)
+	if err != nil {
+		t.Fatalf("stats: %v", err)
+	}
+	if stats.Vulnerabilities != 1 {
+		t.Fatalf("stats.Vulnerabilities = %d, want merged advisory", stats.Vulnerabilities)
+	}
+	rows, err := store.CandidateAffectedPackages(ctx, PackageQuery{Ecosystem: "npm", Name: "nvd-demo"})
+	if err != nil {
+		t.Fatalf("candidate affected packages: %v", err)
+	}
+	if len(rows) != 1 || rows[0].VulnerabilityID != "GHSA-3333-4444-8888" || rows[0].Source != SourceNVD {
+		t.Fatalf("migrated rows = %+v, want preserved NVD row on canonical advisory", rows)
+	}
+	matcher, err := NewMatcher(store)
+	if err != nil {
+		t.Fatalf("new matcher: %v", err)
+	}
+	matches, err := matcher.MatchPackage(ctx, PackageQuery{Ecosystem: "npm", Name: "nvd-demo", Version: "0.5.0"})
+	if err != nil {
+		t.Fatalf("match migrated nvd package: %v", err)
+	}
+	if len(matches) != 1 || matches[0].Vulnerability.ID != "GHSA-3333-4444-8888" {
+		t.Fatalf("matches = %+v, want migrated canonical advisory", matches)
+	}
+}
+
 func TestImportOSVMultiIntervalRanges(t *testing.T) {
 	ctx := context.Background()
 	store := NewMemoryStore()

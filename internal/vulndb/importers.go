@@ -451,6 +451,9 @@ func findVulnerabilityByAnyIdentifier(ctx context.Context, store Store, id strin
 		}
 	}
 	for _, duplicateID := range duplicateIDs {
+		if err := store.MoveAffectedPackages(ctx, duplicateID, merged.ID); err != nil {
+			return Vulnerability{}, false, err
+		}
 		if err := store.DeleteVulnerability(ctx, duplicateID); err != nil {
 			return Vulnerability{}, false, err
 		}

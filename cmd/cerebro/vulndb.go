@@ -128,25 +128,26 @@ func runVulnDB(args []string) error {
 }
 
 type vulnDBOptions struct {
-	StateFile         string
-	StateFileExplicit bool
-	StoreMode         string
-	Source            string
-	FeedSource        string
-	OSVSource         string
-	KEVSource         string
-	EPSSSource        string
-	NVDSource         string
-	AllowInsecureHTTP bool
-	JobID             string
-	JobOwner          string
-	JobInterval       time.Duration
-	JobLeaseTTL       time.Duration
-	Limit             int
-	AdvisoryID        string
-	Ecosystem         string
-	PackageName       string
-	PackageVersion    string
+	StateFile                 string
+	StateFileExplicit         bool
+	StoreMode                 string
+	Source                    string
+	FeedSource                string
+	OSVSource                 string
+	KEVSource                 string
+	EPSSSource                string
+	NVDSource                 string
+	AllowInsecureHTTP         bool
+	AllowInsecureHTTPExplicit bool
+	JobID                     string
+	JobOwner                  string
+	JobInterval               time.Duration
+	JobLeaseTTL               time.Duration
+	Limit                     int
+	AdvisoryID                string
+	Ecosystem                 string
+	PackageName               string
+	PackageVersion            string
 }
 
 type vulnDBSyncResult struct {
@@ -246,6 +247,7 @@ func parseVulnDBOptions(args []string) (vulnDBOptions, error) {
 				return vulnDBOptions{}, fmt.Errorf("parse allow_insecure_http: %w", err)
 			}
 			options.AllowInsecureHTTP = parsed
+			options.AllowInsecureHTTPExplicit = true
 		default:
 			return vulnDBOptions{}, usageError(fmt.Sprintf("unsupported vulndb argument %q", key))
 		}
@@ -421,6 +423,18 @@ func putVulnDBSyncJob(ctx context.Context, jobs vulndb.SyncJobStore, options vul
 	if jobs == nil {
 		return vulndb.SyncJob{}, fmt.Errorf("vulndb sync job store is unavailable")
 	}
+	jobID := strings.TrimSpace(options.JobID)
+	if jobID == "" {
+		return vulndb.SyncJob{}, usageError("job_id is required")
+	}
+	existing, hasExisting, err := jobs.GetSyncJob(ctx, jobID)
+	if err != nil {
+		return vulndb.SyncJob{}, err
+	}
+	allowInsecureHTTP := options.AllowInsecureHTTP
+	if hasExisting && !options.AllowInsecureHTTPExplicit {
+		allowInsecureHTTP = existing.AllowInsecureHTTP
+	}
 	feedURL := strings.TrimSpace(options.Source)
 	if feedURL != "" && !strings.HasPrefix(feedURL, "http://") && !strings.HasPrefix(feedURL, "https://") && !filepath.IsAbs(feedURL) {
 		absolute, err := filepath.Abs(feedURL)
@@ -430,14 +444,11 @@ func putVulnDBSyncJob(ctx context.Context, jobs vulndb.SyncJobStore, options vul
 		feedURL = absolute
 	}
 	job := vulndb.SyncJob{
-		ID:                strings.TrimSpace(options.JobID),
+		ID:                jobID,
 		Source:            strings.TrimSpace(options.FeedSource),
 		FeedURL:           feedURL,
-		AllowInsecureHTTP: options.AllowInsecureHTTP,
+		AllowInsecureHTTP: allowInsecureHTTP,
 		Interval:          options.JobInterval,
-	}
-	if job.ID == "" {
-		return vulndb.SyncJob{}, usageError("job_id is required")
 	}
 	if job.Source == "" {
 		return vulndb.SyncJob{}, usageError("feed_source is required")

@@ -82,6 +82,13 @@ func (s *FileStore) ReplaceAffectedPackages(ctx context.Context, vulnerabilityID
 	})
 }
 
+// MoveAffectedPackages reassigns affected package rows and persists the state file.
+func (s *FileStore) MoveAffectedPackages(ctx context.Context, fromID string, toID string) error {
+	return s.update(ctx, func() error {
+		return s.mem.MoveAffectedPackages(ctx, fromID, toID)
+	})
+}
+
 // CandidateAffectedPackages returns all advisory package rows for an ecosystem/name pair.
 func (s *FileStore) CandidateAffectedPackages(ctx context.Context, query PackageQuery) ([]AffectedPackage, error) {
 	var packages []AffectedPackage

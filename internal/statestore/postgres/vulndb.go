@@ -285,6 +285,90 @@ DO UPDATE SET
 	return nil
 }
 
+// MoveAffectedPackages reassigns all affected package rows from one advisory ID to another.
+func (s *Store) MoveAffectedPackages(ctx context.Context, fromID string, toID string) error {
+	if s == nil || s.db == nil {
+		return errors.New("postgres is not configured")
+	}
+	fromID = vulndb.NormalizeIdentifier(fromID)
+	toID = vulndb.NormalizeIdentifier(toID)
+	if fromID == "" || toID == "" || fromID == toID {
+		return nil
+	}
+	if err := s.ensureVulnDBTables(ctx); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin affected package move: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+	rows, err := tx.QueryContext(ctx, `SELECT affected_json::text FROM vulndb_affected_packages WHERE vulnerability_id = $1`, fromID)
+	if err != nil {
+		return fmt.Errorf("query affected packages for move %q: %w", fromID, err)
+	}
+	moved := []vulndb.AffectedPackage{}
+	for rows.Next() {
+		var payload string
+		if err := rows.Scan(&payload); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("scan affected package for move: %w", err)
+		}
+		var affected vulndb.AffectedPackage
+		if err := json.Unmarshal([]byte(payload), &affected); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("decode affected package for move: %w", err)
+		}
+		affected.VulnerabilityID = toID
+		affected.Source = strings.TrimSpace(affected.Source)
+		affected.Ecosystem = normalizeVulnDBEcosystem(affected.Ecosystem)
+		affected.PackageName = strings.TrimSpace(affected.PackageName)
+		moved = append(moved, affected)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return fmt.Errorf("iterate affected packages for move: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close affected packages for move: %w", err)
+	}
+	for _, affected := range moved {
+		if affected.Ecosystem == "" {
+			return errors.New("affected package ecosystem is required")
+		}
+		if affected.PackageName == "" {
+			return errors.New("affected package name is required")
+		}
+		payload, err := json.Marshal(affected)
+		if err != nil {
+			return fmt.Errorf("marshal moved affected package: %w", err)
+		}
+		rowKey := postgresAffectedPackageKey(affected)
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO vulndb_affected_packages (row_key, vulnerability_id, ecosystem, package_name, package_name_key, affected_json)
+VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+ON CONFLICT (row_key)
+DO UPDATE SET
+  vulnerability_id = EXCLUDED.vulnerability_id,
+  ecosystem = EXCLUDED.ecosystem,
+  package_name = EXCLUDED.package_name,
+  package_name_key = EXCLUDED.package_name_key,
+  affected_json = EXCLUDED.affected_json,
+  updated_at = NOW()`, rowKey, affected.VulnerabilityID, affected.Ecosystem, affected.PackageName, normalizeVulnDBPackageName(affected.PackageName), string(payload)); err != nil {
+			return fmt.Errorf("move affected package %q: %w", rowKey, err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM vulndb_affected_packages WHERE vulnerability_id = $1`, fromID); err != nil {
+		return fmt.Errorf("delete moved affected packages %q: %w", fromID, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit affected package move: %w", err)
+	}
+	return nil
+}
+
 // CandidateAffectedPackages returns all advisory package rows for an ecosystem/name pair.
 func (s *Store) CandidateAffectedPackages(ctx context.Context, query vulndb.PackageQuery) ([]vulndb.AffectedPackage, error) {
 	if s == nil || s.db == nil {
