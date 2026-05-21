@@ -150,6 +150,7 @@ func (s *Store) UpsertAffectedPackage(ctx context.Context, affected vulndb.Affec
 		return errors.New("postgres is not configured")
 	}
 	affected.VulnerabilityID = vulndb.NormalizeIdentifier(affected.VulnerabilityID)
+	affected.Source = strings.TrimSpace(affected.Source)
 	affected.Ecosystem = normalizeVulnDBEcosystem(affected.Ecosystem)
 	affected.PackageName = strings.TrimSpace(affected.PackageName)
 	if affected.VulnerabilityID == "" {
@@ -181,6 +182,74 @@ DO UPDATE SET
   affected_json = EXCLUDED.affected_json,
   updated_at = NOW()`, rowKey, affected.VulnerabilityID, affected.Ecosystem, affected.PackageName, normalizeVulnDBPackageName(affected.PackageName), string(payload)); err != nil {
 		return fmt.Errorf("upsert affected package %q: %w", rowKey, err)
+	}
+	return nil
+}
+
+// ReplaceAffectedPackages replaces affected package rows for one vulnerability/source.
+func (s *Store) ReplaceAffectedPackages(ctx context.Context, vulnerabilityID string, source string, packages []vulndb.AffectedPackage) error {
+	if s == nil || s.db == nil {
+		return errors.New("postgres is not configured")
+	}
+	vulnerabilityID = vulndb.NormalizeIdentifier(vulnerabilityID)
+	source = strings.TrimSpace(source)
+	if vulnerabilityID == "" {
+		return errors.New("affected package vulnerability id is required")
+	}
+	if source == "" {
+		return errors.New("affected package source is required")
+	}
+	normalized := make([]vulndb.AffectedPackage, 0, len(packages))
+	for _, affected := range packages {
+		affected.VulnerabilityID = vulnerabilityID
+		affected.Source = source
+		affected.Ecosystem = normalizeVulnDBEcosystem(affected.Ecosystem)
+		affected.PackageName = strings.TrimSpace(affected.PackageName)
+		if affected.Ecosystem == "" {
+			return errors.New("affected package ecosystem is required")
+		}
+		if affected.PackageName == "" {
+			return errors.New("affected package name is required")
+		}
+		normalized = append(normalized, affected)
+	}
+	if err := s.ensureVulnDBTables(ctx); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin affected package replacement: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM vulndb_affected_packages
+WHERE vulnerability_id = $1 AND (COALESCE(affected_json->>'Source', '') = $2 OR COALESCE(affected_json->>'Source', '') = '')`, vulnerabilityID, source); err != nil {
+		return fmt.Errorf("delete affected packages %q/%q: %w", vulnerabilityID, source, err)
+	}
+	for _, affected := range normalized {
+		payload, err := json.Marshal(affected)
+		if err != nil {
+			return fmt.Errorf("marshal affected package: %w", err)
+		}
+		rowKey := postgresAffectedPackageKey(affected)
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO vulndb_affected_packages (row_key, vulnerability_id, ecosystem, package_name, package_name_key, affected_json)
+VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+ON CONFLICT (row_key)
+DO UPDATE SET
+  vulnerability_id = EXCLUDED.vulnerability_id,
+  ecosystem = EXCLUDED.ecosystem,
+  package_name = EXCLUDED.package_name,
+  package_name_key = EXCLUDED.package_name_key,
+  affected_json = EXCLUDED.affected_json,
+  updated_at = NOW()`, rowKey, affected.VulnerabilityID, affected.Ecosystem, affected.PackageName, normalizeVulnDBPackageName(affected.PackageName), string(payload)); err != nil {
+			return fmt.Errorf("replace affected package %q: %w", rowKey, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit affected package replacement: %w", err)
 	}
 	return nil
 }
@@ -636,10 +705,12 @@ func normalizedVulnAliases(values []string) []string {
 func postgresAffectedPackageKey(pkg vulndb.AffectedPackage) string {
 	parts := []string{
 		vulndb.NormalizeIdentifier(pkg.VulnerabilityID),
+		strings.TrimSpace(pkg.Source),
 		normalizeVulnDBEcosystem(pkg.Ecosystem),
 		normalizeVulnDBPackageName(pkg.PackageName),
 		strings.TrimSpace(pkg.RangeType),
 		strings.TrimSpace(pkg.Introduced),
+		strings.TrimSpace(pkg.IntroducedExclusive),
 		strings.TrimSpace(pkg.Fixed),
 		strings.TrimSpace(pkg.LastAffected),
 		strings.TrimSpace(pkg.VulnerableVersion),

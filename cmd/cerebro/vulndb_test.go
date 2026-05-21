@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/writer/cerebro/internal/vulndb"
 )
 
 func TestParseVulnDBOptionsSyncJobFields(t *testing.T) {
@@ -24,6 +28,52 @@ func TestParseVulnDBOptionsSyncJobFields(t *testing.T) {
 	}
 	if options.JobInterval != time.Hour || options.JobLeaseTTL != 5*time.Minute || options.Limit != 2 || !options.AllowInsecureHTTP {
 		t.Fatalf("unexpected parsed durations/flags: %+v", options)
+	}
+}
+
+func TestParseVulnDBOptionsQueryFields(t *testing.T) {
+	options, err := parseVulnDBOptions([]string{
+		"id=cve-2026-12345",
+		"ecosystem=NPM",
+		"package=lodash",
+		"version=4.17.20",
+	})
+	if err != nil {
+		t.Fatalf("parseVulnDBOptions() error = %v", err)
+	}
+	if options.AdvisoryID != "cve-2026-12345" || options.Ecosystem != "NPM" || options.PackageName != "lodash" || options.PackageVersion != "4.17.20" {
+		t.Fatalf("unexpected query options: %+v", options)
+	}
+}
+
+func TestVulnDBGetAndMatchHelpersQuerySharedStore(t *testing.T) {
+	ctx := context.Background()
+	store := vulndb.NewMemoryStore()
+	osv := `[{
+		"id":"GHSA-AAAA-BBBB-CCCC",
+		"aliases":["CVE-2026-11111"],
+		"summary":"lodash vulnerability",
+		"affected":[{
+			"package":{"ecosystem":"npm","name":"lodash"},
+			"ranges":[{"type":"SEMVER","events":[{"introduced":"0"},{"fixed":"4.17.21"}]}]
+		}]
+	}]`
+	if _, err := vulndb.ImportOSV(ctx, store, strings.NewReader(osv)); err != nil {
+		t.Fatalf("import osv: %v", err)
+	}
+	vulnerability, err := getVulnDBVulnerability(ctx, store, vulnDBOptions{AdvisoryID: "cve-2026-11111"})
+	if err != nil {
+		t.Fatalf("get vulnerability: %v", err)
+	}
+	if vulnerability.ID != "GHSA-AAAA-BBBB-CCCC" || vulnerability.Summary != "lodash vulnerability" {
+		t.Fatalf("unexpected vulnerability: %+v", vulnerability)
+	}
+	matches, err := matchVulnDBPackage(ctx, store, vulnDBOptions{Ecosystem: "npm", PackageName: "lodash", PackageVersion: "4.17.20"})
+	if err != nil {
+		t.Fatalf("match package: %v", err)
+	}
+	if len(matches) != 1 || matches[0].Vulnerability.ID != "GHSA-AAAA-BBBB-CCCC" || matches[0].AffectedPackage.PackageName != "lodash" {
+		t.Fatalf("unexpected matches: %+v", matches)
 	}
 }
 

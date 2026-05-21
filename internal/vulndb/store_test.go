@@ -109,6 +109,41 @@ func TestMatcherExcludesWithdrawnAdvisories(t *testing.T) {
 	}
 }
 
+func TestMatcherComparesNonNumericVersionSegments(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	if err := store.UpsertVulnerability(ctx, Vulnerability{ID: "CVE-2026-10001"}); err != nil {
+		t.Fatalf("upsert vulnerability: %v", err)
+	}
+	if err := store.UpsertAffectedPackage(ctx, AffectedPackage{
+		VulnerabilityID: "CVE-2026-10001",
+		Ecosystem:       "apk",
+		PackageName:     "demo",
+		Introduced:      "0",
+		Fixed:           "1.0-r1",
+	}); err != nil {
+		t.Fatalf("upsert affected package: %v", err)
+	}
+	matcher, err := NewMatcher(store)
+	if err != nil {
+		t.Fatalf("new matcher: %v", err)
+	}
+	matches, err := matcher.MatchPackage(ctx, PackageQuery{Ecosystem: "apk", Name: "demo", Version: "1.0-r0"})
+	if err != nil {
+		t.Fatalf("match revision before fixed: %v", err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("expected revision before fixed to match, got %+v", matches)
+	}
+	matches, err = matcher.MatchPackage(ctx, PackageQuery{Ecosystem: "apk", Name: "demo", Version: "1.0-r1"})
+	if err != nil {
+		t.Fatalf("match fixed revision: %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("expected fixed revision to be excluded, got %+v", matches)
+	}
+}
+
 func TestFileStorePersistsSyncStateAndAdvisories(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "vulndb.json")
@@ -151,6 +186,38 @@ func TestFileStorePersistsSyncStateAndAdvisories(t *testing.T) {
 	}
 	if _, ok, err := reopened.FindVulnerability(ctx, "ghsa-1111-2222-3333"); err != nil || !ok {
 		t.Fatalf("expected alias after reopen, ok=%v err=%v", ok, err)
+	}
+}
+
+func TestMemoryStoreSyncStateNormalizesSource(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	if err := store.PutSyncState(ctx, SyncState{Source: " OSV ", Cursor: "first"}); err != nil {
+		t.Fatalf("put sync state: %v", err)
+	}
+	state, ok, err := store.GetSyncState(ctx, "osv")
+	if err != nil {
+		t.Fatalf("get sync state: %v", err)
+	}
+	if !ok || state.Source != SourceOSV || state.Cursor != "first" {
+		t.Fatalf("unexpected normalized sync state: ok=%v state=%+v", ok, state)
+	}
+	if err := store.PutSyncState(ctx, SyncState{Source: "osv", Cursor: "second"}); err != nil {
+		t.Fatalf("replace sync state: %v", err)
+	}
+	stats, err := store.Stats(ctx)
+	if err != nil {
+		t.Fatalf("stats: %v", err)
+	}
+	if stats.SyncSources != 1 {
+		t.Fatalf("stats.SyncSources = %d, want one normalized source", stats.SyncSources)
+	}
+	state, ok, err = store.GetSyncState(ctx, " OSV ")
+	if err != nil {
+		t.Fatalf("get replacement sync state: %v", err)
+	}
+	if !ok || state.Cursor != "second" {
+		t.Fatalf("unexpected replacement sync state: ok=%v state=%+v", ok, state)
 	}
 }
 
@@ -403,6 +470,53 @@ func TestImportOSVMultiIntervalRanges(t *testing.T) {
 	}
 }
 
+func TestImportOSVReplacesStaleAffectedPackages(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	first := `[{
+		"id":"CVE-2026-33336",
+		"affected":[{
+			"package":{"ecosystem":"npm","name":"stale-demo"},
+			"ranges":[{"type":"SEMVER","events":[{"introduced":"0"},{"fixed":"2.0.0"}]}]
+		}]
+	}]`
+	if _, err := ImportOSV(ctx, store, strings.NewReader(first)); err != nil {
+		t.Fatalf("import initial osv: %v", err)
+	}
+	second := `[{
+		"id":"CVE-2026-33336",
+		"affected":[{
+			"package":{"ecosystem":"npm","name":"stale-demo"},
+			"ranges":[{"type":"SEMVER","events":[{"introduced":"0"},{"fixed":"1.0.0"}]}]
+		}]
+	}]`
+	imported, err := ImportOSV(ctx, store, strings.NewReader(second))
+	if err != nil {
+		t.Fatalf("import replacement osv: %v", err)
+	}
+	if imported.AffectedPackages != 1 {
+		t.Fatalf("imported.AffectedPackages = %d, want replacement row", imported.AffectedPackages)
+	}
+	stats, err := store.Stats(ctx)
+	if err != nil {
+		t.Fatalf("stats: %v", err)
+	}
+	if stats.AffectedPackages != 1 {
+		t.Fatalf("stats.AffectedPackages = %d, want stale row removed", stats.AffectedPackages)
+	}
+	matcher, err := NewMatcher(store)
+	if err != nil {
+		t.Fatalf("new matcher: %v", err)
+	}
+	matches, err := matcher.MatchPackage(ctx, PackageQuery{Ecosystem: "npm", Name: "stale-demo", Version: "1.5.0"})
+	if err != nil {
+		t.Fatalf("match stale range version: %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("expected stale range to be removed, got %+v", matches)
+	}
+}
+
 func TestImportNVDEnrichesExistingOSVAlias(t *testing.T) {
 	ctx := context.Background()
 	store := NewMemoryStore()
@@ -459,6 +573,62 @@ func TestImportNVDEnrichesExistingOSVAlias(t *testing.T) {
 	}
 	if len(matches) != 1 || matches[0].Vulnerability.ID != "GHSA-4444-5555-6666" {
 		t.Fatalf("unexpected cpe alias matches: %+v", matches)
+	}
+}
+
+func TestImportNVDPreservesWithdrawnOSVAlias(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	osv := `[{
+		"id":"GHSA-5555-6666-7777",
+		"aliases":["CVE-2026-44446"],
+		"withdrawn":"2026-05-01T00:00:00Z",
+		"affected":[{
+			"package":{"ecosystem":"npm","name":"withdrawn-demo"},
+			"ranges":[{"type":"SEMVER","events":[{"introduced":"0"},{"fixed":"1.0.0"}]}]
+		}]
+	}]`
+	if _, err := ImportOSV(ctx, store, strings.NewReader(osv)); err != nil {
+		t.Fatalf("import withdrawn osv: %v", err)
+	}
+	nvd := `{
+		"vulnerabilities":[{
+			"cve":{
+				"id":"CVE-2026-44446",
+				"descriptions":[{"lang":"en","value":"NVD should not reactivate"}],
+				"configurations":[{
+					"nodes":[{
+						"cpeMatch":[{
+							"vulnerable":true,
+							"criteria":"cpe:2.3:a:demo:withdrawn:*:*:*:*:*:*:*:*",
+							"versionStartIncluding":"1.0.0",
+							"versionEndExcluding":"2.0.0"
+						}]
+					}]
+				}]
+			}
+		}]
+	}`
+	if _, err := ImportNVD(ctx, store, strings.NewReader(nvd)); err != nil {
+		t.Fatalf("import nvd: %v", err)
+	}
+	vulnerability, ok, err := store.FindVulnerability(ctx, "CVE-2026-44446")
+	if err != nil {
+		t.Fatalf("find merged vulnerability: %v", err)
+	}
+	if !ok || vulnerability.WithdrawnAt.IsZero() {
+		t.Fatalf("expected withdrawn merged vulnerability, ok=%v vulnerability=%+v", ok, vulnerability)
+	}
+	matcher, err := NewMatcher(store)
+	if err != nil {
+		t.Fatalf("new matcher: %v", err)
+	}
+	matches, err := matcher.MatchPackage(ctx, PackageQuery{Ecosystem: "cpe:application", Name: "demo:withdrawn", Version: "1.5.0"})
+	if err != nil {
+		t.Fatalf("match withdrawn cpe package: %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("expected withdrawn alias to be excluded, got %+v", matches)
 	}
 }
 
@@ -527,6 +697,49 @@ func TestImportNVD(t *testing.T) {
 	}
 	if len(matches) != 0 {
 		t.Fatalf("expected fixed cpe version to be excluded, got %+v", matches)
+	}
+}
+
+func TestImportNVDKeepsVersionStartExcludingExclusive(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	nvd := `{
+		"vulnerabilities":[{
+			"cve":{
+				"id":"CVE-2026-44447",
+				"configurations":[{
+					"nodes":[{
+						"cpeMatch":[{
+							"vulnerable":true,
+							"criteria":"cpe:2.3:a:demo:exclusive:*:*:*:*:*:*:*:*",
+							"versionStartExcluding":"1.0.0",
+							"versionEndExcluding":"1.0.2"
+						}]
+					}]
+				}]
+			}
+		}]
+	}`
+	if _, err := ImportNVD(ctx, store, strings.NewReader(nvd)); err != nil {
+		t.Fatalf("import nvd: %v", err)
+	}
+	matcher, err := NewMatcher(store)
+	if err != nil {
+		t.Fatalf("new matcher: %v", err)
+	}
+	matches, err := matcher.MatchPackage(ctx, PackageQuery{Ecosystem: "cpe:application", Name: "demo:exclusive", Version: "1.0.0"})
+	if err != nil {
+		t.Fatalf("match exclusive lower boundary: %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("expected exclusive lower boundary to be excluded, got %+v", matches)
+	}
+	matches, err = matcher.MatchPackage(ctx, PackageQuery{Ecosystem: "cpe:application", Name: "demo:exclusive", Version: "1.0.1"})
+	if err != nil {
+		t.Fatalf("match inside exclusive range: %v", err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("expected inside exclusive range to match, got %+v", matches)
 	}
 }
 

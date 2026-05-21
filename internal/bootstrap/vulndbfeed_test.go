@@ -53,3 +53,34 @@ func TestOpenVulnDBFeedValidatesRedirectTargets(t *testing.T) {
 		t.Fatal("OpenVulnDBFeed() error = nil, want redirect policy error")
 	}
 }
+
+func TestOpenVulnDBFeedRejectsHTTPSDowngradeRedirect(t *testing.T) {
+	targetHit := false
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		targetHit = true
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer target.Close()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	defer server.Close()
+
+	previousTransport := http.DefaultTransport
+	http.DefaultTransport = server.Client().Transport
+	defer func() {
+		http.DefaultTransport = previousTransport
+	}()
+
+	body, err := OpenVulnDBFeed(context.Background(), server.URL, true)
+	if body != nil {
+		_ = body.Close()
+	}
+	if err == nil {
+		t.Fatal("OpenVulnDBFeed() error = nil, want https-to-http downgrade rejection")
+	}
+	if targetHit {
+		t.Fatal("OpenVulnDBFeed() followed https-to-http downgrade redirect")
+	}
+}

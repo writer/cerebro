@@ -238,6 +238,7 @@ func ImportNVD(ctx context.Context, store Store, reader io.Reader) (ImportResult
 		if ok {
 			vulnerability.EPSS = existing.EPSS
 			vulnerability.KEV = existing.KEV
+			vulnerability.WithdrawnAt = existing.WithdrawnAt
 			if vulnerability.Summary == "" {
 				vulnerability.Summary = existing.Summary
 			}
@@ -258,12 +259,11 @@ func ImportNVD(ctx context.Context, store Store, reader io.Reader) (ImportResult
 			return ImportResult{}, err
 		}
 		result.Vulnerabilities++
-		for _, affected := range nvdAffectedPackages(id, item.CVE.Configurations) {
-			if err := store.UpsertAffectedPackage(ctx, affected); err != nil {
-				return ImportResult{}, err
-			}
-			result.AffectedPackages++
+		affectedPackages := nvdAffectedPackages(id, item.CVE.Configurations)
+		if err := store.ReplaceAffectedPackages(ctx, id, SourceNVD, affectedPackages); err != nil {
+			return ImportResult{}, err
 		}
+		result.AffectedPackages += len(affectedPackages)
 	}
 	return result, recordSyncSuccess(ctx, store, SourceNVD)
 }
@@ -333,6 +333,9 @@ func importOSVAdvisory(ctx context.Context, store Store, advisory osvAdvisory) (
 	if ok {
 		vulnerability.EPSS = existing.EPSS
 		vulnerability.KEV = existing.KEV
+		if vulnerability.WithdrawnAt.IsZero() {
+			vulnerability.WithdrawnAt = existing.WithdrawnAt
+		}
 		if vulnerability.Summary == "" {
 			vulnerability.Summary = existing.Summary
 		}
@@ -363,6 +366,7 @@ func importOSVAdvisory(ctx context.Context, store Store, advisory osvAdvisory) (
 		return ImportResult{}, err
 	}
 	result := ImportResult{Vulnerabilities: 1}
+	affectedPackages := []AffectedPackage{}
 	for _, affected := range advisory.Affected {
 		ecosystem := normalizeEcosystem(affected.Package.Ecosystem)
 		name := strings.TrimSpace(affected.Package.Name)
@@ -373,25 +377,22 @@ func importOSVAdvisory(ctx context.Context, store Store, advisory osvAdvisory) (
 			if strings.TrimSpace(version) == "" {
 				continue
 			}
-			if err := store.UpsertAffectedPackage(ctx, AffectedPackage{
+			affectedPackages = append(affectedPackages, AffectedPackage{
 				VulnerabilityID:   id,
+				Source:            SourceOSV,
 				Ecosystem:         ecosystem,
 				PackageName:       name,
 				VulnerableVersion: strings.TrimSpace(version),
-			}); err != nil {
-				return ImportResult{}, err
-			}
-			result.AffectedPackages++
+			})
 		}
 		for _, affectedRange := range affected.Ranges {
-			for _, row := range osvRangeAffectedPackages(id, ecosystem, name, affectedRange) {
-				if err := store.UpsertAffectedPackage(ctx, row); err != nil {
-					return ImportResult{}, err
-				}
-				result.AffectedPackages++
-			}
+			affectedPackages = append(affectedPackages, osvRangeAffectedPackages(id, ecosystem, name, affectedRange)...)
 		}
 	}
+	if err := store.ReplaceAffectedPackages(ctx, id, SourceOSV, affectedPackages); err != nil {
+		return ImportResult{}, err
+	}
+	result.AffectedPackages = len(affectedPackages)
 	return result, nil
 }
 
@@ -444,6 +445,7 @@ func mergeVulnerabilityAliases(canonicalID string, groups ...[]string) []string 
 func osvRangeAffectedPackages(vulnerabilityID string, ecosystem string, packageName string, affectedRange osvRange) []AffectedPackage {
 	base := AffectedPackage{
 		VulnerabilityID: vulnerabilityID,
+		Source:          SourceOSV,
 		Ecosystem:       ecosystem,
 		PackageName:     packageName,
 		RangeType:       strings.TrimSpace(affectedRange.Type),
@@ -719,15 +721,17 @@ func nvdCPEAffectedPackage(vulnerabilityID string, match nvdCPEMatch) (AffectedP
 		return AffectedPackage{}, false
 	}
 	row := AffectedPackage{
-		VulnerabilityID: vulnerabilityID,
-		Ecosystem:       cpeEcosystem(cpe.Part),
-		PackageName:     cpePackageName(cpe.Vendor, cpe.Product),
-		RangeType:       "CPE",
-		Introduced:      firstNonEmpty(match.VersionStartIncluding, match.VersionStartExcluding),
-		Fixed:           strings.TrimSpace(match.VersionEndExcluding),
-		LastAffected:    strings.TrimSpace(match.VersionEndIncluding),
+		VulnerabilityID:     vulnerabilityID,
+		Source:              SourceNVD,
+		Ecosystem:           cpeEcosystem(cpe.Part),
+		PackageName:         cpePackageName(cpe.Vendor, cpe.Product),
+		RangeType:           "CPE",
+		Introduced:          strings.TrimSpace(match.VersionStartIncluding),
+		IntroducedExclusive: strings.TrimSpace(match.VersionStartExcluding),
+		Fixed:               strings.TrimSpace(match.VersionEndExcluding),
+		LastAffected:        strings.TrimSpace(match.VersionEndIncluding),
 	}
-	if row.Introduced == "" && row.Fixed == "" && row.LastAffected == "" && cpe.Version != "" && cpe.Version != "*" && cpe.Version != "-" {
+	if row.Introduced == "" && row.IntroducedExclusive == "" && row.Fixed == "" && row.LastAffected == "" && cpe.Version != "" && cpe.Version != "*" && cpe.Version != "-" {
 		row.VulnerableVersion = cpe.Version
 	}
 	if row.Ecosystem == "" || row.PackageName == "" {

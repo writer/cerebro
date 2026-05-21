@@ -18,6 +18,7 @@ type Store interface {
 	UpsertVulnerability(context.Context, Vulnerability) error
 	FindVulnerability(context.Context, string) (Vulnerability, bool, error)
 	UpsertAffectedPackage(context.Context, AffectedPackage) error
+	ReplaceAffectedPackages(context.Context, string, string, []AffectedPackage) error
 	CandidateAffectedPackages(context.Context, PackageQuery) ([]AffectedPackage, error)
 	GetSyncState(context.Context, string) (SyncState, bool, error)
 	PutSyncState(context.Context, SyncState) error
@@ -109,17 +110,9 @@ func (s *MemoryStore) UpsertAffectedPackage(ctx context.Context, pkg AffectedPac
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	pkg.VulnerabilityID = NormalizeIdentifier(pkg.VulnerabilityID)
-	pkg.Ecosystem = normalizeEcosystem(pkg.Ecosystem)
-	pkg.PackageName = strings.TrimSpace(pkg.PackageName)
-	if pkg.VulnerabilityID == "" {
-		return fmt.Errorf("affected package vulnerability id is required")
-	}
-	if pkg.Ecosystem == "" {
-		return fmt.Errorf("affected package ecosystem is required")
-	}
-	if pkg.PackageName == "" {
-		return fmt.Errorf("affected package name is required")
+	pkg, err := normalizeAffectedPackage(pkg)
+	if err != nil {
+		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -128,6 +121,51 @@ func (s *MemoryStore) UpsertAffectedPackage(ctx context.Context, pkg AffectedPac
 		s.affected[key] = map[string]AffectedPackage{}
 	}
 	s.affected[key][affectedPackageKey(pkg)] = pkg
+	return nil
+}
+
+// ReplaceAffectedPackages replaces all affected package rows for one vulnerability/source.
+func (s *MemoryStore) ReplaceAffectedPackages(ctx context.Context, vulnerabilityID string, source string, packages []AffectedPackage) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	vulnerabilityID = NormalizeIdentifier(vulnerabilityID)
+	source = strings.TrimSpace(source)
+	if vulnerabilityID == "" {
+		return fmt.Errorf("affected package vulnerability id is required")
+	}
+	if source == "" {
+		return fmt.Errorf("affected package source is required")
+	}
+	normalized := make([]AffectedPackage, 0, len(packages))
+	for _, pkg := range packages {
+		pkg.VulnerabilityID = vulnerabilityID
+		pkg.Source = source
+		row, err := normalizeAffectedPackage(pkg)
+		if err != nil {
+			return err
+		}
+		normalized = append(normalized, row)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key, rows := range s.affected {
+		for rowKey, row := range rows {
+			if row.VulnerabilityID == vulnerabilityID && (strings.TrimSpace(row.Source) == source || strings.TrimSpace(row.Source) == "") {
+				delete(rows, rowKey)
+			}
+		}
+		if len(rows) == 0 {
+			delete(s.affected, key)
+		}
+	}
+	for _, pkg := range normalized {
+		key := packageKey(pkg.Ecosystem, pkg.PackageName)
+		if s.affected[key] == nil {
+			s.affected[key] = map[string]AffectedPackage{}
+		}
+		s.affected[key][affectedPackageKey(pkg)] = pkg
+	}
 	return nil
 }
 
@@ -160,7 +198,7 @@ func (s *MemoryStore) GetSyncState(ctx context.Context, source string) (SyncStat
 	if err := ctx.Err(); err != nil {
 		return SyncState{}, false, err
 	}
-	source = strings.TrimSpace(source)
+	source = normalizeSource(source)
 	if source == "" {
 		return SyncState{}, false, nil
 	}
@@ -175,7 +213,7 @@ func (s *MemoryStore) PutSyncState(ctx context.Context, state SyncState) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	state.Source = strings.TrimSpace(state.Source)
+	state.Source = normalizeSource(state.Source)
 	if state.Source == "" {
 		return fmt.Errorf("sync state source is required")
 	}
@@ -411,13 +449,32 @@ func (s *MemoryStore) finishSyncJob(ctx context.Context, id string, owner string
 	return nil
 }
 
+func normalizeAffectedPackage(pkg AffectedPackage) (AffectedPackage, error) {
+	pkg.VulnerabilityID = NormalizeIdentifier(pkg.VulnerabilityID)
+	pkg.Source = strings.TrimSpace(pkg.Source)
+	pkg.Ecosystem = normalizeEcosystem(pkg.Ecosystem)
+	pkg.PackageName = strings.TrimSpace(pkg.PackageName)
+	if pkg.VulnerabilityID == "" {
+		return AffectedPackage{}, fmt.Errorf("affected package vulnerability id is required")
+	}
+	if pkg.Ecosystem == "" {
+		return AffectedPackage{}, fmt.Errorf("affected package ecosystem is required")
+	}
+	if pkg.PackageName == "" {
+		return AffectedPackage{}, fmt.Errorf("affected package name is required")
+	}
+	return pkg, nil
+}
+
 func affectedPackageKey(pkg AffectedPackage) string {
 	parts := []string{
 		pkg.VulnerabilityID,
+		strings.TrimSpace(pkg.Source),
 		normalizeEcosystem(pkg.Ecosystem),
 		normalizePackageName(pkg.PackageName),
 		strings.TrimSpace(pkg.RangeType),
 		strings.TrimSpace(pkg.Introduced),
+		strings.TrimSpace(pkg.IntroducedExclusive),
 		strings.TrimSpace(pkg.Fixed),
 		strings.TrimSpace(pkg.LastAffected),
 		strings.TrimSpace(pkg.VulnerableVersion),

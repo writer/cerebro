@@ -62,6 +62,14 @@ func (s *FileStore) UpsertAffectedPackage(ctx context.Context, pkg AffectedPacka
 	return s.save(ctx)
 }
 
+// ReplaceAffectedPackages replaces affected package rows for one vulnerability/source and persists the state file.
+func (s *FileStore) ReplaceAffectedPackages(ctx context.Context, vulnerabilityID string, source string, packages []AffectedPackage) error {
+	if err := s.mem.ReplaceAffectedPackages(ctx, vulnerabilityID, source, packages); err != nil {
+		return err
+	}
+	return s.save(ctx)
+}
+
 // CandidateAffectedPackages returns all advisory package rows for an ecosystem/name pair.
 func (s *FileStore) CandidateAffectedPackages(ctx context.Context, query PackageQuery) ([]AffectedPackage, error) {
 	return s.mem.CandidateAffectedPackages(ctx, query)

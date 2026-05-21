@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // Matcher evaluates installed package inventory against the advisory store.
@@ -75,6 +76,12 @@ func affectsVersion(query PackageQuery, affected AffectedPackage) bool {
 			return false
 		}
 	}
+	if introducedExclusive := strings.TrimSpace(affected.IntroducedExclusive); introducedExclusive != "" {
+		cmp, ok := compareVersion(version, introducedExclusive)
+		if !ok || cmp <= 0 {
+			return false
+		}
+	}
 	if lastAffected := strings.TrimSpace(affected.LastAffected); lastAffected != "" {
 		cmp, ok := compareVersion(version, lastAffected)
 		if !ok || cmp > 0 {
@@ -83,61 +90,112 @@ func affectsVersion(query PackageQuery, affected AffectedPackage) bool {
 	}
 	return strings.TrimSpace(affected.Fixed) != "" ||
 		strings.TrimSpace(affected.Introduced) != "" ||
+		strings.TrimSpace(affected.IntroducedExclusive) != "" ||
 		strings.TrimSpace(affected.LastAffected) != ""
 }
 
 func compareVersion(left string, right string) (int, bool) {
-	leftParts, ok := numericVersionParts(left)
+	leftParts, ok := versionParts(left)
 	if !ok {
 		return 0, false
 	}
-	rightParts, ok := numericVersionParts(right)
+	rightParts, ok := versionParts(right)
 	if !ok {
 		return 0, false
 	}
-	maxParts := len(leftParts)
-	if len(rightParts) > maxParts {
-		maxParts = len(rightParts)
+	for len(leftParts) > 0 && leftParts[len(leftParts)-1].numeric && leftParts[len(leftParts)-1].number == 0 {
+		leftParts = leftParts[:len(leftParts)-1]
 	}
+	for len(rightParts) > 0 && rightParts[len(rightParts)-1].numeric && rightParts[len(rightParts)-1].number == 0 {
+		rightParts = rightParts[:len(rightParts)-1]
+	}
+	maxParts := maxInt(len(leftParts), len(rightParts))
 	for i := 0; i < maxParts; i++ {
-		leftPart := 0
-		if i < len(leftParts) {
-			leftPart = leftParts[i]
-		}
-		rightPart := 0
-		if i < len(rightParts) {
-			rightPart = rightParts[i]
-		}
-		if leftPart < rightPart {
+		if i >= len(leftParts) {
+			if rightParts[i].numeric && rightParts[i].number == 0 {
+				continue
+			}
 			return -1, true
 		}
-		if leftPart > rightPart {
+		if i >= len(rightParts) {
+			if leftParts[i].numeric && leftParts[i].number == 0 {
+				continue
+			}
 			return 1, true
+		}
+		cmp := compareVersionPart(leftParts[i], rightParts[i])
+		if cmp != 0 {
+			return cmp, true
 		}
 	}
 	return 0, true
 }
 
-func numericVersionParts(version string) ([]int, bool) {
+type versionPart struct {
+	numeric bool
+	number  int
+	text    string
+}
+
+func compareVersionPart(left versionPart, right versionPart) int {
+	if left.numeric && right.numeric {
+		if left.number < right.number {
+			return -1
+		}
+		if left.number > right.number {
+			return 1
+		}
+		return 0
+	}
+	if left.numeric != right.numeric {
+		if left.numeric {
+			return -1
+		}
+		return 1
+	}
+	return strings.Compare(left.text, right.text)
+}
+
+func versionParts(version string) ([]versionPart, bool) {
 	version = normalizeVersion(version)
 	version = strings.TrimPrefix(version, "v")
 	if version == "" {
 		return nil, false
 	}
-	fields := strings.FieldsFunc(version, func(r rune) bool {
-		return r == '.' || r == '-' || r == '_' || r == '+'
-	})
-	parts := make([]int, 0, len(fields))
-	for _, field := range fields {
-		if field == "" {
+	parts := []versionPart{}
+	var current strings.Builder
+	currentNumeric := false
+	hasCurrent := false
+	flush := func() {
+		if !hasCurrent {
+			return
+		}
+		text := current.String()
+		if currentNumeric {
+			value, err := strconv.Atoi(text)
+			if err == nil {
+				parts = append(parts, versionPart{numeric: true, number: value})
+			}
+		} else {
+			parts = append(parts, versionPart{text: text})
+		}
+		current.Reset()
+		hasCurrent = false
+	}
+	for _, r := range version {
+		if r == '.' || r == '-' || r == '_' || r == '+' {
+			flush()
 			continue
 		}
-		value, err := strconv.Atoi(field)
-		if err != nil {
-			break
+		numeric := unicode.IsDigit(r)
+		if hasCurrent && numeric != currentNumeric {
+			flush()
 		}
-		parts = append(parts, value)
+		currentNumeric = numeric
+		hasCurrent = true
+		current.WriteRune(r)
 	}
+	flush()
 	return parts, len(parts) > 0
 }
 

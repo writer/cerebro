@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/writer/cerebro/internal/vulndb"
@@ -19,9 +20,13 @@ func OpenVulnDBFeed(ctx context.Context, rawURL string, allowInsecureHTTP bool) 
 	if err != nil {
 		return nil, err
 	}
+	initialScheme := strings.ToLower(request.URL.Scheme)
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if initialScheme == "https" && strings.EqualFold(req.URL.Scheme, "http") {
+				return fmt.Errorf("refusing vulnerability feed redirect from https to http")
+			}
 			return vulndb.ValidateFeedURL(req.URL.String(), allowInsecureHTTP)
 		},
 	}

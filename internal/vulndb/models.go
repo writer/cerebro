@@ -48,16 +48,18 @@ type KEV struct {
 
 // AffectedPackage describes one package/version range affected by a vulnerability.
 type AffectedPackage struct {
-	VulnerabilityID   string
-	Ecosystem         string
-	PackageName       string
-	RangeType         string
-	Introduced        string
-	Fixed             string
-	LastAffected      string
-	VulnerableVersion string
-	DistroName        string
-	DistroVersion     string
+	VulnerabilityID     string
+	Source              string
+	Ecosystem           string
+	PackageName         string
+	RangeType           string
+	Introduced          string
+	IntroducedExclusive string
+	Fixed               string
+	LastAffected        string
+	VulnerableVersion   string
+	DistroName          string
+	DistroVersion       string
 }
 
 // PackageQuery identifies an installed package to match against advisories.

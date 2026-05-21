@@ -40,6 +40,18 @@ func runVulnDB(args []string) error {
 			return err
 		}
 		return printJSON(stats)
+	case "get":
+		vulnerability, err := getVulnDBVulnerability(ctx, opened.Store, options)
+		if err != nil {
+			return err
+		}
+		return printJSON(vulnerability)
+	case "match":
+		matches, err := matchVulnDBPackage(ctx, opened.Store, options)
+		if err != nil {
+			return err
+		}
+		return printJSON(matches)
 	case "import-osv":
 		reader, closeReader, err := openVulnDBInput(ctx, options.Source, options.AllowInsecureHTTP)
 		if err != nil {
@@ -129,6 +141,10 @@ type vulnDBOptions struct {
 	JobInterval       time.Duration
 	JobLeaseTTL       time.Duration
 	Limit             int
+	AdvisoryID        string
+	Ecosystem         string
+	PackageName       string
+	PackageVersion    string
 }
 
 type vulnDBSyncResult struct {
@@ -214,6 +230,14 @@ func parseVulnDBOptions(args []string) (vulnDBOptions, error) {
 				return vulnDBOptions{}, usageError("limit must be non-negative")
 			}
 			options.Limit = int(parsed)
+		case "id", "advisory_id", "vulnerability_id":
+			options.AdvisoryID = value
+		case "ecosystem":
+			options.Ecosystem = value
+		case "package", "package_name", "name":
+			options.PackageName = value
+		case "version", "package_version":
+			options.PackageVersion = value
 		case "allow_insecure_http":
 			parsed, err := strconv.ParseBool(value)
 			if err != nil {
@@ -225,6 +249,46 @@ func parseVulnDBOptions(args []string) (vulnDBOptions, error) {
 		}
 	}
 	return options, nil
+}
+
+func getVulnDBVulnerability(ctx context.Context, store vulndb.Store, options vulnDBOptions) (vulndb.Vulnerability, error) {
+	id := strings.TrimSpace(options.AdvisoryID)
+	if id == "" {
+		id = strings.TrimSpace(options.Source)
+	}
+	if id == "" {
+		return vulndb.Vulnerability{}, usageError("id is required")
+	}
+	vulnerability, ok, err := store.FindVulnerability(ctx, id)
+	if err != nil {
+		return vulndb.Vulnerability{}, err
+	}
+	if !ok {
+		return vulndb.Vulnerability{}, fmt.Errorf("vulnerability %q not found", id)
+	}
+	return vulnerability, nil
+}
+
+func matchVulnDBPackage(ctx context.Context, store vulndb.Store, options vulnDBOptions) ([]vulndb.Match, error) {
+	query := vulndb.PackageQuery{
+		Ecosystem: strings.TrimSpace(options.Ecosystem),
+		Name:      strings.TrimSpace(options.PackageName),
+		Version:   strings.TrimSpace(options.PackageVersion),
+	}
+	if query.Ecosystem == "" {
+		return nil, usageError("ecosystem is required")
+	}
+	if query.Name == "" {
+		return nil, usageError("package is required")
+	}
+	if query.Version == "" {
+		return nil, usageError("version is required")
+	}
+	matcher, err := vulndb.NewMatcher(store)
+	if err != nil {
+		return nil, err
+	}
+	return matcher.MatchPackage(ctx, query)
 }
 
 func runVulnDBSync(ctx context.Context, store vulndb.Store, options vulnDBOptions) (vulnDBSyncResult, error) {
@@ -426,5 +490,5 @@ func newVulnDBSyncRunner(store vulndb.Store, jobs vulndb.SyncJobStore, options v
 }
 
 func vulnDBUsage() string {
-	return fmt.Sprintf("usage: %s vulndb [stats|import-osv|import-kev|import-epss|import-nvd|sync|job-put|job-run|job-run-due] [store=auto|file|state] [state_file=<path>] [path=<path>|url=<url>] [allow_insecure_http=true]", os.Args[0])
+	return fmt.Sprintf("usage: %s vulndb [stats|get|match|import-osv|import-kev|import-epss|import-nvd|sync|job-put|job-run|job-run-due] [store=auto|file|state] [state_file=<path>] [path=<path>|url=<url>] [allow_insecure_http=true]", os.Args[0])
 }
