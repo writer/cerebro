@@ -126,7 +126,9 @@ func endpointSoftwareInventoryProjections(event *cerebrov1.EventEnvelope, profil
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 
-	endpointURN := addEndpointEntity(entities, tenantID, event.GetSourceId(), attrs, profile)
+	endpointProfile := profile
+	endpointProfile.EndpointIDKeys = endpointCorrelationIDKeys(profile.EndpointIDKeys)
+	endpointURN := addEndpointEntity(entities, tenantID, event.GetSourceId(), attrs, endpointProfile)
 	addEndpointOwnerLinks(entities, links, tenantID, event.GetSourceId(), event, endpointURN, attrs)
 	packageURN := vulnerabilityPackageURN(tenantID, attrs, profile.PackageScope)
 	canonicalPackageURN := addCanonicalPackageEntity(entities, tenantID, event.GetSourceId(), attrs, profile.PackageScope)
@@ -141,6 +143,17 @@ func endpointSoftwareInventoryProjections(event *cerebrov1.EventEnvelope, profil
 	}
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
+}
+
+func endpointCorrelationIDKeys(keys []string) []string {
+	filtered := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if strings.TrimSpace(key) == "external_id" {
+			continue
+		}
+		filtered = append(filtered, key)
+	}
+	return filtered
 }
 
 func addEndpointEntity(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, attrs map[string]string, profile endpointProjectionProfile) string {

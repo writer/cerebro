@@ -361,7 +361,12 @@ func urnsFor(settings settings, family Family, records []record) ([]sourcecdk.UR
 func pullFromRecords(sourceID string, settings settings, family Family, records []record, next string) (sourcecdk.Pull, error) {
 	records = dedupeRecords(records)
 	if len(records) == 0 {
-		return sourcecdk.Pull{}, nil
+		pull := sourcecdk.Pull{}
+		if next := strings.TrimSpace(next); next != "" {
+			pull.NextCursor = &cerebrov1.SourceCursor{Opaque: next}
+			pull.Checkpoint = &cerebrov1.SourceCheckpoint{CursorOpaque: next}
+		}
+		return pull, nil
 	}
 	events := make([]*primitives.Event, 0, len(records))
 	for _, record := range records {

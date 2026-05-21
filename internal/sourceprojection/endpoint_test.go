@@ -66,6 +66,34 @@ func TestProjectKolideSoftwareLinksDevicePackageAndCanonicalPackage(t *testing.T
 	assertProjectedLink(t, state, packageURN, relationRepresents, canonicalPackageURN)
 }
 
+func TestProjectKolideSoftwareDoesNotUseSoftwareExternalIDAsDevice(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "kolide-software-1",
+		TenantId: "writer",
+		SourceId: "kolide",
+		Kind:     "kolide.software",
+		Attributes: map[string]string{
+			"external_id":       "software-row-1",
+			"application_name":  "openssl",
+			"installed_version": "3.0.0",
+			"ecosystem":         "macos",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	if entity := state.entities["urn:cerebro:writer:kolide_device:software-row-1"]; entity != nil {
+		t.Fatalf("unexpected software external_id projected as device entity: %#v", entity)
+	}
+	if entity := state.entities["urn:cerebro:writer:package:macos:openssl"]; entity == nil {
+		t.Fatal("expected package entity without endpoint correlation")
+	}
+}
+
 func TestProjectKolideCheckLinksComplianceEvidenceToDevice(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
