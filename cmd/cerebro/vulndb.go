@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -420,10 +421,18 @@ func putVulnDBSyncJob(ctx context.Context, jobs vulndb.SyncJobStore, options vul
 	if jobs == nil {
 		return vulndb.SyncJob{}, fmt.Errorf("vulndb sync job store is unavailable")
 	}
+	feedURL := strings.TrimSpace(options.Source)
+	if feedURL != "" && !strings.HasPrefix(feedURL, "http://") && !strings.HasPrefix(feedURL, "https://") && !filepath.IsAbs(feedURL) {
+		absolute, err := filepath.Abs(feedURL)
+		if err != nil {
+			return vulndb.SyncJob{}, err
+		}
+		feedURL = absolute
+	}
 	job := vulndb.SyncJob{
 		ID:                strings.TrimSpace(options.JobID),
 		Source:            strings.TrimSpace(options.FeedSource),
-		FeedURL:           strings.TrimSpace(options.Source),
+		FeedURL:           feedURL,
 		AllowInsecureHTTP: options.AllowInsecureHTTP,
 		Interval:          options.JobInterval,
 	}

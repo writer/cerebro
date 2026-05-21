@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -34,6 +35,24 @@ func TestParseVulnDBOptionsSyncJobFields(t *testing.T) {
 func TestParseVulnDBOptionsRejectsZeroInterval(t *testing.T) {
 	if _, err := parseVulnDBOptions([]string{"interval=0s"}); err == nil {
 		t.Fatal("parseVulnDBOptions() error = nil, want positive interval requirement")
+	}
+}
+
+func TestPutVulnDBSyncJobStoresAbsoluteFilePath(t *testing.T) {
+	ctx := context.Background()
+	store := vulndb.NewMemoryStore()
+	t.Chdir(t.TempDir())
+	job, err := putVulnDBSyncJob(ctx, store, vulnDBOptions{
+		JobID:       "osv-hourly",
+		FeedSource:  vulndb.SourceOSV,
+		Source:      "feeds/osv.json",
+		JobInterval: time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("put sync job: %v", err)
+	}
+	if !filepath.IsAbs(job.FeedURL) || filepath.Base(job.FeedURL) != "osv.json" {
+		t.Fatalf("FeedURL = %q, want absolute file path", job.FeedURL)
 	}
 }
 
