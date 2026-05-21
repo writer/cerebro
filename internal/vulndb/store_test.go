@@ -1178,6 +1178,45 @@ func TestImportNVDSkipsConjunctiveConfigurations(t *testing.T) {
 	}
 }
 
+func TestImportNVDPreservesPlatformQualifiedCPEComponents(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	nvd := `{
+		"vulnerabilities":[{
+			"cve":{
+				"id":"CVE-2026-44449",
+				"configurations":[{
+					"nodes":[{
+						"cpeMatch":[{
+							"vulnerable":true,
+							"criteria":"cpe:2.3:a:vendor:agent:*:*:*:*:*:android:*:*",
+							"versionStartIncluding":"1.0.0",
+							"versionEndExcluding":"2.0.0"
+						}]
+					}]
+				}]
+			}
+		}]
+	}`
+	if _, err := ImportNVD(ctx, store, strings.NewReader(nvd)); err != nil {
+		t.Fatalf("import nvd: %v", err)
+	}
+	rows, err := store.CandidateAffectedPackages(ctx, PackageQuery{Ecosystem: "cpe:application", Name: "vendor:agent"})
+	if err != nil {
+		t.Fatalf("candidate generic cpe package: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("generic cpe rows = %+v, want none for platform-qualified criteria", rows)
+	}
+	rows, err = store.CandidateAffectedPackages(ctx, PackageQuery{Ecosystem: "cpe:application", Name: "vendor:agent:target_sw=android"})
+	if err != nil {
+		t.Fatalf("candidate qualified cpe package: %v", err)
+	}
+	if len(rows) != 1 || rows[0].VulnerabilityID != "CVE-2026-44449" {
+		t.Fatalf("qualified cpe rows = %+v, want preserved target_sw-qualified row", rows)
+	}
+}
+
 func TestImportEPSSReturnsCommentScanError(t *testing.T) {
 	ctx := context.Background()
 	store := NewMemoryStore()

@@ -838,7 +838,7 @@ func nvdCPEAffectedPackage(vulnerabilityID string, match nvdCPEMatch) (AffectedP
 		VulnerabilityID:     vulnerabilityID,
 		Source:              SourceNVD,
 		Ecosystem:           cpeEcosystem(cpe.Part),
-		PackageName:         cpePackageName(cpe.Vendor, cpe.Product),
+		PackageName:         cpePackageName(cpe),
 		RangeType:           "CPE",
 		Introduced:          strings.TrimSpace(match.VersionStartIncluding),
 		IntroducedExclusive: strings.TrimSpace(match.VersionStartExcluding),
@@ -855,10 +855,17 @@ func nvdCPEAffectedPackage(vulnerabilityID string, match nvdCPEMatch) (AffectedP
 }
 
 type cpe23 struct {
-	Part    string
-	Vendor  string
-	Product string
-	Version string
+	Part      string
+	Vendor    string
+	Product   string
+	Version   string
+	Update    string
+	Edition   string
+	Language  string
+	SWEdition string
+	TargetSW  string
+	TargetHW  string
+	Other     string
 }
 
 func parseCPE23(criteria string) (cpe23, bool) {
@@ -867,10 +874,17 @@ func parseCPE23(criteria string) (cpe23, bool) {
 		return cpe23{}, false
 	}
 	return cpe23{
-		Part:    strings.TrimSpace(fields[2]),
-		Vendor:  cleanCPEComponent(fields[3]),
-		Product: cleanCPEComponent(fields[4]),
-		Version: cleanCPEComponent(fields[5]),
+		Part:      strings.TrimSpace(fields[2]),
+		Vendor:    cleanCPEComponent(fields[3]),
+		Product:   cleanCPEComponent(fields[4]),
+		Version:   cleanCPEComponent(fields[5]),
+		Update:    cleanCPEField(fields, 6),
+		Edition:   cleanCPEField(fields, 7),
+		Language:  cleanCPEField(fields, 8),
+		SWEdition: cleanCPEField(fields, 9),
+		TargetSW:  cleanCPEField(fields, 10),
+		TargetHW:  cleanCPEField(fields, 11),
+		Other:     cleanCPEField(fields, 12),
 	}, true
 }
 
@@ -910,6 +924,13 @@ func cleanCPEComponent(value string) string {
 	return strings.NewReplacer("\\:", ":", "\\_", "_", "\\\\", "\\").Replace(value)
 }
 
+func cleanCPEField(fields []string, index int) string {
+	if index >= len(fields) {
+		return ""
+	}
+	return cleanCPEComponent(fields[index])
+}
+
 func cpeEcosystem(part string) string {
 	switch strings.ToLower(strings.TrimSpace(part)) {
 	case "a":
@@ -923,16 +944,35 @@ func cpeEcosystem(part string) string {
 	}
 }
 
-func cpePackageName(vendor string, product string) string {
-	vendor = strings.TrimSpace(vendor)
-	product = strings.TrimSpace(product)
+func cpePackageName(cpe cpe23) string {
+	vendor := strings.TrimSpace(cpe.Vendor)
+	product := strings.TrimSpace(cpe.Product)
 	if product == "" {
 		return ""
 	}
+	parts := []string{}
 	if vendor == "" {
-		return product
+		parts = append(parts, product)
+	} else {
+		parts = append(parts, vendor, product)
 	}
-	return vendor + ":" + product
+	for _, qualifier := range []struct {
+		key   string
+		value string
+	}{
+		{"update", cpe.Update},
+		{"edition", cpe.Edition},
+		{"language", cpe.Language},
+		{"sw_edition", cpe.SWEdition},
+		{"target_sw", cpe.TargetSW},
+		{"target_hw", cpe.TargetHW},
+		{"other", cpe.Other},
+	} {
+		if strings.TrimSpace(qualifier.value) != "" {
+			parts = append(parts, qualifier.key+"="+strings.TrimSpace(qualifier.value))
+		}
+	}
+	return strings.Join(parts, ":")
 }
 
 func csvIndexes(header []string) map[string]int {

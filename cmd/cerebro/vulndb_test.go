@@ -36,6 +36,14 @@ func TestVulnDBInputClientOpenTreatsRemoteSchemeCaseInsensitive(t *testing.T) {
 	}
 }
 
+func TestVulnDBInputClientRejectsUnsupportedURLSchemes(t *testing.T) {
+	for _, source := range []string{"file:///tmp/osv.json", "ftp://mirror.example/osv.json"} {
+		if _, err := (vulndbInputClient{}).Open(context.Background(), source, true); err == nil {
+			t.Fatalf("Open(%q) error = nil, want unsupported scheme rejection", source)
+		}
+	}
+}
+
 func TestParseVulnDBOptionsSyncJobFields(t *testing.T) {
 	options, err := parseVulnDBOptions([]string{
 		"store=file",
@@ -95,6 +103,21 @@ func TestPutVulnDBSyncJobRejectsInsecureHTTPWithoutOptIn(t *testing.T) {
 	}
 	if _, ok, err := store.GetSyncJob(ctx, "osv-hourly"); err != nil || ok {
 		t.Fatalf("stored insecure job ok=%v err=%v, want not persisted", ok, err)
+	}
+}
+
+func TestPutVulnDBSyncJobRejectsUnsupportedURLSchemes(t *testing.T) {
+	ctx := context.Background()
+	store := vulndb.NewMemoryStore()
+	for _, source := range []string{"file:///tmp/osv.json", "ftp://mirror.example/osv.json"} {
+		if _, err := putVulnDBSyncJob(ctx, store, vulnDBOptions{
+			JobID:       "osv-hourly",
+			FeedSource:  vulndb.SourceOSV,
+			Source:      source,
+			JobInterval: time.Hour,
+		}); err == nil {
+			t.Fatalf("put sync job source %q error = nil, want unsupported scheme rejection", source)
+		}
 	}
 }
 
