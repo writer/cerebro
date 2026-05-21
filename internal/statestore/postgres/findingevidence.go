@@ -254,7 +254,7 @@ func (s *Store) ListFindingEvidence(ctx context.Context, request ports.ListFindi
 	}
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("query finding evidence for runtime %q: %w", strings.TrimSpace(request.RuntimeID), err)
+		return nil, fmt.Errorf("query finding evidence for runtimes %v: %w", normalizedRuntimeIDs(request.RuntimeID, request.RuntimeIDs), err)
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil && err == nil {
@@ -280,30 +280,35 @@ func (s *Store) ListFindingEvidence(ctx context.Context, request ports.ListFindi
 	return evidence, nil
 }
 
+// CountFindingEvidence returns the unpaginated number of evidence rows for one filtered query.
+func (s *Store) CountFindingEvidence(ctx context.Context, request ports.ListFindingEvidenceRequest) (int, error) {
+	if s == nil || s.db == nil {
+		return 0, errors.New("postgres is not configured")
+	}
+	if err := s.ensureFindingEvidenceTables(ctx); err != nil {
+		return 0, err
+	}
+	clauses, args, err := findingEvidenceFilterClauses(request)
+	if err != nil {
+		return 0, err
+	}
+	var count int
+	if err := s.db.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM finding_evidence
+WHERE `+strings.Join(clauses, " AND "), args...).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count finding evidence for runtimes %v: %w", normalizedRuntimeIDs(request.RuntimeID, request.RuntimeIDs), err)
+	}
+	return count, nil
+}
+
 func (s *Store) ensureFindingEvidenceTables(ctx context.Context) error {
 	return s.ensureStatements(ctx, &s.findingEvidenceReady, "finding evidence", ensureFindingEvidenceStatements)
 }
 
 func findingEvidenceListQuery(request ports.ListFindingEvidenceRequest) (string, []any, error) {
-	runtimeID := strings.TrimSpace(request.RuntimeID)
-	if runtimeID == "" {
-		return "", nil, errors.New("finding evidence runtime id is required")
-	}
-	clauses := []string{"runtime_id = $1"}
-	args := []any{runtimeID}
-	addFindingFilter(&clauses, &args, "finding_id", request.FindingID)
-	addFindingEvidenceRunFilter(&clauses, &args, request.RunID)
-	addFindingFilter(&clauses, &args, "rule_id", request.RuleID)
-	if err := addFindingArrayContainsFilter(&clauses, &args, "claim_ids_json", request.ClaimID); err != nil {
-		return "", nil, err
-	}
-	if err := addFindingArrayContainsFilter(&clauses, &args, "event_ids_json", request.EventID); err != nil {
-		return "", nil, err
-	}
-	if err := addFindingArrayContainsFilter(&clauses, &args, "graph_root_urns_json", request.GraphRootURN); err != nil {
-		return "", nil, err
-	}
-	if err := addFindingArrayContainsFilter(&clauses, &args, "graph_path_urns_json", request.GraphPathURN); err != nil {
+	clauses, args, err := findingEvidenceFilterClauses(request)
+	if err != nil {
 		return "", nil, err
 	}
 	query := `
@@ -316,6 +321,32 @@ ORDER BY last_observed_at DESC, created_at DESC, id`
 		query += fmt.Sprintf(" LIMIT $%d", len(args))
 	}
 	return query, args, nil
+}
+
+func findingEvidenceFilterClauses(request ports.ListFindingEvidenceRequest) ([]string, []any, error) {
+	runtimeIDs := normalizedRuntimeIDs(request.RuntimeID, request.RuntimeIDs)
+	if len(runtimeIDs) == 0 {
+		return nil, nil, errors.New("finding evidence runtime id is required")
+	}
+	clauses := []string{}
+	args := []any{}
+	addStringSetFilter(&clauses, &args, "runtime_id", runtimeIDs)
+	addFindingFilter(&clauses, &args, "finding_id", request.FindingID)
+	addFindingEvidenceRunFilter(&clauses, &args, request.RunID)
+	addFindingFilter(&clauses, &args, "rule_id", request.RuleID)
+	if err := addFindingArrayContainsFilter(&clauses, &args, "claim_ids_json", request.ClaimID); err != nil {
+		return nil, nil, err
+	}
+	if err := addFindingArrayContainsFilter(&clauses, &args, "event_ids_json", request.EventID); err != nil {
+		return nil, nil, err
+	}
+	if err := addFindingArrayContainsFilter(&clauses, &args, "graph_root_urns_json", request.GraphRootURN); err != nil {
+		return nil, nil, err
+	}
+	if err := addFindingArrayContainsFilter(&clauses, &args, "graph_path_urns_json", request.GraphPathURN); err != nil {
+		return nil, nil, err
+	}
+	return clauses, args, nil
 }
 
 func addFindingEvidenceRunFilter(clauses *[]string, args *[]any, runID string) {

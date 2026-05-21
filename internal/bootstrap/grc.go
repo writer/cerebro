@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -102,12 +103,14 @@ type grcEvidenceItem struct {
 }
 
 type grcConnector struct {
-	RuntimeID    string     `json:"runtime_id"`
-	SourceID     string     `json:"source_id,omitempty"`
-	TenantID     string     `json:"tenant_id,omitempty"`
-	Status       string     `json:"status"`
-	Freshness    string     `json:"freshness"`
-	LastSyncedAt *time.Time `json:"last_synced_at,omitempty"`
+	RuntimeID           string     `json:"runtime_id"`
+	SourceID            string     `json:"source_id,omitempty"`
+	TenantID            string     `json:"tenant_id,omitempty"`
+	Status              string     `json:"status"`
+	Freshness           string     `json:"freshness"`
+	CheckpointWatermark *time.Time `json:"checkpoint_watermark,omitempty"`
+	WatermarkLagSeconds *int64     `json:"watermark_lag_seconds,omitempty"`
+	LastSyncedAt        *time.Time `json:"last_synced_at,omitempty"`
 }
 
 type grcEntityImpactResponse struct {
@@ -153,9 +156,19 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 	findingItems := grcFindingItems(findings, runtimeSourceIDs, evidenceCounts)
 	evidenceItems := grcEvidenceItems(evidence, grcFindingTitleMap(findings))
 	controls := grcControlItems(findingItems, evidenceItems)
+	findingSummary, err := a.grcFindingSummary(r, runtimes, grcFindingFilter{Status: "open"})
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
+	evidenceCount, err := a.grcEvidenceCount(r, runtimes, grcEvidenceFilter{})
+	if err != nil {
+		writeGRCError(w, err)
+		return
+	}
 
 	writeJSON(w, http.StatusOK, grcDashboardResponse{
-		Summary:     grcBuildSummary(findingItems, controls, evidenceItems, runtimes),
+		Summary:     grcBuildSummary(findingItems, controls, evidenceItems, runtimes, findingSummary, evidenceCount),
 		Findings:    grcLimitFindings(findingItems, 25),
 		Controls:    grcLimitControls(controls, 25),
 		Evidence:    grcLimitEvidence(evidenceItems, 25),
@@ -394,6 +407,14 @@ type grcEvidenceFilter struct {
 	Limit        uint32
 }
 
+type grcFindingSummaryProvider interface {
+	SummarizeFindings(context.Context, ports.ListFindingsRequest) (ports.FindingSummary, error)
+}
+
+type grcFindingEvidenceCounter interface {
+	CountFindingEvidence(context.Context, ports.ListFindingEvidenceRequest) (int, error)
+}
+
 func grcScopeFromRequest(r *http.Request) (grcScope, error) {
 	limit, err := grcLimitFromRequest(r)
 	if err != nil {
@@ -459,13 +480,10 @@ func (a *App) grcListFindingRecords(r *http.Request, runtimes []*cerebrov1.Sourc
 		limit = grcDefaultLimit
 	}
 	var records []*ports.FindingRecord
-	for _, runtime := range runtimes {
-		if runtime == nil {
-			continue
-		}
+	for _, scope := range grcFindingRequestScopes(runtimes) {
 		items, err := store.ListFindings(r.Context(), ports.ListFindingsRequest{
-			TenantID:    strings.TrimSpace(runtime.GetTenantId()),
-			RuntimeID:   strings.TrimSpace(runtime.GetId()),
+			TenantID:    scope.tenantID,
+			RuntimeIDs:  scope.runtimeIDs,
 			FindingID:   filter.FindingID,
 			RuleID:      filter.RuleID,
 			Severity:    filter.Severity,
@@ -497,6 +515,38 @@ func (a *App) grcListFindingRecords(r *http.Request, runtimes []*cerebrov1.Sourc
 	return records, nil
 }
 
+func (a *App) grcFindingSummary(r *http.Request, runtimes []*cerebrov1.SourceRuntime, filter grcFindingFilter) (*ports.FindingSummary, error) {
+	store := findingStore(a.deps.StateStore)
+	provider, ok := store.(grcFindingSummaryProvider)
+	if !ok {
+		return nil, nil
+	}
+	var summary ports.FindingSummary
+	for _, scope := range grcFindingRequestScopes(runtimes) {
+		item, err := provider.SummarizeFindings(r.Context(), ports.ListFindingsRequest{
+			TenantID:    scope.tenantID,
+			RuntimeIDs:  scope.runtimeIDs,
+			FindingID:   filter.FindingID,
+			RuleID:      filter.RuleID,
+			Severity:    filter.Severity,
+			Status:      filter.Status,
+			ResourceURN: filter.ResourceURN,
+			EventID:     filter.EventID,
+			PolicyID:    filter.PolicyID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		summary.OpenFindings += item.OpenFindings
+		summary.CriticalFindings += item.CriticalFindings
+		summary.HighFindings += item.HighFindings
+		summary.OverdueFindings += item.OverdueFindings
+		summary.Unassigned += item.Unassigned
+		summary.ControlsFailing += item.ControlsFailing
+	}
+	return &summary, nil
+}
+
 func (a *App) grcListEvidenceRecords(r *http.Request, runtimes []*cerebrov1.SourceRuntime, filter grcEvidenceFilter) ([]*cerebrov1.FindingEvidence, error) {
 	store := findingEvidenceStore(a.deps.StateStore)
 	if store == nil {
@@ -506,23 +556,20 @@ func (a *App) grcListEvidenceRecords(r *http.Request, runtimes []*cerebrov1.Sour
 	if limit == 0 {
 		limit = grcDefaultLimit
 	}
-	var records []*cerebrov1.FindingEvidence
-	for _, runtime := range runtimes {
-		if runtime == nil {
-			continue
-		}
-		items, err := store.ListFindingEvidence(r.Context(), ports.ListFindingEvidenceRequest{
-			RuntimeID:    strings.TrimSpace(runtime.GetId()),
-			FindingID:    filter.FindingID,
-			RunID:        filter.RunID,
-			RuleID:       filter.RuleID,
-			GraphRootURN: filter.GraphRootURN,
-			Limit:        limit,
-		})
-		if err != nil {
-			return nil, err
-		}
-		records = append(records, items...)
+	runtimeIDs := grcRuntimeIDs(runtimes)
+	if len(runtimeIDs) == 0 {
+		return nil, nil
+	}
+	records, err := store.ListFindingEvidence(r.Context(), ports.ListFindingEvidenceRequest{
+		RuntimeIDs:   runtimeIDs,
+		FindingID:    filter.FindingID,
+		RunID:        filter.RunID,
+		RuleID:       filter.RuleID,
+		GraphRootURN: filter.GraphRootURN,
+		Limit:        limit,
+	})
+	if err != nil {
+		return nil, err
 	}
 	sort.Slice(records, func(i, j int) bool {
 		left := records[i].GetCreatedAt().AsTime()
@@ -536,6 +583,82 @@ func (a *App) grcListEvidenceRecords(r *http.Request, runtimes []*cerebrov1.Sour
 		records = records[:int(limit)]
 	}
 	return records, nil
+}
+
+func (a *App) grcEvidenceCount(r *http.Request, runtimes []*cerebrov1.SourceRuntime, filter grcEvidenceFilter) (*int, error) {
+	store := findingEvidenceStore(a.deps.StateStore)
+	counter, ok := store.(grcFindingEvidenceCounter)
+	if !ok {
+		return nil, nil
+	}
+	runtimeIDs := grcRuntimeIDs(runtimes)
+	if len(runtimeIDs) == 0 {
+		count := 0
+		return &count, nil
+	}
+	count, err := counter.CountFindingEvidence(r.Context(), ports.ListFindingEvidenceRequest{
+		RuntimeIDs:   runtimeIDs,
+		FindingID:    filter.FindingID,
+		RunID:        filter.RunID,
+		RuleID:       filter.RuleID,
+		GraphRootURN: filter.GraphRootURN,
+		Limit:        0,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &count, nil
+}
+
+type grcFindingRequestScope struct {
+	tenantID   string
+	runtimeIDs []string
+}
+
+func grcFindingRequestScopes(runtimes []*cerebrov1.SourceRuntime) []grcFindingRequestScope {
+	byTenant := map[string][]string{}
+	for _, runtime := range runtimes {
+		if runtime == nil {
+			continue
+		}
+		tenantID := strings.TrimSpace(runtime.GetTenantId())
+		runtimeID := strings.TrimSpace(runtime.GetId())
+		if tenantID == "" || runtimeID == "" {
+			continue
+		}
+		byTenant[tenantID] = append(byTenant[tenantID], runtimeID)
+	}
+	tenants := make([]string, 0, len(byTenant))
+	for tenantID := range byTenant {
+		tenants = append(tenants, tenantID)
+	}
+	sort.Strings(tenants)
+	scopes := make([]grcFindingRequestScope, 0, len(tenants))
+	for _, tenantID := range tenants {
+		scopes = append(scopes, grcFindingRequestScope{tenantID: tenantID, runtimeIDs: byTenant[tenantID]})
+	}
+	return scopes
+}
+
+func grcRuntimeIDs(runtimes []*cerebrov1.SourceRuntime) []string {
+	seen := map[string]struct{}{}
+	runtimeIDs := make([]string, 0, len(runtimes))
+	for _, runtime := range runtimes {
+		if runtime == nil {
+			continue
+		}
+		runtimeID := strings.TrimSpace(runtime.GetId())
+		if runtimeID == "" {
+			continue
+		}
+		if _, ok := seen[runtimeID]; ok {
+			continue
+		}
+		seen[runtimeID] = struct{}{}
+		runtimeIDs = append(runtimeIDs, runtimeID)
+	}
+	sort.Strings(runtimeIDs)
+	return runtimeIDs
 }
 
 func grcRuntimeSourceIDs(runtimes []*cerebrov1.SourceRuntime) map[string]string {
@@ -693,46 +816,62 @@ func grcConnectorItems(runtimes []*cerebrov1.SourceRuntime) []grcConnector {
 			continue
 		}
 		lastSyncedAt := timestampPtr(runtime.GetLastSyncedAt())
+		checkpointWatermark := grcRuntimeCheckpointWatermark(runtime)
 		items = append(items, grcConnector{
-			RuntimeID:    runtime.GetId(),
-			SourceID:     runtime.GetSourceId(),
-			TenantID:     runtime.GetTenantId(),
-			Status:       connectorStatus(lastSyncedAt),
-			Freshness:    connectorFreshness(lastSyncedAt),
-			LastSyncedAt: lastSyncedAt,
+			RuntimeID:           runtime.GetId(),
+			SourceID:            runtime.GetSourceId(),
+			TenantID:            runtime.GetTenantId(),
+			Status:              connectorStatus(checkpointWatermark),
+			Freshness:           connectorFreshness(checkpointWatermark),
+			CheckpointWatermark: checkpointWatermark,
+			WatermarkLagSeconds: watermarkLagSeconds(checkpointWatermark),
+			LastSyncedAt:        lastSyncedAt,
 		})
 	}
 	return items
 }
 
-func grcBuildSummary(findings []grcFindingItem, controls []grcControlItem, evidence []grcEvidenceItem, runtimes []*cerebrov1.SourceRuntime) grcSummary {
+func grcBuildSummary(findings []grcFindingItem, controls []grcControlItem, evidence []grcEvidenceItem, runtimes []*cerebrov1.SourceRuntime, findingSummary *ports.FindingSummary, evidenceCount *int) grcSummary {
 	var summary grcSummary
-	summary.EvidenceItems = len(evidence)
+	if evidenceCount != nil {
+		summary.EvidenceItems = *evidenceCount
+	} else {
+		summary.EvidenceItems = len(evidence)
+	}
 	summary.Connectors = len(runtimes)
-	for _, finding := range findings {
-		if finding.Status == "OPEN" {
-			summary.OpenFindings++
-			if finding.Severity == "CRITICAL" {
-				summary.CriticalFindings++
-			}
-			if finding.Severity == "HIGH" {
-				summary.HighFindings++
-			}
-			if finding.SLAStatus == "overdue" {
-				summary.OverdueFindings++
-			}
-			if finding.Owner == "Unassigned" {
-				summary.Unassigned++
+	if findingSummary != nil {
+		summary.OpenFindings = findingSummary.OpenFindings
+		summary.CriticalFindings = findingSummary.CriticalFindings
+		summary.HighFindings = findingSummary.HighFindings
+		summary.OverdueFindings = findingSummary.OverdueFindings
+		summary.Unassigned = findingSummary.Unassigned
+		summary.ControlsFailing = findingSummary.ControlsFailing
+	} else {
+		for _, finding := range findings {
+			if finding.Status == "OPEN" {
+				summary.OpenFindings++
+				if finding.Severity == "CRITICAL" {
+					summary.CriticalFindings++
+				}
+				if finding.Severity == "HIGH" {
+					summary.HighFindings++
+				}
+				if finding.SLAStatus == "overdue" {
+					summary.OverdueFindings++
+				}
+				if finding.Owner == "Unassigned" {
+					summary.Unassigned++
+				}
 			}
 		}
-	}
-	for _, control := range controls {
-		if control.Status == "failing" {
-			summary.ControlsFailing++
+		for _, control := range controls {
+			if control.Status == "failing" {
+				summary.ControlsFailing++
+			}
 		}
 	}
 	for _, runtime := range runtimes {
-		if connectorStatus(timestampPtr(runtime.GetLastSyncedAt())) == "stale" {
+		if connectorStatus(grcRuntimeCheckpointWatermark(runtime)) == "stale" {
 			summary.StaleConnectors++
 		}
 	}
@@ -840,6 +979,25 @@ func connectorFreshness(lastSyncedAt *time.Time) string {
 	default:
 		return "stale"
 	}
+}
+
+func grcRuntimeCheckpointWatermark(runtime *cerebrov1.SourceRuntime) *time.Time {
+	if runtime == nil {
+		return nil
+	}
+	return timestampPtr(runtime.GetCheckpoint().GetWatermark())
+}
+
+func watermarkLagSeconds(value *time.Time) *int64 {
+	if value == nil {
+		return nil
+	}
+	lag := time.Since(*value)
+	if lag < 0 {
+		lag = 0
+	}
+	seconds := int64(lag.Seconds())
+	return &seconds
 }
 
 func severityRank(severity string) int {

@@ -90,6 +90,33 @@ func TestFindingEvidenceListQueryIncludesOptionalFilters(t *testing.T) {
 	}
 }
 
+func TestFindingEvidenceListQueryAcceptsRuntimeIDSet(t *testing.T) {
+	query, args, err := findingEvidenceListQuery(ports.ListFindingEvidenceRequest{
+		RuntimeIDs: []string{"tenant-okta-audit", "tenant-github", "tenant-okta-audit"},
+		Limit:      100,
+	})
+	if err != nil {
+		t.Fatalf("findingEvidenceListQuery() error = %v", err)
+	}
+	for _, fragment := range []string{
+		"runtime_id IN ($1, $2)",
+		"LIMIT $3",
+	} {
+		if !strings.Contains(query, fragment) {
+			t.Fatalf("findingEvidenceListQuery() query missing %q: %s", fragment, query)
+		}
+	}
+	if got := len(args); got != 3 {
+		t.Fatalf("len(findingEvidenceListQuery().args) = %d, want 3", got)
+	}
+	if got := args[0]; got != "tenant-okta-audit" {
+		t.Fatalf("findingEvidenceListQuery().args[0] = %#v, want first runtime id", got)
+	}
+	if got := args[1]; got != "tenant-github" {
+		t.Fatalf("findingEvidenceListQuery().args[1] = %#v, want second runtime id", got)
+	}
+}
+
 func TestFindingEvidenceUpsertPreservesCreatedAtOnConflict(t *testing.T) {
 	query := findingEvidenceUpsertSQL()
 	if strings.Contains(query, "created_at = EXCLUDED.created_at") {

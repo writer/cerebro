@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"testing"
 	"time"
 
@@ -15,32 +16,34 @@ import (
 )
 
 func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
-	now := time.Date(2026, 5, 9, 12, 0, 0, 0, time.UTC)
+	now := time.Now().UTC().Truncate(time.Second)
 	store := &stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {
-				Id:           "writer-okta-audit",
+			"tenant-okta-audit": {
+				Id:           "tenant-okta-audit",
 				SourceId:     "okta",
-				TenantId:     "writer",
+				TenantId:     "tenant-a",
 				LastSyncedAt: timestamppb.New(now.Add(-30 * time.Minute)),
+				Checkpoint:   &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now.Add(-30 * time.Minute))},
 			},
-			"writer-github": {
-				Id:           "writer-github",
+			"tenant-github": {
+				Id:           "tenant-github",
 				SourceId:     "github",
-				TenantId:     "writer",
-				LastSyncedAt: timestamppb.New(now.Add(-48 * time.Hour)),
+				TenantId:     "tenant-a",
+				LastSyncedAt: timestamppb.New(now.Add(-30 * time.Minute)),
+				Checkpoint:   &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now.Add(-48 * time.Hour))},
 			},
 		},
 		findings: map[string]*ports.FindingRecord{
 			"finding-high": {
 				ID:           "finding-high",
-				TenantID:     "writer",
-				RuntimeID:    "writer-okta-audit",
+				TenantID:     "tenant-a",
+				RuntimeID:    "tenant-okta-audit",
 				RuleID:       "identity-api-token-or-oauth-app-created",
 				Title:        "Identity API token created",
 				Severity:     "HIGH",
 				Status:       "open",
-				ResourceURNs: []string{"urn:cerebro:writer:okta_user:00u1"},
+				ResourceURNs: []string{"urn:cerebro:tenant-a:okta_user:00u1"},
 				ControlRefs: []ports.FindingControlRef{{
 					FrameworkName: "SOC 2",
 					ControlID:     "CC6.1",
@@ -50,19 +53,19 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 			},
 			"finding-critical": {
 				ID:             "finding-critical",
-				TenantID:       "writer",
-				RuntimeID:      "writer-github",
+				TenantID:       "tenant-a",
+				RuntimeID:      "tenant-github",
 				RuleID:         "github-dependabot-critical",
 				Title:          "Critical dependency exposure",
 				Severity:       "CRITICAL",
 				Status:         "open",
-				ResourceURNs:   []string{"urn:cerebro:writer:github_repository:writer/app"},
+				ResourceURNs:   []string{"urn:cerebro:tenant-a:github_repository:tenant-a/app"},
 				LastObservedAt: now.Add(-time.Hour),
 			},
 			"finding-resolved": {
 				ID:             "finding-resolved",
-				TenantID:       "writer",
-				RuntimeID:      "writer-okta-audit",
+				TenantID:       "tenant-a",
+				RuntimeID:      "tenant-okta-audit",
 				Title:          "Resolved finding",
 				Severity:       "LOW",
 				Status:         "resolved",
@@ -72,12 +75,12 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 		findingEvidence: map[string]*cerebrov1.FindingEvidence{
 			"evidence-1": {
 				Id:            "evidence-1",
-				RuntimeId:     "writer-okta-audit",
+				RuntimeId:     "tenant-okta-audit",
 				RuleId:        "identity-api-token-or-oauth-app-created",
 				FindingId:     "finding-high",
 				RunId:         "run-1",
 				EventIds:      []string{"event-1"},
-				GraphRootUrns: []string{"urn:cerebro:writer:okta_user:00u1"},
+				GraphRootUrns: []string{"urn:cerebro:tenant-a:okta_user:00u1"},
 				CreatedAt:     timestamppb.New(now),
 			},
 		},
@@ -86,7 +89,7 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	resp, err := server.Client().Get(server.URL + "/grc/dashboard?tenant_id=writer")
+	resp, err := server.Client().Get(server.URL + "/grc/dashboard?tenant_id=tenant-a")
 	if err != nil {
 		t.Fatalf("GET /grc/dashboard error = %v", err)
 	}
@@ -121,6 +124,145 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 	}
 	if len(payload.Connectors) != 2 {
 		t.Fatalf("connectors len = %d, want 2", len(payload.Connectors))
+	}
+	if payload.Summary.StaleConnectors != 1 {
+		t.Fatalf("stale connectors = %d, want 1", payload.Summary.StaleConnectors)
+	}
+	if payload.Connectors[0].CheckpointWatermark == nil && payload.Connectors[1].CheckpointWatermark == nil {
+		t.Fatalf("connector checkpoint watermarks were not surfaced")
+	}
+}
+
+func TestGRCDashboardSummaryUsesUnpaginatedAggregates(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"tenant-okta-audit": {
+				Id:           "tenant-okta-audit",
+				SourceId:     "okta",
+				TenantId:     "tenant-a",
+				LastSyncedAt: timestamppb.New(now),
+				Checkpoint:   &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now)},
+			},
+		},
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:             "finding-1",
+				TenantID:       "tenant-a",
+				RuntimeID:      "tenant-okta-audit",
+				Title:          "Finding 1",
+				Severity:       "HIGH",
+				Status:         "open",
+				LastObservedAt: now.Add(-time.Minute),
+			},
+			"finding-2": {
+				ID:             "finding-2",
+				TenantID:       "tenant-a",
+				RuntimeID:      "tenant-okta-audit",
+				Title:          "Finding 2",
+				Severity:       "CRITICAL",
+				Status:         "open",
+				LastObservedAt: now.Add(-2 * time.Minute),
+			},
+			"finding-3": {
+				ID:             "finding-3",
+				TenantID:       "tenant-a",
+				RuntimeID:      "tenant-okta-audit",
+				Title:          "Finding 3",
+				Severity:       "HIGH",
+				Status:         "open",
+				LastObservedAt: now.Add(-3 * time.Minute),
+			},
+		},
+		findingEvidence: map[string]*cerebrov1.FindingEvidence{
+			"evidence-1": {Id: "evidence-1", RuntimeId: "tenant-okta-audit", FindingId: "finding-1", CreatedAt: timestamppb.New(now)},
+			"evidence-2": {Id: "evidence-2", RuntimeId: "tenant-okta-audit", FindingId: "finding-2", CreatedAt: timestamppb.New(now)},
+		},
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/grc/dashboard?tenant_id=tenant-a&limit=1")
+	if err != nil {
+		t.Fatalf("GET /grc/dashboard error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /grc/dashboard status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var payload grcDashboardResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode /grc/dashboard: %v", err)
+	}
+	if len(payload.Findings) != 1 {
+		t.Fatalf("findings len = %d, want paginated row count 1", len(payload.Findings))
+	}
+	if payload.Summary.OpenFindings != 3 {
+		t.Fatalf("summary open findings = %d, want unpaginated total 3", payload.Summary.OpenFindings)
+	}
+	if payload.Summary.CriticalFindings != 1 || payload.Summary.HighFindings != 2 {
+		t.Fatalf("summary severities = critical %d high %d, want 1/2", payload.Summary.CriticalFindings, payload.Summary.HighFindings)
+	}
+	if payload.Summary.EvidenceItems != 2 {
+		t.Fatalf("summary evidence items = %d, want unpaginated total 2", payload.Summary.EvidenceItems)
+	}
+}
+
+func TestGRCDashboardBatchesRuntimeStoreQueries(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"tenant-github": {
+				Id:         "tenant-github",
+				SourceId:   "github",
+				TenantId:   "tenant-a",
+				Checkpoint: &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now)},
+			},
+			"tenant-okta-audit": {
+				Id:         "tenant-okta-audit",
+				SourceId:   "okta",
+				TenantId:   "tenant-a",
+				Checkpoint: &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now)},
+			},
+			"tenant-sentinelone": {
+				Id:         "tenant-sentinelone",
+				SourceId:   "sentinelone",
+				TenantId:   "tenant-a",
+				Checkpoint: &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now)},
+			},
+		},
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/grc/dashboard?tenant_id=tenant-a&limit=100")
+	if err != nil {
+		t.Fatalf("GET /grc/dashboard error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /grc/dashboard status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	expectedRuntimeIDs := []string{"tenant-github", "tenant-okta-audit", "tenant-sentinelone"}
+	if got := len(store.findingListRequests); got != 1 {
+		t.Fatalf("ListFindings calls = %d, want 1", got)
+	}
+	if !reflect.DeepEqual(store.findingListRequests[0].RuntimeIDs, expectedRuntimeIDs) {
+		t.Fatalf("ListFindings runtime ids = %#v, want %#v", store.findingListRequests[0].RuntimeIDs, expectedRuntimeIDs)
+	}
+	if got := len(store.findingSummaryRequests); got != 1 {
+		t.Fatalf("SummarizeFindings calls = %d, want 1", got)
+	}
+	if got := len(store.findingEvidenceListRequests); got != 1 {
+		t.Fatalf("ListFindingEvidence calls = %d, want 1", got)
+	}
+	if !reflect.DeepEqual(store.findingEvidenceListRequests[0].RuntimeIDs, expectedRuntimeIDs) {
+		t.Fatalf("ListFindingEvidence runtime ids = %#v, want %#v", store.findingEvidenceListRequests[0].RuntimeIDs, expectedRuntimeIDs)
+	}
+	if got := len(store.findingEvidenceCountRequests); got != 1 {
+		t.Fatalf("CountFindingEvidence calls = %d, want 1", got)
 	}
 }
 

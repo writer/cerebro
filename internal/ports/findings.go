@@ -69,6 +69,7 @@ type FindingRecord struct {
 type ListFindingsRequest struct {
 	TenantID    string
 	RuntimeID   string
+	RuntimeIDs  []string
 	FindingID   string
 	RuleID      string
 	Severity    string
@@ -77,6 +78,17 @@ type ListFindingsRequest struct {
 	EventID     string
 	PolicyID    string
 	Limit       uint32
+}
+
+// FindingSummary captures aggregate counts for one finding query without applying
+// pagination limits intended for UI rows.
+type FindingSummary struct {
+	OpenFindings     int
+	CriticalFindings int
+	HighFindings     int
+	OverdueFindings  int
+	Unassigned       int
+	ControlsFailing  int
 }
 
 // ErrFindingEvaluationRunNotFound indicates that a persisted finding evaluation run does not exist.
@@ -131,6 +143,7 @@ type ListFindingEvaluationRunsRequest struct {
 // ListFindingEvidenceRequest scopes one finding evidence query.
 type ListFindingEvidenceRequest struct {
 	RuntimeID    string
+	RuntimeIDs   []string
 	FindingID    string
 	RunID        string
 	RuleID       string

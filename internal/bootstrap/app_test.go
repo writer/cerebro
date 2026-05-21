@@ -554,8 +554,12 @@ type stubRuntimeStore struct {
 	claimListRequest                ports.ListClaimsRequest
 	findings                        map[string]*ports.FindingRecord
 	findingListRequest              ports.ListFindingsRequest
+	findingListRequests             []ports.ListFindingsRequest
+	findingSummaryRequests          []ports.ListFindingsRequest
 	findingEvidence                 map[string]*cerebrov1.FindingEvidence
 	findingEvidenceListRequest      ports.ListFindingEvidenceRequest
+	findingEvidenceListRequests     []ports.ListFindingEvidenceRequest
+	findingEvidenceCountRequests    []ports.ListFindingEvidenceRequest
 	findingEvaluationRuns           map[string]*cerebrov1.FindingEvaluationRun
 	findingEvaluationRunListRequest ports.ListFindingEvaluationRunsRequest
 	reportRuns                      map[string]*cerebrov1.ReportRun
@@ -719,6 +723,7 @@ func (s *stubRuntimeStore) ListFindings(_ context.Context, request ports.ListFin
 		return nil, s.err
 	}
 	s.findingListRequest = request
+	s.findingListRequests = append(s.findingListRequests, request)
 	findings := []*ports.FindingRecord{}
 	for _, finding := range s.findings {
 		if !findingMatches(request, finding) {
@@ -744,6 +749,54 @@ func (s *stubRuntimeStore) ListFindings(_ context.Context, request ports.ListFin
 		findings = findings[:int(request.Limit)]
 	}
 	return findings, nil
+}
+
+func (s *stubRuntimeStore) SummarizeFindings(_ context.Context, request ports.ListFindingsRequest) (ports.FindingSummary, error) {
+	if s.err != nil {
+		return ports.FindingSummary{}, s.err
+	}
+	s.findingSummaryRequests = append(s.findingSummaryRequests, request)
+	var summary ports.FindingSummary
+	controls := map[string]struct{}{}
+	now := time.Now().UTC()
+	for _, finding := range s.findings {
+		if !findingMatches(request, finding) {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(finding.Status), "open") {
+			continue
+		}
+		summary.OpenFindings++
+		if strings.EqualFold(strings.TrimSpace(finding.Severity), "critical") {
+			summary.CriticalFindings++
+		}
+		if strings.EqualFold(strings.TrimSpace(finding.Severity), "high") {
+			summary.HighFindings++
+		}
+		if !finding.DueAt.IsZero() && now.After(finding.DueAt.UTC()) {
+			summary.OverdueFindings++
+		}
+		if strings.TrimSpace(finding.Assignee) == "" {
+			summary.Unassigned++
+		}
+		if len(finding.ControlRefs) == 0 {
+			controls["Unmapped\x00Needs mapping"] = struct{}{}
+			continue
+		}
+		for _, ref := range finding.ControlRefs {
+			framework := strings.TrimSpace(ref.FrameworkName)
+			controlID := strings.TrimSpace(ref.ControlID)
+			if framework == "" {
+				framework = "Unmapped"
+			}
+			if controlID == "" {
+				controlID = "Needs mapping"
+			}
+			controls[framework+"\x00"+controlID] = struct{}{}
+		}
+	}
+	summary.ControlsFailing = len(controls)
+	return summary, nil
 }
 
 func (s *stubRuntimeStore) UpdateFindingStatus(_ context.Context, request ports.FindingStatusUpdate) (*ports.FindingRecord, error) {
@@ -857,6 +910,7 @@ func (s *stubRuntimeStore) ListFindingEvidence(_ context.Context, request ports.
 		return nil, s.err
 	}
 	s.findingEvidenceListRequest = request
+	s.findingEvidenceListRequests = append(s.findingEvidenceListRequests, request)
 	evidence := []*cerebrov1.FindingEvidence{}
 	for _, record := range s.findingEvidence {
 		if !findingEvidenceMatches(request, record) {
@@ -878,6 +932,20 @@ func (s *stubRuntimeStore) ListFindingEvidence(_ context.Context, request ports.
 		evidence = evidence[:int(request.Limit)]
 	}
 	return evidence, nil
+}
+
+func (s *stubRuntimeStore) CountFindingEvidence(_ context.Context, request ports.ListFindingEvidenceRequest) (int, error) {
+	if s.err != nil {
+		return 0, s.err
+	}
+	s.findingEvidenceCountRequests = append(s.findingEvidenceCountRequests, request)
+	count := 0
+	for _, record := range s.findingEvidence {
+		if findingEvidenceMatches(request, record) {
+			count++
+		}
+	}
+	return count, nil
 }
 
 func (s *stubRuntimeStore) PutFindingEvaluationRun(_ context.Context, run *cerebrov1.FindingEvaluationRun) error {
@@ -4624,7 +4692,10 @@ func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRec
 	if request.TenantID != "" && strings.TrimSpace(finding.TenantID) != strings.TrimSpace(request.TenantID) {
 		return false
 	}
-	if strings.TrimSpace(finding.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+	if request.RuntimeID != "" && strings.TrimSpace(finding.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+		return false
+	}
+	if len(request.RuntimeIDs) > 0 && !containsTrimmed(request.RuntimeIDs, finding.RuntimeID) {
 		return false
 	}
 	if request.FindingID != "" && strings.TrimSpace(finding.ID) != strings.TrimSpace(request.FindingID) {
@@ -4743,7 +4814,13 @@ func findingEvidenceMatches(request ports.ListFindingEvidenceRequest, evidence *
 	if evidence == nil {
 		return false
 	}
-	if strings.TrimSpace(evidence.GetRuntimeId()) != strings.TrimSpace(request.RuntimeID) {
+	if request.RuntimeID != "" && strings.TrimSpace(evidence.GetRuntimeId()) != strings.TrimSpace(request.RuntimeID) {
+		return false
+	}
+	if len(request.RuntimeIDs) > 0 && !containsTrimmed(request.RuntimeIDs, evidence.GetRuntimeId()) {
+		return false
+	}
+	if request.RuntimeID == "" && len(request.RuntimeIDs) == 0 {
 		return false
 	}
 	if request.FindingID != "" && strings.TrimSpace(evidence.GetFindingId()) != strings.TrimSpace(request.FindingID) {

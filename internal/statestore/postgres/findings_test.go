@@ -181,6 +181,37 @@ func TestFindingListQueryAcceptsTenantAndRuleWithoutRuntime(t *testing.T) {
 	}
 }
 
+func TestFindingListQueryAcceptsRuntimeIDSet(t *testing.T) {
+	query, args, err := findingListQuery(ports.ListFindingsRequest{
+		TenantID:   "writer",
+		RuntimeIDs: []string{"tenant-okta-audit", "tenant-github", "tenant-okta-audit"},
+		Status:     "open",
+		Limit:      100,
+	})
+	if err != nil {
+		t.Fatalf("findingListQuery() error = %v", err)
+	}
+	for _, fragment := range []string{
+		"tenant_id = $1",
+		"runtime_id IN ($2, $3)",
+		"status = $4",
+		"LIMIT $5",
+	} {
+		if !strings.Contains(query, fragment) {
+			t.Fatalf("findingListQuery() query missing %q: %s", fragment, query)
+		}
+	}
+	if got := len(args); got != 5 {
+		t.Fatalf("len(findingListQuery().args) = %d, want 5", got)
+	}
+	if got := args[1]; got != "tenant-okta-audit" {
+		t.Fatalf("findingListQuery().args[1] = %#v, want first runtime id", got)
+	}
+	if got := args[2]; got != "tenant-github" {
+		t.Fatalf("findingListQuery().args[2] = %#v, want second runtime id", got)
+	}
+}
+
 func TestFindingListQueryIncludesOptionalFilters(t *testing.T) {
 	query, args, err := findingListQuery(ports.ListFindingsRequest{
 		TenantID:    "writer",
