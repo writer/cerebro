@@ -90,11 +90,21 @@ func (p cleanupRecordProjector) ProjectCleanupRequests(event *cerebrov1.EventEnv
 	return p.requests(event)
 }
 
+type retractionProjector struct {
+	recordProjectorFunc
+	retractions []*ports.ProjectedLink
+}
+
+func (p retractionProjector) ProjectRetractions(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLink, error) {
+	return p.retractions, nil
+}
+
 type recordingProjectionGraphStore struct {
 	entities        map[string]*ports.ProjectedEntity
 	links           map[string]*ports.ProjectedLink
 	upsertLinkErr   error
 	deletedEntities map[string]struct{}
+	deletedLinks    map[string]*ports.ProjectedLink
 	cleanupRequests []ports.ProjectionCleanupRequest
 }
 
@@ -166,6 +176,21 @@ func (s *recordingProjectionGraphStore) DeleteProjectedEntity(_ context.Context,
 		if link.FromURN == urn || link.ToURN == urn {
 			delete(s.links, key)
 		}
+	}
+	return nil
+}
+
+func (s *recordingProjectionGraphStore) DeleteProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
+	if link == nil {
+		return nil
+	}
+	if s.deletedLinks == nil {
+		s.deletedLinks = map[string]*ports.ProjectedLink{}
+	}
+	key := link.FromURN + "|" + link.Relation + "|" + link.ToURN
+	s.deletedLinks[key] = link
+	if s.links != nil {
+		delete(s.links, key)
 	}
 	return nil
 }
@@ -616,6 +641,43 @@ func TestProjectResponseCoalescedRunsCleanupRequestsUntilExhausted(t *testing.T)
 	}
 	if len(store.entities) != 0 {
 		t.Fatalf("store retained %d cleanup entities", len(store.entities))
+	}
+}
+
+func TestProjectResponseCoalescedDeletesProjectedRetractions(t *testing.T) {
+	staleLink := &ports.ProjectedLink{
+		TenantID: "writer",
+		SourceID: "kolide",
+		FromURN:  "urn:cerebro:writer:kolide_device:device-1",
+		Relation: "owned_by",
+		ToURN:    "urn:cerebro:writer:identity:login:user-1",
+	}
+	key := staleLink.FromURN + "|" + staleLink.Relation + "|" + staleLink.ToURN
+	store := &recordingProjectionGraphStore{links: map[string]*ports.ProjectedLink{key: staleLink}}
+	service := &Service{graphStore: store}
+	projector := retractionProjector{
+		recordProjectorFunc: func(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+			return nil, nil, nil
+		},
+		retractions: []*ports.ProjectedLink{staleLink},
+	}
+
+	_, err := service.projectResponseCoalesced(context.Background(), sourceRequest{
+		SourceID:  "kolide",
+		RuntimeID: "kolide-runtime",
+		TenantID:  "writer",
+	}, &cerebrov1.ReadSourceResponse{Events: []*cerebrov1.EventEnvelope{{
+		Id:       "kolide-device",
+		SourceId: "kolide",
+	}}}, projector, nil)
+	if err != nil {
+		t.Fatalf("projectResponseCoalesced() error = %v", err)
+	}
+	if _, ok := store.deletedLinks[key]; !ok {
+		t.Fatalf("stale link was not deleted: %#v", store.deletedLinks)
+	}
+	if _, ok := store.links[key]; ok {
+		t.Fatalf("stale link remains after deletion")
 	}
 }
 

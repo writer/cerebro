@@ -101,6 +101,14 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 		return ports.ProjectionResult{}, err
 	}
 	entitiesDeleted += cleanupDeleted.EntitiesDeleted
+	retractedLinks, err := s.ProjectRetractions(event)
+	if err != nil {
+		return ports.ProjectionResult{}, err
+	}
+	retractedLinksDeleted, err := s.deleteProjectedLinks(ctx, retractedLinks)
+	if err != nil {
+		return ports.ProjectionResult{}, err
+	}
 	for _, entity := range entities {
 		if s.state != nil {
 			if err := s.state.UpsertProjectedEntity(ctx, entity); err != nil {
@@ -129,7 +137,7 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 		EntitiesProjected: uint32(len(entities)),
 		LinksProjected:    uint32(len(links)),
 		EntitiesDeleted:   entitiesDeleted,
-		LinksDeleted:      cleanupDeleted.LinksDeleted,
+		LinksDeleted:      cleanupDeleted.LinksDeleted + retractedLinksDeleted,
 	}, nil
 }
 
@@ -201,6 +209,50 @@ func (s *Service) ProjectCleanupRequests(event *cerebrov1.EventEnvelope) ([]port
 		URNPrefixes: oktaEphemeralOAuthRuntimeResourceURNPrefixes(tenantID),
 		Limit:       1000,
 	}}, nil
+}
+
+// ProjectRetractions returns stale projection links that should be removed for one event.
+func (s *Service) ProjectRetractions(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedLink, error) {
+	if event == nil {
+		return nil, fmt.Errorf("event is required")
+	}
+	links, err := endpointOwnerIDRetractions(event)
+	if err != nil {
+		return nil, err
+	}
+	stampProjectionRuntime(event, nil, links)
+	return links, nil
+}
+
+func (s *Service) deleteProjectedLinks(ctx context.Context, links []*ports.ProjectedLink) (uint32, error) {
+	if len(links) == 0 {
+		return 0, nil
+	}
+	var deleted uint32
+	stateDeleter, stateCanDelete := s.state.(ports.ProjectionLinkDeleter)
+	graphDeleter, graphCanDelete := s.graph.(ports.ProjectionLinkDeleter)
+	for _, link := range links {
+		if link == nil {
+			continue
+		}
+		deletedLink := false
+		if stateCanDelete {
+			if err := stateDeleter.DeleteProjectedLink(ctx, link); err != nil {
+				return deleted, err
+			}
+			deletedLink = true
+		}
+		if graphCanDelete {
+			if err := graphDeleter.DeleteProjectedLink(ctx, link); err != nil {
+				return deleted, err
+			}
+			deletedLink = true
+		}
+		if deletedLink {
+			deleted++
+		}
+	}
+	return deleted, nil
 }
 
 func (s *Service) deleteProjectedEntities(ctx context.Context, urns []string) (uint32, error) {

@@ -74,6 +74,10 @@ type projectionRecordCleanupRequestProjector interface {
 	ProjectCleanupRequests(*cerebrov1.EventEnvelope) ([]ports.ProjectionCleanupRequest, error)
 }
 
+type projectionRetractionProjector interface {
+	ProjectRetractions(*cerebrov1.EventEnvelope) ([]*ports.ProjectedLink, error)
+}
+
 type pageProjectionResult struct {
 	EventsRead        uint32
 	EntitiesProjected uint32
@@ -516,12 +520,23 @@ func (s *Service) projectResponseCoalesced(ctx context.Context, request sourceRe
 	links := map[string]*ports.ProjectedLink{}
 	cleanupURNs := map[string]struct{}{}
 	cleanupRequests := map[string]ports.ProjectionCleanupRequest{}
+	retractedLinks := map[string]*ports.ProjectedLink{}
+	retractionProjector, canProjectRetractions := projector.(projectionRetractionProjector)
 	result := pageProjectionResult{}
 	for _, event := range response.GetEvents() {
 		ingested := ingestEvent(event, request.TenantID, request.RuntimeID)
 		projectedEntities, projectedLinks, err := projector.ProjectRecords(ingested)
 		if err != nil {
 			return result, fmt.Errorf("project source event %q: %w", event.GetId(), err)
+		}
+		if canProjectRetractions {
+			linksToRetract, err := retractionProjector.ProjectRetractions(ingested)
+			if err != nil {
+				return result, fmt.Errorf("project source event retractions %q: %w", event.GetId(), err)
+			}
+			for _, link := range linksToRetract {
+				mergeProjectedLink(retractedLinks, link)
+			}
 		}
 		for _, entity := range projectedEntities {
 			mergeProjectedEntity(entities, entity)
@@ -573,6 +588,13 @@ func (s *Service) projectResponseCoalesced(ctx context.Context, request sourceRe
 			}
 			if completedCleanupRequests != nil {
 				completedCleanupRequests[key] = struct{}{}
+			}
+		}
+	}
+	if deleter, ok := graphStore.(ports.ProjectionLinkDeleter); ok {
+		for _, key := range sortedMapKeys(retractedLinks) {
+			if err := deleter.DeleteProjectedLink(ctx, retractedLinks[key]); err != nil {
+				return result, fmt.Errorf("delete coalesced projected link %q: %w", key, err)
 			}
 		}
 	}

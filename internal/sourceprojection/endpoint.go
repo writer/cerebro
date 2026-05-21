@@ -199,9 +199,7 @@ func addEndpointOwnerLinks(entities map[string]*ports.ProjectedEntity, links map
 	}
 	for _, identifier := range []string{
 		firstAttribute(attrs, "owner_email"),
-		firstAttribute(attrs, "owner_id"),
 		firstAttribute(attrs, "user_email"),
-		firstAttribute(attrs, "user_id"),
 		firstAttribute(attrs, "primary_email"),
 		firstAttribute(attrs, "assigned_user"),
 	} {
@@ -217,6 +215,71 @@ func addEndpointOwnerLinks(entities map[string]*ports.ProjectedEntity, links map
 				"match_type": "endpoint_owner_identifier",
 			}))
 		}
+	}
+	for _, identifier := range []struct {
+		kind  string
+		value string
+	}{
+		{"owner_id", firstAttribute(attrs, "owner_id")},
+		{"user_id", firstAttribute(attrs, "user_id")},
+	} {
+		identifierType := identifier.kind
+		if normalizedSourceID := normalizeIdentifier(sourceID); normalizedSourceID != "" {
+			identifierType = normalizedSourceID + "_" + identifier.kind
+		}
+		addEndpointIdentifierLink(entities, links, tenantID, sourceID, event, endpointURN, identifierType, identifier.value, "0.75")
+	}
+}
+
+func endpointOwnerIDRetractions(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedLink, error) {
+	profile, correlationOnly, ok := endpointOwnerIDRetractionProfile(event.GetKind())
+	if !ok {
+		return nil, nil
+	}
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, err
+	}
+	attrs := event.GetAttributes()
+	endpointIDKeys := profile.EndpointIDKeys
+	if correlationOnly {
+		endpointIDKeys = endpointCorrelationIDKeys(endpointIDKeys)
+	}
+	endpointURN := projectionURN(tenantID, profile.EndpointKind, firstAttribute(attrs, endpointIDKeys...))
+	if endpointURN == "" {
+		return nil, nil
+	}
+	links := map[string]*ports.ProjectedLink{}
+	for _, raw := range []string{firstAttribute(attrs, "owner_id"), firstAttribute(attrs, "user_id")} {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		identityURN, _ := canonicalIdentityURN(tenantID, raw)
+		if identityURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), endpointURN, identityURN, relationRepresentsIdentity, map[string]string{"event_id": event.GetId(), "retraction": "endpoint_owner_id"}))
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), endpointURN, identityURN, relationOwnedBy, map[string]string{"event_id": event.GetId(), "retraction": "endpoint_owner_id"}))
+		}
+		identifierURNValue, _, _ := identifierURN(tenantID, raw)
+		if identifierURNValue != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), endpointURN, identifierURNValue, relationHasIdentifier, map[string]string{"event_id": event.GetId(), "retraction": "endpoint_owner_id"}))
+		}
+	}
+	_, projectedLinks := entitiesAndLinks(nil, links)
+	return projectedLinks, nil
+}
+
+func endpointOwnerIDRetractionProfile(kind string) (endpointProjectionProfile, bool, bool) {
+	switch strings.TrimSpace(kind) {
+	case "kolide.device", "kolide.user_device":
+		return kolideEndpointProfile, false, true
+	case "kolide.software", "kolide.check":
+		return kolideEndpointProfile, true, true
+	case "kandji.device":
+		return kandjiEndpointProfile, false, true
+	case "kandji.application":
+		return kandjiEndpointProfile, true, true
+	default:
+		return endpointProjectionProfile{}, false, false
 	}
 }
 

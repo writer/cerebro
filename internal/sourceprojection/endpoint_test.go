@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 func TestProjectKolideDeviceLinksOwnerIdentity(t *testing.T) {
@@ -58,10 +59,51 @@ func TestProjectKolideDeviceLinksOwnerIDIdentity(t *testing.T) {
 
 	deviceURN := "urn:cerebro:writer:kolide_device:device-1"
 	identityURN := "urn:cerebro:writer:identity:login:user-1"
-	identifierURN := "urn:cerebro:writer:identifier:login:user-1"
+	identifierURN := "urn:cerebro:writer:endpoint_identifier:kolide_user_id:user-1"
 	assertProjectedLink(t, state, deviceURN, relationHasIdentifier, identifierURN)
-	assertProjectedLink(t, state, deviceURN, relationRepresentsIdentity, identityURN)
-	assertProjectedLink(t, state, deviceURN, relationOwnedBy, identityURN)
+	assertProjectedLinkMissing(t, state, deviceURN, relationRepresentsIdentity, identityURN)
+	assertProjectedLinkMissing(t, state, deviceURN, relationOwnedBy, identityURN)
+}
+
+func TestProjectKolideDeviceOwnerIDRetractsStaleCanonicalOwnerLinks(t *testing.T) {
+	deviceURN := "urn:cerebro:writer:kolide_device:device-1"
+	identityURN := "urn:cerebro:writer:identity:login:user-1"
+	legacyIdentifierURN := "urn:cerebro:writer:identifier:login:user-1"
+	staleLinks := []*ports.ProjectedLink{
+		projectedLink("writer", "kolide", deviceURN, identityURN, relationRepresentsIdentity, nil),
+		projectedLink("writer", "kolide", deviceURN, identityURN, relationOwnedBy, nil),
+		projectedLink("writer", "kolide", deviceURN, legacyIdentifierURN, relationHasIdentifier, nil),
+	}
+	state := &projectionRecorder{links: map[string]*ports.ProjectedLink{}}
+	graph := &projectionRecorder{links: map[string]*ports.ProjectedLink{}}
+	for _, link := range staleLinks {
+		state.links[projectedLinkKey(link)] = cloneProjectedLink(link)
+		graph.links[projectedLinkKey(link)] = cloneProjectedLink(link)
+	}
+	service := New(state, graph)
+
+	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "kolide-device-1",
+		TenantId: "writer",
+		SourceId: "kolide",
+		Kind:     "kolide.device",
+		Attributes: map[string]string{
+			"device_id": "device-1",
+			"user_id":   "user-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if result.LinksDeleted != 3 {
+		t.Fatalf("LinksDeleted = %d, want 3 stale owner-id links", result.LinksDeleted)
+	}
+	for _, recorder := range []*projectionRecorder{state, graph} {
+		assertProjectedLinkMissing(t, recorder, deviceURN, relationRepresentsIdentity, identityURN)
+		assertProjectedLinkMissing(t, recorder, deviceURN, relationOwnedBy, identityURN)
+		assertProjectedLinkMissing(t, recorder, deviceURN, relationHasIdentifier, legacyIdentifierURN)
+	}
+	assertProjectedLink(t, state, deviceURN, relationHasIdentifier, "urn:cerebro:writer:endpoint_identifier:kolide_user_id:user-1")
 }
 
 func TestProjectKolideSoftwareLinksDevicePackageAndCanonicalPackage(t *testing.T) {

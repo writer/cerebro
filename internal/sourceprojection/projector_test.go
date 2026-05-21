@@ -17,6 +17,7 @@ type projectionRecorder struct {
 	entities        map[string]*ports.ProjectedEntity
 	links           map[string]*ports.ProjectedLink
 	deletedEntities map[string]struct{}
+	deletedLinks    map[string]*ports.ProjectedLink
 	cleanupRequests []ports.ProjectionCleanupRequest
 }
 
@@ -56,6 +57,21 @@ func (r *projectionRecorder) DeleteProjectedEntity(_ context.Context, urn string
 		if link.FromURN == urn || link.ToURN == urn {
 			delete(r.links, key)
 		}
+	}
+	return nil
+}
+
+func (r *projectionRecorder) DeleteProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
+	if link == nil {
+		return nil
+	}
+	key := projectedLinkKey(link)
+	if r.deletedLinks == nil {
+		r.deletedLinks = map[string]*ports.ProjectedLink{}
+	}
+	r.deletedLinks[key] = cloneProjectedLink(link)
+	if r.links != nil {
+		delete(r.links, key)
 	}
 	return nil
 }
