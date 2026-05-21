@@ -33,9 +33,6 @@
         "Approved exposure or trust path during a documented change window."
       ],
       "runbook": "Review the exposed resource or trust path, linked principals, scope, and adjacent identity findings.",
-      "required_attributes": [
-        "family"
-      ],
       "fingerprint_fields": [
         "event_id"
       ],
@@ -83,9 +80,6 @@
         "Approved exposure or trust path during a documented change window."
       ],
       "runbook": "Review the exposed resource or trust path, linked principals, scope, and adjacent identity findings.",
-      "required_attributes": [
-        "family"
-      ],
       "fingerprint_fields": [
         "event_id"
       ],
@@ -184,9 +178,6 @@
         "Approved exposure or trust path during a documented change window."
       ],
       "runbook": "Review the exposed resource or trust path, linked principals, scope, and adjacent identity findings.",
-      "required_attributes": [
-        "family"
-      ],
       "fingerprint_fields": [
         "event_id"
       ],
@@ -1620,9 +1611,6 @@
         "Approved identity administration during a documented change window."
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
-      "required_attributes": [
-        "event_type"
-      ],
       "fingerprint_fields": [
         "event_id"
       ],
@@ -1675,9 +1663,6 @@
         "Approved identity administration during a documented change window."
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
-      "required_attributes": [
-        "event_type"
-      ],
       "fingerprint_fields": [
         "event_id"
       ],
@@ -1726,9 +1711,6 @@
         "Approved identity administration during a documented change window."
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
-      "required_attributes": [
-        "event_type"
-      ],
       "fingerprint_fields": [
         "event_id"
       ],
@@ -1777,9 +1759,6 @@
         "Approved identity administration during a documented change window."
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
-      "required_attributes": [
-        "event_type"
-      ],
       "fingerprint_fields": [
         "event_id"
       ],
@@ -1826,9 +1805,6 @@
         "Approved identity administration during a documented change window."
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
-      "required_attributes": [
-        "event_type"
-      ],
       "fingerprint_fields": [
         "event_id"
       ],
@@ -1933,9 +1909,6 @@
         "Approved identity administration during a documented change window."
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
-      "required_attributes": [
-        "event_type"
-      ],
       "fingerprint_fields": [
         "event_id"
       ],
@@ -2083,9 +2056,6 @@
         "Approved identity administration during a documented change window."
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
-      "required_attributes": [
-        "event_type"
-      ],
       "fingerprint_fields": [
         "event_id"
       ],
@@ -2148,9 +2118,6 @@
         "Approved identity administration during a documented change window."
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
-      "required_attributes": [
-        "event_type"
-      ],
       "fingerprint_fields": [
         "event_id"
       ],
@@ -2199,9 +2166,6 @@
         "Approved identity administration during a documented change window."
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
-      "required_attributes": [
-        "event_type"
-      ],
       "fingerprint_fields": [
         "event_id"
       ],
