@@ -44,6 +44,13 @@ func TestOpenAPIContractDescribesCurrentBootstrapSurface(t *testing.T) {
 	if !strings.Contains(endpointFindings, "#/components/schemas/EndpointVulnerabilityFindingsResponse") {
 		t.Fatal("/endpoint-vulnerability-findings must use the endpoint vulnerability response contract")
 	}
+	endpointTenantParam, _, ok := strings.Cut(endpointFindings, "        - name: device_id")
+	if !ok {
+		t.Fatal("/endpoint-vulnerability-findings must document the device_id query parameter")
+	}
+	if !strings.Contains(endpointTenantParam, "        - name: tenant_id\n          in: query\n          required: true") {
+		t.Fatal("/endpoint-vulnerability-findings must require tenant_id in the OpenAPI contract")
+	}
 }
 
 func TestSourceCDKOwnsExternalHTTPClients(t *testing.T) {
