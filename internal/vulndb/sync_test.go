@@ -131,6 +131,14 @@ func TestSyncRunnerLeasesAndCompletesJob(t *testing.T) {
 	}
 }
 
+func TestMemoryStoreRejectsZeroIntervalSyncJob(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	if err := store.PutSyncJob(ctx, SyncJob{ID: "osv", Source: SourceOSV, FeedURL: "osv-feed"}); err == nil {
+		t.Fatal("PutSyncJob() error = nil, want positive interval requirement")
+	}
+}
+
 func TestFileStorePersistsSyncJobRecovery(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "vulndb.json")
@@ -168,5 +176,39 @@ func TestFileStorePersistsSyncJobRecovery(t *testing.T) {
 	}
 	if stats.SyncJobs != 1 {
 		t.Fatalf("stats.SyncJobs = %d, want 1", stats.SyncJobs)
+	}
+}
+
+func TestFileStoreSyncJobLeaseReloadsBeforeAcquire(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "vulndb.json")
+	seed, err := NewFileStore(ctx, path)
+	if err != nil {
+		t.Fatalf("new seed file store: %v", err)
+	}
+	if err := seed.PutSyncJob(ctx, SyncJob{ID: "osv-hourly", Source: SourceOSV, FeedURL: "osv-feed", Interval: time.Hour}); err != nil {
+		t.Fatalf("put sync job: %v", err)
+	}
+	worker1, err := NewFileStore(ctx, path)
+	if err != nil {
+		t.Fatalf("new worker1 store: %v", err)
+	}
+	worker2, err := NewFileStore(ctx, path)
+	if err != nil {
+		t.Fatalf("new worker2 store: %v", err)
+	}
+	acquired, err := worker1.AcquireSyncJobLease(ctx, "osv-hourly", "worker-1", time.Minute)
+	if err != nil {
+		t.Fatalf("worker1 acquire: %v", err)
+	}
+	if !acquired {
+		t.Fatal("expected worker1 to acquire lease")
+	}
+	acquired, err = worker2.AcquireSyncJobLease(ctx, "osv-hourly", "worker-2", time.Minute)
+	if err != nil {
+		t.Fatalf("worker2 acquire: %v", err)
+	}
+	if acquired {
+		t.Fatal("expected worker2 to observe persisted lease and skip acquisition")
 	}
 }

@@ -208,8 +208,8 @@ func parseVulnDBOptions(args []string) (vulnDBOptions, error) {
 			if err != nil {
 				return vulnDBOptions{}, fmt.Errorf("parse interval: %w", err)
 			}
-			if parsed < 0 {
-				return vulnDBOptions{}, usageError("interval must be non-negative")
+			if parsed <= 0 {
+				return vulnDBOptions{}, usageError("interval must be positive")
 			}
 			options.JobInterval = parsed
 		case "lease_ttl":

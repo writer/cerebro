@@ -257,8 +257,8 @@ func (s *MemoryStore) PutSyncJob(ctx context.Context, job SyncJob) error {
 	if job.FeedURL == "" {
 		return fmt.Errorf("sync job feed url is required")
 	}
-	if job.Interval < 0 {
-		return fmt.Errorf("sync job interval must be non-negative")
+	if job.Interval <= 0 {
+		return fmt.Errorf("sync job interval must be positive")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -390,8 +390,8 @@ func (s *Store) PutSyncJob(ctx context.Context, job vulndb.SyncJob) error {
 	if job.FeedURL == "" {
 		return errors.New("sync job feed url is required")
 	}
-	if job.Interval < 0 {
-		return errors.New("sync job interval must be non-negative")
+	if job.Interval <= 0 {
+		return errors.New("sync job interval must be positive")
 	}
 	if err := s.ensureVulnDBTables(ctx); err != nil {
 		return err

@@ -31,6 +31,12 @@ func TestParseVulnDBOptionsSyncJobFields(t *testing.T) {
 	}
 }
 
+func TestParseVulnDBOptionsRejectsZeroInterval(t *testing.T) {
+	if _, err := parseVulnDBOptions([]string{"interval=0s"}); err == nil {
+		t.Fatal("parseVulnDBOptions() error = nil, want positive interval requirement")
+	}
+}
+
 func TestParseVulnDBOptionsQueryFields(t *testing.T) {
 	options, err := parseVulnDBOptions([]string{
 		"id=cve-2026-12345",
