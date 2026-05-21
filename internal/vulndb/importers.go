@@ -41,6 +41,10 @@ func ImportOSV(ctx context.Context, store Store, reader io.Reader) (ImportResult
 	if err := json.Unmarshal(data, &advisories); err == nil {
 		return importOSVAdvisories(ctx, store, advisories)
 	}
+	var advisory osvAdvisory
+	if err := json.Unmarshal(data, &advisory); err == nil && NormalizeIdentifier(advisory.ID) != "" {
+		return importOSVAdvisories(ctx, store, []osvAdvisory{advisory})
+	}
 
 	var result ImportResult
 	scanner := bufio.NewScanner(strings.NewReader(string(data)))
@@ -239,6 +243,12 @@ func ImportNVD(ctx context.Context, store Store, reader io.Reader) (ImportResult
 			return ImportResult{}, err
 		}
 		result.Vulnerabilities++
+		for _, affected := range nvdAffectedPackages(id, item.CVE.Configurations) {
+			if err := store.UpsertAffectedPackage(ctx, affected); err != nil {
+				return ImportResult{}, err
+			}
+			result.AffectedPackages++
+		}
 	}
 	return result, recordSyncSuccess(ctx, store, SourceNVD)
 }
@@ -442,12 +452,13 @@ type nvdVulnerability struct {
 }
 
 type nvdCVE struct {
-	ID           string           `json:"id"`
-	Published    string           `json:"published"`
-	LastModified string           `json:"lastModified"`
-	Descriptions []nvdDescription `json:"descriptions"`
-	Metrics      nvdMetrics       `json:"metrics"`
-	References   []nvdReference   `json:"references"`
+	ID             string             `json:"id"`
+	Published      string             `json:"published"`
+	LastModified   string             `json:"lastModified"`
+	Descriptions   []nvdDescription   `json:"descriptions"`
+	Metrics        nvdMetrics         `json:"metrics"`
+	References     []nvdReference     `json:"references"`
+	Configurations []nvdConfiguration `json:"configurations"`
 }
 
 type nvdDescription struct {
@@ -476,6 +487,25 @@ type nvdCVSSData struct {
 	BaseScore    float64 `json:"baseScore"`
 	BaseSeverity string  `json:"baseSeverity"`
 	VectorString string  `json:"vectorString"`
+}
+
+type nvdConfiguration struct {
+	Nodes []nvdNode `json:"nodes"`
+}
+
+type nvdNode struct {
+	CPEMatch []nvdCPEMatch `json:"cpeMatch"`
+	Children []nvdNode     `json:"children"`
+}
+
+type nvdCPEMatch struct {
+	Vulnerable            bool   `json:"vulnerable"`
+	Criteria              string `json:"criteria"`
+	VersionStartIncluding string `json:"versionStartIncluding"`
+	VersionStartExcluding string `json:"versionStartExcluding"`
+	VersionEndIncluding   string `json:"versionEndIncluding"`
+	VersionEndExcluding   string `json:"versionEndExcluding"`
+	MatchCriteriaID       string `json:"matchCriteriaId"`
 }
 
 func parseTime(value string) time.Time {
@@ -542,6 +572,137 @@ func nvdCVSS(metrics nvdMetrics) (float64, string, string) {
 		return data.BaseScore, strings.TrimSpace(data.BaseSeverity), strings.TrimSpace(data.VectorString)
 	}
 	return 0, "", ""
+}
+
+func nvdAffectedPackages(vulnerabilityID string, configurations []nvdConfiguration) []AffectedPackage {
+	rows := []AffectedPackage{}
+	for _, configuration := range configurations {
+		for _, node := range configuration.Nodes {
+			rows = append(rows, nvdNodeAffectedPackages(vulnerabilityID, node)...)
+		}
+	}
+	return rows
+}
+
+func nvdNodeAffectedPackages(vulnerabilityID string, node nvdNode) []AffectedPackage {
+	rows := make([]AffectedPackage, 0, len(node.CPEMatch))
+	for _, match := range node.CPEMatch {
+		row, ok := nvdCPEAffectedPackage(vulnerabilityID, match)
+		if ok {
+			rows = append(rows, row)
+		}
+	}
+	for _, child := range node.Children {
+		rows = append(rows, nvdNodeAffectedPackages(vulnerabilityID, child)...)
+	}
+	return rows
+}
+
+func nvdCPEAffectedPackage(vulnerabilityID string, match nvdCPEMatch) (AffectedPackage, bool) {
+	if !match.Vulnerable {
+		return AffectedPackage{}, false
+	}
+	cpe, ok := parseCPE23(match.Criteria)
+	if !ok {
+		return AffectedPackage{}, false
+	}
+	row := AffectedPackage{
+		VulnerabilityID: vulnerabilityID,
+		Ecosystem:       cpeEcosystem(cpe.Part),
+		PackageName:     cpePackageName(cpe.Vendor, cpe.Product),
+		RangeType:       "CPE",
+		Introduced:      firstNonEmpty(match.VersionStartIncluding, match.VersionStartExcluding),
+		Fixed:           strings.TrimSpace(match.VersionEndExcluding),
+		LastAffected:    strings.TrimSpace(match.VersionEndIncluding),
+	}
+	if row.Introduced == "" && row.Fixed == "" && row.LastAffected == "" && cpe.Version != "" && cpe.Version != "*" && cpe.Version != "-" {
+		row.VulnerableVersion = cpe.Version
+	}
+	if row.Ecosystem == "" || row.PackageName == "" {
+		return AffectedPackage{}, false
+	}
+	return row, true
+}
+
+type cpe23 struct {
+	Part    string
+	Vendor  string
+	Product string
+	Version string
+}
+
+func parseCPE23(criteria string) (cpe23, bool) {
+	fields := splitCPE23(criteria)
+	if len(fields) < 6 || fields[0] != "cpe" || fields[1] != "2.3" {
+		return cpe23{}, false
+	}
+	return cpe23{
+		Part:    strings.TrimSpace(fields[2]),
+		Vendor:  cleanCPEComponent(fields[3]),
+		Product: cleanCPEComponent(fields[4]),
+		Version: cleanCPEComponent(fields[5]),
+	}, true
+}
+
+func splitCPE23(value string) []string {
+	var fields []string
+	var current strings.Builder
+	escaped := false
+	for _, r := range strings.TrimSpace(value) {
+		if escaped {
+			current.WriteRune(r)
+			escaped = false
+			continue
+		}
+		if r == '\\' {
+			escaped = true
+			continue
+		}
+		if r == ':' {
+			fields = append(fields, current.String())
+			current.Reset()
+			continue
+		}
+		current.WriteRune(r)
+	}
+	if escaped {
+		current.WriteRune('\\')
+	}
+	fields = append(fields, current.String())
+	return fields
+}
+
+func cleanCPEComponent(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "*" || value == "-" {
+		return ""
+	}
+	return strings.NewReplacer("\\:", ":", "\\_", "_", "\\\\", "\\").Replace(value)
+}
+
+func cpeEcosystem(part string) string {
+	switch strings.ToLower(strings.TrimSpace(part)) {
+	case "a":
+		return "cpe:application"
+	case "o":
+		return "cpe:operating-system"
+	case "h":
+		return "cpe:hardware"
+	default:
+		return ""
+	}
+}
+
+func cpePackageName(vendor string, product string) string {
+	vendor = strings.TrimSpace(vendor)
+	product = strings.TrimSpace(product)
+	if product == "" {
+		return ""
+	}
+	if vendor == "" {
+		return product
+	}
+	return vendor + ":" + product
 }
 
 func csvIndexes(header []string) map[string]int {

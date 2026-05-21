@@ -2,8 +2,10 @@ package vulndb
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -152,6 +154,47 @@ func TestFileStorePersistsSyncStateAndAdvisories(t *testing.T) {
 	}
 }
 
+func TestFileStoreSerializesConcurrentWrites(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "vulndb.json")
+	store, err := NewFileStore(ctx, path)
+	if err != nil {
+		t.Fatalf("new file store: %v", err)
+	}
+	var wg sync.WaitGroup
+	errs := make(chan error, 8)
+	for i := 0; i < 8; i++ {
+		i := i
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 20; j++ {
+				source := fmt.Sprintf("source-%d-%d", i, j)
+				if err := store.PutSyncState(ctx, SyncState{Source: source}); err != nil {
+					errs <- err
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatalf("concurrent write failed: %v", err)
+	}
+	reopened, err := NewFileStore(ctx, path)
+	if err != nil {
+		t.Fatalf("reopen file store: %v", err)
+	}
+	stats, err := reopened.Stats(ctx)
+	if err != nil {
+		t.Fatalf("stats: %v", err)
+	}
+	if stats.SyncSources != 160 {
+		t.Fatalf("stats.SyncSources = %d, want 160", stats.SyncSources)
+	}
+}
+
 func TestImportOSVKEVAndEPSS(t *testing.T) {
 	ctx := context.Background()
 	store := NewMemoryStore()
@@ -198,6 +241,51 @@ func TestImportOSVKEVAndEPSS(t *testing.T) {
 	}
 }
 
+func TestImportOSVSinglePrettyPrintedAdvisory(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	osv := `{
+		"id":"CVE-2026-55555",
+		"summary":"single advisory",
+		"affected":[{
+			"package":{"ecosystem":"PyPI","name":"demo"},
+			"versions":["1.2.3"]
+		}]
+	}`
+	imported, err := ImportOSV(ctx, store, strings.NewReader(osv))
+	if err != nil {
+		t.Fatalf("import osv: %v", err)
+	}
+	if imported.Vulnerabilities != 1 || imported.AffectedPackages != 1 {
+		t.Fatalf("unexpected osv import result: %+v", imported)
+	}
+	matcher, err := NewMatcher(store)
+	if err != nil {
+		t.Fatalf("new matcher: %v", err)
+	}
+	matches, err := matcher.MatchPackage(ctx, PackageQuery{Ecosystem: "pypi", Name: "demo", Version: "1.2.3"})
+	if err != nil {
+		t.Fatalf("match single advisory package: %v", err)
+	}
+	if len(matches) != 1 || matches[0].Vulnerability.ID != "CVE-2026-55555" {
+		t.Fatalf("unexpected matches: %+v", matches)
+	}
+}
+
+func TestImportOSVLargeJSONLAdvisory(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	osv := `{"id":"CVE-2026-55556","summary":"` + strings.Repeat("a", 70*1024) + `"}` + "\n" +
+		`{"id":"CVE-2026-55557","summary":"small"}`
+	imported, err := ImportOSV(ctx, store, strings.NewReader(osv))
+	if err != nil {
+		t.Fatalf("import large osv jsonl: %v", err)
+	}
+	if imported.Vulnerabilities != 2 {
+		t.Fatalf("unexpected osv import result: %+v", imported)
+	}
+}
+
 func TestImportOSVPreservesExistingEnrichment(t *testing.T) {
 	ctx := context.Background()
 	store := NewMemoryStore()
@@ -231,7 +319,20 @@ func TestImportNVD(t *testing.T) {
 				"lastModified":"2026-05-02T00:00:00.000",
 				"descriptions":[{"lang":"en","value":"NVD description"}],
 				"metrics":{"cvssMetricV31":[{"cvssData":{"baseScore":9.8,"baseSeverity":"CRITICAL","vectorString":"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}}]},
-				"references":[{"url":"https://example.com/advisory","source":"nvd","tags":["Vendor Advisory"]}]
+				"references":[{"url":"https://example.com/advisory","source":"nvd","tags":["Vendor Advisory"]}],
+				"configurations":[{
+					"nodes":[{
+						"cpeMatch":[{
+							"vulnerable":true,
+							"criteria":"cpe:2.3:a:openssl:openssl:*:*:*:*:*:*:*:*",
+							"versionStartIncluding":"1.0.1",
+							"versionEndExcluding":"1.0.2"
+						},{
+							"vulnerable":false,
+							"criteria":"cpe:2.3:a:openssl:openssl:3.0.0:*:*:*:*:*:*:*"
+						}]
+					}]
+				}]
 			}
 		}]
 	}`
@@ -239,7 +340,7 @@ func TestImportNVD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("import nvd: %v", err)
 	}
-	if imported.Vulnerabilities != 1 {
+	if imported.Vulnerabilities != 1 || imported.AffectedPackages != 1 {
 		t.Fatalf("unexpected nvd import result: %+v", imported)
 	}
 	vulnerability, ok, err := store.FindVulnerability(ctx, "cve-2026-44444")
@@ -254,6 +355,24 @@ func TestImportNVD(t *testing.T) {
 	}
 	if len(vulnerability.References) != 1 || vulnerability.References[0].Type != "Vendor Advisory" {
 		t.Fatalf("unexpected references: %+v", vulnerability.References)
+	}
+	matcher, err := NewMatcher(store)
+	if err != nil {
+		t.Fatalf("new matcher: %v", err)
+	}
+	matches, err := matcher.MatchPackage(ctx, PackageQuery{Ecosystem: "cpe:application", Name: "openssl:openssl", Version: "1.0.1"})
+	if err != nil {
+		t.Fatalf("match nvd cpe range: %v", err)
+	}
+	if len(matches) != 1 || matches[0].Vulnerability.ID != "CVE-2026-44444" {
+		t.Fatalf("unexpected vulnerable cpe matches: %+v", matches)
+	}
+	matches, err = matcher.MatchPackage(ctx, PackageQuery{Ecosystem: "cpe:application", Name: "openssl:openssl", Version: "1.0.2"})
+	if err != nil {
+		t.Fatalf("match fixed nvd cpe range: %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("expected fixed cpe version to be excluded, got %+v", matches)
 	}
 }
 

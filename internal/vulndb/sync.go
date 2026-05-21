@@ -188,7 +188,15 @@ func (r *SyncRunner) RunDue(ctx context.Context, limit int) (SyncDueJobsResult, 
 	}
 	result := SyncDueJobsResult{Jobs: make([]SyncJobRunResult, 0, len(jobs))}
 	for _, job := range jobs {
-		run, _ := r.RunJob(ctx, job.ID)
+		run, err := r.RunJob(ctx, job.ID)
+		if err != nil {
+			run = SyncJobRunResult{
+				JobID:  strings.TrimSpace(job.ID),
+				Source: strings.TrimSpace(job.Source),
+				Status: "failed",
+				Error:  err.Error(),
+			}
+		}
 		result.Jobs = append(result.Jobs, run)
 	}
 	return result, nil

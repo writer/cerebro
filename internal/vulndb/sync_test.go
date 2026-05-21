@@ -26,6 +26,14 @@ func (failingFeedClient) Open(context.Context, string, bool) (io.ReadCloser, err
 	return nil, errors.New("feed down")
 }
 
+type brokenGetSyncJobStore struct {
+	*MemoryStore
+}
+
+func (s brokenGetSyncJobStore) GetSyncJob(context.Context, string) (SyncJob, bool, error) {
+	return SyncJob{}, false, errors.New("metadata unavailable")
+}
+
 func TestSyncServiceRecordsFailureState(t *testing.T) {
 	ctx := context.Background()
 	store := NewMemoryStore()
@@ -45,6 +53,35 @@ func TestSyncServiceRecordsFailureState(t *testing.T) {
 	}
 	if !strings.Contains(state.LastError, "feed down") || state.LastSyncedAt.IsZero() {
 		t.Fatalf("unexpected failure sync state: %+v", state)
+	}
+}
+
+func TestSyncRunnerRunDueSurfacesJobMetadataErrors(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	if err := store.PutSyncJob(ctx, SyncJob{
+		ID:       "osv-hourly",
+		Source:   SourceOSV,
+		FeedURL:  "osv-feed",
+		Interval: time.Hour,
+	}); err != nil {
+		t.Fatalf("put sync job: %v", err)
+	}
+	runner, err := NewSyncRunner(store, brokenGetSyncJobStore{MemoryStore: store}, func(context.Context, SyncJob) (io.ReadCloser, error) {
+		return io.NopCloser(strings.NewReader(`[]`)), nil
+	})
+	if err != nil {
+		t.Fatalf("new sync runner: %v", err)
+	}
+	result, err := runner.RunDue(ctx, 10)
+	if err != nil {
+		t.Fatalf("run due: %v", err)
+	}
+	if len(result.Jobs) != 1 {
+		t.Fatalf("jobs = %+v, want one failure", result.Jobs)
+	}
+	if result.Jobs[0].JobID != "osv-hourly" || result.Jobs[0].Status != "failed" || !strings.Contains(result.Jobs[0].Error, "metadata unavailable") {
+		t.Fatalf("unexpected job result: %+v", result.Jobs[0])
 	}
 }
 
