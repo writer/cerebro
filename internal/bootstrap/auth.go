@@ -659,6 +659,18 @@ func (w *accessAuditResponseWriter) Write(data []byte) (int, error) {
 	return w.ResponseWriter.Write(data)
 }
 
+func (w *accessAuditResponseWriter) Flush() {
+	if w == nil {
+		return
+	}
+	if w.status == 0 {
+		w.WriteHeader(http.StatusOK)
+	}
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
 func (w *accessAuditResponseWriter) Status() int {
 	if w == nil || w.status == 0 {
 		return http.StatusOK

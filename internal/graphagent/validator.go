@@ -38,6 +38,7 @@ type nodePattern struct {
 
 type subqueryScope struct {
 	outer     map[string]struct{}
+	imports   map[string]struct{}
 	bodyStart int
 	end       int
 }
@@ -149,9 +150,11 @@ func allNodePatternsTenantScoped(query string) bool {
 			if endIndex < 0 {
 				return false
 			}
-			pendingCallImports = cloneScopedVariables(scopedVariables)
+			imports := cloneScopedVariables(scopedVariables)
+			pendingCallImports = imports
 			subqueries = append(subqueries, subqueryScope{
-				outer:     cloneScopedVariables(scopedVariables),
+				outer:     imports,
+				imports:   imports,
 				bodyStart: braceIndex + 1,
 				end:       endIndex,
 			})
@@ -172,10 +175,13 @@ func allNodePatternsTenantScoped(query string) bool {
 		if pendingCallImports != nil && !isWhitespaceOrSubqueryStart(query[i]) {
 			pendingCallImports = nil
 		}
-		if boundary, width := queryPartBoundaryAt(query, i); boundary {
+		if keywordAt(query, i, "UNION") {
 			scopedVariables = map[string]struct{}{}
 			pendingCallImports = nil
-			i += width - 1
+			if len(subqueries) > 0 {
+				pendingCallImports = cloneScopedVariables(subqueries[len(subqueries)-1].imports)
+			}
+			i += len("UNION") - 1
 			continue
 		}
 		pattern, ok := nodePatternAt(query, i, false)
@@ -184,7 +190,7 @@ func allNodePatternsTenantScoped(query string) bool {
 		}
 		sawNode = true
 		if nodePatternHasInlineTenantScope(pattern) {
-			if pattern.variable != "" {
+			if pattern.variable != "" && squareBracketDepthAt(query, i) == 0 {
 				scopedVariables[pattern.variable] = struct{}{}
 			}
 			continue
@@ -319,15 +325,6 @@ func nodeHasEntityLabel(labels string) bool {
 		}
 	}
 	return false
-}
-
-func queryPartBoundaryAt(query string, index int) (bool, int) {
-	for _, keyword := range []string{"UNION"} {
-		if keywordAt(query, index, keyword) {
-			return true, len(keyword)
-		}
-	}
-	return false, 0
 }
 
 func scopedVariablesAfterWith(query string, start int, scopedVariables map[string]struct{}) map[string]struct{} {
@@ -483,6 +480,21 @@ func isWhitespace(value byte) bool {
 	default:
 		return false
 	}
+}
+
+func squareBracketDepthAt(query string, index int) int {
+	depth := 0
+	for i := 0; i < index; i++ {
+		switch query[i] {
+		case '[':
+			depth++
+		case ']':
+			if depth > 0 {
+				depth--
+			}
+		}
+	}
+	return depth
 }
 
 func isIdentifierByte(value byte) bool {

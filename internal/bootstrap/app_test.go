@@ -1959,6 +1959,22 @@ func TestAccessAuditOutcomeClassifiesDownstreamAuthorizationFailures(t *testing.
 	}
 }
 
+func TestAccessAuditResponseWriterPreservesFlush(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	writer := &accessAuditResponseWriter{ResponseWriter: recorder}
+	flusher, ok := any(writer).(http.Flusher)
+	if !ok {
+		t.Fatal("accessAuditResponseWriter does not implement http.Flusher")
+	}
+	flusher.Flush()
+	if !recorder.Flushed {
+		t.Fatal("wrapped recorder was not flushed")
+	}
+	if writer.Status() != http.StatusOK {
+		t.Fatalf("status = %d, want %d", writer.Status(), http.StatusOK)
+	}
+}
+
 func TestAccessAuditConnectProcedureSanitizesUnknownProcedures(t *testing.T) {
 	if got := accessAuditConnectProcedure(cerebrov1connect.BootstrapServiceListSourcesProcedure); got != "cerebro.v1.BootstrapService/ListSources" {
 		t.Fatalf("known connect procedure = %q, want ListSources", got)
