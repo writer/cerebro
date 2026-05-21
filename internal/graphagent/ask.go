@@ -69,29 +69,35 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		Guardrail: graphAgentGuardrail,
 	})
 	if err != nil {
-		return emitErrorAndDone(emit, traceID, started, "llm_draft_failed", err.Error(), false)
+		return fmt.Errorf("%w: draft cypher: %w", ErrRuntimeUnavailable, err)
 	}
 	if draft == nil {
-		return emitErrorAndDone(emit, traceID, started, "llm_draft_empty", "LLM returned no draft", false)
+		return fmt.Errorf("%w: LLM returned no draft", ErrRuntimeUnavailable)
 	}
 	rationale := strings.TrimSpace(draft.Rationale)
 	if rationale == "" {
 		rationale = "Drafting a bounded read-only Cypher query for the requested graph question."
 	}
-	if err := emit(Event{Name: EventRationale, Data: RationaleEvent{Text: rationale}}); err != nil {
-		return err
-	}
 
 	cypher := strings.TrimSpace(draft.Cypher)
 	if cypher == "" {
+		if err := emit(Event{Name: EventRationale, Data: RationaleEvent{Text: rationale}}); err != nil {
+			return err
+		}
 		reason := firstNonEmpty(draft.Refusal, "LLM refused to draft Cypher")
 		return emitRefusal(emit, traceID, started, cypher, reason)
 	}
-	validation, rowLimit := s.validator.validate(ctx, cypher, params)
-	if err := emit(Event{Name: EventCypher, Data: CypherEvent{Cypher: cypher, Validator: validation}}); err != nil {
+	validation, rowLimit, err := s.validator.validate(ctx, cypher, params)
+	if err != nil {
 		return err
 	}
 	if !validation.OK {
+		if err := emit(Event{Name: EventRationale, Data: RationaleEvent{Text: rationale}}); err != nil {
+			return err
+		}
+		if err := emit(Event{Name: EventCypher, Data: CypherEvent{Cypher: cypher, Validator: validation}}); err != nil {
+			return err
+		}
 		return emitRefusal(emit, traceID, started, cypher, validation.Reason)
 	}
 
@@ -102,16 +108,13 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		RowLimit: rowLimit,
 	})
 	if err != nil {
-		return emitErrorAndDone(emit, traceID, started, "cypher_execute_failed", err.Error(), false)
+		return fmt.Errorf("%w: execute cypher: %w", ErrRuntimeUnavailable, err)
 	}
 	rowMaps := cypherRowsToMaps(rows)
 	rowsEvent := RowsEvent{
 		Rows:   rowMaps,
 		Graph:  scopedNeighborhood(ctx, s.store, request.ScopeURN),
 		ExecMS: time.Since(execStarted).Milliseconds(),
-	}
-	if err := emit(Event{Name: EventRows, Data: rowsEvent}); err != nil {
-		return err
 	}
 
 	summary, err := s.llm.Summarize(ctx, SummarizeRequest{
@@ -123,10 +126,22 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		Rows:     rowMaps,
 		History:  history,
 	})
-	if err != nil || strings.TrimSpace(summary) == "" {
+	if err != nil {
+		return fmt.Errorf("%w: summarize graph rows: %w", ErrRuntimeUnavailable, err)
+	}
+	if strings.TrimSpace(summary) == "" {
 		summary = fallbackSummary(rowMaps)
 	}
 	summary = strings.TrimSpace(summary)
+	if err := emit(Event{Name: EventRationale, Data: RationaleEvent{Text: rationale}}); err != nil {
+		return err
+	}
+	if err := emit(Event{Name: EventCypher, Data: CypherEvent{Cypher: cypher, Validator: validation}}); err != nil {
+		return err
+	}
+	if err := emit(Event{Name: EventRows, Data: rowsEvent}); err != nil {
+		return err
+	}
 	if err := emit(Event{Name: EventSummary, Data: SummaryEvent{Markdown: summary, Citations: citationsFor(summary, rowMaps)}}); err != nil {
 		return err
 	}
@@ -165,13 +180,6 @@ func emitRefusal(emit Emitter, traceID string, started time.Time, cypher string,
 		return err
 	}
 	return emit(Event{Name: EventDone, Data: DoneEvent{TraceID: traceID, TotalMS: time.Since(started).Milliseconds(), CypherRefused: true}})
-}
-
-func emitErrorAndDone(emit Emitter, traceID string, started time.Time, code string, message string, refused bool) error {
-	if err := emit(Event{Name: EventError, Data: ErrorEvent{Code: code, Message: message}}); err != nil {
-		return err
-	}
-	return emit(Event{Name: EventDone, Data: DoneEvent{TraceID: traceID, TotalMS: time.Since(started).Milliseconds(), CypherRefused: refused}})
 }
 
 func cypherRowsToMaps(rows []ports.CypherRow) []map[string]any {

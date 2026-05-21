@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,7 +18,7 @@ import (
 
 func TestGRCAskStreamsSSE(t *testing.T) {
 	graphStore := &stubGraphStore{
-		cypherRows: [][]ports.CypherRow{nil, {
+		cypherRows: [][]ports.CypherRow{{
 			{Values: map[string]any{
 				"entity_urn":  "urn:cerebro:example:asset:alpha",
 				"entity_type": "asset",
@@ -83,6 +84,42 @@ func TestGRCAskMissingTenantReturnsBadRequest(t *testing.T) {
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+}
+
+func TestGRCAskDraftFailureReturnsServiceUnavailable(t *testing.T) {
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		GraphStore:    &stubGraphStore{},
+		GraphAgentLLM: &graphagent.StubLLMClient{DraftErr: errors.New("bedrock unavailable")},
+	}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Post(server.URL+"/grc/ask", "application/json", strings.NewReader(`{"tenant_id":"example","question":"hello"}`))
+	if err != nil {
+		t.Fatalf("POST /grc/ask error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusServiceUnavailable)
+	}
+}
+
+func TestGRCAskExplainFailureReturnsServiceUnavailable(t *testing.T) {
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		GraphStore:    &stubGraphStore{err: errors.New("neo4j unavailable")},
+		GraphAgentLLM: graphagent.NewStubLLMClient(),
+	}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Post(server.URL+"/grc/ask", "application/json", strings.NewReader(`{"tenant_id":"example","question":"hello"}`))
+	if err != nil {
+		t.Fatalf("POST /grc/ask error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusServiceUnavailable)
 	}
 }
 

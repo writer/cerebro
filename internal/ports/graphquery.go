@@ -42,6 +42,18 @@ type CypherQueryRequest struct {
 	RowLimit int
 }
 
+// CypherPlan is a normalized read query execution plan returned by EXPLAIN.
+type CypherPlan struct {
+	Root *CypherPlanNode
+}
+
+// CypherPlanNode is one operator in a normalized Cypher execution plan tree.
+type CypherPlanNode struct {
+	Operator  string
+	Arguments map[string]any
+	Children  []CypherPlanNode
+}
+
 // MaxCypherQueryRows caps the number of rows the graph store will return for one read query.
 const MaxCypherQueryRows = 3000
 

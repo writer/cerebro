@@ -1170,6 +1170,7 @@ type stubGraphStore struct {
 	neighborhoodRootURN string
 	neighborhoodLimit   int
 	ingestRunListFilter graphstore.IngestRunFilter
+	cypherPlan          *ports.CypherPlan
 	cypherRows          [][]ports.CypherRow
 	cypherRequests      []ports.CypherQueryRequest
 }
@@ -1238,6 +1239,18 @@ func (s *stubGraphStore) ExecuteReadCypher(_ context.Context, request ports.Cyph
 		return rows, nil
 	}
 	return nil, nil
+}
+
+func (s *stubGraphStore) ExplainReadCypher(_ context.Context, request ports.CypherQueryRequest) (*ports.CypherPlan, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	s.cypherRequests = append(s.cypherRequests, ports.CypherQueryRequest{
+		Query:    "EXPLAIN " + request.Query,
+		Params:   request.Params,
+		RowLimit: request.RowLimit,
+	})
+	return s.cypherPlan, nil
 }
 
 func (s *stubGraphStore) GetIngestCheckpoint(_ context.Context, id string) (graphstore.IngestCheckpoint, bool, error) {
@@ -2101,6 +2114,13 @@ func TestScopedCosmoCredentialAllowsOnlyReadRoutes(t *testing.T) {
 		if resp.StatusCode != http.StatusForbidden {
 			t.Fatalf("%s %s status = %d, want %d", tt.method, tt.path, resp.StatusCode, http.StatusForbidden)
 		}
+	}
+}
+
+func TestScopeForHTTPRequestIncludesGRCAskPost(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/grc/ask", nil)
+	if got := scopeForHTTPRequest(req); got != scopeCosmoSecurityRead {
+		t.Fatalf("scopeForHTTPRequest(POST /grc/ask) = %q, want %q", got, scopeCosmoSecurityRead)
 	}
 }
 

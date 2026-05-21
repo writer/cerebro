@@ -44,12 +44,20 @@ func TestValidatorRejectsUnsafeCypher(t *testing.T) {
 			cypher: `MATCH (e:Entity) RETURN e.urn LIMIT 25`,
 			reason: "tenant_id",
 		},
+		{
+			name:   "unscoped second entity",
+			cypher: `MATCH (a:Entity {tenant_id: $tenant_id}) MATCH (b:Entity) RETURN b.urn LIMIT 25`,
+			reason: "every Entity",
+		},
 	}
 
 	validator := NewValidator(nil, ValidatorOptions{})
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, _ := validator.validate(context.Background(), tt.cypher, map[string]any{"tenant_id": "example"})
+			result, _, err := validator.validate(context.Background(), tt.cypher, map[string]any{"tenant_id": "example"})
+			if err != nil {
+				t.Fatalf("Validate() error = %v", err)
+			}
 			if result.OK {
 				t.Fatalf("Validate() ok = true, want false")
 			}
@@ -63,29 +71,36 @@ func TestValidatorRejectsUnsafeCypher(t *testing.T) {
 func TestValidatorAcceptsBoundedTenantScopedRead(t *testing.T) {
 	store := &validatorStore{}
 	validator := NewValidator(store, ValidatorOptions{Explain: true})
-	result, limit := validator.validate(context.Background(), `MATCH (e:Entity {tenant_id: $tenant_id})
+	result, limit, err := validator.validate(context.Background(), `MATCH (e:Entity {tenant_id: $tenant_id})
 RETURN e.urn AS urn
 ORDER BY urn
 LIMIT 25`, map[string]any{"tenant_id": "example"})
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
 	if !result.OK {
 		t.Fatalf("Validate() = %#v, want ok", result)
 	}
 	if limit != 25 {
 		t.Fatalf("limit = %d, want 25", limit)
 	}
-	if len(store.requests) != 1 || !strings.HasPrefix(store.requests[0].Query, "EXPLAIN MATCH") {
+	if len(store.requests) != 1 || !strings.HasPrefix(store.requests[0].Query, "MATCH") {
 		t.Fatalf("EXPLAIN requests = %#v", store.requests)
 	}
 }
 
 func TestValidatorRejectsAllNodesScanOverLimit(t *testing.T) {
-	store := &validatorStore{rows: []ports.CypherRow{{
-		Values: map[string]any{"plan": "AllNodesScan estimatedRows=2000001"},
+	store := &validatorStore{plan: &ports.CypherPlan{Root: &ports.CypherPlanNode{
+		Operator:  "AllNodesScan",
+		Arguments: map[string]any{"EstimatedRows": 2_000_001},
 	}}}
 	validator := NewValidator(store, ValidatorOptions{Explain: true, AllNodesScanLimit: 1_000_000})
-	result, _ := validator.validate(context.Background(), `MATCH (e:Entity {tenant_id: $tenant_id})
+	result, _, err := validator.validate(context.Background(), `MATCH (e:Entity {tenant_id: $tenant_id})
 RETURN e.urn AS urn
 LIMIT 25`, map[string]any{"tenant_id": "example"})
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
 	if result.OK {
 		t.Fatalf("Validate() ok = true, want false")
 	}
@@ -97,6 +112,7 @@ LIMIT 25`, map[string]any{"tenant_id": "example"})
 type validatorStore struct {
 	requests []ports.CypherQueryRequest
 	rows     []ports.CypherRow
+	plan     *ports.CypherPlan
 	err      error
 }
 
@@ -116,6 +132,14 @@ func (s *validatorStore) ExecuteReadCypher(_ context.Context, request ports.Cyph
 		return nil, s.err
 	}
 	return s.rows, nil
+}
+
+func (s *validatorStore) ExplainReadCypher(_ context.Context, request ports.CypherQueryRequest) (*ports.CypherPlan, error) {
+	s.requests = append(s.requests, request)
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.plan, nil
 }
 
 var _ ports.GraphQueryStore = (*validatorStore)(nil)

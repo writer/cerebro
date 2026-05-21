@@ -386,10 +386,13 @@ func isConnectProcedurePath(path string) bool {
 }
 
 func scopeForHTTPRequest(r *http.Request) string {
+	path := strings.TrimSpace(r.URL.Path)
+	if r.Method == http.MethodPost && path == "/grc/ask" {
+		return scopeCosmoSecurityRead
+	}
 	if r.Method != http.MethodGet {
 		return ""
 	}
-	path := strings.TrimSpace(r.URL.Path)
 	switch {
 	case path == "/sources", path == "/reports", path == "/finding-rules":
 		return scopeCosmoSecurityRead
