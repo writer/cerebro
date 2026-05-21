@@ -78,6 +78,12 @@ message CheckHealthResponse {
   string status = 1;
   google.protobuf.Timestamp checked_at = 2;
   repeated ComponentStatus components = 3;
+  string service_name = 4;
+  string version = 5;
+  string commit = 6;
+  string build_date = 7;
+  string api_version = 8;
+  string image_tag = 9;
 }
 
 // ReportParameter describes one supported report input parameter.

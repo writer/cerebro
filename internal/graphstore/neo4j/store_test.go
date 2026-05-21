@@ -163,6 +163,13 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 	if counts.Nodes != 3 || counts.Relations != 2 {
 		t.Fatalf("Counts() = %#v, want 3 nodes and 2 relations", counts)
 	}
+	relationCounts, err := store.RelationCounts(ctx, []string{"maintains", "tracks", "missing"})
+	if err != nil {
+		t.Fatalf("RelationCounts() error = %v", err)
+	}
+	if relationCounts["maintains"] != 1 || relationCounts["tracks"] != 1 || relationCounts["missing"] != 0 {
+		t.Fatalf("RelationCounts() = %#v, want maintains=1 tracks=1 missing=0", relationCounts)
+	}
 	neighborhood, err := store.GetEntityNeighborhood(ctx, user.URN, 5)
 	if err != nil {
 		t.Fatalf("GetEntityNeighborhood() error = %v", err)

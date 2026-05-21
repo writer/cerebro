@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -165,6 +166,23 @@ func TestParseGraphNeighborhoodArgs(t *testing.T) {
 	}
 	if limit != 7 {
 		t.Fatalf("limit = %d, want 7", limit)
+	}
+}
+
+func TestParseGraphRelationCountsArgs(t *testing.T) {
+	relations, err := parseGraphRelationCountsArgs([]string{"relations=belongs_to, represents,belongs_to,can_reach"})
+	if err != nil {
+		t.Fatalf("parseGraphRelationCountsArgs() error = %v", err)
+	}
+	want := []string{"belongs_to", "represents", "can_reach"}
+	if !reflect.DeepEqual(relations, want) {
+		t.Fatalf("relations = %#v, want %#v", relations, want)
+	}
+}
+
+func TestParseGraphRelationCountsArgsRequiresRelations(t *testing.T) {
+	if _, err := parseGraphRelationCountsArgs(nil); err == nil {
+		t.Fatal("parseGraphRelationCountsArgs() error = nil, want non-nil")
 	}
 }
 

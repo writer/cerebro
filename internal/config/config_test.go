@@ -11,6 +11,7 @@ import (
 func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_HTTP_ADDR", "")
 	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "")
+	t.Setenv("CEREBRO_IMAGE_TAG", "")
 	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", "")
 	t.Setenv("CEREBRO_JETSTREAM_URL", "")
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "")
@@ -60,6 +61,7 @@ func TestLoadDefaults(t *testing.T) {
 func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_HTTP_ADDR", "127.0.0.1:9000")
 	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "3s")
+	t.Setenv("CEREBRO_IMAGE_TAG", "v9.9.9")
 	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", AppendLogDriverJetStream)
 	t.Setenv("CEREBRO_JETSTREAM_URL", "nats://127.0.0.1:4222")
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "cerebro.events")
@@ -94,6 +96,9 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.ShutdownTimeout != 3*time.Second {
 		t.Fatalf("ShutdownTimeout = %v, want %v", cfg.ShutdownTimeout, 3*time.Second)
+	}
+	if cfg.ImageTag != "v9.9.9" {
+		t.Fatalf("ImageTag = %q, want %q", cfg.ImageTag, "v9.9.9")
 	}
 	if cfg.AppendLog.Driver != AppendLogDriverJetStream {
 		t.Fatalf("AppendLog.Driver = %q, want %q", cfg.AppendLog.Driver, AppendLogDriverJetStream)
@@ -131,6 +136,7 @@ func clearDependencyEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("CEREBRO_HTTP_ADDR", "")
 	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "")
+	t.Setenv("CEREBRO_IMAGE_TAG", "")
 	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", "")
 	t.Setenv("CEREBRO_JETSTREAM_URL", "")
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "")

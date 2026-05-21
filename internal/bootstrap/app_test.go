@@ -1348,6 +1348,11 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if payload["status"] != "ready" {
 		t.Fatalf("health status = %#v, want %q", payload["status"], "ready")
 	}
+	for _, field := range []string{"service_name", "version", "commit", "build_date", "api_version", "image_tag"} {
+		if _, ok := payload[field]; ok {
+			t.Fatalf("public /health included %q metadata: %#v", field, payload[field])
+		}
+	}
 	sourcesResp, err := server.Client().Get(server.URL + "/sources")
 	if err != nil {
 		t.Fatalf("GET /sources error = %v", err)
@@ -3547,9 +3552,15 @@ func TestBackfillFindingRiskSkipsMissingStateStore(t *testing.T) {
 
 func TestBootstrapHealthPingsUseTimeoutContext(t *testing.T) {
 	stateStore := &deadlineAwareStore{}
-	response := healthResponse(context.Background(), Dependencies{StateStore: stateStore})
+	response := healthResponse(context.Background(), config.Config{ImageTag: "v9.9.9"}, Dependencies{StateStore: stateStore})
 	if response.GetStatus() != "ready" {
 		t.Fatalf("health status = %q, want ready", response.GetStatus())
+	}
+	if response.GetServiceName() != buildinfo.ServiceName || response.GetVersion() != buildinfo.Version || response.GetCommit() != buildinfo.Commit {
+		t.Fatalf("health build metadata = service:%q version:%q commit:%q", response.GetServiceName(), response.GetVersion(), response.GetCommit())
+	}
+	if response.GetApiVersion() != buildinfo.APIVersion || response.GetBuildDate() != buildinfo.BuildDate || response.GetImageTag() != "v9.9.9" {
+		t.Fatalf("health deploy metadata = api:%q build:%q image:%q", response.GetApiVersion(), response.GetBuildDate(), response.GetImageTag())
 	}
 	if !stateStore.sawDeadline {
 		t.Fatal("state store ping did not receive a deadline")
@@ -3558,12 +3569,23 @@ func TestBootstrapHealthPingsUseTimeoutContext(t *testing.T) {
 
 func TestBootstrapHealthTreatsTypedNilPingerAsUnconfigured(t *testing.T) {
 	var stateStore *typedNilPinger
-	response := healthResponse(context.Background(), Dependencies{StateStore: stateStore})
+	response := healthResponse(context.Background(), config.Config{}, Dependencies{StateStore: stateStore})
 	if response.GetStatus() != "ready" {
 		t.Fatalf("health status = %q, want ready", response.GetStatus())
 	}
 	if got := response.GetComponents()[1].GetStatus(); got != "unconfigured" {
 		t.Fatalf("state_store status = %q, want unconfigured", got)
+	}
+}
+
+func TestBootstrapHealthDefaultsImageTagFromBuildVersion(t *testing.T) {
+	previousVersion := buildinfo.Version
+	buildinfo.Version = "2.1.50"
+	t.Cleanup(func() { buildinfo.Version = previousVersion })
+
+	response := healthResponse(context.Background(), config.Config{}, Dependencies{})
+	if response.GetImageTag() != "v2.1.50" {
+		t.Fatalf("ImageTag = %q, want %q", response.GetImageTag(), "v2.1.50")
 	}
 }
 

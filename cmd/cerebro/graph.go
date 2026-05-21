@@ -39,6 +39,10 @@ type graphCountsStore interface {
 	Counts(context.Context) (graphstore.Counts, error)
 }
 
+type graphRelationCountsStore interface {
+	RelationCounts(context.Context, []string) (graphstore.RelationCounts, error)
+}
+
 type graphQueryStore interface {
 	Ping(context.Context) error
 	GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error)
@@ -121,6 +125,10 @@ type graphPathsResult struct {
 	Topology   graphstore.Topology      `json:"topology"`
 }
 
+type graphRelationCountsResult struct {
+	Relations graphstore.RelationCounts `json:"relations"`
+}
+
 type graphIntegrityResult struct {
 	Checks []graphstore.IntegrityCheck `json:"checks"`
 	Passed uint32                      `json:"passed"`
@@ -185,7 +193,7 @@ func runGraph(args []string) error {
 		return runGraphIngestRun(args[1:])
 	case "ingest-runs":
 		return runGraphIngestRuns(args[1:])
-	case "counts", "neighborhood", "paths", "integrity":
+	case "counts", "neighborhood", "paths", "relation-counts", "integrity":
 		return runGraphInspect(args)
 	case "cve-impact", "package-exposure", "asset-vulns":
 		return runGraphImpact(args)
@@ -240,7 +248,7 @@ func runGraph(args []string) error {
 }
 
 func graphUsage() string {
-	return fmt.Sprintf("usage: %s graph [counts|neighborhood|paths|integrity|cve-impact|package-exposure|asset-vulns|ingest|ingest-runtime|ingest-run|ingest-runs|rebuild|inspect] ...", os.Args[0])
+	return fmt.Sprintf("usage: %s graph [counts|neighborhood|paths|relation-counts|integrity|cve-impact|package-exposure|asset-vulns|ingest|ingest-runtime|ingest-run|ingest-runs|rebuild|inspect] ...", os.Args[0])
 }
 
 func graphIngestUsage() string {
@@ -256,7 +264,7 @@ func graphIngestRunUsage() string {
 }
 
 func graphInspectUsage() string {
-	return fmt.Sprintf("usage: %s graph [counts|neighborhood <urn>|paths|integrity] [limit=N]", os.Args[0])
+	return fmt.Sprintf("usage: %s graph [counts|neighborhood <urn>|paths|relation-counts|integrity] [limit=N] [relations=a,b]", os.Args[0])
 }
 
 func graphImpactUsage() string {
@@ -320,6 +328,20 @@ func runGraphInspect(args []string) error {
 			return err
 		}
 		return printJSON(graphPathsResult{Patterns: patterns, Traversals: traversals, Topology: topology})
+	case "relation-counts":
+		relations, err := parseGraphRelationCountsArgs(args[1:])
+		if err != nil {
+			return err
+		}
+		store, ok := deps.GraphStore.(graphRelationCountsStore)
+		if !ok {
+			return fmt.Errorf("graph store does not support relation counts")
+		}
+		counts, err := store.RelationCounts(ctx, relations)
+		if err != nil {
+			return err
+		}
+		return printJSON(graphRelationCountsResult{Relations: counts})
 	case "integrity":
 		store, ok := deps.GraphStore.(graphIntegrityStore)
 		if !ok {
@@ -429,6 +451,40 @@ func parseGraphNeighborhoodArgs(args []string) (string, int, error) {
 		return "", 0, err
 	}
 	return rootURN, limit, nil
+}
+
+func parseGraphRelationCountsArgs(args []string) ([]string, error) {
+	var relations []string
+	seen := map[string]struct{}{}
+	for _, arg := range args {
+		key, value, ok := strings.Cut(arg, "=")
+		if !ok {
+			return nil, usageError(fmt.Sprintf("expected key=value argument, got %q", arg))
+		}
+		switch strings.TrimSpace(key) {
+		case "relations":
+			for _, relation := range strings.Split(value, ",") {
+				relation = strings.TrimSpace(relation)
+				if relation == "" {
+					continue
+				}
+				if _, ok := seen[relation]; ok {
+					continue
+				}
+				seen[relation] = struct{}{}
+				relations = append(relations, relation)
+			}
+		default:
+			return nil, usageError(fmt.Sprintf("unsupported graph relation-counts argument %q", key))
+		}
+	}
+	if len(relations) == 0 {
+		return nil, usageError(graphInspectUsage())
+	}
+	if len(relations) > 50 {
+		return nil, fmt.Errorf("relations must include at most 50 values")
+	}
+	return relations, nil
 }
 
 func parseGraphImpactArgs(args []string) (graphquery.ImpactRequest, error) {
