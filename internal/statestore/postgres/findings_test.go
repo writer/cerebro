@@ -367,15 +367,28 @@ func TestEndpointVulnerabilityFindingQueryIncludesIdentityFilters(t *testing.T) 
 	if got := len(args); got != 8 {
 		t.Fatalf("len(endpointVulnerabilityFindingQuery().args) = %d, want 8", got)
 	}
-	wantIdentityScope := "(attributes_json->>'device_id' = $2 OR attributes_json->>'endpoint_id' = $3 OR attributes_json->>'asset_id' = $4) AND (attributes_json->>'serial_number' = $5) AND (attributes_json->>'agent_id' = $6 OR attributes_json->>'agent_uuid' = $7)"
+	wantIdentityScope := "((attributes_json->>'device_id' = $2 OR attributes_json->>'endpoint_id' = $3 OR attributes_json->>'asset_id' = $4) OR (attributes_json->>'serial_number' = $5) OR (attributes_json->>'agent_id' = $6 OR attributes_json->>'agent_uuid' = $7))"
 	if !strings.Contains(query, wantIdentityScope) {
-		t.Fatalf("endpointVulnerabilityFindingQuery() identity scope = %s, want all supplied identifiers to be conjunctive", query)
+		t.Fatalf("endpointVulnerabilityFindingQuery() identity scope = %s, want supplied identifiers to be alternatives", query)
 	}
 	if got := args[0]; got != "writer" {
 		t.Fatalf("endpointVulnerabilityFindingQuery().args[0] = %#v, want writer", got)
 	}
 	if got := args[7]; got != uint32(25) {
 		t.Fatalf("endpointVulnerabilityFindingQuery().args[7] = %#v, want 25", got)
+	}
+}
+
+func TestEndpointVulnerabilityFindingQueryOmitsLimitWhenUnset(t *testing.T) {
+	query, args := endpointVulnerabilityFindingQuery(ports.EndpointVulnerabilityFindingQuery{
+		TenantID: "writer",
+		DeviceID: "device-1",
+	})
+	if strings.Contains(query, "LIMIT") {
+		t.Fatalf("endpointVulnerabilityFindingQuery() query = %s, want no raw row cap without caller limit", query)
+	}
+	if got := len(args); got != 4 {
+		t.Fatalf("len(endpointVulnerabilityFindingQuery().args) = %d, want tenant plus device aliases", got)
 	}
 }
 
