@@ -11,6 +11,8 @@ import (
 	githubsource "github.com/writer/cerebro/sources/github"
 	googleworkspacesource "github.com/writer/cerebro/sources/googleworkspace"
 	grcsource "github.com/writer/cerebro/sources/grc"
+	kandjisource "github.com/writer/cerebro/sources/kandji"
+	kolidesource "github.com/writer/cerebro/sources/kolide"
 	oktasource "github.com/writer/cerebro/sources/okta"
 	sdksource "github.com/writer/cerebro/sources/sdk"
 	sentineloneSource "github.com/writer/cerebro/sources/sentinelone"
@@ -63,6 +65,18 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "grc",
 		load: func() (sourcecdk.Source, error) {
 			return grcsource.New()
+		},
+	},
+	{
+		name: "kandji",
+		load: func() (sourcecdk.Source, error) {
+			return kandjisource.New()
+		},
+	},
+	{
+		name: "kolide",
+		load: func() (sourcecdk.Source, error) {
+			return kolidesource.New()
 		},
 	},
 	{

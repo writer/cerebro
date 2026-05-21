@@ -1,0 +1,9 @@
+id: kolide
+name: Kolide
+description: Kolide/osquery endpoint inventory, compliance, software, ownership, and vulnerability source.
+emitted_kinds:
+  - kolide.check
+  - kolide.device
+  - kolide.software
+  - kolide.user_device
+  - kolide.vulnerability

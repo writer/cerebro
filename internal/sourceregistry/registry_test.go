@@ -56,6 +56,20 @@ func TestBuiltin(t *testing.T) {
 	if grc.Spec().Name != "GRC" {
 		t.Fatalf("grc Spec().Name = %q, want %q", grc.Spec().Name, "GRC")
 	}
+	kandji, ok := registry.Get("kandji")
+	if !ok {
+		t.Fatal("Get(kandji) = false, want true")
+	}
+	if kandji.Spec().Name != "Kandji / Iru" {
+		t.Fatalf("kandji Spec().Name = %q, want %q", kandji.Spec().Name, "Kandji / Iru")
+	}
+	kolide, ok := registry.Get("kolide")
+	if !ok {
+		t.Fatal("Get(kolide) = false, want true")
+	}
+	if kolide.Spec().Name != "Kolide" {
+		t.Fatalf("kolide Spec().Name = %q, want %q", kolide.Spec().Name, "Kolide")
+	}
 	okta, ok := registry.Get("okta")
 	if !ok {
 		t.Fatal("Get(okta) = false, want true")
