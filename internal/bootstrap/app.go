@@ -129,6 +129,7 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("GET /platform/graph/attack-paths", app.handleGetAttackPaths)
 	mux.HandleFunc("GET /platform/graph/crown-jewel-rankings", app.handleGetCrownJewelRankings)
 	mux.HandleFunc("GET /platform/graph/aws-public-endpoint-insights", app.handleGetAWSPublicEndpointInsights)
+	mux.HandleFunc("GET /platform/endpoints/{deviceKey}/vulnerability-findings", app.handleListEndpointVulnerabilityFindings)
 	mux.HandleFunc("GET /platform/graph/ingest-health", app.handleCheckGraphIngestHealth)
 	mux.HandleFunc("GET /graph/ingest-health", deprecatedRoute(app.handleCheckGraphIngestHealth))
 	mux.HandleFunc("GET /platform/graph/ingest-runs", app.handleListGraphIngestRuns)
@@ -478,9 +479,13 @@ func (a *App) handleListEndpointVulnerabilityFindings(w http.ResponseWriter, r *
 		writeFindingError(w, err)
 		return
 	}
+	deviceID := strings.TrimSpace(r.URL.Query().Get("device_id"))
+	if deviceID == "" {
+		deviceID = strings.TrimSpace(r.PathValue("deviceKey"))
+	}
 	response, err := findings.ListEndpointVulnerabilityFindings(r.Context(), endpointVulnerabilityFindingStore(a.deps.StateStore), findings.EndpointVulnerabilityRequest{
 		TenantID:     tenantID,
-		DeviceID:     r.URL.Query().Get("device_id"),
+		DeviceID:     deviceID,
 		SerialNumber: r.URL.Query().Get("serial_number"),
 		AgentID:      r.URL.Query().Get("agent_id"),
 		Limit:        limit,

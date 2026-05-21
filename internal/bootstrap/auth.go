@@ -1158,6 +1158,8 @@ func fallbackAccessAuditRoute(method string, path string) string {
 		}
 	case strings.HasPrefix(path, "/platform/graph/ingest-runs/"):
 		return prefix + "/platform/graph/ingest-runs/{runID}"
+	case path == "/endpoint-vulnerability-findings":
+		return prefix + "/endpoint-vulnerability-findings"
 	case strings.HasPrefix(path, "/platform/endpoints/") && strings.HasSuffix(path, "/vulnerability-findings"):
 		return prefix + "/platform/endpoints/{deviceKey}/vulnerability-findings"
 	case strings.HasPrefix(path, "/graph/ingest-runs/"):
