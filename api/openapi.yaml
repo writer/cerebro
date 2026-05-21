@@ -903,7 +903,11 @@ paths:
           required: true
           schema:
             type: string
-        - $ref: '#/components/parameters/tenantIDQuery'
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
         - name: include_stale
           in: query
           schema:

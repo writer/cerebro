@@ -51,6 +51,17 @@ func TestOpenAPIContractDescribesCurrentBootstrapSurface(t *testing.T) {
 	if !strings.Contains(endpointTenantParam, "        - name: tenant_id\n          in: query\n          required: true") {
 		t.Fatal("/endpoint-vulnerability-findings must require tenant_id in the OpenAPI contract")
 	}
+	_, platformEndpoint, ok := strings.Cut(string(body), "  /platform/endpoints/{deviceKey}/vulnerability-findings:")
+	if !ok {
+		t.Fatal("api/openapi.yaml missing /platform/endpoints/{deviceKey}/vulnerability-findings section")
+	}
+	platformTenantParam, _, ok := strings.Cut(platformEndpoint, "        - name: include_stale")
+	if !ok {
+		t.Fatal("/platform/endpoints/{deviceKey}/vulnerability-findings must document include_stale")
+	}
+	if !strings.Contains(platformTenantParam, "        - name: tenant_id\n          in: query\n          required: true") {
+		t.Fatal("/platform/endpoints/{deviceKey}/vulnerability-findings must require tenant_id in the OpenAPI contract")
+	}
 }
 
 func TestSourceCDKOwnsExternalHTTPClients(t *testing.T) {
