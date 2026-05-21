@@ -190,7 +190,7 @@ func allNodePatternsTenantScoped(query string) bool {
 		}
 		sawNode = true
 		if nodePatternHasInlineTenantScope(pattern) {
-			if pattern.variable != "" && squareBracketDepthAt(query, i) == 0 {
+			if pattern.variable != "" && !expressionLocalPattern(query, i, len(subqueries)) {
 				scopedVariables[pattern.variable] = struct{}{}
 			}
 			continue
@@ -489,6 +489,25 @@ func squareBracketDepthAt(query string, index int) int {
 		case '[':
 			depth++
 		case ']':
+			if depth > 0 {
+				depth--
+			}
+		}
+	}
+	return depth
+}
+
+func expressionLocalPattern(query string, index int, callSubqueryDepth int) bool {
+	return squareBracketDepthAt(query, index) > 0 || braceDepthAt(query, index) > callSubqueryDepth
+}
+
+func braceDepthAt(query string, index int) int {
+	depth := 0
+	for i := 0; i < index; i++ {
+		switch query[i] {
+		case '{':
+			depth++
+		case '}':
 			if depth > 0 {
 				depth--
 			}
