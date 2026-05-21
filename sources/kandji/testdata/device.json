@@ -1,0 +1,15 @@
+{
+  "data": [
+    {
+      "device_id": "device-1",
+      "device_name": "MacBook Pro",
+      "serial_number": "SERIAL1",
+      "platform": "macOS",
+      "os_version": "15.0",
+      "user": {
+        "email": "alice@writer.com"
+      },
+      "last_check_in": "2026-05-21T00:00:00Z"
+    }
+  ]
+}

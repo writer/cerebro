@@ -16,6 +16,9 @@ func TestSourcePackagesHaveCatalogFixturesAndTests(t *testing.T) {
 		if !entry.IsDir() {
 			continue
 		}
+		if entry.Name() == "internal" {
+			continue
+		}
 		sourceDir := filepath.Join("..", "..", "sources", entry.Name())
 		if _, err := os.Stat(filepath.Join(sourceDir, "catalog.yaml")); err != nil {
 			t.Fatalf("%s missing catalog.yaml: %v", entry.Name(), err)
