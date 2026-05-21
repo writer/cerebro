@@ -28,6 +28,17 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
 
         self.assertEqual(_declared_runtime_ids(config, "cosmo", {"writer-cosmo-message"}), ["writer-cosmo-message"])
 
+    def test_declared_runtime_ids_filter_by_family(self) -> None:
+        config = {
+            "sourceRuntimes": [
+                {"id": "aws-public", "sourceId": "aws", "config": {"family": "public_endpoint"}},
+                {"id": "aws-iam", "sourceId": "aws", "config": {"family": "iam_user"}},
+                {"id": "cosmo-session", "sourceId": "cosmo", "config": {"family": "session"}},
+            ]
+        }
+
+        self.assertEqual(_declared_runtime_ids(config, "aws", set(), {"public_endpoint"}), ["aws-public"])
+
     def test_runtime_id_from_command(self) -> None:
         self.assertEqual(_runtime_id_from_command(["orchestrator", "run", "runtime_id=writer-cosmo-session"]), "writer-cosmo-session")
 

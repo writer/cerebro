@@ -15,15 +15,18 @@ from scripts.verify_graph_health_ecs import (
     _declared_runtime_ids,
     _graph_command_overrides,
     _graph_path_relations,
+    _graph_relation_counts,
     _image_tag_version,
     _ingest_run_limit,
     _is_graph_paths_timeout,
     _latest_active_task_definition,
     _resource_prefix,
     _supports_attack_path_relations,
+    _supports_relation_counts,
     _verify_counts,
     _verify_current_ingest_runs,
     _verify_integrity,
+    _verify_required_graph_relation_counts,
     _verify_required_graph_relations,
 )
 
@@ -67,6 +70,10 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
     def test_supports_attack_path_relations_uses_minimum_image_tag(self) -> None:
         self.assertFalse(_supports_attack_path_relations({"imageTag": "v2.1.45"}))
         self.assertTrue(_supports_attack_path_relations({"imageTag": "v2.1.46"}))
+
+    def test_supports_relation_counts_requires_min_image_tag(self) -> None:
+        self.assertFalse(_supports_relation_counts({"imageTag": "v2.1.49"}))
+        self.assertTrue(_supports_relation_counts({"imageTag": "v2.1.50"}))
 
     def test_is_graph_paths_timeout_matches_neo4j_deadline(self) -> None:
         self.assertTrue(_is_graph_paths_timeout(RuntimeError("query graph path patterns: ConnectivityError: context deadline exceeded")))
@@ -258,6 +265,26 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             "traversals": [{"first_relation": "represents", "second_relation": "can_perform"}],
         }
         self.assertEqual(_graph_path_relations(payload), {"belongs_to", "can_perform", "can_reach", "represents"})
+
+    def test_graph_relation_counts_reads_relation_count_payload(self) -> None:
+        self.assertEqual(
+            _graph_relation_counts({"relations": {"belongs_to": 4, "represents": "2", "missing": 0}}),
+            {"belongs_to": 4, "represents": 2, "missing": 0},
+        )
+
+    def test_verify_required_graph_relation_counts_requires_positive_counts(self) -> None:
+        payload = {"relations": {"belongs_to": 4, "represents": 2, "can_reach": 0}}
+
+        with self.assertRaisesRegex(RuntimeError, "can_reach"):
+            _verify_required_graph_relation_counts(payload, {"resource_exposure"})
+
+    def test_verify_required_graph_relation_counts_accepts_required_relations(self) -> None:
+        payload = {"relations": {"belongs_to": 4, "represents": 2, "can_reach": 1, "can_perform": 0}}
+
+        self.assertEqual(
+            _verify_required_graph_relation_counts(payload, {"resource_exposure"}),
+            {"belongs_to", "represents", "can_reach"},
+        )
 
     def test_verify_required_graph_relations_requires_attack_path_edges_for_aws(self) -> None:
         payload = {

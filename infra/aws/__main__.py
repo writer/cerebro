@@ -522,6 +522,7 @@ secret_keys.extend(source_secret_keys)
 app_environment = {
     "CEREBRO_HTTP_ADDR": ":8080",
     "CEREBRO_SHUTDOWN_TIMEOUT": config.get("shutdownTimeout") or "10s",
+    "CEREBRO_IMAGE_TAG": image_tag,
     "CEREBRO_API_AUTH_ENABLED": str(api_auth_enabled).lower(),
     "API_AUTH_ENABLED": str(api_auth_enabled).lower(),
     "CEREBRO_CAPABILITY_TOKEN_AUDIENCE": capability_token_audience,
