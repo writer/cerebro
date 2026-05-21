@@ -75,8 +75,8 @@ func TestReadDeviceFamilyFromFixture(t *testing.T) {
 
 func TestReadSoftwareFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/software" {
-			t.Fatalf("request path = %q, want /api/v1/software", r.URL.Path)
+		if r.URL.Path != "/api/v1/packages" {
+			t.Fatalf("request path = %q, want /api/v1/packages", r.URL.Path)
 		}
 		if got := r.Header.Get("Authorization"); got != "Bearer kolide-token" {
 			t.Fatalf("Authorization = %q, want Bearer kolide-token", got)
@@ -133,8 +133,8 @@ func TestReadSoftwareFamily(t *testing.T) {
 
 func TestReadSoftwareFamilyKeepsSamePackageOnDifferentDevices(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/software" {
-			t.Fatalf("request path = %q, want /api/v1/software", r.URL.Path)
+		if r.URL.Path != "/api/v1/packages" {
+			t.Fatalf("request path = %q, want /api/v1/packages", r.URL.Path)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{
@@ -180,8 +180,8 @@ func TestReadSoftwareFamilyKeepsSamePackageOnDifferentDevices(t *testing.T) {
 
 func TestReadVulnerabilityFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/vulnerabilities" {
-			t.Fatalf("request path = %q, want /api/v1/vulnerabilities", r.URL.Path)
+		if r.URL.Path != "/api/v1/issues" {
+			t.Fatalf("request path = %q, want /api/v1/issues", r.URL.Path)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []map[string]any{
