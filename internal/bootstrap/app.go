@@ -125,6 +125,7 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("GET /platform/graph/impact/asset", app.handleGetAssetImpact)
 	mux.HandleFunc("GET /graph/impact/asset", deprecatedRoute(app.handleGetAssetImpact))
 	mux.HandleFunc("GET /platform/graph/attack-paths", app.handleGetAttackPaths)
+	mux.HandleFunc("GET /platform/graph/crown-jewel-rankings", app.handleGetCrownJewelRankings)
 	mux.HandleFunc("GET /platform/graph/aws-public-endpoint-insights", app.handleGetAWSPublicEndpointInsights)
 	mux.HandleFunc("GET /platform/graph/ingest-health", app.handleCheckGraphIngestHealth)
 	mux.HandleFunc("GET /graph/ingest-health", deprecatedRoute(app.handleCheckGraphIngestHealth))
@@ -869,6 +870,42 @@ func (a *App) handleGetAttackPaths(w http.ResponseWriter, r *http.Request) {
 		TenantID:  tenantID,
 		AccountID: r.URL.Query().Get("account_id"),
 		Limit:     limit,
+	})
+	if err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (a *App) handleGetCrownJewelRankings(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.URL.Query().Get("tenant_id")
+	if err := authorizeTenantID(r.Context(), tenantID); err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
+	limit, err := uint32QueryParam(r, "limit")
+	if err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
+	depth, err := uint32QueryParam(r, "depth")
+	if err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
+	seedLimit, err := uint32QueryParam(r, "seed_limit")
+	if err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
+	result, err := a.graphQueryService().GetCrownJewelRanks(r.Context(), graphquery.CrownJewelRankRequest{
+		TenantID:   tenantID,
+		AccountID:  r.URL.Query().Get("account_id"),
+		EntityType: r.URL.Query().Get("entity_type"),
+		Limit:      limit,
+		Depth:      depth,
+		SeedLimit:  seedLimit,
 	})
 	if err != nil {
 		writeGraphQueryError(w, err)
