@@ -94,6 +94,11 @@ func TestValidatorRejectsUnsafeCypher(t *testing.T) {
 			cypher: `MATCH (seed:Entity {tenant_id: $tenant_id}) WITH [(tmp:Entity {tenant_id: $tenant_id})-[:RELATION]->(:Entity {tenant_id: $tenant_id}) | tmp.urn][0] AS first MATCH (tmp) RETURN tmp.urn LIMIT 25`,
 			reason: "inline tenant_id",
 		},
+		{
+			name:   "existential subquery binding cannot escape",
+			cypher: `MATCH (seed:Entity {tenant_id: $tenant_id}) WHERE EXISTS { MATCH (tmp:Entity {tenant_id: $tenant_id}) RETURN tmp LIMIT 1 } MATCH (tmp) RETURN tmp.urn LIMIT 25`,
+			reason: "inline tenant_id",
+		},
 	}
 
 	validator := NewValidator(nil, ValidatorOptions{})
