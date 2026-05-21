@@ -73,6 +73,45 @@ func TestReadDeviceFamilyFromFixture(t *testing.T) {
 	}
 }
 
+func TestReadDeviceFamilyPrefersOSNameOverStructuredOS(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/devices" {
+			t.Fatalf("request path = %q, want /api/v1/devices", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{
+				"id": "device-1",
+				"os": map[string]any{
+					"name":    "macOS",
+					"version": "15.5",
+				},
+			}},
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"base_url":  server.URL + "/api/v1",
+		"token":     "kolide-token",
+		"family":    "device",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if got := pull.Events[0].Attributes["os"]; got != "macOS" {
+		t.Fatalf("os = %q, want os.name scalar", got)
+	}
+	if got := pull.Events[0].Attributes["os_version"]; got != "15.5" {
+		t.Fatalf("os_version = %q, want os.version", got)
+	}
+}
+
 func TestReadSoftwareFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/packages" {

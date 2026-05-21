@@ -3,6 +3,8 @@ package jsonapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -267,6 +269,62 @@ func TestRejectsUnsafeBaseURL(t *testing.T) {
 	}))
 	if err == nil {
 		t.Fatal("Check() error = nil, want unsafe base_url error")
+	}
+}
+
+func TestSafeRoundTripperPinsValidatedHostnameAddress(t *testing.T) {
+	var dialed string
+	rt := safeRoundTripper{
+		sourceID: "test",
+		base: &http.Transport{DialContext: func(_ context.Context, _ string, address string) (net.Conn, error) {
+			dialed = address
+			return nil, errors.New("stop")
+		}},
+		lookupIPAddrs: func(context.Context, string) ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: net.ParseIP("203.0.113.10")}}, nil
+		},
+	}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://api.example.test:8080/devices", nil)
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	response, err := rt.RoundTrip(req)
+	if response != nil {
+		_ = response.Body.Close()
+	}
+	if err == nil {
+		t.Fatal("RoundTrip() error = nil, want dial sentinel")
+	}
+	if dialed != "203.0.113.10:8080" {
+		t.Fatalf("dialed = %q, want pinned resolved address", dialed)
+	}
+}
+
+func TestSafeRoundTripperRejectsUnsafeResolvedHostnameBeforeDial(t *testing.T) {
+	var dialed bool
+	rt := safeRoundTripper{
+		sourceID: "test",
+		base: &http.Transport{DialContext: func(_ context.Context, _ string, _ string) (net.Conn, error) {
+			dialed = true
+			return nil, errors.New("should not dial")
+		}},
+		lookupIPAddrs: func(context.Context, string) ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}}, nil
+		},
+	}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://rebind.example.test/devices", nil)
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	response, err := rt.RoundTrip(req)
+	if response != nil {
+		_ = response.Body.Close()
+	}
+	if err == nil {
+		t.Fatal("RoundTrip() error = nil, want unsafe resolved host rejection")
+	}
+	if dialed {
+		t.Fatal("DialContext was called before rejecting unsafe resolved host")
 	}
 }
 

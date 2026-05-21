@@ -104,6 +104,31 @@ func TestProjectKolideSoftwareUsesCanonicalPackage(t *testing.T) {
 	assertProjectedLink(t, state, packageURN, relationRepresents, canonicalPackageURN)
 }
 
+func TestProjectKolideSoftwareWithSparseDeviceKeepsEndpointLabelBlank(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "kolide-software-1",
+		TenantId: "writer",
+		SourceId: "kolide",
+		Kind:     "kolide.software",
+		Attributes: map[string]string{
+			"device_id":         "device-1",
+			"package_name":      "openssl",
+			"installed_version": "3.0.1",
+		},
+	}); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	endpoint := state.entities["urn:cerebro:writer:kolide_device:device-1"]
+	if endpoint == nil {
+		t.Fatal("expected sparse endpoint entity")
+	}
+	if endpoint.Label != "" {
+		t.Fatalf("endpoint Label = %q, want blank so existing labels are preserved", endpoint.Label)
+	}
+}
 func TestProjectKandjiDeviceAndApplicationCorrelateByDevice(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

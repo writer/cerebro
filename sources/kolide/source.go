@@ -59,7 +59,7 @@ func New() (*Source, error) {
 					"serial_number":     "serial_number",
 					"hardware_serial":   "hardware.serial",
 					"platform":          "platform",
-					"os":                "os",
+					"os":                "os.name|os",
 					"os_name":           "os.name",
 					"os_version":        "os.version",
 					"status":            "status",
