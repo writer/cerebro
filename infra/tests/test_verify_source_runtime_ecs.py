@@ -3,11 +3,17 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from scripts.verify_source_runtime_ecs import RuntimeTarget, _declared_runtime_ids, _runtime_id_from_command, _schedule_suffix, _task_family, _verify_task
+from scripts.verify_source_runtime_ecs import (
+    _declared_runtime_ids,
+    _runtime_id_from_command,
+    _runtime_skip_reason,
+    _runtime_skip_retryable,
+    _schedule_suffix,
+    _task_family,
+)
 
 
 class VerifySourceRuntimeEcsTest(unittest.TestCase):
@@ -34,24 +40,17 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
             "cerebro-sec-dev-orchestrator-cosmo-session",
         )
 
-    def test_verify_task_accepts_skipped_runtime(self) -> None:
-        target = RuntimeTarget(
-            runtime_id="writer-cosmo-fact",
-            schedule_name="cosmo-fact",
-            rule_name="cerebro-sec-dev-orchestrator-cosmo-fact",
-            target={"Arn": "arn:aws:ecs:us-east-1:123:cluster/cerebro-sec-dev-cluster"},
-        )
-        task = {"containers": [{"name": "cerebro", "exitCode": 0}]}
-        messages = [{"kind": "span_end", "name": "orchestrator.runtime", "status": "skipped"}]
+    def test_runtime_skip_reason_is_retryable_for_lease_contention(self) -> None:
+        span = {"status": "skipped", "reason": "lease_not_acquired"}
 
-        with patch("scripts.verify_source_runtime_ecs._describe_tasks", return_value=[task]), patch(
-            "scripts.verify_source_runtime_ecs._task_logs", return_value=messages
-        ):
-            result = _verify_task(target, "arn:aws:ecs:us-east-1:123:task/task-1", "us-east-1")
+        self.assertEqual(_runtime_skip_reason(span), "lease_not_acquired")
+        self.assertTrue(_runtime_skip_retryable(_runtime_skip_reason(span)))
 
-        self.assertEqual(result.runtime_status, "skipped")
-        self.assertEqual(result.sync_status, "skipped")
-        self.assertEqual(result.graph_ingest_status, "skipped")
+    def test_runtime_skip_reason_is_not_retryable_for_unknown_skip(self) -> None:
+        span = {"status": "skipped", "reason": "disabled"}
+
+        self.assertEqual(_runtime_skip_reason(span), "disabled")
+        self.assertFalse(_runtime_skip_retryable(_runtime_skip_reason(span)))
 
 
 if __name__ == "__main__":

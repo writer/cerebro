@@ -40,6 +40,15 @@ class VerificationResult:
     pages_read: int | None
 
 
+class RuntimeSkippedError(RuntimeError):
+    def __init__(self, runtime_id: str, task_arn: str, reason: str) -> None:
+        self.runtime_id = runtime_id
+        self.task_arn = task_arn
+        self.reason = reason
+        detail = f" ({reason})" if reason else ""
+        super().__init__(f"{runtime_id} orchestrator runtime status is skipped{detail}: {task_arn}")
+
+
 def _stack_name(path: Path) -> str:
     name = path.name
     if name.startswith("Pulumi.") and name.endswith(".yaml"):
@@ -273,6 +282,16 @@ def _latest_span(messages: list[dict[str, Any]], name: str) -> dict[str, Any] | 
     return None
 
 
+def _runtime_skip_reason(runtime_span: dict[str, Any] | None) -> str:
+    if not runtime_span:
+        return ""
+    return str(runtime_span.get("reason") or "").strip()
+
+
+def _runtime_skip_retryable(reason: str) -> bool:
+    return reason == "lease_not_acquired"
+
+
 def _verify_task(target: RuntimeTarget, task_arn: str, region: str) -> VerificationResult:
     task = _describe_tasks(target.target["Arn"], [task_arn], region)[0]
     containers = task.get("containers") or []
@@ -289,16 +308,7 @@ def _verify_task(target: RuntimeTarget, task_arn: str, region: str) -> Verificat
     sync_status = str((sync_span or {}).get("status") or "missing")
     graph_ingest_status = str((graph_ingest_span or {}).get("status") or "missing")
     if runtime_status == "skipped":
-        return VerificationResult(
-            runtime_id=target.runtime_id,
-            task_arn=task_arn,
-            exit_code=exit_code,
-            runtime_status=runtime_status,
-            sync_status=sync_status if sync_status != "missing" else "skipped",
-            graph_ingest_status=graph_ingest_status if graph_ingest_status != "missing" else "skipped",
-            events_appended=sync_span.get("events_appended") if sync_span else None,
-            pages_read=sync_span.get("pages_read") if sync_span else None,
-        )
+        raise RuntimeSkippedError(target.runtime_id, task_arn, _runtime_skip_reason(runtime_span))
     if runtime_status != "completed":
         raise RuntimeError(f"{target.runtime_id} orchestrator runtime status is {runtime_status}")
     if sync_status != "completed":
@@ -316,6 +326,34 @@ def _verify_task(target: RuntimeTarget, task_arn: str, region: str) -> Verificat
         events_appended=sync_span.get("events_appended") if sync_span else None,
         pages_read=sync_span.get("pages_read") if sync_span else None,
     )
+
+
+def _run_and_verify_task_with_retries(
+    target: RuntimeTarget,
+    wait_timeout_seconds: int,
+    poll_seconds: int,
+    region: str,
+) -> VerificationResult:
+    deadline = time.time() + wait_timeout_seconds
+    while True:
+        remaining = max(1, int(deadline - time.time()))
+        task_arn = _run_task(target, region)
+        _wait_for_task(target.target["Arn"], task_arn, remaining, poll_seconds, region)
+        try:
+            return _verify_task(target, task_arn, region)
+        except RuntimeSkippedError as exc:
+            if not _runtime_skip_retryable(exc.reason):
+                raise
+            remaining = int(deadline - time.time())
+            if remaining <= poll_seconds:
+                raise RuntimeError(
+                    f"{target.runtime_id} kept skipping due to {exc.reason} before verification timeout"
+                ) from exc
+            print(
+                f"WARNING: {target.runtime_id} skipped due to {exc.reason}; retrying verification task",
+                file=sys.stderr,
+            )
+            time.sleep(min(poll_seconds, remaining))
 
 
 def _verify_account(stack: str, region: str) -> None:
@@ -353,10 +391,18 @@ def main(argv: list[str] | None = None) -> int:
     targets = _runtime_targets(config, runtime_ids, resource_prefix, args.region)
     results = []
     for target in targets:
-        task_arn = _run_task(target, args.region) if args.run else _latest_task(target, args.max_age_minutes, args.region)
         if args.run:
-            _wait_for_task(target.target["Arn"], task_arn, args.wait_timeout_seconds, args.poll_seconds, args.region)
-        results.append(_verify_task(target, task_arn, args.region))
+            results.append(
+                _run_and_verify_task_with_retries(
+                    target,
+                    args.wait_timeout_seconds,
+                    args.poll_seconds,
+                    args.region,
+                )
+            )
+        else:
+            task_arn = _latest_task(target, args.max_age_minutes, args.region)
+            results.append(_verify_task(target, task_arn, args.region))
 
     print("runtime_id\texit\tsync\tevents_appended\tpages_read\tgraph_ingest\ttask_arn")
     for result in results:
