@@ -25,7 +25,7 @@ INGEST_RUN_LIMIT_MULTIPLIER = 20
 MAX_INGEST_RUN_LIMIT = 500
 ATTACK_PATH_RELATION_MIN_TAG = (2, 1, 46)
 REQUIRED_RELATIONS = {"belongs_to", "represents"}
-AWS_REACHABILITY_FAMILIES = {"public_endpoint", "resource_exposure"}
+AWS_CAN_REACH_REQUIRED_FAMILIES = {"resource_exposure"}
 AWS_ATTACK_PATH_RELATIONS = {"can_perform", "can_assume", "can_admin", "can_impersonate"}
 
 
@@ -425,7 +425,7 @@ def _verify_required_graph_relations(
     required = set(REQUIRED_RELATIONS)
     aws_families = aws_families or set()
     if attack_path_relations_supported:
-        if aws_families & AWS_REACHABILITY_FAMILIES:
+        if aws_families & AWS_CAN_REACH_REQUIRED_FAMILIES:
             required.add("can_reach")
         if "effective_permission" in aws_families:
             required.add("can_perform")

@@ -273,8 +273,16 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "can_reach"):
             _verify_required_graph_relations(
                 {"patterns": [{"first_relation": "belongs_to", "second_relation": "represents"}]},
-                {"public_endpoint"},
+                {"resource_exposure"},
             )
+
+    def test_verify_required_graph_relations_allows_public_endpoint_without_reachability_edge(self) -> None:
+        payload = {"patterns": [{"first_relation": "belongs_to", "second_relation": "represents"}]}
+
+        self.assertEqual(
+            _verify_required_graph_relations(payload, {"public_endpoint"}),
+            {"belongs_to", "represents"},
+        )
 
     def test_verify_required_graph_relations_allows_legacy_image_without_attack_path_edges(self) -> None:
         payload = {"patterns": [{"first_relation": "belongs_to", "second_relation": "represents"}]}
