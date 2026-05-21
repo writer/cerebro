@@ -1,0 +1,7 @@
+id: kandji
+name: Kandji / Iru
+description: Kandji/Iru Apple endpoint inventory, app inventory, and vulnerability remediation source.
+emitted_kinds:
+  - kandji.application
+  - kandji.device
+  - kandji.vulnerability

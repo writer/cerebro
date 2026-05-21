@@ -1,0 +1,236 @@
+package kolide
+
+import (
+	"context"
+	"embed"
+	"fmt"
+
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/sources/internal/jsonapi"
+)
+
+//go:embed catalog.yaml
+var catalogFS embed.FS
+
+const (
+	sourceID       = "kolide"
+	defaultBaseURL = "https://api.kolide.com"
+	defaultFamily  = familyDevice
+
+	familyCheck         = "check"
+	familyDevice        = "device"
+	familySoftware      = "software"
+	familyUserDevice    = "user_device"
+	familyVulnerability = "vulnerability"
+)
+
+// Source is the Kolide/osquery endpoint inventory source.
+type Source struct {
+	inner *jsonapi.Source
+}
+
+// New constructs the Kolide source.
+func New() (*Source, error) {
+	spec, err := loadSpec()
+	if err != nil {
+		return nil, err
+	}
+	inner, err := jsonapi.New(spec, jsonapi.Options{
+		SourceID:        sourceID,
+		DefaultBaseURL:  defaultBaseURL,
+		DefaultFamily:   defaultFamily,
+		RequireTenantID: true,
+		TokenScheme:     "Bearer",
+		Families: []jsonapi.Family{
+			{
+				Name:    familyDevice,
+				Path:    "/devices",
+				URNKind: "kolide_device",
+				IDKeys:  []string{"id", "device_id", "uuid", "serial_number", "hardware.serial"},
+				TimestampKeys: []string{
+					"updated_at", "last_seen_at", "last_seen", "last_check_in", "lastCheckIn",
+				},
+				Attributes: map[string]string{
+					"device_id":         "id|device_id",
+					"device_uuid":       "uuid",
+					"device_name":       "name",
+					"hostname":          "hostname",
+					"serial_number":     "serial_number",
+					"hardware_serial":   "hardware.serial",
+					"platform":          "platform",
+					"os":                "os.name|os",
+					"os_name":           "os.name",
+					"os_version":        "os.version",
+					"status":            "status",
+					"compliance_status": "compliance_status",
+					"last_seen_at":      "last_seen_at",
+					"owner_email":       "owner.email",
+					"user_email":        "user.email",
+					"primary_email":     "primary_email",
+				},
+				StaticAttributes: map[string]string{"source_product": "kolide"},
+			},
+			{
+				Name:    familyCheck,
+				Path:    "/checks",
+				URNKind: "kolide_check",
+				IDKeys:  []string{"id", "check_id", "slug", "name"},
+				TimestampKeys: []string{
+					"updated_at", "last_run_at", "timestamp",
+				},
+				Attributes: map[string]string{
+					"check_id":          "id",
+					"slug":              "slug",
+					"name":              "name",
+					"title":             "title",
+					"status":            "status",
+					"result":            "result",
+					"severity":          "severity",
+					"device_id":         "device_id|device.id",
+					"device_name":       "device.name",
+					"hostname":          "hostname",
+					"user_email":        "user.email",
+					"owner_email":       "owner.email",
+					"remediation":       "remediation",
+					"last_observed_at":  "last_run_at",
+					"compliance_status": "compliance_status",
+				},
+				StaticAttributes: map[string]string{"source_product": "kolide"},
+			},
+			{
+				Name:    familySoftware,
+				Path:    "/packages",
+				URNKind: "kolide_software",
+				IDKeys:  []string{"id", "package_id", "software_id", "application_id"},
+				TimestampKeys: []string{
+					"updated_at", "installed_at", "last_seen_at",
+				},
+				Attributes: map[string]string{
+					"software_id":       "id",
+					"device_id":         "device_id|device.id",
+					"device_name":       "device.name",
+					"hostname":          "hostname",
+					"application_name":  "name",
+					"app_name":          "name",
+					"package_name":      "name",
+					"bundle_identifier": "bundle_identifier",
+					"version":           "version",
+					"installed_version": "version",
+					"publisher":         "publisher",
+					"platform":          "platform",
+					"ecosystem":         "ecosystem",
+					"installed_at":      "installed_at",
+					"purl":              "purl",
+					"owner_email":       "owner.email",
+					"user_email":        "user.email",
+				},
+				StaticAttributes: map[string]string{"source_product": "kolide"},
+			},
+			{
+				Name:    familyUserDevice,
+				Path:    "/devices",
+				URNKind: "kolide_user_device",
+				IDKeys:  []string{"id", "device_id", "uuid", "serial_number"},
+				TimestampKeys: []string{
+					"updated_at", "last_seen_at", "last_check_in",
+				},
+				Attributes: map[string]string{
+					"device_id":     "id|device_id",
+					"device_uuid":   "uuid",
+					"device_name":   "name",
+					"hostname":      "hostname",
+					"serial_number": "serial_number",
+					"user_id":       "user.id",
+					"user_email":    "user.email",
+					"owner_id":      "owner.id",
+					"owner_email":   "owner.email",
+					"primary_email": "primary_email",
+					"last_seen_at":  "last_seen_at",
+				},
+				StaticAttributes: map[string]string{"source_product": "kolide"},
+			},
+			{
+				Name:    familyVulnerability,
+				Path:    "/issues",
+				URNKind: "kolide_vulnerability",
+				IDKeys:  []string{"id", "vulnerability_id", "cve_id", "package_id"},
+				TimestampKeys: []string{
+					"updated_at", "detected_at", "last_observed_at", "last_rechecked_at", "published_at",
+				},
+				Attributes: map[string]string{
+					"vulnerability_id":  "id",
+					"cve_id":            "cve_id|value.cve_id|value.cve|issue_value",
+					"advisory_id":       "advisory_id|value.advisory_id",
+					"ghsa_id":           "ghsa_id|value.ghsa_id",
+					"aliases":           "aliases|value.aliases",
+					"severity":          "severity|value.severity",
+					"title":             "title",
+					"description":       "description|value.description",
+					"device_id":         "device_id|device.id|device_information.identifier",
+					"device_name":       "device.name",
+					"hostname":          "hostname",
+					"serial_number":     "serial_number",
+					"application_name":  "software.name|package_name|name|value.software.name|value.package_name|value.package|issue_value",
+					"app_name":          "software.name|package_name|name|value.software.name|value.package_name|value.package|issue_value",
+					"package_name":      "package_name|software.name|name|value.package_name|value.software.name|value.package|issue_value",
+					"package":           "package_name|software.name|name|value.package_name|value.software.name|value.package|issue_value",
+					"version":           "installed_version|value.installed_version|value.version",
+					"installed_version": "installed_version|value.installed_version|value.version",
+					"fixed_version":     "fixed_version|value.fixed_version|value.patched_version",
+					"purl":              "purl",
+					"ecosystem":         "ecosystem|value.ecosystem",
+					"remediation":       "remediation|value.remediation",
+					"last_observed_at":  "last_observed_at|last_rechecked_at|detected_at",
+					"known_exploited":   "known_exploited|value.known_exploited",
+				},
+				StaticAttributes: map[string]string{"source_product": "kolide"},
+			},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &Source{inner: inner}, nil
+}
+
+// Spec returns static Kolide source metadata.
+func (s *Source) Spec() *cerebrov1.SourceSpec {
+	if s == nil || s.inner == nil {
+		return nil
+	}
+	return s.inner.Spec()
+}
+
+// Check validates the configured Kolide collection.
+func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
+	return s.inner.Check(ctx, cfg)
+}
+
+// Discover returns Kolide URNs for the configured family.
+func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return s.inner.Discover(ctx, cfg)
+}
+
+// Read pages Kolide records and emits kolide.* events.
+func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	return s.inner.Read(ctx, cfg, cursor)
+}
+
+func loadSpec() (*cerebrov1.SourceSpec, error) {
+	specBytes, err := catalogFS.ReadFile("catalog.yaml")
+	if err != nil {
+		return nil, fmt.Errorf("read catalog: %w", err)
+	}
+	spec, err := sourcecdk.LoadCatalog(specBytes)
+	if err != nil {
+		return nil, fmt.Errorf("load catalog: %w", err)
+	}
+	return spec, nil
+}
+
+func (s *Source) allowLoopbackForTest() {
+	if s != nil && s.inner != nil {
+		s.inner.AllowLoopbackBaseURL = true
+	}
+}

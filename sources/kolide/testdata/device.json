@@ -1,0 +1,14 @@
+{
+  "data": [
+    {
+      "id": "device-1",
+      "name": "mba-1",
+      "hostname": "mba-1.writer.test",
+      "serial_number": "SERIAL1",
+      "owner": {
+        "email": "alice@writer.com"
+      },
+      "updated_at": "2026-05-21T00:00:00Z"
+    }
+  ]
+}
