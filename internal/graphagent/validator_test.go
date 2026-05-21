@@ -59,6 +59,11 @@ func TestValidatorRejectsUnsafeCypher(t *testing.T) {
 			cypher: `MATCH (e:Entity) WHERE e.tenant_id = $tenant_id OR true RETURN e LIMIT 25`,
 			reason: "inline tenant_id",
 		},
+		{
+			name:   "pattern comprehension unscoped nodes",
+			cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN [(x:Entity)-[:RELATION]->(y:Entity) | x.urn][0..10] AS leaks LIMIT 1`,
+			reason: "inline tenant_id",
+		},
 	}
 
 	validator := NewValidator(nil, ValidatorOptions{})
@@ -104,6 +109,23 @@ func TestValidatorAcceptsScopedRelationshipReadWithReturnFunctions(t *testing.T)
 	result, limit, err := validator.validate(context.Background(), `MATCH (src:Entity {tenant_id: $tenant_id})-[r:RELATION]->(dst:Entity {tenant_id: $tenant_id})
 RETURN src.urn AS src, dst.urn AS dst, coalesce(src.label, src.urn) AS label
 ORDER BY label
+LIMIT 25`, map[string]any{"tenant_id": "example"})
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if !result.OK {
+		t.Fatalf("Validate() = %#v, want ok", result)
+	}
+	if limit != 25 {
+		t.Fatalf("limit = %d, want 25", limit)
+	}
+}
+
+func TestValidatorAcceptsBoundVariableReuse(t *testing.T) {
+	validator := NewValidator(nil, ValidatorOptions{})
+	result, limit, err := validator.validate(context.Background(), `MATCH (e:Entity {tenant_id: $tenant_id})
+OPTIONAL MATCH (e)-[:RELATION]->(b:Entity {tenant_id: $tenant_id})
+RETURN b.urn AS urn
 LIMIT 25`, map[string]any{"tenant_id": "example"})
 	if err != nil {
 		t.Fatalf("Validate() error = %v", err)

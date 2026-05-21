@@ -31,6 +31,7 @@ var (
 )
 
 type nodePattern struct {
+	variable   string
 	labels     string
 	properties string
 }
@@ -115,20 +116,32 @@ func queryLimit(query string) (int, bool) {
 }
 
 func allNodePatternsTenantScoped(query string) bool {
-	patterns, ok := graphNodePatterns(query)
-	if !ok || len(patterns) == 0 {
+	if !matchClausesContainOnlyNodePatterns(query) {
 		return false
 	}
+	patterns := nodePatternsInQuery(query)
+	if len(patterns) == 0 {
+		return false
+	}
+	scopedVariables := map[string]struct{}{}
 	for _, pattern := range patterns {
-		if !nodeHasEntityLabel(pattern.labels) || !inlineTenantPattern.MatchString(pattern.properties) {
-			return false
+		if nodePatternHasInlineTenantScope(pattern) {
+			if pattern.variable != "" {
+				scopedVariables[pattern.variable] = struct{}{}
+			}
+			continue
 		}
+		if pattern.isBareVariableReference() {
+			if _, ok := scopedVariables[pattern.variable]; ok {
+				continue
+			}
+		}
+		return false
 	}
 	return true
 }
 
-func graphNodePatterns(query string) ([]nodePattern, bool) {
-	var patterns []nodePattern
+func matchClausesContainOnlyNodePatterns(query string) bool {
 	clauses := matchClausePattern.FindAllStringIndex(query, -1)
 	for i, clause := range clauses {
 		start := clause[1]
@@ -139,29 +152,39 @@ func graphNodePatterns(query string) ([]nodePattern, bool) {
 		if boundary := matchClauseEndPattern.FindStringIndex(query[start:end]); boundary != nil {
 			end = start + boundary[0]
 		}
-		extracted, ok := nodePatternsInMatchClause(query[start:end])
-		if !ok {
-			return nil, false
+		if _, ok := nodePatternsInMatchClause(query[start:end]); !ok {
+			return false
 		}
-		patterns = append(patterns, extracted...)
 	}
-	return patterns, true
+	return true
+}
+
+func nodePatternsInQuery(query string) []nodePattern {
+	patterns, _ := nodePatternsInText(query, false)
+	return patterns
 }
 
 func nodePatternsInMatchClause(clause string) ([]nodePattern, bool) {
+	return nodePatternsInText(clause, true)
+}
+
+func nodePatternsInText(text string, requireValid bool) ([]nodePattern, bool) {
 	var patterns []nodePattern
-	for i := 0; i < len(clause); i++ {
-		if clause[i] != '(' || isIdentifierByte(previousNonSpace(clause, i)) {
+	for i := 0; i < len(text); i++ {
+		if text[i] != '(' || i > 0 && isIdentifierByte(text[i-1]) {
 			continue
 		}
-		closeIndex := strings.IndexByte(clause[i+1:], ')')
+		closeIndex := strings.IndexByte(text[i+1:], ')')
 		if closeIndex < 0 {
-			return nil, false
+			return nil, !requireValid
 		}
-		body := clause[i+1 : i+1+closeIndex]
+		body := text[i+1 : i+1+closeIndex]
 		pattern, ok := parseNodePattern(body)
 		if !ok {
-			return nil, false
+			if requireValid {
+				return nil, false
+			}
+			continue
 		}
 		patterns = append(patterns, pattern)
 	}
@@ -173,7 +196,15 @@ func parseNodePattern(body string) (nodePattern, bool) {
 	if matches == nil {
 		return nodePattern{}, false
 	}
-	return nodePattern{labels: matches[2], properties: matches[3]}, true
+	return nodePattern{variable: strings.TrimSpace(matches[1]), labels: matches[2], properties: matches[3]}, true
+}
+
+func nodePatternHasInlineTenantScope(pattern nodePattern) bool {
+	return nodeHasEntityLabel(pattern.labels) && inlineTenantPattern.MatchString(pattern.properties)
+}
+
+func (p nodePattern) isBareVariableReference() bool {
+	return p.variable != "" && strings.TrimSpace(p.labels) == "" && strings.TrimSpace(p.properties) == ""
 }
 
 func nodeHasEntityLabel(labels string) bool {
@@ -183,18 +214,6 @@ func nodeHasEntityLabel(labels string) bool {
 		}
 	}
 	return false
-}
-
-func previousNonSpace(text string, index int) byte {
-	for i := index - 1; i >= 0; i-- {
-		switch text[i] {
-		case ' ', '\t', '\n', '\r':
-			continue
-		default:
-			return text[i]
-		}
-	}
-	return 0
 }
 
 func isIdentifierByte(value byte) bool {
