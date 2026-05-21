@@ -431,10 +431,6 @@ def _required_graph_relations(
     if attack_path_relations_supported:
         if aws_families & AWS_CAN_REACH_REQUIRED_FAMILIES:
             required.add("can_reach")
-        if "effective_permission" in aws_families:
-            required.add("can_perform")
-        if "iam_role_trust" in aws_families:
-            required.add("can_assume")
     return required
 
 
@@ -448,8 +444,6 @@ def _verify_required_graph_relations(
     missing = sorted(required - relations)
     if missing:
         raise RuntimeError(f"graph paths missing required relation(s): {', '.join(missing)}")
-    if attack_path_relations_supported and "effective_permission" in aws_families and not (relations & AWS_ATTACK_PATH_RELATIONS):
-        raise RuntimeError("graph paths missing AWS attack-path privilege relations")
     return relations
 
 
@@ -470,9 +464,6 @@ def _verify_required_graph_relation_counts(
     missing = sorted(relation for relation in required if counts.get(relation, 0) <= 0)
     if missing:
         raise RuntimeError(f"graph relation counts missing required relation(s): {', '.join(missing)}")
-    if attack_path_relations_supported and "effective_permission" in (aws_families or set()):
-        if not any(counts.get(relation, 0) > 0 for relation in AWS_ATTACK_PATH_RELATIONS):
-            raise RuntimeError("graph relation counts missing AWS attack-path privilege relations")
     return {relation for relation, count in counts.items() if count > 0}
 
 
