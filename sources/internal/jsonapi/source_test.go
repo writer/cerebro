@@ -137,8 +137,8 @@ func TestReadPreservesNextCursorForEmptyPage(t *testing.T) {
 	if pull.NextCursor.GetOpaque() != "page-2" {
 		t.Fatalf("NextCursor = %q, want page-2", pull.NextCursor.GetOpaque())
 	}
-	if pull.Checkpoint.GetCursorOpaque() != "page-2" {
-		t.Fatalf("Checkpoint cursor = %q, want page-2", pull.Checkpoint.GetCursorOpaque())
+	if pull.Checkpoint != nil {
+		t.Fatalf("Checkpoint = %#v, want nil so an empty page does not overwrite the last watermark", pull.Checkpoint)
 	}
 }
 
