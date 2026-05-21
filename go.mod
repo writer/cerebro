@@ -5,16 +5,16 @@ go 1.26.0
 toolchain go1.26.3
 
 require (
-	connectrpc.com/connect v1.19.2
+	connectrpc.com/connect v1.20.0
 	github.com/aws/aws-sdk-go-v2 v1.41.7
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.16
-	github.com/aws/aws-sdk-go-v2/service/apigateway v1.39.3
-	github.com/aws/aws-sdk-go-v2/service/apigatewayv2 v1.34.3
+	github.com/aws/aws-sdk-go-v2/service/apigateway v1.39.4
+	github.com/aws/aws-sdk-go-v2/service/apigatewayv2 v1.34.4
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.51.0
-	github.com/aws/aws-sdk-go-v2/service/cloudfront v1.63.0
+	github.com/aws/aws-sdk-go-v2/service/cloudfront v1.64.0
 	github.com/aws/aws-sdk-go-v2/service/cloudtrail v1.55.11
-	github.com/aws/aws-sdk-go-v2/service/ec2 v1.301.0
+	github.com/aws/aws-sdk-go-v2/service/ec2 v1.303.0
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.54.12
 	github.com/aws/aws-sdk-go-v2/service/iam v1.53.10
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.62.7
