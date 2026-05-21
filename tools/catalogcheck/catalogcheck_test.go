@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
 func TestCheckRepositoryAcceptsMinimalCatalogs(t *testing.T) {
@@ -80,6 +82,24 @@ emitted_kinds:
 	}
 	if len(issues) == 0 {
 		t.Fatal("issues = 0, want unprojected emitted kind issue")
+	}
+}
+
+func TestValidateFixtureContractsSkipsSymlinkFixtures(t *testing.T) {
+	root := t.TempDir()
+	sourceDir := filepath.Join(root, "sources", "custom")
+	if err := os.MkdirAll(filepath.Join(sourceDir, "testdata"), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	linkPath := filepath.Join(sourceDir, "testdata", "outside.json")
+	if err := os.Symlink(filepath.Join(root, "missing.json"), linkPath); err != nil {
+		t.Skipf("Symlink() unsupported: %v", err)
+	}
+	issues := validateFixtureContracts(root, sourceDir, []sourcecdk.EventContract{
+		{Kind: "custom.event", RequiredAttributes: []string{"required_attribute"}},
+	})
+	if len(issues) != 0 {
+		t.Fatalf("issues = %#v, want none for symlink fixture", issues)
 	}
 }
 

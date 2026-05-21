@@ -448,6 +448,21 @@ func TestListReportDefinitionsIncludesFindingSummary(t *testing.T) {
 	if response.GetReports()[0].GetId() != findingSummaryReportID {
 		t.Fatalf("List().Reports[0].ID = %q, want %q", response.GetReports()[0].GetId(), findingSummaryReportID)
 	}
+	parameters := reportParametersByID(response.GetReports()[0].GetParameters())
+	if !parameters[reportParameterRuntimeIDs].GetRequired() {
+		t.Fatalf("runtime_ids parameter Required = false, want true")
+	}
+	if parameters[reportParameterRuntimeID].GetRequired() {
+		t.Fatalf("runtime_id parameter Required = true, want false")
+	}
+}
+
+func reportParametersByID(parameters []*cerebrov1.ReportParameter) map[string]*cerebrov1.ReportParameter {
+	byID := make(map[string]*cerebrov1.ReportParameter, len(parameters))
+	for _, parameter := range parameters {
+		byID[parameter.GetId()] = parameter
+	}
+	return byID
 }
 
 func TestReportRunIDIncludesEntropy(t *testing.T) {

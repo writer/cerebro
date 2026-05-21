@@ -419,13 +419,13 @@ func findingSummaryDefinition() *cerebrov1.ReportDefinition {
 			},
 			{
 				Id:          reportParameterRuntimeID,
-				Description: "Stored source runtime identifier whose persisted findings should be summarized. Use runtime_ids for cross-runtime reports.",
+				Description: "Optional legacy single stored source runtime identifier. Use runtime_ids as the required runtime selector for new clients.",
 				Required:    false,
 			},
 			{
 				Id:          reportParameterRuntimeIDs,
-				Description: "Optional comma-separated stored source runtime identifiers for cross-runtime finding summaries.",
-				Required:    false,
+				Description: "Required comma-separated stored source runtime identifiers for finding summaries.",
+				Required:    true,
 			},
 			{
 				Id:          reportParameterResourceLimit,

@@ -271,6 +271,9 @@ func validateFixtureContracts(root string, sourceDir string, contracts []sourcec
 		if err != nil || entry.IsDir() || filepath.Ext(path) != ".json" {
 			return nil
 		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
 		rel := slashRel(root, path)
 		content, readErr := os.ReadFile(path)
 		if readErr != nil {
