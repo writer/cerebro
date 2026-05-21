@@ -36,6 +36,12 @@ type nodePattern struct {
 	properties string
 }
 
+type subqueryScope struct {
+	outer     map[string]struct{}
+	bodyStart int
+	end       int
+}
+
 type ValidatorOptions struct {
 	MaxRows           int
 	AllNodesScanLimit int
@@ -124,13 +130,31 @@ func allNodePatternsTenantScoped(query string) bool {
 	}
 	scopedVariables := map[string]struct{}{}
 	var pendingCallImports map[string]struct{}
+	var subqueries []subqueryScope
 	sawNode := false
 	for i := 0; i < len(query); i++ {
+		if len(subqueries) > 0 && i == subqueries[len(subqueries)-1].end {
+			current := subqueries[len(subqueries)-1]
+			scopedVariables = mergeScopedVariables(current.outer, scopedVariablesAfterReturn(query[current.bodyStart:current.end], scopedVariables))
+			subqueries = subqueries[:len(subqueries)-1]
+			pendingCallImports = nil
+			continue
+		}
 		if keywordAt(query, i, "CALL") {
-			if !callStartsSubquery(query, i+len("CALL")) {
+			braceIndex := subqueryStartBrace(query, i+len("CALL"))
+			if braceIndex < 0 {
+				return false
+			}
+			endIndex := matchingBrace(query, braceIndex)
+			if endIndex < 0 {
 				return false
 			}
 			pendingCallImports = cloneScopedVariables(scopedVariables)
+			subqueries = append(subqueries, subqueryScope{
+				outer:     cloneScopedVariables(scopedVariables),
+				bodyStart: braceIndex + 1,
+				end:       endIndex,
+			})
 			scopedVariables = map[string]struct{}{}
 			i += len("CALL") - 1
 			continue
@@ -177,21 +201,40 @@ func allNodePatternsTenantScoped(query string) bool {
 
 func hasProcedureCall(query string) bool {
 	for i := 0; i < len(query); i++ {
-		if keywordAt(query, i, "CALL") && !callStartsSubquery(query, i+len("CALL")) {
+		if keywordAt(query, i, "CALL") && subqueryStartBrace(query, i+len("CALL")) < 0 {
 			return true
 		}
 	}
 	return false
 }
 
-func callStartsSubquery(query string, start int) bool {
+func subqueryStartBrace(query string, start int) int {
 	for i := start; i < len(query); i++ {
 		if isWhitespace(query[i]) {
 			continue
 		}
-		return query[i] == '{'
+		if query[i] == '{' {
+			return i
+		}
+		return -1
 	}
-	return false
+	return -1
+}
+
+func matchingBrace(query string, start int) int {
+	depth := 0
+	for i := start; i < len(query); i++ {
+		switch query[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
 }
 
 func matchClausesContainOnlyNodePatterns(query string) bool {
@@ -296,12 +339,45 @@ func scopedVariablesAfterWith(query string, start int, scopedVariables map[strin
 	return next
 }
 
+func scopedVariablesAfterReturn(query string, scopedVariables map[string]struct{}) map[string]struct{} {
+	start := lastKeywordIndex(query, "RETURN")
+	if start < 0 {
+		return nil
+	}
+	start += len("RETURN")
+	clause := query[start:withProjectionEnd(query, start)]
+	next := map[string]struct{}{}
+	for _, item := range splitProjectionItems(clause) {
+		projectScopedVariable(next, scopedVariables, strings.TrimSpace(item))
+	}
+	return next
+}
+
+func lastKeywordIndex(query string, keyword string) int {
+	result := -1
+	for i := 0; i < len(query); i++ {
+		if keywordAt(query, i, keyword) {
+			result = i
+			i += len(keyword) - 1
+		}
+	}
+	return result
+}
+
 func cloneScopedVariables(scopedVariables map[string]struct{}) map[string]struct{} {
 	clone := make(map[string]struct{}, len(scopedVariables))
 	for variable := range scopedVariables {
 		clone[variable] = struct{}{}
 	}
 	return clone
+}
+
+func mergeScopedVariables(left map[string]struct{}, right map[string]struct{}) map[string]struct{} {
+	merged := cloneScopedVariables(left)
+	for variable := range right {
+		merged[variable] = struct{}{}
+	}
+	return merged
 }
 
 func withProjectionEnd(query string, start int) int {
@@ -355,7 +431,7 @@ func splitProjectionItems(clause string) []string {
 }
 
 func projectScopedVariable(next map[string]struct{}, scopedVariables map[string]struct{}, item string) {
-	item = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(item), "DISTINCT "))
+	item = trimLeadingKeyword(item, "DISTINCT")
 	if item == "*" {
 		for variable := range scopedVariables {
 			next[variable] = struct{}{}
@@ -373,6 +449,14 @@ func projectScopedVariable(next map[string]struct{}, scopedVariables map[string]
 			next[fields[2]] = struct{}{}
 		}
 	}
+}
+
+func trimLeadingKeyword(text string, keyword string) string {
+	text = strings.TrimSpace(text)
+	if keywordAt(text, 0, keyword) {
+		return strings.TrimSpace(text[len(keyword):])
+	}
+	return text
 }
 
 func keywordAt(query string, index int, keyword string) bool {
