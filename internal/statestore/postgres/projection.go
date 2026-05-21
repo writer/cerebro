@@ -39,6 +39,7 @@ var ensureProjectionStatements = []string{
   PRIMARY KEY (from_urn, relation, to_urn)
 )`,
 	`CREATE INDEX IF NOT EXISTS entity_links_tenant_relation_idx ON entity_links (tenant_id, relation)`,
+	`CREATE INDEX IF NOT EXISTS entity_links_to_urn_idx ON entity_links (to_urn)`,
 	`ALTER TABLE entity_links ADD COLUMN IF NOT EXISTS runtime_id TEXT NOT NULL DEFAULT ''`,
 	`CREATE INDEX IF NOT EXISTS entity_links_tenant_runtime_idx ON entity_links (tenant_id, runtime_id)`,
 }

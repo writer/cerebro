@@ -69,6 +69,15 @@ func TestProjectedLinkDeleteUsesPrimaryKey(t *testing.T) {
 	}
 }
 
+func TestProjectionEnsureStatementsIndexReverseLinkLookups(t *testing.T) {
+	for _, statement := range ensureProjectionStatements {
+		if strings.Contains(statement, "entity_links_to_urn_idx") && strings.Contains(statement, "ON entity_links (to_urn)") {
+			return
+		}
+	}
+	t.Fatalf("ensureProjectionStatements missing entity_links to_urn index: %#v", ensureProjectionStatements)
+}
+
 func TestProjectedEntityCleanupSQLRequiresScope(t *testing.T) {
 	if _, _, err := projectedEntityCleanupSQL(ports.ProjectionCleanupRequest{OnlyIsolated: true}); err == nil {
 		t.Fatal("projectedEntityCleanupSQL() error = nil, want non-nil")
