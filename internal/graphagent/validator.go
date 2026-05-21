@@ -119,12 +119,19 @@ func allNodePatternsTenantScoped(query string) bool {
 	if !matchClausesContainOnlyNodePatterns(query) {
 		return false
 	}
-	patterns := nodePatternsInQuery(query)
-	if len(patterns) == 0 {
-		return false
-	}
 	scopedVariables := map[string]struct{}{}
-	for _, pattern := range patterns {
+	sawNode := false
+	for i := 0; i < len(query); i++ {
+		if boundary, width := queryPartBoundaryAt(query, i); boundary {
+			scopedVariables = map[string]struct{}{}
+			i += width - 1
+			continue
+		}
+		pattern, ok := nodePatternAt(query, i, false)
+		if !ok {
+			continue
+		}
+		sawNode = true
 		if nodePatternHasInlineTenantScope(pattern) {
 			if pattern.variable != "" {
 				scopedVariables[pattern.variable] = struct{}{}
@@ -138,7 +145,7 @@ func allNodePatternsTenantScoped(query string) bool {
 		}
 		return false
 	}
-	return true
+	return sawNode
 }
 
 func matchClausesContainOnlyNodePatterns(query string) bool {
@@ -159,11 +166,6 @@ func matchClausesContainOnlyNodePatterns(query string) bool {
 	return true
 }
 
-func nodePatternsInQuery(query string) []nodePattern {
-	patterns, _ := nodePatternsInText(query, false)
-	return patterns
-}
-
 func nodePatternsInMatchClause(clause string) ([]nodePattern, bool) {
 	return nodePatternsInText(clause, true)
 }
@@ -178,8 +180,7 @@ func nodePatternsInText(text string, requireValid bool) ([]nodePattern, bool) {
 		if closeIndex < 0 {
 			return nil, !requireValid
 		}
-		body := text[i+1 : i+1+closeIndex]
-		pattern, ok := parseNodePattern(body)
+		pattern, ok := parseNodePattern(text[i+1 : i+1+closeIndex])
 		if !ok {
 			if requireValid {
 				return nil, false
@@ -189,6 +190,21 @@ func nodePatternsInText(text string, requireValid bool) ([]nodePattern, bool) {
 		patterns = append(patterns, pattern)
 	}
 	return patterns, true
+}
+
+func nodePatternAt(text string, index int, requireValid bool) (nodePattern, bool) {
+	if text[index] != '(' || index > 0 && isIdentifierByte(text[index-1]) {
+		return nodePattern{}, false
+	}
+	closeIndex := strings.IndexByte(text[index+1:], ')')
+	if closeIndex < 0 {
+		return nodePattern{}, false
+	}
+	pattern, ok := parseNodePattern(text[index+1 : index+1+closeIndex])
+	if !ok && requireValid {
+		return nodePattern{}, false
+	}
+	return pattern, ok
 }
 
 func parseNodePattern(body string) (nodePattern, bool) {
@@ -214,6 +230,28 @@ func nodeHasEntityLabel(labels string) bool {
 		}
 	}
 	return false
+}
+
+func queryPartBoundaryAt(query string, index int) (bool, int) {
+	for _, keyword := range []string{"WITH", "UNION"} {
+		if keywordAt(query, index, keyword) {
+			return true, len(keyword)
+		}
+	}
+	return false, 0
+}
+
+func keywordAt(query string, index int, keyword string) bool {
+	if index+len(keyword) > len(query) || !strings.EqualFold(query[index:index+len(keyword)], keyword) {
+		return false
+	}
+	if index > 0 && isIdentifierByte(query[index-1]) {
+		return false
+	}
+	if next := index + len(keyword); next < len(query) && isIdentifierByte(query[next]) {
+		return false
+	}
+	return true
 }
 
 func isIdentifierByte(value byte) bool {

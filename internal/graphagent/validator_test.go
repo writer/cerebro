@@ -64,6 +64,16 @@ func TestValidatorRejectsUnsafeCypher(t *testing.T) {
 			cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN [(x:Entity)-[:RELATION]->(y:Entity) | x.urn][0..10] AS leaks LIMIT 1`,
 			reason: "inline tenant_id",
 		},
+		{
+			name:   "with boundary drops scoped variable",
+			cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) WITH count(*) AS n MATCH (e) RETURN e.urn LIMIT 25`,
+			reason: "inline tenant_id",
+		},
+		{
+			name:   "union boundary resets scoped variables",
+			cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e.urn AS urn LIMIT 25 UNION MATCH (e) RETURN e.urn AS urn LIMIT 25`,
+			reason: "inline tenant_id",
+		},
 	}
 
 	validator := NewValidator(nil, ValidatorOptions{})
