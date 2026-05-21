@@ -264,7 +264,7 @@ func ImportNVD(ctx context.Context, store Store, reader io.Reader) (ImportResult
 		}
 		result.Vulnerabilities++
 		affectedPackages := nvdAffectedPackages(id, item.CVE.Configurations)
-		if err := store.ReplaceAffectedPackages(ctx, id, SourceNVD, affectedPackages); err != nil {
+		if err := replaceAffectedPackagesForCanonical(ctx, store, id, SourceNVD, affectedPackages, []string{sourceID}); err != nil {
 			return ImportResult{}, err
 		}
 		result.AffectedPackages += len(affectedPackages)
@@ -393,11 +393,26 @@ func importOSVAdvisory(ctx context.Context, store Store, advisory osvAdvisory) (
 			affectedPackages = append(affectedPackages, osvRangeAffectedPackages(id, ecosystem, name, affectedRange)...)
 		}
 	}
-	if err := store.ReplaceAffectedPackages(ctx, id, SourceOSV, affectedPackages); err != nil {
+	identifiers := append([]string{sourceID}, advisory.Aliases...)
+	if err := replaceAffectedPackagesForCanonical(ctx, store, id, SourceOSV, affectedPackages, identifiers); err != nil {
 		return ImportResult{}, err
 	}
 	result.AffectedPackages = len(affectedPackages)
 	return result, nil
+}
+
+func replaceAffectedPackagesForCanonical(ctx context.Context, store Store, canonicalID string, source string, packages []AffectedPackage, identifiers []string) error {
+	canonicalID = NormalizeIdentifier(canonicalID)
+	for _, identifier := range identifiers {
+		id := NormalizeIdentifier(identifier)
+		if id == "" || id == canonicalID {
+			continue
+		}
+		if err := store.ReplaceAffectedPackages(ctx, id, source, nil); err != nil {
+			return err
+		}
+	}
+	return store.ReplaceAffectedPackages(ctx, canonicalID, source, packages)
 }
 
 func findVulnerabilityByAnyIdentifier(ctx context.Context, store Store, id string, aliases []string) (Vulnerability, bool, error) {

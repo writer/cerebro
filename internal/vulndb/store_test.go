@@ -424,6 +424,48 @@ func TestImportOSVMergesExistingAliasEnrichment(t *testing.T) {
 	}
 }
 
+func TestImportOSVRemovesAliasSupersededAffectedPackages(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	if err := store.UpsertVulnerability(ctx, Vulnerability{ID: "GHSA-3333-4444-6666"}); err != nil {
+		t.Fatalf("upsert original advisory: %v", err)
+	}
+	if err := store.UpsertAffectedPackage(ctx, AffectedPackage{
+		VulnerabilityID: "GHSA-3333-4444-6666",
+		Source:          SourceOSV,
+		Ecosystem:       "npm",
+		PackageName:     "demo",
+		Introduced:      "0",
+		Fixed:           "1.0.0",
+	}); err != nil {
+		t.Fatalf("upsert original affected package: %v", err)
+	}
+	if err := store.UpsertVulnerability(ctx, Vulnerability{ID: "CVE-2026-33336", Aliases: []string{"GHSA-3333-4444-6666"}}); err != nil {
+		t.Fatalf("upsert canonical alias advisory: %v", err)
+	}
+	osv := `[{
+		"id":"GHSA-3333-4444-6666",
+		"aliases":["CVE-2026-33336"],
+		"affected":[{
+			"package":{"ecosystem":"npm","name":"demo"},
+			"ranges":[{"type":"SEMVER","events":[{"introduced":"0"},{"fixed":"2.0.0"}]}]
+		}]
+	}]`
+	if _, err := ImportOSV(ctx, store, strings.NewReader(osv)); err != nil {
+		t.Fatalf("import osv alias refresh: %v", err)
+	}
+	rows, err := store.CandidateAffectedPackages(ctx, PackageQuery{Ecosystem: "npm", Name: "demo"})
+	if err != nil {
+		t.Fatalf("candidate affected packages: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("affected rows = %+v, want one canonical OSV row", rows)
+	}
+	if rows[0].VulnerabilityID != "CVE-2026-33336" || rows[0].Fixed != "2.0.0" {
+		t.Fatalf("unexpected canonical affected row: %+v", rows[0])
+	}
+}
+
 func TestImportOSVMultiIntervalRanges(t *testing.T) {
 	ctx := context.Background()
 	store := NewMemoryStore()
