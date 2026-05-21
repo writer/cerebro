@@ -63,11 +63,13 @@ func run(args []string) error {
 		return runSource(args[1:])
 	case "source-runtime":
 		return runSourceRuntime(args[1:])
+	case "vulndb":
+		return runVulnDB(args[1:])
 	case "version":
 		fmt.Printf("%s %s\n", buildinfo.ServiceName, buildinfo.Version)
 		return nil
 	}
-	return usageError(fmt.Sprintf("usage: %s [serve|version|graph|orchestrator|finding-rule|source|source-runtime]", os.Args[0]))
+	return usageError(fmt.Sprintf("usage: %s [serve|version|graph|orchestrator|finding-rule|source|source-runtime|vulndb]", os.Args[0]))
 }
 
 func serve() error {
