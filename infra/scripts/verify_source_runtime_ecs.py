@@ -94,7 +94,14 @@ def _schedule_suffix(value: str) -> str:
 
 def _aws(args: list[str], region: str) -> Any:
     command = ["aws", *args, "--region", region, "--output", "json"]
-    completed = subprocess.run(command, check=True, text=True, capture_output=True)
+    try:
+        completed = subprocess.run(command, check=True, text=True, capture_output=True)
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "").strip()
+        message = f"{' '.join(command)} failed with exit code {exc.returncode}"
+        if detail:
+            message = f"{message}: {detail}"
+        raise RuntimeError(message) from exc
     if not completed.stdout.strip():
         return None
     return json.loads(completed.stdout)
@@ -167,12 +174,44 @@ def _task_family(task_definition_arn: str) -> str:
     return task_definition_arn.rsplit("/", 1)[-1].rsplit(":", 1)[0]
 
 
+def _latest_active_task_definition(task_definition: str, region: str) -> str:
+    response = _aws(["ecs", "describe-task-definition", "--task-definition", task_definition], region)
+    definition = response.get("taskDefinition") or {}
+    if definition.get("status") == "ACTIVE":
+        return str(definition.get("taskDefinitionArn") or task_definition)
+    family = str(definition.get("family") or _task_family(task_definition)).strip()
+    if not family:
+        raise RuntimeError(f"could not determine ECS task definition family for {task_definition}")
+    active = _aws(
+        [
+            "ecs",
+            "list-task-definitions",
+            "--family-prefix",
+            family,
+            "--status",
+            "ACTIVE",
+            "--sort",
+            "DESC",
+            "--max-items",
+            "1",
+        ],
+        region,
+    )
+    arns = active.get("taskDefinitionArns") or []
+    if not arns:
+        raise RuntimeError(f"no active ECS task definitions found for family {family}")
+    replacement = str(arns[0])
+    print(f"Using latest active ECS task definition {replacement} instead of inactive {task_definition}", file=sys.stderr)
+    return replacement
+
+
 def _run_task(target: RuntimeTarget, region: str) -> str:
     ecs_params = target.target["EcsParameters"]
     network = ecs_params["NetworkConfiguration"]["awsvpcConfiguration"]
     subnets = ",".join(network["Subnets"])
     security_groups = ",".join(network["SecurityGroups"])
     assign_public_ip = network.get("AssignPublicIp", "DISABLED")
+    task_definition = _latest_active_task_definition(ecs_params["TaskDefinitionArn"], region)
     response = _aws(
         [
             "ecs",
@@ -180,7 +219,7 @@ def _run_task(target: RuntimeTarget, region: str) -> str:
             "--cluster",
             target.target["Arn"],
             "--task-definition",
-            ecs_params["TaskDefinitionArn"],
+            task_definition,
             "--launch-type",
             ecs_params.get("LaunchType", "FARGATE"),
             "--network-configuration",
