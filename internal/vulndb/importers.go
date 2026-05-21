@@ -238,7 +238,10 @@ func ImportNVD(ctx context.Context, store Store, reader io.Reader) (ImportResult
 			ModifiedAt:  parseTime(item.CVE.LastModified),
 			References:  nvdReferences(item.CVE.References),
 		}
-		vulnerability.CVSSScore, vulnerability.Severity, vulnerability.CVSSVector = nvdCVSS(item.CVE.Metrics)
+		cvssScore, severity, cvssVector, hasCVSSScore := nvdCVSS(item.CVE.Metrics)
+		vulnerability.CVSSScore = cvssScore
+		vulnerability.Severity = severity
+		vulnerability.CVSSVector = cvssVector
 		if ok {
 			vulnerability.EPSS = existing.EPSS
 			vulnerability.KEV = existing.KEV
@@ -249,7 +252,7 @@ func ImportNVD(ctx context.Context, store Store, reader io.Reader) (ImportResult
 			if vulnerability.Details == "" {
 				vulnerability.Details = existing.Details
 			}
-			if vulnerability.CVSSScore == 0 {
+			if !hasCVSSScore {
 				vulnerability.CVSSScore = existing.CVSSScore
 			}
 			if vulnerability.CVSSVector == "" {
@@ -325,7 +328,7 @@ func importOSVAdvisory(ctx context.Context, store Store, advisory osvAdvisory) (
 	}
 	vulnerability := Vulnerability{
 		ID:          id,
-		Aliases:     mergeVulnerabilityAliases(id, existing.Aliases, []string{sourceID}, advisory.Aliases),
+		Aliases:     mergeVulnerabilityAliases(id, []string{sourceID}, advisory.Aliases),
 		Summary:     strings.TrimSpace(advisory.Summary),
 		Details:     strings.TrimSpace(advisory.Details),
 		Source:      SourceOSV,
@@ -337,9 +340,6 @@ func importOSVAdvisory(ctx context.Context, store Store, advisory osvAdvisory) (
 	if ok {
 		vulnerability.EPSS = existing.EPSS
 		vulnerability.KEV = existing.KEV
-		if vulnerability.WithdrawnAt.IsZero() {
-			vulnerability.WithdrawnAt = existing.WithdrawnAt
-		}
 		if vulnerability.Summary == "" {
 			vulnerability.Summary = existing.Summary
 		}
@@ -571,6 +571,14 @@ func osvRangeAffectedPackages(vulnerabilityID string, ecosystem string, packageN
 			current.LastAffected = lastAffected
 			appendCurrent()
 		}
+		if limit := strings.TrimSpace(event.Limit); limit != "" {
+			if !hasCurrent {
+				current = base
+				hasCurrent = true
+			}
+			current.Fixed = limit
+			appendCurrent()
+		}
 	}
 	if hasCurrent {
 		appendCurrent()
@@ -622,6 +630,7 @@ type osvEvent struct {
 	Introduced   string `json:"introduced"`
 	Fixed        string `json:"fixed"`
 	LastAffected string `json:"last_affected"`
+	Limit        string `json:"limit"`
 }
 
 type kevCatalog struct {
@@ -757,7 +766,7 @@ func nvdReferences(references []nvdReference) []Reference {
 	return out
 }
 
-func nvdCVSS(metrics nvdMetrics) (float64, string, string) {
+func nvdCVSS(metrics nvdMetrics) (float64, string, string, bool) {
 	for _, candidates := range [][]nvdCVSSMetric{
 		metrics.CVSSMetricV40,
 		metrics.CVSSMetricV31,
@@ -768,9 +777,9 @@ func nvdCVSS(metrics nvdMetrics) (float64, string, string) {
 			continue
 		}
 		data := candidates[0].CVSSData
-		return data.BaseScore, strings.TrimSpace(data.BaseSeverity), strings.TrimSpace(data.VectorString)
+		return data.BaseScore, strings.TrimSpace(data.BaseSeverity), strings.TrimSpace(data.VectorString), true
 	}
-	return 0, "", ""
+	return 0, "", "", false
 }
 
 func nvdAffectedPackages(vulnerabilityID string, configurations []nvdConfiguration) []AffectedPackage {

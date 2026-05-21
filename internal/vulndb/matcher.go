@@ -109,6 +109,16 @@ func compareVersion(left string, right string) (int, bool) {
 	for len(rightParts) > 0 && rightParts[len(rightParts)-1].numeric && rightParts[len(rightParts)-1].number == 0 {
 		rightParts = rightParts[:len(rightParts)-1]
 	}
+	if equalVersionCore(leftParts, rightParts) {
+		leftPrerelease := hasSemverPrerelease(left)
+		rightPrerelease := hasSemverPrerelease(right)
+		if leftPrerelease != rightPrerelease {
+			if leftPrerelease {
+				return -1, true
+			}
+			return 1, true
+		}
+	}
 	maxParts := maxInt(len(leftParts), len(rightParts))
 	for i := 0; i < maxParts; i++ {
 		if i >= len(leftParts) {
@@ -129,6 +139,52 @@ func compareVersion(left string, right string) (int, bool) {
 		}
 	}
 	return 0, true
+}
+
+func equalVersionCore(leftParts []versionPart, rightParts []versionPart) bool {
+	leftCore := versionCoreParts(leftParts)
+	rightCore := versionCoreParts(rightParts)
+	return compareVersionParts(leftCore, rightCore) == 0
+}
+
+func versionCoreParts(parts []versionPart) []versionPart {
+	for i, part := range parts {
+		if !part.numeric {
+			return parts[:i]
+		}
+	}
+	return parts
+}
+
+func hasSemverPrerelease(version string) bool {
+	version = strings.TrimPrefix(normalizeVersion(version), "v")
+	if plus := strings.Index(version, "+"); plus >= 0 {
+		version = version[:plus]
+	}
+	return strings.Contains(version, "-")
+}
+
+func compareVersionParts(leftParts []versionPart, rightParts []versionPart) int {
+	maxParts := maxInt(len(leftParts), len(rightParts))
+	for i := 0; i < maxParts; i++ {
+		if i >= len(leftParts) {
+			if rightParts[i].numeric && rightParts[i].number == 0 {
+				continue
+			}
+			return -1
+		}
+		if i >= len(rightParts) {
+			if leftParts[i].numeric && leftParts[i].number == 0 {
+				continue
+			}
+			return 1
+		}
+		cmp := compareVersionPart(leftParts[i], rightParts[i])
+		if cmp != 0 {
+			return cmp
+		}
+	}
+	return 0
 }
 
 type versionPart struct {

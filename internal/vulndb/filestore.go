@@ -58,7 +58,14 @@ func (s *FileStore) DeleteVulnerability(ctx context.Context, id string) error {
 
 // FindVulnerability returns an advisory by canonical ID or alias.
 func (s *FileStore) FindVulnerability(ctx context.Context, idOrAlias string) (Vulnerability, bool, error) {
-	return s.mem.FindVulnerability(ctx, idOrAlias)
+	var vulnerability Vulnerability
+	found := false
+	err := s.read(ctx, func() error {
+		var err error
+		vulnerability, found, err = s.mem.FindVulnerability(ctx, idOrAlias)
+		return err
+	})
+	return vulnerability, found, err
 }
 
 // UpsertAffectedPackage inserts or replaces an affected package row and persists the state file.
@@ -77,12 +84,25 @@ func (s *FileStore) ReplaceAffectedPackages(ctx context.Context, vulnerabilityID
 
 // CandidateAffectedPackages returns all advisory package rows for an ecosystem/name pair.
 func (s *FileStore) CandidateAffectedPackages(ctx context.Context, query PackageQuery) ([]AffectedPackage, error) {
-	return s.mem.CandidateAffectedPackages(ctx, query)
+	var packages []AffectedPackage
+	err := s.read(ctx, func() error {
+		var err error
+		packages, err = s.mem.CandidateAffectedPackages(ctx, query)
+		return err
+	})
+	return packages, err
 }
 
 // GetSyncState returns feed synchronization progress by logical source label.
 func (s *FileStore) GetSyncState(ctx context.Context, source string) (SyncState, bool, error) {
-	return s.mem.GetSyncState(ctx, source)
+	var state SyncState
+	found := false
+	err := s.read(ctx, func() error {
+		var err error
+		state, found, err = s.mem.GetSyncState(ctx, source)
+		return err
+	})
+	return state, found, err
 }
 
 // PutSyncState records feed synchronization progress and persists the state file.
@@ -94,7 +114,13 @@ func (s *FileStore) PutSyncState(ctx context.Context, state SyncState) error {
 
 // Stats returns counts for persisted advisory data.
 func (s *FileStore) Stats(ctx context.Context) (Stats, error) {
-	return s.mem.Stats(ctx)
+	var stats Stats
+	err := s.read(ctx, func() error {
+		var err error
+		stats, err = s.mem.Stats(ctx)
+		return err
+	})
+	return stats, err
 }
 
 // PutSyncJob upserts a durable advisory feed synchronization job and persists the state file.
@@ -106,12 +132,25 @@ func (s *FileStore) PutSyncJob(ctx context.Context, job SyncJob) error {
 
 // GetSyncJob returns a durable advisory feed synchronization job.
 func (s *FileStore) GetSyncJob(ctx context.Context, id string) (SyncJob, bool, error) {
-	return s.mem.GetSyncJob(ctx, id)
+	var job SyncJob
+	found := false
+	err := s.read(ctx, func() error {
+		var err error
+		job, found, err = s.mem.GetSyncJob(ctx, id)
+		return err
+	})
+	return job, found, err
 }
 
 // ListDueSyncJobs returns sync jobs whose next run is due and whose lease is free or expired.
 func (s *FileStore) ListDueSyncJobs(ctx context.Context, now time.Time, limit int) ([]SyncJob, error) {
-	return s.mem.ListDueSyncJobs(ctx, now, limit)
+	var jobs []SyncJob
+	err := s.read(ctx, func() error {
+		var err error
+		jobs, err = s.mem.ListDueSyncJobs(ctx, now, limit)
+		return err
+	})
+	return jobs, err
 }
 
 // AcquireSyncJobLease leases a sync job for a worker and persists the state file.
@@ -209,6 +248,23 @@ func (s *FileStore) update(ctx context.Context, apply func() error) error {
 		return err
 	}
 	return s.saveLocked(ctx)
+}
+
+func (s *FileStore) read(ctx context.Context, apply func() error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	unlock, err := s.lockStateFile()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if err := s.load(ctx); err != nil {
+		return err
+	}
+	return apply()
 }
 
 func (s *FileStore) lockStateFile() (func(), error) {

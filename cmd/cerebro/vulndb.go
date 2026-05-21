@@ -11,6 +11,7 @@ import (
 
 	"github.com/writer/cerebro/internal/bootstrap"
 	appconfig "github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/statestore/postgres"
 	"github.com/writer/cerebro/internal/vulndb"
 )
 
@@ -404,21 +405,15 @@ func openStateVulnDBStore(ctx context.Context) (openedVulnDBStore, error) {
 	if err != nil {
 		return openedVulnDBStore{}, err
 	}
-	deps, closeDeps, err := bootstrap.OpenDependencies(ctx, cfg)
+	store, err := postgres.Open(cfg.StateStore)
 	if err != nil {
 		return openedVulnDBStore{}, err
 	}
-	store, ok := deps.StateStore.(vulndb.Store)
-	if !ok || store == nil {
-		_ = closeDeps()
-		return openedVulnDBStore{}, fmt.Errorf("configured state store does not implement vulndb.Store")
+	if err := store.Ping(ctx); err != nil {
+		_ = store.Close()
+		return openedVulnDBStore{}, err
 	}
-	jobs, ok := deps.StateStore.(vulndb.SyncJobStore)
-	if !ok || jobs == nil {
-		_ = closeDeps()
-		return openedVulnDBStore{}, fmt.Errorf("configured state store does not implement vulndb.SyncJobStore")
-	}
-	return openedVulnDBStore{Store: store, Jobs: jobs, close: closeDeps}, nil
+	return openedVulnDBStore{Store: store, Jobs: store, close: store.Close}, nil
 }
 
 func putVulnDBSyncJob(ctx context.Context, jobs vulndb.SyncJobStore, options vulnDBOptions) (vulndb.SyncJob, error) {

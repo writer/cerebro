@@ -288,3 +288,47 @@ func TestFileStoreSyncJobLeaseReloadsBeforeAcquire(t *testing.T) {
 		t.Fatal("expected worker2 to observe persisted lease and skip acquisition")
 	}
 }
+
+func TestFileStoreReloadsSyncJobsBeforeRead(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "vulndb.json")
+	seed, err := NewFileStore(ctx, path)
+	if err != nil {
+		t.Fatalf("new seed file store: %v", err)
+	}
+	if err := seed.PutSyncJob(ctx, SyncJob{ID: "osv-hourly", Source: SourceOSV, FeedURL: "old-feed", Interval: time.Hour}); err != nil {
+		t.Fatalf("put seed sync job: %v", err)
+	}
+	reader, err := NewFileStore(ctx, path)
+	if err != nil {
+		t.Fatalf("new reader store: %v", err)
+	}
+	writer, err := NewFileStore(ctx, path)
+	if err != nil {
+		t.Fatalf("new writer store: %v", err)
+	}
+	nextRunAt := time.Now().UTC().Add(time.Hour)
+	if err := writer.PutSyncJob(ctx, SyncJob{
+		ID:        "osv-hourly",
+		Source:    SourceOSV,
+		FeedURL:   "new-feed",
+		Interval:  time.Hour,
+		NextRunAt: nextRunAt,
+	}); err != nil {
+		t.Fatalf("update sync job: %v", err)
+	}
+	job, ok, err := reader.GetSyncJob(ctx, "osv-hourly")
+	if err != nil {
+		t.Fatalf("reader get sync job: %v", err)
+	}
+	if !ok || job.FeedURL != "new-feed" || !job.NextRunAt.Equal(nextRunAt) {
+		t.Fatalf("reader observed stale job: ok=%v job=%+v", ok, job)
+	}
+	due, err := reader.ListDueSyncJobs(ctx, time.Now().UTC(), 10)
+	if err != nil {
+		t.Fatalf("reader list due sync jobs: %v", err)
+	}
+	if len(due) != 0 {
+		t.Fatalf("due jobs = %+v, want none after reload of future next_run_at", due)
+	}
+}
