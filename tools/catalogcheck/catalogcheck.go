@@ -92,6 +92,10 @@ func checkPolicies(root string) ([]issue, error) {
 			return nil
 		}
 		rel := slashRel(root, path)
+		if entry.Type()&os.ModeSymlink != 0 {
+			issues = append(issues, issue{path: rel, message: "symlinked policy files are not allowed"})
+			return nil
+		}
 		content, err := os.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("read %s: %w", rel, err)
@@ -224,6 +228,10 @@ func checkSourceCatalogs(root string) ([]issue, error) {
 			return nil
 		}
 		rel := slashRel(root, path)
+		if entry.Type()&os.ModeSymlink != 0 {
+			issues = append(issues, issue{path: rel, message: "symlinked source catalogs are not allowed"})
+			return nil
+		}
 		content, err := os.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("read %s: %w", rel, err)
@@ -292,8 +300,29 @@ func validateFixtureContracts(root string, sourceDir string, contracts []sourcec
 }
 
 func looksLikeEventFixture(content []byte) bool {
-	text := string(content)
-	return strings.Contains(text, `"kind"`) && strings.Contains(text, `"schema_ref"`) && strings.Contains(text, `"payload"`)
+	var raw []map[string]json.RawMessage
+	if err := json.Unmarshal(content, &raw); err != nil {
+		return false
+	}
+	for _, item := range raw {
+		if _, ok := item["schema_ref"]; ok {
+			return true
+		}
+		if _, ok := item["occurred_at"]; ok {
+			return true
+		}
+		if _, ok := item["attributes"]; ok {
+			return true
+		}
+		_, hasTenant := item["tenant_id"]
+		_, hasSource := item["source_id"]
+		_, hasKind := item["kind"]
+		_, hasPayload := item["payload"]
+		if hasTenant && hasSource && (hasKind || hasPayload) {
+			return true
+		}
+	}
+	return false
 }
 
 func stringField(raw map[string]json.RawMessage, field string) string {

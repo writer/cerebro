@@ -35,12 +35,20 @@ func main() {
 			fmt.Fprintf(os.Stderr, "detectioncatalog: create output directory: %v\n", err)
 			os.Exit(1)
 		}
+		if err := rejectSymlink(path); err != nil {
+			fmt.Fprintf(os.Stderr, "detectioncatalog: write %s: %v\n", *output, err)
+			os.Exit(1)
+		}
 		if err := os.WriteFile(path, content, 0o644); err != nil {
 			fmt.Fprintf(os.Stderr, "detectioncatalog: write %s: %v\n", *output, err)
 			os.Exit(1)
 		}
 	}
 	if *check {
+		if err := rejectSymlink(path); err != nil {
+			fmt.Fprintf(os.Stderr, "detectioncatalog: read %s: %v\n", *output, err)
+			os.Exit(1)
+		}
 		existing, err := os.ReadFile(path)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "detectioncatalog: read %s: %v\n", *output, err)
@@ -51,6 +59,20 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+func rejectSymlink(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("symlinked catalog files are not allowed")
+	}
+	return nil
 }
 
 func generateCatalog() ([]byte, error) {

@@ -243,10 +243,11 @@ def main() -> int:
 
     root = Path(args.root).resolve() if args.root else repo_root()
     patterns = load_patterns(root)
-    if not patterns:
+    findings: list[str] = []
+    if patterns:
+        findings.extend(scan(root, patterns))
+    else:
         print("oss-audit: no leak patterns configured", file=sys.stderr)
-        return 0
-    findings = scan(root, patterns)
     findings.extend(scan_fixture_semantics(root))
     if findings:
         print("oss-audit: public hygiene findings detected", file=sys.stderr)

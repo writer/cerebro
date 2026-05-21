@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -100,6 +101,64 @@ func TestValidateFixtureContractsSkipsSymlinkFixtures(t *testing.T) {
 	})
 	if len(issues) != 0 {
 		t.Fatalf("issues = %#v, want none for symlink fixture", issues)
+	}
+}
+
+func TestValidateFixtureContractsRejectsMalformedEventFixture(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "sources/custom/testdata/read.json", `[{
+  "id": "event-1",
+  "tenant_id": "example",
+  "source_id": "custom",
+  "occurred_at": "2026-05-21T12:00:00Z",
+  "schema_ref": "custom/event/v1",
+  "payload": {}
+}]`)
+	sourceDir := filepath.Join(root, "sources", "custom")
+	issues := validateFixtureContracts(root, sourceDir, []sourcecdk.EventContract{
+		{Kind: "custom.event", RequiredAttributes: []string{"required_attribute"}},
+	})
+	if len(issues) == 0 {
+		t.Fatal("issues = 0, want malformed event fixture issue")
+	}
+	if got := issues[0].message; !strings.Contains(got, "kind is required") {
+		t.Fatalf("issue = %q, want kind validation error", got)
+	}
+}
+
+func TestCheckPoliciesRejectsSymlinkedPolicyFiles(t *testing.T) {
+	root := t.TempDir()
+	policiesDir := filepath.Join(root, "policies", "custom")
+	if err := os.MkdirAll(policiesDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.Symlink(filepath.Join(root, "missing.json"), filepath.Join(policiesDir, "policy.json")); err != nil {
+		t.Skipf("Symlink() unsupported: %v", err)
+	}
+	issues, err := checkPolicies(root)
+	if err != nil {
+		t.Fatalf("checkPolicies() error = %v", err)
+	}
+	if len(issues) == 0 || !strings.Contains(issues[0].message, "symlinked policy") {
+		t.Fatalf("issues = %#v, want symlinked policy issue", issues)
+	}
+}
+
+func TestCheckSourceCatalogsRejectsSymlinkedCatalogs(t *testing.T) {
+	root := t.TempDir()
+	sourceDir := filepath.Join(root, "sources", "custom")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.Symlink(filepath.Join(root, "missing.yaml"), filepath.Join(sourceDir, "catalog.yaml")); err != nil {
+		t.Skipf("Symlink() unsupported: %v", err)
+	}
+	issues, err := checkSourceCatalogs(root)
+	if err != nil {
+		t.Fatalf("checkSourceCatalogs() error = %v", err)
+	}
+	if len(issues) == 0 || !strings.Contains(issues[0].message, "symlinked source catalog") {
+		t.Fatalf("issues = %#v, want symlinked source catalog issue", issues)
 	}
 }
 
