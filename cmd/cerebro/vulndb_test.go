@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -135,6 +136,58 @@ func TestPutVulnDBSyncJobPreservesAllowInsecureHTTPWhenOmitted(t *testing.T) {
 	}
 	if job.AllowInsecureHTTP {
 		t.Fatal("AllowInsecureHTTP = true, want explicit false to clear")
+	}
+}
+
+func TestRunVulnDBImportRecordsFailureState(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	stateFile := filepath.Join(dir, "vulndb.json")
+	feedPath := filepath.Join(dir, "bad-osv.json")
+	if err := os.WriteFile(feedPath, []byte(`[`), 0o600); err != nil {
+		t.Fatalf("write bad feed: %v", err)
+	}
+
+	err := runVulnDB([]string{"import-osv", feedPath, "state_file=" + stateFile})
+	if err == nil {
+		t.Fatal("runVulnDB(import-osv) error = nil, want malformed feed error")
+	}
+	store, err := vulndb.NewFileStore(ctx, stateFile)
+	if err != nil {
+		t.Fatalf("open file store: %v", err)
+	}
+	state, ok, err := store.GetSyncState(ctx, vulndb.SourceOSV)
+	if err != nil {
+		t.Fatalf("get sync state: %v", err)
+	}
+	if !ok || state.LastError == "" || state.LastSyncedAt.IsZero() {
+		t.Fatalf("sync state = ok:%v %+v, want recorded import failure", ok, state)
+	}
+}
+
+func TestRunVulnDBSyncRecordsFailureState(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	stateFile := filepath.Join(dir, "vulndb.json")
+	feedPath := filepath.Join(dir, "bad-nvd.json")
+	if err := os.WriteFile(feedPath, []byte(`{"vulnerabilities":[`), 0o600); err != nil {
+		t.Fatalf("write bad feed: %v", err)
+	}
+
+	err := runVulnDB([]string{"sync", "nvd=" + feedPath, "state_file=" + stateFile})
+	if err == nil {
+		t.Fatal("runVulnDB(sync) error = nil, want malformed feed error")
+	}
+	store, err := vulndb.NewFileStore(ctx, stateFile)
+	if err != nil {
+		t.Fatalf("open file store: %v", err)
+	}
+	state, ok, err := store.GetSyncState(ctx, vulndb.SourceNVD)
+	if err != nil {
+		t.Fatalf("get sync state: %v", err)
+	}
+	if !ok || state.LastError == "" || state.LastSyncedAt.IsZero() {
+		t.Fatalf("sync state = ok:%v %+v, want recorded sync failure", ok, state)
 	}
 }
 
