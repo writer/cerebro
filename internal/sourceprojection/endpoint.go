@@ -87,7 +87,9 @@ func kolideCheckProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 			},
 		})
 	}
-	endpointURN := addEndpointEntity(entities, tenantID, event.GetSourceId(), attrs, kolideEndpointProfile)
+	endpointProfile := kolideEndpointProfile
+	endpointProfile.EndpointIDKeys = endpointCorrelationIDKeys(kolideEndpointProfile.EndpointIDKeys)
+	endpointURN := addEndpointEntity(entities, tenantID, event.GetSourceId(), attrs, endpointProfile)
 	if endpointURN != "" && checkURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), endpointURN, checkURN, relationHasEvidence, map[string]string{
 			"event_id": event.GetId(),
