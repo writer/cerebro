@@ -49,6 +49,21 @@ func TestVulnDBInputClientRejectsUnsupportedURLSchemes(t *testing.T) {
 	}
 }
 
+func TestVulnDBInputClientTreatsWindowsDrivePathsAsLocalFiles(t *testing.T) {
+	for _, source := range []string{`C:\feeds\osv.json`, "C:/feeds/osv.json"} {
+		if scheme := vulnDBSourceScheme(source); scheme != "" {
+			t.Fatalf("vulnDBSourceScheme(%q) = %q, want local path", source, scheme)
+		}
+		_, err := (vulndbInputClient{}).Open(context.Background(), source, true)
+		if err == nil {
+			t.Fatalf("Open(%q) error = nil, want local file open error", source)
+		}
+		if errors.Is(err, errUnsupportedVulnDBURLScheme) {
+			t.Fatalf("Open(%q) error = %v, want local file error", source, err)
+		}
+	}
+}
+
 func TestParseVulnDBOptionsSyncJobFields(t *testing.T) {
 	options, err := parseVulnDBOptions([]string{
 		"store=file",
@@ -190,6 +205,26 @@ func TestRunVulnDBImportRecordsFailureState(t *testing.T) {
 	}
 	if !ok || state.LastError == "" || state.LastSyncedAt.IsZero() {
 		t.Fatalf("sync state = ok:%v %+v, want recorded import failure", ok, state)
+	}
+}
+
+func TestRunVulnDBImportUsageErrorDoesNotRecordFailureState(t *testing.T) {
+	ctx := context.Background()
+	stateFile := filepath.Join(t.TempDir(), "vulndb.json")
+	err := runVulnDB([]string{"import-osv", "state_file=" + stateFile})
+	if err == nil {
+		t.Fatal("runVulnDB(import-osv) error = nil, want missing source usage error")
+	}
+	var usage usageError
+	if !errors.As(err, &usage) {
+		t.Fatalf("runVulnDB(import-osv) error = %v, want usage error", err)
+	}
+	store, err := vulndb.NewFileStore(ctx, stateFile)
+	if err != nil {
+		t.Fatalf("open file store: %v", err)
+	}
+	if _, ok, err := store.GetSyncState(ctx, vulndb.SourceOSV); err != nil || ok {
+		t.Fatalf("sync state ok=%v err=%v, want no recorded usage failure", ok, err)
 	}
 }
 

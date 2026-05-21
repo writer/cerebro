@@ -352,6 +352,10 @@ func recordVulnDBCommandFailure(ctx context.Context, store vulndb.Store, source 
 	if syncErr == nil {
 		return nil
 	}
+	var usage usageError
+	if errors.As(syncErr, &usage) {
+		return syncErr
+	}
 	if err := vulndb.RecordSyncFailure(ctx, store, source, syncErr); err != nil {
 		return errors.Join(syncErr, fmt.Errorf("record vulndb sync failure: %w", err))
 	}
@@ -392,11 +396,22 @@ func isRemoteVulnDBSource(source string) bool {
 }
 
 func vulnDBSourceScheme(source string) string {
-	parsed, err := url.Parse(strings.TrimSpace(source))
+	source = strings.TrimSpace(source)
+	if isWindowsDrivePath(source) {
+		return ""
+	}
+	parsed, err := url.Parse(source)
 	if err != nil {
 		return ""
 	}
 	return strings.ToLower(strings.TrimSpace(parsed.Scheme))
+}
+
+func isWindowsDrivePath(source string) bool {
+	if len(source) < 2 || source[1] != ':' {
+		return false
+	}
+	return (source[0] >= 'A' && source[0] <= 'Z') || (source[0] >= 'a' && source[0] <= 'z')
 }
 
 type openedVulnDBStore struct {
