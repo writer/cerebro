@@ -15,7 +15,7 @@ var catalogFS embed.FS
 
 const (
 	sourceID       = "kolide"
-	defaultBaseURL = "https://app.kolide.com/api/v1"
+	defaultBaseURL = "https://api.kolide.com"
 	defaultFamily  = familyDevice
 
 	familyCheck         = "check"

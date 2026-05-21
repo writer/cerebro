@@ -29,8 +29,8 @@ func TestDefaultBaseURLUsesCurrentAPI(t *testing.T) {
 	if strings.Contains(defaultBaseURL, "/api/v0") {
 		t.Fatalf("defaultBaseURL = %q, want non-deprecated Kolide API", defaultBaseURL)
 	}
-	if !strings.HasSuffix(defaultBaseURL, "/api/v1") {
-		t.Fatalf("defaultBaseURL = %q, want current /api/v1 API", defaultBaseURL)
+	if defaultBaseURL != "https://api.kolide.com" {
+		t.Fatalf("defaultBaseURL = %q, want current Kolide API origin", defaultBaseURL)
 	}
 }
 
