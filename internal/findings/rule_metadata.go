@@ -252,7 +252,7 @@ func publicDetectionFromRule(pack RulePack, metadata RuleDefinition, mode string
 		FalsePositives:     uniqueSortedStrings(metadata.FalsePositives),
 		Runbook:            strings.TrimSpace(metadata.Runbook),
 		RequiredAttributes: uniqueSortedStrings(metadata.RequiredAttributes),
-		FingerprintFields:  uniqueSortedStrings(metadata.FingerprintFields),
+		FingerprintFields:  uniqueTrimmedStringsPreserveOrder(metadata.FingerprintFields),
 		ControlRefs:        cloneFindingControlRefs(metadata.ControlRefs),
 	}
 }

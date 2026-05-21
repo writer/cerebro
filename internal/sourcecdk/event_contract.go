@@ -136,6 +136,9 @@ func ValidateEventEnvelopeWithContracts(event *cerebrov1.EventEnvelope, contract
 		}
 		return nil
 	}
+	if len(contracts) != 0 {
+		return fmt.Errorf("%w: kind %q has no matching event contract", ErrInvalidEventEnvelope, event.GetKind())
+	}
 	return nil
 }
 

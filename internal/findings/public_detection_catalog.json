@@ -132,8 +132,8 @@
       "fingerprint_fields": [
         "cloud_account_urn",
         "exposed_resource_urn",
-        "permission_urn",
-        "principal_urn"
+        "principal_urn",
+        "permission_urn"
       ],
       "control_refs": [
         {
@@ -273,10 +273,10 @@
         "action"
       ],
       "fingerprint_fields": [
-        "action",
-        "name",
         "org",
-        "repo"
+        "repo",
+        "name",
+        "action"
       ],
       "control_refs": [
         {
@@ -326,8 +326,8 @@
         "repo"
       ],
       "fingerprint_fields": [
-        "action",
-        "repo"
+        "repo",
+        "action"
       ],
       "control_refs": [
         {
@@ -377,9 +377,9 @@
         "action"
       ],
       "fingerprint_fields": [
-        "action",
         "repo",
-        "resource_id"
+        "resource_id",
+        "action"
       ],
       "control_refs": [
         {
@@ -425,9 +425,9 @@
         "action"
       ],
       "fingerprint_fields": [
-        "action",
         "repo",
-        "resource_id"
+        "resource_id",
+        "action"
       ],
       "control_refs": [
         {
@@ -475,8 +475,8 @@
         "state"
       ],
       "fingerprint_fields": [
-        "alert_number",
-        "repository"
+        "repository",
+        "alert_number"
       ],
       "control_refs": [
         {
@@ -526,8 +526,8 @@
         "org"
       ],
       "fingerprint_fields": [
-        "action",
-        "org"
+        "org",
+        "action"
       ],
       "control_refs": [
         {
@@ -575,8 +575,8 @@
         "org"
       ],
       "fingerprint_fields": [
-        "action",
-        "org"
+        "org",
+        "action"
       ],
       "control_refs": [
         {
@@ -624,9 +624,9 @@
         "user"
       ],
       "fingerprint_fields": [
-        "action",
         "org",
-        "user"
+        "user",
+        "action"
       ],
       "control_refs": [
         {
@@ -676,8 +676,8 @@
         "user"
       ],
       "fingerprint_fields": [
-        "action",
-        "user"
+        "user",
+        "action"
       ],
       "control_refs": [
         {
@@ -724,9 +724,9 @@
         "org"
       ],
       "fingerprint_fields": [
-        "action",
         "org",
-        "repo"
+        "repo",
+        "action"
       ],
       "control_refs": [
         {
@@ -777,9 +777,9 @@
         "repo"
       ],
       "fingerprint_fields": [
-        "action",
+        "repo",
         "branch",
-        "repo"
+        "action"
       ],
       "control_refs": [
         {
@@ -828,9 +828,9 @@
         "action"
       ],
       "fingerprint_fields": [
-        "action",
         "repo",
-        "resource_id"
+        "resource_id",
+        "action"
       ],
       "control_refs": [
         {
@@ -879,9 +879,9 @@
         "user"
       ],
       "fingerprint_fields": [
-        "action",
         "repo",
-        "user"
+        "user",
+        "action"
       ],
       "control_refs": [
         {
@@ -932,8 +932,8 @@
         "visibility"
       ],
       "fingerprint_fields": [
-        "action",
-        "repo"
+        "repo",
+        "action"
       ],
       "control_refs": [
         {
@@ -981,9 +981,9 @@
         "repo"
       ],
       "fingerprint_fields": [
-        "action",
         "repo",
-        "ruleset_id"
+        "ruleset_id",
+        "action"
       ],
       "control_refs": [
         {
@@ -1031,8 +1031,8 @@
         "repo"
       ],
       "fingerprint_fields": [
-        "number",
-        "repo"
+        "repo",
+        "number"
       ],
       "control_refs": [
         {
@@ -1081,9 +1081,9 @@
         "action"
       ],
       "fingerprint_fields": [
-        "action",
         "repo",
-        "resource_id"
+        "resource_id",
+        "action"
       ],
       "control_refs": [
         {
@@ -1131,9 +1131,9 @@
         "action"
       ],
       "fingerprint_fields": [
-        "action",
         "repo",
-        "resource_id"
+        "resource_id",
+        "action"
       ],
       "control_refs": [
         {
@@ -1180,9 +1180,9 @@
         "repo"
       ],
       "fingerprint_fields": [
-        "action",
+        "repo",
         "hook_id",
-        "repo"
+        "action"
       ],
       "control_refs": [
         {
@@ -1556,9 +1556,9 @@
         "remediate_by_date"
       ],
       "fingerprint_fields": [
+        "provider",
         "name",
         "package",
-        "provider",
         "target_id"
       ],
       "control_refs": [
@@ -1956,8 +1956,8 @@
       ],
       "runbook": "Confirm the Okta identity is truly off-boarded, revoke or suspend the linked GitHub account, rotate any tokens it created, and document the gap that allowed continued access.",
       "fingerprint_fields": [
-        "github_user_urn",
-        "okta_user_urn"
+        "okta_user_urn",
+        "github_user_urn"
       ],
       "control_refs": [
         {
@@ -2621,10 +2621,10 @@
         "severity"
       ],
       "fingerprint_fields": [
+        "template_id",
         "alert",
-        "matched_at",
         "target_id",
-        "template_id"
+        "matched_at"
       ],
       "control_refs": [
         {

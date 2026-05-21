@@ -74,6 +74,20 @@ func TestValidateEventEnvelopeWithContractsRequiresAttributesAndPayloadFields(t 
 	}
 }
 
+func TestValidateEventEnvelopeWithContractsRejectsUnmatchedKind(t *testing.T) {
+	event := normalizedTestEvent()
+	event.Kind = "github.pull_request"
+	event.SchemaRef = "github/pull_request/v1"
+	contracts := []EventContract{{
+		Kind:               "github.audit",
+		SchemaRef:          "github/audit/v1",
+		RequiredAttributes: []string{"org"},
+	}}
+	if err := ValidateEventEnvelopeWithContracts(event, contracts); !errors.Is(err, ErrInvalidEventEnvelope) {
+		t.Fatalf("ValidateEventEnvelopeWithContracts() error = %v, want ErrInvalidEventEnvelope", err)
+	}
+}
+
 func TestValidateEventContractsRejectsDuplicateKinds(t *testing.T) {
 	_, err := ValidateEventContracts([]EventContract{
 		{Kind: "github.audit", SchemaRef: "github/audit/v1", RequiredAttributes: []string{"org"}},

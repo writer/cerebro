@@ -1,6 +1,9 @@
 package findings
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestBuiltinRuleMetadataIsComplete(t *testing.T) {
 	metadata := BuiltinRuleMetadata()
@@ -26,4 +29,18 @@ func TestBuiltinPublicDetectionCatalogIncludesGraphRules(t *testing.T) {
 		}
 	}
 	t.Fatal("BuiltinPublicDetectionCatalog() missing cloud graph rule")
+}
+
+func TestBuiltinPublicDetectionCatalogPreservesFingerprintFieldOrder(t *testing.T) {
+	catalog := BuiltinPublicDetectionCatalog()
+	for _, detection := range catalog.Detections {
+		if detection.ID == githubAppIntegrationInstalledRuleID {
+			want := []string{"org", "repo", "name", "action"}
+			if !slices.Equal(detection.FingerprintFields, want) {
+				t.Fatalf("FingerprintFields = %#v, want %#v", detection.FingerprintFields, want)
+			}
+			return
+		}
+	}
+	t.Fatalf("BuiltinPublicDetectionCatalog() missing %s", githubAppIntegrationInstalledRuleID)
 }

@@ -257,6 +257,35 @@ func (contractEventSource) Read(context.Context, sourcecdk.Config, *cerebrov1.So
 	return sourcecdk.Pull{Events: []*cerebrov1.EventEnvelope{event}}, nil
 }
 
+type unmatchedContractEventSource struct{}
+
+func (unmatchedContractEventSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "unmatched_contract_event"}
+}
+
+func (unmatchedContractEventSource) EventContracts() []sourcecdk.EventContract {
+	return []sourcecdk.EventContract{{
+		Kind:                  "unmatched_contract_event.event",
+		SchemaRef:             "unmatched_contract_event/event/v1",
+		RequiredAttributes:    []string{"event_type"},
+		RequiredPayloadFields: []string{"fixture"},
+	}}
+}
+
+func (unmatchedContractEventSource) Check(context.Context, sourcecdk.Config) error {
+	return nil
+}
+
+func (unmatchedContractEventSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (unmatchedContractEventSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	event := runtimeTestEvent("unmatched-contract-event", "unmatched_contract_event", "unmatched_contract_event.other")
+	event.SchemaRef = "unmatched_contract_event/other/v1"
+	return sourcecdk.Pull{Events: []*cerebrov1.EventEnvelope{event}}, nil
+}
+
 type failingSource struct {
 	err error
 }
@@ -1150,6 +1179,32 @@ func TestSyncRuntimeRejectsEventsMissingCatalogContractFields(t *testing.T) {
 	service := New(registry, store, log, nil)
 
 	_, err = service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "example-contract-event"})
+	if !errors.Is(err, sourcecdk.ErrInvalidEventEnvelope) {
+		t.Fatalf("Sync() error = %v, want ErrInvalidEventEnvelope", err)
+	}
+	if len(log.events) != 0 {
+		t.Fatalf("len(appendLog.events) = %d, want 0", len(log.events))
+	}
+}
+
+func TestSyncRuntimeRejectsEventsWithoutCatalogContract(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(unmatchedContractEventSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"example-unmatched-contract-event": {
+				Id:       "example-unmatched-contract-event",
+				SourceId: "unmatched_contract_event",
+				TenantId: "example",
+			},
+		},
+	}
+	log := &appendLog{}
+	service := New(registry, store, log, nil)
+
+	_, err = service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "example-unmatched-contract-event"})
 	if !errors.Is(err, sourcecdk.ErrInvalidEventEnvelope) {
 		t.Fatalf("Sync() error = %v, want ErrInvalidEventEnvelope", err)
 	}
