@@ -155,7 +155,11 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	if len(runtimeIDs) == 0 {
 		return nil, fmt.Errorf("%w: report parameter %q or %q is required", ErrInvalidRequest, reportParameterRuntimeID, reportParameterRuntimeIDs)
 	}
-	runtimeID = strings.Join(runtimeIDs, ",")
+	resultRuntimeID := ""
+	if len(runtimeIDs) == 1 {
+		resultRuntimeID = runtimeIDs[0]
+	}
+	runtimeIDsCSV := strings.Join(runtimeIDs, ",")
 	resourceLimit, err := normalizePositiveLimit(parameters[reportParameterResourceLimit], defaultResourceEvidenceLimit, maxResourceEvidenceLimit, reportParameterResourceLimit)
 	if err != nil {
 		return nil, err
@@ -166,7 +170,7 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	}
 	parameters[reportParameterResourceLimit] = strconv.Itoa(resourceLimit)
 	parameters[reportParameterGraphLimit] = strconv.Itoa(graphLimit)
-	parameters[reportParameterRuntimeIDs] = strings.Join(runtimeIDs, ",")
+	parameters[reportParameterRuntimeIDs] = runtimeIDsCSV
 	listRequest := ports.ListFindingsRequest{TenantID: tenantID, Order: ports.FindingOrderRiskScore}
 	if len(runtimeIDs) == 1 {
 		listRequest.RuntimeID = runtimeIDs[0]
@@ -175,7 +179,7 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	}
 	findings, err := s.findingStore.ListFindings(ctx, listRequest)
 	if err != nil {
-		return nil, fmt.Errorf("list findings for tenant %q runtimes %q: %w", tenantID, runtimeID, err)
+		return nil, fmt.Errorf("list findings for tenant %q runtimes %q: %w", tenantID, runtimeIDsCSV, err)
 	}
 	severityCounts := make(map[string]int, len(findings))
 	statusCounts := make(map[string]int, len(findings))
@@ -287,7 +291,7 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	}
 	result, err := structpb.NewStruct(map[string]any{
 		reportParameterTenantID:   tenantID,
-		reportParameterRuntimeID:  runtimeID,
+		reportParameterRuntimeID:  resultRuntimeID,
 		reportParameterRuntimeIDs: reportStringValues(runtimeIDs),
 		"total_findings":          len(findings),
 		"runtime_counts":          countEntries(runtimeCounts, "runtime_id"),

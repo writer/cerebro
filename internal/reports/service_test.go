@@ -426,6 +426,41 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	}
 }
 
+func TestRunFindingSummaryReportDoesNotPublishMultiRuntimeListAsRuntimeID(t *testing.T) {
+	findingStore := &stubFindingStore{findings: []*ports.FindingRecord{
+		{ID: "finding-1", TenantID: "example", RuntimeID: "example-github-audit", RuleID: "github-rule", Severity: "HIGH", Status: "OPEN"},
+		{ID: "finding-2", TenantID: "example", RuntimeID: "example-okta-audit", RuleID: "okta-rule", Severity: "MEDIUM", Status: "OPEN"},
+	}}
+	service := New(findingStore, nil, &stubReportStore{})
+
+	response, err := service.Run(context.Background(), &cerebrov1.RunReportRequest{
+		ReportId: findingSummaryReportID,
+		Parameters: map[string]string{
+			reportParameterTenantID:      "example",
+			reportParameterRuntimeIDs:    "example-github-audit,example-okta-audit",
+			reportParameterGraphLimit:    "1",
+			reportParameterResourceLimit: "1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if findingStore.request.RuntimeID != "" {
+		t.Fatalf("ListFindings().RuntimeID = %q, want empty for multi-runtime request", findingStore.request.RuntimeID)
+	}
+	if got := findingStore.request.RuntimeIDs; len(got) != 2 || got[0] != "example-github-audit" || got[1] != "example-okta-audit" {
+		t.Fatalf("ListFindings().RuntimeIDs = %#v, want both runtimes", got)
+	}
+	result := response.GetRun().GetResult().AsMap()
+	if got := result[reportParameterRuntimeID]; got != "" {
+		t.Fatalf("Run().Run.Result[runtime_id] = %#v, want empty for multi-runtime request", got)
+	}
+	runtimeIDs, ok := result[reportParameterRuntimeIDs].([]any)
+	if !ok || len(runtimeIDs) != 2 || runtimeIDs[0] != "example-github-audit" || runtimeIDs[1] != "example-okta-audit" {
+		t.Fatalf("Run().Run.Result[runtime_ids] = %#v, want both runtime ids", result[reportParameterRuntimeIDs])
+	}
+}
+
 func TestGetReportRunRequiresAvailableStore(t *testing.T) {
 	service := New(nil, nil, nil)
 	if _, err := service.Get(context.Background(), &cerebrov1.GetReportRunRequest{Id: "report-run-1"}); !errors.Is(err, ErrRuntimeUnavailable) {

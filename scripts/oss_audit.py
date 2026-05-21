@@ -122,7 +122,18 @@ def unsafe_regex_reason(value: str) -> str:
 
 def iter_files(root: Path):
     for current_root, dirs, files in os.walk(root):
-        dirs[:] = [item for item in dirs if item not in EXCLUDED_DIRS]
+        kept_dirs = []
+        for item in dirs:
+            if item in EXCLUDED_DIRS:
+                continue
+            path = Path(current_root) / item
+            if path.is_symlink():
+                if item == "testdata":
+                    rel = path.relative_to(root).as_posix()
+                    raise SystemExit(f"{rel}: symlinked testdata directories are not allowed")
+                continue
+            kept_dirs.append(item)
+        dirs[:] = kept_dirs
         for filename in files:
             path = Path(current_root) / filename
             rel = path.relative_to(root).as_posix()

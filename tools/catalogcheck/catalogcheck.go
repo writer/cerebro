@@ -275,6 +275,19 @@ func validateFixtureContracts(root string, sourceDir string, contracts []sourcec
 	}
 	testdata := filepath.Join(sourceDir, "testdata")
 	var issues []issue
+	info, statErr := os.Lstat(testdata)
+	if statErr != nil {
+		if errors.Is(statErr, os.ErrNotExist) {
+			return nil
+		}
+		return []issue{{path: slashRel(root, testdata), message: "stat testdata: " + statErr.Error()}}
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return []issue{{path: slashRel(root, testdata), message: "symlinked testdata directory is not allowed"}}
+	}
+	if !info.IsDir() {
+		return nil
+	}
 	_ = filepath.WalkDir(testdata, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil || entry.IsDir() || filepath.Ext(path) != ".json" {
 			return nil

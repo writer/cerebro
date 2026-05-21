@@ -104,6 +104,27 @@ func TestValidateFixtureContractsSkipsSymlinkFixtures(t *testing.T) {
 	}
 }
 
+func TestValidateFixtureContractsRejectsSymlinkTestdataRoot(t *testing.T) {
+	root := t.TempDir()
+	sourceDir := filepath.Join(root, "sources", "custom")
+	targetDir := filepath.Join(root, "fixtures", "custom")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(sourceDir) error = %v", err)
+	}
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(targetDir) error = %v", err)
+	}
+	if err := os.Symlink(targetDir, filepath.Join(sourceDir, "testdata")); err != nil {
+		t.Skipf("Symlink() unsupported: %v", err)
+	}
+	issues := validateFixtureContracts(root, sourceDir, []sourcecdk.EventContract{
+		{Kind: "custom.event", RequiredAttributes: []string{"required_attribute"}},
+	})
+	if len(issues) == 0 || !strings.Contains(issues[0].message, "symlinked testdata") {
+		t.Fatalf("issues = %#v, want symlinked testdata issue", issues)
+	}
+}
+
 func TestValidateFixtureContractsRejectsMalformedEventFixture(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "sources/custom/testdata/read.json", `[{
