@@ -479,9 +479,9 @@ func (a *App) handleListEndpointVulnerabilityFindings(w http.ResponseWriter, r *
 		writeFindingError(w, err)
 		return
 	}
-	deviceID := strings.TrimSpace(r.URL.Query().Get("device_id"))
+	deviceID := strings.TrimSpace(r.PathValue("deviceKey"))
 	if deviceID == "" {
-		deviceID = strings.TrimSpace(r.PathValue("deviceKey"))
+		deviceID = strings.TrimSpace(r.URL.Query().Get("device_id"))
 	}
 	response, err := findings.ListEndpointVulnerabilityFindings(r.Context(), endpointVulnerabilityFindingStore(a.deps.StateStore), findings.EndpointVulnerabilityRequest{
 		TenantID:     tenantID,

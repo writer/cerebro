@@ -5030,6 +5030,20 @@ func TestEndpointVulnerabilityFindingsHTTPRoute(t *testing.T) {
 			FirstObservedAt: now.Add(-2 * time.Hour),
 			LastObservedAt:  now.Add(2 * time.Minute),
 		},
+		"endpoint-vuln-other-device": {
+			ID:              "endpoint-vuln-other-device",
+			TenantID:        "writer",
+			RuntimeID:       "kandji-runtime",
+			RuleID:          "endpoint-vulnerability-kandji",
+			Title:           "Other endpoint vulnerability",
+			Severity:        "LOW",
+			Status:          "open",
+			EventIDs:        []string{"event-other"},
+			ResourceURNs:    []string{"urn:cerebro:writer:kandji_device:dev-2"},
+			Attributes:      map[string]string{"device_id": "dev-2", "vulnerability_id": "CVE-2026-9999", "package_name": "curl", "installed_version": "8.1.0", "source_provider": "kandji"},
+			FirstObservedAt: now.Add(-time.Hour),
+			LastObservedAt:  now,
+		},
 	}}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
 	server := httptest.NewServer(app.Handler())
@@ -5094,6 +5108,32 @@ func TestEndpointVulnerabilityFindingsHTTPRoute(t *testing.T) {
 	}
 	if got := len(platformBody.Findings); got != 1 {
 		t.Fatalf("len(platform findings) = %d, want 1", got)
+	}
+	if platformBody.Findings[0].VulnerabilityID != "CVE-2026-0001" {
+		t.Fatalf("platform finding = %#v, want path device dev-1 despite query overrides", platformBody.Findings[0])
+	}
+
+	platformConflictResp, err := server.Client().Get(server.URL + "/platform/endpoints/dev-1/vulnerability-findings?tenant_id=writer&device_id=dev-2")
+	if err != nil {
+		t.Fatalf("GET /platform/endpoints/{deviceKey}/vulnerability-findings conflicting query error = %v", err)
+	}
+	defer func() {
+		if closeErr := platformConflictResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close platform conflict endpoint vulnerability response body: %v", closeErr)
+		}
+	}()
+	if platformConflictResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /platform/endpoints/{deviceKey}/vulnerability-findings conflicting query status = %d, want %d", platformConflictResp.StatusCode, http.StatusOK)
+	}
+	var platformConflictBody endpointFindingResponse
+	if err := json.NewDecoder(platformConflictResp.Body).Decode(&platformConflictBody); err != nil {
+		t.Fatalf("decode platform conflict endpoint vulnerability response: %v", err)
+	}
+	if got := len(platformConflictBody.Findings); got != 1 {
+		t.Fatalf("len(platform conflict findings) = %d, want path-scoped dev-1 findings only", got)
+	}
+	if platformConflictBody.Findings[0].VulnerabilityID != "CVE-2026-0001" {
+		t.Fatalf("platform conflict finding = %#v, want path-scoped dev-1 finding", platformConflictBody.Findings[0])
 	}
 
 	staleResp, err := server.Client().Get(server.URL + "/endpoint-vulnerability-findings?tenant_id=writer&device_id=dev-1&include_stale=true")
