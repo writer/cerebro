@@ -1,0 +1,135 @@
+package vulndb
+
+import (
+	"context"
+	"errors"
+	"io"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+type staticFeedClient map[string]string
+
+func (c staticFeedClient) Open(_ context.Context, source string, _ bool) (io.ReadCloser, error) {
+	payload, ok := c[source]
+	if !ok {
+		return nil, errors.New("feed not found")
+	}
+	return io.NopCloser(strings.NewReader(payload)), nil
+}
+
+type failingFeedClient struct{}
+
+func (failingFeedClient) Open(context.Context, string, bool) (io.ReadCloser, error) {
+	return nil, errors.New("feed down")
+}
+
+func TestSyncServiceRecordsFailureState(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	service, err := NewSyncService(store, failingFeedClient{})
+	if err != nil {
+		t.Fatalf("new sync service: %v", err)
+	}
+	if _, err := service.Sync(ctx, []SyncFeed{{Source: SourceOSV, URL: "https://example.com/osv.json"}}); err == nil {
+		t.Fatal("Sync() error = nil, want feed failure")
+	}
+	state, ok, err := store.GetSyncState(ctx, SourceOSV)
+	if err != nil {
+		t.Fatalf("get sync state: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected sync state after failure")
+	}
+	if !strings.Contains(state.LastError, "feed down") || state.LastSyncedAt.IsZero() {
+		t.Fatalf("unexpected failure sync state: %+v", state)
+	}
+}
+
+func TestSyncRunnerLeasesAndCompletesJob(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	if err := store.PutSyncJob(ctx, SyncJob{
+		ID:       "osv-hourly",
+		Source:   SourceOSV,
+		FeedURL:  "osv-feed",
+		Interval: time.Hour,
+	}); err != nil {
+		t.Fatalf("put sync job: %v", err)
+	}
+	service, err := NewSyncService(store, staticFeedClient{
+		"osv-feed": `[{"id":"CVE-2026-12121","summary":"synced vuln"}]`,
+	})
+	if err != nil {
+		t.Fatalf("new sync service: %v", err)
+	}
+	imported, err := service.RunSyncJob(ctx, store, "osv-hourly", "worker-1", time.Minute)
+	if err != nil {
+		t.Fatalf("run sync job: %v", err)
+	}
+	if imported.Vulnerabilities != 1 {
+		t.Fatalf("imported = %+v, want one vulnerability", imported)
+	}
+	job, ok, err := store.GetSyncJob(ctx, "osv-hourly")
+	if err != nil {
+		t.Fatalf("get sync job: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected stored sync job")
+	}
+	if job.Runs != 1 || job.LastSuccessAt.IsZero() || !job.LeaseExpiresAt.IsZero() || job.LeaseOwner != "" || job.NextRunAt.IsZero() {
+		t.Fatalf("unexpected completed job: %+v", job)
+	}
+	if _, ok, err := store.FindVulnerability(ctx, "CVE-2026-12121"); err != nil || !ok {
+		t.Fatalf("synced vulnerability lookup ok=%v err=%v, want found", ok, err)
+	}
+	due, err := store.ListDueSyncJobs(ctx, time.Now().UTC(), 10)
+	if err != nil {
+		t.Fatalf("list due sync jobs: %v", err)
+	}
+	if len(due) != 0 {
+		t.Fatalf("due jobs = %+v, want none before next_run_at", due)
+	}
+}
+
+func TestFileStorePersistsSyncJobRecovery(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "vulndb.json")
+	store, err := NewFileStore(ctx, path)
+	if err != nil {
+		t.Fatalf("new file store: %v", err)
+	}
+	if err := store.PutSyncJob(ctx, SyncJob{ID: "nvd-daily", Source: SourceNVD, FeedURL: "nvd-feed", Interval: 24 * time.Hour}); err != nil {
+		t.Fatalf("put sync job: %v", err)
+	}
+	acquired, err := store.AcquireSyncJobLease(ctx, "nvd-daily", "worker-1", time.Minute)
+	if err != nil {
+		t.Fatalf("acquire sync job lease: %v", err)
+	}
+	if !acquired {
+		t.Fatal("expected sync job lease")
+	}
+	if err := store.ReleaseSyncJobLease(ctx, "nvd-daily", "worker-1"); err != nil {
+		t.Fatalf("release sync job lease: %v", err)
+	}
+	reopened, err := NewFileStore(ctx, path)
+	if err != nil {
+		t.Fatalf("reopen file store: %v", err)
+	}
+	job, ok, err := reopened.GetSyncJob(ctx, "nvd-daily")
+	if err != nil {
+		t.Fatalf("get sync job: %v", err)
+	}
+	if !ok || job.Source != SourceNVD || job.FeedURL != "nvd-feed" || job.Interval != 24*time.Hour {
+		t.Fatalf("unexpected recovered sync job: ok=%v job=%+v", ok, job)
+	}
+	stats, err := reopened.Stats(ctx)
+	if err != nil {
+		t.Fatalf("stats: %v", err)
+	}
+	if stats.SyncJobs != 1 {
+		t.Fatalf("stats.SyncJobs = %d, want 1", stats.SyncJobs)
+	}
+}

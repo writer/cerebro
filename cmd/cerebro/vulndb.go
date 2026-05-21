@@ -1,0 +1,430 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/writer/cerebro/internal/bootstrap"
+	appconfig "github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/vulndb"
+)
+
+const defaultVulnDBStateFile = ".cerebro-vulndb.json"
+
+func runVulnDB(args []string) error {
+	if len(args) == 0 {
+		return usageError(vulnDBUsage())
+	}
+	command := strings.TrimSpace(args[0])
+	options, err := parseVulnDBOptions(args[1:])
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	opened, err := openVulnDBStore(ctx, options)
+	if err != nil {
+		return fmt.Errorf("open vulndb store: %w", err)
+	}
+	defer func() {
+		_ = opened.Close()
+	}()
+	switch command {
+	case "stats":
+		stats, err := opened.Store.Stats(ctx)
+		if err != nil {
+			return err
+		}
+		return printJSON(stats)
+	case "import-osv":
+		reader, closeReader, err := openVulnDBInput(ctx, options.Source, options.AllowInsecureHTTP)
+		if err != nil {
+			return err
+		}
+		defer closeReader()
+		result, err := vulndb.ImportOSV(ctx, opened.Store, reader)
+		if err != nil {
+			return err
+		}
+		return printJSON(result)
+	case "import-kev":
+		reader, closeReader, err := openVulnDBInput(ctx, options.Source, options.AllowInsecureHTTP)
+		if err != nil {
+			return err
+		}
+		defer closeReader()
+		result, err := vulndb.ImportCISAKEV(ctx, opened.Store, reader)
+		if err != nil {
+			return err
+		}
+		return printJSON(result)
+	case "import-epss":
+		reader, closeReader, err := openVulnDBInput(ctx, options.Source, options.AllowInsecureHTTP)
+		if err != nil {
+			return err
+		}
+		defer closeReader()
+		result, err := vulndb.ImportEPSS(ctx, opened.Store, reader)
+		if err != nil {
+			return err
+		}
+		return printJSON(result)
+	case "import-nvd":
+		reader, closeReader, err := openVulnDBInput(ctx, options.Source, options.AllowInsecureHTTP)
+		if err != nil {
+			return err
+		}
+		defer closeReader()
+		result, err := vulndb.ImportNVD(ctx, opened.Store, reader)
+		if err != nil {
+			return err
+		}
+		return printJSON(result)
+	case "sync":
+		result, err := runVulnDBSync(ctx, opened.Store, options)
+		if err != nil {
+			return err
+		}
+		return printJSON(result)
+	case "job-put":
+		job, err := putVulnDBSyncJob(ctx, opened.Jobs, options)
+		if err != nil {
+			return err
+		}
+		return printJSON(job)
+	case "job-run":
+		result, err := runVulnDBSyncJob(ctx, opened.Store, opened.Jobs, options)
+		if err != nil {
+			return err
+		}
+		return printJSON(result)
+	case "job-run-due":
+		result, err := runDueVulnDBSyncJobs(ctx, opened.Store, opened.Jobs, options)
+		if err != nil {
+			return err
+		}
+		return printJSON(result)
+	default:
+		return usageError(vulnDBUsage())
+	}
+}
+
+type vulnDBOptions struct {
+	StateFile         string
+	StateFileExplicit bool
+	StoreMode         string
+	Source            string
+	FeedSource        string
+	OSVSource         string
+	KEVSource         string
+	EPSSSource        string
+	NVDSource         string
+	AllowInsecureHTTP bool
+	JobID             string
+	JobOwner          string
+	JobInterval       time.Duration
+	JobLeaseTTL       time.Duration
+	Limit             int
+}
+
+type vulnDBSyncResult struct {
+	OSV  *vulndb.ImportResult `json:"osv,omitempty"`
+	KEV  *vulndb.ImportResult `json:"kev,omitempty"`
+	EPSS *vulndb.ImportResult `json:"epss,omitempty"`
+	NVD  *vulndb.ImportResult `json:"nvd,omitempty"`
+}
+
+func parseVulnDBOptions(args []string) (vulnDBOptions, error) {
+	options := vulnDBOptions{StateFile: strings.TrimSpace(os.Getenv("VULNDB_STATE_FILE"))}
+	options.StateFileExplicit = options.StateFile != ""
+	if options.StateFile == "" {
+		options.StateFile = defaultVulnDBStateFile
+	}
+	for _, arg := range args {
+		key, value, ok := strings.Cut(arg, "=")
+		if !ok {
+			if options.Source != "" {
+				return vulnDBOptions{}, usageError(vulnDBUsage())
+			}
+			options.Source = strings.TrimSpace(arg)
+			continue
+		}
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		switch key {
+		case "state_file":
+			if value == "" {
+				return vulnDBOptions{}, usageError("state_file is required")
+			}
+			options.StateFile = value
+			options.StateFileExplicit = true
+		case "store":
+			switch value {
+			case "", "auto":
+				options.StoreMode = ""
+			case "file", "state", "postgres":
+				options.StoreMode = value
+			default:
+				return vulnDBOptions{}, usageError("store must be auto, file, state, or postgres")
+			}
+		case "file", "path", "url", "source":
+			options.Source = value
+		case "feed_source":
+			options.FeedSource = value
+		case "osv":
+			options.OSVSource = value
+		case "kev", "cisa_kev":
+			options.KEVSource = value
+		case "epss":
+			options.EPSSSource = value
+		case "nvd":
+			options.NVDSource = value
+		case "job_id":
+			options.JobID = value
+		case "owner":
+			options.JobOwner = value
+		case "interval":
+			parsed, err := time.ParseDuration(value)
+			if err != nil {
+				return vulnDBOptions{}, fmt.Errorf("parse interval: %w", err)
+			}
+			if parsed < 0 {
+				return vulnDBOptions{}, usageError("interval must be non-negative")
+			}
+			options.JobInterval = parsed
+		case "lease_ttl":
+			parsed, err := time.ParseDuration(value)
+			if err != nil {
+				return vulnDBOptions{}, fmt.Errorf("parse lease_ttl: %w", err)
+			}
+			if parsed <= 0 {
+				return vulnDBOptions{}, usageError("lease_ttl must be positive")
+			}
+			options.JobLeaseTTL = parsed
+		case "limit":
+			parsed, err := strconv.ParseInt(value, 10, 32)
+			if err != nil {
+				return vulnDBOptions{}, fmt.Errorf("parse limit: %w", err)
+			}
+			if parsed < 0 {
+				return vulnDBOptions{}, usageError("limit must be non-negative")
+			}
+			options.Limit = int(parsed)
+		case "allow_insecure_http":
+			parsed, err := strconv.ParseBool(value)
+			if err != nil {
+				return vulnDBOptions{}, fmt.Errorf("parse allow_insecure_http: %w", err)
+			}
+			options.AllowInsecureHTTP = parsed
+		default:
+			return vulnDBOptions{}, usageError(fmt.Sprintf("unsupported vulndb argument %q", key))
+		}
+	}
+	return options, nil
+}
+
+func runVulnDBSync(ctx context.Context, store vulndb.Store, options vulnDBOptions) (vulnDBSyncResult, error) {
+	var result vulnDBSyncResult
+	if options.OSVSource == "" && options.KEVSource == "" && options.EPSSSource == "" && options.NVDSource == "" {
+		return result, usageError("usage: cerebro vulndb sync [osv=<path-or-url>] [kev=<path-or-url>] [epss=<path-or-url>] [nvd=<path-or-url>] [state_file=<path>]")
+	}
+	if options.OSVSource != "" {
+		imported, err := runVulnDBFeedSync(ctx, store, vulndb.SourceOSV, options.OSVSource, options.AllowInsecureHTTP)
+		if err != nil {
+			return result, err
+		}
+		result.OSV = &imported
+	}
+	if options.KEVSource != "" {
+		imported, err := runVulnDBFeedSync(ctx, store, vulndb.SourceCISAKEV, options.KEVSource, options.AllowInsecureHTTP)
+		if err != nil {
+			return result, err
+		}
+		result.KEV = &imported
+	}
+	if options.EPSSSource != "" {
+		imported, err := runVulnDBFeedSync(ctx, store, vulndb.SourceEPSS, options.EPSSSource, options.AllowInsecureHTTP)
+		if err != nil {
+			return result, err
+		}
+		result.EPSS = &imported
+	}
+	if options.NVDSource != "" {
+		imported, err := runVulnDBFeedSync(ctx, store, vulndb.SourceNVD, options.NVDSource, options.AllowInsecureHTTP)
+		if err != nil {
+			return result, err
+		}
+		result.NVD = &imported
+	}
+	return result, nil
+}
+
+func runVulnDBFeedSync(ctx context.Context, store vulndb.Store, source string, location string, allowInsecureHTTP bool) (vulndb.ImportResult, error) {
+	reader, closeReader, err := openVulnDBInput(ctx, location, allowInsecureHTTP)
+	if err != nil {
+		return vulndb.ImportResult{}, err
+	}
+	defer closeReader()
+	return vulndb.ImportFeed(ctx, store, source, reader)
+}
+
+func openVulnDBInput(ctx context.Context, source string, allowInsecureHTTP bool) (io.Reader, func(), error) {
+	reader, err := (vulndbInputClient{}).Open(ctx, source, allowInsecureHTTP)
+	if err != nil {
+		return nil, func() {}, err
+	}
+	return reader, func() { _ = reader.Close() }, nil
+}
+
+type vulndbInputClient struct{}
+
+func (vulndbInputClient) Open(ctx context.Context, source string, allowInsecureHTTP bool) (io.ReadCloser, error) {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return nil, usageError("vulndb import source is required")
+	}
+	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
+		return bootstrap.OpenVulnDBFeed(ctx, source, allowInsecureHTTP)
+	}
+	file, err := os.Open(source)
+	if err != nil {
+		return nil, err
+	}
+	return file, nil
+}
+
+type openedVulnDBStore struct {
+	Store vulndb.Store
+	Jobs  vulndb.SyncJobStore
+	close func() error
+}
+
+func (s openedVulnDBStore) Close() error {
+	if s.close == nil {
+		return nil
+	}
+	return s.close()
+}
+
+func openVulnDBStore(ctx context.Context, options vulnDBOptions) (openedVulnDBStore, error) {
+	if shouldUseStateVulnDBStore(options) {
+		return openStateVulnDBStore(ctx)
+	}
+	store, err := vulndb.NewFileStore(ctx, options.StateFile)
+	if err != nil {
+		return openedVulnDBStore{}, err
+	}
+	return openedVulnDBStore{Store: store, Jobs: store}, nil
+}
+
+func shouldUseStateVulnDBStore(options vulnDBOptions) bool {
+	switch options.StoreMode {
+	case "state", "postgres":
+		return true
+	case "file":
+		return false
+	}
+	if options.StateFileExplicit {
+		return false
+	}
+	return strings.TrimSpace(os.Getenv("CEREBRO_STATE_STORE_DRIVER")) != "" ||
+		strings.TrimSpace(os.Getenv("CEREBRO_POSTGRES_DSN")) != ""
+}
+
+func openStateVulnDBStore(ctx context.Context) (openedVulnDBStore, error) {
+	cfg, err := appconfig.Load()
+	if err != nil {
+		return openedVulnDBStore{}, err
+	}
+	deps, closeDeps, err := bootstrap.OpenDependencies(ctx, cfg)
+	if err != nil {
+		return openedVulnDBStore{}, err
+	}
+	store, ok := deps.StateStore.(vulndb.Store)
+	if !ok || store == nil {
+		_ = closeDeps()
+		return openedVulnDBStore{}, fmt.Errorf("configured state store does not implement vulndb.Store")
+	}
+	jobs, ok := deps.StateStore.(vulndb.SyncJobStore)
+	if !ok || jobs == nil {
+		_ = closeDeps()
+		return openedVulnDBStore{}, fmt.Errorf("configured state store does not implement vulndb.SyncJobStore")
+	}
+	return openedVulnDBStore{Store: store, Jobs: jobs, close: closeDeps}, nil
+}
+
+func putVulnDBSyncJob(ctx context.Context, jobs vulndb.SyncJobStore, options vulnDBOptions) (vulndb.SyncJob, error) {
+	if jobs == nil {
+		return vulndb.SyncJob{}, fmt.Errorf("vulndb sync job store is unavailable")
+	}
+	job := vulndb.SyncJob{
+		ID:                strings.TrimSpace(options.JobID),
+		Source:            strings.TrimSpace(options.FeedSource),
+		FeedURL:           strings.TrimSpace(options.Source),
+		AllowInsecureHTTP: options.AllowInsecureHTTP,
+		Interval:          options.JobInterval,
+	}
+	if job.ID == "" {
+		return vulndb.SyncJob{}, usageError("job_id is required")
+	}
+	if job.Source == "" {
+		return vulndb.SyncJob{}, usageError("feed_source is required")
+	}
+	if job.FeedURL == "" {
+		return vulndb.SyncJob{}, usageError("url is required")
+	}
+	if err := jobs.PutSyncJob(ctx, job); err != nil {
+		return vulndb.SyncJob{}, err
+	}
+	stored, ok, err := jobs.GetSyncJob(ctx, job.ID)
+	if err != nil {
+		return vulndb.SyncJob{}, err
+	}
+	if !ok {
+		return vulndb.SyncJob{}, fmt.Errorf("%w: %s", vulndb.ErrSyncJobNotFound, job.ID)
+	}
+	return stored, nil
+}
+
+func runVulnDBSyncJob(ctx context.Context, store vulndb.Store, jobs vulndb.SyncJobStore, options vulnDBOptions) (vulndb.SyncJobRunResult, error) {
+	if strings.TrimSpace(options.JobID) == "" {
+		return vulndb.SyncJobRunResult{}, usageError("job_id is required")
+	}
+	runner, err := newVulnDBSyncRunner(store, jobs, options)
+	if err != nil {
+		return vulndb.SyncJobRunResult{}, err
+	}
+	return runner.RunJob(ctx, options.JobID)
+}
+
+func runDueVulnDBSyncJobs(ctx context.Context, store vulndb.Store, jobs vulndb.SyncJobStore, options vulnDBOptions) (vulndb.SyncDueJobsResult, error) {
+	runner, err := newVulnDBSyncRunner(store, jobs, options)
+	if err != nil {
+		return vulndb.SyncDueJobsResult{}, err
+	}
+	return runner.RunDue(ctx, options.Limit)
+}
+
+func newVulnDBSyncRunner(store vulndb.Store, jobs vulndb.SyncJobStore, options vulnDBOptions) (*vulndb.SyncRunner, error) {
+	runner, err := vulndb.NewSyncRunner(store, jobs, func(ctx context.Context, job vulndb.SyncJob) (io.ReadCloser, error) {
+		return (vulndbInputClient{}).Open(ctx, job.FeedURL, job.AllowInsecureHTTP)
+	})
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(options.JobOwner) != "" {
+		runner = runner.WithOwner(options.JobOwner)
+	}
+	if options.JobLeaseTTL > 0 {
+		runner = runner.WithLeaseTTL(options.JobLeaseTTL)
+	}
+	return runner, nil
+}
+
+func vulnDBUsage() string {
+	return fmt.Sprintf("usage: %s vulndb [stats|import-osv|import-kev|import-epss|import-nvd|sync|job-put|job-run|job-run-due] [store=auto|file|state] [state_file=<path>] [path=<path>|url=<url>] [allow_insecure_http=true]", os.Args[0])
+}
