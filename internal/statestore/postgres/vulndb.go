@@ -73,6 +73,7 @@ func (s *Store) UpsertVulnerability(ctx context.Context, vulnerability vulndb.Vu
 	if vulnerability.ID == "" {
 		return errors.New("vulnerability id is required")
 	}
+	vulnerability.Aliases = normalizedVulnAliases(vulnerability.Aliases)
 	if err := s.ensureVulnDBTables(ctx); err != nil {
 		return err
 	}
