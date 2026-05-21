@@ -47,7 +47,17 @@ func TestValidatorRejectsUnsafeCypher(t *testing.T) {
 		{
 			name:   "unscoped second entity",
 			cypher: `MATCH (a:Entity {tenant_id: $tenant_id}) MATCH (b:Entity) RETURN b.urn LIMIT 25`,
-			reason: "every Entity",
+			reason: "every node",
+		},
+		{
+			name:   "unlabeled second node",
+			cypher: `MATCH (a:Entity {tenant_id: $tenant_id}), (b) RETURN b LIMIT 25`,
+			reason: "every node",
+		},
+		{
+			name:   "neutralized tenant predicate",
+			cypher: `MATCH (e:Entity) WHERE e.tenant_id = $tenant_id OR true RETURN e LIMIT 25`,
+			reason: "inline tenant_id",
 		},
 	}
 
@@ -86,6 +96,23 @@ LIMIT 25`, map[string]any{"tenant_id": "example"})
 	}
 	if len(store.requests) != 1 || !strings.HasPrefix(store.requests[0].Query, "MATCH") {
 		t.Fatalf("EXPLAIN requests = %#v", store.requests)
+	}
+}
+
+func TestValidatorAcceptsScopedRelationshipReadWithReturnFunctions(t *testing.T) {
+	validator := NewValidator(nil, ValidatorOptions{})
+	result, limit, err := validator.validate(context.Background(), `MATCH (src:Entity {tenant_id: $tenant_id})-[r:RELATION]->(dst:Entity {tenant_id: $tenant_id})
+RETURN src.urn AS src, dst.urn AS dst, coalesce(src.label, src.urn) AS label
+ORDER BY label
+LIMIT 25`, map[string]any{"tenant_id": "example"})
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if !result.OK {
+		t.Fatalf("Validate() = %#v, want ok", result)
+	}
+	if limit != 25 {
+		t.Fatalf("limit = %d, want 25", limit)
 	}
 }
 

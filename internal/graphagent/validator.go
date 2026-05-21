@@ -21,12 +21,19 @@ var (
 	usingPeriodicPattern  = regexp.MustCompile(`(?i)\bUSING\s+PERIODIC\b`)
 	forbiddenAPOCPattern  = regexp.MustCompile(`(?i)\bCALL\s+apoc\.(trigger|periodic)\.`)
 	limitPattern          = regexp.MustCompile(`(?i)\bLIMIT\s+(\d+)\b`)
-	entityPattern         = regexp.MustCompile(`(?is)\(\s*([A-Za-z_][A-Za-z0-9_]*)?\s*:\s*Entity\b([^)]*)\)`)
+	matchClausePattern    = regexp.MustCompile(`(?i)\b(?:OPTIONAL\s+MATCH|MATCH)\b`)
+	matchClauseEndPattern = regexp.MustCompile(`(?i)\b(?:WHERE|RETURN|WITH|ORDER\s+BY|LIMIT|UNWIND|CALL|UNION|CREATE|MERGE|DELETE|SET|REMOVE|DROP|FOREACH)\b`)
+	nodeBodyPattern       = regexp.MustCompile(`(?is)^\s*([A-Za-z_][A-Za-z0-9_]*)?\s*((?::\s*[A-Za-z_][A-Za-z0-9_]*)*)\s*(\{[^{}]*\})?\s*$`)
 	inlineTenantPattern   = regexp.MustCompile(`(?i)\btenant_id\s*:\s*\$tenant_id\b`)
 	quotedLiteralPattern  = regexp.MustCompile(`'[^']*'|"[^"]*"`)
 	commentPattern        = regexp.MustCompile(`(?m)//.*$|/\*.*?\*/`)
 	numberPattern         = regexp.MustCompile(`\d+(?:\.\d+)?`)
 )
+
+type nodePattern struct {
+	labels     string
+	properties string
+}
 
 type ValidatorOptions struct {
 	MaxRows           int
@@ -68,8 +75,8 @@ func (v *Validator) validate(ctx context.Context, cypher string, params map[stri
 	if limit > v.options.MaxRows {
 		return ValidatorResult{OK: false, Reason: fmt.Sprintf("LIMIT %d exceeds maximum %d", limit, v.options.MaxRows)}, 0, nil
 	}
-	if !allEntityPatternsTenantScoped(safeQuery) {
-		return ValidatorResult{OK: false, Reason: "every Entity pattern must filter by tenant_id"}, 0, nil
+	if !allNodePatternsTenantScoped(safeQuery) {
+		return ValidatorResult{OK: false, Reason: "every node pattern must use Entity label and inline tenant_id"}, 0, nil
 	}
 	if v.options.Explain && v.store != nil {
 		explainer, ok := v.store.(interface {
@@ -107,27 +114,94 @@ func queryLimit(query string) (int, bool) {
 	return limit, true
 }
 
-func allEntityPatternsTenantScoped(query string) bool {
-	matches := entityPattern.FindAllStringSubmatch(query, -1)
-	if len(matches) == 0 {
+func allNodePatternsTenantScoped(query string) bool {
+	patterns, ok := graphNodePatterns(query)
+	if !ok || len(patterns) == 0 {
 		return false
 	}
-	for _, match := range matches {
-		if inlineTenantPattern.MatchString(match[2]) {
-			continue
-		}
-		variable := strings.TrimSpace(match[1])
-		if variable == "" || !variableHasTenantPredicate(query, variable) {
+	for _, pattern := range patterns {
+		if !nodeHasEntityLabel(pattern.labels) || !inlineTenantPattern.MatchString(pattern.properties) {
 			return false
 		}
 	}
 	return true
 }
 
-func variableHasTenantPredicate(query string, variable string) bool {
-	escaped := regexp.QuoteMeta(variable)
-	pattern := regexp.MustCompile(`(?i)(?:\b` + escaped + `\.tenant_id\s*=\s*\$tenant_id|\$tenant_id\s*=\s*\b` + escaped + `\.tenant_id)`)
-	return pattern.MatchString(query)
+func graphNodePatterns(query string) ([]nodePattern, bool) {
+	var patterns []nodePattern
+	clauses := matchClausePattern.FindAllStringIndex(query, -1)
+	for i, clause := range clauses {
+		start := clause[1]
+		end := len(query)
+		if i+1 < len(clauses) {
+			end = clauses[i+1][0]
+		}
+		if boundary := matchClauseEndPattern.FindStringIndex(query[start:end]); boundary != nil {
+			end = start + boundary[0]
+		}
+		extracted, ok := nodePatternsInMatchClause(query[start:end])
+		if !ok {
+			return nil, false
+		}
+		patterns = append(patterns, extracted...)
+	}
+	return patterns, true
+}
+
+func nodePatternsInMatchClause(clause string) ([]nodePattern, bool) {
+	var patterns []nodePattern
+	for i := 0; i < len(clause); i++ {
+		if clause[i] != '(' || isIdentifierByte(previousNonSpace(clause, i)) {
+			continue
+		}
+		closeIndex := strings.IndexByte(clause[i+1:], ')')
+		if closeIndex < 0 {
+			return nil, false
+		}
+		body := clause[i+1 : i+1+closeIndex]
+		pattern, ok := parseNodePattern(body)
+		if !ok {
+			return nil, false
+		}
+		patterns = append(patterns, pattern)
+	}
+	return patterns, true
+}
+
+func parseNodePattern(body string) (nodePattern, bool) {
+	matches := nodeBodyPattern.FindStringSubmatch(body)
+	if matches == nil {
+		return nodePattern{}, false
+	}
+	return nodePattern{labels: matches[2], properties: matches[3]}, true
+}
+
+func nodeHasEntityLabel(labels string) bool {
+	for _, label := range strings.Split(labels, ":") {
+		if strings.EqualFold(strings.TrimSpace(label), "Entity") {
+			return true
+		}
+	}
+	return false
+}
+
+func previousNonSpace(text string, index int) byte {
+	for i := index - 1; i >= 0; i-- {
+		switch text[i] {
+		case ' ', '\t', '\n', '\r':
+			continue
+		default:
+			return text[i]
+		}
+	}
+	return 0
+}
+
+func isIdentifierByte(value byte) bool {
+	return value >= 'a' && value <= 'z' ||
+		value >= 'A' && value <= 'Z' ||
+		value >= '0' && value <= '9' ||
+		value == '_'
 }
 
 func allNodesScanOverLimit(plan *ports.CypherPlan, limit int) bool {
