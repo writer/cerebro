@@ -308,6 +308,160 @@ func TestImportOSVPreservesExistingEnrichment(t *testing.T) {
 	}
 }
 
+func TestImportOSVMergesExistingAliasEnrichment(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	if _, err := ImportEPSS(ctx, store, strings.NewReader("cve,epss,percentile\nCVE-2026-33334,0.8,0.95\n")); err != nil {
+		t.Fatalf("import epss: %v", err)
+	}
+	osv := `[{
+		"id":"GHSA-3333-4444-5555",
+		"aliases":["CVE-2026-33334"],
+		"summary":"later osv alias import",
+		"affected":[{
+			"package":{"ecosystem":"npm","name":"demo"},
+			"ranges":[{"type":"SEMVER","events":[{"introduced":"0"},{"fixed":"1.2.0"}]}]
+		}]
+	}]`
+	if _, err := ImportOSV(ctx, store, strings.NewReader(osv)); err != nil {
+		t.Fatalf("import osv: %v", err)
+	}
+	stats, err := store.Stats(ctx)
+	if err != nil {
+		t.Fatalf("stats: %v", err)
+	}
+	if stats.Vulnerabilities != 1 {
+		t.Fatalf("stats.Vulnerabilities = %d, want 1 merged advisory", stats.Vulnerabilities)
+	}
+	vulnerability, ok, err := store.FindVulnerability(ctx, "GHSA-3333-4444-5555")
+	if err != nil {
+		t.Fatalf("find ghsa alias: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected ghsa alias lookup")
+	}
+	if vulnerability.EPSS == nil || vulnerability.EPSS.Score != 0.8 {
+		t.Fatalf("expected epss enrichment to survive alias merge, got %+v", vulnerability.EPSS)
+	}
+	matcher, err := NewMatcher(store)
+	if err != nil {
+		t.Fatalf("new matcher: %v", err)
+	}
+	matches, err := matcher.MatchPackage(ctx, PackageQuery{Ecosystem: "npm", Name: "demo", Version: "1.1.0"})
+	if err != nil {
+		t.Fatalf("match alias-merged package: %v", err)
+	}
+	if len(matches) != 1 || matches[0].Vulnerability.EPSS == nil {
+		t.Fatalf("unexpected alias-merged matches: %+v", matches)
+	}
+}
+
+func TestImportOSVMultiIntervalRanges(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	osv := `[{
+		"id":"CVE-2026-33335",
+		"summary":"multi interval advisory",
+		"affected":[{
+			"package":{"ecosystem":"npm","name":"interval-demo"},
+			"ranges":[{"type":"SEMVER","events":[
+				{"introduced":"0"},
+				{"fixed":"1.0.0"},
+				{"introduced":"2.0.0"},
+				{"fixed":"2.5.0"}
+			]}]
+		}]
+	}]`
+	imported, err := ImportOSV(ctx, store, strings.NewReader(osv))
+	if err != nil {
+		t.Fatalf("import osv: %v", err)
+	}
+	if imported.AffectedPackages != 2 {
+		t.Fatalf("imported.AffectedPackages = %d, want 2 intervals", imported.AffectedPackages)
+	}
+	matcher, err := NewMatcher(store)
+	if err != nil {
+		t.Fatalf("new matcher: %v", err)
+	}
+	for _, version := range []string{"0.5.0", "2.1.0"} {
+		matches, err := matcher.MatchPackage(ctx, PackageQuery{Ecosystem: "npm", Name: "interval-demo", Version: version})
+		if err != nil {
+			t.Fatalf("match vulnerable version %s: %v", version, err)
+		}
+		if len(matches) != 1 {
+			t.Fatalf("matches for %s = %+v, want one", version, matches)
+		}
+	}
+	for _, version := range []string{"1.5.0", "2.5.0"} {
+		matches, err := matcher.MatchPackage(ctx, PackageQuery{Ecosystem: "npm", Name: "interval-demo", Version: version})
+		if err != nil {
+			t.Fatalf("match non-vulnerable version %s: %v", version, err)
+		}
+		if len(matches) != 0 {
+			t.Fatalf("matches for %s = %+v, want none", version, matches)
+		}
+	}
+}
+
+func TestImportNVDEnrichesExistingOSVAlias(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	osv := `[{"id":"GHSA-4444-5555-6666","aliases":["CVE-2026-44445"],"summary":"osv advisory"}]`
+	if _, err := ImportOSV(ctx, store, strings.NewReader(osv)); err != nil {
+		t.Fatalf("import osv: %v", err)
+	}
+	nvd := `{
+		"vulnerabilities":[{
+			"cve":{
+				"id":"CVE-2026-44445",
+				"descriptions":[{"lang":"en","value":"NVD alias description"}],
+				"metrics":{"cvssMetricV31":[{"cvssData":{"baseScore":7.5,"baseSeverity":"HIGH","vectorString":"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"}}]},
+				"configurations":[{
+					"nodes":[{
+						"cpeMatch":[{
+							"vulnerable":true,
+							"criteria":"cpe:2.3:a:demo:agent:*:*:*:*:*:*:*:*",
+							"versionStartIncluding":"3.0.0",
+							"versionEndExcluding":"3.1.0"
+						}]
+					}]
+				}]
+			}
+		}]
+	}`
+	if _, err := ImportNVD(ctx, store, strings.NewReader(nvd)); err != nil {
+		t.Fatalf("import nvd: %v", err)
+	}
+	stats, err := store.Stats(ctx)
+	if err != nil {
+		t.Fatalf("stats: %v", err)
+	}
+	if stats.Vulnerabilities != 1 {
+		t.Fatalf("stats.Vulnerabilities = %d, want 1 merged advisory", stats.Vulnerabilities)
+	}
+	vulnerability, ok, err := store.FindVulnerability(ctx, "CVE-2026-44445")
+	if err != nil {
+		t.Fatalf("find cve alias: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected cve alias lookup")
+	}
+	if vulnerability.ID != "GHSA-4444-5555-6666" || vulnerability.CVSSScore != 7.5 || vulnerability.Severity != "HIGH" {
+		t.Fatalf("unexpected merged nvd vulnerability: %+v", vulnerability)
+	}
+	matcher, err := NewMatcher(store)
+	if err != nil {
+		t.Fatalf("new matcher: %v", err)
+	}
+	matches, err := matcher.MatchPackage(ctx, PackageQuery{Ecosystem: "cpe:application", Name: "demo:agent", Version: "3.0.1"})
+	if err != nil {
+		t.Fatalf("match cpe alias package: %v", err)
+	}
+	if len(matches) != 1 || matches[0].Vulnerability.ID != "GHSA-4444-5555-6666" {
+		t.Fatalf("unexpected cpe alias matches: %+v", matches)
+	}
+}
+
 func TestImportNVD(t *testing.T) {
 	ctx := context.Background()
 	store := NewMemoryStore()

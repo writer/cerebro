@@ -212,12 +212,21 @@ func ImportNVD(ctx context.Context, store Store, reader io.Reader) (ImportResult
 		if err := ctx.Err(); err != nil {
 			return ImportResult{}, err
 		}
-		id := NormalizeIdentifier(item.CVE.ID)
-		if id == "" {
+		sourceID := NormalizeIdentifier(item.CVE.ID)
+		if sourceID == "" {
 			continue
+		}
+		existing, ok, err := findVulnerabilityByAnyIdentifier(ctx, store, sourceID, nil)
+		if err != nil {
+			return ImportResult{}, err
+		}
+		id := sourceID
+		if ok {
+			id = existing.ID
 		}
 		vulnerability := Vulnerability{
 			ID:          id,
+			Aliases:     mergeVulnerabilityAliases(id, existing.Aliases, []string{sourceID}),
 			Summary:     nvdEnglishDescription(item.CVE.Descriptions),
 			Details:     nvdEnglishDescription(item.CVE.Descriptions),
 			Source:      SourceNVD,
@@ -226,10 +235,7 @@ func ImportNVD(ctx context.Context, store Store, reader io.Reader) (ImportResult
 			References:  nvdReferences(item.CVE.References),
 		}
 		vulnerability.CVSSScore, vulnerability.Severity, vulnerability.CVSSVector = nvdCVSS(item.CVE.Metrics)
-		if existing, ok, err := store.FindVulnerability(ctx, id); err != nil {
-			return ImportResult{}, err
-		} else if ok {
-			vulnerability.Aliases = existing.Aliases
+		if ok {
 			vulnerability.EPSS = existing.EPSS
 			vulnerability.KEV = existing.KEV
 			if vulnerability.Summary == "" {
@@ -237,6 +243,15 @@ func ImportNVD(ctx context.Context, store Store, reader io.Reader) (ImportResult
 			}
 			if vulnerability.Details == "" {
 				vulnerability.Details = existing.Details
+			}
+			if vulnerability.CVSSScore == 0 {
+				vulnerability.CVSSScore = existing.CVSSScore
+			}
+			if vulnerability.CVSSVector == "" {
+				vulnerability.CVSSVector = existing.CVSSVector
+			}
+			if vulnerability.Severity == "" {
+				vulnerability.Severity = existing.Severity
 			}
 		}
 		if err := store.UpsertVulnerability(ctx, vulnerability); err != nil {
@@ -292,13 +307,21 @@ func importOSVAdvisory(ctx context.Context, store Store, advisory osvAdvisory) (
 	if err := ctx.Err(); err != nil {
 		return ImportResult{}, err
 	}
-	id := NormalizeIdentifier(advisory.ID)
-	if id == "" {
+	sourceID := NormalizeIdentifier(advisory.ID)
+	if sourceID == "" {
 		return ImportResult{}, nil
+	}
+	existing, ok, err := findVulnerabilityByAnyIdentifier(ctx, store, sourceID, advisory.Aliases)
+	if err != nil {
+		return ImportResult{}, err
+	}
+	id := sourceID
+	if ok {
+		id = existing.ID
 	}
 	vulnerability := Vulnerability{
 		ID:          id,
-		Aliases:     advisory.Aliases,
+		Aliases:     mergeVulnerabilityAliases(id, existing.Aliases, []string{sourceID}, advisory.Aliases),
 		Summary:     strings.TrimSpace(advisory.Summary),
 		Details:     strings.TrimSpace(advisory.Details),
 		Source:      SourceOSV,
@@ -307,13 +330,23 @@ func importOSVAdvisory(ctx context.Context, store Store, advisory osvAdvisory) (
 		WithdrawnAt: parseTime(advisory.Withdrawn),
 		References:  make([]Reference, 0, len(advisory.References)),
 	}
-	if existing, ok, err := store.FindVulnerability(ctx, id); err != nil {
-		return ImportResult{}, err
-	} else if ok {
+	if ok {
 		vulnerability.EPSS = existing.EPSS
 		vulnerability.KEV = existing.KEV
-		if len(vulnerability.Aliases) == 0 {
-			vulnerability.Aliases = existing.Aliases
+		if vulnerability.Summary == "" {
+			vulnerability.Summary = existing.Summary
+		}
+		if vulnerability.Details == "" {
+			vulnerability.Details = existing.Details
+		}
+		if vulnerability.CVSSScore == 0 {
+			vulnerability.CVSSScore = existing.CVSSScore
+		}
+		if vulnerability.CVSSVector == "" {
+			vulnerability.CVSSVector = existing.CVSSVector
+		}
+		if vulnerability.Severity == "" {
+			vulnerability.Severity = existing.Severity
 		}
 	}
 	if len(advisory.Severity) > 0 {
@@ -351,34 +384,113 @@ func importOSVAdvisory(ctx context.Context, store Store, advisory osvAdvisory) (
 			result.AffectedPackages++
 		}
 		for _, affectedRange := range affected.Ranges {
-			events := affectedRange.Events
-			row := AffectedPackage{
-				VulnerabilityID: id,
-				Ecosystem:       ecosystem,
-				PackageName:     name,
-				RangeType:       strings.TrimSpace(affectedRange.Type),
-			}
-			for _, event := range events {
-				if event.Introduced != "" {
-					row.Introduced = strings.TrimSpace(event.Introduced)
+			for _, row := range osvRangeAffectedPackages(id, ecosystem, name, affectedRange) {
+				if err := store.UpsertAffectedPackage(ctx, row); err != nil {
+					return ImportResult{}, err
 				}
-				if event.Fixed != "" {
-					row.Fixed = strings.TrimSpace(event.Fixed)
-				}
-				if event.LastAffected != "" {
-					row.LastAffected = strings.TrimSpace(event.LastAffected)
-				}
+				result.AffectedPackages++
 			}
-			if row.Introduced == "" && row.Fixed == "" && row.LastAffected == "" {
-				continue
-			}
-			if err := store.UpsertAffectedPackage(ctx, row); err != nil {
-				return ImportResult{}, err
-			}
-			result.AffectedPackages++
 		}
 	}
 	return result, nil
+}
+
+func findVulnerabilityByAnyIdentifier(ctx context.Context, store Store, id string, aliases []string) (Vulnerability, bool, error) {
+	identifiers := append([]string{id}, aliases...)
+	seen := map[string]struct{}{}
+	for _, identifier := range identifiers {
+		lookup := NormalizeIdentifier(identifier)
+		if lookup == "" {
+			continue
+		}
+		if _, ok := seen[lookup]; ok {
+			continue
+		}
+		seen[lookup] = struct{}{}
+		vulnerability, ok, err := store.FindVulnerability(ctx, lookup)
+		if err != nil {
+			return Vulnerability{}, false, err
+		}
+		if ok {
+			return vulnerability, true, nil
+		}
+	}
+	return Vulnerability{}, false, nil
+}
+
+func mergeVulnerabilityAliases(canonicalID string, groups ...[]string) []string {
+	canonicalID = NormalizeIdentifier(canonicalID)
+	seen := map[string]struct{}{}
+	if canonicalID != "" {
+		seen[canonicalID] = struct{}{}
+	}
+	aliases := []string{}
+	for _, group := range groups {
+		for _, value := range group {
+			alias := NormalizeIdentifier(value)
+			if alias == "" {
+				continue
+			}
+			if _, ok := seen[alias]; ok {
+				continue
+			}
+			seen[alias] = struct{}{}
+			aliases = append(aliases, alias)
+		}
+	}
+	return aliases
+}
+
+func osvRangeAffectedPackages(vulnerabilityID string, ecosystem string, packageName string, affectedRange osvRange) []AffectedPackage {
+	base := AffectedPackage{
+		VulnerabilityID: vulnerabilityID,
+		Ecosystem:       ecosystem,
+		PackageName:     packageName,
+		RangeType:       strings.TrimSpace(affectedRange.Type),
+	}
+	rows := []AffectedPackage{}
+	current := base
+	hasCurrent := false
+	appendCurrent := func() {
+		if current.Introduced == "" && current.Fixed == "" && current.LastAffected == "" {
+			current = base
+			hasCurrent = false
+			return
+		}
+		rows = append(rows, current)
+		current = base
+		hasCurrent = false
+	}
+	for _, event := range affectedRange.Events {
+		if introduced := strings.TrimSpace(event.Introduced); introduced != "" {
+			if hasCurrent {
+				appendCurrent()
+			}
+			current = base
+			current.Introduced = introduced
+			hasCurrent = true
+		}
+		if fixed := strings.TrimSpace(event.Fixed); fixed != "" {
+			if !hasCurrent {
+				current = base
+				hasCurrent = true
+			}
+			current.Fixed = fixed
+			appendCurrent()
+		}
+		if lastAffected := strings.TrimSpace(event.LastAffected); lastAffected != "" {
+			if !hasCurrent {
+				current = base
+				hasCurrent = true
+			}
+			current.LastAffected = lastAffected
+			appendCurrent()
+		}
+	}
+	if hasCurrent {
+		appendCurrent()
+	}
+	return rows
 }
 
 type osvAdvisory struct {
