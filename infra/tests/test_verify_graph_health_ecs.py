@@ -279,14 +279,14 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             _verify_required_graph_relation_counts(payload, {"resource_exposure"})
 
     def test_verify_required_graph_relation_counts_accepts_required_relations(self) -> None:
-        payload = {"relations": {"belongs_to": 4, "represents": 2, "can_reach": 1, "can_perform": 0}}
+        payload = {"relations": {"belongs_to": 4, "represents": 2, "can_reach": 1, "can_perform": 0, "can_assume": 0}}
 
         self.assertEqual(
-            _verify_required_graph_relation_counts(payload, {"resource_exposure"}),
+            _verify_required_graph_relation_counts(payload, {"resource_exposure", "effective_permission", "iam_role_trust"}),
             {"belongs_to", "represents", "can_reach"},
         )
 
-    def test_verify_required_graph_relations_requires_attack_path_edges_for_aws(self) -> None:
+    def test_verify_required_graph_relations_reports_optional_attack_path_edges_for_aws(self) -> None:
         payload = {
             "patterns": [
                 {"first_relation": "can_reach", "second_relation": "belongs_to"},
