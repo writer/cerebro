@@ -454,6 +454,13 @@ func TestImportOSVRemovesAliasSupersededAffectedPackages(t *testing.T) {
 	if _, err := ImportOSV(ctx, store, strings.NewReader(osv)); err != nil {
 		t.Fatalf("import osv alias refresh: %v", err)
 	}
+	stats, err := store.Stats(ctx)
+	if err != nil {
+		t.Fatalf("stats: %v", err)
+	}
+	if stats.Vulnerabilities != 1 {
+		t.Fatalf("stats.Vulnerabilities = %d, want duplicate alias record removed", stats.Vulnerabilities)
+	}
 	rows, err := store.CandidateAffectedPackages(ctx, PackageQuery{Ecosystem: "npm", Name: "demo"})
 	if err != nil {
 		t.Fatalf("candidate affected packages: %v", err)

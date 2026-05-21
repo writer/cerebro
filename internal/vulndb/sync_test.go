@@ -139,6 +139,14 @@ func TestMemoryStoreRejectsZeroIntervalSyncJob(t *testing.T) {
 	}
 }
 
+func TestMemoryStoreRejectsUnsupportedSyncJobSource(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	if err := store.PutSyncJob(ctx, SyncJob{ID: "bad", Source: "typo", FeedURL: "feed", Interval: time.Hour}); err == nil {
+		t.Fatal("PutSyncJob() error = nil, want unsupported source rejection")
+	}
+}
+
 func TestMemoryStorePutSyncJobPreservesNextRunAt(t *testing.T) {
 	ctx := context.Background()
 	store := NewMemoryStore()
@@ -172,6 +180,38 @@ func TestMemoryStorePutSyncJobPreservesNextRunAt(t *testing.T) {
 	}
 	if job.FeedURL != "osv-feed-updated" || job.Interval != 2*time.Hour {
 		t.Fatalf("expected editable fields to update, got %+v", job)
+	}
+}
+
+func TestSyncRunnerRunDueRechecksNextRunAtAfterLease(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	future := time.Now().UTC().Add(time.Hour)
+	if err := store.PutSyncJob(ctx, SyncJob{
+		ID:        "osv-hourly",
+		Source:    SourceOSV,
+		FeedURL:   "osv-feed",
+		Interval:  time.Hour,
+		NextRunAt: future,
+	}); err != nil {
+		t.Fatalf("put sync job: %v", err)
+	}
+	runner, err := NewSyncRunner(store, store, func(context.Context, SyncJob) (io.ReadCloser, error) {
+		t.Fatal("openFeed should not be called for no-longer-due job")
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatalf("new sync runner: %v", err)
+	}
+	if err := store.CompleteSyncJob(ctx, "osv-hourly", "", future); err != nil {
+		t.Fatalf("complete sync job: %v", err)
+	}
+	run, err := runner.runJob(ctx, "osv-hourly", true)
+	if err != nil {
+		t.Fatalf("run due job: %v", err)
+	}
+	if run.Status != "not_due" {
+		t.Fatalf("Status = %q, want not_due", run.Status)
 	}
 }
 

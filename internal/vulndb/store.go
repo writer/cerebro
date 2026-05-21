@@ -16,6 +16,7 @@ var ErrSyncJobNotFound = errors.New("vulndb sync job not found")
 // Store persists normalized vulnerability advisory data.
 type Store interface {
 	UpsertVulnerability(context.Context, Vulnerability) error
+	DeleteVulnerability(context.Context, string) error
 	FindVulnerability(context.Context, string) (Vulnerability, bool, error)
 	UpsertAffectedPackage(context.Context, AffectedPackage) error
 	ReplaceAffectedPackages(context.Context, string, string, []AffectedPackage) error
@@ -78,6 +79,39 @@ func (s *MemoryStore) UpsertVulnerability(ctx context.Context, v Vulnerability) 
 	for _, alias := range v.Aliases {
 		if alias != "" {
 			s.aliases[alias] = v.ID
+		}
+	}
+	return nil
+}
+
+// DeleteVulnerability removes an advisory, aliases, and affected package rows by canonical ID.
+func (s *MemoryStore) DeleteVulnerability(ctx context.Context, id string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	id = NormalizeIdentifier(id)
+	if id == "" {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.vulnerabilities[id]; !ok {
+		return nil
+	}
+	delete(s.vulnerabilities, id)
+	for alias, vulnerabilityID := range s.aliases {
+		if vulnerabilityID == id {
+			delete(s.aliases, alias)
+		}
+	}
+	for key, rows := range s.affected {
+		for rowKey, row := range rows {
+			if row.VulnerabilityID == id {
+				delete(rows, rowKey)
+			}
+		}
+		if len(rows) == 0 {
+			delete(s.affected, key)
 		}
 	}
 	return nil
@@ -253,6 +287,9 @@ func (s *MemoryStore) PutSyncJob(ctx context.Context, job SyncJob) error {
 	}
 	if job.Source == "" {
 		return fmt.Errorf("sync job source is required")
+	}
+	if !IsSupportedFeedSource(job.Source) {
+		return fmt.Errorf("unsupported vulndb feed source %q", job.Source)
 	}
 	if job.FeedURL == "" {
 		return fmt.Errorf("sync job feed url is required")

@@ -114,6 +114,37 @@ DO UPDATE SET vulnerability_id = EXCLUDED.vulnerability_id`, alias, vulnerabilit
 	return nil
 }
 
+// DeleteVulnerability removes an advisory, aliases, and affected packages.
+func (s *Store) DeleteVulnerability(ctx context.Context, id string) error {
+	if s == nil || s.db == nil {
+		return errors.New("postgres is not configured")
+	}
+	id = vulndb.NormalizeIdentifier(id)
+	if id == "" {
+		return nil
+	}
+	if err := s.ensureVulnDBTables(ctx); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin delete vulnerability %q: %w", id, err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM vulndb_affected_packages WHERE vulnerability_id = $1`, id); err != nil {
+		return fmt.Errorf("delete affected packages for vulnerability %q: %w", id, err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM vulndb_vulnerabilities WHERE id = $1`, id); err != nil {
+		return fmt.Errorf("delete vulnerability %q: %w", id, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete vulnerability %q: %w", id, err)
+	}
+	return nil
+}
+
 // FindVulnerability returns an advisory by canonical ID or alias.
 func (s *Store) FindVulnerability(ctx context.Context, idOrAlias string) (vulndb.Vulnerability, bool, error) {
 	if s == nil || s.db == nil {
@@ -386,6 +417,9 @@ func (s *Store) PutSyncJob(ctx context.Context, job vulndb.SyncJob) error {
 	}
 	if job.Source == "" {
 		return errors.New("sync job source is required")
+	}
+	if !vulndb.IsSupportedFeedSource(job.Source) {
+		return fmt.Errorf("unsupported vulndb feed source %q", job.Source)
 	}
 	if job.FeedURL == "" {
 		return errors.New("sync job feed url is required")

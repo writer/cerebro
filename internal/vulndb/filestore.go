@@ -49,6 +49,13 @@ func (s *FileStore) UpsertVulnerability(ctx context.Context, v Vulnerability) er
 	})
 }
 
+// DeleteVulnerability removes an advisory and persists the state file.
+func (s *FileStore) DeleteVulnerability(ctx context.Context, id string) error {
+	return s.update(ctx, func() error {
+		return s.mem.DeleteVulnerability(ctx, id)
+	})
+}
+
 // FindVulnerability returns an advisory by canonical ID or alias.
 func (s *FileStore) FindVulnerability(ctx context.Context, idOrAlias string) (Vulnerability, bool, error) {
 	return s.mem.FindVulnerability(ctx, idOrAlias)

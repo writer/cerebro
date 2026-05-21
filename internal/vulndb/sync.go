@@ -188,7 +188,7 @@ func (r *SyncRunner) RunDue(ctx context.Context, limit int) (SyncDueJobsResult, 
 	}
 	result := SyncDueJobsResult{Jobs: make([]SyncJobRunResult, 0, len(jobs))}
 	for _, job := range jobs {
-		run, err := r.RunJob(ctx, job.ID)
+		run, err := r.runJob(ctx, job.ID, true)
 		if err != nil {
 			run = SyncJobRunResult{
 				JobID:  strings.TrimSpace(job.ID),
@@ -204,6 +204,10 @@ func (r *SyncRunner) RunDue(ctx context.Context, limit int) (SyncDueJobsResult, 
 
 // RunJob runs one durable sync job by ID with lease protection.
 func (r *SyncRunner) RunJob(ctx context.Context, id string) (SyncJobRunResult, error) {
+	return r.runJob(ctx, id, false)
+}
+
+func (r *SyncRunner) runJob(ctx context.Context, id string, requireDue bool) (SyncJobRunResult, error) {
 	if r == nil {
 		return SyncJobRunResult{}, fmt.Errorf("vulndb sync runner is required")
 	}
@@ -229,6 +233,22 @@ func (r *SyncRunner) RunJob(ctx context.Context, id string) (SyncJobRunResult, e
 			Source: job.Source,
 			Status: "leased",
 		}, nil
+	}
+	if requireDue {
+		refreshed, ok, err := r.jobs.GetSyncJob(ctx, job.ID)
+		if err != nil {
+			_ = r.jobs.ReleaseSyncJobLease(ctx, job.ID, owner)
+			return SyncJobRunResult{}, err
+		}
+		if !ok {
+			_ = r.jobs.ReleaseSyncJobLease(ctx, job.ID, owner)
+			return SyncJobRunResult{}, fmt.Errorf("%w: %s", ErrSyncJobNotFound, job.ID)
+		}
+		if !refreshed.NextRunAt.IsZero() && refreshed.NextRunAt.After(r.now()) {
+			_ = r.jobs.ReleaseSyncJobLease(ctx, job.ID, owner)
+			return SyncJobRunResult{JobID: refreshed.ID, Source: refreshed.Source, Status: "not_due", NextRunAt: refreshed.NextRunAt}, nil
+		}
+		job = refreshed
 	}
 	run := SyncJobRunResult{JobID: job.ID, Source: job.Source, Status: "failed"}
 	nextRunAt := r.nextRunAt(job)
@@ -288,6 +308,16 @@ func ImportFeed(ctx context.Context, store Store, source string, reader io.Reade
 		return ImportNVD(ctx, store, reader)
 	default:
 		return ImportResult{}, fmt.Errorf("unsupported vulndb feed source %q", strings.TrimSpace(source))
+	}
+}
+
+// IsSupportedFeedSource reports whether source can be imported by ImportFeed.
+func IsSupportedFeedSource(source string) bool {
+	switch normalizeSource(source) {
+	case SourceOSV, SourceCISAKEV, SourceEPSS, SourceNVD:
+		return true
+	default:
+		return false
 	}
 }
 

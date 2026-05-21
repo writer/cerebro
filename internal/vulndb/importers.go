@@ -411,6 +411,9 @@ func replaceAffectedPackagesForCanonical(ctx context.Context, store Store, canon
 		if err := store.ReplaceAffectedPackages(ctx, id, source, nil); err != nil {
 			return err
 		}
+		if err := store.DeleteVulnerability(ctx, id); err != nil {
+			return err
+		}
 	}
 	return store.ReplaceAffectedPackages(ctx, canonicalID, source, packages)
 }
@@ -418,6 +421,9 @@ func replaceAffectedPackagesForCanonical(ctx context.Context, store Store, canon
 func findVulnerabilityByAnyIdentifier(ctx context.Context, store Store, id string, aliases []string) (Vulnerability, bool, error) {
 	identifiers := append([]string{id}, aliases...)
 	seen := map[string]struct{}{}
+	var merged Vulnerability
+	found := false
+	duplicateIDs := []string{}
 	for _, identifier := range identifiers {
 		lookup := NormalizeIdentifier(identifier)
 		if lookup == "" {
@@ -432,10 +438,68 @@ func findVulnerabilityByAnyIdentifier(ctx context.Context, store Store, id strin
 			return Vulnerability{}, false, err
 		}
 		if ok {
-			return vulnerability, true, nil
+			if !found {
+				merged = vulnerability
+				found = true
+				continue
+			}
+			if vulnerability.ID == merged.ID {
+				continue
+			}
+			duplicateIDs = append(duplicateIDs, vulnerability.ID)
+			merged = mergeVulnerabilityRecords(merged, vulnerability)
 		}
 	}
-	return Vulnerability{}, false, nil
+	for _, duplicateID := range duplicateIDs {
+		if err := store.DeleteVulnerability(ctx, duplicateID); err != nil {
+			return Vulnerability{}, false, err
+		}
+	}
+	return merged, found, nil
+}
+
+func mergeVulnerabilityRecords(canonical Vulnerability, duplicate Vulnerability) Vulnerability {
+	merged := canonical
+	merged.Aliases = mergeVulnerabilityAliases(merged.ID, []string{canonical.ID}, canonical.Aliases, []string{duplicate.ID}, duplicate.Aliases)
+	if merged.Summary == "" {
+		merged.Summary = duplicate.Summary
+	}
+	if merged.Details == "" {
+		merged.Details = duplicate.Details
+	}
+	if merged.Severity == "" {
+		merged.Severity = duplicate.Severity
+	}
+	if merged.CVSSScore == 0 {
+		merged.CVSSScore = duplicate.CVSSScore
+	}
+	if merged.CVSSVector == "" {
+		merged.CVSSVector = duplicate.CVSSVector
+	}
+	if merged.PublishedAt.IsZero() {
+		merged.PublishedAt = duplicate.PublishedAt
+	}
+	if merged.ModifiedAt.IsZero() {
+		merged.ModifiedAt = duplicate.ModifiedAt
+	}
+	if merged.WithdrawnAt.IsZero() {
+		merged.WithdrawnAt = duplicate.WithdrawnAt
+	}
+	if merged.Source == "" {
+		merged.Source = duplicate.Source
+	}
+	if len(merged.References) == 0 {
+		merged.References = append([]Reference(nil), duplicate.References...)
+	}
+	if merged.EPSS == nil && duplicate.EPSS != nil {
+		epss := *duplicate.EPSS
+		merged.EPSS = &epss
+	}
+	if merged.KEV == nil && duplicate.KEV != nil {
+		kev := *duplicate.KEV
+		merged.KEV = &kev
+	}
+	return merged
 }
 
 func mergeVulnerabilityAliases(canonicalID string, groups ...[]string) []string {
