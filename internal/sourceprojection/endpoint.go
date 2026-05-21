@@ -199,7 +199,9 @@ func addEndpointOwnerLinks(entities map[string]*ports.ProjectedEntity, links map
 	}
 	for _, identifier := range []string{
 		firstAttribute(attrs, "owner_email"),
+		firstAttribute(attrs, "owner_id"),
 		firstAttribute(attrs, "user_email"),
+		firstAttribute(attrs, "user_id"),
 		firstAttribute(attrs, "primary_email"),
 		firstAttribute(attrs, "assigned_user"),
 	} {
