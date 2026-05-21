@@ -725,7 +725,14 @@ func recordIdentity(id string, values map[string]any) string {
 			parts = append(parts, key+"="+value)
 		}
 	}
-	return strings.Join(nonEmpty(parts), "\x00")
+	parts = nonEmpty(parts)
+	if len(parts) == 0 {
+		return ""
+	}
+	if len(parts) == 1 {
+		return parts[0]
+	}
+	return parts[0] + "-" + stableID(strings.Join(parts, "\x00"))
 }
 
 func nonEmpty(values []string) []string {
