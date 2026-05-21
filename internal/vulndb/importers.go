@@ -133,7 +133,11 @@ func ImportEPSS(ctx context.Context, store Store, reader io.Reader) (ImportResul
 	if store == nil {
 		return ImportResult{}, fmt.Errorf("vulnerability store is required")
 	}
-	csvReader := csv.NewReader(skipCommentLines(reader))
+	stripped, err := skipCommentLines(reader)
+	if err != nil {
+		return ImportResult{}, err
+	}
+	csvReader := csv.NewReader(stripped)
 	csvReader.TrimLeadingSpace = true
 	header, err := csvReader.Read()
 	if err != nil {
@@ -608,6 +612,8 @@ type nvdConfiguration struct {
 }
 
 type nvdNode struct {
+	Operator string        `json:"operator"`
+	Negate   bool          `json:"negate"`
 	CPEMatch []nvdCPEMatch `json:"cpeMatch"`
 	Children []nvdNode     `json:"children"`
 }
@@ -699,6 +705,9 @@ func nvdAffectedPackages(vulnerabilityID string, configurations []nvdConfigurati
 }
 
 func nvdNodeAffectedPackages(vulnerabilityID string, node nvdNode) []AffectedPackage {
+	if node.Negate || strings.EqualFold(strings.TrimSpace(node.Operator), "AND") {
+		return nil
+	}
 	rows := make([]AffectedPackage, 0, len(node.CPEMatch))
 	for _, match := range node.CPEMatch {
 		row, ok := nvdCPEAffectedPackage(vulnerabilityID, match)
@@ -829,7 +838,7 @@ func csvIndexes(header []string) map[string]int {
 	return indexes
 }
 
-func skipCommentLines(reader io.Reader) io.Reader {
+func skipCommentLines(reader io.Reader) (io.Reader, error) {
 	scanner := bufio.NewScanner(reader)
 	var builder strings.Builder
 	for scanner.Scan() {
@@ -840,7 +849,10 @@ func skipCommentLines(reader io.Reader) io.Reader {
 		builder.WriteString(line)
 		builder.WriteByte('\n')
 	}
-	return strings.NewReader(builder.String())
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return strings.NewReader(builder.String()), nil
 }
 
 func firstNonEmpty(values ...string) string {

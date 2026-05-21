@@ -409,7 +409,7 @@ DO UPDATE SET
   feed_url = EXCLUDED.feed_url,
   allow_insecure_http = EXCLUDED.allow_insecure_http,
   interval_ns = EXCLUDED.interval_ns,
-  next_run_at = EXCLUDED.next_run_at,
+  next_run_at = COALESCE(EXCLUDED.next_run_at, vulndb_sync_jobs.next_run_at),
   lease_owner = CASE WHEN EXCLUDED.lease_owner = '' THEN vulndb_sync_jobs.lease_owner ELSE EXCLUDED.lease_owner END,
   lease_expires_at = CASE WHEN EXCLUDED.lease_owner = '' THEN vulndb_sync_jobs.lease_expires_at ELSE EXCLUDED.lease_expires_at END,
   last_started_at = COALESCE(EXCLUDED.last_started_at, vulndb_sync_jobs.last_started_at),

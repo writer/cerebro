@@ -139,6 +139,42 @@ func TestMemoryStoreRejectsZeroIntervalSyncJob(t *testing.T) {
 	}
 }
 
+func TestMemoryStorePutSyncJobPreservesNextRunAt(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	nextRunAt := time.Date(2026, 5, 21, 20, 0, 0, 0, time.UTC)
+	if err := store.PutSyncJob(ctx, SyncJob{
+		ID:        "osv-hourly",
+		Source:    SourceOSV,
+		FeedURL:   "osv-feed",
+		Interval:  time.Hour,
+		NextRunAt: nextRunAt,
+	}); err != nil {
+		t.Fatalf("put scheduled sync job: %v", err)
+	}
+	if err := store.PutSyncJob(ctx, SyncJob{
+		ID:       "osv-hourly",
+		Source:   SourceOSV,
+		FeedURL:  "osv-feed-updated",
+		Interval: 2 * time.Hour,
+	}); err != nil {
+		t.Fatalf("update sync job: %v", err)
+	}
+	job, ok, err := store.GetSyncJob(ctx, "osv-hourly")
+	if err != nil {
+		t.Fatalf("get sync job: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected sync job")
+	}
+	if !job.NextRunAt.Equal(nextRunAt) {
+		t.Fatalf("NextRunAt = %v, want preserved %v", job.NextRunAt, nextRunAt)
+	}
+	if job.FeedURL != "osv-feed-updated" || job.Interval != 2*time.Hour {
+		t.Fatalf("expected editable fields to update, got %+v", job)
+	}
+}
+
 func TestFileStorePersistsSyncJobRecovery(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "vulndb.json")

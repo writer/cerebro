@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/iotest"
 	"time"
 )
 
@@ -740,6 +741,56 @@ func TestImportNVDKeepsVersionStartExcludingExclusive(t *testing.T) {
 	}
 	if len(matches) != 1 {
 		t.Fatalf("expected inside exclusive range to match, got %+v", matches)
+	}
+}
+
+func TestImportNVDSkipsConjunctiveConfigurations(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	nvd := `{
+		"vulnerabilities":[{
+			"cve":{
+				"id":"CVE-2026-44448",
+				"configurations":[{
+					"nodes":[{
+						"operator":"AND",
+						"cpeMatch":[{
+							"vulnerable":true,
+							"criteria":"cpe:2.3:a:demo:platform_bound:*:*:*:*:*:*:*:*"
+						},{
+							"vulnerable":false,
+							"criteria":"cpe:2.3:o:demo:required_os:*:*:*:*:*:*:*:*"
+						}]
+					}]
+				}]
+			}
+		}]
+	}`
+	imported, err := ImportNVD(ctx, store, strings.NewReader(nvd))
+	if err != nil {
+		t.Fatalf("import nvd: %v", err)
+	}
+	if imported.AffectedPackages != 0 {
+		t.Fatalf("affected packages = %d, want conjunctive configuration skipped", imported.AffectedPackages)
+	}
+	matcher, err := NewMatcher(store)
+	if err != nil {
+		t.Fatalf("new matcher: %v", err)
+	}
+	matches, err := matcher.MatchPackage(ctx, PackageQuery{Ecosystem: "cpe:application", Name: "demo:platform_bound", Version: "1.0.0"})
+	if err != nil {
+		t.Fatalf("match skipped conjunctive package: %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("expected no match for conjunctive platform-bound CPE, got %+v", matches)
+	}
+}
+
+func TestImportEPSSReturnsCommentScanError(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	if _, err := ImportEPSS(ctx, store, iotest.ErrReader(fmt.Errorf("read failed"))); err == nil {
+		t.Fatal("ImportEPSS() error = nil, want scanner read failure")
 	}
 }
 

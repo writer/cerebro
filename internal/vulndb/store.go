@@ -276,6 +276,9 @@ func (s *MemoryStore) PutSyncJob(ctx context.Context, job SyncJob) error {
 		if job.LastSuccessAt.IsZero() {
 			job.LastSuccessAt = existing.LastSuccessAt
 		}
+		if job.NextRunAt.IsZero() {
+			job.NextRunAt = existing.NextRunAt
+		}
 		if job.LastError == "" {
 			job.LastError = existing.LastError
 		}
