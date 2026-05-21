@@ -38,7 +38,7 @@ jobs:
       aws: ${{ steps.filter.outputs.aws }}
       gcp: ${{ steps.filter.outputs.gcp }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -81,7 +81,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
 
@@ -124,7 +124,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
 
@@ -180,7 +180,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
 
@@ -235,7 +235,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
 
@@ -275,6 +275,12 @@ jobs:
         shell: bash
         run: bash .github/scripts/wait-for-ecr-image.sh sec-dev
 
+      - name: Detect AWS public-endpoint refresh need (sec-dev)
+        id: aws_public_endpoint_refresh
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/detect_public_endpoint_refresh.py --stack-file aws/Pulumi.sec-dev.yaml --github-output "$GITHUB_OUTPUT"
+
       - name: Pulumi Up (sec-dev)
         uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6
         with:
@@ -287,6 +293,12 @@ jobs:
         shell: bash
         working-directory: infra
         run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --source-id cosmo --run --max-age-minutes 60
+
+      - name: Refresh AWS public-endpoint runtimes (sec-dev)
+        if: steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --source-id aws --family public_endpoint --run --max-age-minutes 60
 
       - name: Verify graph health (sec-dev)
         shell: bash
@@ -304,7 +316,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
 
@@ -344,6 +356,12 @@ jobs:
         shell: bash
         run: bash .github/scripts/wait-for-ecr-image.sh go-prod
 
+      - name: Detect AWS public-endpoint refresh need (go-prod)
+        id: aws_public_endpoint_refresh
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/detect_public_endpoint_refresh.py --stack-file aws/Pulumi.go-prod.yaml --github-output "$GITHUB_OUTPUT"
+
       - name: Pulumi Up (go-prod)
         uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6
         with:
@@ -356,6 +374,12 @@ jobs:
         shell: bash
         working-directory: infra
         run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.go-prod.yaml --source-id cosmo --run --max-age-minutes 60
+
+      - name: Refresh AWS public-endpoint runtimes (go-prod)
+        if: steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.go-prod.yaml --source-id aws --family public_endpoint --run --max-age-minutes 60
 
       - name: Verify graph health (go-prod)
         shell: bash
@@ -377,7 +401,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
 
@@ -428,7 +452,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
 
@@ -479,7 +503,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
 
@@ -531,7 +555,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
 
@@ -588,6 +612,15 @@ jobs:
           STACK_NAME: ${{ github.event.inputs.environment }}
         run: bash .github/scripts/wait-for-ecr-image.sh "${STACK_NAME}"
 
+      - name: Detect AWS public-endpoint refresh need
+        if: "!startsWith(github.event.inputs.environment, 'gcp-')"
+        id: aws_public_endpoint_refresh
+        shell: bash
+        working-directory: infra
+        env:
+          STACK_NAME: ${{ github.event.inputs.environment }}
+        run: uv run python scripts/detect_public_endpoint_refresh.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --github-output "$GITHUB_OUTPUT"
+
       - name: Pulumi Up (AWS)
         if: "!startsWith(github.event.inputs.environment, 'gcp-')"
         uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6
@@ -604,6 +637,14 @@ jobs:
         env:
           STACK_NAME: ${{ github.event.inputs.environment }}
         run: uv run python scripts/verify_source_runtime_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --source-id cosmo --run --max-age-minutes 60
+
+      - name: Refresh AWS public-endpoint runtimes (AWS)
+        if: "!startsWith(github.event.inputs.environment, 'gcp-') && steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'"
+        shell: bash
+        working-directory: infra
+        env:
+          STACK_NAME: ${{ github.event.inputs.environment }}
+        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --source-id aws --family public_endpoint --run --max-age-minutes 60
 
       - name: Verify graph health (AWS)
         if: "!startsWith(github.event.inputs.environment, 'gcp-')"

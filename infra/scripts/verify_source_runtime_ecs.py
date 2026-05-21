@@ -115,17 +115,25 @@ def _parse_aws_datetime(value: Any) -> datetime | None:
     return None
 
 
-def _declared_runtime_ids(config: dict[str, Any], source_id: str, requested: set[str]) -> list[str]:
+def _declared_runtime_ids(config: dict[str, Any], source_id: str, requested: set[str], families: set[str] | None = None) -> list[str]:
     runtimes = config.get("sourceRuntimes") or []
     if not isinstance(runtimes, list):
         return []
     runtime_ids = []
+    families = families or set()
     for runtime in runtimes:
         if not isinstance(runtime, dict):
             continue
         runtime_id = str(runtime.get("id", "")).strip()
         runtime_source_id = str(runtime.get("sourceId") or runtime.get("source_id") or "").strip()
-        if runtime_id and runtime_source_id == source_id and (not requested or runtime_id in requested):
+        runtime_config = runtime.get("config") or {}
+        family = str(runtime_config.get("family") or "").strip() if isinstance(runtime_config, dict) else ""
+        if (
+            runtime_id
+            and runtime_source_id == source_id
+            and (not requested or runtime_id in requested)
+            and (not families or family in families)
+        ):
             runtime_ids.append(runtime_id)
     return sorted(runtime_ids)
 
@@ -372,6 +380,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--region", default="us-east-1")
     parser.add_argument("--source-id", default="cosmo")
     parser.add_argument("--runtime-id", action="append", default=[])
+    parser.add_argument("--family", action="append", default=[], help="Restrict verification to source runtimes with this config family.")
     parser.add_argument("--run", action="store_true", help="Start each runtime from its EventBridge target before verifying.")
     parser.add_argument("--max-age-minutes", type=int, default=180)
     parser.add_argument("--wait-timeout-seconds", type=int, default=900)
@@ -383,9 +392,13 @@ def main(argv: list[str] | None = None) -> int:
     environment = str(config.get("environment") or stack)
     resource_prefix = f"cerebro-{environment}"
     requested = set(args.runtime_id or [])
-    runtime_ids = _declared_runtime_ids(config, args.source_id, requested)
+    families = set(args.family or [])
+    runtime_ids = _declared_runtime_ids(config, args.source_id, requested, families)
     if not runtime_ids:
-        raise RuntimeError(f"no declared source runtimes found for source {args.source_id!r}")
+        scope = f" source {args.source_id!r}"
+        if families:
+            scope += f" and family {', '.join(sorted(families))!r}"
+        raise RuntimeError(f"no declared source runtimes found for{scope}")
 
     _verify_account(stack, args.region)
     targets = _runtime_targets(config, runtime_ids, resource_prefix, args.region)

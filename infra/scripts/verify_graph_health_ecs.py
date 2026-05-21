@@ -24,6 +24,7 @@ MIN_INGEST_RUN_LIMIT = 100
 INGEST_RUN_LIMIT_MULTIPLIER = 20
 MAX_INGEST_RUN_LIMIT = 500
 ATTACK_PATH_RELATION_MIN_TAG = (2, 1, 46)
+RELATION_COUNT_MIN_TAG = (2, 1, 50)
 REQUIRED_RELATIONS = {"belongs_to", "represents"}
 AWS_CAN_REACH_REQUIRED_FAMILIES = {"resource_exposure"}
 AWS_ATTACK_PATH_RELATIONS = {"can_perform", "can_assume", "can_admin", "can_impersonate"}
@@ -101,6 +102,11 @@ def _image_tag_version(value: Any) -> tuple[int, int, int] | None:
 def _supports_attack_path_relations(config: dict[str, Any]) -> bool:
     version = _image_tag_version(config.get("imageTag"))
     return bool(version and version >= ATTACK_PATH_RELATION_MIN_TAG)
+
+
+def _supports_relation_counts(config: dict[str, Any]) -> bool:
+    version = _image_tag_version(config.get("imageTag"))
+    return bool(version and version >= RELATION_COUNT_MIN_TAG)
 
 
 def _aws(args: list[str], region: str) -> Any:
@@ -416,12 +422,10 @@ def _graph_path_relations(payload: dict[str, Any]) -> set[str]:
     return relations
 
 
-def _verify_required_graph_relations(
-    payload: dict[str, Any],
+def _required_graph_relations(
     aws_families: set[str] | None = None,
     attack_path_relations_supported: bool = True,
 ) -> set[str]:
-    relations = _graph_path_relations(payload)
     required = set(REQUIRED_RELATIONS)
     aws_families = aws_families or set()
     if attack_path_relations_supported:
@@ -431,12 +435,45 @@ def _verify_required_graph_relations(
             required.add("can_perform")
         if "iam_role_trust" in aws_families:
             required.add("can_assume")
+    return required
+
+
+def _verify_required_graph_relations(
+    payload: dict[str, Any],
+    aws_families: set[str] | None = None,
+    attack_path_relations_supported: bool = True,
+) -> set[str]:
+    relations = _graph_path_relations(payload)
+    required = _required_graph_relations(aws_families, attack_path_relations_supported)
     missing = sorted(required - relations)
     if missing:
         raise RuntimeError(f"graph paths missing required relation(s): {', '.join(missing)}")
     if attack_path_relations_supported and "effective_permission" in aws_families and not (relations & AWS_ATTACK_PATH_RELATIONS):
         raise RuntimeError("graph paths missing AWS attack-path privilege relations")
     return relations
+
+
+def _graph_relation_counts(payload: dict[str, Any]) -> dict[str, int]:
+    counts = payload.get("relations") or {}
+    if not isinstance(counts, dict):
+        raise ValueError("graph relation-counts payload must include a relations object")
+    return {str(relation): int(count or 0) for relation, count in counts.items()}
+
+
+def _verify_required_graph_relation_counts(
+    payload: dict[str, Any],
+    aws_families: set[str] | None = None,
+    attack_path_relations_supported: bool = True,
+) -> set[str]:
+    counts = _graph_relation_counts(payload)
+    required = _required_graph_relations(aws_families, attack_path_relations_supported)
+    missing = sorted(relation for relation in required if counts.get(relation, 0) <= 0)
+    if missing:
+        raise RuntimeError(f"graph relation counts missing required relation(s): {', '.join(missing)}")
+    if attack_path_relations_supported and "effective_permission" in (aws_families or set()):
+        if not any(counts.get(relation, 0) > 0 for relation in AWS_ATTACK_PATH_RELATIONS):
+            raise RuntimeError("graph relation counts missing AWS attack-path privilege relations")
+    return {relation for relation, count in counts.items() if count > 0}
 
 
 def _is_graph_paths_timeout(exc: Exception) -> bool:
@@ -463,27 +500,49 @@ def main(argv: list[str] | None = None) -> int:
     _verify_counts(counts.payload)
     integrity = _run_graph_command(resource_prefix, service, ["graph", "integrity"], args.wait_timeout_seconds, args.poll_seconds, args.region)
     _verify_integrity(integrity.payload)
+    aws_families = _declared_aws_families(config)
+    attack_path_relations_supported = _supports_attack_path_relations(config)
     graph_relations: set[str] = set()
     paths_task_arn = ""
-    try:
-        paths = _run_graph_command(
+    if _supports_relation_counts(config):
+        required_relations = _required_graph_relations(
+            aws_families,
+            attack_path_relations_supported=attack_path_relations_supported,
+        )
+        relation_counts = _run_graph_command(
             resource_prefix,
             service,
-            ["graph", "paths", "limit=100"],
+            ["graph", "relation-counts", f"relations={','.join(sorted(required_relations | AWS_ATTACK_PATH_RELATIONS))}"],
             args.wait_timeout_seconds,
             args.poll_seconds,
             args.region,
         )
-        paths_task_arn = paths.task_arn
-        graph_relations = _verify_required_graph_relations(
-            paths.payload,
-            _declared_aws_families(config),
-            attack_path_relations_supported=_supports_attack_path_relations(config),
+        paths_task_arn = relation_counts.task_arn
+        graph_relations = _verify_required_graph_relation_counts(
+            relation_counts.payload,
+            aws_families,
+            attack_path_relations_supported=attack_path_relations_supported,
         )
-    except Exception as exc:
-        if not _is_graph_paths_timeout(exc):
-            raise
-        print(f"WARNING: skipping graph path relation assertions after timeout: {exc}", file=sys.stderr)
+    else:
+        try:
+            paths = _run_graph_command(
+                resource_prefix,
+                service,
+                ["graph", "paths", "limit=100"],
+                args.wait_timeout_seconds,
+                args.poll_seconds,
+                args.region,
+            )
+            paths_task_arn = paths.task_arn
+            graph_relations = _verify_required_graph_relations(
+                paths.payload,
+                aws_families,
+                attack_path_relations_supported=attack_path_relations_supported,
+            )
+        except Exception as exc:
+            if not _is_graph_paths_timeout(exc):
+                raise
+            print(f"WARNING: skipping graph path relation assertions after timeout: {exc}", file=sys.stderr)
     ingest_runs = _run_graph_command(
         resource_prefix,
         service,
