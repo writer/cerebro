@@ -197,7 +197,7 @@ func TestProjectKandjiDeviceAndApplication(t *testing.T) {
 	deviceURN := "urn:cerebro:writer:kandji_device:device-1"
 	identityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
 	packageURN := "urn:cerebro:writer:package:macos:Safari"
-	canonicalPackageURN := "urn:cerebro:writer:package:canonical:Safari"
+	canonicalPackageURN := "urn:cerebro:writer:package:canonical:pkg:generic/Safari"
 	assertProjectedLink(t, state, deviceURN, relationOwnedBy, identityURN)
 	assertProjectedLink(t, state, deviceURN, relationContains, packageURN)
 	assertProjectedLink(t, state, packageURN, relationRepresents, canonicalPackageURN)
