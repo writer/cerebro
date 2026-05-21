@@ -288,6 +288,17 @@ def _verify_task(target: RuntimeTarget, task_arn: str, region: str) -> Verificat
     runtime_status = str((runtime_span or {}).get("status") or "missing")
     sync_status = str((sync_span or {}).get("status") or "missing")
     graph_ingest_status = str((graph_ingest_span or {}).get("status") or "missing")
+    if runtime_status == "skipped":
+        return VerificationResult(
+            runtime_id=target.runtime_id,
+            task_arn=task_arn,
+            exit_code=exit_code,
+            runtime_status=runtime_status,
+            sync_status=sync_status if sync_status != "missing" else "skipped",
+            graph_ingest_status=graph_ingest_status if graph_ingest_status != "missing" else "skipped",
+            events_appended=sync_span.get("events_appended") if sync_span else None,
+            pages_read=sync_span.get("pages_read") if sync_span else None,
+        )
     if runtime_status != "completed":
         raise RuntimeError(f"{target.runtime_id} orchestrator runtime status is {runtime_status}")
     if sync_status != "completed":
