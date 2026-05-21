@@ -180,6 +180,43 @@ func TestMatcherTreatsPrereleaseBeforeFinalRelease(t *testing.T) {
 	}
 }
 
+func TestMatcherTreatsPyPIPreReleaseBeforeFinalRelease(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	if err := store.UpsertVulnerability(ctx, Vulnerability{ID: "CVE-2026-10003"}); err != nil {
+		t.Fatalf("upsert vulnerability: %v", err)
+	}
+	if err := store.UpsertAffectedPackage(ctx, AffectedPackage{
+		VulnerabilityID: "CVE-2026-10003",
+		Ecosystem:       "pypi",
+		PackageName:     "demo",
+		Introduced:      "0",
+		Fixed:           "1.0.0",
+	}); err != nil {
+		t.Fatalf("upsert affected package: %v", err)
+	}
+	matcher, err := NewMatcher(store)
+	if err != nil {
+		t.Fatalf("new matcher: %v", err)
+	}
+	for _, version := range []string{"1.0.0rc1", "1.0.0b1"} {
+		matches, err := matcher.MatchPackage(ctx, PackageQuery{Ecosystem: "pypi", Name: "demo", Version: version})
+		if err != nil {
+			t.Fatalf("match prerelease %s: %v", version, err)
+		}
+		if len(matches) != 1 {
+			t.Fatalf("expected prerelease %s before fixed final to match, got %+v", version, matches)
+		}
+	}
+	matches, err := matcher.MatchPackage(ctx, PackageQuery{Ecosystem: "pypi", Name: "demo", Version: "1.0.0"})
+	if err != nil {
+		t.Fatalf("match final release: %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("expected fixed final release to be excluded, got %+v", matches)
+	}
+}
+
 func TestFileStorePersistsSyncStateAndAdvisories(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "vulndb.json")

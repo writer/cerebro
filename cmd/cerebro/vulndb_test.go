@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -9,6 +12,28 @@ import (
 
 	"github.com/writer/cerebro/internal/vulndb"
 )
+
+func TestVulnDBInputClientOpenTreatsRemoteSchemeCaseInsensitive(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer server.Close()
+	source := "HTTP" + strings.TrimPrefix(server.URL, "http")
+	reader, err := (vulndbInputClient{}).Open(context.Background(), source, true)
+	if err != nil {
+		t.Fatalf("open uppercase-scheme feed: %v", err)
+	}
+	defer func() {
+		_ = reader.Close()
+	}()
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("read uppercase-scheme feed: %v", err)
+	}
+	if string(body) != "ok" {
+		t.Fatalf("body = %q, want ok", string(body))
+	}
+}
 
 func TestParseVulnDBOptionsSyncJobFields(t *testing.T) {
 	options, err := parseVulnDBOptions([]string{

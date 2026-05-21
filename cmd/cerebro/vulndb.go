@@ -355,7 +355,7 @@ func (vulndbInputClient) Open(ctx context.Context, source string, allowInsecureH
 	if source == "" {
 		return nil, usageError("vulndb import source is required")
 	}
-	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
+	if isRemoteVulnDBSource(source) {
 		return bootstrap.OpenVulnDBFeed(ctx, source, allowInsecureHTTP)
 	}
 	file, err := os.Open(source)
@@ -363,6 +363,11 @@ func (vulndbInputClient) Open(ctx context.Context, source string, allowInsecureH
 		return nil, err
 	}
 	return file, nil
+}
+
+func isRemoteVulnDBSource(source string) bool {
+	source = strings.ToLower(strings.TrimSpace(source))
+	return strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://")
 }
 
 type openedVulnDBStore struct {
@@ -436,7 +441,7 @@ func putVulnDBSyncJob(ctx context.Context, jobs vulndb.SyncJobStore, options vul
 		allowInsecureHTTP = existing.AllowInsecureHTTP
 	}
 	feedURL := strings.TrimSpace(options.Source)
-	if feedURL != "" && !strings.HasPrefix(feedURL, "http://") && !strings.HasPrefix(feedURL, "https://") && !filepath.IsAbs(feedURL) {
+	if feedURL != "" && !isRemoteVulnDBSource(feedURL) && !filepath.IsAbs(feedURL) {
 		absolute, err := filepath.Abs(feedURL)
 		if err != nil {
 			return vulndb.SyncJob{}, err

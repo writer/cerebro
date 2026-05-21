@@ -110,8 +110,8 @@ func compareVersion(left string, right string) (int, bool) {
 		rightParts = rightParts[:len(rightParts)-1]
 	}
 	if equalVersionCore(leftParts, rightParts) {
-		leftPrerelease := hasSemverPrerelease(left)
-		rightPrerelease := hasSemverPrerelease(right)
+		leftPrerelease := hasPrerelease(left)
+		rightPrerelease := hasPrerelease(right)
 		if leftPrerelease != rightPrerelease {
 			if leftPrerelease {
 				return -1, true
@@ -156,12 +156,33 @@ func versionCoreParts(parts []versionPart) []versionPart {
 	return parts
 }
 
-func hasSemverPrerelease(version string) bool {
+func hasPrerelease(version string) bool {
 	version = strings.TrimPrefix(normalizeVersion(version), "v")
 	if plus := strings.Index(version, "+"); plus >= 0 {
 		version = version[:plus]
 	}
-	return strings.Contains(version, "-")
+	if strings.Contains(version, "-") {
+		return true
+	}
+	parts, ok := versionParts(version)
+	if !ok {
+		return false
+	}
+	for _, part := range parts {
+		if !part.numeric && isPrereleaseToken(part.text) {
+			return true
+		}
+	}
+	return false
+}
+
+func isPrereleaseToken(token string) bool {
+	switch token {
+	case "a", "alpha", "b", "beta", "c", "pre", "preview", "rc", "dev":
+		return true
+	default:
+		return false
+	}
 }
 
 func compareVersionParts(leftParts []versionPart, rightParts []versionPart) int {
