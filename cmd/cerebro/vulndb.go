@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -57,45 +59,45 @@ func runVulnDB(args []string) error {
 	case "import-osv":
 		reader, closeReader, err := openVulnDBInput(ctx, options.Source, options.AllowInsecureHTTP)
 		if err != nil {
-			return err
+			return recordVulnDBCommandFailure(ctx, opened.Store, vulndb.SourceOSV, err)
 		}
 		defer closeReader()
 		result, err := vulndb.ImportOSV(ctx, opened.Store, reader)
 		if err != nil {
-			return err
+			return recordVulnDBCommandFailure(ctx, opened.Store, vulndb.SourceOSV, err)
 		}
 		return printJSON(result)
 	case "import-kev":
 		reader, closeReader, err := openVulnDBInput(ctx, options.Source, options.AllowInsecureHTTP)
 		if err != nil {
-			return err
+			return recordVulnDBCommandFailure(ctx, opened.Store, vulndb.SourceCISAKEV, err)
 		}
 		defer closeReader()
 		result, err := vulndb.ImportCISAKEV(ctx, opened.Store, reader)
 		if err != nil {
-			return err
+			return recordVulnDBCommandFailure(ctx, opened.Store, vulndb.SourceCISAKEV, err)
 		}
 		return printJSON(result)
 	case "import-epss":
 		reader, closeReader, err := openVulnDBInput(ctx, options.Source, options.AllowInsecureHTTP)
 		if err != nil {
-			return err
+			return recordVulnDBCommandFailure(ctx, opened.Store, vulndb.SourceEPSS, err)
 		}
 		defer closeReader()
 		result, err := vulndb.ImportEPSS(ctx, opened.Store, reader)
 		if err != nil {
-			return err
+			return recordVulnDBCommandFailure(ctx, opened.Store, vulndb.SourceEPSS, err)
 		}
 		return printJSON(result)
 	case "import-nvd":
 		reader, closeReader, err := openVulnDBInput(ctx, options.Source, options.AllowInsecureHTTP)
 		if err != nil {
-			return err
+			return recordVulnDBCommandFailure(ctx, opened.Store, vulndb.SourceNVD, err)
 		}
 		defer closeReader()
 		result, err := vulndb.ImportNVD(ctx, opened.Store, reader)
 		if err != nil {
-			return err
+			return recordVulnDBCommandFailure(ctx, opened.Store, vulndb.SourceNVD, err)
 		}
 		return printJSON(result)
 	case "sync":
@@ -334,10 +336,24 @@ func runVulnDBSync(ctx context.Context, store vulndb.Store, options vulnDBOption
 func runVulnDBFeedSync(ctx context.Context, store vulndb.Store, source string, location string, allowInsecureHTTP bool) (vulndb.ImportResult, error) {
 	reader, closeReader, err := openVulnDBInput(ctx, location, allowInsecureHTTP)
 	if err != nil {
-		return vulndb.ImportResult{}, err
+		return vulndb.ImportResult{}, recordVulnDBCommandFailure(ctx, store, source, err)
 	}
 	defer closeReader()
-	return vulndb.ImportFeed(ctx, store, source, reader)
+	result, err := vulndb.ImportFeed(ctx, store, source, reader)
+	if err != nil {
+		return vulndb.ImportResult{}, recordVulnDBCommandFailure(ctx, store, source, err)
+	}
+	return result, nil
+}
+
+func recordVulnDBCommandFailure(ctx context.Context, store vulndb.Store, source string, syncErr error) error {
+	if syncErr == nil {
+		return nil
+	}
+	if err := vulndb.RecordSyncFailure(ctx, store, source, syncErr); err != nil {
+		return errors.Join(syncErr, fmt.Errorf("record vulndb sync failure: %w", err))
+	}
+	return syncErr
 }
 
 func openVulnDBInput(ctx context.Context, source string, allowInsecureHTTP bool) (io.Reader, func(), error) {
@@ -355,7 +371,10 @@ func (vulndbInputClient) Open(ctx context.Context, source string, allowInsecureH
 	if source == "" {
 		return nil, usageError("vulndb import source is required")
 	}
-	if isRemoteVulnDBSource(source) {
+	if vulnDBSourceScheme(source) != "" {
+		if !isRemoteVulnDBSource(source) {
+			return nil, vulndb.ValidateFeedURL(source, allowInsecureHTTP)
+		}
 		return bootstrap.OpenVulnDBFeed(ctx, source, allowInsecureHTTP)
 	}
 	file, err := os.Open(source)
@@ -368,6 +387,14 @@ func (vulndbInputClient) Open(ctx context.Context, source string, allowInsecureH
 func isRemoteVulnDBSource(source string) bool {
 	source = strings.ToLower(strings.TrimSpace(source))
 	return strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://")
+}
+
+func vulnDBSourceScheme(source string) string {
+	parsed, err := url.Parse(strings.TrimSpace(source))
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(parsed.Scheme))
 }
 
 type openedVulnDBStore struct {
@@ -441,7 +468,12 @@ func putVulnDBSyncJob(ctx context.Context, jobs vulndb.SyncJobStore, options vul
 		allowInsecureHTTP = existing.AllowInsecureHTTP
 	}
 	feedURL := strings.TrimSpace(options.Source)
-	if feedURL != "" && !isRemoteVulnDBSource(feedURL) && !filepath.IsAbs(feedURL) {
+	if feedURL != "" && vulnDBSourceScheme(feedURL) != "" && !isRemoteVulnDBSource(feedURL) {
+		if err := vulndb.ValidateFeedURL(feedURL, allowInsecureHTTP); err != nil {
+			return vulndb.SyncJob{}, usageError(err.Error())
+		}
+	}
+	if feedURL != "" && vulnDBSourceScheme(feedURL) == "" && !filepath.IsAbs(feedURL) {
 		absolute, err := filepath.Abs(feedURL)
 		if err != nil {
 			return vulndb.SyncJob{}, err
