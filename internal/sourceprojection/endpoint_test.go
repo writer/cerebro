@@ -53,6 +53,7 @@ func TestProjectKolideSoftwareLinksDevicePackageAndCanonicalPackage(t *testing.T
 			"application_name":  "openssl",
 			"installed_version": "3.0.0",
 			"ecosystem":         "macos",
+			"purl":              "pkg:generic/openssl@3.0.0",
 		},
 	})
 	if err != nil {
@@ -61,7 +62,7 @@ func TestProjectKolideSoftwareLinksDevicePackageAndCanonicalPackage(t *testing.T
 
 	deviceURN := "urn:cerebro:writer:kolide_device:device-1"
 	packageURN := "urn:cerebro:writer:package:macos:openssl"
-	canonicalPackageURN := "urn:cerebro:writer:package:canonical:openssl"
+	canonicalPackageURN := "urn:cerebro:writer:package:canonical:pkg:generic/openssl"
 	assertProjectedLink(t, state, deviceURN, relationContains, packageURN)
 	assertProjectedLink(t, state, packageURN, relationRepresents, canonicalPackageURN)
 }

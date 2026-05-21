@@ -74,9 +74,10 @@ type settings struct {
 }
 
 type record struct {
-	Raw    json.RawMessage
-	Values map[string]any
-	ID     string
+	Raw      json.RawMessage
+	Values   map[string]any
+	ID       string
+	Identity string
 }
 
 // New constructs a JSON API-backed source.
@@ -232,7 +233,7 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 			records = append(records, record)
 		}
 	}
-	return dedupeRecords(records), next, nil
+	return records, next, nil
 }
 
 func (s *Source) getJSON(ctx context.Context, settings settings, query url.Values, target any) error {
@@ -342,7 +343,7 @@ func recordFromRaw(family Family, raw json.RawMessage) (record, error) {
 		}
 		id = stableID(string(raw))
 	}
-	return record{Raw: cloneRaw(raw), Values: values, ID: id}, nil
+	return record{Raw: cloneRaw(raw), Values: values, ID: id, Identity: recordIdentity(id, values)}, nil
 }
 
 func urnsFor(settings settings, family Family, records []record) ([]sourcecdk.URN, error) {
@@ -359,7 +360,7 @@ func urnsFor(settings settings, family Family, records []record) ([]sourcecdk.UR
 }
 
 func pullFromRecords(sourceID string, settings settings, family Family, records []record, next string) (sourcecdk.Pull, error) {
-	records = dedupeRecords(records)
+	records = dedupeEventRecords(records)
 	if len(records) == 0 {
 		pull := sourcecdk.Pull{}
 		if next := strings.TrimSpace(next); next != "" {
@@ -392,7 +393,7 @@ func pullFromRecords(sourceID string, settings settings, family Family, records 
 func eventFromRecord(sourceID string, settings settings, family Family, record record) (*primitives.Event, error) {
 	occurredAt := occurredAtFor(record.Values, family.TimestampKeys)
 	return &primitives.Event{
-		Id:         eventID(sourceID, settings, family.Name, record.ID),
+		Id:         eventID(sourceID, settings, family.Name, record.Identity),
 		TenantId:   settings.tenantID,
 		SourceId:   sourceID,
 		Kind:       sourceID + "." + family.Name,
@@ -677,13 +678,62 @@ func dedupeRecords(records []record) []record {
 	for _, record := range records {
 		key := strings.TrimSpace(record.ID)
 		if key == "" {
-			key = string(record.Raw)
+			key = stableID(string(record.Raw))
 		}
 		if _, ok := seen[key]; ok {
 			continue
 		}
 		seen[key] = struct{}{}
 		out = append(out, record)
+	}
+	return out
+}
+
+func dedupeEventRecords(records []record) []record {
+	seen := map[string]struct{}{}
+	out := make([]record, 0, len(records))
+	for _, record := range records {
+		key := strings.TrimSpace(record.Identity)
+		if key == "" {
+			key = strings.TrimSpace(record.ID)
+		}
+		if key == "" {
+			key = stableID(string(record.Raw))
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, record)
+	}
+	return out
+}
+
+func recordIdentity(id string, values map[string]any) string {
+	parts := []string{strings.TrimSpace(id)}
+	for _, key := range []string{
+		"device_id",
+		"device.id",
+		"serial_number",
+		"agent_id",
+		"agent.uuid",
+		"device_uuid",
+		"installed_version",
+		"version",
+	} {
+		if value := firstValueString(values, key); value != "" {
+			parts = append(parts, key+"="+value)
+		}
+	}
+	return strings.Join(nonEmpty(parts), "\x00")
+}
+
+func nonEmpty(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			out = append(out, value)
+		}
 	}
 	return out
 }
