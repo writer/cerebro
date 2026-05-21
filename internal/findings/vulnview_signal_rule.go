@@ -13,7 +13,12 @@ import (
 const vulnViewActionableExternalFindingRuleID = "vulnview-actionable-external-finding"
 
 func newVulnViewActionableExternalFindingRule() Rule {
-	definition := RuleDefinition{
+	definition := vulnViewActionableExternalFindingDefinition()
+	return newEventRule(eventRuleConfig{definition: definition, sourceID: "vulnview", match: matchesVulnViewActionableExternalFinding, build: buildVulnViewActionableExternalFinding})
+}
+
+func vulnViewActionableExternalFindingDefinition() RuleDefinition {
+	return RuleDefinition{
 		ID:                 vulnViewActionableExternalFindingRuleID,
 		Name:               "VulnView Actionable External Finding",
 		Description:        "Detect VulnView external attack-surface findings that require AppSec triage.",
@@ -24,10 +29,16 @@ func newVulnViewActionableExternalFindingRule() Rule {
 		Status:             findingStatusOpen,
 		Maturity:           "test",
 		Tags:               []string{"vulnview", "appsec", "attack-surface"},
+		References:         []string{"https://owasp.org/www-project-web-security-testing-guide/", "https://www.cisa.gov/known-exploited-vulnerabilities-catalog"},
+		FalsePositives:     []string{"Finding is a duplicate, asset is intentionally exposed with compensating controls, or scanner severity was manually downgraded after validation."},
+		Runbook:            "Validate exploitability and asset ownership, link duplicate external findings, patch or mitigate the exposed service, and document accepted risk.",
 		RequiredAttributes: []string{"severity"},
 		FingerprintFields:  []string{"template_id", "alert", "target_id", "matched_at"},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC7.1"},
+			{FrameworkName: "ISO 27001:2022", ControlID: "A.8.8"},
+		},
 	}
-	return newEventRule(eventRuleConfig{definition: definition, sourceID: "vulnview", match: matchesVulnViewActionableExternalFinding, build: buildVulnViewActionableExternalFinding})
 }
 
 func matchesVulnViewActionableExternalFinding(event *cerebrov1.EventEnvelope) bool {
@@ -68,7 +79,7 @@ func buildVulnViewActionableExternalFinding(ctx context.Context, runtime *cerebr
 			findingAttributes[key] = strings.TrimSpace(value)
 		}
 	}
-	definition := RuleDefinition{ID: vulnViewActionableExternalFindingRuleID, Name: "VulnView Actionable External Finding", SourceID: "vulnview", OutputKind: "finding.vulnview_actionable_external_finding", Severity: "dynamic", Status: findingStatusOpen}
+	definition := vulnViewActionableExternalFindingDefinition()
 	for key, value := range definition.AttributeMap() {
 		findingAttributes["rule_"+key] = value
 	}
@@ -96,6 +107,7 @@ func buildVulnViewActionableExternalFinding(ctx context.Context, runtime *cerebr
 		PolicyName:      action,
 		CheckID:         vulnViewActionableExternalFindingRuleID,
 		CheckName:       "VulnView Actionable External Finding",
+		ControlRefs:     cloneFindingControlRefs(definition.ControlRefs),
 		Attributes:      findingAttributes,
 		FirstObservedAt: observedAt,
 		LastObservedAt:  observedAt,

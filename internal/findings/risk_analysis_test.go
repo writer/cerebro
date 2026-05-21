@@ -99,6 +99,52 @@ func TestAnalyzeFindingExposureCorrelatesCrossSourceFindings(t *testing.T) {
 	}
 }
 
+func TestAnalyzeFindingPatternCorrelationsDetectsGitHubSecretExposurePattern(t *testing.T) {
+	base := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
+	controlDisabled := compoundRiskFinding("gh-control", githubSecretScanningDisabledRuleID, "HIGH", "admin@example.com", "example/cerebro", "urn:cerebro:example:github_repo:example/cerebro", "secret_scanning.disable")
+	controlDisabled.FirstObservedAt = base
+	controlDisabled.LastObservedAt = base
+	controlDisabled.EventIDs = []string{"event-control"}
+	controlDisabled.Attributes["repository"] = "example/cerebro"
+	delete(controlDisabled.Attributes, "repo")
+
+	secretAlert := compoundRiskFinding("gh-secret", githubSecretScanningAlertCreatedRuleID, "HIGH", "admin@example.com", "example/cerebro", "urn:cerebro:example:github_repo:example/cerebro", "secret_scanning_alert.create")
+	secretAlert.FirstObservedAt = base.Add(30 * time.Minute)
+	secretAlert.LastObservedAt = base.Add(30 * time.Minute)
+	secretAlert.EventIDs = []string{"event-secret"}
+	secretAlert.Attributes["repository"] = "example/cerebro"
+	delete(secretAlert.Attributes, "repo")
+
+	correlations := AnalyzeFindingPatternCorrelations([]*ports.FindingRecord{controlDisabled, secretAlert}, FindingExposureAnalysisOptions{
+		CorrelationWindow: time.Hour,
+	})
+	correlation := findingCorrelationByPattern(correlations, "github-secret-control-disabled-with-secret-alert")
+	if correlation == nil {
+		t.Fatalf("Correlations = %#v, want GitHub secret exposure pattern", correlations)
+	}
+	if correlation.Kind != "pattern" {
+		t.Fatalf("Correlation.Kind = %q, want pattern", correlation.Kind)
+	}
+	if correlation.Dimension != compoundRiskKindRepository {
+		t.Fatalf("Correlation.Dimension = %q, want repository", correlation.Dimension)
+	}
+	if got := correlation.Evidence.EventCount; got != 2 {
+		t.Fatalf("Correlation.Evidence.EventCount = %d, want 2", got)
+	}
+	if !stringSliceContains(correlation.Reasons, "secret_exposure") {
+		t.Fatalf("Correlation.Reasons = %#v, want secret_exposure", correlation.Reasons)
+	}
+}
+
+func findingCorrelationByPattern(correlations []FindingCorrelation, patternID string) *FindingCorrelation {
+	for idx := range correlations {
+		if correlations[idx].PatternID == patternID {
+			return &correlations[idx]
+		}
+	}
+	return nil
+}
+
 func findingCorrelationByDimension(correlations []FindingCorrelation, dimension string, key string) *FindingCorrelation {
 	for idx := range correlations {
 		if correlations[idx].Dimension == dimension && correlations[idx].Key == key {

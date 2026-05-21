@@ -12,7 +12,12 @@ import (
 const dataSensitiveAssetRiskRuleID = "data-sensitive-asset-risk"
 
 func newDataSensitiveAssetRiskRule() Rule {
-	definition := RuleDefinition{
+	definition := dataSensitiveAssetRiskDefinition()
+	return newEventRule(eventRuleConfig{definition: definition, sourceID: "asset", match: eventKindMatcher("asset.data_sensitivity", "asset.crown_jewel"), build: buildDataSensitiveAssetFinding})
+}
+
+func dataSensitiveAssetRiskDefinition() RuleDefinition {
+	return RuleDefinition{
 		ID:                 dataSensitiveAssetRiskRuleID,
 		Name:               "Data Sensitive Asset Risk",
 		Description:        "Detect sensitive or crown-jewel data assets with public exposure or privileged access risk.",
@@ -23,11 +28,16 @@ func newDataSensitiveAssetRiskRule() Rule {
 		Status:             findingStatusOpen,
 		Maturity:           "test",
 		Tags:               []string{"data", "crown-jewel", "exposure"},
+		References:         []string{"https://www.cisecurity.org/controls/data-protection", "https://owasp.org/www-project-top-ten/"},
+		FalsePositives:     []string{"Data classification is stale, test data is intentionally labeled sensitive, or public exposure is already approved by documented compensating controls."},
 		Runbook:            "Validate the data classification, exposure signal, owner, and compensating controls.",
 		RequiredAttributes: []string{"resource_id"},
 		FingerprintFields:  []string{"event_id"},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC6.1"},
+			{FrameworkName: "ISO 27001:2022", ControlID: "A.5.12"},
+		},
 	}
-	return newEventRule(eventRuleConfig{definition: definition, sourceID: "asset", match: eventKindMatcher("asset.data_sensitivity", "asset.crown_jewel"), build: buildDataSensitiveAssetFinding})
 }
 
 func buildDataSensitiveAssetFinding(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
@@ -67,13 +77,13 @@ func buildDataSensitiveAssetFinding(ctx context.Context, runtime *cerebrov1.Sour
 			findingAttributes[key] = strings.TrimSpace(value)
 		}
 	}
-	definition := RuleDefinition{ID: dataSensitiveAssetRiskRuleID, Name: "Data Sensitive Asset Risk", SourceID: "asset", OutputKind: "finding.data_sensitive_asset_risk", Severity: "HIGH", Status: findingStatusOpen}
+	definition := dataSensitiveAssetRiskDefinition()
 	for key, value := range definition.AttributeMap() {
 		findingAttributes["rule_"+key] = value
 	}
 	trimEmptyAttributes(findingAttributes)
 	fingerprint := hashFindingFingerprint(dataSensitiveAssetRiskRuleID, event.GetId(), projectedContext.PrimaryResourceURN, compoundRiskAction(&ports.FindingRecord{Attributes: findingAttributes}))
-	return &ports.FindingRecord{ID: fingerprint, Fingerprint: fingerprint, TenantID: strings.TrimSpace(event.GetTenantId()), RuntimeID: strings.TrimSpace(runtime.GetId()), RuleID: dataSensitiveAssetRiskRuleID, Title: "Data Sensitive Asset Risk", Severity: "HIGH", Status: findingStatusOpen, Summary: "Sensitive data asset has exposure or privileged access risk", ResourceURNs: projectedContext.ResourceURNs, EventIDs: []string{event.GetId()}, PolicyID: findingAttributes["resource_id"], CheckID: dataSensitiveAssetRiskRuleID, CheckName: "Data Sensitive Asset Risk", Attributes: findingAttributes, FirstObservedAt: observedAt, LastObservedAt: observedAt}, nil
+	return &ports.FindingRecord{ID: fingerprint, Fingerprint: fingerprint, TenantID: strings.TrimSpace(event.GetTenantId()), RuntimeID: strings.TrimSpace(runtime.GetId()), RuleID: dataSensitiveAssetRiskRuleID, Title: "Data Sensitive Asset Risk", Severity: "HIGH", Status: findingStatusOpen, Summary: "Sensitive data asset has exposure or privileged access risk", ResourceURNs: projectedContext.ResourceURNs, EventIDs: []string{event.GetId()}, PolicyID: findingAttributes["resource_id"], CheckID: dataSensitiveAssetRiskRuleID, CheckName: "Data Sensitive Asset Risk", ControlRefs: cloneFindingControlRefs(definition.ControlRefs), Attributes: findingAttributes, FirstObservedAt: observedAt, LastObservedAt: observedAt}, nil
 }
 
 func matchesDataSensitiveAssetRisk(attributes map[string]string) bool {

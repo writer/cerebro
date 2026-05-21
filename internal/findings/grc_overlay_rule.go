@@ -128,6 +128,7 @@ func newGRCInactiveIdentityActiveAccessRule() Rule {
 				"graph-rule",
 				"attack.t1078",
 			},
+			References: []string{"https://attack.mitre.org/techniques/T1078/", "https://www.iso.org/standard/27001"},
 			FalsePositives: []string{
 				"Break-glass or service account intentionally retained after offboarding with a documented exception.",
 				"GRC roster or identity provider sync lag immediately after a lifecycle change.",
@@ -374,6 +375,7 @@ func newGRCPrivilegedAccountMissingPersonRule() Rule {
 				"graph-rule",
 				"attack.t1078",
 			},
+			References: []string{"https://attack.mitre.org/techniques/T1078/", "https://www.iso.org/standard/27001"},
 			FalsePositives: []string{
 				"Privileged break-glass account intentionally excluded from the GRC people roster with a documented compensating control.",
 				"Recently onboarded employee whose GRC people sync has not completed yet.",
@@ -585,6 +587,7 @@ func newGRCOverdueVulnerabilityLiveOnAssetsRule() Rule {
 				"asset-overlay",
 				"graph-rule",
 			},
+			References: []string{"https://www.cisa.gov/known-exploited-vulnerabilities-catalog", "https://www.iso.org/standard/27001"},
 			FalsePositives: []string{
 				"Scanner finding is stale and the asset has already been patched, but the non-GRC source has not synced the fixed state yet.",
 				"GRC remediation deadline was extended but the updated deadline has not synced yet.",
@@ -801,6 +804,7 @@ func newGRCFailingControlOpenOperationalFindingsRule() Rule {
 				"operational-evidence",
 				"graph-rule",
 			},
+			References: []string{"https://www.aicpa-cima.com/resources/landing/system-and-organization-controls-soc-suite-of-services", "https://www.iso.org/standard/27001"},
 			FalsePositives: []string{
 				"Operational finding control references are too broad and do not represent the failing test's exact control objective.",
 				"GRC control test has already been remediated but the latest passing test result has not synced yet.",

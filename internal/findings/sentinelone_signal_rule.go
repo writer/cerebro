@@ -209,6 +209,7 @@ func newRetiredSentinelOneRule(id string, name string, outputKind string) Rule {
 		nil,
 		nil,
 	)
+	definition.Maturity = "retired"
 	return newEventRule(eventRuleConfig{
 		definition: definition,
 		sourceID:   "sentinelone",

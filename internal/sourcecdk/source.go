@@ -89,6 +89,11 @@ type Source interface {
 	Read(context.Context, Config, *cerebrov1.SourceCursor) (Pull, error)
 }
 
+// EventContractProvider lets sources attach catalog-level per-kind validation to emitted events.
+type EventContractProvider interface {
+	EventContracts() []EventContract
+}
+
 // Registry indexes sources by their stable identifier.
 type Registry struct {
 	sources map[string]Source

@@ -1,4 +1,4 @@
-.PHONY: build serve test workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun lint lint-bootstrap proto-lint proto-generate openapi-check openapi-lint openapi-sync govulncheck clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: build serve test workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun lint lint-bootstrap proto-lint proto-generate openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check oss-audit govulncheck clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
@@ -101,6 +101,18 @@ openapi-lint:
 openapi-sync:
 	go run ./scripts/openapi_route_parity.go --write
 
+catalog-check:
+	go run ./tools/catalogcheck
+
+detection-catalog-generate:
+	go run ./tools/detectioncatalog --write
+
+detection-catalog-check:
+	go run ./tools/detectioncatalog --check
+
+oss-audit:
+	python3 scripts/oss_audit.py
+
 govulncheck:
 	$(GOVULNCHECK) ./...
 
@@ -129,4 +141,4 @@ check-arch:
 
 check-hook-integrity: check-arch
 
-verify: build test lint proto-lint openapi-check openapi-lint check-structural check-structural-test check-arch
+verify: build test lint proto-lint openapi-check openapi-lint catalog-check detection-catalog-check oss-audit check-structural check-structural-test check-arch

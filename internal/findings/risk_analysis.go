@@ -19,10 +19,11 @@ const FindingRiskGraphProjectedModelVersionAttribute = "risk_graph_projected_mod
 
 // FindingExposureAnalysisOptions scopes source-agnostic risk correlation output.
 type FindingExposureAnalysisOptions struct {
-	Limit              int
-	SampleLimit        int
-	CorrelationWindow  time.Duration
-	GraphNeighborhoods map[string]*ports.EntityNeighborhood
+	Limit               int
+	SampleLimit         int
+	CorrelationWindow   time.Duration
+	CorrelationPatterns []FindingCorrelationPattern
+	GraphNeighborhoods  map[string]*ports.EntityNeighborhood
 }
 
 // FindingExposureAnalysisReport combines generic compound risk, temporal correlation, and graph path summaries.
@@ -60,6 +61,8 @@ type FindingEvidenceBundle struct {
 // FindingCorrelation captures a generic stateful/temporal correlation over normalized finding dimensions.
 type FindingCorrelation struct {
 	Kind            string                `json:"kind"`
+	PatternID       string                `json:"pattern_id,omitempty"`
+	PatternName     string                `json:"pattern_name,omitempty"`
 	Dimension       string                `json:"dimension"`
 	Key             string                `json:"key"`
 	Label           string                `json:"label,omitempty"`
@@ -69,6 +72,23 @@ type FindingCorrelation struct {
 	FindingIDs      []string              `json:"finding_ids"`
 	Evidence        FindingEvidenceBundle `json:"evidence"`
 	Reasons         []string              `json:"reasons,omitempty"`
+}
+
+type FindingCorrelationPattern struct {
+	ID         string
+	Name       string
+	RuleIDs    []string
+	Dimensions []string
+	Window     time.Duration
+	ScoreBonus int
+	Reasons    []string
+	Tests      []FindingCorrelationPatternTest
+}
+
+type FindingCorrelationPatternTest struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	ExpectMatch bool   `json:"expect_match"`
 }
 
 // FindingAttackPath captures one bounded graph path that explains why a finding is connected to risky context.
@@ -108,7 +128,7 @@ func AnalyzeFindingCorrelations(records []*ports.FindingRecord, options FindingE
 	if window <= 0 {
 		window = defaultFindingCorrelationWindow
 	}
-	correlations := []FindingCorrelation{}
+	correlations := AnalyzeFindingPatternCorrelations(records, options)
 	for _, kind := range []string{
 		compoundRiskKindActor,
 		compoundRiskKindResource,
@@ -142,6 +162,105 @@ func AnalyzeFindingCorrelations(records []*ports.FindingRecord, options FindingE
 		correlations = correlations[:options.Limit]
 	}
 	return correlations
+}
+
+// AnalyzeFindingPatternCorrelations applies built-in Panther-style correlation patterns over normalized finding dimensions.
+func AnalyzeFindingPatternCorrelations(records []*ports.FindingRecord, options FindingExposureAnalysisOptions) []FindingCorrelation {
+	records = dedupeCompoundRiskFindings(records)
+	patterns := options.CorrelationPatterns
+	if len(patterns) == 0 {
+		patterns = BuiltinFindingCorrelationPatterns()
+	}
+	correlations := []FindingCorrelation{}
+	for _, pattern := range patterns {
+		for _, dimension := range pattern.Dimensions {
+			for _, bucket := range groupCompoundRiskFindings(records, dimension) {
+				correlation := newPatternFindingCorrelation(pattern, bucket, options)
+				if correlation.Kind == "" {
+					continue
+				}
+				correlations = append(correlations, correlation)
+			}
+		}
+	}
+	return correlations
+}
+
+func newPatternFindingCorrelation(pattern FindingCorrelationPattern, bucket compoundRiskBucket, options FindingExposureAnalysisOptions) FindingCorrelation {
+	matched := findingsMatchingRuleSet(bucket.findings, pattern.RuleIDs)
+	if len(matched) < len(pattern.RuleIDs) {
+		return FindingCorrelation{}
+	}
+	sort.Slice(matched, func(i int, j int) bool {
+		left := findingObservedAt(matched[i])
+		right := findingObservedAt(matched[j])
+		switch {
+		case left.IsZero() && !right.IsZero():
+			return false
+		case !left.IsZero() && right.IsZero():
+			return true
+		case !left.Equal(right):
+			return left.Before(right)
+		default:
+			return matched[i].ID < matched[j].ID
+		}
+	})
+	timespan := findingBundleTimespan(matched)
+	window := pattern.Window
+	if window <= 0 {
+		window = options.CorrelationWindow
+	}
+	if window <= 0 {
+		window = defaultFindingCorrelationWindow
+	}
+	if timespan > window {
+		return FindingCorrelation{}
+	}
+	evidence := newFindingEvidenceBundle(matched)
+	if evidence.FindingCount < len(pattern.RuleIDs) {
+		return FindingCorrelation{}
+	}
+	context := riskContextForFindings(matched)
+	score := context.Score + pattern.ScoreBonus + evidence.FindingCount*3 + len(evidence.RuleIDs)*4
+	reasons := append([]string{"pattern:" + pattern.ID, "shared_" + bucket.kind}, pattern.Reasons...)
+	reasons = append(reasons, context.Reasons...)
+	return FindingCorrelation{
+		Kind:            "pattern",
+		PatternID:       pattern.ID,
+		PatternName:     pattern.Name,
+		Dimension:       bucket.kind,
+		Key:             bucket.key,
+		Label:           bucket.label,
+		Score:           score,
+		TimespanSeconds: int64(timespan.Seconds()),
+		RuleIDs:         evidence.RuleIDs,
+		FindingIDs:      evidence.FindingIDs,
+		Evidence:        evidence,
+		Reasons:         uniqueSortedStrings(reasons),
+	}
+}
+
+func findingsMatchingRuleSet(records []*ports.FindingRecord, ruleIDs []string) []*ports.FindingRecord {
+	wanted := map[string]struct{}{}
+	for _, ruleID := range ruleIDs {
+		if trimmed := strings.TrimSpace(ruleID); trimmed != "" {
+			wanted[trimmed] = struct{}{}
+		}
+	}
+	seenRules := map[string]struct{}{}
+	matched := []*ports.FindingRecord{}
+	for _, record := range nonNilFindings(records) {
+		ruleID := strings.TrimSpace(record.RuleID)
+		if _, ok := wanted[ruleID]; !ok {
+			continue
+		}
+		seenRules[ruleID] = struct{}{}
+		matched = append(matched, record)
+	}
+	if len(seenRules) != len(wanted) {
+		return nil
+	}
+	return matched
 }
 
 func newFindingCorrelation(bucket compoundRiskBucket, window time.Duration) FindingCorrelation {

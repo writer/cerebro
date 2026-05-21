@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -114,6 +115,19 @@ func (l *appendLog) Append(_ context.Context, event *cerebrov1.EventEnvelope) er
 	return nil
 }
 
+func runtimeTestEvent(id string, sourceID string, kind string) *cerebrov1.EventEnvelope {
+	return &cerebrov1.EventEnvelope{
+		Id:         id,
+		TenantId:   "writer",
+		SourceId:   sourceID,
+		Kind:       kind,
+		OccurredAt: timestamppb.New(time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)),
+		SchemaRef:  strings.ReplaceAll(kind, ".", "/") + "/v1",
+		Payload:    []byte(`{"fixture":true}`),
+		Attributes: map[string]string{"event_type": "fixture"},
+	}
+}
+
 type projector struct {
 	err    error
 	result ports.ProjectionResult
@@ -147,12 +161,7 @@ func (emptyPageSource) Read(_ context.Context, _ sourcecdk.Config, cursor *cereb
 		return sourcecdk.Pull{NextCursor: &cerebrov1.SourceCursor{Opaque: "second"}}, nil
 	}
 	return sourcecdk.Pull{
-		Events: []*cerebrov1.EventEnvelope{{
-			Id:       "event-after-empty-page",
-			TenantId: "writer",
-			SourceId: "empty_page",
-			Kind:     "empty_page.event",
-		}},
+		Events:     []*cerebrov1.EventEnvelope{runtimeTestEvent("event-after-empty-page", "empty_page", "empty_page.event")},
 		Checkpoint: &cerebrov1.SourceCheckpoint{CursorOpaque: "second"},
 	}, nil
 }
@@ -195,13 +204,57 @@ func (nilEventSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.U
 func (nilEventSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
 	return sourcecdk.Pull{Events: []*cerebrov1.EventEnvelope{
 		nil,
-		{
-			Id:       "event-after-nil",
-			TenantId: "writer",
-			SourceId: "nil_event",
-			Kind:     "nil_event.event",
-		},
+		runtimeTestEvent("event-after-nil", "nil_event", "nil_event.event"),
 	}}, nil
+}
+
+type invalidEventSource struct{}
+
+func (invalidEventSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "invalid_event"}
+}
+
+func (invalidEventSource) Check(context.Context, sourcecdk.Config) error {
+	return nil
+}
+
+func (invalidEventSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (invalidEventSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	event := runtimeTestEvent("invalid-event", "invalid_event", "invalid_event.event")
+	event.Payload = nil
+	return sourcecdk.Pull{Events: []*cerebrov1.EventEnvelope{event}}, nil
+}
+
+type contractEventSource struct{}
+
+func (contractEventSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "contract_event"}
+}
+
+func (contractEventSource) EventContracts() []sourcecdk.EventContract {
+	return []sourcecdk.EventContract{{
+		Kind:                  "contract_event.event",
+		SchemaRef:             "contract_event/event/v1",
+		RequiredAttributes:    []string{"required_attribute"},
+		RequiredPayloadFields: []string{"required_payload"},
+	}}
+}
+
+func (contractEventSource) Check(context.Context, sourcecdk.Config) error {
+	return nil
+}
+
+func (contractEventSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (contractEventSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	event := runtimeTestEvent("contract-event", "contract_event", "contract_event.event")
+	event.Payload = []byte(`{"fixture":true}`)
+	return sourcecdk.Pull{Events: []*cerebrov1.EventEnvelope{event}}, nil
 }
 
 type failingSource struct {
@@ -249,11 +302,7 @@ func (s *tokenSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.U
 func (s *tokenSource) Read(_ context.Context, config sourcecdk.Config, _ *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
 	value, _ := config.Lookup("token")
 	s.read = value
-	return sourcecdk.Pull{Events: []*cerebrov1.EventEnvelope{{
-		Id:       "token-event",
-		SourceId: "token_source",
-		Kind:     "token.event",
-	}}}, nil
+	return sourcecdk.Pull{Events: []*cerebrov1.EventEnvelope{runtimeTestEvent("token-event", "token_source", "token.event")}}, nil
 }
 
 type tenantCheckSource struct {
@@ -1054,6 +1103,58 @@ func TestSyncRuntimeSkipsNilEvents(t *testing.T) {
 	}
 	if got := log.events[0].GetAttributes()[ports.EventAttributeSourceRuntimeID]; got != "writer-nil-event" {
 		t.Fatalf("appended event source_runtime_id = %q, want writer-nil-event", got)
+	}
+}
+
+func TestSyncRuntimeRejectsInvalidSourceEvents(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(invalidEventSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"example-invalid-event": {
+				Id:       "example-invalid-event",
+				SourceId: "invalid_event",
+				TenantId: "example",
+			},
+		},
+	}
+	log := &appendLog{}
+	service := New(registry, store, log, nil)
+
+	_, err = service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "example-invalid-event"})
+	if !errors.Is(err, sourcecdk.ErrInvalidEventEnvelope) {
+		t.Fatalf("Sync() error = %v, want ErrInvalidEventEnvelope", err)
+	}
+	if len(log.events) != 0 {
+		t.Fatalf("len(appendLog.events) = %d, want 0", len(log.events))
+	}
+}
+
+func TestSyncRuntimeRejectsEventsMissingCatalogContractFields(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(contractEventSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"example-contract-event": {
+				Id:       "example-contract-event",
+				SourceId: "contract_event",
+				TenantId: "example",
+			},
+		},
+	}
+	log := &appendLog{}
+	service := New(registry, store, log, nil)
+
+	_, err = service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "example-contract-event"})
+	if !errors.Is(err, sourcecdk.ErrInvalidEventEnvelope) {
+		t.Fatalf("Sync() error = %v, want ErrInvalidEventEnvelope", err)
+	}
+	if len(log.events) != 0 {
+		t.Fatalf("len(appendLog.events) = %d, want 0", len(log.events))
 	}
 }
 

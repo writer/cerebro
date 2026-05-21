@@ -45,6 +45,17 @@ func newVulnViewExternalAssetConcentratedSignalRule() Rule {
 		Status:      findingStatusOpen,
 		Maturity:    "test",
 		Tags:        []string{"vulnview", "graph", "attack-surface", "prioritization"},
+		References:  []string{"https://owasp.org/www-project-web-security-testing-guide/", "https://www.cisa.gov/known-exploited-vulnerabilities-catalog"},
+		FalsePositives: []string{
+			"External asset is intentionally exposed and covered by compensating controls.",
+			"Multiple scanner signals represent duplicates for the same vulnerability instance.",
+		},
+		Runbook:           "Prioritize the external asset owner, validate the highest severity evidence, deduplicate repeated findings, and remediate or accept the aggregate risk.",
+		FingerprintFields: []string{"asset_urn"},
+		ControlRefs: []ports.FindingControlRef{
+			{FrameworkName: "SOC 2", ControlID: "CC7.1"},
+			{FrameworkName: "ISO 27001:2022", ControlID: "A.8.8"},
+		},
 	}}
 }
 

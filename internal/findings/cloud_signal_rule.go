@@ -95,6 +95,7 @@ func cloudRuleDefinition(id string, name string, description string, severity st
 		Status:             findingStatusOpen,
 		Maturity:           "test",
 		Tags:               tags,
+		References:         []string{"https://www.cisecurity.org/benchmark/amazon_web_services", "https://www.cisecurity.org/benchmark/microsoft_azure", "https://www.cisecurity.org/benchmark/google_cloud_computing_platform"},
 		FalsePositives:     []string{"Approved exposure or trust path during a documented change window."},
 		Runbook:            "Review the exposed resource or trust path, linked principals, scope, and adjacent identity findings.",
 		RequiredAttributes: []string{"family"},
