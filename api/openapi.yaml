@@ -227,7 +227,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EndpointVulnerabilityFindingsResponse'
+                type: object
                 properties:
                   findings:
                     type: array
@@ -409,6 +409,11 @@ paths:
   /endpoint-vulnerability-findings:
     get:
       summary: List enriched endpoint vulnerability findings
+      description: Requires an endpoint identifier. Provide device_id for the primary contract; serial_number and agent_id are accepted as additional lookup keys.
+      x-cerebro-required-any-query:
+        - device_id
+        - serial_number
+        - agent_id
       tags:
         - Findings
       parameters:
