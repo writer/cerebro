@@ -417,7 +417,11 @@ paths:
       tags:
         - Findings
       parameters:
-        - $ref: '#/components/parameters/tenantIDQuery'
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
         - name: device_id
           in: query
           schema:
