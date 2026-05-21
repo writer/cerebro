@@ -68,6 +68,9 @@ SENSITIVE_QUERY_KEYS = {
 EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})\b")
 IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 URL_RE = re.compile(r"https?://[^\s\"']+")
+NESTED_QUANTIFIER_RE = re.compile(
+    r"\((?:\?:)?[^)]*(?:\+|\*|\{\d+(?:,\d*)?\})[^)]*\)(?:\+|\*|\{\d+(?:,\d*)?\})"
+)
 
 
 def repo_root() -> Path:
@@ -90,6 +93,8 @@ def load_patterns(root: Path) -> list[re.Pattern[str]]:
 
     patterns: list[re.Pattern[str]] = []
     for path in pattern_files:
+        if path.is_symlink():
+            raise SystemExit(f"{path}: symlinked leak pattern files are not allowed")
         if not path.exists():
             continue
         for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
@@ -97,11 +102,22 @@ def load_patterns(root: Path) -> list[re.Pattern[str]]:
             if not value or value.startswith("#"):
                 continue
             value = value.replace("[[:space:]]", r"\s")
+            reason = unsafe_regex_reason(value)
+            if reason:
+                raise SystemExit(f"{path}:{line_number}: unsafe leak pattern: {reason}")
             try:
                 patterns.append(re.compile(value))
             except re.error as exc:
                 raise SystemExit(f"{path}:{line_number}: invalid leak pattern: {exc}") from exc
     return patterns
+
+
+def unsafe_regex_reason(value: str) -> str:
+    if NESTED_QUANTIFIER_RE.search(value):
+        return "nested quantifiers can cause catastrophic backtracking"
+    if re.search(r"\\[1-9]", value):
+        return "backreferences can cause non-linear matching"
+    return ""
 
 
 def iter_files(root: Path):

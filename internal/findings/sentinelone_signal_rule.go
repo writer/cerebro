@@ -211,9 +211,10 @@ func newRetiredSentinelOneRule(id string, name string, outputKind string) Rule {
 	)
 	definition.Maturity = "retired"
 	return newEventRule(eventRuleConfig{
-		definition: definition,
-		sourceID:   "sentinelone",
-		match:      func(*cerebrov1.EventEnvelope) bool { return false },
+		definition:         definition,
+		sourceID:           "sentinelone",
+		retireOpenFindings: true,
+		match:              func(*cerebrov1.EventEnvelope) bool { return false },
 		build: func(context.Context, *cerebrov1.SourceRuntime, *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
 			return nil, nil
 		},

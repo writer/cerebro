@@ -1228,6 +1228,8 @@
         "test_id"
       ],
       "fingerprint_fields": [
+        "tenant_id",
+        "runtime_id",
         "provider",
         "test_id"
       ],
@@ -1509,6 +1511,8 @@
         "vendor_id"
       ],
       "fingerprint_fields": [
+        "tenant_id",
+        "runtime_id",
         "provider",
         "vendor_id"
       ],
@@ -1556,6 +1560,8 @@
         "remediate_by_date"
       ],
       "fingerprint_fields": [
+        "tenant_id",
+        "runtime_id",
         "provider",
         "name",
         "package",

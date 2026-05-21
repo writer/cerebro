@@ -9,8 +9,7 @@
         "cloud-privilege-path-granted"
       ],
       "dimensions": [
-        "resource",
-        "source"
+        "resource"
       ],
       "window": "24h",
       "score_bonus": 10,

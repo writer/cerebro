@@ -32,7 +32,7 @@ func newGRCControlTestNeedsAttentionRule() Rule {
 		FalsePositives:     []string{"Provider status lag, manual compensating control already accepted, or test scope intentionally excluded by risk acceptance."},
 		Runbook:            "Review the control test evidence, confirm the owner and exception state, remediate failed controls, and record risk acceptance where appropriate.",
 		RequiredAttributes: []string{"test_id", "status"},
-		FingerprintFields:  []string{"provider", "test_id"},
+		FingerprintFields:  []string{"tenant_id", "runtime_id", "provider", "test_id"},
 		ControlRefs: []ports.FindingControlRef{
 			{FrameworkName: "SOC 2", ControlID: "CC1.2"},
 			{FrameworkName: "ISO 27001:2022", ControlID: "A.5.35"},
@@ -59,7 +59,7 @@ func newGRCVulnerabilitySLAOverdueRule() Rule {
 		FalsePositives:     []string{"SLA clock is paused by approved exception, asset is decommissioned, or vulnerability is already remediated but provider sync has not completed."},
 		Runbook:            "Confirm the vulnerability is fixable and in scope, validate remediation deadline and asset ownership, then prioritize patching or exception review.",
 		RequiredAttributes: []string{"name", "remediate_by_date"},
-		FingerprintFields:  []string{"provider", "name", "package", "target_id"},
+		FingerprintFields:  []string{"tenant_id", "runtime_id", "provider", "name", "package", "target_id"},
 		ControlRefs: []ports.FindingControlRef{
 			{FrameworkName: "SOC 2", ControlID: "CC7.1"},
 			{FrameworkName: "ISO 27001:2022", ControlID: "A.8.8"},
@@ -87,7 +87,7 @@ func newGRCVendorReviewOverdueRule() Rule {
 		FalsePositives:     []string{"Vendor review has an approved deferral, owner is tracked outside the provider, or provider sync has not reflected the latest review."},
 		Runbook:            "Confirm vendor owner and review status, request updated security review evidence, and document exceptions or offboarding decisions.",
 		RequiredAttributes: []string{"vendor_id"},
-		FingerprintFields:  []string{"provider", "vendor_id"},
+		FingerprintFields:  []string{"tenant_id", "runtime_id", "provider", "vendor_id"},
 		ControlRefs: []ports.FindingControlRef{
 			{FrameworkName: "SOC 2", ControlID: "CC9.2"},
 			{FrameworkName: "ISO 27001:2022", ControlID: "A.5.19"},
@@ -201,12 +201,19 @@ func grcFindingProjectionOptions(event *cerebrov1.EventEnvelope) findingProjecti
 }
 
 func grcFingerprintParts(definition RuleDefinition, tenantID string, runtimeID string, attrs map[string]string, fallbackPolicyID string) []string {
-	parts := []string{definition.ID, strings.TrimSpace(tenantID), strings.TrimSpace(runtimeID)}
+	parts := []string{definition.ID}
 	if len(definition.FingerprintFields) == 0 {
-		return append(parts, attrs["provider"], fallbackPolicyID)
+		return append(parts, strings.TrimSpace(tenantID), strings.TrimSpace(runtimeID), attrs["provider"], fallbackPolicyID)
 	}
 	for _, field := range definition.FingerprintFields {
-		parts = append(parts, attrs[strings.TrimSpace(field)])
+		switch strings.TrimSpace(field) {
+		case "tenant_id":
+			parts = append(parts, strings.TrimSpace(tenantID))
+		case "runtime_id":
+			parts = append(parts, strings.TrimSpace(runtimeID))
+		default:
+			parts = append(parts, attrs[strings.TrimSpace(field)])
+		}
 	}
 	return parts
 }

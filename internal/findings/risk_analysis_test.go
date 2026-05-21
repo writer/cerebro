@@ -146,6 +146,28 @@ func TestAnalyzeFindingPatternCorrelationsDetectsGitHubSecretExposurePattern(t *
 	}
 }
 
+func TestAnalyzeFindingPatternCorrelationsRequiresSharedCloudResource(t *testing.T) {
+	base := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
+	publicExposure := compoundRiskFinding("cloud-public-a", cloudPublicResourceExposureRuleID, "HIGH", "", "", "urn:cerebro:writer:aws_bucket:public-a", "public_network_ingress")
+	publicExposure.FirstObservedAt = base
+	publicExposure.LastObservedAt = base
+	publicExposure.Attributes["rule_source_id"] = "cloud"
+	publicExposure.Attributes["internet_exposed"] = "true"
+
+	privilegePath := compoundRiskFinding("cloud-priv-b", cloudPrivilegePathGrantedRuleID, "HIGH", "", "", "urn:cerebro:writer:aws_role:admin-b", "privilege_path_granted")
+	privilegePath.FirstObservedAt = base.Add(15 * time.Minute)
+	privilegePath.LastObservedAt = base.Add(15 * time.Minute)
+	privilegePath.Attributes["rule_source_id"] = "cloud"
+	privilegePath.Attributes["privileged"] = "true"
+
+	correlations := AnalyzeFindingPatternCorrelations([]*ports.FindingRecord{publicExposure, privilegePath}, FindingExposureAnalysisOptions{
+		CorrelationWindow: time.Hour,
+	})
+	if correlation := findingCorrelationByPattern(correlations, "cloud-public-exposure-with-privilege-path"); correlation != nil {
+		t.Fatalf("unexpected cloud pattern correlation across different resources: %#v", correlation)
+	}
+}
+
 func findingCorrelationByPattern(correlations []FindingCorrelation, patternID string) *FindingCorrelation {
 	for idx := range correlations {
 		if correlations[idx].PatternID == patternID {

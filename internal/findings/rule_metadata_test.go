@@ -44,3 +44,25 @@ func TestBuiltinPublicDetectionCatalogPreservesFingerprintFieldOrder(t *testing.
 	}
 	t.Fatalf("BuiltinPublicDetectionCatalog() missing %s", githubAppIntegrationInstalledRuleID)
 }
+
+func TestBuiltinPublicDetectionCatalogPublishesGRCFingerprintSalts(t *testing.T) {
+	wantByID := map[string][]string{
+		grcControlTestNeedsAttentionRuleID: {"tenant_id", "runtime_id", "provider", "test_id"},
+		grcVulnerabilitySLAOverdueRuleID:   {"tenant_id", "runtime_id", "provider", "name", "package", "target_id"},
+		grcVendorReviewOverdueRuleID:       {"tenant_id", "runtime_id", "provider", "vendor_id"},
+	}
+	catalog := BuiltinPublicDetectionCatalog()
+	for _, detection := range catalog.Detections {
+		want, ok := wantByID[detection.ID]
+		if !ok {
+			continue
+		}
+		if !slices.Equal(detection.FingerprintFields, want) {
+			t.Fatalf("%s FingerprintFields = %#v, want %#v", detection.ID, detection.FingerprintFields, want)
+		}
+		delete(wantByID, detection.ID)
+	}
+	if len(wantByID) != 0 {
+		t.Fatalf("BuiltinPublicDetectionCatalog() missing GRC detections: %#v", wantByID)
+	}
+}
