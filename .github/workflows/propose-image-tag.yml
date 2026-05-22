@@ -1,4 +1,5 @@
 name: Propose Cerebro Image Tag
+run-name: Cerebro image ${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'go-prod' }} ${{ github.event.client_payload.image_tag || github.event.inputs.image_tag || 'latest' }} ${{ github.event.client_payload.request_id || github.run_id }}
 
 on:
   schedule:
