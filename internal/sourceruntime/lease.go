@@ -24,6 +24,12 @@ const (
 	// LeaseReleaseTimeout bounds the best-effort lease release on shutdown
 	// paths so a slow database cannot block the caller indefinitely.
 	LeaseReleaseTimeout = 5 * time.Second
+
+	// LeaseRenewalMaxInterval keeps renewal attempts comfortably ahead of
+	// the runtime lease TTL. Long-lived backfills can overlap scheduled or
+	// verification tasks; renewing more often than TTL/2 narrows the window
+	// where a delayed renewal lets another task acquire the runtime.
+	LeaseRenewalMaxInterval = 5 * time.Minute
 )
 
 // ErrSyncInProgress is returned by SyncWithLease when the runtime is
@@ -128,10 +134,7 @@ func startLeaseRenewal(ctx context.Context, store ports.SourceRuntimeLeaseStore,
 	}
 	renewCtx, cancel := context.WithCancel(ctx)
 	done := make(chan error, 1)
-	interval := ttl / 2
-	if interval <= 0 {
-		interval = ttl
-	}
+	interval := LeaseRenewalInterval(ttl)
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
@@ -159,6 +162,17 @@ func startLeaseRenewal(ctx context.Context, store ports.SourceRuntimeLeaseStore,
 		cancel()
 		return <-done
 	}
+}
+
+func LeaseRenewalInterval(ttl time.Duration) time.Duration {
+	interval := ttl / 2
+	if interval <= 0 {
+		return ttl
+	}
+	if LeaseRenewalMaxInterval > 0 && interval > LeaseRenewalMaxInterval {
+		return LeaseRenewalMaxInterval
+	}
+	return interval
 }
 
 func releaseLease(parent context.Context, store ports.SourceRuntimeLeaseStore, runtimeID string, owner string) error {

@@ -215,8 +215,7 @@ func (s *Store) RenewSourceRuntimeLease(ctx context.Context, runtimeID string, o
 UPDATE source_runtimes
 SET lease_expires_at = NOW() + $3::interval
 WHERE id = $1
-  AND lease_owner = $2
-  AND lease_expires_at > NOW()`, id, leaseOwner, sourceRuntimeLeaseInterval(ttl))
+  AND lease_owner = $2`, id, leaseOwner, sourceRuntimeLeaseInterval(ttl))
 	if err != nil {
 		return false, fmt.Errorf("renew source runtime lease %q: %w", id, err)
 	}

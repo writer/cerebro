@@ -188,6 +188,15 @@ func TestStartLeaseRenewalStopsWhenSyncContextCancels(t *testing.T) {
 	}
 }
 
+func TestLeaseRenewalIntervalCapsLongTTL(t *testing.T) {
+	if got := LeaseRenewalInterval(time.Minute); got != 30*time.Second {
+		t.Fatalf("LeaseRenewalInterval(1m) = %s, want 30s", got)
+	}
+	if got := LeaseRenewalInterval(DefaultLeaseTTL); got != LeaseRenewalMaxInterval {
+		t.Fatalf("LeaseRenewalInterval(default) = %s, want %s", got, LeaseRenewalMaxInterval)
+	}
+}
+
 func TestSyncWithLeaseSerializesConcurrentCallers(t *testing.T) {
 	store := &stubLeaseStore{}
 	service := New(nil, nil, nil, nil)
