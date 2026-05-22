@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/writer/cerebro/internal/ports"
 )
@@ -37,6 +38,12 @@ type PublicDetection struct {
 	RequiredAttributes []string                  `json:"required_attributes,omitempty"`
 	FingerprintFields  []string                  `json:"fingerprint_fields,omitempty"`
 	ControlRefs        []ports.FindingControlRef `json:"control_refs,omitempty"`
+}
+
+var builtinRuleMetadataCache struct {
+	once      sync.Once
+	metadata  []RuleDefinition
+	sourceIDs map[string]string
 }
 
 func (r *eventRule) RuleMetadata() RuleDefinition {
@@ -131,20 +138,42 @@ func (r *vulnViewExternalAssetConcentratedSignalRule) RuleMetadata() RuleDefinit
 }
 
 func BuiltinRuleMetadata() []RuleDefinition {
-	metadatas := []RuleDefinition{}
+	builtinRuleMetadataCache.once.Do(loadBuiltinRuleMetadataCache)
+	return cloneRuleDefinitions(builtinRuleMetadataCache.metadata)
+}
+
+// BuiltinRuleSourceIDs returns a rule-id-to-source-id index for built-in metadata.
+func BuiltinRuleSourceIDs() map[string]string {
+	builtinRuleMetadataCache.once.Do(loadBuiltinRuleMetadataCache)
+	sourceIDs := make(map[string]string, len(builtinRuleMetadataCache.sourceIDs))
+	for id, sourceID := range builtinRuleMetadataCache.sourceIDs {
+		sourceIDs[id] = sourceID
+	}
+	return sourceIDs
+}
+
+func loadBuiltinRuleMetadataCache() {
+	metadata := []RuleDefinition{}
+	sourceIDs := map[string]string{}
 	for _, pack := range builtinRulePacks() {
 		for _, rule := range pack.Rules {
-			metadata, ok := ruleMetadata(rule)
-			if !ok || metadata.IsZero() {
+			definition, ok := ruleMetadata(rule)
+			if !ok || definition.IsZero() {
 				continue
 			}
-			metadatas = append(metadatas, metadata)
+			metadata = append(metadata, definition)
 		}
 	}
-	sort.Slice(metadatas, func(i int, j int) bool {
-		return metadatas[i].ID < metadatas[j].ID
+	sort.Slice(metadata, func(i int, j int) bool {
+		return metadata[i].ID < metadata[j].ID
 	})
-	return metadatas
+	for _, definition := range metadata {
+		if id := strings.TrimSpace(definition.ID); id != "" {
+			sourceIDs[id] = strings.TrimSpace(definition.SourceID)
+		}
+	}
+	builtinRuleMetadataCache.metadata = metadata
+	builtinRuleMetadataCache.sourceIDs = sourceIDs
 }
 
 func BuiltinPublicDetectionCatalog() PublicDetectionCatalog {
@@ -276,6 +305,17 @@ func cloneRuleDefinition(definition RuleDefinition) RuleDefinition {
 		FingerprintFields:  cloneStringSlice(definition.FingerprintFields),
 		ControlRefs:        cloneFindingControlRefs(definition.ControlRefs),
 	}
+}
+
+func cloneRuleDefinitions(definitions []RuleDefinition) []RuleDefinition {
+	if len(definitions) == 0 {
+		return nil
+	}
+	cloned := make([]RuleDefinition, 0, len(definitions))
+	for _, definition := range definitions {
+		cloned = append(cloned, cloneRuleDefinition(definition))
+	}
+	return cloned
 }
 
 func retiredRuleMetadata(metadata RuleDefinition) bool {

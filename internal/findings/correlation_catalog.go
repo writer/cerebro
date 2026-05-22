@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	_ "embed"
@@ -13,6 +14,12 @@ import (
 
 //go:embed correlation_patterns/builtin.json
 var builtinCorrelationPatternCatalog []byte
+
+var builtinCorrelationPatternCache struct {
+	once     sync.Once
+	patterns []FindingCorrelationPattern
+	err      error
+}
 
 type correlationPatternCatalog struct {
 	Version  string                  `json:"version"`
@@ -32,11 +39,13 @@ type correlationPatternRaw struct {
 
 // BuiltinFindingCorrelationPatterns returns the checked-in declarative pattern catalog.
 func BuiltinFindingCorrelationPatterns() []FindingCorrelationPattern {
-	patterns, err := LoadFindingCorrelationPatterns(builtinCorrelationPatternCatalog)
-	if err != nil {
+	builtinCorrelationPatternCache.once.Do(func() {
+		builtinCorrelationPatternCache.patterns, builtinCorrelationPatternCache.err = LoadFindingCorrelationPatterns(builtinCorrelationPatternCatalog)
+	})
+	if builtinCorrelationPatternCache.err != nil {
 		return nil
 	}
-	return patterns
+	return cloneFindingCorrelationPatterns(builtinCorrelationPatternCache.patterns)
 }
 
 // BuiltinFindingCorrelationPatternCatalogJSON returns the canonical checked-in catalog bytes.
@@ -160,6 +169,35 @@ func normalizeCorrelationPattern(raw correlationPatternRaw) (FindingCorrelationP
 		}
 	}
 	return pattern, nil
+}
+
+func cloneFindingCorrelationPatterns(patterns []FindingCorrelationPattern) []FindingCorrelationPattern {
+	if len(patterns) == 0 {
+		return nil
+	}
+	cloned := make([]FindingCorrelationPattern, 0, len(patterns))
+	for _, pattern := range patterns {
+		cloned = append(cloned, FindingCorrelationPattern{
+			ID:         pattern.ID,
+			Name:       pattern.Name,
+			RuleIDs:    cloneStringSlice(pattern.RuleIDs),
+			Dimensions: cloneStringSlice(pattern.Dimensions),
+			Window:     pattern.Window,
+			ScoreBonus: pattern.ScoreBonus,
+			Reasons:    cloneStringSlice(pattern.Reasons),
+			Tests:      cloneFindingCorrelationPatternTests(pattern.Tests),
+		})
+	}
+	return cloned
+}
+
+func cloneFindingCorrelationPatternTests(tests []FindingCorrelationPatternTest) []FindingCorrelationPatternTest {
+	if len(tests) == 0 {
+		return nil
+	}
+	cloned := make([]FindingCorrelationPatternTest, len(tests))
+	copy(cloned, tests)
+	return cloned
 }
 
 func validCorrelationDimension(value string) bool {
