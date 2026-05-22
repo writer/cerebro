@@ -68,6 +68,7 @@ def create_ecs_cluster(
 
     execution_role = _create_execution_role(name, kms_key_id, external_secrets_prefix)
     task_role = _create_task_role(name, s3_source_iam_configs, efs_file_system_id)
+    worker_task_role = None
 
     log_group = aws.cloudwatch.LogGroup(
         f"{name}-logs",
@@ -102,6 +103,7 @@ def create_ecs_cluster(
     orchestrator_task_definitions = []
     orchestrator_events_role = None
     if orchestrator_enabled:
+        worker_task_role = _create_task_role(f"{name}-worker", s3_source_iam_configs, efs_file_system_id)
         schedules = _orchestrator_schedules(
             orchestrator_schedule_expression,
             orchestrator_command or ["orchestrator", "run"],
@@ -117,7 +119,7 @@ def create_ecs_cluster(
                 cpu=orchestrator_cpu,
                 memory=orchestrator_memory,
                 execution_role_arn=execution_role.arn,
-                task_role_arn=task_role.arn,
+                task_role_arn=worker_task_role.arn,
                 log_group_name=log_group.name,
                 environment=runtime_environment,
                 secret_keys=secret_keys or [],
@@ -136,7 +138,7 @@ def create_ecs_cluster(
             name=name,
             task_definition_arns=[task_definition.arn for task_definition in orchestrator_task_definitions],
             execution_role_arn=execution_role.arn,
-            task_role_arn=task_role.arn,
+            task_role_arn=worker_task_role.arn,
         )
         for schedule, task_definition in zip(schedules, orchestrator_task_definitions):
             schedule_suffix = schedule["suffix"]
@@ -269,6 +271,7 @@ def create_ecs_cluster(
         "orchestrator_targets": orchestrator_targets,
         "orchestrator_events_role": orchestrator_events_role,
         "task_role": task_role,
+        "worker_task_role": worker_task_role,
         "log_group": log_group,
     }
 
