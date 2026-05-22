@@ -759,10 +759,7 @@ func (s *Store) BackfillFindingRisk(ctx context.Context, includeUnprojected bool
 }
 
 func (s *Store) backfillFindingRisk(ctx context.Context, includeUnprojected bool) (updated []*ports.FindingRecord, err error) {
-	query := `SELECT ` + findingSelectColumns + ` FROM findings WHERE risk_model_version <> $1 OR risk_score = 0`
-	if includeUnprojected {
-		query += ` OR COALESCE(attributes_json->>'` + findingrisk.FindingRiskGraphProjectedModelVersionAttribute + `', '') <> $1`
-	}
+	query := `SELECT ` + findingSelectColumns + ` FROM findings WHERE ` + findingBackfillRiskWhereClause(includeUnprojected)
 	rows, err := s.db.QueryContext(ctx, query, "likelihood-impact-v1")
 	if err != nil {
 		return nil, fmt.Errorf("list findings for risk backfill: %w", err)
@@ -806,6 +803,24 @@ func (s *Store) backfillFindingRisk(ctx context.Context, includeUnprojected bool
 		updated = append(updated, stored)
 	}
 	return updated, nil
+}
+
+func findingBackfillRiskWhereClause(includeUnprojected bool) string {
+	clauses := []string{
+		`risk_model_version <> $1`,
+		`risk_score = 0`,
+		`(due_at IS NOT NULL AND due_at <= NOW() AND NOT (risk_reasons_json ? 'overdue'))`,
+		`((due_at IS NULL OR due_at > NOW()) AND risk_reasons_json ? 'overdue')`,
+		`(last_observed_at <= NOW() - INTERVAL '24 hours' AND risk_reasons_json ? 'recent_24h')`,
+		`(last_observed_at > NOW() - INTERVAL '24 hours' AND last_observed_at <= NOW() AND NOT (risk_reasons_json ? 'recent_24h'))`,
+		`(last_observed_at <= NOW() - INTERVAL '7 days' AND risk_reasons_json ? 'recent_7d')`,
+		`(last_observed_at > NOW() - INTERVAL '7 days' AND last_observed_at <= NOW() - INTERVAL '24 hours' AND NOT (risk_reasons_json ? 'recent_7d'))`,
+		`(last_observed_at > NOW() AND (risk_reasons_json ? 'recent_24h' OR risk_reasons_json ? 'recent_7d'))`,
+	}
+	if includeUnprojected {
+		clauses = append(clauses, `COALESCE(attributes_json->>'`+findingrisk.FindingRiskGraphProjectedModelVersionAttribute+`', '') <> $1`)
+	}
+	return strings.Join(clauses, " OR ")
 }
 
 func (s *Store) updateFindingRiskColumns(ctx context.Context, findingID string, risk ports.FindingRisk, attributes map[string]string) (*ports.FindingRecord, error) {

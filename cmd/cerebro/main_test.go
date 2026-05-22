@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
@@ -21,6 +22,30 @@ func TestRunRejectsUnsupportedCommand(t *testing.T) {
 	if !errors.As(err, &usage) {
 		t.Fatalf("run(unsupported) error = %v, want usageError", err)
 	}
+}
+
+func TestStartFindingRiskBackfillLoopRunsPeriodicRefresh(t *testing.T) {
+	backfiller := &testFindingRiskBackfiller{calls: make(chan struct{}, 1)}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	startFindingRiskBackfillLoop(ctx, backfiller, time.Millisecond)
+	select {
+	case <-backfiller.calls:
+	case <-time.After(time.Second):
+		t.Fatal("startFindingRiskBackfillLoop did not refresh finding risk")
+	}
+}
+
+type testFindingRiskBackfiller struct {
+	calls chan struct{}
+}
+
+func (b *testFindingRiskBackfiller) BackfillFindingRisk(context.Context) error {
+	select {
+	case b.calls <- struct{}{}:
+	default:
+	}
+	return nil
 }
 
 func TestParseSourceRuntimePutArgsSeparatesTenantID(t *testing.T) {

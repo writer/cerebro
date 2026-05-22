@@ -179,6 +179,29 @@ func TestFindingBackfillRiskUsesRuntimeScorerSignals(t *testing.T) {
 	}
 }
 
+func TestFindingBackfillRiskWhereClauseRefreshesWallClockSignals(t *testing.T) {
+	clause := findingBackfillRiskWhereClause(false)
+	for _, fragment := range []string{
+		"due_at <= NOW()",
+		"risk_reasons_json ? 'overdue'",
+		"risk_reasons_json ? 'recent_24h'",
+		"risk_reasons_json ? 'recent_7d'",
+		"last_observed_at <= NOW() - INTERVAL '24 hours'",
+		"last_observed_at <= NOW() - INTERVAL '7 days'",
+	} {
+		if !strings.Contains(clause, fragment) {
+			t.Fatalf("findingBackfillRiskWhereClause(false) missing %q: %s", fragment, clause)
+		}
+	}
+	if strings.Contains(clause, "risk_graph_projected_model_version") {
+		t.Fatalf("findingBackfillRiskWhereClause(false) included graph projection marker: %s", clause)
+	}
+	graphClause := findingBackfillRiskWhereClause(true)
+	if !strings.Contains(graphClause, "risk_graph_projected_model_version") {
+		t.Fatalf("findingBackfillRiskWhereClause(true) missing graph projection marker: %s", graphClause)
+	}
+}
+
 func TestFindingListQueryAcceptsTenantAndRuleWithoutRuntime(t *testing.T) {
 	query, args, err := findingListQuery(ports.ListFindingsRequest{
 		TenantID: "writer",

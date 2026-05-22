@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -28,6 +29,8 @@ import (
 )
 
 type usageError string
+
+const findingRiskBackfillInterval = time.Hour
 
 func (e usageError) Error() string {
 	return string(e)
@@ -95,6 +98,7 @@ func serve() error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	startFindingRiskBackfillLoop(ctx, app, findingRiskBackfillInterval)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -118,6 +122,30 @@ func serve() error {
 		}
 		return nil
 	}
+}
+
+type findingRiskBackfiller interface {
+	BackfillFindingRisk(context.Context) error
+}
+
+func startFindingRiskBackfillLoop(ctx context.Context, backfiller findingRiskBackfiller, interval time.Duration) {
+	if backfiller == nil || interval <= 0 {
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := backfiller.BackfillFindingRisk(ctx); err != nil && !errors.Is(err, context.Canceled) {
+					log.Printf("refresh finding risk: %v", err)
+				}
+			}
+		}
+	}()
 }
 
 func runSource(args []string) error {
