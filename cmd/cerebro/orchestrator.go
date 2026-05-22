@@ -717,11 +717,7 @@ func startOrchestratorRuntimeLeaseRenewalWithTTL(ctx context.Context, store port
 }
 
 func sourceRuntimeLeaseRenewalInterval(ttl time.Duration) time.Duration {
-	interval := ttl / 2
-	if interval <= 0 {
-		return ttl
-	}
-	return interval
+	return sourceruntime.LeaseRenewalInterval(ttl)
 }
 
 func releaseOrchestratorRuntimeLease(ctx context.Context, store ports.SourceRuntimeLeaseStore, runtime *cerebrov1.SourceRuntime, owner string) error {

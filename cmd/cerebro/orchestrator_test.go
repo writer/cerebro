@@ -754,8 +754,11 @@ func TestReleaseOrchestratorRuntimeLeaseIgnoresCancellation(t *testing.T) {
 }
 
 func TestSourceRuntimeLeaseRenewalIntervalUsesHalfTTL(t *testing.T) {
-	if got := sourceRuntimeLeaseRenewalInterval(30 * time.Minute); got != 15*time.Minute {
-		t.Fatalf("sourceRuntimeLeaseRenewalInterval() = %s, want 15m", got)
+	if got := sourceRuntimeLeaseRenewalInterval(time.Minute); got != 30*time.Second {
+		t.Fatalf("sourceRuntimeLeaseRenewalInterval() = %s, want 30s", got)
+	}
+	if got := sourceRuntimeLeaseRenewalInterval(30 * time.Minute); got != sourceruntime.LeaseRenewalMaxInterval {
+		t.Fatalf("sourceRuntimeLeaseRenewalInterval() = %s, want %s", got, sourceruntime.LeaseRenewalMaxInterval)
 	}
 }
 
