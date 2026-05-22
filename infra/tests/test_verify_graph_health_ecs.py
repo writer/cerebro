@@ -10,16 +10,19 @@ import subprocess
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import scripts.verify_graph_health_ecs as verify_graph_health_ecs
 from scripts.verify_graph_health_ecs import (
+    GRAPH_RELATIONS_TO_OBSERVE,
     _declared_aws_families,
     _extract_json_payload,
     _declared_runtime_ids,
     _graph_command_overrides,
     _graph_path_relations,
     _graph_relation_counts,
+    _run_graph_command_with_retries,
     _image_tag_version,
     _ingest_run_limit,
     _is_graph_paths_timeout,
     _latest_active_task_definition,
+    _missing_declared_ingest_runtime_ids,
     _resource_prefix,
     _supports_attack_path_relations,
     _supports_relation_counts,
@@ -180,6 +183,37 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
         finally:
             verify_graph_health_ecs._aws = original_aws
 
+    def test_run_graph_command_with_retries_recovers_after_transient_failure(self) -> None:
+        original_run_graph_command = verify_graph_health_ecs._run_graph_command
+        original_time = verify_graph_health_ecs.time.time
+        original_sleep = verify_graph_health_ecs.time.sleep
+        calls = 0
+
+        def fake_run_graph_command(*_args, **_kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise RuntimeError("graph command did not emit a JSON object")
+            return verify_graph_health_ecs.GraphCommandResult(
+                command=["graph", "counts"],
+                task_arn="task-arn",
+                exit_code=0,
+                payload={"nodes": 1, "relations": 1},
+            )
+
+        verify_graph_health_ecs._run_graph_command = fake_run_graph_command
+        verify_graph_health_ecs.time.time = lambda: 0
+        verify_graph_health_ecs.time.sleep = lambda _seconds: None
+        try:
+            result = _run_graph_command_with_retries("prefix", {}, ["graph", "counts"], 10, 1, "us-east-1", 5)
+        finally:
+            verify_graph_health_ecs._run_graph_command = original_run_graph_command
+            verify_graph_health_ecs.time.time = original_time
+            verify_graph_health_ecs.time.sleep = original_sleep
+
+        self.assertEqual(result.payload, {"nodes": 1, "relations": 1})
+        self.assertEqual(calls, 2)
+
     def test_extract_json_payload_from_pretty_logs(self) -> None:
         payload = _extract_json_payload(['{"nodes": 2,', ' "relations": 3}'])
 
@@ -230,6 +264,14 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "runtime-b"):
             _verify_current_ingest_runs(payload, declared_runtime_ids={"runtime-a", "runtime-b"})
+
+    def test_missing_declared_ingest_runtime_ids_reports_without_failing(self) -> None:
+        payload = {"runs": [{"id": "run-a", "runtime_id": "runtime-a", "status": "completed"}]}
+
+        self.assertEqual(
+            _missing_declared_ingest_runtime_ids(payload, {"runtime-a", "runtime-b"}),
+            ["runtime-b"],
+        )
 
     def test_verify_current_ingest_runs_allows_recent_running_runs(self) -> None:
         payload = {"runs": [{"id": "run-a", "runtime_id": "runtime-a", "status": "running", "started_at": "2026-05-20T00:30:00Z"}]}
@@ -285,6 +327,9 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             _verify_required_graph_relation_counts(payload, {"resource_exposure", "effective_permission", "iam_role_trust"}),
             {"belongs_to", "represents", "can_reach"},
         )
+
+    def test_graph_relation_observation_includes_optional_can_reach(self) -> None:
+        self.assertIn("can_reach", GRAPH_RELATIONS_TO_OBSERVE)
 
     def test_verify_required_graph_relations_reports_optional_attack_path_edges_for_aws(self) -> None:
         payload = {
