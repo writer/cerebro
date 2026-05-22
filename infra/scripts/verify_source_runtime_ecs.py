@@ -322,6 +322,30 @@ def _task_logs(task: dict[str, Any], region: str) -> list[dict[str, Any]]:
     return messages
 
 
+def _summarize_log_messages(messages: list[dict[str, Any]], limit: int = 20) -> str:
+    keys = (
+        "level",
+        "msg",
+        "message",
+        "error",
+        "kind",
+        "name",
+        "status",
+        "reason",
+        "events_appended",
+        "pages_read",
+    )
+    lines = []
+    for message in messages[-limit:]:
+        summary = {key: message[key] for key in keys if key in message}
+        if summary:
+            line = json.dumps(summary, sort_keys=True)
+        else:
+            line = json.dumps(message, sort_keys=True)
+        lines.append(line[:2000])
+    return "\n".join(lines)
+
+
 def _latest_span(messages: list[dict[str, Any]], name: str) -> dict[str, Any] | None:
     for message in reversed(messages):
         if message.get("kind") == "span_end" and message.get("name") == name:
@@ -345,7 +369,12 @@ def _verify_task(target: RuntimeTarget, task_arn: str, region: str) -> Verificat
     cerebro_container = next((container for container in containers if container.get("name") == "cerebro"), None)
     exit_code = cerebro_container.get("exitCode") if cerebro_container else None
     if exit_code != 0:
-        raise RuntimeError(f"{target.runtime_id} task exited with {exit_code}: {task_arn}")
+        try:
+            log_summary = _summarize_log_messages(_task_logs(task, region))
+        except Exception as exc:
+            log_summary = f"unable to fetch task logs: {exc}"
+        detail = f"\nRecent task logs:\n{log_summary}" if log_summary else ""
+        raise RuntimeError(f"{target.runtime_id} task exited with {exit_code}: {task_arn}{detail}")
 
     messages = _task_logs(task, region)
     runtime_span = _latest_span(messages, "orchestrator.runtime")

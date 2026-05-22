@@ -14,6 +14,7 @@ from scripts.verify_source_runtime_ecs import (
     _runtime_skip_reason,
     _runtime_skip_retryable,
     _schedule_suffix,
+    _summarize_log_messages,
     _task_family,
 )
 
@@ -86,6 +87,20 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
 
         self.assertEqual(_runtime_skip_reason(span), "disabled")
         self.assertFalse(_runtime_skip_retryable(_runtime_skip_reason(span)))
+
+    def test_summarize_log_messages_limits_fields_and_length(self) -> None:
+        summary = _summarize_log_messages(
+            [
+                {"message": "old"},
+                {"level": "error", "message": "x" * 2500, "secret": "not included"},
+            ],
+            limit=1,
+        )
+
+        self.assertIn('"level": "error"', summary)
+        self.assertIn('"message": "', summary)
+        self.assertNotIn("secret", summary)
+        self.assertLessEqual(len(summary), 2000)
 
 
 if __name__ == "__main__":
