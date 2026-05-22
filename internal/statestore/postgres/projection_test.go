@@ -2,9 +2,13 @@ package postgres
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -121,4 +125,168 @@ func TestProjectedEntityCleanupSQLIncludesScopedFilters(t *testing.T) {
 	if args[5] != uint32(25) {
 		t.Fatalf("cleanup limit arg = %#v, want uint32(25)", args[5])
 	}
+}
+
+func TestProjectedEndpointOwnerIDLinkCleanupSQLRequiresTenant(t *testing.T) {
+	if _, _, err := projectedEndpointOwnerIDLinkCleanupSQL(ports.ProjectionLinkCleanupRequest{DryRun: true}); err == nil {
+		t.Fatal("projectedEndpointOwnerIDLinkCleanupSQL() error = nil, want tenant scope requirement")
+	}
+}
+
+func TestProjectedEndpointOwnerIDLinkCleanupSQLScopesToReplacementIdentifiers(t *testing.T) {
+	query, args, err := projectedEndpointOwnerIDLinkCleanupSQL(ports.ProjectionLinkCleanupRequest{
+		TenantID: "writer",
+		SourceID: "kolide",
+		DryRun:   true,
+		Limit:    50,
+	})
+	if err != nil {
+		t.Fatalf("projectedEndpointOwnerIDLinkCleanupSQL() error = %v", err)
+	}
+	for _, want := range []string{
+		"l.tenant_id = $1",
+		"e.entity_type IN ('kolide.device', 'kandji.device')",
+		"l.relation IN ('owned_by', 'represents_identity', 'has_identifier')",
+		"replacement.relation = 'has_identifier'",
+		"SELECT COUNT(*) AS links_matched, 0 AS links_deleted",
+	} {
+		if !strings.Contains(query, want) {
+			t.Fatalf("endpoint owner-id cleanup SQL missing %q:\n%s", want, query)
+		}
+	}
+	argsText := fmt.Sprint(args)
+	for _, want := range []string{
+		"urn:cerebro:writer:identity:login:",
+		"urn:cerebro:writer:identifier:login:",
+		"urn:cerebro:writer:endpoint_identifier:kolide_owner_id:",
+		"urn:cerebro:writer:endpoint_identifier:kolide_user_id:",
+	} {
+		if !strings.Contains(argsText, want) {
+			t.Fatalf("endpoint owner-id cleanup args missing %q: %#v", want, args)
+		}
+	}
+	if strings.Contains(query, "DELETE FROM entity_links") {
+		t.Fatalf("dry-run endpoint owner-id cleanup SQL deletes rows:\n%s", query)
+	}
+	if len(args) == 0 || args[len(args)-1] != uint32(50) {
+		t.Fatalf("cleanup SQL limit arg = %#v, want trailing uint32(50)", args)
+	}
+}
+
+func TestProjectedEndpointOwnerIDLinkCleanupSQLRuntimeScopesOnlyStaleLinks(t *testing.T) {
+	query, _, err := projectedEndpointOwnerIDLinkCleanupSQL(ports.ProjectionLinkCleanupRequest{
+		TenantID:  "writer",
+		SourceID:  "kolide",
+		RuntimeID: "runtime-a",
+		DryRun:    true,
+	})
+	if err != nil {
+		t.Fatalf("projectedEndpointOwnerIDLinkCleanupSQL() error = %v", err)
+	}
+	if !strings.Contains(query, "l.runtime_id = $") {
+		t.Fatalf("endpoint owner-id cleanup SQL missing stale runtime scope:\n%s", query)
+	}
+	if strings.Contains(query, "replacement.runtime_id") {
+		t.Fatalf("endpoint owner-id cleanup SQL incorrectly scopes replacement runtime:\n%s", query)
+	}
+}
+
+func TestPostgresCleanupEndpointOwnerIDLinksIntegration(t *testing.T) {
+	dsn := strings.TrimSpace(os.Getenv("CEREBRO_POSTGRES_DSN"))
+	if dsn == "" {
+		t.Skip("set CEREBRO_POSTGRES_DSN to run Postgres projection cleanup integration test")
+	}
+	ctx := context.Background()
+	store, err := Open(config.StateStoreConfig{Driver: config.StateStoreDriverPostgres, PostgresDSN: dsn})
+	if err != nil {
+		t.Fatalf("open postgres store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+	tenantID := fmt.Sprintf("writer-cleanup-%d", time.Now().UnixNano())
+	t.Cleanup(func() {
+		_, _ = store.db.ExecContext(context.Background(), `DELETE FROM entity_links WHERE tenant_id = $1`, tenantID)
+		_, _ = store.db.ExecContext(context.Background(), `DELETE FROM entities WHERE tenant_id = $1`, tenantID)
+	})
+
+	endpointURN := fmt.Sprintf("urn:cerebro:%s:kolide_device:device-1", tenantID)
+	identityURN := fmt.Sprintf("urn:cerebro:%s:identity:login:user-1", tenantID)
+	identifierURN := fmt.Sprintf("urn:cerebro:%s:identifier:login:user-1", tenantID)
+	emailIdentityURN := fmt.Sprintf("urn:cerebro:%s:identity:email:alice@example.com", tenantID)
+	unmigratedIdentityURN := fmt.Sprintf("urn:cerebro:%s:identity:login:user-2", tenantID)
+	replacementURN := fmt.Sprintf("urn:cerebro:%s:endpoint_identifier:kolide_user_id:user-1", tenantID)
+	for _, entity := range []*ports.ProjectedEntity{
+		{URN: endpointURN, TenantID: tenantID, SourceID: "kolide", EntityType: "kolide.device", Label: "device-1"},
+		{URN: identityURN, TenantID: tenantID, SourceID: "kolide", EntityType: "identity.login", Label: "user-1"},
+		{URN: identifierURN, TenantID: tenantID, SourceID: "kolide", EntityType: "identifier.login", Label: "user-1"},
+		{URN: emailIdentityURN, TenantID: tenantID, SourceID: "kolide", EntityType: "identity.email", Label: "alice@example.com"},
+		{URN: unmigratedIdentityURN, TenantID: tenantID, SourceID: "kolide", EntityType: "identity.login", Label: "user-2"},
+		{URN: replacementURN, TenantID: tenantID, SourceID: "kolide", EntityType: "endpoint.identifier", Label: "user-1"},
+	} {
+		if err := store.UpsertProjectedEntity(ctx, entity); err != nil {
+			t.Fatalf("upsert entity %s: %v", entity.URN, err)
+		}
+	}
+	staleLinks := []*ports.ProjectedLink{
+		{TenantID: tenantID, SourceID: "kolide", FromURN: endpointURN, Relation: "owned_by", ToURN: identityURN},
+		{TenantID: tenantID, SourceID: "kolide", FromURN: endpointURN, Relation: "represents_identity", ToURN: identityURN},
+		{TenantID: tenantID, SourceID: "kolide", FromURN: endpointURN, Relation: "has_identifier", ToURN: identifierURN},
+	}
+	preservedLinks := []*ports.ProjectedLink{
+		{TenantID: tenantID, SourceID: "kolide", FromURN: endpointURN, Relation: "owned_by", ToURN: emailIdentityURN},
+		{TenantID: tenantID, SourceID: "kolide", FromURN: endpointURN, Relation: "owned_by", ToURN: unmigratedIdentityURN},
+		{TenantID: tenantID, SourceID: "kolide", FromURN: endpointURN, Relation: "has_identifier", ToURN: replacementURN},
+	}
+	for _, link := range append(staleLinks, preservedLinks...) {
+		if err := store.UpsertProjectedLink(ctx, link); err != nil {
+			t.Fatalf("upsert link %s %s %s: %v", link.FromURN, link.Relation, link.ToURN, err)
+		}
+	}
+	request := ports.ProjectionLinkCleanupRequest{TenantID: tenantID, SourceID: "kolide", DryRun: true}
+	result, err := store.CleanupEndpointOwnerIDLinks(ctx, request)
+	if err != nil {
+		t.Fatalf("dry-run cleanup endpoint owner-id links: %v", err)
+	}
+	if result.LinksMatched != uint32(len(staleLinks)) || result.LinksDeleted != 0 {
+		t.Fatalf("dry-run cleanup result = %#v, want %d matches and no deletes", result, len(staleLinks))
+	}
+	for _, link := range staleLinks {
+		assertPostgresProjectedLinkExists(t, ctx, store, link)
+	}
+	request.DryRun = false
+	result, err = store.CleanupEndpointOwnerIDLinks(ctx, request)
+	if err != nil {
+		t.Fatalf("cleanup endpoint owner-id links: %v", err)
+	}
+	if result.LinksMatched != uint32(len(staleLinks)) || result.LinksDeleted != uint32(len(staleLinks)) {
+		t.Fatalf("cleanup result = %#v, want %d deletes", result, len(staleLinks))
+	}
+	for _, link := range staleLinks {
+		assertPostgresProjectedLinkMissing(t, ctx, store, link)
+	}
+	for _, link := range preservedLinks {
+		assertPostgresProjectedLinkExists(t, ctx, store, link)
+	}
+}
+
+func assertPostgresProjectedLinkExists(t *testing.T, ctx context.Context, store *Store, link *ports.ProjectedLink) {
+	t.Helper()
+	if !postgresProjectedLinkExists(t, ctx, store, link) {
+		t.Fatalf("projected link missing: %s %s %s", link.FromURN, link.Relation, link.ToURN)
+	}
+}
+
+func assertPostgresProjectedLinkMissing(t *testing.T, ctx context.Context, store *Store, link *ports.ProjectedLink) {
+	t.Helper()
+	if postgresProjectedLinkExists(t, ctx, store, link) {
+		t.Fatalf("projected link still exists: %s %s %s", link.FromURN, link.Relation, link.ToURN)
+	}
+}
+
+func postgresProjectedLinkExists(t *testing.T, ctx context.Context, store *Store, link *ports.ProjectedLink) bool {
+	t.Helper()
+	var count int
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM entity_links WHERE from_urn = $1 AND relation = $2 AND to_urn = $3`, link.FromURN, link.Relation, link.ToURN).Scan(&count); err != nil {
+		t.Fatalf("query projected link: %v", err)
+	}
+	return count > 0
 }

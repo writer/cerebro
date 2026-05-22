@@ -592,10 +592,22 @@ func (s *Service) projectResponseCoalesced(ctx context.Context, request sourceRe
 		}
 	}
 	if deleter, ok := graphStore.(ports.ProjectionLinkDeleter); ok {
+		var deleted uint32
 		for _, key := range sortedMapKeys(retractedLinks) {
 			if err := deleter.DeleteProjectedLink(ctx, retractedLinks[key]); err != nil {
 				return result, fmt.Errorf("delete coalesced projected link %q: %w", key, err)
 			}
+			deleted++
+		}
+		if len(retractedLinks) != 0 {
+			telemetry.Event(ctx, "source_projection.retractions", telemetry.Attrs(
+				telemetry.Field{Key: "tenant_id", Value: request.TenantID},
+				telemetry.Field{Key: "source_id", Value: request.SourceID},
+				telemetry.Field{Key: "runtime_id", Value: request.RuntimeID},
+				telemetry.Field{Key: "reason", Value: "endpoint_owner_id"},
+				telemetry.Field{Key: "links_matched", Value: len(retractedLinks)},
+				telemetry.Field{Key: "links_deleted", Value: deleted},
+			))
 		}
 	}
 	entityKeys := sortedMapKeys(entities)

@@ -15,6 +15,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 var emailIdentifierPattern = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}`)
@@ -108,6 +109,17 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 	retractedLinksDeleted, err := s.deleteProjectedLinks(ctx, retractedLinks)
 	if err != nil {
 		return ports.ProjectionResult{}, err
+	}
+	if len(retractedLinks) != 0 {
+		telemetry.Event(ctx, "source_projection.retractions", telemetry.Attrs(
+			telemetry.Field{Key: "tenant_id", Value: event.GetTenantId()},
+			telemetry.Field{Key: "source_id", Value: event.GetSourceId()},
+			telemetry.Field{Key: "runtime_id", Value: strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID])},
+			telemetry.Field{Key: "event_kind", Value: event.GetKind()},
+			telemetry.Field{Key: "reason", Value: "endpoint_owner_id"},
+			telemetry.Field{Key: "links_matched", Value: len(retractedLinks)},
+			telemetry.Field{Key: "links_deleted", Value: retractedLinksDeleted},
+		))
 	}
 	for _, entity := range entities {
 		if s.state != nil {
