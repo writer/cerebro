@@ -366,8 +366,8 @@ config:
         - orchestrator
         - run
         - runtime_id=writer-cosmo-fact
-        - page_limit=20
-        - graph_page_limit=100
+        - page_limit=5
+        - graph_page_limit=20
         - event_limit=1000
     - name: cosmo-message
       scheduleExpression: cron(22,52 * * * ? *)
