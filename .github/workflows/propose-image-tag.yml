@@ -105,6 +105,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           IMAGE_TAG: ${{ steps.image.outputs.tag }}
           DISPATCH_RELEASE_URL: ${{ github.event.client_payload.release_url || '' }}
+          DISPATCH_SOURCE_REPOSITORY: ${{ github.event.client_payload.source_repository || '' }}
+          DISPATCH_SOURCE_REF: ${{ github.event.client_payload.source_ref || '' }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
@@ -116,6 +118,14 @@ jobs:
           fi
           if [ "${EVENT_NAME}" = "repository_dispatch" ] && [ "$(jq -r '.isPrerelease' <<<"${release_json}")" = "true" ]; then
             echo "Repository-dispatch auto deploys only accept stable releases; ${IMAGE_TAG} is a prerelease" >&2
+            exit 1
+          fi
+          if [ "${EVENT_NAME}" = "repository_dispatch" ] && [ "${DISPATCH_SOURCE_REPOSITORY}" != "writer/cerebro" ]; then
+            echo "Repository dispatch must originate from writer/cerebro; got ${DISPATCH_SOURCE_REPOSITORY}" >&2
+            exit 1
+          fi
+          if [ "${EVENT_NAME}" = "repository_dispatch" ] && [ "${DISPATCH_SOURCE_REF}" != "refs/tags/${IMAGE_TAG}" ]; then
+            echo "Repository dispatch source ref ${DISPATCH_SOURCE_REF} does not match refs/tags/${IMAGE_TAG}" >&2
             exit 1
           fi
           if [ -n "${DISPATCH_RELEASE_URL}" ] && [ -n "${release_url}" ] && [ "${DISPATCH_RELEASE_URL}" != "${release_url}" ]; then
