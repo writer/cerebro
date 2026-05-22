@@ -205,28 +205,51 @@ def _latest_active_task_definition(task_definition: str, region: str) -> str:
     return replacement
 
 
-def _run_task(target: RuntimeTarget, region: str) -> str:
+def _verification_command(
+    runtime_id: str,
+    page_limit: int | None,
+    graph_page_limit: int | None,
+    event_limit: int | None,
+) -> list[str] | None:
+    if page_limit is None and graph_page_limit is None and event_limit is None:
+        return None
+    command = ["orchestrator", "run", f"runtime_id={runtime_id}"]
+    if page_limit is not None:
+        command.append(f"page_limit={page_limit}")
+    if graph_page_limit is not None:
+        command.append(f"graph_page_limit={graph_page_limit}")
+    if event_limit is not None:
+        command.append(f"event_limit={event_limit}")
+    return command
+
+
+def _run_task(target: RuntimeTarget, region: str, command_override: list[str] | None = None) -> str:
     ecs_params = target.target["EcsParameters"]
     network = ecs_params["NetworkConfiguration"]["awsvpcConfiguration"]
     subnets = ",".join(network["Subnets"])
     security_groups = ",".join(network["SecurityGroups"])
     assign_public_ip = network.get("AssignPublicIp", "DISABLED")
     task_definition = _latest_active_task_definition(ecs_params["TaskDefinitionArn"], region)
-    response = _aws(
-        [
-            "ecs",
-            "run-task",
-            "--cluster",
-            target.target["Arn"],
-            "--task-definition",
-            task_definition,
-            "--launch-type",
-            ecs_params.get("LaunchType", "FARGATE"),
-            "--network-configuration",
-            f"awsvpcConfiguration={{subnets=[{subnets}],securityGroups=[{security_groups}],assignPublicIp={assign_public_ip}}}",
-        ],
-        region,
-    )
+    args = [
+        "ecs",
+        "run-task",
+        "--cluster",
+        target.target["Arn"],
+        "--task-definition",
+        task_definition,
+        "--launch-type",
+        ecs_params.get("LaunchType", "FARGATE"),
+        "--network-configuration",
+        f"awsvpcConfiguration={{subnets=[{subnets}],securityGroups=[{security_groups}],assignPublicIp={assign_public_ip}}}",
+    ]
+    if command_override is not None:
+        args.extend(
+            [
+                "--overrides",
+                json.dumps({"containerOverrides": [{"name": "cerebro", "command": command_override}]}),
+            ]
+        )
+    response = _aws(args, region)
     failures = response.get("failures") or []
     if failures:
         raise RuntimeError(f"failed to start {target.runtime_id}: {failures}")
@@ -409,11 +432,12 @@ def _run_and_verify_task_with_retries(
     wait_timeout_seconds: int,
     poll_seconds: int,
     region: str,
+    command_override: list[str] | None = None,
 ) -> VerificationResult:
     deadline = time.time() + wait_timeout_seconds
     while True:
         remaining = max(1, int(deadline - time.time()))
-        task_arn = _run_task(target, region)
+        task_arn = _run_task(target, region, command_override)
         _wait_for_task(target.target["Arn"], task_arn, remaining, poll_seconds, region)
         try:
             return _verify_task(target, task_arn, region)
@@ -450,6 +474,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--runtime-id", action="append", default=[])
     parser.add_argument("--family", action="append", default=[], help="Restrict verification to source runtimes with this config family.")
     parser.add_argument("--run", action="store_true", help="Start each runtime from its EventBridge target before verifying.")
+    parser.add_argument("--run-page-limit", type=int, help="Override page_limit for tasks started by --run.")
+    parser.add_argument("--run-graph-page-limit", type=int, help="Override graph_page_limit for tasks started by --run.")
+    parser.add_argument("--run-event-limit", type=int, help="Override event_limit for tasks started by --run.")
     parser.add_argument("--max-age-minutes", type=int, default=180)
     parser.add_argument("--wait-timeout-seconds", type=int, default=900)
     parser.add_argument("--poll-seconds", type=int, default=10)
@@ -473,12 +500,19 @@ def main(argv: list[str] | None = None) -> int:
     results = []
     for target in targets:
         if args.run:
+            command_override = _verification_command(
+                target.runtime_id,
+                args.run_page_limit,
+                args.run_graph_page_limit,
+                args.run_event_limit,
+            )
             results.append(
                 _run_and_verify_task_with_retries(
                     target,
                     args.wait_timeout_seconds,
                     args.poll_seconds,
                     args.region,
+                    command_override,
                 )
             )
         else:
