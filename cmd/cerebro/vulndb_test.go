@@ -38,7 +38,7 @@ func TestVulnDBInputClientOpenTreatsRemoteSchemeCaseInsensitive(t *testing.T) {
 }
 
 func TestVulnDBInputClientRejectsUnsupportedURLSchemes(t *testing.T) {
-	for _, source := range []string{"file:///tmp/osv.json", "ftp://mirror.example/osv.json"} {
+	for _, source := range []string{"file:///tmp/osv.json", "file:/tmp/osv.json", "ftp://mirror.example/osv.json", "https:/mirror.example/osv.json"} {
 		_, err := (vulndbInputClient{}).Open(context.Background(), source, true)
 		if err == nil {
 			t.Fatalf("Open(%q) error = nil, want unsupported scheme rejection", source)
@@ -61,6 +61,18 @@ func TestVulnDBInputClientTreatsWindowsDrivePathsAsLocalFiles(t *testing.T) {
 		if errors.Is(err, errUnsupportedVulnDBURLScheme) {
 			t.Fatalf("Open(%q) error = %v, want local file error", source, err)
 		}
+	}
+}
+
+func TestVulnDBSourceSchemeLeavesDriveLetterPathsLocal(t *testing.T) {
+	if got := vulnDBSourceScheme(`C:\feeds\osv.json`); got != "" {
+		t.Fatalf("vulnDBSourceScheme(windows path) = %q, want local file path", got)
+	}
+	if got := vulnDBSourceScheme("ftp://mirror.example/osv.json"); got != "ftp" {
+		t.Fatalf("vulnDBSourceScheme(ftp URL) = %q, want ftp", got)
+	}
+	if got := vulnDBSourceScheme("https:/mirror.example/osv.json"); got != "https" {
+		t.Fatalf("vulnDBSourceScheme(malformed https URL) = %q, want https", got)
 	}
 }
 

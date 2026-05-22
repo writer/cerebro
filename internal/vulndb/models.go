@@ -123,6 +123,81 @@ func normalizePackageName(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
 
+// PackageLookupNames returns package-name keys that should be considered for a query.
+func PackageLookupNames(ecosystem string, packageName string) []string {
+	name := normalizePackageName(packageName)
+	if name == "" {
+		return nil
+	}
+	names := []string{name}
+	if strings.HasPrefix(normalizeEcosystem(ecosystem), "cpe:") {
+		names = append(names, cpePackageLookupPrefixes(name)...)
+	}
+	return dedupeStrings(names)
+}
+
+func cpePackageLookupPrefixes(name string) []string {
+	parts := strings.Split(name, ":")
+	firstQualifier := len(parts)
+	for i, part := range parts {
+		if strings.Contains(part, "=") {
+			firstQualifier = i
+			break
+		}
+	}
+	if firstQualifier == len(parts) {
+		return nil
+	}
+	base := parts[:firstQualifier]
+	qualifiers := parts[firstQualifier:]
+	prefixes := make([]string, 0, 1<<len(qualifiers))
+	for size := len(qualifiers) - 1; size >= 0; size-- {
+		cpeQualifierCombinations(qualifiers, size, func(selected []string) {
+			candidate := append(append([]string{}, base...), selected...)
+			prefix := strings.Join(candidate, ":")
+			if prefix != "" {
+				prefixes = append(prefixes, prefix)
+			}
+		})
+	}
+	return prefixes
+}
+
+func cpeQualifierCombinations(qualifiers []string, size int, visit func([]string)) {
+	if size == 0 {
+		visit(nil)
+		return
+	}
+	var walk func(start int, selected []string)
+	walk = func(start int, selected []string) {
+		if len(selected) == size {
+			visit(selected)
+			return
+		}
+		remaining := size - len(selected)
+		for i := start; i <= len(qualifiers)-remaining; i++ {
+			walk(i+1, append(selected, qualifiers[i]))
+		}
+	}
+	walk(0, nil)
+}
+
+func dedupeStrings(values []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
 func packageKey(ecosystem string, packageName string) string {
 	return normalizeEcosystem(ecosystem) + "\x00" + normalizePackageName(packageName)
 }
