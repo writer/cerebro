@@ -469,7 +469,7 @@ func TestProjectOktaAuditSuppressesEphemeralOAuthResources(t *testing.T) {
 
 			clientURN := "urn:cerebro:example:okta_application:0oa-client"
 			actorURN := "urn:cerebro:example:okta_actor:publicclientapp:0oa-client"
-			resourceURN := oktaResourceURN("writer", tt.resourceType, "token-123")
+			resourceURN := oktaResourceURN("example", tt.resourceType, "token-123")
 			if _, ok := state.entities[resourceURN]; ok {
 				t.Fatalf("ephemeral resource entity %q unexpectedly projected", resourceURN)
 			}
