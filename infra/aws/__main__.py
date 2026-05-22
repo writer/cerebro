@@ -50,6 +50,11 @@ def _config_bool(key: str, default: bool) -> bool:
     return default if value is None else value
 
 
+def _config_optional_positive_int(key: str) -> int | None:
+    value = config.get_int(key)
+    return value if value is not None and value > 0 else None
+
+
 # The cross-task lease around source-runtime cursor advances landed in
 # writer/cerebro PR #554 and ships in v2.1.25. Below that version the API
 # service still races other API replicas on cursor reads, so the
@@ -235,6 +240,10 @@ existing_vpc_cidr = config.get("vpcCidr") or "10.0.0.0/16"
 # Runtime backing services.
 postgres_instance_class = config.get("postgresInstanceClass") or ("db.t4g.small" if is_production else "db.t4g.micro")
 postgres_allocated_storage = _config_int("postgresAllocatedStorage", 50 if is_production else 20)
+postgres_max_allocated_storage = _config_optional_positive_int("postgresMaxAllocatedStorage")
+postgres_storage_type = config.get("postgresStorageType") or None
+postgres_iops = _config_optional_positive_int("postgresIops")
+postgres_storage_throughput = _config_optional_positive_int("postgresStorageThroughput")
 postgres_backup_retention_days = _config_int("postgresBackupRetentionDays", 14 if is_production else 3)
 postgres_deletion_protection = _config_bool("postgresDeletionProtection", is_production)
 postgres_multi_az = _config_bool("postgresMultiAz", is_production)
@@ -368,6 +377,10 @@ postgres_stack = postgres.create_postgres(
     secret_name=f"{external_secrets_prefix}/CEREBRO_POSTGRES_DSN",
     instance_class=postgres_instance_class,
     allocated_storage=postgres_allocated_storage,
+    max_allocated_storage=postgres_max_allocated_storage,
+    storage_type=postgres_storage_type,
+    iops=postgres_iops,
+    storage_throughput=postgres_storage_throughput,
     backup_retention_days=postgres_backup_retention_days,
     deletion_protection=postgres_deletion_protection,
     multi_az=postgres_multi_az,

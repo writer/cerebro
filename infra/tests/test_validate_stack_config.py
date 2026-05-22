@@ -243,6 +243,48 @@ class ValidateStackConfigTest(unittest.TestCase):
         findings = self._validate(content, name="Pulumi.sec-dev.yaml")
         self.assertTrue(any(finding.severity == "error" and "page_limit <= 5" in finding.message for finding in findings))
 
+    def test_sec_dev_postgres_requires_gp3_sized_storage_and_non_micro_class(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:apiMaxInstances: 1\n",
+            "  cerebro:apiMaxInstances: 1\n"
+            "  cerebro:postgresInstanceClass: db.t4g.micro\n"
+            "  cerebro:postgresAllocatedStorage: 20\n"
+            "  cerebro:postgresStorageType: gp2\n",
+        )
+        findings = self._validate(content, name="Pulumi.sec-dev.yaml")
+
+        self.assertTrue(any(finding.path == "cerebro:postgresInstanceClass" for finding in findings))
+        self.assertTrue(any(finding.path == "cerebro:postgresAllocatedStorage" for finding in findings))
+        self.assertTrue(any(finding.path == "cerebro:postgresStorageType" for finding in findings))
+
+    def test_sec_dev_postgres_accepts_gp3_sized_storage(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:apiMaxInstances: 1\n",
+            "  cerebro:apiMaxInstances: 1\n"
+            "  cerebro:postgresInstanceClass: db.t4g.small\n"
+            "  cerebro:postgresAllocatedStorage: 100\n"
+            "  cerebro:postgresMaxAllocatedStorage: 200\n"
+            "  cerebro:postgresStorageType: gp3\n",
+        )
+        findings = self._validate(content, name="Pulumi.sec-dev.yaml")
+
+        self.assertFalse(
+            any(finding.severity == "error" and finding.path.startswith("cerebro:postgres") for finding in findings)
+        )
+
+    def test_sec_dev_postgres_max_storage_must_cover_allocated_storage(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:apiMaxInstances: 1\n",
+            "  cerebro:apiMaxInstances: 1\n"
+            "  cerebro:postgresInstanceClass: db.t4g.small\n"
+            "  cerebro:postgresAllocatedStorage: 100\n"
+            "  cerebro:postgresMaxAllocatedStorage: 50\n"
+            "  cerebro:postgresStorageType: gp3\n",
+        )
+        findings = self._validate(content, name="Pulumi.sec-dev.yaml")
+
+        self.assertTrue(any(finding.path == "cerebro:postgresMaxAllocatedStorage" for finding in findings))
+
     def test_prod_high_contention_graph_budgets_are_bounded(self) -> None:
         content = BASE_STACK.replace(
             "        - runtime_id=writer-okta-audit\n",

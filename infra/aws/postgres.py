@@ -18,6 +18,10 @@ def create_postgres(
     secret_name: str,
     instance_class: str = "db.t4g.micro",
     allocated_storage: int = 20,
+    max_allocated_storage: int | None = None,
+    storage_type: str | None = None,
+    iops: int | None = None,
+    storage_throughput: int | None = None,
     backup_retention_days: int = 7,
     deletion_protection: bool = False,
     multi_az: bool = False,
@@ -66,7 +70,14 @@ def create_postgres(
         engine_version="16.4",
         instance_class=instance_class,
         allocated_storage=allocated_storage,
-        max_allocated_storage=max(allocated_storage * 2, allocated_storage + 20),
+        max_allocated_storage=(
+            max_allocated_storage
+            if max_allocated_storage is not None
+            else _default_max_allocated_storage(allocated_storage)
+        ),
+        storage_type=storage_type,
+        iops=iops,
+        storage_throughput=storage_throughput,
         db_name="cerebro",
         username="cerebro",
         password=password.result,
@@ -107,3 +118,7 @@ def create_postgres(
         "secret": secret,
         "secret_version": secret_version,
     }
+
+
+def _default_max_allocated_storage(allocated_storage: int) -> int:
+    return max(allocated_storage * 2, allocated_storage + 20)
