@@ -72,6 +72,8 @@ jobs:
   ghcr-publish:
     runs-on: ubuntu-latest
     needs: [resolve-tag, goreleaser]
+    outputs:
+      digest: ${{ steps.manifest.outputs.digest }}
     env:
       RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
     steps:
@@ -137,6 +139,7 @@ jobs:
             --push .
 
       - name: Create and push multi-arch manifests
+        id: manifest
         shell: bash
         env:
           IMAGE_BASE: ghcr.io/${{ github.repository }}
@@ -150,6 +153,14 @@ jobs:
             "${IMAGE_BASE}:${RELEASE_TAG}-amd64" \
             "${IMAGE_BASE}:${RELEASE_TAG}-arm64"
 
+          digest="$(docker buildx imagetools inspect "${IMAGE_BASE}:${RELEASE_TAG}" --format '{{.Manifest.Digest}}')"
+          if [ -z "${digest}" ]; then
+            echo "ERROR: failed to resolve manifest digest for ${IMAGE_BASE}:${RELEASE_TAG}" >&2
+            exit 1
+          fi
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          echo "Published ${IMAGE_BASE}:${RELEASE_TAG}@${digest}"
+
       - name: Keyless sign release images
         shell: bash
         env:
@@ -161,29 +172,96 @@ jobs:
           "${RUNNER_TEMP}/cosign/cosign" sign --yes "${IMAGE_BASE}:${RELEASE_TAG}"
           "${RUNNER_TEMP}/cosign/cosign" sign --yes "${IMAGE_BASE}:latest"
 
-  promote-aws:
+  notify-infra-release:
     runs-on: ubuntu-latest
     needs: [resolve-tag, ghcr-publish]
-    strategy:
-      fail-fast: false
-      matrix:
-        environment: [sec-dev, go-prod]
     steps:
-      - name: Trigger infra image promotion
+      - name: Dispatch release deployment request
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.CEREBRO_INFRA_PROMOTION_TOKEN }}
+          INFRA_REPOSITORY: ${{ secrets.CEREBRO_INFRA_REPOSITORY }}
           RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
-          STACK_NAME: ${{ matrix.environment }}
+          IMAGE_DIGEST: ${{ needs.ghcr-publish.outputs.digest }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
           if [ -z "${GH_TOKEN}" ]; then
-            echo "::warning::CEREBRO_INFRA_PROMOTION_TOKEN is not configured; skipping ${STACK_NAME} promotion for ${RELEASE_TAG}"
+            echo "::warning::CEREBRO_INFRA_PROMOTION_TOKEN is not configured; skipping deploy dispatch for ${RELEASE_TAG}"
             exit 0
           fi
-          gh workflow run propose-image-tag.yml \
-            --repo WriterInternal/cerebro \
-            --ref main \
-            -f environment="${STACK_NAME}" \
-            -f image_tag="${RELEASE_TAG}"
-          echo "Requested ${STACK_NAME} promotion for ${RELEASE_TAG}"
+          if ! [[ "${INFRA_REPOSITORY}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            echo "ERROR: CEREBRO_INFRA_REPOSITORY must be configured as owner/repo for deploy dispatches" >&2
+            exit 1
+          fi
+
+          handler="$(mktemp)"
+          gh api "repos/${INFRA_REPOSITORY}/contents/.github/workflows/propose-image-tag.yml?ref=main" --jq .content \
+            | base64 -d > "${handler}"
+          if ! grep -Eq '^[[:space:]]*repository_dispatch:' "${handler}" || ! grep -Eq 'cerebro-release-published' "${handler}"; then
+            echo "ERROR: configured deploy repository does not have the cerebro-release-published repository_dispatch handler installed" >&2
+            echo "Merge the deploy handler before dispatching releases." >&2
+            exit 1
+          fi
+          if ! grep -Eq 'client_payload\.request_id' "${handler}"; then
+            echo "ERROR: configured deploy repository does not expose request_id in workflow run names" >&2
+            echo "Merge the request-id run-name handler before dispatching releases." >&2
+            exit 1
+          fi
+
+          requested_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          request_id="cerebro-${RELEASE_TAG}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+          jq -n \
+            --arg tag "${RELEASE_TAG}" \
+            --arg digest "${IMAGE_DIGEST}" \
+            --arg release_url "https://github.com/${SOURCE_REPOSITORY}/releases/tag/${RELEASE_TAG}" \
+            --arg source_repository "${SOURCE_REPOSITORY}" \
+            --arg source_ref "refs/tags/${RELEASE_TAG}" \
+            --arg request_id "${request_id}" \
+            '{
+              event_type: "cerebro-release-published",
+              client_payload: {
+                image_tag: $tag,
+                image_digest: $digest,
+                release_url: $release_url,
+                source_repository: $source_repository,
+                source_ref: $source_ref,
+                request_id: $request_id,
+                target_environment: "sec-dev",
+                apply_mode: "direct_push"
+              }
+            }' | gh api --method POST "repos/${INFRA_REPOSITORY}/dispatches" --input -
+
+          deadline=$((SECONDS + 120))
+          while [ "${SECONDS}" -lt "${deadline}" ]; do
+            run_id="$(
+              gh run list \
+                --repo "${INFRA_REPOSITORY}" \
+                --workflow propose-image-tag.yml \
+                --event repository_dispatch \
+                --json databaseId,createdAt,displayTitle,url \
+                --limit 20 \
+                | jq -r --arg requested_at "${requested_at}" --arg request_id "${request_id}" '.[] | select(.createdAt >= $requested_at and ((.displayTitle // "") | contains($request_id))) | .databaseId' \
+                | head -n 1
+            )"
+            if [ -n "${run_id}" ]; then
+              run_url="$(
+                gh run list \
+                  --repo "${INFRA_REPOSITORY}" \
+                  --workflow propose-image-tag.yml \
+                  --event repository_dispatch \
+                  --json databaseId,url \
+                  --limit 20 \
+                  --jq ".[] | select(.databaseId == ${run_id}) | .url" \
+                  | head -n 1
+              )"
+              echo "Dispatched sec-dev deploy request for ${RELEASE_TAG}@${IMAGE_DIGEST}: ${run_url}"
+              exit 0
+            fi
+            sleep 5
+          done
+
+          echo "ERROR: repository_dispatch was accepted, but no matching propose-image-tag.yml run appeared for ${RELEASE_TAG}" >&2
+          echo "This usually means the downstream handler is absent or disabled; failing closed to avoid silent deploy loss." >&2
+          exit 1
