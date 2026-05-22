@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/writer/cerebro/internal/ports"
 )
+
+const defaultProjectionCleanupLimit = 1000
 
 var ensureProjectionStatements = []string{
 	`CREATE TABLE IF NOT EXISTS entities (
@@ -36,6 +39,7 @@ var ensureProjectionStatements = []string{
   PRIMARY KEY (from_urn, relation, to_urn)
 )`,
 	`CREATE INDEX IF NOT EXISTS entity_links_tenant_relation_idx ON entity_links (tenant_id, relation)`,
+	`CREATE INDEX IF NOT EXISTS entity_links_to_urn_idx ON entity_links (to_urn)`,
 	`ALTER TABLE entity_links ADD COLUMN IF NOT EXISTS runtime_id TEXT NOT NULL DEFAULT ''`,
 	`CREATE INDEX IF NOT EXISTS entity_links_tenant_runtime_idx ON entity_links (tenant_id, runtime_id)`,
 }
@@ -72,6 +76,100 @@ func projectedLinkDeleteSQL() string {
 	return `
 DELETE FROM entity_links
 WHERE from_urn = $1 AND relation = $2 AND to_urn = $3`
+}
+
+func projectedEntityLinkDeleteSQL() string {
+	return `
+DELETE FROM entity_links
+WHERE from_urn = $1 OR to_urn = $1`
+}
+
+func projectedEntityDeleteSQL() string {
+	return `
+DELETE FROM entities
+WHERE urn = $1`
+}
+
+func projectedEntityCleanupSQL(request ports.ProjectionCleanupRequest) (string, []any, error) {
+	conditions, args, scoped := projectedEntityCleanupConditions(request)
+	if !scoped {
+		return "", nil, errors.New("projection cleanup scope is required")
+	}
+	limit := request.Limit
+	if limit == 0 {
+		limit = defaultProjectionCleanupLimit
+	}
+	args = append(args, limit)
+	limitPlaceholder := len(args)
+	query := fmt.Sprintf(`
+WITH victims AS (
+  SELECT e.urn
+  FROM entities e
+  WHERE %s
+  ORDER BY e.urn
+  LIMIT $%d
+),
+deleted_links AS (
+  DELETE FROM entity_links l
+  USING victims v
+  WHERE l.from_urn = v.urn OR l.to_urn = v.urn
+  RETURNING 1
+),
+deleted_entities AS (
+  DELETE FROM entities e
+  USING victims v
+  WHERE e.urn = v.urn
+  RETURNING 1
+)
+SELECT
+  (SELECT COUNT(*) FROM deleted_entities) AS entities_deleted,
+  (SELECT COUNT(*) FROM deleted_links) AS links_deleted`, strings.Join(conditions, " AND "), limitPlaceholder)
+	return query, args, nil
+}
+
+func projectedEntityCleanupConditions(request ports.ProjectionCleanupRequest) ([]string, []any, bool) {
+	conditions := []string{}
+	args := []any{}
+	scoped := false
+	addStringCondition := func(column string, value string) {
+		normalized := strings.TrimSpace(value)
+		if normalized == "" {
+			return
+		}
+		args = append(args, normalized)
+		conditions = append(conditions, fmt.Sprintf("e.%s = $%d", column, len(args)))
+		scoped = true
+	}
+	addStringCondition("tenant_id", request.TenantID)
+	addStringCondition("source_id", request.SourceID)
+	addStringCondition("runtime_id", request.RuntimeID)
+	if findingID := strings.TrimSpace(request.FindingID); findingID != "" {
+		args = append(args, findingID)
+		conditions = append(conditions, fmt.Sprintf("e.attributes_json ->> 'finding_id' = $%d", len(args)))
+		scoped = true
+	}
+	if entityTypes := normalizeProjectionCleanupValues(request.EntityTypes); len(entityTypes) != 0 {
+		placeholders := make([]string, 0, len(entityTypes))
+		for _, entityType := range entityTypes {
+			args = append(args, entityType)
+			placeholders = append(placeholders, fmt.Sprintf("$%d", len(args)))
+		}
+		conditions = append(conditions, fmt.Sprintf("e.entity_type IN (%s)", strings.Join(placeholders, ", ")))
+		scoped = true
+	}
+	if urnPrefixes := normalizeProjectionCleanupValues(request.URNPrefixes); len(urnPrefixes) != 0 {
+		prefixConditions := make([]string, 0, len(urnPrefixes))
+		for _, urnPrefix := range urnPrefixes {
+			args = append(args, urnPrefix)
+			prefixConditions = append(prefixConditions, fmt.Sprintf("LEFT(e.urn, LENGTH($%d)) = $%d", len(args), len(args)))
+		}
+		conditions = append(conditions, "("+strings.Join(prefixConditions, " OR ")+")")
+		scoped = true
+	}
+	if request.OnlyIsolated && strings.TrimSpace(request.FindingID) == "" {
+		conditions = append(conditions, "NOT EXISTS (SELECT 1 FROM entity_links l WHERE l.from_urn = e.urn OR l.to_urn = e.urn)")
+	}
+	return conditions, args, scoped
 }
 
 // UpsertProjectedEntity persists one normalized entity in the current-state store.
@@ -185,6 +283,57 @@ func (s *Store) DeleteProjectedLink(ctx context.Context, link *ports.ProjectedLi
 	return nil
 }
 
+// DeleteProjectedEntity removes one normalized entity and any current-state links that reference it.
+func (s *Store) DeleteProjectedEntity(ctx context.Context, urn string) error {
+	normalizedURN := strings.TrimSpace(urn)
+	if normalizedURN == "" {
+		return errors.New("projected entity urn is required")
+	}
+	if s == nil || s.db == nil {
+		return errors.New("postgres is not configured")
+	}
+	if err := s.ensureProjectionTables(ctx); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin projected entity delete: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, projectedEntityLinkDeleteSQL(), normalizedURN); err != nil {
+		return fmt.Errorf("delete projected entity links %q: %w", normalizedURN, err)
+	}
+	if _, err := tx.ExecContext(ctx, projectedEntityDeleteSQL(), normalizedURN); err != nil {
+		return fmt.Errorf("delete projected entity %q: %w", normalizedURN, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit projected entity delete %q: %w", normalizedURN, err)
+	}
+	return nil
+}
+
+// CleanupProjectedEntities removes projected entities matching a scoped cleanup request.
+func (s *Store) CleanupProjectedEntities(ctx context.Context, request ports.ProjectionCleanupRequest) (ports.ProjectionCleanupResult, error) {
+	if s == nil || s.db == nil {
+		return ports.ProjectionCleanupResult{}, errors.New("postgres is not configured")
+	}
+	if err := s.ensureProjectionTables(ctx); err != nil {
+		return ports.ProjectionCleanupResult{}, err
+	}
+	query, args, err := projectedEntityCleanupSQL(request)
+	if err != nil {
+		return ports.ProjectionCleanupResult{}, err
+	}
+	var result ports.ProjectionCleanupResult
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&result.EntitiesDeleted, &result.LinksDeleted); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ports.ProjectionCleanupResult{}, nil
+		}
+		return ports.ProjectionCleanupResult{}, fmt.Errorf("cleanup projected entities: %w", err)
+	}
+	return result, nil
+}
+
 func (s *Store) ensureProjectionTables(ctx context.Context) error {
 	return s.ensureStatements(ctx, &s.projectionTablesReady, "projection", ensureProjectionStatements)
 }
@@ -198,4 +347,21 @@ func projectionAttributesJSON(attributes map[string]string) (string, error) {
 		return "", err
 	}
 	return string(payload), nil
+}
+
+func normalizeProjectionCleanupValues(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		normalized = append(normalized, value)
+	}
+	return normalized
 }

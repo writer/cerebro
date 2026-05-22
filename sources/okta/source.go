@@ -1440,6 +1440,8 @@ func oktaOAuthGrantType(eventType string) string {
 		return "authorization_code"
 	case strings.HasSuffix(action, ".access_token"):
 		return "access_token"
+	case strings.HasSuffix(action, ".refresh_token"):
+		return "refresh_token"
 	case strings.HasSuffix(action, ".id_token"):
 		return "id_token"
 	default:

@@ -28,6 +28,7 @@ const (
 	DefaultStatusLimit       = 25
 	MaxStatusLimit           = 500
 	terminalRunUpdateTimeout = 15 * time.Second
+	defaultCleanupLimit      = 1000
 )
 
 var (
@@ -63,6 +64,14 @@ type Service struct {
 
 type projectionRecordProjector interface {
 	ProjectRecords(*cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error)
+}
+
+type projectionRecordCleanupProjector interface {
+	ProjectCleanupRecords(*cerebrov1.EventEnvelope) ([]string, error)
+}
+
+type projectionRecordCleanupRequestProjector interface {
+	ProjectCleanupRequests(*cerebrov1.EventEnvelope) ([]ports.ProjectionCleanupRequest, error)
 }
 
 type pageProjectionResult struct {
@@ -444,6 +453,7 @@ func (s *Service) ingestSource(ctx context.Context, request sourceRequest) (*Ing
 		result.GraphNodesBefore = counts.Nodes
 		result.GraphLinksBefore = counts.Relations
 	}
+	completedCleanupRequests := map[string]struct{}{}
 	for i := uint32(0); i < request.PageLimit; i++ {
 		response, err := s.sourceService.Read(ctx, &cerebrov1.ReadSourceRequest{
 			SourceId: request.SourceID,
@@ -455,7 +465,7 @@ func (s *Service) ingestSource(ctx context.Context, request sourceRequest) (*Ing
 		}
 		result.PagesRead++
 		if recordProjector, ok := s.projector.(projectionRecordProjector); ok {
-			projected, err := s.projectResponseCoalesced(ctx, request, response, recordProjector)
+			projected, err := s.projectResponseCoalesced(ctx, request, response, recordProjector, completedCleanupRequests)
 			result.EventsRead += projected.EventsRead
 			result.EntitiesProjected += projected.EntitiesProjected
 			result.LinksProjected += projected.LinksProjected
@@ -497,13 +507,15 @@ func (s *Service) ingestSource(ctx context.Context, request sourceRequest) (*Ing
 	return result, nil
 }
 
-func (s *Service) projectResponseCoalesced(ctx context.Context, request sourceRequest, response *cerebrov1.ReadSourceResponse, projector projectionRecordProjector) (pageProjectionResult, error) {
+func (s *Service) projectResponseCoalesced(ctx context.Context, request sourceRequest, response *cerebrov1.ReadSourceResponse, projector projectionRecordProjector, completedCleanupRequests map[string]struct{}) (pageProjectionResult, error) {
 	graphStore, ok := s.graphStore.(ports.ProjectionGraphStore)
 	if !ok {
 		return pageProjectionResult{}, ErrRuntimeUnavailable
 	}
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
+	cleanupURNs := map[string]struct{}{}
+	cleanupRequests := map[string]ports.ProjectionCleanupRequest{}
 	result := pageProjectionResult{}
 	for _, event := range response.GetEvents() {
 		ingested := ingestEvent(event, request.TenantID, request.RuntimeID)
@@ -517,7 +529,52 @@ func (s *Service) projectResponseCoalesced(ctx context.Context, request sourceRe
 		for _, link := range projectedLinks {
 			mergeProjectedLink(links, link)
 		}
+		if cleanupProjector, ok := projector.(projectionRecordCleanupProjector); ok {
+			projectedCleanupURNs, err := cleanupProjector.ProjectCleanupRecords(ingested)
+			if err != nil {
+				return result, fmt.Errorf("project cleanup records for source event %q: %w", event.GetId(), err)
+			}
+			for _, urn := range projectedCleanupURNs {
+				normalizedURN := strings.TrimSpace(urn)
+				if normalizedURN != "" {
+					cleanupURNs[normalizedURN] = struct{}{}
+				}
+			}
+		}
+		if cleanupRequestProjector, ok := projector.(projectionRecordCleanupRequestProjector); ok {
+			projectedCleanupRequests, err := cleanupRequestProjector.ProjectCleanupRequests(ingested)
+			if err != nil {
+				return result, fmt.Errorf("project cleanup requests for source event %q: %w", event.GetId(), err)
+			}
+			for _, request := range projectedCleanupRequests {
+				key := projectionCleanupRequestKey(request)
+				if _, completed := completedCleanupRequests[key]; completed {
+					continue
+				}
+				cleanupRequests[key] = request
+			}
+		}
 		result.EventsRead++
+	}
+	if deleter, ok := graphStore.(ports.ProjectionEntityDeleter); ok {
+		for _, urn := range sortedMapKeys(cleanupURNs) {
+			if _, willUpsert := entities[urn]; willUpsert {
+				continue
+			}
+			if err := deleter.DeleteProjectedEntity(ctx, urn); err != nil {
+				return result, fmt.Errorf("delete coalesced projected entity %q: %w", urn, err)
+			}
+		}
+	}
+	if cleaner, ok := graphStore.(ports.ProjectionCleaner); ok {
+		for _, key := range sortedMapKeys(cleanupRequests) {
+			if _, err := cleanupProjectedEntities(ctx, cleaner, cleanupRequests[key]); err != nil {
+				return result, fmt.Errorf("cleanup coalesced projected entities: %w", err)
+			}
+			if completedCleanupRequests != nil {
+				completedCleanupRequests[key] = struct{}{}
+			}
+		}
 	}
 	entityKeys := sortedMapKeys(entities)
 	for _, key := range entityKeys {
@@ -534,6 +591,47 @@ func (s *Service) projectResponseCoalesced(ctx context.Context, request sourceRe
 		result.LinksProjected++
 	}
 	return result, nil
+}
+
+func cleanupProjectedEntities(ctx context.Context, cleaner ports.ProjectionCleaner, request ports.ProjectionCleanupRequest) (ports.ProjectionCleanupResult, error) {
+	result := ports.ProjectionCleanupResult{}
+	limit := projectionCleanupBatchLimit(request)
+	for {
+		cleanup, err := cleaner.CleanupProjectedEntities(ctx, request)
+		if err != nil {
+			return result, err
+		}
+		result.EntitiesDeleted += cleanup.EntitiesDeleted
+		result.LinksDeleted += cleanup.LinksDeleted
+		if cleanup.EntitiesDeleted < limit {
+			return result, nil
+		}
+	}
+}
+
+func projectionCleanupBatchLimit(request ports.ProjectionCleanupRequest) uint32 {
+	if request.Limit == 0 {
+		return defaultCleanupLimit
+	}
+	return request.Limit
+}
+
+func projectionCleanupRequestKey(request ports.ProjectionCleanupRequest) string {
+	entityTypes := append([]string(nil), request.EntityTypes...)
+	urnPrefixes := append([]string(nil), request.URNPrefixes...)
+	sort.Strings(entityTypes)
+	sort.Strings(urnPrefixes)
+	values := []string{
+		strings.TrimSpace(request.TenantID),
+		strings.TrimSpace(request.SourceID),
+		strings.TrimSpace(request.RuntimeID),
+		strings.TrimSpace(request.FindingID),
+		strings.Join(entityTypes, ","),
+		strings.Join(urnPrefixes, ","),
+		fmt.Sprintf("%t", request.OnlyIsolated),
+		fmt.Sprintf("%d", request.Limit),
+	}
+	return strings.Join(values, "|")
 }
 
 func mergeProjectedEntity(entities map[string]*ports.ProjectedEntity, entity *ports.ProjectedEntity) {

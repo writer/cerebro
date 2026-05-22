@@ -68,3 +68,57 @@ func TestProjectedLinkDeleteUsesPrimaryKey(t *testing.T) {
 		t.Fatalf("link delete includes non-primary-key filters:\n%s", linkSQL)
 	}
 }
+
+func TestProjectionEnsureStatementsIndexReverseLinkLookups(t *testing.T) {
+	for _, statement := range ensureProjectionStatements {
+		if strings.Contains(statement, "entity_links_to_urn_idx") && strings.Contains(statement, "ON entity_links (to_urn)") {
+			return
+		}
+	}
+	t.Fatalf("ensureProjectionStatements missing entity_links to_urn index: %#v", ensureProjectionStatements)
+}
+
+func TestProjectedEntityCleanupSQLRequiresScope(t *testing.T) {
+	if _, _, err := projectedEntityCleanupSQL(ports.ProjectionCleanupRequest{OnlyIsolated: true}); err == nil {
+		t.Fatal("projectedEntityCleanupSQL() error = nil, want non-nil")
+	}
+}
+
+func TestProjectedEntityCleanupSQLIncludesScopedFilters(t *testing.T) {
+	query, args, err := projectedEntityCleanupSQL(ports.ProjectionCleanupRequest{
+		TenantID:     "writer",
+		SourceID:     "okta",
+		RuntimeID:    "okta-audit-runtime",
+		EntityTypes:  []string{"okta.resource"},
+		URNPrefixes:  []string{"urn:cerebro:writer:okta_resource:access_token:"},
+		OnlyIsolated: true,
+		Limit:        25,
+	})
+	if err != nil {
+		t.Fatalf("projectedEntityCleanupSQL() error = %v", err)
+	}
+	for _, want := range []string{
+		"e.tenant_id = $1",
+		"e.source_id = $2",
+		"e.runtime_id = $3",
+		"e.entity_type IN ($4)",
+		"LEFT(e.urn, LENGTH($5)) = $5",
+		"NOT EXISTS (SELECT 1 FROM entity_links l WHERE l.from_urn = e.urn OR l.to_urn = e.urn)",
+		"LIMIT $6",
+		"DELETE FROM entity_links",
+		"DELETE FROM entities",
+	} {
+		if !strings.Contains(query, want) {
+			t.Fatalf("cleanup SQL missing %q:\n%s", want, query)
+		}
+	}
+	if len(args) != 6 {
+		t.Fatalf("cleanup SQL args = %d, want 6", len(args))
+	}
+	if args[4] != "urn:cerebro:writer:okta_resource:access_token:" {
+		t.Fatalf("cleanup prefix arg = %#v, want literal access_token prefix", args[4])
+	}
+	if args[5] != uint32(25) {
+		t.Fatalf("cleanup limit arg = %#v, want uint32(25)", args[5])
+	}
+}

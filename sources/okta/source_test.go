@@ -287,6 +287,33 @@ func TestAuditEventNormalizesOAuthRuntimeGrantTelemetry(t *testing.T) {
 	}
 }
 
+func TestAuditEventNormalizesRefreshTokenGrantType(t *testing.T) {
+	event, err := auditEvent(settings{domain: "tenant.example"}, auditRecord{
+		UUID:      "evt-refresh-token",
+		Published: mustParseTime(t, "2026-05-07T19:54:46Z"),
+		EventType: "app.oauth2.token.grant.refresh_token",
+		Actor: map[string]any{
+			"id":          "0oa-client",
+			"type":        "PublicClientApp",
+			"displayName": "Production Client",
+		},
+		Target: []map[string]any{{
+			"id":   "refresh-token-123",
+			"type": "RefreshToken",
+		}},
+		raw: json.RawMessage(`{"uuid":"evt-refresh-token"}`),
+	})
+	if err != nil {
+		t.Fatalf("auditEvent() error = %v", err)
+	}
+	if got := event.Attributes["oauth_event_category"]; got != "runtime_grant" {
+		t.Fatalf("oauth_event_category = %q, want runtime_grant", got)
+	}
+	if got := event.Attributes["grant_type"]; got != "refresh_token" {
+		t.Fatalf("grant_type = %q, want refresh_token", got)
+	}
+}
+
 func TestAuditEventDoesNotClassifyRoutineAssignmentAsOAuthCredentialChange(t *testing.T) {
 	published := mustParseTime(t, "2026-05-07T19:54:46Z")
 	event, err := auditEvent(settings{domain: "writer.okta.com"}, auditRecord{

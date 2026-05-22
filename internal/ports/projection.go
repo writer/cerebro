@@ -43,6 +43,7 @@ type ProjectionCleanupRequest struct {
 	RuntimeID    string
 	FindingID    string
 	EntityTypes  []string
+	URNPrefixes  []string
 	OnlyIsolated bool
 	Limit        uint32
 }

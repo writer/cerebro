@@ -14,8 +14,10 @@ import (
 )
 
 type projectionRecorder struct {
-	entities map[string]*ports.ProjectedEntity
-	links    map[string]*ports.ProjectedLink
+	entities        map[string]*ports.ProjectedEntity
+	links           map[string]*ports.ProjectedLink
+	deletedEntities map[string]struct{}
+	cleanupRequests []ports.ProjectionCleanupRequest
 }
 
 func (r *projectionRecorder) Ping(context.Context) error {
@@ -42,6 +44,81 @@ func (r *projectionRecorder) UpsertProjectedLink(_ context.Context, link *ports.
 	}
 	r.links[projectedLinkKey(link)] = cloneProjectedLink(link)
 	return nil
+}
+
+func (r *projectionRecorder) DeleteProjectedEntity(_ context.Context, urn string) error {
+	if r.deletedEntities == nil {
+		r.deletedEntities = make(map[string]struct{})
+	}
+	r.deletedEntities[urn] = struct{}{}
+	delete(r.entities, urn)
+	for key, link := range r.links {
+		if link.FromURN == urn || link.ToURN == urn {
+			delete(r.links, key)
+		}
+	}
+	return nil
+}
+
+func (r *projectionRecorder) CleanupProjectedEntities(_ context.Context, request ports.ProjectionCleanupRequest) (ports.ProjectionCleanupResult, error) {
+	r.cleanupRequests = append(r.cleanupRequests, request)
+	var result ports.ProjectionCleanupResult
+	limit := cleanupBatchLimit(request)
+	for urn, entity := range r.entities {
+		if result.EntitiesDeleted >= limit {
+			break
+		}
+		if !projectionRecorderCleanupMatches(request, entity) {
+			continue
+		}
+		delete(r.entities, urn)
+		result.EntitiesDeleted++
+	}
+	for key, link := range r.links {
+		if _, ok := r.entities[link.FromURN]; !ok {
+			delete(r.links, key)
+			result.LinksDeleted++
+			continue
+		}
+		if _, ok := r.entities[link.ToURN]; !ok {
+			delete(r.links, key)
+			result.LinksDeleted++
+		}
+	}
+	return result, nil
+}
+
+func projectionRecorderCleanupMatches(request ports.ProjectionCleanupRequest, entity *ports.ProjectedEntity) bool {
+	if request.TenantID != "" && entity.TenantID != request.TenantID {
+		return false
+	}
+	if request.SourceID != "" && entity.SourceID != request.SourceID {
+		return false
+	}
+	if request.RuntimeID != "" && entity.RuntimeID != request.RuntimeID {
+		return false
+	}
+	if len(request.EntityTypes) != 0 {
+		matchedType := false
+		for _, entityType := range request.EntityTypes {
+			if entity.EntityType == entityType {
+				matchedType = true
+				break
+			}
+		}
+		if !matchedType {
+			return false
+		}
+	}
+	if len(request.URNPrefixes) == 0 {
+		return true
+	}
+	for _, prefix := range request.URNPrefixes {
+		if strings.HasPrefix(entity.URN, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestProjectGitHubPullRequest(t *testing.T) {
@@ -286,6 +363,525 @@ func TestProjectOktaOAuthGrantAsApplicationTelemetry(t *testing.T) {
 	}
 	assertProjectedLink(t, state, clientURN, relationActedOn, userURN)
 	assertProjectedLink(t, state, clientURN, relationBelongsTo, "urn:cerebro:writer:okta_org:writer.okta.com")
+}
+
+func TestProjectOktaAuditSuppressesEphemeralOAuthResources(t *testing.T) {
+	tests := []struct {
+		name         string
+		eventType    string
+		resourceType string
+		grantType    string
+		category     string
+	}{
+		{
+			name:         "access token",
+			eventType:    "app.oauth2.token.grant.access_token",
+			resourceType: "access_token",
+			grantType:    "access_token",
+			category:     "runtime_grant",
+		},
+		{
+			name:         "camel case access token",
+			eventType:    "app.oauth2.token.grant.access_token",
+			resourceType: "AccessToken",
+			grantType:    "access_token",
+			category:     "runtime_grant",
+		},
+		{
+			name:         "kebab case access token with event fallback",
+			eventType:    "app.oauth2.token.grant.access_token",
+			resourceType: "access-token",
+			grantType:    "access_token",
+		},
+		{
+			name:         "refresh token",
+			eventType:    "app.oauth2.token.grant.refresh_token",
+			resourceType: "refresh_token",
+			grantType:    "refresh_token",
+			category:     "runtime_grant",
+		},
+		{
+			name:         "authorization code with event fallback",
+			eventType:    "app.oauth2.authorize.code",
+			resourceType: "AuthorizationCode",
+			grantType:    "authorization_code",
+		},
+		{
+			name:         "id token",
+			eventType:    "app.oauth2.token.grant.id_token",
+			resourceType: "IdToken",
+			grantType:    "id_token",
+			category:     "runtime_grant",
+		},
+		{
+			name:         "code",
+			eventType:    "app.oauth2.authorize.code",
+			resourceType: "code",
+			grantType:    "authorization_code",
+			category:     "runtime_grant",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			state := &projectionRecorder{}
+			service := New(state, nil)
+
+			_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+				Id:       "okta-oauth-token",
+				TenantId: "writer",
+				SourceId: "okta",
+				Kind:     "okta.audit",
+				Attributes: map[string]string{
+					"domain":               "writer.okta.com",
+					"event_type":           tt.eventType,
+					"actor_id":             "0oa-client",
+					"actor_type":           "PublicClientApp",
+					"actor_display_name":   "Production Client",
+					"resource_id":          "token-123",
+					"resource_type":        tt.resourceType,
+					"oauth_client_id":      "0oa-client",
+					"oauth_client_label":   "Production Client",
+					"oauth_client_type":    "PublicClientApp",
+					"oauth_event_category": tt.category,
+					"grant_type":           tt.grantType,
+				},
+			})
+			if err != nil {
+				t.Fatalf("Project() error = %v", err)
+			}
+
+			clientURN := "urn:cerebro:writer:okta_application:0oa-client"
+			actorURN := "urn:cerebro:writer:okta_actor:publicclientapp:0oa-client"
+			resourceURN := oktaResourceURN("writer", tt.resourceType, "token-123")
+			if _, ok := state.entities[resourceURN]; ok {
+				t.Fatalf("ephemeral resource entity %q unexpectedly projected", resourceURN)
+			}
+			assertProjectedLinkMissing(t, state, clientURN, relationActedOn, resourceURN)
+			assertProjectedLinkMissing(t, state, actorURN, relationActedOn, resourceURN)
+			assertProjectedLinkMissing(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:okta_org:writer.okta.com")
+			assertProjectedLink(t, state, actorURN, relationActedOn, clientURN)
+
+			link := state.links[actorURN+"|"+relationActedOn+"|"+clientURN]
+			if got := link.Attributes["grant_type"]; got != tt.grantType {
+				t.Fatalf("grant_type = %q, want %q", got, tt.grantType)
+			}
+			if tt.category != "" {
+				if got := link.Attributes["oauth_event_category"]; got != tt.category {
+					t.Fatalf("oauth_event_category = %q, want %q", got, tt.category)
+				}
+			}
+		})
+	}
+}
+
+func TestProjectOktaAuditDeletesPreviouslyProjectedEphemeralOAuthResource(t *testing.T) {
+	resourceURN := "urn:cerebro:writer:okta_resource:access_token:token-123"
+	clientURN := "urn:cerebro:writer:okta_application:0oa-client"
+	oldLink := &ports.ProjectedLink{
+		TenantID: "writer",
+		SourceID: "okta",
+		FromURN:  clientURN,
+		Relation: relationActedOn,
+		ToURN:    resourceURN,
+	}
+	state := &projectionRecorder{
+		entities: map[string]*ports.ProjectedEntity{resourceURN: {
+			URN:        resourceURN,
+			TenantID:   "writer",
+			SourceID:   "okta",
+			EntityType: "okta.resource",
+			Label:      "token-123",
+		}},
+		links: map[string]*ports.ProjectedLink{projectedLinkKey(oldLink): oldLink},
+	}
+	graph := &projectionRecorder{
+		entities: map[string]*ports.ProjectedEntity{resourceURN: {
+			URN:        resourceURN,
+			TenantID:   "writer",
+			SourceID:   "okta",
+			EntityType: "okta.resource",
+			Label:      "token-123",
+		}},
+		links: map[string]*ports.ProjectedLink{projectedLinkKey(oldLink): oldLink},
+	}
+	service := New(state, graph)
+
+	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "okta-oauth-token",
+		TenantId: "writer",
+		SourceId: "okta",
+		Kind:     "okta.audit",
+		Attributes: map[string]string{
+			"domain":               "writer.okta.com",
+			"event_type":           "app.oauth2.token.grant.access_token",
+			"actor_id":             "0oa-client",
+			"actor_type":           "PublicClientApp",
+			"actor_display_name":   "Production Client",
+			"resource_id":          "token-123",
+			"resource_type":        "access_token",
+			"oauth_client_id":      "**********",
+			"oauth_client_label":   "Production Client",
+			"oauth_client_type":    "PublicClientApp",
+			"oauth_event_category": "runtime_grant",
+			"grant_type":           "access_token",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if result.EntitiesDeleted != 1 {
+		t.Fatalf("EntitiesDeleted = %d, want 1", result.EntitiesDeleted)
+	}
+	for name, recorder := range map[string]*projectionRecorder{"state": state, "graph": graph} {
+		if _, ok := recorder.deletedEntities[resourceURN]; !ok {
+			t.Fatalf("%s did not delete %q", name, resourceURN)
+		}
+		if _, ok := recorder.entities[resourceURN]; ok {
+			t.Fatalf("%s retained deleted entity %q", name, resourceURN)
+		}
+		if _, ok := recorder.links[projectedLinkKey(oldLink)]; ok {
+			t.Fatalf("%s retained deleted link %q", name, projectedLinkKey(oldLink))
+		}
+	}
+}
+
+func TestProjectOktaAuditRunsScopedEphemeralOAuthResourceCleanup(t *testing.T) {
+	staleURN := "urn:cerebro:writer:okta_resource:access_token:old-token"
+	otherRuntimeURN := "urn:cerebro:writer:okta_resource:access_token:other-runtime-token"
+	clientURN := "urn:cerebro:writer:okta_application:0oa-client"
+	oldLink := &ports.ProjectedLink{
+		TenantID: "writer",
+		SourceID: "okta",
+		FromURN:  clientURN,
+		Relation: relationActedOn,
+		ToURN:    staleURN,
+	}
+	graph := &projectionRecorder{
+		entities: map[string]*ports.ProjectedEntity{
+			clientURN: {
+				URN:        clientURN,
+				TenantID:   "writer",
+				SourceID:   "okta",
+				RuntimeID:  "okta-audit-runtime",
+				EntityType: "okta.application",
+				Label:      "Production Client",
+			},
+			staleURN: {
+				URN:        staleURN,
+				TenantID:   "writer",
+				SourceID:   "okta",
+				RuntimeID:  "okta-audit-runtime",
+				EntityType: "okta.resource",
+				Label:      "old-token",
+			},
+			otherRuntimeURN: {
+				URN:        otherRuntimeURN,
+				TenantID:   "writer",
+				SourceID:   "okta",
+				RuntimeID:  "other-runtime",
+				EntityType: "okta.resource",
+				Label:      "other-runtime-token",
+			},
+		},
+		links: map[string]*ports.ProjectedLink{projectedLinkKey(oldLink): oldLink},
+	}
+	service := New(nil, graph)
+
+	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "okta-oauth-token",
+		TenantId: "writer",
+		SourceId: "okta",
+		Kind:     "okta.audit",
+		Attributes: map[string]string{
+			ports.EventAttributeSourceRuntimeID: "okta-audit-runtime",
+			"domain":                            "writer.okta.com",
+			"event_type":                        "app.oauth2.token.grant.access_token",
+			"actor_id":                          "0oa-client",
+			"actor_type":                        "PublicClientApp",
+			"actor_display_name":                "Production Client",
+			"resource_id":                       "token-123",
+			"resource_type":                     "access_token",
+			"oauth_client_id":                   "**********",
+			"oauth_client_label":                "Production Client",
+			"oauth_client_type":                 "PublicClientApp",
+			"oauth_event_category":              "runtime_grant",
+			"grant_type":                        "access_token",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if result.EntitiesDeleted == 0 {
+		t.Fatalf("EntitiesDeleted = 0, want cleanup deletions")
+	}
+	if got := len(graph.cleanupRequests); got != 1 {
+		t.Fatalf("cleanup requests = %d, want 1", got)
+	}
+	request := graph.cleanupRequests[0]
+	if request.TenantID != "writer" || request.SourceID != "okta" || request.RuntimeID != "okta-audit-runtime" {
+		t.Fatalf("cleanup request scope = (%q, %q, %q), want writer/okta/okta-audit-runtime", request.TenantID, request.SourceID, request.RuntimeID)
+	}
+	if !stringSliceContains(request.EntityTypes, "okta.resource") {
+		t.Fatalf("cleanup request entity types = %#v, want okta.resource", request.EntityTypes)
+	}
+	if !stringSliceContains(request.URNPrefixes, "urn:cerebro:writer:okta_resource:access_token:") {
+		t.Fatalf("cleanup request prefixes = %#v, missing access_token prefix", request.URNPrefixes)
+	}
+	if _, ok := graph.entities[staleURN]; ok {
+		t.Fatalf("stale scoped cleanup entity %q still present", staleURN)
+	}
+	if _, ok := graph.links[projectedLinkKey(oldLink)]; ok {
+		t.Fatalf("stale scoped cleanup link still present")
+	}
+	if _, ok := graph.entities[otherRuntimeURN]; !ok {
+		t.Fatalf("other runtime token was deleted")
+	}
+}
+
+func TestProjectOktaAuditRunsScopedEphemeralOAuthCleanupOnNonGrantEvent(t *testing.T) {
+	staleURN := "urn:cerebro:writer:okta_resource:refresh_token:old-token"
+	state := &projectionRecorder{
+		entities: map[string]*ports.ProjectedEntity{
+			staleURN: {
+				URN:        staleURN,
+				TenantID:   "writer",
+				SourceID:   "okta",
+				RuntimeID:  "okta-audit-runtime",
+				EntityType: "okta.resource",
+				Label:      "old-token",
+			},
+		},
+	}
+	service := New(state, nil)
+
+	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "okta-user-update",
+		TenantId: "writer",
+		SourceId: "okta",
+		Kind:     "okta.audit",
+		Attributes: map[string]string{
+			ports.EventAttributeSourceRuntimeID: "okta-audit-runtime",
+			"domain":                            "writer.okta.com",
+			"event_type":                        "user.account.update_profile",
+			"actor_id":                          "00u-admin",
+			"actor_type":                        "User",
+			"resource_id":                       "00u-user",
+			"resource_type":                     "User",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if result.EntitiesDeleted == 0 {
+		t.Fatalf("EntitiesDeleted = 0, want cleanup deletions from non-grant event")
+	}
+	if got := len(state.cleanupRequests); got != 1 {
+		t.Fatalf("state cleanup calls = %d, want 1", got)
+	}
+	if _, ok := state.entities[staleURN]; ok {
+		t.Fatalf("state retained stale cleanup token")
+	}
+}
+
+func TestCleanupProjectedEntitiesRepeatsUntilExhausted(t *testing.T) {
+	graph := &projectionRecorder{
+		entities: map[string]*ports.ProjectedEntity{
+			"urn:cerebro:writer:okta_resource:access_token:token-1": {
+				URN:        "urn:cerebro:writer:okta_resource:access_token:token-1",
+				TenantID:   "writer",
+				SourceID:   "okta",
+				RuntimeID:  "okta-audit-runtime",
+				EntityType: "okta.resource",
+				Label:      "token-1",
+			},
+			"urn:cerebro:writer:okta_resource:access_token:token-2": {
+				URN:        "urn:cerebro:writer:okta_resource:access_token:token-2",
+				TenantID:   "writer",
+				SourceID:   "okta",
+				RuntimeID:  "okta-audit-runtime",
+				EntityType: "okta.resource",
+				Label:      "token-2",
+			},
+		},
+	}
+	service := New(nil, graph)
+
+	result, err := service.cleanupProjectedEntities(context.Background(), []ports.ProjectionCleanupRequest{{
+		TenantID:    "writer",
+		SourceID:    "okta",
+		RuntimeID:   "okta-audit-runtime",
+		EntityTypes: []string{"okta.resource"},
+		URNPrefixes: []string{"urn:cerebro:writer:okta_resource:access_token:"},
+		Limit:       1,
+	}})
+	if err != nil {
+		t.Fatalf("cleanupProjectedEntities() error = %v", err)
+	}
+	if result.EntitiesDeleted != 2 {
+		t.Fatalf("EntitiesDeleted = %d, want 2", result.EntitiesDeleted)
+	}
+	if got := len(graph.cleanupRequests); got != 3 {
+		t.Fatalf("cleanup calls = %d, want 3 calls to confirm exhaustion", got)
+	}
+	if len(graph.entities) != 0 {
+		t.Fatalf("graph retained %d cleanup entities", len(graph.entities))
+	}
+}
+
+func TestCleanupProjectedEntitiesRunsAgainstStateStore(t *testing.T) {
+	state := &projectionRecorder{
+		entities: map[string]*ports.ProjectedEntity{
+			"urn:cerebro:writer:okta_resource:access_token:token-1": {
+				URN:        "urn:cerebro:writer:okta_resource:access_token:token-1",
+				TenantID:   "writer",
+				SourceID:   "okta",
+				RuntimeID:  "okta-audit-runtime",
+				EntityType: "okta.resource",
+				Label:      "token-1",
+			},
+		},
+	}
+	service := New(state, nil)
+
+	result, err := service.cleanupProjectedEntities(context.Background(), []ports.ProjectionCleanupRequest{{
+		TenantID:    "writer",
+		SourceID:    "okta",
+		RuntimeID:   "okta-audit-runtime",
+		EntityTypes: []string{"okta.resource"},
+		URNPrefixes: []string{"urn:cerebro:writer:okta_resource:access_token:"},
+		Limit:       1000,
+	}})
+	if err != nil {
+		t.Fatalf("cleanupProjectedEntities() error = %v", err)
+	}
+	if result.EntitiesDeleted != 1 {
+		t.Fatalf("EntitiesDeleted = %d, want 1", result.EntitiesDeleted)
+	}
+	if got := len(state.cleanupRequests); got != 1 {
+		t.Fatalf("state cleanup calls = %d, want 1", got)
+	}
+	if len(state.entities) != 0 {
+		t.Fatalf("state retained %d cleanup entities", len(state.entities))
+	}
+}
+
+func TestProjectOktaAuditRunsScopedCleanupOncePerService(t *testing.T) {
+	state := &projectionRecorder{
+		entities: map[string]*ports.ProjectedEntity{
+			"urn:cerebro:writer:okta_resource:access_token:stale-token": {
+				URN:        "urn:cerebro:writer:okta_resource:access_token:stale-token",
+				TenantID:   "writer",
+				SourceID:   "okta",
+				RuntimeID:  "okta-audit-runtime",
+				EntityType: "okta.resource",
+				Label:      "stale-token",
+			},
+		},
+	}
+	service := New(state, nil)
+	event := func(id string, resourceID string) *cerebrov1.EventEnvelope {
+		return &cerebrov1.EventEnvelope{
+			Id:       id,
+			TenantId: "writer",
+			SourceId: "okta",
+			Kind:     "okta.audit",
+			Attributes: map[string]string{
+				ports.EventAttributeSourceRuntimeID: "okta-audit-runtime",
+				"domain":                            "writer.okta.com",
+				"event_type":                        "app.oauth2.token.grant.access_token",
+				"actor_id":                          "0oa-client",
+				"actor_type":                        "PublicClientApp",
+				"actor_display_name":                "Production Client",
+				"resource_id":                       resourceID,
+				"resource_type":                     "access_token",
+				"oauth_client_id":                   "**********",
+				"oauth_client_label":                "Production Client",
+				"oauth_client_type":                 "PublicClientApp",
+				"oauth_event_category":              "runtime_grant",
+				"grant_type":                        "access_token",
+			},
+		}
+	}
+
+	if _, err := service.Project(context.Background(), event("okta-oauth-token-1", "token-1")); err != nil {
+		t.Fatalf("Project(first) error = %v", err)
+	}
+	if _, err := service.Project(context.Background(), event("okta-oauth-token-2", "token-2")); err != nil {
+		t.Fatalf("Project(second) error = %v", err)
+	}
+	if got := len(state.cleanupRequests); got != 1 {
+		t.Fatalf("state cleanup calls = %d, want 1 deduped cleanup request", got)
+	}
+	if len(state.entities) == 0 {
+		return
+	}
+	if _, ok := state.entities["urn:cerebro:writer:okta_resource:access_token:stale-token"]; ok {
+		t.Fatalf("state retained stale cleanup token")
+	}
+}
+
+func TestProjectOktaAuditDoesNotSuppressBroadTokenResources(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "okta-token-like-resource",
+		TenantId: "writer",
+		SourceId: "okta",
+		Kind:     "okta.audit",
+		Attributes: map[string]string{
+			"domain":               "writer.okta.com",
+			"event_type":           "app.oauth2.token.grant.access_token",
+			"actor_id":             "0oa-client",
+			"actor_type":           "PublicClientApp",
+			"resource_id":          "token-123",
+			"resource_type":        "Token",
+			"oauth_client_id":      "0oa-client",
+			"oauth_client_label":   "Production Client",
+			"oauth_client_type":    "PublicClientApp",
+			"oauth_event_category": "runtime_grant",
+			"grant_type":           "access_token",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	resourceURN := "urn:cerebro:writer:okta_resource:token:token-123"
+	if _, ok := state.entities[resourceURN]; !ok {
+		t.Fatalf("broad token resource entity %q missing", resourceURN)
+	}
+	assertProjectedLink(t, state, "urn:cerebro:writer:okta_application:0oa-client", relationActedOn, resourceURN)
+}
+
+func TestProjectOktaAuditKeepsCredentialChangeResources(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "okta-api-token-create",
+		TenantId: "writer",
+		SourceId: "okta",
+		Kind:     "okta.audit",
+		Attributes: map[string]string{
+			"domain":               "writer.okta.com",
+			"event_type":           "system.api_token.create",
+			"actor_id":             "00u-admin",
+			"actor_type":           "User",
+			"actor_alternate_id":   "admin@writer.com",
+			"resource_id":          "token-123",
+			"resource_type":        "Token",
+			"oauth_event_category": "credential_change",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	resourceURN := "urn:cerebro:writer:okta_resource:token:token-123"
+	if _, ok := state.entities[resourceURN]; !ok {
+		t.Fatalf("credential change resource entity %q missing", resourceURN)
+	}
+	assertProjectedLink(t, state, "urn:cerebro:writer:okta_user:00u-admin", relationActedOn, resourceURN)
 }
 
 func TestProjectOktaAuditSuppressesSelfActedOnEdge(t *testing.T) {
@@ -1947,4 +2543,13 @@ func cloneProjectedLink(link *ports.ProjectedLink) *ports.ProjectedLink {
 
 func projectedLinkKey(link *ports.ProjectedLink) string {
 	return link.FromURN + "|" + link.Relation + "|" + link.ToURN
+}
+
+func stringSliceContains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
