@@ -36,6 +36,29 @@ func TestProjectedEntityMergePreservesExistingLabelsForFallbackLabels(t *testing
 	}
 }
 
+func TestEndpointOwnerIDLinkCleanupQueryOrdersLimitedBatch(t *testing.T) {
+	_, conditions, err := endpointOwnerIDLinkCleanupParams(ports.ProjectionLinkCleanupRequest{
+		TenantID: "writer",
+		SourceID: "kolide",
+		Limit:    25,
+	})
+	if err != nil {
+		t.Fatalf("endpointOwnerIDLinkCleanupParams() error = %v", err)
+	}
+	query := endpointOwnerIDLinkCleanupQuery(conditions, false)
+	orderIndex := strings.Index(query, "ORDER BY e.urn, stale.relation, target.urn, elementId(stale)")
+	limitIndex := strings.Index(query, "LIMIT $limit")
+	if orderIndex == -1 {
+		t.Fatalf("endpointOwnerIDLinkCleanupQuery() missing deterministic ORDER BY:\n%s", query)
+	}
+	if limitIndex == -1 {
+		t.Fatalf("endpointOwnerIDLinkCleanupQuery() missing LIMIT:\n%s", query)
+	}
+	if orderIndex > limitIndex {
+		t.Fatalf("endpointOwnerIDLinkCleanupQuery() orders after limiting:\n%s", query)
+	}
+}
+
 func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 	if os.Getenv("CEREBRO_RUN_NEO4J_DOCKER") != "1" {
 		t.Skip("set CEREBRO_RUN_NEO4J_DOCKER=1 to run Neo4j Docker integration test")

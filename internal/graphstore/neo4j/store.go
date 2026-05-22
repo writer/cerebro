@@ -557,21 +557,8 @@ func (s *Store) CleanupEndpointOwnerIDLinks(ctx context.Context, request ports.P
 	if err != nil {
 		return ports.ProjectionLinkCleanupResult{}, err
 	}
-	query := `MATCH (e:Entity)-[stale:RELATION]->(target:Entity)
-WHERE ` + strings.Join(conditions, " AND ") + `
-  AND EXISTS {
-    MATCH (e)-[replacement:RELATION {relation: 'has_identifier'}]->(replacementTarget:Entity)
-    WHERE replacement.tenant_id = stale.tenant_id
-      AND replacement.source_id IN $source_ids
-      AND any(stalePrefix IN $stale_prefixes WHERE target.urn STARTS WITH stalePrefix
-        AND any(replacementPrefix IN $replacement_prefixes WHERE replacementTarget.urn STARTS WITH replacementPrefix
-          AND substring(target.urn, size(stalePrefix)) = substring(replacementTarget.urn, size(replacementPrefix))))
-  }
-WITH stale
-LIMIT $limit`
+	query := endpointOwnerIDLinkCleanupQuery(conditions, request.DryRun)
 	if request.DryRun {
-		query += `
-RETURN count(stale)`
 		var matched int64
 		if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
 			value, err := queryOneValue(ctx, tx, query, params)
@@ -585,10 +572,6 @@ RETURN count(stale)`
 		}
 		return ports.ProjectionLinkCleanupResult{LinksMatched: uint32(matched)}, nil
 	}
-	query += `
-WITH collect(stale) AS victims
-FOREACH (link IN victims | DELETE link)
-RETURN size(victims)`
 	var deleted int64
 	if _, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
 		value, err := queryOneValue(ctx, tx, query, params)
@@ -601,6 +584,30 @@ RETURN size(victims)`
 		return ports.ProjectionLinkCleanupResult{}, fmt.Errorf("cleanup endpoint owner-id links: %w", err)
 	}
 	return ports.ProjectionLinkCleanupResult{LinksMatched: uint32(deleted), LinksDeleted: uint32(deleted)}, nil
+}
+
+func endpointOwnerIDLinkCleanupQuery(conditions []string, dryRun bool) string {
+	query := `MATCH (e:Entity)-[stale:RELATION]->(target:Entity)
+WHERE ` + strings.Join(conditions, " AND ") + `
+  AND EXISTS {
+    MATCH (e)-[replacement:RELATION {relation: 'has_identifier'}]->(replacementTarget:Entity)
+    WHERE replacement.tenant_id = stale.tenant_id
+      AND replacement.source_id IN $source_ids
+      AND any(stalePrefix IN $stale_prefixes WHERE target.urn STARTS WITH stalePrefix
+        AND any(replacementPrefix IN $replacement_prefixes WHERE replacementTarget.urn STARTS WITH replacementPrefix
+          AND substring(target.urn, size(stalePrefix)) = substring(replacementTarget.urn, size(replacementPrefix))))
+  }
+WITH stale, e, target
+ORDER BY e.urn, stale.relation, target.urn, elementId(stale)
+LIMIT $limit`
+	if dryRun {
+		return query + `
+RETURN count(stale)`
+	}
+	return query + `
+WITH collect(stale) AS victims
+FOREACH (link IN victims | DELETE link)
+RETURN size(victims)`
 }
 
 func endpointOwnerIDLinkCleanupParams(request ports.ProjectionLinkCleanupRequest) (map[string]any, []string, error) {
