@@ -20,6 +20,12 @@
 - Do not hand-edit generated or contract-governed outputs without running the matching `Makefile` check/sync target.
 - Public-facing config/example changes should run `python3 scripts/oss_audit.py` when that script is present.
 
+## Scope Discipline
+
+- [`docs/NON_GOALS.md`](docs/NON_GOALS.md) is the canonical list of things Cerebro intentionally does not do. Read it before proposing changes that touch storage shape, the Source CDK budget, the Cypher safety validator, the findings platform contract, the action engine, runtime response, or the platform/security namespace boundary.
+- A change that crosses any non-goal must cite the relevant entry in the PR description, state which "What would change this" criterion has been met, and update `docs/NON_GOALS.md` in the same change.
+- When in doubt, prefer the narrower interpretation. Scope creep that quietly bypasses a non-goal is a review-blocker, not a discussion.
+
 ## Finding Rule Design Notes
 
 - Model findings as remediable control gaps or durable risk states, not as a one-to-one mirror of upstream alerts. Source-native alerts and threats should usually become evidence and graph context.

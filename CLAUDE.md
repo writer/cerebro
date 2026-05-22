@@ -8,6 +8,11 @@ Only repo-specific, non-obvious guidance lives here.
 - The repo is Go, but many validations are repo-specific and should usually be run via `make`/DevEx wrappers rather than ad-hoc commands.
 - Go dependencies are vendored (`GOFLAGS=-mod=vendor`), so dependency changes should usually be checked with `make vendor-check`.
 
+## Scope discipline
+
+- [`docs/NON_GOALS.md`](docs/NON_GOALS.md) is the canonical, indexed list of things Cerebro intentionally does not do. Read it before proposing changes that touch storage shape, the Source CDK budget, the Cypher safety validator, the findings platform contract, the action engine, runtime response, or the platform/security namespace boundary.
+- A change that crosses a non-goal must cite the entry, name which "What would change this" criterion has been met, and update `docs/NON_GOALS.md` in the same PR. Quiet bypass is a review-blocker.
+
 ## Preferred validation entrypoints
 
 - Use `make devex-changed` for diff-aware local preflight.
@@ -32,5 +37,5 @@ Check the corresponding `Makefile` `*-check` / `*-compat` targets before finishi
 
 ## Runtime notes
 
-- Full-featured runs expect Snowflake, but local SQLite mode exists for lighter local development.
+- Current `main` is the bootstrap service: NATS JetStream as the append log, Postgres as the state store, Neo4j/Aura as the graph projection. There is no in-memory or SQLite fallback in production; routes that need a configured store fail closed when the store is absent. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and the storage section of [`docs/NON_GOALS.md`](docs/NON_GOALS.md).
 - Some CLI paths use repo-specific env wrappers in `make`, so prefer documented make targets when available.
