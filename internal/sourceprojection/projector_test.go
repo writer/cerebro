@@ -782,7 +782,7 @@ func TestCleanupProjectedEntitiesRunsAgainstStateStore(t *testing.T) {
 	}
 }
 
-func TestProjectOktaAuditRunsScopedCleanupOncePerService(t *testing.T) {
+func TestProjectOktaAuditRunsScopedCleanupForLaterStaleResources(t *testing.T) {
 	state := &projectionRecorder{
 		entities: map[string]*ports.ProjectedEntity{
 			"urn:cerebro:writer:okta_resource:access_token:stale-token": {
@@ -823,17 +823,30 @@ func TestProjectOktaAuditRunsScopedCleanupOncePerService(t *testing.T) {
 	if _, err := service.Project(context.Background(), event("okta-oauth-token-1", "token-1")); err != nil {
 		t.Fatalf("Project(first) error = %v", err)
 	}
+	state.entities["urn:cerebro:writer:okta_resource:access_token:later-stale-token"] = &ports.ProjectedEntity{
+		URN:        "urn:cerebro:writer:okta_resource:access_token:later-stale-token",
+		TenantID:   "writer",
+		SourceID:   "okta",
+		RuntimeID:  "okta-audit-runtime",
+		EntityType: "okta.resource",
+		Label:      "later-stale-token",
+	}
 	if _, err := service.Project(context.Background(), event("okta-oauth-token-2", "token-2")); err != nil {
 		t.Fatalf("Project(second) error = %v", err)
 	}
-	if got := len(state.cleanupRequests); got != 1 {
-		t.Fatalf("state cleanup calls = %d, want 1 deduped cleanup request", got)
+	if got := len(state.cleanupRequests); got != 2 {
+		t.Fatalf("state cleanup calls = %d, want cleanup on each projection pass", got)
 	}
 	if len(state.entities) == 0 {
 		return
 	}
-	if _, ok := state.entities["urn:cerebro:writer:okta_resource:access_token:stale-token"]; ok {
-		t.Fatalf("state retained stale cleanup token")
+	for _, urn := range []string{
+		"urn:cerebro:writer:okta_resource:access_token:stale-token",
+		"urn:cerebro:writer:okta_resource:access_token:later-stale-token",
+	} {
+		if _, ok := state.entities[urn]; ok {
+			t.Fatalf("state retained stale cleanup token %q", urn)
+		}
 	}
 }
 
