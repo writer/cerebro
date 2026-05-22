@@ -665,7 +665,7 @@ func (s *Service) GetFinding(ctx context.Context, id string) (*ports.FindingReco
 	return finding, nil
 }
 
-// BackfillFindingRisk refreshes startup-migrated risk fields and graph projections.
+// BackfillFindingRisk refreshes startup-migrated risk fields and graph projections for rows it updates.
 func (s *Service) BackfillFindingRisk(ctx context.Context) error {
 	if s == nil || s.store == nil {
 		return ErrRuntimeUnavailable
@@ -686,14 +686,24 @@ func (s *Service) BackfillFindingRisk(ctx context.Context) error {
 		if finding == nil {
 			continue
 		}
-		revision := fmt.Sprintf("startup-risk-backfill|%s|%s", revisionTime, strings.TrimSpace(finding.ID))
-		if err := s.projectFindingAnchorRevision(ctx, finding, revision); err != nil {
-			return fmt.Errorf("project finding %q backfilled risk: %w", finding.ID, err)
-		}
-		if includeUnprojected {
-			if err := s.markFindingRiskProjected(ctx, finding); err != nil {
-				return fmt.Errorf("mark finding %q backfilled risk projected: %w", finding.ID, err)
+		current := finding
+		if getter, ok := s.store.(interface {
+			GetFinding(context.Context, string) (*ports.FindingRecord, error)
+		}); ok {
+			loaded, err := getter.GetFinding(ctx, strings.TrimSpace(finding.ID))
+			if err != nil && !errors.Is(err, ports.ErrFindingNotFound) {
+				return fmt.Errorf("load finding %q backfilled risk: %w", finding.ID, err)
 			}
+			if loaded != nil {
+				current = loaded
+			}
+		}
+		revision := fmt.Sprintf("startup-risk-backfill|%s|%s", revisionTime, strings.TrimSpace(current.ID))
+		if err := s.projectFindingAnchorRevision(ctx, current, revision); err != nil {
+			return fmt.Errorf("project finding %q backfilled risk: %w", current.ID, err)
+		}
+		if err := s.markFindingRiskProjected(ctx, current); err != nil {
+			return fmt.Errorf("mark finding %q backfilled risk projected: %w", current.ID, err)
 		}
 	}
 	return nil
