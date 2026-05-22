@@ -269,6 +269,7 @@ Some files in `docs/` describe broader or historical architecture and may be ahe
 | [CloudEvents](docs/CLOUDEVENTS_AUTOGEN.md) | generated event contract reference |
 | [Graph ontology](docs/GRAPH_ONTOLOGY_AUTOGEN.md) | generated graph ontology reference |
 | [Graph report contracts](docs/GRAPH_REPORT_CONTRACTS_AUTOGEN.md) | generated graph/report contract reference |
+| [Non-goals](docs/NON_GOALS.md) | what Cerebro intentionally does not try to do, with rationale and enforcement pointers |
 | [Policies](docs/POLICIES.md) | policy catalog and authoring notes |
 | [Packages](docs/PACKAGES.md) | package overview; verify against current code before relying on details |
 | [Development](docs/DEVELOPMENT.md) | development notes; verify commands against the Makefile |
