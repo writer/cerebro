@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
@@ -20,6 +21,55 @@ func TestRunRejectsUnsupportedCommand(t *testing.T) {
 	var usage usageError
 	if !errors.As(err, &usage) {
 		t.Fatalf("run(unsupported) error = %v, want usageError", err)
+	}
+}
+
+func TestStartFindingRiskBackfillDoesNotBlockStartup(t *testing.T) {
+	backfiller := &blockingFindingRiskBackfiller{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := startFindingRiskBackfill(ctx, backfiller, func(string, ...any) {})
+	select {
+	case <-backfiller.started:
+	case <-time.After(time.Second):
+		t.Fatal("backfill did not start")
+	}
+	select {
+	case <-done:
+		t.Fatal("backfill completed while still blocked")
+	default:
+	}
+
+	close(backfiller.release)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("backfill did not finish after release")
+	}
+}
+
+func TestStartFindingRiskBackfillLogsErrors(t *testing.T) {
+	backfiller := &errorFindingRiskBackfiller{err: errors.New("boom")}
+	logged := make(chan string, 1)
+	done := startFindingRiskBackfill(context.Background(), backfiller, func(format string, args ...any) {
+		logged <- fmt.Sprintf(format, args...)
+	})
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("backfill did not finish")
+	}
+	select {
+	case message := <-logged:
+		if !strings.Contains(message, "boom") {
+			t.Fatalf("logged message = %q, want boom", message)
+		}
+	default:
+		t.Fatal("backfill error was not logged")
 	}
 }
 
@@ -249,6 +299,25 @@ func (s *commandTokenSource) Read(_ context.Context, config sourcecdk.Config, _ 
 
 type commandRuntimeStore struct {
 	runtimes map[string]*cerebrov1.SourceRuntime
+}
+
+type blockingFindingRiskBackfiller struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (b *blockingFindingRiskBackfiller) BackfillFindingRisk(context.Context) error {
+	close(b.started)
+	<-b.release
+	return nil
+}
+
+type errorFindingRiskBackfiller struct {
+	err error
+}
+
+func (b *errorFindingRiskBackfiller) BackfillFindingRisk(context.Context) error {
+	return b.err
 }
 
 func (s *commandRuntimeStore) Ping(context.Context) error {

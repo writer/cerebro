@@ -665,7 +665,7 @@ func (s *Service) GetFinding(ctx context.Context, id string) (*ports.FindingReco
 	return finding, nil
 }
 
-// BackfillFindingRisk refreshes startup-migrated risk fields and graph projections.
+// BackfillFindingRisk refreshes startup-migrated risk fields.
 func (s *Service) BackfillFindingRisk(ctx context.Context) error {
 	if s == nil || s.store == nil {
 		return ErrRuntimeUnavailable
@@ -676,27 +676,8 @@ func (s *Service) BackfillFindingRisk(ctx context.Context) error {
 	if !ok {
 		return nil
 	}
-	includeUnprojected := s.graph != nil
-	updated, err := backfiller.BackfillFindingRisk(ctx, includeUnprojected)
-	if err != nil {
-		return err
-	}
-	revisionTime := time.Now().UTC().Format(time.RFC3339Nano)
-	for _, finding := range updated {
-		if finding == nil {
-			continue
-		}
-		revision := fmt.Sprintf("startup-risk-backfill|%s|%s", revisionTime, strings.TrimSpace(finding.ID))
-		if err := s.projectFindingAnchorRevision(ctx, finding, revision); err != nil {
-			return fmt.Errorf("project finding %q backfilled risk: %w", finding.ID, err)
-		}
-		if includeUnprojected {
-			if err := s.markFindingRiskProjected(ctx, finding); err != nil {
-				return fmt.Errorf("mark finding %q backfilled risk projected: %w", finding.ID, err)
-			}
-		}
-	}
-	return nil
+	_, err := backfiller.BackfillFindingRisk(ctx, false)
+	return err
 }
 
 // ResolveFinding marks one persisted finding as resolved.

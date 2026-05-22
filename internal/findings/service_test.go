@@ -82,6 +82,9 @@ type stubFindingStore struct {
 	evidenceList               ports.ListFindingEvidenceRequest
 	dropReturnedGraphEvidence  bool
 	upsertCount                int
+	updateRiskCount            int
+	markRiskProjectedCount     int
+	markRiskProjectedErr       error
 	backfillRiskResults        []*ports.FindingRecord
 	backfillRiskErr            error
 	backfillIncludeUnprojected bool
@@ -116,12 +119,36 @@ func (s *stubFindingStore) UpsertFinding(_ context.Context, finding *ports.Findi
 }
 
 func (s *stubFindingStore) UpdateFindingRisk(_ context.Context, request ports.FindingRiskUpdate) (*ports.FindingRecord, error) {
+	s.updateRiskCount++
 	finding, ok := s.findings[strings.TrimSpace(request.FindingID)]
 	if !ok {
 		return nil, ports.ErrFindingNotFound
 	}
 	updated := cloneFinding(finding)
 	updated.FindingRisk = request.FindingRisk
+	if updated.Attributes == nil {
+		updated.Attributes = map[string]string{}
+	}
+	for key, value := range request.Attributes {
+		updated.Attributes[key] = value
+	}
+	s.findings[updated.ID] = updated
+	return cloneFinding(updated), nil
+}
+
+func (s *stubFindingStore) MarkFindingRiskProjected(_ context.Context, request ports.FindingRiskUpdate) (*ports.FindingRecord, error) {
+	s.markRiskProjectedCount++
+	if s.markRiskProjectedErr != nil {
+		return nil, s.markRiskProjectedErr
+	}
+	finding, ok := s.findings[strings.TrimSpace(request.FindingID)]
+	if !ok {
+		return nil, ports.ErrFindingNotFound
+	}
+	updated := cloneFinding(finding)
+	if updated.RiskScore != request.RiskScore || strings.TrimSpace(updated.RiskModelVersion) != strings.TrimSpace(request.RiskModelVersion) {
+		return nil, ports.ErrFindingNotFound
+	}
 	if updated.Attributes == nil {
 		updated.Attributes = map[string]string{}
 	}
@@ -2919,7 +2946,7 @@ func TestPersistFindingRiskUsesRiskOnlyUpdate(t *testing.T) {
 	}
 }
 
-func TestBackfillFindingRiskProjectsUpdatedFindings(t *testing.T) {
+func TestBackfillFindingRiskSkipsStartupGraphProjection(t *testing.T) {
 	openFinding := &ports.FindingRecord{
 		ID:        "finding-1",
 		TenantID:  "tenant-a",
@@ -2956,33 +2983,55 @@ func TestBackfillFindingRiskProjectsUpdatedFindings(t *testing.T) {
 	if err := service.BackfillFindingRisk(context.Background()); err != nil {
 		t.Fatalf("BackfillFindingRisk() error = %v", err)
 	}
-	if !store.backfillIncludeUnprojected {
-		t.Fatal("BackfillFindingRisk() did not request unprojected rows with graph configured")
+	if store.backfillIncludeUnprojected {
+		t.Fatal("BackfillFindingRisk() requested graph projection rows during startup backfill")
 	}
 	graphFinding := graphStore.entities["urn:cerebro:tenant-a:finding:finding-1"]
-	if graphFinding == nil {
-		t.Fatal("BackfillFindingRisk() did not project finding anchor")
+	if graphFinding != nil {
+		t.Fatalf("BackfillFindingRisk projected finding anchor during startup backfill: %#v", graphFinding)
 	}
-	if got := graphFinding.Attributes["risk_score"]; got != "83" {
-		t.Fatalf("projected risk_score = %q, want 83", got)
+	if got := len(appendLog.events); got != 0 {
+		t.Fatalf("len(appended events) = %d, want 0", got)
 	}
-	if got := graphFinding.Attributes[FindingEffectiveSeverityAttribute]; got != "HIGH" {
-		t.Fatalf("projected effective_severity = %q, want HIGH", got)
+	if got := store.findings["finding-1"].Attributes[FindingRiskGraphProjectedModelVersionAttribute]; got != "" {
+		t.Fatalf("projection marker = %q, want empty during startup backfill", got)
 	}
-	if closed := graphStore.entities["urn:cerebro:tenant-a:finding:finding-closed"]; closed == nil || closed.Attributes["risk_score"] != "83" {
-		t.Fatalf("closed projected finding = %#v, want risk_score 83", closed)
+	if got := store.markRiskProjectedCount; got != 0 {
+		t.Fatalf("MarkFindingRiskProjected calls = %d, want 0", got)
 	}
-	if got := len(appendLog.events); got != 2 {
-		t.Fatalf("len(appended events) = %d, want 2", got)
+	if got := store.updateRiskCount; got != 0 {
+		t.Fatalf("UpdateFindingRisk calls = %d, want 0", got)
 	}
-	if eventTime := appendLog.events[0].GetOccurredAt().AsTime(); time.Since(eventTime) > time.Minute {
-		t.Fatalf("backfill event occurred_at = %s, want startup time", eventTime.Format(time.RFC3339Nano))
+}
+
+func TestBackfillFindingRiskSkipsProjectionMarkerWhenRiskChanged(t *testing.T) {
+	finding := &ports.FindingRecord{
+		ID:        "finding-1",
+		TenantID:  "tenant-a",
+		RuntimeID: "runtime-audit",
+		RuleID:    "rule-1",
+		Title:     "Backfilled risk finding",
+		Status:    "open",
+		Severity:  "HIGH",
+		FindingRisk: ports.FindingRisk{
+			RiskScore:        83,
+			RiskModelVersion: defaultFindingRiskModelVersion,
+		},
 	}
-	if got := appendLog.events[1].GetKind(); got != workflowevents.EventKindFindingStatusChanged {
-		t.Fatalf("closed finding event kind = %q, want status_changed", got)
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			finding.ID: cloneFinding(finding),
+		},
+		backfillRiskResults: []*ports.FindingRecord{finding},
 	}
-	if got := store.findings["finding-1"].Attributes[FindingRiskGraphProjectedModelVersionAttribute]; got != defaultFindingRiskModelVersion {
-		t.Fatalf("projection marker = %q, want %q", got, defaultFindingRiskModelVersion)
+	store.findings[finding.ID].RiskScore = 95
+	graphStore := &stubGraphStore{}
+	service := New(nil, nil, store, store, store, store).WithGraphStore(graphStore).WithAppendLog(&recordingAppendLog{})
+	if err := service.BackfillFindingRisk(context.Background()); err != nil {
+		t.Fatalf("BackfillFindingRisk() error = %v", err)
+	}
+	if got := store.findings["finding-1"].Attributes[FindingRiskGraphProjectedModelVersionAttribute]; got != "" {
+		t.Fatalf("projection marker = %q, want empty after concurrent risk update", got)
 	}
 }
 

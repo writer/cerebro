@@ -92,11 +92,9 @@ func serve() error {
 	}
 
 	app := bootstrap.New(cfg, deps, sources)
-	if err := app.BackfillFindingRisk(context.Background()); err != nil {
-		return fmt.Errorf("backfill finding risk: %w", err)
-	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	startFindingRiskBackfill(ctx, app, log.Printf)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -120,6 +118,25 @@ func serve() error {
 		}
 		return nil
 	}
+}
+
+type findingRiskBackfiller interface {
+	BackfillFindingRisk(context.Context) error
+}
+
+func startFindingRiskBackfill(ctx context.Context, backfiller findingRiskBackfiller, logf func(string, ...any)) <-chan struct{} {
+	done := make(chan struct{})
+	if backfiller == nil {
+		close(done)
+		return done
+	}
+	go func() {
+		defer close(done)
+		if err := backfiller.BackfillFindingRisk(ctx); err != nil && ctx.Err() == nil {
+			logf("backfill finding risk: %v", err)
+		}
+	}()
+	return done
 }
 
 func runSource(args []string) error {

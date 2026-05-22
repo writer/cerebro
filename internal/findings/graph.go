@@ -78,19 +78,29 @@ func (s *Service) markFindingRiskProjected(ctx context.Context, finding *ports.F
 	if s == nil || s.graph == nil || finding == nil {
 		return nil
 	}
+	request := ports.FindingRiskUpdate{
+		FindingID:   finding.ID,
+		FindingRisk: finding.FindingRisk,
+		Attributes: map[string]string{
+			FindingRiskGraphProjectedModelVersionAttribute: finding.RiskModelVersion,
+		},
+	}
+	if marker, ok := s.store.(interface {
+		MarkFindingRiskProjected(context.Context, ports.FindingRiskUpdate) (*ports.FindingRecord, error)
+	}); ok {
+		_, err := marker.MarkFindingRiskProjected(ctx, request)
+		if errors.Is(err, ports.ErrFindingNotFound) {
+			return nil
+		}
+		return err
+	}
 	riskUpdater, ok := s.store.(interface {
 		UpdateFindingRisk(context.Context, ports.FindingRiskUpdate) (*ports.FindingRecord, error)
 	})
 	if !ok {
 		return nil
 	}
-	_, err := riskUpdater.UpdateFindingRisk(ctx, ports.FindingRiskUpdate{
-		FindingID:   finding.ID,
-		FindingRisk: finding.FindingRisk,
-		Attributes: map[string]string{
-			FindingRiskGraphProjectedModelVersionAttribute: finding.RiskModelVersion,
-		},
-	})
+	_, err := riskUpdater.UpdateFindingRisk(ctx, request)
 	return err
 }
 
