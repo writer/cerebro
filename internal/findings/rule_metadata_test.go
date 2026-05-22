@@ -15,6 +15,46 @@ func TestBuiltinRuleMetadataIsComplete(t *testing.T) {
 	}
 }
 
+func TestBuiltinRuleMetadataReturnsIsolatedCopies(t *testing.T) {
+	first := BuiltinRuleMetadata()
+	if len(first) == 0 {
+		t.Fatal("BuiltinRuleMetadata() missing expected test data")
+	}
+	index := -1
+	for i, metadata := range first {
+		if len(metadata.Tags) > 0 {
+			index = i
+			break
+		}
+	}
+	if index == -1 {
+		t.Fatal("BuiltinRuleMetadata() missing tagged rule metadata")
+	}
+	first[index].ID = "mutated"
+	first[index].Tags[0] = "mutated"
+
+	second := BuiltinRuleMetadata()
+	if second[index].ID == "mutated" {
+		t.Fatal("BuiltinRuleMetadata() returned mutable cached metadata id")
+	}
+	if second[index].Tags[0] == "mutated" {
+		t.Fatal("BuiltinRuleMetadata() returned mutable cached metadata tags")
+	}
+}
+
+func TestBuiltinRuleSourceIDsReturnsIsolatedCopies(t *testing.T) {
+	first := BuiltinRuleSourceIDs()
+	if len(first) == 0 {
+		t.Fatal("BuiltinRuleSourceIDs() = 0, want source id index")
+	}
+	first[githubAppIntegrationInstalledRuleID] = "mutated"
+
+	second := BuiltinRuleSourceIDs()
+	if second[githubAppIntegrationInstalledRuleID] == "mutated" {
+		t.Fatal("BuiltinRuleSourceIDs() returned mutable cached source id map")
+	}
+}
+
 func TestBuiltinPublicDetectionCatalogIncludesGraphRules(t *testing.T) {
 	catalog := BuiltinPublicDetectionCatalog()
 	if len(catalog.Detections) == 0 {

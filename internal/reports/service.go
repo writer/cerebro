@@ -196,6 +196,7 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	notedFindingCount := 0
 	ticketCount := 0
 	ticketedFindingCount := 0
+	ruleSourceIDs := findinganalysis.BuiltinRuleSourceIDs()
 	now := time.Now().UTC()
 	for _, finding := range findings {
 		if finding == nil {
@@ -204,7 +205,7 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 		if findingRuntimeID := strings.TrimSpace(finding.RuntimeID); findingRuntimeID != "" {
 			runtimeCounts[findingRuntimeID]++
 		}
-		if sourceID := findingSourceID(finding); sourceID != "" {
+		if sourceID := findingSourceID(finding, ruleSourceIDs); sourceID != "" {
 			sourceCounts[sourceID]++
 		}
 		severity := strings.TrimSpace(finding.Severity)
@@ -361,7 +362,7 @@ func normalizeRuntimeIDs(runtimeID string, runtimeIDs string) []string {
 	return normalized
 }
 
-func findingSourceID(finding *ports.FindingRecord) string {
+func findingSourceID(finding *ports.FindingRecord, ruleSourceIDs map[string]string) string {
 	if finding == nil {
 		return ""
 	}
@@ -370,10 +371,8 @@ func findingSourceID(finding *ports.FindingRecord) string {
 			return value
 		}
 	}
-	for _, metadata := range findinganalysis.BuiltinRuleMetadata() {
-		if metadata.ID == strings.TrimSpace(finding.RuleID) {
-			return strings.TrimSpace(metadata.SourceID)
-		}
+	if sourceID := strings.TrimSpace(ruleSourceIDs[strings.TrimSpace(finding.RuleID)]); sourceID != "" {
+		return sourceID
 	}
 	return "unknown"
 }
