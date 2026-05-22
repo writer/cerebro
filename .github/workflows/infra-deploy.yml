@@ -304,16 +304,32 @@ jobs:
           work-dir: infra/aws
           diff: true
 
+      - name: Refresh AWS credentials for runtime verification (sec-dev)
+        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
+        with:
+          assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
+
       - name: Verify Cosmo source runtimes (sec-dev)
         shell: bash
         working-directory: infra
         run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --source-id cosmo --run --max-age-minutes 60 --wait-timeout-seconds 3600
+
+      - name: Refresh AWS credentials for public-endpoint runtime verification (sec-dev)
+        if: steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
+        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
+        with:
+          assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
 
       - name: Refresh AWS public-endpoint runtimes (sec-dev)
         if: steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
         shell: bash
         working-directory: infra
         run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --source-id aws --family public_endpoint --run --max-age-minutes 60 --wait-timeout-seconds 3600
+
+      - name: Refresh AWS credentials for graph verification (sec-dev)
+        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
+        with:
+          assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
 
       - name: Verify graph health (sec-dev)
         shell: bash
@@ -385,16 +401,32 @@ jobs:
           work-dir: infra/aws
           diff: true
 
+      - name: Refresh AWS credentials for runtime verification (sec-prod)
+        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
+        with:
+          assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
+
       - name: Verify Cosmo source runtimes (go-prod)
         shell: bash
         working-directory: infra
         run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.go-prod.yaml --source-id cosmo --run --max-age-minutes 60 --wait-timeout-seconds 3600
+
+      - name: Refresh AWS credentials for public-endpoint runtime verification (sec-prod)
+        if: steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
+        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
+        with:
+          assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
 
       - name: Refresh AWS public-endpoint runtimes (go-prod)
         if: steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
         shell: bash
         working-directory: infra
         run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.go-prod.yaml --source-id aws --family public_endpoint --run --max-age-minutes 60 --wait-timeout-seconds 3600
+
+      - name: Refresh AWS credentials for graph verification (sec-prod)
+        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
+        with:
+          assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
 
       - name: Verify graph health (go-prod)
         shell: bash
@@ -645,6 +677,18 @@ jobs:
           work-dir: infra/aws
           diff: true
 
+      - name: Refresh AWS credentials for runtime verification (sec-dev)
+        if: github.event.inputs.environment == 'sec-dev'
+        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
+        with:
+          assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
+
+      - name: Refresh AWS credentials for runtime verification (sec-prod)
+        if: github.event.inputs.environment == 'go-prod'
+        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
+        with:
+          assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
+
       - name: Verify Cosmo source runtimes (AWS)
         if: "!startsWith(github.event.inputs.environment, 'gcp-')"
         shell: bash
@@ -653,6 +697,18 @@ jobs:
           STACK_NAME: ${{ github.event.inputs.environment }}
         run: uv run python scripts/verify_source_runtime_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --source-id cosmo --run --max-age-minutes 60 --wait-timeout-seconds 3600
 
+      - name: Refresh AWS credentials for public-endpoint runtime verification (sec-dev)
+        if: github.event.inputs.environment == 'sec-dev' && steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
+        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
+        with:
+          assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
+
+      - name: Refresh AWS credentials for public-endpoint runtime verification (sec-prod)
+        if: github.event.inputs.environment == 'go-prod' && steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
+        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
+        with:
+          assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
+
       - name: Refresh AWS public-endpoint runtimes (AWS)
         if: "!startsWith(github.event.inputs.environment, 'gcp-') && steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'"
         shell: bash
@@ -660,6 +716,18 @@ jobs:
         env:
           STACK_NAME: ${{ github.event.inputs.environment }}
         run: uv run python scripts/verify_source_runtime_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --source-id aws --family public_endpoint --run --max-age-minutes 60 --wait-timeout-seconds 3600
+
+      - name: Refresh AWS credentials for graph verification (sec-dev)
+        if: github.event.inputs.environment == 'sec-dev'
+        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
+        with:
+          assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
+
+      - name: Refresh AWS credentials for graph verification (sec-prod)
+        if: github.event.inputs.environment == 'go-prod'
+        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
+        with:
+          assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
 
       - name: Verify graph health (AWS)
         if: "!startsWith(github.event.inputs.environment, 'gcp-')"
