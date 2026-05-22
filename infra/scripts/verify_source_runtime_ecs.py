@@ -323,6 +323,31 @@ def _stop_running_tasks(
     raise TimeoutError(f"{len(task_arns)} running {target.runtime_id} task(s) did not stop within {timeout_seconds} seconds")
 
 
+def _stop_task(
+    target: RuntimeTarget,
+    task_arn: str,
+    region: str,
+    reason: str,
+    timeout_seconds: int,
+    poll_seconds: int,
+) -> None:
+    print(f"Stopping timed-out {target.runtime_id} verification task: {task_arn}", file=sys.stderr)
+    _aws(
+        [
+            "ecs",
+            "stop-task",
+            "--cluster",
+            target.target["Arn"],
+            "--task",
+            task_arn,
+            "--reason",
+            reason,
+        ],
+        region,
+    )
+    _wait_for_task(target.target["Arn"], task_arn, timeout_seconds, poll_seconds, region)
+
+
 def _latest_task(target: RuntimeTarget, max_age_minutes: int, region: str) -> str:
     family = _task_family(target.target["EcsParameters"]["TaskDefinitionArn"])
     response = _aws(
@@ -500,6 +525,7 @@ def _run_and_verify_task_with_retries(
     stop_running_before_run: bool = False,
     stop_timeout_seconds: int = 180,
     failed_run_retry_seconds: int = 0,
+    run_attempt_timeout_seconds: int = 0,
 ) -> VerificationResult:
     if stop_running_before_run:
         _stop_running_tasks(
@@ -515,9 +541,30 @@ def _run_and_verify_task_with_retries(
     while True:
         remaining = max(1, int(deadline - time.time()))
         task_arn = _run_task(target, region, command_override)
-        _wait_for_task(target.target["Arn"], task_arn, remaining, poll_seconds, region)
+        attempt_timeout = min(remaining, run_attempt_timeout_seconds) if run_attempt_timeout_seconds > 0 else remaining
         try:
+            _wait_for_task(target.target["Arn"], task_arn, attempt_timeout, poll_seconds, region)
             return _verify_task(target, task_arn, region)
+        except TimeoutError:
+            now = time.time()
+            if failed_run_retry_deadline is None or now >= failed_run_retry_deadline:
+                raise
+            remaining = int(deadline - now)
+            if remaining <= poll_seconds:
+                raise
+            _stop_task(
+                target,
+                task_arn,
+                region,
+                "Cerebro deploy verification attempt timed out",
+                stop_timeout_seconds,
+                poll_seconds,
+            )
+            print(
+                f"WARNING: {target.runtime_id} verification task timed out; retrying verification task",
+                file=sys.stderr,
+            )
+            time.sleep(min(poll_seconds, remaining))
         except RuntimeSkippedError as exc:
             if not _runtime_skip_retryable(exc.reason):
                 raise
@@ -590,6 +637,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--stop-timeout-seconds", type=int, default=180)
     parser.add_argument("--max-age-minutes", type=int, default=180)
     parser.add_argument("--failed-run-retry-seconds", type=int, default=0, help="Retry failed verification tasks for this many seconds before failing.")
+    parser.add_argument("--run-attempt-timeout-seconds", type=int, default=0, help="Stop and retry a --run verification task if one attempt runs longer than this.")
     parser.add_argument("--wait-timeout-seconds", type=int, default=900)
     parser.add_argument("--poll-seconds", type=int, default=10)
     args = parser.parse_args(argv)
@@ -629,6 +677,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.stop_running_before_run,
                     args.stop_timeout_seconds,
                     args.failed_run_retry_seconds,
+                    args.run_attempt_timeout_seconds,
                 )
             )
         else:

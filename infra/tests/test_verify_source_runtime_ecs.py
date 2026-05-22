@@ -255,6 +255,46 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         self.assertEqual(result, verified)
         self.assertEqual(run_task.call_count, 2)
 
+    def test_run_verify_stops_and_retries_timed_out_attempt(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-cosmo-fact",
+            schedule_name="cosmo-fact",
+            rule_name="cerebro-sec-dev-orchestrator-cosmo-fact",
+            target={"Arn": "cluster"},
+        )
+        verified = VerificationResult(
+            runtime_id="writer-cosmo-fact",
+            task_arn="task-2",
+            exit_code=0,
+            runtime_status="completed",
+            sync_status="completed",
+            graph_ingest_status="completed",
+            events_appended=1,
+            pages_read=1,
+        )
+
+        with (
+            patch("scripts.verify_source_runtime_ecs.time.time", return_value=0),
+            patch("scripts.verify_source_runtime_ecs.time.sleep"),
+            patch("scripts.verify_source_runtime_ecs._run_task", side_effect=["task-1", "task-2"]) as run_task,
+            patch("scripts.verify_source_runtime_ecs._wait_for_task", side_effect=[TimeoutError("attempt timed out"), None]) as wait_for_task,
+            patch("scripts.verify_source_runtime_ecs._stop_task") as stop_task,
+            patch("scripts.verify_source_runtime_ecs._verify_task", return_value=verified),
+        ):
+            result = _run_and_verify_task_with_retries(
+                target,
+                wait_timeout_seconds=100,
+                poll_seconds=10,
+                region="us-east-1",
+                failed_run_retry_seconds=60,
+                run_attempt_timeout_seconds=30,
+            )
+
+        self.assertEqual(result, verified)
+        self.assertEqual(run_task.call_count, 2)
+        wait_for_task.assert_any_call("cluster", "task-1", 30, 10, "us-east-1")
+        stop_task.assert_called_once()
+
     def test_summarize_log_messages_limits_fields_and_length(self) -> None:
         summary = _summarize_log_messages(
             [
