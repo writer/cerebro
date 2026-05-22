@@ -827,6 +827,7 @@ func (s *Store) backfillFindingRisk(ctx context.Context, includeUnprojected bool
 		risk           ports.FindingRisk
 		sourceSeverity string
 		staleRisk      bool
+		record         *ports.FindingRecord
 	}
 	now := time.Now().UTC()
 	updates := []riskBackfill{}
@@ -851,6 +852,7 @@ func (s *Store) backfillFindingRisk(ctx context.Context, includeUnprojected bool
 			risk:           findingBackfillRisk(record, now),
 			sourceSeverity: sourceSeverity,
 			staleRisk:      strings.TrimSpace(record.RiskModelVersion) != findingrisk.FindingRiskModelVersion || record.RiskScore == 0,
+			record:         record,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -861,6 +863,7 @@ func (s *Store) backfillFindingRisk(ctx context.Context, includeUnprojected bool
 			continue
 		}
 		if !update.staleRisk {
+			updated = append(updated, update.record)
 			continue
 		}
 		stored, updateErr := s.updateFindingRiskColumnsIfStale(ctx, update.id, update.risk, findingRiskAttributesForUpdate(update.risk, update.sourceSeverity))

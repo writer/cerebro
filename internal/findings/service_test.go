@@ -2946,7 +2946,7 @@ func TestPersistFindingRiskUsesRiskOnlyUpdate(t *testing.T) {
 	}
 }
 
-func TestBackfillFindingRiskSkipsStartupGraphProjection(t *testing.T) {
+func TestBackfillFindingRiskProjectsUpdatedRiskRows(t *testing.T) {
 	openFinding := &ports.FindingRecord{
 		ID:        "finding-1",
 		TenantID:  "tenant-a",
@@ -2983,28 +2983,43 @@ func TestBackfillFindingRiskSkipsStartupGraphProjection(t *testing.T) {
 	if err := service.BackfillFindingRisk(context.Background()); err != nil {
 		t.Fatalf("BackfillFindingRisk() error = %v", err)
 	}
-	if store.backfillIncludeUnprojected {
-		t.Fatal("BackfillFindingRisk() requested graph projection rows during startup backfill")
+	if !store.backfillIncludeUnprojected {
+		t.Fatal("BackfillFindingRisk() did not request unprojected rows with graph configured")
 	}
 	graphFinding := graphStore.entities["urn:cerebro:tenant-a:finding:finding-1"]
-	if graphFinding != nil {
-		t.Fatalf("BackfillFindingRisk projected finding anchor during startup backfill: %#v", graphFinding)
+	if graphFinding == nil {
+		t.Fatal("BackfillFindingRisk() did not project finding anchor")
 	}
-	if got := len(appendLog.events); got != 0 {
-		t.Fatalf("len(appended events) = %d, want 0", got)
+	if got := graphFinding.Attributes["risk_score"]; got != "83" {
+		t.Fatalf("projected risk_score = %q, want 83", got)
 	}
-	if got := store.findings["finding-1"].Attributes[FindingRiskGraphProjectedModelVersionAttribute]; got != "" {
-		t.Fatalf("projection marker = %q, want empty during startup backfill", got)
+	if got := graphFinding.Attributes[FindingEffectiveSeverityAttribute]; got != "HIGH" {
+		t.Fatalf("projected effective_severity = %q, want HIGH", got)
 	}
-	if got := store.markRiskProjectedCount; got != 0 {
-		t.Fatalf("MarkFindingRiskProjected calls = %d, want 0", got)
+	if closed := graphStore.entities["urn:cerebro:tenant-a:finding:finding-closed"]; closed == nil || closed.Attributes["risk_score"] != "83" {
+		t.Fatalf("closed projected finding = %#v, want risk_score 83", closed)
+	}
+	if got := len(appendLog.events); got != 2 {
+		t.Fatalf("len(appended events) = %d, want 2", got)
+	}
+	if eventTime := appendLog.events[0].GetOccurredAt().AsTime(); time.Since(eventTime) > time.Minute {
+		t.Fatalf("backfill event occurred_at = %s, want startup time", eventTime.Format(time.RFC3339Nano))
+	}
+	if got := appendLog.events[1].GetKind(); got != workflowevents.EventKindFindingStatusChanged {
+		t.Fatalf("closed finding event kind = %q, want status_changed", got)
+	}
+	if got := store.findings["finding-1"].Attributes[FindingRiskGraphProjectedModelVersionAttribute]; got != defaultFindingRiskModelVersion {
+		t.Fatalf("projection marker = %q, want %q", got, defaultFindingRiskModelVersion)
+	}
+	if got := store.markRiskProjectedCount; got != 2 {
+		t.Fatalf("MarkFindingRiskProjected calls = %d, want 2", got)
 	}
 	if got := store.updateRiskCount; got != 0 {
-		t.Fatalf("UpdateFindingRisk calls = %d, want 0", got)
+		t.Fatalf("UpdateFindingRisk calls = %d, want 0 when guarded marker is available", got)
 	}
 }
 
-func TestBackfillFindingRiskSkipsProjectionMarkerWhenRiskChanged(t *testing.T) {
+func TestBackfillFindingRiskProjectsCurrentRiskAfterConcurrentUpdate(t *testing.T) {
 	finding := &ports.FindingRecord{
 		ID:        "finding-1",
 		TenantID:  "tenant-a",
@@ -3030,8 +3045,15 @@ func TestBackfillFindingRiskSkipsProjectionMarkerWhenRiskChanged(t *testing.T) {
 	if err := service.BackfillFindingRisk(context.Background()); err != nil {
 		t.Fatalf("BackfillFindingRisk() error = %v", err)
 	}
-	if got := store.findings["finding-1"].Attributes[FindingRiskGraphProjectedModelVersionAttribute]; got != "" {
-		t.Fatalf("projection marker = %q, want empty after concurrent risk update", got)
+	graphFinding := graphStore.entities["urn:cerebro:tenant-a:finding:finding-1"]
+	if graphFinding == nil {
+		t.Fatal("BackfillFindingRisk() did not project finding anchor")
+	}
+	if got := graphFinding.Attributes["risk_score"]; got != "95" {
+		t.Fatalf("projected risk_score = %q, want current risk 95", got)
+	}
+	if got := store.findings["finding-1"].Attributes[FindingRiskGraphProjectedModelVersionAttribute]; got != defaultFindingRiskModelVersion {
+		t.Fatalf("projection marker = %q, want %q", got, defaultFindingRiskModelVersion)
 	}
 }
 
