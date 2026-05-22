@@ -1,7 +1,7 @@
 [
   {
     "id": "github-audit-1",
-    "tenant_id": "writer",
+    "tenant_id": "example",
     "source_id": "github",
     "kind": "github.audit",
     "occurred_at": "2026-04-22T18:00:00Z",
@@ -9,17 +9,17 @@
     "payload": {
       "action": "repo.create",
       "actor": "octocat",
-      "org": "writer",
-      "repository": "writer/cerebro"
+      "org": "example",
+      "repository": "example/cerebro"
     },
     "attributes": {
       "action": "repo.create",
-      "org": "writer"
+      "org": "example"
     }
   },
   {
     "id": "github-pr-1",
-    "tenant_id": "writer",
+    "tenant_id": "example",
     "source_id": "github",
     "kind": "github.pull_request",
     "occurred_at": "2026-04-22T18:05:00Z",
@@ -27,13 +27,13 @@
     "payload": {
       "number": 441,
       "action": "opened",
-      "repository": "writer/cerebro"
+      "repository": "example/cerebro"
     },
     "attributes": {
-      "org": "writer",
-      "owner": "writer",
+      "org": "example",
+      "owner": "example",
       "repo": "cerebro",
-      "repository": "writer/cerebro"
+      "repository": "example/cerebro"
     }
   }
 ]

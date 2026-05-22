@@ -183,9 +183,9 @@ func TestReplayFiltersEventsByRuntime(t *testing.T) {
 		},
 		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
 			"CEREBRO_EVENTS": {
-				1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-1", "github.audit", "writer-github")),
+				1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-1", "github.audit", "example-github")),
 				2: rawReplayMsg(t, "events.github.pull_request", replayEvent("evt-2", "github.pull_request", "other-runtime")),
-				3: rawReplayMsg(t, "events.github.pull_request", replayEvent("evt-3", "github.pull_request", "writer-github")),
+				3: rawReplayMsg(t, "events.github.pull_request", replayEvent("evt-3", "github.pull_request", "example-github")),
 				4: rawReplayMsg(t, "events.ignored", replayEvent("evt-4", "ignored", "")),
 			},
 		},
@@ -193,7 +193,7 @@ func TestReplayFiltersEventsByRuntime(t *testing.T) {
 	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
 
 	events, err := log.Replay(context.Background(), ports.ReplayRequest{
-		RuntimeID: "writer-github",
+		RuntimeID: "example-github",
 		Limit:     2,
 	})
 	if err != nil {
@@ -213,7 +213,7 @@ func TestReplayFiltersEventsByRuntime(t *testing.T) {
 func TestReplayAppliesDefaultLimit(t *testing.T) {
 	msgs := make(map[uint64]*natsjetstream.RawStreamMsg)
 	for seq := uint64(1); seq <= defaultReplayLimit+5; seq++ {
-		msgs[seq] = rawReplayMsg(t, "events.github.audit", replayEvent("evt-"+strconv.FormatUint(seq, 10), "github.audit", "writer-github"))
+		msgs[seq] = rawReplayMsg(t, "events.github.audit", replayEvent("evt-"+strconv.FormatUint(seq, 10), "github.audit", "example-github"))
 	}
 	replay := &fakeReplayManager{
 		streams: []*natsjetstream.StreamInfo{
@@ -229,7 +229,7 @@ func TestReplayAppliesDefaultLimit(t *testing.T) {
 	}
 	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
 
-	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github"})
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "example-github"})
 	if err != nil {
 		t.Fatalf("Replay() error = %v", err)
 	}
@@ -260,7 +260,7 @@ func TestReplayFiltersWorkflowEventsByKindPrefixTenantAndAttribute(t *testing.T)
 				1: rawReplayMsg(t, "events.workflow.v1.knowledge.decision_recorded", workflowReplayEvent("evt-1", "workflow.v1.knowledge.decision_recorded", "writer", "knowledge_decision")),
 				2: rawReplayMsg(t, "events.workflow.v1.knowledge.action_recorded", workflowReplayEvent("evt-2", "workflow.v1.knowledge.action_recorded", "writer", "knowledge_action")),
 				3: rawReplayMsg(t, "events.workflow.v1.knowledge.decision_recorded", workflowReplayEvent("evt-3", "workflow.v1.knowledge.decision_recorded", "other", "knowledge_decision")),
-				4: rawReplayMsg(t, "events.github.audit", replayEvent("evt-4", "github.audit", "writer-github")),
+				4: rawReplayMsg(t, "events.github.audit", replayEvent("evt-4", "github.audit", "example-github")),
 			},
 		},
 	}
@@ -298,13 +298,13 @@ func TestReplayScansSparseStreamsUntilLimitOrStreamStart(t *testing.T) {
 		},
 		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
 			"CEREBRO_EVENTS": {
-				matchingSeq: rawReplayMsg(t, "events.github.audit", replayEvent("evt-sparse", "github.audit", "writer-github")),
+				matchingSeq: rawReplayMsg(t, "events.github.audit", replayEvent("evt-sparse", "github.audit", "example-github")),
 			},
 		},
 	}
 	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
 
-	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github"})
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "example-github"})
 	if err != nil {
 		t.Fatalf("Replay() error = %v", err)
 	}
@@ -329,16 +329,16 @@ func TestReplayReturnsLatestMatchesInAppendOrder(t *testing.T) {
 		},
 		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
 			"CEREBRO_EVENTS": {
-				1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-1", "github.audit", "writer-github")),
-				2: rawReplayMsg(t, "events.github.audit", replayEvent("evt-2", "github.audit", "writer-github")),
+				1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-1", "github.audit", "example-github")),
+				2: rawReplayMsg(t, "events.github.audit", replayEvent("evt-2", "github.audit", "example-github")),
 				3: rawReplayMsg(t, "events.github.audit", replayEvent("evt-3", "github.audit", "other-runtime")),
-				4: rawReplayMsg(t, "events.github.audit", replayEvent("evt-4", "github.audit", "writer-github")),
+				4: rawReplayMsg(t, "events.github.audit", replayEvent("evt-4", "github.audit", "example-github")),
 			},
 		},
 	}
 	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
 
-	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github", Limit: 2})
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "example-github", Limit: 2})
 	if err != nil {
 		t.Fatalf("Replay() error = %v", err)
 	}
@@ -364,16 +364,16 @@ func TestReplayReturnsNewestOccurredEventsWhenAppendedNewestFirst(t *testing.T) 
 		},
 		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
 			"CEREBRO_EVENTS": {
-				1: rawReplayMsg(t, "events.github.audit", replayEventAt("evt-newest", "github.audit", "writer-github", base.Add(4*time.Minute))),
-				2: rawReplayMsg(t, "events.github.audit", replayEventAt("evt-newer", "github.audit", "writer-github", base.Add(3*time.Minute))),
-				3: rawReplayMsg(t, "events.github.audit", replayEventAt("evt-older", "github.audit", "writer-github", base.Add(2*time.Minute))),
-				4: rawReplayMsg(t, "events.github.audit", replayEventAt("evt-oldest", "github.audit", "writer-github", base.Add(time.Minute))),
+				1: rawReplayMsg(t, "events.github.audit", replayEventAt("evt-newest", "github.audit", "example-github", base.Add(4*time.Minute))),
+				2: rawReplayMsg(t, "events.github.audit", replayEventAt("evt-newer", "github.audit", "example-github", base.Add(3*time.Minute))),
+				3: rawReplayMsg(t, "events.github.audit", replayEventAt("evt-older", "github.audit", "example-github", base.Add(2*time.Minute))),
+				4: rawReplayMsg(t, "events.github.audit", replayEventAt("evt-oldest", "github.audit", "example-github", base.Add(time.Minute))),
 			},
 		},
 	}
 	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
 
-	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github", Limit: 2})
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "example-github", Limit: 2})
 	if err != nil {
 		t.Fatalf("Replay() error = %v", err)
 	}
@@ -388,7 +388,7 @@ func TestReplayReturnsNewestOccurredEventsWhenAppendedNewestFirst(t *testing.T) 
 func TestReplayStopsAfterBoundedCandidateWindow(t *testing.T) {
 	msgs := make(map[uint64]*natsjetstream.RawStreamMsg)
 	for seq := uint64(1); seq <= 100; seq++ {
-		msgs[seq] = rawReplayMsg(t, "events.github.audit", replayEvent("evt-"+strconv.FormatUint(seq, 10), "github.audit", "writer-github"))
+		msgs[seq] = rawReplayMsg(t, "events.github.audit", replayEvent("evt-"+strconv.FormatUint(seq, 10), "github.audit", "example-github"))
 	}
 	replay := &fakeReplayManager{
 		streams: []*natsjetstream.StreamInfo{
@@ -404,7 +404,7 @@ func TestReplayStopsAfterBoundedCandidateWindow(t *testing.T) {
 	}
 	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
 
-	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github", Limit: 2})
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "example-github", Limit: 2})
 	if err != nil {
 		t.Fatalf("Replay() error = %v", err)
 	}
@@ -438,13 +438,13 @@ func TestReplayStreamMatchesMultiTokenSubjectPatterns(t *testing.T) {
 		},
 		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
 			"CEREBRO_EVENTS": {
-				1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-1", "github.audit", "writer-github")),
+				1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-1", "github.audit", "example-github")),
 			},
 		},
 	}
 	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
 
-	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github"})
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "example-github"})
 	if err != nil {
 		t.Fatalf("Replay() error = %v", err)
 	}

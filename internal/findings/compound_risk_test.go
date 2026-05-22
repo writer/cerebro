@@ -8,10 +8,10 @@ import (
 
 func TestAnalyzeCompoundRisksGroupsFindingsByActorResourceAndRepository(t *testing.T) {
 	report := AnalyzeCompoundRisks([]*ports.FindingRecord{
-		compoundRiskFinding("finding-1", "github-branch-protection-disabled", "HIGH", "alice", "writer/app", "urn:cerebro:writer:github_repo:writer/app", "protected_branch.destroy"),
-		compoundRiskFinding("finding-2", "github-secret-scanning-alert-created", "MEDIUM", "alice", "writer/app", "urn:cerebro:writer:github_repo:writer/app", "secret_scanning_alert.create"),
-		compoundRiskFinding("finding-3", "github-repository-collaborator-added", "MEDIUM", "bob", "writer/app", "urn:cerebro:writer:github_repo:writer/app", "repo.add_member"),
-		compoundRiskFinding("finding-4", "github-app-integration-installed", "MEDIUM", "alice", "", "urn:cerebro:writer:github_resource:integration_installation:writer", "integration_installation.create"),
+		compoundRiskFinding("finding-1", "github-branch-protection-disabled", "HIGH", "alice", "writer/app", "urn:cerebro:example:github_repo:writer/app", "protected_branch.destroy"),
+		compoundRiskFinding("finding-2", "github-secret-scanning-alert-created", "MEDIUM", "alice", "writer/app", "urn:cerebro:example:github_repo:writer/app", "secret_scanning_alert.create"),
+		compoundRiskFinding("finding-3", "github-repository-collaborator-added", "MEDIUM", "bob", "writer/app", "urn:cerebro:example:github_repo:writer/app", "repo.add_member"),
+		compoundRiskFinding("finding-4", "github-app-integration-installed", "MEDIUM", "alice", "", "urn:cerebro:example:github_resource:integration_installation:writer", "integration_installation.create"),
 	}, CompoundRiskOptions{Limit: 10, SampleLimit: 2})
 
 	if got := len(report.Actors); got != 1 {
@@ -58,7 +58,7 @@ func TestAnalyzeCompoundRisksGroupsFindingsByActorResourceAndRepository(t *testi
 		t.Fatalf("len(Resources) = %d, want 1", got)
 	}
 	resource := report.Resources[0]
-	if got := resource.Key; got != "urn:cerebro:writer:github_repo:writer/app" {
+	if got := resource.Key; got != "urn:cerebro:example:github_repo:writer/app" {
 		t.Fatalf("Resources[0].Key = %q, want repo resource urn", got)
 	}
 	if got := resource.Actions[0].Value; got != "protected_branch.destroy" {
@@ -67,13 +67,13 @@ func TestAnalyzeCompoundRisksGroupsFindingsByActorResourceAndRepository(t *testi
 }
 
 func TestAnalyzeCompoundRisksDeduplicatesFindingsAndAppliesLimit(t *testing.T) {
-	high := compoundRiskFinding("finding-1", "github-secret-scanning-disabled", "HIGH", "alice", "writer/app", "urn:cerebro:writer:github_repo:writer/app", "repository_secret_scanning.disable")
+	high := compoundRiskFinding("finding-1", "github-secret-scanning-disabled", "HIGH", "alice", "writer/app", "urn:cerebro:example:github_repo:writer/app", "repository_secret_scanning.disable")
 	report := AnalyzeCompoundRisks([]*ports.FindingRecord{
 		high,
 		high,
-		compoundRiskFinding("finding-2", "github-secret-scanning-disabled", "HIGH", "alice", "writer/app", "urn:cerebro:writer:github_repo:writer/app", "repository_secret_scanning.disable"),
-		compoundRiskFinding("finding-3", "github-repository-collaborator-added", "MEDIUM", "bob", "writer/lib", "urn:cerebro:writer:github_repo:writer/lib", "repo.add_member"),
-		compoundRiskFinding("finding-4", "github-secret-scanning-alert-created", "LOW", "bob", "writer/lib", "urn:cerebro:writer:github_repo:writer/lib", "secret_scanning_alert.create"),
+		compoundRiskFinding("finding-2", "github-secret-scanning-disabled", "HIGH", "alice", "writer/app", "urn:cerebro:example:github_repo:writer/app", "repository_secret_scanning.disable"),
+		compoundRiskFinding("finding-3", "github-repository-collaborator-added", "MEDIUM", "bob", "writer/lib", "urn:cerebro:example:github_repo:writer/lib", "repo.add_member"),
+		compoundRiskFinding("finding-4", "github-secret-scanning-alert-created", "LOW", "bob", "writer/lib", "urn:cerebro:example:github_repo:writer/lib", "secret_scanning_alert.create"),
 	}, CompoundRiskOptions{Limit: 1})
 
 	if got := len(report.Actors); got != 1 {
@@ -88,38 +88,38 @@ func TestAnalyzeCompoundRisksDeduplicatesFindingsAndAppliesLimit(t *testing.T) {
 }
 
 func TestAnalyzeCompoundRisksNormalizesCrossSourceDimensions(t *testing.T) {
-	oktaOne := compoundRiskFinding("okta-1", oktaPolicyRuleLifecycleTamperingRuleID, "HIGH", "admin@writer.com", "", "urn:cerebro:writer:okta_resource:policyrule:rule-1", "")
-	oktaOne.RuntimeID = "writer-okta-audit"
+	oktaOne := compoundRiskFinding("okta-1", oktaPolicyRuleLifecycleTamperingRuleID, "HIGH", "admin@example.com", "", "urn:cerebro:example:okta_resource:policyrule:rule-1", "")
+	oktaOne.RuntimeID = "example-okta-audit"
 	oktaOne.Attributes["event_type"] = "policy.rule.update"
-	oktaOne.Attributes["primary_actor_urn"] = "urn:cerebro:writer:okta_actor:user:00u1"
+	oktaOne.Attributes["primary_actor_urn"] = "urn:cerebro:example:okta_actor:user:00u1"
 	oktaOne.Attributes["rule_source_id"] = "okta"
 	delete(oktaOne.Attributes, "resource_type")
 
-	oktaTwo := compoundRiskFinding("okta-2", oktaPolicyRuleLifecycleTamperingRuleID, "HIGH", "admin@writer.com", "", "urn:cerebro:writer:okta_resource:policyrule:rule-2", "")
-	oktaTwo.RuntimeID = "writer-okta-audit"
+	oktaTwo := compoundRiskFinding("okta-2", oktaPolicyRuleLifecycleTamperingRuleID, "HIGH", "admin@example.com", "", "urn:cerebro:example:okta_resource:policyrule:rule-2", "")
+	oktaTwo.RuntimeID = "example-okta-audit"
 	oktaTwo.Attributes["event_type"] = "policy.rule.deactivate"
-	oktaTwo.Attributes["primary_actor_urn"] = "urn:cerebro:writer:okta_actor:user:00u1"
+	oktaTwo.Attributes["primary_actor_urn"] = "urn:cerebro:example:okta_actor:user:00u1"
 	oktaTwo.Attributes["rule_source_id"] = "okta"
 	delete(oktaTwo.Attributes, "resource_type")
 
-	dependabotOne := compoundRiskFinding("gh-1", githubDependabotOpenAlertRuleID, "HIGH", "", "", "urn:cerebro:writer:github_dependabot_alert:writer/cerebro:7", "")
-	dependabotOne.RuntimeID = "writer-github"
+	dependabotOne := compoundRiskFinding("gh-1", githubDependabotOpenAlertRuleID, "HIGH", "", "", "urn:cerebro:example:github_dependabot_alert:writer/cerebro:7", "")
+	dependabotOne.RuntimeID = "example-github"
 	dependabotOne.Attributes["repository"] = "writer/cerebro"
 	dependabotOne.Attributes["rule_source_id"] = "github"
 	delete(dependabotOne.Attributes, "repo")
 
-	dependabotTwo := compoundRiskFinding("gh-2", githubDependabotOpenAlertRuleID, "HIGH", "", "", "urn:cerebro:writer:github_dependabot_alert:writer/cerebro:8", "")
-	dependabotTwo.RuntimeID = "writer-github"
+	dependabotTwo := compoundRiskFinding("gh-2", githubDependabotOpenAlertRuleID, "HIGH", "", "", "urn:cerebro:example:github_dependabot_alert:writer/cerebro:8", "")
+	dependabotTwo.RuntimeID = "example-github"
 	dependabotTwo.Attributes["repository"] = "writer/cerebro"
 	dependabotTwo.Attributes["rule_source_id"] = "github"
 	delete(dependabotTwo.Attributes, "repo")
 
 	report := AnalyzeCompoundRisks([]*ports.FindingRecord{oktaOne, oktaTwo, dependabotOne, dependabotTwo}, CompoundRiskOptions{Limit: 10})
 
-	if got := report.Actors[0].Key; got != "urn:cerebro:writer:okta_actor:user:00u1" {
+	if got := report.Actors[0].Key; got != "urn:cerebro:example:okta_actor:user:00u1" {
 		t.Fatalf("Actors[0].Key = %q, want normalized actor urn", got)
 	}
-	if got := report.Actors[0].Label; got != "admin@writer.com" {
+	if got := report.Actors[0].Label; got != "admin@example.com" {
 		t.Fatalf("Actors[0].Label = %q, want actor label", got)
 	}
 	if got := report.Actors[0].Actions[0].Value; got != "policy.rule.deactivate" && got != "policy.rule.update" {
@@ -140,8 +140,8 @@ func compoundRiskFinding(id string, ruleID string, severity string, actor string
 	return &ports.FindingRecord{
 		ID:           id,
 		Fingerprint:  id,
-		TenantID:     "writer",
-		RuntimeID:    "writer-github-audit",
+		TenantID:     "example",
+		RuntimeID:    "example-github-audit",
 		RuleID:       ruleID,
 		Severity:     severity,
 		Status:       findingStatusOpen,

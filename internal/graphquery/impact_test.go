@@ -29,12 +29,12 @@ func (s *impactStubStore) ExecuteReadCypher(_ context.Context, _ ports.CypherQue
 }
 
 func TestGetImpactVulnerabilityGroupsCanonicalPackageAssetsAndEvidence(t *testing.T) {
-	vulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
-	canonicalPackageURN := "urn:cerebro:writer:package:canonical:golang.org/x/crypto"
-	githubPackageURN := "urn:cerebro:writer:package:go:golang.org/x/crypto"
-	sentinelOnePackageURN := "urn:cerebro:writer:package:sentinelone:golang.org/x/crypto"
-	alertURN := "urn:cerebro:writer:github_dependabot_alert:writer/cerebro:42"
-	agentURN := "urn:cerebro:writer:sentinelone_agent:agent-42"
+	vulnerabilityURN := "urn:cerebro:example:vulnerability:cve-2026-4242"
+	canonicalPackageURN := "urn:cerebro:example:package:canonical:golang.org/x/crypto"
+	githubPackageURN := "urn:cerebro:example:package:go:golang.org/x/crypto"
+	sentinelOnePackageURN := "urn:cerebro:example:package:sentinelone:golang.org/x/crypto"
+	alertURN := "urn:cerebro:example:github_dependabot_alert:writer/cerebro:42"
+	agentURN := "urn:cerebro:example:sentinelone_agent:agent-42"
 	store := &impactStubStore{neighborhoods: map[string]*ports.EntityNeighborhood{
 		vulnerabilityURN: {
 			Root: node(vulnerabilityURN, "vulnerability", "CVE-2026-4242"),
@@ -62,7 +62,7 @@ func TestGetImpactVulnerabilityGroupsCanonicalPackageAssetsAndEvidence(t *testin
 
 	result, err := New(store).GetImpact(context.Background(), ImpactRequest{
 		Kind:       ImpactKindVulnerability,
-		TenantID:   "writer",
+		TenantID:   "example",
 		Identifier: "CVE-2026-4242",
 		Depth:      1,
 	})
@@ -84,9 +84,9 @@ func TestGetImpactVulnerabilityGroupsCanonicalPackageAssetsAndEvidence(t *testin
 }
 
 func TestGetImpactDepthDoesNotExpandPastRequestedHops(t *testing.T) {
-	rootURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
-	directURN := "urn:cerebro:writer:package:canonical:pkg:npm/foo"
-	secondHopURN := "urn:cerebro:writer:sentinelone_agent:agent-42"
+	rootURN := "urn:cerebro:example:vulnerability:cve-2026-4242"
+	directURN := "urn:cerebro:example:package:canonical:pkg:npm/foo"
+	secondHopURN := "urn:cerebro:example:sentinelone_agent:agent-42"
 	store := &impactStubStore{neighborhoods: map[string]*ports.EntityNeighborhood{
 		rootURN: {
 			Root:      node(rootURN, "vulnerability", "CVE-2026-4242"),
@@ -103,7 +103,7 @@ func TestGetImpactDepthDoesNotExpandPastRequestedHops(t *testing.T) {
 
 	result, err := New(store).GetImpact(context.Background(), ImpactRequest{
 		Kind:       ImpactKindVulnerability,
-		TenantID:   "writer",
+		TenantID:   "example",
 		Identifier: "CVE-2026-4242",
 		Depth:      1,
 	})
@@ -125,8 +125,8 @@ func TestGetImpactDepthDoesNotExpandPastRequestedHops(t *testing.T) {
 }
 
 func TestGetImpactLimitExcludesRelationsForDroppedNodes(t *testing.T) {
-	rootURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
-	packageURN := "urn:cerebro:writer:package:canonical:pkg:npm/foo"
+	rootURN := "urn:cerebro:example:vulnerability:cve-2026-4242"
+	packageURN := "urn:cerebro:example:package:canonical:pkg:npm/foo"
 	store := &impactStubStore{neighborhoods: map[string]*ports.EntityNeighborhood{
 		rootURN: {
 			Root:      node(rootURN, "vulnerability", "CVE-2026-4242"),
@@ -138,7 +138,7 @@ func TestGetImpactLimitExcludesRelationsForDroppedNodes(t *testing.T) {
 
 	result, err := New(store).GetImpact(context.Background(), ImpactRequest{
 		Kind:       ImpactKindVulnerability,
-		TenantID:   "writer",
+		TenantID:   "example",
 		Identifier: "CVE-2026-4242",
 		Depth:      1,
 		Limit:      1,
@@ -158,14 +158,14 @@ func TestGetImpactLimitExcludesRelationsForDroppedNodes(t *testing.T) {
 }
 
 func TestGetImpactPackageNormalizesVersionedPURL(t *testing.T) {
-	rootURN := "urn:cerebro:writer:package:canonical:pkg:npm/foo"
+	rootURN := "urn:cerebro:example:package:canonical:pkg:npm/foo"
 	store := &impactStubStore{neighborhoods: map[string]*ports.EntityNeighborhood{
 		rootURN: emptyNeighborhood(rootURN, "package"),
 	}}
 
 	result, err := New(store).GetImpact(context.Background(), ImpactRequest{
 		Kind:       ImpactKindPackage,
-		TenantID:   "writer",
+		TenantID:   "example",
 		Identifier: "pkg:npm/foo@1.2.3?repository_url=https://registry.npmjs.org#dist",
 	})
 	if err != nil {
@@ -186,7 +186,7 @@ func TestGetImpactRequiresTenantForPackageAndVulnerability(t *testing.T) {
 func TestGetImpactRejectsRawURNForPackageAndVulnerability(t *testing.T) {
 	_, err := New(&impactStubStore{}).GetImpact(context.Background(), ImpactRequest{
 		Kind:       ImpactKindPackage,
-		TenantID:   "writer",
+		TenantID:   "example",
 		Identifier: "urn:cerebro:other:package:canonical:pkg:npm/foo",
 	})
 	if !errors.Is(err, ErrInvalidRequest) {
@@ -194,7 +194,7 @@ func TestGetImpactRejectsRawURNForPackageAndVulnerability(t *testing.T) {
 	}
 	_, err = New(&impactStubStore{}).GetImpact(context.Background(), ImpactRequest{
 		Kind:       ImpactKindVulnerability,
-		TenantID:   "writer",
+		TenantID:   "example",
 		Identifier: "urn:cerebro:other:vulnerability:cve-2026-4242",
 	})
 	if !errors.Is(err, ErrInvalidRequest) {
@@ -204,12 +204,12 @@ func TestGetImpactRejectsRawURNForPackageAndVulnerability(t *testing.T) {
 
 func TestGetImpactPackageDoesNotFallbackToLegacyPURLIdentity(t *testing.T) {
 	store := &impactStubStore{neighborhoods: map[string]*ports.EntityNeighborhood{
-		"urn:cerebro:writer:package:canonical:pkg:MAVEN/org.example/artifact": emptyNeighborhood("urn:cerebro:writer:package:canonical:pkg:MAVEN/org.example/artifact", "package"),
+		"urn:cerebro:example:package:canonical:pkg:MAVEN/org.example/artifact": emptyNeighborhood("urn:cerebro:example:package:canonical:pkg:MAVEN/org.example/artifact", "package"),
 	}}
 
 	_, err := New(store).GetImpact(context.Background(), ImpactRequest{
 		Kind:       ImpactKindPackage,
-		TenantID:   "writer",
+		TenantID:   "example",
 		Identifier: "pkg:MAVEN/org.example/artifact@1.2.3?classifier=sources",
 	})
 	if !errors.Is(err, ports.ErrGraphEntityNotFound) {

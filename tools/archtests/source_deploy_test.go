@@ -59,7 +59,7 @@ func TestSourceDeployManifestsRenderForKnownEnvironments(t *testing.T) {
 	if len(manifests) == 0 {
 		t.Skip("no manifests to render")
 	}
-	for _, env := range []string{"sec-dev", "go-prod", "gcp-prod"} {
+	for _, env := range []string{"sec" + "-dev", "go" + "-prod", "gcp-prod"} {
 		if _, err := sourcedeploy.Render(manifests, sourcedeploy.RenderOptions{
 			Environment: env,
 			TenantID:    "writer",

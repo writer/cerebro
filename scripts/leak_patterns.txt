@@ -2,14 +2,14 @@
 # One POSIX-ERE pattern per line. Lines starting with '#' and blank
 # lines are ignored.
 #
-# This file is committed to the public cerebro repository and MUST
-# only contain regex shapes for industry-standard credential formats
-# that are themselves public knowledge (AWS access-key prefix, GitHub
-# token prefixes, PEM headers, etc).
+# This file is committed to the public cerebro repository and MUST only
+# contain regex shapes whose presence does not disclose private
+# infrastructure. Specific account IDs, hostnames, tenant runtimes, and
+# employee/customer identifiers belong in the user-local pattern pack.
 #
 # Do NOT add any of the following to this file:
 #   - Specific tenant runtime IDs, hostnames, subdomains, or account IDs
-#   - Customer / employee names, emails, or handles
+#   - Customer / employee names, handles, or specific email local-parts
 #   - Internal environment names or URL slugs
 #   - Anything whose presence here would itself disclose tenant data
 #
@@ -21,6 +21,10 @@
 # (or override the path with $CEREBRO_LEAK_USER_PATTERNS). That file
 # is not tracked; see scripts/leak_patterns.user.example.txt for the
 # expected layout.
+
+# ---- Public service identifier shapes ----
+\b[0-9a-f]{8}\.databases\.neo4j\.io\b
+\b(00[uoga]|0oa)[0-9A-Za-z]{15,}\b
 
 # ---- AWS credential prefixes (public format) ----
 \bAKIA[0-9A-Z]{16}\b
@@ -44,4 +48,4 @@
 -----BEGIN ([A-Z]+ )?PRIVATE KEY-----
 
 # ---- Generic secret-style key/value (broad; tighten if noisy) ----
-(?i)\b(aws_secret_access_key|api[_-]?key|access[_-]?token|bearer)\b[[:space:]]*[:=][[:space:]]*['\"][A-Za-z0-9/_+=.\-]{20,}['\"]
+\b([Aa][Ww][Ss]_[Ss][Ee][Cc][Rr][Ee][Tt]_[Aa][Cc][Cc][Ee][Ss][Ss]_[Kk][Ee][Yy]|[Aa][Pp][Ii][_-]?[Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss][_-]?[Tt][Oo][Kk][Ee][Nn]|[Bb][Ee][Aa][Rr][Ee][Rr])\b[[:space:]]*[:=][[:space:]]*['\"][A-Za-z0-9/_+=.\-]{20,}['\"]

@@ -1,14 +1,14 @@
 {
   "rule_id": "github-repository-made-public",
   "runtime": {
-    "id": "writer-github-audit",
+    "id": "example-github-audit",
     "source_id": "github",
-    "tenant_id": "writer"
+    "tenant_id": "example"
   },
   "events": [
     {
       "id": "github-audit-repo-made-public",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.audit",
       "occurred_at": "2026-04-27T00:03:00Z",
@@ -23,13 +23,13 @@
         "repo": "writer/cerebro",
         "resource_id": "writer/cerebro",
         "resource_type": "repo",
-        "source_runtime_id": "writer-github-audit",
+        "source_runtime_id": "example-github-audit",
         "visibility": "public"
       }
     },
     {
       "id": "github-audit-repo-internal-public",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.audit",
       "occurred_at": "2026-04-27T00:03:00Z",
@@ -44,7 +44,7 @@
         "repo": "writer/cerebro",
         "resource_id": "writer/cerebro",
         "resource_type": "repo",
-        "source_runtime_id": "writer-github-audit",
+        "source_runtime_id": "example-github-audit",
         "visibility": "public"
       }
     }
@@ -59,8 +59,8 @@
       "attributes": {
         "action": "repo.access",
         "previous_visibility": "private",
-        "primary_actor_urn": "urn:cerebro:writer:github_user:admin",
-        "primary_resource_urn": "urn:cerebro:writer:github_repo:writer/cerebro",
+        "primary_actor_urn": "urn:cerebro:example:github_user:admin",
+        "primary_resource_urn": "urn:cerebro:example:github_repo:writer/cerebro",
         "repo": "writer/cerebro",
         "rule_tags": "github,repository,exfiltration,impact,attack.t1567.001",
         "visibility": "public"

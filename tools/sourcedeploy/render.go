@@ -25,7 +25,7 @@ type RenderOptions struct {
 //
 // cerebro:orchestratorSchedules is intentionally *not* rendered here: the
 // rate, taskCount, and choice of which runtimes to schedule are operational
-// decisions owned by WriterInternal/cerebro and authored alongside the
+// decisions owned by ExampleInternal/cerebro and authored alongside the
 // generated fragment in Pulumi.<env>.yaml.
 type Fragment struct {
 	SourceSecretKeys []string          `yaml:"cerebro:sourceSecretKeys,omitempty"`

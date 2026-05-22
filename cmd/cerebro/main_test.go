@@ -26,7 +26,7 @@ func TestRunRejectsUnsupportedCommand(t *testing.T) {
 func TestParseSourceRuntimePutArgsSeparatesTenantID(t *testing.T) {
 	t.Setenv("CEREBRO_TEST_TOKEN", "test")
 	runtime, err := parseSourceRuntimePutArgs([]string{
-		"writer-okta-users",
+		"example-okta-users",
 		"okta",
 		"tenant_id=writer",
 		"domain=writer.okta.com",
@@ -74,7 +74,7 @@ func TestParseSourceArgsAllowNonSecretAccessKeyID(t *testing.T) {
 	if got := config["access_key_id"]; got != "access-key-id" {
 		t.Fatalf("config[access_key_id] = %q, want access-key-id", got)
 	}
-	runtime, err := parseSourceRuntimePutArgs([]string{"writer-aws", "aws", "access_key_id=access-key-id"})
+	runtime, err := parseSourceRuntimePutArgs([]string{"example-aws", "aws", "access_key_id=access-key-id"})
 	if err != nil {
 		t.Fatalf("parseSourceRuntimePutArgs() error = %v", err)
 	}
@@ -137,8 +137,8 @@ func TestConfigureSourceRuntimeCommandServiceResolvesEnvReferences(t *testing.T)
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
 	store := &commandRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-		"writer-command-token": {
-			Id:       "writer-command-token",
+		"example-command-token": {
+			Id:       "example-command-token",
 			SourceId: "command_token",
 			Config:   map[string]string{"token": "env:CEREBRO_SOURCE_COMMAND_TOKEN_TOKEN"},
 		},
@@ -146,7 +146,7 @@ func TestConfigureSourceRuntimeCommandServiceResolvesEnvReferences(t *testing.T)
 	t.Setenv("CEREBRO_SOURCE_COMMAND_TOKEN_TOKEN", "resolved-token")
 
 	service := configureSourceRuntimeCommandService(sourceruntime.New(registry, store, &commandAppendLog{}, nil))
-	if _, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-command-token"}); err != nil {
+	if _, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "example-command-token"}); err != nil {
 		t.Fatalf("Sync() error = %v", err)
 	}
 	if source.readToken != "resolved-token" {
@@ -165,7 +165,7 @@ func TestParseSourceRuntimeBootstrapArgsReadsEnvDocument(t *testing.T) {
 	t.Setenv("CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON", `{
 		"runtimes": [
 			{
-				"id": " writer-okta-users ",
+				"id": " example-okta-users ",
 				"source_id": " okta ",
 				"tenant_id": " writer ",
 				"config": {
@@ -185,7 +185,7 @@ func TestParseSourceRuntimeBootstrapArgsReadsEnvDocument(t *testing.T) {
 		t.Fatalf("len(runtimes) = %d, want 1", len(runtimes))
 	}
 	runtime := runtimes[0]
-	if runtime.GetId() != "writer-okta-users" || runtime.GetSourceId() != "okta" || runtime.GetTenantId() != "writer" {
+	if runtime.GetId() != "example-okta-users" || runtime.GetSourceId() != "okta" || runtime.GetTenantId() != "writer" {
 		t.Fatalf("runtime identity = (%q, %q, %q)", runtime.GetId(), runtime.GetSourceId(), runtime.GetTenantId())
 	}
 	if got := runtime.GetConfig()["token"]; got != "env:OKTA_API_TOKEN" {

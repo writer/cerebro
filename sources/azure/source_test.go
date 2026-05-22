@@ -92,13 +92,13 @@ func TestReadLiveAzureGraphIdentityPreview(t *testing.T) {
 		attr   string
 		want   string
 	}{
-		{family: familyUser, kind: "azure.user", attr: "email", want: "admin@writer.com"},
-		{family: familyGroup, kind: "azure.group", attr: "group_email", want: "security@writer.com"},
+		{family: familyUser, kind: "azure.user", attr: "email", want: "admin@example.com"},
+		{family: familyGroup, kind: "azure.group", attr: "group_email", want: "security@example.com"},
 		{family: familyGroupMember, config: map[string]string{"group_id": "group-1"}, kind: "azure.group_membership", attr: "member_type", want: "service_principal"},
 		{family: familyApplication, kind: "azure.application", attr: "app_id", want: "app-client-1"},
 		{family: familyServicePrincipal, kind: "azure.service_principal", attr: "principal_type", want: "service_principal"},
 		{family: familyDirectoryRoleAssign, kind: "azure.directory_role_assignment", attr: "is_admin", want: "true"},
-		{family: familyDirectoryAudit, kind: "azure.directory_audit", attr: "actor_email", want: "admin@writer.com"},
+		{family: familyDirectoryAudit, kind: "azure.directory_audit", attr: "actor_email", want: "admin@example.com"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			config := map[string]string{"base_url": server.URL, "family": tt.family, "tenant_id": "tenant-1", "token": "test-token"}
@@ -159,7 +159,7 @@ func TestReadLiveAzureARMPreview(t *testing.T) {
 		want   string
 	}{
 		{family: familyIAMRoleAssign, kind: "azure.iam_role_assignment", attr: "role_name", want: "Owner"},
-		{family: familyActivityLog, kind: "azure.activity_log", attr: "actor_email", want: "admin@writer.com"},
+		{family: familyActivityLog, kind: "azure.activity_log", attr: "actor_email", want: "admin@example.com"},
 		{family: familyResourceExposure, kind: "azure.resource_exposure", attr: "internet_exposed", want: "true"},
 		{family: familyAppRoleAssignment, config: map[string]string{"service_principal_id": "sp-resource-1"}, kind: "azure.app_role_assignment", attr: "relationship", want: "assigned_to"},
 	} {
@@ -196,9 +196,9 @@ func newAzureAPIHandler(t *testing.T) http.Handler {
 		}
 		switch r.URL.Path {
 		case "/v1.0/users":
-			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "user-1", "userPrincipalName": "admin@writer.com", "mail": "admin@writer.com", "displayName": "Admin", "accountEnabled": true, "createdDateTime": "2026-04-23T00:00:00Z", "signInActivity": map[string]any{"lastSignInDateTime": "2026-04-24T00:00:00Z"}}}})
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "user-1", "userPrincipalName": "admin@example.com", "mail": "admin@example.com", "displayName": "Admin", "accountEnabled": true, "createdDateTime": "2026-04-23T00:00:00Z", "signInActivity": map[string]any{"lastSignInDateTime": "2026-04-24T00:00:00Z"}}}})
 		case "/v1.0/groups":
-			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "group-1", "mail": "security@writer.com", "displayName": "Security", "securityEnabled": true, "mailEnabled": true}}})
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "group-1", "mail": "security@example.com", "displayName": "Security", "securityEnabled": true, "mailEnabled": true}}})
 		case "/v1.0/groups/group-1/members":
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"@odata.type": "#microsoft.graph.servicePrincipal", "id": "sp-1", "appId": "app-client-1", "displayName": "Prod App"}}})
 		case "/v1.0/servicePrincipals/sp-resource-1/appRoleAssignedTo":
@@ -208,9 +208,9 @@ func newAzureAPIHandler(t *testing.T) http.Handler {
 		case "/v1.0/servicePrincipals":
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "sp-1", "appId": "app-client-1", "displayName": "Prod App", "servicePrincipalType": "Application", "accountEnabled": true, "keyCredentials": []map[string]any{{"keyId": "sp-key-1", "displayName": "certificate", "startDateTime": "2026-04-23T00:00:00Z", "endDateTime": "2027-04-23T00:00:00Z", "type": "AsymmetricX509Cert", "usage": "Verify"}}}}})
 		case "/v1.0/roleManagement/directory/roleAssignments":
-			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "dir-role-assignment-1", "principalId": "user-1", "roleDefinitionId": "global-admin", "directoryScopeId": "/", "principal": map[string]any{"@odata.type": "#microsoft.graph.user", "id": "user-1", "userPrincipalName": "admin@writer.com", "mail": "admin@writer.com", "displayName": "Admin"}, "roleDefinition": map[string]any{"id": "global-admin", "displayName": "Global Administrator"}}}})
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "dir-role-assignment-1", "principalId": "user-1", "roleDefinitionId": "global-admin", "directoryScopeId": "/", "principal": map[string]any{"@odata.type": "#microsoft.graph.user", "id": "user-1", "userPrincipalName": "admin@example.com", "mail": "admin@example.com", "displayName": "Admin"}, "roleDefinition": map[string]any{"id": "global-admin", "displayName": "Global Administrator"}}}})
 		case "/v1.0/auditLogs/directoryAudits":
-			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "audit-1", "activityDateTime": "2026-04-23T00:00:00Z", "activityDisplayName": "Update conditional access policy", "operationType": "Update", "category": "Policy", "initiatedBy": map[string]any{"user": map[string]any{"id": "user-1", "userPrincipalName": "admin@writer.com", "displayName": "Admin"}}, "targetResources": []map[string]any{{"id": "policy-1", "displayName": "Require MFA", "type": "conditional_access_policy"}}}}})
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "audit-1", "activityDateTime": "2026-04-23T00:00:00Z", "activityDisplayName": "Update conditional access policy", "operationType": "Update", "category": "Policy", "initiatedBy": map[string]any{"user": map[string]any{"id": "user-1", "userPrincipalName": "admin@example.com", "displayName": "Admin"}}, "targetResources": []map[string]any{{"id": "policy-1", "displayName": "Require MFA", "type": "conditional_access_policy"}}}}})
 		case "/subscriptions/sub-1/providers/Microsoft.Authorization/roleAssignments":
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/providers/Microsoft.Authorization/roleAssignments/ra-1", "name": "ra-1", "type": "Microsoft.Authorization/roleAssignments", "properties": map[string]any{"principalId": "sp-1", "principalType": "ServicePrincipal", "roleDefinitionId": "/subscriptions/sub-1/providers/Microsoft.Authorization/roleDefinitions/owner-role", "scope": "/subscriptions/sub-1"}}}})
 		case "/subscriptions/sub-1/providers/Microsoft.Authorization/roleDefinitions/owner-role":
@@ -218,7 +218,7 @@ func newAzureAPIHandler(t *testing.T) http.Handler {
 		case "/subscriptions/sub-1/providers/Microsoft.Network/networkSecurityGroups":
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/prod/providers/Microsoft.Network/networkSecurityGroups/web-nsg", "name": "web-nsg", "location": "eastus", "type": "Microsoft.Network/networkSecurityGroups", "properties": map[string]any{"securityRules": []map[string]any{{"id": "nsg-rule-1", "name": "AllowHTTPS", "properties": map[string]any{"access": "Allow", "direction": "Inbound", "protocol": "Tcp", "sourceAddressPrefix": "Internet", "destinationPortRange": "443", "priority": 100}}}}}}})
 		case "/subscriptions/sub-1/providers/microsoft.insights/eventtypes/management/values":
-			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "activity-1", "eventTimestamp": "2026-04-23T00:00:00Z", "caller": "admin@writer.com", "resourceId": "/subscriptions/sub-1/resourceGroups/prod/providers/Microsoft.Compute/virtualMachines/vm1", "resourceGroupName": "prod", "operationName": map[string]any{"value": "Microsoft.Compute/virtualMachines/write", "localizedValue": "Create or Update Virtual Machine"}, "resourceProviderName": map[string]any{"value": "Microsoft.Compute"}, "category": map[string]any{"value": "Administrative"}, "authorization": map[string]any{"action": "Microsoft.Compute/virtualMachines/write", "scope": "/subscriptions/sub-1/resourceGroups/prod/providers/Microsoft.Compute/virtualMachines/vm1"}, "subscriptionId": "sub-1"}}})
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "activity-1", "eventTimestamp": "2026-04-23T00:00:00Z", "caller": "admin@example.com", "resourceId": "/subscriptions/sub-1/resourceGroups/prod/providers/Microsoft.Compute/virtualMachines/vm1", "resourceGroupName": "prod", "operationName": map[string]any{"value": "Microsoft.Compute/virtualMachines/write", "localizedValue": "Create or Update Virtual Machine"}, "resourceProviderName": map[string]any{"value": "Microsoft.Compute"}, "category": map[string]any{"value": "Administrative"}, "authorization": map[string]any{"action": "Microsoft.Compute/virtualMachines/write", "scope": "/subscriptions/sub-1/resourceGroups/prod/providers/Microsoft.Compute/virtualMachines/vm1"}, "subscriptionId": "sub-1"}}})
 		default:
 			http.NotFound(w, r)
 		}

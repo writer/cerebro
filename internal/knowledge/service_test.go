@@ -103,12 +103,12 @@ func (s *recordingAppendLog) Append(_ context.Context, event *cerebrov1.EventEnv
 }
 
 func TestWriteDecisionRecordsDecisionTargetsEvidenceAndActions(t *testing.T) {
-	targetURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
+	targetURN := "urn:cerebro:example:okta_resource:policyrule:pol-1"
 	store := &stubGraphStore{
 		entities: map[string]*ports.ProjectedEntity{
 			targetURN: {
 				URN:        targetURN,
-				TenantID:   "writer",
+				TenantID:   "example",
 				SourceID:   "okta",
 				EntityType: "okta.resource",
 				Label:      "Require MFA",
@@ -145,23 +145,23 @@ func TestWriteDecisionRecordsDecisionTargetsEvidenceAndActions(t *testing.T) {
 	if _, ok := store.links[result.DecisionID+"|"+relationTargets+"|"+targetURN]; !ok {
 		t.Fatal("decision target link missing")
 	}
-	evidenceURN := "urn:cerebro:writer:evidence:finding-evidence-1"
+	evidenceURN := "urn:cerebro:example:evidence:finding-evidence-1"
 	if _, ok := store.links[result.DecisionID+"|"+relationBasedOn+"|"+evidenceURN]; !ok {
 		t.Fatal("decision evidence link missing")
 	}
-	actionURN := "urn:cerebro:writer:action:ticket-ENG-123"
+	actionURN := "urn:cerebro:example:action:ticket-ENG-123"
 	if _, ok := store.links[result.DecisionID+"|"+relationExecutedBy+"|"+actionURN]; !ok {
 		t.Fatal("decision action link missing")
 	}
 }
 
 func TestWriteOutcomeRecordsOutcomeAgainstDecision(t *testing.T) {
-	targetURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
+	targetURN := "urn:cerebro:example:okta_resource:policyrule:pol-1"
 	store := &stubGraphStore{
 		entities: map[string]*ports.ProjectedEntity{
 			targetURN: {
 				URN:        targetURN,
-				TenantID:   "writer",
+				TenantID:   "example",
 				SourceID:   "okta",
 				EntityType: "okta.resource",
 				Label:      "Require MFA",
@@ -198,12 +198,12 @@ func TestWriteOutcomeRecordsOutcomeAgainstDecision(t *testing.T) {
 }
 
 func TestWriteActionRecordsTargetsAndDecisionLink(t *testing.T) {
-	targetURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
+	targetURN := "urn:cerebro:example:okta_resource:policyrule:pol-1"
 	store := &stubGraphStore{
 		entities: map[string]*ports.ProjectedEntity{
 			targetURN: {
 				URN:        targetURN,
-				TenantID:   "writer",
+				TenantID:   "example",
 				SourceID:   "okta",
 				EntityType: "okta.resource",
 				Label:      "Require MFA",
@@ -260,12 +260,12 @@ func TestWriteActionRecordsTargetsAndDecisionLink(t *testing.T) {
 }
 
 func TestWriteDecisionAppendsWorkflowEventBeforeProjection(t *testing.T) {
-	targetURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
+	targetURN := "urn:cerebro:example:okta_resource:policyrule:pol-1"
 	store := &stubGraphStore{
 		entities: map[string]*ports.ProjectedEntity{
 			targetURN: {
 				URN:        targetURN,
-				TenantID:   "writer",
+				TenantID:   "example",
 				SourceID:   "okta",
 				EntityType: "okta.resource",
 				Label:      "Require MFA",
@@ -294,12 +294,12 @@ func TestWriteDecisionAppendsWorkflowEventBeforeProjection(t *testing.T) {
 }
 
 func TestWriteDecisionAppendFailurePreventsGraphProjection(t *testing.T) {
-	targetURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
+	targetURN := "urn:cerebro:example:okta_resource:policyrule:pol-1"
 	store := &stubGraphStore{
 		entities: map[string]*ports.ProjectedEntity{
 			targetURN: {
 				URN:        targetURN,
-				TenantID:   "writer",
+				TenantID:   "example",
 				SourceID:   "okta",
 				EntityType: "okta.resource",
 				Label:      "Require MFA",
@@ -315,18 +315,18 @@ func TestWriteDecisionAppendFailurePreventsGraphProjection(t *testing.T) {
 	}); !errors.Is(err, appendErr) {
 		t.Fatalf("WriteDecision() error = %v, want %v", err, appendErr)
 	}
-	if _, ok := store.entities["urn:cerebro:writer:decision:decision-1"]; ok {
+	if _, ok := store.entities["urn:cerebro:example:decision:decision-1"]; ok {
 		t.Fatal("decision entity was projected despite append failure")
 	}
 }
 
 func TestWriteActionProjectionFailureLeavesAppendedWorkflowEvent(t *testing.T) {
-	targetURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
+	targetURN := "urn:cerebro:example:okta_resource:policyrule:pol-1"
 	store := &stubGraphStore{
 		entities: map[string]*ports.ProjectedEntity{
 			targetURN: {
 				URN:        targetURN,
-				TenantID:   "writer",
+				TenantID:   "example",
 				SourceID:   "okta",
 				EntityType: "okta.resource",
 				Label:      "Require MFA",
@@ -366,19 +366,19 @@ func TestWriteDecisionRequiresAvailableGraph(t *testing.T) {
 	service := New(nil, nil)
 	if _, err := service.WriteDecision(context.Background(), DecisionWriteRequest{
 		DecisionType: "finding-triage",
-		TargetIDs:    []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+		TargetIDs:    []string{"urn:cerebro:example:okta_resource:policyrule:pol-1"},
 	}); !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("WriteDecision() error = %v, want %v", err, ErrRuntimeUnavailable)
 	}
 }
 
 func TestKnowledgeValidationErrorsAreInvalidRequests(t *testing.T) {
-	targetURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
+	targetURN := "urn:cerebro:example:okta_resource:policyrule:pol-1"
 	store := &stubGraphStore{
 		entities: map[string]*ports.ProjectedEntity{
 			targetURN: {
 				URN:        targetURN,
-				TenantID:   "writer",
+				TenantID:   "example",
 				SourceID:   "okta",
 				EntityType: "okta.resource",
 				Label:      "Require MFA",

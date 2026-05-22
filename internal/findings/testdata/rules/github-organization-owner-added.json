@@ -1,14 +1,14 @@
 {
   "rule_id": "github-organization-owner-added",
   "runtime": {
-    "id": "writer-github-audit",
+    "id": "example-github-audit",
     "source_id": "github",
-    "tenant_id": "writer"
+    "tenant_id": "example"
   },
   "events": [
     {
       "id": "github-audit-owner-added",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.audit",
       "occurred_at": "2026-04-27T00:07:00Z",
@@ -22,13 +22,13 @@
         "permission": "admin",
         "resource_id": "writer",
         "resource_type": "org",
-        "source_runtime_id": "writer-github-audit",
+        "source_runtime_id": "example-github-audit",
         "user": "octocat"
       }
     },
     {
       "id": "github-audit-member-added",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.audit",
       "occurred_at": "2026-04-27T00:07:00Z",
@@ -42,7 +42,7 @@
         "permission": "read",
         "resource_id": "writer",
         "resource_type": "org",
-        "source_runtime_id": "writer-github-audit",
+        "source_runtime_id": "example-github-audit",
         "user": "octocat"
       }
     }
@@ -57,8 +57,8 @@
       "attributes": {
         "action": "org.add_member",
         "permission": "admin",
-        "primary_actor_urn": "urn:cerebro:writer:github_user:admin",
-        "primary_resource_urn": "urn:cerebro:writer:github_resource:org:writer",
+        "primary_actor_urn": "urn:cerebro:example:github_user:admin",
+        "primary_resource_urn": "urn:cerebro:example:github_resource:org:writer",
         "rule_tags": "github,organization-owner,persistence,privilege-escalation,attack.t1098.003",
         "user": "octocat"
       }

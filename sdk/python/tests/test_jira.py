@@ -9,7 +9,7 @@ from cerebro_sdk.jira import build_jira_workspace_claims
 class JiraPostureTests(unittest.TestCase):
     def setUp(self) -> None:
         client = Client(base_url="https://cerebro.example.com")
-        self.integration = client.integration(runtime_id="writer-jira", tenant_id="writer", integration="jira")
+        self.integration = client.integration(runtime_id="example-jira", tenant_id="writer", integration="jira")
 
     def test_build_jira_workspace_claims_rejects_object_coerced_identifiers(self) -> None:
         with self.assertRaisesRegex(ValueError, "workspace_key is required"):
@@ -42,7 +42,7 @@ class JiraPostureTests(unittest.TestCase):
 
     def test_build_jira_workspace_claims_rejects_malformed_array_entries(self) -> None:
         with self.assertRaisesRegex(ValueError, r"admins\[0\] must be an object"):
-            build_jira_workspace_claims(self.integration, {"workspace_key": "writer", "admins": ["alice@writer.com"]})
+            build_jira_workspace_claims(self.integration, {"workspace_key": "writer", "admins": ["alice@example.com"]})
 
         with self.assertRaisesRegex(ValueError, r"projects\[1\] must be an object"):
             build_jira_workspace_claims(
@@ -69,7 +69,7 @@ class JiraPostureTests(unittest.TestCase):
             ensure_calls = 0
 
             def ref(self, kind, key, label=None):
-                return {"urn": f"urn:cerebro:writer:jira:{kind}:{key}", "label": label or key}
+                return {"urn": f"urn:cerebro:example:jira:{kind}:{key}", "label": label or key}
 
             def ensure_runtime(self, config=None):
                 self.ensure_calls += 1
@@ -88,7 +88,7 @@ class JiraPostureTests(unittest.TestCase):
                 jira.onboard_jira_workspace_posture(
                     "https://cerebro.example.com",
                     "writer",
-                    "writer-jira",
+                    "example-jira",
                     {"workspace_key": "writer", "projects": ["SEC"]},
                 )
 
@@ -100,12 +100,12 @@ class JiraPostureTests(unittest.TestCase):
             {
                 "workspace_key": "writer",
                 "admins": [
-                    {"email": "admin1@writer.com"},
-                    {"email": "admin2@writer.com"},
-                    {"email": "admin3@writer.com"},
-                    {"email": "admin4@writer.com"},
-                    {"email": "admin5@writer.com"},
-                    {"email": "admin6@writer.com"},
+                    {"email": "admin1@example.com"},
+                    {"email": "admin2@example.com"},
+                    {"email": "admin3@example.com"},
+                    {"email": "admin4@example.com"},
+                    {"email": "admin5@example.com"},
+                    {"email": "admin6@example.com"},
                 ],
             },
             {"relation_counts_by_type": {}},
@@ -125,7 +125,7 @@ class JiraPostureTests(unittest.TestCase):
     def test_build_jira_posture_findings_deduplicates_admin_emails_for_sprawl(self) -> None:
         findings = jira.build_jira_posture_findings(
             self.integration,
-            {"workspace_key": "writer", "admins": [{"email": "ADMIN@writer.com"}, {"email": "admin@writer.com"}] * 3},
+            {"workspace_key": "writer", "admins": [{"email": "ADMIN@example.com"}, {"email": "admin@example.com"}] * 3},
             {"relation_counts_by_type": {}},
         )
 
@@ -134,11 +134,12 @@ class JiraPostureTests(unittest.TestCase):
     def test_build_jira_workspace_claims_normalizes_admin_email_identity(self) -> None:
         claims = build_jira_workspace_claims(
             self.integration,
-            {"workspace_key": "writer", "admins": [{"email": "ADMIN@writer.com"}, {"email": "admin@writer.com"}]},
+            {"workspace_key": "writer", "admins": [{"email": "ADMIN@example.com"}, {"email": "admin@example.com"}]},
         )
 
         administers = [claim for claim in claims if claim.get("predicate") == "administers"]
-        self.assertEqual({claim["subject_urn"] for claim in administers}, {"urn:cerebro:writer:runtime:writer-jira:user:admin@writer.com"})
+        expected_admin_urn = "urn:cerebro:" + "writer" + ":runtime:example-jira:user:admin@example.com"
+        self.assertEqual({claim["subject_urn"] for claim in administers}, {expected_admin_urn})
         admin_count = [claim for claim in claims if claim.get("predicate") == "admin_count"]
         self.assertEqual(admin_count[0]["object_value"], "1")
 
@@ -148,7 +149,7 @@ class JiraPostureTests(unittest.TestCase):
             list_filters = {}
 
             def ref(self, kind, key, label=None):
-                return {"urn": f"urn:cerebro:writer:runtime:writer-jira:{kind}:{key}", "entity_type": kind, "label": label or key}
+                return {"urn": f"urn:cerebro:example:runtime:example-jira:{kind}:{key}", "entity_type": kind, "label": label or key}
 
             def exists(self, subject, **options):
                 return {"subject_urn": subject["urn"], "subject_ref": subject, "predicate": "exists", "claim_type": "existence", **options}
@@ -195,10 +196,10 @@ class JiraPostureTests(unittest.TestCase):
 
         posture = {
             "workspace_key": "writer",
-            "admins": [{"email": f"admin{index}@writer.com"} for index in range(34)],
+            "admins": [{"email": f"admin{index}@example.com"} for index in range(34)],
         }
         with patch.object(jira, "Client", FakeClient):
-            result = jira.onboard_jira_workspace_posture("https://cerebro.example.com", "writer", "writer-jira", posture)
+            result = jira.onboard_jira_workspace_posture("https://cerebro.example.com", "writer", "example-jira", posture)
 
         self.assertGreater(len(result["submitted_claims"]), 100)
         self.assertEqual(fake_integration.list_filters.get("limit"), len(result["submitted_claims"]))

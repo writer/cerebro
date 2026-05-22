@@ -31,14 +31,14 @@ func TestCloudSignalRulesDetectPublicExposure(t *testing.T) {
 				"resource_type":    "security_group",
 				"source_cidr":      "0.0.0.0/0",
 			},
-			resourceURN: "urn:cerebro:writer:aws_security_group:arn:aws:ec2:us-east-1:123456789012:security-group/sg-1",
+			resourceURN: "urn:cerebro:example:aws_security_group:arn:aws:ec2:us-east-1:123456789012:security-group/sg-1",
 		},
 		{
 			name:     "gcp",
 			sourceID: "gcp",
 			kind:     "gcp.resource_exposure",
 			attributes: map[string]string{
-				"domain":           "writer-prod",
+				"domain":           "example-prod",
 				"exposed_to":       "public_internet",
 				"exposure_type":    "public_network_ingress",
 				"family":           "resource_exposure",
@@ -48,7 +48,7 @@ func TestCloudSignalRulesDetectPublicExposure(t *testing.T) {
 				"resource_type":    "firewall_rule",
 				"source_cidr":      "0.0.0.0/0",
 			},
-			resourceURN: "urn:cerebro:writer:gcp_firewall_rule:fw-1",
+			resourceURN: "urn:cerebro:example:gcp_firewall_rule:fw-1",
 		},
 		{
 			name:     "azure",
@@ -65,12 +65,12 @@ func TestCloudSignalRulesDetectPublicExposure(t *testing.T) {
 				"resource_type":    "network_security_group",
 				"source_cidr":      "Internet",
 			},
-			resourceURN: "urn:cerebro:writer:azure_network_security_group:/subscriptions/sub-1/resourceGroups/prod/providers/Microsoft.Network/networkSecurityGroups/web-nsg",
+			resourceURN: "urn:cerebro:example:azure_network_security_group:/subscriptions/sub-1/resourceGroups/prod/providers/Microsoft.Network/networkSecurityGroups/web-nsg",
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			runtime := &cerebrov1.SourceRuntime{Id: tt.name + "-runtime", SourceId: tt.sourceID, TenantId: "writer"}
-			event := &cerebrov1.EventEnvelope{Id: tt.name + "-public-exposure", TenantId: "writer", SourceId: tt.sourceID, Kind: tt.kind, Attributes: tt.attributes}
+			runtime := &cerebrov1.SourceRuntime{Id: tt.name + "-runtime", SourceId: tt.sourceID, TenantId: "example"}
+			event := &cerebrov1.EventEnvelope{Id: tt.name + "-public-exposure", TenantId: "example", SourceId: tt.sourceID, Kind: tt.kind, Attributes: tt.attributes}
 			records, err := rules[cloudPublicResourceExposureRuleID].Evaluate(context.Background(), runtime, event)
 			if err != nil {
 				t.Fatalf("Evaluate() error = %v", err)
@@ -106,25 +106,25 @@ func TestCloudSignalRulesDetectPrivilegePaths(t *testing.T) {
 				"target_id":    "arn:aws:iam::123456789012:role/AdminRole",
 				"target_type":  "role",
 			},
-			resourceURN: "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/AdminRole",
+			resourceURN: "urn:cerebro:example:aws_role:arn:aws:iam::123456789012:role/AdminRole",
 		},
 		{
 			name:     "gcp-impersonation",
 			sourceID: "gcp",
 			kind:     "gcp.service_account_impersonation",
 			attributes: map[string]string{
-				"domain":        "writer-prod",
+				"domain":        "example-prod",
 				"family":        "service_account_impersonation",
 				"path_type":     "service_account_impersonation",
 				"relationship":  "can_impersonate",
-				"subject_email": "admin@writer.com",
-				"subject_id":    "admin@writer.com",
+				"subject_email": "admin@example.com",
+				"subject_id":    "admin@example.com",
 				"subject_type":  "user",
-				"target_email":  "sa@writer-prod.iam.gserviceaccount.com",
-				"target_id":     "sa@writer-prod.iam.gserviceaccount.com",
+				"target_email":  "sa@example-prod.iam.gserviceaccount.com",
+				"target_id":     "sa@example-prod.iam.gserviceaccount.com",
 				"target_type":   "service_account",
 			},
-			resourceURN: "urn:cerebro:writer:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com",
+			resourceURN: "urn:cerebro:example:gcp_service_account:sa@example-prod.iam.gserviceaccount.com",
 		},
 		{
 			name:     "azure-app-role",
@@ -140,12 +140,12 @@ func TestCloudSignalRulesDetectPrivilegePaths(t *testing.T) {
 				"target_id":    "sp-resource-1",
 				"target_type":  "service_principal",
 			},
-			resourceURN: "urn:cerebro:writer:azure_service_principal:sp-resource-1",
+			resourceURN: "urn:cerebro:example:azure_service_principal:sp-resource-1",
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			runtime := &cerebrov1.SourceRuntime{Id: tt.name + "-runtime", SourceId: tt.sourceID, TenantId: "writer"}
-			event := &cerebrov1.EventEnvelope{Id: tt.name, TenantId: "writer", SourceId: tt.sourceID, Kind: tt.kind, Attributes: tt.attributes}
+			runtime := &cerebrov1.SourceRuntime{Id: tt.name + "-runtime", SourceId: tt.sourceID, TenantId: "example"}
+			event := &cerebrov1.EventEnvelope{Id: tt.name, TenantId: "example", SourceId: tt.sourceID, Kind: tt.kind, Attributes: tt.attributes}
 			records, err := rules[cloudPrivilegePathGrantedRuleID].Evaluate(context.Background(), runtime, event)
 			if err != nil {
 				t.Fatalf("Evaluate() error = %v", err)
@@ -160,11 +160,11 @@ func TestCloudSignalRulesDetectPrivilegePaths(t *testing.T) {
 
 func TestCloudSignalRulesIgnoreLowContextCloudSignals(t *testing.T) {
 	rules := cloudRulesByID(t)
-	runtime := &cerebrov1.SourceRuntime{Id: "aws-runtime", SourceId: "aws", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "aws-runtime", SourceId: "aws", TenantId: "example"}
 
 	publicTagOnly := &cerebrov1.EventEnvelope{
 		Id:       "aws-public-tag-only",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "aws",
 		Kind:     "aws.resource_exposure",
 		Attributes: map[string]string{
@@ -184,7 +184,7 @@ func TestCloudSignalRulesIgnoreLowContextCloudSignals(t *testing.T) {
 
 	targetOnly := &cerebrov1.EventEnvelope{
 		Id:       "aws-target-only",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "aws",
 		Kind:     "aws.iam_role_trust",
 		Attributes: map[string]string{
@@ -217,10 +217,10 @@ func TestCloudSignalRulesRespectRuntimeFamily(t *testing.T) {
 
 func TestCloudSignalRulesDetectEffectiveAdminPermissions(t *testing.T) {
 	rules := cloudRulesByID(t)
-	runtime := &cerebrov1.SourceRuntime{Id: "aws-runtime", SourceId: "aws", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "aws-runtime", SourceId: "aws", TenantId: "example"}
 	event := &cerebrov1.EventEnvelope{
 		Id:       "aws-effective-admin",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "aws",
 		Kind:     "aws.effective_permission",
 		Attributes: map[string]string{
@@ -229,8 +229,8 @@ func TestCloudSignalRulesDetectEffectiveAdminPermissions(t *testing.T) {
 			"effect":        "allow",
 			"resource_id":   "123456789012",
 			"resource_type": "account",
-			"subject_email": "admin@writer.com",
-			"subject_id":    "admin@writer.com",
+			"subject_email": "admin@example.com",
+			"subject_id":    "admin@example.com",
 			"subject_type":  "user",
 		},
 	}
@@ -241,11 +241,11 @@ func TestCloudSignalRulesDetectEffectiveAdminPermissions(t *testing.T) {
 	if len(records) != 1 {
 		t.Fatalf("len(records) = %d, want 1", len(records))
 	}
-	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:writer:aws_account:123456789012")
+	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:example:aws_account:123456789012")
 
 	viewer := &cerebrov1.EventEnvelope{
 		Id:       "aws-effective-viewer",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "aws",
 		Kind:     "aws.effective_permission",
 		Attributes: map[string]string{
@@ -254,7 +254,7 @@ func TestCloudSignalRulesDetectEffectiveAdminPermissions(t *testing.T) {
 			"effect":        "allow",
 			"resource_id":   "123456789012",
 			"resource_type": "account",
-			"subject_id":    "viewer@writer.com",
+			"subject_id":    "viewer@example.com",
 			"subject_type":  "user",
 		},
 	}
@@ -268,7 +268,7 @@ func TestCloudSignalRulesDetectEffectiveAdminPermissions(t *testing.T) {
 
 	wildcardRead := &cerebrov1.EventEnvelope{
 		Id:       "aws-effective-wildcard-read",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "aws",
 		Kind:     "aws.effective_permission",
 		Attributes: map[string]string{
@@ -277,7 +277,7 @@ func TestCloudSignalRulesDetectEffectiveAdminPermissions(t *testing.T) {
 			"effect":        "allow",
 			"resource_id":   "arn:aws:s3:::reports",
 			"resource_type": "bucket",
-			"subject_id":    "reader@writer.com",
+			"subject_id":    "reader@example.com",
 			"subject_type":  "user",
 		},
 	}
@@ -292,10 +292,10 @@ func TestCloudSignalRulesDetectEffectiveAdminPermissions(t *testing.T) {
 
 func TestCloudSignalRulesDetectKubernetesWorkloadIdentityBinding(t *testing.T) {
 	rules := cloudRulesByID(t)
-	runtime := &cerebrov1.SourceRuntime{Id: "k8s-runtime", SourceId: "kubernetes", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "k8s-runtime", SourceId: "kubernetes", TenantId: "example"}
 	event := &cerebrov1.EventEnvelope{
 		Id:       "k8s-workload-identity",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "kubernetes",
 		Kind:     "kubernetes.workload_identity_binding",
 		Attributes: map[string]string{
@@ -306,8 +306,8 @@ func TestCloudSignalRulesDetectKubernetesWorkloadIdentityBinding(t *testing.T) {
 			"path_type":            "workload_identity",
 			"relationship":         "can_impersonate",
 			"service_account_name": "api",
-			"target_email":         "payments-sa@writer-prod.iam.gserviceaccount.com",
-			"target_id":            "payments-sa@writer-prod.iam.gserviceaccount.com",
+			"target_email":         "payments-sa@example-prod.iam.gserviceaccount.com",
+			"target_id":            "payments-sa@example-prod.iam.gserviceaccount.com",
 			"target_type":          "service_account",
 		},
 	}
@@ -318,7 +318,7 @@ func TestCloudSignalRulesDetectKubernetesWorkloadIdentityBinding(t *testing.T) {
 	if len(records) != 1 {
 		t.Fatalf("len(records) = %d, want 1", len(records))
 	}
-	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:writer:gcp_service_account:payments-sa@writer-prod.iam.gserviceaccount.com")
+	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:example:gcp_service_account:payments-sa@example-prod.iam.gserviceaccount.com")
 }
 
 func cloudRulesByID(t *testing.T) map[string]Rule {

@@ -1,14 +1,14 @@
 {
   "rule_id": "github-branch-protection-disabled",
   "runtime": {
-    "id": "writer-github-audit",
+    "id": "example-github-audit",
     "source_id": "github",
-    "tenant_id": "writer"
+    "tenant_id": "example"
   },
   "events": [
     {
       "id": "github-audit-branch-protection-disabled",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.audit",
       "occurred_at": "2026-04-27T00:02:00Z",
@@ -22,12 +22,12 @@
         "repo": "writer/cerebro",
         "resource_id": "writer/cerebro",
         "resource_type": "protected_branch",
-        "source_runtime_id": "writer-github-audit"
+        "source_runtime_id": "example-github-audit"
       }
     },
     {
       "id": "github-audit-branch-protection-renamed",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.audit",
       "occurred_at": "2026-04-27T00:02:00Z",
@@ -40,7 +40,7 @@
         "repo": "writer/cerebro",
         "resource_id": "writer/cerebro",
         "resource_type": "protected_branch",
-        "source_runtime_id": "writer-github-audit"
+        "source_runtime_id": "example-github-audit"
       }
     }
   ],
@@ -53,8 +53,8 @@
       "event_ids": ["github-audit-branch-protection-disabled"],
       "attributes": {
         "action": "protected_branch.destroy",
-        "primary_actor_urn": "urn:cerebro:writer:github_user:admin",
-        "primary_resource_urn": "urn:cerebro:writer:github_repo:writer/cerebro",
+        "primary_actor_urn": "urn:cerebro:example:github_user:admin",
+        "primary_resource_urn": "urn:cerebro:example:github_repo:writer/cerebro",
         "repo": "writer/cerebro",
         "rule_tags": "github,branch-protection,supply-chain,initial-access,attack.t1195"
       }

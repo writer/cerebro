@@ -17,7 +17,7 @@ func TestSentinelOneEndpointActiveInfectionGraphRuleAggregatesThreats(t *testing
 	if !ok {
 		t.Fatalf("newSentinelOneEndpointActiveInfectionRule() is not a GraphRule")
 	}
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-sentinelone-threat", SourceId: "sentinelone", TenantId: "writer", Config: map[string]string{"family": "threat"}}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-sentinelone-threat", SourceId: "sentinelone", TenantId: "example", Config: map[string]string{"family": "threat"}}
 	rows := []ports.CypherRow{sentinelOneInfectionRow("agent-1", "mac-1", map[string]string{
 		"agent_id":       "agent-1",
 		"computer_name":  "mac-1",
@@ -72,7 +72,7 @@ func TestSentinelOneEndpointActiveInfectionGraphRuleAggregatesThreats(t *testing
 
 func TestSentinelOneEndpointActiveInfectionGraphRuleSkipsCleanMitigatedAgent(t *testing.T) {
 	graphRule := newSentinelOneEndpointActiveInfectionRule().(GraphRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-sentinelone-threat", SourceId: "sentinelone", TenantId: "writer", Config: map[string]string{"family": "threat"}}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-sentinelone-threat", SourceId: "sentinelone", TenantId: "example", Config: map[string]string{"family": "threat"}}
 	rows := []ports.CypherRow{sentinelOneInfectionRow("agent-1", "mac-1", map[string]string{
 		"agent_id":       "agent-1",
 		"computer_name":  "mac-1",
@@ -98,7 +98,7 @@ func TestSentinelOneEndpointActiveInfectionGraphRuleSkipsCleanMitigatedAgent(t *
 
 func TestSentinelOneEndpointActiveInfectionGraphRuleRequiresInfectionEvidence(t *testing.T) {
 	graphRule := newSentinelOneEndpointActiveInfectionRule().(GraphRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-sentinelone-threat", SourceId: "sentinelone", TenantId: "writer", Config: map[string]string{"family": "threat"}}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-sentinelone-threat", SourceId: "sentinelone", TenantId: "example", Config: map[string]string{"family": "threat"}}
 	rows := []ports.CypherRow{sentinelOneInfectionRow("agent-1", "mac-1", map[string]string{
 		"agent_id":       "agent-1",
 		"computer_name":  "mac-1",
@@ -134,8 +134,8 @@ func TestSentinelOneEndpointActiveInfectionFingerprintIsStableAcrossRuntimes(t *
 	}, []map[string]string{
 		{"threat_id": "threat-1", "threat_name": "malware-a", "incident_status": "unresolved", "mitigation_status": "not_mitigated"},
 	})}
-	threatRuntime := &cerebrov1.SourceRuntime{Id: "writer-sentinelone-threat", SourceId: "sentinelone", TenantId: "writer", Config: map[string]string{"family": "threat"}}
-	agentRuntime := &cerebrov1.SourceRuntime{Id: "writer-sentinelone-agent", SourceId: "sentinelone", TenantId: "writer", Config: map[string]string{"family": "agent"}}
+	threatRuntime := &cerebrov1.SourceRuntime{Id: "example-sentinelone-threat", SourceId: "sentinelone", TenantId: "example", Config: map[string]string{"family": "threat"}}
+	agentRuntime := &cerebrov1.SourceRuntime{Id: "example-sentinelone-agent", SourceId: "sentinelone", TenantId: "example", Config: map[string]string{"family": "agent"}}
 	first, err := graphRule.EvaluateRows(context.Background(), threatRuntime, rows)
 	if err != nil {
 		t.Fatalf("EvaluateRows(threat) error = %v", err)
@@ -157,7 +157,7 @@ func TestSentinelOneEndpointActiveInfectionFingerprintIsStableAcrossRuntimes(t *
 
 func TestSentinelOneAgentStaleGraphRuleGroupsByScopeAndBucket(t *testing.T) {
 	graphRule := newSentinelOneAgentStaleRule().(GraphRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-sentinelone-agent", SourceId: "sentinelone", TenantId: "writer", Config: map[string]string{"family": "agent"}}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-sentinelone-agent", SourceId: "sentinelone", TenantId: "example", Config: map[string]string{"family": "agent"}}
 	now := time.Now().UTC()
 	rows := []ports.CypherRow{
 		sentinelOneStaleAgentRow("agent-1", "mac-1", now.Add(-45*24*time.Hour), map[string]string{"group_id": "group-1", "group_name": "Default Group"}),
@@ -198,7 +198,7 @@ func sentinelOneInfectionRow(agentID string, agentLabel string, agentAttrs map[s
 	for _, threat := range threats {
 		threatID := threat["threat_id"]
 		threatRows = append(threatRows, map[string]any{
-			"urn":                      "urn:cerebro:writer:sentinelone_threat:" + threatID,
+			"urn":                      "urn:cerebro:example:sentinelone_threat:" + threatID,
 			"label":                    firstNonEmpty(threat["threat_name"], threatID),
 			"entity_type":              sentinelOneThreatEntityType,
 			"attributes_json":          sentinelOneTestJSON(threat),
@@ -206,7 +206,7 @@ func sentinelOneInfectionRow(agentID string, agentLabel string, agentAttrs map[s
 		})
 	}
 	return ports.CypherRow{Values: map[string]any{
-		"agent_urn":             "urn:cerebro:writer:sentinelone_agent:" + agentID,
+		"agent_urn":             "urn:cerebro:example:sentinelone_agent:" + agentID,
 		"agent_label":           agentLabel,
 		"agent_attributes_json": sentinelOneTestJSON(agentAttrs),
 		"threats":               threatRows,
@@ -225,7 +225,7 @@ func sentinelOneStaleAgentRow(agentID string, label string, lastActive time.Time
 		attrs[key] = value
 	}
 	return ports.CypherRow{Values: map[string]any{
-		"agent_urn":             "urn:cerebro:writer:sentinelone_agent:" + agentID,
+		"agent_urn":             "urn:cerebro:example:sentinelone_agent:" + agentID,
 		"agent_label":           label,
 		"agent_attributes_json": sentinelOneTestJSON(attrs),
 	}}

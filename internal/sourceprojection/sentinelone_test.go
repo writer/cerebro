@@ -16,7 +16,7 @@ func TestProjectSentinelOneAgentBuildsAgentEntity(t *testing.T) {
 
 	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:         "s1-agent-1",
-		TenantId:   "writer",
+		TenantId:   "example",
 		SourceId:   "sentinelone",
 		Kind:       "sentinelone.agent",
 		OccurredAt: timestamppb.New(occurred),
@@ -49,10 +49,10 @@ func TestProjectSentinelOneAgentBuildsAgentEntity(t *testing.T) {
 		t.Fatalf("LinksProjected = %d, want 3", result.LinksProjected)
 	}
 
-	agentURN := "urn:cerebro:writer:sentinelone_agent:agent-1"
-	siteURN := "urn:cerebro:writer:sentinelone_site:site-1"
-	groupURN := "urn:cerebro:writer:sentinelone_group:group-1"
-	ipURN := "urn:cerebro:writer:internet_ip:203.0.113.10"
+	agentURN := "urn:cerebro:example:sentinelone_agent:agent-1"
+	siteURN := "urn:cerebro:example:sentinelone_site:site-1"
+	groupURN := "urn:cerebro:example:sentinelone_group:group-1"
+	ipURN := "urn:cerebro:example:internet_ip:203.0.113.10"
 	if state.entities[agentURN] == nil {
 		t.Fatalf("agent entity missing: %#v", state.entities)
 	}
@@ -78,7 +78,7 @@ func TestProjectSentinelOneAgentSkipsWhenAgentIDMissing(t *testing.T) {
 	service := New(state, nil)
 	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:         "s1-agent-empty",
-		TenantId:   "writer",
+		TenantId:   "example",
 		SourceId:   "sentinelone",
 		Kind:       "sentinelone.agent",
 		Attributes: map[string]string{},
@@ -98,7 +98,7 @@ func TestProjectSentinelOneThreatLinksThreatToAgent(t *testing.T) {
 
 	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:         "s1-threat-1",
-		TenantId:   "writer",
+		TenantId:   "example",
 		SourceId:   "sentinelone",
 		Kind:       "sentinelone.threat",
 		OccurredAt: timestamppb.New(occurred),
@@ -125,11 +125,11 @@ func TestProjectSentinelOneThreatLinksThreatToAgent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	threatURN := "urn:cerebro:writer:sentinelone_threat:threat-1"
-	agentURN := "urn:cerebro:writer:sentinelone_agent:agent-1"
-	ipURN := "urn:cerebro:writer:internet_ip:203.0.113.20"
-	siteURN := "urn:cerebro:writer:sentinelone_site:site-1"
-	groupURN := "urn:cerebro:writer:sentinelone_group:group-1"
+	threatURN := "urn:cerebro:example:sentinelone_threat:threat-1"
+	agentURN := "urn:cerebro:example:sentinelone_agent:agent-1"
+	ipURN := "urn:cerebro:example:internet_ip:203.0.113.20"
+	siteURN := "urn:cerebro:example:sentinelone_site:site-1"
+	groupURN := "urn:cerebro:example:sentinelone_group:group-1"
 
 	if state.entities[threatURN] == nil {
 		t.Fatalf("threat entity missing")
@@ -158,7 +158,7 @@ func TestProjectSentinelOneSiteAccountLink(t *testing.T) {
 	service := New(state, nil)
 	if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "s1-site-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "sentinelone",
 		Kind:     "sentinelone.site",
 		Attributes: map[string]string{
@@ -171,8 +171,8 @@ func TestProjectSentinelOneSiteAccountLink(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Project(site) error = %v", err)
 	}
-	siteURN := "urn:cerebro:writer:sentinelone_site:site-1"
-	accountURN := "urn:cerebro:writer:sentinelone_account:account-1"
+	siteURN := "urn:cerebro:example:sentinelone_site:site-1"
+	accountURN := "urn:cerebro:example:sentinelone_account:account-1"
 	if state.entities[siteURN] == nil {
 		t.Fatal("site entity missing")
 	}
@@ -187,7 +187,7 @@ func TestProjectSentinelOneGroupSiteLink(t *testing.T) {
 	service := New(state, nil)
 	if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "s1-group-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "sentinelone",
 		Kind:     "sentinelone.group",
 		Attributes: map[string]string{
@@ -200,8 +200,8 @@ func TestProjectSentinelOneGroupSiteLink(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Project(group) error = %v", err)
 	}
-	groupURN := "urn:cerebro:writer:sentinelone_group:group-1"
-	siteURN := "urn:cerebro:writer:sentinelone_site:site-1"
+	groupURN := "urn:cerebro:example:sentinelone_group:group-1"
+	siteURN := "urn:cerebro:example:sentinelone_site:site-1"
 	if state.entities[groupURN] == nil {
 		t.Fatal("group entity missing")
 	}
@@ -213,7 +213,7 @@ func TestProjectSentinelOneActivityLinksAgentAndThreat(t *testing.T) {
 	service := New(state, nil)
 	if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "s1-activity-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "sentinelone",
 		Kind:     "sentinelone.activity",
 		Attributes: map[string]string{
@@ -227,9 +227,9 @@ func TestProjectSentinelOneActivityLinksAgentAndThreat(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Project(activity) error = %v", err)
 	}
-	activityURN := "urn:cerebro:writer:sentinelone_activity:activity-1"
-	agentURN := "urn:cerebro:writer:sentinelone_agent:agent-1"
-	threatURN := "urn:cerebro:writer:sentinelone_threat:threat-1"
+	activityURN := "urn:cerebro:example:sentinelone_activity:activity-1"
+	agentURN := "urn:cerebro:example:sentinelone_agent:agent-1"
+	threatURN := "urn:cerebro:example:sentinelone_threat:threat-1"
 	if state.entities[activityURN] == nil {
 		t.Fatal("activity entity missing")
 	}
@@ -242,7 +242,7 @@ func TestProjectSentinelOneApplicationInventoryContainedByAgent(t *testing.T) {
 	service := New(state, nil)
 	if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "s1-app-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "sentinelone",
 		Kind:     "sentinelone.application_inventory",
 		Attributes: map[string]string{
@@ -255,8 +255,8 @@ func TestProjectSentinelOneApplicationInventoryContainedByAgent(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Project(app) error = %v", err)
 	}
-	appURN := "urn:cerebro:writer:sentinelone_installed_app:agent-1:example inc|example app|1.0.0"
-	agentURN := "urn:cerebro:writer:sentinelone_agent:agent-1"
+	appURN := "urn:cerebro:example:sentinelone_installed_app:agent-1:example inc|example app|1.0.0"
+	agentURN := "urn:cerebro:example:sentinelone_agent:agent-1"
 	if state.entities[appURN] == nil {
 		t.Fatalf("application entity missing; got entities=%v", state.entities)
 	}
@@ -268,7 +268,7 @@ func TestProjectSentinelOneExclusion(t *testing.T) {
 	service := New(state, nil)
 	if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "s1-exclusion-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "sentinelone",
 		Kind:     "sentinelone.exclusion",
 		Attributes: map[string]string{
@@ -282,7 +282,7 @@ func TestProjectSentinelOneExclusion(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Project(exclusion) error = %v", err)
 	}
-	exclusionURN := "urn:cerebro:writer:sentinelone_exclusion:exclusion-1"
+	exclusionURN := "urn:cerebro:example:sentinelone_exclusion:exclusion-1"
 	if state.entities[exclusionURN] == nil {
 		t.Fatal("exclusion entity missing")
 	}

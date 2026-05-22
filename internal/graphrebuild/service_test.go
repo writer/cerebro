@@ -152,10 +152,10 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	}
 	store := &runtimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-github": {
-				Id:       "writer-github",
+			"example-github": {
+				Id:       "example-github",
 				SourceId: "github",
-				TenantId: "writer-dogfood",
+				TenantId: "example-dogfood",
 				Config:   map[string]string{"token": "fixture-token"},
 			},
 		},
@@ -163,7 +163,7 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	service := New(registry, store, nil)
 
 	result, err := service.RebuildDryRun(context.Background(), Request{
-		RuntimeID:    "writer-github",
+		RuntimeID:    "example-github",
 		PageLimit:    2,
 		PreviewLimit: 10,
 	})
@@ -274,13 +274,13 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	if len(result.Events) != 2 {
 		t.Fatalf("len(Events) = %d, want 2", len(result.Events))
 	}
-	if !containsEntityURN(result.PreviewEntities, "urn:cerebro:writer-dogfood:github_pull_request:writer/cerebro#418") {
+	if !containsEntityURN(result.PreviewEntities, "urn:cerebro:example-dogfood:github_pull_request:writer/cerebro#418") {
 		t.Fatalf("PreviewEntities missing projected pull request: %#v", result.PreviewEntities)
 	}
-	if !containsEntityURN(result.PreviewEntities, "urn:cerebro:writer-dogfood:identifier:login:octocat") {
+	if !containsEntityURN(result.PreviewEntities, "urn:cerebro:example-dogfood:identifier:login:octocat") {
 		t.Fatalf("PreviewEntities missing identifier node: %#v", result.PreviewEntities)
 	}
-	if !containsLink(result.PreviewLinks, "urn:cerebro:writer-dogfood:github_user:octocat", "authored", "urn:cerebro:writer-dogfood:github_pull_request:writer/cerebro#418") {
+	if !containsLink(result.PreviewLinks, "urn:cerebro:example-dogfood:github_user:octocat", "authored", "urn:cerebro:example-dogfood:github_pull_request:writer/cerebro#418") {
 		t.Fatalf("PreviewLinks missing authored relation: %#v", result.PreviewLinks)
 	}
 }
@@ -295,16 +295,16 @@ func TestRebuildDryRunResolvesRuntimeConfigReferences(t *testing.T) {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
 	store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-		"writer-github": {
-			Id:       "writer-github",
+		"example-github": {
+			Id:       "example-github",
 			SourceId: "github",
-			TenantId: "writer",
+			TenantId: "example",
 			Config:   map[string]string{"token": "env:TOKEN"},
 		},
 	}}
 	service := New(registry, store, nil).WithConfigPreparer(func(_ context.Context, _ string, values map[string]string) (map[string]string, error) {
-		if got := values[sourceconfig.RuntimeTenantIDKey]; got != "writer" {
-			t.Fatalf("runtime tenant config = %q, want writer", got)
+		if got := values[sourceconfig.RuntimeTenantIDKey]; got != "example" {
+			t.Fatalf("runtime tenant config = %q, want example", got)
 		}
 		resolved := make(map[string]string, len(values))
 		for key, value := range values {
@@ -317,7 +317,7 @@ func TestRebuildDryRunResolvesRuntimeConfigReferences(t *testing.T) {
 		return resolved, nil
 	})
 
-	if _, err := service.RebuildDryRun(context.Background(), Request{RuntimeID: "writer-github"}); err != nil {
+	if _, err := service.RebuildDryRun(context.Background(), Request{RuntimeID: "example-github"}); err != nil {
 		t.Fatalf("RebuildDryRun() error = %v", err)
 	}
 	if source.readToken != "resolved-token" {
@@ -354,11 +354,11 @@ func TestRebuildDryRunProjectsEventsBeyondPreviewLimit(t *testing.T) {
 	}
 	service := New(registry, &runtimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer-dogfood", Config: map[string]string{"token": "fixture-token"}},
+			"example-github": {Id: "example-github", SourceId: "github", TenantId: "example-dogfood", Config: map[string]string{"token": "fixture-token"}},
 		},
 	}, nil)
 
-	result, err := service.RebuildDryRun(context.Background(), Request{RuntimeID: "writer-github", PreviewLimit: 1})
+	result, err := service.RebuildDryRun(context.Background(), Request{RuntimeID: "example-github", PreviewLimit: 1})
 	if err != nil {
 		t.Fatalf("RebuildDryRun() error = %v", err)
 	}
@@ -395,11 +395,11 @@ func TestRebuildDryRunContinuesAfterEmptyPageWithCursor(t *testing.T) {
 	}
 	service := New(registry, &runtimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer-dogfood", Config: map[string]string{"token": "fixture-token"}},
+			"example-github": {Id: "example-github", SourceId: "github", TenantId: "example-dogfood", Config: map[string]string{"token": "fixture-token"}},
 		},
 	}, nil)
 
-	result, err := service.RebuildDryRun(context.Background(), Request{RuntimeID: "writer-github", PageLimit: 2, PreviewLimit: 10})
+	result, err := service.RebuildDryRun(context.Background(), Request{RuntimeID: "example-github", PageLimit: 2, PreviewLimit: 10})
 	if err != nil {
 		t.Fatalf("RebuildDryRun() error = %v", err)
 	}
@@ -441,11 +441,11 @@ func TestRebuildDryRunDoesNotChargeReadTimeToProjectStage(t *testing.T) {
 	}
 	service := New(registry, &runtimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer-dogfood", Config: map[string]string{"token": "fixture-token"}},
+			"example-github": {Id: "example-github", SourceId: "github", TenantId: "example-dogfood", Config: map[string]string{"token": "fixture-token"}},
 		},
 	}, nil)
 
-	result, err := service.RebuildDryRun(context.Background(), Request{RuntimeID: "writer-github", PageLimit: 1, PreviewLimit: 10})
+	result, err := service.RebuildDryRun(context.Background(), Request{RuntimeID: "example-github", PageLimit: 1, PreviewLimit: 10})
 	if err != nil {
 		t.Fatalf("RebuildDryRun() error = %v", err)
 	}
@@ -489,17 +489,17 @@ func TestRebuildDryRunProjectsDependabotAlertGraph(t *testing.T) {
 	}
 	service := New(registry, &runtimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-github": {
-				Id:       "writer-github",
+			"example-github": {
+				Id:       "example-github",
 				SourceId: "github",
-				TenantId: "writer-dogfood",
+				TenantId: "example-dogfood",
 				Config:   map[string]string{"token": "fixture-token"},
 			},
 		},
 	}, nil)
 
 	result, err := service.RebuildDryRun(context.Background(), Request{
-		RuntimeID:    "writer-github",
+		RuntimeID:    "example-github",
 		PreviewLimit: 10,
 	})
 	if err != nil {
@@ -548,11 +548,11 @@ func TestRebuildDryRunProjectsDependabotAlertGraph(t *testing.T) {
 	if got := countValue(result.GraphRelationTypes, "represents"); got != 1 {
 		t.Fatalf("graph relation type represents = %d, want 1", got)
 	}
-	alertURN := "urn:cerebro:writer-dogfood:github_dependabot_alert:writer/cerebro:5"
-	advisoryURN := "urn:cerebro:writer-dogfood:github_advisory:GHSA-1234-5678-90ab"
-	packageURN := "urn:cerebro:writer-dogfood:package:gomod:golang.org/x/net"
-	canonicalPackageURN := "urn:cerebro:writer-dogfood:package:canonical:golang.org/x/net"
-	vulnerabilityURN := "urn:cerebro:writer-dogfood:vulnerability:ghsa-1234-5678-90ab"
+	alertURN := "urn:cerebro:example-dogfood:github_dependabot_alert:writer/cerebro:5"
+	advisoryURN := "urn:cerebro:example-dogfood:github_advisory:GHSA-1234-5678-90ab"
+	packageURN := "urn:cerebro:example-dogfood:package:gomod:golang.org/x/net"
+	canonicalPackageURN := "urn:cerebro:example-dogfood:package:canonical:golang.org/x/net"
+	vulnerabilityURN := "urn:cerebro:example-dogfood:vulnerability:ghsa-1234-5678-90ab"
 	if !containsEntityURN(result.PreviewEntities, alertURN) {
 		t.Fatalf("PreviewEntities missing Dependabot alert: %#v", result.PreviewEntities)
 	}
@@ -617,16 +617,16 @@ func TestRebuildDryRunDefaultsToSinglePage(t *testing.T) {
 	}
 	service := New(registry, &runtimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-github": {
-				Id:       "writer-github",
+			"example-github": {
+				Id:       "example-github",
 				SourceId: "github",
-				TenantId: "writer-dogfood",
+				TenantId: "example-dogfood",
 				Config:   map[string]string{"token": "fixture-token"},
 			},
 		},
 	}, nil)
 
-	result, err := service.RebuildDryRun(context.Background(), Request{RuntimeID: "writer-github"})
+	result, err := service.RebuildDryRun(context.Background(), Request{RuntimeID: "example-github"})
 	if err != nil {
 		t.Fatalf("RebuildDryRun() error = %v", err)
 	}
@@ -688,7 +688,7 @@ func TestRebuildDryRunDefaultsToSinglePage(t *testing.T) {
 func TestRebuildDryRunReplaysRuntimeIntoTemporaryGraph(t *testing.T) {
 	replayer := &eventReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			testRuntimeEvent("github-audit-1", "github.audit", "writer-github", map[string]string{
+			testRuntimeEvent("github-audit-1", "github.audit", "example-github", map[string]string{
 				"org":           "writer",
 				"repo":          "writer/cerebro",
 				"resource_id":   "writer/cerebro",
@@ -696,7 +696,7 @@ func TestRebuildDryRunReplaysRuntimeIntoTemporaryGraph(t *testing.T) {
 				"actor":         "octocat",
 				"action":        "repo.create",
 			}),
-			testRuntimeEvent("github-pr-1", "github.pull_request", "writer-github", map[string]string{
+			testRuntimeEvent("github-pr-1", "github.pull_request", "example-github", map[string]string{
 				"owner":       "writer",
 				"repository":  "writer/cerebro",
 				"pull_number": "418",
@@ -714,17 +714,17 @@ func TestRebuildDryRunReplaysRuntimeIntoTemporaryGraph(t *testing.T) {
 	}
 	service := New(nil, &runtimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-github": {
-				Id:       "writer-github",
+			"example-github": {
+				Id:       "example-github",
 				SourceId: "github",
-				TenantId: "writer-dogfood",
+				TenantId: "example-dogfood",
 			},
 		},
 	}, replayer)
 
 	result, err := service.RebuildDryRun(context.Background(), Request{
 		Mode:         modeReplay,
-		RuntimeID:    "writer-github",
+		RuntimeID:    "example-github",
 		EventLimit:   2,
 		PreviewLimit: 10,
 	})
@@ -734,8 +734,8 @@ func TestRebuildDryRunReplaysRuntimeIntoTemporaryGraph(t *testing.T) {
 	if len(replayer.requests) != 1 {
 		t.Fatalf("len(replayer.requests) = %d, want 1", len(replayer.requests))
 	}
-	if got := replayer.requests[0].RuntimeID; got != "writer-github" {
-		t.Fatalf("Replay().RuntimeID = %q, want %q", got, "writer-github")
+	if got := replayer.requests[0].RuntimeID; got != "example-github" {
+		t.Fatalf("Replay().RuntimeID = %q, want %q", got, "example-github")
 	}
 	if got := replayer.requests[0].Limit; got != 2 {
 		t.Fatalf("Replay().Limit = %d, want 2", got)
@@ -773,12 +773,12 @@ func TestRebuildDryRunReplaysRuntimeIntoTemporaryGraph(t *testing.T) {
 func TestRebuildDryRunReplaysGRCVulnerabilityTargetIntegrationGraph(t *testing.T) {
 	replayer := &eventReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			testRuntimeEvent("grc-integration-1", "grc.integration", "writer-grc", map[string]string{
+			testRuntimeEvent("grc-integration-1", "grc.integration", "example-grc", map[string]string{
 				"provider":       "vanta",
 				"integration_id": "integration-1",
 				"display_name":   "GitHub Dependabot",
 			}),
-			testRuntimeEvent("grc-vulnerability-1", "grc.vulnerability", "writer-grc", map[string]string{
+			testRuntimeEvent("grc-vulnerability-1", "grc.vulnerability", "example-grc", map[string]string{
 				"provider":         "vanta",
 				"vulnerability_id": "vuln-1",
 				"name":             "CVE-2026-4242",
@@ -794,17 +794,17 @@ func TestRebuildDryRunReplaysGRCVulnerabilityTargetIntegrationGraph(t *testing.T
 	}
 	service := New(nil, &runtimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-grc": {
-				Id:       "writer-grc",
+			"example-grc": {
+				Id:       "example-grc",
 				SourceId: "grc",
-				TenantId: "writer",
+				TenantId: "example",
 			},
 		},
 	}, replayer)
 
 	result, err := service.RebuildDryRun(context.Background(), Request{
 		Mode:         modeReplay,
-		RuntimeID:    "writer-grc",
+		RuntimeID:    "example-grc",
 		EventLimit:   2,
 		PreviewLimit: 20,
 	})
@@ -812,8 +812,8 @@ func TestRebuildDryRunReplaysGRCVulnerabilityTargetIntegrationGraph(t *testing.T
 		t.Fatalf("RebuildDryRun() error = %v", err)
 	}
 
-	targetURN := "urn:cerebro:writer:grc_target:vanta:target-1"
-	integrationURN := "urn:cerebro:writer:source:vanta:integration:integration-1"
+	targetURN := "urn:cerebro:example:grc_target:vanta:target-1"
+	integrationURN := "urn:cerebro:example:source:vanta:integration:integration-1"
 	if result.GraphNodes != 5 {
 		t.Fatalf("GraphNodes = %d, want 5", result.GraphNodes)
 	}
@@ -838,16 +838,16 @@ func TestRebuildDryRunRejectsNilEventWithPageContext(t *testing.T) {
 	}
 	service := New(registry, &runtimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-github": {
-				Id:       "writer-github",
+			"example-github": {
+				Id:       "example-github",
 				SourceId: "github",
-				TenantId: "writer-dogfood",
+				TenantId: "example-dogfood",
 				Config:   map[string]string{"token": "fixture-token"},
 			},
 		},
 	}, nil)
 
-	_, err = service.RebuildDryRun(context.Background(), Request{RuntimeID: "writer-github"})
+	_, err = service.RebuildDryRun(context.Background(), Request{RuntimeID: "example-github"})
 	if err == nil || !strings.Contains(fmt.Sprint(err), "read source page 1: nil event at index 0") {
 		t.Fatalf("RebuildDryRun() error = %v, want nil event page context", err)
 	}

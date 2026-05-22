@@ -11,8 +11,8 @@
       "domain": "writer.okta.com",
       "status": "ACTIVE",
       "profile": {
-        "login": "alice@writer.com",
-        "email": "alice@writer.com",
+        "login": "alice@example.com",
+        "email": "alice@example.com",
         "display_name": "Alice Example"
       },
       "raw": {
@@ -23,7 +23,7 @@
     "attributes": {
       "domain": "writer.okta.com",
       "family": "user",
-      "login": "alice@writer.com",
+      "login": "alice@example.com",
       "status": "ACTIVE",
       "user_id": "00u1"
     }
@@ -40,8 +40,8 @@
       "domain": "writer.okta.com",
       "status": "SUSPENDED",
       "profile": {
-        "login": "admin@writer.com",
-        "email": "admin@writer.com",
+        "login": "admin@example.com",
+        "email": "admin@example.com",
         "display_name": "Admin Example"
       },
       "raw": {
@@ -52,7 +52,7 @@
     "attributes": {
       "domain": "writer.okta.com",
       "family": "user",
-      "login": "admin@writer.com",
+      "login": "admin@example.com",
       "status": "SUSPENDED",
       "user_id": "00u2"
     }

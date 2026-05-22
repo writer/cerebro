@@ -9,8 +9,8 @@ import (
 
 func TestProjectCosmoSession(t *testing.T) {
 	entities, links, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
-		Id:       "cosmo-writer-session-ticket-1",
-		TenantId: "writer",
+		Id:       "cosmo-example-session-ticket-1",
+		TenantId: "example",
 		SourceId: "cosmo",
 		Kind:     "cosmo.session",
 		Attributes: map[string]string{
@@ -24,15 +24,15 @@ func TestProjectCosmoSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_session:ticket-1", "cosmo.session")
-	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:identity:email:alice@example.com", "identity.email")
-	assertCosmoProjectedLink(t, links, "urn:cerebro:writer:cosmo_session:ticket-1", relationRepresentsIdentity, "urn:cerebro:writer:identity:email:alice@example.com")
+	assertCosmoProjectedEntity(t, entities, "urn:cerebro:example:cosmo_session:ticket-1", "cosmo.session")
+	assertCosmoProjectedEntity(t, entities, "urn:cerebro:example:identity:email:alice@example.com", "identity.email")
+	assertCosmoProjectedLink(t, links, "urn:cerebro:example:cosmo_session:ticket-1", relationRepresentsIdentity, "urn:cerebro:example:identity:email:alice@example.com")
 }
 
 func TestProjectCosmoFact(t *testing.T) {
 	entities, links, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
-		Id:       "cosmo-writer-fact-risk",
-		TenantId: "writer",
+		Id:       "cosmo-example-fact-risk",
+		TenantId: "example",
 		SourceId: "cosmo",
 		Kind:     "cosmo.fact",
 		Attributes: map[string]string{
@@ -45,7 +45,7 @@ func TestProjectCosmoFact(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_fact:risk:key", "cosmo.fact")
+	assertCosmoProjectedEntity(t, entities, "urn:cerebro:example:cosmo_fact:risk:key", "cosmo.fact")
 	if len(links) != 0 {
 		t.Fatalf("len(links) = %d, want 0", len(links))
 	}
@@ -53,8 +53,8 @@ func TestProjectCosmoFact(t *testing.T) {
 
 func TestProjectCosmoMessageLinksSession(t *testing.T) {
 	entities, links, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
-		Id:       "cosmo-writer-message-msg-1",
-		TenantId: "writer",
+		Id:       "cosmo-example-message-msg-1",
+		TenantId: "example",
 		SourceId: "cosmo",
 		Kind:     "cosmo.message",
 		Attributes: map[string]string{
@@ -67,15 +67,15 @@ func TestProjectCosmoMessageLinksSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_message:msg-1", "cosmo.message")
-	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_session:ticket-1", "cosmo.session")
-	assertCosmoProjectedLink(t, links, "urn:cerebro:writer:cosmo_message:msg-1", relationBelongsTo, "urn:cerebro:writer:cosmo_session:ticket-1")
+	assertCosmoProjectedEntity(t, entities, "urn:cerebro:example:cosmo_message:msg-1", "cosmo.message")
+	assertCosmoProjectedEntity(t, entities, "urn:cerebro:example:cosmo_session:ticket-1", "cosmo.session")
+	assertCosmoProjectedLink(t, links, "urn:cerebro:example:cosmo_message:msg-1", relationBelongsTo, "urn:cerebro:example:cosmo_session:ticket-1")
 }
 
 func TestProjectCosmoSurveyFeedbackLinksSessionAndUser(t *testing.T) {
 	entities, links, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
-		Id:       "cosmo-writer-survey-feedback-feedback-1",
-		TenantId: "writer",
+		Id:       "cosmo-example-survey-feedback-feedback-1",
+		TenantId: "example",
 		SourceId: "cosmo",
 		Kind:     "cosmo.survey_feedback",
 		Attributes: map[string]string{
@@ -88,10 +88,10 @@ func TestProjectCosmoSurveyFeedbackLinksSessionAndUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_survey_feedback:feedback-1", "cosmo.survey_feedback")
-	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_session:ticket-1", "cosmo.session")
-	assertCosmoProjectedLink(t, links, "urn:cerebro:writer:cosmo_survey_feedback:feedback-1", relationBelongsTo, "urn:cerebro:writer:cosmo_session:ticket-1")
-	assertCosmoProjectedLink(t, links, "urn:cerebro:writer:cosmo_survey_feedback:feedback-1", relationRepresentsIdentity, "urn:cerebro:writer:identity:email:alice@example.com")
+	assertCosmoProjectedEntity(t, entities, "urn:cerebro:example:cosmo_survey_feedback:feedback-1", "cosmo.survey_feedback")
+	assertCosmoProjectedEntity(t, entities, "urn:cerebro:example:cosmo_session:ticket-1", "cosmo.session")
+	assertCosmoProjectedLink(t, links, "urn:cerebro:example:cosmo_survey_feedback:feedback-1", relationBelongsTo, "urn:cerebro:example:cosmo_session:ticket-1")
+	assertCosmoProjectedLink(t, links, "urn:cerebro:example:cosmo_survey_feedback:feedback-1", relationRepresentsIdentity, "urn:cerebro:example:identity:email:alice@example.com")
 }
 
 func TestProjectCosmoSkipsUnidentifiedEvents(t *testing.T) {
@@ -99,7 +99,7 @@ func TestProjectCosmoSkipsUnidentifiedEvents(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			entities, links, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
 				Id:       "event-without-record-id",
-				TenantId: "writer",
+				TenantId: "example",
 				SourceId: "cosmo",
 				Kind:     kind,
 			})

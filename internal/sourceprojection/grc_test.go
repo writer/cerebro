@@ -34,14 +34,14 @@ func TestProjectGRCVendorWithOwner(t *testing.T) {
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "grc-vendor-vendor-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "grc",
 		Kind:     "grc.vendor",
 		Attributes: map[string]string{
 			"provider":               "vanta",
 			"vendor_id":              "vendor-1",
 			"name":                   "Acme SaaS",
-			"website_url":            "https://app.writer.com",
+			"website_url":            "https://app.example.com",
 			"security_owner_user_id": "user-1",
 			"inherent_risk_level":    "HIGH",
 		},
@@ -49,9 +49,9 @@ func TestProjectGRCVendorWithOwner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	vendorURN := "urn:cerebro:writer:vendor:vanta:vendor-1"
-	ownerURN := "urn:cerebro:writer:user:vanta:user-1"
-	hostURN := "urn:cerebro:writer:internet_host:app.writer.com"
+	vendorURN := "urn:cerebro:example:vendor:vanta:vendor-1"
+	ownerURN := "urn:cerebro:example:user:vanta:user-1"
+	hostURN := "urn:cerebro:example:internet_host:app.example.com"
 	if entity := state.entities[vendorURN]; entity == nil || entity.EntityType != "vendor" {
 		t.Fatalf("vendor entity missing: %#v", entity)
 	}
@@ -74,7 +74,7 @@ func TestProjectGRCControlTestSupportsControlReferences(t *testing.T) {
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "grc-control-test-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "grc",
 		Kind:     "grc.control_test",
 		Attributes: map[string]string{
@@ -89,9 +89,9 @@ func TestProjectGRCControlTestSupportsControlReferences(t *testing.T) {
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	testURN := "urn:cerebro:writer:evidence:vanta:control_test:test-1"
-	firstControlURN := "urn:cerebro:writer:policy:vanta:control:control-1"
-	secondControlURN := "urn:cerebro:writer:policy:vanta:control:control-2"
+	testURN := "urn:cerebro:example:evidence:vanta:control_test:test-1"
+	firstControlURN := "urn:cerebro:example:policy:vanta:control:control-1"
+	secondControlURN := "urn:cerebro:example:policy:vanta:control:control-2"
 	assertProjectedLink(t, state, testURN, relationSupports, firstControlURN)
 	assertProjectedLink(t, state, testURN, relationSupports, secondControlURN)
 	if got := state.entities[firstControlURN].Attributes["control_external_id"]; got != "CC6.2" {
@@ -108,7 +108,7 @@ func TestProjectGRCControlTestKeepsPairedControlReferences(t *testing.T) {
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "grc-control-test-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "grc",
 		Kind:     "grc.control_test",
 		Attributes: map[string]string{
@@ -124,8 +124,8 @@ func TestProjectGRCControlTestKeepsPairedControlReferences(t *testing.T) {
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	firstControlURN := "urn:cerebro:writer:policy:vanta:control:control-1"
-	secondControlURN := "urn:cerebro:writer:policy:vanta:control:control-2"
+	firstControlURN := "urn:cerebro:example:policy:vanta:control:control-1"
+	secondControlURN := "urn:cerebro:example:policy:vanta:control:control-2"
 	if state.entities[firstControlURN] != nil {
 		t.Fatalf("first control entity = %#v, want no placeholder without external ID", state.entities[firstControlURN])
 	}
@@ -139,7 +139,7 @@ func TestProjectGRCControlTestDoesNotRegressControlLabelWhenExternalIDMissingLat
 	service := New(state, nil)
 	first := &cerebrov1.EventEnvelope{
 		Id:       "grc-control-test-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "grc",
 		Kind:     "grc.control_test",
 		Attributes: map[string]string{
@@ -154,7 +154,7 @@ func TestProjectGRCControlTestDoesNotRegressControlLabelWhenExternalIDMissingLat
 	}
 	second := &cerebrov1.EventEnvelope{
 		Id:       "grc-control-test-2",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "grc",
 		Kind:     "grc.control_test",
 		Attributes: map[string]string{
@@ -168,7 +168,7 @@ func TestProjectGRCControlTestDoesNotRegressControlLabelWhenExternalIDMissingLat
 		t.Fatalf("Project(second) error = %v", err)
 	}
 
-	controlURN := "urn:cerebro:writer:policy:vanta:control:control-1"
+	controlURN := "urn:cerebro:example:policy:vanta:control:control-1"
 	if got := state.entities[controlURN].Label; got != "CC6.2" {
 		t.Fatalf("control label = %q, want CC6.2", got)
 	}
@@ -180,28 +180,28 @@ func TestProjectGRCRiskScenarioOwnerDoesNotCreatePersonIdentityBridge(t *testing
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "grc-risk-risk-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "grc",
 		Kind:     "grc.risk_scenario",
 		Attributes: map[string]string{
 			"provider":    "vanta",
 			"risk_id":     "risk-1",
 			"description": "AI vendor risk",
-			"owner":       "alice@writer.com",
+			"owner":       "alice@example.com",
 		},
 	})
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	riskURN := "urn:cerebro:writer:claim:vanta:risk_scenario:risk-1"
-	contactURN := "urn:cerebro:writer:contact:vanta:owner:alice@writer.com"
-	personURN := "urn:cerebro:writer:person:vanta:owner:alice@writer.com"
+	riskURN := "urn:cerebro:example:claim:vanta:risk_scenario:risk-1"
+	contactURN := "urn:cerebro:example:contact:vanta:owner:alice@example.com"
+	personURN := "urn:cerebro:example:person:vanta:owner:alice@example.com"
 	assertProjectedLink(t, state, riskURN, relationAssignedTo, contactURN)
 	if _, ok := state.entities[personURN]; ok {
 		t.Fatalf("risk owner projected as GRC person: %#v", state.entities[personURN])
 	}
-	assertProjectedLinkMissing(t, state, contactURN, relationRepresentsIdentity, "urn:cerebro:writer:identity:email:alice@writer.com")
+	assertProjectedLinkMissing(t, state, contactURN, relationRepresentsIdentity, "urn:cerebro:example:identity:email:alice@example.com")
 }
 
 func TestProjectGRCPersonIdentifier(t *testing.T) {
@@ -210,21 +210,21 @@ func TestProjectGRCPersonIdentifier(t *testing.T) {
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "grc-person-person-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "grc",
 		Kind:     "grc.person",
 		Attributes: map[string]string{
 			"provider":          "vanta",
 			"person_id":         "person-1",
-			"email":             "alice@writer.com",
+			"email":             "alice@example.com",
 			"employment_status": "CURRENT",
 		},
 	})
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	personURN := "urn:cerebro:writer:person:vanta:person-1"
-	identifierURN := "urn:cerebro:writer:identifier:email:alice@writer.com"
+	personURN := "urn:cerebro:example:person:vanta:person-1"
+	identifierURN := "urn:cerebro:example:identifier:email:alice@example.com"
 	if entity := state.entities[personURN]; entity == nil || entity.EntityType != "person" {
 		t.Fatalf("person entity missing: %#v", entity)
 	}
@@ -239,14 +239,14 @@ func TestProjectGRCPersonStampsIdentifierLinksWithObservationTime(t *testing.T) 
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:         "grc-person-person-1",
-		TenantId:   "writer",
+		TenantId:   "example",
 		SourceId:   "grc",
 		Kind:       "grc.person",
 		OccurredAt: timestamppb.New(historicalEmploymentDate),
 		Attributes: map[string]string{
 			"provider":          "vanta",
 			"person_id":         "person-1",
-			"email":             "alice@writer.com",
+			"email":             "alice@example.com",
 			"employment_status": "CURRENT",
 		},
 	})
@@ -255,8 +255,8 @@ func TestProjectGRCPersonStampsIdentifierLinksWithObservationTime(t *testing.T) 
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	personURN := "urn:cerebro:writer:person:vanta:person-1"
-	identityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
+	personURN := "urn:cerebro:example:person:vanta:person-1"
+	identityURN := "urn:cerebro:example:identity:email:alice@example.com"
 	link, ok := state.links[personURN+"|"+relationRepresentsIdentity+"|"+identityURN]
 	if !ok {
 		t.Fatalf("represents_identity link missing for %s -> %s: %#v", personURN, identityURN, state.links)
@@ -279,7 +279,7 @@ func TestProjectGRCVulnerabilityUsesCanonicalVulnerability(t *testing.T) {
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "grc-vulnerability-vuln-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "grc",
 		Kind:     "grc.vulnerability",
 		Attributes: map[string]string{
@@ -295,7 +295,7 @@ func TestProjectGRCVulnerabilityUsesCanonicalVulnerability(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	vulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
+	vulnerabilityURN := "urn:cerebro:example:vulnerability:cve-2026-4242"
 	if entity := state.entities[vulnerabilityURN]; entity == nil || entity.EntityType != "vulnerability" {
 		t.Fatalf("vulnerability entity missing: %#v", entity)
 	}
@@ -305,7 +305,7 @@ func TestProjectGRCVulnerabilityUsesCanonicalVulnerability(t *testing.T) {
 	if got := state.entities[vulnerabilityURN].Attributes["package"]; got != "" {
 		t.Fatalf("canonical vulnerability package = %q, want empty package-specific package", got)
 	}
-	packageURN := "urn:cerebro:writer:package:grc:pkg:golang/example/module@1.2.3"
+	packageURN := "urn:cerebro:example:package:grc:pkg:golang/example/module@1.2.3"
 	link := state.links[packageURN+"|"+relationAffectedBy+"|"+vulnerabilityURN]
 	if link == nil {
 		t.Fatalf("GRC package affected_by vulnerability link missing: %#v", state.links)
@@ -321,7 +321,7 @@ func TestProjectGRCVulnerabilitySkipsMissingTargetAndIntegrationIDs(t *testing.T
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "grc-vulnerability-vuln-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "grc",
 		Kind:     "grc.vulnerability",
 		Attributes: map[string]string{
@@ -335,10 +335,10 @@ func TestProjectGRCVulnerabilitySkipsMissingTargetAndIntegrationIDs(t *testing.T
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	targetURN := "urn:cerebro:writer:grc_target:vanta"
-	integrationURN := "urn:cerebro:writer:source:vanta:integration"
-	vulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
-	packageURN := "urn:cerebro:writer:package:grc:example/module"
+	targetURN := "urn:cerebro:example:grc_target:vanta"
+	integrationURN := "urn:cerebro:example:source:vanta:integration"
+	vulnerabilityURN := "urn:cerebro:example:vulnerability:cve-2026-4242"
+	packageURN := "urn:cerebro:example:package:grc:example/module"
 
 	if entity := state.entities[targetURN]; entity != nil {
 		t.Fatalf("phantom GRC target entity = %#v, want nil", entity)
@@ -357,7 +357,7 @@ func TestProjectGRCVulnerabilityLinksTargetPackageAndIntegration(t *testing.T) {
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "grc-vulnerability-vuln-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "grc",
 		Kind:     "grc.vulnerability",
 		Attributes: map[string]string{
@@ -376,10 +376,10 @@ func TestProjectGRCVulnerabilityLinksTargetPackageAndIntegration(t *testing.T) {
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	targetURN := "urn:cerebro:writer:grc_target:vanta:target-1"
-	integrationURN := "urn:cerebro:writer:source:vanta:integration:integration-1"
-	packageURN := "urn:cerebro:writer:package:grc:example/module"
-	vulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
+	targetURN := "urn:cerebro:example:grc_target:vanta:target-1"
+	integrationURN := "urn:cerebro:example:source:vanta:integration:integration-1"
+	packageURN := "urn:cerebro:example:package:grc:example/module"
+	vulnerabilityURN := "urn:cerebro:example:vulnerability:cve-2026-4242"
 
 	if entity := state.entities[targetURN]; entity == nil || entity.EntityType != "grc.target" {
 		t.Fatalf("GRC target entity missing: %#v", entity)
@@ -401,24 +401,24 @@ func TestProjectGRCVulnerabilityLinksHostLikeTargetID(t *testing.T) {
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "grc-vulnerability-host-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "grc",
 		Kind:     "grc.vulnerability",
 		Attributes: map[string]string{
 			"provider":         "vanta",
 			"vulnerability_id": "vuln-1",
 			"name":             "CVE-2026-4242",
-			"target_id":        "app.writer.com",
+			"target_id":        "app.example.com",
 		},
 	})
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	targetURN := "urn:cerebro:writer:grc_target:vanta:app.writer.com"
-	hostURN := "urn:cerebro:writer:internet_host:app.writer.com"
-	if got := state.entities[targetURN].Attributes["host"]; got != "app.writer.com" {
-		t.Fatalf("target host = %q, want app.writer.com", got)
+	targetURN := "urn:cerebro:example:grc_target:vanta:app.example.com"
+	hostURN := "urn:cerebro:example:internet_host:app.example.com"
+	if got := state.entities[targetURN].Attributes["host"]; got != "app.example.com" {
+		t.Fatalf("target host = %q, want app.example.com", got)
 	}
 	assertProjectedLink(t, state, targetURN, relationRepresents, hostURN)
 }
@@ -429,14 +429,14 @@ func TestProjectGRCVulnerableAssetEnrichesVulnerabilityTarget(t *testing.T) {
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "grc-vulnerable-asset-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "grc",
 		Kind:     "grc.vulnerable_asset",
 		Attributes: map[string]string{
 			"provider":                   "vanta",
 			"target_id":                  "target-1",
 			"target_name":                "App Server",
-			"hostname":                   "app.writer.com",
+			"hostname":                   "app.example.com",
 			"ip":                         "203.0.113.10",
 			"integration_id":             "integration-1",
 			"asset_type":                 "server",
@@ -449,19 +449,19 @@ func TestProjectGRCVulnerableAssetEnrichesVulnerabilityTarget(t *testing.T) {
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	targetURN := "urn:cerebro:writer:grc_target:vanta:target-1"
-	hostURN := "urn:cerebro:writer:internet_host:app.writer.com"
-	ipURN := "urn:cerebro:writer:internet_ip:203.0.113.10"
-	integrationURN := "urn:cerebro:writer:source:vanta:integration:integration-1"
-	packageURN := "urn:cerebro:writer:package:grc:pkg:golang/example/module@1.2.3"
-	canonicalPackageURN := "urn:cerebro:writer:package:canonical:pkg:golang/example/module"
-	vulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
+	targetURN := "urn:cerebro:example:grc_target:vanta:target-1"
+	hostURN := "urn:cerebro:example:internet_host:app.example.com"
+	ipURN := "urn:cerebro:example:internet_ip:203.0.113.10"
+	integrationURN := "urn:cerebro:example:source:vanta:integration:integration-1"
+	packageURN := "urn:cerebro:example:package:grc:pkg:golang/example/module@1.2.3"
+	canonicalPackageURN := "urn:cerebro:example:package:canonical:pkg:golang/example/module"
+	vulnerabilityURN := "urn:cerebro:example:vulnerability:cve-2026-4242"
 
 	if entity := state.entities[targetURN]; entity == nil || entity.EntityType != "grc.target" {
 		t.Fatalf("GRC target entity missing: %#v", entity)
 	}
-	if got := state.entities[targetURN].Attributes["host"]; got != "app.writer.com" {
-		t.Fatalf("target host = %q, want app.writer.com", got)
+	if got := state.entities[targetURN].Attributes["host"]; got != "app.example.com" {
+		t.Fatalf("target host = %q, want app.example.com", got)
 	}
 	if got := state.entities[targetURN].Attributes["target_type"]; got != "server" {
 		t.Fatalf("target_type = %q, want server", got)
@@ -482,7 +482,7 @@ func TestProjectGRCVulnerableAssetPreservesPackageVulnerabilityPairs(t *testing.
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "grc-vulnerable-asset-2",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "grc",
 		Kind:     "grc.vulnerable_asset",
 		Attributes: map[string]string{
@@ -500,10 +500,10 @@ func TestProjectGRCVulnerableAssetPreservesPackageVulnerabilityPairs(t *testing.
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	packageOneURN := "urn:cerebro:writer:package:grc:pkg:golang/example/one@1.0.0"
-	packageTwoURN := "urn:cerebro:writer:package:grc:pkg:golang/example/two@2.0.0"
-	vulnerabilityOneURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
-	vulnerabilityTwoURN := "urn:cerebro:writer:vulnerability:cve-2026-4243"
+	packageOneURN := "urn:cerebro:example:package:grc:pkg:golang/example/one@1.0.0"
+	packageTwoURN := "urn:cerebro:example:package:grc:pkg:golang/example/two@2.0.0"
+	vulnerabilityOneURN := "urn:cerebro:example:vulnerability:cve-2026-4242"
+	vulnerabilityTwoURN := "urn:cerebro:example:vulnerability:cve-2026-4243"
 
 	assertProjectedLink(t, state, packageOneURN, relationAffectedBy, vulnerabilityOneURN)
 	assertProjectedLink(t, state, packageTwoURN, relationAffectedBy, vulnerabilityTwoURN)
@@ -517,7 +517,7 @@ func TestProjectGRCVulnerableAssetZipsFlatPackageVulnerabilityFields(t *testing.
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "grc-vulnerable-asset-flat",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "grc",
 		Kind:     "grc.vulnerable_asset",
 		Attributes: map[string]string{
@@ -531,10 +531,10 @@ func TestProjectGRCVulnerableAssetZipsFlatPackageVulnerabilityFields(t *testing.
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	packageOneURN := "urn:cerebro:writer:package:grc:pkg:golang/example/one@1.0.0"
-	packageTwoURN := "urn:cerebro:writer:package:grc:pkg:golang/example/two@2.0.0"
-	vulnerabilityOneURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
-	vulnerabilityTwoURN := "urn:cerebro:writer:vulnerability:cve-2026-4243"
+	packageOneURN := "urn:cerebro:example:package:grc:pkg:golang/example/one@1.0.0"
+	packageTwoURN := "urn:cerebro:example:package:grc:pkg:golang/example/two@2.0.0"
+	vulnerabilityOneURN := "urn:cerebro:example:vulnerability:cve-2026-4242"
+	vulnerabilityTwoURN := "urn:cerebro:example:vulnerability:cve-2026-4243"
 
 	assertProjectedLink(t, state, packageOneURN, relationAffectedBy, vulnerabilityOneURN)
 	assertProjectedLink(t, state, packageTwoURN, relationAffectedBy, vulnerabilityTwoURN)
@@ -548,7 +548,7 @@ func TestProjectGRCVulnerableAssetMergesFlatPackagesIntoReferences(t *testing.T)
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "grc-vulnerable-asset-mixed",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "grc",
 		Kind:     "grc.vulnerable_asset",
 		Attributes: map[string]string{
@@ -562,10 +562,10 @@ func TestProjectGRCVulnerableAssetMergesFlatPackagesIntoReferences(t *testing.T)
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	packageOneURN := "urn:cerebro:writer:package:grc:pkg:golang/example/one@1.0.0"
-	packageTwoURN := "urn:cerebro:writer:package:grc:pkg:golang/example/two@2.0.0"
-	vulnerabilityOneURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
-	vulnerabilityTwoURN := "urn:cerebro:writer:vulnerability:cve-2026-4243"
+	packageOneURN := "urn:cerebro:example:package:grc:pkg:golang/example/one@1.0.0"
+	packageTwoURN := "urn:cerebro:example:package:grc:pkg:golang/example/two@2.0.0"
+	vulnerabilityOneURN := "urn:cerebro:example:vulnerability:cve-2026-4242"
+	vulnerabilityTwoURN := "urn:cerebro:example:vulnerability:cve-2026-4243"
 
 	assertProjectedLink(t, state, packageOneURN, relationAffectedBy, vulnerabilityOneURN)
 	assertProjectedLink(t, state, packageTwoURN, relationAffectedBy, vulnerabilityTwoURN)
@@ -579,7 +579,7 @@ func TestProjectGRCVulnerableAssetAppendsTrailingFlatTuples(t *testing.T) {
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "grc-vulnerable-asset-trailing",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "grc",
 		Kind:     "grc.vulnerable_asset",
 		Attributes: map[string]string{
@@ -594,8 +594,8 @@ func TestProjectGRCVulnerableAssetAppendsTrailingFlatTuples(t *testing.T) {
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	packageTwoURN := "urn:cerebro:writer:package:grc:pkg:golang/example/two@2.0.0"
-	vulnerabilityTwoURN := "urn:cerebro:writer:vulnerability:cve-2026-4243"
+	packageTwoURN := "urn:cerebro:example:package:grc:pkg:golang/example/two@2.0.0"
+	vulnerabilityTwoURN := "urn:cerebro:example:vulnerability:cve-2026-4243"
 
 	assertProjectedLink(t, state, packageTwoURN, relationAffectedBy, vulnerabilityTwoURN)
 }
@@ -606,7 +606,7 @@ func TestProjectGRCVulnerableAssetZipsFlatVulnerabilityNames(t *testing.T) {
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "grc-vulnerable-asset-names",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "grc",
 		Kind:     "grc.vulnerable_asset",
 		Attributes: map[string]string{
@@ -620,9 +620,9 @@ func TestProjectGRCVulnerableAssetZipsFlatVulnerabilityNames(t *testing.T) {
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	targetURN := "urn:cerebro:writer:grc_target:vanta:target-names"
-	firstVulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
-	secondVulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-4243"
+	targetURN := "urn:cerebro:example:grc_target:vanta:target-names"
+	firstVulnerabilityURN := "urn:cerebro:example:vulnerability:cve-2026-4242"
+	secondVulnerabilityURN := "urn:cerebro:example:vulnerability:cve-2026-4243"
 	assertProjectedLink(t, state, targetURN, relationAffectedBy, firstVulnerabilityURN)
 	assertProjectedLink(t, state, targetURN, relationAffectedBy, secondVulnerabilityURN)
 	if got := state.links[targetURN+"|"+relationAffectedBy+"|"+firstVulnerabilityURN].Attributes["name"]; got != "openssl bug" {
@@ -639,21 +639,21 @@ func TestProjectGRCVulnerableAssetLinksURLOnlyHost(t *testing.T) {
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "grc-vulnerable-asset-url",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "grc",
 		Kind:     "grc.vulnerable_asset",
 		Attributes: map[string]string{
 			"provider":     "vanta",
 			"target_id":    "asset-123",
-			"external_url": "https://app.writer.com",
+			"external_url": "https://app.example.com",
 		},
 	})
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	targetURN := "urn:cerebro:writer:grc_target:vanta:asset-123"
-	hostURN := "urn:cerebro:writer:internet_host:app.writer.com"
+	targetURN := "urn:cerebro:example:grc_target:vanta:asset-123"
+	hostURN := "urn:cerebro:example:internet_host:app.example.com"
 	assertProjectedLink(t, state, targetURN, relationRepresents, hostURN)
 }
 
@@ -663,7 +663,7 @@ func TestProjectGRCVulnerableAssetLinksPlatformResources(t *testing.T) {
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "grc-vulnerable-asset-platform",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "grc",
 		Kind:     "grc.vulnerable_asset",
 		Attributes: map[string]string{
@@ -682,11 +682,11 @@ func TestProjectGRCVulnerableAssetLinksPlatformResources(t *testing.T) {
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	targetURN := "urn:cerebro:writer:grc_target:vanta:vanta-asset-1"
-	awsInstanceURN := "urn:cerebro:writer:aws_ec2_instance:arn:aws:ec2:us-east-1:381491964434:instance/i-0f359ce073424f8d6"
-	hostURN := "urn:cerebro:writer:internet_host:ip-10-86-43-17.ec2.internal"
-	ipURN := "urn:cerebro:writer:internet_ip:10.86.43.17"
-	accountURN := "urn:cerebro:writer:cloud_account:381491964434"
+	targetURN := "urn:cerebro:example:grc_target:vanta:vanta-asset-1"
+	awsInstanceURN := "urn:cerebro:example:aws_ec2_instance:arn:aws:ec2:us-east-1:381491964434:instance/i-0f359ce073424f8d6"
+	hostURN := "urn:cerebro:example:internet_host:ip-10-86-43-17.ec2.internal"
+	ipURN := "urn:cerebro:example:internet_ip:10.86.43.17"
+	accountURN := "urn:cerebro:example:cloud_account:381491964434"
 
 	if entity := state.entities[awsInstanceURN]; entity == nil || entity.EntityType != "aws.ec2.instance" || entity.SourceID != "aws" {
 		t.Fatalf("AWS instance entity missing: %#v", entity)
@@ -703,7 +703,7 @@ func TestProjectGRCVulnerableAssetLinksPlatformResources(t *testing.T) {
 }
 
 func TestGRCAWSResourceTypeFromARNHandlesAPIGatewayCustomDomain(t *testing.T) {
-	got := grcAWSResourceTypeFromARN("arn:aws:apigateway:us-east-1::/domainnames/api.writer.com")
+	got := grcAWSResourceTypeFromARN("arn:aws:apigateway:us-east-1::/domainnames/api.example.com")
 	if got != "apigateway_domain" {
 		t.Fatalf("grcAWSResourceTypeFromARN() = %q, want apigateway_domain", got)
 	}
@@ -715,7 +715,7 @@ func TestProjectGRCVulnerableAssetDoesNotInferVulnerabilityFromReferenceJSON(t *
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "grc-vulnerable-asset-3",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "grc",
 		Kind:     "grc.vulnerable_asset",
 		Attributes: map[string]string{
@@ -731,8 +731,8 @@ func TestProjectGRCVulnerableAssetDoesNotInferVulnerabilityFromReferenceJSON(t *
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	packageOneURN := "urn:cerebro:writer:package:grc:pkg:golang/example/one@1.0.0"
-	vulnerabilityTwoURN := "urn:cerebro:writer:vulnerability:cve-2026-4243"
+	packageOneURN := "urn:cerebro:example:package:grc:pkg:golang/example/one@1.0.0"
+	vulnerabilityTwoURN := "urn:cerebro:example:vulnerability:cve-2026-4243"
 
 	assertProjectedLinkMissing(t, state, packageOneURN, relationAffectedBy, vulnerabilityTwoURN)
 }
@@ -744,7 +744,7 @@ func TestProjectGRCVulnerabilityWritesGraphTargetIntegrationLinks(t *testing.T) 
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "grc-vulnerability-vuln-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "grc",
 		Kind:     "grc.vulnerability",
 		Attributes: map[string]string{
@@ -760,10 +760,10 @@ func TestProjectGRCVulnerabilityWritesGraphTargetIntegrationLinks(t *testing.T) 
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	targetURN := "urn:cerebro:writer:grc_target:vanta:target-1"
-	integrationURN := "urn:cerebro:writer:source:vanta:integration:integration-1"
-	packageURN := "urn:cerebro:writer:package:grc:example/module"
-	vulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
+	targetURN := "urn:cerebro:example:grc_target:vanta:target-1"
+	integrationURN := "urn:cerebro:example:source:vanta:integration:integration-1"
+	packageURN := "urn:cerebro:example:package:grc:example/module"
+	vulnerabilityURN := "urn:cerebro:example:vulnerability:cve-2026-4242"
 	if graph.entities[targetURN] == nil {
 		t.Fatalf("graph target entity missing")
 	}
@@ -776,11 +776,11 @@ func TestProjectGRCVulnerabilityWritesGraphTargetIntegrationLinks(t *testing.T) 
 }
 
 func TestProjectGRCVulnerabilityDoesNotRegressIntegrationLabel(t *testing.T) {
-	integrationURN := "urn:cerebro:writer:source:vanta:integration:integration-1"
-	targetURN := "urn:cerebro:writer:grc_target:vanta:target-1"
+	integrationURN := "urn:cerebro:example:source:vanta:integration:integration-1"
+	targetURN := "urn:cerebro:example:grc_target:vanta:target-1"
 	entities, links, err := grcVulnerabilityProjections(&cerebrov1.EventEnvelope{
 		Id:       "grc-vulnerability-vuln-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "grc",
 		Kind:     "grc.vulnerability",
 		Attributes: map[string]string{

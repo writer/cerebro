@@ -1,7 +1,7 @@
 [
   {
     "id": "group-1",
-    "email": "security@writer.com",
+    "email": "security@example.com",
     "name": "Security",
     "description": "Security team",
     "adminCreated": true,

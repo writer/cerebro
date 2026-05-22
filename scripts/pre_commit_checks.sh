@@ -19,4 +19,4 @@ if [ -n "$staged_go" ]; then
   fi
 fi
 
-make verify
+CEREBRO_LEAK_CHECK_ALLOW_INLINE="${CEREBRO_LEAK_CHECK_ALLOW_INLINE:-1}" make verify

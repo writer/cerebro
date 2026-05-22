@@ -1,7 +1,7 @@
 [
   {
     "id": "member-1",
-    "email": "admin@writer.com",
+    "email": "admin@example.com",
     "type": "USER",
     "role": "OWNER",
     "status": "ACTIVE"

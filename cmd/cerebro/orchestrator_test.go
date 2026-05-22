@@ -57,12 +57,12 @@ func TestParseOrchestratorOptionsRejectsZeroLimit(t *testing.T) {
 }
 
 func TestParseOrchestratorOptionsAcceptsRuntimeID(t *testing.T) {
-	options, err := parseOrchestratorOptions([]string{"runtime_id=writer-okta-audit"})
+	options, err := parseOrchestratorOptions([]string{"runtime_id=example-okta-audit"})
 	if err != nil {
 		t.Fatalf("parseOrchestratorOptions(runtime_id) error = %v", err)
 	}
-	if got := options.Filter.RuntimeID; got != "writer-okta-audit" {
-		t.Fatalf("runtime filter = %q, want writer-okta-audit", got)
+	if got := options.Filter.RuntimeID; got != "example-okta-audit" {
+		t.Fatalf("runtime filter = %q, want example-okta-audit", got)
 	}
 }
 
@@ -84,7 +84,7 @@ func TestOrchestratorShutdownSignalsIncludeSIGTERM(t *testing.T) {
 // context. Without this, the only path out of a stuck phase is to kill
 // the Fargate task — exactly the symptom that motivated this fix.
 func TestRunOrchestratorPhaseFailsFastOnTimeout(t *testing.T) {
-	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "github", TenantId: "example"}
 	start := time.Now()
 	_, err := runOrchestratorPhase[*struct{}](context.Background(), "orchestrator.test_phase", 1, runtime, 5*time.Millisecond, func(phaseCtx context.Context) (*struct{}, error) {
 		<-phaseCtx.Done()
@@ -108,7 +108,7 @@ func TestRunOrchestratorPhaseFailsFastOnTimeout(t *testing.T) {
 // branches (e.g. ErrRuleUnavailable / ErrGraphRuntimeUnavailable
 // short-circuits) working through the phase wrapper.
 func TestRunOrchestratorPhasePassesThroughErrors(t *testing.T) {
-	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "github", TenantId: "example"}
 	wantErr := errors.New("downstream failure")
 	result, err := runOrchestratorPhase[int](context.Background(), "orchestrator.test_phase", 1, runtime, time.Second, func(_ context.Context) (int, error) {
 		return 42, wantErr
@@ -127,7 +127,7 @@ func TestRunOrchestratorPhasePassesThroughErrors(t *testing.T) {
 // reach the phase function so it doesn't keep working with a stale
 // lease.
 func TestRunOrchestratorPhaseInheritsParentCancellation(t *testing.T) {
-	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "github", TenantId: "example"}
 	parent, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := runOrchestratorPhase[*struct{}](parent, "orchestrator.test_phase", 1, runtime, time.Minute, func(phaseCtx context.Context) (*struct{}, error) {
@@ -152,7 +152,7 @@ func TestNewOrchestratorRuntimeServiceProjectsSourceSyncToStateOnly(t *testing.T
 		runtime: &cerebrov1.SourceRuntime{
 			Id:       "runtime-1",
 			SourceId: "github",
-			TenantId: "writer",
+			TenantId: "example",
 		},
 	}
 	eventLog := &orchestratorEventLog{}
@@ -263,7 +263,7 @@ func TestRunOrchestratorIterationPreservesGraphCountersOnPartialFailure(t *testi
 		runtime: &cerebrov1.SourceRuntime{
 			Id:       "runtime-1",
 			SourceId: "github",
-			TenantId: "writer",
+			TenantId: "example",
 		},
 		acquired: true,
 	}
@@ -306,20 +306,20 @@ func TestRunOrchestratorIterationRunsGraphRulesAfterIngest(t *testing.T) {
 		sourceID: "github",
 		query: ports.CypherQueryRequest{
 			Query:  "MATCH (n) RETURN n LIMIT 1",
-			Params: map[string]any{"tenant_id": "writer"},
+			Params: map[string]any{"tenant_id": "example"},
 		},
 		emit: []*ports.FindingRecord{
 			{
 				ID:           "finding-graph-orchestrator-1",
 				Fingerprint:  "fp-graph-orchestrator-1",
-				TenantID:     "writer",
+				TenantID:     "example",
 				RuntimeID:    "runtime-1",
 				RuleID:       "orchestrator-graph-rule",
 				Title:        "Graph rule fired in orchestrator",
 				Severity:     "CRITICAL",
 				Status:       "open",
 				Summary:      "graph rule emitted via orchestrator",
-				ResourceURNs: []string{"urn:cerebro:writer:identity:email:alice@writer.com"},
+				ResourceURNs: []string{"urn:cerebro:example:identity:email:alice@example.com"},
 			},
 		},
 	}
@@ -331,7 +331,7 @@ func TestRunOrchestratorIterationRunsGraphRulesAfterIngest(t *testing.T) {
 		runtime: &cerebrov1.SourceRuntime{
 			Id:       "runtime-1",
 			SourceId: "github",
-			TenantId: "writer",
+			TenantId: "example",
 		},
 		acquired: true,
 	}
@@ -339,7 +339,7 @@ func TestRunOrchestratorIterationRunsGraphRulesAfterIngest(t *testing.T) {
 	findingStore := &orchestratorFindingStore{}
 	graphStore := newGraphTestStore()
 	graphStore.cypherRows = []ports.CypherRow{
-		{Values: map[string]any{"label": "alice@writer.com"}},
+		{Values: map[string]any{"label": "alice@example.com"}},
 	}
 	findingService := findings.NewWithRegistry(store, eventLog, findingStore, findingStore, findingStore, findingStore, ruleRegistry).WithGraphQueryStore(graphStore)
 	graphService := graphingest.New(registry, store, sourceprojection.New(nil, graphStore), graphStore)
@@ -387,7 +387,7 @@ func TestRunOrchestratorIterationRunsFindingRulesAfterGraphIngest(t *testing.T) 
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
 	graphStore := newGraphTestStore()
-	resourceURN := "urn:cerebro:writer:github_pull_request:writer/cerebro#515"
+	resourceURN := "urn:cerebro:example:github_pull_request:writer/cerebro#515"
 	findingRule := &orchestratorResourceAwareRule{
 		spec:        &cerebrov1.RuleSpec{Id: "resource-aware-rule", Name: "Resource aware rule"},
 		sourceID:    "github",
@@ -402,7 +402,7 @@ func TestRunOrchestratorIterationRunsFindingRulesAfterGraphIngest(t *testing.T) 
 		runtime: &cerebrov1.SourceRuntime{
 			Id:       "runtime-1",
 			SourceId: "github",
-			TenantId: "writer",
+			TenantId: "example",
 		},
 		acquired: true,
 	}
@@ -435,7 +435,7 @@ func TestRunOrchestratorIterationRunsFindingRulesAfterGraphIngest(t *testing.T) 
 	if !findingRule.sawResource {
 		t.Fatal("finding rule ran before graph ingest wrote the source resource")
 	}
-	linkKey := resourceURN + "|has_finding|urn:cerebro:writer:finding:finding-resource-aware"
+	linkKey := resourceURN + "|has_finding|urn:cerebro:example:finding:finding-resource-aware"
 	if _, ok := graphStore.links[linkKey]; !ok {
 		t.Fatalf("finding resource link %q missing", linkKey)
 	}
@@ -454,7 +454,7 @@ func TestRunOrchestratorIterationKeepsFindingRulesIndependentOfGraphIngestFailur
 		runtime: &cerebrov1.SourceRuntime{
 			Id:       "runtime-1",
 			SourceId: "github",
-			TenantId: "writer",
+			TenantId: "example",
 		},
 		acquired: true,
 	}
@@ -509,7 +509,7 @@ func TestRunOrchestratorIterationSkipsGraphRulesUntilGraphIngestCatchesSyncCurso
 		runtime: &cerebrov1.SourceRuntime{
 			Id:         "runtime-1",
 			SourceId:   "github",
-			TenantId:   "writer",
+			TenantId:   "example",
 			NextCursor: &cerebrov1.SourceCursor{Opaque: "2"},
 		},
 		acquired: true,
@@ -559,7 +559,7 @@ func TestRunOrchestratorIterationAlignsGraphIngestWithSyncPageBudget(t *testing.
 		runtime: &cerebrov1.SourceRuntime{
 			Id:       "runtime-1",
 			SourceId: "github",
-			TenantId: "writer",
+			TenantId: "example",
 		},
 		acquired: true,
 	}
@@ -624,7 +624,7 @@ func TestRunOrchestratorIterationRunsGraphRulesWhenOnlyRunRecordWriteFails(t *te
 		runtime: &cerebrov1.SourceRuntime{
 			Id:       "runtime-1",
 			SourceId: "github",
-			TenantId: "writer",
+			TenantId: "example",
 		},
 		acquired: true,
 	}
@@ -678,7 +678,7 @@ func TestRunOrchestratorIterationSkipsUnavailableFindingRules(t *testing.T) {
 		runtime: &cerebrov1.SourceRuntime{
 			Id:       "runtime-1",
 			SourceId: "github",
-			TenantId: "writer",
+			TenantId: "example",
 		},
 		acquired: true,
 	}
@@ -766,9 +766,9 @@ func TestOrchestratorListFilterRequestsAllByDefault(t *testing.T) {
 }
 
 func TestOrchestratorListFilterPreservesRuntimeID(t *testing.T) {
-	filter := orchestratorListFilter(ports.SourceRuntimeFilter{RuntimeID: "writer-okta-audit", Limit: 1})
-	if got := filter.RuntimeID; got != "writer-okta-audit" {
-		t.Fatalf("orchestratorListFilter().RuntimeID = %q, want writer-okta-audit", got)
+	filter := orchestratorListFilter(ports.SourceRuntimeFilter{RuntimeID: "example-okta-audit", Limit: 1})
+	if got := filter.RuntimeID; got != "example-okta-audit" {
+		t.Fatalf("orchestratorListFilter().RuntimeID = %q, want example-okta-audit", got)
 	}
 }
 
@@ -1028,7 +1028,7 @@ func (s orchestratorPagedSource) Read(_ context.Context, _ sourcecdk.Config, cur
 func orchestratorSourceEvent(id string, attributes map[string]string) *cerebrov1.EventEnvelope {
 	return &cerebrov1.EventEnvelope{
 		Id:         id,
-		TenantId:   "writer",
+		TenantId:   "example",
 		SourceId:   "github",
 		Kind:       "github.pull_request",
 		OccurredAt: timestamppb.New(time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)),

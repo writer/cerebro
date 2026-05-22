@@ -1,14 +1,14 @@
 {
   "rule_id": "identity-okta-policy-rule-lifecycle-tampering",
   "runtime": {
-    "id": "writer-okta-audit",
+    "id": "example-okta-audit",
     "source_id": "okta",
-    "tenant_id": "writer"
+    "tenant_id": "example"
   },
   "events": [
     {
       "id": "okta-audit-1",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "okta",
       "kind": "okta.audit",
       "occurred_at": "2026-04-23T12:00:00Z",
@@ -18,15 +18,15 @@
         "event_type": "user.session.start",
         "actor_id": "00u2",
         "actor_type": "User",
-        "actor_alternate_id": "admin@writer.com",
+        "actor_alternate_id": "admin@example.com",
         "actor_display_name": "Admin Example",
         "outcome_result": "SUCCESS",
-        "source_runtime_id": "writer-okta-audit"
+        "source_runtime_id": "example-okta-audit"
       }
     },
     {
       "id": "okta-audit-2",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "okta",
       "kind": "okta.audit",
       "occurred_at": "2026-04-23T12:00:00Z",
@@ -38,10 +38,10 @@
         "resource_type": "PolicyRule",
         "actor_id": "00u2",
         "actor_type": "User",
-        "actor_alternate_id": "admin@writer.com",
+        "actor_alternate_id": "admin@example.com",
         "actor_display_name": "Admin Example",
         "outcome_result": "SUCCESS",
-        "source_runtime_id": "writer-okta-audit"
+        "source_runtime_id": "example-okta-audit"
       }
     }
   ],
@@ -50,13 +50,13 @@
       "rule_id": "identity-okta-policy-rule-lifecycle-tampering",
       "severity": "HIGH",
       "status": "open",
-      "summary": "admin@writer.com performed policy.rule.update on pol-1",
+      "summary": "admin@example.com performed policy.rule.update on pol-1",
       "policy_id": "pol-1",
       "event_ids": ["okta-audit-2"],
       "attributes": {
         "event_type": "policy.rule.update",
-        "primary_actor_urn": "urn:cerebro:writer:okta_user:00u2",
-        "primary_resource_urn": "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+        "primary_actor_urn": "urn:cerebro:example:okta_user:00u2",
+        "primary_resource_urn": "urn:cerebro:example:okta_resource:policyrule:pol-1",
         "rule_required_attributes": "event_type,resource_id",
         "rule_tags": "okta,identity,policy,defense-evasion,attack.t1562"
       }

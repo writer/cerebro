@@ -11,14 +11,14 @@ import (
 
 func TestIdentitySignalRulesEmitJoinBackedFindings(t *testing.T) {
 	rules := identityRulesByID(t)
-	runtime := &cerebrov1.SourceRuntime{Id: "google-workspace-runtime", SourceId: "google_workspace", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "google-workspace-runtime", SourceId: "google_workspace", TenantId: "example"}
 	event := &cerebrov1.EventEnvelope{
 		Id:       "google-role-assignment-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "google_workspace",
 		Kind:     "google_workspace.role_assignment",
 		Attributes: map[string]string{
-			"domain":       "writer.com",
+			"domain":       "example.com",
 			"role_id":      "super-admin",
 			"subject_id":   "1001",
 			"subject_type": "user",
@@ -31,19 +31,19 @@ func TestIdentitySignalRulesEmitJoinBackedFindings(t *testing.T) {
 	if len(records) != 1 {
 		t.Fatalf("len(records) = %d, want 1", len(records))
 	}
-	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:writer:google_workspace_user:1001")
-	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:writer:google_workspace_admin_role:super-admin")
-	if got := records[0].Attributes["primary_actor_urn"]; got != "urn:cerebro:writer:google_workspace_user:1001" {
+	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:example:google_workspace_user:1001")
+	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:example:google_workspace_admin_role:super-admin")
+	if got := records[0].Attributes["primary_actor_urn"]; got != "urn:cerebro:example:google_workspace_user:1001" {
 		t.Fatalf("primary_actor_urn = %q, want google workspace user", got)
 	}
 }
 
 func TestIdentitySignalRulesJoinExternalGroupMemberToIdentifier(t *testing.T) {
 	rules := identityRulesByID(t)
-	runtime := &cerebrov1.SourceRuntime{Id: "okta-runtime", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "okta-runtime", SourceId: "okta", TenantId: "example"}
 	event := &cerebrov1.EventEnvelope{
 		Id:       "okta-group-member-external",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "okta",
 		Kind:     "okta.group_membership",
 		Attributes: map[string]string{
@@ -61,25 +61,25 @@ func TestIdentitySignalRulesJoinExternalGroupMemberToIdentifier(t *testing.T) {
 	if len(records) != 1 {
 		t.Fatalf("len(records) = %d, want 1", len(records))
 	}
-	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:writer:okta_user:00u-external")
-	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:writer:okta_group:grp-security")
-	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:writer:identifier:email:external@gmail.com")
+	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:example:okta_user:00u-external")
+	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:example:okta_group:grp-security")
+	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:example:identifier:email:external@gmail.com")
 }
 
 func TestIdentitySignalRulesDetectPrivilegedNoMFAUser(t *testing.T) {
 	rules := identityRulesByID(t)
-	runtime := &cerebrov1.SourceRuntime{Id: "google-workspace-runtime", SourceId: "google_workspace", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "google-workspace-runtime", SourceId: "google_workspace", TenantId: "example"}
 	event := &cerebrov1.EventEnvelope{
 		Id:       "google-user-admin-no-mfa",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "google_workspace",
 		Kind:     "google_workspace.user",
 		Attributes: map[string]string{
-			"domain":        "writer.com",
-			"email":         "admin@writer.com",
+			"domain":        "example.com",
+			"email":         "admin@example.com",
 			"is_admin":      "true",
 			"mfa_enrolled":  "false",
-			"primary_email": "admin@writer.com",
+			"primary_email": "admin@example.com",
 			"user_id":       "1001",
 		},
 	}
@@ -90,19 +90,19 @@ func TestIdentitySignalRulesDetectPrivilegedNoMFAUser(t *testing.T) {
 	if len(records) != 1 {
 		t.Fatalf("len(records) = %d, want 1", len(records))
 	}
-	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:writer:google_workspace_user:1001")
-	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:writer:identifier:email:admin@writer.com")
+	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:example:google_workspace_user:1001")
+	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:example:identifier:email:admin@example.com")
 
 	unknownMFA := &cerebrov1.EventEnvelope{
 		Id:       "google-user-admin-unknown-mfa",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "google_workspace",
 		Kind:     "google_workspace.user",
 		Attributes: map[string]string{
-			"domain":        "writer.com",
-			"email":         "admin@writer.com",
+			"domain":        "example.com",
+			"email":         "admin@example.com",
 			"is_admin":      "true",
-			"primary_email": "admin@writer.com",
+			"primary_email": "admin@example.com",
 			"user_id":       "1001",
 		},
 	}
@@ -116,15 +116,15 @@ func TestIdentitySignalRulesDetectPrivilegedNoMFAUser(t *testing.T) {
 
 	withMFA := &cerebrov1.EventEnvelope{
 		Id:       "google-user-admin-with-mfa",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "google_workspace",
 		Kind:     "google_workspace.user",
 		Attributes: map[string]string{
-			"domain":        "writer.com",
-			"email":         "admin@writer.com",
+			"domain":        "example.com",
+			"email":         "admin@example.com",
 			"is_admin":      "true",
 			"mfa_enrolled":  "true",
-			"primary_email": "admin@writer.com",
+			"primary_email": "admin@example.com",
 			"user_id":       "1001",
 		},
 	}
@@ -154,25 +154,25 @@ func TestIdentitySignalRulesDetectCloudRoleAssignments(t *testing.T) {
 				"domain":        "123456789012",
 				"role_id":       "AdministratorAccess",
 				"role_name":     "AdministratorAccess",
-				"subject_email": "admin@writer.com",
+				"subject_email": "admin@example.com",
 				"subject_id":    "AIDAADMIN",
 				"subject_type":  "user",
 			},
-			resourceURN: "urn:cerebro:writer:aws_admin_role:AdministratorAccess",
+			resourceURN: "urn:cerebro:example:aws_admin_role:AdministratorAccess",
 		},
 		{
 			name:     "gcp",
 			sourceID: "gcp",
 			kind:     "gcp.iam_role_assignment",
 			attributes: map[string]string{
-				"domain":        "writer-prod",
+				"domain":        "example-prod",
 				"role_id":       "roles/owner",
 				"role_name":     "roles/owner",
-				"subject_email": "admin@writer.com",
-				"subject_id":    "admin@writer.com",
+				"subject_email": "admin@example.com",
+				"subject_id":    "admin@example.com",
 				"subject_type":  "user",
 			},
-			resourceURN: "urn:cerebro:writer:gcp_admin_role:roles/owner",
+			resourceURN: "urn:cerebro:example:gcp_admin_role:roles/owner",
 		},
 		{
 			name:     "azure",
@@ -182,16 +182,16 @@ func TestIdentitySignalRulesDetectCloudRoleAssignments(t *testing.T) {
 				"domain":        "tenant-1",
 				"role_id":       "global-admin",
 				"role_name":     "Global Administrator",
-				"subject_email": "admin@writer.com",
+				"subject_email": "admin@example.com",
 				"subject_id":    "user-1",
 				"subject_type":  "user",
 			},
-			resourceURN: "urn:cerebro:writer:azure_admin_role:global-admin",
+			resourceURN: "urn:cerebro:example:azure_admin_role:global-admin",
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			runtime := &cerebrov1.SourceRuntime{Id: tt.name + "-runtime", SourceId: tt.sourceID, TenantId: "writer"}
-			event := &cerebrov1.EventEnvelope{Id: tt.name + "-role-assignment", TenantId: "writer", SourceId: tt.sourceID, Kind: tt.kind, Attributes: tt.attributes}
+			runtime := &cerebrov1.SourceRuntime{Id: tt.name + "-runtime", SourceId: tt.sourceID, TenantId: "example"}
+			event := &cerebrov1.EventEnvelope{Id: tt.name + "-role-assignment", TenantId: "example", SourceId: tt.sourceID, Kind: tt.kind, Attributes: tt.attributes}
 			records, err := rules[identityAdminPrivilegeGrantedRuleID].Evaluate(context.Background(), runtime, event)
 			if err != nil {
 				t.Fatalf("Evaluate() error = %v", err)
@@ -200,7 +200,7 @@ func TestIdentitySignalRulesDetectCloudRoleAssignments(t *testing.T) {
 				t.Fatalf("len(records) = %d, want 1", len(records))
 			}
 			assertFindingResourceURN(t, records[0].ResourceURNs, tt.resourceURN)
-			assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:writer:identifier:email:admin@writer.com")
+			assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:example:identifier:email:admin@example.com")
 		})
 	}
 }
@@ -222,8 +222,8 @@ func TestIdentitySignalRulesIgnoreReadOnlyCloudRoleAssignments(t *testing.T) {
 				"is_admin":      "false",
 				"role_id":       "ReadOnlyAccess",
 				"role_name":     "ReadOnlyAccess",
-				"subject_email": "analyst@writer.com",
-				"subject_id":    "analyst@writer.com",
+				"subject_email": "analyst@example.com",
+				"subject_id":    "analyst@example.com",
 				"subject_type":  "user",
 			},
 		},
@@ -232,12 +232,12 @@ func TestIdentitySignalRulesIgnoreReadOnlyCloudRoleAssignments(t *testing.T) {
 			sourceID: "gcp",
 			kind:     "gcp.iam_role_assignment",
 			attributes: map[string]string{
-				"domain":        "writer-prod",
+				"domain":        "example-prod",
 				"is_admin":      "false",
 				"role_id":       "roles/viewer",
 				"role_name":     "roles/viewer",
-				"subject_email": "viewer@writer.com",
-				"subject_id":    "viewer@writer.com",
+				"subject_email": "viewer@example.com",
+				"subject_id":    "viewer@example.com",
 				"subject_type":  "user",
 			},
 		},
@@ -250,15 +250,15 @@ func TestIdentitySignalRulesIgnoreReadOnlyCloudRoleAssignments(t *testing.T) {
 				"is_admin":      "false",
 				"role_id":       "Reader",
 				"role_name":     "Reader",
-				"subject_email": "viewer@writer.com",
-				"subject_id":    "viewer@writer.com",
+				"subject_email": "viewer@example.com",
+				"subject_id":    "viewer@example.com",
 				"subject_type":  "user",
 			},
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			runtime := &cerebrov1.SourceRuntime{Id: tt.name + "-runtime", SourceId: tt.sourceID, TenantId: "writer"}
-			event := &cerebrov1.EventEnvelope{Id: tt.name + "-role-assignment", TenantId: "writer", SourceId: tt.sourceID, Kind: tt.kind, Attributes: tt.attributes}
+			runtime := &cerebrov1.SourceRuntime{Id: tt.name + "-runtime", SourceId: tt.sourceID, TenantId: "example"}
+			event := &cerebrov1.EventEnvelope{Id: tt.name + "-role-assignment", TenantId: "example", SourceId: tt.sourceID, Kind: tt.kind, Attributes: tt.attributes}
 			records, err := rules[identityAdminPrivilegeGrantedRuleID].Evaluate(context.Background(), runtime, event)
 			if err != nil {
 				t.Fatalf("Evaluate() error = %v", err)
@@ -287,25 +287,25 @@ func TestIdentitySignalRulesDetectCloudCredentials(t *testing.T) {
 				"credential_id":   "AKIAEXAMPLE",
 				"credential_type": "aws_access_key",
 				"domain":          "123456789012",
-				"subject_email":   "admin@writer.com",
-				"subject_id":      "admin@writer.com",
+				"subject_email":   "admin@example.com",
+				"subject_id":      "admin@example.com",
 				"subject_type":    "user",
 			},
-			resourceURN: "urn:cerebro:writer:aws_credential:AKIAEXAMPLE",
+			resourceURN: "urn:cerebro:example:aws_credential:AKIAEXAMPLE",
 		},
 		{
 			name:     "gcp-service-account-key",
 			sourceID: "gcp",
 			kind:     "gcp.service_account_key",
 			attributes: map[string]string{
-				"credential_id":   "projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com/keys/key-1",
+				"credential_id":   "projects/example-prod/serviceAccounts/sa@example-prod.iam.gserviceaccount.com/keys/key-1",
 				"credential_type": "gcp_service_account_key",
-				"domain":          "writer-prod",
-				"subject_email":   "sa@writer-prod.iam.gserviceaccount.com",
-				"subject_id":      "sa@writer-prod.iam.gserviceaccount.com",
+				"domain":          "example-prod",
+				"subject_email":   "sa@example-prod.iam.gserviceaccount.com",
+				"subject_id":      "sa@example-prod.iam.gserviceaccount.com",
 				"subject_type":    "service_account",
 			},
-			resourceURN: "urn:cerebro:writer:gcp_credential:projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com/keys/key-1",
+			resourceURN: "urn:cerebro:example:gcp_credential:projects/example-prod/serviceAccounts/sa@example-prod.iam.gserviceaccount.com/keys/key-1",
 		},
 		{
 			name:     "azure-application-password",
@@ -318,12 +318,12 @@ func TestIdentitySignalRulesDetectCloudCredentials(t *testing.T) {
 				"subject_id":      "app-client-1",
 				"subject_type":    "application",
 			},
-			resourceURN: "urn:cerebro:writer:azure_credential:app-password-1",
+			resourceURN: "urn:cerebro:example:azure_credential:app-password-1",
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			runtime := &cerebrov1.SourceRuntime{Id: tt.name + "-runtime", SourceId: tt.sourceID, TenantId: "writer"}
-			event := &cerebrov1.EventEnvelope{Id: tt.name, TenantId: "writer", SourceId: tt.sourceID, Kind: tt.kind, Attributes: tt.attributes}
+			runtime := &cerebrov1.SourceRuntime{Id: tt.name + "-runtime", SourceId: tt.sourceID, TenantId: "example"}
+			event := &cerebrov1.EventEnvelope{Id: tt.name, TenantId: "example", SourceId: tt.sourceID, Kind: tt.kind, Attributes: tt.attributes}
 			records, err := rules[identityAPIOrOAuthCredentialCreatedRuleID].Evaluate(context.Background(), runtime, event)
 			if err != nil {
 				t.Fatalf("Evaluate() error = %v", err)
@@ -338,10 +338,10 @@ func TestIdentitySignalRulesDetectCloudCredentials(t *testing.T) {
 
 func TestIdentitySignalRulesIgnoreInactiveCloudCredentials(t *testing.T) {
 	rules := identityRulesByID(t)
-	runtime := &cerebrov1.SourceRuntime{Id: "aws-runtime", SourceId: "aws", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "aws-runtime", SourceId: "aws", TenantId: "example"}
 	event := &cerebrov1.EventEnvelope{
 		Id:       "aws-access-key-disabled",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "aws",
 		Kind:     "aws.access_key",
 		Attributes: map[string]string{
@@ -349,7 +349,7 @@ func TestIdentitySignalRulesIgnoreInactiveCloudCredentials(t *testing.T) {
 			"credential_type": "aws_access_key",
 			"domain":          "123456789012",
 			"status":          "DISABLED",
-			"subject_id":      "admin@writer.com",
+			"subject_id":      "admin@example.com",
 			"subject_type":    "user",
 		},
 	}
@@ -393,7 +393,7 @@ func TestIdentitySignalRulesRespectRuntimeFamily(t *testing.T) {
 
 func TestIdentitySignalRulesTreatRoutineOAuthGrantsAsTelemetry(t *testing.T) {
 	rules := identityRulesByID(t)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-audit", SourceId: "okta", TenantId: "example"}
 	for _, ruleID := range []string{
 		identityAPIOrOAuthCredentialCreatedRuleID,
 		identityControlTamperCredentialChangeRuleID,
@@ -407,7 +407,7 @@ func TestIdentitySignalRulesTreatRoutineOAuthGrantsAsTelemetry(t *testing.T) {
 			} {
 				event := &cerebrov1.EventEnvelope{
 					Id:       strings.ReplaceAll(action, ".", "-"),
-					TenantId: "writer",
+					TenantId: "example",
 					SourceId: "okta",
 					Kind:     "okta.audit",
 					Attributes: map[string]string{
@@ -498,10 +498,10 @@ func TestIdentitySignalRulesIgnoreRoutineOktaAssignments(t *testing.T) {
 
 func TestIdentitySignalRulesStillDetectOAuthCredentialCreation(t *testing.T) {
 	rules := identityRulesByID(t)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-audit", SourceId: "okta", TenantId: "example"}
 	event := &cerebrov1.EventEnvelope{
 		Id:       "okta-api-token-create",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "okta",
 		Kind:     "okta.audit",
 		Attributes: map[string]string{
@@ -524,7 +524,7 @@ func TestIdentitySignalRulesStillDetectOAuthCredentialCreation(t *testing.T) {
 
 func TestIdentitySignalRulesIgnoreFailedSensitiveAuditEvents(t *testing.T) {
 	rules := identityRulesByID(t)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-audit", SourceId: "okta", TenantId: "example"}
 	for _, ruleID := range []string{
 		identityMFAFactorResetOrDisabledRuleID,
 		identityControlTamperCredentialChangeRuleID,
@@ -532,7 +532,7 @@ func TestIdentitySignalRulesIgnoreFailedSensitiveAuditEvents(t *testing.T) {
 		t.Run(ruleID, func(t *testing.T) {
 			event := &cerebrov1.EventEnvelope{
 				Id:       "okta-failed-mfa-reset-" + ruleID,
-				TenantId: "writer",
+				TenantId: "example",
 				SourceId: "okta",
 				Kind:     "okta.audit",
 				Attributes: map[string]string{

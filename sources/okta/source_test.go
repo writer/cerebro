@@ -140,7 +140,7 @@ func TestNewFixtureReplaysOktaIdentityFamilies(t *testing.T) {
 		config map[string]string
 		kind   string
 	}{
-		{family: "admin_role", config: map[string]string{"user_id": "00u1", "user_email": "admin@writer.com"}, kind: "okta.admin_role"},
+		{family: "admin_role", config: map[string]string{"user_id": "00u1", "user_email": "admin@example.com"}, kind: "okta.admin_role"},
 		{family: "app_assignment", config: map[string]string{"app_id": "app-prod"}, kind: "okta.app_assignment"},
 		{family: "application", kind: "okta.application"},
 		{family: "group", kind: "okta.group"},
@@ -265,7 +265,7 @@ func TestAuditEventNormalizesOAuthRuntimeGrantTelemetry(t *testing.T) {
 		Target: []map[string]any{{
 			"id":          "00u-user",
 			"type":        "User",
-			"alternateId": "user@writer.com",
+			"alternateId": "user@example.com",
 		}},
 		raw: json.RawMessage(`{"uuid":"evt-oauth"}`),
 	})
@@ -412,8 +412,8 @@ func TestCheckDiscoverAndReadLiveOktaUserPreview(t *testing.T) {
 	if !ok {
 		t.Fatalf("user payload profile = %#v, want object", payload["profile"])
 	}
-	if got := profile["login"]; got != "alice@writer.com" {
-		t.Fatalf("user payload profile.login = %#v, want alice@writer.com", got)
+	if got := profile["login"]; got != "alice@example.com" {
+		t.Fatalf("user payload profile.login = %#v, want alice@example.com", got)
 	}
 
 	second, err := source.Read(context.Background(), readCfg, first.NextCursor)
@@ -458,7 +458,7 @@ func TestReadLiveOktaIdentityJoinFamilies(t *testing.T) {
 			config: map[string]string{"group_id": "grp-security"},
 			kind:   "okta.group_membership",
 			attr:   "member_email",
-			want:   "admin@writer.com",
+			want:   "admin@example.com",
 		},
 		{
 			family: "application",
@@ -471,11 +471,11 @@ func TestReadLiveOktaIdentityJoinFamilies(t *testing.T) {
 			config: map[string]string{"app_id": "app-prod"},
 			kind:   "okta.app_assignment",
 			attr:   "subject_email",
-			want:   "admin@writer.com",
+			want:   "admin@example.com",
 		},
 		{
 			family: "admin_role",
-			config: map[string]string{"user_id": "00u1", "user_email": "admin@writer.com"},
+			config: map[string]string{"user_id": "00u1", "user_email": "admin@example.com"},
 			kind:   "okta.admin_role",
 			attr:   "role_id",
 			want:   "super_admin",
@@ -703,7 +703,7 @@ func newOktaAPIHandler(t *testing.T) http.Handler {
 			"actor": map[string]any{
 				"id":          "00u1",
 				"type":        "User",
-				"alternateId": "alice@writer.com",
+				"alternateId": "alice@example.com",
 				"displayName": "Alice Example",
 			},
 			"client": map[string]any{
@@ -723,7 +723,7 @@ func newOktaAPIHandler(t *testing.T) http.Handler {
 				{
 					"id":          "00u1",
 					"type":        "User",
-					"alternateId": "alice@writer.com",
+					"alternateId": "alice@example.com",
 					"displayName": "Alice Example",
 				},
 			},
@@ -737,7 +737,7 @@ func newOktaAPIHandler(t *testing.T) http.Handler {
 			"actor": map[string]any{
 				"id":          "00u2",
 				"type":        "User",
-				"alternateId": "admin@writer.com",
+				"alternateId": "admin@example.com",
 				"displayName": "Admin Example",
 			},
 			"outcome": map[string]any{
@@ -761,8 +761,8 @@ func newOktaAPIHandler(t *testing.T) http.Handler {
 			"lastUpdated": "2026-04-23T01:00:00Z",
 			"lastLogin":   "2026-04-23T01:00:00Z",
 			"profile": map[string]any{
-				"login":        "alice@writer.com",
-				"email":        "alice@writer.com",
+				"login":        "alice@example.com",
+				"email":        "alice@example.com",
 				"displayName":  "Alice Example",
 				"firstName":    "Alice",
 				"lastName":     "Example",
@@ -783,8 +783,8 @@ func newOktaAPIHandler(t *testing.T) http.Handler {
 			"lastUpdated":   "2026-04-23T00:30:00Z",
 			"statusChanged": "2026-04-23T00:30:00Z",
 			"profile": map[string]any{
-				"login":       "admin@writer.com",
-				"email":       "admin@writer.com",
+				"login":       "admin@example.com",
+				"email":       "admin@example.com",
 				"displayName": "Admin Example",
 				"firstName":   "Admin",
 				"lastName":    "Example",
@@ -826,8 +826,8 @@ func newOktaAPIHandler(t *testing.T) http.Handler {
 			"created":     "2026-04-20T00:00:00Z",
 			"lastUpdated": "2026-04-23T00:00:00Z",
 			"profile": map[string]any{
-				"email": "admin@writer.com",
-				"login": "admin@writer.com",
+				"email": "admin@example.com",
+				"login": "admin@example.com",
 			},
 		},
 	}

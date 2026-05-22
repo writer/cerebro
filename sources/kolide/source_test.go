@@ -68,7 +68,7 @@ func TestReadDeviceFamilyFromFixture(t *testing.T) {
 	if event.Kind != "kolide.device" {
 		t.Fatalf("Kind = %q, want kolide.device", event.Kind)
 	}
-	if event.Attributes["hostname"] != "mba-1.writer.test" || event.Attributes["owner_email"] != "alice@writer.com" {
+	if event.Attributes["hostname"] != "mba-1.writer.test" || event.Attributes["owner_email"] != "alice@example.com" {
 		t.Fatalf("attrs = %#v, want fixture hostname/owner", event.Attributes)
 	}
 }

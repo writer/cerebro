@@ -144,7 +144,7 @@ func TestProjectGitHubPullRequest(t *testing.T) {
 
 	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "github-pr-447",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "github",
 		Kind:     "github.pull_request",
 		Payload: mustJSON(t, map[string]any{
@@ -168,15 +168,15 @@ func TestProjectGitHubPullRequest(t *testing.T) {
 		t.Fatalf("Project().LinksProjected = %d, want 6", result.LinksProjected)
 	}
 
-	prURN := "urn:cerebro:writer:github_pull_request:writer/cerebro#447"
-	identifierURN := "urn:cerebro:writer:identifier:login:alice"
+	prURN := "urn:cerebro:example:github_pull_request:writer/cerebro#447"
+	identifierURN := "urn:cerebro:example:identifier:login:alice"
 	if _, ok := state.entities[prURN]; !ok {
 		t.Fatalf("state entity %q missing", prURN)
 	}
 	if _, ok := graph.entities[prURN]; !ok {
 		t.Fatalf("graph entity %q missing", prURN)
 	}
-	if _, ok := state.links["urn:cerebro:writer:github_user:alice|"+relationHasIdentifier+"|"+identifierURN]; !ok {
+	if _, ok := state.links["urn:cerebro:example:github_user:alice|"+relationHasIdentifier+"|"+identifierURN]; !ok {
 		t.Fatalf("state identifier link missing for %q", identifierURN)
 	}
 }
@@ -188,7 +188,7 @@ func TestProjectStampsRuntimeIDOnEntitiesAndLinks(t *testing.T) {
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "github-pr-447",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "github",
 		Kind:     "github.pull_request",
 		Attributes: map[string]string{
@@ -196,26 +196,26 @@ func TestProjectStampsRuntimeIDOnEntitiesAndLinks(t *testing.T) {
 			"owner":                             "writer",
 			"pull_number":                       "447",
 			"repository":                        "writer/cerebro",
-			ports.EventAttributeSourceRuntimeID: "writer-github",
+			ports.EventAttributeSourceRuntimeID: "example-github",
 		},
 	})
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
 	for urn, entity := range state.entities {
-		if got := entity.RuntimeID; got != "writer-github" {
-			t.Fatalf("state entity %q RuntimeID = %q, want writer-github", urn, got)
+		if got := entity.RuntimeID; got != "example-github" {
+			t.Fatalf("state entity %q RuntimeID = %q, want example-github", urn, got)
 		}
-		if got := entity.Attributes[ports.EventAttributeSourceRuntimeID]; got != "writer-github" {
-			t.Fatalf("state entity %q source_runtime_id = %q, want writer-github", urn, got)
+		if got := entity.Attributes[ports.EventAttributeSourceRuntimeID]; got != "example-github" {
+			t.Fatalf("state entity %q source_runtime_id = %q, want example-github", urn, got)
 		}
 	}
 	for key, link := range graph.links {
-		if got := link.RuntimeID; got != "writer-github" {
-			t.Fatalf("graph link %q RuntimeID = %q, want writer-github", key, got)
+		if got := link.RuntimeID; got != "example-github" {
+			t.Fatalf("graph link %q RuntimeID = %q, want example-github", key, got)
 		}
-		if got := link.Attributes[ports.EventAttributeSourceRuntimeID]; got != "writer-github" {
-			t.Fatalf("graph link %q source_runtime_id = %q, want writer-github", key, got)
+		if got := link.Attributes[ports.EventAttributeSourceRuntimeID]; got != "example-github" {
+			t.Fatalf("graph link %q source_runtime_id = %q, want example-github", key, got)
 		}
 	}
 }
@@ -226,7 +226,7 @@ func TestProjectGitHubPullRequestWithoutOwnerDoesNotLinkEmptyOrg(t *testing.T) {
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "github-pr-447",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "github",
 		Kind:     "github.pull_request",
 		Attributes: map[string]string{
@@ -237,7 +237,7 @@ func TestProjectGitHubPullRequestWithoutOwnerDoesNotLinkEmptyOrg(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	emptyOrgURN := "urn:cerebro:writer:github_org:"
+	emptyOrgURN := "urn:cerebro:example:github_org:"
 	if _, ok := state.entities[emptyOrgURN]; ok {
 		t.Fatalf("empty org entity %q should not be projected", emptyOrgURN)
 	}
@@ -254,7 +254,7 @@ func TestProjectGitHubPullRequestWithoutRepositoryDoesNotLinkPlaceholderPR(t *te
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "github-pr-447",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "github",
 		Kind:     "github.pull_request",
 		Attributes: map[string]string{
@@ -279,7 +279,7 @@ func TestProjectGitHubDependabotAlert(t *testing.T) {
 
 	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "github-dependabot-alert-7",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "github",
 		Kind:     "github.dependabot_alert",
 		Attributes: map[string]string{
@@ -306,12 +306,12 @@ func TestProjectGitHubDependabotAlert(t *testing.T) {
 		t.Fatalf("Project().LinksProjected = %d, want 8", result.LinksProjected)
 	}
 
-	alertURN := "urn:cerebro:writer:github_dependabot_alert:writer/cerebro:7"
-	repoURN := "urn:cerebro:writer:github_repo:writer/cerebro"
-	advisoryURN := "urn:cerebro:writer:github_advisory:GHSA-xxxx-yyyy-zzzz"
-	packageURN := "urn:cerebro:writer:package:go:golang.org/x/crypto"
-	canonicalPackageURN := "urn:cerebro:writer:package:canonical:golang.org/x/crypto"
-	vulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2025-12345"
+	alertURN := "urn:cerebro:example:github_dependabot_alert:writer/cerebro:7"
+	repoURN := "urn:cerebro:example:github_repo:writer/cerebro"
+	advisoryURN := "urn:cerebro:example:github_advisory:GHSA-xxxx-yyyy-zzzz"
+	packageURN := "urn:cerebro:example:package:go:golang.org/x/crypto"
+	canonicalPackageURN := "urn:cerebro:example:package:canonical:golang.org/x/crypto"
+	vulnerabilityURN := "urn:cerebro:example:vulnerability:cve-2025-12345"
 	if _, ok := state.entities[alertURN]; !ok {
 		t.Fatalf("state entity %q missing", alertURN)
 	}
@@ -347,7 +347,7 @@ func TestProjectOktaOAuthGrantAsApplicationTelemetry(t *testing.T) {
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "okta-oauth-grant",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "okta",
 		Kind:     "okta.audit",
 		Attributes: map[string]string{
@@ -368,8 +368,8 @@ func TestProjectOktaOAuthGrantAsApplicationTelemetry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	clientURN := "urn:cerebro:writer:okta_application:0oa-client"
-	userURN := "urn:cerebro:writer:okta_user:00u-user"
+	clientURN := "urn:cerebro:example:okta_application:0oa-client"
+	userURN := "urn:cerebro:example:okta_user:00u-user"
 	entity, ok := state.entities[clientURN]
 	if !ok {
 		t.Fatalf("OAuth client entity %q missing", clientURN)
@@ -378,7 +378,7 @@ func TestProjectOktaOAuthGrantAsApplicationTelemetry(t *testing.T) {
 		t.Fatalf("oauth_event_category = %q, want runtime_grant", got)
 	}
 	assertProjectedLink(t, state, clientURN, relationActedOn, userURN)
-	assertProjectedLink(t, state, clientURN, relationBelongsTo, "urn:cerebro:writer:okta_org:writer.okta.com")
+	assertProjectedLink(t, state, clientURN, relationBelongsTo, "urn:cerebro:example:okta_org:writer.okta.com")
 }
 
 func TestProjectOktaAuditSuppressesEphemeralOAuthResources(t *testing.T) {
@@ -445,7 +445,7 @@ func TestProjectOktaAuditSuppressesEphemeralOAuthResources(t *testing.T) {
 
 			_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 				Id:       "okta-oauth-token",
-				TenantId: "writer",
+				TenantId: "example",
 				SourceId: "okta",
 				Kind:     "okta.audit",
 				Attributes: map[string]string{
@@ -467,15 +467,15 @@ func TestProjectOktaAuditSuppressesEphemeralOAuthResources(t *testing.T) {
 				t.Fatalf("Project() error = %v", err)
 			}
 
-			clientURN := "urn:cerebro:writer:okta_application:0oa-client"
-			actorURN := "urn:cerebro:writer:okta_actor:publicclientapp:0oa-client"
+			clientURN := "urn:cerebro:example:okta_application:0oa-client"
+			actorURN := "urn:cerebro:example:okta_actor:publicclientapp:0oa-client"
 			resourceURN := oktaResourceURN("writer", tt.resourceType, "token-123")
 			if _, ok := state.entities[resourceURN]; ok {
 				t.Fatalf("ephemeral resource entity %q unexpectedly projected", resourceURN)
 			}
 			assertProjectedLinkMissing(t, state, clientURN, relationActedOn, resourceURN)
 			assertProjectedLinkMissing(t, state, actorURN, relationActedOn, resourceURN)
-			assertProjectedLinkMissing(t, state, resourceURN, relationBelongsTo, "urn:cerebro:writer:okta_org:writer.okta.com")
+			assertProjectedLinkMissing(t, state, resourceURN, relationBelongsTo, "urn:cerebro:example:okta_org:writer.okta.com")
 			assertProjectedLink(t, state, actorURN, relationActedOn, clientURN)
 
 			link := state.links[actorURN+"|"+relationActedOn+"|"+clientURN]
@@ -492,10 +492,10 @@ func TestProjectOktaAuditSuppressesEphemeralOAuthResources(t *testing.T) {
 }
 
 func TestProjectOktaAuditDeletesPreviouslyProjectedEphemeralOAuthResource(t *testing.T) {
-	resourceURN := "urn:cerebro:writer:okta_resource:access_token:token-123"
-	clientURN := "urn:cerebro:writer:okta_application:0oa-client"
+	resourceURN := "urn:cerebro:example:okta_resource:access_token:token-123"
+	clientURN := "urn:cerebro:example:okta_application:0oa-client"
 	oldLink := &ports.ProjectedLink{
-		TenantID: "writer",
+		TenantID: "example",
 		SourceID: "okta",
 		FromURN:  clientURN,
 		Relation: relationActedOn,
@@ -504,7 +504,7 @@ func TestProjectOktaAuditDeletesPreviouslyProjectedEphemeralOAuthResource(t *tes
 	state := &projectionRecorder{
 		entities: map[string]*ports.ProjectedEntity{resourceURN: {
 			URN:        resourceURN,
-			TenantID:   "writer",
+			TenantID:   "example",
 			SourceID:   "okta",
 			EntityType: "okta.resource",
 			Label:      "token-123",
@@ -514,7 +514,7 @@ func TestProjectOktaAuditDeletesPreviouslyProjectedEphemeralOAuthResource(t *tes
 	graph := &projectionRecorder{
 		entities: map[string]*ports.ProjectedEntity{resourceURN: {
 			URN:        resourceURN,
-			TenantID:   "writer",
+			TenantID:   "example",
 			SourceID:   "okta",
 			EntityType: "okta.resource",
 			Label:      "token-123",
@@ -525,7 +525,7 @@ func TestProjectOktaAuditDeletesPreviouslyProjectedEphemeralOAuthResource(t *tes
 
 	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "okta-oauth-token",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "okta",
 		Kind:     "okta.audit",
 		Attributes: map[string]string{
@@ -563,11 +563,11 @@ func TestProjectOktaAuditDeletesPreviouslyProjectedEphemeralOAuthResource(t *tes
 }
 
 func TestProjectOktaAuditRunsScopedEphemeralOAuthResourceCleanup(t *testing.T) {
-	staleURN := "urn:cerebro:writer:okta_resource:access_token:old-token"
-	otherRuntimeURN := "urn:cerebro:writer:okta_resource:access_token:other-runtime-token"
-	clientURN := "urn:cerebro:writer:okta_application:0oa-client"
+	staleURN := "urn:cerebro:example:okta_resource:access_token:old-token"
+	otherRuntimeURN := "urn:cerebro:example:okta_resource:access_token:other-runtime-token"
+	clientURN := "urn:cerebro:example:okta_application:0oa-client"
 	oldLink := &ports.ProjectedLink{
-		TenantID: "writer",
+		TenantID: "example",
 		SourceID: "okta",
 		FromURN:  clientURN,
 		Relation: relationActedOn,
@@ -577,7 +577,7 @@ func TestProjectOktaAuditRunsScopedEphemeralOAuthResourceCleanup(t *testing.T) {
 		entities: map[string]*ports.ProjectedEntity{
 			clientURN: {
 				URN:        clientURN,
-				TenantID:   "writer",
+				TenantID:   "example",
 				SourceID:   "okta",
 				RuntimeID:  "okta-audit-runtime",
 				EntityType: "okta.application",
@@ -585,7 +585,7 @@ func TestProjectOktaAuditRunsScopedEphemeralOAuthResourceCleanup(t *testing.T) {
 			},
 			staleURN: {
 				URN:        staleURN,
-				TenantID:   "writer",
+				TenantID:   "example",
 				SourceID:   "okta",
 				RuntimeID:  "okta-audit-runtime",
 				EntityType: "okta.resource",
@@ -593,7 +593,7 @@ func TestProjectOktaAuditRunsScopedEphemeralOAuthResourceCleanup(t *testing.T) {
 			},
 			otherRuntimeURN: {
 				URN:        otherRuntimeURN,
-				TenantID:   "writer",
+				TenantID:   "example",
 				SourceID:   "okta",
 				RuntimeID:  "other-runtime",
 				EntityType: "okta.resource",
@@ -606,7 +606,7 @@ func TestProjectOktaAuditRunsScopedEphemeralOAuthResourceCleanup(t *testing.T) {
 
 	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "okta-oauth-token",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "okta",
 		Kind:     "okta.audit",
 		Attributes: map[string]string{
@@ -635,13 +635,13 @@ func TestProjectOktaAuditRunsScopedEphemeralOAuthResourceCleanup(t *testing.T) {
 		t.Fatalf("cleanup requests = %d, want 1", got)
 	}
 	request := graph.cleanupRequests[0]
-	if request.TenantID != "writer" || request.SourceID != "okta" || request.RuntimeID != "okta-audit-runtime" {
-		t.Fatalf("cleanup request scope = (%q, %q, %q), want writer/okta/okta-audit-runtime", request.TenantID, request.SourceID, request.RuntimeID)
+	if request.TenantID != "example" || request.SourceID != "okta" || request.RuntimeID != "okta-audit-runtime" {
+		t.Fatalf("cleanup request scope = (%q, %q, %q), want example/okta/okta-audit-runtime", request.TenantID, request.SourceID, request.RuntimeID)
 	}
 	if !stringSliceContains(request.EntityTypes, "okta.resource") {
 		t.Fatalf("cleanup request entity types = %#v, want okta.resource", request.EntityTypes)
 	}
-	if !stringSliceContains(request.URNPrefixes, "urn:cerebro:writer:okta_resource:access_token:") {
+	if !stringSliceContains(request.URNPrefixes, "urn:cerebro:example:okta_resource:access_token:") {
 		t.Fatalf("cleanup request prefixes = %#v, missing access_token prefix", request.URNPrefixes)
 	}
 	if _, ok := graph.entities[staleURN]; ok {
@@ -656,12 +656,12 @@ func TestProjectOktaAuditRunsScopedEphemeralOAuthResourceCleanup(t *testing.T) {
 }
 
 func TestProjectOktaAuditRunsScopedEphemeralOAuthCleanupOnNonGrantEvent(t *testing.T) {
-	staleURN := "urn:cerebro:writer:okta_resource:refresh_token:old-token"
+	staleURN := "urn:cerebro:example:okta_resource:refresh_token:old-token"
 	state := &projectionRecorder{
 		entities: map[string]*ports.ProjectedEntity{
 			staleURN: {
 				URN:        staleURN,
-				TenantID:   "writer",
+				TenantID:   "example",
 				SourceID:   "okta",
 				RuntimeID:  "okta-audit-runtime",
 				EntityType: "okta.resource",
@@ -673,7 +673,7 @@ func TestProjectOktaAuditRunsScopedEphemeralOAuthCleanupOnNonGrantEvent(t *testi
 
 	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "okta-user-update",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "okta",
 		Kind:     "okta.audit",
 		Attributes: map[string]string{
@@ -703,17 +703,17 @@ func TestProjectOktaAuditRunsScopedEphemeralOAuthCleanupOnNonGrantEvent(t *testi
 func TestCleanupProjectedEntitiesRepeatsUntilExhausted(t *testing.T) {
 	graph := &projectionRecorder{
 		entities: map[string]*ports.ProjectedEntity{
-			"urn:cerebro:writer:okta_resource:access_token:token-1": {
-				URN:        "urn:cerebro:writer:okta_resource:access_token:token-1",
-				TenantID:   "writer",
+			"urn:cerebro:example:okta_resource:access_token:token-1": {
+				URN:        "urn:cerebro:example:okta_resource:access_token:token-1",
+				TenantID:   "example",
 				SourceID:   "okta",
 				RuntimeID:  "okta-audit-runtime",
 				EntityType: "okta.resource",
 				Label:      "token-1",
 			},
-			"urn:cerebro:writer:okta_resource:access_token:token-2": {
-				URN:        "urn:cerebro:writer:okta_resource:access_token:token-2",
-				TenantID:   "writer",
+			"urn:cerebro:example:okta_resource:access_token:token-2": {
+				URN:        "urn:cerebro:example:okta_resource:access_token:token-2",
+				TenantID:   "example",
 				SourceID:   "okta",
 				RuntimeID:  "okta-audit-runtime",
 				EntityType: "okta.resource",
@@ -724,11 +724,11 @@ func TestCleanupProjectedEntitiesRepeatsUntilExhausted(t *testing.T) {
 	service := New(nil, graph)
 
 	result, err := service.cleanupProjectedEntities(context.Background(), []ports.ProjectionCleanupRequest{{
-		TenantID:    "writer",
+		TenantID:    "example",
 		SourceID:    "okta",
 		RuntimeID:   "okta-audit-runtime",
 		EntityTypes: []string{"okta.resource"},
-		URNPrefixes: []string{"urn:cerebro:writer:okta_resource:access_token:"},
+		URNPrefixes: []string{"urn:cerebro:example:okta_resource:access_token:"},
 		Limit:       1,
 	}})
 	if err != nil {
@@ -748,9 +748,9 @@ func TestCleanupProjectedEntitiesRepeatsUntilExhausted(t *testing.T) {
 func TestCleanupProjectedEntitiesRunsAgainstStateStore(t *testing.T) {
 	state := &projectionRecorder{
 		entities: map[string]*ports.ProjectedEntity{
-			"urn:cerebro:writer:okta_resource:access_token:token-1": {
-				URN:        "urn:cerebro:writer:okta_resource:access_token:token-1",
-				TenantID:   "writer",
+			"urn:cerebro:example:okta_resource:access_token:token-1": {
+				URN:        "urn:cerebro:example:okta_resource:access_token:token-1",
+				TenantID:   "example",
 				SourceID:   "okta",
 				RuntimeID:  "okta-audit-runtime",
 				EntityType: "okta.resource",
@@ -761,11 +761,11 @@ func TestCleanupProjectedEntitiesRunsAgainstStateStore(t *testing.T) {
 	service := New(state, nil)
 
 	result, err := service.cleanupProjectedEntities(context.Background(), []ports.ProjectionCleanupRequest{{
-		TenantID:    "writer",
+		TenantID:    "example",
 		SourceID:    "okta",
 		RuntimeID:   "okta-audit-runtime",
 		EntityTypes: []string{"okta.resource"},
-		URNPrefixes: []string{"urn:cerebro:writer:okta_resource:access_token:"},
+		URNPrefixes: []string{"urn:cerebro:example:okta_resource:access_token:"},
 		Limit:       1000,
 	}})
 	if err != nil {
@@ -785,9 +785,9 @@ func TestCleanupProjectedEntitiesRunsAgainstStateStore(t *testing.T) {
 func TestProjectOktaAuditRunsScopedCleanupForLaterStaleResources(t *testing.T) {
 	state := &projectionRecorder{
 		entities: map[string]*ports.ProjectedEntity{
-			"urn:cerebro:writer:okta_resource:access_token:stale-token": {
-				URN:        "urn:cerebro:writer:okta_resource:access_token:stale-token",
-				TenantID:   "writer",
+			"urn:cerebro:example:okta_resource:access_token:stale-token": {
+				URN:        "urn:cerebro:example:okta_resource:access_token:stale-token",
+				TenantID:   "example",
 				SourceID:   "okta",
 				RuntimeID:  "okta-audit-runtime",
 				EntityType: "okta.resource",
@@ -799,7 +799,7 @@ func TestProjectOktaAuditRunsScopedCleanupForLaterStaleResources(t *testing.T) {
 	event := func(id string, resourceID string) *cerebrov1.EventEnvelope {
 		return &cerebrov1.EventEnvelope{
 			Id:       id,
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "okta",
 			Kind:     "okta.audit",
 			Attributes: map[string]string{
@@ -823,9 +823,9 @@ func TestProjectOktaAuditRunsScopedCleanupForLaterStaleResources(t *testing.T) {
 	if _, err := service.Project(context.Background(), event("okta-oauth-token-1", "token-1")); err != nil {
 		t.Fatalf("Project(first) error = %v", err)
 	}
-	state.entities["urn:cerebro:writer:okta_resource:access_token:later-stale-token"] = &ports.ProjectedEntity{
-		URN:        "urn:cerebro:writer:okta_resource:access_token:later-stale-token",
-		TenantID:   "writer",
+	state.entities["urn:cerebro:example:okta_resource:access_token:later-stale-token"] = &ports.ProjectedEntity{
+		URN:        "urn:cerebro:example:okta_resource:access_token:later-stale-token",
+		TenantID:   "example",
 		SourceID:   "okta",
 		RuntimeID:  "okta-audit-runtime",
 		EntityType: "okta.resource",
@@ -841,8 +841,8 @@ func TestProjectOktaAuditRunsScopedCleanupForLaterStaleResources(t *testing.T) {
 		return
 	}
 	for _, urn := range []string{
-		"urn:cerebro:writer:okta_resource:access_token:stale-token",
-		"urn:cerebro:writer:okta_resource:access_token:later-stale-token",
+		"urn:cerebro:example:okta_resource:access_token:stale-token",
+		"urn:cerebro:example:okta_resource:access_token:later-stale-token",
 	} {
 		if _, ok := state.entities[urn]; ok {
 			t.Fatalf("state retained stale cleanup token %q", urn)
@@ -856,7 +856,7 @@ func TestProjectOktaAuditDoesNotSuppressBroadTokenResources(t *testing.T) {
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "okta-token-like-resource",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "okta",
 		Kind:     "okta.audit",
 		Attributes: map[string]string{
@@ -876,11 +876,11 @@ func TestProjectOktaAuditDoesNotSuppressBroadTokenResources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	resourceURN := "urn:cerebro:writer:okta_resource:token:token-123"
+	resourceURN := "urn:cerebro:example:okta_resource:token:token-123"
 	if _, ok := state.entities[resourceURN]; !ok {
 		t.Fatalf("broad token resource entity %q missing", resourceURN)
 	}
-	assertProjectedLink(t, state, "urn:cerebro:writer:okta_application:0oa-client", relationActedOn, resourceURN)
+	assertProjectedLink(t, state, "urn:cerebro:example:okta_application:0oa-client", relationActedOn, resourceURN)
 }
 
 func TestProjectOktaAuditKeepsCredentialChangeResources(t *testing.T) {
@@ -889,7 +889,7 @@ func TestProjectOktaAuditKeepsCredentialChangeResources(t *testing.T) {
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "okta-api-token-create",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "okta",
 		Kind:     "okta.audit",
 		Attributes: map[string]string{
@@ -897,7 +897,7 @@ func TestProjectOktaAuditKeepsCredentialChangeResources(t *testing.T) {
 			"event_type":           "system.api_token.create",
 			"actor_id":             "00u-admin",
 			"actor_type":           "User",
-			"actor_alternate_id":   "admin@writer.com",
+			"actor_alternate_id":   "admin@example.com",
 			"resource_id":          "token-123",
 			"resource_type":        "Token",
 			"oauth_event_category": "credential_change",
@@ -906,11 +906,11 @@ func TestProjectOktaAuditKeepsCredentialChangeResources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	resourceURN := "urn:cerebro:writer:okta_resource:token:token-123"
+	resourceURN := "urn:cerebro:example:okta_resource:token:token-123"
 	if _, ok := state.entities[resourceURN]; !ok {
 		t.Fatalf("credential change resource entity %q missing", resourceURN)
 	}
-	assertProjectedLink(t, state, "urn:cerebro:writer:okta_user:00u-admin", relationActedOn, resourceURN)
+	assertProjectedLink(t, state, "urn:cerebro:example:okta_user:00u-admin", relationActedOn, resourceURN)
 }
 
 func TestProjectOktaAuditSuppressesSelfActedOnEdge(t *testing.T) {
@@ -919,7 +919,7 @@ func TestProjectOktaAuditSuppressesSelfActedOnEdge(t *testing.T) {
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "okta-self",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "okta",
 		Kind:     "okta.audit",
 		Attributes: map[string]string{
@@ -927,7 +927,7 @@ func TestProjectOktaAuditSuppressesSelfActedOnEdge(t *testing.T) {
 			"event_type":         "user.session.start",
 			"actor_id":           "00u-user",
 			"actor_type":         "User",
-			"actor_alternate_id": "alice@writer.com",
+			"actor_alternate_id": "alice@example.com",
 			"resource_id":        "00u-user",
 			"resource_type":      "User",
 		},
@@ -935,7 +935,7 @@ func TestProjectOktaAuditSuppressesSelfActedOnEdge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	userURN := "urn:cerebro:writer:okta_user:00u-user"
+	userURN := "urn:cerebro:example:okta_user:00u-user"
 	assertProjectedLinkMissing(t, state, userURN, relationActedOn, userURN)
 }
 
@@ -946,7 +946,7 @@ func TestProjectOktaAuditActedOnEdgesCarryTemporalContext(t *testing.T) {
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:         "okta-action",
-		TenantId:   "writer",
+		TenantId:   "example",
 		SourceId:   "okta",
 		Kind:       "okta.audit",
 		OccurredAt: timestamppb.New(occurred),
@@ -955,7 +955,7 @@ func TestProjectOktaAuditActedOnEdgesCarryTemporalContext(t *testing.T) {
 			"event_type":         "user.lifecycle.update",
 			"actor_id":           "00u-actor",
 			"actor_type":         "User",
-			"actor_alternate_id": "admin@writer.com",
+			"actor_alternate_id": "admin@example.com",
 			"resource_id":        "00u-target",
 			"resource_type":      "User",
 			"outcome_result":     "SUCCESS",
@@ -966,8 +966,8 @@ func TestProjectOktaAuditActedOnEdgesCarryTemporalContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	actorURN := "urn:cerebro:writer:okta_user:00u-actor"
-	targetURN := "urn:cerebro:writer:okta_user:00u-target"
+	actorURN := "urn:cerebro:example:okta_user:00u-actor"
+	targetURN := "urn:cerebro:example:okta_user:00u-target"
 	link, ok := state.links[actorURN+"|"+relationActedOn+"|"+targetURN]
 	if !ok {
 		t.Fatalf("acted_on link missing for %s -> %s: %#v", actorURN, targetURN, state.links)
@@ -999,7 +999,7 @@ func TestProjectGitHubAuditSOTASignalsToGraph(t *testing.T) {
 				"resource_id":   "writer/cerebro",
 				"resource_type": "repository_secret_scanning",
 			},
-			resource: "urn:cerebro:writer:github_repo:writer/cerebro",
+			resource: "urn:cerebro:example:github_repo:writer/cerebro",
 		},
 		{
 			id: "github-audit-org-auth-modified",
@@ -1008,7 +1008,7 @@ func TestProjectGitHubAuditSOTASignalsToGraph(t *testing.T) {
 				"resource_id":   "writer",
 				"resource_type": "org",
 			},
-			resource: "urn:cerebro:writer:github_resource:org:writer",
+			resource: "urn:cerebro:example:github_resource:org:writer",
 		},
 		{
 			id: "github-audit-ip-allow-list-disabled",
@@ -1017,7 +1017,7 @@ func TestProjectGitHubAuditSOTASignalsToGraph(t *testing.T) {
 				"resource_id":   "writer",
 				"resource_type": "ip_allow_list",
 			},
-			resource: "urn:cerebro:writer:github_resource:ip_allow_list:writer",
+			resource: "urn:cerebro:example:github_resource:ip_allow_list:writer",
 		},
 		{
 			id: "github-audit-app-installed",
@@ -1027,7 +1027,7 @@ func TestProjectGitHubAuditSOTASignalsToGraph(t *testing.T) {
 				"resource_id":   "writer",
 				"resource_type": "integration_installation",
 			},
-			resource: "urn:cerebro:writer:github_resource:integration_installation:writer",
+			resource: "urn:cerebro:example:github_resource:integration_installation:writer",
 		},
 		{
 			id: "github-audit-pat-created",
@@ -1037,7 +1037,7 @@ func TestProjectGitHubAuditSOTASignalsToGraph(t *testing.T) {
 				"resource_type": "personal_access_token",
 				"user":          "octocat",
 			},
-			resource: "urn:cerebro:writer:github_resource:personal_access_token:octocat",
+			resource: "urn:cerebro:example:github_resource:personal_access_token:octocat",
 		},
 		{
 			id: "github-audit-branch-policy-override",
@@ -1048,7 +1048,7 @@ func TestProjectGitHubAuditSOTASignalsToGraph(t *testing.T) {
 				"resource_id":   "writer/cerebro",
 				"resource_type": "protected_branch",
 			},
-			resource: "urn:cerebro:writer:github_repo:writer/cerebro",
+			resource: "urn:cerebro:example:github_repo:writer/cerebro",
 		},
 		{
 			id: "github-audit-ruleset-modified",
@@ -1060,7 +1060,7 @@ func TestProjectGitHubAuditSOTASignalsToGraph(t *testing.T) {
 				"ruleset_id":    "42",
 				"ruleset_name":  "main protections",
 			},
-			resource: "urn:cerebro:writer:github_repo:writer/cerebro",
+			resource: "urn:cerebro:example:github_repo:writer/cerebro",
 		},
 		{
 			id: "github-audit-webhook-modified",
@@ -1071,7 +1071,7 @@ func TestProjectGitHubAuditSOTASignalsToGraph(t *testing.T) {
 				"resource_id":   "writer/cerebro",
 				"resource_type": "hook",
 			},
-			resource: "urn:cerebro:writer:github_repo:writer/cerebro",
+			resource: "urn:cerebro:example:github_repo:writer/cerebro",
 		},
 	}
 	for _, tt := range events {
@@ -1087,7 +1087,7 @@ func TestProjectGitHubAuditSOTASignalsToGraph(t *testing.T) {
 			}
 			_, err := New(state, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
 				Id:         tt.id,
-				TenantId:   "writer",
+				TenantId:   "example",
 				SourceId:   "github",
 				Kind:       "github.audit",
 				Attributes: attrs,
@@ -1095,7 +1095,7 @@ func TestProjectGitHubAuditSOTASignalsToGraph(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Project() error = %v", err)
 			}
-			actorURN := "urn:cerebro:writer:github_user:admin"
+			actorURN := "urn:cerebro:example:github_user:admin"
 			if _, ok := graph.entities[actorURN]; !ok {
 				t.Fatalf("graph actor %q missing", actorURN)
 			}
@@ -1126,7 +1126,7 @@ func TestProjectGitHubAuditStampsAtOnActedOn(t *testing.T) {
 	occurred := time.Date(2025, time.March, 4, 10, 30, 0, 0, time.UTC)
 	_, err := New(nil, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:         "github-audit-acted-on-at",
-		TenantId:   "writer",
+		TenantId:   "example",
 		SourceId:   "github",
 		Kind:       "github.audit",
 		OccurredAt: timestamppb.New(occurred),
@@ -1142,8 +1142,8 @@ func TestProjectGitHubAuditStampsAtOnActedOn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	actorURN := "urn:cerebro:writer:github_user:alice"
-	resourceURN := "urn:cerebro:writer:github_repo:writer/cerebro"
+	actorURN := "urn:cerebro:example:github_user:alice"
+	resourceURN := "urn:cerebro:example:github_repo:writer/cerebro"
 	link, ok := graph.links[actorURN+"|"+relationActedOn+"|"+resourceURN]
 	if !ok {
 		t.Fatalf("acted_on link missing for %s -> %s: %#v", actorURN, resourceURN, graph.links)
@@ -1166,7 +1166,7 @@ func TestProjectGitHubAuditStampsAtOnRepresentsIdentity(t *testing.T) {
 	occurred := time.Date(2025, time.March, 4, 11, 15, 0, 0, time.UTC)
 	_, err := New(nil, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:         "github-audit-represents-identity-at",
-		TenantId:   "writer",
+		TenantId:   "example",
 		SourceId:   "github",
 		Kind:       "github.audit",
 		OccurredAt: timestamppb.New(occurred),
@@ -1182,8 +1182,8 @@ func TestProjectGitHubAuditStampsAtOnRepresentsIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	actorURN := "urn:cerebro:writer:github_user:alice"
-	identityURN := "urn:cerebro:writer:identity:login:alice"
+	actorURN := "urn:cerebro:example:github_user:alice"
+	identityURN := "urn:cerebro:example:identity:login:alice"
 	link, ok := graph.links[actorURN+"|"+relationRepresentsIdentity+"|"+identityURN]
 	if !ok {
 		t.Fatalf("represents_identity link missing for %s -> %s: %#v", actorURN, identityURN, graph.links)
@@ -1209,14 +1209,14 @@ func TestProjectOktaUserStampsObservationTimeOnRepresentsIdentity(t *testing.T) 
 	before := time.Now().UTC()
 	_, err := New(nil, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:         "okta-user-stale-profile",
-		TenantId:   "writer",
+		TenantId:   "example",
 		SourceId:   "okta",
 		Kind:       "okta.user",
 		OccurredAt: timestamppb.New(historicalProfileEdit),
 		Attributes: map[string]string{
 			"domain":  "writer.okta.com",
-			"email":   "alice@writer.com",
-			"login":   "alice@writer.com",
+			"email":   "alice@example.com",
+			"login":   "alice@example.com",
 			"status":  "DEPROVISIONED",
 			"user_id": "00u1",
 		},
@@ -1225,8 +1225,8 @@ func TestProjectOktaUserStampsObservationTimeOnRepresentsIdentity(t *testing.T) 
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	userURN := "urn:cerebro:writer:okta_user:00u1"
-	identityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
+	userURN := "urn:cerebro:example:okta_user:00u1"
+	identityURN := "urn:cerebro:example:identity:email:alice@example.com"
 	link, ok := graph.links[userURN+"|"+relationRepresentsIdentity+"|"+identityURN]
 	if !ok {
 		t.Fatalf("represents_identity link missing for %s -> %s: %#v", userURN, identityURN, graph.links)
@@ -1256,7 +1256,7 @@ func TestProjectGitHubAuditOmitsAtWhenOccurredAtMissing(t *testing.T) {
 	graph := &projectionRecorder{}
 	_, err := New(nil, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "github-audit-acted-on-no-at",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "github",
 		Kind:     "github.audit",
 		Attributes: map[string]string{
@@ -1271,8 +1271,8 @@ func TestProjectGitHubAuditOmitsAtWhenOccurredAtMissing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	actorURN := "urn:cerebro:writer:github_user:alice"
-	resourceURN := "urn:cerebro:writer:github_repo:writer/cerebro"
+	actorURN := "urn:cerebro:example:github_user:alice"
+	resourceURN := "urn:cerebro:example:github_repo:writer/cerebro"
 	link, ok := graph.links[actorURN+"|"+relationActedOn+"|"+resourceURN]
 	if !ok {
 		t.Fatalf("acted_on link missing for %s -> %s: %#v", actorURN, resourceURN, graph.links)
@@ -1331,7 +1331,7 @@ func TestProjectGitHubAuditSkipsAutomationActorsFromIdentityGraph(t *testing.T) 
 			graph := &projectionRecorder{}
 			_, err := New(nil, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
 				Id:         "github-audit-automation-" + tc.actor,
-				TenantId:   "writer",
+				TenantId:   "example",
 				SourceId:   "github",
 				Kind:       "github.audit",
 				OccurredAt: timestamppb.New(time.Date(2025, time.March, 4, 10, 30, 0, 0, time.UTC)),
@@ -1340,11 +1340,11 @@ func TestProjectGitHubAuditSkipsAutomationActorsFromIdentityGraph(t *testing.T) 
 			if err != nil {
 				t.Fatalf("Project() error = %v", err)
 			}
-			actorURN := "urn:cerebro:writer:github_user:" + tc.actor
+			actorURN := "urn:cerebro:example:github_user:" + tc.actor
 			if _, ok := graph.entities[actorURN]; ok {
 				t.Fatalf("automation actor %q should not be projected as github.user: %#v", actorURN, graph.entities[actorURN])
 			}
-			if _, ok := graph.links[actorURN+"|"+relationActedOn+"|urn:cerebro:writer:github_repo:writer/cerebro"]; ok {
+			if _, ok := graph.links[actorURN+"|"+relationActedOn+"|urn:cerebro:example:github_repo:writer/cerebro"]; ok {
 				t.Fatalf("automation actor %q should not emit acted_on repo links", actorURN)
 			}
 			for key := range graph.links {
@@ -1362,7 +1362,7 @@ func TestProjectGitHubAuditSkipsSyntheticTargetUsersFromIdentityGraph(t *testing
 			graph := &projectionRecorder{}
 			_, err := New(nil, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
 				Id:         "github-audit-target-" + targetLogin,
-				TenantId:   "writer",
+				TenantId:   "example",
 				SourceId:   "github",
 				Kind:       "github.audit",
 				OccurredAt: timestamppb.New(time.Date(2025, time.March, 4, 10, 30, 0, 0, time.UTC)),
@@ -1379,7 +1379,7 @@ func TestProjectGitHubAuditSkipsSyntheticTargetUsersFromIdentityGraph(t *testing
 			if err != nil {
 				t.Fatalf("Project() error = %v", err)
 			}
-			targetURN := "urn:cerebro:writer:github_user:" + targetLogin
+			targetURN := "urn:cerebro:example:github_user:" + targetLogin
 			if _, ok := graph.entities[targetURN]; ok {
 				t.Fatalf("synthetic target %q should not be projected as github.user", targetURN)
 			}
@@ -1400,7 +1400,7 @@ func TestProjectGitHubAuditDoesNotStampActorTypeOnHumanTargetUser(t *testing.T) 
 	graph := &projectionRecorder{}
 	_, err := New(nil, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:         "github-audit-target-human",
-		TenantId:   "writer",
+		TenantId:   "example",
 		SourceId:   "github",
 		Kind:       "github.audit",
 		OccurredAt: timestamppb.New(time.Date(2025, time.March, 4, 10, 30, 0, 0, time.UTC)),
@@ -1417,7 +1417,7 @@ func TestProjectGitHubAuditDoesNotStampActorTypeOnHumanTargetUser(t *testing.T) 
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	targetURN := "urn:cerebro:writer:github_user:joechu-writer"
+	targetURN := "urn:cerebro:example:github_user:joechu-writer"
 	entity, ok := graph.entities[targetURN]
 	if !ok {
 		t.Fatalf("github.user target entity %q missing in graph: %#v", targetURN, graph.entities)
@@ -1436,7 +1436,7 @@ func TestProjectGitHubAuditStampsOrgIDOnGithubOrg(t *testing.T) {
 	graph := &projectionRecorder{}
 	_, err := New(nil, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "github-audit-org-id",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "github",
 		Kind:     "github.audit",
 		Attributes: map[string]string{
@@ -1452,7 +1452,7 @@ func TestProjectGitHubAuditStampsOrgIDOnGithubOrg(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	orgURN := "urn:cerebro:writer:github_org:writer"
+	orgURN := "urn:cerebro:example:github_org:writer"
 	entity, ok := graph.entities[orgURN]
 	if !ok {
 		t.Fatalf("github.org entity %q missing", orgURN)
@@ -1475,7 +1475,7 @@ func TestProjectGitHubAuditRoutesActedOnFromOrgWhenActorIsOrgSelf(t *testing.T) 
 	graph := &projectionRecorder{}
 	_, err := New(state, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:         "github-audit-org-self",
-		TenantId:   "writer",
+		TenantId:   "example",
 		SourceId:   "github",
 		Kind:       "github.audit",
 		OccurredAt: timestamppb.New(time.Date(2025, time.March, 4, 10, 30, 0, 0, time.UTC)),
@@ -1492,9 +1492,9 @@ func TestProjectGitHubAuditRoutesActedOnFromOrgWhenActorIsOrgSelf(t *testing.T) 
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	orgURN := "urn:cerebro:writer:github_org:writer"
-	resourceURN := "urn:cerebro:writer:github_resource:integration_installation:writer"
-	phantomUserURN := "urn:cerebro:writer:github_user:writer"
+	orgURN := "urn:cerebro:example:github_org:writer"
+	resourceURN := "urn:cerebro:example:github_resource:integration_installation:writer"
+	phantomUserURN := "urn:cerebro:example:github_user:writer"
 	if _, ok := graph.entities[phantomUserURN]; ok {
 		t.Fatalf("phantom github.user %q minted for org-as-actor event; projector must route through github.org instead", phantomUserURN)
 	}
@@ -1526,7 +1526,7 @@ func TestProjectGitHubAuditMintsGithubUserWhenActorIsNotOrgSelf(t *testing.T) {
 	graph := &projectionRecorder{}
 	_, err := New(state, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "github-audit-user-actor",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "github",
 		Kind:     "github.audit",
 		Attributes: map[string]string{
@@ -1543,8 +1543,8 @@ func TestProjectGitHubAuditMintsGithubUserWhenActorIsNotOrgSelf(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	actorURN := "urn:cerebro:writer:github_user:alice"
-	resourceURN := "urn:cerebro:writer:github_repo:writer/cerebro"
+	actorURN := "urn:cerebro:example:github_user:alice"
+	resourceURN := "urn:cerebro:example:github_repo:writer/cerebro"
 	if _, ok := graph.entities[actorURN]; !ok {
 		t.Fatalf("github.user entity %q missing for user actor; org-self detection must not trip when IDs differ", actorURN)
 	}
@@ -1563,7 +1563,7 @@ func TestProjectGitHubAuditDoesNotTreatMissingActorIDsAsOrgSelf(t *testing.T) {
 	graph := &projectionRecorder{}
 	_, err := New(state, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "github-audit-no-actor-id",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "github",
 		Kind:     "github.audit",
 		Attributes: map[string]string{
@@ -1578,7 +1578,7 @@ func TestProjectGitHubAuditDoesNotTreatMissingActorIDsAsOrgSelf(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	actorURN := "urn:cerebro:writer:github_user:alice"
+	actorURN := "urn:cerebro:example:github_user:alice"
 	if _, ok := graph.entities[actorURN]; !ok {
 		t.Fatalf("github.user entity %q missing; legacy events without actor_id must NOT be treated as org-as-actor", actorURN)
 	}
@@ -1597,7 +1597,7 @@ func TestProjectGitHubAuditProjectsUnresolvedPublicKeyAsCredential(t *testing.T)
 	occurred := time.Date(2026, time.May, 9, 14, 56, 28, 0, time.UTC)
 	_, err := New(state, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:         "github-audit-deploy-key",
-		TenantId:   "writer",
+		TenantId:   "example",
 		SourceId:   "github",
 		Kind:       "github.audit",
 		OccurredAt: timestamppb.New(occurred),
@@ -1605,11 +1605,11 @@ func TestProjectGitHubAuditProjectsUnresolvedPublicKeyAsCredential(t *testing.T)
 			"actor":                    "deploy_key",
 			"actor_type":               "Unresolved",
 			"action":                   "git.clone",
-			"org":                      "WriterInternal",
+			"org":                      "ExampleInternal",
 			"org_id":                   "112636266",
 			"programmatic_access_type": "Public Key (User/Deploy)",
-			"repo":                     "WriterInternal/k8s",
-			"resource_id":              "WriterInternal/k8s",
+			"repo":                     "ExampleInternal/k8s",
+			"resource_id":              "ExampleInternal/k8s",
 			"resource_type":            "repository",
 			"transport_protocol_name":  "ssh",
 		},
@@ -1617,11 +1617,11 @@ func TestProjectGitHubAuditProjectsUnresolvedPublicKeyAsCredential(t *testing.T)
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	userURN := "urn:cerebro:writer:github_user:deploy_key"
+	userURN := "urn:cerebro:example:github_user:deploy_key"
 	if _, ok := graph.entities[userURN]; ok {
 		t.Fatalf("github.user %q minted for unresolved public-key credential; deploy keys must be modeled as credentials", userURN)
 	}
-	credentialURN := "urn:cerebro:writer:github_credential:deploy_key@WriterInternal/k8s"
+	credentialURN := "urn:cerebro:example:github_credential:deploy_key@ExampleInternal/k8s"
 	credential, ok := graph.entities[credentialURN]
 	if !ok {
 		t.Fatalf("github.credential entity %q missing: %#v", credentialURN, graph.entities)
@@ -1633,14 +1633,14 @@ func TestProjectGitHubAuditProjectsUnresolvedPublicKeyAsCredential(t *testing.T)
 		"actor":                    "deploy_key",
 		"credential_type":          "public_key",
 		"programmatic_access_type": "Public Key (User/Deploy)",
-		"repository":               "WriterInternal/k8s",
+		"repository":               "ExampleInternal/k8s",
 		"transport_protocol_name":  "ssh",
 	} {
 		if got := credential.Attributes[key]; got != want {
 			t.Fatalf("credential attributes[%s] = %q, want %q", key, got, want)
 		}
 	}
-	resourceURN := "urn:cerebro:writer:github_repo:WriterInternal/k8s"
+	resourceURN := "urn:cerebro:example:github_repo:ExampleInternal/k8s"
 	link, ok := graph.links[credentialURN+"|"+relationActedOn+"|"+resourceURN]
 	if !ok {
 		t.Fatalf("acted_on link missing for credential %s -> %s: %#v", credentialURN, resourceURN, graph.links)
@@ -1654,7 +1654,7 @@ func TestProjectGitHubAuditProjectsUnresolvedPublicKeyAsCredential(t *testing.T)
 
 	_, err = New(state, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:         "github-audit-deploy-key-other-repo",
-		TenantId:   "writer",
+		TenantId:   "example",
 		SourceId:   "github",
 		Kind:       "github.audit",
 		OccurredAt: timestamppb.New(occurred.Add(time.Minute)),
@@ -1662,10 +1662,10 @@ func TestProjectGitHubAuditProjectsUnresolvedPublicKeyAsCredential(t *testing.T)
 			"actor":                    "deploy_key",
 			"actor_type":               "Unresolved",
 			"action":                   "git.clone",
-			"org":                      "WriterInternal",
+			"org":                      "ExampleInternal",
 			"programmatic_access_type": "Public Key (User/Deploy)",
-			"repo":                     "WriterInternal/other",
-			"resource_id":              "WriterInternal/other",
+			"repo":                     "ExampleInternal/other",
+			"resource_id":              "ExampleInternal/other",
 			"resource_type":            "repository",
 			"transport_protocol_name":  "ssh",
 		},
@@ -1673,7 +1673,7 @@ func TestProjectGitHubAuditProjectsUnresolvedPublicKeyAsCredential(t *testing.T)
 	if err != nil {
 		t.Fatalf("Project() second repo error = %v", err)
 	}
-	otherCredentialURN := "urn:cerebro:writer:github_credential:deploy_key@WriterInternal/other"
+	otherCredentialURN := "urn:cerebro:example:github_credential:deploy_key@ExampleInternal/other"
 	if _, ok := graph.entities[otherCredentialURN]; !ok {
 		t.Fatalf("github.credential entity %q missing for same deploy_key actor on another repo", otherCredentialURN)
 	}
@@ -1689,25 +1689,25 @@ func TestProjectGitHubAuditKeepsResolvedUserPublicKeyAsGithubUser(t *testing.T) 
 	graph := &projectionRecorder{}
 	_, err := New(state, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "github-audit-user-public-key",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "github",
 		Kind:     "github.audit",
 		Attributes: map[string]string{
 			"actor":                    "brandon-writer",
 			"actor_type":               "User",
 			"action":                   "git.push",
-			"org":                      "WriterInternal",
+			"org":                      "ExampleInternal",
 			"org_id":                   "112636266",
 			"programmatic_access_type": "Public Key (User/Deploy)",
-			"repo":                     "WriterInternal/be.llm-gateway",
-			"resource_id":              "WriterInternal/be.llm-gateway",
+			"repo":                     "ExampleInternal/be.llm-gateway",
+			"resource_id":              "ExampleInternal/be.llm-gateway",
 			"resource_type":            "repository",
 		},
 	})
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	userURN := "urn:cerebro:writer:github_user:brandon-writer"
+	userURN := "urn:cerebro:example:github_user:brandon-writer"
 	if _, ok := graph.entities[userURN]; !ok {
 		t.Fatalf("github.user %q missing for resolved User public-key actor", userURN)
 	}
@@ -1725,12 +1725,12 @@ func TestProjectReusesCrossSourceIdentifierWithinTenant(t *testing.T) {
 	events := []*cerebrov1.EventEnvelope{
 		{
 			Id:       "github-audit-1",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "github",
 			Kind:     "github.audit",
 			Attributes: map[string]string{
 				"actor":                    "alice",
-				"external_identity_nameid": "alice@writer.com",
+				"external_identity_nameid": "alice@example.com",
 				"org":                      "writer",
 				"repo":                     "writer/cerebro",
 				"resource_id":              "writer/cerebro",
@@ -1739,25 +1739,25 @@ func TestProjectReusesCrossSourceIdentifierWithinTenant(t *testing.T) {
 		},
 		{
 			Id:       "okta-user-1",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "okta",
 			Kind:     "okta.user",
 			Attributes: map[string]string{
 				"domain":  "writer.okta.com",
-				"email":   "alice@writer.com",
-				"login":   "alice@writer.com",
+				"email":   "alice@example.com",
+				"login":   "alice@example.com",
 				"status":  "ACTIVE",
 				"user_id": "00u1",
 			},
 		},
 		{
 			Id:       "aws-cloudtrail-sso",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "aws",
 			Kind:     "aws.cloudtrail",
 			Attributes: map[string]string{
-				"actor_alternate_id": "arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice@writer.com",
-				"actor_id":           "arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice@writer.com",
+				"actor_alternate_id": "arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice@example.com",
+				"actor_id":           "arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice@example.com",
 				"actor_type":         "AssumedRole",
 				"domain":             "123456789012",
 				"event_type":         "ListRoles",
@@ -1773,31 +1773,31 @@ func TestProjectReusesCrossSourceIdentifierWithinTenant(t *testing.T) {
 		}
 	}
 
-	identifierURN := "urn:cerebro:writer:identifier:email:alice@writer.com"
-	canonicalIdentityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
+	identifierURN := "urn:cerebro:example:identifier:email:alice@example.com"
+	canonicalIdentityURN := "urn:cerebro:example:identity:email:alice@example.com"
 	if _, ok := state.entities[identifierURN]; !ok {
 		t.Fatalf("identifier entity %q missing", identifierURN)
 	}
 	if _, ok := state.entities[canonicalIdentityURN]; !ok {
 		t.Fatalf("canonical identity entity %q missing", canonicalIdentityURN)
 	}
-	if _, ok := state.links["urn:cerebro:writer:github_user:alice|"+relationHasIdentifier+"|"+identifierURN]; !ok {
+	if _, ok := state.links["urn:cerebro:example:github_user:alice|"+relationHasIdentifier+"|"+identifierURN]; !ok {
 		t.Fatalf("github identifier link missing for %q", identifierURN)
 	}
-	if _, ok := state.links["urn:cerebro:writer:okta_user:00u1|"+relationHasIdentifier+"|"+identifierURN]; !ok {
+	if _, ok := state.links["urn:cerebro:example:okta_user:00u1|"+relationHasIdentifier+"|"+identifierURN]; !ok {
 		t.Fatalf("okta identifier link missing for %q", identifierURN)
 	}
-	if _, ok := state.links["urn:cerebro:writer:github_user:alice|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]; !ok {
+	if _, ok := state.links["urn:cerebro:example:github_user:alice|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]; !ok {
 		t.Fatalf("github canonical identity link missing for %q", canonicalIdentityURN)
 	}
-	if _, ok := state.links["urn:cerebro:writer:okta_user:00u1|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]; !ok {
+	if _, ok := state.links["urn:cerebro:example:okta_user:00u1|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]; !ok {
 		t.Fatalf("okta canonical identity link missing for %q", canonicalIdentityURN)
 	}
-	awsActorURN := "urn:cerebro:writer:aws_user:arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice@writer.com"
+	awsActorURN := "urn:cerebro:example:aws_user:arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice@example.com"
 	if _, ok := state.links[awsActorURN+"|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]; !ok {
 		t.Fatalf("aws canonical identity link missing for %q", canonicalIdentityURN)
 	}
-	githubIdentityLink := state.links["urn:cerebro:writer:github_user:alice|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]
+	githubIdentityLink := state.links["urn:cerebro:example:github_user:alice|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]
 	if got := githubIdentityLink.Attributes["evidence_type"]; got != "shared_identifier" {
 		t.Fatalf("github identity evidence_type = %q, want shared_identifier", got)
 	}
@@ -1822,26 +1822,26 @@ func TestProjectIdentityProviderJoinEdges(t *testing.T) {
 	events := []*cerebrov1.EventEnvelope{
 		{
 			Id:       "okta-user-admin",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "okta",
 			Kind:     "okta.user",
 			Attributes: map[string]string{
 				"domain":  "writer.okta.com",
-				"email":   "admin@writer.com",
-				"login":   "admin@writer.com",
+				"email":   "admin@example.com",
+				"login":   "admin@example.com",
 				"status":  "ACTIVE",
 				"user_id": "00u-admin",
 			},
 		},
 		{
 			Id:       "google-user-admin",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "google_workspace",
 			Kind:     "google_workspace.user",
 			Attributes: map[string]string{
-				"domain":        "writer.com",
-				"email":         "admin@writer.com",
-				"primary_email": "admin@writer.com",
+				"domain":        "example.com",
+				"email":         "admin@example.com",
+				"primary_email": "admin@example.com",
 				"user_id":       "1001",
 				"is_admin":      "true",
 				"mfa_enrolled":  "false",
@@ -1849,11 +1849,11 @@ func TestProjectIdentityProviderJoinEdges(t *testing.T) {
 		},
 		{
 			Id:       "google-admin-role",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "google_workspace",
 			Kind:     "google_workspace.role_assignment",
 			Attributes: map[string]string{
-				"domain":       "writer.com",
+				"domain":       "example.com",
 				"role_id":      "super-admin",
 				"subject_id":   "1001",
 				"subject_type": "user",
@@ -1861,49 +1861,49 @@ func TestProjectIdentityProviderJoinEdges(t *testing.T) {
 		},
 		{
 			Id:       "aws-user-admin",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "aws",
 			Kind:     "aws.iam_user",
 			Attributes: map[string]string{
 				"domain":       "123456789012",
-				"email":        "admin@writer.com",
+				"email":        "admin@example.com",
 				"is_admin":     "true",
-				"login":        "admin@writer.com",
+				"login":        "admin@example.com",
 				"mfa_enrolled": "false",
 				"user_id":      "AIDAADMIN",
 			},
 		},
 		{
 			Id:       "aws-admin-policy",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "aws",
 			Kind:     "aws.iam_role_assignment",
 			Attributes: map[string]string{
 				"domain":        "123456789012",
 				"role_id":       "AdministratorAccess",
 				"role_name":     "AdministratorAccess",
-				"subject_email": "admin@writer.com",
+				"subject_email": "admin@example.com",
 				"subject_id":    "AIDAADMIN",
 				"subject_type":  "user",
 			},
 		},
 		{
 			Id:       "gcp-owner-binding",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "gcp",
 			Kind:     "gcp.iam_role_assignment",
 			Attributes: map[string]string{
-				"domain":        "writer-prod",
+				"domain":        "example-prod",
 				"role_id":       "roles/owner",
 				"role_name":     "roles/owner",
-				"subject_email": "admin@writer.com",
-				"subject_id":    "admin@writer.com",
+				"subject_email": "admin@example.com",
+				"subject_id":    "admin@example.com",
 				"subject_type":  "user",
 			},
 		},
 		{
 			Id:       "okta-group",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "okta",
 			Kind:     "okta.group",
 			Attributes: map[string]string{
@@ -1914,39 +1914,39 @@ func TestProjectIdentityProviderJoinEdges(t *testing.T) {
 		},
 		{
 			Id:       "okta-membership",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "okta",
 			Kind:     "okta.group_membership",
 			Attributes: map[string]string{
 				"domain":         "writer.okta.com",
 				"group_id":       "grp-security",
-				"member_email":   "admin@writer.com",
+				"member_email":   "admin@example.com",
 				"member_user_id": "00u-admin",
 				"member_type":    "user",
 			},
 		},
 		{
 			Id:       "google-group",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "google_workspace",
 			Kind:     "google_workspace.group",
 			Attributes: map[string]string{
-				"domain":      "writer.com",
+				"domain":      "example.com",
 				"group_id":    "group-1",
-				"group_email": "security@writer.com",
+				"group_email": "security@example.com",
 				"group_name":  "Security",
 			},
 		},
 		{
 			Id:       "google-member",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "google_workspace",
 			Kind:     "google_workspace.group_member",
 			Attributes: map[string]string{
-				"domain":       "writer.com",
-				"group_id":     "security@writer.com",
-				"group_email":  "security@writer.com",
-				"member_email": "admin@writer.com",
+				"domain":       "example.com",
+				"group_id":     "security@example.com",
+				"group_email":  "security@example.com",
+				"member_email": "admin@example.com",
 				"member_id":    "1001",
 				"member_type":  "user",
 				"role":         "OWNER",
@@ -1954,7 +1954,7 @@ func TestProjectIdentityProviderJoinEdges(t *testing.T) {
 		},
 		{
 			Id:       "okta-app",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "okta",
 			Kind:     "okta.application",
 			Attributes: map[string]string{
@@ -1965,26 +1965,26 @@ func TestProjectIdentityProviderJoinEdges(t *testing.T) {
 		},
 		{
 			Id:       "okta-app-assignment",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "okta",
 			Kind:     "okta.app_assignment",
 			Attributes: map[string]string{
 				"app_id":        "app-prod",
 				"domain":        "writer.okta.com",
-				"subject_email": "admin@writer.com",
+				"subject_email": "admin@example.com",
 				"subject_id":    "00u-admin",
 				"subject_type":  "user",
 			},
 		},
 		{
 			Id:       "google-audit",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "google_workspace",
 			Kind:     "google_workspace.audit",
 			Attributes: map[string]string{
-				"actor_email":   "admin@writer.com",
+				"actor_email":   "admin@example.com",
 				"actor_id":      "1001",
-				"domain":        "writer.com",
+				"domain":        "example.com",
 				"event_type":    "CHANGE_TWO_STEP_VERIFICATION_ENFORCEMENT",
 				"resource_id":   "two_step",
 				"resource_type": "security_setting",
@@ -1997,12 +1997,12 @@ func TestProjectIdentityProviderJoinEdges(t *testing.T) {
 		}
 	}
 
-	identifierURN := "urn:cerebro:writer:identifier:email:admin@writer.com"
-	canonicalIdentityURN := "urn:cerebro:writer:identity:email:admin@writer.com"
-	oktaUserURN := "urn:cerebro:writer:okta_user:00u-admin"
-	googleUserURN := "urn:cerebro:writer:google_workspace_user:1001"
-	awsUserURN := "urn:cerebro:writer:aws_user:AIDAADMIN"
-	gcpUserURN := "urn:cerebro:writer:gcp_user:admin@writer.com"
+	identifierURN := "urn:cerebro:example:identifier:email:admin@example.com"
+	canonicalIdentityURN := "urn:cerebro:example:identity:email:admin@example.com"
+	oktaUserURN := "urn:cerebro:example:okta_user:00u-admin"
+	googleUserURN := "urn:cerebro:example:google_workspace_user:1001"
+	awsUserURN := "urn:cerebro:example:aws_user:AIDAADMIN"
+	gcpUserURN := "urn:cerebro:example:gcp_user:admin@example.com"
 	assertProjectedLink(t, state, oktaUserURN, relationHasIdentifier, identifierURN)
 	assertProjectedLink(t, state, googleUserURN, relationHasIdentifier, identifierURN)
 	assertProjectedLink(t, state, awsUserURN, relationHasIdentifier, identifierURN)
@@ -2012,14 +2012,14 @@ func TestProjectIdentityProviderJoinEdges(t *testing.T) {
 	assertProjectedLink(t, state, awsUserURN, relationRepresentsIdentity, canonicalIdentityURN)
 	assertProjectedLink(t, state, gcpUserURN, relationRepresentsIdentity, canonicalIdentityURN)
 	assertProjectedLink(t, state, canonicalIdentityURN, relationHasIdentifier, identifierURN)
-	assertProjectedLink(t, state, oktaUserURN, relationMemberOf, "urn:cerebro:writer:okta_group:grp-security")
-	assertProjectedLink(t, state, googleUserURN, relationMemberOf, "urn:cerebro:writer:google_workspace_group:security@writer.com")
-	assertProjectedLink(t, state, "urn:cerebro:writer:google_workspace_group:security@writer.com", relationHasIdentifier, "urn:cerebro:writer:identifier:email:security@writer.com")
-	assertProjectedLink(t, state, oktaUserURN, relationAssignedTo, "urn:cerebro:writer:okta_application:app-prod")
-	assertProjectedLink(t, state, googleUserURN, relationCanAdmin, "urn:cerebro:writer:google_workspace_admin_role:super-admin")
-	assertProjectedLink(t, state, awsUserURN, relationCanAdmin, "urn:cerebro:writer:aws_admin_role:AdministratorAccess")
-	assertProjectedLink(t, state, gcpUserURN, relationCanAdmin, "urn:cerebro:writer:gcp_admin_role:roles/owner")
-	assertProjectedLink(t, state, googleUserURN, relationActedOn, "urn:cerebro:writer:google_workspace_security_setting:two_step")
+	assertProjectedLink(t, state, oktaUserURN, relationMemberOf, "urn:cerebro:example:okta_group:grp-security")
+	assertProjectedLink(t, state, googleUserURN, relationMemberOf, "urn:cerebro:example:google_workspace_group:security@example.com")
+	assertProjectedLink(t, state, "urn:cerebro:example:google_workspace_group:security@example.com", relationHasIdentifier, "urn:cerebro:example:identifier:email:security@example.com")
+	assertProjectedLink(t, state, oktaUserURN, relationAssignedTo, "urn:cerebro:example:okta_application:app-prod")
+	assertProjectedLink(t, state, googleUserURN, relationCanAdmin, "urn:cerebro:example:google_workspace_admin_role:super-admin")
+	assertProjectedLink(t, state, awsUserURN, relationCanAdmin, "urn:cerebro:example:aws_admin_role:AdministratorAccess")
+	assertProjectedLink(t, state, gcpUserURN, relationCanAdmin, "urn:cerebro:example:gcp_admin_role:roles/owner")
+	assertProjectedLink(t, state, googleUserURN, relationActedOn, "urn:cerebro:example:google_workspace_security_setting:two_step")
 }
 
 func TestProjectCloudReadOnlyRoleAssignmentsAvoidAdminEdges(t *testing.T) {
@@ -2028,85 +2028,85 @@ func TestProjectCloudReadOnlyRoleAssignmentsAvoidAdminEdges(t *testing.T) {
 	events := []*cerebrov1.EventEnvelope{
 		{
 			Id:       "aws-readonly-policy",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "aws",
 			Kind:     "aws.iam_role_assignment",
 			Attributes: map[string]string{
 				"domain":        "123456789012",
 				"role_id":       "ReadOnlyAccess",
 				"role_name":     "ReadOnlyAccess",
-				"subject_email": "analyst@writer.com",
-				"subject_id":    "analyst@writer.com",
+				"subject_email": "analyst@example.com",
+				"subject_id":    "analyst@example.com",
 				"subject_type":  "user",
 			},
 		},
 		{
 			Id:       "gcp-viewer-binding",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "gcp",
 			Kind:     "gcp.iam_role_assignment",
 			Attributes: map[string]string{
-				"domain":        "writer-prod",
+				"domain":        "example-prod",
 				"role_id":       "roles/viewer",
 				"role_name":     "roles/viewer",
-				"subject_email": "viewer@writer.com",
-				"subject_id":    "viewer@writer.com",
+				"subject_email": "viewer@example.com",
+				"subject_id":    "viewer@example.com",
 				"subject_type":  "user",
 			},
 		},
 		{
 			Id:       "gcp-service-account",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "gcp",
 			Kind:     "gcp.service_account",
 			Attributes: map[string]string{
-				"domain":         "writer-prod",
-				"email":          "sa@writer-prod.iam.gserviceaccount.com",
+				"domain":         "example-prod",
+				"email":          "sa@example-prod.iam.gserviceaccount.com",
 				"principal_type": "service_account",
 				"unique_id":      "sa-1",
-				"user_id":        "sa@writer-prod.iam.gserviceaccount.com",
+				"user_id":        "sa@example-prod.iam.gserviceaccount.com",
 			},
 		},
 		{
 			Id:       "gcp-service-owner",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "gcp",
 			Kind:     "gcp.iam_role_assignment",
 			Attributes: map[string]string{
-				"domain":        "writer-prod",
+				"domain":        "example-prod",
 				"is_admin":      "true",
 				"role_id":       "roles/owner",
 				"role_name":     "roles/owner",
-				"subject_email": "sa@writer-prod.iam.gserviceaccount.com",
-				"subject_id":    "sa@writer-prod.iam.gserviceaccount.com",
+				"subject_email": "sa@example-prod.iam.gserviceaccount.com",
+				"subject_id":    "sa@example-prod.iam.gserviceaccount.com",
 				"subject_type":  "service_account",
 			},
 		},
 		{
 			Id:       "aws-access-key",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "aws",
 			Kind:     "aws.access_key",
 			Attributes: map[string]string{
 				"credential_id":   "AKIAEXAMPLE",
 				"credential_type": "aws_access_key",
 				"domain":          "123456789012",
-				"subject_email":   "analyst@writer.com",
-				"subject_id":      "analyst@writer.com",
+				"subject_email":   "analyst@example.com",
+				"subject_id":      "analyst@example.com",
 				"subject_type":    "user",
 			},
 		},
 		{
 			Id:       "gcp-service-key",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "gcp",
 			Kind:     "gcp.service_account_key",
 			Attributes: map[string]string{
-				"credential_id":   "projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com/keys/key-1",
+				"credential_id":   "projects/example-prod/serviceAccounts/sa@example-prod.iam.gserviceaccount.com/keys/key-1",
 				"credential_type": "gcp_service_account_key",
-				"domain":          "writer-prod",
-				"subject_email":   "sa@writer-prod.iam.gserviceaccount.com",
-				"subject_id":      "sa@writer-prod.iam.gserviceaccount.com",
+				"domain":          "example-prod",
+				"subject_email":   "sa@example-prod.iam.gserviceaccount.com",
+				"subject_id":      "sa@example-prod.iam.gserviceaccount.com",
 				"subject_type":    "service_account",
 			},
 		},
@@ -2117,14 +2117,14 @@ func TestProjectCloudReadOnlyRoleAssignmentsAvoidAdminEdges(t *testing.T) {
 		}
 	}
 
-	assertProjectedLink(t, state, "urn:cerebro:writer:aws_user:analyst@writer.com", relationAssignedTo, "urn:cerebro:writer:aws_role:ReadOnlyAccess")
-	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:aws_user:analyst@writer.com", relationCanAdmin, "urn:cerebro:writer:aws_admin_role:ReadOnlyAccess")
-	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_user:viewer@writer.com", relationAssignedTo, "urn:cerebro:writer:gcp_role:roles/viewer")
-	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:gcp_user:viewer@writer.com", relationCanAdmin, "urn:cerebro:writer:gcp_admin_role:roles/viewer")
-	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com", relationCanAdmin, "urn:cerebro:writer:gcp_admin_role:roles/owner")
-	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com", relationHasIdentifier, "urn:cerebro:writer:identifier:email:sa@writer-prod.iam.gserviceaccount.com")
-	assertProjectedLink(t, state, "urn:cerebro:writer:aws_user:analyst@writer.com", relationAssignedTo, "urn:cerebro:writer:aws_credential:AKIAEXAMPLE")
-	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com", relationAssignedTo, "urn:cerebro:writer:gcp_credential:projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com/keys/key-1")
+	assertProjectedLink(t, state, "urn:cerebro:example:aws_user:analyst@example.com", relationAssignedTo, "urn:cerebro:example:aws_role:ReadOnlyAccess")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:example:aws_user:analyst@example.com", relationCanAdmin, "urn:cerebro:example:aws_admin_role:ReadOnlyAccess")
+	assertProjectedLink(t, state, "urn:cerebro:example:gcp_user:viewer@example.com", relationAssignedTo, "urn:cerebro:example:gcp_role:roles/viewer")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:example:gcp_user:viewer@example.com", relationCanAdmin, "urn:cerebro:example:gcp_admin_role:roles/viewer")
+	assertProjectedLink(t, state, "urn:cerebro:example:gcp_service_account:sa@example-prod.iam.gserviceaccount.com", relationCanAdmin, "urn:cerebro:example:gcp_admin_role:roles/owner")
+	assertProjectedLink(t, state, "urn:cerebro:example:gcp_service_account:sa@example-prod.iam.gserviceaccount.com", relationHasIdentifier, "urn:cerebro:example:identifier:email:sa@example-prod.iam.gserviceaccount.com")
+	assertProjectedLink(t, state, "urn:cerebro:example:aws_user:analyst@example.com", relationAssignedTo, "urn:cerebro:example:aws_credential:AKIAEXAMPLE")
+	assertProjectedLink(t, state, "urn:cerebro:example:gcp_service_account:sa@example-prod.iam.gserviceaccount.com", relationAssignedTo, "urn:cerebro:example:gcp_credential:projects/example-prod/serviceAccounts/sa@example-prod.iam.gserviceaccount.com/keys/key-1")
 }
 
 func TestProjectAzureIdentityEdges(t *testing.T) {
@@ -2133,13 +2133,13 @@ func TestProjectAzureIdentityEdges(t *testing.T) {
 	events := []*cerebrov1.EventEnvelope{
 		{
 			Id:       "azure-user-admin",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "azure",
 			Kind:     "azure.user",
 			Attributes: map[string]string{
 				"domain":         "tenant-1",
-				"email":          "admin@writer.com",
-				"login":          "admin@writer.com",
+				"email":          "admin@example.com",
+				"login":          "admin@example.com",
 				"mfa_enrolled":   "false",
 				"principal_type": "user",
 				"user_id":        "user-1",
@@ -2147,32 +2147,32 @@ func TestProjectAzureIdentityEdges(t *testing.T) {
 		},
 		{
 			Id:       "azure-group",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "azure",
 			Kind:     "azure.group",
 			Attributes: map[string]string{
 				"domain":      "tenant-1",
-				"group_email": "security@writer.com",
+				"group_email": "security@example.com",
 				"group_id":    "group-1",
 				"group_name":  "Security",
 			},
 		},
 		{
 			Id:       "azure-member",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "azure",
 			Kind:     "azure.group_membership",
 			Attributes: map[string]string{
 				"domain":       "tenant-1",
 				"group_id":     "group-1",
-				"member_email": "admin@writer.com",
+				"member_email": "admin@example.com",
 				"member_id":    "user-1",
 				"member_type":  "user",
 			},
 		},
 		{
 			Id:       "azure-app",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "azure",
 			Kind:     "azure.application",
 			Attributes: map[string]string{
@@ -2183,7 +2183,7 @@ func TestProjectAzureIdentityEdges(t *testing.T) {
 		},
 		{
 			Id:       "azure-sp",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "azure",
 			Kind:     "azure.service_principal",
 			Attributes: map[string]string{
@@ -2197,7 +2197,7 @@ func TestProjectAzureIdentityEdges(t *testing.T) {
 		},
 		{
 			Id:       "azure-global-admin",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "azure",
 			Kind:     "azure.directory_role_assignment",
 			Attributes: map[string]string{
@@ -2206,14 +2206,14 @@ func TestProjectAzureIdentityEdges(t *testing.T) {
 				"role_id":       "global-admin",
 				"role_name":     "Global Administrator",
 				"role_type":     "azure_directory_role",
-				"subject_email": "admin@writer.com",
+				"subject_email": "admin@example.com",
 				"subject_id":    "user-1",
 				"subject_type":  "user",
 			},
 		},
 		{
 			Id:       "azure-reader",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "azure",
 			Kind:     "azure.iam_role_assignment",
 			Attributes: map[string]string{
@@ -2228,7 +2228,7 @@ func TestProjectAzureIdentityEdges(t *testing.T) {
 		},
 		{
 			Id:       "azure-credential",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "azure",
 			Kind:     "azure.credential",
 			Attributes: map[string]string{
@@ -2241,11 +2241,11 @@ func TestProjectAzureIdentityEdges(t *testing.T) {
 		},
 		{
 			Id:       "azure-audit",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "azure",
 			Kind:     "azure.directory_audit",
 			Attributes: map[string]string{
-				"actor_email":   "admin@writer.com",
+				"actor_email":   "admin@example.com",
 				"actor_id":      "user-1",
 				"domain":        "tenant-1",
 				"event_type":    "Update conditional access policy",
@@ -2260,17 +2260,17 @@ func TestProjectAzureIdentityEdges(t *testing.T) {
 		}
 	}
 
-	azureUserURN := "urn:cerebro:writer:azure_user:user-1"
-	azureServicePrincipalURN := "urn:cerebro:writer:azure_service_principal:sp-1"
-	azureApplicationURN := "urn:cerebro:writer:azure_application:app-client-1"
-	assertProjectedLink(t, state, azureUserURN, relationHasIdentifier, "urn:cerebro:writer:identifier:email:admin@writer.com")
-	assertProjectedLink(t, state, azureUserURN, relationMemberOf, "urn:cerebro:writer:azure_group:group-1")
-	assertProjectedLink(t, state, azureUserURN, relationCanAdmin, "urn:cerebro:writer:azure_admin_role:global-admin")
+	azureUserURN := "urn:cerebro:example:azure_user:user-1"
+	azureServicePrincipalURN := "urn:cerebro:example:azure_service_principal:sp-1"
+	azureApplicationURN := "urn:cerebro:example:azure_application:app-client-1"
+	assertProjectedLink(t, state, azureUserURN, relationHasIdentifier, "urn:cerebro:example:identifier:email:admin@example.com")
+	assertProjectedLink(t, state, azureUserURN, relationMemberOf, "urn:cerebro:example:azure_group:group-1")
+	assertProjectedLink(t, state, azureUserURN, relationCanAdmin, "urn:cerebro:example:azure_admin_role:global-admin")
 	assertProjectedLink(t, state, azureServicePrincipalURN, relationAssignedTo, azureApplicationURN)
-	assertProjectedLink(t, state, azureServicePrincipalURN, relationAssignedTo, "urn:cerebro:writer:azure_role:Reader")
-	assertProjectedLinkMissing(t, state, azureServicePrincipalURN, relationCanAdmin, "urn:cerebro:writer:azure_admin_role:Reader")
-	assertProjectedLink(t, state, azureApplicationURN, relationAssignedTo, "urn:cerebro:writer:azure_credential:app-password-1")
-	assertProjectedLink(t, state, azureUserURN, relationActedOn, "urn:cerebro:writer:azure_conditional_access_policy:policy-1")
+	assertProjectedLink(t, state, azureServicePrincipalURN, relationAssignedTo, "urn:cerebro:example:azure_role:Reader")
+	assertProjectedLinkMissing(t, state, azureServicePrincipalURN, relationCanAdmin, "urn:cerebro:example:azure_admin_role:Reader")
+	assertProjectedLink(t, state, azureApplicationURN, relationAssignedTo, "urn:cerebro:example:azure_credential:app-password-1")
+	assertProjectedLink(t, state, azureUserURN, relationActedOn, "urn:cerebro:example:azure_conditional_access_policy:policy-1")
 }
 
 func TestProjectCloudExposureAndPrivilegePaths(t *testing.T) {
@@ -2279,7 +2279,7 @@ func TestProjectCloudExposureAndPrivilegePaths(t *testing.T) {
 	events := []*cerebrov1.EventEnvelope{
 		{
 			Id:       "aws-public-sg",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "aws",
 			Kind:     "aws.resource_exposure",
 			Attributes: map[string]string{
@@ -2298,7 +2298,7 @@ func TestProjectCloudExposureAndPrivilegePaths(t *testing.T) {
 		},
 		{
 			Id:       "aws-public-endpoint",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "aws",
 			Kind:     "aws.public_endpoint",
 			Attributes: map[string]string{
@@ -2315,12 +2315,12 @@ func TestProjectCloudExposureAndPrivilegePaths(t *testing.T) {
 				"resource_provider": "aws",
 				"resource_type":     "network_interface",
 				"target_host":       "d111111abcdef8.cloudfront.net",
-				"alternate_hosts":   "app.writer.com",
+				"alternate_hosts":   "app.example.com",
 			},
 		},
 		{
 			Id:       "aws-role-trust",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "aws",
 			Kind:     "aws.iam_role_trust",
 			Attributes: map[string]string{
@@ -2336,7 +2336,7 @@ func TestProjectCloudExposureAndPrivilegePaths(t *testing.T) {
 		},
 		{
 			Id:       "azure-public-nsg",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "azure",
 			Kind:     "azure.resource_exposure",
 			Attributes: map[string]string{
@@ -2355,24 +2355,24 @@ func TestProjectCloudExposureAndPrivilegePaths(t *testing.T) {
 		},
 		{
 			Id:       "gcp-impersonation",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "gcp",
 			Kind:     "gcp.service_account_impersonation",
 			Attributes: map[string]string{
-				"domain":        "writer-prod",
+				"domain":        "example-prod",
 				"path_type":     "service_account_impersonation",
 				"relationship":  "can_impersonate",
-				"subject_email": "admin@writer.com",
-				"subject_id":    "admin@writer.com",
+				"subject_email": "admin@example.com",
+				"subject_id":    "admin@example.com",
 				"subject_type":  "user",
-				"target_email":  "sa@writer-prod.iam.gserviceaccount.com",
-				"target_id":     "sa@writer-prod.iam.gserviceaccount.com",
+				"target_email":  "sa@example-prod.iam.gserviceaccount.com",
+				"target_id":     "sa@example-prod.iam.gserviceaccount.com",
 				"target_type":   "service_account",
 			},
 		},
 		{
 			Id:       "azure-app-role",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "azure",
 			Kind:     "azure.app_role_assignment",
 			Attributes: map[string]string{
@@ -2393,21 +2393,21 @@ func TestProjectCloudExposureAndPrivilegePaths(t *testing.T) {
 		}
 	}
 
-	assertProjectedLink(t, state, "urn:cerebro:writer:aws_public_principal:public_internet", relationCanReach, "urn:cerebro:writer:aws_security_group:arn:aws:ec2:us-east-1:123456789012:security-group/sg-1")
-	assertProjectedLink(t, state, "urn:cerebro:writer:aws_security_group:arn:aws:ec2:us-east-1:123456789012:security-group/sg-1", relationCanReach, "urn:cerebro:writer:aws_public_principal:public_internet")
-	assertProjectedLink(t, state, "urn:cerebro:writer:aws_security_group:arn:aws:ec2:us-east-1:123456789012:security-group/sg-1", relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
-	assertProjectedLink(t, state, "urn:cerebro:writer:azure_network_security_group:nsg-1", relationBelongsTo, "urn:cerebro:writer:cloud_account:sub-1")
-	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:azure_network_security_group:nsg-1", relationBelongsTo, "urn:cerebro:writer:cloud_account:tenant-1")
-	assertProjectedLink(t, state, "urn:cerebro:writer:aws_public_principal:public_internet", relationCanReach, "urn:cerebro:writer:aws_network_interface:eni-1")
-	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationCanReach, "urn:cerebro:writer:aws_public_principal:public_internet")
-	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
-	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationRepresents, "urn:cerebro:writer:internet_host:ec2-203-0-113-10.compute-1.amazonaws.com")
-	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationRepresents, "urn:cerebro:writer:internet_host:d111111abcdef8.cloudfront.net")
-	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationRepresents, "urn:cerebro:writer:internet_host:app.writer.com")
-	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationRepresents, "urn:cerebro:writer:internet_ip:203.0.113.10")
-	assertProjectedLink(t, state, "urn:cerebro:writer:aws_role:arn:aws:iam::999999999999:role/ExternalAdmin", relationCanAssume, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/AdminRole")
-	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_user:admin@writer.com", relationCanImpersonate, "urn:cerebro:writer:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com")
-	assertProjectedLink(t, state, "urn:cerebro:writer:azure_service_principal:sp-1", relationAssignedTo, "urn:cerebro:writer:azure_service_principal:sp-resource-1")
+	assertProjectedLink(t, state, "urn:cerebro:example:aws_public_principal:public_internet", relationCanReach, "urn:cerebro:example:aws_security_group:arn:aws:ec2:us-east-1:123456789012:security-group/sg-1")
+	assertProjectedLink(t, state, "urn:cerebro:example:aws_security_group:arn:aws:ec2:us-east-1:123456789012:security-group/sg-1", relationCanReach, "urn:cerebro:example:aws_public_principal:public_internet")
+	assertProjectedLink(t, state, "urn:cerebro:example:aws_security_group:arn:aws:ec2:us-east-1:123456789012:security-group/sg-1", relationBelongsTo, "urn:cerebro:example:cloud_account:123456789012")
+	assertProjectedLink(t, state, "urn:cerebro:example:azure_network_security_group:nsg-1", relationBelongsTo, "urn:cerebro:example:cloud_account:sub-1")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:example:azure_network_security_group:nsg-1", relationBelongsTo, "urn:cerebro:example:cloud_account:tenant-1")
+	assertProjectedLink(t, state, "urn:cerebro:example:aws_public_principal:public_internet", relationCanReach, "urn:cerebro:example:aws_network_interface:eni-1")
+	assertProjectedLink(t, state, "urn:cerebro:example:aws_network_interface:eni-1", relationCanReach, "urn:cerebro:example:aws_public_principal:public_internet")
+	assertProjectedLink(t, state, "urn:cerebro:example:aws_network_interface:eni-1", relationBelongsTo, "urn:cerebro:example:cloud_account:123456789012")
+	assertProjectedLink(t, state, "urn:cerebro:example:aws_network_interface:eni-1", relationRepresents, "urn:cerebro:example:internet_host:ec2-203-0-113-10.compute-1.amazonaws.com")
+	assertProjectedLink(t, state, "urn:cerebro:example:aws_network_interface:eni-1", relationRepresents, "urn:cerebro:example:internet_host:d111111abcdef8.cloudfront.net")
+	assertProjectedLink(t, state, "urn:cerebro:example:aws_network_interface:eni-1", relationRepresents, "urn:cerebro:example:internet_host:app.example.com")
+	assertProjectedLink(t, state, "urn:cerebro:example:aws_network_interface:eni-1", relationRepresents, "urn:cerebro:example:internet_ip:203.0.113.10")
+	assertProjectedLink(t, state, "urn:cerebro:example:aws_role:arn:aws:iam::999999999999:role/ExternalAdmin", relationCanAssume, "urn:cerebro:example:aws_role:arn:aws:iam::123456789012:role/AdminRole")
+	assertProjectedLink(t, state, "urn:cerebro:example:gcp_user:admin@example.com", relationCanImpersonate, "urn:cerebro:example:gcp_service_account:sa@example-prod.iam.gserviceaccount.com")
+	assertProjectedLink(t, state, "urn:cerebro:example:azure_service_principal:sp-1", relationAssignedTo, "urn:cerebro:example:azure_service_principal:sp-resource-1")
 }
 
 func TestProjectEffectivePermissionsKubernetesRuntimeAndData(t *testing.T) {
@@ -2416,7 +2416,7 @@ func TestProjectEffectivePermissionsKubernetesRuntimeAndData(t *testing.T) {
 	events := []*cerebrov1.EventEnvelope{
 		{
 			Id:       "aws-effective-admin",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "aws",
 			Kind:     "aws.effective_permission",
 			Attributes: map[string]string{
@@ -2426,14 +2426,14 @@ func TestProjectEffectivePermissionsKubernetesRuntimeAndData(t *testing.T) {
 				"is_admin":      "true",
 				"resource_id":   "123456789012",
 				"resource_type": "account",
-				"subject_email": "admin@writer.com",
-				"subject_id":    "admin@writer.com",
+				"subject_email": "admin@example.com",
+				"subject_id":    "admin@example.com",
 				"subject_type":  "user",
 			},
 		},
 		{
 			Id:       "k8s-workload",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "kubernetes",
 			Kind:     "kubernetes.workload",
 			Attributes: map[string]string{
@@ -2447,7 +2447,7 @@ func TestProjectEffectivePermissionsKubernetesRuntimeAndData(t *testing.T) {
 		},
 		{
 			Id:       "k8s-workload-identity",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "kubernetes",
 			Kind:     "kubernetes.workload_identity_binding",
 			Attributes: map[string]string{
@@ -2457,27 +2457,27 @@ func TestProjectEffectivePermissionsKubernetesRuntimeAndData(t *testing.T) {
 				"path_type":            "workload_identity",
 				"relationship":         "can_impersonate",
 				"service_account_name": "api",
-				"target_email":         "payments-sa@writer-prod.iam.gserviceaccount.com",
-				"target_id":            "payments-sa@writer-prod.iam.gserviceaccount.com",
+				"target_email":         "payments-sa@example-prod.iam.gserviceaccount.com",
+				"target_id":            "payments-sa@example-prod.iam.gserviceaccount.com",
 				"target_type":          "service_account",
 			},
 		},
 		{
 			Id:       "runtime-evidence",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "runtime",
 			Kind:     "runtime.evidence",
 			Attributes: map[string]string{
 				"confidence":    "0.92",
 				"evidence_id":   "evidence-1",
 				"evidence_type": "credential_use",
-				"resource_urn":  "urn:cerebro:writer:kubernetes_workload:prod-cluster:payments:workload-1",
+				"resource_urn":  "urn:cerebro:example:kubernetes_workload:prod-cluster:payments:workload-1",
 				"verdict":       "confirmed",
 			},
 		},
 		{
 			Id:       "asset-crown-jewel",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "asset",
 			Kind:     "asset.crown_jewel",
 			Attributes: map[string]string{
@@ -2497,14 +2497,14 @@ func TestProjectEffectivePermissionsKubernetesRuntimeAndData(t *testing.T) {
 		}
 	}
 
-	assertProjectedLink(t, state, "urn:cerebro:writer:aws_user:admin@writer.com", relationCanPerform, "urn:cerebro:writer:aws_account:123456789012")
-	assertProjectedLink(t, state, "urn:cerebro:writer:aws_account:123456789012", relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
-	assertProjectedLink(t, state, "urn:cerebro:writer:kubernetes_workload:prod-cluster:payments:workload-1", relationRunsAs, "urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:api")
-	assertProjectedLink(t, state, "urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:api", relationCanImpersonate, "urn:cerebro:writer:gcp_service_account:payments-sa@writer-prod.iam.gserviceaccount.com")
-	assertProjectedLink(t, state, "urn:cerebro:writer:kubernetes_workload:prod-cluster:payments:workload-1", relationHasEvidence, "urn:cerebro:writer:runtime_evidence:evidence-1")
-	assertProjectedLink(t, state, "urn:cerebro:writer:runtime_evidence:evidence-1", relationObservedOn, "urn:cerebro:writer:kubernetes_workload:prod-cluster:payments:workload-1")
-	assertProjectedLink(t, state, "urn:cerebro:writer:aws_secret_store:prod-secrets", relationHasClassification, "urn:cerebro:writer:data_classification:restricted")
-	assertProjectedLink(t, state, "urn:cerebro:writer:aws_secret_store:prod-secrets", relationTaggedAs, "urn:cerebro:writer:asset_tag:crown_jewel")
+	assertProjectedLink(t, state, "urn:cerebro:example:aws_user:admin@example.com", relationCanPerform, "urn:cerebro:example:aws_account:123456789012")
+	assertProjectedLink(t, state, "urn:cerebro:example:aws_account:123456789012", relationBelongsTo, "urn:cerebro:example:cloud_account:123456789012")
+	assertProjectedLink(t, state, "urn:cerebro:example:kubernetes_workload:prod-cluster:payments:workload-1", relationRunsAs, "urn:cerebro:example:kubernetes_service_account:prod-cluster:payments:api")
+	assertProjectedLink(t, state, "urn:cerebro:example:kubernetes_service_account:prod-cluster:payments:api", relationCanImpersonate, "urn:cerebro:example:gcp_service_account:payments-sa@example-prod.iam.gserviceaccount.com")
+	assertProjectedLink(t, state, "urn:cerebro:example:kubernetes_workload:prod-cluster:payments:workload-1", relationHasEvidence, "urn:cerebro:example:runtime_evidence:evidence-1")
+	assertProjectedLink(t, state, "urn:cerebro:example:runtime_evidence:evidence-1", relationObservedOn, "urn:cerebro:example:kubernetes_workload:prod-cluster:payments:workload-1")
+	assertProjectedLink(t, state, "urn:cerebro:example:aws_secret_store:prod-secrets", relationHasClassification, "urn:cerebro:example:data_classification:restricted")
+	assertProjectedLink(t, state, "urn:cerebro:example:aws_secret_store:prod-secrets", relationTaggedAs, "urn:cerebro:example:asset_tag:crown_jewel")
 }
 
 func assertProjectedLink(t *testing.T, recorder *projectionRecorder, fromURN string, relation string, toURN string) {

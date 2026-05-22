@@ -1,14 +1,14 @@
 {
   "rule_id": "sentinelone-mitigation-failed",
   "runtime": {
-    "id": "writer-sentinelone-threat",
+    "id": "example-sentinelone-threat",
     "source_id": "sentinelone",
-    "tenant_id": "writer"
+    "tenant_id": "example"
   },
   "events": [
     {
       "id": "s1-threat-7",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "sentinelone",
       "kind": "sentinelone.threat",
       "occurred_at": "2026-05-09T06:40:00Z",
@@ -25,7 +25,7 @@
     },
     {
       "id": "s1-threat-8",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "sentinelone",
       "kind": "sentinelone.threat",
       "occurred_at": "2026-05-09T06:45:00Z",
@@ -51,8 +51,8 @@
       "event_ids": ["s1-threat-7"],
       "attributes": {
         "action": "mitigation_failed",
-        "source_runtime_id": "writer-sentinelone-threat",
-        "primary_resource_urn": "urn:cerebro:writer:sentinelone_agent:agent-7",
+        "source_runtime_id": "example-sentinelone-threat",
+        "primary_resource_urn": "urn:cerebro:example:sentinelone_agent:agent-7",
         "agent_id": "agent-7",
         "mitigation_status": "failed"
       }

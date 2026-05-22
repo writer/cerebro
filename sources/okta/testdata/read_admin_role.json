@@ -15,14 +15,14 @@
     "attributes": {
       "action": "admin.role.assignment",
       "domain": "writer.okta.com",
-      "email": "admin@writer.com",
+      "email": "admin@example.com",
       "event_type": "admin.role.assignment",
       "family": "admin_role",
       "is_admin": "true",
       "role_id": "super_admin",
       "role_name": "Super Administrator",
       "role_type": "SUPER_ADMIN",
-      "subject_email": "admin@writer.com",
+      "subject_email": "admin@example.com",
       "subject_id": "00u1",
       "subject_type": "user"
     }

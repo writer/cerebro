@@ -13,11 +13,11 @@ func TestMemoryGraphStorePreservesExistingLabelsForFallbackLabels(t *testing.T) 
 		t.Fatalf("newMemoryGraphStore() error = %v", err)
 	}
 	scratch := store.(*memoryGraphStore)
-	urn := "urn:cerebro:writer:source:vanta:integration:integration-1"
+	urn := "urn:cerebro:example:source:vanta:integration:integration-1"
 
 	if err := scratch.UpsertProjectedEntity(context.Background(), &ports.ProjectedEntity{
 		URN:        urn,
-		TenantID:   "writer",
+		TenantID:   "example",
 		SourceID:   "grc",
 		EntityType: "source",
 		Label:      "GitHub Dependabot",
@@ -26,7 +26,7 @@ func TestMemoryGraphStorePreservesExistingLabelsForFallbackLabels(t *testing.T) 
 	}
 	if err := scratch.UpsertProjectedEntity(context.Background(), &ports.ProjectedEntity{
 		URN:        urn,
-		TenantID:   "writer",
+		TenantID:   "example",
 		SourceID:   "grc",
 		EntityType: "source",
 	}); err != nil {

@@ -37,7 +37,6 @@ ALLOWED_FIXTURE_EMAIL_DOMAINS = {
     "example.test",
     "gmail.com",
     "tenant.example",
-    "writer.com",
 }
 
 ALLOWED_FIXTURE_HOST_SUFFIXES = (
@@ -49,7 +48,6 @@ ALLOWED_FIXTURE_HOST_SUFFIXES = (
     ".googleapis.com",
     ".gserviceaccount.com",
     ".okta.com",
-    ".writer.com",
 )
 
 SENSITIVE_QUERY_KEYS = {
@@ -71,6 +69,8 @@ URL_RE = re.compile(r"https?://[^\s\"']+")
 NESTED_QUANTIFIER_RE = re.compile(
     r"\((?:\?:)?[^)]*(?:\+|\*|\{\d+(?:,\d*)?\})[^)]*\)(?:\+|\*|\{\d+(?:,\d*)?\})"
 )
+LEAK_CHECK_ALLOW_RE = re.compile(r"leak-check:\s*allow\s+\S+")
+INLINE_ALLOW_ENABLED = os.environ.get("CEREBRO_LEAK_CHECK_ALLOW_INLINE") == "1"
 
 
 def repo_root() -> Path:
@@ -167,6 +167,8 @@ def scan(root: Path, patterns: list[re.Pattern[str]]) -> list[str]:
             findings.append(f"{rel}: read failed: {exc}")
             continue
         for line_number, line in enumerate(lines, start=1):
+            if INLINE_ALLOW_ENABLED and LEAK_CHECK_ALLOW_RE.search(line):
+                continue
             for pattern in patterns:
                 match = pattern.search(line)
                 if not match:

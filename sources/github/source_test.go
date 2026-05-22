@@ -42,7 +42,7 @@ func TestReadRequiresRepo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"owner": "writer"}), nil)
+	_, err = source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"owner": "example"}), nil)
 	if err == nil {
 		t.Fatal("Read() error = nil, want non-nil")
 	}
@@ -55,7 +55,7 @@ func TestAuditRequiresToken(t *testing.T) {
 	}
 	if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{
 		"family": "audit",
-		"owner":  "writer",
+		"owner":  "example",
 	})); err == nil {
 		t.Fatal("Check(audit) error = nil, want non-nil")
 	}
@@ -118,7 +118,7 @@ func TestReadRejectsNegativeCursor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	cfg := sourcecdk.NewConfig(map[string]string{"owner": "writer", "repo": "cerebro"})
+	cfg := sourcecdk.NewConfig(map[string]string{"owner": "example", "repo": "cerebro"})
 
 	if _, err := source.Read(context.Background(), cfg, &cerebrov1.SourceCursor{Opaque: "-1"}); err == nil {
 		t.Fatal("Read() error = nil, want non-nil")
@@ -136,7 +136,7 @@ func TestReadTrimsCursor(t *testing.T) {
 	source.allowLoopbackBaseURL = true
 	cfg := sourcecdk.NewConfig(map[string]string{
 		"base_url": server.URL,
-		"owner":    "writer",
+		"owner":    "example",
 		"per_page": "1",
 		"repo":     "cerebro",
 		"state":    "all",
@@ -162,7 +162,7 @@ func TestCheckDiscoverAndReadLiveGitHubPullRequestPreview(t *testing.T) {
 	source.allowLoopbackBaseURL = true
 	checkCfg := sourcecdk.NewConfig(map[string]string{
 		"base_url": server.URL,
-		"owner":    "writer",
+		"owner":    "example",
 	})
 	if err := source.Check(context.Background(), checkCfg); err != nil {
 		t.Fatalf("Check() error = %v", err)
@@ -170,7 +170,7 @@ func TestCheckDiscoverAndReadLiveGitHubPullRequestPreview(t *testing.T) {
 
 	discoverCfg := sourcecdk.NewConfig(map[string]string{
 		"base_url": server.URL,
-		"owner":    "writer",
+		"owner":    "example",
 	})
 	discover, err := source.Discover(context.Background(), discoverCfg)
 	if err != nil {
@@ -179,13 +179,13 @@ func TestCheckDiscoverAndReadLiveGitHubPullRequestPreview(t *testing.T) {
 	if len(discover) != 1 {
 		t.Fatalf("len(Discover()) = %d, want 1", len(discover))
 	}
-	if discover[0] != "urn:cerebro:writer:repo:writer/cerebro" {
+	if discover[0] != "urn:cerebro:example:repo:example/cerebro" {
 		t.Fatalf("Discover()[0] = %q, want repo urn", discover[0])
 	}
 
 	readCfg := sourcecdk.NewConfig(map[string]string{
 		"base_url": server.URL,
-		"owner":    "writer",
+		"owner":    "example",
 		"per_page": "1",
 		"repo":     "cerebro",
 		"state":    "all",
@@ -240,7 +240,7 @@ func TestCheckDiscoverAndReadLiveGitHubAuditPreview(t *testing.T) {
 		"base_url": server.URL,
 		"family":   "audit",
 		"include":  "all",
-		"owner":    "writer",
+		"owner":    "example",
 		"token":    "test-token",
 	})
 	if err := source.Check(context.Background(), cfg); err != nil {
@@ -254,7 +254,7 @@ func TestCheckDiscoverAndReadLiveGitHubAuditPreview(t *testing.T) {
 	if len(discover) != 1 {
 		t.Fatalf("len(Discover(audit)) = %d, want 1", len(discover))
 	}
-	if discover[0] != "urn:cerebro:writer:org:writer" {
+	if discover[0] != "urn:cerebro:example:org:example" {
 		t.Fatalf("Discover(audit)[0] = %q, want org urn", discover[0])
 	}
 
@@ -277,8 +277,8 @@ func TestCheckDiscoverAndReadLiveGitHubAuditPreview(t *testing.T) {
 	if got := first.Events[0].Attributes["previous_visibility"]; got != "private" {
 		t.Fatalf("first.Events[0].Attributes[previous_visibility] = %q, want private", got)
 	}
-	if got := first.Events[0].Attributes["external_identity_nameid"]; got != "dependabot@writer.com" {
-		t.Fatalf("first.Events[0].Attributes[external_identity_nameid] = %q, want dependabot@writer.com", got)
+	if got := first.Events[0].Attributes["external_identity_nameid"]; got != "dependabot@example.com" {
+		t.Fatalf("first.Events[0].Attributes[external_identity_nameid] = %q, want dependabot@example.com", got)
 	}
 	// Audit Read must resolve every actor login (not just those without
 	// actor_id) so that GitHub-App identities — which always carry an
@@ -295,8 +295,8 @@ func TestCheckDiscoverAndReadLiveGitHubAuditPreview(t *testing.T) {
 	if got := payload["resource_type"]; got != "repository_vulnerability_alert" {
 		t.Fatalf("audit payload resource_type = %#v, want repository_vulnerability_alert", got)
 	}
-	if got := payload["resource_id"]; got != "writer/cerebro" {
-		t.Fatalf("audit payload resource_id = %#v, want writer/cerebro", got)
+	if got := payload["resource_id"]; got != "example/cerebro" {
+		t.Fatalf("audit payload resource_id = %#v, want example/cerebro", got)
 	}
 	raw, ok := payload["raw"].(map[string]any)
 	if !ok {
@@ -347,7 +347,7 @@ func TestAuditAttributesForwardRulesetWeakeningMetadata(t *testing.T) {
 	attributes := auditAttributes(&gogithub.AuditEntry{
 		Action: gogithub.String("repository_ruleset.update"),
 	}, map[string]any{
-		"repo":                          "writer/cerebro",
+		"repo":                          "example/cerebro",
 		"ruleset_enforcement":           "active",
 		"required_status_check_removed": true,
 		"bypass_actor_added":            true,
@@ -372,13 +372,13 @@ func TestAuditAttributesForwardResolvedActorTypeForGitEvents(t *testing.T) {
 		Action: gogithub.String("git.clone"),
 		Actor:  gogithub.String("deploy_key"),
 	}, map[string]any{
-		"org":                      "WriterInternal",
+		"org":                      "ExampleInternal",
 		"org_id":                   112636266,
 		"programmatic_access_type": "Public Key (User/Deploy)",
-		"repo":                     "WriterInternal/k8s",
+		"repo":                     "ExampleInternal/k8s",
 		"transport_protocol_name":  "ssh",
 		"user_id":                  0,
-	}, settings{owner: "WriterInternal"}, auditActorResolution{Login: "deploy_key", Type: "Unresolved"})
+	}, settings{owner: "ExampleInternal"}, auditActorResolution{Login: "deploy_key", Type: "Unresolved"})
 
 	if got := attributes["actor_type"]; got != "Unresolved" {
 		t.Fatalf("actor_type = %q, want Unresolved", got)
@@ -409,7 +409,7 @@ func TestCheckDiscoverAndReadLiveGitHubDependabotAlertPreview(t *testing.T) {
 	cfg := sourcecdk.NewConfig(map[string]string{
 		"base_url": server.URL,
 		"family":   "dependabot_alert",
-		"owner":    "writer",
+		"owner":    "example",
 		"per_page": "1",
 		"repo":     "cerebro",
 		"token":    "test-token",
@@ -425,7 +425,7 @@ func TestCheckDiscoverAndReadLiveGitHubDependabotAlertPreview(t *testing.T) {
 	if len(discover) != 1 {
 		t.Fatalf("len(Discover(dependabot_alert)) = %d, want 1", len(discover))
 	}
-	if discover[0] != "urn:cerebro:writer:repo:writer/cerebro" {
+	if discover[0] != "urn:cerebro:example:repo:example/cerebro" {
 		t.Fatalf("Discover(dependabot_alert)[0] = %q, want repo urn", discover[0])
 	}
 
@@ -493,7 +493,7 @@ func TestRejectsUnsafeBaseURL(t *testing.T) {
 		t.Run(baseURL, func(t *testing.T) {
 			err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{
 				"base_url": baseURL,
-				"owner":    "writer",
+				"owner":    "example",
 			}))
 			if err == nil {
 				t.Fatal("Check() error = nil, want non-nil")
@@ -520,7 +520,7 @@ func TestCheckDoesNotFollowRedirects(t *testing.T) {
 	source.allowLoopbackBaseURL = true
 	err = source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{
 		"base_url": redirector.URL,
-		"owner":    "writer",
+		"owner":    "example",
 	}))
 	if err == nil {
 		t.Fatal("Check() error = nil, want non-nil redirect response")
@@ -634,7 +634,7 @@ func TestAcceptsEnterpriseAPIBaseURL(t *testing.T) {
 		t.Run(tt.baseURL, func(t *testing.T) {
 			settings, err := parseSettings(sourcecdk.NewConfig(map[string]string{
 				"base_url": tt.baseURL,
-				"owner":    "writer",
+				"owner":    "example",
 			}), false, false)
 			if err != nil {
 				t.Fatalf("parseSettings() error = %v", err)
@@ -658,15 +658,15 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 	repo := map[string]any{
 		"id":        1,
 		"name":      "cerebro",
-		"full_name": "writer/cerebro",
-		"html_url":  "https://github.com/writer/cerebro",
+		"full_name": "example/cerebro",
+		"html_url":  "https://github.com/example/cerebro",
 	}
 	pulls := []map[string]any{
 		{
 			"number":     443,
 			"title":      "feat(source): add source preview surfaces",
 			"state":      "open",
-			"html_url":   "https://github.com/writer/cerebro/pull/443",
+			"html_url":   "https://github.com/example/cerebro/pull/443",
 			"created_at": "2026-04-23T01:00:00Z",
 			"updated_at": "2026-04-23T02:00:00Z",
 			"user": map[string]any{
@@ -684,7 +684,7 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 			"number":     442,
 			"title":      "feat(bootstrap): expose the source registry",
 			"state":      "closed",
-			"html_url":   "https://github.com/writer/cerebro/pull/442",
+			"html_url":   "https://github.com/example/cerebro/pull/442",
 			"created_at": "2026-04-22T23:00:00Z",
 			"updated_at": "2026-04-23T00:00:00Z",
 			"closed_at":  "2026-04-23T00:30:00Z",
@@ -711,7 +711,7 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 			"business":                    "writer",
 			"business_id":                 10550,
 			"created_at":                  1776916397852,
-			"external_identity_nameid":    "dependabot@writer.com",
+			"external_identity_nameid":    "dependabot@example.com",
 			"operation_type":              "create",
 			"org":                         "writer",
 			"org_id":                      1,
@@ -719,7 +719,7 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 			"previous_visibility":         "private",
 			"programmatic_access_type":    "GitHub App server-to-server token",
 			"public_repo":                 false,
-			"repo":                        "writer/cerebro",
+			"repo":                        "example/cerebro",
 			"repo_id":                     1,
 			"visibility":                  "internal",
 			"request_id":                  "audit-1",
@@ -747,8 +747,8 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 		{
 			"number":     7,
 			"state":      "open",
-			"url":        "https://api.github.com/repos/writer/cerebro/dependabot/alerts/7",
-			"html_url":   "https://github.com/writer/cerebro/security/dependabot/7",
+			"url":        "https://api.github.com/repos/example/cerebro/dependabot/alerts/7",
+			"html_url":   "https://github.com/example/cerebro/security/dependabot/7",
 			"created_at": "2026-04-23T00:00:00Z",
 			"updated_at": "2026-04-24T00:00:00Z",
 			"dependency": map[string]any{
@@ -782,18 +782,18 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
-		case "/api/v3/orgs/writer/repos":
+		case "/api/v3/orgs/example/repos":
 			if err := json.NewEncoder(w).Encode([]map[string]any{repo}); err != nil {
 				t.Fatalf("encode repos response: %v", err)
 			}
-		case "/api/v3/repos/writer/cerebro":
+		case "/api/v3/repos/example/cerebro":
 			if err := json.NewEncoder(w).Encode(repo); err != nil {
 				t.Fatalf("encode repo response: %v", err)
 			}
-		case "/api/v3/repos/writer/cerebro/pulls":
+		case "/api/v3/repos/example/cerebro/pulls":
 			page := r.URL.Query().Get("page")
 			if page == "" || page == "1" {
-				w.Header().Set("Link", "</api/v3/repos/writer/cerebro/pulls?page=2>; rel=\"next\", </api/v3/repos/writer/cerebro/pulls?page=2>; rel=\"last\"")
+				w.Header().Set("Link", "</api/v3/repos/example/cerebro/pulls?page=2>; rel=\"next\", </api/v3/repos/example/cerebro/pulls?page=2>; rel=\"last\"")
 				if err := json.NewEncoder(w).Encode(pulls[:1]); err != nil {
 					t.Fatalf("encode pulls page 1: %v", err)
 				}
@@ -825,10 +825,10 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 			}); err != nil {
 				t.Fatalf("encode users response: %v", err)
 			}
-		case "/api/v3/orgs/writer/audit-log":
+		case "/api/v3/orgs/example/audit-log":
 			after := r.URL.Query().Get("after")
 			if after == "" {
-				w.Header().Set("Link", "</api/v3/orgs/writer/audit-log?after=cursor-2&before=>; rel=\"next\"")
+				w.Header().Set("Link", "</api/v3/orgs/example/audit-log?after=cursor-2&before=>; rel=\"next\"")
 				if err := json.NewEncoder(w).Encode(auditEntries[:1]); err != nil {
 					t.Fatalf("encode audit page 1: %v", err)
 				}
@@ -843,10 +843,10 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 			if err := json.NewEncoder(w).Encode([]map[string]any{}); err != nil {
 				t.Fatalf("encode empty audit page: %v", err)
 			}
-		case "/api/v3/repos/writer/cerebro/dependabot/alerts":
+		case "/api/v3/repos/example/cerebro/dependabot/alerts":
 			after := r.URL.Query().Get("after")
 			if after == "" {
-				w.Header().Set("Link", "</api/v3/repos/writer/cerebro/dependabot/alerts?after=cursor-2&before=>; rel=\"next\"")
+				w.Header().Set("Link", "</api/v3/repos/example/cerebro/dependabot/alerts?after=cursor-2&before=>; rel=\"next\"")
 				if err := json.NewEncoder(w).Encode(dependabotAlerts); err != nil {
 					t.Fatalf("encode dependabot alerts page 1: %v", err)
 				}

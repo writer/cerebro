@@ -1,7 +1,7 @@
 [
   {
     "subject_ref": {
-      "urn": "urn:cerebro:writer:runtime:writer-jira-posture:workspace:writer",
+      "urn": "urn:cerebro:example:runtime:example-jira-posture:workspace:writer",
       "entity_type": "workspace",
       "label": "Writer Jira"
     },
@@ -11,13 +11,13 @@
   },
   {
     "subject_ref": {
-      "urn": "urn:cerebro:writer:runtime:writer-jira-posture:project:SEC",
+      "urn": "urn:cerebro:example:runtime:example-jira-posture:project:SEC",
       "entity_type": "project",
       "label": "Security"
     },
     "predicate": "belongs_to",
     "object_ref": {
-      "urn": "urn:cerebro:writer:runtime:writer-jira-posture:workspace:writer",
+      "urn": "urn:cerebro:example:runtime:example-jira-posture:workspace:writer",
       "entity_type": "workspace",
       "label": "Writer Jira"
     },
@@ -25,7 +25,7 @@
   },
   {
     "subject_ref": {
-      "urn": "urn:cerebro:writer:runtime:writer-jira-posture:app:slack",
+      "urn": "urn:cerebro:example:runtime:example-jira-posture:app:slack",
       "entity_type": "app",
       "label": "Slack for Jira"
     },

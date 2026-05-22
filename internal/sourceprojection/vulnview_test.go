@@ -13,13 +13,13 @@ func TestProjectVulnViewVulnerabilityLinksAssetFindingAndCanonicalCVE(t *testing
 
 	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "vulnview-vuln-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "vulnview",
 		Kind:     "vulnview.vulnerability",
 		Attributes: map[string]string{
-			"external_id":      "scan-1:cve-2026-1234:https://app.writer.com/login",
-			"host":             "app.writer.com",
-			"matched_at":       "https://app.writer.com/login",
+			"external_id":      "scan-1:cve-2026-1234:https://app.example.com/login",
+			"host":             "app.example.com",
+			"matched_at":       "https://app.example.com/login",
 			"name":             "Test CVE",
 			"scan_id":          "scan-1",
 			"severity":         "high",
@@ -36,13 +36,13 @@ func TestProjectVulnViewVulnerabilityLinksAssetFindingAndCanonicalCVE(t *testing
 	if result.LinksProjected != 9 {
 		t.Fatalf("Project().LinksProjected = %d, want 9", result.LinksProjected)
 	}
-	assetURN := "urn:cerebro:writer:external_asset:app.writer.com"
-	hostURN := "urn:cerebro:writer:internet_host:app.writer.com"
-	domainURN := "urn:cerebro:writer:internet_domain:writer.com"
-	findingURN := "urn:cerebro:writer:vulnview_finding:scan-1:cve-2026-1234:https://app.writer.com/login"
-	scanURN := "urn:cerebro:writer:vulnview_scan:scan-1"
-	templateURN := "urn:cerebro:writer:vulnview_template:cve-2026-1234"
-	vulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-1234"
+	assetURN := "urn:cerebro:example:external_asset:app.example.com"
+	hostURN := "urn:cerebro:example:internet_host:app.example.com"
+	domainURN := "urn:cerebro:example:internet_domain:example.com"
+	findingURN := "urn:cerebro:example:vulnview_finding:scan-1:cve-2026-1234:https://app.example.com/login"
+	scanURN := "urn:cerebro:example:vulnview_scan:scan-1"
+	templateURN := "urn:cerebro:example:vulnview_template:cve-2026-1234"
+	vulnerabilityURN := "urn:cerebro:example:vulnerability:cve-2026-1234"
 	if entity := state.entities[assetURN]; entity == nil || entity.EntityType != "external.asset" {
 		t.Fatalf("external asset entity missing: %#v", entity)
 	}
@@ -81,12 +81,12 @@ func TestProjectVulnViewDNSAlertLinksAssetEvidence(t *testing.T) {
 
 	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "vulnview-dns-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "vulnview",
 		Kind:     "vulnview.dns_alert",
 		Attributes: map[string]string{
-			"asset_id":    "stale.writer.com",
-			"external_id": "stale.writer.com:dangling_cname:0",
+			"asset_id":    "stale.example.com",
+			"external_id": "stale.example.com:dangling_cname:0",
 			"name":        "dangling_cname",
 			"severity":    "high",
 		},
@@ -100,11 +100,11 @@ func TestProjectVulnViewDNSAlertLinksAssetEvidence(t *testing.T) {
 	if result.LinksProjected != 5 {
 		t.Fatalf("Project().LinksProjected = %d, want 5", result.LinksProjected)
 	}
-	assetURN := "urn:cerebro:writer:external_asset:stale.writer.com"
-	hostURN := "urn:cerebro:writer:internet_host:stale.writer.com"
-	domainURN := "urn:cerebro:writer:internet_domain:writer.com"
-	alertURN := "urn:cerebro:writer:vulnview_dns_alert:stale.writer.com:dangling_cname:0"
-	alertTypeURN := "urn:cerebro:writer:vulnview_dns_alert_type:dangling_cname"
+	assetURN := "urn:cerebro:example:external_asset:stale.example.com"
+	hostURN := "urn:cerebro:example:internet_host:stale.example.com"
+	domainURN := "urn:cerebro:example:internet_domain:example.com"
+	alertURN := "urn:cerebro:example:vulnview_dns_alert:stale.example.com:dangling_cname:0"
+	alertTypeURN := "urn:cerebro:example:vulnview_dns_alert_type:dangling_cname"
 	assertProjectedLink(t, state, assetURN, relationRepresents, hostURN)
 	assertProjectedLink(t, state, hostURN, relationBelongsTo, domainURN)
 	assertProjectedLink(t, state, assetURN, relationHasEvidence, alertURN)
@@ -118,12 +118,12 @@ func TestProjectVulnViewDNSAlertProjectsDNSRecordChain(t *testing.T) {
 
 	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "vulnview-dns-cname-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "vulnview",
 		Kind:     "vulnview.dns_alert",
 		Attributes: map[string]string{
-			"asset_id":     "stale.writer.com",
-			"external_id":  "stale.writer.com:dangling_cname:1",
+			"asset_id":     "stale.example.com",
+			"external_id":  "stale.example.com:dangling_cname:1",
 			"name":         "dangling_cname",
 			"record_type":  "CNAME",
 			"record_value": "target.herokudns.com.",
@@ -139,11 +139,11 @@ func TestProjectVulnViewDNSAlertProjectsDNSRecordChain(t *testing.T) {
 	if result.LinksProjected != 8 {
 		t.Fatalf("Project().LinksProjected = %d, want 8", result.LinksProjected)
 	}
-	hostURN := "urn:cerebro:writer:internet_host:stale.writer.com"
-	domainURN := "urn:cerebro:writer:internet_domain:writer.com"
-	targetHostURN := "urn:cerebro:writer:internet_host:target.herokudns.com"
-	targetDomainURN := "urn:cerebro:writer:internet_domain:herokudns.com"
-	recordURN := "urn:cerebro:writer:dns_record:stale.writer.com|CNAME|target.herokudns.com"
+	hostURN := "urn:cerebro:example:internet_host:stale.example.com"
+	domainURN := "urn:cerebro:example:internet_domain:example.com"
+	targetHostURN := "urn:cerebro:example:internet_host:target.herokudns.com"
+	targetDomainURN := "urn:cerebro:example:internet_domain:herokudns.com"
+	recordURN := "urn:cerebro:example:dns_record:stale.example.com|CNAME|target.herokudns.com"
 	if entity := state.entities[recordURN]; entity == nil || entity.EntityType != "dns.record" {
 		t.Fatalf("dns record entity missing: %#v", entity)
 	}
@@ -162,13 +162,13 @@ func TestProjectVulnViewAssetLinksSitesScansAndInternetHost(t *testing.T) {
 
 	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "vulnview-asset-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "vulnview",
 		Kind:     "vulnview.asset",
 		Attributes: map[string]string{
-			"asset_id":   "https://app.writer.com/login",
-			"scan_names": "dns-writer.com, port-scan",
-			"sites":      "writer.com",
+			"asset_id":   "https://app.example.com/login",
+			"scan_names": "dns-example.com, port-scan",
+			"sites":      "example.com",
 		},
 	})
 	if err != nil {
@@ -180,11 +180,11 @@ func TestProjectVulnViewAssetLinksSitesScansAndInternetHost(t *testing.T) {
 	if result.LinksProjected != 5 {
 		t.Fatalf("Project().LinksProjected = %d, want 5", result.LinksProjected)
 	}
-	assetURN := "urn:cerebro:writer:external_asset:app.writer.com"
-	hostURN := "urn:cerebro:writer:internet_host:app.writer.com"
-	domainURN := "urn:cerebro:writer:internet_domain:writer.com"
-	siteURN := "urn:cerebro:writer:vulnview_site:writer.com"
-	scanURN := "urn:cerebro:writer:vulnview_scan:dns-writer.com"
+	assetURN := "urn:cerebro:example:external_asset:app.example.com"
+	hostURN := "urn:cerebro:example:internet_host:app.example.com"
+	domainURN := "urn:cerebro:example:internet_domain:example.com"
+	siteURN := "urn:cerebro:example:vulnview_site:example.com"
+	scanURN := "urn:cerebro:example:vulnview_scan:dns-example.com"
 	if _, ok := state.entities[siteURN].Attributes["site_id"]; ok {
 		t.Fatal("context site entity should not project blank site_id")
 	}
@@ -203,16 +203,16 @@ func TestProjectVulnViewScanLinksSite(t *testing.T) {
 
 	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "vulnview-scan-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "vulnview",
 		Kind:     "vulnview.scan",
 		Attributes: map[string]string{
 			"family":           "scan",
-			"name":             "dns-writer.com",
+			"name":             "dns-example.com",
 			"scan_id":          "scan-1",
 			"scan_type":        "dns",
 			"site_id":          "site-1",
-			"site_name":        "writer.com",
+			"site_name":        "example.com",
 			"cloud_account_id": "123456789012",
 		},
 	})
@@ -225,11 +225,11 @@ func TestProjectVulnViewScanLinksSite(t *testing.T) {
 	if result.LinksProjected != 2 {
 		t.Fatalf("Project().LinksProjected = %d, want 2", result.LinksProjected)
 	}
-	scanURN := "urn:cerebro:writer:vulnview_scan:dns-writer.com"
-	siteURN := "urn:cerebro:writer:vulnview_site:writer.com"
-	accountURN := "urn:cerebro:writer:cloud_account:123456789012"
-	if got := state.entities[scanURN].Attributes["scan_name"]; got != "dns-writer.com" {
-		t.Fatalf("scan_name = %q, want dns-writer.com", got)
+	scanURN := "urn:cerebro:example:vulnview_scan:dns-example.com"
+	siteURN := "urn:cerebro:example:vulnview_site:example.com"
+	accountURN := "urn:cerebro:example:cloud_account:123456789012"
+	if got := state.entities[scanURN].Attributes["scan_name"]; got != "dns-example.com" {
+		t.Fatalf("scan_name = %q, want dns-example.com", got)
 	}
 	if got := state.entities[scanURN].Attributes["scan_id"]; got != "scan-1" {
 		t.Fatalf("scan_id = %q, want scan-1", got)

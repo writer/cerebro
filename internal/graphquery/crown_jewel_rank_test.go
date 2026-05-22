@@ -20,42 +20,42 @@ func TestGetCrownJewelRanksRequiresTenant(t *testing.T) {
 func TestGetCrownJewelRanksQueriesAndRanksPersonalizedSubgraph(t *testing.T) {
 	store := &awsExposureStubStore{responses: [][]ports.CypherRow{
 		{{Values: map[string]any{
-			"seed_urn":         "urn:cerebro:writer:aws_secret_store:prod-secrets",
+			"seed_urn":         "urn:cerebro:example:aws_secret_store:prod-secrets",
 			"seed_entity_type": "aws.secret_store",
 			"seed_label":       "prod-secrets",
 		}}},
 		{
 			{Values: crownJewelRankPathRow(
-				"urn:cerebro:writer:aws_secret_store:prod-secrets",
+				"urn:cerebro:example:aws_secret_store:prod-secrets",
 				[]GraphEntityRef{
-					{URN: "urn:cerebro:writer:aws_secret_store:prod-secrets", EntityType: "aws.secret_store", Label: "prod-secrets"},
-					{URN: "urn:cerebro:writer:aws_public_principal:public_internet", EntityType: "aws.public_principal", Label: "public_internet"},
+					{URN: "urn:cerebro:example:aws_secret_store:prod-secrets", EntityType: "aws.secret_store", Label: "prod-secrets"},
+					{URN: "urn:cerebro:example:aws_public_principal:public_internet", EntityType: "aws.public_principal", Label: "public_internet"},
 				},
 				[]string{"can_reach"},
 			)},
 			{Values: crownJewelRankPathRow(
-				"urn:cerebro:writer:aws_secret_store:prod-secrets",
+				"urn:cerebro:example:aws_secret_store:prod-secrets",
 				[]GraphEntityRef{
-					{URN: "urn:cerebro:writer:aws_secret_store:prod-secrets", EntityType: "aws.secret_store", Label: "prod-secrets"},
-					{URN: "urn:cerebro:writer:cloud_account:123456789012", EntityType: "cloud.account", Label: "123456789012"},
+					{URN: "urn:cerebro:example:aws_secret_store:prod-secrets", EntityType: "aws.secret_store", Label: "prod-secrets"},
+					{URN: "urn:cerebro:example:cloud_account:123456789012", EntityType: "cloud.account", Label: "123456789012"},
 				},
 				[]string{"belongs_to"},
 			)},
 			{Values: crownJewelRankPathRow(
-				"urn:cerebro:writer:aws_secret_store:prod-secrets",
+				"urn:cerebro:example:aws_secret_store:prod-secrets",
 				[]GraphEntityRef{
-					{URN: "urn:cerebro:writer:cloud_account:123456789012", EntityType: "cloud.account", Label: "123456789012"},
-					{URN: "urn:cerebro:writer:aws_secret_store:prod-secrets", EntityType: "aws.secret_store", Label: "prod-secrets"},
+					{URN: "urn:cerebro:example:cloud_account:123456789012", EntityType: "cloud.account", Label: "123456789012"},
+					{URN: "urn:cerebro:example:aws_secret_store:prod-secrets", EntityType: "aws.secret_store", Label: "prod-secrets"},
 				},
 				[]string{"belongs_to"},
 			)},
 			{Values: crownJewelRankPathRow(
-				"urn:cerebro:writer:aws_secret_store:prod-secrets",
+				"urn:cerebro:example:aws_secret_store:prod-secrets",
 				[]GraphEntityRef{
-					{URN: "urn:cerebro:writer:aws_secret_store:prod-secrets", EntityType: "aws.secret_store", Label: "prod-secrets"},
-					{URN: "urn:cerebro:writer:cloud_account:123456789012", EntityType: "cloud.account", Label: "123456789012"},
-					{URN: "urn:cerebro:writer:aws_iam_policy:AdministratorAccess", EntityType: "aws.iam_policy", Label: "AdministratorAccess"},
-					{URN: "urn:cerebro:writer:aws_iam_role:admin", EntityType: "aws.iam_role", Label: "admin"},
+					{URN: "urn:cerebro:example:aws_secret_store:prod-secrets", EntityType: "aws.secret_store", Label: "prod-secrets"},
+					{URN: "urn:cerebro:example:cloud_account:123456789012", EntityType: "cloud.account", Label: "123456789012"},
+					{URN: "urn:cerebro:example:aws_iam_policy:AdministratorAccess", EntityType: "aws.iam_policy", Label: "AdministratorAccess"},
+					{URN: "urn:cerebro:example:aws_iam_role:admin", EntityType: "aws.iam_role", Label: "admin"},
 				},
 				[]string{"belongs_to", "belongs_to", "can_perform"},
 			)},
@@ -63,7 +63,7 @@ func TestGetCrownJewelRanksQueriesAndRanksPersonalizedSubgraph(t *testing.T) {
 	}}
 
 	result, err := New(store).GetCrownJewelRanks(context.Background(), CrownJewelRankRequest{
-		TenantID:   "writer",
+		TenantID:   "example",
 		AccountID:  "123456789012",
 		EntityType: "aws.secret_store",
 		Depth:      3,
@@ -101,11 +101,11 @@ func TestGetCrownJewelRanksQueriesAndRanksPersonalizedSubgraph(t *testing.T) {
 	if result.Counts.Seeds != 1 || result.Counts.Relations != 4 || len(result.Rankings) == 0 {
 		t.Fatalf("result = %#v", result)
 	}
-	secret, ok := crownJewelRankByURN(result.Rankings, "urn:cerebro:writer:aws_secret_store:prod-secrets")
+	secret, ok := crownJewelRankByURN(result.Rankings, "urn:cerebro:example:aws_secret_store:prod-secrets")
 	if !ok || !secret.Seed || secret.Distance != 0 || !slices.Contains(secret.Relations, "can_reach") {
 		t.Fatalf("secret rank = %#v, ok=%t", secret, ok)
 	}
-	role, ok := crownJewelRankByURN(result.Rankings, "urn:cerebro:writer:aws_iam_role:admin")
+	role, ok := crownJewelRankByURN(result.Rankings, "urn:cerebro:example:aws_iam_role:admin")
 	if !ok || role.Score <= 0 || !slices.Contains(role.Relations, "can_perform") {
 		t.Fatalf("role rank = %#v, ok=%t", role, ok)
 	}

@@ -70,14 +70,14 @@ workflow-replay:
 		| python3 -m json.tool
 
 workflow-neighborhood:
-	@if [ -z "$(ROOT_URN)" ]; then echo "ROOT_URN is required, e.g. make workflow-neighborhood ROOT_URN=urn:cerebro:writer:decision:decision-1" >&2; exit 2; fi
+	@if [ -z "$(ROOT_URN)" ]; then echo "ROOT_URN is required, e.g. make workflow-neighborhood ROOT_URN=urn:cerebro:example:decision:decision-1" >&2; exit 2; fi
 	curl -sS --get "$(CEREBRO_BASE_URL)/graph/neighborhood" \
 		--data-urlencode "root_urn=$(ROOT_URN)" \
 		--data-urlencode "limit=$(WORKFLOW_NEIGHBORHOOD_LIMIT)" \
 		| python3 -m json.tool
 
 graph-rebuild-dryrun: build
-	@if [ -z "$(RUNTIME_ID)" ]; then echo "RUNTIME_ID is required, e.g. make graph-rebuild-dryrun RUNTIME_ID=writer-okta-audit" >&2; exit 2; fi
+	@if [ -z "$(RUNTIME_ID)" ]; then echo "RUNTIME_ID is required, e.g. make graph-rebuild-dryrun RUNTIME_ID=example-okta-audit" >&2; exit 2; fi
 	./bin/cerebro graph rebuild "$(RUNTIME_ID)" dry_run=true mode="$(GRAPH_REBUILD_MODE)" page_limit="$(GRAPH_REBUILD_PAGE_LIMIT)" event_limit="$(GRAPH_REBUILD_EVENT_LIMIT)" preview_limit="$(GRAPH_REBUILD_PREVIEW_LIMIT)"
 
 lint: lint-bootstrap

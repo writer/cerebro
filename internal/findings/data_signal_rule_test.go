@@ -9,10 +9,10 @@ import (
 
 func TestDataSensitiveAssetRiskRule(t *testing.T) {
 	rule := newDataSensitiveAssetRiskRule()
-	runtime := &cerebrov1.SourceRuntime{Id: "asset-runtime", SourceId: "asset", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "asset-runtime", SourceId: "asset", TenantId: "example"}
 	event := &cerebrov1.EventEnvelope{
 		Id:       "asset-crown-jewel",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "asset",
 		Kind:     "asset.crown_jewel",
 		Attributes: map[string]string{
@@ -33,9 +33,9 @@ func TestDataSensitiveAssetRiskRule(t *testing.T) {
 	if len(records) != 1 {
 		t.Fatalf("len(records) = %d, want 1", len(records))
 	}
-	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:writer:aws_secret_store:prod-secrets")
+	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:example:aws_secret_store:prod-secrets")
 
-	internal := &cerebrov1.EventEnvelope{Id: "asset-internal-sensitive", TenantId: "writer", SourceId: "asset", Kind: "asset.data_sensitivity", Attributes: map[string]string{"data_classification": "restricted", "resource_id": "internal-db", "resource_type": "database", "source_provider": "aws"}}
+	internal := &cerebrov1.EventEnvelope{Id: "asset-internal-sensitive", TenantId: "example", SourceId: "asset", Kind: "asset.data_sensitivity", Attributes: map[string]string{"data_classification": "restricted", "resource_id": "internal-db", "resource_type": "database", "source_provider": "aws"}}
 	records, err = rule.Evaluate(context.Background(), runtime, internal)
 	if err != nil {
 		t.Fatalf("Evaluate(internal) error = %v", err)
@@ -44,7 +44,7 @@ func TestDataSensitiveAssetRiskRule(t *testing.T) {
 		t.Fatalf("len(internal records) = %d, want 0", len(records))
 	}
 
-	unrestricted := &cerebrov1.EventEnvelope{Id: "asset-unrestricted", TenantId: "writer", SourceId: "asset", Kind: "asset.data_sensitivity", Attributes: map[string]string{"data_classification": "unrestricted", "internet_exposed": "true", "resource_id": "public-docs", "resource_type": "bucket", "source_provider": "aws"}}
+	unrestricted := &cerebrov1.EventEnvelope{Id: "asset-unrestricted", TenantId: "example", SourceId: "asset", Kind: "asset.data_sensitivity", Attributes: map[string]string{"data_classification": "unrestricted", "internet_exposed": "true", "resource_id": "public-docs", "resource_type": "bucket", "source_provider": "aws"}}
 	records, err = rule.Evaluate(context.Background(), runtime, unrestricted)
 	if err != nil {
 		t.Fatalf("Evaluate(unrestricted) error = %v", err)
@@ -53,7 +53,7 @@ func TestDataSensitiveAssetRiskRule(t *testing.T) {
 		t.Fatalf("len(unrestricted records) = %d, want 0", len(records))
 	}
 
-	notSensitive := &cerebrov1.EventEnvelope{Id: "asset-not-sensitive", TenantId: "writer", SourceId: "asset", Kind: "asset.data_sensitivity", Attributes: map[string]string{"data_classification": "not_sensitive", "public": "true", "resource_id": "public-docs", "resource_type": "bucket", "source_provider": "aws"}}
+	notSensitive := &cerebrov1.EventEnvelope{Id: "asset-not-sensitive", TenantId: "example", SourceId: "asset", Kind: "asset.data_sensitivity", Attributes: map[string]string{"data_classification": "not_sensitive", "public": "true", "resource_id": "public-docs", "resource_type": "bucket", "source_provider": "aws"}}
 	records, err = rule.Evaluate(context.Background(), runtime, notSensitive)
 	if err != nil {
 		t.Fatalf("Evaluate(notSensitive) error = %v", err)

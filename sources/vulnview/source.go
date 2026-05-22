@@ -48,6 +48,8 @@ const (
 	familyDNSAlert      = "dns_alert"
 )
 
+var errTokenURLMismatch = errors.New("vulnview token_url must match okta_issuer token endpoint")
+
 // Source reads VulnView attack-surface and vulnerability data.
 type Source struct {
 	spec                 *cerebrov1.SourceSpec
@@ -336,7 +338,7 @@ func validateTokenURL(cfg sourcecdk.Config, tokenURL string, allowLoopback bool)
 		return err
 	}
 	if tokenURL != expected {
-		return fmt.Errorf("vulnview token_url must match okta_issuer token endpoint")
+		return errTokenURLMismatch
 	}
 	return nil
 }

@@ -165,7 +165,7 @@ func TestCheckDiscoverAndReadGoogleWorkspace(t *testing.T) {
 	ctx := context.Background()
 
 	config := map[string]string{
-		"domain":   "writer.com",
+		"domain":   "example.com",
 		"family":   "user",
 		"token":    "test-token",
 		"per_page": "1",

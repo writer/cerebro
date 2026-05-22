@@ -26,13 +26,13 @@ func (s *cleanupStateStore) CleanupEndpointOwnerIDLinks(_ context.Context, reque
 func TestParseGraphIngestArgs(t *testing.T) {
 	options, err := parseGraphIngestArgs([]string{
 		"github",
-		"tenant_id=writer",
+		"tenant_id=example",
 		"page_limit=5",
 		"cursor=next-page",
 		"checkpoint=true",
 		"checkpoint_id=github-writer",
 		"family=audit",
-		"owner=WriterInternal",
+		"owner=ExampleInternal",
 	})
 	if err != nil {
 		t.Fatalf("parseGraphIngestArgs() error = %v", err)
@@ -40,8 +40,8 @@ func TestParseGraphIngestArgs(t *testing.T) {
 	if options.SourceID != "github" {
 		t.Fatalf("SourceID = %q, want github", options.SourceID)
 	}
-	if options.TenantID != "writer" {
-		t.Fatalf("TenantID = %q, want writer", options.TenantID)
+	if options.TenantID != "example" {
+		t.Fatalf("TenantID = %q, want example", options.TenantID)
 	}
 	if options.PageLimit != 5 {
 		t.Fatalf("PageLimit = %d, want 5", options.PageLimit)
@@ -52,7 +52,7 @@ func TestParseGraphIngestArgs(t *testing.T) {
 	if !options.CheckpointEnabled || options.CheckpointID != "github-writer" {
 		t.Fatalf("checkpoint options = enabled:%t id:%q, want enabled github-writer", options.CheckpointEnabled, options.CheckpointID)
 	}
-	if options.SourceConfig["family"] != "audit" || options.SourceConfig["owner"] != "WriterInternal" {
+	if options.SourceConfig["family"] != "audit" || options.SourceConfig["owner"] != "ExampleInternal" {
 		t.Fatalf("SourceConfig = %#v, want source config preserved", options.SourceConfig)
 	}
 }
@@ -76,9 +76,9 @@ func TestParseGraphIngestArgsRejectsInvalidPageLimit(t *testing.T) {
 
 func TestParseGraphIngestRuntimeArgs(t *testing.T) {
 	options, err := parseGraphIngestRuntimeArgs([]string{
-		"writer-github",
+		"example-github",
 		"page_limit=3",
-		"checkpoint_id=runtime-writer-github",
+		"checkpoint_id=runtime-example-github",
 		"reset_checkpoint=true",
 		"interval=30s",
 		"iterations=2",
@@ -86,13 +86,13 @@ func TestParseGraphIngestRuntimeArgs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseGraphIngestRuntimeArgs() error = %v", err)
 	}
-	if options.RuntimeID != "writer-github" {
-		t.Fatalf("RuntimeID = %q, want writer-github", options.RuntimeID)
+	if options.RuntimeID != "example-github" {
+		t.Fatalf("RuntimeID = %q, want example-github", options.RuntimeID)
 	}
 	if options.PageLimit != 3 {
 		t.Fatalf("PageLimit = %d, want 3", options.PageLimit)
 	}
-	if options.CheckpointID != "runtime-writer-github" || !options.ResetCheckpoint {
+	if options.CheckpointID != "runtime-example-github" || !options.ResetCheckpoint {
 		t.Fatalf("checkpoint options = id:%q reset:%t", options.CheckpointID, options.ResetCheckpoint)
 	}
 	if options.Interval != 30*time.Second || options.Iterations != 2 || options.RunForever {
@@ -101,7 +101,7 @@ func TestParseGraphIngestRuntimeArgs(t *testing.T) {
 }
 
 func TestParseGraphIngestRuntimeArgsRequiresIntervalForSchedule(t *testing.T) {
-	_, err := parseGraphIngestRuntimeArgs([]string{"writer-github", "iterations=2"})
+	_, err := parseGraphIngestRuntimeArgs([]string{"example-github", "iterations=2"})
 	if err == nil {
 		t.Fatal("parseGraphIngestRuntimeArgs() error = nil, want non-nil")
 	}
@@ -141,38 +141,38 @@ func TestPrepareGraphRuntimeSourceConfigDoesNotHydrateGitHubFromLocalCLI(t *test
 
 func TestParseGraphIngestRunsArgs(t *testing.T) {
 	options, err := parseGraphIngestRunsArgs([]string{
-		"runtime_id=writer-github",
+		"runtime_id=example-github",
 		"status=failed",
 		"limit=7",
 	})
 	if err != nil {
 		t.Fatalf("parseGraphIngestRunsArgs() error = %v", err)
 	}
-	if options.RuntimeID != "writer-github" || options.Status != "failed" || options.Limit != 7 {
+	if options.RuntimeID != "example-github" || options.Status != "failed" || options.Limit != 7 {
 		t.Fatalf("options = %#v, want runtime/status/limit", options)
 	}
 }
 
 func TestParseGraphEndpointOwnerIDCleanupArgsDefaultsDryRun(t *testing.T) {
 	options, err := parseGraphEndpointOwnerIDCleanupArgs([]string{
-		"tenant_id=writer",
+		"tenant_id=example",
 		"source_id=kolide",
-		"runtime_id=writer-kolide",
+		"runtime_id=example-kolide",
 		"limit=25",
 	})
 	if err != nil {
 		t.Fatalf("parseGraphEndpointOwnerIDCleanupArgs() error = %v", err)
 	}
-	if !options.DryRun || options.TenantID != "writer" || options.SourceID != "kolide" || options.RuntimeID != "writer-kolide" || options.Limit != 25 {
+	if !options.DryRun || options.TenantID != "example" || options.SourceID != "kolide" || options.RuntimeID != "example-kolide" || options.Limit != 25 {
 		t.Fatalf("options = %#v, want dry-run scoped cleanup", options)
 	}
 }
 
 func TestParseGraphEndpointOwnerIDCleanupArgsRequiresApplyForDeletes(t *testing.T) {
-	if _, err := parseGraphEndpointOwnerIDCleanupArgs([]string{"tenant_id=writer", "dry_run=false"}); err == nil {
+	if _, err := parseGraphEndpointOwnerIDCleanupArgs([]string{"tenant_id=example", "dry_run=false"}); err == nil {
 		t.Fatal("parseGraphEndpointOwnerIDCleanupArgs() error = nil, want apply requirement")
 	}
-	options, err := parseGraphEndpointOwnerIDCleanupArgs([]string{"tenant_id=writer", "apply=true"})
+	options, err := parseGraphEndpointOwnerIDCleanupArgs([]string{"tenant_id=example", "apply=true"})
 	if err != nil {
 		t.Fatalf("parseGraphEndpointOwnerIDCleanupArgs(apply) error = %v", err)
 	}
@@ -184,14 +184,14 @@ func TestParseGraphEndpointOwnerIDCleanupArgsRequiresApplyForDeletes(t *testing.
 func TestCleanupEndpointOwnerIDLinksAllowsStateStoreOnly(t *testing.T) {
 	state := &cleanupStateStore{result: ports.ProjectionLinkCleanupResult{LinksMatched: 3, LinksDeleted: 0}}
 	result, err := cleanupEndpointOwnerIDLinks(context.Background(), bootstrap.Dependencies{StateStore: state}, graphEndpointOwnerIDCleanupOptions{
-		TenantID: "writer",
+		TenantID: "example",
 		SourceID: "kolide",
 		DryRun:   true,
 	})
 	if err != nil {
 		t.Fatalf("cleanupEndpointOwnerIDLinks() error = %v", err)
 	}
-	if state.request.TenantID != "writer" || state.request.SourceID != "kolide" || !state.request.DryRun {
+	if state.request.TenantID != "example" || state.request.SourceID != "kolide" || !state.request.DryRun {
 		t.Fatalf("cleanup request = %#v, want scoped dry-run", state.request)
 	}
 	if result.StateStore.LinksMatched != 3 || result.GraphStore.LinksMatched != 0 {
@@ -202,9 +202,9 @@ func TestCleanupEndpointOwnerIDLinksAllowsStateStoreOnly(t *testing.T) {
 func TestGraphIngestCheckpointIDScrubsSensitiveConfig(t *testing.T) {
 	options := graphIngestOptions{
 		SourceID: "github",
-		TenantID: "writer",
+		TenantID: "example",
 		SourceConfig: map[string]string{
-			"owner": "WriterInternal",
+			"owner": "ExampleInternal",
 			"token": "secret-token-a",
 		},
 	}
@@ -217,11 +217,11 @@ func TestGraphIngestCheckpointIDScrubsSensitiveConfig(t *testing.T) {
 }
 
 func TestParseGraphNeighborhoodArgs(t *testing.T) {
-	rootURN, limit, err := parseGraphNeighborhoodArgs([]string{"root_urn=urn:cerebro:writer:github_user:alice", "limit=7"})
+	rootURN, limit, err := parseGraphNeighborhoodArgs([]string{"root_urn=urn:cerebro:example:github_user:alice", "limit=7"})
 	if err != nil {
 		t.Fatalf("parseGraphNeighborhoodArgs() error = %v", err)
 	}
-	if rootURN != "urn:cerebro:writer:github_user:alice" {
+	if rootURN != "urn:cerebro:example:github_user:alice" {
 		t.Fatalf("rootURN = %q, want alice urn", rootURN)
 	}
 	if limit != 7 {
@@ -247,11 +247,11 @@ func TestParseGraphRelationCountsArgsRequiresRelations(t *testing.T) {
 }
 
 func TestParseGraphImpactArgs(t *testing.T) {
-	request, err := parseGraphImpactArgs([]string{"cve-impact", "CVE-2026-4242", "tenant_id=writer", "limit=25", "depth=3"})
+	request, err := parseGraphImpactArgs([]string{"cve-impact", "CVE-2026-4242", "tenant_id=example", "limit=25", "depth=3"})
 	if err != nil {
 		t.Fatalf("parseGraphImpactArgs() error = %v", err)
 	}
-	if request.Kind != "vulnerability" || request.Identifier != "CVE-2026-4242" || request.TenantID != "writer" {
+	if request.Kind != "vulnerability" || request.Identifier != "CVE-2026-4242" || request.TenantID != "example" {
 		t.Fatalf("request = %#v, want vulnerability request", request)
 	}
 	if request.Limit != 25 || request.Depth != 3 {
@@ -261,8 +261,8 @@ func TestParseGraphImpactArgs(t *testing.T) {
 
 func TestParseGraphImpactArgsRejectsExplicitZeroBounds(t *testing.T) {
 	for _, args := range [][]string{
-		{"cve-impact", "CVE-2026-4242", "tenant_id=writer", "limit=0"},
-		{"cve-impact", "CVE-2026-4242", "tenant_id=writer", "depth=0"},
+		{"cve-impact", "CVE-2026-4242", "tenant_id=example", "limit=0"},
+		{"cve-impact", "CVE-2026-4242", "tenant_id=example", "depth=0"},
 	} {
 		if _, err := parseGraphImpactArgs(args); err == nil {
 			t.Fatalf("parseGraphImpactArgs(%v) error = nil, want non-nil", args)
@@ -277,11 +277,11 @@ func TestParseGraphImpactArgsRequiresTenantForPackage(t *testing.T) {
 }
 
 func TestParseGraphImpactArgsAllowsAssetURNWithoutTenant(t *testing.T) {
-	request, err := parseGraphImpactArgs([]string{"asset-vulns", "urn:cerebro:writer:sentinelone_agent:agent-1"})
+	request, err := parseGraphImpactArgs([]string{"asset-vulns", "urn:cerebro:example:sentinelone_agent:agent-1"})
 	if err != nil {
 		t.Fatalf("parseGraphImpactArgs() error = %v", err)
 	}
-	if request.Kind != "asset" || request.RootURN != "urn:cerebro:writer:sentinelone_agent:agent-1" {
+	if request.Kind != "asset" || request.RootURN != "urn:cerebro:example:sentinelone_agent:agent-1" {
 		t.Fatalf("request = %#v, want asset root request", request)
 	}
 }
@@ -304,7 +304,7 @@ func TestGraphIngestEventOverridesTenant(t *testing.T) {
 
 func TestParseGraphRebuildArgs(t *testing.T) {
 	runtimeID, mode, pageLimit, eventLimit, previewLimit, dryRun, err := parseGraphRebuildArgs([]string{
-		"writer-github",
+		"example-github",
 		"mode=replay",
 		"page_limit=3",
 		"event_limit=11",
@@ -314,8 +314,8 @@ func TestParseGraphRebuildArgs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseGraphRebuildArgs() error = %v", err)
 	}
-	if runtimeID != "writer-github" {
-		t.Fatalf("runtimeID = %q, want %q", runtimeID, "writer-github")
+	if runtimeID != "example-github" {
+		t.Fatalf("runtimeID = %q, want %q", runtimeID, "example-github")
 	}
 	if mode != "replay" {
 		t.Fatalf("mode = %q, want %q", mode, "replay")
@@ -335,7 +335,7 @@ func TestParseGraphRebuildArgs(t *testing.T) {
 }
 
 func TestParseGraphRebuildArgsRejectsUnknownKey(t *testing.T) {
-	_, _, _, _, _, _, err := parseGraphRebuildArgs([]string{"writer-github", "bogus=1"})
+	_, _, _, _, _, _, err := parseGraphRebuildArgs([]string{"example-github", "bogus=1"})
 	if err == nil {
 		t.Fatal("parseGraphRebuildArgs() error = nil, want usage error")
 	}

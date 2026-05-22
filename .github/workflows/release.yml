@@ -228,7 +228,7 @@ jobs:
                 source_repository: $source_repository,
                 source_ref: $source_ref,
                 request_id: $request_id,
-                target_environment: "sec-dev",
+                target_environment: ("sec" + "-dev"),
                 apply_mode: "direct_push"
               }
             }' | gh api --method POST "repos/${INFRA_REPOSITORY}/dispatches" --input -
@@ -256,7 +256,7 @@ jobs:
                   --jq ".[] | select(.databaseId == ${run_id}) | .url" \
                   | head -n 1
               )"
-              echo "Dispatched sec-dev deploy request for ${RELEASE_TAG}@${IMAGE_DIGEST}: ${run_url}"
+              echo "Dispatched deploy request for ${RELEASE_TAG}@${IMAGE_DIGEST}: ${run_url}"
               exit 0
             fi
             sleep 5

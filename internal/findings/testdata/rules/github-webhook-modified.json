@@ -1,14 +1,14 @@
 {
   "rule_id": "github-webhook-modified",
   "runtime": {
-    "id": "writer-github-audit",
+    "id": "example-github-audit",
     "source_id": "github",
-    "tenant_id": "writer"
+    "tenant_id": "example"
   },
   "events": [
     {
       "id": "github-audit-hook-created",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.audit",
       "occurred_at": "2026-04-27T01:00:00Z",
@@ -20,7 +20,7 @@
         "org": "writer",
         "resource_id": "writer/cerebro",
         "resource_type": "hook",
-        "source_runtime_id": "writer-github-audit",
+        "source_runtime_id": "example-github-audit",
         "action": "hook.create",
         "hook_id": "99",
         "repo": "writer/cerebro"
@@ -28,7 +28,7 @@
     },
     {
       "id": "github-audit-org-invite-hook-negative",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.audit",
       "occurred_at": "2026-04-27T01:00:00Z",
@@ -40,7 +40,7 @@
         "org": "writer",
         "resource_id": "writer/cerebro",
         "resource_type": "org",
-        "source_runtime_id": "writer-github-audit",
+        "source_runtime_id": "example-github-audit",
         "action": "org.invite_member",
         "repo": "writer/cerebro"
       }
@@ -58,7 +58,7 @@
       "attributes": {
         "action": "hook.create",
         "hook_id": "99",
-        "primary_resource_urn": "urn:cerebro:writer:github_repo:writer/cerebro",
+        "primary_resource_urn": "urn:cerebro:example:github_repo:writer/cerebro",
         "repo": "writer/cerebro",
         "rule_tags": "github,webhook,exfiltration,attack.t1020"
       }

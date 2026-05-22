@@ -13,10 +13,10 @@
     },
     "attributes": {
       "domain": "writer.okta.com",
-      "email": "admin@writer.com",
+      "email": "admin@example.com",
       "family": "group_membership",
       "group_id": "grp-security",
-      "member_email": "admin@writer.com",
+      "member_email": "admin@example.com",
       "member_id": "00u1",
       "member_type": "user",
       "member_user_id": "00u1",

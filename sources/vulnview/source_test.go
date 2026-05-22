@@ -3,6 +3,7 @@ package vulnview
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -26,14 +27,17 @@ func TestParseSettingsRejectsUnsafeBaseURL(t *testing.T) {
 func TestParseSettingsRejectsTokenURLOutsideOktaIssuer(t *testing.T) {
 	_, err := parseSettings(sourcecdk.NewConfig(map[string]string{
 		"tenant_id":     "writer",
-		"base_url":      "https://vulnview.writer-security.com/api",
-		"okta_issuer":   "https://writer.okta.com/oauth2/default",
+		"base_url":      "http://127.0.0.1/api",
+		"okta_issuer":   "https://issuer.example/oauth2/default",
 		"token_url":     "https://attacker.example/token",
 		"client_id":     "client",
 		"client_secret": "secret",
-	}), false)
+	}), true)
 	if err == nil {
 		t.Fatal("parseSettings() error = nil, want non-nil")
+	}
+	if !errors.Is(err, errTokenURLMismatch) {
+		t.Fatalf("parseSettings() error = %v, want token_url validation error", err)
 	}
 }
 
@@ -73,8 +77,8 @@ func TestReadVulnerabilitiesPaginatesAndMapsAttributes(t *testing.T) {
 					"templateId":  "cve-2026-1234",
 					"name":        "Test CVE",
 					"severity":    "high",
-					"host":        "app.writer.com",
-					"matchedAt":   "https://app.writer.com/login",
+					"host":        "app.example.com",
+					"matchedAt":   "https://app.example.com/login",
 					"scanId":      "scan-1",
 					"scanName":    "prod-web",
 					"siteId":      "site-1",
@@ -87,7 +91,7 @@ func TestReadVulnerabilitiesPaginatesAndMapsAttributes(t *testing.T) {
 					"templateId": "exposed-panel",
 					"name":       "Exposed Panel",
 					"severity":   "medium",
-					"host":       "admin.writer.com",
+					"host":       "admin.example.com",
 					"scanId":     "scan-2",
 				},
 			}})
@@ -129,7 +133,7 @@ func TestReadVulnerabilitiesPaginatesAndMapsAttributes(t *testing.T) {
 	if got, want := event.Attributes["template_id"], "cve-2026-1234"; got != want {
 		t.Fatalf("template_id = %q, want %q", got, want)
 	}
-	if got, want := event.Attributes["target_id"], "app.writer.com"; got != want {
+	if got, want := event.Attributes["target_id"], "app.example.com"; got != want {
 		t.Fatalf("target_id = %q, want %q", got, want)
 	}
 	second, err := source.Read(context.Background(), cfg, first.NextCursor)
@@ -164,7 +168,7 @@ func TestAccessTokenCacheScopesByClientSecret(t *testing.T) {
 				"templateId": "cve-2026-1234",
 				"name":       "Test CVE",
 				"severity":   "high",
-				"host":       "app.writer.com",
+				"host":       "app.example.com",
 			}}})
 		default:
 			http.NotFound(w, r)
@@ -208,7 +212,7 @@ func TestReadDNSAlertsPaginatesWithinAsset(t *testing.T) {
 				t.Fatalf("limit = %q, want 1", got)
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{
-				"asset": "staging.writer.com",
+				"asset": "staging.example.com",
 				"dnsAlerts": []map[string]any{
 					{"alert": "dangling-cname", "severity": "high"},
 					{"alert": "stale-a-record", "severity": "medium"},
@@ -271,13 +275,13 @@ func TestReadDNSAlertsBatchesAssetPages(t *testing.T) {
 				t.Fatalf("limit = %q, want 3", got)
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{
-				{"asset": "empty.writer.com", "dnsAlerts": []map[string]any{}},
+				{"asset": "empty.example.com", "dnsAlerts": []map[string]any{}},
 				{
-					"asset":     "staging.writer.com",
+					"asset":     "staging.example.com",
 					"dnsAlerts": []map[string]any{{"alert": "dangling-cname", "severity": "high"}},
 				},
 				{
-					"asset":     "prod.writer.com",
+					"asset":     "prod.example.com",
 					"dnsAlerts": []map[string]any{{"alert": "stale-a-record", "severity": "medium"}},
 				},
 			}})
@@ -324,13 +328,13 @@ func TestReadDNSAlertsReturnsCursorForEmptyAssetBatch(t *testing.T) {
 			cursor := r.URL.Query().Get("cursor")
 			if cursor == "" {
 				_ = json.NewEncoder(w).Encode(map[string]any{
-					"items":      []map[string]any{{"asset": "empty.writer.com", "dnsAlerts": []map[string]any{}}},
+					"items":      []map[string]any{{"asset": "empty.example.com", "dnsAlerts": []map[string]any{}}},
 					"nextCursor": "1",
 				})
 				return
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{
-				"asset":     "staging.writer.com",
+				"asset":     "staging.example.com",
 				"dnsAlerts": []map[string]any{{"alert": "dangling-cname", "severity": "high"}},
 			}}})
 		default:
@@ -370,8 +374,8 @@ func TestReadDNSAlertsReturnsCursorForEmptyAssetBatch(t *testing.T) {
 	if len(next.Events) != 1 {
 		t.Fatalf("len(next.Events) = %d, want 1", len(next.Events))
 	}
-	if got := next.Events[0].Attributes["asset_id"]; got != "staging.writer.com" {
-		t.Fatalf("asset_id = %q, want staging.writer.com", got)
+	if got := next.Events[0].Attributes["asset_id"]; got != "staging.example.com" {
+		t.Fatalf("asset_id = %q, want staging.example.com", got)
 	}
 	if assetRequests != 2 {
 		t.Fatalf("assetRequests = %d, want 2", assetRequests)
@@ -389,13 +393,13 @@ func TestDiscoverDNSAlertsAdvancesPastEmptyAssetBatch(t *testing.T) {
 			cursor := r.URL.Query().Get("cursor")
 			if cursor == "" {
 				_ = json.NewEncoder(w).Encode(map[string]any{
-					"items":      []map[string]any{{"asset": "empty.writer.com", "dnsAlerts": []map[string]any{}}},
+					"items":      []map[string]any{{"asset": "empty.example.com", "dnsAlerts": []map[string]any{}}},
 					"nextCursor": "1",
 				})
 				return
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{
-				"asset":     "staging.writer.com",
+				"asset":     "staging.example.com",
 				"dnsAlerts": []map[string]any{{"alert": "dangling-cname", "severity": "high"}},
 			}}})
 		default:

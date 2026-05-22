@@ -14,7 +14,7 @@ func TestProjectKolideDeviceLinksOwnerIdentity(t *testing.T) {
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "kolide-device-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "kolide",
 		Kind:     "kolide.device",
 		Attributes: map[string]string{
@@ -23,15 +23,15 @@ func TestProjectKolideDeviceLinksOwnerIdentity(t *testing.T) {
 			"hostname":          "mba-1.writer.test",
 			"serial_number":     "SERIAL1",
 			"compliance_status": "passing",
-			"owner_email":       "alice@writer.com",
+			"owner_email":       "alice@example.com",
 		},
 	})
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	deviceURN := "urn:cerebro:writer:kolide_device:device-1"
-	identityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
+	deviceURN := "urn:cerebro:example:kolide_device:device-1"
+	identityURN := "urn:cerebro:example:identity:email:alice@example.com"
 	if entity := state.entities[deviceURN]; entity == nil || entity.EntityType != "kolide.device" {
 		t.Fatalf("device entity missing: %#v", entity)
 	}
@@ -45,7 +45,7 @@ func TestProjectKolideDeviceLinksOwnerIDIdentity(t *testing.T) {
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "kolide-device-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "kolide",
 		Kind:     "kolide.device",
 		Attributes: map[string]string{
@@ -57,18 +57,18 @@ func TestProjectKolideDeviceLinksOwnerIDIdentity(t *testing.T) {
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	deviceURN := "urn:cerebro:writer:kolide_device:device-1"
-	identityURN := "urn:cerebro:writer:identity:login:user-1"
-	identifierURN := "urn:cerebro:writer:endpoint_identifier:kolide_user_id:user-1"
+	deviceURN := "urn:cerebro:example:kolide_device:device-1"
+	identityURN := "urn:cerebro:example:identity:login:user-1"
+	identifierURN := "urn:cerebro:example:endpoint_identifier:kolide_user_id:user-1"
 	assertProjectedLink(t, state, deviceURN, relationHasIdentifier, identifierURN)
 	assertProjectedLinkMissing(t, state, deviceURN, relationRepresentsIdentity, identityURN)
 	assertProjectedLinkMissing(t, state, deviceURN, relationOwnedBy, identityURN)
 }
 
 func TestProjectKolideDeviceOwnerIDRetractsStaleCanonicalOwnerLinks(t *testing.T) {
-	deviceURN := "urn:cerebro:writer:kolide_device:device-1"
-	identityURN := "urn:cerebro:writer:identity:login:user-1"
-	legacyIdentifierURN := "urn:cerebro:writer:identifier:login:user-1"
+	deviceURN := "urn:cerebro:example:kolide_device:device-1"
+	identityURN := "urn:cerebro:example:identity:login:user-1"
+	legacyIdentifierURN := "urn:cerebro:example:identifier:login:user-1"
 	staleLinks := []*ports.ProjectedLink{
 		projectedLink("writer", "kolide", deviceURN, identityURN, relationRepresentsIdentity, nil),
 		projectedLink("writer", "kolide", deviceURN, identityURN, relationOwnedBy, nil),
@@ -84,7 +84,7 @@ func TestProjectKolideDeviceOwnerIDRetractsStaleCanonicalOwnerLinks(t *testing.T
 
 	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "kolide-device-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "kolide",
 		Kind:     "kolide.device",
 		Attributes: map[string]string{
@@ -103,7 +103,7 @@ func TestProjectKolideDeviceOwnerIDRetractsStaleCanonicalOwnerLinks(t *testing.T
 		assertProjectedLinkMissing(t, recorder, deviceURN, relationOwnedBy, identityURN)
 		assertProjectedLinkMissing(t, recorder, deviceURN, relationHasIdentifier, legacyIdentifierURN)
 	}
-	assertProjectedLink(t, state, deviceURN, relationHasIdentifier, "urn:cerebro:writer:endpoint_identifier:kolide_user_id:user-1")
+	assertProjectedLink(t, state, deviceURN, relationHasIdentifier, "urn:cerebro:example:endpoint_identifier:kolide_user_id:user-1")
 }
 
 func TestProjectKolideSoftwareLinksDevicePackageAndCanonicalPackage(t *testing.T) {
@@ -112,7 +112,7 @@ func TestProjectKolideSoftwareLinksDevicePackageAndCanonicalPackage(t *testing.T
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "kolide-software-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "kolide",
 		Kind:     "kolide.software",
 		Attributes: map[string]string{
@@ -128,9 +128,9 @@ func TestProjectKolideSoftwareLinksDevicePackageAndCanonicalPackage(t *testing.T
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	deviceURN := "urn:cerebro:writer:kolide_device:device-1"
-	packageURN := "urn:cerebro:writer:package:macos:openssl"
-	canonicalPackageURN := "urn:cerebro:writer:package:canonical:pkg:generic/openssl"
+	deviceURN := "urn:cerebro:example:kolide_device:device-1"
+	packageURN := "urn:cerebro:example:package:macos:openssl"
+	canonicalPackageURN := "urn:cerebro:example:package:canonical:pkg:generic/openssl"
 	assertProjectedLink(t, state, deviceURN, relationContains, packageURN)
 	assertProjectedLink(t, state, packageURN, relationRepresents, canonicalPackageURN)
 }
@@ -141,7 +141,7 @@ func TestProjectKolideSoftwareDoesNotUseSoftwareExternalIDAsDevice(t *testing.T)
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "kolide-software-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "kolide",
 		Kind:     "kolide.software",
 		Attributes: map[string]string{
@@ -155,10 +155,10 @@ func TestProjectKolideSoftwareDoesNotUseSoftwareExternalIDAsDevice(t *testing.T)
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	if entity := state.entities["urn:cerebro:writer:kolide_device:software-row-1"]; entity != nil {
+	if entity := state.entities["urn:cerebro:example:kolide_device:software-row-1"]; entity != nil {
 		t.Fatalf("unexpected software external_id projected as device entity: %#v", entity)
 	}
-	if entity := state.entities["urn:cerebro:writer:package:macos:openssl"]; entity == nil {
+	if entity := state.entities["urn:cerebro:example:package:macos:openssl"]; entity == nil {
 		t.Fatal("expected package entity without endpoint correlation")
 	}
 }
@@ -169,7 +169,7 @@ func TestProjectKolideSoftwareSparseEndpointOmitsEmptyDeviceAttributes(t *testin
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "kolide-software-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "kolide",
 		Kind:     "kolide.software",
 		Attributes: map[string]string{
@@ -183,7 +183,7 @@ func TestProjectKolideSoftwareSparseEndpointOmitsEmptyDeviceAttributes(t *testin
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	deviceURN := "urn:cerebro:writer:kolide_device:device-1"
+	deviceURN := "urn:cerebro:example:kolide_device:device-1"
 	entity := state.entities[deviceURN]
 	if entity == nil {
 		t.Fatalf("device entity %q missing", deviceURN)
@@ -204,7 +204,7 @@ func TestProjectKolideCheckLinksComplianceEvidenceToDevice(t *testing.T) {
 
 	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:       "kolide-check-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "kolide",
 		Kind:     "kolide.check",
 		Attributes: map[string]string{
@@ -219,8 +219,8 @@ func TestProjectKolideCheckLinksComplianceEvidenceToDevice(t *testing.T) {
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	deviceURN := "urn:cerebro:writer:kolide_device:device-1"
-	checkURN := "urn:cerebro:writer:kolide_check:disk-encryption"
+	deviceURN := "urn:cerebro:example:kolide_device:device-1"
+	checkURN := "urn:cerebro:example:kolide_check:disk-encryption"
 	assertProjectedLink(t, state, deviceURN, relationHasEvidence, checkURN)
 	assertProjectedLink(t, state, checkURN, relationObservedOn, deviceURN)
 }
@@ -232,7 +232,7 @@ func TestProjectKandjiDeviceAndApplication(t *testing.T) {
 	events := []*cerebrov1.EventEnvelope{
 		{
 			Id:       "kandji-device-1",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "kandji",
 			Kind:     "kandji.device",
 			Attributes: map[string]string{
@@ -240,12 +240,12 @@ func TestProjectKandjiDeviceAndApplication(t *testing.T) {
 				"device_name":       "mba-1",
 				"serial_number":     "SERIAL1",
 				"filevault_enabled": "true",
-				"user_email":        "alice@writer.com",
+				"user_email":        "alice@example.com",
 			},
 		},
 		{
 			Id:       "kandji-app-1",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "kandji",
 			Kind:     "kandji.application",
 			Attributes: map[string]string{
@@ -262,10 +262,10 @@ func TestProjectKandjiDeviceAndApplication(t *testing.T) {
 		}
 	}
 
-	deviceURN := "urn:cerebro:writer:kandji_device:device-1"
-	identityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
-	packageURN := "urn:cerebro:writer:package:macos:Safari"
-	canonicalPackageURN := "urn:cerebro:writer:package:canonical:pkg:generic/Safari"
+	deviceURN := "urn:cerebro:example:kandji_device:device-1"
+	identityURN := "urn:cerebro:example:identity:email:alice@example.com"
+	packageURN := "urn:cerebro:example:package:macos:Safari"
+	canonicalPackageURN := "urn:cerebro:example:package:canonical:pkg:generic/Safari"
 	assertProjectedLink(t, state, deviceURN, relationOwnedBy, identityURN)
 	assertProjectedLink(t, state, deviceURN, relationContains, packageURN)
 	assertProjectedLink(t, state, packageURN, relationRepresents, canonicalPackageURN)

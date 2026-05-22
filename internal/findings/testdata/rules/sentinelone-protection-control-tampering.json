@@ -1,14 +1,14 @@
 {
   "rule_id": "sentinelone-protection-control-tampering",
   "runtime": {
-    "id": "writer-sentinelone-activity",
+    "id": "example-sentinelone-activity",
     "source_id": "sentinelone",
-    "tenant_id": "writer"
+    "tenant_id": "example"
   },
   "events": [
     {
       "id": "s1-activity-1",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "sentinelone",
       "kind": "sentinelone.activity",
       "occurred_at": "2026-05-09T07:10:00Z",
@@ -22,7 +22,7 @@
     },
     {
       "id": "s1-activity-2",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "sentinelone",
       "kind": "sentinelone.activity",
       "occurred_at": "2026-05-09T07:15:00Z",
@@ -45,8 +45,8 @@
       "event_ids": ["s1-activity-1"],
       "attributes": {
         "action": "protection_control_tampering",
-        "source_runtime_id": "writer-sentinelone-activity",
-        "primary_resource_urn": "urn:cerebro:writer:sentinelone_agent:agent-99",
+        "source_runtime_id": "example-sentinelone-activity",
+        "primary_resource_urn": "urn:cerebro:example:sentinelone_agent:agent-99",
         "activity_id": "activity-1",
         "agent_id": "agent-99"
       }

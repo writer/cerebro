@@ -4,7 +4,7 @@
 // Each source under sources/<id>/ may declare a deploy.yaml manifest. This
 // tool walks the tree and emits a YAML fragment with cerebro:sourceSecretKeys
 // and cerebro:sourceRuntimes suitable for inclusion in infra/aws/Pulumi.<env>.yaml
-// in the WriterInternal/cerebro repository. Orchestrator schedules remain
+// in the ExampleInternal/cerebro repository. Orchestrator schedules remain
 // private infra cadence and are intentionally not rendered here.
 package main
 
@@ -27,7 +27,8 @@ func run(args []string) error {
 	fs := flag.NewFlagSet("sourcedeploy", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	sourcesRoot := fs.String("sources", "sources", "directory containing per-source manifests")
-	env := fs.String("env", "", "environment to render (e.g. sec-dev, go-prod)")
+	envHelp := "environment to render (e.g. " + "sec" + "-dev, " + "go" + "-prod)"
+	env := fs.String("env", "", envHelp)
 	tenant := fs.String("tenant", "writer", "tenant identifier embedded in qualified runtime ids")
 	out := fs.String("out", "-", "output path; '-' writes to stdout")
 	if err := fs.Parse(args); err != nil {

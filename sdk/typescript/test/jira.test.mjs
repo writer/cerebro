@@ -57,18 +57,20 @@ test("admin sprawl findings account for posture admins", async () => {
 test("jira claims normalize duplicate admin identities", async () => {
   const { Client } = await import(path.join(srcDir, "index.js"));
   const { buildJiraWorkspaceClaims } = await import(path.join(srcDir, "jira.js"));
+  const tenantId = "writer";
   const integration = new Client({ baseUrl: "https://cerebro.example.com" }).integration({
-    tenantId: "writer",
-    runtimeId: "writer-jira",
+    tenantId,
+    runtimeId: "example-jira",
     integration: "jira",
   });
   const claims = buildJiraWorkspaceClaims(integration, {
     workspaceKey: "writer",
-    admins: [{ email: "ADMIN@writer.com" }, { email: "admin@writer.com" }],
+    admins: [{ email: "ADMIN@example.com" }, { email: "admin@example.com" }],
   });
 
   const administers = claims.filter((claim) => claim.predicate === "administers");
-  assert.deepEqual(new Set(administers.map((claim) => claim.subject_urn)), new Set(["urn:cerebro:writer:runtime:writer-jira:user:admin@writer.com"]));
+  const expectedAdminUrn = `urn:cerebro:${tenantId}:runtime:example-jira:user:admin@example.com`;
+  assert.deepEqual(new Set(administers.map((claim) => claim.subject_urn)), new Set([expectedAdminUrn]));
   const adminCount = claims.find((claim) => claim.predicate === "admin_count");
   assert.equal(adminCount.object_value, "1");
 });

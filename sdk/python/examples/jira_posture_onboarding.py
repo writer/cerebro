@@ -11,7 +11,7 @@ def main() -> None:
         base_url=base_url,
         api_key=optional_string(os.environ.get("CEREBRO_API_KEY")),
         tenant_id=optional_string(os.environ.get("CEREBRO_TENANT_ID")) or "writer",
-        runtime_id=optional_string(os.environ.get("CEREBRO_RUNTIME_ID")) or "writer-jira-posture",
+        runtime_id=optional_string(os.environ.get("CEREBRO_RUNTIME_ID")) or "example-jira-posture",
         posture=build_workspace_posture_from_env(),
     )
     print(json.dumps(result, indent=2, sort_keys=True))
@@ -32,12 +32,12 @@ def build_workspace_posture_from_env() -> JiraWorkspacePosture:
         "approved_marketplace_apps_only": env_bool("JIRA_APPROVED_MARKETPLACE_APPS_ONLY", True),
         "admins": [
             {
-                "email": optional_string(os.environ.get("JIRA_ADMIN_1_EMAIL")) or "alice@writer.com",
+                "email": optional_string(os.environ.get("JIRA_ADMIN_1_EMAIL")) or "alice@example.com",
                 "display_name": optional_string(os.environ.get("JIRA_ADMIN_1_NAME")) or "Alice",
                 "role": optional_string(os.environ.get("JIRA_ADMIN_1_ROLE")) or "site_admin",
             },
             {
-                "email": optional_string(os.environ.get("JIRA_ADMIN_2_EMAIL")) or "bob@writer.com",
+                "email": optional_string(os.environ.get("JIRA_ADMIN_2_EMAIL")) or "bob@example.com",
                 "display_name": optional_string(os.environ.get("JIRA_ADMIN_2_NAME")) or "Bob",
                 "role": optional_string(os.environ.get("JIRA_ADMIN_2_ROLE")) or "org_admin",
             },

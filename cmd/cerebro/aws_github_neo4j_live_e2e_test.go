@@ -35,7 +35,7 @@ func TestAWSGitHubNeo4jSharedIdentityLiveE2E(t *testing.T) {
 		"family":   "audit",
 		"include":  "all",
 		"order":    "desc",
-		"owner":    envOrDefault("CEREBRO_GITHUB_OWNER", "WriterInternal"),
+		"owner":    envOrDefault("CEREBRO_GITHUB_OWNER", "ExampleInternal"),
 		"per_page": "5",
 		"phrase":   requiredEnv(t, "CEREBRO_GITHUB_AUDIT_PHRASE"),
 	}, execGitHubLocalCLI{})

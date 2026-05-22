@@ -62,7 +62,7 @@ func TestReadPagesJSONAPIRecords(t *testing.T) {
 
 	source := newTestSource(t, server.URL+"/api/v1")
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
-		"tenant_id": "writer",
+		"tenant_id": "example",
 		"family":    "device",
 		"token":     "token-1",
 		"per_page":  "2",
@@ -80,8 +80,8 @@ func TestReadPagesJSONAPIRecords(t *testing.T) {
 	if event.Kind != "test.device" {
 		t.Fatalf("Kind = %q, want test.device", event.Kind)
 	}
-	if event.TenantId != "writer" {
-		t.Fatalf("TenantId = %q, want writer", event.TenantId)
+	if event.TenantId != "example" {
+		t.Fatalf("TenantId = %q, want example", event.TenantId)
 	}
 	if event.Attributes["external_id"] != "device-1" {
 		t.Fatalf("external_id = %q, want device-1", event.Attributes["external_id"])
@@ -94,7 +94,7 @@ func TestReadPagesJSONAPIRecords(t *testing.T) {
 	}
 
 	second, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
-		"tenant_id": "writer",
+		"tenant_id": "example",
 		"family":    "device",
 		"token":     "token-1",
 		"per_page":  "2",
@@ -127,7 +127,7 @@ func TestReadPreservesNextCursorForEmptyPage(t *testing.T) {
 
 	source := newTestSource(t, server.URL)
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
-		"tenant_id": "writer",
+		"tenant_id": "example",
 		"token":     "token-1",
 	}), nil)
 	if err != nil {
@@ -154,13 +154,13 @@ func TestDiscoverReturnsFamilyURNs(t *testing.T) {
 
 	source := newTestSource(t, server.URL)
 	urns, err := source.Discover(context.Background(), sourcecdk.NewConfig(map[string]string{
-		"tenant_id": "writer",
+		"tenant_id": "example",
 		"token":     "token-1",
 	}))
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
-	if len(urns) != 1 || urns[0].String() != "urn:cerebro:writer:test_device:device-1" {
+	if len(urns) != 1 || urns[0].String() != "urn:cerebro:example:test_device:device-1" {
 		t.Fatalf("URNs = %#v, want test device URN", urns)
 	}
 }
@@ -179,7 +179,7 @@ func TestReadDedupesRecordsByExternalID(t *testing.T) {
 
 	source := newTestSource(t, server.URL)
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
-		"tenant_id": "writer",
+		"tenant_id": "example",
 		"token":     "token-1",
 	}), nil)
 	if err != nil {
@@ -206,7 +206,7 @@ func TestReadKeepsSameRecordIDDifferentDevices(t *testing.T) {
 
 	source := newTestSource(t, server.URL)
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
-		"tenant_id": "writer",
+		"tenant_id": "example",
 		"token":     "token-1",
 	}), nil)
 	if err != nil {
@@ -228,7 +228,7 @@ func TestReadRejectsMalformedRecords(t *testing.T) {
 
 	source := newTestSource(t, server.URL)
 	if _, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
-		"tenant_id": "writer",
+		"tenant_id": "example",
 		"token":     "token-1",
 	}), nil); err == nil {
 		t.Fatal("Read() error = nil, want malformed record error")
@@ -239,14 +239,14 @@ func TestRejectsInvalidConfigBeforeNetwork(t *testing.T) {
 	source := newTestSource(t, "https://example.com")
 	for name, cfg := range map[string]sourcecdk.Config{
 		"missing tenant": sourcecdk.NewConfig(map[string]string{"token": "token-1"}),
-		"missing token":  sourcecdk.NewConfig(map[string]string{"tenant_id": "writer"}),
+		"missing token":  sourcecdk.NewConfig(map[string]string{"tenant_id": "example"}),
 		"bad family": sourcecdk.NewConfig(map[string]string{
-			"tenant_id": "writer",
+			"tenant_id": "example",
 			"token":     "token-1",
 			"family":    "unknown",
 		}),
 		"bad path": sourcecdk.NewConfig(map[string]string{
-			"tenant_id": "writer",
+			"tenant_id": "example",
 			"token":     "token-1",
 			"path":      "relative",
 		}),
@@ -263,7 +263,7 @@ func TestRejectsUnsafeBaseURL(t *testing.T) {
 	source := newTestSource(t, "https://example.com")
 	source.AllowLoopbackBaseURL = false
 	_, err := source.parseSettings(sourcecdk.NewConfig(map[string]string{
-		"tenant_id": "writer",
+		"tenant_id": "example",
 		"token":     "token-1",
 		"base_url":  "http://127.0.0.1:8080",
 	}))

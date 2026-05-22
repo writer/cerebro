@@ -1,14 +1,14 @@
 {
   "rule_id": "sentinelone-risky-exclusion",
   "runtime": {
-    "id": "writer-sentinelone-exclusion",
+    "id": "example-sentinelone-exclusion",
     "source_id": "sentinelone",
-    "tenant_id": "writer"
+    "tenant_id": "example"
   },
   "events": [
     {
       "id": "s1-exclusion-1",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "sentinelone",
       "kind": "sentinelone.exclusion",
       "occurred_at": "2026-05-09T06:30:00Z",
@@ -28,7 +28,7 @@
     },
     {
       "id": "s1-exclusion-2",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "sentinelone",
       "kind": "sentinelone.exclusion",
       "occurred_at": "2026-05-09T06:35:00Z",
@@ -52,8 +52,8 @@
       "event_ids": ["s1-exclusion-1"],
       "attributes": {
         "action": "risky_exclusion",
-        "source_runtime_id": "writer-sentinelone-exclusion",
-        "primary_resource_urn": "urn:cerebro:writer:sentinelone_exclusion:exclusion-1",
+        "source_runtime_id": "example-sentinelone-exclusion",
+        "primary_resource_urn": "urn:cerebro:example:sentinelone_exclusion:exclusion-1",
         "exclusion_id": "exclusion-1",
         "not_recommended": "true",
         "mode": "suppress"

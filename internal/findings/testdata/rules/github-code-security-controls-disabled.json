@@ -1,14 +1,14 @@
 {
   "rule_id": "github-code-security-controls-disabled",
   "runtime": {
-    "id": "writer-github-audit",
+    "id": "example-github-audit",
     "source_id": "github",
-    "tenant_id": "writer"
+    "tenant_id": "example"
   },
   "events": [
     {
       "id": "github-audit-code-security-disabled",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.audit",
       "occurred_at": "2026-04-27T01:00:00Z",
@@ -20,14 +20,14 @@
         "org": "writer",
         "resource_id": "writer/cerebro",
         "resource_type": "dependabot_alerts",
-        "source_runtime_id": "writer-github-audit",
+        "source_runtime_id": "example-github-audit",
         "action": "dependabot_alerts.disable",
         "repo": "writer/cerebro"
       }
     },
     {
       "id": "github-audit-code-security-enabled",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.audit",
       "occurred_at": "2026-04-27T01:00:00Z",
@@ -39,7 +39,7 @@
         "org": "writer",
         "resource_id": "writer/cerebro",
         "resource_type": "dependabot_alerts",
-        "source_runtime_id": "writer-github-audit",
+        "source_runtime_id": "example-github-audit",
         "action": "dependabot_alerts.enable",
         "repo": "writer/cerebro"
       }
@@ -56,7 +56,7 @@
       ],
       "attributes": {
         "action": "dependabot_alerts.disable",
-        "primary_resource_urn": "urn:cerebro:writer:github_repo:writer/cerebro",
+        "primary_resource_urn": "urn:cerebro:example:github_repo:writer/cerebro",
         "repo": "writer/cerebro",
         "rule_tags": "github,advanced-security,dependabot,secret-scanning,defense-evasion,supply-chain,attack.t1562"
       }

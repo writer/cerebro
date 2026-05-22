@@ -191,12 +191,12 @@ func TestConnectInternalErrorsHideDetails(t *testing.T) {
 func TestFindingEvaluationRunJSONSurfacesGraphDefaultsWithoutPresenceFields(t *testing.T) {
 	store := &stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+			"example-okta-audit": {Id: "example-okta-audit", SourceId: "okta", TenantId: "example"},
 		},
 		findingEvaluationRuns: map[string]*cerebrov1.FindingEvaluationRun{
 			"running-run": {
 				Id:            "running-run",
-				RuntimeId:     "writer-okta-audit",
+				RuntimeId:     "example-okta-audit",
 				RuleId:        "identity-okta-policy-rule-lifecycle-tampering",
 				Status:        "running",
 				StartedAt:     timestamppb.New(time.Date(2026, 5, 12, 12, 0, 0, 0, time.UTC)),
@@ -322,7 +322,7 @@ func TestResolveRuntimeSourceConfigAuthorizesResolvedTenantID(t *testing.T) {
 	t.Setenv("CEREBRO_SOURCE_AZURE_TENANT_ID", "other")
 	ctx := context.WithValue(context.Background(), authContextKey{}, authContext{
 		cfg:       config.AuthConfig{},
-		principal: authPrincipal{TenantID: "writer"},
+		principal: authPrincipal{TenantID: "example"},
 	})
 
 	_, err := resolveRuntimeSourceConfig(ctx, "azure", map[string]string{
@@ -337,7 +337,7 @@ func TestResolveRuntimeSourceConfigRejectsTenantScopedEnvSelectors(t *testing.T)
 	t.Setenv("CEREBRO_SOURCE_GITHUB_OWNER", "writer")
 	ctx := context.WithValue(context.Background(), authContextKey{}, authContext{
 		cfg:       config.AuthConfig{},
-		principal: authPrincipal{TenantID: "writer"},
+		principal: authPrincipal{TenantID: "example"},
 	})
 
 	_, err := resolveRuntimeSourceConfig(ctx, "github", map[string]string{
@@ -351,7 +351,7 @@ func TestResolveRuntimeSourceConfigRejectsTenantScopedEnvSelectors(t *testing.T)
 func TestResolveRuntimeSourceConfigAllowsTenantScopedLiteralEnvQuerySelectors(t *testing.T) {
 	ctx := context.WithValue(context.Background(), authContextKey{}, authContext{
 		cfg:       config.AuthConfig{},
-		principal: authPrincipal{TenantID: "writer"},
+		principal: authPrincipal{TenantID: "example"},
 	})
 
 	resolved, err := resolveRuntimeSourceConfig(ctx, "github", map[string]string{
@@ -386,11 +386,11 @@ func TestResolveRuntimeSourceConfigAllowsAdminEnvSelectors(t *testing.T) {
 func TestAuthorizeHTTPRequestTenantSkipsEnvTenantPlaceholders(t *testing.T) {
 	ctx := context.WithValue(context.Background(), authContextKey{}, authContext{
 		cfg:       config.AuthConfig{},
-		principal: authPrincipal{TenantID: "writer"},
+		principal: authPrincipal{TenantID: "example"},
 	})
 	err := authorizeHTTPRequestTenant(ctx, &cerebrov1.PutSourceRuntimeRequest{
 		Runtime: &cerebrov1.SourceRuntime{
-			TenantId: "writer",
+			TenantId: "example",
 			Config: map[string]string{
 				"tenant_id": "env:CEREBRO_SOURCE_AZURE_TENANT_ID",
 			},
@@ -409,19 +409,19 @@ func TestGraphIngestRuntimeUsesRuntimeConfigAuthorization(t *testing.T) {
 	}
 	ctx := context.WithValue(context.Background(), authContextKey{}, authContext{
 		cfg:       config.AuthConfig{},
-		principal: authPrincipal{TenantID: "writer"},
+		principal: authPrincipal{TenantID: "example"},
 	})
 	store := &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-		"writer-github": {
-			Id:       "writer-github",
+		"example-github": {
+			Id:       "example-github",
 			SourceId: "github",
-			TenantId: "writer",
+			TenantId: "example",
 			Config:   map[string]string{"owner": "env:CEREBRO_SOURCE_GITHUB_OWNER"},
 		},
 	}}
 	service := newGraphIngestService(Dependencies{StateStore: store, GraphStore: &stubGraphStore{}}, registry)
 
-	_, err = service.RunRuntime(ctx, graphingest.RuntimeRequest{RuntimeID: "writer-github"})
+	_, err = service.RunRuntime(ctx, graphingest.RuntimeRequest{RuntimeID: "example-github"})
 	if !errors.Is(err, errTenantForbidden) {
 		t.Fatalf("RunRuntime() error = %v, want tenant forbidden", err)
 	}
@@ -1703,7 +1703,7 @@ func TestAuthMiddlewareProtectsNonPublicRoutes(t *testing.T) {
 			APIKeys: []config.APIKey{{
 				Key:       "test-key",
 				Principal: "ci",
-				TenantID:  "writer",
+				TenantID:  "example",
 			}},
 		},
 	}
@@ -1751,15 +1751,15 @@ func TestAuthenticateRequestPrefersStructuredCredentialMetadata(t *testing.T) {
 		APIKeys: []config.APIKey{{
 			Key:       "shared-token",
 			Principal: "legacy",
-			TenantID:  "writer",
+			TenantID:  "example",
 		}},
 		APICredentials: []config.APICredential{{
 			Key:            "shared-token",
 			ID:             "legacy-api-key-1",
 			ClientID:       "legacy-api-key",
 			Principal:      "structured",
-			TenantID:       "writer",
-			AllowedTenants: []string{"writer"},
+			TenantID:       "example",
+			AllowedTenants: []string{"example"},
 		}},
 	}, req)
 	if !ok {
@@ -1770,7 +1770,7 @@ func TestAuthenticateRequestPrefersStructuredCredentialMetadata(t *testing.T) {
 		"credential_id": "legacy-api-key-1",
 		"client_id":     "legacy-api-key",
 		"principal":     "structured",
-		"tenant_id":     "writer",
+		"tenant_id":     "example",
 	} {
 		var got string
 		switch key {
@@ -1804,7 +1804,7 @@ func TestAuthMiddlewareEmitsAccessAuditEvents(t *testing.T) {
 			APIKeys: []config.APIKey{{
 				Key:       "test-key",
 				Principal: "ci",
-				TenantID:  "writer",
+				TenantID:  "example",
 			}},
 		},
 	}
@@ -1813,7 +1813,7 @@ func TestAuthMiddlewareEmitsAccessAuditEvents(t *testing.T) {
 	defer server.Close()
 
 	stderr := captureBootstrapStderr(t, func() {
-		req, err := http.NewRequest(http.MethodGet, server.URL+"/sources?tenant_id=writer&api_key=leaked", nil)
+		req, err := http.NewRequest(http.MethodGet, server.URL+"/sources?tenant_id=example&api_key=leaked", nil)
 		if err != nil {
 			t.Fatalf("NewRequest: %v", err)
 		}
@@ -1837,10 +1837,10 @@ func TestAuthMiddlewareEmitsAccessAuditEvents(t *testing.T) {
 		"status":              float64(http.StatusOK),
 		"method":              http.MethodGet,
 		"route":               "GET /sources",
-		"tenant_id":           "writer",
-		"effective_tenant_id": "writer",
-		"requested_tenant_id": "writer",
-		"principal_tenant_id": "writer",
+		"tenant_id":           "example",
+		"effective_tenant_id": "example",
+		"requested_tenant_id": "example",
+		"principal_tenant_id": "example",
 		"principal":           "ci",
 		"auth_mode":           "api_key",
 		"operation_family":    "source",
@@ -1875,7 +1875,7 @@ func TestAuthMiddlewareEmitsDeniedAccessAuditEvents(t *testing.T) {
 			APIKeys: []config.APIKey{{
 				Key:       "test-key",
 				Principal: "ci",
-				TenantID:  "writer",
+				TenantID:  "example",
 			}},
 		},
 	}
@@ -1884,7 +1884,7 @@ func TestAuthMiddlewareEmitsDeniedAccessAuditEvents(t *testing.T) {
 	defer server.Close()
 
 	unauthStderr := captureBootstrapStderr(t, func() {
-		resp, err := server.Client().Get(server.URL + "/sources?tenant_id=writer")
+		resp, err := server.Client().Get(server.URL + "/sources?tenant_id=example")
 		if err != nil {
 			t.Fatalf("GET /sources without auth error = %v", err)
 		}
@@ -1899,9 +1899,9 @@ func TestAuthMiddlewareEmitsDeniedAccessAuditEvents(t *testing.T) {
 		"outcome":             "denied",
 		"status":              float64(http.StatusUnauthorized),
 		"route":               "GET /sources",
-		"tenant_id":           "writer",
-		"effective_tenant_id": "writer",
-		"requested_tenant_id": "writer",
+		"tenant_id":           "example",
+		"effective_tenant_id": "example",
+		"requested_tenant_id": "example",
 		"operation_family":    "source",
 		"operation_type":      "read",
 		"denial_reason":       "unauthenticated",
@@ -1936,10 +1936,10 @@ func TestAuthMiddlewareEmitsDeniedAccessAuditEvents(t *testing.T) {
 		"status":              float64(http.StatusForbidden),
 		"route":               "GET /sources",
 		"tenant_id":           "other",
-		"effective_tenant_id": "writer",
+		"effective_tenant_id": "example",
 		"requested_tenant_id": "other",
 		"principal":           "ci",
-		"principal_tenant_id": "writer",
+		"principal_tenant_id": "example",
 		"auth_mode":           "api_key",
 		"operation_family":    "source",
 		"operation_type":      "read",
@@ -2097,16 +2097,16 @@ func TestScopedCosmoCredentialAllowsOnlyReadRoutes(t *testing.T) {
 			APICredentials: []config.APICredential{{
 				Key:       "scoped-token",
 				Principal: "cosmo-security",
-				TenantID:  "writer",
+				TenantID:  "example",
 				Scopes:    []string{scopeCosmoSecurityRead},
 			}},
 		},
 	}
 	graph := &stubGraphStore{
 		entities: map[string]*ports.ProjectedEntity{
-			"urn:cerebro:writer:asset:app": {
-				URN:        "urn:cerebro:writer:asset:app",
-				TenantID:   "writer",
+			"urn:cerebro:example:asset:app": {
+				URN:        "urn:cerebro:example:asset:app",
+				TenantID:   "example",
 				SourceID:   "aws",
 				EntityType: "asset",
 				Label:      "app",
@@ -2115,7 +2115,7 @@ func TestScopedCosmoCredentialAllowsOnlyReadRoutes(t *testing.T) {
 	}
 	store := &stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
+			"example-runtime": {Id: "example-runtime", SourceId: "github", TenantId: "example"},
 		},
 	}
 	registry, err := newFixtureRegistry()
@@ -2128,9 +2128,9 @@ func TestScopedCosmoCredentialAllowsOnlyReadRoutes(t *testing.T) {
 
 	for _, path := range []string{
 		"/sources",
-		"/platform/graph/neighborhood?root_urn=urn:cerebro:writer:asset:app",
-		"/platform/graph/crown-jewel-rankings?tenant_id=writer",
-		"/source-runtimes/writer-runtime",
+		"/platform/graph/neighborhood?root_urn=urn:cerebro:example:asset:app",
+		"/platform/graph/crown-jewel-rankings?tenant_id=example",
+		"/source-runtimes/example-runtime",
 	} {
 		req, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
 		if err != nil {
@@ -2165,7 +2165,7 @@ func TestScopedCosmoCredentialAllowsOnlyReadRoutes(t *testing.T) {
 		method string
 		path   string
 	}{
-		{method: http.MethodPost, path: "/source-runtimes/writer-runtime/sync"},
+		{method: http.MethodPost, path: "/source-runtimes/example-runtime/sync"},
 		{method: http.MethodGet, path: "/sources/github/read"},
 	} {
 		req, err := http.NewRequest(tt.method, server.URL+tt.path, nil)
@@ -2200,16 +2200,16 @@ func TestScopedCosmoCredentialEnforcesConnectProcedures(t *testing.T) {
 			APICredentials: []config.APICredential{{
 				Key:       "scoped-token",
 				Principal: "cosmo-security",
-				TenantID:  "writer",
+				TenantID:  "example",
 				Scopes:    []string{scopeCosmoSecurityRead},
 			}},
 		},
 	}
 	graph := &stubGraphStore{
 		entities: map[string]*ports.ProjectedEntity{
-			"urn:cerebro:writer:asset:app": {
-				URN:        "urn:cerebro:writer:asset:app",
-				TenantID:   "writer",
+			"urn:cerebro:example:asset:app": {
+				URN:        "urn:cerebro:example:asset:app",
+				TenantID:   "example",
 				SourceID:   "aws",
 				EntityType: "asset",
 				Label:      "app",
@@ -2218,7 +2218,7 @@ func TestScopedCosmoCredentialEnforcesConnectProcedures(t *testing.T) {
 	}
 	store := &stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
+			"example-runtime": {Id: "example-runtime", SourceId: "github", TenantId: "example"},
 		},
 	}
 	registry, err := newFixtureRegistry()
@@ -2251,14 +2251,14 @@ func TestScopedCosmoCredentialEnforcesConnectProcedures(t *testing.T) {
 	}
 
 	readReq := connect.NewRequest(&cerebrov1.GetEntityNeighborhoodRequest{
-		RootUrn: "urn:cerebro:writer:asset:app",
+		RootUrn: "urn:cerebro:example:asset:app",
 	})
 	readReq.Header().Set("Authorization", "Bearer scoped-token")
 	if _, err := client.GetEntityNeighborhood(context.Background(), readReq); err != nil {
 		t.Fatalf("GetEntityNeighborhood() error = %v", err)
 	}
 
-	syncReq := connect.NewRequest(&cerebrov1.SyncSourceRuntimeRequest{Id: "writer-runtime"})
+	syncReq := connect.NewRequest(&cerebrov1.SyncSourceRuntimeRequest{Id: "example-runtime"})
 	syncReq.Header().Set("Authorization", "Bearer scoped-token")
 	if _, err := client.SyncSourceRuntime(context.Background(), syncReq); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatalf("SyncSourceRuntime() code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
@@ -2274,14 +2274,14 @@ func TestScopedCosmoCredentialAuditsGRPCProcedureDenials(t *testing.T) {
 			APICredentials: []config.APICredential{{
 				Key:       "scoped-token",
 				Principal: "cosmo-security",
-				TenantID:  "writer",
+				TenantID:  "example",
 				Scopes:    []string{scopeCosmoSecurityRead},
 			}},
 		},
 	}
 	store := &stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
+			"example-runtime": {Id: "example-runtime", SourceId: "github", TenantId: "example"},
 		},
 	}
 	app := New(cfg, Dependencies{StateStore: store}, nil)
@@ -2291,7 +2291,7 @@ func TestScopedCosmoCredentialAuditsGRPCProcedureDenials(t *testing.T) {
 	defer server.Close()
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL, connect.WithGRPC())
-	syncReq := connect.NewRequest(&cerebrov1.SyncSourceRuntimeRequest{Id: "writer-runtime"})
+	syncReq := connect.NewRequest(&cerebrov1.SyncSourceRuntimeRequest{Id: "example-runtime"})
 	syncReq.Header().Set("Authorization", "Bearer scoped-token")
 	stderr := captureBootstrapStderr(t, func() {
 		if _, err := client.SyncSourceRuntime(context.Background(), syncReq); connect.CodeOf(err) != connect.CodePermissionDenied {
@@ -2308,7 +2308,7 @@ func TestScopedCosmoCredentialAuditsGRPCProcedureDenials(t *testing.T) {
 		"connect_code":        "permission_denied",
 		"denial_reason":       "authorization_failed",
 		"principal":           "cosmo-security",
-		"principal_tenant_id": "writer",
+		"principal_tenant_id": "example",
 		"auth_mode":           "api_credential",
 		"operation_family":    "source_runtime",
 		"operation_type":      "write",
@@ -2335,9 +2335,9 @@ func TestCapabilityTokenRequiresSecurityGroup(t *testing.T) {
 	}
 	graph := &stubGraphStore{
 		entities: map[string]*ports.ProjectedEntity{
-			"urn:cerebro:writer:asset:app": {
-				URN:        "urn:cerebro:writer:asset:app",
-				TenantID:   "writer",
+			"urn:cerebro:example:asset:app": {
+				URN:        "urn:cerebro:example:asset:app",
+				TenantID:   "example",
 				SourceID:   "aws",
 				EntityType: "asset",
 				Label:      "app",
@@ -2353,13 +2353,13 @@ func TestCapabilityTokenRequiresSecurityGroup(t *testing.T) {
 		"sub":           "slack:U123",
 		"exp":           time.Now().Add(time.Hour).Unix(),
 		"iat":           time.Now().Add(-time.Minute).Unix(),
-		"tenant_id":     "writer",
+		"tenant_id":     "example",
 		"scopes":        []string{scopeCosmoSecurityRead},
 		"groups":        []string{"security"},
 		"client_id":     "cosmo",
 		"credential_id": "cosmo-capability",
 	})
-	req, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:writer:asset:app", nil)
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:example:asset:app", nil)
 	if err != nil {
 		t.Fatalf("NewRequest authorized: %v", err)
 	}
@@ -2377,11 +2377,11 @@ func TestCapabilityTokenRequiresSecurityGroup(t *testing.T) {
 		"aud":       "cerebro-api",
 		"sub":       "slack:U999",
 		"exp":       time.Now().Add(time.Hour).Unix(),
-		"tenant_id": "writer",
+		"tenant_id": "example",
 		"scopes":    []string{scopeCosmoSecurityRead},
 		"groups":    []string{"engineering"},
 	})
-	forbiddenReq, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:writer:asset:app", nil)
+	forbiddenReq, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:example:asset:app", nil)
 	if err != nil {
 		t.Fatalf("NewRequest forbidden: %v", err)
 	}
@@ -2399,11 +2399,11 @@ func TestCapabilityTokenRequiresSecurityGroup(t *testing.T) {
 		"aud":       "cerebro-api",
 		"sub":       "slack:U123",
 		"exp":       time.Now().Add(-time.Minute).Unix(),
-		"tenant_id": "writer",
+		"tenant_id": "example",
 		"scopes":    []string{scopeCosmoSecurityRead},
 		"groups":    []string{"security"},
 	})
-	expiredReq, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:writer:asset:app", nil)
+	expiredReq, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:example:asset:app", nil)
 	if err != nil {
 		t.Fatalf("NewRequest expired: %v", err)
 	}
@@ -2421,10 +2421,10 @@ func TestCapabilityTokenRequiresSecurityGroup(t *testing.T) {
 		"aud":       "cerebro-api",
 		"sub":       "slack:U123",
 		"exp":       time.Now().Add(time.Hour).Unix(),
-		"tenant_id": "writer",
+		"tenant_id": "example",
 		"groups":    []string{"security"},
 	})
-	noScopesReq, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:writer:asset:app", nil)
+	noScopesReq, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:example:asset:app", nil)
 	if err != nil {
 		t.Fatalf("NewRequest no scopes: %v", err)
 	}
@@ -2465,8 +2465,8 @@ func TestAuthMiddlewareEnforcesTenantOnHTTPProtoBodies(t *testing.T) {
 		Auth: config.AuthConfig{
 			Enabled: true,
 			APIKeys: []config.APIKey{{
-				Key:      "writer-key",
-				TenantID: "writer",
+				Key:      "example-key",
+				TenantID: "example",
 			}},
 		},
 	}
@@ -2483,7 +2483,7 @@ func TestAuthMiddlewareEnforcesTenantOnHTTPProtoBodies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer writer-key")
+	req.Header.Set("Authorization", "Bearer example-key")
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.Client().Do(req)
 	if err != nil {
@@ -2502,8 +2502,8 @@ func TestAuthMiddlewareEnforcesTenantOnIDOnlyRoutes(t *testing.T) {
 		Auth: config.AuthConfig{
 			Enabled: true,
 			APIKeys: []config.APIKey{{
-				Key:      "writer-key",
-				TenantID: "writer",
+				Key:      "example-key",
+				TenantID: "example",
 			}},
 		},
 	}
@@ -2540,7 +2540,7 @@ func TestAuthMiddlewareEnforcesTenantOnIDOnlyRoutes(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewRequest: %v", err)
 			}
-			req.Header.Set("Authorization", "Bearer writer-key")
+			req.Header.Set("Authorization", "Bearer example-key")
 			resp, err := server.Client().Do(req)
 			if err != nil {
 				t.Fatalf("%s %s error = %v", tt.method, tt.path, err)
@@ -2554,12 +2554,12 @@ func TestAuthMiddlewareEnforcesTenantOnIDOnlyRoutes(t *testing.T) {
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	getRuntimeReq := connect.NewRequest(&cerebrov1.GetSourceRuntimeRequest{Id: "other-runtime"})
-	getRuntimeReq.Header().Set("Authorization", "Bearer writer-key")
+	getRuntimeReq.Header().Set("Authorization", "Bearer example-key")
 	if _, err := client.GetSourceRuntime(context.Background(), getRuntimeReq); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatalf("GetSourceRuntime(other) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
 	}
 	getFindingReq := connect.NewRequest(&cerebrov1.GetFindingRequest{Id: "other-finding"})
-	getFindingReq.Header().Set("Authorization", "Bearer writer-key")
+	getFindingReq.Header().Set("Authorization", "Bearer example-key")
 	if _, err := client.GetFinding(context.Background(), getFindingReq); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatalf("GetFinding(other) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
 	}
@@ -2572,14 +2572,14 @@ func TestListSourceRuntimesRequiresTenantFilterWithAllowedTenantAuth(t *testing.
 		Auth: config.AuthConfig{
 			Enabled:        true,
 			APIKeys:        []config.APIKey{{Key: "allowed-key"}},
-			AllowedTenants: []string{"writer"},
+			AllowedTenants: []string{"example"},
 		},
 	}
 	store := &stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
-			"other-runtime":  {Id: "other-runtime", SourceId: "github", TenantId: "other"},
-			"blank-runtime":  {Id: "blank-runtime", SourceId: "github"},
+			"example-runtime": {Id: "example-runtime", SourceId: "github", TenantId: "example"},
+			"other-runtime":   {Id: "other-runtime", SourceId: "github", TenantId: "other"},
+			"blank-runtime":   {Id: "blank-runtime", SourceId: "github"},
 		},
 	}
 	app := New(cfg, Dependencies{StateStore: store}, nil)
@@ -2600,7 +2600,7 @@ func TestListSourceRuntimesRequiresTenantFilterWithAllowedTenantAuth(t *testing.
 		t.Fatalf("GET /source-runtimes without tenant status = %d, want %d", resp.StatusCode, http.StatusForbidden)
 	}
 
-	scopedReq, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes?tenant_id=writer", nil)
+	scopedReq, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes?tenant_id=example", nil)
 	if err != nil {
 		t.Fatalf("NewRequest with tenant: %v", err)
 	}
@@ -2635,15 +2635,15 @@ func TestListSourceRuntimesRequiresTenantFilterWithPrincipalAllowedTenants(t *te
 			APICredentials: []config.APICredential{{
 				Key:            "allowed-token",
 				Principal:      "cosmo-security",
-				AllowedTenants: []string{"writer"},
+				AllowedTenants: []string{"example"},
 			}},
 		},
 	}
 	store := &stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
-			"other-runtime":  {Id: "other-runtime", SourceId: "github", TenantId: "other"},
-			"blank-runtime":  {Id: "blank-runtime", SourceId: "github"},
+			"example-runtime": {Id: "example-runtime", SourceId: "github", TenantId: "example"},
+			"other-runtime":   {Id: "other-runtime", SourceId: "github", TenantId: "other"},
+			"blank-runtime":   {Id: "blank-runtime", SourceId: "github"},
 		},
 	}
 	app := New(cfg, Dependencies{StateStore: store}, nil)
@@ -2664,7 +2664,7 @@ func TestListSourceRuntimesRequiresTenantFilterWithPrincipalAllowedTenants(t *te
 		t.Fatalf("GET /source-runtimes without tenant status = %d, want %d", resp.StatusCode, http.StatusForbidden)
 	}
 
-	scopedReq, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes?tenant_id=writer", nil)
+	scopedReq, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes?tenant_id=example", nil)
 	if err != nil {
 		t.Fatalf("NewRequest with tenant: %v", err)
 	}
@@ -2688,8 +2688,8 @@ func TestListSourceRuntimesRequiresTenantFilterWithPrincipalAllowedTenants(t *te
 	if got := len(payload["runtimes"]); got != 1 {
 		t.Fatalf("listed runtime count = %d, want 1", got)
 	}
-	if got := payload["runtimes"][0]["id"]; got != "writer-runtime" {
-		t.Fatalf("listed runtime id = %v, want writer-runtime", got)
+	if got := payload["runtimes"][0]["id"]; got != "example-runtime" {
+		t.Fatalf("listed runtime id = %v, want example-runtime", got)
 	}
 
 	blankReq, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes?runtime_id=blank-runtime", nil)
@@ -2725,21 +2725,21 @@ func TestListSourceRuntimesAuthorizesRuntimeIDWithAllowedTenantAuth(t *testing.T
 		Auth: config.AuthConfig{
 			Enabled:        true,
 			APIKeys:        []config.APIKey{{Key: "allowed-key"}},
-			AllowedTenants: []string{"writer"},
+			AllowedTenants: []string{"example"},
 		},
 	}
 	store := &stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
-			"other-runtime":  {Id: "other-runtime", SourceId: "github", TenantId: "other"},
-			"blank-runtime":  {Id: "blank-runtime", SourceId: "github"},
+			"example-runtime": {Id: "example-runtime", SourceId: "github", TenantId: "example"},
+			"other-runtime":   {Id: "other-runtime", SourceId: "github", TenantId: "other"},
+			"blank-runtime":   {Id: "blank-runtime", SourceId: "github"},
 		},
 	}
 	app := New(cfg, Dependencies{StateStore: store}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	req, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes?runtime_id=writer-runtime", nil)
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes?runtime_id=example-runtime", nil)
 	if err != nil {
 		t.Fatalf("NewRequest with runtime_id: %v", err)
 	}
@@ -2763,8 +2763,8 @@ func TestListSourceRuntimesAuthorizesRuntimeIDWithAllowedTenantAuth(t *testing.T
 	if got := len(payload["runtimes"]); got != 1 {
 		t.Fatalf("listed runtime count = %d, want 1", got)
 	}
-	if got := payload["runtimes"][0]["id"]; got != "writer-runtime" {
-		t.Fatalf("listed runtime id = %v, want writer-runtime", got)
+	if got := payload["runtimes"][0]["id"]; got != "example-runtime" {
+		t.Fatalf("listed runtime id = %v, want example-runtime", got)
 	}
 
 	blankReq, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes?runtime_id=blank-runtime", nil)
@@ -2853,13 +2853,13 @@ func TestListSourceRuntimesUsesTenantHeaderWithAllowedTenantAuth(t *testing.T) {
 		Auth: config.AuthConfig{
 			Enabled:        true,
 			APIKeys:        []config.APIKey{{Key: "allowed-key"}},
-			AllowedTenants: []string{"writer"},
+			AllowedTenants: []string{"example"},
 		},
 	}
 	store := &stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
-			"other-runtime":  {Id: "other-runtime", SourceId: "github", TenantId: "other"},
+			"example-runtime": {Id: "example-runtime", SourceId: "github", TenantId: "example"},
+			"other-runtime":   {Id: "other-runtime", SourceId: "github", TenantId: "other"},
 		},
 	}
 	app := New(cfg, Dependencies{StateStore: store}, nil)
@@ -2871,7 +2871,7 @@ func TestListSourceRuntimesUsesTenantHeaderWithAllowedTenantAuth(t *testing.T) {
 		t.Fatalf("NewRequest with tenant header: %v", err)
 	}
 	req.Header.Set("Authorization", "Bearer allowed-key")
-	req.Header.Set("X-Cerebro-Tenant", "writer")
+	req.Header.Set("X-Cerebro-Tenant", "example")
 	resp, err := server.Client().Do(req)
 	if err != nil {
 		t.Fatalf("GET /source-runtimes with tenant header error = %v", err)
@@ -2904,8 +2904,8 @@ func TestListSourceRuntimesAllowsUnscopedAdminKeyWithoutTenantFilter(t *testing.
 	}
 	store := &stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
-			"other-runtime":  {Id: "other-runtime", SourceId: "github", TenantId: "other"},
+			"example-runtime": {Id: "example-runtime", SourceId: "github", TenantId: "example"},
+			"other-runtime":   {Id: "other-runtime", SourceId: "github", TenantId: "other"},
 		},
 	}
 	app := New(cfg, Dependencies{StateStore: store}, nil)
@@ -2955,7 +2955,7 @@ func TestListSourceRuntimesInvalidLimitReturnsBadRequest(t *testing.T) {
 
 func TestRedactSourceRuntimeDropsInternalProgressHash(t *testing.T) {
 	runtime := redactSourceRuntime(&cerebrov1.SourceRuntime{
-		Id: "writer-github",
+		Id: "example-github",
 		Config: map[string]string{
 			"token":                            "secret-token",
 			sourceRuntimeProgressConfigHashKey: "internal-hash",
@@ -2980,8 +2980,8 @@ func TestAuthMiddlewareRejectsBlankTenantSourceRuntimesForScopedKeys(t *testing.
 		Auth: config.AuthConfig{
 			Enabled: true,
 			APIKeys: []config.APIKey{{
-				Key:      "writer-key",
-				TenantID: "writer",
+				Key:      "example-key",
+				TenantID: "example",
 			}},
 		},
 	}
@@ -3001,7 +3001,7 @@ func TestAuthMiddlewareRejectsBlankTenantSourceRuntimesForScopedKeys(t *testing.
 	if err != nil {
 		t.Fatalf("NewRequest put: %v", err)
 	}
-	putReq.Header.Set("Authorization", "Bearer writer-key")
+	putReq.Header.Set("Authorization", "Bearer example-key")
 	putReq.Header.Set("Content-Type", "application/json")
 	putResp, err := server.Client().Do(putReq)
 	if err != nil {
@@ -3016,7 +3016,7 @@ func TestAuthMiddlewareRejectsBlankTenantSourceRuntimesForScopedKeys(t *testing.
 	if err != nil {
 		t.Fatalf("NewRequest get: %v", err)
 	}
-	getReq.Header.Set("Authorization", "Bearer writer-key")
+	getReq.Header.Set("Authorization", "Bearer example-key")
 	getResp, err := server.Client().Do(getReq)
 	if err != nil {
 		t.Fatalf("GET /source-runtimes blank tenant error = %v", err)
@@ -3030,12 +3030,12 @@ func TestAuthMiddlewareRejectsBlankTenantSourceRuntimesForScopedKeys(t *testing.
 	putRuntimeReq := connect.NewRequest(&cerebrov1.PutSourceRuntimeRequest{
 		Runtime: &cerebrov1.SourceRuntime{Id: "connect-new-runtime", SourceId: "github"},
 	})
-	putRuntimeReq.Header().Set("Authorization", "Bearer writer-key")
+	putRuntimeReq.Header().Set("Authorization", "Bearer example-key")
 	if _, err := client.PutSourceRuntime(context.Background(), putRuntimeReq); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatalf("PutSourceRuntime(blank tenant) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
 	}
 	getRuntimeReq := connect.NewRequest(&cerebrov1.GetSourceRuntimeRequest{Id: "blank-runtime"})
-	getRuntimeReq.Header().Set("Authorization", "Bearer writer-key")
+	getRuntimeReq.Header().Set("Authorization", "Bearer example-key")
 	if _, err := client.GetSourceRuntime(context.Background(), getRuntimeReq); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatalf("GetSourceRuntime(blank tenant) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
 	}
@@ -3048,8 +3048,8 @@ func TestAuthMiddlewareEnforcesTenantOnMapBackedProtoFields(t *testing.T) {
 		Auth: config.AuthConfig{
 			Enabled: true,
 			APIKeys: []config.APIKey{{
-				Key:      "writer-key",
-				TenantID: "writer",
+				Key:      "example-key",
+				TenantID: "example",
 			}},
 		},
 	}
@@ -3067,7 +3067,7 @@ func TestAuthMiddlewareEnforcesTenantOnMapBackedProtoFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer writer-key")
+	req.Header.Set("Authorization", "Bearer example-key")
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := server.Client().Do(req)
 	if err != nil {
@@ -3083,14 +3083,14 @@ func TestAuthMiddlewareEnforcesTenantOnMapBackedProtoFields(t *testing.T) {
 	allowedCfg.Auth.APICredentials = []config.APICredential{{
 		Key:            "allowed-key",
 		Principal:      "cosmo-security",
-		AllowedTenants: []string{"writer"},
+		AllowedTenants: []string{"example"},
 	}}
 	allowedApp := New(allowedCfg, Dependencies{}, nil)
 	allowedServer := httptest.NewServer(allowedApp.Handler())
 	defer allowedServer.Close()
 
 	allowedBody, err := protojson.Marshal(&cerebrov1.RunReportRequest{
-		Parameters: map[string]string{"tenant_id": "writer"},
+		Parameters: map[string]string{"tenant_id": "example"},
 	})
 	if err != nil {
 		t.Fatalf("marshal allowed report request: %v", err)
@@ -3114,7 +3114,7 @@ func TestAuthMiddlewareEnforcesTenantOnMapBackedProtoFields(t *testing.T) {
 	runReq := connect.NewRequest(&cerebrov1.RunReportRequest{
 		Parameters: map[string]string{"tenant_id": "other"},
 	})
-	runReq.Header().Set("Authorization", "Bearer writer-key")
+	runReq.Header().Set("Authorization", "Bearer example-key")
 	if _, err := client.RunReport(context.Background(), runReq); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatalf("RunReport(other tenant) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
 	}
@@ -3127,8 +3127,8 @@ func TestAuthMiddlewareEnforcesTenantOnReportRunLookups(t *testing.T) {
 		Auth: config.AuthConfig{
 			Enabled: true,
 			APIKeys: []config.APIKey{{
-				Key:      "writer-key",
-				TenantID: "writer",
+				Key:      "example-key",
+				TenantID: "example",
 			}},
 		},
 	}
@@ -3150,7 +3150,7 @@ func TestAuthMiddlewareEnforcesTenantOnReportRunLookups(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer writer-key")
+	req.Header.Set("Authorization", "Bearer example-key")
 	resp, err := server.Client().Do(req)
 	if err != nil {
 		t.Fatalf("GET /report-runs/other-report-run error = %v", err)
@@ -3162,7 +3162,7 @@ func TestAuthMiddlewareEnforcesTenantOnReportRunLookups(t *testing.T) {
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	getReq := connect.NewRequest(&cerebrov1.GetReportRunRequest{Id: "other-report-run"})
-	getReq.Header().Set("Authorization", "Bearer writer-key")
+	getReq.Header().Set("Authorization", "Bearer example-key")
 	if _, err := client.GetReportRun(context.Background(), getReq); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatalf("GetReportRun(other tenant) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
 	}
@@ -3175,8 +3175,8 @@ func TestAuthMiddlewareEnforcesTenantOnGraphRootURN(t *testing.T) {
 		Auth: config.AuthConfig{
 			Enabled: true,
 			APIKeys: []config.APIKey{{
-				Key:      "writer-key",
-				TenantID: "writer",
+				Key:      "example-key",
+				TenantID: "example",
 			}},
 		},
 	}
@@ -3188,7 +3188,7 @@ func TestAuthMiddlewareEnforcesTenantOnGraphRootURN(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer writer-key")
+	req.Header.Set("Authorization", "Bearer example-key")
 	resp, err := server.Client().Do(req)
 	if err != nil {
 		t.Fatalf("GET /platform/graph/neighborhood error = %v", err)
@@ -3202,19 +3202,19 @@ func TestAuthMiddlewareEnforcesTenantOnGraphRootURN(t *testing.T) {
 	neighborhoodReq := connect.NewRequest(&cerebrov1.GetEntityNeighborhoodRequest{
 		RootUrn: "urn:cerebro:other:github_user:alice",
 	})
-	neighborhoodReq.Header().Set("Authorization", "Bearer writer-key")
+	neighborhoodReq.Header().Set("Authorization", "Bearer example-key")
 	if _, err := client.GetEntityNeighborhood(context.Background(), neighborhoodReq); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatalf("GetEntityNeighborhood(other tenant) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
 	}
 }
 
 func TestGraphPackageImpactEndpointReturnsCanonicalPackageRoot(t *testing.T) {
-	rootURN := "urn:cerebro:writer:package:canonical:pkg:npm/foo"
+	rootURN := "urn:cerebro:example:package:canonical:pkg:npm/foo"
 	graph := &stubGraphStore{
 		entities: map[string]*ports.ProjectedEntity{
 			rootURN: {
 				URN:        rootURN,
-				TenantID:   "writer",
+				TenantID:   "example",
 				SourceID:   "github",
 				EntityType: "package",
 				Label:      "foo",
@@ -3225,7 +3225,7 @@ func TestGraphPackageImpactEndpointReturnsCanonicalPackageRoot(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	resp, err := server.Client().Get(server.URL + "/platform/graph/impact/package?tenant_id=writer&package=pkg:npm/foo@1.2.3")
+	resp, err := server.Client().Get(server.URL + "/platform/graph/impact/package?tenant_id=example&package=pkg:npm/foo@1.2.3")
 	if err != nil {
 		t.Fatalf("GET /platform/graph/impact/package error = %v", err)
 	}
@@ -3250,8 +3250,8 @@ func TestGraphImpactEndpointRejectsExplicitZeroBounds(t *testing.T) {
 	defer server.Close()
 
 	for _, query := range []string{
-		"tenant_id=writer&package=pkg:npm/foo&limit=0",
-		"tenant_id=writer&package=pkg:npm/foo&depth=0",
+		"tenant_id=example&package=pkg:npm/foo&limit=0",
+		"tenant_id=example&package=pkg:npm/foo&depth=0",
 	} {
 		resp, err := server.Client().Get(server.URL + "/platform/graph/impact/package?" + query)
 		if err != nil {
@@ -3277,13 +3277,13 @@ func TestGraphAWSPublicEndpointInsightsEndpoint(t *testing.T) {
 		}}},
 		nil,
 		{{Values: map[string]any{
-			"aws_urn":               "urn:cerebro:writer:aws_application_load_balancer:alb",
+			"aws_urn":               "urn:cerebro:example:aws_application_load_balancer:alb",
 			"aws_entity_type":       "aws.application.load.balancer",
 			"aws_label":             "alb",
-			"indicator_urn":         "urn:cerebro:writer:internet_host:app.example.com",
+			"indicator_urn":         "urn:cerebro:example:internet_host:app.example.com",
 			"indicator_entity_type": "internet.host",
 			"indicator_label":       "app.example.com",
-			"vulnview_urn":          "urn:cerebro:writer:external_asset:app.example.com",
+			"vulnview_urn":          "urn:cerebro:example:external_asset:app.example.com",
 			"vulnview_entity_type":  "external.asset",
 			"vulnview_label":        "app.example.com",
 		}}},
@@ -3295,7 +3295,7 @@ func TestGraphAWSPublicEndpointInsightsEndpoint(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	resp, err := server.Client().Get(server.URL + "/platform/graph/aws-public-endpoint-insights?tenant_id=writer&account_id=account-a&region=us-east-1&search=app&limit=5")
+	resp, err := server.Client().Get(server.URL + "/platform/graph/aws-public-endpoint-insights?tenant_id=example&account_id=account-a&region=us-east-1&search=app&limit=5")
 	if err != nil {
 		t.Fatalf("GET /platform/graph/aws-public-endpoint-insights error = %v", err)
 	}
@@ -3318,13 +3318,13 @@ func TestGraphAWSPublicEndpointInsightsEndpoint(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.TenantID != "writer" || body.Counts.AWSEndpoints != 2 || body.Counts.OverlappingVulnViewAssets != 1 {
+	if body.TenantID != "example" || body.Counts.AWSEndpoints != 2 || body.Counts.OverlappingVulnViewAssets != 1 {
 		t.Fatalf("body = %#v", body)
 	}
-	if len(body.Overlaps) != 1 || body.Overlaps[0].InternetIndicator.URN != "urn:cerebro:writer:internet_host:app.example.com" {
+	if len(body.Overlaps) != 1 || body.Overlaps[0].InternetIndicator.URN != "urn:cerebro:example:internet_host:app.example.com" {
 		t.Fatalf("overlaps = %#v", body.Overlaps)
 	}
-	if len(graph.cypherRequests) != 6 || graph.cypherRequests[0].Params["tenant_id"] != "writer" {
+	if len(graph.cypherRequests) != 6 || graph.cypherRequests[0].Params["tenant_id"] != "example" {
 		t.Fatalf("cypher requests = %#v", graph.cypherRequests)
 	}
 }
@@ -3332,17 +3332,17 @@ func TestGraphAWSPublicEndpointInsightsEndpoint(t *testing.T) {
 func TestGraphCrownJewelRankingsEndpoint(t *testing.T) {
 	graph := &stubGraphStore{cypherRows: [][]ports.CypherRow{
 		{{Values: map[string]any{
-			"seed_urn":         "urn:cerebro:writer:aws_secret_store:prod-secrets",
+			"seed_urn":         "urn:cerebro:example:aws_secret_store:prod-secrets",
 			"seed_entity_type": "aws.secret_store",
 			"seed_label":       "prod-secrets",
 		}}},
 		{{Values: map[string]any{
-			"seed_urn":         "urn:cerebro:writer:aws_secret_store:prod-secrets",
-			"from_urn":         "urn:cerebro:writer:aws_public_principal:public_internet",
+			"seed_urn":         "urn:cerebro:example:aws_secret_store:prod-secrets",
+			"from_urn":         "urn:cerebro:example:aws_public_principal:public_internet",
 			"from_entity_type": "aws.public_principal",
 			"from_label":       "public_internet",
 			"relation":         "can_reach",
-			"to_urn":           "urn:cerebro:writer:aws_secret_store:prod-secrets",
+			"to_urn":           "urn:cerebro:example:aws_secret_store:prod-secrets",
 			"to_entity_type":   "aws.secret_store",
 			"to_label":         "prod-secrets",
 		}}},
@@ -3351,7 +3351,7 @@ func TestGraphCrownJewelRankingsEndpoint(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	resp, err := server.Client().Get(server.URL + "/platform/graph/crown-jewel-rankings?tenant_id=writer&account_id=123456789012&entity_type=aws.secret_store&limit=5&depth=3&seed_limit=5")
+	resp, err := server.Client().Get(server.URL + "/platform/graph/crown-jewel-rankings?tenant_id=example&account_id=123456789012&entity_type=aws.secret_store&limit=5&depth=3&seed_limit=5")
 	if err != nil {
 		t.Fatalf("GET /platform/graph/crown-jewel-rankings error = %v", err)
 	}
@@ -3374,7 +3374,7 @@ func TestGraphCrownJewelRankingsEndpoint(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.TenantID != "writer" || body.Counts.Seeds != 1 || len(body.Rankings) == 0 {
+	if body.TenantID != "example" || body.Counts.Seeds != 1 || len(body.Rankings) == 0 {
 		t.Fatalf("body = %#v", body)
 	}
 	if len(graph.cypherRequests) != 2 || graph.cypherRequests[0].Params["entity_type"] != "aws.secret_store" {
@@ -3389,8 +3389,8 @@ func TestAuthMiddlewareRejectsUnscopedGraphIngestRunListings(t *testing.T) {
 		Auth: config.AuthConfig{
 			Enabled: true,
 			APIKeys: []config.APIKey{{
-				Key:      "writer-key",
-				TenantID: "writer",
+				Key:      "example-key",
+				TenantID: "example",
 			}},
 		},
 	}
@@ -3402,7 +3402,7 @@ func TestAuthMiddlewareRejectsUnscopedGraphIngestRunListings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer writer-key")
+	req.Header.Set("Authorization", "Bearer example-key")
 	resp, err := server.Client().Do(req)
 	if err != nil {
 		t.Fatalf("GET /platform/graph/ingest-runs error = %v", err)
@@ -3416,7 +3416,7 @@ func TestAuthMiddlewareRejectsUnscopedGraphIngestRunListings(t *testing.T) {
 	listReq := connect.NewRequest(&cerebrov1.ListGraphIngestRunsRequest{
 		Status: graphstore.IngestRunStatusFailed,
 	})
-	listReq.Header().Set("Authorization", "Bearer writer-key")
+	listReq.Header().Set("Authorization", "Bearer example-key")
 	if _, err := client.ListGraphIngestRuns(context.Background(), listReq); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatalf("ListGraphIngestRuns(unscoped) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
 	}
@@ -3429,8 +3429,8 @@ func TestAuthMiddlewareRequiresTenantScopeForGlobalWorkflowOperations(t *testing
 		Auth: config.AuthConfig{
 			Enabled: true,
 			APIKeys: []config.APIKey{{
-				Key:      "writer-key",
-				TenantID: "writer",
+				Key:      "example-key",
+				TenantID: "example",
 			}},
 		},
 	}
@@ -3442,7 +3442,7 @@ func TestAuthMiddlewareRequiresTenantScopeForGlobalWorkflowOperations(t *testing
 	if err != nil {
 		t.Fatalf("NewRequest replay: %v", err)
 	}
-	replayReq.Header.Set("Authorization", "Bearer writer-key")
+	replayReq.Header.Set("Authorization", "Bearer example-key")
 	replayReq.Header.Set("Content-Type", "application/json")
 	replayResp, err := server.Client().Do(replayReq)
 	if err != nil {
@@ -3457,7 +3457,7 @@ func TestAuthMiddlewareRequiresTenantScopeForGlobalWorkflowOperations(t *testing
 	if err != nil {
 		t.Fatalf("NewRequest health: %v", err)
 	}
-	healthReq.Header.Set("Authorization", "Bearer writer-key")
+	healthReq.Header.Set("Authorization", "Bearer example-key")
 	healthResp, err := server.Client().Do(healthReq)
 	if err != nil {
 		t.Fatalf("GET /platform/graph/ingest-health error = %v", err)
@@ -3469,12 +3469,12 @@ func TestAuthMiddlewareRequiresTenantScopeForGlobalWorkflowOperations(t *testing
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	connectReplayReq := connect.NewRequest(&cerebrov1.ReplayWorkflowEventsRequest{})
-	connectReplayReq.Header().Set("Authorization", "Bearer writer-key")
+	connectReplayReq.Header().Set("Authorization", "Bearer example-key")
 	if _, err := client.ReplayWorkflowEvents(context.Background(), connectReplayReq); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatalf("ReplayWorkflowEvents(unscoped) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
 	}
 	connectHealthReq := connect.NewRequest(&cerebrov1.CheckGraphIngestHealthRequest{})
-	connectHealthReq.Header().Set("Authorization", "Bearer writer-key")
+	connectHealthReq.Header().Set("Authorization", "Bearer example-key")
 	if _, err := client.CheckGraphIngestHealth(context.Background(), connectHealthReq); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatalf("CheckGraphIngestHealth(scoped) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
 	}
@@ -3487,8 +3487,8 @@ func TestAuthMiddlewareEnforcesTenantOnKnowledgeWrites(t *testing.T) {
 		Auth: config.AuthConfig{
 			Enabled: true,
 			APIKeys: []config.APIKey{{
-				Key:      "writer-key",
-				TenantID: "writer",
+				Key:      "example-key",
+				TenantID: "example",
 			}},
 		},
 	}
@@ -3504,7 +3504,7 @@ func TestAuthMiddlewareEnforcesTenantOnKnowledgeWrites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRequest decision: %v", err)
 	}
-	decisionReq.Header.Set("Authorization", "Bearer writer-key")
+	decisionReq.Header.Set("Authorization", "Bearer example-key")
 	decisionReq.Header.Set("Content-Type", "application/json")
 	decisionResp, err := server.Client().Do(decisionReq)
 	if err != nil {
@@ -3518,12 +3518,12 @@ func TestAuthMiddlewareEnforcesTenantOnKnowledgeWrites(t *testing.T) {
 	actionReq, err := http.NewRequest(
 		http.MethodPost,
 		server.URL+"/platform/knowledge/actions",
-		strings.NewReader(`{"title":"Fix finding","targetIds":["urn:cerebro:writer:asset:app"],"metadata":{"tenant_id":"other"}}`),
+		strings.NewReader(`{"title":"Fix finding","targetIds":["urn:cerebro:example:asset:app"],"metadata":{"tenant_id":"other"}}`),
 	)
 	if err != nil {
 		t.Fatalf("NewRequest action: %v", err)
 	}
-	actionReq.Header.Set("Authorization", "Bearer writer-key")
+	actionReq.Header.Set("Authorization", "Bearer example-key")
 	actionReq.Header.Set("Content-Type", "application/json")
 	actionResp, err := server.Client().Do(actionReq)
 	if err != nil {
@@ -3541,10 +3541,10 @@ func TestAuthMiddlewareEnforcesTenantOnKnowledgeWrites(t *testing.T) {
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	connectActionReq := connect.NewRequest(&cerebrov1.WriteActionRequest{
 		Title:     "Fix finding",
-		TargetIds: []string{"urn:cerebro:writer:asset:app"},
+		TargetIds: []string{"urn:cerebro:example:asset:app"},
 		Metadata:  metadata,
 	})
-	connectActionReq.Header().Set("Authorization", "Bearer writer-key")
+	connectActionReq.Header().Set("Authorization", "Bearer example-key")
 	if _, err := client.WriteAction(context.Background(), connectActionReq); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatalf("WriteAction(other metadata tenant) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
 	}
@@ -3553,7 +3553,7 @@ func TestAuthMiddlewareEnforcesTenantOnKnowledgeWrites(t *testing.T) {
 		OutcomeType: "finding-resolution",
 		Verdict:     "resolved",
 	})
-	connectOutcomeReq.Header().Set("Authorization", "Bearer writer-key")
+	connectOutcomeReq.Header().Set("Authorization", "Bearer example-key")
 	if _, err := client.WriteOutcome(context.Background(), connectOutcomeReq); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatalf("WriteOutcome(other decision tenant) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
 	}
@@ -3681,7 +3681,7 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	putBody, err := protojson.Marshal(&cerebrov1.PutSourceRuntimeRequest{
 		Runtime: &cerebrov1.SourceRuntime{
 			SourceId: "okta",
-			TenantId: "writer",
+			TenantId: "example",
 			Config: map[string]string{
 				"domain": "writer.okta.com",
 				"family": "user",
@@ -3692,7 +3692,7 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal put runtime body: %v", err)
 	}
-	putReq, err := http.NewRequest(http.MethodPut, server.URL+"/source-runtimes/writer-okta-users", bytes.NewReader(putBody))
+	putReq, err := http.NewRequest(http.MethodPut, server.URL+"/source-runtimes/example-okta-users", bytes.NewReader(putBody))
 	if err != nil {
 		t.Fatalf("new put request: %v", err)
 	}
@@ -3721,11 +3721,11 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	if got := configPayload["token"]; got != "[redacted]" {
 		t.Fatalf("put runtime token = %#v, want [redacted]", got)
 	}
-	if got := runtimePayload["tenant_id"]; got != "writer" {
-		t.Fatalf("put runtime tenant_id = %#v, want writer", got)
+	if got := runtimePayload["tenant_id"]; got != "example" {
+		t.Fatalf("put runtime tenant_id = %#v, want example", got)
 	}
 
-	getResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-users")
+	getResp, err := server.Client().Get(server.URL + "/source-runtimes/example-okta-users")
 	if err != nil {
 		t.Fatalf("GET /source-runtimes/{id} error = %v", err)
 	}
@@ -3745,11 +3745,11 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	if got := getRuntimePayload["source_id"]; got != "okta" {
 		t.Fatalf("get runtime source_id = %#v, want okta", got)
 	}
-	if got := getRuntimePayload["tenant_id"]; got != "writer" {
-		t.Fatalf("get runtime tenant_id = %#v, want writer", got)
+	if got := getRuntimePayload["tenant_id"]; got != "example" {
+		t.Fatalf("get runtime tenant_id = %#v, want example", got)
 	}
 
-	listResp, err := server.Client().Get(server.URL + "/source-runtimes?tenant_id=writer")
+	listResp, err := server.Client().Get(server.URL + "/source-runtimes?tenant_id=example")
 	if err != nil {
 		t.Fatalf("GET /source-runtimes error = %v", err)
 	}
@@ -3778,7 +3778,7 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 		t.Fatalf("listed runtime token = %#v, want [redacted]", got)
 	}
 
-	syncReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-users/sync?page_limit=1", nil)
+	syncReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/example-okta-users/sync?page_limit=1", nil)
 	if err != nil {
 		t.Fatalf("new sync request: %v", err)
 	}
@@ -3808,9 +3808,9 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	putRuntimeResp, err := client.PutSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.PutSourceRuntimeRequest{
 		Runtime: &cerebrov1.SourceRuntime{
-			Id:       "writer-github",
+			Id:       "example-github",
 			SourceId: "github",
-			TenantId: "writer",
+			TenantId: "example",
 			Config:   map[string]string{"token": "test"},
 		},
 	}))
@@ -3820,12 +3820,12 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	if got := putRuntimeResp.Msg.GetRuntime().GetConfig()["token"]; got != "[redacted]" {
 		t.Fatalf("PutSourceRuntime token = %q, want [redacted]", got)
 	}
-	if got := putRuntimeResp.Msg.GetRuntime().GetTenantId(); got != "writer" {
-		t.Fatalf("PutSourceRuntime tenant_id = %q, want writer", got)
+	if got := putRuntimeResp.Msg.GetRuntime().GetTenantId(); got != "example" {
+		t.Fatalf("PutSourceRuntime tenant_id = %q, want example", got)
 	}
 
 	getRuntimeResp, err := client.GetSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.GetSourceRuntimeRequest{
-		Id: "writer-okta-users",
+		Id: "example-okta-users",
 	}))
 	if err != nil {
 		t.Fatalf("GetSourceRuntime() error = %v", err)
@@ -3833,12 +3833,12 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	if got := getRuntimeResp.Msg.GetRuntime().GetSourceId(); got != "okta" {
 		t.Fatalf("GetSourceRuntime source_id = %q, want okta", got)
 	}
-	if got := getRuntimeResp.Msg.GetRuntime().GetTenantId(); got != "writer" {
-		t.Fatalf("GetSourceRuntime tenant_id = %q, want writer", got)
+	if got := getRuntimeResp.Msg.GetRuntime().GetTenantId(); got != "example" {
+		t.Fatalf("GetSourceRuntime tenant_id = %q, want example", got)
 	}
 
 	syncRuntimeResp, err := client.SyncSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.SyncSourceRuntimeRequest{
-		Id:        "writer-okta-users",
+		Id:        "example-okta-users",
 		PageLimit: 1,
 	}))
 	if err != nil {
@@ -3879,7 +3879,7 @@ func TestConnectSourceRuntimeEndpointsResolveEnvReferences(t *testing.T) {
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	if _, err := client.PutSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.PutSourceRuntimeRequest{
 		Runtime: &cerebrov1.SourceRuntime{
-			Id:       "writer-runtime-token",
+			Id:       "example-runtime-token",
 			SourceId: "runtime_token",
 			Config:   map[string]string{"token": "env:CEREBRO_SOURCE_RUNTIME_TOKEN_TOKEN"},
 		},
@@ -3889,12 +3889,12 @@ func TestConnectSourceRuntimeEndpointsResolveEnvReferences(t *testing.T) {
 	if source.checkToken != "resolved-token" {
 		t.Fatalf("connect put check token = %q, want resolved-token", source.checkToken)
 	}
-	if got := runtimeStore.runtimes["writer-runtime-token"].GetConfig()["token"]; got != "env:CEREBRO_SOURCE_RUNTIME_TOKEN_TOKEN" {
+	if got := runtimeStore.runtimes["example-runtime-token"].GetConfig()["token"]; got != "env:CEREBRO_SOURCE_RUNTIME_TOKEN_TOKEN" {
 		t.Fatalf("stored token = %q, want env reference", got)
 	}
 
 	if _, err := client.SyncSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.SyncSourceRuntimeRequest{
-		Id: "writer-runtime-token",
+		Id: "example-runtime-token",
 	})); err != nil {
 		t.Fatalf("SyncSourceRuntime() error = %v", err)
 	}
@@ -3912,10 +3912,10 @@ func TestSyncSourceRuntimeReturnsConflictWhenLeaseHeld(t *testing.T) {
 	runtimeStore := &leaseAwareRuntimeStore{
 		stubRuntimeStore: &stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-runtime-token": {
-					Id:       "writer-runtime-token",
+				"example-runtime-token": {
+					Id:       "example-runtime-token",
 					SourceId: "runtime_token",
-					TenantId: "writer",
+					TenantId: "example",
 				},
 			},
 		},
@@ -3930,7 +3930,7 @@ func TestSyncSourceRuntimeReturnsConflictWhenLeaseHeld(t *testing.T) {
 	defer server.Close()
 
 	t.Run("http", func(t *testing.T) {
-		req, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-runtime-token/sync", nil)
+		req, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/example-runtime-token/sync", nil)
 		if err != nil {
 			t.Fatalf("NewRequest() error = %v", err)
 		}
@@ -3947,7 +3947,7 @@ func TestSyncSourceRuntimeReturnsConflictWhenLeaseHeld(t *testing.T) {
 	t.Run("connect", func(t *testing.T) {
 		client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 		_, err := client.SyncSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.SyncSourceRuntimeRequest{
-			Id: "writer-runtime-token",
+			Id: "example-runtime-token",
 		}))
 		if err == nil {
 			t.Fatal("SyncSourceRuntime() error = nil, want non-nil")
@@ -3972,20 +3972,20 @@ func TestGraphIngestEndpoints(t *testing.T) {
 		t.Fatalf("newFixtureRegistry() error = %v", err)
 	}
 	runtimeStore := &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-		"writer-okta-users": {
-			Id:       "writer-okta-users",
+		"example-okta-users": {
+			Id:       "example-okta-users",
 			SourceId: "okta",
-			TenantId: "writer",
+			TenantId: "example",
 			Config: map[string]string{
 				"domain": "writer.okta.com",
 				"family": "user",
 				"token":  "test",
 			},
 		},
-		"writer-okta-bad": {
-			Id:       "writer-okta-bad",
+		"example-okta-bad": {
+			Id:       "example-okta-bad",
 			SourceId: "okta",
-			TenantId: "writer",
+			TenantId: "example",
 			Config: map[string]string{
 				"domain": "writer.okta.com",
 				"family": "missing",
@@ -4001,7 +4001,7 @@ func TestGraphIngestEndpoints(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	runReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-users/graph-ingest-runs?page_limit=1&checkpoint_id=graph-okta", nil)
+	runReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/example-okta-users/graph-ingest-runs?page_limit=1&checkpoint_id=graph-okta", nil)
 	if err != nil {
 		t.Fatalf("new graph ingest request: %v", err)
 	}
@@ -4041,7 +4041,7 @@ func TestGraphIngestEndpoints(t *testing.T) {
 	}
 	overrideReq, err := http.NewRequest(
 		http.MethodPost,
-		server.URL+"/source-runtimes/writer-okta-users/graph-ingest-runs?page_limit=1&reset_checkpoint=true",
+		server.URL+"/source-runtimes/example-okta-users/graph-ingest-runs?page_limit=1&reset_checkpoint=true",
 		strings.NewReader(`{"checkpoint_id":"body-checkpoint"}`),
 	)
 	if err != nil {
@@ -4092,7 +4092,7 @@ func TestGraphIngestEndpoints(t *testing.T) {
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	_, err = client.RunGraphIngestRuntime(context.Background(), connect.NewRequest(&cerebrov1.RunGraphIngestRuntimeRequest{
-		RuntimeId: "writer-okta-bad",
+		RuntimeId: "example-okta-bad",
 		PageLimit: 1,
 	}))
 	if err == nil {
@@ -4199,19 +4199,19 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	runtimeStore := &stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {
-				Id:       "writer-okta-audit",
+			"example-okta-audit": {
+				Id:       "example-okta-audit",
 				SourceId: "okta",
-				TenantId: "writer",
+				TenantId: "example",
 				Config:   map[string]string{"token": "super-secret"},
 			},
 		},
 		claims: map[string]*ports.ClaimRecord{
 			"claim-1": {
 				ID:            "claim-1",
-				RuntimeID:     "writer-okta-audit",
-				TenantID:      "writer",
-				SubjectURN:    "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+				RuntimeID:     "example-okta-audit",
+				TenantID:      "example",
+				SubjectURN:    "urn:cerebro:example:okta_resource:policyrule:pol-1",
 				Predicate:     "status",
 				ObjectValue:   "updated",
 				ClaimType:     "attribute",
@@ -4230,7 +4230,7 @@ func TestFindingEndpoints(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	evaluateReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-audit/findings/evaluate?event_limit=2&rule_id=identity-okta-policy-rule-lifecycle-tampering", nil)
+	evaluateReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/example-okta-audit/findings/evaluate?event_limit=2&rule_id=identity-okta-policy-rule-lifecycle-tampering", nil)
 	if err != nil {
 		t.Fatalf("new evaluate findings request: %v", err)
 	}
@@ -4275,7 +4275,7 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := findingPayload["rule_id"]; got != "identity-okta-policy-rule-lifecycle-tampering" {
 		t.Fatalf("evaluate finding rule_id = %#v, want identity-okta-policy-rule-lifecycle-tampering", got)
 	}
-	if got := findingPayload["summary"]; got != "admin@writer.com performed policy.rule.update on pol-1" {
+	if got := findingPayload["summary"]; got != "admin@example.com performed policy.rule.update on pol-1" {
 		t.Fatalf("evaluate finding summary = %#v, want admin summary", got)
 	}
 	if got := findingPayload["policy_id"]; got != "pol-1" {
@@ -4347,7 +4347,7 @@ func TestFindingEndpoints(t *testing.T) {
 	if !ok || len(claimIDs) != 1 || claimIDs[0] != "claim-1" {
 		t.Fatalf("evaluate evidence claim_ids = %#v, want [claim-1]", evidenceEntry["claim_ids"])
 	}
-	listResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-audit/findings?rule_id=identity-okta-policy-rule-lifecycle-tampering&status=open&event_id=okta-audit-2&limit=1")
+	listResp, err := server.Client().Get(server.URL + "/source-runtimes/example-okta-audit/findings?rule_id=identity-okta-policy-rule-lifecycle-tampering&status=open&event_id=okta-audit-2&limit=1")
 	if err != nil {
 		t.Fatalf("GET /source-runtimes/{id}/findings error = %v", err)
 	}
@@ -4371,7 +4371,7 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := listedFinding["rule_id"]; got != "identity-okta-policy-rule-lifecycle-tampering" {
 		t.Fatalf("list finding rule_id = %#v, want identity-okta-policy-rule-lifecycle-tampering", got)
 	}
-	runListResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-audit/finding-evaluation-runs?rule_id=identity-okta-policy-rule-lifecycle-tampering&status=completed&limit=1")
+	runListResp, err := server.Client().Get(server.URL + "/source-runtimes/example-okta-audit/finding-evaluation-runs?rule_id=identity-okta-policy-rule-lifecycle-tampering&status=completed&limit=1")
 	if err != nil {
 		t.Fatalf("GET /source-runtimes/{id}/finding-evaluation-runs error = %v", err)
 	}
@@ -4410,7 +4410,7 @@ func TestFindingEndpoints(t *testing.T) {
 	if got, present := runEntry["graph_rows_read"]; !present || got != float64(0) {
 		t.Fatalf("list evaluation run graph_rows_read = %#v (present=%t), want 0 present", got, present)
 	}
-	evidenceListResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-audit/finding-evidence?finding_id=" + findingPayload["id"].(string) + "&run_id=" + runID + "&claim_id=claim-1&event_id=okta-audit-2&graph_root_urn=urn:cerebro:writer:okta_resource:policyrule:pol-1&limit=1")
+	evidenceListResp, err := server.Client().Get(server.URL + "/source-runtimes/example-okta-audit/finding-evidence?finding_id=" + findingPayload["id"].(string) + "&run_id=" + runID + "&claim_id=claim-1&event_id=okta-audit-2&graph_root_urn=urn:cerebro:example:okta_resource:policyrule:pol-1&limit=1")
 	if err != nil {
 		t.Fatalf("GET /source-runtimes/{id}/finding-evidence error = %v", err)
 	}
@@ -4480,7 +4480,7 @@ func TestFindingEndpoints(t *testing.T) {
 	if got, present := getRunBody["graph_rows_read"]; !present || got != float64(0) {
 		t.Fatalf("get evaluation run graph_rows_read = %#v (present=%t), want 0 present", got, present)
 	}
-	missingRuleResp, err := server.Client().Post(server.URL+"/source-runtimes/writer-okta-audit/findings/evaluate?rule_id=does-not-exist", "application/json", nil)
+	missingRuleResp, err := server.Client().Post(server.URL+"/source-runtimes/example-okta-audit/findings/evaluate?rule_id=does-not-exist", "application/json", nil)
 	if err != nil {
 		t.Fatalf("POST /source-runtimes/{id}/findings/evaluate unknown rule error = %v", err)
 	}
@@ -4492,7 +4492,7 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := missingRuleResp.StatusCode; got != http.StatusNotFound {
 		t.Fatalf("unknown rule status = %d, want %d", got, http.StatusNotFound)
 	}
-	batchEvaluateReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-audit/finding-rules/evaluate?event_limit=2", nil)
+	batchEvaluateReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/example-okta-audit/finding-rules/evaluate?event_limit=2", nil)
 	if err != nil {
 		t.Fatalf("new batch evaluate request: %v", err)
 	}
@@ -4553,7 +4553,7 @@ func TestFindingEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal batch evaluate body: %v", err)
 	}
-	batchBodyReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-audit/finding-rules/evaluate?event_limit=2", bytes.NewReader(batchBody))
+	batchBodyReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/example-okta-audit/finding-rules/evaluate?event_limit=2", bytes.NewReader(batchBody))
 	if err != nil {
 		t.Fatalf("new body batch evaluate request: %v", err)
 	}
@@ -4578,7 +4578,7 @@ func TestFindingEndpoints(t *testing.T) {
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	evaluateFindingsResp, err := client.EvaluateSourceRuntimeFindings(context.Background(), connect.NewRequest(&cerebrov1.EvaluateSourceRuntimeFindingsRequest{
-		Id:         "writer-okta-audit",
+		Id:         "example-okta-audit",
 		RuleId:     "identity-okta-policy-rule-lifecycle-tampering",
 		EventLimit: 5,
 	}))
@@ -4610,12 +4610,12 @@ func TestFindingEndpoints(t *testing.T) {
 		t.Fatalf("EvaluateSourceRuntimeFindings evidence claim ids = %#v, want [claim-1]", got)
 	}
 	listFindingsResp, err := client.ListFindings(context.Background(), connect.NewRequest(&cerebrov1.ListFindingsRequest{
-		RuntimeId:   "writer-okta-audit",
+		RuntimeId:   "example-okta-audit",
 		RuleId:      "identity-okta-policy-rule-lifecycle-tampering",
 		Severity:    "HIGH",
 		Status:      cerebrov1.FindingStatus_FINDING_STATUS_OPEN,
 		PolicyId:    "pol-1",
-		ResourceUrn: "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+		ResourceUrn: "urn:cerebro:example:okta_resource:policyrule:pol-1",
 		EventId:     "okta-audit-2",
 		Limit:       1,
 	}))
@@ -4637,13 +4637,13 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := len(listFindingsResp.Msg.GetFindings()[0].GetControlRefs()); got != 2 {
 		t.Fatalf("len(ListFindings().Findings[0].ControlRefs) = %d, want 2", got)
 	}
-	if got := runtimeStore.findingListRequest.TenantID; got != "writer" {
-		t.Fatalf("runtimeStore.findingListRequest.TenantID = %q, want writer", got)
+	if got := runtimeStore.findingListRequest.TenantID; got != "example" {
+		t.Fatalf("runtimeStore.findingListRequest.TenantID = %q, want example", got)
 	}
 	if got := runtimeStore.findingListRequest.RuleID; got != "identity-okta-policy-rule-lifecycle-tampering" {
 		t.Fatalf("runtimeStore.findingListRequest.RuleID = %q, want identity-okta-policy-rule-lifecycle-tampering", got)
 	}
-	if got := runtimeStore.findingListRequest.ResourceURN; got != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+	if got := runtimeStore.findingListRequest.ResourceURN; got != "urn:cerebro:example:okta_resource:policyrule:pol-1" {
 		t.Fatalf("runtimeStore.findingListRequest.ResourceURN = %q, want policy rule urn", got)
 	}
 	if got := runtimeStore.findingListRequest.EventID; got != "okta-audit-2" {
@@ -4653,7 +4653,7 @@ func TestFindingEndpoints(t *testing.T) {
 		t.Fatalf("runtimeStore.findingListRequest.PolicyID = %q, want pol-1", got)
 	}
 	listRunsResp, err := client.ListFindingEvaluationRuns(context.Background(), connect.NewRequest(&cerebrov1.ListFindingEvaluationRunsRequest{
-		RuntimeId: "writer-okta-audit",
+		RuntimeId: "example-okta-audit",
 		RuleId:    "identity-okta-policy-rule-lifecycle-tampering",
 		Status:    "completed",
 		Limit:     1,
@@ -4665,7 +4665,7 @@ func TestFindingEndpoints(t *testing.T) {
 		t.Fatalf("len(ListFindingEvaluationRuns().Runs) = %d, want 1", got)
 	}
 	evaluateFindingRulesResp, err := client.EvaluateSourceRuntimeFindingRules(context.Background(), connect.NewRequest(&cerebrov1.EvaluateSourceRuntimeFindingRulesRequest{
-		Id:         "writer-okta-audit",
+		Id:         "example-okta-audit",
 		EventLimit: 2,
 	}))
 	if err != nil {
@@ -4691,13 +4691,13 @@ func TestFindingEndpoints(t *testing.T) {
 		t.Fatalf("len(EvaluateSourceRuntimeFindingRules().Evaluations[0].Evidence) = %d, want 1", got)
 	}
 	listEvidenceResp, err := client.ListFindingEvidence(context.Background(), connect.NewRequest(&cerebrov1.ListFindingEvidenceRequest{
-		RuntimeId:    "writer-okta-audit",
+		RuntimeId:    "example-okta-audit",
 		FindingId:    evaluateFindingsResp.Msg.GetFindings()[0].GetId(),
 		RunId:        lifecycleEvaluation.GetRun().GetId(),
 		RuleId:       "identity-okta-policy-rule-lifecycle-tampering",
 		ClaimId:      "claim-1",
 		EventId:      "okta-audit-2",
-		GraphRootUrn: "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+		GraphRootUrn: "urn:cerebro:example:okta_resource:policyrule:pol-1",
 		Limit:        1,
 	}))
 	if err != nil {
@@ -4824,7 +4824,7 @@ func TestFindingEndpoints(t *testing.T) {
 		t.Fatalf("len(AddFindingNote().Finding.Notes) = %d, want 2", got)
 	}
 	ticketBody, err := protojson.Marshal(&cerebrov1.LinkFindingTicketRequest{
-		Url:        "https://jira.writer.com/browse/ENG-123",
+		Url:        "https://jira.example.com/browse/ENG-123",
 		Name:       "ENG-123",
 		ExternalId: "ENG-123",
 	})
@@ -4990,56 +4990,56 @@ func TestEndpointVulnerabilityFindingsHTTPRoute(t *testing.T) {
 	store := &stubRuntimeStore{findings: map[string]*ports.FindingRecord{
 		"endpoint-vuln-1": {
 			ID:              "endpoint-vuln-1",
-			TenantID:        "writer",
+			TenantID:        "example",
 			RuntimeID:       "kandji-runtime",
 			RuleID:          "endpoint-vulnerability-kandji",
 			Title:           "Endpoint vulnerability detected",
 			Severity:        "HIGH",
 			Status:          "open",
 			EventIDs:        []string{"event-1"},
-			ResourceURNs:    []string{"urn:cerebro:writer:kandji_device:dev-1"},
+			ResourceURNs:    []string{"urn:cerebro:example:kandji_device:dev-1"},
 			Attributes:      map[string]string{"device_id": "dev-1", "vulnerability_id": "CVE-2026-0001", "package_name": "openssl", "installed_version": "3.0.1", "fixed_version": "3.0.12", "source_provider": "kandji"},
 			FirstObservedAt: now.Add(-time.Hour),
 			LastObservedAt:  now,
 		},
 		"endpoint-vuln-2": {
 			ID:              "endpoint-vuln-2",
-			TenantID:        "writer",
+			TenantID:        "example",
 			RuntimeID:       "sentinelone-runtime",
 			RuleID:          "endpoint-vulnerability-sentinelone",
 			Title:           "Endpoint vulnerability detected",
 			Severity:        "CRITICAL",
 			Status:          "open",
 			EventIDs:        []string{"event-2"},
-			ResourceURNs:    []string{"urn:cerebro:writer:sentinelone_agent:agent-1"},
+			ResourceURNs:    []string{"urn:cerebro:example:sentinelone_agent:agent-1"},
 			Attributes:      map[string]string{"device_id": "dev-1", "vulnerability_id": "CVE-2026-0001", "package_name": "openssl", "installed_version": "3.0.1", "known_exploited": "true", "source_provider": "sentinelone"},
 			FirstObservedAt: now.Add(-time.Hour),
 			LastObservedAt:  now.Add(time.Minute),
 		},
 		"endpoint-vuln-stale": {
 			ID:              "endpoint-vuln-stale",
-			TenantID:        "writer",
+			TenantID:        "example",
 			RuntimeID:       "vulnview-runtime",
 			RuleID:          "endpoint-vulnerability-vulnview",
 			Title:           "Stale endpoint vulnerability source",
 			Severity:        "MEDIUM",
 			Status:          "open",
 			EventIDs:        []string{"event-stale"},
-			ResourceURNs:    []string{"urn:cerebro:writer:kandji_device:dev-1"},
+			ResourceURNs:    []string{"urn:cerebro:example:kandji_device:dev-1"},
 			Attributes:      map[string]string{"device_id": "dev-1", "serial_number": "serial-1", "vulnerability_id": "CVE-2026-0002", "package_name": "zlib", "installed_version": "1.2.11", "source_freshness": "stale", "source_provider": "vulnview"},
 			FirstObservedAt: now.Add(-2 * time.Hour),
 			LastObservedAt:  now.Add(2 * time.Minute),
 		},
 		"endpoint-vuln-other-device": {
 			ID:              "endpoint-vuln-other-device",
-			TenantID:        "writer",
+			TenantID:        "example",
 			RuntimeID:       "kandji-runtime",
 			RuleID:          "endpoint-vulnerability-kandji",
 			Title:           "Other endpoint vulnerability",
 			Severity:        "LOW",
 			Status:          "open",
 			EventIDs:        []string{"event-other"},
-			ResourceURNs:    []string{"urn:cerebro:writer:kandji_device:dev-2"},
+			ResourceURNs:    []string{"urn:cerebro:example:kandji_device:dev-2"},
 			Attributes:      map[string]string{"device_id": "dev-2", "vulnerability_id": "CVE-2026-9999", "package_name": "curl", "installed_version": "8.1.0", "source_provider": "kandji"},
 			FirstObservedAt: now.Add(-time.Hour),
 			LastObservedAt:  now,
@@ -5049,7 +5049,7 @@ func TestEndpointVulnerabilityFindingsHTTPRoute(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	resp, err := server.Client().Get(server.URL + "/endpoint-vulnerability-findings?tenant_id=writer&device_id=dev-1")
+	resp, err := server.Client().Get(server.URL + "/endpoint-vulnerability-findings?tenant_id=example&device_id=dev-1")
 	if err != nil {
 		t.Fatalf("GET /endpoint-vulnerability-findings error = %v", err)
 	}
@@ -5090,7 +5090,7 @@ func TestEndpointVulnerabilityFindingsHTTPRoute(t *testing.T) {
 		t.Fatalf("KEV = %#v, want listed KEV", body.Findings[0].KEV)
 	}
 
-	platformResp, err := server.Client().Get(server.URL + "/platform/endpoints/dev-1/vulnerability-findings?tenant_id=writer")
+	platformResp, err := server.Client().Get(server.URL + "/platform/endpoints/dev-1/vulnerability-findings?tenant_id=example")
 	if err != nil {
 		t.Fatalf("GET /platform/endpoints/{deviceKey}/vulnerability-findings error = %v", err)
 	}
@@ -5113,7 +5113,7 @@ func TestEndpointVulnerabilityFindingsHTTPRoute(t *testing.T) {
 		t.Fatalf("platform finding = %#v, want path device dev-1 despite query overrides", platformBody.Findings[0])
 	}
 
-	platformConflictResp, err := server.Client().Get(server.URL + "/platform/endpoints/dev-1/vulnerability-findings?tenant_id=writer&device_id=dev-2")
+	platformConflictResp, err := server.Client().Get(server.URL + "/platform/endpoints/dev-1/vulnerability-findings?tenant_id=example&device_id=dev-2")
 	if err != nil {
 		t.Fatalf("GET /platform/endpoints/{deviceKey}/vulnerability-findings conflicting query error = %v", err)
 	}
@@ -5136,7 +5136,7 @@ func TestEndpointVulnerabilityFindingsHTTPRoute(t *testing.T) {
 		t.Fatalf("platform conflict finding = %#v, want path-scoped dev-1 finding", platformConflictBody.Findings[0])
 	}
 
-	staleResp, err := server.Client().Get(server.URL + "/endpoint-vulnerability-findings?tenant_id=writer&device_id=dev-1&include_stale=true")
+	staleResp, err := server.Client().Get(server.URL + "/endpoint-vulnerability-findings?tenant_id=example&device_id=dev-1&include_stale=true")
 	if err != nil {
 		t.Fatalf("GET /endpoint-vulnerability-findings include_stale error = %v", err)
 	}
@@ -5156,7 +5156,7 @@ func TestEndpointVulnerabilityFindingsHTTPRoute(t *testing.T) {
 		t.Fatalf("len(include_stale findings) = %d, want active plus stale source", got)
 	}
 
-	emptyResp, err := server.Client().Get(server.URL + "/endpoint-vulnerability-findings?tenant_id=writer&serial_number=missing")
+	emptyResp, err := server.Client().Get(server.URL + "/endpoint-vulnerability-findings?tenant_id=example&serial_number=missing")
 	if err != nil {
 		t.Fatalf("GET /endpoint-vulnerability-findings empty error = %v", err)
 	}
@@ -5182,12 +5182,12 @@ func TestPlatformKnowledgeDecisionAndOutcomeEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newFixtureRegistry() error = %v", err)
 	}
-	targetURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
+	targetURN := "urn:cerebro:example:okta_resource:policyrule:pol-1"
 	graphStore := &stubGraphStore{
 		entities: map[string]*ports.ProjectedEntity{
 			targetURN: {
 				URN:        targetURN,
-				TenantID:   "writer",
+				TenantID:   "example",
 				SourceID:   "okta",
 				EntityType: "okta.resource",
 				Label:      "Require MFA",
@@ -5242,7 +5242,7 @@ func TestPlatformKnowledgeDecisionAndOutcomeEndpoints(t *testing.T) {
 	if got := decisionPayload["target_count"]; got != float64(1) {
 		t.Fatalf("decision target_count = %#v, want 1", got)
 	}
-	if _, ok := graphStore.entities["urn:cerebro:writer:evidence:finding-evidence-1"]; !ok {
+	if _, ok := graphStore.entities["urn:cerebro:example:evidence:finding-evidence-1"]; !ok {
 		t.Fatal("decision evidence entity missing")
 	}
 	if _, ok := graphStore.links[decisionID+"|targets|"+targetURN]; !ok {
@@ -5341,10 +5341,10 @@ func TestWorkflowReplayEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newFixtureRegistry() error = %v", err)
 	}
-	targetURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
-	decisionID := "urn:cerebro:writer:decision:decision-1"
+	targetURN := "urn:cerebro:example:okta_resource:policyrule:pol-1"
+	decisionID := "urn:cerebro:example:decision:decision-1"
 	decisionEvent, err := workflowevents.NewDecisionRecordedEvent(workflowevents.DecisionRecorded{
-		TenantID:     "writer",
+		TenantID:     "example",
 		DecisionID:   decisionID,
 		DecisionType: "finding-triage",
 		Status:       "approved",
@@ -5366,7 +5366,7 @@ func TestWorkflowReplayEndpoint(t *testing.T) {
 	defer server.Close()
 
 	body, err := protojson.Marshal(&cerebrov1.ReplayWorkflowEventsRequest{
-		TenantId: "writer",
+		TenantId: "example",
 		AttributeEquals: map[string]string{
 			"workflow_kind": "knowledge_decision",
 		},
@@ -5413,7 +5413,7 @@ func TestWorkflowReplayEndpoint(t *testing.T) {
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	connectResp, err := client.ReplayWorkflowEvents(context.Background(), connect.NewRequest(&cerebrov1.ReplayWorkflowEventsRequest{
 		KindPrefix: "workflow.v1.knowledge.",
-		TenantId:   "writer",
+		TenantId:   "example",
 		Limit:      1,
 	}))
 	if err != nil {
@@ -5437,10 +5437,10 @@ func TestClaimEndpoints(t *testing.T) {
 	}
 	runtimeStore := &stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-jira": {
-				Id:       "writer-jira",
+			"example-jira": {
+				Id:       "example-jira",
 				SourceId: "sdk",
-				TenantId: "writer",
+				TenantId: "example",
 				Config: map[string]string{
 					"integration": "jira",
 				},
@@ -5456,8 +5456,8 @@ func TestClaimEndpoints(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
-	userURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:42"
+	issueURN := "urn:cerebro:example:runtime:example-jira:ticket:ENG-123"
+	userURN := "urn:cerebro:example:runtime:example-jira:user:acct:42"
 	writeBody, err := protojson.Marshal(&cerebrov1.WriteClaimsRequest{
 		Claims: []*cerebrov1.Claim{
 			{
@@ -5491,7 +5491,7 @@ func TestClaimEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal write claims body: %v", err)
 	}
-	writeReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-jira/claims", bytes.NewReader(writeBody))
+	writeReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/example-jira/claims", bytes.NewReader(writeBody))
 	if err != nil {
 		t.Fatalf("new write claims request: %v", err)
 	}
@@ -5521,7 +5521,7 @@ func TestClaimEndpoints(t *testing.T) {
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	writeClaimsResp, err := client.WriteClaims(context.Background(), connect.NewRequest(&cerebrov1.WriteClaimsRequest{
-		RuntimeId: "writer-jira",
+		RuntimeId: "example-jira",
 		Claims: []*cerebrov1.Claim{
 			{
 				SubjectRef: &cerebrov1.EntityRef{
@@ -5551,7 +5551,7 @@ func TestClaimEndpoints(t *testing.T) {
 		t.Fatalf("len(graphStore.links) = %d, want 1", len(graphStore.links))
 	}
 
-	listResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-jira/claims?predicate=assigned_to&source_event_id=jira-event-1&limit=1")
+	listResp, err := server.Client().Get(server.URL + "/source-runtimes/example-jira/claims?predicate=assigned_to&source_event_id=jira-event-1&limit=1")
 	if err != nil {
 		t.Fatalf("GET /source-runtimes/{id}/claims error = %v", err)
 	}
@@ -5577,7 +5577,7 @@ func TestClaimEndpoints(t *testing.T) {
 	}
 
 	listClaimsResp, err := client.ListClaims(context.Background(), connect.NewRequest(&cerebrov1.ListClaimsRequest{
-		RuntimeId:     "writer-jira",
+		RuntimeId:     "example-jira",
 		Predicate:     "status",
 		ObjectValue:   "in_progress",
 		SourceEventId: "jira-event-1",
@@ -5610,10 +5610,10 @@ func TestWriteClaimsReplaceExistingReportsRetractedClaims(t *testing.T) {
 	}
 	runtimeStore := &stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-jira": {
-				Id:       "writer-jira",
+			"example-jira": {
+				Id:       "example-jira",
 				SourceId: "sdk",
-				TenantId: "writer",
+				TenantId: "example",
 				Config:   map[string]string{"integration": "jira"},
 			},
 		},
@@ -5626,10 +5626,10 @@ func TestWriteClaimsReplaceExistingReportsRetractedClaims(t *testing.T) {
 	defer server.Close()
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
-	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
-	userURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:42"
+	issueURN := "urn:cerebro:example:runtime:example-jira:ticket:ENG-123"
+	userURN := "urn:cerebro:example:runtime:example-jira:user:acct:42"
 	if _, err := client.WriteClaims(context.Background(), connect.NewRequest(&cerebrov1.WriteClaimsRequest{
-		RuntimeId: "writer-jira",
+		RuntimeId: "example-jira",
 		Claims: []*cerebrov1.Claim{
 			{
 				SubjectRef:    &cerebrov1.EntityRef{Urn: issueURN, EntityType: "ticket", Label: "ENG-123"},
@@ -5651,7 +5651,7 @@ func TestWriteClaimsReplaceExistingReportsRetractedClaims(t *testing.T) {
 	}
 
 	resp, err := client.WriteClaims(context.Background(), connect.NewRequest(&cerebrov1.WriteClaimsRequest{
-		RuntimeId:       "writer-jira",
+		RuntimeId:       "example-jira",
 		ReplaceExisting: true,
 		Claims: []*cerebrov1.Claim{
 			{
@@ -5702,17 +5702,17 @@ func TestGraphNeighborhoodEndpoints(t *testing.T) {
 	graphStore := &stubGraphStore{
 		neighborhood: &ports.EntityNeighborhood{
 			Root: &ports.NeighborhoodNode{
-				URN:        "urn:cerebro:writer:github_pull_request:writer/cerebro#447",
+				URN:        "urn:cerebro:example:github_pull_request:writer/cerebro#447",
 				EntityType: "github.pull_request",
 				Label:      "writer/cerebro#447",
 			},
 			Neighbors: []*ports.NeighborhoodNode{
-				{URN: "urn:cerebro:writer:github_repo:writer/cerebro", EntityType: "github.repo", Label: "writer/cerebro"},
-				{URN: "urn:cerebro:writer:github_user:alice", EntityType: "github.user", Label: "Alice"},
+				{URN: "urn:cerebro:example:github_repo:writer/cerebro", EntityType: "github.repo", Label: "writer/cerebro"},
+				{URN: "urn:cerebro:example:github_user:alice", EntityType: "github.user", Label: "Alice"},
 			},
 			Relations: []*ports.NeighborhoodRelation{
-				{FromURN: "urn:cerebro:writer:github_user:alice", Relation: "authored", ToURN: "urn:cerebro:writer:github_pull_request:writer/cerebro#447"},
-				{FromURN: "urn:cerebro:writer:github_pull_request:writer/cerebro#447", Relation: "belongs_to", ToURN: "urn:cerebro:writer:github_repo:writer/cerebro"},
+				{FromURN: "urn:cerebro:example:github_user:alice", Relation: "authored", ToURN: "urn:cerebro:example:github_pull_request:writer/cerebro#447"},
+				{FromURN: "urn:cerebro:example:github_pull_request:writer/cerebro#447", Relation: "belongs_to", ToURN: "urn:cerebro:example:github_repo:writer/cerebro"},
 			},
 		},
 	}
@@ -5724,7 +5724,7 @@ func TestGraphNeighborhoodEndpoints(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	resp, err := server.Client().Get(server.URL + "/graph/neighborhood?root_urn=urn:cerebro:writer:github_pull_request:writer/cerebro%23447&limit=5")
+	resp, err := server.Client().Get(server.URL + "/graph/neighborhood?root_urn=urn:cerebro:example:github_pull_request:writer/cerebro%23447&limit=5")
 	if err != nil {
 		t.Fatalf("GET /graph/neighborhood error = %v", err)
 	}
@@ -5748,7 +5748,7 @@ func TestGraphNeighborhoodEndpoints(t *testing.T) {
 	if !ok || len(neighborsPayload) != 2 {
 		t.Fatalf("graph neighbors payload = %#v, want 2 entries", payload["neighbors"])
 	}
-	if graphStore.neighborhoodRootURN != "urn:cerebro:writer:github_pull_request:writer/cerebro#447" {
+	if graphStore.neighborhoodRootURN != "urn:cerebro:example:github_pull_request:writer/cerebro#447" {
 		t.Fatalf("graph neighborhood root urn = %q, want pull request urn", graphStore.neighborhoodRootURN)
 	}
 	if graphStore.neighborhoodLimit != 5 {
@@ -5757,13 +5757,13 @@ func TestGraphNeighborhoodEndpoints(t *testing.T) {
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	neighborhoodResp, err := client.GetEntityNeighborhood(context.Background(), connect.NewRequest(&cerebrov1.GetEntityNeighborhoodRequest{
-		RootUrn: "urn:cerebro:writer:github_pull_request:writer/cerebro#447",
+		RootUrn: "urn:cerebro:example:github_pull_request:writer/cerebro#447",
 		Limit:   2,
 	}))
 	if err != nil {
 		t.Fatalf("GetEntityNeighborhood() error = %v", err)
 	}
-	if got := neighborhoodResp.Msg.GetRoot().GetUrn(); got != "urn:cerebro:writer:github_pull_request:writer/cerebro#447" {
+	if got := neighborhoodResp.Msg.GetRoot().GetUrn(); got != "urn:cerebro:example:github_pull_request:writer/cerebro#447" {
 		t.Fatalf("GetEntityNeighborhood root urn = %q, want pull request urn", got)
 	}
 	if len(neighborhoodResp.Msg.GetNeighbors()) != 2 {
@@ -5783,26 +5783,26 @@ func TestReportEndpoints(t *testing.T) {
 		findings: map[string]*ports.FindingRecord{
 			"finding-1": {
 				ID:           "finding-1",
-				TenantID:     "writer",
-				RuntimeID:    "writer-okta-audit",
+				TenantID:     "example",
+				RuntimeID:    "example-okta-audit",
 				RuleID:       "identity-okta-policy-rule-lifecycle-tampering",
 				Severity:     "HIGH",
 				Status:       "open",
-				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+				ResourceURNs: []string{"urn:cerebro:example:okta_resource:policyrule:pol-1"},
 				Attributes: map[string]string{
-					"primary_resource_urn": "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+					"primary_resource_urn": "urn:cerebro:example:okta_resource:policyrule:pol-1",
 				},
 			},
 			"finding-2": {
 				ID:           "finding-2",
-				TenantID:     "writer",
-				RuntimeID:    "writer-okta-audit",
+				TenantID:     "example",
+				RuntimeID:    "example-okta-audit",
 				RuleID:       "identity-okta-policy-rule-lifecycle-tampering",
 				Severity:     "HIGH",
 				Status:       "resolved",
-				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+				ResourceURNs: []string{"urn:cerebro:example:okta_resource:policyrule:pol-1"},
 				Attributes: map[string]string{
-					"primary_resource_urn": "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+					"primary_resource_urn": "urn:cerebro:example:okta_resource:policyrule:pol-1",
 				},
 			},
 		},
@@ -5810,15 +5810,15 @@ func TestReportEndpoints(t *testing.T) {
 	graphStore := &stubGraphStore{
 		neighborhood: &ports.EntityNeighborhood{
 			Root: &ports.NeighborhoodNode{
-				URN:        "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+				URN:        "urn:cerebro:example:okta_resource:policyrule:pol-1",
 				EntityType: "okta.resource",
 				Label:      "Require MFA",
 			},
 			Neighbors: []*ports.NeighborhoodNode{
-				{URN: "urn:cerebro:writer:okta_user:00u2", EntityType: "okta.user", Label: "admin@writer.com"},
+				{URN: "urn:cerebro:example:okta_user:00u2", EntityType: "okta.user", Label: "admin@example.com"},
 			},
 			Relations: []*ports.NeighborhoodRelation{
-				{FromURN: "urn:cerebro:writer:okta_user:00u2", Relation: "acted_on", ToURN: "urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+				{FromURN: "urn:cerebro:example:okta_user:00u2", Relation: "acted_on", ToURN: "urn:cerebro:example:okta_resource:policyrule:pol-1"},
 			},
 		},
 	}
@@ -5848,7 +5848,7 @@ func TestReportEndpoints(t *testing.T) {
 		t.Fatalf("/reports payload = %#v, want 1 entry", listPayload["reports"])
 	}
 
-	runReq, err := http.NewRequest(http.MethodPost, server.URL+"/reports/finding-summary/runs?tenant_id=writer&runtime_id=writer-okta-audit&graph_limit=2", nil)
+	runReq, err := http.NewRequest(http.MethodPost, server.URL+"/reports/finding-summary/runs?tenant_id=example&runtime_id=example-okta-audit&graph_limit=2", nil)
 	if err != nil {
 		t.Fatalf("new run report request: %v", err)
 	}
@@ -5891,7 +5891,7 @@ func TestReportEndpoints(t *testing.T) {
 	if !ok {
 		t.Fatalf("run graph evidence entry = %#v, want object", graphEvidencePayload[0])
 	}
-	if got := graphEvidenceEntry["resource_urn"]; got != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+	if got := graphEvidenceEntry["resource_urn"]; got != "urn:cerebro:example:okta_resource:policyrule:pol-1" {
 		t.Fatalf("run graph evidence resource_urn = %#v, want policy rule urn", got)
 	}
 	runID, ok := runBody["id"].(string)
@@ -5908,7 +5908,7 @@ func TestReportEndpoints(t *testing.T) {
 	if _, ok := storedRun.GetParameters()["api_key"]; ok {
 		t.Fatalf("stored report parameters include api_key")
 	}
-	if graphStore.neighborhoodRootURN != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+	if graphStore.neighborhoodRootURN != "urn:cerebro:example:okta_resource:policyrule:pol-1" {
 		t.Fatalf("graph evidence root urn = %q, want policy rule urn", graphStore.neighborhoodRootURN)
 	}
 	if graphStore.neighborhoodLimit != 2 {
@@ -5947,8 +5947,8 @@ func TestReportEndpoints(t *testing.T) {
 	runReportResp, err := client.RunReport(context.Background(), connect.NewRequest(&cerebrov1.RunReportRequest{
 		ReportId: "finding-summary",
 		Parameters: map[string]string{
-			"tenant_id":  "writer",
-			"runtime_id": "writer-okta-audit",
+			"tenant_id":  "example",
+			"runtime_id": "example-okta-audit",
 		},
 	}))
 	if err != nil {
@@ -6403,7 +6403,7 @@ func cloneStringMap(values map[string]string) map[string]string {
 func findingTestEvent(id string, eventType string, outcome string) *cerebrov1.EventEnvelope {
 	return &cerebrov1.EventEnvelope{
 		Id:         id,
-		TenantId:   "writer",
+		TenantId:   "example",
 		SourceId:   "okta",
 		Kind:       "okta.audit",
 		OccurredAt: timestamppb.New(time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)),
@@ -6415,10 +6415,10 @@ func findingTestEvent(id string, eventType string, outcome string) *cerebrov1.Ev
 			"resource_type":                     "PolicyRule",
 			"actor_id":                          "00u2",
 			"actor_type":                        "User",
-			"actor_alternate_id":                "admin@writer.com",
+			"actor_alternate_id":                "admin@example.com",
 			"actor_display_name":                "Admin Example",
 			"outcome_result":                    outcome,
-			ports.EventAttributeSourceRuntimeID: "writer-okta-audit",
+			ports.EventAttributeSourceRuntimeID: "example-okta-audit",
 		},
 	}
 }

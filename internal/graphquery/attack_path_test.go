@@ -24,19 +24,19 @@ func TestGetAttackPathsQueriesAndParsesRows(t *testing.T) {
 			"cloud_account_count":        int64(1),
 		}}},
 		{{Values: map[string]any{
-			"public_urn":             "urn:cerebro:writer:aws_public_principal:public_internet",
+			"public_urn":             "urn:cerebro:example:aws_public_principal:public_internet",
 			"public_entity_type":     "aws.public_principal",
 			"public_label":           "public internet",
-			"exposed_urn":            "urn:cerebro:writer:aws_network_interface:eni-1",
+			"exposed_urn":            "urn:cerebro:example:aws_network_interface:eni-1",
 			"exposed_entity_type":    "aws.network.interface",
 			"exposed_label":          "prod-web",
-			"account_urn":            "urn:cerebro:writer:cloud_account:123456789012",
+			"account_urn":            "urn:cerebro:example:cloud_account:123456789012",
 			"account_entity_type":    "cloud.account",
 			"account_label":          "123456789012",
-			"principal_urn":          "urn:cerebro:writer:aws_user:admin@writer.com",
+			"principal_urn":          "urn:cerebro:example:aws_user:admin@example.com",
 			"principal_entity_type":  "aws.user",
-			"principal_label":        "admin@writer.com",
-			"permission_urn":         "urn:cerebro:writer:aws_aws_iam_policy:AdministratorAccess",
+			"principal_label":        "admin@example.com",
+			"permission_urn":         "urn:cerebro:example:aws_aws_iam_policy:AdministratorAccess",
 			"permission_entity_type": "aws.aws.iam.policy",
 			"permission_label":       "AdministratorAccess",
 			"reach_relation":         "can_reach",
@@ -45,7 +45,7 @@ func TestGetAttackPathsQueriesAndParsesRows(t *testing.T) {
 	}}
 
 	result, err := New(store).GetAttackPaths(context.Background(), AttackPathRequest{
-		TenantID:  "writer",
+		TenantID:  "example",
 		AccountID: "123456789012",
 		Limit:     500,
 	})
@@ -55,8 +55,8 @@ func TestGetAttackPathsQueriesAndParsesRows(t *testing.T) {
 	if len(store.requests) != 2 {
 		t.Fatalf("query count = %d, want 2", len(store.requests))
 	}
-	if got := store.requests[0].Params["tenant_id"]; got != "writer" {
-		t.Fatalf("tenant_id param = %v, want writer", got)
+	if got := store.requests[0].Params["tenant_id"]; got != "example" {
+		t.Fatalf("tenant_id param = %v, want example", got)
 	}
 	if got := store.requests[0].Params["account_id"]; got != "123456789012" {
 		t.Fatalf("account_id param = %v, want 123456789012", got)
@@ -67,10 +67,10 @@ func TestGetAttackPathsQueriesAndParsesRows(t *testing.T) {
 	if result.Counts.Paths != 2 || result.Counts.ExposedResources != 1 {
 		t.Fatalf("counts = %#v", result.Counts)
 	}
-	if len(result.Paths) != 1 || result.Paths[0].Principal.Label != "admin@writer.com" {
+	if len(result.Paths) != 1 || result.Paths[0].Principal.Label != "admin@example.com" {
 		t.Fatalf("paths = %#v", result.Paths)
 	}
-	if result.NeighborhoodURN != "urn:cerebro:writer:aws_network_interface:eni-1" {
+	if result.NeighborhoodURN != "urn:cerebro:example:aws_network_interface:eni-1" {
 		t.Fatalf("neighborhood hint = %q", result.NeighborhoodURN)
 	}
 }

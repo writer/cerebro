@@ -1,14 +1,14 @@
 {
   "rule_id": "github-org-ip-allow-list-modified",
   "runtime": {
-    "id": "writer-github-audit",
+    "id": "example-github-audit",
     "source_id": "github",
-    "tenant_id": "writer"
+    "tenant_id": "example"
   },
   "events": [
     {
       "id": "github-audit-ip-allow-list-disabled",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.audit",
       "occurred_at": "2026-04-27T01:00:00Z",
@@ -20,13 +20,13 @@
         "org": "writer",
         "resource_id": "writer",
         "resource_type": "ip_allow_list",
-        "source_runtime_id": "writer-github-audit",
+        "source_runtime_id": "example-github-audit",
         "action": "ip_allow_list.disable"
       }
     },
     {
       "id": "github-audit-ip-allow-list-unrelated",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.audit",
       "occurred_at": "2026-04-27T01:00:00Z",
@@ -38,7 +38,7 @@
         "org": "writer",
         "resource_id": "writer",
         "resource_type": "org",
-        "source_runtime_id": "writer-github-audit",
+        "source_runtime_id": "example-github-audit",
         "action": "org.invite_user"
       }
     }
@@ -55,7 +55,7 @@
       "attributes": {
         "action": "ip_allow_list.disable",
         "org": "writer",
-        "primary_resource_urn": "urn:cerebro:writer:github_resource:ip_allow_list:writer",
+        "primary_resource_urn": "urn:cerebro:example:github_resource:ip_allow_list:writer",
         "rule_tags": "github,ip-allow-list,persistence,account-manipulation,attack.t1098"
       }
     }

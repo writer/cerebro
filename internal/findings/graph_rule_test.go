@@ -74,11 +74,11 @@ func newGraphRuleStubRuntimeStore(runtime *cerebrov1.SourceRuntime) *stubRuntime
 }
 
 func TestEvaluateSourceRuntimeGraphRulesEmitsAndPersistsFindings(t *testing.T) {
-	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "example"}
 	store := &stubFindingStore{}
 	graphStore := &stubGraphStore{
 		cypherRows: []ports.CypherRow{
-			{Values: map[string]any{"label": "alice@writer.com"}},
+			{Values: map[string]any{"label": "alice@example.com"}},
 		},
 	}
 	rule := &stubGraphRule{
@@ -86,28 +86,28 @@ func TestEvaluateSourceRuntimeGraphRulesEmitsAndPersistsFindings(t *testing.T) {
 		sourceID: "okta",
 		query: ports.CypherQueryRequest{
 			Query:  "MATCH (n) RETURN n LIMIT 1",
-			Params: map[string]any{"tenant_id": "writer"},
+			Params: map[string]any{"tenant_id": "example"},
 		},
 		emit: []*ports.FindingRecord{
 			{
 				ID:           "finding-graph-1",
 				Fingerprint:  "fp-graph-1",
-				TenantID:     "writer",
+				TenantID:     "example",
 				RuntimeID:    "runtime-okta",
 				RuleID:       "test-graph-rule",
 				Title:        "Test graph finding",
 				Severity:     "CRITICAL",
 				Status:       findingStatusOpen,
 				Summary:      "graph rule fired",
-				ResourceURNs: []string{"urn:cerebro:writer:identity:email:alice@writer.com"},
+				ResourceURNs: []string{"urn:cerebro:example:identity:email:alice@example.com"},
 				GraphEvidenceRows: []*cerebrov1.GraphEvidenceRow{
-					newGraphEvidenceRow("identity_path", map[string]string{"label": "alice@writer.com"}, newGraphEvidencePath(
-						"urn:cerebro:writer:okta_user:alice",
-						"alice@writer.com",
+					newGraphEvidenceRow("identity_path", map[string]string{"label": "alice@example.com"}, newGraphEvidencePath(
+						"urn:cerebro:example:okta_user:alice",
+						"alice@example.com",
 						"okta.user",
 						"represents_identity",
-						"urn:cerebro:writer:identity:email:alice@writer.com",
-						"alice@writer.com",
+						"urn:cerebro:example:identity:email:alice@example.com",
+						"alice@example.com",
 						"identity.email",
 						map[string]string{"match_type": "exact_email"},
 					)),
@@ -174,11 +174,11 @@ func TestEvaluateSourceRuntimeGraphRulesTruncatedSkipsStaleResolution(t *testing
 	// graph that has cap+1: an offender may have fallen past the cutoff. Auto-resolving open
 	// findings on that incomplete view would close still-active findings.
 	const rowLimit = 2
-	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "example"}
 	staleFinding := &ports.FindingRecord{
 		ID:          "finding-stale",
 		Fingerprint: "fp-stale",
-		TenantID:    "writer",
+		TenantID:    "example",
 		RuntimeID:   "runtime-okta",
 		RuleID:      "truncating-rule",
 		Status:      findingStatusOpen,
@@ -225,7 +225,7 @@ func TestEvaluateSourceRuntimeGraphRulesTruncatedSkipsStaleResolution(t *testing
 }
 
 func TestEvaluateSourceRuntimeGraphRulesRequiresGraphQuery(t *testing.T) {
-	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "example"}
 	store := &stubFindingStore{}
 	registry, err := NewRegistry(&stubGraphRule{spec: &cerebrov1.RuleSpec{Id: "graph-rule"}, sourceID: "okta"})
 	if err != nil {
@@ -238,7 +238,7 @@ func TestEvaluateSourceRuntimeGraphRulesRequiresGraphQuery(t *testing.T) {
 }
 
 func TestEvaluateSourceRuntimeGraphRulesPropagatesCypherFailure(t *testing.T) {
-	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "example"}
 	store := &stubFindingStore{}
 	graphStore := &stubGraphStore{cypherErr: errors.New("boom")}
 	rule := &stubGraphRule{
@@ -265,11 +265,11 @@ func TestEvaluateSourceRuntimeGraphRulesPropagatesCypherFailure(t *testing.T) {
 }
 
 func TestEvaluateSourceRuntimeGraphRulesContinuesAfterRuleFailure(t *testing.T) {
-	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "example"}
 	store := &stubFindingStore{}
 	graphStore := &stubGraphStore{
 		cypherRows: []ports.CypherRow{
-			{Values: map[string]any{"label": "alice@writer.com"}},
+			{Values: map[string]any{"label": "alice@example.com"}},
 		},
 	}
 	failing := &stubGraphRule{
@@ -316,7 +316,7 @@ func TestEvaluateSourceRuntimeGraphRulesContinuesAfterRuleFailure(t *testing.T) 
 }
 
 func TestEvaluateSourceRuntimeGraphRulesSelectsByRuleID(t *testing.T) {
-	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "example"}
 	store := &stubFindingStore{}
 	graphStore := &stubGraphStore{}
 	emitting := &stubGraphRule{
@@ -351,7 +351,7 @@ func TestEvaluateSourceRuntimeGraphRulesSelectsByRuleID(t *testing.T) {
 // replay path pick them up creates empty completed evaluation runs and duplicates run
 // records per orchestrator iteration. The replay path must filter them out instead.
 func TestEvaluateSourceRuntimeRulesExcludesGraphRules(t *testing.T) {
-	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "example"}
 	store := &stubFindingStore{}
 	graphRule := &stubGraphRule{
 		spec:     &cerebrov1.RuleSpec{Id: "okta-graph-only"},
@@ -401,7 +401,7 @@ func TestListRulesHidesGraphRulesFromCatalog(t *testing.T) {
 // When the caller asks for a graph rule by ID through the replay endpoint we must reject
 // rather than create a useless empty evaluation run.
 func TestEvaluateSourceRuntimeRulesRejectsExplicitGraphRuleID(t *testing.T) {
-	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "example"}
 	store := &stubFindingStore{}
 	graphRule := &stubGraphRule{
 		spec:     &cerebrov1.RuleSpec{Id: "okta-graph-only"},
@@ -445,15 +445,15 @@ func (r *multiSourceStubGraphRule) SupportsRuntime(runtime *cerebrov1.SourceRunt
 // for the runtime that produced the run, instead of leaving the run listed in evaluation
 // listings without any matching evidence rows).
 func TestEvaluateSourceRuntimeGraphRulesPinsFindingButRecordsEvidencePerRuntime(t *testing.T) {
-	oktaRuntime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
-	githubRuntime := &cerebrov1.SourceRuntime{Id: "runtime-github", SourceId: "github", TenantId: "writer"}
+	oktaRuntime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "example"}
+	githubRuntime := &cerebrov1.SourceRuntime{Id: "runtime-github", SourceId: "github", TenantId: "example"}
 	runtimeStore := &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
 		oktaRuntime.GetId():   oktaRuntime,
 		githubRuntime.GetId(): githubRuntime,
 	}}
 	store := &stubFindingStore{}
 	graphStore := &stubGraphStore{
-		cypherRows: []ports.CypherRow{{Values: map[string]any{"label": "alice@writer.com"}}},
+		cypherRows: []ports.CypherRow{{Values: map[string]any{"label": "alice@example.com"}}},
 	}
 	// The same fingerprint is emitted from both okta and github triggers; that's the contract
 	// graph rules establish (tenant-scoped offender). UpsertFinding's ON CONFLICT clause
@@ -462,14 +462,14 @@ func TestEvaluateSourceRuntimeGraphRulesPinsFindingButRecordsEvidencePerRuntime(
 		return []*ports.FindingRecord{{
 			ID:           "finding-cross-runtime",
 			Fingerprint:  "fp-cross-runtime",
-			TenantID:     "writer",
+			TenantID:     "example",
 			RuntimeID:    triggeringRuntimeID,
 			RuleID:       "cross-runtime-graph-rule",
 			Title:        "Cross runtime graph finding",
 			Severity:     "CRITICAL",
 			Status:       findingStatusOpen,
 			Summary:      "graph rule fired",
-			ResourceURNs: []string{"urn:cerebro:writer:identity:email:alice@writer.com"},
+			ResourceURNs: []string{"urn:cerebro:example:identity:email:alice@example.com"},
 		}}
 	}
 	rule := &multiSourceStubGraphRule{
@@ -544,13 +544,13 @@ func TestEvaluateSourceRuntimeGraphRulesPinsFindingButRecordsEvidencePerRuntime(
 // that leaves EventLimit at the proto default (0), which the API surfaces as
 // "n/a for graph rule".
 func TestEvaluateSourceRuntimeGraphRulesPersistsRunWithoutEventLimit(t *testing.T) {
-	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "example"}
 	runtimeStore := &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
 		runtime.GetId(): runtime,
 	}}
 	store := &stubFindingStore{}
 	graphStore := &stubGraphStore{
-		cypherRows: []ports.CypherRow{{Values: map[string]any{"label": "alice@writer.com"}}},
+		cypherRows: []ports.CypherRow{{Values: map[string]any{"label": "alice@example.com"}}},
 	}
 	rule := &stubGraphRule{
 		spec:     &cerebrov1.RuleSpec{Id: "graph-rule-no-event-limit"},
@@ -583,12 +583,12 @@ func TestEvaluateSourceRuntimeGraphRulesPersistsRunWithoutEventLimit(t *testing.
 // run. These two fields let operators triage graph rules separately from event
 // rules without having to join the run record back to the rule catalog.
 func TestEvaluateSourceRuntimeGraphRulesRecordsGraphTelemetry(t *testing.T) {
-	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "example"}
 	store := &stubFindingStore{}
 	graphStore := &stubGraphStore{cypherRows: []ports.CypherRow{
-		{Values: map[string]any{"label": "alice@writer.com"}},
-		{Values: map[string]any{"label": "bob@writer.com"}},
-		{Values: map[string]any{"label": "carol@writer.com"}},
+		{Values: map[string]any{"label": "alice@example.com"}},
+		{Values: map[string]any{"label": "bob@example.com"}},
+		{Values: map[string]any{"label": "carol@example.com"}},
 	}}
 	rule := &stubGraphRule{
 		spec:     &cerebrov1.RuleSpec{Id: "graph-rule-telemetry"},
@@ -627,7 +627,7 @@ func TestEvaluateSourceRuntimeGraphRulesRecordsGraphTelemetry(t *testing.T) {
 // row that announces itself as a graph rule. Operators must not read the empty
 // counters as "missing telemetry from an event rule".
 func TestEvaluateSourceRuntimeGraphRulesEmptyQueryPersistsGraphRuleFlag(t *testing.T) {
-	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "example"}
 	store := &stubFindingStore{}
 	graphStore := &stubGraphStore{}
 	rule := &stubGraphRule{
@@ -664,7 +664,7 @@ func TestEvaluateSourceRuntimeGraphRulesEmptyQueryPersistsGraphRuleFlag(t *testi
 // itself as a graph rule, so the rule-class discriminator survives failures
 // and operators can sort failed runs by event-rule vs graph-rule causes.
 func TestEvaluateSourceRuntimeGraphRulesFailedRunPreservesGraphTelemetry(t *testing.T) {
-	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "example"}
 	store := &stubFindingStore{}
 	graphStore := &stubGraphStore{cypherErr: errors.New("graph store unavailable")}
 	rule := &stubGraphRule{
@@ -698,7 +698,7 @@ func TestEvaluateSourceRuntimeGraphRulesFailedRunPreservesGraphTelemetry(t *test
 
 func TestNewGraphFindingEvaluationRunSetsGraphRuleFlagAtConstruction(t *testing.T) {
 	t.Parallel()
-	run := newGraphFindingEvaluationRun("writer-okta-audit", "graph-rule-a", time.Now())
+	run := newGraphFindingEvaluationRun("example-okta-audit", "graph-rule-a", time.Now())
 	if got := run.GetGraphRule(); !got {
 		t.Fatalf("Run.GraphRule = false, want true (graph rule discriminator must be present at construction time)")
 	}
@@ -712,7 +712,7 @@ func TestNewGraphFindingEvaluationRunSetsGraphRuleFlagAtConstruction(t *testing.
 
 func TestNewFindingEvaluationRunLeavesGraphRuleFlagFalse(t *testing.T) {
 	t.Parallel()
-	run := newFindingEvaluationRun("writer-okta-audit", "event-rule-a", 25, time.Now())
+	run := newFindingEvaluationRun("example-okta-audit", "event-rule-a", 25, time.Now())
 	if got := run.GetGraphRule(); got {
 		t.Fatalf("Run.GraphRule = true, want false for event-rule run (discriminator must not leak across rule classes)")
 	}

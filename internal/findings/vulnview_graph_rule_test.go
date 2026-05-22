@@ -13,13 +13,13 @@ import (
 
 func TestVulnViewExternalAssetConcentratedSignalGraphRuleAggregatesRepeatedEvidence(t *testing.T) {
 	graphRule := newVulnViewExternalAssetConcentratedSignalRule().(GraphRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-vulnview-dns-alert", SourceId: "vulnview", TenantId: "writer"}
-	rows := []ports.CypherRow{vulnViewAssetEvidenceRow("urn:cerebro:writer:external_asset:app.writer.com", "app.writer.com", []map[string]string{
-		{"urn": "urn:cerebro:writer:vulnview_finding:f1", "entity_type": "vulnview.finding", "label": "open-port", "severity": "info", "template_id": "open-port", "event_id": "e1"},
-		{"urn": "urn:cerebro:writer:vulnview_finding:f2", "entity_type": "vulnview.finding", "label": "open-port", "severity": "info", "template_id": "open-port", "event_id": "e2"},
-		{"urn": "urn:cerebro:writer:vulnview_finding:f3", "entity_type": "vulnview.finding", "label": "open-port", "severity": "info", "template_id": "open-port", "event_id": "e3"},
-		{"urn": "urn:cerebro:writer:vulnview_dns_alert:d1", "entity_type": "vulnview.dns_alert", "label": "stale-a-record", "severity": "info", "alert": "stale-a-record", "event_id": "e4"},
-		{"urn": "urn:cerebro:writer:vulnview_dns_alert:d2", "entity_type": "vulnview.dns_alert", "label": "tls-mismatch", "severity": "info", "alert": "tls-mismatch", "event_id": "e5"},
+	runtime := &cerebrov1.SourceRuntime{Id: "example-vulnview-dns-alert", SourceId: "vulnview", TenantId: "example"}
+	rows := []ports.CypherRow{vulnViewAssetEvidenceRow("urn:cerebro:example:external_asset:app.example.com", "app.example.com", []map[string]string{
+		{"urn": "urn:cerebro:example:vulnview_finding:f1", "entity_type": "vulnview.finding", "label": "open-port", "severity": "info", "template_id": "open-port", "event_id": "e1"},
+		{"urn": "urn:cerebro:example:vulnview_finding:f2", "entity_type": "vulnview.finding", "label": "open-port", "severity": "info", "template_id": "open-port", "event_id": "e2"},
+		{"urn": "urn:cerebro:example:vulnview_finding:f3", "entity_type": "vulnview.finding", "label": "open-port", "severity": "info", "template_id": "open-port", "event_id": "e3"},
+		{"urn": "urn:cerebro:example:vulnview_dns_alert:d1", "entity_type": "vulnview.dns_alert", "label": "stale-a-record", "severity": "info", "alert": "stale-a-record", "event_id": "e4"},
+		{"urn": "urn:cerebro:example:vulnview_dns_alert:d2", "entity_type": "vulnview.dns_alert", "label": "tls-mismatch", "severity": "info", "alert": "tls-mismatch", "event_id": "e5"},
 	})}
 
 	findings, err := graphRule.EvaluateRows(context.Background(), runtime, rows)
@@ -68,7 +68,7 @@ func TestVulnViewExternalAssetConcentratedSignalGraphRuleSupportsEvidenceRuntime
 
 func TestVulnViewExternalAssetConcentratedSignalGraphRuleFiltersBeforeLimit(t *testing.T) {
 	graphRule := newVulnViewExternalAssetConcentratedSignalRule().(GraphRule)
-	request := graphRule.QueryFor(&cerebrov1.SourceRuntime{SourceId: "vulnview", TenantId: "writer", Config: map[string]string{"family": "vulnerability"}})
+	request := graphRule.QueryFor(&cerebrov1.SourceRuntime{SourceId: "vulnview", TenantId: "example", Config: map[string]string{"family": "vulnerability"}})
 	if !strings.Contains(request.Query, "WHERE evidence_count >= $evidence_threshold OR max_severity_rank >= $severity_threshold") {
 		t.Fatalf("QueryFor() does not qualify rows before LIMIT:\n%s", request.Query)
 	}
@@ -82,9 +82,9 @@ func TestVulnViewExternalAssetConcentratedSignalGraphRuleFiltersBeforeLimit(t *t
 
 func TestVulnViewExternalAssetConcentratedSignalGraphRuleEmitsMediumEvidence(t *testing.T) {
 	graphRule := newVulnViewExternalAssetConcentratedSignalRule().(GraphRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-vulnview-vulnerability", SourceId: "vulnview", TenantId: "writer"}
-	rows := []ports.CypherRow{vulnViewAssetEvidenceRow("urn:cerebro:writer:external_asset:api.writer.com", "api.writer.com", []map[string]string{
-		{"urn": "urn:cerebro:writer:vulnview_finding:f1", "entity_type": "vulnview.finding", "label": "open-port", "severity": "medium", "template_id": "open-port", "event_id": "e1"},
+	runtime := &cerebrov1.SourceRuntime{Id: "example-vulnview-vulnerability", SourceId: "vulnview", TenantId: "example"}
+	rows := []ports.CypherRow{vulnViewAssetEvidenceRow("urn:cerebro:example:external_asset:api.example.com", "api.example.com", []map[string]string{
+		{"urn": "urn:cerebro:example:vulnview_finding:f1", "entity_type": "vulnview.finding", "label": "open-port", "severity": "medium", "template_id": "open-port", "event_id": "e1"},
 	})}
 
 	findings, err := graphRule.EvaluateRows(context.Background(), runtime, rows)
@@ -101,9 +101,9 @@ func TestVulnViewExternalAssetConcentratedSignalGraphRuleEmitsMediumEvidence(t *
 
 func TestVulnViewExternalAssetConcentratedSignalGraphRuleSkipsSparseInfoEvidence(t *testing.T) {
 	graphRule := newVulnViewExternalAssetConcentratedSignalRule().(GraphRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-vulnview-dns-alert", SourceId: "vulnview", TenantId: "writer"}
-	rows := []ports.CypherRow{vulnViewAssetEvidenceRow("urn:cerebro:writer:external_asset:info.writer.com", "info.writer.com", []map[string]string{
-		{"urn": "urn:cerebro:writer:vulnview_dns_alert:d1", "entity_type": "vulnview.dns_alert", "label": "ip-geo-info", "severity": "info", "alert": "ip-geo-info", "event_id": "e1"},
+	runtime := &cerebrov1.SourceRuntime{Id: "example-vulnview-dns-alert", SourceId: "vulnview", TenantId: "example"}
+	rows := []ports.CypherRow{vulnViewAssetEvidenceRow("urn:cerebro:example:external_asset:info.example.com", "info.example.com", []map[string]string{
+		{"urn": "urn:cerebro:example:vulnview_dns_alert:d1", "entity_type": "vulnview.dns_alert", "label": "ip-geo-info", "severity": "info", "alert": "ip-geo-info", "event_id": "e1"},
 	})}
 
 	findings, err := graphRule.EvaluateRows(context.Background(), runtime, rows)
@@ -117,9 +117,9 @@ func TestVulnViewExternalAssetConcentratedSignalGraphRuleSkipsSparseInfoEvidence
 
 func TestVulnViewExternalAssetConcentratedSignalGraphRuleSkipsMissingSeverity(t *testing.T) {
 	graphRule := newVulnViewExternalAssetConcentratedSignalRule().(GraphRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-vulnview-dns-alert", SourceId: "vulnview", TenantId: "writer"}
-	rows := []ports.CypherRow{vulnViewAssetEvidenceRow("urn:cerebro:writer:external_asset:unknown.writer.com", "unknown.writer.com", []map[string]string{
-		{"urn": "urn:cerebro:writer:vulnview_dns_alert:d1", "entity_type": "vulnview.dns_alert", "label": "unknown-alert", "alert": "unknown-alert", "event_id": "e1"},
+	runtime := &cerebrov1.SourceRuntime{Id: "example-vulnview-dns-alert", SourceId: "vulnview", TenantId: "example"}
+	rows := []ports.CypherRow{vulnViewAssetEvidenceRow("urn:cerebro:example:external_asset:unknown.example.com", "unknown.example.com", []map[string]string{
+		{"urn": "urn:cerebro:example:vulnview_dns_alert:d1", "entity_type": "vulnview.dns_alert", "label": "unknown-alert", "alert": "unknown-alert", "event_id": "e1"},
 	})}
 
 	findings, err := graphRule.EvaluateRows(context.Background(), runtime, rows)

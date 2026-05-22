@@ -23,7 +23,7 @@ func TestPutFindingEvidenceRejectsMissingRunID(t *testing.T) {
 	store := &Store{}
 	err := store.PutFindingEvidence(context.Background(), &cerebrov1.FindingEvidence{
 		Id:        "finding-evidence-1",
-		RuntimeId: "writer-okta-audit",
+		RuntimeId: "example-okta-audit",
 		RuleId:    "identity-okta-policy-rule-lifecycle-tampering",
 		FindingId: "finding-1",
 		ClaimIds:  []string{"claim-1"},
@@ -44,7 +44,7 @@ func TestGetFindingEvidenceRejectsUnconfiguredStore(t *testing.T) {
 
 func TestListFindingEvidenceRejectsUnconfiguredStore(t *testing.T) {
 	store := &Store{}
-	if _, err := store.ListFindingEvidence(context.Background(), ports.ListFindingEvidenceRequest{RuntimeID: "writer-okta-audit"}); err == nil {
+	if _, err := store.ListFindingEvidence(context.Background(), ports.ListFindingEvidenceRequest{RuntimeID: "example-okta-audit"}); err == nil {
 		t.Fatal("ListFindingEvidence() error = nil, want non-nil")
 	}
 }
@@ -57,8 +57,8 @@ func TestFindingEvidenceListQueryIncludesOptionalFilters(t *testing.T) {
 		RuleID:       "identity-okta-policy-rule-lifecycle-tampering",
 		ClaimID:      "claim-1",
 		EventID:      "okta-audit-2",
-		GraphRootURN: "urn:cerebro:writer:okta_resource:policyrule:pol-1",
-		GraphPathURN: "urn:cerebro:writer:okta_user:00u2",
+		GraphRootURN: "urn:cerebro:example:okta_resource:policyrule:pol-1",
+		GraphPathURN: "urn:cerebro:example:okta_user:00u2",
 		Limit:        25,
 	})
 	if err != nil {

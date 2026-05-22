@@ -1,14 +1,14 @@
 {
   "rule_id": "github-org-auth-control-modified",
   "runtime": {
-    "id": "writer-github-audit",
+    "id": "example-github-audit",
     "source_id": "github",
-    "tenant_id": "writer"
+    "tenant_id": "example"
   },
   "events": [
     {
       "id": "github-audit-org-auth-modified",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.audit",
       "occurred_at": "2026-04-27T01:00:00Z",
@@ -20,13 +20,13 @@
         "org": "writer",
         "resource_id": "writer",
         "resource_type": "org",
-        "source_runtime_id": "writer-github-audit",
+        "source_runtime_id": "example-github-audit",
         "action": "org.disable_two_factor_requirement"
       }
     },
     {
       "id": "github-audit-org-invite",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.audit",
       "occurred_at": "2026-04-27T01:00:00Z",
@@ -38,7 +38,7 @@
         "org": "writer",
         "resource_id": "writer",
         "resource_type": "org",
-        "source_runtime_id": "writer-github-audit",
+        "source_runtime_id": "example-github-audit",
         "action": "org.invite_member"
       }
     }
@@ -55,7 +55,7 @@
       "attributes": {
         "action": "org.disable_two_factor_requirement",
         "org": "writer",
-        "primary_resource_urn": "urn:cerebro:writer:github_resource:org:writer",
+        "primary_resource_urn": "urn:cerebro:example:github_resource:org:writer",
         "rule_tags": "github,organization,authentication,persistence,privilege-escalation,defense-evasion,attack.t1098"
       }
     }

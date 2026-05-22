@@ -99,10 +99,10 @@ func projectionEntityHasLinks(links map[string]*ports.ProjectedLink, urn string)
 func TestProjectKnowledgeWorkflowEvents(t *testing.T) {
 	graph := &projectionRecorder{}
 	service := New(graph)
-	targetURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
+	targetURN := "urn:cerebro:example:okta_resource:policyrule:pol-1"
 	decisionEvent, err := workflowevents.NewDecisionRecordedEvent(workflowevents.DecisionRecorded{
-		TenantID:     "writer",
-		DecisionID:   "urn:cerebro:writer:decision:decision-1",
+		TenantID:     "example",
+		DecisionID:   "urn:cerebro:example:decision:decision-1",
 		DecisionType: "finding-triage",
 		Status:       "approved",
 		Rationale:    "accepted risk pending remediation",
@@ -122,21 +122,21 @@ func TestProjectKnowledgeWorkflowEvents(t *testing.T) {
 	if decisionResult.EntitiesProjected != 2 {
 		t.Fatalf("decision entities projected = %d, want 2", decisionResult.EntitiesProjected)
 	}
-	if _, ok := graph.links["urn:cerebro:writer:decision:decision-1|targets|"+targetURN]; !ok {
+	if _, ok := graph.links["urn:cerebro:example:decision:decision-1|targets|"+targetURN]; !ok {
 		t.Fatal("decision target link missing")
 	}
-	if _, ok := graph.links["urn:cerebro:writer:decision:decision-1|based_on|urn:cerebro:writer:evidence:finding-evidence-1"]; !ok {
+	if _, ok := graph.links["urn:cerebro:example:decision:decision-1|based_on|urn:cerebro:example:evidence:finding-evidence-1"]; !ok {
 		t.Fatal("decision evidence link missing")
 	}
 
 	actionEvent, err := workflowevents.NewActionRecordedEvent(workflowevents.ActionRecorded{
-		TenantID:         "writer",
-		ActionID:         "urn:cerebro:writer:action:action-1",
+		TenantID:         "example",
+		ActionID:         "urn:cerebro:example:action:action-1",
 		ActionType:       "remediation",
 		Status:           "recorded",
 		RecommendationID: "recommendation-1",
 		Title:            "Open remediation ticket",
-		DecisionID:       "urn:cerebro:writer:decision:decision-1",
+		DecisionID:       "urn:cerebro:example:decision:decision-1",
 		TargetIDs:        []string{targetURN},
 		SourceSystem:     "platform.recommendations",
 		ObservedAt:       "2026-04-27T13:00:00Z",
@@ -149,17 +149,17 @@ func TestProjectKnowledgeWorkflowEvents(t *testing.T) {
 	if _, err := service.Project(context.Background(), actionEvent); err != nil {
 		t.Fatalf("Project(action) error = %v", err)
 	}
-	if _, ok := graph.links["urn:cerebro:writer:action:action-1|targets|"+targetURN]; !ok {
+	if _, ok := graph.links["urn:cerebro:example:action:action-1|targets|"+targetURN]; !ok {
 		t.Fatal("action target link missing")
 	}
-	if _, ok := graph.links["urn:cerebro:writer:decision:decision-1|executed_by|urn:cerebro:writer:action:action-1"]; !ok {
+	if _, ok := graph.links["urn:cerebro:example:decision:decision-1|executed_by|urn:cerebro:example:action:action-1"]; !ok {
 		t.Fatal("decision action link missing")
 	}
 
 	outcomeEvent, err := workflowevents.NewOutcomeRecordedEvent(workflowevents.OutcomeRecorded{
-		TenantID:     "writer",
-		OutcomeID:    "urn:cerebro:writer:outcome:outcome-1",
-		DecisionID:   "urn:cerebro:writer:decision:decision-1",
+		TenantID:     "example",
+		OutcomeID:    "urn:cerebro:example:outcome:outcome-1",
+		DecisionID:   "urn:cerebro:example:decision:decision-1",
 		OutcomeType:  "finding-resolution",
 		Verdict:      "resolved",
 		TargetIDs:    []string{targetURN},
@@ -173,7 +173,7 @@ func TestProjectKnowledgeWorkflowEvents(t *testing.T) {
 	if _, err := service.Project(context.Background(), outcomeEvent); err != nil {
 		t.Fatalf("Project(outcome) error = %v", err)
 	}
-	if _, ok := graph.links["urn:cerebro:writer:outcome:outcome-1|evaluates|urn:cerebro:writer:decision:decision-1"]; !ok {
+	if _, ok := graph.links["urn:cerebro:example:outcome:outcome-1|evaluates|urn:cerebro:example:decision:decision-1"]; !ok {
 		t.Fatal("outcome evaluates link missing")
 	}
 
@@ -189,8 +189,8 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 	graph := &projectionRecorder{}
 	service := New(graph)
 	finding := workflowevents.FindingSnapshot{
-		TenantID:           "writer",
-		SourceSystem:       "writer-okta-audit",
+		TenantID:           "example",
+		SourceSystem:       "example-okta-audit",
 		FindingID:          "finding-1",
 		Fingerprint:        "fp-1",
 		Title:              "Okta Policy Rule Lifecycle Tampering",
@@ -198,9 +198,9 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 		RuleID:             "identity-okta-policy-rule-lifecycle-tampering",
 		Severity:           "high",
 		Status:             "open",
-		RuntimeID:          "writer-okta-audit",
-		PrimaryResourceURN: "urn:cerebro:writer:okta_resource:policyrule:pol-1",
-		ResourceURNs:       []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+		RuntimeID:          "example-okta-audit",
+		PrimaryResourceURN: "urn:cerebro:example:okta_resource:policyrule:pol-1",
+		ResourceURNs:       []string{"urn:cerebro:example:okta_resource:policyrule:pol-1"},
 		EventIDs:           []string{"evt-1", "evt-2"},
 		FirstObservedAt:    "2026-04-27T11:58:00Z",
 		LastObservedAt:     "2026-04-27T11:59:00Z",
@@ -212,7 +212,7 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 			RiskReasons:       []string{"privileged_actor", "risky_action"},
 		},
 		Metadata: map[string]string{
-			"actor_urn":     "urn:cerebro:writer:okta_actor:user:00u1",
+			"actor_urn":     "urn:cerebro:example:okta_actor:user:00u1",
 			"resource_type": "okta_resource",
 			"source_family": "okta",
 		},
@@ -227,7 +227,7 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 	if _, err := service.Project(context.Background(), recordedEvent); err != nil {
 		t.Fatalf("Project(recorded) error = %v", err)
 	}
-	findingEntity, ok := graph.entities["urn:cerebro:writer:finding:finding-1"]
+	findingEntity, ok := graph.entities["urn:cerebro:example:finding:finding-1"]
 	if !ok {
 		t.Fatal("finding anchor missing after recorded event")
 	}
@@ -240,10 +240,10 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 	if got := findingEntity.Attributes["event_count"]; got != "2" {
 		t.Fatalf("finding event_count attribute = %q, want 2", got)
 	}
-	if got := findingEntity.Attributes["actor_urn"]; got != "urn:cerebro:writer:okta_actor:user:00u1" {
+	if got := findingEntity.Attributes["actor_urn"]; got != "urn:cerebro:example:okta_actor:user:00u1" {
 		t.Fatalf("finding actor_urn attribute = %q, want normalized actor urn", got)
 	}
-	if _, ok := graph.links["urn:cerebro:writer:okta_resource:policyrule:pol-1|has_finding|urn:cerebro:writer:finding:finding-1"]; !ok {
+	if _, ok := graph.links["urn:cerebro:example:okta_resource:policyrule:pol-1|has_finding|urn:cerebro:example:finding:finding-1"]; !ok {
 		t.Fatal("resource finding link missing after recorded event")
 	}
 	noteEvent, err := workflowevents.NewFindingNoteAddedEvent(workflowevents.FindingNoteAdded{
@@ -258,14 +258,14 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 	if _, err := service.Project(context.Background(), noteEvent); err != nil {
 		t.Fatalf("Project(note) error = %v", err)
 	}
-	annotationURN := "urn:cerebro:writer:annotation:finding-note:finding-1:note-1"
-	if _, ok := graph.links["urn:cerebro:writer:finding:finding-1|annotated_with|"+annotationURN]; !ok {
+	annotationURN := "urn:cerebro:example:annotation:finding-note:finding-1:note-1"
+	if _, ok := graph.links["urn:cerebro:example:finding:finding-1|annotated_with|"+annotationURN]; !ok {
 		t.Fatal("finding annotation link missing")
 	}
 
 	ticketEvent, err := workflowevents.NewFindingTicketLinkedEvent(workflowevents.FindingTicketLinked{
 		Finding:    finding,
-		URL:        "https://jira.writer.com/browse/ENG-123",
+		URL:        "https://jira.example.com/browse/ENG-123",
 		Name:       "ENG-123",
 		ExternalID: "ENG-123",
 		LinkedAt:   "2026-04-27T12:30:00Z",
@@ -276,10 +276,10 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 	if _, err := service.Project(context.Background(), ticketEvent); err != nil {
 		t.Fatalf("Project(ticket) error = %v", err)
 	}
-	if _, ok := graph.entities["urn:cerebro:writer:finding:finding-1"]; !ok {
+	if _, ok := graph.entities["urn:cerebro:example:finding:finding-1"]; !ok {
 		t.Fatal("finding anchor missing")
 	}
-	if _, ok := graph.links["urn:cerebro:writer:okta_resource:policyrule:pol-1|has_finding|urn:cerebro:writer:finding:finding-1"]; !ok {
+	if _, ok := graph.links["urn:cerebro:example:okta_resource:policyrule:pol-1|has_finding|urn:cerebro:example:finding:finding-1"]; !ok {
 		t.Fatal("resource finding link missing")
 	}
 
@@ -298,10 +298,10 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 	if _, err := service.Project(context.Background(), manualStatusEvent); err != nil {
 		t.Fatalf("Project(manual status) error = %v", err)
 	}
-	if _, ok := graph.entities["urn:cerebro:writer:finding:finding-1"]; !ok {
+	if _, ok := graph.entities["urn:cerebro:example:finding:finding-1"]; !ok {
 		t.Fatal("manually resolved finding anchor should remain for workflow history")
 	}
-	if _, ok := graph.links["urn:cerebro:writer:okta_resource:policyrule:pol-1|has_finding|urn:cerebro:writer:finding:finding-1"]; ok {
+	if _, ok := graph.links["urn:cerebro:example:okta_resource:policyrule:pol-1|has_finding|urn:cerebro:example:finding:finding-1"]; ok {
 		t.Fatal("manually resolved finding should not keep active has_finding link")
 	}
 
@@ -312,8 +312,8 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 		Finding:     finding,
 		Status:      "resolved",
 		Reason:      workflowevents.FindingStatusReasonNoLongerEmitted,
-		DecisionID:  "urn:cerebro:writer:decision:finding-resolution",
-		OutcomeID:   "urn:cerebro:writer:outcome:finding-resolution",
+		DecisionID:  "urn:cerebro:example:decision:finding-resolution",
+		OutcomeID:   "urn:cerebro:example:outcome:finding-resolution",
 		UpdatedAt:   "2026-04-27T12:48:00Z",
 		OutcomeType: "finding-resolution",
 	})
@@ -323,7 +323,7 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 	if _, err := service.Project(context.Background(), legacyManualStatusEvent); err != nil {
 		t.Fatalf("Project(legacy manual status) error = %v", err)
 	}
-	if _, ok := graph.entities["urn:cerebro:writer:finding:finding-1"]; !ok {
+	if _, ok := graph.entities["urn:cerebro:example:finding:finding-1"]; !ok {
 		t.Fatal("legacy manual finding status with workflow IDs should keep finding anchor")
 	}
 
@@ -343,7 +343,7 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 	if _, err := service.Project(context.Background(), legacyStatusEvent); err != nil {
 		t.Fatalf("Project(legacy status) error = %v", err)
 	}
-	if _, ok := graph.entities["urn:cerebro:writer:finding:finding-1"]; ok {
+	if _, ok := graph.entities["urn:cerebro:example:finding:finding-1"]; ok {
 		t.Fatal("legacy stale finding status should prune finding anchor")
 	}
 
@@ -365,10 +365,10 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 	if _, err := service.Project(context.Background(), statusEvent); err != nil {
 		t.Fatalf("Project(status) error = %v", err)
 	}
-	if _, ok := graph.entities["urn:cerebro:writer:finding:finding-1"]; ok {
+	if _, ok := graph.entities["urn:cerebro:example:finding:finding-1"]; ok {
 		t.Fatal("resolved finding anchor should be pruned from graph")
 	}
-	if _, ok := graph.links["urn:cerebro:writer:okta_resource:policyrule:pol-1|has_finding|urn:cerebro:writer:finding:finding-1"]; ok {
+	if _, ok := graph.links["urn:cerebro:example:okta_resource:policyrule:pol-1|has_finding|urn:cerebro:example:finding:finding-1"]; ok {
 		t.Fatal("resolved finding has_finding link should be pruned from graph")
 	}
 	if _, ok := graph.entities[annotationURN]; ok {

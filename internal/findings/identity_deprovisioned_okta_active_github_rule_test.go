@@ -17,13 +17,13 @@ func deprovisionedOktaRuleFixedNow() time.Time {
 
 func TestDeprovisionedOktaActiveGitHubRuleQueryScopesByTenant(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-prod", SourceId: "okta", TenantId: "example"}
 	request := rule.QueryFor(runtime)
 	if request.Query == "" {
 		t.Fatal("QueryFor() returned empty query for fully-populated runtime")
 	}
-	if got := request.Params["tenant_id"]; got != "writer" {
-		t.Fatalf("Params[tenant_id] = %v, want writer", got)
+	if got := request.Params["tenant_id"]; got != "example" {
+		t.Fatalf("Params[tenant_id] = %v, want example", got)
 	}
 	if _, hasMarker := request.Params["okta_runtime_marker"]; hasMarker {
 		t.Fatalf("Params unexpectedly contained okta_runtime_marker; the okta.user node merges runtime ids across syncs so a marker filter would alias inventory status onto whichever runtime touched the node last")
@@ -41,7 +41,7 @@ func TestDeprovisionedOktaActiveGitHubRuleQueryScopesByTenant(t *testing.T) {
 
 func TestDeprovisionedOktaActiveGitHubRuleQueryRequiresTenant(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
-	if request := rule.QueryFor(&cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta"}); request.Query != "" {
+	if request := rule.QueryFor(&cerebrov1.SourceRuntime{Id: "example-okta-prod", SourceId: "okta"}); request.Query != "" {
 		t.Fatalf("QueryFor() returned populated query without tenant id; rule must refuse to scan: %#v", request)
 	}
 }
@@ -86,8 +86,8 @@ func deprovisionedOktaRuleGroupWithIdentities(identityURNs ...string) *deprovisi
 		identities[urn] = struct{}{}
 	}
 	return &deprovisionedOktaGroup{
-		oktaUserURN:    "urn:cerebro:writer:okta.user:alice@writer.com",
-		githubUserURN:  "urn:cerebro:writer:github.user:alice",
+		oktaUserURN:    "urn:cerebro:example:okta.user:alice@example.com",
+		githubUserURN:  "urn:cerebro:example:github.user:alice",
 		identityURNs:   identities,
 		identityLabels: map[string]struct{}{},
 	}
@@ -95,10 +95,10 @@ func deprovisionedOktaRuleGroupWithIdentities(identityURNs ...string) *deprovisi
 
 func TestDeprovisionedOktaActiveGitHubRuleFingerprintIsStableAcrossRuns(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
-	group := deprovisionedOktaRuleGroupWithIdentities("urn:cerebro:writer:identity:email:alice@writer.com")
-	first := rule.buildFinding(runtime, "writer", group, deprovisionedOktaRuleFixedNow())
-	second := rule.buildFinding(runtime, "writer", group, deprovisionedOktaRuleFixedNow())
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-prod", SourceId: "okta", TenantId: "example"}
+	group := deprovisionedOktaRuleGroupWithIdentities("urn:cerebro:example:identity:email:alice@example.com")
+	first := rule.buildFinding(runtime, "example", group, deprovisionedOktaRuleFixedNow())
+	second := rule.buildFinding(runtime, "example", group, deprovisionedOktaRuleFixedNow())
 	if first.ID != second.ID {
 		t.Fatalf("finding ID drifted across evaluations: %q vs %q (fingerprint must hash stable inputs only)", first.ID, second.ID)
 	}
@@ -115,13 +115,13 @@ func TestDeprovisionedOktaActiveGitHubRuleFingerprintIsStableAcrossRuns(t *testi
 // the rule's contract: stamp the real triggering runtime, never a synthetic value.
 func TestDeprovisionedOktaActiveGitHubRuleFindingStampsTriggeringRuntimeID(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
-	group := deprovisionedOktaRuleGroupWithIdentities("urn:cerebro:writer:identity:email:alice@writer.com")
-	oktaTriggered := rule.buildFinding(&cerebrov1.SourceRuntime{Id: "writer-okta-inventory", SourceId: "okta", TenantId: "writer"}, "writer", group, deprovisionedOktaRuleFixedNow())
-	githubTriggered := rule.buildFinding(&cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}, "writer", group, deprovisionedOktaRuleFixedNow())
-	if got := oktaTriggered.RuntimeID; got != "writer-okta-inventory" {
+	group := deprovisionedOktaRuleGroupWithIdentities("urn:cerebro:example:identity:email:alice@example.com")
+	oktaTriggered := rule.buildFinding(&cerebrov1.SourceRuntime{Id: "example-okta-inventory", SourceId: "okta", TenantId: "example"}, "example", group, deprovisionedOktaRuleFixedNow())
+	githubTriggered := rule.buildFinding(&cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}, "example", group, deprovisionedOktaRuleFixedNow())
+	if got := oktaTriggered.RuntimeID; got != "example-okta-inventory" {
 		t.Fatalf("okta-triggered RuntimeID = %q, want real triggering runtime; synthetic ids would make the finding unreachable through runtime-scoped APIs", got)
 	}
-	if got := githubTriggered.RuntimeID; got != "writer-github-audit" {
+	if got := githubTriggered.RuntimeID; got != "example-github-audit" {
 		t.Fatalf("github-triggered RuntimeID = %q, want real triggering runtime", got)
 	}
 	// Both triggers MUST share the same fingerprint; pinning to first-observed happens at
@@ -129,7 +129,7 @@ func TestDeprovisionedOktaActiveGitHubRuleFindingStampsTriggeringRuntimeID(t *te
 	if oktaTriggered.Fingerprint != githubTriggered.Fingerprint {
 		t.Fatalf("fingerprints differ across triggering runtimes (okta=%q github=%q); same offender must produce same id so the store can pin runtime", oktaTriggered.Fingerprint, githubTriggered.Fingerprint)
 	}
-	if got := oktaTriggered.Attributes["source_runtime_id"]; got != "writer-okta-inventory" {
+	if got := oktaTriggered.Attributes["source_runtime_id"]; got != "example-okta-inventory" {
 		t.Fatalf("attributes[source_runtime_id] = %q, want triggering runtime preserved for telemetry", got)
 	}
 }
@@ -140,11 +140,11 @@ func TestDeprovisionedOktaActiveGitHubRuleFindingStampsTriggeringRuntimeID(t *te
 // second okta runtime synced.
 func TestDeprovisionedOktaActiveGitHubRuleFingerprintCollapsesAcrossOktaRuntimes(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
-	runtimeA := &cerebrov1.SourceRuntime{Id: "writer-okta-inventory", SourceId: "okta", TenantId: "writer"}
-	runtimeB := &cerebrov1.SourceRuntime{Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"}
-	group := deprovisionedOktaRuleGroupWithIdentities("urn:cerebro:writer:identity:email:alice@writer.com")
-	a := rule.buildFinding(runtimeA, "writer", group, deprovisionedOktaRuleFixedNow())
-	b := rule.buildFinding(runtimeB, "writer", group, deprovisionedOktaRuleFixedNow())
+	runtimeA := &cerebrov1.SourceRuntime{Id: "example-okta-inventory", SourceId: "okta", TenantId: "example"}
+	runtimeB := &cerebrov1.SourceRuntime{Id: "example-okta-audit", SourceId: "okta", TenantId: "example"}
+	group := deprovisionedOktaRuleGroupWithIdentities("urn:cerebro:example:identity:email:alice@example.com")
+	a := rule.buildFinding(runtimeA, "example", group, deprovisionedOktaRuleFixedNow())
+	b := rule.buildFinding(runtimeB, "example", group, deprovisionedOktaRuleFixedNow())
 	if a.ID != b.ID {
 		t.Fatalf("findings split across okta runtimes for the same offender (a=%q b=%q); rule is tenant-scoped and must produce one finding per (tenant, okta_user, github_user)", a.ID, b.ID)
 	}
@@ -155,23 +155,23 @@ func TestDeprovisionedOktaActiveGitHubRuleFingerprintCollapsesAcrossOktaRuntimes
 
 func TestDeprovisionedOktaActiveGitHubRuleFingerprintSeparatesOktaUsers(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-inventory", SourceId: "okta", TenantId: "writer"}
-	identityURN := "urn:cerebro:writer:identity:email:shared@writer.com"
-	githubURN := "urn:cerebro:writer:github.user:shared"
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-inventory", SourceId: "okta", TenantId: "example"}
+	identityURN := "urn:cerebro:example:identity:email:shared@example.com"
+	githubURN := "urn:cerebro:example:github.user:shared"
 	groupOne := &deprovisionedOktaGroup{
-		oktaUserURN:    "urn:cerebro:writer:okta.user:alice@writer.com",
+		oktaUserURN:    "urn:cerebro:example:okta.user:alice@example.com",
 		githubUserURN:  githubURN,
 		identityURNs:   map[string]struct{}{identityURN: {}},
 		identityLabels: map[string]struct{}{},
 	}
 	groupTwo := &deprovisionedOktaGroup{
-		oktaUserURN:    "urn:cerebro:writer:okta.user:bob@writer.com",
+		oktaUserURN:    "urn:cerebro:example:okta.user:bob@example.com",
 		githubUserURN:  githubURN,
 		identityURNs:   map[string]struct{}{identityURN: {}},
 		identityLabels: map[string]struct{}{},
 	}
-	a := rule.buildFinding(runtime, "writer", groupOne, deprovisionedOktaRuleFixedNow())
-	b := rule.buildFinding(runtime, "writer", groupTwo, deprovisionedOktaRuleFixedNow())
+	a := rule.buildFinding(runtime, "example", groupOne, deprovisionedOktaRuleFixedNow())
+	b := rule.buildFinding(runtime, "example", groupTwo, deprovisionedOktaRuleFixedNow())
 	if a.ID == b.ID {
 		t.Fatalf("two distinct deprovisioned okta users collapsed onto the same finding (id=%q); fingerprint must include okta_user_urn", a.ID)
 	}
@@ -185,10 +185,10 @@ func TestDeprovisionedOktaActiveGitHubRuleFingerprintSeparatesOktaUsers(t *testi
 // than emitting one per identity node.
 func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsCollapsesDuplicateIdentitiesPerAccountPair(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-prod", SourceId: "okta", TenantId: "example"}
 	emailRow := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-1 * time.Hour)))
 	loginRow := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-1 * time.Hour)))
-	loginRow.Values["identity_urn"] = "urn:cerebro:writer:identity:login:alice"
+	loginRow.Values["identity_urn"] = "urn:cerebro:example:identity:login:alice"
 	loginRow.Values["identity_label"] = "alice"
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{emailRow, loginRow})
 	if err != nil {
@@ -198,7 +198,7 @@ func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsCollapsesDuplicateIdentiti
 		t.Fatalf("EvaluateRows() returned %d findings, want 1; same Okta/GitHub pair must collapse across identity nodes (got: %#v)", got, findings)
 	}
 	finding := findings[0]
-	if got, want := finding.Attributes["identity_urns"], "urn:cerebro:writer:identity:email:alice@writer.com,urn:cerebro:writer:identity:login:alice"; got != want {
+	if got, want := finding.Attributes["identity_urns"], "urn:cerebro:example:identity:email:alice@example.com,urn:cerebro:example:identity:login:alice"; got != want {
 		t.Fatalf("identity_urns = %q, want %q (full set must be retained as telemetry)", got, want)
 	}
 }
@@ -209,16 +209,16 @@ func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsCollapsesDuplicateIdentiti
 // reopening the existing one. This pins the contract on buildFinding directly.
 func TestDeprovisionedOktaActiveGitHubRuleFingerprintIgnoresIdentityNode(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
-	emailGroup := deprovisionedOktaRuleGroupWithIdentities("urn:cerebro:writer:identity:email:alice@writer.com")
-	loginGroup := deprovisionedOktaRuleGroupWithIdentities("urn:cerebro:writer:identity:login:alice")
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-prod", SourceId: "okta", TenantId: "example"}
+	emailGroup := deprovisionedOktaRuleGroupWithIdentities("urn:cerebro:example:identity:email:alice@example.com")
+	loginGroup := deprovisionedOktaRuleGroupWithIdentities("urn:cerebro:example:identity:login:alice")
 	bothGroup := deprovisionedOktaRuleGroupWithIdentities(
-		"urn:cerebro:writer:identity:email:alice@writer.com",
-		"urn:cerebro:writer:identity:login:alice",
+		"urn:cerebro:example:identity:email:alice@example.com",
+		"urn:cerebro:example:identity:login:alice",
 	)
-	emailFinding := rule.buildFinding(runtime, "writer", emailGroup, deprovisionedOktaRuleFixedNow())
-	loginFinding := rule.buildFinding(runtime, "writer", loginGroup, deprovisionedOktaRuleFixedNow())
-	bothFinding := rule.buildFinding(runtime, "writer", bothGroup, deprovisionedOktaRuleFixedNow())
+	emailFinding := rule.buildFinding(runtime, "example", emailGroup, deprovisionedOktaRuleFixedNow())
+	loginFinding := rule.buildFinding(runtime, "example", loginGroup, deprovisionedOktaRuleFixedNow())
+	bothFinding := rule.buildFinding(runtime, "example", bothGroup, deprovisionedOktaRuleFixedNow())
 	if emailFinding.Fingerprint != loginFinding.Fingerprint {
 		t.Fatalf("fingerprint changes with identity node (email=%q login=%q); same Okta/GitHub pair must produce one fingerprint regardless of which identity node was traversed", emailFinding.Fingerprint, loginFinding.Fingerprint)
 	}
@@ -248,7 +248,7 @@ func deprovisionedOktaRuleActedAttrs(at time.Time) string {
 // rule rejects any other match_type, so test rows must use this shape to land
 // in the email-only acceptance branch.
 func deprovisionedOktaRuleEmailIdentityAttrs(at time.Time) string {
-	return deprovisionedOktaRuleIdentityAttrs("email", "alice@writer.com", "exact_email", "0.95", at)
+	return deprovisionedOktaRuleIdentityAttrs("email", "alice@example.com", "exact_email", "0.95", at)
 }
 
 // deprovisionedOktaRuleLoginIdentityAttrs mirrors the represents_identity edge
@@ -281,14 +281,14 @@ func deprovisionedOktaRuleIdentityAttrs(identifierType, identifierValue, matchTy
 func deprovisionedOktaRuleRow(actedAttributesJSON string) ports.CypherRow {
 	recentEmail := deprovisionedOktaRuleEmailIdentityAttrs(time.Now().UTC().Add(-1 * time.Hour))
 	return ports.CypherRow{Values: map[string]any{
-		"okta_user_urn":                   "urn:cerebro:writer:okta.user:alice@writer.com",
+		"okta_user_urn":                   "urn:cerebro:example:okta.user:alice@example.com",
 		"okta_user_label":                 "Alice",
 		"okta_attributes_json":            `{"status":"DEPROVISIONED"}`,
-		"identity_urn":                    "urn:cerebro:writer:identity:email:alice@writer.com",
-		"identity_label":                  "alice@writer.com",
-		"github_user_urn":                 "urn:cerebro:writer:github.user:alice",
+		"identity_urn":                    "urn:cerebro:example:identity:email:alice@example.com",
+		"identity_label":                  "alice@example.com",
+		"github_user_urn":                 "urn:cerebro:example:github.user:alice",
 		"github_user_label":               "alice",
-		"target_urn":                      "urn:cerebro:writer:github_repo:writer/cerebro",
+		"target_urn":                      "urn:cerebro:example:github_repo:writer/cerebro",
 		"target_entity_type":              "github_repo",
 		"target_label":                    "writer/cerebro",
 		"acted_attributes_json":           actedAttributesJSON,
@@ -303,7 +303,7 @@ func deprovisionedOktaRuleRow(actedAttributesJSON string) ports.CypherRow {
 // exists and would keep findings open indefinitely.
 func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsEmitsForRecentActedOn(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-prod", SourceId: "okta", TenantId: "example"}
 	row := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-1 * time.Hour)))
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
 	if err != nil {
@@ -321,7 +321,7 @@ func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsEmitsForRecentActedOn(t *t
 // deprovisioning surface auto-resolves once activity stops.
 func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsSkipsStaleActedOn(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-prod", SourceId: "okta", TenantId: "example"}
 	staleAt := time.Now().UTC().Add(-(identityDeprovisionedOktaRecencyWindow + 24*time.Hour))
 	row := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(staleAt))
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
@@ -339,7 +339,7 @@ func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsSkipsStaleActedOn(t *testi
 // Once the projector backfills, rows reappear with `at` and the rule re-emits naturally.
 func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsSkipsUnstampedActedOn(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-prod", SourceId: "okta", TenantId: "example"}
 	row := deprovisionedOktaRuleRow(`{"action":"git.clone","event_id":"legacy"}`)
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
 	if err != nil {
@@ -357,11 +357,11 @@ func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsSkipsUnstampedActedOn(t *t
 // haven't touched in years.
 func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsKeepsRecentDropsStaleWithinSameGroup(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-prod", SourceId: "okta", TenantId: "example"}
 	recentRow := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-2 * time.Hour)))
 	staleAt := time.Now().UTC().Add(-(identityDeprovisionedOktaRecencyWindow + 7*24*time.Hour))
 	staleRow := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(staleAt))
-	staleRow.Values["target_urn"] = "urn:cerebro:writer:github_repo:writer/legacy"
+	staleRow.Values["target_urn"] = "urn:cerebro:example:github_repo:writer/legacy"
 	staleRow.Values["target_label"] = "writer/legacy"
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{recentRow, staleRow})
 	if err != nil {
@@ -374,7 +374,7 @@ func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsKeepsRecentDropsStaleWithi
 	if got := finding.Attributes["target_count"]; got != "1" {
 		t.Fatalf("target_count = %q, want 1; stale-only target must not be reported", got)
 	}
-	if got := finding.Attributes["target_urns"]; got != "urn:cerebro:writer:github_repo:writer/cerebro" {
+	if got := finding.Attributes["target_urns"]; got != "urn:cerebro:example:github_repo:writer/cerebro" {
 		t.Fatalf("target_urns = %q, want only the recent target", got)
 	}
 }
@@ -384,7 +384,7 @@ func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsKeepsRecentDropsStaleWithi
 // might write a non-conforming string and silently keep a finding open.
 func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsSkipsMalformedAt(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-prod", SourceId: "okta", TenantId: "example"}
 	row := deprovisionedOktaRuleRow(`{"action":"git.clone","event_id":"weird","at":"yesterday"}`)
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
 	if err != nil {
@@ -405,7 +405,7 @@ func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsSkipsMalformedAt(t *testin
 // window before treating the join as evidence.
 func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsSkipsStaleOktaIdentifierEdge(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-prod", SourceId: "okta", TenantId: "example"}
 	staleAt := time.Now().UTC().Add(-(identityDeprovisionedOktaRecencyWindow + 24*time.Hour))
 	row := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-1 * time.Hour)))
 	row.Values["okta_identity_attributes_json"] = deprovisionedOktaRuleActedAttrs(staleAt)
@@ -420,7 +420,7 @@ func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsSkipsStaleOktaIdentifierEd
 
 func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsSkipsStaleGitHubIdentifierEdge(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-prod", SourceId: "okta", TenantId: "example"}
 	staleAt := time.Now().UTC().Add(-(identityDeprovisionedOktaRecencyWindow + 24*time.Hour))
 	row := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-1 * time.Hour)))
 	row.Values["github_identity_attributes_json"] = deprovisionedOktaRuleActedAttrs(staleAt)
@@ -440,9 +440,9 @@ func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsSkipsStaleGitHubIdentifier
 // backfills, these rows reappear with `at` and the rule re-emits naturally.
 func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsSkipsUnstampedIdentifierEdges(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-prod", SourceId: "okta", TenantId: "example"}
 	row := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-1 * time.Hour)))
-	row.Values["okta_identity_attributes_json"] = `{"identifier_type":"email","identifier_value":"alice@writer.com"}`
+	row.Values["okta_identity_attributes_json"] = `{"identifier_type":"email","identifier_value":"alice@example.com"}`
 	row.Values["github_identity_attributes_json"] = `{"identifier_type":"login","identifier_value":"alice"}`
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
 	if err != nil {
@@ -463,10 +463,10 @@ func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsSkipsUnstampedIdentifierEd
 // (exact_email/extracted_email), even when both edges are recent.
 func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsRejectsLoginOnlyMatch(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-prod", SourceId: "okta", TenantId: "example"}
 	loginAttrs := deprovisionedOktaRuleLoginIdentityAttrs(time.Now().UTC().Add(-1 * time.Hour))
 	row := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-1 * time.Hour)))
-	row.Values["identity_urn"] = "urn:cerebro:writer:identity:login:alice"
+	row.Values["identity_urn"] = "urn:cerebro:example:identity:login:alice"
 	row.Values["identity_label"] = "alice"
 	row.Values["okta_identity_attributes_json"] = loginAttrs
 	row.Values["github_identity_attributes_json"] = loginAttrs
@@ -485,7 +485,7 @@ func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsRejectsLoginOnlyMatch(t *t
 // the proof and the rule must refuse to fire.
 func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsRejectsLoginOnOktaSide(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-prod", SourceId: "okta", TenantId: "example"}
 	row := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-1 * time.Hour)))
 	row.Values["okta_identity_attributes_json"] = deprovisionedOktaRuleLoginIdentityAttrs(time.Now().UTC().Add(-1 * time.Hour))
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
@@ -499,7 +499,7 @@ func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsRejectsLoginOnOktaSide(t *
 
 func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsRejectsLoginOnGitHubSide(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-prod", SourceId: "okta", TenantId: "example"}
 	row := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-1 * time.Hour)))
 	row.Values["github_identity_attributes_json"] = deprovisionedOktaRuleLoginIdentityAttrs(time.Now().UTC().Add(-1 * time.Hour))
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
@@ -518,9 +518,9 @@ func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsRejectsLoginOnGitHubSide(t
 // extracted_email path does not silently lose findings.
 func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsAcceptsExtractedEmailMatch(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-prod", SourceId: "okta", TenantId: "example"}
 	row := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-1 * time.Hour)))
-	row.Values["github_identity_attributes_json"] = deprovisionedOktaRuleIdentityAttrs("email", "alice@writer.com", "extracted_email", "0.85", time.Now().UTC().Add(-1*time.Hour))
+	row.Values["github_identity_attributes_json"] = deprovisionedOktaRuleIdentityAttrs("email", "alice@example.com", "extracted_email", "0.85", time.Now().UTC().Add(-1*time.Hour))
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
 	if err != nil {
 		t.Fatalf("EvaluateRows() error = %v", err)

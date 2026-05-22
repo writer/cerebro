@@ -1,14 +1,14 @@
 {
   "rule_id": "sentinelone-agent-stale",
   "runtime": {
-    "id": "writer-sentinelone-agent",
+    "id": "example-sentinelone-agent",
     "source_id": "sentinelone",
-    "tenant_id": "writer"
+    "tenant_id": "example"
   },
   "events": [
     {
       "id": "s1-agent-1",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "sentinelone",
       "kind": "sentinelone.agent",
       "occurred_at": "2026-05-09T06:50:00Z",
@@ -24,7 +24,7 @@
     },
     {
       "id": "s1-agent-2",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "sentinelone",
       "kind": "sentinelone.agent",
       "occurred_at": "2026-05-09T06:55:00Z",
@@ -48,8 +48,8 @@
       "event_ids": ["s1-agent-1"],
       "attributes": {
         "action": "agent_stale",
-        "source_runtime_id": "writer-sentinelone-agent",
-        "primary_resource_urn": "urn:cerebro:writer:sentinelone_agent:agent-stale",
+        "source_runtime_id": "example-sentinelone-agent",
+        "primary_resource_urn": "urn:cerebro:example:sentinelone_agent:agent-stale",
         "agent_id": "agent-stale",
         "last_active_date": "2024-01-01T00:00:00Z"
       }

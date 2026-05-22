@@ -17,13 +17,13 @@ func githubActiveWithoutOktaRuleFixedNow() time.Time {
 
 func TestGitHubActiveWithoutOktaLinkRuleQueryScopesByTenant(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	request := rule.QueryFor(runtime)
 	if request.Query == "" {
 		t.Fatal("QueryFor() returned empty query for fully-populated runtime")
 	}
-	if got := request.Params["tenant_id"]; got != "writer" {
-		t.Fatalf("Params[tenant_id] = %v, want writer", got)
+	if got := request.Params["tenant_id"]; got != "example" {
+		t.Fatalf("Params[tenant_id] = %v, want example", got)
 	}
 	// The rule deliberately does NOT use a NOT EXISTS subquery for the
 	// represents_identity bridge: that would treat upsert-only stale
@@ -72,7 +72,7 @@ func TestGitHubActiveWithoutOktaLinkRuleQueryScopesByTenant(t *testing.T) {
 		t.Fatalf("Query missing `NOT EXISTS { ... github.org ... }` suppression clause; the rule must reject phantom github.user nodes whose label matches a github.org in the same tenant. Query:\n%s", request.Query)
 	}
 	if !strings.Contains(request.Query, "toLower(") {
-		t.Fatalf("Query missing case-insensitive label comparison; GitHub usernames and org slugs round-trip with original casing (e.g. `writer` vs `WriterInternal`), so the overlap predicate must lower-case both sides. Query:\n%s", request.Query)
+		t.Fatalf("Query missing case-insensitive label comparison; GitHub usernames and org slugs round-trip with original casing (e.g. `writer` vs `ExampleInternal`), so the overlap predicate must lower-case both sides. Query:\n%s", request.Query)
 	}
 	// Both target and bridge fan-outs MUST be collapsed via collect()
 	// before LIMIT $row_limit clamps the result set. Without the
@@ -97,7 +97,7 @@ func TestGitHubActiveWithoutOktaLinkRuleQueryScopesByTenant(t *testing.T) {
 
 func TestGitHubActiveWithoutOktaLinkRuleQueryRequiresTenant(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	if request := rule.QueryFor(&cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github"}); request.Query != "" {
+	if request := rule.QueryFor(&cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github"}); request.Query != "" {
 		t.Fatalf("QueryFor() returned populated query without tenant id; rule must refuse to scan: %#v", request)
 	}
 }
@@ -143,7 +143,7 @@ func githubActiveWithoutOktaRuleGroupWithTargets(targetURNs ...string) *githubAc
 		targets[urn] = githubActiveWithoutOktaTarget{urn: urn, entityType: "github.repo", label: urn}
 	}
 	return &githubActiveWithoutOktaGroup{
-		githubUserURN:        "urn:cerebro:writer:github.user:alice",
+		githubUserURN:        "urn:cerebro:example:github.user:alice",
 		githubUserLabel:      "alice",
 		githubAttributesJSON: `{"login":"alice"}`,
 		targets:              targets,
@@ -157,10 +157,10 @@ func githubActiveWithoutOktaRuleGroupWithTargets(targetURNs ...string) *githubAc
 // + github_user_urn) directly on buildFinding.
 func TestGitHubActiveWithoutOktaLinkRuleFingerprintIsStableAcrossRuns(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
-	group := githubActiveWithoutOktaRuleGroupWithTargets("urn:cerebro:writer:github_repo:writer/cerebro")
-	first := rule.buildFinding(runtime, "writer", group, githubActiveWithoutOktaRuleFixedNow())
-	second := rule.buildFinding(runtime, "writer", group, githubActiveWithoutOktaRuleFixedNow())
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
+	group := githubActiveWithoutOktaRuleGroupWithTargets("urn:cerebro:example:github_repo:writer/cerebro")
+	first := rule.buildFinding(runtime, "example", group, githubActiveWithoutOktaRuleFixedNow())
+	second := rule.buildFinding(runtime, "example", group, githubActiveWithoutOktaRuleFixedNow())
 	if first.ID != second.ID {
 		t.Fatalf("finding ID drifted across evaluations: %q vs %q (fingerprint must hash stable inputs only)", first.ID, second.ID)
 	}
@@ -179,13 +179,13 @@ func TestGitHubActiveWithoutOktaLinkRuleFingerprintIsStableAcrossRuns(t *testing
 // a synthetic value.
 func TestGitHubActiveWithoutOktaLinkRuleFindingStampsTriggeringRuntimeID(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	group := githubActiveWithoutOktaRuleGroupWithTargets("urn:cerebro:writer:github_repo:writer/cerebro")
-	githubTriggered := rule.buildFinding(&cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}, "writer", group, githubActiveWithoutOktaRuleFixedNow())
-	oktaTriggered := rule.buildFinding(&cerebrov1.SourceRuntime{Id: "writer-okta-user", SourceId: "okta", TenantId: "writer"}, "writer", group, githubActiveWithoutOktaRuleFixedNow())
-	if got := githubTriggered.RuntimeID; got != "writer-github-audit" {
+	group := githubActiveWithoutOktaRuleGroupWithTargets("urn:cerebro:example:github_repo:writer/cerebro")
+	githubTriggered := rule.buildFinding(&cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}, "example", group, githubActiveWithoutOktaRuleFixedNow())
+	oktaTriggered := rule.buildFinding(&cerebrov1.SourceRuntime{Id: "example-okta-user", SourceId: "okta", TenantId: "example"}, "example", group, githubActiveWithoutOktaRuleFixedNow())
+	if got := githubTriggered.RuntimeID; got != "example-github-audit" {
 		t.Fatalf("github-triggered RuntimeID = %q, want real triggering runtime; synthetic ids would make the finding unreachable through runtime-scoped APIs", got)
 	}
-	if got := oktaTriggered.RuntimeID; got != "writer-okta-user" {
+	if got := oktaTriggered.RuntimeID; got != "example-okta-user" {
 		t.Fatalf("okta-triggered RuntimeID = %q, want real triggering runtime", got)
 	}
 	// Both triggers MUST share the same fingerprint; pinning to first-observed
@@ -194,23 +194,23 @@ func TestGitHubActiveWithoutOktaLinkRuleFindingStampsTriggeringRuntimeID(t *test
 	if githubTriggered.Fingerprint != oktaTriggered.Fingerprint {
 		t.Fatalf("fingerprints differ across triggering runtimes (github=%q okta=%q); same offender must produce same id so the store can pin runtime", githubTriggered.Fingerprint, oktaTriggered.Fingerprint)
 	}
-	if got := githubTriggered.Attributes["source_runtime_id"]; got != "writer-github-audit" {
+	if got := githubTriggered.Attributes["source_runtime_id"]; got != "example-github-audit" {
 		t.Fatalf("attributes[source_runtime_id] = %q, want triggering runtime preserved for telemetry", got)
 	}
 }
 
-// Two GitHub audit runtimes (e.g. writer + writerinternal scoped to the same
+// Two GitHub audit runtimes (e.g. writer + exampleinternal scoped to the same
 // tenant in dev) project to the same github.user node by (tenant_id, login),
 // so the same offender must collapse onto one tenant-scoped finding.
 // Including runtime_id in the fingerprint would split this into duplicates
 // the moment a second github runtime synced.
 func TestGitHubActiveWithoutOktaLinkRuleFingerprintCollapsesAcrossGitHubRuntimes(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtimeA := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
-	runtimeB := &cerebrov1.SourceRuntime{Id: "writer-github-audit-writerinternal", SourceId: "github", TenantId: "writer"}
-	group := githubActiveWithoutOktaRuleGroupWithTargets("urn:cerebro:writer:github_repo:writer/cerebro")
-	a := rule.buildFinding(runtimeA, "writer", group, githubActiveWithoutOktaRuleFixedNow())
-	b := rule.buildFinding(runtimeB, "writer", group, githubActiveWithoutOktaRuleFixedNow())
+	runtimeA := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
+	runtimeB := &cerebrov1.SourceRuntime{Id: "example-github-audit-exampleinternal", SourceId: "github", TenantId: "example"}
+	group := githubActiveWithoutOktaRuleGroupWithTargets("urn:cerebro:example:github_repo:writer/cerebro")
+	a := rule.buildFinding(runtimeA, "example", group, githubActiveWithoutOktaRuleFixedNow())
+	b := rule.buildFinding(runtimeB, "example", group, githubActiveWithoutOktaRuleFixedNow())
 	if a.ID != b.ID {
 		t.Fatalf("findings split across github runtimes for the same offender (a=%q b=%q); rule is tenant-scoped and must produce one finding per (tenant, github_user)", a.ID, b.ID)
 	}
@@ -225,12 +225,12 @@ func TestGitHubActiveWithoutOktaLinkRuleFingerprintCollapsesAcrossGitHubRuntimes
 // repo it touched.
 func TestGitHubActiveWithoutOktaLinkRuleFingerprintIgnoresTargetSet(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
-	oneTarget := githubActiveWithoutOktaRuleGroupWithTargets("urn:cerebro:writer:github_repo:writer/cerebro")
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
+	oneTarget := githubActiveWithoutOktaRuleGroupWithTargets("urn:cerebro:example:github_repo:writer/cerebro")
 	threeTargets := githubActiveWithoutOktaRuleGroupWithTargets(
-		"urn:cerebro:writer:github_repo:writer/cerebro",
-		"urn:cerebro:writer:github_repo:writer/palmyra",
-		"urn:cerebro:writer:github_repo:writer/some-other-repo",
+		"urn:cerebro:example:github_repo:writer/cerebro",
+		"urn:cerebro:example:github_repo:writer/palmyra",
+		"urn:cerebro:example:github_repo:writer/some-other-repo",
 	)
 	first := rule.buildFinding(runtime, "writer", oneTarget, githubActiveWithoutOktaRuleFixedNow())
 	second := rule.buildFinding(runtime, "writer", threeTargets, githubActiveWithoutOktaRuleFixedNow())
@@ -243,19 +243,19 @@ func TestGitHubActiveWithoutOktaLinkRuleFingerprintIgnoresTargetSet(t *testing.T
 // queue would collapse different shadow accounts onto a single row.
 func TestGitHubActiveWithoutOktaLinkRuleFingerprintSeparatesGitHubUsers(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	groupAlice := &githubActiveWithoutOktaGroup{
-		githubUserURN:   "urn:cerebro:writer:github.user:alice",
+		githubUserURN:   "urn:cerebro:example:github.user:alice",
 		githubUserLabel: "alice",
-		targets:         map[string]githubActiveWithoutOktaTarget{"urn:cerebro:writer:github_repo:writer/cerebro": {urn: "urn:cerebro:writer:github_repo:writer/cerebro"}},
+		targets:         map[string]githubActiveWithoutOktaTarget{"urn:cerebro:example:github_repo:writer/cerebro": {urn: "urn:cerebro:example:github_repo:writer/cerebro"}},
 	}
 	groupBob := &githubActiveWithoutOktaGroup{
-		githubUserURN:   "urn:cerebro:writer:github.user:bob",
+		githubUserURN:   "urn:cerebro:example:github.user:bob",
 		githubUserLabel: "bob",
-		targets:         map[string]githubActiveWithoutOktaTarget{"urn:cerebro:writer:github_repo:writer/cerebro": {urn: "urn:cerebro:writer:github_repo:writer/cerebro"}},
+		targets:         map[string]githubActiveWithoutOktaTarget{"urn:cerebro:example:github_repo:writer/cerebro": {urn: "urn:cerebro:example:github_repo:writer/cerebro"}},
 	}
-	a := rule.buildFinding(runtime, "writer", groupAlice, githubActiveWithoutOktaRuleFixedNow())
-	b := rule.buildFinding(runtime, "writer", groupBob, githubActiveWithoutOktaRuleFixedNow())
+	a := rule.buildFinding(runtime, "example", groupAlice, githubActiveWithoutOktaRuleFixedNow())
+	b := rule.buildFinding(runtime, "example", groupBob, githubActiveWithoutOktaRuleFixedNow())
 	if a.ID == b.ID {
 		t.Fatalf("two distinct shadow github users collapsed onto the same finding (id=%q); fingerprint must include github_user_urn", a.ID)
 	}
@@ -404,12 +404,12 @@ func githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(at time.Time, matchTyp
 // indefinitely.
 func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsEmitsForRecentActedOn(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	row := githubActiveWithoutOktaRuleRow(
 		githubActiveWithoutOktaRuleActedAttrs(time.Now().UTC().Add(-1*time.Hour)),
-		"urn:cerebro:writer:github.user:alice",
+		"urn:cerebro:example:github.user:alice",
 		"alice",
-		"urn:cerebro:writer:github_repo:writer/cerebro",
+		"urn:cerebro:example:github_repo:writer/cerebro",
 	)
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
 	if err != nil {
@@ -433,12 +433,12 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsEmitsForRecentActedOn(t *tes
 // indefinitely.
 func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsRejectsStaleActedOn(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	row := githubActiveWithoutOktaRuleRow(
 		githubActiveWithoutOktaRuleActedAttrs(time.Now().UTC().Add(-90*24*time.Hour)),
-		"urn:cerebro:writer:github.user:alice",
+		"urn:cerebro:example:github.user:alice",
 		"alice",
-		"urn:cerebro:writer:github_repo:writer/cerebro",
+		"urn:cerebro:example:github_repo:writer/cerebro",
 	)
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
 	if err != nil {
@@ -454,12 +454,12 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsRejectsStaleActedOn(t *testi
 // them rather than treat absence of evidence as evidence of activity.
 func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsRejectsActedOnWithoutAt(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	row := githubActiveWithoutOktaRuleRow(
 		`{"action":"git.clone","event_id":"github-audit-evt"}`,
-		"urn:cerebro:writer:github.user:alice",
+		"urn:cerebro:example:github.user:alice",
 		"alice",
-		"urn:cerebro:writer:github_repo:writer/cerebro",
+		"urn:cerebro:example:github_repo:writer/cerebro",
 	)
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
 	if err != nil {
@@ -480,7 +480,7 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsRejectsActedOnWithoutAt(t *t
 // account currently retains access; they are evidence of access being removed.
 func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsRejectsPassiveAndRevocationActions(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	now := time.Now().UTC()
 	for _, action := range []string{
 		"workflows.completed_workflow_run",
@@ -491,9 +491,9 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsRejectsPassiveAndRevocationA
 		t.Run(action, func(t *testing.T) {
 			row := githubActiveWithoutOktaRuleRow(
 				githubActiveWithoutOktaRuleActedAttrsForAction(action, now.Add(-1*time.Hour)),
-				"urn:cerebro:writer:github.user:alice",
+				"urn:cerebro:example:github.user:alice",
 				"alice",
-				"urn:cerebro:writer:github_repo:writer/cerebro",
+				"urn:cerebro:example:github_repo:writer/cerebro",
 			)
 			findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
 			if err != nil {
@@ -508,7 +508,7 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsRejectsPassiveAndRevocationA
 
 func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsAcceptsStrongAccessActions(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	now := time.Now().UTC()
 	for _, action := range []string{
 		"git.fetch",
@@ -521,9 +521,9 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsAcceptsStrongAccessActions(t
 		t.Run(action, func(t *testing.T) {
 			row := githubActiveWithoutOktaRuleRow(
 				githubActiveWithoutOktaRuleActedAttrsForAction(action, now.Add(-1*time.Hour)),
-				"urn:cerebro:writer:github.user:alice",
+				"urn:cerebro:example:github.user:alice",
 				"alice",
-				"urn:cerebro:writer:github_repo:writer/cerebro",
+				"urn:cerebro:example:github_repo:writer/cerebro",
 			)
 			findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
 			if err != nil {
@@ -549,7 +549,7 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsAcceptsStrongAccessActions(t
 // renovate[bot], coderabbitai[bot], factory-droid[bot], …).
 func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsSkipsActorIsBot(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	rows := []ports.CypherRow{}
 	for _, login := range []string{
 		"dependabot[bot]",
@@ -561,9 +561,9 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsSkipsActorIsBot(t *testing.T
 	} {
 		rows = append(rows, githubActiveWithoutOktaRuleRowWithGitHubAttrs(
 			githubActiveWithoutOktaRuleActedAttrs(time.Now().UTC().Add(-1*time.Hour)),
-			"urn:cerebro:writer:github.user:"+strings.ToLower(login),
+			"urn:cerebro:example:github.user:"+strings.ToLower(login),
 			login,
-			"urn:cerebro:writer:github_repo:writer/cerebro",
+			"urn:cerebro:example:github_repo:writer/cerebro",
 			map[string]string{"login": login, "actor_is_bot": "true"},
 		))
 	}
@@ -591,7 +591,7 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsSkipsActorIsBot(t *testing.T
 // linkable identity so the finding is non-actionable.
 func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsSkipsOrganizationAndUnresolvedActorTypes(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	cases := []struct {
 		login string
 		attrs map[string]string
@@ -604,9 +604,9 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsSkipsOrganizationAndUnresolv
 	for _, tc := range cases {
 		row := githubActiveWithoutOktaRuleRowWithGitHubAttrs(
 			githubActiveWithoutOktaRuleActedAttrs(time.Now().UTC().Add(-1*time.Hour)),
-			"urn:cerebro:writer:github.user:"+tc.login,
+			"urn:cerebro:example:github.user:"+tc.login,
 			tc.login,
-			"urn:cerebro:writer:github_repo:writer/cerebro",
+			"urn:cerebro:example:github_repo:writer/cerebro",
 			tc.attrs,
 		)
 		findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
@@ -626,12 +626,12 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsSkipsOrganizationAndUnresolv
 // queue with non-actionable findings.
 func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsSkipsActorIsAgent(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	row := githubActiveWithoutOktaRuleRowWithGitHubAttrs(
 		githubActiveWithoutOktaRuleActedAttrs(time.Now().UTC().Add(-1*time.Hour)),
-		"urn:cerebro:writer:github.user:fine-grained-pat-agent",
+		"urn:cerebro:example:github.user:fine-grained-pat-agent",
 		"fine-grained-pat-agent",
-		"urn:cerebro:writer:github_repo:writer/cerebro",
+		"urn:cerebro:example:github_repo:writer/cerebro",
 		map[string]string{"login": "fine-grained-pat-agent", "actor_is_agent": "true"},
 	)
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
@@ -648,7 +648,7 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsSkipsActorIsAgent(t *testing
 // doesn't silently re-open every bot finding.
 func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsSkipsActorIsAutomationCaseInsensitive(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	cases := []map[string]string{
 		{"login": "alice", "actor_is_bot": "True"},
 		{"login": "alice", "actor_is_bot": "TRUE"},
@@ -658,9 +658,9 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsSkipsActorIsAutomationCaseIn
 	for _, attrs := range cases {
 		row := githubActiveWithoutOktaRuleRowWithGitHubAttrs(
 			githubActiveWithoutOktaRuleActedAttrs(time.Now().UTC().Add(-1*time.Hour)),
-			"urn:cerebro:writer:github.user:alice",
+			"urn:cerebro:example:github.user:alice",
 			"alice",
-			"urn:cerebro:writer:github_repo:writer/cerebro",
+			"urn:cerebro:example:github_repo:writer/cerebro",
 			attrs,
 		)
 		findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
@@ -682,7 +682,7 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsSkipsActorIsAutomationCaseIn
 // explicitly: those values must NOT suppress.
 func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsAcceptsHumanLoginsWithoutAutomationFlags(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	rows := []ports.CypherRow{}
 	cases := []struct {
 		login string
@@ -696,9 +696,9 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsAcceptsHumanLoginsWithoutAut
 	for _, tc := range cases {
 		rows = append(rows, githubActiveWithoutOktaRuleRowWithGitHubAttrs(
 			githubActiveWithoutOktaRuleActedAttrs(time.Now().UTC().Add(-1*time.Hour)),
-			"urn:cerebro:writer:github.user:"+tc.login,
+			"urn:cerebro:example:github.user:"+tc.login,
 			tc.login,
-			"urn:cerebro:writer:github_repo:writer/cerebro",
+			"urn:cerebro:example:github_repo:writer/cerebro",
 			tc.attrs,
 		))
 	}
@@ -717,19 +717,19 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsAcceptsHumanLoginsWithoutAut
 // emitting one finding per repo.
 func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsCollapsesTargetsPerGitHubUser(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	at := time.Now().UTC().Add(-1 * time.Hour)
 	rowOne := githubActiveWithoutOktaRuleRow(
 		githubActiveWithoutOktaRuleActedAttrs(at),
-		"urn:cerebro:writer:github.user:alice",
+		"urn:cerebro:example:github.user:alice",
 		"alice",
-		"urn:cerebro:writer:github_repo:writer/cerebro",
+		"urn:cerebro:example:github_repo:writer/cerebro",
 	)
 	rowTwo := githubActiveWithoutOktaRuleRow(
 		githubActiveWithoutOktaRuleActedAttrs(at),
-		"urn:cerebro:writer:github.user:alice",
+		"urn:cerebro:example:github.user:alice",
 		"alice",
-		"urn:cerebro:writer:github_repo:writer/palmyra",
+		"urn:cerebro:example:github_repo:writer/palmyra",
 	)
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{rowOne, rowTwo})
 	if err != nil {
@@ -742,7 +742,7 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsCollapsesTargetsPerGitHubUse
 	if got, want := finding.Attributes["target_count"], "2"; got != want {
 		t.Fatalf("target_count = %q, want %q", got, want)
 	}
-	if got, want := finding.Attributes["target_urns"], "urn:cerebro:writer:github_repo:writer/cerebro,urn:cerebro:writer:github_repo:writer/palmyra"; got != want {
+	if got, want := finding.Attributes["target_urns"], "urn:cerebro:example:github_repo:writer/cerebro,urn:cerebro:example:github_repo:writer/palmyra"; got != want {
 		t.Fatalf("target_urns = %q, want %q (full set must be retained as telemetry)", got, want)
 	}
 }
@@ -752,19 +752,19 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsCollapsesTargetsPerGitHubUse
 // reproducible across runs.
 func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsEmitsDeterministicOrder(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	at := time.Now().UTC().Add(-1 * time.Hour)
 	rowBob := githubActiveWithoutOktaRuleRow(
 		githubActiveWithoutOktaRuleActedAttrs(at),
-		"urn:cerebro:writer:github.user:bob",
+		"urn:cerebro:example:github.user:bob",
 		"bob",
-		"urn:cerebro:writer:github_repo:writer/cerebro",
+		"urn:cerebro:example:github_repo:writer/cerebro",
 	)
 	rowAlice := githubActiveWithoutOktaRuleRow(
 		githubActiveWithoutOktaRuleActedAttrs(at),
-		"urn:cerebro:writer:github.user:alice",
+		"urn:cerebro:example:github.user:alice",
 		"alice",
-		"urn:cerebro:writer:github_repo:writer/cerebro",
+		"urn:cerebro:example:github_repo:writer/cerebro",
 	)
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{rowBob, rowAlice})
 	if err != nil {
@@ -785,12 +785,12 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsEmitsDeterministicOrder(t *t
 // emit only on real graph evidence.
 func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsHandlesEmptyAndPartialRows(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	cases := map[string][]ports.CypherRow{
 		"nil rows":                nil,
 		"empty rows":              {},
-		"row missing github user": {{Values: map[string]any{"target_urn": "urn:cerebro:writer:github_repo:writer/cerebro"}}},
-		"row missing target":      {{Values: map[string]any{"github_user_urn": "urn:cerebro:writer:github.user:alice", "github_user_label": "alice"}}},
+		"row missing github user": {{Values: map[string]any{"target_urn": "urn:cerebro:example:github_repo:writer/cerebro"}}},
+		"row missing target":      {{Values: map[string]any{"github_user_urn": "urn:cerebro:example:github.user:alice", "github_user_label": "alice"}}},
 	}
 	for name, rows := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -810,12 +810,12 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsHandlesEmptyAndPartialRows(t
 // rows from a malformed runtime.
 func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsRequiresTenant(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github"}
 	row := githubActiveWithoutOktaRuleRow(
 		githubActiveWithoutOktaRuleActedAttrs(time.Now().UTC().Add(-1*time.Hour)),
-		"urn:cerebro:writer:github.user:alice",
+		"urn:cerebro:example:github.user:alice",
 		"alice",
-		"urn:cerebro:writer:github_repo:writer/cerebro",
+		"urn:cerebro:example:github_repo:writer/cerebro",
 	)
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
 	if err != nil {
@@ -836,14 +836,14 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsRequiresTenant(t *testing.T)
 // false and the group emits as expected.
 func TestGitHubActiveWithoutOktaLinkRuleStaleBridgeDoesNotSuppress(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	now := time.Now().UTC()
 	staleAt := now.Add(-90 * 24 * time.Hour)
 	row := githubActiveWithoutOktaRuleRowWithBridge(
 		githubActiveWithoutOktaRuleActedAttrs(now.Add(-1*time.Hour)),
-		"urn:cerebro:writer:github.user:alice",
+		"urn:cerebro:example:github.user:alice",
 		"alice",
-		"urn:cerebro:writer:github_repo:writer/cerebro",
+		"urn:cerebro:example:github_repo:writer/cerebro",
 		githubActiveWithoutOktaRuleBridgeAttrs(staleAt),
 		githubActiveWithoutOktaRuleBridgeAttrs(staleAt),
 	)
@@ -862,14 +862,14 @@ func TestGitHubActiveWithoutOktaLinkRuleStaleBridgeDoesNotSuppress(t *testing.T)
 // longer applies, so the group must be suppressed.
 func TestGitHubActiveWithoutOktaLinkRuleFreshBridgeOnBothSidesSuppresses(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	now := time.Now().UTC()
 	freshAt := now.Add(-1 * time.Hour)
 	row := githubActiveWithoutOktaRuleRowWithBridge(
 		githubActiveWithoutOktaRuleActedAttrs(freshAt),
-		"urn:cerebro:writer:github.user:alice",
+		"urn:cerebro:example:github.user:alice",
 		"alice",
-		"urn:cerebro:writer:github_repo:writer/cerebro",
+		"urn:cerebro:example:github_repo:writer/cerebro",
 		githubActiveWithoutOktaRuleBridgeAttrs(freshAt),
 		githubActiveWithoutOktaRuleBridgeAttrs(freshAt),
 	)
@@ -884,17 +884,17 @@ func TestGitHubActiveWithoutOktaLinkRuleFreshBridgeOnBothSidesSuppresses(t *test
 
 func TestGitHubActiveWithoutOktaLinkRuleDurableExactEmailBridgeSuppresses(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	now := time.Now().UTC()
 	freshAt := now.Add(-1 * time.Hour)
 	staleAt := now.Add(-90 * 24 * time.Hour)
 	row := githubActiveWithoutOktaRuleRowWithBridge(
 		githubActiveWithoutOktaRuleActedAttrs(freshAt),
-		"urn:cerebro:writer:github.user:alice",
+		"urn:cerebro:example:github.user:alice",
 		"alice",
-		"urn:cerebro:writer:github_repo:writer/cerebro",
-		githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(staleAt, "exact_email", "email", "alice@writer.com"),
-		githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(freshAt, "exact_email", "email", "alice@writer.com"),
+		"urn:cerebro:example:github_repo:writer/cerebro",
+		githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(staleAt, "exact_email", "email", "alice@example.com"),
+		githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(freshAt, "exact_email", "email", "alice@example.com"),
 	)
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
 	if err != nil {
@@ -907,7 +907,7 @@ func TestGitHubActiveWithoutOktaLinkRuleDurableExactEmailBridgeSuppresses(t *tes
 
 func TestGitHubActiveWithoutOktaLinkRuleDurableBridgeRequiresExactEmailAndFreshOkta(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	now := time.Now().UTC()
 	freshAt := now.Add(-1 * time.Hour)
 	staleAt := now.Add(-90 * 24 * time.Hour)
@@ -920,25 +920,25 @@ func TestGitHubActiveWithoutOktaLinkRuleDurableBridgeRequiresExactEmailAndFreshO
 			oktaBridgeJSON:   githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(freshAt, "login", "login", "alice"),
 		},
 		"fresh okta side is required": {
-			githubBridgeJSON: githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(staleAt, "exact_email", "email", "alice@writer.com"),
-			oktaBridgeJSON:   githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(staleAt, "exact_email", "email", "alice@writer.com"),
+			githubBridgeJSON: githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(staleAt, "exact_email", "email", "alice@example.com"),
+			oktaBridgeJSON:   githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(staleAt, "exact_email", "email", "alice@example.com"),
 		},
 		"email values must match": {
-			githubBridgeJSON: githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(staleAt, "exact_email", "email", "alice@writer.com"),
-			oktaBridgeJSON:   githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(freshAt, "exact_email", "email", "bob@writer.com"),
+			githubBridgeJSON: githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(staleAt, "exact_email", "email", "alice@example.com"),
+			oktaBridgeJSON:   githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(freshAt, "exact_email", "email", "bob@example.com"),
 		},
 		"github side still needs a stamped observation": {
-			githubBridgeJSON: githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(time.Time{}, "exact_email", "email", "alice@writer.com"),
-			oktaBridgeJSON:   githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(freshAt, "exact_email", "email", "alice@writer.com"),
+			githubBridgeJSON: githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(time.Time{}, "exact_email", "email", "alice@example.com"),
+			oktaBridgeJSON:   githubActiveWithoutOktaRuleBridgeAttrsWithIdentifier(freshAt, "exact_email", "email", "alice@example.com"),
 		},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			row := githubActiveWithoutOktaRuleRowWithBridge(
 				githubActiveWithoutOktaRuleActedAttrs(freshAt),
-				"urn:cerebro:writer:github.user:alice",
+				"urn:cerebro:example:github.user:alice",
 				"alice",
-				"urn:cerebro:writer:github_repo:writer/cerebro",
+				"urn:cerebro:example:github_repo:writer/cerebro",
 				tc.githubBridgeJSON,
 				tc.oktaBridgeJSON,
 			)
@@ -961,7 +961,7 @@ func TestGitHubActiveWithoutOktaLinkRuleDurableBridgeRequiresExactEmailAndFreshO
 // github.audit event re-asserted the github-side edge.
 func TestGitHubActiveWithoutOktaLinkRuleOneSidedBridgeDoesNotSuppress(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	now := time.Now().UTC()
 	freshAt := now.Add(-1 * time.Hour)
 	staleAt := now.Add(-90 * 24 * time.Hour)
@@ -990,9 +990,9 @@ func TestGitHubActiveWithoutOktaLinkRuleOneSidedBridgeDoesNotSuppress(t *testing
 		t.Run(name, func(t *testing.T) {
 			row := githubActiveWithoutOktaRuleRowWithBridge(
 				githubActiveWithoutOktaRuleActedAttrs(freshAt),
-				"urn:cerebro:writer:github.user:alice",
+				"urn:cerebro:example:github.user:alice",
 				"alice",
-				"urn:cerebro:writer:github_repo:writer/cerebro",
+				"urn:cerebro:example:github_repo:writer/cerebro",
 				tc.githubBridgeJSON,
 				tc.oktaBridgeJSON,
 			)
@@ -1020,22 +1020,22 @@ func TestGitHubActiveWithoutOktaLinkRuleOneSidedBridgeDoesNotSuppress(t *testing
 // and "open" across evaluation cycles.
 func TestGitHubActiveWithoutOktaLinkRuleFreshBridgeArrivesAfterNoBridgeRow(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	now := time.Now().UTC()
 	freshAt := now.Add(-1 * time.Hour)
 	rowNoBridge := githubActiveWithoutOktaRuleRowWithBridge(
 		githubActiveWithoutOktaRuleActedAttrs(freshAt),
-		"urn:cerebro:writer:github.user:alice",
+		"urn:cerebro:example:github.user:alice",
 		"alice",
-		"urn:cerebro:writer:github_repo:writer/cerebro",
+		"urn:cerebro:example:github_repo:writer/cerebro",
 		"",
 		"",
 	)
 	rowFreshBridge := githubActiveWithoutOktaRuleRowWithBridge(
 		githubActiveWithoutOktaRuleActedAttrs(freshAt),
-		"urn:cerebro:writer:github.user:alice",
+		"urn:cerebro:example:github.user:alice",
 		"alice",
-		"urn:cerebro:writer:github_repo:writer/palmyra",
+		"urn:cerebro:example:github_repo:writer/palmyra",
 		githubActiveWithoutOktaRuleBridgeAttrs(freshAt),
 		githubActiveWithoutOktaRuleBridgeAttrs(freshAt),
 	)
@@ -1063,15 +1063,15 @@ func TestGitHubActiveWithoutOktaLinkRuleFreshBridgeArrivesAfterNoBridgeRow(t *te
 // being consumed by one prolific account's targets and bridges.
 func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsConsumesTargetsList(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	freshAt := time.Now().UTC().Add(-1 * time.Hour)
 	row := githubActiveWithoutOktaRuleRowFull(
-		"urn:cerebro:writer:github.user:alice",
+		"urn:cerebro:example:github.user:alice",
 		"alice",
 		[]githubActiveWithoutOktaTestTarget{
-			{urn: "urn:cerebro:writer:github_repo:writer/cerebro", entityType: "github.repo", label: "writer/cerebro", actedAttributesJSON: githubActiveWithoutOktaRuleActedAttrs(freshAt)},
-			{urn: "urn:cerebro:writer:github_repo:writer/palmyra", entityType: "github.repo", label: "writer/palmyra", actedAttributesJSON: githubActiveWithoutOktaRuleActedAttrs(freshAt)},
-			{urn: "urn:cerebro:writer:github_repo:writer/some-other-repo", entityType: "github.repo", label: "writer/some-other-repo", actedAttributesJSON: githubActiveWithoutOktaRuleActedAttrs(freshAt)},
+			{urn: "urn:cerebro:example:github_repo:writer/cerebro", entityType: "github.repo", label: "writer/cerebro", actedAttributesJSON: githubActiveWithoutOktaRuleActedAttrs(freshAt)},
+			{urn: "urn:cerebro:example:github_repo:writer/palmyra", entityType: "github.repo", label: "writer/palmyra", actedAttributesJSON: githubActiveWithoutOktaRuleActedAttrs(freshAt)},
+			{urn: "urn:cerebro:example:github_repo:writer/some-other-repo", entityType: "github.repo", label: "writer/some-other-repo", actedAttributesJSON: githubActiveWithoutOktaRuleActedAttrs(freshAt)},
 		},
 		nil,
 	)
@@ -1086,7 +1086,7 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsConsumesTargetsList(t *testi
 	if got, want := finding.Attributes["target_count"], "3"; got != want {
 		t.Fatalf("target_count = %q, want %q", got, want)
 	}
-	if got, want := finding.Attributes["target_urns"], "urn:cerebro:writer:github_repo:writer/cerebro,urn:cerebro:writer:github_repo:writer/palmyra,urn:cerebro:writer:github_repo:writer/some-other-repo"; got != want {
+	if got, want := finding.Attributes["target_urns"], "urn:cerebro:example:github_repo:writer/cerebro,urn:cerebro:example:github_repo:writer/palmyra,urn:cerebro:example:github_repo:writer/some-other-repo"; got != want {
 		t.Fatalf("target_urns = %q, want %q (full target list must be retained as telemetry)", got, want)
 	}
 }
@@ -1097,15 +1097,15 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsConsumesTargetsList(t *testi
 // must not pin the finding open.
 func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsFiltersStaleTargetsInList(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	now := time.Now().UTC()
 	row := githubActiveWithoutOktaRuleRowFull(
-		"urn:cerebro:writer:github.user:alice",
+		"urn:cerebro:example:github.user:alice",
 		"alice",
 		[]githubActiveWithoutOktaTestTarget{
-			{urn: "urn:cerebro:writer:github_repo:writer/fresh", entityType: "github.repo", label: "writer/fresh", actedAttributesJSON: githubActiveWithoutOktaRuleActedAttrs(now.Add(-1 * time.Hour))},
-			{urn: "urn:cerebro:writer:github_repo:writer/stale", entityType: "github.repo", label: "writer/stale", actedAttributesJSON: githubActiveWithoutOktaRuleActedAttrs(now.Add(-90 * 24 * time.Hour))},
-			{urn: "urn:cerebro:writer:github_repo:writer/missing-at", entityType: "github.repo", label: "writer/missing-at", actedAttributesJSON: `{"action":"git.clone"}`},
+			{urn: "urn:cerebro:example:github_repo:writer/fresh", entityType: "github.repo", label: "writer/fresh", actedAttributesJSON: githubActiveWithoutOktaRuleActedAttrs(now.Add(-1 * time.Hour))},
+			{urn: "urn:cerebro:example:github_repo:writer/stale", entityType: "github.repo", label: "writer/stale", actedAttributesJSON: githubActiveWithoutOktaRuleActedAttrs(now.Add(-90 * 24 * time.Hour))},
+			{urn: "urn:cerebro:example:github_repo:writer/missing-at", entityType: "github.repo", label: "writer/missing-at", actedAttributesJSON: `{"action":"git.clone"}`},
 		},
 		nil,
 	)
@@ -1120,7 +1120,7 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsFiltersStaleTargetsInList(t 
 	if got, want := finding.Attributes["target_count"], "1"; got != want {
 		t.Fatalf("target_count = %q, want %q (only the fresh target should remain)", got, want)
 	}
-	if got, want := finding.Attributes["target_urns"], "urn:cerebro:writer:github_repo:writer/fresh"; got != want {
+	if got, want := finding.Attributes["target_urns"], "urn:cerebro:example:github_repo:writer/fresh"; got != want {
 		t.Fatalf("target_urns = %q, want %q", got, want)
 	}
 }
@@ -1134,7 +1134,7 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsFiltersStaleTargetsInList(t 
 // renamed bridges, NOT one current bridge.
 func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsBridgesListPairing(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	now := time.Now().UTC()
 	freshAt := now.Add(-1 * time.Hour)
 	staleAt := now.Add(-90 * 24 * time.Hour)
@@ -1178,10 +1178,10 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsBridgesListPairing(t *testin
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			row := githubActiveWithoutOktaRuleRowFull(
-				"urn:cerebro:writer:github.user:alice",
+				"urn:cerebro:example:github.user:alice",
 				"alice",
 				[]githubActiveWithoutOktaTestTarget{{
-					urn:                 "urn:cerebro:writer:github_repo:writer/cerebro",
+					urn:                 "urn:cerebro:example:github_repo:writer/cerebro",
 					entityType:          "github.repo",
 					label:               "writer/cerebro",
 					actedAttributesJSON: githubActiveWithoutOktaRuleActedAttrs(freshAt),
@@ -1218,7 +1218,7 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsBridgesListPairing(t *testin
 // org acting on itself before the org-self routing fix).
 func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsEdgeActorTypeSuppressesPhantom(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	now := time.Now().UTC()
 	freshAt := now.Add(-1 * time.Hour)
 	cases := []struct {
@@ -1278,9 +1278,9 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsEdgeActorTypeSuppressesPhant
 		t.Run(tc.name, func(t *testing.T) {
 			row := githubActiveWithoutOktaRuleRowWithGitHubAttrs(
 				tc.edgeAttrs,
-				"urn:cerebro:writer:github.user:"+tc.login,
+				"urn:cerebro:example:github.user:"+tc.login,
 				tc.login,
-				"urn:cerebro:writer:github_repo:writer/cerebro",
+				"urn:cerebro:example:github_repo:writer/cerebro",
 				tc.nodeAttrs,
 			)
 			findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
@@ -1306,22 +1306,22 @@ func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsEdgeActorTypeSuppressesPhant
 // on automation markers that survived the recency cutoff.
 func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsStaleEdgeAutomationDoesNotSuppress(t *testing.T) {
 	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "example"}
 	now := time.Now().UTC()
 	staleAt := now.Add(-90 * 24 * time.Hour)
 	freshAt := now.Add(-1 * time.Hour)
 	row := githubActiveWithoutOktaRuleRowFull(
-		"urn:cerebro:writer:github.user:alice",
+		"urn:cerebro:example:github.user:alice",
 		"alice",
 		[]githubActiveWithoutOktaTestTarget{
 			{
-				urn:                 "urn:cerebro:writer:github_repo:writer/cerebro",
+				urn:                 "urn:cerebro:example:github_repo:writer/cerebro",
 				entityType:          "github.repo",
 				label:               "writer/cerebro",
 				actedAttributesJSON: `{"action":"git.clone","actor_type":"Bot","at":"` + staleAt.Format(time.RFC3339) + `"}`,
 			},
 			{
-				urn:                 "urn:cerebro:writer:github_repo:writer/palmyra",
+				urn:                 "urn:cerebro:example:github_repo:writer/palmyra",
 				entityType:          "github.repo",
 				label:               "writer/palmyra",
 				actedAttributesJSON: `{"action":"git.clone","at":"` + freshAt.Format(time.RFC3339) + `"}`,

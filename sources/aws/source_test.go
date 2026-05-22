@@ -209,14 +209,14 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		config map[string]string
 		kind   string
 	}{
-		{family: familyAccessKey, config: map[string]string{"user_name": "admin@writer.com"}, kind: "aws.access_key"},
-		{family: familyEffectivePermission, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.effective_permission"},
+		{family: familyAccessKey, config: map[string]string{"user_name": "admin@example.com"}, kind: "aws.access_key"},
+		{family: familyEffectivePermission, config: map[string]string{"principal_name": "admin@example.com", "principal_type": "user"}, kind: "aws.effective_permission"},
 		{family: familyIAMUser, kind: "aws.iam_user"},
 		{family: familyIAMRole, kind: "aws.iam_role"},
 		{family: familyIAMRoleTrust, kind: "aws.iam_role_trust"},
 		{family: familyIAMGroup, kind: "aws.iam_group"},
 		{family: familyIAMMembership, config: map[string]string{"group_name": "Security"}, kind: "aws.iam_group_membership"},
-		{family: familyIAMRoleAssign, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.iam_role_assignment"},
+		{family: familyIAMRoleAssign, config: map[string]string{"principal_name": "admin@example.com", "principal_type": "user"}, kind: "aws.iam_role_assignment"},
 		{family: familyCloudTrail, kind: "aws.cloudtrail"},
 		{family: familyPublicEndpoint, kind: "aws.public_endpoint"},
 		{family: familyResourceExposure, kind: "aws.resource_exposure"},
@@ -242,7 +242,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 
 func TestReadAWSIAMUserPreview(t *testing.T) {
 	source := newTestSource(t, fakeAWS{users: []iamtypes.User{{
-		Arn: awssdk.String("arn:aws:iam::123456789012:user/admin@writer.com"), UserId: awssdk.String("AIDAADMIN"), UserName: awssdk.String("admin@writer.com"), CreateDate: timePtr("2026-01-01T00:00:00Z"),
+		Arn: awssdk.String("arn:aws:iam::123456789012:user/admin@example.com"), UserId: awssdk.String("AIDAADMIN"), UserName: awssdk.String("admin@example.com"), CreateDate: timePtr("2026-01-01T00:00:00Z"),
 	}}})
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyIAMUser}), nil)
 	if err != nil {
@@ -251,8 +251,8 @@ func TestReadAWSIAMUserPreview(t *testing.T) {
 	if len(pull.Events) != 1 {
 		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
 	}
-	if got := pull.Events[0].Attributes["email"]; got != "admin@writer.com" {
-		t.Fatalf("email = %q, want admin@writer.com", got)
+	if got := pull.Events[0].Attributes["email"]; got != "admin@example.com" {
+		t.Fatalf("email = %q, want admin@example.com", got)
 	}
 }
 
@@ -262,7 +262,7 @@ func TestReadAWSRoleAndAccessKeyPreview(t *testing.T) {
 			Arn: awssdk.String("arn:aws:iam::123456789012:role/AdminRole"), RoleId: awssdk.String("AROADMIN"), RoleName: awssdk.String("AdminRole"), CreateDate: timePtr("2026-01-01T00:00:00Z"),
 		}},
 		accessKeys: []iamtypes.AccessKeyMetadata{{
-			AccessKeyId: awssdk.String("AKIAEXAMPLE"), UserName: awssdk.String("admin@writer.com"), Status: iamtypes.StatusTypeActive, CreateDate: timePtr("2026-01-01T00:00:00Z"),
+			AccessKeyId: awssdk.String("AKIAEXAMPLE"), UserName: awssdk.String("admin@example.com"), Status: iamtypes.StatusTypeActive, CreateDate: timePtr("2026-01-01T00:00:00Z"),
 		}},
 	})
 	for _, tt := range []struct {
@@ -271,7 +271,7 @@ func TestReadAWSRoleAndAccessKeyPreview(t *testing.T) {
 		kind   string
 	}{
 		{family: familyIAMRole, kind: "aws.iam_role"},
-		{family: familyAccessKey, config: map[string]string{"user_name": "admin@writer.com"}, kind: "aws.access_key"},
+		{family: familyAccessKey, config: map[string]string{"user_name": "admin@example.com"}, kind: "aws.access_key"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			config := map[string]string{"account_id": "123456789012", "family": tt.family}
@@ -376,11 +376,11 @@ func TestReadAWSPublicEndpointCollectsDNSAndEdgeHosts(t *testing.T) {
 	source := newTestSource(t, fakeAWS{
 		hostedZones: []route53types.HostedZone{{
 			Id:     awssdk.String("/hostedzone/Z123"),
-			Name:   awssdk.String("writer.com."),
+			Name:   awssdk.String("example.com."),
 			Config: &route53types.HostedZoneConfig{PrivateZone: false},
 		}},
 		recordSets: []route53types.ResourceRecordSet{{
-			Name: awssdk.String("app.writer.com."),
+			Name: awssdk.String("app.example.com."),
 			Type: route53types.RRTypeCname,
 			ResourceRecords: []route53types.ResourceRecord{{
 				Value: awssdk.String("d111111abcdef8.cloudfront.net."),
@@ -390,7 +390,7 @@ func TestReadAWSPublicEndpointCollectsDNSAndEdgeHosts(t *testing.T) {
 			ARN:        awssdk.String("arn:aws:cloudfront::123456789012:distribution/EDFDVBD632BHDS5"),
 			Id:         awssdk.String("EDFDVBD632BHDS5"),
 			DomainName: awssdk.String("d111111abcdef8.cloudfront.net"),
-			Aliases:    &cloudfronttypes.Aliases{Items: []string{"app.writer.com"}},
+			Aliases:    &cloudfronttypes.Aliases{Items: []string{"app.example.com"}},
 			Enabled:    awssdk.Bool(true),
 		}, {
 			ARN:        awssdk.String("arn:aws:cloudfront::123456789012:distribution/DISABLED"),
@@ -408,8 +408,8 @@ func TestReadAWSPublicEndpointCollectsDNSAndEdgeHosts(t *testing.T) {
 		t.Fatalf("len(route53 events) = %d, want 1", len(pull.Events))
 	}
 	route53Event := pull.Events[0]
-	if got := route53Event.Attributes["host"]; got != "app.writer.com" {
-		t.Fatalf("route53 host = %q, want app.writer.com", got)
+	if got := route53Event.Attributes["host"]; got != "app.example.com" {
+		t.Fatalf("route53 host = %q, want app.example.com", got)
 	}
 	if got := route53Event.Attributes["target_host"]; got != "d111111abcdef8.cloudfront.net" {
 		t.Fatalf("route53 target_host = %q, want d111111abcdef8.cloudfront.net", got)
@@ -429,8 +429,8 @@ func TestReadAWSPublicEndpointCollectsDNSAndEdgeHosts(t *testing.T) {
 	if got := cloudfrontEvent.Attributes["host"]; got != "d111111abcdef8.cloudfront.net" {
 		t.Fatalf("cloudfront host = %q, want d111111abcdef8.cloudfront.net", got)
 	}
-	if got := cloudfrontEvent.Attributes["alternate_hosts"]; got != "app.writer.com" {
-		t.Fatalf("cloudfront alternate_hosts = %q, want app.writer.com", got)
+	if got := cloudfrontEvent.Attributes["alternate_hosts"]; got != "app.example.com" {
+		t.Fatalf("cloudfront alternate_hosts = %q, want app.example.com", got)
 	}
 }
 
@@ -516,7 +516,7 @@ func TestReadAWSRoleAssignmentAndCloudTrailPreview(t *testing.T) {
 	detail, err := json.Marshal(map[string]any{
 		"eventName":    "AttachUserPolicy",
 		"eventTime":    "2026-04-23T00:00:00Z",
-		"userIdentity": map[string]any{"arn": "arn:aws:iam::123456789012:user/admin@writer.com", "userName": "admin@writer.com", "principalId": "AIDAADMIN", "type": "IAMUser"},
+		"userIdentity": map[string]any{"arn": "arn:aws:iam::123456789012:user/admin@example.com", "userName": "admin@example.com", "principalId": "AIDAADMIN", "type": "IAMUser"},
 		"resources":    []map[string]any{{"ARN": "arn:aws:iam::aws:policy/AdministratorAccess", "resourceType": "AWS::IAM::Policy"}},
 	})
 	if err != nil {
@@ -531,8 +531,8 @@ func TestReadAWSRoleAssignmentAndCloudTrailPreview(t *testing.T) {
 		config map[string]string
 		kind   string
 	}{
-		{family: familyEffectivePermission, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.effective_permission"},
-		{family: familyIAMRoleAssign, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.iam_role_assignment"},
+		{family: familyEffectivePermission, config: map[string]string{"principal_name": "admin@example.com", "principal_type": "user"}, kind: "aws.effective_permission"},
+		{family: familyIAMRoleAssign, config: map[string]string{"principal_name": "admin@example.com", "principal_type": "user"}, kind: "aws.iam_role_assignment"},
 		{family: familyCloudTrail, kind: "aws.cloudtrail"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {

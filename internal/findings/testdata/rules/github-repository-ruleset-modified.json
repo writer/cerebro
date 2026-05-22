@@ -1,14 +1,14 @@
 {
   "rule_id": "github-repository-ruleset-modified",
   "runtime": {
-    "id": "writer-github-audit",
+    "id": "example-github-audit",
     "source_id": "github",
-    "tenant_id": "writer"
+    "tenant_id": "example"
   },
   "events": [
     {
       "id": "github-audit-ruleset-modified",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.audit",
       "occurred_at": "2026-04-27T01:00:00Z",
@@ -20,7 +20,7 @@
         "org": "writer",
         "resource_id": "writer/cerebro",
         "resource_type": "repository_ruleset",
-        "source_runtime_id": "writer-github-audit",
+        "source_runtime_id": "example-github-audit",
         "action": "repository_ruleset.destroy",
         "repo": "writer/cerebro",
         "ruleset_id": "42",
@@ -29,7 +29,7 @@
     },
     {
       "id": "github-audit-ruleset-created",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.audit",
       "occurred_at": "2026-04-27T01:00:00Z",
@@ -41,7 +41,7 @@
         "org": "writer",
         "resource_id": "writer/cerebro",
         "resource_type": "repository_ruleset",
-        "source_runtime_id": "writer-github-audit",
+        "source_runtime_id": "example-github-audit",
         "action": "repository_ruleset.create",
         "repo": "writer/cerebro",
         "ruleset_id": "42",
@@ -60,7 +60,7 @@
       ],
       "attributes": {
         "action": "repository_ruleset.destroy",
-        "primary_resource_urn": "urn:cerebro:writer:github_repo:writer/cerebro",
+        "primary_resource_urn": "urn:cerebro:example:github_repo:writer/cerebro",
         "repo": "writer/cerebro",
         "ruleset_id": "42",
         "ruleset_name": "main protections",

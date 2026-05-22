@@ -32,7 +32,7 @@ func TestGraphIngestValidationFlow(t *testing.T) {
 	options := graphIngestOptions{
 		SourceID:          "github",
 		SourceConfig:      map[string]string{"family": "audit"},
-		TenantID:          "writer",
+		TenantID:          "example",
 		PageLimit:         1,
 		CheckpointEnabled: true,
 		CheckpointID:      "validation-github-audit",
@@ -53,7 +53,7 @@ func TestGraphIngestValidationFlow(t *testing.T) {
 		t.Fatalf("second ingest result = %#v, want resumed completed checkpoint", second)
 	}
 
-	identityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
+	identityURN := "urn:cerebro:example:identity:email:alice@example.com"
 	neighborhood, err := store.GetEntityNeighborhood(ctx, identityURN, 10)
 	if err != nil {
 		t.Fatalf("GetEntityNeighborhood() error = %v", err)
@@ -91,23 +91,23 @@ func TestGraphRuntimeIngestRecordsStatus(t *testing.T) {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
 	runtimeStore := &validationRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-		"writer-validation": {
-			Id:       "writer-validation",
+		"example-validation": {
+			Id:       "example-validation",
 			SourceId: "validation",
-			TenantId: "writer",
+			TenantId: "example",
 			Config:   map[string]string{"family": "audit"},
 		},
-		"writer-validation-failing": {
-			Id:       "writer-validation-failing",
+		"example-validation-failing": {
+			Id:       "example-validation-failing",
 			SourceId: "validation",
-			TenantId: "writer",
+			TenantId: "example",
 			Config:   map[string]string{"family": "missing"},
 		},
 	}}
 	projector := sourceprojection.New(nil, store)
 	service := graphingest.New(registry, runtimeStore, projector, store)
 	result, err := service.RunRuntime(ctx, graphingest.RuntimeRequest{
-		RuntimeID:    "writer-validation",
+		RuntimeID:    "example-validation",
 		PageLimit:    2,
 		CheckpointID: "runtime-validation",
 		Trigger:      "test",
@@ -118,7 +118,7 @@ func TestGraphRuntimeIngestRecordsStatus(t *testing.T) {
 	if result.Run.Status != "completed" || result.Ingest.EventsRead != 2 {
 		t.Fatalf("RunRuntime() = %#v, want completed two-event run", result)
 	}
-	completed, err := store.ListIngestRuns(ctx, graphstore.IngestRunFilter{RuntimeID: "writer-validation", Status: "completed", Limit: 10})
+	completed, err := store.ListIngestRuns(ctx, graphstore.IngestRunFilter{RuntimeID: "example-validation", Status: "completed", Limit: 10})
 	if err != nil {
 		t.Fatalf("ListIngestRuns(completed) error = %v", err)
 	}
@@ -127,7 +127,7 @@ func TestGraphRuntimeIngestRecordsStatus(t *testing.T) {
 	}
 
 	failedResult, err := service.RunRuntime(ctx, graphingest.RuntimeRequest{
-		RuntimeID: "writer-validation-failing",
+		RuntimeID: "example-validation-failing",
 		PageLimit: defaultGraphIngestPageLimit,
 		Trigger:   "test",
 	})
@@ -169,7 +169,7 @@ func validationGitHubAuditEvent(id string) *primitives.Event {
 		Payload:    []byte(`{}`),
 		Attributes: map[string]string{
 			"actor":                    "alice",
-			"external_identity_nameid": "alice@writer.com",
+			"external_identity_nameid": "alice@example.com",
 			"org":                      "writer",
 			"repo":                     "writer/cerebro",
 			"resource_id":              "writer/cerebro",

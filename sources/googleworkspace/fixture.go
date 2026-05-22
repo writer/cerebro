@@ -27,11 +27,11 @@ func NewFixture() (sourcecdk.Source, error) {
 		}
 		settings := settings{
 			family:      family,
-			domain:      "writer.com",
+			domain:      "example.com",
 			customerID:  "C01",
 			token:       "test-token",
 			baseURL:     defaultBaseURL,
-			groupKey:    "security@writer.com",
+			groupKey:    "security@example.com",
 			application: "admin",
 			perPage:     1,
 		}

@@ -6,7 +6,7 @@
       "hostname": "mba-1.writer.test",
       "serial_number": "SERIAL1",
       "owner": {
-        "email": "alice@writer.com"
+        "email": "alice@example.com"
       },
       "updated_at": "2026-05-21T00:00:00Z"
     }

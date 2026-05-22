@@ -1,14 +1,14 @@
 {
   "rule_id": "github-dependabot-open-alert",
   "runtime": {
-    "id": "writer-github",
+    "id": "example-github",
     "source_id": "github",
-    "tenant_id": "writer"
+    "tenant_id": "example"
   },
   "events": [
     {
       "id": "github-dependabot-alert-7",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.dependabot_alert",
       "occurred_at": "2026-04-24T12:00:00Z",
@@ -30,12 +30,12 @@
         "state": "open",
         "vulnerability_severity": "high",
         "vulnerable_version_range": "< 0.31.0",
-        "source_runtime_id": "writer-github"
+        "source_runtime_id": "example-github"
       }
     },
     {
       "id": "github-dependabot-alert-8",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.dependabot_alert",
       "occurred_at": "2026-04-24T12:00:00Z",
@@ -45,7 +45,7 @@
         "owner": "writer",
         "repository": "writer/cerebro",
         "state": "fixed",
-        "source_runtime_id": "writer-github"
+        "source_runtime_id": "example-github"
       }
     }
   ],
@@ -58,7 +58,7 @@
       "event_ids": ["github-dependabot-alert-7"],
       "attributes": {
         "alert_number": "7",
-        "primary_resource_urn": "urn:cerebro:writer:github_dependabot_alert:writer/cerebro:7",
+        "primary_resource_urn": "urn:cerebro:example:github_dependabot_alert:writer/cerebro:7",
         "repository": "writer/cerebro",
         "rule_required_attributes": "repository,alert_number,state",
         "rule_tags": "github,dependabot,vulnerability,supply-chain,attack.initial-access"

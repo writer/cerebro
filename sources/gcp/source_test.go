@@ -28,7 +28,7 @@ func TestCheckRequiresProjectAndToken(t *testing.T) {
 	if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{"token": "test-token"})); err == nil {
 		t.Fatal("Check() error = nil, want missing project_id error")
 	}
-	if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{"project_id": "writer-prod"})); err == nil {
+	if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{"project_id": "example-prod"})); err == nil {
 		t.Fatal("Check() error = nil, want missing token error")
 	}
 }
@@ -58,15 +58,15 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 	}{
 		{family: familyServiceAcct, kind: "gcp.service_account"},
 		{family: familyGroup, config: map[string]string{"customer_id": "C01"}, kind: "gcp.group"},
-		{family: familyGroupMember, config: map[string]string{"group_key": "security@writer.com"}, kind: "gcp.group_membership"},
+		{family: familyGroupMember, config: map[string]string{"group_key": "security@example.com"}, kind: "gcp.group_membership"},
 		{family: familyResourceExposure, kind: "gcp.resource_exposure"},
 		{family: familyRoleAssign, kind: "gcp.iam_role_assignment"},
-		{family: familySAImpersonation, config: map[string]string{"service_account_email": "sa@writer-prod.iam.gserviceaccount.com"}, kind: "gcp.service_account_impersonation"},
+		{family: familySAImpersonation, config: map[string]string{"service_account_email": "sa@example-prod.iam.gserviceaccount.com"}, kind: "gcp.service_account_impersonation"},
 		{family: familyAudit, kind: "gcp.audit"},
-		{family: familySAKey, config: map[string]string{"service_account_email": "sa@writer-prod.iam.gserviceaccount.com"}, kind: "gcp.service_account_key"},
+		{family: familySAKey, config: map[string]string{"service_account_email": "sa@example-prod.iam.gserviceaccount.com"}, kind: "gcp.service_account_key"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
-			config := map[string]string{"project_id": "writer-prod", "family": tt.family, "token": "test-token"}
+			config := map[string]string{"project_id": "example-prod", "family": tt.family, "token": "test-token"}
 			for key, value := range tt.config {
 				config[key] = value
 			}
@@ -91,7 +91,7 @@ func TestReadLiveGCPServiceAccountPreview(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	cfg := sourcecdk.NewConfig(map[string]string{"base_url": server.URL, "family": familyServiceAcct, "project_id": "writer-prod", "token": "test-token"})
+	cfg := sourcecdk.NewConfig(map[string]string{"base_url": server.URL, "family": familyServiceAcct, "project_id": "example-prod", "token": "test-token"})
 	if err := source.Check(context.Background(), cfg); err != nil {
 		t.Fatalf("Check(service_account) error = %v", err)
 	}
@@ -102,7 +102,7 @@ func TestReadLiveGCPServiceAccountPreview(t *testing.T) {
 	if len(pull.Events) != 1 {
 		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
 	}
-	if got := pull.Events[0].Attributes["email"]; got != "sa@writer-prod.iam.gserviceaccount.com" {
+	if got := pull.Events[0].Attributes["email"]; got != "sa@example-prod.iam.gserviceaccount.com" {
 		t.Fatalf("email = %q, want service account email", got)
 	}
 	urns, err := source.Discover(context.Background(), cfg)
@@ -112,7 +112,7 @@ func TestReadLiveGCPServiceAccountPreview(t *testing.T) {
 	if len(urns) != 1 {
 		t.Fatalf("len(Discover(service_account)) = %d, want 1", len(urns))
 	}
-	if got := urns[0].String(); got != "urn:cerebro:writer-prod:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com" {
+	if got := urns[0].String(); got != "urn:cerebro:example-prod:gcp_service_account:sa@example-prod.iam.gserviceaccount.com" {
 		t.Fatalf("Discover(service_account) urn = %q, want email-based service account urn", got)
 	}
 }
@@ -132,7 +132,7 @@ func TestReadLiveGCPRoleAndAuditPreview(t *testing.T) {
 		{family: familyAudit, kind: "gcp.audit"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
-			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"base_url": server.URL, "family": tt.family, "project_id": "writer-prod", "token": "test-token"}), nil)
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"base_url": server.URL, "family": tt.family, "project_id": "example-prod", "token": "test-token"}), nil)
 			if err != nil {
 				t.Fatalf("Read(%s) error = %v", tt.family, err)
 			}
@@ -156,8 +156,8 @@ func TestReadLiveGCPServiceAccountKeyPreview(t *testing.T) {
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
 		"base_url":              server.URL,
 		"family":                familySAKey,
-		"project_id":            "writer-prod",
-		"service_account_email": "sa@writer-prod.iam.gserviceaccount.com",
+		"project_id":            "example-prod",
+		"service_account_email": "sa@example-prod.iam.gserviceaccount.com",
 		"token":                 "test-token",
 	}), nil)
 	if err != nil {
@@ -186,10 +186,10 @@ func TestReadLiveGCPExposureAndImpersonationPreview(t *testing.T) {
 		want   string
 	}{
 		{family: familyResourceExposure, kind: "gcp.resource_exposure", attr: "internet_exposed", want: "true"},
-		{family: familySAImpersonation, config: map[string]string{"service_account_email": "sa@writer-prod.iam.gserviceaccount.com"}, kind: "gcp.service_account_impersonation", attr: "relationship", want: "can_impersonate"},
+		{family: familySAImpersonation, config: map[string]string{"service_account_email": "sa@example-prod.iam.gserviceaccount.com"}, kind: "gcp.service_account_impersonation", attr: "relationship", want: "can_impersonate"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
-			config := map[string]string{"base_url": server.URL, "family": tt.family, "project_id": "writer-prod", "token": "test-token"}
+			config := map[string]string{"base_url": server.URL, "family": tt.family, "project_id": "example-prod", "token": "test-token"}
 			for key, value := range tt.config {
 				config[key] = value
 			}
@@ -217,7 +217,7 @@ func TestReadLiveGCPGroupMembershipResolvesGroupKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	for _, groupKey := range []string{"security@writer.com", "groups/abc"} {
+	for _, groupKey := range []string{"security@example.com", "groups/abc"} {
 		t.Run(groupKey, func(t *testing.T) {
 			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
 				"base_url":  server.URL,
@@ -231,8 +231,8 @@ func TestReadLiveGCPGroupMembershipResolvesGroupKeys(t *testing.T) {
 			if len(pull.Events) != 1 {
 				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
 			}
-			if got := pull.Events[0].Attributes["member_email"]; got != "admin@writer.com" {
-				t.Fatalf("member_email = %q, want admin@writer.com", got)
+			if got := pull.Events[0].Attributes["member_email"]; got != "admin@example.com" {
+				t.Fatalf("member_email = %q, want admin@example.com", got)
 			}
 		})
 	}
@@ -248,25 +248,25 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 			return
 		}
 		switch r.URL.Path {
-		case "/v1/projects/writer-prod/serviceAccounts":
-			writeJSON(t, w, map[string]any{"accounts": []map[string]any{{"name": "projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com", "email": "sa@writer-prod.iam.gserviceaccount.com", "uniqueId": "sa-1", "displayName": "Prod SA"}}})
-		case "/v1/projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com/keys":
-			writeJSON(t, w, map[string]any{"keys": []map[string]any{{"name": "projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com/keys/key-1", "keyType": "USER_MANAGED", "validAfterTime": "2026-04-23T00:00:00Z"}}})
-		case "/v1/projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com:getIamPolicy":
-			writeJSON(t, w, map[string]any{"bindings": []map[string]any{{"role": "roles/iam.serviceAccountTokenCreator", "members": []string{"user:admin@writer.com"}}}})
-		case "/compute/v1/projects/writer-prod/global/firewalls":
+		case "/v1/projects/example-prod/serviceAccounts":
+			writeJSON(t, w, map[string]any{"accounts": []map[string]any{{"name": "projects/example-prod/serviceAccounts/sa@example-prod.iam.gserviceaccount.com", "email": "sa@example-prod.iam.gserviceaccount.com", "uniqueId": "sa-1", "displayName": "Prod SA"}}})
+		case "/v1/projects/example-prod/serviceAccounts/sa@example-prod.iam.gserviceaccount.com/keys":
+			writeJSON(t, w, map[string]any{"keys": []map[string]any{{"name": "projects/example-prod/serviceAccounts/sa@example-prod.iam.gserviceaccount.com/keys/key-1", "keyType": "USER_MANAGED", "validAfterTime": "2026-04-23T00:00:00Z"}}})
+		case "/v1/projects/example-prod/serviceAccounts/sa@example-prod.iam.gserviceaccount.com:getIamPolicy":
+			writeJSON(t, w, map[string]any{"bindings": []map[string]any{{"role": "roles/iam.serviceAccountTokenCreator", "members": []string{"user:admin@example.com"}}}})
+		case "/compute/v1/projects/example-prod/global/firewalls":
 			writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "fw-1", "name": "allow-web", "network": "global/networks/default", "direction": "INGRESS", "sourceRanges": []string{"0.0.0.0/0"}, "allowed": []map[string]any{{"IPProtocol": "tcp", "ports": []string{"443"}}}}}})
 		case "/v1/groups:lookup":
-			if got := r.URL.Query().Get("groupKey.id"); got != "security@writer.com" {
-				t.Fatalf("groupKey.id = %q, want security@writer.com", got)
+			if got := r.URL.Query().Get("groupKey.id"); got != "security@example.com" {
+				t.Fatalf("groupKey.id = %q, want security@example.com", got)
 			}
-			writeJSON(t, w, map[string]any{"name": "groups/abc", "groupKey": map[string]any{"id": "security@writer.com"}})
+			writeJSON(t, w, map[string]any{"name": "groups/abc", "groupKey": map[string]any{"id": "security@example.com"}})
 		case "/v1/groups/abc/memberships":
-			writeJSON(t, w, map[string]any{"memberships": []map[string]any{{"name": "groups/abc/memberships/member-1", "preferredMemberKey": map[string]any{"id": "user:admin@writer.com"}, "roles": []map[string]any{{"name": "MEMBER"}}}}})
-		case "/v1/projects/writer-prod:getIamPolicy":
-			writeJSON(t, w, map[string]any{"bindings": []map[string]any{{"role": "roles/owner", "members": []string{"serviceAccount:sa@writer-prod.iam.gserviceaccount.com"}}}})
+			writeJSON(t, w, map[string]any{"memberships": []map[string]any{{"name": "groups/abc/memberships/member-1", "preferredMemberKey": map[string]any{"id": "user:admin@example.com"}, "roles": []map[string]any{{"name": "MEMBER"}}}}})
+		case "/v1/projects/example-prod:getIamPolicy":
+			writeJSON(t, w, map[string]any{"bindings": []map[string]any{{"role": "roles/owner", "members": []string{"serviceAccount:sa@example-prod.iam.gserviceaccount.com"}}}})
 		case "/v2/entries:list":
-			writeJSON(t, w, map[string]any{"entries": []map[string]any{{"insertId": "audit-1", "timestamp": "2026-04-23T00:00:00Z", "protoPayload": map[string]any{"methodName": "SetIamPolicy", "serviceName": "cloudresourcemanager.googleapis.com", "resourceName": "projects/writer-prod", "authenticationInfo": map[string]any{"principalEmail": "admin@writer.com"}}, "resource": map[string]any{"type": "project", "labels": map[string]string{"project_id": "writer-prod"}}}}})
+			writeJSON(t, w, map[string]any{"entries": []map[string]any{{"insertId": "audit-1", "timestamp": "2026-04-23T00:00:00Z", "protoPayload": map[string]any{"methodName": "SetIamPolicy", "serviceName": "cloudresourcemanager.googleapis.com", "resourceName": "projects/example-prod", "authenticationInfo": map[string]any{"principalEmail": "admin@example.com"}}, "resource": map[string]any{"type": "project", "labels": map[string]string{"project_id": "example-prod"}}}}})
 		default:
 			http.NotFound(w, r)
 		}

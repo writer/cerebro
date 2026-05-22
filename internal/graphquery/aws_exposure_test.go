@@ -55,34 +55,34 @@ func TestGetAWSPublicEndpointInsightsQueriesAndParsesRows(t *testing.T) {
 		}}},
 		{{Values: map[string]any{"entity_type": "aws.application.load.balancer", "count": int64(4)}}},
 		{{Values: map[string]any{
-			"aws_urn":               "urn:cerebro:writer:aws_application_load_balancer:alb",
+			"aws_urn":               "urn:cerebro:example:aws_application_load_balancer:alb",
 			"aws_entity_type":       "aws.application.load.balancer",
 			"aws_label":             "alb",
-			"indicator_urn":         "urn:cerebro:writer:internet_host:app.example.com",
+			"indicator_urn":         "urn:cerebro:example:internet_host:app.example.com",
 			"indicator_entity_type": "internet.host",
 			"indicator_label":       "app.example.com",
-			"vulnview_urn":          "urn:cerebro:writer:external_asset:app.example.com",
+			"vulnview_urn":          "urn:cerebro:example:external_asset:app.example.com",
 			"vulnview_entity_type":  "external.asset",
 			"vulnview_label":        "app.example.com",
 		}}},
 		{{Values: map[string]any{
-			"aws_urn":               "urn:cerebro:writer:aws_elastic_ip:eipalloc-1",
+			"aws_urn":               "urn:cerebro:example:aws_elastic_ip:eipalloc-1",
 			"aws_entity_type":       "aws.elastic.ip",
 			"aws_label":             "eipalloc-1",
-			"indicator_urn":         "urn:cerebro:writer:internet_ip:192.0.2.10",
+			"indicator_urn":         "urn:cerebro:example:internet_ip:192.0.2.10",
 			"indicator_entity_type": "internet.ip",
 			"indicator_label":       "192.0.2.10",
 		}}},
 		{{Values: map[string]any{
-			"vulnview_urn":          "urn:cerebro:writer:external_asset:missing.example.com",
+			"vulnview_urn":          "urn:cerebro:example:external_asset:missing.example.com",
 			"vulnview_entity_type":  "external.asset",
 			"vulnview_label":        "missing.example.com",
-			"indicator_urn":         "urn:cerebro:writer:internet_host:missing.example.com",
+			"indicator_urn":         "urn:cerebro:example:internet_host:missing.example.com",
 			"indicator_entity_type": "internet.host",
 			"indicator_label":       "missing.example.com",
 		}}},
 		{{Values: map[string]any{
-			"account_urn":         "urn:cerebro:writer:cloud_account:account-a",
+			"account_urn":         "urn:cerebro:example:cloud_account:account-a",
 			"account_entity_type": "cloud.account",
 			"account_label":       "account-a",
 			"aws_endpoint_count":  int64(9),
@@ -91,7 +91,7 @@ func TestGetAWSPublicEndpointInsightsQueriesAndParsesRows(t *testing.T) {
 	}}
 
 	result, err := New(store).GetAWSPublicEndpointInsights(context.Background(), AWSPublicEndpointInsightsRequest{
-		TenantID:  "writer",
+		TenantID:  "example",
 		AccountID: "account-a",
 		Region:    "us-east-1",
 		Search:    "App",
@@ -103,8 +103,8 @@ func TestGetAWSPublicEndpointInsightsQueriesAndParsesRows(t *testing.T) {
 	if len(store.requests) != 6 {
 		t.Fatalf("query count = %d, want 6", len(store.requests))
 	}
-	if got := store.requests[0].Params["tenant_id"]; got != "writer" {
-		t.Fatalf("tenant_id param = %v, want writer", got)
+	if got := store.requests[0].Params["tenant_id"]; got != "example" {
+		t.Fatalf("tenant_id param = %v, want example", got)
 	}
 	if got := store.requests[0].Params["account_id"]; got != "account-a" {
 		t.Fatalf("account_id param = %v, want account-a", got)
@@ -136,7 +136,7 @@ func TestGetAWSPublicEndpointInsightsQueriesAndParsesRows(t *testing.T) {
 	if len(result.CloudAccounts) != 1 || result.CloudAccounts[0].VulnViewScans != 2 {
 		t.Fatalf("cloud_accounts = %#v", result.CloudAccounts)
 	}
-	if result.NeighborhoodURN != "urn:cerebro:writer:internet_host:app.example.com" {
+	if result.NeighborhoodURN != "urn:cerebro:example:internet_host:app.example.com" {
 		t.Fatalf("neighborhood hint = %q", result.NeighborhoodURN)
 	}
 }

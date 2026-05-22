@@ -171,8 +171,8 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 		findings: []*ports.FindingRecord{
 			{
 				ID:        "finding-1",
-				TenantID:  "writer",
-				RuntimeID: "writer-okta-audit",
+				TenantID:  "example",
+				RuntimeID: "example-okta-audit",
 				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
 				PolicyID:  "pol-1",
 				CheckID:   "identity-okta-policy-rule-lifecycle-tampering-30d",
@@ -188,13 +188,13 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 						{ID: "note-2", Body: "Awaiting owner confirmation.", CreatedAt: time.Now().UTC()},
 					},
 					Tickets: []ports.FindingTicket{
-						{URL: "https://jira.writer.com/browse/ENG-123", Name: "ENG-123", ExternalID: "ENG-123", LinkedAt: time.Now().UTC().Add(-30 * time.Minute)},
+						{URL: "https://jira.example.com/browse/ENG-123", Name: "ENG-123", ExternalID: "ENG-123", LinkedAt: time.Now().UTC().Add(-30 * time.Minute)},
 					},
 					DueAt: overdueDueAt,
 				},
 				Severity:     "HIGH",
 				Status:       "open",
-				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+				ResourceURNs: []string{"urn:cerebro:example:okta_resource:policyrule:pol-1"},
 				FindingRisk: ports.FindingRisk{
 					RiskScore:        80,
 					LikelihoodScore:  85,
@@ -203,13 +203,13 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 					RiskModelVersion: "likelihood-impact-v2",
 				},
 				Attributes: map[string]string{
-					"primary_resource_urn": "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+					"primary_resource_urn": "urn:cerebro:example:okta_resource:policyrule:pol-1",
 				},
 			},
 			{
 				ID:        "finding-2",
-				TenantID:  "writer",
-				RuntimeID: "writer-okta-audit",
+				TenantID:  "example",
+				RuntimeID: "example-okta-audit",
 				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
 				PolicyID:  "pol-1",
 				CheckID:   "identity-okta-policy-rule-lifecycle-tampering-30d",
@@ -223,33 +223,33 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 				},
 				Severity:     "HIGH",
 				Status:       "resolved",
-				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+				ResourceURNs: []string{"urn:cerebro:example:okta_resource:policyrule:pol-1"},
 				Attributes: map[string]string{
-					"primary_resource_urn": "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+					"primary_resource_urn": "urn:cerebro:example:okta_resource:policyrule:pol-1",
 				},
 			},
 		},
 	}
 	graphStore := &stubGraphStore{
 		neighborhoods: map[string]*ports.EntityNeighborhood{
-			"urn:cerebro:writer:okta_resource:policyrule:pol-1": {
+			"urn:cerebro:example:okta_resource:policyrule:pol-1": {
 				Root: &ports.NeighborhoodNode{
-					URN:        "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+					URN:        "urn:cerebro:example:okta_resource:policyrule:pol-1",
 					EntityType: "okta.resource",
 					Label:      "Require MFA",
 				},
 				Neighbors: []*ports.NeighborhoodNode{
 					{
-						URN:        "urn:cerebro:writer:okta_user:00u2",
+						URN:        "urn:cerebro:example:okta_user:00u2",
 						EntityType: "okta.user",
-						Label:      "admin@writer.com",
+						Label:      "admin@example.com",
 					},
 				},
 				Relations: []*ports.NeighborhoodRelation{
 					{
-						FromURN:  "urn:cerebro:writer:okta_user:00u2",
+						FromURN:  "urn:cerebro:example:okta_user:00u2",
 						Relation: "acted_on",
-						ToURN:    "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+						ToURN:    "urn:cerebro:example:okta_resource:policyrule:pol-1",
 					},
 				},
 			},
@@ -261,8 +261,8 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	response, err := service.Run(context.Background(), &cerebrov1.RunReportRequest{
 		ReportId: findingSummaryReportID,
 		Parameters: map[string]string{
-			reportParameterTenantID:   "writer",
-			reportParameterRuntimeID:  "writer-okta-audit",
+			reportParameterTenantID:   "example",
+			reportParameterRuntimeID:  "example-okta-audit",
 			reportParameterGraphLimit: "2",
 		},
 	})
@@ -278,18 +278,18 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	if response.GetRun().GetStatus() != findingSummaryReportStatus {
 		t.Fatalf("Run().Run.Status = %q, want %q", response.GetRun().GetStatus(), findingSummaryReportStatus)
 	}
-	if findingStore.request.TenantID != "writer" {
-		t.Fatalf("ListFindings().TenantID = %q, want writer", findingStore.request.TenantID)
+	if findingStore.request.TenantID != "example" {
+		t.Fatalf("ListFindings().TenantID = %q, want example", findingStore.request.TenantID)
 	}
-	if findingStore.request.RuntimeID != "writer-okta-audit" {
-		t.Fatalf("ListFindings().RuntimeID = %q, want writer-okta-audit", findingStore.request.RuntimeID)
+	if findingStore.request.RuntimeID != "example-okta-audit" {
+		t.Fatalf("ListFindings().RuntimeID = %q, want example-okta-audit", findingStore.request.RuntimeID)
 	}
 	result := response.GetRun().GetResult().AsMap()
-	if got := result[reportParameterTenantID]; got != "writer" {
-		t.Fatalf("Run().Run.Result[tenant_id] = %#v, want writer", got)
+	if got := result[reportParameterTenantID]; got != "example" {
+		t.Fatalf("Run().Run.Result[tenant_id] = %#v, want example", got)
 	}
-	if got := result[reportParameterRuntimeID]; got != "writer-okta-audit" {
-		t.Fatalf("Run().Run.Result[runtime_id] = %#v, want writer-okta-audit", got)
+	if got := result[reportParameterRuntimeID]; got != "example-okta-audit" {
+		t.Fatalf("Run().Run.Result[runtime_id] = %#v, want example-okta-audit", got)
 	}
 	if got := result["total_findings"]; got != float64(2) {
 		t.Fatalf("Run().Run.Result[total_findings] = %#v, want 2", got)
@@ -409,7 +409,7 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	if got := graphEvidenceEntry["status"]; got != graphEvidenceEntryStatusIncluded {
 		t.Fatalf("graph evidence status = %#v, want %q", got, graphEvidenceEntryStatusIncluded)
 	}
-	if graphStore.rootURN != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+	if graphStore.rootURN != "urn:cerebro:example:okta_resource:policyrule:pol-1" {
 		t.Fatalf("GetEntityNeighborhood().rootURN = %q, want policy rule urn", graphStore.rootURN)
 	}
 	if graphStore.limit != 2 {
@@ -520,13 +520,13 @@ func TestRunFindingSummaryReportWithoutGraphStoreMarksEvidenceUnconfigured(t *te
 		findings: []*ports.FindingRecord{
 			{
 				ID:        "finding-1",
-				TenantID:  "writer",
-				RuntimeID: "writer-okta-audit",
+				TenantID:  "example",
+				RuntimeID: "example-okta-audit",
 				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
 				Severity:  "HIGH",
 				Status:    "open",
 				ResourceURNs: []string{
-					"urn:cerebro:writer:okta_resource:policyrule:pol-1",
+					"urn:cerebro:example:okta_resource:policyrule:pol-1",
 				},
 			},
 		},
@@ -536,8 +536,8 @@ func TestRunFindingSummaryReportWithoutGraphStoreMarksEvidenceUnconfigured(t *te
 	response, err := service.Run(context.Background(), &cerebrov1.RunReportRequest{
 		ReportId: findingSummaryReportID,
 		Parameters: map[string]string{
-			reportParameterTenantID:  "writer",
-			reportParameterRuntimeID: "writer-okta-audit",
+			reportParameterTenantID:  "example",
+			reportParameterRuntimeID: "example-okta-audit",
 		},
 	})
 	if err != nil {
@@ -783,13 +783,13 @@ func TestNormalizeParametersDropsSensitiveKeys(t *testing.T) {
 		"authorization",
 	} {
 		got := normalizeParameters(map[string]string{
-			"tenant_id": "writer",
+			"tenant_id": "example",
 			key:         "shh",
 		})
 		if _, ok := got[key]; ok {
 			t.Fatalf("normalizeParameters() retained sensitive key %q", key)
 		}
-		if got["tenant_id"] != "writer" {
+		if got["tenant_id"] != "example" {
 			t.Fatalf("normalizeParameters() dropped non-sensitive key when filtering %q", key)
 		}
 	}

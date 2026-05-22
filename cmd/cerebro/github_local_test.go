@@ -190,7 +190,7 @@ func TestPrepareSourceRuntimeWithCLIHydratesGitHubRuntime(t *testing.T) {
 	}
 
 	runtime, err := prepareSourceRuntimeWithCLI(context.Background(), &cerebrov1.SourceRuntime{
-		Id:       "writer-github",
+		Id:       "example-github",
 		SourceId: githubSourceID,
 		Config:   map[string]string{"state": "all"},
 	}, cli)
@@ -248,7 +248,7 @@ func TestPrepareSourceRuntimeWithCLIResolvesEnvOwnerBeforeHydration(t *testing.T
 	}
 
 	runtime, err := prepareSourceRuntimeWithCLI(context.Background(), &cerebrov1.SourceRuntime{
-		Id:       "writer-github",
+		Id:       "example-github",
 		SourceId: githubSourceID,
 		Config: map[string]string{
 			"owner": "env:CEREBRO_SOURCE_GITHUB_OWNER",

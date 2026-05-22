@@ -88,7 +88,7 @@ func TestEventRuleScaffoldEvaluatesMatcherAndBuilder(t *testing.T) {
 		},
 	})
 
-	skipped, err := rule.Evaluate(context.Background(), &cerebrov1.SourceRuntime{Id: "writer-github", SourceId: "github"}, &cerebrov1.EventEnvelope{Id: "skip"})
+	skipped, err := rule.Evaluate(context.Background(), &cerebrov1.SourceRuntime{Id: "example-github", SourceId: "github"}, &cerebrov1.EventEnvelope{Id: "skip"})
 	if err != nil {
 		t.Fatalf("Evaluate(skip) error = %v", err)
 	}
@@ -99,7 +99,7 @@ func TestEventRuleScaffoldEvaluatesMatcherAndBuilder(t *testing.T) {
 		t.Fatalf("buildCalls = %d, want 0 after skipped event", buildCalls)
 	}
 
-	findings, err := rule.Evaluate(context.Background(), &cerebrov1.SourceRuntime{Id: "writer-github", SourceId: "github"}, &cerebrov1.EventEnvelope{
+	findings, err := rule.Evaluate(context.Background(), &cerebrov1.SourceRuntime{Id: "example-github", SourceId: "github"}, &cerebrov1.EventEnvelope{
 		Id:         "emit",
 		Attributes: map[string]string{"emit": "true"},
 	})
@@ -109,8 +109,8 @@ func TestEventRuleScaffoldEvaluatesMatcherAndBuilder(t *testing.T) {
 	if len(findings) != 1 {
 		t.Fatalf("len(Evaluate(emit)) = %d, want 1", len(findings))
 	}
-	if got := findings[0].RuntimeID; got != "writer-github" {
-		t.Fatalf("Finding.RuntimeID = %q, want writer-github", got)
+	if got := findings[0].RuntimeID; got != "example-github" {
+		t.Fatalf("Finding.RuntimeID = %q, want example-github", got)
 	}
 }
 

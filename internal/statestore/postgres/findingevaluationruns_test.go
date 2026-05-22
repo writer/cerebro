@@ -23,7 +23,7 @@ func TestPutFindingEvaluationRunRejectsMissingRuleID(t *testing.T) {
 	store := &Store{}
 	err := store.PutFindingEvaluationRun(context.Background(), &cerebrov1.FindingEvaluationRun{
 		Id:        "finding-eval-run-1",
-		RuntimeId: "writer-okta-audit",
+		RuntimeId: "example-okta-audit",
 		Status:    "completed",
 		StartedAt: timestamppb.New(time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC)),
 	})
@@ -41,7 +41,7 @@ func TestGetFindingEvaluationRunRejectsUnconfiguredStore(t *testing.T) {
 
 func TestListFindingEvaluationRunsRejectsUnconfiguredStore(t *testing.T) {
 	store := &Store{}
-	if _, err := store.ListFindingEvaluationRuns(context.Background(), ports.ListFindingEvaluationRunsRequest{RuntimeID: "writer-okta-audit"}); err == nil {
+	if _, err := store.ListFindingEvaluationRuns(context.Background(), ports.ListFindingEvaluationRunsRequest{RuntimeID: "example-okta-audit"}); err == nil {
 		t.Fatal("ListFindingEvaluationRuns() error = nil, want non-nil")
 	}
 }
@@ -54,7 +54,7 @@ func TestFindingEvaluationRunTimeTreatsNilAsZero(t *testing.T) {
 
 func TestFindingEvaluationRunListQueryIncludesOptionalFilters(t *testing.T) {
 	query, args, err := findingEvaluationRunListQuery(ports.ListFindingEvaluationRunsRequest{
-		RuntimeID: "writer-okta-audit",
+		RuntimeID: "example-okta-audit",
 		RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
 		Status:    "completed",
 		Limit:     25,
@@ -75,8 +75,8 @@ func TestFindingEvaluationRunListQueryIncludesOptionalFilters(t *testing.T) {
 	if got := len(args); got != 4 {
 		t.Fatalf("len(findingEvaluationRunListQuery().args) = %d, want 4", got)
 	}
-	if got := args[0]; got != "writer-okta-audit" {
-		t.Fatalf("findingEvaluationRunListQuery().args[0] = %#v, want writer-okta-audit", got)
+	if got := args[0]; got != "example-okta-audit" {
+		t.Fatalf("findingEvaluationRunListQuery().args[0] = %#v, want example-okta-audit", got)
 	}
 	if got := args[1]; got != "identity-okta-policy-rule-lifecycle-tampering" {
 		t.Fatalf("findingEvaluationRunListQuery().args[1] = %#v, want rule id", got)

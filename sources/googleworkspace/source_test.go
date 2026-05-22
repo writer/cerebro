@@ -28,7 +28,7 @@ func TestCheckRequiresDomainAndToken(t *testing.T) {
 	if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{"token": "test-token"})); err == nil {
 		t.Fatal("Check() error = nil, want missing domain error")
 	}
-	if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{"domain": "writer.com"})); err == nil {
+	if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{"domain": "example.com"})); err == nil {
 		t.Fatal("Check() error = nil, want missing token error")
 	}
 }
@@ -50,9 +50,9 @@ func TestNewFixtureReplaysGoogleWorkspaceFamilies(t *testing.T) {
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			cfg := sourcecdk.NewConfig(map[string]string{
-				"domain":    "writer.com",
+				"domain":    "example.com",
 				"family":    tt.family,
-				"group_key": "security@writer.com",
+				"group_key": "security@example.com",
 				"token":     "test-token",
 			})
 			pull, err := source.Read(context.Background(), cfg, nil)
@@ -79,7 +79,7 @@ func TestReadLiveGoogleWorkspaceUserPreview(t *testing.T) {
 	}
 	cfg := sourcecdk.NewConfig(map[string]string{
 		"base_url": server.URL,
-		"domain":   "writer.com",
+		"domain":   "example.com",
 		"family":   "user",
 		"per_page": "1",
 		"token":    "test-token",
@@ -97,8 +97,8 @@ func TestReadLiveGoogleWorkspaceUserPreview(t *testing.T) {
 	if first.NextCursor == nil || first.NextCursor.Opaque != "page-2" {
 		t.Fatalf("first.NextCursor = %#v, want page-2", first.NextCursor)
 	}
-	if got := first.Events[0].Attributes["email"]; got != "admin@writer.com" {
-		t.Fatalf("first event email = %q, want admin@writer.com", got)
+	if got := first.Events[0].Attributes["email"]; got != "admin@example.com" {
+		t.Fatalf("first event email = %q, want admin@example.com", got)
 	}
 	second, err := source.Read(context.Background(), cfg, first.NextCursor)
 	if err != nil {
@@ -130,7 +130,7 @@ func TestReadLiveGoogleWorkspaceRoleAndAuditPreview(t *testing.T) {
 		t.Run(tt.family, func(t *testing.T) {
 			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
 				"base_url": server.URL,
-				"domain":   "writer.com",
+				"domain":   "example.com",
 				"family":   tt.family,
 				"token":    "test-token",
 			}), nil)
@@ -165,7 +165,7 @@ func newGoogleWorkspaceAPIHandler(t *testing.T) http.Handler {
 				if err := json.NewEncoder(w).Encode(map[string]any{
 					"nextPageToken": "page-2",
 					"users": []map[string]any{{
-						"id": "1001", "primaryEmail": "admin@writer.com", "name": map[string]any{"fullName": "Admin Writer"},
+						"id": "1001", "primaryEmail": "admin@example.com", "name": map[string]any{"fullName": "Admin Writer"},
 						"isAdmin": true, "isDelegatedAdmin": true, "isEnrolledIn2Sv": false, "isEnforcedIn2Sv": false,
 						"creationTime": "2025-01-01T00:00:00.000Z", "lastLoginTime": "2025-01-15T00:00:00.000Z",
 					}},
@@ -176,7 +176,7 @@ func newGoogleWorkspaceAPIHandler(t *testing.T) http.Handler {
 			}
 			if err := json.NewEncoder(w).Encode(map[string]any{
 				"users": []map[string]any{{
-					"id": "1002", "primaryEmail": "alice@writer.com", "name": map[string]any{"fullName": "Alice Writer"},
+					"id": "1002", "primaryEmail": "alice@example.com", "name": map[string]any{"fullName": "Alice Writer"},
 					"isAdmin": false, "isEnrolledIn2Sv": true, "isEnforcedIn2Sv": true,
 					"creationTime": "2026-04-20T00:00:00.000Z", "lastLoginTime": "2026-04-23T00:00:00.000Z",
 				}},
@@ -193,7 +193,7 @@ func newGoogleWorkspaceAPIHandler(t *testing.T) http.Handler {
 			if err := json.NewEncoder(w).Encode(map[string]any{
 				"items": []map[string]any{{
 					"id":     map[string]any{"time": "2026-04-23T00:00:00.000Z", "uniqueQualifier": "audit-1", "applicationName": "admin", "customerId": "C01"},
-					"actor":  map[string]any{"email": "admin@writer.com", "profileId": "1001"},
+					"actor":  map[string]any{"email": "admin@example.com", "profileId": "1001"},
 					"events": []map[string]any{{"name": "CHANGE_TWO_STEP_VERIFICATION_ENFORCEMENT", "type": "SECURITY_SETTINGS"}},
 				}},
 			}); err != nil {

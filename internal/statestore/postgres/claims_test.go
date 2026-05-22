@@ -29,9 +29,9 @@ func TestUpsertClaimRejectsMissingPredicate(t *testing.T) {
 	store := &Store{}
 	_, err := store.UpsertClaim(context.Background(), &ports.ClaimRecord{
 		ID:         "claim_1",
-		RuntimeID:  "writer-jira",
-		TenantID:   "writer",
-		SubjectURN: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+		RuntimeID:  "example-jira",
+		TenantID:   "example",
+		SubjectURN: "urn:cerebro:example:runtime:example-jira:ticket:ENG-123",
 		ClaimType:  "attribute",
 		Status:     "asserted",
 	})
@@ -44,9 +44,9 @@ func TestUpsertClaimRejectsUnconfiguredStore(t *testing.T) {
 	store := &Store{}
 	_, err := store.UpsertClaim(context.Background(), &ports.ClaimRecord{
 		ID:          "claim_1",
-		RuntimeID:   "writer-jira",
-		TenantID:    "writer",
-		SubjectURN:  "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+		RuntimeID:   "example-jira",
+		TenantID:    "example",
+		SubjectURN:  "urn:cerebro:example:runtime:example-jira:ticket:ENG-123",
 		Predicate:   "status",
 		ObjectValue: "in_progress",
 		ClaimType:   "attribute",
@@ -66,7 +66,7 @@ func TestListClaimsRejectsUnscopedRequest(t *testing.T) {
 
 func TestListClaimsRejectsUnconfiguredStore(t *testing.T) {
 	store := &Store{}
-	if _, err := store.ListClaims(context.Background(), ports.ListClaimsRequest{RuntimeID: "writer-jira"}); err == nil {
+	if _, err := store.ListClaims(context.Background(), ports.ListClaimsRequest{RuntimeID: "example-jira"}); err == nil {
 		t.Fatal("ListClaims() error = nil, want non-nil")
 	}
 }
@@ -94,13 +94,13 @@ func TestClaimSchemaIncludesTenantRelationSupportIndex(t *testing.T) {
 }
 
 func TestClaimRecordFromJSONRestoresRefsAndTimes(t *testing.T) {
-	payload := `{"id":"claim_1","subject_urn":"urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123","subject_ref":{"urn":"urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123","entity_type":"ticket","label":"ENG-123"},"predicate":"assigned_to","object_urn":"urn:cerebro:writer:runtime:writer-jira:user:acct:42","object_ref":{"urn":"urn:cerebro:writer:runtime:writer-jira:user:acct:42","entity_type":"user","label":"Alice"},"claim_type":"relation","status":"asserted","observed_at":"2026-04-23T12:00:00Z","attributes":{"source":"jira"}}`
-	record, err := claimRecordFromJSON("writer-jira", "writer", payload)
+	payload := `{"id":"claim_1","subject_urn":"urn:cerebro:example:runtime:example-jira:ticket:ENG-123","subject_ref":{"urn":"urn:cerebro:example:runtime:example-jira:ticket:ENG-123","entity_type":"ticket","label":"ENG-123"},"predicate":"assigned_to","object_urn":"urn:cerebro:example:runtime:example-jira:user:acct:42","object_ref":{"urn":"urn:cerebro:example:runtime:example-jira:user:acct:42","entity_type":"user","label":"Alice"},"claim_type":"relation","status":"asserted","observed_at":"2026-04-23T12:00:00Z","attributes":{"source":"jira"}}`
+	record, err := claimRecordFromJSON("example-jira", "writer", payload)
 	if err != nil {
 		t.Fatalf("claimRecordFromJSON() error = %v", err)
 	}
-	if got := record.RuntimeID; got != "writer-jira" {
-		t.Fatalf("record.RuntimeID = %q, want writer-jira", got)
+	if got := record.RuntimeID; got != "example-jira" {
+		t.Fatalf("record.RuntimeID = %q, want example-jira", got)
 	}
 	if got := record.SubjectRef.GetEntityType(); got != "ticket" {
 		t.Fatalf("record.SubjectRef.EntityType = %q, want ticket", got)
@@ -119,10 +119,10 @@ func TestClaimRecordFromJSONRestoresRefsAndTimes(t *testing.T) {
 func TestClaimJSONIncludesTimestampsForRoundTrip(t *testing.T) {
 	payload, err := claimJSON(&ports.ClaimRecord{
 		ID:          "claim_1",
-		RuntimeID:   "writer-jira",
-		TenantID:    "writer",
-		SubjectURN:  "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
-		SubjectRef:  &cerebrov1.EntityRef{Urn: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123", EntityType: "ticket", Label: "ENG-123"},
+		RuntimeID:   "example-jira",
+		TenantID:    "example",
+		SubjectURN:  "urn:cerebro:example:runtime:example-jira:ticket:ENG-123",
+		SubjectRef:  &cerebrov1.EntityRef{Urn: "urn:cerebro:example:runtime:example-jira:ticket:ENG-123", EntityType: "ticket", Label: "ENG-123"},
 		Predicate:   "status",
 		ObjectValue: "in_progress",
 		ClaimType:   "attribute",
@@ -132,7 +132,7 @@ func TestClaimJSONIncludesTimestampsForRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("claimJSON() error = %v", err)
 	}
-	record, err := claimRecordFromJSON("writer-jira", "writer", payload)
+	record, err := claimRecordFromJSON("example-jira", "writer", payload)
 	if err != nil {
 		t.Fatalf("claimRecordFromJSON() error = %v", err)
 	}

@@ -20,10 +20,10 @@ func (r *eventReplayer) Replay(_ context.Context, request ports.ReplayRequest) (
 }
 
 func TestReplayProjectsWorkflowEvents(t *testing.T) {
-	targetURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
+	targetURN := "urn:cerebro:example:okta_resource:policyrule:pol-1"
 	decisionEvent, err := workflowevents.NewDecisionRecordedEvent(workflowevents.DecisionRecorded{
-		TenantID:     "writer",
-		DecisionID:   "urn:cerebro:writer:decision:decision-1",
+		TenantID:     "example",
+		DecisionID:   "urn:cerebro:example:decision:decision-1",
 		DecisionType: "finding-triage",
 		Status:       "approved",
 		TargetIDs:    []string{targetURN},
@@ -37,7 +37,7 @@ func TestReplayProjectsWorkflowEvents(t *testing.T) {
 	replayer := &eventReplayer{events: []*cerebrov1.EventEnvelope{decisionEvent}}
 	graph := &projectionRecorder{}
 	result, err := NewReplayer(replayer, graph).Replay(context.Background(), ReplayRequest{
-		TenantID: "writer",
+		TenantID: "example",
 		Limit:    10,
 	})
 	if err != nil {
@@ -46,8 +46,8 @@ func TestReplayProjectsWorkflowEvents(t *testing.T) {
 	if got := replayer.request.KindPrefix; got != defaultWorkflowKindPrefix {
 		t.Fatalf("ReplayRequest.KindPrefix = %q, want %q", got, defaultWorkflowKindPrefix)
 	}
-	if got := replayer.request.TenantID; got != "writer" {
-		t.Fatalf("ReplayRequest.TenantID = %q, want writer", got)
+	if got := replayer.request.TenantID; got != "example" {
+		t.Fatalf("ReplayRequest.TenantID = %q, want example", got)
 	}
 	if got := result.EventsRead; got != 1 {
 		t.Fatalf("EventsRead = %d, want 1", got)
@@ -55,7 +55,7 @@ func TestReplayProjectsWorkflowEvents(t *testing.T) {
 	if got := result.EventsProjected; got != 1 {
 		t.Fatalf("EventsProjected = %d, want 1", got)
 	}
-	if _, ok := graph.links["urn:cerebro:writer:decision:decision-1|targets|"+targetURN]; !ok {
+	if _, ok := graph.links["urn:cerebro:example:decision:decision-1|targets|"+targetURN]; !ok {
 		t.Fatal("decision target link missing after replay")
 	}
 }

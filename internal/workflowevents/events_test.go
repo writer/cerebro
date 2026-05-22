@@ -7,11 +7,11 @@ import (
 
 func TestNewDecisionRecordedEventIsStableAndDecodable(t *testing.T) {
 	payload := DecisionRecorded{
-		TenantID:      "writer",
-		DecisionID:    "urn:cerebro:writer:decision:decision-1",
+		TenantID:      "example",
+		DecisionID:    "urn:cerebro:example:decision:decision-1",
 		DecisionType:  "finding-triage",
 		Status:        "approved",
-		TargetIDs:     []string{"urn:cerebro:writer:resource:target-1"},
+		TargetIDs:     []string{"urn:cerebro:example:resource:target-1"},
 		SourceSystem:  "findings",
 		SourceEventID: "finding-1",
 		ObservedAt:    "2026-04-27T12:00:00Z",
@@ -44,7 +44,7 @@ func TestNewDecisionRecordedEventIsStableAndDecodable(t *testing.T) {
 }
 
 func TestCanonicalWorkflowIDUsesProvidedURN(t *testing.T) {
-	urn := "urn:cerebro:writer:decision:decision-1"
+	urn := "urn:cerebro:example:decision:decision-1"
 	if got := CanonicalWorkflowID("writer", "decision", urn, "decision", nil, time.Time{}); got != urn {
 		t.Fatalf("CanonicalWorkflowID() = %q, want %q", got, urn)
 	}

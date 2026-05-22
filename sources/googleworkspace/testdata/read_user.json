@@ -1,7 +1,7 @@
 [
   {
     "id": "1001",
-    "primaryEmail": "admin@writer.com",
+    "primaryEmail": "admin@example.com",
     "name": {"fullName": "Admin Writer"},
     "isAdmin": true,
     "isDelegatedAdmin": true,
@@ -15,7 +15,7 @@
   },
   {
     "id": "1002",
-    "primaryEmail": "alice@writer.com",
+    "primaryEmail": "alice@example.com",
     "name": {"fullName": "Alice Writer"},
     "isAdmin": false,
     "isDelegatedAdmin": false,

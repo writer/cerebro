@@ -12,10 +12,10 @@ import (
 
 func TestGRCControlTestNeedsAttentionRule(t *testing.T) {
 	rule := newGRCControlTestNeedsAttentionRule()
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-grc", SourceId: "grc"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-grc", SourceId: "grc"}
 	event := &cerebrov1.EventEnvelope{
 		Id:         "grc-vanta-control_test-ai-training",
-		TenantId:   "writer",
+		TenantId:   "example",
 		SourceId:   "grc",
 		Kind:       "grc.control_test",
 		OccurredAt: timestamppb.New(time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)),
@@ -47,7 +47,7 @@ func TestGRCControlTestNeedsAttentionRule(t *testing.T) {
 
 func TestGRCControlTestNeedsAttentionRuleFingerprintSeparatesTenants(t *testing.T) {
 	rule := newGRCControlTestNeedsAttentionRule()
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-grc", SourceId: "grc"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-grc", SourceId: "grc"}
 	eventForTenant := func(tenantID string) *cerebrov1.EventEnvelope {
 		return &cerebrov1.EventEnvelope{
 			Id:       "grc-vanta-control_test-ai-training",
@@ -83,7 +83,7 @@ func TestGRCControlTestNeedsAttentionRuleFingerprintSeparatesRuntimes(t *testing
 	rule := newGRCControlTestNeedsAttentionRule()
 	event := &cerebrov1.EventEnvelope{
 		Id:       "grc-vanta-control_test-ai-training",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "grc",
 		Kind:     "grc.control_test",
 		Attributes: map[string]string{
@@ -94,11 +94,11 @@ func TestGRCControlTestNeedsAttentionRuleFingerprintSeparatesRuntimes(t *testing
 		},
 	}
 
-	first, err := rule.Evaluate(context.Background(), &cerebrov1.SourceRuntime{Id: "writer-grc-us", SourceId: "grc"}, event)
+	first, err := rule.Evaluate(context.Background(), &cerebrov1.SourceRuntime{Id: "example-grc-us", SourceId: "grc"}, event)
 	if err != nil {
 		t.Fatalf("Evaluate(first) error = %v", err)
 	}
-	second, err := rule.Evaluate(context.Background(), &cerebrov1.SourceRuntime{Id: "writer-grc-eu", SourceId: "grc"}, event)
+	second, err := rule.Evaluate(context.Background(), &cerebrov1.SourceRuntime{Id: "example-grc-eu", SourceId: "grc"}, event)
 	if err != nil {
 		t.Fatalf("Evaluate(second) error = %v", err)
 	}
@@ -112,10 +112,10 @@ func TestGRCControlTestNeedsAttentionRuleFingerprintSeparatesRuntimes(t *testing
 
 func TestGRCVulnerabilitySLAOverdueRule(t *testing.T) {
 	rule := newGRCVulnerabilitySLAOverdueRule()
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-grc", SourceId: "grc"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-grc", SourceId: "grc"}
 	event := &cerebrov1.EventEnvelope{
 		Id:         "grc-vanta-vulnerability-vuln-1",
-		TenantId:   "writer",
+		TenantId:   "example",
 		SourceId:   "grc",
 		Kind:       "grc.vulnerability",
 		OccurredAt: timestamppb.New(time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)),
@@ -140,18 +140,18 @@ func TestGRCVulnerabilitySLAOverdueRule(t *testing.T) {
 	if got := findings[0].Severity; got != "HIGH" {
 		t.Fatalf("Severity = %q, want HIGH", got)
 	}
-	if got := findings[0].Attributes["primary_resource_urn"]; got != "urn:cerebro:writer:vulnerability:cve-2026-4242" {
+	if got := findings[0].Attributes["primary_resource_urn"]; got != "urn:cerebro:example:vulnerability:cve-2026-4242" {
 		t.Fatalf("primary_resource_urn = %q, want canonical vulnerability", got)
 	}
 }
 
 func TestGRCVulnerabilitySLAOverdueRuleFingerprintSeparatesPackageAndTarget(t *testing.T) {
 	rule := newGRCVulnerabilitySLAOverdueRule()
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-grc", SourceId: "grc"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-grc", SourceId: "grc"}
 	eventFor := func(id, packageName, targetID string) *cerebrov1.EventEnvelope {
 		return &cerebrov1.EventEnvelope{
 			Id:       id,
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "grc",
 			Kind:     "grc.vulnerability",
 			Attributes: map[string]string{
@@ -184,10 +184,10 @@ func TestGRCVulnerabilitySLAOverdueRuleFingerprintSeparatesPackageAndTarget(t *t
 
 func TestGRCVendorReviewOverdueRule(t *testing.T) {
 	rule := newGRCVendorReviewOverdueRule()
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-grc", SourceId: "grc"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-grc", SourceId: "grc"}
 	event := &cerebrov1.EventEnvelope{
 		Id:         "grc-vanta-vendor-vendor-1",
-		TenantId:   "writer",
+		TenantId:   "example",
 		SourceId:   "grc",
 		Kind:       "grc.vendor",
 		OccurredAt: timestamppb.New(time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)),
@@ -210,17 +210,17 @@ func TestGRCVendorReviewOverdueRule(t *testing.T) {
 	if got := findings[0].RuleID; got != grcVendorReviewOverdueRuleID {
 		t.Fatalf("RuleID = %q, want %q", got, grcVendorReviewOverdueRuleID)
 	}
-	if got := findings[0].Attributes["primary_resource_urn"]; got != "urn:cerebro:writer:vendor:vanta:vendor-1" {
+	if got := findings[0].Attributes["primary_resource_urn"]; got != "urn:cerebro:example:vendor:vanta:vendor-1" {
 		t.Fatalf("primary_resource_urn = %q, want vendor", got)
 	}
 }
 
 func TestGRCVendorReviewRuleIgnoresCurrentVendor(t *testing.T) {
 	rule := newGRCVendorReviewOverdueRule()
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-grc", SourceId: "grc"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-grc", SourceId: "grc"}
 	event := &cerebrov1.EventEnvelope{
 		Id:       "grc-vanta-vendor-vendor-1",
-		TenantId: "writer",
+		TenantId: "example",
 		SourceId: "grc",
 		Kind:     "grc.vendor",
 		Attributes: map[string]string{

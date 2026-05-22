@@ -1,4 +1,4 @@
 [
-  "urn:cerebro:writer:repo:writer/cerebro",
-  "urn:cerebro:writer:user:octocat"
+  "urn:cerebro:example:repo:example/cerebro",
+  "urn:cerebro:example:user:octocat"
 ]

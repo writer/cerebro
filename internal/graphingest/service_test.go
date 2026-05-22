@@ -295,7 +295,7 @@ func TestConfigHashIncludesNonSecretSelectorKeys(t *testing.T) {
 
 func TestRuntimeCheckpointIDDistinguishesOriginalRuntimeIDs(t *testing.T) {
 	first := runtimeCheckpointID(RuntimeRequest{}, &cerebrov1.SourceRuntime{Id: "writer_okta_users"}, map[string]string{"domain": "writer.okta.com"})
-	second := runtimeCheckpointID(RuntimeRequest{}, &cerebrov1.SourceRuntime{Id: "writer-okta-users"}, map[string]string{"domain": "writer.okta.com"})
+	second := runtimeCheckpointID(RuntimeRequest{}, &cerebrov1.SourceRuntime{Id: "example-okta-users"}, map[string]string{"domain": "writer.okta.com"})
 	if first == second {
 		t.Fatalf("runtimeCheckpointID() collided for distinct runtime ids: %q", first)
 	}
@@ -311,12 +311,12 @@ func TestIngestEventStampsTenantAndRuntime(t *testing.T) {
 		Attributes: map[string]string{
 			"existing": "value",
 		},
-	}, "writer", "writer-github")
+	}, "writer", "example-github")
 	if got := event.GetTenantId(); got != "writer" {
 		t.Fatalf("TenantId = %q, want writer", got)
 	}
-	if got := event.GetAttributes()[ports.EventAttributeSourceRuntimeID]; got != "writer-github" {
-		t.Fatalf("source_runtime_id = %q, want writer-github", got)
+	if got := event.GetAttributes()[ports.EventAttributeSourceRuntimeID]; got != "example-github" {
+		t.Fatalf("source_runtime_id = %q, want example-github", got)
 	}
 	if got := event.GetAttributes()["existing"]; got != "value" {
 		t.Fatalf("existing attribute = %q, want value", got)
@@ -327,28 +327,28 @@ func TestProjectResponseCoalescedUpsertsUniqueRecords(t *testing.T) {
 	store := &recordingProjectionGraphStore{}
 	service := &Service{graphStore: store}
 	projector := recordProjectorFunc(func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-		if event.GetTenantId() != "writer" {
-			t.Fatalf("event tenant = %q, want writer", event.GetTenantId())
+		if event.GetTenantId() != "example" {
+			t.Fatalf("event tenant = %q, want example", event.GetTenantId())
 		}
-		if got := event.GetAttributes()[ports.EventAttributeSourceRuntimeID]; got != "writer-github-audit" {
-			t.Fatalf("source_runtime_id = %q, want writer-github-audit", got)
+		if got := event.GetAttributes()[ports.EventAttributeSourceRuntimeID]; got != "example-github-audit" {
+			t.Fatalf("source_runtime_id = %q, want example-github-audit", got)
 		}
 		return []*ports.ProjectedEntity{{
-				URN:        "urn:cerebro:writer:github_org:WriterInternal",
+				URN:        "urn:cerebro:example:github_org:ExampleInternal",
 				TenantID:   event.GetTenantId(),
 				SourceID:   event.GetSourceId(),
 				RuntimeID:  event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
 				EntityType: "github.org",
-				Label:      "WriterInternal",
+				Label:      "ExampleInternal",
 				Attributes: map[string]string{"event_id": event.GetId()},
 			}},
 			[]*ports.ProjectedLink{{
 				TenantID:  event.GetTenantId(),
 				SourceID:  event.GetSourceId(),
 				RuntimeID: event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
-				FromURN:   "urn:cerebro:writer:github_repo:WriterInternal/k8s",
+				FromURN:   "urn:cerebro:example:github_repo:ExampleInternal/k8s",
 				Relation:  "belongs_to",
-				ToURN:     "urn:cerebro:writer:github_org:WriterInternal",
+				ToURN:     "urn:cerebro:example:github_org:ExampleInternal",
 				Attributes: map[string]string{
 					"event_id": event.GetId(),
 				},
@@ -356,8 +356,8 @@ func TestProjectResponseCoalescedUpsertsUniqueRecords(t *testing.T) {
 	})
 	result, err := service.projectResponseCoalesced(context.Background(), sourceRequest{
 		SourceID:  "github",
-		RuntimeID: "writer-github-audit",
-		TenantID:  "writer",
+		RuntimeID: "example-github-audit",
+		TenantID:  "example",
 	}, &cerebrov1.ReadSourceResponse{Events: []*cerebrov1.EventEnvelope{
 		{Id: "event-1", SourceId: "github"},
 		{Id: "event-2", SourceId: "github"},
@@ -374,14 +374,14 @@ func TestProjectResponseCoalescedUpsertsUniqueRecords(t *testing.T) {
 	if result.LinksProjected != 1 {
 		t.Fatalf("LinksProjected = %d, want 1 coalesced repo->org link upsert", result.LinksProjected)
 	}
-	entity := store.entities["urn:cerebro:writer:github_org:WriterInternal"]
+	entity := store.entities["urn:cerebro:example:github_org:ExampleInternal"]
 	if entity == nil {
 		t.Fatal("coalesced org entity missing")
 	}
 	if got := entity.Attributes["event_id"]; got != "event-2" {
 		t.Fatalf("coalesced entity event_id = %q, want latest event-2", got)
 	}
-	link := store.links["urn:cerebro:writer:github_repo:WriterInternal/k8s|belongs_to|urn:cerebro:writer:github_org:WriterInternal"]
+	link := store.links["urn:cerebro:example:github_repo:ExampleInternal/k8s|belongs_to|urn:cerebro:example:github_org:ExampleInternal"]
 	if link == nil {
 		t.Fatal("coalesced repo->org link missing")
 	}
@@ -391,30 +391,30 @@ func TestProjectResponseCoalescedUpsertsUniqueRecords(t *testing.T) {
 }
 
 func TestProjectResponseCoalescedDeletesCleanupRecords(t *testing.T) {
-	staleURN := "urn:cerebro:writer:okta_resource:access_token:token-123"
+	staleURN := "urn:cerebro:example:okta_resource:access_token:token-123"
 	staleLink := &ports.ProjectedLink{
-		TenantID: "writer",
+		TenantID: "example",
 		SourceID: "okta",
-		FromURN:  "urn:cerebro:writer:okta_application:0oa-client",
+		FromURN:  "urn:cerebro:example:okta_application:0oa-client",
 		Relation: "acted_on",
 		ToURN:    staleURN,
 	}
 	store := &recordingProjectionGraphStore{
 		entities: map[string]*ports.ProjectedEntity{staleURN: {
 			URN:        staleURN,
-			TenantID:   "writer",
+			TenantID:   "example",
 			SourceID:   "okta",
 			RuntimeID:  "okta-audit-runtime",
 			EntityType: "okta.resource",
 			Label:      "token-123",
 		}},
-		links: map[string]*ports.ProjectedLink{"urn:cerebro:writer:okta_application:0oa-client|acted_on|" + staleURN: staleLink},
+		links: map[string]*ports.ProjectedLink{"urn:cerebro:example:okta_application:0oa-client|acted_on|" + staleURN: staleLink},
 	}
 	service := &Service{graphStore: store}
 	projector := cleanupRecordProjector{
 		records: func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 			return []*ports.ProjectedEntity{{
-					URN:        "urn:cerebro:writer:okta_application:0oa-client",
+					URN:        "urn:cerebro:example:okta_application:0oa-client",
 					TenantID:   event.GetTenantId(),
 					SourceID:   event.GetSourceId(),
 					RuntimeID:  event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
@@ -425,9 +425,9 @@ func TestProjectResponseCoalescedDeletesCleanupRecords(t *testing.T) {
 					TenantID:  event.GetTenantId(),
 					SourceID:  event.GetSourceId(),
 					RuntimeID: event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
-					FromURN:   "urn:cerebro:writer:okta_actor:publicclientapp:0oa-client",
+					FromURN:   "urn:cerebro:example:okta_actor:publicclientapp:0oa-client",
 					Relation:  "acted_on",
-					ToURN:     "urn:cerebro:writer:okta_application:0oa-client",
+					ToURN:     "urn:cerebro:example:okta_application:0oa-client",
 				}}, nil
 		},
 		cleanup: func(*cerebrov1.EventEnvelope) ([]string, error) {
@@ -438,7 +438,7 @@ func TestProjectResponseCoalescedDeletesCleanupRecords(t *testing.T) {
 	_, err := service.projectResponseCoalesced(context.Background(), sourceRequest{
 		SourceID:  "okta",
 		RuntimeID: "okta-audit-runtime",
-		TenantID:  "writer",
+		TenantID:  "example",
 	}, &cerebrov1.ReadSourceResponse{Events: []*cerebrov1.EventEnvelope{{
 		Id:       "okta-oauth-grant",
 		SourceId: "okta",
@@ -452,22 +452,22 @@ func TestProjectResponseCoalescedDeletesCleanupRecords(t *testing.T) {
 	if _, ok := store.entities[staleURN]; ok {
 		t.Fatalf("cleanup entity %q still present", staleURN)
 	}
-	if _, ok := store.links["urn:cerebro:writer:okta_application:0oa-client|acted_on|"+staleURN]; ok {
+	if _, ok := store.links["urn:cerebro:example:okta_application:0oa-client|acted_on|"+staleURN]; ok {
 		t.Fatalf("stale cleanup link still present")
 	}
-	if _, ok := store.links["urn:cerebro:writer:okta_actor:publicclientapp:0oa-client|acted_on|urn:cerebro:writer:okta_application:0oa-client"]; !ok {
+	if _, ok := store.links["urn:cerebro:example:okta_actor:publicclientapp:0oa-client|acted_on|urn:cerebro:example:okta_application:0oa-client"]; !ok {
 		t.Fatalf("replacement durable link missing")
 	}
 }
 
 func TestProjectResponseCoalescedRunsCleanupRequestsOnce(t *testing.T) {
-	staleURN := "urn:cerebro:writer:okta_resource:access_token:token-123"
-	appURN := "urn:cerebro:writer:okta_application:0oa-client"
+	staleURN := "urn:cerebro:example:okta_resource:access_token:token-123"
+	appURN := "urn:cerebro:example:okta_application:0oa-client"
 	store := &recordingProjectionGraphStore{
 		entities: map[string]*ports.ProjectedEntity{
 			staleURN: {
 				URN:        staleURN,
-				TenantID:   "writer",
+				TenantID:   "example",
 				SourceID:   "okta",
 				RuntimeID:  "okta-audit-runtime",
 				EntityType: "okta.resource",
@@ -475,7 +475,7 @@ func TestProjectResponseCoalescedRunsCleanupRequestsOnce(t *testing.T) {
 			},
 			appURN: {
 				URN:        appURN,
-				TenantID:   "writer",
+				TenantID:   "example",
 				SourceID:   "okta",
 				RuntimeID:  "okta-audit-runtime",
 				EntityType: "okta.application",
@@ -484,7 +484,7 @@ func TestProjectResponseCoalescedRunsCleanupRequestsOnce(t *testing.T) {
 		},
 		links: map[string]*ports.ProjectedLink{
 			appURN + "|acted_on|" + staleURN: {
-				TenantID: "writer",
+				TenantID: "example",
 				SourceID: "okta",
 				FromURN:  appURN,
 				Relation: "acted_on",
@@ -510,7 +510,7 @@ func TestProjectResponseCoalescedRunsCleanupRequestsOnce(t *testing.T) {
 				SourceID:    event.GetSourceId(),
 				RuntimeID:   event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
 				EntityTypes: []string{"okta.resource"},
-				URNPrefixes: []string{"urn:cerebro:writer:okta_resource:access_token:"},
+				URNPrefixes: []string{"urn:cerebro:example:okta_resource:access_token:"},
 				Limit:       1000,
 			}}, nil
 		},
@@ -519,7 +519,7 @@ func TestProjectResponseCoalescedRunsCleanupRequestsOnce(t *testing.T) {
 	_, err := service.projectResponseCoalesced(context.Background(), sourceRequest{
 		SourceID:  "okta",
 		RuntimeID: "okta-audit-runtime",
-		TenantID:  "writer",
+		TenantID:  "example",
 	}, &cerebrov1.ReadSourceResponse{Events: []*cerebrov1.EventEnvelope{
 		{Id: "okta-oauth-grant-1", SourceId: "okta"},
 		{Id: "okta-oauth-grant-2", SourceId: "okta"},
@@ -544,9 +544,9 @@ func TestProjectResponseCoalescedRunsCleanupRequestsOnce(t *testing.T) {
 func TestProjectResponseCoalescedSkipsCompletedCleanupRequests(t *testing.T) {
 	store := &recordingProjectionGraphStore{
 		entities: map[string]*ports.ProjectedEntity{
-			"urn:cerebro:writer:okta_resource:access_token:token-123": {
-				URN:        "urn:cerebro:writer:okta_resource:access_token:token-123",
-				TenantID:   "writer",
+			"urn:cerebro:example:okta_resource:access_token:token-123": {
+				URN:        "urn:cerebro:example:okta_resource:access_token:token-123",
+				TenantID:   "example",
 				SourceID:   "okta",
 				RuntimeID:  "okta-audit-runtime",
 				EntityType: "okta.resource",
@@ -565,13 +565,13 @@ func TestProjectResponseCoalescedSkipsCompletedCleanupRequests(t *testing.T) {
 				SourceID:    event.GetSourceId(),
 				RuntimeID:   event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
 				EntityTypes: []string{"okta.resource"},
-				URNPrefixes: []string{"urn:cerebro:writer:okta_resource:access_token:"},
+				URNPrefixes: []string{"urn:cerebro:example:okta_resource:access_token:"},
 				Limit:       1000,
 			}}, nil
 		},
 	}
 	completedCleanupRequests := map[string]struct{}{}
-	request := sourceRequest{SourceID: "okta", RuntimeID: "okta-audit-runtime", TenantID: "writer"}
+	request := sourceRequest{SourceID: "okta", RuntimeID: "okta-audit-runtime", TenantID: "example"}
 	response := func(id string) *cerebrov1.ReadSourceResponse {
 		return &cerebrov1.ReadSourceResponse{Events: []*cerebrov1.EventEnvelope{{Id: id, SourceId: "okta"}}}
 	}
@@ -590,17 +590,17 @@ func TestProjectResponseCoalescedSkipsCompletedCleanupRequests(t *testing.T) {
 func TestProjectResponseCoalescedRunsCleanupRequestsUntilExhausted(t *testing.T) {
 	store := &recordingProjectionGraphStore{
 		entities: map[string]*ports.ProjectedEntity{
-			"urn:cerebro:writer:okta_resource:access_token:token-1": {
-				URN:        "urn:cerebro:writer:okta_resource:access_token:token-1",
-				TenantID:   "writer",
+			"urn:cerebro:example:okta_resource:access_token:token-1": {
+				URN:        "urn:cerebro:example:okta_resource:access_token:token-1",
+				TenantID:   "example",
 				SourceID:   "okta",
 				RuntimeID:  "okta-audit-runtime",
 				EntityType: "okta.resource",
 				Label:      "token-1",
 			},
-			"urn:cerebro:writer:okta_resource:access_token:token-2": {
-				URN:        "urn:cerebro:writer:okta_resource:access_token:token-2",
-				TenantID:   "writer",
+			"urn:cerebro:example:okta_resource:access_token:token-2": {
+				URN:        "urn:cerebro:example:okta_resource:access_token:token-2",
+				TenantID:   "example",
 				SourceID:   "okta",
 				RuntimeID:  "okta-audit-runtime",
 				EntityType: "okta.resource",
@@ -619,7 +619,7 @@ func TestProjectResponseCoalescedRunsCleanupRequestsUntilExhausted(t *testing.T)
 				SourceID:    event.GetSourceId(),
 				RuntimeID:   event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
 				EntityTypes: []string{"okta.resource"},
-				URNPrefixes: []string{"urn:cerebro:writer:okta_resource:access_token:"},
+				URNPrefixes: []string{"urn:cerebro:example:okta_resource:access_token:"},
 				Limit:       1,
 			}}, nil
 		},
@@ -628,7 +628,7 @@ func TestProjectResponseCoalescedRunsCleanupRequestsUntilExhausted(t *testing.T)
 	_, err := service.projectResponseCoalesced(context.Background(), sourceRequest{
 		SourceID:  "okta",
 		RuntimeID: "okta-audit-runtime",
-		TenantID:  "writer",
+		TenantID:  "example",
 	}, &cerebrov1.ReadSourceResponse{Events: []*cerebrov1.EventEnvelope{{
 		Id:       "okta-oauth-grant",
 		SourceId: "okta",
@@ -646,11 +646,11 @@ func TestProjectResponseCoalescedRunsCleanupRequestsUntilExhausted(t *testing.T)
 
 func TestProjectResponseCoalescedDeletesProjectedRetractions(t *testing.T) {
 	staleLink := &ports.ProjectedLink{
-		TenantID: "writer",
+		TenantID: "example",
 		SourceID: "kolide",
-		FromURN:  "urn:cerebro:writer:kolide_device:device-1",
+		FromURN:  "urn:cerebro:example:kolide_device:device-1",
 		Relation: "owned_by",
-		ToURN:    "urn:cerebro:writer:identity:login:user-1",
+		ToURN:    "urn:cerebro:example:identity:login:user-1",
 	}
 	key := staleLink.FromURN + "|" + staleLink.Relation + "|" + staleLink.ToURN
 	store := &recordingProjectionGraphStore{links: map[string]*ports.ProjectedLink{key: staleLink}}
@@ -665,7 +665,7 @@ func TestProjectResponseCoalescedDeletesProjectedRetractions(t *testing.T) {
 	_, err := service.projectResponseCoalesced(context.Background(), sourceRequest{
 		SourceID:  "kolide",
 		RuntimeID: "kolide-runtime",
-		TenantID:  "writer",
+		TenantID:  "example",
 	}, &cerebrov1.ReadSourceResponse{Events: []*cerebrov1.EventEnvelope{{
 		Id:       "kolide-device",
 		SourceId: "kolide",
@@ -690,7 +690,7 @@ func TestProjectResponseCoalescedPreservesNewestObservationAttributes(t *testing
 			at = "2026-05-10T10:00:00Z"
 		}
 		return []*ports.ProjectedEntity{{
-				URN:        "urn:cerebro:writer:github_user:alice",
+				URN:        "urn:cerebro:example:github_user:alice",
 				TenantID:   event.GetTenantId(),
 				SourceID:   event.GetSourceId(),
 				RuntimeID:  event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
@@ -707,9 +707,9 @@ func TestProjectResponseCoalescedPreservesNewestObservationAttributes(t *testing
 				TenantID:  event.GetTenantId(),
 				SourceID:  event.GetSourceId(),
 				RuntimeID: event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
-				FromURN:   "urn:cerebro:writer:github_user:alice",
+				FromURN:   "urn:cerebro:example:github_user:alice",
 				Relation:  "acted_on",
-				ToURN:     "urn:cerebro:writer:github_repo:writer/cerebro",
+				ToURN:     "urn:cerebro:example:github_repo:writer/cerebro",
 				Attributes: map[string]string{
 					"action":         "git.clone",
 					"at":             at,
@@ -722,8 +722,8 @@ func TestProjectResponseCoalescedPreservesNewestObservationAttributes(t *testing
 	})
 	_, err := service.projectResponseCoalesced(context.Background(), sourceRequest{
 		SourceID:  "github",
-		RuntimeID: "writer-github-audit",
-		TenantID:  "writer",
+		RuntimeID: "example-github-audit",
+		TenantID:  "example",
 	}, &cerebrov1.ReadSourceResponse{Events: []*cerebrov1.EventEnvelope{
 		{Id: "newer-event", SourceId: "github"},
 		{Id: "older-event", SourceId: "github"},
@@ -731,7 +731,7 @@ func TestProjectResponseCoalescedPreservesNewestObservationAttributes(t *testing
 	if err != nil {
 		t.Fatalf("projectResponseCoalesced() error = %v", err)
 	}
-	entity := store.entities["urn:cerebro:writer:github_user:alice"]
+	entity := store.entities["urn:cerebro:example:github_user:alice"]
 	if entity == nil {
 		t.Fatal("coalesced github.user entity missing")
 	}
@@ -747,7 +747,7 @@ func TestProjectResponseCoalescedPreservesNewestObservationAttributes(t *testing
 	if got := entity.Attributes["login"]; got != "older-event" {
 		t.Fatalf("coalesced entity non-observation attribute login = %q, want older-event latest write", got)
 	}
-	link := store.links["urn:cerebro:writer:github_user:alice|acted_on|urn:cerebro:writer:github_repo:writer/cerebro"]
+	link := store.links["urn:cerebro:example:github_user:alice|acted_on|urn:cerebro:example:github_repo:writer/cerebro"]
 	if link == nil {
 		t.Fatal("coalesced acted_on link missing")
 	}
@@ -866,7 +866,7 @@ func TestIngestSourceCanResetCompletedCheckpoint(t *testing.T) {
 	}
 	projector := recordProjectorFunc(func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 		return []*ports.ProjectedEntity{{
-			URN:        "urn:cerebro:writer:checkpointed:event-1",
+			URN:        "urn:cerebro:example:checkpointed:event-1",
 			TenantID:   event.GetTenantId(),
 			SourceID:   event.GetSourceId(),
 			RuntimeID:  event.GetAttributes()[ports.EventAttributeSourceRuntimeID],
@@ -879,7 +879,7 @@ func TestIngestSourceCanResetCompletedCheckpoint(t *testing.T) {
 	freshResult, err := service.ingestSource(context.Background(), sourceRequest{
 		SourceID:          "checkpointed",
 		RuntimeID:         "runtime-1",
-		TenantID:          "writer",
+		TenantID:          "example",
 		PageLimit:         1,
 		CheckpointEnabled: true,
 		CheckpointID:      "checkpoint-1",
@@ -894,7 +894,7 @@ func TestIngestSourceCanResetCompletedCheckpoint(t *testing.T) {
 	resetResult, err := service.ingestSource(context.Background(), sourceRequest{
 		SourceID:                 "checkpointed",
 		RuntimeID:                "runtime-1",
-		TenantID:                 "writer",
+		TenantID:                 "example",
 		PageLimit:                1,
 		CheckpointEnabled:        true,
 		CheckpointID:             "checkpoint-1",
@@ -936,7 +936,7 @@ func TestResetCompletedCheckpointClearsStoredFreshnessBeforeProjection(t *testin
 	result, err := service.ingestSource(context.Background(), sourceRequest{
 		SourceID:                 "checkpointed",
 		RuntimeID:                "runtime-1",
-		TenantID:                 "writer",
+		TenantID:                 "example",
 		PageLimit:                1,
 		CheckpointEnabled:        true,
 		CheckpointID:             "checkpoint-1",
@@ -958,7 +958,7 @@ func TestResetCompletedCheckpointClearsStoredFreshnessBeforeProjection(t *testin
 	if _, err := service.prepareCheckpoint(context.Background(), sourceRequest{
 		SourceID:          "checkpointed",
 		RuntimeID:         "runtime-1",
-		TenantID:          "writer",
+		TenantID:          "example",
 		PageLimit:         1,
 		CheckpointEnabled: true,
 		CheckpointID:      "checkpoint-1",
@@ -995,7 +995,7 @@ func TestResetCheckpointClearsPartialCheckpointBeforeProjection(t *testing.T) {
 	result, err := service.ingestSource(context.Background(), sourceRequest{
 		SourceID:          "checkpointed",
 		RuntimeID:         "runtime-1",
-		TenantID:          "writer",
+		TenantID:          "example",
 		PageLimit:         1,
 		CheckpointEnabled: true,
 		CheckpointID:      "checkpoint-1",

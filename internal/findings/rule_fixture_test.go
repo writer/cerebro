@@ -158,7 +158,7 @@ func TestSentinelOneRiskyExclusionFixture(t *testing.T) {
 }
 
 func TestRetiredSentinelOneRulesDoNotEmitFindings(t *testing.T) {
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-sentinelone-threat", SourceId: "sentinelone", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-sentinelone-threat", SourceId: "sentinelone", TenantId: "writer"}
 	event := ruleFixtureEvent{
 		ID:         "s1-threat-retired",
 		TenantID:   "writer",
@@ -196,7 +196,7 @@ func TestRetiredSentinelOneRulesDoNotEmitFindings(t *testing.T) {
 }
 
 func TestRetiredGitHubMirrorRulesDoNotEmitFindings(t *testing.T) {
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "writer"}
 	events := []ruleFixtureEvent{
 		{
 			ID:         "gh-secret-scanning-disabled",
@@ -307,7 +307,7 @@ func TestRetiredGitHubMirrorRulesAreCatalogued(t *testing.T) {
 		if rule == nil {
 			t.Fatalf("Builtin().Get(%q) returned nil rule", id)
 		}
-		runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+		runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "writer"}
 		if !rule.SupportsRuntime(runtime) {
 			t.Fatalf("rule %q should still claim github runtimes so the runtime invokes it during replay (stale-finding sweep)", id)
 		}

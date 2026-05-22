@@ -240,14 +240,14 @@ type runtimeRetractRaceClaimStore struct {
 func (s *runtimeRetractRaceClaimStore) Ping(context.Context) error { return nil }
 
 func (s *runtimeRetractRaceClaimStore) UpsertClaim(_ context.Context, claim *ports.ClaimRecord) (*ports.ClaimRecord, error) {
-	if strings.TrimSpace(claim.RuntimeID) == "writer-jira" && strings.TrimSpace(claim.ID) == "claim-jira" {
+	if strings.TrimSpace(claim.RuntimeID) == "example-jira" && strings.TrimSpace(claim.ID) == "claim-jira" {
 		s.current = cloneClaimRecord(claim)
 	}
 	return cloneClaimRecord(claim), nil
 }
 
 func (s *runtimeRetractRaceClaimStore) ListClaims(_ context.Context, request ports.ListClaimsRequest) ([]*ports.ClaimRecord, error) {
-	if strings.TrimSpace(request.RuntimeID) == "writer-jira" {
+	if strings.TrimSpace(request.RuntimeID) == "example-jira" {
 		if claimMatches(request, s.current) {
 			return []*ports.ClaimRecord{cloneClaimRecord(s.current)}, nil
 		}
@@ -261,11 +261,11 @@ func (s *runtimeRetractRaceClaimStore) ListClaims(_ context.Context, request por
 
 func TestClaimRecordAllowsNilTimestamps(t *testing.T) {
 	record := claimRecord(&cerebrov1.SourceRuntime{
-		Id:       "writer-jira",
-		TenantId: "writer",
+		Id:       "example-jira",
+		TenantId: "example",
 	}, &cerebrov1.Claim{
 		Id:         "claim-1",
-		SubjectUrn: "urn:cerebro:writer:ticket:ENG-123",
+		SubjectUrn: "urn:cerebro:example:ticket:ENG-123",
 		Predicate:  "exists",
 		ClaimType:  claimTypeExistence,
 	})
@@ -281,10 +281,10 @@ func TestWriteClaimsPersistsClaimsAndProjectsRelations(t *testing.T) {
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-jira": {
-					Id:       "writer-jira",
+				"example-jira": {
+					Id:       "example-jira",
 					SourceId: "sdk",
-					TenantId: "writer",
+					TenantId: "example",
 				},
 			},
 		},
@@ -294,23 +294,23 @@ func TestWriteClaimsPersistsClaimsAndProjectsRelations(t *testing.T) {
 	)
 	observedAt := timestamppb.Now()
 	issue := &cerebrov1.EntityRef{
-		Urn:        "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+		Urn:        "urn:cerebro:example:runtime:example-jira:ticket:ENG-123",
 		EntityType: "ticket",
 		Label:      "ENG-123",
 	}
 	assignee := &cerebrov1.EntityRef{
-		Urn:        "urn:cerebro:writer:runtime:writer-jira:user:acct:42",
+		Urn:        "urn:cerebro:example:runtime:example-jira:user:acct:42",
 		EntityType: "user",
 		Label:      "Alice",
 	}
 	project := &cerebrov1.EntityRef{
-		Urn:        "urn:cerebro:writer:runtime:writer-jira:project:ENG",
+		Urn:        "urn:cerebro:example:runtime:example-jira:project:ENG",
 		EntityType: "project",
 		Label:      "ENG",
 	}
 
 	result, err := service.WriteClaims(context.Background(), WriteRequest{
-		RuntimeID: "writer-jira",
+		RuntimeID: "example-jira",
 		Claims: []*cerebrov1.Claim{
 			{
 				SubjectRef:    issue,
@@ -366,11 +366,11 @@ func TestWriteClaimsPersistsClaimsAndProjectsRelations(t *testing.T) {
 		if claim.ID == "" {
 			t.Fatal("stored claim id = empty, want non-empty")
 		}
-		if claim.RuntimeID != "writer-jira" {
-			t.Fatalf("stored claim runtime_id = %q, want writer-jira", claim.RuntimeID)
+		if claim.RuntimeID != "example-jira" {
+			t.Fatalf("stored claim runtime_id = %q, want example-jira", claim.RuntimeID)
 		}
-		if claim.TenantID != "writer" {
-			t.Fatalf("stored claim tenant_id = %q, want writer", claim.TenantID)
+		if claim.TenantID != "example" {
+			t.Fatalf("stored claim tenant_id = %q, want example", claim.TenantID)
 		}
 	}
 
@@ -394,17 +394,17 @@ func TestWriteClaimsPersistsClaimsAndProjectsRelations(t *testing.T) {
 }
 
 func TestWriteClaimsReplaceExistingRetractsOmittedClaims(t *testing.T) {
-	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
-	assigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:42"
+	issueURN := "urn:cerebro:example:runtime:example-jira:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:example:runtime:example-jira:user:acct:42"
 	observedAt := time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC)
-	statusID := hashClaimID("writer-jira", claimTypeAttribute, issueURN, "status", "in_progress")
-	assigneeID := hashClaimID("writer-jira", claimTypeRelation, issueURN, "assigned_to", assigneeURN)
+	statusID := hashClaimID("example-jira", claimTypeAttribute, issueURN, "status", "in_progress")
+	assigneeID := hashClaimID("example-jira", claimTypeRelation, issueURN, "assigned_to", assigneeURN)
 	store := &stubClaimStore{
 		claims: map[string]*ports.ClaimRecord{
 			statusID: {
 				ID:            statusID,
-				RuntimeID:     "writer-jira",
-				TenantID:      "writer",
+				RuntimeID:     "example-jira",
+				TenantID:      "example",
 				SubjectURN:    issueURN,
 				Predicate:     "status",
 				ObjectValue:   "in_progress",
@@ -415,8 +415,8 @@ func TestWriteClaimsReplaceExistingRetractsOmittedClaims(t *testing.T) {
 			},
 			assigneeID: {
 				ID:            assigneeID,
-				RuntimeID:     "writer-jira",
-				TenantID:      "writer",
+				RuntimeID:     "example-jira",
+				TenantID:      "example",
 				SubjectURN:    issueURN,
 				Predicate:     "assigned_to",
 				ObjectURN:     assigneeURN,
@@ -432,10 +432,10 @@ func TestWriteClaimsReplaceExistingRetractsOmittedClaims(t *testing.T) {
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-jira": {
-					Id:       "writer-jira",
+				"example-jira": {
+					Id:       "example-jira",
 					SourceId: "sdk",
-					TenantId: "writer",
+					TenantId: "example",
 				},
 			},
 		},
@@ -445,7 +445,7 @@ func TestWriteClaimsReplaceExistingRetractsOmittedClaims(t *testing.T) {
 	)
 
 	result, err := service.WriteClaims(context.Background(), WriteRequest{
-		RuntimeID:       "writer-jira",
+		RuntimeID:       "example-jira",
 		ReplaceExisting: true,
 		Claims: []*cerebrov1.Claim{
 			{
@@ -473,13 +473,13 @@ func TestWriteClaimsReplaceExistingRetractsOmittedClaims(t *testing.T) {
 	}
 	var retractList ports.ListClaimsRequest
 	for _, request := range store.listRequests {
-		if request.RuntimeID == "writer-jira" && request.Status == claimStatusAsserted {
+		if request.RuntimeID == "example-jira" && request.Status == claimStatusAsserted {
 			retractList = request
 			break
 		}
 	}
-	if got := retractList.RuntimeID; got != "writer-jira" {
-		t.Fatalf("retract list runtime_id = %q, want writer-jira", got)
+	if got := retractList.RuntimeID; got != "example-jira" {
+		t.Fatalf("retract list runtime_id = %q, want example-jira", got)
 	}
 	if got := retractList.Status; got != claimStatusAsserted {
 		t.Fatalf("retract list status = %q, want %q", got, claimStatusAsserted)
@@ -505,7 +505,7 @@ func TestWriteClaimsReplaceExistingRetractsOmittedClaims(t *testing.T) {
 func TestWriteClaimsReplaceExistingSerializesAcrossServiceInstances(t *testing.T) {
 	runtimeStore := &stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-jira": {Id: "writer-jira", SourceId: "sdk", TenantId: "writer"},
+			"example-jira": {Id: "example-jira", SourceId: "sdk", TenantId: "example"},
 		},
 	}
 	store := newBlockingClaimStore()
@@ -517,10 +517,10 @@ func TestWriteClaimsReplaceExistingSerializesAcrossServiceInstances(t *testing.T
 
 	go func() {
 		_, err := firstService.WriteClaims(ctx, WriteRequest{
-			RuntimeID:       "writer-jira",
+			RuntimeID:       "example-jira",
 			ReplaceExisting: true,
 			Claims: []*cerebrov1.Claim{{
-				SubjectUrn:    "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-1",
+				SubjectUrn:    "urn:cerebro:example:runtime:example-jira:ticket:ENG-1",
 				Predicate:     "status",
 				ObjectValue:   "open",
 				ClaimType:     claimTypeAttribute,
@@ -540,10 +540,10 @@ func TestWriteClaimsReplaceExistingSerializesAcrossServiceInstances(t *testing.T
 
 	go func() {
 		_, err := secondService.WriteClaims(ctx, WriteRequest{
-			RuntimeID:       "writer-jira",
+			RuntimeID:       "example-jira",
 			ReplaceExisting: true,
 			Claims: []*cerebrov1.Claim{{
-				SubjectUrn:    "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-2",
+				SubjectUrn:    "urn:cerebro:example:runtime:example-jira:ticket:ENG-2",
 				Predicate:     "status",
 				ObjectValue:   "open",
 				ClaimType:     claimTypeAttribute,
@@ -574,20 +574,20 @@ func TestWriteClaimsReplaceExistingSerializesAcrossServiceInstances(t *testing.T
 }
 
 func TestWriteClaimsSerializesRelationDeletionAcrossTenantRuntimes(t *testing.T) {
-	issueURN := "urn:cerebro:writer:ticket:ENG-123"
-	assigneeURN := "urn:cerebro:writer:user:acct:42"
+	issueURN := "urn:cerebro:example:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:example:user:acct:42"
 	linkKey := issueURN + "|assigned_to|" + assigneeURN
 	runtimeStore := &stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-jira":   {Id: "writer-jira", SourceId: "jira", TenantId: "writer"},
-			"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer"},
+			"example-jira":   {Id: "example-jira", SourceId: "jira", TenantId: "example"},
+			"example-github": {Id: "example-github", SourceId: "github", TenantId: "example"},
 		},
 	}
 	store := newUpsertSignalClaimStore(map[string]*ports.ClaimRecord{
 		"claim-jira": {
 			ID:         "claim-jira",
-			RuntimeID:  "writer-jira",
-			TenantID:   "writer",
+			RuntimeID:  "example-jira",
+			TenantID:   "example",
 			SubjectURN: issueURN,
 			Predicate:  "assigned_to",
 			ObjectURN:  assigneeURN,
@@ -596,7 +596,7 @@ func TestWriteClaimsSerializesRelationDeletionAcrossTenantRuntimes(t *testing.T)
 		},
 	})
 	projection := newBlockingDeleteProjection(linkKey, &ports.ProjectedLink{
-		TenantID: "writer",
+		TenantID: "example",
 		SourceID: "jira",
 		FromURN:  issueURN,
 		Relation: "assigned_to",
@@ -610,7 +610,7 @@ func TestWriteClaimsSerializesRelationDeletionAcrossTenantRuntimes(t *testing.T)
 
 	go func() {
 		_, err := firstService.WriteClaims(ctx, WriteRequest{
-			RuntimeID: "writer-jira",
+			RuntimeID: "example-jira",
 			Claims: []*cerebrov1.Claim{{
 				Id:            "claim-jira",
 				SubjectUrn:    issueURN,
@@ -634,7 +634,7 @@ func TestWriteClaimsSerializesRelationDeletionAcrossTenantRuntimes(t *testing.T)
 
 	go func() {
 		_, err := secondService.WriteClaims(ctx, WriteRequest{
-			RuntimeID: "writer-github",
+			RuntimeID: "example-github",
 			Claims: []*cerebrov1.Claim{{
 				Id:            "claim-github",
 				SubjectUrn:    issueURN,
@@ -671,16 +671,16 @@ func TestWriteClaimsSerializesRelationDeletionAcrossTenantRuntimes(t *testing.T)
 }
 
 func TestWriteClaimsRetractedRelationDeletesProjectedLink(t *testing.T) {
-	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
-	assigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:42"
+	issueURN := "urn:cerebro:example:runtime:example-jira:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:example:runtime:example-jira:user:acct:42"
 	projection := &projectionRecorder{}
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-jira": {
-					Id:       "writer-jira",
+				"example-jira": {
+					Id:       "example-jira",
 					SourceId: "sdk",
-					TenantId: "writer",
+					TenantId: "example",
 				},
 			},
 		},
@@ -690,7 +690,7 @@ func TestWriteClaimsRetractedRelationDeletesProjectedLink(t *testing.T) {
 	)
 
 	result, err := service.WriteClaims(context.Background(), WriteRequest{
-		RuntimeID: "writer-jira",
+		RuntimeID: "example-jira",
 		Claims: []*cerebrov1.Claim{
 			{
 				SubjectUrn:    issueURN,
@@ -717,15 +717,15 @@ func TestWriteClaimsRetractedRelationDeletesProjectedLink(t *testing.T) {
 }
 
 func TestWriteClaimsRetractingOneOfMultipleSupportingClaimsKeepsProjectedLink(t *testing.T) {
-	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
-	assigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:42"
+	issueURN := "urn:cerebro:example:runtime:example-jira:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:example:runtime:example-jira:user:acct:42"
 	linkKey := issueURN + "|assigned_to|" + assigneeURN
 	store := &stubClaimStore{
 		claims: map[string]*ports.ClaimRecord{
 			"claim-a": {
 				ID:         "claim-a",
-				RuntimeID:  "writer-jira",
-				TenantID:   "writer",
+				RuntimeID:  "example-jira",
+				TenantID:   "example",
 				SubjectURN: issueURN,
 				Predicate:  "assigned_to",
 				ObjectURN:  assigneeURN,
@@ -734,8 +734,8 @@ func TestWriteClaimsRetractingOneOfMultipleSupportingClaimsKeepsProjectedLink(t 
 			},
 			"claim-b": {
 				ID:         "claim-b",
-				RuntimeID:  "writer-jira",
-				TenantID:   "writer",
+				RuntimeID:  "example-jira",
+				TenantID:   "example",
 				SubjectURN: issueURN,
 				Predicate:  "assigned_to",
 				ObjectURN:  assigneeURN,
@@ -747,7 +747,7 @@ func TestWriteClaimsRetractingOneOfMultipleSupportingClaimsKeepsProjectedLink(t 
 	projection := &projectionRecorder{
 		links: map[string]*ports.ProjectedLink{
 			linkKey: {
-				TenantID: "writer",
+				TenantID: "example",
 				SourceID: "sdk",
 				FromURN:  issueURN,
 				Relation: "assigned_to",
@@ -758,7 +758,7 @@ func TestWriteClaimsRetractingOneOfMultipleSupportingClaimsKeepsProjectedLink(t 
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-jira": {Id: "writer-jira", SourceId: "sdk", TenantId: "writer"},
+				"example-jira": {Id: "example-jira", SourceId: "sdk", TenantId: "example"},
 			},
 		},
 		store,
@@ -767,7 +767,7 @@ func TestWriteClaimsRetractingOneOfMultipleSupportingClaimsKeepsProjectedLink(t 
 	)
 
 	_, err := service.WriteClaims(context.Background(), WriteRequest{
-		RuntimeID: "writer-jira",
+		RuntimeID: "example-jira",
 		Claims: []*cerebrov1.Claim{{
 			Id:         "claim-a",
 			SubjectUrn: issueURN,
@@ -789,15 +789,15 @@ func TestWriteClaimsRetractingOneOfMultipleSupportingClaimsKeepsProjectedLink(t 
 }
 
 func TestWriteClaimsRetractingOneOfMultipleRuntimeSupportingClaimsKeepsProjectedLink(t *testing.T) {
-	issueURN := "urn:cerebro:writer:ticket:ENG-123"
-	assigneeURN := "urn:cerebro:writer:user:acct:42"
+	issueURN := "urn:cerebro:example:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:example:user:acct:42"
 	linkKey := issueURN + "|assigned_to|" + assigneeURN
 	store := &stubClaimStore{
 		claims: map[string]*ports.ClaimRecord{
 			"claim-jira": {
 				ID:         "claim-jira",
-				RuntimeID:  "writer-jira",
-				TenantID:   "writer",
+				RuntimeID:  "example-jira",
+				TenantID:   "example",
 				SubjectURN: issueURN,
 				Predicate:  "assigned_to",
 				ObjectURN:  assigneeURN,
@@ -806,8 +806,8 @@ func TestWriteClaimsRetractingOneOfMultipleRuntimeSupportingClaimsKeepsProjected
 			},
 			"claim-github": {
 				ID:         "claim-jira",
-				RuntimeID:  "writer-github",
-				TenantID:   "writer",
+				RuntimeID:  "example-github",
+				TenantID:   "example",
 				SubjectURN: issueURN,
 				Predicate:  "assigned_to",
 				ObjectURN:  assigneeURN,
@@ -819,7 +819,7 @@ func TestWriteClaimsRetractingOneOfMultipleRuntimeSupportingClaimsKeepsProjected
 	projection := &projectionRecorder{
 		links: map[string]*ports.ProjectedLink{
 			linkKey: {
-				TenantID: "writer",
+				TenantID: "example",
 				SourceID: "sdk",
 				FromURN:  issueURN,
 				Relation: "assigned_to",
@@ -830,8 +830,8 @@ func TestWriteClaimsRetractingOneOfMultipleRuntimeSupportingClaimsKeepsProjected
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-jira":   {Id: "writer-jira", SourceId: "jira", TenantId: "writer"},
-				"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer"},
+				"example-jira":   {Id: "example-jira", SourceId: "jira", TenantId: "example"},
+				"example-github": {Id: "example-github", SourceId: "github", TenantId: "example"},
 			},
 		},
 		store,
@@ -840,7 +840,7 @@ func TestWriteClaimsRetractingOneOfMultipleRuntimeSupportingClaimsKeepsProjected
 	)
 
 	_, err := service.WriteClaims(context.Background(), WriteRequest{
-		RuntimeID: "writer-jira",
+		RuntimeID: "example-jira",
 		Claims: []*cerebrov1.Claim{{
 			Id:         "claim-jira",
 			SubjectUrn: issueURN,
@@ -862,15 +862,15 @@ func TestWriteClaimsRetractingOneOfMultipleRuntimeSupportingClaimsKeepsProjected
 }
 
 func TestWriteClaimsRetractingProjectedRuntimeRefreshesSurvivingLinkMetadata(t *testing.T) {
-	issueURN := "urn:cerebro:writer:ticket:ENG-123"
-	assigneeURN := "urn:cerebro:writer:user:acct:42"
+	issueURN := "urn:cerebro:example:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:example:user:acct:42"
 	linkKey := issueURN + "|assigned_to|" + assigneeURN
 	store := &stubClaimStore{
 		claims: map[string]*ports.ClaimRecord{
 			"claim-jira": {
 				ID:            "claim-jira",
-				RuntimeID:     "writer-jira",
-				TenantID:      "writer",
+				RuntimeID:     "example-jira",
+				TenantID:      "example",
 				SubjectURN:    issueURN,
 				Predicate:     "assigned_to",
 				ObjectURN:     assigneeURN,
@@ -880,8 +880,8 @@ func TestWriteClaimsRetractingProjectedRuntimeRefreshesSurvivingLinkMetadata(t *
 			},
 			"claim-github": {
 				ID:            "claim-github",
-				RuntimeID:     "writer-github",
-				TenantID:      "writer",
+				RuntimeID:     "example-github",
+				TenantID:      "example",
 				SubjectURN:    issueURN,
 				Predicate:     "assigned_to",
 				ObjectURN:     assigneeURN,
@@ -894,7 +894,7 @@ func TestWriteClaimsRetractingProjectedRuntimeRefreshesSurvivingLinkMetadata(t *
 	projection := &projectionRecorder{
 		links: map[string]*ports.ProjectedLink{
 			linkKey: {
-				TenantID: "writer",
+				TenantID: "example",
 				SourceID: "jira",
 				FromURN:  issueURN,
 				Relation: "assigned_to",
@@ -909,8 +909,8 @@ func TestWriteClaimsRetractingProjectedRuntimeRefreshesSurvivingLinkMetadata(t *
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-jira":   {Id: "writer-jira", SourceId: "jira", TenantId: "writer"},
-				"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer"},
+				"example-jira":   {Id: "example-jira", SourceId: "jira", TenantId: "example"},
+				"example-github": {Id: "example-github", SourceId: "github", TenantId: "example"},
 			},
 		},
 		store,
@@ -919,7 +919,7 @@ func TestWriteClaimsRetractingProjectedRuntimeRefreshesSurvivingLinkMetadata(t *
 	)
 
 	_, err := service.WriteClaims(context.Background(), WriteRequest{
-		RuntimeID: "writer-jira",
+		RuntimeID: "example-jira",
 		Claims: []*cerebrov1.Claim{{
 			Id:            "claim-jira",
 			SubjectUrn:    issueURN,
@@ -958,15 +958,15 @@ func TestWriteClaimsRetractingProjectedRuntimeRefreshesSurvivingLinkMetadata(t *
 }
 
 func TestWriteClaimsReassertsRelationAfterSupportedSameBatchRetraction(t *testing.T) {
-	issueURN := "urn:cerebro:writer:ticket:ENG-123"
-	assigneeURN := "urn:cerebro:writer:user:acct:42"
+	issueURN := "urn:cerebro:example:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:example:user:acct:42"
 	linkKey := issueURN + "|assigned_to|" + assigneeURN
 	store := &stubClaimStore{
 		claims: map[string]*ports.ClaimRecord{
 			"claim-github": {
 				ID:            "claim-github",
-				RuntimeID:     "writer-github",
-				TenantID:      "writer",
+				RuntimeID:     "example-github",
+				TenantID:      "example",
 				SubjectURN:    issueURN,
 				Predicate:     "assigned_to",
 				ObjectURN:     assigneeURN,
@@ -979,7 +979,7 @@ func TestWriteClaimsReassertsRelationAfterSupportedSameBatchRetraction(t *testin
 	projection := &projectionRecorder{
 		links: map[string]*ports.ProjectedLink{
 			linkKey: {
-				TenantID: "writer",
+				TenantID: "example",
 				SourceID: "github",
 				FromURN:  issueURN,
 				Relation: "assigned_to",
@@ -994,8 +994,8 @@ func TestWriteClaimsReassertsRelationAfterSupportedSameBatchRetraction(t *testin
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-jira":   {Id: "writer-jira", SourceId: "jira", TenantId: "writer"},
-				"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer"},
+				"example-jira":   {Id: "example-jira", SourceId: "jira", TenantId: "example"},
+				"example-github": {Id: "example-github", SourceId: "github", TenantId: "example"},
 			},
 		},
 		store,
@@ -1004,7 +1004,7 @@ func TestWriteClaimsReassertsRelationAfterSupportedSameBatchRetraction(t *testin
 	)
 
 	result, err := service.WriteClaims(context.Background(), WriteRequest{
-		RuntimeID: "writer-jira",
+		RuntimeID: "example-jira",
 		Claims: []*cerebrov1.Claim{
 			{
 				Id:            "claim-jira-1",
@@ -1060,15 +1060,15 @@ func TestWriteClaimsReassertsRelationAfterSupportedSameBatchRetraction(t *testin
 }
 
 func TestWriteClaimsKeepsLinkWhenOtherSupportHasCaseVariantAssertedStatus(t *testing.T) {
-	issueURN := "urn:cerebro:writer:ticket:ENG-123"
-	assigneeURN := "urn:cerebro:writer:user:acct:42"
+	issueURN := "urn:cerebro:example:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:example:user:acct:42"
 	linkKey := issueURN + "|assigned_to|" + assigneeURN
 	store := &stubClaimStore{
 		claims: map[string]*ports.ClaimRecord{
 			"claim-jira": {
 				ID:         "claim-jira",
-				RuntimeID:  "writer-jira",
-				TenantID:   "writer",
+				RuntimeID:  "example-jira",
+				TenantID:   "example",
 				SubjectURN: issueURN,
 				Predicate:  "assigned_to",
 				ObjectURN:  assigneeURN,
@@ -1077,8 +1077,8 @@ func TestWriteClaimsKeepsLinkWhenOtherSupportHasCaseVariantAssertedStatus(t *tes
 			},
 			"claim-github": {
 				ID:         "claim-github",
-				RuntimeID:  "writer-github",
-				TenantID:   "writer",
+				RuntimeID:  "example-github",
+				TenantID:   "example",
 				SubjectURN: issueURN,
 				Predicate:  "assigned_to",
 				ObjectURN:  assigneeURN,
@@ -1090,7 +1090,7 @@ func TestWriteClaimsKeepsLinkWhenOtherSupportHasCaseVariantAssertedStatus(t *tes
 	projection := &projectionRecorder{
 		links: map[string]*ports.ProjectedLink{
 			linkKey: {
-				TenantID: "writer",
+				TenantID: "example",
 				SourceID: "sdk",
 				FromURN:  issueURN,
 				Relation: "assigned_to",
@@ -1101,8 +1101,8 @@ func TestWriteClaimsKeepsLinkWhenOtherSupportHasCaseVariantAssertedStatus(t *tes
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-jira":   {Id: "writer-jira", SourceId: "jira", TenantId: "writer"},
-				"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer"},
+				"example-jira":   {Id: "example-jira", SourceId: "jira", TenantId: "example"},
+				"example-github": {Id: "example-github", SourceId: "github", TenantId: "example"},
 			},
 		},
 		store,
@@ -1111,7 +1111,7 @@ func TestWriteClaimsKeepsLinkWhenOtherSupportHasCaseVariantAssertedStatus(t *tes
 	)
 
 	_, err := service.WriteClaims(context.Background(), WriteRequest{
-		RuntimeID: "writer-jira",
+		RuntimeID: "example-jira",
 		Claims: []*cerebrov1.Claim{{
 			Id:         "claim-jira",
 			SubjectUrn: issueURN,
@@ -1133,14 +1133,14 @@ func TestWriteClaimsKeepsLinkWhenOtherSupportHasCaseVariantAssertedStatus(t *tes
 }
 
 func TestWriteClaimsReplaceExistingDeletesLinkWhenConcurrentRuntimeRetracts(t *testing.T) {
-	issueURN := "urn:cerebro:writer:ticket:ENG-123"
-	assigneeURN := "urn:cerebro:writer:user:acct:42"
+	issueURN := "urn:cerebro:example:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:example:user:acct:42"
 	linkKey := issueURN + "|assigned_to|" + assigneeURN
 	store := &runtimeRetractRaceClaimStore{
 		current: &ports.ClaimRecord{
 			ID:         "claim-jira",
-			RuntimeID:  "writer-jira",
-			TenantID:   "writer",
+			RuntimeID:  "example-jira",
+			TenantID:   "example",
 			SubjectURN: issueURN,
 			Predicate:  "assigned_to",
 			ObjectURN:  assigneeURN,
@@ -1149,8 +1149,8 @@ func TestWriteClaimsReplaceExistingDeletesLinkWhenConcurrentRuntimeRetracts(t *t
 		},
 		other: &ports.ClaimRecord{
 			ID:         "claim-github",
-			RuntimeID:  "writer-github",
-			TenantID:   "writer",
+			RuntimeID:  "example-github",
+			TenantID:   "example",
 			SubjectURN: issueURN,
 			Predicate:  "assigned_to",
 			ObjectURN:  assigneeURN,
@@ -1161,7 +1161,7 @@ func TestWriteClaimsReplaceExistingDeletesLinkWhenConcurrentRuntimeRetracts(t *t
 	projection := &projectionRecorder{
 		links: map[string]*ports.ProjectedLink{
 			linkKey: {
-				TenantID: "writer",
+				TenantID: "example",
 				SourceID: "sdk",
 				FromURN:  issueURN,
 				Relation: "assigned_to",
@@ -1172,7 +1172,7 @@ func TestWriteClaimsReplaceExistingDeletesLinkWhenConcurrentRuntimeRetracts(t *t
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-jira": {Id: "writer-jira", SourceId: "jira", TenantId: "writer"},
+				"example-jira": {Id: "example-jira", SourceId: "jira", TenantId: "example"},
 			},
 		},
 		store,
@@ -1181,7 +1181,7 @@ func TestWriteClaimsReplaceExistingDeletesLinkWhenConcurrentRuntimeRetracts(t *t
 	)
 
 	_, err := service.WriteClaims(context.Background(), WriteRequest{
-		RuntimeID:       "writer-jira",
+		RuntimeID:       "example-jira",
 		ReplaceExisting: true,
 		Claims: []*cerebrov1.Claim{{
 			SubjectUrn:  issueURN,
@@ -1202,18 +1202,18 @@ func TestWriteClaimsReplaceExistingDeletesLinkWhenConcurrentRuntimeRetracts(t *t
 }
 
 func TestWriteClaimsRefutedAndSupersededRelationsDeleteProjectedLink(t *testing.T) {
-	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
-	assigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:42"
+	issueURN := "urn:cerebro:example:runtime:example-jira:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:example:runtime:example-jira:user:acct:42"
 	for _, status := range []string{claimStatusRefuted, claimStatusSuperseded} {
 		t.Run(status, func(t *testing.T) {
 			projection := &projectionRecorder{}
 			service := New(
 				&stubRuntimeStore{
 					runtimes: map[string]*cerebrov1.SourceRuntime{
-						"writer-jira": {
-							Id:       "writer-jira",
+						"example-jira": {
+							Id:       "example-jira",
 							SourceId: "sdk",
-							TenantId: "writer",
+							TenantId: "example",
 						},
 					},
 				},
@@ -1222,7 +1222,7 @@ func TestWriteClaimsRefutedAndSupersededRelationsDeleteProjectedLink(t *testing.
 				projection,
 			)
 			result, err := service.WriteClaims(context.Background(), WriteRequest{
-				RuntimeID: "writer-jira",
+				RuntimeID: "example-jira",
 				Claims: []*cerebrov1.Claim{
 					{
 						SubjectUrn:    issueURN,
@@ -1251,17 +1251,17 @@ func TestWriteClaimsRefutedAndSupersededRelationsDeleteProjectedLink(t *testing.
 }
 
 func TestWriteClaimsChangingExistingRelationDeletesOldProjectedLink(t *testing.T) {
-	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
-	oldAssigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:old"
-	newAssigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:new"
+	issueURN := "urn:cerebro:example:runtime:example-jira:ticket:ENG-123"
+	oldAssigneeURN := "urn:cerebro:example:runtime:example-jira:user:acct:old"
+	newAssigneeURN := "urn:cerebro:example:runtime:example-jira:user:acct:new"
 	oldKey := issueURN + "|assigned_to|" + oldAssigneeURN
 	newKey := issueURN + "|assigned_to|" + newAssigneeURN
 	store := &stubClaimStore{
 		claims: map[string]*ports.ClaimRecord{
 			"claim-assignee": {
 				ID:         "claim-assignee",
-				RuntimeID:  "writer-jira",
-				TenantID:   "writer",
+				RuntimeID:  "example-jira",
+				TenantID:   "example",
 				SubjectURN: issueURN,
 				SubjectRef: &cerebrov1.EntityRef{Urn: issueURN, EntityType: "ticket", Label: "ENG-123"},
 				Predicate:  "assigned_to",
@@ -1275,7 +1275,7 @@ func TestWriteClaimsChangingExistingRelationDeletesOldProjectedLink(t *testing.T
 	projection := &projectionRecorder{
 		links: map[string]*ports.ProjectedLink{
 			oldKey: {
-				TenantID: "writer",
+				TenantID: "example",
 				SourceID: "sdk",
 				FromURN:  issueURN,
 				Relation: "assigned_to",
@@ -1286,7 +1286,7 @@ func TestWriteClaimsChangingExistingRelationDeletesOldProjectedLink(t *testing.T
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-jira": {Id: "writer-jira", SourceId: "sdk", TenantId: "writer"},
+				"example-jira": {Id: "example-jira", SourceId: "sdk", TenantId: "example"},
 			},
 		},
 		store,
@@ -1295,7 +1295,7 @@ func TestWriteClaimsChangingExistingRelationDeletesOldProjectedLink(t *testing.T
 	)
 
 	_, err := service.WriteClaims(context.Background(), WriteRequest{
-		RuntimeID: "writer-jira",
+		RuntimeID: "example-jira",
 		Claims: []*cerebrov1.Claim{{
 			Id:         "claim-assignee",
 			SubjectRef: &cerebrov1.EntityRef{Urn: issueURN, EntityType: "ticket", Label: "ENG-123"},
@@ -1320,16 +1320,16 @@ func TestWriteClaimsChangingExistingRelationDeletesOldProjectedLink(t *testing.T
 }
 
 func TestWriteClaimsReprojectsRelationAfterSameBatchRetarget(t *testing.T) {
-	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
-	oldAssigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:old"
-	newAssigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:new"
+	issueURN := "urn:cerebro:example:runtime:example-jira:ticket:ENG-123"
+	oldAssigneeURN := "urn:cerebro:example:runtime:example-jira:user:acct:old"
+	newAssigneeURN := "urn:cerebro:example:runtime:example-jira:user:acct:new"
 	oldKey := issueURN + "|assigned_to|" + oldAssigneeURN
 	newKey := issueURN + "|assigned_to|" + newAssigneeURN
 	projection := &projectionRecorder{}
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-jira": {Id: "writer-jira", SourceId: "sdk", TenantId: "writer"},
+				"example-jira": {Id: "example-jira", SourceId: "sdk", TenantId: "example"},
 			},
 		},
 		&stubClaimStore{},
@@ -1338,7 +1338,7 @@ func TestWriteClaimsReprojectsRelationAfterSameBatchRetarget(t *testing.T) {
 	)
 
 	result, err := service.WriteClaims(context.Background(), WriteRequest{
-		RuntimeID: "writer-jira",
+		RuntimeID: "example-jira",
 		Claims: []*cerebrov1.Claim{
 			{
 				Id:            "claim-assignee",
@@ -1410,9 +1410,9 @@ func TestWriteClaimsRejectsCrossTenantRetractedRelation(t *testing.T) {
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-jira": {
-					Id:       "writer-jira",
-					TenantId: "writer",
+				"example-jira": {
+					Id:       "example-jira",
+					TenantId: "example",
 					SourceId: "jira",
 				},
 			},
@@ -1423,7 +1423,7 @@ func TestWriteClaimsRejectsCrossTenantRetractedRelation(t *testing.T) {
 	)
 
 	_, err := service.WriteClaims(context.Background(), WriteRequest{
-		RuntimeID: "writer-jira",
+		RuntimeID: "example-jira",
 		Claims: []*cerebrov1.Claim{
 			{
 				SubjectUrn: issueURN,
@@ -1443,7 +1443,7 @@ func TestWriteClaimsRejectsCrossTenantRetractedRelation(t *testing.T) {
 }
 
 func TestWriteClaimsRejectsCrossTenantNonRelationEntityRefs(t *testing.T) {
-	writerURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
+	writerURN := "urn:cerebro:example:runtime:example-jira:ticket:ENG-123"
 	otherURN := "urn:cerebro:other:runtime:other-jira:ticket:ENG-123"
 	for _, tt := range []struct {
 		name  string
@@ -1483,9 +1483,9 @@ func TestWriteClaimsRejectsCrossTenantNonRelationEntityRefs(t *testing.T) {
 			service := New(
 				&stubRuntimeStore{
 					runtimes: map[string]*cerebrov1.SourceRuntime{
-						"writer-jira": {
-							Id:       "writer-jira",
-							TenantId: "writer",
+						"example-jira": {
+							Id:       "example-jira",
+							TenantId: "example",
 							SourceId: "jira",
 						},
 					},
@@ -1495,7 +1495,7 @@ func TestWriteClaimsRejectsCrossTenantNonRelationEntityRefs(t *testing.T) {
 				nil,
 			)
 			_, err := service.WriteClaims(context.Background(), WriteRequest{
-				RuntimeID: "writer-jira",
+				RuntimeID: "example-jira",
 				Claims:    []*cerebrov1.Claim{tt.claim},
 			})
 			if !errors.Is(err, ErrInvalidRequest) {
@@ -1509,8 +1509,8 @@ func TestWriteClaimsRejectsCrossTenantNonRelationEntityRefs(t *testing.T) {
 }
 
 func TestWriteClaimsRejectsCrossTenantExplicitRefURNs(t *testing.T) {
-	writerIssueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
-	writerUserURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:42"
+	writerIssueURN := "urn:cerebro:example:runtime:example-jira:ticket:ENG-123"
+	writerUserURN := "urn:cerebro:example:runtime:example-jira:user:acct:42"
 	otherIssueURN := "urn:cerebro:other:runtime:other-jira:ticket:ENG-123"
 	otherUserURN := "urn:cerebro:other:runtime:other-jira:user:acct:42"
 	for _, tt := range []struct {
@@ -1550,9 +1550,9 @@ func TestWriteClaimsRejectsCrossTenantExplicitRefURNs(t *testing.T) {
 			service := New(
 				&stubRuntimeStore{
 					runtimes: map[string]*cerebrov1.SourceRuntime{
-						"writer-jira": {
-							Id:       "writer-jira",
-							TenantId: "writer",
+						"example-jira": {
+							Id:       "example-jira",
+							TenantId: "example",
 							SourceId: "jira",
 						},
 					},
@@ -1562,7 +1562,7 @@ func TestWriteClaimsRejectsCrossTenantExplicitRefURNs(t *testing.T) {
 				projection,
 			)
 			_, err := service.WriteClaims(context.Background(), WriteRequest{
-				RuntimeID: "writer-jira",
+				RuntimeID: "example-jira",
 				Claims:    []*cerebrov1.Claim{tt.claim},
 			})
 			if !errors.Is(err, ErrInvalidRequest) {
@@ -1582,16 +1582,16 @@ func TestWriteClaimsRejectsCrossTenantExplicitRefURNs(t *testing.T) {
 }
 
 func TestWriteClaimsReassertsRelationAfterSameBatchRetraction(t *testing.T) {
-	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
-	assigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:42"
+	issueURN := "urn:cerebro:example:runtime:example-jira:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:example:runtime:example-jira:user:acct:42"
 	projection := &projectionRecorder{}
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-jira": {
-					Id:       "writer-jira",
+				"example-jira": {
+					Id:       "example-jira",
 					SourceId: "sdk",
-					TenantId: "writer",
+					TenantId: "example",
 				},
 			},
 		},
@@ -1601,7 +1601,7 @@ func TestWriteClaimsReassertsRelationAfterSameBatchRetraction(t *testing.T) {
 	)
 
 	result, err := service.WriteClaims(context.Background(), WriteRequest{
-		RuntimeID: "writer-jira",
+		RuntimeID: "example-jira",
 		Claims: []*cerebrov1.Claim{
 			{
 				SubjectUrn:    issueURN,
@@ -1649,7 +1649,7 @@ func TestWriteClaimsReassertsRelationAfterSameBatchRetraction(t *testing.T) {
 
 func TestWriteClaimsRequiresAvailableDependencies(t *testing.T) {
 	service := New(nil, nil, nil, nil)
-	if _, err := service.WriteClaims(context.Background(), WriteRequest{RuntimeID: "writer-jira"}); !errors.Is(err, ErrRuntimeUnavailable) {
+	if _, err := service.WriteClaims(context.Background(), WriteRequest{RuntimeID: "example-jira"}); !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("WriteClaims() error = %v, want %v", err, ErrRuntimeUnavailable)
 	}
 }
@@ -1658,7 +1658,7 @@ func TestWriteClaimsAllowsDottedEntityTypeForTenantScopedRef(t *testing.T) {
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-okta": {Id: "writer-okta", SourceId: "okta", TenantId: "writer"},
+				"example-okta": {Id: "example-okta", SourceId: "okta", TenantId: "example"},
 			},
 		},
 		&stubClaimStore{},
@@ -1667,10 +1667,10 @@ func TestWriteClaimsAllowsDottedEntityTypeForTenantScopedRef(t *testing.T) {
 	)
 
 	_, err := service.WriteClaims(context.Background(), WriteRequest{
-		RuntimeID: "writer-okta",
+		RuntimeID: "example-okta",
 		Claims: []*cerebrov1.Claim{{
 			SubjectRef: &cerebrov1.EntityRef{
-				Urn:        "urn:cerebro:writer:okta_resource:app:123",
+				Urn:        "urn:cerebro:example:okta_resource:app:123",
 				EntityType: "okta.resource",
 			},
 			Predicate:   "status",
@@ -1687,7 +1687,7 @@ func TestWriteClaimsAllowsCanonicalIdentifierEntityRefs(t *testing.T) {
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-jira": {Id: "writer-jira", SourceId: "jira", TenantId: "writer"},
+				"example-jira": {Id: "example-jira", SourceId: "jira", TenantId: "example"},
 			},
 		},
 		&stubClaimStore{},
@@ -1696,11 +1696,11 @@ func TestWriteClaimsAllowsCanonicalIdentifierEntityRefs(t *testing.T) {
 	)
 
 	for _, ref := range []*cerebrov1.EntityRef{
-		{Urn: "urn:cerebro:writer:identifier:email:alice@writer.com", EntityType: "identifier.email"},
-		{Urn: "urn:cerebro:writer:identity:login:alice", EntityType: "identity.login"},
+		{Urn: "urn:cerebro:example:identifier:email:alice@example.com", EntityType: "identifier.email"},
+		{Urn: "urn:cerebro:example:identity:login:alice", EntityType: "identity.login"},
 	} {
 		_, err := service.WriteClaims(context.Background(), WriteRequest{
-			RuntimeID: "writer-jira",
+			RuntimeID: "example-jira",
 			Claims: []*cerebrov1.Claim{{
 				SubjectRef:  ref,
 				Predicate:   "status",
@@ -1718,7 +1718,7 @@ func TestWriteClaimsValidationErrorsAreInvalidRequests(t *testing.T) {
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-jira": {Id: "writer-jira", SourceId: "sdk", TenantId: "writer"},
+				"example-jira": {Id: "example-jira", SourceId: "sdk", TenantId: "example"},
 			},
 		},
 		&stubClaimStore{},
@@ -1730,61 +1730,61 @@ func TestWriteClaimsValidationErrorsAreInvalidRequests(t *testing.T) {
 		req  WriteRequest
 	}{
 		{name: "missing runtime id", req: WriteRequest{}},
-		{name: "nil claim", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{nil}}},
-		{name: "missing subject", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{Predicate: "status"}}}},
-		{name: "cross runtime subject", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
-			SubjectUrn:  "urn:cerebro:writer:runtime:other-jira:ticket:ENG-123",
+		{name: "nil claim", req: WriteRequest{RuntimeID: "example-jira", Claims: []*cerebrov1.Claim{nil}}},
+		{name: "missing subject", req: WriteRequest{RuntimeID: "example-jira", Claims: []*cerebrov1.Claim{{Predicate: "status"}}}},
+		{name: "cross runtime subject", req: WriteRequest{RuntimeID: "example-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn:  "urn:cerebro:example:runtime:other-jira:ticket:ENG-123",
 			Predicate:   "status",
 			ObjectValue: "open",
 			ClaimType:   claimTypeAttribute,
 		}}}},
-		{name: "cross runtime object", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
-			SubjectUrn: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+		{name: "cross runtime object", req: WriteRequest{RuntimeID: "example-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn: "urn:cerebro:example:runtime:example-jira:ticket:ENG-123",
 			Predicate:  "assigned_to",
-			ObjectUrn:  "urn:cerebro:writer:runtime:other-jira:user:acct:42",
+			ObjectUrn:  "urn:cerebro:example:runtime:other-jira:user:acct:42",
 			ClaimType:  claimTypeRelation,
 		}}}},
-		{name: "malformed subject urn", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
-			SubjectUrn:  "urn:cerebro:writer:",
+		{name: "malformed subject urn", req: WriteRequest{RuntimeID: "example-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn:  "urn:cerebro:example:",
 			Predicate:   "status",
 			ObjectValue: "open",
 			ClaimType:   claimTypeAttribute,
 		}}}},
-		{name: "trailing empty subject urn segment", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
-			SubjectUrn:  "urn:cerebro:writer:runtime:writer-jira:ticket:",
+		{name: "trailing empty subject urn segment", req: WriteRequest{RuntimeID: "example-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn:  "urn:cerebro:example:runtime:example-jira:ticket:",
 			Predicate:   "status",
 			ObjectValue: "open",
 			ClaimType:   claimTypeAttribute,
 		}}}},
-		{name: "empty runtime scoped subject entity type", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
-			SubjectUrn:  "urn:cerebro:writer:runtime:writer-jira::ENG-123",
+		{name: "empty runtime scoped subject entity type", req: WriteRequest{RuntimeID: "example-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn:  "urn:cerebro:example:runtime:example-jira::ENG-123",
 			Predicate:   "status",
 			ObjectValue: "open",
 			ClaimType:   claimTypeAttribute,
 		}}}},
-		{name: "empty runtime scoped object ref entity type", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
-			SubjectUrn: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+		{name: "empty runtime scoped object ref entity type", req: WriteRequest{RuntimeID: "example-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn: "urn:cerebro:example:runtime:example-jira:ticket:ENG-123",
 			Predicate:  "assigned_to",
-			ObjectRef:  &cerebrov1.EntityRef{Urn: "urn:cerebro:writer:runtime:writer-jira::acct:42", EntityType: "user"},
+			ObjectRef:  &cerebrov1.EntityRef{Urn: "urn:cerebro:example:runtime:example-jira::acct:42", EntityType: "user"},
 			ClaimType:  claimTypeRelation,
 		}}}},
-		{name: "subject ref type conflicts with urn", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
-			SubjectUrn:  "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
-			SubjectRef:  &cerebrov1.EntityRef{Urn: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123", EntityType: "user"},
+		{name: "subject ref type conflicts with urn", req: WriteRequest{RuntimeID: "example-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn:  "urn:cerebro:example:runtime:example-jira:ticket:ENG-123",
+			SubjectRef:  &cerebrov1.EntityRef{Urn: "urn:cerebro:example:runtime:example-jira:ticket:ENG-123", EntityType: "user"},
 			Predicate:   "status",
 			ObjectValue: "open",
 			ClaimType:   claimTypeAttribute,
 		}}}},
-		{name: "object ref type conflicts with urn", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
-			SubjectUrn: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+		{name: "object ref type conflicts with urn", req: WriteRequest{RuntimeID: "example-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn: "urn:cerebro:example:runtime:example-jira:ticket:ENG-123",
 			Predicate:  "assigned_to",
-			ObjectRef:  &cerebrov1.EntityRef{Urn: "urn:cerebro:writer:runtime:writer-jira:user:acct:42", EntityType: "group"},
+			ObjectRef:  &cerebrov1.EntityRef{Urn: "urn:cerebro:example:runtime:example-jira:user:acct:42", EntityType: "group"},
 			ClaimType:  claimTypeRelation,
 		}}}},
-		{name: "whitespace padded object urn segment", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
-			SubjectUrn: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+		{name: "whitespace padded object urn segment", req: WriteRequest{RuntimeID: "example-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn: "urn:cerebro:example:runtime:example-jira:ticket:ENG-123",
 			Predicate:  "assigned_to",
-			ObjectUrn:  "urn:cerebro:writer:runtime:writer-jira:user: acct:42",
+			ObjectUrn:  "urn:cerebro:example:runtime:example-jira:user: acct:42",
 			ClaimType:  claimTypeRelation,
 		}}}},
 	} {
@@ -1802,9 +1802,9 @@ func TestListClaimsReturnsFilteredProtoClaims(t *testing.T) {
 		claims: map[string]*ports.ClaimRecord{
 			"claim-status": {
 				ID:            "claim-status",
-				RuntimeID:     "writer-jira",
-				TenantID:      "writer",
-				SubjectURN:    "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+				RuntimeID:     "example-jira",
+				TenantID:      "example",
+				SubjectURN:    "urn:cerebro:example:runtime:example-jira:ticket:ENG-123",
 				Predicate:     "status",
 				ObjectValue:   "in_progress",
 				ClaimType:     claimTypeAttribute,
@@ -1814,11 +1814,11 @@ func TestListClaimsReturnsFilteredProtoClaims(t *testing.T) {
 			},
 			"claim-assignee": {
 				ID:            "claim-assignee",
-				RuntimeID:     "writer-jira",
-				TenantID:      "writer",
-				SubjectURN:    "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+				RuntimeID:     "example-jira",
+				TenantID:      "example",
+				SubjectURN:    "urn:cerebro:example:runtime:example-jira:ticket:ENG-123",
 				Predicate:     "assigned_to",
-				ObjectURN:     "urn:cerebro:writer:runtime:writer-jira:user:acct:42",
+				ObjectURN:     "urn:cerebro:example:runtime:example-jira:user:acct:42",
 				ClaimType:     claimTypeRelation,
 				Status:        claimStatusAsserted,
 				SourceEventID: "jira-event-2",
@@ -1829,10 +1829,10 @@ func TestListClaimsReturnsFilteredProtoClaims(t *testing.T) {
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-jira": {
-					Id:       "writer-jira",
+				"example-jira": {
+					Id:       "example-jira",
 					SourceId: "sdk",
-					TenantId: "writer",
+					TenantId: "example",
 				},
 			},
 		},
@@ -1842,7 +1842,7 @@ func TestListClaimsReturnsFilteredProtoClaims(t *testing.T) {
 	)
 
 	response, err := service.ListClaims(context.Background(), ListRequest{
-		RuntimeID:     "writer-jira",
+		RuntimeID:     "example-jira",
 		Predicate:     "status",
 		ObjectValue:   "in_progress",
 		SourceEventID: "jira-event-1",
@@ -1860,8 +1860,8 @@ func TestListClaimsReturnsFilteredProtoClaims(t *testing.T) {
 	if got := response.Claims[0].GetObjectValue(); got != "in_progress" {
 		t.Fatalf("ListClaims().Claims[0].ObjectValue = %q, want in_progress", got)
 	}
-	if got := store.listRequest.RuntimeID; got != "writer-jira" {
-		t.Fatalf("ListClaims().RuntimeID = %q, want writer-jira", got)
+	if got := store.listRequest.RuntimeID; got != "example-jira" {
+		t.Fatalf("ListClaims().RuntimeID = %q, want example-jira", got)
 	}
 	if got := store.listRequest.Predicate; got != "status" {
 		t.Fatalf("ListClaims().Predicate = %q, want status", got)
@@ -1889,12 +1889,12 @@ func TestListClaimsPreservesUnboundedAndExplicitLimits(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			store := &stubClaimStore{claims: map[string]*ports.ClaimRecord{}}
 			service := New(
-				&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{"writer-jira": {Id: "writer-jira", SourceId: "jira", TenantId: "writer"}}},
+				&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{"example-jira": {Id: "example-jira", SourceId: "jira", TenantId: "example"}}},
 				store,
 				nil,
 				nil,
 			)
-			if _, err := service.ListClaims(context.Background(), ListRequest{RuntimeID: "writer-jira", Limit: tt.limit}); err != nil {
+			if _, err := service.ListClaims(context.Background(), ListRequest{RuntimeID: "example-jira", Limit: tt.limit}); err != nil {
 				t.Fatalf("ListClaims() error = %v", err)
 			}
 			if got := store.listRequest.Limit; got != tt.want {
@@ -1906,7 +1906,7 @@ func TestListClaimsPreservesUnboundedAndExplicitLimits(t *testing.T) {
 
 func TestListClaimsRequiresAvailableDependencies(t *testing.T) {
 	service := New(nil, nil, nil, nil)
-	if _, err := service.ListClaims(context.Background(), ListRequest{RuntimeID: "writer-jira"}); !errors.Is(err, ErrRuntimeUnavailable) {
+	if _, err := service.ListClaims(context.Background(), ListRequest{RuntimeID: "example-jira"}); !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("ListClaims() error = %v, want %v", err, ErrRuntimeUnavailable)
 	}
 }
@@ -1922,10 +1922,10 @@ func TestWriteClaimsRejectsRelationWithoutObjectURN(t *testing.T) {
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-jira": {
-					Id:       "writer-jira",
+				"example-jira": {
+					Id:       "example-jira",
 					SourceId: "sdk",
-					TenantId: "writer",
+					TenantId: "example",
 				},
 			},
 		},
@@ -1934,10 +1934,10 @@ func TestWriteClaimsRejectsRelationWithoutObjectURN(t *testing.T) {
 		nil,
 	)
 	_, err := service.WriteClaims(context.Background(), WriteRequest{
-		RuntimeID: "writer-jira",
+		RuntimeID: "example-jira",
 		Claims: []*cerebrov1.Claim{
 			{
-				SubjectUrn: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+				SubjectUrn: "urn:cerebro:example:runtime:example-jira:ticket:ENG-123",
 				Predicate:  "assigned_to",
 				ClaimType:  claimTypeRelation,
 			},
@@ -1953,10 +1953,10 @@ func TestWriteClaimsDoesNotProjectWhenPersistenceFails(t *testing.T) {
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-jira": {
-					Id:       "writer-jira",
+				"example-jira": {
+					Id:       "example-jira",
 					SourceId: "sdk",
-					TenantId: "writer",
+					TenantId: "example",
 				},
 			},
 		},
@@ -1966,11 +1966,11 @@ func TestWriteClaimsDoesNotProjectWhenPersistenceFails(t *testing.T) {
 	)
 
 	_, err := service.WriteClaims(context.Background(), WriteRequest{
-		RuntimeID: "writer-jira",
+		RuntimeID: "example-jira",
 		Claims: []*cerebrov1.Claim{
 			{
 				SubjectRef: &cerebrov1.EntityRef{
-					Urn:        "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+					Urn:        "urn:cerebro:example:runtime:example-jira:ticket:ENG-123",
 					EntityType: "ticket",
 				},
 				Predicate:   "status",
@@ -1991,20 +1991,20 @@ func TestWriteClaimsDoesNotProjectWhenPersistenceFails(t *testing.T) {
 }
 
 func TestNormalizeClaimIDIncludesObjectIdentity(t *testing.T) {
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-jira"}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-jira"}
 	first, err := normalizeClaim(&cerebrov1.Claim{
-		SubjectUrn: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+		SubjectUrn: "urn:cerebro:example:runtime:example-jira:ticket:ENG-123",
 		Predicate:  "assigned_to",
-		ObjectUrn:  "urn:cerebro:writer:runtime:writer-jira:user:alice",
+		ObjectUrn:  "urn:cerebro:example:runtime:example-jira:user:alice",
 		ClaimType:  claimTypeRelation,
 	}, runtime)
 	if err != nil {
 		t.Fatalf("normalizeClaim(first) error = %v", err)
 	}
 	second, err := normalizeClaim(&cerebrov1.Claim{
-		SubjectUrn: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+		SubjectUrn: "urn:cerebro:example:runtime:example-jira:ticket:ENG-123",
 		Predicate:  "assigned_to",
-		ObjectUrn:  "urn:cerebro:writer:runtime:writer-jira:user:bob",
+		ObjectUrn:  "urn:cerebro:example:runtime:example-jira:user:bob",
 		ClaimType:  claimTypeRelation,
 	}, runtime)
 	if err != nil {
@@ -2015,7 +2015,7 @@ func TestNormalizeClaimIDIncludesObjectIdentity(t *testing.T) {
 	}
 
 	attrFirst, err := normalizeClaim(&cerebrov1.Claim{
-		SubjectUrn:  "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+		SubjectUrn:  "urn:cerebro:example:runtime:example-jira:ticket:ENG-123",
 		Predicate:   "status",
 		ObjectValue: "open",
 		ClaimType:   claimTypeAttribute,
@@ -2024,7 +2024,7 @@ func TestNormalizeClaimIDIncludesObjectIdentity(t *testing.T) {
 		t.Fatalf("normalizeClaim(attrFirst) error = %v", err)
 	}
 	attrSecond, err := normalizeClaim(&cerebrov1.Claim{
-		SubjectUrn:  "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+		SubjectUrn:  "urn:cerebro:example:runtime:example-jira:ticket:ENG-123",
 		Predicate:   "status",
 		ObjectValue: "closed",
 		ClaimType:   claimTypeAttribute,
@@ -2151,7 +2151,7 @@ func TestWriteClaimsMissingRuntimeDoesNotRetainRuntimeLock(t *testing.T) {
 	_, err := service.WriteClaims(context.Background(), WriteRequest{
 		RuntimeID: "missing-runtime",
 		Claims: []*cerebrov1.Claim{{
-			SubjectUrn:  "urn:cerebro:writer:runtime:missing-runtime:ticket:ENG-1",
+			SubjectUrn:  "urn:cerebro:example:runtime:missing-runtime:ticket:ENG-1",
 			Predicate:   "status",
 			ObjectValue: "open",
 			ClaimType:   claimTypeAttribute,
@@ -2181,7 +2181,7 @@ func TestWriteClaimsSerializesPerRuntime(t *testing.T) {
 	}
 	runtimeStore := &stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-jira": {Id: "writer-jira", SourceId: "sdk", TenantId: "writer"},
+			"example-jira": {Id: "example-jira", SourceId: "sdk", TenantId: "example"},
 		},
 	}
 	var wg sync.WaitGroup
@@ -2195,9 +2195,9 @@ func TestWriteClaimsSerializesPerRuntime(t *testing.T) {
 			service := New(runtimeStore, store, nil, nil)
 			for i := 0; i < calls; i++ {
 				_, err := service.WriteClaims(context.Background(), WriteRequest{
-					RuntimeID: "writer-jira",
+					RuntimeID: "example-jira",
 					Claims: []*cerebrov1.Claim{{
-						SubjectUrn:  "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-1",
+						SubjectUrn:  "urn:cerebro:example:runtime:example-jira:ticket:ENG-1",
 						Predicate:   "status",
 						ObjectValue: "open",
 						ClaimType:   claimTypeAttribute,

@@ -13,12 +13,12 @@ import (
 
 func TestGRCInactiveIdentityActiveAccessRuleQueryScopesByTenant(t *testing.T) {
 	rule := newGRCInactiveIdentityActiveAccessRule().(*grcInactiveIdentityActiveAccessRule)
-	request := rule.QueryFor(&cerebrov1.SourceRuntime{Id: "writer-grc-person", SourceId: "grc", TenantId: "writer", Config: map[string]string{"family": "person"}})
+	request := rule.QueryFor(&cerebrov1.SourceRuntime{Id: "example-grc-person", SourceId: "grc", TenantId: "example", Config: map[string]string{"family": "person"}})
 	if request.Query == "" {
 		t.Fatal("QueryFor() returned empty query for populated runtime")
 	}
-	if got := request.Params["tenant_id"]; got != "writer" {
-		t.Fatalf("Params[tenant_id] = %v, want writer", got)
+	if got := request.Params["tenant_id"]; got != "example" {
+		t.Fatalf("Params[tenant_id] = %v, want example", got)
 	}
 	if !strings.Contains(request.Query, "source_id: 'grc'") {
 		t.Fatalf("query must scope GRC subject nodes to the provider-neutral grc source:\n%s", request.Query)
@@ -68,13 +68,13 @@ func TestGRCOverlayIdentityRulesSupportRelevantRuntimes(t *testing.T) {
 
 func TestGRCInactiveIdentityActiveAccessRuleEvaluateRowsEmits(t *testing.T) {
 	rule := newGRCInactiveIdentityActiveAccessRule().(*grcInactiveIdentityActiveAccessRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-grc-person", SourceId: "grc", TenantId: "writer", Config: map[string]string{"family": "person"}}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-grc-person", SourceId: "grc", TenantId: "example", Config: map[string]string{"family": "person"}}
 	row := grcInactiveAccessRow(map[string]string{
 		"source_system":     "vanta",
 		"person_id":         "person-1",
 		"employment_status": "TERMINATED",
 	}, grcOverlayBridgeAttrs(time.Now().UTC().Add(-time.Hour)), grcOverlayBridgeAttrs(time.Now().UTC().Add(-time.Hour)), []any{
-		grcOverlayAccessMap(grcOverlayAccessEdgeRelationCanAdmin, "urn:cerebro:writer:github_org:writer", "github.org", "writer", "{}"),
+		grcOverlayAccessMap(grcOverlayAccessEdgeRelationCanAdmin, "urn:cerebro:example:github_org:writer", "github.org", "writer", "{}"),
 	})
 
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
@@ -98,13 +98,13 @@ func TestGRCInactiveIdentityActiveAccessRuleEvaluateRowsEmits(t *testing.T) {
 
 func TestGRCInactiveIdentityActiveAccessRuleTreatsInactiveGRCUserBoolean(t *testing.T) {
 	rule := newGRCInactiveIdentityActiveAccessRule().(*grcInactiveIdentityActiveAccessRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-grc-user", SourceId: "grc", TenantId: "writer", Config: map[string]string{"family": "user"}}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-grc-user", SourceId: "grc", TenantId: "example", Config: map[string]string{"family": "user"}}
 	row := grcInactiveAccessRow(map[string]string{
 		"source_system": "vanta",
 		"user_id":       "user-1",
 		"is_active":     "false",
 	}, grcOverlayBridgeAttrs(time.Now().UTC().Add(-time.Hour)), grcOverlayBridgeAttrs(time.Now().UTC().Add(-time.Hour)), []any{
-		grcOverlayAccessMap(grcOverlayAccessEdgeRelationCanAdmin, "urn:cerebro:writer:github_org:writer", "github.org", "writer", "{}"),
+		grcOverlayAccessMap(grcOverlayAccessEdgeRelationCanAdmin, "urn:cerebro:example:github_org:writer", "github.org", "writer", "{}"),
 	})
 
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
@@ -118,10 +118,10 @@ func TestGRCInactiveIdentityActiveAccessRuleTreatsInactiveGRCUserBoolean(t *test
 
 func TestGRCInactiveIdentityActiveAccessRuleSuppressesCurrentAndStaleBridge(t *testing.T) {
 	rule := newGRCInactiveIdentityActiveAccessRule().(*grcInactiveIdentityActiveAccessRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-grc-person", SourceId: "grc", TenantId: "writer", Config: map[string]string{"family": "person"}}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-grc-person", SourceId: "grc", TenantId: "example", Config: map[string]string{"family": "person"}}
 	fresh := grcOverlayBridgeAttrs(time.Now().UTC().Add(-time.Hour))
 	stale := grcOverlayBridgeAttrs(time.Now().UTC().Add(-90 * 24 * time.Hour))
-	accesses := []any{grcOverlayAccessMap(grcOverlayAccessEdgeRelationCanAdmin, "urn:cerebro:writer:github_org:writer", "github.org", "writer", "{}")}
+	accesses := []any{grcOverlayAccessMap(grcOverlayAccessEdgeRelationCanAdmin, "urn:cerebro:example:github_org:writer", "github.org", "writer", "{}")}
 	rows := []ports.CypherRow{
 		grcInactiveAccessRow(map[string]string{"source_system": "vanta", "employment_status": "CURRENT"}, fresh, fresh, accesses),
 		grcInactiveAccessRow(map[string]string{"source_system": "vanta", "employment_status": "TERMINATED"}, fresh, stale, accesses),
@@ -138,7 +138,7 @@ func TestGRCInactiveIdentityActiveAccessRuleSuppressesCurrentAndStaleBridge(t *t
 
 func TestGRCPrivilegedAccountMissingPersonRuleQueryIncludesCanPerform(t *testing.T) {
 	rule := newGRCPrivilegedAccountMissingPersonRule().(*grcPrivilegedAccountMissingPersonRule)
-	request := rule.QueryFor(&cerebrov1.SourceRuntime{Id: "writer-aws-effective-permission", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "effective_permission"}})
+	request := rule.QueryFor(&cerebrov1.SourceRuntime{Id: "example-aws-effective-permission", SourceId: "aws", TenantId: "example", Config: map[string]string{"family": "effective_permission"}})
 	privilegeRelations, ok := request.Params["privilege_relations"].([]string)
 	if !ok {
 		t.Fatalf("privilege_relations = %#v, want []string", request.Params["privilege_relations"])
@@ -153,7 +153,7 @@ func TestGRCPrivilegedAccountMissingPersonRuleQueryIncludesCanPerform(t *testing
 
 func TestGRCPrivilegedAccountMissingPersonRuleEvaluateRowsEmitsWithoutFreshBridge(t *testing.T) {
 	rule := newGRCPrivilegedAccountMissingPersonRule().(*grcPrivilegedAccountMissingPersonRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-aws-iam-role-assignment", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "iam_role_assignment"}}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-aws-iam-role-assignment", SourceId: "aws", TenantId: "example", Config: map[string]string{"family": "iam_role_assignment"}}
 	row := grcPrivilegedMissingPersonRow(nil)
 
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
@@ -174,13 +174,13 @@ func TestGRCPrivilegedAccountMissingPersonRuleEvaluateRowsEmitsWithoutFreshBridg
 
 func TestGRCPrivilegedAccountMissingPersonRuleFreshBridgeSuppresses(t *testing.T) {
 	rule := newGRCPrivilegedAccountMissingPersonRule().(*grcPrivilegedAccountMissingPersonRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-aws-iam-role-assignment", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "iam_role_assignment"}}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-aws-iam-role-assignment", SourceId: "aws", TenantId: "example", Config: map[string]string{"family": "iam_role_assignment"}}
 	fresh := grcOverlayBridgeAttrs(time.Now().UTC().Add(-time.Hour))
 	bridges := []any{map[string]any{
-		"grc_subject_urn":                    "urn:cerebro:writer:person:vanta:person-1",
-		"grc_subject_label":                  "alice@writer.com",
-		"identity_urn":                       "urn:cerebro:writer:identity:email:alice@writer.com",
-		"identity_label":                     "alice@writer.com",
+		"grc_subject_urn":                    "urn:cerebro:example:person:vanta:person-1",
+		"grc_subject_label":                  "alice@example.com",
+		"identity_urn":                       "urn:cerebro:example:identity:email:alice@example.com",
+		"identity_label":                     "alice@example.com",
 		"grc_identity_attributes_json":       fresh,
 		"principal_identity_attributes_json": fresh,
 	}}
@@ -197,12 +197,12 @@ func TestGRCPrivilegedAccountMissingPersonRuleFreshBridgeSuppresses(t *testing.T
 
 func TestGRCOverdueVulnerabilityLiveOnAssetsRuleQueryScopesByTenant(t *testing.T) {
 	rule := newGRCOverdueVulnerabilityLiveOnAssetsRule().(*grcOverdueVulnerabilityLiveOnAssetsRule)
-	request := rule.QueryFor(&cerebrov1.SourceRuntime{Id: "writer-grc-vulnerability", SourceId: "grc", TenantId: "writer", Config: map[string]string{"family": "vulnerability"}})
+	request := rule.QueryFor(&cerebrov1.SourceRuntime{Id: "example-grc-vulnerability", SourceId: "grc", TenantId: "example", Config: map[string]string{"family": "vulnerability"}})
 	if request.Query == "" {
 		t.Fatal("QueryFor() returned empty query for populated runtime")
 	}
-	if got := request.Params["tenant_id"]; got != "writer" {
-		t.Fatalf("Params[tenant_id] = %v, want writer", got)
+	if got := request.Params["tenant_id"]; got != "example" {
+		t.Fatalf("Params[tenant_id] = %v, want example", got)
 	}
 	if !strings.Contains(request.Query, "affected_by") || !strings.Contains(request.Query, "source_id, '') <> 'grc'") {
 		t.Fatalf("query must join canonical vulnerabilities to non-GRC affected_by evidence:\n%s", request.Query)
@@ -246,14 +246,14 @@ func TestGRCOverdueVulnerabilityLiveOnAssetsRuleSupportsOnlySentinelOneVulnerabi
 
 func TestGRCOverdueVulnerabilityLiveOnAssetsRuleEvaluateRowsEmits(t *testing.T) {
 	rule := newGRCOverdueVulnerabilityLiveOnAssetsRule().(*grcOverdueVulnerabilityLiveOnAssetsRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-grc-vulnerability", SourceId: "grc", TenantId: "writer", Config: map[string]string{"family": "vulnerability"}}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-grc-vulnerability", SourceId: "grc", TenantId: "example", Config: map[string]string{"family": "vulnerability"}}
 	row := grcVulnerabilityAssetRow(map[string]string{
 		"source_system":     "vanta",
 		"name":              "CVE-2026-4242",
 		"severity":          "CRITICAL",
 		"remediate_by_date": "2020-01-01T00:00:00Z",
 	}, []any{
-		grcOverlayAssetMap("urn:cerebro:writer:sentinelone_endpoint:endpoint-1", "sentinelone.endpoint", "prod-macbook", "sentinelone"),
+		grcOverlayAssetMap("urn:cerebro:example:sentinelone_endpoint:endpoint-1", "sentinelone.endpoint", "prod-macbook", "sentinelone"),
 	})
 
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
@@ -277,20 +277,20 @@ func TestGRCOverdueVulnerabilityLiveOnAssetsRuleEvaluateRowsEmits(t *testing.T) 
 
 func TestGRCOverdueVulnerabilityLiveOnAssetsRuleSuppressesFutureDeadlineAndGRCOnlyAssets(t *testing.T) {
 	rule := newGRCOverdueVulnerabilityLiveOnAssetsRule().(*grcOverdueVulnerabilityLiveOnAssetsRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-grc-vulnerability", SourceId: "grc", TenantId: "writer", Config: map[string]string{"family": "vulnerability"}}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-grc-vulnerability", SourceId: "grc", TenantId: "example", Config: map[string]string{"family": "vulnerability"}}
 	rows := []ports.CypherRow{
 		grcVulnerabilityAssetRow(map[string]string{
 			"source_system":     "vanta",
 			"name":              "CVE-2026-4242",
 			"severity":          "HIGH",
 			"remediate_by_date": "2999-01-01T00:00:00Z",
-		}, []any{grcOverlayAssetMap("urn:cerebro:writer:sentinelone_endpoint:endpoint-1", "sentinelone.endpoint", "prod-macbook", "sentinelone")}),
+		}, []any{grcOverlayAssetMap("urn:cerebro:example:sentinelone_endpoint:endpoint-1", "sentinelone.endpoint", "prod-macbook", "sentinelone")}),
 		grcVulnerabilityAssetRow(map[string]string{
 			"source_system":     "vanta",
 			"name":              "CVE-2026-4243",
 			"severity":          "HIGH",
 			"remediate_by_date": "2020-01-01T00:00:00Z",
-		}, []any{grcOverlayAssetMap("urn:cerebro:writer:package:grc:openssl", "package", "openssl", "grc")}),
+		}, []any{grcOverlayAssetMap("urn:cerebro:example:package:grc:openssl", "package", "openssl", "grc")}),
 	}
 
 	findings, err := rule.EvaluateRows(context.Background(), runtime, rows)
@@ -304,12 +304,12 @@ func TestGRCOverdueVulnerabilityLiveOnAssetsRuleSuppressesFutureDeadlineAndGRCOn
 
 func TestGRCFailingControlOpenOperationalFindingsRuleQueryMatchesControlRefs(t *testing.T) {
 	rule := newGRCFailingControlOpenOperationalFindingsRule().(*grcFailingControlOpenOperationalFindingsRule)
-	request := rule.QueryFor(&cerebrov1.SourceRuntime{Id: "writer-grc-control-test", SourceId: "grc", TenantId: "writer", Config: map[string]string{"family": "control_test"}})
+	request := rule.QueryFor(&cerebrov1.SourceRuntime{Id: "example-grc-control-test", SourceId: "grc", TenantId: "example", Config: map[string]string{"family": "control_test"}})
 	if request.Query == "" {
 		t.Fatal("QueryFor() returned empty query for populated runtime")
 	}
-	if got := request.Params["tenant_id"]; got != "writer" {
-		t.Fatalf("Params[tenant_id] = %v, want writer", got)
+	if got := request.Params["tenant_id"]; got != "example" {
+		t.Fatalf("Params[tenant_id] = %v, want example", got)
 	}
 	if !strings.Contains(request.Query, "has_finding") || !strings.Contains(request.Query, "control_label_upper") || !strings.Contains(request.Query, "':' + control_label_upper") {
 		t.Fatalf("query must join failing controls to open non-GRC finding control refs:\n%s", request.Query)
@@ -318,7 +318,7 @@ func TestGRCFailingControlOpenOperationalFindingsRuleQueryMatchesControlRefs(t *
 
 func TestGRCFailingControlOpenOperationalFindingsRuleEvaluateRowsEmits(t *testing.T) {
 	rule := newGRCFailingControlOpenOperationalFindingsRule().(*grcFailingControlOpenOperationalFindingsRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-grc-control-test", SourceId: "grc", TenantId: "writer", Config: map[string]string{"family": "control_test"}}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-grc-control-test", SourceId: "grc", TenantId: "example", Config: map[string]string{"family": "control_test"}}
 	row := grcFailingControlRow(map[string]string{
 		"source_system": "vanta",
 		"test_id":       "test-1",
@@ -329,7 +329,7 @@ func TestGRCFailingControlOpenOperationalFindingsRuleEvaluateRowsEmits(t *testin
 		"control_external_id": "CC6.2",
 		"control_id":          "control-1",
 	}, []any{
-		grcOverlayOperationalFindingMap("urn:cerebro:writer:finding:github-shadow", "Active GitHub Identity With No Linked Okta Identity", "urn:cerebro:writer:github_user:alice", "github.user", "alice", map[string]string{
+		grcOverlayOperationalFindingMap("urn:cerebro:example:finding:github-shadow", "Active GitHub Identity With No Linked Okta Identity", "urn:cerebro:example:github_user:alice", "github.user", "alice", map[string]string{
 			"rule_id":      "identity-github-active-without-okta-link",
 			"severity":     "CRITICAL",
 			"control_refs": "SOC 2:CC6.2",
@@ -360,7 +360,7 @@ func TestGRCFailingControlOpenOperationalFindingsRuleEvaluateRowsEmits(t *testin
 
 func TestGRCFailingControlOpenOperationalFindingsRuleSuppressesPrefixControlRefMatches(t *testing.T) {
 	rule := newGRCFailingControlOpenOperationalFindingsRule().(*grcFailingControlOpenOperationalFindingsRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-grc-control-test", SourceId: "grc", TenantId: "writer", Config: map[string]string{"family": "control_test"}}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-grc-control-test", SourceId: "grc", TenantId: "example", Config: map[string]string{"family": "control_test"}}
 	row := grcFailingControlRow(map[string]string{
 		"source_system": "vanta",
 		"test_id":       "test-1",
@@ -369,7 +369,7 @@ func TestGRCFailingControlOpenOperationalFindingsRuleSuppressesPrefixControlRefM
 		"source_system":       "vanta",
 		"control_external_id": "A.5.1",
 	}, []any{
-		grcOverlayOperationalFindingMap("urn:cerebro:writer:finding:iso-a516", "ISO A.5.16 finding", "urn:cerebro:writer:github_user:alice", "github.user", "alice", map[string]string{
+		grcOverlayOperationalFindingMap("urn:cerebro:example:finding:iso-a516", "ISO A.5.16 finding", "urn:cerebro:example:github_user:alice", "github.user", "alice", map[string]string{
 			"rule_id":      "identity-github-active-without-okta-link",
 			"severity":     "HIGH",
 			"control_refs": "ISO 27001:2022:A.5.16",
@@ -387,7 +387,7 @@ func TestGRCFailingControlOpenOperationalFindingsRuleSuppressesPrefixControlRefM
 
 func TestGRCFailingControlOpenOperationalFindingsRulePreservesOperationalControlRefWithoutFramework(t *testing.T) {
 	rule := newGRCFailingControlOpenOperationalFindingsRule().(*grcFailingControlOpenOperationalFindingsRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-grc-control-test", SourceId: "grc", TenantId: "writer", Config: map[string]string{"family": "control_test"}}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-grc-control-test", SourceId: "grc", TenantId: "example", Config: map[string]string{"family": "control_test"}}
 	row := grcFailingControlRow(map[string]string{
 		"source_system": "vanta",
 		"test_id":       "test-1",
@@ -396,7 +396,7 @@ func TestGRCFailingControlOpenOperationalFindingsRulePreservesOperationalControl
 		"source_system":       "vanta",
 		"control_external_id": "CC6.2",
 	}, []any{
-		grcOverlayOperationalFindingMap("urn:cerebro:writer:finding:github-shadow", "Active GitHub Identity With No Linked Okta Identity", "urn:cerebro:writer:github_user:alice", "github.user", "alice", map[string]string{
+		grcOverlayOperationalFindingMap("urn:cerebro:example:finding:github-shadow", "Active GitHub Identity With No Linked Okta Identity", "urn:cerebro:example:github_user:alice", "github.user", "alice", map[string]string{
 			"rule_id":      "identity-github-active-without-okta-link",
 			"severity":     "CRITICAL",
 			"control_refs": "SOC 2:CC6.2",
@@ -417,13 +417,13 @@ func TestGRCFailingControlOpenOperationalFindingsRulePreservesOperationalControl
 
 func TestGRCFailingControlOpenOperationalFindingsRuleSuppressesPassingAndGRCFindings(t *testing.T) {
 	rule := newGRCFailingControlOpenOperationalFindingsRule().(*grcFailingControlOpenOperationalFindingsRule)
-	runtime := &cerebrov1.SourceRuntime{Id: "writer-grc-control-test", SourceId: "grc", TenantId: "writer", Config: map[string]string{"family": "control_test"}}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-grc-control-test", SourceId: "grc", TenantId: "example", Config: map[string]string{"family": "control_test"}}
 	rows := []ports.CypherRow{
 		grcFailingControlRow(map[string]string{"source_system": "vanta", "status": "PASS"}, map[string]string{"control_external_id": "CC6.2"}, []any{
-			grcOverlayOperationalFindingMap("urn:cerebro:writer:finding:github-shadow", "shadow", "urn:cerebro:writer:github_user:alice", "github.user", "alice", map[string]string{"rule_id": "identity-github-active-without-okta-link", "severity": "HIGH"}),
+			grcOverlayOperationalFindingMap("urn:cerebro:example:finding:github-shadow", "shadow", "urn:cerebro:example:github_user:alice", "github.user", "alice", map[string]string{"rule_id": "identity-github-active-without-okta-link", "severity": "HIGH"}),
 		}),
 		grcFailingControlRow(map[string]string{"source_system": "vanta", "status": "FAIL"}, map[string]string{"control_external_id": "CC6.2"}, []any{
-			grcOverlayOperationalFindingMap("urn:cerebro:writer:finding:grc-signal", "grc signal", "urn:cerebro:writer:evidence:vanta:control_test:test-1", "evidence", "test-1", map[string]string{"rule_id": "grc-control-test-needs-attention", "severity": "MEDIUM"}),
+			grcOverlayOperationalFindingMap("urn:cerebro:example:finding:grc-signal", "grc signal", "urn:cerebro:example:evidence:vanta:control_test:test-1", "evidence", "test-1", map[string]string{"rule_id": "grc-control-test-needs-attention", "severity": "MEDIUM"}),
 		}),
 	}
 
@@ -438,13 +438,13 @@ func TestGRCFailingControlOpenOperationalFindingsRuleSuppressesPassingAndGRCFind
 
 func grcInactiveAccessRow(grcAttrs map[string]string, grcIdentityJSON string, principalIdentityJSON string, accesses []any) ports.CypherRow {
 	return ports.CypherRow{Values: map[string]any{
-		"grc_subject_urn":                    "urn:cerebro:writer:person:vanta:person-1",
-		"grc_subject_label":                  "alice@writer.com",
+		"grc_subject_urn":                    "urn:cerebro:example:person:vanta:person-1",
+		"grc_subject_label":                  "alice@example.com",
 		"grc_subject_type":                   "person",
 		"grc_attributes_json":                grcOverlayJSON(grcAttrs),
-		"identity_urn":                       "urn:cerebro:writer:identity:email:alice@writer.com",
-		"identity_label":                     "alice@writer.com",
-		"principal_urn":                      "urn:cerebro:writer:github_user:alice",
+		"identity_urn":                       "urn:cerebro:example:identity:email:alice@example.com",
+		"identity_label":                     "alice@example.com",
+		"principal_urn":                      "urn:cerebro:example:github_user:alice",
 		"principal_label":                    "alice",
 		"principal_entity_type":              "github.user",
 		"principal_attributes_json":          "{}",
@@ -456,12 +456,12 @@ func grcInactiveAccessRow(grcAttrs map[string]string, grcIdentityJSON string, pr
 
 func grcPrivilegedMissingPersonRow(bridges []any) ports.CypherRow {
 	return ports.CypherRow{Values: map[string]any{
-		"principal_urn":             "urn:cerebro:writer:aws_user:alice@writer.com",
-		"principal_label":           "alice@writer.com",
+		"principal_urn":             "urn:cerebro:example:aws_user:alice@example.com",
+		"principal_label":           "alice@example.com",
 		"principal_entity_type":     "aws.user",
 		"principal_attributes_json": "{}",
 		"privilege_edges": []any{
-			grcOverlayAccessMap(grcOverlayAccessEdgeRelationCanAdmin, "urn:cerebro:writer:aws_admin_role:AdministratorAccess", "aws.admin_role", "AdministratorAccess", "{}"),
+			grcOverlayAccessMap(grcOverlayAccessEdgeRelationCanAdmin, "urn:cerebro:example:aws_admin_role:AdministratorAccess", "aws.admin_role", "AdministratorAccess", "{}"),
 		},
 		"grc_bridges": bridges,
 	}}
@@ -469,7 +469,7 @@ func grcPrivilegedMissingPersonRow(bridges []any) ports.CypherRow {
 
 func grcVulnerabilityAssetRow(vulnerabilityAttrs map[string]string, assets []any) ports.CypherRow {
 	return ports.CypherRow{Values: map[string]any{
-		"vulnerability_urn":             "urn:cerebro:writer:vulnerability:cve-2026-4242",
+		"vulnerability_urn":             "urn:cerebro:example:vulnerability:cve-2026-4242",
 		"vulnerability_label":           "CVE-2026-4242",
 		"vulnerability_attributes_json": grcOverlayJSON(vulnerabilityAttrs),
 		"assets":                        assets,
@@ -478,10 +478,10 @@ func grcVulnerabilityAssetRow(vulnerabilityAttrs map[string]string, assets []any
 
 func grcFailingControlRow(testAttrs map[string]string, controlAttrs map[string]string, operationalFindings []any) ports.CypherRow {
 	return ports.CypherRow{Values: map[string]any{
-		"control_test_urn":        "urn:cerebro:writer:evidence:vanta:control_test:test-1",
+		"control_test_urn":        "urn:cerebro:example:evidence:vanta:control_test:test-1",
 		"control_test_label":      "Control test 1",
 		"test_attributes_json":    grcOverlayJSON(testAttrs),
-		"control_urn":             "urn:cerebro:writer:policy:vanta:control:control-1",
+		"control_urn":             "urn:cerebro:example:policy:vanta:control:control-1",
 		"control_label":           firstNonEmpty(controlAttrs["control_external_id"], controlAttrs["control_id"], "CC6.2"),
 		"control_attributes_json": grcOverlayJSON(controlAttrs),
 		"operational_findings":    operationalFindings,

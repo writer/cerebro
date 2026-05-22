@@ -29,22 +29,22 @@ func (s *stubStore) ExecuteReadCypher(_ context.Context, _ ports.CypherQueryRequ
 func TestGetEntityNeighborhoodNormalizesLimit(t *testing.T) {
 	store := &stubStore{
 		neighborhood: &ports.EntityNeighborhood{
-			Root: &ports.NeighborhoodNode{URN: "urn:cerebro:writer:github_user:alice", EntityType: "github.user", Label: "Alice"},
+			Root: &ports.NeighborhoodNode{URN: "urn:cerebro:example:github_user:alice", EntityType: "github.user", Label: "Alice"},
 		},
 	}
 	service := New(store)
 
 	result, err := service.GetEntityNeighborhood(context.Background(), NeighborhoodRequest{
-		RootURN: "urn:cerebro:writer:github_user:alice",
+		RootURN: "urn:cerebro:example:github_user:alice",
 		Limit:   99,
 	})
 	if err != nil {
 		t.Fatalf("GetEntityNeighborhood() error = %v", err)
 	}
-	if result.Root == nil || result.Root.URN != "urn:cerebro:writer:github_user:alice" {
+	if result.Root == nil || result.Root.URN != "urn:cerebro:example:github_user:alice" {
 		t.Fatalf("Root = %#v, want alice root", result.Root)
 	}
-	if store.rootURN != "urn:cerebro:writer:github_user:alice" {
+	if store.rootURN != "urn:cerebro:example:github_user:alice" {
 		t.Fatalf("store root urn = %q, want alice urn", store.rootURN)
 	}
 	if store.limit != maxNeighborhoodLimit {
@@ -54,13 +54,13 @@ func TestGetEntityNeighborhoodNormalizesLimit(t *testing.T) {
 
 func TestGetEntityNeighborhoodRequiresAvailableStore(t *testing.T) {
 	service := New(nil)
-	if _, err := service.GetEntityNeighborhood(context.Background(), NeighborhoodRequest{RootURN: "urn:cerebro:writer:github_user:alice"}); !errors.Is(err, ErrRuntimeUnavailable) {
+	if _, err := service.GetEntityNeighborhood(context.Background(), NeighborhoodRequest{RootURN: "urn:cerebro:example:github_user:alice"}); !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("GetEntityNeighborhood() error = %v, want %v", err, ErrRuntimeUnavailable)
 	}
 }
 
 func TestGetEntityNeighborhoodAllowsColonDelimitedRootIDs(t *testing.T) {
-	const arnRoot = "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/AdminRole"
+	const arnRoot = "urn:cerebro:example:aws_role:arn:aws:iam::123456789012:role/AdminRole"
 	store := &stubStore{neighborhood: &ports.EntityNeighborhood{Root: &ports.NeighborhoodNode{URN: arnRoot}}}
 	service := New(store)
 
@@ -78,23 +78,23 @@ func TestGetEntityNeighborhoodRejectsMalformedRootURN(t *testing.T) {
 	cases := []string{
 		"user:123",
 		"urn:other:writer:user:alice",
-		"urn:cerebro:writer:user",
+		"urn:cerebro:example:user",
 		"urn:cerebro::user:alice",
 		"urn:cerebro: writer:user:alice",
-		"urn:cerebro:writer: user:alice",
-		"urn:cerebro:writer:user: alice",
-		"urn:cerebro:writer:okta_resource:policyrule: pol-1",
-		"urn:cerebro:writer:runtime:writer-jira:ticket: ENG-123",
-		"urn:cerebro:writer:runtime:writer-jira::ENG-123",
-		"urn:cerebro:writer:user:alice:",
-		"urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123:",
+		"urn:cerebro:example: user:alice",
+		"urn:cerebro:example:user: alice",
+		"urn:cerebro:example:okta_resource:policyrule: pol-1",
+		"urn:cerebro:example:runtime:example-jira:ticket: ENG-123",
+		"urn:cerebro:example:runtime:example-jira::ENG-123",
+		"urn:cerebro:example:user:alice:",
+		"urn:cerebro:example:runtime:example-jira:ticket:ENG-123:",
 		"   ",
-		" urn:cerebro:writer:user:alice",
-		"urn:cerebro:writer:user:alice ",
-		"\turn:cerebro:writer:user:alice",
+		" urn:cerebro:example:user:alice",
+		"urn:cerebro:example:user:alice ",
+		"\turn:cerebro:example:user:alice",
 		"urn:cerebro: writer:user:alice",
-		"urn:cerebro:writer: user:alice",
-		"urn:cerebro:writer:user: alice",
+		"urn:cerebro:example: user:alice",
+		"urn:cerebro:example:user: alice",
 	}
 	for _, raw := range cases {
 		_, err := service.GetEntityNeighborhood(context.Background(), NeighborhoodRequest{RootURN: raw})
@@ -109,8 +109,8 @@ func TestGetEntityNeighborhoodRejectsMalformedRootURN(t *testing.T) {
 
 func TestGetEntityNeighborhoodAcceptsColonDelimitedRootURN(t *testing.T) {
 	for _, rootURN := range []string{
-		"urn:cerebro:writer:okta_resource:policyrule:pol-1",
-		"urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/AdminRole",
+		"urn:cerebro:example:okta_resource:policyrule:pol-1",
+		"urn:cerebro:example:aws_role:arn:aws:iam::123456789012:role/AdminRole",
 	} {
 		t.Run(rootURN, func(t *testing.T) {
 			store := &stubStore{

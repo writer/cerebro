@@ -1,14 +1,14 @@
 {
   "rule_id": "sentinelone-agent-detect-only-mode",
   "runtime": {
-    "id": "writer-sentinelone-agent",
+    "id": "example-sentinelone-agent",
     "source_id": "sentinelone",
-    "tenant_id": "writer"
+    "tenant_id": "example"
   },
   "events": [
     {
       "id": "s1-agent-3",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "sentinelone",
       "kind": "sentinelone.agent",
       "occurred_at": "2026-05-09T07:00:00Z",
@@ -23,7 +23,7 @@
     },
     {
       "id": "s1-agent-4",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "sentinelone",
       "kind": "sentinelone.agent",
       "occurred_at": "2026-05-09T07:05:00Z",
@@ -47,8 +47,8 @@
       "event_ids": ["s1-agent-3"],
       "attributes": {
         "action": "agent_detect_only_mode",
-        "source_runtime_id": "writer-sentinelone-agent",
-        "primary_resource_urn": "urn:cerebro:writer:sentinelone_agent:agent-detect",
+        "source_runtime_id": "example-sentinelone-agent",
+        "primary_resource_urn": "urn:cerebro:example:sentinelone_agent:agent-detect",
         "agent_id": "agent-detect",
         "mitigation_mode": "detect"
       }

@@ -18,17 +18,17 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	store := &stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {
-				Id:           "writer-okta-audit",
+			"example-okta-audit": {
+				Id:           "example-okta-audit",
 				SourceId:     "okta",
-				TenantId:     "writer",
+				TenantId:     "example",
 				LastSyncedAt: timestamppb.New(now.Add(-30 * time.Minute)),
 				Checkpoint:   &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now.Add(-30 * time.Minute))},
 			},
-			"writer-github": {
-				Id:           "writer-github",
+			"example-github": {
+				Id:           "example-github",
 				SourceId:     "github",
-				TenantId:     "writer",
+				TenantId:     "example",
 				LastSyncedAt: timestamppb.New(now.Add(-30 * time.Minute)),
 				Checkpoint:   &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now.Add(-48 * time.Hour))},
 			},
@@ -36,13 +36,13 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 		findings: map[string]*ports.FindingRecord{
 			"finding-high": {
 				ID:           "finding-high",
-				TenantID:     "writer",
-				RuntimeID:    "writer-okta-audit",
+				TenantID:     "example",
+				RuntimeID:    "example-okta-audit",
 				RuleID:       "identity-api-token-or-oauth-app-created",
 				Title:        "Identity API token created",
 				Severity:     "HIGH",
 				Status:       "open",
-				ResourceURNs: []string{"urn:cerebro:writer:okta_user:00u1"},
+				ResourceURNs: []string{"urn:cerebro:example:okta_user:00u1"},
 				ControlRefs: []ports.FindingControlRef{{
 					FrameworkName: "SOC 2",
 					ControlID:     "CC6.1",
@@ -52,19 +52,19 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 			},
 			"finding-critical": {
 				ID:             "finding-critical",
-				TenantID:       "writer",
-				RuntimeID:      "writer-github",
+				TenantID:       "example",
+				RuntimeID:      "example-github",
 				RuleID:         "github-dependabot-critical",
 				Title:          "Critical dependency exposure",
 				Severity:       "CRITICAL",
 				Status:         "open",
-				ResourceURNs:   []string{"urn:cerebro:writer:github_repository:writer/app"},
+				ResourceURNs:   []string{"urn:cerebro:example:github_repository:writer/app"},
 				LastObservedAt: now.Add(-time.Hour),
 			},
 			"finding-resolved": {
 				ID:             "finding-resolved",
-				TenantID:       "writer",
-				RuntimeID:      "writer-okta-audit",
+				TenantID:       "example",
+				RuntimeID:      "example-okta-audit",
 				Title:          "Resolved finding",
 				Severity:       "LOW",
 				Status:         "resolved",
@@ -74,17 +74,17 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 		findingEvidence: map[string]*cerebrov1.FindingEvidence{
 			"evidence-1": {
 				Id:            "evidence-1",
-				RuntimeId:     "writer-okta-audit",
+				RuntimeId:     "example-okta-audit",
 				RuleId:        "identity-api-token-or-oauth-app-created",
 				FindingId:     "finding-high",
 				RunId:         "run-1",
 				EventIds:      []string{"event-1"},
-				GraphRootUrns: []string{"urn:cerebro:writer:okta_user:00u1"},
+				GraphRootUrns: []string{"urn:cerebro:example:okta_user:00u1"},
 				CreatedAt:     timestamppb.New(now),
 			},
 			"evidence-resolved": {
 				Id:        "evidence-resolved",
-				RuntimeId: "writer-" + "okta-audit",
+				RuntimeId: "example-" + "okta-audit",
 				FindingId: "finding-resolved",
 				RunId:     "run-1",
 				CreatedAt: timestamppb.New(now.Add(time.Hour)),
@@ -95,7 +95,7 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	resp, err := server.Client().Get(server.URL + "/grc/dashboard?tenant_id=writer")
+	resp, err := server.Client().Get(server.URL + "/grc/dashboard?tenant_id=example")
 	if err != nil {
 		t.Fatalf("GET /grc/dashboard error = %v", err)
 	}
@@ -138,7 +138,7 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 	for _, connector := range payload.Connectors {
 		connectors[connector.RuntimeID] = connector
 	}
-	githubConnector := connectors["writer-github"]
+	githubConnector := connectors["example-github"]
 	if githubConnector.Status != "healthy" || githubConnector.Freshness == "stale" {
 		t.Fatalf("github connector sync health = %q/%q, want healthy non-stale despite old checkpoint", githubConnector.Status, githubConnector.Freshness)
 	}
@@ -320,16 +320,16 @@ func TestGRCDashboardSummaryUsesUnpaginatedAggregates(t *testing.T) {
 
 func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 	now := time.Date(2026, 5, 9, 12, 0, 0, 0, time.UTC)
-	rootURN := "urn:cerebro:writer:okta_user:00u1"
+	rootURN := "urn:cerebro:example:okta_user:00u1"
 	store := &stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+			"example-okta-audit": {Id: "example-okta-audit", SourceId: "okta", TenantId: "example"},
 		},
 		findings: map[string]*ports.FindingRecord{
 			"finding-high": {
 				ID:             "finding-high",
-				TenantID:       "writer",
-				RuntimeID:      "writer-okta-audit",
+				TenantID:       "example",
+				RuntimeID:      "example-okta-audit",
 				Title:          "Identity API token created",
 				Severity:       "HIGH",
 				Status:         "open",
@@ -340,7 +340,7 @@ func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 		findingEvidence: map[string]*cerebrov1.FindingEvidence{
 			"evidence-1": {
 				Id:            "evidence-1",
-				RuntimeId:     "writer-okta-audit",
+				RuntimeId:     "example-okta-audit",
 				FindingId:     "finding-high",
 				EventIds:      []string{"event-1"},
 				GraphRootUrns: []string{rootURN},
@@ -356,14 +356,14 @@ func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 				Label:      "user@example.com",
 			},
 			Neighbors: []*ports.NeighborhoodNode{{
-				URN:        "urn:cerebro:writer:finding:finding-high",
+				URN:        "urn:cerebro:example:finding:finding-high",
 				EntityType: "finding",
 				Label:      "Identity API token created",
 			}},
 			Relations: []*ports.NeighborhoodRelation{{
 				FromURN:  rootURN,
 				Relation: "has_finding",
-				ToURN:    "urn:cerebro:writer:finding:finding-high",
+				ToURN:    "urn:cerebro:example:finding:finding-high",
 			}},
 		},
 	}
@@ -371,7 +371,7 @@ func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	impactResp, err := server.Client().Get(server.URL + "/grc/entities/" + url.PathEscape(rootURN) + "/impact?tenant_id=writer")
+	impactResp, err := server.Client().Get(server.URL + "/grc/entities/" + url.PathEscape(rootURN) + "/impact?tenant_id=example")
 	if err != nil {
 		t.Fatalf("GET /grc/entities impact error = %v", err)
 	}

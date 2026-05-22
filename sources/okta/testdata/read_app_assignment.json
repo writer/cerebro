@@ -14,10 +14,10 @@
     "attributes": {
       "app_id": "app-prod",
       "domain": "writer.okta.com",
-      "email": "admin@writer.com",
+      "email": "admin@example.com",
       "family": "app_assignment",
       "principal_type": "user",
-      "subject_email": "admin@writer.com",
+      "subject_email": "admin@example.com",
       "subject_id": "00u1",
       "subject_type": "user"
     }

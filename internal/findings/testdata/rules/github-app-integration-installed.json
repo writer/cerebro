@@ -1,14 +1,14 @@
 {
   "rule_id": "github-app-integration-installed",
   "runtime": {
-    "id": "writer-github-audit",
+    "id": "example-github-audit",
     "source_id": "github",
-    "tenant_id": "writer"
+    "tenant_id": "example"
   },
   "events": [
     {
       "id": "github-audit-app-installed",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.audit",
       "occurred_at": "2026-04-27T01:00:00Z",
@@ -20,14 +20,14 @@
         "org": "writer",
         "resource_id": "writer",
         "resource_type": "integration_installation",
-        "source_runtime_id": "writer-github-audit",
+        "source_runtime_id": "example-github-audit",
         "action": "integration_installation.create",
         "name": "ci-deployer"
       }
     },
     {
       "id": "github-audit-app-deleted",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.audit",
       "occurred_at": "2026-04-27T01:00:00Z",
@@ -39,7 +39,7 @@
         "org": "writer",
         "resource_id": "writer",
         "resource_type": "integration_installation",
-        "source_runtime_id": "writer-github-audit",
+        "source_runtime_id": "example-github-audit",
         "action": "integration_installation.destroy",
         "name": "ci-deployer"
       }
@@ -58,7 +58,7 @@
       "attributes": {
         "action": "integration_installation.create",
         "name": "ci-deployer",
-        "primary_resource_urn": "urn:cerebro:writer:github_resource:integration_installation:writer",
+        "primary_resource_urn": "urn:cerebro:example:github_resource:integration_installation:writer",
         "rule_tags": "github,github-app,execution,persistence,attack.t1072,attack.t1098"
       }
     }

@@ -17,7 +17,7 @@ func TestOktaPolicyRuleLifecycleTamperingFingerprintIsTenantRuntimeScoped(t *tes
 		Kind:       "okta.audit",
 		OccurredAt: timestamppb.Now(),
 		Attributes: map[string]string{
-			"actor_alternate_id": "admin@writer.com",
+			"actor_alternate_id": "admin@example.com",
 			"actor_id":           "00u-admin",
 			"event_type":         "policy.rule.update",
 			"outcome_result":     "success",

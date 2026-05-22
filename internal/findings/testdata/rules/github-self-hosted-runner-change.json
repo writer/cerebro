@@ -1,14 +1,14 @@
 {
   "rule_id": "github-self-hosted-runner-change",
   "runtime": {
-    "id": "writer-github-audit",
+    "id": "example-github-audit",
     "source_id": "github",
-    "tenant_id": "writer"
+    "tenant_id": "example"
   },
   "events": [
     {
       "id": "github-audit-runner-registered",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.audit",
       "occurred_at": "2026-04-27T00:05:00Z",
@@ -23,12 +23,12 @@
         "resource_id": "writer/cerebro",
         "resource_type": "repo",
         "runner_group_name": "Default",
-        "source_runtime_id": "writer-github-audit"
+        "source_runtime_id": "example-github-audit"
       }
     },
     {
       "id": "github-audit-runner-label-updated",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.audit",
       "occurred_at": "2026-04-27T00:05:00Z",
@@ -41,7 +41,7 @@
         "repo": "writer/cerebro",
         "resource_id": "writer/cerebro",
         "resource_type": "repo",
-        "source_runtime_id": "writer-github-audit"
+        "source_runtime_id": "example-github-audit"
       }
     }
   ],
@@ -54,8 +54,8 @@
       "event_ids": ["github-audit-runner-registered"],
       "attributes": {
         "action": "repo.register_self_hosted_runner",
-        "primary_actor_urn": "urn:cerebro:writer:github_user:admin",
-        "primary_resource_urn": "urn:cerebro:writer:github_repo:writer/cerebro",
+        "primary_actor_urn": "urn:cerebro:example:github_user:admin",
+        "primary_resource_urn": "urn:cerebro:example:github_repo:writer/cerebro",
         "repo": "writer/cerebro",
         "rule_tags": "github,actions,self-hosted-runner,supply-chain,attack.t1195"
       }

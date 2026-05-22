@@ -38,7 +38,7 @@ func TestProjectedEntityMergePreservesExistingLabelsForFallbackLabels(t *testing
 
 func TestEndpointOwnerIDLinkCleanupQueryOrdersLimitedBatch(t *testing.T) {
 	_, conditions, err := endpointOwnerIDLinkCleanupParams(ports.ProjectionLinkCleanupRequest{
-		TenantID: "writer",
+		TenantID: "example",
 		SourceID: "kolide",
 		Limit:    25,
 	})
@@ -96,23 +96,23 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 	defer func() { _ = store.CloseContext(context.Background()) }()
 
 	user := &ports.ProjectedEntity{
-		URN:        "urn:cerebro:writer:github_user:alice",
-		TenantID:   "writer",
+		URN:        "urn:cerebro:example:github_user:alice",
+		TenantID:   "example",
 		SourceID:   "github",
 		EntityType: "github_user",
 		Label:      "alice",
 		Attributes: map[string]string{"login": "alice"},
 	}
 	repo := &ports.ProjectedEntity{
-		URN:        "urn:cerebro:writer:github_repository:writer/cerebro",
-		TenantID:   "writer",
+		URN:        "urn:cerebro:example:github_repository:writer/cerebro",
+		TenantID:   "example",
 		SourceID:   "github",
 		EntityType: "github_repository",
 		Label:      "writer/cerebro",
 	}
 	issue := &ports.ProjectedEntity{
-		URN:        "urn:cerebro:writer:github_issue:writer/cerebro#1",
-		TenantID:   "writer",
+		URN:        "urn:cerebro:example:github_issue:writer/cerebro#1",
+		TenantID:   "example",
 		SourceID:   "github",
 		EntityType: "github_issue",
 		Label:      "writer/cerebro#1",
@@ -127,7 +127,7 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 		t.Fatalf("UpsertProjectedEntity(issue) error = %v", err)
 	}
 	if err := store.UpsertProjectedLink(ctx, &ports.ProjectedLink{
-		TenantID: "writer", SourceID: "github", FromURN: user.URN, Relation: "maintains", ToURN: repo.URN,
+		TenantID: "example", SourceID: "github", FromURN: user.URN, Relation: "maintains", ToURN: repo.URN,
 		Attributes: map[string]string{"role": "admin"},
 	}); err != nil {
 		t.Fatalf("UpsertProjectedLink() error = %v", err)
@@ -158,7 +158,7 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 	}
 
 	issueLink := &ports.ProjectedLink{
-		TenantID: "writer", SourceID: "github", FromURN: repo.URN, Relation: "tracks", ToURN: issue.URN,
+		TenantID: "example", SourceID: "github", FromURN: repo.URN, Relation: "tracks", ToURN: issue.URN,
 	}
 	linkUpdates := make(chan error, 2)
 	issueLinkWithPriority := *issueLink
@@ -231,7 +231,7 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 		}
 	}
 
-	checkpoint := graphstore.IngestCheckpoint{ID: "checkpoint-1", SourceID: "github", TenantID: "writer", Completed: true, PagesRead: 2}
+	checkpoint := graphstore.IngestCheckpoint{ID: "checkpoint-1", SourceID: "github", TenantID: "example", Completed: true, PagesRead: 2}
 	if err := store.PutIngestCheckpoint(ctx, checkpoint); err != nil {
 		t.Fatalf("PutIngestCheckpoint() error = %v", err)
 	}
@@ -258,40 +258,40 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 		t.Fatalf("Counts(after delete) = %#v, want 1 relation", counts)
 	}
 
-	endpointURN := "urn:cerebro:writer:kolide_device:device-1"
-	identityURN := "urn:cerebro:writer:identity:login:user-1"
-	identifierURN := "urn:cerebro:writer:identifier:login:user-1"
-	emailIdentityURN := "urn:cerebro:writer:identity:email:alice@example.com"
-	unmigratedIdentityURN := "urn:cerebro:writer:identity:login:user-2"
-	replacementURN := "urn:cerebro:writer:endpoint_identifier:kolide_user_id:user-1"
+	endpointURN := "urn:cerebro:example:kolide_device:device-1"
+	identityURN := "urn:cerebro:example:identity:login:user-1"
+	identifierURN := "urn:cerebro:example:identifier:login:user-1"
+	emailIdentityURN := "urn:cerebro:example:identity:email:alice@example.com"
+	unmigratedIdentityURN := "urn:cerebro:example:identity:login:user-2"
+	replacementURN := "urn:cerebro:example:endpoint_identifier:kolide_user_id:user-1"
 	for _, entity := range []*ports.ProjectedEntity{
-		{URN: endpointURN, TenantID: "writer", SourceID: "kolide", EntityType: "kolide.device", Label: "device-1"},
-		{URN: identityURN, TenantID: "writer", SourceID: "kolide", EntityType: "identity.login", Label: "user-1"},
-		{URN: identifierURN, TenantID: "writer", SourceID: "kolide", EntityType: "identifier.login", Label: "user-1"},
-		{URN: emailIdentityURN, TenantID: "writer", SourceID: "kolide", EntityType: "identity.email", Label: "alice@example.com"},
-		{URN: unmigratedIdentityURN, TenantID: "writer", SourceID: "kolide", EntityType: "identity.login", Label: "user-2"},
-		{URN: replacementURN, TenantID: "writer", SourceID: "kolide", EntityType: "endpoint.identifier", Label: "user-1"},
+		{URN: endpointURN, TenantID: "example", SourceID: "kolide", EntityType: "kolide.device", Label: "device-1"},
+		{URN: identityURN, TenantID: "example", SourceID: "kolide", EntityType: "identity.login", Label: "user-1"},
+		{URN: identifierURN, TenantID: "example", SourceID: "kolide", EntityType: "identifier.login", Label: "user-1"},
+		{URN: emailIdentityURN, TenantID: "example", SourceID: "kolide", EntityType: "identity.email", Label: "alice@example.com"},
+		{URN: unmigratedIdentityURN, TenantID: "example", SourceID: "kolide", EntityType: "identity.login", Label: "user-2"},
+		{URN: replacementURN, TenantID: "example", SourceID: "kolide", EntityType: "endpoint.identifier", Label: "user-1"},
 	} {
 		if err := store.UpsertProjectedEntity(ctx, entity); err != nil {
 			t.Fatalf("UpsertProjectedEntity(%s) error = %v", entity.URN, err)
 		}
 	}
 	staleLinks := []*ports.ProjectedLink{
-		{TenantID: "writer", SourceID: "kolide", FromURN: endpointURN, Relation: "owned_by", ToURN: identityURN},
-		{TenantID: "writer", SourceID: "kolide", FromURN: endpointURN, Relation: "represents_identity", ToURN: identityURN},
-		{TenantID: "writer", SourceID: "kolide", FromURN: endpointURN, Relation: "has_identifier", ToURN: identifierURN},
+		{TenantID: "example", SourceID: "kolide", FromURN: endpointURN, Relation: "owned_by", ToURN: identityURN},
+		{TenantID: "example", SourceID: "kolide", FromURN: endpointURN, Relation: "represents_identity", ToURN: identityURN},
+		{TenantID: "example", SourceID: "kolide", FromURN: endpointURN, Relation: "has_identifier", ToURN: identifierURN},
 	}
 	preservedLinks := []*ports.ProjectedLink{
-		{TenantID: "writer", SourceID: "kolide", FromURN: endpointURN, Relation: "owned_by", ToURN: emailIdentityURN},
-		{TenantID: "writer", SourceID: "kolide", FromURN: endpointURN, Relation: "owned_by", ToURN: unmigratedIdentityURN},
-		{TenantID: "writer", SourceID: "kolide", FromURN: endpointURN, Relation: "has_identifier", ToURN: replacementURN},
+		{TenantID: "example", SourceID: "kolide", FromURN: endpointURN, Relation: "owned_by", ToURN: emailIdentityURN},
+		{TenantID: "example", SourceID: "kolide", FromURN: endpointURN, Relation: "owned_by", ToURN: unmigratedIdentityURN},
+		{TenantID: "example", SourceID: "kolide", FromURN: endpointURN, Relation: "has_identifier", ToURN: replacementURN},
 	}
 	for _, link := range append(staleLinks, preservedLinks...) {
 		if err := store.UpsertProjectedLink(ctx, link); err != nil {
 			t.Fatalf("UpsertProjectedLink(%s %s %s) error = %v", link.FromURN, link.Relation, link.ToURN, err)
 		}
 	}
-	cleanupRequest := ports.ProjectionLinkCleanupRequest{TenantID: "writer", SourceID: "kolide", DryRun: true}
+	cleanupRequest := ports.ProjectionLinkCleanupRequest{TenantID: "example", SourceID: "kolide", DryRun: true}
 	cleanupResult, err := store.CleanupEndpointOwnerIDLinks(ctx, cleanupRequest)
 	if err != nil {
 		t.Fatalf("CleanupEndpointOwnerIDLinks(dry-run) error = %v", err)
@@ -464,7 +464,7 @@ func TestMergeGraphAttributesKeepsObservationMetadataCoupledToLatestAt(t *testin
 			"event_id":                 "newer-event",
 			"outcome_result":           "SUCCESS",
 			"programmatic_access_type": "Fine-grained personal access token",
-			"source_runtime_id":        "writer-github-audit",
+			"source_runtime_id":        "example-github-audit",
 			"transaction_id":           "newer-txn",
 		},
 		map[string]string{
@@ -474,7 +474,7 @@ func TestMergeGraphAttributesKeepsObservationMetadataCoupledToLatestAt(t *testin
 			"event_id":                 "older-event",
 			"outcome_result":           "FAILURE",
 			"programmatic_access_type": "GitHub App server-to-server token",
-			"source_runtime_id":        "writer-github-audit-writerinternal",
+			"source_runtime_id":        "example-github-audit-exampleinternal",
 			"transaction_id":           "older-txn",
 		},
 	)
@@ -485,7 +485,7 @@ func TestMergeGraphAttributesKeepsObservationMetadataCoupledToLatestAt(t *testin
 		"event_id":                 "newer-event",
 		"outcome_result":           "SUCCESS",
 		"programmatic_access_type": "Fine-grained personal access token",
-		"source_runtime_id":        "writer-github-audit",
+		"source_runtime_id":        "example-github-audit",
 		"transaction_id":           "newer-txn",
 	} {
 		if got := merged[key]; got != want {

@@ -1,14 +1,14 @@
 {
   "rule_id": "github-personal-access-token-created",
   "runtime": {
-    "id": "writer-github-audit",
+    "id": "example-github-audit",
     "source_id": "github",
-    "tenant_id": "writer"
+    "tenant_id": "example"
   },
   "events": [
     {
       "id": "github-audit-pat-created",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.audit",
       "occurred_at": "2026-04-27T01:00:00Z",
@@ -20,14 +20,14 @@
         "org": "writer",
         "resource_id": "octocat",
         "resource_type": "personal_access_token",
-        "source_runtime_id": "writer-github-audit",
+        "source_runtime_id": "example-github-audit",
         "action": "personal_access_token.access_granted",
         "user": "octocat"
       }
     },
     {
       "id": "github-audit-pat-revoked",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.audit",
       "occurred_at": "2026-04-27T01:00:00Z",
@@ -39,7 +39,7 @@
         "org": "writer",
         "resource_id": "octocat",
         "resource_type": "personal_access_token",
-        "source_runtime_id": "writer-github-audit",
+        "source_runtime_id": "example-github-audit",
         "action": "personal_access_token.access_granted",
         "user": "octocat"
       }
@@ -57,7 +57,7 @@
       "attributes": {
         "action": "personal_access_token.access_granted",
         "operation_type": "create",
-        "primary_resource_urn": "urn:cerebro:writer:github_resource:personal_access_token:octocat",
+        "primary_resource_urn": "urn:cerebro:example:github_resource:personal_access_token:octocat",
         "rule_tags": "github,personal-access-token,persistence,credential-access,attack.t1098.001,attack.t1528",
         "user": "octocat"
       }

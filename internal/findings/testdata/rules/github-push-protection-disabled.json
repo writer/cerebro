@@ -1,14 +1,14 @@
 {
   "rule_id": "github-push-protection-disabled",
   "runtime": {
-    "id": "writer-github-audit",
+    "id": "example-github-audit",
     "source_id": "github",
-    "tenant_id": "writer"
+    "tenant_id": "example"
   },
   "events": [
     {
       "id": "github-audit-push-protection-disabled",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.audit",
       "occurred_at": "2026-04-27T00:01:00Z",
@@ -21,12 +21,12 @@
         "org": "writer",
         "resource_id": "writer",
         "resource_type": "org",
-        "source_runtime_id": "writer-github-audit"
+        "source_runtime_id": "example-github-audit"
       }
     },
     {
       "id": "github-audit-push-protection-enabled",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "github",
       "kind": "github.audit",
       "occurred_at": "2026-04-27T00:01:00Z",
@@ -38,7 +38,7 @@
         "org": "writer",
         "resource_id": "writer",
         "resource_type": "org",
-        "source_runtime_id": "writer-github-audit"
+        "source_runtime_id": "example-github-audit"
       }
     }
   ],
@@ -51,8 +51,8 @@
       "event_ids": ["github-audit-push-protection-disabled"],
       "attributes": {
         "action": "org.secret_scanning_push_protection_disable",
-        "primary_actor_urn": "urn:cerebro:writer:github_user:admin",
-        "primary_resource_urn": "urn:cerebro:writer:github_resource:org:writer",
+        "primary_actor_urn": "urn:cerebro:example:github_user:admin",
+        "primary_resource_urn": "urn:cerebro:example:github_resource:org:writer",
         "resource_id": "writer",
         "rule_tags": "github,push-protection,secret-scanning,defense-evasion,attack.t1562.001"
       }

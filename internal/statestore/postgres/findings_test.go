@@ -23,12 +23,12 @@ func TestUpsertFindingRejectsMissingRuleID(t *testing.T) {
 	_, err := store.UpsertFinding(context.Background(), &ports.FindingRecord{
 		ID:              "finding-1",
 		Fingerprint:     "fingerprint-1",
-		TenantID:        "writer",
-		RuntimeID:       "writer-okta-audit",
+		TenantID:        "example",
+		RuntimeID:       "example-okta-audit",
 		Title:           "Okta Policy Rule Lifecycle Tampering",
 		Severity:        "HIGH",
 		Status:          "open",
-		Summary:         "admin@writer.com performed policy.rule.update on pol-1",
+		Summary:         "admin@example.com performed policy.rule.update on pol-1",
 		FirstObservedAt: time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
 		LastObservedAt:  time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
 	})
@@ -42,13 +42,13 @@ func TestUpsertFindingRejectsUnconfiguredStore(t *testing.T) {
 	_, err := store.UpsertFinding(context.Background(), &ports.FindingRecord{
 		ID:              "finding-1",
 		Fingerprint:     "fingerprint-1",
-		TenantID:        "writer",
-		RuntimeID:       "writer-okta-audit",
+		TenantID:        "example",
+		RuntimeID:       "example-okta-audit",
 		RuleID:          "identity-okta-policy-rule-lifecycle-tampering",
 		Title:           "Okta Policy Rule Lifecycle Tampering",
 		Severity:        "HIGH",
 		Status:          "open",
-		Summary:         "admin@writer.com performed policy.rule.update on pol-1",
+		Summary:         "admin@example.com performed policy.rule.update on pol-1",
 		FirstObservedAt: time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
 		LastObservedAt:  time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
 	})
@@ -88,14 +88,14 @@ func TestListFindingsRejectsMissingTenantID(t *testing.T) {
 // okta.user). Sending tenant alone would scan the table.
 func TestListFindingsRejectsMissingRuntimeAndRule(t *testing.T) {
 	store := &Store{}
-	if _, err := store.ListFindings(context.Background(), ports.ListFindingsRequest{TenantID: "writer"}); err == nil {
+	if _, err := store.ListFindings(context.Background(), ports.ListFindingsRequest{TenantID: "example"}); err == nil {
 		t.Fatal("ListFindings() error = nil, want non-nil")
 	}
 }
 
 func TestListFindingsRejectsUnconfiguredStore(t *testing.T) {
 	store := &Store{}
-	if _, err := store.ListFindings(context.Background(), ports.ListFindingsRequest{TenantID: "writer", RuntimeID: "writer-okta-audit"}); err == nil {
+	if _, err := store.ListFindings(context.Background(), ports.ListFindingsRequest{TenantID: "example", RuntimeID: "example-okta-audit"}); err == nil {
 		t.Fatal("ListFindings() error = nil, want non-nil")
 	}
 }
@@ -105,7 +105,7 @@ func TestListFindingsRejectsUnconfiguredStore(t *testing.T) {
 func TestListFindingsAcceptsTenantAndRuleWithoutRuntime(t *testing.T) {
 	store := &Store{}
 	_, err := store.ListFindings(context.Background(), ports.ListFindingsRequest{
-		TenantID: "writer",
+		TenantID: "example",
 		RuleID:   "identity-okta-deprovisioned-active-in-github",
 	})
 	if err == nil {
@@ -191,7 +191,7 @@ func TestFindingRiskAttributesForUpdateIncludesEffectiveSeverity(t *testing.T) {
 
 func TestFindingListQueryAcceptsTenantAndRuleWithoutRuntime(t *testing.T) {
 	query, args, err := findingListQuery(ports.ListFindingsRequest{
-		TenantID: "writer",
+		TenantID: "example",
 		RuleID:   "identity-okta-deprovisioned-active-in-github",
 		Status:   "open",
 	})
@@ -227,7 +227,7 @@ func TestFindingListQueryIncludesOptionalFilters(t *testing.T) {
 		Severity:    "HIGH",
 		Status:      "open",
 		PolicyID:    "pol-1",
-		ResourceURN: "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+		ResourceURN: "urn:cerebro:example:okta_resource:policyrule:pol-1",
 		EventID:     "okta-audit-2",
 		Limit:       25,
 	})
@@ -263,7 +263,7 @@ func TestFindingListQueryIncludesOptionalFilters(t *testing.T) {
 	if got := args[6]; got != "pol-1" {
 		t.Fatalf("findingListQuery().args[6] = %#v, want pol-1", got)
 	}
-	if got := args[7]; got != `["urn:cerebro:writer:okta_resource:policyrule:pol-1"]` {
+	if got := args[7]; got != `["urn:cerebro:example:okta_resource:policyrule:pol-1"]` {
 		t.Fatalf("findingListQuery().args[7] = %#v, want resource urn array json", got)
 	}
 	if got := args[8]; got != `["okta-audit-2"]` {
@@ -276,7 +276,7 @@ func TestFindingListQueryIncludesOptionalFilters(t *testing.T) {
 
 func TestFindingListQuerySupportsRuntimeBatchesAndPriorityOrder(t *testing.T) {
 	query, args, err := findingListQuery(ports.ListFindingsRequest{
-		TenantID:      "writer",
+		TenantID:      "example",
 		RuntimeIDs:    []string{"runtime-alpha", "runtime-beta", "runtime-alpha"},
 		Status:        "open",
 		Limit:         25,
@@ -336,7 +336,7 @@ func TestFindingListQueryRiskOrderKeepsSeverityTieBreak(t *testing.T) {
 
 func TestEndpointVulnerabilityFindingQueryIncludesIdentityFilters(t *testing.T) {
 	query, args := endpointVulnerabilityFindingQuery(ports.EndpointVulnerabilityFindingQuery{
-		TenantID:     "writer",
+		TenantID:     "example",
 		DeviceID:     "device-1",
 		SerialNumber: "serial-1",
 		AgentID:      "agent-1",
@@ -371,8 +371,8 @@ func TestEndpointVulnerabilityFindingQueryIncludesIdentityFilters(t *testing.T) 
 	if !strings.Contains(query, wantIdentityScope) {
 		t.Fatalf("endpointVulnerabilityFindingQuery() identity scope = %s, want supplied identifiers to be alternatives", query)
 	}
-	if got := args[0]; got != "writer" {
-		t.Fatalf("endpointVulnerabilityFindingQuery().args[0] = %#v, want writer", got)
+	if got := args[0]; got != "example" {
+		t.Fatalf("endpointVulnerabilityFindingQuery().args[0] = %#v, want example", got)
 	}
 	if got := args[7]; got != uint32(25) {
 		t.Fatalf("endpointVulnerabilityFindingQuery().args[7] = %#v, want 25", got)
@@ -381,7 +381,7 @@ func TestEndpointVulnerabilityFindingQueryIncludesIdentityFilters(t *testing.T) 
 
 func TestEndpointVulnerabilityFindingQueryOmitsLimitWhenUnset(t *testing.T) {
 	query, args := endpointVulnerabilityFindingQuery(ports.EndpointVulnerabilityFindingQuery{
-		TenantID: "writer",
+		TenantID: "example",
 		DeviceID: "device-1",
 	})
 	if strings.Contains(query, "LIMIT") {
@@ -394,7 +394,7 @@ func TestEndpointVulnerabilityFindingQueryOmitsLimitWhenUnset(t *testing.T) {
 
 func TestEndpointVulnerabilityFindingQueryIncludeStaleAndLimitClamp(t *testing.T) {
 	query, args := endpointVulnerabilityFindingQuery(ports.EndpointVulnerabilityFindingQuery{
-		TenantID:     "writer",
+		TenantID:     "example",
 		SerialNumber: "serial-1",
 		IncludeStale: true,
 		Limit:        1000,
@@ -428,7 +428,7 @@ func TestFindingRowRecordDecodesCheckAndControlMetadata(t *testing.T) {
 			RiskReasonsJSON:  `["external_exposure","privileged_actor"]`,
 			RiskModelVersion: "likelihood-impact-v2",
 		},
-		ResourceURNsJSON:      `["urn:cerebro:writer:okta_resource:policyrule:pol-1"]`,
+		ResourceURNsJSON:      `["urn:cerebro:example:okta_resource:policyrule:pol-1"]`,
 		EventIDsJSON:          `["okta-audit-2"]`,
 		ObservedPolicyIDsJSON: `["pol-1"]`,
 		ControlRefsJSON:       `[{"framework_name":"SOC 2","control_id":"CC6.2"},{"framework_name":"ISO 27001:2022","control_id":"A.8.9"}]`,
@@ -436,10 +436,10 @@ func TestFindingRowRecordDecodesCheckAndControlMetadata(t *testing.T) {
 		PolicyName:            "pol-1",
 		CheckID:               "identity-okta-policy-rule-lifecycle-tampering-30d",
 		CheckName:             "Okta Policy Rule Lifecycle Tampering (30 days)",
-		AttributesJSON:        `{"effective_severity":"MEDIUM","source_severity":"HIGH","primary_resource_urn":"urn:cerebro:writer:okta_resource:policyrule:pol-1"}`,
+		AttributesJSON:        `{"effective_severity":"MEDIUM","source_severity":"HIGH","primary_resource_urn":"urn:cerebro:example:okta_resource:policyrule:pol-1"}`,
 		findingWorkflowRow: findingWorkflowRow{
 			NotesJSON:   `[{"id":"note-1","body":"Escalate to identity engineering.","created_at":"2026-05-01T11:00:00Z"}]`,
-			TicketsJSON: `[{"url":"https://jira.writer.com/browse/ENG-123","name":"ENG-123","external_id":"ENG-123","linked_at":"2026-05-01T11:30:00Z"}]`,
+			TicketsJSON: `[{"url":"https://jira.example.com/browse/ENG-123","name":"ENG-123","external_id":"ENG-123","linked_at":"2026-05-01T11:30:00Z"}]`,
 			DueAt:       sql.NullTime{Time: time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC), Valid: true},
 		},
 		FirstObservedAt: time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
@@ -499,7 +499,7 @@ func TestFindingRowRecordDecodesCheckAndControlMetadata(t *testing.T) {
 	if got := len(record.Tickets); got != 1 {
 		t.Fatalf("len(findingRow.record().Tickets) = %d, want 1", got)
 	}
-	if got := record.Tickets[0].URL; got != "https://jira.writer.com/browse/ENG-123" {
+	if got := record.Tickets[0].URL; got != "https://jira.example.com/browse/ENG-123" {
 		t.Fatalf("findingRow.record().Tickets[0].URL = %q, want ticket url", got)
 	}
 }

@@ -17,7 +17,7 @@ async function main(): Promise<void> {
     baseUrl,
     apiKey: process.env.CEREBRO_API_KEY?.trim(),
     tenantId: process.env.CEREBRO_TENANT_ID?.trim() || "writer",
-    runtimeId: process.env.CEREBRO_RUNTIME_ID?.trim() || "writer-jira-posture",
+    runtimeId: process.env.CEREBRO_RUNTIME_ID?.trim() || "example-jira-posture",
     posture: buildWorkspacePostureFromEnv(),
   });
   console.log(JSON.stringify(result, null, 2));
@@ -38,12 +38,12 @@ function buildWorkspacePostureFromEnv(): JiraWorkspacePosture {
     approvedMarketplaceAppsOnly: envBool("JIRA_APPROVED_MARKETPLACE_APPS_ONLY", true),
     admins: [
       {
-        email: process.env.JIRA_ADMIN_1_EMAIL?.trim() || "alice@writer.com",
+        email: process.env.JIRA_ADMIN_1_EMAIL?.trim() || "alice@example.com",
         displayName: process.env.JIRA_ADMIN_1_NAME?.trim() || "Alice",
         role: process.env.JIRA_ADMIN_1_ROLE?.trim() || "site_admin",
       },
       {
-        email: process.env.JIRA_ADMIN_2_EMAIL?.trim() || "bob@writer.com",
+        email: process.env.JIRA_ADMIN_2_EMAIL?.trim() || "bob@example.com",
         displayName: process.env.JIRA_ADMIN_2_NAME?.trim() || "Bob",
         role: process.env.JIRA_ADMIN_2_ROLE?.trim() || "org_admin",
       },

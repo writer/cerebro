@@ -8,7 +8,7 @@ func TestInternetDomainUsesRegistrableDomain(t *testing.T) {
 		raw  string
 		want string
 	}{
-		{name: "standard domain", raw: "https://app.writer.com/login", want: "writer.com"},
+		{name: "standard domain", raw: "https://app.example.com/login", want: "example.com"},
 		{name: "multi label public suffix", raw: "api.example.co.uk", want: "example.co.uk"},
 		{name: "public suffix only", raw: "co.uk", want: ""},
 		{name: "ip address", raw: "203.0.113.10", want: ""},

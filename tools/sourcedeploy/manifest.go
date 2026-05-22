@@ -11,12 +11,12 @@
 //
 //   - Out-of-scope (deployment cadence): orchestrator schedule rates, taskCount,
 //     and per-environment backfill instances. Those are operational decisions
-//     owned by the private infra repo (WriterInternal/cerebro) and do not
+//     owned by the private infra repo (ExampleInternal/cerebro) and do not
 //     belong in OSS.
 //
 // The synth tool walks every manifest and renders a single YAML fragment with
 // two keys (cerebro:sourceSecretKeys, cerebro:sourceRuntimes) that
-// WriterInternal merges into its Pulumi.<env>.yaml. Schedules are authored
+// ExampleInternal merges into its Pulumi.<env>.yaml. Schedules are authored
 // alongside that merge step in the private repo.
 package sourcedeploy
 

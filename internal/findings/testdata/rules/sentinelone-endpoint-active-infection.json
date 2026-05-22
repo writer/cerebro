@@ -1,14 +1,14 @@
 {
   "rule_id": "sentinelone-endpoint-active-infection",
   "runtime": {
-    "id": "writer-sentinelone-threat",
+    "id": "example-sentinelone-threat",
     "source_id": "sentinelone",
-    "tenant_id": "writer"
+    "tenant_id": "example"
   },
   "events": [
     {
       "id": "s1-threat-5",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "sentinelone",
       "kind": "sentinelone.threat",
       "occurred_at": "2026-05-09T06:20:00Z",
@@ -28,7 +28,7 @@
     },
     {
       "id": "s1-threat-6",
-      "tenant_id": "writer",
+      "tenant_id": "example",
       "source_id": "sentinelone",
       "kind": "sentinelone.threat",
       "occurred_at": "2026-05-09T06:25:00Z",
@@ -56,8 +56,8 @@
       "event_ids": ["s1-threat-5"],
       "attributes": {
         "action": "endpoint_active_infection",
-        "source_runtime_id": "writer-sentinelone-threat",
-        "primary_resource_urn": "urn:cerebro:writer:sentinelone_agent:agent-3",
+        "source_runtime_id": "example-sentinelone-threat",
+        "primary_resource_urn": "urn:cerebro:example:sentinelone_agent:agent-3",
         "agent_id": "agent-3",
         "threat_id": "threat-5",
         "is_infected": "true"

@@ -22,8 +22,8 @@ func TestUpsertProjectedEntityRejectsNilEntity(t *testing.T) {
 func TestUpsertProjectedEntityRejectsUnconfiguredStore(t *testing.T) {
 	store := &Store{}
 	err := store.UpsertProjectedEntity(context.Background(), &ports.ProjectedEntity{
-		URN:        "urn:cerebro:writer:github_user:alice",
-		TenantID:   "writer",
+		URN:        "urn:cerebro:example:github_user:alice",
+		TenantID:   "example",
 		SourceID:   "github",
 		EntityType: "github.user",
 	})
@@ -35,10 +35,10 @@ func TestUpsertProjectedEntityRejectsUnconfiguredStore(t *testing.T) {
 func TestUpsertProjectedLinkRejectsMissingRelation(t *testing.T) {
 	store := &Store{}
 	err := store.UpsertProjectedLink(context.Background(), &ports.ProjectedLink{
-		TenantID: "writer",
+		TenantID: "example",
 		SourceID: "github",
-		FromURN:  "urn:cerebro:writer:github_user:alice",
-		ToURN:    "urn:cerebro:writer:github_repo:writer/cerebro",
+		FromURN:  "urn:cerebro:example:github_user:alice",
+		ToURN:    "urn:cerebro:example:github_repo:writer/cerebro",
 	})
 	if err == nil {
 		t.Fatal("UpsertProjectedLink() error = nil, want non-nil")
@@ -90,11 +90,11 @@ func TestProjectedEntityCleanupSQLRequiresScope(t *testing.T) {
 
 func TestProjectedEntityCleanupSQLIncludesScopedFilters(t *testing.T) {
 	query, args, err := projectedEntityCleanupSQL(ports.ProjectionCleanupRequest{
-		TenantID:     "writer",
+		TenantID:     "example",
 		SourceID:     "okta",
 		RuntimeID:    "okta-audit-runtime",
 		EntityTypes:  []string{"okta.resource"},
-		URNPrefixes:  []string{"urn:cerebro:writer:okta_resource:access_token:"},
+		URNPrefixes:  []string{"urn:cerebro:example:okta_resource:access_token:"},
 		OnlyIsolated: true,
 		Limit:        25,
 	})
@@ -119,7 +119,7 @@ func TestProjectedEntityCleanupSQLIncludesScopedFilters(t *testing.T) {
 	if len(args) != 6 {
 		t.Fatalf("cleanup SQL args = %d, want 6", len(args))
 	}
-	if args[4] != "urn:cerebro:writer:okta_resource:access_token:" {
+	if args[4] != "urn:cerebro:example:okta_resource:access_token:" {
 		t.Fatalf("cleanup prefix arg = %#v, want literal access_token prefix", args[4])
 	}
 	if args[5] != uint32(25) {
@@ -135,7 +135,7 @@ func TestProjectedEndpointOwnerIDLinkCleanupSQLRequiresTenant(t *testing.T) {
 
 func TestProjectedEndpointOwnerIDLinkCleanupSQLScopesToReplacementIdentifiers(t *testing.T) {
 	query, args, err := projectedEndpointOwnerIDLinkCleanupSQL(ports.ProjectionLinkCleanupRequest{
-		TenantID: "writer",
+		TenantID: "example",
 		SourceID: "kolide",
 		DryRun:   true,
 		Limit:    50,
@@ -156,10 +156,10 @@ func TestProjectedEndpointOwnerIDLinkCleanupSQLScopesToReplacementIdentifiers(t 
 	}
 	argsText := fmt.Sprint(args)
 	for _, want := range []string{
-		"urn:cerebro:writer:identity:login:",
-		"urn:cerebro:writer:identifier:login:",
-		"urn:cerebro:writer:endpoint_identifier:kolide_owner_id:",
-		"urn:cerebro:writer:endpoint_identifier:kolide_user_id:",
+		"urn:cerebro:example:identity:login:",
+		"urn:cerebro:example:identifier:login:",
+		"urn:cerebro:example:endpoint_identifier:kolide_owner_id:",
+		"urn:cerebro:example:endpoint_identifier:kolide_user_id:",
 	} {
 		if !strings.Contains(argsText, want) {
 			t.Fatalf("endpoint owner-id cleanup args missing %q: %#v", want, args)
@@ -175,7 +175,7 @@ func TestProjectedEndpointOwnerIDLinkCleanupSQLScopesToReplacementIdentifiers(t 
 
 func TestProjectedEndpointOwnerIDLinkCleanupSQLRuntimeScopesOnlyStaleLinks(t *testing.T) {
 	query, _, err := projectedEndpointOwnerIDLinkCleanupSQL(ports.ProjectionLinkCleanupRequest{
-		TenantID:  "writer",
+		TenantID:  "example",
 		SourceID:  "kolide",
 		RuntimeID: "runtime-a",
 		DryRun:    true,
@@ -202,7 +202,7 @@ func TestPostgresCleanupEndpointOwnerIDLinksIntegration(t *testing.T) {
 		t.Fatalf("open postgres store: %v", err)
 	}
 	defer func() { _ = store.Close() }()
-	tenantID := fmt.Sprintf("writer-cleanup-%d", time.Now().UnixNano())
+	tenantID := fmt.Sprintf("example-cleanup-%d", time.Now().UnixNano())
 	t.Cleanup(func() {
 		_, _ = store.db.ExecContext(context.Background(), `DELETE FROM entity_links WHERE tenant_id = $1`, tenantID)
 		_, _ = store.db.ExecContext(context.Background(), `DELETE FROM entities WHERE tenant_id = $1`, tenantID)

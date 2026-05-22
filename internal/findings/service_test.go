@@ -523,7 +523,7 @@ func (r *emittingRule) Evaluate(_ context.Context, runtime *cerebrov1.SourceRunt
 			Severity:        "MEDIUM",
 			Status:          "open",
 			Summary:         strings.TrimSpace(r.spec.GetId()) + " summary",
-			ResourceURNs:    []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+			ResourceURNs:    []string{"urn:cerebro:example:okta_resource:policyrule:pol-1"},
 			EventIDs:        []string{strings.TrimSpace(event.GetId())},
 			FirstObservedAt: observedAt,
 			LastObservedAt:  observedAt,
@@ -567,9 +567,9 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 		claims: map[string]*ports.ClaimRecord{
 			"claim-1": {
 				ID:            "claim-1",
-				RuntimeID:     "writer-okta-audit",
-				TenantID:      "writer",
-				SubjectURN:    "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+				RuntimeID:     "example-okta-audit",
+				TenantID:      "example",
+				SubjectURN:    "urn:cerebro:example:okta_resource:policyrule:pol-1",
 				Predicate:     "status",
 				ObjectValue:   "updated",
 				ClaimType:     "attribute",
@@ -581,24 +581,24 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 	}
 	service := New(&stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {
-				Id:       "writer-okta-audit",
+			"example-okta-audit": {
+				Id:       "example-okta-audit",
 				SourceId: "okta",
-				TenantId: "writer",
+				TenantId: "example",
 			},
 		},
 	}, replayer, store, store, store, store)
 
 	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID:  "writer-okta-audit",
+		RuntimeID:  "example-okta-audit",
 		RuleID:     oktaPolicyRuleLifecycleTamperingRuleID,
 		EventLimit: 25,
 	})
 	if err != nil {
 		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
 	}
-	if result.Runtime.GetId() != "writer-okta-audit" {
-		t.Fatalf("Runtime.ID = %q, want writer-okta-audit", result.Runtime.GetId())
+	if result.Runtime.GetId() != "example-okta-audit" {
+		t.Fatalf("Runtime.ID = %q, want example-okta-audit", result.Runtime.GetId())
 	}
 	if result.Rule.GetId() != oktaPolicyRuleLifecycleTamperingRuleID {
 		t.Fatalf("Rule.ID = %q, want %q", result.Rule.GetId(), oktaPolicyRuleLifecycleTamperingRuleID)
@@ -606,8 +606,8 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 	if result.EventsEvaluated != 2 {
 		t.Fatalf("EventsEvaluated = %d, want 2", result.EventsEvaluated)
 	}
-	if got := replayer.request.RuntimeID; got != "writer-okta-audit" {
-		t.Fatalf("Replay().RuntimeID = %q, want writer-okta-audit", got)
+	if got := replayer.request.RuntimeID; got != "example-okta-audit" {
+		t.Fatalf("Replay().RuntimeID = %q, want example-okta-audit", got)
 	}
 	if got := replayer.request.Limit; got != 25 {
 		t.Fatalf("Replay().Limit = %d, want 25", got)
@@ -625,22 +625,22 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 	if finding.Status != "open" {
 		t.Fatalf("Finding.Status = %q, want open", finding.Status)
 	}
-	if finding.Summary != "admin@writer.com performed policy.rule.update on pol-1" {
-		t.Fatalf("Finding.Summary = %q, want admin@writer.com performed policy.rule.update on pol-1", finding.Summary)
+	if finding.Summary != "admin@example.com performed policy.rule.update on pol-1" {
+		t.Fatalf("Finding.Summary = %q, want admin@example.com performed policy.rule.update on pol-1", finding.Summary)
 	}
 	if len(finding.ResourceURNs) != 2 {
 		t.Fatalf("len(Finding.ResourceURNs) = %d, want 2", len(finding.ResourceURNs))
 	}
-	if finding.ResourceURNs[0] != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+	if finding.ResourceURNs[0] != "urn:cerebro:example:okta_resource:policyrule:pol-1" {
 		t.Fatalf("Finding.ResourceURNs[0] = %q, want policy rule urn", finding.ResourceURNs[0])
 	}
-	if finding.ResourceURNs[1] != "urn:cerebro:writer:okta_user:00u2" {
+	if finding.ResourceURNs[1] != "urn:cerebro:example:okta_user:00u2" {
 		t.Fatalf("Finding.ResourceURNs[1] = %q, want actor urn", finding.ResourceURNs[1])
 	}
-	if finding.Attributes["primary_actor_urn"] != "urn:cerebro:writer:okta_user:00u2" {
+	if finding.Attributes["primary_actor_urn"] != "urn:cerebro:example:okta_user:00u2" {
 		t.Fatalf("Finding.Attributes[primary_actor_urn] = %q, want actor urn", finding.Attributes["primary_actor_urn"])
 	}
-	if finding.Attributes["primary_resource_urn"] != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+	if finding.Attributes["primary_resource_urn"] != "urn:cerebro:example:okta_resource:policyrule:pol-1" {
 		t.Fatalf("Finding.Attributes[primary_resource_urn] = %q, want resource urn", finding.Attributes["primary_resource_urn"])
 	}
 	if finding.PolicyID != "pol-1" {
@@ -718,14 +718,14 @@ func TestEvaluateSourceRuntimeFindingsReusesLegacyOktaTamperingID(t *testing.T) 
 			legacyID: {
 				ID:           legacyID,
 				Fingerprint:  legacyID,
-				TenantID:     "writer",
-				RuntimeID:    "writer-okta-audit",
+				TenantID:     "example",
+				RuntimeID:    "example-okta-audit",
 				RuleID:       oktaPolicyRuleLifecycleTamperingRuleID,
 				Title:        oktaPolicyRuleLifecycleTamperingTitle,
 				Severity:     "HIGH",
 				Status:       findingStatusSuppressed,
 				Summary:      "legacy finding",
-				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+				ResourceURNs: []string{"urn:cerebro:example:okta_resource:policyrule:pol-1"},
 				EventIDs:     []string{eventID},
 				FindingWorkflow: ports.FindingWorkflow{
 					StatusReason:    "accepted risk",
@@ -738,16 +738,16 @@ func TestEvaluateSourceRuntimeFindingsReusesLegacyOktaTamperingID(t *testing.T) 
 	}
 	service := New(&stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {
-				Id:       "writer-okta-audit",
+			"example-okta-audit": {
+				Id:       "example-okta-audit",
 				SourceId: "okta",
-				TenantId: "writer",
+				TenantId: "example",
 			},
 		},
 	}, replayer, store, store, store, store)
 
 	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID: "writer-okta-audit",
+		RuntimeID: "example-okta-audit",
 		RuleID:    oktaPolicyRuleLifecycleTamperingRuleID,
 	})
 	if err != nil {
@@ -804,10 +804,10 @@ func TestEvaluateSourceRuntimeFindingsReplaysGitHubDependabotAlert(t *testing.T)
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-github": {
-					Id:       "writer-github",
+				"example-github": {
+					Id:       "example-github",
 					SourceId: "github",
-					TenantId: "writer",
+					TenantId: "example",
 				},
 			},
 		},
@@ -819,7 +819,7 @@ func TestEvaluateSourceRuntimeFindingsReplaysGitHubDependabotAlert(t *testing.T)
 	)
 
 	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID:  "writer-github",
+		RuntimeID:  "example-github",
 		RuleID:     githubDependabotOpenAlertRuleID,
 		EventLimit: 25,
 	})
@@ -848,7 +848,7 @@ func TestEvaluateSourceRuntimeFindingsReplaysGitHubDependabotAlert(t *testing.T)
 	if got := finding.Attributes["rule_required_attributes"]; got != "repository,alert_number,state" {
 		t.Fatalf("Finding rule required attributes = %q, want repository,alert_number,state", got)
 	}
-	primaryResourceURN := "urn:cerebro:writer:github_dependabot_alert:writer/cerebro:7"
+	primaryResourceURN := "urn:cerebro:example:github_dependabot_alert:writer/cerebro:7"
 	if got := finding.Attributes["primary_resource_urn"]; got != primaryResourceURN {
 		t.Fatalf("Finding primary resource urn = %q, want %q", got, primaryResourceURN)
 	}
@@ -867,10 +867,10 @@ func TestEvaluateSourceRuntimeFindingsProjectsRecordedFindingToGraph(t *testing.
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-github": {
-					Id:       "writer-github",
+				"example-github": {
+					Id:       "example-github",
 					SourceId: "github",
-					TenantId: "writer",
+					TenantId: "example",
 				},
 			},
 		},
@@ -886,7 +886,7 @@ func TestEvaluateSourceRuntimeFindingsProjectsRecordedFindingToGraph(t *testing.
 	).WithGraphStore(graph).WithAppendLog(appendLog)
 
 	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID: "writer-github",
+		RuntimeID: "example-github",
 		RuleID:    githubDependabotOpenAlertRuleID,
 	})
 	if err != nil {
@@ -896,7 +896,7 @@ func TestEvaluateSourceRuntimeFindingsProjectsRecordedFindingToGraph(t *testing.
 		t.Fatalf("len(Findings) = %d, want 1", got)
 	}
 	finding := result.Findings[0]
-	findingURN := "urn:cerebro:writer:finding:" + finding.ID
+	findingURN := "urn:cerebro:example:finding:" + finding.ID
 	primaryResourceURN := finding.Attributes["primary_resource_urn"]
 	if _, ok := graph.entities[findingURN]; !ok {
 		t.Fatalf("graph finding entity %q missing", findingURN)
@@ -927,14 +927,14 @@ func TestEvaluateSourceRuntimeResolvesAndPrunesStaleFindings(t *testing.T) {
 	staleFinding := &ports.FindingRecord{
 		ID:              "stale-oauth-finding",
 		Fingerprint:     "stale-oauth-finding",
-		TenantID:        "writer",
-		RuntimeID:       "writer-okta-audit",
+		TenantID:        "example",
+		RuntimeID:       "example-okta-audit",
 		RuleID:          "routine-oauth-rule",
 		Title:           "Routine OAuth Rule",
 		Severity:        "HIGH",
 		Status:          "open",
 		Summary:         "routine OAuth grant was previously emitted",
-		ResourceURNs:    []string{"urn:cerebro:writer:okta_application:0oa-client"},
+		ResourceURNs:    []string{"urn:cerebro:example:okta_application:0oa-client"},
 		EventIDs:        []string{"okta-oauth-grant"},
 		FirstObservedAt: time.Date(2026, 5, 7, 19, 54, 0, 0, time.UTC),
 		LastObservedAt:  time.Date(2026, 5, 7, 19, 54, 0, 0, time.UTC),
@@ -942,31 +942,31 @@ func TestEvaluateSourceRuntimeResolvesAndPrunesStaleFindings(t *testing.T) {
 	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{staleFinding.ID: staleFinding}}
 	graph := &stubGraphStore{
 		entities: map[string]*ports.ProjectedEntity{
-			"urn:cerebro:writer:finding:stale-oauth-finding": {
-				URN:        "urn:cerebro:writer:finding:stale-oauth-finding",
-				TenantID:   "writer",
-				SourceID:   "writer-okta-audit",
+			"urn:cerebro:example:finding:stale-oauth-finding": {
+				URN:        "urn:cerebro:example:finding:stale-oauth-finding",
+				TenantID:   "example",
+				SourceID:   "example-okta-audit",
 				EntityType: "finding",
 				Label:      "Routine OAuth Rule",
 			},
 		},
 		links: map[string]*ports.ProjectedLink{
-			"urn:cerebro:writer:okta_application:0oa-client|has_finding|urn:cerebro:writer:finding:stale-oauth-finding": {
-				TenantID: "writer",
-				SourceID: "writer-okta-audit",
-				FromURN:  "urn:cerebro:writer:okta_application:0oa-client",
-				ToURN:    "urn:cerebro:writer:finding:stale-oauth-finding",
+			"urn:cerebro:example:okta_application:0oa-client|has_finding|urn:cerebro:example:finding:stale-oauth-finding": {
+				TenantID: "example",
+				SourceID: "example-okta-audit",
+				FromURN:  "urn:cerebro:example:okta_application:0oa-client",
+				ToURN:    "urn:cerebro:example:finding:stale-oauth-finding",
 				Relation: "has_finding",
 			},
 		},
 	}
 	service := NewWithRegistry(
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+			"example-okta-audit": {Id: "example-okta-audit", SourceId: "okta", TenantId: "example"},
 		}},
 		&stubReplayer{events: []*cerebrov1.EventEnvelope{{
 			Id:       "okta-oauth-grant",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "okta",
 			Kind:     "okta.audit",
 			Attributes: map[string]string{
@@ -982,7 +982,7 @@ func TestEvaluateSourceRuntimeResolvesAndPrunesStaleFindings(t *testing.T) {
 	).WithGraphStore(graph).WithGraphQueryStore(graph)
 
 	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID: "writer-okta-audit",
+		RuntimeID: "example-okta-audit",
 		RuleID:    "routine-oauth-rule",
 	})
 	if err != nil {
@@ -995,7 +995,7 @@ func TestEvaluateSourceRuntimeResolvesAndPrunesStaleFindings(t *testing.T) {
 	if got := resolved.Status; got != "resolved" {
 		t.Fatalf("stale finding status = %q, want resolved", got)
 	}
-	if _, ok := graph.entities["urn:cerebro:writer:finding:stale-oauth-finding"]; ok {
+	if _, ok := graph.entities["urn:cerebro:example:finding:stale-oauth-finding"]; ok {
 		t.Fatal("stale finding graph entity should be pruned")
 	}
 	if len(graph.links) != 0 {
@@ -1016,14 +1016,14 @@ func TestEvaluateSourceRuntimeRetiredRuleResolvesOpenFindingsOutsideReplayWindow
 	retiredFinding := &ports.FindingRecord{
 		ID:              "old-github-mirror-finding",
 		Fingerprint:     "old-github-mirror-finding",
-		TenantID:        "writer",
-		RuntimeID:       "writer-github-audit",
+		TenantID:        "example",
+		RuntimeID:       "example-github-audit",
 		RuleID:          githubSecretScanningDisabledRuleID,
 		Title:           "GitHub Secret Scanning Disabled",
 		Severity:        "HIGH",
 		Status:          "open",
 		Summary:         "secret scanning was disabled by an old audit event",
-		ResourceURNs:    []string{"urn:cerebro:writer:github_repo:writer/cerebro"},
+		ResourceURNs:    []string{"urn:cerebro:example:github_repo:writer/cerebro"},
 		EventIDs:        []string{"github-old-event-outside-replay"},
 		FirstObservedAt: time.Date(2026, 5, 7, 19, 54, 0, 0, time.UTC),
 		LastObservedAt:  time.Date(2026, 5, 7, 19, 54, 0, 0, time.UTC),
@@ -1031,11 +1031,11 @@ func TestEvaluateSourceRuntimeRetiredRuleResolvesOpenFindingsOutsideReplayWindow
 	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{retiredFinding.ID: retiredFinding}}
 	service := NewWithRegistry(
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-github-audit": {Id: "writer-github-audit", SourceId: "github", TenantId: "writer"},
+			"example-github-audit": {Id: "example-github-audit", SourceId: "github", TenantId: "example"},
 		}},
 		&stubReplayer{events: []*cerebrov1.EventEnvelope{{
 			Id:       "github-recent-event",
-			TenantId: "writer",
+			TenantId: "example",
 			SourceId: "github",
 			Kind:     "github.audit",
 			Attributes: map[string]string{
@@ -1051,7 +1051,7 @@ func TestEvaluateSourceRuntimeRetiredRuleResolvesOpenFindingsOutsideReplayWindow
 	)
 
 	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID: "writer-github-audit",
+		RuntimeID: "example-github-audit",
 		RuleID:    githubSecretScanningDisabledRuleID,
 	})
 	if err != nil {
@@ -1081,11 +1081,11 @@ func TestEvaluateSourceRuntimeMarksRunFailedWhenStaleCleanupFails(t *testing.T) 
 	store := &stubFindingStore{listFindingsErr: errors.New("list stale candidates failed")}
 	service := NewWithRegistry(
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+			"example-okta-audit": {Id: "example-okta-audit", SourceId: "okta", TenantId: "example"},
 		}},
 		&stubReplayer{events: []*cerebrov1.EventEnvelope{{
 			Id:         "okta-oauth-grant",
-			TenantId:   "writer",
+			TenantId:   "example",
 			SourceId:   "okta",
 			Kind:       "okta.audit",
 			OccurredAt: timestamppb.New(time.Date(2026, 5, 8, 0, 0, 0, 0, time.UTC)),
@@ -1098,7 +1098,7 @@ func TestEvaluateSourceRuntimeMarksRunFailedWhenStaleCleanupFails(t *testing.T) 
 	)
 
 	_, err = service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID: "writer-okta-audit",
+		RuntimeID: "example-okta-audit",
 		RuleID:    "routine-oauth-rule",
 	})
 	if err == nil {
@@ -1118,7 +1118,7 @@ func TestEvaluateSourceRuntimeMarksRunFailedWhenStaleCleanupFails(t *testing.T) 
 
 func TestEvaluateSourceRuntimeFindingsRequiresAvailableDependencies(t *testing.T) {
 	service := New(nil, nil, nil, nil, nil, nil)
-	if _, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: "writer-okta-audit"}); !errors.Is(err, ErrRuntimeUnavailable) {
+	if _, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: "example-okta-audit"}); !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("EvaluateSourceRuntime() error = %v, want %v", err, ErrRuntimeUnavailable)
 	}
 }
@@ -1145,10 +1145,10 @@ func TestEvaluateSourceRuntimeFindingsPersistsNormalizedFailedRun(t *testing.T) 
 	service := NewWithRegistry(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-okta-audit": {
-					Id:       "writer-okta-audit",
+				"example-okta-audit": {
+					Id:       "example-okta-audit",
 					SourceId: "okta",
-					TenantId: "writer",
+					TenantId: "example",
 				},
 			},
 		},
@@ -1161,7 +1161,7 @@ func TestEvaluateSourceRuntimeFindingsPersistsNormalizedFailedRun(t *testing.T) 
 	)
 
 	_, err = service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID:  "writer-okta-audit",
+		RuntimeID:  "example-okta-audit",
 		RuleID:     "failing-rule",
 		EventLimit: maxEventLimit + 1,
 	})
@@ -1212,7 +1212,7 @@ func TestEvaluateSourceRuntimeFindingsCleansUpRemainingRunsWhenFailurePersistenc
 	service := NewWithRegistry(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+				"example-okta-audit": {Id: "example-okta-audit", SourceId: "okta", TenantId: "example"},
 			},
 		},
 		replayer,
@@ -1223,7 +1223,7 @@ func TestEvaluateSourceRuntimeFindingsCleansUpRemainingRunsWhenFailurePersistenc
 		registry,
 	)
 
-	_, err = service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-okta-audit"})
+	_, err = service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "example-okta-audit"})
 	if err == nil {
 		t.Fatal("EvaluateSourceRuntime() error = nil, want non-nil")
 	}
@@ -1261,7 +1261,7 @@ func TestEvaluateSourceRuntimeFindingsDeduplicatesEvidencePerRun(t *testing.T) {
 	service := NewWithRegistry(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+				"example-okta-audit": {Id: "example-okta-audit", SourceId: "okta", TenantId: "example"},
 			},
 		},
 		replayer,
@@ -1272,7 +1272,7 @@ func TestEvaluateSourceRuntimeFindingsDeduplicatesEvidencePerRun(t *testing.T) {
 		registry,
 	)
 
-	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: "writer-okta-audit", RuleID: "rule-a"})
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: "example-okta-audit", RuleID: "rule-a"})
 	if err != nil {
 		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
 	}
@@ -1366,7 +1366,7 @@ func TestEvaluateSourceRuntimeFindingsDeduplicatesEvidenceAcrossRuns(t *testing.
 	service := NewWithRegistry(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+				"example-okta-audit": {Id: "example-okta-audit", SourceId: "okta", TenantId: "example"},
 			},
 		},
 		replayer,
@@ -1377,11 +1377,11 @@ func TestEvaluateSourceRuntimeFindingsDeduplicatesEvidenceAcrossRuns(t *testing.
 		registry,
 	)
 
-	first, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: "writer-okta-audit", RuleID: "rule-a"})
+	first, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: "example-okta-audit", RuleID: "rule-a"})
 	if err != nil {
 		t.Fatalf("first EvaluateSourceRuntime() error = %v", err)
 	}
-	second, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: "writer-okta-audit", RuleID: "rule-a"})
+	second, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: "example-okta-audit", RuleID: "rule-a"})
 	if err != nil {
 		t.Fatalf("second EvaluateSourceRuntime() error = %v", err)
 	}
@@ -1410,7 +1410,7 @@ func TestEvaluateSourceRuntimeFindingsDeduplicatesEvidenceAcrossRuns(t *testing.
 	if got := len(stored.GetObservations()); got != 2 {
 		t.Fatalf("len(deduped evidence Observations) = %d, want 2", got)
 	}
-	historical, err := service.ListEvidence(context.Background(), ListEvidenceRequest{RuntimeID: "writer-okta-audit", RunID: first.Run.GetId()})
+	historical, err := service.ListEvidence(context.Background(), ListEvidenceRequest{RuntimeID: "example-okta-audit", RunID: first.Run.GetId()})
 	if err != nil {
 		t.Fatalf("ListEvidence(first run) error = %v", err)
 	}
@@ -1425,7 +1425,7 @@ func TestBuildFindingEvidenceIncludesAttributesGraphPathsAndObservedAt(t *testin
 			"claim-1": {
 				ID:            "claim-1",
 				RuntimeID:     "runtime-okta",
-				TenantID:      "writer",
+				TenantID:      "example",
 				SourceEventID: "event-1",
 				ObservedAt:    time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
 			},
@@ -1434,23 +1434,23 @@ func TestBuildFindingEvidenceIncludesAttributesGraphPathsAndObservedAt(t *testin
 	service := &Service{claimStore: store}
 	finding := &ports.FindingRecord{
 		ID:           "finding-1",
-		TenantID:     "writer",
+		TenantID:     "example",
 		RuntimeID:    "runtime-okta",
 		RuleID:       "rule-a",
-		ResourceURNs: []string{"urn:cerebro:writer:identity:email:alice@writer.com"},
+		ResourceURNs: []string{"urn:cerebro:example:identity:email:alice@example.com"},
 		EventIDs:     []string{"event-1"},
 		Attributes: map[string]string{
-			"primary_resource_urn": "urn:cerebro:writer:identity:email:alice@writer.com",
-			"actor":                "alice@writer.com",
+			"primary_resource_urn": "urn:cerebro:example:identity:email:alice@example.com",
+			"actor":                "alice@example.com",
 			"empty":                "",
 		},
 		GraphEvidenceRows: []*cerebrov1.GraphEvidenceRow{
 			newGraphEvidenceRow("identity_path", map[string]string{"label": "alice"}, newGraphEvidencePath(
-				"urn:cerebro:writer:github_user:alice",
+				"urn:cerebro:example:github_user:alice",
 				"alice",
 				"github.user",
 				"acted_on",
-				"urn:cerebro:writer:github_repo:repo-1",
+				"urn:cerebro:example:github_repo:repo-1",
 				"repo-1",
 				"github.repository",
 				map[string]string{"at": "2026-05-07T18:09:42Z", "event_id": "event-1"},
@@ -1463,13 +1463,13 @@ func TestBuildFindingEvidenceIncludesAttributesGraphPathsAndObservedAt(t *testin
 	if err != nil {
 		t.Fatalf("buildFindingEvidence() error = %v", err)
 	}
-	if got := evidence.GetAttributes()["actor"]; got != "alice@writer.com" {
-		t.Fatalf("Evidence.Attributes[actor] = %q, want alice@writer.com", got)
+	if got := evidence.GetAttributes()["actor"]; got != "alice@example.com" {
+		t.Fatalf("Evidence.Attributes[actor] = %q, want alice@example.com", got)
 	}
 	if _, ok := evidence.GetAttributes()["empty"]; ok {
 		t.Fatalf("Evidence.Attributes retained empty value: %#v", evidence.GetAttributes())
 	}
-	if !slices.Contains(evidence.GetGraphPathUrns(), "urn:cerebro:writer:github_user:alice") || !slices.Contains(evidence.GetGraphPathUrns(), "urn:cerebro:writer:github_repo:repo-1") {
+	if !slices.Contains(evidence.GetGraphPathUrns(), "urn:cerebro:example:github_user:alice") || !slices.Contains(evidence.GetGraphPathUrns(), "urn:cerebro:example:github_repo:repo-1") {
 		t.Fatalf("Evidence.GraphPathUrns = %#v, want both path endpoints", evidence.GetGraphPathUrns())
 	}
 	if got := evidence.GetGraphRows()[0].GetPaths()[0].GetObservedAt(); got != "2026-05-07T18:09:42Z" {
@@ -1519,10 +1519,10 @@ func TestEvaluateSourceRuntimeFindingsSelectsRequestedRule(t *testing.T) {
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-okta-audit": {
-					Id:       "writer-okta-audit",
+				"example-okta-audit": {
+					Id:       "example-okta-audit",
 					SourceId: "okta",
-					TenantId: "writer",
+					TenantId: "example",
 				},
 			},
 		},
@@ -1534,7 +1534,7 @@ func TestEvaluateSourceRuntimeFindingsSelectsRequestedRule(t *testing.T) {
 	)
 
 	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID:  "writer-okta-audit",
+		RuntimeID:  "example-okta-audit",
 		RuleID:     oktaPolicyRuleLifecycleTamperingRuleID,
 		EventLimit: 10,
 	})
@@ -1553,10 +1553,10 @@ func TestEvaluateSourceRuntimeFindingsRejectsUnknownRule(t *testing.T) {
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-okta-audit": {
-					Id:       "writer-okta-audit",
+				"example-okta-audit": {
+					Id:       "example-okta-audit",
 					SourceId: "okta",
-					TenantId: "writer",
+					TenantId: "example",
 				},
 			},
 		},
@@ -1567,7 +1567,7 @@ func TestEvaluateSourceRuntimeFindingsRejectsUnknownRule(t *testing.T) {
 		&stubFindingStore{},
 	)
 	if _, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID: "writer-okta-audit",
+		RuntimeID: "example-okta-audit",
 		RuleID:    "rule-does-not-exist",
 	}); !errors.Is(err, ErrRuleNotFound) {
 		t.Fatalf("EvaluateSourceRuntime() error = %v, want %v", err, ErrRuleNotFound)
@@ -1591,10 +1591,10 @@ func TestEvaluateSourceRuntimeFindingsRequiresRuleIDWhenMultipleRulesSupportRunt
 	service := NewWithRegistry(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-okta-audit": {
-					Id:       "writer-okta-audit",
+				"example-okta-audit": {
+					Id:       "example-okta-audit",
 					SourceId: "okta",
-					TenantId: "writer",
+					TenantId: "example",
 				},
 			},
 		},
@@ -1606,7 +1606,7 @@ func TestEvaluateSourceRuntimeFindingsRequiresRuleIDWhenMultipleRulesSupportRunt
 		registry,
 	)
 	if _, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID: "writer-okta-audit",
+		RuntimeID: "example-okta-audit",
 	}); !errors.Is(err, ErrRuleSelectionRequired) {
 		t.Fatalf("EvaluateSourceRuntime() error = %v, want %v", err, ErrRuleSelectionRequired)
 	}
@@ -1616,10 +1616,10 @@ func TestEvaluateSourceRuntimeFindingsRejectsUnsupportedRule(t *testing.T) {
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-github-audit": {
-					Id:       "writer-github-audit",
+				"example-github-audit": {
+					Id:       "example-github-audit",
 					SourceId: "github",
-					TenantId: "writer",
+					TenantId: "example",
 				},
 			},
 		},
@@ -1630,7 +1630,7 @@ func TestEvaluateSourceRuntimeFindingsRejectsUnsupportedRule(t *testing.T) {
 		&stubFindingStore{},
 	)
 	if _, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID: "writer-github-audit",
+		RuntimeID: "example-github-audit",
 		RuleID:    oktaPolicyRuleLifecycleTamperingRuleID,
 	}); !errors.Is(err, ErrRuleUnsupported) {
 		t.Fatalf("EvaluateSourceRuntime() error = %v, want %v", err, ErrRuleUnsupported)
@@ -1649,8 +1649,8 @@ func TestEvaluateSourceRuntimeFindingsAllowsExplicitUnsupportedRuleWithOpenFindi
 	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{
 		"finding-old": {
 			ID:        "finding-old",
-			TenantID:  "writer",
-			RuntimeID: "writer-aws-public-endpoint",
+			TenantID:  "example",
+			RuntimeID: "example-aws-public-endpoint",
 			RuleID:    "old-family-rule",
 			Status:    findingStatusOpen,
 			EventIDs:  []string{"old-event"},
@@ -1658,7 +1658,7 @@ func TestEvaluateSourceRuntimeFindingsAllowsExplicitUnsupportedRuleWithOpenFindi
 	}}
 	service := NewWithRegistry(
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-aws-public-endpoint": {Id: "writer-aws-public-endpoint", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "public_endpoint"}},
+			"example-aws-public-endpoint": {Id: "example-aws-public-endpoint", SourceId: "aws", TenantId: "example", Config: map[string]string{"family": "public_endpoint"}},
 		}},
 		&stubReplayer{},
 		store,
@@ -1668,7 +1668,7 @@ func TestEvaluateSourceRuntimeFindingsAllowsExplicitUnsupportedRuleWithOpenFindi
 		registry,
 	)
 
-	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: "writer-aws-public-endpoint", RuleID: "old-family-rule"})
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: "example-aws-public-endpoint", RuleID: "old-family-rule"})
 	if err != nil {
 		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
 	}
@@ -1699,8 +1699,8 @@ func TestEvaluateSourceRuntimeFindingsIgnoresStaleOnlyRulesForSingleSelection(t 
 	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{
 		"finding-old": {
 			ID:        "finding-old",
-			TenantID:  "writer",
-			RuntimeID: "writer-aws-public-endpoint",
+			TenantID:  "example",
+			RuntimeID: "example-aws-public-endpoint",
 			RuleID:    "old-family-rule",
 			Status:    findingStatusOpen,
 			EventIDs:  []string{"old-event"},
@@ -1708,7 +1708,7 @@ func TestEvaluateSourceRuntimeFindingsIgnoresStaleOnlyRulesForSingleSelection(t 
 	}}
 	service := NewWithRegistry(
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-aws-public-endpoint": {Id: "writer-aws-public-endpoint", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "public_endpoint"}},
+			"example-aws-public-endpoint": {Id: "example-aws-public-endpoint", SourceId: "aws", TenantId: "example", Config: map[string]string{"family": "public_endpoint"}},
 		}},
 		&stubReplayer{},
 		store,
@@ -1718,7 +1718,7 @@ func TestEvaluateSourceRuntimeFindingsIgnoresStaleOnlyRulesForSingleSelection(t 
 		registry,
 	)
 
-	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: "writer-aws-public-endpoint"})
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: "example-aws-public-endpoint"})
 	if err != nil {
 		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
 	}
@@ -1762,15 +1762,15 @@ func TestEvaluateSourceRuntimeRulesReplaysOnceAcrossMultipleRules(t *testing.T) 
 		claims: map[string]*ports.ClaimRecord{
 			"claim-1": {
 				ID:            "claim-1",
-				RuntimeID:     "writer-okta-audit",
-				TenantID:      "writer",
+				RuntimeID:     "example-okta-audit",
+				TenantID:      "example",
 				SourceEventID: "okta-audit-2",
 				ObservedAt:    time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
 			},
 			"claim-2": {
 				ID:            "claim-2",
-				RuntimeID:     "writer-okta-audit",
-				TenantID:      "writer",
+				RuntimeID:     "example-okta-audit",
+				TenantID:      "example",
 				SourceEventID: "okta-audit-3",
 				ObservedAt:    time.Date(2026, 4, 23, 12, 1, 0, 0, time.UTC),
 			},
@@ -1779,10 +1779,10 @@ func TestEvaluateSourceRuntimeRulesReplaysOnceAcrossMultipleRules(t *testing.T) 
 	service := NewWithRegistry(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-okta-audit": {
-					Id:       "writer-okta-audit",
+				"example-okta-audit": {
+					Id:       "example-okta-audit",
 					SourceId: "okta",
-					TenantId: "writer",
+					TenantId: "example",
 				},
 			},
 		},
@@ -1794,7 +1794,7 @@ func TestEvaluateSourceRuntimeRulesReplaysOnceAcrossMultipleRules(t *testing.T) 
 		registry,
 	)
 	result, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{
-		RuntimeID:  "writer-okta-audit",
+		RuntimeID:  "example-okta-audit",
 		EventLimit: 2,
 	})
 	if err != nil {
@@ -1856,8 +1856,8 @@ func TestEvaluateSourceRuntimeRulesIncludesUnsupportedRulesWithOpenFindings(t *t
 	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{
 		"finding-old": {
 			ID:        "finding-old",
-			TenantID:  "writer",
-			RuntimeID: "writer-aws-public-endpoint",
+			TenantID:  "example",
+			RuntimeID: "example-aws-public-endpoint",
 			RuleID:    "old-family-rule",
 			Status:    findingStatusOpen,
 			EventIDs:  []string{"old-event"},
@@ -1865,7 +1865,7 @@ func TestEvaluateSourceRuntimeRulesIncludesUnsupportedRulesWithOpenFindings(t *t
 	}}
 	service := NewWithRegistry(
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-aws-public-endpoint": {Id: "writer-aws-public-endpoint", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "public_endpoint"}},
+			"example-aws-public-endpoint": {Id: "example-aws-public-endpoint", SourceId: "aws", TenantId: "example", Config: map[string]string{"family": "public_endpoint"}},
 		}},
 		&stubReplayer{},
 		store,
@@ -1875,7 +1875,7 @@ func TestEvaluateSourceRuntimeRulesIncludesUnsupportedRulesWithOpenFindings(t *t
 		registry,
 	)
 
-	result, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-aws-public-endpoint"})
+	result, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "example-aws-public-endpoint"})
 	if err != nil {
 		t.Fatalf("EvaluateSourceRuntimeRules() error = %v", err)
 	}
@@ -1908,7 +1908,7 @@ func TestEvaluateSourceRuntimeRulesProbesStaleUnsupportedRulesOnce(t *testing.T)
 	store := &stubFindingStore{}
 	service := NewWithRegistry(
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-aws-public-endpoint": {Id: "writer-aws-public-endpoint", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "public_endpoint"}},
+			"example-aws-public-endpoint": {Id: "example-aws-public-endpoint", SourceId: "aws", TenantId: "example", Config: map[string]string{"family": "public_endpoint"}},
 		}},
 		&stubReplayer{},
 		store,
@@ -1918,7 +1918,7 @@ func TestEvaluateSourceRuntimeRulesProbesStaleUnsupportedRulesOnce(t *testing.T)
 		registry,
 	)
 
-	result, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-aws-public-endpoint"})
+	result, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "example-aws-public-endpoint"})
 	if err != nil {
 		t.Fatalf("EvaluateSourceRuntimeRules() error = %v", err)
 	}
@@ -1929,7 +1929,7 @@ func TestEvaluateSourceRuntimeRulesProbesStaleUnsupportedRulesOnce(t *testing.T)
 		t.Fatalf("ListFindings calls = %d, want one stale unsupported probe", got)
 	}
 	request := store.listFindingsRequests[0]
-	if request.RuleID != "" || request.RuntimeID != "writer-aws-public-endpoint" || request.Status != findingStatusOpen {
+	if request.RuleID != "" || request.RuntimeID != "example-aws-public-endpoint" || request.Status != findingStatusOpen {
 		t.Fatalf("stale probe request = %#v, want one runtime-wide open-finding query", request)
 	}
 }
@@ -1956,7 +1956,7 @@ func TestEvaluateSourceRuntimeRulesMarksStartedRunsFailedWhenLaterRunStartFails(
 	}
 	service := NewWithRegistry(
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+			"example-okta-audit": {Id: "example-okta-audit", SourceId: "okta", TenantId: "example"},
 		}},
 		&stubReplayer{},
 		store,
@@ -1966,7 +1966,7 @@ func TestEvaluateSourceRuntimeRulesMarksStartedRunsFailedWhenLaterRunStartFails(
 		registry,
 	)
 
-	_, err = service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-okta-audit"})
+	_, err = service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "example-okta-audit"})
 	if err == nil {
 		t.Fatal("EvaluateSourceRuntimeRules() error = nil, want non-nil")
 	}
@@ -2012,7 +2012,7 @@ func TestEvaluateSourceRuntimeRulesAttemptsAllStartedRunFailuresWhenCleanupFails
 	}
 	service := NewWithRegistry(
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+			"example-okta-audit": {Id: "example-okta-audit", SourceId: "okta", TenantId: "example"},
 		}},
 		&stubReplayer{},
 		store,
@@ -2022,7 +2022,7 @@ func TestEvaluateSourceRuntimeRulesAttemptsAllStartedRunFailuresWhenCleanupFails
 		registry,
 	)
 
-	_, err = service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-okta-audit"})
+	_, err = service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "example-okta-audit"})
 	if err == nil {
 		t.Fatal("EvaluateSourceRuntimeRules() error = nil, want non-nil")
 	}
@@ -2068,7 +2068,7 @@ func TestEvaluateSourceRuntimeRulesMarksUnfinishedRunsFailedWhenCompletionFails(
 	}
 	service := NewWithRegistry(
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+			"example-okta-audit": {Id: "example-okta-audit", SourceId: "okta", TenantId: "example"},
 		}},
 		&stubReplayer{},
 		store,
@@ -2078,7 +2078,7 @@ func TestEvaluateSourceRuntimeRulesMarksUnfinishedRunsFailedWhenCompletionFails(
 		registry,
 	)
 
-	_, err = service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-okta-audit"})
+	_, err = service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "example-okta-audit"})
 	if err == nil {
 		t.Fatal("EvaluateSourceRuntimeRules() error = nil, want non-nil")
 	}
@@ -2117,11 +2117,11 @@ func TestEvaluateSourceRuntimeRulesMarksUnfinishedRunsFailedWhenStaleCleanupFail
 	store := &stubFindingStore{listFindingsErr: errors.New("stale cleanup unavailable")}
 	service := NewWithRegistry(
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+			"example-okta-audit": {Id: "example-okta-audit", SourceId: "okta", TenantId: "example"},
 		}},
 		&stubReplayer{events: []*cerebrov1.EventEnvelope{{
 			Id:         "okta-audit-1",
-			TenantId:   "writer",
+			TenantId:   "example",
 			SourceId:   "okta",
 			Kind:       "okta.audit",
 			OccurredAt: timestamppb.New(time.Date(2026, 5, 8, 0, 0, 0, 0, time.UTC)),
@@ -2133,7 +2133,7 @@ func TestEvaluateSourceRuntimeRulesMarksUnfinishedRunsFailedWhenStaleCleanupFail
 		registry,
 	)
 
-	_, err = service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-okta-audit"})
+	_, err = service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "example-okta-audit"})
 	if err == nil {
 		t.Fatal("EvaluateSourceRuntimeRules() error = nil, want stale cleanup error")
 	}
@@ -2174,7 +2174,7 @@ func TestEvaluateSourceRuntimeRulesPreservesEarlierFailureWhenCompletionCleanupR
 	}
 	service := NewWithRegistry(
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+			"example-okta-audit": {Id: "example-okta-audit", SourceId: "okta", TenantId: "example"},
 		}},
 		&stubReplayer{events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-1", "policy.rule.update", "SUCCESS")}},
 		store,
@@ -2184,7 +2184,7 @@ func TestEvaluateSourceRuntimeRulesPreservesEarlierFailureWhenCompletionCleanupR
 		registry,
 	)
 
-	_, err = service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-okta-audit"})
+	_, err = service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "example-okta-audit"})
 	if err == nil {
 		t.Fatal("EvaluateSourceRuntimeRules() error = nil, want non-nil")
 	}
@@ -2218,7 +2218,7 @@ func TestEvaluateSourceRuntimeRulesReturnsEvaluationAndRunFailureCauses(t *testi
 	}
 	service := NewWithRegistry(
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+			"example-okta-audit": {Id: "example-okta-audit", SourceId: "okta", TenantId: "example"},
 		}},
 		&stubReplayer{events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-1", "policy.rule.update", "SUCCESS")}},
 		store,
@@ -2228,7 +2228,7 @@ func TestEvaluateSourceRuntimeRulesReturnsEvaluationAndRunFailureCauses(t *testi
 		registry,
 	)
 
-	_, err = service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-okta-audit"})
+	_, err = service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "example-okta-audit"})
 	if err == nil {
 		t.Fatal("EvaluateSourceRuntimeRules() error = nil, want non-nil")
 	}
@@ -2259,9 +2259,9 @@ func TestEvaluateSourceRuntimeRulesDeduplicatesEvidencePerRun(t *testing.T) {
 		claims: map[string]*ports.ClaimRecord{
 			"claim-1": {
 				ID:            "claim-1",
-				RuntimeID:     "writer-okta-audit",
-				TenantID:      "writer",
-				SubjectURN:    "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+				RuntimeID:     "example-okta-audit",
+				TenantID:      "example",
+				SubjectURN:    "urn:cerebro:example:okta_resource:policyrule:pol-1",
 				Predicate:     "status",
 				ObjectValue:   "updated",
 				ClaimType:     "attribute",
@@ -2274,7 +2274,7 @@ func TestEvaluateSourceRuntimeRulesDeduplicatesEvidencePerRun(t *testing.T) {
 	service := NewWithRegistry(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+				"example-okta-audit": {Id: "example-okta-audit", SourceId: "okta", TenantId: "example"},
 			},
 		},
 		replayer,
@@ -2285,7 +2285,7 @@ func TestEvaluateSourceRuntimeRulesDeduplicatesEvidencePerRun(t *testing.T) {
 		registry,
 	)
 
-	result, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-okta-audit"})
+	result, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "example-okta-audit"})
 	if err != nil {
 		t.Fatalf("EvaluateSourceRuntimeRules() error = %v", err)
 	}
@@ -2338,8 +2338,8 @@ func TestEvaluateSourceRuntimeRulesSelectsExplicitRules(t *testing.T) {
 		claims: map[string]*ports.ClaimRecord{
 			"claim-2": {
 				ID:            "claim-2",
-				RuntimeID:     "writer-okta-audit",
-				TenantID:      "writer",
+				RuntimeID:     "example-okta-audit",
+				TenantID:      "example",
 				SourceEventID: "okta-audit-3",
 				ObservedAt:    time.Date(2026, 4, 23, 12, 1, 0, 0, time.UTC),
 			},
@@ -2348,10 +2348,10 @@ func TestEvaluateSourceRuntimeRulesSelectsExplicitRules(t *testing.T) {
 	service := NewWithRegistry(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-okta-audit": {
-					Id:       "writer-okta-audit",
+				"example-okta-audit": {
+					Id:       "example-okta-audit",
 					SourceId: "okta",
-					TenantId: "writer",
+					TenantId: "example",
 				},
 			},
 		},
@@ -2368,7 +2368,7 @@ func TestEvaluateSourceRuntimeRulesSelectsExplicitRules(t *testing.T) {
 		registry,
 	)
 	result, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{
-		RuntimeID: "writer-okta-audit",
+		RuntimeID: "example-okta-audit",
 		RuleIDs:   []string{"rule-b"},
 	})
 	if err != nil {
@@ -2413,10 +2413,10 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-github-audit": {
-					Id:       "writer-github-audit",
+				"example-github-audit": {
+					Id:       "example-github-audit",
 					SourceId: "github",
-					TenantId: "writer",
+					TenantId: "example",
 				},
 			},
 		},
@@ -2448,7 +2448,7 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 		&stubFindingStore{},
 	)
 	result, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{
-		RuntimeID:  "writer-github-audit",
+		RuntimeID:  "example-github-audit",
 		RuleIDs:    ruleIDs,
 		EventLimit: 20,
 	})
@@ -2491,24 +2491,24 @@ func TestListFindingsReturnsFilteredPersistedFindings(t *testing.T) {
 		findings: map[string]*ports.FindingRecord{
 			"finding-1": {
 				ID:             "finding-1",
-				TenantID:       "writer",
-				RuntimeID:      "writer-okta-audit",
+				TenantID:       "example",
+				RuntimeID:      "example-okta-audit",
 				RuleID:         oktaPolicyRuleLifecycleTamperingRuleID,
 				Severity:       "HIGH",
 				Status:         "open",
 				PolicyID:       "pol-1",
-				ResourceURNs:   []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+				ResourceURNs:   []string{"urn:cerebro:example:okta_resource:policyrule:pol-1"},
 				EventIDs:       []string{"okta-audit-2"},
 				LastObservedAt: time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
 			},
 			"finding-2": {
 				ID:             "finding-2",
-				TenantID:       "writer",
-				RuntimeID:      "writer-okta-audit",
+				TenantID:       "example",
+				RuntimeID:      "example-okta-audit",
 				RuleID:         oktaPolicyRuleLifecycleTamperingRuleID,
 				Severity:       "MEDIUM",
 				Status:         "resolved",
-				ResourceURNs:   []string{"urn:cerebro:writer:okta_resource:policyrule:pol-2"},
+				ResourceURNs:   []string{"urn:cerebro:example:okta_resource:policyrule:pol-2"},
 				EventIDs:       []string{"okta-audit-3"},
 				LastObservedAt: time.Date(2026, 4, 23, 11, 0, 0, 0, time.UTC),
 			},
@@ -2517,10 +2517,10 @@ func TestListFindingsReturnsFilteredPersistedFindings(t *testing.T) {
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-okta-audit": {
-					Id:       "writer-okta-audit",
+				"example-okta-audit": {
+					Id:       "example-okta-audit",
 					SourceId: "okta",
-					TenantId: "writer",
+					TenantId: "example",
 				},
 			},
 		},
@@ -2532,12 +2532,12 @@ func TestListFindingsReturnsFilteredPersistedFindings(t *testing.T) {
 	)
 
 	result, err := service.ListFindings(context.Background(), ListRequest{
-		RuntimeID:   "writer-okta-audit",
+		RuntimeID:   "example-okta-audit",
 		RuleID:      oktaPolicyRuleLifecycleTamperingRuleID,
 		Severity:    "HIGH",
 		Status:      "open",
 		PolicyID:    "pol-1",
-		ResourceURN: "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+		ResourceURN: "urn:cerebro:example:okta_resource:policyrule:pol-1",
 		EventID:     "okta-audit-2",
 		Limit:       1,
 	})
@@ -2550,11 +2550,11 @@ func TestListFindingsReturnsFilteredPersistedFindings(t *testing.T) {
 	if got := result.Findings[0].ID; got != "finding-1" {
 		t.Fatalf("ListFindings().Findings[0].ID = %q, want finding-1", got)
 	}
-	if got := store.request.RuntimeID; got != "writer-okta-audit" {
-		t.Fatalf("ListFindings().RuntimeID = %q, want writer-okta-audit", got)
+	if got := store.request.RuntimeID; got != "example-okta-audit" {
+		t.Fatalf("ListFindings().RuntimeID = %q, want example-okta-audit", got)
 	}
-	if got := store.request.TenantID; got != "writer" {
-		t.Fatalf("ListFindings().TenantID = %q, want writer", got)
+	if got := store.request.TenantID; got != "example" {
+		t.Fatalf("ListFindings().TenantID = %q, want example", got)
 	}
 	if got := store.request.RuleID; got != oktaPolicyRuleLifecycleTamperingRuleID {
 		t.Fatalf("ListFindings().RuleID = %q, want %q", got, oktaPolicyRuleLifecycleTamperingRuleID)
@@ -2565,7 +2565,7 @@ func TestListFindingsReturnsFilteredPersistedFindings(t *testing.T) {
 	if got := store.request.Status; got != "open" {
 		t.Fatalf("ListFindings().Status = %q, want open", got)
 	}
-	if got := store.request.ResourceURN; got != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+	if got := store.request.ResourceURN; got != "urn:cerebro:example:okta_resource:policyrule:pol-1" {
 		t.Fatalf("ListFindings().ResourceURN = %q, want policy rule urn", got)
 	}
 	if got := store.request.EventID; got != "okta-audit-2" {
@@ -2581,7 +2581,7 @@ func TestListFindingsReturnsFilteredPersistedFindings(t *testing.T) {
 
 func TestListFindingsRequiresAvailableDependencies(t *testing.T) {
 	service := New(nil, nil, nil, nil, nil, nil)
-	if _, err := service.ListFindings(context.Background(), ListRequest{RuntimeID: "writer-okta-audit"}); !errors.Is(err, ErrRuntimeUnavailable) {
+	if _, err := service.ListFindings(context.Background(), ListRequest{RuntimeID: "example-okta-audit"}); !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("ListFindings() error = %v, want %v", err, ErrRuntimeUnavailable)
 	}
 }
@@ -2750,27 +2750,27 @@ func TestResolveFindingBridgesDecisionAndOutcomeWhenGraphConfigured(t *testing.T
 		findings: map[string]*ports.FindingRecord{
 			"finding-1": {
 				ID:           "finding-1",
-				TenantID:     "writer",
-				RuntimeID:    "writer-okta-audit",
+				TenantID:     "example",
+				RuntimeID:    "example-okta-audit",
 				RuleID:       "identity-okta-policy-rule-lifecycle-tampering",
 				Title:        "Okta Policy Rule Lifecycle Tampering",
 				Status:       "open",
-				ResourceURNs: []string{"urn:cerebro:writer:okta_actor:user:00u1", "urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+				ResourceURNs: []string{"urn:cerebro:example:okta_actor:user:00u1", "urn:cerebro:example:okta_resource:policyrule:pol-1"},
 			},
 		},
 	}
 	graphStore := &stubGraphStore{
 		entities: map[string]*ports.ProjectedEntity{
-			"urn:cerebro:writer:okta_actor:user:00u1": {
-				URN:        "urn:cerebro:writer:okta_actor:user:00u1",
-				TenantID:   "writer",
+			"urn:cerebro:example:okta_actor:user:00u1": {
+				URN:        "urn:cerebro:example:okta_actor:user:00u1",
+				TenantID:   "example",
 				SourceID:   "okta",
 				EntityType: "okta.actor",
-				Label:      "admin@writer.com",
+				Label:      "admin@example.com",
 			},
-			"urn:cerebro:writer:okta_resource:policyrule:pol-1": {
-				URN:        "urn:cerebro:writer:okta_resource:policyrule:pol-1",
-				TenantID:   "writer",
+			"urn:cerebro:example:okta_resource:policyrule:pol-1": {
+				URN:        "urn:cerebro:example:okta_resource:policyrule:pol-1",
+				TenantID:   "example",
 				SourceID:   "okta",
 				EntityType: "okta.resource",
 				Label:      "Require MFA",
@@ -3212,11 +3212,11 @@ func TestAddFindingNoteUpdatesPersistedWorkflow(t *testing.T) {
 		findings: map[string]*ports.FindingRecord{
 			"finding-1": {
 				ID:           "finding-1",
-				TenantID:     "writer",
-				RuntimeID:    "writer-okta-audit",
+				TenantID:     "example",
+				RuntimeID:    "example-okta-audit",
 				Title:        "Okta Policy Rule Lifecycle Tampering",
 				Status:       "open",
-				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+				ResourceURNs: []string{"urn:cerebro:example:okta_resource:policyrule:pol-1"},
 			},
 		},
 	}
@@ -3236,17 +3236,17 @@ func TestAddFindingNoteUpdatesPersistedWorkflow(t *testing.T) {
 	if finding.Notes[0].CreatedAt.IsZero() {
 		t.Fatal("AddFindingNote().Notes[0].CreatedAt = zero, want non-zero")
 	}
-	annotationURN := "urn:cerebro:writer:annotation:finding-note:finding-1:" + finding.Notes[0].ID
+	annotationURN := "urn:cerebro:example:annotation:finding-note:finding-1:" + finding.Notes[0].ID
 	if _, ok := graphStore.entities[annotationURN]; !ok {
 		t.Fatalf("graph annotation %q missing", annotationURN)
 	}
-	if _, ok := graphStore.entities["urn:cerebro:writer:finding:finding-1"]; !ok {
+	if _, ok := graphStore.entities["urn:cerebro:example:finding:finding-1"]; !ok {
 		t.Fatal("graph finding anchor missing")
 	}
-	if _, ok := graphStore.links["urn:cerebro:writer:okta_resource:policyrule:pol-1|annotated_with|"+annotationURN]; !ok {
+	if _, ok := graphStore.links["urn:cerebro:example:okta_resource:policyrule:pol-1|annotated_with|"+annotationURN]; !ok {
 		t.Fatal("resource annotation link missing")
 	}
-	if _, ok := graphStore.links["urn:cerebro:writer:finding:finding-1|annotated_with|"+annotationURN]; !ok {
+	if _, ok := graphStore.links["urn:cerebro:example:finding:finding-1|annotated_with|"+annotationURN]; !ok {
 		t.Fatal("finding annotation link missing")
 	}
 	if len(appendLog.events) != 1 {
@@ -3262,11 +3262,11 @@ func TestLinkFindingTicketUpdatesPersistedWorkflow(t *testing.T) {
 		findings: map[string]*ports.FindingRecord{
 			"finding-1": {
 				ID:           "finding-1",
-				TenantID:     "writer",
-				RuntimeID:    "writer-okta-audit",
+				TenantID:     "example",
+				RuntimeID:    "example-okta-audit",
 				Title:        "Okta Policy Rule Lifecycle Tampering",
 				Status:       "open",
-				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+				ResourceURNs: []string{"urn:cerebro:example:okta_resource:policyrule:pol-1"},
 			},
 		},
 	}
@@ -3276,7 +3276,7 @@ func TestLinkFindingTicketUpdatesPersistedWorkflow(t *testing.T) {
 	finding, err := service.LinkFindingTicket(
 		context.Background(),
 		"finding-1",
-		"https://jira.writer.com/browse/ENG-123",
+		"https://jira.example.com/browse/ENG-123",
 		"ENG-123",
 		"ENG-123",
 	)
@@ -3286,20 +3286,20 @@ func TestLinkFindingTicketUpdatesPersistedWorkflow(t *testing.T) {
 	if got := len(finding.Tickets); got != 1 {
 		t.Fatalf("len(LinkFindingTicket().Tickets) = %d, want 1", got)
 	}
-	if got := finding.Tickets[0].URL; got != "https://jira.writer.com/browse/ENG-123" {
+	if got := finding.Tickets[0].URL; got != "https://jira.example.com/browse/ENG-123" {
 		t.Fatalf("LinkFindingTicket().Tickets[0].URL = %q, want ticket url", got)
 	}
 	if finding.Tickets[0].LinkedAt.IsZero() {
 		t.Fatal("LinkFindingTicket().Tickets[0].LinkedAt = zero, want non-zero")
 	}
-	ticketURN := findingGraphTicketURN("writer", finding.Tickets[0].URL)
+	ticketURN := findingGraphTicketURN("example", finding.Tickets[0].URL)
 	if _, ok := graphStore.entities[ticketURN]; !ok {
 		t.Fatalf("graph ticket %q missing", ticketURN)
 	}
-	if _, ok := graphStore.links["urn:cerebro:writer:okta_resource:policyrule:pol-1|tracked_by|"+ticketURN]; !ok {
+	if _, ok := graphStore.links["urn:cerebro:example:okta_resource:policyrule:pol-1|tracked_by|"+ticketURN]; !ok {
 		t.Fatal("resource ticket link missing")
 	}
-	if _, ok := graphStore.links["urn:cerebro:writer:finding:finding-1|tracked_by|"+ticketURN]; !ok {
+	if _, ok := graphStore.links["urn:cerebro:example:finding:finding-1|tracked_by|"+ticketURN]; !ok {
 		t.Fatal("finding ticket link missing")
 	}
 	if len(appendLog.events) != 1 {
@@ -3321,23 +3321,23 @@ func TestEvaluateSourceRuntimePreservesManualWorkflowFields(t *testing.T) {
 		claims: map[string]*ports.ClaimRecord{
 			"claim-1": {
 				ID:            "claim-1",
-				RuntimeID:     "writer-okta-audit",
+				RuntimeID:     "example-okta-audit",
 				SourceEventID: "okta-audit-2",
 			},
 		},
 	}
 	service := New(&stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {
-				Id:       "writer-okta-audit",
+			"example-okta-audit": {
+				Id:       "example-okta-audit",
 				SourceId: "okta",
-				TenantId: "writer",
+				TenantId: "example",
 			},
 		},
 	}, replayer, store, store, store, store)
 
 	first, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID:  "writer-okta-audit",
+		RuntimeID:  "example-okta-audit",
 		RuleID:     oktaPolicyRuleLifecycleTamperingRuleID,
 		EventLimit: 25,
 	})
@@ -3355,7 +3355,7 @@ func TestEvaluateSourceRuntimePreservesManualWorkflowFields(t *testing.T) {
 	if _, err := service.AddFindingNote(context.Background(), findingID, "Escalate to identity engineering."); err != nil {
 		t.Fatalf("AddFindingNote() error = %v", err)
 	}
-	if _, err := service.LinkFindingTicket(context.Background(), findingID, "https://jira.writer.com/browse/ENG-123", "ENG-123", "ENG-123"); err != nil {
+	if _, err := service.LinkFindingTicket(context.Background(), findingID, "https://jira.example.com/browse/ENG-123", "ENG-123", "ENG-123"); err != nil {
 		t.Fatalf("LinkFindingTicket() error = %v", err)
 	}
 	if _, err := service.ResolveFinding(context.Background(), findingID, "triaged"); err != nil {
@@ -3363,7 +3363,7 @@ func TestEvaluateSourceRuntimePreservesManualWorkflowFields(t *testing.T) {
 	}
 
 	second, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID:  "writer-okta-audit",
+		RuntimeID:  "example-okta-audit",
 		RuleID:     oktaPolicyRuleLifecycleTamperingRuleID,
 		EventLimit: 25,
 	})
@@ -3388,7 +3388,7 @@ func TestEvaluateSourceRuntimePreservesManualWorkflowFields(t *testing.T) {
 	if got := len(second.Findings[0].Tickets); got != 1 {
 		t.Fatalf("len(second EvaluateSourceRuntime().Findings[0].Tickets) = %d, want 1", got)
 	}
-	if got := second.Findings[0].Tickets[0].URL; got != "https://jira.writer.com/browse/ENG-123" {
+	if got := second.Findings[0].Tickets[0].URL; got != "https://jira.example.com/browse/ENG-123" {
 		t.Fatalf("second EvaluateSourceRuntime().Findings[0].Tickets[0].URL = %q, want ticket url", got)
 	}
 	if got := second.Findings[0].StatusReason; got != "triaged" {
@@ -3401,7 +3401,7 @@ func TestListEvaluationRunsReturnsFilteredRuns(t *testing.T) {
 		runs: map[string]*cerebrov1.FindingEvaluationRun{
 			"run-1": {
 				Id:         "run-1",
-				RuntimeId:  "writer-okta-audit",
+				RuntimeId:  "example-okta-audit",
 				RuleId:     oktaPolicyRuleLifecycleTamperingRuleID,
 				Status:     "completed",
 				StartedAt:  timestamppb.New(time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC)),
@@ -3409,7 +3409,7 @@ func TestListEvaluationRunsReturnsFilteredRuns(t *testing.T) {
 			},
 			"run-2": {
 				Id:         "run-2",
-				RuntimeId:  "writer-okta-audit",
+				RuntimeId:  "example-okta-audit",
 				RuleId:     oktaPolicyRuleLifecycleTamperingRuleID,
 				Status:     "failed",
 				StartedAt:  timestamppb.New(time.Date(2026, 4, 24, 11, 0, 0, 0, time.UTC)),
@@ -3420,10 +3420,10 @@ func TestListEvaluationRunsReturnsFilteredRuns(t *testing.T) {
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-okta-audit": {
-					Id:       "writer-okta-audit",
+				"example-okta-audit": {
+					Id:       "example-okta-audit",
 					SourceId: "okta",
-					TenantId: "writer",
+					TenantId: "example",
 				},
 			},
 		},
@@ -3434,7 +3434,7 @@ func TestListEvaluationRunsReturnsFilteredRuns(t *testing.T) {
 		store,
 	)
 	result, err := service.ListEvaluationRuns(context.Background(), ListEvaluationRunsRequest{
-		RuntimeID: "writer-okta-audit",
+		RuntimeID: "example-okta-audit",
 		RuleID:    oktaPolicyRuleLifecycleTamperingRuleID,
 		Status:    "completed",
 		Limit:     1,
@@ -3448,8 +3448,8 @@ func TestListEvaluationRunsReturnsFilteredRuns(t *testing.T) {
 	if got := result.Runs[0].GetId(); got != "run-1" {
 		t.Fatalf("ListEvaluationRuns().Runs[0].Id = %q, want run-1", got)
 	}
-	if got := store.runList.RuntimeID; got != "writer-okta-audit" {
-		t.Fatalf("ListEvaluationRuns().RuntimeID = %q, want writer-okta-audit", got)
+	if got := store.runList.RuntimeID; got != "example-okta-audit" {
+		t.Fatalf("ListEvaluationRuns().RuntimeID = %q, want example-okta-audit", got)
 	}
 	if got := store.runList.RuleID; got != oktaPolicyRuleLifecycleTamperingRuleID {
 		t.Fatalf("ListEvaluationRuns().RuleID = %q, want %q", got, oktaPolicyRuleLifecycleTamperingRuleID)
@@ -3464,7 +3464,7 @@ func TestGetEvaluationRunReturnsPersistedRun(t *testing.T) {
 		runs: map[string]*cerebrov1.FindingEvaluationRun{
 			"run-1": {
 				Id:        "run-1",
-				RuntimeId: "writer-okta-audit",
+				RuntimeId: "example-okta-audit",
 				RuleId:    oktaPolicyRuleLifecycleTamperingRuleID,
 				Status:    "completed",
 				StartedAt: timestamppb.New(time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC)),
@@ -3483,7 +3483,7 @@ func TestGetEvaluationRunReturnsPersistedRun(t *testing.T) {
 
 func TestListEvaluationRunsRequiresAvailableDependencies(t *testing.T) {
 	service := New(nil, nil, nil, nil, nil, nil)
-	if _, err := service.ListEvaluationRuns(context.Background(), ListEvaluationRunsRequest{RuntimeID: "writer-okta-audit"}); !errors.Is(err, ErrRuntimeUnavailable) {
+	if _, err := service.ListEvaluationRuns(context.Background(), ListEvaluationRunsRequest{RuntimeID: "example-okta-audit"}); !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("ListEvaluationRuns() error = %v, want %v", err, ErrRuntimeUnavailable)
 	}
 }
@@ -3500,25 +3500,25 @@ func TestListEvidenceReturnsFilteredRecords(t *testing.T) {
 		evidence: map[string]*cerebrov1.FindingEvidence{
 			"finding-evidence-1": {
 				Id:            "finding-evidence-1",
-				RuntimeId:     "writer-okta-audit",
+				RuntimeId:     "example-okta-audit",
 				RuleId:        oktaPolicyRuleLifecycleTamperingRuleID,
 				FindingId:     "finding-1",
 				RunId:         "run-1",
 				ClaimIds:      []string{"claim-1"},
 				EventIds:      []string{"okta-audit-2"},
-				GraphRootUrns: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
-				GraphPathUrns: []string{"urn:cerebro:writer:okta_user:00u2"},
+				GraphRootUrns: []string{"urn:cerebro:example:okta_resource:policyrule:pol-1"},
+				GraphPathUrns: []string{"urn:cerebro:example:okta_user:00u2"},
 				CreatedAt:     timestamppb.New(time.Date(2026, 4, 24, 12, 2, 0, 0, time.UTC)),
 			},
 			"finding-evidence-2": {
 				Id:            "finding-evidence-2",
-				RuntimeId:     "writer-okta-audit",
+				RuntimeId:     "example-okta-audit",
 				RuleId:        oktaPolicyRuleLifecycleTamperingRuleID,
 				FindingId:     "finding-2",
 				RunId:         "run-2",
 				ClaimIds:      []string{"claim-2"},
 				EventIds:      []string{"okta-audit-3"},
-				GraphRootUrns: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-2"},
+				GraphRootUrns: []string{"urn:cerebro:example:okta_resource:policyrule:pol-2"},
 				CreatedAt:     timestamppb.New(time.Date(2026, 4, 24, 12, 1, 0, 0, time.UTC)),
 			},
 		},
@@ -3526,10 +3526,10 @@ func TestListEvidenceReturnsFilteredRecords(t *testing.T) {
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-okta-audit": {
-					Id:       "writer-okta-audit",
+				"example-okta-audit": {
+					Id:       "example-okta-audit",
 					SourceId: "okta",
-					TenantId: "writer",
+					TenantId: "example",
 				},
 			},
 		},
@@ -3540,14 +3540,14 @@ func TestListEvidenceReturnsFilteredRecords(t *testing.T) {
 		store,
 	)
 	result, err := service.ListEvidence(context.Background(), ListEvidenceRequest{
-		RuntimeID:    "writer-okta-audit",
+		RuntimeID:    "example-okta-audit",
 		FindingID:    "finding-1",
 		RunID:        "run-1",
 		RuleID:       oktaPolicyRuleLifecycleTamperingRuleID,
 		ClaimID:      "claim-1",
 		EventID:      "okta-audit-2",
-		GraphRootURN: "urn:cerebro:writer:okta_resource:policyrule:pol-1",
-		GraphPathURN: "urn:cerebro:writer:okta_user:00u2",
+		GraphRootURN: "urn:cerebro:example:okta_resource:policyrule:pol-1",
+		GraphPathURN: "urn:cerebro:example:okta_user:00u2",
 		Limit:        1,
 	})
 	if err != nil {
@@ -3559,8 +3559,8 @@ func TestListEvidenceReturnsFilteredRecords(t *testing.T) {
 	if got := result.Evidence[0].GetId(); got != "finding-evidence-1" {
 		t.Fatalf("ListEvidence().Evidence[0].Id = %q, want finding-evidence-1", got)
 	}
-	if got := store.evidenceList.RuntimeID; got != "writer-okta-audit" {
-		t.Fatalf("ListEvidence().RuntimeID = %q, want writer-okta-audit", got)
+	if got := store.evidenceList.RuntimeID; got != "example-okta-audit" {
+		t.Fatalf("ListEvidence().RuntimeID = %q, want example-okta-audit", got)
 	}
 	if got := store.evidenceList.FindingID; got != "finding-1" {
 		t.Fatalf("ListEvidence().FindingID = %q, want finding-1", got)
@@ -3574,10 +3574,10 @@ func TestListEvidenceReturnsFilteredRecords(t *testing.T) {
 	if got := store.evidenceList.EventID; got != "okta-audit-2" {
 		t.Fatalf("ListEvidence().EventID = %q, want okta-audit-2", got)
 	}
-	if got := store.evidenceList.GraphRootURN; got != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+	if got := store.evidenceList.GraphRootURN; got != "urn:cerebro:example:okta_resource:policyrule:pol-1" {
 		t.Fatalf("ListEvidence().GraphRootURN = %q, want policy rule urn", got)
 	}
-	if got := store.evidenceList.GraphPathURN; got != "urn:cerebro:writer:okta_user:00u2" {
+	if got := store.evidenceList.GraphPathURN; got != "urn:cerebro:example:okta_user:00u2" {
 		t.Fatalf("ListEvidence().GraphPathURN = %q, want graph path urn", got)
 	}
 }
@@ -3587,7 +3587,7 @@ func TestGetEvidenceReturnsPersistedRecord(t *testing.T) {
 		evidence: map[string]*cerebrov1.FindingEvidence{
 			"finding-evidence-1": {
 				Id:        "finding-evidence-1",
-				RuntimeId: "writer-okta-audit",
+				RuntimeId: "example-okta-audit",
 				RuleId:    oktaPolicyRuleLifecycleTamperingRuleID,
 				FindingId: "finding-1",
 				RunId:     "run-1",
@@ -3607,7 +3607,7 @@ func TestGetEvidenceReturnsPersistedRecord(t *testing.T) {
 
 func TestListEvidenceRequiresAvailableDependencies(t *testing.T) {
 	service := New(nil, nil, nil, nil, nil, nil)
-	if _, err := service.ListEvidence(context.Background(), ListEvidenceRequest{RuntimeID: "writer-okta-audit"}); !errors.Is(err, ErrRuntimeUnavailable) {
+	if _, err := service.ListEvidence(context.Background(), ListEvidenceRequest{RuntimeID: "example-okta-audit"}); !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("ListEvidence() error = %v, want %v", err, ErrRuntimeUnavailable)
 	}
 }
@@ -3622,7 +3622,7 @@ func TestGetEvidenceRequiresAvailableDependencies(t *testing.T) {
 func newAuditEvent(id string, eventType string, outcome string) *cerebrov1.EventEnvelope {
 	return &cerebrov1.EventEnvelope{
 		Id:         id,
-		TenantId:   "writer",
+		TenantId:   "example",
 		SourceId:   "okta",
 		Kind:       "okta.audit",
 		OccurredAt: timestamppb.New(time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)),
@@ -3634,10 +3634,10 @@ func newAuditEvent(id string, eventType string, outcome string) *cerebrov1.Event
 			"resource_type":                     "PolicyRule",
 			"actor_id":                          "00u2",
 			"actor_type":                        "User",
-			"actor_alternate_id":                "admin@writer.com",
+			"actor_alternate_id":                "admin@example.com",
 			"actor_display_name":                "Admin Example",
 			"outcome_result":                    outcome,
-			ports.EventAttributeSourceRuntimeID: "writer-okta-audit",
+			ports.EventAttributeSourceRuntimeID: "example-okta-audit",
 		},
 	}
 }
@@ -3649,7 +3649,7 @@ func newGitHubDependabotAlertEvent(id string, state string) *cerebrov1.EventEnve
 	}
 	return &cerebrov1.EventEnvelope{
 		Id:         id,
-		TenantId:   "writer",
+		TenantId:   "example",
 		SourceId:   "github",
 		Kind:       "github.dependabot_alert",
 		OccurredAt: timestamppb.New(time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC)),
@@ -3671,7 +3671,7 @@ func newGitHubDependabotAlertEvent(id string, state string) *cerebrov1.EventEnve
 			"state":                             state,
 			"vulnerability_severity":            "high",
 			"vulnerable_version_range":          "< 0.31.0",
-			ports.EventAttributeSourceRuntimeID: "writer-github",
+			ports.EventAttributeSourceRuntimeID: "example-github",
 		},
 	}
 }
@@ -3683,14 +3683,14 @@ func newGitHubAuditSignalEvent(id string, attributes map[string]string) *cerebro
 		"operation_type":                    "modify",
 		"org":                               "writer",
 		"resource_id":                       firstNonEmpty(attributes["repo"], "writer"),
-		ports.EventAttributeSourceRuntimeID: "writer-github-audit",
+		ports.EventAttributeSourceRuntimeID: "example-github-audit",
 	}
 	for key, value := range attributes {
 		eventAttributes[key] = value
 	}
 	return &cerebrov1.EventEnvelope{
 		Id:         id,
-		TenantId:   "writer",
+		TenantId:   "example",
 		SourceId:   "github",
 		Kind:       "github.audit",
 		OccurredAt: timestamppb.New(time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)),
@@ -4014,15 +4014,15 @@ func decodeTelemetryPayload(t *testing.T, stderr string) map[string]any {
 func TestFindingEvaluationRunIDIsUniqueAcrossSameNanosecond(t *testing.T) {
 	t.Parallel()
 	startedAt := time.Unix(0, 1700000000000000000).UTC()
-	first := findingEvaluationRunID("writer-jira", "rule-a", startedAt)
-	second := findingEvaluationRunID("writer-jira", "rule-a", startedAt)
+	first := findingEvaluationRunID("example-jira", "rule-a", startedAt)
+	second := findingEvaluationRunID("example-jira", "rule-a", startedAt)
 	if first == second {
 		t.Fatalf("findingEvaluationRunID() = %q, want unique random suffix between calls", first)
 	}
-	collidingFirst := findingEvaluationRunID("writer-jira", "rule_a", startedAt)
-	collidingNormalized := findingEvaluationRunID("writer-jira", "rule-a", startedAt)
-	if strings.HasPrefix(collidingFirst, "finding-evaluation-run-writer-jira-rule-a-") &&
-		strings.HasPrefix(collidingNormalized, "finding-evaluation-run-writer-jira-rule-a-") {
+	collidingFirst := findingEvaluationRunID("example-jira", "rule_a", startedAt)
+	collidingNormalized := findingEvaluationRunID("example-jira", "rule-a", startedAt)
+	if strings.HasPrefix(collidingFirst, "finding-evaluation-run-example-jira-rule-a-") &&
+		strings.HasPrefix(collidingNormalized, "finding-evaluation-run-example-jira-rule-a-") {
 		// Strip the random suffix and ensure the deterministic hash differs so callers
 		// distinguishing by raw rule id do not collide on normalization alone.
 		firstHash := strings.Split(collidingFirst, "-")[7]

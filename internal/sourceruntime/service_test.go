@@ -368,7 +368,7 @@ func TestPutAndGetRuntimeRedactsSensitiveConfig(t *testing.T) {
 
 	putResp, err := service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
 		Runtime: &cerebrov1.SourceRuntime{
-			Id:       "writer-okta-users",
+			Id:       "example-okta-users",
 			SourceId: "okta",
 			Config: map[string]string{
 				"domain": "writer.okta.com",
@@ -384,14 +384,14 @@ func TestPutAndGetRuntimeRedactsSensitiveConfig(t *testing.T) {
 		t.Fatalf("Put().Runtime.Config[token] = %q, want %q", got, redactedValue)
 	}
 
-	getResp, err := service.Get(context.Background(), &cerebrov1.GetSourceRuntimeRequest{Id: "writer-okta-users"})
+	getResp, err := service.Get(context.Background(), &cerebrov1.GetSourceRuntimeRequest{Id: "example-okta-users"})
 	if err != nil {
 		t.Fatalf("Get() error = %v", err)
 	}
 	if got := getResp.GetRuntime().GetConfig()["token"]; got != redactedValue {
 		t.Fatalf("Get().Runtime.Config[token] = %q, want %q", got, redactedValue)
 	}
-	if got := store.runtimes["writer-okta-users"].GetConfig()["token"]; got != "super-secret" {
+	if got := store.runtimes["example-okta-users"].GetConfig()["token"]; got != "super-secret" {
 		t.Fatalf("stored runtime token = %q, want %q", got, "super-secret")
 	}
 }
@@ -451,7 +451,7 @@ func TestPutStoresSecretReferenceAfterResolvingForValidation(t *testing.T) {
 
 	_, err = service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
 		Runtime: &cerebrov1.SourceRuntime{
-			Id:       "writer-token",
+			Id:       "example-token",
 			SourceId: "token_source",
 			Config:   map[string]string{"token": "env:CEREBRO_SOURCE_TOKEN_SOURCE_TOKEN"},
 		},
@@ -462,10 +462,10 @@ func TestPutStoresSecretReferenceAfterResolvingForValidation(t *testing.T) {
 	if source.checked != "resolved-token" {
 		t.Fatalf("source checked token = %q, want resolved-token", source.checked)
 	}
-	if got := store.runtimes["writer-token"].GetConfig()["token"]; got != "env:CEREBRO_SOURCE_TOKEN_SOURCE_TOKEN" {
+	if got := store.runtimes["example-token"].GetConfig()["token"]; got != "env:CEREBRO_SOURCE_TOKEN_SOURCE_TOKEN" {
 		t.Fatalf("stored token = %q, want env reference", got)
 	}
-	if _, ok := store.runtimes["writer-token"].GetConfig()[runtimeProgressConfigHashKey]; ok {
+	if _, ok := store.runtimes["example-token"].GetConfig()[runtimeProgressConfigHashKey]; ok {
 		t.Fatal("stored sensitive-only env config wrote progress hash")
 	}
 }
@@ -481,8 +481,8 @@ func TestSyncResetsProgressWhenResolvedSelectorReferenceChanges(t *testing.T) {
 		"token":  "resolved-token",
 	})
 	store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-		"writer-token": {
-			Id:       "writer-token",
+		"example-token": {
+			Id:       "example-token",
 			SourceId: "token_source",
 			Config: map[string]string{
 				"domain":                     "env:CEREBRO_SOURCE_TOKEN_SOURCE_DOMAIN",
@@ -498,10 +498,10 @@ func TestSyncResetsProgressWhenResolvedSelectorReferenceChanges(t *testing.T) {
 	t.Setenv("CEREBRO_SOURCE_TOKEN_SOURCE_TOKEN", "resolved-token")
 	service := New(registry, store, &appendLog{}, nil).WithConfigResolver(config.ResolveSourceRuntimeConfigSecretReferences)
 
-	if _, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-token"}); err != nil {
+	if _, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "example-token"}); err != nil {
 		t.Fatalf("Sync() error = %v", err)
 	}
-	stored := store.runtimes["writer-token"]
+	stored := store.runtimes["example-token"]
 	if stored.GetCheckpoint() != nil || stored.GetNextCursor() != nil {
 		t.Fatalf("stored cursor progress was preserved after selector change: checkpoint=%v cursor=%v", stored.GetCheckpoint(), stored.GetNextCursor())
 	}
@@ -542,7 +542,7 @@ func TestProgressConfigHashIncludesNonSecretKeySelectors(t *testing.T) {
 
 func TestProgressConfigHashIgnoresPreservedLiteralEnvQuerySelectors(t *testing.T) {
 	runtime := &cerebrov1.SourceRuntime{
-		Id:           "writer-github",
+		Id:           "example-github",
 		SourceId:     "github",
 		Config:       map[string]string{"phrase": "env:prod"},
 		Checkpoint:   &cerebrov1.SourceCheckpoint{CursorOpaque: "old-cursor"},
@@ -662,8 +662,8 @@ func TestResolveConfigPreservesTrustedInternalRuntimeConfig(t *testing.T) {
 
 func TestListRedactsSensitiveConfigAndFilters(t *testing.T) {
 	service := New(nil, &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-		"writer-token": {Id: "writer-token", SourceId: "github", TenantId: "writer", Config: map[string]string{"token": "env:CEREBRO_TEST_TOKEN", "lookup_key": "prod", "group_key": "eng"}},
-		"other-token":  {Id: "other-token", SourceId: "okta", TenantId: "other", Config: map[string]string{"token": "env:OTHER"}},
+		"example-token": {Id: "example-token", SourceId: "github", TenantId: "writer", Config: map[string]string{"token": "env:CEREBRO_TEST_TOKEN", "lookup_key": "prod", "group_key": "eng"}},
+		"other-token":   {Id: "other-token", SourceId: "okta", TenantId: "other", Config: map[string]string{"token": "env:OTHER"}},
 	}}, nil, nil)
 
 	runtimes, err := service.List(context.Background(), ports.SourceRuntimeFilter{TenantID: "writer"})
@@ -726,8 +726,8 @@ func TestPutPreservesProgressWhenConfigIsUnchanged(t *testing.T) {
 	}
 	store := &runtimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-github": {
-				Id:       "writer-github",
+			"example-github": {
+				Id:       "example-github",
 				SourceId: "github",
 				TenantId: "writer",
 				Config:   map[string]string{"token": "test"},
@@ -743,7 +743,7 @@ func TestPutPreservesProgressWhenConfigIsUnchanged(t *testing.T) {
 
 	resp, err := service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
 		Runtime: &cerebrov1.SourceRuntime{
-			Id:       "writer-github",
+			Id:       "example-github",
 			SourceId: "github",
 			Config:   map[string]string{"token": "test"},
 		},
@@ -767,8 +767,8 @@ func TestPutMergesStoredTenantBeforeValidation(t *testing.T) {
 	}
 	store := &runtimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-tenant-check": {
-				Id:       "writer-tenant-check",
+			"example-tenant-check": {
+				Id:       "example-tenant-check",
 				SourceId: "tenant_check",
 				TenantId: "writer",
 				Config:   map[string]string{"lookup_key": "inventory"},
@@ -779,7 +779,7 @@ func TestPutMergesStoredTenantBeforeValidation(t *testing.T) {
 
 	resp, err := service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
 		Runtime: &cerebrov1.SourceRuntime{
-			Id:       "writer-tenant-check",
+			Id:       "example-tenant-check",
 			SourceId: "tenant_check",
 			Config:   map[string]string{"lookup_key": "inventory"},
 		},
@@ -804,7 +804,7 @@ func TestPutSourceConfigValidationErrorsAreInvalidRequests(t *testing.T) {
 
 	_, err = service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
 		Runtime: &cerebrov1.SourceRuntime{
-			Id:       "writer-github",
+			Id:       "example-github",
 			SourceId: "github",
 		},
 	})
@@ -822,7 +822,7 @@ func TestPutSourceReachabilityErrorsAreNotInvalidRequests(t *testing.T) {
 	service := New(registry, &runtimeStore{}, nil, nil)
 	_, err = service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
 		Runtime: &cerebrov1.SourceRuntime{
-			Id:       "writer-failing",
+			Id:       "example-failing",
 			SourceId: "failing",
 		},
 	})
@@ -842,7 +842,7 @@ func TestPutPreservesSuppliedProgressForNewRuntime(t *testing.T) {
 
 	resp, err := service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
 		Runtime: &cerebrov1.SourceRuntime{
-			Id:           "writer-github",
+			Id:           "example-github",
 			SourceId:     "github",
 			TenantId:     "writer",
 			Config:       map[string]string{"token": "test"},
@@ -857,10 +857,10 @@ func TestPutPreservesSuppliedProgressForNewRuntime(t *testing.T) {
 	if got := resp.GetRuntime().GetCheckpoint().GetCursorOpaque(); got != "restored" {
 		t.Fatalf("Put().Runtime.Checkpoint = %q, want restored", got)
 	}
-	if got := store.runtimes["writer-github"].GetNextCursor().GetOpaque(); got != "next" {
+	if got := store.runtimes["example-github"].GetNextCursor().GetOpaque(); got != "next" {
 		t.Fatalf("stored next cursor = %q, want next", got)
 	}
-	if got := store.runtimes["writer-github"].GetLastSyncedAt().AsTime(); !got.Equal(syncedAt.AsTime()) {
+	if got := store.runtimes["example-github"].GetLastSyncedAt().AsTime(); !got.Equal(syncedAt.AsTime()) {
 		t.Fatalf("stored last_synced_at = %s, want %s", got, syncedAt.AsTime())
 	}
 }
@@ -873,8 +873,8 @@ func TestPutIgnoresClientSuppliedProgress(t *testing.T) {
 	syncedAt := timestamppb.Now()
 	store := &runtimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-github": {
-				Id:           "writer-github",
+			"example-github": {
+				Id:           "example-github",
 				SourceId:     "github",
 				TenantId:     "writer",
 				Config:       map[string]string{"token": "test"},
@@ -888,7 +888,7 @@ func TestPutIgnoresClientSuppliedProgress(t *testing.T) {
 
 	resp, err := service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
 		Runtime: &cerebrov1.SourceRuntime{
-			Id:           "writer-github",
+			Id:           "example-github",
 			SourceId:     "github",
 			TenantId:     "writer",
 			Config:       map[string]string{"token": "test"},
@@ -903,10 +903,10 @@ func TestPutIgnoresClientSuppliedProgress(t *testing.T) {
 	if got := resp.GetRuntime().GetCheckpoint().GetCursorOpaque(); got != "stored" {
 		t.Fatalf("Put().Runtime.Checkpoint = %q, want stored", got)
 	}
-	if got := store.runtimes["writer-github"].GetNextCursor().GetOpaque(); got != "stored" {
+	if got := store.runtimes["example-github"].GetNextCursor().GetOpaque(); got != "stored" {
 		t.Fatalf("stored next cursor = %q, want stored", got)
 	}
-	if got := store.runtimes["writer-github"].GetLastSyncedAt().AsTime(); !got.Equal(syncedAt.AsTime()) {
+	if got := store.runtimes["example-github"].GetLastSyncedAt().AsTime(); !got.Equal(syncedAt.AsTime()) {
 		t.Fatalf("stored last synced at = %v, want %v", got, syncedAt.AsTime())
 	}
 }
@@ -937,8 +937,8 @@ func TestPutRestoresRedactedSensitiveConfigBeforeMerge(t *testing.T) {
 	}
 	store := &runtimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-github": {
-				Id:       "writer-github",
+			"example-github": {
+				Id:       "example-github",
 				SourceId: "github",
 				TenantId: "writer",
 				Config:   map[string]string{"token": "preserved-value"},
@@ -954,7 +954,7 @@ func TestPutRestoresRedactedSensitiveConfigBeforeMerge(t *testing.T) {
 
 	resp, err := service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
 		Runtime: &cerebrov1.SourceRuntime{
-			Id:       "writer-github",
+			Id:       "example-github",
 			SourceId: "github",
 			Config:   map[string]string{"token": redactedValue},
 		},
@@ -962,13 +962,13 @@ func TestPutRestoresRedactedSensitiveConfigBeforeMerge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Put() error = %v", err)
 	}
-	if got := store.runtimes["writer-github"].GetConfig()["token"]; got != "preserved-value" {
+	if got := store.runtimes["example-github"].GetConfig()["token"]; got != "preserved-value" {
 		t.Fatalf("stored token = %q, want preserved secret", got)
 	}
 	if got := resp.GetRuntime().GetConfig()["token"]; got != redactedValue {
 		t.Fatalf("response token = %q, want redacted", got)
 	}
-	if got := store.runtimes["writer-github"].GetNextCursor().GetOpaque(); got != "1" {
+	if got := store.runtimes["example-github"].GetNextCursor().GetOpaque(); got != "1" {
 		t.Fatalf("stored next cursor = %q, want preserved cursor", got)
 	}
 }
@@ -980,8 +980,8 @@ func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 	}
 	store := &runtimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-github": {
-				Id:       "writer-github",
+			"example-github": {
+				Id:       "example-github",
 				SourceId: "github",
 				Config:   map[string]string{"token": "test"},
 			},
@@ -991,7 +991,7 @@ func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 	service := New(registry, store, log, nil)
 
 	resp, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{
-		Id:        "writer-github",
+		Id:        "example-github",
 		PageLimit: 2,
 	})
 	if err != nil {
@@ -1006,8 +1006,8 @@ func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 	if len(log.events) != 2 {
 		t.Fatalf("len(appendLog.events) = %d, want 2", len(log.events))
 	}
-	if got := log.events[0].GetAttributes()[ports.EventAttributeSourceRuntimeID]; got != "writer-github" {
-		t.Fatalf("appended event source_runtime_id = %q, want %q", got, "writer-github")
+	if got := log.events[0].GetAttributes()[ports.EventAttributeSourceRuntimeID]; got != "example-github" {
+		t.Fatalf("appended event source_runtime_id = %q, want %q", got, "example-github")
 	}
 	if got := log.events[0].GetAttributes()["trace_id"]; got == "" {
 		t.Fatal("appended event trace_id is empty")
@@ -1015,7 +1015,7 @@ func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 	if got := log.events[0].GetAttributes()["span_id"]; got == "" {
 		t.Fatal("appended event span_id is empty")
 	}
-	runtime := store.runtimes["writer-github"]
+	runtime := store.runtimes["example-github"]
 	if runtime.GetCheckpoint().GetCursorOpaque() != "2" {
 		t.Fatalf("stored checkpoint cursor = %q, want %q", runtime.GetCheckpoint().GetCursorOpaque(), "2")
 	}
@@ -1037,8 +1037,8 @@ func TestSyncRuntimeContinuesPastEmptyPagesWithCursor(t *testing.T) {
 	}
 	store := &runtimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-empty-page": {
-				Id:       "writer-empty-page",
+			"example-empty-page": {
+				Id:       "example-empty-page",
 				SourceId: "empty_page",
 				TenantId: "writer",
 			},
@@ -1048,7 +1048,7 @@ func TestSyncRuntimeContinuesPastEmptyPagesWithCursor(t *testing.T) {
 	service := New(registry, store, log, nil)
 
 	resp, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{
-		Id:        "writer-empty-page",
+		Id:        "example-empty-page",
 		PageLimit: 2,
 	})
 	if err != nil {
@@ -1066,7 +1066,7 @@ func TestSyncRuntimeContinuesPastEmptyPagesWithCursor(t *testing.T) {
 	if store.putCount != 2 {
 		t.Fatalf("PutSourceRuntime calls = %d, want 2", store.putCount)
 	}
-	if got := store.runtimes["writer-empty-page"].GetNextCursor(); got != nil {
+	if got := store.runtimes["example-empty-page"].GetNextCursor(); got != nil {
 		t.Fatalf("stored next cursor = %#v, want nil", got)
 	}
 }
@@ -1080,8 +1080,8 @@ func TestSyncRuntimeStartsFromResumableCheckpointCursor(t *testing.T) {
 	checkpointCursor := `{"source":"cosmo.message","resumable_checkpoint":true,"since":"2026-05-14T00:00:00Z"}`
 	store := &runtimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-checkpoint": {
-				Id:       "writer-checkpoint",
+			"example-checkpoint": {
+				Id:       "example-checkpoint",
 				SourceId: "checkpoint_resume",
 				TenantId: "writer",
 				Checkpoint: &cerebrov1.SourceCheckpoint{
@@ -1092,7 +1092,7 @@ func TestSyncRuntimeStartsFromResumableCheckpointCursor(t *testing.T) {
 	}
 	service := New(registry, store, &appendLog{}, nil)
 
-	if _, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-checkpoint"}); err != nil {
+	if _, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "example-checkpoint"}); err != nil {
 		t.Fatalf("Sync() error = %v", err)
 	}
 	if source.seenCursor != checkpointCursor {
@@ -1107,8 +1107,8 @@ func TestSyncRuntimeSkipsNilEvents(t *testing.T) {
 	}
 	store := &runtimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-nil-event": {
-				Id:       "writer-nil-event",
+			"example-nil-event": {
+				Id:       "example-nil-event",
 				SourceId: "nil_event",
 				TenantId: "writer",
 			},
@@ -1117,7 +1117,7 @@ func TestSyncRuntimeSkipsNilEvents(t *testing.T) {
 	log := &appendLog{}
 	service := New(registry, store, log, nil)
 
-	resp, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-nil-event"})
+	resp, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "example-nil-event"})
 	if err != nil {
 		t.Fatalf("Sync() error = %v", err)
 	}
@@ -1130,8 +1130,8 @@ func TestSyncRuntimeSkipsNilEvents(t *testing.T) {
 	if got := log.events[0].GetId(); got != "event-after-nil" {
 		t.Fatalf("appended event id = %q, want event-after-nil", got)
 	}
-	if got := log.events[0].GetAttributes()[ports.EventAttributeSourceRuntimeID]; got != "writer-nil-event" {
-		t.Fatalf("appended event source_runtime_id = %q, want writer-nil-event", got)
+	if got := log.events[0].GetAttributes()[ports.EventAttributeSourceRuntimeID]; got != "example-nil-event" {
+		t.Fatalf("appended event source_runtime_id = %q, want example-nil-event", got)
 	}
 }
 
@@ -1220,8 +1220,8 @@ func TestPutRejectsTenantChanges(t *testing.T) {
 	}
 	store := &runtimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-github": {
-				Id:       "writer-github",
+			"example-github": {
+				Id:       "example-github",
 				SourceId: "github",
 				TenantId: "writer",
 				Config:   map[string]string{"token": "test"},
@@ -1237,9 +1237,9 @@ func TestPutRejectsTenantChanges(t *testing.T) {
 
 	resp, err := service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
 		Runtime: &cerebrov1.SourceRuntime{
-			Id:       "writer-github",
+			Id:       "example-github",
 			SourceId: "github",
-			TenantId: "writer-next",
+			TenantId: "example-next",
 			Config:   map[string]string{"token": "test"},
 		},
 	})
@@ -1249,7 +1249,7 @@ func TestPutRejectsTenantChanges(t *testing.T) {
 	if resp != nil {
 		t.Fatalf("Put() response = %#v, want nil", resp)
 	}
-	if got := store.runtimes["writer-github"].GetTenantId(); got != "writer" {
+	if got := store.runtimes["example-github"].GetTenantId(); got != "writer" {
 		t.Fatalf("stored tenant = %q, want writer", got)
 	}
 }
@@ -1261,8 +1261,8 @@ func TestSyncRuntimeProjectsWithRuntimeTenant(t *testing.T) {
 	}
 	store := &runtimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-users": {
-				Id:       "writer-okta-users",
+			"example-okta-users": {
+				Id:       "example-okta-users",
 				SourceId: "okta",
 				TenantId: "writer",
 				Config: map[string]string{
@@ -1278,7 +1278,7 @@ func TestSyncRuntimeProjectsWithRuntimeTenant(t *testing.T) {
 	service := New(registry, store, log, projector)
 
 	resp, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{
-		Id:        "writer-okta-users",
+		Id:        "example-okta-users",
 		PageLimit: 1,
 	})
 	if err != nil {
@@ -1302,8 +1302,8 @@ func TestSyncRuntimeProjectsWithRuntimeTenant(t *testing.T) {
 	if got := projector.events[0].GetTenantId(); got != "writer" {
 		t.Fatalf("projected event tenant_id = %q, want %q", got, "writer")
 	}
-	if got := projector.events[0].GetAttributes()[ports.EventAttributeSourceRuntimeID]; got != "writer-okta-users" {
-		t.Fatalf("projected event source_runtime_id = %q, want %q", got, "writer-okta-users")
+	if got := projector.events[0].GetAttributes()[ports.EventAttributeSourceRuntimeID]; got != "example-okta-users" {
+		t.Fatalf("projected event source_runtime_id = %q, want %q", got, "example-okta-users")
 	}
 }
 
@@ -1313,7 +1313,7 @@ func TestSyncRuntimeRequiresDependencies(t *testing.T) {
 		t.Fatalf("newFixtureRegistry() error = %v", err)
 	}
 	service := New(registry, nil, nil, nil)
-	_, err = service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-github"})
+	_, err = service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "example-github"})
 	if !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("Sync() error = %v, want ErrRuntimeUnavailable", err)
 	}
@@ -1326,7 +1326,7 @@ func TestValidationErrorsAreInvalidRequests(t *testing.T) {
 	}
 	service := New(registry, &runtimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer", Config: map[string]string{"token": "test"}},
+			"example-github": {Id: "example-github", SourceId: "github", TenantId: "writer", Config: map[string]string{"token": "test"}},
 		},
 	}, &appendLog{}, nil)
 	for _, tt := range []struct {
@@ -1342,7 +1342,7 @@ func TestValidationErrorsAreInvalidRequests(t *testing.T) {
 			return err
 		}()},
 		{name: "sync page limit", err: func() error {
-			_, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-github", PageLimit: maxPageLimit + 1})
+			_, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "example-github", PageLimit: maxPageLimit + 1})
 			return err
 		}()},
 	} {
