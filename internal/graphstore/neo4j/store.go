@@ -545,6 +545,140 @@ RETURN size(entities)`
 	return ports.ProjectionCleanupResult{EntitiesDeleted: uint32(deleted)}, nil
 }
 
+// CleanupEndpointOwnerIDLinks removes stale endpoint owner_id/user_id canonical identity links.
+func (s *Store) CleanupEndpointOwnerIDLinks(ctx context.Context, request ports.ProjectionLinkCleanupRequest) (ports.ProjectionLinkCleanupResult, error) {
+	if err := s.requireConfigured(); err != nil {
+		return ports.ProjectionLinkCleanupResult{}, err
+	}
+	if err := s.ensureSchema(ctx); err != nil {
+		return ports.ProjectionLinkCleanupResult{}, err
+	}
+	params, conditions, err := endpointOwnerIDLinkCleanupParams(request)
+	if err != nil {
+		return ports.ProjectionLinkCleanupResult{}, err
+	}
+	query := endpointOwnerIDLinkCleanupQuery(conditions, request.DryRun)
+	if request.DryRun {
+		var matched int64
+		if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+			value, err := queryOneValue(ctx, tx, query, params)
+			if err != nil {
+				return nil, err
+			}
+			matched = toInt64(value)
+			return nil, nil
+		}); err != nil {
+			return ports.ProjectionLinkCleanupResult{}, fmt.Errorf("cleanup endpoint owner-id links: %w", err)
+		}
+		return ports.ProjectionLinkCleanupResult{LinksMatched: uint32(matched)}, nil
+	}
+	var deleted int64
+	if _, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		value, err := queryOneValue(ctx, tx, query, params)
+		if err != nil {
+			return nil, err
+		}
+		deleted = toInt64(value)
+		return nil, nil
+	}); err != nil {
+		return ports.ProjectionLinkCleanupResult{}, fmt.Errorf("cleanup endpoint owner-id links: %w", err)
+	}
+	return ports.ProjectionLinkCleanupResult{LinksMatched: uint32(deleted), LinksDeleted: uint32(deleted)}, nil
+}
+
+func endpointOwnerIDLinkCleanupQuery(conditions []string, dryRun bool) string {
+	query := `MATCH (e:Entity)-[stale:RELATION]->(target:Entity)
+WHERE ` + strings.Join(conditions, " AND ") + `
+  AND EXISTS {
+    MATCH (e)-[replacement:RELATION {relation: 'has_identifier'}]->(replacementTarget:Entity)
+    WHERE replacement.tenant_id = stale.tenant_id
+      AND replacement.source_id IN $source_ids
+      AND any(stalePrefix IN $stale_prefixes WHERE target.urn STARTS WITH stalePrefix
+        AND any(replacementPrefix IN $replacement_prefixes WHERE replacementTarget.urn STARTS WITH replacementPrefix
+          AND substring(target.urn, size(stalePrefix)) = substring(replacementTarget.urn, size(replacementPrefix))))
+  }
+WITH stale, e, target
+ORDER BY e.urn, stale.relation, target.urn, elementId(stale)
+LIMIT $limit`
+	if dryRun {
+		return query + `
+RETURN count(stale)`
+	}
+	return query + `
+WITH collect(stale) AS victims
+FOREACH (link IN victims | DELETE link)
+RETURN size(victims)`
+}
+
+func endpointOwnerIDLinkCleanupParams(request ports.ProjectionLinkCleanupRequest) (map[string]any, []string, error) {
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID == "" {
+		return nil, nil, errors.New("tenant_id is required for endpoint owner-id link cleanup")
+	}
+	sourceIDs := endpointOwnerIDCleanupSources(request.SourceID)
+	if len(sourceIDs) == 0 {
+		return nil, nil, errors.New("unsupported endpoint owner-id cleanup source")
+	}
+	stalePrefixes, replacementPrefixes := endpointOwnerIDCleanupPrefixes(tenantID, sourceIDs)
+	limit := int64(request.Limit)
+	if limit <= 0 {
+		limit = defaultProjectionCleanupLimit
+	}
+	conditions := []string{
+		"e.tenant_id = $tenant_id",
+		"stale.tenant_id = $tenant_id",
+		"e.source_id IN $source_ids",
+		"stale.source_id IN $source_ids",
+		"e.entity_type IN $endpoint_entity_types",
+		"stale.relation IN $stale_relations",
+		"any(stalePrefix IN $stale_prefixes WHERE target.urn STARTS WITH stalePrefix)",
+	}
+	runtimeID := strings.TrimSpace(request.RuntimeID)
+	if runtimeID != "" {
+		conditions = append(conditions, "coalesce(stale.runtime_id, '') = $runtime_id")
+	}
+	params := map[string]any{
+		"tenant_id":             tenantID,
+		"source_ids":            sourceIDs,
+		"endpoint_entity_types": []string{"kolide.device", "kandji.device"},
+		"stale_relations":       []string{"owned_by", "represents_identity", "has_identifier"},
+		"stale_prefixes":        stalePrefixes,
+		"replacement_prefixes":  replacementPrefixes,
+		"limit":                 limit,
+	}
+	if runtimeID != "" {
+		params["runtime_id"] = runtimeID
+	}
+	return params, conditions, nil
+}
+
+func endpointOwnerIDCleanupSources(sourceID string) []string {
+	source := strings.ToLower(strings.TrimSpace(sourceID))
+	switch source {
+	case "":
+		return []string{"kolide", "kandji"}
+	case "kolide", "kandji":
+		return []string{source}
+	default:
+		return nil
+	}
+}
+
+func endpointOwnerIDCleanupPrefixes(tenantID string, sources []string) ([]string, []string) {
+	stalePrefixes := []string{
+		fmt.Sprintf("urn:cerebro:%s:identity:login:", tenantID),
+		fmt.Sprintf("urn:cerebro:%s:identifier:login:", tenantID),
+	}
+	replacementPrefixes := make([]string, 0, len(sources)*2)
+	for _, source := range sources {
+		replacementPrefixes = append(replacementPrefixes,
+			fmt.Sprintf("urn:cerebro:%s:endpoint_identifier:%s_owner_id:", tenantID, source),
+			fmt.Sprintf("urn:cerebro:%s:endpoint_identifier:%s_user_id:", tenantID, source),
+		)
+	}
+	return stalePrefixes, replacementPrefixes
+}
+
 // GetEntityNeighborhood returns one bounded root-centered graph neighborhood.
 func (s *Store) GetEntityNeighborhood(ctx context.Context, rootURN string, limit int) (*ports.EntityNeighborhood, error) {
 	normalizedRootURN := strings.TrimSpace(rootURN)

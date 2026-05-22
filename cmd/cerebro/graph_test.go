@@ -7,7 +7,21 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/bootstrap"
+	"github.com/writer/cerebro/internal/ports"
 )
+
+type cleanupStateStore struct {
+	request ports.ProjectionLinkCleanupRequest
+	result  ports.ProjectionLinkCleanupResult
+}
+
+func (s *cleanupStateStore) Ping(context.Context) error { return nil }
+
+func (s *cleanupStateStore) CleanupEndpointOwnerIDLinks(_ context.Context, request ports.ProjectionLinkCleanupRequest) (ports.ProjectionLinkCleanupResult, error) {
+	s.request = request
+	return s.result, nil
+}
 
 func TestParseGraphIngestArgs(t *testing.T) {
 	options, err := parseGraphIngestArgs([]string{
@@ -136,6 +150,52 @@ func TestParseGraphIngestRunsArgs(t *testing.T) {
 	}
 	if options.RuntimeID != "writer-github" || options.Status != "failed" || options.Limit != 7 {
 		t.Fatalf("options = %#v, want runtime/status/limit", options)
+	}
+}
+
+func TestParseGraphEndpointOwnerIDCleanupArgsDefaultsDryRun(t *testing.T) {
+	options, err := parseGraphEndpointOwnerIDCleanupArgs([]string{
+		"tenant_id=writer",
+		"source_id=kolide",
+		"runtime_id=writer-kolide",
+		"limit=25",
+	})
+	if err != nil {
+		t.Fatalf("parseGraphEndpointOwnerIDCleanupArgs() error = %v", err)
+	}
+	if !options.DryRun || options.TenantID != "writer" || options.SourceID != "kolide" || options.RuntimeID != "writer-kolide" || options.Limit != 25 {
+		t.Fatalf("options = %#v, want dry-run scoped cleanup", options)
+	}
+}
+
+func TestParseGraphEndpointOwnerIDCleanupArgsRequiresApplyForDeletes(t *testing.T) {
+	if _, err := parseGraphEndpointOwnerIDCleanupArgs([]string{"tenant_id=writer", "dry_run=false"}); err == nil {
+		t.Fatal("parseGraphEndpointOwnerIDCleanupArgs() error = nil, want apply requirement")
+	}
+	options, err := parseGraphEndpointOwnerIDCleanupArgs([]string{"tenant_id=writer", "apply=true"})
+	if err != nil {
+		t.Fatalf("parseGraphEndpointOwnerIDCleanupArgs(apply) error = %v", err)
+	}
+	if options.DryRun {
+		t.Fatalf("DryRun = true, want apply mode")
+	}
+}
+
+func TestCleanupEndpointOwnerIDLinksAllowsStateStoreOnly(t *testing.T) {
+	state := &cleanupStateStore{result: ports.ProjectionLinkCleanupResult{LinksMatched: 3, LinksDeleted: 0}}
+	result, err := cleanupEndpointOwnerIDLinks(context.Background(), bootstrap.Dependencies{StateStore: state}, graphEndpointOwnerIDCleanupOptions{
+		TenantID: "writer",
+		SourceID: "kolide",
+		DryRun:   true,
+	})
+	if err != nil {
+		t.Fatalf("cleanupEndpointOwnerIDLinks() error = %v", err)
+	}
+	if state.request.TenantID != "writer" || state.request.SourceID != "kolide" || !state.request.DryRun {
+		t.Fatalf("cleanup request = %#v, want scoped dry-run", state.request)
+	}
+	if result.StateStore.LinksMatched != 3 || result.GraphStore.LinksMatched != 0 {
+		t.Fatalf("cleanup result = %#v, want state-only result", result)
 	}
 }
 

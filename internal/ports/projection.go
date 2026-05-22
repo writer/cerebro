@@ -54,6 +54,21 @@ type ProjectionCleanupResult struct {
 	LinksDeleted    uint32
 }
 
+// ProjectionLinkCleanupRequest scopes a destructive projection-link cleanup pass.
+type ProjectionLinkCleanupRequest struct {
+	TenantID  string
+	SourceID  string
+	RuntimeID string
+	Limit     uint32
+	DryRun    bool
+}
+
+// ProjectionLinkCleanupResult reports links found/deleted by one cleanup pass.
+type ProjectionLinkCleanupResult struct {
+	LinksMatched uint32
+	LinksDeleted uint32
+}
+
 // ProjectionStateStore persists normalized current-state entities and links.
 type ProjectionStateStore interface {
 	StateStore
@@ -81,6 +96,11 @@ type ProjectionEntityDeleter interface {
 // ProjectionCleaner removes stale or orphaned projection artifacts in scoped batches.
 type ProjectionCleaner interface {
 	CleanupProjectedEntities(context.Context, ProjectionCleanupRequest) (ProjectionCleanupResult, error)
+}
+
+// EndpointOwnerIDLinkCleaner removes stale endpoint owner_id/user_id canonical identity links.
+type EndpointOwnerIDLinkCleaner interface {
+	CleanupEndpointOwnerIDLinks(context.Context, ProjectionLinkCleanupRequest) (ProjectionLinkCleanupResult, error)
 }
 
 // SourceProjector materializes source events into current-state and graph stores.

@@ -25,6 +25,7 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceregistry"
+	"github.com/writer/cerebro/internal/telemetry"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -119,6 +120,24 @@ type graphIngestRunsOptions struct {
 	Limit     int
 }
 
+type graphEndpointOwnerIDCleanupOptions struct {
+	TenantID  string
+	SourceID  string
+	RuntimeID string
+	Limit     uint32
+	DryRun    bool
+}
+
+type graphEndpointOwnerIDCleanupResult struct {
+	TenantID   string                            `json:"tenant_id"`
+	SourceID   string                            `json:"source_id,omitempty"`
+	RuntimeID  string                            `json:"runtime_id,omitempty"`
+	Limit      uint32                            `json:"limit,omitempty"`
+	DryRun     bool                              `json:"dry_run"`
+	StateStore ports.ProjectionLinkCleanupResult `json:"state_store"`
+	GraphStore ports.ProjectionLinkCleanupResult `json:"graph_store"`
+}
+
 type graphPathsResult struct {
 	Patterns   []graphstore.PathPattern `json:"patterns"`
 	Traversals []graphstore.Traversal   `json:"traversals"`
@@ -193,6 +212,22 @@ func runGraph(args []string) error {
 		return runGraphIngestRun(args[1:])
 	case "ingest-runs":
 		return runGraphIngestRuns(args[1:])
+	case "cleanup-endpoint-owner-id-links":
+		options, err := parseGraphEndpointOwnerIDCleanupArgs(args[1:])
+		if err != nil {
+			return err
+		}
+		ctx := context.Background()
+		deps, closeDeps, err := openGraphCleanupDependencies(ctx)
+		if err != nil {
+			return err
+		}
+		defer logClose(closeDeps)
+		result, err := cleanupEndpointOwnerIDLinks(ctx, deps, options)
+		if printErr := printJSON(result); printErr != nil {
+			return printErr
+		}
+		return err
 	case "counts", "neighborhood", "paths", "relation-counts", "integrity":
 		return runGraphInspect(args)
 	case "cve-impact", "package-exposure", "asset-vulns":
@@ -248,7 +283,7 @@ func runGraph(args []string) error {
 }
 
 func graphUsage() string {
-	return fmt.Sprintf("usage: %s graph [counts|neighborhood|paths|relation-counts|integrity|cve-impact|package-exposure|asset-vulns|ingest|ingest-runtime|ingest-run|ingest-runs|rebuild|inspect] ...", os.Args[0])
+	return fmt.Sprintf("usage: %s graph [counts|neighborhood|paths|relation-counts|integrity|cve-impact|package-exposure|asset-vulns|ingest|ingest-runtime|ingest-run|ingest-runs|cleanup-endpoint-owner-id-links|rebuild|inspect] ...", os.Args[0])
 }
 
 func graphIngestUsage() string {
@@ -269,6 +304,10 @@ func graphInspectUsage() string {
 
 func graphImpactUsage() string {
 	return fmt.Sprintf("usage: %s graph [cve-impact <CVE|GHSA>|package-exposure <package|purl>|asset-vulns <urn>] tenant_id=<tenant-id> [limit=N] [depth=N]", os.Args[0])
+}
+
+func graphEndpointOwnerIDCleanupUsage() string {
+	return fmt.Sprintf("usage: %s graph cleanup-endpoint-owner-id-links tenant_id=<tenant-id> [source_id=kolide|kandji] [runtime_id=<runtime-id>] [limit=N] [dry_run=true|apply=true]", os.Args[0])
 }
 
 func runGraphInspect(args []string) error {
@@ -432,6 +471,63 @@ func runGraphIngestRuns(args []string) error {
 	})
 }
 
+func cleanupEndpointOwnerIDLinks(ctx context.Context, deps bootstrap.Dependencies, options graphEndpointOwnerIDCleanupOptions) (result graphEndpointOwnerIDCleanupResult, err error) {
+	result = graphEndpointOwnerIDCleanupResult{
+		TenantID:  strings.TrimSpace(options.TenantID),
+		SourceID:  strings.TrimSpace(options.SourceID),
+		RuntimeID: strings.TrimSpace(options.RuntimeID),
+		Limit:     options.Limit,
+		DryRun:    options.DryRun,
+	}
+	ctx, span := telemetry.Start(ctx, "projection_cleanup.endpoint_owner_id_links", telemetry.Attrs(
+		telemetry.Field{Key: "tenant_id", Value: result.TenantID},
+		telemetry.Field{Key: "source_id", Value: result.SourceID},
+		telemetry.Field{Key: "runtime_id", Value: result.RuntimeID},
+		telemetry.Field{Key: "limit", Value: result.Limit},
+		telemetry.Field{Key: "dry_run", Value: result.DryRun},
+	))
+	defer func() {
+		status := "success"
+		fields := []telemetry.Field{
+			{Key: "state_links_matched", Value: result.StateStore.LinksMatched},
+			{Key: "state_links_deleted", Value: result.StateStore.LinksDeleted},
+			{Key: "graph_links_matched", Value: result.GraphStore.LinksMatched},
+			{Key: "graph_links_deleted", Value: result.GraphStore.LinksDeleted},
+		}
+		if err != nil {
+			status = "error"
+			fields = append(fields, telemetry.Field{Key: "error", Value: err.Error()})
+		}
+		telemetry.End(span, status, telemetry.Attrs(fields...))
+	}()
+	request := ports.ProjectionLinkCleanupRequest{
+		TenantID:  result.TenantID,
+		SourceID:  result.SourceID,
+		RuntimeID: result.RuntimeID,
+		Limit:     result.Limit,
+		DryRun:    result.DryRun,
+	}
+	cleaned := false
+	if cleaner, ok := deps.StateStore.(ports.EndpointOwnerIDLinkCleaner); ok {
+		cleaned = true
+		result.StateStore, err = cleaner.CleanupEndpointOwnerIDLinks(ctx, request)
+		if err != nil {
+			return result, fmt.Errorf("cleanup state endpoint owner-id links: %w", err)
+		}
+	}
+	if cleaner, ok := deps.GraphStore.(ports.EndpointOwnerIDLinkCleaner); ok {
+		cleaned = true
+		result.GraphStore, err = cleaner.CleanupEndpointOwnerIDLinks(ctx, request)
+		if err != nil {
+			return result, fmt.Errorf("cleanup graph endpoint owner-id links: %w", err)
+		}
+	}
+	if !cleaned {
+		return result, fmt.Errorf("endpoint owner-id link cleanup is unsupported by configured stores")
+	}
+	return result, nil
+}
+
 func parseGraphNeighborhoodArgs(args []string) (string, int, error) {
 	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 		return "", 0, usageError(graphInspectUsage())
@@ -577,6 +673,18 @@ func openGraphDependencies(ctx context.Context) (bootstrap.Dependencies, func() 
 	if deps.GraphStore == nil {
 		_ = closeDeps()
 		return bootstrap.Dependencies{}, nil, fmt.Errorf("graph store is required")
+	}
+	return deps, closeDeps, nil
+}
+
+func openGraphCleanupDependencies(ctx context.Context) (bootstrap.Dependencies, func() error, error) {
+	cfg, err := config.Load()
+	if err != nil {
+		return bootstrap.Dependencies{}, nil, fmt.Errorf("load config: %w", err)
+	}
+	deps, closeDeps, err := bootstrap.OpenDependencies(ctx, cfg)
+	if err != nil {
+		return bootstrap.Dependencies{}, nil, fmt.Errorf("open dependencies: %w", err)
 	}
 	return deps, closeDeps, nil
 }
@@ -743,6 +851,66 @@ func parseGraphIngestRunsArgs(args []string) (graphIngestRunsOptions, error) {
 		default:
 			return graphIngestRunsOptions{}, usageError(fmt.Sprintf("unsupported graph ingest-runs argument %q", key))
 		}
+	}
+	return options, nil
+}
+
+func parseGraphEndpointOwnerIDCleanupArgs(args []string) (graphEndpointOwnerIDCleanupOptions, error) {
+	options := graphEndpointOwnerIDCleanupOptions{DryRun: true}
+	apply := false
+	dryRunSet := false
+	for _, arg := range args {
+		key, value, ok := strings.Cut(arg, "=")
+		if !ok {
+			return graphEndpointOwnerIDCleanupOptions{}, usageError(fmt.Sprintf("expected key=value argument, got %q", arg))
+		}
+		switch strings.TrimSpace(key) {
+		case "tenant_id":
+			options.TenantID = strings.TrimSpace(value)
+		case "source_id":
+			options.SourceID = strings.ToLower(strings.TrimSpace(value))
+			if options.SourceID != "" && options.SourceID != "kolide" && options.SourceID != "kandji" {
+				return graphEndpointOwnerIDCleanupOptions{}, fmt.Errorf("source_id must be kolide or kandji")
+			}
+		case "runtime_id":
+			options.RuntimeID = strings.TrimSpace(value)
+		case "limit":
+			parsed, err := strconv.ParseUint(strings.TrimSpace(value), 10, 32)
+			if err != nil {
+				return graphEndpointOwnerIDCleanupOptions{}, fmt.Errorf("parse limit: %w", err)
+			}
+			if parsed == 0 {
+				return graphEndpointOwnerIDCleanupOptions{}, fmt.Errorf("limit must be positive")
+			}
+			options.Limit = uint32(parsed)
+		case "dry_run":
+			parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+			if err != nil {
+				return graphEndpointOwnerIDCleanupOptions{}, fmt.Errorf("parse dry_run: %w", err)
+			}
+			options.DryRun = parsed
+			dryRunSet = true
+		case "apply":
+			parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+			if err != nil {
+				return graphEndpointOwnerIDCleanupOptions{}, fmt.Errorf("parse apply: %w", err)
+			}
+			apply = parsed
+		default:
+			return graphEndpointOwnerIDCleanupOptions{}, usageError(fmt.Sprintf("unsupported graph cleanup-endpoint-owner-id-links argument %q", key))
+		}
+	}
+	if strings.TrimSpace(options.TenantID) == "" {
+		return graphEndpointOwnerIDCleanupOptions{}, usageError(graphEndpointOwnerIDCleanupUsage())
+	}
+	if apply {
+		if dryRunSet && options.DryRun {
+			return graphEndpointOwnerIDCleanupOptions{}, fmt.Errorf("apply=true conflicts with dry_run=true")
+		}
+		options.DryRun = false
+	}
+	if !options.DryRun && !apply {
+		return graphEndpointOwnerIDCleanupOptions{}, fmt.Errorf("apply=true is required before deleting endpoint owner-id links")
 	}
 	return options, nil
 }

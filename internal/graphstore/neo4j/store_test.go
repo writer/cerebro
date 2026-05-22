@@ -36,6 +36,29 @@ func TestProjectedEntityMergePreservesExistingLabelsForFallbackLabels(t *testing
 	}
 }
 
+func TestEndpointOwnerIDLinkCleanupQueryOrdersLimitedBatch(t *testing.T) {
+	_, conditions, err := endpointOwnerIDLinkCleanupParams(ports.ProjectionLinkCleanupRequest{
+		TenantID: "writer",
+		SourceID: "kolide",
+		Limit:    25,
+	})
+	if err != nil {
+		t.Fatalf("endpointOwnerIDLinkCleanupParams() error = %v", err)
+	}
+	query := endpointOwnerIDLinkCleanupQuery(conditions, false)
+	orderIndex := strings.Index(query, "ORDER BY e.urn, stale.relation, target.urn, elementId(stale)")
+	limitIndex := strings.Index(query, "LIMIT $limit")
+	if orderIndex == -1 {
+		t.Fatalf("endpointOwnerIDLinkCleanupQuery() missing deterministic ORDER BY:\n%s", query)
+	}
+	if limitIndex == -1 {
+		t.Fatalf("endpointOwnerIDLinkCleanupQuery() missing LIMIT:\n%s", query)
+	}
+	if orderIndex > limitIndex {
+		t.Fatalf("endpointOwnerIDLinkCleanupQuery() orders after limiting:\n%s", query)
+	}
+}
+
 func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 	if os.Getenv("CEREBRO_RUN_NEO4J_DOCKER") != "1" {
 		t.Skip("set CEREBRO_RUN_NEO4J_DOCKER=1 to run Neo4j Docker integration test")
@@ -234,6 +257,66 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 	if counts.Relations != 1 {
 		t.Fatalf("Counts(after delete) = %#v, want 1 relation", counts)
 	}
+
+	endpointURN := "urn:cerebro:writer:kolide_device:device-1"
+	identityURN := "urn:cerebro:writer:identity:login:user-1"
+	identifierURN := "urn:cerebro:writer:identifier:login:user-1"
+	emailIdentityURN := "urn:cerebro:writer:identity:email:alice@example.com"
+	unmigratedIdentityURN := "urn:cerebro:writer:identity:login:user-2"
+	replacementURN := "urn:cerebro:writer:endpoint_identifier:kolide_user_id:user-1"
+	for _, entity := range []*ports.ProjectedEntity{
+		{URN: endpointURN, TenantID: "writer", SourceID: "kolide", EntityType: "kolide.device", Label: "device-1"},
+		{URN: identityURN, TenantID: "writer", SourceID: "kolide", EntityType: "identity.login", Label: "user-1"},
+		{URN: identifierURN, TenantID: "writer", SourceID: "kolide", EntityType: "identifier.login", Label: "user-1"},
+		{URN: emailIdentityURN, TenantID: "writer", SourceID: "kolide", EntityType: "identity.email", Label: "alice@example.com"},
+		{URN: unmigratedIdentityURN, TenantID: "writer", SourceID: "kolide", EntityType: "identity.login", Label: "user-2"},
+		{URN: replacementURN, TenantID: "writer", SourceID: "kolide", EntityType: "endpoint.identifier", Label: "user-1"},
+	} {
+		if err := store.UpsertProjectedEntity(ctx, entity); err != nil {
+			t.Fatalf("UpsertProjectedEntity(%s) error = %v", entity.URN, err)
+		}
+	}
+	staleLinks := []*ports.ProjectedLink{
+		{TenantID: "writer", SourceID: "kolide", FromURN: endpointURN, Relation: "owned_by", ToURN: identityURN},
+		{TenantID: "writer", SourceID: "kolide", FromURN: endpointURN, Relation: "represents_identity", ToURN: identityURN},
+		{TenantID: "writer", SourceID: "kolide", FromURN: endpointURN, Relation: "has_identifier", ToURN: identifierURN},
+	}
+	preservedLinks := []*ports.ProjectedLink{
+		{TenantID: "writer", SourceID: "kolide", FromURN: endpointURN, Relation: "owned_by", ToURN: emailIdentityURN},
+		{TenantID: "writer", SourceID: "kolide", FromURN: endpointURN, Relation: "owned_by", ToURN: unmigratedIdentityURN},
+		{TenantID: "writer", SourceID: "kolide", FromURN: endpointURN, Relation: "has_identifier", ToURN: replacementURN},
+	}
+	for _, link := range append(staleLinks, preservedLinks...) {
+		if err := store.UpsertProjectedLink(ctx, link); err != nil {
+			t.Fatalf("UpsertProjectedLink(%s %s %s) error = %v", link.FromURN, link.Relation, link.ToURN, err)
+		}
+	}
+	cleanupRequest := ports.ProjectionLinkCleanupRequest{TenantID: "writer", SourceID: "kolide", DryRun: true}
+	cleanupResult, err := store.CleanupEndpointOwnerIDLinks(ctx, cleanupRequest)
+	if err != nil {
+		t.Fatalf("CleanupEndpointOwnerIDLinks(dry-run) error = %v", err)
+	}
+	if cleanupResult.LinksMatched != uint32(len(staleLinks)) || cleanupResult.LinksDeleted != 0 {
+		t.Fatalf("dry-run CleanupEndpointOwnerIDLinks() = %#v, want %d matches and no deletes", cleanupResult, len(staleLinks))
+	}
+	cleanupRequest.DryRun = false
+	cleanupResult, err = store.CleanupEndpointOwnerIDLinks(ctx, cleanupRequest)
+	if err != nil {
+		t.Fatalf("CleanupEndpointOwnerIDLinks() error = %v", err)
+	}
+	if cleanupResult.LinksMatched != uint32(len(staleLinks)) || cleanupResult.LinksDeleted != uint32(len(staleLinks)) {
+		t.Fatalf("CleanupEndpointOwnerIDLinks() = %#v, want %d deletes", cleanupResult, len(staleLinks))
+	}
+	for _, link := range staleLinks {
+		if neo4jProjectedLinkExists(t, ctx, store, link) {
+			t.Fatalf("stale link still exists: %s %s %s", link.FromURN, link.Relation, link.ToURN)
+		}
+	}
+	for _, link := range preservedLinks {
+		if !neo4jProjectedLinkExists(t, ctx, store, link) {
+			t.Fatalf("preserved link missing: %s %s %s", link.FromURN, link.Relation, link.ToURN)
+		}
+	}
 }
 
 func projectedEntityAttributes(t *testing.T, ctx context.Context, store *Store, urn string) map[string]string {
@@ -284,6 +367,21 @@ RETURN count(r), collect(r.attributes_json)`, map[string]any{
 		t.Fatalf("decode projected link attributes: %v", err)
 	}
 	return attributes
+}
+
+func neo4jProjectedLinkExists(t *testing.T, ctx context.Context, store *Store, link *ports.ProjectedLink) bool {
+	t.Helper()
+	value, err := store.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		return queryOneValue(ctx, tx, `MATCH (:Entity {urn: $from_urn})-[r:RELATION {relation: $relation}]->(:Entity {urn: $to_urn}) RETURN count(r)`, map[string]any{
+			"from_urn": link.FromURN,
+			"relation": link.Relation,
+			"to_urn":   link.ToURN,
+		})
+	})
+	if err != nil {
+		t.Fatalf("query projected link: %v", err)
+	}
+	return toInt64(value) > 0
 }
 
 func freePort(t *testing.T) int {

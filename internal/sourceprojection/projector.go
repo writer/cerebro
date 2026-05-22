@@ -5,16 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 var emailIdentifierPattern = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}`)
@@ -52,11 +51,9 @@ const (
 
 // Service materializes synced source events into current-state and graph stores.
 type Service struct {
-	state             ports.ProjectionStateStore
-	graph             ports.ProjectionGraphStore
-	registry          *Registry
-	cleanupMu         sync.Mutex
-	cleanupRequestRun map[string]struct{}
+	state    ports.ProjectionStateStore
+	graph    ports.ProjectionGraphStore
+	registry *Registry
 }
 
 // New constructs a source projector.
@@ -108,6 +105,17 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 	retractedLinksDeleted, err := s.deleteProjectedLinks(ctx, retractedLinks)
 	if err != nil {
 		return ports.ProjectionResult{}, err
+	}
+	if len(retractedLinks) != 0 {
+		telemetry.Event(ctx, "source_projection.retractions", telemetry.Attrs(
+			telemetry.Field{Key: "tenant_id", Value: event.GetTenantId()},
+			telemetry.Field{Key: "source_id", Value: event.GetSourceId()},
+			telemetry.Field{Key: "runtime_id", Value: strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID])},
+			telemetry.Field{Key: "event_kind", Value: event.GetKind()},
+			telemetry.Field{Key: "reason", Value: "endpoint_owner_id"},
+			telemetry.Field{Key: "links_matched", Value: len(retractedLinks)},
+			telemetry.Field{Key: "links_deleted", Value: retractedLinksDeleted},
+		))
 	}
 	for _, entity := range entities {
 		if s.state != nil {
@@ -286,7 +294,6 @@ func (s *Service) deleteProjectedEntities(ctx context.Context, urns []string) (u
 }
 
 func (s *Service) cleanupProjectedEntities(ctx context.Context, requests []ports.ProjectionCleanupRequest) (ports.ProjectionCleanupResult, error) {
-	requests = s.pendingCleanupRequests(requests)
 	if len(requests) == 0 {
 		return ports.ProjectionCleanupResult{}, nil
 	}
@@ -303,7 +310,6 @@ func (s *Service) cleanupProjectedEntities(ctx context.Context, requests []ports
 		result.EntitiesDeleted += cleanup.EntitiesDeleted
 		result.LinksDeleted += cleanup.LinksDeleted
 	}
-	s.markCleanupRequests(requests)
 	return result, nil
 }
 
@@ -331,54 +337,6 @@ func cleanupBatchLimit(request ports.ProjectionCleanupRequest) uint32 {
 		return defaultCleanupLimit
 	}
 	return request.Limit
-}
-
-func (s *Service) pendingCleanupRequests(requests []ports.ProjectionCleanupRequest) []ports.ProjectionCleanupRequest {
-	if s == nil || len(requests) == 0 {
-		return nil
-	}
-	s.cleanupMu.Lock()
-	defer s.cleanupMu.Unlock()
-	pending := make([]ports.ProjectionCleanupRequest, 0, len(requests))
-	for _, request := range requests {
-		if _, ok := s.cleanupRequestRun[projectionCleanupRequestKey(request)]; ok {
-			continue
-		}
-		pending = append(pending, request)
-	}
-	return pending
-}
-
-func (s *Service) markCleanupRequests(requests []ports.ProjectionCleanupRequest) {
-	if s == nil || len(requests) == 0 {
-		return
-	}
-	s.cleanupMu.Lock()
-	defer s.cleanupMu.Unlock()
-	if s.cleanupRequestRun == nil {
-		s.cleanupRequestRun = map[string]struct{}{}
-	}
-	for _, request := range requests {
-		s.cleanupRequestRun[projectionCleanupRequestKey(request)] = struct{}{}
-	}
-}
-
-func projectionCleanupRequestKey(request ports.ProjectionCleanupRequest) string {
-	entityTypes := append([]string(nil), request.EntityTypes...)
-	urnPrefixes := append([]string(nil), request.URNPrefixes...)
-	sort.Strings(entityTypes)
-	sort.Strings(urnPrefixes)
-	values := []string{
-		strings.TrimSpace(request.TenantID),
-		strings.TrimSpace(request.SourceID),
-		strings.TrimSpace(request.RuntimeID),
-		strings.TrimSpace(request.FindingID),
-		strings.Join(entityTypes, ","),
-		strings.Join(urnPrefixes, ","),
-		fmt.Sprintf("%t", request.OnlyIsolated),
-		fmt.Sprintf("%d", request.Limit),
-	}
-	return strings.Join(values, "|")
 }
 
 func deleteProjectedEntity(ctx context.Context, store any, urn string) (bool, error) {

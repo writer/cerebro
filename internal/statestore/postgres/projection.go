@@ -172,6 +172,148 @@ func projectedEntityCleanupConditions(request ports.ProjectionCleanupRequest) ([
 	return conditions, args, scoped
 }
 
+func projectedEndpointOwnerIDLinkCleanupSQL(request ports.ProjectionLinkCleanupRequest) (string, []any, error) {
+	conditions, replacementConditions, args, stalePrefixes, replacementPrefixes, err := projectedEndpointOwnerIDLinkCleanupConditions(request)
+	if err != nil {
+		return "", nil, err
+	}
+	suffixCondition := projectedEndpointOwnerIDReplacementSuffixCondition(stalePrefixes, replacementPrefixes, &args)
+	args = append(args, requestLimit(request.Limit))
+	limitPlaceholder := len(args)
+	victims := fmt.Sprintf(`
+WITH victims AS (
+  SELECT DISTINCT l.from_urn, l.relation, l.to_urn
+  FROM entity_links l
+  JOIN entities e ON e.urn = l.from_urn
+  WHERE %s
+    AND EXISTS (
+      SELECT 1
+      FROM entity_links replacement
+      WHERE replacement.from_urn = l.from_urn
+        AND replacement.tenant_id = l.tenant_id
+        AND replacement.relation = 'has_identifier'
+        AND %s
+        AND %s
+    )
+  ORDER BY l.from_urn, l.relation, l.to_urn
+  LIMIT $%d
+)`, strings.Join(conditions, " AND "), strings.Join(replacementConditions, " AND "), suffixCondition, limitPlaceholder)
+	if request.DryRun {
+		return victims + `
+SELECT COUNT(*) AS links_matched, 0 AS links_deleted
+FROM victims`, args, nil
+	}
+	return victims + `
+, deleted_links AS (
+  DELETE FROM entity_links l
+  USING victims v
+  WHERE l.from_urn = v.from_urn AND l.relation = v.relation AND l.to_urn = v.to_urn
+  RETURNING 1
+)
+SELECT
+  (SELECT COUNT(*) FROM victims) AS links_matched,
+  (SELECT COUNT(*) FROM deleted_links) AS links_deleted`, args, nil
+}
+
+func projectedEndpointOwnerIDLinkCleanupConditions(request ports.ProjectionLinkCleanupRequest) ([]string, []string, []any, []string, []string, error) {
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID == "" {
+		return nil, nil, nil, nil, nil, errors.New("tenant_id is required for endpoint owner-id link cleanup")
+	}
+	sources := endpointOwnerIDCleanupSources(request.SourceID)
+	if len(sources) == 0 {
+		return nil, nil, nil, nil, nil, errors.New("unsupported endpoint owner-id cleanup source")
+	}
+	stalePrefixes, replacementPrefixes := endpointOwnerIDCleanupPrefixes(tenantID, sources)
+	args := []any{tenantID}
+	conditions := []string{
+		"l.tenant_id = $1",
+		"e.tenant_id = $1",
+		"e.entity_type IN ('kolide.device', 'kandji.device')",
+		"l.relation IN ('owned_by', 'represents_identity', 'has_identifier')",
+		projectedPrefixCondition("l.to_urn", stalePrefixes, &args),
+	}
+	sourcePlaceholders := make([]string, 0, len(sources))
+	for _, source := range sources {
+		args = append(args, source)
+		sourcePlaceholders = append(sourcePlaceholders, fmt.Sprintf("$%d", len(args)))
+	}
+	conditions = append(conditions,
+		fmt.Sprintf("l.source_id IN (%s)", strings.Join(sourcePlaceholders, ", ")),
+		fmt.Sprintf("e.source_id IN (%s)", strings.Join(sourcePlaceholders, ", ")),
+	)
+	replacementConditions := []string{fmt.Sprintf("replacement.source_id IN (%s)", strings.Join(sourcePlaceholders, ", "))}
+	if runtimeID := strings.TrimSpace(request.RuntimeID); runtimeID != "" {
+		args = append(args, runtimeID)
+		conditions = append(conditions, fmt.Sprintf("l.runtime_id = $%d", len(args)))
+	}
+	return conditions, replacementConditions, args, stalePrefixes, replacementPrefixes, nil
+}
+
+func projectedEndpointOwnerIDReplacementSuffixCondition(stalePrefixes []string, replacementPrefixes []string, args *[]any) string {
+	pairs := make([]string, 0, len(stalePrefixes)*len(replacementPrefixes))
+	for _, stalePrefix := range stalePrefixes {
+		for _, replacementPrefix := range replacementPrefixes {
+			*args = append(*args, stalePrefix)
+			stalePlaceholder := len(*args)
+			*args = append(*args, replacementPrefix)
+			replacementPlaceholder := len(*args)
+			pairs = append(pairs, fmt.Sprintf("(LEFT(l.to_urn, LENGTH($%[1]d)) = $%[1]d AND LEFT(replacement.to_urn, LENGTH($%[2]d)) = $%[2]d AND SUBSTRING(l.to_urn FROM LENGTH($%[1]d) + 1) = SUBSTRING(replacement.to_urn FROM LENGTH($%[2]d) + 1))", stalePlaceholder, replacementPlaceholder))
+		}
+	}
+	if len(pairs) == 0 {
+		return "FALSE"
+	}
+	return "(" + strings.Join(pairs, " OR ") + ")"
+}
+
+func projectedPrefixCondition(column string, prefixes []string, args *[]any) string {
+	conditions := make([]string, 0, len(prefixes))
+	for _, prefix := range prefixes {
+		*args = append(*args, prefix)
+		placeholder := len(*args)
+		conditions = append(conditions, fmt.Sprintf("LEFT(%s, LENGTH($%d)) = $%d", column, placeholder, placeholder))
+	}
+	if len(conditions) == 0 {
+		return "FALSE"
+	}
+	return "(" + strings.Join(conditions, " OR ") + ")"
+}
+
+func endpointOwnerIDCleanupSources(sourceID string) []string {
+	source := strings.ToLower(strings.TrimSpace(sourceID))
+	switch source {
+	case "":
+		return []string{"kolide", "kandji"}
+	case "kolide", "kandji":
+		return []string{source}
+	default:
+		return nil
+	}
+}
+
+func endpointOwnerIDCleanupPrefixes(tenantID string, sources []string) ([]string, []string) {
+	stalePrefixes := []string{
+		fmt.Sprintf("urn:cerebro:%s:identity:login:", tenantID),
+		fmt.Sprintf("urn:cerebro:%s:identifier:login:", tenantID),
+	}
+	replacementPrefixes := make([]string, 0, len(sources)*2)
+	for _, source := range sources {
+		replacementPrefixes = append(replacementPrefixes,
+			fmt.Sprintf("urn:cerebro:%s:endpoint_identifier:%s_owner_id:", tenantID, source),
+			fmt.Sprintf("urn:cerebro:%s:endpoint_identifier:%s_user_id:", tenantID, source),
+		)
+	}
+	return stalePrefixes, replacementPrefixes
+}
+
+func requestLimit(limit uint32) uint32 {
+	if limit == 0 {
+		return defaultProjectionCleanupLimit
+	}
+	return limit
+}
+
 // UpsertProjectedEntity persists one normalized entity in the current-state store.
 func (s *Store) UpsertProjectedEntity(ctx context.Context, entity *ports.ProjectedEntity) error {
 	if entity == nil {
@@ -330,6 +472,28 @@ func (s *Store) CleanupProjectedEntities(ctx context.Context, request ports.Proj
 			return ports.ProjectionCleanupResult{}, nil
 		}
 		return ports.ProjectionCleanupResult{}, fmt.Errorf("cleanup projected entities: %w", err)
+	}
+	return result, nil
+}
+
+// CleanupEndpointOwnerIDLinks removes stale endpoint owner_id/user_id canonical identity links.
+func (s *Store) CleanupEndpointOwnerIDLinks(ctx context.Context, request ports.ProjectionLinkCleanupRequest) (ports.ProjectionLinkCleanupResult, error) {
+	if s == nil || s.db == nil {
+		return ports.ProjectionLinkCleanupResult{}, errors.New("postgres is not configured")
+	}
+	if err := s.ensureProjectionTables(ctx); err != nil {
+		return ports.ProjectionLinkCleanupResult{}, err
+	}
+	query, args, err := projectedEndpointOwnerIDLinkCleanupSQL(request)
+	if err != nil {
+		return ports.ProjectionLinkCleanupResult{}, err
+	}
+	var result ports.ProjectionLinkCleanupResult
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&result.LinksMatched, &result.LinksDeleted); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ports.ProjectionLinkCleanupResult{}, nil
+		}
+		return ports.ProjectionLinkCleanupResult{}, fmt.Errorf("cleanup endpoint owner-id links: %w", err)
 	}
 	return result, nil
 }
