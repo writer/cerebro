@@ -3,6 +3,9 @@ name: Propose Cerebro Image Tag
 on:
   schedule:
     - cron: '20 14 * * 1-5'
+  repository_dispatch:
+    types:
+      - cerebro-release-published
   workflow_dispatch:
     inputs:
       environment:
@@ -24,7 +27,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: propose-cerebro-image-tag-${{ github.event.inputs.environment || 'go-prod' }}
+  group: propose-cerebro-image-tag-${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'go-prod' }}
   cancel-in-progress: false
 
 env:
@@ -62,7 +65,8 @@ jobs:
         id: image
         shell: bash
         env:
-          INPUT_TAG: ${{ github.event.inputs.image_tag || '' }}
+          INPUT_TAG: ${{ github.event.client_payload.image_tag || github.event.inputs.image_tag || '' }}
+          EXPECTED_DIGEST: ${{ github.event.client_payload.image_digest || '' }}
         run: |
           set -euo pipefail
 
@@ -85,10 +89,40 @@ jobs:
             echo "Could not resolve manifest-list digest for ${GHCR_IMAGE}:${tag}" >&2
             exit 1
           fi
+          if [ -n "${EXPECTED_DIGEST}" ] && [ "${digest}" != "${EXPECTED_DIGEST}" ]; then
+            echo "Resolved digest ${digest} does not match dispatched digest ${EXPECTED_DIGEST}" >&2
+            exit 1
+          fi
 
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "digest=${digest}" >> "$GITHUB_OUTPUT"
           echo "Resolved ${GHCR_IMAGE}:${tag} ${digest}"
+
+      - name: Verify release metadata
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_TAG: ${{ steps.image.outputs.tag }}
+          DISPATCH_RELEASE_URL: ${{ github.event.client_payload.release_url || '' }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          release_json="$(gh release view "${IMAGE_TAG}" --repo writer/cerebro --json isDraft,isPrerelease,url,tagName)"
+          release_url="$(jq -r '.url // empty' <<<"${release_json}")"
+          if [ "$(jq -r '.isDraft' <<<"${release_json}")" = "true" ]; then
+            echo "Release ${IMAGE_TAG} is still a draft" >&2
+            exit 1
+          fi
+          if [ "${EVENT_NAME}" = "repository_dispatch" ] && [ "$(jq -r '.isPrerelease' <<<"${release_json}")" = "true" ]; then
+            echo "Repository-dispatch auto deploys only accept stable releases; ${IMAGE_TAG} is a prerelease" >&2
+            exit 1
+          fi
+          if [ -n "${DISPATCH_RELEASE_URL}" ] && [ -n "${release_url}" ] && [ "${DISPATCH_RELEASE_URL}" != "${release_url}" ]; then
+            echo "Dispatched release URL ${DISPATCH_RELEASE_URL} does not match GitHub release ${release_url}" >&2
+            exit 1
+          fi
+          echo "url=${release_url}" >> "$GITHUB_OUTPUT"
 
       - name: Verify image signature and attestations
         id: verify
@@ -120,7 +154,7 @@ jobs:
         id: update
         shell: bash
         env:
-          STACK_NAME: ${{ github.event.inputs.environment || 'go-prod' }}
+          STACK_NAME: ${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'go-prod' }}
           IMAGE_TAG: ${{ steps.image.outputs.tag }}
         run: |
           set -euo pipefail
@@ -138,15 +172,19 @@ jobs:
 
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
-      - name: Open pull request
+      - name: Apply stack config update
         if: steps.update.outputs.changed == 'true'
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
-          STACK_NAME: ${{ github.event.inputs.environment || 'go-prod' }}
+          GH_TOKEN: ${{ secrets.CEREBRO_AUTORELEASE_TOKEN || github.token }}
+          AUTORELEASE_TOKEN_CONFIGURED: ${{ secrets.CEREBRO_AUTORELEASE_TOKEN != '' }}
+          STACK_NAME: ${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'go-prod' }}
+          APPLY_MODE: ${{ github.event.client_payload.apply_mode || 'pull_request' }}
+          EVENT_NAME: ${{ github.event_name }}
           CURRENT_TAG: ${{ steps.update.outputs.current_tag }}
           IMAGE_TAG: ${{ steps.image.outputs.tag }}
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          RELEASE_URL: ${{ steps.release.outputs.url }}
           VERIFY_SUMMARY: ${{ steps.verify.outputs.verify_summary }}
         run: |
           set -euo pipefail
@@ -157,10 +195,51 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [ "${APPLY_MODE}" = "direct_push" ]; then
+            if [ "${STACK_NAME}" != "sec-dev" ]; then
+              echo "direct_push is only allowed for sec-dev; got ${STACK_NAME}" >&2
+              exit 1
+            fi
+            if [ "${EVENT_NAME}" != "repository_dispatch" ]; then
+              echo "direct_push is reserved for signed public release dispatches" >&2
+              exit 1
+            fi
+            if [ "${AUTORELEASE_TOKEN_CONFIGURED}" != "true" ]; then
+              echo "CEREBRO_AUTORELEASE_TOKEN is required for direct_push so the push triggers deploy workflows" >&2
+              exit 1
+            fi
+
+            changed_files="$(git diff --name-only)"
+            expected_file="infra/aws/Pulumi.${STACK_NAME}.yaml"
+            if [ "${changed_files}" != "${expected_file}" ]; then
+              echo "direct_push can only change ${expected_file}; got:" >&2
+              printf '%s\n' "${changed_files}" >&2
+              exit 1
+            fi
+            uv run --project infra python infra/scripts/validate_stack_config.py
+
+            git add "${expected_file}"
+            git commit -m "chore: deploy ${STACK_NAME} Cerebro ${IMAGE_TAG}" \
+              -m "Triggered by writer/cerebro release ${IMAGE_TAG}." \
+              -m "Image: ${GHCR_IMAGE}:${IMAGE_TAG}" \
+              -m "Digest: ${IMAGE_DIGEST}" \
+              -m "Release: ${RELEASE_URL}" \
+              -m "Supply chain: ${VERIFY_SUMMARY}"
+            git push "https://x-access-token:${GH_TOKEN}@github.com/WriterInternal/cerebro.git" "HEAD:main"
+            echo "Pushed ${STACK_NAME} deploy commit for ${IMAGE_TAG}; infra-deploy will deploy from main."
+            exit 0
+          fi
+
+          if [ "${APPLY_MODE}" != "pull_request" ]; then
+            echo "Unknown apply_mode ${APPLY_MODE}; expected pull_request or direct_push" >&2
+            exit 1
+          fi
+
           git checkout -B "${branch}"
           git add "infra/aws/Pulumi.${STACK_NAME}.yaml"
           git commit -m "${title}"
-          git push --force-with-lease origin "HEAD:${branch}"
+          git push --force-with-lease "https://x-access-token:${GH_TOKEN}@github.com/WriterInternal/cerebro.git" "HEAD:${branch}"
 
           body="$(mktemp)"
           {
@@ -174,11 +253,8 @@ jobs:
               echo "- Digest: \`${IMAGE_DIGEST}\`"
             fi
             echo "- Supply chain: ${VERIFY_SUMMARY}"
-            if gh release view "${IMAGE_TAG}" --repo writer/cerebro --json url --jq '.url' >/tmp/release_url 2>/dev/null; then
-              release_url="$(cat /tmp/release_url)"
-              if [ -n "${release_url}" ]; then
-                echo "- Release: ${release_url}"
-              fi
+            if [ -n "${RELEASE_URL}" ]; then
+              echo "- Release: ${RELEASE_URL}"
             fi
             echo
             echo "Deployment remains review-gated: merge this PR to let the existing mirror and Pulumi deploy workflows run."

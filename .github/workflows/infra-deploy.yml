@@ -36,6 +36,8 @@ jobs:
       contents: read
     outputs:
       aws: ${{ steps.filter.outputs.aws }}
+      aws_sec_dev: ${{ steps.filter.outputs.aws_sec_dev }}
+      aws_go_prod: ${{ steps.filter.outputs.aws_go_prod }}
       gcp: ${{ steps.filter.outputs.gcp }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -60,18 +62,31 @@ jobs:
             git diff --name-only "${base}" "${head}" > changed.txt
           fi
 
-          aws=false
+          aws_sec_dev=false
+          aws_go_prod=false
           gcp=false
-          if grep -Eq '^infra/aws/' changed.txt; then aws=true; fi
+          if grep -Eq '^infra/aws/Pulumi\.sec-dev\.yaml$' changed.txt; then aws_sec_dev=true; fi
+          if grep -Eq '^infra/aws/Pulumi\.go-prod\.yaml$' changed.txt; then aws_go_prod=true; fi
+          if grep -Eq '^infra/aws/' changed.txt && grep -Ev '^infra/aws/Pulumi\.(sec-dev|go-prod)\.yaml$' changed.txt | grep -Eq '^infra/aws/'; then
+            aws_sec_dev=true
+            aws_go_prod=true
+          fi
           if grep -Eq '^infra/gcp/' changed.txt; then gcp=true; fi
           if grep -Eq '^infra/(pyproject.toml|uv.lock)$|^infra/scripts/|^infra/tests/' changed.txt; then
-            aws=true
+            aws_sec_dev=true
+            aws_go_prod=true
             if grep -Ev '^infra/scripts/verify_(graph_health|source_runtime)_ecs.py$|^infra/tests/test_verify_(graph_health|source_runtime)_ecs.py$' changed.txt | grep -Eq '^infra/(pyproject.toml|uv.lock)$|^infra/scripts/|^infra/tests/'; then
               gcp=true
             fi
           fi
-          echo "aws=${aws}" >> "$GITHUB_OUTPUT"
-          echo "gcp=${gcp}" >> "$GITHUB_OUTPUT"
+          aws=false
+          if [ "${aws_sec_dev}" = "true" ] || [ "${aws_go_prod}" = "true" ]; then aws=true; fi
+          {
+            echo "aws=${aws}"
+            echo "aws_sec_dev=${aws_sec_dev}"
+            echo "aws_go_prod=${aws_go_prod}"
+            echo "gcp=${gcp}"
+          } >> "$GITHUB_OUTPUT"
           printf 'Changed infra paths:\n'
           cat changed.txt
 
@@ -118,7 +133,7 @@ jobs:
     name: Preview sec-dev
     runs-on: ubuntu-latest
     needs: changes
-    if: github.event_name == 'pull_request' && needs.changes.outputs.aws == 'true'
+    if: github.event_name == 'pull_request' && needs.changes.outputs.aws_sec_dev == 'true'
     permissions:
       id-token: write
       contents: read
@@ -174,7 +189,7 @@ jobs:
     name: Preview go-prod
     runs-on: ubuntu-latest
     needs: changes
-    if: github.event_name == 'pull_request' && needs.changes.outputs.aws == 'true'
+    if: github.event_name == 'pull_request' && needs.changes.outputs.aws_go_prod == 'true'
     permissions:
       id-token: write
       contents: read
@@ -230,7 +245,7 @@ jobs:
     name: Deploy sec-dev
     runs-on: ubuntu-latest
     needs: changes
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.aws == 'true'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.aws_sec_dev == 'true'
     permissions:
       id-token: write
       contents: read
@@ -310,7 +325,7 @@ jobs:
     name: Deploy go-prod
     runs-on: ubuntu-latest
     needs: changes
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.aws == 'true'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.aws_go_prod == 'true'
     environment: production
     permissions:
       id-token: write
