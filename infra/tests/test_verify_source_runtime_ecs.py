@@ -9,7 +9,9 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts.verify_source_runtime_ecs import (
     RuntimeSkippedError,
+    RuntimeTaskFailedError,
     RuntimeTarget,
+    VerificationResult,
     _declared_runtime_ids,
     _latest_active_task_definition,
     _run_and_verify_task_with_retries,
@@ -18,6 +20,7 @@ from scripts.verify_source_runtime_ecs import (
     _runtime_skip_reason,
     _runtime_skip_retryable,
     _schedule_suffix,
+    _stop_running_tasks,
     _summarize_log_messages,
     _task_family,
     _verification_command,
@@ -132,6 +135,46 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         with patch("scripts.verify_source_runtime_ecs._aws", side_effect=fake_aws):
             self.assertEqual(_run_task(target, "us-east-1", command), "task-arn")
 
+    def test_stop_running_tasks_stops_and_waits_for_runtime_family(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-cosmo-fact",
+            schedule_name="cosmo-fact",
+            rule_name="cerebro-sec-dev-orchestrator-cosmo-fact",
+            target={
+                "Arn": "cluster",
+                "EcsParameters": {
+                    "TaskDefinitionArn": "arn:aws:ecs:us-east-1:123456789012:task-definition/runtime:3",
+                    "NetworkConfiguration": {
+                        "awsvpcConfiguration": {
+                            "Subnets": ["subnet-1"],
+                            "SecurityGroups": ["sg-1"],
+                        }
+                    },
+                },
+            },
+        )
+        calls = []
+
+        def fake_aws(args: list[str], _region: str) -> dict[str, object]:
+            calls.append(args)
+            if args[:2] == ["ecs", "list-tasks"]:
+                self.assertIn("--desired-status", args)
+                self.assertIn("RUNNING", args)
+                self.assertIn("--family", args)
+                self.assertIn("runtime", args)
+                return {"taskArns": ["task-1"]}
+            if args[:2] == ["ecs", "stop-task"]:
+                self.assertIn("--reason", args)
+                return {"task": {"taskArn": "task-1"}}
+            if args[:2] == ["ecs", "describe-tasks"]:
+                return {"tasks": [{"taskArn": "task-1", "lastStatus": "STOPPED"}]}
+            raise AssertionError(f"unexpected args: {args}")
+
+        with patch("scripts.verify_source_runtime_ecs._aws", side_effect=fake_aws):
+            _stop_running_tasks(target, "us-east-1", "test cleanup", 10, 1)
+
+        self.assertEqual([call[:2] for call in calls], [["ecs", "list-tasks"], ["ecs", "stop-task"], ["ecs", "describe-tasks"]])
+
     def test_runtime_skip_reason_is_retryable_for_lease_contention(self) -> None:
         span = {"status": "skipped", "reason": "lease_not_acquired"}
 
@@ -172,6 +215,45 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         self.assertEqual(result.runtime_status, "skipped")
         self.assertEqual(result.sync_status, "skipped")
         self.assertEqual(result.graph_ingest_status, "skipped")
+
+    def test_run_verify_retries_failed_task_within_budget(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-cosmo-fact",
+            schedule_name="cosmo-fact",
+            rule_name="cerebro-sec-dev-orchestrator-cosmo-fact",
+            target={"Arn": "cluster"},
+        )
+        verified = VerificationResult(
+            runtime_id="writer-cosmo-fact",
+            task_arn="task-2",
+            exit_code=0,
+            runtime_status="completed",
+            sync_status="completed",
+            graph_ingest_status="completed",
+            events_appended=1,
+            pages_read=1,
+        )
+
+        with (
+            patch("scripts.verify_source_runtime_ecs.time.time", return_value=0),
+            patch("scripts.verify_source_runtime_ecs.time.sleep"),
+            patch("scripts.verify_source_runtime_ecs._run_task", side_effect=["task-1", "task-2"]) as run_task,
+            patch("scripts.verify_source_runtime_ecs._wait_for_task"),
+            patch(
+                "scripts.verify_source_runtime_ecs._verify_task",
+                side_effect=[RuntimeTaskFailedError("writer-cosmo-fact", "task-1", 1, "timeout"), verified],
+            ),
+        ):
+            result = _run_and_verify_task_with_retries(
+                target,
+                wait_timeout_seconds=100,
+                poll_seconds=10,
+                region="us-east-1",
+                failed_run_retry_seconds=60,
+            )
+
+        self.assertEqual(result, verified)
+        self.assertEqual(run_task.call_count, 2)
 
     def test_summarize_log_messages_limits_fields_and_length(self) -> None:
         summary = _summarize_log_messages(

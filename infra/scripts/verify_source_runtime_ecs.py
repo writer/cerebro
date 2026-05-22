@@ -49,6 +49,15 @@ class RuntimeSkippedError(RuntimeError):
         super().__init__(f"{runtime_id} orchestrator runtime status is skipped{detail}: {task_arn}")
 
 
+class RuntimeTaskFailedError(RuntimeError):
+    def __init__(self, runtime_id: str, task_arn: str, exit_code: int | None, log_summary: str) -> None:
+        self.runtime_id = runtime_id
+        self.task_arn = task_arn
+        self.exit_code = exit_code
+        detail = f"\nRecent task logs:\n{log_summary}" if log_summary else ""
+        super().__init__(f"{runtime_id} task exited with {exit_code}: {task_arn}{detail}")
+
+
 def _stack_name(path: Path) -> str:
     name = path.name
     if name.startswith("Pulumi.") and name.endswith(".yaml"):
@@ -259,6 +268,61 @@ def _run_task(target: RuntimeTarget, region: str, command_override: list[str] | 
     return tasks[0]["taskArn"]
 
 
+def _running_task_arns(target: RuntimeTarget, region: str) -> list[str]:
+    family = _task_family(target.target["EcsParameters"]["TaskDefinitionArn"])
+    response = _aws(
+        [
+            "ecs",
+            "list-tasks",
+            "--cluster",
+            target.target["Arn"],
+            "--desired-status",
+            "RUNNING",
+            "--family",
+            family,
+            "--max-results",
+            "100",
+        ],
+        region,
+    )
+    return [str(task_arn) for task_arn in response.get("taskArns") or []]
+
+
+def _stop_running_tasks(
+    target: RuntimeTarget,
+    region: str,
+    reason: str,
+    timeout_seconds: int,
+    poll_seconds: int,
+) -> None:
+    task_arns = _running_task_arns(target, region)
+    if not task_arns:
+        return
+    for task_arn in task_arns:
+        print(f"Stopping running {target.runtime_id} task before verification: {task_arn}", file=sys.stderr)
+        _aws(
+            [
+                "ecs",
+                "stop-task",
+                "--cluster",
+                target.target["Arn"],
+                "--task",
+                task_arn,
+                "--reason",
+                reason,
+            ],
+            region,
+        )
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        tasks = _describe_tasks(target.target["Arn"], task_arns, region)
+        running = [task.get("taskArn") for task in tasks if task.get("lastStatus") != "STOPPED"]
+        if not running:
+            return
+        time.sleep(poll_seconds)
+    raise TimeoutError(f"{len(task_arns)} running {target.runtime_id} task(s) did not stop within {timeout_seconds} seconds")
+
+
 def _latest_task(target: RuntimeTarget, max_age_minutes: int, region: str) -> str:
     family = _task_family(target.target["EcsParameters"]["TaskDefinitionArn"])
     response = _aws(
@@ -396,8 +460,7 @@ def _verify_task(target: RuntimeTarget, task_arn: str, region: str) -> Verificat
             log_summary = _summarize_log_messages(_task_logs(task, region))
         except Exception as exc:
             log_summary = f"unable to fetch task logs: {exc}"
-        detail = f"\nRecent task logs:\n{log_summary}" if log_summary else ""
-        raise RuntimeError(f"{target.runtime_id} task exited with {exit_code}: {task_arn}{detail}")
+        raise RuntimeTaskFailedError(target.runtime_id, task_arn, exit_code, log_summary)
 
     messages = _task_logs(task, region)
     runtime_span = _latest_span(messages, "orchestrator.runtime")
@@ -434,8 +497,21 @@ def _run_and_verify_task_with_retries(
     region: str,
     command_override: list[str] | None = None,
     allow_lease_contention_skip: bool = False,
+    stop_running_before_run: bool = False,
+    stop_timeout_seconds: int = 180,
+    failed_run_retry_seconds: int = 0,
 ) -> VerificationResult:
-    deadline = time.time() + wait_timeout_seconds
+    if stop_running_before_run:
+        _stop_running_tasks(
+            target,
+            region,
+            "Cerebro deploy verification is replacing a stuck source-runtime task",
+            stop_timeout_seconds,
+            poll_seconds,
+        )
+    start = time.time()
+    deadline = start + wait_timeout_seconds
+    failed_run_retry_deadline = start + failed_run_retry_seconds if failed_run_retry_seconds > 0 else None
     while True:
         remaining = max(1, int(deadline - time.time()))
         task_arn = _run_task(target, region, command_override)
@@ -470,6 +546,18 @@ def _run_and_verify_task_with_retries(
                 file=sys.stderr,
             )
             time.sleep(min(poll_seconds, remaining))
+        except RuntimeTaskFailedError:
+            now = time.time()
+            if failed_run_retry_deadline is None or now >= failed_run_retry_deadline:
+                raise
+            remaining = int(deadline - now)
+            if remaining <= poll_seconds:
+                raise
+            print(
+                f"WARNING: {target.runtime_id} verification task failed; retrying verification task",
+                file=sys.stderr,
+            )
+            time.sleep(min(poll_seconds, remaining))
 
 
 def _verify_account(stack: str, region: str) -> None:
@@ -498,7 +586,10 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Treat lease_not_acquired skips as non-fatal when another runtime task is already active.",
     )
+    parser.add_argument("--stop-running-before-run", action="store_true", help="Stop already-running tasks for the target runtime family before starting --run verification.")
+    parser.add_argument("--stop-timeout-seconds", type=int, default=180)
     parser.add_argument("--max-age-minutes", type=int, default=180)
+    parser.add_argument("--failed-run-retry-seconds", type=int, default=0, help="Retry failed verification tasks for this many seconds before failing.")
     parser.add_argument("--wait-timeout-seconds", type=int, default=900)
     parser.add_argument("--poll-seconds", type=int, default=10)
     args = parser.parse_args(argv)
@@ -535,6 +626,9 @@ def main(argv: list[str] | None = None) -> int:
                     args.region,
                     command_override,
                     args.allow_lease_contention_skip,
+                    args.stop_running_before_run,
+                    args.stop_timeout_seconds,
+                    args.failed_run_retry_seconds,
                 )
             )
         else:
