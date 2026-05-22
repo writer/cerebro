@@ -315,7 +315,7 @@ jobs:
       - name: Verify Cosmo source runtimes (sec-dev)
         shell: bash
         working-directory: infra
-        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --source-id cosmo --run --run-page-limit 1 --run-graph-page-limit 1 --run-event-limit 100 --max-age-minutes 60 --wait-timeout-seconds 3600
+        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --source-id cosmo --run --run-page-limit 1 --run-graph-page-limit 1 --run-event-limit 100 --allow-lease-contention-skip --max-age-minutes 60 --wait-timeout-seconds 3600
 
       - name: Refresh AWS credentials for public-endpoint runtime verification (sec-dev)
         if: steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
