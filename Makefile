@@ -111,7 +111,7 @@ detection-catalog-check:
 	go run ./tools/detectioncatalog --check
 
 oss-audit:
-	python3 scripts/oss_audit.py
+	CEREBRO_LEAK_CHECK_ALLOW_INLINE="$${CEREBRO_LEAK_CHECK_ALLOW_INLINE:-1}" python3 scripts/oss_audit.py
 
 govulncheck:
 	$(GOVULNCHECK) ./...

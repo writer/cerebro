@@ -80,6 +80,23 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 			if got := pull.Events[0].Kind; got != tt.kind {
 				t.Fatalf("Read(%s).Events[0].Kind = %q, want %q", tt.family, got, tt.kind)
 			}
+			if tt.family == familyRoleAssign {
+				if got := pull.Events[0].Attributes["subject_type"]; got != "service_account" {
+					t.Fatalf("Read(%s).Events[0].Attributes[subject_type] = %q, want service_account", tt.family, got)
+				}
+			}
+			if tt.family == familyServiceAcct {
+				urns, err := source.Discover(context.Background(), sourcecdk.NewConfig(config))
+				if err != nil {
+					t.Fatalf("Discover(%s) error = %v", tt.family, err)
+				}
+				if len(urns) != 1 {
+					t.Fatalf("len(Discover(%s)) = %d, want 1", tt.family, len(urns))
+				}
+				if got := urns[0].String(); got != "urn:cerebro:example-prod:gcp_service_account:sa@example-prod.iam.gserviceaccount.com" {
+					t.Fatalf("Discover(%s)[0] = %q, want email-based fixture urn", tt.family, got)
+				}
+			}
 		})
 	}
 }
