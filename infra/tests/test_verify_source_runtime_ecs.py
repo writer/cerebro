@@ -8,9 +8,11 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts.verify_source_runtime_ecs import (
+    RuntimeSkippedError,
     RuntimeTarget,
     _declared_runtime_ids,
     _latest_active_task_definition,
+    _run_and_verify_task_with_retries,
     _run_task,
     _runtime_id_from_command,
     _runtime_skip_reason,
@@ -141,6 +143,35 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
 
         self.assertEqual(_runtime_skip_reason(span), "disabled")
         self.assertFalse(_runtime_skip_retryable(_runtime_skip_reason(span)))
+
+    def test_run_verify_allows_lease_contention_skip(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-cosmo-fact",
+            schedule_name="cosmo-fact",
+            rule_name="cerebro-sec-dev-orchestrator-cosmo-fact",
+            target={"Arn": "cluster"},
+        )
+
+        with (
+            patch("scripts.verify_source_runtime_ecs._run_task", return_value="task-arn"),
+            patch("scripts.verify_source_runtime_ecs._wait_for_task"),
+            patch(
+                "scripts.verify_source_runtime_ecs._verify_task",
+                side_effect=RuntimeSkippedError("writer-cosmo-fact", "task-arn", "lease_not_acquired"),
+            ),
+        ):
+            result = _run_and_verify_task_with_retries(
+                target,
+                wait_timeout_seconds=60,
+                poll_seconds=10,
+                region="us-east-1",
+                allow_lease_contention_skip=True,
+            )
+
+        self.assertEqual(result.runtime_id, "writer-cosmo-fact")
+        self.assertEqual(result.runtime_status, "skipped")
+        self.assertEqual(result.sync_status, "skipped")
+        self.assertEqual(result.graph_ingest_status, "skipped")
 
     def test_summarize_log_messages_limits_fields_and_length(self) -> None:
         summary = _summarize_log_messages(

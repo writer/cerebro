@@ -433,6 +433,7 @@ def _run_and_verify_task_with_retries(
     poll_seconds: int,
     region: str,
     command_override: list[str] | None = None,
+    allow_lease_contention_skip: bool = False,
 ) -> VerificationResult:
     deadline = time.time() + wait_timeout_seconds
     while True:
@@ -444,6 +445,21 @@ def _run_and_verify_task_with_retries(
         except RuntimeSkippedError as exc:
             if not _runtime_skip_retryable(exc.reason):
                 raise
+            if allow_lease_contention_skip:
+                print(
+                    f"WARNING: {target.runtime_id} skipped due to {exc.reason}; treating as already busy",
+                    file=sys.stderr,
+                )
+                return VerificationResult(
+                    runtime_id=target.runtime_id,
+                    task_arn=task_arn,
+                    exit_code=0,
+                    runtime_status="skipped",
+                    sync_status="skipped",
+                    graph_ingest_status="skipped",
+                    events_appended=None,
+                    pages_read=None,
+                )
             remaining = int(deadline - time.time())
             if remaining <= poll_seconds:
                 raise RuntimeError(
@@ -477,6 +493,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--run-page-limit", type=int, help="Override page_limit for tasks started by --run.")
     parser.add_argument("--run-graph-page-limit", type=int, help="Override graph_page_limit for tasks started by --run.")
     parser.add_argument("--run-event-limit", type=int, help="Override event_limit for tasks started by --run.")
+    parser.add_argument(
+        "--allow-lease-contention-skip",
+        action="store_true",
+        help="Treat lease_not_acquired skips as non-fatal when another runtime task is already active.",
+    )
     parser.add_argument("--max-age-minutes", type=int, default=180)
     parser.add_argument("--wait-timeout-seconds", type=int, default=900)
     parser.add_argument("--poll-seconds", type=int, default=10)
@@ -513,6 +534,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.poll_seconds,
                     args.region,
                     command_override,
+                    args.allow_lease_contention_skip,
                 )
             )
         else:
