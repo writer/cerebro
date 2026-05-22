@@ -307,13 +307,13 @@ jobs:
       - name: Verify Cosmo source runtimes (sec-dev)
         shell: bash
         working-directory: infra
-        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --source-id cosmo --run --max-age-minutes 60
+        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --source-id cosmo --run --max-age-minutes 60 --wait-timeout-seconds 3600
 
       - name: Refresh AWS public-endpoint runtimes (sec-dev)
         if: steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
         shell: bash
         working-directory: infra
-        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --source-id aws --family public_endpoint --run --max-age-minutes 60
+        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --source-id aws --family public_endpoint --run --max-age-minutes 60 --wait-timeout-seconds 3600
 
       - name: Verify graph health (sec-dev)
         shell: bash
@@ -388,13 +388,13 @@ jobs:
       - name: Verify Cosmo source runtimes (go-prod)
         shell: bash
         working-directory: infra
-        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.go-prod.yaml --source-id cosmo --run --max-age-minutes 60
+        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.go-prod.yaml --source-id cosmo --run --max-age-minutes 60 --wait-timeout-seconds 3600
 
       - name: Refresh AWS public-endpoint runtimes (go-prod)
         if: steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
         shell: bash
         working-directory: infra
-        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.go-prod.yaml --source-id aws --family public_endpoint --run --max-age-minutes 60
+        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.go-prod.yaml --source-id aws --family public_endpoint --run --max-age-minutes 60 --wait-timeout-seconds 3600
 
       - name: Verify graph health (go-prod)
         shell: bash
@@ -651,7 +651,7 @@ jobs:
         working-directory: infra
         env:
           STACK_NAME: ${{ github.event.inputs.environment }}
-        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --source-id cosmo --run --max-age-minutes 60
+        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --source-id cosmo --run --max-age-minutes 60 --wait-timeout-seconds 3600
 
       - name: Refresh AWS public-endpoint runtimes (AWS)
         if: "!startsWith(github.event.inputs.environment, 'gcp-') && steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'"
@@ -659,7 +659,7 @@ jobs:
         working-directory: infra
         env:
           STACK_NAME: ${{ github.event.inputs.environment }}
-        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --source-id aws --family public_endpoint --run --max-age-minutes 60
+        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --source-id aws --family public_endpoint --run --max-age-minutes 60 --wait-timeout-seconds 3600
 
       - name: Verify graph health (AWS)
         if: "!startsWith(github.event.inputs.environment, 'gcp-')"
