@@ -391,6 +391,66 @@ config:
         - page_limit=10
         - graph_page_limit=100
         - event_limit=1000
+    - name: aurelius-verdicts-live
+      scheduleExpression: rate(15 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aurelius-verdicts
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aurelius-findings-live
+      scheduleExpression: rate(15 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aurelius-findings
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=2000
+    - name: aurelius-image-scans-live
+      scheduleExpression: rate(15 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aurelius-image-scans
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aurelius-catalog-promotions-live
+      scheduleExpression: rate(30 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aurelius-catalog-promotions
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=500
+    - name: aurelius-policy-exceptions-live
+      scheduleExpression: rate(30 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aurelius-policy-exceptions
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=500
+  cerebro:s3Sources:
+    - name: aurelius
+      bucket: writer-aurelius-scan-results-prod
+      region: us-east-1
+      prefixes:
+        - "aurelius/verdicts/"
+        - "aurelius/findings/"
+        - "aurelius/image_scans/"
+        - "aurelius/catalog_promotions/"
+        - "aurelius/policy_exceptions/"
   cerebro:sourceRuntimes:
     - id: writer-github-audit
       sourceId: github
@@ -679,6 +739,56 @@ config:
         per_page: "100"
         tenant_id: writer
         token: env:CEREBRO_SOURCE_COSMO_TOKEN
+    - id: writer-aurelius-verdicts
+      sourceId: aurelius
+      tenantId: writer
+      config:
+        bucket: writer-aurelius-scan-results-prod
+        family: verdict
+        page_size: "100"
+        prefix: aurelius/verdicts/
+        region: us-east-1
+        tenant_id: writer
+    - id: writer-aurelius-findings
+      sourceId: aurelius
+      tenantId: writer
+      config:
+        bucket: writer-aurelius-scan-results-prod
+        family: finding
+        page_size: "100"
+        prefix: aurelius/findings/
+        region: us-east-1
+        tenant_id: writer
+    - id: writer-aurelius-image-scans
+      sourceId: aurelius
+      tenantId: writer
+      config:
+        bucket: writer-aurelius-scan-results-prod
+        family: image_scan
+        page_size: "100"
+        prefix: aurelius/image_scans/
+        region: us-east-1
+        tenant_id: writer
+    - id: writer-aurelius-catalog-promotions
+      sourceId: aurelius
+      tenantId: writer
+      config:
+        bucket: writer-aurelius-scan-results-prod
+        family: catalog_promotion
+        page_size: "100"
+        prefix: aurelius/catalog_promotions/
+        region: us-east-1
+        tenant_id: writer
+    - id: writer-aurelius-policy-exceptions
+      sourceId: aurelius
+      tenantId: writer
+      config:
+        bucket: writer-aurelius-scan-results-prod
+        family: policy_exception
+        page_size: "100"
+        prefix: aurelius/policy_exceptions/
+        region: us-east-1
+        tenant_id: writer
   cerebro:enableWaf: true
   cerebro:albInternal: true
   cerebro:albIngressCidrs:
