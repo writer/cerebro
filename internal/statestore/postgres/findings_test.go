@@ -517,6 +517,23 @@ func TestUpsertFindingStatementContainsTombstoneClamp(t *testing.T) {
 	}
 }
 
+// The reopen CASE must restrict the open-emit reopen path to resolved rows only.
+// Suppressed rows are a manual decision and MUST be preserved across emits.
+func TestUpsertFindingStatementPreservesSuppressedOnOpenEmit(t *testing.T) {
+	if strings.Contains(upsertFindingStatement, "findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open'") {
+		t.Fatalf("upsertFindingStatement still includes 'suppressed' in the reopen-on-open-emit set; suppressed rows must be preserved:\n%s", upsertFindingStatement)
+	}
+	if !strings.Contains(upsertFindingStatement, "WHEN findings.status = 'suppressed' THEN findings.status") {
+		t.Fatalf("upsertFindingStatement missing explicit suppressed-preservation branch in the status CASE:\n%s", upsertFindingStatement)
+	}
+	if !strings.Contains(upsertFindingStatement, "WHEN findings.status = 'suppressed' THEN findings.status_reason") {
+		t.Fatalf("upsertFindingStatement missing suppressed-preservation branch in the status_reason CASE; suppression reason would be overwritten on emit:\n%s", upsertFindingStatement)
+	}
+	if !strings.Contains(upsertFindingStatement, "WHEN findings.status = 'suppressed' THEN findings.status_updated_at") {
+		t.Fatalf("upsertFindingStatement missing suppressed-preservation branch in the status_updated_at CASE; status_updated_at would be advanced on emit:\n%s", upsertFindingStatement)
+	}
+}
+
 func newUpsertFinding(id, fingerprint, status string, observed time.Time) *ports.FindingRecord {
 	return &ports.FindingRecord{
 		ID:              id,
@@ -609,6 +626,96 @@ func TestUpsertFinding_ReopensNonTombstonedResolved(t *testing.T) {
 	}
 	if rowCount != 1 {
 		t.Fatalf("rows for fingerprint = %d, want exactly 1", rowCount)
+	}
+}
+
+func TestUpsertFinding_PreservesSuppressedOnOpenEmit(t *testing.T) {
+	ctx := context.Background()
+	store := tombstoneStoreFromEnv(t)
+	resetTombstoneSchema(t, ctx, store)
+	ensureTombstoneSchema(t, ctx, store)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	fp := fmt.Sprintf("fp-suppress-%d", now.UnixNano())
+	baseID := fmt.Sprintf("finding-suppress-%d", now.UnixNano())
+
+	if _, err := store.UpsertFinding(ctx, newUpsertFinding(baseID, fp, "open", now.Add(-time.Hour))); err != nil {
+		t.Fatalf("seed finding: %v", err)
+	}
+
+	suppressedAt := now.Add(-30 * time.Minute)
+	if _, err := store.db.ExecContext(ctx,
+		`UPDATE findings
+            SET status = 'suppressed',
+                status_reason = 'analyst suppressed: false positive',
+                status_updated_at = $2,
+                assignee = 'alice@writer.com'
+          WHERE id = $1`,
+		baseID, suppressedAt); err != nil {
+		t.Fatalf("manually suppress: %v", err)
+	}
+
+	var (
+		beforeStatus, beforeReason, beforeAssignee string
+		beforeUpdatedAt                            sql.NullTime
+		beforeTombstoned                           bool
+	)
+	if err := store.db.QueryRowContext(ctx,
+		`SELECT status, status_reason, status_updated_at, assignee, tombstoned FROM findings WHERE id = $1`, baseID,
+	).Scan(&beforeStatus, &beforeReason, &beforeUpdatedAt, &beforeAssignee, &beforeTombstoned); err != nil {
+		t.Fatalf("snapshot before: %v", err)
+	}
+	if beforeStatus != "suppressed" {
+		t.Fatalf("pre-emit status = %q, want suppressed", beforeStatus)
+	}
+
+	emitted, err := store.UpsertFinding(ctx, newUpsertFinding(baseID, fp, "open", now))
+	if err != nil {
+		t.Fatalf("open emit upsert: %v", err)
+	}
+	if emitted.Status != "suppressed" {
+		t.Fatalf("post-emit status = %q, want suppressed (suppressed is a manual decision and must be preserved)", emitted.Status)
+	}
+	if emitted.ID != baseID {
+		t.Fatalf("post-emit id = %q, want %q", emitted.ID, baseID)
+	}
+
+	var (
+		afterStatus, afterReason, afterAssignee string
+		afterUpdatedAt                          sql.NullTime
+		afterTombstoned                         bool
+	)
+	if err := store.db.QueryRowContext(ctx,
+		`SELECT status, status_reason, status_updated_at, assignee, tombstoned FROM findings WHERE id = $1`, baseID,
+	).Scan(&afterStatus, &afterReason, &afterAssignee, &afterUpdatedAt, &afterTombstoned); err != nil {
+		t.Fatalf("snapshot after: %v", err)
+	}
+
+	if afterStatus != beforeStatus {
+		t.Fatalf("status changed: before=%q after=%q", beforeStatus, afterStatus)
+	}
+	if afterReason != beforeReason {
+		t.Fatalf("status_reason changed: before=%q after=%q (suppression reason must be preserved)", beforeReason, afterReason)
+	}
+	if afterAssignee != beforeAssignee {
+		t.Fatalf("assignee changed: before=%q after=%q", beforeAssignee, afterAssignee)
+	}
+	if afterTombstoned != beforeTombstoned {
+		t.Fatalf("tombstoned changed: before=%v after=%v", beforeTombstoned, afterTombstoned)
+	}
+	if !afterUpdatedAt.Valid || !beforeUpdatedAt.Valid {
+		t.Fatalf("status_updated_at must be set both before and after: before=%v after=%v", beforeUpdatedAt, afterUpdatedAt)
+	}
+	if !afterUpdatedAt.Time.Equal(beforeUpdatedAt.Time) {
+		t.Fatalf("status_updated_at advanced on emit: before=%v after=%v (must be preserved for suppressed rows)", beforeUpdatedAt.Time, afterUpdatedAt.Time)
+	}
+
+	var rowCount int
+	if err := store.db.QueryRowContext(ctx, `SELECT count(*) FROM findings WHERE fingerprint = $1`, fp).Scan(&rowCount); err != nil {
+		t.Fatalf("count rows: %v", err)
+	}
+	if rowCount != 1 {
+		t.Fatalf("rows for fingerprint = %d, want exactly 1 (no fresh row should be minted for a suppressed active row)", rowCount)
 	}
 }
 

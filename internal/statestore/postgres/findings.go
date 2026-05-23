@@ -176,7 +176,8 @@ DO UPDATE SET
   severity = EXCLUDED.severity,
   status = CASE
     WHEN findings.tombstoned THEN findings.status
-    WHEN findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open' AND NOT findings.tombstoned THEN EXCLUDED.status
+    WHEN findings.status = 'suppressed' THEN findings.status
+    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT findings.tombstoned THEN EXCLUDED.status
     ELSE EXCLUDED.status
   END,
   summary = EXCLUDED.summary,
@@ -212,10 +213,12 @@ DO UPDATE SET
   due_at = COALESCE(EXCLUDED.due_at, findings.due_at),
   status_reason = CASE
     WHEN findings.tombstoned THEN findings.status_reason
+    WHEN findings.status = 'suppressed' THEN findings.status_reason
     ELSE EXCLUDED.status_reason
   END,
   status_updated_at = CASE
     WHEN findings.tombstoned THEN findings.status_updated_at
+    WHEN findings.status = 'suppressed' THEN findings.status_updated_at
     ELSE EXCLUDED.status_updated_at
   END,
   first_observed_at = LEAST(findings.first_observed_at, EXCLUDED.first_observed_at),
