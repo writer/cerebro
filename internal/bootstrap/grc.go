@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -161,8 +162,42 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings), Limit: scope.Limit})
-	if err != nil {
+	findingIDs := grcFindingIDs(findings)
+	var (
+		evidence       []*cerebrov1.FindingEvidence
+		findingSummary *ports.FindingSummary
+		evidenceCount  *int
+		wg             sync.WaitGroup
+		errs           = make(chan error, 3)
+	)
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		var err error
+		evidence, err = a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingIDs: findingIDs, Limit: scope.Limit})
+		if err != nil {
+			errs <- err
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		var err error
+		findingSummary, err = a.grcFindingSummary(r, runtimes, grcFindingFilter{Status: "open"})
+		if err != nil {
+			errs <- err
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		var err error
+		evidenceCount, err = a.grcEvidenceCount(r, runtimes, grcEvidenceFilter{FindingIDs: findingIDs})
+		if err != nil {
+			errs <- err
+		}
+	}()
+	wg.Wait()
+	close(errs)
+	if err := <-errs; err != nil {
 		writeGRCError(w, err)
 		return
 	}
@@ -171,16 +206,6 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 	findingItems := grcFindingItems(findings, runtimeSourceIDs, evidenceCounts)
 	evidenceItems := grcEvidenceItems(evidence, grcFindingTitleMap(findings))
 	controls := grcControlItems(findingItems, evidenceItems)
-	findingSummary, err := a.grcFindingSummary(r, runtimes, grcFindingFilter{Status: "open"})
-	if err != nil {
-		writeGRCError(w, err)
-		return
-	}
-	evidenceCount, err := a.grcEvidenceCount(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings)})
-	if err != nil {
-		writeGRCError(w, err)
-		return
-	}
 
 	writeJSON(w, http.StatusOK, grcDashboardResponse{
 		Summary:     grcBuildSummary(findingItems, controls, evidenceItems, runtimes, findingSummary, evidenceCount),
