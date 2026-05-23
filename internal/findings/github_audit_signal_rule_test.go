@@ -141,7 +141,7 @@ func TestGitHubAnchorRequiredFields(t *testing.T) {
 		})
 	}
 
-	t.Run("secret scanning source-state anchor", func(t *testing.T) {
+	t.Run("secret scanning audit anchor", func(t *testing.T) {
 		rule := newGitHubSecretScanningAlertCreatedRule()
 		metadataRule, ok := rule.(MetadataRule)
 		if !ok {
@@ -153,20 +153,21 @@ func TestGitHubAnchorRequiredFields(t *testing.T) {
 				t.Fatalf("RequiredAttributes = %v, want durable anchor field %q", definition.RequiredAttributes, field)
 			}
 		}
-		runtime := &cerebrov1.SourceRuntime{Id: "github-secret-scanning-runtime", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "secret_scanning_alert"}}
+		runtime := &cerebrov1.SourceRuntime{Id: "github-secret-scanning-runtime", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}}
 		base := map[string]string{
+			"action": "secret_scanning_alert.create",
 			"number": "12",
 			"repo":   "writer/cerebro",
 			"state":  "open",
 		}
-		records, err := rule.Evaluate(context.Background(), runtime, githubSecretScanningAlertEvent("github-secret-alert-anchor-valid", cloneGitHubTestAttrs(base)))
+		records, err := rule.Evaluate(context.Background(), runtime, githubAuditEvent("github-secret-alert-anchor-valid", cloneGitHubTestAttrs(base)))
 		if err != nil || len(records) != 1 {
 			t.Fatalf("Evaluate(valid secret-scanning anchor attrs) = (%v, %v), want one finding", records, err)
 		}
 		for _, missing := range []string{"repo", "number"} {
 			attrs := cloneGitHubTestAttrs(base)
 			delete(attrs, missing)
-			records, err := rule.Evaluate(context.Background(), runtime, githubSecretScanningAlertEvent("github-secret-alert-anchor-missing-"+missing, attrs))
+			records, err := rule.Evaluate(context.Background(), runtime, githubAuditEvent("github-secret-alert-anchor-missing-"+missing, attrs))
 			if err != nil {
 				t.Fatalf("Evaluate(secret scanning missing %s) error = %v", missing, err)
 			}
@@ -190,8 +191,8 @@ func TestGitHubSecretScanningAlertCreated(t *testing.T) {
 	if definition.Lifecycle.Anchor != AnchorSourceState {
 		t.Fatalf("Lifecycle.Anchor = %q, want %q", definition.Lifecycle.Anchor, AnchorSourceState)
 	}
-	if !cloudStringSlicesEqual(definition.EventKinds, []string{"github.secret_scanning_alert"}) {
-		t.Fatalf("EventKinds = %v, want github.secret_scanning_alert source-state events", definition.EventKinds)
+	if !cloudStringSlicesEqual(definition.EventKinds, []string{"github.audit"}) {
+		t.Fatalf("EventKinds = %v, want github.audit events", definition.EventKinds)
 	}
 	wantFields := []string{"repo", "number"}
 	if !cloudStringSlicesEqual(definition.FingerprintFields, wantFields) {
@@ -202,9 +203,14 @@ func TestGitHubSecretScanningAlertCreated(t *testing.T) {
 			t.Fatalf("FingerprintFields still contains %q: %v", field, definition.FingerprintFields)
 		}
 	}
+	counterRule, ok := rule.(CounterEventRule)
+	if !ok {
+		t.Fatal("github-secret-scanning-alert-created does not implement CounterEventRule")
+	}
 
-	runtime := &cerebrov1.SourceRuntime{Id: "example-github-secret-scanning", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "secret_scanning_alert"}}
-	first := githubSecretScanningAlertEvent("github-secret-alert-writer-cerebro-12", map[string]string{
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-secret-scanning", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}}
+	first := githubAuditEvent("github-secret-alert-writer-cerebro-12", map[string]string{
+		"action":         "secret_scanning_alert.create",
 		"audit_event_id": "github-audit-secret-alert-created",
 		"html_url":       "https://github.com/writer/cerebro/security/secret-scanning/12",
 		"number":         "12",
@@ -212,7 +218,8 @@ func TestGitHubSecretScanningAlertCreated(t *testing.T) {
 		"secret_type":    "github_personal_access_token",
 		"state":          "open",
 	})
-	second := githubSecretScanningAlertEvent("github-secret-alert-writer-cerebro-12-second", map[string]string{
+	second := githubAuditEvent("github-secret-alert-writer-cerebro-12-second", map[string]string{
+		"action":         "secret_scanning_alert.reopen",
 		"audit_event_id": "github-audit-secret-alert-created-2",
 		"number":         "12",
 		"repo":           "writer/cerebro",
@@ -249,33 +256,92 @@ func TestGitHubSecretScanningAlertCreated(t *testing.T) {
 	if !slices.Contains(firstFinding.ResourceURNs, "urn:cerebro:writer:github_repo:writer/cerebro") {
 		t.Fatalf("ResourceURNs = %v, want repo context retained", firstFinding.ResourceURNs)
 	}
+	openAnchor := counterRule.OpenAnchor(firstFinding.Attributes)
+	if openAnchor == "" {
+		t.Fatalf("OpenAnchor(%v) = empty, want repo/number anchor", firstFinding.Attributes)
+	}
+	closeAnchor, closes := counterRule.CloseOnEvent(githubAuditEvent("github-secret-alert-close-anchor", map[string]string{
+		"action": "secret_scanning_alert.resolve",
+		"number": "12",
+		"repo":   "writer/cerebro",
+		"state":  "resolved",
+	}))
+	if !closes || closeAnchor != openAnchor {
+		t.Fatalf("CloseOnEvent(resolve) = (%q, %v), want (%q, true)", closeAnchor, closes, openAnchor)
+	}
 
-	for _, state := range []string{"resolved", "revoked", "false_positive"} {
-		event := githubSecretScanningAlertEvent("github-secret-alert-"+state, map[string]string{
+	for _, tc := range []struct {
+		action string
+		state  string
+	}{
+		{action: "secret_scanning_alert.resolve", state: "resolved"},
+		{action: "secret_scanning_alert.revoke", state: "revoked"},
+		{action: "secret_scanning_alert.false_positive", state: "resolved"},
+	} {
+		event := githubAuditEvent("github-secret-alert-"+strings.TrimPrefix(tc.action, "secret_scanning_alert."), map[string]string{
+			"action": tc.action,
 			"number": "12",
 			"repo":   "writer/cerebro",
-			"state":  state,
+			"state":  tc.state,
 		})
 		records, err = rule.Evaluate(context.Background(), runtime, event)
 		if err != nil {
-			t.Fatalf("Evaluate(%s) error = %v", state, err)
+			t.Fatalf("Evaluate(%s) error = %v", tc.action, err)
 		}
 		if len(records) != 0 {
-			t.Fatalf("Evaluate(%s) returned %d findings, want 0 once alert is not open", state, len(records))
+			t.Fatalf("Evaluate(%s) returned %d findings, want 0 once alert is not open", tc.action, len(records))
 		}
 	}
 
-	auditEvent := githubAuditEvent("github-audit-secret-alert-created", map[string]string{
-		"action": "secret_scanning_alert.create",
+	sourceStateEvent := githubSecretScanningAlertEvent("github-secret-scanning-source-state-open", map[string]string{
 		"number": "12",
 		"repo":   "writer/cerebro",
+		"state":  "open",
 	})
-	records, err = rule.Evaluate(context.Background(), &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}}, auditEvent)
+	records, err = rule.Evaluate(context.Background(), &cerebrov1.SourceRuntime{Id: "example-github-source-state", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "secret_scanning_alert"}}, sourceStateEvent)
 	if err != nil {
-		t.Fatalf("Evaluate(audit event) error = %v", err)
+		t.Fatalf("Evaluate(source-state event) error = %v", err)
 	}
 	if len(records) != 0 {
-		t.Fatalf("Evaluate(audit event) returned %d findings, want 0 after switching to github.secret_scanning_alert source-state events", len(records))
+		t.Fatalf("Evaluate(source-state event) returned %d findings, want 0 because sources/github only emits github.audit for secret scanning audit data", len(records))
+	}
+}
+
+func TestGitHubSecretScanningAlertCreatedTrajectory(t *testing.T) {
+	rule := newGitHubSecretScanningAlertCreatedRule()
+	if _, ok := rule.(CounterEventRule); !ok {
+		t.Fatal("github-secret-scanning-alert-created does not implement CounterEventRule")
+	}
+	for _, tc := range []struct {
+		name        string
+		closeAction string
+		state       string
+		resolution  string
+	}{
+		{name: "resolve", closeAction: "secret_scanning_alert.resolve", state: "resolved", resolution: "resolved"},
+		{name: "revoke", closeAction: "secret_scanning_alert.revoke", state: "revoked", resolution: "revoked"},
+		{name: "false_positive", closeAction: "secret_scanning_alert.false_positive", state: "resolved", resolution: "false_positive"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assertGitHubRuleTrajectory(t, rule, []Event{
+				newGitHubAuditSignalEvent("github-secret-scanning-trajectory-open-"+tc.name, map[string]string{
+					"action":         "secret_scanning_alert.create",
+					"audit_event_id": "github-audit-secret-scanning-trajectory-open-" + tc.name,
+					"html_url":       "https://github.com/writer/cerebro/security/secret-scanning/12",
+					"number":         "12",
+					"repo":           "writer/cerebro",
+					"secret_type":    "github_personal_access_token",
+					"state":          "open",
+				}),
+				newGitHubAuditSignalEvent("github-secret-scanning-trajectory-close-"+tc.name, map[string]string{
+					"action":     tc.closeAction,
+					"number":     "12",
+					"repo":       "writer/cerebro",
+					"resolution": tc.resolution,
+					"state":      tc.state,
+				}),
+			}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+		})
 	}
 }
 

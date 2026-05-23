@@ -184,9 +184,9 @@ var githubRepositoryMadePublicDefinition = RuleDefinition{
 var githubSecretScanningAlertCreatedDefinition = RuleDefinition{
 	ID:                 githubSecretScanningAlertCreatedRuleID,
 	Name:               "GitHub Secret Scanning Alert Created",
-	Description:        "Detect open GitHub secret scanning alerts replayed from source state.",
+	Description:        "Detect open GitHub secret scanning alerts replayed from GitHub audit events.",
 	SourceID:           "github",
-	EventKinds:         []string{"github.secret_scanning_alert"},
+	EventKinds:         []string{"github.audit"},
 	OutputKind:         "finding.github_secret_scanning_alert_created",
 	Severity:           "MEDIUM",
 	Status:             findingStatusOpen,
@@ -195,7 +195,7 @@ var githubSecretScanningAlertCreatedDefinition = RuleDefinition{
 	References:         []string{"https://docs.github.com/en/code-security/secret-scanning/about-secret-scanning", "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_secret_scanning_alert_created.yml"},
 	FalsePositives:     []string{"Canary tokens or expected test secrets in controlled repositories."},
 	Runbook:            "Review the alert, revoke or rotate the exposed credential, and inspect commits, artifacts, and workflow logs for further exposure.",
-	RequiredAttributes: []string{"repo", "number", "state"},
+	RequiredAttributes: []string{"action", "repo", "number", "state"},
 	FingerprintFields:  []string{"repo", "number"},
 	ControlRefs:        githubAuditControlRefs,
 	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorSourceState},
@@ -667,13 +667,18 @@ func newGitHubRepositoryMadePublicRule() Rule {
 }
 
 func newGitHubSecretScanningAlertCreatedRule() Rule {
-	return newEventRule(eventRuleConfig{
-		definition: githubSecretScanningAlertCreatedDefinition,
-		match:      matchesGitHubSecretScanningOpenAlert,
-		build: func(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
-			return githubSecretScanningAlertFinding(ctx, runtime, event)
-		},
-	})
+	return &githubAuditCounterEventRule{
+		Rule: newEventRule(eventRuleConfig{
+			definition: githubSecretScanningAlertCreatedDefinition,
+			match:      matchesGitHubSecretScanningOpenAlert,
+			build: func(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
+				return githubSecretScanningAlertFinding(ctx, runtime, event)
+			},
+		}),
+		definition:  githubSecretScanningAlertCreatedDefinition,
+		openAnchor:  githubSecretScanningAlertAnchor,
+		closeAnchor: githubSecretScanningAlertCloseAnchor,
+	}
 }
 
 func newGitHubSelfHostedRunnerChangeRule() Rule {
@@ -732,13 +737,14 @@ func newGitHubPrivateRepositoryForkingEnabledRule() Rule {
 	return newGitHubAuditCounterEventRule(githubPrivateRepositoryForkingEnabledConfig, githubPrivateRepositoryForkingAnchor, githubPrivateRepositoryForkingCloseAnchor)
 }
 
-var githubSecretScanningAlertKindMatcher = eventKindMatcher(githubSecretScanningAlertCreatedDefinition.EventKinds...)
-
 func matchesGitHubSecretScanningOpenAlert(event *cerebrov1.EventEnvelope) bool {
-	if !githubSecretScanningAlertKindMatcher(event) {
+	if !githubAuditSignalKindMatcher(event) {
 		return false
 	}
 	attributes := eventAttributes(event)
+	if !strings.HasPrefix(strings.TrimSpace(attributes["action"]), "secret_scanning_alert.") {
+		return false
+	}
 	return strings.EqualFold(strings.TrimSpace(attributes["state"]), findingStatusOpen)
 }
 
@@ -754,7 +760,7 @@ func githubSecretScanningAlertFinding(ctx context.Context, runtime *cerebrov1.So
 	if err != nil {
 		return nil, fmt.Errorf("project finding context for event %q: %w", event.GetId(), err)
 	}
-	alertURN := firstNonEmpty(projectedContext.PrimaryResourceURN, githubProjectionURN(event.GetTenantId(), "github_secret_scanning_alert", repo, number))
+	alertURN := firstNonEmpty(githubProjectionURN(event.GetTenantId(), "github_secret_scanning_alert", repo, number), projectedContext.PrimaryResourceURN)
 	repoURN := githubProjectionURN(event.GetTenantId(), "github_repo", repo)
 	resourceURNs := deduplicateStrings(append(projectedContext.ResourceURNs, alertURN, repoURN))
 	findingAttributes := githubSecretScanningAlertAttributes(event, alertURN)
@@ -1080,6 +1086,23 @@ func githubCounterEventAnchor(attributes map[string]string, fields ...string) st
 		parts = append(parts, field+"="+value)
 	}
 	return strings.Join(parts, "|")
+}
+
+func githubSecretScanningAlertAnchor(attributes map[string]string) string {
+	return githubCounterEventAnchor(attributes, "repo", "number")
+}
+
+func githubSecretScanningAlertCloseAnchor(event Event) (string, bool) {
+	if !githubAuditSignalKindMatcher(event) {
+		return "", false
+	}
+	attributes := eventAttributes(event)
+	switch strings.TrimSpace(attributes["action"]) {
+	case "secret_scanning_alert.resolve", "secret_scanning_alert.revoke", "secret_scanning_alert.false_positive":
+		return githubSecretScanningAlertAnchor(attributes), true
+	default:
+		return "", false
+	}
 }
 
 func githubRepositoryCollaboratorAnchor(attributes map[string]string) string {

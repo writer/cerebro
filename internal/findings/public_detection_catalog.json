@@ -999,11 +999,11 @@
       "pack_id": "github",
       "pack_name": "GitHub",
       "name": "GitHub Secret Scanning Alert Created",
-      "description": "Detect open GitHub secret scanning alerts replayed from source state.",
+      "description": "Detect open GitHub secret scanning alerts replayed from GitHub audit events.",
       "source_id": "github",
       "evaluation_mode": "event",
       "event_kinds": [
-        "github.secret_scanning_alert"
+        "github.audit"
       ],
       "output_kind": "finding.github_secret_scanning_alert_created",
       "severity": "MEDIUM",
@@ -1024,6 +1024,7 @@
       ],
       "runbook": "Review the alert, revoke or rotate the exposed credential, and inspect commits, artifacts, and workflow logs for further exposure.",
       "required_attributes": [
+        "action",
         "number",
         "repo",
         "state"
