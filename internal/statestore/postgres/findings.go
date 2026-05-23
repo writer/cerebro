@@ -90,6 +90,52 @@ var ensureFindingStatements = []string{
 	`CREATE INDEX IF NOT EXISTS findings_control_refs_gin_idx ON findings USING GIN (control_refs_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_notes_gin_idx ON findings USING GIN (notes_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_tickets_gin_idx ON findings USING GIN (tickets_json)`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS tombstoned BOOLEAN NOT NULL DEFAULT FALSE`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS tombstoned_at TIMESTAMPTZ`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS tombstoned_by TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS tombstoned_reason TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS tombstoned_run_id TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS prior_status TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS tombstone_generation INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE findings DROP CONSTRAINT IF EXISTS findings_fingerprint_key`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS findings_active_fingerprint_uidx
+        ON findings (fingerprint) WHERE tombstoned = FALSE`,
+	`CREATE INDEX IF NOT EXISTS findings_tombstoned_run_idx
+        ON findings (tombstoned_run_id) WHERE tombstoned = TRUE`,
+	`CREATE INDEX IF NOT EXISTS findings_tombstoned_rule_observed_idx
+        ON findings (tenant_id, rule_id, tombstoned, last_observed_at)`,
+	`CREATE TABLE IF NOT EXISTS finding_tombstone_events (
+        id BIGSERIAL PRIMARY KEY,
+        finding_id TEXT NOT NULL,
+        tenant_id TEXT NOT NULL,
+        rule_id TEXT NOT NULL,
+        anchor_uri TEXT NOT NULL,
+        prior_status TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        tombstoned_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`,
+	`CREATE INDEX IF NOT EXISTS finding_tombstone_events_run_idx
+        ON finding_tombstone_events (run_id, tombstoned_at)`,
+	`CREATE INDEX IF NOT EXISTS finding_tombstone_events_finding_idx
+        ON finding_tombstone_events (finding_id, tombstoned_at)`,
+	`CREATE TABLE IF NOT EXISTS closeout_run (
+        run_id TEXT PRIMARY KEY,
+        actor TEXT NOT NULL,
+        change_ticket TEXT NOT NULL DEFAULT '',
+        selector_json JSONB NOT NULL,
+        status TEXT NOT NULL,
+        started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        finished_at TIMESTAMPTZ,
+        dry_run BOOLEAN NOT NULL,
+        proposed_count INTEGER NOT NULL DEFAULT 0,
+        applied_count INTEGER NOT NULL DEFAULT 0,
+        error_message TEXT NOT NULL DEFAULT '',
+        s3_summary_key TEXT NOT NULL DEFAULT ''
+    )`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS closeout_run_singleton_running_idx
+        ON closeout_run ((1)) WHERE status = 'running'`,
 }
 
 const findingSelectColumns = `id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
@@ -780,6 +826,25 @@ func findingFilterClauses(request ports.ListFindingsRequest) ([]string, []any, e
 		return nil, nil, err
 	}
 	return clauses, args, nil
+}
+
+// SupportsTombstones reports whether the tombstone schema has been applied to the
+// findings table. Callers (notably the closeout subcommand) use this as a guard so
+// they can refuse to run against a database that predates the M1 schema migration
+// without requiring the full ensureFindingTables side-effect chain.
+func (s *Store) SupportsTombstones(ctx context.Context) (bool, error) {
+	if s == nil || s.db == nil {
+		return false, errors.New("postgres is not configured")
+	}
+	var exists bool
+	if err := s.db.QueryRowContext(ctx, `
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'findings' AND column_name = 'tombstoned'
+        )`).Scan(&exists); err != nil {
+		return false, fmt.Errorf("check tombstone support: %w", err)
+	}
+	return exists, nil
 }
 
 func (s *Store) ensureFindingTables(ctx context.Context) error {
