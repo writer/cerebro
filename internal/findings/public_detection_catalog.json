@@ -1896,12 +1896,13 @@
       "source_id": "identity",
       "evaluation_mode": "event",
       "event_kinds": [
-        "aws.cloudtrail",
-        "azure.activity_log",
-        "azure.directory_audit",
-        "gcp.audit",
-        "google_workspace.audit",
-        "okta.audit"
+        "aws.iam_role",
+        "aws.iam_user",
+        "azure.service_principal",
+        "azure.user",
+        "gcp.service_account",
+        "google_workspace.user",
+        "okta.user"
       ],
       "output_kind": "finding.identity_mfa_factor_reset_or_disabled",
       "severity": "HIGH",

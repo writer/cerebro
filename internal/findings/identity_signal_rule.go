@@ -171,7 +171,7 @@ func newIdentitySignalRules() []Rule {
 				[]string{"identity", "mfa", "credential-access", "attack.t1556"},
 			), "user"),
 			sourceIDs:   sourceIDs,
-			eventKinds:  capabilities.EventKinds(identityCapabilityAudit),
+			eventKinds:  capabilities.EventKinds(identityCapabilityUser),
 			predicate:   matchesIdentityMFAFactorResetOrDisabled,
 			fingerprint: identityUserFingerprintInputs,
 		}, identityUserAnchor, identityMFACloseAnchor),
@@ -588,7 +588,7 @@ func identityAuthControlCloseAnchor(event Event) (string, bool) {
 
 func identityMFACloseAnchor(event Event) (string, bool) {
 	attributes := eventAttributes(event)
-	if !identityMFARestored(attributes) {
+	if !identityMFAEnabled(attributes) {
 		return "", false
 	}
 	anchor := identityUserAnchor(attributes)
@@ -957,16 +957,7 @@ func matchesIdentityMFAFactorResetOrDisabled(_ *cerebrov1.EventEnvelope, attribu
 	if !identityOutcomeSuccessfulOrUnknown(attributes) {
 		return false
 	}
-	if identityMFARestored(attributes) {
-		return false
-	}
-	if identityMFADisabledOrReset(attributes) {
-		return identityUserAnchor(attributes) != ""
-	}
-	action := identityAction(attributes)
-	return identityUserAnchor(attributes) != "" &&
-		containsAny(action, "mfa", "factor", "two_step", "2sv", "verification") &&
-		containsAny(action, "reset", "disable", "deactivate", "unenroll", "change")
+	return identityUserAnchor(attributes) != "" && identityMFAExplicitlyDisabled(attributes)
 }
 
 func identityAssignmentActiveOrUnknown(attributes map[string]string) bool {

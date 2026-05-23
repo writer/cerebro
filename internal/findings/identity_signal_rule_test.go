@@ -151,53 +151,187 @@ func TestIdentityMfaFactorResetOrDisabled(t *testing.T) {
 	rules := identityRulesByID(t)
 	rule := rules[identityMFAFactorResetOrDisabledRuleID]
 	assertIdentityDurableMetadata(t, rule, []string{"user"})
-	if _, ok := rule.(CounterEventRule); !ok {
+	counterRule, ok := rule.(CounterEventRule)
+	if !ok {
 		t.Fatal("identity-mfa-factor-reset-or-disabled does not implement CounterEventRule")
 	}
 
-	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-audit", SourceId: "okta", TenantId: "writer"}
-	openAttrs := map[string]string{
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("identity-mfa-factor-reset-or-disabled does not expose RuleMetadata")
+	}
+	definition := metadataRule.RuleMetadata()
+	for _, kind := range []string{"okta.user", "google_workspace.user", "azure.user", "aws.iam_user", "gcp.service_account"} {
+		if !slices.Contains(definition.EventKinds, kind) {
+			t.Fatalf("EventKinds = %v, want projected identity user kind %q", definition.EventKinds, kind)
+		}
+	}
+	for _, auditKind := range []string{"okta.audit", "google_workspace.audit", "azure.directory_audit", "azure.activity_log", "aws.cloudtrail", "gcp.audit"} {
+		if slices.Contains(definition.EventKinds, auditKind) {
+			t.Fatalf("EventKinds = %v, want no audit-event primary emit kind %q", definition.EventKinds, auditKind)
+		}
+	}
+
+	cases := []struct {
+		name       string
+		sourceID   string
+		kind       string
+		family     string
+		user       string
+		attributes map[string]string
+	}{
+		{
+			name:     "okta user",
+			sourceID: "okta",
+			kind:     "okta.user",
+			family:   "user",
+			user:     "admin@writer.com",
+			attributes: map[string]string{
+				"domain":        "writer.okta.com",
+				"email":         "admin@writer.com",
+				"is_admin":      "true",
+				"login":         "admin@writer.com",
+				"mfa_enrolled":  "false",
+				"primary_email": "admin@writer.com",
+				"user_id":       "00u-admin",
+			},
+		},
+		{
+			name:     "google workspace user",
+			sourceID: "google_workspace",
+			kind:     "google_workspace.user",
+			family:   "user",
+			user:     "admin@writer.com",
+			attributes: map[string]string{
+				"domain":        "writer.com",
+				"email":         "admin@writer.com",
+				"is_admin":      "true",
+				"mfa_enrolled":  "false",
+				"mfa_enforced":  "false",
+				"primary_email": "admin@writer.com",
+				"user_id":       "1001",
+			},
+		},
+		{
+			name:     "azure user",
+			sourceID: "azure",
+			kind:     "azure.user",
+			family:   "user",
+			user:     "admin@writer.com",
+			attributes: map[string]string{
+				"domain":         "tenant-1",
+				"email":          "admin@writer.com",
+				"is_admin":       "true",
+				"mfa_enrolled":   "false",
+				"principal_type": "user",
+				"user_id":        "azure-user-1",
+			},
+		},
+		{
+			name:     "aws iam user",
+			sourceID: "aws",
+			kind:     "aws.iam_user",
+			family:   "iam_user",
+			user:     "admin@writer.com",
+			attributes: map[string]string{
+				"domain":       "123456789012",
+				"email":        "admin@writer.com",
+				"is_admin":     "true",
+				"login":        "admin@writer.com",
+				"mfa_enrolled": "false",
+				"user_id":      "AIDAADMIN",
+			},
+		},
+		{
+			name:     "gcp service account",
+			sourceID: "gcp",
+			kind:     "gcp.service_account",
+			family:   "service_account",
+			user:     "sa@writer-prod.iam.gserviceaccount.com",
+			attributes: map[string]string{
+				"domain":         "writer-prod",
+				"email":          "sa@writer-prod.iam.gserviceaccount.com",
+				"is_admin":       "true",
+				"mfa_enrolled":   "false",
+				"principal_type": "service_account",
+				"user_id":        "sa@writer-prod.iam.gserviceaccount.com",
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			runtime := &cerebrov1.SourceRuntime{Id: "example-" + tc.sourceID + "-" + tc.family, SourceId: tc.sourceID, TenantId: "writer", Config: map[string]string{"family": tc.family}}
+			first := identitySignalEventAt(strings.ReplaceAll(tc.name, " ", "-")+"-mfa-disabled-first", tc.sourceID, tc.kind, tc.attributes, identityTrajectoryBaseTime)
+			second := identitySignalEventAt(strings.ReplaceAll(tc.name, " ", "-")+"-mfa-disabled-second", tc.sourceID, tc.kind, tc.attributes, identityTrajectoryBaseTime.Add(time.Minute))
+			records, err := rule.Evaluate(context.Background(), runtime, first)
+			if err != nil || len(records) != 1 {
+				t.Fatalf("Evaluate(first) = (%v, %v), want one finding", records, err)
+			}
+			firstFinding := records[0]
+			records, err = rule.Evaluate(context.Background(), runtime, second)
+			if err != nil || len(records) != 1 {
+				t.Fatalf("Evaluate(second) = (%v, %v), want one finding", records, err)
+			}
+			if got := records[0].Fingerprint; got != firstFinding.Fingerprint {
+				t.Fatalf("fingerprint = %q, want stable %q for same user", got, firstFinding.Fingerprint)
+			}
+			if got := firstFinding.Attributes["user"]; got != tc.user {
+				t.Fatalf("attributes[user] = %q, want %q", got, tc.user)
+			}
+			openAnchor := counterRule.OpenAnchor(firstFinding.Attributes)
+			if openAnchor == "" {
+				t.Fatalf("OpenAnchor(%v) = empty, want user anchor", firstFinding.Attributes)
+			}
+
+			enrolledAttrs := cloneIdentitySignalAttributes(tc.attributes)
+			enrolledAttrs["mfa_enrolled"] = "true"
+			enrolled := identitySignalEventAt(strings.ReplaceAll(tc.name, " ", "-")+"-mfa-enabled", tc.sourceID, tc.kind, enrolledAttrs, identityTrajectoryBaseTime.Add(2*time.Minute))
+			records, err = rule.Evaluate(context.Background(), runtime, enrolled)
+			if err != nil {
+				t.Fatalf("Evaluate(enrolled) error = %v", err)
+			}
+			if len(records) != 0 {
+				t.Fatalf("Evaluate(enrolled) returned %d findings, want 0 once MFA is enrolled", len(records))
+			}
+			closeAnchor, closes := counterRule.CloseOnEvent(enrolled)
+			if !closes || closeAnchor != openAnchor {
+				t.Fatalf("CloseOnEvent(enrolled) = (%q, %v), want (%q, true)", closeAnchor, closes, openAnchor)
+			}
+			assertIdentityRuleRemediationTrajectory(t, rule, first, enrolled, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+			olderEnrolled := identitySignalEventAt(strings.ReplaceAll(tc.name, " ", "-")+"-mfa-enabled-before-open", tc.sourceID, tc.kind, enrolledAttrs, identityTrajectoryBaseTime.Add(-time.Minute))
+			assertIdentityRuleOlderCloseDoesNotResolveLaterOpen(t, rule, olderEnrolled, first)
+		})
+	}
+
+	unknownAttrs := cloneIdentitySignalAttributes(cases[0].attributes)
+	unknownAttrs["mfa_enrolled"] = ""
+	unknown := identitySignalEventAt("okta-user-mfa-unknown", "okta", "okta.user", unknownAttrs, identityTrajectoryBaseTime)
+	records, err := rule.Evaluate(context.Background(), &cerebrov1.SourceRuntime{Id: "example-okta-user", SourceId: "okta", TenantId: "writer", Config: map[string]string{"family": "user"}}, unknown)
+	if err != nil {
+		t.Fatalf("Evaluate(unknown MFA) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(unknown MFA) returned %d findings, want 0 for unknown MFA state", len(records))
+	}
+
+	auditAttrs := map[string]string{
 		"domain":         "writer.okta.com",
 		"event_type":     "user.mfa.factor.reset",
 		"actor_email":    "admin@writer.com",
-		"resource_id":    "00u-user",
+		"resource_id":    "00u-admin",
 		"resource_type":  "User",
+		"mfa_enrolled":   "false",
 		"mfa_state":      "reset",
 		"outcome_result": "SUCCESS",
 	}
-	first := identitySignalEventAt("okta-mfa-reset-first", "okta", "okta.audit", openAttrs, identityTrajectoryBaseTime)
-	second := identitySignalEventAt("okta-mfa-reset-second", "okta", "okta.audit", openAttrs, identityTrajectoryBaseTime.Add(time.Minute))
-	records, err := rule.Evaluate(context.Background(), runtime, first)
-	if err != nil || len(records) != 1 {
-		t.Fatalf("Evaluate(first) = (%v, %v), want one finding", records, err)
-	}
-	firstFinding := records[0]
-	records, err = rule.Evaluate(context.Background(), runtime, second)
-	if err != nil || len(records) != 1 {
-		t.Fatalf("Evaluate(second) = (%v, %v), want one finding", records, err)
-	}
-	if got := records[0].Fingerprint; got != firstFinding.Fingerprint {
-		t.Fatalf("fingerprint = %q, want stable %q for same user", got, firstFinding.Fingerprint)
-	}
-	if got := firstFinding.Attributes["user"]; got != "00u-user" {
-		t.Fatalf("attributes[user] = %q, want 00u-user", got)
-	}
-
-	enrolledAttrs := cloneIdentitySignalAttributes(openAttrs)
-	enrolledAttrs["event_type"] = "user.mfa.factor.enroll"
-	enrolledAttrs["mfa_state"] = "enrolled"
-	enrolledAttrs["mfa_enrolled"] = "true"
-	enrolled := identitySignalEventAt("okta-mfa-reenrolled", "okta", "okta.audit", enrolledAttrs, identityTrajectoryBaseTime.Add(2*time.Minute))
-	records, err = rule.Evaluate(context.Background(), runtime, enrolled)
+	audit := identitySignalEventAt("okta-mfa-reset-audit-ignored", "okta", "okta.audit", auditAttrs, identityTrajectoryBaseTime)
+	records, err = rule.Evaluate(context.Background(), &cerebrov1.SourceRuntime{Id: "example-okta-audit", SourceId: "okta", TenantId: "writer", Config: map[string]string{"family": "audit"}}, audit)
 	if err != nil {
-		t.Fatalf("Evaluate(enrolled) error = %v", err)
+		t.Fatalf("Evaluate(audit) error = %v", err)
 	}
 	if len(records) != 0 {
-		t.Fatalf("Evaluate(enrolled) returned %d findings, want 0 once MFA is enrolled", len(records))
+		t.Fatalf("Evaluate(audit) returned %d findings, want 0 because audit events are not primary emit for this rule", len(records))
 	}
-	assertIdentityRuleRemediationTrajectory(t, rule, first, enrolled, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
-	olderEnrolled := identitySignalEventAt("okta-mfa-reenrolled-before-open", "okta", "okta.audit", enrolledAttrs, identityTrajectoryBaseTime.Add(-time.Minute))
-	assertIdentityRuleOlderCloseDoesNotResolveLaterOpen(t, rule, olderEnrolled, first)
 }
 
 func TestIdentityApiTokenOrOauthAppCreated(t *testing.T) {
