@@ -8,20 +8,29 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourceprojection"
 )
 
 const vulnViewActionableExternalFindingRuleID = "vulnview-actionable-external-finding"
 
+type vulnViewActionableExternalFindingRule struct {
+	Rule
+	definition RuleDefinition
+}
+
 func newVulnViewActionableExternalFindingRule() Rule {
 	definition := vulnViewActionableExternalFindingDefinition()
-	return newEventRule(eventRuleConfig{definition: definition, sourceID: "vulnview", match: matchesVulnViewActionableExternalFinding, build: buildVulnViewActionableExternalFinding})
+	return &vulnViewActionableExternalFindingRule{
+		Rule:       newEventRule(eventRuleConfig{definition: definition, sourceID: "vulnview", match: matchesVulnViewActionableExternalFinding, build: buildVulnViewActionableExternalFinding}),
+		definition: definition,
+	}
 }
 
 func vulnViewActionableExternalFindingDefinition() RuleDefinition {
 	return RuleDefinition{
 		ID:                 vulnViewActionableExternalFindingRuleID,
 		Name:               "VulnView Actionable External Finding",
-		Description:        "Detect VulnView external attack-surface findings that require AppSec triage.",
+		Description:        "Detect open VulnView external attack-surface findings that require AppSec triage.",
 		SourceID:           "vulnview",
 		EventKinds:         []string{"vulnview.vulnerability", "vulnview.dns_alert"},
 		OutputKind:         "finding.vulnview_actionable_external_finding",
@@ -33,19 +42,62 @@ func vulnViewActionableExternalFindingDefinition() RuleDefinition {
 		FalsePositives:     []string{"Finding is a duplicate, asset is intentionally exposed with compensating controls, or scanner severity was manually downgraded after validation."},
 		Runbook:            "Validate exploitability and asset ownership, link duplicate external findings, patch or mitigate the exposed service, and document accepted risk.",
 		RequiredAttributes: []string{"severity"},
-		FingerprintFields:  []string{"template_id", "alert", "target_id", "matched_at"},
+		FingerprintFields:  []string{"asset_urn", "template_id"},
 		ControlRefs: []ports.FindingControlRef{
 			{FrameworkName: "SOC 2", ControlID: "CC7.1"},
 			{FrameworkName: "ISO 27001:2022", ControlID: "A.8.8"},
 		},
+		Lifecycle: Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorSourceState},
 	}
 }
 
+var vulnViewActionableExternalFindingKindMatcher = eventKindMatcher("vulnview.vulnerability", "vulnview.dns_alert")
+
+func (r *vulnViewActionableExternalFindingRule) RuleMetadata() RuleDefinition {
+	if r == nil {
+		return RuleDefinition{}
+	}
+	return cloneRuleDefinition(r.definition)
+}
+
+func (r *vulnViewActionableExternalFindingRule) OpenAnchor(attributes map[string]string) string {
+	return vulnViewActionableExternalFindingAnchor(
+		vulnViewActionableExternalFindingAssetURNFromAttributes(attributes),
+		vulnViewActionableExternalFindingTemplateID(attributes),
+	)
+}
+
+func (r *vulnViewActionableExternalFindingRule) CloseOnEvent(event Event) (string, bool) {
+	if !vulnViewActionableExternalFindingKindMatcher(event) {
+		return "", false
+	}
+	attrs := eventAttributes(event)
+	anchor := vulnViewActionableExternalFindingAnchorForEvent(event)
+	if anchor == "" {
+		return "", false
+	}
+	if !vulnViewActionableExternalFindingSourceOpen(attrs) {
+		return anchor, true
+	}
+	if severity := strings.TrimSpace(attrs["severity"]); severity != "" && !vulnViewActionableExternalFindingSeverityActionable(severity) {
+		return anchor, true
+	}
+	return "", false
+}
+
 func matchesVulnViewActionableExternalFinding(event *cerebrov1.EventEnvelope) bool {
-	if !eventKindMatcher("vulnview.vulnerability")(event) && !eventKindMatcher("vulnview.dns_alert")(event) {
+	if !vulnViewActionableExternalFindingKindMatcher(event) {
 		return false
 	}
-	severity := strings.ToLower(strings.TrimSpace(event.GetAttributes()["severity"]))
+	attrs := eventAttributes(event)
+	if !vulnViewActionableExternalFindingSourceOpen(attrs) {
+		return false
+	}
+	return vulnViewActionableExternalFindingSeverityActionable(attrs["severity"])
+}
+
+func vulnViewActionableExternalFindingSeverityActionable(severity string) bool {
+	severity = strings.ToLower(strings.TrimSpace(severity))
 	return severity == "critical" || severity == "high" || severity == "medium"
 }
 
@@ -64,15 +116,25 @@ func buildVulnViewActionableExternalFinding(ctx context.Context, runtime *cerebr
 	if event.GetOccurredAt() != nil {
 		observedAt = event.GetOccurredAt().AsTime().UTC()
 	}
-	action := firstNonEmpty(attrs["name"], attrs["alert"], attrs["template_id"], attrs["external_id"], "VulnView finding")
+	templateID := vulnViewActionableExternalFindingTemplateID(attrs)
+	assetURN := firstNonEmpty(
+		vulnViewActionableExternalFindingAssetURNFromAttributes(attrs),
+		vulnViewActionableExternalFindingAssetURNFromProjection(projectedContext),
+	)
+	if templateID == "" || assetURN == "" {
+		return nil, nil
+	}
+	action := firstNonEmpty(attrs["name"], attrs["alert"], templateID, attrs["external_id"], "VulnView finding")
 	target := firstNonEmpty(projectedContext.ResourceLabel, attrs["target_name"], attrs["target_id"], attrs["host"], attrs["matched_at"], "unknown target")
 	findingAttributes := map[string]string{
+		"asset_urn":            assetURN,
 		"action":               action,
 		"event_id":             strings.TrimSpace(event.GetId()),
 		"event_kind":           strings.TrimSpace(event.GetKind()),
-		"primary_resource_urn": projectedContext.PrimaryResourceURN,
+		"primary_resource_urn": assetURN,
 		"source_runtime_id":    strings.TrimSpace(runtime.GetId()),
 		"target":               target,
+		"template_id":          templateID,
 	}
 	for key, value := range attrs {
 		if _, exists := findingAttributes[key]; !exists {
@@ -86,10 +148,8 @@ func buildVulnViewActionableExternalFinding(ctx context.Context, runtime *cerebr
 	trimEmptyAttributes(findingAttributes)
 	fingerprint := hashFindingFingerprint(
 		vulnViewActionableExternalFindingRuleID,
-		strings.TrimSpace(event.GetTenantId()),
-		firstNonEmpty(attrs["template_id"], attrs["alert"], attrs["external_id"]),
-		firstNonEmpty(attrs["target_id"], attrs["host"], attrs["asset_id"], projectedContext.PrimaryResourceURN),
-		attrs["matched_at"],
+		assetURN,
+		templateID,
 	)
 	return &ports.FindingRecord{
 		ID:              fingerprint,
@@ -103,7 +163,7 @@ func buildVulnViewActionableExternalFinding(ctx context.Context, runtime *cerebr
 		Summary:         fmt.Sprintf("VulnView reported %s on %s", action, target),
 		ResourceURNs:    projectedContext.ResourceURNs,
 		EventIDs:        []string{strings.TrimSpace(event.GetId())},
-		PolicyID:        firstNonEmpty(attrs["template_id"], attrs["alert"], attrs["external_id"]),
+		PolicyID:        templateID,
 		PolicyName:      action,
 		CheckID:         vulnViewActionableExternalFindingRuleID,
 		CheckName:       "VulnView Actionable External Finding",
@@ -112,4 +172,91 @@ func buildVulnViewActionableExternalFinding(ctx context.Context, runtime *cerebr
 		FirstObservedAt: observedAt,
 		LastObservedAt:  observedAt,
 	}, nil
+}
+
+func vulnViewActionableExternalFindingTemplateID(attributes map[string]string) string {
+	return firstNonEmpty(attributes["template_id"], attributes["vulnerability_id"], attributes["alert"], attributes["external_id"])
+}
+
+func vulnViewActionableExternalFindingAnchor(assetURN string, templateID string) string {
+	assetURN = strings.TrimSpace(assetURN)
+	templateID = strings.TrimSpace(templateID)
+	if assetURN == "" || templateID == "" {
+		return ""
+	}
+	return assetURN + "|" + templateID
+}
+
+func vulnViewActionableExternalFindingAnchorForEvent(event Event) string {
+	attrs := eventAttributes(event)
+	templateID := vulnViewActionableExternalFindingTemplateID(attrs)
+	if templateID == "" {
+		return ""
+	}
+	return vulnViewActionableExternalFindingAnchor(vulnViewActionableExternalFindingAssetURNForEvent(event), templateID)
+}
+
+func vulnViewActionableExternalFindingAssetURNForEvent(event Event) string {
+	attrs := eventAttributes(event)
+	if assetURN := vulnViewActionableExternalFindingAssetURNFromAttributes(attrs); assetURN != "" {
+		return assetURN
+	}
+	entities, _, err := sourceprojection.ProjectEvent(event)
+	if err != nil {
+		return ""
+	}
+	for _, entity := range entities {
+		if entity == nil {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(entity.EntityType), "external.asset") {
+			return strings.TrimSpace(entity.URN)
+		}
+	}
+	return ""
+}
+
+func vulnViewActionableExternalFindingAssetURNFromAttributes(attributes map[string]string) string {
+	if assetURN := strings.TrimSpace(attributes["asset_urn"]); assetURN != "" {
+		return assetURN
+	}
+	if primaryURN := strings.TrimSpace(attributes["primary_resource_urn"]); strings.Contains(primaryURN, ":external_asset:") {
+		return primaryURN
+	}
+	return ""
+}
+
+func vulnViewActionableExternalFindingAssetURNFromProjection(projectedContext findingProjectionContext) string {
+	for _, entity := range projectedContext.Entities {
+		if entity == nil {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(entity.EntityType), "external.asset") {
+			return strings.TrimSpace(entity.URN)
+		}
+	}
+	if primaryURN := strings.TrimSpace(projectedContext.PrimaryResourceURN); strings.Contains(primaryURN, ":external_asset:") {
+		return primaryURN
+	}
+	return ""
+}
+
+func vulnViewActionableExternalFindingSourceOpen(attributes map[string]string) bool {
+	state := strings.ToLower(strings.TrimSpace(firstNonEmpty(
+		attributes["state"],
+		attributes["status"],
+		attributes["finding_status"],
+		attributes["remediation_state"],
+		attributes["lifecycle_state"],
+	)))
+	state = strings.ReplaceAll(state, "-", "_")
+	state = strings.ReplaceAll(state, " ", "_")
+	switch state {
+	case "", "open", "opened", "active", "detected", "new", "unresolved", "reopened":
+		return true
+	case "closed", "resolved", "fixed", "remediated", "false_positive", "accepted_risk", "ignored", "suppressed":
+		return false
+	default:
+		return true
+	}
 }

@@ -2601,7 +2601,7 @@
       "pack_id": "vulnview",
       "pack_name": "VulnView",
       "name": "VulnView Actionable External Finding",
-      "description": "Detect VulnView external attack-surface findings that require AppSec triage.",
+      "description": "Detect open VulnView external attack-surface findings that require AppSec triage.",
       "source_id": "vulnview",
       "evaluation_mode": "event",
       "event_kinds": [
@@ -2629,10 +2629,8 @@
         "severity"
       ],
       "fingerprint_fields": [
-        "template_id",
-        "alert",
-        "target_id",
-        "matched_at"
+        "asset_urn",
+        "template_id"
       ],
       "control_refs": [
         {
