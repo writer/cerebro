@@ -635,6 +635,7 @@ monitoring_stack = monitoring.create_monitoring(
     target_group_arn_suffix=alb_stack["target_group"].arn_suffix,
     ecs_cluster_name=ecs_stack["cluster"].name,
     ecs_service_name=ecs_stack["api_service"].name,
+    postgres_identifier=f"cerebro-{environment}-postgres",
     web_alb_arn_suffix=web_alb_stack["alb"].arn_suffix if web_alb_stack else None,
     web_target_group_arn_suffix=web_alb_stack["target_group"].arn_suffix if web_alb_stack else None,
     web_ecs_service_name=web_stack["service"].name if web_stack else None,

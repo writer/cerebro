@@ -51,7 +51,7 @@ class MonitoringRuntimeTest(unittest.TestCase):
         original_get_region = monitoring.aws.get_region
         monitoring.aws.get_region = lambda: SimpleNamespace(region="us-east-1")
         try:
-            body = json.loads(monitoring._dashboard_body("cerebro-test", "alb", "tg", "cluster", "service", "CEREBRO_EVENTS"))
+            body = json.loads(monitoring._dashboard_body("cerebro-test", "alb", "tg", "cluster", "service", None, "CEREBRO_EVENTS"))
         finally:
             monitoring.aws.get_region = original_get_region
 
@@ -119,12 +119,26 @@ class MonitoringRuntimeTest(unittest.TestCase):
         original_get_region = monitoring.aws.get_region
         monitoring.aws.get_region = lambda: Region()
         try:
-            body = monitoring._dashboard_body("cerebro-test", "alb", "tg", "cluster", "service", "CEREBRO_EVENTS")
+            body = monitoring._dashboard_body("cerebro-test", "alb", "tg", "cluster", "service", None, "CEREBRO_EVENTS")
         finally:
             monitoring.aws.get_region = original_get_region
 
         self.assertIn("SourceRuntimeWatermarkLagSeconds", body)
         self.assertIn("RuntimeId", body)
+
+    def test_dashboard_includes_postgres_metrics_when_identifier_is_set(self) -> None:
+        original_get_region = monitoring.aws.get_region
+        monitoring.aws.get_region = lambda: SimpleNamespace(region="us-east-1")
+        try:
+            body = monitoring._dashboard_body("cerebro-test", "alb", "tg", "cluster", "service", "cerebro-test-postgres", "CEREBRO_EVENTS")
+        finally:
+            monitoring.aws.get_region = original_get_region
+
+        self.assertIn("Postgres Latency / Queue", body)
+        self.assertIn("DiskQueueDepth", body)
+        self.assertIn("ReadLatency", body)
+        self.assertIn("WriteLatency", body)
+        self.assertIn("DatabaseConnections", body)
 
 
 if __name__ == "__main__":

@@ -24,7 +24,7 @@ config:
   cerebro:webCpu: 512
   cerebro:webMemory: 1024
   cerebro:webMinInstances: 1
-  cerebro:webMaxInstances: 1
+  cerebro:webMaxInstances: 2
   cerebro:useExistingVpc: true
   cerebro:vpcId: vpc-06bac7242cd09af4d
   cerebro:vpcCidr: "10.10.0.0/16"
@@ -37,7 +37,7 @@ config:
   cerebro:apiCpu: 1024
   cerebro:apiMemory: 2048
   cerebro:apiMinInstances: 1
-  cerebro:apiMaxInstances: 1
+  cerebro:apiMaxInstances: 2
   cerebro:postgresInstanceClass: db.t4g.small
   cerebro:postgresAllocatedStorage: 100
   cerebro:postgresStorageType: gp3
