@@ -71,6 +71,8 @@ type Service struct {
 	closeoutStore       ports.CloseoutRunStore
 	tombstoneEventStore ports.FindingTombstoneEventStore
 	rules               *Registry
+	ttlClock            ttlClock
+	ttlLogSink          ttlLogSink
 }
 
 // EvaluateRequest scopes one replay-backed finding evaluation.
