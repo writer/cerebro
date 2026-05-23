@@ -705,7 +705,7 @@ func newGitHubAppIntegrationInstalledRule() Rule {
 }
 
 func newGitHubPersonalAccessTokenCreatedRule() Rule {
-	return newGitHubAuditSignalRule(githubPersonalAccessTokenCreatedConfig)
+	return newGitHubAuditCounterEventRule(githubPersonalAccessTokenCreatedConfig, githubPersonalAccessTokenAnchor, githubPersonalAccessTokenCloseAnchor)
 }
 
 // newGitHubProtectedBranchPolicyOverrideRule is retired. Per-event overrides
@@ -1130,6 +1130,51 @@ func githubAppIntegrationCloseAnchor(event Event) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+func githubPersonalAccessTokenAnchor(attributes map[string]string) string {
+	return githubCounterEventAnchor(attributes, "user_id", "token_id")
+}
+
+func githubPersonalAccessTokenCloseAnchor(event Event) (string, bool) {
+	attributes := eventAttributes(event)
+	if !githubPersonalAccessTokenClosed(attributes) {
+		return "", false
+	}
+	return githubPersonalAccessTokenAnchor(attributes), true
+}
+
+func githubPersonalAccessTokenClosed(attributes map[string]string) bool {
+	action := strings.TrimSpace(attributes["action"])
+	switch action {
+	case "personal_access_token.access_revoked", "personal_access_token.access_expired", "personal_access_token.expired":
+		return true
+	case "personal_access_token.access_granted":
+		return githubPersonalAccessTokenLifecycleClosed(attributes)
+	default:
+		if !strings.HasPrefix(action, "personal_access_token.") {
+			return false
+		}
+		return githubPersonalAccessTokenLifecycleClosed(attributes)
+	}
+}
+
+func githubPersonalAccessTokenLifecycleClosed(attributes map[string]string) bool {
+	state := strings.ToLower(strings.TrimSpace(firstNonEmpty(
+		attributes["operation_type"],
+		attributes["token_state"],
+		attributes["token_status"],
+		attributes["credential_status"],
+		attributes["lifecycle_status"],
+		attributes["state"],
+		attributes["status"],
+		attributes["reason"],
+	)))
+	switch state {
+	case "remove", "removed", "revoke", "revoked", "access_revoked", "expire", "expired", "expiration", "token_expired":
+		return true
+	}
+	return containsAny(strings.ToLower(firstNonEmpty(attributes["change_type"], attributes["changes"])), "revoke", "remove", "expire", "expired")
 }
 
 func githubRepositoryRulesetAnchor(attributes map[string]string) string {

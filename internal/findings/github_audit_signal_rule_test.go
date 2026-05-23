@@ -1307,6 +1307,59 @@ func TestGitHubPersonalAccessTokenCreated(t *testing.T) {
 	}
 }
 
+func TestGitHubPersonalAccessTokenCreatedTrajectory_CreateRevoke(t *testing.T) {
+	rule := newGitHubPersonalAccessTokenCreatedRule()
+	if _, ok := rule.(CounterEventRule); !ok {
+		t.Fatal("github-personal-access-token-created does not implement CounterEventRule")
+	}
+	assertGitHubRuleTrajectory(t, rule, []Event{
+		newGitHubAuditSignalEvent("github-pat-trajectory-create", map[string]string{
+			"action":         "personal_access_token.access_granted",
+			"operation_type": "create",
+			"resource_id":    "octocat",
+			"resource_type":  "personal_access_token",
+			"token_id":       "555",
+			"user":           "octocat",
+			"user_id":        "12345",
+		}),
+		newGitHubAuditSignalEvent("github-pat-trajectory-revoke", map[string]string{
+			"action":        "personal_access_token.access_revoked",
+			"resource_id":   "octocat",
+			"resource_type": "personal_access_token",
+			"token_id":      "555",
+			"user":          "octocat",
+			"user_id":       "12345",
+		}),
+	}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+}
+
+func TestGitHubPersonalAccessTokenCreatedTrajectory_CreateExpired(t *testing.T) {
+	rule := newGitHubPersonalAccessTokenCreatedRule()
+	if _, ok := rule.(CounterEventRule); !ok {
+		t.Fatal("github-personal-access-token-created does not implement CounterEventRule")
+	}
+	assertGitHubRuleTrajectory(t, rule, []Event{
+		newGitHubAuditSignalEvent("github-pat-trajectory-create-before-expiry", map[string]string{
+			"action":         "personal_access_token.access_granted",
+			"operation_type": "create",
+			"resource_id":    "octocat",
+			"resource_type":  "personal_access_token",
+			"token_id":       "555",
+			"user":           "octocat",
+			"user_id":        "12345",
+		}),
+		newGitHubAuditSignalEvent("github-pat-trajectory-expired", map[string]string{
+			"action":         "personal_access_token.access_granted",
+			"operation_type": "expired",
+			"resource_id":    "octocat",
+			"resource_type":  "personal_access_token",
+			"token_id":       "555",
+			"user":           "octocat",
+			"user_id":        "12345",
+		}),
+	}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+}
+
 func TestGitHubPrivateRepositoryForkingEnabled(t *testing.T) {
 	rule := newGitHubPrivateRepositoryForkingEnabledRule()
 	metadataRule, ok := rule.(MetadataRule)
