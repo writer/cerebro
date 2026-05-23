@@ -35,7 +35,7 @@ repos:
 
       - id: cerebro-infra-static-validation
         name: Cerebro infra static validation
-        entry: bash -c 'cd infra && uv run python -m compileall aws gcp scripts tests && uv run python scripts/validate_stack_config.py'
+        entry: bash -c 'cd infra && uv run python -m compileall aws gcp scripts tests && uv run python scripts/validate_stack_config.py && uv run python scripts/validate_gcp_config.py'
         language: system
         pass_filenames: false
         files: ^infra/(aws|gcp|scripts|tests)/|^infra/(pyproject\.toml|uv\.lock)$

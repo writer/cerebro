@@ -110,14 +110,11 @@ def _secret_env_name(secret_key) -> str:
     return str(secret_key).strip()
 
 
-def _append_missing_source_secrets(secret_keys: list, env_refs: list[str]) -> list:
-    result = list(secret_keys or [])
-    existing = {_secret_env_name(secret_key) for secret_key in result}
-    for env_name in env_refs:
-        if env_name not in existing:
-            result.append(env_name)
-            existing.add(env_name)
-    return result
+def _validate_source_secret_refs(secret_keys: list, env_refs: list[str]) -> None:
+    existing = {_secret_env_name(secret_key) for secret_key in (secret_keys or [])}
+    missing = [env_name for env_name in env_refs if env_name not in existing]
+    if missing:
+        raise ValueError(f"source runtime env refs must be declared in cerebro:sourceSecretKeys: {', '.join(missing)}")
 
 
 environment = _get_environment()
@@ -249,6 +246,8 @@ postgres_storage_throughput = (
 postgres_backup_retention_days = _config_int("postgresBackupRetentionDays", 14 if is_production else 3)
 postgres_deletion_protection = _config_bool("postgresDeletionProtection", is_production)
 postgres_multi_az = _config_bool("postgresMultiAz", is_production)
+postgres_apply_immediately = _config_bool("postgresApplyImmediately", not is_production)
+postgres_final_snapshot_identifier = config.get("postgresFinalSnapshotIdentifier") or None
 retain_legacy_jobs_table = _config_bool("retainLegacyJobsTableForDeletionProtectionTransition", False)
 
 nats_cpu = _config_int("natsCpu", 512)
@@ -289,7 +288,7 @@ capability_token_audience = config.get("capabilityTokenAudience") or "cerebro-ap
 source_secret_keys = config.get_object("sourceSecretKeys") or []
 source_runtimes = config.get_object("sourceRuntimes") or []
 source_runtime_env_refs = _source_runtime_env_refs(source_runtimes)
-source_secret_keys = _append_missing_source_secrets(source_secret_keys, source_runtime_env_refs)
+_validate_source_secret_refs(source_secret_keys, source_runtime_env_refs)
 
 # Optional IAM grants for S3-backed sources. Source configuration now lives in
 # source runtimes, not process env; this only scopes task-role permissions.
@@ -386,6 +385,8 @@ postgres_stack = postgres.create_postgres(
     backup_retention_days=postgres_backup_retention_days,
     deletion_protection=postgres_deletion_protection,
     multi_az=postgres_multi_az,
+    apply_immediately=postgres_apply_immediately,
+    final_snapshot_identifier=postgres_final_snapshot_identifier,
 )
 
 nats_stack = nats.create_nats_service(

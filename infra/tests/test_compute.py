@@ -35,8 +35,51 @@ class SourceRuntimeEnvironmentTest(unittest.TestCase):
         )
         self.assertEqual(env["CEREBRO_AWS_ASSUME_ROLE_ARNS"], "custom=arn:aws:iam::999999999999:role/custom")
 
+    def test_extracts_distinct_aws_role_arns_from_source_runtimes(self) -> None:
+        self.assertEqual(
+            compute._source_runtime_aws_role_arns(
+                [
+                    {"sourceId": "aws", "config": {"role_arn": "arn:aws:iam::222222222222:role/cerebro-org-scan-role"}},
+                    {"sourceId": "aws", "config": {"role_arn": "arn:aws:iam::111111111111:role/cerebro-org-scan-role"}},
+                    {"sourceId": "github", "config": {"role_arn": "arn:aws:iam::333333333333:role/ignored"}},
+                    {"sourceId": "aws", "config": {"role_arn": "arn:aws:iam::222222222222:role/cerebro-org-scan-role"}},
+                ]
+            ),
+            [
+                "arn:aws:iam::111111111111:role/cerebro-org-scan-role",
+                "arn:aws:iam::222222222222:role/cerebro-org-scan-role",
+            ],
+        )
+
 
 class WorkerTaskRoleTest(unittest.TestCase):
+    def test_task_role_assume_policy_uses_declared_role_arns_only(self) -> None:
+        policies: list[dict] = []
+
+        def fake_role(*args, **kwargs):
+            return SimpleNamespace(name=kwargs.get("name", args[0]), id=f"{args[0]}-id", arn=f"arn:aws:iam::123456789012:role/{args[0]}")
+
+        def fake_policy(*args, **kwargs):
+            policies.append(kwargs)
+            return SimpleNamespace(name=args[0])
+
+        with (
+            patch.object(compute.aws.iam, "Role", side_effect=fake_role),
+            patch.object(compute.aws.iam, "RolePolicy", side_effect=fake_policy),
+        ):
+            compute._create_task_role(
+                "cerebro-sec-dev",
+                assume_role_arns=[
+                    "arn:aws:iam::222222222222:role/cerebro-org-scan-role",
+                    "arn:aws:iam::111111111111:role/cerebro-org-scan-role",
+                ],
+            )
+
+        assume_policy = next(policy for policy in policies if policy["policy"].find("sts:TagSession") >= 0)
+        self.assertIn("arn:aws:iam::111111111111:role/cerebro-org-scan-role", assume_policy["policy"])
+        self.assertIn("arn:aws:iam::222222222222:role/cerebro-org-scan-role", assume_policy["policy"])
+        self.assertNotIn("arn:aws:iam::*:role", assume_policy["policy"])
+
     def test_orchestrator_uses_separate_worker_task_role(self) -> None:
         task_role_names: list[str] = []
         task_definition_calls: list[dict] = []

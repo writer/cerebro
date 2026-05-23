@@ -95,6 +95,9 @@ class PostgresStorageTest(unittest.TestCase):
                 storage_type="gp3",
                 iops=3000,
                 storage_throughput=125,
+                deletion_protection=True,
+                apply_immediately=False,
+                final_snapshot_identifier="cerebro-sec-dev-postgres-final-review",
             )
 
         self.assertEqual(stack["instance"].address, "postgres.example.internal")
@@ -105,6 +108,8 @@ class PostgresStorageTest(unittest.TestCase):
         self.assertEqual(kwargs["storage_type"], "gp3")
         self.assertEqual(kwargs["iops"], 3000)
         self.assertEqual(kwargs["storage_throughput"], 125)
+        self.assertIs(kwargs["apply_immediately"], False)
+        self.assertEqual(kwargs["final_snapshot_identifier"], "cerebro-sec-dev-postgres-final-review")
 
 
 if __name__ == "__main__":
