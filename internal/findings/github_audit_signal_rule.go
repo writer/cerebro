@@ -682,7 +682,7 @@ func newGitHubSecretScanningAlertCreatedRule() Rule {
 }
 
 func newGitHubSelfHostedRunnerChangeRule() Rule {
-	return newGitHubAuditSignalRule(githubSelfHostedRunnerChangeConfig)
+	return newGitHubAuditCounterEventRule(githubSelfHostedRunnerChangeConfig, githubSelfHostedRunnerAnchor, githubSelfHostedRunnerCloseAnchor)
 }
 
 func newGitHubRepositoryCollaboratorAddedRule() Rule {
@@ -985,7 +985,9 @@ func githubAuditSignalAttributes(event *cerebrov1.EventEnvelope, config githubAu
 		attributes["runner_scope_type"] = scopeType
 	}
 	for _, key := range config.definition.RequiredAttributes {
-		attributes[key] = strings.TrimSpace(eventAttrs[key])
+		if value := strings.TrimSpace(eventAttrs[key]); value != "" {
+			attributes[key] = value
+		}
 	}
 	for key, value := range config.definition.AttributeMap() {
 		attributes["rule_"+key] = value
@@ -1198,6 +1200,46 @@ func githubPersonalAccessTokenLifecycleClosed(attributes map[string]string) bool
 		return true
 	}
 	return containsAny(strings.ToLower(firstNonEmpty(attributes["change_type"], attributes["changes"])), "revoke", "remove", "expire", "expired")
+}
+
+func githubSelfHostedRunnerAnchor(attributes map[string]string) string {
+	_, scopeID := githubSelfHostedRunnerScope(attributes)
+	runnerID := strings.TrimSpace(attributes["runner_id"])
+	return githubCounterEventAnchor(map[string]string{"scope": scopeID, "runner_id": runnerID}, "scope", "runner_id")
+}
+
+func githubSelfHostedRunnerCloseAnchor(event Event) (string, bool) {
+	if !githubAuditSignalKindMatcher(event) {
+		return "", false
+	}
+	attributes := eventAttributes(event)
+	if !githubSelfHostedRunnerDeregistered(attributes) && !githubSelfHostedRunnerEphemeralConversion(attributes) {
+		return "", false
+	}
+	anchor := githubSelfHostedRunnerAnchor(attributes)
+	return anchor, anchor != ""
+}
+
+func githubSelfHostedRunnerDeregistered(attributes map[string]string) bool {
+	action := strings.ToLower(strings.TrimSpace(attributes["action"]))
+	switch action {
+	case "enterprise.remove_self_hosted_runner",
+		"org.remove_self_hosted_runner",
+		"repo.remove_self_hosted_runner",
+		"runner_group.runner_removed":
+		return true
+	default:
+		return strings.Contains(action, "remove_self_hosted_runner") ||
+			strings.Contains(action, "deregister_self_hosted_runner") ||
+			strings.Contains(action, "runner_group.runner_removed") ||
+			strings.Contains(action, "runner_group_runner_removed")
+	}
+}
+
+func githubSelfHostedRunnerEphemeralConversion(attributes map[string]string) bool {
+	action := strings.ToLower(strings.TrimSpace(attributes["action"]))
+	return strings.HasSuffix(action, ".register_self_hosted_runner") &&
+		findingAttributeBool(attributes, "runner_ephemeral", "ephemeral", "is_ephemeral")
 }
 
 func githubRepositoryPostureAnchor(attributes map[string]string) string {
@@ -1577,11 +1619,7 @@ func githubSelfHostedRunnerRegistered(attributes map[string]string) bool {
 	case "removed", "deleted", "deregistered", "unregistered":
 		return false
 	}
-	action := strings.ToLower(strings.TrimSpace(attributes["action"]))
-	if strings.Contains(action, "remove_self_hosted_runner") ||
-		strings.Contains(action, "deregister_self_hosted_runner") ||
-		strings.Contains(action, "runner_group_runner_removed") ||
-		strings.Contains(action, "runner_group_removed") {
+	if githubSelfHostedRunnerDeregistered(attributes) {
 		return false
 	}
 	if findingAttributeBool(attributes, "runner_registered", "registered", "is_registered") {
@@ -1613,11 +1651,11 @@ func githubSelfHostedRunnerScope(attributes map[string]string) (string, string) 
 	if org := strings.TrimSpace(attributes["org"]); org != "" {
 		return "org", "org:" + org
 	}
-	if resourceID != "" && (strings.Contains(resourceType, "org") || resourceType == "") {
-		return "org", "org:" + resourceID
-	}
 	if enterprise := strings.TrimSpace(firstNonEmpty(attributes["enterprise"], attributes["enterprise_slug"], attributes["enterprise_id"])); enterprise != "" {
 		return "enterprise", "enterprise:" + enterprise
+	}
+	if resourceID != "" && (strings.Contains(resourceType, "org") || resourceType == "") {
+		return "org", "org:" + resourceID
 	}
 	return "", ""
 }

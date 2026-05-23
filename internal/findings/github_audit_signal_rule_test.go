@@ -410,6 +410,22 @@ func TestGitHubSelfHostedRunnerChange(t *testing.T) {
 	if got := firstFinding.Attributes["primary_resource_urn"]; got != "urn:cerebro:writer:github_repo:writer/cerebro" {
 		t.Fatalf("primary_resource_urn = %q, want repo anchor", got)
 	}
+	counterRule, ok := rule.(CounterEventRule)
+	if !ok {
+		t.Fatal("github-self-hosted-runner-change does not implement CounterEventRule")
+	}
+	openAnchor := counterRule.OpenAnchor(firstFinding.Attributes)
+	if openAnchor == "" {
+		t.Fatalf("OpenAnchor(%v) = empty, want scope/runner_id anchor", firstFinding.Attributes)
+	}
+	closeAnchor, closes := counterRule.CloseOnEvent(githubAuditEvent("github-runner-close-anchor", map[string]string{
+		"action":    "repo.remove_self_hosted_runner",
+		"repo":      "writer/cerebro",
+		"runner_id": "777",
+	}))
+	if !closes || closeAnchor != openAnchor {
+		t.Fatalf("CloseOnEvent(remove) = (%q, %v), want (%q, true)", closeAnchor, closes, openAnchor)
+	}
 
 	deregistered := githubAuditEvent("github-runner-remove", map[string]string{
 		"action":            "repo.remove_self_hosted_runner",
@@ -438,6 +454,179 @@ func TestGitHubSelfHostedRunnerChange(t *testing.T) {
 	}
 	if len(records) != 0 {
 		t.Fatalf("Evaluate(ephemeral) returned %d findings, want 0 once runner is ephemeral", len(records))
+	}
+}
+
+func TestGitHubSelfHostedRunnerChangeTrajectory_RegisterDeregister(t *testing.T) {
+	rule := newGitHubSelfHostedRunnerChangeRule()
+	if _, ok := rule.(CounterEventRule); !ok {
+		t.Fatal("github-self-hosted-runner-change does not implement CounterEventRule")
+	}
+	for _, tc := range []struct {
+		name       string
+		openAttrs  map[string]string
+		closeAttrs map[string]string
+	}{
+		{
+			name: "repo deregister",
+			openAttrs: map[string]string{
+				"action":            "repo.register_self_hosted_runner",
+				"repo":              "writer/cerebro",
+				"resource_id":       "writer/cerebro",
+				"resource_type":     "repo",
+				"runner_ephemeral":  "false",
+				"runner_id":         "777",
+				"runner_name":       "prod-runner-1",
+				"runner_registered": "true",
+			},
+			closeAttrs: map[string]string{
+				"action":    "repo.remove_self_hosted_runner",
+				"repo":      "writer/cerebro",
+				"runner_id": "777",
+			},
+		},
+		{
+			name: "org deregister",
+			openAttrs: map[string]string{
+				"action":            "org.register_self_hosted_runner",
+				"org":               "writer",
+				"resource_id":       "writer",
+				"resource_type":     "org",
+				"runner_ephemeral":  "false",
+				"runner_id":         "888",
+				"runner_registered": "true",
+			},
+			closeAttrs: map[string]string{
+				"action":    "org.remove_self_hosted_runner",
+				"org":       "writer",
+				"runner_id": "888",
+			},
+		},
+		{
+			name: "enterprise deregister",
+			openAttrs: map[string]string{
+				"action":            "enterprise.register_self_hosted_runner",
+				"enterprise":        "writer-ent",
+				"org":               "",
+				"resource_id":       "writer-ent",
+				"resource_type":     "enterprise",
+				"runner_ephemeral":  "false",
+				"runner_id":         "999",
+				"runner_registered": "true",
+			},
+			closeAttrs: map[string]string{
+				"action":      "enterprise.remove_self_hosted_runner",
+				"enterprise":  "writer-ent",
+				"org":         "",
+				"resource_id": "writer-ent",
+				"runner_id":   "999",
+			},
+		},
+		{
+			name: "runner group removal",
+			openAttrs: map[string]string{
+				"action":            "org.register_self_hosted_runner",
+				"org":               "writer",
+				"resource_id":       "writer",
+				"resource_type":     "org",
+				"runner_ephemeral":  "false",
+				"runner_id":         "1001",
+				"runner_registered": "true",
+			},
+			closeAttrs: map[string]string{
+				"action":            "runner_group.runner_removed",
+				"org":               "writer",
+				"runner_group_name": "default",
+				"runner_id":         "1001",
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assertGitHubRuleTrajectory(t, rule, []Event{
+				newGitHubAuditSignalEvent("github-runner-open-"+strings.ReplaceAll(tc.name, " ", "-"), tc.openAttrs),
+				newGitHubAuditSignalEvent("github-runner-close-"+strings.ReplaceAll(tc.name, " ", "-"), tc.closeAttrs),
+			}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+		})
+	}
+}
+
+func TestGitHubSelfHostedRunnerChangeTrajectory_RegisterEphemeral(t *testing.T) {
+	rule := newGitHubSelfHostedRunnerChangeRule()
+	if _, ok := rule.(CounterEventRule); !ok {
+		t.Fatal("github-self-hosted-runner-change does not implement CounterEventRule")
+	}
+	for _, tc := range []struct {
+		name       string
+		openAttrs  map[string]string
+		closeAttrs map[string]string
+	}{
+		{
+			name: "repo ephemeral conversion",
+			openAttrs: map[string]string{
+				"action":            "repo.register_self_hosted_runner",
+				"repo":              "writer/cerebro",
+				"resource_id":       "writer/cerebro",
+				"resource_type":     "repo",
+				"runner_ephemeral":  "false",
+				"runner_id":         "777",
+				"runner_registered": "true",
+			},
+			closeAttrs: map[string]string{
+				"action":            "repo.register_self_hosted_runner",
+				"repo":              "writer/cerebro",
+				"runner_ephemeral":  "true",
+				"runner_id":         "777",
+				"runner_registered": "true",
+			},
+		},
+		{
+			name: "org ephemeral conversion",
+			openAttrs: map[string]string{
+				"action":            "org.register_self_hosted_runner",
+				"org":               "writer",
+				"resource_id":       "writer",
+				"resource_type":     "org",
+				"runner_ephemeral":  "false",
+				"runner_id":         "888",
+				"runner_registered": "true",
+			},
+			closeAttrs: map[string]string{
+				"action":            "org.register_self_hosted_runner",
+				"org":               "writer",
+				"runner_ephemeral":  "true",
+				"runner_id":         "888",
+				"runner_registered": "true",
+			},
+		},
+		{
+			name: "enterprise ephemeral conversion",
+			openAttrs: map[string]string{
+				"action":            "enterprise.register_self_hosted_runner",
+				"enterprise":        "writer-ent",
+				"org":               "",
+				"resource_id":       "writer-ent",
+				"resource_type":     "enterprise",
+				"runner_ephemeral":  "false",
+				"runner_id":         "999",
+				"runner_registered": "true",
+			},
+			closeAttrs: map[string]string{
+				"action":            "enterprise.register_self_hosted_runner",
+				"enterprise":        "writer-ent",
+				"org":               "",
+				"resource_id":       "writer-ent",
+				"runner_ephemeral":  "true",
+				"runner_id":         "999",
+				"runner_registered": "true",
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assertGitHubRuleTrajectory(t, rule, []Event{
+				newGitHubAuditSignalEvent("github-runner-open-"+strings.ReplaceAll(tc.name, " ", "-"), tc.openAttrs),
+				newGitHubAuditSignalEvent("github-runner-ephemeral-"+strings.ReplaceAll(tc.name, " ", "-"), tc.closeAttrs),
+			}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+		})
 	}
 }
 
