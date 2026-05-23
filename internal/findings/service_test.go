@@ -755,7 +755,7 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
 			newAuditEvent("okta-audit-1", "user.session.start", "SUCCESS"),
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
 		},
 	}
 	store := &stubFindingStore{
@@ -820,8 +820,8 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 	if finding.Status != "open" {
 		t.Fatalf("Finding.Status = %q, want open", finding.Status)
 	}
-	if finding.Summary != "admin@writer.com performed policy.rule.update on pol-1" {
-		t.Fatalf("Finding.Summary = %q, want admin@writer.com performed policy.rule.update on pol-1", finding.Summary)
+	if finding.Summary != "admin@writer.com performed policy.rule.deactivate on pol-1" {
+		t.Fatalf("Finding.Summary = %q, want admin@writer.com performed policy.rule.deactivate on pol-1", finding.Summary)
 	}
 	if len(finding.ResourceURNs) != 2 {
 		t.Fatalf("len(Finding.ResourceURNs) = %d, want 2", len(finding.ResourceURNs))
@@ -900,12 +900,13 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 	}
 }
 
-func TestEvaluateSourceRuntimeFindingsReusesLegacyOktaTamperingID(t *testing.T) {
+func TestEvaluateSourceRuntimeFindingsUsesDurableOktaPolicyRuleFingerprint(t *testing.T) {
 	eventID := "okta-audit-2"
 	legacyID := hashFindingFingerprint(oktaPolicyRuleLifecycleTamperingRuleID, eventID)
+	durableID := hashFindingFingerprint(oktaPolicyRuleLifecycleTamperingRuleID, "urn:cerebro:writer:okta_resource:policyrule:pol-1")
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent(eventID, "policy.rule.update", "SUCCESS"),
+			newAuditEvent(eventID, "policy.rule.deactivate", "SUCCESS"),
 		},
 	}
 	store := &stubFindingStore{
@@ -952,39 +953,46 @@ func TestEvaluateSourceRuntimeFindingsReusesLegacyOktaTamperingID(t *testing.T) 
 		t.Fatalf("len(Findings) = %d, want 1", len(result.Findings))
 	}
 	finding := result.Findings[0]
-	if got := finding.ID; got != legacyID {
-		t.Fatalf("Finding.ID = %q, want legacy id %q", got, legacyID)
+	if got := finding.ID; got != durableID {
+		t.Fatalf("Finding.ID = %q, want durable policy-rule id %q", got, durableID)
 	}
-	if got := finding.Fingerprint; got != legacyID {
-		t.Fatalf("Finding.Fingerprint = %q, want legacy fingerprint %q", got, legacyID)
+	if got := finding.Fingerprint; got != durableID {
+		t.Fatalf("Finding.Fingerprint = %q, want durable policy-rule fingerprint %q", got, durableID)
 	}
-	if got := finding.Status; got != findingStatusSuppressed {
-		t.Fatalf("Finding.Status = %q, want suppressed", got)
+	if got := finding.Status; got != findingStatusOpen {
+		t.Fatalf("Finding.Status = %q, want open", got)
 	}
-	if got := finding.StatusReason; got != "accepted risk" {
-		t.Fatalf("Finding.StatusReason = %q, want accepted risk", got)
+	if got := finding.Attributes["okta_policy_rule_urn"]; got != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+		t.Fatalf("Finding.Attributes[okta_policy_rule_urn] = %q, want policy rule urn", got)
 	}
-	if len(store.findings) != 1 {
-		t.Fatalf("len(store.findings) = %d, want 1", len(store.findings))
+	if _, ok := store.findings[legacyID]; !ok {
+		t.Fatalf("legacy finding %q missing; durable conversion should not mutate it", legacyID)
 	}
-	if got := result.Evidence[0].GetFindingId(); got != legacyID {
-		t.Fatalf("Evidence[0].FindingId = %q, want legacy id %q", got, legacyID)
+	if len(store.findings) != 2 {
+		t.Fatalf("len(store.findings) = %d, want legacy row plus new durable row", len(store.findings))
+	}
+	if got := result.Evidence[0].GetFindingId(); got != durableID {
+		t.Fatalf("Evidence[0].FindingId = %q, want durable id %q", got, durableID)
 	}
 }
 
 func TestOktaPolicyRuleLifecycleTamperingRequiresSuccessfulOutcome(t *testing.T) {
-	missingOutcome := newAuditEvent("okta-audit-2", "policy.rule.update", "")
+	missingOutcome := newAuditEvent("okta-audit-2", "policy.rule.deactivate", "")
 	delete(missingOutcome.Attributes, "outcome_result")
 	if matchesOktaPolicyRuleLifecycleTampering(missingOutcome) {
 		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = true for missing outcome, want false")
 	}
-	failedOutcome := newAuditEvent("okta-audit-3", "policy.rule.update", "FAILURE")
+	failedOutcome := newAuditEvent("okta-audit-3", "policy.rule.deactivate", "FAILURE")
 	if matchesOktaPolicyRuleLifecycleTampering(failedOutcome) {
 		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = true for failed outcome, want false")
 	}
-	successOutcome := newAuditEvent("okta-audit-4", "policy.rule.update", "SUCCESS")
+	successOutcome := newAuditEvent("okta-audit-4", "policy.rule.deactivate", "SUCCESS")
 	if !matchesOktaPolicyRuleLifecycleTampering(successOutcome) {
 		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = false for success outcome, want true")
+	}
+	activeOutcome := newAuditEvent("okta-audit-5", "policy.rule.activate", "SUCCESS")
+	if matchesOktaPolicyRuleLifecycleTampering(activeOutcome) {
+		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = true for active outcome, want false")
 	}
 }
 
@@ -1626,8 +1634,8 @@ func TestEvaluateSourceRuntimeFindingsPersistsNormalizedFailedRun(t *testing.T) 
 	}
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-1", "policy.rule.update", "SUCCESS"),
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newAuditEvent("okta-audit-1", "policy.rule.deactivate", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
 		},
 	}
 	store := &stubFindingStore{}
@@ -1693,7 +1701,7 @@ func TestEvaluateSourceRuntimeFindingsCleansUpRemainingRunsWhenFailurePersistenc
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
 	replayer := &stubReplayer{
-		events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-1", "policy.rule.update", "SUCCESS")},
+		events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-1", "policy.rule.deactivate", "SUCCESS")},
 	}
 	store := &stubFindingStore{
 		failRunPutByCall: map[int]error{3: errors.New("persist failed run failed")},
@@ -1742,8 +1750,8 @@ func TestEvaluateSourceRuntimeFindingsDeduplicatesEvidencePerRun(t *testing.T) {
 	}
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
 		},
 	}
 	store := &stubFindingStore{}
@@ -1848,7 +1856,7 @@ func TestEvaluateSourceRuntimeFindingsDeduplicatesEvidenceAcrossRuns(t *testing.
 	}
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
 		},
 	}
 	store := &stubFindingStore{}
@@ -2002,7 +2010,7 @@ func TestListRulesReturnsBuiltinCatalog(t *testing.T) {
 func TestEvaluateSourceRuntimeFindingsSelectsRequestedRule(t *testing.T) {
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
 		},
 	}
 	service := New(
@@ -2248,7 +2256,7 @@ func TestEvaluateSourceRuntimeRulesReplaysOnceAcrossMultipleRules(t *testing.T) 
 	}
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
 			newAuditEvent("okta-audit-3", "policy.rule.delete", "SUCCESS"),
 		},
 	}
@@ -2702,7 +2710,7 @@ func TestEvaluateSourceRuntimeRulesPreservesEarlierFailureWhenCompletionCleanupR
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
 			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
 		}},
-		&stubReplayer{events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-1", "policy.rule.update", "SUCCESS")}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-1", "policy.rule.deactivate", "SUCCESS")}},
 		store,
 		store,
 		store,
@@ -2746,7 +2754,7 @@ func TestEvaluateSourceRuntimeRulesReturnsEvaluationAndRunFailureCauses(t *testi
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
 			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
 		}},
-		&stubReplayer{events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-1", "policy.rule.update", "SUCCESS")}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-1", "policy.rule.deactivate", "SUCCESS")}},
 		store,
 		store,
 		store,
@@ -2777,8 +2785,8 @@ func TestEvaluateSourceRuntimeRulesDeduplicatesEvidencePerRun(t *testing.T) {
 	}
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
 		},
 	}
 	store := &stubFindingStore{
@@ -2883,7 +2891,7 @@ func TestEvaluateSourceRuntimeRulesSelectsExplicitRules(t *testing.T) {
 		},
 		&stubReplayer{
 			events: []*cerebrov1.EventEnvelope{
-				newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+				newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
 				newAuditEvent("okta-audit-3", "policy.rule.delete", "SUCCESS"),
 			},
 		},
@@ -3884,7 +3892,7 @@ func TestEvaluateSourceRuntimePreservesManualWorkflowFields(t *testing.T) {
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
 			newAuditEvent("okta-audit-1", "user.session.start", "SUCCESS"),
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
 		},
 	}
 	store := &stubFindingStore{

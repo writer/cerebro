@@ -1988,11 +1988,12 @@
       "pack_id": "identity",
       "pack_name": "Identity",
       "name": "Okta Policy Rule Lifecycle Tampering",
-      "description": "Detect successful Okta policy rule update, deactivate, or delete events replayed from one source runtime.",
+      "description": "Detect Okta policy rules that remain deactivated or deleted in projected identity state.",
       "source_id": "okta",
       "evaluation_mode": "event",
       "event_kinds": [
-        "okta.audit"
+        "okta.audit",
+        "okta.policy_rule"
       ],
       "output_kind": "finding.okta_policy_rule_lifecycle_tampering",
       "severity": "HIGH",
@@ -2013,11 +2014,10 @@
       ],
       "runbook": "Review actor, target policy rule, administrative change ticket, and adjacent identity events before reverting or escalating.",
       "required_attributes": [
-        "event_type",
         "resource_id"
       ],
       "fingerprint_fields": [
-        "event_id"
+        "okta_policy_rule_urn"
       ],
       "control_refs": [
         {

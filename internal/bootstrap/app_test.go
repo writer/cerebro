@@ -4194,7 +4194,7 @@ func TestFindingEndpoints(t *testing.T) {
 	appendLog := &recordingAppendLog{
 		replayEvents: []*cerebrov1.EventEnvelope{
 			findingTestEvent("okta-audit-1", "user.session.start", "SUCCESS"),
-			findingTestEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			findingTestEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
 		},
 	}
 	runtimeStore := &stubRuntimeStore{
@@ -4275,7 +4275,7 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := findingPayload["rule_id"]; got != "identity-okta-policy-rule-lifecycle-tampering" {
 		t.Fatalf("evaluate finding rule_id = %#v, want identity-okta-policy-rule-lifecycle-tampering", got)
 	}
-	if got := findingPayload["summary"]; got != "admin@writer.com performed policy.rule.update on pol-1" {
+	if got := findingPayload["summary"]; got != "admin@writer.com performed policy.rule.deactivate on pol-1" {
 		t.Fatalf("evaluate finding summary = %#v, want admin summary", got)
 	}
 	if got := findingPayload["policy_id"]; got != "pol-1" {
@@ -4337,7 +4337,7 @@ func TestFindingEndpoints(t *testing.T) {
 		t.Fatalf("evaluate evidence event_ids = %#v, want [okta-audit-2]", evidenceEntry["event_ids"])
 	}
 	evidenceAttributes, ok := evidenceEntry["attributes"].(map[string]any)
-	if !ok || evidenceAttributes["event_type"] != "policy.rule.update" {
+	if !ok || evidenceAttributes["event_type"] != "policy.rule.deactivate" {
 		t.Fatalf("evaluate evidence attributes = %#v, want event_type snapshot", evidenceEntry["attributes"])
 	}
 	if _, ok := evidenceEntry["last_observed_at"].(string); !ok {

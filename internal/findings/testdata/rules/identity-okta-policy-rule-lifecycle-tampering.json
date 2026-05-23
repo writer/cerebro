@@ -33,7 +33,7 @@
       "schema_ref": "okta/audit/v1",
       "attributes": {
         "domain": "writer.okta.com",
-        "event_type": "policy.rule.update",
+        "event_type": "policy.rule.deactivate",
         "resource_id": "pol-1",
         "resource_type": "PolicyRule",
         "actor_id": "00u2",
@@ -50,14 +50,15 @@
       "rule_id": "identity-okta-policy-rule-lifecycle-tampering",
       "severity": "HIGH",
       "status": "open",
-      "summary": "admin@writer.com performed policy.rule.update on pol-1",
+      "summary": "admin@writer.com performed policy.rule.deactivate on pol-1",
       "policy_id": "pol-1",
       "event_ids": ["okta-audit-2"],
       "attributes": {
-        "event_type": "policy.rule.update",
+        "event_type": "policy.rule.deactivate",
+        "okta_policy_rule_urn": "urn:cerebro:writer:okta_resource:policyrule:pol-1",
         "primary_actor_urn": "urn:cerebro:writer:okta_user:00u2",
         "primary_resource_urn": "urn:cerebro:writer:okta_resource:policyrule:pol-1",
-        "rule_required_attributes": "event_type,resource_id",
+        "rule_required_attributes": "resource_id",
         "rule_tags": "okta,identity,policy,defense-evasion,attack.t1562"
       }
     }
