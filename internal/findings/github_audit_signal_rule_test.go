@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 func TestGitHubAnchorRequiredFields(t *testing.T) {
@@ -450,6 +451,31 @@ func TestGitHubOrgAuthControlModified(t *testing.T) {
 	}
 }
 
+func TestGitHubOrgAuthControlModifiedTrajectory_Restore(t *testing.T) {
+	rule := newGitHubOrgAuthControlModifiedRule()
+	if _, ok := rule.(CounterEventRule); !ok {
+		t.Fatal("github-org-auth-control-modified does not implement CounterEventRule")
+	}
+	assertGitHubRuleTrajectory(t, rule, []Event{
+		newGitHubAuditSignalEvent("github-auth-trajectory-weakened", map[string]string{
+			"action":                         "oauth_app_policy.disabled",
+			"oauth_app_restrictions_enabled": "false",
+			"org":                            "writer",
+			"resource_id":                    "writer",
+			"resource_type":                  "org",
+		}),
+		newGitHubAuditSignalEvent("github-auth-trajectory-restored", map[string]string{
+			"action":                         "oauth_app_policy.enabled",
+			"oauth_app_restrictions_enabled": "true",
+			"org":                            "writer",
+			"resource_id":                    "writer",
+			"resource_type":                  "org",
+			"saml_enabled":                   "true",
+			"two_factor_requirement_enabled": "true",
+		}),
+	}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+}
+
 func TestGitHubRepositoryRulesetModifiedRequiresWeakeningSignal(t *testing.T) {
 	rule := newGitHubRepositoryRulesetModifiedRule()
 	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "writer"}
@@ -572,6 +598,32 @@ func TestGitHubOrgIpAllowListModified(t *testing.T) {
 	}
 }
 
+func TestGitHubOrgIpAllowListModifiedTrajectory_Restore(t *testing.T) {
+	rule := newGitHubOrgIPAllowListModifiedRule()
+	if _, ok := rule.(CounterEventRule); !ok {
+		t.Fatal("github-org-ip-allow-list-modified does not implement CounterEventRule")
+	}
+	assertGitHubRuleTrajectory(t, rule, []Event{
+		newGitHubAuditSignalEvent("github-ip-trajectory-disabled", map[string]string{
+			"action":                "ip_allow_list.disable",
+			"ip_allow_list_enabled": "false",
+			"org":                   "writer",
+			"resource_id":           "writer",
+			"resource_type":         "ip_allow_list",
+		}),
+		newGitHubAuditSignalEvent("github-ip-trajectory-restored", map[string]string{
+			"action":                          "ip_allow_list.enabled",
+			"allowed_cidrs_compliant":         "true",
+			"ip_allow_list_enabled":           "true",
+			"ip_allow_list_entries_compliant": "true",
+			"non_allowlisted_cidr_count":      "0",
+			"org":                             "writer",
+			"resource_id":                     "writer",
+			"resource_type":                   "ip_allow_list",
+		}),
+	}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+}
+
 func TestGitHubCodeSecurityControlsDisabled(t *testing.T) {
 	rule := newGitHubCodeSecurityControlsDisabledRule()
 	metadataRule, ok := rule.(MetadataRule)
@@ -650,6 +702,124 @@ func TestGitHubCodeSecurityControlsDisabled(t *testing.T) {
 	}
 	if len(records) != 0 {
 		t.Fatalf("Evaluate(restored) returned %d findings, want 0 once all code security controls are enabled", len(records))
+	}
+}
+
+func TestGitHubCodeSecurityControlsDisabledTrajectory_DisableEnable(t *testing.T) {
+	rule := newGitHubCodeSecurityControlsDisabledRule()
+	if _, ok := rule.(CounterEventRule); !ok {
+		t.Fatal("github-code-security-controls-disabled does not implement CounterEventRule")
+	}
+	assertGitHubRuleTrajectory(t, rule, []Event{
+		newGitHubAuditSignalEvent("github-code-security-trajectory-disabled", map[string]string{
+			"action": "repository_vulnerability_alerts.disable",
+			"org":    "writer",
+			"repo":   "writer/cerebro",
+			"repository_vulnerability_alerts_enabled": "false",
+			"resource_id":   "writer/cerebro",
+			"resource_type": "repository",
+		}),
+		newGitHubAuditSignalEvent("github-code-security-trajectory-restored", map[string]string{
+			"action":                              "repository_vulnerability_alerts.enable",
+			"advanced_security_enabled":           "true",
+			"dependabot_alerts_enabled":           "true",
+			"dependabot_security_updates_enabled": "true",
+			"org":                                 "writer",
+			"repo":                                "writer/cerebro",
+			"repository_secret_scanning_enabled":  "true",
+			"repository_vulnerability_alerts_enabled": "true",
+			"resource_id":   "writer/cerebro",
+			"resource_type": "repository",
+			"secret_scanning_push_protection_enabled": "true",
+		}),
+	}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+}
+
+func TestGitHubCodeSecurityControlsDisabledTrajectory_ClosesPerRepoAnchor(t *testing.T) {
+	rule := newGitHubCodeSecurityControlsDisabledRule()
+	if _, ok := rule.(CounterEventRule); !ok {
+		t.Fatal("github-code-security-controls-disabled does not implement CounterEventRule")
+	}
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	runtimeID := "example-github-audit"
+	events := []Event{
+		newGitHubAuditSignalEvent("github-code-security-api-disabled", map[string]string{
+			"action":                            "dependabot_alerts.disable",
+			"dependabot_alerts_enabled":         "false",
+			"org":                               "writer",
+			"repo":                              "writer/api",
+			"resource_id":                       "writer/api",
+			"resource_type":                     "repository",
+			ports.EventAttributeSourceRuntimeID: runtimeID,
+		}),
+		newGitHubAuditSignalEvent("github-code-security-web-disabled", map[string]string{
+			"action":                            "repository_secret_scanning.disable",
+			"org":                               "writer",
+			"repo":                              "writer/web",
+			"resource_id":                       "writer/web",
+			"resource_type":                     "repository",
+			"secret_scanning_enabled":           "false",
+			ports.EventAttributeSourceRuntimeID: runtimeID,
+		}),
+		newGitHubAuditSignalEvent("github-code-security-api-enabled", map[string]string{
+			"action":                            "dependabot_alerts.enable",
+			"dependabot_alerts_enabled":         "true",
+			"org":                               "writer",
+			"repo":                              "writer/api",
+			"resource_id":                       "writer/api",
+			"resource_type":                     "repository",
+			ports.EventAttributeSourceRuntimeID: runtimeID,
+		}),
+	}
+	store := &stubFindingStore{}
+	appendLog := &recordingAppendLog{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			runtimeID: {Id: runtimeID, SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}},
+		}},
+		&stubReplayer{events: events},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	).WithGraphStore(&stubGraphStore{}).WithAppendLog(appendLog)
+
+	result, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{
+		RuntimeID: runtimeID,
+		RuleIDs:   []string{githubCodeSecurityControlsDisabledRuleID},
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeRules() error = %v", err)
+	}
+	if result == nil || len(result.Evaluations) != 1 {
+		t.Fatalf("evaluations = %v, want one evaluation", result)
+	}
+	if got := len(result.Evaluations[0].Findings); got != 2 {
+		t.Fatalf("len(emitted findings) = %d, want 2 opening findings", got)
+	}
+	findings := githubTrajectoryPersistedFindings(store, githubCodeSecurityControlsDisabledRuleID, runtimeID)
+	if got := len(findings); got != 2 {
+		t.Fatalf("persisted findings = %d, want 2", got)
+	}
+	byRepo := map[string]*ports.FindingRecord{}
+	for _, finding := range findings {
+		byRepo[strings.TrimSpace(finding.Attributes["repo"])] = finding
+	}
+	if got := byRepo["writer/api"]; got == nil || got.Status != findingStatusResolved {
+		t.Fatalf("writer/api status = %#v, want resolved", got)
+	}
+	if got := byRepo["writer/web"]; got == nil || got.Status != findingStatusOpen {
+		t.Fatalf("writer/web status = %#v, want open", got)
+	}
+	if !containsTrimmed(byRepo["writer/api"].EventIDs, "github-code-security-api-enabled") {
+		t.Fatalf("writer/api EventIDs = %#v, want close-event evidence", byRepo["writer/api"].EventIDs)
+	}
+	if containsTrimmed(byRepo["writer/web"].EventIDs, "github-code-security-api-enabled") {
+		t.Fatalf("writer/web EventIDs = %#v, want no evidence from writer/api close event", byRepo["writer/web"].EventIDs)
 	}
 }
 
@@ -1481,6 +1651,51 @@ func TestGitHubPrivateRepositoryForkingEnabled(t *testing.T) {
 	if len(records) != 0 {
 		t.Fatalf("Evaluate(disabled) returned %d findings, want 0 once private repository forking is disabled", len(records))
 	}
+}
+
+func TestGitHubPrivateRepositoryForkingEnabledTrajectory_Disable(t *testing.T) {
+	rule := newGitHubPrivateRepositoryForkingEnabledRule()
+	if _, ok := rule.(CounterEventRule); !ok {
+		t.Fatal("github-private-repository-forking-enabled does not implement CounterEventRule")
+	}
+	t.Run("org scope", func(t *testing.T) {
+		assertGitHubRuleTrajectory(t, rule, []Event{
+			newGitHubAuditSignalEvent("github-org-forking-trajectory-enabled", map[string]string{
+				"action":                             "private_repository_forking.enable",
+				"org":                                "writer",
+				"private_repository_forking_enabled": "true",
+				"resource_id":                        "writer",
+				"resource_type":                      "org",
+			}),
+			newGitHubAuditSignalEvent("github-org-forking-trajectory-disabled", map[string]string{
+				"action":                             "repository.private_repository_forking_disabled",
+				"org":                                "writer",
+				"private_repository_forking_enabled": "false",
+				"resource_id":                        "writer",
+				"resource_type":                      "org",
+			}),
+		}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+	})
+	t.Run("repo scope", func(t *testing.T) {
+		assertGitHubRuleTrajectory(t, rule, []Event{
+			newGitHubAuditSignalEvent("github-repo-forking-trajectory-enabled", map[string]string{
+				"action":                             "private_repository_forking.enable",
+				"org":                                "writer",
+				"private_repository_forking_enabled": "true",
+				"repo":                               "writer/private-repo",
+				"resource_id":                        "writer/private-repo",
+				"resource_type":                      "repo",
+			}),
+			newGitHubAuditSignalEvent("github-repo-forking-trajectory-disabled", map[string]string{
+				"action":                             "repository.private_repository_forking_disabled",
+				"org":                                "writer",
+				"private_repository_forking_enabled": "false",
+				"repo":                               "writer/private-repo",
+				"resource_id":                        "writer/private-repo",
+				"resource_type":                      "repo",
+			}),
+		}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+	})
 }
 
 func githubSecretScanningAlertEvent(id string, attributes map[string]string) *cerebrov1.EventEnvelope {

@@ -689,15 +689,15 @@ func newGitHubOrganizationOwnerAddedRule() Rule {
 }
 
 func newGitHubCodeSecurityControlsDisabledRule() Rule {
-	return newGitHubAuditSignalRule(githubCodeSecurityControlsDisabledConfig)
+	return newGitHubAuditCounterEventRule(githubCodeSecurityControlsDisabledConfig, githubRepositoryPostureAnchor, githubCodeSecurityControlsCloseAnchor)
 }
 
 func newGitHubOrgAuthControlModifiedRule() Rule {
-	return newGitHubAuditSignalRule(githubOrgAuthControlModifiedConfig)
+	return newGitHubAuditCounterEventRule(githubOrgAuthControlModifiedConfig, githubOrgPostureAnchor, githubOrgAuthControlCloseAnchor)
 }
 
 func newGitHubOrgIPAllowListModifiedRule() Rule {
-	return newGitHubAuditSignalRule(githubOrgIPAllowListModifiedConfig)
+	return newGitHubAuditCounterEventRule(githubOrgIPAllowListModifiedConfig, githubOrgPostureAnchor, githubOrgIPAllowListCloseAnchor)
 }
 
 func newGitHubAppIntegrationInstalledRule() Rule {
@@ -729,7 +729,7 @@ func newGitHubWebhookModifiedRule() Rule {
 }
 
 func newGitHubPrivateRepositoryForkingEnabledRule() Rule {
-	return newGitHubAuditSignalRule(githubPrivateRepositoryForkingEnabledConfig)
+	return newGitHubAuditCounterEventRule(githubPrivateRepositoryForkingEnabledConfig, githubPrivateRepositoryForkingAnchor, githubPrivateRepositoryForkingCloseAnchor)
 }
 
 var githubSecretScanningAlertKindMatcher = eventKindMatcher(githubSecretScanningAlertCreatedDefinition.EventKinds...)
@@ -1177,6 +1177,130 @@ func githubPersonalAccessTokenLifecycleClosed(attributes map[string]string) bool
 	return containsAny(strings.ToLower(firstNonEmpty(attributes["change_type"], attributes["changes"])), "revoke", "remove", "expire", "expired")
 }
 
+func githubRepositoryPostureAnchor(attributes map[string]string) string {
+	repo := strings.TrimSpace(firstNonEmpty(attributes["repo"], attributes["repository"]))
+	if repo == "" {
+		resourceID := strings.TrimSpace(attributes["resource_id"])
+		if strings.Contains(resourceID, "/") {
+			repo = resourceID
+		}
+	}
+	return githubCounterEventAnchor(map[string]string{"repo": repo}, "repo")
+}
+
+func githubOrgPostureAnchor(attributes map[string]string) string {
+	org := strings.TrimSpace(firstNonEmpty(attributes["org"], attributes["organization"]))
+	if org == "" {
+		resourceID := strings.TrimSpace(attributes["resource_id"])
+		if resourceID != "" && !strings.Contains(resourceID, "/") {
+			org = resourceID
+		}
+	}
+	return githubCounterEventAnchor(map[string]string{"org": org}, "org")
+}
+
+func githubCodeSecurityControlsCloseAnchor(event Event) (string, bool) {
+	attributes := eventAttributes(event)
+	if !githubCodeSecurityControlsRestored(attributes) {
+		return "", false
+	}
+	return githubRepositoryPostureAnchor(attributes), true
+}
+
+func githubCodeSecurityControlsRestored(attributes map[string]string) bool {
+	if githubCodeSecurityControlsPostureDisabled(attributes) {
+		return false
+	}
+	switch strings.TrimSpace(attributes["action"]) {
+	case "business_advanced_security.enabled",
+		"business_advanced_security.enabled_for_new_repos",
+		"dependabot_alerts.enable",
+		"dependabot_alerts_new_repos.enable",
+		"dependabot_security_updates.enable",
+		"dependabot_security_updates_new_repos.enable",
+		"org.advanced_security_enabled_for_new_repos",
+		"org.advanced_security_enabled_on_all_repos",
+		"org.advanced_security_policy_selected_member_enabled",
+		"org.secret_scanning_push_protection_enable",
+		"repo.advanced_security_enabled",
+		"repo.advanced_security_policy_selected_member_enabled",
+		"repository_secret_scanning.enable",
+		"repository_secret_scanning_push_protection.enable",
+		"repository_vulnerability_alerts.enable":
+		return true
+	}
+	return findingAttributeBool(
+		attributes,
+		"advanced_security_enabled",
+		"github_advanced_security_enabled",
+		"code_security_enabled",
+		"dependabot_enabled",
+		"dependabot_alerts_enabled",
+		"dependabot_security_updates_enabled",
+		"secret_scanning_enabled",
+		"repository_secret_scanning_enabled",
+		"secret_scanning_push_protection_enabled",
+		"repository_vulnerability_alerts_enabled",
+		"vulnerability_alerts_enabled",
+	)
+}
+
+func githubOrgAuthControlCloseAnchor(event Event) (string, bool) {
+	attributes := eventAttributes(event)
+	if !githubOrgAuthControlsRestored(attributes) {
+		return "", false
+	}
+	return githubOrgPostureAnchor(attributes), true
+}
+
+func githubOrgAuthControlsRestored(attributes map[string]string) bool {
+	if githubOrgAuthControlWeakening(attributes) {
+		return false
+	}
+	switch strings.TrimSpace(attributes["action"]) {
+	case "oauth_app_policy.enabled",
+		"org.enable_oauth_app_restrictions",
+		"org.enable_saml_sso",
+		"org.enable_two_factor_requirement",
+		"org.require_two_factor_requirement":
+		return true
+	}
+	return findingAttributeBool(
+		attributes,
+		"auth_control_strengthened",
+		"oauth_app_restrictions_enabled",
+		"oauth_app_restrictions_enforced",
+		"saml_enabled",
+		"saml_enforced",
+		"saml_required",
+		"saml_sso_enabled",
+		"mfa_required",
+		"two_factor_enforced",
+		"two_factor_required",
+		"two_factor_requirement_enabled",
+	)
+}
+
+func githubOrgIPAllowListCloseAnchor(event Event) (string, bool) {
+	attributes := eventAttributes(event)
+	if !githubIPAllowListRestored(attributes) {
+		return "", false
+	}
+	return githubOrgPostureAnchor(attributes), true
+}
+
+func githubIPAllowListRestored(attributes map[string]string) bool {
+	if githubIPAllowListWeakeningOrExpansion(attributes) {
+		return false
+	}
+	switch strings.TrimSpace(attributes["action"]) {
+	case "ip_allow_list.enable", "ip_allow_list.enabled", "org.enable_ip_allow_list":
+		return true
+	}
+	return findingAttributeBool(attributes, "ip_allow_list_enabled") ||
+		findingAttributeBool(attributes, "allowed_cidrs_compliant", "ip_allow_list_entries_compliant")
+}
+
 func githubRepositoryRulesetAnchor(attributes map[string]string) string {
 	return githubCounterEventAnchor(attributes, "repo", "ruleset_id")
 }
@@ -1346,6 +1470,37 @@ func githubPrivateRepositoryForkingEnabled(attributes map[string]string) bool {
 		return false
 	}
 	return findingAttributeBool(attributes, "private_repository_forking_enabled", "private_forking_enabled")
+}
+
+func githubPrivateRepositoryForkingAnchor(attributes map[string]string) string {
+	scopeID := strings.TrimSpace(attributes["posture_scope_id"])
+	if scopeID == "" {
+		_, scopeID = githubPrivateRepositoryForkingScope(attributes)
+	}
+	return githubCounterEventAnchor(map[string]string{"scope": scopeID}, "scope")
+}
+
+func githubPrivateRepositoryForkingCloseAnchor(event Event) (string, bool) {
+	attributes := eventAttributes(event)
+	if !githubPrivateRepositoryForkingDisabled(attributes) {
+		return "", false
+	}
+	return githubPrivateRepositoryForkingAnchor(attributes), true
+}
+
+func githubPrivateRepositoryForkingDisabled(attributes map[string]string) bool {
+	if githubPrivateRepositoryForkingEnabled(attributes) {
+		return false
+	}
+	switch strings.TrimSpace(attributes["action"]) {
+	case "org.private_repository_forking_disable",
+		"private_repository_forking.disable",
+		"private_repository_forking.disabled",
+		"repo.private_repository_forking_disable",
+		"repository.private_repository_forking_disabled":
+		return true
+	}
+	return githubAttributeExplicitlyFalse(attributes, "private_repository_forking_enabled", "private_forking_enabled")
 }
 
 func githubPrivateRepositoryForkingFingerprintInputs(event *cerebrov1.EventEnvelope, _ RuleDefinition) []string {
