@@ -94,6 +94,8 @@ type stubFindingStore struct {
 	backfillRiskResults        []*ports.FindingRecord
 	backfillRiskErr            error
 	backfillIncludeUnprojected bool
+	updateStatusCallCount      int
+	updateStatusCalls          []ports.FindingStatusUpdate
 }
 
 func (s *stubFindingStore) Ping(context.Context) error { return nil }
@@ -223,10 +225,25 @@ func (s *stubFindingStore) UpdateFindingStatus(_ context.Context, request ports.
 	if !ok {
 		return nil, ports.ErrFindingNotFound
 	}
+	s.updateStatusCallCount++
+	s.updateStatusCalls = append(s.updateStatusCalls, request)
 	cloned := cloneFinding(finding)
 	cloned.Status = strings.TrimSpace(request.Status)
 	cloned.StatusReason = strings.TrimSpace(request.Reason)
 	cloned.StatusUpdatedAt = request.UpdatedAt.UTC()
+	if request.Tombstone != nil {
+		t := request.Tombstone
+		tombstonedAt := t.TombstonedAt.UTC()
+		if tombstonedAt.IsZero() {
+			tombstonedAt = cloned.StatusUpdatedAt
+		}
+		cloned.Tombstoned = true
+		cloned.TombstonedAt = tombstonedAt
+		cloned.TombstonedBy = strings.TrimSpace(t.By)
+		cloned.TombstonedReason = strings.TrimSpace(t.Reason)
+		cloned.TombstonedRunID = strings.TrimSpace(t.RunID)
+		cloned.PriorStatus = strings.TrimSpace(t.PriorStatus)
+	}
 	s.findings[cloned.ID] = cloned
 	return cloneFinding(cloned), nil
 }
@@ -3874,6 +3891,15 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 			StatusReason:    finding.StatusReason,
 			StatusUpdatedAt: finding.StatusUpdatedAt,
 		},
+		FindingTombstone: ports.FindingTombstone{
+			Tombstoned:          finding.Tombstoned,
+			TombstonedAt:        finding.TombstonedAt,
+			TombstonedBy:        finding.TombstonedBy,
+			TombstonedReason:    finding.TombstonedReason,
+			TombstonedRunID:     finding.TombstonedRunID,
+			PriorStatus:         finding.PriorStatus,
+			TombstoneGeneration: finding.TombstoneGeneration,
+		},
 		Attributes:      attributes,
 		FirstObservedAt: finding.FirstObservedAt,
 		LastObservedAt:  finding.LastObservedAt,
@@ -3956,7 +3982,7 @@ func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRec
 	if request.TenantID != "" && strings.TrimSpace(finding.TenantID) != strings.TrimSpace(request.TenantID) {
 		return false
 	}
-	if strings.TrimSpace(finding.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+	if strings.TrimSpace(request.RuntimeID) != "" && strings.TrimSpace(finding.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
 		return false
 	}
 	if request.FindingID != "" && strings.TrimSpace(finding.ID) != strings.TrimSpace(request.FindingID) {

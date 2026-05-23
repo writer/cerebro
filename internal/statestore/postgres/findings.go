@@ -621,6 +621,44 @@ func (s *Store) UpdateFindingStatus(ctx context.Context, request ports.FindingSt
 	if updatedAt.IsZero() {
 		updatedAt = time.Now().UTC()
 	}
+	if request.Tombstone != nil {
+		t := request.Tombstone
+		tombstonedAt := t.TombstonedAt.UTC()
+		if tombstonedAt.IsZero() {
+			tombstonedAt = updatedAt
+		}
+		var row findingRow
+		if err := scanFindingRow(s.db.QueryRowContext(ctx, `
+UPDATE findings
+SET status = $2,
+    status_reason = $3,
+    status_updated_at = $4,
+    tombstoned = TRUE,
+    tombstoned_at = $5,
+    tombstoned_by = $6,
+    tombstoned_reason = $7,
+    tombstoned_run_id = $8,
+    prior_status = $9,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING `+findingSelectColumns,
+			findingID,
+			status,
+			statusReason,
+			updatedAt,
+			tombstonedAt,
+			strings.TrimSpace(t.By),
+			strings.TrimSpace(t.Reason),
+			strings.TrimSpace(t.RunID),
+			strings.TrimSpace(t.PriorStatus),
+		), &row); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, ports.ErrFindingNotFound
+			}
+			return nil, fmt.Errorf("update finding %q tombstone status: %w", findingID, err)
+		}
+		return row.record()
+	}
 	var row findingRow
 	if err := scanFindingRow(s.db.QueryRowContext(ctx, `
 UPDATE findings

@@ -59,16 +59,18 @@ var (
 // fingerprints, and runtime-level lineage all stay explicit instead of collapsing into an
 // opaque multi-rule batch.
 type Service struct {
-	runtimeStore  ports.SourceRuntimeStore
-	replayer      ports.EventReplayer
-	store         ports.FindingStore
-	runStore      ports.FindingEvaluationRunStore
-	evidenceStore ports.FindingEvidenceStore
-	claimStore    ports.ClaimStore
-	graphQuery    ports.GraphQueryStore
-	graph         ports.ProjectionGraphStore
-	appendLog     ports.AppendLog
-	rules         *Registry
+	runtimeStore        ports.SourceRuntimeStore
+	replayer            ports.EventReplayer
+	store               ports.FindingStore
+	runStore            ports.FindingEvaluationRunStore
+	evidenceStore       ports.FindingEvidenceStore
+	claimStore          ports.ClaimStore
+	graphQuery          ports.GraphQueryStore
+	graph               ports.ProjectionGraphStore
+	appendLog           ports.AppendLog
+	closeoutStore       ports.CloseoutRunStore
+	tombstoneEventStore ports.FindingTombstoneEventStore
+	rules               *Registry
 }
 
 // EvaluateRequest scopes one replay-backed finding evaluation.
@@ -217,6 +219,27 @@ func (s *Service) WithAppendLog(appendLog ports.AppendLog) *Service {
 		return nil
 	}
 	s.appendLog = appendLog
+	return s
+}
+
+// WithCloseoutStore wires one optional closeout_run lifecycle boundary used by the bulk
+// tombstone primitive (TombstoneFindingsBulk). When unset the bulk primitive refuses to run.
+func (s *Service) WithCloseoutStore(store ports.CloseoutRunStore) *Service {
+	if s == nil {
+		return nil
+	}
+	s.closeoutStore = store
+	return s
+}
+
+// WithFindingTombstoneEventStore wires one optional finding_tombstone_events audit boundary
+// used by the bulk tombstone primitive (TombstoneFindingsBulk). When unset the bulk primitive
+// refuses to run.
+func (s *Service) WithFindingTombstoneEventStore(store ports.FindingTombstoneEventStore) *Service {
+	if s == nil {
+		return nil
+	}
+	s.tombstoneEventStore = store
 	return s
 }
 
@@ -544,6 +567,9 @@ func (s *Service) resolveRetiredOpenFindings(ctx context.Context, tenantID strin
 		if finding == nil {
 			continue
 		}
+		if finding.Tombstoned {
+			continue
+		}
 		if _, emitted := emittedFindingIDs[strings.TrimSpace(finding.ID)]; emitted {
 			continue
 		}
@@ -578,6 +604,9 @@ func (s *Service) resolveStaleOpenFindings(ctx context.Context, tenantID string,
 	}
 	for _, finding := range findings {
 		if finding == nil {
+			continue
+		}
+		if finding.Tombstoned {
 			continue
 		}
 		if _, emitted := emittedFindingIDs[strings.TrimSpace(finding.ID)]; emitted {
@@ -630,6 +659,9 @@ func (s *Service) resolveAllOpenFindingsForRule(ctx context.Context, tenantID st
 	}
 	for _, finding := range findings {
 		if finding == nil {
+			continue
+		}
+		if finding.Tombstoned {
 			continue
 		}
 		updated, err := s.updateFindingStatusAndRisk(ctx, ports.FindingStatusUpdate{
