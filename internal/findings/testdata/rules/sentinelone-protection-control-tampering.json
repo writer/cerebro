@@ -1,37 +1,58 @@
 {
   "rule_id": "sentinelone-protection-control-tampering",
   "runtime": {
-    "id": "writer-sentinelone-activity",
+    "id": "writer-sentinelone-agent",
     "source_id": "sentinelone",
-    "tenant_id": "writer"
+    "tenant_id": "writer",
+    "config": {
+      "family": "agent"
+    }
   },
   "events": [
     {
-      "id": "s1-activity-1",
+      "id": "s1-agent-control-tampered",
       "tenant_id": "writer",
       "source_id": "sentinelone",
-      "kind": "sentinelone.activity",
+      "kind": "sentinelone.agent",
       "occurred_at": "2026-05-09T07:10:00Z",
-      "schema_ref": "sentinelone/activity/v1",
+      "schema_ref": "sentinelone/agent/v1",
       "attributes": {
-        "activity_id": "activity-1",
-        "activity_type": "42",
         "agent_id": "agent-99",
-        "primary_description": "Policy updated to disable protection for agent"
+        "computer_name": "host-99",
+        "firewall_enabled": "false",
+        "activity_id": "activity-a",
+        "site_id": "site-1",
+        "site_name": "Production",
+        "group_id": "group-1",
+        "group_name": "Default"
       }
     },
     {
-      "id": "s1-activity-2",
+      "id": "s1-agent-control-restored",
+      "tenant_id": "writer",
+      "source_id": "sentinelone",
+      "kind": "sentinelone.agent",
+      "occurred_at": "2026-05-09T07:15:00Z",
+      "schema_ref": "sentinelone/agent/v1",
+      "attributes": {
+        "agent_id": "agent-99",
+        "computer_name": "host-99",
+        "firewall_enabled": "true",
+        "activity_id": "activity-b"
+      }
+    },
+    {
+      "id": "s1-activity-legacy",
       "tenant_id": "writer",
       "source_id": "sentinelone",
       "kind": "sentinelone.activity",
-      "occurred_at": "2026-05-09T07:15:00Z",
+      "occurred_at": "2026-05-09T07:20:00Z",
       "schema_ref": "sentinelone/activity/v1",
       "attributes": {
-        "activity_id": "activity-2",
-        "activity_type": "19",
-        "agent_id": "agent-100",
-        "primary_description": "Threat with confidence level suspicious detected"
+        "activity_id": "activity-legacy",
+        "activity_type": "42",
+        "agent_id": "agent-99",
+        "primary_description": "Policy updated to disable protection for agent"
       }
     }
   ],
@@ -40,22 +61,29 @@
       "rule_id": "sentinelone-protection-control-tampering",
       "severity": "HIGH",
       "status": "open",
-      "summary": "SentinelOne protection control changed on agent-99: Policy updated to disable protection for agent",
-      "policy_id": "agent-99",
-      "event_ids": ["s1-activity-1"],
+      "summary": "SentinelOne firewall control is disabled on host-99",
+      "policy_id": "agent-99:firewall",
+      "event_ids": ["s1-agent-control-tampered"],
       "attributes": {
         "action": "protection_control_tampering",
-        "source_runtime_id": "writer-sentinelone-activity",
+        "source_runtime_id": "writer-sentinelone-agent",
         "primary_resource_urn": "urn:cerebro:writer:sentinelone_agent:agent-99",
-        "activity_id": "activity-1",
-        "agent_id": "agent-99"
+        "activity_id": "activity-a",
+        "agent_id": "agent-99",
+        "control_type": "firewall",
+        "control_state": "disabled",
+        "firewall_enabled": "false"
       }
     }
   ],
   "expected_no_match": [
     {
-      "event_id": "s1-activity-2",
-      "reason": "ordinary threat activity is evidence, not a control-change finding"
+      "event_id": "s1-agent-control-restored",
+      "reason": "restored control closes the existing durable finding instead of emitting a new one"
+    },
+    {
+      "event_id": "s1-activity-legacy",
+      "reason": "legacy activity audit events are evidence, not durable control-state findings"
     }
   ]
 }

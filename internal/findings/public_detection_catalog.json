@@ -2480,11 +2480,11 @@
       "pack_id": "sentinelone",
       "pack_name": "SentinelOne",
       "name": "SentinelOne Protection Control Tampering",
-      "description": "Detect SentinelOne activity that changes protection controls such as exclusions, policies, quarantine, or uninstall state.",
+      "description": "Detect SentinelOne agents where a named protection control remains in a tampered state.",
       "source_id": "sentinelone",
       "evaluation_mode": "event",
       "event_kinds": [
-        "sentinelone.activity"
+        "sentinelone.agent"
       ],
       "output_kind": "finding.sentinelone_protection_control_tampering",
       "severity": "HIGH",
@@ -2505,10 +2505,11 @@
       ],
       "runbook": "Review SentinelOne endpoint state, linked threat/activity evidence, policy scope, and documented exceptions before remediation or closure.",
       "required_attributes": [
-        "activity_id"
+        "agent_id"
       ],
       "fingerprint_fields": [
-        "activity_id"
+        "agent_id",
+        "control_type"
       ],
       "control_refs": [
         {

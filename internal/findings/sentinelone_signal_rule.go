@@ -67,6 +67,13 @@ type sentinelOneFindingOptions struct {
 	severity           func(map[string]string) string
 	summary            func(map[string]string, findingProjectionContext) string
 	policyID           func(map[string]string) string
+	fingerprint        func(map[string]string, findingProjectionContext) []string
+	enrichAttributes   func(sourceAttributes, findingAttributes map[string]string)
+}
+
+type sentinelOneProtectionControlTamperingRule struct {
+	Rule
+	definition RuleDefinition
 }
 
 func newSentinelOneEndpointActiveInfectionRule() Rule {
@@ -150,25 +157,32 @@ func newSentinelOneProtectionControlTamperingRule() Rule {
 	definition := sentinelOneRuleDefinition(
 		sentinelOneProtectionControlTamperingRuleID,
 		"SentinelOne Protection Control Tampering",
-		"Detect SentinelOne activity that changes protection controls such as exclusions, policies, quarantine, or uninstall state.",
-		[]string{sentinelOneActivityEntityType},
+		"Detect SentinelOne agents where a named protection control remains in a tampered state.",
+		[]string{sentinelOneAgentEntityType},
 		"finding.sentinelone_protection_control_tampering",
 		"HIGH",
 		[]string{"sentinelone", "control-plane", "tampering", "defense-evasion", "attack.t1562"},
-		[]string{"activity_id"},
-		[]string{"activity_id"},
+		[]string{"agent_id"},
+		[]string{"agent_id", "control_type"},
 		sentinelOneEndpointProtectionControlRefs,
 	)
-	return newSentinelOneEventRule(definition, matchesSentinelOneProtectionControlTampering, sentinelOneFindingOptions{
+	definition.Lifecycle = Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored}
+	rule := newSentinelOneEventRule(definition, matchesSentinelOneProtectionControlTampering, sentinelOneFindingOptions{
 		action:             sentinelOneProtectionControlTamperingAction,
 		primaryEntityType:  sentinelOneAgentEntityType,
+		collectAllEntities: true,
 		collectAllLinkURNs: true,
-		primaryRelations:   []string{"observed_on", "acted_on"},
 		summary:            sentinelOneProtectionControlTamperingSummary,
+		fingerprint:        sentinelOneProtectionControlTamperingFingerprintInputs,
+		enrichAttributes:   sentinelOneProtectionControlTamperingAttributes,
 		policyID: func(attributes map[string]string) string {
-			return firstNonEmpty(attributes["agent_id"], attributes["threat_id"], attributes["activity_id"])
+			return sentinelOneProtectionControlTamperingPolicyID(attributes)
 		},
 	})
+	return &sentinelOneProtectionControlTamperingRule{
+		Rule:       rule,
+		definition: definition,
+	}
 }
 
 func newSentinelOneRiskyExclusionRule() Rule {
@@ -304,6 +318,9 @@ func buildSentinelOneFinding(ctx context.Context, runtime *cerebrov1.SourceRunti
 			findingAttributes[key] = strings.TrimSpace(value)
 		}
 	}
+	if options.enrichAttributes != nil {
+		options.enrichAttributes(attributes, findingAttributes)
+	}
 	for key, value := range options.definition.AttributeMap() {
 		findingAttributes["rule_"+key] = value
 	}
@@ -316,7 +333,11 @@ func buildSentinelOneFinding(ctx context.Context, runtime *cerebrov1.SourceRunti
 	if options.summary != nil {
 		summary = options.summary(attributes, projectedContext)
 	}
-	fingerprint := hashFindingFingerprint(options.definition.ID, event.GetTenantId(), runtime.GetId(), policyID)
+	fingerprintInputs := []string{options.definition.ID, event.GetTenantId(), runtime.GetId(), policyID}
+	if options.fingerprint != nil {
+		fingerprintInputs = append([]string{options.definition.ID}, options.fingerprint(attributes, projectedContext)...)
+	}
+	fingerprint := hashFindingFingerprint(fingerprintInputs...)
 	return &ports.FindingRecord{
 		ID:                fingerprint,
 		Fingerprint:       fingerprint,
@@ -341,6 +362,30 @@ func buildSentinelOneFinding(ctx context.Context, runtime *cerebrov1.SourceRunti
 	}, nil
 }
 
+func (r *sentinelOneProtectionControlTamperingRule) RuleMetadata() RuleDefinition {
+	if r == nil {
+		return RuleDefinition{}
+	}
+	return cloneRuleDefinition(r.definition)
+}
+
+func (r *sentinelOneProtectionControlTamperingRule) OpenAnchor(attributes map[string]string) string {
+	return sentinelOneProtectionControlTamperingAnchor(attributes)
+}
+
+func (r *sentinelOneProtectionControlTamperingRule) CloseOnEvent(event Event) (string, bool) {
+	if !eventKindMatcher(sentinelOneAgentEntityType)(event) || !hasRequiredAttributes(event, "agent_id") {
+		return "", false
+	}
+	attributes := eventAttributes(event)
+	tampered, known := sentinelOneProtectionControlTampered(attributes)
+	if !known || tampered {
+		return "", false
+	}
+	anchor := sentinelOneProtectionControlTamperingAnchor(attributes)
+	return anchor, anchor != ""
+}
+
 func matchesSentinelOneMitigationFailed(event *cerebrov1.EventEnvelope) bool {
 	if !eventKindMatcher(sentinelOneThreatEntityType)(event) || !hasRequiredAttributes(event, "agent_id", "mitigation_status") {
 		return false
@@ -358,14 +403,18 @@ func matchesSentinelOneAgentDetectOnlyMode(event *cerebrov1.EventEnvelope) bool 
 }
 
 func matchesSentinelOneProtectionControlTampering(event *cerebrov1.EventEnvelope) bool {
-	if !eventKindMatcher(sentinelOneActivityEntityType)(event) || !hasRequiredAttributes(event, "activity_id") {
+	if !eventKindMatcher(sentinelOneAgentEntityType)(event) || !hasRequiredAttributes(event, "agent_id") {
 		return false
 	}
-	text := sentinelOneActivityText(eventAttributes(event))
-	if !containsAny(text, "exclusion", "policy", "mitigation", "quarantine", "firewall", "uninstall", "allowlist", "whitelist", "blacklist", "protection") {
+	attributes := eventAttributes(event)
+	if sentinelOneAgentRetired(attributes) {
 		return false
 	}
-	return containsAny(text, "add", "added", "create", "created", "update", "updated", "change", "changed", "delete", "deleted", "remove", "removed", "disable", "disabled", "deactivate", "deactivated", "suspend", "suspended", "detect only", "detect-only")
+	if sentinelOneProtectionControlType(attributes) == "" {
+		return false
+	}
+	tampered, known := sentinelOneProtectionControlTampered(attributes)
+	return known && tampered
 }
 
 func matchesSentinelOneRiskyExclusion(event *cerebrov1.EventEnvelope) bool {
@@ -381,6 +430,119 @@ func matchesSentinelOneRiskyExclusion(event *cerebrov1.EventEnvelope) bool {
 
 func sentinelOneAgentPolicyID(attributes map[string]string) string {
 	return firstNonEmpty(attributes["agent_id"], attributes["agent_uuid"], attributes["uuid"], attributes["computer_name"], attributes["agent_name"])
+}
+
+func sentinelOneProtectionControlTamperingAnchor(attributes map[string]string) string {
+	agentID := strings.TrimSpace(attributes["agent_id"])
+	controlType := sentinelOneProtectionControlType(attributes)
+	if agentID == "" || controlType == "" {
+		return ""
+	}
+	return agentID + "|" + controlType
+}
+
+func sentinelOneProtectionControlTamperingPolicyID(attributes map[string]string) string {
+	agentID := strings.TrimSpace(attributes["agent_id"])
+	controlType := sentinelOneProtectionControlType(attributes)
+	if agentID == "" {
+		return controlType
+	}
+	if controlType == "" {
+		return agentID
+	}
+	return agentID + ":" + controlType
+}
+
+func sentinelOneProtectionControlTamperingFingerprintInputs(attributes map[string]string, _ findingProjectionContext) []string {
+	agentID := strings.TrimSpace(attributes["agent_id"])
+	controlType := sentinelOneProtectionControlType(attributes)
+	if agentID == "" || controlType == "" {
+		return nil
+	}
+	return []string{agentID, controlType}
+}
+
+func sentinelOneProtectionControlType(attributes map[string]string) string {
+	controlType := sentinelOneStatus(firstNonEmpty(
+		attributes["control_type"],
+		attributes["protection_control"],
+		attributes["control_name"],
+		attributes["control"],
+	))
+	if controlType != "" {
+		return controlType
+	}
+	if _, ok := sentinelOneAttributeBool(attributes, "firewall_enabled"); ok {
+		return "firewall"
+	}
+	return ""
+}
+
+func sentinelOneProtectionControlState(attributes map[string]string) string {
+	state := firstNonEmpty(
+		attributes["control_state"],
+		attributes["protection_control_state"],
+		attributes["tamper_state"],
+		attributes["control_status"],
+		attributes["status"],
+	)
+	if state != "" {
+		return sentinelOneStatus(state)
+	}
+	if firewallEnabled, ok := sentinelOneAttributeBool(attributes, "firewall_enabled"); ok {
+		if firewallEnabled {
+			return "enabled"
+		}
+		return "disabled"
+	}
+	return ""
+}
+
+func sentinelOneProtectionControlTampered(attributes map[string]string) (bool, bool) {
+	for _, key := range []string{"control_tampered", "is_control_tampered", "protection_control_tampered", "tampered"} {
+		if raw := strings.TrimSpace(attributes[key]); raw != "" {
+			return sentinelOneProtectionControlTamperedValue(raw)
+		}
+	}
+	state := sentinelOneProtectionControlState(attributes)
+	if state == "" {
+		return false, false
+	}
+	return sentinelOneProtectionControlTamperedValue(state)
+}
+
+func sentinelOneProtectionControlTamperingAttributes(sourceAttributes, findingAttributes map[string]string) {
+	if controlType := sentinelOneProtectionControlType(sourceAttributes); controlType != "" {
+		findingAttributes["control_type"] = controlType
+	}
+	if controlState := sentinelOneProtectionControlState(sourceAttributes); controlState != "" {
+		findingAttributes["control_state"] = controlState
+	}
+}
+
+func sentinelOneAttributeBool(attributes map[string]string, keys ...string) (bool, bool) {
+	for _, key := range keys {
+		value := sentinelOneStatus(attributes[key])
+		switch value {
+		case "1", "t", "true", "yes", "y", "enabled", "active", "on", "protected", "healthy":
+			return true, true
+		case "0", "f", "false", "no", "n", "disabled", "inactive", "off", "unprotected", "not_protected":
+			return false, true
+		}
+	}
+	return false, false
+}
+
+func sentinelOneProtectionControlTamperedValue(value string) (bool, bool) {
+	normalized := sentinelOneStatus(value)
+	switch normalized {
+	case "1", "true", "yes", "y", "tampered", "disabled", "deactivated", "suspended", "unprotected", "not_protected", "off", "bypassed", "detect", "detect_only", "detection", "monitor", "monitor_only", "uninstalled", "pending_uninstall", "modified_unauthorized":
+		return true, true
+	case "0", "false", "no", "n", "restored", "enabled", "active", "protected", "on", "healthy", "normal", "compliant", "not_tampered":
+		return false, true
+	default:
+		return false, false
+	}
 }
 
 func sentinelOneFalsePositive(attributes map[string]string) bool {
@@ -491,16 +653,6 @@ func sentinelOneBroadExclusionValue(value string) bool {
 	}
 }
 
-func sentinelOneActivityText(attributes map[string]string) string {
-	return strings.ToLower(strings.Join([]string{
-		attributes["primary_description"],
-		attributes["description"],
-		attributes["secondary_description"],
-		attributes["comments"],
-		attributes["activity_type"],
-	}, " "))
-}
-
 func sentinelOneMitigationFailedSummary(attributes map[string]string, context findingProjectionContext) string {
 	endpoint := firstNonEmpty(context.ResourceLabel, attributes["computer_name"], attributes["agent_name"], attributes["agent_id"], "unknown endpoint")
 	threat := firstNonEmpty(attributes["threat_name"], attributes["classification"], attributes["threat_id"], "threat")
@@ -513,9 +665,10 @@ func sentinelOneAgentDetectOnlyModeSummary(attributes map[string]string, context
 }
 
 func sentinelOneProtectionControlTamperingSummary(attributes map[string]string, context findingProjectionContext) string {
-	target := firstNonEmpty(attributes["computer_name"], attributes["agent_id"], attributes["threat_id"], attributes["activity_id"], context.ResourceLabel, "SentinelOne control")
-	description := firstNonEmpty(attributes["primary_description"], attributes["description"], attributes["activity_id"], "protection control changed")
-	return fmt.Sprintf("SentinelOne protection control changed on %s: %s", target, description)
+	target := firstNonEmpty(context.ResourceLabel, attributes["computer_name"], attributes["agent_name"], attributes["agent_id"], "unknown endpoint")
+	controlType := firstNonEmpty(sentinelOneProtectionControlType(attributes), attributes["control_type"], attributes["protection_control"], attributes["control_name"], "protection")
+	state := firstNonEmpty(sentinelOneProtectionControlState(attributes), attributes["control_state"], attributes["protection_control_state"], attributes["tamper_state"], "tampered")
+	return fmt.Sprintf("SentinelOne %s control is %s on %s", controlType, state, target)
 }
 
 func sentinelOneRiskyExclusionSummary(attributes map[string]string, context findingProjectionContext) string {
