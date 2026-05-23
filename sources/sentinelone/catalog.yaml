@@ -9,3 +9,11 @@ emitted_kinds:
   - sentinelone.group
   - sentinelone.site
   - sentinelone.threat
+runtime_families:
+  - activity
+  - agent
+  - application
+  - exclusion
+  - group
+  - site
+  - threat
