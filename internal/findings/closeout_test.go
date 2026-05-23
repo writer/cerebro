@@ -835,3 +835,72 @@ func sortedProposedIDs(records []*ports.FindingRecord) []string {
 	sort.Strings(ids)
 	return ids
 }
+
+type ctxAwareCloseoutStore struct {
+	inner *stubCloseoutStore
+}
+
+func (s *ctxAwareCloseoutStore) InsertCloseoutRun(ctx context.Context, run ports.CloseoutRunInsert) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.inner.InsertCloseoutRun(ctx, run)
+}
+
+func (s *ctxAwareCloseoutStore) FinishCloseoutRun(ctx context.Context, finish ports.CloseoutRunFinish) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.inner.FinishCloseoutRun(ctx, finish)
+}
+
+func (s *ctxAwareCloseoutStore) GetCloseoutRun(ctx context.Context, runID string) (*ports.CloseoutRunRecord, error) {
+	return s.inner.GetCloseoutRun(ctx, runID)
+}
+
+type cancelOnInsertTombstoneEventStore struct {
+	inner  *stubFindingTombstoneEventStore
+	cancel context.CancelFunc
+}
+
+func (s *cancelOnInsertTombstoneEventStore) InsertFindingTombstoneEvent(ctx context.Context, event ports.FindingTombstoneEvent) error {
+	if err := s.inner.InsertFindingTombstoneEvent(ctx, event); err != nil {
+		return err
+	}
+	s.cancel()
+	return nil
+}
+
+func (s *cancelOnInsertTombstoneEventStore) CountFindingTombstoneEventsByRun(ctx context.Context, runID string) (int, error) {
+	return s.inner.CountFindingTombstoneEventsByRun(ctx, runID)
+}
+
+func TestTombstoneFindingsBulk_FinishesEvenIfRequestContextCanceled(t *testing.T) {
+	fx := newCloseoutFixture(t)
+	fx.seedFinding("f-1", "open", fx.now.Add(-48*time.Hour), nil)
+
+	fx.service.closeoutStore = &ctxAwareCloseoutStore{inner: fx.closeout}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	fx.service.tombstoneEventStore = &cancelOnInsertTombstoneEventStore{
+		inner:  fx.tombstone,
+		cancel: cancel,
+	}
+
+	_, _ = fx.service.TombstoneFindingsBulk(ctx, fx.request("run-cancel-1", false))
+
+	run, err := fx.closeout.GetCloseoutRun(context.Background(), "run-cancel-1")
+	if err != nil {
+		t.Fatalf("GetCloseoutRun error = %v", err)
+	}
+	if run.Status == "running" {
+		t.Fatalf("closeout_run.status = %q, want succeeded or failed", run.Status)
+	}
+	if run.Status != "succeeded" && run.Status != "failed" {
+		t.Fatalf("closeout_run.status = %q, want succeeded or failed", run.Status)
+	}
+	if run.FinishedAt.IsZero() {
+		t.Fatalf("closeout_run.finished_at is zero")
+	}
+}

@@ -159,7 +159,7 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 	result.ProposedCount = len(proposed)
 
 	if req.DryRun {
-		finishErr := s.closeoutStore.FinishCloseoutRun(ctx, ports.CloseoutRunFinish{
+		finishErr := s.closeoutStore.FinishCloseoutRun(context.WithoutCancel(ctx), ports.CloseoutRunFinish{
 			RunID:         runID,
 			Status:        "succeeded",
 			ProposedCount: result.ProposedCount,
@@ -196,7 +196,7 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 		}
 	}
 	result.AppliedCount = applied
-	finishErr := s.closeoutStore.FinishCloseoutRun(ctx, ports.CloseoutRunFinish{
+	finishErr := s.closeoutStore.FinishCloseoutRun(context.WithoutCancel(ctx), ports.CloseoutRunFinish{
 		RunID:         runID,
 		Status:        "succeeded",
 		ProposedCount: result.ProposedCount,
