@@ -43,10 +43,16 @@ func (s *stubRuntimeStore) GetSourceRuntime(_ context.Context, id string) (*cere
 type stubReplayer struct {
 	request ports.ReplayRequest
 	events  []*cerebrov1.EventEnvelope
+	calls   int
+	err     error
 }
 
 func (s *stubReplayer) Replay(_ context.Context, request ports.ReplayRequest) ([]*cerebrov1.EventEnvelope, error) {
+	s.calls++
 	s.request = request
+	if s.err != nil {
+		return nil, s.err
+	}
 	events := make([]*cerebrov1.EventEnvelope, 0, len(s.events))
 	for _, event := range s.events {
 		events = append(events, proto.Clone(event).(*cerebrov1.EventEnvelope))
@@ -835,6 +841,7 @@ func TestEvaluateSourceRuntimeFindingsReplaysGitHubDependabotAlert(t *testing.T)
 					Id:       "writer-github",
 					SourceId: "github",
 					TenantId: "writer",
+					Config:   map[string]string{"family": "dependabot_alert"},
 				},
 			},
 		},
@@ -898,6 +905,7 @@ func TestEvaluateSourceRuntimeFindingsProjectsRecordedFindingToGraph(t *testing.
 					Id:       "writer-github",
 					SourceId: "github",
 					TenantId: "writer",
+					Config:   map[string]string{"family": "dependabot_alert"},
 				},
 			},
 		},
@@ -1058,7 +1066,7 @@ func TestEvaluateSourceRuntimeRetiredRuleResolvesOpenFindingsOutsideReplayWindow
 	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{retiredFinding.ID: retiredFinding}}
 	service := NewWithRegistry(
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-github-audit": {Id: "writer-github-audit", SourceId: "github", TenantId: "writer"},
+			"writer-github-audit": {Id: "writer-github-audit", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}},
 		}},
 		&stubReplayer{events: []*cerebrov1.EventEnvelope{{
 			Id:       "github-recent-event",
@@ -1647,6 +1655,7 @@ func TestEvaluateSourceRuntimeFindingsRejectsUnsupportedRule(t *testing.T) {
 					Id:       "writer-github-audit",
 					SourceId: "github",
 					TenantId: "writer",
+					Config:   map[string]string{"family": "audit"},
 				},
 			},
 		},
@@ -1683,11 +1692,12 @@ func TestEvaluateSourceRuntimeFindingsAllowsExplicitUnsupportedRuleWithOpenFindi
 			EventIDs:  []string{"old-event"},
 		},
 	}}
+	replayer := &stubReplayer{err: errors.New("unexpected replay")}
 	service := NewWithRegistry(
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
 			"writer-aws-public-endpoint": {Id: "writer-aws-public-endpoint", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "public_endpoint"}},
 		}},
-		&stubReplayer{},
+		replayer,
 		store,
 		store,
 		store,
@@ -1704,6 +1714,9 @@ func TestEvaluateSourceRuntimeFindingsAllowsExplicitUnsupportedRuleWithOpenFindi
 	}
 	if got := store.findings["finding-old"].Status; got != findingStatusResolved {
 		t.Fatalf("stale finding status = %q, want %q", got, findingStatusResolved)
+	}
+	if replayer.calls != 0 {
+		t.Fatalf("Replay() calls = %d, want 0 for unsupported stale-only cleanup", replayer.calls)
 	}
 }
 
@@ -1890,11 +1903,12 @@ func TestEvaluateSourceRuntimeRulesIncludesUnsupportedRulesWithOpenFindings(t *t
 			EventIDs:  []string{"old-event"},
 		},
 	}}
+	replayer := &stubReplayer{err: errors.New("unexpected replay")}
 	service := NewWithRegistry(
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
 			"writer-aws-public-endpoint": {Id: "writer-aws-public-endpoint", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "public_endpoint"}},
 		}},
-		&stubReplayer{},
+		replayer,
 		store,
 		store,
 		store,
@@ -1911,6 +1925,37 @@ func TestEvaluateSourceRuntimeRulesIncludesUnsupportedRulesWithOpenFindings(t *t
 	}
 	if got := store.findings["finding-old"].Status; got != findingStatusResolved {
 		t.Fatalf("stale finding status = %q, want %q", got, findingStatusResolved)
+	}
+	if replayer.calls != 0 {
+		t.Fatalf("Replay() calls = %d, want 0 for unsupported stale-only cleanup", replayer.calls)
+	}
+}
+
+func TestEvaluateSourceRuntimeRulesSkipsBuiltinRulesForExplicitUnmatchedFamily(t *testing.T) {
+	replayer := &stubReplayer{err: errors.New("unexpected replay")}
+	store := &stubFindingStore{}
+	service := New(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-grc-integration": {
+				Id:       "writer-grc-integration",
+				SourceId: "grc",
+				TenantId: "writer",
+				Config:   map[string]string{"family": "integration"},
+			},
+		}},
+		replayer,
+		store,
+		store,
+		store,
+		store,
+	)
+
+	_, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-grc-integration"})
+	if !errors.Is(err, ErrRuleUnavailable) {
+		t.Fatalf("EvaluateSourceRuntimeRules() error = %v, want %v", err, ErrRuleUnavailable)
+	}
+	if replayer.calls != 0 {
+		t.Fatalf("Replay() calls = %d, want 0 when no builtin rule can emit for explicit runtime family", replayer.calls)
 	}
 }
 
@@ -2444,6 +2489,7 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 					Id:       "writer-github-audit",
 					SourceId: "github",
 					TenantId: "writer",
+					Config:   map[string]string{"family": "audit"},
 				},
 			},
 		},

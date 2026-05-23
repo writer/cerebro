@@ -32,6 +32,61 @@ func TestEventRuleScaffoldClonesSpecAndMatchesRuntimeSource(t *testing.T) {
 	}
 }
 
+func TestEventRuleScaffoldMatchesRuntimeEventFamily(t *testing.T) {
+	rule := newEventRule(eventRuleConfig{
+		definition: RuleDefinition{
+			ID:          "grc-vulnerability-rule",
+			Name:        "GRC Vulnerability Rule",
+			SourceID:    "grc",
+			EventKinds:  []string{"grc.vulnerability"},
+			OutputKind:  "finding.grc_vulnerability",
+			Severity:    "HIGH",
+			Status:      "open",
+			Description: "Detects GRC vulnerability events.",
+		},
+		match: func(*cerebrov1.EventEnvelope) bool { return false },
+		build: func(context.Context, *cerebrov1.SourceRuntime, *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
+			return nil, nil
+		},
+	})
+
+	if !rule.SupportsRuntime(&cerebrov1.SourceRuntime{SourceId: "grc", Config: map[string]string{"family": "vulnerability"}}) {
+		t.Fatal("SupportsRuntime(grc vulnerability) = false, want true")
+	}
+	if !rule.SupportsRuntime(&cerebrov1.SourceRuntime{SourceId: "grc"}) {
+		t.Fatal("SupportsRuntime(grc without resolved family) = false, want true")
+	}
+	if rule.SupportsRuntime(&cerebrov1.SourceRuntime{SourceId: "grc", Config: map[string]string{"family": "integration"}}) {
+		t.Fatal("SupportsRuntime(grc integration) = true, want false")
+	}
+	if !rule.SupportsRuntime(&cerebrov1.SourceRuntime{SourceId: "grc", Config: map[string]string{"family": "env:GRC_FAMILY"}}) {
+		t.Fatal("SupportsRuntime(env-backed family) = false, want true until runtime config is resolved")
+	}
+
+	githubAuditRule := newEventRule(eventRuleConfig{
+		definition: RuleDefinition{
+			ID:          "github-audit-rule",
+			Name:        "GitHub Audit Rule",
+			SourceID:    "github",
+			EventKinds:  []string{"github.audit"},
+			OutputKind:  "finding.github_audit",
+			Severity:    "HIGH",
+			Status:      "open",
+			Description: "Detects GitHub audit events.",
+		},
+		match: func(*cerebrov1.EventEnvelope) bool { return false },
+		build: func(context.Context, *cerebrov1.SourceRuntime, *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
+			return nil, nil
+		},
+	})
+	if githubAuditRule.SupportsRuntime(&cerebrov1.SourceRuntime{SourceId: "github"}) {
+		t.Fatal("SupportsRuntime(default github runtime) = true, want false for github.audit rule")
+	}
+	if !githubAuditRule.SupportsRuntime(&cerebrov1.SourceRuntime{SourceId: "github", Config: map[string]string{"family": "audit"}}) {
+		t.Fatal("SupportsRuntime(github audit) = false, want true")
+	}
+}
+
 func TestRuleDefinitionBuildsSpecAndAttributes(t *testing.T) {
 	definition := RuleDefinition{
 		ID:                 "github-rule",
