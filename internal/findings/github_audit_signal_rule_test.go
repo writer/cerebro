@@ -2,11 +2,210 @@ package findings
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
+
+func TestGitHubSecretScanningAlertCreated(t *testing.T) {
+	rule := newGitHubSecretScanningAlertCreatedRule()
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("rule does not expose RuleMetadata")
+	}
+	definition := metadataRule.RuleMetadata()
+	if definition.Lifecycle.Kind != LifecycleDurableState {
+		t.Fatalf("Lifecycle.Kind = %q, want %q", definition.Lifecycle.Kind, LifecycleDurableState)
+	}
+	if definition.Lifecycle.Anchor != AnchorSourceState {
+		t.Fatalf("Lifecycle.Anchor = %q, want %q", definition.Lifecycle.Anchor, AnchorSourceState)
+	}
+	if !cloudStringSlicesEqual(definition.EventKinds, []string{"github.secret_scanning_alert"}) {
+		t.Fatalf("EventKinds = %v, want github.secret_scanning_alert source-state events", definition.EventKinds)
+	}
+	wantFields := []string{"repo", "number"}
+	if !cloudStringSlicesEqual(definition.FingerprintFields, wantFields) {
+		t.Fatalf("FingerprintFields = %v, want %v", definition.FingerprintFields, wantFields)
+	}
+	for _, field := range definition.FingerprintFields {
+		if field == "action" || field == "event_id" {
+			t.Fatalf("FingerprintFields still contains %q: %v", field, definition.FingerprintFields)
+		}
+	}
+
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-secret-scanning", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "secret_scanning_alert"}}
+	first := githubSecretScanningAlertEvent("github-secret-alert-writer-cerebro-12", map[string]string{
+		"audit_event_id": "github-audit-secret-alert-created",
+		"html_url":       "https://github.com/writer/cerebro/security/secret-scanning/12",
+		"number":         "12",
+		"repo":           "writer/cerebro",
+		"secret_type":    "github_personal_access_token",
+		"state":          "open",
+	})
+	second := githubSecretScanningAlertEvent("github-secret-alert-writer-cerebro-12-second", map[string]string{
+		"audit_event_id": "github-audit-secret-alert-created-2",
+		"number":         "12",
+		"repo":           "writer/cerebro",
+		"secret_type":    "github_personal_access_token",
+		"state":          "open",
+	})
+	records, err := rule.Evaluate(context.Background(), runtime, first)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(first open alert) = (%v, %v), want one finding", records, err)
+	}
+	firstFinding := records[0]
+	records, err = rule.Evaluate(context.Background(), runtime, second)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(second open alert) = (%v, %v), want one finding", records, err)
+	}
+	secondFinding := records[0]
+	if firstFinding.Fingerprint != secondFinding.Fingerprint {
+		t.Fatalf("fingerprints differ across source-state replays of same (repo, number): %q vs %q", firstFinding.Fingerprint, secondFinding.Fingerprint)
+	}
+	for _, eventID := range []string{first.GetId(), second.GetId()} {
+		if strings.Contains(firstFinding.Fingerprint, eventID) {
+			t.Fatalf("fingerprint %q contains source event id %q", firstFinding.Fingerprint, eventID)
+		}
+	}
+	if !slices.Contains(firstFinding.EventIDs, "github-audit-secret-alert-created") {
+		t.Fatalf("EventIDs = %v, want audit_event_id preserved as finding evidence", firstFinding.EventIDs)
+	}
+	if got := firstFinding.Attributes["state"]; got != "open" {
+		t.Fatalf("Attributes[state] = %q, want open", got)
+	}
+	if got := firstFinding.Attributes["primary_resource_urn"]; got != "urn:cerebro:writer:github_secret_scanning_alert:writer/cerebro:12" {
+		t.Fatalf("primary_resource_urn = %q, want secret scanning alert source-state anchor", got)
+	}
+	if !slices.Contains(firstFinding.ResourceURNs, "urn:cerebro:writer:github_repo:writer/cerebro") {
+		t.Fatalf("ResourceURNs = %v, want repo context retained", firstFinding.ResourceURNs)
+	}
+
+	for _, state := range []string{"resolved", "revoked", "false_positive"} {
+		event := githubSecretScanningAlertEvent("github-secret-alert-"+state, map[string]string{
+			"number": "12",
+			"repo":   "writer/cerebro",
+			"state":  state,
+		})
+		records, err = rule.Evaluate(context.Background(), runtime, event)
+		if err != nil {
+			t.Fatalf("Evaluate(%s) error = %v", state, err)
+		}
+		if len(records) != 0 {
+			t.Fatalf("Evaluate(%s) returned %d findings, want 0 once alert is not open", state, len(records))
+		}
+	}
+
+	auditEvent := githubAuditEvent("github-audit-secret-alert-created", map[string]string{
+		"action": "secret_scanning_alert.create",
+		"number": "12",
+		"repo":   "writer/cerebro",
+	})
+	records, err = rule.Evaluate(context.Background(), &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}}, auditEvent)
+	if err != nil {
+		t.Fatalf("Evaluate(audit event) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(audit event) returned %d findings, want 0 after switching to github.secret_scanning_alert source-state events", len(records))
+	}
+}
+
+func TestGitHubSelfHostedRunnerChange(t *testing.T) {
+	rule := newGitHubSelfHostedRunnerChangeRule()
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("rule does not expose RuleMetadata")
+	}
+	definition := metadataRule.RuleMetadata()
+	if definition.Lifecycle.Kind != LifecycleDurableState {
+		t.Fatalf("Lifecycle.Kind = %q, want %q", definition.Lifecycle.Kind, LifecycleDurableState)
+	}
+	if definition.Lifecycle.Anchor != AnchorGraphAnchored {
+		t.Fatalf("Lifecycle.Anchor = %q, want %q", definition.Lifecycle.Anchor, AnchorGraphAnchored)
+	}
+	wantFields := []string{"scope", "runner_id"}
+	if !cloudStringSlicesEqual(definition.FingerprintFields, wantFields) {
+		t.Fatalf("FingerprintFields = %v, want %v", definition.FingerprintFields, wantFields)
+	}
+	for _, field := range definition.FingerprintFields {
+		if field == "action" || field == "event_id" || field == "resource_id" {
+			t.Fatalf("FingerprintFields still contains %q: %v", field, definition.FingerprintFields)
+		}
+	}
+
+	runtime := &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}}
+	first := githubAuditEvent("github-runner-register", map[string]string{
+		"action":            "repo.register_self_hosted_runner",
+		"repo":              "writer/cerebro",
+		"resource_id":       "writer/cerebro",
+		"resource_type":     "repo",
+		"runner_ephemeral":  "false",
+		"runner_id":         "777",
+		"runner_name":       "prod-runner-1",
+		"runner_registered": "true",
+	})
+	second := githubAuditEvent("github-runner-config-update", map[string]string{
+		"action":            "repo.runner_label_updated",
+		"repo":              "writer/cerebro",
+		"resource_id":       "writer/cerebro",
+		"resource_type":     "repo",
+		"runner_ephemeral":  "false",
+		"runner_id":         "777",
+		"runner_name":       "prod-runner-1",
+		"runner_registered": "true",
+	})
+	records, err := rule.Evaluate(context.Background(), runtime, first)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(register) = (%v, %v), want one finding", records, err)
+	}
+	firstFinding := records[0]
+	records, err = rule.Evaluate(context.Background(), runtime, second)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(update while still policy-violating) = (%v, %v), want one finding", records, err)
+	}
+	if firstFinding.Fingerprint != records[0].Fingerprint {
+		t.Fatalf("fingerprints differ across updates for same (scope, runner_id): %q vs %q", firstFinding.Fingerprint, records[0].Fingerprint)
+	}
+	if got := firstFinding.Attributes["runner_scope"]; got != "repo:writer/cerebro" {
+		t.Fatalf("runner_scope = %q, want repo:writer/cerebro", got)
+	}
+	if got := firstFinding.Attributes["runner_id"]; got != "777" {
+		t.Fatalf("runner_id = %q, want 777", got)
+	}
+	if got := firstFinding.Attributes["primary_resource_urn"]; got != "urn:cerebro:writer:github_repo:writer/cerebro" {
+		t.Fatalf("primary_resource_urn = %q, want repo anchor", got)
+	}
+
+	deregistered := githubAuditEvent("github-runner-remove", map[string]string{
+		"action":            "repo.remove_self_hosted_runner",
+		"repo":              "writer/cerebro",
+		"runner_id":         "777",
+		"runner_registered": "false",
+	})
+	records, err = rule.Evaluate(context.Background(), runtime, deregistered)
+	if err != nil {
+		t.Fatalf("Evaluate(deregistered) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(deregistered) returned %d findings, want 0 once runner is removed", len(records))
+	}
+
+	ephemeral := githubAuditEvent("github-runner-ephemeral", map[string]string{
+		"action":            "repo.register_self_hosted_runner",
+		"repo":              "writer/cerebro",
+		"runner_ephemeral":  "true",
+		"runner_id":         "777",
+		"runner_registered": "true",
+	})
+	records, err = rule.Evaluate(context.Background(), runtime, ephemeral)
+	if err != nil {
+		t.Fatalf("Evaluate(ephemeral) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(ephemeral) returned %d findings, want 0 once runner is ephemeral", len(records))
+	}
+}
 
 func TestGitHubOrgAuthControlModified(t *testing.T) {
 	rule := newGitHubOrgAuthControlModifiedRule()
@@ -869,6 +1068,16 @@ func TestGitHubPrivateRepositoryForkingEnabled(t *testing.T) {
 	}
 	if len(records) != 0 {
 		t.Fatalf("Evaluate(disabled) returned %d findings, want 0 once private repository forking is disabled", len(records))
+	}
+}
+
+func githubSecretScanningAlertEvent(id string, attributes map[string]string) *cerebrov1.EventEnvelope {
+	return &cerebrov1.EventEnvelope{
+		Id:         id,
+		TenantId:   "writer",
+		SourceId:   "github",
+		Kind:       "github.secret_scanning_alert",
+		Attributes: attributes,
 	}
 }
 

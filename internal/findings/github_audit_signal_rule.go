@@ -140,9 +140,9 @@ var githubRepositoryMadePublicDefinition = RuleDefinition{
 var githubSecretScanningAlertCreatedDefinition = RuleDefinition{
 	ID:                 githubSecretScanningAlertCreatedRuleID,
 	Name:               "GitHub Secret Scanning Alert Created",
-	Description:        "Detect GitHub audit events indicating a new secret scanning alert.",
+	Description:        "Detect open GitHub secret scanning alerts replayed from source state.",
 	SourceID:           "github",
-	EventKinds:         []string{"github.audit"},
+	EventKinds:         []string{"github.secret_scanning_alert"},
 	OutputKind:         "finding.github_secret_scanning_alert_created",
 	Severity:           "MEDIUM",
 	Status:             findingStatusOpen,
@@ -151,9 +151,10 @@ var githubSecretScanningAlertCreatedDefinition = RuleDefinition{
 	References:         []string{"https://docs.github.com/en/code-security/secret-scanning/about-secret-scanning", "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_secret_scanning_alert_created.yml"},
 	FalsePositives:     []string{"Canary tokens or expected test secrets in controlled repositories."},
 	Runbook:            "Review the alert, revoke or rotate the exposed credential, and inspect commits, artifacts, and workflow logs for further exposure.",
-	RequiredAttributes: []string{"action", "repo", "number"},
+	RequiredAttributes: []string{"repo", "number", "state"},
 	FingerprintFields:  []string{"repo", "number"},
 	ControlRefs:        githubAuditControlRefs,
+	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorSourceState},
 }
 
 var githubSelfHostedRunnerChangeDefinition = RuleDefinition{
@@ -170,9 +171,10 @@ var githubSelfHostedRunnerChangeDefinition = RuleDefinition{
 	References:         []string{"https://docs.github.com/en/actions/hosting-your-own-runners/about-self-hosted-runners", "https://github.com/SigmaHQ/sigma/blob/master/rules/application/github/audit/github_self_hosted_runner_changes_detected.yml", "https://github.com/elastic/detection-rules/blob/main/rules/integrations/github/initial_access_github_register_self_hosted_runner.toml"},
 	FalsePositives:     []string{"Approved runner maintenance, ephemeral runner churn, or expected runner group administration."},
 	Runbook:            "Validate the runner owner and host, inspect recent workflows assigned to it, and isolate the runner if authorization is unclear.",
-	RequiredAttributes: []string{"action"},
-	FingerprintFields:  []string{"repo", "resource_id", "action"},
+	RequiredAttributes: []string{"runner_id"},
+	FingerprintFields:  []string{"scope", "runner_id"},
 	ControlRefs:        githubAuditControlRefs,
+	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 }
 
 var githubRepositoryCollaboratorAddedDefinition = RuleDefinition{
@@ -422,34 +424,24 @@ var githubPrivateRepositoryForkingEnabledDefinition = RuleDefinition{
 // posture graph rules will reintroduce the trigger logic in a durable
 // state-based form.
 
-var githubSecretScanningAlertCreatedConfig = githubAuditSignalConfig{
-	definition: githubSecretScanningAlertCreatedDefinition,
-	actions:    githubAuditActionSet("secret_scanning_alert.create"),
-	policyID: func(attributes map[string]string) string {
-		return "secret_scanning_alert:" + githubAuditTarget(attributes) + ":" + strings.TrimSpace(attributes["number"])
-	},
-	summary: func(attributes map[string]string) string {
-		return fmt.Sprintf("GitHub secret scanning alert #%s created for %s", strings.TrimSpace(attributes["number"]), githubAuditTarget(attributes))
-	},
-}
-
 var githubSelfHostedRunnerChangeConfig = githubAuditSignalConfig{
-	definition: githubSelfHostedRunnerChangeDefinition,
-	actions: githubAuditActionSet(
-		"enterprise.register_self_hosted_runner",
-		"org.register_self_hosted_runner",
-		"org.remove_self_hosted_runner",
-		"org.runner_group_created",
-		"org.runner_group_removed",
-		"org.runner_group_runner_removed",
-		"org.runner_group_runners_added",
-		"org.runner_group_runners_updated",
-		"org.runner_group_updated",
-		"repo.register_self_hosted_runner",
-		"repo.remove_self_hosted_runner",
-	),
+	definition:  githubSelfHostedRunnerChangeDefinition,
+	predicate:   githubSelfHostedRunnerRegisteredAndPolicyViolating,
+	fingerprint: githubSelfHostedRunnerFingerprintInputs,
+	primaryEntityType: func(attributes map[string]string) string {
+		scopeType, _ := githubSelfHostedRunnerScope(attributes)
+		switch scopeType {
+		case "repo":
+			return "github.repo"
+		case "org", "enterprise":
+			return "github.org"
+		default:
+			return ""
+		}
+	},
 	summary: func(attributes map[string]string) string {
-		return fmt.Sprintf("%s changed self-hosted runner configuration for %s", githubAuditActor(attributes), githubAuditTarget(attributes))
+		runner := firstNonEmpty(attributes["runner_name"], attributes["runner_id"], "unknown runner")
+		return fmt.Sprintf("%s registered policy-violating self-hosted runner %s for %s", githubAuditActor(attributes), runner, githubAuditTarget(attributes))
 	},
 }
 
@@ -559,8 +551,9 @@ var githubPersonalAccessTokenCreatedConfig = githubAuditSignalConfig{
 }
 
 // githubProtectedBranchPolicyOverrideConfig was removed when the
-// per-override mirror rule was retired; see the note near
-// githubSecretScanningAlertCreatedConfig.
+// per-override mirror rule was retired; durable posture coverage lives in
+// graph/current-state rules while the retired wrapper keeps stale findings
+// resolvable.
 
 var githubRepositoryRulesetModifiedConfig = githubAuditSignalConfig{
 	definition: githubRepositoryRulesetModifiedDefinition,
@@ -643,7 +636,13 @@ func newGitHubRepositoryMadePublicRule() Rule {
 }
 
 func newGitHubSecretScanningAlertCreatedRule() Rule {
-	return newGitHubAuditSignalRule(githubSecretScanningAlertCreatedConfig)
+	return newEventRule(eventRuleConfig{
+		definition: githubSecretScanningAlertCreatedDefinition,
+		match:      matchesGitHubSecretScanningOpenAlert,
+		build: func(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
+			return githubSecretScanningAlertFinding(ctx, runtime, event)
+		},
+	})
 }
 
 func newGitHubSelfHostedRunnerChangeRule() Rule {
@@ -700,6 +699,114 @@ func newGitHubWebhookModifiedRule() Rule {
 
 func newGitHubPrivateRepositoryForkingEnabledRule() Rule {
 	return newGitHubAuditSignalRule(githubPrivateRepositoryForkingEnabledConfig)
+}
+
+var githubSecretScanningAlertKindMatcher = eventKindMatcher(githubSecretScanningAlertCreatedDefinition.EventKinds...)
+
+func matchesGitHubSecretScanningOpenAlert(event *cerebrov1.EventEnvelope) bool {
+	if !githubSecretScanningAlertKindMatcher(event) {
+		return false
+	}
+	attributes := eventAttributes(event)
+	return strings.EqualFold(strings.TrimSpace(attributes["state"]), findingStatusOpen)
+}
+
+func githubSecretScanningAlertFinding(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
+	attributes := eventAttributes(event)
+	repo := strings.TrimSpace(attributes["repo"])
+	number := strings.TrimSpace(attributes["number"])
+	projectedContext, err := buildFindingProjectionContext(ctx, event, findingProjectionContextOptions{
+		PrimaryEntityType:  "github.secret_scanning_alert",
+		CollectAllEntities: true,
+		ResourceFallbacks:  []string{repo, number},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("project finding context for event %q: %w", event.GetId(), err)
+	}
+	alertURN := firstNonEmpty(projectedContext.PrimaryResourceURN, githubProjectionURN(event.GetTenantId(), "github_secret_scanning_alert", repo, number))
+	repoURN := githubProjectionURN(event.GetTenantId(), "github_repo", repo)
+	resourceURNs := deduplicateStrings(append(projectedContext.ResourceURNs, alertURN, repoURN))
+	findingAttributes := githubSecretScanningAlertAttributes(event, alertURN)
+	observedAt := time.Time{}
+	if timestamp := event.GetOccurredAt(); timestamp != nil {
+		observedAt = timestamp.AsTime().UTC()
+	}
+	policyID := "secret_scanning_alert:" + repo + ":" + number
+	fingerprint := hashFindingFingerprint(githubSecretScanningAlertCreatedRuleID, repo, number)
+	return &ports.FindingRecord{
+		ID:                fingerprint,
+		Fingerprint:       fingerprint,
+		TenantID:          strings.TrimSpace(event.GetTenantId()),
+		RuntimeID:         strings.TrimSpace(runtime.GetId()),
+		RuleID:            githubSecretScanningAlertCreatedRuleID,
+		Title:             githubSecretScanningAlertCreatedDefinition.Name,
+		Severity:          normalizeFindingSeverity(githubSecretScanningAlertCreatedDefinition.Severity),
+		Status:            githubSecretScanningAlertCreatedDefinition.Status,
+		Summary:           githubSecretScanningAlertSummary(attributes),
+		ResourceURNs:      resourceURNs,
+		EventIDs:          githubSecretScanningAlertEventIDs(event),
+		ObservedPolicyIDs: githubObservedPolicyIDs(policyID),
+		PolicyID:          policyID,
+		PolicyName:        policyID,
+		CheckID:           githubSecretScanningAlertCreatedRuleID,
+		CheckName:         githubSecretScanningAlertCreatedDefinition.Name,
+		ControlRefs:       cloneFindingControlRefs(githubSecretScanningAlertCreatedDefinition.ControlRefs),
+		Attributes:        findingAttributes,
+		FirstObservedAt:   observedAt,
+		LastObservedAt:    observedAt,
+	}, nil
+}
+
+func githubSecretScanningAlertAttributes(event *cerebrov1.EventEnvelope, primaryResourceURN string) map[string]string {
+	eventAttrs := eventAttributes(event)
+	attributes := map[string]string{
+		"audit_event_id":       strings.TrimSpace(eventAttrs["audit_event_id"]),
+		"event_id":             strings.TrimSpace(event.GetId()),
+		"html_url":             strings.TrimSpace(eventAttrs["html_url"]),
+		"number":               strings.TrimSpace(eventAttrs["number"]),
+		"primary_resource_urn": primaryResourceURN,
+		"repo":                 strings.TrimSpace(eventAttrs["repo"]),
+		"repository":           strings.TrimSpace(eventAttrs["repo"]),
+		"secret_type":          strings.TrimSpace(eventAttrs["secret_type"]),
+		"secret_type_display":  strings.TrimSpace(eventAttrs["secret_type_display"]),
+		"source_runtime_id":    strings.TrimSpace(eventAttrs[ports.EventAttributeSourceRuntimeID]),
+		"state":                strings.TrimSpace(eventAttrs["state"]),
+	}
+	for key, value := range githubSecretScanningAlertCreatedDefinition.AttributeMap() {
+		attributes["rule_"+key] = value
+	}
+	trimEmptyAttributes(attributes)
+	return attributes
+}
+
+func githubSecretScanningAlertEventIDs(event *cerebrov1.EventEnvelope) []string {
+	attributes := eventAttributes(event)
+	eventIDs := []string{strings.TrimSpace(event.GetId())}
+	for _, key := range []string{"audit_event_id", "audit_event_ids"} {
+		for _, value := range strings.Split(attributes[key], ",") {
+			eventIDs = append(eventIDs, strings.TrimSpace(value))
+		}
+	}
+	return deduplicateStrings(eventIDs)
+}
+
+func githubSecretScanningAlertSummary(attributes map[string]string) string {
+	return fmt.Sprintf("GitHub secret scanning alert #%s is open for %s", strings.TrimSpace(attributes["number"]), githubAuditTarget(attributes))
+}
+
+func githubProjectionURN(tenantID string, kind string, parts ...string) string {
+	tenant := strings.TrimSpace(tenantID)
+	entityKind := strings.TrimSpace(kind)
+	if tenant == "" || entityKind == "" {
+		return ""
+	}
+	values := []string{"urn", "cerebro", tenant, entityKind}
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			values = append(values, trimmed)
+		}
+	}
+	return strings.Join(values, ":")
 }
 
 func newGitHubAuditSignalRule(config githubAuditSignalConfig) Rule {
@@ -808,9 +915,13 @@ func githubAuditSignalAttributes(event *cerebrov1.EventEnvelope, config githubAu
 		"repo":                 strings.TrimSpace(eventAttrs["repo"]),
 		"resource_id":          strings.TrimSpace(eventAttrs["resource_id"]),
 		"resource_type":        strings.TrimSpace(eventAttrs["resource_type"]),
+		"runner_ephemeral":     strings.TrimSpace(firstNonEmpty(eventAttrs["runner_ephemeral"], eventAttrs["ephemeral"], eventAttrs["is_ephemeral"])),
 		"ruleset_id":           strings.TrimSpace(eventAttrs["ruleset_id"]),
 		"ruleset_name":         strings.TrimSpace(eventAttrs["ruleset_name"]),
 		"runner_group_name":    strings.TrimSpace(eventAttrs["runner_group_name"]),
+		"runner_id":            strings.TrimSpace(eventAttrs["runner_id"]),
+		"runner_name":          strings.TrimSpace(eventAttrs["runner_name"]),
+		"runner_registered":    strings.TrimSpace(firstNonEmpty(eventAttrs["runner_registered"], eventAttrs["registered"], eventAttrs["is_registered"])),
 		"source_runtime_id":    strings.TrimSpace(eventAttrs[ports.EventAttributeSourceRuntimeID]),
 		"user":                 strings.TrimSpace(eventAttrs["user"]),
 		"visibility":           strings.TrimSpace(eventAttrs["visibility"]),
@@ -827,6 +938,11 @@ func githubAuditSignalAttributes(event *cerebrov1.EventEnvelope, config githubAu
 	if scope, scopeID := githubPrivateRepositoryForkingScope(eventAttrs); scopeID != "" {
 		attributes["posture_scope"] = scope
 		attributes["posture_scope_id"] = scopeID
+	}
+	if scopeType, scopeID := githubSelfHostedRunnerScope(eventAttrs); scopeID != "" {
+		attributes["scope"] = scopeID
+		attributes["runner_scope"] = scopeID
+		attributes["runner_scope_type"] = scopeType
 	}
 	for _, key := range config.definition.RequiredAttributes {
 		attributes[key] = strings.TrimSpace(eventAttrs[key])
@@ -1007,6 +1123,96 @@ func githubPrivateRepositoryForkingScope(attributes map[string]string) (string, 
 		return "", ""
 	}
 	return "org", org
+}
+
+func githubSelfHostedRunnerFingerprintInputs(event *cerebrov1.EventEnvelope, _ RuleDefinition) []string {
+	_, scopeID := githubSelfHostedRunnerScope(eventAttributes(event))
+	runnerID := strings.TrimSpace(eventAttributes(event)["runner_id"])
+	if scopeID == "" || runnerID == "" {
+		return nil
+	}
+	return []string{scopeID, runnerID}
+}
+
+func githubSelfHostedRunnerRegisteredAndPolicyViolating(attributes map[string]string) bool {
+	_, scopeID := githubSelfHostedRunnerScope(attributes)
+	if scopeID == "" || strings.TrimSpace(attributes["runner_id"]) == "" {
+		return false
+	}
+	if !githubSelfHostedRunnerRegistered(attributes) {
+		return false
+	}
+	return githubSelfHostedRunnerPolicyViolating(attributes)
+}
+
+func githubSelfHostedRunnerRegistered(attributes map[string]string) bool {
+	if githubAttributeExplicitlyFalse(attributes, "runner_registered", "registered", "is_registered") {
+		return false
+	}
+	state := strings.ToLower(strings.TrimSpace(firstNonEmpty(attributes["runner_state"], attributes["state"], attributes["status"])))
+	switch state {
+	case "removed", "deleted", "deregistered", "unregistered":
+		return false
+	}
+	action := strings.ToLower(strings.TrimSpace(attributes["action"]))
+	if strings.Contains(action, "remove_self_hosted_runner") ||
+		strings.Contains(action, "deregister_self_hosted_runner") ||
+		strings.Contains(action, "runner_group_runner_removed") ||
+		strings.Contains(action, "runner_group_removed") {
+		return false
+	}
+	if findingAttributeBool(attributes, "runner_registered", "registered", "is_registered") {
+		return true
+	}
+	return strings.TrimSpace(attributes["runner_id"]) != ""
+}
+
+func githubSelfHostedRunnerPolicyViolating(attributes map[string]string) bool {
+	if findingAttributeBool(attributes, "runner_untrusted", "untrusted_host", "host_untrusted") ||
+		githubAttributeExplicitlyFalse(attributes, "runner_host_trusted", "host_trusted", "trusted_host") {
+		return true
+	}
+	return !findingAttributeBool(attributes, "runner_ephemeral", "ephemeral", "is_ephemeral")
+}
+
+func githubSelfHostedRunnerScope(attributes map[string]string) (string, string) {
+	if scope := strings.TrimSpace(firstNonEmpty(attributes["runner_scope"], attributes["scope"])); scope != "" {
+		return githubSelfHostedRunnerScopeFromValue(scope)
+	}
+	if repo := strings.TrimSpace(firstNonEmpty(attributes["repo"], attributes["repository"])); repo != "" {
+		return "repo", "repo:" + repo
+	}
+	resourceID := strings.TrimSpace(attributes["resource_id"])
+	resourceType := strings.ToLower(strings.TrimSpace(attributes["resource_type"]))
+	if resourceID != "" && (strings.Contains(resourceID, "/") || strings.Contains(resourceType, "repo")) {
+		return "repo", "repo:" + resourceID
+	}
+	if org := strings.TrimSpace(attributes["org"]); org != "" {
+		return "org", "org:" + org
+	}
+	if resourceID != "" && (strings.Contains(resourceType, "org") || resourceType == "") {
+		return "org", "org:" + resourceID
+	}
+	if enterprise := strings.TrimSpace(firstNonEmpty(attributes["enterprise"], attributes["enterprise_slug"], attributes["enterprise_id"])); enterprise != "" {
+		return "enterprise", "enterprise:" + enterprise
+	}
+	return "", ""
+}
+
+func githubSelfHostedRunnerScopeFromValue(scope string) (string, string) {
+	normalized := strings.TrimSpace(scope)
+	if normalized == "" {
+		return "", ""
+	}
+	lower := strings.ToLower(normalized)
+	switch {
+	case strings.HasPrefix(lower, "repo:"), strings.HasPrefix(lower, "org:"), strings.HasPrefix(lower, "enterprise:"):
+		return strings.SplitN(lower, ":", 2)[0], normalized
+	case strings.Contains(normalized, "/"):
+		return "repo", "repo:" + normalized
+	default:
+		return "org", "org:" + normalized
+	}
 }
 
 func githubAttributeExplicitlyFalse(attributes map[string]string, keys ...string) bool {
