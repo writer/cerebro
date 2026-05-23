@@ -1,0 +1,23 @@
+[
+  {
+    "id": "aurelius-finding-fixture-1",
+    "tenant_id": "writer",
+    "source_id": "aurelius",
+    "kind": "aurelius.finding",
+    "occurred_at": "2026-05-22T14:30:00Z",
+    "schema_ref": "aurelius/finding/v1",
+    "payload": {
+      "image_digest": "sha256:c6b86af5b3d40000",
+      "cve_id": "CVE-2026-1111",
+      "severity": "high",
+      "package": "openssl",
+      "installed_version": "3.0.11",
+      "fixed_version": "3.0.12"
+    },
+    "attributes": {
+      "image_digest": "sha256:c6b86af5b3d40000",
+      "severity": "high",
+      "cve_id": "CVE-2026-1111"
+    }
+  }
+]

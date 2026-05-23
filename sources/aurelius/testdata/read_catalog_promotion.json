@@ -1,0 +1,21 @@
+[
+  {
+    "id": "aurelius-catalog-promotion-fixture-1",
+    "tenant_id": "writer",
+    "source_id": "aurelius",
+    "kind": "aurelius.catalog_promotion",
+    "occurred_at": "2026-05-22T14:30:00Z",
+    "schema_ref": "aurelius/catalog_promotion/v1",
+    "payload": {
+      "track": "golden-images",
+      "image_digest": "sha256:c6b86af5b3d40000",
+      "promoted_by": "aurelius-ci",
+      "promoted_at": "2026-05-22T14:30:00Z",
+      "verdict": "warn"
+    },
+    "attributes": {
+      "track": "golden-images",
+      "image_digest": "sha256:c6b86af5b3d40000"
+    }
+  }
+]

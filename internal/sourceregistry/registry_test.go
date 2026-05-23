@@ -7,6 +7,13 @@ func TestBuiltin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Builtin() error = %v", err)
 	}
+	aurelius, ok := registry.Get("aurelius")
+	if !ok {
+		t.Fatal("Get(aurelius) = false, want true")
+	}
+	if aurelius.Spec().Name != "Aurelius" {
+		t.Fatalf("aurelius Spec().Name = %q, want %q", aurelius.Spec().Name, "Aurelius")
+	}
 	aws, ok := registry.Get("aws")
 	if !ok {
 		t.Fatal("Get(aws) = false, want true")

@@ -1,0 +1,447 @@
+// Package aurelius implements the Cerebro source for the aurelius image attestation
+// and scan-verdict pipeline. Aurelius writes NDJSON event archives to an S3 bucket
+// (one prefix per emitted kind family). This source lists those prefixes incrementally,
+// reads new archives since the last cursor, and emits canonical aurelius.* events.
+package aurelius
+
+import (
+	"bufio"
+	"bytes"
+	"compress/gzip"
+	"context"
+	"embed"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/url"
+	"strconv"
+	"strings"
+	"time"
+
+	awssdk "github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/primitives"
+	"github.com/writer/cerebro/internal/sourcecdk"
+)
+
+//go:embed catalog.yaml
+var catalogFS embed.FS
+
+const (
+	sourceID = "aurelius"
+
+	defaultPageSize  = 100
+	maxPageSize      = 1000
+	defaultRegion    = "us-east-1"
+	maxObjectBytes   = 64 << 20
+	maxLineBytes     = 1 << 20
+	maxEventsPerPull = 10000
+
+	familyVerdict          = "verdict"
+	familyFinding          = "finding"
+	familyImageScan        = "image_scan"
+	familyCatalogPromotion = "catalog_promotion"
+	familyPolicyException  = "policy_exception"
+
+	schemaRefVerdict          = "aurelius/verdict/v1"
+	schemaRefFinding          = "aurelius/finding/v1"
+	schemaRefImageScan        = "aurelius/image_scan/v1"
+	schemaRefCatalogPromotion = "aurelius/catalog_promotion/v1"
+	schemaRefPolicyException  = "aurelius/policy_exception/v1"
+
+	kindVerdict          = "aurelius.verdict"
+	kindFinding          = "aurelius.finding"
+	kindImageScan        = "aurelius.image_scan"
+	kindCatalogPromotion = "aurelius.catalog_promotion"
+	kindPolicyException  = "aurelius.policy_exception"
+
+	urnPrefixVerdict          = "urn:cerebro:aurelius:verdict:"
+	urnPrefixFinding          = "urn:cerebro:aurelius:finding:"
+	urnPrefixImageScan        = "urn:cerebro:aurelius:image_scan:"
+	urnPrefixCatalogPromotion = "urn:cerebro:aurelius:catalog_promotion:"
+	urnPrefixPolicyException  = "urn:cerebro:aurelius:policy_exception:"
+)
+
+var (
+	// ErrBucketRequired is returned when no S3 bucket is configured.
+	ErrBucketRequired = errors.New("bucket is required")
+	// ErrPrefixRequired is returned when no S3 key prefix is configured.
+	ErrPrefixRequired = errors.New("prefix is required")
+	// ErrInvalidPageSize is returned when page_size is not a positive integer.
+	ErrInvalidPageSize = errors.New("invalid page_size")
+	// ErrUnsupportedFamily is returned when the family is not one of the known kinds.
+	ErrUnsupportedFamily = errors.New("unsupported family")
+	// ErrInvalidBucket is returned when the bucket name contains illegal characters.
+	ErrInvalidBucket = errors.New("invalid bucket")
+)
+
+// s3API is the narrow surface of *s3.Client this source uses, exposed for testing.
+type s3API interface {
+	ListObjectsV2(context.Context, *s3.ListObjectsV2Input, ...func(*s3.Options)) (*s3.ListObjectsV2Output, error)
+	GetObject(context.Context, *s3.GetObjectInput, ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+}
+
+// Source emits aurelius.* events from NDJSON archives stored in S3.
+type Source struct {
+	spec      *cerebrov1.SourceSpec
+	families  *sourcecdk.FamilyEngine[settings]
+	newClient func(context.Context, settings) (s3API, error)
+}
+
+type settings struct {
+	family   string
+	bucket   string
+	prefix   string
+	region   string
+	tenantID string
+	perPage  int32
+}
+
+type aureliusRecord struct {
+	EventID    string                 `json:"event_id"`
+	OccurredAt time.Time              `json:"occurred_at"`
+	TenantID   string                 `json:"tenant_id"`
+	Attributes map[string]string      `json:"attributes"`
+	Payload    map[string]interface{} `json:"payload"`
+}
+
+// New constructs the Aurelius source backed by an S3-NDJSON archive.
+func New() (*Source, error) {
+	spec, err := loadSpec()
+	if err != nil {
+		return nil, err
+	}
+	source := &Source{
+		spec:      spec,
+		newClient: defaultClientFactory,
+	}
+	source.families, err = source.newFamilyEngine()
+	if err != nil {
+		return nil, err
+	}
+	return source, nil
+}
+
+// Spec returns the static metadata for the Aurelius source.
+func (s *Source) Spec() *cerebrov1.SourceSpec { return s.spec }
+
+// Check verifies that the configured S3 bucket/prefix is reachable.
+func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
+	return s.families.Check(ctx, cfg)
+}
+
+// Discover returns the URN for the configured family runtime instance.
+func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return s.families.Discover(ctx, cfg)
+}
+
+// Read pages new NDJSON archives since the cursor and emits aurelius.* events.
+func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	return s.families.Read(ctx, cfg, cursor)
+}
+
+func loadSpec() (*cerebrov1.SourceSpec, error) {
+	specBytes, err := catalogFS.ReadFile("catalog.yaml")
+	if err != nil {
+		return nil, fmt.Errorf("read catalog: %w", err)
+	}
+	spec, err := sourcecdk.LoadCatalog(specBytes)
+	if err != nil {
+		return nil, fmt.Errorf("load catalog: %w", err)
+	}
+	return spec, nil
+}
+
+func defaultClientFactory(ctx context.Context, st settings) (s3API, error) {
+	region := st.region
+	if strings.TrimSpace(region) == "" {
+		region = defaultRegion
+	}
+	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
+	if err != nil {
+		return nil, fmt.Errorf("load aws config: %w", err)
+	}
+	return s3.NewFromConfig(cfg), nil
+}
+
+func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
+	families := []sourcecdk.Family[settings]{
+		s.familyFor(familyVerdict, kindVerdict, schemaRefVerdict, urnPrefixVerdict),
+		s.familyFor(familyFinding, kindFinding, schemaRefFinding, urnPrefixFinding),
+		s.familyFor(familyImageScan, kindImageScan, schemaRefImageScan, urnPrefixImageScan),
+		s.familyFor(familyCatalogPromotion, kindCatalogPromotion, schemaRefCatalogPromotion, urnPrefixCatalogPromotion),
+		s.familyFor(familyPolicyException, kindPolicyException, schemaRefPolicyException, urnPrefixPolicyException),
+	}
+	return sourcecdk.NewFamilyEngine[settings](parseSettings, func(st settings) string { return st.family }, families...)
+}
+
+func (s *Source) familyFor(family, kind, schemaRef, urnPrefix string) sourcecdk.Family[settings] {
+	return sourcecdk.Family[settings]{
+		Name: family,
+		Check: func(ctx context.Context, st settings) error {
+			return s.check(ctx, st)
+		},
+		Discover: func(ctx context.Context, st settings) ([]sourcecdk.URN, error) {
+			return discoverFamily(st, urnPrefix)
+		},
+		Read: func(ctx context.Context, st settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+			return s.readFamily(ctx, st, cursor, kind, schemaRef)
+		},
+	}
+}
+
+func parseSettings(cfg sourcecdk.Config) (settings, error) {
+	st := settings{
+		family:   strings.TrimSpace(configValue(cfg, "family")),
+		bucket:   strings.TrimSpace(configValue(cfg, "bucket")),
+		prefix:   strings.TrimSpace(configValue(cfg, "prefix")),
+		region:   strings.TrimSpace(configValue(cfg, "region")),
+		tenantID: strings.TrimSpace(configValue(cfg, "tenant_id")),
+		perPage:  defaultPageSize,
+	}
+	if st.family == "" {
+		st.family = familyVerdict
+	}
+	if st.bucket == "" {
+		return settings{}, ErrBucketRequired
+	}
+	if st.prefix == "" {
+		return settings{}, ErrPrefixRequired
+	}
+	if !strings.HasSuffix(st.prefix, "/") {
+		st.prefix += "/"
+	}
+	if st.region == "" {
+		st.region = defaultRegion
+	}
+	if st.tenantID == "" {
+		st.tenantID = "writer"
+	}
+	if raw, ok := cfg.Lookup("page_size"); ok && strings.TrimSpace(raw) != "" {
+		size, err := strconv.Atoi(strings.TrimSpace(raw))
+		if err != nil {
+			return settings{}, fmt.Errorf("%w: %w", ErrInvalidPageSize, err)
+		}
+		if size < 1 {
+			return settings{}, fmt.Errorf("%w: must be >= 1", ErrInvalidPageSize)
+		}
+		if size > maxPageSize {
+			size = maxPageSize
+		}
+		st.perPage = int32(size)
+	}
+	if !isKnownFamily(st.family) {
+		return settings{}, fmt.Errorf("%w: %q", ErrUnsupportedFamily, st.family)
+	}
+	if strings.ContainsRune(st.bucket, '/') {
+		return settings{}, fmt.Errorf("%w: %q must not contain slashes", ErrInvalidBucket, st.bucket)
+	}
+	return st, nil
+}
+
+func isKnownFamily(name string) bool {
+	switch name {
+	case familyVerdict, familyFinding, familyImageScan, familyCatalogPromotion, familyPolicyException:
+		return true
+	}
+	return false
+}
+
+func configValue(cfg sourcecdk.Config, key string) string {
+	value, _ := cfg.Lookup(key)
+	return value
+}
+
+func discoverFamily(st settings, urnPrefix string) ([]sourcecdk.URN, error) {
+	urnRaw := urnPrefix + url.PathEscape(st.bucket+"/"+strings.TrimSuffix(st.prefix, "/"))
+	urn, err := sourcecdk.ParseURN(urnRaw)
+	if err != nil {
+		return nil, fmt.Errorf("build aurelius urn: %w", err)
+	}
+	return []sourcecdk.URN{urn}, nil
+}
+
+func (s *Source) check(ctx context.Context, st settings) error {
+	client, err := s.newClient(ctx, st)
+	if err != nil {
+		return err
+	}
+	_, err = client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+		Bucket:  awssdk.String(st.bucket),
+		Prefix:  awssdk.String(st.prefix),
+		MaxKeys: awssdk.Int32(1),
+	})
+	if err != nil {
+		return fmt.Errorf("list objects in s3://%s/%s: %w", st.bucket, st.prefix, err)
+	}
+	return nil
+}
+
+func (s *Source) readFamily(ctx context.Context, st settings, cursor *cerebrov1.SourceCursor, kind, schemaRef string) (sourcecdk.Pull, error) {
+	client, err := s.newClient(ctx, st)
+	if err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	startAfter := ""
+	if cursor != nil {
+		startAfter = strings.TrimSpace(cursor.GetOpaque())
+	}
+	input := &s3.ListObjectsV2Input{
+		Bucket:  awssdk.String(st.bucket),
+		Prefix:  awssdk.String(st.prefix),
+		MaxKeys: awssdk.Int32(st.perPage),
+	}
+	if startAfter != "" {
+		input.StartAfter = awssdk.String(startAfter)
+	}
+	listing, err := client.ListObjectsV2(ctx, input)
+	if err != nil {
+		return sourcecdk.Pull{}, fmt.Errorf("list objects in s3://%s/%s: %w", st.bucket, st.prefix, err)
+	}
+	events := make([]*primitives.Event, 0, st.perPage)
+	var watermark time.Time
+	lastKey := startAfter
+	for _, object := range listing.Contents {
+		key := awssdk.ToString(object.Key)
+		if key == "" || strings.HasSuffix(key, "/") {
+			continue
+		}
+		if !isArchiveKey(key) {
+			lastKey = key
+			continue
+		}
+		recs, err := s.readArchive(ctx, client, st.bucket, key)
+		if err != nil {
+			return sourcecdk.Pull{}, fmt.Errorf("read s3://%s/%s: %w", st.bucket, key, err)
+		}
+		for _, rec := range recs {
+			event, err := buildEvent(st, rec, kind, schemaRef)
+			if err != nil {
+				return sourcecdk.Pull{}, fmt.Errorf("convert event in s3://%s/%s: %w", st.bucket, key, err)
+			}
+			if err := sourcecdk.ValidateEventEnvelope(event); err != nil {
+				return sourcecdk.Pull{}, fmt.Errorf("invalid event in s3://%s/%s: %w", st.bucket, key, err)
+			}
+			events = append(events, event)
+			if rec.OccurredAt.After(watermark) {
+				watermark = rec.OccurredAt
+			}
+			if len(events) >= maxEventsPerPull {
+				break
+			}
+		}
+		lastKey = key
+		if len(events) >= maxEventsPerPull {
+			break
+		}
+	}
+	pull := sourcecdk.Pull{Events: events}
+	if lastKey != "" {
+		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: lastKey}
+	}
+	if !watermark.IsZero() && lastKey != "" {
+		pull.Checkpoint = &cerebrov1.SourceCheckpoint{
+			Watermark:    timestamppb.New(watermark.UTC()),
+			CursorOpaque: lastKey,
+		}
+	}
+	return pull, nil
+}
+
+func isArchiveKey(key string) bool {
+	switch {
+	case strings.HasSuffix(key, ".ndjson"):
+		return true
+	case strings.HasSuffix(key, ".ndjson.gz"):
+		return true
+	}
+	return false
+}
+
+func (s *Source) readArchive(ctx context.Context, client s3API, bucket, key string) ([]aureliusRecord, error) {
+	out, err := client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: awssdk.String(bucket),
+		Key:    awssdk.String(key),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get object: %w", err)
+	}
+	defer func() { _ = out.Body.Close() }()
+	body := io.LimitReader(out.Body, maxObjectBytes+1)
+	raw, err := io.ReadAll(body)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+	if len(raw) > maxObjectBytes {
+		return nil, fmt.Errorf("object exceeds %d bytes", maxObjectBytes)
+	}
+	var reader io.Reader = bytes.NewReader(raw)
+	if strings.HasSuffix(key, ".gz") {
+		gz, err := gzip.NewReader(reader)
+		if err != nil {
+			return nil, fmt.Errorf("gunzip: %w", err)
+		}
+		defer func() { _ = gz.Close() }()
+		reader = gz
+	}
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 0, 64<<10), maxLineBytes)
+	records := make([]aureliusRecord, 0, 64)
+	line := 0
+	for scanner.Scan() {
+		line++
+		text := bytes.TrimSpace(scanner.Bytes())
+		if len(text) == 0 {
+			continue
+		}
+		var rec aureliusRecord
+		if err := json.Unmarshal(text, &rec); err != nil {
+			return nil, fmt.Errorf("decode line %d: %w", line, err)
+		}
+		records = append(records, rec)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("scan archive: %w", err)
+	}
+	return records, nil
+}
+
+func buildEvent(st settings, rec aureliusRecord, kind, schemaRef string) (*primitives.Event, error) {
+	if strings.TrimSpace(rec.EventID) == "" {
+		return nil, errors.New("event_id is required")
+	}
+	if rec.OccurredAt.IsZero() {
+		return nil, errors.New("occurred_at is required")
+	}
+	payload, err := json.Marshal(rec.Payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshal payload: %w", err)
+	}
+	tenantID := strings.TrimSpace(rec.TenantID)
+	if tenantID == "" {
+		tenantID = st.tenantID
+	}
+	attributes := make(map[string]string, len(rec.Attributes))
+	for k, v := range rec.Attributes {
+		k = strings.TrimSpace(k)
+		if k == "" {
+			continue
+		}
+		attributes[k] = v
+	}
+	return &primitives.Event{
+		Id:         rec.EventID,
+		TenantId:   tenantID,
+		SourceId:   sourceID,
+		Kind:       kind,
+		SchemaRef:  schemaRef,
+		OccurredAt: timestamppb.New(rec.OccurredAt.UTC()),
+		Payload:    payload,
+		Attributes: attributes,
+	}, nil
+}

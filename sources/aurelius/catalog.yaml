@@ -1,0 +1,57 @@
+id: aurelius
+name: Aurelius
+description: Aurelius image attestation, scan verdict, finding, catalog promotion, and policy exception source. Reads NDJSON event archives written to S3 by the aurelius export pipeline.
+emitted_kinds:
+  - aurelius.verdict
+  - aurelius.finding
+  - aurelius.image_scan
+  - aurelius.catalog_promotion
+  - aurelius.policy_exception
+event_contracts:
+  - kind: aurelius.verdict
+    schema_ref: aurelius/verdict/v1
+    required_attributes:
+      - image_digest
+      - verdict
+    required_payload_fields:
+      - image_digest
+      - verdict
+      - blocking_findings
+      - excepted_findings
+  - kind: aurelius.finding
+    schema_ref: aurelius/finding/v1
+    required_attributes:
+      - image_digest
+      - severity
+    required_payload_fields:
+      - image_digest
+      - cve_id
+      - severity
+      - package
+  - kind: aurelius.image_scan
+    schema_ref: aurelius/image_scan/v1
+    required_attributes:
+      - image_digest
+      - registry
+    required_payload_fields:
+      - image_digest
+      - registry
+      - completed_at
+  - kind: aurelius.catalog_promotion
+    schema_ref: aurelius/catalog_promotion/v1
+    required_attributes:
+      - track
+      - image_digest
+    required_payload_fields:
+      - track
+      - image_digest
+      - promoted_by
+  - kind: aurelius.policy_exception
+    schema_ref: aurelius/policy_exception/v1
+    required_attributes:
+      - cve_id
+      - status
+    required_payload_fields:
+      - cve_id
+      - status
+      - expires_at

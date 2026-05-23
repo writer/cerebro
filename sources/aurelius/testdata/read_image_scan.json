@@ -1,0 +1,21 @@
+[
+  {
+    "id": "aurelius-image-scan-fixture-1",
+    "tenant_id": "writer",
+    "source_id": "aurelius",
+    "kind": "aurelius.image_scan",
+    "occurred_at": "2026-05-22T14:30:00Z",
+    "schema_ref": "aurelius/image_scan/v1",
+    "payload": {
+      "image_digest": "sha256:c6b86af5b3d40000",
+      "registry": "us-east-1-docker.pkg.dev",
+      "completed_at": "2026-05-22T14:30:00Z",
+      "scanner": "scout",
+      "status": "completed"
+    },
+    "attributes": {
+      "image_digest": "sha256:c6b86af5b3d40000",
+      "registry": "us-east-1-docker.pkg.dev"
+    }
+  }
+]

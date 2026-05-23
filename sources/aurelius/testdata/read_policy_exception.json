@@ -1,0 +1,22 @@
+[
+  {
+    "id": "aurelius-policy-exception-fixture-1",
+    "tenant_id": "writer",
+    "source_id": "aurelius",
+    "kind": "aurelius.policy_exception",
+    "occurred_at": "2026-05-22T14:30:00Z",
+    "schema_ref": "aurelius/policy_exception/v1",
+    "payload": {
+      "cve_id": "CVE-2026-1111",
+      "status": "active",
+      "expires_at": "2026-08-08T00:00:00Z",
+      "approver": "security-team",
+      "scope": "vendored-go-binaries",
+      "reason": "Fix not yet upstreamed"
+    },
+    "attributes": {
+      "cve_id": "CVE-2026-1111",
+      "status": "active"
+    }
+  }
+]

@@ -1,0 +1,22 @@
+[
+  {
+    "id": "aurelius-verdict-fixture-1",
+    "tenant_id": "writer",
+    "source_id": "aurelius",
+    "kind": "aurelius.verdict",
+    "occurred_at": "2026-05-22T14:30:00Z",
+    "schema_ref": "aurelius/verdict/v1",
+    "payload": {
+      "image_digest": "sha256:c6b86af5b3d40000",
+      "verdict": "warn",
+      "blocking_findings": 0,
+      "excepted_findings": 13,
+      "completed_at": "2026-05-22T14:30:00Z"
+    },
+    "attributes": {
+      "image_digest": "sha256:c6b86af5b3d40000",
+      "verdict": "warn",
+      "registry": "us-east-1-docker.pkg.dev"
+    }
+  }
+]
