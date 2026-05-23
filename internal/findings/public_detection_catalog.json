@@ -1994,7 +1994,6 @@
       "source_id": "okta",
       "evaluation_mode": "event",
       "event_kinds": [
-        "okta.audit",
         "okta.policy_rule"
       ],
       "output_kind": "finding.okta_policy_rule_lifecycle_tampering",
@@ -2016,7 +2015,9 @@
       ],
       "runbook": "Review actor, target policy rule, administrative change ticket, and adjacent identity events before reverting or escalating.",
       "required_attributes": [
-        "resource_id"
+        "policy_id",
+        "policy_rule_id",
+        "status"
       ],
       "fingerprint_fields": [
         "okta_policy_rule_urn"

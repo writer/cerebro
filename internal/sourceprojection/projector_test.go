@@ -381,6 +381,59 @@ func TestProjectOktaOAuthGrantAsApplicationTelemetry(t *testing.T) {
 	assertProjectedLink(t, state, clientURN, relationBelongsTo, "urn:cerebro:writer:okta_org:writer.okta.com")
 }
 
+func TestProjectOktaPolicyRule(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "okta-policy-rule-pol-1-rul-1",
+		TenantId: "writer",
+		SourceId: "okta",
+		Kind:     "okta.policy_rule",
+		Attributes: map[string]string{
+			"policy_id":      "pol-1",
+			"policy_rule_id": "rul-1",
+			"policy_type":    "OKTA_SIGN_ON",
+			"name":           "Require MFA",
+			"status":         "INACTIVE",
+			"priority":       "1",
+			"system":         "false",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if result.EntitiesProjected != 1 {
+		t.Fatalf("Project().EntitiesProjected = %d, want 1", result.EntitiesProjected)
+	}
+
+	wantURN := "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1"
+	entity, ok := state.entities[wantURN]
+	if !ok {
+		t.Fatalf("state entity %q missing", wantURN)
+	}
+	if got := entity.EntityType; got != "okta.policy_rule" {
+		t.Fatalf("EntityType = %q, want okta.policy_rule", got)
+	}
+	if got := entity.Label; got != "Require MFA" {
+		t.Fatalf("Label = %q, want Require MFA", got)
+	}
+	wantAttributes := map[string]string{
+		"policy_id":      "pol-1",
+		"policy_rule_id": "rul-1",
+		"policy_type":    "OKTA_SIGN_ON",
+		"name":           "Require MFA",
+		"status":         "INACTIVE",
+		"priority":       "1",
+		"system":         "false",
+	}
+	for key, want := range wantAttributes {
+		if got := entity.Attributes[key]; got != want {
+			t.Fatalf("Attributes[%q] = %q, want %q", key, got, want)
+		}
+	}
+}
+
 func TestProjectOktaAuditSuppressesEphemeralOAuthResources(t *testing.T) {
 	tests := []struct {
 		name         string

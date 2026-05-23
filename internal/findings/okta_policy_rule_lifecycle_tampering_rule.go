@@ -22,20 +22,6 @@ const (
 )
 
 var (
-	oktaPolicyRuleLifecycleTamperingOpenEventTypes = map[string]struct{}{
-		"policy.rule.deactivate": {},
-		"policy.rule.delete":     {},
-	}
-	oktaPolicyRuleLifecycleTamperingCloseEventTypes = map[string]struct{}{
-		"policy.rule.activate":   {},
-		"policy.rule.enable":     {},
-		"policy.rule.reactivate": {},
-	}
-	oktaPolicyRuleLifecycleTamperingOutcomes = map[string]struct{}{
-		"success": {},
-		"allow":   {},
-		"allowed": {},
-	}
 	oktaPolicyRuleLifecycleTamperingControlRefs = []ports.FindingControlRef{
 		{
 			FrameworkName: "SOC 2",
@@ -58,7 +44,7 @@ var oktaPolicyRuleLifecycleTamperingDefinition = RuleDefinition{
 	Name:               oktaPolicyRuleLifecycleTamperingTitle,
 	Description:        "Detect Okta policy rules that remain deactivated or deleted in projected identity state.",
 	SourceID:           "okta",
-	EventKinds:         []string{"okta.audit", "okta.policy_rule"},
+	EventKinds:         []string{"okta.policy_rule"},
 	OutputKind:         "finding.okta_policy_rule_lifecycle_tampering",
 	Severity:           oktaPolicyRuleLifecycleTamperingSeverity,
 	Status:             oktaPolicyRuleLifecycleTamperingStatus,
@@ -67,7 +53,7 @@ var oktaPolicyRuleLifecycleTamperingDefinition = RuleDefinition{
 	References:         []string{"https://help.okta.com/en-us/content/topics/reports/reports_syslog.htm"},
 	FalsePositives:     []string{"Authorized identity platform administration during approved change windows."},
 	Runbook:            "Review actor, target policy rule, administrative change ticket, and adjacent identity events before reverting or escalating.",
-	RequiredAttributes: []string{"resource_id"},
+	RequiredAttributes: []string{"policy_id", "policy_rule_id", "status"},
 	FingerprintFields:  []string{"okta_policy_rule_urn"},
 	ControlRefs:        oktaPolicyRuleLifecycleTamperingControlRefs,
 	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
@@ -101,13 +87,10 @@ func (r *oktaPolicyRuleLifecycleTamperingRule) OpenAnchor(attributes map[string]
 }
 
 func (r *oktaPolicyRuleLifecycleTamperingRule) CloseOnEvent(event Event) (string, bool) {
-	if !oktaPolicyRuleLifecycleTamperingKindMatcher(event) || !hasRequiredAttributes(event, "resource_id") {
+	if !oktaPolicyRuleLifecycleTamperingKindMatcher(event) || !hasRequiredAttributes(event, oktaPolicyRuleLifecycleTamperingDefinition.RequiredAttributes...) {
 		return "", false
 	}
 	attributes := eventAttributes(event)
-	if oktaPolicyRuleLifecycleTamperingAuditEvent(event) && (!hasRequiredAttributes(event, "event_type") || !oktaPolicyRuleLifecycleTamperingSuccessfulOutcome(attributes)) {
-		return "", false
-	}
 	if !oktaPolicyRuleLifecycleTamperingRestored(attributes) {
 		return "", false
 	}
@@ -116,14 +99,10 @@ func (r *oktaPolicyRuleLifecycleTamperingRule) CloseOnEvent(event Event) (string
 }
 
 func matchesOktaPolicyRuleLifecycleTampering(event *cerebrov1.EventEnvelope) bool {
-	if !oktaPolicyRuleLifecycleTamperingKindMatcher(event) || !hasRequiredAttributes(event, "resource_id") {
+	if !oktaPolicyRuleLifecycleTamperingKindMatcher(event) || !hasRequiredAttributes(event, oktaPolicyRuleLifecycleTamperingDefinition.RequiredAttributes...) {
 		return false
 	}
-	attributes := eventAttributes(event)
-	if oktaPolicyRuleLifecycleTamperingAuditEvent(event) && (!hasRequiredAttributes(event, "event_type") || !oktaPolicyRuleLifecycleTamperingSuccessfulOutcome(attributes)) {
-		return false
-	}
-	return oktaPolicyRuleLifecycleTamperingOpen(attributes)
+	return oktaPolicyRuleLifecycleTamperingOpen(eventAttributes(event))
 }
 
 func oktaPolicyRuleLifecycleTamperingFinding(ctx context.Context, event *cerebrov1.EventEnvelope, runtimeID string) (*ports.FindingRecord, error) {
@@ -137,7 +116,8 @@ func oktaPolicyRuleLifecycleTamperingFinding(ctx context.Context, event *cerebro
 	}
 	eventAttrs := event.GetAttributes()
 	policyID := oktaPolicyRuleLifecycleTamperingPolicyID(eventAttrs)
-	policyName := firstNonEmpty(projectedContext.ResourceLabel, policyID)
+	policyRuleID := oktaPolicyRuleLifecycleTamperingPolicyRuleID(eventAttrs)
+	policyName := firstNonEmpty(eventAttrs["name"], eventAttrs["policy_rule_name"], projectedContext.ResourceLabel, policyRuleID, policyID)
 	observedPolicyIDs := []string{}
 	if policyID != "" {
 		observedPolicyIDs = append(observedPolicyIDs, policyID)
@@ -152,8 +132,13 @@ func oktaPolicyRuleLifecycleTamperingFinding(ctx context.Context, event *cerebro
 		"event_type":           strings.TrimSpace(eventAttrs["event_type"]),
 		"okta_policy_rule_urn": policyRuleURN,
 		"outcome_result":       strings.TrimSpace(eventAttrs["outcome_result"]),
-		"policy_rule_id":       policyID,
+		"policy_id":            policyID,
+		"policy_rule_id":       policyRuleID,
+		"policy_type":          strings.TrimSpace(eventAttrs["policy_type"]),
+		"policy_rule_name":     firstNonEmpty(eventAttrs["name"], eventAttrs["policy_rule_name"]),
 		"policy_rule_status":   policyRuleState,
+		"priority":             strings.TrimSpace(eventAttrs["priority"]),
+		"system":               strings.TrimSpace(eventAttrs["system"]),
 		"source_runtime_id":    strings.TrimSpace(eventAttrs[ports.EventAttributeSourceRuntimeID]),
 		"primary_actor_urn":    projectedContext.PrimaryActorURN,
 		"primary_resource_urn": firstNonEmpty(projectedContext.PrimaryResourceURN, policyRuleURN),
@@ -178,7 +163,7 @@ func oktaPolicyRuleLifecycleTamperingFinding(ctx context.Context, event *cerebro
 		Title:             oktaPolicyRuleLifecycleTamperingTitle,
 		Severity:          oktaPolicyRuleLifecycleTamperingSeverity,
 		Status:            oktaPolicyRuleLifecycleTamperingStatus,
-		Summary:           findingSummary(event, projectedContext.ActorLabel, projectedContext.ResourceLabel),
+		Summary:           oktaPolicyRuleLifecycleTamperingSummary(policyName, policyRuleState),
 		ResourceURNs:      deduplicateStrings(append([]string{policyRuleURN}, projectedContext.ResourceURNs...)),
 		EventIDs:          []string{strings.TrimSpace(event.GetId())},
 		ObservedPolicyIDs: observedPolicyIDs,
@@ -193,32 +178,11 @@ func oktaPolicyRuleLifecycleTamperingFinding(ctx context.Context, event *cerebro
 	}, nil
 }
 
-func oktaPolicyRuleLifecycleTamperingSuccessfulOutcome(attributes map[string]string) bool {
-	outcome := strings.ToLower(strings.TrimSpace(attributes["outcome_result"]))
-	_, ok := oktaPolicyRuleLifecycleTamperingOutcomes[outcome]
-	return ok
-}
-
-func oktaPolicyRuleLifecycleTamperingAuditEvent(event Event) bool {
-	return event != nil && strings.EqualFold(strings.TrimSpace(event.GetKind()), "okta.audit")
-}
-
 func oktaPolicyRuleLifecycleTamperingOpen(attributes map[string]string) bool {
-	eventType := strings.ToLower(strings.TrimSpace(attributes["event_type"]))
-	if _, ok := oktaPolicyRuleLifecycleTamperingCloseEventTypes[eventType]; ok {
-		return false
-	}
-	if _, ok := oktaPolicyRuleLifecycleTamperingOpenEventTypes[eventType]; ok {
-		return true
-	}
 	return oktaPolicyRuleLifecycleTamperingStateIsInactive(oktaPolicyRuleLifecycleTamperingState(attributes))
 }
 
 func oktaPolicyRuleLifecycleTamperingRestored(attributes map[string]string) bool {
-	eventType := strings.ToLower(strings.TrimSpace(attributes["event_type"]))
-	if _, ok := oktaPolicyRuleLifecycleTamperingCloseEventTypes[eventType]; ok {
-		return true
-	}
 	return oktaPolicyRuleLifecycleTamperingStateIsActive(oktaPolicyRuleLifecycleTamperingState(attributes))
 }
 
@@ -269,7 +233,7 @@ func parseOptionalBoolAttribute(attributes map[string]string, key string) (bool,
 
 func oktaPolicyRuleLifecycleTamperingStateIsInactive(state string) bool {
 	switch strings.ToLower(strings.TrimSpace(state)) {
-	case "deactivate", "deactivated", "deleted", "delete", "disabled", "inactive", "removed":
+	case "deactivate", "deactivated", "deleted", "delete", "deleted_permanently", "disabled", "inactive", "removed":
 		return true
 	default:
 		return false
@@ -286,10 +250,19 @@ func oktaPolicyRuleLifecycleTamperingStateIsActive(state string) bool {
 }
 
 func oktaPolicyRuleLifecycleTamperingPolicyID(attributes map[string]string) string {
+	return firstNonEmpty(attributes["policy_id"], attributes["policy"])
+}
+
+func oktaPolicyRuleLifecycleTamperingPolicyRuleID(attributes map[string]string) string {
 	return firstNonEmpty(attributes["policy_rule_id"], attributes["rule_id"], attributes["resource_id"])
 }
 
 func oktaPolicyRuleLifecycleTamperingURN(tenantID string, attributes map[string]string, projectedResourceURN string) string {
+	policyID := oktaPolicyRuleLifecycleTamperingPolicyID(attributes)
+	policyRuleID := oktaPolicyRuleLifecycleTamperingPolicyRuleID(attributes)
+	if strings.TrimSpace(policyID) != "" && strings.TrimSpace(policyRuleID) != "" && strings.TrimSpace(tenantID) != "" {
+		return fmt.Sprintf("urn:cerebro:%s:okta_policy_rule:%s:%s", strings.TrimSpace(tenantID), strings.TrimSpace(policyID), strings.TrimSpace(policyRuleID))
+	}
 	for _, candidate := range []string{
 		attributes["okta_policy_rule_urn"],
 		attributes["policy_rule_urn"],
@@ -301,16 +274,12 @@ func oktaPolicyRuleLifecycleTamperingURN(tenantID string, attributes map[string]
 			return candidate
 		}
 	}
-	policyID := oktaPolicyRuleLifecycleTamperingPolicyID(attributes)
-	if strings.TrimSpace(policyID) == "" || strings.TrimSpace(tenantID) == "" {
-		return ""
-	}
-	return fmt.Sprintf("urn:cerebro:%s:okta_resource:policyrule:%s", strings.TrimSpace(tenantID), strings.TrimSpace(policyID))
+	return ""
 }
 
 func oktaPolicyRuleLifecycleTamperingURNLooksLikePolicyRule(candidate string) bool {
 	candidate = strings.ToLower(strings.TrimSpace(candidate))
-	return strings.Contains(candidate, ":okta_resource:policyrule:") || strings.Contains(candidate, ":okta_policy_rule:")
+	return strings.Contains(candidate, ":okta_policy_rule:")
 }
 
 func oktaPolicyRuleLifecycleTamperingAnchor(attributes map[string]string) string {
@@ -328,9 +297,20 @@ func oktaPolicyRuleLifecycleTamperingAttributesForEvent(event Event) map[string]
 		attributes["okta_policy_rule_urn"] = value
 	}
 	if value := oktaPolicyRuleLifecycleTamperingPolicyID(attributes); value != "" {
+		attributes["policy_id"] = value
+	}
+	if value := oktaPolicyRuleLifecycleTamperingPolicyRuleID(attributes); value != "" {
 		attributes["policy_rule_id"] = value
 	}
 	return attributes
+}
+
+func oktaPolicyRuleLifecycleTamperingSummary(policyRuleName string, state string) string {
+	name := firstNonEmpty(policyRuleName, "unknown policy rule")
+	if normalizedState := strings.ToUpper(strings.TrimSpace(state)); normalizedState != "" {
+		return fmt.Sprintf("Okta policy rule %s is %s", name, normalizedState)
+	}
+	return fmt.Sprintf("Okta policy rule %s is inactive or deleted", name)
 }
 
 func entityLabel(entity *ports.ProjectedEntity, fallbacks ...string) string {
@@ -343,13 +323,6 @@ func entityLabel(entity *ports.ProjectedEntity, fallbacks ...string) string {
 		}
 	}
 	return ""
-}
-
-func findingSummary(event *cerebrov1.EventEnvelope, actorLabel string, resourceLabel string) string {
-	eventType := strings.TrimSpace(event.GetAttributes()["event_type"])
-	actor := firstNonEmpty(actorLabel, event.GetAttributes()["actor_alternate_id"], event.GetAttributes()["actor_display_name"], event.GetAttributes()["actor_id"], "unknown actor")
-	resource := firstNonEmpty(resourceLabel, event.GetAttributes()["resource_id"], event.GetAttributes()["resource_type"], "unknown resource")
-	return fmt.Sprintf("%s performed %s on %s", actor, eventType, resource)
 }
 
 func firstNonEmpty(values ...string) string {

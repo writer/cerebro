@@ -4193,30 +4193,30 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	appendLog := &recordingAppendLog{
 		replayEvents: []*cerebrov1.EventEnvelope{
-			findingTestEvent("okta-audit-1", "user.session.start", "SUCCESS"),
-			findingTestEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
+			findingPolicyRuleTestEvent("okta-policy-rule-active", "ACTIVE"),
+			findingPolicyRuleTestEvent("okta-policy-rule-inactive", "INACTIVE"),
 		},
 	}
 	runtimeStore := &stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {
-				Id:       "writer-okta-audit",
+			"writer-okta-policy-rule": {
+				Id:       "writer-okta-policy-rule",
 				SourceId: "okta",
 				TenantId: "writer",
-				Config:   map[string]string{"token": "super-secret"},
+				Config:   map[string]string{"family": "policy_rule", "token": "super-secret"},
 			},
 		},
 		claims: map[string]*ports.ClaimRecord{
 			"claim-1": {
 				ID:            "claim-1",
-				RuntimeID:     "writer-okta-audit",
+				RuntimeID:     "writer-okta-policy-rule",
 				TenantID:      "writer",
-				SubjectURN:    "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+				SubjectURN:    "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1",
 				Predicate:     "status",
-				ObjectValue:   "updated",
+				ObjectValue:   "INACTIVE",
 				ClaimType:     "attribute",
 				Status:        "asserted",
-				SourceEventID: "okta-audit-2",
+				SourceEventID: "okta-policy-rule-inactive",
 				ObservedAt:    time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
 			},
 		},
@@ -4230,7 +4230,7 @@ func TestFindingEndpoints(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	evaluateReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-audit/findings/evaluate?event_limit=2&rule_id=identity-okta-policy-rule-lifecycle-tampering", nil)
+	evaluateReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-policy-rule/findings/evaluate?event_limit=2&rule_id=identity-okta-policy-rule-lifecycle-tampering", nil)
 	if err != nil {
 		t.Fatalf("new evaluate findings request: %v", err)
 	}
@@ -4275,14 +4275,14 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := findingPayload["rule_id"]; got != "identity-okta-policy-rule-lifecycle-tampering" {
 		t.Fatalf("evaluate finding rule_id = %#v, want identity-okta-policy-rule-lifecycle-tampering", got)
 	}
-	if got := findingPayload["summary"]; got != "admin@writer.com performed policy.rule.deactivate on pol-1" {
-		t.Fatalf("evaluate finding summary = %#v, want admin summary", got)
+	if got := findingPayload["summary"]; got != "Okta policy rule Require MFA is INACTIVE" {
+		t.Fatalf("evaluate finding summary = %#v, want current-state summary", got)
 	}
 	if got := findingPayload["policy_id"]; got != "pol-1" {
 		t.Fatalf("evaluate finding policy_id = %#v, want pol-1", got)
 	}
-	if got := findingPayload["policy_name"]; got != "pol-1" {
-		t.Fatalf("evaluate finding policy_name = %#v, want pol-1", got)
+	if got := findingPayload["policy_name"]; got != "Require MFA" {
+		t.Fatalf("evaluate finding policy_name = %#v, want Require MFA", got)
 	}
 	if got := findingPayload["check_id"]; got != "identity-okta-policy-rule-lifecycle-tampering-30d" {
 		t.Fatalf("evaluate finding check_id = %#v, want identity-okta-policy-rule-lifecycle-tampering-30d", got)
@@ -4333,12 +4333,12 @@ func TestFindingEndpoints(t *testing.T) {
 		t.Fatalf("evaluate evidence finding_id = %#v, want finding id %#v", got, findingPayload["id"])
 	}
 	eventIDs, ok := evidenceEntry["event_ids"].([]any)
-	if !ok || len(eventIDs) != 1 || eventIDs[0] != "okta-audit-2" {
-		t.Fatalf("evaluate evidence event_ids = %#v, want [okta-audit-2]", evidenceEntry["event_ids"])
+	if !ok || len(eventIDs) != 1 || eventIDs[0] != "okta-policy-rule-inactive" {
+		t.Fatalf("evaluate evidence event_ids = %#v, want [okta-policy-rule-inactive]", evidenceEntry["event_ids"])
 	}
 	evidenceAttributes, ok := evidenceEntry["attributes"].(map[string]any)
-	if !ok || evidenceAttributes["event_type"] != "policy.rule.deactivate" {
-		t.Fatalf("evaluate evidence attributes = %#v, want event_type snapshot", evidenceEntry["attributes"])
+	if !ok || evidenceAttributes["policy_rule_status"] != "inactive" {
+		t.Fatalf("evaluate evidence attributes = %#v, want policy_rule_status snapshot", evidenceEntry["attributes"])
 	}
 	if _, ok := evidenceEntry["last_observed_at"].(string); !ok {
 		t.Fatalf("evaluate evidence last_observed_at = %#v, want timestamp", evidenceEntry["last_observed_at"])
@@ -4347,7 +4347,7 @@ func TestFindingEndpoints(t *testing.T) {
 	if !ok || len(claimIDs) != 1 || claimIDs[0] != "claim-1" {
 		t.Fatalf("evaluate evidence claim_ids = %#v, want [claim-1]", evidenceEntry["claim_ids"])
 	}
-	listResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-audit/findings?rule_id=identity-okta-policy-rule-lifecycle-tampering&status=open&event_id=okta-audit-2&limit=1")
+	listResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-policy-rule/findings?rule_id=identity-okta-policy-rule-lifecycle-tampering&status=open&event_id=okta-policy-rule-inactive&limit=1")
 	if err != nil {
 		t.Fatalf("GET /source-runtimes/{id}/findings error = %v", err)
 	}
@@ -4371,7 +4371,7 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := listedFinding["rule_id"]; got != "identity-okta-policy-rule-lifecycle-tampering" {
 		t.Fatalf("list finding rule_id = %#v, want identity-okta-policy-rule-lifecycle-tampering", got)
 	}
-	runListResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-audit/finding-evaluation-runs?rule_id=identity-okta-policy-rule-lifecycle-tampering&status=completed&limit=1")
+	runListResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-policy-rule/finding-evaluation-runs?rule_id=identity-okta-policy-rule-lifecycle-tampering&status=completed&limit=1")
 	if err != nil {
 		t.Fatalf("GET /source-runtimes/{id}/finding-evaluation-runs error = %v", err)
 	}
@@ -4410,7 +4410,7 @@ func TestFindingEndpoints(t *testing.T) {
 	if got, present := runEntry["graph_rows_read"]; !present || got != float64(0) {
 		t.Fatalf("list evaluation run graph_rows_read = %#v (present=%t), want 0 present", got, present)
 	}
-	evidenceListResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-audit/finding-evidence?finding_id=" + findingPayload["id"].(string) + "&run_id=" + runID + "&claim_id=claim-1&event_id=okta-audit-2&graph_root_urn=urn:cerebro:writer:okta_resource:policyrule:pol-1&limit=1")
+	evidenceListResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-policy-rule/finding-evidence?finding_id=" + findingPayload["id"].(string) + "&run_id=" + runID + "&claim_id=claim-1&event_id=okta-policy-rule-inactive&graph_root_urn=urn:cerebro:writer:okta_policy_rule:pol-1:rul-1&limit=1")
 	if err != nil {
 		t.Fatalf("GET /source-runtimes/{id}/finding-evidence error = %v", err)
 	}
@@ -4480,7 +4480,7 @@ func TestFindingEndpoints(t *testing.T) {
 	if got, present := getRunBody["graph_rows_read"]; !present || got != float64(0) {
 		t.Fatalf("get evaluation run graph_rows_read = %#v (present=%t), want 0 present", got, present)
 	}
-	missingRuleResp, err := server.Client().Post(server.URL+"/source-runtimes/writer-okta-audit/findings/evaluate?rule_id=does-not-exist", "application/json", nil)
+	missingRuleResp, err := server.Client().Post(server.URL+"/source-runtimes/writer-okta-policy-rule/findings/evaluate?rule_id=does-not-exist", "application/json", nil)
 	if err != nil {
 		t.Fatalf("POST /source-runtimes/{id}/findings/evaluate unknown rule error = %v", err)
 	}
@@ -4492,7 +4492,7 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := missingRuleResp.StatusCode; got != http.StatusNotFound {
 		t.Fatalf("unknown rule status = %d, want %d", got, http.StatusNotFound)
 	}
-	batchEvaluateReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-audit/finding-rules/evaluate?event_limit=2", nil)
+	batchEvaluateReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-policy-rule/finding-rules/evaluate?event_limit=2", nil)
 	if err != nil {
 		t.Fatalf("new batch evaluate request: %v", err)
 	}
@@ -4553,7 +4553,7 @@ func TestFindingEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal batch evaluate body: %v", err)
 	}
-	batchBodyReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-audit/finding-rules/evaluate?event_limit=2", bytes.NewReader(batchBody))
+	batchBodyReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-policy-rule/finding-rules/evaluate?event_limit=2", bytes.NewReader(batchBody))
 	if err != nil {
 		t.Fatalf("new body batch evaluate request: %v", err)
 	}
@@ -4578,7 +4578,7 @@ func TestFindingEndpoints(t *testing.T) {
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	evaluateFindingsResp, err := client.EvaluateSourceRuntimeFindings(context.Background(), connect.NewRequest(&cerebrov1.EvaluateSourceRuntimeFindingsRequest{
-		Id:         "writer-okta-audit",
+		Id:         "writer-okta-policy-rule",
 		RuleId:     "identity-okta-policy-rule-lifecycle-tampering",
 		EventLimit: 5,
 	}))
@@ -4610,13 +4610,13 @@ func TestFindingEndpoints(t *testing.T) {
 		t.Fatalf("EvaluateSourceRuntimeFindings evidence claim ids = %#v, want [claim-1]", got)
 	}
 	listFindingsResp, err := client.ListFindings(context.Background(), connect.NewRequest(&cerebrov1.ListFindingsRequest{
-		RuntimeId:   "writer-okta-audit",
+		RuntimeId:   "writer-okta-policy-rule",
 		RuleId:      "identity-okta-policy-rule-lifecycle-tampering",
 		Severity:    "HIGH",
 		Status:      cerebrov1.FindingStatus_FINDING_STATUS_OPEN,
 		PolicyId:    "pol-1",
-		ResourceUrn: "urn:cerebro:writer:okta_resource:policyrule:pol-1",
-		EventId:     "okta-audit-2",
+		ResourceUrn: "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1",
+		EventId:     "okta-policy-rule-inactive",
 		Limit:       1,
 	}))
 	if err != nil {
@@ -4643,17 +4643,17 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := runtimeStore.findingListRequest.RuleID; got != "identity-okta-policy-rule-lifecycle-tampering" {
 		t.Fatalf("runtimeStore.findingListRequest.RuleID = %q, want identity-okta-policy-rule-lifecycle-tampering", got)
 	}
-	if got := runtimeStore.findingListRequest.ResourceURN; got != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+	if got := runtimeStore.findingListRequest.ResourceURN; got != "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1" {
 		t.Fatalf("runtimeStore.findingListRequest.ResourceURN = %q, want policy rule urn", got)
 	}
-	if got := runtimeStore.findingListRequest.EventID; got != "okta-audit-2" {
-		t.Fatalf("runtimeStore.findingListRequest.EventID = %q, want okta-audit-2", got)
+	if got := runtimeStore.findingListRequest.EventID; got != "okta-policy-rule-inactive" {
+		t.Fatalf("runtimeStore.findingListRequest.EventID = %q, want okta-policy-rule-inactive", got)
 	}
 	if got := runtimeStore.findingListRequest.PolicyID; got != "pol-1" {
 		t.Fatalf("runtimeStore.findingListRequest.PolicyID = %q, want pol-1", got)
 	}
 	listRunsResp, err := client.ListFindingEvaluationRuns(context.Background(), connect.NewRequest(&cerebrov1.ListFindingEvaluationRunsRequest{
-		RuntimeId: "writer-okta-audit",
+		RuntimeId: "writer-okta-policy-rule",
 		RuleId:    "identity-okta-policy-rule-lifecycle-tampering",
 		Status:    "completed",
 		Limit:     1,
@@ -4665,7 +4665,7 @@ func TestFindingEndpoints(t *testing.T) {
 		t.Fatalf("len(ListFindingEvaluationRuns().Runs) = %d, want 1", got)
 	}
 	evaluateFindingRulesResp, err := client.EvaluateSourceRuntimeFindingRules(context.Background(), connect.NewRequest(&cerebrov1.EvaluateSourceRuntimeFindingRulesRequest{
-		Id:         "writer-okta-audit",
+		Id:         "writer-okta-policy-rule",
 		EventLimit: 2,
 	}))
 	if err != nil {
@@ -4691,13 +4691,13 @@ func TestFindingEndpoints(t *testing.T) {
 		t.Fatalf("len(EvaluateSourceRuntimeFindingRules().Evaluations[0].Evidence) = %d, want 1", got)
 	}
 	listEvidenceResp, err := client.ListFindingEvidence(context.Background(), connect.NewRequest(&cerebrov1.ListFindingEvidenceRequest{
-		RuntimeId:    "writer-okta-audit",
+		RuntimeId:    "writer-okta-policy-rule",
 		FindingId:    evaluateFindingsResp.Msg.GetFindings()[0].GetId(),
 		RunId:        lifecycleEvaluation.GetRun().GetId(),
 		RuleId:       "identity-okta-policy-rule-lifecycle-tampering",
 		ClaimId:      "claim-1",
-		EventId:      "okta-audit-2",
-		GraphRootUrn: "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+		EventId:      "okta-policy-rule-inactive",
+		GraphRootUrn: "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1",
 		Limit:        1,
 	}))
 	if err != nil {
@@ -4946,8 +4946,8 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := runtimeStore.findingEvidenceListRequest.ClaimID; got != "claim-1" {
 		t.Fatalf("runtimeStore.findingEvidenceListRequest.ClaimID = %q, want claim-1", got)
 	}
-	if got := runtimeStore.findingEvidenceListRequest.EventID; got != "okta-audit-2" {
-		t.Fatalf("runtimeStore.findingEvidenceListRequest.EventID = %q, want okta-audit-2", got)
+	if got := runtimeStore.findingEvidenceListRequest.EventID; got != "okta-policy-rule-inactive" {
+		t.Fatalf("runtimeStore.findingEvidenceListRequest.EventID = %q, want okta-policy-rule-inactive", got)
 	}
 	if len(runtimeStore.findingEvaluationRuns) < 4 {
 		t.Fatalf("len(runtimeStore.findingEvaluationRuns) = %d, want at least 4", len(runtimeStore.findingEvaluationRuns))
@@ -4955,14 +4955,14 @@ func TestFindingEndpoints(t *testing.T) {
 	if len(runtimeStore.findings) < 1 {
 		t.Fatalf("len(runtimeStore.findings) = %d, want at least 1", len(runtimeStore.findings))
 	}
-	if len(runtimeStore.findingEvidence) < 2 {
-		t.Fatalf("len(runtimeStore.findingEvidence) = %d, want at least 2", len(runtimeStore.findingEvidence))
+	if len(runtimeStore.findingEvidence) < 1 {
+		t.Fatalf("len(runtimeStore.findingEvidence) = %d, want at least 1", len(runtimeStore.findingEvidence))
 	}
 	if got := len(graphStore.entities); got < 9 {
 		t.Fatalf("len(graphStore.entities) = %d, want at least 9", got)
 	}
-	if got := len(graphStore.links); got < 20 {
-		t.Fatalf("len(graphStore.links) = %d, want at least 20", got)
+	if got := len(graphStore.links); got < 15 {
+		t.Fatalf("len(graphStore.links) = %d, want at least 15", got)
 	}
 	decisionCount := 0
 	outcomeCount := 0
@@ -6400,25 +6400,28 @@ func cloneStringMap(values map[string]string) map[string]string {
 	return cloned
 }
 
-func findingTestEvent(id string, eventType string, outcome string) *cerebrov1.EventEnvelope {
+func findingPolicyRuleTestEvent(id string, status string) *cerebrov1.EventEnvelope {
 	return &cerebrov1.EventEnvelope{
 		Id:         id,
 		TenantId:   "writer",
 		SourceId:   "okta",
-		Kind:       "okta.audit",
+		Kind:       "okta.policy_rule",
 		OccurredAt: timestamppb.New(time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)),
-		SchemaRef:  "okta/audit/v1",
+		SchemaRef:  "okta/policy_rule/v1",
 		Attributes: map[string]string{
 			"domain":                            "writer.okta.com",
-			"event_type":                        eventType,
-			"resource_id":                       "pol-1",
+			"family":                            "policy_rule",
+			"policy_id":                         "pol-1",
+			"policy_rule_id":                    "rul-1",
+			"policy_type":                       "OKTA_SIGN_ON",
+			"name":                              "Require MFA",
+			"priority":                          "1",
+			"resource_id":                       "rul-1",
 			"resource_type":                     "PolicyRule",
-			"actor_id":                          "00u2",
-			"actor_type":                        "User",
-			"actor_alternate_id":                "admin@writer.com",
-			"actor_display_name":                "Admin Example",
-			"outcome_result":                    outcome,
-			ports.EventAttributeSourceRuntimeID: "writer-okta-audit",
+			"status":                            status,
+			"policy_rule_status":                status,
+			"system":                            "false",
+			ports.EventAttributeSourceRuntimeID: "writer-okta-policy-rule",
 		},
 	}
 }

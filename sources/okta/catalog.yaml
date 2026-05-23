@@ -8,4 +8,5 @@ emitted_kinds:
   - okta.application
   - okta.group
   - okta.group_membership
+  - okta.policy_rule
   - okta.user

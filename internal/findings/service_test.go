@@ -754,46 +754,47 @@ func (r *failingRule) Evaluate(context.Context, *cerebrov1.SourceRuntime, *cereb
 func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t *testing.T) {
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-1", "user.session.start", "SUCCESS"),
-			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
+			newOktaPolicyRuleEvent("okta-policy-rule-active", "ACTIVE"),
+			newOktaPolicyRuleEvent("okta-policy-rule-inactive", "INACTIVE"),
 		},
 	}
 	store := &stubFindingStore{
 		claims: map[string]*ports.ClaimRecord{
 			"claim-1": {
 				ID:            "claim-1",
-				RuntimeID:     "writer-okta-audit",
+				RuntimeID:     "writer-okta-policy-rule",
 				TenantID:      "writer",
-				SubjectURN:    "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+				SubjectURN:    "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1",
 				Predicate:     "status",
-				ObjectValue:   "updated",
+				ObjectValue:   "INACTIVE",
 				ClaimType:     "attribute",
 				Status:        "asserted",
-				SourceEventID: "okta-audit-2",
+				SourceEventID: "okta-policy-rule-inactive",
 				ObservedAt:    time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
 			},
 		},
 	}
 	service := New(&stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {
-				Id:       "writer-okta-audit",
+			"writer-okta-policy-rule": {
+				Id:       "writer-okta-policy-rule",
 				SourceId: "okta",
 				TenantId: "writer",
+				Config:   map[string]string{"family": "policy_rule"},
 			},
 		},
 	}, replayer, store, store, store, store)
 
 	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID:  "writer-okta-audit",
+		RuntimeID:  "writer-okta-policy-rule",
 		RuleID:     oktaPolicyRuleLifecycleTamperingRuleID,
 		EventLimit: 25,
 	})
 	if err != nil {
 		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
 	}
-	if result.Runtime.GetId() != "writer-okta-audit" {
-		t.Fatalf("Runtime.ID = %q, want writer-okta-audit", result.Runtime.GetId())
+	if result.Runtime.GetId() != "writer-okta-policy-rule" {
+		t.Fatalf("Runtime.ID = %q, want writer-okta-policy-rule", result.Runtime.GetId())
 	}
 	if result.Rule.GetId() != oktaPolicyRuleLifecycleTamperingRuleID {
 		t.Fatalf("Rule.ID = %q, want %q", result.Rule.GetId(), oktaPolicyRuleLifecycleTamperingRuleID)
@@ -801,8 +802,8 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 	if result.EventsEvaluated != 2 {
 		t.Fatalf("EventsEvaluated = %d, want 2", result.EventsEvaluated)
 	}
-	if got := replayer.request.RuntimeID; got != "writer-okta-audit" {
-		t.Fatalf("Replay().RuntimeID = %q, want writer-okta-audit", got)
+	if got := replayer.request.RuntimeID; got != "writer-okta-policy-rule" {
+		t.Fatalf("Replay().RuntimeID = %q, want writer-okta-policy-rule", got)
 	}
 	if got := replayer.request.Limit; got != 25 {
 		t.Fatalf("Replay().Limit = %d, want 25", got)
@@ -820,29 +821,23 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 	if finding.Status != "open" {
 		t.Fatalf("Finding.Status = %q, want open", finding.Status)
 	}
-	if finding.Summary != "admin@writer.com performed policy.rule.deactivate on pol-1" {
-		t.Fatalf("Finding.Summary = %q, want admin@writer.com performed policy.rule.deactivate on pol-1", finding.Summary)
+	if finding.Summary != "Okta policy rule Require MFA is INACTIVE" {
+		t.Fatalf("Finding.Summary = %q, want Okta policy rule Require MFA is INACTIVE", finding.Summary)
 	}
-	if len(finding.ResourceURNs) != 2 {
-		t.Fatalf("len(Finding.ResourceURNs) = %d, want 2", len(finding.ResourceURNs))
+	if len(finding.ResourceURNs) != 1 {
+		t.Fatalf("len(Finding.ResourceURNs) = %d, want 1", len(finding.ResourceURNs))
 	}
-	if finding.ResourceURNs[0] != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+	if finding.ResourceURNs[0] != "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1" {
 		t.Fatalf("Finding.ResourceURNs[0] = %q, want policy rule urn", finding.ResourceURNs[0])
 	}
-	if finding.ResourceURNs[1] != "urn:cerebro:writer:okta_user:00u2" {
-		t.Fatalf("Finding.ResourceURNs[1] = %q, want actor urn", finding.ResourceURNs[1])
-	}
-	if finding.Attributes["primary_actor_urn"] != "urn:cerebro:writer:okta_user:00u2" {
-		t.Fatalf("Finding.Attributes[primary_actor_urn] = %q, want actor urn", finding.Attributes["primary_actor_urn"])
-	}
-	if finding.Attributes["primary_resource_urn"] != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+	if finding.Attributes["primary_resource_urn"] != "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1" {
 		t.Fatalf("Finding.Attributes[primary_resource_urn] = %q, want resource urn", finding.Attributes["primary_resource_urn"])
 	}
 	if finding.PolicyID != "pol-1" {
 		t.Fatalf("Finding.PolicyID = %q, want pol-1", finding.PolicyID)
 	}
-	if finding.PolicyName != "pol-1" {
-		t.Fatalf("Finding.PolicyName = %q, want pol-1", finding.PolicyName)
+	if finding.PolicyName != "Require MFA" {
+		t.Fatalf("Finding.PolicyName = %q, want Require MFA", finding.PolicyName)
 	}
 	if len(finding.ObservedPolicyIDs) != 1 || finding.ObservedPolicyIDs[0] != "pol-1" {
 		t.Fatalf("Finding.ObservedPolicyIDs = %#v, want [pol-1]", finding.ObservedPolicyIDs)
@@ -901,12 +896,12 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 }
 
 func TestEvaluateSourceRuntimeFindingsUsesDurableOktaPolicyRuleFingerprint(t *testing.T) {
-	eventID := "okta-audit-2"
+	eventID := "okta-policy-rule-inactive"
 	legacyID := hashFindingFingerprint(oktaPolicyRuleLifecycleTamperingRuleID, eventID)
-	durableID := hashFindingFingerprint(oktaPolicyRuleLifecycleTamperingRuleID, "urn:cerebro:writer:okta_resource:policyrule:pol-1")
+	durableID := hashFindingFingerprint(oktaPolicyRuleLifecycleTamperingRuleID, "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1")
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent(eventID, "policy.rule.deactivate", "SUCCESS"),
+			newOktaPolicyRuleEvent(eventID, "INACTIVE"),
 		},
 	}
 	store := &stubFindingStore{
@@ -915,13 +910,13 @@ func TestEvaluateSourceRuntimeFindingsUsesDurableOktaPolicyRuleFingerprint(t *te
 				ID:           legacyID,
 				Fingerprint:  legacyID,
 				TenantID:     "writer",
-				RuntimeID:    "writer-okta-audit",
+				RuntimeID:    "writer-okta-policy-rule",
 				RuleID:       oktaPolicyRuleLifecycleTamperingRuleID,
 				Title:        oktaPolicyRuleLifecycleTamperingTitle,
 				Severity:     "HIGH",
 				Status:       findingStatusSuppressed,
 				Summary:      "legacy finding",
-				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+				ResourceURNs: []string{"urn:cerebro:writer:okta_policy_rule:pol-1:rul-1"},
 				EventIDs:     []string{eventID},
 				FindingWorkflow: ports.FindingWorkflow{
 					StatusReason:    "accepted risk",
@@ -934,16 +929,17 @@ func TestEvaluateSourceRuntimeFindingsUsesDurableOktaPolicyRuleFingerprint(t *te
 	}
 	service := New(&stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {
-				Id:       "writer-okta-audit",
+			"writer-okta-policy-rule": {
+				Id:       "writer-okta-policy-rule",
 				SourceId: "okta",
 				TenantId: "writer",
+				Config:   map[string]string{"family": "policy_rule"},
 			},
 		},
 	}, replayer, store, store, store, store)
 
 	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID: "writer-okta-audit",
+		RuntimeID: "writer-okta-policy-rule",
 		RuleID:    oktaPolicyRuleLifecycleTamperingRuleID,
 	})
 	if err != nil {
@@ -962,7 +958,7 @@ func TestEvaluateSourceRuntimeFindingsUsesDurableOktaPolicyRuleFingerprint(t *te
 	if got := finding.Status; got != findingStatusOpen {
 		t.Fatalf("Finding.Status = %q, want open", got)
 	}
-	if got := finding.Attributes["okta_policy_rule_urn"]; got != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+	if got := finding.Attributes["okta_policy_rule_urn"]; got != "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1" {
 		t.Fatalf("Finding.Attributes[okta_policy_rule_urn] = %q, want policy rule urn", got)
 	}
 	if _, ok := store.findings[legacyID]; !ok {
@@ -976,23 +972,30 @@ func TestEvaluateSourceRuntimeFindingsUsesDurableOktaPolicyRuleFingerprint(t *te
 	}
 }
 
-func TestOktaPolicyRuleLifecycleTamperingRequiresSuccessfulOutcome(t *testing.T) {
-	missingOutcome := newAuditEvent("okta-audit-2", "policy.rule.deactivate", "")
-	delete(missingOutcome.Attributes, "outcome_result")
-	if matchesOktaPolicyRuleLifecycleTampering(missingOutcome) {
-		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = true for missing outcome, want false")
+func TestOktaPolicyRuleLifecycleTamperingMatchesProjectedStateOnly(t *testing.T) {
+	auditEvent := newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS")
+	auditEvent.Attributes["policy_id"] = "pol-1"
+	auditEvent.Attributes["policy_rule_id"] = "rul-1"
+	auditEvent.Attributes["status"] = "INACTIVE"
+	if matchesOktaPolicyRuleLifecycleTampering(auditEvent) {
+		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = true for audit event, want false")
 	}
-	failedOutcome := newAuditEvent("okta-audit-3", "policy.rule.deactivate", "FAILURE")
-	if matchesOktaPolicyRuleLifecycleTampering(failedOutcome) {
-		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = true for failed outcome, want false")
+	missingStatus := newOktaPolicyRuleEvent("okta-policy-rule-missing-status", "")
+	delete(missingStatus.Attributes, "status")
+	if matchesOktaPolicyRuleLifecycleTampering(missingStatus) {
+		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = true for missing status, want false")
 	}
-	successOutcome := newAuditEvent("okta-audit-4", "policy.rule.deactivate", "SUCCESS")
-	if !matchesOktaPolicyRuleLifecycleTampering(successOutcome) {
-		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = false for success outcome, want true")
+	active := newOktaPolicyRuleEvent("okta-policy-rule-active", "ACTIVE")
+	if matchesOktaPolicyRuleLifecycleTampering(active) {
+		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = true for active projected state, want false")
 	}
-	activeOutcome := newAuditEvent("okta-audit-5", "policy.rule.activate", "SUCCESS")
-	if matchesOktaPolicyRuleLifecycleTampering(activeOutcome) {
-		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = true for active outcome, want false")
+	inactive := newOktaPolicyRuleEvent("okta-policy-rule-inactive", "INACTIVE")
+	if !matchesOktaPolicyRuleLifecycleTampering(inactive) {
+		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = false for inactive projected state, want true")
+	}
+	deleted := newOktaPolicyRuleEvent("okta-policy-rule-deleted", "DELETED_PERMANENTLY")
+	if !matchesOktaPolicyRuleLifecycleTampering(deleted) {
+		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = false for permanently deleted projected state, want true")
 	}
 }
 
@@ -2010,16 +2013,17 @@ func TestListRulesReturnsBuiltinCatalog(t *testing.T) {
 func TestEvaluateSourceRuntimeFindingsSelectsRequestedRule(t *testing.T) {
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
+			newOktaPolicyRuleEvent("okta-policy-rule-inactive", "INACTIVE"),
 		},
 	}
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-okta-audit": {
-					Id:       "writer-okta-audit",
+				"writer-okta-policy-rule": {
+					Id:       "writer-okta-policy-rule",
 					SourceId: "okta",
 					TenantId: "writer",
+					Config:   map[string]string{"family": "policy_rule"},
 				},
 			},
 		},
@@ -2031,7 +2035,7 @@ func TestEvaluateSourceRuntimeFindingsSelectsRequestedRule(t *testing.T) {
 	)
 
 	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID:  "writer-okta-audit",
+		RuntimeID:  "writer-okta-policy-rule",
 		RuleID:     oktaPolicyRuleLifecycleTamperingRuleID,
 		EventLimit: 10,
 	})
@@ -3891,31 +3895,32 @@ func TestLinkFindingTicketUpdatesPersistedWorkflow(t *testing.T) {
 func TestEvaluateSourceRuntimePreservesManualWorkflowFields(t *testing.T) {
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-1", "user.session.start", "SUCCESS"),
-			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
+			newOktaPolicyRuleEvent("okta-policy-rule-active", "ACTIVE"),
+			newOktaPolicyRuleEvent("okta-policy-rule-inactive", "INACTIVE"),
 		},
 	}
 	store := &stubFindingStore{
 		claims: map[string]*ports.ClaimRecord{
 			"claim-1": {
 				ID:            "claim-1",
-				RuntimeID:     "writer-okta-audit",
-				SourceEventID: "okta-audit-2",
+				RuntimeID:     "writer-okta-policy-rule",
+				SourceEventID: "okta-policy-rule-inactive",
 			},
 		},
 	}
 	service := New(&stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {
-				Id:       "writer-okta-audit",
+			"writer-okta-policy-rule": {
+				Id:       "writer-okta-policy-rule",
 				SourceId: "okta",
 				TenantId: "writer",
+				Config:   map[string]string{"family": "policy_rule"},
 			},
 		},
 	}, replayer, store, store, store, store)
 
 	first, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID:  "writer-okta-audit",
+		RuntimeID:  "writer-okta-policy-rule",
 		RuleID:     oktaPolicyRuleLifecycleTamperingRuleID,
 		EventLimit: 25,
 	})
@@ -3941,7 +3946,7 @@ func TestEvaluateSourceRuntimePreservesManualWorkflowFields(t *testing.T) {
 	}
 
 	second, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID:  "writer-okta-audit",
+		RuntimeID:  "writer-okta-policy-rule",
 		RuleID:     oktaPolicyRuleLifecycleTamperingRuleID,
 		EventLimit: 25,
 	})
@@ -4216,6 +4221,32 @@ func newAuditEvent(id string, eventType string, outcome string) *cerebrov1.Event
 			"actor_display_name":                "Admin Example",
 			"outcome_result":                    outcome,
 			ports.EventAttributeSourceRuntimeID: "writer-okta-audit",
+		},
+	}
+}
+
+func newOktaPolicyRuleEvent(id string, status string) *cerebrov1.EventEnvelope {
+	return &cerebrov1.EventEnvelope{
+		Id:         id,
+		TenantId:   "writer",
+		SourceId:   "okta",
+		Kind:       "okta.policy_rule",
+		OccurredAt: timestamppb.New(time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)),
+		SchemaRef:  "okta/policy_rule/v1",
+		Attributes: map[string]string{
+			"domain":                            "writer.okta.com",
+			"family":                            "policy_rule",
+			"policy_id":                         "pol-1",
+			"policy_rule_id":                    "rul-1",
+			"policy_type":                       "OKTA_SIGN_ON",
+			"name":                              "Require MFA",
+			"priority":                          "1",
+			"resource_id":                       "rul-1",
+			"resource_type":                     "PolicyRule",
+			"status":                            status,
+			"policy_rule_status":                status,
+			"system":                            "false",
+			ports.EventAttributeSourceRuntimeID: "writer-okta-policy-rule",
 		},
 	}
 }
