@@ -757,21 +757,25 @@ func TestGitHubRepositoryCollaboratorAdded(t *testing.T) {
 	}
 }
 
-func TestGitHubRepositoryCollaboratorAddedTrajectorySmoke(t *testing.T) {
-	assertGitHubRuleTrajectory(t, newGitHubRepositoryCollaboratorAddedRule(), []Event{
+func TestGitHubRepositoryCollaboratorAddedTrajectory(t *testing.T) {
+	rule := newGitHubRepositoryCollaboratorAddedRule()
+	if _, ok := rule.(CounterEventRule); !ok {
+		t.Fatal("github-repository-collaborator-added does not implement CounterEventRule")
+	}
+	assertGitHubRuleTrajectory(t, rule, []Event{
 		newGitHubAuditSignalEvent("github-collab-trajectory-first", map[string]string{
 			"action":        "repo.add_member",
 			"repo":          "writer/cerebro",
 			"resource_type": "repo",
 			"user":          "external-vendor",
 		}),
-		newGitHubAuditSignalEvent("github-collab-trajectory-second", map[string]string{
-			"action":        "repo.add_member",
+		newGitHubAuditSignalEvent("github-collab-trajectory-removed", map[string]string{
+			"action":        "member.removed",
 			"repo":          "writer/cerebro",
 			"resource_type": "repo",
 			"user":          "external-vendor",
 		}),
-	}, cerebrov1.FindingStatus_FINDING_STATUS_OPEN)
+	}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
 }
 
 func TestGitHubOrganizationOwnerAdded(t *testing.T) {
@@ -842,6 +846,44 @@ func TestGitHubOrganizationOwnerAdded(t *testing.T) {
 	if len(records) != 0 {
 		t.Fatalf("Evaluate(demoted) returned %d findings, want 0 once owner privilege revoked", len(records))
 	}
+}
+
+func TestGitHubOrganizationOwnerAddedTrajectory(t *testing.T) {
+	rule := newGitHubOrganizationOwnerAddedRule()
+	if _, ok := rule.(CounterEventRule); !ok {
+		t.Fatal("github-organization-owner-added does not implement CounterEventRule")
+	}
+	t.Run("owner role demoted", func(t *testing.T) {
+		assertGitHubRuleTrajectory(t, rule, []Event{
+			newGitHubAuditSignalEvent("github-owner-trajectory-first", map[string]string{
+				"action":     "org.add_member",
+				"org":        "writer",
+				"permission": "admin",
+				"user":       "new-owner",
+			}),
+			newGitHubAuditSignalEvent("github-owner-trajectory-demoted", map[string]string{
+				"action":     "org.add_member",
+				"org":        "writer",
+				"permission": "member",
+				"user":       "new-owner",
+			}),
+		}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+	})
+	t.Run("member removed", func(t *testing.T) {
+		assertGitHubRuleTrajectory(t, rule, []Event{
+			newGitHubAuditSignalEvent("github-owner-trajectory-second", map[string]string{
+				"action":     "org.add_member",
+				"org":        "writer",
+				"permission": "owner",
+				"user":       "new-owner",
+			}),
+			newGitHubAuditSignalEvent("github-owner-trajectory-removed", map[string]string{
+				"action": "member.removed",
+				"org":    "writer",
+				"user":   "new-owner",
+			}),
+		}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+	})
 }
 
 func TestGitHubRepositoryRulesetModified(t *testing.T) {
@@ -915,6 +957,45 @@ func TestGitHubRepositoryRulesetModified(t *testing.T) {
 	}
 }
 
+func TestGitHubRepositoryRulesetModifiedTrajectory(t *testing.T) {
+	rule := newGitHubRepositoryRulesetModifiedRule()
+	if _, ok := rule.(CounterEventRule); !ok {
+		t.Fatal("github-repository-ruleset-modified does not implement CounterEventRule")
+	}
+	t.Run("restore enforcement", func(t *testing.T) {
+		assertGitHubRuleTrajectory(t, rule, []Event{
+			newGitHubAuditSignalEvent("github-ruleset-trajectory-weakened", map[string]string{
+				"action":                        "repository_ruleset.update",
+				"repo":                          "writer/cerebro",
+				"required_status_check_removed": "true",
+				"ruleset_id":                    "42",
+			}),
+			newGitHubAuditSignalEvent("github-ruleset-trajectory-restored", map[string]string{
+				"action":      "repository_ruleset.update",
+				"enforcement": "active",
+				"repo":        "writer/cerebro",
+				"ruleset_id":  "42",
+			}),
+		}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+	})
+	t.Run("destroyed", func(t *testing.T) {
+		assertGitHubRuleTrajectory(t, rule, []Event{
+			newGitHubAuditSignalEvent("github-ruleset-trajectory-weakened-before-destroy", map[string]string{
+				"action":      "repository_ruleset.update",
+				"enforcement": "disabled",
+				"repo":        "writer/cerebro",
+				"ruleset_id":  "42",
+			}),
+			newGitHubAuditSignalEvent("github-ruleset-trajectory-destroyed", map[string]string{
+				"action":      "repository_ruleset.destroy",
+				"enforcement": "disabled",
+				"repo":        "writer/cerebro",
+				"ruleset_id":  "42",
+			}),
+		}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+	})
+}
+
 func TestGitHubWebhookModified(t *testing.T) {
 	rule := newGitHubWebhookModifiedRule()
 	metadataRule, ok := rule.(MetadataRule)
@@ -980,6 +1061,44 @@ func TestGitHubWebhookModified(t *testing.T) {
 	if len(records) != 0 {
 		t.Fatalf("Evaluate(destroy) returned %d findings, want 0 once webhook deleted", len(records))
 	}
+}
+
+func TestGitHubWebhookModifiedTrajectory(t *testing.T) {
+	rule := newGitHubWebhookModifiedRule()
+	if _, ok := rule.(CounterEventRule); !ok {
+		t.Fatal("github-webhook-modified does not implement CounterEventRule")
+	}
+	t.Run("destroyed", func(t *testing.T) {
+		assertGitHubRuleTrajectory(t, rule, []Event{
+			newGitHubAuditSignalEvent("github-hook-trajectory-create", map[string]string{
+				"action":                  "hook.create",
+				"destination_allowlisted": "false",
+				"hook_id":                 "99",
+				"repo":                    "writer/cerebro",
+			}),
+			newGitHubAuditSignalEvent("github-hook-trajectory-destroy", map[string]string{
+				"action":  "hook.destroy",
+				"hook_id": "99",
+				"repo":    "writer/cerebro",
+			}),
+		}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+	})
+	t.Run("destination restored", func(t *testing.T) {
+		assertGitHubRuleTrajectory(t, rule, []Event{
+			newGitHubAuditSignalEvent("github-hook-trajectory-non-allowlisted", map[string]string{
+				"action":                  "hook.config_changed",
+				"destination_allowlisted": "false",
+				"hook_id":                 "99",
+				"repo":                    "writer/cerebro",
+			}),
+			newGitHubAuditSignalEvent("github-hook-trajectory-allowlisted", map[string]string{
+				"action":                  "hook.config_changed",
+				"destination_allowlisted": "true",
+				"hook_id":                 "99",
+				"repo":                    "writer/cerebro",
+			}),
+		}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+	})
 }
 
 func TestGitHubAppIntegrationInstalled(t *testing.T) {

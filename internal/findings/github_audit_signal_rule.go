@@ -27,6 +27,50 @@ type githubAuditSignalConfig struct {
 	checkName         string
 }
 
+type githubAuditSignalClosePredicate func(Event) (string, bool)
+
+type githubAuditCounterEventRule struct {
+	Rule
+	definition  RuleDefinition
+	openAnchor  func(map[string]string) string
+	closeAnchor githubAuditSignalClosePredicate
+}
+
+func newGitHubAuditCounterEventRule(config githubAuditSignalConfig, openAnchor func(map[string]string) string, closeAnchor githubAuditSignalClosePredicate) Rule {
+	return &githubAuditCounterEventRule{
+		Rule:        newGitHubAuditSignalRule(config),
+		definition:  config.definition,
+		openAnchor:  openAnchor,
+		closeAnchor: closeAnchor,
+	}
+}
+
+func (r *githubAuditCounterEventRule) RuleMetadata() RuleDefinition {
+	if r == nil {
+		return RuleDefinition{}
+	}
+	return cloneRuleDefinition(r.definition)
+}
+
+func (r *githubAuditCounterEventRule) OpenAnchor(attributes map[string]string) string {
+	if r == nil || r.openAnchor == nil {
+		return ""
+	}
+	return strings.TrimSpace(r.openAnchor(attributes))
+}
+
+func (r *githubAuditCounterEventRule) CloseOnEvent(event Event) (string, bool) {
+	if r == nil || r.closeAnchor == nil {
+		return "", false
+	}
+	anchor, closes := r.closeAnchor(event)
+	anchor = strings.TrimSpace(anchor)
+	if anchor == "" || !closes {
+		return "", false
+	}
+	return anchor, true
+}
+
 const (
 	githubSecretScanningDisabledRuleID          = "github-secret-scanning-disabled"
 	githubPushProtectionDisabledRuleID          = "github-push-protection-disabled"
@@ -567,6 +611,7 @@ var githubRepositoryRulesetModifiedConfig = githubAuditSignalConfig{
 var githubWebhookModifiedConfig = githubAuditSignalConfig{
 	definition: githubWebhookModifiedDefinition,
 	actions:    githubAuditActionSet("hook.config_changed", "hook.create"),
+	predicate:  githubWebhookDestinationPolicyViolating,
 	summary: func(attributes map[string]string) string {
 		return fmt.Sprintf("%s modified GitHub webhook %s for %s", githubAuditActor(attributes), firstNonEmpty(attributes["hook_id"], "unknown hook"), githubAuditTarget(attributes))
 	},
@@ -636,11 +681,11 @@ func newGitHubSelfHostedRunnerChangeRule() Rule {
 }
 
 func newGitHubRepositoryCollaboratorAddedRule() Rule {
-	return newGitHubAuditSignalRule(githubRepositoryCollaboratorAddedConfig)
+	return newGitHubAuditCounterEventRule(githubRepositoryCollaboratorAddedConfig, githubRepositoryCollaboratorAnchor, githubRepositoryCollaboratorCloseAnchor)
 }
 
 func newGitHubOrganizationOwnerAddedRule() Rule {
-	return newGitHubAuditSignalRule(githubOrganizationOwnerAddedConfig)
+	return newGitHubAuditCounterEventRule(githubOrganizationOwnerAddedConfig, githubOrganizationOwnerAnchor, githubOrganizationOwnerCloseAnchor)
 }
 
 func newGitHubCodeSecurityControlsDisabledRule() Rule {
@@ -672,7 +717,7 @@ func newGitHubProtectedBranchPolicyOverrideRule() Rule {
 }
 
 func newGitHubRepositoryRulesetModifiedRule() Rule {
-	return newGitHubAuditSignalRule(githubRepositoryRulesetModifiedConfig)
+	return newGitHubAuditCounterEventRule(githubRepositoryRulesetModifiedConfig, githubRepositoryRulesetAnchor, githubRepositoryRulesetCloseAnchor)
 }
 
 func newGitHubCriticalResourceDeletedRule() Rule {
@@ -680,7 +725,7 @@ func newGitHubCriticalResourceDeletedRule() Rule {
 }
 
 func newGitHubWebhookModifiedRule() Rule {
-	return newGitHubAuditSignalRule(githubWebhookModifiedConfig)
+	return newGitHubAuditCounterEventRule(githubWebhookModifiedConfig, githubWebhookAnchor, githubWebhookCloseAnchor)
 }
 
 func newGitHubPrivateRepositoryForkingEnabledRule() Rule {
@@ -1016,6 +1061,137 @@ func githubAuditActionSet(actions ...string) map[string]struct{} {
 		}
 	}
 	return set
+}
+
+func githubCounterEventAnchor(attributes map[string]string, fields ...string) string {
+	if len(fields) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(fields))
+	for _, field := range fields {
+		field = strings.TrimSpace(field)
+		if field == "" {
+			return ""
+		}
+		value := strings.TrimSpace(attributes[field])
+		if value == "" {
+			return ""
+		}
+		parts = append(parts, field+"="+value)
+	}
+	return strings.Join(parts, "|")
+}
+
+func githubRepositoryCollaboratorAnchor(attributes map[string]string) string {
+	return githubCounterEventAnchor(attributes, "repo", "user")
+}
+
+func githubRepositoryCollaboratorCloseAnchor(event Event) (string, bool) {
+	attributes := eventAttributes(event)
+	action := strings.TrimSpace(attributes["action"])
+	switch action {
+	case "member.removed", "repo.remove_member", "repository.remove_member", "repo.remove_collaborator", "repository.remove_collaborator", "org.remove_member":
+		return githubRepositoryCollaboratorAnchor(attributes), true
+	default:
+		return "", false
+	}
+}
+
+func githubOrganizationOwnerAnchor(attributes map[string]string) string {
+	return githubCounterEventAnchor(attributes, "org", "user")
+}
+
+func githubOrganizationOwnerCloseAnchor(event Event) (string, bool) {
+	attributes := eventAttributes(event)
+	action := strings.TrimSpace(attributes["action"])
+	switch action {
+	case "member.removed", "org.remove_member", "organization.remove_member", "org.remove_owner", "organization.remove_owner":
+		return githubOrganizationOwnerAnchor(attributes), true
+	case "org.add_member", "org.update_member", "org.update_member_role", "member.role_changed", "member.updated":
+		permission := strings.ToLower(strings.TrimSpace(firstNonEmpty(attributes["new_permission"], attributes["permission"], attributes["new_role"], attributes["role"])))
+		if permission != "" && permission != "admin" && permission != "owner" {
+			return githubOrganizationOwnerAnchor(attributes), true
+		}
+		return "", false
+	default:
+		return "", false
+	}
+}
+
+func githubRepositoryRulesetAnchor(attributes map[string]string) string {
+	return githubCounterEventAnchor(attributes, "repo", "ruleset_id")
+}
+
+func githubRepositoryRulesetCloseAnchor(event Event) (string, bool) {
+	attributes := eventAttributes(event)
+	switch strings.TrimSpace(attributes["action"]) {
+	case "repository_ruleset.destroy":
+		return githubRepositoryRulesetAnchor(attributes), true
+	case "repository_ruleset.update":
+		if githubRepositoryRulesetRestored(attributes) {
+			return githubRepositoryRulesetAnchor(attributes), true
+		}
+		return "", false
+	default:
+		return "", false
+	}
+}
+
+func githubRepositoryRulesetRestored(attributes map[string]string) bool {
+	if githubRepositoryRulesetWeakening(attributes) {
+		return false
+	}
+	enforcement := strings.ToLower(strings.TrimSpace(firstNonEmpty(attributes["new_enforcement"], attributes["enforcement"], attributes["ruleset_enforcement"])))
+	switch enforcement {
+	case "active", "enabled", "enforced":
+		return true
+	}
+	return containsAny(strings.ToLower(firstNonEmpty(attributes["operation_type"], attributes["change_type"], attributes["changes"])), "enable", "restore", "enforce")
+}
+
+func githubWebhookAnchor(attributes map[string]string) string {
+	return githubCounterEventAnchor(attributes, "repo", "hook_id")
+}
+
+func githubWebhookCloseAnchor(event Event) (string, bool) {
+	attributes := eventAttributes(event)
+	switch strings.TrimSpace(attributes["action"]) {
+	case "hook.destroy":
+		return githubWebhookAnchor(attributes), true
+	case "hook.config_changed":
+		if githubWebhookDestinationAllowlisted(attributes) {
+			return githubWebhookAnchor(attributes), true
+		}
+		return "", false
+	default:
+		return "", false
+	}
+}
+
+func githubWebhookDestinationPolicyViolating(attributes map[string]string) bool {
+	return !githubWebhookDestinationAllowlisted(attributes)
+}
+
+func githubWebhookDestinationAllowlisted(attributes map[string]string) bool {
+	return findingAttributeBool(
+		attributes,
+		"allowlisted_destination",
+		"destination_allowlisted",
+		"hook_destination_allowlisted",
+		"hook_url_allowlisted",
+		"url_allowlisted",
+		"webhook_destination_allowlisted",
+		"webhook_url_allowlisted",
+	) || githubAttributeExplicitlyFalse(
+		attributes,
+		"destination_non_allowlisted",
+		"hook_destination_non_allowlisted",
+		"hook_url_non_allowlisted",
+		"non_allowlisted_destination",
+		"url_non_allowlisted",
+		"webhook_destination_non_allowlisted",
+		"webhook_url_non_allowlisted",
+	)
 }
 
 var githubPostureAttributeKeys = []string{
