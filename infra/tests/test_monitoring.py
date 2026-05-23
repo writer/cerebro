@@ -140,6 +140,44 @@ class MonitoringRuntimeTest(unittest.TestCase):
         self.assertIn("WriteLatency", body)
         self.assertIn("DatabaseConnections", body)
 
+    def test_dashboard_includes_saturation_and_grc_latency_metrics(self) -> None:
+        original_get_region = monitoring.aws.get_region
+        monitoring.aws.get_region = lambda: SimpleNamespace(region="us-east-1")
+        try:
+            body = monitoring._dashboard_body("cerebro-test", "alb", "tg", "cluster", "service", None, "CEREBRO_EVENTS")
+        finally:
+            monitoring.aws.get_region = original_get_region
+
+        self.assertIn("RequestCountPerTarget", body)
+        self.assertIn("GRCDashboardLatencyMs", body)
+        self.assertIn('"stat": "p95"', body)
+
+    def test_telemetry_metric_filters_include_grc_dashboard_latency(self) -> None:
+        calls: list[dict] = []
+
+        def fake_filter(*args, **kwargs):
+            calls.append({"resource": args[0], **kwargs})
+            return SimpleNamespace(name=kwargs.get("name"))
+
+        def fake_args(**kwargs):
+            return SimpleNamespace(**kwargs)
+
+        original_filter = monitoring.aws.cloudwatch.LogMetricFilter
+        original_args = monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs
+        monitoring.aws.cloudwatch.LogMetricFilter = fake_filter
+        monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs = fake_args
+        try:
+            monitoring._create_telemetry_metric_filters("cerebro-test", "logs")
+        finally:
+            monitoring.aws.cloudwatch.LogMetricFilter = original_filter
+            monitoring.aws.cloudwatch.LogMetricFilterMetricTransformationArgs = original_args
+
+        grc_call = next(call for call in calls if call["name"] == "cerebro-test-grc-dashboard-latency")
+        self.assertIn('$.name = "grc.dashboard"', grc_call["pattern"])
+        self.assertEqual(grc_call["metric_transformation"].name, "GRCDashboardLatencyMs")
+        self.assertEqual(grc_call["metric_transformation"].value, "$.duration_ms")
+        self.assertEqual(grc_call["metric_transformation"].dimensions, {"Dashboard": "$.dashboard"})
+
 
 if __name__ == "__main__":
     unittest.main()

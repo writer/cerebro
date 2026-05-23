@@ -38,6 +38,11 @@ config:
   cerebro:apiMemory: 2048
   cerebro:apiMinInstances: 1
   cerebro:apiMaxInstances: 2
+  cerebro:apiRequestCountPerTargetScalingTarget: 300
+  cerebro:apiRequestCountPerTargetAlarmThreshold: 600
+  cerebro:apiLatencyP95AlarmThresholdSeconds: 3
+  cerebro:webLatencyP95AlarmThresholdSeconds: 3
+  cerebro:dashboardLatencyP95AlarmThresholdMs: 3000
   cerebro:postgresInstanceClass: db.t4g.small
   cerebro:postgresAllocatedStorage: 100
   cerebro:postgresStorageType: gp3

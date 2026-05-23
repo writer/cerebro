@@ -157,6 +157,10 @@ class ValidateStackConfigTest(unittest.TestCase):
         findings = self._validate(BASE_STACK)
         self.assertEqual([finding for finding in findings if finding.severity == "error"], [])
 
+    def test_latency_alarm_thresholds_must_be_non_negative(self) -> None:
+        content = BASE_STACK + "  cerebro:dashboardLatencyP95AlarmThresholdMs: -1\n"
+        self.assertTrue(any("must be a non-negative integer" in message for message in self._messages(content)))
+
     def test_missing_source_secret_is_error(self) -> None:
         content = BASE_STACK.replace(f"    - {API_TOKEN_KEY}\n", "")
         self.assertTrue(any("not listed in cerebro:sourceSecretKeys" in message for message in self._messages(content)))

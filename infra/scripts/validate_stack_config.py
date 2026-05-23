@@ -487,6 +487,17 @@ def validate_stack(path: Path) -> list[Finding]:
         if not isinstance(threshold, int) or threshold < 0:
             findings.append(_finding("error", stack, f"cerebro:{key}", "must be a non-negative integer"))
 
+    for key in (
+        "apiRequestCountPerTargetScalingTarget",
+        "apiRequestCountPerTargetAlarmThreshold",
+        "apiLatencyP95AlarmThresholdSeconds",
+        "webLatencyP95AlarmThresholdSeconds",
+        "dashboardLatencyP95AlarmThresholdMs",
+    ):
+        threshold = config.get(key, 0)
+        if not isinstance(threshold, int) or threshold < 0:
+            findings.append(_finding("error", stack, f"cerebro:{key}", "must be a non-negative integer"))
+
     for key in ("accessAuditTenantMismatchAlarmThreshold", "accessAuditSensitiveDeniedAlarmThreshold"):
         threshold = config.get(key, -1)
         if not isinstance(threshold, int) or threshold < -1:

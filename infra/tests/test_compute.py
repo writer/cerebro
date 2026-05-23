@@ -225,6 +225,61 @@ class ServiceAutoscalingTest(unittest.TestCase):
             {"ECSServiceAverageCPUUtilization", "ECSServiceAverageMemoryUtilization"},
         )
 
+    def test_api_autoscaling_can_track_alb_request_count_per_target(self) -> None:
+        policy_calls: list[dict] = []
+
+        def fake_named_resource(*args, **kwargs):
+            name = kwargs.get("name") or args[0]
+            return SimpleNamespace(name=name, id=f"{name}-id", arn=f"arn:aws:test::{name}", resource_id=kwargs.get("resource_id", f"{name}-resource"))
+
+        def fake_args(**kwargs):
+            return SimpleNamespace(**kwargs)
+
+        def fake_policy(*args, **kwargs):
+            policy_calls.append({"name": args[0], **kwargs})
+            return SimpleNamespace(name=args[0])
+
+        with (
+            patch.object(compute, "_create_execution_role", return_value=SimpleNamespace(arn="arn:aws:iam::123456789012:role/cerebro-sec-dev-exec-role")),
+            patch.object(compute, "_create_task_role", return_value=SimpleNamespace(name="cerebro-sec-dev-task-role", arn="arn:aws:iam::123456789012:role/cerebro-sec-dev-task-role")),
+            patch.object(compute, "_create_task_definition", return_value=SimpleNamespace(arn="arn:aws:ecs:us-east-1:123456789012:task-definition/cerebro-sec-dev:1")),
+            patch.object(compute.aws.ecs, "Cluster", side_effect=fake_named_resource),
+            patch.object(compute.aws.ecs, "ClusterCapacityProviders", side_effect=fake_named_resource),
+            patch.object(compute.aws.ecs, "ClusterCapacityProvidersDefaultCapacityProviderStrategyArgs", side_effect=fake_args),
+            patch.object(compute.aws.ecs, "Service", side_effect=fake_named_resource),
+            patch.object(compute.aws.ecs, "ServiceCapacityProviderStrategyArgs", side_effect=fake_args),
+            patch.object(compute.aws.ecs, "ServiceNetworkConfigurationArgs", side_effect=fake_args),
+            patch.object(compute.aws.ecs, "ServiceLoadBalancerArgs", side_effect=fake_args),
+            patch.object(compute.aws.ecs, "ServiceDeploymentCircuitBreakerArgs", side_effect=fake_args),
+            patch.object(compute.aws.cloudwatch, "LogGroup", side_effect=fake_named_resource),
+            patch.object(compute.aws.appautoscaling, "Target", side_effect=fake_named_resource),
+            patch.object(compute.aws.appautoscaling, "Policy", side_effect=fake_policy),
+            patch.object(compute.aws.appautoscaling, "PolicyTargetTrackingScalingPolicyConfigurationArgs", side_effect=fake_args),
+            patch.object(compute.aws.appautoscaling, "PolicyTargetTrackingScalingPolicyConfigurationPredefinedMetricSpecificationArgs", side_effect=fake_args),
+            patch.object(compute.pulumi, "Output", SimpleNamespace(concat=lambda *args: "".join(str(arg) for arg in args))),
+            patch.object(compute.pulumi, "ResourceOptions", side_effect=fake_args),
+        ):
+            compute.create_ecs_cluster(
+                name="cerebro-sec-dev",
+                vpc_id="vpc-1",
+                subnet_ids=["subnet-1"],
+                security_group_id="sg-1",
+                kms_key_id="key-1",
+                target_group_arn="tg-1",
+                container_image="image",
+                external_secrets_prefix="/cerebro/sec-dev",
+                api_min_instances=1,
+                api_max_instances=3,
+                alb_arn_suffix="app/alb/123",
+                target_group_arn_suffix="targetgroup/api/456",
+                api_request_count_per_target_scaling_target=300,
+            )
+
+        request_policy = next(call for call in policy_calls if call["name"] == "cerebro-sec-dev-request-count-scaling")
+        metric_spec = request_policy["target_tracking_scaling_policy_configuration"].predefined_metric_specification
+        self.assertEqual(metric_spec.predefined_metric_type, "ALBRequestCountPerTarget")
+        self.assertEqual(metric_spec.resource_label, "app/alb/123/targetgroup/api/456")
+
 
 if __name__ == "__main__":
     unittest.main()
