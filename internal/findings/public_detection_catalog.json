@@ -276,12 +276,11 @@
       "required_attributes": [
         "action",
         "github_app_id",
-        "name",
         "org"
       ],
       "fingerprint_fields": [
         "org",
-        "name"
+        "github_app_id"
       ],
       "control_refs": [
         {

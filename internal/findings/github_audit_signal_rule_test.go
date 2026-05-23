@@ -1114,7 +1114,7 @@ func TestGitHubAppIntegrationInstalled(t *testing.T) {
 	if definition.Lifecycle.Anchor != AnchorGraphAnchored {
 		t.Fatalf("Lifecycle.Anchor = %q, want %q", definition.Lifecycle.Anchor, AnchorGraphAnchored)
 	}
-	wantFields := []string{"org", "name"}
+	wantFields := []string{"org", "github_app_id"}
 	if !cloudStringSlicesEqual(definition.FingerprintFields, wantFields) {
 		t.Fatalf("FingerprintFields = %v, want %v", definition.FingerprintFields, wantFields)
 	}
@@ -1150,7 +1150,7 @@ func TestGitHubAppIntegrationInstalled(t *testing.T) {
 	}
 	secondFinding := records[0]
 	if firstFinding.Fingerprint != secondFinding.Fingerprint {
-		t.Fatalf("fingerprints differ across replays of the same (org, name) install: %q vs %q (should be anchored to (org, name))", firstFinding.Fingerprint, secondFinding.Fingerprint)
+		t.Fatalf("fingerprints differ across replays of the same (org, github_app_id) install: %q vs %q (should be anchored to (org, github_app_id))", firstFinding.Fingerprint, secondFinding.Fingerprint)
 	}
 	for _, eventID := range []string{first.GetId(), second.GetId()} {
 		if strings.Contains(firstFinding.Fingerprint, eventID) {
@@ -1159,7 +1159,7 @@ func TestGitHubAppIntegrationInstalled(t *testing.T) {
 	}
 
 	uninstall := githubAuditEvent("github-app-uninstall", map[string]string{
-		"action":        "integration_installation.destroy",
+		"action":        "integration_installation.delete",
 		"github_app_id": "123456",
 		"name":          "ci-deployer",
 		"org":           "writer",
@@ -1170,6 +1170,67 @@ func TestGitHubAppIntegrationInstalled(t *testing.T) {
 	}
 	if len(records) != 0 {
 		t.Fatalf("Evaluate(uninstall) returned %d findings, want 0 once app uninstalled", len(records))
+	}
+}
+
+func TestGitHubAppIntegrationInstalled_InstallUninstall(t *testing.T) {
+	rule := newGitHubAppIntegrationInstalledRule()
+	if _, ok := rule.(CounterEventRule); !ok {
+		t.Fatal("github-app-integration-installed does not implement CounterEventRule")
+	}
+	for _, closeAction := range []string{"integration_installation.delete", "integration_installation.suspend"} {
+		t.Run(closeAction, func(t *testing.T) {
+			assertGitHubRuleTrajectory(t, rule, []Event{
+				newGitHubAuditSignalEvent("github-app-install-trajectory-"+strings.TrimPrefix(closeAction, "integration_installation."), map[string]string{
+					"action":        "integration_installation.create",
+					"github_app_id": "123456",
+					"name":          "ci-deployer",
+					"org":           "writer",
+					"repo":          "writer/cerebro",
+				}),
+				newGitHubAuditSignalEvent("github-app-close-trajectory-"+strings.TrimPrefix(closeAction, "integration_installation."), map[string]string{
+					"action":        closeAction,
+					"github_app_id": "123456",
+					"name":          "ci-deployer",
+					"org":           "writer",
+				}),
+			}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+		})
+	}
+}
+
+func TestGitHubAppIntegrationInstalled_DistinctAppIdsByName(t *testing.T) {
+	rule := newGitHubAppIntegrationInstalledRule()
+	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "writer"}
+	first := githubAuditEvent("github-app-install-same-name-first", map[string]string{
+		"action":        "integration_installation.create",
+		"github_app_id": "123456",
+		"name":          "ci-deployer",
+		"org":           "writer",
+	})
+	second := githubAuditEvent("github-app-install-same-name-second", map[string]string{
+		"action":        "integration_installation.create",
+		"github_app_id": "654321",
+		"name":          "ci-deployer",
+		"org":           "writer",
+	})
+
+	firstRecords, err := rule.Evaluate(context.Background(), runtime, first)
+	if err != nil || len(firstRecords) != 1 {
+		t.Fatalf("Evaluate(first) = (%v, %v), want one record", firstRecords, err)
+	}
+	secondRecords, err := rule.Evaluate(context.Background(), runtime, second)
+	if err != nil || len(secondRecords) != 1 {
+		t.Fatalf("Evaluate(second) = (%v, %v), want one record", secondRecords, err)
+	}
+	if firstRecords[0].Fingerprint == secondRecords[0].Fingerprint {
+		t.Fatalf("same-name app installs collapsed to fingerprint %q; want distinct fingerprints by github_app_id", firstRecords[0].Fingerprint)
+	}
+	if got := strings.TrimSpace(firstRecords[0].Attributes["github_app_id"]); got != "123456" {
+		t.Fatalf("first github_app_id attribute = %q, want 123456", got)
+	}
+	if got := strings.TrimSpace(secondRecords[0].Attributes["github_app_id"]); got != "654321" {
+		t.Fatalf("second github_app_id attribute = %q, want 654321", got)
 	}
 }
 

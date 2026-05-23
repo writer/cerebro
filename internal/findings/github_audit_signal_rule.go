@@ -335,8 +335,8 @@ var githubAppIntegrationInstalledDefinition = RuleDefinition{
 	References:         []string{"https://docs.github.com/en/apps/using-github-apps/installing-a-github-app-from-a-third-party", "https://github.com/elastic/detection-rules/blob/main/rules/integrations/github/execution_new_github_app_installed.toml"},
 	FalsePositives:     []string{"Approved GitHub App onboarding through standard change management."},
 	Runbook:            "Review installer, app publisher, requested permissions, repository scope, and revoke unauthorized installations.",
-	RequiredAttributes: []string{"action", "github_app_id", "name", "org"},
-	FingerprintFields:  []string{"org", "name"},
+	RequiredAttributes: []string{"action", "github_app_id", "org"},
+	FingerprintFields:  []string{"org", "github_app_id"},
 	ControlRefs:        githubAuditControlRefs,
 	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 }
@@ -701,7 +701,7 @@ func newGitHubOrgIPAllowListModifiedRule() Rule {
 }
 
 func newGitHubAppIntegrationInstalledRule() Rule {
-	return newGitHubAuditSignalRule(githubAppIntegrationInstalledConfig)
+	return newGitHubAuditCounterEventRule(githubAppIntegrationInstalledConfig, githubAppIntegrationAnchor, githubAppIntegrationCloseAnchor)
 }
 
 func newGitHubPersonalAccessTokenCreatedRule() Rule {
@@ -1113,6 +1113,20 @@ func githubOrganizationOwnerCloseAnchor(event Event) (string, bool) {
 			return githubOrganizationOwnerAnchor(attributes), true
 		}
 		return "", false
+	default:
+		return "", false
+	}
+}
+
+func githubAppIntegrationAnchor(attributes map[string]string) string {
+	return githubCounterEventAnchor(attributes, "org", "github_app_id")
+}
+
+func githubAppIntegrationCloseAnchor(event Event) (string, bool) {
+	attributes := eventAttributes(event)
+	switch strings.TrimSpace(attributes["action"]) {
+	case "integration_installation.delete", "integration_installation.suspend":
+		return githubAppIntegrationAnchor(attributes), true
 	default:
 		return "", false
 	}
