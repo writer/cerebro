@@ -126,6 +126,32 @@ type DeviceAuthConfig struct {
 	EnrollPerIPBurst         int
 	TokenPerDeviceRatePerSecond float64
 	TokenPerDeviceBurst      int
+	// DPoPProofTTL bounds how long an RFC 9449 DPoP proof JWT remains
+	// valid; defaults to 60s if zero.
+	DPoPProofTTL time.Duration
+	// RiskElevatedThreshold and RiskHighThreshold map composite risk
+	// scores (0..100) to "elevated" and "high" levels. Defaults are 30
+	// and 70.
+	RiskElevatedThreshold int
+	RiskHighThreshold     int
+	// Attestation configures the device-bound proof verifiers wired into
+	// Service.Enroll.
+	Attestation DeviceAuthAttestationConfig
+}
+
+// DeviceAuthAttestationConfig configures the Phase-2 device-bound proof
+// verifiers. When Required is true, enroll requests must carry a non-empty
+// attestation statement; when false, a missing statement returns a
+// software-assurance result.
+type DeviceAuthAttestationConfig struct {
+	Required bool
+	Apple    DeviceAuthAppleConfig
+}
+
+// DeviceAuthAppleConfig configures the Apple App Attest verifier.
+type DeviceAuthAppleConfig struct {
+	TeamID    string
+	BundleIDs []string
 }
 
 // Load reads and validates process configuration.

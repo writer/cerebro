@@ -56,6 +56,26 @@ func loadDeviceAuthConfig() (DeviceAuthConfig, error) {
 		return DeviceAuthConfig{}, err
 	}
 	cfg.TokenPerDeviceBurst = tokenBurst
+	if cfg.DPoPProofTTL, err = parseDurationEnv("CEREBRO_DEVICE_AUTH_DPOP_PROOF_TTL", 60*time.Second); err != nil {
+		return DeviceAuthConfig{}, err
+	}
+	if cfg.RiskElevatedThreshold, err = parseIntEnv("CEREBRO_DEVICE_AUTH_RISK_ELEVATED", 30); err != nil {
+		return DeviceAuthConfig{}, err
+	}
+	if cfg.RiskHighThreshold, err = parseIntEnv("CEREBRO_DEVICE_AUTH_RISK_HIGH", 70); err != nil {
+		return DeviceAuthConfig{}, err
+	}
+	required, err := parseBoolEnv("CEREBRO_DEVICE_AUTH_ATTESTATION_REQUIRED", false)
+	if err != nil {
+		return DeviceAuthConfig{}, err
+	}
+	cfg.Attestation = DeviceAuthAttestationConfig{
+		Required: required,
+		Apple: DeviceAuthAppleConfig{
+			TeamID:    strings.TrimSpace(os.Getenv("CEREBRO_DEVICE_AUTH_APPLE_TEAM_ID")),
+			BundleIDs: parseCommaList(os.Getenv("CEREBRO_DEVICE_AUTH_APPLE_BUNDLE_IDS")),
+		},
+	}
 	keys, err := parseDeviceAuthSigningKeys(os.Getenv("CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON"))
 	if err != nil {
 		return DeviceAuthConfig{}, err
@@ -108,6 +128,17 @@ func deviceAuthHasKID(keys []DeviceAuthSigningKey, kid string) bool {
 		}
 	}
 	return false
+}
+
+func parseCommaList(raw string) []string {
+	parts := strings.Split(strings.TrimSpace(raw), ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if v := strings.TrimSpace(p); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func parseDurationEnv(name string, defaultValue time.Duration) (time.Duration, error) {

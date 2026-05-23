@@ -13,12 +13,14 @@ import (
 
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/deviceauth"
+	"github.com/writer/cerebro/internal/deviceauth/attestation"
+	"github.com/writer/cerebro/internal/deviceauth/risk"
 )
 
 // buildDeviceAuthService wires the deviceauth.Service against the configured
 // store and signing-key material. It returns nil if the surface is disabled
 // or the runtime dependencies are missing.
-func buildDeviceAuthService(cfg config.DeviceAuthConfig, store deviceauth.Store) (*deviceauth.Service, error) {
+func buildDeviceAuthService(cfg config.DeviceAuthConfig, store deviceauth.Store, dpop *deviceauth.DPoPVerifier, scorer *risk.Scorer, observations risk.ObservationStore) (*deviceauth.Service, error) {
 	if !cfg.Enabled {
 		return nil, nil
 	}
@@ -74,6 +76,10 @@ func buildDeviceAuthService(cfg config.DeviceAuthConfig, store deviceauth.Store)
 	if err != nil {
 		return nil, fmt.Errorf("device-auth verifier: %w", err)
 	}
+	registry, err := buildAttestationRegistry(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("device-auth attestation: %w", err)
+	}
 	return deviceauth.NewService(deviceauth.ServiceConfig{
 		Issuer:            cfg.Issuer,
 		Audience:          cfg.Audience,
@@ -82,7 +88,31 @@ func buildDeviceAuthService(cfg config.DeviceAuthConfig, store deviceauth.Store)
 		BootstrapTokenTTL: cfg.BootstrapTokenTTL,
 		IdempotencyTTL:    cfg.IdempotencyTTL,
 		ClockSkew:         cfg.ClockSkew,
+		Attestations:      registry,
+		DPoP:              dpop,
+		Risk:              scorer,
+		Observations:      observations,
 	}, store, issuer, verifier, keyset)
+}
+
+// buildAttestationRegistry constructs the attestation registry from
+// configuration. When the operator has not configured Apple or TPM
+// verifiers, the registry runs in non-required mode -- enroll requests
+// without an attestation statement get a software-assurance result, and
+// the device gets a software-only access token (no DPoP binding).
+func buildAttestationRegistry(cfg config.DeviceAuthConfig) (*attestation.Registry, error) {
+	verifiers := make([]attestation.Verifier, 0, 2)
+	if cfg.Attestation.Apple.TeamID != "" && len(cfg.Attestation.Apple.BundleIDs) > 0 {
+		v, err := attestation.NewAppleAppAttestVerifier(attestation.AppleConfig{
+			TeamID:    cfg.Attestation.Apple.TeamID,
+			BundleIDs: cfg.Attestation.Apple.BundleIDs,
+		})
+		if err != nil {
+			return nil, err
+		}
+		verifiers = append(verifiers, v)
+	}
+	return attestation.NewRegistry(cfg.Attestation.Required, verifiers...), nil
 }
 
 func orderCurrentFirst(keys []deviceauth.SigningKey, currentKID string) []deviceauth.SigningKey {
@@ -121,16 +151,24 @@ type enrollRequestBody struct {
 	OSType         string `json:"os_type,omitempty"`
 	OSVersion      string `json:"os_version,omitempty"`
 	AgentVersion   string `json:"agent_version,omitempty"`
+	// Attestation is the base64-encoded device-bound proof: an Apple App
+	// Attest CBOR attestationObject on macOS or a TPM 2.0 quote bundle on
+	// Windows. Required when CEREBRO_DEVICE_AUTH_ATTESTATION_REQUIRED=true.
+	Attestation string `json:"attestation,omitempty"`
 }
 
 type tokenResponseBody struct {
-	AccessToken    string   `json:"access_token"`
-	TokenType      string   `json:"token_type"`
-	ExpiresIn      int64    `json:"expires_in"`
-	RefreshToken   string   `json:"refresh_token,omitempty"`
-	RefreshExpires string   `json:"refresh_expires_at,omitempty"`
-	Scopes         []string `json:"scopes"`
-	DeviceID       string   `json:"device_id,omitempty"`
+	AccessToken       string   `json:"access_token"`
+	TokenType         string   `json:"token_type"`
+	ExpiresIn         int64    `json:"expires_in"`
+	RefreshToken      string   `json:"refresh_token,omitempty"`
+	RefreshExpires    string   `json:"refresh_expires_at,omitempty"`
+	Scopes            []string `json:"scopes"`
+	DeviceID          string   `json:"device_id,omitempty"`
+	AssuranceLevel    string   `json:"assurance_level,omitempty"`
+	AttestationVendor string   `json:"attestation_vendor,omitempty"`
+	RiskScore         int      `json:"risk_score,omitempty"`
+	RiskLevel         string   `json:"risk_level,omitempty"`
 }
 
 type tokenRequestBody struct {
@@ -178,19 +216,23 @@ func (h *deviceAuthHTTPHandler) handleEnroll(w http.ResponseWriter, r *http.Requ
 		OSType:         body.OSType,
 		OSVersion:      body.OSVersion,
 		AgentVersion:   body.AgentVersion,
+		Attestation:    body.Attestation,
+		RemoteIP:       net.ParseIP(clientIP),
 	})
 	if err != nil {
 		writeDeviceAuthServiceError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, tokenResponseBody{
-		AccessToken:    response.AccessToken,
-		TokenType:      response.TokenType,
-		ExpiresIn:      int64(time.Until(response.AccessExpires).Seconds()),
-		RefreshToken:   response.RefreshToken,
-		RefreshExpires: response.RefreshExpires.UTC().Format(time.RFC3339),
-		Scopes:         response.Scopes,
-		DeviceID:       response.DeviceID,
+		AccessToken:       response.AccessToken,
+		TokenType:         response.TokenType,
+		ExpiresIn:         int64(time.Until(response.AccessExpires).Seconds()),
+		RefreshToken:      response.RefreshToken,
+		RefreshExpires:    response.RefreshExpires.UTC().Format(time.RFC3339),
+		Scopes:            response.Scopes,
+		DeviceID:          response.DeviceID,
+		AssuranceLevel:    response.AssuranceLevel,
+		AttestationVendor: response.AttestationVendor,
 	})
 }
 
@@ -217,9 +259,26 @@ func (h *deviceAuthHTTPHandler) handleToken(w http.ResponseWriter, r *http.Reque
 		writeDeviceAuthError(w, http.StatusTooManyRequests, "rate_limited", "too many token requests")
 		return
 	}
+	scheme := "https"
+	if r.TLS == nil {
+		scheme = "http"
+	}
+	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); forwarded != "" {
+		scheme = forwarded
+	}
+	host := r.Host
+	if host == "" {
+		host = "cerebro"
+	}
+	url := scheme + "://" + host + r.URL.RequestURI()
+	dpopProof := strings.TrimSpace(r.Header.Get("DPoP"))
 	response, err := h.service.IssueToken(r.Context(), deviceauth.TokenRequest{
 		GrantType:    body.GrantType,
 		RefreshToken: body.RefreshToken,
+		DPoPProof:    dpopProof,
+		HTTPMethod:   r.Method,
+		HTTPURL:      url,
+		RemoteIP:     net.ParseIP(remoteIPForRateLimit(r)),
 	})
 	if err != nil {
 		writeDeviceAuthServiceError(w, err)
@@ -232,6 +291,8 @@ func (h *deviceAuthHTTPHandler) handleToken(w http.ResponseWriter, r *http.Reque
 		RefreshToken:   response.RefreshToken,
 		RefreshExpires: response.RefreshExpires.UTC().Format(time.RFC3339),
 		Scopes:         response.Scopes,
+		RiskScore:      response.RiskScore,
+		RiskLevel:      response.RiskLevel,
 	})
 }
 
@@ -387,6 +448,20 @@ func writeDeviceAuthServiceError(w http.ResponseWriter, err error) {
 		writeDeviceAuthError(w, http.StatusForbidden, "device_inactive", err.Error())
 	case errors.Is(err, deviceauth.ErrIdempotencyConflict):
 		writeDeviceAuthError(w, http.StatusConflict, "idempotency_conflict", err.Error())
+	case errors.Is(err, deviceauth.ErrDPoPMissing):
+		writeDeviceAuthError(w, http.StatusUnauthorized, "dpop_required", err.Error())
+	case errors.Is(err, deviceauth.ErrDPoPMalformed),
+		errors.Is(err, deviceauth.ErrDPoPInvalidHeader),
+		errors.Is(err, deviceauth.ErrDPoPInvalidJWK):
+		writeDeviceAuthError(w, http.StatusUnauthorized, "dpop_malformed", err.Error())
+	case errors.Is(err, deviceauth.ErrDPoPInvalidSignature),
+		errors.Is(err, deviceauth.ErrDPoPMismatch),
+		errors.Is(err, deviceauth.ErrDPoPExpired),
+		errors.Is(err, deviceauth.ErrDPoPFromFuture),
+		errors.Is(err, deviceauth.ErrDPoPMissingJTI),
+		errors.Is(err, deviceauth.ErrDPoPReplay),
+		errors.Is(err, deviceauth.ErrDPoPJKTMismatch):
+		writeDeviceAuthError(w, http.StatusUnauthorized, "dpop_invalid", err.Error())
 	default:
 		writeDeviceAuthError(w, http.StatusInternalServerError, "internal_error", "device-auth internal error")
 	}

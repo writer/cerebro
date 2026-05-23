@@ -369,11 +369,22 @@ A scheduled job (`internal/sourceops` cron) purges `device_telemetry_idempotency
 | Phase | Scope | This PR |
 |---|---|---|
 | 1a | Design proposal + NON_GOALS update + `internal/deviceauth/` package skeleton (JWT issuer, in-memory store, unit tests) | **yes** |
-| 1b | Postgres schema + driver implementation in `internal/statestore/postgres/deviceauth.go` | follow-on |
-| 1c | Route mounts in `internal/bootstrap/app.go`; auth-pipeline extension to recognize device JWTs | follow-on |
-| 1d | OpenAPI updates + `make openapi-sync` | follow-on |
-| 2  | DPoP-style device-bound proofs; Apple App Attest; Windows TPM attestation | future |
-| 3  | Geo / ASN anomaly scoring on refresh; AWS WAF custom rules | future |
+| 1b | Postgres schema + driver implementation in `internal/statestore/postgres/deviceauth.go` | **yes** |
+| 1c | Route mounts in `internal/bootstrap/app.go`; auth-pipeline extension to recognize device JWTs | **yes** |
+| 1d | OpenAPI updates + `make openapi-sync` | **yes** |
+| 2  | DPoP-style device-bound proofs (RFC 9449); Apple App Attest; Windows TPM attestation | **yes** |
+| 3  | Geo / ASN / velocity anomaly scoring on refresh; sensitive-scope downgrade; AWS WAF emitter | **yes** |
+
+### Phase 2 in this PR
+
+- `internal/deviceauth/dpop.go` -- RFC 9449 verifier supporting `ES256`, `ES384`, and `EdDSA`. Validates `htm` / `htu` against the canonical request URL, enforces the proof TTL with a configurable clock skew, dedupes `jti` in a TTL-bounded in-memory map (per-process; production should swap in a Redis-backed jti store keyed by device id when running multiple replicas), and computes the JWK SHA-256 thumbprint per RFC 7638.
+- `internal/deviceauth/attestation/` -- pluggable verifier registry. `apple.go` validates an Apple App Attest CBOR `attestationObject` against the embedded production Apple App Attest Root CA, checks the `1.2.840.113635.100.8.2` nonce extension, and confirms `credId == SHA-256(X || Y)`. `tpm.go` validates a TPM 2.0 quote bundle (`ek_chain` + `ak_pub_der` + `quote` + `signature`) for `RSA-PKCS1v15-SHA256` and `ECDSA-SHA256` AKs, with a vendor allowlist.
+- `Service.Enroll` runs the registry; on success the device's `dpop_jkt` (the JWK thumbprint of the device-bound key) is persisted into device metadata. Subsequent `Service.IssueToken` calls require an RFC 9449 DPoP proof header whose JKT equals the stored value; a missing proof returns `dpop_required`, an invalid one returns `dpop_invalid` / `dpop_malformed`.
+
+### Phase 3 in this PR
+
+- `internal/deviceauth/risk/` -- composite scorer with three default detectors: `VelocityDetector` (haversine impossible-travel), `CountryDriftDetector`, `ASNDriftDetector`. Pluggable `GeoLookup` interface (`InMemoryLookup` for tests, MaxMind in production), pluggable `WAFEmitter` (`JSONLogEmitter` for now; `AWSWAFEmitter` is the operator-supplied wiring point), and an `ObservationStore` keyed on device id.
+- Each successful refresh runs through the scorer; the `Decision` carries `score`, `level` (`low` / `elevated` / `high`), and signals. On `high`, sensitive scopes (`platform.telemetry.ingest`, `platform.devices.bootstrap_tokens.write`, `platform.devices.revoke`) are dropped from the issued access token and a WAF rule update is emitted. The decision is also written to the audit log as `risk_score` / `risk_level` / `assurance_level`.
 
 ## Testing
 

@@ -157,9 +157,31 @@ type AccessClaims struct {
 	Scopes       []string `json:"scopes,omitempty"`
 }
 
+// AccessOptions are the per-token additions a caller can place on top of the
+// scope list when issuing an access token.
+type AccessOptions struct {
+	// DPoPJKT, when non-empty, is the SHA-256 JWK thumbprint (RFC 7638) of
+	// the device's holder-of-key DPoP key. The verifier requires that every
+	// authenticated request carry a DPoP proof signed by this key, per
+	// RFC 9449 §6.
+	DPoPJKT string
+	// AssuranceLevel is propagated as the acr claim and is also used by the
+	// risk pipeline to decide whether sensitive scopes should be granted on
+	// this token. "hardware" indicates a device-bound key was attested at
+	// enroll; "software" indicates a software key only.
+	AssuranceLevel string
+}
+
 // IssueAccess produces a signed JWT for the given device with the given scopes.
 // The returned string is the compact-serialized token (header.payload.sig).
 func (j *JWTIssuer) IssueAccess(device DeviceRecord, scopes []string) (string, error) {
+	return j.IssueAccessWithOptions(device, scopes, AccessOptions{})
+}
+
+// IssueAccessWithOptions is the full form of [JWTIssuer.IssueAccess] that
+// supports DPoP binding (cnf.jkt) and an assurance level (acr). Both are
+// optional; the zero value behaves identically to IssueAccess.
+func (j *JWTIssuer) IssueAccessWithOptions(device DeviceRecord, scopes []string, opts AccessOptions) (string, error) {
 	if strings.TrimSpace(device.DeviceID) == "" {
 		return "", errors.New("deviceauth: device_id is required")
 	}
@@ -192,6 +214,10 @@ func (j *JWTIssuer) IssueAccess(device DeviceRecord, scopes []string) (string, e
 		HardwareUUID: device.HardwareUUID,
 		TenantID:     device.TenantID,
 		Scopes:       cloneStrings(scopes),
+		ACR:          strings.TrimSpace(opts.AssuranceLevel),
+	}
+	if jkt := strings.TrimSpace(opts.DPoPJKT); jkt != "" {
+		payload.CNF = &jwtConfirmation{JKT: jkt}
 	}
 	headerBytes, err := json.Marshal(header)
 	if err != nil {
@@ -250,13 +276,15 @@ func NewJWTVerifier(cfg VerifierConfig, keys *KeySet) (*JWTVerifier, error) {
 
 // VerifiedToken is the result of a successful [JWTVerifier.Verify] call.
 type VerifiedToken struct {
-	DeviceID     string
-	HardwareUUID string
-	TenantID     string
-	Scopes       []string
-	JTI          string
-	IssuedAt     time.Time
-	ExpiresAt    time.Time
+	DeviceID       string
+	HardwareUUID   string
+	TenantID       string
+	Scopes         []string
+	JTI            string
+	IssuedAt       time.Time
+	ExpiresAt      time.Time
+	DPoPJKT        string // confirmation jkt if the token was minted DPoP-bound
+	AssuranceLevel string // acr claim ("hardware" or "software")
 }
 
 // Verify parses and validates a compact-serialized device JWT. On success it
@@ -328,15 +356,20 @@ func (v *JWTVerifier) Verify(token string) (VerifiedToken, error) {
 	if len(payload.Scopes) == 0 {
 		return VerifiedToken{}, ErrMissingScopes
 	}
-	return VerifiedToken{
-		DeviceID:     payload.DeviceID,
-		HardwareUUID: payload.HardwareUUID,
-		TenantID:     payload.TenantID,
-		Scopes:       cloneStrings(payload.Scopes),
-		JTI:          payload.JTI,
-		IssuedAt:     time.Unix(payload.Iat, 0).UTC(),
-		ExpiresAt:    time.Unix(payload.Exp, 0).UTC(),
-	}, nil
+	verified := VerifiedToken{
+		DeviceID:       payload.DeviceID,
+		HardwareUUID:   payload.HardwareUUID,
+		TenantID:       payload.TenantID,
+		Scopes:         cloneStrings(payload.Scopes),
+		JTI:            payload.JTI,
+		IssuedAt:       time.Unix(payload.Iat, 0).UTC(),
+		ExpiresAt:      time.Unix(payload.Exp, 0).UTC(),
+		AssuranceLevel: strings.TrimSpace(payload.ACR),
+	}
+	if payload.CNF != nil {
+		verified.DPoPJKT = strings.TrimSpace(payload.CNF.JKT)
+	}
+	return verified, nil
 }
 
 // Typed verification errors. Callers should translate these into HTTP 401
@@ -363,18 +396,26 @@ type jwtHeader struct {
 }
 
 type jwtPayload struct {
-	Iss          string   `json:"iss"`
-	Aud          string   `json:"aud"`
-	Sub          string   `json:"sub"`
-	Exp          int64    `json:"exp"`
-	Nbf          int64    `json:"nbf"`
-	Iat          int64    `json:"iat"`
-	JTI          string   `json:"jti"`
-	Kind         string   `json:"kind"`
-	DeviceID     string   `json:"device_id"`
-	HardwareUUID string   `json:"hardware_uuid,omitempty"`
-	TenantID     string   `json:"tenant_id"`
-	Scopes       []string `json:"scopes"`
+	Iss          string            `json:"iss"`
+	Aud          string            `json:"aud"`
+	Sub          string            `json:"sub"`
+	Exp          int64             `json:"exp"`
+	Nbf          int64             `json:"nbf"`
+	Iat          int64             `json:"iat"`
+	JTI          string            `json:"jti"`
+	Kind         string            `json:"kind"`
+	DeviceID     string            `json:"device_id"`
+	HardwareUUID string            `json:"hardware_uuid,omitempty"`
+	TenantID     string            `json:"tenant_id"`
+	Scopes       []string          `json:"scopes"`
+	ACR          string            `json:"acr,omitempty"`
+	CNF          *jwtConfirmation  `json:"cnf,omitempty"`
+}
+
+// jwtConfirmation is the RFC 7800 cnf claim. We use the jkt subset for DPoP
+// holder-of-key binding (RFC 9449 §6).
+type jwtConfirmation struct {
+	JKT string `json:"jkt,omitempty"`
 }
 
 func newJTI() (string, error) {

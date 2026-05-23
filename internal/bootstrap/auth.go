@@ -21,6 +21,7 @@ import (
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/deviceauth"
+	"github.com/writer/cerebro/internal/deviceauth/risk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/telemetry"
 )
@@ -48,15 +49,36 @@ type authPrincipal struct {
 	Capability     bool
 	DeviceID       string
 	HardwareUUID   string
+	// AssuranceLevel is "hardware" or "software" for device principals.
+	AssuranceLevel string
+	// RiskScore / RiskLevel are populated by the risk pipeline during
+	// authentication for device principals. Both are zero / "" for non-
+	// device principals.
+	RiskScore int
+	RiskLevel string
 }
 
 type authContext struct {
 	cfg            config.AuthConfig
 	principal      authPrincipal
 	deviceVerifier *deviceauth.JWTVerifier
+	dpopVerifier   *deviceauth.DPoPVerifier
+	riskScorer     *risk.Scorer
+	observations   risk.ObservationStore
 }
 
-func authMiddleware(cfg config.AuthConfig, deviceVerifier *deviceauth.JWTVerifier, next http.Handler) http.Handler {
+// AuthDependencies carries the optional verifiers/scorers the auth pipeline
+// uses for device JWT authentication. All fields are optional; the
+// middleware degrades gracefully when nil (DPoP not enforced; risk scoring
+// disabled).
+type AuthDependencies struct {
+	DeviceVerifier *deviceauth.JWTVerifier
+	DPoPVerifier   *deviceauth.DPoPVerifier
+	RiskScorer     *risk.Scorer
+	Observations   risk.ObservationStore
+}
+
+func authMiddleware(cfg config.AuthConfig, deps AuthDependencies, next http.Handler) http.Handler {
 	if !cfg.Enabled {
 		return next
 	}
@@ -76,18 +98,53 @@ func authMiddleware(cfg config.AuthConfig, deviceVerifier *deviceauth.JWTVerifie
 			finalOutcome, finalDenialReason := accessAuditOutcome(status, outcome, denialReason, auditResult.ConnectCode)
 			emitAccessAuditEvent(r, principal, status, time.Since(started), finalOutcome, finalDenialReason, auditResult)
 		}()
-		principal, ok := authenticateRequest(cfg, deviceVerifier, r)
+		var deviceJKT string
+		principal, deviceJKT, ok := authenticateRequest(cfg, deps.DeviceVerifier, r)
 		if !ok {
 			denialReason = "unauthenticated"
 			writeAuthError(recorder, http.StatusUnauthorized, "unauthorized")
 			return
+		}
+		if deviceJKT != "" {
+			if err := verifyDPoPHeader(deps.DPoPVerifier, r, deviceJKT); err != nil {
+				denialReason = "dpop_invalid"
+				writeAuthError(recorder, http.StatusUnauthorized, "dpop invalid")
+				return
+			}
+		}
+		if principal.AuthMode == "device_jwt" && deps.RiskScorer != nil {
+			scoreSig := risk.Signal{
+				DeviceID:  principal.DeviceID,
+				TenantID:  principal.TenantID,
+				RemoteIP:  net.ParseIP(accessAuditRemoteIP(r.RemoteAddr)),
+				UserAgent: r.Header.Get("User-Agent"),
+				Method:    r.Method,
+				Path:      r.URL.Path,
+				Now:       time.Now(),
+			}
+			if deps.Observations != nil {
+				if obs, found := deps.Observations.Get(r.Context(), principal.DeviceID); found {
+					scoreSig.PriorObservation = obs
+				}
+			}
+			decision := deps.RiskScorer.Score(r.Context(), scoreSig)
+			principal.Scopes = decision.FilterScopes(principal.Scopes)
+			principal.RiskScore = decision.Score
+			principal.RiskLevel = decision.Level
 		}
 		if tenantID := auditResult.RequestedTenantID; tenantID != "" && !tenantAllowed(cfg, principal, tenantID) {
 			denialReason = "tenant_forbidden"
 			writeAuthError(recorder, http.StatusForbidden, "tenant forbidden")
 			return
 		}
-		auth := authContext{cfg: cfg, principal: principal, deviceVerifier: deviceVerifier}
+		auth := authContext{
+			cfg:            cfg,
+			principal:      principal,
+			deviceVerifier: deps.DeviceVerifier,
+			dpopVerifier:   deps.DPoPVerifier,
+			riskScorer:     deps.RiskScorer,
+			observations:   deps.Observations,
+		}
 		if err := authorizeHTTPRequestScope(auth, r); err != nil {
 			denialReason = "scope_forbidden"
 			writeAuthError(recorder, http.StatusForbidden, "scope forbidden")
@@ -98,6 +155,40 @@ func authMiddleware(cfg config.AuthConfig, deviceVerifier *deviceauth.JWTVerifie
 		ctx = context.WithValue(ctx, accessAuditContextKey{}, auditResult)
 		next.ServeHTTP(recorder, r.WithContext(ctx))
 	})
+}
+
+// verifyDPoPHeader inspects the DPoP request header (RFC 9449 §4) when the
+// authenticated device JWT carries a cnf.jkt claim. The proof must be a
+// valid DPoP+JWT, htm/htu must match the request, and the JWK thumbprint
+// must equal the expected jkt that was bound at enroll time.
+func verifyDPoPHeader(verifier *deviceauth.DPoPVerifier, r *http.Request, expectedJKT string) error {
+	if verifier == nil {
+		return nil
+	}
+	proof := strings.TrimSpace(r.Header.Get("DPoP"))
+	if proof == "" {
+		return deviceauth.ErrDPoPMissing
+	}
+	scheme := "https"
+	if r.TLS == nil {
+		scheme = "http"
+	}
+	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); forwarded != "" {
+		scheme = forwarded
+	}
+	host := strings.TrimSpace(r.Host)
+	if host == "" {
+		host = "cerebro"
+	}
+	url := scheme + "://" + host + r.URL.RequestURI()
+	res, err := verifier.Verify(proof, r.Method, url)
+	if err != nil {
+		return err
+	}
+	if res.JKT != expectedJKT {
+		return deviceauth.ErrDPoPJKTMismatch
+	}
+	return nil
 }
 
 func authInterceptor(cfg config.AuthConfig) connect.Interceptor {
@@ -134,13 +225,13 @@ func isPublicPath(path string) bool {
 	}
 }
 
-func authenticateRequest(cfg config.AuthConfig, deviceVerifier *deviceauth.JWTVerifier, r *http.Request) (authPrincipal, bool) {
+func authenticateRequest(cfg config.AuthConfig, deviceVerifier *deviceauth.JWTVerifier, r *http.Request) (authPrincipal, string, bool) {
 	token := bearerToken(r.Header.Get("Authorization"))
 	if token == "" {
 		token = strings.TrimSpace(r.Header.Get("X-Cerebro-API-Key"))
 	}
 	if token == "" {
-		return authPrincipal{}, false
+		return authPrincipal{}, "", false
 	}
 	for _, credential := range cfg.APICredentials {
 		if apiCredentialMatches(token, credential) {
@@ -152,43 +243,44 @@ func authenticateRequest(cfg config.AuthConfig, deviceVerifier *deviceauth.JWTVe
 				AuthMode:       "api_credential",
 				AllowedTenants: credential.AllowedTenants,
 				Scopes:         credential.Scopes,
-			}, true
+			}, "", true
 		}
 	}
 	for _, key := range cfg.APIKeys {
 		if constantTimeEqual(token, key.Key) {
-			return authPrincipal{Name: key.Principal, TenantID: key.TenantID, AuthMode: "api_key"}, true
+			return authPrincipal{Name: key.Principal, TenantID: key.TenantID, AuthMode: "api_key"}, "", true
 		}
 	}
 	if principal, ok := authenticateCapabilityToken(cfg, token, time.Now()); ok {
-		return principal, true
+		return principal, "", true
 	}
-	if principal, ok := authenticateDeviceToken(deviceVerifier, token); ok {
-		return principal, true
+	if principal, jkt, ok := authenticateDeviceToken(deviceVerifier, token); ok {
+		return principal, jkt, true
 	}
-	return authPrincipal{}, false
+	return authPrincipal{}, "", false
 }
 
 // authenticateDeviceToken verifies an EdDSA device JWT issued by the
-// internal/deviceauth Service. It is the third bearer-token path (after API
-// keys and capability tokens) and is only attempted if a verifier was wired
-// at bootstrap time.
-func authenticateDeviceToken(verifier *deviceauth.JWTVerifier, token string) (authPrincipal, bool) {
+// internal/deviceauth Service. It returns the principal, the cnf.jkt
+// thumbprint when the token was minted DPoP-bound (empty otherwise), and
+// a success flag.
+func authenticateDeviceToken(verifier *deviceauth.JWTVerifier, token string) (authPrincipal, string, bool) {
 	if verifier == nil {
-		return authPrincipal{}, false
+		return authPrincipal{}, "", false
 	}
 	verified, err := verifier.Verify(token)
 	if err != nil {
-		return authPrincipal{}, false
+		return authPrincipal{}, "", false
 	}
 	return authPrincipal{
-		Name:         "device:" + verified.DeviceID,
-		TenantID:     verified.TenantID,
-		AuthMode:     "device_jwt",
-		Scopes:       verified.Scopes,
-		DeviceID:     verified.DeviceID,
-		HardwareUUID: verified.HardwareUUID,
-	}, true
+		Name:           "device:" + verified.DeviceID,
+		TenantID:       verified.TenantID,
+		AuthMode:       "device_jwt",
+		Scopes:         verified.Scopes,
+		DeviceID:       verified.DeviceID,
+		HardwareUUID:   verified.HardwareUUID,
+		AssuranceLevel: verified.AssuranceLevel,
+	}, verified.DPoPJKT, true
 }
 
 func apiCredentialMatches(token string, credential config.APICredential) bool {
@@ -844,6 +936,16 @@ func emitAccessAuditEvent(r *http.Request, principal authPrincipal, status int, 
 	}
 	if procedure := accessAuditConnectProcedure(r.URL.Path); procedure != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "connect_procedure", Value: procedure})
+	}
+	if principal.DeviceID != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "device_id", Value: principal.DeviceID})
+	}
+	if principal.AssuranceLevel != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "assurance_level", Value: principal.AssuranceLevel})
+	}
+	if principal.RiskLevel != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "risk_level", Value: principal.RiskLevel})
+		attrs = attrs.WithField(telemetry.Field{Key: "risk_score", Value: principal.RiskScore})
 	}
 	if auditResult.ConnectCode != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "connect_code", Value: auditResult.ConnectCode})

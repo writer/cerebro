@@ -1128,9 +1128,25 @@ paths:
         previous refresh token is consumed atomically. Replaying a
         consumed refresh token revokes the entire token family per RFC 6819
         §5.2.2.3.
+
+        When the device was enrolled with a hardware-bound key (App Attest
+        or TPM 2.0), the request MUST carry an RFC 9449 DPoP proof JWT in
+        the `DPoP` header signed by the bound key, with `htm` matching the
+        request method, `htu` matching the canonical request URL, a unique
+        `jti`, and a fresh `iat`. The proof's JWK SHA-256 thumbprint
+        (RFC 7638) must equal the device's stored `dpop_jkt`.
       tags:
         - Devices
       security: []
+      parameters:
+        - in: header
+          name: DPoP
+          required: false
+          schema:
+            type: string
+          description: |
+            RFC 9449 DPoP proof JWT. Required when the device was enrolled
+            with a hardware-bound key. Algorithms: ES256, ES384, EdDSA.
       requestBody:
         required: true
         content:
@@ -1147,7 +1163,11 @@ paths:
         '400':
           description: Unsupported grant_type.
         '401':
-          description: Refresh token unknown, expired, or replayed (family revoked).
+          description: |
+            Refresh token unknown, expired, or replayed (family revoked); or
+            DPoP proof is missing (`dpop_required`), malformed
+            (`dpop_malformed`), or invalid -- bad signature, replayed jti,
+            expired iat, htm/htu mismatch, or jkt mismatch (`dpop_invalid`).
         '429':
           description: Per-device token rate limit exceeded.
   /platform/devices/bootstrap-tokens:
@@ -1340,6 +1360,16 @@ components:
           type: string
         agent_version:
           type: string
+        attestation:
+          type: string
+          description: |
+            Base64-encoded device-bound attestation statement. On macOS this is
+            an Apple App Attest CBOR attestationObject; on Windows a TPM 2.0
+            quote bundle (JSON envelope with ek_chain, ak_pub_der, quote, signature, alg).
+            Required when CEREBRO_DEVICE_AUTH_ATTESTATION_REQUIRED=true; if
+            present and verified, the server binds a DPoP key (RFC 9449) to
+            subsequent refresh-token rotations and the response includes
+            assurance_level=hardware.
     DeviceTokenRequest:
       type: object
       required: [grant_type, refresh_token]
@@ -1373,6 +1403,31 @@ components:
             type: string
         device_id:
           type: string
+        assurance_level:
+          type: string
+          enum: [software, hardware]
+          description: |
+            Attestation outcome: "hardware" when the device-bound key was
+            produced by Apple Secure Enclave or a TPM 2.0; "software" when
+            no attestation was supplied or the configured registry runs in
+            non-required mode.
+        attestation_vendor:
+          type: string
+          description: |
+            Backend that produced the attestation result (e.g.
+            "apple-appattest", "tpm-2.0", or "none").
+        risk_score:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Composite 0..100 risk score for this rotation.
+        risk_level:
+          type: string
+          enum: [low, elevated, high]
+          description: |
+            Mapped from risk_score. On "high", sensitive scopes (telemetry
+            ingest, bootstrap-token write, device revoke) are dropped from
+            the issued access token.
     IssueBootstrapTokenRequest:
       type: object
       required: [hardware_uuid]

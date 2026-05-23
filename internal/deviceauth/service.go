@@ -2,12 +2,21 @@ package deviceauth
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 	"time"
+
+	"github.com/writer/cerebro/internal/deviceauth/attestation"
+	"github.com/writer/cerebro/internal/deviceauth/risk"
 )
 
 // Scope strings published by the device-auth surface. The bootstrap mux maps
@@ -46,17 +55,32 @@ type EnrollRequest struct {
 	OSType         string
 	OSVersion      string
 	AgentVersion   string
+	// Attestation, when non-empty, is the base64-encoded device-bound proof
+	// (App Attest CBOR object on macOS, TPM 2.0 quote bundle on Windows).
+	// The Service runs it through the configured [attestation.Registry];
+	// when the registry is configured as required, an empty value rejects
+	// the enrollment.
+	Attestation string
+	// RemoteIP is the agent's source address as observed by the front
+	// door. Used for risk scoring and audit logging.
+	RemoteIP net.IP
 }
 
 // EnrollResponse is the output of [Service.Enroll].
 type EnrollResponse struct {
-	DeviceID      string
-	AccessToken   string
-	AccessExpires time.Time
-	RefreshToken  string
+	DeviceID       string
+	AccessToken    string
+	AccessExpires  time.Time
+	RefreshToken   string
 	RefreshExpires time.Time
-	Scopes        []string
-	TokenType     string
+	Scopes         []string
+	TokenType      string
+	// AssuranceLevel reflects whether attestation produced a hardware-
+	// bound result ("hardware") or a software fallback ("software").
+	AssuranceLevel string
+	// AttestationVendor names the verifier that produced the assurance
+	// (e.g. "apple-appattest", "tpm-2.0", or "none").
+	AttestationVendor string
 }
 
 // TokenRequest is the input to [Service.IssueToken]. The agent supplies the
@@ -65,6 +89,19 @@ type EnrollResponse struct {
 type TokenRequest struct {
 	GrantType    string
 	RefreshToken string
+	// DPoPProof, when the device was enrolled with a device-bound key, is
+	// the RFC 9449 proof JWT that the server requires to confirm the
+	// agent still controls the key. The verifier is configured at the
+	// service level; an empty value here rejects the rotation when DPoP
+	// binding is mandatory for the device.
+	DPoPProof string
+	// HTTPMethod and HTTPURL are passed through to the DPoP verifier when
+	// proof verification is required. Both default to POST and the token
+	// endpoint URL configured on the service.
+	HTTPMethod string
+	HTTPURL    string
+	// RemoteIP is the agent's source address (for risk scoring).
+	RemoteIP net.IP
 }
 
 // TokenResponse is the output of [Service.IssueToken].
@@ -75,6 +112,11 @@ type TokenResponse struct {
 	RefreshExpires time.Time
 	Scopes         []string
 	TokenType      string
+	// RiskScore is the 0..100 score the risk pipeline computed for this
+	// rotation, surfaced for the audit log.
+	RiskScore int
+	// RiskLevel is "low" / "elevated" / "high".
+	RiskLevel string
 }
 
 // IssueBootstrapTokenRequest is what an admin (capability-token-authenticated
@@ -107,6 +149,23 @@ type ServiceConfig struct {
 	ClockSkew         time.Duration
 	DefaultTenantID   string
 	Now               func() time.Time
+	// Attestations, if set, is consulted on every Enroll to verify the
+	// agent's device-bound key. When the registry is required, missing
+	// or invalid attestations reject the enrollment.
+	Attestations *attestation.Registry
+	// DPoP, if set, verifies RFC 9449 proof JWTs on refresh-token
+	// rotation. When the device was enrolled with a device-bound key,
+	// the proof is mandatory and the proof's JKT must equal the device's
+	// stored key thumbprint.
+	DPoP *DPoPVerifier
+	// Risk, if set, runs every successful refresh through the risk
+	// scorer. The scorer's decision is recorded on the device's last
+	// observation; the auth pipeline uses [risk.Decision.FilterScopes]
+	// to drop sensitive scopes when the score is high.
+	Risk *risk.Scorer
+	// Observations, if set, is the per-device geo/ASN observation store
+	// the risk pipeline reads from and writes to.
+	Observations risk.ObservationStore
 }
 
 // Service is the device-auth orchestration layer. It owns the lifecycle of
@@ -206,6 +265,28 @@ func (s *Service) Enroll(ctx context.Context, request EnrollRequest) (EnrollResp
 	if err != nil {
 		return EnrollResponse{}, fmt.Errorf("deviceauth: generate device id: %w", err)
 	}
+	clientHash := sha256.Sum256([]byte(strings.TrimSpace(request.BootstrapToken)))
+	attResult, err := s.runAttestation(ctx, clientHash, request)
+	if err != nil {
+		return EnrollResponse{}, err
+	}
+	metadata := map[string]string{
+		"assurance_level":    attResult.AssuranceLevel,
+		"attestation_vendor": attResult.Vendor,
+	}
+	jkt, err := computeJKTFromPublicKeyDER(attResult.PublicKey)
+	if err != nil {
+		return EnrollResponse{}, fmt.Errorf("%w: %v", ErrInvalidRequest, err)
+	}
+	if jkt != "" {
+		metadata["dpop_jkt"] = jkt
+	}
+	if attResult.KeyID != "" {
+		metadata["attestation_keyid"] = attResult.KeyID
+	}
+	for k, v := range attResult.Diagnostics {
+		metadata["attestation_"+k] = v
+	}
 	device := DeviceRecord{
 		DeviceID:     deviceID,
 		HardwareUUID: hardwareUUID,
@@ -218,6 +299,7 @@ func (s *Service) Enroll(ctx context.Context, request EnrollRequest) (EnrollResp
 		Status:       "active",
 		EnrolledAt:   now,
 		LastSeenAt:   now,
+		Metadata:     metadata,
 	}
 	device, err = s.store.EnrollDevice(ctx, device)
 	if err != nil {
@@ -232,14 +314,35 @@ func (s *Service) Enroll(ctx context.Context, request EnrollRequest) (EnrollResp
 		return EnrollResponse{}, err
 	}
 	return EnrollResponse{
-		DeviceID:       device.DeviceID,
-		AccessToken:    access,
-		AccessExpires:  accessExpires,
-		RefreshToken:   refresh,
-		RefreshExpires: refreshExpires,
-		Scopes:         scopes,
-		TokenType:      "Bearer",
+		DeviceID:          device.DeviceID,
+		AccessToken:       access,
+		AccessExpires:     accessExpires,
+		RefreshToken:      refresh,
+		RefreshExpires:    refreshExpires,
+		Scopes:            scopes,
+		TokenType:         "Bearer",
+		AssuranceLevel:    attResult.AssuranceLevel,
+		AttestationVendor: attResult.Vendor,
 	}, nil
+}
+
+func (s *Service) runAttestation(ctx context.Context, clientHash [32]byte, request EnrollRequest) (*attestation.Result, error) {
+	if s.cfg.Attestations == nil {
+		return &attestation.Result{AssuranceLevel: "software", Vendor: "none"}, nil
+	}
+	res, err := s.cfg.Attestations.Verify(ctx, attestation.Input{
+		HardwareUUID:   strings.TrimSpace(request.HardwareUUID),
+		ClientDataHash: clientHash,
+		Format:         strings.ToLower(strings.TrimSpace(request.OSType)),
+		Statement:      strings.TrimSpace(request.Attestation),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		return &attestation.Result{AssuranceLevel: "software", Vendor: "none"}, nil
+	}
+	return res, nil
 }
 
 // IssueToken rotates a refresh token. The grant type must be
@@ -264,6 +367,9 @@ func (s *Service) IssueToken(ctx context.Context, request TokenRequest) (TokenRe
 	if device.Status != "" && device.Status != "active" {
 		return TokenResponse{}, ErrDeviceInactive
 	}
+	if err := s.verifyDPoPForRefresh(device, request); err != nil {
+		return TokenResponse{}, err
+	}
 	if err := s.store.MarkSeen(ctx, device.DeviceID, now); err != nil {
 		return TokenResponse{}, fmt.Errorf("deviceauth: mark seen: %w", err)
 	}
@@ -271,6 +377,7 @@ func (s *Service) IssueToken(ctx context.Context, request TokenRequest) (TokenRe
 	if len(scopes) == 0 {
 		scopes = append([]string(nil), DefaultDeviceScopes...)
 	}
+	scopes, riskDecision := s.applyRisk(ctx, device, request.RemoteIP, now, scopes)
 	access, accessExpires, err := s.mintAccess(device, scopes)
 	if err != nil {
 		return TokenResponse{}, err
@@ -279,14 +386,83 @@ func (s *Service) IssueToken(ctx context.Context, request TokenRequest) (TokenRe
 	if err != nil {
 		return TokenResponse{}, err
 	}
-	return TokenResponse{
+	resp := TokenResponse{
 		AccessToken:    access,
 		AccessExpires:  accessExpires,
 		RefreshToken:   refresh,
 		RefreshExpires: refreshExpires,
 		Scopes:         scopes,
 		TokenType:      "Bearer",
-	}, nil
+	}
+	if riskDecision != nil {
+		resp.RiskScore = riskDecision.Score
+		resp.RiskLevel = riskDecision.Level
+	}
+	return resp, nil
+}
+
+func (s *Service) verifyDPoPForRefresh(device DeviceRecord, request TokenRequest) error {
+	jkt := strings.TrimSpace(device.Metadata["dpop_jkt"])
+	if jkt == "" {
+		return nil
+	}
+	if s.cfg.DPoP == nil {
+		return nil
+	}
+	proof := strings.TrimSpace(request.DPoPProof)
+	if proof == "" {
+		return ErrDPoPMissing
+	}
+	method := strings.ToUpper(strings.TrimSpace(request.HTTPMethod))
+	if method == "" {
+		method = "POST"
+	}
+	url := strings.TrimSpace(request.HTTPURL)
+	res, err := s.cfg.DPoP.Verify(proof, method, url)
+	if err != nil {
+		return err
+	}
+	if res.JKT != jkt {
+		return ErrDPoPJKTMismatch
+	}
+	return nil
+}
+
+func (s *Service) applyRisk(ctx context.Context, device DeviceRecord, remoteIP net.IP, now time.Time, scopes []string) ([]string, *risk.Decision) {
+	if s.cfg.Risk == nil {
+		return scopes, nil
+	}
+	var prior *risk.Observation
+	if s.cfg.Observations != nil {
+		if obs, ok := s.cfg.Observations.Get(ctx, device.DeviceID); ok {
+			prior = obs
+		}
+	}
+	dec := s.cfg.Risk.Score(ctx, risk.Signal{
+		DeviceID:         device.DeviceID,
+		TenantID:         device.TenantID,
+		RemoteIP:         remoteIP,
+		Now:              now,
+		PriorObservation: prior,
+	})
+	if s.cfg.Observations != nil && dec.Geo != nil {
+		_ = s.cfg.Observations.Put(ctx, device.DeviceID, risk.Observation{
+			IP:        ipString(remoteIP),
+			Country:   dec.Geo.Country,
+			ASN:       dec.Geo.ASN,
+			Latitude:  dec.Geo.Latitude,
+			Longitude: dec.Geo.Longitude,
+			At:        now,
+		})
+	}
+	return dec.FilterScopes(scopes), &dec
+}
+
+func ipString(ip net.IP) string {
+	if ip == nil {
+		return ""
+	}
+	return ip.String()
 }
 
 // Revoke marks a device revoked. Subsequent refresh attempts will fail and
@@ -428,11 +604,55 @@ var ErrInvalidRequest = errors.New("deviceauth: invalid request")
 
 func (s *Service) mintAccess(device DeviceRecord, scopes []string) (string, time.Time, error) {
 	expires := s.cfg.Now().UTC().Add(s.cfg.AccessTTL)
-	token, err := s.issuer.IssueAccess(device, scopes)
+	opts := AccessOptions{
+		DPoPJKT:        strings.TrimSpace(device.Metadata["dpop_jkt"]),
+		AssuranceLevel: strings.TrimSpace(device.Metadata["assurance_level"]),
+	}
+	token, err := s.issuer.IssueAccessWithOptions(device, scopes, opts)
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("deviceauth: issue access: %w", err)
 	}
 	return token, expires, nil
+}
+
+// computeJKTFromPublicKeyDER returns the RFC 7638 JWK SHA-256 thumbprint of
+// the supplied SubjectPublicKeyInfo. Only EC (P-256, P-384) and Ed25519
+// keys are supported; other types fall through with an empty result so the
+// caller can decide whether attestation succeeded without binding a DPoP
+// key (e.g. a software-only attestation result).
+func computeJKTFromPublicKeyDER(pubDER []byte) (string, error) {
+	if len(pubDER) == 0 {
+		return "", nil
+	}
+	pub, err := x509.ParsePKIXPublicKey(pubDER)
+	if err != nil {
+		return "", fmt.Errorf("parse pubkey: %w", err)
+	}
+	switch p := pub.(type) {
+	case *ecdsa.PublicKey:
+		var crv string
+		switch p.Curve {
+		case elliptic.P256():
+			crv = "P-256"
+		case elliptic.P384():
+			crv = "P-384"
+		default:
+			return "", nil
+		}
+		canonical := fmt.Sprintf(`{"crv":"%s","kty":"EC","x":"%s","y":"%s"}`,
+			crv,
+			base64.RawURLEncoding.EncodeToString(p.X.Bytes()),
+			base64.RawURLEncoding.EncodeToString(p.Y.Bytes()),
+		)
+		sum := sha256.Sum256([]byte(canonical))
+		return base64.RawURLEncoding.EncodeToString(sum[:]), nil
+	case ed25519.PublicKey:
+		canonical := fmt.Sprintf(`{"crv":"Ed25519","kty":"OKP","x":"%s"}`, base64.RawURLEncoding.EncodeToString(p))
+		sum := sha256.Sum256([]byte(canonical))
+		return base64.RawURLEncoding.EncodeToString(sum[:]), nil
+	default:
+		return "", nil
+	}
 }
 
 func (s *Service) mintRefresh(ctx context.Context, deviceID string, scopes []string, familyID string, generation int, now time.Time) (string, time.Time, error) {

@@ -25,6 +25,7 @@ import (
 	"github.com/writer/cerebro/internal/claims"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/deviceauth"
+	"github.com/writer/cerebro/internal/deviceauth/risk"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/graphingest"
@@ -51,15 +52,18 @@ type Dependencies struct {
 
 // App is the minimal Connect/bootstrap composition root for the rewrite skeleton.
 type App struct {
-	cfg            config.Config
-	deps           Dependencies
-	sources        *sourcecdk.Registry
-	mux            *http.ServeMux
-	handler        http.Handler
-	server         *http.Server
-	deviceService  *deviceauth.Service
-	deviceHandler  *deviceAuthHTTPHandler
-	deviceVerifier *deviceauth.JWTVerifier
+	cfg              config.Config
+	deps             Dependencies
+	sources          *sourcecdk.Registry
+	mux              *http.ServeMux
+	handler          http.Handler
+	server           *http.Server
+	deviceService    *deviceauth.Service
+	deviceHandler    *deviceAuthHTTPHandler
+	deviceVerifier   *deviceauth.JWTVerifier
+	dpopVerifier     *deviceauth.DPoPVerifier
+	riskScorer       *risk.Scorer
+	observationStore risk.ObservationStore
 }
 
 type bootstrapService struct {
@@ -83,13 +87,26 @@ var (
 func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App {
 	app := &App{cfg: cfg, deps: deps, sources: sources}
 	if deviceStore := deviceAuthStore(deps.StateStore); deviceStore != nil {
-		service, err := buildDeviceAuthService(cfg.Auth.DeviceAuth, deviceStore)
+		dpop := deviceauth.NewDPoPVerifier(cfg.Auth.DeviceAuth.ClockSkew, cfg.Auth.DeviceAuth.DPoPProofTTL)
+		obsStore := risk.NewInMemoryObservationStore()
+		riskScorer := risk.NewScorer(
+			risk.Thresholds{Elevated: cfg.Auth.DeviceAuth.RiskElevatedThreshold, High: cfg.Auth.DeviceAuth.RiskHighThreshold},
+			risk.NoOpLookup{},
+			risk.NoOpEmitter{},
+			risk.NewVelocityDetector(),
+			risk.NewCountryDriftDetector(),
+			risk.NewASNDriftDetector(),
+		)
+		service, err := buildDeviceAuthService(cfg.Auth.DeviceAuth, deviceStore, dpop, riskScorer, obsStore)
 		if err != nil {
 			panic(fmt.Sprintf("device-auth bootstrap failed: %v", err))
 		}
 		if service != nil {
 			app.deviceService = service
 			app.deviceVerifier = service.Verifier()
+			app.dpopVerifier = dpop
+			app.riskScorer = riskScorer
+			app.observationStore = obsStore
 			app.deviceHandler = newDeviceAuthHTTPHandler(service, cfg.Auth.DeviceAuth)
 		}
 	}
@@ -171,7 +188,12 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 		mux.HandleFunc("POST /platform/telemetry/ingest", app.deviceHandler.handleIngestTelemetry)
 		mux.HandleFunc("GET /.well-known/device-jwks.json", app.deviceHandler.handleJWKS)
 	}
-	app.handler = authMiddleware(cfg.Auth, app.deviceVerifier, mux)
+	app.handler = authMiddleware(cfg.Auth, AuthDependencies{
+		DeviceVerifier: app.deviceVerifier,
+		DPoPVerifier:   app.dpopVerifier,
+		RiskScorer:     app.riskScorer,
+		Observations:   app.observationStore,
+	}, mux)
 	app.server = &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           app.handler,
