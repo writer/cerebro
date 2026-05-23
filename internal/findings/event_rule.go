@@ -174,7 +174,8 @@ func (r *eventRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool {
 	if r == nil || runtime == nil {
 		return false
 	}
-	return strings.EqualFold(strings.TrimSpace(runtime.GetSourceId()), strings.TrimSpace(r.config.sourceID))
+	return strings.EqualFold(strings.TrimSpace(runtime.GetSourceId()), strings.TrimSpace(r.config.sourceID)) &&
+		runtimeMayEmitEventKind(runtime, r.config.definition.EventKinds)
 }
 
 func (r *eventRule) RetiresOpenFindings() bool {

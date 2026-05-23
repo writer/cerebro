@@ -307,9 +307,9 @@ func TestRetiredGitHubMirrorRulesAreCatalogued(t *testing.T) {
 		if rule == nil {
 			t.Fatalf("Builtin().Get(%q) returned nil rule", id)
 		}
-		runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+		runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}}
 		if !rule.SupportsRuntime(runtime) {
-			t.Fatalf("rule %q should still claim github runtimes so the runtime invokes it during replay (stale-finding sweep)", id)
+			t.Fatalf("rule %q should still claim github audit runtimes so the runtime invokes it during replay (stale-finding sweep)", id)
 		}
 	}
 }
