@@ -1761,7 +1761,7 @@ func TestAuthenticateRequestPrefersStructuredCredentialMetadata(t *testing.T) {
 			TenantID:       "writer",
 			AllowedTenants: []string{"writer"},
 		}},
-	}, req)
+	}, nil, req)
 	if !ok {
 		t.Fatal("authenticateRequest() ok = false, want true")
 	}

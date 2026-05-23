@@ -10,6 +10,7 @@ servers:
 security:
   - bearerAuth: []
 tags:
+  - name: Devices
   - name: Findings
   - name: GRC
   - name: Graph
@@ -18,6 +19,7 @@ tags:
   - name: Platform
   - name: Reports
   - name: Sources
+  - name: Telemetry
   - name: Workflow
 paths:
   /health:
@@ -1087,6 +1089,172 @@ paths:
       responses:
         '200':
           description: Outcome write result.
+  /platform/devices/enroll:
+    post:
+      summary: Enroll a SeCheck agent
+      description: |
+        Consumes a single-use bootstrap token and provisions a device
+        identity. The bootstrap token is delivered out-of-band by MDM and
+        is bound to the device's hardware_uuid. Returns a short-lived
+        access token (EdDSA JWT) and a long-lived refresh token. Replay
+        of an already-consumed bootstrap token returns 401.
+      tags:
+        - Devices
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceEnrollRequest'
+      responses:
+        '200':
+          description: Enrollment succeeded; access + refresh pair returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceTokenResponse'
+        '400':
+          description: Malformed request body.
+        '401':
+          description: Bootstrap token invalid, expired, already consumed, or hardware-uuid mismatch.
+        '429':
+          description: Per-IP enrollment rate limit exceeded.
+  /platform/devices/token:
+    post:
+      summary: Rotate a device refresh token
+      description: |
+        Exchanges a refresh token for a new access + refresh pair. The
+        previous refresh token is consumed atomically. Replaying a
+        consumed refresh token revokes the entire token family per RFC 6819
+        §5.2.2.3.
+      tags:
+        - Devices
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceTokenRequest'
+      responses:
+        '200':
+          description: Rotation succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceTokenResponse'
+        '400':
+          description: Unsupported grant_type.
+        '401':
+          description: Refresh token unknown, expired, or replayed (family revoked).
+        '429':
+          description: Per-device token rate limit exceeded.
+  /platform/devices/bootstrap-tokens:
+    post:
+      summary: Issue a single-use bootstrap token (operator-only)
+      description: |
+        Mints a single-use enrollment credential bound to a hardware_uuid
+        for one tenant. Requires the platform.devices.bootstrap_tokens.write
+        scope. The plaintext token is returned exactly once; only its
+        SHA-256 digest is persisted.
+      tags:
+        - Devices
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueBootstrapTokenRequest'
+      responses:
+        '201':
+          description: Bootstrap token created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IssueBootstrapTokenResponse'
+        '400':
+          description: Malformed request body.
+        '403':
+          description: Caller lacks the platform.devices.bootstrap_tokens.write scope.
+  /platform/devices/{deviceID}/revoke:
+    post:
+      summary: Revoke a device (operator-only)
+      description: |
+        Marks the device revoked. Subsequent refresh attempts fail with
+        403; access tokens already issued expire on their own at the
+        configured access TTL.
+      tags:
+        - Devices
+      parameters:
+        - name: deviceID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevokeDeviceRequest'
+      responses:
+        '200':
+          description: Revocation succeeded.
+        '403':
+          description: Caller lacks the platform.devices.revoke scope.
+        '404':
+          description: Device not found.
+  /platform/telemetry/ingest:
+    post:
+      summary: Ingest device telemetry (device-only)
+      description: |
+        Accepts a telemetry batch from an enrolled SeCheck agent. Requires
+        a device JWT carrying the platform.telemetry.ingest scope and a
+        non-empty Idempotency-Key request header. A retried submission
+        with the same key + body is replayed without side effects; same
+        key with a different body returns 409 (RFC 5789-inspired
+        idempotency contract).
+      tags:
+        - Telemetry
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            maxLength: 255
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '202':
+          description: Telemetry accepted.
+        '400':
+          description: Missing Idempotency-Key or malformed body.
+        '403':
+          description: Caller is not a device principal.
+        '409':
+          description: Idempotency-Key reused with a different body.
+        '413':
+          description: Body exceeds 1 MiB.
+  /.well-known/device-jwks.json:
+    get:
+      summary: Device-JWT verification keys
+      description: |
+        Publishes the active and retiring Ed25519 verification keys as a
+        JWK Set (RFC 7517 §4 + RFC 8037). Cache headers permit short-term
+        caching by downstream verifiers.
+      tags:
+        - Devices
+      security: []
+      responses:
+        '200':
+          description: JWK Set document.
 
 components:
   securitySchemes:
@@ -1152,6 +1320,92 @@ components:
         type: integer
         minimum: 1
   schemas:
+    DeviceEnrollRequest:
+      type: object
+      required: [bootstrap_token, hardware_uuid]
+      properties:
+        bootstrap_token:
+          type: string
+          minLength: 1
+        hardware_uuid:
+          type: string
+          minLength: 1
+        serial_number:
+          type: string
+        hostname:
+          type: string
+        os_type:
+          type: string
+        os_version:
+          type: string
+        agent_version:
+          type: string
+    DeviceTokenRequest:
+      type: object
+      required: [grant_type, refresh_token]
+      properties:
+        grant_type:
+          type: string
+          enum: [refresh_token]
+        refresh_token:
+          type: string
+          minLength: 1
+    DeviceTokenResponse:
+      type: object
+      required: [access_token, token_type, expires_in, scopes]
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          enum: [Bearer]
+        expires_in:
+          type: integer
+          description: Seconds until access_token expires.
+        refresh_token:
+          type: string
+        refresh_expires_at:
+          type: string
+          format: date-time
+        scopes:
+          type: array
+          items:
+            type: string
+        device_id:
+          type: string
+    IssueBootstrapTokenRequest:
+      type: object
+      required: [hardware_uuid]
+      properties:
+        hardware_uuid:
+          type: string
+          minLength: 1
+        tenant_id:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        ttl_seconds:
+          type: integer
+          minimum: 1
+    IssueBootstrapTokenResponse:
+      type: object
+      required: [token_id, token, expires_at]
+      properties:
+        token_id:
+          type: string
+        token:
+          type: string
+          description: Plaintext bootstrap token; returned once and never persisted in clear.
+        expires_at:
+          type: string
+          format: date-time
+    RevokeDeviceRequest:
+      type: object
+      properties:
+        reason:
+          type: string
     GRCAskRequest:
       type: object
       required: [tenant_id, question]

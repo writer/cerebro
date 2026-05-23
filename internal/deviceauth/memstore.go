@@ -12,12 +12,13 @@ import (
 // production: the bootstrap binary is required to use a real driver per
 // docs/NON_GOALS.md.
 type MemStore struct {
-	mu               sync.Mutex
-	devices          map[string]DeviceRecord
-	bootstrapTokens  map[[32]byte]BootstrapToken
-	refreshTokens    map[[32]byte]RefreshToken
-	refreshByFamily  map[string]map[[32]byte]struct{}
-	idempotency      map[string]idempotencyEntry
+	mu              sync.Mutex
+	devices         map[string]DeviceRecord
+	bootstrapTokens map[[32]byte]BootstrapToken
+	refreshTokens   map[[32]byte]RefreshToken
+	refreshByFamily map[string]map[[32]byte]struct{}
+	idempotency     map[string]idempotencyEntry
+	now             func() time.Time
 }
 
 type idempotencyEntry struct {
@@ -35,7 +36,18 @@ func NewMemStore() *MemStore {
 		refreshTokens:   make(map[[32]byte]RefreshToken),
 		refreshByFamily: make(map[string]map[[32]byte]struct{}),
 		idempotency:     make(map[string]idempotencyEntry),
+		now:             time.Now,
 	}
+}
+
+// SetClock overrides the in-memory store's wall clock for tests.
+func (s *MemStore) SetClock(now func() time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if now == nil {
+		now = time.Now
+	}
+	s.now = now
 }
 
 // EnrollDevice inserts or replaces the device row.
@@ -168,6 +180,13 @@ func (s *MemStore) RevokeRefreshFamily(_ context.Context, familyID string) error
 	return nil
 }
 
+func (s *MemStore) nowLocked() time.Time {
+	if s.now == nil {
+		return time.Now()
+	}
+	return s.now()
+}
+
 func (s *MemStore) revokeFamilyLocked(familyID string) {
 	hashes, ok := s.refreshByFamily[familyID]
 	if !ok {
@@ -189,7 +208,7 @@ func (s *MemStore) CheckIdempotency(_ context.Context, key string, requestHash [
 	if !ok {
 		return nil, 0, nil
 	}
-	if !entry.expiresAt.IsZero() && time.Now().After(entry.expiresAt) {
+	if !entry.expiresAt.IsZero() && s.nowLocked().After(entry.expiresAt) {
 		delete(s.idempotency, key)
 		return nil, 0, nil
 	}

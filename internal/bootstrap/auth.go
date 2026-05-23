@@ -20,6 +20,7 @@ import (
 
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/deviceauth"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/telemetry"
 )
@@ -45,14 +46,17 @@ type authPrincipal struct {
 	Scopes         []string
 	Groups         []string
 	Capability     bool
+	DeviceID       string
+	HardwareUUID   string
 }
 
 type authContext struct {
-	cfg       config.AuthConfig
-	principal authPrincipal
+	cfg            config.AuthConfig
+	principal      authPrincipal
+	deviceVerifier *deviceauth.JWTVerifier
 }
 
-func authMiddleware(cfg config.AuthConfig, next http.Handler) http.Handler {
+func authMiddleware(cfg config.AuthConfig, deviceVerifier *deviceauth.JWTVerifier, next http.Handler) http.Handler {
 	if !cfg.Enabled {
 		return next
 	}
@@ -72,7 +76,7 @@ func authMiddleware(cfg config.AuthConfig, next http.Handler) http.Handler {
 			finalOutcome, finalDenialReason := accessAuditOutcome(status, outcome, denialReason, auditResult.ConnectCode)
 			emitAccessAuditEvent(r, principal, status, time.Since(started), finalOutcome, finalDenialReason, auditResult)
 		}()
-		principal, ok := authenticateRequest(cfg, r)
+		principal, ok := authenticateRequest(cfg, deviceVerifier, r)
 		if !ok {
 			denialReason = "unauthenticated"
 			writeAuthError(recorder, http.StatusUnauthorized, "unauthorized")
@@ -83,7 +87,7 @@ func authMiddleware(cfg config.AuthConfig, next http.Handler) http.Handler {
 			writeAuthError(recorder, http.StatusForbidden, "tenant forbidden")
 			return
 		}
-		auth := authContext{cfg: cfg, principal: principal}
+		auth := authContext{cfg: cfg, principal: principal, deviceVerifier: deviceVerifier}
 		if err := authorizeHTTPRequestScope(auth, r); err != nil {
 			denialReason = "scope_forbidden"
 			writeAuthError(recorder, http.StatusForbidden, "scope forbidden")
@@ -121,12 +125,16 @@ func isPublicPath(path string) bool {
 	switch path {
 	case "/health", "/healthz", "/openapi.yaml":
 		return true
+	case "/platform/devices/enroll", "/platform/devices/token":
+		return true
+	case "/.well-known/device-jwks.json":
+		return true
 	default:
 		return false
 	}
 }
 
-func authenticateRequest(cfg config.AuthConfig, r *http.Request) (authPrincipal, bool) {
+func authenticateRequest(cfg config.AuthConfig, deviceVerifier *deviceauth.JWTVerifier, r *http.Request) (authPrincipal, bool) {
 	token := bearerToken(r.Header.Get("Authorization"))
 	if token == "" {
 		token = strings.TrimSpace(r.Header.Get("X-Cerebro-API-Key"))
@@ -155,7 +163,32 @@ func authenticateRequest(cfg config.AuthConfig, r *http.Request) (authPrincipal,
 	if principal, ok := authenticateCapabilityToken(cfg, token, time.Now()); ok {
 		return principal, true
 	}
+	if principal, ok := authenticateDeviceToken(deviceVerifier, token); ok {
+		return principal, true
+	}
 	return authPrincipal{}, false
+}
+
+// authenticateDeviceToken verifies an EdDSA device JWT issued by the
+// internal/deviceauth Service. It is the third bearer-token path (after API
+// keys and capability tokens) and is only attempted if a verifier was wired
+// at bootstrap time.
+func authenticateDeviceToken(verifier *deviceauth.JWTVerifier, token string) (authPrincipal, bool) {
+	if verifier == nil {
+		return authPrincipal{}, false
+	}
+	verified, err := verifier.Verify(token)
+	if err != nil {
+		return authPrincipal{}, false
+	}
+	return authPrincipal{
+		Name:         "device:" + verified.DeviceID,
+		TenantID:     verified.TenantID,
+		AuthMode:     "device_jwt",
+		Scopes:       verified.Scopes,
+		DeviceID:     verified.DeviceID,
+		HardwareUUID: verified.HardwareUUID,
+	}, true
 }
 
 func apiCredentialMatches(token string, credential config.APICredential) bool {
@@ -351,6 +384,29 @@ func authorizeTenantID(ctx context.Context, tenantID string) error {
 
 const scopeCosmoSecurityRead = "cerebro.cosmo.security.read"
 
+func scopeForDeviceRoute(method string, path string) string {
+	switch {
+	case method == http.MethodPost && path == "/platform/devices/enroll":
+		return deviceauth.ScopeDevicesEnroll
+	case method == http.MethodPost && path == "/platform/devices/token":
+		return deviceauth.ScopeDevicesToken
+	case method == http.MethodPost && path == "/platform/devices/bootstrap-tokens":
+		return deviceauth.ScopeDevicesBootstrapWrite
+	case method == http.MethodPost && strings.HasPrefix(path, "/platform/devices/") && strings.HasSuffix(path, "/revoke"):
+		return deviceauth.ScopeDevicesRevoke
+	case method == http.MethodGet && path == "/platform/devices":
+		return deviceauth.ScopeDevicesRead
+	case method == http.MethodGet && strings.HasPrefix(path, "/platform/devices/") && !strings.HasSuffix(path, "/revoke"):
+		return deviceauth.ScopeDevicesRead
+	case method == http.MethodPost && path == "/platform/telemetry/ingest":
+		return deviceauth.ScopeTelemetryIngest
+	case method == http.MethodGet && path == "/.well-known/device-jwks.json":
+		return ""
+	default:
+		return ""
+	}
+}
+
 func authorizeHTTPRequestScope(auth authContext, r *http.Request) error {
 	if !principalScopeRestricted(auth.principal) || isConnectProcedurePath(r.URL.Path) {
 		return nil
@@ -389,6 +445,9 @@ func scopeForHTTPRequest(r *http.Request) string {
 	path := strings.TrimSpace(r.URL.Path)
 	if r.Method == http.MethodPost && path == "/grc/ask" {
 		return scopeCosmoSecurityRead
+	}
+	if scope := scopeForDeviceRoute(r.Method, path); scope != "" {
+		return scope
 	}
 	if r.Method != http.MethodGet {
 		return ""
@@ -1006,6 +1065,10 @@ func accessAuditConnectFamily(procedure string) string {
 func accessAuditRouteFamily(route string) string {
 	route = strings.TrimSpace(route)
 	switch {
+	case strings.Contains(route, "/platform/devices"), strings.Contains(route, "/.well-known/device-jwks"):
+		return "device"
+	case strings.Contains(route, "/platform/telemetry"):
+		return "telemetry"
 	case strings.Contains(route, "/source-runtimes"):
 		return "source_runtime"
 	case strings.Contains(route, "/sources"):
@@ -1223,7 +1286,13 @@ func isKnownStaticAccessPath(path string) bool {
 		"/platform/graph/ingest-health",
 		"/graph/ingest-health",
 		"/platform/graph/ingest-runs",
-		"/graph/ingest-runs":
+		"/graph/ingest-runs",
+		"/platform/devices",
+		"/platform/devices/enroll",
+		"/platform/devices/token",
+		"/platform/devices/bootstrap-tokens",
+		"/platform/telemetry/ingest",
+		"/.well-known/device-jwks.json":
 		return true
 	default:
 		return false

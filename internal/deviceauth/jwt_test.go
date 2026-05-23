@@ -133,7 +133,14 @@ func TestJWTVerifierRejectsTamperedSignature(t *testing.T) {
 
 	token, _ := issuer.IssueAccess(DeviceRecord{DeviceID: "dev-1", TenantID: "writer"}, []string{"a"})
 	parts := strings.Split(token, ".")
-	tampered := parts[0] + "." + parts[1] + "." + parts[2][:len(parts[2])-1] + "A"
+	// Tamper a byte at the start of the signature; flipping the first
+	// base64url character is guaranteed to change the decoded bytes.
+	first := parts[2][0]
+	flipped := byte('A')
+	if first == 'A' {
+		flipped = 'B'
+	}
+	tampered := parts[0] + "." + parts[1] + "." + string(flipped) + parts[2][1:]
 	if _, err := verifier.Verify(tampered); !errors.Is(err, ErrInvalidSignature) && !errors.Is(err, ErrMalformedToken) {
 		t.Fatalf("Verify err = %v, want ErrInvalidSignature or ErrMalformedToken", err)
 	}

@@ -1,0 +1,239 @@
+package deviceauth
+
+import (
+	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"errors"
+	"strings"
+	"testing"
+	"time"
+)
+
+func newServiceForTest(t *testing.T) (*Service, *MemStore, time.Time) {
+	t.Helper()
+	store := NewMemStore()
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	signer, err := NewLocalSigner([]SigningKey{{KID: "test", Public: pub, Private: priv}})
+	if err != nil {
+		t.Fatalf("NewLocalSigner: %v", err)
+	}
+	keyset := &KeySet{Keys: []SigningKey{{KID: "test", Public: pub}}}
+	now := time.Date(2026, 5, 22, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	store.SetClock(clock)
+	issuer, _ := NewJWTIssuer(IssuerConfig{Now: clock}, signer)
+	verifier, _ := NewJWTVerifier(VerifierConfig{Now: clock}, keyset)
+	service, err := NewService(ServiceConfig{
+		AccessTTL:         5 * time.Minute,
+		RefreshTTL:        24 * time.Hour,
+		BootstrapTokenTTL: time.Hour,
+		IdempotencyTTL:    time.Hour,
+		Now:               clock,
+	}, store, issuer, verifier, keyset)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	return service, store, now
+}
+
+func TestServiceEnrollAndIssueToken(t *testing.T) {
+	ctx := context.Background()
+	service, _, now := newServiceForTest(t)
+
+	bootstrapResp, err := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{
+		HardwareUUID: "hw-1",
+		TenantID:     "writer",
+		TTL:          time.Hour,
+		IssuedBy:     "operator",
+	})
+	if err != nil {
+		t.Fatalf("IssueBootstrapToken: %v", err)
+	}
+	if bootstrapResp.Token == "" {
+		t.Fatal("IssueBootstrapToken returned empty token")
+	}
+
+	enroll, err := service.Enroll(ctx, EnrollRequest{
+		BootstrapToken: bootstrapResp.Token,
+		HardwareUUID:   "hw-1",
+		Hostname:       "laptop-1",
+		OSType:         "darwin",
+		AgentVersion:   "1.0.0",
+	})
+	if err != nil {
+		t.Fatalf("Enroll: %v", err)
+	}
+	if enroll.AccessToken == "" || enroll.RefreshToken == "" {
+		t.Fatal("Enroll returned empty tokens")
+	}
+	if enroll.DeviceID == "" {
+		t.Fatal("Enroll returned empty device_id")
+	}
+
+	verified, err := service.Verifier().Verify(enroll.AccessToken)
+	if err != nil {
+		t.Fatalf("Verify access token: %v", err)
+	}
+	if verified.DeviceID != enroll.DeviceID {
+		t.Errorf("verified device_id = %q, want %q", verified.DeviceID, enroll.DeviceID)
+	}
+
+	rotated, err := service.IssueToken(ctx, TokenRequest{
+		GrantType:    "refresh_token",
+		RefreshToken: enroll.RefreshToken,
+	})
+	if err != nil {
+		t.Fatalf("IssueToken: %v", err)
+	}
+	if rotated.RefreshToken == enroll.RefreshToken {
+		t.Fatal("IssueToken did not rotate the refresh token")
+	}
+
+	if _, err := service.IssueToken(ctx, TokenRequest{
+		GrantType:    "refresh_token",
+		RefreshToken: enroll.RefreshToken,
+	}); !errors.Is(err, ErrRefreshReplay) {
+		t.Fatalf("replay err = %v, want ErrRefreshReplay", err)
+	}
+	if _, err := service.IssueToken(ctx, TokenRequest{
+		GrantType:    "refresh_token",
+		RefreshToken: rotated.RefreshToken,
+	}); !errors.Is(err, ErrRefreshReplay) {
+		t.Fatalf("post-replay rotated err = %v, want ErrRefreshReplay", err)
+	}
+	_ = now
+}
+
+func TestServiceEnrollRequiresMatchingHardware(t *testing.T) {
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	bootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
+	if _, err := service.Enroll(ctx, EnrollRequest{BootstrapToken: bootstrap.Token, HardwareUUID: "hw-DIFFERENT"}); !errors.Is(err, ErrBootstrapTokenMismatch) {
+		t.Fatalf("Enroll with wrong hw err = %v, want ErrBootstrapTokenMismatch", err)
+	}
+}
+
+func TestServiceIssueTokenRejectsWrongGrant(t *testing.T) {
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	if _, err := service.IssueToken(ctx, TokenRequest{GrantType: "client_credentials"}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("IssueToken with wrong grant err = %v, want ErrInvalidRequest", err)
+	}
+}
+
+func TestServiceRevokeBlocksRefresh(t *testing.T) {
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	bootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
+	enroll, _ := service.Enroll(ctx, EnrollRequest{BootstrapToken: bootstrap.Token, HardwareUUID: "hw-1"})
+	if err := service.Revoke(ctx, enroll.DeviceID, "test"); err != nil {
+		t.Fatalf("Revoke: %v", err)
+	}
+	if _, err := service.IssueToken(ctx, TokenRequest{GrantType: "refresh_token", RefreshToken: enroll.RefreshToken}); !errors.Is(err, ErrDeviceInactive) {
+		t.Fatalf("IssueToken after revoke err = %v, want ErrDeviceInactive", err)
+	}
+}
+
+func TestServiceIngestTelemetryRequiresIdempotencyKey(t *testing.T) {
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	bootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
+	enroll, _ := service.Enroll(ctx, EnrollRequest{BootstrapToken: bootstrap.Token, HardwareUUID: "hw-1"})
+	if _, err := service.IngestTelemetry(ctx, IngestPayload{DeviceID: enroll.DeviceID, Body: []byte(`{"events":[]}`)}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("IngestTelemetry without key err = %v, want ErrInvalidRequest", err)
+	}
+}
+
+func TestServiceIngestTelemetryIdempotent(t *testing.T) {
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	bootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
+	enroll, _ := service.Enroll(ctx, EnrollRequest{BootstrapToken: bootstrap.Token, HardwareUUID: "hw-1"})
+
+	body := []byte(`{"events":[{"type":"login"}]}`)
+	first, err := service.IngestTelemetry(ctx, IngestPayload{DeviceID: enroll.DeviceID, IdempotencyKey: "abc-123", Body: body})
+	if err != nil {
+		t.Fatalf("first IngestTelemetry: %v", err)
+	}
+	if first.Status != 202 {
+		t.Errorf("first status = %d, want 202", first.Status)
+	}
+
+	second, err := service.IngestTelemetry(ctx, IngestPayload{DeviceID: enroll.DeviceID, IdempotencyKey: "abc-123", Body: body})
+	if err != nil {
+		t.Fatalf("second IngestTelemetry: %v", err)
+	}
+	if !second.Cached {
+		t.Errorf("second not cached")
+	}
+	if string(first.Body) != string(second.Body) {
+		t.Errorf("idempotent body mismatch: %q vs %q", first.Body, second.Body)
+	}
+
+	if _, err := service.IngestTelemetry(ctx, IngestPayload{DeviceID: enroll.DeviceID, IdempotencyKey: "abc-123", Body: []byte(`{"events":[{"type":"different"}]}`)}); !errors.Is(err, ErrIdempotencyConflict) {
+		t.Fatalf("conflicting body err = %v, want ErrIdempotencyConflict", err)
+	}
+}
+
+func TestServiceJWKSExposesKID(t *testing.T) {
+	service, _, _ := newServiceForTest(t)
+	doc := EncodeJWKS(service.KeySet())
+	if len(doc.Keys) != 1 {
+		t.Fatalf("expected 1 JWK, got %d", len(doc.Keys))
+	}
+	if doc.Keys[0].KTY != "OKP" || doc.Keys[0].CRV != "Ed25519" || doc.Keys[0].Alg != "EdDSA" {
+		t.Fatalf("unexpected JWK fields: %+v", doc.Keys[0])
+	}
+	if doc.Keys[0].KID != "test" {
+		t.Errorf("kid = %q, want test", doc.Keys[0].KID)
+	}
+	if strings.TrimSpace(doc.Keys[0].X) == "" {
+		t.Errorf("public key x is empty")
+	}
+}
+
+func TestTokenBucketAllow(t *testing.T) {
+	bucket := NewTokenBucket(1, 2)
+	now := time.Date(2026, 5, 22, 12, 0, 0, 0, time.UTC)
+	bucket.now = func() time.Time { return now }
+	if !bucket.Allow("ip-1") {
+		t.Fatal("first allow false")
+	}
+	if !bucket.Allow("ip-1") {
+		t.Fatal("second allow false (within burst)")
+	}
+	if bucket.Allow("ip-1") {
+		t.Fatal("third allow true (over burst)")
+	}
+	now = now.Add(2 * time.Second)
+	if !bucket.Allow("ip-1") {
+		t.Fatal("after refill allow false")
+	}
+}
+
+func TestKeyDecodeRoundTrip(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	pubPEM := mustEncodePEMPublic(t, pub)
+	privPEM := mustEncodePEMPrivate(t, priv)
+	gotPub, err := DecodePEMPublicKey(pubPEM)
+	if err != nil {
+		t.Fatalf("DecodePEMPublicKey: %v", err)
+	}
+	if string(gotPub) != string(pub) {
+		t.Errorf("public key round-trip mismatch")
+	}
+	gotPriv, err := DecodePEMPrivateKey(privPEM)
+	if err != nil {
+		t.Fatalf("DecodePEMPrivateKey: %v", err)
+	}
+	if string(gotPriv) != string(priv) {
+		t.Errorf("private key round-trip mismatch")
+	}
+}

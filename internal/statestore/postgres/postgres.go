@@ -25,6 +25,7 @@ type Store struct {
 	findingEvidenceReady      bool
 	findingEvaluationRunReady bool
 	vulnDBTablesReady         bool
+	deviceAuthTablesReady     bool
 }
 
 // Open opens a Postgres-backed current-state store.

@@ -24,6 +24,7 @@ import (
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/claims"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/deviceauth"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/graphingest"
@@ -50,12 +51,15 @@ type Dependencies struct {
 
 // App is the minimal Connect/bootstrap composition root for the rewrite skeleton.
 type App struct {
-	cfg     config.Config
-	deps    Dependencies
-	sources *sourcecdk.Registry
-	mux     *http.ServeMux
-	handler http.Handler
-	server  *http.Server
+	cfg            config.Config
+	deps           Dependencies
+	sources        *sourcecdk.Registry
+	mux            *http.ServeMux
+	handler        http.Handler
+	server         *http.Server
+	deviceService  *deviceauth.Service
+	deviceHandler  *deviceAuthHTTPHandler
+	deviceVerifier *deviceauth.JWTVerifier
 }
 
 type bootstrapService struct {
@@ -77,12 +81,23 @@ var (
 
 // New constructs the minimal bootstrap app and registers the Connect handlers.
 func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App {
+	app := &App{cfg: cfg, deps: deps, sources: sources}
+	if deviceStore := deviceAuthStore(deps.StateStore); deviceStore != nil {
+		service, err := buildDeviceAuthService(cfg.Auth.DeviceAuth, deviceStore)
+		if err != nil {
+			panic(fmt.Sprintf("device-auth bootstrap failed: %v", err))
+		}
+		if service != nil {
+			app.deviceService = service
+			app.deviceVerifier = service.Verifier()
+			app.deviceHandler = newDeviceAuthHTTPHandler(service, cfg.Auth.DeviceAuth)
+		}
+	}
 	mux := http.NewServeMux()
 	service := &bootstrapService{cfg: cfg, deps: deps, sources: sources}
 	path, handler := cerebrov1connect.NewBootstrapServiceHandler(service, connect.WithInterceptors(authInterceptor(cfg.Auth)))
 	mux.Handle(path, handler)
-
-	app := &App{cfg: cfg, deps: deps, sources: sources, mux: mux}
+	app.mux = mux
 	mux.HandleFunc("/health", app.handleHealth)
 	mux.HandleFunc("/healthz", app.handleHealth)
 	mux.HandleFunc("GET /openapi.yaml", app.handleOpenAPI)
@@ -148,7 +163,15 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("GET /source-runtimes/{runtimeID}/finding-evaluation-runs", app.handleListFindingEvaluationRuns)
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/finding-rules/evaluate", app.handleEvaluateSourceRuntimeFindingRules)
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/findings/evaluate", app.handleEvaluateSourceRuntimeFindings)
-	app.handler = authMiddleware(cfg.Auth, mux)
+	if app.deviceHandler != nil {
+		mux.HandleFunc("POST /platform/devices/enroll", app.deviceHandler.handleEnroll)
+		mux.HandleFunc("POST /platform/devices/token", app.deviceHandler.handleToken)
+		mux.HandleFunc("POST /platform/devices/bootstrap-tokens", app.deviceHandler.handleIssueBootstrapToken)
+		mux.HandleFunc("POST /platform/devices/{deviceID}/revoke", app.deviceHandler.handleRevoke)
+		mux.HandleFunc("POST /platform/telemetry/ingest", app.deviceHandler.handleIngestTelemetry)
+		mux.HandleFunc("GET /.well-known/device-jwks.json", app.deviceHandler.handleJWKS)
+	}
+	app.handler = authMiddleware(cfg.Auth, app.deviceVerifier, mux)
 	app.server = &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           app.handler,
@@ -2905,6 +2928,14 @@ func claimStore(store ports.StateStore) ports.ClaimStore {
 		return nil
 	}
 	return claimStore
+}
+
+func deviceAuthStore(store ports.StateStore) deviceauth.Store {
+	deviceStore, ok := store.(deviceauth.Store)
+	if !ok || isNilInterface(deviceStore) {
+		return nil
+	}
+	return deviceStore
 }
 
 func isNilInterface(value any) bool {

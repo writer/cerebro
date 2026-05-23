@@ -97,6 +97,35 @@ type AuthConfig struct {
 	CapabilityTokenSecrets  []string
 	CapabilityTokenAudience string
 	AllowedTenants          []string
+	DeviceAuth              DeviceAuthConfig
+}
+
+// DeviceAuthSigningKey is one Ed25519 keypair the issuer can sign with. The
+// production deployment leaves PrivatePEM empty and uses an external KMS
+// signer; the dev/test path supplies an inline PEM for both halves.
+type DeviceAuthSigningKey struct {
+	KID        string `json:"kid"`
+	PublicPEM  string `json:"public_pem"`
+	PrivatePEM string `json:"private_pem,omitempty"`
+}
+
+// DeviceAuthConfig configures the SeCheck device-auth surface. The surface is
+// disabled when Enabled is false.
+type DeviceAuthConfig struct {
+	Enabled                  bool
+	Issuer                   string
+	Audience                 string
+	AccessTTL                time.Duration
+	RefreshTTL               time.Duration
+	BootstrapTokenTTL        time.Duration
+	IdempotencyTTL           time.Duration
+	ClockSkew                time.Duration
+	SigningKeys              []DeviceAuthSigningKey
+	CurrentKID               string
+	EnrollPerIPRatePerSecond float64
+	EnrollPerIPBurst         int
+	TokenPerDeviceRatePerSecond float64
+	TokenPerDeviceBurst      int
 }
 
 // Load reads and validates process configuration.
@@ -151,6 +180,11 @@ func Load() (Config, error) {
 	if len(cfg.Auth.CapabilityTokenSecrets) > 0 && cfg.Auth.CapabilityTokenAudience == "" {
 		cfg.Auth.CapabilityTokenAudience = "cerebro-api"
 	}
+	deviceAuth, err := loadDeviceAuthConfig()
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.Auth.DeviceAuth = deviceAuth
 	if cfg.HTTPAddr == "" {
 		cfg.HTTPAddr = defaultHTTPAddr
 	}
