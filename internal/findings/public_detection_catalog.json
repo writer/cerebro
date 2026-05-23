@@ -34,7 +34,9 @@
       ],
       "runbook": "Review the exposed resource or trust path, linked principals, scope, and adjacent identity findings.",
       "fingerprint_fields": [
-        "event_id"
+        "cloud_account_urn",
+        "principal_urn",
+        "permission_urn"
       ],
       "control_refs": [
         {
@@ -81,7 +83,9 @@
       ],
       "runbook": "Review the exposed resource or trust path, linked principals, scope, and adjacent identity findings.",
       "fingerprint_fields": [
-        "event_id"
+        "principal_urn",
+        "target_principal_urn",
+        "relationship"
       ],
       "control_refs": [
         {
@@ -179,7 +183,7 @@
       ],
       "runbook": "Review the exposed resource or trust path, linked principals, scope, and adjacent identity findings.",
       "fingerprint_fields": [
-        "event_id"
+        "exposed_resource_urn"
       ],
       "control_refs": [
         {
@@ -225,7 +229,7 @@
         "resource_id"
       ],
       "fingerprint_fields": [
-        "event_id"
+        "asset_urn"
       ],
       "control_refs": [
         {
