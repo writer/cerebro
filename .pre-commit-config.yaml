@@ -24,3 +24,11 @@ repos:
         pass_filenames: false
         files: ^infra/tests/test_validate_stack_config\.py$
         stages: [pre-commit]
+
+      - id: branch-main-virtual-merge-validation
+        name: Validate branch merged with origin/main
+        entry: bash -c 'cd infra && uv run python scripts/validate_branch_main_merge.py --repo-root ..'
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
