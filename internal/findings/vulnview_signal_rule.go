@@ -89,7 +89,6 @@ func buildVulnViewActionableExternalFinding(ctx context.Context, runtime *cerebr
 		strings.TrimSpace(event.GetTenantId()),
 		firstNonEmpty(attrs["template_id"], attrs["alert"], attrs["external_id"]),
 		firstNonEmpty(attrs["target_id"], attrs["host"], attrs["asset_id"], projectedContext.PrimaryResourceURN),
-		attrs["matched_at"],
 	)
 	return &ports.FindingRecord{
 		ID:              fingerprint,

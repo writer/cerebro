@@ -70,7 +70,7 @@ func TestVulnViewActionableExternalFindingRuleIgnoresInfo(t *testing.T) {
 	}
 }
 
-func TestVulnViewActionableExternalFindingRuleSplitsMatchedLocations(t *testing.T) {
+func TestVulnViewActionableExternalFindingRuleAggregatesMatchedLocations(t *testing.T) {
 	rule := newVulnViewActionableExternalFindingRule()
 	runtime := &cerebrov1.SourceRuntime{Id: "writer-vulnview-vulnerability", SourceId: "vulnview", TenantId: "writer"}
 	base := &cerebrov1.EventEnvelope{
@@ -97,7 +97,7 @@ func TestVulnViewActionableExternalFindingRuleSplitsMatchedLocations(t *testing.
 	if err != nil {
 		t.Fatalf("Evaluate(second) error = %v", err)
 	}
-	if first[0].ID == second[0].ID {
-		t.Fatalf("finding IDs matched for distinct matched_at values: %q", first[0].ID)
+	if first[0].ID != second[0].ID {
+		t.Fatalf("finding IDs differed for same template and target across matched_at values: %q != %q", first[0].ID, second[0].ID)
 	}
 }
