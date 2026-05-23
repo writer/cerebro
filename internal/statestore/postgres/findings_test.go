@@ -1030,3 +1030,105 @@ func TestUpsertFinding_ConcurrentEmitAgainstTombstonedFingerprint(t *testing.T) 
 		}
 	}
 }
+
+func TestFindingRow_PopulatesTombstoneColumns(t *testing.T) {
+	ctx := context.Background()
+	store := tombstoneStoreFromEnv(t)
+	resetTombstoneSchema(t, ctx, store)
+	ensureTombstoneSchema(t, ctx, store)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	fp := fmt.Sprintf("fp-record-tombstone-%d", now.UnixNano())
+	baseID := fmt.Sprintf("finding-record-tombstone-%d", now.UnixNano())
+
+	if _, err := store.UpsertFinding(ctx, newUpsertFinding(baseID, fp, "open", now.Add(-2*time.Hour))); err != nil {
+		t.Fatalf("seed finding: %v", err)
+	}
+
+	tombstonedAt := now.Add(-time.Hour)
+	wantTombstone := ports.FindingTombstone{
+		Tombstoned:          true,
+		TombstonedAt:        tombstonedAt,
+		TombstonedBy:        "alice@writer.com",
+		TombstonedReason:    "closeout: pre-conversion backlog",
+		TombstonedRunID:     "run-record-tombstone-1",
+		PriorStatus:         "open",
+		TombstoneGeneration: 3,
+	}
+	if _, err := store.db.ExecContext(ctx, `
+        UPDATE findings
+           SET status = 'resolved',
+               tombstoned = $2,
+               tombstoned_at = $3,
+               tombstoned_by = $4,
+               tombstoned_reason = $5,
+               tombstoned_run_id = $6,
+               prior_status = $7,
+               tombstone_generation = $8
+         WHERE id = $1`,
+		baseID,
+		wantTombstone.Tombstoned,
+		wantTombstone.TombstonedAt,
+		wantTombstone.TombstonedBy,
+		wantTombstone.TombstonedReason,
+		wantTombstone.TombstonedRunID,
+		wantTombstone.PriorStatus,
+		wantTombstone.TombstoneGeneration,
+	); err != nil {
+		t.Fatalf("apply tombstone columns: %v", err)
+	}
+
+	record, err := store.GetFinding(ctx, baseID)
+	if err != nil {
+		t.Fatalf("GetFinding(%q): %v", baseID, err)
+	}
+
+	if got := record.Tombstoned; got != wantTombstone.Tombstoned {
+		t.Errorf("FindingRecord.Tombstoned = %v, want %v", got, wantTombstone.Tombstoned)
+	}
+	if got := record.TombstonedAt; !got.Equal(wantTombstone.TombstonedAt) {
+		t.Errorf("FindingRecord.TombstonedAt = %v, want %v", got, wantTombstone.TombstonedAt)
+	}
+	if got := record.TombstonedBy; got != wantTombstone.TombstonedBy {
+		t.Errorf("FindingRecord.TombstonedBy = %q, want %q", got, wantTombstone.TombstonedBy)
+	}
+	if got := record.TombstonedReason; got != wantTombstone.TombstonedReason {
+		t.Errorf("FindingRecord.TombstonedReason = %q, want %q", got, wantTombstone.TombstonedReason)
+	}
+	if got := record.TombstonedRunID; got != wantTombstone.TombstonedRunID {
+		t.Errorf("FindingRecord.TombstonedRunID = %q, want %q", got, wantTombstone.TombstonedRunID)
+	}
+	if got := record.PriorStatus; got != wantTombstone.PriorStatus {
+		t.Errorf("FindingRecord.PriorStatus = %q, want %q", got, wantTombstone.PriorStatus)
+	}
+	if got := record.TombstoneGeneration; got != wantTombstone.TombstoneGeneration {
+		t.Errorf("FindingRecord.TombstoneGeneration = %d, want %d", got, wantTombstone.TombstoneGeneration)
+	}
+
+	listed, err := store.ListFindings(ctx, ports.ListFindingsRequest{
+		TenantID:  "writer",
+		RuntimeID: "runtime-test",
+	})
+	if err != nil {
+		t.Fatalf("ListFindings: %v", err)
+	}
+	var found *ports.FindingRecord
+	for _, r := range listed {
+		if r.ID == baseID {
+			found = r
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("ListFindings did not return seeded finding %q", baseID)
+	}
+	if found.Tombstoned != wantTombstone.Tombstoned ||
+		!found.TombstonedAt.Equal(wantTombstone.TombstonedAt) ||
+		found.TombstonedBy != wantTombstone.TombstonedBy ||
+		found.TombstonedReason != wantTombstone.TombstonedReason ||
+		found.TombstonedRunID != wantTombstone.TombstonedRunID ||
+		found.PriorStatus != wantTombstone.PriorStatus ||
+		found.TombstoneGeneration != wantTombstone.TombstoneGeneration {
+		t.Fatalf("ListFindings returned tombstone fields = %+v, want %+v", found.FindingTombstone, wantTombstone)
+	}
+}

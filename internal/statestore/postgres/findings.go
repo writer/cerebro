@@ -145,7 +145,8 @@ const findingSelectColumns = `id, fingerprint, tenant_id, runtime_id, rule_id, t
   risk_score, likelihood_score, impact_score, confidence_score, likelihood_level, impact_level, risk_reasons_json::text, risk_model_version,
   resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
   notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
-  status_updated_at, first_observed_at, last_observed_at`
+  status_updated_at, first_observed_at, last_observed_at,
+  tombstoned, tombstoned_at, tombstoned_by, tombstoned_reason, tombstoned_run_id, prior_status, tombstone_generation`
 
 // upsertFindingStatement persists one finding row, preserving runtime_id on conflict.
 //
@@ -1344,6 +1345,16 @@ type findingRiskRow struct {
 	RiskModelVersion string
 }
 
+type findingTombstoneRow struct {
+	Tombstoned          bool
+	TombstonedAt        sql.NullTime
+	TombstonedBy        string
+	TombstonedReason    string
+	TombstonedRunID     string
+	PriorStatus         string
+	TombstoneGeneration int
+}
+
 type findingRow struct {
 	ID          string
 	Fingerprint string
@@ -1367,6 +1378,7 @@ type findingRow struct {
 	findingWorkflowRow
 	FirstObservedAt time.Time
 	LastObservedAt  time.Time
+	findingTombstoneRow
 }
 
 func scanFindingRow(scanner findingRowScanner, row *findingRow) error {
@@ -1405,6 +1417,13 @@ func scanFindingRow(scanner findingRowScanner, row *findingRow) error {
 		&row.StatusUpdatedAt,
 		&row.FirstObservedAt,
 		&row.LastObservedAt,
+		&row.Tombstoned,
+		&row.TombstonedAt,
+		&row.TombstonedBy,
+		&row.TombstonedReason,
+		&row.TombstonedRunID,
+		&row.PriorStatus,
+		&row.TombstoneGeneration,
 	)
 }
 
@@ -1482,6 +1501,15 @@ func (r findingRow) record() (*ports.FindingRecord, error) {
 			DueAt:           findingTimestamp(r.DueAt),
 			StatusReason:    r.StatusReason,
 			StatusUpdatedAt: findingTimestamp(r.StatusUpdatedAt),
+		},
+		FindingTombstone: ports.FindingTombstone{
+			Tombstoned:          r.Tombstoned,
+			TombstonedAt:        findingTimestamp(r.TombstonedAt),
+			TombstonedBy:        r.TombstonedBy,
+			TombstonedReason:    r.TombstonedReason,
+			TombstonedRunID:     r.TombstonedRunID,
+			PriorStatus:         r.PriorStatus,
+			TombstoneGeneration: r.TombstoneGeneration,
 		},
 		Attributes:      attributes,
 		FirstObservedAt: r.FirstObservedAt.UTC(),
