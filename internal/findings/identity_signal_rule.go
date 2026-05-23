@@ -1038,8 +1038,7 @@ func matchesIdentityAPITokenOrOAuthCreated(event *cerebrov1.EventEnvelope, attri
 	if containsAny(action, "api_token", "client_secret", "client.secret", "domain_wide", "domain-wide") {
 		return containsAny(action, "create", "authorize", "grant", "add", "rotate", "generate")
 	}
-	return containsAny(action, "oauth", "api_client", "client_access", "application") &&
-		containsAny(action, "create", "add")
+	return false
 }
 
 func identityCurrentStateOAuthApplication(event *cerebrov1.EventEnvelope, attributes map[string]string) bool {

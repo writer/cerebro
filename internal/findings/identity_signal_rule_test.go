@@ -597,6 +597,39 @@ func TestIdentityApiTokenOrOauthAppCreated_OAuthTrajectory(t *testing.T) {
 	assertIdentityRuleOlderCloseDoesNotResolveLaterOpen(t, rule, olderInactive, oauthFirst)
 }
 
+func TestIdentityApiTokenOrOauthAppCreated_OAuthAuditDoesNotEmit(t *testing.T) {
+	rules := identityRulesByID(t)
+	rule := rules[identityAPIOrOAuthCredentialCreatedRuleID]
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-audit", SourceId: "okta", TenantId: "writer", Config: map[string]string{"family": "audit"}}
+
+	for _, eventType := range []string{
+		"oauth.application.create",
+		"application.added",
+		"oauth.application.lifecycle.create",
+	} {
+		t.Run(eventType, func(t *testing.T) {
+			event := identitySignalEventAt("okta-"+strings.ReplaceAll(eventType, ".", "-"), "okta", "okta.audit", map[string]string{
+				"domain":         "writer.okta.com",
+				"event_type":     eventType,
+				"actor_id":       "00u-admin",
+				"actor_type":     "User",
+				"resource_id":    "0oa-client",
+				"resource_name":  "Production Client",
+				"resource_type":  "AppInstance",
+				"outcome_result": "SUCCESS",
+			}, identityTrajectoryBaseTime)
+
+			records, err := rule.Evaluate(context.Background(), runtime, event)
+			if err != nil {
+				t.Fatalf("Evaluate(%q) error = %v", eventType, err)
+			}
+			if len(records) != 0 {
+				t.Fatalf("Evaluate(%q) returned %d findings, want 0 for OAuth application audit evidence", eventType, len(records))
+			}
+		})
+	}
+}
+
 func TestIdentityPrivilegedAccountWithoutMfa(t *testing.T) {
 	rules := identityRulesByID(t)
 	rule := rules[identityPrivilegedAccountWithoutMFARuleID]
