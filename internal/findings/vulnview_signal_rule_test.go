@@ -2,11 +2,18 @@ package findings
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/sourcecdk"
+	vulnviewsource "github.com/writer/cerebro/sources/vulnview"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -119,6 +126,89 @@ func TestVulnviewActionableExternalFinding(t *testing.T) {
 	assertIdentityRuleOlderCloseDoesNotResolveLaterOpen(t, rule, olderClosed, event)
 }
 
+func TestVulnViewActionableExternalFindingSourceAdapterStateTrajectory(t *testing.T) {
+	rule := newVulnViewActionableExternalFindingRule()
+	for _, tc := range []struct {
+		name   string
+		family string
+	}{
+		{name: "vulnerability", family: "vulnerability"},
+		{name: "dns alert", family: "dns_alert"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			open, closed := vulnViewSourceAdapterStateEvents(t, tc.family)
+			counterRule, ok := rule.(CounterEventRule)
+			if !ok {
+				t.Fatal("vulnview-actionable-external-finding does not implement CounterEventRule")
+			}
+			runtime := &cerebrov1.SourceRuntime{Id: "example-vulnview-" + tc.family, SourceId: "vulnview", TenantId: "writer", Config: map[string]string{"family": tc.family}}
+			records, err := rule.Evaluate(context.Background(), runtime, open)
+			if err != nil {
+				t.Fatalf("Evaluate(open) error = %v", err)
+			}
+			if len(records) != 1 {
+				t.Fatalf("Evaluate(open) returned %d findings, want 1", len(records))
+			}
+			openAnchor := counterRule.OpenAnchor(records[0].Attributes)
+			if openAnchor == "" {
+				t.Fatalf("OpenAnchor(%v) = empty, want asset/template anchor", records[0].Attributes)
+			}
+			if _, ok := open.GetAttributes()["status"]; ok {
+				t.Fatalf("source adapter emitted legacy status attribute %q; rule must consume namespaced VulnView state", open.GetAttributes()["status"])
+			}
+			if _, ok := open.GetAttributes()["state"]; ok {
+				t.Fatalf("source adapter emitted legacy state attribute %q; rule must consume namespaced VulnView state", open.GetAttributes()["state"])
+			}
+
+			records, err = rule.Evaluate(context.Background(), runtime, closed)
+			if err != nil {
+				t.Fatalf("Evaluate(closed) error = %v", err)
+			}
+			if len(records) != 0 {
+				t.Fatalf("Evaluate(closed) returned %d findings, want 0 once VulnView reports closed", len(records))
+			}
+			closeAnchor, closes := counterRule.CloseOnEvent(closed)
+			if !closes || closeAnchor != openAnchor {
+				t.Fatalf("CloseOnEvent(closed) = (%q, %v), want (%q, true)", closeAnchor, closes, openAnchor)
+			}
+			assertIdentityRuleRemediationTrajectory(t, rule, open, closed, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+		})
+	}
+}
+
+func TestVulnViewActionableExternalFindingIgnoresLegacySyntheticStateOnly(t *testing.T) {
+	rule := newVulnViewActionableExternalFindingRule()
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-vulnview-vulnerability", SourceId: "vulnview", TenantId: "writer"}
+	for _, legacyKey := range []string{"status", "state"} {
+		t.Run(legacyKey, func(t *testing.T) {
+			event := &cerebrov1.EventEnvelope{
+				Id:         "vulnview-legacy-synthetic-" + legacyKey,
+				TenantId:   "writer",
+				SourceId:   "vulnview",
+				Kind:       "vulnview.vulnerability",
+				OccurredAt: timestamppb.New(identityTrajectoryBaseTime),
+				Attributes: map[string]string{
+					"external_id": "scan-1:exposed-panel:admin.writer.com",
+					"host":        "admin.writer.com",
+					"matched_at":  "https://admin.writer.com/login",
+					"name":        "Exposed Admin Panel",
+					"severity":    "high",
+					legacyKey:     "open",
+					"target_id":   "admin.writer.com",
+					"template_id": "exposed-panel",
+				},
+			}
+			findings, err := rule.Evaluate(context.Background(), runtime, event)
+			if err != nil {
+				t.Fatalf("Evaluate() error = %v", err)
+			}
+			if len(findings) != 0 {
+				t.Fatalf("Evaluate() returned %d findings from legacy synthetic %s-only event, want 0", len(findings), legacyKey)
+			}
+		})
+	}
+}
+
 func TestVulnViewActionableExternalFindingRuleIgnoresInfo(t *testing.T) {
 	rule := newVulnViewActionableExternalFindingRule()
 	findings, err := rule.Evaluate(context.Background(), &cerebrov1.SourceRuntime{Id: "writer-vulnview", SourceId: "vulnview", TenantId: "writer"}, &cerebrov1.EventEnvelope{
@@ -148,12 +238,14 @@ func TestVulnViewActionableExternalFindingRuleDeduplicatesMatchedLocations(t *te
 		SourceId: "vulnview",
 		Kind:     "vulnview.vulnerability",
 		Attributes: map[string]string{
-			"host":        "app.writer.com",
-			"matched_at":  "https://app.writer.com/login",
-			"name":        "Test CVE",
-			"severity":    "high",
-			"target_id":   "app.writer.com",
-			"template_id": "cve-2026-1234",
+			"host":                   "app.writer.com",
+			"matched_at":             "https://app.writer.com/login",
+			"name":                   "Test CVE",
+			"severity":               "high",
+			"target_id":              "app.writer.com",
+			"template_id":            "cve-2026-1234",
+			"vulnview_finding_state": "open",
+			"vulnview_status":        "open",
 		},
 	}
 	first, err := rule.Evaluate(context.Background(), runtime, base)
@@ -179,14 +271,97 @@ func vulnViewActionableExternalFindingEventAt(id string, matchedAt string, statu
 		Kind:       "vulnview.vulnerability",
 		OccurredAt: timestamppb.New(occurredAt),
 		Attributes: map[string]string{
-			"external_id": "scan-1:exposed-panel:admin.writer.com",
-			"host":        "admin.writer.com",
-			"matched_at":  matchedAt,
-			"name":        "Exposed Admin Panel",
-			"severity":    severity,
-			"status":      status,
-			"target_id":   "admin.writer.com",
-			"template_id": "exposed-panel",
+			"external_id":            "scan-1:exposed-panel:admin.writer.com",
+			"host":                   "admin.writer.com",
+			"matched_at":             matchedAt,
+			"name":                   "Exposed Admin Panel",
+			"severity":               severity,
+			"target_id":              "admin.writer.com",
+			"template_id":            "exposed-panel",
+			"vulnview_finding_state": status,
+			"vulnview_status":        status,
 		},
 	}
+}
+
+func vulnViewSourceAdapterStateEvents(t *testing.T, family string) (*cerebrov1.EventEnvelope, *cerebrov1.EventEnvelope) {
+	t.Helper()
+	state := "open"
+	observedAt := identityTrajectoryBaseTime
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "token_type": "Bearer", "expires_in": 3600})
+		case "/vulnerabilities":
+			if family != "vulnerability" {
+				http.NotFound(w, r)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{
+				"type":       "vulnerability",
+				"templateId": "exposed-panel",
+				"name":       "Exposed Admin Panel",
+				"severity":   "high",
+				"host":       "admin.writer.com",
+				"matchedAt":  "https://admin.writer.com/login",
+				"scanId":     "scan-1",
+				"status":     state,
+				"timestamp":  observedAt.Format(time.RFC3339),
+			}}})
+		case "/assets":
+			if family != "dns_alert" {
+				http.NotFound(w, r)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{
+				"asset": "admin.writer.com",
+				"dnsAlerts": []map[string]any{{
+					"alert":     "dangling-cname",
+					"severity":  "high",
+					"state":     state,
+					"timestamp": observedAt.Format(time.RFC3339),
+				}},
+			}}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	source, err := vulnviewsource.New()
+	if err != nil {
+		t.Fatalf("vulnview.New() error = %v", err)
+	}
+	enableVulnViewLoopbackForTest(t, source)
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"tenant_id":     "writer",
+		"base_url":      server.URL,
+		"token_url":     server.URL + "/token",
+		"client_id":     "client",
+		"client_secret": "secret",
+		"family":        family,
+	})
+	readEvent := func(nextState string, ts time.Time) *cerebrov1.EventEnvelope {
+		t.Helper()
+		state = nextState
+		observedAt = ts
+		pull, err := source.Read(context.Background(), cfg, nil)
+		if err != nil {
+			t.Fatalf("Read(%s, %s) error = %v", family, nextState, err)
+		}
+		if len(pull.Events) != 1 {
+			t.Fatalf("Read(%s, %s) emitted %d events, want 1", family, nextState, len(pull.Events))
+		}
+		return pull.Events[0]
+	}
+	return readEvent("open", identityTrajectoryBaseTime), readEvent("resolved", identityTrajectoryBaseTime.Add(2*time.Minute))
+}
+
+func enableVulnViewLoopbackForTest(t *testing.T, source *vulnviewsource.Source) {
+	t.Helper()
+	field := reflect.ValueOf(source).Elem().FieldByName("allowLoopbackBaseURL")
+	if !field.IsValid() {
+		t.Fatal("vulnview.Source.allowLoopbackBaseURL field not found")
+	}
+	reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().SetBool(true)
 }

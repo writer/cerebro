@@ -2626,7 +2626,8 @@
       ],
       "runbook": "Validate exploitability and asset ownership, link duplicate external findings, patch or mitigate the exposed service, and document accepted risk.",
       "required_attributes": [
-        "severity"
+        "severity",
+        "vulnview_finding_state"
       ],
       "fingerprint_fields": [
         "asset_urn",

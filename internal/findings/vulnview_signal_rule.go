@@ -41,7 +41,7 @@ func vulnViewActionableExternalFindingDefinition() RuleDefinition {
 		References:         []string{"https://owasp.org/www-project-web-security-testing-guide/", "https://www.cisa.gov/known-exploited-vulnerabilities-catalog"},
 		FalsePositives:     []string{"Finding is a duplicate, asset is intentionally exposed with compensating controls, or scanner severity was manually downgraded after validation."},
 		Runbook:            "Validate exploitability and asset ownership, link duplicate external findings, patch or mitigate the exposed service, and document accepted risk.",
-		RequiredAttributes: []string{"severity"},
+		RequiredAttributes: []string{"severity", "vulnview_finding_state"},
 		FingerprintFields:  []string{"asset_urn", "template_id"},
 		ControlRefs: []ports.FindingControlRef{
 			{FrameworkName: "SOC 2", ControlID: "CC7.1"},
@@ -242,21 +242,28 @@ func vulnViewActionableExternalFindingAssetURNFromProjection(projectedContext fi
 }
 
 func vulnViewActionableExternalFindingSourceOpen(attributes map[string]string) bool {
-	state := strings.ToLower(strings.TrimSpace(firstNonEmpty(
-		attributes["state"],
-		attributes["status"],
-		attributes["finding_status"],
-		attributes["remediation_state"],
-		attributes["lifecycle_state"],
-	)))
+	state := strings.ToLower(strings.TrimSpace(vulnViewActionableExternalFindingSourceState(attributes)))
 	state = strings.ReplaceAll(state, "-", "_")
 	state = strings.ReplaceAll(state, " ", "_")
 	switch state {
-	case "", "open", "opened", "active", "detected", "new", "unresolved", "reopened":
+	case "open", "opened", "active", "detected", "new", "unresolved", "reopened":
 		return true
+	case "":
+		return false
 	case "closed", "resolved", "fixed", "remediated", "false_positive", "accepted_risk", "ignored", "suppressed":
 		return false
 	default:
 		return true
 	}
+}
+
+func vulnViewActionableExternalFindingSourceState(attributes map[string]string) string {
+	return firstNonEmpty(
+		attributes["vulnview_finding_state"],
+		attributes["vulnview_status"],
+		attributes["vulnview_state"],
+		attributes["vulnview_finding_status"],
+		attributes["vulnview_remediation_state"],
+		attributes["vulnview_lifecycle_state"],
+	)
 }
