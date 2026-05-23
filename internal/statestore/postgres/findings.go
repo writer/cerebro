@@ -6,10 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	findingrisk "github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/ports"
@@ -160,9 +163,9 @@ INSERT INTO findings (
   risk_score, likelihood_score, impact_score, confidence_score, likelihood_level, impact_level, risk_reasons_json, risk_model_version,
   resource_urns_json, event_ids_json, observed_policy_ids_json, control_refs_json, notes_json, tickets_json, attributes_json,
   policy_id, policy_name, check_id, check_name, assignee, due_at, status_reason,
-  status_updated_at, first_observed_at, last_observed_at
+  status_updated_at, first_observed_at, last_observed_at, tombstone_generation
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb, $17, $18::jsonb, $19::jsonb, $20::jsonb, $21::jsonb, $22::jsonb, $23::jsonb, $24::jsonb, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb, $17, $18::jsonb, $19::jsonb, $20::jsonb, $21::jsonb, $22::jsonb, $23::jsonb, $24::jsonb, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
 ON CONFLICT (id)
 DO UPDATE SET
   fingerprint = EXCLUDED.fingerprint,
@@ -172,7 +175,8 @@ DO UPDATE SET
   title = EXCLUDED.title,
   severity = EXCLUDED.severity,
   status = CASE
-    WHEN findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open' THEN findings.status
+    WHEN findings.tombstoned THEN findings.status
+    WHEN findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open' AND NOT findings.tombstoned THEN EXCLUDED.status
     ELSE EXCLUDED.status
   END,
   summary = EXCLUDED.summary,
@@ -207,11 +211,11 @@ DO UPDATE SET
   END,
   due_at = COALESCE(EXCLUDED.due_at, findings.due_at),
   status_reason = CASE
-    WHEN findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open' THEN findings.status_reason
+    WHEN findings.tombstoned THEN findings.status_reason
     ELSE EXCLUDED.status_reason
   END,
   status_updated_at = CASE
-    WHEN findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open' THEN findings.status_updated_at
+    WHEN findings.tombstoned THEN findings.status_updated_at
     ELSE EXCLUDED.status_updated_at
   END,
   first_observed_at = LEAST(findings.first_observed_at, EXCLUDED.first_observed_at),
@@ -313,46 +317,113 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 		statusUpdatedAt = finding.StatusUpdatedAt.UTC()
 	}
 	firstObservedAt, lastObservedAt := normalizeFindingObservationWindow(finding.FirstObservedAt, finding.LastObservedAt, time.Now().UTC())
-	var stored findingRow
-	if err := scanFindingRow(s.db.QueryRowContext(ctx, upsertFindingStatement,
-		id,
-		fingerprint,
-		tenantID,
-		runtimeID,
-		ruleID,
-		title,
-		severity,
-		status,
-		summary,
-		finding.RiskScore,
-		finding.LikelihoodScore,
-		finding.ImpactScore,
-		finding.ConfidenceScore,
-		strings.TrimSpace(finding.LikelihoodLevel),
-		strings.TrimSpace(finding.ImpactLevel),
-		riskReasonsJSON,
-		strings.TrimSpace(finding.RiskModelVersion),
-		resourceURNsJSON,
-		eventIDsJSON,
-		observedPolicyIDsJSON,
-		controlRefsJSON,
-		notesJSON,
-		ticketsJSON,
-		attributesJSON,
-		policyID,
-		policyName,
-		checkID,
-		checkName,
-		assignee,
-		dueAt,
-		statusReason,
-		statusUpdatedAt,
-		firstObservedAt,
-		lastObservedAt,
-	), &stored); err != nil {
+
+	const maxAttempts = 4
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		targetID, generation, err := s.resolveUpsertTarget(ctx, fingerprint, id)
+		if err != nil {
+			return nil, fmt.Errorf("upsert finding %q: %w", id, err)
+		}
+		var stored findingRow
+		err = scanFindingRow(s.db.QueryRowContext(ctx, upsertFindingStatement,
+			targetID,
+			fingerprint,
+			tenantID,
+			runtimeID,
+			ruleID,
+			title,
+			severity,
+			status,
+			summary,
+			finding.RiskScore,
+			finding.LikelihoodScore,
+			finding.ImpactScore,
+			finding.ConfidenceScore,
+			strings.TrimSpace(finding.LikelihoodLevel),
+			strings.TrimSpace(finding.ImpactLevel),
+			riskReasonsJSON,
+			strings.TrimSpace(finding.RiskModelVersion),
+			resourceURNsJSON,
+			eventIDsJSON,
+			observedPolicyIDsJSON,
+			controlRefsJSON,
+			notesJSON,
+			ticketsJSON,
+			attributesJSON,
+			policyID,
+			policyName,
+			checkID,
+			checkName,
+			assignee,
+			dueAt,
+			statusReason,
+			statusUpdatedAt,
+			firstObservedAt,
+			lastObservedAt,
+			generation,
+		), &stored)
+		if err == nil {
+			return stored.record()
+		}
+		lastErr = err
+		if isPartialUniqueIndexConflict(err) && attempt < maxAttempts-1 {
+			continue
+		}
 		return nil, fmt.Errorf("upsert finding %q: %w", id, err)
 	}
-	return stored.record()
+	return nil, fmt.Errorf("upsert finding %q: %w", id, lastErr)
+}
+
+// resolveUpsertTarget resolves the row identity for an emit on the given fingerprint:
+// if a non-tombstoned row already exists it reuses that row's id (the ON CONFLICT (id)
+// path then updates it). Otherwise it mints a fresh id derived from baseID with a
+// "#g<N+1>" generation suffix where N is the max tombstone_generation observed for the
+// fingerprint, and returns N+1 as the new row's tombstone_generation.
+func (s *Store) resolveUpsertTarget(ctx context.Context, fingerprint, baseID string) (string, int, error) {
+	var activeID sql.NullString
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id FROM findings WHERE fingerprint = $1 AND tombstoned = FALSE LIMIT 1`,
+		fingerprint,
+	).Scan(&activeID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", 0, fmt.Errorf("select active finding by fingerprint: %w", err)
+	}
+	if activeID.Valid && activeID.String != "" {
+		// Existing active row will be reopened via ON CONFLICT (id); its stored
+		// tombstone_generation is preserved because that column is not in the SET list.
+		return activeID.String, 0, nil
+	}
+	var maxGen sql.NullInt64
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT MAX(tombstone_generation) FROM findings WHERE fingerprint = $1`,
+		fingerprint,
+	).Scan(&maxGen); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", 0, fmt.Errorf("select tombstone generation: %w", err)
+	}
+	if !maxGen.Valid {
+		return baseID, 0, nil
+	}
+	next := int(maxGen.Int64) + 1
+	return fmt.Sprintf("%s#g%d", findingBaseID(baseID), next), next, nil
+}
+
+var findingGenerationSuffix = regexp.MustCompile(`#g\d+$`)
+
+func findingBaseID(id string) string {
+	return findingGenerationSuffix.ReplaceAllString(id, "")
+}
+
+func isPartialUniqueIndexConflict(err error) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	if pgErr.Code != "23505" {
+		return false
+	}
+	return strings.Contains(pgErr.ConstraintName, "findings_active_fingerprint_uidx") ||
+		strings.Contains(pgErr.Message, "findings_active_fingerprint_uidx")
 }
 
 func normalizeFindingObservationWindow(firstObservedAt time.Time, lastObservedAt time.Time, now time.Time) (time.Time, time.Time) {
