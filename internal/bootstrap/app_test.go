@@ -4955,8 +4955,8 @@ func TestFindingEndpoints(t *testing.T) {
 	if len(runtimeStore.findings) < 1 {
 		t.Fatalf("len(runtimeStore.findings) = %d, want at least 1", len(runtimeStore.findings))
 	}
-	if len(runtimeStore.findingEvidence) < 3 {
-		t.Fatalf("len(runtimeStore.findingEvidence) = %d, want at least 3", len(runtimeStore.findingEvidence))
+	if len(runtimeStore.findingEvidence) < 2 {
+		t.Fatalf("len(runtimeStore.findingEvidence) = %d, want at least 2", len(runtimeStore.findingEvidence))
 	}
 	if got := len(graphStore.entities); got < 9 {
 		t.Fatalf("len(graphStore.entities) = %d, want at least 9", got)

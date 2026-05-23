@@ -984,6 +984,107 @@ func TestIdentitySignalRulesRespectRuntimeFamily(t *testing.T) {
 	}
 }
 
+func TestIdentityControlTamperRetired(t *testing.T) {
+	rules := identityRulesByID(t)
+	rule := rules[identityControlTamperCredentialChangeRuleID]
+	if rule == nil {
+		t.Fatalf("identity rule %q is missing", identityControlTamperCredentialChangeRuleID)
+	}
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("rule does not expose RuleMetadata")
+	}
+	definition := metadataRule.RuleMetadata()
+	if err := definition.Validate(); err != nil {
+		t.Fatalf("RuleDefinition.Validate() error = %v", err)
+	}
+	if definition.Lifecycle.Kind != LifecycleRetired {
+		t.Fatalf("Lifecycle.Kind = %q, want %q", definition.Lifecycle.Kind, LifecycleRetired)
+	}
+	if definition.Lifecycle.Anchor != AnchorNone {
+		t.Fatalf("Lifecycle.Anchor = %q, want %q", definition.Lifecycle.Anchor, AnchorNone)
+	}
+	if definition.Maturity != "retired" {
+		t.Fatalf("Maturity = %q, want retired", definition.Maturity)
+	}
+	retirementRule, ok := rule.(openFindingRetirementRule)
+	if !ok || !retirementRule.RetiresOpenFindings() {
+		t.Fatalf("RetiresOpenFindings() = false, want true so stale findings under %q are resolved", identityControlTamperCredentialChangeRuleID)
+	}
+
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-audit", SourceId: "okta", TenantId: "writer", Config: map[string]string{"family": "audit"}}
+	events := []*cerebrov1.EventEnvelope{
+		identitySignalEventAt("okta-policy-weakened-retired", "okta", "okta.audit", map[string]string{
+			"domain":                "writer.okta.com",
+			"event_type":            "policy.lifecycle.update",
+			"actor_email":           "admin@writer.com",
+			"policy_id":             "pol-sign-on",
+			"resource_id":           "pol-sign-on",
+			"resource_type":         "policy",
+			"auth_control_weakened": "true",
+			"outcome_result":        "SUCCESS",
+		}, identityTrajectoryBaseTime),
+		identitySignalEventAt("okta-api-token-retired", "okta", "okta.audit", map[string]string{
+			"domain":         "writer.okta.com",
+			"event_type":     "system.api_token.create",
+			"actor_id":       "00u-admin",
+			"actor_type":     "User",
+			"resource_id":    "token-1",
+			"resource_type":  "ApiToken",
+			"outcome_result": "SUCCESS",
+		}, identityTrajectoryBaseTime.Add(time.Minute)),
+		identitySignalEventAt("okta-password-view-retired", "okta", "okta.audit", map[string]string{
+			"domain":         "writer.okta.com",
+			"event_type":     "application.user_membership.show_password",
+			"actor":          "admin@writer.com",
+			"actor_id":       "00u-admin",
+			"resource_id":    "0oa-app",
+			"resource_type":  "AppInstance",
+			"outcome_result": "SUCCESS",
+		}, identityTrajectoryBaseTime.Add(2*time.Minute)),
+	}
+	for _, event := range events {
+		records, err := rule.Evaluate(context.Background(), runtime, event)
+		if err != nil {
+			t.Fatalf("Evaluate(%q) error = %v", event.GetId(), err)
+		}
+		if len(records) != 0 {
+			t.Fatalf("Evaluate(%q) returned %d findings, want none for retired rule", event.GetId(), len(records))
+		}
+	}
+
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry(%q) error = %v", identityControlTamperCredentialChangeRuleID, err)
+	}
+	store := &stubFindingStore{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{runtime.GetId(): runtime}},
+		&stubReplayer{events: events},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	)
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: runtime.GetId(),
+		RuleID:    identityControlTamperCredentialChangeRuleID,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if result == nil {
+		t.Fatal("EvaluateSourceRuntime() returned nil result")
+	}
+	if got := len(result.Findings); got != 0 {
+		t.Fatalf("replay emitted %d findings, want 0 for retired rule", got)
+	}
+	if store.upsertCount != 0 {
+		t.Fatalf("replay upserted %d findings, want 0 for retired rule", store.upsertCount)
+	}
+}
+
 func TestIdentitySignalRulesTreatRoutineOAuthGrantsAsTelemetry(t *testing.T) {
 	rules := identityRulesByID(t)
 	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"}
@@ -1084,8 +1185,8 @@ func TestIdentitySignalRulesIgnoreRoutineOktaAssignments(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Evaluate(passwordView) error = %v", err)
 	}
-	if len(records) != 1 {
-		t.Fatalf("Evaluate(passwordView) returned %d findings, want password access finding", len(records))
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(passwordView) returned %d findings, want telemetry-only retired correlation", len(records))
 	}
 }
 

@@ -146,6 +146,47 @@ func TestAnalyzeFindingPatternCorrelationsDetectsGitHubSecretExposurePattern(t *
 	}
 }
 
+func TestAnalyzeFindingPatternCorrelationsDetectsIdentityTamperCredentialHint(t *testing.T) {
+	base := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
+	controlTamper := compoundRiskFinding("identity-control", identityAuthControlLifecycleTamperingRuleID, "HIGH", "admin@writer.com", "", "urn:cerebro:writer:okta_resource:policy:pol-1", "policy.rule.deactivate")
+	controlTamper.FirstObservedAt = base
+	controlTamper.LastObservedAt = base
+	controlTamper.EventIDs = []string{"event-control"}
+	controlTamper.Attributes["primary_actor_urn"] = "urn:cerebro:writer:okta_actor:user:00u-admin"
+	controlTamper.Attributes["rule_source_id"] = "identity"
+	delete(controlTamper.Attributes, "repo")
+
+	credentialChange := compoundRiskFinding("identity-credential", identityAPIOrOAuthCredentialCreatedRuleID, "HIGH", "admin@writer.com", "", "urn:cerebro:writer:okta_resource:api_token:token-1", "system.api_token.create")
+	credentialChange.FirstObservedAt = base.Add(30 * time.Minute)
+	credentialChange.LastObservedAt = base.Add(30 * time.Minute)
+	credentialChange.EventIDs = []string{"event-credential"}
+	credentialChange.Attributes["primary_actor_urn"] = "urn:cerebro:writer:okta_actor:user:00u-admin"
+	credentialChange.Attributes["rule_source_id"] = "identity"
+	delete(credentialChange.Attributes, "repo")
+
+	correlations := AnalyzeFindingPatternCorrelations([]*ports.FindingRecord{controlTamper, credentialChange}, FindingExposureAnalysisOptions{
+		CorrelationWindow: time.Hour,
+	})
+	correlation := findingCorrelationByPattern(correlations, "identity-control-tamper-with-credential-change")
+	if correlation == nil {
+		t.Fatalf("Correlations = %#v, want runtime identity control/credential hint", correlations)
+	}
+	if correlation.Kind != "pattern" {
+		t.Fatalf("Correlation.Kind = %q, want pattern", correlation.Kind)
+	}
+	if correlation.Dimension != compoundRiskKindActor {
+		t.Fatalf("Correlation.Dimension = %q, want actor", correlation.Dimension)
+	}
+	if got := correlation.Evidence.EventCount; got != 2 {
+		t.Fatalf("Correlation.Evidence.EventCount = %d, want 2", got)
+	}
+	for _, reason := range []string{"control_tamper", "credential_change"} {
+		if !stringSliceContains(correlation.Reasons, reason) {
+			t.Fatalf("Correlation.Reasons = %#v, want %q", correlation.Reasons, reason)
+		}
+	}
+}
+
 func TestAnalyzeFindingPatternCorrelationsRequiresSharedCloudResource(t *testing.T) {
 	base := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
 	publicExposure := compoundRiskFinding("cloud-public-a", cloudPublicResourceExposureRuleID, "HIGH", "", "", "urn:cerebro:writer:aws_bucket:public-a", "public_network_ingress")

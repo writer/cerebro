@@ -1,6 +1,10 @@
 package findings
 
-import "testing"
+import (
+	"testing"
+
+	correlationruntime "github.com/writer/cerebro/internal/correlation/runtime"
+)
 
 func TestBuiltinFindingCorrelationPatternsLoad(t *testing.T) {
 	patterns := BuiltinFindingCorrelationPatterns()
@@ -39,6 +43,32 @@ func TestBuiltinFindingCorrelationPatternsReturnsIsolatedCopies(t *testing.T) {
 	}
 	if second[0].Tests[0].Name == "mutated" {
 		t.Fatal("BuiltinFindingCorrelationPatterns() returned mutable cached tests")
+	}
+}
+
+func TestBuiltinFindingCorrelationPatternsIncludeRuntimeHints(t *testing.T) {
+	patterns := BuiltinFindingCorrelationPatterns()
+	byID := map[string]FindingCorrelationPattern{}
+	for _, pattern := range patterns {
+		byID[pattern.ID] = pattern
+	}
+	for _, hint := range correlationruntime.BuiltinHints() {
+		pattern, ok := byID[hint.ID]
+		if !ok {
+			t.Fatalf("runtime hint %q missing from finding correlation patterns", hint.ID)
+		}
+		if got, want := pattern.Window, hint.Window; got != want {
+			t.Fatalf("pattern %q Window = %v, want %v", hint.ID, got, want)
+		}
+		if !cloudStringSlicesEqual(pattern.RuleIDs, uniqueSortedStrings(hint.RuleIDs)) {
+			t.Fatalf("pattern %q RuleIDs = %#v, want %#v", hint.ID, pattern.RuleIDs, uniqueSortedStrings(hint.RuleIDs))
+		}
+		if !cloudStringSlicesEqual(pattern.Dimensions, uniqueSortedStrings(hint.Dimensions)) {
+			t.Fatalf("pattern %q Dimensions = %#v, want %#v", hint.ID, pattern.Dimensions, uniqueSortedStrings(hint.Dimensions))
+		}
+		if !cloudStringSlicesEqual(pattern.Reasons, uniqueSortedStrings(hint.Reasons)) {
+			t.Fatalf("pattern %q Reasons = %#v, want %#v", hint.ID, pattern.Reasons, uniqueSortedStrings(hint.Reasons))
+		}
 	}
 }
 

@@ -42,6 +42,11 @@ type identitySignalRule struct {
 	config identitySignalConfig
 }
 
+type retiredIdentitySignalRule struct {
+	Rule
+	definition RuleDefinition
+}
+
 type identitySignalClosePredicate func(Event) (string, bool)
 
 type identitySignalCounterEventRule struct {
@@ -68,6 +73,34 @@ func newIdentitySignalCounterEventRule(config identitySignalConfig, openAnchor f
 		openAnchor:  openAnchor,
 		closeAnchor: closeAnchor,
 	}
+}
+
+func newRetiredIdentitySignalRule(config identitySignalConfig) Rule {
+	retired := config.definition
+	if len(config.eventKinds) != 0 {
+		retired.EventKinds = append([]string(nil), config.eventKinds...)
+	}
+	retired.Description = "Retired identity correlation-mirror rule retained so stale open findings auto-resolve; correlation moved to runtime enrichment hints on the underlying state-anchored identity findings."
+	retired.Maturity = "retired"
+	retired.Lifecycle = Lifecycle{Kind: LifecycleRetired, Anchor: AnchorNone}
+	retired.Tags = appendUniqueString(cloneStringSlice(retired.Tags), "retired", "cleanup")
+	config.definition = retired
+	config.predicate = func(*cerebrov1.EventEnvelope, map[string]string) bool { return false }
+	return &retiredIdentitySignalRule{
+		Rule:       newIdentitySignalRule(config),
+		definition: retired,
+	}
+}
+
+func (r *retiredIdentitySignalRule) RuleMetadata() RuleDefinition {
+	if r == nil {
+		return RuleDefinition{}
+	}
+	return cloneRuleDefinition(r.definition)
+}
+
+func (r *retiredIdentitySignalRule) RetiresOpenFindings() bool {
+	return r != nil
 }
 
 func (r *identitySignalCounterEventRule) RuleMetadata() RuleDefinition {
@@ -198,7 +231,7 @@ func newIdentitySignalRules() []Rule {
 			predicate:   matchesIdentityExternalGroupMember,
 			fingerprint: identityExternalGroupMemberFingerprintInputs,
 		}, identityExternalGroupMemberAnchor, identityExternalGroupMemberCloseAnchor),
-		newIdentitySignalRule(identitySignalConfig{
+		newRetiredIdentitySignalRule(identitySignalConfig{
 			definition: identityRuleDefinition(
 				identityControlTamperCredentialChangeRuleID,
 				"Identity Control Tamper Or Credential Change",
@@ -209,7 +242,6 @@ func newIdentitySignalRules() []Rule {
 			),
 			sourceIDs:  sourceIDs,
 			eventKinds: capabilities.EventKinds(identityCapabilityAudit),
-			predicate:  matchesIdentityControlTamperOrCredentialChange,
 		}),
 		newIdentitySignalCounterEventRule(identitySignalConfig{
 			definition: identityDurableStateRuleDefinition(identityRuleDefinition(
@@ -1134,19 +1166,6 @@ func matchesIdentityExternalGroupMember(_ *cerebrov1.EventEnvelope, attributes m
 	}
 	email := strings.ToLower(firstNonEmpty(attributes["member_email"], attributes["email"], attributes["user_email"]))
 	return containsAny(email, "@gmail.com", "@yahoo.com", "@hotmail.com", "@outlook.com")
-}
-
-func matchesIdentityControlTamperOrCredentialChange(event *cerebrov1.EventEnvelope, attributes map[string]string) bool {
-	if !identityOutcomeSuccessfulOrUnknown(attributes) {
-		return false
-	}
-	if routineIdentityAssignmentAction(identityAction(attributes)) {
-		return false
-	}
-	return matchesIdentityAuthControlTampering(event, attributes) ||
-		matchesIdentityMFAFactorResetOrDisabled(event, attributes) ||
-		matchesIdentityAPITokenOrOAuthCreated(event, attributes) ||
-		containsAny(identityAction(attributes), "password", "credential", "recovery", "reset")
 }
 
 func matchesIdentityPrivilegedNoMFAAccess(_ *cerebrov1.EventEnvelope, attributes map[string]string) bool {
