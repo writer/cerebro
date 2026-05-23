@@ -7,6 +7,7 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/workflowevents"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -111,6 +112,96 @@ func TestSentinelOneProtectionControlTampering(t *testing.T) {
 	assertIdentityRuleRemediationTrajectory(t, rule, tampered, restored, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
 	olderRestored := sentinelOneProtectionControlStateEvent("s1-agent-control-restored-before-open", "activity-old-close", "restored", identityTrajectoryBaseTime.Add(-time.Minute))
 	assertIdentityRuleOlderCloseDoesNotResolveLaterOpen(t, rule, olderRestored, tampered)
+}
+
+func TestSentinelOneProtectionControlTamperingCrossRuntimeRestoreResolvesOpenFinding(t *testing.T) {
+	rule := newSentinelOneProtectionControlTamperingRule()
+	spec := rule.Spec()
+	if spec == nil || strings.TrimSpace(spec.GetId()) == "" {
+		t.Fatal("rule must expose a non-empty RuleSpec.Id")
+	}
+	ruleID := strings.TrimSpace(spec.GetId())
+	runtimeA := &cerebrov1.SourceRuntime{Id: "example-sentinelone-agent-runtime-a", SourceId: "sentinelone", TenantId: "writer", Config: map[string]string{"family": "agent"}}
+	runtimeB := &cerebrov1.SourceRuntime{Id: "example-sentinelone-agent-runtime-b", SourceId: "sentinelone", TenantId: "writer", Config: map[string]string{"family": "agent"}}
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry(%q) error = %v", ruleID, err)
+	}
+	store := &stubFindingStore{}
+	replayer := &stubReplayer{}
+	appendLog := &recordingAppendLog{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			runtimeA.GetId(): runtimeA,
+			runtimeB.GetId(): runtimeB,
+		}},
+		replayer,
+		store,
+		store,
+		store,
+		store,
+		registry,
+	).WithGraphStore(&stubGraphStore{}).WithAppendLog(appendLog)
+
+	open := sentinelOneProtectionControlStateEvent("s1-agent-control-cross-runtime-open", "activity-cross-runtime-open", "tampered", identityTrajectoryBaseTime)
+	replayer.events = []*cerebrov1.EventEnvelope{open}
+	firstResult, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{
+		RuntimeID: runtimeA.GetId(),
+		RuleIDs:   []string{ruleID},
+	})
+	if err != nil {
+		t.Fatalf("first EvaluateSourceRuntimeRules(%q) error = %v", ruleID, err)
+	}
+	if firstResult == nil || len(firstResult.Evaluations) != 1 {
+		t.Fatalf("first result evaluations = %#v, want one", firstResult)
+	}
+	if got := len(firstResult.Evaluations[0].Findings); got != 1 {
+		t.Fatalf("first pass emitted %d findings, want one opening finding", got)
+	}
+	openFinding := firstResult.Evaluations[0].Findings[0]
+	if got := strings.TrimSpace(openFinding.RuntimeID); got != runtimeA.GetId() {
+		t.Fatalf("opening finding RuntimeID = %q, want %q", got, runtimeA.GetId())
+	}
+	if got := strings.TrimSpace(openFinding.Status); got != findingStatusOpen {
+		t.Fatalf("opening finding status = %q, want %q", got, findingStatusOpen)
+	}
+
+	restore := sentinelOneProtectionControlStateEvent("s1-agent-control-cross-runtime-restore", "activity-cross-runtime-restore", "restored", identityTrajectoryBaseTime.Add(2*time.Minute))
+	replayer.events = []*cerebrov1.EventEnvelope{restore}
+	secondResult, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{
+		RuntimeID: runtimeB.GetId(),
+		RuleIDs:   []string{ruleID},
+	})
+	if err != nil {
+		t.Fatalf("second EvaluateSourceRuntimeRules(%q) error = %v", ruleID, err)
+	}
+	if secondResult == nil || len(secondResult.Evaluations) != 1 {
+		t.Fatalf("second result evaluations = %#v, want one", secondResult)
+	}
+	if got := len(secondResult.Evaluations[0].Findings); got != 0 {
+		t.Fatalf("restore pass emitted %d findings, want remediation-only pass to emit none", got)
+	}
+
+	finalFinding := store.findings[strings.TrimSpace(openFinding.ID)]
+	if finalFinding == nil {
+		t.Fatalf("persisted opening finding %q not found", openFinding.ID)
+	}
+	if got := strings.TrimSpace(finalFinding.RuntimeID); got != runtimeA.GetId() {
+		t.Fatalf("resolved finding RuntimeID = %q, want original runtime %q", got, runtimeA.GetId())
+	}
+	if got := strings.TrimSpace(finalFinding.Status); got != findingStatusResolved {
+		t.Fatalf("cross-runtime restore final status = %q, want %q", got, findingStatusResolved)
+	}
+	if got := strings.TrimSpace(finalFinding.StatusReason); got != workflowevents.FindingStatusReasonClosedByCounterEvent {
+		t.Fatalf("cross-runtime restore status reason = %q, want %q", got, workflowevents.FindingStatusReasonClosedByCounterEvent)
+	}
+	if !containsTrimmed(finalFinding.EventIDs, open.GetId()) || !containsTrimmed(finalFinding.EventIDs, restore.GetId()) {
+		t.Fatalf("resolved finding EventIDs = %#v, want opening and restore events", finalFinding.EventIDs)
+	}
+	statusEvent := findStatusChangedPayload(t, appendLog.events, openFinding.ID)
+	if got := statusEvent.Reason; got != workflowevents.FindingStatusReasonClosedByCounterEvent {
+		t.Fatalf("workflow status reason = %q, want %q", got, workflowevents.FindingStatusReasonClosedByCounterEvent)
+	}
 }
 
 func sentinelOneProtectionControlStateEvent(id string, activityID string, controlState string, occurredAt time.Time) *cerebrov1.EventEnvelope {

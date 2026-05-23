@@ -657,12 +657,15 @@ func (s *Service) resolveCounterEventOpenFindings(ctx context.Context, runtime *
 	if !hasLatestCounterAnchorClose(latestByAnchor) {
 		return nil
 	}
-	findings, err := s.store.ListFindings(ctx, ports.ListFindingsRequest{
-		TenantID:  tenantID,
-		RuntimeID: runtimeID,
-		RuleID:    ruleID,
-		Status:    findingStatusOpen,
-	})
+	listRequest := ports.ListFindingsRequest{
+		TenantID: tenantID,
+		RuleID:   ruleID,
+		Status:   findingStatusOpen,
+	}
+	if counterEventCloseLookupRuntimeScoped(rule) {
+		listRequest.RuntimeID = runtimeID
+	}
+	findings, err := s.store.ListFindings(ctx, listRequest)
 	if err != nil {
 		return fmt.Errorf("list counter-event candidates for rule %q: %w", ruleID, err)
 	}
@@ -905,6 +908,31 @@ func durableStateCounterEventRule(rule Rule) (CounterEventRule, bool) {
 		return nil, false
 	}
 	return counterRule, true
+}
+
+func counterEventCloseLookupRuntimeScoped(rule Rule) bool {
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		return true
+	}
+	definition := metadataRule.RuleMetadata()
+	if LifecycleKind(strings.TrimSpace(string(definition.Lifecycle.Kind))) != LifecycleDurableState {
+		return true
+	}
+	if len(definition.FingerprintFields) == 0 {
+		return true
+	}
+	return fingerprintFieldsIncludeRuntimeID(definition.FingerprintFields)
+}
+
+func fingerprintFieldsIncludeRuntimeID(fields []string) bool {
+	for _, field := range fields {
+		switch strings.ToLower(strings.TrimSpace(field)) {
+		case "runtime_id", "source_runtime_id":
+			return true
+		}
+	}
+	return false
 }
 
 func isTTLEvidenceRule(rule Rule) bool {
