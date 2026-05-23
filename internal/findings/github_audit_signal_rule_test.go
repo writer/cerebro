@@ -483,10 +483,29 @@ func TestGitHubCodeSecurityControlsDisabled(t *testing.T) {
 	}
 }
 
-func TestGitHubCriticalResourceDeletedSuppressesLowValueDeletes(t *testing.T) {
+func TestGitHubCriticalResourceDeletedRetired(t *testing.T) {
 	rule := newGitHubCriticalResourceDeletedRule()
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("rule does not expose RuleMetadata")
+	}
+	definition := metadataRule.RuleMetadata()
+	if definition.Lifecycle.Kind != LifecycleRetired {
+		t.Fatalf("Lifecycle.Kind = %q, want %q", definition.Lifecycle.Kind, LifecycleRetired)
+	}
+	if definition.Lifecycle.Anchor != AnchorNone {
+		t.Fatalf("Lifecycle.Anchor = %q, want %q", definition.Lifecycle.Anchor, AnchorNone)
+	}
+	if definition.Maturity != "retired" {
+		t.Fatalf("Maturity = %q, want retired", definition.Maturity)
+	}
+	retirementRule, ok := rule.(openFindingRetirementRule)
+	if !ok || !retirementRule.RetiresOpenFindings() {
+		t.Fatalf("RetiresOpenFindings() = false, want true so stale findings under %q are resolved", githubCriticalResourceDeletedRuleID)
+	}
+
 	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "writer"}
-	for _, action := range []string{"codespaces.delete", "project.delete"} {
+	for _, action := range []string{"repo.destroy", "environment.delete"} {
 		event := githubAuditEvent("github-"+action, map[string]string{
 			"action": action,
 			"repo":   "writer/cerebro",
@@ -496,38 +515,8 @@ func TestGitHubCriticalResourceDeletedSuppressesLowValueDeletes(t *testing.T) {
 			t.Fatalf("Evaluate(%s) error = %v", action, err)
 		}
 		if len(records) != 0 {
-			t.Fatalf("len(%s records) = %d, want 0", action, len(records))
+			t.Fatalf("len(%s records) = %d, want 0 for retired rule", action, len(records))
 		}
-	}
-
-	event := githubAuditEvent("github-repo-destroy", map[string]string{
-		"action": "repo.destroy",
-		"repo":   "writer/cerebro",
-	})
-	records, err := rule.Evaluate(context.Background(), runtime, event)
-	if err != nil {
-		t.Fatalf("Evaluate(repo.destroy) error = %v", err)
-	}
-	if len(records) != 1 {
-		t.Fatalf("len(repo.destroy records) = %d, want 1", len(records))
-	}
-	if got := records[0].Severity; got != "HIGH" {
-		t.Fatalf("repo.destroy Severity = %q, want HIGH", got)
-	}
-
-	event = githubAuditEvent("github-environment-delete", map[string]string{
-		"action": "environment.delete",
-		"repo":   "writer/cerebro",
-	})
-	records, err = rule.Evaluate(context.Background(), runtime, event)
-	if err != nil {
-		t.Fatalf("Evaluate(environment.delete) error = %v", err)
-	}
-	if len(records) != 1 {
-		t.Fatalf("len(environment.delete records) = %d, want 1", len(records))
-	}
-	if got := records[0].Severity; got != "MEDIUM" {
-		t.Fatalf("environment.delete Severity = %q, want MEDIUM", got)
 	}
 }
 

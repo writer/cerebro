@@ -2478,6 +2478,7 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 		githubBranchProtectionDisabledRuleID:      {},
 		githubRepositoryMadePublicRuleID:          {},
 		githubProtectedBranchPolicyOverrideRuleID: {},
+		githubCriticalResourceDeletedRuleID:       {},
 	}
 	activeRuleIDs := []string{
 		githubSelfHostedRunnerChangeRuleID,
@@ -2489,7 +2490,6 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 		githubAppIntegrationInstalledRuleID,
 		githubPersonalAccessTokenCreatedRuleID,
 		githubRepositoryRulesetModifiedRuleID,
-		githubCriticalResourceDeletedRuleID,
 		githubWebhookModifiedRuleID,
 		githubPrivateRepositoryForkingEnabledRuleID,
 	}

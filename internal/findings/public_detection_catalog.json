@@ -399,7 +399,7 @@
       "pack_id": "github",
       "pack_name": "GitHub",
       "name": "GitHub Critical Resource Deleted",
-      "description": "Detect deletion of critical GitHub resources such as repositories, environments, projects, or codespaces.",
+      "description": "Retired GitHub audit-mirror rule retained so stale open findings auto-resolve; durable coverage moved to posture findings.",
       "source_id": "github",
       "evaluation_mode": "event",
       "event_kinds": [
@@ -408,12 +408,14 @@
       "output_kind": "finding.github_critical_resource_deleted",
       "severity": "HIGH",
       "status": "open",
-      "maturity": "test",
+      "maturity": "retired",
       "tags": [
         "attack.t1485",
+        "cleanup",
         "destructive-action",
         "github",
-        "impact"
+        "impact",
+        "retired"
       ],
       "references": [
         "https://github.com/SigmaHQ/sigma/blob/master/rules/application/github/audit/github_delete_action_invoked.yml",

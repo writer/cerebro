@@ -564,20 +564,6 @@ var githubRepositoryRulesetModifiedConfig = githubAuditSignalConfig{
 	},
 }
 
-var githubCriticalResourceDeletedConfig = githubAuditSignalConfig{
-	definition: githubCriticalResourceDeletedDefinition,
-	actions:    githubAuditActionSet("environment.delete", "repo.destroy"),
-	severity: func(attributes map[string]string) string {
-		if strings.TrimSpace(attributes["action"]) == "environment.delete" {
-			return "MEDIUM"
-		}
-		return "HIGH"
-	},
-	summary: func(attributes map[string]string) string {
-		return fmt.Sprintf("%s deleted GitHub resource %s for %s", githubAuditActor(attributes), strings.TrimSpace(attributes["action"]), githubAuditTarget(attributes))
-	},
-}
-
 var githubWebhookModifiedConfig = githubAuditSignalConfig{
 	definition: githubWebhookModifiedDefinition,
 	actions:    githubAuditActionSet("hook.config_changed", "hook.create"),
@@ -690,7 +676,7 @@ func newGitHubRepositoryRulesetModifiedRule() Rule {
 }
 
 func newGitHubCriticalResourceDeletedRule() Rule {
-	return newGitHubAuditSignalRule(githubCriticalResourceDeletedConfig)
+	return newRetiredGitHubAuditRule(githubCriticalResourceDeletedDefinition)
 }
 
 func newGitHubWebhookModifiedRule() Rule {
@@ -1288,6 +1274,7 @@ func newRetiredGitHubAuditRule(original RuleDefinition) Rule {
 	retired := original
 	retired.Description = "Retired GitHub audit-mirror rule retained so stale open findings auto-resolve; durable coverage moved to posture findings."
 	retired.Maturity = "retired"
+	retired.Lifecycle = Lifecycle{Kind: LifecycleRetired, Anchor: AnchorNone}
 	retired.Tags = appendUniqueString(cloneStringSlice(retired.Tags), githubRetirementTag, "cleanup")
 	return newEventRule(eventRuleConfig{
 		definition:         retired,
