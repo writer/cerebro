@@ -629,8 +629,7 @@
       ],
       "fingerprint_fields": [
         "org",
-        "user",
-        "action"
+        "user"
       ],
       "control_refs": [
         {
@@ -884,8 +883,7 @@
       ],
       "fingerprint_fields": [
         "repo",
-        "user",
-        "action"
+        "user"
       ],
       "control_refs": [
         {
@@ -986,8 +984,7 @@
       ],
       "fingerprint_fields": [
         "repo",
-        "ruleset_id",
-        "action"
+        "ruleset_id"
       ],
       "control_refs": [
         {
@@ -1185,8 +1182,7 @@
       ],
       "fingerprint_fields": [
         "repo",
-        "hook_id",
-        "action"
+        "hook_id"
       ],
       "control_refs": [
         {

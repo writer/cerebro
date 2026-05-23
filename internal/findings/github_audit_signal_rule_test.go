@@ -2,6 +2,7 @@ package findings
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -178,6 +179,281 @@ func TestGitHubCriticalResourceDeletedSuppressesLowValueDeletes(t *testing.T) {
 	}
 	if got := records[0].Severity; got != "MEDIUM" {
 		t.Fatalf("environment.delete Severity = %q, want MEDIUM", got)
+	}
+}
+
+func TestGitHubRepositoryCollaboratorAdded(t *testing.T) {
+	rule := newGitHubRepositoryCollaboratorAddedRule()
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("rule does not expose RuleMetadata")
+	}
+	definition := metadataRule.RuleMetadata()
+	if definition.Lifecycle.Kind != LifecycleDurableState {
+		t.Fatalf("Lifecycle.Kind = %q, want %q", definition.Lifecycle.Kind, LifecycleDurableState)
+	}
+	if definition.Lifecycle.Anchor != AnchorGraphAnchored {
+		t.Fatalf("Lifecycle.Anchor = %q, want %q", definition.Lifecycle.Anchor, AnchorGraphAnchored)
+	}
+	wantFields := []string{"repo", "user"}
+	if !cloudStringSlicesEqual(definition.FingerprintFields, wantFields) {
+		t.Fatalf("FingerprintFields = %v, want %v", definition.FingerprintFields, wantFields)
+	}
+	for _, field := range definition.FingerprintFields {
+		if field == "action" {
+			t.Fatalf("FingerprintFields still contains action: %v", definition.FingerprintFields)
+		}
+	}
+
+	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "writer"}
+	first := githubAuditEvent("github-collab-first", map[string]string{
+		"action": "repo.add_member",
+		"repo":   "writer/cerebro",
+		"user":   "external-vendor",
+	})
+	second := githubAuditEvent("github-collab-second", map[string]string{
+		"action": "repo.add_member",
+		"repo":   "writer/cerebro",
+		"user":   "external-vendor",
+	})
+	records, err := rule.Evaluate(context.Background(), runtime, first)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(first) = (%v, %v), want one record", records, err)
+	}
+	firstFinding := records[0]
+	records, err = rule.Evaluate(context.Background(), runtime, second)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(second) = (%v, %v), want one record", records, err)
+	}
+	secondFinding := records[0]
+	if firstFinding.Fingerprint != secondFinding.Fingerprint {
+		t.Fatalf("fingerprints differ across replays: %q vs %q (should be anchored to (repo, user))", firstFinding.Fingerprint, secondFinding.Fingerprint)
+	}
+	for _, eventID := range []string{first.GetId(), second.GetId()} {
+		if strings.Contains(firstFinding.Fingerprint, eventID) {
+			t.Fatalf("fingerprint %q contains event id %q", firstFinding.Fingerprint, eventID)
+		}
+	}
+
+	removal := githubAuditEvent("github-collab-removed", map[string]string{
+		"action": "repo.remove_member",
+		"repo":   "writer/cerebro",
+		"user":   "external-vendor",
+	})
+	records, err = rule.Evaluate(context.Background(), runtime, removal)
+	if err != nil {
+		t.Fatalf("Evaluate(remove) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(remove) returned %d findings, want 0 once collaborator removed", len(records))
+	}
+}
+
+func TestGitHubOrganizationOwnerAdded(t *testing.T) {
+	rule := newGitHubOrganizationOwnerAddedRule()
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("rule does not expose RuleMetadata")
+	}
+	definition := metadataRule.RuleMetadata()
+	if definition.Lifecycle.Kind != LifecycleDurableState {
+		t.Fatalf("Lifecycle.Kind = %q, want %q", definition.Lifecycle.Kind, LifecycleDurableState)
+	}
+	if definition.Lifecycle.Anchor != AnchorGraphAnchored {
+		t.Fatalf("Lifecycle.Anchor = %q, want %q", definition.Lifecycle.Anchor, AnchorGraphAnchored)
+	}
+	wantFields := []string{"org", "user"}
+	if !cloudStringSlicesEqual(definition.FingerprintFields, wantFields) {
+		t.Fatalf("FingerprintFields = %v, want %v", definition.FingerprintFields, wantFields)
+	}
+	for _, field := range definition.FingerprintFields {
+		if field == "action" {
+			t.Fatalf("FingerprintFields still contains action: %v", definition.FingerprintFields)
+		}
+	}
+
+	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "writer"}
+	first := githubAuditEvent("github-owner-first", map[string]string{
+		"action":     "org.add_member",
+		"org":        "writer",
+		"permission": "admin",
+		"user":       "new-owner",
+	})
+	second := githubAuditEvent("github-owner-second", map[string]string{
+		"action":     "org.add_member",
+		"org":        "writer",
+		"permission": "admin",
+		"user":       "new-owner",
+	})
+	records, err := rule.Evaluate(context.Background(), runtime, first)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(first) = (%v, %v), want one record", records, err)
+	}
+	firstFinding := records[0]
+	records, err = rule.Evaluate(context.Background(), runtime, second)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(second) = (%v, %v), want one record", records, err)
+	}
+	secondFinding := records[0]
+	if firstFinding.Fingerprint != secondFinding.Fingerprint {
+		t.Fatalf("fingerprints differ across replays: %q vs %q (should be anchored to (org, user))", firstFinding.Fingerprint, secondFinding.Fingerprint)
+	}
+	for _, eventID := range []string{first.GetId(), second.GetId()} {
+		if strings.Contains(firstFinding.Fingerprint, eventID) {
+			t.Fatalf("fingerprint %q contains event id %q", firstFinding.Fingerprint, eventID)
+		}
+	}
+
+	demotion := githubAuditEvent("github-owner-demoted", map[string]string{
+		"action":     "org.add_member",
+		"org":        "writer",
+		"permission": "member",
+		"user":       "new-owner",
+	})
+	records, err = rule.Evaluate(context.Background(), runtime, demotion)
+	if err != nil {
+		t.Fatalf("Evaluate(demoted) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(demoted) returned %d findings, want 0 once owner privilege revoked", len(records))
+	}
+}
+
+func TestGitHubRepositoryRulesetModified(t *testing.T) {
+	rule := newGitHubRepositoryRulesetModifiedRule()
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("rule does not expose RuleMetadata")
+	}
+	definition := metadataRule.RuleMetadata()
+	if definition.Lifecycle.Kind != LifecycleDurableState {
+		t.Fatalf("Lifecycle.Kind = %q, want %q", definition.Lifecycle.Kind, LifecycleDurableState)
+	}
+	if definition.Lifecycle.Anchor != AnchorGraphAnchored {
+		t.Fatalf("Lifecycle.Anchor = %q, want %q", definition.Lifecycle.Anchor, AnchorGraphAnchored)
+	}
+	wantFields := []string{"repo", "ruleset_id"}
+	if !cloudStringSlicesEqual(definition.FingerprintFields, wantFields) {
+		t.Fatalf("FingerprintFields = %v, want %v", definition.FingerprintFields, wantFields)
+	}
+	for _, field := range definition.FingerprintFields {
+		if field == "action" {
+			t.Fatalf("FingerprintFields still contains action: %v", definition.FingerprintFields)
+		}
+	}
+
+	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "writer"}
+	first := githubAuditEvent("github-ruleset-first", map[string]string{
+		"action":                        "repository_ruleset.update",
+		"enforcement":                   "active",
+		"repo":                          "writer/cerebro",
+		"required_status_check_removed": "true",
+		"ruleset_id":                    "42",
+	})
+	second := githubAuditEvent("github-ruleset-second", map[string]string{
+		"action":      "repository_ruleset.destroy",
+		"enforcement": "disabled",
+		"repo":        "writer/cerebro",
+		"ruleset_id":  "42",
+	})
+	records, err := rule.Evaluate(context.Background(), runtime, first)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(first) = (%v, %v), want one record", records, err)
+	}
+	firstFinding := records[0]
+	records, err = rule.Evaluate(context.Background(), runtime, second)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(second) = (%v, %v), want one record", records, err)
+	}
+	secondFinding := records[0]
+	if firstFinding.Fingerprint != secondFinding.Fingerprint {
+		t.Fatalf("fingerprints differ across update vs destroy on same anchor: %q vs %q (should be anchored to (repo, ruleset_id))", firstFinding.Fingerprint, secondFinding.Fingerprint)
+	}
+	for _, eventID := range []string{first.GetId(), second.GetId()} {
+		if strings.Contains(firstFinding.Fingerprint, eventID) {
+			t.Fatalf("fingerprint %q contains event id %q", firstFinding.Fingerprint, eventID)
+		}
+	}
+
+	restored := githubAuditEvent("github-ruleset-restored", map[string]string{
+		"action":      "repository_ruleset.update",
+		"enforcement": "active",
+		"repo":        "writer/cerebro",
+		"ruleset_id":  "42",
+	})
+	records, err = rule.Evaluate(context.Background(), runtime, restored)
+	if err != nil {
+		t.Fatalf("Evaluate(restored) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(restored) returned %d findings, want 0 once ruleset re-enforced", len(records))
+	}
+}
+
+func TestGitHubWebhookModified(t *testing.T) {
+	rule := newGitHubWebhookModifiedRule()
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("rule does not expose RuleMetadata")
+	}
+	definition := metadataRule.RuleMetadata()
+	if definition.Lifecycle.Kind != LifecycleDurableState {
+		t.Fatalf("Lifecycle.Kind = %q, want %q", definition.Lifecycle.Kind, LifecycleDurableState)
+	}
+	if definition.Lifecycle.Anchor != AnchorGraphAnchored {
+		t.Fatalf("Lifecycle.Anchor = %q, want %q", definition.Lifecycle.Anchor, AnchorGraphAnchored)
+	}
+	wantFields := []string{"repo", "hook_id"}
+	if !cloudStringSlicesEqual(definition.FingerprintFields, wantFields) {
+		t.Fatalf("FingerprintFields = %v, want %v", definition.FingerprintFields, wantFields)
+	}
+	for _, field := range definition.FingerprintFields {
+		if field == "action" {
+			t.Fatalf("FingerprintFields still contains action: %v", definition.FingerprintFields)
+		}
+	}
+
+	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "writer"}
+	first := githubAuditEvent("github-hook-create", map[string]string{
+		"action":  "hook.create",
+		"hook_id": "99",
+		"repo":    "writer/cerebro",
+	})
+	second := githubAuditEvent("github-hook-config-changed", map[string]string{
+		"action":  "hook.config_changed",
+		"hook_id": "99",
+		"repo":    "writer/cerebro",
+	})
+	records, err := rule.Evaluate(context.Background(), runtime, first)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(create) = (%v, %v), want one record", records, err)
+	}
+	firstFinding := records[0]
+	records, err = rule.Evaluate(context.Background(), runtime, second)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(config_changed) = (%v, %v), want one record", records, err)
+	}
+	secondFinding := records[0]
+	if firstFinding.Fingerprint != secondFinding.Fingerprint {
+		t.Fatalf("fingerprints differ across create vs config_changed on same anchor: %q vs %q (should be anchored to (repo, hook_id))", firstFinding.Fingerprint, secondFinding.Fingerprint)
+	}
+	for _, eventID := range []string{first.GetId(), second.GetId()} {
+		if strings.Contains(firstFinding.Fingerprint, eventID) {
+			t.Fatalf("fingerprint %q contains event id %q", firstFinding.Fingerprint, eventID)
+		}
+	}
+
+	destroy := githubAuditEvent("github-hook-destroy", map[string]string{
+		"action":  "hook.destroy",
+		"hook_id": "99",
+		"repo":    "writer/cerebro",
+	})
+	records, err = rule.Evaluate(context.Background(), runtime, destroy)
+	if err != nil {
+		t.Fatalf("Evaluate(destroy) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(destroy) returned %d findings, want 0 once webhook deleted", len(records))
 	}
 }
 

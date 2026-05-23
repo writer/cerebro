@@ -187,8 +187,9 @@ var githubRepositoryCollaboratorAddedDefinition = RuleDefinition{
 	FalsePositives:     []string{"Expected onboarding or approved repository access change."},
 	Runbook:            "Confirm the collaborator is authorized, review their repository permissions, and inspect immediate repository activity after access was granted.",
 	RequiredAttributes: []string{"action", "repo", "user"},
-	FingerprintFields:  []string{"repo", "user", "action"},
+	FingerprintFields:  []string{"repo", "user"},
 	ControlRefs:        githubAuditControlRefs,
+	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 }
 
 var githubOrganizationOwnerAddedDefinition = RuleDefinition{
@@ -206,8 +207,9 @@ var githubOrganizationOwnerAddedDefinition = RuleDefinition{
 	FalsePositives:     []string{"Approved organization owner onboarding or break-glass access grant."},
 	Runbook:            "Validate the new owner, revoke unauthorized access immediately, review owner activity, and require MFA/SSO re-verification.",
 	RequiredAttributes: []string{"action", "user", "permission"},
-	FingerprintFields:  []string{"org", "user", "action"},
+	FingerprintFields:  []string{"org", "user"},
 	ControlRefs:        githubAuditControlRefs,
+	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 }
 
 var githubCodeSecurityControlsDisabledDefinition = RuleDefinition{
@@ -339,8 +341,9 @@ var githubRepositoryRulesetModifiedDefinition = RuleDefinition{
 	FalsePositives:     []string{"Approved repository governance migration or ruleset tuning."},
 	Runbook:            "Review changed ruleset enforcement and bypass actors, restore required checks/reviews, and inspect protected branch activity.",
 	RequiredAttributes: []string{"action", "repo"},
-	FingerprintFields:  []string{"repo", "ruleset_id", "action"},
+	FingerprintFields:  []string{"repo", "ruleset_id"},
 	ControlRefs:        githubAuditControlRefs,
+	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 }
 
 var githubCriticalResourceDeletedDefinition = RuleDefinition{
@@ -377,8 +380,9 @@ var githubWebhookModifiedDefinition = RuleDefinition{
 	FalsePositives:     []string{"Approved integration onboarding or webhook maintenance."},
 	Runbook:            "Verify webhook destination and events, remove unauthorized hooks, and rotate secrets if repository data may have been sent externally.",
 	RequiredAttributes: []string{"action", "repo"},
-	FingerprintFields:  []string{"repo", "hook_id", "action"},
+	FingerprintFields:  []string{"repo", "hook_id"},
 	ControlRefs:        githubAuditControlRefs,
+	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 }
 
 var githubPrivateRepositoryForkingEnabledDefinition = RuleDefinition{
@@ -588,7 +592,7 @@ var githubCriticalResourceDeletedConfig = githubAuditSignalConfig{
 
 var githubWebhookModifiedConfig = githubAuditSignalConfig{
 	definition: githubWebhookModifiedDefinition,
-	actions:    githubAuditActionSet("hook.config_changed", "hook.create", "hook.destroy"),
+	actions:    githubAuditActionSet("hook.config_changed", "hook.create"),
 	summary: func(attributes map[string]string) string {
 		return fmt.Sprintf("%s modified GitHub webhook %s for %s", githubAuditActor(attributes), firstNonEmpty(attributes["hook_id"], "unknown hook"), githubAuditTarget(attributes))
 	},
