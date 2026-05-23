@@ -452,7 +452,12 @@ func validateCloseoutFlags(flags *closeoutFlags, env *closeoutEnv) error {
 		flags.DryRun = false
 	}
 
-	if len(flags.RuleIDs) == 0 && flags.RuleIDFile == "" {
+	// --source is a narrowing filter on top of the rule selector, not a
+	// selector in its own right. The rule-selector precondition is
+	// satisfied only by --rule-id or --rule-id-file (or both); sources are
+	// intentionally excluded from this check.
+	hasRuleSelector := len(flags.RuleIDs) > 0 || flags.RuleIDFile != ""
+	if !hasRuleSelector {
 		return ErrCloseoutRuleSelectorRequired
 	}
 	if flags.RuleIDFile != "" {

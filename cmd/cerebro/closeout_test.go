@@ -911,7 +911,22 @@ func TestCloseout_RequiresAtLeastOneRuleSource(t *testing.T) {
 		}
 	})
 	t.Run("source_only_insufficient", func(t *testing.T) {
-		env, backend, _, _, _ := newCloseoutTestEnv(t)
+		env, backend, writer, _, _ := newCloseoutTestEnv(t)
+		// Confirm the parser DOES recognize --source so the precondition
+		// rejection below is provably because --source fails to satisfy
+		// the rule-selector contract (not because the flag was dropped).
+		parsed, _, parseErr := parseCloseoutFlags([]string{"--source", "github"}, env)
+		if parseErr != nil {
+			t.Fatalf("parseCloseoutFlags(--source github) error = %v", parseErr)
+		}
+		if len(parsed.Sources) != 1 || parsed.Sources[0] != "github" {
+			t.Fatalf("expected --source github to populate Sources, got %v", parsed.Sources)
+		}
+		if len(parsed.RuleIDs) != 0 || parsed.RuleIDFile != "" {
+			t.Fatalf("expected no rule selector to be set, got rule_ids=%v rule_id_file=%q",
+				parsed.RuleIDs, parsed.RuleIDFile)
+		}
+
 		err := runCloseoutWithEnv([]string{"--source", "github"}, env)
 		if err == nil {
 			t.Fatal("expected error when only --source is provided")
@@ -919,8 +934,12 @@ func TestCloseout_RequiresAtLeastOneRuleSource(t *testing.T) {
 		if !errors.Is(err, ErrCloseoutRuleSelectorRequired) {
 			t.Errorf("error %v should match ErrCloseoutRuleSelectorRequired", err)
 		}
-		if backend.closeoutCallCount != 0 {
-			t.Errorf("backend.Closeout invoked despite source-only selector: %d", backend.closeoutCallCount)
+		if backend.supportsCallCount != 0 || backend.closeoutCallCount != 0 {
+			t.Errorf("backend invoked despite source-only selector: supports=%d closeout=%d",
+				backend.supportsCallCount, backend.closeoutCallCount)
+		}
+		if len(writer.calls) != 0 {
+			t.Errorf("summary writer invoked despite source-only selector: %d", len(writer.calls))
 		}
 	})
 
