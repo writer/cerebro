@@ -1,6 +1,38 @@
 repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+        files: ^(\.github/(workflows/.*|dependabot)\.ya?ml|infra/(aws|gcp)/Pulumi(\.[A-Za-z0-9_-]+)?\.ya?ml)$
+      - id: check-json
+        files: ^(\.infisical\.json|renovate\.json)$
+
   - repo: local
     hooks:
+      - id: github-actions-actionlint
+        name: Lint GitHub Actions workflows
+        entry: actionlint -color=false
+        language: system
+        pass_filenames: false
+        files: ^\.github/workflows/.*\.ya?ml$
+        stages: [pre-commit]
+
+      - id: shellcheck-github-scripts
+        name: ShellCheck GitHub scripts
+        entry: shellcheck
+        language: system
+        files: ^\.github/scripts/.*\.sh$
+        stages: [pre-commit]
+
+      - id: infra-uv-lock-check
+        name: Check infra uv.lock is in sync
+        entry: bash -c 'cd infra && uv lock --check'
+        language: system
+        pass_filenames: false
+        files: ^infra/(pyproject\.toml|uv\.lock)$
+        stages: [pre-commit]
+
       - id: cerebro-infra-static-validation
         name: Cerebro infra static validation
         entry: bash -c 'cd infra && uv run python -m compileall aws gcp scripts tests && uv run python scripts/validate_stack_config.py'
