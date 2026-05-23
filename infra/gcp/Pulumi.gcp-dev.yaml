@@ -10,8 +10,6 @@ config:
   cerebro:scannerRoleProjects:
     - writer-iam
     - qordoba-devel
-    - qordoba-prod
-    - writer-networking
     - writer-networking-nonprod
     - writer-devops
   cerebro:scannerRoles:

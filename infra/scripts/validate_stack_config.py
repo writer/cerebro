@@ -769,6 +769,10 @@ def validate_stack(path: Path) -> list[Finding]:
             findings.append(
                 _finding("error", stack, "cerebro:postgresBackupRetentionDays", "production backups must retain at least 14 days")
             )
+        if config.get("postgresApplyImmediately") is True:
+            findings.append(
+                _finding("error", stack, "cerebro:postgresApplyImmediately", "production RDS changes must use the maintenance window")
+            )
 
         allowed_tenants = config.get("allowedTenants") or []
         if not isinstance(allowed_tenants, list) or not allowed_tenants:

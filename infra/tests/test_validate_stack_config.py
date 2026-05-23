@@ -301,6 +301,13 @@ class ValidateStackConfigTest(unittest.TestCase):
         content = BASE_STACK.replace("  cerebro:postgresDeletionProtection: true", "  cerebro:postgresDeletionProtection: false")
         self.assertTrue(any("deletion protection" in message for message in self._messages(content)))
 
+    def test_prod_rejects_immediate_postgres_apply(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:postgresBackupRetentionDays: 14\n",
+            "  cerebro:postgresBackupRetentionDays: 14\n  cerebro:postgresApplyImmediately: true\n",
+        )
+        self.assertTrue(any("maintenance window" in message for message in self._messages(content)))
+
     def test_active_environments_require_api_headroom(self) -> None:
         content = BASE_STACK.replace("  cerebro:apiMaxInstances: 2", "  cerebro:apiMaxInstances: 1")
         self.assertTrue(any("at least two API tasks" in message for message in self._messages(content)))

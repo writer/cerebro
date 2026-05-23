@@ -161,12 +161,43 @@ jobs:
 
           echo "verify_summary=signature and build attestations verified" >> "$GITHUB_OUTPUT"
 
+      - name: Download and verify runtime deploy contract
+        id: contract
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ steps.image.outputs.tag }}
+          STACK_NAME: ${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'go-prod' }}
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          set -euo pipefail
+          current_tag="$(awk '$1 == "cerebro:imageTag:" { print $2; exit }' "infra/aws/Pulumi.${STACK_NAME}.yaml")"
+          if [ "${current_tag}" = "${IMAGE_TAG}" ]; then
+            echo "Stack ${STACK_NAME} already uses ${IMAGE_TAG}; skipping runtime contract download."
+            echo "path=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mkdir -p runtime-contract
+          gh release download "${IMAGE_TAG}" --repo writer/cerebro --dir runtime-contract \
+            --pattern cerebro-runtime-contract.json \
+            --pattern cerebro-runtime-contract.json.sig \
+            --pattern cerebro-runtime-contract.json.pem
+
+          GOBIN="${RUNNER_TEMP}/cosign" go install github.com/sigstore/cosign/v2/cmd/cosign@v2.6.1
+          "${RUNNER_TEMP}/cosign/cosign" verify-blob \
+            --certificate runtime-contract/cerebro-runtime-contract.json.pem \
+            --signature runtime-contract/cerebro-runtime-contract.json.sig \
+            --certificate-identity-regexp "https://github.com/writer/cerebro/.github/workflows/release.yml@refs/tags/${IMAGE_TAG}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            runtime-contract/cerebro-runtime-contract.json
+          echo "path=runtime-contract/cerebro-runtime-contract.json" >> "$GITHUB_OUTPUT"
+
       - name: Update stack config
         id: update
         shell: bash
         env:
           STACK_NAME: ${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'go-prod' }}
           IMAGE_TAG: ${{ steps.image.outputs.tag }}
+          CONTRACT_PATH: ${{ steps.contract.outputs.path }}
         run: |
           set -euo pipefail
 
@@ -174,6 +205,16 @@ jobs:
           echo "current_tag=${current_tag}" >> "$GITHUB_OUTPUT"
           uv run --project infra python infra/scripts/set_image_tag.py --stack "${STACK_NAME}" --image-tag "${IMAGE_TAG}"
           uv run --project infra python infra/scripts/validate_stack_config.py "infra/aws/Pulumi.${STACK_NAME}.yaml"
+          if [ -n "${CONTRACT_PATH}" ]; then
+            contract_args=()
+            if [ "${STACK_NAME}" = "sec-dev" ]; then
+              contract_args+=(--require-manifest-runtimes)
+            fi
+            uv run --project infra python infra/scripts/verify_runtime_contract.py \
+              --contract "${CONTRACT_PATH}" \
+              --stack-file "infra/aws/Pulumi.${STACK_NAME}.yaml" \
+              "${contract_args[@]}"
+          fi
 
           if git diff --quiet -- "infra/aws/Pulumi.${STACK_NAME}.yaml"; then
             echo "changed=false" >> "$GITHUB_OUTPUT"

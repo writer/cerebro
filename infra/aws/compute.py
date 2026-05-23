@@ -67,7 +67,7 @@ def create_ecs_cluster(
     )
 
     execution_role = _create_execution_role(name, kms_key_id, external_secrets_prefix)
-    task_role = _create_task_role(name, s3_source_iam_configs, efs_file_system_id)
+    task_role = _create_task_role(name, s3_source_iam_configs, efs_file_system_id, _source_runtime_aws_role_arns(source_runtimes or []))
     worker_task_role = None
 
     log_group = aws.cloudwatch.LogGroup(
@@ -103,7 +103,7 @@ def create_ecs_cluster(
     orchestrator_task_definitions = []
     orchestrator_events_role = None
     if orchestrator_enabled:
-        worker_task_role = _create_task_role(f"{name}-worker", s3_source_iam_configs, efs_file_system_id)
+        worker_task_role = _create_task_role(f"{name}-worker", s3_source_iam_configs, efs_file_system_id, _source_runtime_aws_role_arns(source_runtimes or []))
         schedules = _orchestrator_schedules(
             orchestrator_schedule_expression,
             orchestrator_command or ["orchestrator", "run"],
@@ -317,6 +317,21 @@ def _source_runtime_aws_role_entries(source_runtimes: list[dict]) -> list[str]:
     return sorted(role_entries)
 
 
+def _source_runtime_aws_role_arns(source_runtimes: list[dict]) -> list[str]:
+    role_arns = set()
+    for runtime in source_runtimes:
+        source_id = _runtime_field(runtime, "sourceId", "source_id")
+        if source_id != "aws":
+            continue
+        config = runtime.get("config") or {}
+        if not isinstance(config, dict):
+            continue
+        role_arn = str(config.get("role_arn", "")).strip()
+        if role_arn:
+            role_arns.add(role_arn)
+    return sorted(role_arns)
+
+
 def _create_execution_role(name: str, kms_key_id: pulumi.Input[str], external_secrets_prefix: str) -> aws.iam.Role:
     if not external_secrets_prefix:
         raise ValueError("external_secrets_prefix is required")
@@ -372,6 +387,7 @@ def _create_task_role(
     name: str,
     s3_source_iam_configs: list[dict] = None,
     efs_file_system_id: pulumi.Input[str] = None,
+    assume_role_arns: list[str] = None,
 ) -> aws.iam.Role:
     role = aws.iam.Role(
         f"{name}-task-role",
@@ -400,21 +416,19 @@ def _create_task_role(
         }),
     )
 
-    aws.iam.RolePolicy(
-        f"{name}-task-assume-role",
-        role=role.name,
-        policy=json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [{
-                "Effect": "Allow",
-                "Action": ["sts:AssumeRole", "sts:TagSession"],
-                "Resource": [
-                    "arn:aws:iam::*:role/cerebro-org-scan-role",
-                    "arn:aws:iam::*:role/cerebro-*-source-*",
-                ],
-            }],
-        }),
-    )
+    if assume_role_arns:
+        aws.iam.RolePolicy(
+            f"{name}-task-assume-role",
+            role=role.name,
+            policy=json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Action": ["sts:AssumeRole", "sts:TagSession"],
+                    "Resource": sorted(set(assume_role_arns)),
+                }],
+            }),
+        )
 
     if s3_source_iam_configs:
         bucket_arns = []
