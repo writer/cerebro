@@ -200,6 +200,110 @@ func TestIdentityMfaFactorResetOrDisabled(t *testing.T) {
 	assertIdentityRuleOlderCloseDoesNotResolveLaterOpen(t, rule, olderEnrolled, first)
 }
 
+func TestIdentityApiTokenOrOauthAppCreated(t *testing.T) {
+	rules := identityRulesByID(t)
+	rule := rules[identityAPIOrOAuthCredentialCreatedRuleID]
+	assertIdentityDurableMetadata(t, rule, []string{"user", "credential_id", "org", "oauth_app_id"})
+	if _, ok := rule.(CounterEventRule); !ok {
+		t.Fatal("identity-api-token-or-oauth-app-created does not implement CounterEventRule")
+	}
+
+	tokenRuntime := &cerebrov1.SourceRuntime{Id: "example-aws-access-key", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "access_key"}}
+	tokenAttrs := map[string]string{
+		"credential_id":   "AKIAEXAMPLE",
+		"credential_type": "aws_access_key",
+		"domain":          "123456789012",
+		"status":          "ACTIVE",
+		"subject_email":   "dev@writer.com",
+		"subject_id":      "AIDADEV",
+		"subject_type":    "user",
+	}
+	tokenFirst := identitySignalEventAt("aws-access-key-created-first", "aws", "aws.access_key", tokenAttrs, identityTrajectoryBaseTime)
+	tokenSecond := identitySignalEventAt("aws-access-key-created-second", "aws", "aws.access_key", tokenAttrs, identityTrajectoryBaseTime.Add(time.Minute))
+	records, err := rule.Evaluate(context.Background(), tokenRuntime, tokenFirst)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(token first) = (%v, %v), want one finding", records, err)
+	}
+	tokenFinding := records[0]
+	records, err = rule.Evaluate(context.Background(), tokenRuntime, tokenSecond)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(token second) = (%v, %v), want one finding", records, err)
+	}
+	if got := records[0].Fingerprint; got != tokenFinding.Fingerprint {
+		t.Fatalf("token fingerprint = %q, want stable %q for same (user, credential_id)", got, tokenFinding.Fingerprint)
+	}
+	if got := tokenFinding.Attributes["user"]; got != "dev@writer.com" {
+		t.Fatalf("token attributes[user] = %q, want dev@writer.com", got)
+	}
+	if got := tokenFinding.Attributes["credential_id"]; got != "AKIAEXAMPLE" {
+		t.Fatalf("token attributes[credential_id] = %q, want AKIAEXAMPLE", got)
+	}
+
+	tokenRevokedAttrs := cloneIdentitySignalAttributes(tokenAttrs)
+	tokenRevokedAttrs["action"] = "access_key.revoke"
+	tokenRevokedAttrs["status"] = "REVOKED"
+	tokenRevoked := identitySignalEventAt("aws-access-key-revoked", "aws", "aws.access_key", tokenRevokedAttrs, identityTrajectoryBaseTime.Add(2*time.Minute))
+	records, err = rule.Evaluate(context.Background(), tokenRuntime, tokenRevoked)
+	if err != nil {
+		t.Fatalf("Evaluate(token revoked) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(token revoked) returned %d findings, want 0 after credential revoke", len(records))
+	}
+	assertIdentityRuleRemediationTrajectory(t, rule, tokenFirst, tokenRevoked, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+	olderTokenRevoked := identitySignalEventAt("aws-access-key-revoked-before-open", "aws", "aws.access_key", tokenRevokedAttrs, identityTrajectoryBaseTime.Add(-time.Minute))
+	assertIdentityRuleOlderCloseDoesNotResolveLaterOpen(t, rule, olderTokenRevoked, tokenFirst)
+
+	oauthRuntime := &cerebrov1.SourceRuntime{Id: "example-okta-audit", SourceId: "okta", TenantId: "writer", Config: map[string]string{"family": "audit"}}
+	oauthAttrs := map[string]string{
+		"domain":         "writer.okta.com",
+		"event_type":     "oauth.application.create",
+		"actor_email":    "admin@writer.com",
+		"oauth_app_id":   "example-oauth-app",
+		"resource_id":    "0oa-client",
+		"resource_type":  "OAuthApplication",
+		"outcome_result": "SUCCESS",
+	}
+	oauthFirst := identitySignalEventAt("okta-oauth-app-created-first", "okta", "okta.audit", oauthAttrs, identityTrajectoryBaseTime)
+	oauthSecondAttrs := cloneIdentitySignalAttributes(oauthAttrs)
+	oauthSecondAttrs["actor_email"] = "other-admin@writer.com"
+	oauthSecond := identitySignalEventAt("okta-oauth-app-created-second", "okta", "okta.audit", oauthSecondAttrs, identityTrajectoryBaseTime.Add(time.Minute))
+	records, err = rule.Evaluate(context.Background(), oauthRuntime, oauthFirst)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(oauth first) = (%v, %v), want one finding", records, err)
+	}
+	oauthFinding := records[0]
+	records, err = rule.Evaluate(context.Background(), oauthRuntime, oauthSecond)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(oauth second) = (%v, %v), want one finding", records, err)
+	}
+	if got := records[0].Fingerprint; got != oauthFinding.Fingerprint {
+		t.Fatalf("oauth fingerprint = %q, want stable %q for same (org, oauth_app_id)", got, oauthFinding.Fingerprint)
+	}
+	if got := oauthFinding.Attributes["org"]; got != "writer.okta.com" {
+		t.Fatalf("oauth attributes[org] = %q, want writer.okta.com", got)
+	}
+	if got := oauthFinding.Attributes["oauth_app_id"]; got != "example-oauth-app" {
+		t.Fatalf("oauth attributes[oauth_app_id] = %q, want example-oauth-app", got)
+	}
+	if oauthFinding.Fingerprint == tokenFinding.Fingerprint {
+		t.Fatal("oauth branch reused token fingerprint; want branch selected by credential/app type")
+	}
+
+	uninstalledAttrs := cloneIdentitySignalAttributes(oauthAttrs)
+	uninstalledAttrs["event_type"] = "oauth.application.uninstall"
+	uninstalledAttrs["status"] = "deleted"
+	uninstalled := identitySignalEventAt("okta-oauth-app-uninstalled", "okta", "okta.audit", uninstalledAttrs, identityTrajectoryBaseTime.Add(2*time.Minute))
+	records, err = rule.Evaluate(context.Background(), oauthRuntime, uninstalled)
+	if err != nil {
+		t.Fatalf("Evaluate(oauth uninstalled) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(oauth uninstalled) returned %d findings, want 0 after app uninstall", len(records))
+	}
+	assertIdentityRuleRemediationTrajectory(t, rule, oauthFirst, uninstalled, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+}
+
 func TestIdentityPrivilegedAccountWithoutMfa(t *testing.T) {
 	rules := identityRulesByID(t)
 	rule := rules[identityPrivilegedAccountWithoutMFARuleID]
@@ -317,6 +421,72 @@ func TestIdentitySignalRulesJoinExternalGroupMemberToIdentifier(t *testing.T) {
 	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:writer:okta_user:00u-external")
 	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:writer:okta_group:grp-security")
 	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:writer:identifier:email:external@gmail.com")
+}
+
+func TestIdentityExternalOrPersonalGroupMember(t *testing.T) {
+	rules := identityRulesByID(t)
+	rule := rules[identityExternalGroupMemberRuleID]
+	assertIdentityDurableMetadata(t, rule, []string{"group_urn", "member_email"})
+	if _, ok := rule.(CounterEventRule); !ok {
+		t.Fatal("identity-external-or-personal-group-member does not implement CounterEventRule")
+	}
+
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-group-membership", SourceId: "okta", TenantId: "writer", Config: map[string]string{"family": "group_membership"}}
+	openAttrs := map[string]string{
+		"domain":         "writer.okta.com",
+		"group_id":       "grp-security",
+		"group_name":     "Security",
+		"member_email":   "external@gmail.com",
+		"member_status":  "ACTIVE",
+		"member_type":    "user",
+		"member_user_id": "00u-external",
+	}
+	first := identitySignalEventAt("okta-group-member-first", "okta", "okta.group_membership", openAttrs, identityTrajectoryBaseTime)
+	second := identitySignalEventAt("okta-group-member-second", "okta", "okta.group_membership", openAttrs, identityTrajectoryBaseTime.Add(time.Minute))
+	records, err := rule.Evaluate(context.Background(), runtime, first)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(first) = (%v, %v), want one finding", records, err)
+	}
+	firstFinding := records[0]
+	records, err = rule.Evaluate(context.Background(), runtime, second)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(second) = (%v, %v), want one finding", records, err)
+	}
+	if got := records[0].Fingerprint; got != firstFinding.Fingerprint {
+		t.Fatalf("fingerprint = %q, want stable %q for same (group_urn, member_email)", got, firstFinding.Fingerprint)
+	}
+	if got := firstFinding.Attributes["group_urn"]; got != "urn:cerebro:writer:okta_group:grp-security" {
+		t.Fatalf("attributes[group_urn] = %q, want okta group urn", got)
+	}
+	if got := firstFinding.Attributes["member_email"]; got != "external@gmail.com" {
+		t.Fatalf("attributes[member_email] = %q, want external@gmail.com", got)
+	}
+
+	otherGroupAttrs := cloneIdentitySignalAttributes(openAttrs)
+	otherGroupAttrs["group_id"] = "grp-other"
+	otherGroup := identitySignalEventAt("okta-group-member-other-group", "okta", "okta.group_membership", otherGroupAttrs, identityTrajectoryBaseTime.Add(time.Minute))
+	records, err = rule.Evaluate(context.Background(), runtime, otherGroup)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(other group) = (%v, %v), want one finding", records, err)
+	}
+	if got := records[0].Fingerprint; got == firstFinding.Fingerprint {
+		t.Fatalf("fingerprint for same member in different group = %q, want distinct from %q", got, firstFinding.Fingerprint)
+	}
+
+	removedAttrs := cloneIdentitySignalAttributes(openAttrs)
+	removedAttrs["action"] = "group.user_membership.remove"
+	removedAttrs["member_status"] = "removed"
+	removed := identitySignalEventAt("okta-group-member-removed", "okta", "okta.group_membership", removedAttrs, identityTrajectoryBaseTime.Add(2*time.Minute))
+	records, err = rule.Evaluate(context.Background(), runtime, removed)
+	if err != nil {
+		t.Fatalf("Evaluate(removed) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(removed) returned %d findings, want 0 after member removal", len(records))
+	}
+	assertIdentityRuleRemediationTrajectory(t, rule, first, removed, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+	olderRemoved := identitySignalEventAt("okta-group-member-removed-before-open", "okta", "okta.group_membership", removedAttrs, identityTrajectoryBaseTime.Add(-time.Minute))
+	assertIdentityRuleOlderCloseDoesNotResolveLaterOpen(t, rule, olderRemoved, first)
 }
 
 func TestIdentitySignalRulesDetectPrivilegedNoMFAUser(t *testing.T) {

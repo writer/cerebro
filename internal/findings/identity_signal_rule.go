@@ -140,19 +140,20 @@ func newIdentitySignalRules() []Rule {
 			predicate:   matchesIdentityMFAFactorResetOrDisabled,
 			fingerprint: identityUserFingerprintInputs,
 		}, identityUserAnchor, identityMFACloseAnchor),
-		newIdentitySignalRule(identitySignalConfig{
-			definition: identityRuleDefinition(
+		newIdentitySignalCounterEventRule(identitySignalConfig{
+			definition: identityDurableStateRuleDefinition(identityRuleDefinition(
 				identityAPIOrOAuthCredentialCreatedRuleID,
 				"Identity API Token Or OAuth App Created",
 				"Detect API token creation, OAuth application authorization, or domain-wide delegation changes.",
 				"HIGH",
 				"finding.identity_api_token_or_oauth_app_created",
 				[]string{"identity", "token", "oauth", "persistence", "attack.t1098"},
-			),
-			sourceIDs:  sourceIDs,
-			eventKinds: capabilities.EventKinds(identityCapabilityAudit, identityCapabilityCredential),
-			predicate:  matchesIdentityAPITokenOrOAuthCreated,
-		}),
+			), "user", "credential_id", "org", "oauth_app_id"),
+			sourceIDs:   sourceIDs,
+			eventKinds:  capabilities.EventKinds(identityCapabilityAudit, identityCapabilityCredential),
+			predicate:   matchesIdentityAPITokenOrOAuthCreated,
+			fingerprint: identityAPITokenOrOAuthFingerprintInputs,
+		}, identityAPITokenOrOAuthAnchor, identityAPITokenOrOAuthCloseAnchor),
 		newIdentitySignalCounterEventRule(identitySignalConfig{
 			definition: identityDurableStateRuleDefinition(identityRuleDefinition(
 				identityPrivilegedAccountWithoutMFARuleID,
@@ -180,19 +181,20 @@ func newIdentitySignalRules() []Rule {
 			eventKinds: capabilities.EventKinds(identityCapabilityUser),
 			predicate:  matchesIdentityStalePrivilegedAccount,
 		}),
-		newIdentitySignalRule(identitySignalConfig{
-			definition: identityRuleDefinition(
+		newIdentitySignalCounterEventRule(identitySignalConfig{
+			definition: identityDurableStateRuleDefinition(identityRuleDefinition(
 				identityExternalGroupMemberRuleID,
 				"Identity External Or Personal Group Member",
 				"Detect group memberships tied to personal or external email domains.",
 				"MEDIUM",
 				"finding.identity_external_or_personal_group_member",
 				[]string{"identity", "group", "external-access"},
-			),
-			sourceIDs:  sourceIDs,
-			eventKinds: capabilities.EventKinds(identityCapabilityGroupMembership),
-			predicate:  matchesIdentityExternalGroupMember,
-		}),
+			), "group_urn", "member_email"),
+			sourceIDs:   sourceIDs,
+			eventKinds:  capabilities.EventKinds(identityCapabilityGroupMembership),
+			predicate:   matchesIdentityExternalGroupMember,
+			fingerprint: identityExternalGroupMemberFingerprintInputs,
+		}, identityExternalGroupMemberAnchor, identityExternalGroupMemberCloseAnchor),
 		newIdentitySignalRule(identitySignalConfig{
 			definition: identityRuleDefinition(
 				identityControlTamperCredentialChangeRuleID,
@@ -376,6 +378,12 @@ func identityFindingAttributes(event *cerebrov1.EventEnvelope, runtime *cerebrov
 		"event_kind":           strings.TrimSpace(event.GetKind()),
 		"event_type":           identityAction(eventAttrs),
 		"family":               strings.TrimSpace(eventAttrs["family"]),
+		"credential_id":        identityCredentialID(eventAttrs),
+		"credential_type":      identityCredentialType(eventAttrs),
+		"group_urn":            identityGroupURNValue(eventAttrs, context, event.GetTenantId(), event.GetSourceId()),
+		"member_email":         identityMemberEmailValue(eventAttrs),
+		"oauth_app_id":         identityOAuthAppID(eventAttrs),
+		"org":                  identityOrgValue(eventAttrs),
 		"primary_actor_urn":    context.PrimaryActorURN,
 		"primary_resource_urn": context.PrimaryResourceURN,
 		"resource_id":          firstNonEmpty(eventAttrs["resource_id"], eventAttrs["user_id"], eventAttrs["group_id"], eventAttrs["role_id"], eventAttrs["app_id"], eventAttrs["client_id"]),
@@ -387,7 +395,7 @@ func identityFindingAttributes(event *cerebrov1.EventEnvelope, runtime *cerebrov
 		"role":                 identityRoleValue(eventAttrs),
 		"source_family":        strings.TrimSpace(event.GetSourceId()),
 		"source_runtime_id":    strings.TrimSpace(runtime.GetId()),
-		"user":                 identityUserValue(eventAttrs),
+		"user":                 firstNonEmpty(identityUserValue(eventAttrs), identityCredentialUserValue(eventAttrs)),
 	}
 	for key, value := range eventAttrs {
 		if _, exists := attributes[key]; !exists {
@@ -438,8 +446,54 @@ func identityAuthControlFingerprintInputs(_ *cerebrov1.EventEnvelope, attributes
 	return []string{firstNonEmpty(identityPolicyID(attributes), identityIDPID(attributes), projection.PrimaryResourceURN)}
 }
 
+func identityAPITokenOrOAuthFingerprintInputs(_ *cerebrov1.EventEnvelope, attributes map[string]string, _ findingProjectionContext) []string {
+	if tokenID := identityAPITokenCredentialID(attributes); tokenID != "" {
+		return []string{
+			identityCredentialUserValue(attributes),
+			tokenID,
+		}
+	}
+	if oauthAppID := identityOAuthAppID(attributes); oauthAppID != "" {
+		return []string{
+			identityOrgValue(attributes),
+			oauthAppID,
+		}
+	}
+	return nil
+}
+
+func identityExternalGroupMemberFingerprintInputs(event *cerebrov1.EventEnvelope, attributes map[string]string, projection findingProjectionContext) []string {
+	return []string{
+		identityGroupURNValue(attributes, projection, event.GetTenantId(), event.GetSourceId()),
+		identityMemberEmailValue(attributes),
+	}
+}
+
 func identityUserAnchor(attributes map[string]string) string {
 	return identityCounterEventAnchor(map[string]string{"user": identityUserValue(attributes)}, "user")
+}
+
+func identityAPITokenOrOAuthAnchor(attributes map[string]string) string {
+	if tokenID := identityAPITokenCredentialID(attributes); tokenID != "" {
+		return identityCounterEventAnchor(map[string]string{
+			"user":          identityCredentialUserValue(attributes),
+			"credential_id": tokenID,
+		}, "user", "credential_id")
+	}
+	if oauthAppID := identityOAuthAppID(attributes); oauthAppID != "" {
+		return identityCounterEventAnchor(map[string]string{
+			"org":          identityOrgValue(attributes),
+			"oauth_app_id": oauthAppID,
+		}, "org", "oauth_app_id")
+	}
+	return ""
+}
+
+func identityExternalGroupMemberAnchor(attributes map[string]string) string {
+	return identityCounterEventAnchor(map[string]string{
+		"group_urn":    strings.TrimSpace(attributes["group_urn"]),
+		"member_email": identityMemberEmailValue(attributes),
+	}, "group_urn", "member_email")
 }
 
 func identityAdminPrivilegeAnchor(attributes map[string]string) string {
@@ -505,6 +559,24 @@ func identityMFACloseAnchor(event Event) (string, bool) {
 	return anchor, anchor != ""
 }
 
+func identityAPITokenOrOAuthCloseAnchor(event Event) (string, bool) {
+	attributes := eventAttributes(event)
+	if !identityAPITokenOrOAuthInactive(attributes) {
+		return "", false
+	}
+	anchor := identityAPITokenOrOAuthAnchor(identityCounterEventAttributes(event, nil))
+	return anchor, anchor != ""
+}
+
+func identityExternalGroupMemberCloseAnchor(event Event) (string, bool) {
+	attributes := eventAttributes(event)
+	if identityGroupMembershipActiveOrUnknown(attributes) {
+		return "", false
+	}
+	anchor := identityExternalGroupMemberAnchor(identityCounterEventAttributes(event, nil))
+	return anchor, anchor != ""
+}
+
 func identityPrivilegedWithoutMFACloseAnchor(event Event) (string, bool) {
 	attributes := eventAttributes(event)
 	if matchesIdentityPrivilegedWithoutMFA(event, attributes) {
@@ -515,6 +587,53 @@ func identityPrivilegedWithoutMFACloseAnchor(event Event) (string, bool) {
 	}
 	anchor := identityUserAnchor(attributes)
 	return anchor, anchor != ""
+}
+
+func identityCounterEventAttributes(event Event, projection *findingProjectionContext) map[string]string {
+	if event == nil {
+		return nil
+	}
+	attributes := cloneStringMap(eventAttributes(event))
+	if attributes == nil {
+		attributes = map[string]string{}
+	}
+	context := findingProjectionContext{}
+	if projection != nil {
+		context = *projection
+	}
+	if value := identityCredentialID(attributes); value != "" {
+		attributes["credential_id"] = value
+	}
+	if value := identityCredentialType(attributes); value != "" {
+		attributes["credential_type"] = value
+	}
+	if value := identityGroupURNValue(attributes, context, event.GetTenantId(), event.GetSourceId()); value != "" {
+		attributes["group_urn"] = value
+	}
+	if value := identityMemberEmailValue(attributes); value != "" {
+		attributes["member_email"] = value
+	}
+	if value := identityOAuthAppID(attributes); value != "" {
+		attributes["oauth_app_id"] = value
+	}
+	if value := identityOrgValue(attributes); value != "" {
+		attributes["org"] = value
+	}
+	if value := identityCredentialUserValue(attributes); value != "" {
+		attributes["user"] = value
+	}
+	return attributes
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if values == nil {
+		return nil
+	}
+	cloned := make(map[string]string, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func identityUserValue(attributes map[string]string) string {
@@ -538,6 +657,155 @@ func identityUserValue(attributes map[string]string) string {
 		return firstNonEmpty(attributes["resource_id"], attributes["target_id"])
 	}
 	return firstNonEmpty(attributes["actor_email"], attributes["actor_alternate_id"])
+}
+
+func identityCredentialUserValue(attributes map[string]string) string {
+	if user := identityUserValue(attributes); user != "" {
+		return user
+	}
+	actorType := strings.ToLower(firstNonEmpty(attributes["actor_type"], attributes["actor_resource_type"], attributes["actor_entity_type"]))
+	if actorType == "" || containsAny(actorType, "user", "person", "principal", "service_account", "serviceprincipal", "service_principal") {
+		return firstNonEmpty(attributes["actor_email"], attributes["actor_alternate_id"], attributes["actor_id"], attributes["actor_display_name"])
+	}
+	return firstNonEmpty(attributes["actor_email"], attributes["actor_alternate_id"])
+}
+
+func identityCredentialID(attributes map[string]string) string {
+	if credentialID := firstNonEmpty(
+		attributes["credential_id"],
+		attributes["access_key_id"],
+		attributes["key_id"],
+		attributes["secret_id"],
+		attributes["token_id"],
+	); credentialID != "" {
+		return credentialID
+	}
+	if identityCredentialRepresentsOAuthApp(attributes) {
+		return ""
+	}
+	if identityResourceTypeMatches(attributes, "api_token", "access_key", "service_account_key", "credential", "client_secret", "secret", "key", "password") ||
+		containsAny(identityAction(attributes), "api_token", "client_secret", "client.secret", "access_key", "service_account_key") {
+		return firstNonEmpty(attributes["resource_id"], attributes["target_id"])
+	}
+	return ""
+}
+
+func identityAPITokenCredentialID(attributes map[string]string) string {
+	if identityCredentialRepresentsOAuthApp(attributes) {
+		return ""
+	}
+	return identityCredentialID(attributes)
+}
+
+func identityCredentialType(attributes map[string]string) string {
+	return firstNonEmpty(attributes["credential_type"], attributes["resource_type"], attributes["target_type"])
+}
+
+func identityCredentialRepresentsOAuthApp(attributes map[string]string) bool {
+	descriptor := strings.ToLower(strings.Join([]string{
+		identityCredentialType(attributes),
+		identityAction(attributes),
+	}, " "))
+	if descriptor == "" {
+		return false
+	}
+	if containsAny(descriptor, "api_token", "api token", "access_key", "access key", "service_account_key", "client_secret", "client.secret", "password", "secret", "key") {
+		return false
+	}
+	return containsAny(descriptor, "oauth", "oauth2", "oauth_app", "api_client", "application", "appinstance")
+}
+
+func identityOAuthAppID(attributes map[string]string) string {
+	if oauthAppID := firstNonEmpty(
+		attributes["oauth_app_id"],
+		attributes["oauth_client_id"],
+		attributes["oauth2_client_id"],
+		attributes["client_id"],
+		attributes["app_id"],
+		attributes["application_id"],
+	); oauthAppID != "" {
+		return oauthAppID
+	}
+	if identityCredentialRepresentsOAuthApp(attributes) ||
+		identityResourceTypeMatches(attributes, "oauth", "oauth_application", "application", "appinstance", "api_client") ||
+		containsAny(identityAction(attributes), "oauth", "oauth2", "api_client", "domain_wide", "domain-wide") {
+		return firstNonEmpty(attributes["resource_id"], attributes["target_id"])
+	}
+	return ""
+}
+
+func identityOrgValue(attributes map[string]string) string {
+	return firstNonEmpty(
+		attributes["org"],
+		attributes["org_id"],
+		attributes["organization"],
+		attributes["organization_id"],
+		attributes["domain"],
+		attributes["tenant_domain"],
+		attributes["account_id"],
+	)
+}
+
+func identityMemberEmailValue(attributes map[string]string) string {
+	return strings.ToLower(firstNonEmpty(attributes["member_email"], attributes["email"], attributes["user_email"], attributes["subject_email"]))
+}
+
+func identityGroupURNValue(attributes map[string]string, projection findingProjectionContext, tenantID string, sourceID string) string {
+	if groupURN := strings.TrimSpace(attributes["group_urn"]); groupURN != "" {
+		return groupURN
+	}
+	if groupURN := groupURNFromProjection(projection); groupURN != "" {
+		return groupURN
+	}
+	return identityGroupURNFromValues(tenantID, sourceID, firstNonEmpty(attributes["group_id"], attributes["id"]), firstNonEmpty(attributes["group_email"], attributes["email"]))
+}
+
+func groupURNFromProjection(projection findingProjectionContext) string {
+	if urn := strings.TrimSpace(projection.PrimaryResourceURN); urn != "" && strings.Contains(urn, "_group:") {
+		return urn
+	}
+	for _, entity := range projection.Entities {
+		if entity == nil {
+			continue
+		}
+		entityType := strings.ToLower(strings.TrimSpace(entity.EntityType))
+		if strings.HasSuffix(entityType, ".group") {
+			return strings.TrimSpace(entity.URN)
+		}
+	}
+	return ""
+}
+
+func identityGroupURNFromValues(tenantID string, sourceID string, groupID string, groupEmail string) string {
+	tenant := strings.TrimSpace(tenantID)
+	provider := strings.TrimSpace(sourceID)
+	if tenant == "" || provider == "" {
+		return ""
+	}
+	if trimmed := strings.TrimSpace(groupID); trimmed != "" {
+		return identityProjectionURN(tenant, provider+"_group", trimmed)
+	}
+	if email := strings.ToLower(strings.TrimSpace(groupEmail)); email != "" {
+		return identityProjectionURN(tenant, provider+"_group", "email", email)
+	}
+	return ""
+}
+
+func identityProjectionURN(tenantID string, kind string, parts ...string) string {
+	tenant := strings.TrimSpace(tenantID)
+	entityKind := strings.TrimSpace(kind)
+	if tenant == "" || entityKind == "" {
+		return ""
+	}
+	values := []string{"urn", "cerebro", tenant, entityKind}
+	for _, part := range parts {
+		value := strings.TrimSpace(part)
+		if value == "" {
+			continue
+		}
+		values = append(values, value)
+	}
+	return strings.Join(values, ":")
 }
 
 func identityRoleValue(attributes map[string]string) string {
@@ -761,7 +1029,10 @@ func matchesIdentityAPITokenOrOAuthCreated(_ *cerebrov1.EventEnvelope, attribute
 	if routineIdentityAssignmentAction(action) {
 		return false
 	}
-	if strings.TrimSpace(attributes["credential_id"]) != "" || strings.TrimSpace(attributes["credential_type"]) != "" {
+	if identityAPITokenOrOAuthInactive(attributes) {
+		return false
+	}
+	if identityAPITokenCredentialID(attributes) != "" || strings.TrimSpace(attributes["credential_type"]) != "" {
 		return identityCredentialActiveOrUnknown(attributes)
 	}
 	if routineOAuthRuntimeGrant(action) {
@@ -827,6 +1098,9 @@ func matchesIdentityStalePrivilegedAccount(_ *cerebrov1.EventEnvelope, attribute
 }
 
 func matchesIdentityExternalGroupMember(_ *cerebrov1.EventEnvelope, attributes map[string]string) bool {
+	if !identityGroupMembershipActiveOrUnknown(attributes) {
+		return false
+	}
 	email := strings.ToLower(firstNonEmpty(attributes["member_email"], attributes["email"], attributes["user_email"]))
 	return containsAny(email, "@gmail.com", "@yahoo.com", "@hotmail.com", "@outlook.com")
 }
@@ -885,6 +1159,33 @@ func identityCredentialActiveOrUnknown(attributes map[string]string) bool {
 	status := strings.ToLower(firstNonEmpty(attributes["credential_status"], attributes["status"], attributes["state"], attributes["lifecycle_status"]))
 	switch status {
 	case "inactive", "disabled", "deleted", "revoked", "expired", "deactivated", "suspended":
+		return false
+	default:
+		return true
+	}
+}
+
+func identityAPITokenOrOAuthInactive(attributes map[string]string) bool {
+	if !identityCredentialActiveOrUnknown(attributes) {
+		return true
+	}
+	action := identityAction(attributes)
+	if !containsAny(action, "revoke", "revoked", "delete", "deleted", "disable", "disabled", "deactivate", "deactivated", "suspend", "suspended", "expire", "expired", "uninstall", "remove", "removed") {
+		return false
+	}
+	return identityCredentialID(attributes) != "" ||
+		identityOAuthAppID(attributes) != "" ||
+		containsAny(action, "api_token", "oauth", "client_secret", "api_client", "application", "app")
+}
+
+func identityGroupMembershipActiveOrUnknown(attributes map[string]string) bool {
+	action := identityAction(attributes)
+	if containsAny(action, "remove", "removed", "delete", "deleted", "revoke", "revoked", "unassign", "unassigned", "leave", "left") {
+		return false
+	}
+	status := strings.ToLower(firstNonEmpty(attributes["member_status"], attributes["membership_status"], attributes["status"], attributes["state"], attributes["lifecycle_status"]))
+	switch status {
+	case "inactive", "disabled", "deleted", "removed", "revoked", "deactivated", "suspended", "expired", "left", "unassigned":
 		return false
 	default:
 		return true
