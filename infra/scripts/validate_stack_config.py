@@ -688,6 +688,41 @@ def validate_stack(path: Path) -> list[Finding]:
 
     environment = str(config.get("environment", stack)).lower()
     is_prod = stack.endswith("prod") or "prod" in environment
+    is_sec_dev = stack == "sec-dev" or environment == "sec-dev"
+    postgres_storage_type = str(config.get("postgresStorageType", "gp3")).strip().lower()
+    postgres_allocated_storage = config.get("postgresAllocatedStorage")
+    postgres_iops = config.get("postgresIops") or None
+    postgres_storage_throughput = config.get("postgresStorageThroughput") or None
+    if (is_sec_dev or is_prod) and postgres_storage_type == "gp2":
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:postgresStorageType",
+                "Postgres storage must not use burst-credit-limited gp2 for active Cerebro environments",
+            )
+        )
+    if (
+        postgres_storage_type == "gp3"
+        and isinstance(postgres_allocated_storage, int)
+        and postgres_allocated_storage < 400
+        and (postgres_iops is not None or postgres_storage_throughput is not None)
+    ):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:postgresAllocatedStorage",
+                "Postgres gp3 IOPS or throughput overrides require at least 400 GB allocated storage",
+            )
+        )
+    if is_sec_dev:
+        if config.get("postgresInstanceClass") == "db.t4g.micro":
+            findings.append(_finding("error", stack, "cerebro:postgresInstanceClass", "sec-dev Postgres must not use db.t4g.micro"))
+        if isinstance(postgres_allocated_storage, int) and postgres_allocated_storage < 100:
+            findings.append(
+                _finding("error", stack, "cerebro:postgresAllocatedStorage", "sec-dev Postgres storage must be at least 100 GB")
+            )
     if is_prod:
         if config.get("albInternal") is False:
             findings.append(_finding("error", stack, "cerebro:albInternal", "production ALB must remain internal"))

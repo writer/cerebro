@@ -257,6 +257,21 @@ def create_ecs_cluster(
                 scale_out_cooldown=60,
             ),
         )
+        aws.appautoscaling.Policy(
+            f"{name}-memory-scaling",
+            service_namespace="ecs",
+            resource_id=scaling_target.resource_id,
+            scalable_dimension="ecs:service:DesiredCount",
+            policy_type="TargetTrackingScaling",
+            target_tracking_scaling_policy_configuration=aws.appautoscaling.PolicyTargetTrackingScalingPolicyConfigurationArgs(
+                target_value=75.0,
+                predefined_metric_specification=aws.appautoscaling.PolicyTargetTrackingScalingPolicyConfigurationPredefinedMetricSpecificationArgs(
+                    predefined_metric_type="ECSServiceAverageMemoryUtilization",
+                ),
+                scale_in_cooldown=300,
+                scale_out_cooldown=60,
+            ),
+        )
 
     return {
         "cluster": cluster,

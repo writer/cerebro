@@ -18,8 +18,8 @@ def create_postgres(
     secret_name: str,
     instance_class: str = "db.t4g.micro",
     allocated_storage: int = 20,
+    storage_type: str = "gp3",
     max_allocated_storage: int | None = None,
-    storage_type: str | None = None,
     iops: int | None = None,
     storage_throughput: int | None = None,
     backup_retention_days: int = 7,
@@ -70,14 +70,13 @@ def create_postgres(
         engine_version="16.4",
         instance_class=instance_class,
         allocated_storage=allocated_storage,
-        max_allocated_storage=(
-            max_allocated_storage
-            if max_allocated_storage is not None
-            else _default_max_allocated_storage(allocated_storage)
+        **_postgres_storage_args(
+            allocated_storage=allocated_storage,
+            storage_type=storage_type,
+            max_allocated_storage=max_allocated_storage,
+            iops=iops,
+            storage_throughput=storage_throughput,
         ),
-        storage_type=storage_type,
-        iops=iops,
-        storage_throughput=storage_throughput,
         db_name="cerebro",
         username="cerebro",
         password=password.result,
@@ -120,5 +119,27 @@ def create_postgres(
     }
 
 
-def _default_max_allocated_storage(allocated_storage: int) -> int:
-    return max(allocated_storage * 2, allocated_storage + 20)
+def _postgres_storage_args(
+    *,
+    allocated_storage: int,
+    storage_type: str,
+    max_allocated_storage: int | None = None,
+    iops: int | None = None,
+    storage_throughput: int | None = None,
+) -> dict:
+    if allocated_storage <= 0:
+        raise ValueError("allocated_storage must be positive")
+    if max_allocated_storage is None:
+        max_allocated_storage = max(allocated_storage * 2, allocated_storage + 20)
+    if max_allocated_storage < allocated_storage:
+        raise ValueError("max_allocated_storage must be >= allocated_storage")
+
+    args = {
+        "storage_type": (storage_type or "gp3").strip() or "gp3",
+        "max_allocated_storage": max_allocated_storage,
+    }
+    if iops is not None:
+        args["iops"] = iops
+    if storage_throughput is not None:
+        args["storage_throughput"] = storage_throughput
+    return args
