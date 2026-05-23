@@ -185,6 +185,7 @@ config:
     description: Apply RDS modifications immediately instead of waiting for the maintenance window
   cerebro:postgresFinalSnapshotIdentifier:
     type: string
+    default: ""
     description: Optional final snapshot identifier used when deletion protection requires a final snapshot
   cerebro:retainLegacyJobsTableForDeletionProtectionTransition:
     type: boolean

@@ -102,7 +102,7 @@ def verify_contract(contract: dict[str, Any], stack: dict[str, Any], require_man
         }
         missing_contract_secrets = sorted(contract_required_secrets - source_secret_keys)
         if missing_contract_secrets:
-            errors.append(f"stack is missing contract-required sourceSecretKeys: {', '.join(missing_contract_secrets)}")
+            errors.append(f"stack is missing {len(missing_contract_secrets)} contract-required sourceSecretKeys")
 
     sources = _contract_sources(contract)
     stack_runtimes = stack.get("sourceRuntimes") or []
@@ -133,7 +133,7 @@ def verify_contract(contract: dict[str, Any], stack: dict[str, Any], require_man
             errors.append(f"runtime {runtime_id} uses unsupported {source_id} family {family!r}")
         missing_env_refs = sorted(_runtime_env_refs(runtime) - source_secret_keys)
         if missing_env_refs:
-            errors.append(f"runtime {runtime_id} references undeclared sourceSecretKeys: {', '.join(missing_env_refs)}")
+            errors.append(f"runtime {runtime_id} references {len(missing_env_refs)} undeclared sourceSecretKeys")
 
     if require_manifest_runtimes:
         for runtime_id, runtime in sorted(_contract_runtimes(contract).items()):
@@ -150,7 +150,10 @@ def verify_contract(contract: dict[str, Any], stack: dict[str, Any], require_man
                 actual = stack_config.get(key)
                 if str(expected).startswith("env:") or key == "family":
                     if str(actual) != str(expected):
-                        errors.append(f"runtime {runtime_id!r} config {key!r} is {actual!r}, expected {expected!r}")
+                        if str(expected).startswith("env:"):
+                            errors.append(f"runtime {runtime_id!r} config {key!r} does not match contract env reference")
+                        else:
+                            errors.append(f"runtime {runtime_id!r} config {key!r} is {actual!r}, expected {expected!r}")
                 elif key not in stack_config:
                     errors.append(f"runtime {runtime_id!r} is missing contract config key {key!r}")
 

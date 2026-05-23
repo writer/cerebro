@@ -82,7 +82,16 @@ class RuntimeContractTest(unittest.TestCase):
 
     def test_rejects_missing_secret_ref(self) -> None:
         stack = {**STACK, "sourceSecretKeys": ["OKTA_API_TOKEN", "OKTA_DOMAIN"]}
-        self.assertTrue(any("missing contract-required" in error for error in verify_runtime_contract.verify_contract(CONTRACT, stack, require_manifest_runtimes=True)))
+        errors = verify_runtime_contract.verify_contract(CONTRACT, stack, require_manifest_runtimes=True)
+        self.assertTrue(any("missing 1 contract-required sourceSecretKeys" in error for error in errors))
+        self.assertFalse(any("GITHUB_TOKEN" in error for error in errors))
+
+    def test_redacts_env_ref_mismatches(self) -> None:
+        runtime = {**STACK["sourceRuntimes"][0], "config": {"family": "audit", "owner": "writer", "token": "env:OTHER_TOKEN"}}
+        stack = {**STACK, "sourceRuntimes": [runtime]}
+        errors = verify_runtime_contract.verify_contract(CONTRACT, stack, require_manifest_runtimes=True)
+        self.assertTrue(any("does not match contract env reference" in error for error in errors))
+        self.assertFalse(any("GITHUB_TOKEN" in error or "OTHER_TOKEN" in error for error in errors))
 
     def test_rejects_missing_manifest_runtime_when_required(self) -> None:
         stack = {**STACK, "sourceRuntimes": [STACK["sourceRuntimes"][1]]}
