@@ -99,8 +99,8 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 	if strings.TrimSpace(selector.TenantID) == "" {
 		return nil, fmt.Errorf("%w: tenant id is required", ErrCloseoutInvalidRequest)
 	}
-	if len(selector.RuleIDs) == 0 {
-		return nil, fmt.Errorf("%w: at least one rule id is required", ErrCloseoutInvalidRequest)
+	if len(selector.RuleIDs) == 0 && len(selector.Sources) == 0 {
+		return nil, fmt.Errorf("%w: at least one rule id or source is required", ErrCloseoutInvalidRequest)
 	}
 	batchSize := req.MaxBatchSize
 	if batchSize <= 0 {
@@ -272,13 +272,14 @@ func (s *Service) tombstoneOneFinding(ctx context.Context, finding *ports.Findin
 }
 
 func (s *Service) listCloseoutCandidates(ctx context.Context, selector CloseoutSelector) ([]*ports.FindingRecord, error) {
+	ruleIDs := expandCloseoutRuleIDs(selector)
 	seen := map[string]struct{}{}
 	var out []*ports.FindingRecord
 	cutoff := time.Time{}
 	if selector.OlderThan > 0 {
 		cutoff = time.Now().UTC().Add(-selector.OlderThan)
 	}
-	for _, ruleID := range selector.RuleIDs {
+	for _, ruleID := range ruleIDs {
 		for _, status := range selector.Statuses {
 			results, err := s.store.ListFindings(ctx, ports.ListFindingsRequest{
 				TenantID: strings.TrimSpace(selector.TenantID),
@@ -311,6 +312,53 @@ func (s *Service) listCloseoutCandidates(ctx context.Context, selector CloseoutS
 		return strings.TrimSpace(out[i].ID) < strings.TrimSpace(out[j].ID)
 	})
 	return out, nil
+}
+
+func expandCloseoutRuleIDs(selector CloseoutSelector) []string {
+	seen := map[string]struct{}{}
+	ordered := make([]string, 0, len(selector.RuleIDs))
+	for _, id := range selector.RuleIDs {
+		trimmed := strings.TrimSpace(id)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		ordered = append(ordered, trimmed)
+	}
+	if len(selector.Sources) == 0 {
+		return ordered
+	}
+	sourceSet := make(map[string]struct{}, len(selector.Sources))
+	for _, src := range selector.Sources {
+		trimmed := strings.TrimSpace(src)
+		if trimmed == "" {
+			continue
+		}
+		sourceSet[trimmed] = struct{}{}
+	}
+	if len(sourceSet) == 0 {
+		return ordered
+	}
+	matched := []string{}
+	for ruleID, sourceID := range BuiltinRuleSourceIDs() {
+		if _, ok := sourceSet[strings.TrimSpace(sourceID)]; !ok {
+			continue
+		}
+		trimmed := strings.TrimSpace(ruleID)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		matched = append(matched, trimmed)
+	}
+	sort.Strings(matched)
+	return append(ordered, matched...)
 }
 
 func resolveCloseoutSelector(in CloseoutSelector) CloseoutSelector {

@@ -171,12 +171,16 @@ func newCloseoutFixture(t *testing.T) *closeoutFixture {
 }
 
 func (f *closeoutFixture) seedFinding(id string, status string, lastObserved time.Time, mutate func(*ports.FindingRecord)) *ports.FindingRecord {
+	return f.seedFindingWithRule(id, f.ruleID, status, lastObserved, mutate)
+}
+
+func (f *closeoutFixture) seedFindingWithRule(id string, ruleID string, status string, lastObserved time.Time, mutate func(*ports.FindingRecord)) *ports.FindingRecord {
 	finding := &ports.FindingRecord{
 		ID:              id,
 		Fingerprint:     "fp-" + id,
 		TenantID:        f.tenantID,
 		RuntimeID:       f.runtimeID,
-		RuleID:          f.ruleID,
+		RuleID:          ruleID,
 		Title:           "T " + id,
 		Severity:        "MEDIUM",
 		Status:          status,
@@ -741,6 +745,75 @@ func TestResolvers_LeaveTombstonedRowsUntouched(t *testing.T) {
 	}
 	if after.TombstoneGeneration != before.TombstoneGeneration {
 		t.Fatalf("tombstone_generation changed: before=%d after=%d", before.TombstoneGeneration, after.TombstoneGeneration)
+	}
+}
+
+func TestTombstoneFindingsBulk_SourceSelectorExpandsToRuleIDs(t *testing.T) {
+	fx := newCloseoutFixture(t)
+	fx.seedFindingWithRule("f-gh-1", "github-critical-resource-deleted", "open", fx.now.Add(-48*time.Hour), nil)
+	fx.seedFindingWithRule("f-gh-2", "github-webhook-modified", "open", fx.now.Add(-72*time.Hour), nil)
+	fx.seedFindingWithRule("f-okta-1", "identity-okta-deprovisioned-active-in-github", "open", fx.now.Add(-48*time.Hour), nil)
+
+	req := fx.request("run-src-1", false)
+	req.Selector.RuleIDs = nil
+	req.Selector.Sources = []string{"github"}
+
+	result, err := fx.service.TombstoneFindingsBulk(context.Background(), req)
+	if err != nil {
+		t.Fatalf("TombstoneFindingsBulk source-only error = %v", err)
+	}
+	if result.AppliedCount != 2 {
+		t.Fatalf("AppliedCount = %d, want 2", result.AppliedCount)
+	}
+	for _, id := range []string{"f-gh-1", "f-gh-2"} {
+		if !fx.store.findings[id].Tombstoned {
+			t.Fatalf("finding %s not tombstoned", id)
+		}
+	}
+	if fx.store.findings["f-okta-1"].Tombstoned {
+		t.Fatalf("finding f-okta-1 tombstoned despite different source")
+	}
+}
+
+func TestTombstoneFindingsBulk_SourceAndRuleIDsUnion(t *testing.T) {
+	fx := newCloseoutFixture(t)
+	fx.seedFindingWithRule("f-gh-1", "github-critical-resource-deleted", "open", fx.now.Add(-48*time.Hour), nil)
+	fx.seedFindingWithRule("f-id-1", "identity-mfa-factor-reset-or-disabled", "open", fx.now.Add(-48*time.Hour), nil)
+	fx.seedFindingWithRule("f-okta-1", "identity-okta-deprovisioned-active-in-github", "open", fx.now.Add(-48*time.Hour), nil)
+
+	req := fx.request("run-union-1", false)
+	req.Selector.RuleIDs = []string{"identity-mfa-factor-reset-or-disabled"}
+	req.Selector.Sources = []string{"github"}
+
+	result, err := fx.service.TombstoneFindingsBulk(context.Background(), req)
+	if err != nil {
+		t.Fatalf("TombstoneFindingsBulk union error = %v", err)
+	}
+	if result.AppliedCount != 2 {
+		t.Fatalf("AppliedCount = %d, want 2", result.AppliedCount)
+	}
+	for _, id := range []string{"f-gh-1", "f-id-1"} {
+		if !fx.store.findings[id].Tombstoned {
+			t.Fatalf("finding %s not tombstoned", id)
+		}
+	}
+	if fx.store.findings["f-okta-1"].Tombstoned {
+		t.Fatalf("finding f-okta-1 tombstoned, expected untouched")
+	}
+}
+
+func TestTombstoneFindingsBulk_RejectsEmptySelector(t *testing.T) {
+	fx := newCloseoutFixture(t)
+	req := fx.request("run-empty-1", false)
+	req.Selector.RuleIDs = nil
+	req.Selector.Sources = nil
+
+	_, err := fx.service.TombstoneFindingsBulk(context.Background(), req)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !errors.Is(err, ErrCloseoutInvalidRequest) {
+		t.Fatalf("err = %v, want ErrCloseoutInvalidRequest", err)
 	}
 }
 
