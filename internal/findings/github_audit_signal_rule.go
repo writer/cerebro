@@ -31,9 +31,10 @@ type githubAuditSignalClosePredicate func(Event) (string, bool)
 
 type githubAuditCounterEventRule struct {
 	Rule
-	definition  RuleDefinition
-	openAnchor  func(map[string]string) string
-	closeAnchor githubAuditSignalClosePredicate
+	definition    RuleDefinition
+	openAnchor    func(map[string]string) string
+	closeAnchor   githubAuditSignalClosePredicate
+	counterStates func(Event) []CounterEventStateUpdate
 }
 
 func newGitHubAuditCounterEventRule(config githubAuditSignalConfig, openAnchor func(map[string]string) string, closeAnchor githubAuditSignalClosePredicate) Rule {
@@ -42,6 +43,16 @@ func newGitHubAuditCounterEventRule(config githubAuditSignalConfig, openAnchor f
 		definition:  config.definition,
 		openAnchor:  openAnchor,
 		closeAnchor: closeAnchor,
+	}
+}
+
+func newGitHubAggregateAuditCounterEventRule(config githubAuditSignalConfig, openAnchor func(map[string]string) string, closeAnchor githubAuditSignalClosePredicate, counterStates func(Event) []CounterEventStateUpdate) Rule {
+	return &githubAuditCounterEventRule{
+		Rule:          newGitHubAuditSignalRule(config),
+		definition:    config.definition,
+		openAnchor:    openAnchor,
+		closeAnchor:   closeAnchor,
+		counterStates: counterStates,
 	}
 }
 
@@ -69,6 +80,13 @@ func (r *githubAuditCounterEventRule) CloseOnEvent(event Event) (string, bool) {
 		return "", false
 	}
 	return anchor, true
+}
+
+func (r *githubAuditCounterEventRule) CounterEventStates(event Event) []CounterEventStateUpdate {
+	if r == nil || r.counterStates == nil {
+		return nil
+	}
+	return r.counterStates(event)
 }
 
 const (
@@ -694,15 +712,15 @@ func newGitHubOrganizationOwnerAddedRule() Rule {
 }
 
 func newGitHubCodeSecurityControlsDisabledRule() Rule {
-	return newGitHubAuditCounterEventRule(githubCodeSecurityControlsDisabledConfig, githubRepositoryPostureAnchor, githubCodeSecurityControlsCloseAnchor)
+	return newGitHubAggregateAuditCounterEventRule(githubCodeSecurityControlsDisabledConfig, githubRepositoryPostureAnchor, githubCodeSecurityControlsCloseAnchor, githubCodeSecurityControlsCounterEventStates)
 }
 
 func newGitHubOrgAuthControlModifiedRule() Rule {
-	return newGitHubAuditCounterEventRule(githubOrgAuthControlModifiedConfig, githubOrgPostureAnchor, githubOrgAuthControlCloseAnchor)
+	return newGitHubAggregateAuditCounterEventRule(githubOrgAuthControlModifiedConfig, githubOrgPostureAnchor, githubOrgAuthControlCloseAnchor, githubOrgAuthControlCounterEventStates)
 }
 
 func newGitHubOrgIPAllowListModifiedRule() Rule {
-	return newGitHubAuditCounterEventRule(githubOrgIPAllowListModifiedConfig, githubOrgPostureAnchor, githubOrgIPAllowListCloseAnchor)
+	return newGitHubAggregateAuditCounterEventRule(githubOrgIPAllowListModifiedConfig, githubOrgPostureAnchor, githubOrgIPAllowListCloseAnchor, githubOrgIPAllowListCounterEventStates)
 }
 
 func newGitHubAppIntegrationInstalledRule() Rule {
@@ -1310,6 +1328,60 @@ func githubCodeSecurityControlsRestored(attributes map[string]string) bool {
 	)
 }
 
+func githubCodeSecurityControlsCounterEventStates(event Event) []CounterEventStateUpdate {
+	if !githubAuditSignalKindMatcher(event) {
+		return nil
+	}
+	attributes := eventAttributes(event)
+	return githubCounterEventStateUpdates(
+		githubRepositoryPostureAnchor(attributes),
+		githubDisabledCodeSecurityControls(attributes),
+		githubRestoredCodeSecurityControls(attributes),
+		event,
+	)
+}
+
+func githubRestoredCodeSecurityControls(attributes map[string]string) []string {
+	restored := []string{}
+	switch strings.TrimSpace(attributes["action"]) {
+	case "business_advanced_security.enabled",
+		"business_advanced_security.enabled_for_new_repos",
+		"org.advanced_security_enabled_for_new_repos",
+		"org.advanced_security_enabled_on_all_repos",
+		"org.advanced_security_policy_selected_member_enabled",
+		"repo.advanced_security_enabled",
+		"repo.advanced_security_policy_selected_member_enabled":
+		restored = append(restored, "advanced_security")
+	case "dependabot_alerts.enable",
+		"dependabot_alerts_new_repos.enable",
+		"dependabot_security_updates.enable",
+		"dependabot_security_updates_new_repos.enable":
+		restored = append(restored, "dependabot")
+	case "org.secret_scanning_push_protection_enable",
+		"repository_secret_scanning.enable",
+		"repository_secret_scanning_push_protection.enable":
+		restored = append(restored, "secret_scanning")
+	case "repository_vulnerability_alerts.enable":
+		restored = append(restored, "vulnerability_alerts")
+	}
+	if findingAttributeBool(attributes, "advanced_security_enabled", "github_advanced_security_enabled") {
+		restored = append(restored, "advanced_security")
+	}
+	if findingAttributeBool(attributes, "code_security_enabled") {
+		restored = append(restored, "advanced_security", "dependabot", "secret_scanning", "vulnerability_alerts")
+	}
+	if findingAttributeBool(attributes, "dependabot_enabled", "dependabot_alerts_enabled", "dependabot_security_updates_enabled") {
+		restored = append(restored, "dependabot")
+	}
+	if findingAttributeBool(attributes, "secret_scanning_enabled", "repository_secret_scanning_enabled", "secret_scanning_push_protection_enabled") {
+		restored = append(restored, "secret_scanning")
+	}
+	if findingAttributeBool(attributes, "vulnerability_alerts_enabled", "repository_vulnerability_alerts_enabled") {
+		restored = append(restored, "vulnerability_alerts")
+	}
+	return deduplicateStrings(restored)
+}
+
 func githubOrgAuthControlCloseAnchor(event Event) (string, bool) {
 	attributes := eventAttributes(event)
 	if !githubOrgAuthControlsRestored(attributes) {
@@ -1346,6 +1418,44 @@ func githubOrgAuthControlsRestored(attributes map[string]string) bool {
 	)
 }
 
+func githubOrgAuthControlCounterEventStates(event Event) []CounterEventStateUpdate {
+	if !githubAuditSignalKindMatcher(event) {
+		return nil
+	}
+	attributes := eventAttributes(event)
+	return githubCounterEventStateUpdates(
+		githubOrgPostureAnchor(attributes),
+		githubWeakenedAuthControls(attributes),
+		githubRestoredAuthControls(attributes),
+		event,
+	)
+}
+
+func githubRestoredAuthControls(attributes map[string]string) []string {
+	restored := []string{}
+	switch strings.TrimSpace(attributes["action"]) {
+	case "oauth_app_policy.enabled", "org.enable_oauth_app_restrictions":
+		restored = append(restored, "oauth_app_restrictions")
+	case "org.enable_saml_sso":
+		restored = append(restored, "saml")
+	case "org.enable_two_factor_requirement", "org.require_two_factor_requirement":
+		restored = append(restored, "two_factor_requirement")
+	}
+	if findingAttributeBool(attributes, "auth_control_strengthened") {
+		restored = append(restored, "auth_control", "oauth_app_restrictions", "saml", "two_factor_requirement")
+	}
+	if findingAttributeBool(attributes, "oauth_app_restrictions_enabled", "oauth_app_restrictions_enforced") {
+		restored = append(restored, "oauth_app_restrictions")
+	}
+	if findingAttributeBool(attributes, "saml_enabled", "saml_enforced", "saml_required", "saml_sso_enabled") {
+		restored = append(restored, "saml")
+	}
+	if findingAttributeBool(attributes, "mfa_required", "two_factor_enforced", "two_factor_required", "two_factor_requirement_enabled") {
+		restored = append(restored, "two_factor_requirement")
+	}
+	return deduplicateStrings(restored)
+}
+
 func githubOrgIPAllowListCloseAnchor(event Event) (string, bool) {
 	attributes := eventAttributes(event)
 	if !githubIPAllowListRestored(attributes) {
@@ -1364,6 +1474,121 @@ func githubIPAllowListRestored(attributes map[string]string) bool {
 	}
 	return findingAttributeBool(attributes, "ip_allow_list_enabled") ||
 		findingAttributeBool(attributes, "allowed_cidrs_compliant", "ip_allow_list_entries_compliant")
+}
+
+func githubOrgIPAllowListCounterEventStates(event Event) []CounterEventStateUpdate {
+	if !githubAuditSignalKindMatcher(event) {
+		return nil
+	}
+	attributes := eventAttributes(event)
+	return githubCounterEventStateUpdates(
+		githubOrgPostureAnchor(attributes),
+		githubWeakenedIPAllowListControls(attributes),
+		githubRestoredIPAllowListControls(attributes),
+		event,
+	)
+}
+
+func githubWeakenedIPAllowListControls(attributes map[string]string) []string {
+	weakened := []string{}
+	if findingAttributeBool(attributes, "ip_allow_list_disabled") || githubAttributeExplicitlyFalse(attributes, "ip_allow_list_enabled") {
+		weakened = append(weakened, "enabled")
+	}
+	if githubAttributeExplicitlyFalse(attributes, "allowed_cidrs_compliant", "ip_allow_list_entries_compliant") ||
+		githubNonEmptyListAttribute(attributes, "non_allowlisted_cidrs") ||
+		githubPositiveCountAttribute(attributes, "non_allowlisted_cidr_count") {
+		weakened = append(weakened, "cidrs")
+	}
+	return deduplicateStrings(weakened)
+}
+
+func githubRestoredIPAllowListControls(attributes map[string]string) []string {
+	restored := []string{}
+	switch strings.TrimSpace(attributes["action"]) {
+	case "ip_allow_list.enable", "ip_allow_list.enabled", "org.enable_ip_allow_list":
+		restored = append(restored, "enabled")
+	}
+	if findingAttributeBool(attributes, "ip_allow_list_enabled") {
+		restored = append(restored, "enabled")
+	}
+	if findingAttributeBool(attributes, "allowed_cidrs_compliant", "ip_allow_list_entries_compliant") ||
+		githubZeroCountAttribute(attributes, "non_allowlisted_cidr_count") ||
+		githubEmptyListAttribute(attributes, "non_allowlisted_cidrs") {
+		restored = append(restored, "cidrs")
+	}
+	return deduplicateStrings(restored)
+}
+
+func githubCounterEventStateUpdates(anchor string, openKeys []string, closeKeys []string, event Event) []CounterEventStateUpdate {
+	anchor = strings.TrimSpace(anchor)
+	if anchor == "" {
+		return nil
+	}
+	openKeys = deduplicateStrings(openKeys)
+	closeKeys = deduplicateStrings(closeKeys)
+	if len(openKeys) == 0 && len(closeKeys) == 0 {
+		return nil
+	}
+	eventIDs := []string(nil)
+	if event != nil {
+		if eventID := strings.TrimSpace(event.GetId()); eventID != "" {
+			eventIDs = []string{eventID}
+		}
+	}
+	states := make([]CounterEventStateUpdate, 0, len(openKeys)+len(closeKeys))
+	openSet := make(map[string]struct{}, len(openKeys))
+	for _, key := range openKeys {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		openSet[key] = struct{}{}
+		states = append(states, CounterEventStateUpdate{
+			Anchor:   anchor,
+			Key:      key,
+			Closes:   false,
+			EventIDs: eventIDs,
+		})
+	}
+	for _, key := range closeKeys {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if _, open := openSet[key]; open {
+			continue
+		}
+		states = append(states, CounterEventStateUpdate{
+			Anchor:   anchor,
+			Key:      key,
+			Closes:   true,
+			EventIDs: eventIDs,
+		})
+	}
+	return states
+}
+
+func githubZeroCountAttribute(attributes map[string]string, keys ...string) bool {
+	for _, key := range keys {
+		if strings.TrimSpace(attributes[key]) == "0" {
+			return true
+		}
+	}
+	return false
+}
+
+func githubEmptyListAttribute(attributes map[string]string, keys ...string) bool {
+	for _, key := range keys {
+		value, ok := attributes[key]
+		if !ok {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "", "[]", "{}", "none", "null":
+			return true
+		}
+	}
+	return false
 }
 
 func githubRepositoryRulesetAnchor(attributes map[string]string) string {

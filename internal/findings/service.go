@@ -702,6 +702,11 @@ func (s *Service) resolveCounterEventOpenFindings(ctx context.Context, runtime *
 }
 
 func latestCounterAnchorEvents(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule Rule, counterRule CounterEventRule, evaluatedEvents []*cerebrov1.EventEnvelope) (map[string]counterAnchorLatestEvent, error) {
+	if aggregateRule, ok := counterRule.(AggregateCounterEventRule); ok {
+		if latestByAnchor, handled := latestAggregateCounterAnchorEvents(aggregateRule, evaluatedEvents); handled {
+			return latestByAnchor, nil
+		}
+	}
 	latestByAnchor := make(map[string]counterAnchorLatestEvent)
 	ruleID := ""
 	if spec := rule.Spec(); spec != nil {
@@ -745,6 +750,73 @@ func latestCounterAnchorEvents(ctx context.Context, runtime *cerebrov1.SourceRun
 		}
 	}
 	return latestByAnchor, nil
+}
+
+func latestAggregateCounterAnchorEvents(rule AggregateCounterEventRule, evaluatedEvents []*cerebrov1.EventEnvelope) (map[string]counterAnchorLatestEvent, bool) {
+	if rule == nil {
+		return nil, false
+	}
+	latestByAnchorAndKey := map[string]map[string]counterAnchorLatestEvent{}
+	handled := false
+	for sequence, event := range evaluatedEvents {
+		if event == nil {
+			continue
+		}
+		observedAt := counterAnchorEventObservedAt(event)
+		for _, state := range rule.CounterEventStates(event) {
+			anchor := strings.TrimSpace(state.Anchor)
+			key := strings.TrimSpace(state.Key)
+			if anchor == "" || key == "" {
+				continue
+			}
+			eventIDs := uniqueTrimmedStringsPreserveOrder(state.EventIDs)
+			if len(eventIDs) == 0 {
+				if eventID := strings.TrimSpace(event.GetId()); eventID != "" {
+					eventIDs = []string{eventID}
+				}
+			}
+			if latestByAnchorAndKey[anchor] == nil {
+				latestByAnchorAndKey[anchor] = map[string]counterAnchorLatestEvent{}
+			}
+			recordLatestCounterAnchorEvent(latestByAnchorAndKey[anchor], key, counterAnchorLatestEvent{
+				observedAt: observedAt,
+				sequence:   sequence,
+				closes:     state.Closes,
+				eventIDs:   eventIDs,
+			})
+			handled = true
+		}
+	}
+	if !handled {
+		return nil, false
+	}
+	latestByAnchor := make(map[string]counterAnchorLatestEvent)
+	for anchor, latestByKey := range latestByAnchorAndKey {
+		if latest, ok := aggregateCounterAnchorClose(latestByKey); ok {
+			latestByAnchor[anchor] = latest
+		}
+	}
+	return latestByAnchor, true
+}
+
+func aggregateCounterAnchorClose(latestByKey map[string]counterAnchorLatestEvent) (counterAnchorLatestEvent, bool) {
+	if len(latestByKey) == 0 {
+		return counterAnchorLatestEvent{}, false
+	}
+	latestClose := counterAnchorLatestEvent{}
+	eventIDs := []string{}
+	for _, latest := range latestByKey {
+		if !latest.closes {
+			return counterAnchorLatestEvent{}, false
+		}
+		if !latestClose.closes || counterAnchorEventIsNewer(latest, latestClose) {
+			latestClose = latest
+		}
+		eventIDs = append(eventIDs, latest.eventIDs...)
+	}
+	latestClose.closes = true
+	latestClose.eventIDs = uniqueTrimmedStringsPreserveOrder(eventIDs)
+	return latestClose, true
 }
 
 func recordLatestCounterAnchorEvent(latestByAnchor map[string]counterAnchorLatestEvent, anchor string, event counterAnchorLatestEvent) {

@@ -733,6 +733,36 @@ func TestGitHubOrgAuthControlModifiedTrajectory_Restore(t *testing.T) {
 	}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
 }
 
+func TestGitHubOrgAuthControlModifiedTrajectory_PartialRestoreKeepsFindingOpen(t *testing.T) {
+	rule := newGitHubOrgAuthControlModifiedRule()
+	if _, ok := rule.(CounterEventRule); !ok {
+		t.Fatal("github-org-auth-control-modified does not implement CounterEventRule")
+	}
+	assertGitHubRuleTrajectory(t, rule, []Event{
+		newGitHubAuditSignalEvent("github-auth-partial-oauth-weakened", map[string]string{
+			"action":                         "oauth_app_policy.disabled",
+			"oauth_app_restrictions_enabled": "false",
+			"org":                            "writer",
+			"resource_id":                    "writer",
+			"resource_type":                  "org",
+		}),
+		newGitHubAuditSignalEvent("github-auth-partial-2fa-weakened", map[string]string{
+			"action":                         "org.disable_two_factor_requirement",
+			"org":                            "writer",
+			"resource_id":                    "writer",
+			"resource_type":                  "org",
+			"two_factor_requirement_enabled": "false",
+		}),
+		newGitHubAuditSignalEvent("github-auth-partial-oauth-restored", map[string]string{
+			"action":                         "oauth_app_policy.enabled",
+			"oauth_app_restrictions_enabled": "true",
+			"org":                            "writer",
+			"resource_id":                    "writer",
+			"resource_type":                  "org",
+		}),
+	}, cerebrov1.FindingStatus_FINDING_STATUS_OPEN)
+}
+
 func TestGitHubRepositoryRulesetModifiedRequiresWeakeningSignal(t *testing.T) {
 	rule := newGitHubRepositoryRulesetModifiedRule()
 	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "writer"}
@@ -881,6 +911,37 @@ func TestGitHubOrgIpAllowListModifiedTrajectory_Restore(t *testing.T) {
 	}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
 }
 
+func TestGitHubOrgIpAllowListModifiedTrajectory_PartialRestoreKeepsFindingOpen(t *testing.T) {
+	rule := newGitHubOrgIPAllowListModifiedRule()
+	if _, ok := rule.(CounterEventRule); !ok {
+		t.Fatal("github-org-ip-allow-list-modified does not implement CounterEventRule")
+	}
+	assertGitHubRuleTrajectory(t, rule, []Event{
+		newGitHubAuditSignalEvent("github-ip-partial-disabled", map[string]string{
+			"action":                "ip_allow_list.disable",
+			"ip_allow_list_enabled": "false",
+			"org":                   "writer",
+			"resource_id":           "writer",
+			"resource_type":         "ip_allow_list",
+		}),
+		newGitHubAuditSignalEvent("github-ip-partial-cidr-open", map[string]string{
+			"action":                "ip_allow_list_entry.create",
+			"ip_allow_list_enabled": "true",
+			"non_allowlisted_cidrs": "203.0.113.0/24",
+			"org":                   "writer",
+			"resource_id":           "writer",
+			"resource_type":         "ip_allow_list",
+		}),
+		newGitHubAuditSignalEvent("github-ip-partial-enabled", map[string]string{
+			"action":                "ip_allow_list.enabled",
+			"ip_allow_list_enabled": "true",
+			"org":                   "writer",
+			"resource_id":           "writer",
+			"resource_type":         "ip_allow_list",
+		}),
+	}, cerebrov1.FindingStatus_FINDING_STATUS_OPEN)
+}
+
 func TestGitHubCodeSecurityControlsDisabled(t *testing.T) {
 	rule := newGitHubCodeSecurityControlsDisabledRule()
 	metadataRule, ok := rule.(MetadataRule)
@@ -990,6 +1051,39 @@ func TestGitHubCodeSecurityControlsDisabledTrajectory_DisableEnable(t *testing.T
 			"secret_scanning_push_protection_enabled": "true",
 		}),
 	}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+}
+
+func TestGitHubCodeSecurityControlsDisabledTrajectory_PartialRestoreKeepsFindingOpen(t *testing.T) {
+	rule := newGitHubCodeSecurityControlsDisabledRule()
+	if _, ok := rule.(CounterEventRule); !ok {
+		t.Fatal("github-code-security-controls-disabled does not implement CounterEventRule")
+	}
+	assertGitHubRuleTrajectory(t, rule, []Event{
+		newGitHubAuditSignalEvent("github-code-security-partial-dependabot-disabled", map[string]string{
+			"action":                    "dependabot_alerts.disable",
+			"dependabot_alerts_enabled": "false",
+			"org":                       "writer",
+			"repo":                      "writer/cerebro",
+			"resource_id":               "writer/cerebro",
+			"resource_type":             "repository",
+		}),
+		newGitHubAuditSignalEvent("github-code-security-partial-secret-scanning-disabled", map[string]string{
+			"action":                             "repository_secret_scanning.disable",
+			"org":                                "writer",
+			"repo":                               "writer/cerebro",
+			"repository_secret_scanning_enabled": "false",
+			"resource_id":                        "writer/cerebro",
+			"resource_type":                      "repository",
+		}),
+		newGitHubAuditSignalEvent("github-code-security-partial-dependabot-enabled", map[string]string{
+			"action":                    "dependabot_alerts.enable",
+			"dependabot_alerts_enabled": "true",
+			"org":                       "writer",
+			"repo":                      "writer/cerebro",
+			"resource_id":               "writer/cerebro",
+			"resource_type":             "repository",
+		}),
+	}, cerebrov1.FindingStatus_FINDING_STATUS_OPEN)
 }
 
 func TestGitHubCodeSecurityControlsDisabledTrajectory_ClosesPerRepoAnchor(t *testing.T) {

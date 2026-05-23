@@ -25,6 +25,21 @@ type CounterEventRule interface {
 	CloseOnEvent(event Event) (anchor string, closes bool)
 }
 
+// CounterEventStateUpdate lets aggregate durable-state rules describe which
+// subcontrol at an anchor an event made compliant or non-compliant.
+type CounterEventStateUpdate struct {
+	Anchor   string
+	Key      string
+	Closes   bool
+	EventIDs []string
+}
+
+// AggregateCounterEventRule is an optional extension for aggregate rules whose
+// single finding represents multiple subcontrol states at the same anchor.
+type AggregateCounterEventRule interface {
+	CounterEventStates(event Event) []CounterEventStateUpdate
+}
+
 type RuleDefinition struct {
 	ID                 string
 	Name               string
