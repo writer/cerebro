@@ -1,6 +1,7 @@
 package workflowevents
 
 import (
+	"bytes"
 	"testing"
 	"time"
 )
@@ -33,6 +34,15 @@ func TestNewDecisionRecordedEventIsStableAndDecodable(t *testing.T) {
 	}
 	if got := first.GetAttributes()[EventAttributeDecisionID]; got != payload.DecisionID {
 		t.Fatalf("decision_id attribute = %q, want %q", got, payload.DecisionID)
+	}
+	if !IsSharedEnvelopeEvent(first) {
+		t.Fatalf("workflow event payload is not marked as shared Avro envelope: %#v", first.GetAttributes())
+	}
+	if bytes.HasPrefix(bytes.TrimSpace(first.GetPayload()), []byte("{")) {
+		t.Fatal("workflow event payload is JSON, want shared Avro envelope")
+	}
+	if got := first.GetAttributes()["event_type"]; got != EventKindKnowledgeDecisionRecorded {
+		t.Fatalf("event_type attribute = %q, want %q", got, EventKindKnowledgeDecisionRecorded)
 	}
 	decoded, err := DecodeDecisionRecorded(first)
 	if err != nil {

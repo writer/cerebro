@@ -4,8 +4,11 @@ go 1.26.0
 
 toolchain go1.26.3
 
+replace github.com/WriterInternal/event-registry/clients/go => ./internal/eventregistry
+
 require (
 	connectrpc.com/connect v1.19.2
+	github.com/WriterInternal/event-registry/clients/go v0.0.0-20260523045044-47084e3345ce
 	github.com/aws/aws-sdk-go-v2 v1.41.7
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.16
@@ -25,6 +28,7 @@ require (
 	github.com/neo4j/neo4j-go-driver/v5 v5.28.4
 	github.com/package-url/packageurl-go v0.1.6
 	golang.org/x/net v0.54.0
+	golang.org/x/sys v0.44.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -52,6 +56,5 @@ require (
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	golang.org/x/crypto v0.51.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.44.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 )
