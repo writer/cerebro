@@ -160,10 +160,9 @@ func TestIdentityMfaFactorResetOrDisabled(t *testing.T) {
 		t.Fatal("identity-mfa-factor-reset-or-disabled does not expose RuleMetadata")
 	}
 	definition := metadataRule.RuleMetadata()
-	for _, kind := range []string{"okta.user", "google_workspace.user", "azure.user", "aws.iam_user", "gcp.service_account"} {
-		if !slices.Contains(definition.EventKinds, kind) {
-			t.Fatalf("EventKinds = %v, want projected identity user kind %q", definition.EventKinds, kind)
-		}
+	sourceBackedMFAKinds := []string{"gcp.service_account", "google_workspace.user", "okta.user"}
+	if !cloudStringSlicesEqual(definition.EventKinds, sourceBackedMFAKinds) {
+		t.Fatalf("EventKinds = %v, want source-backed MFA posture kinds %v", definition.EventKinds, sourceBackedMFAKinds)
 	}
 	for _, auditKind := range []string{"okta.audit", "google_workspace.audit", "azure.directory_audit", "azure.activity_log", "aws.cloudtrail", "gcp.audit"} {
 		if slices.Contains(definition.EventKinds, auditKind) {
@@ -209,36 +208,6 @@ func TestIdentityMfaFactorResetOrDisabled(t *testing.T) {
 				"mfa_enforced":  "false",
 				"primary_email": "admin@writer.com",
 				"user_id":       "1001",
-			},
-		},
-		{
-			name:     "azure user",
-			sourceID: "azure",
-			kind:     "azure.user",
-			family:   "user",
-			user:     "admin@writer.com",
-			attributes: map[string]string{
-				"domain":         "tenant-1",
-				"email":          "admin@writer.com",
-				"is_admin":       "true",
-				"mfa_enrolled":   "false",
-				"principal_type": "user",
-				"user_id":        "azure-user-1",
-			},
-		},
-		{
-			name:     "aws iam user",
-			sourceID: "aws",
-			kind:     "aws.iam_user",
-			family:   "iam_user",
-			user:     "admin@writer.com",
-			attributes: map[string]string{
-				"domain":       "123456789012",
-				"email":        "admin@writer.com",
-				"is_admin":     "true",
-				"login":        "admin@writer.com",
-				"mfa_enrolled": "false",
-				"user_id":      "AIDAADMIN",
 			},
 		},
 		{
@@ -302,6 +271,60 @@ func TestIdentityMfaFactorResetOrDisabled(t *testing.T) {
 			assertIdentityRuleRemediationTrajectory(t, rule, first, enrolled, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
 			olderEnrolled := identitySignalEventAt(strings.ReplaceAll(tc.name, " ", "-")+"-mfa-enabled-before-open", tc.sourceID, tc.kind, enrolledAttrs, identityTrajectoryBaseTime.Add(-time.Minute))
 			assertIdentityRuleOlderCloseDoesNotResolveLaterOpen(t, rule, olderEnrolled, first)
+		})
+	}
+
+	for _, tc := range []struct {
+		name       string
+		sourceID   string
+		kind       string
+		family     string
+		attributes map[string]string
+	}{
+		{
+			name:     "aws iam user",
+			sourceID: "aws",
+			kind:     "aws.iam_user",
+			family:   "iam_user",
+			attributes: map[string]string{
+				"domain":   "123456789012",
+				"email":    "admin@writer.com",
+				"family":   "iam_user",
+				"is_admin": "true",
+				"login":    "admin@writer.com",
+				"user_id":  "AIDAADMIN",
+			},
+		},
+		{
+			name:     "azure user",
+			sourceID: "azure",
+			kind:     "azure.user",
+			family:   "user",
+			attributes: map[string]string{
+				"domain":         "tenant-1",
+				"email":          "admin@writer.com",
+				"family":         "user",
+				"last_login_at":  "2026-04-24T00:00:00Z",
+				"login":          "admin@writer.com",
+				"principal_type": "user",
+				"status":         "ACTIVE",
+				"user_id":        "azure-user-1",
+			},
+		},
+	} {
+		t.Run(tc.name+" source adapter lacks MFA posture", func(t *testing.T) {
+			if slices.Contains(definition.EventKinds, tc.kind) {
+				t.Fatalf("EventKinds = %v, want %q excluded until its source emits MFA posture", definition.EventKinds, tc.kind)
+			}
+			runtime := &cerebrov1.SourceRuntime{Id: "example-" + tc.sourceID + "-" + tc.family, SourceId: tc.sourceID, TenantId: "writer", Config: map[string]string{"family": tc.family}}
+			event := identitySignalEventAt(strings.ReplaceAll(tc.name, " ", "-")+"-source-backed-no-mfa-posture", tc.sourceID, tc.kind, tc.attributes, identityTrajectoryBaseTime)
+			records, err := rule.Evaluate(context.Background(), runtime, event)
+			if err != nil {
+				t.Fatalf("Evaluate(%s source-backed shape) error = %v", tc.name, err)
+			}
+			if len(records) != 0 {
+				t.Fatalf("Evaluate(%s source-backed shape) returned %d findings, want 0 because the source adapter emits no MFA posture", tc.name, len(records))
+			}
 		})
 	}
 

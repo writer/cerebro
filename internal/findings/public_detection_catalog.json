@@ -1892,14 +1892,10 @@
       "pack_id": "identity",
       "pack_name": "Identity",
       "name": "Identity MFA Factor Reset Or Disabled",
-      "description": "Detect MFA/2SV resets, unenrollment, disablement, or enforcement changes.",
+      "description": "Detect source-backed MFA/2SV posture gaps for Okta, Google Workspace, and GCP service-account identities; AWS IAM and Azure user MFA posture require source-adapter extensions before this rule claims those providers.",
       "source_id": "identity",
       "evaluation_mode": "event",
       "event_kinds": [
-        "aws.iam_role",
-        "aws.iam_user",
-        "azure.service_principal",
-        "azure.user",
         "gcp.service_account",
         "google_workspace.user",
         "okta.user"

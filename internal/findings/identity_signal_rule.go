@@ -165,13 +165,13 @@ func newIdentitySignalRules() []Rule {
 			definition: identityDurableStateRuleDefinition(identityRuleDefinition(
 				identityMFAFactorResetOrDisabledRuleID,
 				"Identity MFA Factor Reset Or Disabled",
-				"Detect MFA/2SV resets, unenrollment, disablement, or enforcement changes.",
+				"Detect source-backed MFA/2SV posture gaps for Okta, Google Workspace, and GCP service-account identities; AWS IAM and Azure user MFA posture require source-adapter extensions before this rule claims those providers.",
 				"HIGH",
 				"finding.identity_mfa_factor_reset_or_disabled",
 				[]string{"identity", "mfa", "credential-access", "attack.t1556"},
 			), "user"),
 			sourceIDs:   sourceIDs,
-			eventKinds:  capabilities.EventKinds(identityCapabilityUser),
+			eventKinds:  identityMFASourceBackedEventKinds,
 			predicate:   matchesIdentityMFAFactorResetOrDisabled,
 			fingerprint: identityUserFingerprintInputs,
 		}, identityUserAnchor, identityMFACloseAnchor),
@@ -1137,6 +1137,8 @@ func identityPrivileged(attributes map[string]string) bool {
 	return findingAttributeBool(attributes, "is_admin", "is_delegated_admin", "admin", "privileged", "actor_privileged") ||
 		containsAny(strings.ToLower(firstNonEmpty(attributes["role"], attributes["role_id"], attributes["role_type"], attributes["role_name"])), "admin", "super", "owner", "editor", "contributor", "poweruser", "administratoraccess", "iamfullaccess", "globaladministrator", "privilegedroleadministrator", "applicationadministrator", "cloudapplicationadministrator", "authenticationadministrator", "useraccessadministrator")
 }
+
+var identityMFASourceBackedEventKinds = []string{"gcp.service_account", "google_workspace.user", "okta.user"}
 
 var identityMFAStateAttributeKeys = [...]string{"mfa_enrolled", "mfa_enforced", "is_enrolled_in_2sv", "is_enforced_in_2sv"}
 
