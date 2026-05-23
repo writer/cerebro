@@ -378,12 +378,10 @@
       ],
       "runbook": "Confirm authorization, re-enable code security controls, review package and secret exposure during the disabled window, and inspect adjacent repository changes by the actor.",
       "required_attributes": [
-        "action"
+        "repo"
       ],
       "fingerprint_fields": [
-        "repo",
-        "resource_id",
-        "action"
+        "repo"
       ],
       "control_refs": [
         {
@@ -526,12 +524,10 @@
       ],
       "runbook": "Verify the owner action, review organization membership and token activity around the change, and restore SAML/2FA/OAuth restrictions if unauthorized.",
       "required_attributes": [
-        "action",
         "org"
       ],
       "fingerprint_fields": [
-        "org",
-        "action"
+        "org"
       ],
       "control_refs": [
         {
@@ -575,12 +571,10 @@
       ],
       "runbook": "Validate the IP allow list change, remove unauthorized CIDRs, and correlate actor access from newly allowed networks.",
       "required_attributes": [
-        "action",
         "org"
       ],
       "fingerprint_fields": [
-        "org",
-        "action"
+        "org"
       ],
       "control_refs": [
         {
@@ -724,13 +718,11 @@
       ],
       "runbook": "Validate forking policy approval, disable unauthorized private forking, and enumerate forks created after the policy change.",
       "required_attributes": [
-        "action",
         "org"
       ],
       "fingerprint_fields": [
         "org",
-        "repo",
-        "action"
+        "repo"
       ],
       "control_refs": [
         {

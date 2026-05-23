@@ -12,16 +12,19 @@ import (
 
 type githubAuditSignalPredicate func(map[string]string) bool
 type githubAuditSignalRenderer func(map[string]string) string
+type githubAuditSignalFingerprintInputs func(*cerebrov1.EventEnvelope, RuleDefinition) []string
 
 type githubAuditSignalConfig struct {
-	definition RuleDefinition
-	actions    map[string]struct{}
-	predicate  githubAuditSignalPredicate
-	severity   githubAuditSignalRenderer
-	summary    githubAuditSignalRenderer
-	policyID   githubAuditSignalRenderer
-	checkID    string
-	checkName  string
+	definition        RuleDefinition
+	actions           map[string]struct{}
+	predicate         githubAuditSignalPredicate
+	severity          githubAuditSignalRenderer
+	summary           githubAuditSignalRenderer
+	policyID          githubAuditSignalRenderer
+	primaryEntityType githubAuditSignalRenderer
+	fingerprint       githubAuditSignalFingerprintInputs
+	checkID           string
+	checkName         string
 }
 
 const (
@@ -226,9 +229,10 @@ var githubCodeSecurityControlsDisabledDefinition = RuleDefinition{
 	References:         []string{"https://docs.github.com/en/code-security/getting-started/github-security-features", "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_advanced_security_change.yml", "https://github.com/SigmaHQ/sigma/blob/master/rules/application/github/audit/github_disabled_outdated_dependency_or_vulnerability.yml"},
 	FalsePositives:     []string{"Approved security control migration or temporary configuration rollback by authorized administrators."},
 	Runbook:            "Confirm authorization, re-enable code security controls, review package and secret exposure during the disabled window, and inspect adjacent repository changes by the actor.",
-	RequiredAttributes: []string{"action"},
-	FingerprintFields:  []string{"repo", "resource_id", "action"},
+	RequiredAttributes: []string{"repo"},
+	FingerprintFields:  []string{"repo"},
 	ControlRefs:        githubAuditControlRefs,
+	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 }
 
 var githubOrgAuthControlModifiedDefinition = RuleDefinition{
@@ -245,9 +249,10 @@ var githubOrgAuthControlModifiedDefinition = RuleDefinition{
 	References:         []string{"https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github", "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_org_auth_modified.yml"},
 	FalsePositives:     []string{"Planned identity provider migration or approved organization security policy update."},
 	Runbook:            "Verify the owner action, review organization membership and token activity around the change, and restore SAML/2FA/OAuth restrictions if unauthorized.",
-	RequiredAttributes: []string{"action", "org"},
-	FingerprintFields:  []string{"org", "action"},
+	RequiredAttributes: []string{"org"},
+	FingerprintFields:  []string{"org"},
 	ControlRefs:        githubAuditControlRefs,
+	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 }
 
 var githubOrgIPAllowListModifiedDefinition = RuleDefinition{
@@ -264,9 +269,10 @@ var githubOrgIPAllowListModifiedDefinition = RuleDefinition{
 	References:         []string{"https://docs.github.com/en/organizations/keeping-your-organization-secure/managing-allowed-ip-addresses-for-your-organization", "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_org_ip_allowlist.yml"},
 	FalsePositives:     []string{"Approved network perimeter update or corporate egress address rotation."},
 	Runbook:            "Validate the IP allow list change, remove unauthorized CIDRs, and correlate actor access from newly allowed networks.",
-	RequiredAttributes: []string{"action", "org"},
-	FingerprintFields:  []string{"org", "action"},
+	RequiredAttributes: []string{"org"},
+	FingerprintFields:  []string{"org"},
 	ControlRefs:        githubAuditControlRefs,
+	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 }
 
 var githubAppIntegrationInstalledDefinition = RuleDefinition{
@@ -401,9 +407,10 @@ var githubPrivateRepositoryForkingEnabledDefinition = RuleDefinition{
 	References:         []string{"https://docs.github.com/en/organizations/managing-organization-settings/managing-the-forking-policy-for-your-organization", "https://github.com/SigmaHQ/sigma/blob/master/rules/application/github/audit/github_fork_private_repos_enabled_or_cleared.yml"},
 	FalsePositives:     []string{"Approved policy change to support internal development workflows."},
 	Runbook:            "Validate forking policy approval, disable unauthorized private forking, and enumerate forks created after the policy change.",
-	RequiredAttributes: []string{"action", "org"},
-	FingerprintFields:  []string{"org", "repo", "action"},
+	RequiredAttributes: []string{"org"},
+	FingerprintFields:  []string{"org", "repo"},
 	ControlRefs:        githubAuditControlRefs,
+	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 }
 
 // Note: the secret-scanning-disabled, push-protection-disabled,
@@ -483,28 +490,22 @@ var githubCodeSecurityControlSeverities = map[string]string{
 }
 
 var githubCodeSecurityControlsDisabledConfig = githubAuditSignalConfig{
-	definition: githubCodeSecurityControlsDisabledDefinition,
-	actions:    githubAuditActionSet(keysOfStringMap(githubCodeSecurityControlSeverities)...),
+	definition:        githubCodeSecurityControlsDisabledDefinition,
+	predicate:         githubCodeSecurityControlsPostureDisabled,
+	primaryEntityType: func(map[string]string) string { return "github.repo" },
 	severity: func(attributes map[string]string) string {
 		return firstNonEmpty(githubCodeSecurityControlSeverities[strings.TrimSpace(attributes["action"])], "HIGH")
 	},
 	summary: func(attributes map[string]string) string {
-		return fmt.Sprintf("%s disabled GitHub code security control %s for %s", githubAuditActor(attributes), strings.TrimSpace(attributes["action"]), githubAuditTarget(attributes))
+		control := firstNonEmpty(strings.TrimSpace(attributes["action"]), strings.TrimSpace(attributes["disabled_controls"]), "code security control")
+		return fmt.Sprintf("%s disabled GitHub code security control %s for %s", githubAuditActor(attributes), control, githubAuditTarget(attributes))
 	},
 }
 
 var githubOrgAuthControlModifiedConfig = githubAuditSignalConfig{
-	definition: githubOrgAuthControlModifiedDefinition,
-	actions: githubAuditActionSet(
-		"org.disable_oauth_app_restrictions",
-		"org.disable_two_factor_requirement",
-		"org.enable_oauth_app_restrictions",
-		"org.enable_two_factor_requirement",
-		"org.saml_disabled",
-		"org.saml_enabled",
-		"org.update_saml_provider_settings",
-	),
-	predicate: githubOrgAuthControlWeakening,
+	definition:        githubOrgAuthControlModifiedDefinition,
+	predicate:         githubOrgAuthControlWeakening,
+	primaryEntityType: func(map[string]string) string { return "github.org" },
 	severity: func(attributes map[string]string) string {
 		action := strings.TrimSpace(attributes["action"])
 		if action == "org.update_saml_provider_settings" {
@@ -518,17 +519,9 @@ var githubOrgAuthControlModifiedConfig = githubAuditSignalConfig{
 }
 
 var githubOrgIPAllowListModifiedConfig = githubAuditSignalConfig{
-	definition: githubOrgIPAllowListModifiedDefinition,
-	actions: githubAuditActionSet(
-		"ip_allow_list.disable",
-		"ip_allow_list.disable_for_installed_apps",
-		"ip_allow_list.enable",
-		"ip_allow_list.enable_for_installed_apps",
-		"ip_allow_list_entry.create",
-		"ip_allow_list_entry.destroy",
-		"ip_allow_list_entry.update",
-	),
-	predicate: githubIPAllowListWeakeningOrExpansion,
+	definition:        githubOrgIPAllowListModifiedDefinition,
+	predicate:         githubIPAllowListWeakeningOrExpansion,
+	primaryEntityType: func(map[string]string) string { return "github.org" },
 	severity: func(attributes map[string]string) string {
 		if strings.Contains(strings.TrimSpace(attributes["action"]), "disable") || strings.Contains(strings.TrimSpace(attributes["action"]), "destroy") {
 			return "HIGH"
@@ -602,7 +595,15 @@ var githubWebhookModifiedConfig = githubAuditSignalConfig{
 
 var githubPrivateRepositoryForkingEnabledConfig = githubAuditSignalConfig{
 	definition: githubPrivateRepositoryForkingEnabledDefinition,
-	actions:    githubAuditActionSet("private_repository_forking.clear", "private_repository_forking.enable"),
+	predicate:  githubPrivateRepositoryForkingEnabled,
+	primaryEntityType: func(attributes map[string]string) string {
+		scope, _ := githubPrivateRepositoryForkingScope(attributes)
+		if scope == "repo" {
+			return "github.repo"
+		}
+		return "github.org"
+	},
+	fingerprint: githubPrivateRepositoryForkingFingerprintInputs,
 	summary: func(attributes map[string]string) string {
 		return fmt.Sprintf("%s enabled or reset private repository forking for %s", githubAuditActor(attributes), githubAuditTarget(attributes))
 	},
@@ -723,8 +724,14 @@ func newGitHubAuditSignalRule(config githubAuditSignalConfig) Rule {
 }
 
 func githubAuditSignalFinding(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope, config githubAuditSignalConfig) (*ports.FindingRecord, error) {
+	attributes := eventAttributes(event)
+	primaryEntityType := ""
+	if config.primaryEntityType != nil {
+		primaryEntityType = strings.TrimSpace(config.primaryEntityType(attributes))
+	}
 	projectedContext, err := buildFindingProjectionContext(ctx, event, findingProjectionContextOptions{
 		PrimaryRelations:   []string{"acted_on"},
+		PrimaryEntityType:  primaryEntityType,
 		CollectAllLinkURNs: true,
 		ActorFallbacks: []string{
 			event.GetAttributes()["actor"],
@@ -739,7 +746,9 @@ func githubAuditSignalFinding(ctx context.Context, runtime *cerebrov1.SourceRunt
 	if err != nil {
 		return nil, fmt.Errorf("project finding context for event %q: %w", event.GetId(), err)
 	}
-	attributes := eventAttributes(event)
+	if projectedContext.PrimaryResourceURN != "" {
+		projectedContext.ResourceURNs = deduplicateStrings(append(projectedContext.ResourceURNs, projectedContext.PrimaryResourceURN))
+	}
 	findingAttributes := githubAuditSignalAttributes(event, config, projectedContext.PrimaryActorURN, projectedContext.PrimaryResourceURN)
 	observedAt := time.Time{}
 	if timestamp := event.GetOccurredAt(); timestamp != nil {
@@ -753,7 +762,7 @@ func githubAuditSignalFinding(ctx context.Context, runtime *cerebrov1.SourceRunt
 	if config.policyID != nil {
 		policyID = config.policyID(attributes)
 	}
-	fingerprint := githubAuditSignalFingerprint(event, config.definition)
+	fingerprint := githubAuditSignalFingerprint(event, config)
 	checkID := firstNonEmpty(config.checkID, config.definition.ID)
 	checkName := firstNonEmpty(config.checkName, config.definition.Name)
 	return &ports.FindingRecord{
@@ -806,6 +815,19 @@ func githubAuditSignalAttributes(event *cerebrov1.EventEnvelope, config githubAu
 		"user":                 strings.TrimSpace(eventAttrs["user"]),
 		"visibility":           strings.TrimSpace(eventAttrs["visibility"]),
 	}
+	for _, key := range githubPostureAttributeKeys {
+		attributes[key] = strings.TrimSpace(eventAttrs[key])
+	}
+	if disabledControls := strings.Join(githubDisabledCodeSecurityControls(eventAttrs), ","); disabledControls != "" {
+		attributes["disabled_controls"] = disabledControls
+	}
+	if weakenedControls := strings.Join(githubWeakenedAuthControls(eventAttrs), ","); weakenedControls != "" {
+		attributes["weakened_auth_controls"] = weakenedControls
+	}
+	if scope, scopeID := githubPrivateRepositoryForkingScope(eventAttrs); scopeID != "" {
+		attributes["posture_scope"] = scope
+		attributes["posture_scope_id"] = scopeID
+	}
 	for _, key := range config.definition.RequiredAttributes {
 		attributes[key] = strings.TrimSpace(eventAttrs[key])
 	}
@@ -816,7 +838,11 @@ func githubAuditSignalAttributes(event *cerebrov1.EventEnvelope, config githubAu
 	return attributes
 }
 
-func githubAuditSignalFingerprint(event *cerebrov1.EventEnvelope, definition RuleDefinition) string {
+func githubAuditSignalFingerprint(event *cerebrov1.EventEnvelope, config githubAuditSignalConfig) string {
+	definition := config.definition
+	if config.fingerprint != nil {
+		return hashFindingFingerprint(append([]string{definition.ID}, config.fingerprint(event, definition)...)...)
+	}
 	attributes := eventAttributes(event)
 	parts := []string{definition.ID}
 	fields := definition.FingerprintFields
@@ -866,21 +892,154 @@ func githubAuditActionSet(actions ...string) map[string]struct{} {
 	return set
 }
 
-func githubOrgAuthControlWeakening(attributes map[string]string) bool {
-	switch strings.TrimSpace(attributes["action"]) {
-	case "org.disable_oauth_app_restrictions", "org.disable_two_factor_requirement", "org.saml_disabled", "org.update_saml_provider_settings":
-		return true
-	default:
-		return false
+var githubPostureAttributeKeys = []string{
+	"advanced_security_enabled",
+	"allowed_cidrs_compliant",
+	"auth_control_weakened",
+	"code_security_enabled",
+	"dependabot_alerts_enabled",
+	"dependabot_enabled",
+	"dependabot_security_updates_enabled",
+	"github_advanced_security_enabled",
+	"ip_allow_list_disabled",
+	"ip_allow_list_enabled",
+	"ip_allow_list_entries_compliant",
+	"mfa_required",
+	"non_allowlisted_cidr_count",
+	"non_allowlisted_cidrs",
+	"oauth_app_restrictions_enabled",
+	"oauth_app_restrictions_enforced",
+	"private_forking_enabled",
+	"private_repository_forking_enabled",
+	"repository_secret_scanning_enabled",
+	"repository_vulnerability_alerts_enabled",
+	"saml_enabled",
+	"saml_enforced",
+	"saml_provider_settings_weakened",
+	"saml_required",
+	"saml_sso_enabled",
+	"secret_scanning_enabled",
+	"secret_scanning_push_protection_enabled",
+	"two_factor_enforced",
+	"two_factor_required",
+	"two_factor_requirement_enabled",
+	"vulnerability_alerts_enabled",
+}
+
+func githubCodeSecurityControlsPostureDisabled(attributes map[string]string) bool {
+	return len(githubDisabledCodeSecurityControls(attributes)) > 0
+}
+
+func githubDisabledCodeSecurityControls(attributes map[string]string) []string {
+	disabled := []string{}
+	if githubAttributeExplicitlyFalse(attributes, "advanced_security_enabled", "github_advanced_security_enabled", "code_security_enabled") {
+		disabled = append(disabled, "advanced_security")
 	}
+	if githubAttributeExplicitlyFalse(attributes, "dependabot_enabled", "dependabot_alerts_enabled", "dependabot_security_updates_enabled") {
+		disabled = append(disabled, "dependabot")
+	}
+	if githubAttributeExplicitlyFalse(attributes, "secret_scanning_enabled", "repository_secret_scanning_enabled", "secret_scanning_push_protection_enabled") {
+		disabled = append(disabled, "secret_scanning")
+	}
+	if githubAttributeExplicitlyFalse(attributes, "vulnerability_alerts_enabled", "repository_vulnerability_alerts_enabled") {
+		disabled = append(disabled, "vulnerability_alerts")
+	}
+	return disabled
+}
+
+func githubOrgAuthControlWeakening(attributes map[string]string) bool {
+	return len(githubWeakenedAuthControls(attributes)) > 0
+}
+
+func githubWeakenedAuthControls(attributes map[string]string) []string {
+	weakened := []string{}
+	if githubAttributeExplicitlyFalse(attributes, "oauth_app_restrictions_enabled", "oauth_app_restrictions_enforced") {
+		weakened = append(weakened, "oauth_app_restrictions")
+	}
+	if githubAttributeExplicitlyFalse(attributes, "saml_enabled", "saml_enforced", "saml_required", "saml_sso_enabled") ||
+		findingAttributeBool(attributes, "saml_provider_settings_weakened") {
+		weakened = append(weakened, "saml")
+	}
+	if githubAttributeExplicitlyFalse(attributes, "mfa_required", "two_factor_enforced", "two_factor_required", "two_factor_requirement_enabled") {
+		weakened = append(weakened, "two_factor_requirement")
+	}
+	if len(weakened) == 0 && findingAttributeBool(attributes, "auth_control_weakened") {
+		weakened = append(weakened, "auth_control")
+	}
+	return weakened
 }
 
 func githubIPAllowListWeakeningOrExpansion(attributes map[string]string) bool {
-	action := strings.TrimSpace(attributes["action"])
-	return strings.Contains(action, "disable") ||
-		strings.Contains(action, "destroy") ||
-		strings.Contains(action, "update") ||
-		action == "ip_allow_list_entry.create"
+	if findingAttributeBool(attributes, "ip_allow_list_disabled") || githubAttributeExplicitlyFalse(attributes, "ip_allow_list_enabled") {
+		return true
+	}
+	if githubAttributeExplicitlyFalse(attributes, "allowed_cidrs_compliant", "ip_allow_list_entries_compliant") {
+		return true
+	}
+	return githubNonEmptyListAttribute(attributes, "non_allowlisted_cidrs") || githubPositiveCountAttribute(attributes, "non_allowlisted_cidr_count")
+}
+
+func githubPrivateRepositoryForkingEnabled(attributes map[string]string) bool {
+	_, scopeID := githubPrivateRepositoryForkingScope(attributes)
+	if scopeID == "" {
+		return false
+	}
+	return findingAttributeBool(attributes, "private_repository_forking_enabled", "private_forking_enabled")
+}
+
+func githubPrivateRepositoryForkingFingerprintInputs(event *cerebrov1.EventEnvelope, _ RuleDefinition) []string {
+	_, scopeID := githubPrivateRepositoryForkingScope(eventAttributes(event))
+	if scopeID == "" {
+		return nil
+	}
+	return []string{scopeID}
+}
+
+func githubPrivateRepositoryForkingScope(attributes map[string]string) (string, string) {
+	if repo := strings.TrimSpace(attributes["repo"]); repo != "" {
+		return "repo", repo
+	}
+	if resourceID := strings.TrimSpace(attributes["resource_id"]); strings.Contains(resourceID, "/") {
+		return "repo", resourceID
+	}
+	org := firstNonEmpty(attributes["org"], attributes["resource_id"])
+	if strings.TrimSpace(org) == "" || strings.Contains(org, "/") {
+		return "", ""
+	}
+	return "org", org
+}
+
+func githubAttributeExplicitlyFalse(attributes map[string]string, keys ...string) bool {
+	for _, key := range keys {
+		switch strings.ToLower(strings.TrimSpace(attributes[key])) {
+		case "0", "f", "false", "n", "no", "disabled", "off":
+			return true
+		}
+	}
+	return false
+}
+
+func githubNonEmptyListAttribute(attributes map[string]string, keys ...string) bool {
+	for _, key := range keys {
+		value := strings.ToLower(strings.TrimSpace(attributes[key]))
+		switch value {
+		case "", "[]", "{}", "none", "null":
+			continue
+		default:
+			return true
+		}
+	}
+	return false
+}
+
+func githubPositiveCountAttribute(attributes map[string]string, keys ...string) bool {
+	for _, key := range keys {
+		value := strings.TrimSpace(attributes[key])
+		if value != "" && value != "0" {
+			return true
+		}
+	}
+	return false
 }
 
 func githubRepositoryRulesetWeakening(attributes map[string]string) bool {
@@ -899,14 +1058,6 @@ func githubRepositoryRulesetWeakening(attributes map[string]string) bool {
 		return true
 	}
 	return findingAttributeBool(attributes, "bypass_actor_added", "required_review_removed", "required_status_check_removed", "force_pushes_allowed", "deletions_allowed")
-}
-
-func keysOfStringMap(values map[string]string) []string {
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-	return keys
 }
 
 // githubRetirementTag marks the rule definition so operators reading the

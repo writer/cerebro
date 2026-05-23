@@ -8,34 +8,79 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
-func TestGitHubOrgAuthControlModifiedIgnoresHardening(t *testing.T) {
+func TestGitHubOrgAuthControlModified(t *testing.T) {
 	rule := newGitHubOrgAuthControlModifiedRule()
-	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "writer"}
-	event := githubAuditEvent("github-auth-enable", map[string]string{
-		"action": "org.enable_two_factor_requirement",
-		"org":    "writer",
-	})
-	records, err := rule.Evaluate(context.Background(), runtime, event)
-	if err != nil {
-		t.Fatalf("Evaluate(enable) error = %v", err)
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("rule does not expose RuleMetadata")
 	}
-	if len(records) != 0 {
-		t.Fatalf("len(enable records) = %d, want 0", len(records))
+	definition := metadataRule.RuleMetadata()
+	if definition.Lifecycle.Kind != LifecycleDurableState {
+		t.Fatalf("Lifecycle.Kind = %q, want %q", definition.Lifecycle.Kind, LifecycleDurableState)
+	}
+	if definition.Lifecycle.Anchor != AnchorGraphAnchored {
+		t.Fatalf("Lifecycle.Anchor = %q, want %q", definition.Lifecycle.Anchor, AnchorGraphAnchored)
+	}
+	wantFields := []string{"org"}
+	if !cloudStringSlicesEqual(definition.FingerprintFields, wantFields) {
+		t.Fatalf("FingerprintFields = %v, want %v", definition.FingerprintFields, wantFields)
+	}
+	for _, field := range definition.FingerprintFields {
+		if field == "action" || field == "event_id" {
+			t.Fatalf("FingerprintFields still contains %q: %v", field, definition.FingerprintFields)
+		}
 	}
 
-	event = githubAuditEvent("github-auth-disable", map[string]string{
-		"action": "org.disable_two_factor_requirement",
-		"org":    "writer",
+	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "writer"}
+	first := githubAuditEvent("github-auth-two-factor-disabled", map[string]string{
+		"action":                         "org.disable_two_factor_requirement",
+		"org":                            "writer",
+		"resource_id":                    "writer",
+		"resource_type":                  "org",
+		"two_factor_requirement_enabled": "false",
 	})
-	records, err = rule.Evaluate(context.Background(), runtime, event)
-	if err != nil {
-		t.Fatalf("Evaluate(disable) error = %v", err)
+	second := githubAuditEvent("github-auth-oauth-disabled", map[string]string{
+		"action":                         "org.disable_oauth_app_restrictions",
+		"org":                            "writer",
+		"resource_id":                    "writer",
+		"resource_type":                  "org",
+		"oauth_app_restrictions_enabled": "false",
+	})
+	records, err := rule.Evaluate(context.Background(), runtime, first)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(first) = (%v, %v), want one finding", records, err)
 	}
-	if len(records) != 1 {
-		t.Fatalf("len(disable records) = %d, want 1", len(records))
+	firstFinding := records[0]
+	records, err = rule.Evaluate(context.Background(), runtime, second)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(second) = (%v, %v), want one finding", records, err)
 	}
-	if got := records[0].Severity; got != "CRITICAL" {
+	secondFinding := records[0]
+	if firstFinding.Fingerprint != secondFinding.Fingerprint {
+		t.Fatalf("fingerprints differ across weakened auth controls on same org: %q vs %q", firstFinding.Fingerprint, secondFinding.Fingerprint)
+	}
+	if got := firstFinding.Attributes["primary_resource_urn"]; got != "urn:cerebro:writer:github_org:writer" {
+		t.Fatalf("primary_resource_urn = %q, want github org anchor", got)
+	}
+	if got := firstFinding.Severity; got != "CRITICAL" {
 		t.Fatalf("Severity = %q, want CRITICAL", got)
+	}
+
+	restored := githubAuditEvent("github-auth-restored", map[string]string{
+		"action":                         "org.disable_two_factor_requirement",
+		"org":                            "writer",
+		"resource_id":                    "writer",
+		"resource_type":                  "org",
+		"oauth_app_restrictions_enabled": "true",
+		"saml_enabled":                   "true",
+		"two_factor_requirement_enabled": "true",
+	})
+	records, err = rule.Evaluate(context.Background(), runtime, restored)
+	if err != nil {
+		t.Fatalf("Evaluate(restored) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(restored) returned %d findings, want 0 once org auth controls are re-strengthened", len(records))
 	}
 }
 
@@ -83,54 +128,159 @@ func TestGitHubRepositoryRulesetModifiedRequiresWeakeningSignal(t *testing.T) {
 	}
 }
 
-func TestGitHubIPAllowListModifiedIgnoresEnableOnly(t *testing.T) {
+func TestGitHubOrgIpAllowListModified(t *testing.T) {
 	rule := newGitHubOrgIPAllowListModifiedRule()
-	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "writer"}
-	event := githubAuditEvent("github-ip-enable", map[string]string{
-		"action": "ip_allow_list.enable",
-		"org":    "writer",
-	})
-	records, err := rule.Evaluate(context.Background(), runtime, event)
-	if err != nil {
-		t.Fatalf("Evaluate(enable) error = %v", err)
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("rule does not expose RuleMetadata")
 	}
-	if len(records) != 0 {
-		t.Fatalf("len(enable records) = %d, want 0", len(records))
+	definition := metadataRule.RuleMetadata()
+	if definition.Lifecycle.Kind != LifecycleDurableState {
+		t.Fatalf("Lifecycle.Kind = %q, want %q", definition.Lifecycle.Kind, LifecycleDurableState)
+	}
+	if definition.Lifecycle.Anchor != AnchorGraphAnchored {
+		t.Fatalf("Lifecycle.Anchor = %q, want %q", definition.Lifecycle.Anchor, AnchorGraphAnchored)
+	}
+	wantFields := []string{"org"}
+	if !cloudStringSlicesEqual(definition.FingerprintFields, wantFields) {
+		t.Fatalf("FingerprintFields = %v, want %v", definition.FingerprintFields, wantFields)
+	}
+	for _, field := range definition.FingerprintFields {
+		if field == "action" || field == "event_id" {
+			t.Fatalf("FingerprintFields still contains %q: %v", field, definition.FingerprintFields)
+		}
 	}
 
-	event = githubAuditEvent("github-ip-disable", map[string]string{
-		"action": "ip_allow_list.disable",
-		"org":    "writer",
+	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "writer"}
+	first := githubAuditEvent("github-ip-disabled", map[string]string{
+		"action":                "ip_allow_list.disable",
+		"ip_allow_list_enabled": "false",
+		"org":                   "writer",
+		"resource_id":           "writer",
+		"resource_type":         "ip_allow_list",
 	})
-	records, err = rule.Evaluate(context.Background(), runtime, event)
-	if err != nil {
-		t.Fatalf("Evaluate(disable) error = %v", err)
+	second := githubAuditEvent("github-ip-non-allowlisted-cidr", map[string]string{
+		"action":                "ip_allow_list_entry.create",
+		"ip_allow_list_enabled": "true",
+		"non_allowlisted_cidrs": "203.0.113.0/24",
+		"org":                   "writer",
+		"resource_id":           "writer",
+		"resource_type":         "ip_allow_list",
+	})
+	records, err := rule.Evaluate(context.Background(), runtime, first)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(first) = (%v, %v), want one finding", records, err)
 	}
-	if len(records) != 1 {
-		t.Fatalf("len(disable records) = %d, want 1", len(records))
+	firstFinding := records[0]
+	records, err = rule.Evaluate(context.Background(), runtime, second)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(second) = (%v, %v), want one finding", records, err)
 	}
-	if got := records[0].Severity; got != "HIGH" {
+	secondFinding := records[0]
+	if firstFinding.Fingerprint != secondFinding.Fingerprint {
+		t.Fatalf("fingerprints differ across allow-list posture events on same org: %q vs %q", firstFinding.Fingerprint, secondFinding.Fingerprint)
+	}
+	if got := firstFinding.Attributes["primary_resource_urn"]; got != "urn:cerebro:writer:github_org:writer" {
+		t.Fatalf("primary_resource_urn = %q, want github org anchor", got)
+	}
+	if got := firstFinding.Severity; got != "HIGH" {
 		t.Fatalf("Severity = %q, want HIGH", got)
+	}
+
+	restored := githubAuditEvent("github-ip-compliant", map[string]string{
+		"action":                "ip_allow_list.disable",
+		"ip_allow_list_enabled": "true",
+		"org":                   "writer",
+		"resource_id":           "writer",
+		"resource_type":         "ip_allow_list",
+	})
+	records, err = rule.Evaluate(context.Background(), runtime, restored)
+	if err != nil {
+		t.Fatalf("Evaluate(restored) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(restored) returned %d findings, want 0 once allow-list is compliant", len(records))
 	}
 }
 
-func TestGitHubCodeSecurityControlsDisabledIncludesSecretScanning(t *testing.T) {
+func TestGitHubCodeSecurityControlsDisabled(t *testing.T) {
 	rule := newGitHubCodeSecurityControlsDisabledRule()
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("rule does not expose RuleMetadata")
+	}
+	definition := metadataRule.RuleMetadata()
+	if definition.Lifecycle.Kind != LifecycleDurableState {
+		t.Fatalf("Lifecycle.Kind = %q, want %q", definition.Lifecycle.Kind, LifecycleDurableState)
+	}
+	if definition.Lifecycle.Anchor != AnchorGraphAnchored {
+		t.Fatalf("Lifecycle.Anchor = %q, want %q", definition.Lifecycle.Anchor, AnchorGraphAnchored)
+	}
+	wantFields := []string{"repo"}
+	if !cloudStringSlicesEqual(definition.FingerprintFields, wantFields) {
+		t.Fatalf("FingerprintFields = %v, want %v", definition.FingerprintFields, wantFields)
+	}
+	for _, field := range definition.FingerprintFields {
+		if field == "action" || field == "resource_id" || field == "event_id" {
+			t.Fatalf("FingerprintFields still contains %q: %v", field, definition.FingerprintFields)
+		}
+	}
+
 	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "example"}
-	event := githubAuditEvent("github-secret-scanning-disable", map[string]string{
-		"action":      "repository_secret_scanning.disable",
-		"repo":        "example/cerebro",
-		"resource_id": "example/cerebro",
+	first := githubAuditEvent("github-dependabot-disabled", map[string]string{
+		"action":                    "dependabot_alerts.disable",
+		"dependabot_alerts_enabled": "false",
+		"org":                       "example",
+		"repo":                      "example/cerebro",
+		"resource_id":               "example/cerebro",
+		"resource_type":             "repository",
 	})
-	records, err := rule.Evaluate(context.Background(), runtime, event)
-	if err != nil {
-		t.Fatalf("Evaluate(secret scanning disable) error = %v", err)
+	second := githubAuditEvent("github-secret-scanning-disabled", map[string]string{
+		"action":                  "repository_secret_scanning.disable",
+		"org":                     "example",
+		"repo":                    "example/cerebro",
+		"resource_id":             "example/cerebro",
+		"resource_type":           "repository",
+		"secret_scanning_enabled": "false",
+	})
+	records, err := rule.Evaluate(context.Background(), runtime, first)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(first) = (%v, %v), want one finding", records, err)
 	}
-	if len(records) != 1 {
-		t.Fatalf("len(secret scanning disable records) = %d, want 1", len(records))
+	firstFinding := records[0]
+	records, err = rule.Evaluate(context.Background(), runtime, second)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(second) = (%v, %v), want one finding", records, err)
 	}
-	if got := records[0].RuleID; got != githubCodeSecurityControlsDisabledRuleID {
+	secondFinding := records[0]
+	if firstFinding.Fingerprint != secondFinding.Fingerprint {
+		t.Fatalf("fingerprints differ across disabled controls on same repo: %q vs %q", firstFinding.Fingerprint, secondFinding.Fingerprint)
+	}
+	if got := firstFinding.RuleID; got != githubCodeSecurityControlsDisabledRuleID {
 		t.Fatalf("RuleID = %q, want %q", got, githubCodeSecurityControlsDisabledRuleID)
+	}
+	if got := firstFinding.Attributes["primary_resource_urn"]; got != "urn:cerebro:writer:github_repo:example/cerebro" {
+		t.Fatalf("primary_resource_urn = %q, want github repo anchor", got)
+	}
+
+	restored := githubAuditEvent("github-code-security-enabled", map[string]string{
+		"action":                              "dependabot_alerts.disable",
+		"advanced_security_enabled":           "true",
+		"dependabot_alerts_enabled":           "true",
+		"dependabot_security_updates_enabled": "true",
+		"org":                                 "example",
+		"repo":                                "example/cerebro",
+		"resource_id":                         "example/cerebro",
+		"resource_type":                       "repository",
+		"secret_scanning_enabled":             "true",
+		"vulnerability_alerts_enabled":        "true",
+	})
+	records, err = rule.Evaluate(context.Background(), runtime, restored)
+	if err != nil {
+		t.Fatalf("Evaluate(restored) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(restored) returned %d findings, want 0 once all code security controls are enabled", len(records))
 	}
 }
 
@@ -596,6 +746,129 @@ func TestGitHubPersonalAccessTokenCreated(t *testing.T) {
 	}
 	if len(records) != 0 {
 		t.Fatalf("Evaluate(revoke) returned %d findings, want 0 once PAT revoked", len(records))
+	}
+}
+
+func TestGitHubPrivateRepositoryForkingEnabled(t *testing.T) {
+	rule := newGitHubPrivateRepositoryForkingEnabledRule()
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("rule does not expose RuleMetadata")
+	}
+	definition := metadataRule.RuleMetadata()
+	if definition.Lifecycle.Kind != LifecycleDurableState {
+		t.Fatalf("Lifecycle.Kind = %q, want %q", definition.Lifecycle.Kind, LifecycleDurableState)
+	}
+	if definition.Lifecycle.Anchor != AnchorGraphAnchored {
+		t.Fatalf("Lifecycle.Anchor = %q, want %q", definition.Lifecycle.Anchor, AnchorGraphAnchored)
+	}
+	wantFields := []string{"org", "repo"}
+	if !cloudStringSlicesEqual(definition.FingerprintFields, wantFields) {
+		t.Fatalf("FingerprintFields = %v, want %v", definition.FingerprintFields, wantFields)
+	}
+	for _, field := range definition.FingerprintFields {
+		if field == "action" || field == "event_id" {
+			t.Fatalf("FingerprintFields still contains %q: %v", field, definition.FingerprintFields)
+		}
+	}
+
+	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "writer"}
+	orgFirst := githubAuditEvent("github-org-forking-enabled-first", map[string]string{
+		"action":                             "private_repository_forking.enable",
+		"org":                                "writer",
+		"private_repository_forking_enabled": "true",
+		"resource_id":                        "writer",
+		"resource_type":                      "org",
+	})
+	orgSecond := githubAuditEvent("github-org-forking-enabled-second", map[string]string{
+		"action":                             "private_repository_forking.clear",
+		"org":                                "writer",
+		"private_repository_forking_enabled": "true",
+		"resource_id":                        "writer",
+		"resource_type":                      "org",
+	})
+	records, err := rule.Evaluate(context.Background(), runtime, orgFirst)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(orgFirst) = (%v, %v), want one finding", records, err)
+	}
+	orgFinding := records[0]
+	records, err = rule.Evaluate(context.Background(), runtime, orgSecond)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(orgSecond) = (%v, %v), want one finding", records, err)
+	}
+	if orgFinding.Fingerprint != records[0].Fingerprint {
+		t.Fatalf("org-scope fingerprints differ across setting events: %q vs %q", orgFinding.Fingerprint, records[0].Fingerprint)
+	}
+	if got := orgFinding.Attributes["primary_resource_urn"]; got != "urn:cerebro:writer:github_org:writer" {
+		t.Fatalf("org primary_resource_urn = %q, want github org anchor", got)
+	}
+
+	repoFirst := githubAuditEvent("github-repo-forking-enabled-first", map[string]string{
+		"action":                             "private_repository_forking.enable",
+		"org":                                "writer",
+		"private_repository_forking_enabled": "true",
+		"repo":                               "writer/private-repo",
+		"resource_id":                        "writer/private-repo",
+		"resource_type":                      "repo",
+	})
+	repoSecond := githubAuditEvent("github-repo-forking-enabled-second", map[string]string{
+		"action":                             "private_repository_forking.clear",
+		"org":                                "writer",
+		"private_repository_forking_enabled": "true",
+		"repo":                               "writer/private-repo",
+		"resource_id":                        "writer/private-repo",
+		"resource_type":                      "repo",
+	})
+	records, err = rule.Evaluate(context.Background(), runtime, repoFirst)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(repoFirst) = (%v, %v), want one finding", records, err)
+	}
+	repoFinding := records[0]
+	records, err = rule.Evaluate(context.Background(), runtime, repoSecond)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(repoSecond) = (%v, %v), want one finding", records, err)
+	}
+	if repoFinding.Fingerprint != records[0].Fingerprint {
+		t.Fatalf("repo-scope fingerprints differ across setting events: %q vs %q", repoFinding.Fingerprint, records[0].Fingerprint)
+	}
+	if repoFinding.Fingerprint == orgFinding.Fingerprint {
+		t.Fatalf("repo-scope fingerprint = org-scope fingerprint %q, want per-scope anchors", repoFinding.Fingerprint)
+	}
+	if got := repoFinding.Attributes["primary_resource_urn"]; got != "urn:cerebro:writer:github_repo:writer/private-repo" {
+		t.Fatalf("repo primary_resource_urn = %q, want github repo anchor", got)
+	}
+
+	repoResourceOnly := githubAuditEvent("github-repo-forking-resource-id-only", map[string]string{
+		"action":                             "private_repository_forking.enable",
+		"org":                                "writer",
+		"private_repository_forking_enabled": "true",
+		"resource_id":                        "writer/resource-only-repo",
+		"resource_type":                      "repository",
+	})
+	records, err = rule.Evaluate(context.Background(), runtime, repoResourceOnly)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(repoResourceOnly) = (%v, %v), want one finding", records, err)
+	}
+	if got := records[0].Attributes["primary_resource_urn"]; got != "urn:cerebro:writer:github_repo:writer/resource-only-repo" {
+		t.Fatalf("resource-id repo primary_resource_urn = %q, want github repo anchor", got)
+	}
+	if got := records[0].Attributes["posture_scope"]; got != "repo" {
+		t.Fatalf("posture_scope = %q, want repo", got)
+	}
+
+	disabled := githubAuditEvent("github-forking-disabled", map[string]string{
+		"action":                             "private_repository_forking.enable",
+		"org":                                "writer",
+		"private_repository_forking_enabled": "false",
+		"resource_id":                        "writer",
+		"resource_type":                      "org",
+	})
+	records, err = rule.Evaluate(context.Background(), runtime, disabled)
+	if err != nil {
+		t.Fatalf("Evaluate(disabled) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(disabled) returned %d findings, want 0 once private repository forking is disabled", len(records))
 	}
 }
 

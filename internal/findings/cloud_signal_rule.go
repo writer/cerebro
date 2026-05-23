@@ -274,7 +274,28 @@ func cloudEffectiveAdminPermissionFingerprintInputs(event *cerebrov1.EventEnvelo
 	return []string{accountURN, principalURN, permissionURN}
 }
 
-func cloudPublicResourceExposureFingerprintInputs(_ *cerebrov1.EventEnvelope, _ map[string]string, projection findingProjectionContext) []string {
+func cloudPublicResourceExposureFingerprintInputs(_ *cerebrov1.EventEnvelope, attributes map[string]string, projection findingProjectionContext) []string {
+	resourceID := strings.TrimSpace(firstNonEmpty(attributes["resource_id"], attributes["resource_name"], attributes["exposure_id"]))
+	if resourceID != "" {
+		for _, entity := range projection.Entities {
+			if entity == nil || strings.TrimSpace(entity.URN) == "" {
+				continue
+			}
+			if strings.TrimSpace(entity.Attributes["resource_id"]) == resourceID {
+				return []string{strings.TrimSpace(entity.URN)}
+			}
+		}
+	}
+	for _, entity := range projection.Entities {
+		if entity == nil || strings.TrimSpace(entity.URN) == "" {
+			continue
+		}
+		entityType := strings.ToLower(strings.TrimSpace(entity.EntityType))
+		if strings.Contains(entityType, "public_principal") || entityType == "cloud.account" {
+			continue
+		}
+		return []string{strings.TrimSpace(entity.URN)}
+	}
 	return []string{projection.PrimaryResourceURN}
 }
 
