@@ -81,6 +81,10 @@ def create_monitoring(
     log_retention_days: int = 30,
     jetstream_stream_name: str = "CEREBRO_EVENTS",
     jetstream_lag_alarm_threshold: int = 10000,
+    api_request_count_per_target_alarm_threshold: int = 0,
+    api_latency_p95_alarm_threshold_seconds: int = 3,
+    web_latency_p95_alarm_threshold_seconds: int = 3,
+    dashboard_latency_p95_alarm_threshold_ms: int = 3000,
     access_audit_denied_alarm_threshold: int = 0,
     access_audit_auth_failure_alarm_threshold: int = 0,
     access_audit_tenant_mismatch_alarm_threshold: int = -1,
@@ -151,6 +155,47 @@ def create_monitoring(
         },
         tags={"Name": f"{name}-latency-alarm"},
     )
+    if api_latency_p95_alarm_threshold_seconds > 0:
+        aws.cloudwatch.MetricAlarm(
+            f"{name}-latency-p95-alarm",
+            name=f"{name}-high-latency-p95",
+            comparison_operator="GreaterThanThreshold",
+            evaluation_periods=3,
+            metric_name="TargetResponseTime",
+            namespace="AWS/ApplicationELB",
+            period=300,
+            extended_statistic="p95",
+            threshold=api_latency_p95_alarm_threshold_seconds,
+            alarm_description=f"High API p95 latency (>{api_latency_p95_alarm_threshold_seconds}s)",
+            alarm_actions=alarm_actions,
+            treat_missing_data="notBreaching",
+            dimensions={
+                "LoadBalancer": alb_arn_suffix,
+                "TargetGroup": target_group_arn_suffix,
+            },
+            tags={"Name": f"{name}-latency-p95-alarm"},
+        )
+
+    if api_request_count_per_target_alarm_threshold > 0:
+        aws.cloudwatch.MetricAlarm(
+            f"{name}-request-count-per-target-alarm",
+            name=f"{name}-request-count-per-target",
+            comparison_operator="GreaterThanThreshold",
+            evaluation_periods=3,
+            metric_name="RequestCountPerTarget",
+            namespace="AWS/ApplicationELB",
+            period=300,
+            statistic="Sum",
+            threshold=api_request_count_per_target_alarm_threshold,
+            alarm_description="API requests per target exceeded autoscaling saturation threshold",
+            alarm_actions=alarm_actions,
+            treat_missing_data="notBreaching",
+            dimensions={
+                "LoadBalancer": alb_arn_suffix,
+                "TargetGroup": target_group_arn_suffix,
+            },
+            tags={"Name": f"{name}-request-count-per-target-alarm"},
+        )
 
     # Unhealthy targets alarm
     aws.cloudwatch.MetricAlarm(
@@ -314,6 +359,26 @@ def create_monitoring(
             },
             tags={"Name": f"{name}-web-latency-alarm"},
         )
+        if web_latency_p95_alarm_threshold_seconds > 0:
+            aws.cloudwatch.MetricAlarm(
+                f"{name}-web-latency-p95-alarm",
+                name=f"{name}-web-high-latency-p95",
+                comparison_operator="GreaterThanThreshold",
+                evaluation_periods=3,
+                metric_name="TargetResponseTime",
+                namespace="AWS/ApplicationELB",
+                period=300,
+                extended_statistic="p95",
+                threshold=web_latency_p95_alarm_threshold_seconds,
+                alarm_description=f"High web console p95 latency (>{web_latency_p95_alarm_threshold_seconds}s)",
+                alarm_actions=alarm_actions,
+                treat_missing_data="notBreaching",
+                dimensions={
+                    "LoadBalancer": web_alb_arn_suffix,
+                    "TargetGroup": web_target_group_arn_suffix,
+                },
+                tags={"Name": f"{name}-web-latency-p95-alarm"},
+            )
 
         aws.cloudwatch.MetricAlarm(
             f"{name}-web-unhealthy-alarm",
@@ -481,6 +546,23 @@ def create_monitoring(
                 threshold=access_audit_sensitive_denied_alarm_threshold,
                 description="Cerebro API denied sensitive actions exceeded the configured threshold",
                 alarm_actions=alarm_actions,
+            )
+        if dashboard_latency_p95_alarm_threshold_ms > 0:
+            aws.cloudwatch.MetricAlarm(
+                f"{name}-grc-dashboard-latency-p95-alarm",
+                name=f"{name}-grc-dashboard-latency-p95",
+                comparison_operator="GreaterThanThreshold",
+                evaluation_periods=3,
+                metric_name="GRCDashboardLatencyMs",
+                namespace=telemetry_namespace,
+                period=300,
+                extended_statistic="p95",
+                threshold=dashboard_latency_p95_alarm_threshold_ms,
+                treat_missing_data="notBreaching",
+                alarm_description="GRC dashboard p95 application latency exceeded threshold",
+                alarm_actions=alarm_actions,
+                dimensions={"Dashboard": "grc"},
+                tags={"Name": f"{name}-grc-dashboard-latency-p95-alarm"},
             )
 
     if jetstream_lag_alarm_threshold > 0:
@@ -832,6 +914,18 @@ def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[st
                 dimensions={"RuntimeId": "$.runtime_id"},
             ),
         ),
+        "grc_dashboard_latency": aws.cloudwatch.LogMetricFilter(
+            f"{name}-grc-dashboard-latency-filter",
+            name=f"{name}-grc-dashboard-latency",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "span_end" && $.name = "grc.dashboard" && $.dashboard = "grc" && $.duration_ms = * }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="GRCDashboardLatencyMs",
+                namespace=namespace,
+                value="$.duration_ms",
+                dimensions={"Dashboard": "$.dashboard"},
+            ),
+        ),
         **_create_access_audit_metric_filters(name, log_group_name, namespace),
         "graph_entities": aws.cloudwatch.LogMetricFilter(
             f"{name}-graph-entities-filter",
@@ -979,7 +1073,8 @@ def _dashboard_body(
                 "properties": {
                     "title": "Request Count",
                     "metrics": [
-                        ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", alb_arn, {"stat": "Sum"}]
+                        ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", alb_arn, {"stat": "Sum"}],
+                        [".", "RequestCountPerTarget", ".", ".", "TargetGroup", tg_arn, {"stat": "Sum", "yAxis": "right"}],
                     ],
                     "period": 60,
                     "region": aws.get_region().region,
@@ -991,7 +1086,8 @@ def _dashboard_body(
                 "properties": {
                     "title": "Response Time",
                     "metrics": [
-                        ["AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", alb_arn, {"stat": "Average"}]
+                        ["AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", alb_arn, {"stat": "Average"}],
+                        [".", ".", ".", ".", {"stat": "p95"}],
                     ],
                     "period": 60,
                     "region": aws.get_region().region,
@@ -1130,6 +1226,19 @@ def _dashboard_body(
                 "type": "metric",
                 "x": 0, "y": 36, "width": 12, "height": 6,
                 "properties": {
+                    "title": "GRC Dashboard Latency",
+                    "metrics": [
+                        [telemetry_namespace, "GRCDashboardLatencyMs", "Dashboard", "grc", {"stat": "Average"}],
+                        [".", ".", ".", ".", {"stat": "p95"}],
+                    ],
+                    "period": 300,
+                    "region": aws.get_region().region,
+                },
+            },
+            {
+                "type": "metric",
+                "x": 12, "y": 36, "width": 12, "height": 6,
+                "properties": {
                     "title": "Finding Evaluation Throughput",
                     "metrics": [
                         [telemetry_namespace, "FindingEvaluationEventsProcessed", {"stat": "Sum"}],
@@ -1142,7 +1251,7 @@ def _dashboard_body(
             },
             {
                 "type": "metric",
-                "x": 12, "y": 36, "width": 12, "height": 6,
+                "x": 0, "y": 42, "width": 12, "height": 6,
                 "properties": {
                     "title": "Finding Evaluation / Graph Rule Health",
                     "metrics": [
@@ -1156,7 +1265,7 @@ def _dashboard_body(
             },
             {
                 "type": "metric",
-                "x": 0, "y": 42, "width": 12, "height": 6,
+                "x": 12, "y": 42, "width": 12, "height": 6,
                 "properties": {
                     "title": "API Access Audit Volume",
                     "metrics": [
@@ -1173,7 +1282,7 @@ def _dashboard_body(
             },
             {
                 "type": "metric",
-                "x": 12, "y": 42, "width": 12, "height": 6,
+                "x": 0, "y": 54, "width": 12, "height": 6,
                 "properties": {
                     "title": "API Access Denials",
                     "metrics": [
@@ -1209,7 +1318,7 @@ def _dashboard_body(
             },
             {
                 "type": "metric",
-                "x": 12, "y": 48, "width": 12, "height": 6,
+                "x": 12, "y": 54, "width": 12, "height": 6,
                 "properties": {
                     "title": "Postgres CPU / Connections / Memory",
                     "metrics": [

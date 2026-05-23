@@ -16,10 +16,13 @@ def create_ecs_cluster(
     kms_key_id: pulumi.Input[str],
     target_group_arn: pulumi.Input[str],
     container_image: str,
+    alb_arn_suffix: pulumi.Input[str] = None,
+    target_group_arn_suffix: pulumi.Input[str] = None,
     api_cpu: int = 1024,
     api_memory: int = 2048,
     api_min_instances: int = 1,
     api_max_instances: int = 1,
+    api_request_count_per_target_scaling_target: int = 0,
     log_retention_days: int = 30,
     environment: dict = None,
     secret_keys: list[str] = None,
@@ -272,6 +275,23 @@ def create_ecs_cluster(
                 scale_out_cooldown=60,
             ),
         )
+        if api_request_count_per_target_scaling_target > 0 and alb_arn_suffix and target_group_arn_suffix:
+            aws.appautoscaling.Policy(
+                f"{name}-request-count-scaling",
+                service_namespace="ecs",
+                resource_id=scaling_target.resource_id,
+                scalable_dimension="ecs:service:DesiredCount",
+                policy_type="TargetTrackingScaling",
+                target_tracking_scaling_policy_configuration=aws.appautoscaling.PolicyTargetTrackingScalingPolicyConfigurationArgs(
+                    target_value=float(api_request_count_per_target_scaling_target),
+                    predefined_metric_specification=aws.appautoscaling.PolicyTargetTrackingScalingPolicyConfigurationPredefinedMetricSpecificationArgs(
+                        predefined_metric_type="ALBRequestCountPerTarget",
+                        resource_label=pulumi.Output.concat(alb_arn_suffix, "/", target_group_arn_suffix),
+                    ),
+                    scale_in_cooldown=300,
+                    scale_out_cooldown=60,
+                ),
+            )
 
     return {
         "cluster": cluster,

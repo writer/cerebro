@@ -142,6 +142,26 @@ config:
     type: integer
     default: 1
     description: Maximum API instances; values above 1 require cerebro:imageTag >= v2.1.25 (cross-task source-runtime cursor locking, writer/cerebro PR #554).
+  cerebro:apiRequestCountPerTargetScalingTarget:
+    type: integer
+    default: 0
+    description: Optional ALB request-count-per-target autoscaling target for the API service; 0 disables this policy.
+  cerebro:apiRequestCountPerTargetAlarmThreshold:
+    type: integer
+    default: 0
+    description: Optional ALB RequestCountPerTarget saturation alarm threshold per 5-minute period; 0 disables this alarm.
+  cerebro:apiLatencyP95AlarmThresholdSeconds:
+    type: integer
+    default: 3
+    description: API ALB p95 target response time alarm threshold in seconds; 0 disables this alarm.
+  cerebro:webLatencyP95AlarmThresholdSeconds:
+    type: integer
+    default: 3
+    description: Web console ALB p95 target response time alarm threshold in seconds; 0 disables this alarm.
+  cerebro:dashboardLatencyP95AlarmThresholdMs:
+    type: integer
+    default: 3000
+    description: GRC dashboard application p95 latency alarm threshold in milliseconds; 0 disables this alarm.
 
   cerebro:postgresInstanceClass:
     type: string
