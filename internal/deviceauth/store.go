@@ -100,16 +100,16 @@ type Store interface {
 
 // Typed store-level errors.
 var (
-	ErrDeviceNotFound          = errors.New("deviceauth: device not found")
-	ErrDeviceInactive          = errors.New("deviceauth: device is not active")
-	ErrBootstrapTokenNotFound  = errors.New("deviceauth: bootstrap token not found")
-	ErrBootstrapTokenConsumed  = errors.New("deviceauth: bootstrap token already consumed")
-	ErrBootstrapTokenExpired   = errors.New("deviceauth: bootstrap token expired")
-	ErrBootstrapTokenMismatch  = errors.New("deviceauth: bootstrap token hardware_uuid mismatch")
-	ErrRefreshNotFound         = errors.New("deviceauth: refresh token not found")
-	ErrRefreshReplay           = errors.New("deviceauth: refresh token replay detected")
-	ErrRefreshExpired          = errors.New("deviceauth: refresh token expired")
-	ErrIdempotencyConflict     = errors.New("deviceauth: idempotency-key request hash mismatch")
+	ErrDeviceNotFound         = errors.New("deviceauth: device not found")
+	ErrDeviceInactive         = errors.New("deviceauth: device is not active")
+	ErrBootstrapTokenNotFound = errors.New("deviceauth: bootstrap token not found")
+	ErrBootstrapTokenConsumed = errors.New("deviceauth: bootstrap token already consumed")
+	ErrBootstrapTokenExpired  = errors.New("deviceauth: bootstrap token expired")
+	ErrBootstrapTokenMismatch = errors.New("deviceauth: bootstrap token hardware_uuid mismatch")
+	ErrRefreshNotFound        = errors.New("deviceauth: refresh token not found")
+	ErrRefreshReplay          = errors.New("deviceauth: refresh token replay detected")
+	ErrRefreshExpired         = errors.New("deviceauth: refresh token expired")
+	ErrIdempotencyConflict    = errors.New("deviceauth: idempotency-key request hash mismatch")
 )
 
 // HashToken returns the SHA-256 digest of the given plaintext token.

@@ -62,8 +62,8 @@ type ObservationStore interface {
 // should use a Postgres-backed store keyed on (device_id) so observations
 // survive replica restarts.
 type InMemoryObservationStore struct {
-	mu       sync.RWMutex
-	current  map[string]Observation
+	mu      sync.RWMutex
+	current map[string]Observation
 }
 
 // NewInMemoryObservationStore returns an empty store.

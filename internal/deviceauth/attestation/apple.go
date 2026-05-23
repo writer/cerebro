@@ -12,7 +12,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"math/big"
 	"time"
 )
 
@@ -35,11 +34,10 @@ import (
 // The verifier returns hardware-assurance results when the Apple chain
 // validates and the nonce + key id checks pass.
 type AppleAppAttestVerifier struct {
-	roots       *x509.CertPool
-	clock       func() time.Time
-	bundleIDs   map[string]struct{}
-	teamID      string
-	expectedRPI [32]byte
+	roots     *x509.CertPool
+	clock     func() time.Time
+	bundleIDs map[string]struct{}
+	teamID    string
 }
 
 // AppleConfig configures the Apple App Attest verifier.
@@ -133,7 +131,7 @@ func (v *AppleAppAttestVerifier) Verify(_ context.Context, in Input) (*Result, e
 		}
 		cert, err := x509.ParseCertificate(item.bytes)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrChainInvalid, err)
+			return nil, fmt.Errorf("%w: %w", ErrChainInvalid, err)
 		}
 		chain = append(chain, cert)
 	}
@@ -149,7 +147,7 @@ func (v *AppleAppAttestVerifier) Verify(_ context.Context, in Input) (*Result, e
 		CurrentTime:   v.clock(),
 		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
 	}); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrChainInvalid, err)
+		return nil, fmt.Errorf("%w: %w", ErrChainInvalid, err)
 	}
 
 	// Nonce check: SHA256(authData || clientDataHash) must equal the value
@@ -184,7 +182,11 @@ func (v *AppleAppAttestVerifier) Verify(_ context.Context, in Input) (*Result, e
 	if !ok || ecpub.Curve != elliptic.P256() {
 		return nil, fmt.Errorf("%w: leaf is not P-256", ErrInvalidStatement)
 	}
-	keyHash := sha256.Sum256(append(padCoord(ecpub.X), padCoord(ecpub.Y)...))
+	xy, err := p256UncompressedXY(ecpub)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidStatement, err)
+	}
+	keyHash := sha256.Sum256(xy)
 	if !equalBytes(keyHash[:], credID) {
 		return nil, ErrKeyIDMismatch
 	}
@@ -236,21 +238,13 @@ func checkAppleNonceExtension(cert *x509.Certificate, expected []byte) error {
 		// Try to unwrap one or two SEQUENCE/OCTET STRING layers.
 		for i := 0; i < 4; i++ {
 			var inner asn1.RawValue
-			rest, err := asn1.Unmarshal(raw, &inner)
-			if err != nil {
+			if _, err := asn1.Unmarshal(raw, &inner); err != nil {
 				break
 			}
 			raw = inner.Bytes
 			if len(raw) == 32 && equalBytes(raw, expected) {
 				return nil
 			}
-			if len(rest) > 0 {
-				// in case the extension contains a SEQUENCE we should also
-				// consider a contextual [1] tag etc. Bail to scanning.
-			}
-			// SEQUENCE { [1] EXPLICIT OCTET STRING { ... } } pattern: the
-			// inner.Bytes will be the [1] context-specific value with the
-			// OCTET STRING inside. Strip until we hit 32 bytes.
 		}
 		// Last-resort scan for a 32-byte run that matches expected.
 		for i := 0; i+32 <= len(ext.Value); i++ {
@@ -263,14 +257,20 @@ func checkAppleNonceExtension(cert *x509.Certificate, expected []byte) error {
 	return fmt.Errorf("%w: leaf missing 1.2.840.113635.100.8.2 nonce extension", ErrChainInvalid)
 }
 
-func padCoord(b *big.Int) []byte {
-	bs := b.Bytes()
-	if len(bs) >= 32 {
-		return bs
+// p256UncompressedXY converts an ecdsa.PublicKey on P-256 to its 64-byte
+// big-endian X || Y serialization without touching the deprecated raw
+// coordinate fields. The crypto/ecdh package returns the SEC1 uncompressed
+// point format (0x04 || X || Y); we strip the 0x04 prefix.
+func p256UncompressedXY(pub *ecdsa.PublicKey) ([]byte, error) {
+	ecdhPub, err := pub.ECDH()
+	if err != nil {
+		return nil, err
 	}
-	out := make([]byte, 32)
-	copy(out[32-len(bs):], bs)
-	return out
+	raw := ecdhPub.Bytes()
+	if len(raw) != 65 || raw[0] != 0x04 {
+		return nil, fmt.Errorf("attestation: unexpected SEC1 encoding length %d", len(raw))
+	}
+	return raw[1:], nil
 }
 
 func equalBytes(a, b []byte) bool {

@@ -24,13 +24,13 @@ import (
 // switch, so a device-issued JWT and a capability token both flow through
 // the same authorization decision.
 const (
-	ScopeDevicesEnroll          = "platform.devices.enroll"
-	ScopeDevicesToken           = "platform.devices.token"
-	ScopeDevicesRead            = "platform.devices.read"
-	ScopeDevicesRevoke          = "platform.devices.revoke"
-	ScopeDevicesBootstrapWrite  = "platform.devices.bootstrap_tokens.write"
-	ScopeTelemetryIngest        = "platform.telemetry.ingest"
-	ScopeDeviceFindingsRead     = "security.devices.findings.read"
+	ScopeDevicesEnroll         = "platform.devices.enroll"
+	ScopeDevicesToken          = "platform.devices.token"
+	ScopeDevicesRead           = "platform.devices.read"
+	ScopeDevicesRevoke         = "platform.devices.revoke"
+	ScopeDevicesBootstrapWrite = "platform.devices.bootstrap_tokens.write"
+	ScopeTelemetryIngest       = "platform.telemetry.ingest"
+	ScopeDeviceFindingsRead    = "security.devices.findings.read"
 )
 
 // DefaultDeviceScopes is the default scope set assigned to a freshly enrolled
@@ -133,9 +133,9 @@ type IssueBootstrapTokenRequest struct {
 // [Service.IssueBootstrapToken]. The plaintext token is returned exactly
 // once; the server only persists the SHA-256 hash.
 type IssueBootstrapTokenResponse struct {
-	TokenID    string
-	Token      string
-	ExpiresAt  time.Time
+	TokenID   string
+	Token     string
+	ExpiresAt time.Time
 }
 
 // ServiceConfig configures the [Service].
@@ -276,7 +276,7 @@ func (s *Service) Enroll(ctx context.Context, request EnrollRequest) (EnrollResp
 	}
 	jkt, err := computeJKTFromPublicKeyDER(attResult.PublicKey)
 	if err != nil {
-		return EnrollResponse{}, fmt.Errorf("%w: %v", ErrInvalidRequest, err)
+		return EnrollResponse{}, fmt.Errorf("%w: %w", ErrInvalidRequest, err)
 	}
 	if jkt != "" {
 		metadata["dpop_jkt"] = jkt
@@ -631,18 +631,23 @@ func computeJKTFromPublicKeyDER(pubDER []byte) (string, error) {
 	switch p := pub.(type) {
 	case *ecdsa.PublicKey:
 		var crv string
+		var coordLen int
 		switch p.Curve {
 		case elliptic.P256():
-			crv = "P-256"
+			crv, coordLen = "P-256", 32
 		case elliptic.P384():
-			crv = "P-384"
+			crv, coordLen = "P-384", 48
 		default:
 			return "", nil
 		}
+		x, y, err := ecdsaPublicKeyXY(p, coordLen)
+		if err != nil {
+			return "", err
+		}
 		canonical := fmt.Sprintf(`{"crv":"%s","kty":"EC","x":"%s","y":"%s"}`,
 			crv,
-			base64.RawURLEncoding.EncodeToString(p.X.Bytes()),
-			base64.RawURLEncoding.EncodeToString(p.Y.Bytes()),
+			base64.RawURLEncoding.EncodeToString(x),
+			base64.RawURLEncoding.EncodeToString(y),
 		)
 		sum := sha256.Sum256([]byte(canonical))
 		return base64.RawURLEncoding.EncodeToString(sum[:]), nil
@@ -689,6 +694,25 @@ func generateID(prefix string) (string, error) {
 		return "", err
 	}
 	return prefix + base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
+// ecdsaPublicKeyXY returns the big-endian X and Y coordinates of pub
+// padded to coordLen, derived via the SEC1 uncompressed encoding emitted
+// by crypto/ecdh. This avoids touching the deprecated raw .X / .Y fields
+// on ecdsa.PublicKey while preserving the existing JWK thumbprint format
+// (RFC 7638). Only NIST P-256 / P-384 are supported here; callers must
+// gate on curve before calling.
+func ecdsaPublicKeyXY(pub *ecdsa.PublicKey, coordLen int) ([]byte, []byte, error) {
+	ecdhPub, err := pub.ECDH()
+	if err != nil {
+		return nil, nil, fmt.Errorf("deviceauth: ecdsa->ecdh: %w", err)
+	}
+	raw := ecdhPub.Bytes()
+	want := 1 + 2*coordLen
+	if len(raw) != want || raw[0] != 0x04 {
+		return nil, nil, fmt.Errorf("deviceauth: unexpected SEC1 length %d (want %d)", len(raw), want)
+	}
+	return raw[1 : 1+coordLen], raw[1+coordLen:], nil
 }
 
 func normalizedNonEmptyStrings(values []string) []string {

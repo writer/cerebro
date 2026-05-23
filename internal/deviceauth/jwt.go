@@ -396,20 +396,20 @@ type jwtHeader struct {
 }
 
 type jwtPayload struct {
-	Iss          string            `json:"iss"`
-	Aud          string            `json:"aud"`
-	Sub          string            `json:"sub"`
-	Exp          int64             `json:"exp"`
-	Nbf          int64             `json:"nbf"`
-	Iat          int64             `json:"iat"`
-	JTI          string            `json:"jti"`
-	Kind         string            `json:"kind"`
-	DeviceID     string            `json:"device_id"`
-	HardwareUUID string            `json:"hardware_uuid,omitempty"`
-	TenantID     string            `json:"tenant_id"`
-	Scopes       []string          `json:"scopes"`
-	ACR          string            `json:"acr,omitempty"`
-	CNF          *jwtConfirmation  `json:"cnf,omitempty"`
+	Iss          string           `json:"iss"`
+	Aud          string           `json:"aud"`
+	Sub          string           `json:"sub"`
+	Exp          int64            `json:"exp"`
+	Nbf          int64            `json:"nbf"`
+	Iat          int64            `json:"iat"`
+	JTI          string           `json:"jti"`
+	Kind         string           `json:"kind"`
+	DeviceID     string           `json:"device_id"`
+	HardwareUUID string           `json:"hardware_uuid,omitempty"`
+	TenantID     string           `json:"tenant_id"`
+	Scopes       []string         `json:"scopes"`
+	ACR          string           `json:"acr,omitempty"`
+	CNF          *jwtConfirmation `json:"cnf,omitempty"`
 }
 
 // jwtConfirmation is the RFC 7800 cnf claim. We use the jkt subset for DPoP

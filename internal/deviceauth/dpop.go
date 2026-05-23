@@ -1,6 +1,7 @@
 package deviceauth
 
 import (
+	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
@@ -100,7 +101,7 @@ func (v *DPoPVerifier) Verify(proofToken, method, requestURL string) (*DPoPResul
 	}
 	pub, jkt, err := parseJWK(hdr.JWK)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrDPoPInvalidJWK, err)
+		return nil, fmt.Errorf("%w: %w", ErrDPoPInvalidJWK, err)
 	}
 	payloadJSON, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
@@ -191,27 +192,37 @@ func parseJWK(raw json.RawMessage) (interface{}, string, error) {
 	switch jwk.Kty {
 	case "EC":
 		var curve elliptic.Curve
+		var ecdhCurve ecdh.Curve
+		var coordLen int
 		switch jwk.Crv {
 		case "P-256":
-			curve = elliptic.P256()
+			curve, ecdhCurve, coordLen = elliptic.P256(), ecdh.P256(), 32
 		case "P-384":
-			curve = elliptic.P384()
+			curve, ecdhCurve, coordLen = elliptic.P384(), ecdh.P384(), 48
 		default:
 			return nil, "", fmt.Errorf("unsupported EC curve %q", jwk.Crv)
 		}
 		x, errX := base64.RawURLEncoding.DecodeString(jwk.X)
 		y, errY := base64.RawURLEncoding.DecodeString(jwk.Y)
-		if errX != nil || errY != nil {
+		if errX != nil || errY != nil || len(x) > coordLen || len(y) > coordLen {
 			return nil, "", errors.New("malformed jwk x/y")
 		}
-		xi := new(big.Int).SetBytes(x)
-		yi := new(big.Int).SetBytes(y)
-		if !curve.IsOnCurve(xi, yi) {
-			return nil, "", errors.New("jwk point not on curve")
+		uncompressed := make([]byte, 1+2*coordLen)
+		uncompressed[0] = 0x04
+		copy(uncompressed[1+coordLen-len(x):1+coordLen], x)
+		copy(uncompressed[1+2*coordLen-len(y):], y)
+		ecdhPub, err := ecdhCurve.NewPublicKey(uncompressed)
+		if err != nil {
+			return nil, "", fmt.Errorf("jwk point not on curve: %w", err)
 		}
+		_ = ecdhPub
 		canonical := fmt.Sprintf(`{"crv":"%s","kty":"EC","x":"%s","y":"%s"}`, jwk.Crv, jwk.X, jwk.Y)
 		sum := sha256.Sum256([]byte(canonical))
-		return &ecdsa.PublicKey{Curve: curve, X: xi, Y: yi}, base64.RawURLEncoding.EncodeToString(sum[:]), nil
+		return &ecdsa.PublicKey{
+			Curve: curve,
+			X:     new(big.Int).SetBytes(x),
+			Y:     new(big.Int).SetBytes(y),
+		}, base64.RawURLEncoding.EncodeToString(sum[:]), nil
 	case "OKP":
 		if jwk.Crv != "Ed25519" {
 			return nil, "", fmt.Errorf("unsupported OKP curve %q", jwk.Crv)

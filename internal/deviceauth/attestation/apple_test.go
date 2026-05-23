@@ -107,7 +107,8 @@ func TestAppleAppAttestRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	credID := sha256.Sum256(append(padCoord(leafKey.PublicKey.X), padCoord(leafKey.PublicKey.Y)...))
+	xy := mustP256XY(t, &leafKey.PublicKey)
+	credID := sha256.Sum256(xy)
 	authData := buildAuthData(t, teamID, bundleID, credID[:])
 	nonceHasher := sha256.New()
 	nonceHasher.Write(authData)
@@ -161,7 +162,7 @@ func TestAppleAppAttestRoundTrip(t *testing.T) {
 func TestAppleAppAttestRejectsTamperedClientDataHash(t *testing.T) {
 	teamID, bundleID := "TEAM1", "com.writer.secheck"
 	leafKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	credID := sha256.Sum256(append(padCoord(leafKey.PublicKey.X), padCoord(leafKey.PublicKey.Y)...))
+	credID := sha256.Sum256(mustP256XY(t, &leafKey.PublicKey))
 	authData := buildAuthData(t, teamID, bundleID, credID[:])
 	originalHash := sha256.Sum256([]byte("real"))
 	nh := sha256.New()
@@ -218,7 +219,7 @@ func TestRegistryDispatch(t *testing.T) {
 	teamID, bundleID := "TEAM1", "com.writer.secheck"
 	clientHash := sha256.Sum256([]byte("hello"))
 	leafKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	credID := sha256.Sum256(append(padCoord(leafKey.PublicKey.X), padCoord(leafKey.PublicKey.Y)...))
+	credID := sha256.Sum256(mustP256XY(t, &leafKey.PublicKey))
 	authData := buildAuthData(t, teamID, bundleID, credID[:])
 	nh := sha256.New()
 	nh.Write(authData)
@@ -243,4 +244,13 @@ func TestRegistryDispatch(t *testing.T) {
 	if res.AssuranceLevel != "hardware" {
 		t.Fatalf("assurance=%q", res.AssuranceLevel)
 	}
+}
+
+func mustP256XY(t *testing.T, pub *ecdsa.PublicKey) []byte {
+	t.Helper()
+	xy, err := p256UncompressedXY(pub)
+	if err != nil {
+		t.Fatalf("p256UncompressedXY: %v", err)
+	}
+	return xy
 }

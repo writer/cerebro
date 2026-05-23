@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto"
 	"crypto/ecdsa"
-	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
@@ -88,7 +87,7 @@ func (v *TPMVerifier) Verify(_ context.Context, in Input) (*Result, error) {
 	}
 	var stmt tpmStatement
 	if err := json.Unmarshal(raw, &stmt); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidStatement, err)
+		return nil, fmt.Errorf("%w: %w", ErrInvalidStatement, err)
 	}
 	if len(stmt.EKChain) == 0 || stmt.AKPubDER == "" || stmt.Quote == "" || stmt.Signature == "" {
 		return nil, fmt.Errorf("%w: missing field", ErrInvalidStatement)
@@ -109,7 +108,7 @@ func (v *TPMVerifier) Verify(_ context.Context, in Input) (*Result, error) {
 		CurrentTime:   v.clock(),
 		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
 	}); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrChainInvalid, err)
+		return nil, fmt.Errorf("%w: %w", ErrChainInvalid, err)
 	}
 
 	akPubDER, err := base64.StdEncoding.DecodeString(stmt.AKPubDER)
@@ -121,7 +120,7 @@ func (v *TPMVerifier) Verify(_ context.Context, in Input) (*Result, error) {
 	}
 	akPub, err := x509.ParsePKIXPublicKey(akPubDER)
 	if err != nil {
-		return nil, fmt.Errorf("%w: ak_pub_der parse: %v", ErrInvalidStatement, err)
+		return nil, fmt.Errorf("%w: ak_pub_der parse: %w", ErrInvalidStatement, err)
 	}
 
 	quote, err := base64.StdEncoding.DecodeString(stmt.Quote)
@@ -174,7 +173,7 @@ func decodeChain(b64chain []string) ([]*x509.Certificate, error) {
 		}
 		c, err := x509.ParseCertificate(der)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrChainInvalid, err)
+			return nil, fmt.Errorf("%w: %w", ErrChainInvalid, err)
 		}
 		chain = append(chain, c)
 	}
@@ -190,7 +189,7 @@ func verifyQuoteSignature(pub crypto.PublicKey, alg string, quote, sig []byte) e
 			return ErrInvalidStatement
 		}
 		if err := rsa.VerifyPKCS1v15(rsapub, crypto.SHA256, digest[:], sig); err != nil {
-			return fmt.Errorf("%w: %v", ErrChainInvalid, err)
+			return fmt.Errorf("%w: %w", ErrChainInvalid, err)
 		}
 		return nil
 	case "ECDSA-SHA256":
@@ -223,6 +222,4 @@ func checkExtraData(quote, expected []byte) error {
 	return fmt.Errorf("%w: client-data hash not present in quote", ErrNonceMismatch)
 }
 
-// rng is exposed for the tests; production never overrides it.
-var rng = rand.Reader
 var _ = binary.BigEndian

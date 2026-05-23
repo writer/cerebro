@@ -19,12 +19,12 @@ import (
 )
 
 type tpmRoot struct {
-	pool      *x509.CertPool
-	rootCert  *x509.Certificate
-	rootKey   *rsa.PrivateKey
-	rootDER   []byte
-	leafCert  *x509.Certificate
-	leafDER   []byte
+	pool     *x509.CertPool
+	rootCert *x509.Certificate
+	rootKey  *rsa.PrivateKey
+	rootDER  []byte
+	leafCert *x509.Certificate
+	leafDER  []byte
 }
 
 func mintTPMRoot(t *testing.T) tpmRoot {

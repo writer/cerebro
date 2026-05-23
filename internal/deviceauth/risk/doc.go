@@ -10,12 +10,12 @@
 //     travel), geo/ASN drift, request-rate anomaly -- and aggregates the
 //     numeric signals into a single 0..100 score.
 //  3. The handler decides what to do:
-//       - score < LowThreshold:    allow as-is
-//       - LowThreshold..HighThr:   allow but emit an audit signal
-//       - score >= HighThreshold:  drop sensitive scopes (telemetry write,
-//                                  bootstrap-token issuance, revocation)
-//                                  and emit a high-priority audit + WAF
-//                                  rule update.
+//     - score < LowThreshold:    allow as-is
+//     - LowThreshold..HighThr:   allow but emit an audit signal
+//     - score >= HighThreshold:  drop sensitive scopes (telemetry write,
+//     bootstrap-token issuance, revocation)
+//     and emit a high-priority audit + WAF
+//     rule update.
 //
 // Geo/ASN lookup is pluggable via [GeoLookup]. The default
 // [InMemoryGeoLookup] holds a static IP -> (country, asn, lat, lon) table

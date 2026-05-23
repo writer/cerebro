@@ -112,20 +112,20 @@ type DeviceAuthSigningKey struct {
 // DeviceAuthConfig configures the SeCheck device-auth surface. The surface is
 // disabled when Enabled is false.
 type DeviceAuthConfig struct {
-	Enabled                  bool
-	Issuer                   string
-	Audience                 string
-	AccessTTL                time.Duration
-	RefreshTTL               time.Duration
-	BootstrapTokenTTL        time.Duration
-	IdempotencyTTL           time.Duration
-	ClockSkew                time.Duration
-	SigningKeys              []DeviceAuthSigningKey
-	CurrentKID               string
-	EnrollPerIPRatePerSecond float64
-	EnrollPerIPBurst         int
+	Enabled                     bool
+	Issuer                      string
+	Audience                    string
+	AccessTTL                   time.Duration
+	RefreshTTL                  time.Duration
+	BootstrapTokenTTL           time.Duration
+	IdempotencyTTL              time.Duration
+	ClockSkew                   time.Duration
+	SigningKeys                 []DeviceAuthSigningKey
+	CurrentKID                  string
+	EnrollPerIPRatePerSecond    float64
+	EnrollPerIPBurst            int
 	TokenPerDeviceRatePerSecond float64
-	TokenPerDeviceBurst      int
+	TokenPerDeviceBurst         int
 	// DPoPProofTTL bounds how long an RFC 9449 DPoP proof JWT remains
 	// valid; defaults to 60s if zero.
 	DPoPProofTTL time.Duration

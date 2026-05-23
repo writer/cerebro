@@ -46,11 +46,12 @@ func ecPublicKeyDER(t *testing.T, pub *ecdsa.PublicKey) []byte {
 
 func newDPoPProofES256(t *testing.T, key *ecdsa.PrivateKey, htm, htu string, iat time.Time, jti string) string {
 	t.Helper()
+	x, y := p256XY(t, &key.PublicKey)
 	jwk := map[string]string{
 		"kty": "EC",
 		"crv": "P-256",
-		"x":   base64.RawURLEncoding.EncodeToString(key.PublicKey.X.Bytes()),
-		"y":   base64.RawURLEncoding.EncodeToString(key.PublicKey.Y.Bytes()),
+		"x":   base64.RawURLEncoding.EncodeToString(x),
+		"y":   base64.RawURLEncoding.EncodeToString(y),
 	}
 	header := map[string]any{"typ": "dpop+jwt", "alg": "ES256", "jwk": jwk}
 	hb, _ := json.Marshal(header)
@@ -267,4 +268,19 @@ func containsScope(scopes []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// p256XY returns the 32-byte big-endian X and Y coordinates of pub via the
+// crypto/ecdh SEC1 encoding, avoiding the deprecated raw .X / .Y fields.
+func p256XY(t *testing.T, pub *ecdsa.PublicKey) ([]byte, []byte) {
+	t.Helper()
+	ecdhPub, err := pub.ECDH()
+	if err != nil {
+		t.Fatalf("ECDH: %v", err)
+	}
+	raw := ecdhPub.Bytes()
+	if len(raw) != 65 || raw[0] != 0x04 {
+		t.Fatalf("unexpected SEC1 length %d", len(raw))
+	}
+	return raw[1:33], raw[33:]
 }

@@ -243,14 +243,14 @@ FROM device_bootstrap_tokens
 WHERE token_hash = $1
 FOR UPDATE`, hash[:])
 		var (
-			tokenID      string
-			hwUUID       string
-			tenantID     string
-			scopesJSON   string
-			createdAt    time.Time
-			expiresAt    time.Time
-			consumedAt   sql.NullTime
-			consumedBy   string
+			tokenID    string
+			hwUUID     string
+			tenantID   string
+			scopesJSON string
+			createdAt  time.Time
+			expiresAt  time.Time
+			consumedAt sql.NullTime
+			consumedBy string
 		)
 		if err := row.Scan(&tokenID, &hwUUID, &tenantID, &scopesJSON, &createdAt, &expiresAt, &consumedAt, &consumedBy); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {

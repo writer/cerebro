@@ -5,19 +5,18 @@ import (
 	"net"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 )
 
 // Signal is the per-request input to the risk pipeline.
 type Signal struct {
-	DeviceID    string
-	TenantID    string
-	RemoteIP    net.IP
-	UserAgent   string
-	Method      string
-	Path        string
-	Now         time.Time
+	DeviceID  string
+	TenantID  string
+	RemoteIP  net.IP
+	UserAgent string
+	Method    string
+	Path      string
+	Now       time.Time
 	// PriorObservation is the most recently recorded observation for this
 	// device, if any. The scorer uses it to derive velocity and geo drift.
 	PriorObservation *Observation
@@ -82,9 +81,11 @@ type Thresholds struct {
 	High     int
 }
 
-// Scorer composes detectors. It is goroutine-safe.
+// Scorer composes detectors. Detectors and configuration are immutable after
+// construction; the scorer is goroutine-safe purely because every dependency
+// it touches (Detector implementations, GeoLookup, WAFEmitter) is
+// goroutine-safe on its own.
 type Scorer struct {
-	mu         sync.RWMutex
 	detectors  []Detector
 	geo        GeoLookup
 	thresholds Thresholds

@@ -41,11 +41,16 @@ func newDPoPSignerEd25519(t *testing.T) *dpopSigner {
 
 func (s *dpopSigner) jwk() map[string]string {
 	if s.es256 != nil {
+		ecdhPub, err := s.es256.PublicKey.ECDH()
+		if err != nil {
+			panic(err)
+		}
+		raw := ecdhPub.Bytes()
 		return map[string]string{
 			"kty": "EC",
 			"crv": "P-256",
-			"x":   base64.RawURLEncoding.EncodeToString(s.es256.PublicKey.X.Bytes()),
-			"y":   base64.RawURLEncoding.EncodeToString(s.es256.PublicKey.Y.Bytes()),
+			"x":   base64.RawURLEncoding.EncodeToString(raw[1:33]),
+			"y":   base64.RawURLEncoding.EncodeToString(raw[33:]),
 		}
 	}
 	return map[string]string{

@@ -10,13 +10,13 @@ import (
 // WAF is in front), but it shaves off retry storms before they reach the
 // store.
 type TokenBucket struct {
-	mu               sync.Mutex
-	ratePerSecond    float64
-	burst            float64
-	now              func() time.Time
-	buckets          map[string]*tokenBucketEntry
-	lastSweep        time.Time
-	maxIdle          time.Duration
+	mu            sync.Mutex
+	ratePerSecond float64
+	burst         float64
+	now           func() time.Time
+	buckets       map[string]*tokenBucketEntry
+	lastSweep     time.Time
+	maxIdle       time.Duration
 }
 
 type tokenBucketEntry struct {
