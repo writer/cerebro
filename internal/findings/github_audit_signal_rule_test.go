@@ -9,6 +9,173 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
+func TestGitHubAnchorRequiredFields(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "writer"}
+	auditCases := []struct {
+		name     string
+		rule     Rule
+		config   githubAuditSignalConfig
+		attrs    map[string]string
+		required []string
+		missing  []string
+	}{
+		{
+			name:   "organization owner",
+			rule:   newGitHubOrganizationOwnerAddedRule(),
+			config: githubOrganizationOwnerAddedConfig,
+			attrs: map[string]string{
+				"action":     "org.add_member",
+				"org":        "writer",
+				"permission": "admin",
+				"user":       "new-owner",
+			},
+			required: []string{"org"},
+			missing:  []string{"org"},
+		},
+		{
+			name:   "repository ruleset",
+			rule:   newGitHubRepositoryRulesetModifiedRule(),
+			config: githubRepositoryRulesetModifiedConfig,
+			attrs: map[string]string{
+				"action":                        "repository_ruleset.update",
+				"repo":                          "writer/cerebro",
+				"required_status_check_removed": "true",
+				"ruleset_id":                    "42",
+			},
+			required: []string{"ruleset_id"},
+			missing:  []string{"ruleset_id"},
+		},
+		{
+			name:   "webhook",
+			rule:   newGitHubWebhookModifiedRule(),
+			config: githubWebhookModifiedConfig,
+			attrs: map[string]string{
+				"action":  "hook.create",
+				"hook_id": "99",
+				"repo":    "writer/cerebro",
+			},
+			required: []string{"hook_id"},
+			missing:  []string{"hook_id"},
+		},
+		{
+			name:   "app integration",
+			rule:   newGitHubAppIntegrationInstalledRule(),
+			config: githubAppIntegrationInstalledConfig,
+			attrs: map[string]string{
+				"action":        "integration_installation.create",
+				"github_app_id": "123456",
+				"name":          "ci-deployer",
+				"org":           "writer",
+			},
+			required: []string{"github_app_id"},
+			missing:  []string{"github_app_id"},
+		},
+		{
+			name:   "personal access token",
+			rule:   newGitHubPersonalAccessTokenCreatedRule(),
+			config: githubPersonalAccessTokenCreatedConfig,
+			attrs: map[string]string{
+				"action":         "personal_access_token.access_granted",
+				"operation_type": "create",
+				"token_id":       "555",
+				"user":           "octocat",
+				"user_id":        "12345",
+			},
+			required: []string{"user_id", "token_id"},
+			missing:  []string{"user_id", "token_id"},
+		},
+		{
+			name:   "self-hosted runner",
+			rule:   newGitHubSelfHostedRunnerChangeRule(),
+			config: githubSelfHostedRunnerChangeConfig,
+			attrs: map[string]string{
+				"action":            "repo.register_self_hosted_runner",
+				"repo":              "writer/cerebro",
+				"runner_ephemeral":  "false",
+				"runner_id":         "777",
+				"runner_registered": "true",
+			},
+			required: []string{"scope", "runner_id"},
+			missing:  []string{"scope", "runner_id"},
+		},
+	}
+
+	for _, tc := range auditCases {
+		t.Run(tc.name, func(t *testing.T) {
+			metadataRule, ok := tc.rule.(MetadataRule)
+			if !ok {
+				t.Fatal("rule does not expose RuleMetadata")
+			}
+			definition := metadataRule.RuleMetadata()
+			for _, field := range tc.required {
+				if !slices.Contains(definition.RequiredAttributes, field) {
+					t.Fatalf("RequiredAttributes = %v, want durable anchor field %q", definition.RequiredAttributes, field)
+				}
+			}
+
+			valid := githubAuditEvent("github-anchor-"+strings.ReplaceAll(tc.name, " ", "-"), cloneGitHubTestAttrs(tc.attrs))
+			records, err := tc.rule.Evaluate(context.Background(), runtime, valid)
+			if err != nil || len(records) != 1 {
+				t.Fatalf("Evaluate(valid anchor attrs) = (%v, %v), want one finding", records, err)
+			}
+			if fingerprint := githubAuditSignalFingerprint(valid, tc.config); fingerprint == nil || strings.TrimSpace(*fingerprint) == "" {
+				t.Fatalf("githubAuditSignalFingerprint(valid anchor attrs) = %v, want non-empty fingerprint", fingerprint)
+			}
+
+			for _, missing := range tc.missing {
+				attrs := cloneGitHubTestAttrs(tc.attrs)
+				removeGitHubAnchorTestAttr(attrs, missing)
+				event := githubAuditEvent("github-anchor-missing-"+strings.ReplaceAll(tc.name, " ", "-")+"-"+missing, attrs)
+				records, err := tc.rule.Evaluate(context.Background(), runtime, event)
+				if err != nil {
+					t.Fatalf("Evaluate(missing %s) error = %v", missing, err)
+				}
+				if len(records) != 0 {
+					t.Fatalf("Evaluate(missing %s) returned %d findings, want 0", missing, len(records))
+				}
+				if fingerprint := githubAuditSignalFingerprint(event, tc.config); fingerprint != nil {
+					t.Fatalf("githubAuditSignalFingerprint(missing %s) = %q, want nil", missing, *fingerprint)
+				}
+			}
+		})
+	}
+
+	t.Run("secret scanning source-state anchor", func(t *testing.T) {
+		rule := newGitHubSecretScanningAlertCreatedRule()
+		metadataRule, ok := rule.(MetadataRule)
+		if !ok {
+			t.Fatal("rule does not expose RuleMetadata")
+		}
+		definition := metadataRule.RuleMetadata()
+		for _, field := range []string{"repo", "number"} {
+			if !slices.Contains(definition.RequiredAttributes, field) {
+				t.Fatalf("RequiredAttributes = %v, want durable anchor field %q", definition.RequiredAttributes, field)
+			}
+		}
+		runtime := &cerebrov1.SourceRuntime{Id: "github-secret-scanning-runtime", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "secret_scanning_alert"}}
+		base := map[string]string{
+			"number": "12",
+			"repo":   "writer/cerebro",
+			"state":  "open",
+		}
+		records, err := rule.Evaluate(context.Background(), runtime, githubSecretScanningAlertEvent("github-secret-alert-anchor-valid", cloneGitHubTestAttrs(base)))
+		if err != nil || len(records) != 1 {
+			t.Fatalf("Evaluate(valid secret-scanning anchor attrs) = (%v, %v), want one finding", records, err)
+		}
+		for _, missing := range []string{"repo", "number"} {
+			attrs := cloneGitHubTestAttrs(base)
+			delete(attrs, missing)
+			records, err := rule.Evaluate(context.Background(), runtime, githubSecretScanningAlertEvent("github-secret-alert-anchor-missing-"+missing, attrs))
+			if err != nil {
+				t.Fatalf("Evaluate(secret scanning missing %s) error = %v", missing, err)
+			}
+			if len(records) != 0 {
+				t.Fatalf("Evaluate(secret scanning missing %s) returned %d findings, want 0", missing, len(records))
+			}
+		}
+	})
+}
+
 func TestGitHubSecretScanningAlertCreated(t *testing.T) {
 	rule := newGitHubSecretScanningAlertCreatedRule()
 	metadataRule, ok := rule.(MetadataRule)
@@ -290,6 +457,7 @@ func TestGitHubRepositoryRulesetModifiedRequiresWeakeningSignal(t *testing.T) {
 		"action":      "repository_ruleset.update",
 		"enforcement": "active",
 		"repo":        "writer/cerebro",
+		"ruleset_id":  "42",
 	})
 	records, err := rule.Evaluate(context.Background(), runtime, event)
 	if err != nil {
@@ -304,6 +472,7 @@ func TestGitHubRepositoryRulesetModifiedRequiresWeakeningSignal(t *testing.T) {
 		"enforcement":                   "active",
 		"required_status_check_removed": "true",
 		"repo":                          "writer/cerebro",
+		"ruleset_id":                    "42",
 	})
 	records, err = rule.Evaluate(context.Background(), runtime, event)
 	if err != nil {
@@ -317,6 +486,7 @@ func TestGitHubRepositoryRulesetModifiedRequiresWeakeningSignal(t *testing.T) {
 		"action":      "repository_ruleset.update",
 		"enforcement": "disabled",
 		"repo":        "writer/cerebro",
+		"ruleset_id":  "42",
 	})
 	records, err = rule.Evaluate(context.Background(), runtime, event)
 	if err != nil {
@@ -820,16 +990,18 @@ func TestGitHubAppIntegrationInstalled(t *testing.T) {
 
 	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "writer"}
 	first := githubAuditEvent("github-app-install-first", map[string]string{
-		"action": "integration_installation.create",
-		"name":   "ci-deployer",
-		"org":    "writer",
-		"repo":   "writer/cerebro",
+		"action":        "integration_installation.create",
+		"github_app_id": "123456",
+		"name":          "ci-deployer",
+		"org":           "writer",
+		"repo":          "writer/cerebro",
 	})
 	second := githubAuditEvent("github-app-install-second", map[string]string{
-		"action": "integration_installation.create",
-		"name":   "ci-deployer",
-		"org":    "writer",
-		"repo":   "writer/other",
+		"action":        "integration_installation.create",
+		"github_app_id": "123456",
+		"name":          "ci-deployer",
+		"org":           "writer",
+		"repo":          "writer/other",
 	})
 	records, err := rule.Evaluate(context.Background(), runtime, first)
 	if err != nil || len(records) != 1 {
@@ -851,9 +1023,10 @@ func TestGitHubAppIntegrationInstalled(t *testing.T) {
 	}
 
 	uninstall := githubAuditEvent("github-app-uninstall", map[string]string{
-		"action": "integration_installation.destroy",
-		"name":   "ci-deployer",
-		"org":    "writer",
+		"action":        "integration_installation.destroy",
+		"github_app_id": "123456",
+		"name":          "ci-deployer",
+		"org":           "writer",
 	})
 	records, err = rule.Evaluate(context.Background(), runtime, uninstall)
 	if err != nil {
@@ -1080,5 +1253,23 @@ func githubAuditEvent(id string, attributes map[string]string) *cerebrov1.EventE
 		SourceId:   "github",
 		Kind:       "github.audit",
 		Attributes: attributes,
+	}
+}
+
+func cloneGitHubTestAttrs(attrs map[string]string) map[string]string {
+	cloned := make(map[string]string, len(attrs))
+	for key, value := range attrs {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func removeGitHubAnchorTestAttr(attrs map[string]string, field string) {
+	delete(attrs, field)
+	if field != "scope" {
+		return
+	}
+	for _, key := range []string{"enterprise", "enterprise_id", "enterprise_slug", "org", "repo", "repository", "resource_id", "runner_scope"} {
+		delete(attrs, key)
 	}
 }

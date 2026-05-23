@@ -171,7 +171,7 @@ var githubSelfHostedRunnerChangeDefinition = RuleDefinition{
 	References:         []string{"https://docs.github.com/en/actions/hosting-your-own-runners/about-self-hosted-runners", "https://github.com/SigmaHQ/sigma/blob/master/rules/application/github/audit/github_self_hosted_runner_changes_detected.yml", "https://github.com/elastic/detection-rules/blob/main/rules/integrations/github/initial_access_github_register_self_hosted_runner.toml"},
 	FalsePositives:     []string{"Approved runner maintenance, ephemeral runner churn, or expected runner group administration."},
 	Runbook:            "Validate the runner owner and host, inspect recent workflows assigned to it, and isolate the runner if authorization is unclear.",
-	RequiredAttributes: []string{"runner_id"},
+	RequiredAttributes: []string{"scope", "runner_id"},
 	FingerprintFields:  []string{"scope", "runner_id"},
 	ControlRefs:        githubAuditControlRefs,
 	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
@@ -211,7 +211,7 @@ var githubOrganizationOwnerAddedDefinition = RuleDefinition{
 	References:         []string{"https://github.com/elastic/detection-rules/blob/main/rules/integrations/github/persistence_github_org_owner_added.toml"},
 	FalsePositives:     []string{"Approved organization owner onboarding or break-glass access grant."},
 	Runbook:            "Validate the new owner, revoke unauthorized access immediately, review owner activity, and require MFA/SSO re-verification.",
-	RequiredAttributes: []string{"action", "user", "permission"},
+	RequiredAttributes: []string{"action", "org", "user", "permission"},
 	FingerprintFields:  []string{"org", "user"},
 	ControlRefs:        githubAuditControlRefs,
 	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
@@ -291,7 +291,7 @@ var githubAppIntegrationInstalledDefinition = RuleDefinition{
 	References:         []string{"https://docs.github.com/en/apps/using-github-apps/installing-a-github-app-from-a-third-party", "https://github.com/elastic/detection-rules/blob/main/rules/integrations/github/execution_new_github_app_installed.toml"},
 	FalsePositives:     []string{"Approved GitHub App onboarding through standard change management."},
 	Runbook:            "Review installer, app publisher, requested permissions, repository scope, and revoke unauthorized installations.",
-	RequiredAttributes: []string{"action", "name", "org"},
+	RequiredAttributes: []string{"action", "github_app_id", "name", "org"},
 	FingerprintFields:  []string{"org", "name"},
 	ControlRefs:        githubAuditControlRefs,
 	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
@@ -350,7 +350,7 @@ var githubRepositoryRulesetModifiedDefinition = RuleDefinition{
 	References:         []string{"https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets", "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_repo_ruleset_modified.yml"},
 	FalsePositives:     []string{"Approved repository governance migration or ruleset tuning."},
 	Runbook:            "Review changed ruleset enforcement and bypass actors, restore required checks/reviews, and inspect protected branch activity.",
-	RequiredAttributes: []string{"action", "repo"},
+	RequiredAttributes: []string{"action", "repo", "ruleset_id"},
 	FingerprintFields:  []string{"repo", "ruleset_id"},
 	ControlRefs:        githubAuditControlRefs,
 	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
@@ -389,7 +389,7 @@ var githubWebhookModifiedDefinition = RuleDefinition{
 	References:         []string{"https://docs.github.com/en/webhooks", "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_webhook_modified.yml"},
 	FalsePositives:     []string{"Approved integration onboarding or webhook maintenance."},
 	Runbook:            "Verify webhook destination and events, remove unauthorized hooks, and rotate secrets if repository data may have been sent externally.",
-	RequiredAttributes: []string{"action", "repo"},
+	RequiredAttributes: []string{"action", "repo", "hook_id"},
 	FingerprintFields:  []string{"repo", "hook_id"},
 	ControlRefs:        githubAuditControlRefs,
 	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
@@ -818,6 +818,10 @@ func newGitHubAuditSignalRule(config githubAuditSignalConfig) Rule {
 
 func githubAuditSignalFinding(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope, config githubAuditSignalConfig) (*ports.FindingRecord, error) {
 	attributes := eventAttributes(event)
+	fingerprint := githubAuditSignalFingerprint(event, config)
+	if fingerprint == nil {
+		return nil, nil
+	}
 	primaryEntityType := ""
 	if config.primaryEntityType != nil {
 		primaryEntityType = strings.TrimSpace(config.primaryEntityType(attributes))
@@ -855,12 +859,11 @@ func githubAuditSignalFinding(ctx context.Context, runtime *cerebrov1.SourceRunt
 	if config.policyID != nil {
 		policyID = config.policyID(attributes)
 	}
-	fingerprint := githubAuditSignalFingerprint(event, config)
 	checkID := firstNonEmpty(config.checkID, config.definition.ID)
 	checkName := firstNonEmpty(config.checkName, config.definition.Name)
 	return &ports.FindingRecord{
-		ID:                fingerprint,
-		Fingerprint:       fingerprint,
+		ID:                *fingerprint,
+		Fingerprint:       *fingerprint,
 		TenantID:          strings.TrimSpace(event.GetTenantId()),
 		RuntimeID:         strings.TrimSpace(runtime.GetId()),
 		RuleID:            config.definition.ID,
@@ -940,26 +943,47 @@ func githubAuditSignalAttributes(event *cerebrov1.EventEnvelope, config githubAu
 	return attributes
 }
 
-func githubAuditSignalFingerprint(event *cerebrov1.EventEnvelope, config githubAuditSignalConfig) string {
+func githubAuditSignalFingerprint(event *cerebrov1.EventEnvelope, config githubAuditSignalConfig) *string {
 	definition := config.definition
-	if config.fingerprint != nil {
-		return hashFindingFingerprint(append([]string{definition.ID}, config.fingerprint(event, definition)...)...)
+	if !hasRequiredAttributes(event, definition.RequiredAttributes...) {
+		return nil
 	}
-	attributes := eventAttributes(event)
 	parts := []string{definition.ID}
+	if config.fingerprint != nil {
+		inputs := config.fingerprint(event, definition)
+		if len(inputs) == 0 {
+			return nil
+		}
+		for _, input := range inputs {
+			if strings.TrimSpace(input) == "" {
+				return nil
+			}
+			parts = append(parts, input)
+		}
+		fingerprint := hashFindingFingerprint(parts...)
+		return &fingerprint
+	}
 	fields := definition.FingerprintFields
 	if len(fields) == 0 {
 		fields = []string{"event_id"}
 	}
 	for _, field := range fields {
-		switch strings.TrimSpace(field) {
-		case "event_id":
-			parts = append(parts, event.GetId())
-		default:
-			parts = append(parts, attributes[field])
+		value := githubAuditSignalFingerprintFieldValue(event, field)
+		if value == "" {
+			return nil
 		}
+		parts = append(parts, value)
 	}
-	return hashFindingFingerprint(parts...)
+	fingerprint := hashFindingFingerprint(parts...)
+	return &fingerprint
+}
+
+func githubAuditSignalFingerprintFieldValue(event *cerebrov1.EventEnvelope, field string) string {
+	normalizedField := strings.TrimSpace(field)
+	if normalizedField == "" {
+		return ""
+	}
+	return requiredAttributeValue(event, normalizedField)
 }
 
 func githubAuditSignalSummary(attributes map[string]string, config githubAuditSignalConfig) string {

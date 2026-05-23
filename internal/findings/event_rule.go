@@ -171,13 +171,36 @@ func eventAttributes(event *cerebrov1.EventEnvelope) map[string]string {
 }
 
 func hasRequiredAttributes(event *cerebrov1.EventEnvelope, keys ...string) bool {
-	attributes := eventAttributes(event)
 	for _, key := range keys {
-		if strings.TrimSpace(attributes[strings.TrimSpace(key)]) == "" {
+		if requiredAttributeValue(event, key) == "" {
 			return false
 		}
 	}
 	return true
+}
+
+func requiredAttributeValue(event *cerebrov1.EventEnvelope, key string) string {
+	if event == nil {
+		return ""
+	}
+	normalizedKey := strings.TrimSpace(key)
+	if normalizedKey == "" {
+		return ""
+	}
+	attributes := eventAttributes(event)
+	if value := strings.TrimSpace(attributes[normalizedKey]); value != "" {
+		return value
+	}
+	switch normalizedKey {
+	case "event_id":
+		return strings.TrimSpace(event.GetId())
+	case "scope":
+		if strings.EqualFold(strings.TrimSpace(event.GetKind()), "github.audit") {
+			_, scopeID := githubSelfHostedRunnerScope(attributes)
+			return strings.TrimSpace(scopeID)
+		}
+	}
+	return ""
 }
 
 func (r *eventRule) Spec() *cerebrov1.RuleSpec {
