@@ -25,16 +25,28 @@ const (
 
 type identitySignalPredicate func(*cerebrov1.EventEnvelope, map[string]string) bool
 
+type identitySignalFingerprintInputs func(*cerebrov1.EventEnvelope, map[string]string, findingProjectionContext) []string
+
 type identitySignalConfig struct {
-	definition RuleDefinition
-	sourceIDs  []string
-	eventKinds []string
-	predicate  identitySignalPredicate
-	summary    func(map[string]string) string
+	definition  RuleDefinition
+	sourceIDs   []string
+	eventKinds  []string
+	predicate   identitySignalPredicate
+	fingerprint identitySignalFingerprintInputs
+	summary     func(map[string]string) string
 }
 
 type identitySignalRule struct {
 	config identitySignalConfig
+}
+
+type identitySignalClosePredicate func(Event) (string, bool)
+
+type identitySignalCounterEventRule struct {
+	Rule
+	definition  RuleDefinition
+	openAnchor  func(map[string]string) string
+	closeAnchor identitySignalClosePredicate
 }
 
 func newIdentitySignalRule(config identitySignalConfig) Rule {
@@ -44,49 +56,90 @@ func newIdentitySignalRule(config identitySignalConfig) Rule {
 	return &identitySignalRule{config: config}
 }
 
+func newIdentitySignalCounterEventRule(config identitySignalConfig, openAnchor func(map[string]string) string, closeAnchor identitySignalClosePredicate) Rule {
+	if len(config.eventKinds) != 0 {
+		config.definition.EventKinds = append([]string(nil), config.eventKinds...)
+	}
+	return &identitySignalCounterEventRule{
+		Rule:        &identitySignalRule{config: config},
+		definition:  config.definition,
+		openAnchor:  openAnchor,
+		closeAnchor: closeAnchor,
+	}
+}
+
+func (r *identitySignalCounterEventRule) RuleMetadata() RuleDefinition {
+	if r == nil {
+		return RuleDefinition{}
+	}
+	return cloneRuleDefinition(r.definition)
+}
+
+func (r *identitySignalCounterEventRule) OpenAnchor(attributes map[string]string) string {
+	if r == nil || r.openAnchor == nil {
+		return ""
+	}
+	return strings.TrimSpace(r.openAnchor(attributes))
+}
+
+func (r *identitySignalCounterEventRule) CloseOnEvent(event Event) (string, bool) {
+	if r == nil || r.closeAnchor == nil {
+		return "", false
+	}
+	anchor, closes := r.closeAnchor(event)
+	anchor = strings.TrimSpace(anchor)
+	if anchor == "" || !closes {
+		return "", false
+	}
+	return anchor, true
+}
+
 func newIdentitySignalRules() []Rule {
 	capabilities := builtinIdentityCapabilities
 	sourceIDs := capabilities.SourceIDs()
 	return []Rule{
-		newIdentitySignalRule(identitySignalConfig{
-			definition: identityRuleDefinition(
+		newIdentitySignalCounterEventRule(identitySignalConfig{
+			definition: identityDurableStateRuleDefinition(identityRuleDefinition(
 				identityAuthControlLifecycleTamperingRuleID,
 				"Identity Auth Control Lifecycle Tampering",
 				"Detect identity-provider authentication, policy, network-zone, IdP, and security-setting control changes.",
 				"HIGH",
 				"finding.identity_auth_control_lifecycle_tampering",
 				[]string{"identity", "control-plane", "defense-evasion", "attack.t1562"},
-			),
-			sourceIDs:  sourceIDs,
-			eventKinds: capabilities.EventKinds(identityCapabilityAudit),
-			predicate:  matchesIdentityAuthControlTampering,
-		}),
-		newIdentitySignalRule(identitySignalConfig{
-			definition: identityRuleDefinition(
+			), "idp_id", "policy_id"),
+			sourceIDs:   sourceIDs,
+			eventKinds:  capabilities.EventKinds(identityCapabilityAudit),
+			predicate:   matchesIdentityAuthControlTampering,
+			fingerprint: identityAuthControlFingerprintInputs,
+		}, identityAuthControlAnchor, identityAuthControlCloseAnchor),
+		newIdentitySignalCounterEventRule(identitySignalConfig{
+			definition: identityDurableStateRuleDefinition(identityRuleDefinition(
 				identityAdminPrivilegeGrantedRuleID,
 				"Identity Admin Privilege Granted",
 				"Detect admin-role or delegated-admin grants in identity providers.",
 				"HIGH",
 				"finding.identity_admin_privilege_granted",
 				[]string{"identity", "privilege-escalation", "attack.t1098"},
-			),
-			sourceIDs:  sourceIDs,
-			eventKinds: capabilities.EventKinds(identityCapabilityAdminRole, identityCapabilityAudit, identityCapabilityRoleAssignment),
-			predicate:  matchesIdentityAdminPrivilegeGranted,
-		}),
-		newIdentitySignalRule(identitySignalConfig{
-			definition: identityRuleDefinition(
+			), "user", "role"),
+			sourceIDs:   sourceIDs,
+			eventKinds:  capabilities.EventKinds(identityCapabilityAdminRole, identityCapabilityAudit, identityCapabilityRoleAssignment),
+			predicate:   matchesIdentityAdminPrivilegeGranted,
+			fingerprint: identityAdminPrivilegeFingerprintInputs,
+		}, identityAdminPrivilegeAnchor, identityAdminPrivilegeCloseAnchor),
+		newIdentitySignalCounterEventRule(identitySignalConfig{
+			definition: identityDurableStateRuleDefinition(identityRuleDefinition(
 				identityMFAFactorResetOrDisabledRuleID,
 				"Identity MFA Factor Reset Or Disabled",
 				"Detect MFA/2SV resets, unenrollment, disablement, or enforcement changes.",
 				"HIGH",
 				"finding.identity_mfa_factor_reset_or_disabled",
 				[]string{"identity", "mfa", "credential-access", "attack.t1556"},
-			),
-			sourceIDs:  sourceIDs,
-			eventKinds: capabilities.EventKinds(identityCapabilityAudit),
-			predicate:  matchesIdentityMFAFactorResetOrDisabled,
-		}),
+			), "user"),
+			sourceIDs:   sourceIDs,
+			eventKinds:  capabilities.EventKinds(identityCapabilityAudit),
+			predicate:   matchesIdentityMFAFactorResetOrDisabled,
+			fingerprint: identityUserFingerprintInputs,
+		}, identityUserAnchor, identityMFACloseAnchor),
 		newIdentitySignalRule(identitySignalConfig{
 			definition: identityRuleDefinition(
 				identityAPIOrOAuthCredentialCreatedRuleID,
@@ -100,19 +153,20 @@ func newIdentitySignalRules() []Rule {
 			eventKinds: capabilities.EventKinds(identityCapabilityAudit, identityCapabilityCredential),
 			predicate:  matchesIdentityAPITokenOrOAuthCreated,
 		}),
-		newIdentitySignalRule(identitySignalConfig{
-			definition: identityRuleDefinition(
+		newIdentitySignalCounterEventRule(identitySignalConfig{
+			definition: identityDurableStateRuleDefinition(identityRuleDefinition(
 				identityPrivilegedAccountWithoutMFARuleID,
 				"Identity Privileged Account Without MFA",
 				"Detect privileged identity accounts that are not enrolled in MFA/2SV.",
 				"HIGH",
 				"finding.identity_privileged_account_without_mfa",
 				[]string{"identity", "mfa", "privileged-access", "attack.t1078"},
-			),
-			sourceIDs:  sourceIDs,
-			eventKinds: capabilities.EventKinds(identityCapabilityUser),
-			predicate:  matchesIdentityPrivilegedWithoutMFA,
-		}),
+			), "user"),
+			sourceIDs:   sourceIDs,
+			eventKinds:  capabilities.EventKinds(identityCapabilityUser),
+			predicate:   matchesIdentityPrivilegedWithoutMFA,
+			fingerprint: identityUserFingerprintInputs,
+		}, identityUserAnchor, identityPrivilegedWithoutMFACloseAnchor),
 		newIdentitySignalRule(identitySignalConfig{
 			definition: identityRuleDefinition(
 				identityStalePrivilegedAccountRuleID,
@@ -191,6 +245,12 @@ func identityRuleDefinition(id string, name string, description string, severity
 	}
 }
 
+func identityDurableStateRuleDefinition(definition RuleDefinition, fingerprintFields ...string) RuleDefinition {
+	definition.FingerprintFields = uniqueTrimmedStringsPreserveOrder(fingerprintFields)
+	definition.Lifecycle = Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored}
+	return definition
+}
+
 func (r *identitySignalRule) Spec() *cerebrov1.RuleSpec {
 	if r == nil {
 		return nil
@@ -251,7 +311,14 @@ func (r *identitySignalRule) buildFinding(ctx context.Context, runtime *cerebrov
 		observedAt = event.GetOccurredAt().AsTime().UTC()
 	}
 	attributes := identityFindingAttributes(event, runtime, r.config, projectedContext)
-	fingerprint := hashFindingFingerprint(r.config.definition.ID, event.GetId(), projectedContext.PrimaryResourceURN, compoundRiskAction(&ports.FindingRecord{Attributes: attributes}))
+	fingerprintInputs := r.fingerprintInputs(event, attributes, projectedContext)
+	if r.config.fingerprint != nil && !identityFingerprintInputsValid(fingerprintInputs) {
+		return nil, nil
+	}
+	if len(fingerprintInputs) == 0 {
+		return nil, nil
+	}
+	fingerprint := hashFindingFingerprint(append([]string{r.config.definition.ID}, fingerprintInputs...)...)
 	summary := identityFindingSummary(attributes, r.config, projectedContext)
 	return &ports.FindingRecord{
 		ID:                fingerprint,
@@ -277,6 +344,29 @@ func (r *identitySignalRule) buildFinding(ctx context.Context, runtime *cerebrov
 	}, nil
 }
 
+func (r *identitySignalRule) fingerprintInputs(event *cerebrov1.EventEnvelope, attributes map[string]string, projection findingProjectionContext) []string {
+	if r != nil && r.config.fingerprint != nil {
+		return r.config.fingerprint(event, attributes, projection)
+	}
+	return []string{
+		strings.TrimSpace(event.GetId()),
+		strings.TrimSpace(projection.PrimaryResourceURN),
+		compoundRiskAction(&ports.FindingRecord{Attributes: attributes}),
+	}
+}
+
+func identityFingerprintInputsValid(inputs []string) bool {
+	if len(inputs) == 0 {
+		return false
+	}
+	for _, input := range inputs {
+		if strings.TrimSpace(input) == "" {
+			return false
+		}
+	}
+	return true
+}
+
 func identityFindingAttributes(event *cerebrov1.EventEnvelope, runtime *cerebrov1.SourceRuntime, config identitySignalConfig, context findingProjectionContext) map[string]string {
 	eventAttrs := eventAttributes(event)
 	attributes := map[string]string{
@@ -291,9 +381,13 @@ func identityFindingAttributes(event *cerebrov1.EventEnvelope, runtime *cerebrov
 		"resource_id":          firstNonEmpty(eventAttrs["resource_id"], eventAttrs["user_id"], eventAttrs["group_id"], eventAttrs["role_id"], eventAttrs["app_id"], eventAttrs["client_id"]),
 		"resource_label":       context.ResourceLabel,
 		"resource_type":        firstNonEmpty(eventAttrs["resource_type"], eventAttrs["target_type"], eventAttrs["family"]),
+		"idp_id":               identityIDPID(eventAttrs),
+		"mfa_state":            identityMFAState(eventAttrs),
+		"policy_id":            identityPolicyID(eventAttrs),
+		"role":                 identityRoleValue(eventAttrs),
 		"source_family":        strings.TrimSpace(event.GetSourceId()),
 		"source_runtime_id":    strings.TrimSpace(runtime.GetId()),
-		"user":                 firstNonEmpty(eventAttrs["email"], eventAttrs["primary_email"], eventAttrs["member_email"], eventAttrs["actor_email"]),
+		"user":                 identityUserValue(eventAttrs),
 	}
 	for key, value := range eventAttrs {
 		if _, exists := attributes[key]; !exists {
@@ -329,17 +423,195 @@ func identityAction(attributes map[string]string) string {
 	return strings.ToLower(firstNonEmpty(attributes["event_type"], attributes["event_name"], attributes["action"], attributes["family"]))
 }
 
+func identityUserFingerprintInputs(_ *cerebrov1.EventEnvelope, attributes map[string]string, projection findingProjectionContext) []string {
+	return []string{firstNonEmpty(identityUserValue(attributes), projection.PrimaryResourceURN)}
+}
+
+func identityAdminPrivilegeFingerprintInputs(_ *cerebrov1.EventEnvelope, attributes map[string]string, projection findingProjectionContext) []string {
+	return []string{
+		firstNonEmpty(identityUserValue(attributes), projection.PrimaryActorURN),
+		firstNonEmpty(identityRoleValue(attributes), projection.PrimaryResourceURN),
+	}
+}
+
+func identityAuthControlFingerprintInputs(_ *cerebrov1.EventEnvelope, attributes map[string]string, projection findingProjectionContext) []string {
+	return []string{firstNonEmpty(identityPolicyID(attributes), identityIDPID(attributes), projection.PrimaryResourceURN)}
+}
+
+func identityUserAnchor(attributes map[string]string) string {
+	return identityCounterEventAnchor(map[string]string{"user": identityUserValue(attributes)}, "user")
+}
+
+func identityAdminPrivilegeAnchor(attributes map[string]string) string {
+	return identityCounterEventAnchor(map[string]string{
+		"user": identityUserValue(attributes),
+		"role": identityRoleValue(attributes),
+	}, "user", "role")
+}
+
+func identityAuthControlAnchor(attributes map[string]string) string {
+	if policyID := identityPolicyID(attributes); policyID != "" {
+		return identityCounterEventAnchor(map[string]string{"policy_id": policyID}, "policy_id")
+	}
+	if idpID := identityIDPID(attributes); idpID != "" {
+		return identityCounterEventAnchor(map[string]string{"idp_id": idpID}, "idp_id")
+	}
+	return ""
+}
+
+func identityCounterEventAnchor(attributes map[string]string, fields ...string) string {
+	if len(fields) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(fields))
+	for _, field := range fields {
+		field = strings.TrimSpace(field)
+		if field == "" {
+			return ""
+		}
+		value := strings.TrimSpace(attributes[field])
+		if value == "" {
+			return ""
+		}
+		parts = append(parts, field+"="+value)
+	}
+	return strings.Join(parts, "|")
+}
+
+func identityAdminPrivilegeCloseAnchor(event Event) (string, bool) {
+	attributes := eventAttributes(event)
+	if !identityRoleAssignmentInactive(attributes) && !identityPrivilegeExplicitlyRemoved(attributes) {
+		return "", false
+	}
+	anchor := identityAdminPrivilegeAnchor(attributes)
+	return anchor, anchor != ""
+}
+
+func identityAuthControlCloseAnchor(event Event) (string, bool) {
+	attributes := eventAttributes(event)
+	if !identityAuthControlStrengthened(attributes) {
+		return "", false
+	}
+	anchor := identityAuthControlAnchor(attributes)
+	return anchor, anchor != ""
+}
+
+func identityMFACloseAnchor(event Event) (string, bool) {
+	attributes := eventAttributes(event)
+	if !identityMFARestored(attributes) {
+		return "", false
+	}
+	anchor := identityUserAnchor(attributes)
+	return anchor, anchor != ""
+}
+
+func identityPrivilegedWithoutMFACloseAnchor(event Event) (string, bool) {
+	attributes := eventAttributes(event)
+	if matchesIdentityPrivilegedWithoutMFA(event, attributes) {
+		return "", false
+	}
+	if !identityMFAEnabled(attributes) && !identityPrivilegeExplicitlyRemoved(attributes) {
+		return "", false
+	}
+	anchor := identityUserAnchor(attributes)
+	return anchor, anchor != ""
+}
+
+func identityUserValue(attributes map[string]string) string {
+	if user := firstNonEmpty(
+		attributes["user"],
+		attributes["email"],
+		attributes["primary_email"],
+		attributes["member_email"],
+		attributes["user_email"],
+		attributes["subject_email"],
+		attributes["login"],
+		attributes["assigned_to"],
+		attributes["user_id"],
+		attributes["subject_id"],
+		attributes["member_user_id"],
+		attributes["member_id"],
+	); user != "" {
+		return user
+	}
+	if identityResourceTypeMatches(attributes, "user", "account", "principal", "service_account", "service_principal") {
+		return firstNonEmpty(attributes["resource_id"], attributes["target_id"])
+	}
+	return firstNonEmpty(attributes["actor_email"], attributes["actor_alternate_id"])
+}
+
+func identityRoleValue(attributes map[string]string) string {
+	if role := firstNonEmpty(attributes["role"], attributes["role_id"], attributes["role_assignment_id"], attributes["role_name"], attributes["role_type"]); role != "" {
+		return role
+	}
+	if identityResourceTypeMatches(attributes, "role", "admin_role", "directory_role", "iam_policy", "policy") {
+		return firstNonEmpty(attributes["resource_id"], attributes["target_id"])
+	}
+	return ""
+}
+
+func identityPolicyID(attributes map[string]string) string {
+	if policyID := firstNonEmpty(attributes["policy_id"], attributes["policy_rule_id"], attributes["rule_id"]); policyID != "" {
+		return policyID
+	}
+	if identityResourceTypeMatches(attributes, "policy", "policy_rule", "rule", "sign_on_policy") {
+		return firstNonEmpty(attributes["resource_id"], attributes["target_id"])
+	}
+	return ""
+}
+
+func identityIDPID(attributes map[string]string) string {
+	if idpID := firstNonEmpty(attributes["idp_id"], attributes["identity_provider_id"], attributes["provider_id"]); idpID != "" {
+		return idpID
+	}
+	if identityResourceTypeMatches(attributes, "idp", "identity_provider", "identityprovider") {
+		return firstNonEmpty(attributes["resource_id"], attributes["target_id"])
+	}
+	return ""
+}
+
+func identityMFAState(attributes map[string]string) string {
+	return strings.ToLower(firstNonEmpty(attributes["mfa_state"], attributes["factor_state"], attributes["mfa_status"], attributes["status"], attributes["state"], attributes["lifecycle_status"]))
+}
+
+func identityResourceTypeMatches(attributes map[string]string, candidates ...string) bool {
+	resourceType := strings.ToLower(strings.ReplaceAll(firstNonEmpty(attributes["resource_type"], attributes["target_type"], attributes["subject_type"]), ".", "_"))
+	if resourceType == "" {
+		return false
+	}
+	for _, candidate := range candidates {
+		normalized := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(candidate), ".", "_"))
+		if normalized != "" && strings.Contains(resourceType, normalized) {
+			return true
+		}
+	}
+	return false
+}
+
 func matchesIdentityAuthControlTampering(_ *cerebrov1.EventEnvelope, attributes map[string]string) bool {
 	if !identityOutcomeSuccessfulOrUnknown(attributes) {
 		return false
 	}
+	if identityAuthControlStrengthened(attributes) {
+		return false
+	}
+	if identityAuthControlWeakened(attributes) {
+		return identityAuthControlAnchor(attributes) != ""
+	}
 	action := identityAction(attributes)
 	resourceType := strings.ToLower(firstNonEmpty(attributes["resource_type"], attributes["target_type"]))
-	return containsAny(action, "policy", "rule", "network_zone", "zone", "idp", "two_step", "2sv", "saml", "security_setting", "change_two_step") &&
+	return identityAuthControlAnchor(attributes) != "" &&
+		containsAny(action, "policy", "rule", "network_zone", "zone", "idp", "two_step", "2sv", "saml", "security_setting", "change_two_step") &&
 		containsAny(action+" "+resourceType, "update", "delete", "deactivate", "disable", "change", "remove")
 }
 
 func matchesIdentityAdminPrivilegeGranted(event *cerebrov1.EventEnvelope, attributes map[string]string) bool {
+	if !identityAssignmentActiveOrUnknown(attributes) {
+		return false
+	}
+	if identityAdminPrivilegeAnchor(attributes) == "" {
+		return false
+	}
 	if builtinIdentityCapabilities.KindHasCapability(event.GetKind(), identityCapabilityAdminRole) {
 		return true
 	}
@@ -357,9 +629,128 @@ func matchesIdentityMFAFactorResetOrDisabled(_ *cerebrov1.EventEnvelope, attribu
 	if !identityOutcomeSuccessfulOrUnknown(attributes) {
 		return false
 	}
+	if identityMFARestored(attributes) {
+		return false
+	}
+	if identityMFADisabledOrReset(attributes) {
+		return identityUserAnchor(attributes) != ""
+	}
 	action := identityAction(attributes)
-	return containsAny(action, "mfa", "factor", "two_step", "2sv", "verification") &&
+	return identityUserAnchor(attributes) != "" &&
+		containsAny(action, "mfa", "factor", "two_step", "2sv", "verification") &&
 		containsAny(action, "reset", "disable", "deactivate", "unenroll", "change")
+}
+
+func identityAssignmentActiveOrUnknown(attributes map[string]string) bool {
+	return !identityRoleAssignmentInactive(attributes)
+}
+
+func identityRoleAssignmentInactive(attributes map[string]string) bool {
+	action := identityAction(attributes)
+	if containsAny(action, "remove", "removed", "revoke", "revoked", "unassign", "unassigned", "delete", "deleted", "deactivate", "deactivated") {
+		return true
+	}
+	state := strings.ToLower(firstNonEmpty(attributes["assignment_status"], attributes["role_assignment_status"], attributes["status"], attributes["state"], attributes["lifecycle_status"]))
+	switch state {
+	case "inactive", "disabled", "deleted", "removed", "revoked", "deactivated", "suspended", "unassigned":
+		return true
+	default:
+		return false
+	}
+}
+
+func identityMFADisabledOrReset(attributes map[string]string) bool {
+	if identityMFAExplicitlyDisabled(attributes) || findingAttributeBool(attributes, "mfa_reset", "mfa_disabled", "factor_reset", "factor_disabled") {
+		return true
+	}
+	switch identityMFAState(attributes) {
+	case "disabled", "reset", "unenrolled", "unregistered", "not_enrolled", "not enrolled", "inactive", "deactivated":
+		return true
+	default:
+		return false
+	}
+}
+
+func identityMFARestored(attributes map[string]string) bool {
+	if identityMFADisabledOrReset(attributes) {
+		return false
+	}
+	if identityMFAEnabled(attributes) || findingAttributeBool(attributes, "mfa_restored", "mfa_reenrolled", "factor_active") {
+		return true
+	}
+	switch identityMFAState(attributes) {
+	case "enabled", "enrolled", "active", "verified", "required", "enforced":
+		return true
+	}
+	action := identityAction(attributes)
+	return containsAny(action, "enroll", "reenroll", "re-enroll", "activate", "enable", "verify") &&
+		!containsAny(action, "disable", "deactivate", "unenroll", "reset")
+}
+
+func identityAuthControlWeakened(attributes map[string]string) bool {
+	if findingAttributeBool(attributes, "auth_control_weakened", "policy_weakened", "idp_weakened", "saml_provider_settings_weakened") {
+		return true
+	}
+	return identityAttributeExplicitlyFalse(
+		attributes,
+		"auth_control_enabled",
+		"auth_control_enforced",
+		"oauth_app_restrictions_enabled",
+		"oauth_app_restrictions_enforced",
+		"saml_enabled",
+		"saml_enforced",
+		"saml_required",
+		"saml_sso_enabled",
+		"mfa_required",
+		"two_factor_enforced",
+		"two_factor_required",
+		"two_factor_requirement_enabled",
+		"policy_enabled",
+		"idp_enabled",
+	)
+}
+
+func identityAuthControlStrengthened(attributes map[string]string) bool {
+	if identityAuthControlWeakened(attributes) {
+		return false
+	}
+	if findingAttributeBool(
+		attributes,
+		"auth_control_strengthened",
+		"auth_control_enabled",
+		"auth_control_enforced",
+		"oauth_app_restrictions_enabled",
+		"oauth_app_restrictions_enforced",
+		"saml_enabled",
+		"saml_enforced",
+		"saml_required",
+		"saml_sso_enabled",
+		"mfa_required",
+		"two_factor_enforced",
+		"two_factor_required",
+		"two_factor_requirement_enabled",
+		"policy_enabled",
+		"idp_enabled",
+	) {
+		return true
+	}
+	action := identityAction(attributes)
+	return containsAny(action, "enable", "enabled", "restore", "restored", "reactivate", "require", "enforce") &&
+		!containsAny(action, "disable", "delete", "deactivate", "remove")
+}
+
+func identityPrivilegeExplicitlyRemoved(attributes map[string]string) bool {
+	return identityAttributeExplicitlyFalse(attributes, "is_admin", "is_delegated_admin", "admin", "privileged", "actor_privileged")
+}
+
+func identityAttributeExplicitlyFalse(attributes map[string]string, keys ...string) bool {
+	for _, key := range keys {
+		switch strings.ToLower(strings.TrimSpace(attributes[key])) {
+		case "0", "f", "false", "no", "n", "disabled", "off", "inactive":
+			return true
+		}
+	}
+	return false
 }
 
 func matchesIdentityAPITokenOrOAuthCreated(_ *cerebrov1.EventEnvelope, attributes map[string]string) bool {
@@ -417,7 +808,7 @@ func routineOAuthRuntimeGrant(action string) bool {
 }
 
 func matchesIdentityPrivilegedWithoutMFA(_ *cerebrov1.EventEnvelope, attributes map[string]string) bool {
-	return identityPrivileged(attributes) && identityMFAExplicitlyDisabled(attributes)
+	return identityUserAnchor(attributes) != "" && identityPrivileged(attributes) && identityMFAExplicitlyDisabled(attributes)
 }
 
 func matchesIdentityStalePrivilegedAccount(_ *cerebrov1.EventEnvelope, attributes map[string]string) bool {

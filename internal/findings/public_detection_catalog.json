@@ -1615,7 +1615,8 @@
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
       "fingerprint_fields": [
-        "event_id"
+        "user",
+        "role"
       ],
       "control_refs": [
         {
@@ -1715,7 +1716,8 @@
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
       "fingerprint_fields": [
-        "event_id"
+        "idp_id",
+        "policy_id"
       ],
       "control_refs": [
         {
@@ -1913,7 +1915,7 @@
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
       "fingerprint_fields": [
-        "event_id"
+        "user"
       ],
       "control_refs": [
         {
@@ -2060,7 +2062,7 @@
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
       "fingerprint_fields": [
-        "event_id"
+        "user"
       ],
       "control_refs": [
         {
