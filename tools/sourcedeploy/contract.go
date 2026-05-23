@@ -53,8 +53,9 @@ type RoleAssumption struct {
 }
 
 type contractCatalog struct {
-	ID           string   `yaml:"id"`
-	EmittedKinds []string `yaml:"emitted_kinds"`
+	ID              string   `yaml:"id"`
+	EmittedKinds    []string `yaml:"emitted_kinds"`
+	RuntimeFamilies []string `yaml:"runtime_families"`
 }
 
 func RenderContract(sourcesRoot string, manifests []Manifest, opts ContractOptions) (Contract, error) {
@@ -91,7 +92,7 @@ func RenderContract(sourcesRoot string, manifests []Manifest, opts ContractOptio
 		sources = append(sources, ContractSource{
 			SourceID:                 catalog.ID,
 			EmittedKinds:             sortedStrings(catalog.EmittedKinds),
-			SupportedFamilies:        supportedFamilies(catalog.ID, catalog.EmittedKinds, runtimesBySource[catalog.ID]),
+			SupportedFamilies:        supportedFamilies(catalog.ID, catalog.EmittedKinds, catalog.RuntimeFamilies, runtimesBySource[catalog.ID]),
 			RequiredSecrets:          sortedStrings(manifest.SecretKeys),
 			RoleAssumptionConfigKeys: roleAssumptionConfigKeys(catalog.ID),
 			Runtimes:                 runtimesBySource[catalog.ID],
@@ -145,15 +146,23 @@ func discoverCatalogs(sourcesRoot string) ([]contractCatalog, error) {
 	return catalogs, nil
 }
 
-func supportedFamilies(sourceID string, emittedKinds []string, runtimes []ContractRuntime) []string {
+func supportedFamilies(sourceID string, emittedKinds []string, runtimeFamilies []string, runtimes []ContractRuntime) []string {
 	families := map[string]struct{}{}
-	prefix := sourceID + "."
-	for _, kind := range emittedKinds {
-		kind = strings.TrimSpace(kind)
-		if strings.HasPrefix(kind, prefix) {
-			family := strings.TrimSpace(strings.TrimPrefix(kind, prefix))
-			if family != "" {
+	if len(runtimeFamilies) > 0 {
+		for _, family := range runtimeFamilies {
+			if family = strings.TrimSpace(family); family != "" {
 				families[family] = struct{}{}
+			}
+		}
+	} else {
+		prefix := sourceID + "."
+		for _, kind := range emittedKinds {
+			kind = strings.TrimSpace(kind)
+			if strings.HasPrefix(kind, prefix) {
+				family := strings.TrimSpace(strings.TrimPrefix(kind, prefix))
+				if family != "" {
+					families[family] = struct{}{}
+				}
 			}
 		}
 	}

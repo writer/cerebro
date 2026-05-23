@@ -86,6 +86,27 @@ func TestContractMarshalJSONStable(t *testing.T) {
 	}
 }
 
+func TestRenderContractUsesRuntimeFamilyCatalogOverrides(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	mkSource(t, root, "sentinelone", "id: sentinelone\nemitted_kinds:\n  - sentinelone.application_inventory\nruntime_families:\n  - application\n", "")
+
+	manifests, err := Discover(root)
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+	contract, err := RenderContract(root, manifests, ContractOptions{Environment: "sec-dev", TenantID: "writer"})
+	if err != nil {
+		t.Fatalf("RenderContract: %v", err)
+	}
+	if len(contract.Sources) != 1 {
+		t.Fatalf("sources = %d, want 1", len(contract.Sources))
+	}
+	if !equalStrings(contract.Sources[0].SupportedFamilies, []string{"application"}) {
+		t.Fatalf("supported families = %v", contract.Sources[0].SupportedFamilies)
+	}
+}
+
 func mkSource(t *testing.T, root string, name string, catalog string, deploy string) {
 	t.Helper()
 	dir := filepath.Join(root, name)
