@@ -1139,15 +1139,19 @@ func identityPrivileged(attributes map[string]string) bool {
 		containsAny(strings.ToLower(firstNonEmpty(attributes["role"], attributes["role_id"], attributes["role_type"], attributes["role_name"])), "admin", "super", "owner", "editor", "contributor", "poweruser", "administratoraccess", "iamfullaccess", "globaladministrator", "privilegedroleadministrator", "applicationadministrator", "cloudapplicationadministrator", "authenticationadministrator", "useraccessadministrator")
 }
 
+var identityMFAStateAttributeKeys = [...]string{"mfa_enrolled", "mfa_enforced", "is_enrolled_in_2sv", "is_enforced_in_2sv"}
+
 func identityMFAEnabled(attributes map[string]string) bool {
-	return findingAttributeBool(attributes, "mfa_enrolled", "mfa_enforced", "is_enrolled_in_2sv", "is_enforced_in_2sv")
+	// Source-state MFA findings close only when every MFA posture leg is
+	// non-explicitly-false. Unknown/missing values are not enough to open or keep
+	// a finding; any explicit false on enrollment or enforcement keeps it open.
+	return !identityMFAExplicitlyDisabled(attributes)
 }
 
 func identityMFAExplicitlyDisabled(attributes map[string]string) bool {
-	if identityMFAEnabled(attributes) {
-		return false
-	}
-	for _, key := range []string{"mfa_enrolled", "mfa_enforced", "is_enrolled_in_2sv", "is_enforced_in_2sv"} {
+	// Treat enrollment and enforcement independently: a true value on one MFA
+	// attribute must not mask an explicit false on another attribute.
+	for _, key := range identityMFAStateAttributeKeys {
 		value := strings.ToLower(strings.TrimSpace(attributes[key]))
 		switch value {
 		case "0", "f", "false", "no", "n", "disabled", "unenrolled", "not_enrolled", "not enrolled":

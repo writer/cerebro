@@ -284,6 +284,9 @@ func TestIdentityMfaFactorResetOrDisabled(t *testing.T) {
 
 			enrolledAttrs := cloneIdentitySignalAttributes(tc.attributes)
 			enrolledAttrs["mfa_enrolled"] = "true"
+			if _, ok := enrolledAttrs["mfa_enforced"]; ok {
+				enrolledAttrs["mfa_enforced"] = "true"
+			}
 			enrolled := identitySignalEventAt(strings.ReplaceAll(tc.name, " ", "-")+"-mfa-enabled", tc.sourceID, tc.kind, enrolledAttrs, identityTrajectoryBaseTime.Add(2*time.Minute))
 			records, err = rule.Evaluate(context.Background(), runtime, enrolled)
 			if err != nil {
@@ -301,6 +304,117 @@ func TestIdentityMfaFactorResetOrDisabled(t *testing.T) {
 			assertIdentityRuleOlderCloseDoesNotResolveLaterOpen(t, rule, olderEnrolled, first)
 		})
 	}
+
+	mixedRuntime := &cerebrov1.SourceRuntime{Id: "example-google-workspace-user-mixed-mfa", SourceId: "google_workspace", TenantId: "writer", Config: map[string]string{"family": "user"}}
+	mixedBaseAttrs := map[string]string{
+		"domain":        "writer.com",
+		"email":         "admin@writer.com",
+		"is_admin":      "true",
+		"primary_email": "admin@writer.com",
+		"user_id":       "1001",
+	}
+	for _, tc := range []struct {
+		name         string
+		mfaEnrolled  string
+		mfaEnforced  string
+		wantFindings int
+	}{
+		{
+			name:         "enrolled false enforced false",
+			mfaEnrolled:  "false",
+			mfaEnforced:  "false",
+			wantFindings: 1,
+		},
+		{
+			name:         "enrolled false enforced true",
+			mfaEnrolled:  "false",
+			mfaEnforced:  "true",
+			wantFindings: 1,
+		},
+		{
+			name:         "enrolled true enforced false",
+			mfaEnrolled:  "true",
+			mfaEnforced:  "false",
+			wantFindings: 1,
+		},
+		{
+			name:         "enrolled true enforced true",
+			mfaEnrolled:  "true",
+			mfaEnforced:  "true",
+			wantFindings: 0,
+		},
+		{
+			name:         "enrolled unknown enforced unknown",
+			mfaEnrolled:  "",
+			mfaEnforced:  "",
+			wantFindings: 0,
+		},
+	} {
+		t.Run("mixed state "+tc.name, func(t *testing.T) {
+			attrs := cloneIdentitySignalAttributes(mixedBaseAttrs)
+			attrs["mfa_enrolled"] = tc.mfaEnrolled
+			attrs["mfa_enforced"] = tc.mfaEnforced
+			event := identitySignalEventAt("google-user-mfa-"+strings.ReplaceAll(tc.name, " ", "-"), "google_workspace", "google_workspace.user", attrs, identityTrajectoryBaseTime)
+			records, err := rule.Evaluate(context.Background(), mixedRuntime, event)
+			if err != nil {
+				t.Fatalf("Evaluate(%s) error = %v", tc.name, err)
+			}
+			if got := len(records); got != tc.wantFindings {
+				t.Fatalf("Evaluate(%s) returned %d findings, want %d", tc.name, got, tc.wantFindings)
+			}
+		})
+	}
+
+	mixedOpenAttrs := cloneIdentitySignalAttributes(mixedBaseAttrs)
+	mixedOpenAttrs["mfa_enrolled"] = "false"
+	mixedOpenAttrs["mfa_enforced"] = "true"
+	mixedOpen := identitySignalEventAt("google-user-mfa-enrolled-disabled-enforced", "google_workspace", "google_workspace.user", mixedOpenAttrs, identityTrajectoryBaseTime)
+	mixedOpenRecords, err := rule.Evaluate(context.Background(), mixedRuntime, mixedOpen)
+	if err != nil || len(mixedOpenRecords) != 1 {
+		t.Fatalf("Evaluate(mixed open) = (%v, %v), want one finding", mixedOpenRecords, err)
+	}
+	mixedOpenAnchor := counterRule.OpenAnchor(mixedOpenRecords[0].Attributes)
+	if mixedOpenAnchor == "" {
+		t.Fatalf("OpenAnchor(%v) = empty, want user anchor", mixedOpenRecords[0].Attributes)
+	}
+
+	mixedClosedAttrs := cloneIdentitySignalAttributes(mixedBaseAttrs)
+	mixedClosedAttrs["mfa_enrolled"] = "true"
+	mixedClosedAttrs["mfa_enforced"] = "true"
+	mixedClosed := identitySignalEventAt("google-user-mfa-both-enabled", "google_workspace", "google_workspace.user", mixedClosedAttrs, identityTrajectoryBaseTime.Add(2*time.Minute))
+	mixedClosedRecords, err := rule.Evaluate(context.Background(), mixedRuntime, mixedClosed)
+	if err != nil {
+		t.Fatalf("Evaluate(mixed closed) error = %v", err)
+	}
+	if len(mixedClosedRecords) != 0 {
+		t.Fatalf("Evaluate(mixed closed) returned %d findings, want 0 once both MFA legs are enabled", len(mixedClosedRecords))
+	}
+	closeAnchor, closes := counterRule.CloseOnEvent(mixedClosed)
+	if !closes || closeAnchor != mixedOpenAnchor {
+		t.Fatalf("CloseOnEvent(mixed closed) = (%q, %v), want (%q, true)", closeAnchor, closes, mixedOpenAnchor)
+	}
+	assertIdentityRuleRemediationTrajectory(t, rule, mixedOpen, mixedClosed, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+
+	partialOpenAttrs := cloneIdentitySignalAttributes(mixedBaseAttrs)
+	partialOpenAttrs["mfa_enrolled"] = "false"
+	partialOpenAttrs["mfa_enforced"] = "false"
+	partialOpen := identitySignalEventAt("google-user-mfa-both-disabled", "google_workspace", "google_workspace.user", partialOpenAttrs, identityTrajectoryBaseTime)
+	partialRestoreAttrs := cloneIdentitySignalAttributes(mixedBaseAttrs)
+	partialRestoreAttrs["mfa_enrolled"] = "true"
+	partialRestoreAttrs["mfa_enforced"] = "false"
+	partialRestore := identitySignalEventAt("google-user-mfa-only-enrolled-restored", "google_workspace", "google_workspace.user", partialRestoreAttrs, identityTrajectoryBaseTime.Add(2*time.Minute))
+	partialRecords, err := rule.Evaluate(context.Background(), mixedRuntime, partialRestore)
+	if err != nil {
+		t.Fatalf("Evaluate(partial restore) error = %v", err)
+	}
+	if len(partialRecords) != 1 {
+		t.Fatalf("Evaluate(partial restore) returned %d findings, want 1 while enforcement remains explicitly false", len(partialRecords))
+	}
+	closeAnchor, closes = counterRule.CloseOnEvent(partialRestore)
+	if closes || closeAnchor != "" {
+		t.Fatalf("CloseOnEvent(partial restore) = (%q, %v), want (\"\", false)", closeAnchor, closes)
+	}
+	assertIdentityRuleRemediationTrajectory(t, rule, partialOpen, partialRestore, cerebrov1.FindingStatus_FINDING_STATUS_OPEN)
 
 	unknownAttrs := cloneIdentitySignalAttributes(cases[0].attributes)
 	unknownAttrs["mfa_enrolled"] = ""
