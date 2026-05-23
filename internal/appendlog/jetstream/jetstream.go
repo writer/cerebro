@@ -16,6 +16,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/workflowevents"
 )
 
 const (
@@ -142,12 +143,15 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 	}
 	envelope := proto.Clone(event).(*cerebrov1.EventEnvelope)
 	envelope.Kind = kind
-	payload, err := proto.Marshal(envelope)
+	payload, err := publishPayload(envelope)
 	if err != nil {
 		return fmt.Errorf("marshal event: %w", err)
 	}
 	msg := nats.NewMsg(subject)
 	msg.Data = payload
+	if workflowevents.IsSharedEnvelopeEvent(envelope) {
+		msg.Header = eventAttributesHeader(envelope.GetAttributes())
+	}
 	if event.Id != "" {
 		msg.Header.Set(nats.MsgIdHdr, event.Id)
 	}
@@ -196,8 +200,8 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 			return nil, fmt.Errorf("get replay message %s:%d: %w", stream.Config.Name, seq, err)
 		}
 		if raw != nil && strings.HasPrefix(strings.TrimSpace(raw.Subject), prefix+".") {
-			event := &cerebrov1.EventEnvelope{}
-			if err := proto.Unmarshal(raw.Data, event); err != nil {
+			event, err := decodeReplayEvent(raw)
+			if err != nil {
 				return nil, fmt.Errorf("decode replay message %s:%d: %w", stream.Config.Name, seq, err)
 			}
 			if matchesReplayRequest(event, request) {
@@ -225,6 +229,55 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 		events = append(events, candidate.event)
 	}
 	return events, nil
+}
+
+func publishPayload(event *cerebrov1.EventEnvelope) ([]byte, error) {
+	if workflowevents.IsSharedEnvelopeEvent(event) {
+		return event.GetPayload(), nil
+	}
+	return proto.Marshal(event)
+}
+
+func decodeReplayEvent(raw *jetstream.RawStreamMsg) (*cerebrov1.EventEnvelope, error) {
+	event := &cerebrov1.EventEnvelope{}
+	protoErr := proto.Unmarshal(raw.Data, event)
+	if protoErr == nil && strings.TrimSpace(event.GetKind()) != "" {
+		return event, nil
+	}
+	shared, sharedErr := workflowevents.DecodeSharedEnvelopeEvent(raw.Data, replayHeaderAttributes(raw.Header))
+	if sharedErr == nil {
+		return shared, nil
+	}
+	if protoErr != nil {
+		return nil, protoErr
+	}
+	return nil, sharedErr
+}
+
+func eventAttributesHeader(attributes map[string]string) nats.Header {
+	header := make(nats.Header, len(attributes))
+	for key, value := range attributes {
+		if strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" {
+			continue
+		}
+		header[key] = []string{value}
+	}
+	return header
+}
+
+func replayHeaderAttributes(header nats.Header) map[string]string {
+	attributes := make(map[string]string, len(header))
+	for key, values := range header {
+		if strings.EqualFold(key, nats.MsgIdHdr) || len(values) == 0 {
+			continue
+		}
+		value := strings.TrimSpace(values[0])
+		if strings.TrimSpace(key) == "" || value == "" {
+			continue
+		}
+		attributes[key] = value
+	}
+	return attributes
 }
 
 type replayCandidate struct {
