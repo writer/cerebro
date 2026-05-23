@@ -75,7 +75,7 @@ func TestBuiltinPublicDetectionCatalogPreservesFingerprintFieldOrder(t *testing.
 	catalog := BuiltinPublicDetectionCatalog()
 	for _, detection := range catalog.Detections {
 		if detection.ID == githubAppIntegrationInstalledRuleID {
-			want := []string{"org", "repo", "name", "action"}
+			want := []string{"org", "name"}
 			if !slices.Equal(detection.FingerprintFields, want) {
 				t.Fatalf("FingerprintFields = %#v, want %#v", detection.FingerprintFields, want)
 			}

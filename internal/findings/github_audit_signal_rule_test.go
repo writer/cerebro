@@ -457,6 +457,148 @@ func TestGitHubWebhookModified(t *testing.T) {
 	}
 }
 
+func TestGitHubAppIntegrationInstalled(t *testing.T) {
+	rule := newGitHubAppIntegrationInstalledRule()
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("rule does not expose RuleMetadata")
+	}
+	definition := metadataRule.RuleMetadata()
+	if definition.Lifecycle.Kind != LifecycleDurableState {
+		t.Fatalf("Lifecycle.Kind = %q, want %q", definition.Lifecycle.Kind, LifecycleDurableState)
+	}
+	if definition.Lifecycle.Anchor != AnchorGraphAnchored {
+		t.Fatalf("Lifecycle.Anchor = %q, want %q", definition.Lifecycle.Anchor, AnchorGraphAnchored)
+	}
+	wantFields := []string{"org", "name"}
+	if !cloudStringSlicesEqual(definition.FingerprintFields, wantFields) {
+		t.Fatalf("FingerprintFields = %v, want %v", definition.FingerprintFields, wantFields)
+	}
+	for _, field := range definition.FingerprintFields {
+		if field == "action" || field == "event_id" {
+			t.Fatalf("FingerprintFields still contains %q (audit verb / per-event id): %v", field, definition.FingerprintFields)
+		}
+	}
+
+	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "writer"}
+	first := githubAuditEvent("github-app-install-first", map[string]string{
+		"action": "integration_installation.create",
+		"name":   "ci-deployer",
+		"org":    "writer",
+		"repo":   "writer/cerebro",
+	})
+	second := githubAuditEvent("github-app-install-second", map[string]string{
+		"action": "integration_installation.create",
+		"name":   "ci-deployer",
+		"org":    "writer",
+		"repo":   "writer/other",
+	})
+	records, err := rule.Evaluate(context.Background(), runtime, first)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(first) = (%v, %v), want one record", records, err)
+	}
+	firstFinding := records[0]
+	records, err = rule.Evaluate(context.Background(), runtime, second)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(second) = (%v, %v), want one record", records, err)
+	}
+	secondFinding := records[0]
+	if firstFinding.Fingerprint != secondFinding.Fingerprint {
+		t.Fatalf("fingerprints differ across replays of the same (org, name) install: %q vs %q (should be anchored to (org, name))", firstFinding.Fingerprint, secondFinding.Fingerprint)
+	}
+	for _, eventID := range []string{first.GetId(), second.GetId()} {
+		if strings.Contains(firstFinding.Fingerprint, eventID) {
+			t.Fatalf("fingerprint %q contains event id %q", firstFinding.Fingerprint, eventID)
+		}
+	}
+
+	uninstall := githubAuditEvent("github-app-uninstall", map[string]string{
+		"action": "integration_installation.destroy",
+		"name":   "ci-deployer",
+		"org":    "writer",
+	})
+	records, err = rule.Evaluate(context.Background(), runtime, uninstall)
+	if err != nil {
+		t.Fatalf("Evaluate(uninstall) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(uninstall) returned %d findings, want 0 once app uninstalled", len(records))
+	}
+}
+
+func TestGitHubPersonalAccessTokenCreated(t *testing.T) {
+	rule := newGitHubPersonalAccessTokenCreatedRule()
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("rule does not expose RuleMetadata")
+	}
+	definition := metadataRule.RuleMetadata()
+	if definition.Lifecycle.Kind != LifecycleDurableState {
+		t.Fatalf("Lifecycle.Kind = %q, want %q", definition.Lifecycle.Kind, LifecycleDurableState)
+	}
+	if definition.Lifecycle.Anchor != AnchorGraphAnchored {
+		t.Fatalf("Lifecycle.Anchor = %q, want %q", definition.Lifecycle.Anchor, AnchorGraphAnchored)
+	}
+	wantFields := []string{"user_id", "token_id"}
+	if !cloudStringSlicesEqual(definition.FingerprintFields, wantFields) {
+		t.Fatalf("FingerprintFields = %v, want %v", definition.FingerprintFields, wantFields)
+	}
+	for _, field := range definition.FingerprintFields {
+		if field == "action" || field == "event_id" {
+			t.Fatalf("FingerprintFields still contains %q (audit verb / per-event id): %v", field, definition.FingerprintFields)
+		}
+	}
+
+	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "writer"}
+	first := githubAuditEvent("github-pat-first", map[string]string{
+		"action":         "personal_access_token.access_granted",
+		"operation_type": "create",
+		"token_id":       "555",
+		"user":           "octocat",
+		"user_id":        "12345",
+	})
+	second := githubAuditEvent("github-pat-second", map[string]string{
+		"action":         "personal_access_token.access_granted",
+		"operation_type": "create",
+		"token_id":       "555",
+		"user":           "octocat",
+		"user_id":        "12345",
+	})
+	records, err := rule.Evaluate(context.Background(), runtime, first)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(first) = (%v, %v), want one record", records, err)
+	}
+	firstFinding := records[0]
+	records, err = rule.Evaluate(context.Background(), runtime, second)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(second) = (%v, %v), want one record", records, err)
+	}
+	secondFinding := records[0]
+	if firstFinding.Fingerprint != secondFinding.Fingerprint {
+		t.Fatalf("fingerprints differ across replays of the same (user_id, token_id): %q vs %q (should be anchored to (user_id, token_id))", firstFinding.Fingerprint, secondFinding.Fingerprint)
+	}
+	for _, eventID := range []string{first.GetId(), second.GetId()} {
+		if strings.Contains(firstFinding.Fingerprint, eventID) {
+			t.Fatalf("fingerprint %q contains event id %q", firstFinding.Fingerprint, eventID)
+		}
+	}
+
+	revoke := githubAuditEvent("github-pat-revoke", map[string]string{
+		"action":         "personal_access_token.access_granted",
+		"operation_type": "remove",
+		"token_id":       "555",
+		"user":           "octocat",
+		"user_id":        "12345",
+	})
+	records, err = rule.Evaluate(context.Background(), runtime, revoke)
+	if err != nil {
+		t.Fatalf("Evaluate(revoke) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(revoke) returned %d findings, want 0 once PAT revoked", len(records))
+	}
+}
+
 func githubAuditEvent(id string, attributes map[string]string) *cerebrov1.EventEnvelope {
 	if attributes["actor"] == "" {
 		attributes["actor"] = "admin"

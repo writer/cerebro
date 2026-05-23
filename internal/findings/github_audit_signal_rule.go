@@ -283,9 +283,10 @@ var githubAppIntegrationInstalledDefinition = RuleDefinition{
 	References:         []string{"https://docs.github.com/en/apps/using-github-apps/installing-a-github-app-from-a-third-party", "https://github.com/elastic/detection-rules/blob/main/rules/integrations/github/execution_new_github_app_installed.toml"},
 	FalsePositives:     []string{"Approved GitHub App onboarding through standard change management."},
 	Runbook:            "Review installer, app publisher, requested permissions, repository scope, and revoke unauthorized installations.",
-	RequiredAttributes: []string{"action"},
-	FingerprintFields:  []string{"org", "repo", "name", "action"},
+	RequiredAttributes: []string{"action", "name", "org"},
+	FingerprintFields:  []string{"org", "name"},
 	ControlRefs:        githubAuditControlRefs,
+	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 }
 
 var githubPersonalAccessTokenCreatedDefinition = RuleDefinition{
@@ -302,9 +303,10 @@ var githubPersonalAccessTokenCreatedDefinition = RuleDefinition{
 	References:         []string{"https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens", "https://github.com/elastic/detection-rules/blob/main/rules/integrations/github/persistence_new_pat_created.toml"},
 	FalsePositives:     []string{"Expected developer token creation following approved access request."},
 	Runbook:            "Verify token owner, scopes, and source IP; revoke suspicious tokens and review git/API activity after creation.",
-	RequiredAttributes: []string{"action", "operation_type", "user"},
-	FingerprintFields:  []string{"user", "action"},
+	RequiredAttributes: []string{"action", "operation_type", "token_id", "user_id"},
+	FingerprintFields:  []string{"user_id", "token_id"},
 	ControlRefs:        githubAuditControlRefs,
+	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 }
 
 var githubProtectedBranchPolicyOverrideDefinition = RuleDefinition{

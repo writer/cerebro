@@ -274,13 +274,13 @@
       ],
       "runbook": "Review installer, app publisher, requested permissions, repository scope, and revoke unauthorized installations.",
       "required_attributes": [
-        "action"
+        "action",
+        "name",
+        "org"
       ],
       "fingerprint_fields": [
         "org",
-        "repo",
-        "name",
-        "action"
+        "name"
       ],
       "control_refs": [
         {
@@ -676,11 +676,12 @@
       "required_attributes": [
         "action",
         "operation_type",
-        "user"
+        "token_id",
+        "user_id"
       ],
       "fingerprint_fields": [
-        "user",
-        "action"
+        "user_id",
+        "token_id"
       ],
       "control_refs": [
         {
