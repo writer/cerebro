@@ -245,8 +245,8 @@ class ValidateStackConfigTest(unittest.TestCase):
 
     def test_sec_dev_postgres_requires_gp3_sized_storage_and_non_micro_class(self) -> None:
         content = BASE_STACK.replace(
-            "  cerebro:apiMaxInstances: 1\n",
-            "  cerebro:apiMaxInstances: 1\n"
+            "  cerebro:apiMaxInstances: 2\n",
+            "  cerebro:apiMaxInstances: 2\n"
             "  cerebro:postgresInstanceClass: db.t4g.micro\n"
             "  cerebro:postgresAllocatedStorage: 20\n"
             "  cerebro:postgresStorageType: gp2\n",
@@ -259,8 +259,8 @@ class ValidateStackConfigTest(unittest.TestCase):
 
     def test_sec_dev_postgres_accepts_gp3_sized_storage(self) -> None:
         content = BASE_STACK.replace(
-            "  cerebro:apiMaxInstances: 1\n",
-            "  cerebro:apiMaxInstances: 1\n"
+            "  cerebro:apiMaxInstances: 2\n",
+            "  cerebro:apiMaxInstances: 2\n"
             "  cerebro:postgresInstanceClass: db.t4g.small\n"
             "  cerebro:postgresAllocatedStorage: 100\n"
             "  cerebro:postgresMaxAllocatedStorage: 200\n"
@@ -274,8 +274,8 @@ class ValidateStackConfigTest(unittest.TestCase):
 
     def test_sec_dev_postgres_max_storage_must_cover_allocated_storage(self) -> None:
         content = BASE_STACK.replace(
-            "  cerebro:apiMaxInstances: 1\n",
-            "  cerebro:apiMaxInstances: 1\n"
+            "  cerebro:apiMaxInstances: 2\n",
+            "  cerebro:apiMaxInstances: 2\n"
             "  cerebro:postgresInstanceClass: db.t4g.small\n"
             "  cerebro:postgresAllocatedStorage: 100\n"
             "  cerebro:postgresMaxAllocatedStorage: 50\n"
