@@ -769,3 +769,164 @@ func TestCloseoutHelpStartsWithHeader(t *testing.T) {
 		t.Fatalf("help text should start with 'cerebro closeout'; got %q", closeoutHelpText[:32])
 	}
 }
+
+// TestCloseoutBatchLogShape asserts that a dry-run emits a structured
+// closeout.start log line at the run boundary with the pinned event
+// vocabulary and the run-level identifying fields (run_id, actor, env,
+// dry_run). The vocabulary is fixed to {closeout.start, closeout.batch,
+// closeout.end, closeout.refused}; every log line emitted by the CLI must
+// carry one of those values in its "event" field.
+func TestCloseoutBatchLogShape(t *testing.T) {
+	env, backend, _, stdout, _ := newCloseoutTestEnv(t)
+	backend.closeoutResult = &findings.CloseoutResult{ProposedCount: 3, AppliedCount: 0}
+
+	if err := runCloseoutWithEnv([]string{
+		"--rule-id", "r1",
+		"--actor", "alice@writer.com",
+	}, env); err != nil {
+		t.Fatalf("dry-run error = %v", err)
+	}
+
+	pinned := map[string]bool{
+		"closeout.start":   true,
+		"closeout.batch":   true,
+		"closeout.end":     true,
+		"closeout.refused": true,
+	}
+
+	var startEntry map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(stdout.String()), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || !strings.HasPrefix(trimmed, "{") {
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(trimmed), &entry); err != nil {
+			continue
+		}
+		raw, ok := entry["event"]
+		if !ok {
+			continue
+		}
+		event, ok := raw.(string)
+		if !ok {
+			t.Fatalf("event field is not a string: %v", raw)
+		}
+		if !pinned[event] {
+			t.Errorf("log line emits event %q outside pinned vocabulary %v: %s", event, pinned, trimmed)
+		}
+		if event == "closeout.start" {
+			startEntry = entry
+		}
+	}
+	if startEntry == nil {
+		t.Fatalf("no closeout.start structured log line found in stdout:\n%s", stdout.String())
+	}
+	for _, key := range []string{"run_id", "actor", "env", "dry_run"} {
+		if _, ok := startEntry[key]; !ok {
+			t.Errorf("closeout.start entry missing key %q: %v", key, startEntry)
+		}
+	}
+	if got, _ := startEntry["actor"].(string); got != "alice@writer.com" {
+		t.Errorf("closeout.start actor = %q, want alice@writer.com", got)
+	}
+	if got, _ := startEntry["dry_run"].(bool); got != true {
+		t.Errorf("closeout.start dry_run = %v, want true", startEntry["dry_run"])
+	}
+	if runID, _ := startEntry["run_id"].(string); strings.TrimSpace(runID) == "" {
+		t.Errorf("closeout.start run_id is empty: %v", startEntry)
+	}
+}
+
+// TestCloseout_ApplyAndDryRunMutuallyExclusive locks in that --apply and an
+// explicit --dry-run=true exit non-zero with the typed sentinel BEFORE any
+// backend invocation. The error wording must name both flags so operators can
+// disambiguate, but the assertion is on the typed sentinel (the structural
+// noerrstringmatch lint forbids matching against err.Error() content).
+func TestCloseout_ApplyAndDryRunMutuallyExclusive(t *testing.T) {
+	env, backend, _, _, _ := newCloseoutTestEnv(t)
+	withEnv(env, map[string]string{closeoutEnvAllow: "sec-dev"})
+	err := runCloseoutWithEnv([]string{
+		"--rule-id", "r1",
+		"--apply",
+		"--dry-run=true",
+		"--reason", "cleanup",
+		"--allow-env", "sec-dev",
+		"--audit-s3-bucket", "example-sec-dev-audit",
+	}, env)
+	if err == nil {
+		t.Fatal("expected error when --apply and --dry-run=true are combined")
+	}
+	if !errors.Is(err, ErrCloseoutApplyDryRunConflict) {
+		t.Errorf("error %v should match ErrCloseoutApplyDryRunConflict", err)
+	}
+	if backend.supportsCallCount != 0 || backend.closeoutCallCount != 0 {
+		t.Errorf("backend invoked despite conflict: supports=%d closeout=%d",
+			backend.supportsCallCount, backend.closeoutCallCount)
+	}
+	if !strings.Contains(string(ErrCloseoutApplyDryRunConflict), "--apply") ||
+		!strings.Contains(string(ErrCloseoutApplyDryRunConflict), "--dry-run") {
+		t.Errorf("sentinel error message %q must name both --apply and --dry-run",
+			string(ErrCloseoutApplyDryRunConflict))
+	}
+}
+
+// TestCloseout_RequiresAtLeastOneRuleSource locks in that invocations with
+// neither --rule-id nor --rule-id-file exit non-zero before any DB or S3
+// write, including the case where --rule-id-file points at a file that
+// resolves to zero rule ids. The sentinel message names both flags.
+func TestCloseout_RequiresAtLeastOneRuleSource(t *testing.T) {
+	t.Run("neither_flag", func(t *testing.T) {
+		env, backend, writer, _, _ := newCloseoutTestEnv(t)
+		err := runCloseoutWithEnv([]string{}, env)
+		if err == nil {
+			t.Fatal("expected error when no rule sources are provided")
+		}
+		if !errors.Is(err, ErrCloseoutRuleSelectorRequired) {
+			t.Errorf("error %v should match ErrCloseoutRuleSelectorRequired", err)
+		}
+		if backend.supportsCallCount != 0 || backend.closeoutCallCount != 0 {
+			t.Errorf("backend invoked despite missing selector: supports=%d closeout=%d",
+				backend.supportsCallCount, backend.closeoutCallCount)
+		}
+		if len(writer.calls) != 0 {
+			t.Errorf("summary writer invoked despite missing selector: %d", len(writer.calls))
+		}
+	})
+	t.Run("empty_rule_id_file", func(t *testing.T) {
+		env, backend, _, _, _ := newCloseoutTestEnv(t)
+		path := filepath.Join(t.TempDir(), "empty-rules.txt")
+		if err := os.WriteFile(path, []byte("# only comments\n\n"), 0o600); err != nil {
+			t.Fatalf("write empty rule id file: %v", err)
+		}
+		err := runCloseoutWithEnv([]string{"--rule-id-file", path}, env)
+		if err == nil {
+			t.Fatal("expected error when --rule-id-file resolves to zero rule ids")
+		}
+		if !errors.Is(err, ErrCloseoutRuleSelectorRequired) {
+			t.Errorf("error %v should match ErrCloseoutRuleSelectorRequired", err)
+		}
+		if backend.closeoutCallCount != 0 {
+			t.Errorf("backend.Closeout invoked despite empty rule-id-file: %d", backend.closeoutCallCount)
+		}
+	})
+	t.Run("source_only_insufficient", func(t *testing.T) {
+		env, backend, _, _, _ := newCloseoutTestEnv(t)
+		err := runCloseoutWithEnv([]string{"--source", "github"}, env)
+		if err == nil {
+			t.Fatal("expected error when only --source is provided")
+		}
+		if !errors.Is(err, ErrCloseoutRuleSelectorRequired) {
+			t.Errorf("error %v should match ErrCloseoutRuleSelectorRequired", err)
+		}
+		if backend.closeoutCallCount != 0 {
+			t.Errorf("backend.Closeout invoked despite source-only selector: %d", backend.closeoutCallCount)
+		}
+	})
+
+	if !strings.Contains(string(ErrCloseoutRuleSelectorRequired), "--rule-id") ||
+		!strings.Contains(string(ErrCloseoutRuleSelectorRequired), "--rule-id-file") {
+		t.Errorf("sentinel error message %q must name both --rule-id and --rule-id-file",
+			string(ErrCloseoutRuleSelectorRequired))
+	}
+}

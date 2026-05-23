@@ -29,12 +29,15 @@ const (
 	closeoutEnvSecDev = "sec-dev"
 	closeoutEnvGoProd = "go-prod"
 
-	closeoutEventStart    = "closeout.start"
-	closeoutEventEnd      = "closeout.end"
-	closeoutEventRefused  = "closeout.refused"
-	closeoutEventSummary  = "closeout.summary"
-	closeoutEventDryRun   = "closeout.dry_run.bucket_missing"
-	closeoutEventFinished = "closeout.finished"
+	// Event vocabulary is pinned: only {closeout.start, closeout.batch,
+	// closeout.end, closeout.refused} may appear in the "event" field of
+	// any structured log line emitted by the closeout CLI. CloudWatch
+	// consumers (VAL-CLI-009, VAL-INFRA-013) depend on this set being
+	// closed.
+	closeoutEventStart   = "closeout.start"
+	closeoutEventBatch   = "closeout.batch"
+	closeoutEventEnd     = "closeout.end"
+	closeoutEventRefused = "closeout.refused"
 
 	closeoutActorUnknown = "unknown"
 )
@@ -50,7 +53,7 @@ var (
 	ErrCloseoutAllowEnvMismatch       = usageError("cerebro closeout: CEREBRO_CLOSEOUT_ALLOW does not match --allow-env")
 	ErrCloseoutAuditBucketRequired    = usageError("cerebro closeout: --apply requires --audit-s3-bucket or CEREBRO_CLOSEOUT_AUDIT_BUCKET")
 	ErrCloseoutApplyDryRunConflict    = usageError("cerebro closeout: --apply and --dry-run=true are mutually exclusive")
-	ErrCloseoutRuleSelectorRequired   = usageError("cerebro closeout: --rule-id, --rule-id-file, or --source must yield at least one selector")
+	ErrCloseoutRuleSelectorRequired   = usageError("cerebro closeout: at least one of --rule-id or --rule-id-file must be provided")
 	ErrCloseoutRuleIDFileUnreadable   = usageError("cerebro closeout: --rule-id-file is not readable")
 	ErrCloseoutOlderThanInvalid       = usageError("cerebro closeout: --older-than must be a positive duration (e.g. 7d, 24h)")
 	ErrCloseoutMaxBatchSizeInvalid    = usageError("cerebro closeout: --max-batch-size must be a positive integer")
@@ -218,13 +221,7 @@ func runCloseoutWithEnv(args []string, env *closeoutEnv) error {
 	}
 
 	bucket := resolveCloseoutBucket(&flags, env)
-	if !flags.Apply && bucket == "" {
-		emitCloseoutLog(env, map[string]any{
-			"event":  closeoutEventDryRun,
-			"reason": "audit_bucket_unset",
-			"run_id": runID,
-		})
-	}
+	auditBucketMissing := !flags.Apply && bucket == ""
 
 	tenantID := flags.TenantID
 	if tenantID == "" {
@@ -249,13 +246,17 @@ func runCloseoutWithEnv(args []string, env *closeoutEnv) error {
 	}
 
 	startedAt := env.Now()
-	emitCloseoutLog(env, map[string]any{
+	startLog := map[string]any{
 		"event":   closeoutEventStart,
 		"run_id":  runID,
 		"actor":   actor,
 		"env":     flags.AllowEnv,
 		"dry_run": req.DryRun,
-	})
+	}
+	if auditBucketMissing {
+		startLog["audit_bucket_missing"] = true
+	}
+	emitCloseoutLog(env, startLog)
 
 	result, closeoutErr := env.Backend.Closeout(ctx, req)
 	if closeoutErr != nil {
@@ -285,14 +286,15 @@ func runCloseoutWithEnv(args []string, env *closeoutEnv) error {
 		return fmt.Errorf("marshal closeout summary: %w", marshalErr)
 	}
 
+	summaryKey := ""
 	if flags.Apply {
-		key := closeoutSummaryKey(runID)
-		putErr := env.Summary.PutCloseoutSummary(ctx, bucket, key, body)
-		if afterErr := env.Backend.AfterCloseoutSummary(ctx, runID, key, putErr); afterErr != nil && putErr == nil {
+		summaryKey = closeoutSummaryKey(runID)
+		putErr := env.Summary.PutCloseoutSummary(ctx, bucket, summaryKey, body)
+		if afterErr := env.Backend.AfterCloseoutSummary(ctx, runID, summaryKey, putErr); afterErr != nil && putErr == nil {
 			return fmt.Errorf("after closeout summary: %w", afterErr)
 		}
 		if putErr != nil {
-			_, _ = fmt.Fprintf(env.Stderr, "cerebro closeout: failed to put audit summary to s3://%s/%s: %v\n", bucket, key, putErr)
+			_, _ = fmt.Fprintf(env.Stderr, "cerebro closeout: failed to put audit summary to s3://%s/%s: %v\n", bucket, summaryKey, putErr)
 			emitCloseoutLog(env, map[string]any{
 				"event":  closeoutEventEnd,
 				"run_id": runID,
@@ -301,37 +303,28 @@ func runCloseoutWithEnv(args []string, env *closeoutEnv) error {
 			})
 			return fmt.Errorf("%w: %w", ErrCloseoutSummaryPutFailed, putErr)
 		}
-		emitCloseoutLog(env, map[string]any{
-			"event":          closeoutEventSummary,
-			"run_id":         runID,
-			"bucket":         bucket,
-			"key":            key,
-			"proposed_count": result.ProposedCount,
-			"applied_count":  result.AppliedCount,
-		})
 	} else if bucket != "" && env.Summary != nil {
-		key := closeoutSummaryKey(runID)
-		if err := env.Summary.PutCloseoutSummary(ctx, bucket, key, body); err == nil {
-			emitCloseoutLog(env, map[string]any{
-				"event":   closeoutEventSummary,
-				"run_id":  runID,
-				"bucket":  bucket,
-				"key":     key,
-				"dry_run": true,
-			})
-		}
+		summaryKey = closeoutSummaryKey(runID)
+		_ = env.Summary.PutCloseoutSummary(ctx, bucket, summaryKey, body)
 	} else if !flags.Apply {
 		_, _ = fmt.Fprintln(env.Stdout, string(body))
 	}
 
-	emitCloseoutLog(env, map[string]any{
+	endLog := map[string]any{
 		"event":          closeoutEventEnd,
 		"run_id":         runID,
 		"status":         "succeeded",
 		"proposed_count": result.ProposedCount,
 		"applied_count":  result.AppliedCount,
 		"dry_run":        req.DryRun,
-	})
+	}
+	if summaryKey != "" {
+		endLog["s3_summary_key"] = summaryKey
+		if bucket != "" {
+			endLog["s3_summary_bucket"] = bucket
+		}
+	}
+	emitCloseoutLog(env, endLog)
 	return nil
 }
 
@@ -451,7 +444,7 @@ func validateCloseoutFlags(flags *closeoutFlags, env *closeoutEnv) error {
 		flags.DryRun = false
 	}
 
-	if len(flags.RuleIDs) == 0 && flags.RuleIDFile == "" && len(flags.Sources) == 0 {
+	if len(flags.RuleIDs) == 0 && flags.RuleIDFile == "" {
 		return ErrCloseoutRuleSelectorRequired
 	}
 	if flags.RuleIDFile != "" {
@@ -461,7 +454,7 @@ func validateCloseoutFlags(flags *closeoutFlags, env *closeoutEnv) error {
 		}
 		flags.RuleIDs = mergeUnique(flags.RuleIDs, fileIDs)
 	}
-	if len(flags.RuleIDs) == 0 && len(flags.Sources) == 0 {
+	if len(flags.RuleIDs) == 0 {
 		return ErrCloseoutRuleSelectorRequired
 	}
 
