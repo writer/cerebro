@@ -9,12 +9,13 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/writer/cerebro/internal/findings"
 )
 
-const findingRuleUsage = "usage: %s finding-rule new <rule-id> source_id=<source> event_kinds=<kind[,kind]> [name=<name>] [output_kind=<kind>] [severity=<severity>] [status=<status>] [maturity=<maturity>] [tags=<tag[,tag]>] [required_attributes=<attr[,attr]>] [fingerprint_fields=<field[,field]>] [pack=<pack>] [output_dir=<dir>] [dry_run=true] [force=true]"
+const findingRuleUsage = "usage: %s finding-rule new <rule-id> source_id=<source> event_kinds=<kind[,kind]> [name=<name>] [output_kind=<kind>] [severity=<severity>] [status=<status>] [maturity=<maturity>] [tags=<tag[,tag]>] [required_attributes=<attr[,attr]>] [fingerprint_fields=<field[,field]>] [lifecycle_kind=<kind>] [lifecycle_anchor=<anchor>] [lifecycle_ttl=<duration>] [pack=<pack>] [output_dir=<dir>] [dry_run=true] [force=true]"
 
 type findingRuleScaffoldRequest struct {
 	Definition findings.RuleDefinition
@@ -144,6 +145,10 @@ func parseFindingRuleNewArgs(args []string) (findingRuleScaffoldRequest, error) 
 	if err != nil {
 		return findingRuleScaffoldRequest{}, fmt.Errorf("parse force: %w", err)
 	}
+	lifecycle, err := parseScaffoldLifecycle(values)
+	if err != nil {
+		return findingRuleScaffoldRequest{}, err
+	}
 	definition := findings.RuleDefinition{
 		ID:                 ruleID,
 		Name:               name,
@@ -160,6 +165,7 @@ func parseFindingRuleNewArgs(args []string) (findingRuleScaffoldRequest, error) 
 		Runbook:            strings.TrimSpace(values["runbook"]),
 		RequiredAttributes: splitCSV(values["required_attributes"]),
 		FingerprintFields:  fingerprintFields,
+		Lifecycle:          lifecycle,
 	}
 	if err := definition.Validate(); err != nil {
 		return findingRuleScaffoldRequest{}, err
@@ -171,6 +177,31 @@ func parseFindingRuleNewArgs(args []string) (findingRuleScaffoldRequest, error) 
 		DryRun:     dryRun,
 		Force:      force,
 	}, nil
+}
+
+func parseScaffoldLifecycle(values map[string]string) (findings.Lifecycle, error) {
+	kind := findings.LifecycleKind(strings.TrimSpace(values["lifecycle_kind"]))
+	if kind == "" {
+		kind = findings.LifecycleAuditEvidence
+	}
+	anchor := findings.LifecycleAnchor(strings.TrimSpace(values["lifecycle_anchor"]))
+	if anchor == "" {
+		switch kind {
+		case findings.LifecycleDurableState:
+			anchor = findings.AnchorGraphAnchored
+		default:
+			anchor = findings.AnchorNone
+		}
+	}
+	var ttl time.Duration
+	if raw := strings.TrimSpace(values["lifecycle_ttl"]); raw != "" {
+		parsed, err := time.ParseDuration(raw)
+		if err != nil {
+			return findings.Lifecycle{}, fmt.Errorf("parse lifecycle_ttl: %w", err)
+		}
+		ttl = parsed
+	}
+	return findings.Lifecycle{Kind: kind, Anchor: anchor, TTL: ttl}, nil
 }
 
 func scaffoldFindingRule(request findingRuleScaffoldRequest) (*findingRuleScaffoldResult, error) {

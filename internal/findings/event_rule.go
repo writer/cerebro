@@ -33,6 +33,7 @@ type RuleDefinition struct {
 	RequiredAttributes []string
 	FingerprintFields  []string
 	ControlRefs        []ports.FindingControlRef
+	Lifecycle          Lifecycle
 }
 
 type eventRuleConfig struct {
@@ -59,6 +60,13 @@ func newEventRule(config eventRuleConfig) Rule {
 }
 
 func (d RuleDefinition) Validate() error {
+	if err := d.validateBaseFields(); err != nil {
+		return err
+	}
+	return validateLifecycle(d.ID, d.Lifecycle)
+}
+
+func (d RuleDefinition) validateBaseFields() error {
 	if strings.TrimSpace(d.ID) == "" {
 		return errors.New("rule id is required")
 	}
@@ -187,7 +195,7 @@ func (r *eventRule) Evaluate(ctx context.Context, runtime *cerebrov1.SourceRunti
 		return nil, errors.New("finding event rule is not configured")
 	}
 	if !r.config.definition.IsZero() {
-		if err := r.config.definition.Validate(); err != nil {
+		if err := r.config.definition.validateBaseFields(); err != nil {
 			return nil, err
 		}
 	}
