@@ -1,0 +1,26 @@
+repos:
+  - repo: local
+    hooks:
+      - id: cerebro-infra-static-validation
+        name: Cerebro infra static validation
+        entry: bash -c 'cd infra && uv run python -m compileall aws gcp scripts tests && uv run python scripts/validate_stack_config.py'
+        language: system
+        pass_filenames: false
+        files: ^infra/(aws|gcp|scripts|tests)/|^infra/(pyproject\.toml|uv\.lock)$
+        stages: [pre-commit]
+
+      - id: cerebro-infra-unit-tests
+        name: Cerebro infra unit tests
+        entry: bash -c 'cd infra && uv run python -m unittest discover -s tests'
+        language: system
+        pass_filenames: false
+        files: ^infra/(aws|gcp|scripts|tests)/|^infra/(pyproject\.toml|uv\.lock)$
+        stages: [pre-commit]
+
+      - id: base-stack-replacement-guard
+        name: Guard BASE_STACK replacements
+        entry: bash -c 'cd infra && uv run python scripts/check_base_stack_replacements.py'
+        language: system
+        pass_filenames: false
+        files: ^infra/tests/test_validate_stack_config\.py$
+        stages: [pre-commit]
