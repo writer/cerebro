@@ -354,6 +354,60 @@ func mustParseTime(t *testing.T, value string) time.Time {
 	return parsed
 }
 
+func mustOktaTestdata(t *testing.T, name string) json.RawMessage {
+	t.Helper()
+	data, err := fixtureFS.ReadFile("testdata/" + name)
+	if err != nil {
+		t.Fatalf("read okta testdata %s: %v", name, err)
+	}
+	return json.RawMessage(data)
+}
+
+func readSingleOktaUserEvent(t *testing.T, baseURL string) *cerebrov1.EventEnvelope {
+	t.Helper()
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	readCfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": baseURL,
+		"domain":   "writer.okta.com",
+		"family":   "user",
+		"per_page": "1",
+		"token":    "test-token",
+	})
+	pull, err := source.Read(context.Background(), readCfg, nil)
+	if err != nil {
+		t.Fatalf("Read(user) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Read(user).Events) = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Kind; got != "okta.user" {
+		t.Fatalf("Read(user).Events[0].Kind = %q, want okta.user", got)
+	}
+	return pull.Events[0]
+}
+
+func assertOktaMFAAttributes(t *testing.T, attributes map[string]string, wantEnrolled, wantCount string) {
+	t.Helper()
+	gotEnrolled, ok := attributes["mfa_enrolled"]
+	if !ok {
+		t.Fatalf("mfa_enrolled missing from attributes %#v", attributes)
+	}
+	if gotEnrolled != wantEnrolled {
+		t.Fatalf("mfa_enrolled = %q, want %q", gotEnrolled, wantEnrolled)
+	}
+	gotCount, ok := attributes["mfa_factor_count"]
+	if !ok {
+		t.Fatalf("mfa_factor_count missing from attributes %#v", attributes)
+	}
+	if gotCount != wantCount {
+		t.Fatalf("mfa_factor_count = %q, want %q", gotCount, wantCount)
+	}
+}
+
 func TestCheckDiscoverAndReadLiveOktaUserPreview(t *testing.T) {
 	server := httptest.NewServer(newOktaAPIHandler(t))
 	defer server.Close()
@@ -405,6 +459,7 @@ func TestCheckDiscoverAndReadLiveOktaUserPreview(t *testing.T) {
 	if got := first.Events[0].Kind; got != "okta.user" {
 		t.Fatalf("first.Events[0].Kind = %q, want okta.user", got)
 	}
+	assertOktaMFAAttributes(t, first.Events[0].Attributes, "true", "1")
 	var payload map[string]any
 	if err := json.Unmarshal(first.Events[0].Payload, &payload); err != nil {
 		t.Fatalf("unmarshal user payload: %v", err)
@@ -427,8 +482,93 @@ func TestCheckDiscoverAndReadLiveOktaUserPreview(t *testing.T) {
 	if second.NextCursor != nil {
 		t.Fatalf("second.NextCursor = %#v, want nil", second.NextCursor)
 	}
+	assertOktaMFAAttributes(t, second.Events[0].Attributes, "false", "0")
 	if second.Checkpoint == nil || second.Checkpoint.CursorOpaque != "00u2" {
 		t.Fatalf("second.Checkpoint = %#v, want 00u2", second.Checkpoint)
+	}
+}
+
+func TestReadLiveOktaUserPreviewPopulatesMFAFactorAttributes(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		userID       string
+		responses    []oktaFactorTestResponse
+		wantEnrolled string
+		wantCount    string
+	}{
+		{
+			name:   "enrolled",
+			userID: "00u-enrolled",
+			responses: []oktaFactorTestResponse{{
+				status: http.StatusOK,
+				body:   mustOktaTestdata(t, "factors_enrolled.json"),
+			}},
+			wantEnrolled: "true",
+			wantCount:    "1",
+		},
+		{
+			name:   "not enrolled",
+			userID: "00u-not-enrolled",
+			responses: []oktaFactorTestResponse{{
+				status: http.StatusOK,
+				body:   mustOktaTestdata(t, "factors_not_enrolled.json"),
+			}},
+			wantEnrolled: "false",
+			wantCount:    "0",
+		},
+		{
+			name:   "forbidden unknown",
+			userID: "00u-forbidden",
+			responses: []oktaFactorTestResponse{{
+				status: http.StatusForbidden,
+				body:   json.RawMessage(`{"errorSummary":"factor access denied"}`),
+			}},
+			wantEnrolled: "",
+			wantCount:    "",
+		},
+		{
+			name:   "multi factor count",
+			userID: "00u-multi",
+			responses: []oktaFactorTestResponse{{
+				status: http.StatusOK,
+				body:   mustOktaTestdata(t, "factors_multi.json"),
+			}},
+			wantEnrolled: "true",
+			wantCount:    "3",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			requestCount := 0
+			server := httptest.NewServer(newOktaUserFactorAPIHandler(t, tt.userID, tt.responses, &requestCount))
+			defer server.Close()
+
+			event := readSingleOktaUserEvent(t, server.URL)
+			assertOktaMFAAttributes(t, event.Attributes, tt.wantEnrolled, tt.wantCount)
+			if requestCount != 1 {
+				t.Fatalf("factor request count = %d, want 1", requestCount)
+			}
+		})
+	}
+}
+
+func TestReadLiveOktaUserPreviewRetriesMFAFactorRateLimit(t *testing.T) {
+	requestCount := 0
+	server := httptest.NewServer(newOktaUserFactorAPIHandler(t, "00u-rate-limited", []oktaFactorTestResponse{
+		{
+			status: http.StatusTooManyRequests,
+			body:   json.RawMessage(`{"errorSummary":"rate limit exceeded"}`),
+		},
+		{
+			status: http.StatusOK,
+			body:   mustOktaTestdata(t, "factors_enrolled.json"),
+		},
+	}, &requestCount))
+	defer server.Close()
+
+	event := readSingleOktaUserEvent(t, server.URL)
+	assertOktaMFAAttributes(t, event.Attributes, "true", "1")
+	if requestCount != 2 {
+		t.Fatalf("factor request count = %d, want 2", requestCount)
 	}
 }
 
@@ -958,6 +1098,70 @@ func newOktaPolicyRuleAPIHandler(t *testing.T) http.Handler {
 	})
 }
 
+type oktaFactorTestResponse struct {
+	status int
+	body   json.RawMessage
+}
+
+func newOktaUserFactorAPIHandler(t *testing.T, userID string, factorResponses []oktaFactorTestResponse, factorRequestCount *int) http.Handler {
+	t.Helper()
+
+	userRecords := []map[string]any{
+		{
+			"id":          userID,
+			"status":      "ACTIVE",
+			"created":     "2026-04-20T00:00:00Z",
+			"activated":   "2026-04-20T00:01:00Z",
+			"lastUpdated": "2026-04-23T01:00:00Z",
+			"lastLogin":   "2026-04-23T01:00:00Z",
+			"profile": map[string]any{
+				"login":       userID + "@writer.com",
+				"email":       userID + "@writer.com",
+				"displayName": "Okta MFA Test User",
+			},
+		},
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if got := r.Header.Get("Authorization"); got != "SSWS test-token" {
+			w.WriteHeader(http.StatusUnauthorized)
+			if err := json.NewEncoder(w).Encode(map[string]any{"errorSummary": "invalid token"}); err != nil {
+				t.Fatalf("encode auth error: %v", err)
+			}
+			return
+		}
+		switch r.URL.Path {
+		case "/api/v1/users":
+			if err := json.NewEncoder(w).Encode(userRecords); err != nil {
+				t.Fatalf("encode users: %v", err)
+			}
+		case "/api/v1/users/" + userID + "/factors":
+			(*factorRequestCount)++
+			index := *factorRequestCount - 1
+			if index >= len(factorResponses) {
+				index = len(factorResponses) - 1
+			}
+			response := factorResponses[index]
+			if response.status == 0 {
+				response.status = http.StatusOK
+			}
+			w.WriteHeader(response.status)
+			if len(response.body) > 0 {
+				if _, err := w.Write(response.body); err != nil {
+					t.Fatalf("write factors: %v", err)
+				}
+				return
+			}
+			if err := json.NewEncoder(w).Encode([]map[string]any{}); err != nil {
+				t.Fatalf("encode default factors: %v", err)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
 func newOktaAPIHandler(t *testing.T) http.Handler {
 	t.Helper()
 
@@ -1183,6 +1387,14 @@ func newOktaAPIHandler(t *testing.T) http.Handler {
 		case "/api/v1/users/00u1/roles":
 			if err := json.NewEncoder(w).Encode(roleRecords); err != nil {
 				t.Fatalf("encode admin roles: %v", err)
+			}
+		case "/api/v1/users/00u1/factors":
+			if _, err := w.Write(mustOktaTestdata(t, "factors_enrolled.json")); err != nil {
+				t.Fatalf("write 00u1 factors: %v", err)
+			}
+		case "/api/v1/users/00u2/factors":
+			if _, err := w.Write(mustOktaTestdata(t, "factors_not_enrolled.json")); err != nil {
+				t.Fatalf("write 00u2 factors: %v", err)
 			}
 		default:
 			http.NotFound(w, r)

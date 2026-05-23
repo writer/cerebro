@@ -42,6 +42,26 @@ const (
 	familyUser        = "user"
 )
 
+var defaultMFAFactorRetryBackoffs = []time.Duration{
+	50 * time.Millisecond,
+	100 * time.Millisecond,
+	250 * time.Millisecond,
+}
+
+var oktaMFAEnrollmentFactorKinds = map[string]struct{}{
+	"call":                {},
+	"custom":              {},
+	"email":               {},
+	"hotp":                {},
+	"push":                {},
+	"question":            {},
+	"signed_nonce":        {},
+	"sms":                 {},
+	"token:software:totp": {},
+	"u2f":                 {},
+	"webauthn":            {},
+}
+
 // Source is the live Okta source preview used by the builtin registry.
 type Source struct {
 	spec                 *cerebrov1.SourceSpec
@@ -49,6 +69,7 @@ type Source struct {
 	families             *sourcecdk.FamilyEngine[settings]
 	allowLoopbackBaseURL bool
 	lookupIPAddrs        func(context.Context, string) ([]net.IPAddr, error)
+	mfaFactorBackoffs    []time.Duration
 }
 
 type settings struct {
@@ -97,6 +118,19 @@ type userRecord struct {
 	Type            map[string]any `json:"type"`
 	Profile         map[string]any `json:"profile"`
 	raw             json.RawMessage
+	mfa             userMFASummary
+}
+
+type userFactorRecord struct {
+	ID         string `json:"id"`
+	Kind       string `json:"kind"`
+	FactorType string `json:"factorType"`
+	Status     string `json:"status"`
+}
+
+type userMFASummary struct {
+	known             bool
+	activeFactorCount int
 }
 
 type groupRecord struct {
@@ -282,6 +316,7 @@ type oktaFamilyOptions[T any] struct {
 	Name           string
 	Label          string
 	List           oktaListFunc[T]
+	Enrich         func(context.Context, settings, []T) ([]T, error)
 	Event          func(settings, T) (*primitives.Event, error)
 	URN            func(settings, T) (string, error)
 	Discover       func(context.Context, settings) ([]sourcecdk.URN, error)
@@ -357,10 +392,11 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 		}),
 		oktaFamily(oktaFamilyOptions[userRecord]{
-			Name:  familyUser,
-			Label: "okta users",
-			List:  s.listUsers,
-			Event: userEvent,
+			Name:   familyUser,
+			Label:  "okta users",
+			List:   s.listUsers,
+			Enrich: s.enrichUsersWithMFAFactors,
+			Event:  userEvent,
 			URN: func(settings settings, user userRecord) (string, error) {
 				urn, err := userURN(settings.domain, user.ID)
 				if err != nil {
@@ -393,6 +429,12 @@ func oktaFamily[T any](options oktaFamilyOptions[T]) sourcecdk.Family[settings] 
 			records, next, err := options.List(ctx, settings, strings.TrimSpace(cursor.GetOpaque()), settings.perPage)
 			if err != nil {
 				return sourcecdk.Pull{}, wrapLookupError(oktaLabel(options.Label, settings), err)
+			}
+			if options.Enrich != nil && len(records) > 0 {
+				records, err = options.Enrich(ctx, settings, records)
+				if err != nil {
+					return sourcecdk.Pull{}, wrapLookupError(oktaLabel(options.Label, settings), err)
+				}
 			}
 			build := func(record T) (*primitives.Event, error) {
 				return options.Event(settings, record)
@@ -750,6 +792,38 @@ func (s *Source) listUsers(ctx context.Context, settings settings, after string,
 	})
 }
 
+func (s *Source) enrichUsersWithMFAFactors(ctx context.Context, settings settings, records []userRecord) ([]userRecord, error) {
+	for i := range records {
+		summary, err := s.userMFASummary(ctx, settings, records[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		records[i].mfa = summary
+	}
+	return records, nil
+}
+
+func (s *Source) userMFASummary(ctx context.Context, settings settings, userID string) (userMFASummary, error) {
+	if strings.TrimSpace(userID) == "" {
+		return userMFASummary{}, nil
+	}
+	var factors []userFactorRecord
+	requestPath := "/api/v1/users/" + url.PathEscape(userID) + "/factors"
+	if err := s.getJSONWithRetry(ctx, settings, requestPath, nil, &factors, isRetryableMFAFactorError); err != nil {
+		if isUnknownMFAFactorError(err) {
+			return userMFASummary{}, nil
+		}
+		return userMFASummary{}, fmt.Errorf("list okta user %q factors: %w", userID, err)
+	}
+	activeCount := 0
+	for _, factor := range factors {
+		if oktaMFAFactorEnrolled(factor) {
+			activeCount++
+		}
+	}
+	return userMFASummary{known: true, activeFactorCount: activeCount}, nil
+}
+
 func (s *Source) listGroups(ctx context.Context, settings settings, after string, limit int) ([]groupRecord, string, error) {
 	query := url.Values{}
 	query.Set("limit", strconv.Itoa(limit))
@@ -867,6 +941,44 @@ func (s *Source) getJSON(ctx context.Context, settings settings, requestPath str
 		return headers, fmt.Errorf("decode %s response: %w", requestPath, err)
 	}
 	return headers, nil
+}
+
+func (s *Source) getJSONWithRetry(ctx context.Context, settings settings, requestPath string, query url.Values, target any, retryable func(error) bool) error {
+	backoffs := s.mfaFactorRetryBackoffs()
+	var err error
+	for attempt := 0; ; attempt++ {
+		_, err = s.getJSON(ctx, settings, requestPath, query, target)
+		if err == nil {
+			return nil
+		}
+		if retryable == nil || !retryable(err) || attempt >= len(backoffs) {
+			return err
+		}
+		if sleepErr := sleepContext(ctx, backoffs[attempt]); sleepErr != nil {
+			return sleepErr
+		}
+	}
+}
+
+func (s *Source) mfaFactorRetryBackoffs() []time.Duration {
+	if s != nil && s.mfaFactorBackoffs != nil {
+		return s.mfaFactorBackoffs
+	}
+	return defaultMFAFactorRetryBackoffs
+}
+
+func sleepContext(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func oktaHTTPClientNoRedirect(client *http.Client, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) *http.Client {
@@ -1278,9 +1390,15 @@ func auditAttributes(settings settings, record auditRecord, actor identityPayloa
 
 func userAttributes(settings settings, record userRecord) map[string]string {
 	attributes := map[string]string{
-		"domain":  settings.domain,
-		"family":  familyUser,
-		"user_id": record.ID,
+		"domain":           settings.domain,
+		"family":           familyUser,
+		"mfa_enrolled":     "",
+		"mfa_factor_count": "",
+		"user_id":          record.ID,
+	}
+	if record.mfa.known {
+		attributes["mfa_enrolled"] = boolString(record.mfa.activeFactorCount > 0)
+		attributes["mfa_factor_count"] = strconv.Itoa(record.mfa.activeFactorCount)
 	}
 	addAttribute(attributes, "email", stringMap(record.Profile, "email"))
 	addAttribute(attributes, "login", stringMap(record.Profile, "login"))
@@ -1766,6 +1884,33 @@ func boolString(value bool) string {
 func configValue(cfg sourcecdk.Config, key string) string {
 	value, _ := cfg.Lookup(key)
 	return strings.TrimSpace(value)
+}
+
+func oktaMFAFactorEnrolled(factor userFactorRecord) bool {
+	if !strings.EqualFold(strings.TrimSpace(factor.Status), "ACTIVE") {
+		return false
+	}
+	kind := strings.ToLower(strings.TrimSpace(firstNonEmpty(factor.Kind, factor.FactorType)))
+	_, ok := oktaMFAEnrollmentFactorKinds[kind]
+	return ok
+}
+
+func isRetryableMFAFactorError(err error) bool {
+	var responseErr *responseError
+	if !errors.As(err, &responseErr) {
+		return false
+	}
+	return responseErr.statusCode == http.StatusTooManyRequests || responseErr.statusCode >= http.StatusInternalServerError
+}
+
+func isUnknownMFAFactorError(err error) bool {
+	var responseErr *responseError
+	if !errors.As(err, &responseErr) {
+		return false
+	}
+	return responseErr.statusCode == http.StatusForbidden ||
+		responseErr.statusCode == http.StatusTooManyRequests ||
+		responseErr.statusCode >= http.StatusInternalServerError
 }
 
 func isNotFound(err error) bool {
