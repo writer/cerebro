@@ -253,29 +253,46 @@ func TestIdentityApiTokenOrOauthAppCreated(t *testing.T) {
 	assertIdentityRuleRemediationTrajectory(t, rule, tokenFirst, tokenRevoked, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
 	olderTokenRevoked := identitySignalEventAt("aws-access-key-revoked-before-open", "aws", "aws.access_key", tokenRevokedAttrs, identityTrajectoryBaseTime.Add(-time.Minute))
 	assertIdentityRuleOlderCloseDoesNotResolveLaterOpen(t, rule, olderTokenRevoked, tokenFirst)
+}
 
-	oauthRuntime := &cerebrov1.SourceRuntime{Id: "example-okta-audit", SourceId: "okta", TenantId: "writer", Config: map[string]string{"family": "audit"}}
-	oauthAttrs := map[string]string{
-		"domain":         "writer.okta.com",
-		"event_type":     "oauth.application.create",
-		"actor_email":    "admin@writer.com",
-		"oauth_app_id":   "example-oauth-app",
-		"resource_id":    "0oa-client",
-		"resource_type":  "OAuthApplication",
-		"outcome_result": "SUCCESS",
+func TestIdentityApiTokenOrOauthAppCreated_OAuthTrajectory(t *testing.T) {
+	rules := identityRulesByID(t)
+	rule := rules[identityAPIOrOAuthCredentialCreatedRuleID]
+	assertIdentityDurableMetadata(t, rule, []string{"user", "credential_id", "org", "oauth_app_id"})
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("identity-api-token-or-oauth-app-created does not expose RuleMetadata")
 	}
-	oauthFirst := identitySignalEventAt("okta-oauth-app-created-first", "okta", "okta.audit", oauthAttrs, identityTrajectoryBaseTime)
+	definition := metadataRule.RuleMetadata()
+	if !slices.Contains(definition.EventKinds, "okta.application") {
+		t.Fatalf("EventKinds = %v, want okta.application for projected OAuth app state", definition.EventKinds)
+	}
+	counterRule, ok := rule.(CounterEventRule)
+	if !ok {
+		t.Fatal("identity-api-token-or-oauth-app-created does not implement CounterEventRule")
+	}
+
+	oauthRuntime := &cerebrov1.SourceRuntime{Id: "example-okta-application", SourceId: "okta", TenantId: "writer", Config: map[string]string{"family": "application"}}
+	oauthAttrs := map[string]string{
+		"app_id":       "0oa-client",
+		"app_name":     "Production Client",
+		"domain":       "writer.okta.com",
+		"oauth2":       "true",
+		"sign_on_mode": "OPENID_CONNECT",
+		"status":       "ACTIVE",
+	}
+	oauthFirst := identitySignalEventAt("okta-oauth-app-active-first", "okta", "okta.application", oauthAttrs, identityTrajectoryBaseTime)
 	oauthSecondAttrs := cloneIdentitySignalAttributes(oauthAttrs)
-	oauthSecondAttrs["actor_email"] = "other-admin@writer.com"
-	oauthSecond := identitySignalEventAt("okta-oauth-app-created-second", "okta", "okta.audit", oauthSecondAttrs, identityTrajectoryBaseTime.Add(time.Minute))
-	records, err = rule.Evaluate(context.Background(), oauthRuntime, oauthFirst)
+	oauthSecondAttrs["app_name"] = "Production Client Renamed"
+	oauthSecond := identitySignalEventAt("okta-oauth-app-active-second", "okta", "okta.application", oauthSecondAttrs, identityTrajectoryBaseTime.Add(time.Minute))
+	records, err := rule.Evaluate(context.Background(), oauthRuntime, oauthFirst)
 	if err != nil || len(records) != 1 {
-		t.Fatalf("Evaluate(oauth first) = (%v, %v), want one finding", records, err)
+		t.Fatalf("Evaluate(oauth ACTIVE first) = (%v, %v), want one finding", records, err)
 	}
 	oauthFinding := records[0]
 	records, err = rule.Evaluate(context.Background(), oauthRuntime, oauthSecond)
 	if err != nil || len(records) != 1 {
-		t.Fatalf("Evaluate(oauth second) = (%v, %v), want one finding", records, err)
+		t.Fatalf("Evaluate(oauth ACTIVE second) = (%v, %v), want one finding", records, err)
 	}
 	if got := records[0].Fingerprint; got != oauthFinding.Fingerprint {
 		t.Fatalf("oauth fingerprint = %q, want stable %q for same (org, oauth_app_id)", got, oauthFinding.Fingerprint)
@@ -283,25 +300,54 @@ func TestIdentityApiTokenOrOauthAppCreated(t *testing.T) {
 	if got := oauthFinding.Attributes["org"]; got != "writer.okta.com" {
 		t.Fatalf("oauth attributes[org] = %q, want writer.okta.com", got)
 	}
-	if got := oauthFinding.Attributes["oauth_app_id"]; got != "example-oauth-app" {
-		t.Fatalf("oauth attributes[oauth_app_id] = %q, want example-oauth-app", got)
+	if got := oauthFinding.Attributes["oauth_app_id"]; got != "0oa-client" {
+		t.Fatalf("oauth attributes[oauth_app_id] = %q, want 0oa-client", got)
 	}
-	if oauthFinding.Fingerprint == tokenFinding.Fingerprint {
-		t.Fatal("oauth branch reused token fingerprint; want branch selected by credential/app type")
+	if got := oauthFinding.Attributes["status"]; got != "ACTIVE" {
+		t.Fatalf("oauth attributes[status] = %q, want ACTIVE", got)
+	}
+	if got := oauthFinding.Attributes["sign_on_mode"]; got != "OPENID_CONNECT" {
+		t.Fatalf("oauth attributes[sign_on_mode] = %q, want OPENID_CONNECT", got)
+	}
+	assertFindingResourceURN(t, oauthFinding.ResourceURNs, "urn:cerebro:writer:okta_application:0oa-client")
+	openAnchor := counterRule.OpenAnchor(oauthFinding.Attributes)
+	if openAnchor == "" {
+		t.Fatalf("OpenAnchor(%v) = empty, want org/oauth_app_id anchor", oauthFinding.Attributes)
 	}
 
-	uninstalledAttrs := cloneIdentitySignalAttributes(oauthAttrs)
-	uninstalledAttrs["event_type"] = "oauth.application.uninstall"
-	uninstalledAttrs["status"] = "deleted"
-	uninstalled := identitySignalEventAt("okta-oauth-app-uninstalled", "okta", "okta.audit", uninstalledAttrs, identityTrajectoryBaseTime.Add(2*time.Minute))
-	records, err = rule.Evaluate(context.Background(), oauthRuntime, uninstalled)
+	inactiveAttrs := cloneIdentitySignalAttributes(oauthAttrs)
+	inactiveAttrs["status"] = "INACTIVE"
+	inactive := identitySignalEventAt("okta-oauth-app-inactive", "okta", "okta.application", inactiveAttrs, identityTrajectoryBaseTime.Add(2*time.Minute))
+	records, err = rule.Evaluate(context.Background(), oauthRuntime, inactive)
 	if err != nil {
-		t.Fatalf("Evaluate(oauth uninstalled) error = %v", err)
+		t.Fatalf("Evaluate(oauth INACTIVE) error = %v", err)
 	}
 	if len(records) != 0 {
-		t.Fatalf("Evaluate(oauth uninstalled) returned %d findings, want 0 after app uninstall", len(records))
+		t.Fatalf("Evaluate(oauth INACTIVE) returned %d findings, want 0 after app inactive state", len(records))
 	}
-	assertIdentityRuleRemediationTrajectory(t, rule, oauthFirst, uninstalled, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+	closeAnchor, closes := counterRule.CloseOnEvent(inactive)
+	if !closes || closeAnchor != openAnchor {
+		t.Fatalf("CloseOnEvent(INACTIVE) = (%q, %v), want (%q, true)", closeAnchor, closes, openAnchor)
+	}
+
+	deletedAttrs := cloneIdentitySignalAttributes(oauthAttrs)
+	deletedAttrs["status"] = "DELETED_PERMANENTLY"
+	deleted := identitySignalEventAt("okta-oauth-app-deleted-permanently", "okta", "okta.application", deletedAttrs, identityTrajectoryBaseTime.Add(3*time.Minute))
+	records, err = rule.Evaluate(context.Background(), oauthRuntime, deleted)
+	if err != nil {
+		t.Fatalf("Evaluate(oauth DELETED_PERMANENTLY) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(oauth DELETED_PERMANENTLY) returned %d findings, want 0 after app deleted state", len(records))
+	}
+	closeAnchor, closes = counterRule.CloseOnEvent(deleted)
+	if !closes || closeAnchor != openAnchor {
+		t.Fatalf("CloseOnEvent(DELETED_PERMANENTLY) = (%q, %v), want (%q, true)", closeAnchor, closes, openAnchor)
+	}
+
+	assertIdentityRuleRemediationTrajectory(t, rule, oauthFirst, inactive, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+	olderInactive := identitySignalEventAt("okta-oauth-app-inactive-before-open", "okta", "okta.application", inactiveAttrs, identityTrajectoryBaseTime.Add(-time.Minute))
+	assertIdentityRuleOlderCloseDoesNotResolveLaterOpen(t, rule, olderInactive, oauthFirst)
 }
 
 func TestIdentityPrivilegedAccountWithoutMfa(t *testing.T) {

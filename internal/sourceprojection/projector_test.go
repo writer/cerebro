@@ -381,6 +381,48 @@ func TestProjectOktaOAuthGrantAsApplicationTelemetry(t *testing.T) {
 	assertProjectedLink(t, state, clientURN, relationBelongsTo, "urn:cerebro:writer:okta_org:writer.okta.com")
 }
 
+func TestProjectOktaApplicationIncludesLifecycleAttributes(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "okta-application-0oa-client",
+		TenantId: "writer",
+		SourceId: "okta",
+		Kind:     "okta.application",
+		Attributes: map[string]string{
+			"app_id":       "0oa-client",
+			"app_name":     "Production Client",
+			"domain":       "writer.okta.com",
+			"status":       "ACTIVE",
+			"sign_on_mode": "OPENID_CONNECT",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if result.EntitiesProjected != 1 {
+		t.Fatalf("Project().EntitiesProjected = %d, want 1", result.EntitiesProjected)
+	}
+
+	clientURN := "urn:cerebro:writer:okta_application:0oa-client"
+	entity, ok := state.entities[clientURN]
+	if !ok {
+		t.Fatalf("state entity %q missing", clientURN)
+	}
+	wantAttributes := map[string]string{
+		"app_id":       "0oa-client",
+		"app_name":     "Production Client",
+		"status":       "ACTIVE",
+		"sign_on_mode": "OPENID_CONNECT",
+	}
+	for key, want := range wantAttributes {
+		if got := entity.Attributes[key]; got != want {
+			t.Fatalf("Attributes[%q] = %q, want %q", key, got, want)
+		}
+	}
+}
+
 func TestProjectOktaPolicyRule(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

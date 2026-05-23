@@ -185,7 +185,7 @@ func newIdentitySignalRules() []Rule {
 				[]string{"identity", "token", "oauth", "persistence", "attack.t1098"},
 			), "user", "credential_id", "org", "oauth_app_id"),
 			sourceIDs:   sourceIDs,
-			eventKinds:  capabilities.EventKinds(identityCapabilityAudit, identityCapabilityCredential),
+			eventKinds:  capabilities.EventKinds(identityCapabilityApplication, identityCapabilityAudit, identityCapabilityCredential),
 			predicate:   matchesIdentityAPITokenOrOAuthCreated,
 			fingerprint: identityAPITokenOrOAuthFingerprintInputs,
 		}, identityAPITokenOrOAuthAnchor, identityAPITokenOrOAuthCloseAnchor),
@@ -1081,9 +1081,12 @@ func identityAttributeExplicitlyFalse(attributes map[string]string, keys ...stri
 	return false
 }
 
-func matchesIdentityAPITokenOrOAuthCreated(_ *cerebrov1.EventEnvelope, attributes map[string]string) bool {
+func matchesIdentityAPITokenOrOAuthCreated(event *cerebrov1.EventEnvelope, attributes map[string]string) bool {
 	if !identityOutcomeSuccessfulOrUnknown(attributes) {
 		return false
+	}
+	if identityCurrentStateOAuthApplication(event, attributes) {
+		return true
 	}
 	action := identityAction(attributes)
 	if routineIdentityAssignmentAction(action) {
@@ -1103,6 +1106,35 @@ func matchesIdentityAPITokenOrOAuthCreated(_ *cerebrov1.EventEnvelope, attribute
 	}
 	return containsAny(action, "oauth", "api_client", "client_access", "application") &&
 		containsAny(action, "create", "add")
+}
+
+func identityCurrentStateOAuthApplication(event *cerebrov1.EventEnvelope, attributes map[string]string) bool {
+	if event == nil || !strings.EqualFold(strings.TrimSpace(event.GetKind()), "okta.application") {
+		return false
+	}
+	if !identityOAuthApplicationActive(attributes) {
+		return false
+	}
+	if identityOAuthAppID(attributes) == "" || identityOrgValue(attributes) == "" {
+		return false
+	}
+	if findingAttributeBool(attributes, "oauth2", "oauth_enabled", "oidc_enabled") {
+		return true
+	}
+	descriptor := strings.ToLower(strings.Join([]string{
+		attributes["sign_on_mode"],
+		attributes["app_type"],
+		attributes["app_name"],
+		attributes["name"],
+		attributes["resource_type"],
+		identityCredentialType(attributes),
+		identityAction(attributes),
+	}, " "))
+	return containsAny(descriptor, "oauth", "oauth2", "oidc", "openid", "open_id", "open id")
+}
+
+func identityOAuthApplicationActive(attributes map[string]string) bool {
+	return strings.EqualFold(firstNonEmpty(attributes["status"], attributes["state"], attributes["lifecycle_status"]), "ACTIVE")
 }
 
 func routineIdentityAssignmentAction(action string) bool {
@@ -1265,7 +1297,7 @@ func identitySensitiveAccessExplicitlyRemoved(attributes map[string]string) bool
 func identityCredentialActiveOrUnknown(attributes map[string]string) bool {
 	status := strings.ToLower(firstNonEmpty(attributes["credential_status"], attributes["status"], attributes["state"], attributes["lifecycle_status"]))
 	switch status {
-	case "inactive", "disabled", "deleted", "revoked", "expired", "deactivated", "suspended":
+	case "inactive", "disabled", "deleted", "deleted_permanently", "permanently_deleted", "revoked", "expired", "deactivated", "suspended":
 		return false
 	default:
 		return true

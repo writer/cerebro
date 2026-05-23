@@ -340,11 +340,13 @@ func identityApplicationProjections(event *cerebrov1.EventEnvelope, profile iden
 			EntityType: profile.entityType("application"),
 			Label:      firstNonEmpty(attributes["app_name"], attributes["app_label"], attributes["name"], attributes["client_id"], attributes["app_id"]),
 			Attributes: map[string]string{
-				"app_id":      firstNonEmpty(attributes["app_id"], attributes["application_id"], attributes["client_id"], attributes["id"]),
-				"app_name":    firstNonEmpty(attributes["app_name"], attributes["app_label"], attributes["name"]),
-				"oauth2":      strings.TrimSpace(attributes["oauth2"]),
-				"saml":        strings.TrimSpace(attributes["saml"]),
-				"domain_wide": strings.TrimSpace(attributes["domain_wide_delegation"]),
+				"app_id":       firstNonEmpty(attributes["app_id"], attributes["application_id"], attributes["client_id"], attributes["id"]),
+				"app_name":     firstNonEmpty(attributes["app_name"], attributes["app_label"], attributes["name"]),
+				"oauth2":       strings.TrimSpace(attributes["oauth2"]),
+				"saml":         strings.TrimSpace(attributes["saml"]),
+				"domain_wide":  strings.TrimSpace(attributes["domain_wide_delegation"]),
+				"status":       strings.TrimSpace(attributes["status"]),
+				"sign_on_mode": strings.TrimSpace(attributes["sign_on_mode"]),
 			},
 		})
 	}

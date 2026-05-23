@@ -1646,6 +1646,7 @@
         "gcp.audit",
         "gcp.service_account_key",
         "google_workspace.audit",
+        "okta.application",
         "okta.audit"
       ],
       "output_kind": "finding.identity_api_token_or_oauth_app_created",
