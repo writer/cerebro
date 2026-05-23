@@ -1,16 +1,310 @@
-package findings
+package findings_test
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
+	"os"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
+
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/statestore/postgres"
 	"github.com/writer/cerebro/internal/workflowevents"
+	"github.com/writer/cerebro/internal/workflowprojection"
 )
 
+// TestService_TombstonedFindingEmitMintsFreshGraphEdge exercises the
+// tombstone-then-emit lifecycle end-to-end against the real Postgres upsert
+// path so the fresh-row mint (id = `<base>#g<N+1>` and tombstone_generation)
+// is derived by the production internal/statestore/postgres UpsertFinding via
+// the tombstoned fingerprint history instead of being pre-constructed by the
+// test. F1 is upserted, tombstoned via Service.TombstoneFindingsBulk (which
+// removes has_finding(A → F1) via the projector), and a subsequent emit on the
+// same (rule_id, anchor_uri, fingerprint) re-runs through real UpsertFinding,
+// which is what is expected to mint F2 with tombstoned=FALSE and the
+// incremented generation. The fresh F2 is then anchored back into the graph
+// so the test confirms has_finding(A → F2) is reattached.
+func TestService_TombstonedFindingEmitMintsFreshGraphEdge(t *testing.T) {
+	dsn := strings.TrimSpace(os.Getenv("CEREBRO_POSTGRES_DSN"))
+	if dsn == "" {
+		t.Skip("set CEREBRO_POSTGRES_DSN to run the end-to-end tombstone-then-emit integration test")
+	}
+
+	ctx := context.Background()
+	store, err := postgres.Open(config.StateStoreConfig{
+		Driver:      config.StateStoreDriverPostgres,
+		PostgresDSN: dsn,
+	})
+	if err != nil {
+		t.Fatalf("open postgres store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	rawDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	t.Cleanup(func() { _ = rawDB.Close() })
+
+	nonce := time.Now().UTC().UnixNano()
+	tenantID := fmt.Sprintf("tenant-e2e-%d", nonce)
+	runtimeID := fmt.Sprintf("runtime-e2e-%d", nonce)
+	ruleID := "rule-critical-resource-deleted"
+	baseID := fmt.Sprintf("f-stable-%d", nonce)
+	fingerprint := fmt.Sprintf("fp-stable-%d", nonce)
+	anchor := fmt.Sprintf("urn:cerebro:%s:github_repo:writer/cerebro-%d", tenantID, nonce)
+
+	t.Cleanup(func() {
+		bg := context.Background()
+		_, _ = rawDB.ExecContext(bg, `DELETE FROM finding_tombstone_events WHERE tenant_id = $1`, tenantID)
+		_, _ = rawDB.ExecContext(bg, `DELETE FROM findings WHERE tenant_id = $1`, tenantID)
+	})
+
+	graph := newE2EGraphFake()
+	appendLog := &recordingAppendLog{}
+	closeoutStore := newStubCloseoutStore()
+	tombstoneEventStore := newStubFindingTombstoneEventStore()
+	runtimeStore := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			runtimeID: {Id: runtimeID, SourceId: "source-e2e", TenantId: tenantID},
+		},
+	}
+
+	service := findings.New(runtimeStore, &stubReplayer{}, store, store, store, store).
+		WithAppendLog(appendLog).
+		WithGraphStore(graph).
+		WithCloseoutStore(closeoutStore).
+		WithFindingTombstoneEventStore(tombstoneEventStore)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	firstObserved := now.Add(-48 * time.Hour)
+	firstEmit := &ports.FindingRecord{
+		ID:              baseID,
+		Fingerprint:     fingerprint,
+		TenantID:        tenantID,
+		RuntimeID:       runtimeID,
+		RuleID:          ruleID,
+		Title:           "T " + baseID,
+		Severity:        "MEDIUM",
+		Status:          "open",
+		Summary:         "S " + baseID,
+		ResourceURNs:    []string{anchor},
+		EventIDs:        []string{"event-initial-emit"},
+		FirstObservedAt: firstObserved,
+		LastObservedAt:  firstObserved,
+	}
+	storedF1, err := store.UpsertFinding(ctx, firstEmit)
+	if err != nil {
+		t.Fatalf("UpsertFinding F1: %v", err)
+	}
+	if storedF1.ID != baseID {
+		t.Fatalf("F1.ID = %q, want %q", storedF1.ID, baseID)
+	}
+
+	if err := projectFindingAnchorForTest(ctx, appendLog, graph, storedF1); err != nil {
+		t.Fatalf("project F1 anchor: %v", err)
+	}
+
+	firstAnchorEdgeKey := anchorEdgeKey(anchor, tenantID, storedF1.ID)
+	if _, ok := graph.links[firstAnchorEdgeKey]; !ok {
+		t.Fatalf("pre-condition: missing has_finding(A → F1) edge %q (links=%v)", firstAnchorEdgeKey, graph.links)
+	}
+
+	result, err := service.TombstoneFindingsBulk(ctx, findings.CloseoutRequest{
+		Selector: findings.CloseoutSelector{
+			TenantID: tenantID,
+			RuleIDs:  []string{ruleID},
+		},
+		Reason: "bulk closeout: pre-conversion backlog",
+		Actor:  "operator@writer.com",
+		RunID:  fmt.Sprintf("run-e2e-%d", nonce),
+		DryRun: false,
+	})
+	if err != nil {
+		t.Fatalf("TombstoneFindingsBulk: %v", err)
+	}
+	if result.AppliedCount != 1 {
+		t.Fatalf("AppliedCount = %d, want 1", result.AppliedCount)
+	}
+
+	if !tombstonedFromDB(t, ctx, rawDB, baseID) {
+		t.Fatalf("findings.tombstoned = false for F1 %q, want true after bulk tombstone", baseID)
+	}
+	if _, ok := graph.links[firstAnchorEdgeKey]; ok {
+		t.Fatalf("expected has_finding(A → F1) edge %q to be removed after tombstone", firstAnchorEdgeKey)
+	}
+
+	tombstoneEvents := 0
+	for _, evt := range appendLog.events {
+		if evt.GetKind() == workflowevents.EventKindFindingTombstoned {
+			tombstoneEvents++
+		}
+	}
+	if tombstoneEvents != 1 {
+		t.Fatalf("FindingTombstoned events emitted for F1 = %d, want 1", tombstoneEvents)
+	}
+
+	firstGen := generationFromDB(t, ctx, rawDB, baseID)
+
+	freshEmit := &ports.FindingRecord{
+		ID:              baseID,
+		Fingerprint:     fingerprint,
+		TenantID:        tenantID,
+		RuntimeID:       runtimeID,
+		RuleID:          ruleID,
+		Title:           "T " + baseID,
+		Severity:        "MEDIUM",
+		Status:          "open",
+		Summary:         "S " + baseID,
+		ResourceURNs:    []string{anchor},
+		EventIDs:        []string{"event-fresh-emit"},
+		FirstObservedAt: now.Add(-time.Minute),
+		LastObservedAt:  now,
+	}
+	storedF2, err := store.UpsertFinding(ctx, freshEmit)
+	if err != nil {
+		t.Fatalf("UpsertFinding F2: %v", err)
+	}
+
+	wantSecondID := fmt.Sprintf("%s#g%d", baseID, firstGen+1)
+	if storedF2.ID != wantSecondID {
+		t.Fatalf("F2.ID = %q, want %q (derived by UpsertFinding from tombstoned fingerprint history)", storedF2.ID, wantSecondID)
+	}
+	if storedF2.ID == storedF1.ID {
+		t.Fatalf("F2.ID %q must differ from tombstoned F1.ID %q", storedF2.ID, storedF1.ID)
+	}
+
+	secondGen := generationFromDB(t, ctx, rawDB, storedF2.ID)
+	if secondGen != firstGen+1 {
+		t.Fatalf("F2.tombstone_generation = %d, want F1.tombstone_generation+1 = %d", secondGen, firstGen+1)
+	}
+
+	secondTombstoned := tombstonedFromDB(t, ctx, rawDB, storedF2.ID)
+	if secondTombstoned {
+		t.Fatalf("F2.tombstoned = true, want false")
+	}
+
+	if err := projectFindingAnchorForTest(ctx, appendLog, graph, storedF2); err != nil {
+		t.Fatalf("project F2 anchor: %v", err)
+	}
+
+	recordedForF2 := 0
+	for _, evt := range appendLog.events {
+		if evt.GetKind() != workflowevents.EventKindFindingRecorded {
+			continue
+		}
+		payload, decodeErr := workflowevents.DecodeFindingRecorded(evt)
+		if decodeErr != nil {
+			t.Fatalf("decode FindingRecorded: %v", decodeErr)
+		}
+		if payload.Finding.FindingID == storedF2.ID {
+			recordedForF2++
+		}
+	}
+	if recordedForF2 != 1 {
+		t.Fatalf("FindingRecorded events for F2 = %d, want 1", recordedForF2)
+	}
+
+	freshAnchorEdgeKey := anchorEdgeKey(anchor, tenantID, storedF2.ID)
+	if freshAnchorEdgeKey == firstAnchorEdgeKey {
+		t.Fatalf("F2 edge key %q must differ from F1 edge key", freshAnchorEdgeKey)
+	}
+	if _, ok := graph.links[freshAnchorEdgeKey]; !ok {
+		t.Fatalf("expected has_finding(A → F2) edge %q after fresh emit (links=%v)", freshAnchorEdgeKey, graph.links)
+	}
+}
+
+func anchorEdgeKey(anchor, tenantID, findingID string) string {
+	return anchor + "|has_finding|" + fmt.Sprintf("urn:cerebro:%s:finding:%s", tenantID, findingID)
+}
+
+func generationFromDB(t *testing.T, ctx context.Context, db *sql.DB, findingID string) int {
+	t.Helper()
+	var gen int
+	if err := db.QueryRowContext(ctx, `SELECT tombstone_generation FROM findings WHERE id = $1`, findingID).Scan(&gen); err != nil {
+		t.Fatalf("read tombstone_generation for %q: %v", findingID, err)
+	}
+	return gen
+}
+
+func tombstonedFromDB(t *testing.T, ctx context.Context, db *sql.DB, findingID string) bool {
+	t.Helper()
+	var tombstoned bool
+	if err := db.QueryRowContext(ctx, `SELECT tombstoned FROM findings WHERE id = $1`, findingID).Scan(&tombstoned); err != nil {
+		t.Fatalf("read tombstoned for %q: %v", findingID, err)
+	}
+	return tombstoned
+}
+
+func projectFindingAnchorForTest(ctx context.Context, appendLog *recordingAppendLog, graph *e2eGraphFake, finding *ports.FindingRecord) error {
+	if finding == nil {
+		return errors.New("finding is required")
+	}
+	recordedAt := finding.LastObservedAt.UTC()
+	if recordedAt.IsZero() {
+		recordedAt = finding.FirstObservedAt.UTC()
+	}
+	if recordedAt.IsZero() {
+		recordedAt = time.Now().UTC()
+	}
+	resourceURNs := append([]string(nil), finding.ResourceURNs...)
+	primary := ""
+	if len(resourceURNs) > 0 {
+		primary = resourceURNs[0]
+	}
+	snapshot := workflowevents.FindingSnapshot{
+		TenantID:           strings.TrimSpace(finding.TenantID),
+		SourceSystem:       strings.TrimSpace(finding.RuntimeID),
+		FindingID:          strings.TrimSpace(finding.ID),
+		Fingerprint:        strings.TrimSpace(finding.Fingerprint),
+		Title:              strings.TrimSpace(finding.Title),
+		Summary:            strings.TrimSpace(finding.Summary),
+		RuleID:             strings.TrimSpace(finding.RuleID),
+		Severity:           strings.TrimSpace(finding.Severity),
+		Status:             strings.TrimSpace(finding.Status),
+		RuntimeID:          strings.TrimSpace(finding.RuntimeID),
+		PrimaryResourceURN: primary,
+		ResourceURNs:       resourceURNs,
+		EventIDs:           append([]string(nil), finding.EventIDs...),
+		FirstObservedAt:    timestampOrEmpty(finding.FirstObservedAt),
+		LastObservedAt:     timestampOrEmpty(finding.LastObservedAt),
+		ResourceCount:      len(resourceURNs),
+		EventCount:         len(finding.EventIDs),
+	}
+	event, err := workflowevents.NewFindingRecordedEvent(workflowevents.FindingRecorded{
+		Finding:    snapshot,
+		RecordedAt: recordedAt.Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		return err
+	}
+	if err := appendLog.Append(ctx, event); err != nil {
+		return err
+	}
+	if _, err := workflowprojection.New(graph).Project(ctx, event); err != nil {
+		return err
+	}
+	return nil
+}
+
+func timestampOrEmpty(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339Nano)
+}
+
 type e2eGraphFake struct {
+	mu       sync.Mutex
 	entities map[string]*ports.ProjectedEntity
 	links    map[string]*ports.ProjectedLink
 }
@@ -28,6 +322,8 @@ func (g *e2eGraphFake) UpsertProjectedEntity(_ context.Context, entity *ports.Pr
 	if entity == nil {
 		return nil
 	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	attributes := make(map[string]string, len(entity.Attributes))
 	for k, v := range entity.Attributes {
 		attributes[k] = v
@@ -47,6 +343,8 @@ func (g *e2eGraphFake) UpsertProjectedLink(_ context.Context, link *ports.Projec
 	if link == nil {
 		return nil
 	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	attributes := make(map[string]string, len(link.Attributes))
 	for k, v := range link.Attributes {
 		attributes[k] = v
@@ -66,11 +364,15 @@ func (g *e2eGraphFake) DeleteProjectedLink(_ context.Context, link *ports.Projec
 	if link == nil {
 		return nil
 	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	delete(g.links, link.FromURN+"|"+link.Relation+"|"+link.ToURN)
 	return nil
 }
 
 func (g *e2eGraphFake) DeleteProjectedEntity(_ context.Context, urn string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	delete(g.entities, urn)
 	for key, link := range g.links {
 		if link.FromURN == urn || link.ToURN == urn {
@@ -80,119 +382,134 @@ func (g *e2eGraphFake) DeleteProjectedEntity(_ context.Context, urn string) erro
 	return nil
 }
 
-// TestService_TombstonedFindingEmitMintsFreshGraphEdge exercises the
-// tombstone-then-emit lifecycle end-to-end (architecture components 4 + 5 + 6
-// together): a finding F1 on anchor A is tombstoned via TombstoneFindingsBulk
-// which removes has_finding(A → F1), then a fresh upstream emit on the same
-// (rule_id, anchor_uri, fingerprint) mints F2 with tombstoned=FALSE and the
-// incremented tombstone_generation, replays through the workflow events stream,
-// and restores has_finding(A → F2) in the graph.
-func TestService_TombstonedFindingEmitMintsFreshGraphEdge(t *testing.T) {
-	fx := newCloseoutFixture(t)
-	graph := newE2EGraphFake()
-	fx.service.WithGraphStore(graph)
+type recordingAppendLog struct {
+	mu     sync.Mutex
+	events []*cerebrov1.EventEnvelope
+}
 
-	anchor := "urn:cerebro:tenant-a:github_repo:writer/cerebro"
-	fingerprint := "fp-stable-target"
-	baseID := "f-stable"
+func (s *recordingAppendLog) Ping(context.Context) error { return nil }
 
-	first := fx.seedFinding(baseID, "open", fx.now.Add(-48*time.Hour), func(f *ports.FindingRecord) {
-		f.Fingerprint = fingerprint
-		f.ResourceURNs = []string{anchor}
-		f.EventIDs = []string{"event-initial-emit"}
-	})
-	ctx := context.Background()
-	if err := fx.service.projectFindingAnchor(ctx, fx.store.findings[first.ID]); err != nil {
-		t.Fatalf("project F1 anchor: %v", err)
-	}
+func (s *recordingAppendLog) Append(_ context.Context, event *cerebrov1.EventEnvelope) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = append(s.events, event)
+	return nil
+}
 
-	firstAnchorEdgeKey := anchor + "|" + "has_finding" + "|" + findingGraphFindingURN(fx.tenantID, fx.store.findings[first.ID])
-	if _, ok := graph.links[firstAnchorEdgeKey]; !ok {
-		t.Fatalf("pre-condition: missing has_finding(A → F1) edge %q (links=%v)", firstAnchorEdgeKey, graph.links)
-	}
+type stubRuntimeStore struct {
+	runtimes map[string]*cerebrov1.SourceRuntime
+}
 
-	result, err := fx.service.TombstoneFindingsBulk(ctx, fx.request("run-e2e-1", false))
-	if err != nil {
-		t.Fatalf("TombstoneFindingsBulk: %v", err)
-	}
-	if result.AppliedCount != 1 {
-		t.Fatalf("AppliedCount = %d, want 1", result.AppliedCount)
-	}
+func (s *stubRuntimeStore) Ping(context.Context) error { return nil }
 
-	tombstonedF1 := fx.store.findings[first.ID]
-	if !tombstonedF1.Tombstoned {
-		t.Fatalf("F1.Tombstoned = false, want true after bulk tombstone")
+func (s *stubRuntimeStore) PutSourceRuntime(context.Context, *cerebrov1.SourceRuntime) error {
+	return nil
+}
+
+func (s *stubRuntimeStore) GetSourceRuntime(_ context.Context, id string) (*cerebrov1.SourceRuntime, error) {
+	runtime, ok := s.runtimes[id]
+	if !ok {
+		return nil, ports.ErrSourceRuntimeNotFound
 	}
-	if _, ok := graph.links[firstAnchorEdgeKey]; ok {
-		t.Fatalf("expected has_finding(A → F1) edge %q to be removed after tombstone", firstAnchorEdgeKey)
+	return runtime, nil
+}
+
+type stubReplayer struct{}
+
+func (s *stubReplayer) Replay(context.Context, ports.ReplayRequest) ([]*cerebrov1.EventEnvelope, error) {
+	return nil, nil
+}
+
+type stubCloseoutStore struct {
+	mu   sync.Mutex
+	runs map[string]*ports.CloseoutRunRecord
+}
+
+func newStubCloseoutStore() *stubCloseoutStore {
+	return &stubCloseoutStore{runs: map[string]*ports.CloseoutRunRecord{}}
+}
+
+func (s *stubCloseoutStore) InsertCloseoutRun(_ context.Context, run ports.CloseoutRunInsert) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if existing, ok := s.runs[run.RunID]; ok {
+		if existing.Status == "running" {
+			return ports.ErrCloseoutRunInFlight
+		}
+		return ports.ErrCloseoutRunAlreadyExists
 	}
-	tombstoneEvents := 0
-	for _, evt := range fx.appendLog.events {
-		if evt.GetKind() == workflowevents.EventKindFindingTombstoned {
-			tombstoneEvents++
+	for _, existing := range s.runs {
+		if existing.Status == "running" {
+			return ports.ErrCloseoutRunInFlight
 		}
 	}
-	if tombstoneEvents != 1 {
-		t.Fatalf("FindingTombstoned events emitted for F1 = %d, want 1", tombstoneEvents)
+	selector := append([]byte(nil), run.SelectorJSON...)
+	s.runs[run.RunID] = &ports.CloseoutRunRecord{
+		RunID:        run.RunID,
+		Actor:        run.Actor,
+		ChangeTicket: run.ChangeTicket,
+		SelectorJSON: selector,
+		Status:       "running",
+		StartedAt:    run.StartedAt,
+		DryRun:       run.DryRun,
 	}
+	return nil
+}
 
-	nextGeneration := tombstonedF1.TombstoneGeneration + 1
-	secondID := fmt.Sprintf("%s#g%d", baseID, nextGeneration)
-	freshEmit := &ports.FindingRecord{
-		ID:              secondID,
-		Fingerprint:     fingerprint,
-		TenantID:        fx.tenantID,
-		RuntimeID:       fx.runtimeID,
-		RuleID:          fx.ruleID,
-		Title:           "T " + baseID,
-		Severity:        "MEDIUM",
-		Status:          "open",
-		Summary:         "S " + baseID,
-		ResourceURNs:    []string{anchor},
-		EventIDs:        []string{"event-fresh-emit"},
-		FirstObservedAt: fx.now.Add(-time.Minute),
-		LastObservedAt:  fx.now,
-		FindingTombstone: ports.FindingTombstone{
-			TombstoneGeneration: nextGeneration,
-		},
+func (s *stubCloseoutStore) FinishCloseoutRun(_ context.Context, finish ports.CloseoutRunFinish) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	existing, ok := s.runs[finish.RunID]
+	if !ok {
+		return fmt.Errorf("closeout_run %q not found", finish.RunID)
 	}
-	if _, err := fx.store.UpsertFinding(ctx, freshEmit); err != nil {
-		t.Fatalf("UpsertFinding F2: %v", err)
-	}
-	storedF2 := fx.store.findings[secondID]
-	if err := fx.service.projectFindingAnchor(ctx, storedF2); err != nil {
-		t.Fatalf("project F2 anchor: %v", err)
-	}
+	existing.Status = finish.Status
+	existing.FinishedAt = finish.FinishedAt
+	existing.ProposedCount = finish.ProposedCount
+	existing.AppliedCount = finish.AppliedCount
+	existing.ErrorMessage = finish.ErrorMessage
+	return nil
+}
 
-	if storedF2.Tombstoned {
-		t.Fatalf("F2.Tombstoned = true, want false")
+func (s *stubCloseoutStore) GetCloseoutRun(_ context.Context, runID string) (*ports.CloseoutRunRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	existing, ok := s.runs[runID]
+	if !ok {
+		return nil, fmt.Errorf("closeout_run %q not found", runID)
 	}
-	if got, want := storedF2.TombstoneGeneration, tombstonedF1.TombstoneGeneration+1; got != want {
-		t.Fatalf("F2.TombstoneGeneration = %d, want F1.TombstoneGeneration+1 = %d", got, want)
-	}
+	clone := *existing
+	clone.SelectorJSON = append([]byte(nil), existing.SelectorJSON...)
+	return &clone, nil
+}
 
-	recordedForF2 := 0
-	for _, evt := range fx.appendLog.events {
-		if evt.GetKind() != workflowevents.EventKindFindingRecorded {
-			continue
+type stubFindingTombstoneEventStore struct {
+	mu     sync.Mutex
+	events []ports.FindingTombstoneEvent
+}
+
+func newStubFindingTombstoneEventStore() *stubFindingTombstoneEventStore {
+	return &stubFindingTombstoneEventStore{}
+}
+
+func (s *stubFindingTombstoneEventStore) InsertFindingTombstoneEvent(_ context.Context, event ports.FindingTombstoneEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if event.TombstonedAt.IsZero() {
+		event.TombstonedAt = time.Now().UTC()
+	}
+	s.events = append(s.events, event)
+	return nil
+}
+
+func (s *stubFindingTombstoneEventStore) CountFindingTombstoneEventsByRun(_ context.Context, runID string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	count := 0
+	for _, event := range s.events {
+		if event.RunID == runID {
+			count++
 		}
-		payload, decodeErr := workflowevents.DecodeFindingRecorded(evt)
-		if decodeErr != nil {
-			t.Fatalf("decode FindingRecorded: %v", decodeErr)
-		}
-		if payload.Finding.FindingID == secondID {
-			recordedForF2++
-		}
 	}
-	if recordedForF2 != 1 {
-		t.Fatalf("FindingRecorded events for F2 = %d, want 1", recordedForF2)
-	}
-
-	freshAnchorEdgeKey := anchor + "|" + "has_finding" + "|" + findingGraphFindingURN(fx.tenantID, storedF2)
-	if freshAnchorEdgeKey == firstAnchorEdgeKey {
-		t.Fatalf("F2 edge key %q must differ from F1 edge key", freshAnchorEdgeKey)
-	}
-	if _, ok := graph.links[freshAnchorEdgeKey]; !ok {
-		t.Fatalf("expected has_finding(A → F2) edge %q after fresh emit (links=%v)", freshAnchorEdgeKey, graph.links)
-	}
+	return count, nil
 }
