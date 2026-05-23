@@ -23,6 +23,8 @@ const (
 	identityStalePrivilegedAccountRuleID        = "identity-stale-privileged-account"
 )
 
+const identityStalePrivilegedAccountThreshold = 90 * 24 * time.Hour
+
 type identitySignalPredicate func(*cerebrov1.EventEnvelope, map[string]string) bool
 
 type identitySignalFingerprintInputs func(*cerebrov1.EventEnvelope, map[string]string, findingProjectionContext) []string
@@ -168,19 +170,20 @@ func newIdentitySignalRules() []Rule {
 			predicate:   matchesIdentityPrivilegedWithoutMFA,
 			fingerprint: identityUserFingerprintInputs,
 		}, identityUserAnchor, identityPrivilegedWithoutMFACloseAnchor),
-		newIdentitySignalRule(identitySignalConfig{
-			definition: identityRuleDefinition(
+		newIdentitySignalCounterEventRule(identitySignalConfig{
+			definition: identityDurableStateRuleDefinition(identityRuleDefinition(
 				identityStalePrivilegedAccountRuleID,
 				"Identity Stale Privileged Account",
 				"Detect privileged identity accounts with stale or missing login activity.",
 				"MEDIUM",
 				"finding.identity_stale_privileged_account",
 				[]string{"identity", "privileged-access", "hygiene"},
-			),
-			sourceIDs:  sourceIDs,
-			eventKinds: capabilities.EventKinds(identityCapabilityUser),
-			predicate:  matchesIdentityStalePrivilegedAccount,
-		}),
+			), "user"),
+			sourceIDs:   sourceIDs,
+			eventKinds:  capabilities.EventKinds(identityCapabilityUser),
+			predicate:   matchesIdentityStalePrivilegedAccount,
+			fingerprint: identityUserFingerprintInputs,
+		}, identityUserAnchor, identityStalePrivilegedCloseAnchor),
 		newIdentitySignalCounterEventRule(identitySignalConfig{
 			definition: identityDurableStateRuleDefinition(identityRuleDefinition(
 				identityExternalGroupMemberRuleID,
@@ -208,19 +211,20 @@ func newIdentitySignalRules() []Rule {
 			eventKinds: capabilities.EventKinds(identityCapabilityAudit),
 			predicate:  matchesIdentityControlTamperOrCredentialChange,
 		}),
-		newIdentitySignalRule(identitySignalConfig{
-			definition: identityRuleDefinition(
+		newIdentitySignalCounterEventRule(identitySignalConfig{
+			definition: identityDurableStateRuleDefinition(identityRuleDefinition(
 				identityPrivilegedNoMFAAccessRuleID,
 				"Identity Privileged No-MFA Account With Sensitive Access",
 				"Detect privileged no-MFA identities or sensitive access grants that should be joined through the graph.",
 				"HIGH",
 				"finding.identity_privileged_no_mfa_sensitive_access",
 				[]string{"identity", "graph-join", "privileged-access", "mfa"},
-			),
-			sourceIDs:  sourceIDs,
-			eventKinds: capabilities.EventKinds(identityCapabilityAdminRole, identityCapabilityAppAssignment, identityCapabilityGroupMembership, identityCapabilityRoleAssignment, identityCapabilityUser),
-			predicate:  matchesIdentityPrivilegedNoMFAAccess,
-		}),
+			), "user"),
+			sourceIDs:   sourceIDs,
+			eventKinds:  capabilities.EventKinds(identityCapabilityAdminRole, identityCapabilityAppAssignment, identityCapabilityGroupMembership, identityCapabilityRoleAssignment, identityCapabilityUser),
+			predicate:   matchesIdentityPrivilegedNoMFAAccess,
+			fingerprint: identityUserFingerprintInputs,
+		}, identityUserAnchor, identityPrivilegedNoMFAAccessCloseAnchor),
 	}
 }
 
@@ -583,6 +587,30 @@ func identityPrivilegedWithoutMFACloseAnchor(event Event) (string, bool) {
 		return "", false
 	}
 	if !identityMFAEnabled(attributes) && !identityPrivilegeExplicitlyRemoved(attributes) {
+		return "", false
+	}
+	anchor := identityUserAnchor(attributes)
+	return anchor, anchor != ""
+}
+
+func identityStalePrivilegedCloseAnchor(event Event) (string, bool) {
+	attributes := eventAttributes(event)
+	if matchesIdentityStalePrivilegedAccount(event, attributes) {
+		return "", false
+	}
+	if !identityStalePrivilegedRemediated(attributes) {
+		return "", false
+	}
+	anchor := identityUserAnchor(attributes)
+	return anchor, anchor != ""
+}
+
+func identityPrivilegedNoMFAAccessCloseAnchor(event Event) (string, bool) {
+	attributes := eventAttributes(event)
+	if matchesIdentityPrivilegedNoMFAAccess(event, attributes) {
+		return "", false
+	}
+	if !identityPrivilegedNoMFAAccessRemediated(attributes) {
 		return "", false
 	}
 	anchor := identityUserAnchor(attributes)
@@ -1083,6 +1111,9 @@ func matchesIdentityPrivilegedWithoutMFA(_ *cerebrov1.EventEnvelope, attributes 
 }
 
 func matchesIdentityStalePrivilegedAccount(_ *cerebrov1.EventEnvelope, attributes map[string]string) bool {
+	if identityPrivilegeExplicitlyRemoved(attributes) {
+		return false
+	}
 	if !identityPrivileged(attributes) {
 		return false
 	}
@@ -1094,7 +1125,7 @@ func matchesIdentityStalePrivilegedAccount(_ *cerebrov1.EventEnvelope, attribute
 	if err != nil {
 		return false
 	}
-	return time.Since(parsed.UTC()) > 90*24*time.Hour
+	return time.Since(parsed.UTC()) > identityStalePrivilegedAccountThreshold
 }
 
 func matchesIdentityExternalGroupMember(_ *cerebrov1.EventEnvelope, attributes map[string]string) bool {
@@ -1118,18 +1149,14 @@ func matchesIdentityControlTamperOrCredentialChange(event *cerebrov1.EventEnvelo
 		containsAny(identityAction(attributes), "password", "credential", "recovery", "reset")
 }
 
-func matchesIdentityPrivilegedNoMFAAccess(event *cerebrov1.EventEnvelope, attributes map[string]string) bool {
-	if matchesIdentityPrivilegedWithoutMFA(event, attributes) {
-		return true
+func matchesIdentityPrivilegedNoMFAAccess(_ *cerebrov1.EventEnvelope, attributes map[string]string) bool {
+	if identityPrivilegeExplicitlyRemoved(attributes) {
+		return false
 	}
-	if builtinIdentityCapabilities.KindHasCapability(event.GetKind(), identityCapabilityAdminRole) {
-		return true
-	}
-	if builtinIdentityCapabilities.KindHasCapability(event.GetKind(), identityCapabilityRoleAssignment) {
-		return identityPrivileged(attributes)
-	}
-	action := identityAction(attributes)
-	return containsAny(action, "assign", "member", "role", "admin") && identityPrivileged(attributes) && !identityMFAEnabled(attributes)
+	return identityUserAnchor(attributes) != "" &&
+		identityPrivileged(attributes) &&
+		identityMFAExplicitlyDisabled(attributes) &&
+		identitySensitiveAccess(attributes)
 }
 
 func identityPrivileged(attributes map[string]string) bool {
@@ -1153,6 +1180,67 @@ func identityMFAExplicitlyDisabled(attributes map[string]string) bool {
 		}
 	}
 	return false
+}
+
+func identityStalePrivilegedRemediated(attributes map[string]string) bool {
+	return identityPrivilegeExplicitlyRemoved(attributes) || identityLastLoginFresh(attributes)
+}
+
+func identityLastLoginFresh(attributes map[string]string) bool {
+	lastLogin := strings.TrimSpace(firstNonEmpty(attributes["last_login_at"], attributes["last_login_time"]))
+	if lastLogin == "" || strings.HasPrefix(lastLogin, "1970-01-01") {
+		return false
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, lastLogin)
+	if err != nil {
+		return false
+	}
+	return time.Since(parsed.UTC()) <= identityStalePrivilegedAccountThreshold
+}
+
+func identityPrivilegedNoMFAAccessRemediated(attributes map[string]string) bool {
+	return identityPrivilegeExplicitlyRemoved(attributes) ||
+		identityMFARestored(attributes) ||
+		identitySensitiveAccessExplicitlyRemoved(attributes)
+}
+
+func identitySensitiveAccess(attributes map[string]string) bool {
+	if findingAttributeBool(
+		attributes,
+		"has_sensitive_data_access",
+		"sensitive_data_access",
+		"sensitive_access",
+		"has_sensitive_access",
+		"grants_sensitive_data_access",
+		"sensitive_resource_access",
+		"sensitive_access_edge",
+		"access_to_sensitive_data",
+	) {
+		return true
+	}
+	edgeDescriptor := strings.ToLower(strings.Join([]string{
+		attributes["access_edge"],
+		attributes["edge_type"],
+		attributes["graph_edge"],
+		attributes["joined_edge"],
+		attributes["relation"],
+		attributes["relationship"],
+	}, " "))
+	return containsAny(edgeDescriptor, "sensitive_access", "sensitive access", "sensitive-data", "sensitive_data")
+}
+
+func identitySensitiveAccessExplicitlyRemoved(attributes map[string]string) bool {
+	return identityAttributeExplicitlyFalse(
+		attributes,
+		"has_sensitive_data_access",
+		"sensitive_data_access",
+		"sensitive_access",
+		"has_sensitive_access",
+		"grants_sensitive_data_access",
+		"sensitive_resource_access",
+		"sensitive_access_edge",
+		"access_to_sensitive_data",
+	)
 }
 
 func identityCredentialActiveOrUnknown(attributes map[string]string) bool {

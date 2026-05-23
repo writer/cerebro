@@ -2128,7 +2128,7 @@
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
       "fingerprint_fields": [
-        "event_id"
+        "user"
       ],
       "control_refs": [
         {
@@ -2176,7 +2176,7 @@
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
       "fingerprint_fields": [
-        "event_id"
+        "user"
       ],
       "control_refs": [
         {

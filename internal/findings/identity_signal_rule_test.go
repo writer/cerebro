@@ -366,6 +366,176 @@ func TestIdentityPrivilegedAccountWithoutMfa(t *testing.T) {
 	assertIdentityRuleRemediationTrajectory(t, rule, first, notPrivileged, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
 }
 
+func TestIdentityStalePrivilegedAccount(t *testing.T) {
+	rules := identityRulesByID(t)
+	rule := rules[identityStalePrivilegedAccountRuleID]
+	assertIdentityDurableMetadata(t, rule, []string{"user"})
+	counterRule, ok := rule.(CounterEventRule)
+	if !ok {
+		t.Fatal("identity-stale-privileged-account does not implement CounterEventRule")
+	}
+
+	runtime := &cerebrov1.SourceRuntime{Id: "example-google-workspace-user", SourceId: "google_workspace", TenantId: "writer", Config: map[string]string{"family": "user"}}
+	staleLogin := time.Now().UTC().Add(-120 * 24 * time.Hour).Format(time.RFC3339Nano)
+	freshLogin := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339Nano)
+	openAttrs := map[string]string{
+		"domain":        "writer.com",
+		"email":         "admin@writer.com",
+		"is_admin":      "true",
+		"last_login_at": staleLogin,
+		"primary_email": "admin@writer.com",
+		"user_id":       "1001",
+	}
+	first := identitySignalEventAt("google-stale-admin-first", "google_workspace", "google_workspace.user", openAttrs, identityTrajectoryBaseTime)
+	second := identitySignalEventAt("google-stale-admin-second", "google_workspace", "google_workspace.user", openAttrs, identityTrajectoryBaseTime.Add(time.Minute))
+	records, err := rule.Evaluate(context.Background(), runtime, first)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(first) = (%v, %v), want one finding", records, err)
+	}
+	firstFinding := records[0]
+	records, err = rule.Evaluate(context.Background(), runtime, second)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(second) = (%v, %v), want one finding", records, err)
+	}
+	if got := records[0].Fingerprint; got != firstFinding.Fingerprint {
+		t.Fatalf("fingerprint = %q, want stable %q for same stale privileged user", got, firstFinding.Fingerprint)
+	}
+	if got := firstFinding.Attributes["user"]; got != "admin@writer.com" {
+		t.Fatalf("attributes[user] = %q, want admin@writer.com", got)
+	}
+	openAnchor := counterRule.OpenAnchor(firstFinding.Attributes)
+	if openAnchor == "" {
+		t.Fatalf("OpenAnchor(%v) = empty, want user anchor", firstFinding.Attributes)
+	}
+
+	freshLoginAttrs := cloneIdentitySignalAttributes(openAttrs)
+	freshLoginAttrs["last_login_at"] = freshLogin
+	fresh := identitySignalEventAt("google-stale-admin-fresh-login", "google_workspace", "google_workspace.user", freshLoginAttrs, identityTrajectoryBaseTime.Add(2*time.Minute))
+	records, err = rule.Evaluate(context.Background(), runtime, fresh)
+	if err != nil {
+		t.Fatalf("Evaluate(fresh login) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(fresh login) returned %d findings, want 0 once last_login_at is fresh", len(records))
+	}
+	closeAnchor, closes := counterRule.CloseOnEvent(fresh)
+	if !closes || closeAnchor != openAnchor {
+		t.Fatalf("CloseOnEvent(fresh login) = (%q, %v), want (%q, true)", closeAnchor, closes, openAnchor)
+	}
+	assertIdentityRuleRemediationTrajectory(t, rule, first, fresh, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+	olderFresh := identitySignalEventAt("google-stale-admin-fresh-login-before-open", "google_workspace", "google_workspace.user", freshLoginAttrs, identityTrajectoryBaseTime.Add(-time.Minute))
+	assertIdentityRuleOlderCloseDoesNotResolveLaterOpen(t, rule, olderFresh, first)
+
+	notPrivilegedAttrs := cloneIdentitySignalAttributes(openAttrs)
+	notPrivilegedAttrs["is_admin"] = "false"
+	notPrivileged := identitySignalEventAt("google-stale-admin-not-privileged", "google_workspace", "google_workspace.user", notPrivilegedAttrs, identityTrajectoryBaseTime.Add(3*time.Minute))
+	records, err = rule.Evaluate(context.Background(), runtime, notPrivileged)
+	if err != nil {
+		t.Fatalf("Evaluate(not privileged) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(not privileged) returned %d findings, want 0 once privilege is removed", len(records))
+	}
+	closeAnchor, closes = counterRule.CloseOnEvent(notPrivileged)
+	if !closes || closeAnchor != openAnchor {
+		t.Fatalf("CloseOnEvent(not privileged) = (%q, %v), want (%q, true)", closeAnchor, closes, openAnchor)
+	}
+	assertIdentityRuleRemediationTrajectory(t, rule, first, notPrivileged, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+}
+
+func TestIdentityPrivilegedNoMfaPlusSensitiveAccess(t *testing.T) {
+	rules := identityRulesByID(t)
+	rule := rules[identityPrivilegedNoMFAAccessRuleID]
+	assertIdentityDurableMetadata(t, rule, []string{"user"})
+	counterRule, ok := rule.(CounterEventRule)
+	if !ok {
+		t.Fatal("identity-privileged-no-mfa-plus-sensitive-access does not implement CounterEventRule")
+	}
+
+	runtime := &cerebrov1.SourceRuntime{Id: "example-google-workspace-user", SourceId: "google_workspace", TenantId: "writer", Config: map[string]string{"family": "user"}}
+	openAttrs := map[string]string{
+		"domain":                    "writer.com",
+		"email":                     "admin@writer.com",
+		"has_sensitive_data_access": "true",
+		"is_admin":                  "true",
+		"mfa_enrolled":              "false",
+		"primary_email":             "admin@writer.com",
+		"user_id":                   "1001",
+	}
+	first := identitySignalEventAt("google-admin-no-mfa-sensitive-first", "google_workspace", "google_workspace.user", openAttrs, identityTrajectoryBaseTime)
+	second := identitySignalEventAt("google-admin-no-mfa-sensitive-second", "google_workspace", "google_workspace.user", openAttrs, identityTrajectoryBaseTime.Add(time.Minute))
+	records, err := rule.Evaluate(context.Background(), runtime, first)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(first) = (%v, %v), want one finding", records, err)
+	}
+	firstFinding := records[0]
+	records, err = rule.Evaluate(context.Background(), runtime, second)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(second) = (%v, %v), want one finding", records, err)
+	}
+	if got := records[0].Fingerprint; got != firstFinding.Fingerprint {
+		t.Fatalf("fingerprint = %q, want stable %q for same privileged no-MFA sensitive-access user", got, firstFinding.Fingerprint)
+	}
+	if got := firstFinding.Attributes["user"]; got != "admin@writer.com" {
+		t.Fatalf("attributes[user] = %q, want admin@writer.com", got)
+	}
+	openAnchor := counterRule.OpenAnchor(firstFinding.Attributes)
+	if openAnchor == "" {
+		t.Fatalf("OpenAnchor(%v) = empty, want user anchor", firstFinding.Attributes)
+	}
+
+	for _, tc := range []struct {
+		name      string
+		mutate    func(map[string]string)
+		closeWant string
+	}{
+		{
+			name: "mfa enabled",
+			mutate: func(attrs map[string]string) {
+				attrs["mfa_enrolled"] = "true"
+			},
+			closeWant: "MFA is enrolled",
+		},
+		{
+			name: "privilege removed",
+			mutate: func(attrs map[string]string) {
+				attrs["is_admin"] = "false"
+			},
+			closeWant: "privilege is removed",
+		},
+		{
+			name: "sensitive access removed",
+			mutate: func(attrs map[string]string) {
+				attrs["has_sensitive_data_access"] = "false"
+			},
+			closeWant: "sensitive-access edge is removed",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			closeAttrs := cloneIdentitySignalAttributes(openAttrs)
+			tc.mutate(closeAttrs)
+			closeEvent := identitySignalEventAt("google-admin-no-mfa-sensitive-"+strings.ReplaceAll(tc.name, " ", "-"), "google_workspace", "google_workspace.user", closeAttrs, identityTrajectoryBaseTime.Add(2*time.Minute))
+			records, err := rule.Evaluate(context.Background(), runtime, closeEvent)
+			if err != nil {
+				t.Fatalf("Evaluate(%s) error = %v", tc.name, err)
+			}
+			if len(records) != 0 {
+				t.Fatalf("Evaluate(%s) returned %d findings, want 0 once %s", tc.name, len(records), tc.closeWant)
+			}
+			closeAnchor, closes := counterRule.CloseOnEvent(closeEvent)
+			if !closes || closeAnchor != openAnchor {
+				t.Fatalf("CloseOnEvent(%s) = (%q, %v), want (%q, true)", tc.name, closeAnchor, closes, openAnchor)
+			}
+			assertIdentityRuleRemediationTrajectory(t, rule, first, closeEvent, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+		})
+	}
+
+	olderWithMFAAttrs := cloneIdentitySignalAttributes(openAttrs)
+	olderWithMFAAttrs["mfa_enrolled"] = "true"
+	olderWithMFA := identitySignalEventAt("google-admin-no-mfa-sensitive-mfa-before-open", "google_workspace", "google_workspace.user", olderWithMFAAttrs, identityTrajectoryBaseTime.Add(-time.Minute))
+	assertIdentityRuleOlderCloseDoesNotResolveLaterOpen(t, rule, olderWithMFA, first)
+}
+
 func TestIdentitySignalRulesEmitJoinBackedFindings(t *testing.T) {
 	rules := identityRulesByID(t)
 	runtime := &cerebrov1.SourceRuntime{Id: "google-workspace-runtime", SourceId: "google_workspace", TenantId: "writer"}
