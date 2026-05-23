@@ -640,6 +640,9 @@ func (s *Service) resolveRuleOpenFindings(ctx context.Context, runtime *cerebrov
 	tenantID := strings.TrimSpace(runtime.GetTenantId())
 	runtimeID := strings.TrimSpace(runtime.GetId())
 	ruleID := strings.TrimSpace(rule.Spec().GetId())
+	if isTTLEvidenceRule(rule) {
+		return s.resolveTTLOpenFindings(ctx, ruleID)
+	}
 	if retirementRule, ok := rule.(openFindingRetirementRule); ok && retirementRule.RetiresOpenFindings() {
 		return s.resolveRetiredOpenFindings(ctx, tenantID, runtimeID, ruleID, emittedFindingIDs)
 	}
@@ -647,6 +650,17 @@ func (s *Service) resolveRuleOpenFindings(ctx context.Context, runtime *cerebrov
 		return s.resolveStaleOpenFindings(ctx, tenantID, runtimeID, ruleID, evaluatedEventIDs, emittedFindingIDs)
 	}
 	return s.resolveAllOpenFindingsForRule(ctx, tenantID, runtimeID, ruleID)
+}
+
+func isTTLEvidenceRule(rule Rule) bool {
+	if rule == nil {
+		return false
+	}
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		return false
+	}
+	return metadataRule.RuleMetadata().Lifecycle.Kind == LifecycleTTLEvidence
 }
 
 func (s *Service) resolveAllOpenFindingsForRule(ctx context.Context, tenantID string, runtimeID string, ruleID string) error {

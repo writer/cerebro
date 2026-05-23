@@ -355,6 +355,64 @@ func TestResolveTTLOpenFindings_StructuredLog(t *testing.T) {
 	}
 }
 
+func TestResolveRuleOpenFindings_InvokesTTLResolverForTTLEvidence(t *testing.T) {
+	fx := newTTLResolverFixture(t, LifecycleTTLEvidence, 24*time.Hour)
+	runtime := &cerebrov1.SourceRuntime{Id: fx.runtimeID, TenantId: fx.tenantID}
+	stale := fx.seedFinding("stale-ttl", findingStatusOpen, fx.now.Add(-48*time.Hour), nil)
+	fresh := fx.seedFinding("fresh-ttl", findingStatusOpen, fx.now.Add(-6*time.Hour), nil)
+
+	if err := fx.service.resolveRuleOpenFindings(context.Background(), runtime, fx.rule, nil, nil); err != nil {
+		t.Fatalf("resolveRuleOpenFindings: %v", err)
+	}
+
+	resolved := fx.store.findings[stale.ID]
+	if resolved.Status != findingStatusResolved {
+		t.Fatalf("ttl_evidence stale finding status = %q, want resolved (TTL resolver must have been invoked)", resolved.Status)
+	}
+	if resolved.StatusReason != "ttl_expired:24h" {
+		t.Fatalf("ttl_evidence stale finding reason = %q, want ttl_expired:24h", resolved.StatusReason)
+	}
+
+	freshAfter := fx.store.findings[fresh.ID]
+	if freshAfter.Status != findingStatusOpen {
+		t.Fatalf("ttl_evidence fresh finding status = %q, want open (within TTL window)", freshAfter.Status)
+	}
+
+	lines := splitLogLines(fx.logBuf.String())
+	if len(lines) != 1 {
+		t.Fatalf("ttl.resolve log line count = %d, want 1; raw=%q", len(lines), fx.logBuf.String())
+	}
+
+	fx.store.updateStatusCalls = nil
+	callsBefore := fx.store.updateStatusCallCount
+	if err := fx.service.resolveRuleOpenFindings(context.Background(), runtime, fx.rule, nil, nil); err != nil {
+		t.Fatalf("second resolveRuleOpenFindings: %v", err)
+	}
+	if fx.store.updateStatusCallCount != callsBefore {
+		t.Fatalf("second resolveRuleOpenFindings performed %d additional UpdateFindingStatus calls, want 0 (idempotent)",
+			fx.store.updateStatusCallCount-callsBefore)
+	}
+}
+
+func TestResolveRuleOpenFindings_SkipsTTLResolverForNonTTLRules(t *testing.T) {
+	fx := newTTLResolverFixture(t, LifecycleAuditEvidence, 0)
+	runtime := &cerebrov1.SourceRuntime{Id: fx.runtimeID, TenantId: fx.tenantID}
+	fx.seedFinding("aged-audit", findingStatusOpen, fx.now.Add(-48*time.Hour), nil)
+
+	if err := fx.service.resolveRuleOpenFindings(context.Background(), runtime, fx.rule, nil, nil); err != nil {
+		t.Fatalf("resolveRuleOpenFindings: %v", err)
+	}
+
+	for id, finding := range fx.store.findings {
+		if strings.HasPrefix(finding.StatusReason, ttlResolutionReasonPrefix) {
+			t.Fatalf("non-ttl rule produced ttl_expired status reason on finding %q: %q", id, finding.StatusReason)
+		}
+	}
+	if got := fx.logBuf.Len(); got != 0 {
+		t.Fatalf("non-ttl rule wrote %d bytes to TTL log sink, want 0: %q", got, fx.logBuf.String())
+	}
+}
+
 func splitLogLines(s string) []string {
 	out := []string{}
 	for _, line := range strings.Split(strings.TrimRight(s, "\n"), "\n") {
