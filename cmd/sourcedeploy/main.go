@@ -29,6 +29,8 @@ func run(args []string) error {
 	sourcesRoot := fs.String("sources", "sources", "directory containing per-source manifests")
 	env := fs.String("env", "", "environment to render (e.g. sec-dev, go-prod)")
 	tenant := fs.String("tenant", "writer", "tenant identifier embedded in qualified runtime ids")
+	format := fs.String("format", "yaml", "output format: yaml or contract-json")
+	imageTag := fs.String("image-tag", "", "optional runtime image tag embedded in contract-json output")
 	out := fs.String("out", "-", "output path; '-' writes to stdout")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -49,7 +51,26 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	data, err := fragment.MarshalYAML()
+	var data []byte
+	switch *format {
+	case "yaml":
+		data, err = fragment.MarshalYAML()
+	case "contract-json":
+		contract, contractErr := sourcedeploy.RenderContract(*sourcesRoot, manifests, sourcedeploy.ContractOptions{
+			Environment: *env,
+			TenantID:    *tenant,
+			ImageTag:    *imageTag,
+		})
+		if contractErr != nil {
+			return contractErr
+		}
+		data, err = contract.MarshalJSONStable()
+		if err == nil {
+			data = append(data, '\n')
+		}
+	default:
+		return fmt.Errorf("unsupported -format %q", *format)
+	}
 	if err != nil {
 		return err
 	}
