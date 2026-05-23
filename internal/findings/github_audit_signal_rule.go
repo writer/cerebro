@@ -213,7 +213,7 @@ var githubSecretScanningAlertCreatedDefinition = RuleDefinition{
 	References:         []string{"https://docs.github.com/en/code-security/secret-scanning/about-secret-scanning", "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_secret_scanning_alert_created.yml"},
 	FalsePositives:     []string{"Canary tokens or expected test secrets in controlled repositories."},
 	Runbook:            "Review the alert, revoke or rotate the exposed credential, and inspect commits, artifacts, and workflow logs for further exposure.",
-	RequiredAttributes: []string{"action", "repo", "number", "state"},
+	RequiredAttributes: []string{"action", "repo", "number", "secret_scanning_alert.state"},
 	FingerprintFields:  []string{"repo", "number"},
 	ControlRefs:        githubAuditControlRefs,
 	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorSourceState},
@@ -772,7 +772,7 @@ func matchesGitHubSecretScanningOpenAlert(event *cerebrov1.EventEnvelope) bool {
 	if !strings.HasPrefix(strings.TrimSpace(attributes["action"]), "secret_scanning_alert.") {
 		return false
 	}
-	return strings.EqualFold(strings.TrimSpace(attributes["state"]), findingStatusOpen)
+	return strings.EqualFold(strings.TrimSpace(attributes["secret_scanning_alert.state"]), findingStatusOpen)
 }
 
 func githubSecretScanningAlertFinding(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
@@ -823,18 +823,20 @@ func githubSecretScanningAlertFinding(ctx context.Context, runtime *cerebrov1.So
 
 func githubSecretScanningAlertAttributes(event *cerebrov1.EventEnvelope, primaryResourceURN string) map[string]string {
 	eventAttrs := eventAttributes(event)
+	state := strings.TrimSpace(eventAttrs["secret_scanning_alert.state"])
 	attributes := map[string]string{
-		"audit_event_id":       strings.TrimSpace(eventAttrs["audit_event_id"]),
-		"event_id":             strings.TrimSpace(event.GetId()),
-		"html_url":             strings.TrimSpace(eventAttrs["html_url"]),
-		"number":               strings.TrimSpace(eventAttrs["number"]),
-		"primary_resource_urn": primaryResourceURN,
-		"repo":                 strings.TrimSpace(eventAttrs["repo"]),
-		"repository":           strings.TrimSpace(eventAttrs["repo"]),
-		"secret_type":          strings.TrimSpace(eventAttrs["secret_type"]),
-		"secret_type_display":  strings.TrimSpace(eventAttrs["secret_type_display"]),
-		"source_runtime_id":    strings.TrimSpace(eventAttrs[ports.EventAttributeSourceRuntimeID]),
-		"state":                strings.TrimSpace(eventAttrs["state"]),
+		"audit_event_id":              strings.TrimSpace(eventAttrs["audit_event_id"]),
+		"event_id":                    strings.TrimSpace(event.GetId()),
+		"html_url":                    strings.TrimSpace(eventAttrs["html_url"]),
+		"number":                      strings.TrimSpace(eventAttrs["number"]),
+		"primary_resource_urn":        primaryResourceURN,
+		"repo":                        strings.TrimSpace(eventAttrs["repo"]),
+		"repository":                  strings.TrimSpace(eventAttrs["repo"]),
+		"secret_type":                 strings.TrimSpace(eventAttrs["secret_type"]),
+		"secret_type_display":         strings.TrimSpace(eventAttrs["secret_type_display"]),
+		"secret_scanning_alert.state": state,
+		"source_runtime_id":           strings.TrimSpace(eventAttrs[ports.EventAttributeSourceRuntimeID]),
+		"state":                       state,
 	}
 	for key, value := range githubSecretScanningAlertCreatedDefinition.AttributeMap() {
 		attributes["rule_"+key] = value
@@ -1128,7 +1130,12 @@ func githubSecretScanningAlertCloseAnchor(event Event) (string, bool) {
 	attributes := eventAttributes(event)
 	switch strings.TrimSpace(attributes["action"]) {
 	case "secret_scanning_alert.resolve", "secret_scanning_alert.revoke", "secret_scanning_alert.false_positive":
-		return githubSecretScanningAlertAnchor(attributes), true
+		switch strings.ToLower(strings.TrimSpace(attributes["secret_scanning_alert.state"])) {
+		case "resolved", "revoked", "false_positive":
+			return githubSecretScanningAlertAnchor(attributes), true
+		default:
+			return "", false
+		}
 	default:
 		return "", false
 	}

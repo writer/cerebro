@@ -1025,7 +1025,7 @@
         "action",
         "number",
         "repo",
-        "state"
+        "secret_scanning_alert.state"
       ],
       "fingerprint_fields": [
         "repo",
