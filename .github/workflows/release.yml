@@ -172,6 +172,49 @@ jobs:
           "${RUNNER_TEMP}/cosign/cosign" sign --yes "${IMAGE_BASE}:${RELEASE_TAG}"
           "${RUNNER_TEMP}/cosign/cosign" sign --yes "${IMAGE_BASE}:latest"
 
+      - name: Generate runtime contract
+        shell: bash
+        env:
+          IMAGE_BASE: ghcr.io/${{ github.repository }}
+          IMAGE_DIGEST: ${{ steps.manifest.outputs.digest }}
+        run: |
+          set -euo pipefail
+          go run ./tools/runtimecontract \
+            --tag "${RELEASE_TAG}" \
+            --digest "${IMAGE_DIGEST}" \
+            --image "${IMAGE_BASE}" \
+            --source-repository "${{ github.repository }}" \
+            --output .dist/cerebro-runtime-contract.json
+          jq -e \
+            --arg tag "${RELEASE_TAG}" \
+            --arg digest "${IMAGE_DIGEST}" \
+            '.schema_version == "cerebro.runtime-contract/v1" and .runtime.tag == $tag and .runtime.digest == $digest and (.sources | length > 0)' \
+            .dist/cerebro-runtime-contract.json >/dev/null
+
+      - name: Keyless sign runtime contract
+        shell: bash
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          set -euo pipefail
+          GOBIN="${RUNNER_TEMP}/cosign" go install github.com/sigstore/cosign/v2/cmd/cosign@v2.6.1
+          "${RUNNER_TEMP}/cosign/cosign" sign-blob --yes \
+            --output-signature .dist/cerebro-runtime-contract.json.sig \
+            --output-certificate .dist/cerebro-runtime-contract.json.pem \
+            .dist/cerebro-runtime-contract.json
+
+      - name: Upload runtime contract metadata
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "${RELEASE_TAG}" \
+            .dist/cerebro-runtime-contract.json \
+            .dist/cerebro-runtime-contract.json.sig \
+            .dist/cerebro-runtime-contract.json.pem \
+            --clobber
+
   notify-infra-release:
     runs-on: ubuntu-latest
     needs: [resolve-tag, ghcr-publish, runtime-contract]
