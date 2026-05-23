@@ -235,6 +235,17 @@ existing_vpc_cidr = config.get("vpcCidr") or "10.0.0.0/16"
 # Runtime backing services.
 postgres_instance_class = config.get("postgresInstanceClass") or ("db.t4g.small" if is_production else "db.t4g.micro")
 postgres_allocated_storage = _config_int("postgresAllocatedStorage", 50 if is_production else 20)
+postgres_storage_type = config.get("postgresStorageType") or "gp3"
+postgres_max_allocated_storage_config = config.get_int("postgresMaxAllocatedStorage")
+postgres_iops_config = config.get_int("postgresIops")
+postgres_storage_throughput_config = config.get_int("postgresStorageThroughput")
+postgres_max_allocated_storage = (
+    postgres_max_allocated_storage_config if postgres_max_allocated_storage_config and postgres_max_allocated_storage_config > 0 else None
+)
+postgres_iops = postgres_iops_config if postgres_iops_config and postgres_iops_config > 0 else None
+postgres_storage_throughput = (
+    postgres_storage_throughput_config if postgres_storage_throughput_config and postgres_storage_throughput_config > 0 else None
+)
 postgres_backup_retention_days = _config_int("postgresBackupRetentionDays", 14 if is_production else 3)
 postgres_deletion_protection = _config_bool("postgresDeletionProtection", is_production)
 postgres_multi_az = _config_bool("postgresMultiAz", is_production)
@@ -368,6 +379,10 @@ postgres_stack = postgres.create_postgres(
     secret_name=f"{external_secrets_prefix}/CEREBRO_POSTGRES_DSN",
     instance_class=postgres_instance_class,
     allocated_storage=postgres_allocated_storage,
+    storage_type=postgres_storage_type,
+    max_allocated_storage=postgres_max_allocated_storage,
+    iops=postgres_iops,
+    storage_throughput=postgres_storage_throughput,
     backup_retention_days=postgres_backup_retention_days,
     deletion_protection=postgres_deletion_protection,
     multi_az=postgres_multi_az,

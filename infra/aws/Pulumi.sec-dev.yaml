@@ -38,8 +38,10 @@ config:
   cerebro:apiMemory: 2048
   cerebro:apiMinInstances: 1
   cerebro:apiMaxInstances: 1
-  cerebro:postgresInstanceClass: db.t4g.micro
-  cerebro:postgresAllocatedStorage: 20
+  cerebro:postgresInstanceClass: db.t4g.small
+  cerebro:postgresAllocatedStorage: 100
+  cerebro:postgresStorageType: gp3
+  cerebro:postgresMaxAllocatedStorage: 200
   cerebro:postgresBackupRetentionDays: 14
   cerebro:postgresDeletionProtection: true
   cerebro:postgresMultiAz: true

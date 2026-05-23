@@ -151,6 +151,22 @@ config:
     type: integer
     default: 20
     description: RDS Postgres allocated storage in GB
+  cerebro:postgresStorageType:
+    type: string
+    default: gp3
+    description: RDS Postgres storage type
+  cerebro:postgresMaxAllocatedStorage:
+    type: integer
+    default: 0
+    description: RDS Postgres autoscaling storage ceiling in GB
+  cerebro:postgresIops:
+    type: integer
+    default: 0
+    description: RDS Postgres provisioned IOPS for storage types that support it
+  cerebro:postgresStorageThroughput:
+    type: integer
+    default: 0
+    description: RDS Postgres provisioned storage throughput in MiB/s for storage types that support it
   cerebro:postgresBackupRetentionDays:
     type: integer
     default: 7

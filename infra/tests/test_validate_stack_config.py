@@ -259,6 +259,31 @@ class ValidateStackConfigTest(unittest.TestCase):
         content = BASE_STACK.replace("  cerebro:postgresDeletionProtection: true", "  cerebro:postgresDeletionProtection: false")
         self.assertTrue(any("deletion protection" in message for message in self._messages(content)))
 
+    def test_prod_postgres_must_not_use_gp2_storage(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:postgresBackupRetentionDays: 14\n",
+            "  cerebro:postgresBackupRetentionDays: 14\n  cerebro:postgresStorageType: gp2\n",
+        )
+        self.assertTrue(any("must not use burst-credit-limited gp2" in message for message in self._messages(content)))
+
+    def test_sec_dev_postgres_capacity_guardrails(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:environment: go-production\n",
+            "  cerebro:environment: sec-dev\n  cerebro:postgresInstanceClass: db.t4g.micro\n  cerebro:postgresAllocatedStorage: 20\n  cerebro:postgresStorageType: gp2\n",
+        )
+        messages = self._messages(content)
+
+        self.assertTrue(any("must not use burst-credit-limited gp2" in message for message in messages))
+        self.assertTrue(any("sec-dev Postgres must not use db.t4g.micro" in message for message in messages))
+        self.assertTrue(any("sec-dev Postgres storage must be at least 100 GB" in message for message in messages))
+
+    def test_small_gp3_storage_rejects_iops_and_throughput_overrides(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:postgresBackupRetentionDays: 14\n",
+            "  cerebro:postgresBackupRetentionDays: 14\n  cerebro:postgresStorageType: gp3\n  cerebro:postgresAllocatedStorage: 100\n  cerebro:postgresIops: 3000\n",
+        )
+        self.assertTrue(any("require at least 400 GB allocated storage" in message for message in self._messages(content)))
+
     def test_backfill_without_retirement_metadata_is_warning(self) -> None:
         content = BASE_STACK.replace("name: okta-audit", "name: okta-audit-backfill")
         findings = self._validate(content)
