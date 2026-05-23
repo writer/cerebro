@@ -633,40 +633,38 @@ func (s *Service) resolveStaleOpenFindings(ctx context.Context, tenantID string,
 	return nil
 }
 
-func (s *Service) resolveCounterEventOpenFindings(ctx context.Context, tenantID string, runtimeID string, ruleID string, counterRule CounterEventRule, evaluatedEvents []*cerebrov1.EventEnvelope) error {
-	if counterRule == nil || len(evaluatedEvents) == 0 {
+type counterAnchorLatestEvent struct {
+	observedAt time.Time
+	sequence   int
+	closes     bool
+	eventIDs   []string
+}
+
+func (s *Service) resolveCounterEventOpenFindings(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule Rule, counterRule CounterEventRule, evaluatedEvents []*cerebrov1.EventEnvelope) error {
+	if counterRule == nil || runtime == nil || rule == nil || len(evaluatedEvents) == 0 {
 		return nil
 	}
-	eventIDsByAnchor := make(map[string][]string)
-	for _, event := range evaluatedEvents {
-		if event == nil {
-			continue
-		}
-		anchor, closes := counterRule.CloseOnEvent(event)
-		anchor = strings.TrimSpace(anchor)
-		if !closes || anchor == "" {
-			continue
-		}
-		eventID := strings.TrimSpace(event.GetId())
-		if eventID == "" {
-			if _, ok := eventIDsByAnchor[anchor]; !ok {
-				eventIDsByAnchor[anchor] = nil
-			}
-			continue
-		}
-		eventIDsByAnchor[anchor] = append(eventIDsByAnchor[anchor], eventID)
+	tenantID := strings.TrimSpace(runtime.GetTenantId())
+	runtimeID := strings.TrimSpace(runtime.GetId())
+	ruleID := ""
+	if spec := rule.Spec(); spec != nil {
+		ruleID = strings.TrimSpace(spec.GetId())
 	}
-	if len(eventIDsByAnchor) == 0 {
+	latestByAnchor, err := latestCounterAnchorEvents(ctx, runtime, rule, counterRule, evaluatedEvents)
+	if err != nil {
+		return err
+	}
+	if !hasLatestCounterAnchorClose(latestByAnchor) {
 		return nil
 	}
 	findings, err := s.store.ListFindings(ctx, ports.ListFindingsRequest{
-		TenantID:  strings.TrimSpace(tenantID),
-		RuntimeID: strings.TrimSpace(runtimeID),
-		RuleID:    strings.TrimSpace(ruleID),
+		TenantID:  tenantID,
+		RuntimeID: runtimeID,
+		RuleID:    ruleID,
 		Status:    findingStatusOpen,
 	})
 	if err != nil {
-		return fmt.Errorf("list counter-event candidates for rule %q: %w", strings.TrimSpace(ruleID), err)
+		return fmt.Errorf("list counter-event candidates for rule %q: %w", ruleID, err)
 	}
 	for _, finding := range findings {
 		if finding == nil {
@@ -679,8 +677,11 @@ func (s *Service) resolveCounterEventOpenFindings(ctx context.Context, tenantID 
 		if openAnchor == "" {
 			continue
 		}
-		counterEventIDs, closes := eventIDsByAnchor[openAnchor]
-		if !closes {
+		latest, ok := latestByAnchor[openAnchor]
+		if !ok || !latest.closes {
+			continue
+		}
+		if counterAnchorClosePrecedesFinding(latest, finding) {
 			continue
 		}
 		updated, err := s.updateFindingStatusAndRisk(ctx, ports.FindingStatusUpdate{
@@ -688,7 +689,7 @@ func (s *Service) resolveCounterEventOpenFindings(ctx context.Context, tenantID 
 			Status:    findingStatusResolved,
 			Reason:    workflowevents.FindingStatusReasonClosedByCounterEvent,
 			UpdatedAt: time.Now().UTC(),
-			EventIDs:  uniqueTrimmedStringsPreserveOrder(counterEventIDs),
+			EventIDs:  uniqueTrimmedStringsPreserveOrder(latest.eventIDs),
 		})
 		if err != nil {
 			return fmt.Errorf("resolve counter-event finding %q: %w", strings.TrimSpace(finding.ID), err)
@@ -698,6 +699,100 @@ func (s *Service) resolveCounterEventOpenFindings(ctx context.Context, tenantID 
 		}
 	}
 	return nil
+}
+
+func latestCounterAnchorEvents(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule Rule, counterRule CounterEventRule, evaluatedEvents []*cerebrov1.EventEnvelope) (map[string]counterAnchorLatestEvent, error) {
+	latestByAnchor := make(map[string]counterAnchorLatestEvent)
+	ruleID := ""
+	if spec := rule.Spec(); spec != nil {
+		ruleID = strings.TrimSpace(spec.GetId())
+	}
+	for sequence, event := range evaluatedEvents {
+		if event == nil {
+			continue
+		}
+		observedAt := counterAnchorEventObservedAt(event)
+		records, err := rule.Evaluate(ctx, runtime, event)
+		if err != nil {
+			return nil, fmt.Errorf("evaluate counter-event chronology for rule %q event %q: %w", ruleID, strings.TrimSpace(event.GetId()), err)
+		}
+		for _, record := range records {
+			if record == nil {
+				continue
+			}
+			openAnchor := strings.TrimSpace(counterRule.OpenAnchor(record.Attributes))
+			if openAnchor == "" {
+				continue
+			}
+			recordLatestCounterAnchorEvent(latestByAnchor, openAnchor, counterAnchorLatestEvent{
+				observedAt: observedAt,
+				sequence:   sequence,
+			})
+		}
+		anchor, closes := counterRule.CloseOnEvent(event)
+		anchor = strings.TrimSpace(anchor)
+		if closes && anchor != "" {
+			eventIDs := []string(nil)
+			if eventID := strings.TrimSpace(event.GetId()); eventID != "" {
+				eventIDs = []string{eventID}
+			}
+			recordLatestCounterAnchorEvent(latestByAnchor, anchor, counterAnchorLatestEvent{
+				observedAt: observedAt,
+				sequence:   sequence,
+				closes:     true,
+				eventIDs:   eventIDs,
+			})
+		}
+	}
+	return latestByAnchor, nil
+}
+
+func recordLatestCounterAnchorEvent(latestByAnchor map[string]counterAnchorLatestEvent, anchor string, event counterAnchorLatestEvent) {
+	anchor = strings.TrimSpace(anchor)
+	if anchor == "" {
+		return
+	}
+	current, ok := latestByAnchor[anchor]
+	if !ok || counterAnchorEventIsNewer(event, current) {
+		latestByAnchor[anchor] = event
+	}
+}
+
+func counterAnchorEventIsNewer(next counterAnchorLatestEvent, current counterAnchorLatestEvent) bool {
+	if !next.observedAt.Equal(current.observedAt) {
+		return next.observedAt.After(current.observedAt)
+	}
+	return next.sequence >= current.sequence
+}
+
+func counterAnchorEventObservedAt(event *cerebrov1.EventEnvelope) time.Time {
+	if event == nil || event.GetOccurredAt() == nil {
+		return time.Time{}
+	}
+	return event.GetOccurredAt().AsTime().UTC()
+}
+
+func counterAnchorClosePrecedesFinding(event counterAnchorLatestEvent, finding *ports.FindingRecord) bool {
+	if finding == nil || !event.closes || event.observedAt.IsZero() {
+		return false
+	}
+	observedAt := finding.LastObservedAt.UTC()
+	if observedAt.IsZero() {
+		observedAt = finding.FirstObservedAt.UTC()
+	}
+	if observedAt.IsZero() {
+		return false
+	}
+	return event.observedAt.Before(observedAt)
+}
+
+func hasLatestCounterAnchorClose(latestByAnchor map[string]counterAnchorLatestEvent) bool {
+	for _, event := range latestByAnchor {
+		if event.closes {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) resolveRuleOpenFindings(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule Rule, evaluatedEvents []*cerebrov1.EventEnvelope, evaluatedEventIDs map[string]struct{}, emittedFindingIDs map[string]struct{}) error {
@@ -715,7 +810,7 @@ func (s *Service) resolveRuleOpenFindings(ctx context.Context, runtime *cerebrov
 	}
 	if rule.SupportsRuntime(runtime) {
 		if counterRule, ok := durableStateCounterEventRule(rule); ok {
-			if err := s.resolveCounterEventOpenFindings(ctx, tenantID, runtimeID, ruleID, counterRule, evaluatedEvents); err != nil {
+			if err := s.resolveCounterEventOpenFindings(ctx, runtime, rule, counterRule, evaluatedEvents); err != nil {
 				return err
 			}
 		}

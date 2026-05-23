@@ -5,9 +5,11 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestGitHubAnchorRequiredFields(t *testing.T) {
@@ -1785,6 +1787,56 @@ func TestGitHubPersonalAccessTokenCreatedTrajectory_CreateExpired(t *testing.T) 
 	}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
 }
 
+func TestGitHubPersonalAccessTokenCreatedTrajectory_NewestEventWins(t *testing.T) {
+	rule := newGitHubPersonalAccessTokenCreatedRule()
+	if _, ok := rule.(CounterEventRule); !ok {
+		t.Fatal("github-personal-access-token-created does not implement CounterEventRule")
+	}
+	observedAt := time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)
+	openEvent := func(id string, at time.Time) Event {
+		return withGitHubAuditSignalObservedAt(newGitHubAuditSignalEvent(id, map[string]string{
+			"action":         "personal_access_token.access_granted",
+			"operation_type": "create",
+			"resource_id":    "octocat",
+			"resource_type":  "personal_access_token",
+			"token_id":       "555",
+			"user":           "octocat",
+			"user_id":        "12345",
+		}), at)
+	}
+	closeEvent := func(id string, at time.Time) Event {
+		return withGitHubAuditSignalObservedAt(newGitHubAuditSignalEvent(id, map[string]string{
+			"action":        "personal_access_token.access_revoked",
+			"resource_id":   "octocat",
+			"resource_type": "personal_access_token",
+			"token_id":      "555",
+			"user":          "octocat",
+			"user_id":       "12345",
+		}), at)
+	}
+
+	t.Run("open then close closes", func(t *testing.T) {
+		assertGitHubRuleTrajectory(t, rule, []Event{
+			openEvent("github-pat-newest-wins-open", observedAt),
+			closeEvent("github-pat-newest-wins-close", observedAt.Add(time.Minute)),
+		}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+	})
+
+	t.Run("older close before newer open leaves finding open", func(t *testing.T) {
+		assertGitHubRuleTrajectory(t, rule, []Event{
+			closeEvent("github-pat-newest-wins-older-close", observedAt),
+			openEvent("github-pat-newest-wins-newer-open", observedAt.Add(time.Minute)),
+		}, cerebrov1.FindingStatus_FINDING_STATUS_OPEN)
+	})
+
+	t.Run("older close replayed after newer open still leaves finding open", func(t *testing.T) {
+		assertGitHubRuleTrajectory(t, rule, []Event{
+			openEvent("github-pat-newest-wins-newer-open-first", observedAt.Add(time.Minute)),
+			closeEvent("github-pat-newest-wins-older-close-last", observedAt),
+		}, cerebrov1.FindingStatus_FINDING_STATUS_OPEN)
+	})
+}
+
 func TestGitHubPrivateRepositoryForkingEnabled(t *testing.T) {
 	rule := newGitHubPrivateRepositoryForkingEnabledRule()
 	metadataRule, ok := rule.(MetadataRule)
@@ -1961,6 +2013,14 @@ func githubSecretScanningAlertEvent(id string, attributes map[string]string) *ce
 		Kind:       "github.secret_scanning_alert",
 		Attributes: attributes,
 	}
+}
+
+func withGitHubAuditSignalObservedAt(event *cerebrov1.EventEnvelope, observedAt time.Time) *cerebrov1.EventEnvelope {
+	if event == nil {
+		return nil
+	}
+	event.OccurredAt = timestamppb.New(observedAt.UTC())
+	return event
 }
 
 func githubAuditEvent(id string, attributes map[string]string) *cerebrov1.EventEnvelope {

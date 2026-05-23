@@ -1401,6 +1401,85 @@ func TestCounterEventRule_AnchorClose(t *testing.T) {
 	}
 }
 
+func TestCounterEventRule_OlderCloseDoesNotResolveNewerOpenFinding(t *testing.T) {
+	rule := newCounterAnchorRule("counter-anchor-rule")
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	openedAt := time.Date(2026, 5, 7, 19, 54, 0, 0, time.UTC)
+	newerOpenAt := openedAt.Add(2 * time.Hour)
+	currentFinding := &ports.FindingRecord{
+		ID:              "counter-anchor-rule-writer-cerebro-alice",
+		Fingerprint:     "counter-anchor-rule-writer-cerebro-alice",
+		TenantID:        "writer",
+		RuntimeID:       "example-github-audit",
+		RuleID:          "counter-anchor-rule",
+		Title:           "Counter Anchor Rule",
+		Severity:        "HIGH",
+		Status:          findingStatusOpen,
+		Summary:         "repository collaborator remained risky after an older close",
+		ResourceURNs:    []string{"urn:cerebro:writer:github_repo:writer/cerebro"},
+		EventIDs:        []string{"github-newer-open-event"},
+		Attributes:      map[string]string{"repo": "writer/cerebro", "user": "alice"},
+		FirstObservedAt: openedAt,
+		LastObservedAt:  newerOpenAt,
+	}
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{
+		currentFinding.ID: cloneFinding(currentFinding),
+	}}
+	appendLog := &recordingAppendLog{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"example-github-audit": {Id: "example-github-audit", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}},
+		}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{{
+			Id:       "github-older-counter-event",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.audit",
+			Attributes: map[string]string{
+				"action": "close",
+				"repo":   "writer/cerebro",
+				"user":   "alice",
+			},
+			OccurredAt: timestamppb.New(openedAt.Add(time.Hour)),
+		}}},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	).WithGraphStore(&stubGraphStore{}).WithAppendLog(appendLog)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "example-github-audit",
+		RuleID:    "counter-anchor-rule",
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if got := len(result.Findings); got != 0 {
+		t.Fatalf("len(Findings) = %d, want 0 because replay only contains an older close", got)
+	}
+	unchanged := store.findings[currentFinding.ID]
+	if got := unchanged.Status; got != findingStatusOpen {
+		t.Fatalf("newer open finding status = %q, want %q", got, findingStatusOpen)
+	}
+	if unchanged.StatusReason != "" {
+		t.Fatalf("newer open finding status reason = %q, want empty", unchanged.StatusReason)
+	}
+	if containsTrimmed(unchanged.EventIDs, "github-older-counter-event") {
+		t.Fatalf("newer open finding EventIDs = %#v, want no older counter-event evidence", unchanged.EventIDs)
+	}
+	if store.updateStatusCallCount != 0 {
+		t.Fatalf("UpdateFindingStatus calls = %d, want 0", store.updateStatusCallCount)
+	}
+	if len(appendLog.events) != 0 {
+		t.Fatalf("append log events = %d, want 0", len(appendLog.events))
+	}
+}
+
 func TestCounterEventRule_NonImplementingUnaffected(t *testing.T) {
 	rule := newNonCounterAnchorRule("non-counter-anchor-rule")
 	registry, err := NewRegistry(rule)
