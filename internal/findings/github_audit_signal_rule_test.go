@@ -757,6 +757,23 @@ func TestGitHubRepositoryCollaboratorAdded(t *testing.T) {
 	}
 }
 
+func TestGitHubRepositoryCollaboratorAddedTrajectorySmoke(t *testing.T) {
+	assertGitHubRuleTrajectory(t, newGitHubRepositoryCollaboratorAddedRule(), []Event{
+		newGitHubAuditSignalEvent("github-collab-trajectory-first", map[string]string{
+			"action":        "repo.add_member",
+			"repo":          "writer/cerebro",
+			"resource_type": "repo",
+			"user":          "external-vendor",
+		}),
+		newGitHubAuditSignalEvent("github-collab-trajectory-second", map[string]string{
+			"action":        "repo.add_member",
+			"repo":          "writer/cerebro",
+			"resource_type": "repo",
+			"user":          "external-vendor",
+		}),
+	}, cerebrov1.FindingStatus_FINDING_STATUS_OPEN)
+}
+
 func TestGitHubOrganizationOwnerAdded(t *testing.T) {
 	rule := newGitHubOrganizationOwnerAddedRule()
 	metadataRule, ok := rule.(MetadataRule)
