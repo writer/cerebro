@@ -38,6 +38,7 @@ const (
 	familyAdminRole   = "admin_role"
 	familyGroup       = "group"
 	familyGroupMember = "group_membership"
+	familyPolicyRule  = "policy_rule"
 	familyUser        = "user"
 )
 
@@ -336,6 +337,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:application:%s", settings.domain, app.ID), nil
 			},
 		}),
+		s.policyRuleFamily(),
 		oktaFamily(oktaFamilyOptions[groupRecord]{
 			Name:  familyGroup,
 			Label: "okta groups",
@@ -467,9 +469,9 @@ func parseSettings(cfg sourcecdk.Config, allowLoopbackBaseURL bool) (settings, e
 		settings.family = defaultFamily
 	}
 	switch settings.family {
-	case familyAdminRole, familyAppAssign, familyApplication, familyAudit, familyGroup, familyGroupMember, familyUser:
+	case familyAdminRole, familyAppAssign, familyApplication, familyAudit, familyGroup, familyGroupMember, familyPolicyRule, familyUser:
 	default:
-		return settings, fmt.Errorf("okta family must be one of admin_role, app_assignment, application, audit, group, group_membership, or user")
+		return settings, fmt.Errorf("okta family must be one of admin_role, app_assignment, application, audit, group, group_membership, policy_rule, or user")
 	}
 	if settings.domain == "" {
 		return settings, fmt.Errorf("okta domain is required")
@@ -520,7 +522,7 @@ func parseSettings(cfg sourcecdk.Config, allowLoopbackBaseURL bool) (settings, e
 		if settings.appID == "" {
 			return settings, fmt.Errorf("okta app_id is required when family=%q", familyAppAssign)
 		}
-	case familyApplication, familyGroup:
+	case familyApplication, familyGroup, familyPolicyRule:
 		if settings.since != "" || settings.until != "" {
 			return settings, fmt.Errorf("okta since and until are only supported when family=%q", familyAudit)
 		}
