@@ -2089,29 +2089,24 @@
       "pack_id": "identity",
       "pack_name": "Identity",
       "name": "Identity Privileged No-MFA Account With Sensitive Access",
-      "description": "Detect privileged no-MFA identities or sensitive access grants that should be joined through the graph.",
+      "description": "Detect privileged no-MFA identities that currently have access to crown-jewel or sensitive classified resources in the graph.",
       "source_id": "identity",
-      "evaluation_mode": "event",
+      "evaluation_mode": "graph",
       "event_kinds": [
-        "aws.iam_group_membership",
-        "aws.iam_role",
+        "asset.crown_jewel",
+        "asset.data_sensitivity",
         "aws.iam_role_assignment",
         "aws.iam_user",
         "azure.app_role_assignment",
         "azure.directory_role_assignment",
-        "azure.group_membership",
         "azure.iam_role_assignment",
-        "azure.service_principal",
         "azure.user",
-        "gcp.group_membership",
         "gcp.iam_role_assignment",
         "gcp.service_account",
-        "google_workspace.group_member",
         "google_workspace.role_assignment",
         "google_workspace.user",
         "okta.admin_role",
         "okta.app_assignment",
-        "okta.group_membership",
         "okta.user"
       ],
       "output_kind": "finding.identity_privileged_no_mfa_sensitive_access",
@@ -2129,9 +2124,10 @@
         "https://help.okta.com/en-us/content/topics/reports/reports_syslog.htm"
       ],
       "false_positives": [
-        "Approved identity administration during a documented change window."
+        "Break-glass identity with approved compensating controls and time-bound exception.",
+        "Resource incorrectly tagged as crown-jewel or sensitive classification in the graph."
       ],
-      "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
+      "runbook": "Enroll MFA for the identity or remove its privileged access to the sensitive resource. Validate the resource classification/tag and revoke any stale access edge in the identity or cloud provider.",
       "fingerprint_fields": [
         "user"
       ],

@@ -243,20 +243,6 @@ func newIdentitySignalRules() []Rule {
 			sourceIDs:  sourceIDs,
 			eventKinds: capabilities.EventKinds(identityCapabilityAudit),
 		}),
-		newIdentitySignalCounterEventRule(identitySignalConfig{
-			definition: identityDurableStateRuleDefinition(identityRuleDefinition(
-				identityPrivilegedNoMFAAccessRuleID,
-				"Identity Privileged No-MFA Account With Sensitive Access",
-				"Detect privileged no-MFA identities or sensitive access grants that should be joined through the graph.",
-				"HIGH",
-				"finding.identity_privileged_no_mfa_sensitive_access",
-				[]string{"identity", "graph-join", "privileged-access", "mfa"},
-			), "user"),
-			sourceIDs:   sourceIDs,
-			eventKinds:  capabilities.EventKinds(identityCapabilityAdminRole, identityCapabilityAppAssignment, identityCapabilityGroupMembership, identityCapabilityRoleAssignment, identityCapabilityUser),
-			predicate:   matchesIdentityPrivilegedNoMFAAccess,
-			fingerprint: identityUserFingerprintInputs,
-		}, identityUserAnchor, identityPrivilegedNoMFAAccessCloseAnchor),
 	}
 }
 
@@ -634,18 +620,6 @@ func identityStalePrivilegedCloseAnchor(event Event) (string, bool) {
 	return anchor, anchor != ""
 }
 
-func identityPrivilegedNoMFAAccessCloseAnchor(event Event) (string, bool) {
-	attributes := eventAttributes(event)
-	if matchesIdentityPrivilegedNoMFAAccess(event, attributes) {
-		return "", false
-	}
-	if !identityPrivilegedNoMFAAccessRemediated(attributes) {
-		return "", false
-	}
-	anchor := identityUserAnchor(attributes)
-	return anchor, anchor != ""
-}
-
 func identityCounterEventAttributes(event Event, projection *findingProjectionContext) map[string]string {
 	if event == nil {
 		return nil
@@ -975,34 +949,6 @@ func identityRoleAssignmentInactive(attributes map[string]string) bool {
 	}
 }
 
-func identityMFADisabledOrReset(attributes map[string]string) bool {
-	if identityMFAExplicitlyDisabled(attributes) || findingAttributeBool(attributes, "mfa_reset", "mfa_disabled", "factor_reset", "factor_disabled") {
-		return true
-	}
-	switch identityMFAState(attributes) {
-	case "disabled", "reset", "unenrolled", "unregistered", "not_enrolled", "not enrolled", "inactive", "deactivated":
-		return true
-	default:
-		return false
-	}
-}
-
-func identityMFARestored(attributes map[string]string) bool {
-	if identityMFADisabledOrReset(attributes) {
-		return false
-	}
-	if identityMFAEnabled(attributes) || findingAttributeBool(attributes, "mfa_restored", "mfa_reenrolled", "factor_active") {
-		return true
-	}
-	switch identityMFAState(attributes) {
-	case "enabled", "enrolled", "active", "verified", "required", "enforced":
-		return true
-	}
-	action := identityAction(attributes)
-	return containsAny(action, "enroll", "reenroll", "re-enroll", "activate", "enable", "verify") &&
-		!containsAny(action, "disable", "deactivate", "unenroll", "reset")
-}
-
 func identityAuthControlWeakened(attributes map[string]string) bool {
 	if findingAttributeBool(attributes, "auth_control_weakened", "policy_weakened", "idp_weakened", "saml_provider_settings_weakened") {
 		return true
@@ -1188,16 +1134,6 @@ func matchesIdentityExternalGroupMember(_ *cerebrov1.EventEnvelope, attributes m
 	return containsAny(email, "@gmail.com", "@yahoo.com", "@hotmail.com", "@outlook.com")
 }
 
-func matchesIdentityPrivilegedNoMFAAccess(_ *cerebrov1.EventEnvelope, attributes map[string]string) bool {
-	if identityPrivilegeExplicitlyRemoved(attributes) {
-		return false
-	}
-	return identityUserAnchor(attributes) != "" &&
-		identityPrivileged(attributes) &&
-		identityMFAExplicitlyDisabled(attributes) &&
-		identitySensitiveAccess(attributes)
-}
-
 func identityPrivileged(attributes map[string]string) bool {
 	return findingAttributeBool(attributes, "is_admin", "is_delegated_admin", "admin", "privileged", "actor_privileged") ||
 		containsAny(strings.ToLower(firstNonEmpty(attributes["role"], attributes["role_id"], attributes["role_type"], attributes["role_name"])), "admin", "super", "owner", "editor", "contributor", "poweruser", "administratoraccess", "iamfullaccess", "globaladministrator", "privilegedroleadministrator", "applicationadministrator", "cloudapplicationadministrator", "authenticationadministrator", "useraccessadministrator")
@@ -1235,51 +1171,6 @@ func identityLastLoginFresh(attributes map[string]string) bool {
 		return false
 	}
 	return time.Since(parsed.UTC()) <= identityStalePrivilegedAccountThreshold
-}
-
-func identityPrivilegedNoMFAAccessRemediated(attributes map[string]string) bool {
-	return identityPrivilegeExplicitlyRemoved(attributes) ||
-		identityMFARestored(attributes) ||
-		identitySensitiveAccessExplicitlyRemoved(attributes)
-}
-
-func identitySensitiveAccess(attributes map[string]string) bool {
-	if findingAttributeBool(
-		attributes,
-		"has_sensitive_data_access",
-		"sensitive_data_access",
-		"sensitive_access",
-		"has_sensitive_access",
-		"grants_sensitive_data_access",
-		"sensitive_resource_access",
-		"sensitive_access_edge",
-		"access_to_sensitive_data",
-	) {
-		return true
-	}
-	edgeDescriptor := strings.ToLower(strings.Join([]string{
-		attributes["access_edge"],
-		attributes["edge_type"],
-		attributes["graph_edge"],
-		attributes["joined_edge"],
-		attributes["relation"],
-		attributes["relationship"],
-	}, " "))
-	return containsAny(edgeDescriptor, "sensitive_access", "sensitive access", "sensitive-data", "sensitive_data")
-}
-
-func identitySensitiveAccessExplicitlyRemoved(attributes map[string]string) bool {
-	return identityAttributeExplicitlyFalse(
-		attributes,
-		"has_sensitive_data_access",
-		"sensitive_data_access",
-		"sensitive_access",
-		"has_sensitive_access",
-		"grants_sensitive_data_access",
-		"sensitive_resource_access",
-		"sensitive_access_edge",
-		"access_to_sensitive_data",
-	)
 }
 
 func identityCredentialActiveOrUnknown(attributes map[string]string) bool {

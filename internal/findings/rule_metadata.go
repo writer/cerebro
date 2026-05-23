@@ -148,6 +148,13 @@ func (r *githubActiveWithoutOktaLinkRule) RuleMetadata() RuleDefinition {
 	return cloneRuleDefinition(r.definition)
 }
 
+func (r *identityPrivilegedNoMFAAccessRule) RuleMetadata() RuleDefinition {
+	if r == nil {
+		return RuleDefinition{}
+	}
+	return cloneRuleDefinition(r.definition)
+}
+
 func (r *grcInactiveIdentityActiveAccessRule) RuleMetadata() RuleDefinition {
 	if r == nil {
 		return RuleDefinition{}
