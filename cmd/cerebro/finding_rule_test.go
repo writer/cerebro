@@ -1,6 +1,9 @@
 package main
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
@@ -111,6 +114,154 @@ func TestScaffoldFindingRulePrefixesNumericIdentifiers(t *testing.T) {
 	if !strings.Contains(string(rulePayload), "func newRule123GithubRuleRule() Rule") {
 		t.Fatalf("generated rule did not prefix numeric identifier: %s", rulePayload)
 	}
+}
+
+func TestFindingRuleScaffold_RendersLifecycle_DurableState(t *testing.T) {
+	rendered := renderScaffoldedRule(t, []string{
+		"github-public-repo",
+		"source_id=github",
+		"event_kinds=github.audit",
+		"lifecycle_kind=durable_state",
+		"lifecycle_anchor=graph_anchored",
+	})
+	if !strings.Contains(rendered, "Lifecycle: Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored}") {
+		t.Fatalf("rendered output missing durable_state Lifecycle literal:\n%s", rendered)
+	}
+	requireLifecycleField(t, rendered, "LifecycleDurableState", "AnchorGraphAnchored", false)
+}
+
+func TestFindingRuleScaffold_RendersLifecycle_AuditEvidence(t *testing.T) {
+	rendered := renderScaffoldedRule(t, []string{
+		"github-secret-scanning-disabled",
+		"source_id=github",
+		"event_kinds=github.audit",
+		"lifecycle_kind=audit_evidence",
+		"lifecycle_anchor=none",
+	})
+	if !strings.Contains(rendered, "Lifecycle: Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone}") {
+		t.Fatalf("rendered output missing audit_evidence Lifecycle literal:\n%s", rendered)
+	}
+	requireLifecycleField(t, rendered, "LifecycleAuditEvidence", "AnchorNone", false)
+}
+
+func TestFindingRuleScaffold_RendersLifecycle_TTLEvidence(t *testing.T) {
+	rendered := renderScaffoldedRule(t, []string{
+		"runtime-active-threat-evidence",
+		"source_id=sentinelone",
+		"event_kinds=sentinelone.threat",
+		"lifecycle_kind=ttl_evidence",
+		"lifecycle_anchor=source_state",
+		"lifecycle_ttl=24h",
+	})
+	expected := "Lifecycle: Lifecycle{Kind: LifecycleTTLEvidence, Anchor: AnchorSourceState, TTL: time.Duration(86400000000000)}"
+	if !strings.Contains(rendered, expected) {
+		t.Fatalf("rendered output missing ttl_evidence Lifecycle literal:\n%s", rendered)
+	}
+	requireLifecycleField(t, rendered, "LifecycleTTLEvidence", "AnchorSourceState", true)
+}
+
+func TestFindingRuleScaffold_RendersLifecycle_Retired(t *testing.T) {
+	rendered := renderScaffoldedRule(t, []string{
+		"github-critical-resource-deleted",
+		"source_id=github",
+		"event_kinds=github.audit",
+		"lifecycle_kind=retired",
+		"lifecycle_anchor=none",
+	})
+	if !strings.Contains(rendered, "Lifecycle: Lifecycle{Kind: LifecycleRetired, Anchor: AnchorNone}") {
+		t.Fatalf("rendered output missing retired Lifecycle literal:\n%s", rendered)
+	}
+	requireLifecycleField(t, rendered, "LifecycleRetired", "AnchorNone", false)
+}
+
+func renderScaffoldedRule(t *testing.T, args []string) string {
+	t.Helper()
+	request, err := parseFindingRuleNewArgs(args)
+	if err != nil {
+		t.Fatalf("parseFindingRuleNewArgs() error = %v", err)
+	}
+	return renderFindingRuleGo(newFindingRuleTemplateData(request))
+}
+
+func requireLifecycleField(t *testing.T, source, wantKind, wantAnchor string, wantTTL bool) {
+	t.Helper()
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "scaffolded_rule.go", source, parser.AllErrors)
+	if err != nil {
+		t.Fatalf("parser.ParseFile() error = %v\nsource:\n%s", err, source)
+	}
+	var lifecycle *ast.KeyValueExpr
+	ast.Inspect(file, func(n ast.Node) bool {
+		composite, ok := n.(*ast.CompositeLit)
+		if !ok {
+			return true
+		}
+		if ident, ok := composite.Type.(*ast.Ident); !ok || ident.Name != "RuleDefinition" {
+			return true
+		}
+		for _, element := range composite.Elts {
+			kv, ok := element.(*ast.KeyValueExpr)
+			if !ok {
+				continue
+			}
+			key, ok := kv.Key.(*ast.Ident)
+			if !ok || key.Name != "Lifecycle" {
+				continue
+			}
+			lifecycle = kv
+			return false
+		}
+		return true
+	})
+	if lifecycle == nil {
+		t.Fatalf("RuleDefinition composite literal missing Lifecycle field:\n%s", source)
+	}
+	value, ok := lifecycle.Value.(*ast.CompositeLit)
+	if !ok {
+		t.Fatalf("Lifecycle field is not a composite literal: %T", lifecycle.Value)
+	}
+	if ident, ok := value.Type.(*ast.Ident); !ok || ident.Name != "Lifecycle" {
+		t.Fatalf("Lifecycle composite literal type = %T, want findings.Lifecycle", value.Type)
+	}
+	seen := map[string]ast.Expr{}
+	for _, element := range value.Elts {
+		kv, ok := element.(*ast.KeyValueExpr)
+		if !ok {
+			continue
+		}
+		key, ok := kv.Key.(*ast.Ident)
+		if !ok {
+			continue
+		}
+		seen[key.Name] = kv.Value
+	}
+	kindExpr, ok := seen["Kind"]
+	if !ok {
+		t.Fatalf("Lifecycle composite literal missing Kind field; have %v", keys(seen))
+	}
+	if ident, ok := kindExpr.(*ast.Ident); !ok || ident.Name != wantKind {
+		t.Fatalf("Lifecycle Kind = %v, want %s", kindExpr, wantKind)
+	}
+	anchorExpr, ok := seen["Anchor"]
+	if !ok {
+		t.Fatalf("Lifecycle composite literal missing Anchor field; have %v", keys(seen))
+	}
+	if ident, ok := anchorExpr.(*ast.Ident); !ok || ident.Name != wantAnchor {
+		t.Fatalf("Lifecycle Anchor = %v, want %s", anchorExpr, wantAnchor)
+	}
+	if wantTTL {
+		if _, ok := seen["TTL"]; !ok {
+			t.Fatalf("Lifecycle composite literal missing TTL field; have %v", keys(seen))
+		}
+	}
+}
+
+func keys(m map[string]ast.Expr) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }
 
 func TestScaffoldFindingRuleRefusesOverwriteWithoutForce(t *testing.T) {

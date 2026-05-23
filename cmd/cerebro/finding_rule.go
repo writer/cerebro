@@ -328,8 +328,8 @@ func renderFindingRuleGo(data findingRuleTemplateData) string {
 	fmt.Fprintf(&b, ")\n\n")
 	fmt.Fprintf(&b, "var %s = []ports.FindingControlRef{}\n\n", names.ControlRefsVar)
 	fmt.Fprintf(&b, "var %s = RuleDefinition{\n", names.DefinitionVar)
-	fmt.Fprintf(&b, "\tID: %s,\n\tName: %s,\n\tDescription: %s,\n\tSourceID: %s,\n\tEventKinds: %s,\n\tOutputKind: %s,\n\tSeverity: %s,\n\tStatus: %s,\n\tMaturity: %s,\n\tTags: %s,\n\tReferences: %s,\n\tFalsePositives: %s,\n\tRequiredAttributes: %s,\n\tFingerprintFields: %s,\n\tControlRefs: %s,\n",
-		names.RuleIDConst, names.TitleConst, strconv.Quote(definition.Description), strconv.Quote(definition.SourceID), literals.EventKinds, strconv.Quote(definition.OutputKind), names.SeverityConst, names.StatusConst, strconv.Quote(definition.Maturity), literals.Tags, literals.References, literals.FalsePositives, literals.RequiredAttributes, literals.FingerprintFields, names.ControlRefsVar)
+	fmt.Fprintf(&b, "\tID: %s,\n\tName: %s,\n\tDescription: %s,\n\tSourceID: %s,\n\tEventKinds: %s,\n\tOutputKind: %s,\n\tSeverity: %s,\n\tStatus: %s,\n\tMaturity: %s,\n\tTags: %s,\n\tReferences: %s,\n\tFalsePositives: %s,\n\tRequiredAttributes: %s,\n\tFingerprintFields: %s,\n\tControlRefs: %s,\n\tLifecycle: %s,\n",
+		names.RuleIDConst, names.TitleConst, strconv.Quote(definition.Description), strconv.Quote(definition.SourceID), literals.EventKinds, strconv.Quote(definition.OutputKind), names.SeverityConst, names.StatusConst, strconv.Quote(definition.Maturity), literals.Tags, literals.References, literals.FalsePositives, literals.RequiredAttributes, literals.FingerprintFields, names.ControlRefsVar, renderLifecycleLiteral(definition.Lifecycle))
 	fmt.Fprintf(&b, "}\n\n")
 	fmt.Fprintf(&b, "var %s = eventKindMatcher(%s.EventKinds...)\n\n", names.KindMatcherVar, names.DefinitionVar)
 	fmt.Fprintf(&b, "func %s() Rule {\n", names.Constructor)
@@ -344,6 +344,43 @@ func renderFindingRuleGo(data findingRuleTemplateData) string {
 	fmt.Fprintf(&b, "\treturn &ports.FindingRecord{\n\t\tID: fingerprint,\n\t\tFingerprint: fingerprint,\n\t\tTenantID: strings.TrimSpace(event.GetTenantId()),\n\t\tRuntimeID: strings.TrimSpace(runtimeID),\n\t\tRuleID: %s,\n\t\tTitle: %s,\n\t\tSeverity: normalizeFindingSeverity(%s),\n\t\tStatus: %s,\n\t\tSummary: %s,\n\t\tEventIDs: []string{strings.TrimSpace(event.GetId())},\n\t\tCheckID: %s,\n\t\tCheckName: %s,\n\t\tControlRefs: cloneFindingControlRefs(%s),\n\t\tAttributes: findingAttributes,\n\t\tFirstObservedAt: observedAt,\n\t\tLastObservedAt: observedAt,\n\t}, nil\n}\n",
 		names.RuleIDConst, names.TitleConst, names.SeverityConst, names.StatusConst, names.TitleConst, names.CheckIDConst, names.CheckNameConst, names.ControlRefsVar)
 	return b.String()
+}
+
+func renderLifecycleLiteral(lifecycle findings.Lifecycle) string {
+	kind := lifecycleKindIdentifier(lifecycle.Kind)
+	anchor := lifecycleAnchorIdentifier(lifecycle.Anchor)
+	if lifecycle.TTL == 0 {
+		return fmt.Sprintf("Lifecycle{Kind: %s, Anchor: %s}", kind, anchor)
+	}
+	return fmt.Sprintf("Lifecycle{Kind: %s, Anchor: %s, TTL: time.Duration(%d)}", kind, anchor, lifecycle.TTL.Nanoseconds())
+}
+
+func lifecycleKindIdentifier(kind findings.LifecycleKind) string {
+	switch kind {
+	case findings.LifecycleDurableState:
+		return "LifecycleDurableState"
+	case findings.LifecycleAuditEvidence:
+		return "LifecycleAuditEvidence"
+	case findings.LifecycleTTLEvidence:
+		return "LifecycleTTLEvidence"
+	case findings.LifecycleRetired:
+		return "LifecycleRetired"
+	default:
+		return fmt.Sprintf("LifecycleKind(%s)", strconv.Quote(string(kind)))
+	}
+}
+
+func lifecycleAnchorIdentifier(anchor findings.LifecycleAnchor) string {
+	switch anchor {
+	case findings.AnchorGraphAnchored:
+		return "AnchorGraphAnchored"
+	case findings.AnchorSourceState:
+		return "AnchorSourceState"
+	case findings.AnchorNone:
+		return "AnchorNone"
+	default:
+		return fmt.Sprintf("LifecycleAnchor(%s)", strconv.Quote(string(anchor)))
+	}
 }
 
 func renderFindingRuleTestGo(data findingRuleTemplateData) string {
