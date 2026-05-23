@@ -483,6 +483,49 @@ func (s *stubCloseoutStore) GetCloseoutRun(_ context.Context, runID string) (*po
 	return &clone, nil
 }
 
+func (s *stubCloseoutStore) BreakStaleRunningCloseoutRuns(_ context.Context, cutoff time.Time, errMessage string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if cutoff.IsZero() {
+		return 0, nil
+	}
+	broken := 0
+	for _, existing := range s.runs {
+		if existing.Status != "running" {
+			continue
+		}
+		if !existing.StartedAt.Before(cutoff) {
+			continue
+		}
+		existing.Status = "failed"
+		existing.FinishedAt = time.Now().UTC()
+		if strings.TrimSpace(errMessage) != "" {
+			existing.ErrorMessage = errMessage
+		}
+		broken++
+	}
+	return broken, nil
+}
+
+func (s *stubCloseoutStore) UpdateCloseoutRunSummary(_ context.Context, runID, summaryKey string, summaryErr error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	existing, ok := s.runs[runID]
+	if !ok {
+		return fmt.Errorf("closeout_run %q not found", runID)
+	}
+	if summaryErr != nil {
+		existing.Status = "failed"
+		existing.FinishedAt = time.Now().UTC()
+		existing.ErrorMessage = summaryErr.Error()
+		return nil
+	}
+	if summaryKey != "" {
+		existing.S3SummaryKey = summaryKey
+	}
+	return nil
+}
+
 type stubFindingTombstoneEventStore struct {
 	mu     sync.Mutex
 	events []ports.FindingTombstoneEvent

@@ -200,6 +200,19 @@ type CloseoutRunStore interface {
 	InsertCloseoutRun(ctx context.Context, run CloseoutRunInsert) error
 	FinishCloseoutRun(ctx context.Context, finish CloseoutRunFinish) error
 	GetCloseoutRun(ctx context.Context, runID string) (*CloseoutRunRecord, error)
+	// BreakStaleRunningCloseoutRuns flips any closeout_run rows with status='running'
+	// and started_at < cutoff to status='failed' with finished_at=now and the supplied
+	// error message. The bulk primitive uses this to recover from operator crashes
+	// without manual intervention (I-8: stale-lock break). Implementations MUST be
+	// idempotent and return the count of rows that were updated.
+	BreakStaleRunningCloseoutRuns(ctx context.Context, cutoff time.Time, errMessage string) (int, error)
+	// UpdateCloseoutRunSummary persists the per-run S3 audit summary key on a
+	// closeout_run row that has already been finished. When summaryErr is non-nil
+	// the row is flipped to status='failed' with error_message=summaryErr.Error()
+	// so the operator can correlate the run record with the missing S3 object;
+	// the previously committed tombstones remain durable. Implementations MUST
+	// return an error if the row does not exist.
+	UpdateCloseoutRunSummary(ctx context.Context, runID, summaryKey string, summaryErr error) error
 }
 
 // FindingTombstoneEventStore persists finding_tombstone_events audit rows.

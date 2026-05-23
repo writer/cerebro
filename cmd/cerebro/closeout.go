@@ -127,28 +127,11 @@ type closeoutFlags struct {
 	TenantID        string
 }
 
-// closeoutSummaryDocument is the schema written to the S3 audit summary
-// object. Only fields known at scaffold time are populated here; the apply
-// feature extends it with per_rule and batch metrics.
-type closeoutSummaryDocument struct {
-	RunID         string                    `json:"run_id"`
-	Actor         closeoutSummaryActor      `json:"actor"`
-	Env           string                    `json:"env"`
-	Selector      findings.CloseoutSelector `json:"selector"`
-	Reason        string                    `json:"reason"`
-	ChangeTicket  string                    `json:"change_ticket,omitempty"`
-	ProposedCount int                       `json:"proposed_count"`
-	AppliedCount  int                       `json:"applied_count"`
-	BatchErrors   []string                  `json:"batch_errors"`
-	DryRun        bool                      `json:"dry_run"`
-	StartedAt     time.Time                 `json:"started_at"`
-	FinishedAt    time.Time                 `json:"finished_at"`
-}
-
-type closeoutSummaryActor struct {
-	Principal string `json:"principal"`
-	RoleARN   string `json:"role_arn,omitempty"`
-}
+// closeoutSummaryDocument is retained as a thin alias so test files that
+// import the type continue to compile. The canonical shape now lives in
+// internal/findings.CloseoutSummary so the apply path and downstream
+// reconciliation tooling share one source of truth.
+type closeoutSummaryDocument = findings.CloseoutSummary
 
 // runCloseout is the production entry point invoked from main. It builds a
 // production closeoutEnv and delegates to runCloseoutWithEnv.
@@ -162,19 +145,19 @@ func runCloseout(args []string) error {
 }
 
 // defaultCloseoutEnv constructs the production closeoutEnv. The Backend +
-// Summary implementations are stubbed at scaffold time; the apply feature
-// replaces both with real Postgres + S3 wiring.
+// Summary implementations are wired to the live Postgres state store and the
+// aws-sdk-go-v2 S3 + STS clients. Tests bypass this constructor and inject a
+// closeoutEnv with fakes.
 func defaultCloseoutEnv() (*closeoutEnv, func(), error) {
-	return &closeoutEnv{
-		Stdout:    os.Stdout,
-		Stderr:    os.Stderr,
-		Getenv:    os.Getenv,
-		Now:       func() time.Time { return time.Now().UTC() },
-		NewRunID:  newCloseoutRunID,
-		Backend:   &notWiredCloseoutBackend{},
-		Summary:   &notWiredCloseoutSummaryWriter{},
-		LookupSTS: nopCloseoutSTSLookup,
-	}, func() {}, nil
+	deps, err := openCloseoutProductionDeps(context.Background())
+	if err != nil {
+		return nil, func() {}, err
+	}
+	cleanup := deps.Cleanup
+	if cleanup == nil {
+		cleanup = func() {}
+	}
+	return closeoutEnvFromDeps(deps), cleanup, nil
 }
 
 // runCloseoutWithEnv is the testable entry point. Tests inject a custom
@@ -243,6 +226,16 @@ func runCloseoutWithEnv(args []string, env *closeoutEnv) error {
 		MaxBatchSize: flags.MaxBatchSize,
 		ChangeTicket: flags.ChangeTicket,
 		Environment:  flags.AllowEnv,
+		BatchLogger: func(event findings.CloseoutBatchEvent) {
+			emitCloseoutLog(env, map[string]any{
+				"event":       closeoutEventBatch,
+				"run_id":      event.RunID,
+				"actor":       event.Actor,
+				"env":         event.Env,
+				"batch_index": event.BatchIndex,
+				"batch_size":  event.BatchSize,
+			})
+		},
 	}
 
 	startedAt := env.Now()
@@ -260,6 +253,16 @@ func runCloseoutWithEnv(args []string, env *closeoutEnv) error {
 
 	result, closeoutErr := env.Backend.Closeout(ctx, req)
 	if closeoutErr != nil {
+		emitCloseoutLog(env, map[string]any{
+			"event":          closeoutEventEnd,
+			"run_id":         runID,
+			"actor":          actor,
+			"env":            flags.AllowEnv,
+			"status":         "failed",
+			"proposed_count": closeoutCount(result, func(r *findings.CloseoutResult) int { return r.ProposedCount }),
+			"applied_count":  closeoutCount(result, func(r *findings.CloseoutResult) int { return r.AppliedCount }),
+			"dry_run":        req.DryRun,
+		})
 		return fmt.Errorf("closeout: %w", closeoutErr)
 	}
 	if result == nil {
@@ -267,28 +270,24 @@ func runCloseoutWithEnv(args []string, env *closeoutEnv) error {
 	}
 
 	finishedAt := env.Now()
-	doc := closeoutSummaryDocument{
-		RunID:         result.RunID,
-		Actor:         closeoutSummaryActor{Principal: actor, RoleARN: sts.RoleARN},
-		Env:           flags.AllowEnv,
-		Selector:      req.Selector,
-		Reason:        flags.Reason,
-		ChangeTicket:  flags.ChangeTicket,
-		ProposedCount: result.ProposedCount,
-		AppliedCount:  result.AppliedCount,
-		BatchErrors:   errorStrings(result.BatchErrors),
-		DryRun:        req.DryRun,
-		StartedAt:     startedAt,
-		FinishedAt:    finishedAt,
-	}
-	body, marshalErr := json.MarshalIndent(doc, "", "  ")
+	doc := findings.BuildCloseoutSummary(result, findings.CloseoutSummaryInputs{
+		Actor:        findings.CloseoutSummaryActor{Principal: actor, RoleARN: sts.RoleARN},
+		Env:          flags.AllowEnv,
+		Selector:     req.Selector,
+		Reason:       flags.Reason,
+		ChangeTicket: flags.ChangeTicket,
+		DryRun:       req.DryRun,
+		StartedAt:    startedAt,
+		FinishedAt:   finishedAt,
+	})
+	body, marshalErr := doc.MarshalIndent()
 	if marshalErr != nil {
 		return fmt.Errorf("marshal closeout summary: %w", marshalErr)
 	}
 
 	summaryKey := ""
 	if flags.Apply {
-		summaryKey = closeoutSummaryKey(runID)
+		summaryKey = findings.CloseoutSummaryKey(runID)
 		putErr := env.Summary.PutCloseoutSummary(ctx, bucket, summaryKey, body)
 		if afterErr := env.Backend.AfterCloseoutSummary(ctx, runID, summaryKey, putErr); afterErr != nil && putErr == nil {
 			return fmt.Errorf("after closeout summary: %w", afterErr)
@@ -304,7 +303,7 @@ func runCloseoutWithEnv(args []string, env *closeoutEnv) error {
 			return fmt.Errorf("%w: %w", ErrCloseoutSummaryPutFailed, putErr)
 		}
 	} else if bucket != "" && env.Summary != nil {
-		summaryKey = closeoutSummaryKey(runID)
+		summaryKey = findings.CloseoutSummaryKey(runID)
 		_ = env.Summary.PutCloseoutSummary(ctx, bucket, summaryKey, body)
 	} else if !flags.Apply {
 		_, _ = fmt.Fprintln(env.Stdout, string(body))
@@ -313,6 +312,8 @@ func runCloseoutWithEnv(args []string, env *closeoutEnv) error {
 	endLog := map[string]any{
 		"event":          closeoutEventEnd,
 		"run_id":         runID,
+		"actor":          actor,
+		"env":            flags.AllowEnv,
 		"status":         "succeeded",
 		"proposed_count": result.ProposedCount,
 		"applied_count":  result.AppliedCount,
@@ -326,6 +327,13 @@ func runCloseoutWithEnv(args []string, env *closeoutEnv) error {
 	}
 	emitCloseoutLog(env, endLog)
 	return nil
+}
+
+func closeoutCount(result *findings.CloseoutResult, extract func(*findings.CloseoutResult) int) int {
+	if result == nil {
+		return 0
+	}
+	return extract(result)
 }
 
 // parseCloseoutFlags reads the flag surface from args. The flag set is
@@ -622,24 +630,6 @@ func emitCloseoutLog(env *closeoutEnv, fields map[string]any) {
 	_, _ = fmt.Fprintln(env.Stdout, string(payload))
 }
 
-func closeoutSummaryKey(runID string) string {
-	return fmt.Sprintf("closeout/%s.json", runID)
-}
-
-func errorStrings(errs []error) []string {
-	if len(errs) == 0 {
-		return []string{}
-	}
-	out := make([]string, 0, len(errs))
-	for _, e := range errs {
-		if e == nil {
-			continue
-		}
-		out = append(out, e.Error())
-	}
-	return out
-}
-
 // newCloseoutRunID returns a fresh RFC 4122 v4 UUID using crypto/rand. The
 // closeout CLI prints it on stdout so operators can correlate the audit row,
 // the workflow event, the S3 summary key, and the CloudWatch log lines.
@@ -675,37 +665,6 @@ func (m *multiValueFlag) values() []string {
 		}
 	}
 	return out
-}
-
-// nopCloseoutSTSLookup is the default STS resolver used in production until the
-// apply feature wires a real STS client. Returning an empty identity (not an
-// error) lets the actor fallback chain proceed to $USER → "unknown".
-func nopCloseoutSTSLookup(context.Context) (closeoutSTSIdentity, error) {
-	return closeoutSTSIdentity{}, nil
-}
-
-// notWiredCloseoutBackend is a placeholder used by defaultCloseoutEnv until the
-// apply feature wires a real Postgres-backed backend. SupportsTombstones
-// returns false so the CLI refuses to mutate a database that the scaffold
-// feature cannot fully verify.
-type notWiredCloseoutBackend struct{}
-
-func (notWiredCloseoutBackend) SupportsTombstones(context.Context) (bool, error) {
-	return false, nil
-}
-
-func (notWiredCloseoutBackend) Closeout(context.Context, findings.CloseoutRequest) (*findings.CloseoutResult, error) {
-	return nil, errors.New("closeout backend is not wired in this build")
-}
-
-func (notWiredCloseoutBackend) AfterCloseoutSummary(context.Context, string, string, error) error {
-	return nil
-}
-
-type notWiredCloseoutSummaryWriter struct{}
-
-func (notWiredCloseoutSummaryWriter) PutCloseoutSummary(context.Context, string, string, []byte) error {
-	return errors.New("closeout summary writer is not wired in this build")
 }
 
 const closeoutHelpText = `cerebro closeout selects and bulk-tombstones findings.

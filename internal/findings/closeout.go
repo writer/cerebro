@@ -13,7 +13,16 @@ import (
 	"github.com/writer/cerebro/internal/workflowevents"
 )
 
-const defaultCloseoutBatchSize = 1000
+const (
+	defaultCloseoutBatchSize = 1000
+	// closeoutStaleRunCutoff bounds how long a status='running' closeout_run row
+	// remains protected before TombstoneFindingsBulk treats it as a stale lock
+	// (operator crashed, container killed, etc.) and recycles it on the next run.
+	// CROSS-008 mandates the singleton --apply guard is held at both this CLI
+	// run-row layer and the GitHub Actions concurrency layer; the 1h cutoff makes
+	// the lock self-healing without manual SQL intervention.
+	closeoutStaleRunCutoff = time.Hour
+)
 
 // ErrCloseoutAnotherRunning indicates that a concurrent closeout run was rejected.
 var ErrCloseoutAnotherRunning = errors.New("another closeout run is in flight")
@@ -38,6 +47,23 @@ type CloseoutSelector struct {
 	AnchorURIRegex string        `json:"anchor_uri_regex,omitempty"`
 }
 
+// CloseoutBatchEvent carries per-batch progress emitted by TombstoneFindingsBulk
+// when the caller wires a BatchLogger. CloudWatch consumers (VAL-CLI-010)
+// require one log line per batch with pinned keys.
+type CloseoutBatchEvent struct {
+	RunID      string
+	Actor      string
+	Env        string
+	BatchIndex int
+	BatchSize  int
+}
+
+// CloseoutBatchLogger receives one CloseoutBatchEvent per successfully attempted
+// batch (i.e. each entry recorded in result.BatchSizes). The CLI populates this
+// to emit `closeout.batch` structured log lines so the run boundary is observable
+// in CloudWatch without leaking through the structural-lint err-string ban.
+type CloseoutBatchLogger func(event CloseoutBatchEvent)
+
 // CloseoutRequest carries the inputs for one TombstoneFindingsBulk invocation.
 type CloseoutRequest struct {
 	Selector     CloseoutSelector
@@ -48,9 +74,14 @@ type CloseoutRequest struct {
 	MaxBatchSize int
 	ChangeTicket string
 	Environment  string
+	BatchLogger  CloseoutBatchLogger
 }
 
 // CloseoutResult reports the observable outcome of one TombstoneFindingsBulk invocation.
+//
+// AppliedCount reflects committed candidates only: when a batch fails mid-way
+// the value is the number of rows successfully tombstoned in earlier batches.
+// PerRule mirrors that by counting only candidates that were actually written.
 type CloseoutResult struct {
 	RunID         string
 	Proposed      []*ports.FindingRecord
@@ -58,6 +89,7 @@ type CloseoutResult struct {
 	AppliedCount  int
 	BatchSizes    []int
 	BatchErrors   []error
+	PerRule       []CloseoutPerRuleCount
 }
 
 // TombstoneFindingsBulk runs the bulk tombstone primitive end to end:
@@ -113,14 +145,22 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 	}
 
 	startedAt := time.Now().UTC()
-	insertErr := s.closeoutStore.InsertCloseoutRun(ctx, ports.CloseoutRunInsert{
+	insertRow := ports.CloseoutRunInsert{
 		RunID:        runID,
 		Actor:        actor,
 		ChangeTicket: strings.TrimSpace(req.ChangeTicket),
 		SelectorJSON: selectorJSON,
 		DryRun:       req.DryRun,
 		StartedAt:    startedAt,
-	})
+	}
+	insertErr := s.closeoutStore.InsertCloseoutRun(ctx, insertRow)
+	if insertErr != nil && errors.Is(insertErr, ports.ErrCloseoutRunInFlight) {
+		cutoff := time.Now().UTC().Add(-closeoutStaleRunCutoff)
+		broken, breakErr := s.closeoutStore.BreakStaleRunningCloseoutRuns(ctx, cutoff, "stale closeout_run reclaimed by run "+runID)
+		if breakErr == nil && broken > 0 {
+			insertErr = s.closeoutStore.InsertCloseoutRun(ctx, insertRow)
+		}
+	}
 	if insertErr != nil {
 		if errors.Is(insertErr, ports.ErrCloseoutRunInFlight) {
 			return nil, fmt.Errorf("%w: %s", ErrCloseoutAnotherRunning, insertErr.Error())
@@ -173,14 +213,25 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 	}
 
 	applied := 0
-	for start := 0; start < len(proposed); start += batchSize {
+	perRuleApplied := map[string]int{}
+	for start, batchIndex := 0, 0; start < len(proposed); start, batchIndex = start+batchSize, batchIndex+1 {
 		end := start + batchSize
 		if end > len(proposed) {
 			end = len(proposed)
 		}
 		batch := proposed[start:end]
 		result.BatchSizes = append(result.BatchSizes, len(batch))
+		if req.BatchLogger != nil {
+			req.BatchLogger(CloseoutBatchEvent{
+				RunID:      runID,
+				Actor:      actor,
+				Env:        strings.TrimSpace(req.Environment),
+				BatchIndex: batchIndex,
+				BatchSize:  len(batch),
+			})
+		}
 		if cerr := ctx.Err(); cerr != nil {
+			result.PerRule = sortPerRuleApplied(perRuleApplied)
 			finishBackground("failed", cerr.Error(), applied)
 			result.AppliedCount = applied
 			return result, cerr
@@ -188,14 +239,17 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 		for _, candidate := range batch {
 			if applyErr := s.tombstoneOneFinding(ctx, candidate, runID, actor, reason); applyErr != nil {
 				result.BatchErrors = append(result.BatchErrors, applyErr)
+				result.PerRule = sortPerRuleApplied(perRuleApplied)
 				finishBackground("failed", applyErr.Error(), applied)
 				result.AppliedCount = applied
 				return result, applyErr
 			}
 			applied++
+			perRuleApplied[strings.TrimSpace(candidate.RuleID)]++
 		}
 	}
 	result.AppliedCount = applied
+	result.PerRule = sortPerRuleApplied(perRuleApplied)
 	finishErr := s.closeoutStore.FinishCloseoutRun(context.WithoutCancel(ctx), ports.CloseoutRunFinish{
 		RunID:         runID,
 		Status:        "succeeded",
@@ -399,6 +453,17 @@ func resolveCloseoutSelector(in CloseoutSelector) CloseoutSelector {
 		}
 		out.Sources = sources
 	}
+	return out
+}
+
+func sortPerRuleApplied(counts map[string]int) []CloseoutPerRuleCount {
+	out := make([]CloseoutPerRuleCount, 0, len(counts))
+	for ruleID, applied := range counts {
+		out = append(out, CloseoutPerRuleCount{RuleID: ruleID, Applied: applied})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].RuleID < out[j].RuleID
+	})
 	return out
 }
 

@@ -198,6 +198,91 @@ func (s *Store) InsertFindingTombstoneEvent(ctx context.Context, event ports.Fin
 	return nil
 }
 
+// BreakStaleRunningCloseoutRuns flips any closeout_run rows still marked
+// status='running' with started_at < cutoff to status='failed', records the
+// supplied error_message, and sets finished_at=now(). Returns the number of
+// rows updated. Used by the bulk tombstone primitive to recover from operator
+// crashes without manual intervention (CROSS-008 stale-lock break).
+func (s *Store) BreakStaleRunningCloseoutRuns(ctx context.Context, cutoff time.Time, errMessage string) (int, error) {
+	if s == nil || s.db == nil {
+		return 0, errors.New("postgres is not configured")
+	}
+	if err := s.ensureFindingTables(ctx); err != nil {
+		return 0, err
+	}
+	if cutoff.IsZero() {
+		return 0, nil
+	}
+	result, err := s.db.ExecContext(ctx, `
+        UPDATE closeout_run
+        SET status = 'failed',
+            finished_at = now(),
+            error_message = CASE WHEN $2 = '' THEN error_message ELSE $2 END
+        WHERE status = 'running' AND started_at < $1`,
+		cutoff.UTC(),
+		strings.TrimSpace(errMessage),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("break stale closeout_run rows: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("break stale closeout_run rows rowsAffected: %w", err)
+	}
+	return int(affected), nil
+}
+
+// UpdateCloseoutRunSummary records the S3 audit summary key on a closeout_run
+// row that has already been finished, or flips the row to status='failed' when
+// summaryErr is non-nil so the missing S3 object stays correlatable with the
+// run record. The committed tombstones are unaffected.
+func (s *Store) UpdateCloseoutRunSummary(ctx context.Context, runID, summaryKey string, summaryErr error) error {
+	if s == nil || s.db == nil {
+		return errors.New("postgres is not configured")
+	}
+	if err := s.ensureFindingTables(ctx); err != nil {
+		return err
+	}
+	id := strings.TrimSpace(runID)
+	if id == "" {
+		return errors.New("closeout run id is required")
+	}
+	if summaryErr != nil {
+		result, err := s.db.ExecContext(ctx, `
+            UPDATE closeout_run
+            SET status = 'failed',
+                finished_at = now(),
+                error_message = $2
+            WHERE run_id = $1`,
+			id,
+			summaryErr.Error(),
+		)
+		if err != nil {
+			return fmt.Errorf("mark closeout_run %q failed on summary error: %w", id, err)
+		}
+		affected, _ := result.RowsAffected()
+		if affected == 0 {
+			return fmt.Errorf("closeout_run %q not found", id)
+		}
+		return nil
+	}
+	result, err := s.db.ExecContext(ctx, `
+        UPDATE closeout_run
+        SET s3_summary_key = CASE WHEN $2 = '' THEN s3_summary_key ELSE $2 END
+        WHERE run_id = $1`,
+		id,
+		strings.TrimSpace(summaryKey),
+	)
+	if err != nil {
+		return fmt.Errorf("update closeout_run %q summary key: %w", id, err)
+	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		return fmt.Errorf("closeout_run %q not found", id)
+	}
+	return nil
+}
+
 // CountFindingTombstoneEventsByRun counts audit rows for a given run_id.
 func (s *Store) CountFindingTombstoneEventsByRun(ctx context.Context, runID string) (int, error) {
 	if s == nil || s.db == nil {
