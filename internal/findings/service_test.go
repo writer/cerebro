@@ -231,6 +231,9 @@ func (s *stubFindingStore) UpdateFindingStatus(_ context.Context, request ports.
 	cloned.Status = strings.TrimSpace(request.Status)
 	cloned.StatusReason = strings.TrimSpace(request.Reason)
 	cloned.StatusUpdatedAt = request.UpdatedAt.UTC()
+	if len(request.EventIDs) != 0 {
+		cloned.EventIDs = uniqueTrimmedStringsPreserveOrder(append(append([]string(nil), cloned.EventIDs...), request.EventIDs...))
+	}
 	if request.Tombstone != nil {
 		t := request.Tombstone
 		tombstonedAt := t.TombstonedAt.UTC()
@@ -579,6 +582,148 @@ func (r *emittingRule) Evaluate(_ context.Context, runtime *cerebrov1.SourceRunt
 			LastObservedAt:  observedAt,
 		},
 	}, nil
+}
+
+type counterAnchorRule struct {
+	spec       *cerebrov1.RuleSpec
+	definition RuleDefinition
+	sourceID   string
+}
+
+var _ CounterEventRule = (*counterAnchorRule)(nil)
+
+func newCounterAnchorRule(ruleID string) *counterAnchorRule {
+	definition := RuleDefinition{
+		ID:          strings.TrimSpace(ruleID),
+		Name:        "Counter Anchor Rule",
+		SourceID:    "github",
+		EventKinds:  []string{"github.audit"},
+		OutputKind:  "finding",
+		Severity:    "HIGH",
+		Status:      "active",
+		Maturity:    "experimental",
+		Lifecycle:   Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
+		ControlRefs: []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.6"}},
+	}
+	return &counterAnchorRule{
+		spec:       &cerebrov1.RuleSpec{Id: strings.TrimSpace(ruleID), Name: definition.Name},
+		definition: definition,
+		sourceID:   definition.SourceID,
+	}
+}
+
+func (r *counterAnchorRule) Spec() *cerebrov1.RuleSpec {
+	if r == nil {
+		return nil
+	}
+	return proto.Clone(r.spec).(*cerebrov1.RuleSpec)
+}
+
+func (r *counterAnchorRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool {
+	if r == nil || runtime == nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(runtime.GetSourceId()), strings.TrimSpace(r.sourceID))
+}
+
+func (r *counterAnchorRule) RuleMetadata() RuleDefinition {
+	if r == nil {
+		return RuleDefinition{}
+	}
+	return cloneRuleDefinition(r.definition)
+}
+
+func (r *counterAnchorRule) Evaluate(_ context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
+	if r == nil || runtime == nil || event == nil || strings.TrimSpace(event.GetAttributes()["action"]) != "open" {
+		return nil, nil
+	}
+	anchor := r.OpenAnchor(event.GetAttributes())
+	if anchor == "" {
+		return nil, nil
+	}
+	observedAt := event.GetOccurredAt().AsTime().UTC()
+	findingIDReplacer := strings.NewReplacer("|", "-", "/", "-")
+	findingID := strings.TrimSpace(r.spec.GetId()) + "-" + findingIDReplacer.Replace(anchor)
+	return []*ports.FindingRecord{
+		{
+			ID:              findingID,
+			Fingerprint:     findingID,
+			TenantID:        strings.TrimSpace(event.GetTenantId()),
+			RuntimeID:       strings.TrimSpace(runtime.GetId()),
+			RuleID:          strings.TrimSpace(r.spec.GetId()),
+			Title:           r.spec.GetName(),
+			Severity:        "HIGH",
+			Status:          findingStatusOpen,
+			Summary:         "counter anchor rule open finding",
+			ResourceURNs:    []string{"urn:cerebro:writer:github_repo:" + strings.TrimSpace(event.GetAttributes()["repo"])},
+			EventIDs:        []string{strings.TrimSpace(event.GetId())},
+			ControlRefs:     cloneFindingControlRefs(r.definition.ControlRefs),
+			Attributes:      map[string]string{"repo": strings.TrimSpace(event.GetAttributes()["repo"]), "user": strings.TrimSpace(event.GetAttributes()["user"])},
+			FirstObservedAt: observedAt,
+			LastObservedAt:  observedAt,
+		},
+	}, nil
+}
+
+func (r *counterAnchorRule) OpenAnchor(attributes map[string]string) string {
+	return counterRuleAnchor(attributes)
+}
+
+func (r *counterAnchorRule) CloseOnEvent(event *cerebrov1.EventEnvelope) (string, bool) {
+	if event == nil || strings.TrimSpace(event.GetAttributes()["action"]) != "close" {
+		return "", false
+	}
+	anchor := counterRuleAnchor(event.GetAttributes())
+	return anchor, anchor != ""
+}
+
+type nonCounterAnchorRule struct {
+	spec       *cerebrov1.RuleSpec
+	definition RuleDefinition
+	sourceID   string
+}
+
+func newNonCounterAnchorRule(ruleID string) *nonCounterAnchorRule {
+	counter := newCounterAnchorRule(ruleID)
+	return &nonCounterAnchorRule{
+		spec:       counter.spec,
+		definition: counter.definition,
+		sourceID:   counter.sourceID,
+	}
+}
+
+func (r *nonCounterAnchorRule) Spec() *cerebrov1.RuleSpec {
+	if r == nil {
+		return nil
+	}
+	return proto.Clone(r.spec).(*cerebrov1.RuleSpec)
+}
+
+func (r *nonCounterAnchorRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool {
+	if r == nil || runtime == nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(runtime.GetSourceId()), strings.TrimSpace(r.sourceID))
+}
+
+func (r *nonCounterAnchorRule) RuleMetadata() RuleDefinition {
+	if r == nil {
+		return RuleDefinition{}
+	}
+	return cloneRuleDefinition(r.definition)
+}
+
+func (r *nonCounterAnchorRule) Evaluate(_ context.Context, _ *cerebrov1.SourceRuntime, _ *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
+	return nil, nil
+}
+
+func counterRuleAnchor(attributes map[string]string) string {
+	repo := strings.TrimSpace(attributes["repo"])
+	user := strings.TrimSpace(attributes["user"])
+	if repo == "" || user == "" {
+		return ""
+	}
+	return repo + "|" + user
 }
 
 type failingRule struct {
@@ -1118,6 +1263,219 @@ func TestEvaluateSourceRuntimeRetiredRuleResolvesOpenFindingsOutsideReplayWindow
 	}
 	if got := resolved.StatusReason; got != workflowevents.FindingStatusReasonNoLongerEmitted {
 		t.Fatalf("retired finding status reason = %q, want %q", got, workflowevents.FindingStatusReasonNoLongerEmitted)
+	}
+}
+
+func TestCounterEventRule_AnchorClose(t *testing.T) {
+	rule := newCounterAnchorRule("counter-anchor-rule")
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	openedAt := time.Date(2026, 5, 7, 19, 54, 0, 0, time.UTC)
+	staleFinding := &ports.FindingRecord{
+		ID:              "counter-anchor-rule-writer-cerebro-alice",
+		Fingerprint:     "counter-anchor-rule-writer-cerebro-alice",
+		TenantID:        "writer",
+		RuntimeID:       "example-github-audit",
+		RuleID:          "counter-anchor-rule",
+		Title:           "Counter Anchor Rule",
+		Severity:        "HIGH",
+		Status:          findingStatusOpen,
+		Summary:         "repository collaborator remained risky",
+		ResourceURNs:    []string{"urn:cerebro:writer:github_repo:writer/cerebro"},
+		EventIDs:        []string{"github-open-event"},
+		Attributes:      map[string]string{"repo": "writer/cerebro", "user": "alice"},
+		FirstObservedAt: openedAt,
+		LastObservedAt:  openedAt,
+	}
+	tombstonedFinding := cloneFinding(staleFinding)
+	tombstonedFinding.ID = "counter-anchor-rule-tombstoned"
+	tombstonedFinding.Fingerprint = "counter-anchor-rule-tombstoned"
+	tombstonedFinding.Tombstoned = true
+	tombstonedFinding.TombstonedAt = openedAt.Add(time.Hour)
+	tombstonedFinding.EventIDs = []string{"github-open-tombstoned-event"}
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{
+		staleFinding.ID:      cloneFinding(staleFinding),
+		tombstonedFinding.ID: cloneFinding(tombstonedFinding),
+	}}
+	appendLog := &recordingAppendLog{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"example-github-audit": {Id: "example-github-audit", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}},
+		}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{{
+			Id:       "github-open-same-run",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.audit",
+			Attributes: map[string]string{
+				"action": "open",
+				"repo":   "writer/cerebro",
+				"user":   "bob",
+			},
+			OccurredAt: timestamppb.New(openedAt.Add(23 * time.Hour)),
+		}, {
+			Id:       "github-counter-event",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.audit",
+			Attributes: map[string]string{
+				"action": "close",
+				"repo":   "writer/cerebro",
+				"user":   "alice",
+			},
+			OccurredAt: timestamppb.New(openedAt.Add(24 * time.Hour)),
+		}, {
+			Id:       "github-counter-same-run",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.audit",
+			Attributes: map[string]string{
+				"action": "close",
+				"repo":   "writer/cerebro",
+				"user":   "bob",
+			},
+			OccurredAt: timestamppb.New(openedAt.Add(25 * time.Hour)),
+		}}},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	).WithGraphStore(&stubGraphStore{}).WithAppendLog(appendLog)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "example-github-audit",
+		RuleID:    "counter-anchor-rule",
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if got := len(result.Findings); got != 1 {
+		t.Fatalf("len(Findings) = %d, want 1 same-run open finding before counter close", got)
+	}
+	resolved := store.findings[staleFinding.ID]
+	if got := resolved.Status; got != findingStatusResolved {
+		t.Fatalf("counter-event finding status = %q, want %q", got, findingStatusResolved)
+	}
+	if got := resolved.StatusReason; got != workflowevents.FindingStatusReasonClosedByCounterEvent {
+		t.Fatalf("counter-event finding status reason = %q, want %q", got, workflowevents.FindingStatusReasonClosedByCounterEvent)
+	}
+	if !containsTrimmed(resolved.EventIDs, "github-open-event") || !containsTrimmed(resolved.EventIDs, "github-counter-event") {
+		t.Fatalf("counter-event finding EventIDs = %#v, want original and counter event IDs", resolved.EventIDs)
+	}
+	sameRun := store.findings["counter-anchor-rule-writer-cerebro-bob"]
+	if sameRun == nil {
+		t.Fatal("same-run emitted finding was not persisted")
+	}
+	if got := sameRun.Status; got != findingStatusResolved {
+		t.Fatalf("same-run counter-event finding status = %q, want %q", got, findingStatusResolved)
+	}
+	if got := sameRun.StatusReason; got != workflowevents.FindingStatusReasonClosedByCounterEvent {
+		t.Fatalf("same-run counter-event finding status reason = %q, want %q", got, workflowevents.FindingStatusReasonClosedByCounterEvent)
+	}
+	if !containsTrimmed(sameRun.EventIDs, "github-open-same-run") || !containsTrimmed(sameRun.EventIDs, "github-counter-same-run") {
+		t.Fatalf("same-run counter-event finding EventIDs = %#v, want original and counter event IDs", sameRun.EventIDs)
+	}
+	tombstoned := store.findings[tombstonedFinding.ID]
+	if got := tombstoned.Status; got != findingStatusOpen {
+		t.Fatalf("tombstoned matching finding status = %q, want open", got)
+	}
+	if containsTrimmed(tombstoned.EventIDs, "github-counter-event") {
+		t.Fatalf("tombstoned matching finding EventIDs = %#v, want no counter event evidence", tombstoned.EventIDs)
+	}
+	statusEvent := findStatusChangedPayload(t, appendLog.events, staleFinding.ID)
+	if got := statusEvent.Reason; got != workflowevents.FindingStatusReasonClosedByCounterEvent {
+		t.Fatalf("workflow status reason = %q, want %q", got, workflowevents.FindingStatusReasonClosedByCounterEvent)
+	}
+	if got := statusEvent.Source; got != workflowevents.FindingStatusSourceStaleEvaluation {
+		t.Fatalf("workflow status source = %q, want %q", got, workflowevents.FindingStatusSourceStaleEvaluation)
+	}
+	if !containsTrimmed(statusEvent.Finding.EventIDs, "github-counter-event") {
+		t.Fatalf("workflow finding event_ids = %#v, want counter event evidence", statusEvent.Finding.EventIDs)
+	}
+	sameRunStatusEvent := findStatusChangedPayload(t, appendLog.events, sameRun.ID)
+	if !containsTrimmed(sameRunStatusEvent.Finding.EventIDs, "github-counter-same-run") {
+		t.Fatalf("same-run workflow finding event_ids = %#v, want counter event evidence", sameRunStatusEvent.Finding.EventIDs)
+	}
+}
+
+func TestCounterEventRule_NonImplementingUnaffected(t *testing.T) {
+	rule := newNonCounterAnchorRule("non-counter-anchor-rule")
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	openedAt := time.Date(2026, 5, 7, 19, 54, 0, 0, time.UTC)
+	staleFinding := &ports.FindingRecord{
+		ID:              "non-counter-anchor-rule-writer-cerebro-alice",
+		Fingerprint:     "non-counter-anchor-rule-writer-cerebro-alice",
+		TenantID:        "writer",
+		RuntimeID:       "example-github-audit",
+		RuleID:          "non-counter-anchor-rule",
+		Title:           "Non-Counter Anchor Rule",
+		Severity:        "HIGH",
+		Status:          findingStatusOpen,
+		Summary:         "repository collaborator remained risky",
+		ResourceURNs:    []string{"urn:cerebro:writer:github_repo:writer/cerebro"},
+		EventIDs:        []string{"github-open-event"},
+		Attributes:      map[string]string{"repo": "writer/cerebro", "user": "alice"},
+		FirstObservedAt: openedAt,
+		LastObservedAt:  openedAt,
+	}
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{
+		staleFinding.ID: cloneFinding(staleFinding),
+	}}
+	appendLog := &recordingAppendLog{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"example-github-audit": {Id: "example-github-audit", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}},
+		}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{{
+			Id:       "github-counter-event",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.audit",
+			Attributes: map[string]string{
+				"action": "close",
+				"repo":   "writer/cerebro",
+				"user":   "alice",
+			},
+			OccurredAt: timestamppb.New(openedAt.Add(24 * time.Hour)),
+		}}},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	).WithGraphStore(&stubGraphStore{}).WithAppendLog(appendLog)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "example-github-audit",
+		RuleID:    "non-counter-anchor-rule",
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if got := len(result.Findings); got != 0 {
+		t.Fatalf("len(Findings) = %d, want 0", got)
+	}
+	unchanged := store.findings[staleFinding.ID]
+	if got := unchanged.Status; got != findingStatusOpen {
+		t.Fatalf("non-counter finding status = %q, want %q", got, findingStatusOpen)
+	}
+	if unchanged.StatusReason != "" {
+		t.Fatalf("non-counter finding status reason = %q, want empty", unchanged.StatusReason)
+	}
+	if containsTrimmed(unchanged.EventIDs, "github-counter-event") {
+		t.Fatalf("non-counter finding EventIDs = %#v, want no counter event evidence", unchanged.EventIDs)
+	}
+	if store.updateStatusCallCount != 0 {
+		t.Fatalf("UpdateFindingStatus calls = %d, want 0", store.updateStatusCallCount)
+	}
+	if len(appendLog.events) != 0 {
+		t.Fatalf("append log events = %d, want 0", len(appendLog.events))
 	}
 }
 
@@ -4016,6 +4374,24 @@ func containsTrimmed(values []string, expected string) bool {
 		}
 	}
 	return false
+}
+
+func findStatusChangedPayload(t *testing.T, events []*cerebrov1.EventEnvelope, findingID string) *workflowevents.FindingStatusChanged {
+	t.Helper()
+	for _, event := range events {
+		if event.GetKind() != workflowevents.EventKindFindingStatusChanged {
+			continue
+		}
+		payload, err := workflowevents.DecodeFindingStatusChanged(event)
+		if err != nil {
+			t.Fatalf("DecodeFindingStatusChanged(%q): %v", event.GetId(), err)
+		}
+		if strings.TrimSpace(payload.Finding.FindingID) == strings.TrimSpace(findingID) {
+			return payload
+		}
+	}
+	t.Fatalf("workflow status changed event for finding %q not found in %d events", findingID, len(events))
+	return nil
 }
 
 func claimMatches(request ports.ListClaimsRequest, claim *ports.ClaimRecord) bool {

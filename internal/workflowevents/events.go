@@ -34,9 +34,10 @@ const (
 )
 
 const (
-	FindingStatusReasonNoLongerEmitted = "No longer emitted by latest rule evaluation."
-	FindingStatusSourceManual          = "manual"
-	FindingStatusSourceStaleEvaluation = "stale_rule_evaluation"
+	FindingStatusReasonNoLongerEmitted      = "No longer emitted by latest rule evaluation."
+	FindingStatusReasonClosedByCounterEvent = "closed_by_counter_event"
+	FindingStatusSourceManual               = "manual"
+	FindingStatusSourceStaleEvaluation      = "stale_rule_evaluation"
 )
 
 const (

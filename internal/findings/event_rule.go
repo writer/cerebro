@@ -16,6 +16,15 @@ type eventRuleMatcher func(*cerebrov1.EventEnvelope) bool
 
 type eventRuleBuilder func(context.Context, *cerebrov1.SourceRuntime, *cerebrov1.EventEnvelope) (*ports.FindingRecord, error)
 
+type Event = *cerebrov1.EventEnvelope
+
+// CounterEventRule lets durable-state rules opt into remediation/counter-event
+// closure for persisted findings whose original open event is not replayed again.
+type CounterEventRule interface {
+	OpenAnchor(attributes map[string]string) string
+	CloseOnEvent(event Event) (anchor string, closes bool)
+}
+
 type RuleDefinition struct {
 	ID                 string
 	Name               string

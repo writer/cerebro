@@ -625,6 +625,10 @@ func (s *Store) UpdateFindingStatus(ctx context.Context, request ports.FindingSt
 	if updatedAt.IsZero() {
 		updatedAt = time.Now().UTC()
 	}
+	eventIDsJSON, err := findingStringsJSON(request.EventIDs)
+	if err != nil {
+		return nil, fmt.Errorf("marshal finding status event ids: %w", err)
+	}
 	if request.Tombstone != nil {
 		t := request.Tombstone
 		tombstonedAt := t.TombstonedAt.UTC()
@@ -643,6 +647,17 @@ SET status = $2,
     tombstoned_reason = $7,
     tombstoned_run_id = $8,
     prior_status = $9,
+    event_ids_json = CASE
+      WHEN jsonb_array_length($10::jsonb) = 0 THEN event_ids_json
+      ELSE (
+        SELECT COALESCE(jsonb_agg(event_id ORDER BY event_id), '[]'::jsonb)
+        FROM (
+          SELECT DISTINCT btrim(value) AS event_id
+          FROM jsonb_array_elements_text(COALESCE(findings.event_ids_json, '[]'::jsonb) || $10::jsonb) AS merged(value)
+          WHERE btrim(value) <> ''
+        ) AS unique_event_ids
+      )
+    END,
     updated_at = NOW()
 WHERE id = $1
 RETURNING `+findingSelectColumns,
@@ -655,6 +670,7 @@ RETURNING `+findingSelectColumns,
 			strings.TrimSpace(t.Reason),
 			strings.TrimSpace(t.RunID),
 			strings.TrimSpace(t.PriorStatus),
+			eventIDsJSON,
 		), &row); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return nil, ports.ErrFindingNotFound
@@ -666,13 +682,28 @@ RETURNING `+findingSelectColumns,
 	var row findingRow
 	if err := scanFindingRow(s.db.QueryRowContext(ctx, `
 UPDATE findings
-SET status = $2, status_reason = $3, status_updated_at = $4, updated_at = NOW()
+SET status = $2,
+    status_reason = $3,
+    status_updated_at = $4,
+    event_ids_json = CASE
+      WHEN jsonb_array_length($5::jsonb) = 0 THEN event_ids_json
+      ELSE (
+        SELECT COALESCE(jsonb_agg(event_id ORDER BY event_id), '[]'::jsonb)
+        FROM (
+          SELECT DISTINCT btrim(value) AS event_id
+          FROM jsonb_array_elements_text(COALESCE(findings.event_ids_json, '[]'::jsonb) || $5::jsonb) AS merged(value)
+          WHERE btrim(value) <> ''
+        ) AS unique_event_ids
+      )
+    END,
+    updated_at = NOW()
 WHERE id = $1
 RETURNING `+findingSelectColumns,
 		findingID,
 		status,
 		statusReason,
 		updatedAt,
+		eventIDsJSON,
 	), &row); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ports.ErrFindingNotFound

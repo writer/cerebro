@@ -363,7 +363,7 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 			}
 		}
 	}
-	if err := s.resolveRuleOpenFindings(ctx, runtime, rule, evaluatedEventIDs, emittedFindingIDs); err != nil {
+	if err := s.resolveRuleOpenFindings(ctx, runtime, rule, events, evaluatedEventIDs, emittedFindingIDs); err != nil {
 		evaluationErr := fmt.Errorf("resolve stale findings for rule %q: %w", result.Rule.GetId(), err)
 		return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, eventsMatched, findingIDs(result.Findings), evaluationErr)
 	}
@@ -499,7 +499,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 		if state.failed {
 			continue
 		}
-		if err := s.resolveRuleOpenFindings(ctx, runtime, state.rule, evaluatedEventIDs, state.emittedFindingIDs); err != nil {
+		if err := s.resolveRuleOpenFindings(ctx, runtime, state.rule, events, evaluatedEventIDs, state.emittedFindingIDs); err != nil {
 			evaluationErr := fmt.Errorf("resolve stale findings for rule %q: %w", state.result.Rule.GetId(), err)
 			return nil, s.markRuleEvaluationsFailed(ctx, unfinishedRuleEvaluations(states, state), evaluationErr)
 		}
@@ -633,7 +633,74 @@ func (s *Service) resolveStaleOpenFindings(ctx context.Context, tenantID string,
 	return nil
 }
 
-func (s *Service) resolveRuleOpenFindings(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule Rule, evaluatedEventIDs map[string]struct{}, emittedFindingIDs map[string]struct{}) error {
+func (s *Service) resolveCounterEventOpenFindings(ctx context.Context, tenantID string, runtimeID string, ruleID string, counterRule CounterEventRule, evaluatedEvents []*cerebrov1.EventEnvelope) error {
+	if counterRule == nil || len(evaluatedEvents) == 0 {
+		return nil
+	}
+	eventIDsByAnchor := make(map[string][]string)
+	for _, event := range evaluatedEvents {
+		if event == nil {
+			continue
+		}
+		anchor, closes := counterRule.CloseOnEvent(event)
+		anchor = strings.TrimSpace(anchor)
+		if !closes || anchor == "" {
+			continue
+		}
+		eventID := strings.TrimSpace(event.GetId())
+		if eventID == "" {
+			if _, ok := eventIDsByAnchor[anchor]; !ok {
+				eventIDsByAnchor[anchor] = nil
+			}
+			continue
+		}
+		eventIDsByAnchor[anchor] = append(eventIDsByAnchor[anchor], eventID)
+	}
+	if len(eventIDsByAnchor) == 0 {
+		return nil
+	}
+	findings, err := s.store.ListFindings(ctx, ports.ListFindingsRequest{
+		TenantID:  strings.TrimSpace(tenantID),
+		RuntimeID: strings.TrimSpace(runtimeID),
+		RuleID:    strings.TrimSpace(ruleID),
+		Status:    findingStatusOpen,
+	})
+	if err != nil {
+		return fmt.Errorf("list counter-event candidates for rule %q: %w", strings.TrimSpace(ruleID), err)
+	}
+	for _, finding := range findings {
+		if finding == nil {
+			continue
+		}
+		if finding.Tombstoned {
+			continue
+		}
+		openAnchor := strings.TrimSpace(counterRule.OpenAnchor(finding.Attributes))
+		if openAnchor == "" {
+			continue
+		}
+		counterEventIDs, closes := eventIDsByAnchor[openAnchor]
+		if !closes {
+			continue
+		}
+		updated, err := s.updateFindingStatusAndRisk(ctx, ports.FindingStatusUpdate{
+			FindingID: strings.TrimSpace(finding.ID),
+			Status:    findingStatusResolved,
+			Reason:    workflowevents.FindingStatusReasonClosedByCounterEvent,
+			UpdatedAt: time.Now().UTC(),
+			EventIDs:  uniqueTrimmedStringsPreserveOrder(counterEventIDs),
+		})
+		if err != nil {
+			return fmt.Errorf("resolve counter-event finding %q: %w", strings.TrimSpace(finding.ID), err)
+		}
+		if err := s.recordFindingStatusWorkflow(ctx, updated, workflowevents.FindingStatusSourceStaleEvaluation); err != nil {
+			return fmt.Errorf("project counter-event finding %q resolution: %w", strings.TrimSpace(finding.ID), err)
+		}
+	}
+	return nil
+}
+
+func (s *Service) resolveRuleOpenFindings(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule Rule, evaluatedEvents []*cerebrov1.EventEnvelope, evaluatedEventIDs map[string]struct{}, emittedFindingIDs map[string]struct{}) error {
 	if runtime == nil || rule == nil {
 		return nil
 	}
@@ -647,9 +714,30 @@ func (s *Service) resolveRuleOpenFindings(ctx context.Context, runtime *cerebrov
 		return s.resolveRetiredOpenFindings(ctx, tenantID, runtimeID, ruleID, emittedFindingIDs)
 	}
 	if rule.SupportsRuntime(runtime) {
+		if counterRule, ok := durableStateCounterEventRule(rule); ok {
+			if err := s.resolveCounterEventOpenFindings(ctx, tenantID, runtimeID, ruleID, counterRule, evaluatedEvents); err != nil {
+				return err
+			}
+		}
 		return s.resolveStaleOpenFindings(ctx, tenantID, runtimeID, ruleID, evaluatedEventIDs, emittedFindingIDs)
 	}
 	return s.resolveAllOpenFindingsForRule(ctx, tenantID, runtimeID, ruleID)
+}
+
+func durableStateCounterEventRule(rule Rule) (CounterEventRule, bool) {
+	counterRule, ok := rule.(CounterEventRule)
+	if !ok {
+		return nil, false
+	}
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		return nil, false
+	}
+	lifecycleKind := LifecycleKind(strings.TrimSpace(string(metadataRule.RuleMetadata().Lifecycle.Kind)))
+	if lifecycleKind != LifecycleDurableState {
+		return nil, false
+	}
+	return counterRule, true
 }
 
 func isTTLEvidenceRule(rule Rule) bool {

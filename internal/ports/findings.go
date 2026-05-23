@@ -239,6 +239,7 @@ type FindingStatusUpdate struct {
 	Status    string
 	Reason    string
 	UpdatedAt time.Time
+	EventIDs  []string
 	Tombstone *FindingTombstoneApply
 }
 
