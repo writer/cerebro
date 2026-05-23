@@ -28,6 +28,10 @@
 
 ## Finding Rule Design Notes
 
+- Cerebro should turn source/runtime evidence into a security knowledge graph plus durable, prioritized findings that explain the risky condition, affected asset/identity/control, why it matters, and the evidence or graph path supporting it.
+- Valuable findings are current, graph-anchored, actionable, and risk-composed. Good examples include public exposure reaching a privileged principal, active endpoint infection, missing GRC ownership for a privileged identity, secret exposure tied to a repo or identity, and identity drift connected to offboarding or control failure.
+- Non-valuable findings are raw temporal events promoted directly into findings without durable risk semantics. Avoid noisy findings for isolated token creation, policy edits, collaborator additions, old backfill records, or high-volume historical audit events unless they correlate into a current risky state with a clear remediation path.
+- Findings should not remain open merely because an event happened once. Prefer current-state checks, graph correlation, stale-finding resolution, suppression, or evidence-only projection when the condition is no longer active or not independently actionable.
 - Model findings as remediable control gaps or durable risk states, not as a one-to-one mirror of upstream alerts. Source-native alerts and threats should usually become evidence and graph context.
 - SentinelOne threat records are evidence. Prefer endpoint-, configuration-, or control-change findings such as active endpoint infection, failed mitigation, stale/offline agents, detect-only protection, risky exclusions, and protection control tampering.
 - Fingerprint SentinelOne endpoint posture findings by the affected agent/control, not by individual threat IDs, so repeated threats layer as evidence under one actionable finding.
