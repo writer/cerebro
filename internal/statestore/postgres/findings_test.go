@@ -687,7 +687,7 @@ func TestUpsertFinding_PreservesSuppressedOnOpenEmit(t *testing.T) {
 	)
 	if err := store.db.QueryRowContext(ctx,
 		`SELECT status, status_reason, status_updated_at, assignee, tombstoned FROM findings WHERE id = $1`, baseID,
-	).Scan(&afterStatus, &afterReason, &afterAssignee, &afterUpdatedAt, &afterTombstoned); err != nil {
+	).Scan(&afterStatus, &afterReason, &afterUpdatedAt, &afterAssignee, &afterTombstoned); err != nil {
 		t.Fatalf("snapshot after: %v", err)
 	}
 
