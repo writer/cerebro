@@ -165,6 +165,7 @@ jobs:
         id: contract
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           IMAGE_TAG: ${{ steps.image.outputs.tag }}
           STACK_NAME: ${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'go-prod' }}
           COSIGN_EXPERIMENTAL: "true"
