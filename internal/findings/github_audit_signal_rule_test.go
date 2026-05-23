@@ -955,7 +955,7 @@ func TestGitHubCodeSecurityControlsDisabled(t *testing.T) {
 	if definition.Lifecycle.Anchor != AnchorGraphAnchored {
 		t.Fatalf("Lifecycle.Anchor = %q, want %q", definition.Lifecycle.Anchor, AnchorGraphAnchored)
 	}
-	wantFields := []string{"repo"}
+	wantFields := []string{"repo", "org"}
 	if !cloudStringSlicesEqual(definition.FingerprintFields, wantFields) {
 		t.Fatalf("FingerprintFields = %v, want %v", definition.FingerprintFields, wantFields)
 	}
@@ -1021,6 +1021,26 @@ func TestGitHubCodeSecurityControlsDisabled(t *testing.T) {
 	if len(records) != 0 {
 		t.Fatalf("Evaluate(restored) returned %d findings, want 0 once all code security controls are enabled", len(records))
 	}
+
+	orgDisabled := githubAuditEvent("github-org-code-security-disabled", map[string]string{
+		"action":                    "org.advanced_security_disabled_on_all_repos",
+		"advanced_security_enabled": "false",
+		"org":                       "example",
+		"resource_id":               "example",
+		"resource_type":             "org",
+		"scope":                     "organization",
+	})
+	records, err = rule.Evaluate(context.Background(), runtime, orgDisabled)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(orgDisabled) = (%v, %v), want one org-anchored finding", records, err)
+	}
+	orgFinding := records[0]
+	if got := orgFinding.Attributes["primary_resource_urn"]; got != "urn:cerebro:writer:github_org:example" {
+		t.Fatalf("org primary_resource_urn = %q, want github org anchor", got)
+	}
+	if orgFinding.Fingerprint == firstFinding.Fingerprint {
+		t.Fatalf("org-scope fingerprint = repo-scope fingerprint %q, want distinct anchors", orgFinding.Fingerprint)
+	}
 }
 
 func TestGitHubCodeSecurityControlsDisabledTrajectory_DisableEnable(t *testing.T) {
@@ -1051,6 +1071,93 @@ func TestGitHubCodeSecurityControlsDisabledTrajectory_DisableEnable(t *testing.T
 			"secret_scanning_push_protection_enabled": "true",
 		}),
 	}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+}
+
+func TestGitHubCodeSecurityControlsDisabledTrajectory_OrgScopeDisableEnable(t *testing.T) {
+	rule := newGitHubCodeSecurityControlsDisabledRule()
+	counterRule, ok := rule.(CounterEventRule)
+	if !ok {
+		t.Fatal("github-code-security-controls-disabled does not implement CounterEventRule")
+	}
+	restored := newGitHubAuditSignalEvent("github-org-code-security-trajectory-restored", map[string]string{
+		"action":                                  "org.advanced_security_enabled_on_all_repos",
+		"advanced_security_enabled":               "true",
+		"code_security_enabled":                   "true",
+		"dependabot_alerts_enabled":               "true",
+		"dependabot_security_updates_enabled":     "true",
+		"org":                                     "writer",
+		"repository_secret_scanning_enabled":      "true",
+		"repository_vulnerability_alerts_enabled": "true",
+		"resource_id":                             "writer",
+		"resource_type":                           "org",
+		"scope":                                   "organization",
+		"secret_scanning_push_protection_enabled": "true",
+	})
+	if anchor, closes := counterRule.CloseOnEvent(restored); !closes || anchor != "org=writer" {
+		t.Fatalf("CloseOnEvent(org restored) = (%q, %v), want (org=writer, true)", anchor, closes)
+	}
+	assertGitHubRuleTrajectory(t, rule, []Event{
+		newGitHubAuditSignalEvent("github-org-code-security-trajectory-disabled", map[string]string{
+			"action":                    "org.advanced_security_disabled_on_all_repos",
+			"advanced_security_enabled": "false",
+			"org":                       "writer",
+			"resource_id":               "writer",
+			"resource_type":             "org",
+			"scope":                     "organization",
+		}),
+		restored,
+	}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+}
+
+func TestGitHubCodeSecurityControlsDisabledScopeRequiredAttributes(t *testing.T) {
+	rule := newGitHubCodeSecurityControlsDisabledRule()
+	runtime := &cerebrov1.SourceRuntime{Id: "github-runtime", SourceId: "github", TenantId: "writer"}
+	for _, tc := range []struct {
+		name  string
+		attrs map[string]string
+	}{
+		{
+			name: "repo scope requires repo",
+			attrs: map[string]string{
+				"action": "repository_vulnerability_alerts.disable",
+				"org":    "writer",
+				"repository_vulnerability_alerts_enabled": "false",
+				"resource_id":   "writer/cerebro",
+				"resource_type": "repository",
+				"scope":         "repository",
+			},
+		},
+		{
+			name: "repo shaped resource id requires repo",
+			attrs: map[string]string{
+				"action": "repository_vulnerability_alerts.disable",
+				"org":    "writer",
+				"repository_vulnerability_alerts_enabled": "false",
+				"resource_id":   "writer/cerebro",
+				"resource_type": "repository",
+			},
+		},
+		{
+			name: "org scope requires org",
+			attrs: map[string]string{
+				"action":                    "org.advanced_security_disabled_on_all_repos",
+				"advanced_security_enabled": "false",
+				"resource_id":               "writer",
+				"resource_type":             "org",
+				"scope":                     "organization",
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			records, err := rule.Evaluate(context.Background(), runtime, githubAuditEvent("github-code-security-"+strings.ReplaceAll(tc.name, " ", "-"), cloneGitHubTestAttrs(tc.attrs)))
+			if err != nil {
+				t.Fatalf("Evaluate(%s) error = %v", tc.name, err)
+			}
+			if len(records) != 0 {
+				t.Fatalf("Evaluate(%s) returned %d findings, want 0 when the scope anchor attribute is missing", tc.name, len(records))
+			}
+		})
+	}
 }
 
 func TestGitHubCodeSecurityControlsDisabledTrajectory_PartialRestoreKeepsFindingOpen(t *testing.T) {

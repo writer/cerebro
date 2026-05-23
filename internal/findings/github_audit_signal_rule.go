@@ -280,23 +280,22 @@ var githubOrganizationOwnerAddedDefinition = RuleDefinition{
 }
 
 var githubCodeSecurityControlsDisabledDefinition = RuleDefinition{
-	ID:                 githubCodeSecurityControlsDisabledRuleID,
-	Name:               "GitHub Code Security Controls Disabled",
-	Description:        "Detect GitHub audit events where Dependabot, vulnerability alerts, secret scanning, or GitHub Advanced Security controls are disabled.",
-	SourceID:           "github",
-	EventKinds:         []string{"github.audit"},
-	OutputKind:         "finding.github_code_security_controls_disabled",
-	Severity:           "HIGH",
-	Status:             findingStatusOpen,
-	Maturity:           "test",
-	Tags:               []string{"github", "advanced-security", "dependabot", "secret-scanning", "defense-evasion", "supply-chain", "attack.t1562"},
-	References:         []string{"https://docs.github.com/en/code-security/getting-started/github-security-features", "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_advanced_security_change.yml", "https://github.com/SigmaHQ/sigma/blob/master/rules/application/github/audit/github_disabled_outdated_dependency_or_vulnerability.yml"},
-	FalsePositives:     []string{"Approved security control migration or temporary configuration rollback by authorized administrators."},
-	Runbook:            "Confirm authorization, re-enable code security controls, review package and secret exposure during the disabled window, and inspect adjacent repository changes by the actor.",
-	RequiredAttributes: []string{"repo"},
-	FingerprintFields:  []string{"repo"},
-	ControlRefs:        githubAuditControlRefs,
-	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
+	ID:                githubCodeSecurityControlsDisabledRuleID,
+	Name:              "GitHub Code Security Controls Disabled",
+	Description:       "Detect GitHub audit events where Dependabot, vulnerability alerts, secret scanning, or GitHub Advanced Security controls are disabled.",
+	SourceID:          "github",
+	EventKinds:        []string{"github.audit"},
+	OutputKind:        "finding.github_code_security_controls_disabled",
+	Severity:          "HIGH",
+	Status:            findingStatusOpen,
+	Maturity:          "test",
+	Tags:              []string{"github", "advanced-security", "dependabot", "secret-scanning", "defense-evasion", "supply-chain", "attack.t1562"},
+	References:        []string{"https://docs.github.com/en/code-security/getting-started/github-security-features", "https://github.com/panther-labs/panther-analysis/blob/develop/rules/github_rules/github_advanced_security_change.yml", "https://github.com/SigmaHQ/sigma/blob/master/rules/application/github/audit/github_disabled_outdated_dependency_or_vulnerability.yml"},
+	FalsePositives:    []string{"Approved security control migration or temporary configuration rollback by authorized administrators."},
+	Runbook:           "Confirm authorization, re-enable code security controls, review package and secret exposure during the disabled window, and inspect adjacent repository changes by the actor.",
+	FingerprintFields: []string{"repo", "org"},
+	ControlRefs:       githubAuditControlRefs,
+	Lifecycle:         Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 }
 
 var githubOrgAuthControlModifiedDefinition = RuleDefinition{
@@ -544,9 +543,19 @@ var githubCodeSecurityControlSeverities = map[string]string{
 }
 
 var githubCodeSecurityControlsDisabledConfig = githubAuditSignalConfig{
-	definition:        githubCodeSecurityControlsDisabledDefinition,
-	predicate:         githubCodeSecurityControlsPostureDisabled,
-	primaryEntityType: func(map[string]string) string { return "github.repo" },
+	definition:  githubCodeSecurityControlsDisabledDefinition,
+	predicate:   githubCodeSecurityControlsPostureDisabledAtScopedAnchor,
+	fingerprint: githubCodeSecurityControlsFingerprintInputs,
+	primaryEntityType: func(attributes map[string]string) string {
+		scope, _ := githubCodeSecurityControlsScope(attributes)
+		if scope == "org" {
+			return "github.org"
+		}
+		if scope == "repo" {
+			return "github.repo"
+		}
+		return ""
+	},
 	severity: func(attributes map[string]string) string {
 		return firstNonEmpty(githubCodeSecurityControlSeverities[strings.TrimSpace(attributes["action"])], "HIGH")
 	},
@@ -712,7 +721,7 @@ func newGitHubOrganizationOwnerAddedRule() Rule {
 }
 
 func newGitHubCodeSecurityControlsDisabledRule() Rule {
-	return newGitHubAggregateAuditCounterEventRule(githubCodeSecurityControlsDisabledConfig, githubRepositoryPostureAnchor, githubCodeSecurityControlsCloseAnchor, githubCodeSecurityControlsCounterEventStates)
+	return newGitHubAggregateAuditCounterEventRule(githubCodeSecurityControlsDisabledConfig, githubCodeSecurityControlsAnchor, githubCodeSecurityControlsCloseAnchor, githubCodeSecurityControlsCounterEventStates)
 }
 
 func newGitHubOrgAuthControlModifiedRule() Rule {
@@ -1260,17 +1269,6 @@ func githubSelfHostedRunnerEphemeralConversion(attributes map[string]string) boo
 		findingAttributeBool(attributes, "runner_ephemeral", "ephemeral", "is_ephemeral")
 }
 
-func githubRepositoryPostureAnchor(attributes map[string]string) string {
-	repo := strings.TrimSpace(firstNonEmpty(attributes["repo"], attributes["repository"]))
-	if repo == "" {
-		resourceID := strings.TrimSpace(attributes["resource_id"])
-		if strings.Contains(resourceID, "/") {
-			repo = resourceID
-		}
-	}
-	return githubCounterEventAnchor(map[string]string{"repo": repo}, "repo")
-}
-
 func githubOrgPostureAnchor(attributes map[string]string) string {
 	org := strings.TrimSpace(firstNonEmpty(attributes["org"], attributes["organization"]))
 	if org == "" {
@@ -1282,12 +1280,63 @@ func githubOrgPostureAnchor(attributes map[string]string) string {
 	return githubCounterEventAnchor(map[string]string{"org": org}, "org")
 }
 
+func githubCodeSecurityControlsAnchor(attributes map[string]string) string {
+	scope, scopeID := githubCodeSecurityControlsScope(attributes)
+	if scope == "" || scopeID == "" {
+		return ""
+	}
+	return githubCounterEventAnchor(map[string]string{scope: scopeID}, scope)
+}
+
+func githubCodeSecurityControlsFingerprintInputs(event *cerebrov1.EventEnvelope, _ RuleDefinition) []string {
+	_, scopeID := githubCodeSecurityControlsScope(eventAttributes(event))
+	if scopeID == "" {
+		return nil
+	}
+	return []string{scopeID}
+}
+
+func githubCodeSecurityControlsPostureDisabledAtScopedAnchor(attributes map[string]string) bool {
+	_, scopeID := githubCodeSecurityControlsScope(attributes)
+	return scopeID != "" && githubCodeSecurityControlsPostureDisabled(attributes)
+}
+
+func githubCodeSecurityControlsScope(attributes map[string]string) (string, string) {
+	explicitScope := strings.ToLower(strings.TrimSpace(attributes["scope"]))
+	switch explicitScope {
+	case "repo", "repository":
+		repo := strings.TrimSpace(firstNonEmpty(attributes["repo"], attributes["repository"]))
+		if repo == "" {
+			return "", ""
+		}
+		return "repo", repo
+	case "org", "organization":
+		org := strings.TrimSpace(firstNonEmpty(attributes["org"], attributes["organization"]))
+		if org == "" {
+			return "", ""
+		}
+		return "org", org
+	}
+	if repo := strings.TrimSpace(firstNonEmpty(attributes["repo"], attributes["repository"])); repo != "" {
+		return "repo", repo
+	}
+	resourceID := strings.TrimSpace(attributes["resource_id"])
+	resourceType := strings.ToLower(strings.TrimSpace(attributes["resource_type"]))
+	if strings.Contains(resourceID, "/") || strings.Contains(resourceType, "repo") {
+		return "", ""
+	}
+	if org := strings.TrimSpace(firstNonEmpty(attributes["org"], attributes["organization"])); org != "" {
+		return "org", org
+	}
+	return "", ""
+}
+
 func githubCodeSecurityControlsCloseAnchor(event Event) (string, bool) {
 	attributes := eventAttributes(event)
 	if !githubCodeSecurityControlsRestored(attributes) {
 		return "", false
 	}
-	return githubRepositoryPostureAnchor(attributes), true
+	return githubCodeSecurityControlsAnchor(attributes), true
 }
 
 func githubCodeSecurityControlsRestored(attributes map[string]string) bool {
@@ -1334,7 +1383,7 @@ func githubCodeSecurityControlsCounterEventStates(event Event) []CounterEventSta
 	}
 	attributes := eventAttributes(event)
 	return githubCounterEventStateUpdates(
-		githubRepositoryPostureAnchor(attributes),
+		githubCodeSecurityControlsAnchor(attributes),
 		githubDisabledCodeSecurityControls(attributes),
 		githubRestoredCodeSecurityControls(attributes),
 		event,

@@ -377,11 +377,9 @@
         "Approved security control migration or temporary configuration rollback by authorized administrators."
       ],
       "runbook": "Confirm authorization, re-enable code security controls, review package and secret exposure during the disabled window, and inspect adjacent repository changes by the actor.",
-      "required_attributes": [
-        "repo"
-      ],
       "fingerprint_fields": [
-        "repo"
+        "repo",
+        "org"
       ],
       "control_refs": [
         {
