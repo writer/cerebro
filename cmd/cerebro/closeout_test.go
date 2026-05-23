@@ -647,11 +647,18 @@ func TestCloseout_RuleIDFileNotReadable(t *testing.T) {
 }
 
 func TestCloseout_S3SummaryFailureMarksFailed(t *testing.T) {
-	env, backend, writer, _, stderr := newCloseoutTestEnv(t)
+	env, backend, writer, stdout, stderr := newCloseoutTestEnv(t)
 	putErr := errors.New("AccessDenied: not authorized to PutObject")
 	writer.err = putErr
-	backend.closeoutResult = &findings.CloseoutResult{AppliedCount: 3, ProposedCount: 3}
-	withEnv(env, map[string]string{closeoutEnvAllow: "sec-dev"})
+	backend.closeoutResult = &findings.CloseoutResult{
+		AppliedCount:  3,
+		ProposedCount: 3,
+		BatchSizes:    []int{3},
+	}
+	withEnv(env, map[string]string{
+		closeoutEnvAllow:       "sec-dev",
+		closeoutEnvGithubActor: "alice@writer.com",
+	})
 	err := runCloseoutWithEnv([]string{
 		"--rule-id", "r1",
 		"--apply",
@@ -683,6 +690,56 @@ func TestCloseout_S3SummaryFailureMarksFailed(t *testing.T) {
 	}
 	if backend.closeoutCallCount != 1 {
 		t.Errorf("backend.Closeout call count = %d, want 1 (tombstones must NOT roll back on S3 failure)", backend.closeoutCallCount)
+	}
+
+	var endEntries []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(stdout.String()), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || !strings.HasPrefix(trimmed, "{") {
+			continue
+		}
+		var entry map[string]any
+		if jsonErr := json.Unmarshal([]byte(trimmed), &entry); jsonErr != nil {
+			continue
+		}
+		if event, _ := entry["event"].(string); event == closeoutEventEnd {
+			endEntries = append(endEntries, entry)
+		}
+	}
+	if len(endEntries) != 1 {
+		t.Fatalf("expected exactly one closeout.end log line on the S3-failure exit path, got %d (stdout:\n%s)",
+			len(endEntries), stdout.String())
+	}
+	endEntry := endEntries[0]
+	wantStrings := map[string]string{
+		"run_id": "run-s3-fail-1",
+		"actor":  "alice@writer.com",
+		"env":    "sec-dev",
+		"status": "failed",
+	}
+	for key, want := range wantStrings {
+		got, _ := endEntry[key].(string)
+		if got != want {
+			t.Errorf("closeout.end[%q] = %q, want %q (entry: %v)", key, got, want, endEntry)
+		}
+	}
+	if dryRun, ok := endEntry["dry_run"].(bool); !ok || dryRun {
+		t.Errorf("closeout.end dry_run = %v, want false (entry: %v)", endEntry["dry_run"], endEntry)
+	}
+	errMsg, _ := endEntry["error"].(string)
+	if !strings.Contains(errMsg, "AccessDenied") {
+		t.Errorf("closeout.end error = %q, want it to contain the underlying S3 error message", errMsg)
+	}
+	for _, key := range []string{"batch_count", "applied_count"} {
+		if _, ok := endEntry[key]; !ok {
+			t.Errorf("closeout.end missing key %q (entry: %v)", key, endEntry)
+		}
+	}
+	if applied, ok := endEntry["applied_count"].(float64); !ok || int(applied) != 3 {
+		t.Errorf("closeout.end applied_count = %v, want 3", endEntry["applied_count"])
+	}
+	if batchCount, ok := endEntry["batch_count"].(float64); !ok || int(batchCount) != 1 {
+		t.Errorf("closeout.end batch_count = %v, want 1", endEntry["batch_count"])
 	}
 }
 

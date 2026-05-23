@@ -282,6 +282,7 @@ func runCloseoutWithEnv(args []string, env *closeoutEnv) error {
 	})
 	body, marshalErr := doc.MarshalIndent()
 	if marshalErr != nil {
+		emitCloseoutLog(env, closeoutFailedEndLog(runID, actor, flags.AllowEnv, req.DryRun, result, marshalErr, "marshal_summary_failed"))
 		return fmt.Errorf("marshal closeout summary: %w", marshalErr)
 	}
 
@@ -289,18 +290,15 @@ func runCloseoutWithEnv(args []string, env *closeoutEnv) error {
 	if flags.Apply {
 		summaryKey = findings.CloseoutSummaryKey(runID)
 		putErr := env.Summary.PutCloseoutSummary(ctx, bucket, summaryKey, body)
-		if afterErr := env.Backend.AfterCloseoutSummary(ctx, runID, summaryKey, putErr); afterErr != nil && putErr == nil {
-			return fmt.Errorf("after closeout summary: %w", afterErr)
-		}
+		afterErr := env.Backend.AfterCloseoutSummary(ctx, runID, summaryKey, putErr)
 		if putErr != nil {
 			_, _ = fmt.Fprintf(env.Stderr, "cerebro closeout: failed to put audit summary to s3://%s/%s: %v\n", bucket, summaryKey, putErr)
-			emitCloseoutLog(env, map[string]any{
-				"event":  closeoutEventEnd,
-				"run_id": runID,
-				"status": "failed",
-				"reason": "s3_put_failed",
-			})
+			emitCloseoutLog(env, closeoutFailedEndLog(runID, actor, flags.AllowEnv, req.DryRun, result, putErr, "s3_put_failed"))
 			return fmt.Errorf("%w: %w", ErrCloseoutSummaryPutFailed, putErr)
+		}
+		if afterErr != nil {
+			emitCloseoutLog(env, closeoutFailedEndLog(runID, actor, flags.AllowEnv, req.DryRun, result, afterErr, "after_closeout_summary_failed"))
+			return fmt.Errorf("after closeout summary: %w", afterErr)
 		}
 	} else if bucket != "" && env.Summary != nil {
 		summaryKey = findings.CloseoutSummaryKey(runID)
@@ -619,6 +617,41 @@ func mergeUnique(base, addition []string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// closeoutFailedEndLog builds the closeout.end payload for the
+// post-Closeout failure exit paths. The key set is fixed by the
+// run-boundary invariant: every exit path after Closeout returns must
+// emit closeout.end with run_id, actor, env, dry_run, status, error,
+// batch_count, and applied_count so CloudWatch consumers can correlate
+// the run end with its outcome regardless of which downstream step
+// (S3 put, post-summary hook) was the proximate failure.
+func closeoutFailedEndLog(runID, actor, env string, dryRun bool, result *findings.CloseoutResult, err error, reason string) map[string]any {
+	batchCount := 0
+	appliedCount := 0
+	if result != nil {
+		batchCount = len(result.BatchSizes)
+		appliedCount = result.AppliedCount
+	}
+	errMsg := ""
+	if err != nil {
+		errMsg = err.Error()
+	}
+	payload := map[string]any{
+		"event":         closeoutEventEnd,
+		"run_id":        runID,
+		"actor":         actor,
+		"env":           env,
+		"dry_run":       dryRun,
+		"status":        "failed",
+		"error":         errMsg,
+		"batch_count":   batchCount,
+		"applied_count": appliedCount,
+	}
+	if reason != "" {
+		payload["reason"] = reason
+	}
+	return payload
 }
 
 // emitCloseoutLog writes one structured JSON log line to env.Stdout. The
