@@ -133,20 +133,20 @@ func newIdentitySignalRules() []Rule {
 	capabilities := builtinIdentityCapabilities
 	sourceIDs := capabilities.SourceIDs()
 	return []Rule{
-		newIdentitySignalCounterEventRule(identitySignalConfig{
-			definition: identityDurableStateRuleDefinition(identityRuleDefinition(
+		newIdentitySignalRule(identitySignalConfig{
+			definition: identityTTLEvidenceRuleDefinition(identityRuleDefinition(
 				identityAuthControlLifecycleTamperingRuleID,
 				"Identity Auth Control Lifecycle Tampering",
 				"Detect identity-provider authentication, policy, network-zone, IdP, and security-setting control changes.",
 				"HIGH",
 				"finding.identity_auth_control_lifecycle_tampering",
 				[]string{"identity", "control-plane", "defense-evasion", "attack.t1562"},
-			), "idp_id", "policy_id"),
+			), 7*24*time.Hour, "idp_id", "policy_id"),
 			sourceIDs:   sourceIDs,
 			eventKinds:  capabilities.EventKinds(identityCapabilityAudit),
 			predicate:   matchesIdentityAuthControlTampering,
 			fingerprint: identityAuthControlFingerprintInputs,
-		}, identityAuthControlAnchor, identityAuthControlCloseAnchor),
+		}),
 		newIdentitySignalCounterEventRule(identitySignalConfig{
 			definition: identityDurableStateRuleDefinition(identityRuleDefinition(
 				identityAdminPrivilegeGrantedRuleID,
@@ -286,6 +286,12 @@ func identityRuleDefinition(id string, name string, description string, severity
 func identityDurableStateRuleDefinition(definition RuleDefinition, fingerprintFields ...string) RuleDefinition {
 	definition.FingerprintFields = uniqueTrimmedStringsPreserveOrder(fingerprintFields)
 	definition.Lifecycle = Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored}
+	return definition
+}
+
+func identityTTLEvidenceRuleDefinition(definition RuleDefinition, ttl time.Duration, fingerprintFields ...string) RuleDefinition {
+	definition.FingerprintFields = uniqueTrimmedStringsPreserveOrder(fingerprintFields)
+	definition.Lifecycle = Lifecycle{Kind: LifecycleTTLEvidence, Anchor: AnchorNone, TTL: ttl}
 	return definition
 }
 
@@ -574,15 +580,6 @@ func identityAdminPrivilegeCloseAnchor(event Event) (string, bool) {
 		return "", false
 	}
 	anchor := identityAdminPrivilegeAnchor(attributes)
-	return anchor, anchor != ""
-}
-
-func identityAuthControlCloseAnchor(event Event) (string, bool) {
-	attributes := eventAttributes(event)
-	if !identityAuthControlStrengthened(attributes) {
-		return "", false
-	}
-	anchor := identityAuthControlAnchor(attributes)
 	return anchor, anchor != ""
 }
 

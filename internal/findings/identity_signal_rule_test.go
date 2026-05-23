@@ -68,9 +68,10 @@ func TestIdentityAdminPrivilegeGranted(t *testing.T) {
 func TestIdentityAuthControlLifecycleTampering(t *testing.T) {
 	rules := identityRulesByID(t)
 	rule := rules[identityAuthControlLifecycleTamperingRuleID]
-	assertIdentityDurableMetadata(t, rule, []string{"idp_id", "policy_id"})
-	if _, ok := rule.(CounterEventRule); !ok {
-		t.Fatal("identity-auth-control-lifecycle-tampering does not implement CounterEventRule")
+	authControlTTL := 7 * 24 * time.Hour
+	assertIdentityTTLEvidenceMetadata(t, rule, []string{"idp_id", "policy_id"}, authControlTTL)
+	if _, ok := rule.(CounterEventRule); ok {
+		t.Fatal("identity-auth-control-lifecycle-tampering must not implement CounterEventRule; TTL expiry resolves it")
 	}
 
 	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-audit", SourceId: "okta", TenantId: "writer"}
@@ -142,9 +143,7 @@ func TestIdentityAuthControlLifecycleTampering(t *testing.T) {
 	if len(records) != 0 {
 		t.Fatalf("Evaluate(restored) returned %d findings, want 0 once auth control is strengthened", len(records))
 	}
-	assertIdentityRuleRemediationTrajectory(t, rule, first, restored, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
-	olderRestored := identitySignalEventAt("okta-policy-restored-before-open", "okta", "okta.audit", restoredAttrs, identityTrajectoryBaseTime.Add(-time.Minute))
-	assertIdentityRuleOlderCloseDoesNotResolveLaterOpen(t, rule, olderRestored, first)
+	assertIdentityRuleTTLEvidenceTrajectory(t, rule, runtime, first, authControlTTL)
 }
 
 func TestIdentityMfaFactorResetOrDisabled(t *testing.T) {
@@ -1469,6 +1468,120 @@ func assertIdentityDurableMetadata(t *testing.T, rule Rule, wantFields []string)
 		if field == "event_id" {
 			t.Fatalf("FingerprintFields still contains event_id: %v", definition.FingerprintFields)
 		}
+	}
+}
+
+func assertIdentityTTLEvidenceMetadata(t *testing.T, rule Rule, wantFields []string, wantTTL time.Duration) {
+	t.Helper()
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("rule does not expose RuleMetadata")
+	}
+	definition := metadataRule.RuleMetadata()
+	if err := definition.Validate(); err != nil {
+		t.Fatalf("RuleDefinition.Validate() error = %v", err)
+	}
+	if definition.Lifecycle.Kind != LifecycleTTLEvidence {
+		t.Fatalf("Lifecycle.Kind = %q, want %q", definition.Lifecycle.Kind, LifecycleTTLEvidence)
+	}
+	if definition.Lifecycle.Anchor != AnchorNone {
+		t.Fatalf("Lifecycle.Anchor = %q, want %q", definition.Lifecycle.Anchor, AnchorNone)
+	}
+	if definition.Lifecycle.TTL != wantTTL {
+		t.Fatalf("Lifecycle.TTL = %v, want %v", definition.Lifecycle.TTL, wantTTL)
+	}
+	if !cloudStringSlicesEqual(definition.FingerprintFields, wantFields) {
+		t.Fatalf("FingerprintFields = %v, want %v", definition.FingerprintFields, wantFields)
+	}
+	for _, field := range definition.FingerprintFields {
+		if field == "event_id" {
+			t.Fatalf("FingerprintFields still contains event_id: %v", definition.FingerprintFields)
+		}
+	}
+}
+
+func assertIdentityRuleTTLEvidenceTrajectory(t *testing.T, rule Rule, runtime *cerebrov1.SourceRuntime, open *cerebrov1.EventEnvelope, ttl time.Duration) {
+	t.Helper()
+	if rule == nil {
+		t.Fatal("rule is required")
+	}
+	if runtime == nil {
+		t.Fatal("runtime is required")
+	}
+	if open == nil {
+		t.Fatal("opening event is required")
+	}
+	spec := rule.Spec()
+	if spec == nil || strings.TrimSpace(spec.GetId()) == "" {
+		t.Fatal("rule must expose a non-empty RuleSpec.Id")
+	}
+	ruleID := strings.TrimSpace(spec.GetId())
+	runtimeID := strings.TrimSpace(runtime.GetId())
+	openedAt := identityTrajectoryBaseTime
+	if open.GetOccurredAt() != nil {
+		openedAt = open.GetOccurredAt().AsTime().UTC()
+	}
+
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry(%q) error = %v", ruleID, err)
+	}
+	store := &stubFindingStore{}
+	replayer := &stubReplayer{events: []*cerebrov1.EventEnvelope{open}}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{runtimeID: runtime}},
+		replayer,
+		store,
+		store,
+		store,
+		store,
+		registry,
+	).WithGraphStore(&stubGraphStore{}).
+		WithAppendLog(&recordingAppendLog{}).
+		WithTTLClock(fixedTTLClock{now: openedAt})
+
+	firstResult, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{
+		RuntimeID: runtimeID,
+		RuleIDs:   []string{ruleID},
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeRules(%q open) error = %v", ruleID, err)
+	}
+	if firstResult == nil || len(firstResult.Evaluations) != 1 {
+		t.Fatalf("open result evaluations = %#v, want one", firstResult)
+	}
+	if len(firstResult.Evaluations[0].Findings) != 1 {
+		t.Fatalf("open pass emitted %d findings, want one opening finding", len(firstResult.Evaluations[0].Findings))
+	}
+	opened := firstResult.Evaluations[0].Findings[0]
+	if got := strings.TrimSpace(opened.Status); got != findingStatusOpen {
+		t.Fatalf("opening finding status = %q, want %q", got, findingStatusOpen)
+	}
+
+	service.WithTTLClock(fixedTTLClock{now: openedAt.Add(ttl + time.Hour)})
+	if err := service.resolveTTLOpenFindings(context.Background(), ruleID); err != nil {
+		t.Fatalf("resolveTTLOpenFindings(%q): %v", ruleID, err)
+	}
+	finalFindings := githubTrajectoryPersistedFindings(store, ruleID, runtimeID)
+	if got := len(finalFindings); got != 1 {
+		t.Fatalf("persisted findings for rule %q = %d, want 1", ruleID, got)
+	}
+	finalFinding := finalFindings[0]
+	if got := strings.TrimSpace(finalFinding.Status); got != findingStatusResolved {
+		t.Fatalf("final finding status = %q, want %q", got, findingStatusResolved)
+	}
+	wantReason := ttlResolutionReasonPrefix + formatTTLDuration(ttl)
+	if got := strings.TrimSpace(finalFinding.StatusReason); got != wantReason {
+		t.Fatalf("final finding resolution_reason = %q, want %q", got, wantReason)
+	}
+	if finalFinding.Tombstoned {
+		t.Fatal("TTL expiry tombstoned the finding; want resolved without tombstone")
+	}
+	if got := strings.TrimSpace(finalFinding.Fingerprint); got != strings.TrimSpace(opened.Fingerprint) {
+		t.Fatalf("final finding fingerprint = %q, want stable %q", got, strings.TrimSpace(opened.Fingerprint))
+	}
+	if store.updateStatusCallCount != 1 {
+		t.Fatalf("UpdateFindingStatus calls = %d, want 1 TTL resolution update", store.updateStatusCallCount)
 	}
 }
 
