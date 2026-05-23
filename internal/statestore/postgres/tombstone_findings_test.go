@@ -29,7 +29,7 @@ func tombstoneStoreFromEnv(t *testing.T) *Store {
 	return store
 }
 
-func resetTombstoneSchema(t *testing.T, ctx context.Context, store *Store) {
+func dropTombstoneSchema(t *testing.T, ctx context.Context, store *Store) {
 	t.Helper()
 	for _, stmt := range []string{
 		`DROP TABLE IF EXISTS finding_tombstone_events`,
@@ -45,10 +45,51 @@ func resetTombstoneSchema(t *testing.T, ctx context.Context, store *Store) {
 	store.schemaMu.Unlock()
 }
 
+// resetTombstoneSchema drops the tombstone-aware tables and immediately
+// re-runs the migration so the database is left in the post-migration state
+// regardless of which `*Store` (or which test/package) touches it next.
+// Without the re-run, a later `*Store` that has already cached
+// findingTablesReady=true would skip ensureFindingTables and hit a missing
+// `findings` table on its next UpsertFinding.
+func resetTombstoneSchema(t *testing.T, ctx context.Context, store *Store) {
+	t.Helper()
+	dropTombstoneSchema(t, ctx, store)
+	if err := store.ensureFindingTables(ctx); err != nil {
+		t.Fatalf("ensureFindingTables after reset: %v", err)
+	}
+}
+
 func ensureTombstoneSchema(t *testing.T, ctx context.Context, store *Store) {
 	t.Helper()
 	if err := store.ensureFindingTables(ctx); err != nil {
 		t.Fatalf("ensureFindingTables: %v", err)
+	}
+}
+
+// TestResetTombstoneSchema_LeavesSchemaUsableForCachedStore guards the
+// cross-package test-pollution fix: a second *Store that has already cached
+// findingTablesReady=true must be able to UpsertFinding immediately after
+// resetTombstoneSchema runs against the shared DSN, because the helper now
+// re-creates the schema after dropping it.
+func TestResetTombstoneSchema_LeavesSchemaUsableForCachedStore(t *testing.T) {
+	ctx := context.Background()
+	primed := tombstoneStoreFromEnv(t)
+	dropTombstoneSchema(t, ctx, primed)
+	if err := primed.ensureFindingTables(ctx); err != nil {
+		t.Fatalf("prime ensureFindingTables: %v", err)
+	}
+	if !primed.findingTablesReady {
+		t.Fatalf("primed store findingTablesReady = false, want true (precondition for the regression)")
+	}
+
+	other := tombstoneStoreFromEnv(t)
+	resetTombstoneSchema(t, ctx, other)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	fp := fmt.Sprintf("fp-cross-store-%d", now.UnixNano())
+	id := fmt.Sprintf("finding-cross-store-%d", now.UnixNano())
+	if _, err := primed.UpsertFinding(ctx, newUpsertFinding(id, fp, "open", now)); err != nil {
+		t.Fatalf("UpsertFinding on cached store after reset: %v", err)
 	}
 }
 
@@ -480,7 +521,7 @@ func TestCloseoutRunSingleton_RejectsConcurrent(t *testing.T) {
 func TestSupportsTombstones(t *testing.T) {
 	ctx := context.Background()
 	store := tombstoneStoreFromEnv(t)
-	resetTombstoneSchema(t, ctx, store)
+	dropTombstoneSchema(t, ctx, store)
 
 	if _, err := store.db.ExecContext(ctx, `
         CREATE TABLE findings (
