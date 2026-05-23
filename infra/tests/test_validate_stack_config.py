@@ -107,7 +107,7 @@ config:
   cerebro:environment: go-production
   cerebro:ecrBaseUri: 123456789012.dkr.ecr.us-east-1.amazonaws.com/cerebro
   cerebro:imageTag: v2.1.36
-  cerebro:apiMaxInstances: 1
+  cerebro:apiMaxInstances: 2
   cerebro:postgresDeletionProtection: true
   cerebro:postgresBackupRetentionDays: 14
   cerebro:apiAuthEnabled: true
@@ -259,6 +259,17 @@ class ValidateStackConfigTest(unittest.TestCase):
         content = BASE_STACK.replace("  cerebro:postgresDeletionProtection: true", "  cerebro:postgresDeletionProtection: false")
         self.assertTrue(any("deletion protection" in message for message in self._messages(content)))
 
+    def test_active_environments_require_api_headroom(self) -> None:
+        content = BASE_STACK.replace("  cerebro:apiMaxInstances: 2", "  cerebro:apiMaxInstances: 1")
+        self.assertTrue(any("at least two API tasks" in message for message in self._messages(content)))
+
+    def test_enabled_web_console_requires_headroom(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:apiMaxInstances: 2\n",
+            "  cerebro:apiMaxInstances: 2\n  cerebro:webEnabled: true\n  cerebro:webMaxInstances: 1\n",
+        )
+        self.assertTrue(any("at least two tasks" in message for message in self._messages(content)))
+
     def test_prod_postgres_must_not_use_gp2_storage(self) -> None:
         content = BASE_STACK.replace(
             "  cerebro:postgresBackupRetentionDays: 14\n",
@@ -308,22 +319,22 @@ class ValidateStackConfigTest(unittest.TestCase):
         self.assertTrue(any(finding.severity == "error" and "notification route" in finding.message for finding in findings))
 
     def test_alb_access_log_retention_must_be_positive(self) -> None:
-        content = BASE_STACK.replace("  cerebro:apiMaxInstances: 1\n", "  cerebro:apiMaxInstances: 1\n  cerebro:albAccessLogsRetentionDays: 0\n")
+        content = BASE_STACK.replace("  cerebro:apiMaxInstances: 2\n", "  cerebro:apiMaxInstances: 2\n  cerebro:albAccessLogsRetentionDays: 0\n")
         findings = self._validate(content)
         self.assertTrue(any(finding.severity == "error" and "albAccessLogsRetentionDays" in finding.path for finding in findings))
 
     def test_access_audit_alarm_thresholds_must_be_non_negative(self) -> None:
         content = BASE_STACK.replace(
-            "  cerebro:apiMaxInstances: 1\n",
-            "  cerebro:apiMaxInstances: 1\n  cerebro:accessAuditDeniedAlarmThreshold: -1\n",
+            "  cerebro:apiMaxInstances: 2\n",
+            "  cerebro:apiMaxInstances: 2\n  cerebro:accessAuditDeniedAlarmThreshold: -1\n",
         )
         findings = self._validate(content)
         self.assertTrue(any(finding.severity == "error" and "accessAuditDeniedAlarmThreshold" in finding.path for finding in findings))
 
     def test_sensitive_access_audit_alarm_thresholds_allow_minus_one_disable(self) -> None:
         content = BASE_STACK.replace(
-            "  cerebro:apiMaxInstances: 1\n",
-            "  cerebro:apiMaxInstances: 1\n  cerebro:accessAuditTenantMismatchAlarmThreshold: -1\n  cerebro:accessAuditSensitiveDeniedAlarmThreshold: -2\n",
+            "  cerebro:apiMaxInstances: 2\n",
+            "  cerebro:apiMaxInstances: 2\n  cerebro:accessAuditTenantMismatchAlarmThreshold: -1\n  cerebro:accessAuditSensitiveDeniedAlarmThreshold: -2\n",
         )
         findings = self._validate(content)
         self.assertFalse(any(finding.severity == "error" and "accessAuditTenantMismatchAlarmThreshold" in finding.path for finding in findings))

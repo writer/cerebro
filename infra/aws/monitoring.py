@@ -73,6 +73,7 @@ def create_monitoring(
     target_group_arn_suffix: pulumi.Output[str],
     ecs_cluster_name: pulumi.Output[str],
     ecs_service_name: pulumi.Output[str],
+    postgres_identifier: pulumi.Input[str] = None,
     web_alb_arn_suffix: pulumi.Output[str] = None,
     web_target_group_arn_suffix: pulumi.Output[str] = None,
     web_ecs_service_name: pulumi.Output[str] = None,
@@ -230,6 +231,48 @@ def create_monitoring(
         },
         tags={"Name": f"{name}-memory-alarm"},
     )
+
+    if postgres_identifier:
+        _rds_metric_alarm(
+            resource_name=f"{name}-postgres-queue-depth-alarm",
+            alarm_name=f"{name}-postgres-disk-queue-depth",
+            db_identifier=postgres_identifier,
+            metric_name="DiskQueueDepth",
+            threshold=5,
+            description="Postgres disk queue depth is high enough to affect API latency",
+            alarm_actions=alarm_actions,
+            statistic="Average",
+        )
+        _rds_metric_alarm(
+            resource_name=f"{name}-postgres-read-latency-alarm",
+            alarm_name=f"{name}-postgres-read-latency",
+            db_identifier=postgres_identifier,
+            metric_name="ReadLatency",
+            threshold=0.05,
+            description="Postgres read latency is elevated",
+            alarm_actions=alarm_actions,
+            statistic="Average",
+        )
+        _rds_metric_alarm(
+            resource_name=f"{name}-postgres-write-latency-alarm",
+            alarm_name=f"{name}-postgres-write-latency",
+            db_identifier=postgres_identifier,
+            metric_name="WriteLatency",
+            threshold=0.1,
+            description="Postgres write latency is elevated",
+            alarm_actions=alarm_actions,
+            statistic="Average",
+        )
+        _rds_metric_alarm(
+            resource_name=f"{name}-postgres-cpu-alarm",
+            alarm_name=f"{name}-postgres-high-cpu",
+            db_identifier=postgres_identifier,
+            metric_name="CPUUtilization",
+            threshold=80,
+            description="Postgres CPU utilization is high",
+            alarm_actions=alarm_actions,
+            statistic="Average",
+        )
 
     if web_alb_arn_suffix and web_target_group_arn_suffix and web_ecs_service_name:
         aws.cloudwatch.MetricAlarm(
@@ -513,7 +556,7 @@ def create_monitoring(
         f"{name}-dashboard",
         dashboard_name=f"{name}-dashboard",
         dashboard_body=pulumi.Output.all(
-            alb_arn_suffix, target_group_arn_suffix, ecs_cluster_name, ecs_service_name
+            alb_arn_suffix, target_group_arn_suffix, ecs_cluster_name, ecs_service_name, postgres_identifier
         ).apply(lambda args: _dashboard_body(name, *args, jetstream_stream_name)),
     )
 
@@ -550,6 +593,34 @@ def _custom_metric_alarm(
         alarm_actions=alarm_actions,
         dimensions=dimensions,
         tags={"Name": alarm_name},
+    )
+
+
+def _rds_metric_alarm(
+    resource_name: str,
+    alarm_name: str,
+    db_identifier: pulumi.Input[str],
+    metric_name: str,
+    threshold: float,
+    description: str,
+    alarm_actions: list[pulumi.Input[str]],
+    statistic: str = "Average",
+) -> aws.cloudwatch.MetricAlarm:
+    return aws.cloudwatch.MetricAlarm(
+        resource_name,
+        name=alarm_name,
+        comparison_operator="GreaterThanThreshold",
+        evaluation_periods=3,
+        metric_name=metric_name,
+        namespace="AWS/RDS",
+        period=300,
+        statistic=statistic,
+        threshold=threshold,
+        treat_missing_data="notBreaching",
+        alarm_description=description,
+        alarm_actions=alarm_actions,
+        dimensions={"DBInstanceIdentifier": db_identifier},
+        tags={"Name": resource_name},
     )
 
 
@@ -890,11 +961,18 @@ def _graph_ingest_failure_pattern() -> str:
     return '{ $.kind = "span_end" && $.status = "failed" && ($.name = "graph.*" || $.name = "graph.ingest_runtime" || $.name = "orchestrator.graph_ingest") }'
 
 
-def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service: str, jetstream_stream_name: str) -> str:
+def _dashboard_body(
+    name: str,
+    alb_arn: str,
+    tg_arn: str,
+    cluster: str,
+    service: str,
+    postgres_identifier: str | None,
+    jetstream_stream_name: str,
+) -> str:
     import json
     telemetry_namespace = f"Cerebro/{name}"
-    return json.dumps({
-        "widgets": [
+    widgets = [
             {
                 "type": "metric",
                 "x": 0, "y": 0, "width": 12, "height": 6,
@@ -1112,5 +1190,36 @@ def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service:
                     "region": aws.get_region().region,
                 },
             },
-        ],
-    })
+        ]
+    if postgres_identifier:
+        widgets.extend([
+            {
+                "type": "metric",
+                "x": 0, "y": 48, "width": 12, "height": 6,
+                "properties": {
+                    "title": "Postgres Latency / Queue",
+                    "metrics": [
+                        ["AWS/RDS", "DiskQueueDepth", "DBInstanceIdentifier", postgres_identifier, {"stat": "Average", "yAxis": "right"}],
+                        [".", "ReadLatency", ".", ".", {"stat": "Average"}],
+                        [".", "WriteLatency", ".", ".", {"stat": "Average"}],
+                    ],
+                    "period": 300,
+                    "region": aws.get_region().region,
+                },
+            },
+            {
+                "type": "metric",
+                "x": 12, "y": 48, "width": 12, "height": 6,
+                "properties": {
+                    "title": "Postgres CPU / Connections / Memory",
+                    "metrics": [
+                        ["AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", postgres_identifier, {"stat": "Average"}],
+                        [".", "DatabaseConnections", ".", ".", {"stat": "Average", "yAxis": "right"}],
+                        [".", "FreeableMemory", ".", ".", {"stat": "Average", "yAxis": "right"}],
+                    ],
+                    "period": 300,
+                    "region": aws.get_region().region,
+                },
+            },
+        ])
+    return json.dumps({"widgets": widgets})

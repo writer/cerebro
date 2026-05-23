@@ -456,6 +456,27 @@ def validate_stack(path: Path) -> list[Finding]:
                 "values above 1 require cerebro:imageTag >= v2.1.25",
             )
         )
+    if (stack == "sec-dev" or "prod" in str(config.get("environment", stack)).lower() or stack.endswith("prod")) and (
+        not isinstance(api_max_instances, int) or api_max_instances < 2
+    ):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:apiMaxInstances",
+                "active Cerebro environments must allow at least two API tasks for latency headroom",
+            )
+        )
+    web_max_instances = config.get("webMaxInstances", 1)
+    if config.get("webEnabled") is True and (not isinstance(web_max_instances, int) or web_max_instances < 2):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:webMaxInstances",
+                "enabled web consoles must allow at least two tasks for proxy latency headroom",
+            )
+        )
 
     alb_access_logs_retention_days = config.get("albAccessLogsRetentionDays", 30)
     if not isinstance(alb_access_logs_retention_days, int) or alb_access_logs_retention_days < 1:

@@ -18,7 +18,7 @@ config:
   cerebro:apiCpu: 2048
   cerebro:apiMemory: 4096
   cerebro:apiMinInstances: 1
-  cerebro:apiMaxInstances: 1
+  cerebro:apiMaxInstances: 2
   cerebro:postgresInstanceClass: db.t4g.small
   cerebro:postgresAllocatedStorage: 100
   cerebro:postgresStorageType: gp3
@@ -304,7 +304,7 @@ config:
         - graph_page_limit=2
         - event_limit=1000
     - name: cosmo-survey-feedback
-      scheduleExpression: cron(7,37 * * * ? *)
+      scheduleExpression: cron(18,48 * * * ? *)
       taskCount: 1
       command:
         - orchestrator
