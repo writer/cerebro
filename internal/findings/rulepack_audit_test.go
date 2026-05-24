@@ -148,7 +148,13 @@ func TestCloseoutSelectorCoversAllRetiredAndConvertRules(t *testing.T) {
 
 func TestConvertRulesReplaySingleOpenRow(t *testing.T) {
 	metadataByID := rulepackAuditMetadataByID(t)
-	for _, entry := range rulepackAuditRulesByClass(t, rulepackAuditClassConvert) {
+	convertRules := rulepackAuditRulesByClass(t, rulepackAuditClassConvert)
+	fixtures := rulepackConvertReplayFixtures()
+	if got, want := len(fixtures), len(convertRules); got != want {
+		t.Fatalf("convert replay fixture count = %d, want %d", got, want)
+	}
+	registry := Builtin()
+	for _, entry := range convertRules {
 		entry := entry
 		t.Run(entry.RuleID, func(t *testing.T) {
 			definition := metadataByID[entry.RuleID]
@@ -159,20 +165,761 @@ func TestConvertRulesReplaySingleOpenRow(t *testing.T) {
 			if len(definition.FingerprintFields) == 0 {
 				t.Fatalf("convert rule %q has empty FingerprintFields", entry.RuleID)
 			}
-			openRowsByFingerprint := map[string]int{}
-			for i := 0; i < 4; i++ {
-				attributes := stableAnchorAttributes(definition.FingerprintFields)
-				attributes["event_id"] = fmt.Sprintf("event-%d", i)
-				attributes["matched_at"] = fmt.Sprintf("2026-05-23T12:%02d:00Z", i)
-				inputs := fingerprintInputsFromFields(definition.FingerprintFields, attributes)
-				fingerprint := hashFindingFingerprint(append([]string{entry.RuleID}, inputs...)...)
-				openRowsByFingerprint[fingerprint]++
+			rule, ok := registry.Get(entry.RuleID)
+			if !ok {
+				t.Fatalf("Builtin registry missing convert rule %q", entry.RuleID)
 			}
-			if got := len(openRowsByFingerprint); got != 1 {
-				t.Fatalf("replay for %q produced %d open fingerprints, want exactly one per durable anchor: %#v",
-					entry.RuleID, got, openRowsByFingerprint)
+			fixture, ok := fixtures[entry.RuleID]
+			if !ok {
+				t.Fatalf("missing replay fixture for convert rule %q", entry.RuleID)
 			}
+			if len(fixture.graphRows) != 0 {
+				assertRulepackConvertGraphReplaySingleOpenRow(t, rule, definition, fixture)
+				return
+			}
+			assertRulepackConvertEventReplaySingleOpenRow(t, rule, definition, fixture)
 		})
+	}
+}
+
+type rulepackConvertReplayFixture struct {
+	runtime    *cerebrov1.SourceRuntime
+	kind       string
+	attributes map[string]string
+	graphRows  []ports.CypherRow
+}
+
+func rulepackConvertReplayFixtures() map[string]rulepackConvertReplayFixture {
+	staleLogin := time.Now().UTC().Add(-120 * 24 * time.Hour).Format(time.RFC3339Nano)
+	return map[string]rulepackConvertReplayFixture{
+		cloudEffectiveAdminPermissionRuleID: {
+			runtime: rulepackConvertRuntime("aws", "effective_permission"),
+			kind:    "aws.effective_permission",
+			attributes: map[string]string{
+				"actions":       "*",
+				"domain":        "123456789012",
+				"effect":        "allow",
+				"resource_id":   "123456789012",
+				"resource_type": "account",
+				"subject_email": "admin@writer.com",
+				"subject_id":    "admin@writer.com",
+				"subject_type":  "user",
+			},
+		},
+		cloudPrivilegePathGrantedRuleID: {
+			runtime: rulepackConvertRuntime("aws", "iam_role_trust"),
+			kind:    "aws.iam_role_trust",
+			attributes: map[string]string{
+				"domain":       "123456789012",
+				"family":       "iam_role_trust",
+				"path_type":    "assume_role_trust",
+				"relationship": "can_assume",
+				"subject_id":   "arn:aws:iam::999999999999:role/ExternalAdmin",
+				"subject_type": "role",
+				"target_id":    "arn:aws:iam::123456789012:role/AdminRole",
+				"target_type":  "role",
+			},
+		},
+		cloudPublicResourceExposureRuleID: {
+			runtime: rulepackConvertRuntime("aws", "resource_exposure"),
+			kind:    "aws.resource_exposure",
+			attributes: map[string]string{
+				"domain":           "123456789012",
+				"exposed_to":       "public_internet",
+				"exposure_type":    "public_network_ingress",
+				"family":           "resource_exposure",
+				"internet_exposed": "true",
+				"resource_id":      "arn:aws:ec2:us-east-1:123456789012:security-group/sg-1",
+				"resource_name":    "prod-web",
+				"resource_type":    "security_group",
+				"source_cidr":      "0.0.0.0/0",
+			},
+		},
+		dataSensitiveAssetRiskRuleID: {
+			runtime: rulepackConvertRuntime("asset", "crown_jewel"),
+			kind:    "asset.crown_jewel",
+			attributes: map[string]string{
+				"contains_secrets":    "true",
+				"crown_jewel":         "true",
+				"data_classification": "restricted",
+				"internet_exposed":    "true",
+				"resource_id":         "prod-secrets",
+				"resource_name":       "Production Secrets",
+				"resource_type":       "secret_store",
+				"source_provider":     "aws",
+			},
+		},
+		githubAppIntegrationInstalledRuleID: {
+			runtime: rulepackConvertRuntime("github", "audit"),
+			kind:    "github.audit",
+			attributes: map[string]string{
+				"action":        "integration_installation.create",
+				"github_app_id": "123456",
+				"name":          "ci-deployer",
+				"org":           "writer",
+				"resource_type": "integration_installation",
+			},
+		},
+		githubCodeSecurityControlsDisabledRuleID: {
+			runtime: rulepackConvertRuntime("github", "audit"),
+			kind:    "github.audit",
+			attributes: map[string]string{
+				"action":                    "dependabot_alerts.disable",
+				"dependabot_alerts_enabled": "false",
+				"org":                       "writer",
+				"repo":                      "writer/cerebro",
+				"resource_type":             "dependabot_alerts",
+			},
+		},
+		githubOrgAuthControlModifiedRuleID: {
+			runtime: rulepackConvertRuntime("github", "audit"),
+			kind:    "github.audit",
+			attributes: map[string]string{
+				"action":                          "oauth_app_policy.disabled",
+				"oauth_app_restrictions_enabled":  "false",
+				"oauth_app_restrictions_enforced": "false",
+				"org":                             "writer",
+				"resource_id":                     "writer",
+				"resource_type":                   "org",
+			},
+		},
+		githubOrgIPAllowListModifiedRuleID: {
+			runtime: rulepackConvertRuntime("github", "audit"),
+			kind:    "github.audit",
+			attributes: map[string]string{
+				"action":                "ip_allow_list.disable",
+				"ip_allow_list_enabled": "false",
+				"org":                   "writer",
+				"resource_id":           "writer",
+				"resource_type":         "ip_allow_list",
+			},
+		},
+		githubOrganizationOwnerAddedRuleID: {
+			runtime: rulepackConvertRuntime("github", "audit"),
+			kind:    "github.audit",
+			attributes: map[string]string{
+				"action":     "org.add_member",
+				"org":        "writer",
+				"permission": "admin",
+				"user":       "octocat",
+			},
+		},
+		githubPersonalAccessTokenCreatedRuleID: {
+			runtime: rulepackConvertRuntime("github", "audit"),
+			kind:    "github.audit",
+			attributes: map[string]string{
+				"action":         "personal_access_token.access_granted",
+				"operation_type": "create",
+				"token_id":       "555",
+				"user":           "octocat",
+				"user_id":        "12345",
+			},
+		},
+		githubPrivateRepositoryForkingEnabledRuleID: {
+			runtime: rulepackConvertRuntime("github", "audit"),
+			kind:    "github.audit",
+			attributes: map[string]string{
+				"action":                             "private_repository_forking.enable",
+				"org":                                "writer",
+				"private_repository_forking_enabled": "true",
+				"resource_id":                        "writer",
+				"resource_type":                      "org",
+			},
+		},
+		githubRepositoryCollaboratorAddedRuleID: {
+			runtime: rulepackConvertRuntime("github", "audit"),
+			kind:    "github.audit",
+			attributes: map[string]string{
+				"action": "repo.add_member",
+				"repo":   "writer/cerebro",
+				"user":   "octocat",
+			},
+		},
+		githubRepositoryRulesetModifiedRuleID: {
+			runtime: rulepackConvertRuntime("github", "audit"),
+			kind:    "github.audit",
+			attributes: map[string]string{
+				"action":                        "repository_ruleset.update",
+				"repo":                          "writer/cerebro",
+				"required_status_check_removed": "true",
+				"ruleset_id":                    "42",
+				"ruleset_name":                  "main protections",
+			},
+		},
+		githubSecretScanningAlertCreatedRuleID: {
+			runtime: rulepackConvertRuntime("github", "audit"),
+			kind:    "github.audit",
+			attributes: map[string]string{
+				"action":                      "secret_scanning_alert.create",
+				"html_url":                    "https://github.com/writer/cerebro/security/secret-scanning/12",
+				"number":                      "12",
+				"repo":                        "writer/cerebro",
+				"secret_scanning_alert.state": "open",
+				"secret_type":                 "github_personal_access_token",
+			},
+		},
+		githubSelfHostedRunnerChangeRuleID: {
+			runtime: rulepackConvertRuntime("github", "audit"),
+			kind:    "github.audit",
+			attributes: map[string]string{
+				"action":            "repo.register_self_hosted_runner",
+				"repo":              "writer/cerebro",
+				"runner_ephemeral":  "false",
+				"runner_id":         "777",
+				"runner_registered": "true",
+			},
+		},
+		githubWebhookModifiedRuleID: {
+			runtime: rulepackConvertRuntime("github", "audit"),
+			kind:    "github.audit",
+			attributes: map[string]string{
+				"action":  "hook.create",
+				"hook_id": "99",
+				"repo":    "writer/cerebro",
+			},
+		},
+		identityAdminPrivilegeGrantedRuleID: {
+			runtime: rulepackConvertRuntime("google_workspace", "role_assignment"),
+			kind:    "google_workspace.role_assignment",
+			attributes: map[string]string{
+				"domain":        "writer.com",
+				"role_id":       "super-admin",
+				"role_name":     "Super Admin",
+				"subject_email": "admin@writer.com",
+				"subject_id":    "1001",
+				"subject_type":  "user",
+			},
+		},
+		identityAPIOrOAuthCredentialCreatedRuleID: {
+			runtime: rulepackConvertRuntime("aws", "access_key"),
+			kind:    "aws.access_key",
+			attributes: map[string]string{
+				"credential_id":   "AKIAEXAMPLE",
+				"credential_type": "aws_access_key",
+				"domain":          "123456789012",
+				"status":          "ACTIVE",
+				"subject_email":   "dev@writer.com",
+				"subject_id":      "AIDADEV",
+				"subject_type":    "user",
+			},
+		},
+		identityAuthControlLifecycleTamperingRuleID: {
+			runtime: rulepackConvertRuntime("okta", "audit"),
+			kind:    "okta.audit",
+			attributes: map[string]string{
+				"actor_email":           "admin@writer.com",
+				"auth_control_weakened": "true",
+				"domain":                "writer.okta.com",
+				"event_type":            "policy.lifecycle.update",
+				"outcome_result":        "SUCCESS",
+				"policy_id":             "pol-sign-on",
+				"resource_id":           "pol-sign-on",
+				"resource_type":         "policy",
+			},
+		},
+		identityExternalGroupMemberRuleID: {
+			runtime: rulepackConvertRuntime("okta", "group_membership"),
+			kind:    "okta.group_membership",
+			attributes: map[string]string{
+				"domain":         "writer.okta.com",
+				"group_id":       "grp-security",
+				"group_name":     "Security",
+				"member_email":   "external@gmail.com",
+				"member_status":  "ACTIVE",
+				"member_type":    "user",
+				"member_user_id": "00u-external",
+			},
+		},
+		identityMFAFactorResetOrDisabledRuleID: {
+			runtime: rulepackConvertRuntime("google_workspace", "user"),
+			kind:    "google_workspace.user",
+			attributes: map[string]string{
+				"domain":        "writer.com",
+				"email":         "admin@writer.com",
+				"is_admin":      "true",
+				"mfa_enforced":  "false",
+				"mfa_enrolled":  "false",
+				"primary_email": "admin@writer.com",
+				"user_id":       "1001",
+			},
+		},
+		oktaPolicyRuleLifecycleTamperingRuleID: {
+			runtime: rulepackConvertRuntime("okta", "policy_rule"),
+			kind:    "okta.policy_rule",
+			attributes: map[string]string{
+				"domain":             "writer.okta.com",
+				"name":               "Require MFA",
+				"policy_id":          "pol-1",
+				"policy_rule_id":     "rul-1",
+				"policy_rule_status": "INACTIVE",
+				"policy_type":        "OKTA_SIGN_ON",
+				"resource_id":        "rul-1",
+				"resource_type":      "PolicyRule",
+				"status":             "INACTIVE",
+			},
+		},
+		identityPrivilegedAccountWithoutMFARuleID: {
+			runtime: rulepackConvertRuntime("google_workspace", "user"),
+			kind:    "google_workspace.user",
+			attributes: map[string]string{
+				"domain":        "writer.com",
+				"email":         "admin@writer.com",
+				"is_admin":      "true",
+				"mfa_enrolled":  "false",
+				"primary_email": "admin@writer.com",
+				"user_id":       "1001",
+			},
+		},
+		identityPrivilegedNoMFAAccessRuleID: {
+			runtime:   rulepackConvertRuntime("okta", "user"),
+			graphRows: rulepackPrivilegedNoMFAAccessRows(),
+		},
+		identityStalePrivilegedAccountRuleID: {
+			runtime: rulepackConvertRuntime("google_workspace", "user"),
+			kind:    "google_workspace.user",
+			attributes: map[string]string{
+				"domain":        "writer.com",
+				"email":         "admin@writer.com",
+				"is_admin":      "true",
+				"last_login_at": staleLogin,
+				"primary_email": "admin@writer.com",
+				"user_id":       "1001",
+			},
+		},
+		sentinelOneProtectionControlTamperingRuleID: {
+			runtime: rulepackConvertRuntime("sentinelone", "agent"),
+			kind:    sentinelOneAgentEntityType,
+			attributes: map[string]string{
+				"agent_id":         "agent-99",
+				"computer_name":    "host-99",
+				"control_type":     "firewall",
+				"firewall_enabled": "false",
+			},
+		},
+		vulnViewActionableExternalFindingRuleID: {
+			runtime: rulepackConvertRuntime("vulnview", "vulnerability"),
+			kind:    "vulnview.vulnerability",
+			attributes: map[string]string{
+				"asset_urn":              "urn:cerebro:writer:external_asset:admin.writer.com",
+				"external_id":            "scan-1:exposed-panel:admin.writer.com",
+				"host":                   "admin.writer.com",
+				"name":                   "Exposed Admin Panel",
+				"severity":               "high",
+				"target_id":              "admin.writer.com",
+				"template_id":            "exposed-panel",
+				"vulnview_finding_state": "open",
+				"vulnview_status":        "open",
+			},
+		},
+	}
+}
+
+func rulepackConvertRuntime(sourceID string, family string) *cerebrov1.SourceRuntime {
+	sourceID = strings.TrimSpace(sourceID)
+	family = strings.TrimSpace(family)
+	return &cerebrov1.SourceRuntime{
+		Id:       "example-" + strings.ReplaceAll(sourceID, "_", "-") + "-" + strings.ReplaceAll(family, "_", "-"),
+		SourceId: sourceID,
+		TenantId: "writer",
+		Config:   map[string]string{"family": family},
+	}
+}
+
+func rulepackPrivilegedNoMFAAccessRows() []ports.CypherRow {
+	rows := make([]ports.CypherRow, 0, 3)
+	for i, resource := range []struct {
+		urn   string
+		label string
+		kind  string
+	}{
+		{urn: "urn:cerebro:writer:asset:prod-customer-db", label: "prod-customer-db", kind: "asset.database"},
+		{urn: "urn:cerebro:writer:asset:prod-secrets", label: "prod-secrets", kind: "asset.secret_store"},
+		{urn: "urn:cerebro:writer:asset:prod-warehouse", label: "prod-warehouse", kind: "asset.warehouse"},
+	} {
+		rows = append(rows, ports.CypherRow{Values: map[string]any{
+			"access_attributes_json":      fmt.Sprintf(`{"role":"owner","event_id":"graph-event-%d","matched_at":"2026-05-23T12:%02d:00Z"}`, i, i),
+			"access_relation":             "can_admin",
+			"resource_entity_type":        resource.kind,
+			"resource_label":              resource.label,
+			"resource_urn":                resource.urn,
+			"sensitivity_attributes_json": `{"label":"restricted"}`,
+			"sensitivity_entity_type":     "data.classification",
+			"sensitivity_label":           "restricted",
+			"sensitivity_relation":        "has_classification",
+			"sensitivity_urn":             "urn:cerebro:writer:data_classification:restricted",
+			"user_attributes_json":        `{"is_admin":"true","mfa_enrolled":"false"}`,
+			"user_entity_type":            "okta.user",
+			"user_label":                  "admin@writer.com",
+			"user_urn":                    "urn:cerebro:writer:okta_user:00u-admin",
+		}})
+	}
+	return rows
+}
+
+func assertRulepackConvertEventReplaySingleOpenRow(t *testing.T, rule Rule, definition RuleDefinition, fixture rulepackConvertReplayFixture) {
+	t.Helper()
+	if fixture.runtime == nil {
+		t.Fatal("event replay fixture runtime is required")
+	}
+	events := rulepackConvertReplayEvents(definition.ID, fixture, 4)
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry(%q) error = %v", definition.ID, err)
+	}
+	store := &stubFindingStore{}
+	replayer := &stubReplayer{events: events[:3]}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{fixture.runtime.GetId(): fixture.runtime}},
+		replayer,
+		store,
+		store,
+		store,
+		store,
+		registry,
+	)
+	firstResult, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{
+		RuntimeID: fixture.runtime.GetId(),
+		RuleIDs:   []string{definition.ID},
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeRules(%q first replay) error = %v", definition.ID, err)
+	}
+	firstEvaluation := rulepackSingleEvaluation(t, firstResult, definition.ID)
+	if got, want := len(firstEvaluation.Findings), 3; got != want {
+		t.Fatalf("first replay emitted %d findings, want %d (one per fixture event)", got, want)
+	}
+	firstFingerprint := assertRulepackStableEmittedFingerprints(t, firstEvaluation.Findings)
+	firstOpen := rulepackSingleOpenFindingRow(t, store, definition.ID, fixture.runtime.GetId())
+	if got := strings.TrimSpace(firstOpen.Fingerprint); got != firstFingerprint {
+		t.Fatalf("first persisted fingerprint = %q, want emitted %q", got, firstFingerprint)
+	}
+	assertRulepackEventRowProgression(t, definition, firstEvaluation.Findings[0], firstOpen, events[2])
+	assertRulepackEvidenceCoversEventIDs(t, store, firstOpen.ID, events[:3])
+
+	replayer.events = events[3:]
+	secondResult, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{
+		RuntimeID: fixture.runtime.GetId(),
+		RuleIDs:   []string{definition.ID},
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeRules(%q second replay) error = %v", definition.ID, err)
+	}
+	if replayer.calls != 2 {
+		t.Fatalf("Replay calls = %d, want 2", replayer.calls)
+	}
+	secondEvaluation := rulepackSingleEvaluation(t, secondResult, definition.ID)
+	if got, want := len(secondEvaluation.Findings), 1; got != want {
+		t.Fatalf("second replay emitted %d findings, want %d equivalent finding", got, want)
+	}
+	if got := assertRulepackStableEmittedFingerprints(t, secondEvaluation.Findings); got != firstFingerprint {
+		t.Fatalf("second replay fingerprint = %q, want stable %q", got, firstFingerprint)
+	}
+	finalOpen := rulepackSingleOpenFindingRow(t, store, definition.ID, fixture.runtime.GetId())
+	if finalOpen.ID != firstOpen.ID {
+		t.Fatalf("final open finding ID = %q, want same row %q", finalOpen.ID, firstOpen.ID)
+	}
+	if got := strings.TrimSpace(finalOpen.Fingerprint); got != firstFingerprint {
+		t.Fatalf("final fingerprint = %q, want stable %q", got, firstFingerprint)
+	}
+	assertRulepackEventRowProgression(t, definition, firstEvaluation.Findings[0], finalOpen, events[3])
+	assertRulepackEvidenceCoversEventIDs(t, store, finalOpen.ID, events)
+}
+
+func rulepackConvertReplayEvents(ruleID string, fixture rulepackConvertReplayFixture, count int) []*cerebrov1.EventEnvelope {
+	baseTime := time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC)
+	events := make([]*cerebrov1.EventEnvelope, 0, count)
+	for i := 0; i < count; i++ {
+		observedAt := baseTime.Add(time.Duration(i) * time.Minute)
+		eventID := fmt.Sprintf("%s-replay-%02d", ruleID, i)
+		attributes := cloneStringMap(fixture.attributes)
+		if attributes == nil {
+			attributes = map[string]string{}
+		}
+		attributes["event_id"] = eventID
+		attributes["matched_at"] = observedAt.Format(time.RFC3339Nano)
+		attributes["family"] = eventFamilyForKind(fixture.kind)
+		attributes[ports.EventAttributeSourceRuntimeID] = fixture.runtime.GetId()
+		events = append(events, &cerebrov1.EventEnvelope{
+			Id:         eventID,
+			TenantId:   fixture.runtime.GetTenantId(),
+			SourceId:   fixture.runtime.GetSourceId(),
+			Kind:       fixture.kind,
+			OccurredAt: timestamppb.New(observedAt),
+			SchemaRef:  strings.ReplaceAll(fixture.kind, ".", "/") + "/v1",
+			Attributes: attributes,
+		})
+	}
+	return events
+}
+
+func rulepackSingleEvaluation(t *testing.T, result *EvaluateRulesResult, ruleID string) *RuleEvaluationResult {
+	t.Helper()
+	if result == nil {
+		t.Fatalf("EvaluateSourceRuntimeRules(%q) returned nil result", ruleID)
+	}
+	if got := len(result.Evaluations); got != 1 {
+		t.Fatalf("EvaluateSourceRuntimeRules(%q) returned %d evaluations, want 1", ruleID, got)
+	}
+	evaluation := result.Evaluations[0]
+	if evaluation == nil {
+		t.Fatalf("EvaluateSourceRuntimeRules(%q) returned nil evaluation", ruleID)
+	}
+	if got := strings.TrimSpace(evaluation.Rule.GetId()); got != ruleID {
+		t.Fatalf("evaluation rule id = %q, want %q", got, ruleID)
+	}
+	return evaluation
+}
+
+func assertRulepackStableEmittedFingerprints(t *testing.T, findings []*ports.FindingRecord) string {
+	t.Helper()
+	if len(findings) == 0 {
+		t.Fatal("no emitted findings")
+	}
+	fingerprint := strings.TrimSpace(findings[0].Fingerprint)
+	if fingerprint == "" {
+		t.Fatalf("first emitted finding %q has empty fingerprint", findings[0].ID)
+	}
+	for i, finding := range findings {
+		if finding == nil {
+			t.Fatalf("emitted finding %d is nil", i)
+		}
+		if got := strings.TrimSpace(finding.Fingerprint); got != fingerprint {
+			t.Fatalf("emitted finding %d fingerprint = %q, want stable %q", i, got, fingerprint)
+		}
+	}
+	return fingerprint
+}
+
+func rulepackSingleOpenFindingRow(t *testing.T, store *stubFindingStore, ruleID string, runtimeID string) *ports.FindingRecord {
+	t.Helper()
+	openRows := rulepackOpenFindingRows(store, ruleID, runtimeID)
+	if got := len(openRows); got != 1 {
+		t.Fatalf("open persisted rows for rule %q runtime %q = %d, want exactly 1: %#v", ruleID, runtimeID, got, openRows)
+	}
+	return openRows[0]
+}
+
+func rulepackOpenFindingRows(store *stubFindingStore, ruleID string, runtimeID string) []*ports.FindingRecord {
+	if store == nil {
+		return nil
+	}
+	findings := make([]*ports.FindingRecord, 0, len(store.findings))
+	for _, finding := range store.findings {
+		if finding == nil {
+			continue
+		}
+		if strings.TrimSpace(finding.RuleID) != strings.TrimSpace(ruleID) {
+			continue
+		}
+		if strings.TrimSpace(runtimeID) != "" && strings.TrimSpace(finding.RuntimeID) != strings.TrimSpace(runtimeID) {
+			continue
+		}
+		if finding.Tombstoned || strings.TrimSpace(finding.Status) != findingStatusOpen {
+			continue
+		}
+		findings = append(findings, cloneFinding(finding))
+	}
+	sort.Slice(findings, func(i, j int) bool {
+		return findings[i].ID < findings[j].ID
+	})
+	return findings
+}
+
+func assertRulepackEventRowProgression(t *testing.T, definition RuleDefinition, baseline *ports.FindingRecord, final *ports.FindingRecord, latest *cerebrov1.EventEnvelope) {
+	t.Helper()
+	if baseline == nil || final == nil || latest == nil {
+		t.Fatal("baseline, final finding, and latest event are required")
+	}
+	if got, want := final.LastObservedAt.UTC(), latest.GetOccurredAt().AsTime().UTC(); !got.Equal(want) {
+		t.Fatalf("LastObservedAt = %s, want latest event observed_at %s", got.Format(time.RFC3339Nano), want.Format(time.RFC3339Nano))
+	}
+	if got := strings.TrimSpace(final.Attributes["event_id"]); got != latest.GetId() {
+		t.Fatalf("final Attributes[event_id] = %q, want latest event id %q", got, latest.GetId())
+	}
+	if want := strings.TrimSpace(latest.GetAttributes()["matched_at"]); want != "" {
+		if got := strings.TrimSpace(final.Attributes["matched_at"]); got != "" && got != want {
+			t.Fatalf("final Attributes[matched_at] = %q, want latest matched_at %q", got, want)
+		}
+	}
+	for _, field := range definition.FingerprintFields {
+		field = strings.TrimSpace(field)
+		if field == "" {
+			continue
+		}
+		expected := strings.TrimSpace(baseline.Attributes[field])
+		if expected == "" {
+			continue
+		}
+		if got := strings.TrimSpace(final.Attributes[field]); got != expected {
+			t.Fatalf("final anchor attribute %q = %q, want preserved %q", field, got, expected)
+		}
+	}
+}
+
+func assertRulepackEvidenceCoversEventIDs(t *testing.T, store *stubFindingStore, findingID string, events []*cerebrov1.EventEnvelope) {
+	t.Helper()
+	evidence := rulepackEvidenceForFinding(store, findingID)
+	if got, wantAtLeast := len(evidence), len(events); got < wantAtLeast {
+		t.Fatalf("evidence rows for finding %q = %d, want at least %d to preserve replayed audit events", findingID, got, wantAtLeast)
+	}
+	seen := map[string]struct{}{}
+	for _, record := range evidence {
+		if record.GetFindingId() != findingID {
+			t.Fatalf("evidence FindingId = %q, want %q", record.GetFindingId(), findingID)
+		}
+		if len(record.GetEventIds()) == 0 {
+			t.Fatalf("evidence %q has no EventIds", record.GetId())
+		}
+		if strings.TrimSpace(record.GetAttributes()["event_id"]) == "" {
+			t.Fatalf("evidence %q Attributes[event_id] is empty", record.GetId())
+		}
+		for _, eventID := range record.GetEventIds() {
+			seen[strings.TrimSpace(eventID)] = struct{}{}
+		}
+	}
+	for _, event := range events {
+		if _, ok := seen[strings.TrimSpace(event.GetId())]; !ok {
+			t.Fatalf("evidence for finding %q does not preserve event id %q; saw %v", findingID, event.GetId(), sortedRulepackKeys(seen))
+		}
+	}
+}
+
+func rulepackEvidenceForFinding(store *stubFindingStore, findingID string) []*cerebrov1.FindingEvidence {
+	if store == nil {
+		return nil
+	}
+	evidence := make([]*cerebrov1.FindingEvidence, 0, len(store.evidence))
+	for _, record := range store.evidence {
+		if record == nil || strings.TrimSpace(record.GetFindingId()) != strings.TrimSpace(findingID) {
+			continue
+		}
+		evidence = append(evidence, cloneFindingEvidence(record))
+	}
+	sort.Slice(evidence, func(i, j int) bool {
+		return evidence[i].GetId() < evidence[j].GetId()
+	})
+	return evidence
+}
+
+func sortedRulepackKeys(values map[string]struct{}) []string {
+	keys := make([]string, 0, len(values))
+	for value := range values {
+		keys = append(keys, value)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func assertRulepackConvertGraphReplaySingleOpenRow(t *testing.T, rule Rule, definition RuleDefinition, fixture rulepackConvertReplayFixture) {
+	t.Helper()
+	graphRule, ok := rule.(GraphRule)
+	if !ok {
+		t.Fatalf("convert rule %q has graph fixture but does not implement GraphRule", definition.ID)
+	}
+	if len(fixture.graphRows) < 3 {
+		t.Fatalf("graph fixture for %q has %d rows, want at least 3 rows for one durable user anchor", definition.ID, len(fixture.graphRows))
+	}
+	registry, err := NewRegistry(graphRule)
+	if err != nil {
+		t.Fatalf("NewRegistry(%q) error = %v", definition.ID, err)
+	}
+	store := &stubFindingStore{}
+	graphStore := &stubGraphStore{cypherRows: fixture.graphRows}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{fixture.runtime.GetId(): fixture.runtime}},
+		&stubReplayer{},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	).WithGraphQueryStore(graphStore)
+
+	firstResult, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{
+		RuntimeID: fixture.runtime.GetId(),
+		RuleIDs:   []string{definition.ID},
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules(%q first replay) error = %v", definition.ID, err)
+	}
+	firstEvaluation := rulepackSingleGraphEvaluation(t, firstResult, definition.ID)
+	if got, want := int(firstEvaluation.RowsRead), len(fixture.graphRows); got != want {
+		t.Fatalf("graph RowsRead = %d, want %d", got, want)
+	}
+	if got := len(firstEvaluation.Findings); got != 1 {
+		t.Fatalf("first graph replay emitted %d findings, want one grouped finding for one durable user anchor", got)
+	}
+	firstFingerprint := strings.TrimSpace(firstEvaluation.Findings[0].Fingerprint)
+	if firstFingerprint == "" {
+		t.Fatal("first graph finding has empty fingerprint")
+	}
+	firstOpen := rulepackSingleOpenFindingRow(t, store, definition.ID, fixture.runtime.GetId())
+	if got := strings.TrimSpace(firstOpen.Fingerprint); got != firstFingerprint {
+		t.Fatalf("first graph persisted fingerprint = %q, want emitted %q", got, firstFingerprint)
+	}
+	assertRulepackGraphEvidence(t, store, firstOpen.ID, len(fixture.graphRows), 1)
+	firstObserved := firstOpen.LastObservedAt
+
+	secondResult, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{
+		RuntimeID: fixture.runtime.GetId(),
+		RuleIDs:   []string{definition.ID},
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules(%q second replay) error = %v", definition.ID, err)
+	}
+	secondEvaluation := rulepackSingleGraphEvaluation(t, secondResult, definition.ID)
+	if got := len(secondEvaluation.Findings); got != 1 {
+		t.Fatalf("second graph replay emitted %d findings, want one equivalent finding", got)
+	}
+	if got := strings.TrimSpace(secondEvaluation.Findings[0].Fingerprint); got != firstFingerprint {
+		t.Fatalf("second graph fingerprint = %q, want stable %q", got, firstFingerprint)
+	}
+	finalOpen := rulepackSingleOpenFindingRow(t, store, definition.ID, fixture.runtime.GetId())
+	if finalOpen.ID != firstOpen.ID {
+		t.Fatalf("final graph finding ID = %q, want same row %q", finalOpen.ID, firstOpen.ID)
+	}
+	if finalOpen.LastObservedAt.Before(firstObserved) {
+		t.Fatalf("final graph LastObservedAt = %s, want not before first replay %s", finalOpen.LastObservedAt.Format(time.RFC3339Nano), firstObserved.Format(time.RFC3339Nano))
+	}
+	if got := strings.TrimSpace(finalOpen.Attributes["user"]); got == "" {
+		t.Fatalf("final graph Attributes[user] = empty, want durable user anchor preserved")
+	}
+	assertRulepackGraphEvidence(t, store, finalOpen.ID, len(fixture.graphRows), 2)
+}
+
+func rulepackSingleGraphEvaluation(t *testing.T, result *EvaluateGraphRulesResult, ruleID string) *GraphRuleEvaluationResult {
+	t.Helper()
+	if result == nil {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules(%q) returned nil result", ruleID)
+	}
+	if got := len(result.Evaluations); got != 1 {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules(%q) returned %d evaluations, want 1", ruleID, got)
+	}
+	evaluation := result.Evaluations[0]
+	if evaluation == nil {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules(%q) returned nil evaluation", ruleID)
+	}
+	if got := strings.TrimSpace(evaluation.Rule.GetId()); got != ruleID {
+		t.Fatalf("graph evaluation rule id = %q, want %q", got, ruleID)
+	}
+	return evaluation
+}
+
+func assertRulepackGraphEvidence(t *testing.T, store *stubFindingStore, findingID string, wantGraphRows int, wantRunIDsAtLeast int) {
+	t.Helper()
+	evidence := rulepackEvidenceForFinding(store, findingID)
+	if len(evidence) != 1 {
+		t.Fatalf("graph evidence rows for finding %q = %d, want one merged evidence row", findingID, len(evidence))
+	}
+	record := evidence[0]
+	if got := len(record.GetGraphRows()); got != wantGraphRows {
+		t.Fatalf("graph evidence row count = %d, want %d", got, wantGraphRows)
+	}
+	if got := len(record.GetRunIds()); got < wantRunIDsAtLeast {
+		t.Fatalf("graph evidence RunIds = %v, want at least %d run id(s)", record.GetRunIds(), wantRunIDsAtLeast)
+	}
+	if record.GetLastObservedAt() == nil || record.GetLastObservedAt().AsTime().IsZero() {
+		t.Fatalf("graph evidence %q LastObservedAt is empty", record.GetId())
 	}
 }
 
@@ -486,29 +1233,6 @@ func rulepackAuditThresholdDuration(t *testing.T, threshold string) time.Duratio
 		t.Fatalf("threshold %q parsed to non-positive duration %s", threshold, duration)
 	}
 	return duration
-}
-
-func stableAnchorAttributes(fields []string) map[string]string {
-	attributes := map[string]string{}
-	for _, field := range fields {
-		key := strings.TrimSpace(field)
-		if key == "" {
-			continue
-		}
-		attributes[key] = "anchor-" + strings.NewReplacer(".", "-", "_", "-").Replace(key)
-	}
-	return attributes
-}
-
-func fingerprintInputsFromFields(fields []string, attributes map[string]string) []string {
-	inputs := make([]string, 0, len(fields))
-	for _, field := range fields {
-		value := strings.TrimSpace(attributes[strings.TrimSpace(field)])
-		if value != "" {
-			inputs = append(inputs, value)
-		}
-	}
-	return inputs
 }
 
 func sampleRetiredRuleEvent(ruleID string, kind string) *cerebrov1.EventEnvelope {
