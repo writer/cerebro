@@ -169,6 +169,17 @@ const findingSelectColumns = `id, fingerprint, tenant_id, runtime_id, rule_id, t
   status_updated_at, first_observed_at, last_observed_at,
   tombstoned, tombstoned_at, tombstoned_by, tombstoned_reason, tombstoned_run_id, prior_status, tombstone_generation`
 
+type findingStatusReason string
+
+const findingStatusReasonBackfillCollision findingStatusReason = "backfill_collision"
+
+const (
+	tenantScopedFingerprintBackfillActor = "tenant_scoped_fingerprint_backfill"
+	tenantScopedFingerprintBackfillRunID = "tenant_scoped_fingerprint_backfill"
+)
+
+var errTenantScopedFingerprintBackfillRetry = errors.New("retry tenant-scoped fingerprint backfill")
+
 // upsertFindingStatement persists one finding row, preserving runtime_id on conflict.
 //
 // runtime_id is intentionally pinned on first insert. Event-rule fingerprints already include
@@ -1078,59 +1089,287 @@ func (s *Store) backfillTenantScopedFindingFingerprints(ctx context.Context) err
 		placeholders = append(placeholders, fmt.Sprintf("$%d", len(args)))
 	}
 	query := fmt.Sprintf(`
-SELECT id, tenant_id, rule_id, fingerprint, attributes_json
+SELECT id, tenant_id, rule_id, fingerprint, attributes_json, resource_urns_json, status, created_at, updated_at
 FROM findings
 WHERE tombstoned = FALSE
-  AND rule_id IN (%s)`, strings.Join(placeholders, ", "))
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return fmt.Errorf("list tenant-scoped fingerprint backfill rows: %w", err)
-	}
-	type fingerprintUpdate struct {
-		id          string
-		fingerprint string
-	}
-	updates := []fingerprintUpdate{}
-	for rows.Next() {
-		var id, tenantID, ruleID, currentFingerprint string
-		var rawAttributes []byte
-		if err := rows.Scan(&id, &tenantID, &ruleID, &currentFingerprint, &rawAttributes); err != nil {
-			_ = rows.Close()
-			return fmt.Errorf("scan tenant-scoped fingerprint backfill row: %w", err)
-		}
-		attributes := map[string]string{}
-		if len(rawAttributes) != 0 {
-			if err := json.Unmarshal(rawAttributes, &attributes); err != nil {
-				_ = rows.Close()
-				return fmt.Errorf("decode tenant-scoped fingerprint backfill attributes for %q: %w", id, err)
+  AND rule_id IN (%s)
+ORDER BY tenant_id, rule_id, id
+FOR UPDATE`, strings.Join(placeholders, ", "))
+	const maxAttempts = 4
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if err := s.backfillTenantScopedFindingFingerprintsOnce(ctx, query, args); err != nil {
+			lastErr = err
+			if errors.Is(err, errTenantScopedFingerprintBackfillRetry) || isPartialUniqueIndexConflict(err) {
+				continue
 			}
+			return err
 		}
-		fingerprint := tenantScopedFingerprintBackfill(ruleID, tenantID, attributes)
-		if fingerprint == "" || fingerprint == strings.TrimSpace(currentFingerprint) {
-			continue
-		}
-		updates = append(updates, fingerprintUpdate{id: strings.TrimSpace(id), fingerprint: fingerprint})
+		return nil
 	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return fmt.Errorf("iterate tenant-scoped fingerprint backfill rows: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return fmt.Errorf("close tenant-scoped fingerprint backfill rows: %w", err)
-	}
-	for _, update := range updates {
-		if update.id == "" || update.fingerprint == "" {
-			continue
-		}
-		if _, err := s.db.ExecContext(ctx,
-			`UPDATE findings SET fingerprint = $2, updated_at = NOW() WHERE id = $1 AND tombstoned = FALSE`,
-			update.id,
-			update.fingerprint,
-		); err != nil {
-			return fmt.Errorf("backfill tenant-scoped fingerprint for finding %q: %w", update.id, err)
-		}
+	if lastErr != nil {
+		return lastErr
 	}
 	return nil
+}
+
+func (s *Store) backfillTenantScopedFindingFingerprintsOnce(ctx context.Context, query string, args []any) (err error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tenant-scoped fingerprint backfill: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	groups, err := loadTenantScopedFingerprintBackfillGroups(ctx, tx, query, args)
+	if err != nil {
+		return err
+	}
+
+	keys := make([]tenantScopedFingerprintBackfillGroupKey, 0, len(groups))
+	for key := range groups {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].tenantID != keys[j].tenantID {
+			return keys[i].tenantID < keys[j].tenantID
+		}
+		return keys[i].fingerprint < keys[j].fingerprint
+	})
+	for _, key := range keys {
+		rows := groups[key]
+		if len(rows) == 0 {
+			continue
+		}
+		if len(rows) == 1 {
+			if err := updateTenantScopedBackfillWinnerFingerprint(ctx, tx, rows[0], key.fingerprint); err != nil {
+				return err
+			}
+			continue
+		}
+		sort.SliceStable(rows, func(i, j int) bool {
+			return tenantScopedBackfillRowWins(rows[i], rows[j])
+		})
+		winner := rows[0]
+		now := time.Now().UTC()
+		for _, loser := range rows[1:] {
+			if err := tombstoneTenantScopedBackfillCollisionLoser(ctx, tx, loser, now); err != nil {
+				return err
+			}
+		}
+		if err := updateTenantScopedBackfillWinnerFingerprint(ctx, tx, winner, key.fingerprint); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit tenant-scoped fingerprint backfill: %w", err)
+	}
+	committed = true
+	return nil
+}
+
+type tenantScopedFingerprintBackfillGroupKey struct {
+	tenantID    string
+	fingerprint string
+}
+
+type tenantScopedFingerprintBackfillRow struct {
+	id                 string
+	tenantID           string
+	ruleID             string
+	currentFingerprint string
+	newFingerprint     string
+	status             string
+	attributes         map[string]string
+	resourceURNs       []string
+	createdAt          time.Time
+	updatedAt          time.Time
+}
+
+type tenantScopedBackfillQuerier interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func loadTenantScopedFingerprintBackfillGroups(ctx context.Context, querier tenantScopedBackfillQuerier, query string, args []any) (map[tenantScopedFingerprintBackfillGroupKey][]tenantScopedFingerprintBackfillRow, error) {
+	rows, err := querier.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list tenant-scoped fingerprint backfill rows: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	groups := map[tenantScopedFingerprintBackfillGroupKey][]tenantScopedFingerprintBackfillRow{}
+	for rows.Next() {
+		var row tenantScopedFingerprintBackfillRow
+		var rawAttributes []byte
+		var rawResourceURNs []byte
+		if err := rows.Scan(
+			&row.id,
+			&row.tenantID,
+			&row.ruleID,
+			&row.currentFingerprint,
+			&rawAttributes,
+			&rawResourceURNs,
+			&row.status,
+			&row.createdAt,
+			&row.updatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan tenant-scoped fingerprint backfill row: %w", err)
+		}
+		attributes, err := decodeTenantScopedBackfillAttributes(rawAttributes)
+		if err != nil {
+			return nil, fmt.Errorf("decode tenant-scoped fingerprint backfill attributes for %q: %w", strings.TrimSpace(row.id), err)
+		}
+		resourceURNs, err := decodeTenantScopedBackfillResourceURNs(rawResourceURNs)
+		if err != nil {
+			return nil, fmt.Errorf("decode tenant-scoped fingerprint backfill resource urns for %q: %w", strings.TrimSpace(row.id), err)
+		}
+		row.id = strings.TrimSpace(row.id)
+		row.tenantID = strings.TrimSpace(row.tenantID)
+		row.ruleID = strings.TrimSpace(row.ruleID)
+		row.currentFingerprint = strings.TrimSpace(row.currentFingerprint)
+		row.status = strings.TrimSpace(row.status)
+		row.attributes = attributes
+		row.resourceURNs = resourceURNs
+		row.createdAt = row.createdAt.UTC()
+		row.updatedAt = row.updatedAt.UTC()
+		row.newFingerprint = tenantScopedFingerprintBackfill(row.ruleID, row.tenantID, row.attributes)
+		if row.id == "" || row.tenantID == "" || row.newFingerprint == "" {
+			continue
+		}
+		key := tenantScopedFingerprintBackfillGroupKey{tenantID: row.tenantID, fingerprint: row.newFingerprint}
+		groups[key] = append(groups[key], row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate tenant-scoped fingerprint backfill rows: %w", err)
+	}
+	return groups, nil
+}
+
+func decodeTenantScopedBackfillAttributes(raw []byte) (map[string]string, error) {
+	attributes := map[string]string{}
+	if len(raw) == 0 {
+		return attributes, nil
+	}
+	if err := json.Unmarshal(raw, &attributes); err != nil {
+		return nil, err
+	}
+	return attributes, nil
+}
+
+func decodeTenantScopedBackfillResourceURNs(raw []byte) ([]string, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	resourceURNs := []string{}
+	if err := json.Unmarshal(raw, &resourceURNs); err != nil {
+		return nil, err
+	}
+	return normalizedNonEmptyStrings(resourceURNs), nil
+}
+
+func tenantScopedBackfillRowWins(a tenantScopedFingerprintBackfillRow, b tenantScopedFingerprintBackfillRow) bool {
+	if !a.updatedAt.Equal(b.updatedAt) {
+		return a.updatedAt.After(b.updatedAt)
+	}
+	if !a.createdAt.Equal(b.createdAt) {
+		return a.createdAt.After(b.createdAt)
+	}
+	return strings.TrimSpace(a.id) < strings.TrimSpace(b.id)
+}
+
+func updateTenantScopedBackfillWinnerFingerprint(ctx context.Context, tx *sql.Tx, row tenantScopedFingerprintBackfillRow, fingerprint string) error {
+	id := strings.TrimSpace(row.id)
+	fingerprint = strings.TrimSpace(fingerprint)
+	if id == "" || fingerprint == "" || strings.TrimSpace(row.currentFingerprint) == fingerprint {
+		return nil
+	}
+	result, err := tx.ExecContext(ctx,
+		`UPDATE findings SET fingerprint = $2, updated_at = NOW() WHERE id = $1 AND tombstoned = FALSE`,
+		id,
+		fingerprint,
+	)
+	if err != nil {
+		return fmt.Errorf("backfill tenant-scoped fingerprint for finding %q: %w", id, err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("backfill tenant-scoped fingerprint for finding %q rowsAffected: %w", id, err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("backfill tenant-scoped fingerprint for finding %q: %w", id, errTenantScopedFingerprintBackfillRetry)
+	}
+	return nil
+}
+
+func tombstoneTenantScopedBackfillCollisionLoser(ctx context.Context, tx *sql.Tx, row tenantScopedFingerprintBackfillRow, tombstonedAt time.Time) error {
+	id := strings.TrimSpace(row.id)
+	if id == "" {
+		return nil
+	}
+	reason := string(findingStatusReasonBackfillCollision)
+	tombstonedAt = tombstonedAt.UTC()
+	if tombstonedAt.IsZero() {
+		tombstonedAt = time.Now().UTC()
+	}
+	priorStatus := strings.TrimSpace(row.status)
+	if priorStatus == "" {
+		priorStatus = "open"
+	}
+	updated, err := tombstoneFindingStatusInTx(ctx, tx, ports.FindingStatusUpdate{
+		FindingID: id,
+		Status:    "resolved",
+		Reason:    reason,
+		UpdatedAt: tombstonedAt,
+		Tombstone: &ports.FindingTombstoneApply{
+			By:           tenantScopedFingerprintBackfillActor,
+			Reason:       reason,
+			RunID:        tenantScopedFingerprintBackfillRunID,
+			PriorStatus:  priorStatus,
+			TombstonedAt: tombstonedAt,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("tombstone tenant-scoped fingerprint backfill collision finding %q: %w", id, err)
+	}
+	anchorURI := tenantScopedBackfillAnchorURI(row.resourceURNs, row.attributes)
+	if anchorURI == "" && updated != nil {
+		anchorURI = tenantScopedBackfillAnchorURI(updated.ResourceURNs, updated.Attributes)
+	}
+	if err := insertFindingTombstoneEvent(ctx, tx, ports.FindingTombstoneEvent{
+		FindingID:    id,
+		TenantID:     strings.TrimSpace(row.tenantID),
+		RuleID:       strings.TrimSpace(row.ruleID),
+		AnchorURI:    anchorURI,
+		PriorStatus:  priorStatus,
+		Reason:       reason,
+		Actor:        tenantScopedFingerprintBackfillActor,
+		RunID:        tenantScopedFingerprintBackfillRunID,
+		TombstonedAt: tombstonedAt,
+	}); err != nil {
+		return fmt.Errorf("audit tenant-scoped fingerprint backfill collision finding %q: %w", id, err)
+	}
+	return nil
+}
+
+func tenantScopedBackfillAnchorURI(resourceURNs []string, attributes map[string]string) string {
+	for _, urn := range resourceURNs {
+		if trimmed := strings.TrimSpace(urn); trimmed != "" {
+			return trimmed
+		}
+	}
+	if attributes == nil {
+		return ""
+	}
+	return firstNonEmptyPostgres(
+		attributes["primary_resource_urn"],
+		attributes["resource_urn"],
+		attributes["resource_id"],
+		attributes["user_urn"],
+		attributes["group_urn"],
+	)
 }
 
 func tenantScopedFingerprintBackfillRuleIDs() []string {
