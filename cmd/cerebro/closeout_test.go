@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -132,6 +133,79 @@ func withEnv(env *closeoutEnv, kv map[string]string) {
 	}
 }
 
+func captureProcessStdout(t *testing.T, run func() error) (string, error) {
+	t.Helper()
+	previous := os.Stdout
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("create stdout pipe: %v", err)
+	}
+	os.Stdout = writer
+	defer func() { os.Stdout = previous }()
+
+	runErr := run()
+	if closeErr := writer.Close(); closeErr != nil {
+		t.Fatalf("close stdout writer: %v", closeErr)
+	}
+	out, readErr := io.ReadAll(reader)
+	if readErr != nil {
+		t.Fatalf("read stdout pipe: %v", readErr)
+	}
+	if closeErr := reader.Close(); closeErr != nil {
+		t.Fatalf("close stdout reader: %v", closeErr)
+	}
+	return string(out), runErr
+}
+
+func TestRunCloseout_HelpDoesNotInitDeps(t *testing.T) {
+	previousFactory := defaultCloseoutEnvFactory
+	depsInitCalled := false
+	defaultCloseoutEnvFactory = func() (*closeoutEnv, func(), error) {
+		depsInitCalled = true
+		return nil, func() {}, errors.New("dependency initialization should not run for --help")
+	}
+	t.Cleanup(func() { defaultCloseoutEnvFactory = previousFactory })
+
+	stdout, err := captureProcessStdout(t, func() error {
+		return runCloseout([]string{"--help"})
+	})
+	if err != nil {
+		t.Fatalf("runCloseout(--help) error = %v", err)
+	}
+	if depsInitCalled {
+		t.Fatal("defaultCloseoutEnv was called for --help")
+	}
+	if !strings.Contains(stdout, "cerebro closeout") {
+		t.Fatalf("stdout should contain closeout help text, got:\n%s", stdout)
+	}
+}
+
+func TestRunCloseout_ValidationErrorDoesNotInitDeps(t *testing.T) {
+	t.Setenv(closeoutEnvTenantID, "")
+	previousFactory := defaultCloseoutEnvFactory
+	depsInitCalled := false
+	defaultCloseoutEnvFactory = func() (*closeoutEnv, func(), error) {
+		depsInitCalled = true
+		return nil, func() {}, errors.New("dependency initialization should not run for local validation errors")
+	}
+	t.Cleanup(func() { defaultCloseoutEnvFactory = previousFactory })
+
+	err := runCloseout([]string{
+		"--rule-id", "r1",
+		"--reason", "cleanup",
+		"--tenant-id", "",
+	})
+	if err == nil {
+		t.Fatal("expected local tenant validation to fail")
+	}
+	if !errors.Is(err, ErrCloseoutTenantIDRequired) {
+		t.Fatalf("error %v should match ErrCloseoutTenantIDRequired", err)
+	}
+	if depsInitCalled {
+		t.Fatal("defaultCloseoutEnv was called for a local validation error")
+	}
+}
+
 func TestCloseoutHelp(t *testing.T) {
 	env, _, _, stdout, _ := newCloseoutTestEnv(t)
 	if err := runCloseoutWithEnv([]string{"--help"}, env); err != nil {
@@ -168,6 +242,30 @@ func TestCloseoutHelp(t *testing.T) {
 	}
 }
 
+func TestValidateCloseoutFlags_ReasonRequiredAlways(t *testing.T) {
+	for _, apply := range []bool{false, true} {
+		t.Run(map[bool]string{false: "dry-run", true: "apply"}[apply], func(t *testing.T) {
+			env, _, _, _, _ := newCloseoutTestEnv(t)
+			withEnv(env, map[string]string{closeoutEnvAllow: closeoutEnvSecDev})
+			flags := closeoutFlags{
+				RuleIDs:       []string{"r1"},
+				Apply:         apply,
+				Reason:        "",
+				AllowEnv:      closeoutEnvSecDev,
+				AuditS3Bucket: "example-sec-dev-audit",
+				TenantID:      closeoutTenant,
+			}
+			err := validateCloseoutFlags(&flags, env)
+			if err == nil {
+				t.Fatalf("expected empty --reason to fail when apply=%v", apply)
+			}
+			if !errors.Is(err, ErrCloseoutReasonRequired) {
+				t.Fatalf("error %v should match ErrCloseoutReasonRequired", err)
+			}
+		})
+	}
+}
+
 func TestCloseoutApplyRequiresReason(t *testing.T) {
 	env, backend, _, _, _ := newCloseoutTestEnv(t)
 	withEnv(env, map[string]string{closeoutEnvAllow: "sec-dev"})
@@ -186,6 +284,56 @@ func TestCloseoutApplyRequiresReason(t *testing.T) {
 	if backend.supportsCallCount != 0 || backend.closeoutCallCount != 0 {
 		t.Errorf("backend should not be called on validation failure: supports=%d closeout=%d",
 			backend.supportsCallCount, backend.closeoutCallCount)
+	}
+}
+
+func TestRunCloseoutWithEnv_TenantIDValidatedBeforeBackend(t *testing.T) {
+	env, backend, writer, _, _ := newCloseoutTestEnv(t)
+	withEnv(env, map[string]string{closeoutEnvTenantID: ""})
+	err := runCloseoutWithEnv([]string{
+		"--rule-id", "r1",
+		"--reason", "cleanup",
+		"--tenant-id", "",
+	}, env)
+	if err == nil {
+		t.Fatal("expected empty tenant id to fail validation")
+	}
+	if !errors.Is(err, ErrCloseoutTenantIDRequired) {
+		t.Fatalf("error %v should match ErrCloseoutTenantIDRequired", err)
+	}
+	if !strings.Contains(string(ErrCloseoutTenantIDRequired), "--tenant-id") ||
+		!strings.Contains(string(ErrCloseoutTenantIDRequired), closeoutEnvTenantID) {
+		t.Fatalf("tenant validation sentinel should name --tenant-id and %s, got %q",
+			closeoutEnvTenantID, string(ErrCloseoutTenantIDRequired))
+	}
+	if backend.supportsCallCount != 0 || backend.closeoutCallCount != 0 {
+		t.Fatalf("backend invoked before tenant validation: supports=%d closeout=%d",
+			backend.supportsCallCount, backend.closeoutCallCount)
+	}
+	if len(writer.calls) != 0 {
+		t.Fatalf("summary writer invoked before tenant validation: %d", len(writer.calls))
+	}
+}
+
+func TestRunCloseoutWithEnv_DryRunFalseHonored(t *testing.T) {
+	env, backend, writer, _, _ := newCloseoutTestEnv(t)
+	err := runCloseoutWithEnv([]string{
+		"--rule-id", "r1",
+		"--reason", "cleanup",
+		"--dry-run=false",
+	}, env)
+	if err == nil {
+		t.Fatal("expected --dry-run=false without --apply to fail")
+	}
+	if !errors.Is(err, ErrCloseoutDryRunFalseRequiresApply) {
+		t.Fatalf("error %v should match ErrCloseoutDryRunFalseRequiresApply", err)
+	}
+	if backend.supportsCallCount != 0 || backend.closeoutCallCount != 0 {
+		t.Fatalf("backend invoked despite --dry-run=false conflict: supports=%d closeout=%d",
+			backend.supportsCallCount, backend.closeoutCallCount)
+	}
+	if len(writer.calls) != 0 {
+		t.Fatalf("summary writer invoked despite --dry-run=false conflict: %d", len(writer.calls))
 	}
 }
 
@@ -262,7 +410,7 @@ func TestCloseoutAllowEnvGate(t *testing.T) {
 
 func TestCloseoutAutogeneratesRunID(t *testing.T) {
 	env, _, _, stdout, _ := newCloseoutTestEnv(t)
-	if err := runCloseoutWithEnv([]string{"--rule-id", "r1"}, env); err != nil {
+	if err := runCloseoutWithEnv([]string{"--rule-id", "r1", "--reason", "cleanup"}, env); err != nil {
 		t.Fatalf("dry-run error = %v", err)
 	}
 	uuidPattern := regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}`)
@@ -328,6 +476,7 @@ github-webhook-modified
 	if err := runCloseoutWithEnv([]string{
 		"--rule-id-file", path,
 		"--rule-id", "identity-stale-privileged-account",
+		"--reason", "cleanup",
 	}, env); err != nil {
 		t.Fatalf("rule-id-file dry-run error = %v", err)
 	}
@@ -356,6 +505,7 @@ func TestCloseoutSelectorBySource(t *testing.T) {
 		"--rule-id", "rule-one",
 		"--source", "github",
 		"--source", "okta",
+		"--reason", "cleanup",
 	}, env); err != nil {
 		t.Fatalf("dry-run error = %v", err)
 	}
@@ -384,6 +534,7 @@ func TestCloseoutSelectorOlderThan(t *testing.T) {
 			env, backend, _, _, _ := newCloseoutTestEnv(t)
 			if err := runCloseoutWithEnv([]string{
 				"--rule-id", "r1",
+				"--reason", "cleanup",
 				"--older-than", tc.raw,
 			}, env); err != nil {
 				t.Fatalf("dry-run error = %v", err)
@@ -505,7 +656,7 @@ func TestCloseoutActorResolution(t *testing.T) {
 				closeoutEnvGithubActor: tc.github,
 				closeoutEnvUser:        tc.user,
 			})
-			args := []string{"--rule-id", "r1"}
+			args := []string{"--rule-id", "r1", "--reason", "cleanup"}
 			if tc.flagActor != "" {
 				args = append(args, "--actor", tc.flagActor)
 			}
@@ -535,7 +686,7 @@ func TestCloseoutDryRunExitCode(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			env, backend, _, _, _ := newCloseoutTestEnv(t)
 			backend.closeoutResult = &findings.CloseoutResult{ProposedCount: tc.proposed}
-			if err := runCloseoutWithEnv([]string{"--rule-id", "r1"}, env); err != nil {
+			if err := runCloseoutWithEnv([]string{"--rule-id", "r1", "--reason", "cleanup"}, env); err != nil {
 				t.Fatalf("dry-run with proposed=%d error = %v", tc.proposed, err)
 			}
 		})
@@ -570,11 +721,11 @@ func TestCloseout_MaxBatchSizeBounds(t *testing.T) {
 		args    []string
 		wantErr bool
 	}{
-		{name: "zero", args: []string{"--rule-id", "r1", "--max-batch-size", "0"}, wantErr: true},
-		{name: "negative", args: []string{"--rule-id", "r1", "--max-batch-size", "-1"}, wantErr: true},
-		{name: "not-int", args: []string{"--rule-id", "r1", "--max-batch-size", "abc"}, wantErr: true},
-		{name: "default", args: []string{"--rule-id", "r1"}, wantErr: false},
-		{name: "positive", args: []string{"--rule-id", "r1", "--max-batch-size", "250"}, wantErr: false},
+		{name: "zero", args: []string{"--rule-id", "r1", "--reason", "cleanup", "--max-batch-size", "0"}, wantErr: true},
+		{name: "negative", args: []string{"--rule-id", "r1", "--reason", "cleanup", "--max-batch-size", "-1"}, wantErr: true},
+		{name: "not-int", args: []string{"--rule-id", "r1", "--reason", "cleanup", "--max-batch-size", "abc"}, wantErr: true},
+		{name: "default", args: []string{"--rule-id", "r1", "--reason", "cleanup"}, wantErr: false},
+		{name: "positive", args: []string{"--rule-id", "r1", "--reason", "cleanup", "--max-batch-size", "250"}, wantErr: false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -924,7 +1075,7 @@ func TestCloseout_ApplyZeroCandidates(t *testing.T) {
 func TestCloseout_RefusesWithoutTombstoneSchema(t *testing.T) {
 	env, backend, writer, stdout, stderr := newCloseoutTestEnv(t)
 	backend.supports = false
-	err := runCloseoutWithEnv([]string{"--rule-id", "r1"}, env)
+	err := runCloseoutWithEnv([]string{"--rule-id", "r1", "--reason", "cleanup"}, env)
 	if err == nil {
 		t.Fatal("expected non-zero exit when tombstone schema missing")
 	}
@@ -997,6 +1148,7 @@ func TestCloseoutBatchLogShape(t *testing.T) {
 
 	if err := runCloseoutWithEnv([]string{
 		"--rule-id", "r1",
+		"--reason", "cleanup",
 		"--actor", "alice@writer.com",
 	}, env); err != nil {
 		t.Fatalf("dry-run error = %v", err)

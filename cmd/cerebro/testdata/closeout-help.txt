@@ -11,8 +11,8 @@ Flags:
   --status-filter <list>    Comma-separated statuses to include (default: open).
   --max-batch-size <int>    Maximum findings per batch (default: 1000).
   --dry-run <bool>          Dry-run mode (default: true). Mutually exclusive with --apply.
-  --apply                   Apply mutations. Requires --reason and the gates below.
-  --reason <text>           Closeout reason. Required when --apply is set.
+  --apply                   Apply mutations. Requires the gates below.
+  --reason <text>           Closeout reason. Required for every run.
   --run-id <uuid>           Closeout run UUIDv4. Auto-generated when absent.
   --actor <text>            Operator identity. Resolved from GITHUB_ACTOR / STS / USER when absent.
   --change-ticket <text>    Change-management ticket. Required for --apply with --allow-env go-prod.
