@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
@@ -45,7 +46,7 @@ func TestIdentityPrivilegedNoMfaPlusSensitiveAccessGraphRuleEmits(t *testing.T) 
 	}
 	for _, fragment := range []string{
 		"LIMIT $row_limit",
-		"access.relation IN ['acted_on','assigned_to','can_admin']",
+		"access.relation IN ['acted_on','assigned_to','can_admin','can_perform']",
 		"marker.entity_type = 'asset.tag'",
 		"marker.entity_type = 'data.classification'",
 		"'crown_jewel'",
@@ -112,6 +113,138 @@ func TestIdentityPrivilegedNoMfaPlusSensitiveAccessGraphRuleEmits(t *testing.T) 
 	}
 	if got := delegatedFindings[0].Attributes["is_delegated_admin"]; got != "true" {
 		t.Fatalf("delegated finding is_delegated_admin = %q, want true", got)
+	}
+}
+
+func TestIdentityPrivilegedNoMfaSensitiveAccess_PrefilterCoversAllMFAFlags(t *testing.T) {
+	rule := newIdentityPrivilegedNoMFAAccessRule()
+	graphRule, ok := rule.(GraphRule)
+	if !ok {
+		t.Fatal("identity-privileged-no-mfa-plus-sensitive-access does not implement GraphRule")
+	}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-google-workspace-user", SourceId: "google_workspace", TenantId: "writer", Config: map[string]string{"family": "user"}}
+	query := graphRule.QueryFor(runtime)
+	for _, fragment := range []string{
+		`"mfa_enforced":"false"`,
+		`"mfa_enforced":false`,
+		`"is_enforced_in_2sv":"false"`,
+		`"is_enforced_in_2sv":false`,
+	} {
+		if !strings.Contains(query.Query, fragment) {
+			t.Fatalf("QueryFor() missing MFA posture prefilter fragment %q:\n%s", fragment, query.Query)
+		}
+	}
+
+	for _, tc := range []struct {
+		name  string
+		attrs map[string]string
+	}{
+		{
+			name: "google workspace enrolled but 2sv not enforced",
+			attrs: map[string]string{
+				"is_admin":           "true",
+				"mfa_enrolled":       "true",
+				"is_enforced_in_2sv": "false",
+			},
+		},
+		{
+			name: "generic mfa enrolled but mfa not enforced",
+			attrs: map[string]string{
+				"is_admin":     "true",
+				"mfa_enrolled": "true",
+				"mfa_enforced": "false",
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			findings, err := graphRule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{
+				identityPrivilegedNoMFASensitiveAccessRow(t, tc.attrs, nil),
+			})
+			if err != nil {
+				t.Fatalf("EvaluateRows() error = %v", err)
+			}
+			if got := len(findings); got != 1 {
+				t.Fatalf("EvaluateRows() returned %d findings, want 1", got)
+			}
+		})
+	}
+}
+
+func TestIdentityPrivilegedNoMfaSensitiveAccess_IncludesCanPerform(t *testing.T) {
+	rule := newIdentityPrivilegedNoMFAAccessRule()
+	graphRule, ok := rule.(GraphRule)
+	if !ok {
+		t.Fatal("identity-privileged-no-mfa-plus-sensitive-access does not implement GraphRule")
+	}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-aws-iam-user", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "iam_user"}}
+	query := graphRule.QueryFor(runtime)
+	if !strings.Contains(query.Query, "can_perform") {
+		t.Fatalf("QueryFor() missing can_perform access relation:\n%s", query.Query)
+	}
+	findings, err := graphRule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{
+		identityPrivilegedNoMFASensitiveAccessRow(t, map[string]string{
+			"is_admin":     "true",
+			"mfa_enrolled": "false",
+		}, map[string]any{"access_relation": "can_perform"}),
+	})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if got := len(findings); got != 1 {
+		t.Fatalf("EvaluateRows() returned %d findings, want 1 for can_perform-only path", got)
+	}
+	if got := findings[0].Attributes["access_relations"]; got != "can_perform" {
+		t.Fatalf("access_relations = %q, want can_perform", got)
+	}
+}
+
+func TestIdentityPrivilegedNoMfaSensitiveAccess_ActedOnRecencyBound(t *testing.T) {
+	rule := newIdentityPrivilegedNoMFAAccessRule()
+	graphRule, ok := rule.(GraphRule)
+	if !ok {
+		t.Fatal("identity-privileged-no-mfa-plus-sensitive-access does not implement GraphRule")
+	}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-user", SourceId: "okta", TenantId: "writer", Config: map[string]string{"family": "user"}}
+	query := graphRule.QueryFor(runtime)
+	if _, ok := query.Params["acted_on_since"]; !ok {
+		t.Fatalf("QueryFor() params missing acted_on_since recency cutoff: %#v", query.Params)
+	}
+	for _, fragment := range []string{"access.relation <> 'acted_on'", "$acted_on_since"} {
+		if !strings.Contains(query.Query, fragment) {
+			t.Fatalf("QueryFor() missing acted_on recency guard fragment %q:\n%s", fragment, query.Query)
+		}
+	}
+
+	baseAttrs := map[string]string{
+		"is_admin":     "true",
+		"mfa_enrolled": "false",
+	}
+	staleRows := []ports.CypherRow{
+		identityPrivilegedNoMFASensitiveAccessRow(t, baseAttrs, map[string]any{
+			"access_relation":        "acted_on",
+			"access_attributes_json": identityPrivilegedNoMFAAccessAttrs(t, time.Now().UTC().Add(-91*24*time.Hour)),
+		}),
+	}
+	staleFindings, err := graphRule.EvaluateRows(context.Background(), runtime, staleRows)
+	if err != nil {
+		t.Fatalf("EvaluateRows(stale acted_on) error = %v", err)
+	}
+	if got := len(staleFindings); got != 0 {
+		t.Fatalf("EvaluateRows(stale acted_on) returned %d findings, want 0", got)
+	}
+
+	freshRows := []ports.CypherRow{
+		identityPrivilegedNoMFASensitiveAccessRow(t, baseAttrs, map[string]any{
+			"access_relation":        "acted_on",
+			"access_attributes_json": identityPrivilegedNoMFAAccessAttrs(t, time.Now().UTC().Add(-1*time.Hour)),
+		}),
+	}
+	freshFindings, err := graphRule.EvaluateRows(context.Background(), runtime, freshRows)
+	if err != nil {
+		t.Fatalf("EvaluateRows(fresh acted_on) error = %v", err)
+	}
+	if got := len(freshFindings); got != 1 {
+		t.Fatalf("EvaluateRows(fresh acted_on) returned %d findings, want 1", got)
 	}
 }
 
@@ -232,4 +365,13 @@ func identityPrivilegedNoMFAMustJSON(t *testing.T, values map[string]string) str
 		t.Fatalf("json.Marshal(%v) error = %v", values, err)
 	}
 	return string(encoded)
+}
+
+func identityPrivilegedNoMFAAccessAttrs(t *testing.T, observedAt time.Time) string {
+	t.Helper()
+	return identityPrivilegedNoMFAMustJSON(t, map[string]string{
+		"action":      "admin.access_resource",
+		"event_id":    "example-acted-on",
+		"observed_at": observedAt.UTC().Format(time.RFC3339),
+	})
 }
