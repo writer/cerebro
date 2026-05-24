@@ -16,6 +16,30 @@ type eventRuleMatcher func(*cerebrov1.EventEnvelope) bool
 
 type eventRuleBuilder func(context.Context, *cerebrov1.SourceRuntime, *cerebrov1.EventEnvelope) (*ports.FindingRecord, error)
 
+type Event = *cerebrov1.EventEnvelope
+
+// CounterEventRule lets durable-state rules opt into remediation/counter-event
+// closure for persisted findings whose original open event is not replayed again.
+type CounterEventRule interface {
+	OpenAnchor(attributes map[string]string) string
+	CloseOnEvent(event Event) (anchor string, closes bool)
+}
+
+// CounterEventStateUpdate lets aggregate durable-state rules describe which
+// subcontrol at an anchor an event made compliant or non-compliant.
+type CounterEventStateUpdate struct {
+	Anchor   string
+	Key      string
+	Closes   bool
+	EventIDs []string
+}
+
+// AggregateCounterEventRule is an optional extension for aggregate rules whose
+// single finding represents multiple subcontrol states at the same anchor.
+type AggregateCounterEventRule interface {
+	CounterEventStates(event Event) []CounterEventStateUpdate
+}
+
 type RuleDefinition struct {
 	ID                 string
 	Name               string
@@ -33,6 +57,7 @@ type RuleDefinition struct {
 	RequiredAttributes []string
 	FingerprintFields  []string
 	ControlRefs        []ports.FindingControlRef
+	Lifecycle          Lifecycle
 }
 
 type eventRuleConfig struct {
@@ -59,6 +84,13 @@ func newEventRule(config eventRuleConfig) Rule {
 }
 
 func (d RuleDefinition) Validate() error {
+	if err := d.validateBaseFields(); err != nil {
+		return err
+	}
+	return validateLifecycle(d.ID, d.Lifecycle)
+}
+
+func (d RuleDefinition) validateBaseFields() error {
 	if strings.TrimSpace(d.ID) == "" {
 		return errors.New("rule id is required")
 	}
@@ -154,13 +186,36 @@ func eventAttributes(event *cerebrov1.EventEnvelope) map[string]string {
 }
 
 func hasRequiredAttributes(event *cerebrov1.EventEnvelope, keys ...string) bool {
-	attributes := eventAttributes(event)
 	for _, key := range keys {
-		if strings.TrimSpace(attributes[strings.TrimSpace(key)]) == "" {
+		if requiredAttributeValue(event, key) == "" {
 			return false
 		}
 	}
 	return true
+}
+
+func requiredAttributeValue(event *cerebrov1.EventEnvelope, key string) string {
+	if event == nil {
+		return ""
+	}
+	normalizedKey := strings.TrimSpace(key)
+	if normalizedKey == "" {
+		return ""
+	}
+	attributes := eventAttributes(event)
+	if value := strings.TrimSpace(attributes[normalizedKey]); value != "" {
+		return value
+	}
+	switch normalizedKey {
+	case "event_id":
+		return strings.TrimSpace(event.GetId())
+	case "scope":
+		if strings.EqualFold(strings.TrimSpace(event.GetKind()), "github.audit") {
+			_, scopeID := githubSelfHostedRunnerScope(attributes)
+			return strings.TrimSpace(scopeID)
+		}
+	}
+	return ""
 }
 
 func (r *eventRule) Spec() *cerebrov1.RuleSpec {

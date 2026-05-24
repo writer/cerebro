@@ -1,0 +1,33 @@
+[
+  {
+    "id": "okta-policy-rule-rul-sign-on-inactive-1776925200000",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.policy_rule",
+    "occurred_at": "2026-04-23T01:00:00Z",
+    "schema_ref": "okta/policy_rule/v1",
+    "payload": {
+      "domain": "writer.okta.com",
+      "name": "Block risky sign-ons",
+      "policy_id": "pol-sign-on",
+      "policy_rule_id": "rul-sign-on-inactive",
+      "policy_type": "OKTA_SIGN_ON",
+      "priority": 1,
+      "status": "INACTIVE",
+      "system": false
+    },
+    "attributes": {
+      "domain": "writer.okta.com",
+      "family": "policy_rule",
+      "name": "Block risky sign-ons",
+      "policy_id": "pol-sign-on",
+      "policy_rule_id": "rul-sign-on-inactive",
+      "policy_type": "OKTA_SIGN_ON",
+      "priority": "1",
+      "resource_id": "rul-sign-on-inactive",
+      "resource_type": "PolicyRule",
+      "status": "INACTIVE",
+      "system": "false"
+    }
+  }
+]

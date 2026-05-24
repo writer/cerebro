@@ -2,6 +2,7 @@ package findings
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -319,6 +320,271 @@ func TestCloudSignalRulesDetectKubernetesWorkloadIdentityBinding(t *testing.T) {
 		t.Fatalf("len(records) = %d, want 1", len(records))
 	}
 	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:writer:gcp_service_account:payments-sa@writer-prod.iam.gserviceaccount.com")
+}
+
+func TestCloudEffectiveAdminPermission(t *testing.T) {
+	rules := cloudRulesByID(t)
+	rule := rules[cloudEffectiveAdminPermissionRuleID]
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("rule does not expose RuleMetadata")
+	}
+	definition := metadataRule.RuleMetadata()
+	if definition.Lifecycle.Kind != LifecycleDurableState {
+		t.Fatalf("Lifecycle.Kind = %q, want %q", definition.Lifecycle.Kind, LifecycleDurableState)
+	}
+	if definition.Lifecycle.Anchor != AnchorGraphAnchored {
+		t.Fatalf("Lifecycle.Anchor = %q, want %q", definition.Lifecycle.Anchor, AnchorGraphAnchored)
+	}
+	wantFields := []string{"cloud_account_urn", "principal_urn", "permission_urn"}
+	if !cloudStringSlicesEqual(definition.FingerprintFields, wantFields) {
+		t.Fatalf("FingerprintFields = %v, want %v", definition.FingerprintFields, wantFields)
+	}
+	for _, field := range definition.FingerprintFields {
+		if field == "event_id" {
+			t.Fatalf("FingerprintFields still contains event_id: %v", definition.FingerprintFields)
+		}
+	}
+	runtime := &cerebrov1.SourceRuntime{Id: "aws-runtime", SourceId: "aws", TenantId: "writer"}
+	first := &cerebrov1.EventEnvelope{
+		Id:       "aws-admin-first",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.effective_permission",
+		Attributes: map[string]string{
+			"actions":       "*",
+			"domain":        "123456789012",
+			"effect":        "allow",
+			"resource_id":   "123456789012",
+			"resource_type": "account",
+			"subject_email": "admin@writer.com",
+			"subject_id":    "admin@writer.com",
+			"subject_type":  "user",
+		},
+	}
+	second := &cerebrov1.EventEnvelope{
+		Id:       "aws-admin-second",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.effective_permission",
+		Attributes: map[string]string{
+			"actions":       "*",
+			"domain":        "123456789012",
+			"effect":        "allow",
+			"resource_id":   "123456789012",
+			"resource_type": "account",
+			"subject_email": "admin@writer.com",
+			"subject_id":    "admin@writer.com",
+			"subject_type":  "user",
+		},
+	}
+	records, err := rule.Evaluate(context.Background(), runtime, first)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(first) = (%v, %v), want one record", records, err)
+	}
+	firstFinding := records[0]
+	records, err = rule.Evaluate(context.Background(), runtime, second)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(second) = (%v, %v), want one record", records, err)
+	}
+	secondFinding := records[0]
+	if firstFinding.Fingerprint != secondFinding.Fingerprint {
+		t.Fatalf("fingerprints differ across replays: %q vs %q (should be anchored to (account, principal, permission))", firstFinding.Fingerprint, secondFinding.Fingerprint)
+	}
+	for _, eventID := range []string{first.GetId(), second.GetId()} {
+		if strings.Contains(firstFinding.Fingerprint, eventID) {
+			t.Fatalf("fingerprint %q contains event id %q", firstFinding.Fingerprint, eventID)
+		}
+	}
+	if got := firstFinding.Attributes["cloud_account_urn"]; got == "" {
+		t.Fatalf("attributes[cloud_account_urn] = empty, want non-empty URN")
+	}
+	if got := firstFinding.Attributes["principal_urn"]; got == "" {
+		t.Fatalf("attributes[principal_urn] = empty, want non-empty URN")
+	}
+	if got := firstFinding.Attributes["permission_urn"]; got == "" {
+		t.Fatalf("attributes[permission_urn] = empty, want non-empty URN")
+	}
+	revoked := &cerebrov1.EventEnvelope{
+		Id:       "aws-admin-revoked",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.effective_permission",
+		Attributes: map[string]string{
+			"actions":       "s3:GetObject",
+			"domain":        "123456789012",
+			"effect":        "allow",
+			"resource_id":   "123456789012",
+			"resource_type": "account",
+			"subject_email": "admin@writer.com",
+			"subject_id":    "admin@writer.com",
+			"subject_type":  "user",
+		},
+	}
+	records, err = rule.Evaluate(context.Background(), runtime, revoked)
+	if err != nil {
+		t.Fatalf("Evaluate(revoked) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(revoked) returned %d findings, want 0 once admin permission removed", len(records))
+	}
+}
+
+func TestCloudPrivilegePathGranted(t *testing.T) {
+	rules := cloudRulesByID(t)
+	rule := rules[cloudPrivilegePathGrantedRuleID]
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("rule does not expose RuleMetadata")
+	}
+	definition := metadataRule.RuleMetadata()
+	if definition.Lifecycle.Kind != LifecycleDurableState {
+		t.Fatalf("Lifecycle.Kind = %q, want %q", definition.Lifecycle.Kind, LifecycleDurableState)
+	}
+	if definition.Lifecycle.Anchor != AnchorGraphAnchored {
+		t.Fatalf("Lifecycle.Anchor = %q, want %q", definition.Lifecycle.Anchor, AnchorGraphAnchored)
+	}
+	wantFields := []string{"principal_urn", "target_principal_urn", "relationship"}
+	if !cloudStringSlicesEqual(definition.FingerprintFields, wantFields) {
+		t.Fatalf("FingerprintFields = %v, want %v", definition.FingerprintFields, wantFields)
+	}
+	runtime := &cerebrov1.SourceRuntime{Id: "aws-runtime", SourceId: "aws", TenantId: "writer"}
+	attrs := map[string]string{
+		"domain":       "123456789012",
+		"family":       "iam_role_trust",
+		"path_type":    "assume_role_trust",
+		"relationship": "can_assume",
+		"subject_id":   "arn:aws:iam::999999999999:role/ExternalAdmin",
+		"subject_type": "role",
+		"target_id":    "arn:aws:iam::123456789012:role/AdminRole",
+		"target_type":  "role",
+	}
+	first := &cerebrov1.EventEnvelope{Id: "trust-first", TenantId: "writer", SourceId: "aws", Kind: "aws.iam_role_trust", Attributes: attrs}
+	second := &cerebrov1.EventEnvelope{Id: "trust-second", TenantId: "writer", SourceId: "aws", Kind: "aws.iam_role_trust", Attributes: attrs}
+	records, err := rule.Evaluate(context.Background(), runtime, first)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(first) = (%v, %v)", records, err)
+	}
+	firstFinding := records[0]
+	records, err = rule.Evaluate(context.Background(), runtime, second)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(second) = (%v, %v)", records, err)
+	}
+	secondFinding := records[0]
+	if firstFinding.Fingerprint != secondFinding.Fingerprint {
+		t.Fatalf("fingerprints differ across replays: %q vs %q", firstFinding.Fingerprint, secondFinding.Fingerprint)
+	}
+	for _, eventID := range []string{first.GetId(), second.GetId()} {
+		if strings.Contains(firstFinding.Fingerprint, eventID) {
+			t.Fatalf("fingerprint %q contains event id %q", firstFinding.Fingerprint, eventID)
+		}
+	}
+	if got := firstFinding.Attributes["principal_urn"]; got == "" {
+		t.Fatalf("attributes[principal_urn] = empty")
+	}
+	if got := firstFinding.Attributes["target_principal_urn"]; got == "" {
+		t.Fatalf("attributes[target_principal_urn] = empty")
+	}
+	if got := firstFinding.Attributes["relationship"]; got == "" {
+		t.Fatalf("attributes[relationship] = empty")
+	}
+	clean := &cerebrov1.EventEnvelope{Id: "trust-clean", TenantId: "writer", SourceId: "aws", Kind: "aws.iam_role_trust", Attributes: map[string]string{
+		"domain":       "123456789012",
+		"family":       "iam_role_trust",
+		"path_type":    "read_only",
+		"relationship": "can_describe",
+		"subject_id":   "arn:aws:iam::999999999999:role/ExternalAdmin",
+		"subject_type": "role",
+		"target_id":    "arn:aws:iam::123456789012:role/AdminRole",
+		"target_type":  "role",
+	}}
+	records, err = rule.Evaluate(context.Background(), runtime, clean)
+	if err != nil {
+		t.Fatalf("Evaluate(clean) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(clean) returned %d findings, want 0 once trust path removed", len(records))
+	}
+}
+
+func TestCloudPublicResourceExposure(t *testing.T) {
+	rules := cloudRulesByID(t)
+	rule := rules[cloudPublicResourceExposureRuleID]
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("rule does not expose RuleMetadata")
+	}
+	definition := metadataRule.RuleMetadata()
+	if definition.Lifecycle.Kind != LifecycleDurableState {
+		t.Fatalf("Lifecycle.Kind = %q, want %q", definition.Lifecycle.Kind, LifecycleDurableState)
+	}
+	if definition.Lifecycle.Anchor != AnchorGraphAnchored {
+		t.Fatalf("Lifecycle.Anchor = %q, want %q", definition.Lifecycle.Anchor, AnchorGraphAnchored)
+	}
+	wantFields := []string{"exposed_resource_urn"}
+	if !cloudStringSlicesEqual(definition.FingerprintFields, wantFields) {
+		t.Fatalf("FingerprintFields = %v, want %v", definition.FingerprintFields, wantFields)
+	}
+	runtime := &cerebrov1.SourceRuntime{Id: "aws-runtime", SourceId: "aws", TenantId: "writer"}
+	attrs := map[string]string{
+		"domain":           "123456789012",
+		"exposed_to":       "public_internet",
+		"exposure_type":    "public_network_ingress",
+		"family":           "resource_exposure",
+		"internet_exposed": "true",
+		"resource_id":      "arn:aws:ec2:us-east-1:123456789012:security-group/sg-1",
+		"resource_name":    "prod-web",
+		"resource_type":    "security_group",
+		"source_cidr":      "0.0.0.0/0",
+	}
+	first := &cerebrov1.EventEnvelope{Id: "exposure-first", TenantId: "writer", SourceId: "aws", Kind: "aws.resource_exposure", Attributes: attrs}
+	second := &cerebrov1.EventEnvelope{Id: "exposure-second", TenantId: "writer", SourceId: "aws", Kind: "aws.resource_exposure", Attributes: attrs}
+	records, err := rule.Evaluate(context.Background(), runtime, first)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(first) = (%v, %v)", records, err)
+	}
+	firstFinding := records[0]
+	records, err = rule.Evaluate(context.Background(), runtime, second)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(second) = (%v, %v)", records, err)
+	}
+	secondFinding := records[0]
+	if firstFinding.Fingerprint != secondFinding.Fingerprint {
+		t.Fatalf("fingerprints differ across replays: %q vs %q", firstFinding.Fingerprint, secondFinding.Fingerprint)
+	}
+	if strings.Contains(firstFinding.Fingerprint, first.GetId()) {
+		t.Fatalf("fingerprint %q contains event id", firstFinding.Fingerprint)
+	}
+	if got := firstFinding.Attributes["exposed_resource_urn"]; got == "" {
+		t.Fatalf("attributes[exposed_resource_urn] = empty")
+	}
+	clean := &cerebrov1.EventEnvelope{Id: "exposure-clean", TenantId: "writer", SourceId: "aws", Kind: "aws.resource_exposure", Attributes: map[string]string{
+		"domain":        "123456789012",
+		"exposed_to":    "internal_vpc",
+		"family":        "resource_exposure",
+		"resource_id":   "arn:aws:ec2:us-east-1:123456789012:security-group/sg-1",
+		"resource_type": "security_group",
+		"source_cidr":   "10.0.0.0/8",
+	}}
+	records, err = rule.Evaluate(context.Background(), runtime, clean)
+	if err != nil {
+		t.Fatalf("Evaluate(clean) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(clean) returned %d findings, want 0 once resource made private", len(records))
+	}
+}
+
+func cloudStringSlicesEqual(a []string, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func cloudRulesByID(t *testing.T) map[string]Rule {

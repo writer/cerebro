@@ -130,7 +130,7 @@ func TestGitHubRepositoryRulesetModifiedFixture(t *testing.T) {
 }
 
 func TestGitHubCriticalResourceDeletedFixture(t *testing.T) {
-	assertRuleFixture(t, newGitHubCriticalResourceDeletedRule(), "testdata/rules/github-critical-resource-deleted.json")
+	assertRetiredEventRuleFixture(t, newGitHubCriticalResourceDeletedRule(), "testdata/rules/github-critical-resource-deleted.json")
 }
 
 func TestGitHubWebhookModifiedFixture(t *testing.T) {
@@ -267,6 +267,19 @@ func TestRetiredGitHubMirrorRulesDoNotEmitFindings(t *testing.T) {
 				"resource_type": "protected_branch",
 			},
 		},
+		{
+			ID:         "gh-critical-resource-deleted",
+			TenantID:   "writer",
+			SourceID:   "github",
+			Kind:       "github.audit",
+			OccurredAt: "2026-05-09T07:05:00Z",
+			SchemaRef:  "github/audit/v1",
+			Attributes: map[string]string{
+				"action":        "repo.destroy",
+				"repo":          "writer/cerebro",
+				"resource_type": "repo",
+			},
+		},
 	}
 	rules := []Rule{
 		newGitHubSecretScanningDisabledRule(),
@@ -274,6 +287,7 @@ func TestRetiredGitHubMirrorRulesDoNotEmitFindings(t *testing.T) {
 		newGitHubBranchProtectionDisabledRule(),
 		newGitHubRepositoryMadePublicRule(),
 		newGitHubProtectedBranchPolicyOverrideRule(),
+		newGitHubCriticalResourceDeletedRule(),
 	}
 	for _, rule := range rules {
 		ruleID := rule.Spec().GetId()
@@ -297,6 +311,7 @@ func TestRetiredGitHubMirrorRulesAreCatalogued(t *testing.T) {
 		githubBranchProtectionDisabledRuleID,
 		githubRepositoryMadePublicRuleID,
 		githubProtectedBranchPolicyOverrideRuleID,
+		githubCriticalResourceDeletedRuleID,
 	}
 	registry := Builtin()
 	for _, id := range retiredIDs {

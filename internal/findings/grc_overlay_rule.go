@@ -144,6 +144,7 @@ func newGRCInactiveIdentityActiveAccessRule() Rule {
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.5.16"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.5.18"},
 			},
+			Lifecycle: Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 		},
 	}
 }
@@ -390,6 +391,7 @@ func newGRCPrivilegedAccountMissingPersonRule() Rule {
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.5.16"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.5.18"},
 			},
+			Lifecycle: Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 		},
 	}
 }
@@ -601,6 +603,7 @@ func newGRCOverdueVulnerabilityLiveOnAssetsRule() Rule {
 				{FrameworkName: "SOC 2", ControlID: "CC7.2"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.8.8"},
 			},
+			Lifecycle: Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 		},
 	}
 }
@@ -818,6 +821,7 @@ func newGRCFailingControlOpenOperationalFindingsRule() Rule {
 				{FrameworkName: "SOC 2", ControlID: "CC7.1"},
 				{FrameworkName: "SOC 2", ControlID: "CC7.2"},
 			},
+			Lifecycle: Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 		},
 	}
 }

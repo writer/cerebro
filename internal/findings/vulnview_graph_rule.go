@@ -57,6 +57,7 @@ func newVulnViewExternalAssetConcentratedSignalRule() Rule {
 			{FrameworkName: "SOC 2", ControlID: "CC7.1"},
 			{FrameworkName: "ISO 27001:2022", ControlID: "A.8.8"},
 		},
+		Lifecycle: Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 	}}
 }
 

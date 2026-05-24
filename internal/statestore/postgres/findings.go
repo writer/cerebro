@@ -6,10 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	findingrisk "github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/ports"
@@ -90,13 +93,60 @@ var ensureFindingStatements = []string{
 	`CREATE INDEX IF NOT EXISTS findings_control_refs_gin_idx ON findings USING GIN (control_refs_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_notes_gin_idx ON findings USING GIN (notes_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_tickets_gin_idx ON findings USING GIN (tickets_json)`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS tombstoned BOOLEAN NOT NULL DEFAULT FALSE`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS tombstoned_at TIMESTAMPTZ`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS tombstoned_by TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS tombstoned_reason TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS tombstoned_run_id TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS prior_status TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS tombstone_generation INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE findings DROP CONSTRAINT IF EXISTS findings_fingerprint_key`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS findings_active_fingerprint_uidx
+        ON findings (fingerprint) WHERE tombstoned = FALSE`,
+	`CREATE INDEX IF NOT EXISTS findings_tombstoned_run_idx
+        ON findings (tombstoned_run_id) WHERE tombstoned = TRUE`,
+	`CREATE INDEX IF NOT EXISTS findings_tombstoned_rule_observed_idx
+        ON findings (tenant_id, rule_id, tombstoned, last_observed_at)`,
+	`CREATE TABLE IF NOT EXISTS finding_tombstone_events (
+        id BIGSERIAL PRIMARY KEY,
+        finding_id TEXT NOT NULL,
+        tenant_id TEXT NOT NULL,
+        rule_id TEXT NOT NULL,
+        anchor_uri TEXT NOT NULL,
+        prior_status TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        tombstoned_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`,
+	`CREATE INDEX IF NOT EXISTS finding_tombstone_events_run_idx
+        ON finding_tombstone_events (run_id, tombstoned_at)`,
+	`CREATE INDEX IF NOT EXISTS finding_tombstone_events_finding_idx
+        ON finding_tombstone_events (finding_id, tombstoned_at)`,
+	`CREATE TABLE IF NOT EXISTS closeout_run (
+        run_id TEXT PRIMARY KEY,
+        actor TEXT NOT NULL,
+        change_ticket TEXT NOT NULL DEFAULT '',
+        selector_json JSONB NOT NULL,
+        status TEXT NOT NULL,
+        started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        finished_at TIMESTAMPTZ,
+        dry_run BOOLEAN NOT NULL,
+        proposed_count INTEGER NOT NULL DEFAULT 0,
+        applied_count INTEGER NOT NULL DEFAULT 0,
+        error_message TEXT NOT NULL DEFAULT '',
+        s3_summary_key TEXT NOT NULL DEFAULT ''
+    )`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS closeout_run_singleton_running_idx
+        ON closeout_run ((1)) WHERE status = 'running'`,
 }
 
 const findingSelectColumns = `id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
   risk_score, likelihood_score, impact_score, confidence_score, likelihood_level, impact_level, risk_reasons_json::text, risk_model_version,
   resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
   notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
-  status_updated_at, first_observed_at, last_observed_at`
+  status_updated_at, first_observed_at, last_observed_at,
+  tombstoned, tombstoned_at, tombstoned_by, tombstoned_reason, tombstoned_run_id, prior_status, tombstone_generation`
 
 // upsertFindingStatement persists one finding row, preserving runtime_id on conflict.
 //
@@ -114,9 +164,9 @@ INSERT INTO findings (
   risk_score, likelihood_score, impact_score, confidence_score, likelihood_level, impact_level, risk_reasons_json, risk_model_version,
   resource_urns_json, event_ids_json, observed_policy_ids_json, control_refs_json, notes_json, tickets_json, attributes_json,
   policy_id, policy_name, check_id, check_name, assignee, due_at, status_reason,
-  status_updated_at, first_observed_at, last_observed_at
+  status_updated_at, first_observed_at, last_observed_at, tombstone_generation
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb, $17, $18::jsonb, $19::jsonb, $20::jsonb, $21::jsonb, $22::jsonb, $23::jsonb, $24::jsonb, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb, $17, $18::jsonb, $19::jsonb, $20::jsonb, $21::jsonb, $22::jsonb, $23::jsonb, $24::jsonb, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
 ON CONFLICT (id)
 DO UPDATE SET
   fingerprint = EXCLUDED.fingerprint,
@@ -126,7 +176,9 @@ DO UPDATE SET
   title = EXCLUDED.title,
   severity = EXCLUDED.severity,
   status = CASE
-    WHEN findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open' THEN findings.status
+    WHEN findings.tombstoned THEN findings.status
+    WHEN findings.status = 'suppressed' THEN findings.status
+    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT findings.tombstoned THEN EXCLUDED.status
     ELSE EXCLUDED.status
   END,
   summary = EXCLUDED.summary,
@@ -161,11 +213,13 @@ DO UPDATE SET
   END,
   due_at = COALESCE(EXCLUDED.due_at, findings.due_at),
   status_reason = CASE
-    WHEN findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open' THEN findings.status_reason
+    WHEN findings.tombstoned THEN findings.status_reason
+    WHEN findings.status = 'suppressed' THEN findings.status_reason
     ELSE EXCLUDED.status_reason
   END,
   status_updated_at = CASE
-    WHEN findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open' THEN findings.status_updated_at
+    WHEN findings.tombstoned THEN findings.status_updated_at
+    WHEN findings.status = 'suppressed' THEN findings.status_updated_at
     ELSE EXCLUDED.status_updated_at
   END,
   first_observed_at = LEAST(findings.first_observed_at, EXCLUDED.first_observed_at),
@@ -267,46 +321,113 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 		statusUpdatedAt = finding.StatusUpdatedAt.UTC()
 	}
 	firstObservedAt, lastObservedAt := normalizeFindingObservationWindow(finding.FirstObservedAt, finding.LastObservedAt, time.Now().UTC())
-	var stored findingRow
-	if err := scanFindingRow(s.db.QueryRowContext(ctx, upsertFindingStatement,
-		id,
-		fingerprint,
-		tenantID,
-		runtimeID,
-		ruleID,
-		title,
-		severity,
-		status,
-		summary,
-		finding.RiskScore,
-		finding.LikelihoodScore,
-		finding.ImpactScore,
-		finding.ConfidenceScore,
-		strings.TrimSpace(finding.LikelihoodLevel),
-		strings.TrimSpace(finding.ImpactLevel),
-		riskReasonsJSON,
-		strings.TrimSpace(finding.RiskModelVersion),
-		resourceURNsJSON,
-		eventIDsJSON,
-		observedPolicyIDsJSON,
-		controlRefsJSON,
-		notesJSON,
-		ticketsJSON,
-		attributesJSON,
-		policyID,
-		policyName,
-		checkID,
-		checkName,
-		assignee,
-		dueAt,
-		statusReason,
-		statusUpdatedAt,
-		firstObservedAt,
-		lastObservedAt,
-	), &stored); err != nil {
+
+	const maxAttempts = 4
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		targetID, generation, err := s.resolveUpsertTarget(ctx, fingerprint, id)
+		if err != nil {
+			return nil, fmt.Errorf("upsert finding %q: %w", id, err)
+		}
+		var stored findingRow
+		err = scanFindingRow(s.db.QueryRowContext(ctx, upsertFindingStatement,
+			targetID,
+			fingerprint,
+			tenantID,
+			runtimeID,
+			ruleID,
+			title,
+			severity,
+			status,
+			summary,
+			finding.RiskScore,
+			finding.LikelihoodScore,
+			finding.ImpactScore,
+			finding.ConfidenceScore,
+			strings.TrimSpace(finding.LikelihoodLevel),
+			strings.TrimSpace(finding.ImpactLevel),
+			riskReasonsJSON,
+			strings.TrimSpace(finding.RiskModelVersion),
+			resourceURNsJSON,
+			eventIDsJSON,
+			observedPolicyIDsJSON,
+			controlRefsJSON,
+			notesJSON,
+			ticketsJSON,
+			attributesJSON,
+			policyID,
+			policyName,
+			checkID,
+			checkName,
+			assignee,
+			dueAt,
+			statusReason,
+			statusUpdatedAt,
+			firstObservedAt,
+			lastObservedAt,
+			generation,
+		), &stored)
+		if err == nil {
+			return stored.record()
+		}
+		lastErr = err
+		if isPartialUniqueIndexConflict(err) && attempt < maxAttempts-1 {
+			continue
+		}
 		return nil, fmt.Errorf("upsert finding %q: %w", id, err)
 	}
-	return stored.record()
+	return nil, fmt.Errorf("upsert finding %q: %w", id, lastErr)
+}
+
+// resolveUpsertTarget resolves the row identity for an emit on the given fingerprint:
+// if a non-tombstoned row already exists it reuses that row's id (the ON CONFLICT (id)
+// path then updates it). Otherwise it mints a fresh id derived from baseID with a
+// "#g<N+1>" generation suffix where N is the max tombstone_generation observed for the
+// fingerprint, and returns N+1 as the new row's tombstone_generation.
+func (s *Store) resolveUpsertTarget(ctx context.Context, fingerprint, baseID string) (string, int, error) {
+	var activeID sql.NullString
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id FROM findings WHERE fingerprint = $1 AND tombstoned = FALSE LIMIT 1`,
+		fingerprint,
+	).Scan(&activeID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", 0, fmt.Errorf("select active finding by fingerprint: %w", err)
+	}
+	if activeID.Valid && activeID.String != "" {
+		// Existing active row will be reopened via ON CONFLICT (id); its stored
+		// tombstone_generation is preserved because that column is not in the SET list.
+		return activeID.String, 0, nil
+	}
+	var maxGen sql.NullInt64
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT MAX(tombstone_generation) FROM findings WHERE fingerprint = $1`,
+		fingerprint,
+	).Scan(&maxGen); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", 0, fmt.Errorf("select tombstone generation: %w", err)
+	}
+	if !maxGen.Valid {
+		return baseID, 0, nil
+	}
+	next := int(maxGen.Int64) + 1
+	return fmt.Sprintf("%s#g%d", findingBaseID(baseID), next), next, nil
+}
+
+var findingGenerationSuffix = regexp.MustCompile(`#g\d+$`)
+
+func findingBaseID(id string) string {
+	return findingGenerationSuffix.ReplaceAllString(id, "")
+}
+
+func isPartialUniqueIndexConflict(err error) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	if pgErr.Code != "23505" {
+		return false
+	}
+	return strings.Contains(pgErr.ConstraintName, "findings_active_fingerprint_uidx") ||
+		strings.Contains(pgErr.Message, "findings_active_fingerprint_uidx")
 }
 
 func normalizeFindingObservationWindow(firstObservedAt time.Time, lastObservedAt time.Time, now time.Time) (time.Time, time.Time) {
@@ -504,16 +625,85 @@ func (s *Store) UpdateFindingStatus(ctx context.Context, request ports.FindingSt
 	if updatedAt.IsZero() {
 		updatedAt = time.Now().UTC()
 	}
+	eventIDsJSON, err := findingStringsJSON(request.EventIDs)
+	if err != nil {
+		return nil, fmt.Errorf("marshal finding status event ids: %w", err)
+	}
+	if request.Tombstone != nil {
+		t := request.Tombstone
+		tombstonedAt := t.TombstonedAt.UTC()
+		if tombstonedAt.IsZero() {
+			tombstonedAt = updatedAt
+		}
+		var row findingRow
+		if err := scanFindingRow(s.db.QueryRowContext(ctx, `
+UPDATE findings
+SET status = $2,
+    status_reason = $3,
+    status_updated_at = $4,
+    tombstoned = TRUE,
+    tombstoned_at = $5,
+    tombstoned_by = $6,
+    tombstoned_reason = $7,
+    tombstoned_run_id = $8,
+    prior_status = $9,
+    event_ids_json = CASE
+      WHEN jsonb_array_length($10::jsonb) = 0 THEN event_ids_json
+      ELSE (
+        SELECT COALESCE(jsonb_agg(event_id ORDER BY event_id), '[]'::jsonb)
+        FROM (
+          SELECT DISTINCT btrim(value) AS event_id
+          FROM jsonb_array_elements_text(COALESCE(findings.event_ids_json, '[]'::jsonb) || $10::jsonb) AS merged(value)
+          WHERE btrim(value) <> ''
+        ) AS unique_event_ids
+      )
+    END,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING `+findingSelectColumns,
+			findingID,
+			status,
+			statusReason,
+			updatedAt,
+			tombstonedAt,
+			strings.TrimSpace(t.By),
+			strings.TrimSpace(t.Reason),
+			strings.TrimSpace(t.RunID),
+			strings.TrimSpace(t.PriorStatus),
+			eventIDsJSON,
+		), &row); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, ports.ErrFindingNotFound
+			}
+			return nil, fmt.Errorf("update finding %q tombstone status: %w", findingID, err)
+		}
+		return row.record()
+	}
 	var row findingRow
 	if err := scanFindingRow(s.db.QueryRowContext(ctx, `
 UPDATE findings
-SET status = $2, status_reason = $3, status_updated_at = $4, updated_at = NOW()
+SET status = $2,
+    status_reason = $3,
+    status_updated_at = $4,
+    event_ids_json = CASE
+      WHEN jsonb_array_length($5::jsonb) = 0 THEN event_ids_json
+      ELSE (
+        SELECT COALESCE(jsonb_agg(event_id ORDER BY event_id), '[]'::jsonb)
+        FROM (
+          SELECT DISTINCT btrim(value) AS event_id
+          FROM jsonb_array_elements_text(COALESCE(findings.event_ids_json, '[]'::jsonb) || $5::jsonb) AS merged(value)
+          WHERE btrim(value) <> ''
+        ) AS unique_event_ids
+      )
+    END,
+    updated_at = NOW()
 WHERE id = $1
 RETURNING `+findingSelectColumns,
 		findingID,
 		status,
 		statusReason,
 		updatedAt,
+		eventIDsJSON,
 	), &row); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ports.ErrFindingNotFound
@@ -780,6 +970,25 @@ func findingFilterClauses(request ports.ListFindingsRequest) ([]string, []any, e
 		return nil, nil, err
 	}
 	return clauses, args, nil
+}
+
+// SupportsTombstones reports whether the tombstone schema has been applied to the
+// findings table. Callers (notably the closeout subcommand) use this as a guard so
+// they can refuse to run against a database that predates the M1 schema migration
+// without requiring the full ensureFindingTables side-effect chain.
+func (s *Store) SupportsTombstones(ctx context.Context) (bool, error) {
+	if s == nil || s.db == nil {
+		return false, errors.New("postgres is not configured")
+	}
+	var exists bool
+	if err := s.db.QueryRowContext(ctx, `
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'findings' AND column_name = 'tombstoned'
+        )`).Scan(&exists); err != nil {
+		return false, fmt.Errorf("check tombstone support: %w", err)
+	}
+	return exists, nil
 }
 
 func (s *Store) ensureFindingTables(ctx context.Context) error {
@@ -1167,6 +1376,16 @@ type findingRiskRow struct {
 	RiskModelVersion string
 }
 
+type findingTombstoneRow struct {
+	Tombstoned          bool
+	TombstonedAt        sql.NullTime
+	TombstonedBy        string
+	TombstonedReason    string
+	TombstonedRunID     string
+	PriorStatus         string
+	TombstoneGeneration int
+}
+
 type findingRow struct {
 	ID          string
 	Fingerprint string
@@ -1190,6 +1409,7 @@ type findingRow struct {
 	findingWorkflowRow
 	FirstObservedAt time.Time
 	LastObservedAt  time.Time
+	findingTombstoneRow
 }
 
 func scanFindingRow(scanner findingRowScanner, row *findingRow) error {
@@ -1228,6 +1448,13 @@ func scanFindingRow(scanner findingRowScanner, row *findingRow) error {
 		&row.StatusUpdatedAt,
 		&row.FirstObservedAt,
 		&row.LastObservedAt,
+		&row.Tombstoned,
+		&row.TombstonedAt,
+		&row.TombstonedBy,
+		&row.TombstonedReason,
+		&row.TombstonedRunID,
+		&row.PriorStatus,
+		&row.TombstoneGeneration,
 	)
 }
 
@@ -1305,6 +1532,15 @@ func (r findingRow) record() (*ports.FindingRecord, error) {
 			DueAt:           findingTimestamp(r.DueAt),
 			StatusReason:    r.StatusReason,
 			StatusUpdatedAt: findingTimestamp(r.StatusUpdatedAt),
+		},
+		FindingTombstone: ports.FindingTombstone{
+			Tombstoned:          r.Tombstoned,
+			TombstonedAt:        findingTimestamp(r.TombstonedAt),
+			TombstonedBy:        r.TombstonedBy,
+			TombstonedReason:    r.TombstonedReason,
+			TombstonedRunID:     r.TombstonedRunID,
+			PriorStatus:         r.PriorStatus,
+			TombstoneGeneration: r.TombstoneGeneration,
 		},
 		Attributes:      attributes,
 		FirstObservedAt: r.FirstObservedAt.UTC(),

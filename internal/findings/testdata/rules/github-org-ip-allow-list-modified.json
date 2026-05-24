@@ -18,6 +18,7 @@
         "family": "audit",
         "operation_type": "modify",
         "org": "writer",
+        "ip_allow_list_enabled": "false",
         "resource_id": "writer",
         "resource_type": "ip_allow_list",
         "source_runtime_id": "writer-github-audit",
@@ -54,8 +55,9 @@
       ],
       "attributes": {
         "action": "ip_allow_list.disable",
+        "ip_allow_list_enabled": "false",
         "org": "writer",
-        "primary_resource_urn": "urn:cerebro:writer:github_resource:ip_allow_list:writer",
+        "primary_resource_urn": "urn:cerebro:writer:github_org:writer",
         "rule_tags": "github,ip-allow-list,persistence,account-manipulation,attack.t1098"
       }
     }

@@ -280,6 +280,7 @@ func checkpointAuditCursor(_ []*gogithub.AuditEntry, cursor string) string {
 }
 
 func auditAttributes(entry *gogithub.AuditEntry, raw map[string]any, settings settings, actorResolution auditActorResolution) map[string]string {
+	action := strings.TrimSpace(entry.GetAction())
 	attributes := map[string]string{
 		"action":         entry.GetAction(),
 		"family":         familyAudit,
@@ -308,10 +309,47 @@ func auditAttributes(entry *gogithub.AuditEntry, raw map[string]any, settings se
 	addAttribute(attributes, "user", entry.GetUser())
 	addAttribute(attributes, "user_id", positiveInt64String(entry.GetUserID()))
 	addAttribute(attributes, "visibility", rawString(raw, "visibility"))
+	if strings.HasPrefix(action, "integration_installation.") {
+		addAttribute(attributes, "github_app_id", githubAppIDFromAuditInstallation(raw))
+	}
+	if strings.HasPrefix(action, "secret_scanning_alert.") {
+		addAttribute(attributes, "secret_scanning_alert.resolution", rawNestedOrFlatScalarString(raw, "secret_scanning_alert", "resolution"))
+		addAttribute(attributes, "secret_scanning_alert.state", rawNestedOrFlatScalarString(raw, "secret_scanning_alert", "state"))
+		addAttribute(attributes, "secret_scanning_alert.resolution_comment", rawNestedOrFlatScalarString(raw, "secret_scanning_alert", "resolution_comment"))
+	}
 	for _, key := range auditAdditionalAttributeKeys {
 		addAttribute(attributes, key, rawScalarString(raw, key))
 	}
 	return attributes
+}
+
+func githubAppIDFromAuditInstallation(raw map[string]any) string {
+	if appID := rawNestedPositiveInt64String(raw, "installation", "app_id"); appID != "" {
+		return appID
+	}
+	return rawNestedPositiveInt64String(raw, "installation", "id")
+}
+
+func rawNestedOrFlatScalarString(raw map[string]any, objectKey string, key string) string {
+	if value := rawScalarString(raw, objectKey+"."+key); value != "" {
+		return value
+	}
+	nested, ok := raw[objectKey].(map[string]any)
+	if !ok {
+		return ""
+	}
+	return rawScalarString(nested, key)
+}
+
+func rawNestedPositiveInt64String(raw map[string]any, objectKey string, key string) string {
+	if value := positiveInt64String(rawInt64(raw, objectKey+"."+key)); value != "" {
+		return value
+	}
+	nested, ok := raw[objectKey].(map[string]any)
+	if !ok {
+		return ""
+	}
+	return positiveInt64String(rawInt64(nested, key))
 }
 
 func firstPositiveInt64(values ...int64) int64 {
@@ -465,6 +503,18 @@ func rawInt64(raw map[string]any, key string) int64 {
 		return int64(typed)
 	case int64:
 		return typed
+	case json.Number:
+		value, err := typed.Int64()
+		if err != nil {
+			return 0
+		}
+		return value
+	case string:
+		value, err := strconv.ParseInt(strings.TrimSpace(typed), 10, 64)
+		if err != nil {
+			return 0
+		}
+		return value
 	default:
 		return 0
 	}

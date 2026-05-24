@@ -145,6 +145,7 @@ func TestNewFixtureReplaysOktaIdentityFamilies(t *testing.T) {
 		{family: "application", kind: "okta.application"},
 		{family: "group", kind: "okta.group"},
 		{family: "group_membership", config: map[string]string{"group_id": "grp-security"}, kind: "okta.group_membership"},
+		{family: "policy_rule", kind: "okta.policy_rule"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			config := map[string]string{
@@ -353,6 +354,60 @@ func mustParseTime(t *testing.T, value string) time.Time {
 	return parsed
 }
 
+func mustOktaTestdata(t *testing.T, name string) json.RawMessage {
+	t.Helper()
+	data, err := fixtureFS.ReadFile("testdata/" + name)
+	if err != nil {
+		t.Fatalf("read okta testdata %s: %v", name, err)
+	}
+	return json.RawMessage(data)
+}
+
+func readSingleOktaUserEvent(t *testing.T, baseURL string) *cerebrov1.EventEnvelope {
+	t.Helper()
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	readCfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": baseURL,
+		"domain":   "writer.okta.com",
+		"family":   "user",
+		"per_page": "1",
+		"token":    "test-token",
+	})
+	pull, err := source.Read(context.Background(), readCfg, nil)
+	if err != nil {
+		t.Fatalf("Read(user) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Read(user).Events) = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Kind; got != "okta.user" {
+		t.Fatalf("Read(user).Events[0].Kind = %q, want okta.user", got)
+	}
+	return pull.Events[0]
+}
+
+func assertOktaMFAAttributes(t *testing.T, attributes map[string]string, wantEnrolled, wantCount string) {
+	t.Helper()
+	gotEnrolled, ok := attributes["mfa_enrolled"]
+	if !ok {
+		t.Fatalf("mfa_enrolled missing from attributes %#v", attributes)
+	}
+	if gotEnrolled != wantEnrolled {
+		t.Fatalf("mfa_enrolled = %q, want %q", gotEnrolled, wantEnrolled)
+	}
+	gotCount, ok := attributes["mfa_factor_count"]
+	if !ok {
+		t.Fatalf("mfa_factor_count missing from attributes %#v", attributes)
+	}
+	if gotCount != wantCount {
+		t.Fatalf("mfa_factor_count = %q, want %q", gotCount, wantCount)
+	}
+}
+
 func TestCheckDiscoverAndReadLiveOktaUserPreview(t *testing.T) {
 	server := httptest.NewServer(newOktaAPIHandler(t))
 	defer server.Close()
@@ -404,6 +459,7 @@ func TestCheckDiscoverAndReadLiveOktaUserPreview(t *testing.T) {
 	if got := first.Events[0].Kind; got != "okta.user" {
 		t.Fatalf("first.Events[0].Kind = %q, want okta.user", got)
 	}
+	assertOktaMFAAttributes(t, first.Events[0].Attributes, "true", "1")
 	var payload map[string]any
 	if err := json.Unmarshal(first.Events[0].Payload, &payload); err != nil {
 		t.Fatalf("unmarshal user payload: %v", err)
@@ -426,8 +482,93 @@ func TestCheckDiscoverAndReadLiveOktaUserPreview(t *testing.T) {
 	if second.NextCursor != nil {
 		t.Fatalf("second.NextCursor = %#v, want nil", second.NextCursor)
 	}
+	assertOktaMFAAttributes(t, second.Events[0].Attributes, "false", "0")
 	if second.Checkpoint == nil || second.Checkpoint.CursorOpaque != "00u2" {
 		t.Fatalf("second.Checkpoint = %#v, want 00u2", second.Checkpoint)
+	}
+}
+
+func TestReadLiveOktaUserPreviewPopulatesMFAFactorAttributes(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		userID       string
+		responses    []oktaFactorTestResponse
+		wantEnrolled string
+		wantCount    string
+	}{
+		{
+			name:   "enrolled",
+			userID: "00u-enrolled",
+			responses: []oktaFactorTestResponse{{
+				status: http.StatusOK,
+				body:   mustOktaTestdata(t, "factors_enrolled.json"),
+			}},
+			wantEnrolled: "true",
+			wantCount:    "1",
+		},
+		{
+			name:   "not enrolled",
+			userID: "00u-not-enrolled",
+			responses: []oktaFactorTestResponse{{
+				status: http.StatusOK,
+				body:   mustOktaTestdata(t, "factors_not_enrolled.json"),
+			}},
+			wantEnrolled: "false",
+			wantCount:    "0",
+		},
+		{
+			name:   "forbidden unknown",
+			userID: "00u-forbidden",
+			responses: []oktaFactorTestResponse{{
+				status: http.StatusForbidden,
+				body:   json.RawMessage(`{"errorSummary":"factor access denied"}`),
+			}},
+			wantEnrolled: "",
+			wantCount:    "",
+		},
+		{
+			name:   "multi factor count",
+			userID: "00u-multi",
+			responses: []oktaFactorTestResponse{{
+				status: http.StatusOK,
+				body:   mustOktaTestdata(t, "factors_multi.json"),
+			}},
+			wantEnrolled: "true",
+			wantCount:    "3",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			requestCount := 0
+			server := httptest.NewServer(newOktaUserFactorAPIHandler(t, tt.userID, tt.responses, &requestCount))
+			defer server.Close()
+
+			event := readSingleOktaUserEvent(t, server.URL)
+			assertOktaMFAAttributes(t, event.Attributes, tt.wantEnrolled, tt.wantCount)
+			if requestCount != 1 {
+				t.Fatalf("factor request count = %d, want 1", requestCount)
+			}
+		})
+	}
+}
+
+func TestReadLiveOktaUserPreviewRetriesMFAFactorRateLimit(t *testing.T) {
+	requestCount := 0
+	server := httptest.NewServer(newOktaUserFactorAPIHandler(t, "00u-rate-limited", []oktaFactorTestResponse{
+		{
+			status: http.StatusTooManyRequests,
+			body:   json.RawMessage(`{"errorSummary":"rate limit exceeded"}`),
+		},
+		{
+			status: http.StatusOK,
+			body:   mustOktaTestdata(t, "factors_enrolled.json"),
+		},
+	}, &requestCount))
+	defer server.Close()
+
+	event := readSingleOktaUserEvent(t, server.URL)
+	assertOktaMFAAttributes(t, event.Attributes, "true", "1")
+	if requestCount != 2 {
+		t.Fatalf("factor request count = %d, want 2", requestCount)
 	}
 }
 
@@ -509,6 +650,100 @@ func TestReadLiveOktaIdentityJoinFamilies(t *testing.T) {
 				t.Fatalf("Read(%s).Events[0].Attributes[%q] = %q, want %q", tt.family, tt.attr, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestCheckDiscoverAndReadLiveOktaPolicyRulePreview(t *testing.T) {
+	server := httptest.NewServer(newOktaPolicyRuleAPIHandler(t))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"domain":   "writer.okta.com",
+		"family":   "policy_rule",
+		"per_page": "1",
+		"token":    "test-token",
+	})
+	if err := source.Check(context.Background(), cfg); err != nil {
+		t.Fatalf("Check(policy_rule) error = %v", err)
+	}
+
+	discover, err := source.Discover(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Discover(policy_rule) error = %v", err)
+	}
+	wantDiscover := []sourcecdk.URN{
+		"urn:cerebro:writer.okta.com:policy_rule:pol-sign-on:rul-sign-on-inactive",
+		"urn:cerebro:writer.okta.com:policy_rule:pol-sign-on:rul-sign-on-active",
+		"urn:cerebro:writer.okta.com:policy_rule:pol-access:rul-access-inactive",
+	}
+	if len(discover) != len(wantDiscover) {
+		t.Fatalf("len(Discover(policy_rule)) = %d, want %d (%v)", len(discover), len(wantDiscover), discover)
+	}
+	for i, want := range wantDiscover {
+		if discover[i] != want {
+			t.Fatalf("Discover(policy_rule)[%d] = %q, want %q", i, discover[i], want)
+		}
+	}
+
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(policy_rule first) error = %v", err)
+	}
+	if len(first.Events) != 1 {
+		t.Fatalf("len(Read(policy_rule first).Events) = %d, want 1", len(first.Events))
+	}
+	if got := first.Events[0].Kind; got != "okta.policy_rule" {
+		t.Fatalf("first.Events[0].Kind = %q, want okta.policy_rule", got)
+	}
+	for key, want := range map[string]string{
+		"policy_id":      "pol-sign-on",
+		"policy_rule_id": "rul-sign-on-inactive",
+		"policy_type":    "OKTA_SIGN_ON",
+		"name":           "Block risky sign-ons",
+		"status":         "INACTIVE",
+		"priority":       "1",
+		"system":         "false",
+	} {
+		if got := first.Events[0].Attributes[key]; got != want {
+			t.Fatalf("first.Events[0].Attributes[%q] = %q, want %q", key, got, want)
+		}
+	}
+	if first.NextCursor == nil || !strings.Contains(first.NextCursor.Opaque, "rule-sign-on-2") {
+		t.Fatalf("first.NextCursor = %#v, want opaque cursor carrying next policy-rule page", first.NextCursor)
+	}
+
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(policy_rule second) error = %v", err)
+	}
+	if len(second.Events) != 1 {
+		t.Fatalf("len(Read(policy_rule second).Events) = %d, want 1", len(second.Events))
+	}
+	if got := second.Events[0].Attributes["policy_rule_id"]; got != "rul-sign-on-active" {
+		t.Fatalf("second policy_rule_id = %q, want rul-sign-on-active", got)
+	}
+	if second.NextCursor == nil || !strings.Contains(second.NextCursor.Opaque, "policy-sign-on-deleted") {
+		t.Fatalf("second.NextCursor = %#v, want cursor for next policy page", second.NextCursor)
+	}
+
+	third, err := source.Read(context.Background(), cfg, second.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(policy_rule third) error = %v", err)
+	}
+	if len(third.Events) != 1 {
+		t.Fatalf("len(Read(policy_rule third).Events) = %d, want 1", len(third.Events))
+	}
+	if got := third.Events[0].Attributes["policy_rule_id"]; got != "rul-access-inactive" {
+		t.Fatalf("third policy_rule_id = %q, want rul-access-inactive after 404 policies are skipped", got)
+	}
+	if third.NextCursor != nil {
+		t.Fatalf("third.NextCursor = %#v, want nil after all sign-on/access policy rules", third.NextCursor)
 	}
 }
 
@@ -688,6 +923,243 @@ func TestOktaHTTPClientFailsClosedWhenHostResolutionFails(t *testing.T) {
 	if called {
 		t.Fatal("Do() reached wrapped transport after DNS failure")
 	}
+}
+
+func newOktaPolicyRuleAPIHandler(t *testing.T) http.Handler {
+	t.Helper()
+
+	policies := map[string][]map[string]any{
+		"OKTA_SIGN_ON": {
+			{
+				"id":          "pol-sign-on",
+				"type":        "OKTA_SIGN_ON",
+				"name":        "Default sign-on policy",
+				"status":      "ACTIVE",
+				"system":      true,
+				"created":     "2026-04-20T00:00:00Z",
+				"lastUpdated": "2026-04-23T01:00:00Z",
+			},
+			{
+				"id":          "pol-deleted",
+				"type":        "OKTA_SIGN_ON",
+				"name":        "Deleted sign-on policy",
+				"status":      "DELETED_PERMANENTLY",
+				"created":     "2026-04-20T00:00:00Z",
+				"lastUpdated": "2026-04-23T01:10:00Z",
+			},
+			{
+				"id":          "pol-rule-list-404",
+				"type":        "OKTA_SIGN_ON",
+				"name":        "Rule-list 404 policy",
+				"status":      "ACTIVE",
+				"created":     "2026-04-20T00:00:00Z",
+				"lastUpdated": "2026-04-23T01:20:00Z",
+			},
+		},
+		"ACCESS_POLICY": {
+			{
+				"id":          "pol-access",
+				"type":        "ACCESS_POLICY",
+				"name":        "API access policy",
+				"status":      "ACTIVE",
+				"created":     "2026-04-20T00:00:00Z",
+				"lastUpdated": "2026-04-23T02:00:00Z",
+			},
+		},
+	}
+	rules := map[string][]map[string]any{
+		"pol-sign-on": {
+			{
+				"id":          "rul-sign-on-inactive",
+				"name":        "Block risky sign-ons",
+				"status":      "INACTIVE",
+				"priority":    1,
+				"system":      false,
+				"created":     "2026-04-20T00:00:00Z",
+				"lastUpdated": "2026-04-23T01:00:00Z",
+			},
+			{
+				"id":          "rul-sign-on-active",
+				"name":        "Allow managed devices",
+				"status":      "ACTIVE",
+				"priority":    2,
+				"system":      true,
+				"created":     "2026-04-20T00:00:00Z",
+				"lastUpdated": "2026-04-23T01:05:00Z",
+			},
+		},
+		"pol-access": {
+			{
+				"id":          "rul-access-inactive",
+				"name":        "Block public clients",
+				"status":      "INACTIVE",
+				"priority":    1,
+				"system":      false,
+				"created":     "2026-04-20T00:00:00Z",
+				"lastUpdated": "2026-04-23T02:00:00Z",
+			},
+		},
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if got := r.Header.Get("Authorization"); got != "SSWS test-token" {
+			w.WriteHeader(http.StatusUnauthorized)
+			if err := json.NewEncoder(w).Encode(map[string]any{"errorSummary": "invalid token"}); err != nil {
+				t.Fatalf("encode auth error: %v", err)
+			}
+			return
+		}
+		switch {
+		case r.URL.Path == "/api/v1/policies":
+			policyType := r.URL.Query().Get("type")
+			page := policies[policyType]
+			after := r.URL.Query().Get("after")
+			switch policyType {
+			case "OKTA_SIGN_ON":
+				switch after {
+				case "":
+					w.Header().Set("Link", "</api/v1/policies?type=OKTA_SIGN_ON&after=policy-sign-on-deleted&limit=1>; rel=\"next\"")
+					if err := json.NewEncoder(w).Encode(page[:1]); err != nil {
+						t.Fatalf("encode sign-on policy page 1: %v", err)
+					}
+				case "policy-sign-on-deleted":
+					w.Header().Set("Link", "</api/v1/policies?type=OKTA_SIGN_ON&after=policy-sign-on-rule-list-404&limit=1>; rel=\"next\"")
+					if err := json.NewEncoder(w).Encode(page[1:2]); err != nil {
+						t.Fatalf("encode sign-on policy deleted page: %v", err)
+					}
+				case "policy-sign-on-rule-list-404":
+					if err := json.NewEncoder(w).Encode(page[2:3]); err != nil {
+						t.Fatalf("encode sign-on policy rule-list 404 page: %v", err)
+					}
+				default:
+					if err := json.NewEncoder(w).Encode([]map[string]any{}); err != nil {
+						t.Fatalf("encode empty sign-on policies: %v", err)
+					}
+				}
+			case "ACCESS_POLICY":
+				if after == "" {
+					if err := json.NewEncoder(w).Encode(page[:1]); err != nil {
+						t.Fatalf("encode access policy page: %v", err)
+					}
+					return
+				}
+				if err := json.NewEncoder(w).Encode([]map[string]any{}); err != nil {
+					t.Fatalf("encode empty access policies: %v", err)
+				}
+			default:
+				if err := json.NewEncoder(w).Encode([]map[string]any{}); err != nil {
+					t.Fatalf("encode empty unknown policy type: %v", err)
+				}
+			}
+		case strings.HasPrefix(r.URL.Path, "/api/v1/policies/") && strings.HasSuffix(r.URL.Path, "/rules"):
+			policyID := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/v1/policies/"), "/rules")
+			if policyID == "pol-deleted" {
+				w.WriteHeader(http.StatusNotFound)
+				if err := json.NewEncoder(w).Encode(map[string]any{"errorSummary": "policy deleted"}); err != nil {
+					t.Fatalf("encode deleted policy: %v", err)
+				}
+				return
+			}
+			if policyID == "pol-rule-list-404" {
+				w.WriteHeader(http.StatusNotFound)
+				if err := json.NewEncoder(w).Encode(map[string]any{"errorSummary": "rules unavailable"}); err != nil {
+					t.Fatalf("encode rule-list 404: %v", err)
+				}
+				return
+			}
+			page := rules[policyID]
+			after := r.URL.Query().Get("after")
+			if policyID == "pol-sign-on" && after == "" {
+				w.Header().Set("Link", "</api/v1/policies/pol-sign-on/rules?after=rule-sign-on-2&limit=1>; rel=\"next\"")
+				if err := json.NewEncoder(w).Encode(page[:1]); err != nil {
+					t.Fatalf("encode sign-on rule page 1: %v", err)
+				}
+				return
+			}
+			if policyID == "pol-sign-on" && after == "rule-sign-on-2" {
+				if err := json.NewEncoder(w).Encode(page[1:2]); err != nil {
+					t.Fatalf("encode sign-on rule page 2: %v", err)
+				}
+				return
+			}
+			if len(page) > 0 && after == "" {
+				if err := json.NewEncoder(w).Encode(page[:1]); err != nil {
+					t.Fatalf("encode policy rule page: %v", err)
+				}
+				return
+			}
+			if err := json.NewEncoder(w).Encode([]map[string]any{}); err != nil {
+				t.Fatalf("encode empty policy rules: %v", err)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+type oktaFactorTestResponse struct {
+	status int
+	body   json.RawMessage
+}
+
+func newOktaUserFactorAPIHandler(t *testing.T, userID string, factorResponses []oktaFactorTestResponse, factorRequestCount *int) http.Handler {
+	t.Helper()
+
+	userRecords := []map[string]any{
+		{
+			"id":          userID,
+			"status":      "ACTIVE",
+			"created":     "2026-04-20T00:00:00Z",
+			"activated":   "2026-04-20T00:01:00Z",
+			"lastUpdated": "2026-04-23T01:00:00Z",
+			"lastLogin":   "2026-04-23T01:00:00Z",
+			"profile": map[string]any{
+				"login":       userID + "@writer.com",
+				"email":       userID + "@writer.com",
+				"displayName": "Okta MFA Test User",
+			},
+		},
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if got := r.Header.Get("Authorization"); got != "SSWS test-token" {
+			w.WriteHeader(http.StatusUnauthorized)
+			if err := json.NewEncoder(w).Encode(map[string]any{"errorSummary": "invalid token"}); err != nil {
+				t.Fatalf("encode auth error: %v", err)
+			}
+			return
+		}
+		switch r.URL.Path {
+		case "/api/v1/users":
+			if err := json.NewEncoder(w).Encode(userRecords); err != nil {
+				t.Fatalf("encode users: %v", err)
+			}
+		case "/api/v1/users/" + userID + "/factors":
+			(*factorRequestCount)++
+			index := *factorRequestCount - 1
+			if index >= len(factorResponses) {
+				index = len(factorResponses) - 1
+			}
+			response := factorResponses[index]
+			if response.status == 0 {
+				response.status = http.StatusOK
+			}
+			w.WriteHeader(response.status)
+			if len(response.body) > 0 {
+				if _, err := w.Write(response.body); err != nil {
+					t.Fatalf("write factors: %v", err)
+				}
+				return
+			}
+			if err := json.NewEncoder(w).Encode([]map[string]any{}); err != nil {
+				t.Fatalf("encode default factors: %v", err)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	})
 }
 
 func newOktaAPIHandler(t *testing.T) http.Handler {
@@ -915,6 +1387,14 @@ func newOktaAPIHandler(t *testing.T) http.Handler {
 		case "/api/v1/users/00u1/roles":
 			if err := json.NewEncoder(w).Encode(roleRecords); err != nil {
 				t.Fatalf("encode admin roles: %v", err)
+			}
+		case "/api/v1/users/00u1/factors":
+			if _, err := w.Write(mustOktaTestdata(t, "factors_enrolled.json")); err != nil {
+				t.Fatalf("write 00u1 factors: %v", err)
+			}
+		case "/api/v1/users/00u2/factors":
+			if _, err := w.Write(mustOktaTestdata(t, "factors_not_enrolled.json")); err != nil {
+				t.Fatalf("write 00u2 factors: %v", err)
 			}
 		default:
 			http.NotFound(w, r)

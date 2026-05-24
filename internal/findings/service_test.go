@@ -94,6 +94,8 @@ type stubFindingStore struct {
 	backfillRiskResults        []*ports.FindingRecord
 	backfillRiskErr            error
 	backfillIncludeUnprojected bool
+	updateStatusCallCount      int
+	updateStatusCalls          []ports.FindingStatusUpdate
 }
 
 func (s *stubFindingStore) Ping(context.Context) error { return nil }
@@ -223,10 +225,28 @@ func (s *stubFindingStore) UpdateFindingStatus(_ context.Context, request ports.
 	if !ok {
 		return nil, ports.ErrFindingNotFound
 	}
+	s.updateStatusCallCount++
+	s.updateStatusCalls = append(s.updateStatusCalls, request)
 	cloned := cloneFinding(finding)
 	cloned.Status = strings.TrimSpace(request.Status)
 	cloned.StatusReason = strings.TrimSpace(request.Reason)
 	cloned.StatusUpdatedAt = request.UpdatedAt.UTC()
+	if len(request.EventIDs) != 0 {
+		cloned.EventIDs = uniqueTrimmedStringsPreserveOrder(append(append([]string(nil), cloned.EventIDs...), request.EventIDs...))
+	}
+	if request.Tombstone != nil {
+		t := request.Tombstone
+		tombstonedAt := t.TombstonedAt.UTC()
+		if tombstonedAt.IsZero() {
+			tombstonedAt = cloned.StatusUpdatedAt
+		}
+		cloned.Tombstoned = true
+		cloned.TombstonedAt = tombstonedAt
+		cloned.TombstonedBy = strings.TrimSpace(t.By)
+		cloned.TombstonedReason = strings.TrimSpace(t.Reason)
+		cloned.TombstonedRunID = strings.TrimSpace(t.RunID)
+		cloned.PriorStatus = strings.TrimSpace(t.PriorStatus)
+	}
 	s.findings[cloned.ID] = cloned
 	return cloneFinding(cloned), nil
 }
@@ -564,6 +584,148 @@ func (r *emittingRule) Evaluate(_ context.Context, runtime *cerebrov1.SourceRunt
 	}, nil
 }
 
+type counterAnchorRule struct {
+	spec       *cerebrov1.RuleSpec
+	definition RuleDefinition
+	sourceID   string
+}
+
+var _ CounterEventRule = (*counterAnchorRule)(nil)
+
+func newCounterAnchorRule(ruleID string) *counterAnchorRule {
+	definition := RuleDefinition{
+		ID:          strings.TrimSpace(ruleID),
+		Name:        "Counter Anchor Rule",
+		SourceID:    "github",
+		EventKinds:  []string{"github.audit"},
+		OutputKind:  "finding",
+		Severity:    "HIGH",
+		Status:      "active",
+		Maturity:    "experimental",
+		Lifecycle:   Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
+		ControlRefs: []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.6"}},
+	}
+	return &counterAnchorRule{
+		spec:       &cerebrov1.RuleSpec{Id: strings.TrimSpace(ruleID), Name: definition.Name},
+		definition: definition,
+		sourceID:   definition.SourceID,
+	}
+}
+
+func (r *counterAnchorRule) Spec() *cerebrov1.RuleSpec {
+	if r == nil {
+		return nil
+	}
+	return proto.Clone(r.spec).(*cerebrov1.RuleSpec)
+}
+
+func (r *counterAnchorRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool {
+	if r == nil || runtime == nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(runtime.GetSourceId()), strings.TrimSpace(r.sourceID))
+}
+
+func (r *counterAnchorRule) RuleMetadata() RuleDefinition {
+	if r == nil {
+		return RuleDefinition{}
+	}
+	return cloneRuleDefinition(r.definition)
+}
+
+func (r *counterAnchorRule) Evaluate(_ context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
+	if r == nil || runtime == nil || event == nil || strings.TrimSpace(event.GetAttributes()["action"]) != "open" {
+		return nil, nil
+	}
+	anchor := r.OpenAnchor(event.GetAttributes())
+	if anchor == "" {
+		return nil, nil
+	}
+	observedAt := event.GetOccurredAt().AsTime().UTC()
+	findingIDReplacer := strings.NewReplacer("|", "-", "/", "-")
+	findingID := strings.TrimSpace(r.spec.GetId()) + "-" + findingIDReplacer.Replace(anchor)
+	return []*ports.FindingRecord{
+		{
+			ID:              findingID,
+			Fingerprint:     findingID,
+			TenantID:        strings.TrimSpace(event.GetTenantId()),
+			RuntimeID:       strings.TrimSpace(runtime.GetId()),
+			RuleID:          strings.TrimSpace(r.spec.GetId()),
+			Title:           r.spec.GetName(),
+			Severity:        "HIGH",
+			Status:          findingStatusOpen,
+			Summary:         "counter anchor rule open finding",
+			ResourceURNs:    []string{"urn:cerebro:writer:github_repo:" + strings.TrimSpace(event.GetAttributes()["repo"])},
+			EventIDs:        []string{strings.TrimSpace(event.GetId())},
+			ControlRefs:     cloneFindingControlRefs(r.definition.ControlRefs),
+			Attributes:      map[string]string{"repo": strings.TrimSpace(event.GetAttributes()["repo"]), "user": strings.TrimSpace(event.GetAttributes()["user"])},
+			FirstObservedAt: observedAt,
+			LastObservedAt:  observedAt,
+		},
+	}, nil
+}
+
+func (r *counterAnchorRule) OpenAnchor(attributes map[string]string) string {
+	return counterRuleAnchor(attributes)
+}
+
+func (r *counterAnchorRule) CloseOnEvent(event *cerebrov1.EventEnvelope) (string, bool) {
+	if event == nil || strings.TrimSpace(event.GetAttributes()["action"]) != "close" {
+		return "", false
+	}
+	anchor := counterRuleAnchor(event.GetAttributes())
+	return anchor, anchor != ""
+}
+
+type nonCounterAnchorRule struct {
+	spec       *cerebrov1.RuleSpec
+	definition RuleDefinition
+	sourceID   string
+}
+
+func newNonCounterAnchorRule(ruleID string) *nonCounterAnchorRule {
+	counter := newCounterAnchorRule(ruleID)
+	return &nonCounterAnchorRule{
+		spec:       counter.spec,
+		definition: counter.definition,
+		sourceID:   counter.sourceID,
+	}
+}
+
+func (r *nonCounterAnchorRule) Spec() *cerebrov1.RuleSpec {
+	if r == nil {
+		return nil
+	}
+	return proto.Clone(r.spec).(*cerebrov1.RuleSpec)
+}
+
+func (r *nonCounterAnchorRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool {
+	if r == nil || runtime == nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(runtime.GetSourceId()), strings.TrimSpace(r.sourceID))
+}
+
+func (r *nonCounterAnchorRule) RuleMetadata() RuleDefinition {
+	if r == nil {
+		return RuleDefinition{}
+	}
+	return cloneRuleDefinition(r.definition)
+}
+
+func (r *nonCounterAnchorRule) Evaluate(_ context.Context, _ *cerebrov1.SourceRuntime, _ *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
+	return nil, nil
+}
+
+func counterRuleAnchor(attributes map[string]string) string {
+	repo := strings.TrimSpace(attributes["repo"])
+	user := strings.TrimSpace(attributes["user"])
+	if repo == "" || user == "" {
+		return ""
+	}
+	return repo + "|" + user
+}
+
 type failingRule struct {
 	spec               *cerebrov1.RuleSpec
 	supportedSourceIDs map[string]struct{}
@@ -592,46 +754,47 @@ func (r *failingRule) Evaluate(context.Context, *cerebrov1.SourceRuntime, *cereb
 func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t *testing.T) {
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-1", "user.session.start", "SUCCESS"),
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newOktaPolicyRuleEvent("okta-policy-rule-active", "ACTIVE"),
+			newOktaPolicyRuleEvent("okta-policy-rule-inactive", "INACTIVE"),
 		},
 	}
 	store := &stubFindingStore{
 		claims: map[string]*ports.ClaimRecord{
 			"claim-1": {
 				ID:            "claim-1",
-				RuntimeID:     "writer-okta-audit",
+				RuntimeID:     "writer-okta-policy-rule",
 				TenantID:      "writer",
-				SubjectURN:    "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+				SubjectURN:    "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1",
 				Predicate:     "status",
-				ObjectValue:   "updated",
+				ObjectValue:   "INACTIVE",
 				ClaimType:     "attribute",
 				Status:        "asserted",
-				SourceEventID: "okta-audit-2",
+				SourceEventID: "okta-policy-rule-inactive",
 				ObservedAt:    time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
 			},
 		},
 	}
 	service := New(&stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {
-				Id:       "writer-okta-audit",
+			"writer-okta-policy-rule": {
+				Id:       "writer-okta-policy-rule",
 				SourceId: "okta",
 				TenantId: "writer",
+				Config:   map[string]string{"family": "policy_rule"},
 			},
 		},
 	}, replayer, store, store, store, store)
 
 	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID:  "writer-okta-audit",
+		RuntimeID:  "writer-okta-policy-rule",
 		RuleID:     oktaPolicyRuleLifecycleTamperingRuleID,
 		EventLimit: 25,
 	})
 	if err != nil {
 		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
 	}
-	if result.Runtime.GetId() != "writer-okta-audit" {
-		t.Fatalf("Runtime.ID = %q, want writer-okta-audit", result.Runtime.GetId())
+	if result.Runtime.GetId() != "writer-okta-policy-rule" {
+		t.Fatalf("Runtime.ID = %q, want writer-okta-policy-rule", result.Runtime.GetId())
 	}
 	if result.Rule.GetId() != oktaPolicyRuleLifecycleTamperingRuleID {
 		t.Fatalf("Rule.ID = %q, want %q", result.Rule.GetId(), oktaPolicyRuleLifecycleTamperingRuleID)
@@ -639,8 +802,8 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 	if result.EventsEvaluated != 2 {
 		t.Fatalf("EventsEvaluated = %d, want 2", result.EventsEvaluated)
 	}
-	if got := replayer.request.RuntimeID; got != "writer-okta-audit" {
-		t.Fatalf("Replay().RuntimeID = %q, want writer-okta-audit", got)
+	if got := replayer.request.RuntimeID; got != "writer-okta-policy-rule" {
+		t.Fatalf("Replay().RuntimeID = %q, want writer-okta-policy-rule", got)
 	}
 	if got := replayer.request.Limit; got != 25 {
 		t.Fatalf("Replay().Limit = %d, want 25", got)
@@ -658,29 +821,23 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 	if finding.Status != "open" {
 		t.Fatalf("Finding.Status = %q, want open", finding.Status)
 	}
-	if finding.Summary != "admin@writer.com performed policy.rule.update on pol-1" {
-		t.Fatalf("Finding.Summary = %q, want admin@writer.com performed policy.rule.update on pol-1", finding.Summary)
+	if finding.Summary != "Okta policy rule Require MFA is INACTIVE" {
+		t.Fatalf("Finding.Summary = %q, want Okta policy rule Require MFA is INACTIVE", finding.Summary)
 	}
-	if len(finding.ResourceURNs) != 2 {
-		t.Fatalf("len(Finding.ResourceURNs) = %d, want 2", len(finding.ResourceURNs))
+	if len(finding.ResourceURNs) != 1 {
+		t.Fatalf("len(Finding.ResourceURNs) = %d, want 1", len(finding.ResourceURNs))
 	}
-	if finding.ResourceURNs[0] != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+	if finding.ResourceURNs[0] != "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1" {
 		t.Fatalf("Finding.ResourceURNs[0] = %q, want policy rule urn", finding.ResourceURNs[0])
 	}
-	if finding.ResourceURNs[1] != "urn:cerebro:writer:okta_user:00u2" {
-		t.Fatalf("Finding.ResourceURNs[1] = %q, want actor urn", finding.ResourceURNs[1])
-	}
-	if finding.Attributes["primary_actor_urn"] != "urn:cerebro:writer:okta_user:00u2" {
-		t.Fatalf("Finding.Attributes[primary_actor_urn] = %q, want actor urn", finding.Attributes["primary_actor_urn"])
-	}
-	if finding.Attributes["primary_resource_urn"] != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+	if finding.Attributes["primary_resource_urn"] != "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1" {
 		t.Fatalf("Finding.Attributes[primary_resource_urn] = %q, want resource urn", finding.Attributes["primary_resource_urn"])
 	}
 	if finding.PolicyID != "pol-1" {
 		t.Fatalf("Finding.PolicyID = %q, want pol-1", finding.PolicyID)
 	}
-	if finding.PolicyName != "pol-1" {
-		t.Fatalf("Finding.PolicyName = %q, want pol-1", finding.PolicyName)
+	if finding.PolicyName != "Require MFA" {
+		t.Fatalf("Finding.PolicyName = %q, want Require MFA", finding.PolicyName)
 	}
 	if len(finding.ObservedPolicyIDs) != 1 || finding.ObservedPolicyIDs[0] != "pol-1" {
 		t.Fatalf("Finding.ObservedPolicyIDs = %#v, want [pol-1]", finding.ObservedPolicyIDs)
@@ -738,12 +895,13 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 	}
 }
 
-func TestEvaluateSourceRuntimeFindingsReusesLegacyOktaTamperingID(t *testing.T) {
-	eventID := "okta-audit-2"
+func TestEvaluateSourceRuntimeFindingsUsesDurableOktaPolicyRuleFingerprint(t *testing.T) {
+	eventID := "okta-policy-rule-inactive"
 	legacyID := hashFindingFingerprint(oktaPolicyRuleLifecycleTamperingRuleID, eventID)
+	durableID := hashFindingFingerprint(oktaPolicyRuleLifecycleTamperingRuleID, "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1")
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent(eventID, "policy.rule.update", "SUCCESS"),
+			newOktaPolicyRuleEvent(eventID, "INACTIVE"),
 		},
 	}
 	store := &stubFindingStore{
@@ -752,13 +910,13 @@ func TestEvaluateSourceRuntimeFindingsReusesLegacyOktaTamperingID(t *testing.T) 
 				ID:           legacyID,
 				Fingerprint:  legacyID,
 				TenantID:     "writer",
-				RuntimeID:    "writer-okta-audit",
+				RuntimeID:    "writer-okta-policy-rule",
 				RuleID:       oktaPolicyRuleLifecycleTamperingRuleID,
 				Title:        oktaPolicyRuleLifecycleTamperingTitle,
 				Severity:     "HIGH",
 				Status:       findingStatusSuppressed,
 				Summary:      "legacy finding",
-				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+				ResourceURNs: []string{"urn:cerebro:writer:okta_policy_rule:pol-1:rul-1"},
 				EventIDs:     []string{eventID},
 				FindingWorkflow: ports.FindingWorkflow{
 					StatusReason:    "accepted risk",
@@ -771,16 +929,17 @@ func TestEvaluateSourceRuntimeFindingsReusesLegacyOktaTamperingID(t *testing.T) 
 	}
 	service := New(&stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {
-				Id:       "writer-okta-audit",
+			"writer-okta-policy-rule": {
+				Id:       "writer-okta-policy-rule",
 				SourceId: "okta",
 				TenantId: "writer",
+				Config:   map[string]string{"family": "policy_rule"},
 			},
 		},
 	}, replayer, store, store, store, store)
 
 	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID: "writer-okta-audit",
+		RuntimeID: "writer-okta-policy-rule",
 		RuleID:    oktaPolicyRuleLifecycleTamperingRuleID,
 	})
 	if err != nil {
@@ -790,39 +949,53 @@ func TestEvaluateSourceRuntimeFindingsReusesLegacyOktaTamperingID(t *testing.T) 
 		t.Fatalf("len(Findings) = %d, want 1", len(result.Findings))
 	}
 	finding := result.Findings[0]
-	if got := finding.ID; got != legacyID {
-		t.Fatalf("Finding.ID = %q, want legacy id %q", got, legacyID)
+	if got := finding.ID; got != durableID {
+		t.Fatalf("Finding.ID = %q, want durable policy-rule id %q", got, durableID)
 	}
-	if got := finding.Fingerprint; got != legacyID {
-		t.Fatalf("Finding.Fingerprint = %q, want legacy fingerprint %q", got, legacyID)
+	if got := finding.Fingerprint; got != durableID {
+		t.Fatalf("Finding.Fingerprint = %q, want durable policy-rule fingerprint %q", got, durableID)
 	}
-	if got := finding.Status; got != findingStatusSuppressed {
-		t.Fatalf("Finding.Status = %q, want suppressed", got)
+	if got := finding.Status; got != findingStatusOpen {
+		t.Fatalf("Finding.Status = %q, want open", got)
 	}
-	if got := finding.StatusReason; got != "accepted risk" {
-		t.Fatalf("Finding.StatusReason = %q, want accepted risk", got)
+	if got := finding.Attributes["okta_policy_rule_urn"]; got != "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1" {
+		t.Fatalf("Finding.Attributes[okta_policy_rule_urn] = %q, want policy rule urn", got)
 	}
-	if len(store.findings) != 1 {
-		t.Fatalf("len(store.findings) = %d, want 1", len(store.findings))
+	if _, ok := store.findings[legacyID]; !ok {
+		t.Fatalf("legacy finding %q missing; durable conversion should not mutate it", legacyID)
 	}
-	if got := result.Evidence[0].GetFindingId(); got != legacyID {
-		t.Fatalf("Evidence[0].FindingId = %q, want legacy id %q", got, legacyID)
+	if len(store.findings) != 2 {
+		t.Fatalf("len(store.findings) = %d, want legacy row plus new durable row", len(store.findings))
+	}
+	if got := result.Evidence[0].GetFindingId(); got != durableID {
+		t.Fatalf("Evidence[0].FindingId = %q, want durable id %q", got, durableID)
 	}
 }
 
-func TestOktaPolicyRuleLifecycleTamperingRequiresSuccessfulOutcome(t *testing.T) {
-	missingOutcome := newAuditEvent("okta-audit-2", "policy.rule.update", "")
-	delete(missingOutcome.Attributes, "outcome_result")
-	if matchesOktaPolicyRuleLifecycleTampering(missingOutcome) {
-		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = true for missing outcome, want false")
+func TestOktaPolicyRuleLifecycleTamperingMatchesProjectedStateOnly(t *testing.T) {
+	auditEvent := newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS")
+	auditEvent.Attributes["policy_id"] = "pol-1"
+	auditEvent.Attributes["policy_rule_id"] = "rul-1"
+	auditEvent.Attributes["status"] = "INACTIVE"
+	if matchesOktaPolicyRuleLifecycleTampering(auditEvent) {
+		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = true for audit event, want false")
 	}
-	failedOutcome := newAuditEvent("okta-audit-3", "policy.rule.update", "FAILURE")
-	if matchesOktaPolicyRuleLifecycleTampering(failedOutcome) {
-		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = true for failed outcome, want false")
+	missingStatus := newOktaPolicyRuleEvent("okta-policy-rule-missing-status", "")
+	delete(missingStatus.Attributes, "status")
+	if matchesOktaPolicyRuleLifecycleTampering(missingStatus) {
+		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = true for missing status, want false")
 	}
-	successOutcome := newAuditEvent("okta-audit-4", "policy.rule.update", "SUCCESS")
-	if !matchesOktaPolicyRuleLifecycleTampering(successOutcome) {
-		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = false for success outcome, want true")
+	active := newOktaPolicyRuleEvent("okta-policy-rule-active", "ACTIVE")
+	if matchesOktaPolicyRuleLifecycleTampering(active) {
+		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = true for active projected state, want false")
+	}
+	inactive := newOktaPolicyRuleEvent("okta-policy-rule-inactive", "INACTIVE")
+	if !matchesOktaPolicyRuleLifecycleTampering(inactive) {
+		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = false for inactive projected state, want true")
+	}
+	deleted := newOktaPolicyRuleEvent("okta-policy-rule-deleted", "DELETED_PERMANENTLY")
+	if !matchesOktaPolicyRuleLifecycleTampering(deleted) {
+		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = false for permanently deleted projected state, want true")
 	}
 }
 
@@ -1104,6 +1277,298 @@ func TestEvaluateSourceRuntimeRetiredRuleResolvesOpenFindingsOutsideReplayWindow
 	}
 }
 
+func TestCounterEventRule_AnchorClose(t *testing.T) {
+	rule := newCounterAnchorRule("counter-anchor-rule")
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	openedAt := time.Date(2026, 5, 7, 19, 54, 0, 0, time.UTC)
+	staleFinding := &ports.FindingRecord{
+		ID:              "counter-anchor-rule-writer-cerebro-alice",
+		Fingerprint:     "counter-anchor-rule-writer-cerebro-alice",
+		TenantID:        "writer",
+		RuntimeID:       "example-github-audit",
+		RuleID:          "counter-anchor-rule",
+		Title:           "Counter Anchor Rule",
+		Severity:        "HIGH",
+		Status:          findingStatusOpen,
+		Summary:         "repository collaborator remained risky",
+		ResourceURNs:    []string{"urn:cerebro:writer:github_repo:writer/cerebro"},
+		EventIDs:        []string{"github-open-event"},
+		Attributes:      map[string]string{"repo": "writer/cerebro", "user": "alice"},
+		FirstObservedAt: openedAt,
+		LastObservedAt:  openedAt,
+	}
+	tombstonedFinding := cloneFinding(staleFinding)
+	tombstonedFinding.ID = "counter-anchor-rule-tombstoned"
+	tombstonedFinding.Fingerprint = "counter-anchor-rule-tombstoned"
+	tombstonedFinding.Tombstoned = true
+	tombstonedFinding.TombstonedAt = openedAt.Add(time.Hour)
+	tombstonedFinding.EventIDs = []string{"github-open-tombstoned-event"}
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{
+		staleFinding.ID:      cloneFinding(staleFinding),
+		tombstonedFinding.ID: cloneFinding(tombstonedFinding),
+	}}
+	appendLog := &recordingAppendLog{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"example-github-audit": {Id: "example-github-audit", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}},
+		}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{{
+			Id:       "github-open-same-run",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.audit",
+			Attributes: map[string]string{
+				"action": "open",
+				"repo":   "writer/cerebro",
+				"user":   "bob",
+			},
+			OccurredAt: timestamppb.New(openedAt.Add(23 * time.Hour)),
+		}, {
+			Id:       "github-counter-event",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.audit",
+			Attributes: map[string]string{
+				"action": "close",
+				"repo":   "writer/cerebro",
+				"user":   "alice",
+			},
+			OccurredAt: timestamppb.New(openedAt.Add(24 * time.Hour)),
+		}, {
+			Id:       "github-counter-same-run",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.audit",
+			Attributes: map[string]string{
+				"action": "close",
+				"repo":   "writer/cerebro",
+				"user":   "bob",
+			},
+			OccurredAt: timestamppb.New(openedAt.Add(25 * time.Hour)),
+		}}},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	).WithGraphStore(&stubGraphStore{}).WithAppendLog(appendLog)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "example-github-audit",
+		RuleID:    "counter-anchor-rule",
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if got := len(result.Findings); got != 1 {
+		t.Fatalf("len(Findings) = %d, want 1 same-run open finding before counter close", got)
+	}
+	resolved := store.findings[staleFinding.ID]
+	if got := resolved.Status; got != findingStatusResolved {
+		t.Fatalf("counter-event finding status = %q, want %q", got, findingStatusResolved)
+	}
+	if got := resolved.StatusReason; got != workflowevents.FindingStatusReasonClosedByCounterEvent {
+		t.Fatalf("counter-event finding status reason = %q, want %q", got, workflowevents.FindingStatusReasonClosedByCounterEvent)
+	}
+	if !containsTrimmed(resolved.EventIDs, "github-open-event") || !containsTrimmed(resolved.EventIDs, "github-counter-event") {
+		t.Fatalf("counter-event finding EventIDs = %#v, want original and counter event IDs", resolved.EventIDs)
+	}
+	sameRun := store.findings["counter-anchor-rule-writer-cerebro-bob"]
+	if sameRun == nil {
+		t.Fatal("same-run emitted finding was not persisted")
+	}
+	if got := sameRun.Status; got != findingStatusResolved {
+		t.Fatalf("same-run counter-event finding status = %q, want %q", got, findingStatusResolved)
+	}
+	if got := sameRun.StatusReason; got != workflowevents.FindingStatusReasonClosedByCounterEvent {
+		t.Fatalf("same-run counter-event finding status reason = %q, want %q", got, workflowevents.FindingStatusReasonClosedByCounterEvent)
+	}
+	if !containsTrimmed(sameRun.EventIDs, "github-open-same-run") || !containsTrimmed(sameRun.EventIDs, "github-counter-same-run") {
+		t.Fatalf("same-run counter-event finding EventIDs = %#v, want original and counter event IDs", sameRun.EventIDs)
+	}
+	tombstoned := store.findings[tombstonedFinding.ID]
+	if got := tombstoned.Status; got != findingStatusOpen {
+		t.Fatalf("tombstoned matching finding status = %q, want open", got)
+	}
+	if containsTrimmed(tombstoned.EventIDs, "github-counter-event") {
+		t.Fatalf("tombstoned matching finding EventIDs = %#v, want no counter event evidence", tombstoned.EventIDs)
+	}
+	statusEvent := findStatusChangedPayload(t, appendLog.events, staleFinding.ID)
+	if got := statusEvent.Reason; got != workflowevents.FindingStatusReasonClosedByCounterEvent {
+		t.Fatalf("workflow status reason = %q, want %q", got, workflowevents.FindingStatusReasonClosedByCounterEvent)
+	}
+	if got := statusEvent.Source; got != workflowevents.FindingStatusSourceStaleEvaluation {
+		t.Fatalf("workflow status source = %q, want %q", got, workflowevents.FindingStatusSourceStaleEvaluation)
+	}
+	if !containsTrimmed(statusEvent.Finding.EventIDs, "github-counter-event") {
+		t.Fatalf("workflow finding event_ids = %#v, want counter event evidence", statusEvent.Finding.EventIDs)
+	}
+	sameRunStatusEvent := findStatusChangedPayload(t, appendLog.events, sameRun.ID)
+	if !containsTrimmed(sameRunStatusEvent.Finding.EventIDs, "github-counter-same-run") {
+		t.Fatalf("same-run workflow finding event_ids = %#v, want counter event evidence", sameRunStatusEvent.Finding.EventIDs)
+	}
+}
+
+func TestCounterEventRule_OlderCloseDoesNotResolveNewerOpenFinding(t *testing.T) {
+	rule := newCounterAnchorRule("counter-anchor-rule")
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	openedAt := time.Date(2026, 5, 7, 19, 54, 0, 0, time.UTC)
+	newerOpenAt := openedAt.Add(2 * time.Hour)
+	currentFinding := &ports.FindingRecord{
+		ID:              "counter-anchor-rule-writer-cerebro-alice",
+		Fingerprint:     "counter-anchor-rule-writer-cerebro-alice",
+		TenantID:        "writer",
+		RuntimeID:       "example-github-audit",
+		RuleID:          "counter-anchor-rule",
+		Title:           "Counter Anchor Rule",
+		Severity:        "HIGH",
+		Status:          findingStatusOpen,
+		Summary:         "repository collaborator remained risky after an older close",
+		ResourceURNs:    []string{"urn:cerebro:writer:github_repo:writer/cerebro"},
+		EventIDs:        []string{"github-newer-open-event"},
+		Attributes:      map[string]string{"repo": "writer/cerebro", "user": "alice"},
+		FirstObservedAt: openedAt,
+		LastObservedAt:  newerOpenAt,
+	}
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{
+		currentFinding.ID: cloneFinding(currentFinding),
+	}}
+	appendLog := &recordingAppendLog{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"example-github-audit": {Id: "example-github-audit", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}},
+		}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{{
+			Id:       "github-older-counter-event",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.audit",
+			Attributes: map[string]string{
+				"action": "close",
+				"repo":   "writer/cerebro",
+				"user":   "alice",
+			},
+			OccurredAt: timestamppb.New(openedAt.Add(time.Hour)),
+		}}},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	).WithGraphStore(&stubGraphStore{}).WithAppendLog(appendLog)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "example-github-audit",
+		RuleID:    "counter-anchor-rule",
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if got := len(result.Findings); got != 0 {
+		t.Fatalf("len(Findings) = %d, want 0 because replay only contains an older close", got)
+	}
+	unchanged := store.findings[currentFinding.ID]
+	if got := unchanged.Status; got != findingStatusOpen {
+		t.Fatalf("newer open finding status = %q, want %q", got, findingStatusOpen)
+	}
+	if unchanged.StatusReason != "" {
+		t.Fatalf("newer open finding status reason = %q, want empty", unchanged.StatusReason)
+	}
+	if containsTrimmed(unchanged.EventIDs, "github-older-counter-event") {
+		t.Fatalf("newer open finding EventIDs = %#v, want no older counter-event evidence", unchanged.EventIDs)
+	}
+	if store.updateStatusCallCount != 0 {
+		t.Fatalf("UpdateFindingStatus calls = %d, want 0", store.updateStatusCallCount)
+	}
+	if len(appendLog.events) != 0 {
+		t.Fatalf("append log events = %d, want 0", len(appendLog.events))
+	}
+}
+
+func TestCounterEventRule_NonImplementingUnaffected(t *testing.T) {
+	rule := newNonCounterAnchorRule("non-counter-anchor-rule")
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	openedAt := time.Date(2026, 5, 7, 19, 54, 0, 0, time.UTC)
+	staleFinding := &ports.FindingRecord{
+		ID:              "non-counter-anchor-rule-writer-cerebro-alice",
+		Fingerprint:     "non-counter-anchor-rule-writer-cerebro-alice",
+		TenantID:        "writer",
+		RuntimeID:       "example-github-audit",
+		RuleID:          "non-counter-anchor-rule",
+		Title:           "Non-Counter Anchor Rule",
+		Severity:        "HIGH",
+		Status:          findingStatusOpen,
+		Summary:         "repository collaborator remained risky",
+		ResourceURNs:    []string{"urn:cerebro:writer:github_repo:writer/cerebro"},
+		EventIDs:        []string{"github-open-event"},
+		Attributes:      map[string]string{"repo": "writer/cerebro", "user": "alice"},
+		FirstObservedAt: openedAt,
+		LastObservedAt:  openedAt,
+	}
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{
+		staleFinding.ID: cloneFinding(staleFinding),
+	}}
+	appendLog := &recordingAppendLog{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"example-github-audit": {Id: "example-github-audit", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}},
+		}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{{
+			Id:       "github-counter-event",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.audit",
+			Attributes: map[string]string{
+				"action": "close",
+				"repo":   "writer/cerebro",
+				"user":   "alice",
+			},
+			OccurredAt: timestamppb.New(openedAt.Add(24 * time.Hour)),
+		}}},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	).WithGraphStore(&stubGraphStore{}).WithAppendLog(appendLog)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "example-github-audit",
+		RuleID:    "non-counter-anchor-rule",
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if got := len(result.Findings); got != 0 {
+		t.Fatalf("len(Findings) = %d, want 0", got)
+	}
+	unchanged := store.findings[staleFinding.ID]
+	if got := unchanged.Status; got != findingStatusOpen {
+		t.Fatalf("non-counter finding status = %q, want %q", got, findingStatusOpen)
+	}
+	if unchanged.StatusReason != "" {
+		t.Fatalf("non-counter finding status reason = %q, want empty", unchanged.StatusReason)
+	}
+	if containsTrimmed(unchanged.EventIDs, "github-counter-event") {
+		t.Fatalf("non-counter finding EventIDs = %#v, want no counter event evidence", unchanged.EventIDs)
+	}
+	if store.updateStatusCallCount != 0 {
+		t.Fatalf("UpdateFindingStatus calls = %d, want 0", store.updateStatusCallCount)
+	}
+	if len(appendLog.events) != 0 {
+		t.Fatalf("append log events = %d, want 0", len(appendLog.events))
+	}
+}
+
 func TestEvaluateSourceRuntimeMarksRunFailedWhenStaleCleanupFails(t *testing.T) {
 	registry, err := NewRegistry(&emittingRule{
 		spec:               &cerebrov1.RuleSpec{Id: "routine-oauth-rule", Name: "Routine OAuth Rule"},
@@ -1172,8 +1637,8 @@ func TestEvaluateSourceRuntimeFindingsPersistsNormalizedFailedRun(t *testing.T) 
 	}
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-1", "policy.rule.update", "SUCCESS"),
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newAuditEvent("okta-audit-1", "policy.rule.deactivate", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
 		},
 	}
 	store := &stubFindingStore{}
@@ -1239,7 +1704,7 @@ func TestEvaluateSourceRuntimeFindingsCleansUpRemainingRunsWhenFailurePersistenc
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
 	replayer := &stubReplayer{
-		events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-1", "policy.rule.update", "SUCCESS")},
+		events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-1", "policy.rule.deactivate", "SUCCESS")},
 	}
 	store := &stubFindingStore{
 		failRunPutByCall: map[int]error{3: errors.New("persist failed run failed")},
@@ -1288,8 +1753,8 @@ func TestEvaluateSourceRuntimeFindingsDeduplicatesEvidencePerRun(t *testing.T) {
 	}
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
 		},
 	}
 	store := &stubFindingStore{}
@@ -1394,7 +1859,7 @@ func TestEvaluateSourceRuntimeFindingsDeduplicatesEvidenceAcrossRuns(t *testing.
 	}
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
 		},
 	}
 	store := &stubFindingStore{}
@@ -1548,16 +2013,17 @@ func TestListRulesReturnsBuiltinCatalog(t *testing.T) {
 func TestEvaluateSourceRuntimeFindingsSelectsRequestedRule(t *testing.T) {
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newOktaPolicyRuleEvent("okta-policy-rule-inactive", "INACTIVE"),
 		},
 	}
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-okta-audit": {
-					Id:       "writer-okta-audit",
+				"writer-okta-policy-rule": {
+					Id:       "writer-okta-policy-rule",
 					SourceId: "okta",
 					TenantId: "writer",
+					Config:   map[string]string{"family": "policy_rule"},
 				},
 			},
 		},
@@ -1569,7 +2035,7 @@ func TestEvaluateSourceRuntimeFindingsSelectsRequestedRule(t *testing.T) {
 	)
 
 	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID:  "writer-okta-audit",
+		RuntimeID:  "writer-okta-policy-rule",
 		RuleID:     oktaPolicyRuleLifecycleTamperingRuleID,
 		EventLimit: 10,
 	})
@@ -1794,7 +2260,7 @@ func TestEvaluateSourceRuntimeRulesReplaysOnceAcrossMultipleRules(t *testing.T) 
 	}
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
 			newAuditEvent("okta-audit-3", "policy.rule.delete", "SUCCESS"),
 		},
 	}
@@ -2248,7 +2714,7 @@ func TestEvaluateSourceRuntimeRulesPreservesEarlierFailureWhenCompletionCleanupR
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
 			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
 		}},
-		&stubReplayer{events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-1", "policy.rule.update", "SUCCESS")}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-1", "policy.rule.deactivate", "SUCCESS")}},
 		store,
 		store,
 		store,
@@ -2292,7 +2758,7 @@ func TestEvaluateSourceRuntimeRulesReturnsEvaluationAndRunFailureCauses(t *testi
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
 			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
 		}},
-		&stubReplayer{events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-1", "policy.rule.update", "SUCCESS")}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-1", "policy.rule.deactivate", "SUCCESS")}},
 		store,
 		store,
 		store,
@@ -2323,8 +2789,8 @@ func TestEvaluateSourceRuntimeRulesDeduplicatesEvidencePerRun(t *testing.T) {
 	}
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
 		},
 	}
 	store := &stubFindingStore{
@@ -2429,7 +2895,7 @@ func TestEvaluateSourceRuntimeRulesSelectsExplicitRules(t *testing.T) {
 		},
 		&stubReplayer{
 			events: []*cerebrov1.EventEnvelope{
-				newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+				newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
 				newAuditEvent("okta-audit-3", "policy.rule.delete", "SUCCESS"),
 			},
 		},
@@ -2461,9 +2927,9 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 		githubBranchProtectionDisabledRuleID:      {},
 		githubRepositoryMadePublicRuleID:          {},
 		githubProtectedBranchPolicyOverrideRuleID: {},
+		githubCriticalResourceDeletedRuleID:       {},
 	}
 	activeRuleIDs := []string{
-		githubSecretScanningAlertCreatedRuleID,
 		githubSelfHostedRunnerChangeRuleID,
 		githubRepositoryCollaboratorAddedRuleID,
 		githubOrganizationOwnerAddedRuleID,
@@ -2473,7 +2939,6 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 		githubAppIntegrationInstalledRuleID,
 		githubPersonalAccessTokenCreatedRuleID,
 		githubRepositoryRulesetModifiedRuleID,
-		githubCriticalResourceDeletedRuleID,
 		githubWebhookModifiedRuleID,
 		githubPrivateRepositoryForkingEnabledRuleID,
 	}
@@ -2500,19 +2965,19 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 				newGitHubAuditSignalEvent("github-audit-branch-protection-disabled", map[string]string{"action": "protected_branch.destroy", "repo": "writer/cerebro", "resource_type": "protected_branch"}),
 				newGitHubAuditSignalEvent("github-audit-repo-made-public", map[string]string{"action": "repo.access", "repo": "writer/cerebro", "previous_visibility": "private", "visibility": "public", "resource_type": "repo"}),
 				newGitHubAuditSignalEvent("github-audit-secret-alert-created", map[string]string{"action": "secret_scanning_alert.create", "repo": "writer/cerebro", "number": "12", "resource_type": "secret_scanning_alert"}),
-				newGitHubAuditSignalEvent("github-audit-runner-registered", map[string]string{"action": "repo.register_self_hosted_runner", "repo": "writer/cerebro", "resource_type": "repo"}),
+				newGitHubAuditSignalEvent("github-audit-runner-registered", map[string]string{"action": "repo.register_self_hosted_runner", "repo": "writer/cerebro", "resource_type": "repo", "runner_ephemeral": "false", "runner_id": "777", "runner_registered": "true"}),
 				newGitHubAuditSignalEvent("github-audit-collaborator-added", map[string]string{"action": "repo.add_member", "repo": "writer/cerebro", "resource_type": "repo", "user": "octocat"}),
 				newGitHubAuditSignalEvent("github-audit-owner-added", map[string]string{"action": "org.add_member", "resource_id": "writer", "resource_type": "org", "permission": "admin", "user": "octocat"}),
-				newGitHubAuditSignalEvent("github-audit-code-security-disabled", map[string]string{"action": "dependabot_alerts.disable", "repo": "writer/cerebro", "resource_type": "dependabot_alerts"}),
-				newGitHubAuditSignalEvent("github-audit-org-auth-modified", map[string]string{"action": "org.disable_two_factor_requirement", "resource_id": "writer", "resource_type": "org"}),
-				newGitHubAuditSignalEvent("github-audit-ip-allow-list-disabled", map[string]string{"action": "ip_allow_list.disable", "resource_id": "writer", "resource_type": "ip_allow_list"}),
-				newGitHubAuditSignalEvent("github-audit-app-installed", map[string]string{"action": "integration_installation.create", "name": "ci-deployer", "resource_id": "writer", "resource_type": "integration_installation"}),
-				newGitHubAuditSignalEvent("github-audit-pat-created", map[string]string{"action": "personal_access_token.access_granted", "operation_type": "create", "resource_id": "octocat", "resource_type": "personal_access_token", "user": "octocat"}),
+				newGitHubAuditSignalEvent("github-audit-code-security-disabled", map[string]string{"action": "dependabot_alerts.disable", "dependabot_alerts_enabled": "false", "repo": "writer/cerebro", "resource_type": "dependabot_alerts"}),
+				newGitHubAuditSignalEvent("github-audit-org-auth-modified", map[string]string{"action": "org.disable_two_factor_requirement", "resource_id": "writer", "resource_type": "org", "two_factor_requirement_enabled": "false"}),
+				newGitHubAuditSignalEvent("github-audit-ip-allow-list-disabled", map[string]string{"action": "ip_allow_list.disable", "ip_allow_list_enabled": "false", "resource_id": "writer", "resource_type": "ip_allow_list"}),
+				newGitHubAuditSignalEvent("github-audit-app-installed", map[string]string{"action": "integration_installation.create", "github_app_id": "123456", "name": "ci-deployer", "resource_id": "writer", "resource_type": "integration_installation"}),
+				newGitHubAuditSignalEvent("github-audit-pat-created", map[string]string{"action": "personal_access_token.access_granted", "operation_type": "create", "resource_id": "octocat", "resource_type": "personal_access_token", "token_id": "555", "user": "octocat", "user_id": "12345"}),
 				newGitHubAuditSignalEvent("github-audit-branch-policy-override", map[string]string{"action": "protected_branch.policy_override", "branch": "main", "repo": "writer/cerebro", "resource_type": "protected_branch"}),
 				newGitHubAuditSignalEvent("github-audit-ruleset-modified", map[string]string{"action": "repository_ruleset.destroy", "repo": "writer/cerebro", "resource_type": "repository_ruleset", "ruleset_id": "42", "ruleset_name": "main protections"}),
 				newGitHubAuditSignalEvent("github-audit-repo-destroyed", map[string]string{"action": "repo.destroy", "repo": "writer/cerebro", "resource_type": "repo"}),
 				newGitHubAuditSignalEvent("github-audit-hook-created", map[string]string{"action": "hook.create", "hook_id": "99", "repo": "writer/cerebro", "resource_type": "hook"}),
-				newGitHubAuditSignalEvent("github-audit-private-forking-enabled", map[string]string{"action": "private_repository_forking.enable", "resource_id": "writer", "resource_type": "org"}),
+				newGitHubAuditSignalEvent("github-audit-private-forking-enabled", map[string]string{"action": "private_repository_forking.enable", "private_repository_forking_enabled": "true", "resource_id": "writer", "resource_type": "org"}),
 			},
 		},
 		&stubFindingStore{},
@@ -3430,31 +3895,32 @@ func TestLinkFindingTicketUpdatesPersistedWorkflow(t *testing.T) {
 func TestEvaluateSourceRuntimePreservesManualWorkflowFields(t *testing.T) {
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-1", "user.session.start", "SUCCESS"),
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newOktaPolicyRuleEvent("okta-policy-rule-active", "ACTIVE"),
+			newOktaPolicyRuleEvent("okta-policy-rule-inactive", "INACTIVE"),
 		},
 	}
 	store := &stubFindingStore{
 		claims: map[string]*ports.ClaimRecord{
 			"claim-1": {
 				ID:            "claim-1",
-				RuntimeID:     "writer-okta-audit",
-				SourceEventID: "okta-audit-2",
+				RuntimeID:     "writer-okta-policy-rule",
+				SourceEventID: "okta-policy-rule-inactive",
 			},
 		},
 	}
 	service := New(&stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {
-				Id:       "writer-okta-audit",
+			"writer-okta-policy-rule": {
+				Id:       "writer-okta-policy-rule",
 				SourceId: "okta",
 				TenantId: "writer",
+				Config:   map[string]string{"family": "policy_rule"},
 			},
 		},
 	}, replayer, store, store, store, store)
 
 	first, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID:  "writer-okta-audit",
+		RuntimeID:  "writer-okta-policy-rule",
 		RuleID:     oktaPolicyRuleLifecycleTamperingRuleID,
 		EventLimit: 25,
 	})
@@ -3480,7 +3946,7 @@ func TestEvaluateSourceRuntimePreservesManualWorkflowFields(t *testing.T) {
 	}
 
 	second, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID:  "writer-okta-audit",
+		RuntimeID:  "writer-okta-policy-rule",
 		RuleID:     oktaPolicyRuleLifecycleTamperingRuleID,
 		EventLimit: 25,
 	})
@@ -3759,6 +4225,32 @@ func newAuditEvent(id string, eventType string, outcome string) *cerebrov1.Event
 	}
 }
 
+func newOktaPolicyRuleEvent(id string, status string) *cerebrov1.EventEnvelope {
+	return &cerebrov1.EventEnvelope{
+		Id:         id,
+		TenantId:   "writer",
+		SourceId:   "okta",
+		Kind:       "okta.policy_rule",
+		OccurredAt: timestamppb.New(time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)),
+		SchemaRef:  "okta/policy_rule/v1",
+		Attributes: map[string]string{
+			"domain":                            "writer.okta.com",
+			"family":                            "policy_rule",
+			"policy_id":                         "pol-1",
+			"policy_rule_id":                    "rul-1",
+			"policy_type":                       "OKTA_SIGN_ON",
+			"name":                              "Require MFA",
+			"priority":                          "1",
+			"resource_id":                       "rul-1",
+			"resource_type":                     "PolicyRule",
+			"status":                            status,
+			"policy_rule_status":                status,
+			"system":                            "false",
+			ports.EventAttributeSourceRuntimeID: "writer-okta-policy-rule",
+		},
+	}
+}
+
 func newGitHubDependabotAlertEvent(id string, state string) *cerebrov1.EventEnvelope {
 	alertNumber := "7"
 	if strings.Contains(id, "8") {
@@ -3874,6 +4366,15 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 			StatusReason:    finding.StatusReason,
 			StatusUpdatedAt: finding.StatusUpdatedAt,
 		},
+		FindingTombstone: ports.FindingTombstone{
+			Tombstoned:          finding.Tombstoned,
+			TombstonedAt:        finding.TombstonedAt,
+			TombstonedBy:        finding.TombstonedBy,
+			TombstonedReason:    finding.TombstonedReason,
+			TombstonedRunID:     finding.TombstonedRunID,
+			PriorStatus:         finding.PriorStatus,
+			TombstoneGeneration: finding.TombstoneGeneration,
+		},
 		Attributes:      attributes,
 		FirstObservedAt: finding.FirstObservedAt,
 		LastObservedAt:  finding.LastObservedAt,
@@ -3956,7 +4457,7 @@ func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRec
 	if request.TenantID != "" && strings.TrimSpace(finding.TenantID) != strings.TrimSpace(request.TenantID) {
 		return false
 	}
-	if strings.TrimSpace(finding.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+	if strings.TrimSpace(request.RuntimeID) != "" && strings.TrimSpace(finding.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
 		return false
 	}
 	if request.FindingID != "" && strings.TrimSpace(finding.ID) != strings.TrimSpace(request.FindingID) {
@@ -3991,6 +4492,24 @@ func containsTrimmed(values []string, expected string) bool {
 		}
 	}
 	return false
+}
+
+func findStatusChangedPayload(t *testing.T, events []*cerebrov1.EventEnvelope, findingID string) *workflowevents.FindingStatusChanged {
+	t.Helper()
+	for _, event := range events {
+		if event.GetKind() != workflowevents.EventKindFindingStatusChanged {
+			continue
+		}
+		payload, err := workflowevents.DecodeFindingStatusChanged(event)
+		if err != nil {
+			t.Fatalf("DecodeFindingStatusChanged(%q): %v", event.GetId(), err)
+		}
+		if strings.TrimSpace(payload.Finding.FindingID) == strings.TrimSpace(findingID) {
+			return payload
+		}
+	}
+	t.Fatalf("workflow status changed event for finding %q not found in %d events", findingID, len(events))
+	return nil
 }
 
 func claimMatches(request ports.ListClaimsRequest, claim *ports.ClaimRecord) bool {

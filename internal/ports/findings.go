@@ -51,6 +51,17 @@ type FindingRisk struct {
 	RiskModelVersion string
 }
 
+// FindingTombstone captures the durable tombstone state for one finding row.
+type FindingTombstone struct {
+	Tombstoned          bool
+	TombstonedAt        time.Time
+	TombstonedBy        string
+	TombstonedReason    string
+	TombstonedRunID     string
+	PriorStatus         string
+	TombstoneGeneration int
+}
+
 // FindingRecord is the normalized persisted finding shape.
 type FindingRecord struct {
 	ID                string
@@ -73,6 +84,7 @@ type FindingRecord struct {
 	GraphEvidenceRows []*cerebrov1.GraphEvidenceRow
 	FindingRisk
 	FindingWorkflow
+	FindingTombstone
 	Attributes      map[string]string
 	FirstObservedAt time.Time
 	LastObservedAt  time.Time
@@ -125,12 +137,110 @@ var ErrFindingNotFound = errors.New("finding not found")
 // ErrFindingEvidenceNotFound indicates that persisted finding evidence does not exist.
 var ErrFindingEvidenceNotFound = errors.New("finding evidence not found")
 
+// ErrCloseoutRunInFlight indicates that another closeout run is currently running.
+var ErrCloseoutRunInFlight = errors.New("another closeout run is in flight")
+
+// ErrCloseoutRunAlreadyExists indicates that a closeout_run row with the same run_id exists.
+var ErrCloseoutRunAlreadyExists = errors.New("closeout run already exists")
+
+// CloseoutRunInsert scopes one closeout_run insertion (start of a run).
+type CloseoutRunInsert struct {
+	RunID        string
+	Actor        string
+	ChangeTicket string
+	SelectorJSON []byte
+	DryRun       bool
+	StartedAt    time.Time
+}
+
+// CloseoutRunFinish scopes one closeout_run completion update.
+type CloseoutRunFinish struct {
+	RunID         string
+	Status        string
+	ErrorMessage  string
+	ProposedCount int
+	AppliedCount  int
+	FinishedAt    time.Time
+	S3SummaryKey  string
+}
+
+// CloseoutRunRecord reflects one persisted closeout_run row.
+type CloseoutRunRecord struct {
+	RunID         string
+	Actor         string
+	ChangeTicket  string
+	SelectorJSON  []byte
+	Status        string
+	StartedAt     time.Time
+	FinishedAt    time.Time
+	DryRun        bool
+	ProposedCount int
+	AppliedCount  int
+	ErrorMessage  string
+	S3SummaryKey  string
+}
+
+// FindingTombstoneEvent captures one finding_tombstone_events audit row.
+type FindingTombstoneEvent struct {
+	FindingID    string
+	TenantID     string
+	RuleID       string
+	AnchorURI    string
+	PriorStatus  string
+	Reason       string
+	Actor        string
+	RunID        string
+	TombstonedAt time.Time
+}
+
+// CloseoutRunStore persists closeout_run lifecycle rows. The singleton-running
+// partial unique index in Postgres enforces fail-fast behavior on concurrent runs;
+// implementations MUST translate that database conflict into ErrCloseoutRunInFlight.
+type CloseoutRunStore interface {
+	InsertCloseoutRun(ctx context.Context, run CloseoutRunInsert) error
+	FinishCloseoutRun(ctx context.Context, finish CloseoutRunFinish) error
+	GetCloseoutRun(ctx context.Context, runID string) (*CloseoutRunRecord, error)
+	// BreakStaleRunningCloseoutRuns flips any closeout_run rows with status='running'
+	// and started_at < cutoff to status='failed' with finished_at=now and the supplied
+	// error message. The bulk primitive uses this to recover from operator crashes
+	// without manual intervention (I-8: stale-lock break). Implementations MUST be
+	// idempotent and return the count of rows that were updated.
+	BreakStaleRunningCloseoutRuns(ctx context.Context, cutoff time.Time, errMessage string) (int, error)
+	// UpdateCloseoutRunSummary persists the per-run S3 audit summary key on a
+	// closeout_run row that has already been finished. When summaryErr is non-nil
+	// the row is flipped to status='failed' with error_message=summaryErr.Error()
+	// so the operator can correlate the run record with the missing S3 object;
+	// the previously committed tombstones remain durable. Implementations MUST
+	// return an error if the row does not exist.
+	UpdateCloseoutRunSummary(ctx context.Context, runID, summaryKey string, summaryErr error) error
+}
+
+// FindingTombstoneEventStore persists finding_tombstone_events audit rows.
+type FindingTombstoneEventStore interface {
+	InsertFindingTombstoneEvent(ctx context.Context, event FindingTombstoneEvent) error
+	CountFindingTombstoneEventsByRun(ctx context.Context, runID string) (int, error)
+}
+
+// FindingTombstoneApply carries the tombstone-column writes performed alongside a
+// finding status update. When present, the underlying status update path writes the
+// findings.tombstoned columns atomically with the status flip so the tombstone is
+// recorded through the same per-row write path that preserves manual state.
+type FindingTombstoneApply struct {
+	By           string
+	Reason       string
+	RunID        string
+	PriorStatus  string
+	TombstonedAt time.Time
+}
+
 // FindingStatusUpdate scopes one persisted finding lifecycle mutation.
 type FindingStatusUpdate struct {
 	FindingID string
 	Status    string
 	Reason    string
 	UpdatedAt time.Time
+	EventIDs  []string
+	Tombstone *FindingTombstoneApply
 }
 
 // FindingAssigneeUpdate scopes one persisted finding assignee mutation.

@@ -1,0 +1,28 @@
+cerebro closeout selects and bulk-tombstones findings.
+
+Usage:
+  cerebro closeout [flags]
+
+Flags:
+  --rule-id <id>            Rule ID to close out. Repeatable.
+  --rule-id-file <path>     Newline-delimited rule IDs. Comments (#) and blank lines allowed.
+  --source <name>           Source family (e.g. github, okta). Repeatable.
+  --older-than <duration>   Only close findings whose last_observed_at is older than this duration (e.g. 7d, 24h).
+  --status-filter <list>    Comma-separated statuses to include (default: open).
+  --max-batch-size <int>    Maximum findings per batch (default: 1000).
+  --dry-run <bool>          Dry-run mode (default: true). Mutually exclusive with --apply.
+  --apply                   Apply mutations. Requires --reason and the gates below.
+  --reason <text>           Closeout reason. Required when --apply is set.
+  --run-id <uuid>           Closeout run UUIDv4. Auto-generated when absent.
+  --actor <text>            Operator identity. Resolved from GITHUB_ACTOR / STS / USER when absent.
+  --change-ticket <text>    Change-management ticket. Required for --apply with --allow-env go-prod.
+  --allow-env <env>         Approved environment (sec-dev|go-prod). Must equal CEREBRO_CLOSEOUT_ALLOW when --apply is set.
+  --audit-s3-bucket <name>  S3 bucket for the audit summary. Required for --apply (or via CEREBRO_CLOSEOUT_AUDIT_BUCKET).
+  --tenant-id <id>          Tenant identifier (or CEREBRO_CLOSEOUT_TENANT_ID).
+
+Environment variables:
+  CEREBRO_CLOSEOUT_ALLOW         Must equal --allow-env when --apply is set.
+  CEREBRO_CLOSEOUT_AUDIT_BUCKET  Fallback for --audit-s3-bucket.
+  CEREBRO_CLOSEOUT_TENANT_ID     Fallback for --tenant-id.
+  GITHUB_ACTOR                   First-precedence actor.
+  USER                           Last-precedence actor.

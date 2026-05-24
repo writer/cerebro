@@ -105,6 +105,7 @@ func TestRuleDefinitionBuildsSpecAndAttributes(t *testing.T) {
 		RequiredAttributes: []string{"action", "repository"},
 		FingerprintFields:  []string{"repository", "action"},
 		ControlRefs:        []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC7.1"}},
+		Lifecycle:          Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
 	}
 	if err := definition.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v", err)

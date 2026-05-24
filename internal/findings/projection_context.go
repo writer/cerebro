@@ -17,6 +17,37 @@ type findingProjectionContext struct {
 	ActorLabel         string
 	ResourceLabel      string
 	ResourceURNs       []string
+	Entities           []*ports.ProjectedEntity
+	Links              []*ports.ProjectedLink
+}
+
+func (c findingProjectionContext) EntityURNByType(entityType string) string {
+	for _, entity := range c.Entities {
+		if entity == nil {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(entity.EntityType), strings.TrimSpace(entityType)) {
+			return strings.TrimSpace(entity.URN)
+		}
+	}
+	return ""
+}
+
+func (c findingProjectionContext) LinkRelationBetween(fromURN string, toURN string) string {
+	from := strings.TrimSpace(fromURN)
+	to := strings.TrimSpace(toURN)
+	if from == "" || to == "" {
+		return ""
+	}
+	for _, link := range c.Links {
+		if link == nil {
+			continue
+		}
+		if strings.TrimSpace(link.FromURN) == from && strings.TrimSpace(link.ToURN) == to {
+			return strings.TrimSpace(link.Relation)
+		}
+	}
+	return ""
 }
 
 type findingProjectionContextOptions struct {
@@ -37,7 +68,7 @@ func buildFindingProjectionContext(ctx context.Context, event *cerebrov1.EventEn
 	if err != nil {
 		return findingProjectionContext{}, err
 	}
-	context := findingProjectionContext{}
+	context := findingProjectionContext{Entities: entities, Links: links}
 	entityByURN := make(map[string]*ports.ProjectedEntity, len(entities))
 	seen := map[string]struct{}{}
 	addURN := func(urn string) {

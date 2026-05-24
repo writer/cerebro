@@ -33,6 +33,7 @@ func sentinelOneAgentProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 		return nil, nil, nil
 	}
 	agentURN := sentinelOneAgentURN(tenant, agentID)
+	firewallControlState := sentinelOneFirewallControlState(attrs["firewall_enabled"])
 	addEntity(entities, &ports.ProjectedEntity{
 		URN:        agentURN,
 		TenantID:   tenant,
@@ -52,6 +53,9 @@ func sentinelOneAgentProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 			"is_uninstalled":    strings.TrimSpace(attrs["is_uninstalled"]),
 			"is_up_to_date":     strings.TrimSpace(attrs["is_up_to_date"]),
 			"is_infected":       strings.TrimSpace(attrs["infected"]),
+			"firewall_enabled":  strings.TrimSpace(attrs["firewall_enabled"]),
+			"control_type":      sentinelOneFirewallControlType(firewallControlState),
+			"control_state":     firewallControlState,
 			"active_threats":    strings.TrimSpace(attrs["active_threats"]),
 			"last_active_date":  strings.TrimSpace(attrs["last_active_date"]),
 			"machine_type":      strings.TrimSpace(attrs["machine_type"]),
@@ -79,6 +83,24 @@ func sentinelOneAgentProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
+}
+
+func sentinelOneFirewallControlState(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "t", "true", "yes", "y", "enabled", "active", "on", "protected":
+		return "enabled"
+	case "0", "f", "false", "no", "n", "disabled", "inactive", "off", "unprotected", "not_protected":
+		return "disabled"
+	default:
+		return ""
+	}
+}
+
+func sentinelOneFirewallControlType(controlState string) string {
+	if controlState == "" {
+		return ""
+	}
+	return "firewall"
 }
 
 func sentinelOneThreatProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
