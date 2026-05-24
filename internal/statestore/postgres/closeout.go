@@ -171,6 +171,153 @@ func (s *Store) InsertFindingTombstoneEvent(ctx context.Context, event ports.Fin
 	if err := s.ensureFindingTables(ctx); err != nil {
 		return err
 	}
+	return insertFindingTombstoneEvent(ctx, s.db, event)
+}
+
+// TombstoneFindingAtomic tombstones one finding row, appends its audit record,
+// and emits the workflow tombstone event under one Postgres transaction. The
+// live finding row is re-read under SELECT FOR UPDATE so a status change that
+// lands after candidate listing is honored instead of recording a stale
+// prior_status snapshot.
+func (s *Store) TombstoneFindingAtomic(ctx context.Context, request ports.FindingTombstoneAtomicRequest) (_ *ports.FindingTombstoneAtomicResult, err error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
+	}
+	if err := s.ensureFindingTables(ctx); err != nil {
+		return nil, err
+	}
+	findingID := strings.TrimSpace(request.FindingID)
+	if findingID == "" {
+		return nil, errors.New("finding id is required")
+	}
+	status := strings.TrimSpace(request.Status)
+	if status == "" {
+		return nil, errors.New("finding status is required")
+	}
+	reason := strings.TrimSpace(request.Reason)
+	actor := strings.TrimSpace(request.Actor)
+	runID := strings.TrimSpace(request.RunID)
+	if reason == "" {
+		return nil, errors.New("tombstone reason is required")
+	}
+	if actor == "" {
+		return nil, errors.New("tombstone actor is required")
+	}
+	if runID == "" {
+		return nil, errors.New("tombstone run id is required")
+	}
+	updatedAt := request.UpdatedAt.UTC()
+	if updatedAt.IsZero() {
+		updatedAt = time.Now().UTC()
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin finding tombstone transaction for %q: %w", findingID, err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	var currentRow findingRow
+	if err := scanFindingRow(tx.QueryRowContext(ctx, `
+SELECT `+findingSelectColumns+`
+FROM findings
+WHERE id = $1
+FOR UPDATE`,
+		findingID,
+	), &currentRow); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ports.ErrFindingNotFound
+		}
+		return nil, fmt.Errorf("lock finding %q before tombstone: %w", findingID, err)
+	}
+	current, err := currentRow.record()
+	if err != nil {
+		return nil, fmt.Errorf("decode locked finding %q: %w", findingID, err)
+	}
+	priorStatus := strings.TrimSpace(current.Status)
+	if priorStatus == "" {
+		priorStatus = "open"
+	}
+	expectedStatus := strings.TrimSpace(request.ExpectedStatus)
+	if current.Tombstoned || (expectedStatus != "" && priorStatus != expectedStatus) {
+		return &ports.FindingTombstoneAtomicResult{
+			Finding:       current,
+			Applied:       false,
+			StatusChanged: expectedStatus != "" && priorStatus != expectedStatus,
+			PriorStatus:   priorStatus,
+		}, nil
+	}
+
+	tombstonedAt := updatedAt
+	updated, err := tombstoneFindingStatusInTx(ctx, tx, ports.FindingStatusUpdate{
+		FindingID: findingID,
+		Status:    status,
+		Reason:    reason,
+		UpdatedAt: updatedAt,
+		EventIDs:  append([]string(nil), request.EventIDs...),
+		Tombstone: &ports.FindingTombstoneApply{
+			By:           actor,
+			Reason:       reason,
+			RunID:        runID,
+			PriorStatus:  priorStatus,
+			TombstonedAt: tombstonedAt,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("update finding %q tombstone status: %w", findingID, err)
+	}
+	sourceSeverity := strings.TrimSpace(updated.Attributes["source_severity"])
+	if sourceSeverity == "" {
+		sourceSeverity = strings.TrimSpace(updated.Attributes["rule_severity"])
+	}
+	if sourceSeverity == "" {
+		sourceSeverity = strings.TrimSpace(updated.Severity)
+	}
+	risk := findingBackfillRisk(updated, updatedAt)
+	updated, err = updateFindingRiskInTx(ctx, tx, strings.TrimSpace(updated.ID), risk, findingRiskAttributesForUpdate(risk, sourceSeverity))
+	if err != nil {
+		return nil, fmt.Errorf("update finding %q tombstone risk: %w", findingID, err)
+	}
+	if err := insertFindingTombstoneEvent(ctx, tx, ports.FindingTombstoneEvent{
+		FindingID:    findingID,
+		TenantID:     strings.TrimSpace(updated.TenantID),
+		RuleID:       strings.TrimSpace(updated.RuleID),
+		AnchorURI:    strings.TrimSpace(request.AnchorURI),
+		PriorStatus:  priorStatus,
+		Reason:       reason,
+		Actor:        actor,
+		RunID:        runID,
+		TombstonedAt: tombstonedAt,
+	}); err != nil {
+		return nil, fmt.Errorf("audit finding %q tombstone: %w", findingID, err)
+	}
+	if request.EmitWorkflowEvent != nil {
+		if err := request.EmitWorkflowEvent(ctx, updated, priorStatus, tombstonedAt); err != nil {
+			return nil, fmt.Errorf("emit finding %q tombstone workflow: %w", findingID, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit finding %q tombstone transaction: %w", findingID, err)
+	}
+	committed = true
+	return &ports.FindingTombstoneAtomicResult{
+		Finding:      updated,
+		Applied:      true,
+		PriorStatus:  priorStatus,
+		TombstonedAt: tombstonedAt,
+	}, nil
+}
+
+type closeoutExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func insertFindingTombstoneEvent(ctx context.Context, execer closeoutExecer, event ports.FindingTombstoneEvent) error {
 	findingID := strings.TrimSpace(event.FindingID)
 	if findingID == "" {
 		return errors.New("finding id is required")
@@ -179,7 +326,7 @@ func (s *Store) InsertFindingTombstoneEvent(ctx context.Context, event ports.Fin
 	if tombstonedAt.IsZero() {
 		tombstonedAt = time.Now().UTC()
 	}
-	_, err := s.db.ExecContext(ctx, `
+	_, err := execer.ExecContext(ctx, `
         INSERT INTO finding_tombstone_events (finding_id, tenant_id, rule_id, anchor_uri, prior_status, reason, actor, run_id, tombstoned_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 		findingID,
@@ -196,6 +343,120 @@ func (s *Store) InsertFindingTombstoneEvent(ctx context.Context, event ports.Fin
 		return fmt.Errorf("insert finding_tombstone_event for %q: %w", findingID, err)
 	}
 	return nil
+}
+
+func tombstoneFindingStatusInTx(ctx context.Context, tx *sql.Tx, request ports.FindingStatusUpdate) (*ports.FindingRecord, error) {
+	findingID := strings.TrimSpace(request.FindingID)
+	if findingID == "" {
+		return nil, errors.New("finding id is required")
+	}
+	status := strings.TrimSpace(request.Status)
+	if status == "" {
+		return nil, errors.New("finding status is required")
+	}
+	statusReason := strings.TrimSpace(request.Reason)
+	updatedAt := request.UpdatedAt.UTC()
+	if updatedAt.IsZero() {
+		updatedAt = time.Now().UTC()
+	}
+	eventIDsJSON, err := findingStringsJSON(request.EventIDs)
+	if err != nil {
+		return nil, fmt.Errorf("marshal finding status event ids: %w", err)
+	}
+	if request.Tombstone == nil {
+		return nil, errors.New("finding tombstone payload is required")
+	}
+	t := request.Tombstone
+	tombstonedAt := t.TombstonedAt.UTC()
+	if tombstonedAt.IsZero() {
+		tombstonedAt = updatedAt
+	}
+	var row findingRow
+	if err := scanFindingRow(tx.QueryRowContext(ctx, `
+UPDATE findings
+SET status = $2,
+    status_reason = $3,
+    status_updated_at = $4,
+    tombstoned = TRUE,
+    tombstoned_at = $5,
+    tombstoned_by = $6,
+    tombstoned_reason = $7,
+    tombstoned_run_id = $8,
+    prior_status = $9,
+    event_ids_json = CASE
+      WHEN jsonb_array_length($10::jsonb) = 0 THEN event_ids_json
+      ELSE (
+        SELECT COALESCE(jsonb_agg(event_id ORDER BY event_id), '[]'::jsonb)
+        FROM (
+          SELECT DISTINCT btrim(value) AS event_id
+          FROM jsonb_array_elements_text(COALESCE(findings.event_ids_json, '[]'::jsonb) || $10::jsonb) AS merged(value)
+          WHERE btrim(value) <> ''
+        ) AS unique_event_ids
+      )
+    END,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING `+findingSelectColumns,
+		findingID,
+		status,
+		statusReason,
+		updatedAt,
+		tombstonedAt,
+		strings.TrimSpace(t.By),
+		strings.TrimSpace(t.Reason),
+		strings.TrimSpace(t.RunID),
+		strings.TrimSpace(t.PriorStatus),
+		eventIDsJSON,
+	), &row); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ports.ErrFindingNotFound
+		}
+		return nil, err
+	}
+	return row.record()
+}
+
+func updateFindingRiskInTx(ctx context.Context, tx *sql.Tx, findingID string, risk ports.FindingRisk, attributes map[string]string) (*ports.FindingRecord, error) {
+	reasonsJSON, err := findingStringsJSON(risk.RiskReasons)
+	if err != nil {
+		return nil, fmt.Errorf("marshal finding risk reasons: %w", err)
+	}
+	attributesJSON, err := findingAttributesJSON(attributes)
+	if err != nil {
+		return nil, fmt.Errorf("marshal finding risk attributes: %w", err)
+	}
+	var row findingRow
+	if err := scanFindingRow(tx.QueryRowContext(ctx, `
+UPDATE findings
+SET risk_score = $2,
+    likelihood_score = $3,
+    impact_score = $4,
+    confidence_score = $5,
+    likelihood_level = $6,
+    impact_level = $7,
+    risk_reasons_json = $8::jsonb,
+    risk_model_version = $9,
+    attributes_json = attributes_json || $10::jsonb,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING `+findingSelectColumns,
+		strings.TrimSpace(findingID),
+		risk.RiskScore,
+		risk.LikelihoodScore,
+		risk.ImpactScore,
+		risk.ConfidenceScore,
+		strings.TrimSpace(risk.LikelihoodLevel),
+		strings.TrimSpace(risk.ImpactLevel),
+		reasonsJSON,
+		strings.TrimSpace(risk.RiskModelVersion),
+		attributesJSON,
+	), &row); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ports.ErrFindingNotFound
+		}
+		return nil, err
+	}
+	return row.record()
 }
 
 // BreakStaleRunningCloseoutRuns flips any closeout_run rows still marked

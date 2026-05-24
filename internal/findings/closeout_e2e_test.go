@@ -360,6 +360,161 @@ func TestService_TTLEvidenceEvaluateUsesPostgresTenantScopeAndReopens(t *testing
 	}
 }
 
+func TestTombstoneOneFinding_AtomicRollback(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		configure func(t *testing.T, ctx context.Context, db *sql.DB, runID string, appendLog *recordingAppendLog) any
+	}{
+		{
+			name: "audit_insert_failure",
+			configure: func(t *testing.T, ctx context.Context, db *sql.DB, runID string, _ *recordingAppendLog) any {
+				t.Helper()
+				constraintName := fmt.Sprintf("finding_tombstone_events_fail_%d", time.Now().UTC().UnixNano())
+				if _, err := db.ExecContext(ctx, fmt.Sprintf(
+					`ALTER TABLE finding_tombstone_events ADD CONSTRAINT %s CHECK (run_id <> '%s') NOT VALID`,
+					constraintName,
+					strings.ReplaceAll(runID, "'", "''"),
+				)); err != nil {
+					t.Fatalf("install audit failure constraint: %v", err)
+				}
+				t.Cleanup(func() {
+					_, _ = db.ExecContext(context.Background(), fmt.Sprintf(
+						`ALTER TABLE finding_tombstone_events DROP CONSTRAINT IF EXISTS %s`,
+						constraintName,
+					))
+				})
+				return nil
+			},
+		},
+		{
+			name: "workflow_emit_failure",
+			configure: func(t *testing.T, _ context.Context, _ *sql.DB, _ string, _ *recordingAppendLog) any {
+				t.Helper()
+				return &failingAppendLog{err: errors.New("inject workflow emit failure")}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			store, rawDB, dsnCleanup := closeoutAtomicPostgresStore(t)
+			defer dsnCleanup()
+
+			nonce := time.Now().UTC().UnixNano()
+			tenantID := fmt.Sprintf("tenant-atomic-%s-%d", strings.ReplaceAll(tc.name, "_", "-"), nonce)
+			runtimeID := fmt.Sprintf("runtime-atomic-%d", nonce)
+			ruleID := "rule-critical-resource-deleted"
+			findingID := fmt.Sprintf("finding-atomic-%d", nonce)
+			runID := fmt.Sprintf("run-atomic-%d", nonce)
+			cleanupCloseoutAtomicRows(t, rawDB, tenantID, runID)
+			seedCloseoutAtomicFinding(t, ctx, store, tenantID, runtimeID, ruleID, findingID, nonce)
+
+			appendLog := &recordingAppendLog{}
+			appendLogOverride := tc.configure(t, ctx, rawDB, runID, appendLog)
+			if override, ok := appendLogOverride.(interface {
+				Append(context.Context, *cerebrov1.EventEnvelope) error
+				Ping(context.Context) error
+			}); ok {
+				service := closeoutAtomicService(store, override, tenantID, runtimeID)
+				before := readCloseoutAtomicSnapshot(t, ctx, rawDB, findingID)
+				result, err := service.TombstoneFindingsBulk(ctx, closeoutAtomicRequest(tenantID, ruleID, runID))
+				assertAtomicRollback(t, ctx, rawDB, findingID, runID, before, result, err)
+				return
+			}
+
+			service := closeoutAtomicService(store, appendLog, tenantID, runtimeID)
+			before := readCloseoutAtomicSnapshot(t, ctx, rawDB, findingID)
+			result, err := service.TombstoneFindingsBulk(ctx, closeoutAtomicRequest(tenantID, ruleID, runID))
+			assertAtomicRollback(t, ctx, rawDB, findingID, runID, before, result, err)
+		})
+	}
+}
+
+func TestTombstoneOneFinding_RechecksStatusBeforeWrite(t *testing.T) {
+	ctx := context.Background()
+	store, rawDB, dsnCleanup := closeoutAtomicPostgresStore(t)
+	defer dsnCleanup()
+
+	nonce := time.Now().UTC().UnixNano()
+	tenantID := fmt.Sprintf("tenant-status-recheck-%d", nonce)
+	runtimeID := fmt.Sprintf("runtime-status-recheck-%d", nonce)
+	ruleID := "rule-critical-resource-deleted"
+	findingID := fmt.Sprintf("finding-status-recheck-%d", nonce)
+	runID := fmt.Sprintf("run-status-recheck-%d", nonce)
+	cleanupCloseoutAtomicRows(t, rawDB, tenantID, runID)
+	seedCloseoutAtomicFinding(t, ctx, store, tenantID, runtimeID, ruleID, findingID, nonce)
+
+	wrappedStore := &statusChangingListStore{
+		Store:     store,
+		findingID: findingID,
+		status:    "suppressed",
+		reason:    "analyst suppression during closeout",
+	}
+	service := closeoutAtomicService(wrappedStore, &recordingAppendLog{}, tenantID, runtimeID)
+
+	result, err := service.TombstoneFindingsBulk(ctx, closeoutAtomicRequest(tenantID, ruleID, runID))
+	if err != nil {
+		t.Fatalf("TombstoneFindingsBulk with concurrent status change: %v", err)
+	}
+	if wrappedStore.mutationErr != nil {
+		t.Fatalf("concurrent status mutation failed: %v", wrappedStore.mutationErr)
+	}
+	if result.ProposedCount != 1 {
+		t.Fatalf("ProposedCount = %d, want 1", result.ProposedCount)
+	}
+	if result.AppliedCount != 0 {
+		t.Fatalf("AppliedCount = %d, want 0 after status changed before tombstone", result.AppliedCount)
+	}
+	after := readCloseoutAtomicSnapshot(t, ctx, rawDB, findingID)
+	if after.Status != "suppressed" {
+		t.Fatalf("status after concurrent mutation = %q, want suppressed", after.Status)
+	}
+	if after.Tombstoned {
+		t.Fatalf("tombstoned after status changed = true, want false")
+	}
+	if after.PriorStatus != "" {
+		t.Fatalf("prior_status after skipped tombstone = %q, want empty", after.PriorStatus)
+	}
+	if count := countCloseoutAtomicAuditRows(t, ctx, rawDB, runID); count != 0 {
+		t.Fatalf("audit rows for skipped tombstone = %d, want 0", count)
+	}
+}
+
+func TestTombstoneOneFinding_RetryAfterAtomicRollback(t *testing.T) {
+	ctx := context.Background()
+	store, rawDB, dsnCleanup := closeoutAtomicPostgresStore(t)
+	defer dsnCleanup()
+
+	nonce := time.Now().UTC().UnixNano()
+	tenantID := fmt.Sprintf("tenant-retry-rollback-%d", nonce)
+	runtimeID := fmt.Sprintf("runtime-retry-rollback-%d", nonce)
+	ruleID := "rule-critical-resource-deleted"
+	findingID := fmt.Sprintf("finding-retry-rollback-%d", nonce)
+	failingRunID := fmt.Sprintf("run-retry-fail-%d", nonce)
+	retryRunID := fmt.Sprintf("run-retry-dry-%d", nonce)
+	cleanupCloseoutAtomicRows(t, rawDB, tenantID, failingRunID, retryRunID)
+	seedCloseoutAtomicFinding(t, ctx, store, tenantID, runtimeID, ruleID, findingID, nonce)
+
+	failingService := closeoutAtomicService(store, &failingAppendLog{err: errors.New("inject workflow emit failure")}, tenantID, runtimeID)
+	if result, err := failingService.TombstoneFindingsBulk(ctx, closeoutAtomicRequest(tenantID, ruleID, failingRunID)); err == nil {
+		t.Fatalf("expected injected workflow emit error, got nil result=%+v", result)
+	}
+	afterFailure := readCloseoutAtomicSnapshot(t, ctx, rawDB, findingID)
+	if afterFailure.Tombstoned {
+		t.Fatalf("finding tombstoned after injected failure; rollback did not restore candidate")
+	}
+
+	retryReq := closeoutAtomicRequest(tenantID, ruleID, retryRunID)
+	retryReq.DryRun = true
+	retryService := closeoutAtomicService(store, &recordingAppendLog{}, tenantID, runtimeID)
+	retry, err := retryService.TombstoneFindingsBulk(ctx, retryReq)
+	if err != nil {
+		t.Fatalf("retry dry-run after rollback: %v", err)
+	}
+	if retry.ProposedCount < 1 {
+		t.Fatalf("retry ProposedCount = %d, want candidate returned after rollback", retry.ProposedCount)
+	}
+}
+
 func anchorEdgeKey(anchor, tenantID, findingID string) string {
 	return anchor + "|has_finding|" + fmt.Sprintf("urn:cerebro:%s:finding:%s", tenantID, findingID)
 }
@@ -380,6 +535,197 @@ func tombstonedFromDB(t *testing.T, ctx context.Context, db *sql.DB, findingID s
 		t.Fatalf("read tombstoned for %q: %v", findingID, err)
 	}
 	return tombstoned
+}
+
+type closeoutAtomicSnapshot struct {
+	Status           string
+	StatusReason     string
+	Tombstoned       bool
+	TombstonedAt     sql.NullTime
+	TombstonedBy     string
+	TombstonedReason string
+	TombstonedRunID  string
+	PriorStatus      string
+}
+
+func closeoutAtomicPostgresStore(t *testing.T) (*postgres.Store, *sql.DB, func()) {
+	t.Helper()
+	dsn := strings.TrimSpace(os.Getenv("CEREBRO_POSTGRES_DSN"))
+	if dsn == "" {
+		t.Skip("set CEREBRO_POSTGRES_DSN to run closeout atomicity integration tests")
+	}
+	store, err := postgres.Open(config.StateStoreConfig{
+		Driver:      config.StateStoreDriverPostgres,
+		PostgresDSN: dsn,
+	})
+	if err != nil {
+		t.Fatalf("open postgres store: %v", err)
+	}
+	rawDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		_ = store.Close()
+		t.Fatalf("open raw db: %v", err)
+	}
+	return store, rawDB, func() {
+		_ = rawDB.Close()
+		_ = store.Close()
+	}
+}
+
+func cleanupCloseoutAtomicRows(t *testing.T, db *sql.DB, tenantID string, runIDs ...string) {
+	t.Helper()
+	t.Cleanup(func() {
+		bg := context.Background()
+		for _, runID := range runIDs {
+			_, _ = db.ExecContext(bg, `DELETE FROM finding_tombstone_events WHERE run_id = $1`, runID)
+			_, _ = db.ExecContext(bg, `DELETE FROM closeout_run WHERE run_id = $1`, runID)
+		}
+		_, _ = db.ExecContext(bg, `DELETE FROM findings WHERE tenant_id = $1`, tenantID)
+	})
+}
+
+func seedCloseoutAtomicFinding(t *testing.T, ctx context.Context, store *postgres.Store, tenantID, runtimeID, ruleID, findingID string, nonce int64) {
+	t.Helper()
+	now := time.Now().UTC().Add(-48 * time.Hour).Truncate(time.Microsecond)
+	_, err := store.UpsertFinding(ctx, &ports.FindingRecord{
+		ID:              findingID,
+		Fingerprint:     fmt.Sprintf("fp-%s-%d", findingID, nonce),
+		TenantID:        tenantID,
+		RuntimeID:       runtimeID,
+		RuleID:          ruleID,
+		Title:           "Atomic closeout regression",
+		Severity:        "MEDIUM",
+		Status:          "open",
+		Summary:         "finding used for closeout atomicity regression",
+		ResourceURNs:    []string{fmt.Sprintf("urn:cerebro:%s:github_repo:writer/cerebro-%d", tenantID, nonce)},
+		EventIDs:        []string{fmt.Sprintf("event-%d", nonce)},
+		FirstObservedAt: now.Add(-24 * time.Hour),
+		LastObservedAt:  now,
+	})
+	if err != nil {
+		t.Fatalf("seed finding %q: %v", findingID, err)
+	}
+}
+
+func closeoutAtomicRequest(tenantID, ruleID, runID string) findings.CloseoutRequest {
+	return findings.CloseoutRequest{
+		Selector: findings.CloseoutSelector{
+			TenantID:  tenantID,
+			RuleIDs:   []string{ruleID},
+			OlderThan: time.Hour,
+		},
+		Reason: "bulk closeout: atomicity regression",
+		Actor:  "operator@writer.com",
+		RunID:  runID,
+		DryRun: false,
+	}
+}
+
+type closeoutAtomicStore interface {
+	ports.FindingStore
+	ports.FindingEvaluationRunStore
+	ports.FindingEvidenceStore
+	ports.ClaimStore
+	ports.CloseoutRunStore
+	ports.FindingTombstoneEventStore
+}
+
+func closeoutAtomicService(store closeoutAtomicStore, appendLog ports.AppendLog, tenantID, runtimeID string) *findings.Service {
+	runtimeStore := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			runtimeID: {Id: runtimeID, SourceId: "source-atomic", TenantId: tenantID},
+		},
+	}
+	return findings.New(runtimeStore, &stubReplayer{}, store, store, store, store).
+		WithAppendLog(appendLog).
+		WithCloseoutStore(store).
+		WithFindingTombstoneEventStore(store)
+}
+
+func readCloseoutAtomicSnapshot(t *testing.T, ctx context.Context, db *sql.DB, findingID string) closeoutAtomicSnapshot {
+	t.Helper()
+	var snapshot closeoutAtomicSnapshot
+	if err := db.QueryRowContext(ctx, `
+SELECT status, status_reason, tombstoned, tombstoned_at, tombstoned_by,
+       tombstoned_reason, tombstoned_run_id, prior_status
+FROM findings
+WHERE id = $1`, findingID).Scan(
+		&snapshot.Status,
+		&snapshot.StatusReason,
+		&snapshot.Tombstoned,
+		&snapshot.TombstonedAt,
+		&snapshot.TombstonedBy,
+		&snapshot.TombstonedReason,
+		&snapshot.TombstonedRunID,
+		&snapshot.PriorStatus,
+	); err != nil {
+		t.Fatalf("read closeout atomic snapshot for %q: %v", findingID, err)
+	}
+	return snapshot
+}
+
+func countCloseoutAtomicAuditRows(t *testing.T, ctx context.Context, db *sql.DB, runID string) int {
+	t.Helper()
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM finding_tombstone_events WHERE run_id = $1`, runID).Scan(&count); err != nil {
+		t.Fatalf("count tombstone audit rows for %q: %v", runID, err)
+	}
+	return count
+}
+
+func assertAtomicRollback(t *testing.T, ctx context.Context, db *sql.DB, findingID, runID string, before closeoutAtomicSnapshot, result *findings.CloseoutResult, err error) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("expected injected closeout error, got nil")
+	}
+	if result != nil && result.AppliedCount != 0 {
+		t.Fatalf("AppliedCount after rollback = %d, want 0", result.AppliedCount)
+	}
+	after := readCloseoutAtomicSnapshot(t, ctx, db, findingID)
+	if after != before {
+		t.Fatalf("finding snapshot changed after injected failure:\nbefore=%+v\nafter=%+v", before, after)
+	}
+	if count := countCloseoutAtomicAuditRows(t, ctx, db, runID); count != 0 {
+		t.Fatalf("audit rows after rollback = %d, want 0", count)
+	}
+}
+
+type failingAppendLog struct {
+	err error
+}
+
+func (s *failingAppendLog) Ping(context.Context) error { return nil }
+
+func (s *failingAppendLog) Append(context.Context, *cerebrov1.EventEnvelope) error {
+	if s.err != nil {
+		return s.err
+	}
+	return errors.New("append failed")
+}
+
+type statusChangingListStore struct {
+	*postgres.Store
+	findingID   string
+	status      string
+	reason      string
+	once        sync.Once
+	mutationErr error
+}
+
+func (s *statusChangingListStore) ListFindings(ctx context.Context, request ports.ListFindingsRequest) ([]*ports.FindingRecord, error) {
+	records, err := s.Store.ListFindings(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	s.once.Do(func() {
+		_, s.mutationErr = s.UpdateFindingStatus(ctx, ports.FindingStatusUpdate{
+			FindingID: s.findingID,
+			Status:    s.status,
+			Reason:    s.reason,
+			UpdatedAt: time.Now().UTC(),
+		})
+	})
+	return records, nil
 }
 
 func projectFindingAnchorForTest(ctx context.Context, appendLog *recordingAppendLog, graph *e2eGraphFake, finding *ports.FindingRecord) error {

@@ -221,6 +221,44 @@ type FindingTombstoneEventStore interface {
 	CountFindingTombstoneEventsByRun(ctx context.Context, runID string) (int, error)
 }
 
+// FindingTombstoneWorkflowEmitter emits the workflow tombstone event for an
+// already-updated finding row. Transactional stores invoke this before commit
+// so emit failures roll back the tombstone write and audit insert together.
+type FindingTombstoneWorkflowEmitter func(ctx context.Context, finding *FindingRecord, priorStatus string, tombstonedAt time.Time) error
+
+// FindingTombstoneAtomicRequest carries the full per-candidate closeout mutation
+// that must commit or roll back as one unit.
+type FindingTombstoneAtomicRequest struct {
+	FindingID         string
+	ExpectedStatus    string
+	Status            string
+	Reason            string
+	Actor             string
+	RunID             string
+	AnchorURI         string
+	EventIDs          []string
+	UpdatedAt         time.Time
+	EmitWorkflowEvent FindingTombstoneWorkflowEmitter
+}
+
+// FindingTombstoneAtomicResult describes whether a transaction actually
+// tombstoned the candidate. Applied is false when the live row was already
+// tombstoned or its status changed after candidate listing.
+type FindingTombstoneAtomicResult struct {
+	Finding       *FindingRecord
+	Applied       bool
+	StatusChanged bool
+	PriorStatus   string
+	TombstonedAt  time.Time
+}
+
+// FindingTombstoneAtomicStore performs a per-candidate closeout mutation in one
+// transaction: current row re-read/lock, tombstone status update, audit insert,
+// and workflow event emission.
+type FindingTombstoneAtomicStore interface {
+	TombstoneFindingAtomic(ctx context.Context, request FindingTombstoneAtomicRequest) (*FindingTombstoneAtomicResult, error)
+}
+
 // FindingTombstoneApply carries the tombstone-column writes performed alongside a
 // finding status update. When present, the underlying status update path writes the
 // findings.tombstoned columns atomically with the status flip so the tombstone is

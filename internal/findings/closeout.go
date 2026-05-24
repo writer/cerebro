@@ -237,12 +237,16 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 			return result, cerr
 		}
 		for _, candidate := range batch {
-			if applyErr := s.tombstoneOneFinding(ctx, candidate, runID, actor, reason); applyErr != nil {
+			appliedCandidate, applyErr := s.tombstoneOneFinding(ctx, candidate, runID, actor, reason)
+			if applyErr != nil {
 				result.BatchErrors = append(result.BatchErrors, applyErr)
 				result.PerRule = sortPerRuleApplied(perRuleApplied)
 				finishBackground("failed", applyErr.Error(), applied)
 				result.AppliedCount = applied
 				return result, applyErr
+			}
+			if !appliedCandidate {
+				continue
 			}
 			applied++
 			perRuleApplied[strings.TrimSpace(candidate.RuleID)]++
@@ -263,19 +267,48 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 	return result, nil
 }
 
-func (s *Service) tombstoneOneFinding(ctx context.Context, finding *ports.FindingRecord, runID, actor, reason string) error {
+func (s *Service) tombstoneOneFinding(ctx context.Context, finding *ports.FindingRecord, runID, actor, reason string) (bool, error) {
 	if finding == nil {
-		return errors.New("finding is required")
+		return false, errors.New("finding is required")
 	}
 	findingID := strings.TrimSpace(finding.ID)
 	if findingID == "" {
-		return errors.New("finding id is required")
+		return false, errors.New("finding id is required")
 	}
-	priorStatus := strings.TrimSpace(finding.Status)
-	if priorStatus == "" {
-		priorStatus = findingStatusOpen
+	expectedStatus := normalizedFindingStatus(finding.Status)
+	if atomicStore, ok := s.store.(ports.FindingTombstoneAtomicStore); ok {
+		now := time.Now().UTC()
+		atomicResult, err := atomicStore.TombstoneFindingAtomic(ctx, ports.FindingTombstoneAtomicRequest{
+			FindingID:      findingID,
+			ExpectedStatus: expectedStatus,
+			Status:         findingStatusResolved,
+			Reason:         reason,
+			Actor:          actor,
+			RunID:          runID,
+			AnchorURI:      findingTombstoneAnchorURI(finding),
+			EventIDs:       append([]string(nil), finding.EventIDs...),
+			UpdatedAt:      now,
+			EmitWorkflowEvent: func(ctx context.Context, updated *ports.FindingRecord, priorStatus string, tombstonedAt time.Time) error {
+				return s.emitFindingTombstonedWorkflow(ctx, updated, priorStatus, reason, actor, runID, tombstonedAt)
+			},
+		})
+		if err != nil {
+			return false, fmt.Errorf("tombstone finding %q: %w", findingID, err)
+		}
+		return atomicResult != nil && atomicResult.Applied, nil
 	}
-	anchorURI := findingTombstoneAnchorURI(finding)
+	live, err := s.store.GetFinding(ctx, findingID)
+	if err != nil {
+		return false, fmt.Errorf("reload finding %q before tombstone: %w", findingID, err)
+	}
+	if live == nil || live.Tombstoned {
+		return false, nil
+	}
+	priorStatus := normalizedFindingStatus(live.Status)
+	if expectedStatus != "" && priorStatus != expectedStatus {
+		return false, nil
+	}
+	anchorURI := findingTombstoneAnchorURI(live)
 	now := time.Now().UTC()
 	updated, err := s.updateFindingStatusAndRisk(ctx, ports.FindingStatusUpdate{
 		FindingID: findingID,
@@ -291,12 +324,12 @@ func (s *Service) tombstoneOneFinding(ctx context.Context, finding *ports.Findin
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("tombstone finding %q: %w", findingID, err)
+		return false, fmt.Errorf("tombstone finding %q: %w", findingID, err)
 	}
 	if err := s.tombstoneEventStore.InsertFindingTombstoneEvent(ctx, ports.FindingTombstoneEvent{
 		FindingID:    findingID,
-		TenantID:     strings.TrimSpace(finding.TenantID),
-		RuleID:       strings.TrimSpace(finding.RuleID),
+		TenantID:     strings.TrimSpace(live.TenantID),
+		RuleID:       strings.TrimSpace(live.RuleID),
 		AnchorURI:    anchorURI,
 		PriorStatus:  priorStatus,
 		Reason:       reason,
@@ -304,8 +337,19 @@ func (s *Service) tombstoneOneFinding(ctx context.Context, finding *ports.Findin
 		RunID:        runID,
 		TombstonedAt: now,
 	}); err != nil {
-		return fmt.Errorf("audit finding %q tombstone: %w", findingID, err)
+		return false, fmt.Errorf("audit finding %q tombstone: %w", findingID, err)
 	}
+	if err := s.emitFindingTombstonedWorkflow(ctx, updated, priorStatus, reason, actor, runID, now); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *Service) emitFindingTombstonedWorkflow(ctx context.Context, updated *ports.FindingRecord, priorStatus, reason, actor, runID string, tombstonedAt time.Time) error {
+	if updated == nil {
+		return errors.New("updated finding is required")
+	}
+	findingID := strings.TrimSpace(updated.ID)
 	tenantID, sourceID := findingGraphScope(updated)
 	snapshot := findingWorkflowSnapshot(updated, tenantID, sourceID)
 	event, err := workflowevents.NewFindingTombstonedEvent(workflowevents.FindingTombstoned{
@@ -314,7 +358,7 @@ func (s *Service) tombstoneOneFinding(ctx context.Context, finding *ports.Findin
 		Reason:       reason,
 		Actor:        actor,
 		RunID:        runID,
-		TombstonedAt: now.Format(time.RFC3339Nano),
+		TombstonedAt: tombstonedAt.UTC().Format(time.RFC3339Nano),
 	})
 	if err != nil {
 		return fmt.Errorf("build finding tombstoned event for %q: %w", findingID, err)
@@ -323,6 +367,14 @@ func (s *Service) tombstoneOneFinding(ctx context.Context, finding *ports.Findin
 		return fmt.Errorf("emit finding tombstoned event for %q: %w", findingID, err)
 	}
 	return nil
+}
+
+func normalizedFindingStatus(status string) string {
+	trimmed := strings.TrimSpace(status)
+	if trimmed == "" {
+		return findingStatusOpen
+	}
+	return trimmed
 }
 
 func (s *Service) listCloseoutCandidates(ctx context.Context, selector CloseoutSelector) ([]*ports.FindingRecord, error) {
