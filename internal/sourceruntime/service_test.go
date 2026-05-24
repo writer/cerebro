@@ -187,6 +187,43 @@ func (s *checkpointResumeSource) Read(_ context.Context, _ sourcecdk.Config, cur
 	return sourcecdk.Pull{}, nil
 }
 
+type persistedCheckpointResumeSource struct {
+	checkpointCursor string
+	seenCursors      []string
+}
+
+func (s *persistedCheckpointResumeSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "persisted_checkpoint_resume"}
+}
+
+func (s *persistedCheckpointResumeSource) Check(context.Context, sourcecdk.Config) error {
+	return nil
+}
+
+func (s *persistedCheckpointResumeSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (s *persistedCheckpointResumeSource) Read(_ context.Context, _ sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	opaque := cursor.GetOpaque()
+	s.seenCursors = append(s.seenCursors, opaque)
+	if len(s.seenCursors) == 1 {
+		return sourcecdk.Pull{
+			Events: []*cerebrov1.EventEnvelope{
+				runtimeTestEvent("okta-policy-rule-terminal", "persisted_checkpoint_resume", "okta.policy_rule"),
+			},
+			Checkpoint: &cerebrov1.SourceCheckpoint{
+				Watermark:    timestamppb.New(time.Date(2026, 5, 22, 12, 0, 0, 0, time.UTC)),
+				CursorOpaque: s.checkpointCursor,
+			},
+		}, nil
+	}
+	if strings.TrimSpace(opaque) == "" {
+		return sourcecdk.Pull{}, errors.New("unexpected fresh start after persisted checkpoint")
+	}
+	return sourcecdk.Pull{}, nil
+}
+
 type nilEventSource struct{}
 
 func (nilEventSource) Spec() *cerebrov1.SourceSpec {
@@ -1097,6 +1134,49 @@ func TestSyncRuntimeStartsFromResumableCheckpointCursor(t *testing.T) {
 	}
 	if source.seenCursor != checkpointCursor {
 		t.Fatalf("source cursor = %q, want checkpoint cursor", source.seenCursor)
+	}
+}
+
+func TestSyncRuntimeFollowUpUsesPersistedResumableCheckpointCursor(t *testing.T) {
+	checkpointCursor := `{"policy_type_index":2,"resumable_checkpoint":true}`
+	source := &persistedCheckpointResumeSource{checkpointCursor: checkpointCursor}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-policy-rule": {
+				Id:       "writer-okta-policy-rule",
+				SourceId: "persisted_checkpoint_resume",
+				TenantId: "writer",
+			},
+		},
+	}
+	service := New(registry, store, &appendLog{}, nil)
+
+	if _, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-okta-policy-rule"}); err != nil {
+		t.Fatalf("initial Sync() error = %v", err)
+	}
+	stored := store.runtimes["writer-okta-policy-rule"]
+	if got := stored.GetCheckpoint().GetCursorOpaque(); got != checkpointCursor {
+		t.Fatalf("stored checkpoint cursor = %q, want %q", got, checkpointCursor)
+	}
+	if stored.GetNextCursor() != nil {
+		t.Fatalf("stored next cursor = %#v, want nil terminal page", stored.GetNextCursor())
+	}
+
+	if _, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-okta-policy-rule"}); err != nil {
+		t.Fatalf("follow-up Sync() error = %v", err)
+	}
+	if len(source.seenCursors) != 2 {
+		t.Fatalf("seen cursors = %v, want initial and follow-up reads", source.seenCursors)
+	}
+	if source.seenCursors[0] != "" {
+		t.Fatalf("initial sync cursor = %q, want fresh start", source.seenCursors[0])
+	}
+	if source.seenCursors[1] != checkpointCursor {
+		t.Fatalf("follow-up sync cursor = %q, want persisted checkpoint cursor %q", source.seenCursors[1], checkpointCursor)
 	}
 }
 

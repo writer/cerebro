@@ -794,10 +794,15 @@ func TestPolicyRulePullFromEvents_TerminalPageCursorIsJSON(t *testing.T) {
 		if len(pull.Events) == 0 {
 			t.Fatalf("Read(policy_rule page %d) emitted no events before terminal cursor", page+1)
 		}
+		if pull.Checkpoint == nil {
+			t.Fatalf("Read(policy_rule page %d) Checkpoint = nil, want persisted cursor checkpoint", page+1)
+		}
+		assertPolicyRuleCursorResumable(t, pull.Checkpoint.GetCursorOpaque())
 		if pull.NextCursor == nil {
 			terminal = pull
 			break
 		}
+		assertPolicyRuleCursorResumable(t, pull.NextCursor.GetOpaque())
 		cursor = pull.NextCursor
 	}
 	if terminal.Checkpoint == nil {
@@ -807,6 +812,7 @@ func TestPolicyRulePullFromEvents_TerminalPageCursorIsJSON(t *testing.T) {
 	if !json.Valid([]byte(terminalOpaque)) {
 		t.Fatalf("terminal checkpoint cursor = %q, want JSON policyRuleCursor", terminalOpaque)
 	}
+	assertPolicyRuleCursorResumable(t, terminalOpaque)
 	state, err := parsePolicyRuleCursor(&cerebrov1.SourceCursor{Opaque: terminalOpaque})
 	if err != nil {
 		t.Fatalf("parsePolicyRuleCursor(terminal checkpoint) error = %v", err)
@@ -828,6 +834,19 @@ func TestPolicyRulePullFromEvents_TerminalPageCursorIsJSON(t *testing.T) {
 	}
 	if resume.NextCursor != nil {
 		t.Fatalf("resume.NextCursor = %#v, want nil", resume.NextCursor)
+	}
+}
+
+func assertPolicyRuleCursorResumable(t *testing.T, opaque string) {
+	t.Helper()
+	var payload struct {
+		ResumableCheckpoint bool `json:"resumable_checkpoint"`
+	}
+	if err := json.Unmarshal([]byte(opaque), &payload); err != nil {
+		t.Fatalf("unmarshal policy_rule cursor resumable marker from %q: %v", opaque, err)
+	}
+	if !payload.ResumableCheckpoint {
+		t.Fatalf("policy_rule cursor %q has resumable_checkpoint=false, want true", opaque)
 	}
 }
 
