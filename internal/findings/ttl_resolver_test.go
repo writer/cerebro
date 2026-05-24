@@ -541,7 +541,7 @@ func TestResolveRuleOpenFindings_InvokesTTLResolverForTTLEvidence(t *testing.T) 
 	stale := fx.seedFinding("stale-ttl", findingStatusOpen, fx.now.Add(-48*time.Hour), nil)
 	fresh := fx.seedFinding("fresh-ttl", findingStatusOpen, fx.now.Add(-6*time.Hour), nil)
 
-	if err := fx.service.resolveRuleOpenFindings(context.Background(), runtime, fx.rule, nil, nil, nil); err != nil {
+	if _, err := fx.service.resolveRuleOpenFindings(context.Background(), runtime, fx.rule, nil, nil, nil); err != nil {
 		t.Fatalf("resolveRuleOpenFindings: %v", err)
 	}
 
@@ -565,7 +565,7 @@ func TestResolveRuleOpenFindings_InvokesTTLResolverForTTLEvidence(t *testing.T) 
 
 	fx.store.updateStatusCalls = nil
 	callsBefore := fx.store.updateStatusCallCount
-	if err := fx.service.resolveRuleOpenFindings(context.Background(), runtime, fx.rule, nil, nil, nil); err != nil {
+	if _, err := fx.service.resolveRuleOpenFindings(context.Background(), runtime, fx.rule, nil, nil, nil); err != nil {
 		t.Fatalf("second resolveRuleOpenFindings: %v", err)
 	}
 	if fx.store.updateStatusCallCount != callsBefore {
@@ -579,7 +579,7 @@ func TestResolveRuleOpenFindings_SkipsTTLResolverForNonTTLRules(t *testing.T) {
 	runtime := &cerebrov1.SourceRuntime{Id: fx.runtimeID, TenantId: fx.tenantID}
 	fx.seedFinding("aged-audit", findingStatusOpen, fx.now.Add(-48*time.Hour), nil)
 
-	if err := fx.service.resolveRuleOpenFindings(context.Background(), runtime, fx.rule, nil, nil, nil); err != nil {
+	if _, err := fx.service.resolveRuleOpenFindings(context.Background(), runtime, fx.rule, nil, nil, nil); err != nil {
 		t.Fatalf("resolveRuleOpenFindings: %v", err)
 	}
 
