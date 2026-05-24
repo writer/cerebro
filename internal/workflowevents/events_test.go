@@ -53,6 +53,36 @@ func TestNewDecisionRecordedEventIsStableAndDecodable(t *testing.T) {
 	}
 }
 
+func TestNewDecisionRecordedEventEncodesNestedMetadata(t *testing.T) {
+	payload := DecisionRecorded{
+		TenantID:     "writer",
+		DecisionID:   "urn:cerebro:writer:decision:decision-1",
+		DecisionType: "finding-triage",
+		Status:       "approved",
+		TargetIDs:    []string{"urn:cerebro:writer:resource:target-1"},
+		SourceSystem: "findings",
+		ObservedAt:   "2026-04-27T12:00:00Z",
+		ValidFrom:    "2026-04-27T12:00:00Z",
+		Metadata: map[string]any{
+			"context": map[string]any{
+				"nested": true,
+				"owners": []any{"sec", "eng"},
+			},
+		},
+	}
+	event, err := NewDecisionRecordedEvent(payload)
+	if err != nil {
+		t.Fatalf("NewDecisionRecordedEvent() error = %v", err)
+	}
+	decoded, err := DecodeDecisionRecorded(event)
+	if err != nil {
+		t.Fatalf("DecodeDecisionRecorded() error = %v", err)
+	}
+	if got := decoded.Metadata["context"]; got != `{"nested":true,"owners":["sec","eng"]}` {
+		t.Fatalf("decoded nested metadata = %#v", got)
+	}
+}
+
 func TestCanonicalWorkflowIDUsesProvidedURN(t *testing.T) {
 	urn := "urn:cerebro:writer:decision:decision-1"
 	if got := CanonicalWorkflowID("writer", "decision", urn, "decision", nil, time.Time{}); got != urn {

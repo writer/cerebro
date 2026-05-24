@@ -3,6 +3,7 @@ package eventregistry
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
@@ -177,6 +178,14 @@ func (w *avroWriter) metadataValue(value any) {
 	case bool:
 		w.long(4)
 		w.boolean(v)
+	case map[string]any:
+		w.jsonMetadata(v)
+	case []any:
+		w.jsonMetadata(v)
+	case map[string]string:
+		w.jsonMetadata(v)
+	case []string:
+		w.jsonMetadata(v)
 	default:
 		w.setErr(fmt.Errorf("unsupported metadata value type %T", value))
 	}
@@ -202,6 +211,16 @@ func (w *avroWriter) uintMetadata(value any) {
 	}
 	w.long(2)
 	w.long(int64(u))
+}
+
+func (w *avroWriter) jsonMetadata(value any) {
+	payload, err := json.Marshal(value)
+	if err != nil {
+		w.setErr(fmt.Errorf("marshal metadata value %T: %w", value, err))
+		return
+	}
+	w.long(1)
+	w.string(string(payload))
 }
 
 func sortedKeys[V any](values map[string]V) []string {
