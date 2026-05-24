@@ -428,13 +428,14 @@ build_command_array() {
     local audit_bucket="$8"
     local actor="$9"
     local run_id="${10}"
+    local tenant_id="${11}"
 
-    python3 - "${env_name}" "${dry_run}" "${rule_ids_csv}" "${source_csv}" "${older_than}" "${reason}" "${change_ticket}" "${audit_bucket}" "${actor}" "${run_id}" <<'PY'
+    python3 - "${env_name}" "${dry_run}" "${rule_ids_csv}" "${source_csv}" "${older_than}" "${reason}" "${change_ticket}" "${audit_bucket}" "${actor}" "${run_id}" "${tenant_id}" <<'PY'
 import json
 import sys
 
 (env_name, dry_run, rule_ids_csv, source_csv, older_than,
- reason, change_ticket, audit_bucket, actor, run_id) = sys.argv[1:11]
+ reason, change_ticket, audit_bucket, actor, run_id, tenant_id) = sys.argv[1:12]
 
 command = ["closeout"]
 
@@ -449,6 +450,7 @@ for src in sources:
 if older_than:
     command.extend(["--older-than", older_than])
 
+command.extend(["--tenant-id", tenant_id])
 command.extend(["--reason", reason])
 
 if change_ticket:
@@ -481,11 +483,13 @@ cmd_run() {
     require_env CEREBRO_LOG_GROUP
     require_env AUDIT_BUCKET
     require_env INPUT_ENV
+    require_env INPUT_TENANT_ID
     require_env INPUT_REASON
 
     local dry_run_value="${INPUT_DRY_RUN:-true}"
     local rule_ids_csv="${INPUT_RULE_IDS:-}"
     local source_csv="${INPUT_SOURCE:-}"
+    local tenant_id="${INPUT_TENANT_ID}"
     local older_than="${INPUT_OLDER_THAN:-}"
     local reason="${INPUT_REASON}"
     local change_ticket="${INPUT_CHANGE_TICKET:-}"
@@ -493,7 +497,7 @@ cmd_run() {
     local run_id="${GITHUB_RUN_ID:-}"
 
     local command_json
-    command_json="$(build_command_array "${INPUT_ENV}" "${dry_run_value}" "${rule_ids_csv}" "${source_csv}" "${older_than}" "${reason}" "${change_ticket}" "${AUDIT_BUCKET}" "${actor}" "${run_id}")"
+    command_json="$(build_command_array "${INPUT_ENV}" "${dry_run_value}" "${rule_ids_csv}" "${source_csv}" "${older_than}" "${reason}" "${change_ticket}" "${AUDIT_BUCKET}" "${actor}" "${run_id}" "${tenant_id}")"
 
     echo "containerOverrides command: ${command_json}"
 

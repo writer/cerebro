@@ -87,6 +87,15 @@ class CloseoutWorkflowInputsTest(unittest.TestCase):
         self.assertEqual(spec["type"], "string")
         self.assertFalse(spec.get("required", False))
 
+    def test_tenant_id_input(self) -> None:
+        spec = self.inputs["tenant_id"]
+        self.assertEqual(spec["type"], "string")
+        self.assertTrue(spec.get("required"), "tenant_id must be required")
+        self.assertNotIn("default", spec, "tenant_id must not define a default")
+        description = spec.get("description", "")
+        self.assertIn("Common values", description)
+        self.assertIn("writer", description)
+
     def test_older_than_input(self) -> None:
         spec = self.inputs["older_than"]
         self.assertEqual(spec["type"], "string")
@@ -110,6 +119,7 @@ class CloseoutWorkflowInputsTest(unittest.TestCase):
                 "dry_run",
                 "rule_ids",
                 "source",
+                "tenant_id",
                 "older_than",
                 "reason",
                 "change_ticket",
@@ -218,6 +228,20 @@ class CloseoutJobsTest(unittest.TestCase):
                 f"job {job_name} requires id-token: write for OIDC",
             )
 
+    def test_dispatch_steps_forward_tenant_id_to_helper(self) -> None:
+        for job_name in ("closeout-sec-dev", "closeout-go-prod"):
+            steps = self.jobs[job_name]["steps"]
+            dispatch_step = next(
+                step for step in steps
+                if step.get("name") == "Dispatch closeout ECS task"
+            )
+            env = dispatch_step.get("env") or {}
+            self.assertEqual(
+                env.get("INPUT_TENANT_ID"),
+                "${{ github.event.inputs.tenant_id }}",
+                f"{job_name} dispatch step must forward workflow tenant_id input",
+            )
+
 
 class CloseoutPreflightOlderThanTest(unittest.TestCase):
     """Preflight does NOT regex-validate 'older_than'; syntax is checked by the CLI."""
@@ -237,6 +261,7 @@ class CloseoutPreflightOlderThanTest(unittest.TestCase):
             **os.environ,
             "INPUT_ENV": "sec-dev",
             "INPUT_REASON": "preflight-older-than-test",
+            "INPUT_TENANT_ID": "writer",
             "INPUT_OLDER_THAN": older_than,
             "INPUT_CHANGE_TICKET": "",
         }
@@ -422,6 +447,51 @@ class CloseoutEcsScriptEnvCaseTest(unittest.TestCase):
     def test_describe_services_uses_service_name(self) -> None:
         self.assertIn('--services "${CEREBRO_SERVICE}"', self.script,
                       "describe-services must target the service, not the task family")
+
+    def test_script_requires_and_forwards_tenant_id_flag(self) -> None:
+        self.assertIn("require_env INPUT_TENANT_ID", self.script)
+        self.assertIn('local tenant_id="${INPUT_TENANT_ID}"', self.script)
+        self.assertIn('command.extend(["--tenant-id", tenant_id])', self.script)
+
+
+class CloseoutKmsAssertionScriptTest(unittest.TestCase):
+    """Regression coverage for assert-kms-allow.
+
+    IAM simulation is useful diagnostic output, but KMS key-policy evaluation
+    makes it non-authoritative for this workflow. The assertion must be driven
+    by real KMS DescribeKey + Encrypt + GenerateDataKey probes instead.
+    """
+
+    SCRIPT_PATH = REPO_ROOT / "infra" / "scripts" / "run_closeout_ecs.sh"
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.script = cls.SCRIPT_PATH.read_text(encoding="utf-8")
+
+    def test_attempts_task_role_assume_for_real_kms_probe(self) -> None:
+        self.assertIn("aws sts assume-role", self.script)
+        self.assertIn('--role-arn "${role_arn}"', self.script)
+        self.assertIn("task_role_session_policy", self.script)
+
+    def test_real_kms_probe_uses_describe_key_encrypt_and_generate_data_key(self) -> None:
+        self.assertIn("aws kms describe-key", self.script)
+        self.assertIn("aws kms encrypt", self.script)
+        self.assertIn("aws kms generate-data-key", self.script)
+        self.assertIn("--query 'CiphertextBlob'", self.script)
+        self.assertIn("kms:Encrypt succeeded and returned a CiphertextBlob", self.script)
+        self.assertIn("kms:GenerateDataKey succeeded", self.script)
+
+    def test_simulate_principal_policy_is_informational_only(self) -> None:
+        self.assertIn("Informational IAM simulation", self.script)
+        self.assertIn("(informational only)", self.script)
+        self.assertNotIn("is NOT allowed to perform", self.script)
+        self.assertNotIn("unexpectedly allowed for", self.script)
+
+    def test_policy_fallback_still_fails_when_task_role_policy_lacks_kms(self) -> None:
+        self.assertIn("assert_task_role_policy_allows_kms", self.script)
+        self.assertIn("assert_kms_key_policy_delegates_to_iam", self.script)
+        self.assertIn("policies do not allow required KMS actions", self.script)
+        self.assertIn("does not delegate required KMS actions", self.script)
 
 
 class CloseoutKmsAssertionScriptTest(unittest.TestCase):

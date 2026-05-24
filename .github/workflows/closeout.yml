@@ -25,6 +25,10 @@ on:
         required: false
         type: string
         default: ''
+      tenant_id:
+        description: 'Tenant ID to close out. Common values: writer (canonical sec-dev tenant discovered from findings rows).'
+        required: true
+        type: string
       older_than:
         description: 'Minimum age of findings to close out (Go duration, e.g. 24h, 7d)'
         required: false
@@ -59,6 +63,7 @@ jobs:
         env:
           INPUT_ENV: ${{ github.event.inputs.env }}
           INPUT_REASON: ${{ github.event.inputs.reason }}
+          INPUT_TENANT_ID: ${{ github.event.inputs.tenant_id }}
           INPUT_CHANGE_TICKET: ${{ github.event.inputs.change_ticket }}
         run: |
           set -euo pipefail
@@ -66,6 +71,11 @@ jobs:
 
           if [ -z "${INPUT_REASON// /}" ]; then
             echo "::error title=closeout::Input 'reason' is required and must not be empty."
+            errors=$((errors + 1))
+          fi
+
+          if [ -z "${INPUT_TENANT_ID// /}" ]; then
+            echo "::error title=closeout::Input 'tenant_id' is required and must not be empty."
             errors=$((errors + 1))
           fi
 
@@ -165,6 +175,7 @@ jobs:
           INPUT_DRY_RUN: ${{ github.event.inputs.dry_run }}
           INPUT_RULE_IDS: ${{ github.event.inputs.rule_ids }}
           INPUT_SOURCE: ${{ github.event.inputs.source }}
+          INPUT_TENANT_ID: ${{ github.event.inputs.tenant_id }}
           INPUT_OLDER_THAN: ${{ github.event.inputs.older_than }}
           INPUT_REASON: ${{ github.event.inputs.reason }}
           INPUT_CHANGE_TICKET: ${{ github.event.inputs.change_ticket }}
@@ -252,6 +263,7 @@ jobs:
           INPUT_DRY_RUN: ${{ github.event.inputs.dry_run }}
           INPUT_RULE_IDS: ${{ github.event.inputs.rule_ids }}
           INPUT_SOURCE: ${{ github.event.inputs.source }}
+          INPUT_TENANT_ID: ${{ github.event.inputs.tenant_id }}
           INPUT_OLDER_THAN: ${{ github.event.inputs.older_than }}
           INPUT_REASON: ${{ github.event.inputs.reason }}
           INPUT_CHANGE_TICKET: ${{ github.event.inputs.change_ticket }}
