@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -131,8 +132,8 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 	if strings.TrimSpace(selector.TenantID) == "" {
 		return nil, fmt.Errorf("%w: tenant id is required", ErrCloseoutInvalidRequest)
 	}
-	if len(selector.RuleIDs) == 0 && len(selector.Sources) == 0 {
-		return nil, fmt.Errorf("%w: at least one rule id or source is required", ErrCloseoutInvalidRequest)
+	if len(selector.RuleIDs) == 0 {
+		return nil, fmt.Errorf("%w: at least one rule id is required", ErrCloseoutInvalidRequest)
 	}
 	batchSize := req.MaxBatchSize
 	if batchSize <= 0 {
@@ -379,6 +380,14 @@ func normalizedFindingStatus(status string) string {
 
 func (s *Service) listCloseoutCandidates(ctx context.Context, selector CloseoutSelector) ([]*ports.FindingRecord, error) {
 	ruleIDs := expandCloseoutRuleIDs(selector)
+	var anchorMatcher *regexp.Regexp
+	if pattern := strings.TrimSpace(selector.AnchorURIRegex); pattern != "" {
+		compiled, err := regexp.Compile(pattern)
+		if err != nil {
+			return nil, fmt.Errorf("compile anchor_uri_regex %q: %w", pattern, err)
+		}
+		anchorMatcher = compiled
+	}
 	seen := map[string]struct{}{}
 	var out []*ports.FindingRecord
 	cutoff := time.Time{}
@@ -407,6 +416,9 @@ func (s *Service) listCloseoutCandidates(ctx context.Context, selector CloseoutS
 					continue
 				}
 				if !cutoff.IsZero() && finding.LastObservedAt.After(cutoff) {
+					continue
+				}
+				if anchorMatcher != nil && !anchorMatcher.MatchString(findingTombstoneAnchorURI(finding)) {
 					continue
 				}
 				seen[key] = struct{}{}
@@ -448,23 +460,19 @@ func expandCloseoutRuleIDs(selector CloseoutSelector) []string {
 	if len(sourceSet) == 0 {
 		return ordered
 	}
-	matched := []string{}
-	for ruleID, sourceID := range BuiltinRuleSourceIDs() {
+	sourceIDs := BuiltinRuleSourceIDs()
+	narrowed := make([]string, 0, len(ordered))
+	for _, ruleID := range ordered {
+		sourceID, ok := sourceIDs[ruleID]
+		if !ok {
+			continue
+		}
 		if _, ok := sourceSet[strings.TrimSpace(sourceID)]; !ok {
 			continue
 		}
-		trimmed := strings.TrimSpace(ruleID)
-		if trimmed == "" {
-			continue
-		}
-		if _, exists := seen[trimmed]; exists {
-			continue
-		}
-		seen[trimmed] = struct{}{}
-		matched = append(matched, trimmed)
+		narrowed = append(narrowed, ruleID)
 	}
-	sort.Strings(matched)
-	return append(ordered, matched...)
+	return narrowed
 }
 
 func resolveCloseoutSelector(in CloseoutSelector) CloseoutSelector {
@@ -505,6 +513,7 @@ func resolveCloseoutSelector(in CloseoutSelector) CloseoutSelector {
 		}
 		out.Sources = sources
 	}
+	out.AnchorURIRegex = strings.TrimSpace(out.AnchorURIRegex)
 	return out
 }
 

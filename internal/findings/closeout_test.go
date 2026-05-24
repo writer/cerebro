@@ -605,6 +605,37 @@ func TestTombstoneFindingsBulk_SelectorJSONIsResolvedSnapshot(t *testing.T) {
 	}
 }
 
+func TestListCloseoutCandidates_AnchorURIRegex(t *testing.T) {
+	fx := newCloseoutFixture(t)
+	ruleID := "github-critical-resource-deleted"
+	fx.seedFindingWithRule("repo-a", ruleID, "open", fx.now.Add(-48*time.Hour), func(f *ports.FindingRecord) {
+		f.ResourceURNs = []string{"urn:repo:org/repo-a"}
+	})
+	fx.seedFindingWithRule("repo-b", ruleID, "open", fx.now.Add(-49*time.Hour), func(f *ports.FindingRecord) {
+		f.ResourceURNs = []string{"urn:repo:org/repo-b"}
+	})
+	fx.seedFindingWithRule("repo-c", ruleID, "open", fx.now.Add(-50*time.Hour), func(f *ports.FindingRecord) {
+		f.ResourceURNs = []string{"urn:repo:other/repo-c"}
+	})
+
+	req := fx.request("run-anchor-regex-1", true)
+	req.Selector.RuleIDs = []string{ruleID}
+	req.Selector.AnchorURIRegex = `^urn:repo:org/.*$`
+
+	result, err := fx.service.TombstoneFindingsBulk(context.Background(), req)
+	if err != nil {
+		t.Fatalf("TombstoneFindingsBulk anchor regex error = %v", err)
+	}
+	if result.ProposedCount != 2 {
+		t.Fatalf("ProposedCount = %d, want 2", result.ProposedCount)
+	}
+	ids := sortedProposedIDs(result.Proposed)
+	want := []string{"repo-a", "repo-b"}
+	if !reflect.DeepEqual(ids, want) {
+		t.Fatalf("proposed ids = %v, want %v", ids, want)
+	}
+}
+
 func TestTombstoneFindingsBulk_FailsFastWhenAnotherRunning(t *testing.T) {
 	fx := newCloseoutFixture(t)
 	fx.seedFinding("f-1", "open", fx.now.Add(-48*time.Hour), nil)
@@ -791,57 +822,106 @@ func TestResolvers_LeaveTombstonedRowsUntouched(t *testing.T) {
 	}
 }
 
-func TestTombstoneFindingsBulk_SourceSelectorExpandsToRuleIDs(t *testing.T) {
+func TestTombstoneFindingsBulk_RejectsSourceOnlySelector(t *testing.T) {
 	fx := newCloseoutFixture(t)
 	fx.seedFindingWithRule("f-gh-1", "github-critical-resource-deleted", "open", fx.now.Add(-48*time.Hour), nil)
-	fx.seedFindingWithRule("f-gh-2", "github-webhook-modified", "open", fx.now.Add(-72*time.Hour), nil)
-	fx.seedFindingWithRule("f-okta-1", "identity-okta-deprovisioned-active-in-github", "open", fx.now.Add(-48*time.Hour), nil)
 
 	req := fx.request("run-src-1", false)
 	req.Selector.RuleIDs = nil
 	req.Selector.Sources = []string{"github"}
 
-	result, err := fx.service.TombstoneFindingsBulk(context.Background(), req)
-	if err != nil {
-		t.Fatalf("TombstoneFindingsBulk source-only error = %v", err)
+	_, err := fx.service.TombstoneFindingsBulk(context.Background(), req)
+	if err == nil {
+		t.Fatalf("expected source-only selector to be rejected")
 	}
-	if result.AppliedCount != 2 {
-		t.Fatalf("AppliedCount = %d, want 2", result.AppliedCount)
+	if !errors.Is(err, ErrCloseoutInvalidRequest) {
+		t.Fatalf("err = %v, want ErrCloseoutInvalidRequest", err)
 	}
-	for _, id := range []string{"f-gh-1", "f-gh-2"} {
-		if !fx.store.findings[id].Tombstoned {
-			t.Fatalf("finding %s not tombstoned", id)
-		}
-	}
-	if fx.store.findings["f-okta-1"].Tombstoned {
-		t.Fatalf("finding f-okta-1 tombstoned despite different source")
+	if fx.store.findings["f-gh-1"].Tombstoned {
+		t.Fatalf("source-only selector tombstoned f-gh-1")
 	}
 }
 
-func TestTombstoneFindingsBulk_SourceAndRuleIDsUnion(t *testing.T) {
+func TestExpandCloseoutRuleIDs_NarrowsOnSources(t *testing.T) {
 	fx := newCloseoutFixture(t)
-	fx.seedFindingWithRule("f-gh-1", "github-critical-resource-deleted", "open", fx.now.Add(-48*time.Hour), nil)
-	fx.seedFindingWithRule("f-id-1", "identity-mfa-factor-reset-or-disabled", "open", fx.now.Add(-48*time.Hour), nil)
-	fx.seedFindingWithRule("f-okta-1", "identity-okta-deprovisioned-active-in-github", "open", fx.now.Add(-48*time.Hour), nil)
+	const (
+		ghRuleOne   = "github-critical-resource-deleted"
+		oktaRule    = "identity-okta-deprovisioned-active-in-github"
+		ghRuleTwo   = "github-webhook-modified"
+		extraGHRule = "github-secret-scanning-disabled"
+	)
+	fx.seedFindingWithRule("f-gh-1", ghRuleOne, "open", fx.now.Add(-48*time.Hour), nil)
+	fx.seedFindingWithRule("f-okta-1", oktaRule, "open", fx.now.Add(-48*time.Hour), nil)
+	fx.seedFindingWithRule("f-gh-2", ghRuleTwo, "open", fx.now.Add(-49*time.Hour), nil)
+	fx.seedFindingWithRule("f-extra-gh", extraGHRule, "open", fx.now.Add(-50*time.Hour), nil)
 
-	req := fx.request("run-union-1", false)
-	req.Selector.RuleIDs = []string{"identity-mfa-factor-reset-or-disabled"}
+	req := fx.request("run-source-narrow-1", true)
+	req.Selector.RuleIDs = []string{ghRuleOne, oktaRule, ghRuleTwo}
 	req.Selector.Sources = []string{"github"}
 
 	result, err := fx.service.TombstoneFindingsBulk(context.Background(), req)
 	if err != nil {
-		t.Fatalf("TombstoneFindingsBulk union error = %v", err)
+		t.Fatalf("TombstoneFindingsBulk source narrowing error = %v", err)
 	}
-	if result.AppliedCount != 2 {
-		t.Fatalf("AppliedCount = %d, want 2", result.AppliedCount)
+	if result.ProposedCount != 2 {
+		t.Fatalf("ProposedCount = %d, want 2", result.ProposedCount)
 	}
-	for _, id := range []string{"f-gh-1", "f-id-1"} {
-		if !fx.store.findings[id].Tombstoned {
-			t.Fatalf("finding %s not tombstoned", id)
-		}
+	gotRules := sortedProposedRuleIDs(result.Proposed)
+	wantRules := []string{ghRuleOne, ghRuleTwo}
+	if !reflect.DeepEqual(gotRules, wantRules) {
+		t.Fatalf("proposed rule ids = %v, want %v", gotRules, wantRules)
 	}
-	if fx.store.findings["f-okta-1"].Tombstoned {
-		t.Fatalf("finding f-okta-1 tombstoned, expected untouched")
+	gotIDs := sortedProposedIDs(result.Proposed)
+	wantIDs := []string{"f-gh-1", "f-gh-2"}
+	if !reflect.DeepEqual(gotIDs, wantIDs) {
+		t.Fatalf("proposed ids = %v, want %v", gotIDs, wantIDs)
+	}
+	gotRequestedRules := uniqueRequestedRuleIDs(fx.store.listFindingsRequests)
+	if !reflect.DeepEqual(gotRequestedRules, wantRules) {
+		t.Fatalf("ListFindings requested rules = %v, want %v", gotRequestedRules, wantRules)
+	}
+}
+
+func TestCloseoutRun_SelectorJSONMatchesExecutedScope(t *testing.T) {
+	fx := newCloseoutFixture(t)
+	const (
+		githubRule = "github-critical-resource-deleted"
+		oktaRule   = "identity-okta-deprovisioned-active-in-github"
+	)
+	fx.seedFindingWithRule("f-gh-match", githubRule, "open", fx.now.Add(-48*time.Hour), func(f *ports.FindingRecord) {
+		f.ResourceURNs = []string{"urn:repo:org/repo-a"}
+	})
+	fx.seedFindingWithRule("f-gh-other-anchor", githubRule, "open", fx.now.Add(-49*time.Hour), func(f *ports.FindingRecord) {
+		f.ResourceURNs = []string{"urn:repo:other/repo-b"}
+	})
+	fx.seedFindingWithRule("f-okta", oktaRule, "open", fx.now.Add(-50*time.Hour), func(f *ports.FindingRecord) {
+		f.ResourceURNs = []string{"urn:repo:org/repo-c"}
+	})
+
+	req := fx.request("run-selector-executed-scope-1", true)
+	req.Selector.RuleIDs = []string{githubRule, oktaRule}
+	req.Selector.Sources = []string{"github"}
+	req.Selector.AnchorURIRegex = `^urn:repo:org/.*$`
+	req.Selector.Statuses = []string{findingStatusOpen}
+
+	result, err := fx.service.TombstoneFindingsBulk(context.Background(), req)
+	if err != nil {
+		t.Fatalf("TombstoneFindingsBulk selector_json error = %v", err)
+	}
+	if got, want := sortedProposedIDs(result.Proposed), []string{"f-gh-match"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("proposed ids = %v, want %v", got, want)
+	}
+	run, err := fx.closeout.GetCloseoutRun(context.Background(), req.RunID)
+	if err != nil {
+		t.Fatalf("GetCloseoutRun(%q): %v", req.RunID, err)
+	}
+	var got CloseoutSelector
+	if err := json.Unmarshal(run.SelectorJSON, &got); err != nil {
+		t.Fatalf("unmarshal selector_json: %v", err)
+	}
+	want := resolveCloseoutSelector(req.Selector)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("selector_json = %+v, want %+v", got, want)
 	}
 }
 
@@ -877,6 +957,41 @@ func sortedProposedIDs(records []*ports.FindingRecord) []string {
 	}
 	sort.Strings(ids)
 	return ids
+}
+
+func sortedProposedRuleIDs(records []*ports.FindingRecord) []string {
+	seen := map[string]struct{}{}
+	ruleIDs := make([]string, 0, len(records))
+	for _, record := range records {
+		ruleID := strings.TrimSpace(record.RuleID)
+		if ruleID == "" {
+			continue
+		}
+		if _, exists := seen[ruleID]; exists {
+			continue
+		}
+		seen[ruleID] = struct{}{}
+		ruleIDs = append(ruleIDs, ruleID)
+	}
+	sort.Strings(ruleIDs)
+	return ruleIDs
+}
+
+func uniqueRequestedRuleIDs(requests []ports.ListFindingsRequest) []string {
+	seen := map[string]struct{}{}
+	ruleIDs := make([]string, 0, len(requests))
+	for _, request := range requests {
+		ruleID := strings.TrimSpace(request.RuleID)
+		if ruleID == "" {
+			continue
+		}
+		if _, exists := seen[ruleID]; exists {
+			continue
+		}
+		seen[ruleID] = struct{}{}
+		ruleIDs = append(ruleIDs, ruleID)
+	}
+	return ruleIDs
 }
 
 type ctxAwareCloseoutStore struct {
