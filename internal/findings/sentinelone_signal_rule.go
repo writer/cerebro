@@ -501,7 +501,7 @@ func sentinelOneProtectionControlState(attributes map[string]string) string {
 		}
 		return "disabled"
 	}
-	return ""
+	return "unknown"
 }
 
 func sentinelOneProtectionControlTampered(attributes map[string]string) (bool, bool) {
