@@ -515,6 +515,9 @@ func TestUpsertFindingStatementContainsTombstoneClamp(t *testing.T) {
 	if !strings.Contains(upsertFindingStatement, "AND NOT findings.tombstoned") {
 		t.Fatalf("upsertFindingStatement missing 'AND NOT findings.tombstoned' belt-and-suspenders clamp:\n%s", upsertFindingStatement)
 	}
+	if !strings.Contains(upsertFindingStatement, "WHERE findings.tombstoned = FALSE") {
+		t.Fatalf("upsertFindingStatement must skip ON CONFLICT updates once the targeted row is tombstoned so UpsertFinding can retry with a fresh generation:\n%s", upsertFindingStatement)
+	}
 }
 
 // The reopen CASE must restrict the open-emit reopen path to resolved rows only.
@@ -534,6 +537,28 @@ func TestUpsertFindingStatementPreservesSuppressedOnOpenEmit(t *testing.T) {
 	}
 }
 
+// Resolved rows only reopen on a fresh open emit when they were TTL-resolved
+// (status_reason starts with ttl_expired:) or the rule itself is ttl_evidence.
+// Manual resolutions are analyst triage and must remain sticky like suppressed rows.
+func TestUpsertFindingStatementLimitsResolvedReopenToTTL(t *testing.T) {
+	if !strings.Contains(upsertFindingStatement, "ttl_expired:%") {
+		t.Fatalf("upsertFindingStatement missing ttl_expired prefix check in resolved reopen branch:\n%s", upsertFindingStatement)
+	}
+	if !strings.Contains(upsertFindingStatement, "::boolean") {
+		t.Fatalf("upsertFindingStatement missing ttl_evidence lifecycle parameter in resolved reopen branch:\n%s", upsertFindingStatement)
+	}
+	if !strings.Contains(upsertFindingStatement, "WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' THEN findings.status") {
+		t.Fatalf("upsertFindingStatement missing manual-resolved status preservation branch:\n%s", upsertFindingStatement)
+	}
+	if !strings.Contains(upsertFindingStatement, "WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT (BTRIM(findings.status_reason) LIKE 'ttl_expired:%'") ||
+		!strings.Contains(upsertFindingStatement, "THEN findings.status_reason") {
+		t.Fatalf("upsertFindingStatement missing manual-resolved status_reason preservation branch:\n%s", upsertFindingStatement)
+	}
+	if !strings.Contains(upsertFindingStatement, "THEN findings.status_updated_at") {
+		t.Fatalf("upsertFindingStatement missing manual-resolved status_updated_at preservation branch:\n%s", upsertFindingStatement)
+	}
+}
+
 func newUpsertFinding(id, fingerprint, status string, observed time.Time) *ports.FindingRecord {
 	return &ports.FindingRecord{
 		ID:              id,
@@ -547,6 +572,15 @@ func newUpsertFinding(id, fingerprint, status string, observed time.Time) *ports
 		Summary:         "summary",
 		FirstObservedAt: observed,
 		LastObservedAt:  observed,
+	}
+}
+
+func TestFindingRuleAllowsTTLReopenUsesLifecycleMetadata(t *testing.T) {
+	if !findingRuleAllowsTTLReopen("runtime-active-threat-evidence") {
+		t.Fatal("runtime-active-threat-evidence should be recognized as ttl_evidence for reopen-on-emit")
+	}
+	if findingRuleAllowsTTLReopen("rule-test") {
+		t.Fatal("non-ttl_evidence rule-test unexpectedly allowed resolved reopen-on-emit")
 	}
 }
 
@@ -582,15 +616,15 @@ func tombstoneRowSnapshot(t *testing.T, ctx context.Context, store *Store, id st
 	return snap
 }
 
-func TestUpsertFinding_ReopensNonTombstonedResolved(t *testing.T) {
+func TestUpsertFinding_PreservesManualResolvedOnOpenEmit(t *testing.T) {
 	ctx := context.Background()
 	store := tombstoneStoreFromEnv(t)
 	resetTombstoneSchema(t, ctx, store)
 	ensureTombstoneSchema(t, ctx, store)
 
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	fp := fmt.Sprintf("fp-reopen-%d", now.UnixNano())
-	baseID := fmt.Sprintf("finding-reopen-%d", now.UnixNano())
+	fp := fmt.Sprintf("fp-manual-resolved-%d", now.UnixNano())
+	baseID := fmt.Sprintf("finding-manual-resolved-%d", now.UnixNano())
 
 	stored, err := store.UpsertFinding(ctx, newUpsertFinding(baseID, fp, "open", now.Add(-time.Hour)))
 	if err != nil {
@@ -603,21 +637,28 @@ func TestUpsertFinding_ReopensNonTombstonedResolved(t *testing.T) {
 		t.Fatalf("initial id = %q, want %q", stored.ID, baseID)
 	}
 
+	resolvedAt := now.Add(-30 * time.Minute)
 	if _, err := store.db.ExecContext(ctx,
 		`UPDATE findings SET status = 'resolved', status_reason = 'remediated', status_updated_at = $2 WHERE id = $1`,
-		baseID, now.Add(-30*time.Minute)); err != nil {
+		baseID, resolvedAt); err != nil {
 		t.Fatalf("manually resolve: %v", err)
 	}
 
-	reopened, err := store.UpsertFinding(ctx, newUpsertFinding(baseID, fp, "open", now))
+	afterEmit, err := store.UpsertFinding(ctx, newUpsertFinding(baseID, fp, "open", now))
 	if err != nil {
-		t.Fatalf("reopen upsert: %v", err)
+		t.Fatalf("manual-resolved emit upsert: %v", err)
 	}
-	if reopened.Status != "open" {
-		t.Fatalf("post-emit status = %q, want open", reopened.Status)
+	if afterEmit.Status != "resolved" {
+		t.Fatalf("post-emit status = %q, want resolved (manual resolution must stay sticky)", afterEmit.Status)
 	}
-	if reopened.ID != baseID {
-		t.Fatalf("post-emit id = %q, want %q (id must be unchanged on reopen)", reopened.ID, baseID)
+	if afterEmit.StatusReason != "remediated" {
+		t.Fatalf("post-emit status_reason = %q, want remediated", afterEmit.StatusReason)
+	}
+	if !afterEmit.StatusUpdatedAt.Equal(resolvedAt) {
+		t.Fatalf("post-emit status_updated_at = %v, want %v", afterEmit.StatusUpdatedAt, resolvedAt)
+	}
+	if afterEmit.ID != baseID {
+		t.Fatalf("post-emit id = %q, want %q", afterEmit.ID, baseID)
 	}
 
 	var rowCount int
@@ -626,6 +667,85 @@ func TestUpsertFinding_ReopensNonTombstonedResolved(t *testing.T) {
 	}
 	if rowCount != 1 {
 		t.Fatalf("rows for fingerprint = %d, want exactly 1", rowCount)
+	}
+}
+
+func TestUpsertFinding_ReopensTTLResolvedOnOpenEmit(t *testing.T) {
+	ctx := context.Background()
+	store := tombstoneStoreFromEnv(t)
+	resetTombstoneSchema(t, ctx, store)
+	ensureTombstoneSchema(t, ctx, store)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	fp := fmt.Sprintf("fp-ttl-resolved-%d", now.UnixNano())
+	baseID := fmt.Sprintf("finding-ttl-resolved-%d", now.UnixNano())
+
+	if _, err := store.UpsertFinding(ctx, newUpsertFinding(baseID, fp, "open", now.Add(-time.Hour))); err != nil {
+		t.Fatalf("seed finding: %v", err)
+	}
+
+	if _, err := store.db.ExecContext(ctx,
+		`UPDATE findings SET status = 'resolved', status_reason = 'ttl_expired:24h', status_updated_at = $2 WHERE id = $1`,
+		baseID, now.Add(-30*time.Minute)); err != nil {
+		t.Fatalf("ttl resolve: %v", err)
+	}
+
+	reopened, err := store.UpsertFinding(ctx, newUpsertFinding(baseID, fp, "open", now))
+	if err != nil {
+		t.Fatalf("ttl-resolved reopen upsert: %v", err)
+	}
+	if reopened.Status != "open" {
+		t.Fatalf("post-emit status = %q, want open", reopened.Status)
+	}
+	if reopened.StatusReason != "" {
+		t.Fatalf("post-emit status_reason = %q, want empty after reopen", reopened.StatusReason)
+	}
+	if reopened.ID != baseID {
+		t.Fatalf("post-emit id = %q, want %q (id must be unchanged on TTL reopen)", reopened.ID, baseID)
+	}
+
+	var rowCount int
+	if err := store.db.QueryRowContext(ctx, `SELECT count(*) FROM findings WHERE fingerprint = $1`, fp).Scan(&rowCount); err != nil {
+		t.Fatalf("count rows: %v", err)
+	}
+	if rowCount != 1 {
+		t.Fatalf("rows for fingerprint = %d, want exactly 1", rowCount)
+	}
+}
+
+func TestUpsertFinding_ReopensTTLEvidenceRuleResolvedOnOpenEmit(t *testing.T) {
+	ctx := context.Background()
+	store := tombstoneStoreFromEnv(t)
+	resetTombstoneSchema(t, ctx, store)
+	ensureTombstoneSchema(t, ctx, store)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	fp := fmt.Sprintf("fp-ttl-rule-%d", now.UnixNano())
+	baseID := fmt.Sprintf("finding-ttl-rule-%d", now.UnixNano())
+	finding := newUpsertFinding(baseID, fp, "open", now.Add(-time.Hour))
+	finding.RuleID = "runtime-active-threat-evidence"
+
+	if _, err := store.UpsertFinding(ctx, finding); err != nil {
+		t.Fatalf("seed ttl_evidence finding: %v", err)
+	}
+
+	if _, err := store.db.ExecContext(ctx,
+		`UPDATE findings SET status = 'resolved', status_reason = 'manual-close-on-ttl-rule', status_updated_at = $2 WHERE id = $1`,
+		baseID, now.Add(-30*time.Minute)); err != nil {
+		t.Fatalf("resolve ttl_evidence finding: %v", err)
+	}
+
+	reemit := newUpsertFinding(baseID, fp, "open", now)
+	reemit.RuleID = "runtime-active-threat-evidence"
+	reopened, err := store.UpsertFinding(ctx, reemit)
+	if err != nil {
+		t.Fatalf("ttl_evidence rule reopen upsert: %v", err)
+	}
+	if reopened.Status != "open" {
+		t.Fatalf("post-emit status = %q, want open for ttl_evidence rule", reopened.Status)
+	}
+	if reopened.ID != baseID {
+		t.Fatalf("post-emit id = %q, want %q", reopened.ID, baseID)
 	}
 }
 
@@ -1029,6 +1149,129 @@ func TestUpsertFinding_ConcurrentEmitAgainstTombstonedFingerprint(t *testing.T) 
 			t.Fatalf("returned id %q is tombstoned; concurrent emit must yield a fresh row", id)
 		}
 	}
+}
+
+func TestResolveUpsertTarget_TombstoneRace(t *testing.T) {
+	ctx := context.Background()
+	store := tombstoneStoreFromEnv(t)
+	resetTombstoneSchema(t, ctx, store)
+	ensureTombstoneSchema(t, ctx, store)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	fp := fmt.Sprintf("fp-stale-target-%d", now.UnixNano())
+	baseID := fmt.Sprintf("finding-stale-target-%d", now.UnixNano())
+
+	if _, err := store.UpsertFinding(ctx, newUpsertFinding(baseID, fp, "open", now.Add(-time.Hour))); err != nil {
+		t.Fatalf("seed active finding: %v", err)
+	}
+
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin row-lock transaction: %v", err)
+	}
+	committed := false
+	t.Cleanup(func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	})
+
+	var lockedID string
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM findings WHERE id = $1 FOR UPDATE`, baseID).Scan(&lockedID); err != nil {
+		t.Fatalf("lock active finding: %v", err)
+	}
+	if lockedID != baseID {
+		t.Fatalf("locked id = %q, want %q", lockedID, baseID)
+	}
+
+	type upsertResult struct {
+		record *ports.FindingRecord
+		err    error
+	}
+	resultCh := make(chan upsertResult, 1)
+	go func() {
+		record, err := store.UpsertFinding(ctx, newUpsertFinding(baseID, fp, "open", now))
+		resultCh <- upsertResult{record: record, err: err}
+	}()
+
+	waitForBlockedFindingUpsert(t, ctx, store)
+
+	if _, err := tx.ExecContext(ctx, `
+        UPDATE findings
+           SET status = 'resolved',
+               tombstoned = TRUE,
+               tombstoned_at = $2,
+               tombstoned_by = 'tester',
+               tombstoned_reason = 'closeout-race',
+               tombstoned_run_id = 'race-stale-target',
+               prior_status = 'open',
+               tombstone_generation = 0
+         WHERE id = $1`, baseID, now.Add(-30*time.Minute)); err != nil {
+		t.Fatalf("tombstone locked finding: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit tombstone race transaction: %v", err)
+	}
+	committed = true
+
+	var result upsertResult
+	select {
+	case result = <-resultCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("UpsertFinding did not return after tombstone race commit")
+	}
+	if result.err != nil {
+		t.Fatalf("UpsertFinding after tombstone race returned error: %v", result.err)
+	}
+	if result.record == nil {
+		t.Fatal("UpsertFinding after tombstone race returned nil record")
+	}
+	wantID := baseID + "#g1"
+	if result.record.ID != wantID {
+		t.Fatalf("post-race id = %q, want fresh generation %q", result.record.ID, wantID)
+	}
+	if result.record.Tombstoned {
+		t.Fatalf("post-race record tombstoned = true, want fresh active row")
+	}
+
+	var activeCount int
+	if err := store.db.QueryRowContext(ctx, `SELECT count(*) FROM findings WHERE tenant_id = 'writer' AND fingerprint = $1 AND tombstoned = FALSE`, fp).Scan(&activeCount); err != nil {
+		t.Fatalf("count active rows: %v", err)
+	}
+	if activeCount != 1 {
+		t.Fatalf("active rows after tombstone race = %d, want exactly one fresh generation row", activeCount)
+	}
+
+	var baseTombstoned bool
+	if err := store.db.QueryRowContext(ctx, `SELECT tombstoned FROM findings WHERE id = $1`, baseID).Scan(&baseTombstoned); err != nil {
+		t.Fatalf("read base tombstone flag: %v", err)
+	}
+	if !baseTombstoned {
+		t.Fatalf("base row tombstoned = false, want true")
+	}
+}
+
+func waitForBlockedFindingUpsert(t *testing.T, ctx context.Context, store *Store) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		var waiting int
+		err := store.db.QueryRowContext(ctx, `
+SELECT count(*)
+  FROM pg_stat_activity
+ WHERE datname = current_database()
+   AND pid <> pg_backend_pid()
+   AND wait_event_type = 'Lock'
+   AND query LIKE '%INSERT INTO findings%'`).Scan(&waiting)
+		if err == nil && waiting > 0 {
+			return
+		}
+		if err != nil {
+			t.Logf("poll pg_stat_activity for blocked upsert: %v", err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for UpsertFinding to block on the stale active row")
 }
 
 func TestFindingRow_PopulatesTombstoneColumns(t *testing.T) {

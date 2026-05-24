@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -198,7 +199,8 @@ DO UPDATE SET
   status = CASE
     WHEN findings.tombstoned THEN findings.status
     WHEN findings.status = 'suppressed' THEN findings.status
-    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT findings.tombstoned THEN EXCLUDED.status
+    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT findings.tombstoned AND (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR $36::boolean) THEN EXCLUDED.status
+    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' THEN findings.status
     ELSE EXCLUDED.status
   END,
   summary = EXCLUDED.summary,
@@ -235,16 +237,19 @@ DO UPDATE SET
   status_reason = CASE
     WHEN findings.tombstoned THEN findings.status_reason
     WHEN findings.status = 'suppressed' THEN findings.status_reason
+    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR $36::boolean) THEN findings.status_reason
     ELSE EXCLUDED.status_reason
   END,
   status_updated_at = CASE
     WHEN findings.tombstoned THEN findings.status_updated_at
     WHEN findings.status = 'suppressed' THEN findings.status_updated_at
+    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR $36::boolean) THEN findings.status_updated_at
     ELSE EXCLUDED.status_updated_at
   END,
   first_observed_at = LEAST(findings.first_observed_at, EXCLUDED.first_observed_at),
   last_observed_at = GREATEST(findings.last_observed_at, EXCLUDED.last_observed_at),
   updated_at = NOW()
+WHERE findings.tombstoned = FALSE
 RETURNING ` + findingSelectColumns
 
 // UpsertFinding persists one normalized finding in the current-state store.
@@ -341,6 +346,7 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 		statusUpdatedAt = finding.StatusUpdatedAt.UTC()
 	}
 	firstObservedAt, lastObservedAt := normalizeFindingObservationWindow(finding.FirstObservedAt, finding.LastObservedAt, time.Now().UTC())
+	reopenResolvedOnOpenEmit := findingRuleAllowsTTLReopen(ruleID)
 
 	const maxAttempts = 4
 	var lastErr error
@@ -386,11 +392,15 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 			firstObservedAt,
 			lastObservedAt,
 			generation,
+			reopenResolvedOnOpenEmit,
 		), &stored)
 		if err == nil {
 			return stored.record()
 		}
 		lastErr = err
+		if errors.Is(err, sql.ErrNoRows) && attempt < maxAttempts-1 {
+			continue
+		}
 		if isPartialUniqueIndexConflict(err) && attempt < maxAttempts-1 {
 			continue
 		}
@@ -450,6 +460,31 @@ func isPartialUniqueIndexConflict(err error) bool {
 	}
 	return strings.Contains(pgErr.ConstraintName, "findings_active_fingerprint_uidx") ||
 		strings.Contains(pgErr.Message, "findings_active_fingerprint_uidx")
+}
+
+var findingTTLEvidenceRuleIDs struct {
+	once sync.Once
+	ids  map[string]struct{}
+}
+
+func findingRuleAllowsTTLReopen(ruleID string) bool {
+	id := strings.TrimSpace(ruleID)
+	if id == "" {
+		return false
+	}
+	findingTTLEvidenceRuleIDs.once.Do(func() {
+		ids := map[string]struct{}{}
+		for _, metadata := range findingrisk.BuiltinRuleMetadata() {
+			if strings.TrimSpace(string(metadata.Lifecycle.Kind)) == string(findingrisk.LifecycleTTLEvidence) {
+				if metadataID := strings.TrimSpace(metadata.ID); metadataID != "" {
+					ids[metadataID] = struct{}{}
+				}
+			}
+		}
+		findingTTLEvidenceRuleIDs.ids = ids
+	})
+	_, ok := findingTTLEvidenceRuleIDs.ids[id]
+	return ok
 }
 
 func normalizeFindingObservationWindow(firstObservedAt time.Time, lastObservedAt time.Time, now time.Time) (time.Time, time.Time) {
