@@ -267,19 +267,19 @@ func policyRulePullFromEvents(events []*primitives.Event, state policyRuleCursor
 		return sourcecdk.Pull{}, nil
 	}
 	last := events[len(events)-1]
+	checkpointOpaque, err := encodePolicyRuleCursor(state)
+	if err != nil {
+		return sourcecdk.Pull{}, err
+	}
 	var nextOpaque string
 	if policyRuleCursorHasMore(state) {
-		encoded, err := encodePolicyRuleCursor(state)
-		if err != nil {
-			return sourcecdk.Pull{}, err
-		}
-		nextOpaque = encoded
+		nextOpaque = checkpointOpaque
 	}
 	pull := sourcecdk.Pull{
 		Events: events,
 		Checkpoint: &cerebrov1.SourceCheckpoint{
 			Watermark:    last.OccurredAt,
-			CursorOpaque: checkpointCursor(nextOpaque, last.GetId(), last.GetOccurredAt().AsTime()),
+			CursorOpaque: checkpointOpaque,
 		},
 	}
 	if nextOpaque != "" {

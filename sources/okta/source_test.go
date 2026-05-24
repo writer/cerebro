@@ -762,6 +762,75 @@ func TestCheckDiscoverAndReadLiveOktaPolicyRulePreview(t *testing.T) {
 	}
 }
 
+func TestPolicyRulePullFromEvents_TerminalPageCursorIsJSON(t *testing.T) {
+	requestCount := 0
+	handler := newOktaPolicyRuleAPIHandler(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		handler.ServeHTTP(w, r)
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"domain":   "writer.okta.com",
+		"family":   "policy_rule",
+		"per_page": "1",
+		"token":    "test-token",
+	})
+
+	var cursor *cerebrov1.SourceCursor
+	var terminal sourcecdk.Pull
+	for page := 0; page < 10; page++ {
+		pull, err := source.Read(context.Background(), cfg, cursor)
+		if err != nil {
+			t.Fatalf("Read(policy_rule page %d) error = %v", page+1, err)
+		}
+		if len(pull.Events) == 0 {
+			t.Fatalf("Read(policy_rule page %d) emitted no events before terminal cursor", page+1)
+		}
+		if pull.NextCursor == nil {
+			terminal = pull
+			break
+		}
+		cursor = pull.NextCursor
+	}
+	if terminal.Checkpoint == nil {
+		t.Fatalf("terminal Checkpoint = nil; last cursor = %#v", cursor)
+	}
+	terminalOpaque := terminal.Checkpoint.GetCursorOpaque()
+	if !json.Valid([]byte(terminalOpaque)) {
+		t.Fatalf("terminal checkpoint cursor = %q, want JSON policyRuleCursor", terminalOpaque)
+	}
+	state, err := parsePolicyRuleCursor(&cerebrov1.SourceCursor{Opaque: terminalOpaque})
+	if err != nil {
+		t.Fatalf("parsePolicyRuleCursor(terminal checkpoint) error = %v", err)
+	}
+	if state.PolicyTypeIndex != len(policyRulePolicyTypes) || state.Policy != nil || state.PolicyAfter != "" || state.RuleAfter != "" {
+		t.Fatalf("terminal policy-rule cursor = %#v, want exhausted cursor", state)
+	}
+
+	requestsBeforeResume := requestCount
+	resume, err := source.Read(context.Background(), cfg, &cerebrov1.SourceCursor{Opaque: terminalOpaque})
+	if err != nil {
+		t.Fatalf("Read(policy_rule resume from terminal checkpoint) error = %v", err)
+	}
+	if requestCount != requestsBeforeResume {
+		t.Fatalf("resume from terminal checkpoint made %d HTTP requests, want 0", requestCount-requestsBeforeResume)
+	}
+	if len(resume.Events) != 0 {
+		t.Fatalf("len(resume.Events) = %d, want 0 after terminal checkpoint", len(resume.Events))
+	}
+	if resume.NextCursor != nil {
+		t.Fatalf("resume.NextCursor = %#v, want nil", resume.NextCursor)
+	}
+}
+
 func TestPolicyRule_DeletedPermanentlySynthesizedOrCoverageDropped(t *testing.T) {
 	server := httptest.NewServer(newOktaPolicyRuleAPIHandler(t))
 	defer server.Close()
