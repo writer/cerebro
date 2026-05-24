@@ -406,6 +406,10 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 		}
 		for _, candidate := range batch {
 			appliedCandidate, applyErr := s.tombstoneOneFinding(ctx, candidate, runID, actor, reason)
+			if appliedCandidate {
+				applied++
+				perRuleApplied[strings.TrimSpace(candidate.RuleID)]++
+			}
 			if applyErr != nil {
 				result.BatchErrors = append(result.BatchErrors, applyErr)
 				result.PerRule = sortPerRuleApplied(perRuleApplied)
@@ -413,11 +417,6 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 				result.AppliedCount = applied
 				return result, applyErr
 			}
-			if !appliedCandidate {
-				continue
-			}
-			applied++
-			perRuleApplied[strings.TrimSpace(candidate.RuleID)]++
 		}
 	}
 	result.AppliedCount = applied
@@ -461,7 +460,7 @@ func (s *Service) tombstoneOneFinding(ctx context.Context, finding *ports.Findin
 			},
 		})
 		if err != nil {
-			return false, fmt.Errorf("tombstone finding %q: %w", findingID, err)
+			return atomicResult != nil && atomicResult.Applied, fmt.Errorf("tombstone finding %q: %w", findingID, err)
 		}
 		return atomicResult != nil && atomicResult.Applied, nil
 	}
@@ -508,7 +507,7 @@ func (s *Service) tombstoneOneFinding(ctx context.Context, finding *ports.Findin
 		return false, fmt.Errorf("audit finding %q tombstone: %w", findingID, err)
 	}
 	if err := s.emitFindingTombstonedWorkflow(ctx, updated, priorStatus, reason, actor, runID, now); err != nil {
-		return false, err
+		return true, err
 	}
 	return true, nil
 }

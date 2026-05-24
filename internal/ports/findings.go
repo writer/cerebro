@@ -229,8 +229,9 @@ type FindingTombstoneEventStore interface {
 }
 
 // FindingTombstoneWorkflowEmitter emits the workflow tombstone event for an
-// already-updated finding row. Transactional stores invoke this before commit
-// so emit failures roll back the tombstone write and audit insert together.
+// already-updated and durably committed finding row. Transactional stores invoke
+// this after commit so append-log consumers never observe a tombstone event for
+// a SQL transaction that later rolls back.
 type FindingTombstoneWorkflowEmitter func(ctx context.Context, finding *FindingRecord, priorStatus string, tombstonedAt time.Time) error
 
 // FindingTombstoneAtomicRequest carries the full per-candidate closeout mutation
@@ -260,8 +261,9 @@ type FindingTombstoneAtomicResult struct {
 }
 
 // FindingTombstoneAtomicStore performs a per-candidate closeout mutation in one
-// transaction: current row re-read/lock, tombstone status update, audit insert,
-// and workflow event emission.
+// transaction: current row re-read/lock, tombstone status update, and audit
+// insert. The external workflow event is emitted only after that transaction
+// commits.
 type FindingTombstoneAtomicStore interface {
 	TombstoneFindingAtomic(ctx context.Context, request FindingTombstoneAtomicRequest) (*FindingTombstoneAtomicResult, error)
 }

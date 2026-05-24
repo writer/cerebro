@@ -597,6 +597,137 @@ func TestCloseoutRunSingleton_RejectsConcurrent(t *testing.T) {
 	}
 }
 
+func TestTombstoneFinding_CommitsBeforeWorkflowEmit(t *testing.T) {
+	ctx := context.Background()
+	store := tombstoneStoreFromEnv(t)
+	ensureTombstoneSchema(t, ctx, store)
+
+	nonce := time.Now().UTC().UnixNano()
+	tenantID := fmt.Sprintf("example-commit-before-emit-%d", nonce)
+	runtimeID := fmt.Sprintf("runtime-commit-before-emit-%d", nonce)
+	ruleID := "rule-critical-resource-deleted"
+	findingID := fmt.Sprintf("finding-commit-before-emit-%d", nonce)
+	fingerprint := fmt.Sprintf("fp-commit-before-emit-%d", nonce)
+	runID := fmt.Sprintf("run-commit-before-emit-%d", nonce)
+	anchorURI := fmt.Sprintf("urn:cerebro:%s:github_repo:writer/cerebro-%d", tenantID, nonce)
+	cleanup := func() {
+		bg := context.Background()
+		_, _ = store.db.ExecContext(bg, `DELETE FROM finding_tombstone_events WHERE run_id = $1`, runID)
+		_, _ = store.db.ExecContext(bg, `DELETE FROM findings WHERE tenant_id = $1`, tenantID)
+	}
+	cleanup()
+	t.Cleanup(cleanup)
+
+	observedAt := time.Now().UTC().Add(-48 * time.Hour).Truncate(time.Microsecond)
+	if _, err := store.UpsertFinding(ctx, &ports.FindingRecord{
+		ID:              findingID,
+		Fingerprint:     fingerprint,
+		TenantID:        tenantID,
+		RuntimeID:       runtimeID,
+		RuleID:          ruleID,
+		Title:           "Commit-before-emit regression",
+		Severity:        "MEDIUM",
+		Status:          "open",
+		Summary:         "finding used for tombstone commit-before-emit regression",
+		ResourceURNs:    []string{anchorURI},
+		EventIDs:        []string{fmt.Sprintf("event-%d", nonce)},
+		FirstObservedAt: observedAt.Add(-24 * time.Hour),
+		LastObservedAt:  observedAt,
+	}); err != nil {
+		t.Fatalf("seed finding %q: %v", findingID, err)
+	}
+
+	installDeferredTombstoneCommitFailure(t, ctx, store, runID)
+
+	emitted := 0
+	result, err := store.TombstoneFindingAtomic(ctx, ports.FindingTombstoneAtomicRequest{
+		FindingID:      findingID,
+		ExpectedStatus: "open",
+		Status:         "resolved",
+		Reason:         "bulk closeout: commit-before-emit regression",
+		Actor:          "operator@writer.com",
+		RunID:          runID,
+		AnchorURI:      anchorURI,
+		EventIDs:       []string{fmt.Sprintf("event-%d", nonce)},
+		UpdatedAt:      time.Now().UTC(),
+		EmitWorkflowEvent: func(context.Context, *ports.FindingRecord, string, time.Time) error {
+			emitted++
+			return nil
+		},
+	})
+	if err == nil {
+		t.Fatalf("TombstoneFindingAtomic returned nil error and result=%+v, want injected commit failure", result)
+	}
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "P0001" {
+		t.Fatalf("TombstoneFindingAtomic error = %v, want injected commit pg error P0001", err)
+	}
+	if emitted != 0 {
+		t.Fatalf("workflow tombstone events emitted before failed commit = %d, want 0", emitted)
+	}
+
+	var (
+		status          string
+		tombstoned      bool
+		tombstonedRunID string
+	)
+	if err := store.db.QueryRowContext(ctx, `
+SELECT status, tombstoned, tombstoned_run_id
+FROM findings
+WHERE id = $1`, findingID).Scan(&status, &tombstoned, &tombstonedRunID); err != nil {
+		t.Fatalf("read finding after failed commit: %v", err)
+	}
+	if status != "open" {
+		t.Fatalf("status after failed commit = %q, want open", status)
+	}
+	if tombstoned {
+		t.Fatalf("tombstoned after failed commit = true, want false")
+	}
+	if tombstonedRunID != "" {
+		t.Fatalf("tombstoned_run_id after failed commit = %q, want empty", tombstonedRunID)
+	}
+	var auditRows int
+	if err := store.db.QueryRowContext(ctx, `SELECT count(*) FROM finding_tombstone_events WHERE run_id = $1`, runID).Scan(&auditRows); err != nil {
+		t.Fatalf("count audit rows after failed commit: %v", err)
+	}
+	if auditRows != 0 {
+		t.Fatalf("audit rows after failed commit = %d, want 0", auditRows)
+	}
+}
+
+func installDeferredTombstoneCommitFailure(t *testing.T, ctx context.Context, store *Store, runID string) {
+	t.Helper()
+	nonce := time.Now().UTC().UnixNano()
+	functionName := fmt.Sprintf("test_tombstone_commit_fail_fn_%d", nonce)
+	triggerName := fmt.Sprintf("test_tombstone_commit_fail_trg_%d", nonce)
+	runLiteral := strings.ReplaceAll(runID, "'", "''")
+
+	if _, err := store.db.ExecContext(ctx, fmt.Sprintf(`
+CREATE FUNCTION %s() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'injected tombstone commit failure for run_id %s' USING ERRCODE = 'P0001';
+END;
+$$`, functionName, runLiteral)); err != nil {
+		t.Fatalf("create deferred commit failure function: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = store.db.ExecContext(context.Background(), fmt.Sprintf(`DROP FUNCTION IF EXISTS %s()`, functionName))
+	})
+
+	if _, err := store.db.ExecContext(ctx, fmt.Sprintf(`
+CREATE CONSTRAINT TRIGGER %s
+AFTER INSERT ON finding_tombstone_events
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW
+WHEN (NEW.run_id = '%s')
+EXECUTE FUNCTION %s()`, triggerName, runLiteral, functionName)); err != nil {
+		t.Fatalf("create deferred commit failure trigger: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = store.db.ExecContext(context.Background(), fmt.Sprintf(`DROP TRIGGER IF EXISTS %s ON finding_tombstone_events`, triggerName))
+	})
+}
+
 func TestUpdateCloseoutRunSummary_PersistsS3KeyOnFailure(t *testing.T) {
 	ctx := context.Background()
 	store := tombstoneStoreFromEnv(t)

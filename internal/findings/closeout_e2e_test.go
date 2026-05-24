@@ -469,28 +469,8 @@ func TestTombstoneOneFinding_AtomicRollback(t *testing.T) {
 			name: "audit_insert_failure",
 			configure: func(t *testing.T, ctx context.Context, db *sql.DB, runID string, _ *recordingAppendLog) any {
 				t.Helper()
-				constraintName := fmt.Sprintf("finding_tombstone_events_fail_%d", time.Now().UTC().UnixNano())
-				if _, err := db.ExecContext(ctx, fmt.Sprintf(
-					`ALTER TABLE finding_tombstone_events ADD CONSTRAINT %s CHECK (run_id <> '%s') NOT VALID`,
-					constraintName,
-					strings.ReplaceAll(runID, "'", "''"),
-				)); err != nil {
-					t.Fatalf("install audit failure constraint: %v", err)
-				}
-				t.Cleanup(func() {
-					_, _ = db.ExecContext(context.Background(), fmt.Sprintf(
-						`ALTER TABLE finding_tombstone_events DROP CONSTRAINT IF EXISTS %s`,
-						constraintName,
-					))
-				})
+				installCloseoutAuditFailureConstraint(t, ctx, db, runID)
 				return nil
-			},
-		},
-		{
-			name: "workflow_emit_failure",
-			configure: func(t *testing.T, _ context.Context, _ *sql.DB, _ string, _ *recordingAppendLog) any {
-				t.Helper()
-				return &failingAppendLog{err: errors.New("inject workflow emit failure")}
 			},
 		},
 	} {
@@ -594,9 +574,10 @@ func TestTombstoneOneFinding_RetryAfterAtomicRollback(t *testing.T) {
 	cleanupCloseoutAtomicRows(t, rawDB, tenantID, failingRunID, retryRunID)
 	seedCloseoutAtomicFinding(t, ctx, store, tenantID, runtimeID, ruleID, findingID, nonce)
 
-	failingService := closeoutAtomicService(store, &failingAppendLog{err: errors.New("inject workflow emit failure")}, tenantID, runtimeID)
+	installCloseoutAuditFailureConstraint(t, ctx, rawDB, failingRunID)
+	failingService := closeoutAtomicService(store, &recordingAppendLog{}, tenantID, runtimeID)
 	if result, err := failingService.TombstoneFindingsBulk(ctx, closeoutAtomicRequest(tenantID, ruleID, failingRunID)); err == nil {
-		t.Fatalf("expected injected workflow emit error, got nil result=%+v", result)
+		t.Fatalf("expected injected audit insert error, got nil result=%+v", result)
 	}
 	afterFailure := readCloseoutAtomicSnapshot(t, ctx, rawDB, findingID)
 	if afterFailure.Tombstoned {
@@ -612,6 +593,58 @@ func TestTombstoneOneFinding_RetryAfterAtomicRollback(t *testing.T) {
 	}
 	if retry.ProposedCount < 1 {
 		t.Fatalf("retry ProposedCount = %d, want candidate returned after rollback", retry.ProposedCount)
+	}
+}
+
+func TestTombstoneOneFinding_WorkflowEmitFailureAfterCommit(t *testing.T) {
+	ctx := context.Background()
+	store, rawDB, dsnCleanup := closeoutAtomicPostgresStore(t)
+	defer dsnCleanup()
+
+	nonce := time.Now().UTC().UnixNano()
+	tenantID := fmt.Sprintf("tenant-emit-after-commit-%d", nonce)
+	runtimeID := fmt.Sprintf("runtime-emit-after-commit-%d", nonce)
+	ruleID := "rule-critical-resource-deleted"
+	findingID := fmt.Sprintf("finding-emit-after-commit-%d", nonce)
+	runID := fmt.Sprintf("run-emit-after-commit-%d", nonce)
+	cleanupCloseoutAtomicRows(t, rawDB, tenantID, runID)
+	seedCloseoutAtomicFinding(t, ctx, store, tenantID, runtimeID, ruleID, findingID, nonce)
+
+	service := closeoutAtomicService(store, &failingAppendLog{err: errors.New("inject workflow emit failure")}, tenantID, runtimeID)
+	result, err := service.TombstoneFindingsBulk(ctx, closeoutAtomicRequest(tenantID, ruleID, runID))
+	if err == nil {
+		t.Fatalf("expected workflow emit failure after commit, got nil result=%+v", result)
+	}
+	if result == nil {
+		t.Fatalf("result is nil, want committed candidate count")
+	}
+	if result.AppliedCount != 1 {
+		t.Fatalf("AppliedCount after post-commit emit failure = %d, want 1 committed tombstone", result.AppliedCount)
+	}
+	after := readCloseoutAtomicSnapshot(t, ctx, rawDB, findingID)
+	if !after.Tombstoned {
+		t.Fatalf("finding tombstoned after post-commit workflow failure = false, want true")
+	}
+	if after.Status != "resolved" {
+		t.Fatalf("status after post-commit workflow failure = %q, want resolved", after.Status)
+	}
+	if after.TombstonedRunID != runID {
+		t.Fatalf("tombstoned_run_id after post-commit workflow failure = %q, want %q", after.TombstonedRunID, runID)
+	}
+	if count := countCloseoutAtomicAuditRows(t, ctx, rawDB, runID); count != 1 {
+		t.Fatalf("audit rows after post-commit workflow failure = %d, want 1", count)
+	}
+
+	var runStatus string
+	var appliedCount int
+	if err := rawDB.QueryRowContext(ctx, `SELECT status, applied_count FROM closeout_run WHERE run_id = $1`, runID).Scan(&runStatus, &appliedCount); err != nil {
+		t.Fatalf("read closeout_run after post-commit workflow failure: %v", err)
+	}
+	if runStatus != "failed" {
+		t.Fatalf("closeout_run.status after post-commit workflow failure = %q, want failed", runStatus)
+	}
+	if appliedCount != 1 {
+		t.Fatalf("closeout_run.applied_count after post-commit workflow failure = %d, want 1", appliedCount)
 	}
 }
 
@@ -847,6 +880,24 @@ func countCloseoutAtomicAuditRows(t *testing.T, ctx context.Context, db *sql.DB,
 		t.Fatalf("count tombstone audit rows for %q: %v", runID, err)
 	}
 	return count
+}
+
+func installCloseoutAuditFailureConstraint(t *testing.T, ctx context.Context, db *sql.DB, runID string) {
+	t.Helper()
+	constraintName := fmt.Sprintf("finding_tombstone_events_fail_%d", time.Now().UTC().UnixNano())
+	if _, err := db.ExecContext(ctx, fmt.Sprintf(
+		`ALTER TABLE finding_tombstone_events ADD CONSTRAINT %s CHECK (run_id <> '%s') NOT VALID`,
+		constraintName,
+		strings.ReplaceAll(runID, "'", "''"),
+	)); err != nil {
+		t.Fatalf("install audit failure constraint: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(context.Background(), fmt.Sprintf(
+			`ALTER TABLE finding_tombstone_events DROP CONSTRAINT IF EXISTS %s`,
+			constraintName,
+		))
+	})
 }
 
 func assertAtomicRollback(t *testing.T, ctx context.Context, db *sql.DB, findingID, runID string, before closeoutAtomicSnapshot, result *findings.CloseoutResult, err error) {

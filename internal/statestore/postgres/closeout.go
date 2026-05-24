@@ -212,10 +212,10 @@ func (s *Store) InsertFindingTombstoneEvent(ctx context.Context, event ports.Fin
 }
 
 // TombstoneFindingAtomic tombstones one finding row, appends its audit record,
-// and emits the workflow tombstone event under one Postgres transaction. The
-// live finding row is re-read under SELECT FOR UPDATE so a status change that
-// lands after candidate listing is honored instead of recording a stale
-// prior_status snapshot.
+// commits that Postgres transaction, and only then emits the external workflow
+// tombstone event. The live finding row is re-read under SELECT FOR UPDATE so a
+// status change that lands after candidate listing is honored instead of
+// recording a stale prior_status snapshot.
 func (s *Store) TombstoneFindingAtomic(ctx context.Context, request ports.FindingTombstoneAtomicRequest) (_ *ports.FindingTombstoneAtomicResult, err error) {
 	if s == nil || s.db == nil {
 		return nil, errors.New("postgres is not configured")
@@ -333,21 +333,22 @@ FOR UPDATE`,
 	}); err != nil {
 		return nil, fmt.Errorf("audit finding %q tombstone: %w", findingID, err)
 	}
-	if request.EmitWorkflowEvent != nil {
-		if err := request.EmitWorkflowEvent(ctx, updated, priorStatus, tombstonedAt); err != nil {
-			return nil, fmt.Errorf("emit finding %q tombstone workflow: %w", findingID, err)
-		}
-	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit finding %q tombstone transaction: %w", findingID, err)
 	}
 	committed = true
-	return &ports.FindingTombstoneAtomicResult{
+	result := &ports.FindingTombstoneAtomicResult{
 		Finding:      updated,
 		Applied:      true,
 		PriorStatus:  priorStatus,
 		TombstonedAt: tombstonedAt,
-	}, nil
+	}
+	if request.EmitWorkflowEvent != nil {
+		if err := request.EmitWorkflowEvent(ctx, updated, priorStatus, tombstonedAt); err != nil {
+			return result, fmt.Errorf("emit finding %q tombstone workflow after commit: %w", findingID, err)
+		}
+	}
+	return result, nil
 }
 
 type closeoutExecer interface {
