@@ -83,6 +83,20 @@ func newEventRule(config eventRuleConfig) Rule {
 	return &eventRule{config: config}
 }
 
+func newRetiredEventRule(definition RuleDefinition) Rule {
+	retired := definition
+	retired.Lifecycle = Lifecycle{Kind: LifecycleRetired, Anchor: AnchorNone}
+	return newEventRule(eventRuleConfig{
+		definition:         retired,
+		sourceID:           retired.SourceID,
+		retireOpenFindings: true,
+		match:              func(*cerebrov1.EventEnvelope) bool { return false },
+		build: func(context.Context, *cerebrov1.SourceRuntime, *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
+			return nil, nil
+		},
+	})
+}
+
 func (d RuleDefinition) Validate() error {
 	if err := d.validateBaseFields(); err != nil {
 		return err

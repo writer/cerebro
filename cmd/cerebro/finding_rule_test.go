@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -121,6 +122,8 @@ func TestFindingRuleScaffold_RendersLifecycle_DurableState(t *testing.T) {
 		"github-public-repo",
 		"source_id=github",
 		"event_kinds=github.audit",
+		"required_attributes=repository",
+		"fingerprint_fields=repository",
 		"lifecycle_kind=durable_state",
 		"lifecycle_anchor=graph_anchored",
 	})
@@ -172,6 +175,88 @@ func TestFindingRuleScaffold_RendersLifecycle_Retired(t *testing.T) {
 		t.Fatalf("rendered output missing retired Lifecycle literal:\n%s", rendered)
 	}
 	requireLifecycleField(t, rendered, "LifecycleRetired", "AnchorNone", false)
+}
+
+func TestRenderFindingRuleGo_RetiredEmitsRetiredEventRule(t *testing.T) {
+	rendered := renderScaffoldedRule(t, []string{
+		"github-critical-resource-deleted",
+		"source_id=github",
+		"event_kinds=github.audit",
+		"lifecycle_kind=retired",
+		"lifecycle_anchor=none",
+	})
+	if !strings.Contains(rendered, "return newRetiredEventRule(githubCriticalResourceDeletedDefinition)") {
+		t.Fatalf("retired scaffold should use newRetiredEventRule constructor:\n%s", rendered)
+	}
+	if strings.Contains(rendered, "return newEventRule(eventRuleConfig{") {
+		t.Fatalf("retired scaffold should not render a plain newEventRule constructor:\n%s", rendered)
+	}
+	requireLifecycleField(t, rendered, "LifecycleRetired", "AnchorNone", false)
+}
+
+func TestParseFindingRuleNewArgs_DurableStateRejectsDefaultFingerprint(t *testing.T) {
+	if _, err := parseFindingRuleNewArgs([]string{
+		"github-public-repo",
+		"source_id=github",
+		"event_kinds=github.audit",
+		"lifecycle_kind=durable_state",
+	}); !errors.Is(err, errScaffoldDurableStateDefaultFingerprint) {
+		t.Fatalf("parseFindingRuleNewArgs() error = %v, want durable-state default fingerprint error", err)
+	}
+
+	ttlRequest, err := parseFindingRuleNewArgs([]string{
+		"runtime-active-threat-evidence",
+		"source_id=sentinelone",
+		"event_kinds=sentinelone.threat",
+		"lifecycle_kind=ttl_evidence",
+		"lifecycle_ttl=24h",
+	})
+	if err != nil {
+		t.Fatalf("ttl_evidence parseFindingRuleNewArgs() error = %v, want default event_id accepted", err)
+	}
+	if got := strings.Join(ttlRequest.Definition.FingerprintFields, ","); got != "event_id" {
+		t.Fatalf("ttl_evidence FingerprintFields = %q, want event_id", got)
+	}
+
+	if _, err := parseFindingRuleNewArgs([]string{
+		"github-public-repo",
+		"source_id=github",
+		"event_kinds=github.audit",
+		"required_attributes=repository",
+		"fingerprint_fields=repository",
+		"lifecycle_kind=durable_state",
+	}); err != nil {
+		t.Fatalf("durable_state with stable fingerprint parseFindingRuleNewArgs() error = %v", err)
+	}
+}
+
+func TestRenderFindingRuleGo_BuilderUsesRequiredAttributeValueHelper(t *testing.T) {
+	rendered := renderScaffoldedRule(t, []string{
+		"github-runner-scope",
+		"source_id=github",
+		"event_kinds=github.audit",
+		"required_attributes=scope",
+		"fingerprint_fields=tenant_id,source_id,scope",
+	})
+	for _, want := range []string{
+		`requiredAttributeValue(event, "event_id")`,
+		`requiredAttributeValue(event, ports.EventAttributeSourceRuntimeID)`,
+		`requiredAttributeValue(event, key)`,
+		`requiredAttributeValue(event, field)`,
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("generated builder missing %q:\n%s", want, rendered)
+		}
+	}
+	for _, forbidden := range []string{
+		`attributes[key]`,
+		`attributes[field]`,
+		`event.GetAttributes()[ports.EventAttributeSourceRuntimeID]`,
+	} {
+		if strings.Contains(rendered, forbidden) {
+			t.Fatalf("generated builder used raw attribute lookup %q:\n%s", forbidden, rendered)
+		}
+	}
 }
 
 func renderScaffoldedRule(t *testing.T, args []string) string {

@@ -87,6 +87,35 @@ func TestEventRuleScaffoldMatchesRuntimeEventFamily(t *testing.T) {
 	}
 }
 
+func TestNewRetiredEventRuleRetiresOpenFindings(t *testing.T) {
+	rule := newRetiredEventRule(RuleDefinition{
+		ID:         "github-retired-rule",
+		Name:       "GitHub Retired Rule",
+		SourceID:   "github",
+		EventKinds: []string{"github.audit"},
+		OutputKind: "finding.github_retired_rule",
+		Lifecycle:  Lifecycle{Kind: LifecycleAuditEvidence, Anchor: AnchorNone},
+	})
+	retirementRule, ok := rule.(openFindingRetirementRule)
+	if !ok || !retirementRule.RetiresOpenFindings() {
+		t.Fatal("RetiresOpenFindings() = false, want true")
+	}
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("newRetiredEventRule() does not expose RuleMetadata")
+	}
+	if got := metadataRule.RuleMetadata().Lifecycle; got.Kind != LifecycleRetired || got.Anchor != AnchorNone {
+		t.Fatalf("RuleMetadata().Lifecycle = %+v, want retired/none", got)
+	}
+	records, err := rule.Evaluate(context.Background(), &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", Config: map[string]string{"family": "audit"}}, &cerebrov1.EventEnvelope{Id: "event-1", Kind: "github.audit"})
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("len(Evaluate()) = %d, want retired rule to emit no findings", len(records))
+	}
+}
+
 func TestRuleDefinitionBuildsSpecAndAttributes(t *testing.T) {
 	definition := RuleDefinition{
 		ID:                 "github-rule",
