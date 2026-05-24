@@ -1,11 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -194,6 +196,68 @@ func TestRenderFindingRuleGo_RetiredEmitsRetiredEventRule(t *testing.T) {
 	requireLifecycleField(t, rendered, "LifecycleRetired", "AnchorNone", false)
 }
 
+func TestScaffoldFindingRule_RetiredGeneratedTestPasses(t *testing.T) {
+	repoRoot := testRepoRoot(t)
+	outputDir := shadowRepoForFindingRuleScaffold(t, repoRoot)
+	request, err := parseFindingRuleNewArgs([]string{
+		"retired-scaffold-contract",
+		"source_id=github",
+		"event_kinds=github.audit",
+		"name=Retired Scaffold Contract",
+		"required_attributes=action,repository",
+		"lifecycle_kind=retired",
+		"lifecycle_anchor=none",
+		"output_dir=" + outputDir,
+	})
+	if err != nil {
+		t.Fatalf("parseFindingRuleNewArgs() error = %v", err)
+	}
+	if _, err := scaffoldFindingRule(request); err != nil {
+		t.Fatalf("scaffoldFindingRule() error = %v", err)
+	}
+
+	testPath := filepath.Join(outputDir, "internal", "findings", "retired_scaffold_contract_rule_test.go")
+	testPayload, err := os.ReadFile(testPath)
+	if err != nil {
+		t.Fatalf("read generated test: %v", err)
+	}
+	if !strings.Contains(string(testPayload), "assertRetiredEventRuleFixture") {
+		t.Fatalf("generated retired test does not use retired fixture helper:\n%s", testPayload)
+	}
+	if strings.Contains(string(testPayload), "assertRuleFixture") {
+		t.Fatalf("generated retired test still uses positive fixture helper:\n%s", testPayload)
+	}
+
+	fixturePath := filepath.Join(outputDir, "internal", "findings", "testdata", "rules", "retired-scaffold-contract.json")
+	fixturePayload, err := os.ReadFile(fixturePath)
+	if err != nil {
+		t.Fatalf("read generated fixture: %v", err)
+	}
+	var fixture struct {
+		ExpectedFindings []any `json:"expected_findings"`
+	}
+	if err := json.Unmarshal(fixturePayload, &fixture); err != nil {
+		t.Fatalf("unmarshal generated fixture: %v\n%s", err, fixturePayload)
+	}
+	if fixture.ExpectedFindings == nil {
+		t.Fatalf("generated retired fixture missing explicit expected_findings array:\n%s", fixturePayload)
+	}
+	if len(fixture.ExpectedFindings) != 0 {
+		t.Fatalf("generated retired fixture expected_findings length = %d, want 0:\n%s", len(fixture.ExpectedFindings), fixturePayload)
+	}
+
+	cmd := exec.Command("go", "test", "./internal/findings", "-run", "^TestRetiredScaffoldContractFixture$", "-count=1", "-v")
+	cmd.Dir = outputDir
+	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=readonly")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("generated retired test failed: %v\n%s", err, output)
+	}
+	if !strings.Contains(string(output), "--- PASS: TestRetiredScaffoldContractFixture") {
+		t.Fatalf("generated retired test output did not include the expected passing test:\n%s", output)
+	}
+}
+
 func TestParseFindingRuleNewArgs_DurableStateRejectsDefaultFingerprint(t *testing.T) {
 	if _, err := parseFindingRuleNewArgs([]string{
 		"github-public-repo",
@@ -266,6 +330,103 @@ func renderScaffoldedRule(t *testing.T, args []string) string {
 		t.Fatalf("parseFindingRuleNewArgs() error = %v", err)
 	}
 	return renderFindingRuleGo(newFindingRuleTemplateData(request))
+}
+
+func testRepoRoot(t *testing.T) string {
+	t.Helper()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("os.Getwd() error = %v", err)
+	}
+	root, err := filepath.Abs(filepath.Join(cwd, "..", ".."))
+	if err != nil {
+		t.Fatalf("resolve repo root: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
+		t.Fatalf("repo root %q missing go.mod: %v", root, err)
+	}
+	return root
+}
+
+func shadowRepoForFindingRuleScaffold(t *testing.T, repoRoot string) string {
+	t.Helper()
+	outputDir := t.TempDir()
+	linkRepoEntries(t, repoRoot, outputDir, map[string]bool{
+		".git":     true,
+		"internal": true,
+	})
+
+	internalDir := filepath.Join(outputDir, "internal")
+	if err := os.MkdirAll(internalDir, 0o755); err != nil {
+		t.Fatalf("mkdir shadow internal dir: %v", err)
+	}
+	linkRepoEntries(t, filepath.Join(repoRoot, "internal"), internalDir, map[string]bool{
+		"findings": true,
+	})
+
+	findingsDir := filepath.Join(internalDir, "findings")
+	if err := os.MkdirAll(filepath.Join(findingsDir, "testdata", "rules"), 0o755); err != nil {
+		t.Fatalf("mkdir shadow findings testdata: %v", err)
+	}
+	linkRepoEntries(t, filepath.Join(repoRoot, "internal", "findings"), findingsDir, map[string]bool{
+		"correlation_patterns": true,
+		"testdata":             true,
+	})
+	copyRepoTree(t, filepath.Join(repoRoot, "internal", "findings", "correlation_patterns"), filepath.Join(findingsDir, "correlation_patterns"))
+	linkRepoEntries(t, filepath.Join(repoRoot, "internal", "findings", "testdata"), filepath.Join(findingsDir, "testdata"), map[string]bool{
+		"rules": true,
+	})
+	return outputDir
+}
+
+func linkRepoEntries(t *testing.T, srcDir, dstDir string, skip map[string]bool) {
+	t.Helper()
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		t.Fatalf("read dir %q: %v", srcDir, err)
+	}
+	if err := os.MkdirAll(dstDir, 0o755); err != nil {
+		t.Fatalf("mkdir dir %q: %v", dstDir, err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if skip[name] {
+			continue
+		}
+		if err := os.Symlink(filepath.Join(srcDir, name), filepath.Join(dstDir, name)); err != nil {
+			t.Fatalf("symlink %q into %q: %v", filepath.Join(srcDir, name), dstDir, err)
+		}
+	}
+}
+
+func copyRepoTree(t *testing.T, srcDir, dstDir string) {
+	t.Helper()
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		t.Fatalf("read dir %q: %v", srcDir, err)
+	}
+	if err := os.MkdirAll(dstDir, 0o755); err != nil {
+		t.Fatalf("mkdir dir %q: %v", dstDir, err)
+	}
+	for _, entry := range entries {
+		src := filepath.Join(srcDir, entry.Name())
+		dst := filepath.Join(dstDir, entry.Name())
+		if entry.IsDir() {
+			copyRepoTree(t, src, dst)
+			continue
+		}
+		payload, err := os.ReadFile(src)
+		if err != nil {
+			t.Fatalf("read file %q: %v", src, err)
+		}
+		info, err := entry.Info()
+		if err != nil {
+			t.Fatalf("stat file %q: %v", src, err)
+		}
+		if err := os.WriteFile(dst, payload, info.Mode().Perm()); err != nil {
+			t.Fatalf("write file %q: %v", dst, err)
+		}
+	}
 }
 
 func requireLifecycleField(t *testing.T, source, wantKind, wantAnchor string, wantTTL bool) {

@@ -394,7 +394,11 @@ func lifecycleAnchorIdentifier(anchor findings.LifecycleAnchor) string {
 }
 
 func renderFindingRuleTestGo(data findingRuleTemplateData) string {
-	return fmt.Sprintf("package findings\n\nimport \"testing\"\n\nfunc %s(t *testing.T) {\n\tassertRuleFixture(t, %s(), %s)\n}\n", data.Names.TestFunc, data.Names.Constructor, strconv.Quote("testdata/rules/"+data.Files.Fixture))
+	assertion := "assertRuleFixture"
+	if data.Definition.Lifecycle.Kind == findings.LifecycleRetired {
+		assertion = "assertRetiredEventRuleFixture"
+	}
+	return fmt.Sprintf("package findings\n\nimport \"testing\"\n\nfunc %s(t *testing.T) {\n\t%s(t, %s(), %s)\n}\n", data.Names.TestFunc, assertion, data.Names.Constructor, strconv.Quote("testdata/rules/"+data.Files.Fixture))
 }
 
 func renderFindingRuleFixture(data findingRuleTemplateData) string {
@@ -407,6 +411,19 @@ func renderFindingRuleFixture(data findingRuleTemplateData) string {
 	expectedAttributes := map[string]string{}
 	for key, value := range data.Fixture.ExpectedAttrs {
 		expectedAttributes[key] = value
+	}
+	expectedFindings := []map[string]any{
+		{
+			"rule_id":    data.Definition.ID,
+			"severity":   strings.ToUpper(data.Definition.Severity),
+			"status":     data.Definition.Status,
+			"summary":    data.Definition.Name,
+			"event_ids":  []string{"fixture-event-1"},
+			"attributes": expectedAttributes,
+		},
+	}
+	if data.Definition.Lifecycle.Kind == findings.LifecycleRetired {
+		expectedFindings = []map[string]any{}
 	}
 	fixture := map[string]any{
 		"rule_id": data.Definition.ID,
@@ -426,16 +443,7 @@ func renderFindingRuleFixture(data findingRuleTemplateData) string {
 				"attributes":  attributes,
 			},
 		},
-		"expected_findings": []map[string]any{
-			{
-				"rule_id":    data.Definition.ID,
-				"severity":   strings.ToUpper(data.Definition.Severity),
-				"status":     data.Definition.Status,
-				"summary":    data.Definition.Name,
-				"event_ids":  []string{"fixture-event-1"},
-				"attributes": expectedAttributes,
-			},
-		},
+		"expected_findings": expectedFindings,
 	}
 	payload, _ := json.MarshalIndent(fixture, "", "  ")
 	return string(append(payload, '\n'))
