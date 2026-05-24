@@ -58,6 +58,10 @@ func buildDataSensitiveAssetFinding(ctx context.Context, runtime *cerebrov1.Sour
 	if event.GetOccurredAt() != nil {
 		observedAt = event.GetOccurredAt().AsTime().UTC()
 	}
+	assetURN := dataAssetURN(projectedContext)
+	if strings.TrimSpace(assetURN) == "" {
+		return nil, nil
+	}
 	findingAttributes := map[string]string{
 		"action":               "sensitive_asset_risk",
 		"asset_criticality":    firstNonEmpty(attributes["asset_criticality"], attributes["business_criticality"], attributes["tier"]),
@@ -66,7 +70,7 @@ func buildDataSensitiveAssetFinding(ctx context.Context, runtime *cerebrov1.Sour
 		"event_id":             strings.TrimSpace(event.GetId()),
 		"event_kind":           strings.TrimSpace(event.GetKind()),
 		"internet_exposed":     strings.TrimSpace(attributes["internet_exposed"]),
-		"primary_resource_urn": projectedContext.PrimaryResourceURN,
+		"primary_resource_urn": assetURN,
 		"resource_id":          firstNonEmpty(attributes["resource_id"], attributes["resource_urn"]),
 		"resource_label":       projectedContext.ResourceLabel,
 		"resource_type":        strings.TrimSpace(attributes["resource_type"]),
@@ -81,11 +85,6 @@ func buildDataSensitiveAssetFinding(ctx context.Context, runtime *cerebrov1.Sour
 	definition := dataSensitiveAssetRiskDefinition()
 	for key, value := range definition.AttributeMap() {
 		findingAttributes["rule_"+key] = value
-	}
-	assetURN := dataAssetURN(projectedContext)
-	if strings.TrimSpace(assetURN) == "" {
-		trimEmptyAttributes(findingAttributes)
-		return nil, nil
 	}
 	findingAttributes["asset_urn"] = assetURN
 	trimEmptyAttributes(findingAttributes)
