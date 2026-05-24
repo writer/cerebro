@@ -796,7 +796,7 @@ func githubSecretScanningAlertFinding(ctx context.Context, runtime *cerebrov1.So
 		observedAt = timestamp.AsTime().UTC()
 	}
 	policyID := "secret_scanning_alert:" + repo + ":" + number
-	fingerprint := hashFindingFingerprint(githubSecretScanningAlertCreatedRuleID, repo, number)
+	fingerprint := hashFindingFingerprint(githubSecretScanningAlertCreatedRuleID, event.GetTenantId(), repo, number)
 	return &ports.FindingRecord{
 		ID:                fingerprint,
 		Fingerprint:       fingerprint,
@@ -837,6 +837,7 @@ func githubSecretScanningAlertAttributes(event *cerebrov1.EventEnvelope, primary
 		"secret_scanning_alert.state": state,
 		"source_runtime_id":           strings.TrimSpace(eventAttrs[ports.EventAttributeSourceRuntimeID]),
 		"state":                       state,
+		"tenant_id":                   strings.TrimSpace(event.GetTenantId()),
 	}
 	for key, value := range githubSecretScanningAlertCreatedDefinition.AttributeMap() {
 		attributes["rule_"+key] = value
@@ -992,6 +993,7 @@ func githubAuditSignalAttributes(event *cerebrov1.EventEnvelope, config githubAu
 		"runner_name":          strings.TrimSpace(eventAttrs["runner_name"]),
 		"runner_registered":    strings.TrimSpace(firstNonEmpty(eventAttrs["runner_registered"], eventAttrs["registered"], eventAttrs["is_registered"])),
 		"source_runtime_id":    strings.TrimSpace(eventAttrs[ports.EventAttributeSourceRuntimeID]),
+		"tenant_id":            strings.TrimSpace(event.GetTenantId()),
 		"user":                 strings.TrimSpace(eventAttrs["user"]),
 		"visibility":           strings.TrimSpace(eventAttrs["visibility"]),
 	}
@@ -1030,7 +1032,7 @@ func githubAuditSignalFingerprint(event *cerebrov1.EventEnvelope, config githubA
 	if !hasRequiredAttributes(event, definition.RequiredAttributes...) {
 		return nil
 	}
-	parts := []string{definition.ID}
+	parts := []string{definition.ID, strings.TrimSpace(event.GetTenantId())}
 	if config.fingerprint != nil {
 		inputs := config.fingerprint(event, definition)
 		if len(inputs) == 0 {

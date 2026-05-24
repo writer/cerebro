@@ -209,6 +209,10 @@ func requiredAttributeValue(event *cerebrov1.EventEnvelope, key string) string {
 	switch normalizedKey {
 	case "event_id":
 		return strings.TrimSpace(event.GetId())
+	case "tenant", "tenant_id":
+		return strings.TrimSpace(event.GetTenantId())
+	case "source_id":
+		return strings.TrimSpace(event.GetSourceId())
 	case "scope":
 		if strings.EqualFold(strings.TrimSpace(event.GetKind()), "github.audit") {
 			_, scopeID := githubSelfHostedRunnerScope(attributes)

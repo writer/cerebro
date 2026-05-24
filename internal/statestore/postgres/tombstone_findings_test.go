@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -464,6 +466,81 @@ func TestFindingsActiveFingerprint_RejectsDuplicate(t *testing.T) {
 	if err := insert("active-2"); err != nil {
 		t.Fatalf("second insert after tombstoning first should succeed, got: %v", err)
 	}
+}
+
+func TestFindingsActiveFingerprint_AllowsDuplicateAcrossTenants(t *testing.T) {
+	ctx := context.Background()
+	store := tombstoneStoreFromEnv(t)
+	resetTombstoneSchema(t, ctx, store)
+	ensureTombstoneSchema(t, ctx, store)
+
+	fp := fmt.Sprintf("fp-cross-tenant-%d", time.Now().UnixNano())
+	now := time.Now().UTC()
+	for _, tenant := range []string{"example-tenant-a", "example-tenant-b"} {
+		if _, err := store.db.ExecContext(ctx, `
+            INSERT INTO findings (id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary, first_observed_at, last_observed_at)
+            VALUES ($1, $2, $3, $4, 'rule-test', 'title', 'HIGH', 'open', 'summary', $5, $5)`,
+			fmt.Sprintf("active-%s", tenant), fp, tenant, "runtime-"+tenant, now); err != nil {
+			t.Fatalf("insert active row for %s: %v", tenant, err)
+		}
+	}
+
+	var count int
+	if err := store.db.QueryRowContext(ctx, `SELECT count(*) FROM findings WHERE fingerprint = $1 AND tombstoned = FALSE`, fp).Scan(&count); err != nil {
+		t.Fatalf("count active rows: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("active rows for shared fingerprint = %d, want 2 across different tenants", count)
+	}
+}
+
+func TestEnsureFindingStatements_BackfillsTenantScopedFingerprints(t *testing.T) {
+	ctx := context.Background()
+	store := tombstoneStoreFromEnv(t)
+	resetTombstoneSchema(t, ctx, store)
+
+	tenantID := fmt.Sprintf("example-backfill-%d", time.Now().UnixNano())
+	const dependabotRuleID = "github-dependabot-open-alert"
+	oldFingerprint := testFindingFingerprint(dependabotRuleID, "writer/cerebro", "7")
+	wantFingerprint := testFindingFingerprint(dependabotRuleID, tenantID, "writer/cerebro", "7")
+	now := time.Now().UTC()
+	if _, err := store.db.ExecContext(ctx, `
+        INSERT INTO findings (
+            id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
+            attributes_json, first_observed_at, last_observed_at
+        )
+        VALUES (
+            'legacy-dependabot-row', $1, $2, 'legacy-runtime', $3, 'Dependabot', 'HIGH', 'open', 'summary',
+            '{"repository":"writer/cerebro","alert_number":"7"}'::jsonb, $4, $4
+        )`,
+		oldFingerprint, tenantID, dependabotRuleID, now); err != nil {
+		t.Fatalf("insert legacy row: %v", err)
+	}
+
+	store.schemaMu.Lock()
+	store.findingTablesReady = false
+	store.schemaMu.Unlock()
+	ensureTombstoneSchema(t, ctx, store)
+
+	var gotID, gotFingerprint string
+	if err := store.db.QueryRowContext(ctx, `SELECT id, fingerprint FROM findings WHERE id = 'legacy-dependabot-row'`).Scan(&gotID, &gotFingerprint); err != nil {
+		t.Fatalf("reload backfilled row: %v", err)
+	}
+	if gotID != "legacy-dependabot-row" {
+		t.Fatalf("backfill changed id = %q, want legacy-dependabot-row", gotID)
+	}
+	if gotFingerprint != wantFingerprint {
+		t.Fatalf("backfilled fingerprint = %q, want %q", gotFingerprint, wantFingerprint)
+	}
+}
+
+func testFindingFingerprint(parts ...string) string {
+	hash := sha256.New()
+	for _, part := range parts {
+		_, _ = hash.Write([]byte(strings.TrimSpace(part)))
+		_, _ = hash.Write([]byte{0})
+	}
+	return hex.EncodeToString(hash.Sum(nil))
 }
 
 func TestCloseoutRunSingleton_RejectsConcurrent(t *testing.T) {

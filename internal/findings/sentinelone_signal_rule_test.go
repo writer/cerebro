@@ -54,9 +54,9 @@ func TestSentinelOneProtectionControlTampering(t *testing.T) {
 		t.Fatalf("Evaluate(tampered) = (%v, %v), want one finding", records, err)
 	}
 	first := records[0]
-	wantFingerprint := hashFindingFingerprint(sentinelOneProtectionControlTamperingRuleID, "agent-99", "firewall")
+	wantFingerprint := hashFindingFingerprint(sentinelOneProtectionControlTamperingRuleID, "writer", "agent-99", "firewall")
 	if got := first.Fingerprint; got != wantFingerprint {
-		t.Fatalf("fingerprint = %q, want stable agent/control fingerprint %q", got, wantFingerprint)
+		t.Fatalf("fingerprint = %q, want stable tenant/agent/control fingerprint %q", got, wantFingerprint)
 	}
 	if got := first.Attributes["agent_id"]; got != "agent-99" {
 		t.Fatalf("attributes[agent_id] = %q, want agent-99", got)

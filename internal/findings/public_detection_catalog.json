@@ -477,6 +477,7 @@
         "state"
       ],
       "fingerprint_fields": [
+        "tenant_id",
         "repository",
         "alert_number"
       ],

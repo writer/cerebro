@@ -44,7 +44,7 @@ var githubDependabotOpenAlertDefinition = RuleDefinition{
 	FalsePositives:     []string{"Accepted risk or non-exploitable vulnerable dependency in a non-runtime path."},
 	Runbook:            "Review affected package, advisory, vulnerable range, and repository usage; upgrade to the first patched version or document accepted risk.",
 	RequiredAttributes: []string{"repository", "alert_number", "state"},
-	FingerprintFields:  []string{"repository", "alert_number"},
+	FingerprintFields:  []string{"tenant_id", "repository", "alert_number"},
 	ControlRefs:        githubDependabotOpenAlertControlRefs,
 	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorSourceState},
 }
@@ -97,6 +97,7 @@ func githubDependabotOpenAlertFinding(ctx context.Context, event *cerebrov1.Even
 		"severity":                 strings.TrimSpace(attributes["severity"]),
 		"source_runtime_id":        strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID]),
 		"state":                    strings.TrimSpace(attributes["state"]),
+		"tenant_id":                strings.TrimSpace(event.GetTenantId()),
 		"vulnerable_version_range": strings.TrimSpace(attributes["vulnerable_version_range"]),
 	}
 	for key, value := range githubDependabotOpenAlertDefinition.AttributeMap() {
@@ -109,6 +110,7 @@ func githubDependabotOpenAlertFinding(ctx context.Context, event *cerebrov1.Even
 	}
 	fingerprint := hashFindingFingerprint(
 		githubDependabotOpenAlertRuleID,
+		event.GetTenantId(),
 		attributes["repository"],
 		attributes["alert_number"],
 	)
