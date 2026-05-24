@@ -543,10 +543,12 @@ func identityExternalGroupMemberAnchor(attributes map[string]string) string {
 }
 
 func identityAdminPrivilegeAnchor(attributes map[string]string) string {
+	sourceID := firstNonEmpty(attributes["source_id"], attributes["source_family"])
 	return identityCounterEventAnchor(map[string]string{
-		"user": identityUserValue(attributes),
-		"role": identityRoleValue(attributes),
-	}, "user", "role")
+		"source_id": sourceID,
+		"user_urn":  identityUserURNValue(attributes, findingProjectionContext{}, attributes["tenant_id"], sourceID),
+		"role":      identityRoleValue(attributes),
+	}, "source_id", "user_urn", "role")
 }
 
 func identityAuthControlAnchor(attributes map[string]string) string {
@@ -579,7 +581,7 @@ func identityCounterEventAnchor(attributes map[string]string, fields ...string) 
 }
 
 func identityAdminPrivilegeCloseAnchor(event Event) (string, bool) {
-	attributes := eventAttributes(event)
+	attributes := identityCounterEventAttributes(event, nil)
 	if !identityRoleAssignmentInactive(attributes) && !identityPrivilegeExplicitlyRemoved(attributes) {
 		return "", false
 	}
@@ -987,7 +989,7 @@ func matchesIdentityAdminPrivilegeGranted(event *cerebrov1.EventEnvelope, attrib
 	if !identityAssignmentActiveOrUnknown(attributes) {
 		return false
 	}
-	if identityAdminPrivilegeAnchor(attributes) == "" {
+	if identityAdminPrivilegeAnchor(identityCounterEventAttributes(event, nil)) == "" {
 		return false
 	}
 	if builtinIdentityCapabilities.KindHasCapability(event.GetKind(), identityCapabilityAdminRole) {

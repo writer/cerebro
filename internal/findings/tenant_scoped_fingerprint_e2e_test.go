@@ -181,6 +181,114 @@ func TestIdentityUserAnchor_ProviderScoped(t *testing.T) {
 	}
 }
 
+func TestIdentityAdminPrivilegeAnchor_ProviderScoped(t *testing.T) {
+	store := tenantScopedPostgresStore(t)
+	ctx := context.Background()
+	tenantID := tenantScopedTestTenant("identity-admin-anchor")
+	oktaRuntime := &cerebrov1.SourceRuntime{
+		Id:       tenantScopedRuntimeID("identity-admin-anchor-okta", tenantID),
+		SourceId: "okta",
+		TenantId: tenantID,
+		Config:   map[string]string{"family": "admin_role"},
+	}
+	googleRuntime := &cerebrov1.SourceRuntime{
+		Id:       tenantScopedRuntimeID("identity-admin-anchor-google", tenantID),
+		SourceId: "google_workspace",
+		TenantId: tenantID,
+		Config:   map[string]string{"family": "role_assignment"},
+	}
+	rule := mustBuiltinRule(t, tenantScopedIdentityAdminRuleID)
+	registry, err := findings.NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry(%q): %v", tenantScopedIdentityAdminRuleID, err)
+	}
+	replayer := &stubReplayer{}
+	service := findings.NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			oktaRuntime.GetId():   oktaRuntime,
+			googleRuntime.GetId(): googleRuntime,
+		}},
+		replayer,
+		store,
+		store,
+		store,
+		store,
+		registry,
+	)
+
+	oktaAttrs := map[string]string{
+		"domain":        "writer.okta.com",
+		"role_id":       "super-admin",
+		"role_name":     "Super Admin",
+		"status":        "ACTIVE",
+		"subject_email": "admin@example.com",
+		"subject_id":    "00u-okta-admin",
+		"subject_type":  "user",
+	}
+	googleAttrs := map[string]string{
+		"domain":        "writer.com",
+		"role_id":       "super-admin",
+		"role_name":     "Super Admin",
+		"status":        "ACTIVE",
+		"subject_email": "admin@example.com",
+		"subject_id":    "google-admin-1001",
+		"subject_type":  "user",
+	}
+	oktaOpen := withRuntimeID(tenantScopedEvent("provider-okta-admin-open", tenantID, "okta", "okta.admin_role", oktaAttrs, tenantScopedBaseTime), oktaRuntime.GetId())
+	oktaFinding := evaluateTenantScopedRule(t, ctx, service, replayer, oktaRuntime.GetId(), oktaOpen, tenantScopedIdentityAdminRuleID)
+	googleOpen := withRuntimeID(tenantScopedEvent("provider-google-admin-open", tenantID, "google_workspace", "google_workspace.role_assignment", googleAttrs, tenantScopedBaseTime.Add(time.Minute)), googleRuntime.GetId())
+	googleFinding := evaluateTenantScopedRule(t, ctx, service, replayer, googleRuntime.GetId(), googleOpen, tenantScopedIdentityAdminRuleID)
+	if got := strings.TrimSpace(oktaFinding.Status); got != tenantScopedFindingStatusOpen {
+		t.Fatalf("okta finding status = %q, want open", got)
+	}
+	if got := strings.TrimSpace(googleFinding.Status); got != tenantScopedFindingStatusOpen {
+		t.Fatalf("google finding status = %q, want open", got)
+	}
+	if oktaFinding.Fingerprint == googleFinding.Fingerprint {
+		t.Fatalf("admin privilege fingerprints are equal across providers: %q", oktaFinding.Fingerprint)
+	}
+	if got := strings.TrimSpace(oktaFinding.Attributes["user"]); got != "admin@example.com" {
+		t.Fatalf("okta finding user = %q, want shared admin@example.com", got)
+	}
+	if got := strings.TrimSpace(googleFinding.Attributes["user"]); got != "admin@example.com" {
+		t.Fatalf("google finding user = %q, want shared admin@example.com", got)
+	}
+
+	oktaRevokedAttrs := cloneTenantScopedAttrs(oktaAttrs)
+	oktaRevokedAttrs["action"] = "admin.role.revoked"
+	oktaRevokedAttrs["assignment_status"] = "removed"
+	oktaRevoked := withRuntimeID(tenantScopedEvent("provider-okta-admin-revoked", tenantID, "okta", "okta.admin_role", oktaRevokedAttrs, tenantScopedBaseTime.Add(2*time.Minute)), oktaRuntime.GetId())
+	replayer.events = []*cerebrov1.EventEnvelope{oktaRevoked}
+	revokeResult, err := service.EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
+		RuntimeID: oktaRuntime.GetId(),
+		RuleIDs:   []string{tenantScopedIdentityAdminRuleID},
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeRules(okta revoke): %v", err)
+	}
+	if revokeResult == nil || len(revokeResult.Evaluations) != 1 {
+		t.Fatalf("okta revoke result = %#v, want one evaluation", revokeResult)
+	}
+	if got := len(revokeResult.Evaluations[0].Findings); got != 0 {
+		t.Fatalf("okta revoke emitted %d findings, want remediation-only pass", got)
+	}
+
+	oktaAfter, err := store.GetFinding(ctx, oktaFinding.ID)
+	if err != nil {
+		t.Fatalf("reload okta finding %q: %v", oktaFinding.ID, err)
+	}
+	googleAfter, err := store.GetFinding(ctx, googleFinding.ID)
+	if err != nil {
+		t.Fatalf("reload google finding %q: %v", googleFinding.ID, err)
+	}
+	if got := strings.TrimSpace(oktaAfter.Status); got != tenantScopedFindingStatusResolved {
+		t.Fatalf("Okta finding status after Okta revoke = %q, want resolved", got)
+	}
+	if got := strings.TrimSpace(googleAfter.Status); got != tenantScopedFindingStatusOpen {
+		t.Fatalf("Google Workspace finding status after Okta revoke = %q, want open", got)
+	}
+}
+
 func TestCrossTenantFingerprintCollisionRegression(t *testing.T) {
 	store := tenantScopedPostgresStore(t)
 	cases := []tenantScopedFingerprintCase{
