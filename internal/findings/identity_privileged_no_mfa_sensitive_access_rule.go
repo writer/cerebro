@@ -50,7 +50,7 @@ func newIdentityPrivilegedNoMFAAccessRule() Rule {
 	definition := identityDurableStateRuleDefinition(identityRuleDefinition(
 		identityPrivilegedNoMFAAccessRuleID,
 		"Identity Privileged No-MFA Account With Sensitive Access",
-		"Detect privileged no-MFA identities that currently have access to crown-jewel or sensitive classified resources in the graph.",
+		"Detect source-backed privileged no-MFA identities that currently have access to crown-jewel or sensitive classified resources in the graph; AWS IAM and Azure user MFA posture require source-adapter extensions before those user entity types are included.",
 		"HIGH",
 		identityPrivilegedNoMFAAccessKind,
 		[]string{"identity", "graph-join", "privileged-access", "mfa"},
@@ -59,11 +59,9 @@ func newIdentityPrivilegedNoMFAAccessRule() Rule {
 		"asset.crown_jewel",
 		"asset.data_sensitivity",
 		"aws.iam_role_assignment",
-		"aws.iam_user",
 		"azure.app_role_assignment",
 		"azure.directory_role_assignment",
 		"azure.iam_role_assignment",
-		"azure.user",
 		"gcp.iam_role_assignment",
 		"gcp.service_account",
 		"google_workspace.role_assignment",
@@ -114,7 +112,7 @@ MATCH (resource)-[sensitivity:RELATION]->(marker:Entity {tenant_id: $tenant_id})
 WITH user, access, resource, sensitivity, marker,
      toLower(coalesce(user.attributes_json, '')) AS user_attrs,
      coalesce(access.attributes_json, '') AS access_attrs
-WHERE user.entity_type IN ['okta.user','google_workspace.user','azure.user','aws.iam_user','aws.user','gcp.service_account']
+WHERE user.entity_type IN ['okta.user','google_workspace.user','gcp.service_account']
   AND access.relation IN ['acted_on','assigned_to','can_admin','can_perform']
   AND (
     access.relation <> 'acted_on'
@@ -190,6 +188,10 @@ func (r *identityPrivilegedNoMFAAccessRule) EvaluateRows(_ context.Context, runt
 		if userURN == "" || resourceURN == "" {
 			continue
 		}
+		userEntityType := cypherRowString(row, "user_entity_type")
+		if !identityPrivilegedNoMFAUserEntityTypeSupported(userEntityType) {
+			continue
+		}
 		userAttrs := edgeStringAttributes(cypherRowString(row, "user_attributes_json"))
 		if !identityPrivilegedNoMFAUserMatches(userAttrs) {
 			continue
@@ -209,7 +211,7 @@ func (r *identityPrivilegedNoMFAAccessRule) EvaluateRows(_ context.Context, runt
 		if !ok {
 			group = &identityPrivilegedNoMFAAccessGroup{
 				userURN:        userURN,
-				userEntityType: cypherRowString(row, "user_entity_type"),
+				userEntityType: userEntityType,
 				userLabel:      cypherRowString(row, "user_label"),
 				userAttrs:      userAttrs,
 				resources:      map[string]identityPrivilegedNoMFAAccessResource{},
@@ -252,6 +254,15 @@ func identityPrivilegedNoMFAUserMatches(attrs map[string]string) bool {
 	}
 	return (findingAttributeBool(attrs, "is_admin") || findingAttributeBool(attrs, "is_delegated_admin")) &&
 		identityMFAExplicitlyDisabled(attrs)
+}
+
+func identityPrivilegedNoMFAUserEntityTypeSupported(entityType string) bool {
+	switch strings.TrimSpace(entityType) {
+	case "okta.user", "google_workspace.user", "gcp.service_account":
+		return true
+	default:
+		return false
+	}
 }
 
 func identityPrivilegedNoMFAAccessRelation(relation string) bool {

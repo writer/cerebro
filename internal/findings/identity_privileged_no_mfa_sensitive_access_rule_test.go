@@ -25,8 +25,8 @@ func TestIdentityPrivilegedNoMfaPlusSensitiveAccessGraphRuleEmits(t *testing.T) 
 	for _, runtime := range []*cerebrov1.SourceRuntime{
 		{Id: "example-okta-user", SourceId: "okta", TenantId: "writer", Config: map[string]string{"family": "user"}},
 		{Id: "example-google-workspace-user", SourceId: "google_workspace", TenantId: "writer", Config: map[string]string{"family": "user"}},
-		{Id: "example-azure-user", SourceId: "azure", TenantId: "writer", Config: map[string]string{"family": "user"}},
-		{Id: "example-aws-iam-user", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "iam_user"}},
+		{Id: "example-azure-iam-role-assignment", SourceId: "azure", TenantId: "writer", Config: map[string]string{"family": "iam_role_assignment"}},
+		{Id: "example-aws-iam-role-assignment", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "iam_role_assignment"}},
 		{Id: "example-gcp-service-account", SourceId: "gcp", TenantId: "writer", Config: map[string]string{"family": "service_account"}},
 		{Id: "example-asset-crown-jewel", SourceId: "asset", TenantId: "writer", Config: map[string]string{"family": "crown_jewel"}},
 		{Id: "example-asset-data-sensitivity", SourceId: "asset", TenantId: "writer", Config: map[string]string{"family": "data_sensitivity"}},
@@ -51,7 +51,7 @@ func TestIdentityPrivilegedNoMfaPlusSensitiveAccessGraphRuleEmits(t *testing.T) 
 		"marker.entity_type = 'data.classification'",
 		"'crown_jewel'",
 		"'confidential','restricted','regulated','pii','phi','pci'",
-		"'okta.user','google_workspace.user','azure.user','aws.iam_user','aws.user','gcp.service_account'",
+		"'okta.user','google_workspace.user','gcp.service_account'",
 	} {
 		if !strings.Contains(query.Query, fragment) {
 			t.Fatalf("QueryFor() missing fragment %q:\n%s", fragment, query.Query)
@@ -176,7 +176,7 @@ func TestIdentityPrivilegedNoMfaSensitiveAccess_IncludesCanPerform(t *testing.T)
 	if !ok {
 		t.Fatal("identity-privileged-no-mfa-plus-sensitive-access does not implement GraphRule")
 	}
-	runtime := &cerebrov1.SourceRuntime{Id: "example-aws-iam-user", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "iam_user"}}
+	runtime := &cerebrov1.SourceRuntime{Id: "example-aws-iam-role-assignment", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "iam_role_assignment"}}
 	query := graphRule.QueryFor(runtime)
 	if !strings.Contains(query.Query, "can_perform") {
 		t.Fatalf("QueryFor() missing can_perform access relation:\n%s", query.Query)

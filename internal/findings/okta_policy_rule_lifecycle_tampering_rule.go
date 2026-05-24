@@ -42,7 +42,7 @@ type oktaPolicyRuleLifecycleTamperingRule struct {
 var oktaPolicyRuleLifecycleTamperingDefinition = RuleDefinition{
 	ID:                 oktaPolicyRuleLifecycleTamperingRuleID,
 	Name:               oktaPolicyRuleLifecycleTamperingTitle,
-	Description:        "Detect Okta policy rules that remain deactivated or deleted in projected identity state.",
+	Description:        "Detect Okta policy rules that remain deactivated, disabled, or inactive in projected identity state.",
 	SourceID:           "okta",
 	EventKinds:         []string{"okta.policy_rule"},
 	OutputKind:         "finding.okta_policy_rule_lifecycle_tampering",
@@ -233,7 +233,7 @@ func parseOptionalBoolAttribute(attributes map[string]string, key string) (bool,
 
 func oktaPolicyRuleLifecycleTamperingStateIsInactive(state string) bool {
 	switch strings.ToLower(strings.TrimSpace(state)) {
-	case "deactivate", "deactivated", "deleted", "delete", "deleted_permanently", "disabled", "inactive", "removed":
+	case "deactivate", "deactivated", "disabled", "inactive":
 		return true
 	default:
 		return false
@@ -310,7 +310,7 @@ func oktaPolicyRuleLifecycleTamperingSummary(policyRuleName string, state string
 	if normalizedState := strings.ToUpper(strings.TrimSpace(state)); normalizedState != "" {
 		return fmt.Sprintf("Okta policy rule %s is %s", name, normalizedState)
 	}
-	return fmt.Sprintf("Okta policy rule %s is inactive or deleted", name)
+	return fmt.Sprintf("Okta policy rule %s is inactive", name)
 }
 
 func entityLabel(entity *ports.ProjectedEntity, fallbacks ...string) string {

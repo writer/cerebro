@@ -2,6 +2,7 @@ package findings
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -64,11 +65,11 @@ func TestIdentityOktaPolicyRuleLifecycleTampering(t *testing.T) {
 
 	deleted := oktaPolicyRuleLifecycleStateEvent("okta-policy-rule-deleted", "DELETED_PERMANENTLY")
 	records, err = rule.Evaluate(context.Background(), runtimeA, deleted)
-	if err != nil || len(records) != 1 {
-		t.Fatalf("Evaluate(deleted permanently) = (%v, %v), want one finding", records, err)
+	if err != nil {
+		t.Fatalf("Evaluate(deleted permanently) error = %v", err)
 	}
-	if got := records[0].Fingerprint; got != first.Fingerprint {
-		t.Fatalf("delete fingerprint = %q, want stable %q", got, first.Fingerprint)
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(deleted permanently) returned %d findings, want 0 because DELETED_PERMANENTLY coverage is not source-backed", len(records))
 	}
 
 	active := oktaPolicyRuleLifecycleStateEventAt("okta-policy-rule-active", "ACTIVE", identityTrajectoryBaseTime.Add(2*time.Minute))
@@ -103,6 +104,33 @@ func TestIdentityOktaPolicyRuleLifecycleTampering(t *testing.T) {
 	assertIdentityRuleRemediationTrajectory(t, rule, inactive, active, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
 	olderActive := oktaPolicyRuleLifecycleStateEventAt("okta-policy-rule-active-before-open", "ACTIVE", identityTrajectoryBaseTime.Add(-time.Minute))
 	assertIdentityRuleOlderCloseDoesNotResolveLaterOpen(t, rule, olderActive, inactive)
+}
+
+func TestIdentityOktaPolicyRuleLifecycleTampering_CoverageAligned(t *testing.T) {
+	rule := newOktaPolicyRuleLifecycleTamperingRule()
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("identity-okta-policy-rule-lifecycle-tampering does not expose RuleMetadata")
+	}
+	description := strings.ToLower(metadataRule.RuleMetadata().Description)
+	for _, unsupportedClaim := range []string{"deleted", "deleted_permanently"} {
+		if strings.Contains(description, unsupportedClaim) {
+			t.Fatalf("description %q still advertises unsupported %q coverage", metadataRule.RuleMetadata().Description, unsupportedClaim)
+		}
+	}
+
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-policy-rule", SourceId: "okta", TenantId: "writer", Config: map[string]string{"family": "policy_rule"}}
+	deleted := oktaPolicyRuleLifecycleStateEvent("okta-policy-rule-deleted-coverage-drop", "DELETED_PERMANENTLY")
+	records, err := rule.Evaluate(context.Background(), runtime, deleted)
+	if err != nil {
+		t.Fatalf("Evaluate(DELETED_PERMANENTLY) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(DELETED_PERMANENTLY) returned %d findings, want 0 until the Okta source synthesizes vanished policy rules", len(records))
+	}
+	if matchesOktaPolicyRuleLifecycleTampering(deleted) {
+		t.Fatal("matchesOktaPolicyRuleLifecycleTampering(DELETED_PERMANENTLY) = true, want false until source-backed delete synthesis exists")
+	}
 }
 
 func oktaPolicyRuleLifecycleStateEvent(id string, status string) *cerebrov1.EventEnvelope {

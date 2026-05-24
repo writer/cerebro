@@ -534,7 +534,7 @@ func TestReadLiveOktaUserPreviewPopulatesMFAFactorAttributes(t *testing.T) {
 				body:   mustOktaTestdata(t, "factors_multi.json"),
 			}},
 			wantEnrolled: "true",
-			wantCount:    "3",
+			wantCount:    "4",
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -548,6 +548,21 @@ func TestReadLiveOktaUserPreviewPopulatesMFAFactorAttributes(t *testing.T) {
 				t.Fatalf("factor request count = %d, want 1", requestCount)
 			}
 		})
+	}
+}
+
+func TestOktaMFAEnrollmentFactorKinds_IncludesTokenHardware(t *testing.T) {
+	requestCount := 0
+	server := httptest.NewServer(newOktaUserFactorAPIHandler(t, "00u-hardware-token", []oktaFactorTestResponse{{
+		status: http.StatusOK,
+		body:   mustOktaTestdata(t, "factors_multi.json"),
+	}}, &requestCount))
+	defer server.Close()
+
+	event := readSingleOktaUserEvent(t, server.URL)
+	assertOktaMFAAttributes(t, event.Attributes, "true", "4")
+	if requestCount != 1 {
+		t.Fatalf("factor request count = %d, want 1", requestCount)
 	}
 }
 
@@ -744,6 +759,49 @@ func TestCheckDiscoverAndReadLiveOktaPolicyRulePreview(t *testing.T) {
 	}
 	if third.NextCursor != nil {
 		t.Fatalf("third.NextCursor = %#v, want nil after all sign-on/access policy rules", third.NextCursor)
+	}
+}
+
+func TestPolicyRule_DeletedPermanentlySynthesizedOrCoverageDropped(t *testing.T) {
+	server := httptest.NewServer(newOktaPolicyRuleAPIHandler(t))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"domain":   "writer.okta.com",
+		"family":   "policy_rule",
+		"per_page": "1",
+		"token":    "test-token",
+	})
+
+	var cursor *cerebrov1.SourceCursor
+	seen := map[string]struct{}{}
+	for {
+		pull, err := source.Read(context.Background(), cfg, cursor)
+		if err != nil {
+			t.Fatalf("Read(policy_rule) error = %v", err)
+		}
+		for _, event := range pull.Events {
+			status := strings.TrimSpace(event.Attributes["status"])
+			if strings.EqualFold(status, "DELETED_PERMANENTLY") {
+				t.Fatalf("Read(policy_rule) emitted DELETED_PERMANENTLY status for %s; coverage should remain dropped until the source synthesizes vanished policies", event.Id)
+			}
+			seen[event.Attributes["policy_rule_id"]] = struct{}{}
+		}
+		if pull.NextCursor == nil {
+			break
+		}
+		cursor = pull.NextCursor
+	}
+	for _, want := range []string{"rul-sign-on-inactive", "rul-sign-on-active", "rul-access-inactive"} {
+		if _, ok := seen[want]; !ok {
+			t.Fatalf("Read(policy_rule) did not emit expected live/inactive rule %q; saw %v", want, seen)
+		}
 	}
 }
 

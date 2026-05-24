@@ -994,8 +994,8 @@ func TestOktaPolicyRuleLifecycleTamperingMatchesProjectedStateOnly(t *testing.T)
 		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = false for inactive projected state, want true")
 	}
 	deleted := newOktaPolicyRuleEvent("okta-policy-rule-deleted", "DELETED_PERMANENTLY")
-	if !matchesOktaPolicyRuleLifecycleTampering(deleted) {
-		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = false for permanently deleted projected state, want true")
+	if matchesOktaPolicyRuleLifecycleTampering(deleted) {
+		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = true for permanently deleted projected state, want false until source-backed delete synthesis exists")
 	}
 }
 

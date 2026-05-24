@@ -8,6 +8,7 @@ import (
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -660,6 +661,14 @@ func TestIdentityPrivilegedAccountWithoutMfa(t *testing.T) {
 	if _, ok := rule.(CounterEventRule); !ok {
 		t.Fatal("identity-privileged-account-without-mfa does not implement CounterEventRule")
 	}
+	metadataRule, ok := rule.(MetadataRule)
+	if !ok {
+		t.Fatal("identity-privileged-account-without-mfa does not expose RuleMetadata")
+	}
+	sourceBackedMFAKinds := []string{"gcp.service_account", "google_workspace.user", "okta.user"}
+	if got := metadataRule.RuleMetadata().EventKinds; !cloudStringSlicesEqual(got, sourceBackedMFAKinds) {
+		t.Fatalf("EventKinds = %v, want source-backed MFA posture kinds %v", got, sourceBackedMFAKinds)
+	}
 
 	runtime := &cerebrov1.SourceRuntime{Id: "example-google-workspace-user", SourceId: "google_workspace", TenantId: "writer", Config: map[string]string{"family": "user"}}
 	openAttrs := map[string]string{
@@ -713,6 +722,87 @@ func TestIdentityPrivilegedAccountWithoutMfa(t *testing.T) {
 		t.Fatalf("Evaluate(notPrivileged) returned %d findings, want 0 once privilege is removed", len(records))
 	}
 	assertIdentityRuleRemediationTrajectory(t, rule, first, notPrivileged, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
+}
+
+func TestIdentityPrivilegedAccountWithoutMfa_HardwareTokenSatisfiesMFA(t *testing.T) {
+	rules := identityRulesByID(t)
+	rule := rules[identityPrivilegedAccountWithoutMFARuleID]
+	runtime := &cerebrov1.SourceRuntime{Id: "example-okta-user", SourceId: "okta", TenantId: "writer", Config: map[string]string{"family": "user"}}
+	event := identitySignalEventAt("okta-admin-hardware-token", "okta", "okta.user", map[string]string{
+		"domain":           "writer.okta.com",
+		"email":            "admin@writer.com",
+		"is_admin":         "true",
+		"login":            "admin@writer.com",
+		"mfa_enrolled":     "true",
+		"mfa_factor_count": "1",
+		"mfa_factor_kinds": "token:hardware",
+		"user_id":          "00u-admin",
+	}, identityTrajectoryBaseTime)
+
+	records, err := rule.Evaluate(context.Background(), runtime, event)
+	if err != nil {
+		t.Fatalf("Evaluate(hardware token MFA) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(hardware token MFA) returned %d findings, want 0 because token:hardware satisfies MFA enrollment", len(records))
+	}
+}
+
+func TestIdentityPrivilegedNoMfa_AWSAzureCoverageAligned(t *testing.T) {
+	rules := identityRulesByID(t)
+	accountRule := rules[identityPrivilegedAccountWithoutMFARuleID]
+	accountMetadata, ok := accountRule.(MetadataRule)
+	if !ok {
+		t.Fatal("identity-privileged-account-without-mfa does not expose RuleMetadata")
+	}
+	for _, unsupportedKind := range []string{"aws.iam_user", "azure.user"} {
+		if slices.Contains(accountMetadata.RuleMetadata().EventKinds, unsupportedKind) {
+			t.Fatalf("identity-privileged-account-without-mfa EventKinds = %v, want %q excluded until its source emits MFA posture", accountMetadata.RuleMetadata().EventKinds, unsupportedKind)
+		}
+		sourceID, family, _ := strings.Cut(unsupportedKind, ".")
+		if accountRule.SupportsRuntime(&cerebrov1.SourceRuntime{SourceId: sourceID, Config: map[string]string{"family": family}}) {
+			t.Fatalf("identity-privileged-account-without-mfa SupportsRuntime(%s/%s) = true, want false until its source emits MFA posture", sourceID, family)
+		}
+	}
+
+	graphRuleIface := newIdentityPrivilegedNoMFAAccessRule()
+	graphRule, ok := graphRuleIface.(GraphRule)
+	if !ok {
+		t.Fatal("identity-privileged-no-mfa-plus-sensitive-access does not implement GraphRule")
+	}
+	graphMetadata, ok := graphRuleIface.(MetadataRule)
+	if !ok {
+		t.Fatal("identity-privileged-no-mfa-plus-sensitive-access does not expose RuleMetadata")
+	}
+	for _, unsupportedKind := range []string{"aws.iam_user", "azure.user"} {
+		if slices.Contains(graphMetadata.RuleMetadata().EventKinds, unsupportedKind) {
+			t.Fatalf("identity-privileged-no-mfa-plus-sensitive-access EventKinds = %v, want %q excluded until its source emits MFA posture", graphMetadata.RuleMetadata().EventKinds, unsupportedKind)
+		}
+		sourceID, family, _ := strings.Cut(unsupportedKind, ".")
+		if graphRule.SupportsRuntime(&cerebrov1.SourceRuntime{SourceId: sourceID, TenantId: "writer", Config: map[string]string{"family": family}}) {
+			t.Fatalf("identity-privileged-no-mfa-plus-sensitive-access SupportsRuntime(%s/%s) = true, want false until its source emits MFA posture", sourceID, family)
+		}
+	}
+	query := graphRule.QueryFor(&cerebrov1.SourceRuntime{Id: "example-okta-user", SourceId: "okta", TenantId: "writer", Config: map[string]string{"family": "user"}})
+	for _, unsupportedEntityType := range []string{"'aws.iam_user'", "'azure.user'"} {
+		if strings.Contains(query.Query, unsupportedEntityType) {
+			t.Fatalf("identity-privileged-no-mfa-plus-sensitive-access query still advertises unsupported entity type %s:\n%s", unsupportedEntityType, query.Query)
+		}
+	}
+	for _, unsupportedEntityType := range []string{"aws.iam_user", "azure.user"} {
+		findings, err := graphRule.EvaluateRows(context.Background(), &cerebrov1.SourceRuntime{Id: "example-okta-user", SourceId: "okta", TenantId: "writer", Config: map[string]string{"family": "user"}}, []ports.CypherRow{
+			identityPrivilegedNoMFASensitiveAccessRow(t, map[string]string{
+				"is_admin":     "true",
+				"mfa_enrolled": "false",
+			}, map[string]any{"user_entity_type": unsupportedEntityType}),
+		})
+		if err != nil {
+			t.Fatalf("EvaluateRows(%s) error = %v", unsupportedEntityType, err)
+		}
+		if len(findings) != 0 {
+			t.Fatalf("EvaluateRows(%s) returned %d findings, want 0 until source projects MFA posture", unsupportedEntityType, len(findings))
+		}
+	}
 }
 
 func TestIdentityStalePrivilegedAccount(t *testing.T) {
@@ -1223,8 +1313,8 @@ func TestIdentitySignalRulesIgnoreInactiveCloudCredentials(t *testing.T) {
 func TestIdentitySignalRulesRespectRuntimeFamily(t *testing.T) {
 	rules := identityRulesByID(t)
 	rule := rules[identityPrivilegedAccountWithoutMFARuleID]
-	if !rule.SupportsRuntime(&cerebrov1.SourceRuntime{SourceId: "aws", Config: map[string]string{"family": "iam_user"}}) {
-		t.Fatal("SupportsRuntime(iam_user) = false, want true")
+	if rule.SupportsRuntime(&cerebrov1.SourceRuntime{SourceId: "aws", Config: map[string]string{"family": "iam_user"}}) {
+		t.Fatal("SupportsRuntime(iam_user) = true, want false until AWS IAM user MFA posture is projected")
 	}
 	if rule.SupportsRuntime(&cerebrov1.SourceRuntime{SourceId: "aws", Config: map[string]string{"family": "public_endpoint"}}) {
 		t.Fatal("SupportsRuntime(public_endpoint) = true, want false")
