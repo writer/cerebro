@@ -89,6 +89,7 @@ func newSentinelOneEndpointActiveInfectionRule() Rule {
 		[]string{"agent_id"},
 		sentinelOneThreatResponseControlRefs,
 	)
+	definition.Lifecycle = Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored}
 	return &sentinelOneEndpointActiveInfectionGraphRule{definition: definition}
 }
 
@@ -128,6 +129,7 @@ func newSentinelOneAgentStaleRule() Rule {
 		[]string{"agent_id"},
 		sentinelOneEndpointCoverageControlRefs,
 	)
+	definition.Lifecycle = Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored}
 	return &sentinelOneAgentStaleGraphRule{definition: definition}
 }
 
@@ -224,6 +226,7 @@ func newRetiredSentinelOneRule(id string, name string, outputKind string) Rule {
 		nil,
 	)
 	definition.Maturity = "retired"
+	definition.Lifecycle = Lifecycle{Kind: LifecycleRetired, Anchor: AnchorNone}
 	return newEventRule(eventRuleConfig{
 		definition:         definition,
 		sourceID:           "sentinelone",
@@ -265,6 +268,7 @@ func sentinelOneRuleDefinition(id, name, description string, eventKinds []string
 		RequiredAttributes: requiredAttributes,
 		FingerprintFields:  fingerprintFields,
 		ControlRefs:        cloneFindingControlRefs(controlRefs),
+		Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorSourceState},
 	}
 }
 

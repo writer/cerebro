@@ -46,6 +46,7 @@ var githubDependabotOpenAlertDefinition = RuleDefinition{
 	RequiredAttributes: []string{"repository", "alert_number", "state"},
 	FingerprintFields:  []string{"repository", "alert_number"},
 	ControlRefs:        githubDependabotOpenAlertControlRefs,
+	Lifecycle:          Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorSourceState},
 }
 
 var githubDependabotAlertKindMatcher = eventKindMatcher(githubDependabotOpenAlertDefinition.EventKinds...)

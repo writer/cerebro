@@ -242,7 +242,7 @@ func (r *eventRule) Evaluate(ctx context.Context, runtime *cerebrov1.SourceRunti
 		return nil, errors.New("finding event rule is not configured")
 	}
 	if !r.config.definition.IsZero() {
-		if err := r.config.definition.validateBaseFields(); err != nil {
+		if err := r.config.definition.Validate(); err != nil {
 			return nil, err
 		}
 	}
