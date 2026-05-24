@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -134,7 +135,7 @@ func TestResolveTTLOpenFindings_ResolvesStale(t *testing.T) {
 	fx.seedFinding("fresh-1", findingStatusOpen, fx.now.Add(-6*time.Hour), nil)
 	fx.seedFinding("fresh-edge", findingStatusOpen, fx.now.Add(-24*time.Hour), nil)
 
-	if err := fx.service.resolveTTLOpenFindings(context.Background(), fx.ruleID); err != nil {
+	if err := fx.service.resolveTTLOpenFindings(context.Background(), fx.tenantID, fx.ruleID); err != nil {
 		t.Fatalf("resolveTTLOpenFindings: %v", err)
 	}
 
@@ -172,7 +173,7 @@ func TestResolveTTLOpenFindings_NoOpForNonTTLRules(t *testing.T) {
 	fx.seedFinding("f-1", findingStatusOpen, fx.now.Add(-48*time.Hour), nil)
 	fx.seedFinding("f-2", findingStatusOpen, fx.now.Add(-72*time.Hour), nil)
 
-	if err := fx.service.resolveTTLOpenFindings(context.Background(), fx.ruleID); err != nil {
+	if err := fx.service.resolveTTLOpenFindings(context.Background(), fx.tenantID, fx.ruleID); err != nil {
 		t.Fatalf("resolveTTLOpenFindings: %v", err)
 	}
 	if fx.store.updateStatusCallCount != 0 {
@@ -205,7 +206,7 @@ func TestResolveTTLOpenFindings_LeavesTombstonedAlone(t *testing.T) {
 	fx.seedFinding("active-stale", findingStatusOpen, fx.now.Add(-48*time.Hour), nil)
 	before := cloneFinding(fx.store.findings["tombstoned-stale"])
 
-	if err := fx.service.resolveTTLOpenFindings(context.Background(), fx.ruleID); err != nil {
+	if err := fx.service.resolveTTLOpenFindings(context.Background(), fx.tenantID, fx.ruleID); err != nil {
 		t.Fatalf("resolveTTLOpenFindings: %v", err)
 	}
 
@@ -243,7 +244,7 @@ func TestResolveTTLOpenFindings_ReopenOnEmit(t *testing.T) {
 	fx := newTTLResolverFixture(t, LifecycleTTLEvidence, 24*time.Hour)
 	original := fx.seedFinding("ttl-reopen", findingStatusOpen, fx.now.Add(-48*time.Hour), nil)
 
-	if err := fx.service.resolveTTLOpenFindings(context.Background(), fx.ruleID); err != nil {
+	if err := fx.service.resolveTTLOpenFindings(context.Background(), fx.tenantID, fx.ruleID); err != nil {
 		t.Fatalf("resolveTTLOpenFindings: %v", err)
 	}
 
@@ -282,13 +283,119 @@ func TestResolveTTLOpenFindings_ReopenOnEmit(t *testing.T) {
 	}
 }
 
+func TestEvaluateSourceRuntimeRules_TTLEvidenceListFindingsUsesTenantScope(t *testing.T) {
+	openedAt := identityTrajectoryBaseTime
+	identityRule := identityRulesByID(t)[identityAuthControlLifecycleTamperingRuleID]
+	identityRuntime := &cerebrov1.SourceRuntime{Id: "example-okta-audit", SourceId: "okta", TenantId: "writer"}
+	identityEvent := identitySignalEventAt("okta-policy-weakened-tenant-scope", "okta", "okta.audit", map[string]string{
+		"domain":                "writer.okta.com",
+		"event_type":            "policy.lifecycle.update",
+		"actor_email":           "admin@writer.com",
+		"policy_id":             "pol-sign-on",
+		"resource_id":           "pol-sign-on",
+		"resource_type":         "policy",
+		"auth_control_weakened": "true",
+		"outcome_result":        "SUCCESS",
+	}, openedAt)
+
+	cases := []struct {
+		name    string
+		rule    Rule
+		ruleID  string
+		runtime *cerebrov1.SourceRuntime
+		events  []*cerebrov1.EventEnvelope
+	}{
+		{
+			name:    "runtime active threat evidence",
+			rule:    newRuntimeActiveThreatEvidenceRule(),
+			ruleID:  runtimeActiveThreatEvidenceRuleID,
+			runtime: &cerebrov1.SourceRuntime{Id: "runtime-prod", SourceId: "runtime", TenantId: "writer"},
+			events:  []*cerebrov1.EventEnvelope{runtimeActiveThreatTTLEvent(openedAt)},
+		},
+		{
+			name:    "identity auth control lifecycle tampering",
+			rule:    identityRule,
+			ruleID:  identityAuthControlLifecycleTamperingRuleID,
+			runtime: identityRuntime,
+			events:  []*cerebrov1.EventEnvelope{identityEvent},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			registry, err := NewRegistry(tc.rule)
+			if err != nil {
+				t.Fatalf("NewRegistry(%q) error = %v", tc.ruleID, err)
+			}
+			store := &tenantRequiredListFindingStore{stubFindingStore: &stubFindingStore{}}
+			replayer := &stubReplayer{events: tc.events}
+			service := NewWithRegistry(
+				&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+					tc.runtime.GetId(): tc.runtime,
+				}},
+				replayer,
+				store,
+				store,
+				store,
+				store,
+				registry,
+			).WithGraphStore(&stubGraphStore{}).
+				WithAppendLog(&recordingAppendLog{}).
+				WithTTLClock(fixedTTLClock{now: openedAt})
+
+			if _, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{
+				RuntimeID: tc.runtime.GetId(),
+				RuleIDs:   []string{tc.ruleID},
+			}); err != nil {
+				t.Fatalf("EvaluateSourceRuntimeRules(%q) error = %v", tc.ruleID, err)
+			}
+
+			request, ok := lastListFindingsRequestForRule(store.listFindingsRequests, tc.ruleID)
+			if !ok {
+				t.Fatalf("ListFindings was not called for ttl_evidence rule %q; requests=%+v", tc.ruleID, store.listFindingsRequests)
+			}
+			if got := strings.TrimSpace(request.TenantID); got != strings.TrimSpace(tc.runtime.GetTenantId()) {
+				t.Fatalf("TTL ListFindings TenantID = %q, want %q (request=%+v)", got, tc.runtime.GetTenantId(), request)
+			}
+			if got := strings.TrimSpace(request.RuleID); got != tc.ruleID {
+				t.Fatalf("TTL ListFindings RuleID = %q, want %q", got, tc.ruleID)
+			}
+			if got := strings.TrimSpace(request.Status); got != findingStatusOpen {
+				t.Fatalf("TTL ListFindings Status = %q, want %q", got, findingStatusOpen)
+			}
+		})
+	}
+}
+
+func lastListFindingsRequestForRule(requests []ports.ListFindingsRequest, ruleID string) (ports.ListFindingsRequest, bool) {
+	for i := len(requests) - 1; i >= 0; i-- {
+		if strings.TrimSpace(requests[i].RuleID) == strings.TrimSpace(ruleID) {
+			return requests[i], true
+		}
+	}
+	return ports.ListFindingsRequest{}, false
+}
+
+type tenantRequiredListFindingStore struct {
+	*stubFindingStore
+}
+
+func (s *tenantRequiredListFindingStore) ListFindings(ctx context.Context, request ports.ListFindingsRequest) ([]*ports.FindingRecord, error) {
+	if strings.TrimSpace(request.TenantID) == "" {
+		s.request = request
+		s.listFindingsRequests = append(s.listFindingsRequests, request)
+		return nil, errors.New("finding tenant id is required")
+	}
+	return s.stubFindingStore.ListFindings(ctx, request)
+}
+
 func TestResolveTTLOpenFindings_Idempotent(t *testing.T) {
 	fx := newTTLResolverFixture(t, LifecycleTTLEvidence, 24*time.Hour)
 	fx.seedFinding("stale-1", findingStatusOpen, fx.now.Add(-48*time.Hour), nil)
 	fx.seedFinding("stale-2", findingStatusOpen, fx.now.Add(-30*time.Hour), nil)
 	fx.seedFinding("fresh-1", findingStatusOpen, fx.now.Add(-6*time.Hour), nil)
 
-	if err := fx.service.resolveTTLOpenFindings(context.Background(), fx.ruleID); err != nil {
+	if err := fx.service.resolveTTLOpenFindings(context.Background(), fx.tenantID, fx.ruleID); err != nil {
 		t.Fatalf("first resolveTTLOpenFindings: %v", err)
 	}
 	firstCallCount := fx.store.updateStatusCallCount
@@ -296,7 +403,7 @@ func TestResolveTTLOpenFindings_Idempotent(t *testing.T) {
 		t.Fatalf("first sweep performed zero updates; nothing to verify idempotency against")
 	}
 
-	if err := fx.service.resolveTTLOpenFindings(context.Background(), fx.ruleID); err != nil {
+	if err := fx.service.resolveTTLOpenFindings(context.Background(), fx.tenantID, fx.ruleID); err != nil {
 		t.Fatalf("second resolveTTLOpenFindings: %v", err)
 	}
 	if fx.store.updateStatusCallCount != firstCallCount {
@@ -311,7 +418,7 @@ func TestResolveTTLOpenFindings_StructuredLog(t *testing.T) {
 	other := fx.seedFinding("stale-log-2", findingStatusOpen, fx.now.Add(-25*time.Hour), nil)
 	fx.seedFinding("fresh-log", findingStatusOpen, fx.now.Add(-6*time.Hour), nil)
 
-	if err := fx.service.resolveTTLOpenFindings(context.Background(), fx.ruleID); err != nil {
+	if err := fx.service.resolveTTLOpenFindings(context.Background(), fx.tenantID, fx.ruleID); err != nil {
 		t.Fatalf("resolveTTLOpenFindings: %v", err)
 	}
 

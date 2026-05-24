@@ -20,6 +20,7 @@ import (
 	"github.com/writer/cerebro/internal/statestore/postgres"
 	"github.com/writer/cerebro/internal/workflowevents"
 	"github.com/writer/cerebro/internal/workflowprojection"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // TestService_TombstonedFindingEmitMintsFreshGraphEdge exercises the
@@ -223,6 +224,142 @@ func TestService_TombstonedFindingEmitMintsFreshGraphEdge(t *testing.T) {
 	}
 }
 
+func TestService_TTLEvidenceEvaluateUsesPostgresTenantScopeAndReopens(t *testing.T) {
+	dsn := strings.TrimSpace(os.Getenv("CEREBRO_POSTGRES_DSN"))
+	if dsn == "" {
+		t.Skip("set CEREBRO_POSTGRES_DSN to run the postgres-backed TTL evaluate integration test")
+	}
+
+	ctx := context.Background()
+	store, err := postgres.Open(config.StateStoreConfig{
+		Driver:      config.StateStoreDriverPostgres,
+		PostgresDSN: dsn,
+	})
+	if err != nil {
+		t.Fatalf("open postgres store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	rawDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	t.Cleanup(func() { _ = rawDB.Close() })
+
+	nonce := time.Now().UTC().UnixNano()
+	tenantID := fmt.Sprintf("tenant-ttl-e2e-%d", nonce)
+	runtimeID := fmt.Sprintf("runtime-ttl-e2e-%d", nonce)
+	evidenceID := fmt.Sprintf("evidence-ttl-e2e-%d", nonce)
+	ruleID := "runtime-active-threat-evidence"
+	openedAt := time.Now().UTC().Add(-48 * time.Hour).Truncate(time.Microsecond)
+	staleAt := openedAt.Add(25 * time.Hour)
+	reemitAt := staleAt.Add(time.Hour)
+
+	t.Cleanup(func() {
+		bg := context.Background()
+		_, _ = rawDB.ExecContext(bg, `DELETE FROM finding_evidence WHERE runtime_id = $1`, runtimeID)
+		_, _ = rawDB.ExecContext(bg, `DELETE FROM finding_evaluation_runs WHERE runtime_id = $1`, runtimeID)
+		_, _ = rawDB.ExecContext(bg, `DELETE FROM findings WHERE tenant_id = $1`, tenantID)
+	})
+
+	runtimeStore := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			runtimeID: {Id: runtimeID, SourceId: "runtime", TenantId: tenantID},
+		},
+	}
+	replayer := &stubReplayer{events: []*cerebrov1.EventEnvelope{
+		runtimeThreatE2EEvent("runtime-threat-open", tenantID, evidenceID, openedAt),
+	}}
+	service := findings.NewWithRegistry(runtimeStore, replayer, store, store, store, store, findings.Builtin()).
+		WithTTLClock(e2eTTLClock{now: openedAt})
+
+	openResult, err := service.EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
+		RuntimeID: runtimeID,
+		RuleIDs:   []string{ruleID},
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeRules(open): %v", err)
+	}
+	if openResult == nil || len(openResult.Evaluations) != 1 {
+		t.Fatalf("open result evaluations = %#v, want one", openResult)
+	}
+	if got := len(openResult.Evaluations[0].Findings); got != 1 {
+		t.Fatalf("open result findings = %d, want 1", got)
+	}
+	opened := openResult.Evaluations[0].Findings[0]
+	if got := strings.TrimSpace(opened.Status); got != "open" {
+		t.Fatalf("opened status = %q, want open", got)
+	}
+	if got := strings.TrimSpace(opened.TenantID); got != tenantID {
+		t.Fatalf("opened tenant_id = %q, want %q", got, tenantID)
+	}
+
+	replayer.events = nil
+	service.WithTTLClock(e2eTTLClock{now: staleAt})
+	if _, err := service.EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
+		RuntimeID: runtimeID,
+		RuleIDs:   []string{ruleID},
+	}); err != nil {
+		t.Fatalf("EvaluateSourceRuntimeRules(ttl resolve): %v", err)
+	}
+	resolved, err := store.GetFinding(ctx, opened.ID)
+	if err != nil {
+		t.Fatalf("GetFinding(%q) after TTL resolve: %v", opened.ID, err)
+	}
+	if got := strings.TrimSpace(resolved.Status); got != "resolved" {
+		t.Fatalf("TTL-resolved status = %q, want resolved", got)
+	}
+	if got := strings.TrimSpace(resolved.StatusReason); got != "ttl_expired:24h" {
+		t.Fatalf("TTL-resolved status_reason = %q, want ttl_expired:24h", got)
+	}
+	if resolved.Tombstoned {
+		t.Fatalf("TTL-resolved finding tombstoned = true, want false")
+	}
+
+	replayer.events = []*cerebrov1.EventEnvelope{
+		runtimeThreatE2EEvent("runtime-threat-reemit", tenantID, evidenceID, reemitAt),
+	}
+	service.WithTTLClock(e2eTTLClock{now: reemitAt})
+	reopenResult, err := service.EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
+		RuntimeID: runtimeID,
+		RuleIDs:   []string{ruleID},
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeRules(reemit): %v", err)
+	}
+	if reopenResult == nil || len(reopenResult.Evaluations) != 1 || len(reopenResult.Evaluations[0].Findings) != 1 {
+		t.Fatalf("reemit result = %#v, want one reopened finding", reopenResult)
+	}
+	reopenedFromResult := reopenResult.Evaluations[0].Findings[0]
+	if got := strings.TrimSpace(reopenedFromResult.ID); got != strings.TrimSpace(opened.ID) {
+		t.Fatalf("reemit finding id = %q, want original id %q from real upsert reopen path", got, opened.ID)
+	}
+	reopened, err := store.GetFinding(ctx, opened.ID)
+	if err != nil {
+		t.Fatalf("GetFinding(%q) after reemit: %v", opened.ID, err)
+	}
+	if got := strings.TrimSpace(reopened.Status); got != "open" {
+		t.Fatalf("reopened status = %q, want open", got)
+	}
+	if got := strings.TrimSpace(reopened.StatusReason); got != "" {
+		t.Fatalf("reopened status_reason = %q, want empty", got)
+	}
+	if reopened.Tombstoned {
+		t.Fatalf("reopened finding tombstoned = true, want false")
+	}
+	if strings.Contains(reopened.ID, "#g") {
+		t.Fatalf("reopened finding id = %q, want original non-generation row for non-tombstoned TTL reopen", reopened.ID)
+	}
+
+	var activeRows int
+	if err := rawDB.QueryRowContext(ctx, `SELECT count(*) FROM findings WHERE tenant_id = $1 AND rule_id = $2 AND fingerprint = $3 AND tombstoned = FALSE`, tenantID, ruleID, opened.Fingerprint).Scan(&activeRows); err != nil {
+		t.Fatalf("count active TTL rows: %v", err)
+	}
+	if activeRows != 1 {
+		t.Fatalf("active rows for reopened TTL fingerprint = %d, want 1", activeRows)
+	}
+}
+
 func anchorEdgeKey(anchor, tenantID, findingID string) string {
 	return anchor + "|has_finding|" + fmt.Sprintf("urn:cerebro:%s:finding:%s", tenantID, findingID)
 }
@@ -301,6 +438,29 @@ func timestampOrEmpty(t time.Time) string {
 		return ""
 	}
 	return t.UTC().Format(time.RFC3339Nano)
+}
+
+type e2eTTLClock struct {
+	now time.Time
+}
+
+func (c e2eTTLClock) Now() time.Time { return c.now }
+
+func runtimeThreatE2EEvent(id string, tenantID string, evidenceID string, observedAt time.Time) *cerebrov1.EventEnvelope {
+	return &cerebrov1.EventEnvelope{
+		Id:         id,
+		TenantId:   tenantID,
+		SourceId:   "runtime",
+		Kind:       "runtime.evidence",
+		OccurredAt: timestamppb.New(observedAt),
+		Attributes: map[string]string{
+			"confidence":    "0.95",
+			"evidence_id":   evidenceID,
+			"evidence_type": "credential_use",
+			"resource_urn":  fmt.Sprintf("urn:cerebro:%s:kubernetes_workload:prod-cluster:payments:workload-ttl-e2e", tenantID),
+			"verdict":       "confirmed",
+		},
+	}
 }
 
 type e2eGraphFake struct {
@@ -414,10 +574,15 @@ func (s *stubRuntimeStore) GetSourceRuntime(_ context.Context, id string) (*cere
 	return runtime, nil
 }
 
-type stubReplayer struct{}
+type stubReplayer struct {
+	events []*cerebrov1.EventEnvelope
+}
 
 func (s *stubReplayer) Replay(context.Context, ports.ReplayRequest) ([]*cerebrov1.EventEnvelope, error) {
-	return nil, nil
+	if s == nil || len(s.events) == 0 {
+		return nil, nil
+	}
+	return append([]*cerebrov1.EventEnvelope(nil), s.events...), nil
 }
 
 type stubCloseoutStore struct {

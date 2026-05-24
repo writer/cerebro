@@ -170,7 +170,7 @@ func TestRuntimeActiveThreatEvidenceTTL(t *testing.T) {
 	}
 
 	service.WithTTLClock(fixedTTLClock{now: staleAt})
-	if err := service.resolveTTLOpenFindings(context.Background(), runtimeActiveThreatEvidenceRuleID); err != nil {
+	if err := service.resolveTTLOpenFindings(context.Background(), tenantID, runtimeActiveThreatEvidenceRuleID); err != nil {
 		t.Fatalf("resolveTTLOpenFindings(%q): %v", runtimeActiveThreatEvidenceRuleID, err)
 	}
 	resolved := store.findings[opened.ID]
@@ -190,7 +190,9 @@ func TestRuntimeActiveThreatEvidenceTTL(t *testing.T) {
 
 	// Mirror the production postgres reopen-on-emit CASE for a non-tombstoned
 	// ttl-resolved row: a fresh open emit flips the active row back to open in
-	// place rather than tombstoning it or minting a replacement.
+	// place rather than tombstoning it or minting a replacement. The
+	// postgres-backed TestService_TTLEvidenceEvaluateUsesPostgresTenantScopeAndReopens
+	// covers this through the real EvaluateSourceRuntimeRules -> UpsertFinding path.
 	reopened, err := store.UpdateFindingStatus(context.Background(), ports.FindingStatusUpdate{
 		FindingID: opened.ID,
 		Status:    findingStatusOpen,

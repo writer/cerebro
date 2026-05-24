@@ -878,7 +878,7 @@ func (s *Service) resolveRuleOpenFindings(ctx context.Context, runtime *cerebrov
 	runtimeID := strings.TrimSpace(runtime.GetId())
 	ruleID := strings.TrimSpace(rule.Spec().GetId())
 	if isTTLEvidenceRule(rule) {
-		return s.resolveTTLOpenFindings(ctx, ruleID)
+		return s.resolveTTLOpenFindings(ctx, tenantID, ruleID)
 	}
 	if retirementRule, ok := rule.(openFindingRetirementRule); ok && retirementRule.RetiresOpenFindings() {
 		return s.resolveRetiredOpenFindings(ctx, tenantID, runtimeID, ruleID, emittedFindingIDs)

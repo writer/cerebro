@@ -1636,7 +1636,7 @@ func assertIdentityRuleTTLEvidenceTrajectory(t *testing.T, rule Rule, runtime *c
 	}
 
 	service.WithTTLClock(fixedTTLClock{now: openedAt.Add(ttl + time.Hour)})
-	if err := service.resolveTTLOpenFindings(context.Background(), ruleID); err != nil {
+	if err := service.resolveTTLOpenFindings(context.Background(), runtime.GetTenantId(), ruleID); err != nil {
 		t.Fatalf("resolveTTLOpenFindings(%q): %v", ruleID, err)
 	}
 	finalFindings := githubTrajectoryPersistedFindings(store, ruleID, runtimeID)

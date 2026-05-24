@@ -86,10 +86,11 @@ func (s *Service) ttlSink() io.Writer {
 //     zero UPDATE calls because the resolved rows no longer match status='open';
 //   - leaves the tombstone columns alone, so a non-tombstoned row reopens on
 //     the next emit via the existing reopen-on-emit upsert path.
-func (s *Service) resolveTTLOpenFindings(ctx context.Context, ruleID string) error {
+func (s *Service) resolveTTLOpenFindings(ctx context.Context, tenantID string, ruleID string) error {
 	if s == nil || s.store == nil || s.rules == nil {
 		return nil
 	}
+	tenantID = strings.TrimSpace(tenantID)
 	id := strings.TrimSpace(ruleID)
 	if id == "" {
 		return nil
@@ -113,8 +114,9 @@ func (s *Service) resolveTTLOpenFindings(ctx context.Context, ruleID string) err
 	now := s.ttlClockNow()
 	cutoff := now.Add(-ttl)
 	candidates, err := s.store.ListFindings(ctx, ports.ListFindingsRequest{
-		RuleID: id,
-		Status: findingStatusOpen,
+		TenantID: tenantID,
+		RuleID:   id,
+		Status:   findingStatusOpen,
 	})
 	if err != nil {
 		return fmt.Errorf("list ttl candidates for rule %q: %w", id, err)
