@@ -147,6 +147,58 @@ func TestIdentityAuthControlLifecycleTampering(t *testing.T) {
 	assertIdentityRuleTTLEvidenceTrajectory(t, rule, runtime, first, authControlTTL)
 }
 
+func TestIdentityMFAEnabled_RequiresPositiveSignal(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		attributes map[string]string
+		want       bool
+	}{
+		{
+			name:       "missing posture",
+			attributes: nil,
+			want:       false,
+		},
+		{
+			name: "blank posture",
+			attributes: map[string]string{
+				"mfa_enrolled":       "",
+				"mfa_enforced":       "",
+				"is_enrolled_in_2sv": "",
+				"is_enforced_in_2sv": "",
+			},
+			want: false,
+		},
+		{
+			name: "explicit mfa enrollment",
+			attributes: map[string]string{
+				"mfa_enrolled": "true",
+			},
+			want: true,
+		},
+		{
+			name: "explicit 2sv enforcement",
+			attributes: map[string]string{
+				"is_enforced_in_2sv": "true",
+			},
+			want: true,
+		},
+		{
+			name: "explicit false dominates true",
+			attributes: map[string]string{
+				"mfa_enrolled": "true",
+				"mfa_enforced": "false",
+			},
+			want: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := identityMFAEnabled(tc.attributes); got != tc.want {
+				t.Fatalf("identityMFAEnabled(%v) = %v, want %v", tc.attributes, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestIdentityMfaFactorResetOrDisabled(t *testing.T) {
 	rules := identityRulesByID(t)
 	rule := rules[identityMFAFactorResetOrDisabledRuleID]
@@ -658,7 +710,8 @@ func TestIdentityPrivilegedAccountWithoutMfa(t *testing.T) {
 	rules := identityRulesByID(t)
 	rule := rules[identityPrivilegedAccountWithoutMFARuleID]
 	assertIdentityDurableMetadata(t, rule, []string{"user"})
-	if _, ok := rule.(CounterEventRule); !ok {
+	counterRule, ok := rule.(CounterEventRule)
+	if !ok {
 		t.Fatal("identity-privileged-account-without-mfa does not implement CounterEventRule")
 	}
 	metadataRule, ok := rule.(MetadataRule)
@@ -711,9 +764,26 @@ func TestIdentityPrivilegedAccountWithoutMfa(t *testing.T) {
 	olderWithMFA := identitySignalEventAt("google-user-admin-with-mfa-before-open", "google_workspace", "google_workspace.user", withMFAAttrs, identityTrajectoryBaseTime.Add(-time.Minute))
 	assertIdentityRuleOlderCloseDoesNotResolveLaterOpen(t, rule, olderWithMFA, first)
 
+	blankMFAAttrs := cloneIdentitySignalAttributes(openAttrs)
+	blankMFAAttrs["mfa_enrolled"] = ""
+	blankMFAAttrs["mfa_factor_count"] = ""
+	blankMFA := identitySignalEventAt("google-user-admin-blank-mfa-posture", "google_workspace", "google_workspace.user", blankMFAAttrs, identityTrajectoryBaseTime.Add(3*time.Minute))
+	records, err = rule.Evaluate(context.Background(), runtime, blankMFA)
+	if err != nil {
+		t.Fatalf("Evaluate(blank MFA posture) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(blank MFA posture) returned %d findings, want 0 for unknown MFA posture", len(records))
+	}
+	closeAnchor, closes := counterRule.CloseOnEvent(blankMFA)
+	if closes || closeAnchor != "" {
+		t.Fatalf("CloseOnEvent(blank MFA posture) = (%q, %v), want (\"\", false)", closeAnchor, closes)
+	}
+	assertIdentityRuleRemediationTrajectory(t, rule, first, blankMFA, cerebrov1.FindingStatus_FINDING_STATUS_OPEN)
+
 	notPrivilegedAttrs := cloneIdentitySignalAttributes(openAttrs)
 	notPrivilegedAttrs["is_admin"] = "false"
-	notPrivileged := identitySignalEventAt("google-user-not-privileged-no-mfa", "google_workspace", "google_workspace.user", notPrivilegedAttrs, identityTrajectoryBaseTime.Add(3*time.Minute))
+	notPrivileged := identitySignalEventAt("google-user-not-privileged-no-mfa", "google_workspace", "google_workspace.user", notPrivilegedAttrs, identityTrajectoryBaseTime.Add(4*time.Minute))
 	records, err = rule.Evaluate(context.Background(), runtime, notPrivileged)
 	if err != nil {
 		t.Fatalf("Evaluate(notPrivileged) error = %v", err)

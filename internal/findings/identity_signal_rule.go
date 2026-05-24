@@ -1224,10 +1224,21 @@ var identityMFASourceBackedEventKinds = []string{"gcp.service_account", "google_
 var identityMFAStateAttributeKeys = [...]string{"mfa_enrolled", "mfa_enforced", "is_enrolled_in_2sv", "is_enforced_in_2sv"}
 
 func identityMFAEnabled(attributes map[string]string) bool {
-	// Source-state MFA findings close only when every MFA posture leg is
-	// non-explicitly-false. Unknown/missing values are not enough to open or keep
-	// a finding; any explicit false on enrollment or enforcement keeps it open.
-	return !identityMFAExplicitlyDisabled(attributes)
+	// Source-state MFA findings close only on an explicit positive MFA posture
+	// signal. Unknown/missing values are not enough to remediate a finding; any
+	// explicit false on enrollment or enforcement keeps it open.
+	return !identityMFAExplicitlyDisabled(attributes) && identityMFAExplicitlyEnabled(attributes)
+}
+
+func identityMFAExplicitlyEnabled(attributes map[string]string) bool {
+	for _, key := range identityMFAStateAttributeKeys {
+		value := strings.ToLower(strings.TrimSpace(attributes[key]))
+		switch value {
+		case "1", "t", "true", "yes", "y", "enabled", "enrolled", "enforced":
+			return true
+		}
+	}
+	return false
 }
 
 func identityMFAExplicitlyDisabled(attributes map[string]string) bool {
