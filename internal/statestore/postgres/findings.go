@@ -1300,7 +1300,27 @@ func tenantScopedBackfillIdentityUserURN(tenantID string, attributes map[string]
 	if strings.TrimSpace(tenantID) == "" || strings.TrimSpace(sourceID) == "" || strings.TrimSpace(userID) == "" {
 		return ""
 	}
-	return "cerebro:tenant:" + strings.TrimSpace(tenantID) + ":entity:" + strings.TrimSpace(sourceID) + "_user:" + strings.TrimSpace(userID)
+	return tenantScopedBackfillIdentityProjectionURN(tenantID, strings.TrimSpace(sourceID)+"_user", userID)
+}
+
+// tenantScopedBackfillIdentityProjectionURN intentionally mirrors
+// internal/findings.identityProjectionURN so backfilled legacy fingerprints use
+// the same synthetic identity URN that runtime rule evaluation later produces.
+func tenantScopedBackfillIdentityProjectionURN(tenantID string, kind string, parts ...string) string {
+	tenant := strings.TrimSpace(tenantID)
+	entityKind := strings.TrimSpace(kind)
+	if tenant == "" || entityKind == "" {
+		return ""
+	}
+	values := []string{"urn", "cerebro", tenant, entityKind}
+	for _, part := range parts {
+		value := strings.TrimSpace(part)
+		if value == "" {
+			continue
+		}
+		values = append(values, value)
+	}
+	return strings.Join(values, ":")
 }
 
 func tenantScopedProjectionUserURN(urn string) string {

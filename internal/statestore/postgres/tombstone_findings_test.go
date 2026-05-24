@@ -536,6 +536,101 @@ func TestEnsureFindingStatements_BackfillsTenantScopedFingerprints(t *testing.T)
 	}
 }
 
+func TestBackfillTenantScopedFindingFingerprints_UsesIdentityProjectionURN(t *testing.T) {
+	ctx := context.Background()
+	store := tombstoneStoreFromEnv(t)
+	resetTombstoneSchema(t, ctx, store)
+
+	nonce := time.Now().UnixNano()
+	tenantID := fmt.Sprintf("example-identity-backfill-%d", nonce)
+	runtimeID := fmt.Sprintf("legacy-runtime-%d", nonce)
+	const ruleID = "identity-privileged-account-without-mfa"
+	sourceID := "okta"
+	userID := fmt.Sprintf("00u-backfill-%d", nonce)
+	legacyID := fmt.Sprintf("legacy-identity-row-%d", nonce)
+	runtimeIDAfterBackfill := fmt.Sprintf("runtime-after-backfill-%d", nonce)
+	runtimeEmitID := fmt.Sprintf("runtime-identity-row-%d", nonce)
+	wantUserURN := testIdentityProjectionURN(tenantID, sourceID+"_user", userID)
+	oldFingerprint := testFindingFingerprint(ruleID, userID)
+	wantFingerprint := testFindingFingerprint(ruleID, tenantID, wantUserURN)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	attributesJSON := fmt.Sprintf(`{"source_id":%q,"user_id":%q,"email":"alice@example.com"}`, sourceID, userID)
+	if _, err := store.db.ExecContext(ctx, `
+        INSERT INTO findings (
+            id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
+            attributes_json, first_observed_at, last_observed_at
+        )
+        VALUES (
+            $1, $2, $3, $4, $5, 'Legacy identity', 'HIGH', 'open', 'summary',
+            $6::jsonb, $7, $7
+        )`,
+		legacyID, oldFingerprint, tenantID, runtimeID, ruleID, attributesJSON, now.Add(-time.Hour)); err != nil {
+		t.Fatalf("insert legacy identity row: %v", err)
+	}
+
+	store.schemaMu.Lock()
+	store.findingTablesReady = false
+	store.schemaMu.Unlock()
+	ensureTombstoneSchema(t, ctx, store)
+
+	var gotFingerprint string
+	if err := store.db.QueryRowContext(ctx, `SELECT fingerprint FROM findings WHERE id = $1`, legacyID).Scan(&gotFingerprint); err != nil {
+		t.Fatalf("reload backfilled identity row: %v", err)
+	}
+	if gotFingerprint != wantFingerprint {
+		t.Fatalf("backfilled identity fingerprint = %q, want fingerprint built from user_urn %q (%q)", gotFingerprint, wantUserURN, wantFingerprint)
+	}
+
+	stored, err := store.UpsertFinding(ctx, &ports.FindingRecord{
+		ID:              runtimeEmitID,
+		Fingerprint:     wantFingerprint,
+		TenantID:        tenantID,
+		RuntimeID:       runtimeIDAfterBackfill,
+		RuleID:          ruleID,
+		Title:           "Runtime identity",
+		Severity:        "HIGH",
+		Status:          "open",
+		Summary:         "runtime finding should reuse the backfilled row",
+		ResourceURNs:    []string{wantUserURN},
+		Attributes:      map[string]string{"source_id": sourceID, "user_id": userID, "user_urn": wantUserURN},
+		FirstObservedAt: now,
+		LastObservedAt:  now,
+	})
+	if err != nil {
+		t.Fatalf("upsert runtime identity finding after backfill: %v", err)
+	}
+	if stored.ID != legacyID {
+		t.Fatalf("upsert reused id %q, want legacy row id %q", stored.ID, legacyID)
+	}
+
+	var activeRows int
+	if err := store.db.QueryRowContext(ctx, `
+        SELECT count(*)
+        FROM findings
+        WHERE tenant_id = $1 AND rule_id = $2 AND tombstoned = FALSE`,
+		tenantID, ruleID).Scan(&activeRows); err != nil {
+		t.Fatalf("count active identity rows: %v", err)
+	}
+	if activeRows != 1 {
+		t.Fatalf("active identity rows after runtime upsert = %d, want 1 (no duplicate insert)", activeRows)
+	}
+}
+
+func TestTenantScopedBackfillIdentityUserURN_MatchesIdentityProjectionURNFormat(t *testing.T) {
+	tenantID := "example-identity-backfill-format"
+	sourceID := "okta"
+	userID := "00u-format-regression"
+	got := tenantScopedBackfillIdentityUserURN(tenantID, map[string]string{
+		"source_id": sourceID,
+		"user_id":   userID,
+	})
+	want := testIdentityProjectionURN(tenantID, sourceID+"_user", userID)
+	if got != want {
+		t.Fatalf("tenantScopedBackfillIdentityUserURN() = %q, want %q", got, want)
+	}
+}
+
 func testFindingFingerprint(parts ...string) string {
 	hash := sha256.New()
 	for _, part := range parts {
@@ -543,6 +638,18 @@ func testFindingFingerprint(parts ...string) string {
 		_, _ = hash.Write([]byte{0})
 	}
 	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func testIdentityProjectionURN(tenantID string, kind string, parts ...string) string {
+	values := []string{"urn", "cerebro", strings.TrimSpace(tenantID), strings.TrimSpace(kind)}
+	for _, part := range parts {
+		value := strings.TrimSpace(part)
+		if value == "" {
+			continue
+		}
+		values = append(values, value)
+	}
+	return strings.Join(values, ":")
 }
 
 func TestCloseoutRunSingleton_RejectsConcurrent(t *testing.T) {
