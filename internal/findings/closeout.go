@@ -38,6 +38,38 @@ var ErrCloseoutInvalidRequest = errors.New("invalid closeout request")
 // ErrCloseoutUnavailable indicates that the bulk tombstone primitive is missing a dependency.
 var ErrCloseoutUnavailable = errors.New("closeout primitive is unavailable")
 
+// ErrCloseoutRunFailed indicates that a duplicate run_id resolved to a previously failed closeout_run.
+var ErrCloseoutRunFailed = errors.New("closeout run failed")
+
+// CloseoutRunFailedError preserves the failed closeout_run metadata returned
+// when an idempotency retry reloads a run whose persisted status is "failed".
+type CloseoutRunFailedError struct {
+	RunID        string
+	ErrorMessage string
+}
+
+func (e *CloseoutRunFailedError) Error() string {
+	if e == nil {
+		return ErrCloseoutRunFailed.Error()
+	}
+	runID := strings.TrimSpace(e.RunID)
+	errorMessage := strings.TrimSpace(e.ErrorMessage)
+	switch {
+	case runID != "" && errorMessage != "":
+		return fmt.Sprintf("%s: run_id %q: %s", ErrCloseoutRunFailed, runID, errorMessage)
+	case runID != "":
+		return fmt.Sprintf("%s: run_id %q", ErrCloseoutRunFailed, runID)
+	case errorMessage != "":
+		return fmt.Sprintf("%s: %s", ErrCloseoutRunFailed, errorMessage)
+	default:
+		return ErrCloseoutRunFailed.Error()
+	}
+}
+
+func (e *CloseoutRunFailedError) Unwrap() error {
+	return ErrCloseoutRunFailed
+}
+
 // CloseoutSelector scopes one bulk tombstone candidate resolution.
 //
 // The resolved selector is what is persisted to closeout_run.selector_json so the
@@ -112,19 +144,30 @@ func (s *Service) closeoutResultFromRunRecord(ctx context.Context, run *ports.Cl
 		AppliedCount:  run.AppliedCount,
 		S3SummaryKey:  strings.TrimSpace(run.S3SummaryKey),
 	}
-	if strings.TrimSpace(run.Status) == "failed" && strings.TrimSpace(run.ErrorMessage) != "" {
-		result.BatchErrors = append(result.BatchErrors, errors.New(strings.TrimSpace(run.ErrorMessage)))
+	var failedErr error
+	if strings.TrimSpace(run.Status) == "failed" {
+		errorMessage := strings.TrimSpace(run.ErrorMessage)
+		failedErr = &CloseoutRunFailedError{
+			RunID:        result.RunID,
+			ErrorMessage: errorMessage,
+		}
+		if errorMessage != "" {
+			result.BatchErrors = append(result.BatchErrors, failedErr)
+		}
 	}
 	if run.AppliedCount <= 0 || s == nil || s.store == nil {
-		return result, nil
+		return result, failedErr
 	}
 	proposed, perRule, err := s.reloadCloseoutAppliedFindings(ctx, run)
 	if err != nil {
+		if failedErr != nil {
+			return result, errors.Join(failedErr, err)
+		}
 		return nil, err
 	}
 	result.Proposed = proposed
 	result.PerRule = perRule
-	return result, nil
+	return result, failedErr
 }
 
 func (s *Service) closeoutHeartbeatEvery() time.Duration {

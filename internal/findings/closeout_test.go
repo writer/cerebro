@@ -766,6 +766,64 @@ func TestTombstoneFindingsBulk_DuplicateRunIDReloadsPersistedRun(t *testing.T) {
 	}
 }
 
+func TestTombstoneFindingsBulk_DuplicateRunIDReloadsPersistedFailedRun(t *testing.T) {
+	fx := newCloseoutFixture(t)
+
+	const runID = "run-duplicate-failed-1"
+	const priorFailure = "previous closeout failed while writing the audit summary"
+	if err := fx.closeout.InsertCloseoutRun(context.Background(), ports.CloseoutRunInsert{
+		RunID:        runID,
+		Actor:        "operator@writer.com",
+		SelectorJSON: []byte(`{"tenant_id":"tenant-a","rule_ids":["rule-critical-resource-deleted"],"statuses":["open"]}`),
+		DryRun:       false,
+		StartedAt:    fx.now,
+		HeartbeatAt:  fx.now,
+	}); err != nil {
+		t.Fatalf("seed closeout_run: %v", err)
+	}
+	if err := fx.closeout.FinishCloseoutRun(context.Background(), ports.CloseoutRunFinish{
+		RunID:         runID,
+		Status:        "failed",
+		ErrorMessage:  priorFailure,
+		ProposedCount: 2,
+		AppliedCount:  0,
+		FinishedAt:    fx.now.Add(time.Minute),
+	}); err != nil {
+		t.Fatalf("mark closeout_run failed: %v", err)
+	}
+
+	result, err := fx.service.TombstoneFindingsBulk(context.Background(), fx.request(runID, false))
+	if err == nil {
+		t.Fatalf("duplicate failed closeout_run returned nil error; result=%+v", result)
+	}
+	if !errors.Is(err, ErrCloseoutRunFailed) {
+		t.Fatalf("duplicate failed closeout error = %v, want ErrCloseoutRunFailed", err)
+	}
+	var failedErr *CloseoutRunFailedError
+	if !errors.As(err, &failedErr) {
+		t.Fatalf("duplicate failed closeout error = %T, want CloseoutRunFailedError", err)
+	}
+	if failedErr.ErrorMessage != priorFailure {
+		t.Fatalf("CloseoutRunFailedError.ErrorMessage = %q, want %q", failedErr.ErrorMessage, priorFailure)
+	}
+	if result == nil {
+		t.Fatal("duplicate failed closeout_run returned nil result")
+	}
+	if result.RunID != runID {
+		t.Fatalf("result.RunID = %q, want %q", result.RunID, runID)
+	}
+	if len(result.BatchErrors) != 1 {
+		t.Fatalf("BatchErrors len = %d, want 1", len(result.BatchErrors))
+	}
+	var batchErr *CloseoutRunFailedError
+	if !errors.As(result.BatchErrors[0], &batchErr) {
+		t.Fatalf("BatchErrors[0] = %T, want CloseoutRunFailedError", result.BatchErrors[0])
+	}
+	if batchErr.ErrorMessage != priorFailure {
+		t.Fatalf("BatchErrors[0].ErrorMessage = %q, want %q", batchErr.ErrorMessage, priorFailure)
+	}
+}
+
 func TestTombstoneFindingsBulk_BatchesAtMaxBatchSize(t *testing.T) {
 	fx := newCloseoutFixture(t)
 	for i := 0; i < 25; i++ {

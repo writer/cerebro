@@ -615,6 +615,82 @@ func TestTombstoneOneFinding_RetryAfterAtomicRollback(t *testing.T) {
 	}
 }
 
+func TestCloseout_DuplicateRunWithFailedStatusReturnsError(t *testing.T) {
+	ctx := context.Background()
+	store, rawDB, dsnCleanup := closeoutAtomicPostgresStore(t)
+	defer dsnCleanup()
+
+	nonce := time.Now().UTC().UnixNano()
+	tenantID := fmt.Sprintf("tenant-duplicate-failed-%d", nonce)
+	runtimeID := fmt.Sprintf("runtime-duplicate-failed-%d", nonce)
+	ruleID := "rule-critical-resource-deleted"
+	runID := fmt.Sprintf("run-duplicate-failed-%d", nonce)
+	priorFailure := fmt.Sprintf("prior closeout failure persisted for duplicate run %d", nonce)
+	cleanupCloseoutAtomicRows(t, rawDB, tenantID, runID)
+
+	startedAt := time.Now().UTC().Truncate(time.Microsecond)
+	if err := store.InsertCloseoutRun(ctx, ports.CloseoutRunInsert{
+		RunID:        runID,
+		Actor:        "operator@writer.com",
+		SelectorJSON: []byte(fmt.Sprintf(`{"tenant_id":%q,"rule_ids":[%q],"statuses":["open"]}`, tenantID, ruleID)),
+		DryRun:       false,
+		StartedAt:    startedAt,
+		HeartbeatAt:  startedAt,
+	}); err != nil {
+		t.Fatalf("seed closeout_run: %v", err)
+	}
+	if err := store.FinishCloseoutRun(ctx, ports.CloseoutRunFinish{
+		RunID:         runID,
+		Status:        "failed",
+		ErrorMessage:  priorFailure,
+		ProposedCount: 1,
+		AppliedCount:  0,
+		FinishedAt:    startedAt.Add(time.Minute),
+	}); err != nil {
+		t.Fatalf("mark closeout_run failed: %v", err)
+	}
+
+	service := closeoutAtomicService(store, &recordingAppendLog{}, tenantID, runtimeID)
+	result, err := service.TombstoneFindingsBulk(ctx, closeoutAtomicRequest(tenantID, ruleID, runID))
+	if err == nil {
+		t.Fatalf("duplicate failed closeout_run returned nil error; result=%+v", result)
+	}
+	if !errors.Is(err, findings.ErrCloseoutRunFailed) {
+		t.Fatalf("duplicate failed closeout error = %v, want ErrCloseoutRunFailed", err)
+	}
+	var failedErr *findings.CloseoutRunFailedError
+	if !errors.As(err, &failedErr) {
+		t.Fatalf("duplicate failed closeout error = %T, want CloseoutRunFailedError", err)
+	}
+	if failedErr.ErrorMessage != priorFailure {
+		t.Fatalf("CloseoutRunFailedError.ErrorMessage = %q, want %q", failedErr.ErrorMessage, priorFailure)
+	}
+	if result == nil {
+		t.Fatal("duplicate failed closeout_run returned nil result")
+	}
+	if len(result.BatchErrors) != 1 {
+		t.Fatalf("BatchErrors len = %d, want 1", len(result.BatchErrors))
+	}
+	var batchErr *findings.CloseoutRunFailedError
+	if !errors.As(result.BatchErrors[0], &batchErr) {
+		t.Fatalf("BatchErrors[0] = %T, want CloseoutRunFailedError", result.BatchErrors[0])
+	}
+	if batchErr.ErrorMessage != priorFailure {
+		t.Fatalf("BatchErrors[0].ErrorMessage = %q, want %q", batchErr.ErrorMessage, priorFailure)
+	}
+
+	var status, errorMessage string
+	if err := rawDB.QueryRowContext(ctx, `SELECT status, error_message FROM closeout_run WHERE run_id = $1`, runID).Scan(&status, &errorMessage); err != nil {
+		t.Fatalf("read closeout_run after duplicate retry: %v", err)
+	}
+	if status != "failed" {
+		t.Fatalf("closeout_run.status = %q, want failed", status)
+	}
+	if errorMessage != priorFailure {
+		t.Fatalf("closeout_run.error_message = %q, want %q", errorMessage, priorFailure)
+	}
+}
+
 func anchorEdgeKey(anchor, tenantID, findingID string) string {
 	return anchor + "|has_finding|" + fmt.Sprintf("urn:cerebro:%s:finding:%s", tenantID, findingID)
 }
