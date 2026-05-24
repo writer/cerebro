@@ -98,8 +98,8 @@ func TestCloseoutS3SummaryShape(t *testing.T) {
 }
 
 // TestCloseoutIdempotentRunID asserts I-6 (CROSS-006): re-running with the
-// same --run-id yields applied_count_delta=0 against the same dataset and the
-// closeout_run table has exactly one row for that run_id.
+// same --run-id performs zero additional writes while returning the persisted
+// run counts, and the closeout_run table has exactly one row for that run_id.
 func TestCloseoutIdempotentRunID(t *testing.T) {
 	fx := newCloseoutFixture(t)
 	fx.seedFinding("f-1", "open", fx.now.Add(-48*time.Hour), nil)
@@ -120,8 +120,11 @@ func TestCloseoutIdempotentRunID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second apply error = %v", err)
 	}
-	if second.AppliedCount != 0 {
-		t.Fatalf("second applied_count = %d, want 0 (idempotent re-run)", second.AppliedCount)
+	if second.AppliedCount != first.AppliedCount {
+		t.Fatalf("second applied_count = %d, want persisted %d", second.AppliedCount, first.AppliedCount)
+	}
+	if second.ProposedCount != first.ProposedCount {
+		t.Fatalf("second proposed_count = %d, want persisted %d", second.ProposedCount, first.ProposedCount)
 	}
 	afterAudit, _ := fx.tombstone.CountFindingTombstoneEventsByRun(context.Background(), "run-idem-shared")
 	if afterAudit != beforeAudit {

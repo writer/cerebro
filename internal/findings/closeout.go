@@ -80,9 +80,11 @@ type CloseoutRequest struct {
 
 // CloseoutResult reports the observable outcome of one TombstoneFindingsBulk invocation.
 //
-// AppliedCount reflects committed candidates only: when a batch fails mid-way
-// the value is the number of rows successfully tombstoned in earlier batches.
-// PerRule mirrors that by counting only candidates that were actually written.
+// For a newly executed run, AppliedCount reflects committed candidates only:
+// when a batch fails mid-way the value is the number of rows successfully
+// tombstoned in earlier batches. For a duplicate run_id, the result is reloaded
+// from the persisted closeout_run row and the counts reflect that prior run.
+// PerRule mirrors committed candidates for newly executed runs.
 type CloseoutResult struct {
 	RunID         string
 	Proposed      []*ports.FindingRecord
@@ -91,6 +93,79 @@ type CloseoutResult struct {
 	BatchSizes    []int
 	BatchErrors   []error
 	PerRule       []CloseoutPerRuleCount
+	// S3SummaryKey is populated when a caller reloads an existing closeout_run
+	// row so the CLI can report the persisted audit object without overwriting it.
+	S3SummaryKey string
+}
+
+func (s *Service) closeoutResultFromRunRecord(ctx context.Context, run *ports.CloseoutRunRecord) (*CloseoutResult, error) {
+	if run == nil {
+		return &CloseoutResult{}, nil
+	}
+	result := &CloseoutResult{
+		RunID:         strings.TrimSpace(run.RunID),
+		ProposedCount: run.ProposedCount,
+		AppliedCount:  run.AppliedCount,
+		S3SummaryKey:  strings.TrimSpace(run.S3SummaryKey),
+	}
+	if strings.TrimSpace(run.Status) == "failed" && strings.TrimSpace(run.ErrorMessage) != "" {
+		result.BatchErrors = append(result.BatchErrors, errors.New(strings.TrimSpace(run.ErrorMessage)))
+	}
+	if run.AppliedCount <= 0 || s == nil || s.store == nil {
+		return result, nil
+	}
+	proposed, perRule, err := s.reloadCloseoutAppliedFindings(ctx, run)
+	if err != nil {
+		return nil, err
+	}
+	result.Proposed = proposed
+	result.PerRule = perRule
+	return result, nil
+}
+
+func (s *Service) reloadCloseoutAppliedFindings(ctx context.Context, run *ports.CloseoutRunRecord) ([]*ports.FindingRecord, []CloseoutPerRuleCount, error) {
+	if run == nil {
+		return nil, nil, nil
+	}
+	var selector CloseoutSelector
+	if len(run.SelectorJSON) > 0 {
+		if err := json.Unmarshal(run.SelectorJSON, &selector); err != nil {
+			return nil, nil, fmt.Errorf("decode closeout_run %q selector_json: %w", strings.TrimSpace(run.RunID), err)
+		}
+	}
+	selector = resolveCloseoutSelector(selector)
+	if selector.TenantID == "" || len(selector.RuleIDs) == 0 {
+		return nil, nil, nil
+	}
+	counts := map[string]int{}
+	seen := map[string]struct{}{}
+	var proposed []*ports.FindingRecord
+	for _, ruleID := range expandCloseoutRuleIDs(selector) {
+		records, err := s.store.ListFindings(ctx, ports.ListFindingsRequest{
+			TenantID: selector.TenantID,
+			RuleID:   ruleID,
+			Status:   findingStatusResolved,
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("reload applied closeout findings for rule %q: %w", ruleID, err)
+		}
+		for _, record := range records {
+			if record == nil || !record.Tombstoned || strings.TrimSpace(record.TombstonedRunID) != strings.TrimSpace(run.RunID) {
+				continue
+			}
+			id := strings.TrimSpace(record.ID)
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			proposed = append(proposed, record)
+			counts[strings.TrimSpace(record.RuleID)]++
+		}
+	}
+	sort.SliceStable(proposed, func(i, j int) bool {
+		return strings.TrimSpace(proposed[i].ID) < strings.TrimSpace(proposed[j].ID)
+	})
+	return proposed, sortPerRuleApplied(counts), nil
 }
 
 // TombstoneFindingsBulk runs the bulk tombstone primitive end to end:
@@ -104,7 +179,7 @@ type CloseoutResult struct {
 //   - flips closeout_run to succeeded/failed with finished_at + error_message on every
 //     exit path (success, batch error, ctx cancel/timeout, panic),
 //   - fails fast when another run is in flight (singleton partial unique index),
-//   - is idempotent on RunID (duplicate run_id returns AppliedCount=0 without mutation),
+//   - is idempotent on RunID (duplicate run_id reloads the persisted run without mutation),
 //   - batches per MaxBatchSize.
 //
 // The persisted selector_json captures the resolved selector (after defaults applied) so
@@ -167,7 +242,11 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 			return nil, fmt.Errorf("%w: %s", ErrCloseoutAnotherRunning, insertErr.Error())
 		}
 		if errors.Is(insertErr, ports.ErrCloseoutRunAlreadyExists) {
-			return &CloseoutResult{RunID: runID, AppliedCount: 0}, nil
+			existing, getErr := s.closeoutStore.GetCloseoutRun(context.WithoutCancel(ctx), runID)
+			if getErr != nil {
+				return nil, fmt.Errorf("load existing closeout_run %q: %w", runID, getErr)
+			}
+			return s.closeoutResultFromRunRecord(context.WithoutCancel(ctx), existing)
 		}
 		return nil, fmt.Errorf("insert closeout_run %q: %w", runID, insertErr)
 	}

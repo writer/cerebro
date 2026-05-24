@@ -117,6 +117,9 @@ func (s *stubCloseoutStore) UpdateCloseoutRunSummary(_ context.Context, runID, s
 		existing.Status = "failed"
 		existing.FinishedAt = time.Now().UTC()
 		existing.ErrorMessage = summaryErr.Error()
+		if summaryKey != "" {
+			existing.S3SummaryKey = summaryKey
+		}
 		return nil
 	}
 	if summaryKey != "" {
@@ -675,12 +678,60 @@ func TestTombstoneFindingsBulk_Idempotent_SameRunID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second apply error = %v", err)
 	}
-	if second.AppliedCount != 0 {
-		t.Fatalf("second applied_count = %d, want 0", second.AppliedCount)
+	if second.AppliedCount != first.AppliedCount {
+		t.Fatalf("second applied_count = %d, want persisted %d", second.AppliedCount, first.AppliedCount)
+	}
+	if second.ProposedCount != first.ProposedCount {
+		t.Fatalf("second proposed_count = %d, want persisted %d", second.ProposedCount, first.ProposedCount)
 	}
 	afterAuditCount, _ := fx.tombstone.CountFindingTombstoneEventsByRun(context.Background(), "run-idem-1")
 	if afterAuditCount != beforeAuditCount {
 		t.Fatalf("audit count changed: before=%d after=%d", beforeAuditCount, afterAuditCount)
+	}
+}
+
+func TestTombstoneFindingsBulk_DuplicateRunIDReloadsPersistedRun(t *testing.T) {
+	fx := newCloseoutFixture(t)
+	fx.seedFinding("f-1", "open", fx.now.Add(-48*time.Hour), nil)
+	fx.seedFinding("f-2", "open", fx.now.Add(-72*time.Hour), nil)
+
+	const runID = "run-duplicate-summary-1"
+	first, err := fx.service.TombstoneFindingsBulk(context.Background(), fx.request(runID, false))
+	if err != nil {
+		t.Fatalf("first apply error = %v", err)
+	}
+	if first.ProposedCount != 2 || first.AppliedCount != 2 {
+		t.Fatalf("first counts = proposed %d applied %d, want 2/2", first.ProposedCount, first.AppliedCount)
+	}
+	summaryKey := CloseoutSummaryKey(runID)
+	if err := fx.closeout.UpdateCloseoutRunSummary(context.Background(), runID, summaryKey, nil); err != nil {
+		t.Fatalf("persist summary key: %v", err)
+	}
+	beforeAuditCount, _ := fx.tombstone.CountFindingTombstoneEventsByRun(context.Background(), runID)
+
+	second, err := fx.service.TombstoneFindingsBulk(context.Background(), fx.request(runID, false))
+	if err != nil {
+		t.Fatalf("duplicate apply error = %v", err)
+	}
+	if second == nil {
+		t.Fatal("duplicate run returned nil result")
+	}
+	if second.ProposedCount != first.ProposedCount {
+		t.Fatalf("duplicate ProposedCount = %d, want persisted %d", second.ProposedCount, first.ProposedCount)
+	}
+	if second.AppliedCount != first.AppliedCount {
+		t.Fatalf("duplicate AppliedCount = %d, want persisted %d", second.AppliedCount, first.AppliedCount)
+	}
+	if second.S3SummaryKey != summaryKey {
+		t.Fatalf("duplicate S3SummaryKey = %q, want %q", second.S3SummaryKey, summaryKey)
+	}
+	wantPerRule := []CloseoutPerRuleCount{{RuleID: fx.ruleID, Applied: 2}}
+	if !reflect.DeepEqual(second.PerRule, wantPerRule) {
+		t.Fatalf("duplicate PerRule = %+v, want %+v", second.PerRule, wantPerRule)
+	}
+	afterAuditCount, _ := fx.tombstone.CountFindingTombstoneEventsByRun(context.Background(), runID)
+	if afterAuditCount != beforeAuditCount {
+		t.Fatalf("duplicate run wrote audit rows: before=%d after=%d", beforeAuditCount, afterAuditCount)
 	}
 }
 

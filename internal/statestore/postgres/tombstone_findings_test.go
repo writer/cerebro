@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 func tombstoneStoreFromEnv(t *testing.T) *Store {
@@ -592,6 +593,53 @@ func TestCloseoutRunSingleton_RejectsConcurrent(t *testing.T) {
 	}
 	if err := insertRunning("run-after"); err != nil {
 		t.Fatalf("new running insert after first finished should succeed, got: %v", err)
+	}
+}
+
+func TestUpdateCloseoutRunSummary_PersistsS3KeyOnFailure(t *testing.T) {
+	ctx := context.Background()
+	store := tombstoneStoreFromEnv(t)
+	resetTombstoneSchema(t, ctx, store)
+	ensureTombstoneSchema(t, ctx, store)
+
+	runID := fmt.Sprintf("run-summary-fail-%d", time.Now().UnixNano())
+	if err := store.InsertCloseoutRun(ctx, ports.CloseoutRunInsert{
+		RunID:        runID,
+		Actor:        "operator@example.com",
+		SelectorJSON: []byte(`{"rule_ids":["rule-alpha"]}`),
+		DryRun:       false,
+		StartedAt:    time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("InsertCloseoutRun: %v", err)
+	}
+	if err := store.FinishCloseoutRun(ctx, ports.CloseoutRunFinish{
+		RunID:         runID,
+		Status:        "succeeded",
+		ProposedCount: 1,
+		AppliedCount:  1,
+		FinishedAt:    time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("FinishCloseoutRun: %v", err)
+	}
+
+	summaryKey := "closeout/" + runID + ".json"
+	const summaryErrMessage = "injected summary upload failure"
+	summaryErr := errors.New(summaryErrMessage)
+	if err := store.UpdateCloseoutRunSummary(ctx, runID, summaryKey, summaryErr); err != nil {
+		t.Fatalf("UpdateCloseoutRunSummary: %v", err)
+	}
+	run, err := store.GetCloseoutRun(ctx, runID)
+	if err != nil {
+		t.Fatalf("GetCloseoutRun: %v", err)
+	}
+	if run.Status != "failed" {
+		t.Fatalf("status = %q, want failed", run.Status)
+	}
+	if !strings.Contains(run.ErrorMessage, summaryErrMessage) {
+		t.Fatalf("error_message = %q, want it to contain %q", run.ErrorMessage, summaryErrMessage)
+	}
+	if run.S3SummaryKey != summaryKey {
+		t.Fatalf("s3_summary_key = %q, want %q", run.S3SummaryKey, summaryKey)
 	}
 }
 

@@ -253,16 +253,7 @@ func runCloseoutWithEnv(args []string, env *closeoutEnv) error {
 
 	result, closeoutErr := env.Backend.Closeout(ctx, req)
 	if closeoutErr != nil {
-		emitCloseoutLog(env, map[string]any{
-			"event":          closeoutEventEnd,
-			"run_id":         runID,
-			"actor":          actor,
-			"env":            flags.AllowEnv,
-			"status":         "failed",
-			"proposed_count": closeoutCount(result, func(r *findings.CloseoutResult) int { return r.ProposedCount }),
-			"applied_count":  closeoutCount(result, func(r *findings.CloseoutResult) int { return r.AppliedCount }),
-			"dry_run":        req.DryRun,
-		})
+		emitCloseoutLog(env, closeoutFailedEndLog(runID, actor, flags.AllowEnv, req.DryRun, result, closeoutErr, "closeout_failed"))
 		return fmt.Errorf("closeout: %w", closeoutErr)
 	}
 	if result == nil {
@@ -286,23 +277,37 @@ func runCloseoutWithEnv(args []string, env *closeoutEnv) error {
 		return fmt.Errorf("marshal closeout summary: %w", marshalErr)
 	}
 
-	summaryKey := ""
+	summaryKey := strings.TrimSpace(result.S3SummaryKey)
 	if flags.Apply {
-		summaryKey = findings.CloseoutSummaryKey(runID)
-		putErr := env.Summary.PutCloseoutSummary(ctx, bucket, summaryKey, body)
-		afterErr := env.Backend.AfterCloseoutSummary(ctx, runID, summaryKey, putErr)
-		if putErr != nil {
-			_, _ = fmt.Fprintf(env.Stderr, "cerebro closeout: failed to put audit summary to s3://%s/%s: %v\n", bucket, summaryKey, putErr)
-			emitCloseoutLog(env, closeoutFailedEndLog(runID, actor, flags.AllowEnv, req.DryRun, result, putErr, "s3_put_failed"))
-			return fmt.Errorf("%w: %w", ErrCloseoutSummaryPutFailed, putErr)
-		}
-		if afterErr != nil {
-			emitCloseoutLog(env, closeoutFailedEndLog(runID, actor, flags.AllowEnv, req.DryRun, result, afterErr, "after_closeout_summary_failed"))
-			return fmt.Errorf("after closeout summary: %w", afterErr)
+		if summaryKey == "" {
+			summaryKey = findings.CloseoutSummaryKey(runID)
+			putErr := env.Summary.PutCloseoutSummary(ctx, bucket, summaryKey, body)
+			afterErr := env.Backend.AfterCloseoutSummary(ctx, runID, summaryKey, putErr)
+			if putErr != nil {
+				_, _ = fmt.Fprintf(env.Stderr, "cerebro closeout: failed to put audit summary to s3://%s/%s: %v\n", bucket, summaryKey, putErr)
+				emitCloseoutLog(env, closeoutFailedEndLog(runID, actor, flags.AllowEnv, req.DryRun, result, putErr, "s3_put_failed"))
+				return fmt.Errorf("%w: %w", ErrCloseoutSummaryPutFailed, putErr)
+			}
+			if afterErr != nil {
+				emitCloseoutLog(env, closeoutFailedEndLog(runID, actor, flags.AllowEnv, req.DryRun, result, afterErr, "after_closeout_summary_failed"))
+				return fmt.Errorf("after closeout summary: %w", afterErr)
+			}
 		}
 	} else if bucket != "" && env.Summary != nil {
-		summaryKey = findings.CloseoutSummaryKey(runID)
-		_ = env.Summary.PutCloseoutSummary(ctx, bucket, summaryKey, body)
+		if summaryKey == "" {
+			summaryKey = findings.CloseoutSummaryKey(runID)
+			putErr := env.Summary.PutCloseoutSummary(ctx, bucket, summaryKey, body)
+			afterErr := env.Backend.AfterCloseoutSummary(ctx, runID, summaryKey, putErr)
+			if putErr != nil {
+				_, _ = fmt.Fprintf(env.Stderr, "cerebro closeout: failed to put audit summary to s3://%s/%s: %v\n", bucket, summaryKey, putErr)
+				emitCloseoutLog(env, closeoutFailedEndLog(runID, actor, flags.AllowEnv, req.DryRun, result, putErr, "s3_put_failed"))
+				return fmt.Errorf("%w: %w", ErrCloseoutSummaryPutFailed, putErr)
+			}
+			if afterErr != nil {
+				emitCloseoutLog(env, closeoutFailedEndLog(runID, actor, flags.AllowEnv, req.DryRun, result, afterErr, "after_closeout_summary_failed"))
+				return fmt.Errorf("after closeout summary: %w", afterErr)
+			}
+		}
 	} else if !flags.Apply {
 		_, _ = fmt.Fprintln(env.Stdout, string(body))
 	}
@@ -325,13 +330,6 @@ func runCloseoutWithEnv(args []string, env *closeoutEnv) error {
 	}
 	emitCloseoutLog(env, endLog)
 	return nil
-}
-
-func closeoutCount(result *findings.CloseoutResult, extract func(*findings.CloseoutResult) int) int {
-	if result == nil {
-		return 0
-	}
-	return extract(result)
 }
 
 // parseCloseoutFlags reads the flag surface from args. The flag set is

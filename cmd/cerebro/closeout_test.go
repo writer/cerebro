@@ -743,6 +743,145 @@ func TestCloseout_S3SummaryFailureMarksFailed(t *testing.T) {
 	}
 }
 
+func TestCloseout_PostCloseoutErrorUsesFailedEndLog(t *testing.T) {
+	env, backend, writer, stdout, _ := newCloseoutTestEnv(t)
+	const closeoutErrMessage = "backend closeout failed after run row insert"
+	closeoutErr := errors.New(closeoutErrMessage)
+	backend.closeoutErr = closeoutErr
+	backend.closeoutResult = &findings.CloseoutResult{
+		RunID:         "run-closeout-error-1",
+		ProposedCount: 5,
+		AppliedCount:  3,
+		BatchSizes:    []int{2, 1},
+	}
+
+	err := runCloseoutWithEnv([]string{
+		"--rule-id", "r1",
+		"--reason", "cleanup",
+		"--actor", "alice@writer.com",
+		"--run-id", "run-closeout-error-1",
+	}, env)
+	if err == nil {
+		t.Fatal("expected closeout error")
+	}
+	if !errors.Is(err, closeoutErr) {
+		t.Fatalf("error %v should wrap closeoutErr", err)
+	}
+	if len(writer.calls) != 0 {
+		t.Fatalf("summary writer called on direct closeout error: %d", len(writer.calls))
+	}
+	if len(backend.afterSummaryKeys) != 0 {
+		t.Fatalf("AfterCloseoutSummary called on direct closeout error: %d", len(backend.afterSummaryKeys))
+	}
+
+	endEntries := closeoutEndLogEntries(t, stdout.String())
+	if len(endEntries) != 1 {
+		t.Fatalf("closeout.end entries = %d, want 1 (stdout:\n%s)", len(endEntries), stdout.String())
+	}
+	entry := endEntries[0]
+	if got, _ := entry["status"].(string); got != "failed" {
+		t.Fatalf("status = %q, want failed (entry: %v)", got, entry)
+	}
+	if got, _ := entry["error"].(string); !strings.Contains(got, closeoutErrMessage) {
+		t.Fatalf("error = %q, want it to contain %q", got, closeoutErrMessage)
+	}
+	if got, _ := entry["reason"].(string); got != "closeout_failed" {
+		t.Fatalf("reason = %q, want closeout_failed", got)
+	}
+	if got, ok := entry["batch_count"].(float64); !ok || int(got) != 2 {
+		t.Fatalf("batch_count = %v, want 2", entry["batch_count"])
+	}
+	if got, ok := entry["applied_count"].(float64); !ok || int(got) != 3 {
+		t.Fatalf("applied_count = %v, want 3", entry["applied_count"])
+	}
+	if _, ok := entry["proposed_count"]; ok {
+		t.Fatalf("legacy proposed_count key appeared in failed end log: %v", entry)
+	}
+}
+
+func TestRunCloseoutWithEnv_DryRunPersistsS3SummaryKey(t *testing.T) {
+	env, backend, writer, stdout, _ := newCloseoutTestEnv(t)
+	backend.closeoutResult = &findings.CloseoutResult{
+		RunID:         "run-dry-summary-1",
+		ProposedCount: 4,
+		AppliedCount:  0,
+	}
+
+	err := runCloseoutWithEnv([]string{
+		"--rule-id", "r1",
+		"--reason", "cleanup",
+		"--audit-s3-bucket", "example-sec-dev-audit",
+		"--run-id", "run-dry-summary-1",
+	}, env)
+	if err != nil {
+		t.Fatalf("dry-run with audit bucket error = %v", err)
+	}
+	if len(writer.calls) != 1 {
+		t.Fatalf("summary writer calls = %d, want 1", len(writer.calls))
+	}
+	if writer.calls[0].Key != "closeout/run-dry-summary-1.json" {
+		t.Fatalf("summary key = %q, want closeout/run-dry-summary-1.json", writer.calls[0].Key)
+	}
+	if len(backend.afterSummaryKeys) != 1 {
+		t.Fatalf("AfterCloseoutSummary calls = %d, want 1", len(backend.afterSummaryKeys))
+	}
+	if backend.afterSummaryKeys[0] != "closeout/run-dry-summary-1.json" {
+		t.Fatalf("AfterCloseoutSummary key = %q, want closeout/run-dry-summary-1.json", backend.afterSummaryKeys[0])
+	}
+	if backend.afterSummaryErrs[0] != nil {
+		t.Fatalf("AfterCloseoutSummary error = %v, want nil", backend.afterSummaryErrs[0])
+	}
+
+	endEntries := closeoutEndLogEntries(t, stdout.String())
+	if len(endEntries) != 1 {
+		t.Fatalf("closeout.end entries = %d, want 1 (stdout:\n%s)", len(endEntries), stdout.String())
+	}
+	if got, _ := endEntries[0]["s3_summary_key"].(string); got != "closeout/run-dry-summary-1.json" {
+		t.Fatalf("s3_summary_key = %q, want closeout/run-dry-summary-1.json", got)
+	}
+}
+
+func TestRunCloseoutWithEnv_DuplicateRunPreservesExistingSummary(t *testing.T) {
+	env, backend, writer, stdout, _ := newCloseoutTestEnv(t)
+	withEnv(env, map[string]string{closeoutEnvAllow: "sec-dev"})
+	backend.closeoutResult = &findings.CloseoutResult{
+		RunID:         "run-existing-summary-1",
+		ProposedCount: 8,
+		AppliedCount:  8,
+		BatchSizes:    []int{8},
+		S3SummaryKey:  "closeout/run-existing-summary-1.json",
+	}
+
+	err := runCloseoutWithEnv([]string{
+		"--rule-id", "r1",
+		"--apply",
+		"--reason", "cleanup",
+		"--allow-env", "sec-dev",
+		"--audit-s3-bucket", "example-sec-dev-audit",
+		"--run-id", "run-existing-summary-1",
+	}, env)
+	if err != nil {
+		t.Fatalf("duplicate apply with persisted summary key error = %v", err)
+	}
+	if len(writer.calls) != 0 {
+		t.Fatalf("summary writer calls = %d, want 0 so existing S3 body is not clobbered", len(writer.calls))
+	}
+	if len(backend.afterSummaryKeys) != 0 {
+		t.Fatalf("AfterCloseoutSummary calls = %d, want 0 on already-persisted summary", len(backend.afterSummaryKeys))
+	}
+
+	endEntries := closeoutEndLogEntries(t, stdout.String())
+	if len(endEntries) != 1 {
+		t.Fatalf("closeout.end entries = %d, want 1 (stdout:\n%s)", len(endEntries), stdout.String())
+	}
+	if got, _ := endEntries[0]["s3_summary_key"].(string); got != "closeout/run-existing-summary-1.json" {
+		t.Fatalf("s3_summary_key = %q, want closeout/run-existing-summary-1.json", got)
+	}
+	if got, ok := endEntries[0]["applied_count"].(float64); !ok || int(got) != 8 {
+		t.Fatalf("applied_count = %v, want 8", endEntries[0]["applied_count"])
+	}
+}
+
 func TestCloseout_ApplyZeroCandidates(t *testing.T) {
 	env, backend, writer, stdout, _ := newCloseoutTestEnv(t)
 	backend.closeoutResult = &findings.CloseoutResult{ProposedCount: 0, AppliedCount: 0}
@@ -816,6 +955,25 @@ func equalStringSlices(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+func closeoutEndLogEntries(t *testing.T, stdout string) []map[string]any {
+	t.Helper()
+	var entries []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(stdout), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || !strings.HasPrefix(trimmed, "{") {
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(trimmed), &entry); err != nil {
+			t.Fatalf("parse log line %q: %v", trimmed, err)
+		}
+		if event, _ := entry["event"].(string); event == closeoutEventEnd {
+			entries = append(entries, entry)
+		}
+	}
+	return entries
 }
 
 // ensureCloseoutFlagsHelpStartsCleanly is a smoke test confirming the help

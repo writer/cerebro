@@ -513,10 +513,12 @@ func (s *Store) UpdateCloseoutRunSummary(ctx context.Context, runID, summaryKey 
             UPDATE closeout_run
             SET status = 'failed',
                 finished_at = now(),
-                error_message = $2
+                error_message = $2,
+                s3_summary_key = CASE WHEN $3 = '' THEN s3_summary_key ELSE $3 END
             WHERE run_id = $1`,
 			id,
 			summaryErr.Error(),
+			strings.TrimSpace(summaryKey),
 		)
 		if err != nil {
 			return fmt.Errorf("mark closeout_run %q failed on summary error: %w", id, err)

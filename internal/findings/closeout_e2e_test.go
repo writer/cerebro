@@ -1029,6 +1029,9 @@ func (s *stubCloseoutStore) UpdateCloseoutRunSummary(_ context.Context, runID, s
 		existing.Status = "failed"
 		existing.FinishedAt = time.Now().UTC()
 		existing.ErrorMessage = summaryErr.Error()
+		if summaryKey != "" {
+			existing.S3SummaryKey = summaryKey
+		}
 		return nil
 	}
 	if summaryKey != "" {
