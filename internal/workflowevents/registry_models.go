@@ -104,6 +104,17 @@ func registryFindingStatusChanged(payload FindingStatusChanged) eventregistry.Fi
 	}
 }
 
+func registryFindingTombstoned(payload FindingTombstoned) eventregistry.FindingTombstonedV1 {
+	return eventregistry.FindingTombstonedV1{
+		Finding:      registryFindingSnapshot(payload.Finding),
+		PriorStatus:  payload.PriorStatus,
+		Reason:       payload.Reason,
+		Actor:        payload.Actor,
+		RunID:        payload.RunID,
+		TombstonedAt: payload.TombstonedAt,
+	}
+}
+
 func registryFindingSnapshot(finding FindingSnapshot) eventregistry.FindingSnapshot {
 	return eventregistry.FindingSnapshot{
 		TenantID:           finding.TenantID,

@@ -51,14 +51,14 @@ func (s *tombstoneGraphSpy) CleanupProjectedEntities(ctx context.Context, req po
 func tombstonedFindingSnapshot(findingID, anchorURN string) workflowevents.FindingSnapshot {
 	return workflowevents.FindingSnapshot{
 		TenantID:           "writer",
-		SourceSystem:       "writer-okta-audit",
+		SourceSystem:       "example-okta-audit",
 		FindingID:          findingID,
 		Fingerprint:        "fp-" + findingID,
 		Title:              "Okta Policy Rule Lifecycle Tampering",
 		RuleID:             "identity-okta-policy-rule-lifecycle-tampering",
 		Severity:           "high",
 		Status:             "resolved",
-		RuntimeID:          "writer-okta-audit",
+		RuntimeID:          "example-okta-audit",
 		PrimaryResourceURN: anchorURN,
 		ResourceURNs:       []string{anchorURN},
 		FirstObservedAt:    "2026-04-27T11:58:00Z",
@@ -95,7 +95,8 @@ func TestProject_DispatchesFindingTombstoned(t *testing.T) {
 		t.Fatalf("Project(recorded) error = %v", err)
 	}
 
-	upsertsBefore := graph.upsertEntityCalls + graph.upsertLinkCalls
+	entityUpsertsBefore := graph.upsertEntityCalls
+	linkUpsertsBefore := graph.upsertLinkCalls
 	deletesBefore := graph.deleteLinkCalls
 
 	event, err := workflowevents.NewFindingTombstonedEvent(canonicalFindingTombstonedPayload(findingID, anchorURN, "open"))
@@ -109,8 +110,17 @@ func TestProject_DispatchesFindingTombstoned(t *testing.T) {
 	if got := graph.deleteLinkCalls - deletesBefore; got != 1 {
 		t.Fatalf("DeleteProjectedLink calls during tombstone dispatch = %d, want 1", got)
 	}
-	if got := graph.upsertEntityCalls + graph.upsertLinkCalls - upsertsBefore; got != 0 {
-		t.Fatalf("upsert calls during tombstone dispatch = %d, want 0", got)
+	if got := graph.upsertEntityCalls - entityUpsertsBefore; got != 1 {
+		t.Fatalf("UpsertProjectedEntity calls during tombstone dispatch = %d, want 1", got)
+	}
+	if got := graph.upsertLinkCalls - linkUpsertsBefore; got != 0 {
+		t.Fatalf("UpsertProjectedLink calls during tombstone dispatch = %d, want 0", got)
+	}
+	if result.EventsProjected != 1 {
+		t.Fatalf("result.EventsProjected = %d, want 1", result.EventsProjected)
+	}
+	if result.EntitiesProjected != 1 {
+		t.Fatalf("result.EntitiesProjected = %d, want 1", result.EntitiesProjected)
 	}
 	if result.LinksDeleted != 1 {
 		t.Fatalf("result.LinksDeleted = %d, want 1", result.LinksDeleted)
@@ -121,20 +131,60 @@ func TestProject_DispatchesFindingTombstoned(t *testing.T) {
 	}
 }
 
-func TestProjectFindingTombstoned_CallsOnlyDeleteFindingActiveLinks(t *testing.T) {
+func TestProjectFindingTombstoned_ReturnsNonZeroCounters(t *testing.T) {
 	graph := newTombstoneGraphSpy()
 	service := New(graph)
 	anchorURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
 	findingID := "finding-1"
 
 	graph.entities = map[string]*ports.ProjectedEntity{
-		anchorURN:                       {URN: anchorURN, TenantID: "writer", SourceID: "writer-okta-audit", EntityType: "okta_resource"},
-		findingURN("writer", findingID): {URN: findingURN("writer", findingID), TenantID: "writer", SourceID: "writer-okta-audit", EntityType: findingEntityType},
+		anchorURN:                       {URN: anchorURN, TenantID: "writer", SourceID: "example-okta-audit", EntityType: "okta_resource"},
+		findingURN("writer", findingID): {URN: findingURN("writer", findingID), TenantID: "writer", SourceID: "example-okta-audit", EntityType: findingEntityType},
 	}
 	graph.links = map[string]*ports.ProjectedLink{
 		anchorURN + "|" + relationHasFinding + "|" + findingURN("writer", findingID): {
 			TenantID: "writer",
-			SourceID: "writer-okta-audit",
+			SourceID: "example-okta-audit",
+			FromURN:  anchorURN,
+			ToURN:    findingURN("writer", findingID),
+			Relation: relationHasFinding,
+		},
+	}
+
+	event, err := workflowevents.NewFindingTombstonedEvent(canonicalFindingTombstonedPayload(findingID, anchorURN, "open"))
+	if err != nil {
+		t.Fatalf("NewFindingTombstonedEvent() error = %v", err)
+	}
+	result, err := service.projectFindingTombstoned(context.Background(), event)
+	if err != nil {
+		t.Fatalf("projectFindingTombstoned() error = %v", err)
+	}
+
+	if result.EventsProjected != 1 {
+		t.Fatalf("result.EventsProjected = %d, want 1", result.EventsProjected)
+	}
+	if result.EntitiesProjected != 1 {
+		t.Fatalf("result.EntitiesProjected = %d, want 1", result.EntitiesProjected)
+	}
+	if result.LinksDeleted != 1 {
+		t.Fatalf("result.LinksDeleted = %d, want 1", result.LinksDeleted)
+	}
+}
+
+func TestProjectFindingTombstoned_WritesTombstoneSnapshotAndDeletesActiveLinks(t *testing.T) {
+	graph := newTombstoneGraphSpy()
+	service := New(graph)
+	anchorURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
+	findingID := "finding-1"
+
+	graph.entities = map[string]*ports.ProjectedEntity{
+		anchorURN:                       {URN: anchorURN, TenantID: "writer", SourceID: "example-okta-audit", EntityType: "okta_resource"},
+		findingURN("writer", findingID): {URN: findingURN("writer", findingID), TenantID: "writer", SourceID: "example-okta-audit", EntityType: findingEntityType},
+	}
+	graph.links = map[string]*ports.ProjectedLink{
+		anchorURN + "|" + relationHasFinding + "|" + findingURN("writer", findingID): {
+			TenantID: "writer",
+			SourceID: "example-okta-audit",
 			FromURN:  anchorURN,
 			ToURN:    findingURN("writer", findingID),
 			Relation: relationHasFinding,
@@ -149,8 +199,8 @@ func TestProjectFindingTombstoned_CallsOnlyDeleteFindingActiveLinks(t *testing.T
 		t.Fatalf("Project(tombstoned) error = %v", err)
 	}
 
-	if graph.upsertEntityCalls != 0 {
-		t.Fatalf("UpsertProjectedEntity calls = %d, want 0", graph.upsertEntityCalls)
+	if graph.upsertEntityCalls != 1 {
+		t.Fatalf("UpsertProjectedEntity calls = %d, want 1", graph.upsertEntityCalls)
 	}
 	if graph.upsertLinkCalls != 0 {
 		t.Fatalf("UpsertProjectedLink calls = %d, want 0", graph.upsertLinkCalls)
@@ -177,6 +227,68 @@ func TestProjectFindingTombstoned_CallsOnlyDeleteFindingActiveLinks(t *testing.T
 	if got.Relation != relationHasFinding {
 		t.Fatalf("deleted link Relation = %q, want %q", got.Relation, relationHasFinding)
 	}
+	entity := graph.entities[findingURN("writer", findingID)]
+	if entity == nil {
+		t.Fatalf("finding entity %q missing after tombstone projection", findingURN("writer", findingID))
+	}
+	assertTombstoneEntitySnapshot(t, entity, canonicalFindingTombstonedPayload(findingID, anchorURN, "open"))
+}
+
+func TestProjectFindingTombstoned_UpdatesFindingEntity(t *testing.T) {
+	graph := newTombstoneGraphSpy()
+	service := New(graph)
+	anchorURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
+	findingID := "finding-1"
+
+	recorded, err := workflowevents.NewFindingRecordedEvent(workflowevents.FindingRecorded{
+		Finding: workflowevents.FindingSnapshot{
+			TenantID:           "writer",
+			SourceSystem:       "example-okta-audit",
+			FindingID:          findingID,
+			Fingerprint:        "fp-" + findingID,
+			Title:              "Okta Policy Rule Lifecycle Tampering",
+			RuleID:             "identity-okta-policy-rule-lifecycle-tampering",
+			Severity:           "high",
+			Status:             "open",
+			RuntimeID:          "example-okta-audit",
+			PrimaryResourceURN: anchorURN,
+			ResourceURNs:       []string{anchorURN},
+			FirstObservedAt:    "2026-04-27T11:58:00Z",
+			LastObservedAt:     "2026-04-27T11:59:00Z",
+		},
+		RecordedAt: "2026-04-27T11:59:00Z",
+	})
+	if err != nil {
+		t.Fatalf("NewFindingRecordedEvent() error = %v", err)
+	}
+	if _, err := service.Project(context.Background(), recorded); err != nil {
+		t.Fatalf("Project(recorded) error = %v", err)
+	}
+	before := graph.entities[findingURN("writer", findingID)]
+	if before == nil {
+		t.Fatalf("pre-condition: finding entity %q missing", findingURN("writer", findingID))
+	}
+	if got := before.Attributes["status"]; got != "open" {
+		t.Fatalf("pre-condition finding status = %q, want open", got)
+	}
+
+	payload := canonicalFindingTombstonedPayload(findingID, anchorURN, "open")
+	event, err := workflowevents.NewFindingTombstonedEvent(payload)
+	if err != nil {
+		t.Fatalf("NewFindingTombstonedEvent() error = %v", err)
+	}
+	result, err := service.Project(context.Background(), event)
+	if err != nil {
+		t.Fatalf("Project(tombstoned) error = %v", err)
+	}
+	if result.EntitiesProjected != 1 {
+		t.Fatalf("result.EntitiesProjected = %d, want 1", result.EntitiesProjected)
+	}
+	after := graph.entities[findingURN("writer", findingID)]
+	if after == nil {
+		t.Fatalf("finding entity %q missing after tombstone projection", findingURN("writer", findingID))
+	}
+	assertTombstoneEntitySnapshot(t, after, payload)
 }
 
 func TestProjector_FindingTombstoned_RemovesOnlyOwnEdges(t *testing.T) {
@@ -190,14 +302,14 @@ func TestProjector_FindingTombstoned_RemovesOnlyOwnEdges(t *testing.T) {
 		recorded, err := workflowevents.NewFindingRecordedEvent(workflowevents.FindingRecorded{
 			Finding: workflowevents.FindingSnapshot{
 				TenantID:           "writer",
-				SourceSystem:       "writer-okta-audit",
+				SourceSystem:       "example-okta-audit",
 				FindingID:          id,
 				Fingerprint:        "fp-" + id,
 				Title:              "Okta Policy Rule Lifecycle Tampering",
 				RuleID:             "identity-okta-policy-rule-lifecycle-tampering",
 				Severity:           "high",
 				Status:             "open",
-				RuntimeID:          "writer-okta-audit",
+				RuntimeID:          "example-okta-audit",
 				PrimaryResourceURN: anchorURN,
 				ResourceURNs:       []string{anchorURN},
 				FirstObservedAt:    "2026-04-27T11:58:00Z",
@@ -216,11 +328,11 @@ func TestProjector_FindingTombstoned_RemovesOnlyOwnEdges(t *testing.T) {
 	noteEvent, err := workflowevents.NewFindingNoteAddedEvent(workflowevents.FindingNoteAdded{
 		Finding: workflowevents.FindingSnapshot{
 			TenantID:           "writer",
-			SourceSystem:       "writer-okta-audit",
+			SourceSystem:       "example-okta-audit",
 			FindingID:          siblingFindingID,
 			Fingerprint:        "fp-" + siblingFindingID,
 			Status:             "open",
-			RuntimeID:          "writer-okta-audit",
+			RuntimeID:          "example-okta-audit",
 			PrimaryResourceURN: anchorURN,
 			ResourceURNs:       []string{anchorURN},
 		},
@@ -237,11 +349,11 @@ func TestProjector_FindingTombstoned_RemovesOnlyOwnEdges(t *testing.T) {
 	ticketEvent, err := workflowevents.NewFindingTicketLinkedEvent(workflowevents.FindingTicketLinked{
 		Finding: workflowevents.FindingSnapshot{
 			TenantID:           "writer",
-			SourceSystem:       "writer-okta-audit",
+			SourceSystem:       "example-okta-audit",
 			FindingID:          siblingFindingID,
 			Fingerprint:        "fp-" + siblingFindingID,
 			Status:             "open",
-			RuntimeID:          "writer-okta-audit",
+			RuntimeID:          "example-okta-audit",
 			PrimaryResourceURN: anchorURN,
 			ResourceURNs:       []string{anchorURN},
 		},
@@ -260,7 +372,7 @@ func TestProjector_FindingTombstoned_RemovesOnlyOwnEdges(t *testing.T) {
 	graph.entities[anchorURN] = &ports.ProjectedEntity{
 		URN:        anchorURN,
 		TenantID:   "writer",
-		SourceID:   "writer-okta-audit",
+		SourceID:   "example-okta-audit",
 		EntityType: "okta_resource",
 		Label:      "policyrule:pol-1",
 	}
@@ -296,6 +408,7 @@ func TestProjector_FindingTombstoned_RemovesOnlyOwnEdges(t *testing.T) {
 	if _, ok := graph.entities[tombstoneFindingURN]; !ok {
 		t.Fatalf("tombstoned finding entity %q must remain (row kept for audit)", tombstoneFindingURN)
 	}
+	assertTombstoneEntitySnapshot(t, graph.entities[tombstoneFindingURN], canonicalFindingTombstonedPayload(tombstoneFindingID, anchorURN, "open"))
 	if _, ok := graph.entities[siblingFindingURNValue]; !ok {
 		t.Fatalf("sibling finding entity %q must remain after tombstone", siblingFindingURNValue)
 	}
@@ -330,4 +443,22 @@ func TestProjector_FindingTombstoned_RemovesOnlyOwnEdges(t *testing.T) {
 	if deleted.FromURN != anchorURN || deleted.ToURN != tombstoneFindingURN || deleted.Relation != relationHasFinding {
 		t.Fatalf("deleted link = %+v, want has_finding(%s -> %s)", deleted, anchorURN, tombstoneFindingURN)
 	}
+}
+
+func assertTombstoneEntitySnapshot(t *testing.T, entity *ports.ProjectedEntity, payload workflowevents.FindingTombstoned) {
+	t.Helper()
+	if entity == nil {
+		t.Fatal("finding entity is nil")
+	}
+	assertAttr := func(key, want string) {
+		t.Helper()
+		if got := entity.Attributes[key]; got != want {
+			t.Fatalf("finding entity attribute %q = %q, want %q (attributes=%#v)", key, got, want, entity.Attributes)
+		}
+	}
+	assertAttr("status", payload.Finding.Status)
+	assertAttr("status_reason", payload.Reason)
+	assertAttr("tombstoned", "true")
+	assertAttr("tombstoned_at", payload.TombstonedAt)
+	assertAttr("prior_status", payload.PriorStatus)
 }

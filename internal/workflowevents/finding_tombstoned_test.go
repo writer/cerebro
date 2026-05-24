@@ -1,6 +1,7 @@
 package workflowevents
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"reflect"
@@ -45,6 +46,49 @@ func TestFindingTombstoned_RoundTrip(t *testing.T) {
 	decoded, err := DecodeFindingTombstoned(event)
 	if err != nil {
 		t.Fatalf("DecodeFindingTombstoned() error = %v", err)
+	}
+	if !reflect.DeepEqual(*decoded, payload) {
+		t.Fatalf("decoded payload mismatch:\n got=%+v\nwant=%+v", *decoded, payload)
+	}
+}
+
+func TestNewFindingTombstonedEvent_UsesSharedEnvelope(t *testing.T) {
+	payload := newCanonicalFindingTombstoned()
+	event, err := NewFindingTombstonedEvent(payload)
+	if err != nil {
+		t.Fatalf("NewFindingTombstonedEvent() error = %v", err)
+	}
+	if !IsSharedEnvelopeEvent(event) {
+		t.Fatalf("workflow event payload is not marked as shared Avro envelope: %#v", event.GetAttributes())
+	}
+	if bytes.HasPrefix(bytes.TrimSpace(event.GetPayload()), []byte("{")) {
+		t.Fatal("workflow event payload is JSON, want shared Avro envelope")
+	}
+	attrs := event.GetAttributes()
+	for _, key := range []string{"event_type", "event_version", "event_id", "envelope_version", "schema_fingerprint"} {
+		if got := attrs[key]; got == "" {
+			t.Fatalf("event attribute %q is empty in %#v", key, attrs)
+		}
+	}
+	if got := attrs["event_type"]; got != EventKindFindingTombstoned {
+		t.Fatalf("event_type attribute = %q, want %q", got, EventKindFindingTombstoned)
+	}
+	if got := attrs["event_version"]; got != "1" {
+		t.Fatalf("event_version attribute = %q, want 1", got)
+	}
+	if got := attrs["envelope_version"]; got != "1" {
+		t.Fatalf("envelope_version attribute = %q, want 1", got)
+	}
+	shared, err := DecodeSharedEnvelopeEvent(event.GetPayload(), attrs)
+	if err != nil {
+		t.Fatalf("DecodeSharedEnvelopeEvent() error = %v", err)
+	}
+	if got := shared.GetSchemaRef(); got != SchemaFindingTombstoned {
+		t.Fatalf("shared schema ref = %q, want %q", got, SchemaFindingTombstoned)
+	}
+	decoded, err := DecodeFindingTombstoned(shared)
+	if err != nil {
+		t.Fatalf("DecodeFindingTombstoned(shared) error = %v", err)
 	}
 	if !reflect.DeepEqual(*decoded, payload) {
 		t.Fatalf("decoded payload mismatch:\n got=%+v\nwant=%+v", *decoded, payload)

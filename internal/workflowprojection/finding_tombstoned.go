@@ -13,9 +13,29 @@ func (s *Service) projectFindingTombstoned(ctx context.Context, event *cerebrov1
 	if err != nil {
 		return ports.ProjectionResult{}, err
 	}
+	result := ports.ProjectionResult{EventsProjected: 1}
+	finding := findingSnapshotWithTombstoneMetadata(payload)
+	if err := s.ensureFindingEntity(ctx, finding, &result); err != nil {
+		return ports.ProjectionResult{}, err
+	}
 	deleted, err := s.deleteFindingActiveLinks(ctx, payload.Finding)
 	if err != nil {
 		return ports.ProjectionResult{}, err
 	}
-	return ports.ProjectionResult{LinksDeleted: deleted}, nil
+	result.LinksDeleted += deleted
+	return result, nil
+}
+
+func findingSnapshotWithTombstoneMetadata(payload *workflowevents.FindingTombstoned) workflowevents.FindingSnapshot {
+	finding := payload.Finding
+	metadata := make(map[string]string, len(finding.Metadata)+4)
+	for key, value := range finding.Metadata {
+		metadata[key] = value
+	}
+	metadata["status_reason"] = payload.Reason
+	metadata["tombstoned"] = "true"
+	metadata["tombstoned_at"] = payload.TombstonedAt
+	metadata["prior_status"] = payload.PriorStatus
+	finding.Metadata = metadata
+	return finding
 }

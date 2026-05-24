@@ -1,12 +1,9 @@
 package workflowevents
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
-
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
@@ -45,40 +42,10 @@ func NewFindingTombstonedEvent(payload FindingTombstoned) (*cerebrov1.EventEnvel
 	if err := validateFindingTombstoned(&payload); err != nil {
 		return nil, err
 	}
-	tenantID := strings.TrimSpace(payload.Finding.TenantID)
-	sourceSystem := strings.TrimSpace(payload.Finding.SourceSystem)
-	if tenantID == "" {
-		return nil, fmt.Errorf("workflow event tenant id is required")
-	}
-	if sourceSystem == "" {
-		return nil, fmt.Errorf("workflow event source system is required")
-	}
-	occurredAt, err := parseEventTime(payload.TombstonedAt)
-	if err != nil {
-		return nil, err
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("encode finding tombstoned payload: %w", err)
-	}
-	primaryID := payload.Finding.FindingID + "|" + payload.RunID
-	attributes := map[string]string{
-		EventAttributeTenantID:     tenantID,
-		EventAttributeSourceSystem: sourceSystem,
+	return newEvent(registryFindingTombstoned(payload), SchemaFindingTombstoned, payload.Finding.TenantID, payload.Finding.SourceSystem, payload.Finding.FindingID+"|"+payload.RunID, payload.TombstonedAt, map[string]string{
 		EventAttributeWorkflowKind: "finding_tombstoned",
 		EventAttributeFindingID:    payload.Finding.FindingID,
-		"event_type":               EventKindFindingTombstoned,
-	}
-	return &cerebrov1.EventEnvelope{
-		Id:         eventID(tenantID, EventKindFindingTombstoned, primaryID),
-		TenantId:   tenantID,
-		SourceId:   sourceSystem,
-		Kind:       EventKindFindingTombstoned,
-		OccurredAt: timestamppb.New(occurredAt),
-		SchemaRef:  SchemaFindingTombstoned,
-		Payload:    body,
-		Attributes: attributes,
-	}, nil
+	})
 }
 
 // DecodeFindingTombstoned decodes a finding tombstone event payload and enforces required fields.
