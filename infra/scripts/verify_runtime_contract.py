@@ -52,6 +52,14 @@ def _runtime_family(runtime: dict[str, Any]) -> str:
     return str(config.get("family") or "").strip()
 
 
+def _runtime_value(runtime: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = runtime.get(key)
+        if value is not None:
+            return str(value).strip()
+    return ""
+
+
 def _contract_sources(contract: dict[str, Any]) -> dict[str, dict[str, Any]]:
     sources = contract.get("sources") or []
     if not isinstance(sources, list):
@@ -141,6 +149,14 @@ def verify_contract(contract: dict[str, Any], stack: dict[str, Any], require_man
             if stack_runtime is None:
                 errors.append(f"contract runtime {runtime_id!r} is missing from stack sourceRuntimes")
                 continue
+            contract_source_id = _runtime_value(runtime, "source_id", "sourceId")
+            stack_source_id = _runtime_value(stack_runtime, "sourceId", "source_id")
+            if contract_source_id and stack_source_id != contract_source_id:
+                errors.append(f"runtime {runtime_id!r} sourceId is {stack_source_id!r}, expected {contract_source_id!r}")
+            contract_tenant_id = _runtime_value(runtime, "tenant_id", "tenantId")
+            stack_tenant_id = _runtime_value(stack_runtime, "tenantId", "tenant_id")
+            if contract_tenant_id and stack_tenant_id != contract_tenant_id:
+                errors.append(f"runtime {runtime_id!r} tenantId is {stack_tenant_id!r}, expected {contract_tenant_id!r}")
             stack_config = stack_runtime.get("config") or {}
             contract_config = runtime.get("config") or {}
             if not isinstance(stack_config, dict) or not isinstance(contract_config, dict):

@@ -99,6 +99,20 @@ class RuntimeContractTest(unittest.TestCase):
             any("contract runtime 'writer-github-audit' is missing" in error for error in verify_runtime_contract.verify_contract(CONTRACT, stack, require_manifest_runtimes=True))
         )
 
+    def test_rejects_manifest_runtime_source_mismatch_when_required(self) -> None:
+        runtime = {**STACK["sourceRuntimes"][0], "sourceId": "okta"}
+        stack = {**STACK, "sourceRuntimes": [runtime]}
+        self.assertTrue(
+            any("runtime 'writer-github-audit' sourceId is 'okta', expected 'github'" in error for error in verify_runtime_contract.verify_contract(CONTRACT, stack, require_manifest_runtimes=True))
+        )
+
+    def test_rejects_manifest_runtime_tenant_mismatch_when_required(self) -> None:
+        runtime = {**STACK["sourceRuntimes"][0], "tenantId": "other"}
+        stack = {**STACK, "sourceRuntimes": [runtime]}
+        self.assertTrue(
+            any("runtime 'writer-github-audit' tenantId is 'other', expected 'writer'" in error for error in verify_runtime_contract.verify_contract(CONTRACT, stack, require_manifest_runtimes=True))
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
