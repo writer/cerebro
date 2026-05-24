@@ -3,9 +3,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"os"
+	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -13,9 +18,14 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	_ "github.com/jackc/pgx/v5/stdlib"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/statestore/postgres"
+	"github.com/writer/cerebro/internal/workflowevents"
 )
 
 // fakeS3Client implements closeoutS3PutObjectAPI in-process so the integration
@@ -62,6 +72,128 @@ func (f *fakeSTSClient) GetCallerIdentity(context.Context, *sts.GetCallerIdentit
 	}
 	arn := f.arn
 	return &sts.GetCallerIdentityOutput{Arn: &arn}, nil
+}
+
+func TestBuildCloseoutFindingService_WiresGraphStore(t *testing.T) {
+	graph := newCloseoutProjectionGraphRecorder()
+	service := buildCloseoutFindingService(nil, &recordingCloseoutAppendLog{}, graph)
+	if service == nil {
+		t.Fatal("buildCloseoutFindingService returned nil")
+	}
+
+	graphField := reflect.ValueOf(service).Elem().FieldByName("graph")
+	if !graphField.IsValid() {
+		t.Fatal("findings.Service no longer exposes a graph field for this wiring assertion")
+	}
+	if graphField.IsNil() {
+		t.Fatal("buildCloseoutFindingService left Service.graph nil even though a graph store was supplied")
+	}
+}
+
+func TestRunCloseoutApply_ProjectsTombstoneIntoGraph(t *testing.T) {
+	dsn := strings.TrimSpace(os.Getenv("CEREBRO_POSTGRES_DSN"))
+	if dsn == "" {
+		t.Skip("set CEREBRO_POSTGRES_DSN to run closeout graph projection integration test")
+	}
+
+	ctx := context.Background()
+	store, err := postgres.Open(config.StateStoreConfig{
+		Driver:      config.StateStoreDriverPostgres,
+		PostgresDSN: dsn,
+	})
+	if err != nil {
+		t.Fatalf("open postgres store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	rawDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open raw postgres handle: %v", err)
+	}
+	t.Cleanup(func() { _ = rawDB.Close() })
+
+	nonce := time.Now().UTC().UnixNano()
+	tenantID := fmt.Sprintf("tenant-closeout-graph-%d", nonce)
+	runtimeID := fmt.Sprintf("runtime-closeout-graph-%d", nonce)
+	ruleID := fmt.Sprintf("rule-closeout-graph-%d", nonce)
+	runID := fmt.Sprintf("run-closeout-graph-%d", nonce)
+	t.Cleanup(func() {
+		bg := context.Background()
+		_, _ = rawDB.ExecContext(bg, `DELETE FROM finding_tombstone_events WHERE tenant_id = $1 OR run_id = $2`, tenantID, runID)
+		_, _ = rawDB.ExecContext(bg, `DELETE FROM closeout_run WHERE run_id = $1`, runID)
+		_, _ = rawDB.ExecContext(bg, `DELETE FROM findings WHERE tenant_id = $1`, tenantID)
+	})
+
+	appendLog := &recordingCloseoutAppendLog{}
+	graph := newCloseoutProjectionGraphRecorder()
+	service := buildCloseoutFindingService(store, appendLog, graph)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	findingIDs := make([]string, 0, 2)
+	edgeKeys := make([]string, 0, 2)
+	for i := 0; i < 2; i++ {
+		findingID := fmt.Sprintf("finding-closeout-graph-%d-%d", nonce, i)
+		anchorURN := fmt.Sprintf("urn:cerebro:%s:closeout_graph_anchor:%d", tenantID, i)
+		stored, err := store.UpsertFinding(ctx, &ports.FindingRecord{
+			ID:              findingID,
+			Fingerprint:     fmt.Sprintf("fp-closeout-graph-%d-%d", nonce, i),
+			TenantID:        tenantID,
+			RuntimeID:       runtimeID,
+			RuleID:          ruleID,
+			Title:           fmt.Sprintf("Closeout graph fixture %d", i),
+			Severity:        "MEDIUM",
+			Status:          "open",
+			Summary:         "finding that should be tombstoned and projected",
+			ResourceURNs:    []string{anchorURN},
+			EventIDs:        []string{fmt.Sprintf("event-closeout-graph-%d", i)},
+			Attributes:      map[string]string{"source_severity": "MEDIUM"},
+			FirstObservedAt: now.Add(-48 * time.Hour),
+			LastObservedAt:  now.Add(-47 * time.Hour),
+		})
+		if err != nil {
+			t.Fatalf("UpsertFinding(%s): %v", findingID, err)
+		}
+		if stored.ID != findingID {
+			t.Fatalf("stored finding ID = %q, want %q", stored.ID, findingID)
+		}
+		findingIDs = append(findingIDs, stored.ID)
+		edgeKeys = append(edgeKeys, graph.seedHasFinding(tenantID, runtimeID, anchorURN, stored.ID))
+	}
+
+	result, err := service.TombstoneFindingsBulk(ctx, findings.CloseoutRequest{
+		Selector: findings.CloseoutSelector{
+			TenantID: tenantID,
+			RuleIDs:  []string{ruleID},
+		},
+		Reason:       "bulk closeout graph wiring test",
+		Actor:        "closeout-graph-test",
+		RunID:        runID,
+		DryRun:       false,
+		MaxBatchSize: 10,
+		Environment:  "sec-dev",
+	})
+	if err != nil {
+		t.Fatalf("TombstoneFindingsBulk: %v", err)
+	}
+	if result.AppliedCount != len(findingIDs) {
+		t.Fatalf("AppliedCount = %d, want %d", result.AppliedCount, len(findingIDs))
+	}
+	if got := appendLog.countKind(workflowevents.EventKindFindingTombstoned); got != result.AppliedCount {
+		t.Fatalf("tombstone workflow events appended = %d, want AppliedCount %d", got, result.AppliedCount)
+	}
+	if got := graph.deleteCount(); got != result.AppliedCount {
+		t.Fatalf("graph tombstone projections = %d, want AppliedCount %d", got, result.AppliedCount)
+	}
+	for _, edgeKey := range edgeKeys {
+		if graph.hasLink(edgeKey) {
+			t.Fatalf("has_finding edge %q still present after closeout apply", edgeKey)
+		}
+	}
+	for _, deleted := range graph.deletedLinksSnapshot() {
+		if deleted.Relation != "has_finding" {
+			t.Fatalf("deleted graph relation = %q, want has_finding", deleted.Relation)
+		}
+	}
 }
 
 // stubProductionFindingStore is a no-op findings.Service substitute used by
@@ -256,4 +388,158 @@ var _ ports.CloseoutRunStore = closeoutRunStoreAssertion()
 
 func closeoutRunStoreAssertion() ports.CloseoutRunStore {
 	return nil
+}
+
+type recordingCloseoutAppendLog struct {
+	mu     sync.Mutex
+	events []*cerebrov1.EventEnvelope
+}
+
+func (l *recordingCloseoutAppendLog) Ping(context.Context) error { return nil }
+
+func (l *recordingCloseoutAppendLog) Append(_ context.Context, event *cerebrov1.EventEnvelope) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.events = append(l.events, event)
+	return nil
+}
+
+func (l *recordingCloseoutAppendLog) countKind(kind string) int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	count := 0
+	for _, event := range l.events {
+		if event.GetKind() == kind {
+			count++
+		}
+	}
+	return count
+}
+
+type closeoutProjectionGraphRecorder struct {
+	mu           sync.Mutex
+	entities     map[string]*ports.ProjectedEntity
+	links        map[string]*ports.ProjectedLink
+	deletedLinks []*ports.ProjectedLink
+}
+
+func newCloseoutProjectionGraphRecorder() *closeoutProjectionGraphRecorder {
+	return &closeoutProjectionGraphRecorder{
+		entities: map[string]*ports.ProjectedEntity{},
+		links:    map[string]*ports.ProjectedLink{},
+	}
+}
+
+func (g *closeoutProjectionGraphRecorder) Ping(context.Context) error { return nil }
+
+func (g *closeoutProjectionGraphRecorder) UpsertProjectedEntity(_ context.Context, entity *ports.ProjectedEntity) error {
+	if entity == nil {
+		return nil
+	}
+	clone := *entity
+	clone.Attributes = cloneCloseoutGraphMap(entity.Attributes)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.entities[strings.TrimSpace(clone.URN)] = &clone
+	return nil
+}
+
+func (g *closeoutProjectionGraphRecorder) UpsertProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
+	if link == nil {
+		return nil
+	}
+	clone := cloneCloseoutGraphLink(link)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.links[closeoutProjectionLinkKey(clone)] = clone
+	return nil
+}
+
+func (g *closeoutProjectionGraphRecorder) DeleteProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
+	if link == nil {
+		return nil
+	}
+	clone := cloneCloseoutGraphLink(link)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.deletedLinks = append(g.deletedLinks, clone)
+	delete(g.links, closeoutProjectionLinkKey(clone))
+	return nil
+}
+
+func (g *closeoutProjectionGraphRecorder) seedHasFinding(tenantID, sourceID, anchorURN, findingID string) string {
+	link := &ports.ProjectedLink{
+		TenantID: strings.TrimSpace(tenantID),
+		SourceID: strings.TrimSpace(sourceID),
+		FromURN:  strings.TrimSpace(anchorURN),
+		ToURN:    fmt.Sprintf("urn:cerebro:%s:finding:%s", strings.TrimSpace(tenantID), strings.TrimSpace(findingID)),
+		Relation: "has_finding",
+	}
+	key := closeoutProjectionLinkKey(link)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.links[key] = cloneCloseoutGraphLink(link)
+	return key
+}
+
+func (g *closeoutProjectionGraphRecorder) deleteCount() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return len(g.deletedLinks)
+}
+
+func (g *closeoutProjectionGraphRecorder) hasLink(key string) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	_, ok := g.links[key]
+	return ok
+}
+
+func (g *closeoutProjectionGraphRecorder) deletedLinksSnapshot() []*ports.ProjectedLink {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	out := make([]*ports.ProjectedLink, 0, len(g.deletedLinks))
+	for _, link := range g.deletedLinks {
+		out = append(out, cloneCloseoutGraphLink(link))
+	}
+	return out
+}
+
+func cloneCloseoutGraphLink(link *ports.ProjectedLink) *ports.ProjectedLink {
+	if link == nil {
+		return nil
+	}
+	clone := *link
+	clone.TenantID = strings.TrimSpace(link.TenantID)
+	clone.SourceID = strings.TrimSpace(link.SourceID)
+	clone.RuntimeID = strings.TrimSpace(link.RuntimeID)
+	clone.FromURN = strings.TrimSpace(link.FromURN)
+	clone.ToURN = strings.TrimSpace(link.ToURN)
+	clone.Relation = strings.TrimSpace(link.Relation)
+	clone.Attributes = cloneCloseoutGraphMap(link.Attributes)
+	return &clone
+}
+
+func cloneCloseoutGraphMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
+}
+
+func closeoutProjectionLinkKey(link *ports.ProjectedLink) string {
+	if link == nil {
+		return ""
+	}
+	return strings.Join([]string{
+		strings.TrimSpace(link.TenantID),
+		strings.TrimSpace(link.SourceID),
+		strings.TrimSpace(link.FromURN),
+		strings.TrimSpace(link.Relation),
+		strings.TrimSpace(link.ToURN),
+	}, "|")
 }
