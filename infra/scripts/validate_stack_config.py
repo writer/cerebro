@@ -55,7 +55,7 @@ SEC_DEV_AWS_GLOBAL_FAMILIES = {
     "iam_user",
 }
 SEC_DEV_AWS_REGIONAL_FAMILIES = {"cloudtrail", "public_endpoint", "resource_exposure"}
-SEC_DEV_AWS_CLOUDTRAIL_SINCE = "PT24H"
+SEC_DEV_AWS_CLOUDTRAIL_SINCE = "PT2H"
 
 
 @dataclass(frozen=True)
@@ -376,7 +376,7 @@ def _validate_sec_dev_aws_coverage(
                 "error",
                 stack,
                 "cerebro:imageTag",
-                "AWS effective_permission and since=PT24H CloudTrail runtimes require cerebro:imageTag >= v2.1.46",
+                f"AWS effective_permission and since={SEC_DEV_AWS_CLOUDTRAIL_SINCE} CloudTrail runtimes require cerebro:imageTag >= v2.1.46",
             )
         )
 

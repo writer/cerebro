@@ -22,6 +22,7 @@ config:
   cerebro:trustedAwsAccountId: "944130631940"
   cerebro:trustedAwsRoleArns:
     - arn:aws:iam::944130631940:role/cerebro-sec-dev-task-role
+    - arn:aws:iam::944130631940:role/cerebro-sec-dev-worker-task-role
   cerebro:scannerRoleProjects:
     - writer-iam
     - qordoba-devel
@@ -56,6 +57,10 @@ class GCPConfigValidationTest(unittest.TestCase):
     def test_role_arns_are_required(self) -> None:
         content = VALID.replace("    - arn:aws:iam::944130631940:role/cerebro-sec-dev-task-role", "    - not-an-arn")
         self.assertTrue(any("valid AWS IAM role ARN" in finding.message for finding in self._validate(content)))
+
+    def test_worker_role_must_be_trusted_with_task_role(self) -> None:
+        content = VALID.replace("    - arn:aws:iam::944130631940:role/cerebro-sec-dev-worker-task-role\n", "")
+        self.assertTrue(any("must be paired with worker role" in finding.message for finding in self._validate(content)))
 
 
 if __name__ == "__main__":

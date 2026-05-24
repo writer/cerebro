@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+
+EXPECTED_STACK_ACCOUNTS = {
+    "sec-dev": "944130631940",
+    "go-prod": "837279440628",
+}
+
+ROLE_ARN_RE = re.compile(r"^arn:(?P<partition>aws|aws-us-gov|aws-cn):iam::(?P<account>[0-9]{12}):role/(?P<name>[A-Za-z0-9+=,.@_/-]+)$")
+
+
+@dataclass(frozen=True)
+class TrustFinding:
+    account_id: str
+    role_name: str
+    principal_arn: str
+
+
+def _stack_name(path: Path) -> str:
+    name = path.name
+    if name.startswith("Pulumi.") and name.endswith(".yaml"):
+        return name.removeprefix("Pulumi.").removesuffix(".yaml")
+    return path.stem
+
+
+def _load_config(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="utf-8") as handle:
+        loaded = yaml.safe_load(handle) or {}
+    config = loaded.get("config")
+    if not isinstance(config, dict):
+        raise ValueError(f"{path} must contain a top-level config mapping")
+    return {key.removeprefix("cerebro:"): value for key, value in config.items() if isinstance(key, str) and key.startswith("cerebro:")}
+
+
+def _aws(args: list[str], region: str, profile: str | None = None) -> dict[str, Any]:
+    command = ["aws", *args, "--region", region, "--output", "json"]
+    env = os.environ.copy()
+    if profile:
+        env["AWS_PROFILE"] = profile
+    output = subprocess.check_output(command, env=env, text=True)
+    return json.loads(output) if output.strip() else {}
+
+
+def _source_runtime_role_arns(config: dict[str, Any]) -> list[str]:
+    role_arns: set[str] = set()
+    for runtime in config.get("sourceRuntimes") or []:
+        if not isinstance(runtime, dict) or str(runtime.get("sourceId", "")).strip() != "aws":
+            continue
+        runtime_config = runtime.get("config") or {}
+        if not isinstance(runtime_config, dict):
+            continue
+        role_arn = str(runtime_config.get("role_arn", "")).strip()
+        if role_arn:
+            role_arns.add(role_arn)
+    return sorted(role_arns)
+
+
+def _expected_stack_principals(stack: str, config: dict[str, Any], account_id: str) -> list[str]:
+    environment = str(config.get("environment") or stack).strip()
+    prefix = f"cerebro-{environment}"
+    principals = [f"arn:aws:iam::{account_id}:role/{prefix}-task-role"]
+    if config.get("orchestratorEnabled", True):
+        principals.append(f"arn:aws:iam::{account_id}:role/{prefix}-worker-task-role")
+    return principals
+
+
+def _action_allows_assume_role(action: Any) -> bool:
+    actions = [action] if isinstance(action, str) else action if isinstance(action, list) else []
+    return any(str(item).lower() == "sts:assumerole" for item in actions)
+
+
+def _trusted_principals(policy_document: dict[str, Any]) -> set[str]:
+    trusted: set[str] = set()
+    statements = policy_document.get("Statement") or []
+    if isinstance(statements, dict):
+        statements = [statements]
+    for statement in statements:
+        if not isinstance(statement, dict) or statement.get("Effect") != "Allow" or not _action_allows_assume_role(statement.get("Action")):
+            continue
+        principal = statement.get("Principal") or {}
+        if not isinstance(principal, dict):
+            continue
+        aws_principal = principal.get("AWS") or []
+        values = [aws_principal] if isinstance(aws_principal, str) else aws_principal if isinstance(aws_principal, list) else []
+        trusted.update(str(value) for value in values)
+    return trusted
+
+
+def _find_missing_trust(role_arns: list[str], expected_principals: list[str], role_policies: dict[str, dict[str, Any]]) -> list[TrustFinding]:
+    findings: list[TrustFinding] = []
+    for role_arn in role_arns:
+        match = ROLE_ARN_RE.fullmatch(role_arn)
+        if not match:
+            raise ValueError(f"invalid AWS role ARN: {role_arn}")
+        trusted = _trusted_principals(role_policies[role_arn])
+        for principal in expected_principals:
+            if principal not in trusted:
+                findings.append(TrustFinding(match.group("account"), match.group("name"), principal))
+    return findings
+
+
+def _parse_profile_map(entries: list[str]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for entry in entries:
+        if "=" not in entry:
+            raise ValueError(f"profile mapping {entry!r} must use ACCOUNT_ID=PROFILE")
+        account_id, profile = entry.split("=", 1)
+        account_id = account_id.strip()
+        profile = profile.strip()
+        if not re.fullmatch(r"[0-9]{12}", account_id) or not profile:
+            raise ValueError(f"profile mapping {entry!r} must use ACCOUNT_ID=PROFILE")
+        result[account_id] = profile
+    return result
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Verify AWS source scan roles trust the ECS task roles declared by a Cerebro stack.")
+    parser.add_argument("--stack-file", type=Path, required=True)
+    parser.add_argument("--region", default="us-east-1")
+    parser.add_argument("--profile-by-account", action="append", default=[], help="AWS profile to read a target role account, as ACCOUNT_ID=PROFILE.")
+    args = parser.parse_args(argv)
+
+    stack = _stack_name(args.stack_file)
+    config = _load_config(args.stack_file)
+    stack_account = EXPECTED_STACK_ACCOUNTS.get(stack)
+    if not stack_account:
+        raise RuntimeError(f"no expected AWS account is registered for stack {stack!r}")
+
+    role_arns = _source_runtime_role_arns(config)
+    expected_principals = _expected_stack_principals(stack, config, stack_account)
+    profiles = _parse_profile_map(args.profile_by_account)
+
+    role_policies: dict[str, dict[str, Any]] = {}
+    for role_arn in role_arns:
+        match = ROLE_ARN_RE.fullmatch(role_arn)
+        if not match:
+            raise RuntimeError(f"invalid AWS role ARN: {role_arn}")
+        account_id = match.group("account")
+        profile = profiles.get(account_id)
+        if not profile and account_id != stack_account:
+            raise RuntimeError(f"missing --profile-by-account {account_id}=PROFILE for {role_arn}")
+        role = _aws(["iam", "get-role", "--role-name", match.group("name")], args.region, profile).get("Role") or {}
+        role_policies[role_arn] = role.get("AssumeRolePolicyDocument") or {}
+
+    findings = _find_missing_trust(role_arns, expected_principals, role_policies)
+    for finding in findings:
+        print(
+            f"ERROR: arn:aws:iam::{finding.account_id}:role/{finding.role_name} does not trust {finding.principal_arn}",
+            file=sys.stderr,
+        )
+    if not findings:
+        print(f"verified {len(role_arns)} AWS scan role trust policies for {stack}")
+    return 1 if findings else 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except Exception as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
