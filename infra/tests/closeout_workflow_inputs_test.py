@@ -424,5 +424,45 @@ class CloseoutEcsScriptEnvCaseTest(unittest.TestCase):
                       "describe-services must target the service, not the task family")
 
 
+class CloseoutKmsAssertionScriptTest(unittest.TestCase):
+    """Regression coverage for assert-kms-allow.
+
+    IAM simulation is useful diagnostic output, but KMS key-policy evaluation
+    makes it non-authoritative for this workflow. The assertion must be driven
+    by real KMS DescribeKey + Encrypt + GenerateDataKey probes instead.
+    """
+
+    SCRIPT_PATH = REPO_ROOT / "infra" / "scripts" / "run_closeout_ecs.sh"
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.script = cls.SCRIPT_PATH.read_text(encoding="utf-8")
+
+    def test_attempts_task_role_assume_for_real_kms_probe(self) -> None:
+        self.assertIn("aws sts assume-role", self.script)
+        self.assertIn('--role-arn "${role_arn}"', self.script)
+        self.assertIn("task_role_session_policy", self.script)
+
+    def test_real_kms_probe_uses_describe_key_encrypt_and_generate_data_key(self) -> None:
+        self.assertIn("aws kms describe-key", self.script)
+        self.assertIn("aws kms encrypt", self.script)
+        self.assertIn("aws kms generate-data-key", self.script)
+        self.assertIn("--query 'CiphertextBlob'", self.script)
+        self.assertIn("kms:Encrypt succeeded and returned a CiphertextBlob", self.script)
+        self.assertIn("kms:GenerateDataKey succeeded", self.script)
+
+    def test_simulate_principal_policy_is_informational_only(self) -> None:
+        self.assertIn("Informational IAM simulation", self.script)
+        self.assertIn("(informational only)", self.script)
+        self.assertNotIn("is NOT allowed to perform", self.script)
+        self.assertNotIn("unexpectedly allowed for", self.script)
+
+    def test_policy_fallback_still_fails_when_task_role_policy_lacks_kms(self) -> None:
+        self.assertIn("assert_task_role_policy_allows_kms", self.script)
+        self.assertIn("assert_kms_key_policy_delegates_to_iam", self.script)
+        self.assertIn("policies do not allow required KMS actions", self.script)
+        self.assertIn("does not delegate required KMS actions", self.script)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -10,6 +10,7 @@ from closeout_workflow_inputs_test import (  # noqa: F401
     CloseoutEcsScriptEnvCaseTest,
     CloseoutEnvMappingTest,
     CloseoutJobsTest,
+    CloseoutKmsAssertionScriptTest,
     CloseoutPreflightOlderThanTest,
     CloseoutWorkflowInputsTest,
     CloseoutWorkflowMetadataTest,
