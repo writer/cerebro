@@ -23,6 +23,106 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+// TestBreakStaleRunningCloseoutRuns_HoneorsHeartbeat preserves the validation
+// contract spelling while asserting VAL-M6-CLOSEOUT-HEARTBEAT-002: stale-lock
+// reclamation is gated by heartbeat freshness, not by the original started_at.
+func TestBreakStaleRunningCloseoutRuns_HoneorsHeartbeat(t *testing.T) {
+	dsn := strings.TrimSpace(os.Getenv("CEREBRO_POSTGRES_DSN"))
+	if dsn == "" {
+		t.Skip("set CEREBRO_POSTGRES_DSN to run the closeout heartbeat integration test")
+	}
+
+	ctx := context.Background()
+	store, err := postgres.Open(config.StateStoreConfig{
+		Driver:      config.StateStoreDriverPostgres,
+		PostgresDSN: dsn,
+	})
+	if err != nil {
+		t.Fatalf("open postgres store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	rawDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	t.Cleanup(func() { _ = rawDB.Close() })
+
+	if _, err := store.BreakStaleRunningCloseoutRuns(ctx, time.Time{}, ""); err != nil {
+		t.Fatalf("ensure closeout schema: %v", err)
+	}
+
+	nonce := time.Now().UTC().UnixNano()
+	freshRunID := fmt.Sprintf("test-heartbeat-fresh-%d", nonce)
+	staleRunID := fmt.Sprintf("test-heartbeat-stale-%d", nonce)
+	cleanup := func() {
+		_, _ = rawDB.ExecContext(context.Background(), `DELETE FROM closeout_run WHERE run_id IN ($1, $2)`, freshRunID, staleRunID)
+	}
+	cleanup()
+	t.Cleanup(cleanup)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	cutoff := now.Add(-time.Hour)
+	insertRun := func(runID string, startedAt, heartbeatAt time.Time) {
+		t.Helper()
+		_, err := rawDB.ExecContext(ctx, `
+INSERT INTO closeout_run (run_id, actor, change_ticket, selector_json, status, started_at, heartbeat_at, dry_run)
+VALUES ($1, 'heartbeat-test', '', '{}'::jsonb, 'running', $2, $3, false)`,
+			runID,
+			startedAt,
+			heartbeatAt,
+		)
+		if err != nil {
+			t.Fatalf("insert closeout_run %q: %v", runID, err)
+		}
+	}
+	statusOf := func(runID string) (string, sql.NullTime) {
+		t.Helper()
+		var status string
+		var finishedAt sql.NullTime
+		if err := rawDB.QueryRowContext(ctx, `SELECT status, finished_at FROM closeout_run WHERE run_id = $1`, runID).Scan(&status, &finishedAt); err != nil {
+			t.Fatalf("read closeout_run %q: %v", runID, err)
+		}
+		return status, finishedAt
+	}
+
+	insertRun(freshRunID, now.Add(-2*time.Hour), now.Add(-5*time.Minute))
+	broken, err := store.BreakStaleRunningCloseoutRuns(ctx, cutoff, "stale heartbeat test")
+	if err != nil {
+		t.Fatalf("BreakStaleRunningCloseoutRuns fresh heartbeat error: %v", err)
+	}
+	if broken != 0 {
+		t.Fatalf("fresh heartbeat broken rows = %d, want 0", broken)
+	}
+	status, finishedAt := statusOf(freshRunID)
+	if status != "running" {
+		t.Fatalf("fresh heartbeat status = %q, want running", status)
+	}
+	if finishedAt.Valid {
+		t.Fatalf("fresh heartbeat finished_at = %s, want NULL", finishedAt.Time)
+	}
+
+	if _, err := rawDB.ExecContext(ctx, `DELETE FROM closeout_run WHERE run_id = $1`, freshRunID); err != nil {
+		t.Fatalf("delete fresh running row: %v", err)
+	}
+
+	insertRun(staleRunID, now.Add(-2*time.Hour), now.Add(-2*time.Hour))
+	broken, err = store.BreakStaleRunningCloseoutRuns(ctx, cutoff, "stale heartbeat test")
+	if err != nil {
+		t.Fatalf("BreakStaleRunningCloseoutRuns stale heartbeat error: %v", err)
+	}
+	if broken != 1 {
+		t.Fatalf("stale heartbeat broken rows = %d, want 1", broken)
+	}
+	status, finishedAt = statusOf(staleRunID)
+	if status != "failed" {
+		t.Fatalf("stale heartbeat status = %q, want failed", status)
+	}
+	if !finishedAt.Valid {
+		t.Fatalf("stale heartbeat finished_at is NULL, want timestamp")
+	}
+}
+
 // TestService_TombstonedFindingEmitMintsFreshGraphEdge exercises the
 // tombstone-then-emit lifecycle end-to-end against the real Postgres upsert
 // path so the fresh-row mint (id = `<base>#g<N+1>` and tombstone_generation)
@@ -955,13 +1055,22 @@ func (s *stubCloseoutStore) InsertCloseoutRun(_ context.Context, run ports.Close
 		}
 	}
 	selector := append([]byte(nil), run.SelectorJSON...)
+	startedAt := run.StartedAt.UTC()
+	if startedAt.IsZero() {
+		startedAt = time.Now().UTC()
+	}
+	heartbeatAt := run.HeartbeatAt.UTC()
+	if heartbeatAt.IsZero() {
+		heartbeatAt = startedAt
+	}
 	s.runs[run.RunID] = &ports.CloseoutRunRecord{
 		RunID:        run.RunID,
 		Actor:        run.Actor,
 		ChangeTicket: run.ChangeTicket,
 		SelectorJSON: selector,
 		Status:       "running",
-		StartedAt:    run.StartedAt,
+		StartedAt:    startedAt,
+		HeartbeatAt:  heartbeatAt,
 		DryRun:       run.DryRun,
 	}
 	return nil
@@ -994,6 +1103,24 @@ func (s *stubCloseoutStore) GetCloseoutRun(_ context.Context, runID string) (*po
 	return &clone, nil
 }
 
+func (s *stubCloseoutStore) RefreshCloseoutRunHeartbeat(_ context.Context, runID string, heartbeatAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	existing, ok := s.runs[runID]
+	if !ok {
+		return fmt.Errorf("closeout_run %q not found", runID)
+	}
+	if existing.Status != "running" {
+		return nil
+	}
+	refreshedAt := heartbeatAt.UTC()
+	if refreshedAt.IsZero() {
+		refreshedAt = time.Now().UTC()
+	}
+	existing.HeartbeatAt = refreshedAt
+	return nil
+}
+
 func (s *stubCloseoutStore) BreakStaleRunningCloseoutRuns(_ context.Context, cutoff time.Time, errMessage string) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1005,7 +1132,11 @@ func (s *stubCloseoutStore) BreakStaleRunningCloseoutRuns(_ context.Context, cut
 		if existing.Status != "running" {
 			continue
 		}
-		if !existing.StartedAt.Before(cutoff) {
+		freshnessAt := existing.HeartbeatAt
+		if freshnessAt.IsZero() {
+			freshnessAt = existing.StartedAt
+		}
+		if !freshnessAt.Before(cutoff) {
 			continue
 		}
 		existing.Status = "failed"

@@ -23,6 +23,10 @@ const (
 	// run-row layer and the GitHub Actions concurrency layer; the 1h cutoff makes
 	// the lock self-healing without manual SQL intervention.
 	closeoutStaleRunCutoff = time.Hour
+	// closeoutHeartbeatInterval is intentionally below closeoutStaleRunCutoff/3
+	// so long-running apply batches refresh closeout_run before a second
+	// invocation can mistake them for abandoned work.
+	closeoutHeartbeatInterval = closeoutStaleRunCutoff / 4
 )
 
 // ErrCloseoutAnotherRunning indicates that a concurrent closeout run was rejected.
@@ -121,6 +125,42 @@ func (s *Service) closeoutResultFromRunRecord(ctx context.Context, run *ports.Cl
 	result.Proposed = proposed
 	result.PerRule = perRule
 	return result, nil
+}
+
+func (s *Service) closeoutHeartbeatEvery() time.Duration {
+	if s != nil && s.closeoutHeartbeatInterval > 0 {
+		return s.closeoutHeartbeatInterval
+	}
+	return closeoutHeartbeatInterval
+}
+
+func (s *Service) startCloseoutRunHeartbeat(ctx context.Context, runID string) func() {
+	if s == nil || s.closeoutStore == nil || strings.TrimSpace(runID) == "" {
+		return func() {}
+	}
+	interval := s.closeoutHeartbeatEvery()
+	if interval <= 0 {
+		return func() {}
+	}
+	heartbeatCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				_ = s.closeoutStore.RefreshCloseoutRunHeartbeat(heartbeatCtx, runID, time.Now().UTC())
+			case <-heartbeatCtx.Done():
+				return
+			}
+		}
+	}()
+	return func() {
+		cancel()
+		<-done
+	}
 }
 
 func (s *Service) reloadCloseoutAppliedFindings(ctx context.Context, run *ports.CloseoutRunRecord) ([]*ports.FindingRecord, []CloseoutPerRuleCount, error) {
@@ -228,6 +268,7 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 		SelectorJSON: selectorJSON,
 		DryRun:       req.DryRun,
 		StartedAt:    startedAt,
+		HeartbeatAt:  startedAt,
 	}
 	insertErr := s.closeoutStore.InsertCloseoutRun(ctx, insertRow)
 	if insertErr != nil && errors.Is(insertErr, ports.ErrCloseoutRunInFlight) {
@@ -269,6 +310,10 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 			err = fmt.Errorf("closeout panicked: %v", rec)
 		}
 	}()
+	if !req.DryRun {
+		stopHeartbeat := s.startCloseoutRunHeartbeat(ctx, runID)
+		defer stopHeartbeat()
+	}
 
 	proposed, listErr := s.listCloseoutCandidates(ctx, selector)
 	if listErr != nil {

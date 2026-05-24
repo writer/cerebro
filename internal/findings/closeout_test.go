@@ -40,13 +40,22 @@ func (s *stubCloseoutStore) InsertCloseoutRun(_ context.Context, run ports.Close
 		}
 	}
 	selector := append([]byte(nil), run.SelectorJSON...)
+	startedAt := run.StartedAt.UTC()
+	if startedAt.IsZero() {
+		startedAt = time.Now().UTC()
+	}
+	heartbeatAt := run.HeartbeatAt.UTC()
+	if heartbeatAt.IsZero() {
+		heartbeatAt = startedAt
+	}
 	s.runs[run.RunID] = &ports.CloseoutRunRecord{
 		RunID:        run.RunID,
 		Actor:        run.Actor,
 		ChangeTicket: run.ChangeTicket,
 		SelectorJSON: selector,
 		Status:       "running",
-		StartedAt:    run.StartedAt,
+		StartedAt:    startedAt,
+		HeartbeatAt:  heartbeatAt,
 		DryRun:       run.DryRun,
 	}
 	return nil
@@ -82,6 +91,24 @@ func (s *stubCloseoutStore) GetCloseoutRun(_ context.Context, runID string) (*po
 	return &clone, nil
 }
 
+func (s *stubCloseoutStore) RefreshCloseoutRunHeartbeat(_ context.Context, runID string, heartbeatAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	existing, ok := s.runs[runID]
+	if !ok {
+		return fmt.Errorf("closeout_run %q not found", runID)
+	}
+	if existing.Status != "running" {
+		return nil
+	}
+	refreshedAt := heartbeatAt.UTC()
+	if refreshedAt.IsZero() {
+		refreshedAt = time.Now().UTC()
+	}
+	existing.HeartbeatAt = refreshedAt
+	return nil
+}
+
 func (s *stubCloseoutStore) BreakStaleRunningCloseoutRuns(_ context.Context, cutoff time.Time, errMessage string) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -93,7 +120,11 @@ func (s *stubCloseoutStore) BreakStaleRunningCloseoutRuns(_ context.Context, cut
 		if existing.Status != "running" {
 			continue
 		}
-		if !existing.StartedAt.Before(cutoff) {
+		freshnessAt := existing.HeartbeatAt
+		if freshnessAt.IsZero() {
+			freshnessAt = existing.StartedAt
+		}
+		if !freshnessAt.Before(cutoff) {
 			continue
 		}
 		existing.Status = "failed"
@@ -1065,6 +1096,13 @@ func (s *ctxAwareCloseoutStore) FinishCloseoutRun(ctx context.Context, finish po
 
 func (s *ctxAwareCloseoutStore) GetCloseoutRun(ctx context.Context, runID string) (*ports.CloseoutRunRecord, error) {
 	return s.inner.GetCloseoutRun(ctx, runID)
+}
+
+func (s *ctxAwareCloseoutStore) RefreshCloseoutRunHeartbeat(ctx context.Context, runID string, heartbeatAt time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.inner.RefreshCloseoutRunHeartbeat(ctx, runID, heartbeatAt)
 }
 
 func (s *ctxAwareCloseoutStore) BreakStaleRunningCloseoutRuns(ctx context.Context, cutoff time.Time, errMessage string) (int, error) {

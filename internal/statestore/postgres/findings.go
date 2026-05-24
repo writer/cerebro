@@ -145,6 +145,7 @@ END $$`,
         selector_json JSONB NOT NULL,
         status TEXT NOT NULL,
         started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        heartbeat_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         finished_at TIMESTAMPTZ,
         dry_run BOOLEAN NOT NULL,
         proposed_count INTEGER NOT NULL DEFAULT 0,
@@ -152,6 +153,10 @@ END $$`,
         error_message TEXT NOT NULL DEFAULT '',
         s3_summary_key TEXT NOT NULL DEFAULT ''
     )`,
+	`ALTER TABLE closeout_run ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMPTZ`,
+	`UPDATE closeout_run SET heartbeat_at = started_at WHERE heartbeat_at IS NULL`,
+	`ALTER TABLE closeout_run ALTER COLUMN heartbeat_at SET DEFAULT now()`,
+	`ALTER TABLE closeout_run ALTER COLUMN heartbeat_at SET NOT NULL`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS closeout_run_singleton_running_idx
         ON closeout_run ((1)) WHERE status = 'running'`,
 }

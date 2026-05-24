@@ -298,6 +298,7 @@ func TestEnsureFindingStatements_CreatesTombstoneEventsTable(t *testing.T) {
 		"selector_json":  "jsonb",
 		"status":         "text",
 		"started_at":     "timestamp with time zone",
+		"heartbeat_at":   "timestamp with time zone",
 		"finished_at":    "timestamp with time zone",
 		"dry_run":        "boolean",
 		"proposed_count": "integer",

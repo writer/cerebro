@@ -59,20 +59,21 @@ var (
 // fingerprints, and runtime-level lineage all stay explicit instead of collapsing into an
 // opaque multi-rule batch.
 type Service struct {
-	runtimeStore        ports.SourceRuntimeStore
-	replayer            ports.EventReplayer
-	store               ports.FindingStore
-	runStore            ports.FindingEvaluationRunStore
-	evidenceStore       ports.FindingEvidenceStore
-	claimStore          ports.ClaimStore
-	graphQuery          ports.GraphQueryStore
-	graph               ports.ProjectionGraphStore
-	appendLog           ports.AppendLog
-	closeoutStore       ports.CloseoutRunStore
-	tombstoneEventStore ports.FindingTombstoneEventStore
-	rules               *Registry
-	ttlClock            ttlClock
-	ttlLogSink          ttlLogSink
+	runtimeStore              ports.SourceRuntimeStore
+	replayer                  ports.EventReplayer
+	store                     ports.FindingStore
+	runStore                  ports.FindingEvaluationRunStore
+	evidenceStore             ports.FindingEvidenceStore
+	claimStore                ports.ClaimStore
+	graphQuery                ports.GraphQueryStore
+	graph                     ports.ProjectionGraphStore
+	appendLog                 ports.AppendLog
+	closeoutStore             ports.CloseoutRunStore
+	tombstoneEventStore       ports.FindingTombstoneEventStore
+	closeoutHeartbeatInterval time.Duration
+	rules                     *Registry
+	ttlClock                  ttlClock
+	ttlLogSink                ttlLogSink
 }
 
 // EvaluateRequest scopes one replay-backed finding evaluation.

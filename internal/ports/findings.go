@@ -151,6 +151,7 @@ type CloseoutRunInsert struct {
 	SelectorJSON []byte
 	DryRun       bool
 	StartedAt    time.Time
+	HeartbeatAt  time.Time
 }
 
 // CloseoutRunFinish scopes one closeout_run completion update.
@@ -172,6 +173,7 @@ type CloseoutRunRecord struct {
 	SelectorJSON  []byte
 	Status        string
 	StartedAt     time.Time
+	HeartbeatAt   time.Time
 	FinishedAt    time.Time
 	DryRun        bool
 	ProposedCount int
@@ -200,11 +202,16 @@ type CloseoutRunStore interface {
 	InsertCloseoutRun(ctx context.Context, run CloseoutRunInsert) error
 	FinishCloseoutRun(ctx context.Context, finish CloseoutRunFinish) error
 	GetCloseoutRun(ctx context.Context, runID string) (*CloseoutRunRecord, error)
+	// RefreshCloseoutRunHeartbeat updates heartbeat_at for a currently running
+	// closeout_run. Long apply runs call this periodically so stale-lock recovery
+	// keys off recent activity rather than the original started_at timestamp.
+	RefreshCloseoutRunHeartbeat(ctx context.Context, runID string, heartbeatAt time.Time) error
 	// BreakStaleRunningCloseoutRuns flips any closeout_run rows with status='running'
-	// and started_at < cutoff to status='failed' with finished_at=now and the supplied
-	// error message. The bulk primitive uses this to recover from operator crashes
-	// without manual intervention (I-8: stale-lock break). Implementations MUST be
-	// idempotent and return the count of rows that were updated.
+	// and heartbeat_at < cutoff (falling back to started_at for legacy rows) to
+	// status='failed' with finished_at=now and the supplied error message. The
+	// bulk primitive uses this to recover from operator crashes without manual
+	// intervention (I-8: stale-lock break). Implementations MUST be idempotent
+	// and return the count of rows that were updated.
 	BreakStaleRunningCloseoutRuns(ctx context.Context, cutoff time.Time, errMessage string) (int, error)
 	// UpdateCloseoutRunSummary persists the per-run S3 audit summary key on a
 	// closeout_run row that has already been finished. When summaryErr is non-nil

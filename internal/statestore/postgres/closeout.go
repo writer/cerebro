@@ -40,14 +40,19 @@ func (s *Store) InsertCloseoutRun(ctx context.Context, run ports.CloseoutRunInse
 	if startedAt.IsZero() {
 		startedAt = time.Now().UTC()
 	}
+	heartbeatAt := run.HeartbeatAt.UTC()
+	if heartbeatAt.IsZero() {
+		heartbeatAt = startedAt
+	}
 	_, err := s.db.ExecContext(ctx, `
-        INSERT INTO closeout_run (run_id, actor, change_ticket, selector_json, status, started_at, dry_run, proposed_count, applied_count, error_message, s3_summary_key)
-        VALUES ($1, $2, $3, $4::jsonb, 'running', $5, $6, 0, 0, '', '')`,
+        INSERT INTO closeout_run (run_id, actor, change_ticket, selector_json, status, started_at, heartbeat_at, dry_run, proposed_count, applied_count, error_message, s3_summary_key)
+        VALUES ($1, $2, $3, $4::jsonb, 'running', $5, $6, $7, 0, 0, '', '')`,
 		runID,
 		actor,
 		strings.TrimSpace(run.ChangeTicket),
 		string(selectorJSON),
 		startedAt,
+		heartbeatAt,
 		run.DryRun,
 	)
 	if err == nil {
@@ -131,7 +136,7 @@ func (s *Store) GetCloseoutRun(ctx context.Context, runID string) (*ports.Closeo
 	var finishedAt sql.NullTime
 	err := s.db.QueryRowContext(ctx, `
         SELECT run_id, actor, change_ticket, selector_json::text, status,
-               started_at, finished_at, dry_run, proposed_count, applied_count,
+               started_at, heartbeat_at, finished_at, dry_run, proposed_count, applied_count,
                error_message, s3_summary_key
         FROM closeout_run
         WHERE run_id = $1`, id,
@@ -142,6 +147,7 @@ func (s *Store) GetCloseoutRun(ctx context.Context, runID string) (*ports.Closeo
 		&selectorJSON,
 		&rec.Status,
 		&rec.StartedAt,
+		&rec.HeartbeatAt,
 		&finishedAt,
 		&rec.DryRun,
 		&rec.ProposedCount,
@@ -160,7 +166,38 @@ func (s *Store) GetCloseoutRun(ctx context.Context, runID string) (*ports.Closeo
 		rec.FinishedAt = finishedAt.Time.UTC()
 	}
 	rec.StartedAt = rec.StartedAt.UTC()
+	rec.HeartbeatAt = rec.HeartbeatAt.UTC()
 	return &rec, nil
+}
+
+// RefreshCloseoutRunHeartbeat records recent activity for a running closeout
+// run. It is intentionally a no-op for already-finished rows so a late ticker
+// cannot mutate completed audit records.
+func (s *Store) RefreshCloseoutRunHeartbeat(ctx context.Context, runID string, heartbeatAt time.Time) error {
+	if s == nil || s.db == nil {
+		return errors.New("postgres is not configured")
+	}
+	if err := s.ensureFindingTables(ctx); err != nil {
+		return err
+	}
+	id := strings.TrimSpace(runID)
+	if id == "" {
+		return errors.New("closeout run id is required")
+	}
+	refreshedAt := heartbeatAt.UTC()
+	if refreshedAt.IsZero() {
+		refreshedAt = time.Now().UTC()
+	}
+	if _, err := s.db.ExecContext(ctx, `
+        UPDATE closeout_run
+        SET heartbeat_at = $2
+        WHERE run_id = $1 AND status = 'running'`,
+		id,
+		refreshedAt,
+	); err != nil {
+		return fmt.Errorf("refresh closeout_run %q heartbeat: %w", id, err)
+	}
+	return nil
 }
 
 // InsertFindingTombstoneEvent appends one audit row to finding_tombstone_events.
@@ -460,10 +497,11 @@ RETURNING `+findingSelectColumns,
 }
 
 // BreakStaleRunningCloseoutRuns flips any closeout_run rows still marked
-// status='running' with started_at < cutoff to status='failed', records the
-// supplied error_message, and sets finished_at=now(). Returns the number of
-// rows updated. Used by the bulk tombstone primitive to recover from operator
-// crashes without manual intervention (CROSS-008 stale-lock break).
+// status='running' with heartbeat_at < cutoff (falling back to started_at for
+// legacy rows) to status='failed', records the supplied error_message, and sets
+// finished_at=now(). Returns the number of rows updated. Used by the bulk
+// tombstone primitive to recover from operator crashes without manual
+// intervention (CROSS-008 stale-lock break).
 func (s *Store) BreakStaleRunningCloseoutRuns(ctx context.Context, cutoff time.Time, errMessage string) (int, error) {
 	if s == nil || s.db == nil {
 		return 0, errors.New("postgres is not configured")
@@ -479,7 +517,7 @@ func (s *Store) BreakStaleRunningCloseoutRuns(ctx context.Context, cutoff time.T
         SET status = 'failed',
             finished_at = now(),
             error_message = CASE WHEN $2 = '' THEN error_message ELSE $2 END
-        WHERE status = 'running' AND started_at < $1`,
+        WHERE status = 'running' AND COALESCE(heartbeat_at, started_at) < $1`,
 		cutoff.UTC(),
 		strings.TrimSpace(errMessage),
 	)

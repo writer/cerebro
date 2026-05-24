@@ -333,11 +333,165 @@ func TestCloseoutBreaksStaleLock(t *testing.T) {
 	}
 }
 
+func TestTombstoneFindingsBulk_StaleRecoveryUsesHeartbeat(t *testing.T) {
+	fx := newCloseoutFixture(t)
+	fx.seedFinding("f-1", "open", fx.now.Add(-48*time.Hour), nil)
+
+	now := time.Now().UTC()
+	if err := fx.closeout.InsertCloseoutRun(context.Background(), ports.CloseoutRunInsert{
+		RunID:        "run-long-heartbeat",
+		Actor:        "operator",
+		SelectorJSON: []byte(`{}`),
+		StartedAt:    now.Add(-2 * time.Hour),
+		HeartbeatAt:  now.Add(-5 * time.Minute),
+	}); err != nil {
+		t.Fatalf("seed long-running row error = %v", err)
+	}
+
+	_, err := fx.service.TombstoneFindingsBulk(context.Background(), fx.request("run-blocked-by-heartbeat", false))
+	if err == nil {
+		t.Fatal("expected fresh-heartbeat run to block second invocation")
+	}
+	if !errors.Is(err, ErrCloseoutAnotherRunning) {
+		t.Fatalf("fresh-heartbeat error = %v, want ErrCloseoutAnotherRunning", err)
+	}
+	active, _ := fx.closeout.GetCloseoutRun(context.Background(), "run-long-heartbeat")
+	if active == nil || active.Status != "running" {
+		t.Fatalf("fresh-heartbeat row status = %v, want running", staleStatus(active))
+	}
+
+	if err := fx.closeout.RefreshCloseoutRunHeartbeat(context.Background(), "run-long-heartbeat", now.Add(-2*time.Hour)); err != nil {
+		t.Fatalf("stale heartbeat update error = %v", err)
+	}
+	result, err := fx.service.TombstoneFindingsBulk(context.Background(), fx.request("run-after-stale-heartbeat", false))
+	if err != nil {
+		t.Fatalf("expected stale heartbeat to be reclaimed, got %v", err)
+	}
+	if result.AppliedCount != 1 {
+		t.Fatalf("AppliedCount = %d, want 1", result.AppliedCount)
+	}
+	reclaimed, _ := fx.closeout.GetCloseoutRun(context.Background(), "run-long-heartbeat")
+	if reclaimed == nil || reclaimed.Status != "failed" {
+		t.Fatalf("stale-heartbeat row status = %v, want failed", staleStatus(reclaimed))
+	}
+}
+
+// TestTombstoneFindingsBulk_EmitsHeartbeat asserts VAL-M6-CLOSEOUT-HEARTBEAT-001:
+// apply runs keep closeout_run fresh while batch processing is still in progress.
+func TestTombstoneFindingsBulk_EmitsHeartbeat(t *testing.T) {
+	if closeoutHeartbeatInterval >= closeoutStaleRunCutoff/3 {
+		t.Fatalf("closeoutHeartbeatInterval = %s, want < stale cutoff/3 (%s)", closeoutHeartbeatInterval, closeoutStaleRunCutoff/3)
+	}
+
+	fx := newCloseoutFixture(t)
+	for i := 0; i < 3; i++ {
+		fx.seedFinding(fmt.Sprintf("f-heartbeat-%d", i), "open", fx.now.Add(-48*time.Hour-time.Duration(i)*time.Minute), nil)
+	}
+	fx.service.closeoutHeartbeatInterval = 10 * time.Millisecond
+	observing := newHeartbeatObservingCloseoutStore(fx.closeout)
+	fx.service.closeoutStore = observing
+
+	var initialHeartbeat time.Time
+	var observedHeartbeat time.Time
+	req := fx.request("run-heartbeat-1", false)
+	req.MaxBatchSize = 3
+	req.BatchLogger = func(CloseoutBatchEvent) {
+		run, err := observing.GetCloseoutRun(context.Background(), req.RunID)
+		if err != nil {
+			t.Errorf("GetCloseoutRun during batch: %v", err)
+			return
+		}
+		initialHeartbeat = run.HeartbeatAt
+		if initialHeartbeat.IsZero() {
+			t.Errorf("initial heartbeat_at is zero")
+			return
+		}
+		deadline := time.After(2 * time.Second)
+		for {
+			select {
+			case heartbeatAt := <-observing.heartbeats:
+				if heartbeatAt.After(initialHeartbeat) {
+					observedHeartbeat = heartbeatAt
+					return
+				}
+			case <-deadline:
+				t.Errorf("timed out waiting for heartbeat refresh after %s", initialHeartbeat.Format(time.RFC3339Nano))
+				return
+			}
+		}
+	}
+
+	result, err := fx.service.TombstoneFindingsBulk(context.Background(), req)
+	if err != nil {
+		t.Fatalf("TombstoneFindingsBulk error = %v", err)
+	}
+	if result.AppliedCount != 3 {
+		t.Fatalf("AppliedCount = %d, want 3", result.AppliedCount)
+	}
+	if observedHeartbeat.IsZero() {
+		t.Fatalf("heartbeat was not observed during batch processing")
+	}
+	if !observedHeartbeat.After(initialHeartbeat) {
+		t.Fatalf("heartbeat_at did not advance: initial=%s observed=%s", initialHeartbeat, observedHeartbeat)
+	}
+}
+
 func staleStatus(run *ports.CloseoutRunRecord) string {
 	if run == nil {
 		return "<nil>"
 	}
 	return run.Status
+}
+
+type heartbeatObservingCloseoutStore struct {
+	inner      *stubCloseoutStore
+	heartbeats chan time.Time
+}
+
+func newHeartbeatObservingCloseoutStore(inner *stubCloseoutStore) *heartbeatObservingCloseoutStore {
+	return &heartbeatObservingCloseoutStore{
+		inner:      inner,
+		heartbeats: make(chan time.Time, 16),
+	}
+}
+
+func (s *heartbeatObservingCloseoutStore) InsertCloseoutRun(ctx context.Context, run ports.CloseoutRunInsert) error {
+	return s.inner.InsertCloseoutRun(ctx, run)
+}
+
+func (s *heartbeatObservingCloseoutStore) FinishCloseoutRun(ctx context.Context, finish ports.CloseoutRunFinish) error {
+	return s.inner.FinishCloseoutRun(ctx, finish)
+}
+
+func (s *heartbeatObservingCloseoutStore) GetCloseoutRun(ctx context.Context, runID string) (*ports.CloseoutRunRecord, error) {
+	return s.inner.GetCloseoutRun(ctx, runID)
+}
+
+func (s *heartbeatObservingCloseoutStore) RefreshCloseoutRunHeartbeat(_ context.Context, runID string, heartbeatAt time.Time) error {
+	s.inner.mu.Lock()
+	existing, ok := s.inner.runs[runID]
+	if !ok {
+		s.inner.mu.Unlock()
+		return fmt.Errorf("closeout_run %q not found", runID)
+	}
+	if existing.Status == "running" {
+		existing.HeartbeatAt = heartbeatAt.UTC()
+	}
+	refreshedAt := existing.HeartbeatAt
+	s.inner.mu.Unlock()
+	select {
+	case s.heartbeats <- refreshedAt:
+	default:
+	}
+	return nil
+}
+
+func (s *heartbeatObservingCloseoutStore) BreakStaleRunningCloseoutRuns(ctx context.Context, cutoff time.Time, errMessage string) (int, error) {
+	return s.inner.BreakStaleRunningCloseoutRuns(ctx, cutoff, errMessage)
+}
+
+func (s *heartbeatObservingCloseoutStore) UpdateCloseoutRunSummary(ctx context.Context, runID, summaryKey string, summaryErr error) error {
+	return s.inner.UpdateCloseoutRunSummary(ctx, runID, summaryKey, summaryErr)
 }
 
 // auditStoreFailingAfter wraps a tombstone audit store so that the (n+1)th
