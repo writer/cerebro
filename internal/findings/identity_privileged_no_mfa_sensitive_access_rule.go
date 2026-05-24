@@ -18,6 +18,7 @@ var _ GraphRule = (*identityPrivilegedNoMFAAccessRule)(nil)
 const (
 	identityPrivilegedNoMFAAccessKind     = "finding.identity_privileged_no_mfa_sensitive_access"
 	identityPrivilegedNoMFAAccessRowLimit = 250
+	identityPrivilegedNoMFAActedOnWindow  = 90 * 24 * time.Hour
 )
 
 type identityPrivilegedNoMFAAccessRule struct {
@@ -49,7 +50,7 @@ func newIdentityPrivilegedNoMFAAccessRule() Rule {
 	definition := identityDurableStateRuleDefinition(identityRuleDefinition(
 		identityPrivilegedNoMFAAccessRuleID,
 		"Identity Privileged No-MFA Account With Sensitive Access",
-		"Detect privileged no-MFA identities that currently have access to crown-jewel or sensitive classified resources in the graph.",
+		"Detect source-backed privileged no-MFA identities that currently have access to crown-jewel or sensitive classified resources in the graph; AWS IAM and Azure user MFA posture require source-adapter extensions before those user entity types are included.",
 		"HIGH",
 		identityPrivilegedNoMFAAccessKind,
 		[]string{"identity", "graph-join", "privileged-access", "mfa"},
@@ -58,11 +59,9 @@ func newIdentityPrivilegedNoMFAAccessRule() Rule {
 		"asset.crown_jewel",
 		"asset.data_sensitivity",
 		"aws.iam_role_assignment",
-		"aws.iam_user",
 		"azure.app_role_assignment",
 		"azure.directory_role_assignment",
 		"azure.iam_role_assignment",
-		"azure.user",
 		"gcp.iam_role_assignment",
 		"gcp.service_account",
 		"google_workspace.role_assignment",
@@ -106,20 +105,41 @@ func (r *identityPrivilegedNoMFAAccessRule) QueryFor(runtime *cerebrov1.SourceRu
 		return ports.CypherQueryRequest{}
 	}
 	tenantID := strings.TrimSpace(runtime.GetTenantId())
+	actedOnSince := time.Now().UTC().Add(-identityPrivilegedNoMFAActedOnWindow).Format(time.RFC3339)
 	return ports.CypherQueryRequest{
 		Query: `MATCH (user:Entity {tenant_id: $tenant_id})-[access:RELATION]->(resource:Entity {tenant_id: $tenant_id})
 MATCH (resource)-[sensitivity:RELATION]->(marker:Entity {tenant_id: $tenant_id})
-WHERE user.entity_type IN ['okta.user','google_workspace.user','azure.user','aws.iam_user','aws.user','gcp.service_account']
-  AND access.relation IN ['acted_on','assigned_to','can_admin']
+WITH user, access, resource, sensitivity, marker,
+     toLower(coalesce(user.attributes_json, '')) AS user_attrs,
+     coalesce(access.attributes_json, '') AS access_attrs
+WHERE user.entity_type IN ['okta.user','google_workspace.user','gcp.service_account']
+  AND access.relation IN ['acted_on','assigned_to','can_admin','can_perform']
   AND (
-    toLower(coalesce(user.attributes_json, '')) CONTAINS '"is_admin":"true"'
-    OR toLower(coalesce(user.attributes_json, '')) CONTAINS '"is_admin":true'
-    OR toLower(coalesce(user.attributes_json, '')) CONTAINS '"is_delegated_admin":"true"'
-    OR toLower(coalesce(user.attributes_json, '')) CONTAINS '"is_delegated_admin":true'
+    access.relation <> 'acted_on'
+    OR (
+      CASE
+      WHEN access_attrs CONTAINS '"observed_at":"' THEN split(split(access_attrs, '"observed_at":"')[1], '"')[0]
+      WHEN access_attrs CONTAINS '"at":"' THEN split(split(access_attrs, '"at":"')[1], '"')[0]
+      WHEN access_attrs CONTAINS '"last_observed_at":"' THEN split(split(access_attrs, '"last_observed_at":"')[1], '"')[0]
+      ELSE ''
+      END
+    ) > $acted_on_since
   )
   AND (
-    toLower(coalesce(user.attributes_json, '')) CONTAINS '"mfa_enrolled":"false"'
-    OR toLower(coalesce(user.attributes_json, '')) CONTAINS '"mfa_enrolled":false'
+    user_attrs CONTAINS '"is_admin":"true"'
+    OR user_attrs CONTAINS '"is_admin":true'
+    OR user_attrs CONTAINS '"is_delegated_admin":"true"'
+    OR user_attrs CONTAINS '"is_delegated_admin":true'
+  )
+  AND (
+    user_attrs CONTAINS '"mfa_enrolled":"false"'
+    OR user_attrs CONTAINS '"mfa_enrolled":false'
+    OR user_attrs CONTAINS '"mfa_enforced":"false"'
+    OR user_attrs CONTAINS '"mfa_enforced":false'
+    OR user_attrs CONTAINS '"is_enrolled_in_2sv":"false"'
+    OR user_attrs CONTAINS '"is_enrolled_in_2sv":false'
+    OR user_attrs CONTAINS '"is_enforced_in_2sv":"false"'
+    OR user_attrs CONTAINS '"is_enforced_in_2sv":false'
   )
   AND (
     (sensitivity.relation = 'tagged_as' AND marker.entity_type = 'asset.tag' AND toLower(marker.label) = 'crown_jewel')
@@ -143,8 +163,9 @@ RETURN user.urn AS user_urn,
 ORDER BY user.label, resource.label, marker.label
 LIMIT $row_limit`,
 		Params: map[string]any{
-			"tenant_id": tenantID,
-			"row_limit": int64(identityPrivilegedNoMFAAccessRowLimit),
+			"acted_on_since": actedOnSince,
+			"tenant_id":      tenantID,
+			"row_limit":      int64(identityPrivilegedNoMFAAccessRowLimit),
 		},
 		RowLimit: identityPrivilegedNoMFAAccessRowLimit,
 	}
@@ -160,10 +181,15 @@ func (r *identityPrivilegedNoMFAAccessRule) EvaluateRows(_ context.Context, runt
 	}
 	groups := map[string]*identityPrivilegedNoMFAAccessGroup{}
 	keys := []string{}
+	now := time.Now().UTC()
 	for _, row := range rows {
 		userURN := cypherRowString(row, "user_urn")
 		resourceURN := cypherRowString(row, "resource_urn")
 		if userURN == "" || resourceURN == "" {
+			continue
+		}
+		userEntityType := cypherRowString(row, "user_entity_type")
+		if !identityPrivilegedNoMFAUserEntityTypeSupported(userEntityType) {
 			continue
 		}
 		userAttrs := edgeStringAttributes(cypherRowString(row, "user_attributes_json"))
@@ -171,7 +197,8 @@ func (r *identityPrivilegedNoMFAAccessRule) EvaluateRows(_ context.Context, runt
 			continue
 		}
 		accessRelation := cypherRowString(row, "access_relation")
-		if !identityPrivilegedNoMFAAccessRelation(accessRelation) {
+		accessAttributes := edgeStringAttributes(cypherRowString(row, "access_attributes_json"))
+		if !identityPrivilegedNoMFAAccessRelationActionable(accessRelation, accessAttributes, now) {
 			continue
 		}
 		sensitivityRelation := cypherRowString(row, "sensitivity_relation")
@@ -184,7 +211,7 @@ func (r *identityPrivilegedNoMFAAccessRule) EvaluateRows(_ context.Context, runt
 		if !ok {
 			group = &identityPrivilegedNoMFAAccessGroup{
 				userURN:        userURN,
-				userEntityType: cypherRowString(row, "user_entity_type"),
+				userEntityType: userEntityType,
 				userLabel:      cypherRowString(row, "user_label"),
 				userAttrs:      userAttrs,
 				resources:      map[string]identityPrivilegedNoMFAAccessResource{},
@@ -201,7 +228,7 @@ func (r *identityPrivilegedNoMFAAccessRule) EvaluateRows(_ context.Context, runt
 			entityType:            cypherRowString(row, "resource_entity_type"),
 			label:                 cypherRowString(row, "resource_label"),
 			accessRelation:        accessRelation,
-			accessAttributes:      edgeStringAttributes(cypherRowString(row, "access_attributes_json")),
+			accessAttributes:      accessAttributes,
 			sensitivityURN:        cypherRowString(row, "sensitivity_urn"),
 			sensitivityEntityType: sensitivityEntityType,
 			sensitivityLabel:      sensitivityLabel,
@@ -210,7 +237,6 @@ func (r *identityPrivilegedNoMFAAccessRule) EvaluateRows(_ context.Context, runt
 		}
 	}
 	sort.Strings(keys)
-	now := time.Now().UTC()
 	findings := make([]*ports.FindingRecord, 0, len(keys))
 	for _, key := range keys {
 		group := groups[key]
@@ -230,13 +256,48 @@ func identityPrivilegedNoMFAUserMatches(attrs map[string]string) bool {
 		identityMFAExplicitlyDisabled(attrs)
 }
 
-func identityPrivilegedNoMFAAccessRelation(relation string) bool {
-	switch strings.TrimSpace(relation) {
-	case "acted_on", "assigned_to", "can_admin":
+func identityPrivilegedNoMFAUserEntityTypeSupported(entityType string) bool {
+	switch strings.TrimSpace(entityType) {
+	case "okta.user", "google_workspace.user", "gcp.service_account":
 		return true
 	default:
 		return false
 	}
+}
+
+func identityPrivilegedNoMFAAccessRelation(relation string) bool {
+	switch strings.TrimSpace(relation) {
+	case "acted_on", "assigned_to", "can_admin", "can_perform":
+		return true
+	default:
+		return false
+	}
+}
+
+func identityPrivilegedNoMFAAccessRelationActionable(relation string, attributes map[string]string, now time.Time) bool {
+	normalized := strings.TrimSpace(relation)
+	if !identityPrivilegedNoMFAAccessRelation(normalized) {
+		return false
+	}
+	if normalized != "acted_on" {
+		return true
+	}
+	return identityPrivilegedNoMFAActedOnRecent(attributes, now)
+}
+
+func identityPrivilegedNoMFAActedOnRecent(attributes map[string]string, now time.Time) bool {
+	raw := strings.TrimSpace(firstNonEmpty(attributes["observed_at"], attributes["at"], attributes["last_observed_at"]))
+	if raw == "" {
+		return false
+	}
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		parsed, err = time.Parse(time.RFC3339Nano, raw)
+		if err != nil {
+			return false
+		}
+	}
+	return parsed.UTC().After(now.UTC().Add(-identityPrivilegedNoMFAActedOnWindow))
 }
 
 func identityPrivilegedNoMFASensitiveMarker(relation string, entityType string, label string) bool {

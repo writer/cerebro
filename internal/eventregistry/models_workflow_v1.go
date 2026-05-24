@@ -8,6 +8,7 @@ const (
 	WorkflowV1FindingNoteAdded          = "workflow.v1.finding.note_added"
 	WorkflowV1FindingTicketLinked       = "workflow.v1.finding.ticket_linked"
 	WorkflowV1FindingStatusChanged      = "workflow.v1.finding.status_changed"
+	WorkflowV1FindingTombstoned         = "workflow.v1.finding.tombstoned"
 )
 
 const (
@@ -18,6 +19,7 @@ const (
 	workflowV1FindingNoteAddedFP     = "cfb67fac77b66669"
 	workflowV1FindingTicketLinkedFP  = "aba532fc1a85e76a"
 	workflowV1FindingStatusChangedFP = "8af95aec880d1c3a"
+	workflowV1FindingTombstonedFP    = "bc92d8a4e5c7d5c3"
 )
 
 type Event interface {
@@ -306,5 +308,28 @@ func (e FindingStatusChangedV1) EncodeAvro() ([]byte, error) {
 	w.nullableString(e.DecisionID)
 	w.nullableString(e.OutcomeID)
 	w.nullableString(e.OutcomeType)
+	return w.bytes()
+}
+
+type FindingTombstonedV1 struct {
+	Finding      FindingSnapshot `json:"finding"`
+	PriorStatus  string          `json:"prior_status"`
+	Reason       string          `json:"reason"`
+	Actor        string          `json:"actor"`
+	RunID        string          `json:"run_id"`
+	TombstonedAt string          `json:"tombstoned_at"`
+}
+
+func (FindingTombstonedV1) Subject() string           { return WorkflowV1FindingTombstoned }
+func (FindingTombstonedV1) Version() int              { return 1 }
+func (FindingTombstonedV1) SchemaFingerprint() string { return workflowV1FindingTombstonedFP }
+func (e FindingTombstonedV1) EncodeAvro() ([]byte, error) {
+	w := newAvroWriter()
+	e.Finding.encodeAvro(w)
+	w.string(e.PriorStatus)
+	w.string(e.Reason)
+	w.string(e.Actor)
+	w.string(e.RunID)
+	w.string(e.TombstonedAt)
 	return w.bytes()
 }

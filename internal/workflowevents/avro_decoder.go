@@ -100,6 +100,8 @@ func decodeAvroPayload(kind string, data []byte, payload any) error {
 		err = decodeFindingTicketLinked(reader, target)
 	case *FindingStatusChanged:
 		err = decodeFindingStatusChanged(reader, target)
+	case *FindingTombstoned:
+		err = decodeFindingTombstoned(reader, target)
 	default:
 		return fmt.Errorf("unsupported workflow payload target %T for %s", payload, kind)
 	}
@@ -331,6 +333,27 @@ func decodeFindingStatusChanged(reader *avroReader, payload *FindingStatusChange
 		return err
 	}
 	payload.OutcomeType, err = reader.nullableString()
+	return err
+}
+
+func decodeFindingTombstoned(reader *avroReader, payload *FindingTombstoned) error {
+	var err error
+	if payload.Finding, err = reader.findingSnapshot(); err != nil {
+		return err
+	}
+	if payload.PriorStatus, err = reader.string(); err != nil {
+		return err
+	}
+	if payload.Reason, err = reader.string(); err != nil {
+		return err
+	}
+	if payload.Actor, err = reader.string(); err != nil {
+		return err
+	}
+	if payload.RunID, err = reader.string(); err != nil {
+		return err
+	}
+	payload.TombstonedAt, err = reader.string()
 	return err
 }
 
@@ -768,6 +791,8 @@ func schemaForKind(kind string) string {
 		return SchemaFindingTicketLinked
 	case EventKindFindingStatusChanged:
 		return SchemaFindingStatusChanged
+	case EventKindFindingTombstoned:
+		return SchemaFindingTombstoned
 	default:
 		return ""
 	}

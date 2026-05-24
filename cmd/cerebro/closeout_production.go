@@ -163,7 +163,7 @@ func openCloseoutProductionDeps(ctx context.Context) (*closeoutProductionDeps, e
 		_ = closeDeps()
 		return nil, errors.New("closeout: postgres state store is required")
 	}
-	service := buildCloseoutFindingService(store, deps.AppendLog)
+	service := buildCloseoutFindingService(store, deps.AppendLog, deps.GraphStore)
 
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx)
 	if err != nil {
@@ -186,7 +186,7 @@ func openCloseoutProductionDeps(ctx context.Context) (*closeoutProductionDeps, e
 // buildCloseoutFindingService composes the findings.Service for the closeout
 // CLI. It wires the runtime/event/finding/run/evidence/claim ports that
 // TombstoneFindingsBulk needs plus the closeout_run + tombstone audit stores.
-func buildCloseoutFindingService(store *postgres.Store, appendLog ports.AppendLog) *findings.Service {
+func buildCloseoutFindingService(store *postgres.Store, appendLog ports.AppendLog, graphStore ports.GraphStore) *findings.Service {
 	var (
 		runtimeStore ports.SourceRuntimeStore = store
 		findingStore ports.FindingStore       = store
@@ -210,6 +210,7 @@ func buildCloseoutFindingService(store *postgres.Store, appendLog ports.AppendLo
 	service := findings.New(runtimeStore, replayer, findingStore, runStore, evidence, claims)
 	service = service.
 		WithAppendLog(appendLog).
+		WithGraphStore(sourceProjectionGraphStore(graphStore)).
 		WithCloseoutStore(store).
 		WithFindingTombstoneEventStore(store)
 	return service

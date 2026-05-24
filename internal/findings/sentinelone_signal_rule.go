@@ -67,7 +67,7 @@ type sentinelOneFindingOptions struct {
 	severity           func(map[string]string) string
 	summary            func(map[string]string, findingProjectionContext) string
 	policyID           func(map[string]string) string
-	fingerprint        func(map[string]string, findingProjectionContext) []string
+	fingerprint        func(*cerebrov1.EventEnvelope, map[string]string, findingProjectionContext) []string
 	enrichAttributes   func(sourceAttributes, findingAttributes map[string]string)
 }
 
@@ -315,7 +315,9 @@ func buildSentinelOneFinding(ctx context.Context, runtime *cerebrov1.SourceRunti
 		"resource_label":       projectedContext.ResourceLabel,
 		"resource_type":        strings.TrimSpace(event.GetKind()),
 		"source_family":        "sentinelone",
+		"source_id":            strings.TrimSpace(event.GetSourceId()),
 		"source_runtime_id":    strings.TrimSpace(runtime.GetId()),
+		"tenant_id":            strings.TrimSpace(event.GetTenantId()),
 	}
 	for key, value := range attributes {
 		if _, exists := findingAttributes[key]; !exists {
@@ -339,7 +341,7 @@ func buildSentinelOneFinding(ctx context.Context, runtime *cerebrov1.SourceRunti
 	}
 	fingerprintInputs := []string{options.definition.ID, event.GetTenantId(), runtime.GetId(), policyID}
 	if options.fingerprint != nil {
-		fingerprintInputs = append([]string{options.definition.ID}, options.fingerprint(attributes, projectedContext)...)
+		fingerprintInputs = append([]string{options.definition.ID}, options.fingerprint(event, attributes, projectedContext)...)
 	}
 	fingerprint := hashFindingFingerprint(fingerprintInputs...)
 	return &ports.FindingRecord{
@@ -457,13 +459,13 @@ func sentinelOneProtectionControlTamperingPolicyID(attributes map[string]string)
 	return agentID + ":" + controlType
 }
 
-func sentinelOneProtectionControlTamperingFingerprintInputs(attributes map[string]string, _ findingProjectionContext) []string {
+func sentinelOneProtectionControlTamperingFingerprintInputs(event *cerebrov1.EventEnvelope, attributes map[string]string, _ findingProjectionContext) []string {
 	agentID := strings.TrimSpace(attributes["agent_id"])
 	controlType := sentinelOneProtectionControlType(attributes)
 	if agentID == "" || controlType == "" {
 		return nil
 	}
-	return []string{agentID, controlType}
+	return []string{strings.TrimSpace(event.GetTenantId()), agentID, controlType}
 }
 
 func sentinelOneProtectionControlType(attributes map[string]string) string {
@@ -499,7 +501,7 @@ func sentinelOneProtectionControlState(attributes map[string]string) string {
 		}
 		return "disabled"
 	}
-	return ""
+	return "unknown"
 }
 
 func sentinelOneProtectionControlTampered(attributes map[string]string) (bool, bool) {

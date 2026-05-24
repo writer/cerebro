@@ -309,13 +309,20 @@ func cloudPrivilegePathGrantedFingerprintInputs(_ *cerebrov1.EventEnvelope, attr
 
 func cloudFindingAttributes(event *cerebrov1.EventEnvelope, runtime *cerebrov1.SourceRuntime, config cloudSignalConfig, context findingProjectionContext) map[string]string {
 	eventAttrs := eventAttributes(event)
+	primaryResourceURN := context.PrimaryResourceURN
+	if config.definition.ID == cloudPublicResourceExposureRuleID && config.fingerprint != nil {
+		fingerprintInputs := config.fingerprint(event, eventAttrs, context)
+		if len(fingerprintInputs) > 0 {
+			primaryResourceURN = firstNonEmpty(fingerprintInputs[0], primaryResourceURN)
+		}
+	}
 	attributes := map[string]string{
 		"action":               firstNonEmpty(eventAttrs["relationship"], eventAttrs["exposure_type"], eventAttrs["event_type"], eventAttrs["family"]),
 		"event_id":             strings.TrimSpace(event.GetId()),
 		"event_kind":           strings.TrimSpace(event.GetKind()),
 		"family":               strings.TrimSpace(eventAttrs["family"]),
 		"primary_actor_urn":    context.PrimaryActorURN,
-		"primary_resource_urn": context.PrimaryResourceURN,
+		"primary_resource_urn": primaryResourceURN,
 		"resource_id":          firstNonEmpty(eventAttrs["resource_id"], eventAttrs["target_id"], eventAttrs["role_id"]),
 		"resource_label":       context.ResourceLabel,
 		"resource_type":        firstNonEmpty(eventAttrs["resource_type"], eventAttrs["target_type"], eventAttrs["family"]),

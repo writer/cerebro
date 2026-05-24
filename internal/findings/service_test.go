@@ -994,8 +994,8 @@ func TestOktaPolicyRuleLifecycleTamperingMatchesProjectedStateOnly(t *testing.T)
 		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = false for inactive projected state, want true")
 	}
 	deleted := newOktaPolicyRuleEvent("okta-policy-rule-deleted", "DELETED_PERMANENTLY")
-	if !matchesOktaPolicyRuleLifecycleTampering(deleted) {
-		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = false for permanently deleted projected state, want true")
+	if matchesOktaPolicyRuleLifecycleTampering(deleted) {
+		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = true for permanently deleted projected state, want false until source-backed delete synthesis exists")
 	}
 }
 
@@ -1366,6 +1366,18 @@ func TestCounterEventRule_AnchorClose(t *testing.T) {
 	if got := len(result.Findings); got != 1 {
 		t.Fatalf("len(Findings) = %d, want 1 same-run open finding before counter close", got)
 	}
+	if got := strings.TrimSpace(result.Findings[0].ID); got != "counter-anchor-rule-writer-cerebro-bob" {
+		t.Fatalf("result finding ID = %q, want same-run bob finding", got)
+	}
+	if got := result.Findings[0].Status; got != findingStatusResolved {
+		t.Fatalf("result same-run finding status = %q, want %q", got, findingStatusResolved)
+	}
+	if got := result.Findings[0].StatusReason; got != workflowevents.FindingStatusReasonClosedByCounterEvent {
+		t.Fatalf("result same-run finding status reason = %q, want %q", got, workflowevents.FindingStatusReasonClosedByCounterEvent)
+	}
+	if !containsTrimmed(result.Findings[0].EventIDs, "github-counter-same-run") {
+		t.Fatalf("result same-run finding EventIDs = %#v, want counter event evidence", result.Findings[0].EventIDs)
+	}
 	resolved := store.findings[staleFinding.ID]
 	if got := resolved.Status; got != findingStatusResolved {
 		t.Fatalf("counter-event finding status = %q, want %q", got, findingStatusResolved)
@@ -1410,6 +1422,120 @@ func TestCounterEventRule_AnchorClose(t *testing.T) {
 	if !containsTrimmed(sameRunStatusEvent.Finding.EventIDs, "github-counter-same-run") {
 		t.Fatalf("same-run workflow finding event_ids = %#v, want counter event evidence", sameRunStatusEvent.Finding.EventIDs)
 	}
+	staleEvidence, err := service.ListEvidence(context.Background(), ListEvidenceRequest{
+		RuntimeID: "example-github-audit",
+		FindingID: staleFinding.ID,
+		EventID:   "github-counter-event",
+	})
+	if err != nil {
+		t.Fatalf("ListEvidence(stale close event) error = %v", err)
+	}
+	if got := len(staleEvidence.Evidence); got == 0 {
+		t.Fatalf("ListEvidence(stale close event) returned %d rows, want close-event evidence", got)
+	}
+	sameRunEvidence, err := service.ListEvidence(context.Background(), ListEvidenceRequest{
+		RuntimeID: "example-github-audit",
+		FindingID: sameRun.ID,
+		EventID:   "github-counter-same-run",
+	})
+	if err != nil {
+		t.Fatalf("ListEvidence(same-run close event) error = %v", err)
+	}
+	if got := len(sameRunEvidence.Evidence); got == 0 {
+		t.Fatalf("ListEvidence(same-run close event) returned %d rows, want close-event evidence", got)
+	}
+}
+
+func TestResolveCounterEventOpenFindings_RefreshesResults(t *testing.T) {
+	_, _, result := evaluateCounterEventSameRunClose(t)
+	if got := len(result.Findings); got != 1 {
+		t.Fatalf("len(Findings) = %d, want 1 same-run finding", got)
+	}
+	finding := result.Findings[0]
+	if got := finding.Status; got != findingStatusResolved {
+		t.Fatalf("result finding status = %q, want %q", got, findingStatusResolved)
+	}
+	if got := finding.StatusReason; got != workflowevents.FindingStatusReasonClosedByCounterEvent {
+		t.Fatalf("result finding status reason = %q, want %q", got, workflowevents.FindingStatusReasonClosedByCounterEvent)
+	}
+	if !containsTrimmed(finding.EventIDs, "github-open-same-run") || !containsTrimmed(finding.EventIDs, "github-counter-same-run") {
+		t.Fatalf("result finding EventIDs = %#v, want open and close event IDs", finding.EventIDs)
+	}
+}
+
+func TestResolveCounterEventOpenFindings_PersistsCloseEvidence(t *testing.T) {
+	service, _, result := evaluateCounterEventSameRunClose(t)
+	if got := len(result.Findings); got != 1 {
+		t.Fatalf("len(Findings) = %d, want 1 same-run finding", got)
+	}
+	finding := result.Findings[0]
+	evidence, err := service.ListEvidence(context.Background(), ListEvidenceRequest{
+		RuntimeID: "example-github-audit",
+		FindingID: finding.ID,
+		EventID:   "github-counter-same-run",
+	})
+	if err != nil {
+		t.Fatalf("ListEvidence(close event) error = %v", err)
+	}
+	if got := len(evidence.Evidence); got == 0 {
+		t.Fatalf("ListEvidence(close event) returned %d rows, want close-event evidence", got)
+	}
+	if !containsTrimmed(evidence.Evidence[0].EventIds, "github-open-same-run") || !containsTrimmed(evidence.Evidence[0].EventIds, "github-counter-same-run") {
+		t.Fatalf("close evidence EventIds = %#v, want open and close event IDs", evidence.Evidence[0].EventIds)
+	}
+}
+
+func evaluateCounterEventSameRunClose(t *testing.T) (*Service, *stubFindingStore, *EvaluateResult) {
+	t.Helper()
+	rule := newCounterAnchorRule("counter-anchor-rule")
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	openedAt := time.Date(2026, 5, 7, 19, 54, 0, 0, time.UTC)
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{}}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"example-github-audit": {Id: "example-github-audit", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}},
+		}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{{
+			Id:       "github-open-same-run",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.audit",
+			Attributes: map[string]string{
+				"action": "open",
+				"repo":   "writer/cerebro",
+				"user":   "bob",
+			},
+			OccurredAt: timestamppb.New(openedAt),
+		}, {
+			Id:       "github-counter-same-run",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.audit",
+			Attributes: map[string]string{
+				"action": "close",
+				"repo":   "writer/cerebro",
+				"user":   "bob",
+			},
+			OccurredAt: timestamppb.New(openedAt.Add(time.Hour)),
+		}}},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	).WithGraphStore(&stubGraphStore{})
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "example-github-audit",
+		RuleID:    "counter-anchor-rule",
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	return service, store, result
 }
 
 func TestCounterEventRule_OlderCloseDoesNotResolveNewerOpenFinding(t *testing.T) {

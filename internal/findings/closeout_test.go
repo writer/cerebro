@@ -40,13 +40,22 @@ func (s *stubCloseoutStore) InsertCloseoutRun(_ context.Context, run ports.Close
 		}
 	}
 	selector := append([]byte(nil), run.SelectorJSON...)
+	startedAt := run.StartedAt.UTC()
+	if startedAt.IsZero() {
+		startedAt = time.Now().UTC()
+	}
+	heartbeatAt := run.HeartbeatAt.UTC()
+	if heartbeatAt.IsZero() {
+		heartbeatAt = startedAt
+	}
 	s.runs[run.RunID] = &ports.CloseoutRunRecord{
 		RunID:        run.RunID,
 		Actor:        run.Actor,
 		ChangeTicket: run.ChangeTicket,
 		SelectorJSON: selector,
 		Status:       "running",
-		StartedAt:    run.StartedAt,
+		StartedAt:    startedAt,
+		HeartbeatAt:  heartbeatAt,
 		DryRun:       run.DryRun,
 	}
 	return nil
@@ -82,6 +91,24 @@ func (s *stubCloseoutStore) GetCloseoutRun(_ context.Context, runID string) (*po
 	return &clone, nil
 }
 
+func (s *stubCloseoutStore) RefreshCloseoutRunHeartbeat(_ context.Context, runID string, heartbeatAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	existing, ok := s.runs[runID]
+	if !ok {
+		return fmt.Errorf("closeout_run %q not found", runID)
+	}
+	if existing.Status != "running" {
+		return nil
+	}
+	refreshedAt := heartbeatAt.UTC()
+	if refreshedAt.IsZero() {
+		refreshedAt = time.Now().UTC()
+	}
+	existing.HeartbeatAt = refreshedAt
+	return nil
+}
+
 func (s *stubCloseoutStore) BreakStaleRunningCloseoutRuns(_ context.Context, cutoff time.Time, errMessage string) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -93,7 +120,11 @@ func (s *stubCloseoutStore) BreakStaleRunningCloseoutRuns(_ context.Context, cut
 		if existing.Status != "running" {
 			continue
 		}
-		if !existing.StartedAt.Before(cutoff) {
+		freshnessAt := existing.HeartbeatAt
+		if freshnessAt.IsZero() {
+			freshnessAt = existing.StartedAt
+		}
+		if !freshnessAt.Before(cutoff) {
 			continue
 		}
 		existing.Status = "failed"
@@ -117,6 +148,9 @@ func (s *stubCloseoutStore) UpdateCloseoutRunSummary(_ context.Context, runID, s
 		existing.Status = "failed"
 		existing.FinishedAt = time.Now().UTC()
 		existing.ErrorMessage = summaryErr.Error()
+		if summaryKey != "" {
+			existing.S3SummaryKey = summaryKey
+		}
 		return nil
 	}
 	if summaryKey != "" {
@@ -605,6 +639,37 @@ func TestTombstoneFindingsBulk_SelectorJSONIsResolvedSnapshot(t *testing.T) {
 	}
 }
 
+func TestListCloseoutCandidates_AnchorURIRegex(t *testing.T) {
+	fx := newCloseoutFixture(t)
+	ruleID := "github-critical-resource-deleted"
+	fx.seedFindingWithRule("repo-a", ruleID, "open", fx.now.Add(-48*time.Hour), func(f *ports.FindingRecord) {
+		f.ResourceURNs = []string{"urn:repo:org/repo-a"}
+	})
+	fx.seedFindingWithRule("repo-b", ruleID, "open", fx.now.Add(-49*time.Hour), func(f *ports.FindingRecord) {
+		f.ResourceURNs = []string{"urn:repo:org/repo-b"}
+	})
+	fx.seedFindingWithRule("repo-c", ruleID, "open", fx.now.Add(-50*time.Hour), func(f *ports.FindingRecord) {
+		f.ResourceURNs = []string{"urn:repo:other/repo-c"}
+	})
+
+	req := fx.request("run-anchor-regex-1", true)
+	req.Selector.RuleIDs = []string{ruleID}
+	req.Selector.AnchorURIRegex = `^urn:repo:org/.*$`
+
+	result, err := fx.service.TombstoneFindingsBulk(context.Background(), req)
+	if err != nil {
+		t.Fatalf("TombstoneFindingsBulk anchor regex error = %v", err)
+	}
+	if result.ProposedCount != 2 {
+		t.Fatalf("ProposedCount = %d, want 2", result.ProposedCount)
+	}
+	ids := sortedProposedIDs(result.Proposed)
+	want := []string{"repo-a", "repo-b"}
+	if !reflect.DeepEqual(ids, want) {
+		t.Fatalf("proposed ids = %v, want %v", ids, want)
+	}
+}
+
 func TestTombstoneFindingsBulk_FailsFastWhenAnotherRunning(t *testing.T) {
 	fx := newCloseoutFixture(t)
 	fx.seedFinding("f-1", "open", fx.now.Add(-48*time.Hour), nil)
@@ -644,12 +709,118 @@ func TestTombstoneFindingsBulk_Idempotent_SameRunID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second apply error = %v", err)
 	}
-	if second.AppliedCount != 0 {
-		t.Fatalf("second applied_count = %d, want 0", second.AppliedCount)
+	if second.AppliedCount != first.AppliedCount {
+		t.Fatalf("second applied_count = %d, want persisted %d", second.AppliedCount, first.AppliedCount)
+	}
+	if second.ProposedCount != first.ProposedCount {
+		t.Fatalf("second proposed_count = %d, want persisted %d", second.ProposedCount, first.ProposedCount)
 	}
 	afterAuditCount, _ := fx.tombstone.CountFindingTombstoneEventsByRun(context.Background(), "run-idem-1")
 	if afterAuditCount != beforeAuditCount {
 		t.Fatalf("audit count changed: before=%d after=%d", beforeAuditCount, afterAuditCount)
+	}
+}
+
+func TestTombstoneFindingsBulk_DuplicateRunIDReloadsPersistedRun(t *testing.T) {
+	fx := newCloseoutFixture(t)
+	fx.seedFinding("f-1", "open", fx.now.Add(-48*time.Hour), nil)
+	fx.seedFinding("f-2", "open", fx.now.Add(-72*time.Hour), nil)
+
+	const runID = "run-duplicate-summary-1"
+	first, err := fx.service.TombstoneFindingsBulk(context.Background(), fx.request(runID, false))
+	if err != nil {
+		t.Fatalf("first apply error = %v", err)
+	}
+	if first.ProposedCount != 2 || first.AppliedCount != 2 {
+		t.Fatalf("first counts = proposed %d applied %d, want 2/2", first.ProposedCount, first.AppliedCount)
+	}
+	summaryKey := CloseoutSummaryKey(runID)
+	if err := fx.closeout.UpdateCloseoutRunSummary(context.Background(), runID, summaryKey, nil); err != nil {
+		t.Fatalf("persist summary key: %v", err)
+	}
+	beforeAuditCount, _ := fx.tombstone.CountFindingTombstoneEventsByRun(context.Background(), runID)
+
+	second, err := fx.service.TombstoneFindingsBulk(context.Background(), fx.request(runID, false))
+	if err != nil {
+		t.Fatalf("duplicate apply error = %v", err)
+	}
+	if second == nil {
+		t.Fatal("duplicate run returned nil result")
+	}
+	if second.ProposedCount != first.ProposedCount {
+		t.Fatalf("duplicate ProposedCount = %d, want persisted %d", second.ProposedCount, first.ProposedCount)
+	}
+	if second.AppliedCount != first.AppliedCount {
+		t.Fatalf("duplicate AppliedCount = %d, want persisted %d", second.AppliedCount, first.AppliedCount)
+	}
+	if second.S3SummaryKey != summaryKey {
+		t.Fatalf("duplicate S3SummaryKey = %q, want %q", second.S3SummaryKey, summaryKey)
+	}
+	wantPerRule := []CloseoutPerRuleCount{{RuleID: fx.ruleID, Applied: 2}}
+	if !reflect.DeepEqual(second.PerRule, wantPerRule) {
+		t.Fatalf("duplicate PerRule = %+v, want %+v", second.PerRule, wantPerRule)
+	}
+	afterAuditCount, _ := fx.tombstone.CountFindingTombstoneEventsByRun(context.Background(), runID)
+	if afterAuditCount != beforeAuditCount {
+		t.Fatalf("duplicate run wrote audit rows: before=%d after=%d", beforeAuditCount, afterAuditCount)
+	}
+}
+
+func TestTombstoneFindingsBulk_DuplicateRunIDReloadsPersistedFailedRun(t *testing.T) {
+	fx := newCloseoutFixture(t)
+
+	const runID = "run-duplicate-failed-1"
+	const priorFailure = "previous closeout failed while writing the audit summary"
+	if err := fx.closeout.InsertCloseoutRun(context.Background(), ports.CloseoutRunInsert{
+		RunID:        runID,
+		Actor:        "operator@writer.com",
+		SelectorJSON: []byte(`{"tenant_id":"tenant-a","rule_ids":["rule-critical-resource-deleted"],"statuses":["open"]}`),
+		DryRun:       false,
+		StartedAt:    fx.now,
+		HeartbeatAt:  fx.now,
+	}); err != nil {
+		t.Fatalf("seed closeout_run: %v", err)
+	}
+	if err := fx.closeout.FinishCloseoutRun(context.Background(), ports.CloseoutRunFinish{
+		RunID:         runID,
+		Status:        "failed",
+		ErrorMessage:  priorFailure,
+		ProposedCount: 2,
+		AppliedCount:  0,
+		FinishedAt:    fx.now.Add(time.Minute),
+	}); err != nil {
+		t.Fatalf("mark closeout_run failed: %v", err)
+	}
+
+	result, err := fx.service.TombstoneFindingsBulk(context.Background(), fx.request(runID, false))
+	if err == nil {
+		t.Fatalf("duplicate failed closeout_run returned nil error; result=%+v", result)
+	}
+	if !errors.Is(err, ErrCloseoutRunFailed) {
+		t.Fatalf("duplicate failed closeout error = %v, want ErrCloseoutRunFailed", err)
+	}
+	var failedErr *CloseoutRunFailedError
+	if !errors.As(err, &failedErr) {
+		t.Fatalf("duplicate failed closeout error = %T, want CloseoutRunFailedError", err)
+	}
+	if failedErr.ErrorMessage != priorFailure {
+		t.Fatalf("CloseoutRunFailedError.ErrorMessage = %q, want %q", failedErr.ErrorMessage, priorFailure)
+	}
+	if result == nil {
+		t.Fatal("duplicate failed closeout_run returned nil result")
+	}
+	if result.RunID != runID {
+		t.Fatalf("result.RunID = %q, want %q", result.RunID, runID)
+	}
+	if len(result.BatchErrors) != 1 {
+		t.Fatalf("BatchErrors len = %d, want 1", len(result.BatchErrors))
+	}
+	var batchErr *CloseoutRunFailedError
+	if !errors.As(result.BatchErrors[0], &batchErr) {
+		t.Fatalf("BatchErrors[0] = %T, want CloseoutRunFailedError", result.BatchErrors[0])
+	}
+	if batchErr.ErrorMessage != priorFailure {
+		t.Fatalf("BatchErrors[0].ErrorMessage = %q, want %q", batchErr.ErrorMessage, priorFailure)
 	}
 }
 
@@ -791,57 +962,106 @@ func TestResolvers_LeaveTombstonedRowsUntouched(t *testing.T) {
 	}
 }
 
-func TestTombstoneFindingsBulk_SourceSelectorExpandsToRuleIDs(t *testing.T) {
+func TestTombstoneFindingsBulk_RejectsSourceOnlySelector(t *testing.T) {
 	fx := newCloseoutFixture(t)
 	fx.seedFindingWithRule("f-gh-1", "github-critical-resource-deleted", "open", fx.now.Add(-48*time.Hour), nil)
-	fx.seedFindingWithRule("f-gh-2", "github-webhook-modified", "open", fx.now.Add(-72*time.Hour), nil)
-	fx.seedFindingWithRule("f-okta-1", "identity-okta-deprovisioned-active-in-github", "open", fx.now.Add(-48*time.Hour), nil)
 
 	req := fx.request("run-src-1", false)
 	req.Selector.RuleIDs = nil
 	req.Selector.Sources = []string{"github"}
 
-	result, err := fx.service.TombstoneFindingsBulk(context.Background(), req)
-	if err != nil {
-		t.Fatalf("TombstoneFindingsBulk source-only error = %v", err)
+	_, err := fx.service.TombstoneFindingsBulk(context.Background(), req)
+	if err == nil {
+		t.Fatalf("expected source-only selector to be rejected")
 	}
-	if result.AppliedCount != 2 {
-		t.Fatalf("AppliedCount = %d, want 2", result.AppliedCount)
+	if !errors.Is(err, ErrCloseoutInvalidRequest) {
+		t.Fatalf("err = %v, want ErrCloseoutInvalidRequest", err)
 	}
-	for _, id := range []string{"f-gh-1", "f-gh-2"} {
-		if !fx.store.findings[id].Tombstoned {
-			t.Fatalf("finding %s not tombstoned", id)
-		}
-	}
-	if fx.store.findings["f-okta-1"].Tombstoned {
-		t.Fatalf("finding f-okta-1 tombstoned despite different source")
+	if fx.store.findings["f-gh-1"].Tombstoned {
+		t.Fatalf("source-only selector tombstoned f-gh-1")
 	}
 }
 
-func TestTombstoneFindingsBulk_SourceAndRuleIDsUnion(t *testing.T) {
+func TestExpandCloseoutRuleIDs_NarrowsOnSources(t *testing.T) {
 	fx := newCloseoutFixture(t)
-	fx.seedFindingWithRule("f-gh-1", "github-critical-resource-deleted", "open", fx.now.Add(-48*time.Hour), nil)
-	fx.seedFindingWithRule("f-id-1", "identity-mfa-factor-reset-or-disabled", "open", fx.now.Add(-48*time.Hour), nil)
-	fx.seedFindingWithRule("f-okta-1", "identity-okta-deprovisioned-active-in-github", "open", fx.now.Add(-48*time.Hour), nil)
+	const (
+		ghRuleOne   = "github-critical-resource-deleted"
+		oktaRule    = "identity-okta-deprovisioned-active-in-github"
+		ghRuleTwo   = "github-webhook-modified"
+		extraGHRule = "github-secret-scanning-disabled"
+	)
+	fx.seedFindingWithRule("f-gh-1", ghRuleOne, "open", fx.now.Add(-48*time.Hour), nil)
+	fx.seedFindingWithRule("f-okta-1", oktaRule, "open", fx.now.Add(-48*time.Hour), nil)
+	fx.seedFindingWithRule("f-gh-2", ghRuleTwo, "open", fx.now.Add(-49*time.Hour), nil)
+	fx.seedFindingWithRule("f-extra-gh", extraGHRule, "open", fx.now.Add(-50*time.Hour), nil)
 
-	req := fx.request("run-union-1", false)
-	req.Selector.RuleIDs = []string{"identity-mfa-factor-reset-or-disabled"}
+	req := fx.request("run-source-narrow-1", true)
+	req.Selector.RuleIDs = []string{ghRuleOne, oktaRule, ghRuleTwo}
 	req.Selector.Sources = []string{"github"}
 
 	result, err := fx.service.TombstoneFindingsBulk(context.Background(), req)
 	if err != nil {
-		t.Fatalf("TombstoneFindingsBulk union error = %v", err)
+		t.Fatalf("TombstoneFindingsBulk source narrowing error = %v", err)
 	}
-	if result.AppliedCount != 2 {
-		t.Fatalf("AppliedCount = %d, want 2", result.AppliedCount)
+	if result.ProposedCount != 2 {
+		t.Fatalf("ProposedCount = %d, want 2", result.ProposedCount)
 	}
-	for _, id := range []string{"f-gh-1", "f-id-1"} {
-		if !fx.store.findings[id].Tombstoned {
-			t.Fatalf("finding %s not tombstoned", id)
-		}
+	gotRules := sortedProposedRuleIDs(result.Proposed)
+	wantRules := []string{ghRuleOne, ghRuleTwo}
+	if !reflect.DeepEqual(gotRules, wantRules) {
+		t.Fatalf("proposed rule ids = %v, want %v", gotRules, wantRules)
 	}
-	if fx.store.findings["f-okta-1"].Tombstoned {
-		t.Fatalf("finding f-okta-1 tombstoned, expected untouched")
+	gotIDs := sortedProposedIDs(result.Proposed)
+	wantIDs := []string{"f-gh-1", "f-gh-2"}
+	if !reflect.DeepEqual(gotIDs, wantIDs) {
+		t.Fatalf("proposed ids = %v, want %v", gotIDs, wantIDs)
+	}
+	gotRequestedRules := uniqueRequestedRuleIDs(fx.store.listFindingsRequests)
+	if !reflect.DeepEqual(gotRequestedRules, wantRules) {
+		t.Fatalf("ListFindings requested rules = %v, want %v", gotRequestedRules, wantRules)
+	}
+}
+
+func TestCloseoutRun_SelectorJSONMatchesExecutedScope(t *testing.T) {
+	fx := newCloseoutFixture(t)
+	const (
+		githubRule = "github-critical-resource-deleted"
+		oktaRule   = "identity-okta-deprovisioned-active-in-github"
+	)
+	fx.seedFindingWithRule("f-gh-match", githubRule, "open", fx.now.Add(-48*time.Hour), func(f *ports.FindingRecord) {
+		f.ResourceURNs = []string{"urn:repo:org/repo-a"}
+	})
+	fx.seedFindingWithRule("f-gh-other-anchor", githubRule, "open", fx.now.Add(-49*time.Hour), func(f *ports.FindingRecord) {
+		f.ResourceURNs = []string{"urn:repo:other/repo-b"}
+	})
+	fx.seedFindingWithRule("f-okta", oktaRule, "open", fx.now.Add(-50*time.Hour), func(f *ports.FindingRecord) {
+		f.ResourceURNs = []string{"urn:repo:org/repo-c"}
+	})
+
+	req := fx.request("run-selector-executed-scope-1", true)
+	req.Selector.RuleIDs = []string{githubRule, oktaRule}
+	req.Selector.Sources = []string{"github"}
+	req.Selector.AnchorURIRegex = `^urn:repo:org/.*$`
+	req.Selector.Statuses = []string{findingStatusOpen}
+
+	result, err := fx.service.TombstoneFindingsBulk(context.Background(), req)
+	if err != nil {
+		t.Fatalf("TombstoneFindingsBulk selector_json error = %v", err)
+	}
+	if got, want := sortedProposedIDs(result.Proposed), []string{"f-gh-match"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("proposed ids = %v, want %v", got, want)
+	}
+	run, err := fx.closeout.GetCloseoutRun(context.Background(), req.RunID)
+	if err != nil {
+		t.Fatalf("GetCloseoutRun(%q): %v", req.RunID, err)
+	}
+	var got CloseoutSelector
+	if err := json.Unmarshal(run.SelectorJSON, &got); err != nil {
+		t.Fatalf("unmarshal selector_json: %v", err)
+	}
+	want := resolveCloseoutSelector(req.Selector)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("selector_json = %+v, want %+v", got, want)
 	}
 }
 
@@ -879,6 +1099,41 @@ func sortedProposedIDs(records []*ports.FindingRecord) []string {
 	return ids
 }
 
+func sortedProposedRuleIDs(records []*ports.FindingRecord) []string {
+	seen := map[string]struct{}{}
+	ruleIDs := make([]string, 0, len(records))
+	for _, record := range records {
+		ruleID := strings.TrimSpace(record.RuleID)
+		if ruleID == "" {
+			continue
+		}
+		if _, exists := seen[ruleID]; exists {
+			continue
+		}
+		seen[ruleID] = struct{}{}
+		ruleIDs = append(ruleIDs, ruleID)
+	}
+	sort.Strings(ruleIDs)
+	return ruleIDs
+}
+
+func uniqueRequestedRuleIDs(requests []ports.ListFindingsRequest) []string {
+	seen := map[string]struct{}{}
+	ruleIDs := make([]string, 0, len(requests))
+	for _, request := range requests {
+		ruleID := strings.TrimSpace(request.RuleID)
+		if ruleID == "" {
+			continue
+		}
+		if _, exists := seen[ruleID]; exists {
+			continue
+		}
+		seen[ruleID] = struct{}{}
+		ruleIDs = append(ruleIDs, ruleID)
+	}
+	return ruleIDs
+}
+
 type ctxAwareCloseoutStore struct {
 	inner *stubCloseoutStore
 }
@@ -899,6 +1154,13 @@ func (s *ctxAwareCloseoutStore) FinishCloseoutRun(ctx context.Context, finish po
 
 func (s *ctxAwareCloseoutStore) GetCloseoutRun(ctx context.Context, runID string) (*ports.CloseoutRunRecord, error) {
 	return s.inner.GetCloseoutRun(ctx, runID)
+}
+
+func (s *ctxAwareCloseoutStore) RefreshCloseoutRunHeartbeat(ctx context.Context, runID string, heartbeatAt time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.inner.RefreshCloseoutRunHeartbeat(ctx, runID, heartbeatAt)
 }
 
 func (s *ctxAwareCloseoutStore) BreakStaleRunningCloseoutRuns(ctx context.Context, cutoff time.Time, errMessage string) (int, error) {

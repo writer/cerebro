@@ -64,6 +64,43 @@ func TestDataSensitiveAssetRiskRule(t *testing.T) {
 	}
 }
 
+func TestDataSignalRule_PrimaryResourceURNIsAsset(t *testing.T) {
+	rule := newDataSensitiveAssetRiskRule()
+	runtime := &cerebrov1.SourceRuntime{Id: "asset-runtime", SourceId: "asset", TenantId: "writer"}
+	event := &cerebrov1.EventEnvelope{
+		Id:       "asset-classification-first",
+		TenantId: "writer",
+		SourceId: "asset",
+		Kind:     "asset.crown_jewel",
+		Attributes: map[string]string{
+			"contains_secrets":    "true",
+			"crown_jewel":         "true",
+			"data_classification": "restricted",
+			"internet_exposed":    "true",
+			"owner":               "security",
+			"resource_id":         "prod-secrets",
+			"resource_name":       "Production Secrets",
+			"resource_type":       "secret_store",
+			"source_provider":     "aws",
+		},
+	}
+
+	records, err := rule.Evaluate(context.Background(), runtime, event)
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("len(records) = %d, want 1", len(records))
+	}
+	wantAssetURN := "urn:cerebro:writer:aws_secret_store:prod-secrets"
+	if got := records[0].Attributes["asset_urn"]; got != wantAssetURN {
+		t.Fatalf("asset_urn = %q, want %q", got, wantAssetURN)
+	}
+	if got := records[0].Attributes["primary_resource_urn"]; got != wantAssetURN {
+		t.Fatalf("primary_resource_urn = %q, want asset URN %q", got, wantAssetURN)
+	}
+}
+
 func TestDataSensitiveAssetRisk(t *testing.T) {
 	rule := newDataSensitiveAssetRiskRule()
 	metadataRule, ok := rule.(MetadataRule)

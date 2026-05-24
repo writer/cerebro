@@ -23,6 +23,106 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+// TestBreakStaleRunningCloseoutRuns_HoneorsHeartbeat preserves the validation
+// contract spelling while asserting VAL-M6-CLOSEOUT-HEARTBEAT-002: stale-lock
+// reclamation is gated by heartbeat freshness, not by the original started_at.
+func TestBreakStaleRunningCloseoutRuns_HoneorsHeartbeat(t *testing.T) {
+	dsn := strings.TrimSpace(os.Getenv("CEREBRO_POSTGRES_DSN"))
+	if dsn == "" {
+		t.Skip("set CEREBRO_POSTGRES_DSN to run the closeout heartbeat integration test")
+	}
+
+	ctx := context.Background()
+	store, err := postgres.Open(config.StateStoreConfig{
+		Driver:      config.StateStoreDriverPostgres,
+		PostgresDSN: dsn,
+	})
+	if err != nil {
+		t.Fatalf("open postgres store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	rawDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	t.Cleanup(func() { _ = rawDB.Close() })
+
+	if _, err := store.BreakStaleRunningCloseoutRuns(ctx, time.Time{}, ""); err != nil {
+		t.Fatalf("ensure closeout schema: %v", err)
+	}
+
+	nonce := time.Now().UTC().UnixNano()
+	freshRunID := fmt.Sprintf("test-heartbeat-fresh-%d", nonce)
+	staleRunID := fmt.Sprintf("test-heartbeat-stale-%d", nonce)
+	cleanup := func() {
+		_, _ = rawDB.ExecContext(context.Background(), `DELETE FROM closeout_run WHERE run_id IN ($1, $2)`, freshRunID, staleRunID)
+	}
+	cleanup()
+	t.Cleanup(cleanup)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	cutoff := now.Add(-time.Hour)
+	insertRun := func(runID string, startedAt, heartbeatAt time.Time) {
+		t.Helper()
+		_, err := rawDB.ExecContext(ctx, `
+INSERT INTO closeout_run (run_id, actor, change_ticket, selector_json, status, started_at, heartbeat_at, dry_run)
+VALUES ($1, 'heartbeat-test', '', '{}'::jsonb, 'running', $2, $3, false)`,
+			runID,
+			startedAt,
+			heartbeatAt,
+		)
+		if err != nil {
+			t.Fatalf("insert closeout_run %q: %v", runID, err)
+		}
+	}
+	statusOf := func(runID string) (string, sql.NullTime) {
+		t.Helper()
+		var status string
+		var finishedAt sql.NullTime
+		if err := rawDB.QueryRowContext(ctx, `SELECT status, finished_at FROM closeout_run WHERE run_id = $1`, runID).Scan(&status, &finishedAt); err != nil {
+			t.Fatalf("read closeout_run %q: %v", runID, err)
+		}
+		return status, finishedAt
+	}
+
+	insertRun(freshRunID, now.Add(-2*time.Hour), now.Add(-5*time.Minute))
+	broken, err := store.BreakStaleRunningCloseoutRuns(ctx, cutoff, "stale heartbeat test")
+	if err != nil {
+		t.Fatalf("BreakStaleRunningCloseoutRuns fresh heartbeat error: %v", err)
+	}
+	if broken != 0 {
+		t.Fatalf("fresh heartbeat broken rows = %d, want 0", broken)
+	}
+	status, finishedAt := statusOf(freshRunID)
+	if status != "running" {
+		t.Fatalf("fresh heartbeat status = %q, want running", status)
+	}
+	if finishedAt.Valid {
+		t.Fatalf("fresh heartbeat finished_at = %s, want NULL", finishedAt.Time)
+	}
+
+	if _, err := rawDB.ExecContext(ctx, `DELETE FROM closeout_run WHERE run_id = $1`, freshRunID); err != nil {
+		t.Fatalf("delete fresh running row: %v", err)
+	}
+
+	insertRun(staleRunID, now.Add(-2*time.Hour), now.Add(-2*time.Hour))
+	broken, err = store.BreakStaleRunningCloseoutRuns(ctx, cutoff, "stale heartbeat test")
+	if err != nil {
+		t.Fatalf("BreakStaleRunningCloseoutRuns stale heartbeat error: %v", err)
+	}
+	if broken != 1 {
+		t.Fatalf("stale heartbeat broken rows = %d, want 1", broken)
+	}
+	status, finishedAt = statusOf(staleRunID)
+	if status != "failed" {
+		t.Fatalf("stale heartbeat status = %q, want failed", status)
+	}
+	if !finishedAt.Valid {
+		t.Fatalf("stale heartbeat finished_at is NULL, want timestamp")
+	}
+}
+
 // TestService_TombstonedFindingEmitMintsFreshGraphEdge exercises the
 // tombstone-then-emit lifecycle end-to-end against the real Postgres upsert
 // path so the fresh-row mint (id = `<base>#g<N+1>` and tombstone_generation)
@@ -360,6 +460,270 @@ func TestService_TTLEvidenceEvaluateUsesPostgresTenantScopeAndReopens(t *testing
 	}
 }
 
+func TestTombstoneOneFinding_AtomicRollback(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		configure func(t *testing.T, ctx context.Context, db *sql.DB, runID string, appendLog *recordingAppendLog) any
+	}{
+		{
+			name: "audit_insert_failure",
+			configure: func(t *testing.T, ctx context.Context, db *sql.DB, runID string, _ *recordingAppendLog) any {
+				t.Helper()
+				installCloseoutAuditFailureConstraint(t, ctx, db, runID)
+				return nil
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			store, rawDB, dsnCleanup := closeoutAtomicPostgresStore(t)
+			defer dsnCleanup()
+
+			nonce := time.Now().UTC().UnixNano()
+			tenantID := fmt.Sprintf("tenant-atomic-%s-%d", strings.ReplaceAll(tc.name, "_", "-"), nonce)
+			runtimeID := fmt.Sprintf("runtime-atomic-%d", nonce)
+			ruleID := "rule-critical-resource-deleted"
+			findingID := fmt.Sprintf("finding-atomic-%d", nonce)
+			runID := fmt.Sprintf("run-atomic-%d", nonce)
+			cleanupCloseoutAtomicRows(t, rawDB, tenantID, runID)
+			seedCloseoutAtomicFinding(t, ctx, store, tenantID, runtimeID, ruleID, findingID, nonce)
+
+			appendLog := &recordingAppendLog{}
+			appendLogOverride := tc.configure(t, ctx, rawDB, runID, appendLog)
+			if override, ok := appendLogOverride.(interface {
+				Append(context.Context, *cerebrov1.EventEnvelope) error
+				Ping(context.Context) error
+			}); ok {
+				service := closeoutAtomicService(store, override, tenantID, runtimeID)
+				before := readCloseoutAtomicSnapshot(t, ctx, rawDB, findingID)
+				result, err := service.TombstoneFindingsBulk(ctx, closeoutAtomicRequest(tenantID, ruleID, runID))
+				assertAtomicRollback(t, ctx, rawDB, findingID, runID, before, result, err)
+				return
+			}
+
+			service := closeoutAtomicService(store, appendLog, tenantID, runtimeID)
+			before := readCloseoutAtomicSnapshot(t, ctx, rawDB, findingID)
+			result, err := service.TombstoneFindingsBulk(ctx, closeoutAtomicRequest(tenantID, ruleID, runID))
+			assertAtomicRollback(t, ctx, rawDB, findingID, runID, before, result, err)
+		})
+	}
+}
+
+func TestTombstoneOneFinding_RechecksStatusBeforeWrite(t *testing.T) {
+	ctx := context.Background()
+	store, rawDB, dsnCleanup := closeoutAtomicPostgresStore(t)
+	defer dsnCleanup()
+
+	nonce := time.Now().UTC().UnixNano()
+	tenantID := fmt.Sprintf("tenant-status-recheck-%d", nonce)
+	runtimeID := fmt.Sprintf("runtime-status-recheck-%d", nonce)
+	ruleID := "rule-critical-resource-deleted"
+	findingID := fmt.Sprintf("finding-status-recheck-%d", nonce)
+	runID := fmt.Sprintf("run-status-recheck-%d", nonce)
+	cleanupCloseoutAtomicRows(t, rawDB, tenantID, runID)
+	seedCloseoutAtomicFinding(t, ctx, store, tenantID, runtimeID, ruleID, findingID, nonce)
+
+	wrappedStore := &statusChangingListStore{
+		Store:     store,
+		findingID: findingID,
+		status:    "suppressed",
+		reason:    "analyst suppression during closeout",
+	}
+	service := closeoutAtomicService(wrappedStore, &recordingAppendLog{}, tenantID, runtimeID)
+
+	result, err := service.TombstoneFindingsBulk(ctx, closeoutAtomicRequest(tenantID, ruleID, runID))
+	if err != nil {
+		t.Fatalf("TombstoneFindingsBulk with concurrent status change: %v", err)
+	}
+	if wrappedStore.mutationErr != nil {
+		t.Fatalf("concurrent status mutation failed: %v", wrappedStore.mutationErr)
+	}
+	if result.ProposedCount != 1 {
+		t.Fatalf("ProposedCount = %d, want 1", result.ProposedCount)
+	}
+	if result.AppliedCount != 0 {
+		t.Fatalf("AppliedCount = %d, want 0 after status changed before tombstone", result.AppliedCount)
+	}
+	after := readCloseoutAtomicSnapshot(t, ctx, rawDB, findingID)
+	if after.Status != "suppressed" {
+		t.Fatalf("status after concurrent mutation = %q, want suppressed", after.Status)
+	}
+	if after.Tombstoned {
+		t.Fatalf("tombstoned after status changed = true, want false")
+	}
+	if after.PriorStatus != "" {
+		t.Fatalf("prior_status after skipped tombstone = %q, want empty", after.PriorStatus)
+	}
+	if count := countCloseoutAtomicAuditRows(t, ctx, rawDB, runID); count != 0 {
+		t.Fatalf("audit rows for skipped tombstone = %d, want 0", count)
+	}
+}
+
+func TestTombstoneOneFinding_RetryAfterAtomicRollback(t *testing.T) {
+	ctx := context.Background()
+	store, rawDB, dsnCleanup := closeoutAtomicPostgresStore(t)
+	defer dsnCleanup()
+
+	nonce := time.Now().UTC().UnixNano()
+	tenantID := fmt.Sprintf("tenant-retry-rollback-%d", nonce)
+	runtimeID := fmt.Sprintf("runtime-retry-rollback-%d", nonce)
+	ruleID := "rule-critical-resource-deleted"
+	findingID := fmt.Sprintf("finding-retry-rollback-%d", nonce)
+	failingRunID := fmt.Sprintf("run-retry-fail-%d", nonce)
+	retryRunID := fmt.Sprintf("run-retry-dry-%d", nonce)
+	cleanupCloseoutAtomicRows(t, rawDB, tenantID, failingRunID, retryRunID)
+	seedCloseoutAtomicFinding(t, ctx, store, tenantID, runtimeID, ruleID, findingID, nonce)
+
+	installCloseoutAuditFailureConstraint(t, ctx, rawDB, failingRunID)
+	failingService := closeoutAtomicService(store, &recordingAppendLog{}, tenantID, runtimeID)
+	if result, err := failingService.TombstoneFindingsBulk(ctx, closeoutAtomicRequest(tenantID, ruleID, failingRunID)); err == nil {
+		t.Fatalf("expected injected audit insert error, got nil result=%+v", result)
+	}
+	afterFailure := readCloseoutAtomicSnapshot(t, ctx, rawDB, findingID)
+	if afterFailure.Tombstoned {
+		t.Fatalf("finding tombstoned after injected failure; rollback did not restore candidate")
+	}
+
+	retryReq := closeoutAtomicRequest(tenantID, ruleID, retryRunID)
+	retryReq.DryRun = true
+	retryService := closeoutAtomicService(store, &recordingAppendLog{}, tenantID, runtimeID)
+	retry, err := retryService.TombstoneFindingsBulk(ctx, retryReq)
+	if err != nil {
+		t.Fatalf("retry dry-run after rollback: %v", err)
+	}
+	if retry.ProposedCount < 1 {
+		t.Fatalf("retry ProposedCount = %d, want candidate returned after rollback", retry.ProposedCount)
+	}
+}
+
+func TestTombstoneOneFinding_WorkflowEmitFailureAfterCommit(t *testing.T) {
+	ctx := context.Background()
+	store, rawDB, dsnCleanup := closeoutAtomicPostgresStore(t)
+	defer dsnCleanup()
+
+	nonce := time.Now().UTC().UnixNano()
+	tenantID := fmt.Sprintf("tenant-emit-after-commit-%d", nonce)
+	runtimeID := fmt.Sprintf("runtime-emit-after-commit-%d", nonce)
+	ruleID := "rule-critical-resource-deleted"
+	findingID := fmt.Sprintf("finding-emit-after-commit-%d", nonce)
+	runID := fmt.Sprintf("run-emit-after-commit-%d", nonce)
+	cleanupCloseoutAtomicRows(t, rawDB, tenantID, runID)
+	seedCloseoutAtomicFinding(t, ctx, store, tenantID, runtimeID, ruleID, findingID, nonce)
+
+	service := closeoutAtomicService(store, &failingAppendLog{err: errors.New("inject workflow emit failure")}, tenantID, runtimeID)
+	result, err := service.TombstoneFindingsBulk(ctx, closeoutAtomicRequest(tenantID, ruleID, runID))
+	if err == nil {
+		t.Fatalf("expected workflow emit failure after commit, got nil result=%+v", result)
+	}
+	if result == nil {
+		t.Fatalf("result is nil, want committed candidate count")
+	}
+	if result.AppliedCount != 1 {
+		t.Fatalf("AppliedCount after post-commit emit failure = %d, want 1 committed tombstone", result.AppliedCount)
+	}
+	after := readCloseoutAtomicSnapshot(t, ctx, rawDB, findingID)
+	if !after.Tombstoned {
+		t.Fatalf("finding tombstoned after post-commit workflow failure = false, want true")
+	}
+	if after.Status != "resolved" {
+		t.Fatalf("status after post-commit workflow failure = %q, want resolved", after.Status)
+	}
+	if after.TombstonedRunID != runID {
+		t.Fatalf("tombstoned_run_id after post-commit workflow failure = %q, want %q", after.TombstonedRunID, runID)
+	}
+	if count := countCloseoutAtomicAuditRows(t, ctx, rawDB, runID); count != 1 {
+		t.Fatalf("audit rows after post-commit workflow failure = %d, want 1", count)
+	}
+
+	var runStatus string
+	var appliedCount int
+	if err := rawDB.QueryRowContext(ctx, `SELECT status, applied_count FROM closeout_run WHERE run_id = $1`, runID).Scan(&runStatus, &appliedCount); err != nil {
+		t.Fatalf("read closeout_run after post-commit workflow failure: %v", err)
+	}
+	if runStatus != "failed" {
+		t.Fatalf("closeout_run.status after post-commit workflow failure = %q, want failed", runStatus)
+	}
+	if appliedCount != 1 {
+		t.Fatalf("closeout_run.applied_count after post-commit workflow failure = %d, want 1", appliedCount)
+	}
+}
+
+func TestCloseout_DuplicateRunWithFailedStatusReturnsError(t *testing.T) {
+	ctx := context.Background()
+	store, rawDB, dsnCleanup := closeoutAtomicPostgresStore(t)
+	defer dsnCleanup()
+
+	nonce := time.Now().UTC().UnixNano()
+	tenantID := fmt.Sprintf("tenant-duplicate-failed-%d", nonce)
+	runtimeID := fmt.Sprintf("runtime-duplicate-failed-%d", nonce)
+	ruleID := "rule-critical-resource-deleted"
+	runID := fmt.Sprintf("run-duplicate-failed-%d", nonce)
+	priorFailure := fmt.Sprintf("prior closeout failure persisted for duplicate run %d", nonce)
+	cleanupCloseoutAtomicRows(t, rawDB, tenantID, runID)
+
+	startedAt := time.Now().UTC().Truncate(time.Microsecond)
+	if err := store.InsertCloseoutRun(ctx, ports.CloseoutRunInsert{
+		RunID:        runID,
+		Actor:        "operator@writer.com",
+		SelectorJSON: []byte(fmt.Sprintf(`{"tenant_id":%q,"rule_ids":[%q],"statuses":["open"]}`, tenantID, ruleID)),
+		DryRun:       false,
+		StartedAt:    startedAt,
+		HeartbeatAt:  startedAt,
+	}); err != nil {
+		t.Fatalf("seed closeout_run: %v", err)
+	}
+	if err := store.FinishCloseoutRun(ctx, ports.CloseoutRunFinish{
+		RunID:         runID,
+		Status:        "failed",
+		ErrorMessage:  priorFailure,
+		ProposedCount: 1,
+		AppliedCount:  0,
+		FinishedAt:    startedAt.Add(time.Minute),
+	}); err != nil {
+		t.Fatalf("mark closeout_run failed: %v", err)
+	}
+
+	service := closeoutAtomicService(store, &recordingAppendLog{}, tenantID, runtimeID)
+	result, err := service.TombstoneFindingsBulk(ctx, closeoutAtomicRequest(tenantID, ruleID, runID))
+	if err == nil {
+		t.Fatalf("duplicate failed closeout_run returned nil error; result=%+v", result)
+	}
+	if !errors.Is(err, findings.ErrCloseoutRunFailed) {
+		t.Fatalf("duplicate failed closeout error = %v, want ErrCloseoutRunFailed", err)
+	}
+	var failedErr *findings.CloseoutRunFailedError
+	if !errors.As(err, &failedErr) {
+		t.Fatalf("duplicate failed closeout error = %T, want CloseoutRunFailedError", err)
+	}
+	if failedErr.ErrorMessage != priorFailure {
+		t.Fatalf("CloseoutRunFailedError.ErrorMessage = %q, want %q", failedErr.ErrorMessage, priorFailure)
+	}
+	if result == nil {
+		t.Fatal("duplicate failed closeout_run returned nil result")
+	}
+	if len(result.BatchErrors) != 1 {
+		t.Fatalf("BatchErrors len = %d, want 1", len(result.BatchErrors))
+	}
+	var batchErr *findings.CloseoutRunFailedError
+	if !errors.As(result.BatchErrors[0], &batchErr) {
+		t.Fatalf("BatchErrors[0] = %T, want CloseoutRunFailedError", result.BatchErrors[0])
+	}
+	if batchErr.ErrorMessage != priorFailure {
+		t.Fatalf("BatchErrors[0].ErrorMessage = %q, want %q", batchErr.ErrorMessage, priorFailure)
+	}
+
+	var status, errorMessage string
+	if err := rawDB.QueryRowContext(ctx, `SELECT status, error_message FROM closeout_run WHERE run_id = $1`, runID).Scan(&status, &errorMessage); err != nil {
+		t.Fatalf("read closeout_run after duplicate retry: %v", err)
+	}
+	if status != "failed" {
+		t.Fatalf("closeout_run.status = %q, want failed", status)
+	}
+	if errorMessage != priorFailure {
+		t.Fatalf("closeout_run.error_message = %q, want %q", errorMessage, priorFailure)
+	}
+}
+
 func anchorEdgeKey(anchor, tenantID, findingID string) string {
 	return anchor + "|has_finding|" + fmt.Sprintf("urn:cerebro:%s:finding:%s", tenantID, findingID)
 }
@@ -380,6 +744,215 @@ func tombstonedFromDB(t *testing.T, ctx context.Context, db *sql.DB, findingID s
 		t.Fatalf("read tombstoned for %q: %v", findingID, err)
 	}
 	return tombstoned
+}
+
+type closeoutAtomicSnapshot struct {
+	Status           string
+	StatusReason     string
+	Tombstoned       bool
+	TombstonedAt     sql.NullTime
+	TombstonedBy     string
+	TombstonedReason string
+	TombstonedRunID  string
+	PriorStatus      string
+}
+
+func closeoutAtomicPostgresStore(t *testing.T) (*postgres.Store, *sql.DB, func()) {
+	t.Helper()
+	dsn := strings.TrimSpace(os.Getenv("CEREBRO_POSTGRES_DSN"))
+	if dsn == "" {
+		t.Skip("set CEREBRO_POSTGRES_DSN to run closeout atomicity integration tests")
+	}
+	store, err := postgres.Open(config.StateStoreConfig{
+		Driver:      config.StateStoreDriverPostgres,
+		PostgresDSN: dsn,
+	})
+	if err != nil {
+		t.Fatalf("open postgres store: %v", err)
+	}
+	rawDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		_ = store.Close()
+		t.Fatalf("open raw db: %v", err)
+	}
+	return store, rawDB, func() {
+		_ = rawDB.Close()
+		_ = store.Close()
+	}
+}
+
+func cleanupCloseoutAtomicRows(t *testing.T, db *sql.DB, tenantID string, runIDs ...string) {
+	t.Helper()
+	t.Cleanup(func() {
+		bg := context.Background()
+		for _, runID := range runIDs {
+			_, _ = db.ExecContext(bg, `DELETE FROM finding_tombstone_events WHERE run_id = $1`, runID)
+			_, _ = db.ExecContext(bg, `DELETE FROM closeout_run WHERE run_id = $1`, runID)
+		}
+		_, _ = db.ExecContext(bg, `DELETE FROM findings WHERE tenant_id = $1`, tenantID)
+	})
+}
+
+func seedCloseoutAtomicFinding(t *testing.T, ctx context.Context, store *postgres.Store, tenantID, runtimeID, ruleID, findingID string, nonce int64) {
+	t.Helper()
+	now := time.Now().UTC().Add(-48 * time.Hour).Truncate(time.Microsecond)
+	_, err := store.UpsertFinding(ctx, &ports.FindingRecord{
+		ID:              findingID,
+		Fingerprint:     fmt.Sprintf("fp-%s-%d", findingID, nonce),
+		TenantID:        tenantID,
+		RuntimeID:       runtimeID,
+		RuleID:          ruleID,
+		Title:           "Atomic closeout regression",
+		Severity:        "MEDIUM",
+		Status:          "open",
+		Summary:         "finding used for closeout atomicity regression",
+		ResourceURNs:    []string{fmt.Sprintf("urn:cerebro:%s:github_repo:writer/cerebro-%d", tenantID, nonce)},
+		EventIDs:        []string{fmt.Sprintf("event-%d", nonce)},
+		FirstObservedAt: now.Add(-24 * time.Hour),
+		LastObservedAt:  now,
+	})
+	if err != nil {
+		t.Fatalf("seed finding %q: %v", findingID, err)
+	}
+}
+
+func closeoutAtomicRequest(tenantID, ruleID, runID string) findings.CloseoutRequest {
+	return findings.CloseoutRequest{
+		Selector: findings.CloseoutSelector{
+			TenantID:  tenantID,
+			RuleIDs:   []string{ruleID},
+			OlderThan: time.Hour,
+		},
+		Reason: "bulk closeout: atomicity regression",
+		Actor:  "operator@writer.com",
+		RunID:  runID,
+		DryRun: false,
+	}
+}
+
+type closeoutAtomicStore interface {
+	ports.FindingStore
+	ports.FindingEvaluationRunStore
+	ports.FindingEvidenceStore
+	ports.ClaimStore
+	ports.CloseoutRunStore
+	ports.FindingTombstoneEventStore
+}
+
+func closeoutAtomicService(store closeoutAtomicStore, appendLog ports.AppendLog, tenantID, runtimeID string) *findings.Service {
+	runtimeStore := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			runtimeID: {Id: runtimeID, SourceId: "source-atomic", TenantId: tenantID},
+		},
+	}
+	return findings.New(runtimeStore, &stubReplayer{}, store, store, store, store).
+		WithAppendLog(appendLog).
+		WithCloseoutStore(store).
+		WithFindingTombstoneEventStore(store)
+}
+
+func readCloseoutAtomicSnapshot(t *testing.T, ctx context.Context, db *sql.DB, findingID string) closeoutAtomicSnapshot {
+	t.Helper()
+	var snapshot closeoutAtomicSnapshot
+	if err := db.QueryRowContext(ctx, `
+SELECT status, status_reason, tombstoned, tombstoned_at, tombstoned_by,
+       tombstoned_reason, tombstoned_run_id, prior_status
+FROM findings
+WHERE id = $1`, findingID).Scan(
+		&snapshot.Status,
+		&snapshot.StatusReason,
+		&snapshot.Tombstoned,
+		&snapshot.TombstonedAt,
+		&snapshot.TombstonedBy,
+		&snapshot.TombstonedReason,
+		&snapshot.TombstonedRunID,
+		&snapshot.PriorStatus,
+	); err != nil {
+		t.Fatalf("read closeout atomic snapshot for %q: %v", findingID, err)
+	}
+	return snapshot
+}
+
+func countCloseoutAtomicAuditRows(t *testing.T, ctx context.Context, db *sql.DB, runID string) int {
+	t.Helper()
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM finding_tombstone_events WHERE run_id = $1`, runID).Scan(&count); err != nil {
+		t.Fatalf("count tombstone audit rows for %q: %v", runID, err)
+	}
+	return count
+}
+
+func installCloseoutAuditFailureConstraint(t *testing.T, ctx context.Context, db *sql.DB, runID string) {
+	t.Helper()
+	constraintName := fmt.Sprintf("finding_tombstone_events_fail_%d", time.Now().UTC().UnixNano())
+	if _, err := db.ExecContext(ctx, fmt.Sprintf(
+		`ALTER TABLE finding_tombstone_events ADD CONSTRAINT %s CHECK (run_id <> '%s') NOT VALID`,
+		constraintName,
+		strings.ReplaceAll(runID, "'", "''"),
+	)); err != nil {
+		t.Fatalf("install audit failure constraint: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(context.Background(), fmt.Sprintf(
+			`ALTER TABLE finding_tombstone_events DROP CONSTRAINT IF EXISTS %s`,
+			constraintName,
+		))
+	})
+}
+
+func assertAtomicRollback(t *testing.T, ctx context.Context, db *sql.DB, findingID, runID string, before closeoutAtomicSnapshot, result *findings.CloseoutResult, err error) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("expected injected closeout error, got nil")
+	}
+	if result != nil && result.AppliedCount != 0 {
+		t.Fatalf("AppliedCount after rollback = %d, want 0", result.AppliedCount)
+	}
+	after := readCloseoutAtomicSnapshot(t, ctx, db, findingID)
+	if after != before {
+		t.Fatalf("finding snapshot changed after injected failure:\nbefore=%+v\nafter=%+v", before, after)
+	}
+	if count := countCloseoutAtomicAuditRows(t, ctx, db, runID); count != 0 {
+		t.Fatalf("audit rows after rollback = %d, want 0", count)
+	}
+}
+
+type failingAppendLog struct {
+	err error
+}
+
+func (s *failingAppendLog) Ping(context.Context) error { return nil }
+
+func (s *failingAppendLog) Append(context.Context, *cerebrov1.EventEnvelope) error {
+	if s.err != nil {
+		return s.err
+	}
+	return errors.New("append failed")
+}
+
+type statusChangingListStore struct {
+	*postgres.Store
+	findingID   string
+	status      string
+	reason      string
+	once        sync.Once
+	mutationErr error
+}
+
+func (s *statusChangingListStore) ListFindings(ctx context.Context, request ports.ListFindingsRequest) ([]*ports.FindingRecord, error) {
+	records, err := s.Store.ListFindings(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	s.once.Do(func() {
+		_, s.mutationErr = s.UpdateFindingStatus(ctx, ports.FindingStatusUpdate{
+			FindingID: s.findingID,
+			Status:    s.status,
+			Reason:    s.reason,
+			UpdatedAt: time.Now().UTC(),
+		})
+	})
+	return records, nil
 }
 
 func projectFindingAnchorForTest(ctx context.Context, appendLog *recordingAppendLog, graph *e2eGraphFake, finding *ports.FindingRecord) error {
@@ -609,13 +1182,22 @@ func (s *stubCloseoutStore) InsertCloseoutRun(_ context.Context, run ports.Close
 		}
 	}
 	selector := append([]byte(nil), run.SelectorJSON...)
+	startedAt := run.StartedAt.UTC()
+	if startedAt.IsZero() {
+		startedAt = time.Now().UTC()
+	}
+	heartbeatAt := run.HeartbeatAt.UTC()
+	if heartbeatAt.IsZero() {
+		heartbeatAt = startedAt
+	}
 	s.runs[run.RunID] = &ports.CloseoutRunRecord{
 		RunID:        run.RunID,
 		Actor:        run.Actor,
 		ChangeTicket: run.ChangeTicket,
 		SelectorJSON: selector,
 		Status:       "running",
-		StartedAt:    run.StartedAt,
+		StartedAt:    startedAt,
+		HeartbeatAt:  heartbeatAt,
 		DryRun:       run.DryRun,
 	}
 	return nil
@@ -648,6 +1230,24 @@ func (s *stubCloseoutStore) GetCloseoutRun(_ context.Context, runID string) (*po
 	return &clone, nil
 }
 
+func (s *stubCloseoutStore) RefreshCloseoutRunHeartbeat(_ context.Context, runID string, heartbeatAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	existing, ok := s.runs[runID]
+	if !ok {
+		return fmt.Errorf("closeout_run %q not found", runID)
+	}
+	if existing.Status != "running" {
+		return nil
+	}
+	refreshedAt := heartbeatAt.UTC()
+	if refreshedAt.IsZero() {
+		refreshedAt = time.Now().UTC()
+	}
+	existing.HeartbeatAt = refreshedAt
+	return nil
+}
+
 func (s *stubCloseoutStore) BreakStaleRunningCloseoutRuns(_ context.Context, cutoff time.Time, errMessage string) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -659,7 +1259,11 @@ func (s *stubCloseoutStore) BreakStaleRunningCloseoutRuns(_ context.Context, cut
 		if existing.Status != "running" {
 			continue
 		}
-		if !existing.StartedAt.Before(cutoff) {
+		freshnessAt := existing.HeartbeatAt
+		if freshnessAt.IsZero() {
+			freshnessAt = existing.StartedAt
+		}
+		if !freshnessAt.Before(cutoff) {
 			continue
 		}
 		existing.Status = "failed"
@@ -683,6 +1287,9 @@ func (s *stubCloseoutStore) UpdateCloseoutRunSummary(_ context.Context, runID, s
 		existing.Status = "failed"
 		existing.FinishedAt = time.Now().UTC()
 		existing.ErrorMessage = summaryErr.Error()
+		if summaryKey != "" {
+			existing.S3SummaryKey = summaryKey
+		}
 		return nil
 	}
 	if summaryKey != "" {

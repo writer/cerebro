@@ -46,10 +46,11 @@ type policyRuleEntry struct {
 }
 
 type policyRuleCursor struct {
-	PolicyTypeIndex int                     `json:"policy_type_index,omitempty"`
-	PolicyAfter     string                  `json:"policy_after,omitempty"`
-	Policy          *policyRuleCursorPolicy `json:"policy,omitempty"`
-	RuleAfter       string                  `json:"rule_after,omitempty"`
+	ResumableCheckpoint bool                    `json:"resumable_checkpoint,omitempty"`
+	PolicyTypeIndex     int                     `json:"policy_type_index,omitempty"`
+	PolicyAfter         string                  `json:"policy_after,omitempty"`
+	Policy              *policyRuleCursorPolicy `json:"policy,omitempty"`
+	RuleAfter           string                  `json:"rule_after,omitempty"`
 }
 
 type policyRuleCursorPolicy struct {
@@ -255,6 +256,7 @@ func parsePolicyRuleCursor(cursor *cerebrov1.SourceCursor) (policyRuleCursor, er
 }
 
 func encodePolicyRuleCursor(state policyRuleCursor) (string, error) {
+	state.ResumableCheckpoint = true
 	payload, err := json.Marshal(state)
 	if err != nil {
 		return "", fmt.Errorf("marshal okta policy_rule cursor: %w", err)
@@ -267,19 +269,19 @@ func policyRulePullFromEvents(events []*primitives.Event, state policyRuleCursor
 		return sourcecdk.Pull{}, nil
 	}
 	last := events[len(events)-1]
+	checkpointOpaque, err := encodePolicyRuleCursor(state)
+	if err != nil {
+		return sourcecdk.Pull{}, err
+	}
 	var nextOpaque string
 	if policyRuleCursorHasMore(state) {
-		encoded, err := encodePolicyRuleCursor(state)
-		if err != nil {
-			return sourcecdk.Pull{}, err
-		}
-		nextOpaque = encoded
+		nextOpaque = checkpointOpaque
 	}
 	pull := sourcecdk.Pull{
 		Events: events,
 		Checkpoint: &cerebrov1.SourceCheckpoint{
 			Watermark:    last.OccurredAt,
-			CursorOpaque: checkpointCursor(nextOpaque, last.GetId(), last.GetOccurredAt().AsTime()),
+			CursorOpaque: checkpointOpaque,
 		},
 	}
 	if nextOpaque != "" {

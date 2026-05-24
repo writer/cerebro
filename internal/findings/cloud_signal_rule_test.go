@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 func TestCloudSignalRulesDetectPublicExposure(t *testing.T) {
@@ -572,6 +573,78 @@ func TestCloudPublicResourceExposure(t *testing.T) {
 	}
 	if len(records) != 0 {
 		t.Fatalf("Evaluate(clean) returned %d findings, want 0 once resource made private", len(records))
+	}
+}
+
+func TestCloudPublicResourceExposure_PrimaryResourceURNDeterministic(t *testing.T) {
+	rules := cloudRulesByID(t)
+	rule, ok := rules[cloudPublicResourceExposureRuleID].(*cloudSignalRule)
+	if !ok {
+		t.Fatalf("%s is %T, want *cloudSignalRule", cloudPublicResourceExposureRuleID, rules[cloudPublicResourceExposureRuleID])
+	}
+	runtime := &cerebrov1.SourceRuntime{Id: "aws-runtime", SourceId: "aws", TenantId: "writer"}
+	resourceID := "arn:aws:ec2:us-east-1:123456789012:security-group/sg-1"
+	exposedResourceURN := "urn:cerebro:writer:aws_security_group:" + resourceID
+	publicPrincipalURN := "urn:cerebro:writer:aws_public_principal:public_internet"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-public-exposure",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.resource_exposure",
+		Attributes: map[string]string{
+			"domain":           "123456789012",
+			"exposed_to":       "public_internet",
+			"exposure_type":    "public_network_ingress",
+			"family":           "resource_exposure",
+			"internet_exposed": "true",
+			"resource_id":      resourceID,
+			"resource_name":    "prod-web",
+			"resource_type":    "security_group",
+			"source_cidr":      "0.0.0.0/0",
+		},
+	}
+	projection := findingProjectionContext{
+		PrimaryActorURN:    exposedResourceURN,
+		PrimaryResourceURN: publicPrincipalURN,
+		ResourceLabel:      "public internet",
+		ResourceURNs:       []string{exposedResourceURN, publicPrincipalURN},
+		Entities: []*ports.ProjectedEntity{
+			{
+				URN:        publicPrincipalURN,
+				TenantID:   "writer",
+				SourceID:   "aws",
+				EntityType: "aws.public_principal",
+				Label:      "public internet",
+			},
+			{
+				URN:        exposedResourceURN,
+				TenantID:   "writer",
+				SourceID:   "aws",
+				EntityType: "aws.security.group",
+				Label:      "prod-web",
+				Attributes: map[string]string{"resource_id": resourceID},
+			},
+		},
+		Links: []*ports.ProjectedLink{
+			{FromURN: publicPrincipalURN, ToURN: exposedResourceURN, Relation: "can_reach"},
+			{FromURN: exposedResourceURN, ToURN: publicPrincipalURN, Relation: "can_reach"},
+		},
+	}
+
+	seenPrimaryResources := map[string]struct{}{}
+	for i := 0; i < 100; i++ {
+		fingerprintInputs := cloudPublicResourceExposureFingerprintInputs(event, event.GetAttributes(), projection)
+		if len(fingerprintInputs) != 1 || fingerprintInputs[0] != exposedResourceURN {
+			t.Fatalf("cloudPublicResourceExposureFingerprintInputs() = %v, want [%s]", fingerprintInputs, exposedResourceURN)
+		}
+		attributes := cloudFindingAttributes(event, runtime, rule.config, projection)
+		seenPrimaryResources[attributes["primary_resource_urn"]] = struct{}{}
+		if got := attributes["primary_resource_urn"]; got != exposedResourceURN {
+			t.Fatalf("iteration %d primary_resource_urn = %q, want fingerprint-selected exposed resource %q", i, got, exposedResourceURN)
+		}
+	}
+	if len(seenPrimaryResources) != 1 {
+		t.Fatalf("primary_resource_urn values varied across iterations: %v", seenPrimaryResources)
 	}
 }
 

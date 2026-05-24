@@ -57,6 +57,7 @@ var oktaMFAEnrollmentFactorKinds = map[string]struct{}{
 	"question":            {},
 	"signed_nonce":        {},
 	"sms":                 {},
+	"token:hardware":      {},
 	"token:software:totp": {},
 	"u2f":                 {},
 	"webauthn":            {},

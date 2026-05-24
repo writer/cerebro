@@ -10,11 +10,12 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/workflowevents"
 )
 
 const ttlResolveLogEvent = "ttl.resolve"
 
-const ttlResolutionReasonPrefix = "ttl_expired:"
+const ttlResolutionReasonPrefix = workflowevents.FindingStatusReasonTTLExpired + ":"
 
 // ttlClock is the per-Service "now" boundary used by the TTL sweeper. Tests
 // inject a fixed clock via Service.WithTTLClock so the sweeper can be exercised
@@ -80,6 +81,8 @@ func (s *Service) ttlSink() io.Writer {
 //     so manual state (assignee/notes/tickets/risk) is preserved by the same
 //     guard the manual-resolution path uses;
 //   - sets resolution_reason = "ttl_expired:<TTL>" (compact label, e.g. "24h");
+//   - emits a workflow.v1.finding.status_changed event with the TTL reason so
+//     workflow replay and graph projection observe the resolution;
 //   - emits exactly one structured JSON log line per resolved row containing
 //     event=ttl.resolve and rule_id/finding_id/ttl/resolved_at;
 //   - is idempotent: a second invocation with no fresh emits between produces
@@ -142,6 +145,9 @@ func (s *Service) resolveTTLOpenFindings(ctx context.Context, tenantID string, r
 		})
 		if err != nil {
 			return fmt.Errorf("resolve ttl finding %q: %w", strings.TrimSpace(finding.ID), err)
+		}
+		if err := s.recordFindingStatusWorkflow(ctx, updated, workflowevents.FindingStatusSourceStaleEvaluation); err != nil {
+			return fmt.Errorf("project ttl finding %q resolution: %w", strings.TrimSpace(finding.ID), err)
 		}
 		resolvedAt := updated.StatusUpdatedAt
 		if resolvedAt.IsZero() {

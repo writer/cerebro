@@ -66,10 +66,14 @@ func (r *Replayer) Replay(ctx context.Context, request ReplayRequest) (*ReplayRe
 		if err != nil {
 			return nil, err
 		}
-		if projection.EntitiesProjected == 0 && projection.LinksProjected == 0 {
+		eventsProjected := projection.EventsProjected
+		if eventsProjected == 0 && (projection.EntitiesProjected != 0 || projection.LinksProjected != 0 || projection.EntitiesDeleted != 0 || projection.LinksDeleted != 0) {
+			eventsProjected = 1
+		}
+		if eventsProjected == 0 {
 			continue
 		}
-		result.EventsProjected++
+		result.EventsProjected += eventsProjected
 		result.EntitiesProjected += projection.EntitiesProjected
 		result.LinksProjected += projection.LinksProjected
 	}

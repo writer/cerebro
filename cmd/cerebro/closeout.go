@@ -46,19 +46,21 @@ const (
 // via errors.Is so that user-facing wording can evolve without breaking the
 // contract; the structural lint forbids matching on err.Error() content.
 var (
-	ErrCloseoutReasonRequired         = usageError("cerebro closeout: --reason is required when --apply is set")
-	ErrCloseoutChangeTicketRequired   = usageError("cerebro closeout: --change-ticket is required for --apply with --allow-env go-prod")
-	ErrCloseoutAllowEnvRequired       = usageError("cerebro closeout: --allow-env is required when --apply is set")
-	ErrCloseoutAllowEnvInvalid        = usageError("cerebro closeout: --allow-env must be sec-dev or go-prod")
-	ErrCloseoutAllowEnvMismatch       = usageError("cerebro closeout: CEREBRO_CLOSEOUT_ALLOW does not match --allow-env")
-	ErrCloseoutAuditBucketRequired    = usageError("cerebro closeout: --apply requires --audit-s3-bucket or CEREBRO_CLOSEOUT_AUDIT_BUCKET")
-	ErrCloseoutApplyDryRunConflict    = usageError("cerebro closeout: --apply and --dry-run=true are mutually exclusive")
-	ErrCloseoutRuleSelectorRequired   = usageError("cerebro closeout: at least one of --rule-id or --rule-id-file must be provided")
-	ErrCloseoutRuleIDFileUnreadable   = usageError("cerebro closeout: --rule-id-file is not readable")
-	ErrCloseoutOlderThanInvalid       = usageError("cerebro closeout: --older-than must be a positive duration (e.g. 7d, 24h)")
-	ErrCloseoutMaxBatchSizeInvalid    = usageError("cerebro closeout: --max-batch-size must be a positive integer")
-	ErrCloseoutTombstoneSchemaMissing = errors.New("closeout: tombstone schema is not present on the configured database")
-	ErrCloseoutSummaryPutFailed       = errors.New("closeout: failed to put audit summary to s3")
+	ErrCloseoutReasonRequired           = usageError("cerebro closeout: --reason is required")
+	ErrCloseoutChangeTicketRequired     = usageError("cerebro closeout: --change-ticket is required for --apply with --allow-env go-prod")
+	ErrCloseoutAllowEnvRequired         = usageError("cerebro closeout: --allow-env is required when --apply is set")
+	ErrCloseoutAllowEnvInvalid          = usageError("cerebro closeout: --allow-env must be sec-dev or go-prod")
+	ErrCloseoutAllowEnvMismatch         = usageError("cerebro closeout: CEREBRO_CLOSEOUT_ALLOW does not match --allow-env")
+	ErrCloseoutAuditBucketRequired      = usageError("cerebro closeout: --apply requires --audit-s3-bucket or CEREBRO_CLOSEOUT_AUDIT_BUCKET")
+	ErrCloseoutApplyDryRunConflict      = usageError("cerebro closeout: --apply and --dry-run=true are mutually exclusive")
+	ErrCloseoutDryRunFalseRequiresApply = usageError("cerebro closeout: --dry-run=false requires --apply")
+	ErrCloseoutRuleSelectorRequired     = usageError("cerebro closeout: at least one of --rule-id or --rule-id-file must be provided")
+	ErrCloseoutRuleIDFileUnreadable     = usageError("cerebro closeout: --rule-id-file is not readable")
+	ErrCloseoutOlderThanInvalid         = usageError("cerebro closeout: --older-than must be a positive duration (e.g. 7d, 24h)")
+	ErrCloseoutMaxBatchSizeInvalid      = usageError("cerebro closeout: --max-batch-size must be a positive integer")
+	ErrCloseoutTenantIDRequired         = usageError("cerebro closeout: --tenant-id or CEREBRO_CLOSEOUT_TENANT_ID is required")
+	ErrCloseoutTombstoneSchemaMissing   = errors.New("closeout: tombstone schema is not present on the configured database")
+	ErrCloseoutSummaryPutFailed         = errors.New("closeout: failed to put audit summary to s3")
 )
 
 // closeoutSTSIdentity is the resolved STS principal/role pair captured for the
@@ -133,15 +135,34 @@ type closeoutFlags struct {
 // reconciliation tooling share one source of truth.
 type closeoutSummaryDocument = findings.CloseoutSummary
 
-// runCloseout is the production entry point invoked from main. It builds a
-// production closeoutEnv and delegates to runCloseoutWithEnv.
+var defaultCloseoutEnvFactory = defaultCloseoutEnv
+
+// runCloseout is the production entry point invoked from main. It performs
+// parse/help/local validation before constructing live Postgres/AWS
+// dependencies so ergonomics errors are available on unconfigured machines.
 func runCloseout(args []string) error {
-	env, cleanup, err := defaultCloseoutEnv()
+	parseEnv := &closeoutEnv{
+		Stdout: os.Stdout,
+		Stderr: os.Stderr,
+		Getenv: os.Getenv,
+	}
+	flags, helpRequested, parseErr := parseCloseoutFlags(args, parseEnv)
+	if parseErr != nil {
+		return parseErr
+	}
+	if helpRequested {
+		return nil
+	}
+	if err := validateCloseoutFlags(&flags, parseEnv); err != nil {
+		return err
+	}
+
+	env, cleanup, err := defaultCloseoutEnvFactory()
 	if err != nil {
 		return err
 	}
 	defer cleanup()
-	return runCloseoutWithEnv(args, env)
+	return executeCloseout(flags, env)
 }
 
 // defaultCloseoutEnv constructs the production closeoutEnv. The Backend +
@@ -176,7 +197,10 @@ func runCloseoutWithEnv(args []string, env *closeoutEnv) error {
 	if err := validateCloseoutFlags(&flags, env); err != nil {
 		return err
 	}
+	return executeCloseout(flags, env)
+}
 
+func executeCloseout(flags closeoutFlags, env *closeoutEnv) error {
 	ctx := context.Background()
 
 	supports, supportsErr := env.Backend.SupportsTombstones(ctx)
@@ -206,14 +230,9 @@ func runCloseoutWithEnv(args []string, env *closeoutEnv) error {
 	bucket := resolveCloseoutBucket(&flags, env)
 	auditBucketMissing := !flags.Apply && bucket == ""
 
-	tenantID := flags.TenantID
-	if tenantID == "" {
-		tenantID = strings.TrimSpace(env.Getenv(closeoutEnvTenantID))
-	}
-
 	req := findings.CloseoutRequest{
 		Selector: findings.CloseoutSelector{
-			TenantID:  tenantID,
+			TenantID:  flags.TenantID,
 			RuleIDs:   append([]string(nil), flags.RuleIDs...),
 			Sources:   append([]string(nil), flags.Sources...),
 			OlderThan: flags.OlderThan,
@@ -253,16 +272,7 @@ func runCloseoutWithEnv(args []string, env *closeoutEnv) error {
 
 	result, closeoutErr := env.Backend.Closeout(ctx, req)
 	if closeoutErr != nil {
-		emitCloseoutLog(env, map[string]any{
-			"event":          closeoutEventEnd,
-			"run_id":         runID,
-			"actor":          actor,
-			"env":            flags.AllowEnv,
-			"status":         "failed",
-			"proposed_count": closeoutCount(result, func(r *findings.CloseoutResult) int { return r.ProposedCount }),
-			"applied_count":  closeoutCount(result, func(r *findings.CloseoutResult) int { return r.AppliedCount }),
-			"dry_run":        req.DryRun,
-		})
+		emitCloseoutLog(env, closeoutFailedEndLog(runID, actor, flags.AllowEnv, req.DryRun, result, closeoutErr, "closeout_failed"))
 		return fmt.Errorf("closeout: %w", closeoutErr)
 	}
 	if result == nil {
@@ -286,23 +296,37 @@ func runCloseoutWithEnv(args []string, env *closeoutEnv) error {
 		return fmt.Errorf("marshal closeout summary: %w", marshalErr)
 	}
 
-	summaryKey := ""
+	summaryKey := strings.TrimSpace(result.S3SummaryKey)
 	if flags.Apply {
-		summaryKey = findings.CloseoutSummaryKey(runID)
-		putErr := env.Summary.PutCloseoutSummary(ctx, bucket, summaryKey, body)
-		afterErr := env.Backend.AfterCloseoutSummary(ctx, runID, summaryKey, putErr)
-		if putErr != nil {
-			_, _ = fmt.Fprintf(env.Stderr, "cerebro closeout: failed to put audit summary to s3://%s/%s: %v\n", bucket, summaryKey, putErr)
-			emitCloseoutLog(env, closeoutFailedEndLog(runID, actor, flags.AllowEnv, req.DryRun, result, putErr, "s3_put_failed"))
-			return fmt.Errorf("%w: %w", ErrCloseoutSummaryPutFailed, putErr)
-		}
-		if afterErr != nil {
-			emitCloseoutLog(env, closeoutFailedEndLog(runID, actor, flags.AllowEnv, req.DryRun, result, afterErr, "after_closeout_summary_failed"))
-			return fmt.Errorf("after closeout summary: %w", afterErr)
+		if summaryKey == "" {
+			summaryKey = findings.CloseoutSummaryKey(runID)
+			putErr := env.Summary.PutCloseoutSummary(ctx, bucket, summaryKey, body)
+			afterErr := env.Backend.AfterCloseoutSummary(ctx, runID, summaryKey, putErr)
+			if putErr != nil {
+				_, _ = fmt.Fprintf(env.Stderr, "cerebro closeout: failed to put audit summary to s3://%s/%s: %v\n", bucket, summaryKey, putErr)
+				emitCloseoutLog(env, closeoutFailedEndLog(runID, actor, flags.AllowEnv, req.DryRun, result, putErr, "s3_put_failed"))
+				return fmt.Errorf("%w: %w", ErrCloseoutSummaryPutFailed, putErr)
+			}
+			if afterErr != nil {
+				emitCloseoutLog(env, closeoutFailedEndLog(runID, actor, flags.AllowEnv, req.DryRun, result, afterErr, "after_closeout_summary_failed"))
+				return fmt.Errorf("after closeout summary: %w", afterErr)
+			}
 		}
 	} else if bucket != "" && env.Summary != nil {
-		summaryKey = findings.CloseoutSummaryKey(runID)
-		_ = env.Summary.PutCloseoutSummary(ctx, bucket, summaryKey, body)
+		if summaryKey == "" {
+			summaryKey = findings.CloseoutSummaryKey(runID)
+			putErr := env.Summary.PutCloseoutSummary(ctx, bucket, summaryKey, body)
+			afterErr := env.Backend.AfterCloseoutSummary(ctx, runID, summaryKey, putErr)
+			if putErr != nil {
+				_, _ = fmt.Fprintf(env.Stderr, "cerebro closeout: failed to put audit summary to s3://%s/%s: %v\n", bucket, summaryKey, putErr)
+				emitCloseoutLog(env, closeoutFailedEndLog(runID, actor, flags.AllowEnv, req.DryRun, result, putErr, "s3_put_failed"))
+				return fmt.Errorf("%w: %w", ErrCloseoutSummaryPutFailed, putErr)
+			}
+			if afterErr != nil {
+				emitCloseoutLog(env, closeoutFailedEndLog(runID, actor, flags.AllowEnv, req.DryRun, result, afterErr, "after_closeout_summary_failed"))
+				return fmt.Errorf("after closeout summary: %w", afterErr)
+			}
+		}
 	} else if !flags.Apply {
 		_, _ = fmt.Fprintln(env.Stdout, string(body))
 	}
@@ -325,13 +349,6 @@ func runCloseoutWithEnv(args []string, env *closeoutEnv) error {
 	}
 	emitCloseoutLog(env, endLog)
 	return nil
-}
-
-func closeoutCount(result *findings.CloseoutResult, extract func(*findings.CloseoutResult) int) int {
-	if result == nil {
-		return 0
-	}
-	return extract(result)
 }
 
 // parseCloseoutFlags reads the flag surface from args. The flag set is
@@ -446,6 +463,9 @@ func validateCloseoutFlags(flags *closeoutFlags, env *closeoutEnv) error {
 	if flags.Apply && flags.DryRunSetExpl && flags.DryRun {
 		return ErrCloseoutApplyDryRunConflict
 	}
+	if !flags.Apply && flags.DryRunSetExpl && !flags.DryRun {
+		return ErrCloseoutDryRunFalseRequiresApply
+	}
 	if flags.Apply {
 		flags.DryRun = false
 	}
@@ -469,10 +489,17 @@ func validateCloseoutFlags(flags *closeoutFlags, env *closeoutEnv) error {
 		return ErrCloseoutRuleSelectorRequired
 	}
 
+	if flags.Reason == "" {
+		return ErrCloseoutReasonRequired
+	}
+	if flags.TenantID == "" {
+		flags.TenantID = strings.TrimSpace(env.Getenv(closeoutEnvTenantID))
+	}
+	if flags.TenantID == "" {
+		return ErrCloseoutTenantIDRequired
+	}
+
 	if flags.Apply {
-		if flags.Reason == "" {
-			return ErrCloseoutReasonRequired
-		}
 		if flags.AllowEnv == "" {
 			return ErrCloseoutAllowEnvRequired
 		}
@@ -718,8 +745,8 @@ Flags:
   --status-filter <list>    Comma-separated statuses to include (default: open).
   --max-batch-size <int>    Maximum findings per batch (default: 1000).
   --dry-run <bool>          Dry-run mode (default: true). Mutually exclusive with --apply.
-  --apply                   Apply mutations. Requires --reason and the gates below.
-  --reason <text>           Closeout reason. Required when --apply is set.
+  --apply                   Apply mutations. Requires the gates below.
+  --reason <text>           Closeout reason. Required for every run.
   --run-id <uuid>           Closeout run UUIDv4. Auto-generated when absent.
   --actor <text>            Operator identity. Resolved from GITHUB_ACTOR / STS / USER when absent.
   --change-ticket <text>    Change-management ticket. Required for --apply with --allow-env go-prod.

@@ -193,13 +193,13 @@ func newIdentitySignalRules() []Rule {
 			definition: identityDurableStateRuleDefinition(identityRuleDefinition(
 				identityPrivilegedAccountWithoutMFARuleID,
 				"Identity Privileged Account Without MFA",
-				"Detect privileged identity accounts that are not enrolled in MFA/2SV.",
+				"Detect source-backed privileged identity accounts that are not enrolled in MFA/2SV; AWS IAM and Azure user MFA posture require source-adapter extensions before this rule claims those users.",
 				"HIGH",
 				"finding.identity_privileged_account_without_mfa",
 				[]string{"identity", "mfa", "privileged-access", "attack.t1078"},
 			), "user"),
 			sourceIDs:   sourceIDs,
-			eventKinds:  capabilities.EventKinds(identityCapabilityUser),
+			eventKinds:  identityMFASourceBackedEventKinds,
 			predicate:   matchesIdentityPrivilegedWithoutMFA,
 			fingerprint: identityUserFingerprintInputs,
 		}, identityUserAnchor, identityPrivilegedWithoutMFACloseAnchor),
@@ -421,9 +421,12 @@ func identityFindingAttributes(event *cerebrov1.EventEnvelope, runtime *cerebrov
 		"mfa_state":            identityMFAState(eventAttrs),
 		"policy_id":            identityPolicyID(eventAttrs),
 		"role":                 identityRoleValue(eventAttrs),
+		"source_id":            strings.TrimSpace(event.GetSourceId()),
 		"source_family":        strings.TrimSpace(event.GetSourceId()),
 		"source_runtime_id":    strings.TrimSpace(runtime.GetId()),
+		"tenant_id":            strings.TrimSpace(event.GetTenantId()),
 		"user":                 firstNonEmpty(identityUserValue(eventAttrs), identityCredentialUserValue(eventAttrs)),
+		"user_urn":             identityUserURNValue(eventAttrs, context, event.GetTenantId(), event.GetSourceId()),
 	}
 	for key, value := range eventAttrs {
 		if _, exists := attributes[key]; !exists {
@@ -459,30 +462,41 @@ func identityAction(attributes map[string]string) string {
 	return strings.ToLower(firstNonEmpty(attributes["event_type"], attributes["event_name"], attributes["action"], attributes["family"]))
 }
 
-func identityUserFingerprintInputs(_ *cerebrov1.EventEnvelope, attributes map[string]string, projection findingProjectionContext) []string {
-	return []string{firstNonEmpty(identityUserValue(attributes), projection.PrimaryResourceURN)}
+func identityUserFingerprintInputs(event *cerebrov1.EventEnvelope, attributes map[string]string, projection findingProjectionContext) []string {
+	return []string{
+		strings.TrimSpace(event.GetTenantId()),
+		identityUserURNValue(attributes, projection, event.GetTenantId(), event.GetSourceId()),
+	}
 }
 
-func identityAdminPrivilegeFingerprintInputs(_ *cerebrov1.EventEnvelope, attributes map[string]string, projection findingProjectionContext) []string {
+func identityAdminPrivilegeFingerprintInputs(event *cerebrov1.EventEnvelope, attributes map[string]string, projection findingProjectionContext) []string {
 	return []string{
-		firstNonEmpty(identityUserValue(attributes), projection.PrimaryActorURN),
+		strings.TrimSpace(event.GetTenantId()),
+		identityUserURNValue(attributes, projection, event.GetTenantId(), event.GetSourceId()),
 		firstNonEmpty(identityRoleValue(attributes), projection.PrimaryResourceURN),
 	}
 }
 
-func identityAuthControlFingerprintInputs(_ *cerebrov1.EventEnvelope, attributes map[string]string, projection findingProjectionContext) []string {
-	return []string{firstNonEmpty(identityPolicyID(attributes), identityIDPID(attributes), projection.PrimaryResourceURN)}
+func identityAuthControlFingerprintInputs(event *cerebrov1.EventEnvelope, attributes map[string]string, projection findingProjectionContext) []string {
+	return []string{
+		strings.TrimSpace(event.GetTenantId()),
+		firstNonEmpty(identityPolicyID(attributes), identityIDPID(attributes), projection.PrimaryResourceURN),
+	}
 }
 
-func identityAPITokenOrOAuthFingerprintInputs(_ *cerebrov1.EventEnvelope, attributes map[string]string, _ findingProjectionContext) []string {
+func identityAPITokenOrOAuthFingerprintInputs(event *cerebrov1.EventEnvelope, attributes map[string]string, projection findingProjectionContext) []string {
+	tenantID := strings.TrimSpace(event.GetTenantId())
+	userURN := identityUserURNValue(attributes, projection, tenantID, event.GetSourceId())
 	if tokenID := identityAPITokenCredentialID(attributes); tokenID != "" {
 		return []string{
-			identityCredentialUserValue(attributes),
+			tenantID,
+			firstNonEmpty(userURN, identityCredentialUserValue(attributes)),
 			tokenID,
 		}
 	}
 	if oauthAppID := identityOAuthAppID(attributes); oauthAppID != "" {
 		return []string{
+			tenantID,
 			identityOrgValue(attributes),
 			oauthAppID,
 		}
@@ -492,13 +506,17 @@ func identityAPITokenOrOAuthFingerprintInputs(_ *cerebrov1.EventEnvelope, attrib
 
 func identityExternalGroupMemberFingerprintInputs(event *cerebrov1.EventEnvelope, attributes map[string]string, projection findingProjectionContext) []string {
 	return []string{
+		strings.TrimSpace(event.GetTenantId()),
 		identityGroupURNValue(attributes, projection, event.GetTenantId(), event.GetSourceId()),
 		identityMemberEmailValue(attributes),
 	}
 }
 
 func identityUserAnchor(attributes map[string]string) string {
-	return identityCounterEventAnchor(map[string]string{"user": identityUserValue(attributes)}, "user")
+	return identityCounterEventAnchor(map[string]string{
+		"source_id": firstNonEmpty(attributes["source_id"], attributes["source_family"]),
+		"user_urn":  identityUserURNValue(attributes, findingProjectionContext{}, attributes["tenant_id"], firstNonEmpty(attributes["source_id"], attributes["source_family"])),
+	}, "source_id", "user_urn")
 }
 
 func identityAPITokenOrOAuthAnchor(attributes map[string]string) string {
@@ -525,10 +543,12 @@ func identityExternalGroupMemberAnchor(attributes map[string]string) string {
 }
 
 func identityAdminPrivilegeAnchor(attributes map[string]string) string {
+	sourceID := firstNonEmpty(attributes["source_id"], attributes["source_family"])
 	return identityCounterEventAnchor(map[string]string{
-		"user": identityUserValue(attributes),
-		"role": identityRoleValue(attributes),
-	}, "user", "role")
+		"source_id": sourceID,
+		"user_urn":  identityUserURNValue(attributes, findingProjectionContext{}, attributes["tenant_id"], sourceID),
+		"role":      identityRoleValue(attributes),
+	}, "source_id", "user_urn", "role")
 }
 
 func identityAuthControlAnchor(attributes map[string]string) string {
@@ -561,7 +581,7 @@ func identityCounterEventAnchor(attributes map[string]string, fields ...string) 
 }
 
 func identityAdminPrivilegeCloseAnchor(event Event) (string, bool) {
-	attributes := eventAttributes(event)
+	attributes := identityCounterEventAttributes(event, nil)
 	if !identityRoleAssignmentInactive(attributes) && !identityPrivilegeExplicitlyRemoved(attributes) {
 		return "", false
 	}
@@ -574,7 +594,7 @@ func identityMFACloseAnchor(event Event) (string, bool) {
 	if !identityMFAEnabled(attributes) {
 		return "", false
 	}
-	anchor := identityUserAnchor(attributes)
+	anchor := identityUserAnchor(identityCounterEventAttributes(event, nil))
 	return anchor, anchor != ""
 }
 
@@ -604,7 +624,7 @@ func identityPrivilegedWithoutMFACloseAnchor(event Event) (string, bool) {
 	if !identityMFAEnabled(attributes) && !identityPrivilegeExplicitlyRemoved(attributes) {
 		return "", false
 	}
-	anchor := identityUserAnchor(attributes)
+	anchor := identityUserAnchor(identityCounterEventAttributes(event, nil))
 	return anchor, anchor != ""
 }
 
@@ -616,7 +636,7 @@ func identityStalePrivilegedCloseAnchor(event Event) (string, bool) {
 	if !identityStalePrivilegedRemediated(attributes) {
 		return "", false
 	}
-	anchor := identityUserAnchor(attributes)
+	anchor := identityUserAnchor(identityCounterEventAttributes(event, nil))
 	return anchor, anchor != ""
 }
 
@@ -653,6 +673,16 @@ func identityCounterEventAttributes(event Event, projection *findingProjectionCo
 	if value := identityCredentialUserValue(attributes); value != "" {
 		attributes["user"] = value
 	}
+	if sourceID := strings.TrimSpace(event.GetSourceId()); sourceID != "" {
+		attributes["source_id"] = sourceID
+		attributes["source_family"] = sourceID
+	}
+	if tenantID := strings.TrimSpace(event.GetTenantId()); tenantID != "" {
+		attributes["tenant_id"] = tenantID
+	}
+	if value := identityUserURNValue(attributes, context, event.GetTenantId(), event.GetSourceId()); value != "" {
+		attributes["user_urn"] = value
+	}
 	return attributes
 }
 
@@ -688,6 +718,57 @@ func identityUserValue(attributes map[string]string) string {
 		return firstNonEmpty(attributes["resource_id"], attributes["target_id"])
 	}
 	return firstNonEmpty(attributes["actor_email"], attributes["actor_alternate_id"])
+}
+
+func identityUserSignalPresent(attributes map[string]string) bool {
+	return firstNonEmpty(
+		attributes["user_urn"],
+		attributes["primary_actor_urn"],
+		attributes["primary_resource_urn"],
+		identityUserValue(attributes),
+		identityCredentialUserValue(attributes),
+	) != ""
+}
+
+func identityUserURNValue(attributes map[string]string, projection findingProjectionContext, tenantID string, sourceID string) string {
+	if urn := strings.TrimSpace(attributes["user_urn"]); urn != "" {
+		return urn
+	}
+	tenantID = strings.TrimSpace(firstNonEmpty(tenantID, attributes["tenant_id"]))
+	sourceID = strings.TrimSpace(firstNonEmpty(sourceID, attributes["source_id"], attributes["source_family"]))
+	userID := firstNonEmpty(
+		attributes["user_id"],
+		attributes["subject_id"],
+		attributes["member_user_id"],
+		attributes["member_id"],
+		attributes["actor_id"],
+		attributes["resource_id"],
+		identityCredentialUserValue(attributes),
+		identityUserValue(attributes),
+	)
+	if tenantID != "" && sourceID != "" && userID != "" {
+		return identityProjectionURN(tenantID, sourceID+"_user", userID)
+	}
+	if urn := firstNonEmpty(identityProjectionUserURN(projection.PrimaryResourceURN), identityProjectionUserURN(projection.PrimaryActorURN)); urn != "" {
+		return urn
+	}
+	return ""
+}
+
+func identityProjectionUserURN(urn string) string {
+	urn = strings.TrimSpace(urn)
+	if urn == "" {
+		return ""
+	}
+	normalized := strings.ToLower(urn)
+	if strings.Contains(normalized, "_user:") ||
+		strings.Contains(normalized, ".user:") ||
+		strings.Contains(normalized, "_principal:") ||
+		strings.Contains(normalized, "_service_account:") ||
+		strings.Contains(normalized, "_service_principal:") {
+		return urn
+	}
+	return ""
 }
 
 func identityCredentialUserValue(attributes map[string]string) string {
@@ -908,7 +989,7 @@ func matchesIdentityAdminPrivilegeGranted(event *cerebrov1.EventEnvelope, attrib
 	if !identityAssignmentActiveOrUnknown(attributes) {
 		return false
 	}
-	if identityAdminPrivilegeAnchor(attributes) == "" {
+	if identityAdminPrivilegeAnchor(identityCounterEventAttributes(event, nil)) == "" {
 		return false
 	}
 	if builtinIdentityCapabilities.KindHasCapability(event.GetKind(), identityCapabilityAdminRole) {
@@ -928,7 +1009,7 @@ func matchesIdentityMFAFactorResetOrDisabled(_ *cerebrov1.EventEnvelope, attribu
 	if !identityOutcomeSuccessfulOrUnknown(attributes) {
 		return false
 	}
-	return identityUserAnchor(attributes) != "" && identityMFAExplicitlyDisabled(attributes)
+	return identityUserSignalPresent(attributes) && identityMFAExplicitlyDisabled(attributes)
 }
 
 func identityAssignmentActiveOrUnknown(attributes map[string]string) bool {
@@ -1104,7 +1185,7 @@ func routineOAuthRuntimeGrant(action string) bool {
 }
 
 func matchesIdentityPrivilegedWithoutMFA(_ *cerebrov1.EventEnvelope, attributes map[string]string) bool {
-	return identityUserAnchor(attributes) != "" && identityPrivileged(attributes) && identityMFAExplicitlyDisabled(attributes)
+	return identityUserSignalPresent(attributes) && identityPrivileged(attributes) && identityMFAExplicitlyDisabled(attributes)
 }
 
 func matchesIdentityStalePrivilegedAccount(_ *cerebrov1.EventEnvelope, attributes map[string]string) bool {
@@ -1143,10 +1224,21 @@ var identityMFASourceBackedEventKinds = []string{"gcp.service_account", "google_
 var identityMFAStateAttributeKeys = [...]string{"mfa_enrolled", "mfa_enforced", "is_enrolled_in_2sv", "is_enforced_in_2sv"}
 
 func identityMFAEnabled(attributes map[string]string) bool {
-	// Source-state MFA findings close only when every MFA posture leg is
-	// non-explicitly-false. Unknown/missing values are not enough to open or keep
-	// a finding; any explicit false on enrollment or enforcement keeps it open.
-	return !identityMFAExplicitlyDisabled(attributes)
+	// Source-state MFA findings close only on an explicit positive MFA posture
+	// signal. Unknown/missing values are not enough to remediate a finding; any
+	// explicit false on enrollment or enforcement keeps it open.
+	return !identityMFAExplicitlyDisabled(attributes) && identityMFAExplicitlyEnabled(attributes)
+}
+
+func identityMFAExplicitlyEnabled(attributes map[string]string) bool {
+	for _, key := range identityMFAStateAttributeKeys {
+		value := strings.ToLower(strings.TrimSpace(attributes[key]))
+		switch value {
+		case "1", "t", "true", "yes", "y", "enabled", "enrolled", "enforced":
+			return true
+		}
+	}
+	return false
 }
 
 func identityMFAExplicitlyDisabled(attributes map[string]string) bool {

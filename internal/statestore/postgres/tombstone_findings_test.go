@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -13,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 func tombstoneStoreFromEnv(t *testing.T) *Store {
@@ -295,6 +298,7 @@ func TestEnsureFindingStatements_CreatesTombstoneEventsTable(t *testing.T) {
 		"selector_json":  "jsonb",
 		"status":         "text",
 		"started_at":     "timestamp with time zone",
+		"heartbeat_at":   "timestamp with time zone",
 		"finished_at":    "timestamp with time zone",
 		"dry_run":        "boolean",
 		"proposed_count": "integer",
@@ -466,6 +470,188 @@ func TestFindingsActiveFingerprint_RejectsDuplicate(t *testing.T) {
 	}
 }
 
+func TestFindingsActiveFingerprint_AllowsDuplicateAcrossTenants(t *testing.T) {
+	ctx := context.Background()
+	store := tombstoneStoreFromEnv(t)
+	resetTombstoneSchema(t, ctx, store)
+	ensureTombstoneSchema(t, ctx, store)
+
+	fp := fmt.Sprintf("fp-cross-tenant-%d", time.Now().UnixNano())
+	now := time.Now().UTC()
+	for _, tenant := range []string{"example-tenant-a", "example-tenant-b"} {
+		if _, err := store.db.ExecContext(ctx, `
+            INSERT INTO findings (id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary, first_observed_at, last_observed_at)
+            VALUES ($1, $2, $3, $4, 'rule-test', 'title', 'HIGH', 'open', 'summary', $5, $5)`,
+			fmt.Sprintf("active-%s", tenant), fp, tenant, "runtime-"+tenant, now); err != nil {
+			t.Fatalf("insert active row for %s: %v", tenant, err)
+		}
+	}
+
+	var count int
+	if err := store.db.QueryRowContext(ctx, `SELECT count(*) FROM findings WHERE fingerprint = $1 AND tombstoned = FALSE`, fp).Scan(&count); err != nil {
+		t.Fatalf("count active rows: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("active rows for shared fingerprint = %d, want 2 across different tenants", count)
+	}
+}
+
+func TestEnsureFindingStatements_BackfillsTenantScopedFingerprints(t *testing.T) {
+	ctx := context.Background()
+	store := tombstoneStoreFromEnv(t)
+	resetTombstoneSchema(t, ctx, store)
+
+	tenantID := fmt.Sprintf("example-backfill-%d", time.Now().UnixNano())
+	const dependabotRuleID = "github-dependabot-open-alert"
+	oldFingerprint := testFindingFingerprint(dependabotRuleID, "writer/cerebro", "7")
+	wantFingerprint := testFindingFingerprint(dependabotRuleID, tenantID, "writer/cerebro", "7")
+	now := time.Now().UTC()
+	if _, err := store.db.ExecContext(ctx, `
+        INSERT INTO findings (
+            id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
+            attributes_json, first_observed_at, last_observed_at
+        )
+        VALUES (
+            'legacy-dependabot-row', $1, $2, 'legacy-runtime', $3, 'Dependabot', 'HIGH', 'open', 'summary',
+            '{"repository":"writer/cerebro","alert_number":"7"}'::jsonb, $4, $4
+        )`,
+		oldFingerprint, tenantID, dependabotRuleID, now); err != nil {
+		t.Fatalf("insert legacy row: %v", err)
+	}
+
+	store.schemaMu.Lock()
+	store.findingTablesReady = false
+	store.schemaMu.Unlock()
+	ensureTombstoneSchema(t, ctx, store)
+
+	var gotID, gotFingerprint string
+	if err := store.db.QueryRowContext(ctx, `SELECT id, fingerprint FROM findings WHERE id = 'legacy-dependabot-row'`).Scan(&gotID, &gotFingerprint); err != nil {
+		t.Fatalf("reload backfilled row: %v", err)
+	}
+	if gotID != "legacy-dependabot-row" {
+		t.Fatalf("backfill changed id = %q, want legacy-dependabot-row", gotID)
+	}
+	if gotFingerprint != wantFingerprint {
+		t.Fatalf("backfilled fingerprint = %q, want %q", gotFingerprint, wantFingerprint)
+	}
+}
+
+func TestBackfillTenantScopedFindingFingerprints_UsesIdentityProjectionURN(t *testing.T) {
+	ctx := context.Background()
+	store := tombstoneStoreFromEnv(t)
+	resetTombstoneSchema(t, ctx, store)
+
+	nonce := time.Now().UnixNano()
+	tenantID := fmt.Sprintf("example-identity-backfill-%d", nonce)
+	runtimeID := fmt.Sprintf("legacy-runtime-%d", nonce)
+	const ruleID = "identity-privileged-account-without-mfa"
+	sourceID := "okta"
+	userID := fmt.Sprintf("00u-backfill-%d", nonce)
+	legacyID := fmt.Sprintf("legacy-identity-row-%d", nonce)
+	runtimeIDAfterBackfill := fmt.Sprintf("runtime-after-backfill-%d", nonce)
+	runtimeEmitID := fmt.Sprintf("runtime-identity-row-%d", nonce)
+	wantUserURN := testIdentityProjectionURN(tenantID, sourceID+"_user", userID)
+	oldFingerprint := testFindingFingerprint(ruleID, userID)
+	wantFingerprint := testFindingFingerprint(ruleID, tenantID, wantUserURN)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	attributesJSON := fmt.Sprintf(`{"source_id":%q,"user_id":%q,"email":"alice@example.com"}`, sourceID, userID)
+	if _, err := store.db.ExecContext(ctx, `
+        INSERT INTO findings (
+            id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
+            attributes_json, first_observed_at, last_observed_at
+        )
+        VALUES (
+            $1, $2, $3, $4, $5, 'Legacy identity', 'HIGH', 'open', 'summary',
+            $6::jsonb, $7, $7
+        )`,
+		legacyID, oldFingerprint, tenantID, runtimeID, ruleID, attributesJSON, now.Add(-time.Hour)); err != nil {
+		t.Fatalf("insert legacy identity row: %v", err)
+	}
+
+	store.schemaMu.Lock()
+	store.findingTablesReady = false
+	store.schemaMu.Unlock()
+	ensureTombstoneSchema(t, ctx, store)
+
+	var gotFingerprint string
+	if err := store.db.QueryRowContext(ctx, `SELECT fingerprint FROM findings WHERE id = $1`, legacyID).Scan(&gotFingerprint); err != nil {
+		t.Fatalf("reload backfilled identity row: %v", err)
+	}
+	if gotFingerprint != wantFingerprint {
+		t.Fatalf("backfilled identity fingerprint = %q, want fingerprint built from user_urn %q (%q)", gotFingerprint, wantUserURN, wantFingerprint)
+	}
+
+	stored, err := store.UpsertFinding(ctx, &ports.FindingRecord{
+		ID:              runtimeEmitID,
+		Fingerprint:     wantFingerprint,
+		TenantID:        tenantID,
+		RuntimeID:       runtimeIDAfterBackfill,
+		RuleID:          ruleID,
+		Title:           "Runtime identity",
+		Severity:        "HIGH",
+		Status:          "open",
+		Summary:         "runtime finding should reuse the backfilled row",
+		ResourceURNs:    []string{wantUserURN},
+		Attributes:      map[string]string{"source_id": sourceID, "user_id": userID, "user_urn": wantUserURN},
+		FirstObservedAt: now,
+		LastObservedAt:  now,
+	})
+	if err != nil {
+		t.Fatalf("upsert runtime identity finding after backfill: %v", err)
+	}
+	if stored.ID != legacyID {
+		t.Fatalf("upsert reused id %q, want legacy row id %q", stored.ID, legacyID)
+	}
+
+	var activeRows int
+	if err := store.db.QueryRowContext(ctx, `
+        SELECT count(*)
+        FROM findings
+        WHERE tenant_id = $1 AND rule_id = $2 AND tombstoned = FALSE`,
+		tenantID, ruleID).Scan(&activeRows); err != nil {
+		t.Fatalf("count active identity rows: %v", err)
+	}
+	if activeRows != 1 {
+		t.Fatalf("active identity rows after runtime upsert = %d, want 1 (no duplicate insert)", activeRows)
+	}
+}
+
+func TestTenantScopedBackfillIdentityUserURN_MatchesIdentityProjectionURNFormat(t *testing.T) {
+	tenantID := "example-identity-backfill-format"
+	sourceID := "okta"
+	userID := "00u-format-regression"
+	got := tenantScopedBackfillIdentityUserURN(tenantID, map[string]string{
+		"source_id": sourceID,
+		"user_id":   userID,
+	})
+	want := testIdentityProjectionURN(tenantID, sourceID+"_user", userID)
+	if got != want {
+		t.Fatalf("tenantScopedBackfillIdentityUserURN() = %q, want %q", got, want)
+	}
+}
+
+func testFindingFingerprint(parts ...string) string {
+	hash := sha256.New()
+	for _, part := range parts {
+		_, _ = hash.Write([]byte(strings.TrimSpace(part)))
+		_, _ = hash.Write([]byte{0})
+	}
+	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func testIdentityProjectionURN(tenantID string, kind string, parts ...string) string {
+	values := []string{"urn", "cerebro", strings.TrimSpace(tenantID), strings.TrimSpace(kind)}
+	for _, part := range parts {
+		value := strings.TrimSpace(part)
+		if value == "" {
+			continue
+		}
+		values = append(values, value)
+	}
+	return strings.Join(values, ":")
+}
+
 func TestCloseoutRunSingleton_RejectsConcurrent(t *testing.T) {
 	ctx := context.Background()
 	store := tombstoneStoreFromEnv(t)
@@ -515,6 +701,184 @@ func TestCloseoutRunSingleton_RejectsConcurrent(t *testing.T) {
 	}
 	if err := insertRunning("run-after"); err != nil {
 		t.Fatalf("new running insert after first finished should succeed, got: %v", err)
+	}
+}
+
+func TestTombstoneFinding_CommitsBeforeWorkflowEmit(t *testing.T) {
+	ctx := context.Background()
+	store := tombstoneStoreFromEnv(t)
+	ensureTombstoneSchema(t, ctx, store)
+
+	nonce := time.Now().UTC().UnixNano()
+	tenantID := fmt.Sprintf("example-commit-before-emit-%d", nonce)
+	runtimeID := fmt.Sprintf("runtime-commit-before-emit-%d", nonce)
+	ruleID := "rule-critical-resource-deleted"
+	findingID := fmt.Sprintf("finding-commit-before-emit-%d", nonce)
+	fingerprint := fmt.Sprintf("fp-commit-before-emit-%d", nonce)
+	runID := fmt.Sprintf("run-commit-before-emit-%d", nonce)
+	anchorURI := fmt.Sprintf("urn:cerebro:%s:github_repo:writer/cerebro-%d", tenantID, nonce)
+	cleanup := func() {
+		bg := context.Background()
+		_, _ = store.db.ExecContext(bg, `DELETE FROM finding_tombstone_events WHERE run_id = $1`, runID)
+		_, _ = store.db.ExecContext(bg, `DELETE FROM findings WHERE tenant_id = $1`, tenantID)
+	}
+	cleanup()
+	t.Cleanup(cleanup)
+
+	observedAt := time.Now().UTC().Add(-48 * time.Hour).Truncate(time.Microsecond)
+	if _, err := store.UpsertFinding(ctx, &ports.FindingRecord{
+		ID:              findingID,
+		Fingerprint:     fingerprint,
+		TenantID:        tenantID,
+		RuntimeID:       runtimeID,
+		RuleID:          ruleID,
+		Title:           "Commit-before-emit regression",
+		Severity:        "MEDIUM",
+		Status:          "open",
+		Summary:         "finding used for tombstone commit-before-emit regression",
+		ResourceURNs:    []string{anchorURI},
+		EventIDs:        []string{fmt.Sprintf("event-%d", nonce)},
+		FirstObservedAt: observedAt.Add(-24 * time.Hour),
+		LastObservedAt:  observedAt,
+	}); err != nil {
+		t.Fatalf("seed finding %q: %v", findingID, err)
+	}
+
+	installDeferredTombstoneCommitFailure(t, ctx, store, runID)
+
+	emitted := 0
+	result, err := store.TombstoneFindingAtomic(ctx, ports.FindingTombstoneAtomicRequest{
+		FindingID:      findingID,
+		ExpectedStatus: "open",
+		Status:         "resolved",
+		Reason:         "bulk closeout: commit-before-emit regression",
+		Actor:          "operator@writer.com",
+		RunID:          runID,
+		AnchorURI:      anchorURI,
+		EventIDs:       []string{fmt.Sprintf("event-%d", nonce)},
+		UpdatedAt:      time.Now().UTC(),
+		EmitWorkflowEvent: func(context.Context, *ports.FindingRecord, string, time.Time) error {
+			emitted++
+			return nil
+		},
+	})
+	if err == nil {
+		t.Fatalf("TombstoneFindingAtomic returned nil error and result=%+v, want injected commit failure", result)
+	}
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "P0001" {
+		t.Fatalf("TombstoneFindingAtomic error = %v, want injected commit pg error P0001", err)
+	}
+	if emitted != 0 {
+		t.Fatalf("workflow tombstone events emitted before failed commit = %d, want 0", emitted)
+	}
+
+	var (
+		status          string
+		tombstoned      bool
+		tombstonedRunID string
+	)
+	if err := store.db.QueryRowContext(ctx, `
+SELECT status, tombstoned, tombstoned_run_id
+FROM findings
+WHERE id = $1`, findingID).Scan(&status, &tombstoned, &tombstonedRunID); err != nil {
+		t.Fatalf("read finding after failed commit: %v", err)
+	}
+	if status != "open" {
+		t.Fatalf("status after failed commit = %q, want open", status)
+	}
+	if tombstoned {
+		t.Fatalf("tombstoned after failed commit = true, want false")
+	}
+	if tombstonedRunID != "" {
+		t.Fatalf("tombstoned_run_id after failed commit = %q, want empty", tombstonedRunID)
+	}
+	var auditRows int
+	if err := store.db.QueryRowContext(ctx, `SELECT count(*) FROM finding_tombstone_events WHERE run_id = $1`, runID).Scan(&auditRows); err != nil {
+		t.Fatalf("count audit rows after failed commit: %v", err)
+	}
+	if auditRows != 0 {
+		t.Fatalf("audit rows after failed commit = %d, want 0", auditRows)
+	}
+}
+
+func installDeferredTombstoneCommitFailure(t *testing.T, ctx context.Context, store *Store, runID string) {
+	t.Helper()
+	nonce := time.Now().UTC().UnixNano()
+	functionName := fmt.Sprintf("test_tombstone_commit_fail_fn_%d", nonce)
+	triggerName := fmt.Sprintf("test_tombstone_commit_fail_trg_%d", nonce)
+	runLiteral := strings.ReplaceAll(runID, "'", "''")
+
+	if _, err := store.db.ExecContext(ctx, fmt.Sprintf(`
+CREATE FUNCTION %s() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'injected tombstone commit failure for run_id %s' USING ERRCODE = 'P0001';
+END;
+$$`, functionName, runLiteral)); err != nil {
+		t.Fatalf("create deferred commit failure function: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = store.db.ExecContext(context.Background(), fmt.Sprintf(`DROP FUNCTION IF EXISTS %s()`, functionName))
+	})
+
+	if _, err := store.db.ExecContext(ctx, fmt.Sprintf(`
+CREATE CONSTRAINT TRIGGER %s
+AFTER INSERT ON finding_tombstone_events
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW
+WHEN (NEW.run_id = '%s')
+EXECUTE FUNCTION %s()`, triggerName, runLiteral, functionName)); err != nil {
+		t.Fatalf("create deferred commit failure trigger: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = store.db.ExecContext(context.Background(), fmt.Sprintf(`DROP TRIGGER IF EXISTS %s ON finding_tombstone_events`, triggerName))
+	})
+}
+
+func TestUpdateCloseoutRunSummary_PersistsS3KeyOnFailure(t *testing.T) {
+	ctx := context.Background()
+	store := tombstoneStoreFromEnv(t)
+	resetTombstoneSchema(t, ctx, store)
+	ensureTombstoneSchema(t, ctx, store)
+
+	runID := fmt.Sprintf("run-summary-fail-%d", time.Now().UnixNano())
+	if err := store.InsertCloseoutRun(ctx, ports.CloseoutRunInsert{
+		RunID:        runID,
+		Actor:        "operator@example.com",
+		SelectorJSON: []byte(`{"rule_ids":["rule-alpha"]}`),
+		DryRun:       false,
+		StartedAt:    time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("InsertCloseoutRun: %v", err)
+	}
+	if err := store.FinishCloseoutRun(ctx, ports.CloseoutRunFinish{
+		RunID:         runID,
+		Status:        "succeeded",
+		ProposedCount: 1,
+		AppliedCount:  1,
+		FinishedAt:    time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("FinishCloseoutRun: %v", err)
+	}
+
+	summaryKey := "closeout/" + runID + ".json"
+	const summaryErrMessage = "injected summary upload failure"
+	summaryErr := errors.New(summaryErrMessage)
+	if err := store.UpdateCloseoutRunSummary(ctx, runID, summaryKey, summaryErr); err != nil {
+		t.Fatalf("UpdateCloseoutRunSummary: %v", err)
+	}
+	run, err := store.GetCloseoutRun(ctx, runID)
+	if err != nil {
+		t.Fatalf("GetCloseoutRun: %v", err)
+	}
+	if run.Status != "failed" {
+		t.Fatalf("status = %q, want failed", run.Status)
+	}
+	if !strings.Contains(run.ErrorMessage, summaryErrMessage) {
+		t.Fatalf("error_message = %q, want it to contain %q", run.ErrorMessage, summaryErrMessage)
+	}
+	if run.S3SummaryKey != summaryKey {
+		t.Fatalf("s3_summary_key = %q, want %q", run.S3SummaryKey, summaryKey)
 	}
 }
 

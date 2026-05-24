@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -22,6 +23,10 @@ const (
 	// run-row layer and the GitHub Actions concurrency layer; the 1h cutoff makes
 	// the lock self-healing without manual SQL intervention.
 	closeoutStaleRunCutoff = time.Hour
+	// closeoutHeartbeatInterval is intentionally below closeoutStaleRunCutoff/3
+	// so long-running apply batches refresh closeout_run before a second
+	// invocation can mistake them for abandoned work.
+	closeoutHeartbeatInterval = closeoutStaleRunCutoff / 4
 )
 
 // ErrCloseoutAnotherRunning indicates that a concurrent closeout run was rejected.
@@ -32,6 +37,38 @@ var ErrCloseoutInvalidRequest = errors.New("invalid closeout request")
 
 // ErrCloseoutUnavailable indicates that the bulk tombstone primitive is missing a dependency.
 var ErrCloseoutUnavailable = errors.New("closeout primitive is unavailable")
+
+// ErrCloseoutRunFailed indicates that a duplicate run_id resolved to a previously failed closeout_run.
+var ErrCloseoutRunFailed = errors.New("closeout run failed")
+
+// CloseoutRunFailedError preserves the failed closeout_run metadata returned
+// when an idempotency retry reloads a run whose persisted status is "failed".
+type CloseoutRunFailedError struct {
+	RunID        string
+	ErrorMessage string
+}
+
+func (e *CloseoutRunFailedError) Error() string {
+	if e == nil {
+		return ErrCloseoutRunFailed.Error()
+	}
+	runID := strings.TrimSpace(e.RunID)
+	errorMessage := strings.TrimSpace(e.ErrorMessage)
+	switch {
+	case runID != "" && errorMessage != "":
+		return fmt.Sprintf("%s: run_id %q: %s", ErrCloseoutRunFailed, runID, errorMessage)
+	case runID != "":
+		return fmt.Sprintf("%s: run_id %q", ErrCloseoutRunFailed, runID)
+	case errorMessage != "":
+		return fmt.Sprintf("%s: %s", ErrCloseoutRunFailed, errorMessage)
+	default:
+		return ErrCloseoutRunFailed.Error()
+	}
+}
+
+func (e *CloseoutRunFailedError) Unwrap() error {
+	return ErrCloseoutRunFailed
+}
 
 // CloseoutSelector scopes one bulk tombstone candidate resolution.
 //
@@ -79,9 +116,11 @@ type CloseoutRequest struct {
 
 // CloseoutResult reports the observable outcome of one TombstoneFindingsBulk invocation.
 //
-// AppliedCount reflects committed candidates only: when a batch fails mid-way
-// the value is the number of rows successfully tombstoned in earlier batches.
-// PerRule mirrors that by counting only candidates that were actually written.
+// For a newly executed run, AppliedCount reflects committed candidates only:
+// when a batch fails mid-way the value is the number of rows successfully
+// tombstoned in earlier batches. For a duplicate run_id, the result is reloaded
+// from the persisted closeout_run row and the counts reflect that prior run.
+// PerRule mirrors committed candidates for newly executed runs.
 type CloseoutResult struct {
 	RunID         string
 	Proposed      []*ports.FindingRecord
@@ -90,6 +129,126 @@ type CloseoutResult struct {
 	BatchSizes    []int
 	BatchErrors   []error
 	PerRule       []CloseoutPerRuleCount
+	// S3SummaryKey is populated when a caller reloads an existing closeout_run
+	// row so the CLI can report the persisted audit object without overwriting it.
+	S3SummaryKey string
+}
+
+func (s *Service) closeoutResultFromRunRecord(ctx context.Context, run *ports.CloseoutRunRecord) (*CloseoutResult, error) {
+	if run == nil {
+		return &CloseoutResult{}, nil
+	}
+	result := &CloseoutResult{
+		RunID:         strings.TrimSpace(run.RunID),
+		ProposedCount: run.ProposedCount,
+		AppliedCount:  run.AppliedCount,
+		S3SummaryKey:  strings.TrimSpace(run.S3SummaryKey),
+	}
+	var failedErr error
+	if strings.TrimSpace(run.Status) == "failed" {
+		errorMessage := strings.TrimSpace(run.ErrorMessage)
+		failedErr = &CloseoutRunFailedError{
+			RunID:        result.RunID,
+			ErrorMessage: errorMessage,
+		}
+		if errorMessage != "" {
+			result.BatchErrors = append(result.BatchErrors, failedErr)
+		}
+	}
+	if run.AppliedCount <= 0 || s == nil || s.store == nil {
+		return result, failedErr
+	}
+	proposed, perRule, err := s.reloadCloseoutAppliedFindings(ctx, run)
+	if err != nil {
+		if failedErr != nil {
+			return result, errors.Join(failedErr, err)
+		}
+		return nil, err
+	}
+	result.Proposed = proposed
+	result.PerRule = perRule
+	return result, failedErr
+}
+
+func (s *Service) closeoutHeartbeatEvery() time.Duration {
+	if s != nil && s.closeoutHeartbeatInterval > 0 {
+		return s.closeoutHeartbeatInterval
+	}
+	return closeoutHeartbeatInterval
+}
+
+func (s *Service) startCloseoutRunHeartbeat(ctx context.Context, runID string) func() {
+	if s == nil || s.closeoutStore == nil || strings.TrimSpace(runID) == "" {
+		return func() {}
+	}
+	interval := s.closeoutHeartbeatEvery()
+	if interval <= 0 {
+		return func() {}
+	}
+	heartbeatCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				_ = s.closeoutStore.RefreshCloseoutRunHeartbeat(heartbeatCtx, runID, time.Now().UTC())
+			case <-heartbeatCtx.Done():
+				return
+			}
+		}
+	}()
+	return func() {
+		cancel()
+		<-done
+	}
+}
+
+func (s *Service) reloadCloseoutAppliedFindings(ctx context.Context, run *ports.CloseoutRunRecord) ([]*ports.FindingRecord, []CloseoutPerRuleCount, error) {
+	if run == nil {
+		return nil, nil, nil
+	}
+	var selector CloseoutSelector
+	if len(run.SelectorJSON) > 0 {
+		if err := json.Unmarshal(run.SelectorJSON, &selector); err != nil {
+			return nil, nil, fmt.Errorf("decode closeout_run %q selector_json: %w", strings.TrimSpace(run.RunID), err)
+		}
+	}
+	selector = resolveCloseoutSelector(selector)
+	if selector.TenantID == "" || len(selector.RuleIDs) == 0 {
+		return nil, nil, nil
+	}
+	counts := map[string]int{}
+	seen := map[string]struct{}{}
+	var proposed []*ports.FindingRecord
+	for _, ruleID := range expandCloseoutRuleIDs(selector) {
+		records, err := s.store.ListFindings(ctx, ports.ListFindingsRequest{
+			TenantID: selector.TenantID,
+			RuleID:   ruleID,
+			Status:   findingStatusResolved,
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("reload applied closeout findings for rule %q: %w", ruleID, err)
+		}
+		for _, record := range records {
+			if record == nil || !record.Tombstoned || strings.TrimSpace(record.TombstonedRunID) != strings.TrimSpace(run.RunID) {
+				continue
+			}
+			id := strings.TrimSpace(record.ID)
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			proposed = append(proposed, record)
+			counts[strings.TrimSpace(record.RuleID)]++
+		}
+	}
+	sort.SliceStable(proposed, func(i, j int) bool {
+		return strings.TrimSpace(proposed[i].ID) < strings.TrimSpace(proposed[j].ID)
+	})
+	return proposed, sortPerRuleApplied(counts), nil
 }
 
 // TombstoneFindingsBulk runs the bulk tombstone primitive end to end:
@@ -103,7 +262,7 @@ type CloseoutResult struct {
 //   - flips closeout_run to succeeded/failed with finished_at + error_message on every
 //     exit path (success, batch error, ctx cancel/timeout, panic),
 //   - fails fast when another run is in flight (singleton partial unique index),
-//   - is idempotent on RunID (duplicate run_id returns AppliedCount=0 without mutation),
+//   - is idempotent on RunID (duplicate run_id reloads the persisted run without mutation),
 //   - batches per MaxBatchSize.
 //
 // The persisted selector_json captures the resolved selector (after defaults applied) so
@@ -131,8 +290,8 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 	if strings.TrimSpace(selector.TenantID) == "" {
 		return nil, fmt.Errorf("%w: tenant id is required", ErrCloseoutInvalidRequest)
 	}
-	if len(selector.RuleIDs) == 0 && len(selector.Sources) == 0 {
-		return nil, fmt.Errorf("%w: at least one rule id or source is required", ErrCloseoutInvalidRequest)
+	if len(selector.RuleIDs) == 0 {
+		return nil, fmt.Errorf("%w: at least one rule id is required", ErrCloseoutInvalidRequest)
 	}
 	batchSize := req.MaxBatchSize
 	if batchSize <= 0 {
@@ -152,6 +311,7 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 		SelectorJSON: selectorJSON,
 		DryRun:       req.DryRun,
 		StartedAt:    startedAt,
+		HeartbeatAt:  startedAt,
 	}
 	insertErr := s.closeoutStore.InsertCloseoutRun(ctx, insertRow)
 	if insertErr != nil && errors.Is(insertErr, ports.ErrCloseoutRunInFlight) {
@@ -166,7 +326,11 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 			return nil, fmt.Errorf("%w: %s", ErrCloseoutAnotherRunning, insertErr.Error())
 		}
 		if errors.Is(insertErr, ports.ErrCloseoutRunAlreadyExists) {
-			return &CloseoutResult{RunID: runID, AppliedCount: 0}, nil
+			existing, getErr := s.closeoutStore.GetCloseoutRun(context.WithoutCancel(ctx), runID)
+			if getErr != nil {
+				return nil, fmt.Errorf("load existing closeout_run %q: %w", runID, getErr)
+			}
+			return s.closeoutResultFromRunRecord(context.WithoutCancel(ctx), existing)
 		}
 		return nil, fmt.Errorf("insert closeout_run %q: %w", runID, insertErr)
 	}
@@ -189,6 +353,10 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 			err = fmt.Errorf("closeout panicked: %v", rec)
 		}
 	}()
+	if !req.DryRun {
+		stopHeartbeat := s.startCloseoutRunHeartbeat(ctx, runID)
+		defer stopHeartbeat()
+	}
 
 	proposed, listErr := s.listCloseoutCandidates(ctx, selector)
 	if listErr != nil {
@@ -237,15 +405,18 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 			return result, cerr
 		}
 		for _, candidate := range batch {
-			if applyErr := s.tombstoneOneFinding(ctx, candidate, runID, actor, reason); applyErr != nil {
+			appliedCandidate, applyErr := s.tombstoneOneFinding(ctx, candidate, runID, actor, reason)
+			if appliedCandidate {
+				applied++
+				perRuleApplied[strings.TrimSpace(candidate.RuleID)]++
+			}
+			if applyErr != nil {
 				result.BatchErrors = append(result.BatchErrors, applyErr)
 				result.PerRule = sortPerRuleApplied(perRuleApplied)
 				finishBackground("failed", applyErr.Error(), applied)
 				result.AppliedCount = applied
 				return result, applyErr
 			}
-			applied++
-			perRuleApplied[strings.TrimSpace(candidate.RuleID)]++
 		}
 	}
 	result.AppliedCount = applied
@@ -263,19 +434,48 @@ func (s *Service) TombstoneFindingsBulk(ctx context.Context, req CloseoutRequest
 	return result, nil
 }
 
-func (s *Service) tombstoneOneFinding(ctx context.Context, finding *ports.FindingRecord, runID, actor, reason string) error {
+func (s *Service) tombstoneOneFinding(ctx context.Context, finding *ports.FindingRecord, runID, actor, reason string) (bool, error) {
 	if finding == nil {
-		return errors.New("finding is required")
+		return false, errors.New("finding is required")
 	}
 	findingID := strings.TrimSpace(finding.ID)
 	if findingID == "" {
-		return errors.New("finding id is required")
+		return false, errors.New("finding id is required")
 	}
-	priorStatus := strings.TrimSpace(finding.Status)
-	if priorStatus == "" {
-		priorStatus = findingStatusOpen
+	expectedStatus := normalizedFindingStatus(finding.Status)
+	if atomicStore, ok := s.store.(ports.FindingTombstoneAtomicStore); ok {
+		now := time.Now().UTC()
+		atomicResult, err := atomicStore.TombstoneFindingAtomic(ctx, ports.FindingTombstoneAtomicRequest{
+			FindingID:      findingID,
+			ExpectedStatus: expectedStatus,
+			Status:         findingStatusResolved,
+			Reason:         reason,
+			Actor:          actor,
+			RunID:          runID,
+			AnchorURI:      findingTombstoneAnchorURI(finding),
+			EventIDs:       append([]string(nil), finding.EventIDs...),
+			UpdatedAt:      now,
+			EmitWorkflowEvent: func(ctx context.Context, updated *ports.FindingRecord, priorStatus string, tombstonedAt time.Time) error {
+				return s.emitFindingTombstonedWorkflow(ctx, updated, priorStatus, reason, actor, runID, tombstonedAt)
+			},
+		})
+		if err != nil {
+			return atomicResult != nil && atomicResult.Applied, fmt.Errorf("tombstone finding %q: %w", findingID, err)
+		}
+		return atomicResult != nil && atomicResult.Applied, nil
 	}
-	anchorURI := findingTombstoneAnchorURI(finding)
+	live, err := s.store.GetFinding(ctx, findingID)
+	if err != nil {
+		return false, fmt.Errorf("reload finding %q before tombstone: %w", findingID, err)
+	}
+	if live == nil || live.Tombstoned {
+		return false, nil
+	}
+	priorStatus := normalizedFindingStatus(live.Status)
+	if expectedStatus != "" && priorStatus != expectedStatus {
+		return false, nil
+	}
+	anchorURI := findingTombstoneAnchorURI(live)
 	now := time.Now().UTC()
 	updated, err := s.updateFindingStatusAndRisk(ctx, ports.FindingStatusUpdate{
 		FindingID: findingID,
@@ -291,12 +491,12 @@ func (s *Service) tombstoneOneFinding(ctx context.Context, finding *ports.Findin
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("tombstone finding %q: %w", findingID, err)
+		return false, fmt.Errorf("tombstone finding %q: %w", findingID, err)
 	}
 	if err := s.tombstoneEventStore.InsertFindingTombstoneEvent(ctx, ports.FindingTombstoneEvent{
 		FindingID:    findingID,
-		TenantID:     strings.TrimSpace(finding.TenantID),
-		RuleID:       strings.TrimSpace(finding.RuleID),
+		TenantID:     strings.TrimSpace(live.TenantID),
+		RuleID:       strings.TrimSpace(live.RuleID),
 		AnchorURI:    anchorURI,
 		PriorStatus:  priorStatus,
 		Reason:       reason,
@@ -304,8 +504,19 @@ func (s *Service) tombstoneOneFinding(ctx context.Context, finding *ports.Findin
 		RunID:        runID,
 		TombstonedAt: now,
 	}); err != nil {
-		return fmt.Errorf("audit finding %q tombstone: %w", findingID, err)
+		return false, fmt.Errorf("audit finding %q tombstone: %w", findingID, err)
 	}
+	if err := s.emitFindingTombstonedWorkflow(ctx, updated, priorStatus, reason, actor, runID, now); err != nil {
+		return true, err
+	}
+	return true, nil
+}
+
+func (s *Service) emitFindingTombstonedWorkflow(ctx context.Context, updated *ports.FindingRecord, priorStatus, reason, actor, runID string, tombstonedAt time.Time) error {
+	if updated == nil {
+		return errors.New("updated finding is required")
+	}
+	findingID := strings.TrimSpace(updated.ID)
 	tenantID, sourceID := findingGraphScope(updated)
 	snapshot := findingWorkflowSnapshot(updated, tenantID, sourceID)
 	event, err := workflowevents.NewFindingTombstonedEvent(workflowevents.FindingTombstoned{
@@ -314,7 +525,7 @@ func (s *Service) tombstoneOneFinding(ctx context.Context, finding *ports.Findin
 		Reason:       reason,
 		Actor:        actor,
 		RunID:        runID,
-		TombstonedAt: now.Format(time.RFC3339Nano),
+		TombstonedAt: tombstonedAt.UTC().Format(time.RFC3339Nano),
 	})
 	if err != nil {
 		return fmt.Errorf("build finding tombstoned event for %q: %w", findingID, err)
@@ -325,8 +536,24 @@ func (s *Service) tombstoneOneFinding(ctx context.Context, finding *ports.Findin
 	return nil
 }
 
+func normalizedFindingStatus(status string) string {
+	trimmed := strings.TrimSpace(status)
+	if trimmed == "" {
+		return findingStatusOpen
+	}
+	return trimmed
+}
+
 func (s *Service) listCloseoutCandidates(ctx context.Context, selector CloseoutSelector) ([]*ports.FindingRecord, error) {
 	ruleIDs := expandCloseoutRuleIDs(selector)
+	var anchorMatcher *regexp.Regexp
+	if pattern := strings.TrimSpace(selector.AnchorURIRegex); pattern != "" {
+		compiled, err := regexp.Compile(pattern)
+		if err != nil {
+			return nil, fmt.Errorf("compile anchor_uri_regex %q: %w", pattern, err)
+		}
+		anchorMatcher = compiled
+	}
 	seen := map[string]struct{}{}
 	var out []*ports.FindingRecord
 	cutoff := time.Time{}
@@ -355,6 +582,9 @@ func (s *Service) listCloseoutCandidates(ctx context.Context, selector CloseoutS
 					continue
 				}
 				if !cutoff.IsZero() && finding.LastObservedAt.After(cutoff) {
+					continue
+				}
+				if anchorMatcher != nil && !anchorMatcher.MatchString(findingTombstoneAnchorURI(finding)) {
 					continue
 				}
 				seen[key] = struct{}{}
@@ -396,23 +626,19 @@ func expandCloseoutRuleIDs(selector CloseoutSelector) []string {
 	if len(sourceSet) == 0 {
 		return ordered
 	}
-	matched := []string{}
-	for ruleID, sourceID := range BuiltinRuleSourceIDs() {
+	sourceIDs := BuiltinRuleSourceIDs()
+	narrowed := make([]string, 0, len(ordered))
+	for _, ruleID := range ordered {
+		sourceID, ok := sourceIDs[ruleID]
+		if !ok {
+			continue
+		}
 		if _, ok := sourceSet[strings.TrimSpace(sourceID)]; !ok {
 			continue
 		}
-		trimmed := strings.TrimSpace(ruleID)
-		if trimmed == "" {
-			continue
-		}
-		if _, exists := seen[trimmed]; exists {
-			continue
-		}
-		seen[trimmed] = struct{}{}
-		matched = append(matched, trimmed)
+		narrowed = append(narrowed, ruleID)
 	}
-	sort.Strings(matched)
-	return append(ordered, matched...)
+	return narrowed
 }
 
 func resolveCloseoutSelector(in CloseoutSelector) CloseoutSelector {
@@ -453,6 +679,7 @@ func resolveCloseoutSelector(in CloseoutSelector) CloseoutSelector {
 		}
 		out.Sources = sources
 	}
+	out.AnchorURIRegex = strings.TrimSpace(out.AnchorURIRegex)
 	return out
 }
 

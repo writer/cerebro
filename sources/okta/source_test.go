@@ -534,7 +534,7 @@ func TestReadLiveOktaUserPreviewPopulatesMFAFactorAttributes(t *testing.T) {
 				body:   mustOktaTestdata(t, "factors_multi.json"),
 			}},
 			wantEnrolled: "true",
-			wantCount:    "3",
+			wantCount:    "4",
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -548,6 +548,21 @@ func TestReadLiveOktaUserPreviewPopulatesMFAFactorAttributes(t *testing.T) {
 				t.Fatalf("factor request count = %d, want 1", requestCount)
 			}
 		})
+	}
+}
+
+func TestOktaMFAEnrollmentFactorKinds_IncludesTokenHardware(t *testing.T) {
+	requestCount := 0
+	server := httptest.NewServer(newOktaUserFactorAPIHandler(t, "00u-hardware-token", []oktaFactorTestResponse{{
+		status: http.StatusOK,
+		body:   mustOktaTestdata(t, "factors_multi.json"),
+	}}, &requestCount))
+	defer server.Close()
+
+	event := readSingleOktaUserEvent(t, server.URL)
+	assertOktaMFAAttributes(t, event.Attributes, "true", "4")
+	if requestCount != 1 {
+		t.Fatalf("factor request count = %d, want 1", requestCount)
 	}
 }
 
@@ -744,6 +759,137 @@ func TestCheckDiscoverAndReadLiveOktaPolicyRulePreview(t *testing.T) {
 	}
 	if third.NextCursor != nil {
 		t.Fatalf("third.NextCursor = %#v, want nil after all sign-on/access policy rules", third.NextCursor)
+	}
+}
+
+func TestPolicyRulePullFromEvents_TerminalPageCursorIsJSON(t *testing.T) {
+	requestCount := 0
+	handler := newOktaPolicyRuleAPIHandler(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		handler.ServeHTTP(w, r)
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"domain":   "writer.okta.com",
+		"family":   "policy_rule",
+		"per_page": "1",
+		"token":    "test-token",
+	})
+
+	var cursor *cerebrov1.SourceCursor
+	var terminal sourcecdk.Pull
+	for page := 0; page < 10; page++ {
+		pull, err := source.Read(context.Background(), cfg, cursor)
+		if err != nil {
+			t.Fatalf("Read(policy_rule page %d) error = %v", page+1, err)
+		}
+		if len(pull.Events) == 0 {
+			t.Fatalf("Read(policy_rule page %d) emitted no events before terminal cursor", page+1)
+		}
+		if pull.Checkpoint == nil {
+			t.Fatalf("Read(policy_rule page %d) Checkpoint = nil, want persisted cursor checkpoint", page+1)
+		}
+		assertPolicyRuleCursorResumable(t, pull.Checkpoint.GetCursorOpaque())
+		if pull.NextCursor == nil {
+			terminal = pull
+			break
+		}
+		assertPolicyRuleCursorResumable(t, pull.NextCursor.GetOpaque())
+		cursor = pull.NextCursor
+	}
+	if terminal.Checkpoint == nil {
+		t.Fatalf("terminal Checkpoint = nil; last cursor = %#v", cursor)
+	}
+	terminalOpaque := terminal.Checkpoint.GetCursorOpaque()
+	if !json.Valid([]byte(terminalOpaque)) {
+		t.Fatalf("terminal checkpoint cursor = %q, want JSON policyRuleCursor", terminalOpaque)
+	}
+	assertPolicyRuleCursorResumable(t, terminalOpaque)
+	state, err := parsePolicyRuleCursor(&cerebrov1.SourceCursor{Opaque: terminalOpaque})
+	if err != nil {
+		t.Fatalf("parsePolicyRuleCursor(terminal checkpoint) error = %v", err)
+	}
+	if state.PolicyTypeIndex != len(policyRulePolicyTypes) || state.Policy != nil || state.PolicyAfter != "" || state.RuleAfter != "" {
+		t.Fatalf("terminal policy-rule cursor = %#v, want exhausted cursor", state)
+	}
+
+	requestsBeforeResume := requestCount
+	resume, err := source.Read(context.Background(), cfg, &cerebrov1.SourceCursor{Opaque: terminalOpaque})
+	if err != nil {
+		t.Fatalf("Read(policy_rule resume from terminal checkpoint) error = %v", err)
+	}
+	if requestCount != requestsBeforeResume {
+		t.Fatalf("resume from terminal checkpoint made %d HTTP requests, want 0", requestCount-requestsBeforeResume)
+	}
+	if len(resume.Events) != 0 {
+		t.Fatalf("len(resume.Events) = %d, want 0 after terminal checkpoint", len(resume.Events))
+	}
+	if resume.NextCursor != nil {
+		t.Fatalf("resume.NextCursor = %#v, want nil", resume.NextCursor)
+	}
+}
+
+func assertPolicyRuleCursorResumable(t *testing.T, opaque string) {
+	t.Helper()
+	var payload struct {
+		ResumableCheckpoint bool `json:"resumable_checkpoint"`
+	}
+	if err := json.Unmarshal([]byte(opaque), &payload); err != nil {
+		t.Fatalf("unmarshal policy_rule cursor resumable marker from %q: %v", opaque, err)
+	}
+	if !payload.ResumableCheckpoint {
+		t.Fatalf("policy_rule cursor %q has resumable_checkpoint=false, want true", opaque)
+	}
+}
+
+func TestPolicyRule_DeletedPermanentlySynthesizedOrCoverageDropped(t *testing.T) {
+	server := httptest.NewServer(newOktaPolicyRuleAPIHandler(t))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"domain":   "writer.okta.com",
+		"family":   "policy_rule",
+		"per_page": "1",
+		"token":    "test-token",
+	})
+
+	var cursor *cerebrov1.SourceCursor
+	seen := map[string]struct{}{}
+	for {
+		pull, err := source.Read(context.Background(), cfg, cursor)
+		if err != nil {
+			t.Fatalf("Read(policy_rule) error = %v", err)
+		}
+		for _, event := range pull.Events {
+			status := strings.TrimSpace(event.Attributes["status"])
+			if strings.EqualFold(status, "DELETED_PERMANENTLY") {
+				t.Fatalf("Read(policy_rule) emitted DELETED_PERMANENTLY status for %s; coverage should remain dropped until the source synthesizes vanished policies", event.Id)
+			}
+			seen[event.Attributes["policy_rule_id"]] = struct{}{}
+		}
+		if pull.NextCursor == nil {
+			break
+		}
+		cursor = pull.NextCursor
+	}
+	for _, want := range []string{"rul-sign-on-inactive", "rul-sign-on-active", "rul-access-inactive"} {
+		if _, ok := seen[want]; !ok {
+			t.Fatalf("Read(policy_rule) did not emit expected live/inactive rule %q; saw %v", want, seen)
+		}
 	}
 }
 

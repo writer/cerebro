@@ -1437,6 +1437,96 @@ func TestGitHubRepositoryCollaboratorAddedTrajectory(t *testing.T) {
 	}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
 }
 
+func TestGitHubAuditLifecycle_CloseOnRemoveCounterEvent(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		rule   Rule
+		events []Event
+	}{
+		{
+			name: "repository collaborator removed",
+			rule: newGitHubRepositoryCollaboratorAddedRule(),
+			events: []Event{
+				newGitHubAuditSignalEvent("github-lifecycle-collab-open", map[string]string{
+					"action":        "repo.add_member",
+					"repo":          "writer/cerebro",
+					"resource_type": "repo",
+					"user":          "external-vendor",
+				}),
+				newGitHubAuditSignalEvent("github-lifecycle-collab-remove", map[string]string{
+					"action":        "repo.remove_member",
+					"repo":          "writer/cerebro",
+					"resource_type": "repo",
+					"user":          "external-vendor",
+				}),
+			},
+		},
+		{
+			name: "organization owner removed",
+			rule: newGitHubOrganizationOwnerAddedRule(),
+			events: []Event{
+				newGitHubAuditSignalEvent("github-lifecycle-owner-open", map[string]string{
+					"action":     "org.add_member",
+					"org":        "writer",
+					"permission": "owner",
+					"user":       "new-owner",
+				}),
+				newGitHubAuditSignalEvent("github-lifecycle-owner-remove", map[string]string{
+					"action": "org.remove_member",
+					"org":    "writer",
+					"user":   "new-owner",
+				}),
+			},
+		},
+		{
+			name: "app integration deleted",
+			rule: newGitHubAppIntegrationInstalledRule(),
+			events: []Event{
+				newGitHubAuditSignalEvent("github-lifecycle-app-open", map[string]string{
+					"action":        "integration_installation.create",
+					"github_app_id": "123456",
+					"name":          "ci-deployer",
+					"org":           "writer",
+					"repo":          "writer/cerebro",
+				}),
+				newGitHubAuditSignalEvent("github-lifecycle-app-delete", map[string]string{
+					"action":        "integration_installation.delete",
+					"github_app_id": "123456",
+					"name":          "ci-deployer",
+					"org":           "writer",
+				}),
+			},
+		},
+		{
+			name: "personal access token revoked",
+			rule: newGitHubPersonalAccessTokenCreatedRule(),
+			events: []Event{
+				newGitHubAuditSignalEvent("github-lifecycle-pat-open", map[string]string{
+					"action":         "personal_access_token.access_granted",
+					"operation_type": "create",
+					"resource_id":    "octocat",
+					"resource_type":  "personal_access_token",
+					"token_id":       "555",
+					"user":           "octocat",
+					"user_id":        "12345",
+				}),
+				newGitHubAuditSignalEvent("github-lifecycle-pat-revoke", map[string]string{
+					"action":        "personal_access_token.access_revoked",
+					"resource_id":   "octocat",
+					"resource_type": "personal_access_token",
+					"token_id":      "555",
+					"user":          "octocat",
+					"user_id":       "12345",
+				}),
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assertGitHubAuditMirrorReplayClosed(t, tc.rule, tc.events)
+		})
+	}
+}
+
 func TestGitHubOrganizationOwnerAdded(t *testing.T) {
 	rule := newGitHubOrganizationOwnerAddedRule()
 	metadataRule, ok := rule.(MetadataRule)
@@ -1837,7 +1927,7 @@ func TestGitHubAppIntegrationInstalled_InstallUninstall(t *testing.T) {
 	if _, ok := rule.(CounterEventRule); !ok {
 		t.Fatal("github-app-integration-installed does not implement CounterEventRule")
 	}
-	for _, closeAction := range []string{"integration_installation.delete", "integration_installation.suspend"} {
+	for _, closeAction := range []string{"integration_installation.delete", "integration_installation.suspend", "integration_installation.destroy"} {
 		t.Run(closeAction, func(t *testing.T) {
 			assertGitHubRuleTrajectory(t, rule, []Event{
 				newGitHubAuditSignalEvent("github-app-install-trajectory-"+strings.TrimPrefix(closeAction, "integration_installation."), map[string]string{
@@ -1856,6 +1946,40 @@ func TestGitHubAppIntegrationInstalled_InstallUninstall(t *testing.T) {
 			}, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
 		})
 	}
+}
+
+func TestGitHubAppIntegrationCloseAnchor_HandlesDestroy(t *testing.T) {
+	rule := newGitHubAppIntegrationInstalledRule()
+	counterRule, ok := rule.(CounterEventRule)
+	if !ok {
+		t.Fatal("github-app-integration-installed does not implement CounterEventRule")
+	}
+	open := newGitHubAuditSignalEvent("github-app-destroy-open", map[string]string{
+		"action":        "integration_installation.create",
+		"github_app_id": "123456",
+		"name":          "ci-deployer",
+		"org":           "writer",
+		"repo":          "writer/cerebro",
+	})
+	close := newGitHubAuditSignalEvent("github-app-destroy-close", map[string]string{
+		"action":        "integration_installation.destroy",
+		"github_app_id": "123456",
+		"name":          "ci-deployer",
+		"org":           "writer",
+	})
+	records, err := rule.Evaluate(context.Background(), &cerebrov1.SourceRuntime{Id: "example-github-audit", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}}, open)
+	if err != nil || len(records) != 1 {
+		t.Fatalf("Evaluate(open) = (%v, %v), want one finding", records, err)
+	}
+	openAnchor := counterRule.OpenAnchor(records[0].Attributes)
+	if openAnchor == "" {
+		t.Fatalf("OpenAnchor(%v) = empty, want org/github_app_id anchor", records[0].Attributes)
+	}
+	closeAnchor, closes := counterRule.CloseOnEvent(close)
+	if !closes || closeAnchor != openAnchor {
+		t.Fatalf("CloseOnEvent(destroy) = (%q, %v), want (%q, true)", closeAnchor, closes, openAnchor)
+	}
+	assertGitHubAuditMirrorReplayClosed(t, rule, []Event{open, close})
 }
 
 func TestGitHubAppIntegrationInstalled_DistinctAppIdsByName(t *testing.T) {
@@ -2067,6 +2191,124 @@ func TestGitHubPersonalAccessTokenCreatedTrajectory_NewestEventWins(t *testing.T
 			closeEvent("github-pat-newest-wins-older-close-last", observedAt),
 		}, cerebrov1.FindingStatus_FINDING_STATUS_OPEN)
 	})
+}
+
+func TestGitHubAuditMirrors_ReplayClosesAddedThenRemoved(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		rule   Rule
+		events []Event
+	}{
+		{
+			name: "collaborator add remove",
+			rule: newGitHubRepositoryCollaboratorAddedRule(),
+			events: []Event{
+				newGitHubAuditSignalEvent("github-replay-collab-open-first", map[string]string{
+					"action":        "repo.add_member",
+					"repo":          "writer/cerebro",
+					"resource_type": "repo",
+					"user":          "external-vendor",
+				}),
+				newGitHubAuditSignalEvent("github-replay-collab-open-again", map[string]string{
+					"action":        "repo.add_member",
+					"repo":          "writer/cerebro",
+					"resource_type": "repo",
+					"user":          "external-vendor",
+				}),
+				newGitHubAuditSignalEvent("github-replay-collab-remove", map[string]string{
+					"action":        "member.removed",
+					"repo":          "writer/cerebro",
+					"resource_type": "repo",
+					"user":          "external-vendor",
+				}),
+			},
+		},
+		{
+			name: "owner add remove",
+			rule: newGitHubOrganizationOwnerAddedRule(),
+			events: []Event{
+				newGitHubAuditSignalEvent("github-replay-owner-open-first", map[string]string{
+					"action":     "org.add_member",
+					"org":        "writer",
+					"permission": "admin",
+					"user":       "new-owner",
+				}),
+				newGitHubAuditSignalEvent("github-replay-owner-open-again", map[string]string{
+					"action":     "org.add_member",
+					"org":        "writer",
+					"permission": "owner",
+					"user":       "new-owner",
+				}),
+				newGitHubAuditSignalEvent("github-replay-owner-remove", map[string]string{
+					"action": "organization.remove_member",
+					"org":    "writer",
+					"user":   "new-owner",
+				}),
+			},
+		},
+		{
+			name: "app create destroy",
+			rule: newGitHubAppIntegrationInstalledRule(),
+			events: []Event{
+				newGitHubAuditSignalEvent("github-replay-app-open-first", map[string]string{
+					"action":        "integration_installation.create",
+					"github_app_id": "123456",
+					"name":          "ci-deployer",
+					"org":           "writer",
+					"repo":          "writer/cerebro",
+				}),
+				newGitHubAuditSignalEvent("github-replay-app-open-again", map[string]string{
+					"action":        "integration_installation.create",
+					"github_app_id": "123456",
+					"name":          "ci-deployer",
+					"org":           "writer",
+					"repo":          "writer/other",
+				}),
+				newGitHubAuditSignalEvent("github-replay-app-destroy", map[string]string{
+					"action":        "integration_installation.destroy",
+					"github_app_id": "123456",
+					"name":          "ci-deployer",
+					"org":           "writer",
+				}),
+			},
+		},
+		{
+			name: "pat grant revoke",
+			rule: newGitHubPersonalAccessTokenCreatedRule(),
+			events: []Event{
+				newGitHubAuditSignalEvent("github-replay-pat-open-first", map[string]string{
+					"action":         "personal_access_token.access_granted",
+					"operation_type": "create",
+					"resource_id":    "octocat",
+					"resource_type":  "personal_access_token",
+					"token_id":       "555",
+					"user":           "octocat",
+					"user_id":        "12345",
+				}),
+				newGitHubAuditSignalEvent("github-replay-pat-open-again", map[string]string{
+					"action":         "personal_access_token.access_granted",
+					"operation_type": "create",
+					"resource_id":    "octocat",
+					"resource_type":  "personal_access_token",
+					"token_id":       "555",
+					"user":           "octocat",
+					"user_id":        "12345",
+				}),
+				newGitHubAuditSignalEvent("github-replay-pat-revoke", map[string]string{
+					"action":        "personal_access_token.access_revoked",
+					"resource_id":   "octocat",
+					"resource_type": "personal_access_token",
+					"token_id":      "555",
+					"user":          "octocat",
+					"user_id":       "12345",
+				}),
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assertGitHubAuditMirrorReplayClosed(t, tc.rule, tc.events)
+		})
+	}
 }
 
 func TestGitHubPrivateRepositoryForkingEnabled(t *testing.T) {
@@ -2283,5 +2525,80 @@ func removeGitHubAnchorTestAttr(attrs map[string]string, field string) {
 	}
 	for _, key := range []string{"enterprise", "enterprise_id", "enterprise_slug", "org", "repo", "repository", "resource_id", "runner_scope"} {
 		delete(attrs, key)
+	}
+}
+
+func assertGitHubAuditMirrorReplayClosed(t *testing.T, rule Rule, events []Event) {
+	t.Helper()
+	if rule == nil {
+		t.Fatal("rule is required")
+	}
+	spec := rule.Spec()
+	if spec == nil || strings.TrimSpace(spec.GetId()) == "" {
+		t.Fatal("rule must expose a non-empty RuleSpec.Id")
+	}
+	if len(events) == 0 {
+		t.Fatal("events are required")
+	}
+	ruleID := strings.TrimSpace(spec.GetId())
+	runtimeID := githubTrajectoryRuntimeID(events)
+	tenantID := githubTrajectoryTenantID(events)
+	family := githubTrajectoryFamily(events)
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry(%q) error = %v", ruleID, err)
+	}
+	store := &stubFindingStore{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			runtimeID: {Id: runtimeID, SourceId: "github", TenantId: tenantID, Config: map[string]string{"family": family}},
+		}},
+		&stubReplayer{events: events},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	).WithGraphStore(&stubGraphStore{}).WithAppendLog(&recordingAppendLog{})
+
+	result, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{
+		RuntimeID: runtimeID,
+		RuleIDs:   []string{ruleID},
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeRules(%q) error = %v", ruleID, err)
+	}
+	if result == nil || len(result.Evaluations) != 1 || result.Evaluations[0] == nil {
+		t.Fatalf("EvaluateSourceRuntimeRules(%q) result = %#v, want one evaluation", ruleID, result)
+	}
+	evaluation := result.Evaluations[0]
+	if len(evaluation.Findings) == 0 {
+		t.Fatalf("rule %q emitted no opening finding before the counter-event", ruleID)
+	}
+	for _, finding := range evaluation.Findings {
+		if finding == nil {
+			continue
+		}
+		if got := strings.TrimSpace(finding.Status); got == findingStatusOpen {
+			t.Fatalf("evaluation finding %q status = %q, want resolved snapshot after replay close", finding.ID, got)
+		}
+	}
+	persisted := githubTrajectoryPersistedFindings(store, ruleID, runtimeID)
+	if got := len(persisted); got != 1 {
+		t.Fatalf("persisted findings for rule %q = %d, want one closed row", ruleID, got)
+	}
+	if got := strings.TrimSpace(persisted[0].Status); got != findingStatusResolved {
+		t.Fatalf("persisted finding status = %q, want %q", got, findingStatusResolved)
+	}
+	openRows, err := store.ListFindings(context.Background(), ports.ListFindingsRequest{
+		TenantID: tenantID,
+		RuleID:   ruleID,
+		Status:   findingStatusOpen,
+	})
+	if err != nil {
+		t.Fatalf("ListFindings(open) error = %v", err)
+	}
+	if got := len(openRows); got != 0 {
+		t.Fatalf("open rows after replay for rule %q = %d, want 0: %#v", ruleID, got, openRows)
 	}
 }

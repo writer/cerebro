@@ -11,6 +11,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/workflowevents"
 )
 
 type fixedTTLClock struct {
@@ -164,6 +165,78 @@ func TestResolveTTLOpenFindings_ResolvesStale(t *testing.T) {
 		}
 		if f.StatusReason != "" {
 			t.Fatalf("fresh finding %q status_reason = %q, want empty", id, f.StatusReason)
+		}
+	}
+}
+
+func TestResolveTTLOpenFindings_EmitsStatusChangedWorkflowEvent(t *testing.T) {
+	fx := newTTLResolverFixture(t, LifecycleTTLEvidence, 24*time.Hour)
+	appendLog := &recordingAppendLog{}
+	fx.service.WithGraphStore(&stubGraphStore{}).WithAppendLog(appendLog)
+	fx.seedFinding("stale-event-1", findingStatusOpen, fx.now.Add(-48*time.Hour), nil)
+	fx.seedFinding("stale-event-2", findingStatusOpen, fx.now.Add(-30*time.Hour), nil)
+	fx.seedFinding("stale-event-3", findingStatusOpen, fx.now.Add(-25*time.Hour), nil)
+	fx.seedFinding("fresh-event", findingStatusOpen, fx.now.Add(-6*time.Hour), nil)
+
+	if err := fx.service.resolveTTLOpenFindings(context.Background(), fx.tenantID, fx.ruleID); err != nil {
+		t.Fatalf("resolveTTLOpenFindings: %v", err)
+	}
+
+	payloads := decodeStatusChangedPayloads(t, appendLog.events)
+	if got, want := len(payloads), 3; got != want {
+		t.Fatalf("status_changed event count = %d, want %d (events=%#v)", got, want, eventKinds(appendLog.events))
+	}
+	wantIDs := map[string]bool{
+		"stale-event-1": false,
+		"stale-event-2": false,
+		"stale-event-3": false,
+	}
+	for _, payload := range payloads {
+		findingID := strings.TrimSpace(payload.Finding.FindingID)
+		if _, ok := wantIDs[findingID]; !ok {
+			t.Fatalf("status_changed finding_id = %q, want one of %v", findingID, wantIDs)
+		}
+		wantIDs[findingID] = true
+		if got := strings.TrimSpace(payload.Status); got != findingStatusResolved {
+			t.Fatalf("status_changed status for %q = %q, want %q", findingID, got, findingStatusResolved)
+		}
+		if got := strings.TrimSpace(payload.Source); got != workflowevents.FindingStatusSourceStaleEvaluation {
+			t.Fatalf("status_changed source for %q = %q, want %q", findingID, got, workflowevents.FindingStatusSourceStaleEvaluation)
+		}
+	}
+	for id, seen := range wantIDs {
+		if !seen {
+			t.Fatalf("missing status_changed event for TTL-resolved finding %q", id)
+		}
+	}
+}
+
+func TestResolveTTLOpenFindings_StatusChangedPayloadReason(t *testing.T) {
+	fx := newTTLResolverFixture(t, LifecycleTTLEvidence, 24*time.Hour)
+	appendLog := &recordingAppendLog{}
+	fx.service.WithGraphStore(&stubGraphStore{}).WithAppendLog(appendLog)
+	fx.seedFinding("stale-reason-1", findingStatusOpen, fx.now.Add(-48*time.Hour), nil)
+	fx.seedFinding("stale-reason-2", findingStatusOpen, fx.now.Add(-25*time.Hour), nil)
+
+	if err := fx.service.resolveTTLOpenFindings(context.Background(), fx.tenantID, fx.ruleID); err != nil {
+		t.Fatalf("resolveTTLOpenFindings: %v", err)
+	}
+
+	payloads := decodeStatusChangedPayloads(t, appendLog.events)
+	if got, want := len(payloads), 2; got != want {
+		t.Fatalf("status_changed event count = %d, want %d (events=%#v)", got, want, eventKinds(appendLog.events))
+	}
+	for _, payload := range payloads {
+		findingID := strings.TrimSpace(payload.Finding.FindingID)
+		persisted := fx.store.findings[findingID]
+		if persisted == nil {
+			t.Fatalf("persisted finding %q missing", findingID)
+		}
+		if got, want := strings.TrimSpace(payload.Reason), "ttl_expired:24h"; got != want {
+			t.Fatalf("status_changed reason for %q = %q, want %q", findingID, got, want)
+		}
+		if got, want := strings.TrimSpace(payload.Reason), strings.TrimSpace(persisted.StatusReason); got != want {
+			t.Fatalf("status_changed reason for %q = %q, want persisted status_reason %q", findingID, got, want)
 		}
 	}
 }
@@ -468,7 +541,7 @@ func TestResolveRuleOpenFindings_InvokesTTLResolverForTTLEvidence(t *testing.T) 
 	stale := fx.seedFinding("stale-ttl", findingStatusOpen, fx.now.Add(-48*time.Hour), nil)
 	fresh := fx.seedFinding("fresh-ttl", findingStatusOpen, fx.now.Add(-6*time.Hour), nil)
 
-	if err := fx.service.resolveRuleOpenFindings(context.Background(), runtime, fx.rule, nil, nil, nil); err != nil {
+	if _, err := fx.service.resolveRuleOpenFindings(context.Background(), runtime, fx.rule, nil, nil, nil); err != nil {
 		t.Fatalf("resolveRuleOpenFindings: %v", err)
 	}
 
@@ -492,7 +565,7 @@ func TestResolveRuleOpenFindings_InvokesTTLResolverForTTLEvidence(t *testing.T) 
 
 	fx.store.updateStatusCalls = nil
 	callsBefore := fx.store.updateStatusCallCount
-	if err := fx.service.resolveRuleOpenFindings(context.Background(), runtime, fx.rule, nil, nil, nil); err != nil {
+	if _, err := fx.service.resolveRuleOpenFindings(context.Background(), runtime, fx.rule, nil, nil, nil); err != nil {
 		t.Fatalf("second resolveRuleOpenFindings: %v", err)
 	}
 	if fx.store.updateStatusCallCount != callsBefore {
@@ -506,7 +579,7 @@ func TestResolveRuleOpenFindings_SkipsTTLResolverForNonTTLRules(t *testing.T) {
 	runtime := &cerebrov1.SourceRuntime{Id: fx.runtimeID, TenantId: fx.tenantID}
 	fx.seedFinding("aged-audit", findingStatusOpen, fx.now.Add(-48*time.Hour), nil)
 
-	if err := fx.service.resolveRuleOpenFindings(context.Background(), runtime, fx.rule, nil, nil, nil); err != nil {
+	if _, err := fx.service.resolveRuleOpenFindings(context.Background(), runtime, fx.rule, nil, nil, nil); err != nil {
 		t.Fatalf("resolveRuleOpenFindings: %v", err)
 	}
 
@@ -529,4 +602,28 @@ func splitLogLines(s string) []string {
 		out = append(out, line)
 	}
 	return out
+}
+
+func decodeStatusChangedPayloads(t *testing.T, events []*cerebrov1.EventEnvelope) []*workflowevents.FindingStatusChanged {
+	t.Helper()
+	payloads := make([]*workflowevents.FindingStatusChanged, 0, len(events))
+	for i, event := range events {
+		if event.GetKind() != workflowevents.EventKindFindingStatusChanged {
+			t.Fatalf("appendLog.events[%d].Kind = %q, want %q", i, event.GetKind(), workflowevents.EventKindFindingStatusChanged)
+		}
+		payload, err := workflowevents.DecodeFindingStatusChanged(event)
+		if err != nil {
+			t.Fatalf("DecodeFindingStatusChanged(events[%d]): %v", i, err)
+		}
+		payloads = append(payloads, payload)
+	}
+	return payloads
+}
+
+func eventKinds(events []*cerebrov1.EventEnvelope) []string {
+	kinds := make([]string, 0, len(events))
+	for _, event := range events {
+		kinds = append(kinds, event.GetKind())
+	}
+	return kinds
 }

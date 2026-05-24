@@ -54,9 +54,9 @@ func TestSentinelOneProtectionControlTampering(t *testing.T) {
 		t.Fatalf("Evaluate(tampered) = (%v, %v), want one finding", records, err)
 	}
 	first := records[0]
-	wantFingerprint := hashFindingFingerprint(sentinelOneProtectionControlTamperingRuleID, "agent-99", "firewall")
+	wantFingerprint := hashFindingFingerprint(sentinelOneProtectionControlTamperingRuleID, "writer", "agent-99", "firewall")
 	if got := first.Fingerprint; got != wantFingerprint {
-		t.Fatalf("fingerprint = %q, want stable agent/control fingerprint %q", got, wantFingerprint)
+		t.Fatalf("fingerprint = %q, want stable tenant/agent/control fingerprint %q", got, wantFingerprint)
 	}
 	if got := first.Attributes["agent_id"]; got != "agent-99" {
 		t.Fatalf("attributes[agent_id] = %q, want agent-99", got)
@@ -112,6 +112,57 @@ func TestSentinelOneProtectionControlTampering(t *testing.T) {
 	assertIdentityRuleRemediationTrajectory(t, rule, tampered, restored, cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED)
 	olderRestored := sentinelOneProtectionControlStateEvent("s1-agent-control-restored-before-open", "activity-old-close", "restored", identityTrajectoryBaseTime.Add(-time.Minute))
 	assertIdentityRuleOlderCloseDoesNotResolveLaterOpen(t, rule, olderRestored, tampered)
+}
+
+func TestSentinelOneProtectionControlTampering_FirewallUnknownDoesNotFire(t *testing.T) {
+	rule := newSentinelOneProtectionControlTamperingRule()
+	runtime := &cerebrov1.SourceRuntime{Id: "example-sentinelone-agent", SourceId: "sentinelone", TenantId: "writer", Config: map[string]string{"family": "agent"}}
+
+	for _, tt := range []struct {
+		name  string
+		event *cerebrov1.EventEnvelope
+	}{
+		{
+			name:  "raw_source_missing_firewall",
+			event: sentinelOneProtectionControlUnknownFirewallEvent("s1-agent-firewall-unknown-raw", false),
+		},
+		{
+			name:  "typed_firewall_missing_state",
+			event: sentinelOneProtectionControlUnknownFirewallEvent("s1-agent-firewall-unknown-typed", true),
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			attributes := eventAttributes(tt.event)
+			if got := sentinelOneProtectionControlState(attributes); got != "unknown" {
+				t.Fatalf("sentinelOneProtectionControlState(%v) = %q, want unknown", attributes, got)
+			}
+			if tampered, known := sentinelOneProtectionControlTampered(attributes); tampered || known {
+				t.Fatalf("sentinelOneProtectionControlTampered(%v) = (%v, %v), want (false, false)", attributes, tampered, known)
+			}
+			records, err := rule.Evaluate(context.Background(), runtime, tt.event)
+			if err != nil {
+				t.Fatalf("Evaluate(unknown firewall) error = %v", err)
+			}
+			if len(records) != 0 {
+				t.Fatalf("Evaluate(unknown firewall) returned %d findings, want 0: %#v", len(records), records)
+			}
+		})
+	}
+
+	disabled := sentinelOneProtectionControlStateEvent("s1-agent-firewall-explicit-disabled", "activity-disabled", "tampered", identityTrajectoryBaseTime)
+	if got := sentinelOneProtectionControlState(eventAttributes(disabled)); got != "disabled" {
+		t.Fatalf("explicit firewall_enabled=false control state = %q, want disabled", got)
+	}
+	records, err := rule.Evaluate(context.Background(), runtime, disabled)
+	if err != nil {
+		t.Fatalf("Evaluate(disabled firewall) error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("Evaluate(disabled firewall) returned %d findings, want 1", len(records))
+	}
+	if got := records[0].Attributes["control_state"]; got != "disabled" {
+		t.Fatalf("disabled finding control_state = %q, want disabled", got)
+	}
 }
 
 func TestSentinelOneProtectionControlTamperingCrossRuntimeRestoreResolvesOpenFinding(t *testing.T) {
@@ -227,6 +278,31 @@ func sentinelOneProtectionControlStateEvent(id string, activityID string, contro
 			"tenant_host":      "writer.sentinelone.example",
 			"source_message":   "SentinelOne protection control state projection",
 		},
+	}
+}
+
+func sentinelOneProtectionControlUnknownFirewallEvent(id string, includeControlType bool) *cerebrov1.EventEnvelope {
+	attributes := map[string]string{
+		"agent_id":       "agent-99",
+		"computer_name":  "mac-99",
+		"activity_id":    "activity-unknown",
+		"site_id":        "site-1",
+		"site_name":      "Production",
+		"group_id":       "group-1",
+		"group_name":     "Default",
+		"tenant_host":    "writer.sentinelone.example",
+		"source_message": "SentinelOne protection control state projection",
+	}
+	if includeControlType {
+		attributes["control_type"] = "firewall"
+	}
+	return &cerebrov1.EventEnvelope{
+		Id:         id,
+		TenantId:   "writer",
+		SourceId:   "sentinelone",
+		Kind:       sentinelOneAgentEntityType,
+		OccurredAt: timestamppb.New(identityTrajectoryBaseTime),
+		Attributes: attributes,
 	}
 }
 

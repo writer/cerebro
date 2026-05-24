@@ -36,6 +36,7 @@ const (
 const (
 	FindingStatusReasonNoLongerEmitted      = "No longer emitted by latest rule evaluation."
 	FindingStatusReasonClosedByCounterEvent = "closed_by_counter_event"
+	FindingStatusReasonTTLExpired           = "ttl_expired"
 	FindingStatusSourceManual               = "manual"
 	FindingStatusSourceStaleEvaluation      = "stale_rule_evaluation"
 )
