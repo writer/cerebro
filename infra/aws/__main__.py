@@ -10,6 +10,7 @@ Deploys a private ECS service backed by:
 import pulumi
 import pulumi_aws as aws
 
+import audit_storage
 import certificate as cert
 import compute
 import ecr
@@ -723,6 +724,26 @@ repository = ecr.create_ecr_repository(
 )
 
 # =============================================================================
+# CLOSEOUT AUDIT BUCKET
+# =============================================================================
+
+audit_bucket_stack = None
+if pulumi.get_stack() == "sec-dev":
+    audit_bucket_stack = audit_storage.create_audit_bucket(
+        name=f"cerebro-{environment}",
+        bucket_name=f"cerebro-{environment}-audit",
+        kms_key_arn=kms_key["key_arn"],
+        task_role=ecs_stack["task_role"],
+    )
+elif pulumi.get_stack() == "go-prod":
+    audit_bucket_stack = audit_storage.create_audit_bucket(
+        name="cerebro-go-prod",
+        bucket_name="cerebro-go-prod-audit",
+        kms_key_arn=kms_key["key_arn"],
+        task_role=ecs_stack["task_role"],
+    )
+
+# =============================================================================
 # OUTPUTS
 # =============================================================================
 
@@ -774,3 +795,6 @@ if infisical_stack:
 if tailscale_stack:
     pulumi.export("tailscale_instance_id", tailscale_stack["instance_id"])
     pulumi.export("tailscale_private_ip", tailscale_stack["private_ip"])
+if audit_bucket_stack:
+    pulumi.export("cerebro_audit_bucket", audit_bucket_stack["bucket"].bucket)
+    pulumi.export("cerebro_audit_bucket_kms_key_arn", audit_bucket_stack["kms_key_arn"])
