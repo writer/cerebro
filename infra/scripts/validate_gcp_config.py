@@ -62,6 +62,7 @@ def validate_stack(path: Path) -> list[Finding]:
         findings.append(_finding(stack, "cerebro:trustedAwsRoleArns", "must be a non-empty list"))
         role_arns = []
     seen_roles: set[str] = set()
+    role_names_by_index: list[tuple[int, str]] = []
     for index, arn in enumerate(role_arns):
         arn = str(arn).strip()
         match = ROLE_ARN_RE.fullmatch(arn)
@@ -80,6 +81,20 @@ def validate_stack(path: Path) -> list[Finding]:
         if role_name in seen_roles:
             findings.append(_finding(stack, f"cerebro:trustedAwsRoleArns[{index}]", f"duplicate role name {role_name!r}"))
         seen_roles.add(role_name)
+        role_names_by_index.append((index, role_name))
+
+    for index, role_name in role_names_by_index:
+        if not role_name.endswith("-task-role") or role_name.endswith("-worker-task-role"):
+            continue
+        worker_role_name = role_name.removesuffix("-task-role") + "-worker-task-role"
+        if worker_role_name not in seen_roles:
+            findings.append(
+                _finding(
+                    stack,
+                    f"cerebro:trustedAwsRoleArns[{index}]",
+                    f"task role {role_name!r} must be paired with worker role {worker_role_name!r}",
+                )
+            )
 
     projects = config.get("scannerRoleProjects") or []
     if not isinstance(projects, list) or not projects:
