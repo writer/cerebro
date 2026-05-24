@@ -1186,7 +1186,7 @@ func githubAppIntegrationAnchor(attributes map[string]string) string {
 func githubAppIntegrationCloseAnchor(event Event) (string, bool) {
 	attributes := eventAttributes(event)
 	switch strings.TrimSpace(attributes["action"]) {
-	case "integration_installation.delete", "integration_installation.suspend":
+	case "integration_installation.delete", "integration_installation.destroy", "integration_installation.suspend":
 		return githubAppIntegrationAnchor(attributes), true
 	default:
 		return "", false
