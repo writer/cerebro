@@ -4410,7 +4410,7 @@ func TestFindingEndpoints(t *testing.T) {
 	if got, present := runEntry["graph_rows_read"]; !present || got != float64(0) {
 		t.Fatalf("list evaluation run graph_rows_read = %#v (present=%t), want 0 present", got, present)
 	}
-	evidenceListResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-policy-rule/finding-evidence?finding_id=" + findingPayload["id"].(string) + "&run_id=" + runID + "&claim_id=claim-1&event_id=okta-policy-rule-inactive&graph_root_urn=urn:cerebro:writer:okta_policy_rule:pol-1:rul-1&limit=1")
+	evidenceListResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-policy-rule/finding-evidence?finding_id=" + findingPayload["id"].(string) + "&run_id=" + runID + "&claim_id=claim-1&event_id=okta-policy-rule-inactive&graph_root_urn=urn:cerebro:writer:okta_policy_rule:pol-1:rul-1&graph_path_urn=urn:cerebro:writer:okta_user:00u2&limit=1")
 	if err != nil {
 		t.Fatalf("GET /source-runtimes/{id}/finding-evidence error = %v", err)
 	}
@@ -4433,6 +4433,9 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := listedEvidence["id"]; got != evidenceID {
 		t.Fatalf("list finding evidence id = %#v, want %q", got, evidenceID)
+	}
+	if got := runtimeStore.findingEvidenceListRequest.GraphPathURN; got != "urn:cerebro:writer:okta_user:00u2" {
+		t.Fatalf("runtimeStore.findingEvidenceListRequest.GraphPathURN = %q, want graph path urn", got)
 	}
 	getEvidenceResp, err := server.Client().Get(server.URL + "/finding-evidence/" + evidenceID)
 	if err != nil {
