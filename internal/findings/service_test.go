@@ -4017,6 +4017,85 @@ func TestUpsertFindingWithRiskMergesVulnViewMatchedLocationEvidence(t *testing.T
 	}
 }
 
+func TestMergeVulnViewActionableEvidenceUsesActiveGeneratedRow(t *testing.T) {
+	now := time.Now().UTC()
+	baseID := "vulnview-finding"
+	activeID := baseID + "#g2"
+	assetURN := "urn:cerebro:tenant-a:external_asset:app.writer.com"
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			baseID: {
+				ID:           baseID,
+				Fingerprint:  baseID,
+				TenantID:     "tenant-a",
+				RuntimeID:    "runtime-vulnview",
+				RuleID:       vulnViewActionableExternalFindingRuleID,
+				PolicyID:     "template-1",
+				Status:       findingStatusResolved,
+				ResourceURNs: []string{assetURN},
+				EventIDs:     []string{"event-stale"},
+				Attributes: map[string]string{
+					"matched_locations_json": `["https://app.writer.com/stale"]`,
+				},
+				FindingTombstone: ports.FindingTombstone{Tombstoned: true},
+				LastObservedAt:   now.Add(-2 * time.Hour),
+			},
+			activeID: {
+				ID:           activeID,
+				Fingerprint:  baseID,
+				TenantID:     "tenant-a",
+				RuntimeID:    "runtime-vulnview",
+				RuleID:       vulnViewActionableExternalFindingRuleID,
+				PolicyID:     "template-1",
+				Status:       findingStatusOpen,
+				ResourceURNs: []string{assetURN},
+				EventIDs:     []string{"event-live"},
+				Attributes: map[string]string{
+					"matched_locations_json": `["https://app.writer.com/live"]`,
+				},
+				LastObservedAt: now,
+			},
+		},
+	}
+	service := New(nil, nil, store, store, store, store)
+	incoming := &ports.FindingRecord{
+		ID:           baseID,
+		Fingerprint:  baseID,
+		TenantID:     "tenant-a",
+		RuntimeID:    "runtime-vulnview",
+		RuleID:       vulnViewActionableExternalFindingRuleID,
+		PolicyID:     "template-1",
+		Status:       findingStatusOpen,
+		ResourceURNs: []string{assetURN},
+		EventIDs:     []string{"event-new"},
+		Attributes: map[string]string{
+			"matched_at": "https://app.writer.com/new",
+		},
+		LastObservedAt: now.Add(time.Minute),
+	}
+	merged := service.mergeVulnViewActionableEvidence(context.Background(), incoming)
+	if containsTrimmed(merged.EventIDs, "event-stale") {
+		t.Fatalf("EventIDs = %#v, want no tombstoned stale event id", merged.EventIDs)
+	}
+	for _, eventID := range []string{"event-live", "event-new"} {
+		if !containsTrimmed(merged.EventIDs, eventID) {
+			t.Fatalf("EventIDs = %#v, missing %q", merged.EventIDs, eventID)
+		}
+	}
+	var locations []string
+	if err := json.Unmarshal([]byte(merged.Attributes["matched_locations_json"]), &locations); err != nil {
+		t.Fatalf("matched_locations_json = %q is invalid JSON array: %v", merged.Attributes["matched_locations_json"], err)
+	}
+	if slices.Contains(locations, "https://app.writer.com/stale") {
+		t.Fatalf("matched_locations_json = %#v, want no tombstoned stale location", locations)
+	}
+	for _, location := range []string{"https://app.writer.com/live", "https://app.writer.com/new"} {
+		if !slices.Contains(locations, location) {
+			t.Fatalf("matched_locations_json = %#v, missing %q", locations, location)
+		}
+	}
+}
+
 func TestAddFindingNoteUpdatesPersistedWorkflow(t *testing.T) {
 	store := &stubFindingStore{
 		findings: map[string]*ports.FindingRecord{

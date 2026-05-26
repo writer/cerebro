@@ -1628,6 +1628,12 @@ func (s *Service) mergeExistingFindingEvidence(ctx context.Context, finding *por
 	if s == nil || s.store == nil || finding == nil {
 		return finding, nil
 	}
+	if finding.RuleID == vulnViewActionableExternalFindingRuleID {
+		if existing := s.activeVulnViewActionableFinding(ctx, finding); existing != nil {
+			return mergeFindingEvidenceForUpsert(existing, finding), nil
+		}
+		return finding, nil
+	}
 	findingID := strings.TrimSpace(finding.ID)
 	if findingID == "" {
 		return finding, nil
@@ -1689,6 +1695,44 @@ func mergeFindingAttributesForUpsert(existing map[string]string, incoming map[st
 	mergeFindingJSONListAttribute(merged, existing, incoming, "matched_locations_json", "matched_at")
 	trimEmptyAttributes(merged)
 	return merged
+}
+
+func (s *Service) activeVulnViewActionableFinding(ctx context.Context, incoming *ports.FindingRecord) *ports.FindingRecord {
+	if s == nil || s.store == nil || incoming == nil {
+		return nil
+	}
+	fingerprint := strings.TrimSpace(incoming.Fingerprint)
+	resourceURN := firstNonEmpty(incoming.ResourceURNs...)
+	if strings.TrimSpace(incoming.TenantID) != "" &&
+		strings.TrimSpace(incoming.RuntimeID) != "" &&
+		strings.TrimSpace(incoming.PolicyID) != "" &&
+		resourceURN != "" {
+		candidates, err := s.store.ListFindings(ctx, ports.ListFindingsRequest{
+			TenantID:    strings.TrimSpace(incoming.TenantID),
+			RuntimeID:   strings.TrimSpace(incoming.RuntimeID),
+			RuleID:      vulnViewActionableExternalFindingRuleID,
+			PolicyID:    strings.TrimSpace(incoming.PolicyID),
+			ResourceURN: resourceURN,
+			Limit:       25,
+		})
+		if err == nil {
+			for _, candidate := range candidates {
+				if candidate == nil || candidate.Tombstoned {
+					continue
+				}
+				candidateFingerprint := strings.TrimSpace(candidate.Fingerprint)
+				if fingerprint != "" && candidateFingerprint != "" && candidateFingerprint != fingerprint {
+					continue
+				}
+				return candidate
+			}
+		}
+	}
+	existing, err := s.store.GetFinding(ctx, strings.TrimSpace(incoming.ID))
+	if err == nil && existing != nil && !existing.Tombstoned {
+		return existing
+	}
+	return nil
 }
 
 func mergeFindingListAttribute(merged map[string]string, existing map[string]string, incoming map[string]string, listKey string, scalarKeys ...string) {
