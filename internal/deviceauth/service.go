@@ -598,10 +598,17 @@ func (s *Service) IssueBootstrapToken(ctx context.Context, request IssueBootstra
 }
 
 func validateBootstrapDeviceScopes(scopes []string) error {
+	hasNonSensitiveScope := false
 	for _, scope := range scopes {
 		if _, ok := allowedBootstrapDeviceScopes[scope]; !ok {
 			return fmt.Errorf("%w: unsupported device bootstrap scope %q", ErrInvalidRequest, scope)
 		}
+		if _, sensitive := risk.SensitiveScopes[scope]; !sensitive {
+			hasNonSensitiveScope = true
+		}
+	}
+	if !hasNonSensitiveScope {
+		return fmt.Errorf("%w: device bootstrap scopes must include a non-sensitive scope", ErrInvalidRequest)
 	}
 	return nil
 }

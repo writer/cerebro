@@ -311,6 +311,19 @@ func TestIssueBootstrapTokenRejectsAdminScopes(t *testing.T) {
 	}
 }
 
+func TestIssueBootstrapTokenRejectsTelemetryOnlyScope(t *testing.T) {
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	_, err := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{
+		HardwareUUID: "hw-1",
+		TenantID:     "writer",
+		Scopes:       []string{ScopeTelemetryIngest},
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("IssueBootstrapToken err = %v, want ErrInvalidRequest", err)
+	}
+}
+
 func TestEnrollFiltersLegacyBootstrapAdminScopes(t *testing.T) {
 	ctx := context.Background()
 	service, store, now := newServiceForTest(t)

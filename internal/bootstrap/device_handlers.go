@@ -488,6 +488,9 @@ func remoteIPForRateLimit(r *http.Request) string {
 	if r == nil {
 		return "unknown"
 	}
+	if clientIP := accessAuditClientIP(r); clientIP != "" {
+		return clientIP
+	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return strings.TrimSpace(r.RemoteAddr)

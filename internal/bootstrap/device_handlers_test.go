@@ -391,6 +391,15 @@ func TestRemoteIPForRateLimitIgnoresClientForwardedFor(t *testing.T) {
 	}
 }
 
+func TestRemoteIPForRateLimitTrustsForwardedForFromPrivateProxy(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/platform/devices/enroll", nil)
+	req.RemoteAddr = "10.0.1.20:443"
+	req.Header.Set("X-Forwarded-For", "203.0.113.200, 10.0.1.20")
+	if got := remoteIPForRateLimit(req); got != "203.0.113.200" {
+		t.Fatalf("remoteIPForRateLimit = %q, want forwarded client IP", got)
+	}
+}
+
 func TestDeviceAuthTokenLimiterUsesStableDeviceKey(t *testing.T) {
 	app, _, _ := newAppForDeviceTest(t)
 	handler := app.Handler()
