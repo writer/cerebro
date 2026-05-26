@@ -19,6 +19,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 )
 
 func TestSpecLoadsFromCatalog(t *testing.T) {
@@ -59,8 +60,9 @@ func TestParseSettings(t *testing.T) {
 		{
 			name: "defaults",
 			values: map[string]string{
-				"bucket": "writer-aurelius-telemetry",
-				"prefix": "verdicts",
+				"bucket":    "writer-aurelius-telemetry",
+				"prefix":    "verdicts",
+				"tenant_id": "writer",
 			},
 			want: settings{
 				family: familyVerdict, bucket: "writer-aurelius-telemetry",
@@ -85,21 +87,43 @@ func TestParseSettings(t *testing.T) {
 			},
 		},
 		{
+			name: "runtime-tenant",
+			values: map[string]string{
+				"bucket":                        "writer-aurelius-telemetry",
+				"prefix":                        "verdicts",
+				sourceconfig.RuntimeTenantIDKey: "writer",
+			},
+			want: settings{
+				family: familyVerdict, bucket: "writer-aurelius-telemetry",
+				prefix: "verdicts/", region: defaultRegion, tenantID: "writer",
+				perPage: defaultPageSize,
+			},
+		},
+		{
 			name:      "missing-bucket",
-			values:    map[string]string{"prefix": "verdicts/"},
+			values:    map[string]string{"prefix": "verdicts/", "tenant_id": "writer"},
 			wantErrIs: ErrBucketRequired,
 		},
 		{
 			name:      "missing-prefix",
-			values:    map[string]string{"bucket": "writer-aurelius-telemetry"},
+			values:    map[string]string{"bucket": "writer-aurelius-telemetry", "tenant_id": "writer"},
 			wantErrIs: ErrPrefixRequired,
+		},
+		{
+			name: "missing-tenant",
+			values: map[string]string{
+				"bucket": "writer-aurelius-telemetry",
+				"prefix": "x/",
+			},
+			wantErrIs: ErrTenantIDRequired,
 		},
 		{
 			name: "unknown-family",
 			values: map[string]string{
-				"family": "garbage",
-				"bucket": "writer-aurelius-telemetry",
-				"prefix": "x/",
+				"family":    "garbage",
+				"bucket":    "writer-aurelius-telemetry",
+				"prefix":    "x/",
+				"tenant_id": "writer",
 			},
 			wantErrIs: ErrUnsupportedFamily,
 		},
@@ -109,6 +133,7 @@ func TestParseSettings(t *testing.T) {
 				"bucket":    "writer-aurelius-telemetry",
 				"prefix":    "x/",
 				"page_size": "0",
+				"tenant_id": "writer",
 			},
 			wantErrIs: ErrInvalidPageSize,
 		},
@@ -118,6 +143,7 @@ func TestParseSettings(t *testing.T) {
 				"bucket":    "writer-aurelius-telemetry",
 				"prefix":    "x/",
 				"page_size": "999999",
+				"tenant_id": "writer",
 			},
 			want: settings{
 				family: familyVerdict, bucket: "writer-aurelius-telemetry",
@@ -128,8 +154,9 @@ func TestParseSettings(t *testing.T) {
 		{
 			name: "bucket-with-slash-rejected",
 			values: map[string]string{
-				"bucket": "writer/aurelius",
-				"prefix": "x/",
+				"bucket":    "writer/aurelius",
+				"prefix":    "x/",
+				"tenant_id": "writer",
 			},
 			wantErrIs: ErrInvalidBucket,
 		},
@@ -208,9 +235,10 @@ func TestReadEmitsEventsAndCompletesFinalPage(t *testing.T) {
 	src.newClient = func(context.Context, settings) (s3API, error) { return client, nil }
 
 	cfg := sourcecdk.NewConfig(map[string]string{
-		"family": familyVerdict,
-		"bucket": "writer-aurelius-telemetry",
-		"prefix": "verdicts/",
+		"family":    familyVerdict,
+		"bucket":    "writer-aurelius-telemetry",
+		"prefix":    "verdicts/",
+		"tenant_id": "writer",
 	})
 
 	pull, err := src.Read(context.Background(), cfg, nil)
@@ -308,6 +336,7 @@ func TestReadReturnsCursorWhenS3PageIsTruncated(t *testing.T) {
 		"bucket":    "writer-aurelius-telemetry",
 		"prefix":    "verdicts/",
 		"page_size": "1",
+		"tenant_id": "writer",
 	})
 
 	first, err := src.Read(context.Background(), cfg, nil)
@@ -387,9 +416,10 @@ func TestReadResumesFromCursor(t *testing.T) {
 	src.newClient = func(context.Context, settings) (s3API, error) { return client, nil }
 
 	cfg := sourcecdk.NewConfig(map[string]string{
-		"family": familyFinding,
-		"bucket": "writer-aurelius-telemetry",
-		"prefix": "findings/",
+		"family":    familyFinding,
+		"bucket":    "writer-aurelius-telemetry",
+		"prefix":    "findings/",
+		"tenant_id": "writer",
 	})
 	cursor := &cerebrov1.SourceCursor{Opaque: "findings/2026/05/22/12/batch-001.ndjson"}
 	pull, err := src.Read(context.Background(), cfg, cursor)
@@ -432,9 +462,10 @@ func TestReadDoesNotAdvancePastPartiallyProcessedArchive(t *testing.T) {
 	src.newClient = func(context.Context, settings) (s3API, error) { return client, nil }
 
 	cfg := sourcecdk.NewConfig(map[string]string{
-		"family": familyFinding,
-		"bucket": "writer-aurelius-telemetry",
-		"prefix": "findings/",
+		"family":    familyFinding,
+		"bucket":    "writer-aurelius-telemetry",
+		"prefix":    "findings/",
+		"tenant_id": "writer",
 	})
 
 	first, err := src.Read(context.Background(), cfg, nil)
@@ -486,9 +517,10 @@ func TestReadCompletesEmptyFinalPageAfterCursor(t *testing.T) {
 	src.newClient = func(context.Context, settings) (s3API, error) { return client, nil }
 
 	cfg := sourcecdk.NewConfig(map[string]string{
-		"family": familyFinding,
-		"bucket": "writer-aurelius-telemetry",
-		"prefix": "findings/",
+		"family":    familyFinding,
+		"bucket":    "writer-aurelius-telemetry",
+		"prefix":    "findings/",
+		"tenant_id": "writer",
 	})
 	cursor := &cerebrov1.SourceCursor{Opaque: "findings/2026/05/22/14/batch-001.ndjson"}
 	pull, err := src.Read(context.Background(), cfg, cursor)
@@ -536,6 +568,39 @@ func TestBuildEventPromotesFindingPayloadVulnerabilityAttributes(t *testing.T) {
 	}
 }
 
+func TestReadArchiveRejectsOverLimitDecompressedGzip(t *testing.T) {
+	record := aureliusRecord{
+		EventID:    "01HX0001-verdict-a",
+		OccurredAt: time.Date(2026, 5, 22, 14, 30, 0, 0, time.UTC),
+		Attributes: map[string]string{"image_digest": "sha256:aaa"},
+		Payload:    map[string]interface{}{"verdict": "pass"},
+	}
+	raw, err := json.Marshal(record)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	raw = append(raw, '\n')
+
+	compressed := &bytes.Buffer{}
+	gz := gzip.NewWriter(compressed)
+	for i := 0; i < 3; i++ {
+		if _, err := gz.Write(raw); err != nil {
+			t.Fatalf("gzip.Write() error = %v", err)
+		}
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatalf("gzip.Close() error = %v", err)
+	}
+
+	_, err = readArchiveRecords(bytes.NewReader(compressed.Bytes()), "batch.ndjson.gz", int64(len(raw))*2)
+	if err == nil {
+		t.Fatal("readArchiveRecords() error = nil, want decompressed limit error")
+	}
+	if !errors.Is(err, ErrDecompressedObjectTooLarge) {
+		t.Fatalf("readArchiveRecords() error = %v, want errors.Is ErrDecompressedObjectTooLarge", err)
+	}
+}
+
 func TestCheckSurfacesS3Errors(t *testing.T) {
 	src, err := New()
 	if err != nil {
@@ -545,9 +610,10 @@ func TestCheckSurfacesS3Errors(t *testing.T) {
 		return &erroringS3{err: errors.New("access denied")}, nil
 	}
 	cfg := sourcecdk.NewConfig(map[string]string{
-		"family": familyImageScan,
-		"bucket": "writer-aurelius-telemetry",
-		"prefix": "image_scans/",
+		"family":    familyImageScan,
+		"bucket":    "writer-aurelius-telemetry",
+		"prefix":    "image_scans/",
+		"tenant_id": "writer",
 	})
 	if err := src.Check(context.Background(), cfg); err == nil {
 		t.Fatal("Check() error = nil, want s3 error")
@@ -560,9 +626,10 @@ func TestDiscoverReturnsStableURN(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 	cfg := sourcecdk.NewConfig(map[string]string{
-		"family": familyPolicyException,
-		"bucket": "writer-aurelius-telemetry",
-		"prefix": "policy_exceptions/",
+		"family":    familyPolicyException,
+		"bucket":    "writer-aurelius-telemetry",
+		"prefix":    "policy_exceptions/",
+		"tenant_id": "writer",
 	})
 	urns, err := src.Discover(context.Background(), cfg)
 	if err != nil {

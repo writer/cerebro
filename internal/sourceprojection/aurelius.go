@@ -12,7 +12,7 @@ func aureliusImageScanProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 	if err != nil {
 		return nil, nil, err
 	}
-	attrs := event.GetAttributes()
+	attrs := aureliusProjectionAttributes(event)
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 
@@ -54,7 +54,7 @@ func aureliusVerdictProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 	if err != nil {
 		return nil, nil, err
 	}
-	attrs := event.GetAttributes()
+	attrs := aureliusProjectionAttributes(event)
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 
@@ -94,7 +94,7 @@ func aureliusFindingProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 	if err != nil {
 		return nil, nil, err
 	}
-	attrs := event.GetAttributes()
+	attrs := aureliusProjectionAttributes(event)
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 
@@ -117,7 +117,7 @@ func aureliusCatalogPromotionProjections(event *cerebrov1.EventEnvelope) ([]*por
 	if err != nil {
 		return nil, nil, err
 	}
-	attrs := event.GetAttributes()
+	attrs := aureliusProjectionAttributes(event)
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 
@@ -175,7 +175,7 @@ func aureliusPolicyExceptionProjections(event *cerebrov1.EventEnvelope) ([]*port
 	if err != nil {
 		return nil, nil, err
 	}
-	attrs := event.GetAttributes()
+	attrs := aureliusProjectionAttributes(event)
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 
@@ -217,17 +217,68 @@ func aureliusImageURN(tenantID string, attrs map[string]string) string {
 }
 
 func aureliusImageEntity(tenantID, sourceID, urn string, attrs map[string]string) *ports.ProjectedEntity {
+	imageAttrs := map[string]string{}
+	addAureliusAttribute(imageAttrs, "digest", firstAttribute(attrs, "image_digest"))
+	addAureliusAttribute(imageAttrs, "image_uri", firstAttribute(attrs, "image_uri"))
+	addAureliusAttribute(imageAttrs, "registry", firstAttribute(attrs, "registry"))
+	addAureliusAttribute(imageAttrs, "repository", firstAttribute(attrs, "repository"))
 	return &ports.ProjectedEntity{
 		URN:        urn,
 		TenantID:   tenantID,
 		SourceID:   sourceID,
 		EntityType: "gcp.artifact_registry_image",
 		Label:      firstAttribute(attrs, "image_uri", "image", "image_digest"),
-		Attributes: map[string]string{
-			"digest":     firstAttribute(attrs, "image_digest"),
-			"image_uri":  firstAttribute(attrs, "image_uri"),
-			"registry":   firstAttribute(attrs, "registry"),
-			"repository": firstAttribute(attrs, "repository"),
-		},
+		Attributes: imageAttrs,
+	}
+}
+
+func aureliusProjectionAttributes(event *cerebrov1.EventEnvelope) map[string]string {
+	attrs := make(map[string]string, len(event.GetAttributes()))
+	for key, value := range event.GetAttributes() {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		attrs[key] = value
+	}
+	payload := payloadMap(event)
+	for _, key := range []string{
+		"approver",
+		"blocking_findings",
+		"completed_at",
+		"cve_id",
+		"excepted_findings",
+		"exception_id",
+		"expires_at",
+		"image",
+		"image_digest",
+		"image_uri",
+		"package",
+		"promoted_at",
+		"promoted_by",
+		"reason",
+		"registry",
+		"repository",
+		"scanner",
+		"scope",
+		"scan_id",
+		"severity",
+		"status",
+		"track",
+		"verdict",
+	} {
+		if firstAttribute(attrs, key) != "" {
+			continue
+		}
+		if value := stringValue(payload, key); value != "" {
+			attrs[key] = value
+		}
+	}
+	return attrs
+}
+
+func addAureliusAttribute(attrs map[string]string, key string, value string) {
+	if value = strings.TrimSpace(value); value != "" {
+		attrs[key] = value
 	}
 }

@@ -27,6 +27,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 )
 
 //go:embed catalog.yaml
@@ -75,6 +76,10 @@ var (
 	ErrPrefixRequired = errors.New("prefix is required")
 	// ErrInvalidPageSize is returned when page_size is not a positive integer.
 	ErrInvalidPageSize = errors.New("invalid page_size")
+	// ErrTenantIDRequired is returned when no explicit tenant scope is configured.
+	ErrTenantIDRequired = errors.New("tenant_id is required")
+	// ErrDecompressedObjectTooLarge is returned when a compressed archive expands past the configured limit.
+	ErrDecompressedObjectTooLarge = errors.New("decompressed object exceeds limit")
 	// ErrUnsupportedFamily is returned when the family is not one of the known kinds.
 	ErrUnsupportedFamily = errors.New("unsupported family")
 	// ErrInvalidBucket is returned when the bucket name contains illegal characters.
@@ -205,12 +210,16 @@ func (s *Source) familyFor(family, kind, schemaRef, urnPrefix string) sourcecdk.
 }
 
 func parseSettings(cfg sourcecdk.Config) (settings, error) {
+	tenantID := strings.TrimSpace(configValue(cfg, "tenant_id"))
+	if runtimeTenantID := strings.TrimSpace(configValue(cfg, sourceconfig.RuntimeTenantIDKey)); runtimeTenantID != "" {
+		tenantID = runtimeTenantID
+	}
 	st := settings{
 		family:   strings.TrimSpace(configValue(cfg, "family")),
 		bucket:   strings.TrimSpace(configValue(cfg, "bucket")),
 		prefix:   strings.TrimSpace(configValue(cfg, "prefix")),
 		region:   strings.TrimSpace(configValue(cfg, "region")),
-		tenantID: strings.TrimSpace(configValue(cfg, "tenant_id")),
+		tenantID: tenantID,
 		perPage:  defaultPageSize,
 	}
 	if st.family == "" {
@@ -229,7 +238,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		st.region = defaultRegion
 	}
 	if st.tenantID == "" {
-		st.tenantID = "writer"
+		return settings{}, ErrTenantIDRequired
 	}
 	if raw, ok := cfg.Lookup("page_size"); ok && strings.TrimSpace(raw) != "" {
 		size, err := strconv.Atoi(strings.TrimSpace(raw))
@@ -454,7 +463,14 @@ func (s *Source) readArchive(ctx context.Context, client s3API, bucket, key stri
 	if len(raw) > maxObjectBytes {
 		return nil, fmt.Errorf("object exceeds %d bytes", maxObjectBytes)
 	}
-	var reader io.Reader = bytes.NewReader(raw)
+	records, err := readArchiveRecords(bytes.NewReader(raw), key, maxObjectBytes)
+	if err != nil {
+		return nil, err
+	}
+	return records, nil
+}
+
+func readArchiveRecords(reader io.Reader, key string, decompressedLimitBytes int64) ([]aureliusRecord, error) {
 	if strings.HasSuffix(key, ".gz") {
 		gz, err := gzip.NewReader(reader)
 		if err != nil {
@@ -463,11 +479,15 @@ func (s *Source) readArchive(ctx context.Context, client s3API, bucket, key stri
 		defer func() { _ = gz.Close() }()
 		reader = gz
 	}
-	scanner := bufio.NewScanner(reader)
+	counter := &countingReader{reader: io.LimitReader(reader, decompressedLimitBytes+1)}
+	scanner := bufio.NewScanner(counter)
 	scanner.Buffer(make([]byte, 0, 64<<10), maxLineBytes)
 	records := make([]aureliusRecord, 0, 64)
 	line := 0
 	for scanner.Scan() {
+		if counter.bytesRead > decompressedLimitBytes {
+			return nil, fmt.Errorf("%w: %d bytes", ErrDecompressedObjectTooLarge, decompressedLimitBytes)
+		}
 		line++
 		text := bytes.TrimSpace(scanner.Bytes())
 		if len(text) == 0 {
@@ -482,7 +502,21 @@ func (s *Source) readArchive(ctx context.Context, client s3API, bucket, key stri
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("scan archive: %w", err)
 	}
+	if counter.bytesRead > decompressedLimitBytes {
+		return nil, fmt.Errorf("%w: %d bytes", ErrDecompressedObjectTooLarge, decompressedLimitBytes)
+	}
 	return records, nil
+}
+
+type countingReader struct {
+	reader    io.Reader
+	bytesRead int64
+}
+
+func (r *countingReader) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	r.bytesRead += int64(n)
+	return n, err
 }
 
 func buildEvent(st settings, rec aureliusRecord, kind, schemaRef string) (*primitives.Event, error) {
