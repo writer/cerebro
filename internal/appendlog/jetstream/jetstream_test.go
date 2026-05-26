@@ -14,6 +14,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/workflowevents"
 )
 
 type fakePublisher struct {
@@ -95,6 +96,50 @@ func TestAppendPublishesEnvelope(t *testing.T) {
 	}
 	if !proto.Equal(&decoded, event) {
 		t.Fatalf("decoded envelope = %#v, want %#v", &decoded, event)
+	}
+}
+
+func TestAppendPublishesWorkflowEventAsSharedEnvelope(t *testing.T) {
+	pub := &fakePublisher{}
+	log := &Log{js: pub, subjectPrefix: "events"}
+	event, err := workflowevents.NewDecisionRecordedEvent(workflowevents.DecisionRecorded{
+		TenantID:      "writer",
+		DecisionID:    "urn:cerebro:writer:decision:decision-1",
+		DecisionType:  "finding-triage",
+		Status:        "approved",
+		TargetIDs:     []string{"urn:cerebro:writer:resource:target-1"},
+		SourceSystem:  "findings",
+		SourceEventID: "finding-1",
+		ObservedAt:    "2026-04-27T12:00:00Z",
+		ValidFrom:     "2026-04-27T12:00:00Z",
+	})
+	if err != nil {
+		t.Fatalf("NewDecisionRecordedEvent() error = %v", err)
+	}
+	if err := log.Append(context.Background(), event); err != nil {
+		t.Fatalf("Append() error = %v", err)
+	}
+	if pub.published == nil {
+		t.Fatal("published message = nil")
+	}
+	if pub.published.Subject != "events.workflow.v1.knowledge.decision_recorded" {
+		t.Fatalf("subject = %q, want workflow decision subject", pub.published.Subject)
+	}
+	if got := pub.published.Header.Get(nats.MsgIdHdr); got != event.GetId() {
+		t.Fatalf("msg id = %q, want %q", got, event.GetId())
+	}
+	if got := pub.published.Header[workflowevents.EventAttributeTenantID]; len(got) != 1 || got[0] != "writer" {
+		t.Fatalf("tenant header = %#v, want writer", got)
+	}
+	if got := pub.published.Header["event_type"]; len(got) != 1 || got[0] != workflowevents.EventKindKnowledgeDecisionRecorded {
+		t.Fatalf("event_type header = %#v, want %q", got, workflowevents.EventKindKnowledgeDecisionRecorded)
+	}
+	replayed, err := workflowevents.DecodeSharedEnvelopeEvent(pub.published.Data, replayHeaderAttributes(pub.published.Header))
+	if err != nil {
+		t.Fatalf("DecodeSharedEnvelopeEvent() error = %v", err)
+	}
+	if replayed.GetKind() != event.GetKind() || replayed.GetId() != event.GetId() || replayed.GetTenantId() != event.GetTenantId() {
+		t.Fatalf("replayed event = %#v, want kind/id/tenant from %#v", replayed, event)
 	}
 }
 
@@ -281,6 +326,68 @@ func TestReplayFiltersWorkflowEventsByKindPrefixTenantAndAttribute(t *testing.T)
 	}
 	if got := events[0].GetId(); got != "evt-1" {
 		t.Fatalf("replayed id = %q, want evt-1", got)
+	}
+}
+
+func TestReplayDecodesSharedWorkflowEnvelope(t *testing.T) {
+	event, err := workflowevents.NewDecisionRecordedEvent(workflowevents.DecisionRecorded{
+		TenantID:      "writer",
+		DecisionID:    "urn:cerebro:writer:decision:decision-1",
+		DecisionType:  "finding-triage",
+		Status:        "approved",
+		TargetIDs:     []string{"urn:cerebro:writer:resource:target-1"},
+		SourceSystem:  "findings",
+		SourceEventID: "finding-1",
+		ObservedAt:    "2026-04-27T12:00:00Z",
+		ValidFrom:     "2026-04-27T12:00:00Z",
+	})
+	if err != nil {
+		t.Fatalf("NewDecisionRecordedEvent() error = %v", err)
+	}
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{
+					Name:     "CEREBRO_EVENTS",
+					Subjects: []string{"events.>"},
+				},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: 1},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				1: &natsjetstream.RawStreamMsg{
+					Subject: "events.workflow.v1.knowledge.decision_recorded",
+					Header:  eventAttributesHeader(event.GetAttributes()),
+					Data:    event.GetPayload(),
+				},
+			},
+		},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{
+		KindPrefix: "workflow.v1.",
+		TenantID:   "writer",
+		AttributeEquals: map[string]string{
+			workflowevents.EventAttributeWorkflowKind: "knowledge_decision",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(events))
+	}
+	if events[0].GetId() != event.GetId() {
+		t.Fatalf("replayed id = %q, want %q", events[0].GetId(), event.GetId())
+	}
+	decoded, err := workflowevents.DecodeDecisionRecorded(events[0])
+	if err != nil {
+		t.Fatalf("DecodeDecisionRecorded() error = %v", err)
+	}
+	if decoded.DecisionID != "urn:cerebro:writer:decision:decision-1" {
+		t.Fatalf("decoded decision id = %q", decoded.DecisionID)
 	}
 }
 

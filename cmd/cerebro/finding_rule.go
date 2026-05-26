@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"go/format"
 	"os"
@@ -9,12 +10,15 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/writer/cerebro/internal/findings"
 )
 
-const findingRuleUsage = "usage: %s finding-rule new <rule-id> source_id=<source> event_kinds=<kind[,kind]> [name=<name>] [output_kind=<kind>] [severity=<severity>] [status=<status>] [maturity=<maturity>] [tags=<tag[,tag]>] [required_attributes=<attr[,attr]>] [fingerprint_fields=<field[,field]>] [pack=<pack>] [output_dir=<dir>] [dry_run=true] [force=true]"
+const findingRuleUsage = "usage: %s finding-rule new <rule-id> source_id=<source> event_kinds=<kind[,kind]> [name=<name>] [output_kind=<kind>] [severity=<severity>] [status=<status>] [maturity=<maturity>] [tags=<tag[,tag]>] [required_attributes=<attr[,attr]>] [fingerprint_fields=<field[,field]>] [lifecycle_kind=<kind>] [lifecycle_anchor=<anchor>] [lifecycle_ttl=<duration>] [pack=<pack>] [output_dir=<dir>] [dry_run=true] [force=true]"
+
+var errScaffoldDurableStateDefaultFingerprint = errors.New("lifecycle_kind=durable_state requires fingerprint_fields to include stable non-default fields; default [event_id] is event-scoped")
 
 type findingRuleScaffoldRequest struct {
 	Definition findings.RuleDefinition
@@ -144,6 +148,13 @@ func parseFindingRuleNewArgs(args []string) (findingRuleScaffoldRequest, error) 
 	if err != nil {
 		return findingRuleScaffoldRequest{}, fmt.Errorf("parse force: %w", err)
 	}
+	lifecycle, err := parseScaffoldLifecycle(values)
+	if err != nil {
+		return findingRuleScaffoldRequest{}, err
+	}
+	if lifecycle.Kind == findings.LifecycleDurableState && isDefaultEventIDFingerprint(fingerprintFields) {
+		return findingRuleScaffoldRequest{}, errScaffoldDurableStateDefaultFingerprint
+	}
 	definition := findings.RuleDefinition{
 		ID:                 ruleID,
 		Name:               name,
@@ -160,6 +171,7 @@ func parseFindingRuleNewArgs(args []string) (findingRuleScaffoldRequest, error) 
 		Runbook:            strings.TrimSpace(values["runbook"]),
 		RequiredAttributes: splitCSV(values["required_attributes"]),
 		FingerprintFields:  fingerprintFields,
+		Lifecycle:          lifecycle,
 	}
 	if err := definition.Validate(); err != nil {
 		return findingRuleScaffoldRequest{}, err
@@ -171,6 +183,31 @@ func parseFindingRuleNewArgs(args []string) (findingRuleScaffoldRequest, error) 
 		DryRun:     dryRun,
 		Force:      force,
 	}, nil
+}
+
+func parseScaffoldLifecycle(values map[string]string) (findings.Lifecycle, error) {
+	kind := findings.LifecycleKind(strings.TrimSpace(values["lifecycle_kind"]))
+	if kind == "" {
+		kind = findings.LifecycleAuditEvidence
+	}
+	anchor := findings.LifecycleAnchor(strings.TrimSpace(values["lifecycle_anchor"]))
+	if anchor == "" {
+		switch kind {
+		case findings.LifecycleDurableState:
+			anchor = findings.AnchorGraphAnchored
+		default:
+			anchor = findings.AnchorNone
+		}
+	}
+	var ttl time.Duration
+	if raw := strings.TrimSpace(values["lifecycle_ttl"]); raw != "" {
+		parsed, err := time.ParseDuration(raw)
+		if err != nil {
+			return findings.Lifecycle{}, fmt.Errorf("parse lifecycle_ttl: %w", err)
+		}
+		ttl = parsed
+	}
+	return findings.Lifecycle{Kind: kind, Anchor: anchor, TTL: ttl}, nil
 }
 
 func scaffoldFindingRule(request findingRuleScaffoldRequest) (*findingRuleScaffoldResult, error) {
@@ -297,26 +334,71 @@ func renderFindingRuleGo(data findingRuleTemplateData) string {
 	fmt.Fprintf(&b, ")\n\n")
 	fmt.Fprintf(&b, "var %s = []ports.FindingControlRef{}\n\n", names.ControlRefsVar)
 	fmt.Fprintf(&b, "var %s = RuleDefinition{\n", names.DefinitionVar)
-	fmt.Fprintf(&b, "\tID: %s,\n\tName: %s,\n\tDescription: %s,\n\tSourceID: %s,\n\tEventKinds: %s,\n\tOutputKind: %s,\n\tSeverity: %s,\n\tStatus: %s,\n\tMaturity: %s,\n\tTags: %s,\n\tReferences: %s,\n\tFalsePositives: %s,\n\tRequiredAttributes: %s,\n\tFingerprintFields: %s,\n\tControlRefs: %s,\n",
-		names.RuleIDConst, names.TitleConst, strconv.Quote(definition.Description), strconv.Quote(definition.SourceID), literals.EventKinds, strconv.Quote(definition.OutputKind), names.SeverityConst, names.StatusConst, strconv.Quote(definition.Maturity), literals.Tags, literals.References, literals.FalsePositives, literals.RequiredAttributes, literals.FingerprintFields, names.ControlRefsVar)
+	fmt.Fprintf(&b, "\tID: %s,\n\tName: %s,\n\tDescription: %s,\n\tSourceID: %s,\n\tEventKinds: %s,\n\tOutputKind: %s,\n\tSeverity: %s,\n\tStatus: %s,\n\tMaturity: %s,\n\tTags: %s,\n\tReferences: %s,\n\tFalsePositives: %s,\n\tRequiredAttributes: %s,\n\tFingerprintFields: %s,\n\tControlRefs: %s,\n\tLifecycle: %s,\n",
+		names.RuleIDConst, names.TitleConst, strconv.Quote(definition.Description), strconv.Quote(definition.SourceID), literals.EventKinds, strconv.Quote(definition.OutputKind), names.SeverityConst, names.StatusConst, strconv.Quote(definition.Maturity), literals.Tags, literals.References, literals.FalsePositives, literals.RequiredAttributes, literals.FingerprintFields, names.ControlRefsVar, renderLifecycleLiteral(definition.Lifecycle))
 	fmt.Fprintf(&b, "}\n\n")
 	fmt.Fprintf(&b, "var %s = eventKindMatcher(%s.EventKinds...)\n\n", names.KindMatcherVar, names.DefinitionVar)
 	fmt.Fprintf(&b, "func %s() Rule {\n", names.Constructor)
-	fmt.Fprintf(&b, "\treturn newEventRule(eventRuleConfig{\n\t\tdefinition: %s,\n\t\tmatch: %s,\n\t\tbuild: func(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {\n\t\t\treturn %s(ctx, event, runtime.GetId())\n\t\t},\n\t})\n}\n\n", names.DefinitionVar, names.MatchFunc, names.BuildFunc)
+	if definition.Lifecycle.Kind == findings.LifecycleRetired {
+		fmt.Fprintf(&b, "\treturn newRetiredEventRule(%s)\n}\n\n", names.DefinitionVar)
+	} else {
+		fmt.Fprintf(&b, "\treturn newEventRule(eventRuleConfig{\n\t\tdefinition: %s,\n\t\tmatch: %s,\n\t\tbuild: func(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {\n\t\t\treturn %s(ctx, event, runtime.GetId())\n\t\t},\n\t})\n}\n\n", names.DefinitionVar, names.MatchFunc, names.BuildFunc)
+	}
 	fmt.Fprintf(&b, "func %s(event *cerebrov1.EventEnvelope) bool {\n\treturn %s(event) && hasRequiredAttributes(event, %s...)\n}\n\n", names.MatchFunc, names.KindMatcherVar, names.DefinitionVar+".RequiredAttributes")
 	fmt.Fprintf(&b, "func %s(_ context.Context, event *cerebrov1.EventEnvelope, runtimeID string) (*ports.FindingRecord, error) {\n", names.BuildFunc)
-	fmt.Fprintf(&b, "\tattributes := eventAttributes(event)\n\tfindingAttributes := map[string]string{\n\t\t\"event_id\": strings.TrimSpace(event.GetId()),\n\t\t\"source_runtime_id\": strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID]),\n\t}\n")
-	fmt.Fprintf(&b, "\tfor _, key := range %s.RequiredAttributes {\n\t\tfindingAttributes[key] = strings.TrimSpace(attributes[key])\n\t}\n", names.DefinitionVar)
+	fmt.Fprintf(&b, "\tfindingAttributes := map[string]string{\n\t\t\"event_id\": strings.TrimSpace(requiredAttributeValue(event, \"event_id\")),\n\t\t\"source_runtime_id\": strings.TrimSpace(requiredAttributeValue(event, ports.EventAttributeSourceRuntimeID)),\n\t}\n")
+	fmt.Fprintf(&b, "\tfor _, key := range %s.RequiredAttributes {\n\t\tfindingAttributes[key] = strings.TrimSpace(requiredAttributeValue(event, key))\n\t}\n", names.DefinitionVar)
 	fmt.Fprintf(&b, "\tfor key, value := range %s.AttributeMap() {\n\t\tfindingAttributes[\"rule_\"+key] = value\n\t}\n\ttrimEmptyAttributes(findingAttributes)\n", names.DefinitionVar)
 	fmt.Fprintf(&b, "\tobservedAt := time.Time{}\n\tif timestamp := event.GetOccurredAt(); timestamp != nil {\n\t\tobservedAt = timestamp.AsTime().UTC()\n\t}\n")
-	fmt.Fprintf(&b, "\tfingerprintParts := []string{%s}\n\tfor _, field := range %s.FingerprintFields {\n\t\tswitch strings.TrimSpace(field) {\n\t\tcase \"event_id\":\n\t\t\tfingerprintParts = append(fingerprintParts, event.GetId())\n\t\tdefault:\n\t\t\tfingerprintParts = append(fingerprintParts, attributes[field])\n\t\t}\n\t}\n\tfingerprint := hashFindingFingerprint(fingerprintParts...)\n", names.RuleIDConst, names.DefinitionVar)
+	fmt.Fprintf(&b, "\tfingerprintParts := []string{%s}\n\tfor _, field := range %s.FingerprintFields {\n\t\tfingerprintParts = append(fingerprintParts, requiredAttributeValue(event, field))\n\t}\n\tfingerprint := hashFindingFingerprint(fingerprintParts...)\n", names.RuleIDConst, names.DefinitionVar)
 	fmt.Fprintf(&b, "\treturn &ports.FindingRecord{\n\t\tID: fingerprint,\n\t\tFingerprint: fingerprint,\n\t\tTenantID: strings.TrimSpace(event.GetTenantId()),\n\t\tRuntimeID: strings.TrimSpace(runtimeID),\n\t\tRuleID: %s,\n\t\tTitle: %s,\n\t\tSeverity: normalizeFindingSeverity(%s),\n\t\tStatus: %s,\n\t\tSummary: %s,\n\t\tEventIDs: []string{strings.TrimSpace(event.GetId())},\n\t\tCheckID: %s,\n\t\tCheckName: %s,\n\t\tControlRefs: cloneFindingControlRefs(%s),\n\t\tAttributes: findingAttributes,\n\t\tFirstObservedAt: observedAt,\n\t\tLastObservedAt: observedAt,\n\t}, nil\n}\n",
 		names.RuleIDConst, names.TitleConst, names.SeverityConst, names.StatusConst, names.TitleConst, names.CheckIDConst, names.CheckNameConst, names.ControlRefsVar)
 	return b.String()
 }
 
+func renderLifecycleLiteral(lifecycle findings.Lifecycle) string {
+	kind := lifecycleKindIdentifier(lifecycle.Kind)
+	anchor := lifecycleAnchorIdentifier(lifecycle.Anchor)
+	if lifecycle.TTL == 0 {
+		return fmt.Sprintf("Lifecycle{Kind: %s, Anchor: %s}", kind, anchor)
+	}
+	return fmt.Sprintf("Lifecycle{Kind: %s, Anchor: %s, TTL: time.Duration(%d)}", kind, anchor, lifecycle.TTL.Nanoseconds())
+}
+
+func lifecycleKindIdentifier(kind findings.LifecycleKind) string {
+	switch kind {
+	case findings.LifecycleDurableState:
+		return "LifecycleDurableState"
+	case findings.LifecycleAuditEvidence:
+		return "LifecycleAuditEvidence"
+	case findings.LifecycleTTLEvidence:
+		return "LifecycleTTLEvidence"
+	case findings.LifecycleRetired:
+		return "LifecycleRetired"
+	default:
+		return fmt.Sprintf("LifecycleKind(%s)", strconv.Quote(string(kind)))
+	}
+}
+
+func lifecycleAnchorIdentifier(anchor findings.LifecycleAnchor) string {
+	switch anchor {
+	case findings.AnchorGraphAnchored:
+		return "AnchorGraphAnchored"
+	case findings.AnchorSourceState:
+		return "AnchorSourceState"
+	case findings.AnchorNone:
+		return "AnchorNone"
+	default:
+		return fmt.Sprintf("LifecycleAnchor(%s)", strconv.Quote(string(anchor)))
+	}
+}
+
 func renderFindingRuleTestGo(data findingRuleTemplateData) string {
-	return fmt.Sprintf("package findings\n\nimport \"testing\"\n\nfunc %s(t *testing.T) {\n\tassertRuleFixture(t, %s(), %s)\n}\n", data.Names.TestFunc, data.Names.Constructor, strconv.Quote("testdata/rules/"+data.Files.Fixture))
+	assertion := "assertRuleFixture"
+	if data.Definition.Lifecycle.Kind == findings.LifecycleRetired {
+		assertion = "assertRetiredEventRuleFixture"
+	}
+	return fmt.Sprintf("package findings\n\nimport \"testing\"\n\nfunc %s(t *testing.T) {\n\t%s(t, %s(), %s)\n}\n", data.Names.TestFunc, assertion, data.Names.Constructor, strconv.Quote("testdata/rules/"+data.Files.Fixture))
 }
 
 func renderFindingRuleFixture(data findingRuleTemplateData) string {
@@ -329,6 +411,19 @@ func renderFindingRuleFixture(data findingRuleTemplateData) string {
 	expectedAttributes := map[string]string{}
 	for key, value := range data.Fixture.ExpectedAttrs {
 		expectedAttributes[key] = value
+	}
+	expectedFindings := []map[string]any{
+		{
+			"rule_id":    data.Definition.ID,
+			"severity":   strings.ToUpper(data.Definition.Severity),
+			"status":     data.Definition.Status,
+			"summary":    data.Definition.Name,
+			"event_ids":  []string{"fixture-event-1"},
+			"attributes": expectedAttributes,
+		},
+	}
+	if data.Definition.Lifecycle.Kind == findings.LifecycleRetired {
+		expectedFindings = []map[string]any{}
 	}
 	fixture := map[string]any{
 		"rule_id": data.Definition.ID,
@@ -348,16 +443,7 @@ func renderFindingRuleFixture(data findingRuleTemplateData) string {
 				"attributes":  attributes,
 			},
 		},
-		"expected_findings": []map[string]any{
-			{
-				"rule_id":    data.Definition.ID,
-				"severity":   strings.ToUpper(data.Definition.Severity),
-				"status":     data.Definition.Status,
-				"summary":    data.Definition.Name,
-				"event_ids":  []string{"fixture-event-1"},
-				"attributes": expectedAttributes,
-			},
-		},
+		"expected_findings": expectedFindings,
 	}
 	payload, _ := json.MarshalIndent(fixture, "", "  ")
 	return string(append(payload, '\n'))
@@ -469,4 +555,8 @@ func firstString(values []string) string {
 		return ""
 	}
 	return values[0]
+}
+
+func isDefaultEventIDFingerprint(fields []string) bool {
+	return len(fields) == 1 && strings.EqualFold(strings.TrimSpace(fields[0]), "event_id")
 }

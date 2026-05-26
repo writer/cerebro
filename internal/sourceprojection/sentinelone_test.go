@@ -29,6 +29,7 @@ func TestProjectSentinelOneAgentBuildsAgentEntity(t *testing.T) {
 			"is_decommissioned": "false",
 			"is_up_to_date":     "true",
 			"infected":          "false",
+			"firewall_enabled":  "false",
 			"active_threats":    "0",
 			"external_ip":       "203.0.113.10",
 			"last_active_date":  "2026-04-23T01:00:00Z",
@@ -61,6 +62,12 @@ func TestProjectSentinelOneAgentBuildsAgentEntity(t *testing.T) {
 	}
 	if state.entities[agentURN].Attributes["computer_name"] != "host-1" {
 		t.Fatalf("agent computer_name = %q, want host-1", state.entities[agentURN].Attributes["computer_name"])
+	}
+	if got := state.entities[agentURN].Attributes["control_type"]; got != "firewall" {
+		t.Fatalf("agent control_type = %q, want firewall", got)
+	}
+	if got := state.entities[agentURN].Attributes["control_state"]; got != "disabled" {
+		t.Fatalf("agent control_state = %q, want disabled", got)
 	}
 	if entity := state.entities[ipURN]; entity == nil || entity.EntityType != "internet.ip" {
 		t.Fatalf("internet ip entity missing: %#v", entity)

@@ -54,6 +54,9 @@ var ensureFindingEvidenceStatements = []string{
 	`CREATE INDEX IF NOT EXISTS finding_evidence_attributes_gin_idx ON finding_evidence USING GIN (attributes_json)`,
 	`CREATE INDEX IF NOT EXISTS finding_evidence_last_observed_idx ON finding_evidence (runtime_id, last_observed_at DESC)`,
 	`CREATE INDEX IF NOT EXISTS finding_evidence_runtime_observed_id_idx ON finding_evidence (runtime_id, last_observed_at DESC, created_at DESC, id)`,
+	`CREATE INDEX CONCURRENTLY IF NOT EXISTS finding_evidence_runtime_finding_observed_idx ON finding_evidence (runtime_id, finding_id, last_observed_at DESC, created_at DESC, id)`,
+	`CREATE INDEX CONCURRENTLY IF NOT EXISTS finding_evidence_runtime_finding_created_idx ON finding_evidence (runtime_id, finding_id, created_at DESC, id)`,
+	`CREATE INDEX CONCURRENTLY IF NOT EXISTS finding_evidence_runtime_rule_observed_idx ON finding_evidence (runtime_id, rule_id, last_observed_at DESC, created_at DESC, id)`,
 }
 
 func findingEvidenceUpsertSQL() string {

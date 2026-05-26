@@ -261,22 +261,22 @@ type agentLifecycleRecord struct {
 }
 
 type agentStatusRecord struct {
-	IsActive                 bool   `json:"isActive"`
-	IsDecommissioned         bool   `json:"isDecommissioned"`
-	IsPendingUninstall       bool   `json:"isPendingUninstall"`
-	IsUninstalled            bool   `json:"isUninstalled"`
-	Infected                 bool   `json:"infected"`
-	ActiveThreats            int    `json:"activeThreats"`
-	FirewallEnabled          bool   `json:"firewallEnabled"`
-	NetworkStatus            string `json:"networkStatus"`
-	OperationalState         string `json:"operationalState"`
-	ScanStatus               string `json:"scanStatus"`
-	MitigationMode           string `json:"mitigationMode"`
-	MitigationModeSuspicious string `json:"mitigationModeSuspicious"`
-	DetectionState           string `json:"detectionState"`
-	AppsVulnerabilityStatus  string `json:"appsVulnerabilityStatus"`
-	ShowAlertIcon            bool   `json:"showAlertIcon"`
-	InRemoteShellSession     bool   `json:"inRemoteShellSession"`
+	IsActive                 bool          `json:"isActive"`
+	IsDecommissioned         bool          `json:"isDecommissioned"`
+	IsPendingUninstall       bool          `json:"isPendingUninstall"`
+	IsUninstalled            bool          `json:"isUninstalled"`
+	Infected                 bool          `json:"infected"`
+	ActiveThreats            int           `json:"activeThreats"`
+	FirewallEnabled          *flexibleBool `json:"firewallEnabled"`
+	NetworkStatus            string        `json:"networkStatus"`
+	OperationalState         string        `json:"operationalState"`
+	ScanStatus               string        `json:"scanStatus"`
+	MitigationMode           string        `json:"mitigationMode"`
+	MitigationModeSuspicious string        `json:"mitigationModeSuspicious"`
+	DetectionState           string        `json:"detectionState"`
+	AppsVulnerabilityStatus  string        `json:"appsVulnerabilityStatus"`
+	ShowAlertIcon            bool          `json:"showAlertIcon"`
+	InRemoteShellSession     bool          `json:"inRemoteShellSession"`
 }
 
 type agentHardwareRecord struct {
@@ -1293,8 +1293,10 @@ func agentAttributes(s settings, record agentRecord) map[string]string {
 		"is_pending_uninstall": boolString(record.IsPendingUninstall),
 		"is_up_to_date":        boolString(record.IsUpToDate),
 		"infected":             boolString(record.Infected),
-		"firewall_enabled":     boolString(record.FirewallEnabled),
 		"active_threats":       intToString(record.ActiveThreats),
+	}
+	if record.FirewallEnabled != nil {
+		attrs["firewall_enabled"] = boolString(bool(*record.FirewallEnabled))
 	}
 	addAttribute(attrs, "computer_name", record.ComputerName)
 	addAttribute(attrs, "uuid", record.UUID)

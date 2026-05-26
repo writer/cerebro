@@ -840,6 +840,7 @@ func attributesFor(family string, record record) map[string]string {
 			"site_name":        "siteName",
 			"timestamp":        "timestamp",
 		})
+		addVulnViewFindingStateAttributes(attrs, values)
 		if attrs["template_id"] == "" {
 			copyFields(attrs, values, map[string]string{"template_id": "template-id", "vulnerability_id": "template-id"})
 		}
@@ -882,10 +883,33 @@ func attributesFor(family string, record record) map[string]string {
 			"sites":        "siteNames",
 			"scan_names":   "scanNames",
 		})
+		addVulnViewFindingStateAttributes(attrs, values)
 		attrs["target_type"] = "external_asset"
 	}
 	trimEmptyAttributes(attrs)
 	return attrs
+}
+
+func addVulnViewFindingStateAttributes(attrs map[string]string, values map[string]any) {
+	stateFields := map[string][]string{
+		"vulnview_status":            {"status"},
+		"vulnview_state":             {"state"},
+		"vulnview_finding_status":    {"findingStatus", "finding_status"},
+		"vulnview_remediation_state": {"remediationState", "remediation_state"},
+		"vulnview_lifecycle_state":   {"lifecycleState", "lifecycle_state"},
+	}
+	for attr, fields := range stateFields {
+		if value := firstValueString(values, fields...); value != "" {
+			attrs[attr] = value
+		}
+	}
+	attrs["vulnview_finding_state"] = firstNonEmpty(
+		attrs["vulnview_status"],
+		attrs["vulnview_state"],
+		attrs["vulnview_finding_status"],
+		attrs["vulnview_remediation_state"],
+		attrs["vulnview_lifecycle_state"],
+	)
 }
 
 func occurredAtFor(values map[string]any) time.Time {

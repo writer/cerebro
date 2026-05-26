@@ -109,6 +109,22 @@ WITH victims AS (
   ORDER BY e.urn
   LIMIT $%d
 ),
+matched_links AS (
+  SELECT COUNT(DISTINCT (l.from_urn, l.relation, l.to_urn)) AS count
+  FROM entity_links l
+  JOIN victims v ON l.from_urn = v.urn OR l.to_urn = v.urn
+)
+`, strings.Join(conditions, " AND "), limitPlaceholder)
+	if request.DryRun {
+		return query + `
+SELECT
+  (SELECT COUNT(*) FROM victims) AS entities_matched,
+  (SELECT count FROM matched_links) AS links_matched,
+  0 AS entities_deleted,
+  0 AS links_deleted`, args, nil
+	}
+	query += `
+,
 deleted_links AS (
   DELETE FROM entity_links l
   USING victims v
@@ -122,8 +138,10 @@ deleted_entities AS (
   RETURNING 1
 )
 SELECT
+  (SELECT COUNT(*) FROM deleted_entities) AS entities_matched,
+  (SELECT count FROM matched_links) AS links_matched,
   (SELECT COUNT(*) FROM deleted_entities) AS entities_deleted,
-  (SELECT COUNT(*) FROM deleted_links) AS links_deleted`, strings.Join(conditions, " AND "), limitPlaceholder)
+  (SELECT COUNT(*) FROM deleted_links) AS links_deleted`
 	return query, args, nil
 }
 
@@ -467,7 +485,7 @@ func (s *Store) CleanupProjectedEntities(ctx context.Context, request ports.Proj
 		return ports.ProjectionCleanupResult{}, err
 	}
 	var result ports.ProjectionCleanupResult
-	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&result.EntitiesDeleted, &result.LinksDeleted); err != nil {
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&result.EntitiesMatched, &result.LinksMatched, &result.EntitiesDeleted, &result.LinksDeleted); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ports.ProjectionCleanupResult{}, nil
 		}

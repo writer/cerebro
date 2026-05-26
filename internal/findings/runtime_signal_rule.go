@@ -12,6 +12,8 @@ import (
 
 const runtimeActiveThreatEvidenceRuleID = "runtime-active-threat-evidence"
 
+const runtimeActiveThreatEvidenceTTL = 24 * time.Hour
+
 func newRuntimeActiveThreatEvidenceRule() Rule {
 	definition := runtimeActiveThreatEvidenceDefinition()
 	return newEventRule(eventRuleConfig{definition: definition, sourceID: "runtime", match: eventKindMatcher("runtime.evidence"), build: buildRuntimeActiveThreatFinding})
@@ -38,6 +40,7 @@ func runtimeActiveThreatEvidenceDefinition() RuleDefinition {
 			{FrameworkName: "SOC 2", ControlID: "CC7.2"},
 			{FrameworkName: "ISO 27001:2022", ControlID: "A.5.24"},
 		},
+		Lifecycle: Lifecycle{Kind: LifecycleTTLEvidence, Anchor: AnchorNone, TTL: runtimeActiveThreatEvidenceTTL},
 	}
 }
 

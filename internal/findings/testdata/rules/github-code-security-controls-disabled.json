@@ -18,6 +18,7 @@
         "family": "audit",
         "operation_type": "modify",
         "org": "writer",
+        "dependabot_alerts_enabled": "false",
         "resource_id": "writer/cerebro",
         "resource_type": "dependabot_alerts",
         "source_runtime_id": "writer-github-audit",
@@ -37,9 +38,14 @@
         "family": "audit",
         "operation_type": "modify",
         "org": "writer",
+        "advanced_security_enabled": "true",
+        "dependabot_alerts_enabled": "true",
+        "dependabot_security_updates_enabled": "true",
         "resource_id": "writer/cerebro",
         "resource_type": "dependabot_alerts",
+        "secret_scanning_enabled": "true",
         "source_runtime_id": "writer-github-audit",
+        "vulnerability_alerts_enabled": "true",
         "action": "dependabot_alerts.enable",
         "repo": "writer/cerebro"
       }
@@ -56,6 +62,8 @@
       ],
       "attributes": {
         "action": "dependabot_alerts.disable",
+        "dependabot_alerts_enabled": "false",
+        "disabled_controls": "dependabot",
         "primary_resource_urn": "urn:cerebro:writer:github_repo:writer/cerebro",
         "repo": "writer/cerebro",
         "rule_tags": "github,advanced-security,dependabot,secret-scanning,defense-evasion,supply-chain,attack.t1562"

@@ -280,6 +280,7 @@ func checkpointAuditCursor(_ []*gogithub.AuditEntry, cursor string) string {
 }
 
 func auditAttributes(entry *gogithub.AuditEntry, raw map[string]any, settings settings, actorResolution auditActorResolution) map[string]string {
+	action := strings.TrimSpace(entry.GetAction())
 	attributes := map[string]string{
 		"action":         entry.GetAction(),
 		"family":         familyAudit,
@@ -308,10 +309,53 @@ func auditAttributes(entry *gogithub.AuditEntry, raw map[string]any, settings se
 	addAttribute(attributes, "user", entry.GetUser())
 	addAttribute(attributes, "user_id", positiveInt64String(entry.GetUserID()))
 	addAttribute(attributes, "visibility", rawString(raw, "visibility"))
+	if strings.HasPrefix(action, "integration_installation.") {
+		addAttribute(attributes, "github_app_id", githubAppIDFromAuditInstallation(raw))
+	}
+	if strings.HasPrefix(action, "secret_scanning_alert.") {
+		addAttribute(attributes, "secret_scanning_alert.resolution", rawNestedOrFlatScalarString(raw, "secret_scanning_alert", "resolution"))
+		addAttribute(attributes, "secret_scanning_alert.state", rawNestedOrFlatScalarString(raw, "secret_scanning_alert", "state"))
+		addAttribute(attributes, "secret_scanning_alert.resolution_comment", rawNestedOrFlatScalarString(raw, "secret_scanning_alert", "resolution_comment"))
+	}
+	if auditHasRunnerContext(action, raw) {
+		addAttribute(attributes, "runner_scope", auditRunnerScope(raw, settings))
+	}
 	for _, key := range auditAdditionalAttributeKeys {
+		if key == "runner_scope" && auditHasRunnerContext(action, raw) && attributes["runner_scope"] != "" {
+			continue
+		}
 		addAttribute(attributes, key, rawScalarString(raw, key))
 	}
 	return attributes
+}
+
+func githubAppIDFromAuditInstallation(raw map[string]any) string {
+	if appID := rawNestedPositiveInt64String(raw, "installation", "app_id"); appID != "" {
+		return appID
+	}
+	return rawNestedPositiveInt64String(raw, "installation", "id")
+}
+
+func rawNestedOrFlatScalarString(raw map[string]any, objectKey string, key string) string {
+	if value := rawScalarString(raw, objectKey+"."+key); value != "" {
+		return value
+	}
+	nested, ok := raw[objectKey].(map[string]any)
+	if !ok {
+		return ""
+	}
+	return rawScalarString(nested, key)
+}
+
+func rawNestedPositiveInt64String(raw map[string]any, objectKey string, key string) string {
+	if value := positiveInt64String(rawInt64(raw, objectKey+"."+key)); value != "" {
+		return value
+	}
+	nested, ok := raw[objectKey].(map[string]any)
+	if !ok {
+		return ""
+	}
+	return positiveInt64String(rawInt64(nested, key))
 }
 
 func firstPositiveInt64(values ...int64) int64 {
@@ -324,30 +368,160 @@ func firstPositiveInt64(values ...int64) int64 {
 }
 
 var auditAdditionalAttributeKeys = []string{
+	"advanced_security_enabled",
+	"allowed_cidrs_compliant",
+	"allowlisted_destination",
+	"auth_control_weakened",
 	"branch",
 	"bypass_actor_added",
 	"change_type",
 	"changes",
+	"code_security_enabled",
 	"deletions_allowed",
+	"dependabot_alerts_enabled",
+	"dependabot_enabled",
+	"dependabot_security_updates_enabled",
+	"destination_allowlisted",
+	"destination_non_allowlisted",
 	"enforcement",
+	"ephemeral",
 	"force_pushes_allowed",
+	"github_advanced_security_enabled",
+	"hook_destination_allowlisted",
+	"hook_destination_non_allowlisted",
 	"hook_id",
+	"hook_url_allowlisted",
+	"hook_url_non_allowlisted",
+	"host_trusted",
+	"host_untrusted",
 	"integration",
+	"ip_allow_list_disabled",
+	"ip_allow_list_enabled",
+	"ip_allow_list_entries_compliant",
+	"is_ephemeral",
+	"is_registered",
+	"mfa_required",
 	"name",
 	"new_enforcement",
+	"non_allowlisted_cidr_count",
+	"non_allowlisted_cidrs",
+	"non_allowlisted_destination",
 	"number",
+	"oauth_app_restrictions_enabled",
+	"oauth_app_restrictions_enforced",
 	"permission",
 	"previous_visibility",
+	"private_forking_enabled",
+	"private_repository_forking_enabled",
+	"registered",
 	"repository_public",
+	"repository_secret_scanning_enabled",
+	"repository_vulnerability_alerts_enabled",
 	"required_review_removed",
 	"required_status_check_removed",
 	"ruleset_enforcement",
 	"ruleset_id",
 	"ruleset_name",
+	"runner_ephemeral",
 	"runner_group_name",
+	"runner_host_trusted",
+	"runner_id",
 	"runner_name",
+	"runner_registered",
+	"runner_scope",
+	"runner_state",
+	"runner_untrusted",
+	"saml_enabled",
+	"saml_enforced",
+	"saml_provider_settings_weakened",
+	"saml_required",
+	"saml_sso_enabled",
+	"secret_scanning_enabled",
+	"secret_scanning_push_protection_enabled",
 	"transport_protocol_name",
+	"trusted_host",
+	"two_factor_enforced",
+	"two_factor_required",
+	"two_factor_requirement_enabled",
+	"untrusted_host",
+	"url_allowlisted",
+	"url_non_allowlisted",
 	"user_agent",
+	"vulnerability_alerts_enabled",
+	"webhook_destination_allowlisted",
+	"webhook_destination_non_allowlisted",
+	"webhook_url_allowlisted",
+	"webhook_url_non_allowlisted",
+}
+
+func auditHasRunnerContext(action string, raw map[string]any) bool {
+	if rawScalarString(raw, "runner_id") != "" {
+		return true
+	}
+	return strings.Contains(strings.ToLower(strings.TrimSpace(action)), "runner")
+}
+
+func auditRunnerScope(raw map[string]any, settings settings) string {
+	for _, key := range []string{"runner_scope", "runner_scope_id"} {
+		if scope := normalizeAuditRunnerScope(rawScalarString(raw, key)); scope != "" {
+			return scope
+		}
+	}
+	if rawScope := strings.TrimSpace(rawScalarString(raw, "scope")); rawScope != "" && !isGenericAuditScope(rawScope) {
+		if scope := normalizeAuditRunnerScope(rawScope); scope != "" {
+			return scope
+		}
+	}
+	if repo := strings.TrimSpace(rawString(raw, "repo")); repo != "" {
+		return "repo:" + repo
+	}
+	resourceID := strings.TrimSpace(rawScalarString(raw, "resource_id"))
+	resourceType := strings.ToLower(strings.TrimSpace(rawScalarString(raw, "resource_type")))
+	if resourceID != "" && (strings.Contains(resourceID, "/") || strings.Contains(resourceType, "repo")) {
+		return "repo:" + resourceID
+	}
+	if resourceID != "" && strings.Contains(resourceType, "enterprise") {
+		return "enterprise:" + resourceID
+	}
+	for _, key := range []string{"enterprise", "enterprise_slug", "enterprise_id", "business", "business_id"} {
+		if enterprise := strings.TrimSpace(rawScalarString(raw, key)); enterprise != "" {
+			return "enterprise:" + enterprise
+		}
+	}
+	if org := strings.TrimSpace(valueOrDefault(rawString(raw, "org"), settings.owner)); org != "" {
+		return "org:" + org
+	}
+	if resourceID != "" && (strings.Contains(resourceType, "org") || resourceType == "") {
+		return "org:" + resourceID
+	}
+	return ""
+}
+
+func isGenericAuditScope(scope string) bool {
+	switch strings.ToLower(strings.TrimSpace(scope)) {
+	case "repository", "repo", "organization", "org", "audit":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeAuditRunnerScope(scope string) string {
+	normalized := strings.TrimSpace(scope)
+	if normalized == "" {
+		return ""
+	}
+	lower := strings.ToLower(normalized)
+	switch {
+	case strings.HasPrefix(lower, "repo:"), strings.HasPrefix(lower, "org:"), strings.HasPrefix(lower, "enterprise:"):
+		return normalized
+	case strings.Contains(normalized, "/"):
+		return "repo:" + normalized
+	case lower == "repository", lower == "repo", lower == "organization", lower == "org", lower == "audit":
+		return ""
+	default:
+		return "org:" + normalized
+	}
 }
 
 func auditResourceType(entry *gogithub.AuditEntry) string {
@@ -465,6 +639,18 @@ func rawInt64(raw map[string]any, key string) int64 {
 		return int64(typed)
 	case int64:
 		return typed
+	case json.Number:
+		value, err := typed.Int64()
+		if err != nil {
+			return 0
+		}
+		return value
+	case string:
+		value, err := strconv.ParseInt(strings.TrimSpace(typed), 10, 64)
+		if err != nil {
+			return 0
+		}
+		return value
 	default:
 		return 0
 	}

@@ -53,6 +53,8 @@ const (
 	defaultRegion             = "us-east-1"
 	defaultPageSize           = 10
 	maxPageSize               = 200
+	cloudTrailCursorVersion   = 1
+	cloudTrailCursorMaxAge    = 55 * time.Minute
 	publicEndpointCursorV2    = 2
 	awsAssumeRoleSessionName  = "cerebro-source-runtime"
 	familyAccessKey           = "access_key"
@@ -285,6 +287,18 @@ type cloudTrailResourceRef struct {
 	Name      string `json:"resourceName"`
 	Type      string `json:"resourceType"`
 	AccountID string `json:"accountId"`
+}
+
+type cloudTrailCursor struct {
+	Version       int    `json:"version,omitempty"`
+	Token         string `json:"token,omitempty"`
+	StartTime     string `json:"start_time,omitempty"`
+	EndTime       string `json:"end_time,omitempty"`
+	StartSelector string `json:"start_selector,omitempty"`
+	EndSelector   string `json:"end_selector,omitempty"`
+	LookupKey     string `json:"lookup_key,omitempty"`
+	LookupValue   string `json:"lookup_value,omitempty"`
+	IssuedAt      string `json:"issued_at,omitempty"`
 }
 
 // New constructs the live AWS source.
@@ -1469,18 +1483,37 @@ func attachedRolePolicyAssignments(ctx context.Context, clients awsClients, role
 }
 
 func listCloudTrailEvents(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]cloudtrailtypes.Event, string, error) {
-	input := &cloudtrail.LookupEventsInput{MaxResults: awssdk.Int32(int32(limit)), NextToken: stringPtr(cursor)}
+	now := time.Now().UTC()
+	state, resume := parseCloudTrailCursor(cursor, settings, now)
+	input := &cloudtrail.LookupEventsInput{MaxResults: awssdk.Int32(int32(limit))}
+	if resume {
+		input.NextToken = stringPtr(state.Token)
+		if state.StartTime != "" {
+			parsed, err := time.Parse(time.RFC3339Nano, state.StartTime)
+			if err != nil {
+				return nil, "", fmt.Errorf("parse aws cloudtrail cursor start_time: %w", err)
+			}
+			input.StartTime = &parsed
+		}
+		if state.EndTime != "" {
+			parsed, err := time.Parse(time.RFC3339Nano, state.EndTime)
+			if err != nil {
+				return nil, "", fmt.Errorf("parse aws cloudtrail cursor end_time: %w", err)
+			}
+			input.EndTime = &parsed
+		}
+	}
 	if settings.lookupKey != "" && settings.lookupValue != "" {
 		input.LookupAttributes = []cloudtrailtypes.LookupAttribute{{AttributeKey: cloudtrailtypes.LookupAttributeKey(settings.lookupKey), AttributeValue: awssdk.String(settings.lookupValue)}}
 	}
-	if firstNonEmpty(settings.startTime, settings.since) != "" {
-		parsed, err := parseAWSTimeSelector(firstNonEmpty(settings.startTime, settings.since), time.Now().UTC())
+	if !resume && firstNonEmpty(settings.startTime, settings.since) != "" {
+		parsed, err := parseAWSTimeSelector(firstNonEmpty(settings.startTime, settings.since), now)
 		if err != nil {
 			return nil, "", fmt.Errorf("parse aws start_time: %w", err)
 		}
 		input.StartTime = &parsed
 	}
-	if settings.endTime != "" {
+	if !resume && settings.endTime != "" {
 		parsed, err := time.Parse(time.RFC3339, settings.endTime)
 		if err != nil {
 			return nil, "", fmt.Errorf("parse aws end_time: %w", err)
@@ -1491,7 +1524,76 @@ func listCloudTrailEvents(ctx context.Context, clients awsClients, settings sett
 	if err != nil {
 		return nil, "", err
 	}
-	return out.Events, awssdk.ToString(out.NextToken), nil
+	return out.Events, encodeCloudTrailCursor(settings, input, awssdk.ToString(out.NextToken), now), nil
+}
+
+func parseCloudTrailCursor(raw string, settings settings, now time.Time) (cloudTrailCursor, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return cloudTrailCursor{}, false
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		return cloudTrailCursor{}, false
+	}
+	var cursor cloudTrailCursor
+	if err := json.Unmarshal(decoded, &cursor); err != nil {
+		return cloudTrailCursor{}, false
+	}
+	if cursor.Version != cloudTrailCursorVersion || strings.TrimSpace(cursor.Token) == "" {
+		return cloudTrailCursor{}, false
+	}
+	issuedAt, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(cursor.IssuedAt))
+	if err != nil || now.Sub(issuedAt) > cloudTrailCursorMaxAge {
+		return cloudTrailCursor{}, false
+	}
+	cursor.StartTime = strings.TrimSpace(cursor.StartTime)
+	cursor.EndTime = strings.TrimSpace(cursor.EndTime)
+	if cursor.StartTime != "" {
+		if _, err := time.Parse(time.RFC3339Nano, cursor.StartTime); err != nil {
+			return cloudTrailCursor{}, false
+		}
+	}
+	if cursor.EndTime != "" {
+		if _, err := time.Parse(time.RFC3339Nano, cursor.EndTime); err != nil {
+			return cloudTrailCursor{}, false
+		}
+	}
+	if cursor.StartSelector != firstNonEmpty(settings.startTime, settings.since) ||
+		cursor.EndSelector != strings.TrimSpace(settings.endTime) ||
+		cursor.LookupKey != strings.TrimSpace(settings.lookupKey) ||
+		cursor.LookupValue != strings.TrimSpace(settings.lookupValue) {
+		return cloudTrailCursor{}, false
+	}
+	cursor.Token = strings.TrimSpace(cursor.Token)
+	return cursor, true
+}
+
+func encodeCloudTrailCursor(settings settings, input *cloudtrail.LookupEventsInput, token string, issuedAt time.Time) string {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return ""
+	}
+	cursor := cloudTrailCursor{
+		Version:       cloudTrailCursorVersion,
+		Token:         token,
+		StartSelector: firstNonEmpty(settings.startTime, settings.since),
+		EndSelector:   strings.TrimSpace(settings.endTime),
+		LookupKey:     strings.TrimSpace(settings.lookupKey),
+		LookupValue:   strings.TrimSpace(settings.lookupValue),
+		IssuedAt:      issuedAt.UTC().Format(time.RFC3339Nano),
+	}
+	if input != nil && input.StartTime != nil {
+		cursor.StartTime = input.StartTime.UTC().Format(time.RFC3339Nano)
+	}
+	if input != nil && input.EndTime != nil {
+		cursor.EndTime = input.EndTime.UTC().Format(time.RFC3339Nano)
+	}
+	payload, err := json.Marshal(cursor)
+	if err != nil {
+		return ""
+	}
+	return base64.RawURLEncoding.EncodeToString(payload)
 }
 
 func iamUserEvent(settings settings, user iamtypes.User) (*primitives.Event, error) {
