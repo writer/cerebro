@@ -381,6 +381,9 @@ func (s *Source) readFamily(ctx context.Context, st settings, cursor *cerebrov1.
 		}
 		for recordIndex := startRecord; recordIndex < len(recs); recordIndex++ {
 			rec := recs[recordIndex]
+			if recordTenant := strings.TrimSpace(rec.TenantID); recordTenant != "" && recordTenant != st.tenantID {
+				continue
+			}
 			event, err := buildEvent(st, rec, kind, schemaRef)
 			if err != nil {
 				return sourcecdk.Pull{}, fmt.Errorf("convert event in s3://%s/%s: %w", st.bucket, key, err)

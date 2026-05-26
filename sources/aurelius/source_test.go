@@ -286,6 +286,53 @@ func TestReadEmitsEventsAndCompletesFinalPage(t *testing.T) {
 	}
 }
 
+func TestReadSkipsRecordsFromOtherTenants(t *testing.T) {
+	src, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	fixed := time.Date(2026, 5, 22, 14, 30, 0, 0, time.UTC)
+	client := newFakeS3([]fakeObject{{
+		key: "verdicts/batch-001.ndjson",
+		records: []aureliusRecord{
+			{
+				EventID:    "01HX-other-tenant",
+				OccurredAt: fixed,
+				TenantID:   "other",
+				Attributes: map[string]string{"image_digest": "sha256:other", "verdict": "pass"},
+				Payload:    map[string]interface{}{"image_digest": "sha256:other", "verdict": "pass"},
+			},
+			{
+				EventID:    "01HX-writer-tenant",
+				OccurredAt: fixed.Add(time.Minute),
+				TenantID:   "writer",
+				Attributes: map[string]string{"image_digest": "sha256:writer", "verdict": "warn"},
+				Payload:    map[string]interface{}{"image_digest": "sha256:writer", "verdict": "warn"},
+			},
+		},
+	}})
+	src.newClient = func(context.Context, settings) (s3API, error) { return client, nil }
+
+	pull, err := src.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"family":    familyVerdict,
+		"bucket":    "writer-aurelius-telemetry",
+		"prefix":    "verdicts/",
+		"tenant_id": "writer",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("Read() events = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].GetId(); got != "01HX-writer-tenant" {
+		t.Fatalf("event id = %q, want writer tenant record", got)
+	}
+	if got := pull.Events[0].GetTenantId(); got != "writer" {
+		t.Fatalf("event tenant_id = %q, want writer", got)
+	}
+}
+
 func TestReadReturnsCursorWhenS3PageIsTruncated(t *testing.T) {
 	src, err := New()
 	if err != nil {
