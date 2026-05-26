@@ -112,6 +112,9 @@ func buildAttestationRegistry(cfg config.DeviceAuthConfig) (*attestation.Registr
 		}
 		verifiers = append(verifiers, v)
 	}
+	if cfg.Attestation.Required && len(verifiers) == 0 {
+		return nil, errors.New("required attestation has no configured verifier backend")
+	}
 	return attestation.NewRegistry(cfg.Attestation.Required, verifiers...), nil
 }
 
@@ -443,6 +446,16 @@ func writeDeviceAuthServiceError(w http.ResponseWriter, err error) {
 		writeDeviceAuthError(w, http.StatusForbidden, "device_inactive", err.Error())
 	case errors.Is(err, deviceauth.ErrIdempotencyConflict):
 		writeDeviceAuthError(w, http.StatusConflict, "idempotency_conflict", err.Error())
+	case errors.Is(err, attestation.ErrAttestationRequired):
+		writeDeviceAuthError(w, http.StatusBadRequest, "attestation_required", err.Error())
+	case errors.Is(err, attestation.ErrUnsupportedFormat):
+		writeDeviceAuthError(w, http.StatusBadRequest, "unsupported_attestation", err.Error())
+	case errors.Is(err, attestation.ErrInvalidStatement),
+		errors.Is(err, attestation.ErrChainInvalid),
+		errors.Is(err, attestation.ErrNonceMismatch),
+		errors.Is(err, attestation.ErrKeyIDMismatch),
+		errors.Is(err, attestation.ErrUnsupportedVendor):
+		writeDeviceAuthError(w, http.StatusBadRequest, "invalid_attestation", err.Error())
 	case errors.Is(err, deviceauth.ErrDPoPMissing):
 		writeDeviceAuthError(w, http.StatusUnauthorized, "dpop_required", err.Error())
 	case errors.Is(err, deviceauth.ErrDPoPMalformed),

@@ -17,6 +17,7 @@ import (
 
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/deviceauth"
+	"github.com/writer/cerebro/internal/deviceauth/attestation"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -238,6 +239,46 @@ func TestNewWithErrorFailsDeviceAuthWithoutStore(t *testing.T) {
 	}, Dependencies{}, nil)
 	if !errors.Is(err, errDeviceAuthRequiresStore) {
 		t.Fatalf("NewWithError err = %v, want device-auth store requirement", err)
+	}
+}
+
+func TestBuildAttestationRegistryRejectsRequiredWithoutVerifier(t *testing.T) {
+	_, err := buildAttestationRegistry(config.DeviceAuthConfig{
+		Attestation: config.DeviceAuthAttestationConfig{Required: true},
+	})
+	if err == nil {
+		t.Fatal("buildAttestationRegistry error = nil, want non-nil")
+	}
+}
+
+func TestWriteDeviceAuthServiceErrorMapsAttestationFailures(t *testing.T) {
+	tests := []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{
+		{name: "required", err: attestation.ErrAttestationRequired, status: http.StatusBadRequest, code: "attestation_required"},
+		{name: "unsupported", err: attestation.ErrUnsupportedFormat, status: http.StatusBadRequest, code: "unsupported_attestation"},
+		{name: "invalid statement", err: attestation.ErrInvalidStatement, status: http.StatusBadRequest, code: "invalid_attestation"},
+		{name: "invalid chain", err: attestation.ErrChainInvalid, status: http.StatusBadRequest, code: "invalid_attestation"},
+		{name: "nonce mismatch", err: attestation.ErrNonceMismatch, status: http.StatusBadRequest, code: "invalid_attestation"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := httptest.NewRecorder()
+			writeDeviceAuthServiceError(resp, tt.err)
+			if resp.Code != tt.status {
+				t.Fatalf("status = %d, want %d; body=%s", resp.Code, tt.status, resp.Body.String())
+			}
+			var body map[string]string
+			if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if body["error"] != tt.code {
+				t.Fatalf("error code = %q, want %q; body=%s", body["error"], tt.code, resp.Body.String())
+			}
+		})
 	}
 }
 

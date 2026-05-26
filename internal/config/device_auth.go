@@ -76,6 +76,9 @@ func loadDeviceAuthConfig() (DeviceAuthConfig, error) {
 			BundleIDs: parseCommaList(os.Getenv("CEREBRO_DEVICE_AUTH_APPLE_BUNDLE_IDS")),
 		},
 	}
+	if cfg.Attestation.Required && !deviceAuthHasAttestationVerifier(cfg.Attestation) {
+		return DeviceAuthConfig{}, fmt.Errorf("CEREBRO_DEVICE_AUTH_ATTESTATION_REQUIRED=true requires a configured attestation verifier backend")
+	}
 	keys, err := parseDeviceAuthSigningKeys(os.Getenv("CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON"))
 	if err != nil {
 		return DeviceAuthConfig{}, err
@@ -128,6 +131,10 @@ func deviceAuthHasKID(keys []DeviceAuthSigningKey, kid string) bool {
 		}
 	}
 	return false
+}
+
+func deviceAuthHasAttestationVerifier(cfg DeviceAuthAttestationConfig) bool {
+	return cfg.Apple.TeamID != "" && len(cfg.Apple.BundleIDs) > 0
 }
 
 func parseCommaList(raw string) []string {

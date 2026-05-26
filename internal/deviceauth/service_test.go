@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/writer/cerebro/internal/deviceauth/attestation"
 )
 
 func newServiceForTest(t *testing.T) (*Service, *MemStore, time.Time) {
@@ -118,6 +120,50 @@ func TestServiceEnrollRequiresMatchingHardware(t *testing.T) {
 	}
 }
 
+type checkingAttestationVerifier struct {
+	wantHash         [32]byte
+	wantHardwareUUID string
+	called           bool
+}
+
+func (v *checkingAttestationVerifier) Format() string { return attestation.FormatAppleAppAttest }
+
+func (v *checkingAttestationVerifier) Verify(_ context.Context, in attestation.Input) (*attestation.Result, error) {
+	v.called = true
+	if in.HardwareUUID != v.wantHardwareUUID {
+		return nil, attestation.ErrInvalidStatement
+	}
+	if in.ClientDataHash != v.wantHash {
+		return nil, attestation.ErrNonceMismatch
+	}
+	return &attestation.Result{AssuranceLevel: "hardware", Vendor: "stub-appattest"}, nil
+}
+
+func TestServiceEnrollAttestationClientHashBindsHardwareUUID(t *testing.T) {
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	verifier := &checkingAttestationVerifier{wantHardwareUUID: "hw-1"}
+	service.cfg.Attestations = attestation.NewRegistry(true, verifier)
+
+	bootstrap, err := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
+	if err != nil {
+		t.Fatalf("IssueBootstrapToken: %v", err)
+	}
+	verifier.wantHash = attestationClientDataHash(bootstrap.Token, "hw-1")
+
+	if _, err := service.Enroll(ctx, EnrollRequest{
+		BootstrapToken: bootstrap.Token,
+		HardwareUUID:   "hw-1",
+		OSType:         "darwin",
+		Attestation:    "stub-attestation",
+	}); err != nil {
+		t.Fatalf("Enroll: %v", err)
+	}
+	if !verifier.called {
+		t.Fatal("attestation verifier was not called")
+	}
+}
+
 func TestServiceIssueTokenRejectsWrongGrant(t *testing.T) {
 	ctx := context.Background()
 	service, _, _ := newServiceForTest(t)
@@ -177,6 +223,20 @@ func TestServiceIngestTelemetryIdempotent(t *testing.T) {
 
 	if _, err := service.IngestTelemetry(ctx, IngestPayload{DeviceID: enroll.DeviceID, IdempotencyKey: "abc-123", Body: []byte(`{"events":[{"type":"different"}]}`)}); !errors.Is(err, ErrIdempotencyConflict) {
 		t.Fatalf("conflicting body err = %v, want ErrIdempotencyConflict", err)
+	}
+}
+
+func TestServiceIngestTelemetryIdempotencyPreservesBodyWhitespace(t *testing.T) {
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	bootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
+	enroll, _ := service.Enroll(ctx, EnrollRequest{BootstrapToken: bootstrap.Token, HardwareUUID: "hw-1"})
+
+	if _, err := service.IngestTelemetry(ctx, IngestPayload{DeviceID: enroll.DeviceID, IdempotencyKey: "raw-body", Body: []byte(`{}`)}); err != nil {
+		t.Fatalf("first IngestTelemetry: %v", err)
+	}
+	if _, err := service.IngestTelemetry(ctx, IngestPayload{DeviceID: enroll.DeviceID, IdempotencyKey: "raw-body", Body: []byte("{}\n")}); !errors.Is(err, ErrIdempotencyConflict) {
+		t.Fatalf("whitespace-only body change err = %v, want ErrIdempotencyConflict", err)
 	}
 }
 

@@ -36,8 +36,9 @@ type Input struct {
 	// verifier uses this only as a nonce-binding input; trust comes from
 	// the attestation cert chain.
 	HardwareUUID string
-	// ClientDataHash is the SHA-256 of the request the agent signed. For
-	// App Attest this is the bootstrap-token hash bound into the receipt.
+	// ClientDataHash is the SHA-256 of the request context the agent signed.
+	// For App Attest this binds the bootstrap token and claimed hardware UUID
+	// into the nonce in the receipt.
 	ClientDataHash [32]byte
 	// Format is the value of the os_type field from the enroll request
 	// ("darwin", "windows", "linux"). The dispatch [Registry] uses this.

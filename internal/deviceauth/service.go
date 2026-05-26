@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
@@ -272,7 +273,7 @@ func (s *Service) Enroll(ctx context.Context, request EnrollRequest) (EnrollResp
 	if err != nil {
 		return EnrollResponse{}, fmt.Errorf("deviceauth: generate device id: %w", err)
 	}
-	clientHash := sha256.Sum256([]byte(strings.TrimSpace(request.BootstrapToken)))
+	clientHash := attestationClientDataHash(bootstrapToken, hardwareUUID)
 	attResult, err := s.runAttestation(ctx, clientHash, request)
 	if err != nil {
 		return EnrollResponse{}, err
@@ -331,6 +332,25 @@ func (s *Service) Enroll(ctx context.Context, request EnrollRequest) (EnrollResp
 		AssuranceLevel:    attResult.AssuranceLevel,
 		AttestationVendor: attResult.Vendor,
 	}, nil
+}
+
+func attestationClientDataHash(bootstrapToken string, hardwareUUID string) [32]byte {
+	h := sha256.New()
+	writeHashField(h, "bootstrap_token", strings.TrimSpace(bootstrapToken))
+	writeHashField(h, "hardware_uuid", strings.TrimSpace(hardwareUUID))
+	var out [32]byte
+	copy(out[:], h.Sum(nil))
+	return out
+}
+
+func writeHashField(h interface{ Write([]byte) (int, error) }, name string, value string) {
+	var length [8]byte
+	binary.BigEndian.PutUint64(length[:], uint64(len(name)))
+	_, _ = h.Write(length[:])
+	_, _ = h.Write([]byte(name))
+	binary.BigEndian.PutUint64(length[:], uint64(len(value)))
+	_, _ = h.Write(length[:])
+	_, _ = h.Write([]byte(value))
 }
 
 func (s *Service) runAttestation(ctx context.Context, clientHash [32]byte, request EnrollRequest) (*attestation.Result, error) {
@@ -629,7 +649,7 @@ func (s *Service) IngestTelemetry(ctx context.Context, payload IngestPayload) (I
 	}
 	now := s.cfg.Now().UTC()
 	cacheKey := "device:" + deviceID + ":" + idempotencyKey
-	requestHash := HashToken(string(payload.Body))
+	requestHash := sha256.Sum256(payload.Body)
 	cached, status, err := s.store.CheckIdempotency(ctx, cacheKey, requestHash)
 	if err != nil {
 		return IngestResult{}, err
