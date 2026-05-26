@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -1685,6 +1686,7 @@ func mergeFindingAttributesForUpsert(existing map[string]string, incoming map[st
 		}
 	}
 	mergeFindingListAttribute(merged, existing, incoming, "matched_locations", "matched_at")
+	mergeFindingJSONListAttribute(merged, existing, incoming, "matched_locations_json", "matched_at")
 	trimEmptyAttributes(merged)
 	return merged
 }
@@ -1700,6 +1702,35 @@ func mergeFindingListAttribute(merged map[string]string, existing map[string]str
 		return
 	}
 	merged[listKey] = strings.Join(values, ",")
+}
+
+func mergeFindingJSONListAttribute(merged map[string]string, existing map[string]string, incoming map[string]string, listKey string, scalarKeys ...string) {
+	values := append(splitFindingJSONListAttribute(existing[listKey]), splitFindingJSONListAttribute(incoming[listKey])...)
+	for _, key := range scalarKeys {
+		values = append(values, existing[key], incoming[key])
+	}
+	values = uniqueTrimmedStringsPreserveOrder(values)
+	if len(values) == 0 {
+		delete(merged, listKey)
+		return
+	}
+	encoded, err := json.Marshal(values)
+	if err != nil {
+		delete(merged, listKey)
+		return
+	}
+	merged[listKey] = string(encoded)
+}
+
+func splitFindingJSONListAttribute(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	var values []string
+	if err := json.Unmarshal([]byte(value), &values); err != nil {
+		return nil
+	}
+	return values
 }
 
 func splitFindingListAttribute(value string) []string {

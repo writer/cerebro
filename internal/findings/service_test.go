@@ -3970,6 +3970,53 @@ func TestUpsertFindingWithRiskPreservesGraphEvidenceDuringRecompute(t *testing.T
 	}
 }
 
+func TestUpsertFindingWithRiskMergesVulnViewMatchedLocationEvidence(t *testing.T) {
+	store := &stubFindingStore{}
+	service := New(nil, nil, store, store, store, store)
+	now := time.Now().UTC()
+	first := &ports.FindingRecord{
+		ID:           "vulnview-finding",
+		Fingerprint:  "vulnview-finding",
+		TenantID:     "tenant-a",
+		RuntimeID:    "runtime-vulnview",
+		RuleID:       vulnViewActionableExternalFindingRuleID,
+		Title:        "VulnView Actionable External Finding",
+		Severity:     "HIGH",
+		Status:       "open",
+		Summary:      "first finding",
+		ResourceURNs: []string{"urn:cerebro:tenant-a:external_asset:app.writer.com"},
+		EventIDs:     []string{"event-1"},
+		Attributes: map[string]string{
+			"matched_at": "https://app.writer.com/login",
+		},
+		FirstObservedAt: now,
+		LastObservedAt:  now,
+	}
+	if _, err := service.upsertFindingWithRisk(context.Background(), first, nil, now); err != nil {
+		t.Fatalf("upsertFindingWithRisk(first) error = %v", err)
+	}
+	second := cloneFinding(first)
+	second.EventIDs = []string{"event-2"}
+	second.Attributes["matched_at"] = "https://app.writer.com/admin"
+	second.LastObservedAt = now.Add(time.Minute)
+	stored, err := service.upsertFindingWithRisk(context.Background(), second, nil, now.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("upsertFindingWithRisk(second) error = %v", err)
+	}
+	if !containsTrimmed(stored.EventIDs, "event-1") || !containsTrimmed(stored.EventIDs, "event-2") {
+		t.Fatalf("EventIDs = %#v, want both event IDs", stored.EventIDs)
+	}
+	var locations []string
+	if err := json.Unmarshal([]byte(stored.Attributes["matched_locations_json"]), &locations); err != nil {
+		t.Fatalf("matched_locations_json = %q is invalid JSON array: %v", stored.Attributes["matched_locations_json"], err)
+	}
+	for _, location := range []string{"https://app.writer.com/login", "https://app.writer.com/admin"} {
+		if !slices.Contains(locations, location) {
+			t.Fatalf("matched_locations_json = %#v, missing %q", locations, location)
+		}
+	}
+}
+
 func TestAddFindingNoteUpdatesPersistedWorkflow(t *testing.T) {
 	store := &stubFindingStore{
 		findings: map[string]*ports.FindingRecord{
