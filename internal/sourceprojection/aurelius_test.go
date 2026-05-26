@@ -173,3 +173,39 @@ func TestProjectAureliusSparseImageOmitsEmptyImageMetadata(t *testing.T) {
 		}
 	}
 }
+
+func TestProjectAureliusFindingUsesPayloadVersionEvidence(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "aurelius-finding-versions",
+		TenantId: "writer",
+		SourceId: "aurelius",
+		Kind:     "aurelius.finding",
+		Payload: mustJSON(t, map[string]any{
+			"cve_id":            "CVE-2026-1111",
+			"fixed_version":     "3.0.12",
+			"image_digest":      "sha256:c6b86af5b3d40000",
+			"installed_version": "3.0.0",
+			"package":           "openssl",
+			"severity":          "high",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	imageURN := "urn:cerebro:writer:gcp_artifact_registry_image:sha256:c6b86af5b3d40000"
+	vulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-1111"
+	link := state.links[imageURN+"|"+relationAffectedBy+"|"+vulnerabilityURN]
+	if link == nil {
+		t.Fatalf("affected_by link missing; links=%v", state.links)
+	}
+	if got := link.Attributes["vulnerable_version"]; got != "3.0.0" {
+		t.Fatalf("vulnerable_version = %q, want 3.0.0", got)
+	}
+	if got := link.Attributes["fixed_version"]; got != "3.0.12" {
+		t.Fatalf("fixed_version = %q, want 3.0.12", got)
+	}
+}
