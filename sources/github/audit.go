@@ -321,6 +321,9 @@ func auditAttributes(entry *gogithub.AuditEntry, raw map[string]any, settings se
 		addAttribute(attributes, "runner_scope", auditRunnerScope(raw, settings))
 	}
 	for _, key := range auditAdditionalAttributeKeys {
+		if key == "runner_scope" && auditHasRunnerContext(action, raw) && attributes["runner_scope"] != "" {
+			continue
+		}
 		addAttribute(attributes, key, rawScalarString(raw, key))
 	}
 	return attributes
