@@ -1,6 +1,7 @@
 package deviceauth
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
@@ -76,6 +77,10 @@ type LocalSigner struct {
 	keys       map[string]ed25519.PrivateKey
 }
 
+// ErrSigningKeyMismatch indicates that configured public verification key
+// material does not correspond to the configured private signing key.
+var ErrSigningKeyMismatch = errors.New("deviceauth: signing key public/private mismatch")
+
 // NewLocalSigner constructs a signer. The first kid in keys is treated as the
 // current kid.
 func NewLocalSigner(keys []SigningKey) (*LocalSigner, error) {
@@ -92,6 +97,12 @@ func NewLocalSigner(keys []SigningKey) (*LocalSigner, error) {
 		}
 		if len(key.Private) != ed25519.PrivateKeySize {
 			return nil, fmt.Errorf("deviceauth: signing key %q has invalid private size", key.KID)
+		}
+		if len(key.Public) != ed25519.PublicKeySize {
+			return nil, fmt.Errorf("deviceauth: signing key %q has invalid public size", key.KID)
+		}
+		if derived, ok := key.Private.Public().(ed25519.PublicKey); !ok || !bytes.Equal(derived, key.Public) {
+			return nil, fmt.Errorf("%w: kid %q", ErrSigningKeyMismatch, key.KID)
 		}
 		if _, exists := signer.keys[key.KID]; exists {
 			return nil, fmt.Errorf("deviceauth: duplicate kid %q", key.KID)

@@ -1231,10 +1231,12 @@ paths:
       description: |
         Accepts a telemetry batch from an enrolled SeCheck agent. Requires
         a device JWT carrying the platform.telemetry.ingest scope and a
-        non-empty Idempotency-Key request header. A retried submission
-        with the same key + body is replayed without side effects; same
-        key with a different body returns 409 (RFC 5789-inspired
-        idempotency contract).
+        non-empty Idempotency-Key request header. When the JWT contains a
+        `cnf.jkt` confirmation claim, the request MUST also carry an RFC
+        9449 DPoP proof JWT in the `DPoP` header. A retried submission with
+        the same key + body is replayed without side effects; same key with
+        a different body returns 409 (RFC 5789-inspired idempotency
+        contract).
       tags:
         - Telemetry
       parameters:
@@ -1244,6 +1246,15 @@ paths:
           schema:
             type: string
             maxLength: 255
+        - in: header
+          name: DPoP
+          required: false
+          schema:
+            type: string
+          description: |
+            RFC 9449 DPoP proof JWT. Required when the bearer device JWT
+            contains a `cnf.jkt` confirmation claim. Algorithms: ES256,
+            ES384, EdDSA.
       requestBody:
         required: true
         content:
@@ -1256,6 +1267,13 @@ paths:
           description: Telemetry accepted.
         '400':
           description: Missing Idempotency-Key or malformed body.
+        '401':
+          description: |
+            Bearer token is missing, malformed, expired, or invalid; or DPoP
+            proof is missing (`dpop_required`), malformed
+            (`dpop_malformed`), or invalid -- bad signature, replayed jti,
+            expired iat, htm/htu mismatch, ath mismatch, or jkt mismatch
+            (`dpop_invalid`).
         '403':
           description: Caller is not a device principal.
         '409':

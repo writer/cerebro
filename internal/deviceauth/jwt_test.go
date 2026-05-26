@@ -154,6 +154,21 @@ func TestJWTIssuerRequiresScopes(t *testing.T) {
 	}
 }
 
+func TestNewLocalSignerRejectsMismatchedPublicPrivateKey(t *testing.T) {
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate public key: %v", err)
+	}
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate private key: %v", err)
+	}
+	_, err = NewLocalSigner([]SigningKey{{KID: "mismatched", Public: pub, Private: priv}})
+	if !errors.Is(err, ErrSigningKeyMismatch) {
+		t.Fatalf("NewLocalSigner err = %v, want public/private mismatch", err)
+	}
+}
+
 func TestKeySetSupportsRotation(t *testing.T) {
 	// Two keys: old (retiring) and new (current). New tokens use "new"; old
 	// tokens issued before rotation must still verify.

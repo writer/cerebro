@@ -76,6 +76,8 @@ var ensureDeviceAuthStatements = []string{
 	`CREATE INDEX IF NOT EXISTS device_idempotency_keys_expires_idx ON device_idempotency_keys (expires_at)`,
 }
 
+const consumeRefreshDeviceStatusSQL = `SELECT status FROM device_records WHERE device_id = $1 FOR UPDATE`
+
 // EnrollDevice inserts or replaces a device row. Conflict on
 // (tenant_id, hardware_uuid) replaces the existing row's identity columns
 // and resets status to active.
@@ -414,7 +416,7 @@ WHERE family_id = $1`, familyID); err != nil {
 			return deviceauth.ErrRefreshExpired
 		}
 		var deviceStatus string
-		if err := tx.QueryRowContext(ctx, `SELECT status FROM device_records WHERE device_id = $1`, deviceID).Scan(&deviceStatus); err != nil {
+		if err := tx.QueryRowContext(ctx, consumeRefreshDeviceStatusSQL, deviceID).Scan(&deviceStatus); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return deviceauth.ErrDeviceNotFound
 			}

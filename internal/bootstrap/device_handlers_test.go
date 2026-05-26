@@ -251,6 +251,34 @@ func TestBuildAttestationRegistryRejectsRequiredWithoutVerifier(t *testing.T) {
 	}
 }
 
+func TestNewWithErrorRejectsMismatchedDeviceAuthSigningKey(t *testing.T) {
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate public key: %v", err)
+	}
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate private key: %v", err)
+	}
+	_, err = NewWithError(config.Config{
+		Auth: config.AuthConfig{
+			Enabled: true,
+			DeviceAuth: config.DeviceAuthConfig{
+				Enabled:    true,
+				CurrentKID: "test",
+				SigningKeys: []config.DeviceAuthSigningKey{{
+					KID:        "test",
+					PublicPEM:  encodePEMPublic(t, pub),
+					PrivatePEM: encodePEMPrivate(t, priv),
+				}},
+			},
+		},
+	}, Dependencies{StateStore: newDeviceAuthMemStore()}, nil)
+	if !errors.Is(err, deviceauth.ErrSigningKeyMismatch) {
+		t.Fatalf("NewWithError err = %v, want public/private mismatch", err)
+	}
+}
+
 func TestWriteDeviceAuthServiceErrorMapsAttestationFailures(t *testing.T) {
 	tests := []struct {
 		name   string
