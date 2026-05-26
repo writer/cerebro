@@ -85,6 +85,7 @@ func newGitHubActiveWithoutOktaLinkRule() Rule {
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.5.16"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.5.18"},
 			},
+			Lifecycle: Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 		},
 	}
 }

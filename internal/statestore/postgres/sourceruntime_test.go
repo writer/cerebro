@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -61,5 +62,24 @@ func TestPutSourceRuntimeRejectsMissingSourceID(t *testing.T) {
 func TestSourceRuntimeListOrderRotatesRecentlyUpdatedRows(t *testing.T) {
 	if got := sourceRuntimeListOrderClause(); got != "updated_at ASC, id ASC" {
 		t.Fatalf("sourceRuntimeListOrderClause() = %q, want least recently updated first", got)
+	}
+}
+
+func TestSourceRuntimeSchemaIndexesDashboardFilters(t *testing.T) {
+	joined := strings.Join(ensureSourceRuntimeStatements, "\n")
+	for _, fragment := range []string{
+		"source_runtimes_tenant_updated_idx",
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS source_runtimes_tenant_updated_idx",
+		"(runtime_json->>'tenant_id'), updated_at ASC, id ASC",
+		"source_runtimes_tenant_source_updated_idx",
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS source_runtimes_tenant_source_updated_idx",
+		"(runtime_json->>'tenant_id'), (runtime_json->>'source_id'), updated_at ASC, id ASC",
+	} {
+		if !strings.Contains(joined, fragment) {
+			t.Fatalf("source runtime schema missing %q:\n%s", fragment, joined)
+		}
+	}
+	if strings.Contains(joined, "source_runtimes_lease_expiry_idx") {
+		t.Fatalf("source runtime schema includes unused lease expiry index:\n%s", joined)
 	}
 }

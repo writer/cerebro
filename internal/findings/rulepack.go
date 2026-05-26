@@ -44,6 +44,7 @@ func builtinRulePacks() []RulePack {
 				newOktaPolicyRuleLifecycleTamperingRule(),
 				newDeprovisionedOktaActiveGitHubRule(),
 				newGitHubActiveWithoutOktaLinkRule(),
+				newIdentityPrivilegedNoMFAAccessRule(),
 			}, newIdentitySignalRules()...),
 		},
 		{

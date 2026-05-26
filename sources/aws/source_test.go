@@ -25,6 +25,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 )
@@ -139,6 +140,98 @@ func TestAWSPullFromRecordsPreservesNextCursorWithoutEvents(t *testing.T) {
 	}
 	if got := pull.NextCursor.GetOpaque(); got != "next-page" {
 		t.Fatalf("NextCursor = %q, want next-page", got)
+	}
+}
+
+func TestCloudTrailCursorFreezesRelativeSinceAcrossPages(t *testing.T) {
+	var inputs []cloudtrail.LookupEventsInput
+	source := newTestSource(t, fakeAWS{cloudTrailLookup: func(_ context.Context, input *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error) {
+		inputs = append(inputs, *input)
+		if len(inputs) == 1 {
+			return &cloudtrail.LookupEventsOutput{NextToken: awssdk.String("token-1")}, nil
+		}
+		return &cloudtrail.LookupEventsOutput{}, nil
+	}})
+	config := sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyCloudTrail, "since": "PT2H"})
+
+	first, err := source.Read(context.Background(), config, nil)
+	if err != nil {
+		t.Fatalf("Read(cloudtrail first) error = %v", err)
+	}
+	if first.NextCursor == nil {
+		t.Fatal("first.NextCursor = nil, want encoded cursor")
+	}
+	if _, ok := parseCloudTrailCursor(first.NextCursor.GetOpaque(), settings{since: "PT2H"}, time.Now().UTC()); !ok {
+		t.Fatalf("first.NextCursor is not a resumable CloudTrail cursor: %q", first.NextCursor.GetOpaque())
+	}
+	if _, err = source.Read(context.Background(), config, first.NextCursor); err != nil {
+		t.Fatalf("Read(cloudtrail second) error = %v", err)
+	}
+
+	if len(inputs) != 2 {
+		t.Fatalf("LookupEvents calls = %d, want 2", len(inputs))
+	}
+	if got := awssdk.ToString(inputs[1].NextToken); got != "token-1" {
+		t.Fatalf("second NextToken = %q, want token-1", got)
+	}
+	if inputs[0].StartTime == nil || inputs[1].StartTime == nil {
+		t.Fatalf("StartTime values = %v, %v; want both set", inputs[0].StartTime, inputs[1].StartTime)
+	}
+	if !inputs[0].StartTime.Equal(*inputs[1].StartTime) {
+		t.Fatalf("second StartTime = %s, want frozen first StartTime %s", inputs[1].StartTime.Format(time.RFC3339Nano), inputs[0].StartTime.Format(time.RFC3339Nano))
+	}
+}
+
+func TestCloudTrailCursorInvalidatesUnsafeTokens(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		cursor string
+		config map[string]string
+	}{
+		{
+			name: "expired encoded cursor",
+			cursor: encodeCloudTrailCursor(
+				settings{since: "PT2H"},
+				&cloudtrail.LookupEventsInput{StartTime: timePtr("2026-05-24T00:00:00Z")},
+				"expired-token",
+				time.Now().UTC().Add(-2*time.Hour),
+			),
+			config: map[string]string{"account_id": "123456789012", "family": familyCloudTrail, "since": "PT2H"},
+		},
+		{
+			name: "selector changed",
+			cursor: encodeCloudTrailCursor(
+				settings{since: "PT1H"},
+				&cloudtrail.LookupEventsInput{StartTime: timePtr("2026-05-24T00:00:00Z")},
+				"mismatched-token",
+				time.Now().UTC(),
+			),
+			config: map[string]string{"account_id": "123456789012", "family": familyCloudTrail, "since": "PT2H"},
+		},
+		{
+			name:   "legacy raw token",
+			cursor: "legacy-aws-token",
+			config: map[string]string{"account_id": "123456789012", "family": familyCloudTrail, "since": "PT2H"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotInput *cloudtrail.LookupEventsInput
+			source := newTestSource(t, fakeAWS{cloudTrailLookup: func(_ context.Context, input *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error) {
+				copy := *input
+				gotInput = &copy
+				return &cloudtrail.LookupEventsOutput{}, nil
+			}})
+
+			if _, err := source.Read(context.Background(), sourcecdk.NewConfig(tt.config), &cerebrov1.SourceCursor{Opaque: tt.cursor}); err != nil {
+				t.Fatalf("Read(cloudtrail) error = %v", err)
+			}
+			if gotInput == nil {
+				t.Fatal("LookupEvents was not called")
+			}
+			if got := awssdk.ToString(gotInput.NextToken); got != "" {
+				t.Fatalf("NextToken = %q, want discarded token", got)
+			}
+		})
 	}
 }
 
@@ -577,6 +670,7 @@ type fakeAWS struct {
 	accessKeys        []iamtypes.AccessKeyMetadata
 	attachedPolicies  []iamtypes.AttachedPolicy
 	cloudTrailEvents  []cloudtrailtypes.Event
+	cloudTrailLookup  func(context.Context, *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error)
 	securityGroups    []ec2types.SecurityGroup
 	addresses         []ec2types.Address
 	networkInterfaces []ec2types.NetworkInterface
@@ -622,7 +716,10 @@ func (f fakeAWS) ListAttachedRolePolicies(context.Context, *iam.ListAttachedRole
 	return &iam.ListAttachedRolePoliciesOutput{AttachedPolicies: f.attachedPolicies}, nil
 }
 
-func (f fakeAWS) LookupEvents(context.Context, *cloudtrail.LookupEventsInput, ...func(*cloudtrail.Options)) (*cloudtrail.LookupEventsOutput, error) {
+func (f fakeAWS) LookupEvents(ctx context.Context, input *cloudtrail.LookupEventsInput, _ ...func(*cloudtrail.Options)) (*cloudtrail.LookupEventsOutput, error) {
+	if f.cloudTrailLookup != nil {
+		return f.cloudTrailLookup(ctx, input)
+	}
 	return &cloudtrail.LookupEventsOutput{Events: f.cloudTrailEvents}, nil
 }
 

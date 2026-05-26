@@ -37,6 +37,7 @@ func newGRCControlTestNeedsAttentionRule() Rule {
 			{FrameworkName: "SOC 2", ControlID: "CC1.2"},
 			{FrameworkName: "ISO 27001:2022", ControlID: "A.5.35"},
 		},
+		Lifecycle: Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorSourceState},
 	}
 	return newEventRule(eventRuleConfig{definition: definition, match: matchesGRCControlTestNeedsAttention, build: func(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
 		return buildGRCFinding(ctx, runtime, event, definition, "GRC control test needs attention", grcControlTestSummary(event.GetAttributes()), "test_id", "MEDIUM")
@@ -64,6 +65,7 @@ func newGRCVulnerabilitySLAOverdueRule() Rule {
 			{FrameworkName: "SOC 2", ControlID: "CC7.1"},
 			{FrameworkName: "ISO 27001:2022", ControlID: "A.8.8"},
 		},
+		Lifecycle: Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorSourceState},
 	}
 	return newEventRule(eventRuleConfig{definition: definition, match: matchesGRCVulnerabilitySLAOverdue, build: func(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
 		attrs := event.GetAttributes()
@@ -92,6 +94,7 @@ func newGRCVendorReviewOverdueRule() Rule {
 			{FrameworkName: "SOC 2", ControlID: "CC9.2"},
 			{FrameworkName: "ISO 27001:2022", ControlID: "A.5.19"},
 		},
+		Lifecycle: Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorSourceState},
 	}
 	return newEventRule(eventRuleConfig{definition: definition, match: matchesGRCVendorReviewOverdue, build: func(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
 		attrs := event.GetAttributes()

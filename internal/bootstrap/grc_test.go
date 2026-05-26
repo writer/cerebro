@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -318,6 +319,60 @@ func TestGRCDashboardSummaryUsesUnpaginatedAggregates(t *testing.T) {
 	}
 }
 
+func TestGRCDashboardUsesPurposeBuiltAggregateStore(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	runtimeID := "tenant-okta-audit"
+	tenantID := "tenant"
+	store := &stubGRCAggregateStore{stubRuntimeStore: &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			runtimeID: {
+				Id:           runtimeID,
+				SourceId:     "okta",
+				TenantId:     tenantID,
+				LastSyncedAt: timestamppb.New(now),
+				Checkpoint:   &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now)},
+			},
+		},
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:             "finding-1",
+				TenantID:       tenantID,
+				RuntimeID:      runtimeID,
+				Title:          "Finding 1",
+				Severity:       "HIGH",
+				Status:         "open",
+				ControlRefs:    []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.1"}},
+				LastObservedAt: now,
+			},
+		},
+		findingEvidence: map[string]*cerebrov1.FindingEvidence{
+			"evidence-1": {Id: "evidence-1", RuntimeId: runtimeID, FindingId: "finding-1", CreatedAt: timestamppb.New(now)},
+		},
+	}}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/grc/dashboard?tenant_id=" + tenantID)
+	if err != nil {
+		t.Fatalf("GET /grc/dashboard error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /grc/dashboard status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var payload grcDashboardResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode /grc/dashboard: %v", err)
+	}
+	if store.aggregateCalls != 1 {
+		t.Fatalf("aggregate calls = %d, want 1", store.aggregateCalls)
+	}
+	if payload.Summary.OpenFindings != 1 || payload.Summary.EvidenceItems != 1 {
+		t.Fatalf("summary = %+v, want aggregate finding/evidence counts", payload.Summary)
+	}
+}
+
 func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 	now := time.Date(2026, 5, 9, 12, 0, 0, 0, time.UTC)
 	rootURN := "urn:cerebro:writer:okta_user:00u1"
@@ -414,4 +469,22 @@ func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 	if packet.RecommendedAction == "" {
 		t.Fatalf("packet recommended action is empty")
 	}
+}
+
+type stubGRCAggregateStore struct {
+	*stubRuntimeStore
+	aggregateCalls int
+}
+
+func (s *stubGRCAggregateStore) SummarizeGRCDashboard(ctx context.Context, request ports.GRCDashboardAggregateRequest) (ports.GRCDashboardAggregate, error) {
+	s.aggregateCalls++
+	summary, err := s.SummarizeFindings(ctx, request.FindingRequest)
+	if err != nil {
+		return ports.GRCDashboardAggregate{}, err
+	}
+	count, err := s.CountFindingEvidence(ctx, request.EvidenceRequest)
+	if err != nil {
+		return ports.GRCDashboardAggregate{}, err
+	}
+	return ports.GRCDashboardAggregate{FindingSummary: summary, EvidenceCount: count}, nil
 }

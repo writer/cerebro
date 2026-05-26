@@ -28,8 +28,9 @@ type ProjectedLink struct {
 	Attributes map[string]string
 }
 
-// ProjectionResult reports how many entities and links were materialized.
+// ProjectionResult reports how many workflow events, entities, and links were materialized or pruned.
 type ProjectionResult struct {
+	EventsProjected   uint32
 	EntitiesProjected uint32
 	LinksProjected    uint32
 	EntitiesDeleted   uint32
@@ -46,10 +47,13 @@ type ProjectionCleanupRequest struct {
 	URNPrefixes  []string
 	OnlyIsolated bool
 	Limit        uint32
+	DryRun       bool
 }
 
 // ProjectionCleanupResult reports graph objects removed by one cleanup pass.
 type ProjectionCleanupResult struct {
+	EntitiesMatched uint32
+	LinksMatched    uint32
 	EntitiesDeleted uint32
 	LinksDeleted    uint32
 }

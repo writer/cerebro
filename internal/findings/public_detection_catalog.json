@@ -34,7 +34,9 @@
       ],
       "runbook": "Review the exposed resource or trust path, linked principals, scope, and adjacent identity findings.",
       "fingerprint_fields": [
-        "event_id"
+        "cloud_account_urn",
+        "principal_urn",
+        "permission_urn"
       ],
       "control_refs": [
         {
@@ -81,7 +83,9 @@
       ],
       "runbook": "Review the exposed resource or trust path, linked principals, scope, and adjacent identity findings.",
       "fingerprint_fields": [
-        "event_id"
+        "principal_urn",
+        "target_principal_urn",
+        "relationship"
       ],
       "control_refs": [
         {
@@ -179,7 +183,7 @@
       ],
       "runbook": "Review the exposed resource or trust path, linked principals, scope, and adjacent identity findings.",
       "fingerprint_fields": [
-        "event_id"
+        "exposed_resource_urn"
       ],
       "control_refs": [
         {
@@ -225,7 +229,7 @@
         "resource_id"
       ],
       "fingerprint_fields": [
-        "event_id"
+        "asset_urn"
       ],
       "control_refs": [
         {
@@ -270,13 +274,13 @@
       ],
       "runbook": "Review installer, app publisher, requested permissions, repository scope, and revoke unauthorized installations.",
       "required_attributes": [
-        "action"
+        "action",
+        "github_app_id",
+        "org"
       ],
       "fingerprint_fields": [
         "org",
-        "repo",
-        "name",
-        "action"
+        "github_app_id"
       ],
       "control_refs": [
         {
@@ -373,13 +377,9 @@
         "Approved security control migration or temporary configuration rollback by authorized administrators."
       ],
       "runbook": "Confirm authorization, re-enable code security controls, review package and secret exposure during the disabled window, and inspect adjacent repository changes by the actor.",
-      "required_attributes": [
-        "action"
-      ],
       "fingerprint_fields": [
         "repo",
-        "resource_id",
-        "action"
+        "org"
       ],
       "control_refs": [
         {
@@ -397,7 +397,7 @@
       "pack_id": "github",
       "pack_name": "GitHub",
       "name": "GitHub Critical Resource Deleted",
-      "description": "Detect deletion of critical GitHub resources such as repositories, environments, projects, or codespaces.",
+      "description": "Retired GitHub audit-mirror rule retained so stale open findings auto-resolve; durable coverage moved to posture findings.",
       "source_id": "github",
       "evaluation_mode": "event",
       "event_kinds": [
@@ -406,12 +406,14 @@
       "output_kind": "finding.github_critical_resource_deleted",
       "severity": "HIGH",
       "status": "open",
-      "maturity": "test",
+      "maturity": "retired",
       "tags": [
         "attack.t1485",
+        "cleanup",
         "destructive-action",
         "github",
-        "impact"
+        "impact",
+        "retired"
       ],
       "references": [
         "https://github.com/SigmaHQ/sigma/blob/master/rules/application/github/audit/github_delete_action_invoked.yml",
@@ -475,6 +477,7 @@
         "state"
       ],
       "fingerprint_fields": [
+        "tenant_id",
         "repository",
         "alert_number"
       ],
@@ -522,12 +525,10 @@
       ],
       "runbook": "Verify the owner action, review organization membership and token activity around the change, and restore SAML/2FA/OAuth restrictions if unauthorized.",
       "required_attributes": [
-        "action",
         "org"
       ],
       "fingerprint_fields": [
-        "org",
-        "action"
+        "org"
       ],
       "control_refs": [
         {
@@ -571,12 +572,10 @@
       ],
       "runbook": "Validate the IP allow list change, remove unauthorized CIDRs, and correlate actor access from newly allowed networks.",
       "required_attributes": [
-        "action",
         "org"
       ],
       "fingerprint_fields": [
-        "org",
-        "action"
+        "org"
       ],
       "control_refs": [
         {
@@ -620,13 +619,13 @@
       "runbook": "Validate the new owner, revoke unauthorized access immediately, review owner activity, and require MFA/SSO re-verification.",
       "required_attributes": [
         "action",
+        "org",
         "permission",
         "user"
       ],
       "fingerprint_fields": [
         "org",
-        "user",
-        "action"
+        "user"
       ],
       "control_refs": [
         {
@@ -673,11 +672,12 @@
       "required_attributes": [
         "action",
         "operation_type",
-        "user"
+        "token_id",
+        "user_id"
       ],
       "fingerprint_fields": [
-        "user",
-        "action"
+        "user_id",
+        "token_id"
       ],
       "control_refs": [
         {
@@ -720,13 +720,11 @@
       ],
       "runbook": "Validate forking policy approval, disable unauthorized private forking, and enumerate forks created after the policy change.",
       "required_attributes": [
-        "action",
         "org"
       ],
       "fingerprint_fields": [
         "org",
-        "repo",
-        "action"
+        "repo"
       ],
       "control_refs": [
         {
@@ -880,8 +878,7 @@
       ],
       "fingerprint_fields": [
         "repo",
-        "user",
-        "action"
+        "user"
       ],
       "control_refs": [
         {
@@ -978,12 +975,12 @@
       "runbook": "Review changed ruleset enforcement and bypass actors, restore required checks/reviews, and inspect protected branch activity.",
       "required_attributes": [
         "action",
-        "repo"
+        "repo",
+        "ruleset_id"
       ],
       "fingerprint_fields": [
         "repo",
-        "ruleset_id",
-        "action"
+        "ruleset_id"
       ],
       "control_refs": [
         {
@@ -1001,7 +998,7 @@
       "pack_id": "github",
       "pack_name": "GitHub",
       "name": "GitHub Secret Scanning Alert Created",
-      "description": "Detect GitHub audit events indicating a new secret scanning alert.",
+      "description": "Detect open GitHub secret scanning alerts replayed from GitHub audit events.",
       "source_id": "github",
       "evaluation_mode": "event",
       "event_kinds": [
@@ -1028,7 +1025,8 @@
       "required_attributes": [
         "action",
         "number",
-        "repo"
+        "repo",
+        "secret_scanning_alert.state"
       ],
       "fingerprint_fields": [
         "repo",
@@ -1128,12 +1126,12 @@
       ],
       "runbook": "Validate the runner owner and host, inspect recent workflows assigned to it, and isolate the runner if authorization is unclear.",
       "required_attributes": [
-        "action"
+        "runner_id",
+        "scope"
       ],
       "fingerprint_fields": [
-        "repo",
-        "resource_id",
-        "action"
+        "scope",
+        "runner_id"
       ],
       "control_refs": [
         {
@@ -1177,12 +1175,12 @@
       "runbook": "Verify webhook destination and events, remove unauthorized hooks, and rotate secrets if repository data may have been sent externally.",
       "required_attributes": [
         "action",
+        "hook_id",
         "repo"
       ],
       "fingerprint_fields": [
         "repo",
-        "hook_id",
-        "action"
+        "hook_id"
       ],
       "control_refs": [
         {
@@ -1618,7 +1616,8 @@
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
       "fingerprint_fields": [
-        "event_id"
+        "user",
+        "role"
       ],
       "control_refs": [
         {
@@ -1648,6 +1647,7 @@
         "gcp.audit",
         "gcp.service_account_key",
         "google_workspace.audit",
+        "okta.application",
         "okta.audit"
       ],
       "output_kind": "finding.identity_api_token_or_oauth_app_created",
@@ -1670,7 +1670,10 @@
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
       "fingerprint_fields": [
-        "event_id"
+        "user",
+        "credential_id",
+        "org",
+        "oauth_app_id"
       ],
       "control_refs": [
         {
@@ -1718,7 +1721,8 @@
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
       "fingerprint_fields": [
-        "event_id"
+        "idp_id",
+        "policy_id"
       ],
       "control_refs": [
         {
@@ -1736,7 +1740,7 @@
       "pack_id": "identity",
       "pack_name": "Identity",
       "name": "Identity Control Tamper Or Credential Change",
-      "description": "Detect control tampering and sensitive credential changes so exposure analysis can correlate them by actor or resource.",
+      "description": "Retired identity correlation-mirror rule retained so stale open findings auto-resolve; correlation moved to runtime enrichment hints on the underlying state-anchored identity findings.",
       "source_id": "identity",
       "evaluation_mode": "event",
       "event_kinds": [
@@ -1750,12 +1754,14 @@
       "output_kind": "finding.identity_control_tamper_or_credential_change",
       "severity": "HIGH",
       "status": "open",
-      "maturity": "test",
+      "maturity": "retired",
       "tags": [
+        "cleanup",
         "correlation",
         "credential-access",
         "defense-evasion",
-        "identity"
+        "identity",
+        "retired"
       ],
       "references": [
         "https://developers.google.com/admin-sdk/reports/v1/guides/manage-audit-admin",
@@ -1812,7 +1818,8 @@
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
       "fingerprint_fields": [
-        "event_id"
+        "group_urn",
+        "member_email"
       ],
       "control_refs": [
         {
@@ -1886,16 +1893,13 @@
       "pack_id": "identity",
       "pack_name": "Identity",
       "name": "Identity MFA Factor Reset Or Disabled",
-      "description": "Detect MFA/2SV resets, unenrollment, disablement, or enforcement changes.",
+      "description": "Detect source-backed MFA/2SV posture gaps for Okta, Google Workspace, and GCP service-account identities; AWS IAM and Azure user MFA posture require source-adapter extensions before this rule claims those providers.",
       "source_id": "identity",
       "evaluation_mode": "event",
       "event_kinds": [
-        "aws.cloudtrail",
-        "azure.activity_log",
-        "azure.directory_audit",
-        "gcp.audit",
-        "google_workspace.audit",
-        "okta.audit"
+        "gcp.service_account",
+        "google_workspace.user",
+        "okta.user"
       ],
       "output_kind": "finding.identity_mfa_factor_reset_or_disabled",
       "severity": "HIGH",
@@ -1916,7 +1920,7 @@
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
       "fingerprint_fields": [
-        "event_id"
+        "user"
       ],
       "control_refs": [
         {
@@ -1985,11 +1989,11 @@
       "pack_id": "identity",
       "pack_name": "Identity",
       "name": "Okta Policy Rule Lifecycle Tampering",
-      "description": "Detect successful Okta policy rule update, deactivate, or delete events replayed from one source runtime.",
+      "description": "Detect Okta policy rules that remain deactivated, disabled, or inactive in projected identity state.",
       "source_id": "okta",
       "evaluation_mode": "event",
       "event_kinds": [
-        "okta.audit"
+        "okta.policy_rule"
       ],
       "output_kind": "finding.okta_policy_rule_lifecycle_tampering",
       "severity": "HIGH",
@@ -2010,11 +2014,12 @@
       ],
       "runbook": "Review actor, target policy rule, administrative change ticket, and adjacent identity events before reverting or escalating.",
       "required_attributes": [
-        "event_type",
-        "resource_id"
+        "policy_id",
+        "policy_rule_id",
+        "status"
       ],
       "fingerprint_fields": [
-        "event_id"
+        "okta_policy_rule_urn"
       ],
       "control_refs": [
         {
@@ -2032,14 +2037,10 @@
       "pack_id": "identity",
       "pack_name": "Identity",
       "name": "Identity Privileged Account Without MFA",
-      "description": "Detect privileged identity accounts that are not enrolled in MFA/2SV.",
+      "description": "Detect source-backed privileged identity accounts that are not enrolled in MFA/2SV; AWS IAM and Azure user MFA posture require source-adapter extensions before this rule claims those users.",
       "source_id": "identity",
       "evaluation_mode": "event",
       "event_kinds": [
-        "aws.iam_role",
-        "aws.iam_user",
-        "azure.service_principal",
-        "azure.user",
         "gcp.service_account",
         "google_workspace.user",
         "okta.user"
@@ -2063,7 +2064,7 @@
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
       "fingerprint_fields": [
-        "event_id"
+        "user"
       ],
       "control_refs": [
         {
@@ -2081,29 +2082,22 @@
       "pack_id": "identity",
       "pack_name": "Identity",
       "name": "Identity Privileged No-MFA Account With Sensitive Access",
-      "description": "Detect privileged no-MFA identities or sensitive access grants that should be joined through the graph.",
+      "description": "Detect source-backed privileged no-MFA identities that currently have access to crown-jewel or sensitive classified resources in the graph; AWS IAM and Azure user MFA posture require source-adapter extensions before those user entity types are included.",
       "source_id": "identity",
-      "evaluation_mode": "event",
+      "evaluation_mode": "graph",
       "event_kinds": [
-        "aws.iam_group_membership",
-        "aws.iam_role",
+        "asset.crown_jewel",
+        "asset.data_sensitivity",
         "aws.iam_role_assignment",
-        "aws.iam_user",
         "azure.app_role_assignment",
         "azure.directory_role_assignment",
-        "azure.group_membership",
         "azure.iam_role_assignment",
-        "azure.service_principal",
-        "azure.user",
-        "gcp.group_membership",
         "gcp.iam_role_assignment",
         "gcp.service_account",
-        "google_workspace.group_member",
         "google_workspace.role_assignment",
         "google_workspace.user",
         "okta.admin_role",
         "okta.app_assignment",
-        "okta.group_membership",
         "okta.user"
       ],
       "output_kind": "finding.identity_privileged_no_mfa_sensitive_access",
@@ -2121,11 +2115,12 @@
         "https://help.okta.com/en-us/content/topics/reports/reports_syslog.htm"
       ],
       "false_positives": [
-        "Approved identity administration during a documented change window."
+        "Break-glass identity with approved compensating controls and time-bound exception.",
+        "Resource incorrectly tagged as crown-jewel or sensitive classification in the graph."
       ],
-      "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
+      "runbook": "Enroll MFA for the identity or remove its privileged access to the sensitive resource. Validate the resource classification/tag and revoke any stale access edge in the identity or cloud provider.",
       "fingerprint_fields": [
-        "event_id"
+        "user"
       ],
       "control_refs": [
         {
@@ -2173,7 +2168,7 @@
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
       "fingerprint_fields": [
-        "event_id"
+        "user"
       ],
       "control_refs": [
         {
@@ -2480,11 +2475,11 @@
       "pack_id": "sentinelone",
       "pack_name": "SentinelOne",
       "name": "SentinelOne Protection Control Tampering",
-      "description": "Detect SentinelOne activity that changes protection controls such as exclusions, policies, quarantine, or uninstall state.",
+      "description": "Detect SentinelOne agents where a named protection control remains in a tampered state.",
       "source_id": "sentinelone",
       "evaluation_mode": "event",
       "event_kinds": [
-        "sentinelone.activity"
+        "sentinelone.agent"
       ],
       "output_kind": "finding.sentinelone_protection_control_tampering",
       "severity": "HIGH",
@@ -2505,10 +2500,11 @@
       ],
       "runbook": "Review SentinelOne endpoint state, linked threat/activity evidence, policy scope, and documented exceptions before remediation or closure.",
       "required_attributes": [
-        "activity_id"
+        "agent_id"
       ],
       "fingerprint_fields": [
-        "activity_id"
+        "agent_id",
+        "control_type"
       ],
       "control_refs": [
         {
@@ -2600,7 +2596,7 @@
       "pack_id": "vulnview",
       "pack_name": "VulnView",
       "name": "VulnView Actionable External Finding",
-      "description": "Detect VulnView external attack-surface findings that require AppSec triage.",
+      "description": "Detect open VulnView external attack-surface findings that require AppSec triage.",
       "source_id": "vulnview",
       "evaluation_mode": "event",
       "event_kinds": [
@@ -2625,13 +2621,12 @@
       ],
       "runbook": "Validate exploitability and asset ownership, link duplicate external findings, patch or mitigate the exposed service, and document accepted risk.",
       "required_attributes": [
-        "severity"
+        "severity",
+        "vulnview_finding_state"
       ],
       "fingerprint_fields": [
-        "template_id",
-        "alert",
-        "target_id",
-        "matched_at"
+        "asset_urn",
+        "template_id"
       ],
       "control_refs": [
         {

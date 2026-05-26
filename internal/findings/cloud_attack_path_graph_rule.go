@@ -53,6 +53,7 @@ func newCloudPublicExposurePrivilegedPrincipalRule() Rule {
 				{FrameworkName: "SOC 2", ControlID: "CC6.6"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.8.20"},
 			},
+			Lifecycle: Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 		},
 	}
 }

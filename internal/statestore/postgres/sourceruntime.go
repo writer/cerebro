@@ -19,7 +19,12 @@ var ensureSourceRuntimeStatements = []string{`CREATE TABLE IF NOT EXISTS source_
   runtime_json JSONB NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-)`, `ALTER TABLE source_runtimes ADD COLUMN IF NOT EXISTS lease_owner TEXT`, `ALTER TABLE source_runtimes ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ`}
+)`,
+	`ALTER TABLE source_runtimes ADD COLUMN IF NOT EXISTS lease_owner TEXT`,
+	`ALTER TABLE source_runtimes ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ`,
+	`CREATE INDEX CONCURRENTLY IF NOT EXISTS source_runtimes_tenant_updated_idx ON source_runtimes ((runtime_json->>'tenant_id'), updated_at ASC, id ASC)`,
+	`CREATE INDEX CONCURRENTLY IF NOT EXISTS source_runtimes_tenant_source_updated_idx ON source_runtimes ((runtime_json->>'tenant_id'), (runtime_json->>'source_id'), updated_at ASC, id ASC)`,
+}
 
 // PutSourceRuntime upserts one source runtime definition.
 func (s *Store) PutSourceRuntime(ctx context.Context, runtime *cerebrov1.SourceRuntime) error {

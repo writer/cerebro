@@ -2,14 +2,20 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	findingrisk "github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/ports"
@@ -90,13 +96,89 @@ var ensureFindingStatements = []string{
 	`CREATE INDEX IF NOT EXISTS findings_control_refs_gin_idx ON findings USING GIN (control_refs_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_notes_gin_idx ON findings USING GIN (notes_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_tickets_gin_idx ON findings USING GIN (tickets_json)`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS tombstoned BOOLEAN NOT NULL DEFAULT FALSE`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS tombstoned_at TIMESTAMPTZ`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS tombstoned_by TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS tombstoned_reason TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS tombstoned_run_id TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS prior_status TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS tombstone_generation INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE findings DROP CONSTRAINT IF EXISTS findings_fingerprint_key`,
+	`DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM pg_indexes
+        WHERE schemaname = current_schema()
+          AND tablename = 'findings'
+          AND indexname = 'findings_active_fingerprint_uidx'
+          AND indexdef NOT ILIKE '%(tenant_id, fingerprint)%'
+    ) THEN
+        DROP INDEX findings_active_fingerprint_uidx;
+    END IF;
+END $$`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS findings_active_fingerprint_uidx
+        ON findings (tenant_id, fingerprint) WHERE tombstoned = FALSE`,
+	`CREATE INDEX IF NOT EXISTS findings_tombstoned_run_idx
+        ON findings (tombstoned_run_id) WHERE tombstoned = TRUE`,
+	`CREATE INDEX IF NOT EXISTS findings_tombstoned_rule_observed_idx
+        ON findings (tenant_id, rule_id, tombstoned, last_observed_at)`,
+	`CREATE TABLE IF NOT EXISTS finding_tombstone_events (
+        id BIGSERIAL PRIMARY KEY,
+        finding_id TEXT NOT NULL,
+        tenant_id TEXT NOT NULL,
+        rule_id TEXT NOT NULL,
+        anchor_uri TEXT NOT NULL,
+        prior_status TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        tombstoned_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`,
+	`CREATE INDEX IF NOT EXISTS finding_tombstone_events_run_idx
+        ON finding_tombstone_events (run_id, tombstoned_at)`,
+	`CREATE INDEX IF NOT EXISTS finding_tombstone_events_finding_idx
+        ON finding_tombstone_events (finding_id, tombstoned_at)`,
+	`CREATE TABLE IF NOT EXISTS closeout_run (
+        run_id TEXT PRIMARY KEY,
+        actor TEXT NOT NULL,
+        change_ticket TEXT NOT NULL DEFAULT '',
+        selector_json JSONB NOT NULL,
+        status TEXT NOT NULL,
+        started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        heartbeat_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        finished_at TIMESTAMPTZ,
+        dry_run BOOLEAN NOT NULL,
+        proposed_count INTEGER NOT NULL DEFAULT 0,
+        applied_count INTEGER NOT NULL DEFAULT 0,
+        error_message TEXT NOT NULL DEFAULT '',
+        s3_summary_key TEXT NOT NULL DEFAULT ''
+    )`,
+	`ALTER TABLE closeout_run ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMPTZ`,
+	`UPDATE closeout_run SET heartbeat_at = started_at WHERE heartbeat_at IS NULL`,
+	`ALTER TABLE closeout_run ALTER COLUMN heartbeat_at SET DEFAULT now()`,
+	`ALTER TABLE closeout_run ALTER COLUMN heartbeat_at SET NOT NULL`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS closeout_run_singleton_running_idx
+        ON closeout_run ((1)) WHERE status = 'running'`,
 }
 
 const findingSelectColumns = `id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
   risk_score, likelihood_score, impact_score, confidence_score, likelihood_level, impact_level, risk_reasons_json::text, risk_model_version,
   resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
   notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
-  status_updated_at, first_observed_at, last_observed_at`
+  status_updated_at, first_observed_at, last_observed_at,
+  tombstoned, tombstoned_at, tombstoned_by, tombstoned_reason, tombstoned_run_id, prior_status, tombstone_generation`
+
+type findingStatusReason string
+
+const findingStatusReasonBackfillCollision findingStatusReason = "backfill_collision"
+
+const (
+	tenantScopedFingerprintBackfillActor = "tenant_scoped_fingerprint_backfill"
+	tenantScopedFingerprintBackfillRunID = "tenant_scoped_fingerprint_backfill"
+)
+
+var errTenantScopedFingerprintBackfillRetry = errors.New("retry tenant-scoped fingerprint backfill")
 
 // upsertFindingStatement persists one finding row, preserving runtime_id on conflict.
 //
@@ -114,9 +196,9 @@ INSERT INTO findings (
   risk_score, likelihood_score, impact_score, confidence_score, likelihood_level, impact_level, risk_reasons_json, risk_model_version,
   resource_urns_json, event_ids_json, observed_policy_ids_json, control_refs_json, notes_json, tickets_json, attributes_json,
   policy_id, policy_name, check_id, check_name, assignee, due_at, status_reason,
-  status_updated_at, first_observed_at, last_observed_at
+  status_updated_at, first_observed_at, last_observed_at, tombstone_generation
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb, $17, $18::jsonb, $19::jsonb, $20::jsonb, $21::jsonb, $22::jsonb, $23::jsonb, $24::jsonb, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb, $17, $18::jsonb, $19::jsonb, $20::jsonb, $21::jsonb, $22::jsonb, $23::jsonb, $24::jsonb, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
 ON CONFLICT (id)
 DO UPDATE SET
   fingerprint = EXCLUDED.fingerprint,
@@ -126,7 +208,10 @@ DO UPDATE SET
   title = EXCLUDED.title,
   severity = EXCLUDED.severity,
   status = CASE
-    WHEN findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open' THEN findings.status
+    WHEN findings.tombstoned THEN findings.status
+    WHEN findings.status = 'suppressed' THEN findings.status
+    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT findings.tombstoned AND (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR $36::boolean) THEN EXCLUDED.status
+    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' THEN findings.status
     ELSE EXCLUDED.status
   END,
   summary = EXCLUDED.summary,
@@ -161,16 +246,21 @@ DO UPDATE SET
   END,
   due_at = COALESCE(EXCLUDED.due_at, findings.due_at),
   status_reason = CASE
-    WHEN findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open' THEN findings.status_reason
+    WHEN findings.tombstoned THEN findings.status_reason
+    WHEN findings.status = 'suppressed' THEN findings.status_reason
+    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR $36::boolean) THEN findings.status_reason
     ELSE EXCLUDED.status_reason
   END,
   status_updated_at = CASE
-    WHEN findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open' THEN findings.status_updated_at
+    WHEN findings.tombstoned THEN findings.status_updated_at
+    WHEN findings.status = 'suppressed' THEN findings.status_updated_at
+    WHEN findings.status = 'resolved' AND EXCLUDED.status = 'open' AND NOT (BTRIM(findings.status_reason) LIKE 'ttl_expired:%' OR $36::boolean) THEN findings.status_updated_at
     ELSE EXCLUDED.status_updated_at
   END,
   first_observed_at = LEAST(findings.first_observed_at, EXCLUDED.first_observed_at),
   last_observed_at = GREATEST(findings.last_observed_at, EXCLUDED.last_observed_at),
   updated_at = NOW()
+WHERE findings.tombstoned = FALSE
 RETURNING ` + findingSelectColumns
 
 // UpsertFinding persists one normalized finding in the current-state store.
@@ -267,46 +357,145 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 		statusUpdatedAt = finding.StatusUpdatedAt.UTC()
 	}
 	firstObservedAt, lastObservedAt := normalizeFindingObservationWindow(finding.FirstObservedAt, finding.LastObservedAt, time.Now().UTC())
-	var stored findingRow
-	if err := scanFindingRow(s.db.QueryRowContext(ctx, upsertFindingStatement,
-		id,
-		fingerprint,
-		tenantID,
-		runtimeID,
-		ruleID,
-		title,
-		severity,
-		status,
-		summary,
-		finding.RiskScore,
-		finding.LikelihoodScore,
-		finding.ImpactScore,
-		finding.ConfidenceScore,
-		strings.TrimSpace(finding.LikelihoodLevel),
-		strings.TrimSpace(finding.ImpactLevel),
-		riskReasonsJSON,
-		strings.TrimSpace(finding.RiskModelVersion),
-		resourceURNsJSON,
-		eventIDsJSON,
-		observedPolicyIDsJSON,
-		controlRefsJSON,
-		notesJSON,
-		ticketsJSON,
-		attributesJSON,
-		policyID,
-		policyName,
-		checkID,
-		checkName,
-		assignee,
-		dueAt,
-		statusReason,
-		statusUpdatedAt,
-		firstObservedAt,
-		lastObservedAt,
-	), &stored); err != nil {
+	reopenResolvedOnOpenEmit := findingRuleAllowsTTLReopen(ruleID)
+
+	const maxAttempts = 4
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		targetID, generation, err := s.resolveUpsertTarget(ctx, tenantID, fingerprint, id)
+		if err != nil {
+			return nil, fmt.Errorf("upsert finding %q: %w", id, err)
+		}
+		var stored findingRow
+		err = scanFindingRow(s.db.QueryRowContext(ctx, upsertFindingStatement,
+			targetID,
+			fingerprint,
+			tenantID,
+			runtimeID,
+			ruleID,
+			title,
+			severity,
+			status,
+			summary,
+			finding.RiskScore,
+			finding.LikelihoodScore,
+			finding.ImpactScore,
+			finding.ConfidenceScore,
+			strings.TrimSpace(finding.LikelihoodLevel),
+			strings.TrimSpace(finding.ImpactLevel),
+			riskReasonsJSON,
+			strings.TrimSpace(finding.RiskModelVersion),
+			resourceURNsJSON,
+			eventIDsJSON,
+			observedPolicyIDsJSON,
+			controlRefsJSON,
+			notesJSON,
+			ticketsJSON,
+			attributesJSON,
+			policyID,
+			policyName,
+			checkID,
+			checkName,
+			assignee,
+			dueAt,
+			statusReason,
+			statusUpdatedAt,
+			firstObservedAt,
+			lastObservedAt,
+			generation,
+			reopenResolvedOnOpenEmit,
+		), &stored)
+		if err == nil {
+			return stored.record()
+		}
+		lastErr = err
+		if errors.Is(err, sql.ErrNoRows) && attempt < maxAttempts-1 {
+			continue
+		}
+		if isPartialUniqueIndexConflict(err) && attempt < maxAttempts-1 {
+			continue
+		}
 		return nil, fmt.Errorf("upsert finding %q: %w", id, err)
 	}
-	return stored.record()
+	return nil, fmt.Errorf("upsert finding %q: %w", id, lastErr)
+}
+
+// resolveUpsertTarget resolves the row identity for an emit on the given tenant/fingerprint:
+// if a non-tombstoned row already exists for that tenant it reuses that row's id (the ON CONFLICT (id)
+// path then updates it). Otherwise it mints a fresh id derived from baseID with a
+// "#g<N+1>" generation suffix where N is the max tombstone_generation observed for the
+// tenant/fingerprint, and returns N+1 as the new row's tombstone_generation.
+func (s *Store) resolveUpsertTarget(ctx context.Context, tenantID, fingerprint, baseID string) (string, int, error) {
+	var activeID sql.NullString
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id FROM findings WHERE tenant_id = $1 AND fingerprint = $2 AND tombstoned = FALSE LIMIT 1`,
+		tenantID,
+		fingerprint,
+	).Scan(&activeID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", 0, fmt.Errorf("select active finding by tenant fingerprint: %w", err)
+	}
+	if activeID.Valid && activeID.String != "" {
+		// Existing active row will be reopened via ON CONFLICT (id); its stored
+		// tombstone_generation is preserved because that column is not in the SET list.
+		return activeID.String, 0, nil
+	}
+	var maxGen sql.NullInt64
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT MAX(tombstone_generation) FROM findings WHERE tenant_id = $1 AND fingerprint = $2`,
+		tenantID,
+		fingerprint,
+	).Scan(&maxGen); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", 0, fmt.Errorf("select tombstone generation: %w", err)
+	}
+	if !maxGen.Valid {
+		return baseID, 0, nil
+	}
+	next := int(maxGen.Int64) + 1
+	return fmt.Sprintf("%s#g%d", findingBaseID(baseID), next), next, nil
+}
+
+var findingGenerationSuffix = regexp.MustCompile(`#g\d+$`)
+
+func findingBaseID(id string) string {
+	return findingGenerationSuffix.ReplaceAllString(id, "")
+}
+
+func isPartialUniqueIndexConflict(err error) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	if pgErr.Code != "23505" {
+		return false
+	}
+	return strings.Contains(pgErr.ConstraintName, "findings_active_fingerprint_uidx") ||
+		strings.Contains(pgErr.Message, "findings_active_fingerprint_uidx")
+}
+
+var findingTTLEvidenceRuleIDs struct {
+	once sync.Once
+	ids  map[string]struct{}
+}
+
+func findingRuleAllowsTTLReopen(ruleID string) bool {
+	id := strings.TrimSpace(ruleID)
+	if id == "" {
+		return false
+	}
+	findingTTLEvidenceRuleIDs.once.Do(func() {
+		ids := map[string]struct{}{}
+		for _, metadata := range findingrisk.BuiltinRuleMetadata() {
+			if strings.TrimSpace(string(metadata.Lifecycle.Kind)) == string(findingrisk.LifecycleTTLEvidence) {
+				if metadataID := strings.TrimSpace(metadata.ID); metadataID != "" {
+					ids[metadataID] = struct{}{}
+				}
+			}
+		}
+		findingTTLEvidenceRuleIDs.ids = ids
+	})
+	_, ok := findingTTLEvidenceRuleIDs.ids[id]
+	return ok
 }
 
 func normalizeFindingObservationWindow(firstObservedAt time.Time, lastObservedAt time.Time, now time.Time) (time.Time, time.Time) {
@@ -504,16 +693,85 @@ func (s *Store) UpdateFindingStatus(ctx context.Context, request ports.FindingSt
 	if updatedAt.IsZero() {
 		updatedAt = time.Now().UTC()
 	}
+	eventIDsJSON, err := findingStringsJSON(request.EventIDs)
+	if err != nil {
+		return nil, fmt.Errorf("marshal finding status event ids: %w", err)
+	}
+	if request.Tombstone != nil {
+		t := request.Tombstone
+		tombstonedAt := t.TombstonedAt.UTC()
+		if tombstonedAt.IsZero() {
+			tombstonedAt = updatedAt
+		}
+		var row findingRow
+		if err := scanFindingRow(s.db.QueryRowContext(ctx, `
+UPDATE findings
+SET status = $2,
+    status_reason = $3,
+    status_updated_at = $4,
+    tombstoned = TRUE,
+    tombstoned_at = $5,
+    tombstoned_by = $6,
+    tombstoned_reason = $7,
+    tombstoned_run_id = $8,
+    prior_status = $9,
+    event_ids_json = CASE
+      WHEN jsonb_array_length($10::jsonb) = 0 THEN event_ids_json
+      ELSE (
+        SELECT COALESCE(jsonb_agg(event_id ORDER BY event_id), '[]'::jsonb)
+        FROM (
+          SELECT DISTINCT btrim(value) AS event_id
+          FROM jsonb_array_elements_text(COALESCE(findings.event_ids_json, '[]'::jsonb) || $10::jsonb) AS merged(value)
+          WHERE btrim(value) <> ''
+        ) AS unique_event_ids
+      )
+    END,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING `+findingSelectColumns,
+			findingID,
+			status,
+			statusReason,
+			updatedAt,
+			tombstonedAt,
+			strings.TrimSpace(t.By),
+			strings.TrimSpace(t.Reason),
+			strings.TrimSpace(t.RunID),
+			strings.TrimSpace(t.PriorStatus),
+			eventIDsJSON,
+		), &row); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, ports.ErrFindingNotFound
+			}
+			return nil, fmt.Errorf("update finding %q tombstone status: %w", findingID, err)
+		}
+		return row.record()
+	}
 	var row findingRow
 	if err := scanFindingRow(s.db.QueryRowContext(ctx, `
 UPDATE findings
-SET status = $2, status_reason = $3, status_updated_at = $4, updated_at = NOW()
+SET status = $2,
+    status_reason = $3,
+    status_updated_at = $4,
+    event_ids_json = CASE
+      WHEN jsonb_array_length($5::jsonb) = 0 THEN event_ids_json
+      ELSE (
+        SELECT COALESCE(jsonb_agg(event_id ORDER BY event_id), '[]'::jsonb)
+        FROM (
+          SELECT DISTINCT btrim(value) AS event_id
+          FROM jsonb_array_elements_text(COALESCE(findings.event_ids_json, '[]'::jsonb) || $5::jsonb) AS merged(value)
+          WHERE btrim(value) <> ''
+        ) AS unique_event_ids
+      )
+    END,
+    updated_at = NOW()
 WHERE id = $1
 RETURNING `+findingSelectColumns,
 		findingID,
 		status,
 		statusReason,
 		updatedAt,
+		eventIDsJSON,
 	), &row); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ports.ErrFindingNotFound
@@ -782,6 +1040,25 @@ func findingFilterClauses(request ports.ListFindingsRequest) ([]string, []any, e
 	return clauses, args, nil
 }
 
+// SupportsTombstones reports whether the tombstone schema has been applied to the
+// findings table. Callers (notably the closeout subcommand) use this as a guard so
+// they can refuse to run against a database that predates the M1 schema migration
+// without requiring the full ensureFindingTables side-effect chain.
+func (s *Store) SupportsTombstones(ctx context.Context) (bool, error) {
+	if s == nil || s.db == nil {
+		return false, errors.New("postgres is not configured")
+	}
+	var exists bool
+	if err := s.db.QueryRowContext(ctx, `
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'findings' AND column_name = 'tombstoned'
+        )`).Scan(&exists); err != nil {
+		return false, fmt.Errorf("check tombstone support: %w", err)
+	}
+	return exists, nil
+}
+
 func (s *Store) ensureFindingTables(ctx context.Context) error {
 	s.schemaMu.Lock()
 	defer s.schemaMu.Unlock()
@@ -793,8 +1070,565 @@ func (s *Store) ensureFindingTables(ctx context.Context) error {
 			return fmt.Errorf("ensure findings tables: %w", err)
 		}
 	}
+	if err := s.backfillTenantScopedFindingFingerprints(ctx); err != nil {
+		return err
+	}
 	s.findingTablesReady = true
 	return nil
+}
+
+func (s *Store) backfillTenantScopedFindingFingerprints(ctx context.Context) error {
+	ruleIDs := tenantScopedFingerprintBackfillRuleIDs()
+	if len(ruleIDs) == 0 {
+		return nil
+	}
+	placeholders := make([]string, 0, len(ruleIDs))
+	args := make([]any, 0, len(ruleIDs))
+	for _, ruleID := range ruleIDs {
+		args = append(args, ruleID)
+		placeholders = append(placeholders, fmt.Sprintf("$%d", len(args)))
+	}
+	query := fmt.Sprintf(`
+SELECT id, tenant_id, rule_id, fingerprint, attributes_json, resource_urns_json, status, created_at, updated_at
+FROM findings
+WHERE tombstoned = FALSE
+  AND rule_id IN (%s)
+ORDER BY tenant_id, rule_id, id
+FOR UPDATE`, strings.Join(placeholders, ", "))
+	const maxAttempts = 4
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if err := s.backfillTenantScopedFindingFingerprintsOnce(ctx, query, args); err != nil {
+			lastErr = err
+			if errors.Is(err, errTenantScopedFingerprintBackfillRetry) || isPartialUniqueIndexConflict(err) {
+				continue
+			}
+			return err
+		}
+		return nil
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return nil
+}
+
+func (s *Store) backfillTenantScopedFindingFingerprintsOnce(ctx context.Context, query string, args []any) (err error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tenant-scoped fingerprint backfill: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	groups, err := loadTenantScopedFingerprintBackfillGroups(ctx, tx, query, args)
+	if err != nil {
+		return err
+	}
+
+	keys := make([]tenantScopedFingerprintBackfillGroupKey, 0, len(groups))
+	for key := range groups {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].tenantID != keys[j].tenantID {
+			return keys[i].tenantID < keys[j].tenantID
+		}
+		return keys[i].fingerprint < keys[j].fingerprint
+	})
+	for _, key := range keys {
+		rows := groups[key]
+		if len(rows) == 0 {
+			continue
+		}
+		if len(rows) == 1 {
+			if err := updateTenantScopedBackfillWinnerFingerprint(ctx, tx, rows[0], key.fingerprint); err != nil {
+				return err
+			}
+			continue
+		}
+		sort.SliceStable(rows, func(i, j int) bool {
+			return tenantScopedBackfillRowWins(rows[i], rows[j])
+		})
+		winner := rows[0]
+		now := time.Now().UTC()
+		for _, loser := range rows[1:] {
+			if err := tombstoneTenantScopedBackfillCollisionLoser(ctx, tx, loser, now); err != nil {
+				return err
+			}
+		}
+		if err := updateTenantScopedBackfillWinnerFingerprint(ctx, tx, winner, key.fingerprint); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit tenant-scoped fingerprint backfill: %w", err)
+	}
+	committed = true
+	return nil
+}
+
+type tenantScopedFingerprintBackfillGroupKey struct {
+	tenantID    string
+	fingerprint string
+}
+
+type tenantScopedFingerprintBackfillRow struct {
+	id                 string
+	tenantID           string
+	ruleID             string
+	currentFingerprint string
+	newFingerprint     string
+	status             string
+	attributes         map[string]string
+	resourceURNs       []string
+	createdAt          time.Time
+	updatedAt          time.Time
+}
+
+type tenantScopedBackfillQuerier interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func loadTenantScopedFingerprintBackfillGroups(ctx context.Context, querier tenantScopedBackfillQuerier, query string, args []any) (map[tenantScopedFingerprintBackfillGroupKey][]tenantScopedFingerprintBackfillRow, error) {
+	rows, err := querier.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list tenant-scoped fingerprint backfill rows: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	groups := map[tenantScopedFingerprintBackfillGroupKey][]tenantScopedFingerprintBackfillRow{}
+	for rows.Next() {
+		var row tenantScopedFingerprintBackfillRow
+		var rawAttributes []byte
+		var rawResourceURNs []byte
+		if err := rows.Scan(
+			&row.id,
+			&row.tenantID,
+			&row.ruleID,
+			&row.currentFingerprint,
+			&rawAttributes,
+			&rawResourceURNs,
+			&row.status,
+			&row.createdAt,
+			&row.updatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan tenant-scoped fingerprint backfill row: %w", err)
+		}
+		attributes, err := decodeTenantScopedBackfillAttributes(rawAttributes)
+		if err != nil {
+			return nil, fmt.Errorf("decode tenant-scoped fingerprint backfill attributes for %q: %w", strings.TrimSpace(row.id), err)
+		}
+		resourceURNs, err := decodeTenantScopedBackfillResourceURNs(rawResourceURNs)
+		if err != nil {
+			return nil, fmt.Errorf("decode tenant-scoped fingerprint backfill resource urns for %q: %w", strings.TrimSpace(row.id), err)
+		}
+		row.id = strings.TrimSpace(row.id)
+		row.tenantID = strings.TrimSpace(row.tenantID)
+		row.ruleID = strings.TrimSpace(row.ruleID)
+		row.currentFingerprint = strings.TrimSpace(row.currentFingerprint)
+		row.status = strings.TrimSpace(row.status)
+		row.attributes = attributes
+		row.resourceURNs = resourceURNs
+		row.createdAt = row.createdAt.UTC()
+		row.updatedAt = row.updatedAt.UTC()
+		row.newFingerprint = tenantScopedFingerprintBackfill(row.ruleID, row.tenantID, row.attributes)
+		if row.id == "" || row.tenantID == "" || row.newFingerprint == "" {
+			continue
+		}
+		key := tenantScopedFingerprintBackfillGroupKey{tenantID: row.tenantID, fingerprint: row.newFingerprint}
+		groups[key] = append(groups[key], row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate tenant-scoped fingerprint backfill rows: %w", err)
+	}
+	return groups, nil
+}
+
+func decodeTenantScopedBackfillAttributes(raw []byte) (map[string]string, error) {
+	attributes := map[string]string{}
+	if len(raw) == 0 {
+		return attributes, nil
+	}
+	if err := json.Unmarshal(raw, &attributes); err != nil {
+		return nil, err
+	}
+	return attributes, nil
+}
+
+func decodeTenantScopedBackfillResourceURNs(raw []byte) ([]string, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	resourceURNs := []string{}
+	if err := json.Unmarshal(raw, &resourceURNs); err != nil {
+		return nil, err
+	}
+	return normalizedNonEmptyStrings(resourceURNs), nil
+}
+
+func tenantScopedBackfillRowWins(a tenantScopedFingerprintBackfillRow, b tenantScopedFingerprintBackfillRow) bool {
+	if !a.updatedAt.Equal(b.updatedAt) {
+		return a.updatedAt.After(b.updatedAt)
+	}
+	if !a.createdAt.Equal(b.createdAt) {
+		return a.createdAt.After(b.createdAt)
+	}
+	return strings.TrimSpace(a.id) < strings.TrimSpace(b.id)
+}
+
+func updateTenantScopedBackfillWinnerFingerprint(ctx context.Context, tx *sql.Tx, row tenantScopedFingerprintBackfillRow, fingerprint string) error {
+	id := strings.TrimSpace(row.id)
+	fingerprint = strings.TrimSpace(fingerprint)
+	if id == "" || fingerprint == "" || strings.TrimSpace(row.currentFingerprint) == fingerprint {
+		return nil
+	}
+	result, err := tx.ExecContext(ctx,
+		`UPDATE findings SET fingerprint = $2, updated_at = NOW() WHERE id = $1 AND tombstoned = FALSE`,
+		id,
+		fingerprint,
+	)
+	if err != nil {
+		return fmt.Errorf("backfill tenant-scoped fingerprint for finding %q: %w", id, err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("backfill tenant-scoped fingerprint for finding %q rowsAffected: %w", id, err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("backfill tenant-scoped fingerprint for finding %q: %w", id, errTenantScopedFingerprintBackfillRetry)
+	}
+	return nil
+}
+
+func tombstoneTenantScopedBackfillCollisionLoser(ctx context.Context, tx *sql.Tx, row tenantScopedFingerprintBackfillRow, tombstonedAt time.Time) error {
+	id := strings.TrimSpace(row.id)
+	if id == "" {
+		return nil
+	}
+	reason := string(findingStatusReasonBackfillCollision)
+	tombstonedAt = tombstonedAt.UTC()
+	if tombstonedAt.IsZero() {
+		tombstonedAt = time.Now().UTC()
+	}
+	priorStatus := strings.TrimSpace(row.status)
+	if priorStatus == "" {
+		priorStatus = "open"
+	}
+	updated, err := tombstoneFindingStatusInTx(ctx, tx, ports.FindingStatusUpdate{
+		FindingID: id,
+		Status:    "resolved",
+		Reason:    reason,
+		UpdatedAt: tombstonedAt,
+		Tombstone: &ports.FindingTombstoneApply{
+			By:           tenantScopedFingerprintBackfillActor,
+			Reason:       reason,
+			RunID:        tenantScopedFingerprintBackfillRunID,
+			PriorStatus:  priorStatus,
+			TombstonedAt: tombstonedAt,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("tombstone tenant-scoped fingerprint backfill collision finding %q: %w", id, err)
+	}
+	anchorURI := tenantScopedBackfillAnchorURI(row.resourceURNs, row.attributes)
+	if anchorURI == "" && updated != nil {
+		anchorURI = tenantScopedBackfillAnchorURI(updated.ResourceURNs, updated.Attributes)
+	}
+	if err := insertFindingTombstoneEvent(ctx, tx, ports.FindingTombstoneEvent{
+		FindingID:    id,
+		TenantID:     strings.TrimSpace(row.tenantID),
+		RuleID:       strings.TrimSpace(row.ruleID),
+		AnchorURI:    anchorURI,
+		PriorStatus:  priorStatus,
+		Reason:       reason,
+		Actor:        tenantScopedFingerprintBackfillActor,
+		RunID:        tenantScopedFingerprintBackfillRunID,
+		TombstonedAt: tombstonedAt,
+	}); err != nil {
+		return fmt.Errorf("audit tenant-scoped fingerprint backfill collision finding %q: %w", id, err)
+	}
+	return nil
+}
+
+func tenantScopedBackfillAnchorURI(resourceURNs []string, attributes map[string]string) string {
+	for _, urn := range resourceURNs {
+		if trimmed := strings.TrimSpace(urn); trimmed != "" {
+			return trimmed
+		}
+	}
+	if attributes == nil {
+		return ""
+	}
+	return firstNonEmptyPostgres(
+		attributes["primary_resource_urn"],
+		attributes["resource_urn"],
+		attributes["resource_id"],
+		attributes["user_urn"],
+		attributes["group_urn"],
+	)
+}
+
+func tenantScopedFingerprintBackfillRuleIDs() []string {
+	rules := make([]string, 0, len(tenantScopedFingerprintBackfillRules))
+	for ruleID := range tenantScopedFingerprintBackfillRules {
+		rules = append(rules, ruleID)
+	}
+	sort.Strings(rules)
+	return rules
+}
+
+var tenantScopedFingerprintBackfillRules = map[string]func(string, map[string]string) []string{
+	"github-repository-collaborator-added":       tenantScopedBackfillFields("repo", "user"),
+	"github-organization-owner-added":            tenantScopedBackfillFields("org", "user"),
+	"github-app-integration-installed":           tenantScopedBackfillFields("org", "github_app_id"),
+	"github-personal-access-token-created":       tenantScopedBackfillFields("user_id", "token_id"),
+	"github-repository-ruleset-modified":         tenantScopedBackfillFields("repo", "ruleset_id"),
+	"github-webhook-modified":                    tenantScopedBackfillFields("repo", "hook_id"),
+	"github-secret-scanning-alert-created":       tenantScopedBackfillFields("repo", "number"),
+	"github-dependabot-open-alert":               tenantScopedBackfillFields("repository", "alert_number"),
+	"github-code-security-controls-disabled":     tenantScopedBackfillGitHubScopedPosture,
+	"github-org-auth-control-modified":           tenantScopedBackfillFields("org"),
+	"github-org-ip-allow-list-modified":          tenantScopedBackfillFields("org"),
+	"github-private-repository-forking-enabled":  tenantScopedBackfillPrivateRepositoryForking,
+	"github-self-hosted-runner-change":           tenantScopedBackfillSelfHostedRunner,
+	"sentinelone-protection-control-tampering":   tenantScopedBackfillSentinelOneProtectionControl,
+	"identity-privileged-account-without-mfa":    tenantScopedBackfillIdentityUser,
+	"identity-mfa-factor-reset-or-disabled":      tenantScopedBackfillIdentityUser,
+	"identity-stale-privileged-account":          tenantScopedBackfillIdentityUser,
+	"identity-admin-privilege-granted":           tenantScopedBackfillIdentityAdminPrivilege,
+	"identity-auth-control-lifecycle-tampering":  tenantScopedBackfillIdentityAuthControl,
+	"identity-api-token-or-oauth-app-created":    tenantScopedBackfillIdentityAPITokenOrOAuth,
+	"identity-external-or-personal-group-member": tenantScopedBackfillIdentityExternalGroupMember,
+}
+
+func tenantScopedFingerprintBackfill(ruleID string, tenantID string, attributes map[string]string) string {
+	builder := tenantScopedFingerprintBackfillRules[strings.TrimSpace(ruleID)]
+	if builder == nil {
+		return ""
+	}
+	inputs := builder(strings.TrimSpace(tenantID), attributes)
+	if len(inputs) == 0 {
+		return ""
+	}
+	parts := append([]string{strings.TrimSpace(ruleID), strings.TrimSpace(tenantID)}, inputs...)
+	for _, part := range parts {
+		if strings.TrimSpace(part) == "" {
+			return ""
+		}
+	}
+	return tenantScopedFindingFingerprint(parts...)
+}
+
+func tenantScopedBackfillFields(fields ...string) func(string, map[string]string) []string {
+	return func(_ string, attributes map[string]string) []string {
+		inputs := make([]string, 0, len(fields))
+		for _, field := range fields {
+			inputs = append(inputs, tenantScopedBackfillAttribute(attributes, field))
+		}
+		return inputs
+	}
+}
+
+func tenantScopedBackfillAttribute(attributes map[string]string, field string) string {
+	field = strings.TrimSpace(field)
+	if field == "" {
+		return ""
+	}
+	if value := strings.TrimSpace(attributes[field]); value != "" {
+		return value
+	}
+	switch field {
+	case "repo":
+		return strings.TrimSpace(attributes["repository"])
+	case "repository":
+		return strings.TrimSpace(attributes["repo"])
+	case "org":
+		return firstNonEmptyPostgres(attributes["organization"], attributes["resource_id"])
+	case "hook_id":
+		return firstNonEmptyPostgres(attributes["hook_id"], attributes["id"])
+	case "ruleset_id":
+		return firstNonEmptyPostgres(attributes["ruleset_id"], attributes["resource_id"])
+	}
+	return ""
+}
+
+func tenantScopedBackfillGitHubScopedPosture(_ string, attributes map[string]string) []string {
+	if repo := firstNonEmptyPostgres(attributes["repo"], attributes["repository"]); strings.TrimSpace(repo) != "" {
+		return []string{repo}
+	}
+	if org := firstNonEmptyPostgres(attributes["org"], attributes["organization"], attributes["resource_id"]); strings.TrimSpace(org) != "" && !strings.Contains(org, "/") {
+		return []string{org}
+	}
+	return nil
+}
+
+func tenantScopedBackfillPrivateRepositoryForking(_ string, attributes map[string]string) []string {
+	if repo := firstNonEmptyPostgres(attributes["repo"], attributes["repository"]); strings.TrimSpace(repo) != "" {
+		return []string{repo}
+	}
+	resourceID := strings.TrimSpace(attributes["resource_id"])
+	if strings.Contains(resourceID, "/") {
+		return []string{resourceID}
+	}
+	if org := firstNonEmptyPostgres(attributes["org"], resourceID); strings.TrimSpace(org) != "" && !strings.Contains(org, "/") {
+		return []string{org}
+	}
+	return nil
+}
+
+func tenantScopedBackfillSelfHostedRunner(_ string, attributes map[string]string) []string {
+	scopeID := strings.TrimSpace(firstNonEmptyPostgres(attributes["runner_scope"], attributes["scope"]))
+	if scopeID == "" {
+		if repo := firstNonEmptyPostgres(attributes["repo"], attributes["repository"]); strings.TrimSpace(repo) != "" {
+			scopeID = "repo:" + strings.TrimSpace(repo)
+		} else if org := strings.TrimSpace(attributes["org"]); org != "" {
+			scopeID = "org:" + org
+		} else if enterprise := firstNonEmptyPostgres(attributes["enterprise"], attributes["enterprise_slug"], attributes["enterprise_id"]); strings.TrimSpace(enterprise) != "" {
+			scopeID = "enterprise:" + strings.TrimSpace(enterprise)
+		} else if resourceID := strings.TrimSpace(attributes["resource_id"]); resourceID != "" {
+			if strings.Contains(resourceID, "/") {
+				scopeID = "repo:" + resourceID
+			} else {
+				scopeID = "org:" + resourceID
+			}
+		}
+	}
+	return []string{scopeID, strings.TrimSpace(attributes["runner_id"])}
+}
+
+func tenantScopedBackfillSentinelOneProtectionControl(_ string, attributes map[string]string) []string {
+	return []string{
+		strings.TrimSpace(attributes["agent_id"]),
+		tenantScopedBackfillSentinelOneProtectionControlType(attributes),
+	}
+}
+
+func tenantScopedBackfillSentinelOneProtectionControlType(attributes map[string]string) string {
+	if controlType := firstNonEmptyPostgres(attributes["control_type"], attributes["protection_control"], attributes["control_name"], attributes["control"]); strings.TrimSpace(controlType) != "" {
+		return strings.ToLower(strings.TrimSpace(controlType))
+	}
+	if _, exists := attributes["firewall_enabled"]; exists {
+		return "firewall"
+	}
+	return ""
+}
+
+func tenantScopedBackfillIdentityUser(tenantID string, attributes map[string]string) []string {
+	return []string{tenantScopedBackfillIdentityUserURN(tenantID, attributes)}
+}
+
+func tenantScopedBackfillIdentityAdminPrivilege(tenantID string, attributes map[string]string) []string {
+	return []string{
+		tenantScopedBackfillIdentityUserURN(tenantID, attributes),
+		firstNonEmptyPostgres(attributes["role"], attributes["role_name"], attributes["role_id"], attributes["resource_id"]),
+	}
+}
+
+func tenantScopedBackfillIdentityAuthControl(_ string, attributes map[string]string) []string {
+	return []string{firstNonEmptyPostgres(attributes["policy_id"], attributes["idp_id"], attributes["primary_resource_urn"], attributes["resource_id"])}
+}
+
+func tenantScopedBackfillIdentityAPITokenOrOAuth(tenantID string, attributes map[string]string) []string {
+	if credentialID := firstNonEmptyPostgres(attributes["credential_id"], attributes["access_key_id"], attributes["key_id"], attributes["secret_id"], attributes["token_id"]); credentialID != "" {
+		return []string{firstNonEmptyPostgres(tenantScopedBackfillIdentityUserURN(tenantID, attributes), attributes["user"]), credentialID}
+	}
+	if oauthAppID := firstNonEmptyPostgres(attributes["oauth_app_id"], attributes["client_id"], attributes["app_id"]); oauthAppID != "" {
+		return []string{firstNonEmptyPostgres(attributes["org"], attributes["domain"], attributes["organization"]), oauthAppID}
+	}
+	return nil
+}
+
+func tenantScopedBackfillIdentityExternalGroupMember(_ string, attributes map[string]string) []string {
+	return []string{
+		firstNonEmptyPostgres(attributes["group_urn"], attributes["primary_resource_urn"], attributes["group_id"], attributes["group_name"]),
+		firstNonEmptyPostgres(attributes["member_email"], attributes["member_user_id"], attributes["member_id"]),
+	}
+}
+
+func tenantScopedBackfillIdentityUserURN(tenantID string, attributes map[string]string) string {
+	if urn := firstNonEmptyPostgres(
+		attributes["user_urn"],
+		tenantScopedProjectionUserURN(attributes["primary_resource_urn"]),
+		tenantScopedProjectionUserURN(attributes["primary_actor_urn"]),
+	); urn != "" {
+		return urn
+	}
+	sourceID := firstNonEmptyPostgres(attributes["source_id"], attributes["source_family"])
+	userID := firstNonEmptyPostgres(
+		attributes["user_id"],
+		attributes["subject_id"],
+		attributes["member_user_id"],
+		attributes["member_id"],
+		attributes["actor_id"],
+		attributes["resource_id"],
+		attributes["user"],
+		attributes["email"],
+		attributes["primary_email"],
+		attributes["subject_email"],
+		attributes["login"],
+	)
+	if strings.TrimSpace(tenantID) == "" || strings.TrimSpace(sourceID) == "" || strings.TrimSpace(userID) == "" {
+		return ""
+	}
+	return tenantScopedBackfillIdentityProjectionURN(tenantID, strings.TrimSpace(sourceID)+"_user", userID)
+}
+
+// tenantScopedBackfillIdentityProjectionURN intentionally mirrors
+// internal/findings.identityProjectionURN so backfilled legacy fingerprints use
+// the same synthetic identity URN that runtime rule evaluation later produces.
+func tenantScopedBackfillIdentityProjectionURN(tenantID string, kind string, parts ...string) string {
+	tenant := strings.TrimSpace(tenantID)
+	entityKind := strings.TrimSpace(kind)
+	if tenant == "" || entityKind == "" {
+		return ""
+	}
+	values := []string{"urn", "cerebro", tenant, entityKind}
+	for _, part := range parts {
+		value := strings.TrimSpace(part)
+		if value == "" {
+			continue
+		}
+		values = append(values, value)
+	}
+	return strings.Join(values, ":")
+}
+
+func tenantScopedProjectionUserURN(urn string) string {
+	urn = strings.TrimSpace(urn)
+	if urn == "" {
+		return ""
+	}
+	normalized := strings.ToLower(urn)
+	if strings.Contains(normalized, "_user:") ||
+		strings.Contains(normalized, ".user:") ||
+		strings.Contains(normalized, "_principal:") ||
+		strings.Contains(normalized, "_service_account:") ||
+		strings.Contains(normalized, "_service_principal:") {
+		return urn
+	}
+	return ""
+}
+
+func tenantScopedFindingFingerprint(parts ...string) string {
+	hash := sha256.New()
+	for _, part := range parts {
+		_, _ = hash.Write([]byte(strings.TrimSpace(part)))
+		_, _ = hash.Write([]byte{0})
+	}
+	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func firstNonEmptyPostgres(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 // BackfillFindingRisk updates existing findings with the current risk model.
@@ -1167,6 +2001,16 @@ type findingRiskRow struct {
 	RiskModelVersion string
 }
 
+type findingTombstoneRow struct {
+	Tombstoned          bool
+	TombstonedAt        sql.NullTime
+	TombstonedBy        string
+	TombstonedReason    string
+	TombstonedRunID     string
+	PriorStatus         string
+	TombstoneGeneration int
+}
+
 type findingRow struct {
 	ID          string
 	Fingerprint string
@@ -1190,6 +2034,7 @@ type findingRow struct {
 	findingWorkflowRow
 	FirstObservedAt time.Time
 	LastObservedAt  time.Time
+	findingTombstoneRow
 }
 
 func scanFindingRow(scanner findingRowScanner, row *findingRow) error {
@@ -1228,6 +2073,13 @@ func scanFindingRow(scanner findingRowScanner, row *findingRow) error {
 		&row.StatusUpdatedAt,
 		&row.FirstObservedAt,
 		&row.LastObservedAt,
+		&row.Tombstoned,
+		&row.TombstonedAt,
+		&row.TombstonedBy,
+		&row.TombstonedReason,
+		&row.TombstonedRunID,
+		&row.PriorStatus,
+		&row.TombstoneGeneration,
 	)
 }
 
@@ -1305,6 +2157,15 @@ func (r findingRow) record() (*ports.FindingRecord, error) {
 			DueAt:           findingTimestamp(r.DueAt),
 			StatusReason:    r.StatusReason,
 			StatusUpdatedAt: findingTimestamp(r.StatusUpdatedAt),
+		},
+		FindingTombstone: ports.FindingTombstone{
+			Tombstoned:          r.Tombstoned,
+			TombstonedAt:        findingTimestamp(r.TombstonedAt),
+			TombstonedBy:        r.TombstonedBy,
+			TombstonedReason:    r.TombstonedReason,
+			TombstonedRunID:     r.TombstonedRunID,
+			PriorStatus:         r.PriorStatus,
+			TombstoneGeneration: r.TombstoneGeneration,
 		},
 		Attributes:      attributes,
 		FirstObservedAt: r.FirstObservedAt.UTC(),

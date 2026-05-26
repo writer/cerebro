@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build linux || darwin || freebsd || openbsd || netbsd || dragonfly
 
 package vulndb
 

@@ -105,6 +105,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"okta.group_membership":                oktaGroupMembershipProjections,
 	"okta.application":                     oktaApplicationProjections,
 	"okta.app_assignment":                  oktaAppAssignmentProjections,
+	"okta.policy_rule":                     oktaPolicyRuleProjections,
 	"okta.admin_role":                      oktaAdminRoleProjections,
 	"okta.audit":                           oktaAuditProjections,
 	"google_workspace.user":                googleWorkspaceUserProjections,

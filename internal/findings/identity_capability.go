@@ -9,6 +9,7 @@ type identityCapability string
 
 const (
 	identityCapabilityAdminRole       identityCapability = "admin_role"
+	identityCapabilityApplication     identityCapability = "application"
 	identityCapabilityAppAssignment   identityCapability = "app_assignment"
 	identityCapabilityAudit           identityCapability = "audit"
 	identityCapabilityCredential      identityCapability = "credential"
@@ -52,6 +53,7 @@ func newIdentityCapabilityRegistry() identityCapabilityRegistry {
 		{SourceID: "gcp", Kind: "gcp.service_account", Capability: identityCapabilityUser},
 		{SourceID: "gcp", Kind: "gcp.service_account_key", Capability: identityCapabilityCredential},
 		{SourceID: "okta", Kind: "okta.admin_role", Capability: identityCapabilityAdminRole},
+		{SourceID: "okta", Kind: "okta.application", Capability: identityCapabilityApplication},
 		{SourceID: "okta", Kind: "okta.app_assignment", Capability: identityCapabilityAppAssignment},
 		{SourceID: "okta", Kind: "okta.audit", Capability: identityCapabilityAudit},
 		{SourceID: "okta", Kind: "okta.group_membership", Capability: identityCapabilityGroupMembership},

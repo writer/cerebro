@@ -1465,6 +1465,7 @@ func (a *App) handleListFindingEvidence(w http.ResponseWriter, r *http.Request) 
 		ClaimID:      request.GetClaimId(),
 		EventID:      request.GetEventId(),
 		GraphRootURN: request.GetGraphRootUrn(),
+		GraphPathURN: request.GetGraphPathUrn(),
 		Limit:        request.GetLimit(),
 	})
 	if err != nil {

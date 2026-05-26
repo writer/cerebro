@@ -224,6 +224,15 @@ func TestFindingEvidenceSchemaPersistsEnrichedEvidence(t *testing.T) {
 		"finding_evidence_graph_path_urns_gin_idx",
 		"finding_evidence_run_ids_gin_idx",
 		"finding_evidence_attributes_gin_idx",
+		"finding_evidence_runtime_finding_observed_idx",
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS finding_evidence_runtime_finding_observed_idx",
+		"runtime_id, finding_id, last_observed_at DESC, created_at DESC, id",
+		"finding_evidence_runtime_finding_created_idx",
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS finding_evidence_runtime_finding_created_idx",
+		"runtime_id, finding_id, created_at DESC, id",
+		"finding_evidence_runtime_rule_observed_idx",
+		"CREATE INDEX CONCURRENTLY IF NOT EXISTS finding_evidence_runtime_rule_observed_idx",
+		"runtime_id, rule_id, last_observed_at DESC, created_at DESC, id",
 	} {
 		if !strings.Contains(joined, fragment) {
 			t.Fatalf("finding evidence schema missing %q:\n%s", fragment, joined)

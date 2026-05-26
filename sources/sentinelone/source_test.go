@@ -257,6 +257,52 @@ func TestCheckDiscoverAndReadLiveAgents(t *testing.T) {
 	}
 }
 
+func TestRecords_FirewallEnabledConditionalEmit(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		raw         string
+		want        string
+		wantPresent bool
+	}{
+		{
+			name: "missing",
+			raw:  `{"id":"agent-missing","computerName":"host-missing","isActive":true,"updatedAt":"2026-04-23T01:00:00Z"}`,
+		},
+		{
+			name:        "explicit_false",
+			raw:         `{"id":"agent-false","computerName":"host-false","firewallEnabled":false,"updatedAt":"2026-04-23T01:00:00Z"}`,
+			want:        "false",
+			wantPresent: true,
+		},
+		{
+			name:        "explicit_true",
+			raw:         `{"id":"agent-true","computerName":"host-true","firewallEnabled":true,"updatedAt":"2026-04-23T01:00:00Z"}`,
+			want:        "true",
+			wantPresent: true,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var record agentRecord
+			raw := json.RawMessage(tt.raw)
+			if err := json.Unmarshal(raw, &record); err != nil {
+				t.Fatalf("unmarshal agent: %v", err)
+			}
+			record.setRaw(raw)
+			event, err := agentEvent(settings{host: "sentinelone.example.test"}, record)
+			if err != nil {
+				t.Fatalf("agentEvent() error = %v", err)
+			}
+			got, exists := event.Attributes["firewall_enabled"]
+			if exists != tt.wantPresent {
+				t.Fatalf("firewall_enabled present = %v with value %q, want present=%v; attrs=%v", exists, got, tt.wantPresent, event.Attributes)
+			}
+			if exists && got != tt.want {
+				t.Fatalf("firewall_enabled = %q, want %q; attrs=%v", got, tt.want, event.Attributes)
+			}
+		})
+	}
+}
+
 func TestReadLiveJoinFamilies(t *testing.T) {
 	server := httptest.NewServer(newTestAPIHandler(t))
 	defer server.Close()

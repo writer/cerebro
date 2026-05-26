@@ -35,6 +35,10 @@ func oktaApplicationProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 	return identityApplicationProjections(event, oktaIdentityProfile)
 }
 
+func oktaPolicyRuleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityPolicyRuleProjections(event, oktaIdentityProfile)
+}
+
 func oktaAppAssignmentProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return identityAppAssignmentProjections(event, oktaIdentityProfile)
 }
@@ -336,11 +340,47 @@ func identityApplicationProjections(event *cerebrov1.EventEnvelope, profile iden
 			EntityType: profile.entityType("application"),
 			Label:      firstNonEmpty(attributes["app_name"], attributes["app_label"], attributes["name"], attributes["client_id"], attributes["app_id"]),
 			Attributes: map[string]string{
-				"app_id":      firstNonEmpty(attributes["app_id"], attributes["application_id"], attributes["client_id"], attributes["id"]),
-				"app_name":    firstNonEmpty(attributes["app_name"], attributes["app_label"], attributes["name"]),
-				"oauth2":      strings.TrimSpace(attributes["oauth2"]),
-				"saml":        strings.TrimSpace(attributes["saml"]),
-				"domain_wide": strings.TrimSpace(attributes["domain_wide_delegation"]),
+				"app_id":       firstNonEmpty(attributes["app_id"], attributes["application_id"], attributes["client_id"], attributes["id"]),
+				"app_name":     firstNonEmpty(attributes["app_name"], attributes["app_label"], attributes["name"]),
+				"oauth2":       strings.TrimSpace(attributes["oauth2"]),
+				"saml":         strings.TrimSpace(attributes["saml"]),
+				"domain_wide":  strings.TrimSpace(attributes["domain_wide_delegation"]),
+				"status":       strings.TrimSpace(attributes["status"]),
+				"sign_on_mode": strings.TrimSpace(attributes["sign_on_mode"]),
+			},
+		})
+	}
+	return identityProjectionResult(entities, nil)
+}
+
+func identityPolicyRuleProjections(event *cerebrov1.EventEnvelope, profile identityProjectionProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	policyID := strings.TrimSpace(attributes["policy_id"])
+	policyRuleID := firstNonEmpty(attributes["policy_rule_id"], attributes["rule_id"], attributes["resource_id"])
+	if policyID == "" || policyRuleID == "" {
+		return nil, nil, nil
+	}
+	policyRuleURN := projectionURN(tenantID, profile.Provider+"_policy_rule", policyID, policyRuleID)
+	entities := map[string]*ports.ProjectedEntity{}
+	if policyRuleURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        policyRuleURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: profile.entityType("policy_rule"),
+			Label:      firstNonEmpty(attributes["name"], attributes["policy_rule_name"], policyRuleID),
+			Attributes: map[string]string{
+				"policy_id":      policyID,
+				"policy_rule_id": policyRuleID,
+				"policy_type":    strings.TrimSpace(attributes["policy_type"]),
+				"name":           firstNonEmpty(attributes["name"], attributes["policy_rule_name"]),
+				"status":         strings.TrimSpace(attributes["status"]),
+				"priority":       strings.TrimSpace(attributes["priority"]),
+				"system":         strings.TrimSpace(attributes["system"]),
 			},
 		})
 	}
