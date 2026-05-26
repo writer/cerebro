@@ -47,10 +47,13 @@ type ProjectionCleanupRequest struct {
 	URNPrefixes  []string
 	OnlyIsolated bool
 	Limit        uint32
+	DryRun       bool
 }
 
 // ProjectionCleanupResult reports graph objects removed by one cleanup pass.
 type ProjectionCleanupResult struct {
+	EntitiesMatched uint32
+	LinksMatched    uint32
 	EntitiesDeleted uint32
 	LinksDeleted    uint32
 }

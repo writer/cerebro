@@ -528,21 +528,61 @@ func (s *Store) CleanupProjectedEntities(ctx context.Context, request ports.Proj
 	query := `MATCH (e:Entity)
 WHERE ` + strings.Join(conditions, " AND ") + `
 WITH e LIMIT $limit
-WITH collect(e) AS entities
+OPTIONAL MATCH (e)-[rel:RELATION]-()
+WITH collect(DISTINCT e) AS entities, count(DISTINCT rel) AS links
+`
+	if request.DryRun {
+		var matchedEntities, matchedLinks int64
+		if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+			result, err := tx.Run(ctx, query+`RETURN size(entities), links`, params)
+			if err != nil {
+				return nil, err
+			}
+			record, err := result.Single(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if len(record.Values) > 0 {
+				matchedEntities = toInt64(record.Values[0])
+			}
+			if len(record.Values) > 1 {
+				matchedLinks = toInt64(record.Values[1])
+			}
+			return nil, nil
+		}); err != nil {
+			return ports.ProjectionCleanupResult{}, fmt.Errorf("cleanup projected entities: %w", err)
+		}
+		return ports.ProjectionCleanupResult{EntitiesMatched: uint32(matchedEntities), LinksMatched: uint32(matchedLinks)}, nil
+	}
+	query += `
 FOREACH (entity IN entities | DETACH DELETE entity)
-RETURN size(entities)`
-	var deleted int64
+RETURN size(entities), links`
+	var deletedEntities, deletedLinks int64
 	if _, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
-		value, err := queryOneValue(ctx, tx, query, params)
+		result, err := tx.Run(ctx, query, params)
 		if err != nil {
 			return nil, err
 		}
-		deleted = toInt64(value)
+		record, err := result.Single(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if len(record.Values) > 0 {
+			deletedEntities = toInt64(record.Values[0])
+		}
+		if len(record.Values) > 1 {
+			deletedLinks = toInt64(record.Values[1])
+		}
 		return nil, nil
 	}); err != nil {
 		return ports.ProjectionCleanupResult{}, fmt.Errorf("cleanup projected entities: %w", err)
 	}
-	return ports.ProjectionCleanupResult{EntitiesDeleted: uint32(deleted)}, nil
+	return ports.ProjectionCleanupResult{
+		EntitiesMatched: uint32(deletedEntities),
+		LinksMatched:    uint32(deletedLinks),
+		EntitiesDeleted: uint32(deletedEntities),
+		LinksDeleted:    uint32(deletedLinks),
+	}, nil
 }
 
 // CleanupEndpointOwnerIDLinks removes stale endpoint owner_id/user_id canonical identity links.
