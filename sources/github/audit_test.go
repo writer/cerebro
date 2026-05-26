@@ -113,6 +113,18 @@ func TestAuditAttributes_ForwardsRunnerID(t *testing.T) {
 	}
 }
 
+func TestAuditAttributes_PreservesNormalizedRunnerScope(t *testing.T) {
+	event := auditEventForTest(t, "repo.register_self_hosted_runner", map[string]any{
+		"repo":         "writer/cerebro",
+		"runner_id":    777,
+		"runner_scope": "repository",
+	}, nil)
+
+	if got := event.Attributes["runner_scope"]; got != "repo:writer/cerebro" {
+		t.Fatalf("runner_scope = %q, want normalized repo scope; attributes=%v", got, event.Attributes)
+	}
+}
+
 func TestAuditAttributes_ForwardsPostureBooleans(t *testing.T) {
 	postureAttrs := map[string]any{
 		"advanced_security_enabled":               true,
