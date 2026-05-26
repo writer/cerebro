@@ -546,7 +546,7 @@ func buildEvent(st settings, rec aureliusRecord, kind, schemaRef string) (*primi
 		}
 		attributes[k] = v
 	}
-	promoteFindingPayloadAttributes(kind, attributes, rec.Payload)
+	promotePayloadAttributes(kind, attributes, rec.Payload)
 	return &primitives.Event{
 		Id:         rec.EventID,
 		TenantId:   tenantID,
@@ -559,17 +559,34 @@ func buildEvent(st settings, rec aureliusRecord, kind, schemaRef string) (*primi
 	}, nil
 }
 
-func promoteFindingPayloadAttributes(kind string, attributes map[string]string, payload map[string]interface{}) {
-	if kind != kindFinding || len(payload) == 0 {
+func promotePayloadAttributes(kind string, attributes map[string]string, payload map[string]interface{}) {
+	if len(payload) == 0 {
 		return
 	}
-	for _, key := range []string{"cve_id", "package"} {
+	for _, key := range payloadPromotedAttributeKeys(kind) {
 		if strings.TrimSpace(attributes[key]) != "" {
 			continue
 		}
 		if value := payloadAttributeString(payload[key]); value != "" {
 			attributes[key] = value
 		}
+	}
+}
+
+func payloadPromotedAttributeKeys(kind string) []string {
+	switch kind {
+	case kindVerdict:
+		return []string{"image_digest", "verdict"}
+	case kindFinding:
+		return []string{"image_digest", "severity", "cve_id", "package", "installed_version", "fixed_version"}
+	case kindImageScan:
+		return []string{"image_digest", "registry"}
+	case kindCatalogPromotion:
+		return []string{"track", "image_digest"}
+	case kindPolicyException:
+		return []string{"cve_id", "status"}
+	default:
+		return nil
 	}
 }
 

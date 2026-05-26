@@ -655,6 +655,81 @@ func TestBuildEventPromotesFindingPayloadVulnerabilityAttributes(t *testing.T) {
 	}
 }
 
+func TestBuildEventPromotesContractAttributesFromPayload(t *testing.T) {
+	catalogBytes, err := catalogFS.ReadFile("catalog.yaml")
+	if err != nil {
+		t.Fatalf("read catalog: %v", err)
+	}
+	catalog, err := sourcecdk.LoadSourceCatalog(catalogBytes)
+	if err != nil {
+		t.Fatalf("LoadSourceCatalog() error = %v", err)
+	}
+	fixed := time.Date(2026, 5, 22, 14, 30, 0, 0, time.UTC)
+	tests := []struct {
+		name      string
+		kind      string
+		schemaRef string
+		payload   map[string]interface{}
+	}{
+		{
+			name:      "verdict",
+			kind:      kindVerdict,
+			schemaRef: schemaRefVerdict,
+			payload: map[string]interface{}{
+				"image_digest":      "sha256:verdict",
+				"verdict":           "warn",
+				"blocking_findings": float64(1),
+				"excepted_findings": float64(0),
+			},
+		},
+		{
+			name:      "image-scan",
+			kind:      kindImageScan,
+			schemaRef: schemaRefImageScan,
+			payload: map[string]interface{}{
+				"image_digest": "sha256:image",
+				"registry":     "us-docker.pkg.dev",
+				"completed_at": fixed.Format(time.RFC3339),
+			},
+		},
+		{
+			name:      "catalog-promotion",
+			kind:      kindCatalogPromotion,
+			schemaRef: schemaRefCatalogPromotion,
+			payload: map[string]interface{}{
+				"track":        "stable",
+				"image_digest": "sha256:promoted",
+				"promoted_by":  "release-bot",
+			},
+		},
+		{
+			name:      "policy-exception",
+			kind:      kindPolicyException,
+			schemaRef: schemaRefPolicyException,
+			payload: map[string]interface{}{
+				"cve_id":     "CVE-2026-1111",
+				"status":     "active",
+				"expires_at": fixed.Add(time.Hour).Format(time.RFC3339),
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			event, err := buildEvent(settings{tenantID: "writer"}, aureliusRecord{
+				EventID:    "01HX-" + tc.name,
+				OccurredAt: fixed,
+				Payload:    tc.payload,
+			}, tc.kind, tc.schemaRef)
+			if err != nil {
+				t.Fatalf("buildEvent() error = %v", err)
+			}
+			if err := sourcecdk.ValidateEventEnvelopeWithContracts(event, catalog.EventContracts); err != nil {
+				t.Fatalf("ValidateEventEnvelopeWithContracts() error = %v", err)
+			}
+		})
+	}
+}
+
 func TestReadArchiveRejectsOverLimitDecompressedGzip(t *testing.T) {
 	record := aureliusRecord{
 		EventID:    "01HX0001-verdict-a",
