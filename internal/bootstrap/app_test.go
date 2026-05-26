@@ -1720,6 +1720,15 @@ func TestAuthMiddlewareProtectsNonPublicRoutes(t *testing.T) {
 		t.Fatalf("GET /health status = %d, want %d", healthResp.StatusCode, http.StatusOK)
 	}
 
+	openAPIResp, err := server.Client().Get(server.URL + "/openapi.yaml")
+	if err != nil {
+		t.Fatalf("GET /openapi.yaml without auth error = %v", err)
+	}
+	_ = openAPIResp.Body.Close()
+	if openAPIResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /openapi.yaml without auth status = %d, want %d", openAPIResp.StatusCode, http.StatusOK)
+	}
+
 	unauthResp, err := server.Client().Get(server.URL + "/sources")
 	if err != nil {
 		t.Fatalf("GET /sources without auth error = %v", err)

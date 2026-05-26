@@ -12,6 +12,7 @@ import (
 	"unsafe"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	vulnviewsource "github.com/writer/cerebro/sources/vulnview"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -260,6 +261,55 @@ func TestVulnViewActionableExternalFindingRuleDeduplicatesMatchedLocations(t *te
 	}
 	if first[0].ID != second[0].ID {
 		t.Fatalf("finding IDs split for distinct matched_at values: first=%q second=%q", first[0].ID, second[0].ID)
+	}
+}
+
+func TestVulnViewActionableExternalFindingServicePreservesCollapsedEvidence(t *testing.T) {
+	store := &stubFindingStore{}
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-vulnview-vulnerability", SourceId: "vulnview", TenantId: "writer"}
+	service := New(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{runtime.GetId(): runtime}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{
+			vulnViewActionableExternalFindingEventAt("vulnview-vuln-1", "https://admin.writer.com/login", "open", "high", identityTrajectoryBaseTime),
+			vulnViewActionableExternalFindingEventAt("vulnview-vuln-2", "https://admin.writer.com/admin", "open", "high", identityTrajectoryBaseTime.Add(time.Minute)),
+		}},
+		store,
+		store,
+		store,
+		store,
+	)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: runtime.GetId(),
+		RuleID:    vulnViewActionableExternalFindingRuleID,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if result.EventsEvaluated != 2 {
+		t.Fatalf("EventsEvaluated = %d, want 2", result.EventsEvaluated)
+	}
+	if len(store.findings) != 1 {
+		t.Fatalf("len(store.findings) = %d, want 1", len(store.findings))
+	}
+	var stored *ports.FindingRecord
+	for _, finding := range store.findings {
+		stored = finding
+	}
+	if stored == nil {
+		t.Fatal("stored finding = nil")
+	}
+	for _, eventID := range []string{"vulnview-vuln-1", "vulnview-vuln-2"} {
+		if !containsString(stored.EventIDs, eventID) {
+			t.Fatalf("stored.EventIDs = %#v, want %q", stored.EventIDs, eventID)
+		}
+	}
+	wantLocations := "https://admin.writer.com/login,https://admin.writer.com/admin"
+	if got := stored.Attributes["matched_locations"]; got != wantLocations {
+		t.Fatalf("matched_locations = %q, want %q", got, wantLocations)
+	}
+	if !containsString(stored.RiskReasons, "multiple_events") {
+		t.Fatalf("RiskReasons = %#v, want multiple_events", stored.RiskReasons)
 	}
 }
 

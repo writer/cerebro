@@ -131,6 +131,7 @@ func buildVulnViewActionableExternalFinding(ctx context.Context, runtime *cerebr
 		"action":               action,
 		"event_id":             strings.TrimSpace(event.GetId()),
 		"event_kind":           strings.TrimSpace(event.GetKind()),
+		"matched_locations":    strings.TrimSpace(attrs["matched_at"]),
 		"primary_resource_urn": assetURN,
 		"source_runtime_id":    strings.TrimSpace(runtime.GetId()),
 		"target":               target,

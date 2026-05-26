@@ -1608,7 +1608,11 @@ func (s *Service) updateFindingStatusAndRisk(ctx context.Context, request ports.
 }
 
 func (s *Service) upsertFindingWithRisk(ctx context.Context, finding *ports.FindingRecord, runtime *cerebrov1.SourceRuntime, now time.Time) (*ports.FindingRecord, error) {
-	enriched := enrichFindingRisk(finding, runtime, now)
+	merged, err := s.mergeExistingFindingEvidence(ctx, finding)
+	if err != nil {
+		return nil, err
+	}
+	enriched := enrichFindingRisk(merged, runtime, now)
 	stored, err := s.store.UpsertFinding(ctx, enriched)
 	if err != nil {
 		return nil, err
@@ -1617,6 +1621,81 @@ func (s *Service) upsertFindingWithRisk(ctx context.Context, finding *ports.Find
 		stored.GraphEvidenceRows = append([]*cerebrov1.GraphEvidenceRow(nil), enriched.GraphEvidenceRows...)
 	}
 	return s.persistFindingRisk(ctx, stored, now)
+}
+
+func (s *Service) mergeExistingFindingEvidence(ctx context.Context, finding *ports.FindingRecord) (*ports.FindingRecord, error) {
+	if s == nil || s.store == nil || finding == nil {
+		return finding, nil
+	}
+	findingID := strings.TrimSpace(finding.ID)
+	if findingID == "" {
+		return finding, nil
+	}
+	existing, err := s.store.GetFinding(ctx, findingID)
+	if err != nil {
+		if errors.Is(err, ports.ErrFindingNotFound) {
+			return finding, nil
+		}
+		return nil, err
+	}
+	return mergeFindingEvidenceForUpsert(existing, finding), nil
+}
+
+func mergeFindingEvidenceForUpsert(existing *ports.FindingRecord, incoming *ports.FindingRecord) *ports.FindingRecord {
+	if existing == nil || incoming == nil {
+		return incoming
+	}
+	incoming.ResourceURNs = uniqueTrimmedStringsPreserveOrder(append(append([]string(nil), existing.ResourceURNs...), incoming.ResourceURNs...))
+	incoming.EventIDs = uniqueTrimmedStringsPreserveOrder(append(append([]string(nil), existing.EventIDs...), incoming.EventIDs...))
+	incoming.ObservedPolicyIDs = uniqueTrimmedStringsPreserveOrder(append(append([]string(nil), existing.ObservedPolicyIDs...), incoming.ObservedPolicyIDs...))
+	incoming.Attributes = mergeFindingAttributesForUpsert(existing.Attributes, incoming.Attributes)
+	if !existing.FirstObservedAt.IsZero() && (incoming.FirstObservedAt.IsZero() || existing.FirstObservedAt.Before(incoming.FirstObservedAt)) {
+		incoming.FirstObservedAt = existing.FirstObservedAt
+	}
+	if existing.LastObservedAt.After(incoming.LastObservedAt) {
+		incoming.LastObservedAt = existing.LastObservedAt
+	}
+	return incoming
+}
+
+func mergeFindingAttributesForUpsert(existing map[string]string, incoming map[string]string) map[string]string {
+	if len(existing) == 0 && len(incoming) == 0 {
+		return nil
+	}
+	merged := make(map[string]string, len(existing)+len(incoming))
+	for key, value := range existing {
+		if trimmedKey := strings.TrimSpace(key); trimmedKey != "" {
+			merged[trimmedKey] = strings.TrimSpace(value)
+		}
+	}
+	for key, value := range incoming {
+		if trimmedKey := strings.TrimSpace(key); trimmedKey != "" {
+			merged[trimmedKey] = strings.TrimSpace(value)
+		}
+	}
+	mergeFindingListAttribute(merged, existing, incoming, "matched_locations", "matched_at")
+	trimEmptyAttributes(merged)
+	return merged
+}
+
+func mergeFindingListAttribute(merged map[string]string, existing map[string]string, incoming map[string]string, listKey string, scalarKeys ...string) {
+	values := append(splitFindingListAttribute(existing[listKey]), splitFindingListAttribute(incoming[listKey])...)
+	for _, key := range scalarKeys {
+		values = append(values, existing[key], incoming[key])
+	}
+	values = uniqueTrimmedStringsPreserveOrder(values)
+	if len(values) == 0 {
+		delete(merged, listKey)
+		return
+	}
+	merged[listKey] = strings.Join(values, ",")
+}
+
+func splitFindingListAttribute(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return strings.Split(value, ",")
 }
 
 func (s *Service) persistFindingRisk(ctx context.Context, finding *ports.FindingRecord, now time.Time) (*ports.FindingRecord, error) {
