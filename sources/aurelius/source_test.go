@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"sort"
 	"strings"
@@ -155,7 +156,7 @@ func TestParseSettings(t *testing.T) {
 	}
 }
 
-func TestReadEmitsEventsAndAdvancesCursor(t *testing.T) {
+func TestReadEmitsEventsAndCompletesFinalPage(t *testing.T) {
 	src, err := New()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -236,20 +237,103 @@ func TestReadEmitsEventsAndAdvancesCursor(t *testing.T) {
 			t.Errorf("ValidateEventEnvelope = %v", err)
 		}
 	}
-	if pull.NextCursor == nil {
-		t.Fatal("NextCursor = nil, want last key")
-	}
-	if pull.NextCursor.Opaque != "verdicts/2026/05/22/14/batch-002.ndjson.gz" {
-		t.Fatalf("NextCursor.Opaque = %q, want %q",
-			pull.NextCursor.Opaque, "verdicts/2026/05/22/14/batch-002.ndjson.gz")
+	if pull.NextCursor != nil {
+		t.Fatalf("NextCursor = %#v, want nil on final page", pull.NextCursor)
 	}
 	if pull.Checkpoint == nil {
 		t.Fatal("Checkpoint = nil, want non-nil")
+	}
+	checkpoint := mustDecodeAureliusCursor(t, pull.Checkpoint.GetCursorOpaque())
+	if checkpoint.LastKey != "verdicts/2026/05/22/14/batch-002.ndjson.gz" {
+		t.Fatalf("Checkpoint cursor last_key = %q, want %q",
+			checkpoint.LastKey, "verdicts/2026/05/22/14/batch-002.ndjson.gz")
+	}
+	if !checkpoint.ResumableCheckpoint {
+		t.Fatal("Checkpoint cursor is not resumable")
 	}
 	wantWatermark := fixed.Add(time.Hour)
 	if !pull.Checkpoint.Watermark.AsTime().Equal(wantWatermark) {
 		t.Fatalf("Checkpoint.Watermark = %v, want %v",
 			pull.Checkpoint.Watermark.AsTime(), wantWatermark)
+	}
+}
+
+func TestReadReturnsCursorWhenS3PageIsTruncated(t *testing.T) {
+	src, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	fixed := time.Date(2026, 5, 22, 14, 30, 0, 0, time.UTC)
+	objects := []fakeObject{
+		{
+			key: "verdicts/2026/05/22/14/batch-001.ndjson",
+			records: []aureliusRecord{{
+				EventID:    "01HX0001-verdict-a",
+				OccurredAt: fixed,
+				Attributes: map[string]string{
+					"image_digest": "sha256:c6b86af5b3d4",
+					"verdict":      "warn",
+				},
+				Payload: map[string]interface{}{
+					"image_digest":      "sha256:c6b86af5b3d4",
+					"verdict":           "warn",
+					"blocking_findings": float64(0),
+					"excepted_findings": float64(13),
+				},
+			}},
+		},
+		{
+			key: "verdicts/2026/05/22/14/batch-002.ndjson",
+			records: []aureliusRecord{{
+				EventID:    "01HX0002-verdict-b",
+				OccurredAt: fixed.Add(time.Hour),
+				Attributes: map[string]string{
+					"image_digest": "sha256:abcdef",
+					"verdict":      "pass",
+				},
+				Payload: map[string]interface{}{
+					"image_digest":      "sha256:abcdef",
+					"verdict":           "pass",
+					"blocking_findings": float64(0),
+					"excepted_findings": float64(0),
+				},
+			}},
+		},
+	}
+	client := newFakeS3(objects)
+	src.newClient = func(context.Context, settings) (s3API, error) { return client, nil }
+
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"family":    familyVerdict,
+		"bucket":    "writer-aurelius-telemetry",
+		"prefix":    "verdicts/",
+		"page_size": "1",
+	})
+
+	first, err := src.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if len(first.Events) != 1 {
+		t.Fatalf("first events = %d, want 1", len(first.Events))
+	}
+	if first.NextCursor == nil {
+		t.Fatal("first NextCursor = nil, want cursor for truncated S3 page")
+	}
+	firstCursor := mustDecodeAureliusCursor(t, first.NextCursor.GetOpaque())
+	if firstCursor.LastKey != "verdicts/2026/05/22/14/batch-001.ndjson" {
+		t.Fatalf("first cursor last_key = %q, want first batch", firstCursor.LastKey)
+	}
+
+	second, err := src.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if len(second.Events) != 1 {
+		t.Fatalf("second events = %d, want 1", len(second.Events))
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil on final page", second.NextCursor)
 	}
 }
 
@@ -317,6 +401,138 @@ func TestReadResumesFromCursor(t *testing.T) {
 	}
 	if pull.Events[0].GetId() != "01HX0011-finding-b" {
 		t.Errorf("event id = %q, want %q", pull.Events[0].GetId(), "01HX0011-finding-b")
+	}
+}
+
+func TestReadDoesNotAdvancePastPartiallyProcessedArchive(t *testing.T) {
+	src, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	fixed := time.Date(2026, 5, 22, 14, 30, 0, 0, time.UTC)
+	const key = "findings/2026/05/22/14/batch-001.ndjson"
+	records := make([]aureliusRecord, 0, maxEventsPerPull+1)
+	for i := 0; i < maxEventsPerPull+1; i++ {
+		records = append(records, aureliusRecord{
+			EventID:    fmt.Sprintf("01HX-finding-%05d", i),
+			OccurredAt: fixed.Add(time.Duration(i) * time.Second),
+			Attributes: map[string]string{
+				"image_digest": "sha256:aaa",
+				"severity":     "high",
+			},
+			Payload: map[string]interface{}{
+				"image_digest": "sha256:aaa",
+				"cve_id":       "CVE-2026-1111",
+				"severity":     "high",
+				"package":      "openssl",
+			},
+		})
+	}
+	client := newFakeS3([]fakeObject{{key: key, records: records}})
+	src.newClient = func(context.Context, settings) (s3API, error) { return client, nil }
+
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"family": familyFinding,
+		"bucket": "writer-aurelius-telemetry",
+		"prefix": "findings/",
+	})
+
+	first, err := src.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(first) error = %v", err)
+	}
+	if len(first.Events) != maxEventsPerPull {
+		t.Fatalf("first events = %d, want %d", len(first.Events), maxEventsPerPull)
+	}
+	if first.NextCursor == nil {
+		t.Fatal("first NextCursor = nil, want partial archive cursor")
+	}
+	firstCursor := mustDecodeAureliusCursor(t, first.NextCursor.GetOpaque())
+	if firstCursor.LastKey == key {
+		t.Fatalf("first cursor advanced last_key to partially processed archive %q", key)
+	}
+	if firstCursor.PartialKey != key {
+		t.Fatalf("first cursor partial_key = %q, want %q", firstCursor.PartialKey, key)
+	}
+	if firstCursor.RecordOffset != maxEventsPerPull {
+		t.Fatalf("first cursor record_offset = %d, want %d", firstCursor.RecordOffset, maxEventsPerPull)
+	}
+
+	second, err := src.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second) error = %v", err)
+	}
+	if len(second.Events) != 1 {
+		t.Fatalf("second events = %d, want 1", len(second.Events))
+	}
+	if got := second.Events[0].GetId(); got != fmt.Sprintf("01HX-finding-%05d", maxEventsPerPull) {
+		t.Fatalf("second event id = %q, want final record", got)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second NextCursor = %#v, want nil after archive is complete", second.NextCursor)
+	}
+	checkpoint := mustDecodeAureliusCursor(t, second.Checkpoint.GetCursorOpaque())
+	if checkpoint.LastKey != key || checkpoint.PartialKey != "" {
+		t.Fatalf("second checkpoint cursor = %+v, want completed key %q", checkpoint, key)
+	}
+}
+
+func TestReadCompletesEmptyFinalPageAfterCursor(t *testing.T) {
+	src, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	client := newFakeS3(nil)
+	src.newClient = func(context.Context, settings) (s3API, error) { return client, nil }
+
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"family": familyFinding,
+		"bucket": "writer-aurelius-telemetry",
+		"prefix": "findings/",
+	})
+	cursor := &cerebrov1.SourceCursor{Opaque: "findings/2026/05/22/14/batch-001.ndjson"}
+	pull, err := src.Read(context.Background(), cfg, cursor)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 0 {
+		t.Fatalf("events = %d, want 0", len(pull.Events))
+	}
+	if pull.NextCursor != nil {
+		t.Fatalf("NextCursor = %#v, want nil on empty final page", pull.NextCursor)
+	}
+	if pull.Checkpoint == nil {
+		t.Fatal("Checkpoint = nil, want resumable checkpoint for existing cursor")
+	}
+	checkpoint := mustDecodeAureliusCursor(t, pull.Checkpoint.GetCursorOpaque())
+	if checkpoint.LastKey != cursor.GetOpaque() {
+		t.Fatalf("checkpoint last_key = %q, want %q", checkpoint.LastKey, cursor.GetOpaque())
+	}
+}
+
+func TestBuildEventPromotesFindingPayloadVulnerabilityAttributes(t *testing.T) {
+	event, err := buildEvent(settings{tenantID: "writer"}, aureliusRecord{
+		EventID:    "01HX0010-finding-a",
+		OccurredAt: time.Date(2026, 5, 22, 14, 30, 0, 0, time.UTC),
+		Attributes: map[string]string{
+			"image_digest": "sha256:aaa",
+			"severity":     "high",
+		},
+		Payload: map[string]interface{}{
+			"image_digest": "sha256:aaa",
+			"cve_id":       "CVE-2026-1111",
+			"severity":     "high",
+			"package":      "openssl",
+		},
+	}, kindFinding, schemaRefFinding)
+	if err != nil {
+		t.Fatalf("buildEvent() error = %v", err)
+	}
+	if got := event.GetAttributes()["cve_id"]; got != "CVE-2026-1111" {
+		t.Fatalf("cve_id attribute = %q, want CVE-2026-1111", got)
+	}
+	if got := event.GetAttributes()["package"]; got != "openssl" {
+		t.Fatalf("package attribute = %q, want openssl", got)
 	}
 }
 
@@ -415,6 +631,7 @@ func (f *fakeS3) ListObjectsV2(_ context.Context, in *s3.ListObjectsV2Input, _ .
 		maxKeys = *in.MaxKeys
 	}
 	out := &s3.ListObjectsV2Output{}
+	matched := int32(0)
 	for _, key := range f.keys {
 		if !strings.HasPrefix(key, prefix) {
 			continue
@@ -422,10 +639,12 @@ func (f *fakeS3) ListObjectsV2(_ context.Context, in *s3.ListObjectsV2Input, _ .
 		if startAfter != "" && key <= startAfter {
 			continue
 		}
-		out.Contents = append(out.Contents, s3types.Object{Key: awssdk.String(key)})
-		if int32(len(out.Contents)) >= maxKeys {
+		matched++
+		if matched > maxKeys {
+			out.IsTruncated = awssdk.Bool(true)
 			break
 		}
+		out.Contents = append(out.Contents, s3types.Object{Key: awssdk.String(key)})
 	}
 	return out, nil
 }
@@ -451,4 +670,13 @@ func (e *erroringS3) ListObjectsV2(context.Context, *s3.ListObjectsV2Input, ...f
 
 func (e *erroringS3) GetObject(context.Context, *s3.GetObjectInput, ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
 	return nil, e.err
+}
+
+func mustDecodeAureliusCursor(t *testing.T, opaque string) aureliusCursor {
+	t.Helper()
+	cursor := decodeCursor(&cerebrov1.SourceCursor{Opaque: opaque})
+	if cursor.Source != cursorSource {
+		t.Fatalf("cursor source = %q, want %q (opaque %q)", cursor.Source, cursorSource, opaque)
+	}
+	return cursor
 }

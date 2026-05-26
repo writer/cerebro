@@ -41,6 +41,7 @@ const (
 	maxObjectBytes   = 64 << 20
 	maxLineBytes     = 1 << 20
 	maxEventsPerPull = 10000
+	cursorSource     = "aurelius/s3-ndjson/v1"
 
 	familyVerdict          = "verdict"
 	familyFinding          = "finding"
@@ -108,6 +109,14 @@ type aureliusRecord struct {
 	TenantID   string                 `json:"tenant_id"`
 	Attributes map[string]string      `json:"attributes"`
 	Payload    map[string]interface{} `json:"payload"`
+}
+
+type aureliusCursor struct {
+	Source              string `json:"source,omitempty"`
+	ResumableCheckpoint bool   `json:"resumable_checkpoint,omitempty"`
+	LastKey             string `json:"last_key,omitempty"`
+	PartialKey          string `json:"partial_key,omitempty"`
+	RecordOffset        int    `json:"record_offset,omitempty"`
 }
 
 // New constructs the Aurelius source backed by an S3-NDJSON archive.
@@ -257,6 +266,38 @@ func configValue(cfg sourcecdk.Config, key string) string {
 	return value
 }
 
+func decodeCursor(cursor *cerebrov1.SourceCursor) aureliusCursor {
+	opaque := strings.TrimSpace(cursor.GetOpaque())
+	if opaque == "" {
+		return aureliusCursor{}
+	}
+	var decoded aureliusCursor
+	if err := json.Unmarshal([]byte(opaque), &decoded); err == nil && decoded.Source == cursorSource {
+		decoded.LastKey = strings.TrimSpace(decoded.LastKey)
+		decoded.PartialKey = strings.TrimSpace(decoded.PartialKey)
+		if decoded.PartialKey == "" || decoded.RecordOffset < 0 {
+			decoded.RecordOffset = 0
+		}
+		return decoded
+	}
+	return aureliusCursor{LastKey: opaque}
+}
+
+func encodeCursor(cursor aureliusCursor) string {
+	cursor.Source = cursorSource
+	cursor.ResumableCheckpoint = true
+	cursor.LastKey = strings.TrimSpace(cursor.LastKey)
+	cursor.PartialKey = strings.TrimSpace(cursor.PartialKey)
+	if cursor.PartialKey == "" || cursor.RecordOffset < 0 {
+		cursor.RecordOffset = 0
+	}
+	raw, err := json.Marshal(cursor)
+	if err != nil {
+		return cursor.LastKey
+	}
+	return string(raw)
+}
+
 func discoverFamily(st settings, urnPrefix string) ([]sourcecdk.URN, error) {
 	urnRaw := urnPrefix + url.PathEscape(st.bucket+"/"+strings.TrimSuffix(st.prefix, "/"))
 	urn, err := sourcecdk.ParseURN(urnRaw)
@@ -287,10 +328,8 @@ func (s *Source) readFamily(ctx context.Context, st settings, cursor *cerebrov1.
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}
-	startAfter := ""
-	if cursor != nil {
-		startAfter = strings.TrimSpace(cursor.GetOpaque())
-	}
+	cursorState := decodeCursor(cursor)
+	startAfter := cursorState.LastKey
 	input := &s3.ListObjectsV2Input{
 		Bucket:  awssdk.String(st.bucket),
 		Prefix:  awssdk.String(st.prefix),
@@ -306,9 +345,14 @@ func (s *Source) readFamily(ctx context.Context, st settings, cursor *cerebrov1.
 	events := make([]*primitives.Event, 0, st.perPage)
 	var watermark time.Time
 	lastKey := startAfter
-	for _, object := range listing.Contents {
+	nextCursor := ""
+	for objectIndex, object := range listing.Contents {
 		key := awssdk.ToString(object.Key)
-		if key == "" || strings.HasSuffix(key, "/") {
+		if key == "" {
+			continue
+		}
+		if strings.HasSuffix(key, "/") {
+			lastKey = key
 			continue
 		}
 		if !isArchiveKey(key) {
@@ -319,7 +363,15 @@ func (s *Source) readFamily(ctx context.Context, st settings, cursor *cerebrov1.
 		if err != nil {
 			return sourcecdk.Pull{}, fmt.Errorf("read s3://%s/%s: %w", st.bucket, key, err)
 		}
-		for _, rec := range recs {
+		startRecord := 0
+		if key == cursorState.PartialKey {
+			startRecord = cursorState.RecordOffset
+			if startRecord > len(recs) {
+				startRecord = len(recs)
+			}
+		}
+		for recordIndex := startRecord; recordIndex < len(recs); recordIndex++ {
+			rec := recs[recordIndex]
 			event, err := buildEvent(st, rec, kind, schemaRef)
 			if err != nil {
 				return sourcecdk.Pull{}, fmt.Errorf("convert event in s3://%s/%s: %w", st.bucket, key, err)
@@ -332,22 +384,44 @@ func (s *Source) readFamily(ctx context.Context, st settings, cursor *cerebrov1.
 				watermark = rec.OccurredAt
 			}
 			if len(events) >= maxEventsPerPull {
+				nextRecord := recordIndex + 1
+				if nextRecord < len(recs) {
+					nextCursor = encodeCursor(aureliusCursor{
+						LastKey:      lastKey,
+						PartialKey:   key,
+						RecordOffset: nextRecord,
+					})
+				} else {
+					lastKey = key
+					if objectIndex < len(listing.Contents)-1 || awssdk.ToBool(listing.IsTruncated) {
+						nextCursor = encodeCursor(aureliusCursor{LastKey: lastKey})
+					}
+				}
 				break
 			}
 		}
-		lastKey = key
-		if len(events) >= maxEventsPerPull {
+		if nextCursor != "" {
 			break
 		}
+		lastKey = key
 	}
 	pull := sourcecdk.Pull{Events: events}
-	if lastKey != "" {
-		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: lastKey}
+	if nextCursor == "" && awssdk.ToBool(listing.IsTruncated) && lastKey != "" {
+		nextCursor = encodeCursor(aureliusCursor{LastKey: lastKey})
 	}
-	if !watermark.IsZero() && lastKey != "" {
+	if nextCursor != "" {
+		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: nextCursor}
+	}
+	checkpointCursor := nextCursor
+	if checkpointCursor == "" && lastKey != "" {
+		checkpointCursor = encodeCursor(aureliusCursor{LastKey: lastKey})
+	}
+	if checkpointCursor != "" && (!watermark.IsZero() || cursor != nil) {
 		pull.Checkpoint = &cerebrov1.SourceCheckpoint{
-			Watermark:    timestamppb.New(watermark.UTC()),
-			CursorOpaque: lastKey,
+			CursorOpaque: checkpointCursor,
+		}
+		if !watermark.IsZero() {
+			pull.Checkpoint.Watermark = timestamppb.New(watermark.UTC())
 		}
 	}
 	return pull, nil
@@ -434,6 +508,7 @@ func buildEvent(st settings, rec aureliusRecord, kind, schemaRef string) (*primi
 		}
 		attributes[k] = v
 	}
+	promoteFindingPayloadAttributes(kind, attributes, rec.Payload)
 	return &primitives.Event{
 		Id:         rec.EventID,
 		TenantId:   tenantID,
@@ -444,4 +519,33 @@ func buildEvent(st settings, rec aureliusRecord, kind, schemaRef string) (*primi
 		Payload:    payload,
 		Attributes: attributes,
 	}, nil
+}
+
+func promoteFindingPayloadAttributes(kind string, attributes map[string]string, payload map[string]interface{}) {
+	if kind != kindFinding || len(payload) == 0 {
+		return
+	}
+	for _, key := range []string{"cve_id", "package"} {
+		if strings.TrimSpace(attributes[key]) != "" {
+			continue
+		}
+		if value := payloadAttributeString(payload[key]); value != "" {
+			attributes[key] = value
+		}
+	}
+}
+
+func payloadAttributeString(value interface{}) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case json.Number:
+		return strings.TrimSpace(typed.String())
+	case float64:
+		return strconv.FormatFloat(typed, 'f', -1, 64)
+	case bool:
+		return strconv.FormatBool(typed)
+	default:
+		return ""
+	}
 }
