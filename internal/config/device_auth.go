@@ -59,6 +59,12 @@ func loadDeviceAuthConfig() (DeviceAuthConfig, error) {
 	if cfg.DPoPProofTTL, err = parseDurationEnv("CEREBRO_DEVICE_AUTH_DPOP_PROOF_TTL", 60*time.Second); err != nil {
 		return DeviceAuthConfig{}, err
 	}
+	if cfg.ReplicaCount, err = parseIntEnv("CEREBRO_DEVICE_AUTH_REPLICA_COUNT", 1); err != nil {
+		return DeviceAuthConfig{}, err
+	}
+	if cfg.ReplicaCount <= 0 {
+		return DeviceAuthConfig{}, fmt.Errorf("CEREBRO_DEVICE_AUTH_REPLICA_COUNT must be greater than zero")
+	}
 	if cfg.RiskElevatedThreshold, err = parseIntEnv("CEREBRO_DEVICE_AUTH_RISK_ELEVATED", 30); err != nil {
 		return DeviceAuthConfig{}, err
 	}
@@ -78,6 +84,9 @@ func loadDeviceAuthConfig() (DeviceAuthConfig, error) {
 	}
 	if cfg.Attestation.Required && !deviceAuthHasAttestationVerifier(cfg.Attestation) {
 		return DeviceAuthConfig{}, fmt.Errorf("CEREBRO_DEVICE_AUTH_ATTESTATION_REQUIRED=true requires a configured attestation verifier backend")
+	}
+	if cfg.Enabled && cfg.ReplicaCount > 1 {
+		return DeviceAuthConfig{}, fmt.Errorf("CEREBRO_DEVICE_AUTH_REPLICA_COUNT=%d is unsupported with in-process DPoP replay protection; configure one replica or wire shared DPoP replay state", cfg.ReplicaCount)
 	}
 	keys, err := parseDeviceAuthSigningKeys(os.Getenv("CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON"))
 	if err != nil {

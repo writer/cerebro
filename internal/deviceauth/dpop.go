@@ -66,6 +66,14 @@ func NewDPoPVerifier(clockSkew, proofTTL time.Duration) *DPoPVerifier {
 	}
 }
 
+// ReplayStateShared reports whether replayed jti state is shared across
+// process boundaries. The built-in verifier is intentionally process-local;
+// bootstrap must reject multi-replica configurations until a shared DPoP
+// replay store is wired.
+func (v *DPoPVerifier) ReplayStateShared() bool {
+	return false
+}
+
 // SetClock overrides the wall clock used to validate iat. Tests only.
 func (v *DPoPVerifier) SetClock(now func() time.Time) {
 	if now == nil {

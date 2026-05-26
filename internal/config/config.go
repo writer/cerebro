@@ -129,6 +129,10 @@ type DeviceAuthConfig struct {
 	// DPoPProofTTL bounds how long an RFC 9449 DPoP proof JWT remains
 	// valid; defaults to 60s if zero.
 	DPoPProofTTL time.Duration
+	// ReplicaCount is the number of concurrently serving bootstrap API
+	// replicas for this device-auth deployment. Values greater than one
+	// require shared DPoP replay state.
+	ReplicaCount int
 	// RiskElevatedThreshold and RiskHighThreshold map composite risk
 	// scores (0..100) to "elevated" and "high" levels. Defaults are 30
 	// and 70.

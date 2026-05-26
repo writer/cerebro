@@ -214,6 +214,63 @@ func TestDeviceAuthEndToEnd(t *testing.T) {
 	}
 }
 
+func TestDeviceAuthRevokeAuthorizesTargetDeviceTenant(t *testing.T) {
+	app, _, _ := newAppForDeviceTest(t)
+	handler := app.Handler()
+	ctx := context.Background()
+
+	bootstrap, err := app.deviceService.IssueBootstrapToken(ctx, deviceauth.IssueBootstrapTokenRequest{
+		HardwareUUID: "hw-security",
+		TenantID:     "security",
+	})
+	if err != nil {
+		t.Fatalf("IssueBootstrapToken: %v", err)
+	}
+	enroll, err := app.deviceService.Enroll(ctx, deviceauth.EnrollRequest{
+		BootstrapToken: bootstrap.Token,
+		HardwareUUID:   "hw-security",
+	})
+	if err != nil {
+		t.Fatalf("Enroll: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/platform/devices/"+enroll.DeviceID+"/revoke", bytes.NewBufferString(`{"reason":"test"}`))
+	req.Header.Set("Authorization", "Bearer operator-key")
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("revoke status = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), "tenant_forbidden") {
+		t.Fatalf("revoke body = %s, want tenant_forbidden", resp.Body.String())
+	}
+	device, err := app.deviceService.LookupDevice(ctx, enroll.DeviceID)
+	if err != nil {
+		t.Fatalf("LookupDevice: %v", err)
+	}
+	if device.Status == "revoked" {
+		t.Fatal("cross-tenant revoke changed target device status")
+	}
+}
+
+func TestDeviceAuthIssueBootstrapTokenRejectsNegativeTTLSeconds(t *testing.T) {
+	app, _, _ := newAppForDeviceTest(t)
+	handler := app.Handler()
+
+	req := httptest.NewRequest(http.MethodPost, "/platform/devices/bootstrap-tokens", bytes.NewBufferString(`{"hardware_uuid":"hw-neg","tenant_id":"writer","ttl_seconds":-1}`))
+	req.Header.Set("Authorization", "Bearer operator-key")
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("bootstrap token status = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), "invalid_request") {
+		t.Fatalf("bootstrap token body = %s, want invalid_request", resp.Body.String())
+	}
+}
+
 func TestNewWithErrorFailsDeviceAuthWhenAPIAuthDisabled(t *testing.T) {
 	_, err := NewWithError(config.Config{
 		Auth: config.AuthConfig{
@@ -239,6 +296,21 @@ func TestNewWithErrorFailsDeviceAuthWithoutStore(t *testing.T) {
 	}, Dependencies{}, nil)
 	if !errors.Is(err, errDeviceAuthRequiresStore) {
 		t.Fatalf("NewWithError err = %v, want device-auth store requirement", err)
+	}
+}
+
+func TestNewWithErrorRejectsDeviceAuthMultipleReplicasWithInProcessDPoP(t *testing.T) {
+	_, err := NewWithError(config.Config{
+		Auth: config.AuthConfig{
+			Enabled: true,
+			DeviceAuth: config.DeviceAuthConfig{
+				Enabled:      true,
+				ReplicaCount: 2,
+			},
+		},
+	}, Dependencies{StateStore: newDeviceAuthMemStore()}, nil)
+	if !errors.Is(err, errDeviceAuthRequiresSharedDPoPReplay) {
+		t.Fatalf("NewWithError err = %v, want shared DPoP replay requirement", err)
 	}
 }
 

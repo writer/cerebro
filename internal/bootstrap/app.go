@@ -79,10 +79,11 @@ const (
 )
 
 var (
-	errInvalidHTTPRequest        = errors.New("invalid http request")
-	errProtoJSONBodyTooLarge     = errors.New("request JSON body exceeds maximum size")
-	errDeviceAuthRequiresAPIAuth = errors.New("device-auth requires CEREBRO_API_AUTH_ENABLED=true")
-	errDeviceAuthRequiresStore   = errors.New("device-auth requires a device-auth capable state store")
+	errInvalidHTTPRequest                 = errors.New("invalid http request")
+	errProtoJSONBodyTooLarge              = errors.New("request JSON body exceeds maximum size")
+	errDeviceAuthRequiresAPIAuth          = errors.New("device-auth requires CEREBRO_API_AUTH_ENABLED=true")
+	errDeviceAuthRequiresStore            = errors.New("device-auth requires a device-auth capable state store")
+	errDeviceAuthRequiresSharedDPoPReplay = errors.New("device-auth DPoP replay protection requires shared state for multiple replicas")
 )
 
 // New constructs the minimal bootstrap app and registers the Connect handlers.
@@ -98,6 +99,12 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 	app := &App{cfg: cfg, deps: deps, sources: sources}
 	if cfg.Auth.DeviceAuth.Enabled && !cfg.Auth.Enabled {
 		return nil, errDeviceAuthRequiresAPIAuth
+	}
+	if cfg.Auth.DeviceAuth.Enabled && deviceAuthReplicaCount(cfg.Auth.DeviceAuth) > 1 {
+		dpop := deviceauth.NewDPoPVerifier(cfg.Auth.DeviceAuth.ClockSkew, cfg.Auth.DeviceAuth.DPoPProofTTL)
+		if !dpop.ReplayStateShared() {
+			return nil, errDeviceAuthRequiresSharedDPoPReplay
+		}
 	}
 	deviceStore := deviceAuthStore(deps.StateStore)
 	if cfg.Auth.DeviceAuth.Enabled && deviceStore == nil {
@@ -2975,6 +2982,13 @@ func deviceAuthStore(store ports.StateStore) deviceauth.Store {
 		return nil
 	}
 	return deviceStore
+}
+
+func deviceAuthReplicaCount(cfg config.DeviceAuthConfig) int {
+	if cfg.ReplicaCount <= 0 {
+		return 1
+	}
+	return cfg.ReplicaCount
 }
 
 func isNilInterface(value any) bool {

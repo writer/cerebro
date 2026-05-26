@@ -120,6 +120,30 @@ func TestServiceEnrollRequiresMatchingHardware(t *testing.T) {
 	}
 }
 
+func TestServiceIssueBootstrapTokenRejectsNegativeTTL(t *testing.T) {
+	ctx := context.Background()
+	service, _, now := newServiceForTest(t)
+	if _, err := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{
+		HardwareUUID: "hw-neg",
+		TenantID:     "writer",
+		TTL:          -time.Second,
+	}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("IssueBootstrapToken negative TTL err = %v, want ErrInvalidRequest", err)
+	}
+
+	issued, err := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{
+		HardwareUUID: "hw-default",
+		TenantID:     "writer",
+		TTL:          0,
+	})
+	if err != nil {
+		t.Fatalf("IssueBootstrapToken zero TTL: %v", err)
+	}
+	if got := issued.ExpiresAt.Sub(now); got != time.Hour {
+		t.Fatalf("zero TTL expiry delta = %v, want %v", got, time.Hour)
+	}
+}
+
 type checkingAttestationVerifier struct {
 	wantHash         [32]byte
 	wantHardwareUUID string

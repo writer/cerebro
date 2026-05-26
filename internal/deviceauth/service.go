@@ -534,6 +534,15 @@ func (s *Service) Revoke(ctx context.Context, deviceID string, reason string) er
 	return nil
 }
 
+// LookupDevice returns the persisted device record by id.
+func (s *Service) LookupDevice(ctx context.Context, deviceID string) (DeviceRecord, error) {
+	deviceID = strings.TrimSpace(deviceID)
+	if deviceID == "" {
+		return DeviceRecord{}, fmt.Errorf("%w: device_id", ErrInvalidRequest)
+	}
+	return s.store.LookupDevice(ctx, deviceID)
+}
+
 // IssueBootstrapToken mints a single-use enrollment credential.
 func (s *Service) IssueBootstrapToken(ctx context.Context, request IssueBootstrapTokenRequest) (IssueBootstrapTokenResponse, error) {
 	hardwareUUID := strings.TrimSpace(request.HardwareUUID)
@@ -554,7 +563,10 @@ func (s *Service) IssueBootstrapToken(ctx context.Context, request IssueBootstra
 		return IssueBootstrapTokenResponse{}, err
 	}
 	ttl := request.TTL
-	if ttl <= 0 {
+	if ttl < 0 {
+		return IssueBootstrapTokenResponse{}, fmt.Errorf("%w: ttl", ErrInvalidRequest)
+	}
+	if ttl == 0 {
 		ttl = s.cfg.BootstrapTokenTTL
 	}
 	now := s.cfg.Now().UTC()
