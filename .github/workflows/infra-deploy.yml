@@ -315,6 +315,11 @@ jobs:
         with:
           assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
 
+      - name: Verify AWS scan-role trust (sec-dev)
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.sec-dev.yaml
+
       - name: Verify Cosmo source runtimes (sec-dev)
         shell: bash
         working-directory: infra
@@ -698,6 +703,12 @@ jobs:
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
         with:
           assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
+
+      - name: Verify AWS scan-role trust (sec-dev)
+        if: github.event.inputs.environment == 'sec-dev'
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.sec-dev.yaml
 
       - name: Refresh AWS credentials for runtime verification (sec-prod)
         if: github.event.inputs.environment == 'go-prod'
