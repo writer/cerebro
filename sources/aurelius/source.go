@@ -428,7 +428,8 @@ func (s *Source) readFamily(ctx context.Context, st settings, cursor *cerebrov1.
 	if checkpointCursor == "" && lastKey != "" {
 		checkpointCursor = encodeCursor(aureliusCursor{LastKey: lastKey})
 	}
-	if checkpointCursor != "" && (!watermark.IsZero() || cursor != nil) {
+	madeProgress := lastKey != "" && lastKey != startAfter
+	if checkpointCursor != "" && (!watermark.IsZero() || cursor != nil || nextCursor != "" || madeProgress) {
 		pull.Checkpoint = &cerebrov1.SourceCheckpoint{
 			CursorOpaque: checkpointCursor,
 		}

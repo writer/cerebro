@@ -333,6 +333,46 @@ func TestReadSkipsRecordsFromOtherTenants(t *testing.T) {
 	}
 }
 
+func TestReadCheckpointsWhenOnlyOtherTenantRecordsAreSkipped(t *testing.T) {
+	src, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	fixed := time.Date(2026, 5, 22, 14, 30, 0, 0, time.UTC)
+	const key = "verdicts/batch-foreign.ndjson"
+	client := newFakeS3([]fakeObject{{
+		key: key,
+		records: []aureliusRecord{{
+			EventID:    "01HX-other-tenant",
+			OccurredAt: fixed,
+			TenantID:   "other",
+			Attributes: map[string]string{"image_digest": "sha256:other", "verdict": "pass"},
+			Payload:    map[string]interface{}{"image_digest": "sha256:other", "verdict": "pass"},
+		}},
+	}})
+	src.newClient = func(context.Context, settings) (s3API, error) { return client, nil }
+
+	pull, err := src.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"family":    familyVerdict,
+		"bucket":    "writer-aurelius-telemetry",
+		"prefix":    "verdicts/",
+		"tenant_id": "writer",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 0 {
+		t.Fatalf("Read() events = %d, want 0", len(pull.Events))
+	}
+	if pull.Checkpoint == nil {
+		t.Fatal("Checkpoint = nil, want progress checkpoint after skipped object")
+	}
+	checkpoint := mustDecodeAureliusCursor(t, pull.Checkpoint.GetCursorOpaque())
+	if checkpoint.LastKey != key {
+		t.Fatalf("checkpoint last_key = %q, want %q", checkpoint.LastKey, key)
+	}
+}
+
 func TestReadReturnsCursorWhenS3PageIsTruncated(t *testing.T) {
 	src, err := New()
 	if err != nil {
