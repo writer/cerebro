@@ -1,6 +1,7 @@
 package archtests
 
 import (
+	"bufio"
 	"bytes"
 	"go/ast"
 	"go/parser"
@@ -90,13 +91,116 @@ func TestGraphStoreDependenciesUseApprovedBackendsOnly(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read %s: %v", name, err)
 		}
-		lower := bytes.ToLower(body)
-		for _, marker := range forbiddenGraphBackendMarkers {
-			if bytes.Contains(lower, []byte(marker)) {
-				t.Fatalf("%s contains forbidden graph backend dependency marker %q", name, marker)
+		for _, modulePath := range graphDependencyModulePaths(name, string(body)) {
+			lower := strings.ToLower(modulePath)
+			for _, marker := range forbiddenGraphBackendMarkers {
+				if strings.Contains(lower, marker) {
+					t.Fatalf("%s contains forbidden graph backend dependency marker %q in module path %q", name, marker, modulePath)
+				}
 			}
 		}
 	}
+}
+
+func TestGraphDependencyModulePathsIgnoresChecksums(t *testing.T) {
+	paths := graphDependencyModulePaths("go.sum", "golang.org/x/net v0.55.0/go.mod h1:L5U2KuzuChecksumOnly\n")
+	if strings.Join(paths, ",") != "golang.org/x/net" {
+		t.Fatalf("graphDependencyModulePaths() = %#v, want only module path", paths)
+	}
+}
+
+func TestGraphDependencyModulePathsIncludesReplacements(t *testing.T) {
+	paths := graphDependencyModulePaths("go.mod", `
+module github.com/writer/cerebro
+
+require(
+	example.com/required v1.0.0
+)
+
+replace github.com/kuzudb/kuzu-go => ./internal/teststub
+replace( // grouped replacements
+	example.com/old v1.2.3 => example.com/new v1.2.4
+)
+`)
+	want := "example.com/required,github.com/kuzudb/kuzu-go,example.com/old,example.com/new"
+	if strings.Join(paths, ",") != want {
+		t.Fatalf("graphDependencyModulePaths() = %#v, want %s", paths, want)
+	}
+}
+
+func graphDependencyModulePaths(name string, body string) []string {
+	scanner := bufio.NewScanner(strings.NewReader(body))
+	paths := []string{}
+	inRequireBlock := false
+	inReplaceBlock := false
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if commentStart := strings.Index(line, "//"); commentStart >= 0 {
+			line = strings.TrimSpace(line[:commentStart])
+		}
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		if name == "go.sum" {
+			paths = append(paths, fields[0])
+			continue
+		}
+		if line == "require (" || line == "require(" {
+			inRequireBlock = true
+			continue
+		}
+		if line == "replace (" || line == "replace(" {
+			inReplaceBlock = true
+			continue
+		}
+		if inRequireBlock {
+			if line == ")" {
+				inRequireBlock = false
+				continue
+			}
+			paths = append(paths, fields[0])
+			continue
+		}
+		if inReplaceBlock {
+			if line == ")" {
+				inReplaceBlock = false
+				continue
+			}
+			paths = append(paths, replaceModulePaths(fields)...)
+			continue
+		}
+		if fields[0] == "require" && len(fields) >= 2 {
+			paths = append(paths, fields[1])
+		}
+		if fields[0] == "replace" && len(fields) >= 2 {
+			paths = append(paths, replaceModulePaths(fields[1:])...)
+		}
+	}
+	return paths
+}
+
+func replaceModulePaths(fields []string) []string {
+	paths := []string{}
+	if len(fields) == 0 {
+		return paths
+	}
+	paths = append(paths, fields[0])
+	for i, field := range fields {
+		if field != "=>" || i+1 >= len(fields) {
+			continue
+		}
+		replacement := fields[i+1]
+		if strings.HasPrefix(replacement, ".") || strings.HasPrefix(replacement, "/") {
+			return paths
+		}
+		paths = append(paths, replacement)
+		return paths
+	}
+	return paths
 }
 
 func TestGraphStoreProductionEnvVarsUseApprovedBackendsOnly(t *testing.T) {
