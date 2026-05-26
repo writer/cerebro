@@ -55,7 +55,7 @@ SEC_DEV_AWS_GLOBAL_FAMILIES = {
     "iam_user",
 }
 SEC_DEV_AWS_REGIONAL_FAMILIES = {"cloudtrail", "public_endpoint", "resource_exposure"}
-SEC_DEV_AWS_CLOUDTRAIL_SINCE = "PT2H"
+SEC_DEV_AWS_CLOUDTRAIL_SINCE = "PT15M"
 
 
 @dataclass(frozen=True)

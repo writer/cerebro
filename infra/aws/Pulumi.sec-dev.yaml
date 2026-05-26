@@ -559,7 +559,7 @@ config:
         per_page: "100"
         region: us-east-1
         role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
-        since: PT2H
+        since: PT15M
     - id: writer-aws-sec-dev-us2-cloudtrail
       sourceId: aws
       tenantId: writer
@@ -570,7 +570,7 @@ config:
         per_page: "100"
         region: us-west-2
         role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
-        since: PT2H
+        since: PT15M
     - id: writer-aws-sec-dev-iam-user
       sourceId: aws
       tenantId: writer
