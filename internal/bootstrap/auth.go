@@ -98,15 +98,22 @@ func authMiddleware(cfg config.AuthConfig, deps AuthDependencies, next http.Hand
 			finalOutcome, finalDenialReason := accessAuditOutcome(status, outcome, denialReason, auditResult.ConnectCode)
 			emitAccessAuditEvent(r, principal, status, time.Since(started), finalOutcome, finalDenialReason, auditResult)
 		}()
+		if isUnauthenticatedDevicePath(r.URL.Path) {
+			outcome = "allowed"
+			ctx := context.WithValue(r.Context(), accessAuditContextKey{}, auditResult)
+			next.ServeHTTP(recorder, r.WithContext(ctx))
+			return
+		}
 		var deviceJKT string
-		principal, deviceJKT, ok := authenticateRequest(cfg, deps.DeviceVerifier, r)
+		var presentedToken string
+		principal, deviceJKT, presentedToken, ok := authenticateRequest(cfg, deps.DeviceVerifier, r)
 		if !ok {
 			denialReason = "unauthenticated"
 			writeAuthError(recorder, http.StatusUnauthorized, "unauthorized")
 			return
 		}
 		if deviceJKT != "" {
-			if err := verifyDPoPHeader(deps.DPoPVerifier, r, deviceJKT); err != nil {
+			if err := verifyDPoPHeader(deps.DPoPVerifier, r, deviceJKT, presentedToken); err != nil {
 				denialReason = "dpop_invalid"
 				writeAuthError(recorder, http.StatusUnauthorized, "dpop invalid")
 				return
@@ -161,7 +168,7 @@ func authMiddleware(cfg config.AuthConfig, deps AuthDependencies, next http.Hand
 // authenticated device JWT carries a cnf.jkt claim. The proof must be a
 // valid DPoP+JWT, htm/htu must match the request, and the JWK thumbprint
 // must equal the expected jkt that was bound at enroll time.
-func verifyDPoPHeader(verifier *deviceauth.DPoPVerifier, r *http.Request, expectedJKT string) error {
+func verifyDPoPHeader(verifier *deviceauth.DPoPVerifier, r *http.Request, expectedJKT string, accessToken string) error {
 	if verifier == nil {
 		return nil
 	}
@@ -181,7 +188,7 @@ func verifyDPoPHeader(verifier *deviceauth.DPoPVerifier, r *http.Request, expect
 		host = "cerebro"
 	}
 	url := scheme + "://" + host + r.URL.RequestURI()
-	res, err := verifier.Verify(proof, r.Method, url)
+	res, err := verifier.Verify(proof, r.Method, url, accessToken)
 	if err != nil {
 		return err
 	}
@@ -216,8 +223,6 @@ func isPublicPath(path string) bool {
 	switch path {
 	case "/health", "/healthz", "/openapi.yaml":
 		return true
-	case "/platform/devices/enroll", "/platform/devices/token":
-		return true
 	case "/.well-known/device-jwks.json":
 		return true
 	default:
@@ -225,13 +230,22 @@ func isPublicPath(path string) bool {
 	}
 }
 
-func authenticateRequest(cfg config.AuthConfig, deviceVerifier *deviceauth.JWTVerifier, r *http.Request) (authPrincipal, string, bool) {
+func isUnauthenticatedDevicePath(path string) bool {
+	switch path {
+	case "/platform/devices/enroll", "/platform/devices/token":
+		return true
+	default:
+		return false
+	}
+}
+
+func authenticateRequest(cfg config.AuthConfig, deviceVerifier *deviceauth.JWTVerifier, r *http.Request) (authPrincipal, string, string, bool) {
 	token := bearerToken(r.Header.Get("Authorization"))
 	if token == "" {
 		token = strings.TrimSpace(r.Header.Get("X-Cerebro-API-Key"))
 	}
 	if token == "" {
-		return authPrincipal{}, "", false
+		return authPrincipal{}, "", "", false
 	}
 	for _, credential := range cfg.APICredentials {
 		if apiCredentialMatches(token, credential) {
@@ -243,21 +257,21 @@ func authenticateRequest(cfg config.AuthConfig, deviceVerifier *deviceauth.JWTVe
 				AuthMode:       "api_credential",
 				AllowedTenants: credential.AllowedTenants,
 				Scopes:         credential.Scopes,
-			}, "", true
+			}, "", token, true
 		}
 	}
 	for _, key := range cfg.APIKeys {
 		if constantTimeEqual(token, key.Key) {
-			return authPrincipal{Name: key.Principal, TenantID: key.TenantID, AuthMode: "api_key"}, "", true
+			return authPrincipal{Name: key.Principal, TenantID: key.TenantID, AuthMode: "api_key"}, "", token, true
 		}
 	}
 	if principal, ok := authenticateCapabilityToken(cfg, token, time.Now()); ok {
-		return principal, "", true
+		return principal, "", token, true
 	}
 	if principal, jkt, ok := authenticateDeviceToken(deviceVerifier, token); ok {
-		return principal, jkt, true
+		return principal, jkt, token, true
 	}
-	return authPrincipal{}, "", false
+	return authPrincipal{}, "", "", false
 }
 
 // authenticateDeviceToken verifies an EdDSA device JWT issued by the

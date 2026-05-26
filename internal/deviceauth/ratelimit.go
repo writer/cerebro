@@ -40,6 +40,16 @@ func NewTokenBucket(ratePerSecond float64, burst int) *TokenBucket {
 	return bucket
 }
 
+// SetClockForTest overrides the wall clock used by the limiter. Tests only.
+func (b *TokenBucket) SetClockForTest(now func() time.Time) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if now == nil {
+		now = time.Now
+	}
+	b.now = now
+}
+
 // Allow returns true if the caller may proceed for the given key.
 func (b *TokenBucket) Allow(key string) bool {
 	if b == nil || b.ratePerSecond <= 0 {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -193,6 +194,66 @@ func TestServiceJWKSExposesKID(t *testing.T) {
 	}
 	if strings.TrimSpace(doc.Keys[0].X) == "" {
 		t.Errorf("public key x is empty")
+	}
+}
+
+func TestKeySetMarshalJSONDoesNotExposePrivateKey(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := json.Marshal(&KeySet{Keys: []SigningKey{{KID: "test", Public: pub, Private: priv}}})
+	if err != nil {
+		t.Fatalf("MarshalJSON: %v", err)
+	}
+	if strings.Contains(string(doc), "Private") || strings.Contains(string(doc), "Public") {
+		t.Fatalf("KeySet JSON exposed internal key fields: %s", doc)
+	}
+	if !strings.Contains(string(doc), `"kty":"OKP"`) || !strings.Contains(string(doc), `"kid":"test"`) {
+		t.Fatalf("KeySet JSON is not JWKS-shaped: %s", doc)
+	}
+}
+
+func TestIssueBootstrapTokenRejectsAdminScopes(t *testing.T) {
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	_, err := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{
+		HardwareUUID: "hw-1",
+		TenantID:     "writer",
+		Scopes:       []string{ScopeDevicesBootstrapWrite},
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("IssueBootstrapToken err = %v, want ErrInvalidRequest", err)
+	}
+}
+
+func TestEnrollFiltersLegacyBootstrapAdminScopes(t *testing.T) {
+	ctx := context.Background()
+	service, store, now := newServiceForTest(t)
+	plaintext, err := GenerateOpaqueToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateBootstrapToken(ctx, BootstrapToken{
+		TokenID:      "btk-legacy",
+		TokenHash:    HashToken(plaintext),
+		HardwareUUID: "hw-1",
+		TenantID:     "writer",
+		Scopes:       []string{ScopeDevicesBootstrapWrite, ScopeTelemetryIngest},
+		CreatedAt:    now,
+		ExpiresAt:    now.Add(time.Hour),
+	}); err != nil {
+		t.Fatalf("CreateBootstrapToken: %v", err)
+	}
+	enroll, err := service.Enroll(ctx, EnrollRequest{BootstrapToken: plaintext, HardwareUUID: "hw-1"})
+	if err != nil {
+		t.Fatalf("Enroll: %v", err)
+	}
+	if containsScope(enroll.Scopes, ScopeDevicesBootstrapWrite) {
+		t.Fatalf("enroll propagated admin scope: %v", enroll.Scopes)
+	}
+	if !containsScope(enroll.Scopes, ScopeTelemetryIngest) {
+		t.Fatalf("enroll dropped allowed scope: %v", enroll.Scopes)
 	}
 }
 

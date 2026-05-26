@@ -91,7 +91,10 @@ func serve() error {
 		return fmt.Errorf("open source registry: %w", err)
 	}
 
-	app := bootstrap.New(cfg, deps, sources)
+	app, err := bootstrap.NewWithError(cfg, deps, sources)
+	if err != nil {
+		return fmt.Errorf("bootstrap app: %w", err)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	startFindingRiskBackfill(ctx, app, log.Printf)

@@ -188,6 +188,7 @@ func TestMemStoreIdempotency(t *testing.T) {
 	ctx := context.Background()
 	store := NewMemStore()
 	now := time.Date(2026, 5, 22, 12, 0, 0, 0, time.UTC)
+	store.SetClock(func() time.Time { return now })
 	body := []byte(`{"ok":true}`)
 	bodyHash := HashToken("request-body-1")
 

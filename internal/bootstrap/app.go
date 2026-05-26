@@ -79,14 +79,31 @@ const (
 )
 
 var (
-	errInvalidHTTPRequest    = errors.New("invalid http request")
-	errProtoJSONBodyTooLarge = errors.New("request JSON body exceeds maximum size")
+	errInvalidHTTPRequest        = errors.New("invalid http request")
+	errProtoJSONBodyTooLarge     = errors.New("request JSON body exceeds maximum size")
+	errDeviceAuthRequiresAPIAuth = errors.New("device-auth requires CEREBRO_API_AUTH_ENABLED=true")
+	errDeviceAuthRequiresStore   = errors.New("device-auth requires a device-auth capable state store")
 )
 
 // New constructs the minimal bootstrap app and registers the Connect handlers.
 func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App {
+	app, _ := NewWithError(cfg, deps, sources)
+	return app
+}
+
+// NewWithError constructs the minimal bootstrap app and returns configuration
+// errors instead of panicking. Production startup should use this form so
+// security-sensitive surfaces fail closed when misconfigured.
+func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) (*App, error) {
 	app := &App{cfg: cfg, deps: deps, sources: sources}
-	if deviceStore := deviceAuthStore(deps.StateStore); deviceStore != nil {
+	if cfg.Auth.DeviceAuth.Enabled && !cfg.Auth.Enabled {
+		return nil, errDeviceAuthRequiresAPIAuth
+	}
+	deviceStore := deviceAuthStore(deps.StateStore)
+	if cfg.Auth.DeviceAuth.Enabled && deviceStore == nil {
+		return nil, errDeviceAuthRequiresStore
+	}
+	if deviceStore != nil {
 		dpop := deviceauth.NewDPoPVerifier(cfg.Auth.DeviceAuth.ClockSkew, cfg.Auth.DeviceAuth.DPoPProofTTL)
 		obsStore := risk.NewInMemoryObservationStore()
 		riskScorer := risk.NewScorer(
@@ -99,7 +116,7 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 		)
 		service, err := buildDeviceAuthService(cfg.Auth.DeviceAuth, deviceStore, dpop, riskScorer, obsStore)
 		if err != nil {
-			panic(fmt.Sprintf("device-auth bootstrap failed: %v", err))
+			return nil, fmt.Errorf("device-auth bootstrap failed: %w", err)
 		}
 		if service != nil {
 			app.deviceService = service
@@ -199,7 +216,7 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 		Handler:           app.handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-	return app
+	return app, nil
 }
 
 // Handler returns the composed HTTP handler for embedding in tests or another server.

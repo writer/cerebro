@@ -3,6 +3,7 @@ package deviceauth
 import (
 	"crypto/ed25519"
 	"encoding/base64"
+	"encoding/json"
 )
 
 // JWKSDocument is the JSON shape served at /.well-known/device-jwks.json.
@@ -42,4 +43,10 @@ func EncodeJWKS(keys *KeySet) JWKSDocument {
 		})
 	}
 	return out
+}
+
+// MarshalJSON prevents accidental serialization of SigningKey.Private by
+// exposing KeySet through the same public JWKS document as the HTTP endpoint.
+func (ks *KeySet) MarshalJSON() ([]byte, error) {
+	return json.Marshal(EncodeJWKS(ks))
 }

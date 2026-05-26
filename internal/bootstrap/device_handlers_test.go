@@ -8,10 +8,12 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/deviceauth"
@@ -208,6 +210,105 @@ func TestDeviceAuthEndToEnd(t *testing.T) {
 	}
 	if !strings.Contains(resp.Body.String(), "refresh_token_replayed") {
 		t.Errorf("replay body missing replay code: %s", resp.Body.String())
+	}
+}
+
+func TestNewWithErrorFailsDeviceAuthWhenAPIAuthDisabled(t *testing.T) {
+	_, err := NewWithError(config.Config{
+		Auth: config.AuthConfig{
+			Enabled: false,
+			DeviceAuth: config.DeviceAuthConfig{
+				Enabled: true,
+			},
+		},
+	}, Dependencies{StateStore: newDeviceAuthMemStore()}, nil)
+	if !errors.Is(err, errDeviceAuthRequiresAPIAuth) {
+		t.Fatalf("NewWithError err = %v, want API auth requirement", err)
+	}
+}
+
+func TestNewWithErrorFailsDeviceAuthWithoutStore(t *testing.T) {
+	_, err := NewWithError(config.Config{
+		Auth: config.AuthConfig{
+			Enabled: true,
+			DeviceAuth: config.DeviceAuthConfig{
+				Enabled: true,
+			},
+		},
+	}, Dependencies{}, nil)
+	if !errors.Is(err, errDeviceAuthRequiresStore) {
+		t.Fatalf("NewWithError err = %v, want device-auth store requirement", err)
+	}
+}
+
+func TestRemoteIPForRateLimitIgnoresClientForwardedFor(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/platform/devices/enroll", nil)
+	req.RemoteAddr = "198.51.100.10:12345"
+	req.Header.Set("X-Forwarded-For", "203.0.113.200")
+	if got := remoteIPForRateLimit(req); got != "198.51.100.10" {
+		t.Fatalf("remoteIPForRateLimit = %q, want RemoteAddr host", got)
+	}
+}
+
+func TestDeviceAuthTokenLimiterUsesStableDeviceKey(t *testing.T) {
+	app, _, _ := newAppForDeviceTest(t)
+	handler := app.Handler()
+
+	req := httptest.NewRequest(http.MethodPost, "/platform/devices/bootstrap-tokens", bytes.NewBufferString(`{"hardware_uuid":"hw-1","tenant_id":"writer","ttl_seconds":3600}`))
+	req.Header.Set("Authorization", "Bearer operator-key")
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("issue bootstrap token status = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	var bootstrap struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &bootstrap); err != nil {
+		t.Fatalf("decode bootstrap response: %v", err)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/platform/devices/enroll", bytes.NewBufferString(`{"bootstrap_token":"`+bootstrap.Token+`","hardware_uuid":"hw-1"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("enroll status = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	var enroll struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &enroll); err != nil {
+		t.Fatalf("decode enroll: %v", err)
+	}
+
+	limiter := deviceauth.NewTokenBucket(100, 1)
+	now := time.Now()
+	limiter.SetClockForTest(func() time.Time { return now })
+	app.deviceHandler.tokenLimit = limiter
+
+	rotateBody := []byte(`{"grant_type":"refresh_token","refresh_token":"` + enroll.RefreshToken + `"}`)
+	req = httptest.NewRequest(http.MethodPost, "/platform/devices/token", bytes.NewReader(rotateBody))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("first token rotate status = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	var rotated struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &rotated); err != nil {
+		t.Fatalf("decode rotate: %v", err)
+	}
+	rotateBody = []byte(`{"grant_type":"refresh_token","refresh_token":"` + rotated.RefreshToken + `"}`)
+	req = httptest.NewRequest(http.MethodPost, "/platform/devices/token", bytes.NewReader(rotateBody))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusTooManyRequests {
+		t.Fatalf("second token rotate status = %d, want 429; body=%s", resp.Code, resp.Body.String())
 	}
 }
 

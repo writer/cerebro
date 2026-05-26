@@ -187,6 +187,32 @@ func TestAppleAppAttestRejectsTamperedClientDataHash(t *testing.T) {
 	}
 }
 
+func TestAppleAppAttestRejectsTruncatedAuthDataBeforeCredIDLen(t *testing.T) {
+	teamID, bundleID := "TEAM1", "com.writer.secheck"
+	clientHash := sha256.Sum256([]byte("bootstrap-token-1"))
+	authData := buildAuthData(t, teamID, bundleID, []byte("credential-id"))[:54]
+	nh := sha256.New()
+	nh.Write(authData)
+	nh.Write(clientHash[:])
+	root := mintAppleRoot(t)
+	leafKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	leafDER := mintAppleLeaf(t, root, leafKey, nh.Sum(nil))
+	att, _ := encodeCBORMap([][2]any{
+		{"fmt", FormatAppleAppAttest},
+		{"attStmt", [][2]any{{"x5c", [][]byte{leafDER, root.der}}, {"receipt", []byte{}}}},
+		{"authData", authData},
+	})
+	v, _ := NewAppleAppAttestVerifier(AppleConfig{
+		Roots: root.pool, BundleIDs: []string{bundleID}, TeamID: teamID, Clock: time.Now,
+	})
+	_, err := v.Verify(context.Background(), Input{
+		Format: "darwin", Statement: base64.StdEncoding.EncodeToString(att), ClientDataHash: clientHash,
+	})
+	if !errors.Is(err, ErrInvalidStatement) {
+		t.Fatalf("err=%v want ErrInvalidStatement", err)
+	}
+}
+
 func TestAppleAppAttestRejectsBadChain(t *testing.T) {
 	v, _ := NewAppleAppAttestVerifier(AppleConfig{
 		Roots: x509.NewCertPool(), BundleIDs: []string{"x"}, TeamID: "T", Clock: time.Now,

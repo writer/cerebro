@@ -206,6 +206,25 @@ func TestServiceEnrollDPoPRiskEndToEnd(t *testing.T) {
 	if containsScope(highRisk.Scopes, ScopeTelemetryIngest) {
 		t.Errorf("high-risk rotation should drop telemetry ingest scope: %v", highRisk.Scopes)
 	}
+
+	now = now.Add(3 * time.Minute)
+	store.SetClock(clock)
+	dpop.SetClock(clock)
+	proof3 := newDPoPProofES256(t, devKey, "POST", "https://cerebro.test/platform/devices/token", now, "jti-3")
+	recovered, err := service.IssueToken(ctx, TokenRequest{
+		GrantType:    "refresh_token",
+		RefreshToken: highRisk.RefreshToken,
+		DPoPProof:    proof3,
+		HTTPMethod:   "POST",
+		HTTPURL:      "https://cerebro.test/platform/devices/token",
+		RemoteIP:     net.ParseIP("203.0.113.20"),
+	})
+	if err != nil {
+		t.Fatalf("IssueToken after high-risk downgrade: %v", err)
+	}
+	if !containsScope(recovered.Scopes, ScopeTelemetryIngest) {
+		t.Errorf("refresh lineage permanently lost telemetry scope after high-risk downgrade: %v", recovered.Scopes)
+	}
 }
 
 // TestServiceRefreshRejectsMissingDPoPOnBoundDevice covers the path where
@@ -258,6 +277,16 @@ func TestServiceRefreshRejectsMissingDPoPOnBoundDevice(t *testing.T) {
 		HTTPURL:      "https://cerebro.test/platform/devices/token",
 	}); !errors.Is(err, ErrDPoPMissing) {
 		t.Fatalf("missing-DPoP err = %v, want ErrDPoPMissing", err)
+	}
+	proof := newDPoPProofES256(t, devKey, "POST", "https://cerebro.test/platform/devices/token", now, "jti-after-missing")
+	if _, err := service.IssueToken(ctx, TokenRequest{
+		GrantType:    "refresh_token",
+		RefreshToken: enroll.RefreshToken,
+		DPoPProof:    proof,
+		HTTPMethod:   "POST",
+		HTTPURL:      "https://cerebro.test/platform/devices/token",
+	}); err != nil {
+		t.Fatalf("valid DPoP after missing-DPoP attempt should still work: %v", err)
 	}
 }
 

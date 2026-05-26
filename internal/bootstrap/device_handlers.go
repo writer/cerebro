@@ -49,7 +49,7 @@ func buildDeviceAuthService(cfg config.DeviceAuthConfig, store deviceauth.Store,
 	}
 	signingKeys = orderCurrentFirst(signingKeys, currentKID)
 	if len(signingKeys[0].Private) != ed25519.PrivateKeySize {
-		return nil, fmt.Errorf("device-auth current kid %q is missing a private key", currentKID)
+		return nil, fmt.Errorf("device-auth current kid %q is missing private_pem; external/KMS signing is not supported by this bootstrap path", currentKID)
 	}
 	signer, err := deviceauth.NewLocalSigner(signingKeys)
 	if err != nil {
@@ -246,14 +246,9 @@ func (h *deviceAuthHTTPHandler) handleToken(w http.ResponseWriter, r *http.Reque
 		writeDeviceAuthError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
-	limitKey := strings.TrimSpace(body.RefreshToken)
-	if limitKey == "" {
-		limitKey = remoteIPForRateLimit(r)
-	} else {
-		// Use a hash so plaintext refresh tokens are not retained in the
-		// rate-limiter map.
-		hash := deviceauth.HashToken(limitKey)
-		limitKey = "rt:" + base64URLEncode(hash[:8])
+	limitKey := remoteIPForRateLimit(r)
+	if deviceKey, err := h.service.RefreshTokenRateLimitKey(r.Context(), body.RefreshToken); err == nil && deviceKey != "" {
+		limitKey = deviceKey
 	}
 	if !h.tokenLimit.Allow(limitKey) {
 		writeDeviceAuthError(w, http.StatusTooManyRequests, "rate_limited", "too many token requests")
@@ -471,15 +466,6 @@ func remoteIPForRateLimit(r *http.Request) string {
 	if r == nil {
 		return "unknown"
 	}
-	if ip := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); ip != "" {
-		if comma := strings.IndexByte(ip, ','); comma >= 0 {
-			ip = ip[:comma]
-		}
-		ip = strings.TrimSpace(ip)
-		if ip != "" {
-			return ip
-		}
-	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return strings.TrimSpace(r.RemoteAddr)
@@ -496,13 +482,4 @@ func principalNameFromContext(r *http.Request) string {
 		return ""
 	}
 	return strings.TrimSpace(auth.principal.Name)
-}
-
-func base64URLEncode(b []byte) string {
-	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
-	out := make([]byte, 0, len(b)*2)
-	for _, by := range b {
-		out = append(out, alphabet[by>>4], alphabet[by&0x0F])
-	}
-	return string(out)
 }

@@ -140,6 +140,23 @@ func (s *MemStore) IssueRefreshToken(_ context.Context, token RefreshToken) erro
 	return nil
 }
 
+// LookupRefreshToken returns refresh-token metadata without consuming it.
+func (s *MemStore) LookupRefreshToken(_ context.Context, hash [32]byte, at time.Time) (RefreshToken, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	token, ok := s.refreshTokens[hash]
+	if !ok {
+		return RefreshToken{}, ErrRefreshNotFound
+	}
+	if token.FamilyRevoked {
+		return token, nil
+	}
+	if !token.ExpiresAt.IsZero() && at.After(token.ExpiresAt) {
+		return RefreshToken{}, ErrRefreshExpired
+	}
+	return token, nil
+}
+
 // ConsumeRefreshToken atomically consumes (or replay-revokes) a refresh token.
 func (s *MemStore) ConsumeRefreshToken(_ context.Context, hash [32]byte, at time.Time) (RefreshToken, error) {
 	s.mu.Lock()

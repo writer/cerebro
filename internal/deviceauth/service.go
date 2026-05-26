@@ -43,6 +43,12 @@ var DefaultDeviceScopes = []string{
 	ScopeDeviceFindingsRead,
 }
 
+var allowedBootstrapDeviceScopes = map[string]struct{}{
+	ScopeDevicesToken:       {},
+	ScopeTelemetryIngest:    {},
+	ScopeDeviceFindingsRead: {},
+}
+
 // EnrollRequest is the input to [Service.Enroll]. The agent supplies the
 // bootstrap token plaintext and its hardware identity; the server validates,
 // consumes the bootstrap token, persists the device, and returns the first
@@ -258,6 +264,7 @@ func (s *Service) Enroll(ctx context.Context, request EnrollRequest) (EnrollResp
 		return EnrollResponse{}, fmt.Errorf("%w: bootstrap token has no tenant_id", ErrInvalidRequest)
 	}
 	scopes := normalizedNonEmptyStrings(consumed.Scopes)
+	scopes = filterAllowedBootstrapDeviceScopes(scopes)
 	if len(scopes) == 0 {
 		scopes = append([]string(nil), DefaultDeviceScopes...)
 	}
@@ -356,33 +363,40 @@ func (s *Service) IssueToken(ctx context.Context, request TokenRequest) (TokenRe
 		return TokenResponse{}, fmt.Errorf("%w: refresh_token", ErrInvalidRequest)
 	}
 	now := s.cfg.Now().UTC()
-	consumed, err := s.store.ConsumeRefreshToken(ctx, HashToken(refreshToken), now)
+	refreshHash := HashToken(refreshToken)
+	peek, err := s.store.LookupRefreshToken(ctx, refreshHash, now)
 	if err != nil {
 		return TokenResponse{}, err
 	}
-	device, err := s.store.LookupDevice(ctx, consumed.DeviceID)
+	device, err := s.store.LookupDevice(ctx, peek.DeviceID)
 	if err != nil {
 		return TokenResponse{}, err
 	}
 	if device.Status != "" && device.Status != "active" {
 		return TokenResponse{}, ErrDeviceInactive
 	}
-	if err := s.verifyDPoPForRefresh(device, request); err != nil {
+	if peek.ConsumedAt.IsZero() && !peek.FamilyRevoked {
+		if err := s.verifyDPoPForRefresh(device, request); err != nil {
+			return TokenResponse{}, err
+		}
+	}
+	consumed, err := s.store.ConsumeRefreshToken(ctx, refreshHash, now)
+	if err != nil {
 		return TokenResponse{}, err
 	}
 	if err := s.store.MarkSeen(ctx, device.DeviceID, now); err != nil {
 		return TokenResponse{}, fmt.Errorf("deviceauth: mark seen: %w", err)
 	}
-	scopes := normalizedNonEmptyStrings(consumed.Scopes)
-	if len(scopes) == 0 {
-		scopes = append([]string(nil), DefaultDeviceScopes...)
+	refreshScopes := normalizedNonEmptyStrings(consumed.Scopes)
+	if len(refreshScopes) == 0 {
+		refreshScopes = append([]string(nil), DefaultDeviceScopes...)
 	}
-	scopes, riskDecision := s.applyRisk(ctx, device, request.RemoteIP, now, scopes)
-	access, accessExpires, err := s.mintAccess(device, scopes)
+	accessScopes, riskDecision := s.applyRisk(ctx, device, request.RemoteIP, now, refreshScopes)
+	access, accessExpires, err := s.mintAccess(device, accessScopes)
 	if err != nil {
 		return TokenResponse{}, err
 	}
-	refresh, refreshExpires, err := s.mintRefresh(ctx, device.DeviceID, scopes, consumed.FamilyID, consumed.Generation+1, now)
+	refresh, refreshExpires, err := s.mintRefresh(ctx, device.DeviceID, refreshScopes, consumed.FamilyID, consumed.Generation+1, now)
 	if err != nil {
 		return TokenResponse{}, err
 	}
@@ -391,7 +405,7 @@ func (s *Service) IssueToken(ctx context.Context, request TokenRequest) (TokenRe
 		AccessExpires:  accessExpires,
 		RefreshToken:   refresh,
 		RefreshExpires: refreshExpires,
-		Scopes:         scopes,
+		Scopes:         accessScopes,
 		TokenType:      "Bearer",
 	}
 	if riskDecision != nil {
@@ -399,6 +413,25 @@ func (s *Service) IssueToken(ctx context.Context, request TokenRequest) (TokenRe
 		resp.RiskLevel = riskDecision.Level
 	}
 	return resp, nil
+}
+
+// RefreshTokenRateLimitKey returns a stable, non-secret rate-limit bucket for
+// a refresh token without consuming it. Unknown or malformed tokens return an
+// error so callers can fall back to a remote-address bucket.
+func (s *Service) RefreshTokenRateLimitKey(ctx context.Context, refreshToken string) (string, error) {
+	token, err := NormalizeOpaqueToken(refreshToken)
+	if err != nil {
+		return "", err
+	}
+	row, err := s.store.LookupRefreshToken(ctx, HashToken(token), s.cfg.Now().UTC())
+	if err != nil {
+		return "", err
+	}
+	deviceID := strings.TrimSpace(row.DeviceID)
+	if deviceID == "" {
+		return "", ErrRefreshNotFound
+	}
+	return "device:" + deviceID, nil
 }
 
 func (s *Service) verifyDPoPForRefresh(device DeviceRecord, request TokenRequest) error {
@@ -497,6 +530,8 @@ func (s *Service) IssueBootstrapToken(ctx context.Context, request IssueBootstra
 	scopes := normalizedNonEmptyStrings(request.Scopes)
 	if len(scopes) == 0 {
 		scopes = append([]string(nil), DefaultDeviceScopes...)
+	} else if err := validateBootstrapDeviceScopes(scopes); err != nil {
+		return IssueBootstrapTokenResponse{}, err
 	}
 	ttl := request.TTL
 	if ttl <= 0 {
@@ -528,6 +563,25 @@ func (s *Service) IssueBootstrapToken(ctx context.Context, request IssueBootstra
 		Token:     plaintext,
 		ExpiresAt: token.ExpiresAt,
 	}, nil
+}
+
+func validateBootstrapDeviceScopes(scopes []string) error {
+	for _, scope := range scopes {
+		if _, ok := allowedBootstrapDeviceScopes[scope]; !ok {
+			return fmt.Errorf("%w: unsupported device bootstrap scope %q", ErrInvalidRequest, scope)
+		}
+	}
+	return nil
+}
+
+func filterAllowedBootstrapDeviceScopes(scopes []string) []string {
+	out := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		if _, ok := allowedBootstrapDeviceScopes[scope]; ok {
+			out = append(out, scope)
+		}
+	}
+	return out
 }
 
 // IngestPayload represents a single telemetry submission. Body is the raw

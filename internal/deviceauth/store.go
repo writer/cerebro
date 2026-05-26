@@ -83,6 +83,10 @@ type Store interface {
 
 	// IssueRefreshToken inserts a new refresh-token row.
 	IssueRefreshToken(ctx context.Context, token RefreshToken) error
+	// LookupRefreshToken returns refresh-token metadata by hash without
+	// consuming or revoking it. Callers use this to verify holder-of-key
+	// proofs and choose rate-limit buckets before mutating token state.
+	LookupRefreshToken(ctx context.Context, hash [32]byte, at time.Time) (RefreshToken, error)
 	// ConsumeRefreshToken consumes a refresh token by hash, returning the
 	// pre-consume row. If the token was already consumed, the implementation
 	// MUST mark the entire family revoked and return [ErrRefreshReplay].

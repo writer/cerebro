@@ -100,9 +100,9 @@ type AuthConfig struct {
 	DeviceAuth              DeviceAuthConfig
 }
 
-// DeviceAuthSigningKey is one Ed25519 keypair the issuer can sign with. The
-// production deployment leaves PrivatePEM empty and uses an external KMS
-// signer; the dev/test path supplies an inline PEM for both halves.
+// DeviceAuthSigningKey is one Ed25519 keypair the issuer can sign with. This
+// bootstrap path requires PrivatePEM on the current signing key; external KMS
+// signing is intentionally unsupported until a signer implementation is wired.
 type DeviceAuthSigningKey struct {
 	KID        string `json:"kid"`
 	PublicPEM  string `json:"public_pem"`

@@ -48,8 +48,9 @@ type Signer interface {
 	Sign(kid string, signingInput []byte) ([]byte, error)
 }
 
-// KeySet is the verifier's view of the active and retiring signing keys. A
-// JWKS endpoint serializes this directly.
+// KeySet is the verifier's view of the active and retiring signing keys.
+// Direct JSON serialization is intentionally routed through the public JWKS
+// shape so private signing material is never emitted.
 type KeySet struct {
 	Keys []SigningKey
 }

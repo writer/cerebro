@@ -77,9 +77,10 @@ func (v *DPoPVerifier) SetClock(now func() time.Time) {
 }
 
 // Verify parses proofToken, verifies the embedded JWS over the supplied JWK,
-// validates htm/htu/iat per RFC 9449 §4.3, and rejects any jti seen within
-// the replay window.
-func (v *DPoPVerifier) Verify(proofToken, method, requestURL string) (*DPoPResult, error) {
+// validates htm/htu/iat per RFC 9449 §4.3, optionally binds the proof ath
+// claim to the presented access token, and rejects any jti seen within the
+// replay window.
+func (v *DPoPVerifier) Verify(proofToken, method, requestURL string, accessToken ...string) (*DPoPResult, error) {
 	parts := strings.Split(proofToken, ".")
 	if len(parts) != 3 {
 		return nil, ErrDPoPMalformed
@@ -125,6 +126,12 @@ func (v *DPoPVerifier) Verify(proofToken, method, requestURL string) (*DPoPResul
 	if !urlsEqual(p.HTU, requestURL) {
 		return nil, fmt.Errorf("%w: htu=%q want=%q", ErrDPoPMismatch, p.HTU, requestURL)
 	}
+	if len(accessToken) > 0 && strings.TrimSpace(accessToken[0]) != "" {
+		expectedAth := dpopAccessTokenHash(accessToken[0])
+		if strings.TrimSpace(p.Ath) == "" || p.Ath != expectedAth {
+			return nil, fmt.Errorf("%w: ath mismatch", ErrDPoPMismatch)
+		}
+	}
 	now := v.now().UTC()
 	iat := time.Unix(p.IAT, 0)
 	if now.Sub(iat) > v.proofTTL+v.clockSkew {
@@ -145,6 +152,11 @@ func (v *DPoPVerifier) Verify(proofToken, method, requestURL string) (*DPoPResul
 	v.seen[p.JTI] = iat.Add(v.proofTTL + v.clockSkew)
 	_ = pub
 	return &DPoPResult{Proof: p, JKT: jkt}, nil
+}
+
+func dpopAccessTokenHash(accessToken string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(accessToken)))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
 func (v *DPoPVerifier) gcLocked(now time.Time) {

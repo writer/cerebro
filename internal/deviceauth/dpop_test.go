@@ -83,6 +83,10 @@ func (s *dpopSigner) sign(input []byte) []byte {
 }
 
 func makeDPoPProof(t *testing.T, s *dpopSigner, htm, htu string, iat time.Time, jti string) string {
+	return makeDPoPProofWithATH(t, s, htm, htu, iat, jti, "")
+}
+
+func makeDPoPProofWithATH(t *testing.T, s *dpopSigner, htm, htu string, iat time.Time, jti string, ath string) string {
 	t.Helper()
 	header := map[string]any{
 		"typ": "dpop+jwt",
@@ -95,6 +99,9 @@ func makeDPoPProof(t *testing.T, s *dpopSigner, htm, htu string, iat time.Time, 
 		"htu": htu,
 		"iat": iat.Unix(),
 		"jti": jti,
+	}
+	if ath != "" {
+		payload["ath"] = ath
 	}
 	pb, _ := json.Marshal(payload)
 	signing := base64.RawURLEncoding.EncodeToString(hb) + "." + base64.RawURLEncoding.EncodeToString(pb)
@@ -186,6 +193,26 @@ func TestDPoPRejectsTamperedSignature(t *testing.T) {
 	tampered := proof[:idx] + string(flipped) + proof[idx+1:]
 	if _, err := v.Verify(tampered, "POST", "https://h/p"); !errors.Is(err, ErrDPoPInvalidSignature) {
 		t.Fatalf("tampered err = %v, want ErrDPoPInvalidSignature", err)
+	}
+}
+
+func TestDPoPVerifyBindsAccessTokenHash(t *testing.T) {
+	now := time.Date(2026, 5, 22, 12, 0, 0, 0, time.UTC)
+	v := NewDPoPVerifier(time.Minute, time.Minute)
+	v.SetClock(func() time.Time { return now })
+	s := newDPoPSignerES256(t)
+	accessToken := "header.payload.signature"
+	proof := makeDPoPProofWithATH(t, s, "GET", "https://h/p", now, "jti-ath-1", dpopAccessTokenHash(accessToken))
+	if _, err := v.Verify(proof, "GET", "https://h/p", accessToken); err != nil {
+		t.Fatalf("verify with matching ath: %v", err)
+	}
+	badProof := makeDPoPProofWithATH(t, s, "GET", "https://h/p", now, "jti-ath-2", dpopAccessTokenHash("different"))
+	if _, err := v.Verify(badProof, "GET", "https://h/p", accessToken); !errors.Is(err, ErrDPoPMismatch) {
+		t.Fatalf("verify with wrong ath err = %v, want ErrDPoPMismatch", err)
+	}
+	missingATH := makeDPoPProof(t, s, "GET", "https://h/p", now, "jti-ath-3")
+	if _, err := v.Verify(missingATH, "GET", "https://h/p", accessToken); !errors.Is(err, ErrDPoPMismatch) {
+		t.Fatalf("verify with missing ath err = %v, want ErrDPoPMismatch", err)
 	}
 }
 

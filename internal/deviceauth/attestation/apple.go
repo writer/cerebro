@@ -161,8 +161,10 @@ func (v *AppleAppAttestVerifier) Verify(_ context.Context, in Input) (*Result, e
 		return nil, err
 	}
 
-	// rpIdHash: first 32 bytes of authData.
-	if len(authData.bytes) < 37 {
+	// rpIdHash: first 32 bytes of authData. Attested credential data begins
+	// at byte 37 and carries a 16-byte AAGUID followed by a 2-byte credId
+	// length at bytes 53:55, so reject truncated inputs before slicing.
+	if len(authData.bytes) < 55 {
 		return nil, fmt.Errorf("%w: authData too short", ErrInvalidStatement)
 	}
 	rpIDHash := authData.bytes[:32]

@@ -319,6 +319,56 @@ VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)`,
 	return nil
 }
 
+// LookupRefreshToken returns refresh-token metadata without consuming it.
+func (s *Store) LookupRefreshToken(ctx context.Context, hash [32]byte, at time.Time) (deviceauth.RefreshToken, error) {
+	if err := s.ensureDeviceAuthTables(ctx); err != nil {
+		return deviceauth.RefreshToken{}, err
+	}
+	row := s.db.QueryRowContext(ctx, `
+SELECT device_id, family_id, generation, scopes_json::text, created_at, expires_at, consumed_at, family_revoked, superseded
+FROM device_refresh_tokens
+WHERE token_hash = $1`, hash[:])
+	var (
+		deviceID      string
+		familyID      string
+		generation    int
+		scopesJSON    string
+		createdAt     time.Time
+		expiresAt     time.Time
+		consumedAt    sql.NullTime
+		familyRevoked bool
+		superseded    bool
+	)
+	if err := row.Scan(&deviceID, &familyID, &generation, &scopesJSON, &createdAt, &expiresAt, &consumedAt, &familyRevoked, &superseded); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return deviceauth.RefreshToken{}, deviceauth.ErrRefreshNotFound
+		}
+		return deviceauth.RefreshToken{}, fmt.Errorf("select refresh token: %w", err)
+	}
+	if !expiresAt.IsZero() && at.After(expiresAt) {
+		return deviceauth.RefreshToken{}, deviceauth.ErrRefreshExpired
+	}
+	scopes, err := stringSliceFromJSON(scopesJSON)
+	if err != nil {
+		return deviceauth.RefreshToken{}, fmt.Errorf("decode refresh scopes: %w", err)
+	}
+	token := deviceauth.RefreshToken{
+		TokenHash:     hash,
+		DeviceID:      deviceID,
+		FamilyID:      familyID,
+		Generation:    generation,
+		Scopes:        scopes,
+		CreatedAt:     createdAt.UTC(),
+		ExpiresAt:     expiresAt.UTC(),
+		FamilyRevoked: familyRevoked,
+		Superseded:    superseded,
+	}
+	if consumedAt.Valid {
+		token.ConsumedAt = consumedAt.Time.UTC()
+	}
+	return token, nil
+}
+
 // ConsumeRefreshToken consumes a refresh token by hash. On replay (already
 // consumed) the entire family is revoked in the same transaction.
 func (s *Store) ConsumeRefreshToken(ctx context.Context, hash [32]byte, at time.Time) (deviceauth.RefreshToken, error) {
