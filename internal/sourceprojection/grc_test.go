@@ -819,6 +819,51 @@ func TestProjectGRCVulnerableAssetLinksPlatformResources(t *testing.T) {
 	assertProjectedLinkMissing(t, state, awsInstanceURN, relationBelongsTo, accountURN)
 	assertProjectedLinkMissing(t, state, awsInstanceURN, relationRepresents, hostURN)
 	assertProjectedLinkMissing(t, state, awsInstanceURN, relationRepresents, ipURN)
+
+	// The platform resource gets a human-friendly label so dashboards and the
+	// ask-the-graph UX surface "ip-10-86-43-17.ec2.internal" instead of the URN.
+	if entity := state.entities[awsInstanceURN]; entity == nil || entity.Label == awsInstanceURN || entity.Label == "" {
+		t.Fatalf("aws instance label = %q, want human-readable resource_name", entity.Label)
+	}
+
+	// Vanta-discovered platform resources must back-link to the originating
+	// GRC integration so that orphan checks and source-of-truth queries can
+	// traverse from github.code.repository / aws.* into the integration node.
+	integrationURN := "urn:cerebro:writer:source:vanta:integration:aws"
+	assertProjectedLink(t, state, awsInstanceURN, relationBelongsTo, integrationURN)
+}
+
+func TestProjectGRCVulnerableAssetLabelsAndLinksGitHubRepoToIntegration(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-vulnerable-asset-github",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.vulnerable_asset",
+		Attributes: map[string]string{
+			"provider":            "vanta",
+			"target_id":           "github-repo-asset",
+			"integration_id":      "github",
+			"platform_asset_refs": `[{"provider":"github","resource_id":"1242719606","resource_name":"writer/cerebro","resource_type":"code_repository"}]`,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	repoURN := "urn:cerebro:writer:github_code_repository:1242719606"
+	integrationURN := "urn:cerebro:writer:source:vanta:integration:github"
+
+	repo := state.entities[repoURN]
+	if repo == nil {
+		t.Fatalf("github code repository entity %q missing", repoURN)
+	}
+	if repo.Label != "writer/cerebro" {
+		t.Fatalf("github repo label = %q, want resource_name %q", repo.Label, "writer/cerebro")
+	}
+	assertProjectedLink(t, state, repoURN, relationBelongsTo, integrationURN)
 }
 
 func TestGRCAWSResourceTypeFromARNHandlesAPIGatewayCustomDomain(t *testing.T) {

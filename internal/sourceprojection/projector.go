@@ -1298,6 +1298,12 @@ func addIdentifierLink(entities map[string]*ports.ProjectedEntity, links map[str
 	addLink(links, projectedLink(tenantID, sourceID, fromURN, identifierURN, relationHasIdentifier, evidenceAttributes))
 	if canonicalIdentityURN != "" {
 		addLink(links, projectedLink(tenantID, sourceID, canonicalIdentityURN, identifierURN, relationHasIdentifier, evidenceAttributes))
+		// Reverse pointer from identifier.* to identity.*. The canonical identity is the
+		// stable anchor; the identifier nodes are evidence pointing back to it, so they
+		// need a represents_identity edge to keep cross-source identity traversal
+		// symmetric (otherwise queries that start at identifier.email cannot reach the
+		// identity without going through the original actor).
+		addLink(links, projectedLink(tenantID, sourceID, identifierURN, canonicalIdentityURN, relationRepresentsIdentity, evidenceAttributes))
 	}
 }
 
