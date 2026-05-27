@@ -107,6 +107,23 @@ func aureliusFindingProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 	if vulnerabilityURN != "" && imageURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), imageURN, vulnerabilityURN, relationAffectedBy, vulnerabilityEvidenceAttributes(event, attrs)))
 	}
+	packageURN := vulnerabilityPackageURN(tenantID, attrs, "aurelius")
+	canonicalPackageURN := addCanonicalPackageEntity(entities, tenantID, event.GetSourceId(), attrs, "aurelius")
+	if packageURN != "" {
+		addVulnerablePackageEntity(entities, tenantID, event.GetSourceId(), packageURN, attrs, "aurelius")
+		if imageURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), imageURN, packageURN, relationContains, map[string]string{"event_id": event.GetId()}))
+		}
+		if vulnerabilityURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), packageURN, vulnerabilityURN, relationAffectedBy, vulnerabilityEvidenceAttributes(event, attrs)))
+		}
+	}
+	if packageURN != "" && canonicalPackageURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), packageURN, canonicalPackageURN, relationRepresents, packageIdentityAttributes(event, attrs, "aurelius")))
+	}
+	if canonicalPackageURN != "" && vulnerabilityURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), canonicalPackageURN, vulnerabilityURN, relationAffectedBy, vulnerabilityEvidenceAttributes(event, attrs)))
+	}
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
@@ -184,20 +201,20 @@ func aureliusPolicyExceptionProjections(event *cerebrov1.EventEnvelope) ([]*port
 	exceptionKey := firstAttribute(attrs, "exception_id", "cve_id")
 	exceptionURN := projectionURN(tenantID, "aurelius_policy_exception", exceptionKey)
 	if exceptionURN != "" {
+		exceptionAttrs := map[string]string{}
+		addAureliusAttribute(exceptionAttrs, "approver", firstAttribute(attrs, "approver"))
+		addAureliusAttribute(exceptionAttrs, "cve_id", firstAttribute(attrs, "cve_id"))
+		addAureliusAttribute(exceptionAttrs, "expires_at", firstAttribute(attrs, "expires_at"))
+		addAureliusAttribute(exceptionAttrs, "reason", firstAttribute(attrs, "reason"))
+		addAureliusAttribute(exceptionAttrs, "scope", firstAttribute(attrs, "scope"))
+		addAureliusAttribute(exceptionAttrs, "status", firstAttribute(attrs, "status"))
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        exceptionURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
 			EntityType: "aurelius.policy_exception",
 			Label:      firstAttribute(attrs, "cve_id", "exception_id"),
-			Attributes: map[string]string{
-				"approver":   firstAttribute(attrs, "approver"),
-				"cve_id":     firstAttribute(attrs, "cve_id"),
-				"expires_at": firstAttribute(attrs, "expires_at"),
-				"reason":     firstAttribute(attrs, "reason"),
-				"scope":      firstAttribute(attrs, "scope"),
-				"status":     firstAttribute(attrs, "status"),
-			},
+			Attributes: exceptionAttrs,
 		})
 		if vulnerabilityURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), exceptionURN, vulnerabilityURN, relationRepresents, map[string]string{"event_id": event.GetId()}))

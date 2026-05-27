@@ -210,6 +210,63 @@ func TestProjectAureliusFindingUsesPayloadVersionEvidence(t *testing.T) {
 	}
 }
 
+func TestProjectAureliusFindingPreservesPackageScopedEvidence(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	for _, tc := range []struct {
+		id               string
+		pkg              string
+		installedVersion string
+		fixedVersion     string
+	}{
+		{id: "finding-openssl", pkg: "openssl", installedVersion: "3.0.0", fixedVersion: "3.0.12"},
+		{id: "finding-zlib", pkg: "zlib", installedVersion: "1.2.11", fixedVersion: "1.3.1"},
+	} {
+		if _, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+			Id:       tc.id,
+			TenantId: "writer",
+			SourceId: "aurelius",
+			Kind:     "aurelius.finding",
+			Payload: mustJSON(t, map[string]any{
+				"cve_id":            "CVE-2026-1111",
+				"fixed_version":     tc.fixedVersion,
+				"image_digest":      "sha256:c6b86af5b3d40000",
+				"installed_version": tc.installedVersion,
+				"package":           tc.pkg,
+				"severity":          "high",
+			}),
+		}); err != nil {
+			t.Fatalf("Project(%s) error = %v", tc.id, err)
+		}
+	}
+
+	vulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-1111"
+	for _, tc := range []struct {
+		pkg              string
+		installedVersion string
+		fixedVersion     string
+	}{
+		{pkg: "openssl", installedVersion: "3.0.0", fixedVersion: "3.0.12"},
+		{pkg: "zlib", installedVersion: "1.2.11", fixedVersion: "1.3.1"},
+	} {
+		packageURN := "urn:cerebro:writer:package:aurelius:" + tc.pkg
+		link := state.links[packageURN+"|"+relationAffectedBy+"|"+vulnerabilityURN]
+		if link == nil {
+			t.Fatalf("package-scoped affected_by link missing for %s; links=%v", tc.pkg, state.links)
+		}
+		if got := link.Attributes["package"]; got != tc.pkg {
+			t.Fatalf("%s link package = %q, want %q", tc.pkg, got, tc.pkg)
+		}
+		if got := link.Attributes["vulnerable_version"]; got != tc.installedVersion {
+			t.Fatalf("%s vulnerable_version = %q, want %q", tc.pkg, got, tc.installedVersion)
+		}
+		if got := link.Attributes["fixed_version"]; got != tc.fixedVersion {
+			t.Fatalf("%s fixed_version = %q, want %q", tc.pkg, got, tc.fixedVersion)
+		}
+	}
+}
+
 func TestProjectAureliusPolicyExceptionOmitsBlankVulnerabilityMetadata(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
@@ -240,6 +297,39 @@ func TestProjectAureliusPolicyExceptionOmitsBlankVulnerabilityMetadata(t *testin
 	for _, key := range []string{"severity", "source_provider", "vulnerability_type"} {
 		if value, ok := entity.Attributes[key]; ok {
 			t.Fatalf("vulnerability attribute %q = %q, want omitted", key, value)
+		}
+	}
+}
+
+func TestProjectAureliusPolicyExceptionOmitsBlankOptionalMetadata(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "aurelius-policy-exception-sparse-update",
+		TenantId: "writer",
+		SourceId: "aurelius",
+		Kind:     "aurelius.policy_exception",
+		Payload: mustJSON(t, map[string]any{
+			"cve_id":       "CVE-2026-1111",
+			"exception_id": "waiver-123",
+			"status":       "expired",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	entity := state.entities["urn:cerebro:writer:aurelius_policy_exception:waiver-123"]
+	if entity == nil {
+		t.Fatal("policy exception entity missing")
+	}
+	if got := entity.Attributes["status"]; got != "expired" {
+		t.Fatalf("status = %q, want expired", got)
+	}
+	for _, key := range []string{"approver", "expires_at", "reason", "scope"} {
+		if value, ok := entity.Attributes[key]; ok {
+			t.Fatalf("policy exception attribute %q = %q, want omitted", key, value)
 		}
 	}
 }

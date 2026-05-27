@@ -122,6 +122,7 @@ type aureliusCursor struct {
 	LastKey             string `json:"last_key,omitempty"`
 	PartialKey          string `json:"partial_key,omitempty"`
 	RecordOffset        int    `json:"record_offset,omitempty"`
+	Watermark           string `json:"watermark,omitempty"`
 }
 
 // New constructs the Aurelius source backed by an S3-NDJSON archive.
@@ -288,6 +289,7 @@ func decodeCursor(cursor *cerebrov1.SourceCursor) aureliusCursor {
 	if err := json.Unmarshal([]byte(opaque), &decoded); err == nil && decoded.Source == cursorSource {
 		decoded.LastKey = strings.TrimSpace(decoded.LastKey)
 		decoded.PartialKey = strings.TrimSpace(decoded.PartialKey)
+		decoded.Watermark = strings.TrimSpace(decoded.Watermark)
 		if decoded.PartialKey == "" || decoded.RecordOffset < 0 {
 			decoded.RecordOffset = 0
 		}
@@ -301,6 +303,7 @@ func encodeCursor(cursor aureliusCursor) string {
 	cursor.ResumableCheckpoint = true
 	cursor.LastKey = strings.TrimSpace(cursor.LastKey)
 	cursor.PartialKey = strings.TrimSpace(cursor.PartialKey)
+	cursor.Watermark = strings.TrimSpace(cursor.Watermark)
 	if cursor.PartialKey == "" || cursor.RecordOffset < 0 {
 		cursor.RecordOffset = 0
 	}
@@ -309,6 +312,27 @@ func encodeCursor(cursor aureliusCursor) string {
 		return cursor.LastKey
 	}
 	return string(raw)
+}
+
+func cursorWatermark(cursor aureliusCursor) time.Time {
+	if cursor.Watermark == "" {
+		return time.Time{}
+	}
+	value, err := time.Parse(time.RFC3339Nano, cursor.Watermark)
+	if err != nil {
+		return time.Time{}
+	}
+	return value.UTC()
+}
+
+func watermarkString(watermark time.Time, fallback time.Time) string {
+	if watermark.IsZero() {
+		watermark = fallback
+	}
+	if watermark.IsZero() {
+		return ""
+	}
+	return watermark.UTC().Format(time.RFC3339Nano)
 }
 
 func discoverFamily(st settings, urnPrefix string) ([]sourcecdk.URN, error) {
@@ -357,6 +381,7 @@ func (s *Source) readFamily(ctx context.Context, st settings, cursor *cerebrov1.
 	}
 	events := make([]*primitives.Event, 0, st.perPage)
 	var watermark time.Time
+	priorWatermark := cursorWatermark(cursorState)
 	lastKey := startAfter
 	nextCursor := ""
 	for objectIndex, object := range listing.Contents {
@@ -406,11 +431,12 @@ func (s *Source) readFamily(ctx context.Context, st settings, cursor *cerebrov1.
 						LastKey:      lastKey,
 						PartialKey:   key,
 						RecordOffset: nextRecord,
+						Watermark:    watermarkString(watermark, priorWatermark),
 					})
 				} else {
 					lastKey = key
 					if objectIndex < len(listing.Contents)-1 || awssdk.ToBool(listing.IsTruncated) {
-						nextCursor = encodeCursor(aureliusCursor{LastKey: lastKey})
+						nextCursor = encodeCursor(aureliusCursor{LastKey: lastKey, Watermark: watermarkString(watermark, priorWatermark)})
 					}
 				}
 				break
@@ -423,14 +449,14 @@ func (s *Source) readFamily(ctx context.Context, st settings, cursor *cerebrov1.
 	}
 	pull := sourcecdk.Pull{Events: events}
 	if nextCursor == "" && awssdk.ToBool(listing.IsTruncated) && lastKey != "" {
-		nextCursor = encodeCursor(aureliusCursor{LastKey: lastKey})
+		nextCursor = encodeCursor(aureliusCursor{LastKey: lastKey, Watermark: watermarkString(watermark, priorWatermark)})
 	}
 	if nextCursor != "" {
 		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: nextCursor}
 	}
 	checkpointCursor := nextCursor
 	if checkpointCursor == "" && lastKey != "" {
-		checkpointCursor = encodeCursor(aureliusCursor{LastKey: lastKey})
+		checkpointCursor = encodeCursor(aureliusCursor{LastKey: lastKey, Watermark: watermarkString(watermark, priorWatermark)})
 	}
 	madeProgress := lastKey != "" && lastKey != startAfter
 	if checkpointCursor != "" && (!watermark.IsZero() || cursor != nil || nextCursor != "" || madeProgress) {
@@ -439,6 +465,8 @@ func (s *Source) readFamily(ctx context.Context, st settings, cursor *cerebrov1.
 		}
 		if !watermark.IsZero() {
 			pull.Checkpoint.Watermark = timestamppb.New(watermark.UTC())
+		} else if !priorWatermark.IsZero() {
+			pull.Checkpoint.Watermark = timestamppb.New(priorWatermark)
 		}
 	}
 	return pull, nil

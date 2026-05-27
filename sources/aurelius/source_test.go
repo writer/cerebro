@@ -644,6 +644,41 @@ func TestReadCompletesEmptyFinalPageAfterCursor(t *testing.T) {
 	}
 }
 
+func TestReadPreservesCheckpointWatermarkOnEmptyFollowup(t *testing.T) {
+	src, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	client := newFakeS3(nil)
+	src.newClient = func(context.Context, settings) (s3API, error) { return client, nil }
+
+	watermark := time.Date(2026, 5, 22, 14, 30, 0, 0, time.UTC)
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"family":    familyFinding,
+		"bucket":    "writer-aurelius-telemetry",
+		"prefix":    "findings/",
+		"tenant_id": "writer",
+	})
+	cursor := &cerebrov1.SourceCursor{Opaque: encodeCursor(aureliusCursor{
+		LastKey:   "findings/2026/05/22/14/batch-001.ndjson",
+		Watermark: watermark.Format(time.RFC3339Nano),
+	})}
+	pull, err := src.Read(context.Background(), cfg, cursor)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if pull.Checkpoint == nil {
+		t.Fatal("Checkpoint = nil, want preserved checkpoint")
+	}
+	if got := pull.Checkpoint.GetWatermark().AsTime(); !got.Equal(watermark) {
+		t.Fatalf("checkpoint watermark = %v, want %v", got, watermark)
+	}
+	checkpoint := mustDecodeAureliusCursor(t, pull.Checkpoint.GetCursorOpaque())
+	if checkpoint.Watermark != watermark.Format(time.RFC3339Nano) {
+		t.Fatalf("cursor watermark = %q, want %q", checkpoint.Watermark, watermark.Format(time.RFC3339Nano))
+	}
+}
+
 func TestBuildEventPromotesFindingPayloadVulnerabilityAttributes(t *testing.T) {
 	event, err := buildEvent(settings{tenantID: "writer"}, aureliusRecord{
 		EventID:    "01HX0010-finding-a",
