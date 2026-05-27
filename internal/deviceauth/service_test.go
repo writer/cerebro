@@ -226,6 +226,27 @@ func TestServiceEnrollRejectsRevokedHardware(t *testing.T) {
 	}
 }
 
+func TestServiceReenrollActiveHardwarePreservesRefreshLineage(t *testing.T) {
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	firstBootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
+	secondBootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
+	first, err := service.Enroll(ctx, EnrollRequest{BootstrapToken: firstBootstrap.Token, HardwareUUID: "hw-1"})
+	if err != nil {
+		t.Fatalf("Enroll(first): %v", err)
+	}
+	second, err := service.Enroll(ctx, EnrollRequest{BootstrapToken: secondBootstrap.Token, HardwareUUID: "hw-1"})
+	if err != nil {
+		t.Fatalf("Enroll(second): %v", err)
+	}
+	if second.DeviceID != first.DeviceID {
+		t.Fatalf("second device_id = %q, want existing %q", second.DeviceID, first.DeviceID)
+	}
+	if _, err := service.IssueToken(ctx, TokenRequest{GrantType: "refresh_token", RefreshToken: first.RefreshToken}); err != nil {
+		t.Fatalf("IssueToken with first refresh after re-enroll: %v", err)
+	}
+}
+
 func TestServiceIngestTelemetryRequiresIdempotencyKey(t *testing.T) {
 	ctx := context.Background()
 	service, _, _ := newServiceForTest(t)

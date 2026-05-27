@@ -276,9 +276,12 @@ func (s *Service) Enroll(ctx context.Context, request EnrollRequest) (EnrollResp
 	if len(scopes) == 0 {
 		scopes = append([]string(nil), DefaultDeviceScopes...)
 	}
-	deviceID, err := generateID("dev_")
-	if err != nil {
-		return EnrollResponse{}, fmt.Errorf("deviceauth: generate device id: %w", err)
+	deviceID := strings.TrimSpace(existing.DeviceID)
+	if deviceID == "" {
+		deviceID, err = generateID("dev_")
+		if err != nil {
+			return EnrollResponse{}, fmt.Errorf("deviceauth: generate device id: %w", err)
+		}
 	}
 	clientHash := attestationClientDataHash(bootstrapToken, hardwareUUID)
 	attResult, err := s.runAttestation(ctx, clientHash, request)

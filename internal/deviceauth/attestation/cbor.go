@@ -31,6 +31,8 @@ type cborMapEntry struct {
 	val cborValue
 }
 
+const maxCBORContainerElements = 1024
+
 func (v cborValue) lookup(key string) (cborValue, bool) {
 	for _, e := range v.mapEl {
 		if e.key == key {
@@ -70,6 +72,9 @@ func decodeCBOR(data []byte) (cborValue, []byte, error) {
 		text := string(rest[:val])
 		return cborValue{major: major, text: text, value: val}, rest[val:], nil
 	case 4: // array
+		if val > maxCBORContainerElements {
+			return cborValue{}, nil, errCBORUnsupported
+		}
 		arr := make([]cborValue, 0, val)
 		for i := uint64(0); i < val; i++ {
 			el, r2, err := decodeCBOR(rest)
@@ -81,6 +86,9 @@ func decodeCBOR(data []byte) (cborValue, []byte, error) {
 		}
 		return cborValue{major: major, array: arr, value: val}, rest, nil
 	case 5: // map
+		if val > maxCBORContainerElements {
+			return cborValue{}, nil, errCBORUnsupported
+		}
 		entries := make([]cborMapEntry, 0, val)
 		for i := uint64(0); i < val; i++ {
 			k, r2, err := decodeCBOR(rest)
