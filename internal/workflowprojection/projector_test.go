@@ -49,6 +49,22 @@ func (r *projectionRecorder) DeleteProjectedLink(_ context.Context, link *ports.
 	return nil
 }
 
+func (r *projectionRecorder) ExecuteReadCypher(_ context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+	findingURN, _ := request.Params["finding_urn"].(string)
+	tenantID, _ := request.Params["tenant_id"].(string)
+	rows := []ports.CypherRow{}
+	for _, link := range r.links {
+		if link == nil || link.ToURN != findingURN || link.Relation != relationHasFinding {
+			continue
+		}
+		if tenantID != "" && link.TenantID != tenantID {
+			continue
+		}
+		rows = append(rows, ports.CypherRow{Values: map[string]any{"resource_urn": link.FromURN}})
+	}
+	return rows, nil
+}
+
 func (r *projectionRecorder) CleanupProjectedEntities(_ context.Context, request ports.ProjectionCleanupRequest) (ports.ProjectionCleanupResult, error) {
 	allowed := map[string]struct{}{}
 	for _, entityType := range request.EntityTypes {
@@ -373,6 +389,72 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 	}
 	if _, ok := graph.entities[annotationURN]; ok {
 		t.Fatal("isolated finding note annotation should be pruned from graph")
+	}
+}
+
+func TestProjectFindingRecordedPrunesStaleActiveLinks(t *testing.T) {
+	graph := &projectionRecorder{}
+	service := New(graph)
+	finding := workflowevents.FindingSnapshot{
+		TenantID:           "writer",
+		SourceSystem:       "findings",
+		FindingID:          "finding-shrinks",
+		Fingerprint:        "fp-shrinks",
+		Title:              "Shrinking resource finding",
+		RuleID:             "graph-resource-multiple-open-findings",
+		Severity:           "high",
+		Status:             "open",
+		RuntimeID:          "runtime-graph",
+		PrimaryResourceURN: "urn:cerebro:writer:resource:a",
+		ResourceURNs: []string{
+			"urn:cerebro:writer:resource:a",
+			"urn:cerebro:writer:resource:b",
+		},
+	}
+	recordedEvent, err := workflowevents.NewFindingRecordedEvent(workflowevents.FindingRecorded{
+		Finding:    finding,
+		RecordedAt: "2026-04-27T11:59:00Z",
+	})
+	if err != nil {
+		t.Fatalf("NewFindingRecordedEvent() error = %v", err)
+	}
+	if _, err := service.Project(context.Background(), recordedEvent); err != nil {
+		t.Fatalf("Project(initial recorded) error = %v", err)
+	}
+	anchorURN := "urn:cerebro:writer:finding:finding-shrinks"
+	if _, ok := graph.links["urn:cerebro:writer:resource:b|has_finding|"+anchorURN]; !ok {
+		t.Fatal("initial secondary resource finding link missing")
+	}
+
+	graph.links["urn:cerebro:writer:resource:other|has_finding|urn:cerebro:writer:finding:other"] = &ports.ProjectedLink{
+		TenantID: "writer",
+		FromURN:  "urn:cerebro:writer:resource:other",
+		ToURN:    "urn:cerebro:writer:finding:other",
+		Relation: relationHasFinding,
+	}
+	finding.ResourceURNs = []string{"urn:cerebro:writer:resource:a"}
+	recordedEvent, err = workflowevents.NewFindingRecordedEvent(workflowevents.FindingRecorded{
+		Finding:    finding,
+		RecordedAt: "2026-04-27T12:01:00Z",
+	})
+	if err != nil {
+		t.Fatalf("NewFindingRecordedEvent(shrunk) error = %v", err)
+	}
+	result, err := service.Project(context.Background(), recordedEvent)
+	if err != nil {
+		t.Fatalf("Project(shrunk recorded) error = %v", err)
+	}
+	if result.LinksDeleted != 1 {
+		t.Fatalf("LinksDeleted = %d, want 1", result.LinksDeleted)
+	}
+	if _, ok := graph.links["urn:cerebro:writer:resource:a|has_finding|"+anchorURN]; !ok {
+		t.Fatal("current resource finding link was pruned")
+	}
+	if _, ok := graph.links["urn:cerebro:writer:resource:b|has_finding|"+anchorURN]; ok {
+		t.Fatal("stale secondary resource finding link was not pruned")
+	}
+	if _, ok := graph.links["urn:cerebro:writer:resource:other|has_finding|urn:cerebro:writer:finding:other"]; !ok {
+		t.Fatal("unrelated finding link was pruned")
 	}
 }
 
