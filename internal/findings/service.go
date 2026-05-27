@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -1627,6 +1628,12 @@ func (s *Service) mergeExistingFindingEvidence(ctx context.Context, finding *por
 	if s == nil || s.store == nil || finding == nil {
 		return finding, nil
 	}
+	if finding.RuleID == vulnViewActionableExternalFindingRuleID {
+		if existing := s.activeVulnViewActionableFinding(ctx, finding); existing != nil {
+			return mergeFindingEvidenceForUpsert(existing, finding), nil
+		}
+		return finding, nil
+	}
 	findingID := strings.TrimSpace(finding.ID)
 	if findingID == "" {
 		return finding, nil
@@ -1685,8 +1692,47 @@ func mergeFindingAttributesForUpsert(existing map[string]string, incoming map[st
 		}
 	}
 	mergeFindingListAttribute(merged, existing, incoming, "matched_locations", "matched_at")
+	mergeFindingJSONListAttribute(merged, existing, incoming, "matched_locations_json", "matched_at")
 	trimEmptyAttributes(merged)
 	return merged
+}
+
+func (s *Service) activeVulnViewActionableFinding(ctx context.Context, incoming *ports.FindingRecord) *ports.FindingRecord {
+	if s == nil || s.store == nil || incoming == nil {
+		return nil
+	}
+	fingerprint := strings.TrimSpace(incoming.Fingerprint)
+	resourceURN := firstNonEmpty(incoming.ResourceURNs...)
+	if strings.TrimSpace(incoming.TenantID) != "" &&
+		strings.TrimSpace(incoming.RuntimeID) != "" &&
+		strings.TrimSpace(incoming.PolicyID) != "" &&
+		resourceURN != "" {
+		candidates, err := s.store.ListFindings(ctx, ports.ListFindingsRequest{
+			TenantID:    strings.TrimSpace(incoming.TenantID),
+			RuntimeID:   strings.TrimSpace(incoming.RuntimeID),
+			RuleID:      vulnViewActionableExternalFindingRuleID,
+			PolicyID:    strings.TrimSpace(incoming.PolicyID),
+			ResourceURN: resourceURN,
+			Limit:       25,
+		})
+		if err == nil {
+			for _, candidate := range candidates {
+				if candidate == nil || candidate.Tombstoned {
+					continue
+				}
+				candidateFingerprint := strings.TrimSpace(candidate.Fingerprint)
+				if fingerprint != "" && candidateFingerprint != "" && candidateFingerprint != fingerprint {
+					continue
+				}
+				return candidate
+			}
+		}
+	}
+	existing, err := s.store.GetFinding(ctx, strings.TrimSpace(incoming.ID))
+	if err == nil && existing != nil && !existing.Tombstoned {
+		return existing
+	}
+	return nil
 }
 
 func mergeFindingListAttribute(merged map[string]string, existing map[string]string, incoming map[string]string, listKey string, scalarKeys ...string) {
@@ -1700,6 +1746,35 @@ func mergeFindingListAttribute(merged map[string]string, existing map[string]str
 		return
 	}
 	merged[listKey] = strings.Join(values, ",")
+}
+
+func mergeFindingJSONListAttribute(merged map[string]string, existing map[string]string, incoming map[string]string, listKey string, scalarKeys ...string) {
+	values := append(splitFindingJSONListAttribute(existing[listKey]), splitFindingJSONListAttribute(incoming[listKey])...)
+	for _, key := range scalarKeys {
+		values = append(values, existing[key], incoming[key])
+	}
+	values = uniqueTrimmedStringsPreserveOrder(values)
+	if len(values) == 0 {
+		delete(merged, listKey)
+		return
+	}
+	encoded, err := json.Marshal(values)
+	if err != nil {
+		delete(merged, listKey)
+		return
+	}
+	merged[listKey] = string(encoded)
+}
+
+func splitFindingJSONListAttribute(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	var values []string
+	if err := json.Unmarshal([]byte(value), &values); err != nil {
+		return nil
+	}
+	return values
 }
 
 func splitFindingListAttribute(value string) []string {
