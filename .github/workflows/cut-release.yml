@@ -25,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: main
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.sha }}
           fetch-depth: 0
 
       - name: Set up Go
@@ -39,11 +39,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REQUESTED_RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || '' }}
+          RELEASE_TARGET_REF: ${{ github.event_name == 'workflow_dispatch' && 'origin/main' || github.sha }}
         run: |
           set -euo pipefail
 
           git fetch origin main --tags
-          git checkout --detach origin/main
+          git checkout --detach "${RELEASE_TARGET_REF}"
 
           if [ -n "${REQUESTED_RELEASE_TAG}" ]; then
             RELEASE_TAG="${REQUESTED_RELEASE_TAG}"
