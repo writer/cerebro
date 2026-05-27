@@ -243,3 +243,31 @@ func TestProjectAureliusPolicyExceptionOmitsBlankVulnerabilityMetadata(t *testin
 		}
 	}
 }
+
+func TestProjectAureliusPolicyExceptionPrefersExceptionIDIdentity(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "aurelius-policy-exception-specific",
+		TenantId: "writer",
+		SourceId: "aurelius",
+		Kind:     "aurelius.policy_exception",
+		Payload: mustJSON(t, map[string]any{
+			"cve_id":       "CVE-2026-1111",
+			"exception_id": "waiver-123",
+			"expires_at":   "2026-06-01T00:00:00Z",
+			"status":       "active",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	if state.entities["urn:cerebro:writer:aurelius_policy_exception:waiver-123"] == nil {
+		t.Fatalf("exception_id entity missing; entities=%v", state.entities)
+	}
+	if state.entities["urn:cerebro:writer:aurelius_policy_exception:CVE-2026-1111"] != nil {
+		t.Fatalf("policy exception keyed by cve_id despite exception_id; entities=%v", state.entities)
+	}
+}

@@ -181,7 +181,7 @@ func aureliusPolicyExceptionProjections(event *cerebrov1.EventEnvelope) ([]*port
 
 	vulnerabilityURN := addCanonicalVulnerabilityEntity(entities, tenantID, event.GetSourceId(), attrs)
 
-	exceptionKey := firstAttribute(attrs, "cve_id", "exception_id")
+	exceptionKey := firstAttribute(attrs, "exception_id", "cve_id")
 	exceptionURN := projectionURN(tenantID, "aurelius_policy_exception", exceptionKey)
 	if exceptionURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
