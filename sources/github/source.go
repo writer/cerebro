@@ -33,6 +33,7 @@ const (
 	defaultAuditInclude = "all"
 	defaultAuditOrder   = "desc"
 	familyAudit         = "audit"
+	familyRepository    = "repository"
 	familyDependabot    = "dependabot_alert"
 	familyPullRequest   = "pull_request"
 )
@@ -76,6 +77,22 @@ type pullRequestPayload struct {
 	MergedAt   *time.Time `json:"merged_at,omitempty"`
 }
 
+type repositoryPayload struct {
+	ID            int64      `json:"id,omitempty"`
+	OwnerLogin    string     `json:"owner_login"`
+	Name          string     `json:"name"`
+	FullName      string     `json:"full_name"`
+	URL           string     `json:"url,omitempty"`
+	Visibility    string     `json:"visibility,omitempty"`
+	Private       bool       `json:"private"`
+	Archived      bool       `json:"archived"`
+	Fork          bool       `json:"fork"`
+	DefaultBranch string     `json:"default_branch,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	PushedAt      *time.Time `json:"pushed_at,omitempty"`
+}
+
 // New constructs the live GitHub source.
 func New() (*Source, error) {
 	spec, err := loadSpec()
@@ -104,6 +121,14 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	}
 	if settings.family == familyDependabot {
 		return s.checkDependabotAlerts(ctx, client, settings)
+	}
+	if settings.family == familyRepository {
+		if settings.repo != "" {
+			_, err := getRepo(ctx, client, settings.owner, settings.repo)
+			return err
+		}
+		_, err := listRepos(ctx, client, settings.owner, settings.perPage)
+		return err
 	}
 	if settings.repo != "" {
 		_, err := getRepo(ctx, client, settings.owner, settings.repo)
@@ -163,6 +188,9 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	if settings.family == familyDependabot {
 		return s.readDependabotAlerts(ctx, client, settings, cursor)
 	}
+	if settings.family == familyRepository {
+		return s.readRepositories(ctx, client, settings, cursor)
+	}
 	page, err := readPage(cursor)
 	if err != nil {
 		return sourcecdk.Pull{}, err
@@ -185,6 +213,62 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	events := make([]*primitives.Event, 0, len(pulls))
 	for _, pullRequest := range pulls {
 		event, err := pullRequestEvent(settings, pullRequest)
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		events = append(events, event)
+	}
+	nextPage := page + 1
+	pull := sourcecdk.Pull{
+		Events: events,
+		Checkpoint: &cerebrov1.SourceCheckpoint{
+			Watermark:    events[len(events)-1].OccurredAt,
+			CursorOpaque: strconv.Itoa(nextPage),
+		},
+	}
+	if resp != nil && resp.NextPage > 0 {
+		nextPage = resp.NextPage
+		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: strconv.Itoa(resp.NextPage)}
+		pull.Checkpoint.CursorOpaque = strconv.Itoa(nextPage)
+	}
+	return pull, nil
+}
+
+func (s *Source) readRepositories(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	page, err := readPage(cursor)
+	if err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	if settings.repo != "" {
+		if page > 1 {
+			return sourcecdk.Pull{}, nil
+		}
+		repo, err := getRepo(ctx, client, settings.owner, settings.repo)
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		event, err := repositoryEvent(settings, repo)
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		return sourcecdk.Pull{
+			Events: []*primitives.Event{event},
+			Checkpoint: &cerebrov1.SourceCheckpoint{
+				Watermark:    event.OccurredAt,
+				CursorOpaque: "2",
+			},
+		}, nil
+	}
+	repos, resp, err := listReposPage(ctx, client, settings.owner, page, settings.perPage)
+	if err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	if len(repos) == 0 {
+		return sourcecdk.Pull{}, nil
+	}
+	events := make([]*primitives.Event, 0, len(repos))
+	for _, repo := range repos {
+		event, err := repositoryEvent(settings, repo)
 		if err != nil {
 			return sourcecdk.Pull{}, err
 		}
@@ -315,9 +399,9 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL 
 		settings.family = defaultFamily
 	}
 	switch settings.family {
-	case familyAudit, familyDependabot, familyPullRequest:
+	case familyAudit, familyDependabot, familyPullRequest, familyRepository:
 	default:
-		return settings, fmt.Errorf("github family must be one of %s, %s, or %s", familyPullRequest, familyAudit, familyDependabot)
+		return settings, fmt.Errorf("github family must be one of %s, %s, %s, or %s", familyPullRequest, familyAudit, familyDependabot, familyRepository)
 	}
 	if rawPerPage, ok := cfg.Lookup("per_page"); ok && strings.TrimSpace(rawPerPage) != "" {
 		perPage, err := strconv.Atoi(strings.TrimSpace(rawPerPage))
@@ -359,6 +443,13 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL 
 		case "auto_dismissed", "dismissed", "fixed", "open":
 		default:
 			return settings, fmt.Errorf("github state must be one of auto_dismissed, dismissed, fixed, or open when family=%q", familyDependabot)
+		}
+		if settings.auditInclude != "" || settings.auditOrder != "" || settings.auditPhrase != "" {
+			return settings, fmt.Errorf("github include, order, and phrase are only supported when family=%q", familyAudit)
+		}
+	case familyRepository:
+		if settings.state != "" {
+			return settings, fmt.Errorf("github state is only supported when family=%q", familyPullRequest)
 		}
 		if settings.auditInclude != "" || settings.auditOrder != "" || settings.auditPhrase != "" {
 			return settings, fmt.Errorf("github include, order, and phrase are only supported when family=%q", familyAudit)
@@ -557,34 +648,39 @@ func getRepo(ctx context.Context, client *gogithub.Client, owner string, repo st
 }
 
 func listRepos(ctx context.Context, client *gogithub.Client, owner string, perPage int) ([]*gogithub.Repository, error) {
-	repos, _, err := client.Repositories.ListByOrg(ctx, owner, &gogithub.RepositoryListByOrgOptions{
+	repos, _, err := listReposPage(ctx, client, owner, 1, perPage)
+	return repos, err
+}
+
+func listReposPage(ctx context.Context, client *gogithub.Client, owner string, page int, perPage int) ([]*gogithub.Repository, *gogithub.Response, error) {
+	repos, resp, err := client.Repositories.ListByOrg(ctx, owner, &gogithub.RepositoryListByOrgOptions{
 		Type:      "all",
 		Sort:      "updated",
 		Direction: "desc",
 		ListOptions: gogithub.ListOptions{
-			Page:    1,
+			Page:    page,
 			PerPage: perPage,
 		},
 	})
 	if err == nil {
-		return repos, nil
+		return repos, resp, nil
 	}
 	if !isNotFound(err) {
-		return nil, fmt.Errorf("list github org repos for %s: %w", owner, err)
+		return nil, nil, fmt.Errorf("list github org repos for %s: %w", owner, err)
 	}
-	repos, _, err = client.Repositories.ListByUser(ctx, owner, &gogithub.RepositoryListByUserOptions{
+	repos, resp, err = client.Repositories.ListByUser(ctx, owner, &gogithub.RepositoryListByUserOptions{
 		Type:      "owner",
 		Sort:      "updated",
 		Direction: "desc",
 		ListOptions: gogithub.ListOptions{
-			Page:    1,
+			Page:    page,
 			PerPage: perPage,
 		},
 	})
 	if err != nil {
-		return nil, wrapLookupError(fmt.Sprintf("github owner %s", owner), err)
+		return nil, nil, wrapLookupError(fmt.Sprintf("github owner %s", owner), err)
 	}
-	return repos, nil
+	return repos, resp, nil
 }
 
 func repoURN(owner string, repo *gogithub.Repository) (sourcecdk.URN, error) {
@@ -669,6 +765,120 @@ func pullRequestEvent(settings settings, pullRequest *gogithub.PullRequest) (*pr
 			"state":       pullRequest.GetState(),
 		},
 	}, nil
+}
+
+func repositoryEvent(settings settings, repo *gogithub.Repository) (*primitives.Event, error) {
+	if repo == nil {
+		return nil, errors.New("repository is required")
+	}
+	occurredAt := repo.GetUpdatedAt().Time
+	if occurredAt.IsZero() {
+		occurredAt = repo.GetPushedAt().Time
+	}
+	if occurredAt.IsZero() {
+		occurredAt = repo.GetCreatedAt().Time
+	}
+	if occurredAt.IsZero() {
+		return nil, errors.New("github repository missing timestamps")
+	}
+	createdAt := repo.GetCreatedAt().Time
+	if createdAt.IsZero() {
+		createdAt = occurredAt
+	}
+	ownerLogin := repositoryOwnerLogin(settings.owner, repo)
+	fullName := repositoryFullName(settings.owner, repo)
+	if fullName == "" {
+		return nil, errors.New("repository full_name is required")
+	}
+	repoID := ""
+	if repo.GetID() != 0 {
+		repoID = strconv.FormatInt(repo.GetID(), 10)
+	}
+	payloadBytes, err := json.Marshal(repositoryPayload{
+		ID:            repo.GetID(),
+		OwnerLogin:    ownerLogin,
+		Name:          repo.GetName(),
+		FullName:      fullName,
+		URL:           repo.GetHTMLURL(),
+		Visibility:    repo.GetVisibility(),
+		Private:       repo.GetPrivate(),
+		Archived:      repo.GetArchived(),
+		Fork:          repo.GetFork(),
+		DefaultBranch: repo.GetDefaultBranch(),
+		CreatedAt:     createdAt,
+		UpdatedAt:     occurredAt,
+		PushedAt:      timestamp(repo.PushedAt),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal github repository payload: %w", err)
+	}
+	resourceID := firstNonEmptyString(repoID, fullName)
+	return &primitives.Event{
+		Id:         fmt.Sprintf("github-code-repository-%s-%d", normalizeRepositoryEventID(resourceID), occurredAt.Unix()),
+		TenantId:   settings.owner,
+		SourceId:   "github",
+		Kind:       "github.code.repository",
+		OccurredAt: timestamppb.New(occurredAt.UTC()),
+		SchemaRef:  "github/code_repository/v1",
+		Payload:    payloadBytes,
+		Attributes: map[string]string{
+			"archived":       strconv.FormatBool(repo.GetArchived()),
+			"default_branch": repo.GetDefaultBranch(),
+			"fork":           strconv.FormatBool(repo.GetFork()),
+			"full_name":      fullName,
+			"html_url":       repo.GetHTMLURL(),
+			"name":           repo.GetName(),
+			"owner":          settings.owner,
+			"owner_login":    ownerLogin,
+			"private":        strconv.FormatBool(repo.GetPrivate()),
+			"repo":           repo.GetName(),
+			"repo_id":        repoID,
+			"repository":     fullName,
+			"resource_id":    resourceID,
+			"resource_name":  fullName,
+			"resource_type":  "code_repository",
+			"visibility":     repo.GetVisibility(),
+		},
+	}, nil
+}
+
+func repositoryOwnerLogin(fallback string, repo *gogithub.Repository) string {
+	if repo == nil {
+		return strings.TrimSpace(fallback)
+	}
+	if owner := strings.TrimSpace(repo.GetOwner().GetLogin()); owner != "" {
+		return owner
+	}
+	if fullName := strings.TrimSpace(repo.GetFullName()); fullName != "" {
+		if owner, _, ok := strings.Cut(fullName, "/"); ok {
+			return strings.TrimSpace(owner)
+		}
+	}
+	return strings.TrimSpace(fallback)
+}
+
+func repositoryFullName(owner string, repo *gogithub.Repository) string {
+	if repo == nil {
+		return ""
+	}
+	if fullName := strings.TrimSpace(repo.GetFullName()); fullName != "" {
+		return fullName
+	}
+	name := strings.TrimSpace(repo.GetName())
+	if name == "" {
+		return ""
+	}
+	return strings.TrimSpace(owner) + "/" + name
+}
+
+func normalizeRepositoryEventID(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.ReplaceAll(value, "/", "-")
+	value = strings.ReplaceAll(value, ":", "-")
+	if value == "" {
+		return "unknown"
+	}
+	return value
 }
 
 func configValue(cfg sourcecdk.Config, key string) string {

@@ -27,6 +27,8 @@ const (
 	relationCanPerform         = "can_perform"
 	relationHasIdentifier      = "has_identifier"
 	relationAssignedTo         = "assigned_to"
+	relationAssociatedWith     = "associated_with"
+	relationAttachedTo         = "attached_to"
 	relationCanAssume          = "can_assume"
 	relationCanAdmin           = "can_admin"
 	relationCanImpersonate     = "can_impersonate"
@@ -42,6 +44,7 @@ const (
 	relationRepresentsIdentity = "represents_identity"
 	relationResolvesTo         = "resolves_to"
 	relationRunsAs             = "runs_as"
+	relationSameActor          = "same_actor"
 	relationSupports           = "supports"
 	relationTaggedAs           = "tagged_as"
 	relationTargeted           = "targeted"
@@ -467,6 +470,86 @@ func githubPullRequestProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), authorURN, prURN, relationAuthored, map[string]string{"event_id": event.GetId()}))
 		}
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), authorURN, author, event.GetOccurredAt())
+	}
+
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
+func githubCodeRepositoryProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	repository := strings.TrimSpace(firstNonEmpty(attributes["repository"], attributes["full_name"], attributes["resource_name"]))
+	owner := strings.TrimSpace(firstNonEmpty(attributes["owner_login"], attributes["owner"]))
+	repoID := strings.TrimSpace(firstNonEmpty(attributes["repo_id"], attributes["resource_id"], repository))
+	if repoID == "" {
+		return nil, nil, nil
+	}
+
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+
+	orgURN := projectionURN(tenantID, "github_org", owner)
+	if owner != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        orgURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "github.org",
+			Label:      owner,
+			Attributes: map[string]string{"org": owner, "owner_login": owner},
+		})
+	}
+
+	codeRepoURN := projectionURN(tenantID, "github_code_repository", repoID)
+	if codeRepoURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        codeRepoURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "github.code.repository",
+			Label:      firstNonEmpty(repository, repoID),
+			Attributes: map[string]string{
+				"archived":       strings.TrimSpace(attributes["archived"]),
+				"default_branch": strings.TrimSpace(attributes["default_branch"]),
+				"fork":           strings.TrimSpace(attributes["fork"]),
+				"html_url":       strings.TrimSpace(attributes["html_url"]),
+				"name":           strings.TrimSpace(attributes["name"]),
+				"owner_login":    owner,
+				"private":        strings.TrimSpace(attributes["private"]),
+				"repo_id":        strings.TrimSpace(attributes["repo_id"]),
+				"repository":     repository,
+				"resource_id":    repoID,
+				"resource_type":  "code_repository",
+				"visibility":     strings.TrimSpace(attributes["visibility"]),
+			},
+		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), codeRepoURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "owner_login": owner}))
+		}
+	}
+
+	legacyRepoURN := projectionURN(tenantID, "github_repo", repository)
+	if repository != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        legacyRepoURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "github.repo",
+			Label:      repository,
+			Attributes: map[string]string{"owner_login": owner, "repository": repository},
+		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), legacyRepoURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "owner_login": owner}))
+		}
+		if codeRepoURN != "" {
+			attrs := map[string]string{"event_id": event.GetId(), "match_type": "github_repository_full_name"}
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), legacyRepoURN, codeRepoURN, relationRepresents, attrs))
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), codeRepoURN, legacyRepoURN, relationRepresents, attrs))
+		}
 	}
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
@@ -1305,6 +1388,30 @@ func addIdentifierLink(entities map[string]*ports.ProjectedEntity, links map[str
 		// identity without going through the original actor).
 		addLink(links, projectedLink(tenantID, sourceID, identifierURN, canonicalIdentityURN, relationRepresentsIdentity, evidenceAttributes))
 	}
+}
+
+func addSameActorEmailLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, eventID string, fromURN string, email string, occurredAt *timestamppb.Timestamp) {
+	normalizedEmail := normalizeIdentifier(extractEmailIdentifier(email))
+	if normalizedEmail == "" || strings.TrimSpace(fromURN) == "" {
+		return
+	}
+	identityURN := projectionURN(tenantID, "identity", "email", normalizedEmail)
+	if identityURN == "" {
+		return
+	}
+	attributes := identifierEvidenceAttributes(email, "identifier.email", normalizedEmail, eventID, occurredAt)
+	attributes["match_type"] = "shared_identity_email"
+	attributes["relationship"] = relationSameActor
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        identityURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "identity.email",
+		Label:      normalizedEmail,
+		Attributes: map[string]string{"value": normalizedEmail},
+	})
+	addLink(links, projectedLink(tenantID, sourceID, fromURN, identityURN, relationSameActor, attributes))
+	addLink(links, projectedLink(tenantID, sourceID, identityURN, fromURN, relationSameActor, attributes))
 }
 
 func identifierEvidenceAttributes(rawValue string, identifierType string, normalizedValue string, eventID string, occurredAt *timestamppb.Timestamp) map[string]string {

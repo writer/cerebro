@@ -638,18 +638,22 @@ func addGRCPlatformAssetLinks(entities map[string]*ports.ProjectedEntity, links 
 		// reports, and ask-the-graph traces are interpretable. Falling back to
 		// the resource id keeps the label stable when the source omits a name.
 		label := firstNonEmptyString(strings.TrimSpace(ref.ResourceName), strings.TrimSpace(ref.ScannerResourceID), resourceID)
+		entityAttrs := map[string]string{
+			"provider":      provider,
+			"resource_id":   resourceID,
+			"resource_type": resourceType,
+			"resource_name": strings.TrimSpace(ref.ResourceName),
+		}
+		if ownerLogin := githubRepositoryOwnerLogin(provider, resourceType, ref.ResourceName); ownerLogin != "" {
+			entityAttrs["owner_login"] = ownerLogin
+		}
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        resourceURN,
 			TenantID:   tenantID,
 			SourceID:   provider,
 			EntityType: provider + "." + strings.ReplaceAll(resourceType, "_", "."),
 			Label:      label,
-			Attributes: map[string]string{
-				"provider":      provider,
-				"resource_id":   resourceID,
-				"resource_type": resourceType,
-				"resource_name": strings.TrimSpace(ref.ResourceName),
-			},
+			Attributes: entityAttrs,
 		})
 		addLink(links, projectedLink(tenantID, sourceID, targetURN, resourceURN, relationRepresents, map[string]string{
 			"confidence":           "0.99",
@@ -669,6 +673,17 @@ func addGRCPlatformAssetLinks(entities map[string]*ports.ProjectedEntity, links 
 			addLink(links, projectedLink(tenantID, sourceID, resourceURN, integrationURN, relationBelongsTo, grcIntegrationLinkAttributes(event, integrationID)))
 		}
 	}
+}
+
+func githubRepositoryOwnerLogin(provider string, resourceType string, resourceName string) string {
+	if provider != "github" || resourceType != "code_repository" {
+		return ""
+	}
+	owner, _, ok := strings.Cut(strings.TrimSpace(resourceName), "/")
+	if !ok {
+		return ""
+	}
+	return normalizeIdentifier(owner)
 }
 
 func grcPlatformAssetReferences(attrs map[string]string) []grcPlatformAssetReference {
@@ -893,7 +908,9 @@ func grcPersonProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 		Attributes: grcAttributes(attrs, map[string]string{"person_id": personID, "source_system": provider}),
 	})
 	observedAt := timestamppb.New(time.Now().UTC())
-	addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), personURN, firstAttribute(attrs, "email"), observedAt)
+	email := firstAttribute(attrs, "email")
+	addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), personURN, email, observedAt)
+	addSameActorEmailLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), personURN, email, observedAt)
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }
@@ -913,7 +930,9 @@ func grcUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntit
 	links := map[string]*ports.ProjectedLink{}
 	userURN := grcUserURN(tenantID, provider, userID)
 	addEntity(entities, grcUserEntity(tenantID, event.GetSourceId(), userURN, firstAttribute(attrs, "display_name", "email", "user_id"), grcAttributes(attrs, map[string]string{"user_id": userID, "source_system": provider})))
-	addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, firstAttribute(attrs, "email"), event.GetOccurredAt())
+	email := firstAttribute(attrs, "email")
+	addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, email, event.GetOccurredAt())
+	addSameActorEmailLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, email, event.GetOccurredAt())
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }

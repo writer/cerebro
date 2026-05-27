@@ -1,0 +1,42 @@
+[
+  {
+    "id": "github-code-repository-1",
+    "tenant_id": "writer",
+    "source_id": "github",
+    "kind": "github.code.repository",
+    "occurred_at": "2026-04-23T00:00:00Z",
+    "schema_ref": "github/code_repository/v1",
+    "payload": {
+      "id": 1,
+      "owner_login": "writer",
+      "name": "cerebro",
+      "full_name": "writer/cerebro",
+      "url": "https://github.com/writer/cerebro",
+      "visibility": "public",
+      "private": false,
+      "archived": false,
+      "fork": false,
+      "default_branch": "main",
+      "created_at": "2026-04-22T00:00:00Z",
+      "updated_at": "2026-04-23T00:00:00Z"
+    },
+    "attributes": {
+      "archived": "false",
+      "default_branch": "main",
+      "fork": "false",
+      "full_name": "writer/cerebro",
+      "html_url": "https://github.com/writer/cerebro",
+      "name": "cerebro",
+      "owner": "writer",
+      "owner_login": "writer",
+      "private": "false",
+      "repo": "cerebro",
+      "repo_id": "1",
+      "repository": "writer/cerebro",
+      "resource_id": "1",
+      "resource_name": "writer/cerebro",
+      "resource_type": "code_repository",
+      "visibility": "public"
+    }
+  }
+]

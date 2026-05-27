@@ -189,24 +189,27 @@ func cloudPublicEndpointProjections(event *cerebrov1.EventEnvelope, profile iden
 			EntityType: profile.entityType(strings.ReplaceAll(resourceType, "_", ".")),
 			Label:      firstNonEmpty(attributes["resource_name"], attributes["endpoint_id"], attributes["host"], attributes["ip"], resourceID),
 			Attributes: map[string]string{
-				"domain":            strings.TrimSpace(attributes["domain"]),
-				"endpoint_id":       strings.TrimSpace(attributes["endpoint_id"]),
-				"endpoint_type":     strings.TrimSpace(attributes["endpoint_type"]),
-				"external_exposure": strings.TrimSpace(attributes["external_exposure"]),
-				"host":              strings.TrimSpace(attributes["host"]),
-				"hosted_zone_id":    strings.TrimSpace(attributes["hosted_zone_id"]),
-				"hosted_zone_name":  strings.TrimSpace(attributes["hosted_zone_name"]),
-				"internet_exposed":  strings.TrimSpace(attributes["internet_exposed"]),
-				"ip":                strings.TrimSpace(attributes["ip"]),
-				"public":            strings.TrimSpace(attributes["public"]),
-				"resource_id":       resourceID,
-				"resource_provider": strings.TrimSpace(attributes["resource_provider"]),
-				"resource_type":     resourceType,
-				"service":           strings.TrimSpace(attributes["service"]),
-				"target_host":       strings.TrimSpace(attributes["target_host"]),
-				"target_ip":         strings.TrimSpace(attributes["target_ip"]),
+				"associated_instance_id": strings.TrimSpace(attributes["associated_instance_id"]),
+				"attached_instance_id":   strings.TrimSpace(attributes["attached_instance_id"]),
+				"domain":                 strings.TrimSpace(attributes["domain"]),
+				"endpoint_id":            strings.TrimSpace(attributes["endpoint_id"]),
+				"endpoint_type":          strings.TrimSpace(attributes["endpoint_type"]),
+				"external_exposure":      strings.TrimSpace(attributes["external_exposure"]),
+				"host":                   strings.TrimSpace(attributes["host"]),
+				"hosted_zone_id":         strings.TrimSpace(attributes["hosted_zone_id"]),
+				"hosted_zone_name":       strings.TrimSpace(attributes["hosted_zone_name"]),
+				"internet_exposed":       strings.TrimSpace(attributes["internet_exposed"]),
+				"ip":                     strings.TrimSpace(attributes["ip"]),
+				"public":                 strings.TrimSpace(attributes["public"]),
+				"resource_id":            resourceID,
+				"resource_provider":      strings.TrimSpace(attributes["resource_provider"]),
+				"resource_type":          resourceType,
+				"service":                strings.TrimSpace(attributes["service"]),
+				"target_host":            strings.TrimSpace(attributes["target_host"]),
+				"target_ip":              strings.TrimSpace(attributes["target_ip"]),
 			},
 		})
+		addCloudPublicEndpointInstanceLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, provider, resourceType, attributes)
 		for _, host := range splitCloudAttributeList(attributes["host"]) {
 			addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, relationRepresents, host, "aws_public_endpoint_host", "0.95")
 		}
@@ -232,6 +235,48 @@ func cloudPublicEndpointProjections(event *cerebrov1.EventEnvelope, profile iden
 		}
 	}
 	return identityProjectionResult(entities, links)
+}
+
+func addCloudPublicEndpointInstanceLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, resourceURN string, provider string, resourceType string, attributes map[string]string) {
+	if provider != "aws" || resourceURN == "" {
+		return
+	}
+	attachedInstanceID := strings.TrimSpace(attributes["attached_instance_id"])
+	associatedInstanceID := strings.TrimSpace(attributes["associated_instance_id"])
+	instanceID := firstNonEmpty(attachedInstanceID, associatedInstanceID)
+	if instanceID == "" {
+		return
+	}
+	instanceURN := projectionURN(tenantID, "aws_ec2_instance", instanceID)
+	if instanceURN == "" {
+		return
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        instanceURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "aws.ec2.instance",
+		Label:      instanceID,
+		Attributes: map[string]string{
+			"domain":            strings.TrimSpace(attributes["domain"]),
+			"instance_id":       instanceID,
+			"resource_id":       instanceID,
+			"resource_provider": "aws",
+			"resource_type":     "ec2_instance",
+		},
+	})
+	relation := relationAssociatedWith
+	matchType := "aws_public_endpoint_associated_instance"
+	if attachedInstanceID != "" && (resourceType == "network_interface" || associatedInstanceID == "") {
+		relation = relationAttachedTo
+		matchType = "aws_public_endpoint_attached_instance"
+	}
+	addLink(links, projectedLink(tenantID, sourceID, resourceURN, instanceURN, relation, map[string]string{
+		"event_id":      event.GetId(),
+		"instance_id":   instanceID,
+		"match_type":    matchType,
+		"resource_type": resourceType,
+	}))
 }
 
 func addInternetIPLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, rawIP string, matchType string, confidence string) {

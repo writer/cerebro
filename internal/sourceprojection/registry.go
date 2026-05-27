@@ -50,6 +50,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"aurelius.verdict":                     aureliusVerdictProjections,
 	"github.pull_request":                  githubPullRequestProjections,
 	"github.audit":                         githubAuditProjections,
+	"github.code.repository":               githubCodeRepositoryProjections,
 	"github.dependabot_alert":              githubDependabotAlertProjections,
 	"asset.crown_jewel":                    assetCrownJewelProjections,
 	"asset.data_sensitivity":               assetDataSensitivityProjections,
