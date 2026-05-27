@@ -43,6 +43,11 @@ func NewRegistry(projectors ...EventProjector) (*Registry, error) {
 }
 
 var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
+	"aurelius.catalog_promotion":           aureliusCatalogPromotionProjections,
+	"aurelius.finding":                     aureliusFindingProjections,
+	"aurelius.image_scan":                  aureliusImageScanProjections,
+	"aurelius.policy_exception":            aureliusPolicyExceptionProjections,
+	"aurelius.verdict":                     aureliusVerdictProjections,
 	"github.pull_request":                  githubPullRequestProjections,
 	"github.audit":                         githubAuditProjections,
 	"github.dependabot_alert":              githubDependabotAlertProjections,
