@@ -271,6 +271,8 @@ func (s *Store) IntegrityChecks(ctx context.Context) ([]IntegrityCheck, error) {
 		{Name: "blank_entity_types", Expected: 0},
 		{Name: "blank_relation_types", Expected: 0},
 		{Name: "self_referential_relations", Expected: 0},
+		{Name: "github_code_repositories_without_owner_link", Expected: 0},
+		{Name: "aws_public_endpoints_without_instance_link", Expected: 0},
 	}
 	queries := []string{
 		"MATCH (src:Entity)-[r:RELATION]->(dst:Entity) WHERE src.tenant_id <> dst.tenant_id OR src.tenant_id <> r.tenant_id OR dst.tenant_id <> r.tenant_id RETURN count(r)",
@@ -278,6 +280,8 @@ func (s *Store) IntegrityChecks(ctx context.Context) ([]IntegrityCheck, error) {
 		"MATCH (e:Entity) WHERE coalesce(e.entity_type, '') = '' RETURN count(e)",
 		"MATCH (:Entity)-[r:RELATION]->(:Entity) WHERE coalesce(r.relation, '') = '' RETURN count(r)",
 		"MATCH (src:Entity)-[r:RELATION]->(dst:Entity) WHERE src.urn = dst.urn RETURN count(r)",
+		"MATCH (e:Entity) WHERE e.source_id = 'github' AND e.entity_type = 'github.code.repository' AND coalesce(e.attributes_json, '') CONTAINS '\"owner_login\":\"' AND NOT coalesce(e.attributes_json, '') CONTAINS '\"owner_login\":\"\"' AND NOT EXISTS { MATCH (e)-[:RELATION {relation: 'belongs_to'}]->(:Entity {entity_type: 'github.org'}) } RETURN count(e)",
+		"MATCH (e:Entity) WHERE e.entity_type IN ['aws.elastic.ip', 'aws.network.interface'] AND ((coalesce(e.attributes_json, '') CONTAINS '\"attached_instance_id\":\"' AND NOT coalesce(e.attributes_json, '') CONTAINS '\"attached_instance_id\":\"\"') OR (coalesce(e.attributes_json, '') CONTAINS '\"associated_instance_id\":\"' AND NOT coalesce(e.attributes_json, '') CONTAINS '\"associated_instance_id\":\"\"')) AND NOT EXISTS { MATCH (e)-[:RELATION {relation: 'attached_to'}]->(:Entity {entity_type: 'aws.ec2.instance'}) } AND NOT EXISTS { MATCH (e)-[:RELATION {relation: 'associated_with'}]->(:Entity {entity_type: 'aws.ec2.instance'}) } RETURN count(e)",
 	}
 	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
 		for i, query := range queries {
