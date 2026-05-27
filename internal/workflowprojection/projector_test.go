@@ -2,6 +2,8 @@ package workflowprojection
 
 import (
 	"context"
+	"fmt"
+	"sort"
 	"testing"
 
 	"github.com/writer/cerebro/internal/ports"
@@ -52,7 +54,12 @@ func (r *projectionRecorder) DeleteProjectedLink(_ context.Context, link *ports.
 func (r *projectionRecorder) ExecuteReadCypher(_ context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
 	findingURN, _ := request.Params["finding_urn"].(string)
 	tenantID, _ := request.Params["tenant_id"].(string)
-	rows := []ports.CypherRow{}
+	lastSeen, _ := request.Params["last_seen"].(string)
+	limit := request.RowLimit
+	if limit <= 0 {
+		limit = ports.MaxCypherQueryRows
+	}
+	matching := make([]string, 0, len(r.links))
 	for _, link := range r.links {
 		if link == nil || link.ToURN != findingURN || link.Relation != relationHasFinding {
 			continue
@@ -60,7 +67,18 @@ func (r *projectionRecorder) ExecuteReadCypher(_ context.Context, request ports.
 		if tenantID != "" && link.TenantID != tenantID {
 			continue
 		}
-		rows = append(rows, ports.CypherRow{Values: map[string]any{"resource_urn": link.FromURN}})
+		if link.FromURN <= lastSeen {
+			continue
+		}
+		matching = append(matching, link.FromURN)
+	}
+	sort.Strings(matching)
+	if len(matching) > limit {
+		matching = matching[:limit]
+	}
+	rows := make([]ports.CypherRow, 0, len(matching))
+	for _, urn := range matching {
+		rows = append(rows, ports.CypherRow{Values: map[string]any{"resource_urn": urn}})
 	}
 	return rows, nil
 }
@@ -455,6 +473,58 @@ func TestProjectFindingRecordedPrunesStaleActiveLinks(t *testing.T) {
 	}
 	if _, ok := graph.links["urn:cerebro:writer:resource:other|has_finding|urn:cerebro:writer:finding:other"]; !ok {
 		t.Fatal("unrelated finding link was pruned")
+	}
+}
+
+func TestProjectFindingRecordedPrunesBeyondCypherRowLimit(t *testing.T) {
+	graph := &projectionRecorder{links: map[string]*ports.ProjectedLink{}}
+	service := New(graph)
+	anchorURN := "urn:cerebro:writer:finding:legacy-overflow"
+	staleCount := ports.MaxCypherQueryRows + 25
+	for i := 0; i < staleCount; i++ {
+		resourceURN := fmt.Sprintf("urn:cerebro:writer:resource:legacy-%06d", i)
+		graph.links[resourceURN+"|has_finding|"+anchorURN] = &ports.ProjectedLink{
+			TenantID: "writer",
+			FromURN:  resourceURN,
+			ToURN:    anchorURN,
+			Relation: relationHasFinding,
+		}
+	}
+
+	finding := workflowevents.FindingSnapshot{
+		TenantID:           "writer",
+		SourceSystem:       "findings",
+		FindingID:          "legacy-overflow",
+		Fingerprint:        "fp-legacy-overflow",
+		Title:              "Legacy overflow finding",
+		RuleID:             "graph-resource-multiple-open-findings",
+		Severity:           "high",
+		Status:             "open",
+		RuntimeID:          "runtime-graph",
+		PrimaryResourceURN: "urn:cerebro:writer:resource:keep",
+		ResourceURNs:       []string{"urn:cerebro:writer:resource:keep"},
+	}
+	recordedEvent, err := workflowevents.NewFindingRecordedEvent(workflowevents.FindingRecorded{
+		Finding:    finding,
+		RecordedAt: "2026-05-27T07:30:00Z",
+	})
+	if err != nil {
+		t.Fatalf("NewFindingRecordedEvent() error = %v", err)
+	}
+	result, err := service.Project(context.Background(), recordedEvent)
+	if err != nil {
+		t.Fatalf("Project(legacy overflow) error = %v", err)
+	}
+	if int(result.LinksDeleted) != staleCount {
+		t.Fatalf("LinksDeleted = %d, want %d", result.LinksDeleted, staleCount)
+	}
+	for key, link := range graph.links {
+		if link == nil || link.ToURN != anchorURN {
+			continue
+		}
+		if link.FromURN != "urn:cerebro:writer:resource:keep" {
+			t.Fatalf("stale legacy link %s survived pruning", key)
+		}
 	}
 }
 

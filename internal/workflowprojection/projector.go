@@ -456,40 +456,52 @@ func (s *Service) pruneFindingActiveLinks(ctx context.Context, tenantID string, 
 			current[resourceURN] = struct{}{}
 		}
 	}
-	rows, err := reader.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
-		Query: `MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(:Entity {tenant_id: $tenant_id, urn: $finding_urn})
+	lastSeen := ""
+	for {
+		rows, err := reader.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
+			Query: `MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(:Entity {tenant_id: $tenant_id, urn: $finding_urn})
+WHERE resource.urn > $last_seen
 RETURN resource.urn AS resource_urn
+ORDER BY resource.urn
 LIMIT $row_limit`,
-		Params: map[string]any{
-			"tenant_id":   tenantID,
-			"finding_urn": anchorURN,
-			"row_limit":   int64(ports.MaxCypherQueryRows),
-		},
-		RowLimit: ports.MaxCypherQueryRows,
-	})
-	if err != nil {
-		return err
-	}
-	for _, row := range rows {
-		resourceURN := strings.TrimSpace(fmt.Sprintf("%v", row.Values["resource_urn"]))
-		if resourceURN == "" || resourceURN == "<nil>" {
-			continue
-		}
-		if _, keep := current[resourceURN]; keep {
-			continue
-		}
-		if err := deleter.DeleteProjectedLink(ctx, &ports.ProjectedLink{
-			TenantID: tenantID,
-			SourceID: sourceID,
-			FromURN:  resourceURN,
-			ToURN:    anchorURN,
-			Relation: relationHasFinding,
-		}); err != nil {
+			Params: map[string]any{
+				"tenant_id":   tenantID,
+				"finding_urn": anchorURN,
+				"last_seen":   lastSeen,
+				"row_limit":   int64(ports.MaxCypherQueryRows),
+			},
+			RowLimit: ports.MaxCypherQueryRows,
+		})
+		if err != nil {
 			return err
 		}
-		result.LinksDeleted++
+		if len(rows) == 0 {
+			return nil
+		}
+		for _, row := range rows {
+			resourceURN := strings.TrimSpace(fmt.Sprintf("%v", row.Values["resource_urn"]))
+			if resourceURN == "" || resourceURN == "<nil>" {
+				continue
+			}
+			lastSeen = resourceURN
+			if _, keep := current[resourceURN]; keep {
+				continue
+			}
+			if err := deleter.DeleteProjectedLink(ctx, &ports.ProjectedLink{
+				TenantID: tenantID,
+				SourceID: sourceID,
+				FromURN:  resourceURN,
+				ToURN:    anchorURN,
+				Relation: relationHasFinding,
+			}); err != nil {
+				return err
+			}
+			result.LinksDeleted++
+		}
+		if len(rows) < ports.MaxCypherQueryRows {
+			return nil
+		}
 	}
-	return nil
 }
 
 func (s *Service) deleteFindingActiveLinks(ctx context.Context, finding workflowevents.FindingSnapshot) (uint32, error) {

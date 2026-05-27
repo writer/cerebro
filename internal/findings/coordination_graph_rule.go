@@ -79,6 +79,8 @@ func newGRCSourceConcentratedOpenFindingsRule() Rule {
 	}, map[string][]string{"grc": {"integration", "vulnerability", "vulnerable_asset"}}, `MATCH (source:Entity {tenant_id: $tenant_id, entity_type: 'source'})
 MATCH (source)-[:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
 WHERE coalesce(finding.attributes_json, '') CONTAINS '"status":"open"'
+WITH source, finding
+ORDER BY finding.urn
 WITH source, collect(DISTINCT finding) AS findings, count(DISTINCT finding) AS finding_count
 WHERE finding_count >= $finding_threshold
 RETURN source.urn AS primary_urn,
@@ -311,6 +313,8 @@ func newResourceMultipleOpenFindingsRule() Rule {
 		},
 	}, nil, `MATCH (resource:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
 WHERE coalesce(finding.attributes_json, '') CONTAINS '"status":"open"'
+WITH resource, finding
+ORDER BY finding.urn
 WITH resource, collect(DISTINCT finding) AS findings, count(DISTINCT finding) AS finding_count
 WHERE finding_count >= $finding_threshold
 RETURN resource.urn AS primary_urn,
