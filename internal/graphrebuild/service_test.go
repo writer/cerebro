@@ -192,8 +192,8 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 		t.Fatalf("len(StageConfirmations) = %d, want 9", len(result.StageConfirmations))
 	}
 	assertStageNames(t, result.StageConfirmations, "resolve_runtime", "open_graph", "read_source", "project_graph", "count_graph", "verify_integrity", "verify_path_patterns", "verify_topology", "verify_traversals")
-	if got := result.StageConfirmations[5].AssertionsPassed; got != 5 {
-		t.Fatalf("verify_integrity assertions_passed = %d, want 5", got)
+	if got := result.StageConfirmations[5].AssertionsPassed; got != 7 {
+		t.Fatalf("verify_integrity assertions_passed = %d, want 7", got)
 	}
 	if got := result.StageConfirmations[5].AssertionsFailed; got != 0 {
 		t.Fatalf("verify_integrity assertions_failed = %d, want 0", got)
@@ -235,14 +235,20 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	if got := countValue(result.GraphRelationTypes, "authored"); got != 1 {
 		t.Fatalf("graph relation type authored = %d, want 1", got)
 	}
-	if len(result.GraphAssertions) != 5 {
-		t.Fatalf("len(GraphAssertions) = %d, want 5", len(result.GraphAssertions))
+	if len(result.GraphAssertions) != 7 {
+		t.Fatalf("len(GraphAssertions) = %d, want 7", len(result.GraphAssertions))
 	}
 	if !containsAssertion(result.GraphAssertions, "tenant_mismatched_relations", 0, 0, true) {
 		t.Fatalf("GraphAssertions missing tenant_mismatched_relations: %#v", result.GraphAssertions)
 	}
 	if !containsAssertion(result.GraphAssertions, "self_referential_relations", 0, 0, true) {
 		t.Fatalf("GraphAssertions missing self_referential_relations: %#v", result.GraphAssertions)
+	}
+	if !containsAssertion(result.GraphAssertions, "github_code_repositories_without_owner_link", 0, 0, true) {
+		t.Fatalf("GraphAssertions missing github_code_repositories_without_owner_link: %#v", result.GraphAssertions)
+	}
+	if !containsAssertion(result.GraphAssertions, "aws_public_endpoints_without_instance_link", 0, 0, true) {
+		t.Fatalf("GraphAssertions missing aws_public_endpoints_without_instance_link: %#v", result.GraphAssertions)
 	}
 	if len(result.GraphPathPatterns) != 7 {
 		t.Fatalf("len(GraphPathPatterns) = %d, want 7", len(result.GraphPathPatterns))
@@ -654,8 +660,8 @@ func TestRebuildDryRunDefaultsToSinglePage(t *testing.T) {
 	if len(result.GraphTraversals) != 5 {
 		t.Fatalf("len(GraphTraversals) = %d, want 5", len(result.GraphTraversals))
 	}
-	if got := result.StageConfirmations[5].AssertionsPassed; got != 5 {
-		t.Fatalf("verify_integrity assertions_passed = %d, want 5", got)
+	if got := result.StageConfirmations[5].AssertionsPassed; got != 7 {
+		t.Fatalf("verify_integrity assertions_passed = %d, want 7", got)
 	}
 	if got := result.StageConfirmations[6].PatternsVerified; got != 5 {
 		t.Fatalf("verify_path_patterns patterns_verified = %d, want 5", got)
