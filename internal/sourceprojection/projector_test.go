@@ -164,8 +164,11 @@ func TestProjectGitHubPullRequest(t *testing.T) {
 	if result.EntitiesProjected != 6 {
 		t.Fatalf("Project().EntitiesProjected = %d, want 6", result.EntitiesProjected)
 	}
-	if result.LinksProjected != 6 {
-		t.Fatalf("Project().LinksProjected = %d, want 6", result.LinksProjected)
+	// 7 = 6 prior edges + the new identifier.login -> identity.login
+	// represents_identity edge introduced when addIdentifierLink learned to
+	// emit the reverse pointer that keeps identifier <-> identity twins joined.
+	if result.LinksProjected != 7 {
+		t.Fatalf("Project().LinksProjected = %d, want 7", result.LinksProjected)
 	}
 
 	prURN := "urn:cerebro:writer:github_pull_request:writer/cerebro#447"
@@ -1909,6 +1912,14 @@ func TestProjectReusesCrossSourceIdentifierWithinTenant(t *testing.T) {
 	if got := awsIdentityLink.Attributes["confidence"]; got != "0.85" {
 		t.Fatalf("aws identity confidence = %q, want 0.85", got)
 	}
+
+	// Reverse pointer keeps identity traversal symmetric: starting at the
+	// identifier.email node, queries must be able to reach the canonical
+	// identity without going through the original actor. Without this edge
+	// 1:1 identifier <-> identity twins look like orphan pairs.
+	if _, ok := state.links[identifierURN+"|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]; !ok {
+		t.Fatalf("identifier -> identity represents_identity link missing: %v", state.links)
+	}
 }
 
 func TestProjectIdentityProviderJoinEdges(t *testing.T) {
@@ -2107,6 +2118,7 @@ func TestProjectIdentityProviderJoinEdges(t *testing.T) {
 	assertProjectedLink(t, state, awsUserURN, relationRepresentsIdentity, canonicalIdentityURN)
 	assertProjectedLink(t, state, gcpUserURN, relationRepresentsIdentity, canonicalIdentityURN)
 	assertProjectedLink(t, state, canonicalIdentityURN, relationHasIdentifier, identifierURN)
+	assertProjectedLink(t, state, identifierURN, relationRepresentsIdentity, canonicalIdentityURN)
 	assertProjectedLink(t, state, oktaUserURN, relationMemberOf, "urn:cerebro:writer:okta_group:grp-security")
 	assertProjectedLink(t, state, googleUserURN, relationMemberOf, "urn:cerebro:writer:google_workspace_group:security@writer.com")
 	assertProjectedLink(t, state, "urn:cerebro:writer:google_workspace_group:security@writer.com", relationHasIdentifier, "urn:cerebro:writer:identifier:email:security@writer.com")

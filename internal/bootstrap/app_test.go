@@ -3810,8 +3810,8 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	if got := syncPayload["entities_projected"]; got != float64(4) {
 		t.Fatalf("sync entities_projected = %#v, want 4", got)
 	}
-	if got := syncPayload["links_projected"]; got != float64(4) {
-		t.Fatalf("sync links_projected = %#v, want 4", got)
+	if got := syncPayload["links_projected"]; got != float64(5) {
+		t.Fatalf("sync links_projected = %#v, want 5", got)
 	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
@@ -3859,8 +3859,8 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	if syncRuntimeResp.Msg.GetEntitiesProjected() != 4 {
 		t.Fatalf("SyncSourceRuntime entities_projected = %d, want 4", syncRuntimeResp.Msg.GetEntitiesProjected())
 	}
-	if syncRuntimeResp.Msg.GetLinksProjected() != 4 {
-		t.Fatalf("SyncSourceRuntime links_projected = %d, want 4", syncRuntimeResp.Msg.GetLinksProjected())
+	if syncRuntimeResp.Msg.GetLinksProjected() != 5 {
+		t.Fatalf("SyncSourceRuntime links_projected = %d, want 5", syncRuntimeResp.Msg.GetLinksProjected())
 	}
 	if len(appendLog.events) != 2 {
 		t.Fatalf("len(appendLog.events) = %d, want 2", len(appendLog.events))

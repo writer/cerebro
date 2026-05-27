@@ -291,8 +291,8 @@ func TestRunOrchestratorIterationPreservesGraphCountersOnPartialFailure(t *testi
 	if runtimeResult.GraphIngest != "failed" {
 		t.Fatalf("graph ingest status = %q, want failed", runtimeResult.GraphIngest)
 	}
-	if runtimeResult.EntitiesProjected != 6 || runtimeResult.LinksProjected != 6 {
-		t.Fatalf("graph counters = %d/%d, want 6/6", runtimeResult.EntitiesProjected, runtimeResult.LinksProjected)
+	if runtimeResult.EntitiesProjected != 6 || runtimeResult.LinksProjected != 7 {
+		t.Fatalf("graph counters = %d/%d, want 6/7", runtimeResult.EntitiesProjected, runtimeResult.LinksProjected)
 	}
 }
 

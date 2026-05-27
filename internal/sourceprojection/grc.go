@@ -620,6 +620,9 @@ type grcPlatformAssetReference struct {
 }
 
 func addGRCPlatformAssetLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, targetURN string, attrs map[string]string) {
+	grcProviderName := grcProvider(attrs)
+	integrationID := firstAttribute(attrs, "integration_id")
+	integrationURN := grcIntegrationURN(tenantID, grcProviderName, integrationID)
 	for _, ref := range grcPlatformAssetReferences(attrs) {
 		provider := grcPlatformProvider(ref.Provider, ref.ResourceID)
 		resourceID := strings.TrimSpace(ref.ResourceID)
@@ -631,16 +634,21 @@ func addGRCPlatformAssetLinks(entities map[string]*ports.ProjectedEntity, links 
 		if resourceURN == "" {
 			continue
 		}
+		// Prefer a human-readable label over the URN so the dashboard, finding
+		// reports, and ask-the-graph traces are interpretable. Falling back to
+		// the resource id keeps the label stable when the source omits a name.
+		label := firstNonEmptyString(strings.TrimSpace(ref.ResourceName), strings.TrimSpace(ref.ScannerResourceID), resourceID)
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        resourceURN,
 			TenantID:   tenantID,
 			SourceID:   provider,
 			EntityType: provider + "." + strings.ReplaceAll(resourceType, "_", "."),
-			Label:      resourceURN,
+			Label:      label,
 			Attributes: map[string]string{
 				"provider":      provider,
 				"resource_id":   resourceID,
 				"resource_type": resourceType,
+				"resource_name": strings.TrimSpace(ref.ResourceName),
 			},
 		})
 		addLink(links, projectedLink(tenantID, sourceID, targetURN, resourceURN, relationRepresents, map[string]string{
@@ -651,6 +659,15 @@ func addGRCPlatformAssetLinks(entities map[string]*ports.ProjectedEntity, links 
 			"platform_resource_id": resourceID,
 			"resource_type":        resourceType,
 		}))
+		// Connect the platform resource to the GRC integration that surfaced
+		// it. Without this edge a github.code.repository or aws.* node has no
+		// outgoing path back to the source/integration it was discovered
+		// through, which leaves it dangling whenever the parent grc.target is
+		// not the query starting point.
+		if integrationURN != "" {
+			addEntity(entities, grcIntegrationReferenceEntity(tenantID, sourceID, integrationURN, integrationID, grcProviderName))
+			addLink(links, projectedLink(tenantID, sourceID, resourceURN, integrationURN, relationBelongsTo, grcIntegrationLinkAttributes(event, integrationID)))
+		}
 	}
 }
 
