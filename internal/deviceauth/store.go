@@ -69,6 +69,8 @@ type Store interface {
 	EnrollDevice(ctx context.Context, device DeviceRecord) (DeviceRecord, error)
 	// LookupDevice returns the device by id.
 	LookupDevice(ctx context.Context, deviceID string) (DeviceRecord, error)
+	// LookupDeviceByHardware returns a device by tenant and hardware UUID.
+	LookupDeviceByHardware(ctx context.Context, tenantID string, hardwareUUID string) (DeviceRecord, error)
 	// MarkSeen updates last_seen_at on the device row.
 	MarkSeen(ctx context.Context, deviceID string, at time.Time) error
 	// RevokeDevice flips status to revoked and records revoked_at.

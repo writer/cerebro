@@ -209,6 +209,23 @@ func TestServiceRevokeBlocksRefresh(t *testing.T) {
 	}
 }
 
+func TestServiceEnrollRejectsRevokedHardware(t *testing.T) {
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	firstBootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
+	secondBootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
+	enroll, err := service.Enroll(ctx, EnrollRequest{BootstrapToken: firstBootstrap.Token, HardwareUUID: "hw-1"})
+	if err != nil {
+		t.Fatalf("Enroll(first): %v", err)
+	}
+	if err := service.Revoke(ctx, enroll.DeviceID, "lost"); err != nil {
+		t.Fatalf("Revoke: %v", err)
+	}
+	if _, err := service.Enroll(ctx, EnrollRequest{BootstrapToken: secondBootstrap.Token, HardwareUUID: "hw-1"}); !errors.Is(err, ErrDeviceInactive) {
+		t.Fatalf("Enroll(second) err = %v, want ErrDeviceInactive", err)
+	}
+}
+
 func TestServiceIngestTelemetryRequiresIdempotencyKey(t *testing.T) {
 	ctx := context.Background()
 	service, _, _ := newServiceForTest(t)

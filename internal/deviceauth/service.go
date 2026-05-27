@@ -264,6 +264,13 @@ func (s *Service) Enroll(ctx context.Context, request EnrollRequest) (EnrollResp
 	if tenantID == "" {
 		return EnrollResponse{}, fmt.Errorf("%w: bootstrap token has no tenant_id", ErrInvalidRequest)
 	}
+	existing, err := s.store.LookupDeviceByHardware(ctx, tenantID, hardwareUUID)
+	if err == nil && existing.Status != "" && existing.Status != "active" {
+		return EnrollResponse{}, ErrDeviceInactive
+	}
+	if err != nil && !errors.Is(err, ErrDeviceNotFound) {
+		return EnrollResponse{}, err
+	}
 	scopes := normalizedNonEmptyStrings(consumed.Scopes)
 	scopes = filterAllowedBootstrapDeviceScopes(scopes)
 	if len(scopes) == 0 {

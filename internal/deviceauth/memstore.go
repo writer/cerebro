@@ -3,6 +3,7 @@ package deviceauth
 import (
 	"bytes"
 	"context"
+	"strings"
 	"sync"
 	"time"
 )
@@ -67,6 +68,20 @@ func (s *MemStore) LookupDevice(_ context.Context, deviceID string) (DeviceRecor
 		return DeviceRecord{}, ErrDeviceNotFound
 	}
 	return device, nil
+}
+
+// LookupDeviceByHardware returns the device by tenant and hardware UUID.
+func (s *MemStore) LookupDeviceByHardware(_ context.Context, tenantID string, hardwareUUID string) (DeviceRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tenantID = strings.TrimSpace(tenantID)
+	hardwareUUID = strings.TrimSpace(hardwareUUID)
+	for _, device := range s.devices {
+		if strings.TrimSpace(device.TenantID) == tenantID && strings.TrimSpace(device.HardwareUUID) == hardwareUUID {
+			return device, nil
+		}
+	}
+	return DeviceRecord{}, ErrDeviceNotFound
 }
 
 // MarkSeen updates last_seen_at on the device row.
