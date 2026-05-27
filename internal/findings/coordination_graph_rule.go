@@ -15,6 +15,7 @@ import (
 const (
 	coordinationGraphRowLimit             = 500
 	coordinationGraphConcentrationMinimum = 5
+	coordinationGraphRelatedResourceLimit = 20
 )
 
 type coordinationGraphRule struct {
@@ -34,6 +35,21 @@ func newCoordinationGraphRules() []Rule {
 		newGRCIsolatedTargetEnrichmentGapRule(),
 		newFindingIsolatedOpenAnchorRule(),
 		newResourceMultipleOpenFindingsRule(),
+	}
+}
+
+func isCoordinationGraphRuleID(ruleID string) bool {
+	switch strings.TrimSpace(ruleID) {
+	case "grc-source-integration-concentrated-open-findings",
+		"grc-failing-control-test-unhealthy-integration",
+		"grc-control-missing-evidence-coverage",
+		"grc-document-needs-owner-or-upload",
+		"grc-isolated-target-enrichment-gap",
+		"finding-isolated-open-anchor",
+		"graph-resource-multiple-open-findings":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -72,7 +88,7 @@ RETURN source.urn AS primary_urn,
        'HIGH' AS severity,
        'Source integration has ' + toString(finding_count) + ' open finding(s)' AS summary,
        'Prioritize remediation at the source integration level' AS action,
-       [source.urn] + [f IN findings | f.urn] AS resource_urns,
+       [source.urn] + [f IN findings[0..20] | f.urn] AS resource_urns,
        [f IN findings[0..20] | {urn: f.urn, label: f.label, entity_type: f.entity_type, relation: 'has_finding', attributes_json: coalesce(f.attributes_json, '')}] AS evidence
 ORDER BY finding_count DESC, source.urn
 LIMIT $row_limit`, map[string]any{"finding_threshold": int64(coordinationGraphConcentrationMinimum)})
@@ -304,7 +320,7 @@ RETURN resource.urn AS primary_urn,
        'HIGH' AS severity,
        'Resource has ' + toString(finding_count) + ' open finding(s)' AS summary,
        'Coordinate remediation by the shared graph resource' AS action,
-       [resource.urn] + [f IN findings | f.urn] AS resource_urns,
+       [resource.urn] + [f IN findings[0..20] | f.urn] AS resource_urns,
        [f IN findings[0..20] | {urn: f.urn, label: f.label, entity_type: f.entity_type, relation: 'has_finding', attributes_json: coalesce(f.attributes_json, '')}] AS evidence
 ORDER BY finding_count DESC, resource.urn
 LIMIT $row_limit`, map[string]any{"finding_threshold": int64(coordinationGraphConcentrationMinimum)})
@@ -407,7 +423,7 @@ func (r *coordinationGraphRule) EvaluateRows(_ context.Context, runtime *cerebro
 		severity := firstNonEmpty(cypherRowString(row, "severity"), r.definition.Severity)
 		summary := firstNonEmpty(cypherRowString(row, "summary"), fmt.Sprintf("%s on %s", r.definition.Name, primaryURN))
 		action := firstNonEmpty(cypherRowString(row, "action"), "Review the graph evidence and remediate the shared control gap.")
-		resourceURNs := deduplicateStrings(append([]string{primaryURN}, coordinationRowStrings(row, "resource_urns")...))
+		resourceURNs := limitedCoordinationResourceURNs(primaryURN, coordinationRowStrings(row, "resource_urns"))
 		attributes := map[string]string{
 			"action":               action,
 			"graph_rule":           "true",
@@ -442,6 +458,15 @@ func (r *coordinationGraphRule) EvaluateRows(_ context.Context, runtime *cerebro
 		})
 	}
 	return findings, nil
+}
+
+func limitedCoordinationResourceURNs(primaryURN string, relatedURNs []string) []string {
+	resourceURNs := deduplicateStrings(append([]string{primaryURN}, relatedURNs...))
+	limit := coordinationGraphRelatedResourceLimit + 1
+	if len(resourceURNs) > limit {
+		resourceURNs = resourceURNs[:limit]
+	}
+	return resourceURNs
 }
 
 func coordinationRowStrings(row ports.CypherRow, key string) []string {

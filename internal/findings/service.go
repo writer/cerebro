@@ -1645,7 +1645,18 @@ func mergeFindingEvidenceForUpsert(existing *ports.FindingRecord, incoming *port
 	if existing == nil || incoming == nil {
 		return incoming
 	}
-	incoming.ResourceURNs = uniqueTrimmedStringsPreserveOrder(append(append([]string(nil), existing.ResourceURNs...), incoming.ResourceURNs...))
+	if isCoordinationGraphRuleID(incoming.RuleID) {
+		primaryURN := ""
+		if incoming.Attributes != nil {
+			primaryURN = incoming.Attributes["primary_resource_urn"]
+		}
+		if primaryURN == "" && len(incoming.ResourceURNs) > 0 {
+			primaryURN = incoming.ResourceURNs[0]
+		}
+		incoming.ResourceURNs = limitedCoordinationResourceURNs(primaryURN, incoming.ResourceURNs)
+	} else {
+		incoming.ResourceURNs = uniqueTrimmedStringsPreserveOrder(append(append([]string(nil), existing.ResourceURNs...), incoming.ResourceURNs...))
+	}
 	incoming.EventIDs = uniqueTrimmedStringsPreserveOrder(append(append([]string(nil), existing.EventIDs...), incoming.EventIDs...))
 	incoming.ObservedPolicyIDs = uniqueTrimmedStringsPreserveOrder(append(append([]string(nil), existing.ObservedPolicyIDs...), incoming.ObservedPolicyIDs...))
 	incoming.Attributes = mergeFindingAttributesForUpsert(existing.Attributes, incoming.Attributes)

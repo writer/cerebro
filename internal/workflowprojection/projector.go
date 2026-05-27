@@ -431,6 +431,64 @@ func (s *Service) ensureFindingActiveLinks(ctx context.Context, finding workflow
 			return err
 		}
 	}
+	if err := s.pruneFindingActiveLinks(ctx, tenantID, sourceID, anchorURN, resourceURNs, result); err != nil {
+		return err
+	}
+	return nil
+}
+
+type findingActiveLinkReader interface {
+	ExecuteReadCypher(context.Context, ports.CypherQueryRequest) ([]ports.CypherRow, error)
+}
+
+func (s *Service) pruneFindingActiveLinks(ctx context.Context, tenantID string, sourceID string, anchorURN string, currentResourceURNs []string, result *ports.ProjectionResult) error {
+	reader, ok := s.graph.(findingActiveLinkReader)
+	if !ok {
+		return nil
+	}
+	deleter, ok := s.graph.(ports.ProjectionLinkDeleter)
+	if !ok {
+		return nil
+	}
+	current := make(map[string]struct{}, len(currentResourceURNs))
+	for _, resourceURN := range currentResourceURNs {
+		if resourceURN = strings.TrimSpace(resourceURN); resourceURN != "" {
+			current[resourceURN] = struct{}{}
+		}
+	}
+	rows, err := reader.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
+		Query: `MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(:Entity {tenant_id: $tenant_id, urn: $finding_urn})
+RETURN resource.urn AS resource_urn
+LIMIT $row_limit`,
+		Params: map[string]any{
+			"tenant_id":   tenantID,
+			"finding_urn": anchorURN,
+			"row_limit":   int64(ports.MaxCypherQueryRows),
+		},
+		RowLimit: ports.MaxCypherQueryRows,
+	})
+	if err != nil {
+		return err
+	}
+	for _, row := range rows {
+		resourceURN := strings.TrimSpace(fmt.Sprintf("%v", row.Values["resource_urn"]))
+		if resourceURN == "" || resourceURN == "<nil>" {
+			continue
+		}
+		if _, keep := current[resourceURN]; keep {
+			continue
+		}
+		if err := deleter.DeleteProjectedLink(ctx, &ports.ProjectedLink{
+			TenantID: tenantID,
+			SourceID: sourceID,
+			FromURN:  resourceURN,
+			ToURN:    anchorURN,
+			Relation: relationHasFinding,
+		}); err != nil {
+			return err
+		}
+		result.LinksDeleted++
+	}
 	return nil
 }
 
