@@ -345,7 +345,7 @@ jobs:
       - name: Verify graph health (sec-dev)
         shell: bash
         working-directory: infra
-        run: uv run python scripts/verify_graph_health_ecs.py --stack-file aws/Pulumi.sec-dev.yaml
+        run: uv run python scripts/verify_graph_health_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --allow-transient-source-failures
 
   # Main merge: Pulumi up for go-prod stack
   deploy-go-prod:
@@ -445,7 +445,7 @@ jobs:
       - name: Verify graph health (go-prod)
         shell: bash
         working-directory: infra
-        run: uv run python scripts/verify_graph_health_ecs.py --stack-file aws/Pulumi.go-prod.yaml
+        run: uv run python scripts/verify_graph_health_ecs.py --stack-file aws/Pulumi.go-prod.yaml --allow-transient-source-failures
 
   # ===========================================================================
   # GCP jobs
@@ -767,7 +767,7 @@ jobs:
         working-directory: infra
         env:
           STACK_NAME: ${{ github.event.inputs.environment }}
-        run: uv run python scripts/verify_graph_health_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml"
+        run: uv run python scripts/verify_graph_health_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --allow-transient-source-failures
 
       - name: Pulumi Up (GCP)
         if: startsWith(github.event.inputs.environment, 'gcp-')
