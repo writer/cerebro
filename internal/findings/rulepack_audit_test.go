@@ -933,7 +933,7 @@ func TestNetNewRetiredRulesNoEmit(t *testing.T) {
 func TestKeepAsIsRulesUnchanged(t *testing.T) {
 	metadataByID := rulepackAuditMetadataByID(t)
 	keepRules := rulepackAuditRulesByClass(t, rulepackAuditClassKeep)
-	if got, want := len(keepRules), 17; got != want {
+	if got, want := len(keepRules), 24; got != want {
 		t.Fatalf("KEEP_AS_IS rule count = %d, want %d", got, want)
 	}
 	for _, entry := range keepRules {
@@ -1118,9 +1118,14 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "github-webhook-modified", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
 		{RuleID: "grc-control-test-needs-attention", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "grc"},
 		{RuleID: "grc-failing-control-open-operational-findings", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "grc"},
+		{RuleID: "grc-failing-control-test-unhealthy-integration", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "grc"},
+		{RuleID: "grc-control-missing-evidence-coverage", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "grc"},
+		{RuleID: "grc-document-needs-owner-or-upload", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "grc"},
 		{RuleID: "grc-inactive-identity-active-access", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "grc"},
+		{RuleID: "grc-isolated-target-enrichment-gap", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "grc"},
 		{RuleID: "grc-overdue-vulnerability-live-on-assets", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "grc"},
 		{RuleID: "grc-privileged-account-missing-person", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "grc"},
+		{RuleID: "grc-source-integration-concentrated-open-findings", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "grc"},
 		{RuleID: "grc-vendor-review-overdue", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "grc"},
 		{RuleID: "grc-vulnerability-sla-overdue", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "grc"},
 		{RuleID: "identity-admin-privilege-granted", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "identity"},
@@ -1135,6 +1140,8 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "identity-privileged-account-without-mfa", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">24h", Source: "identity"},
 		{RuleID: "identity-privileged-no-mfa-plus-sensitive-access", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">24h", Source: "identity"},
 		{RuleID: "identity-stale-privileged-account", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">24h", Source: "identity"},
+		{RuleID: "finding-isolated-open-anchor", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "graph"},
+		{RuleID: "graph-resource-multiple-open-findings", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "graph"},
 		{RuleID: "runtime-active-threat-evidence", Classification: "TTL_EVIDENCE_ONLY", BulkCloseoutThreshold: ">24h", Source: "runtime"},
 		{RuleID: "sentinelone-agent-detect-only-mode", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},
 		{RuleID: "sentinelone-agent-stale", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},
