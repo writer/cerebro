@@ -38,6 +38,32 @@ func TestCoordinationGraphRuleQueryRequiresTenant(t *testing.T) {
 	if !strings.Contains(query.Query, "findings[0..20] | f.urn") {
 		t.Fatalf("query does not cap related finding ResourceURNs: %s", query.Query)
 	}
+	if !strings.Contains(query.Query, "ORDER BY finding.urn") {
+		t.Fatalf("query does not deterministically order findings before capping: %s", query.Query)
+	}
+}
+
+func TestCoordinationGraphRuleQueryOrdersFindingsBeforeSlice(t *testing.T) {
+	for _, ruleID := range []string{
+		"grc-source-integration-concentrated-open-findings",
+		"graph-resource-multiple-open-findings",
+	} {
+		registry := Builtin()
+		rule, ok := registry.Get(ruleID)
+		if !ok {
+			t.Fatalf("Builtin() missing rule %s", ruleID)
+		}
+		graphRule, ok := rule.(GraphRule)
+		if !ok {
+			t.Fatalf("rule %s is not a GraphRule", ruleID)
+		}
+		query := graphRule.QueryFor(&cerebrov1.SourceRuntime{TenantId: "writer"}).Query
+		collectIdx := strings.Index(query, "collect(DISTINCT finding)")
+		orderIdx := strings.Index(query, "ORDER BY finding.urn")
+		if collectIdx < 0 || orderIdx < 0 || orderIdx > collectIdx {
+			t.Fatalf("rule %s must ORDER BY finding.urn before collecting findings: %s", ruleID, query)
+		}
+	}
 }
 
 func TestCoordinationGraphRuleEvaluateRowsBuildsFinding(t *testing.T) {
