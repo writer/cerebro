@@ -442,9 +442,19 @@ config:
         - graph_page_limit=100
         - event_limit=500
   cerebro:s3Sources:
+    # Aurelius NDJSON exporter archives. The bucket lives in account
+    # 502497380968 (aurelius-dev); cerebro reads it cross-account by
+    # assuming the dedicated reader role
+    # cerebro-aurelius-source-dev, which is named to match cerebro's
+    # task-role inline policy allow-list (cerebro-*-source-*). The
+    # roleArn is consumed by infra/aws/__main__.py to append a
+    # sts:AssumeRole grant for the cerebro task role, and by the
+    # cerebro orchestrator at runtime when minting the s3 client.
     - name: aurelius
-      bucket: writer-aurelius-scan-results-prod
+      bucket: writer-aurelius-scan-results-dev
+      bucketArn: arn:aws:s3:::writer-aurelius-scan-results-dev
       region: us-east-1
+      roleArn: arn:aws:iam::502497380968:role/cerebro-aurelius-source-dev
       prefixes:
         - "aurelius/verdicts/"
         - "aurelius/findings/"
@@ -743,7 +753,7 @@ config:
       sourceId: aurelius
       tenantId: writer
       config:
-        bucket: writer-aurelius-scan-results-prod
+        bucket: writer-aurelius-scan-results-dev
         family: verdict
         page_size: "100"
         prefix: aurelius/verdicts/
@@ -753,7 +763,7 @@ config:
       sourceId: aurelius
       tenantId: writer
       config:
-        bucket: writer-aurelius-scan-results-prod
+        bucket: writer-aurelius-scan-results-dev
         family: finding
         page_size: "100"
         prefix: aurelius/findings/
@@ -763,7 +773,7 @@ config:
       sourceId: aurelius
       tenantId: writer
       config:
-        bucket: writer-aurelius-scan-results-prod
+        bucket: writer-aurelius-scan-results-dev
         family: image_scan
         page_size: "100"
         prefix: aurelius/image_scans/
@@ -773,7 +783,7 @@ config:
       sourceId: aurelius
       tenantId: writer
       config:
-        bucket: writer-aurelius-scan-results-prod
+        bucket: writer-aurelius-scan-results-dev
         family: catalog_promotion
         page_size: "100"
         prefix: aurelius/catalog_promotions/
@@ -783,7 +793,7 @@ config:
       sourceId: aurelius
       tenantId: writer
       config:
-        bucket: writer-aurelius-scan-results-prod
+        bucket: writer-aurelius-scan-results-dev
         family: policy_exception
         page_size: "100"
         prefix: aurelius/policy_exceptions/
