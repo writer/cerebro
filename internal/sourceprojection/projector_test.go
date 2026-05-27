@@ -184,6 +184,45 @@ func TestProjectGitHubPullRequest(t *testing.T) {
 	}
 }
 
+func TestProjectGitHubCodeRepositoryLinksOwnerAndLegacyRepo(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-code-repository-1",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.code.repository",
+		Attributes: map[string]string{
+			"default_branch": "main",
+			"html_url":       "https://github.com/writer/cerebro",
+			"owner_login":    "writer",
+			"repo_id":        "1",
+			"repository":     "writer/cerebro",
+			"resource_id":    "1",
+			"resource_type":  "code_repository",
+			"visibility":     "public",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	codeRepoURN := "urn:cerebro:writer:github_code_repository:1"
+	legacyRepoURN := "urn:cerebro:writer:github_repo:writer/cerebro"
+	orgURN := "urn:cerebro:writer:github_org:writer"
+	if entity := state.entities[codeRepoURN]; entity == nil || entity.EntityType != "github.code.repository" {
+		t.Fatalf("github code repository entity missing: %#v", entity)
+	}
+	if got := state.entities[codeRepoURN].Attributes["owner_login"]; got != "writer" {
+		t.Fatalf("code repository owner_login = %q, want writer", got)
+	}
+	assertProjectedLink(t, state, codeRepoURN, relationBelongsTo, orgURN)
+	assertProjectedLink(t, state, legacyRepoURN, relationBelongsTo, orgURN)
+	assertProjectedLink(t, state, legacyRepoURN, relationRepresents, codeRepoURN)
+	assertProjectedLink(t, state, codeRepoURN, relationRepresents, legacyRepoURN)
+}
+
 func TestProjectStampsRuntimeIDOnEntitiesAndLinks(t *testing.T) {
 	state := &projectionRecorder{}
 	graph := &projectionRecorder{}
@@ -2409,20 +2448,41 @@ func TestProjectCloudExposureAndPrivilegePaths(t *testing.T) {
 			SourceId: "aws",
 			Kind:     "aws.public_endpoint",
 			Attributes: map[string]string{
-				"domain":            "123456789012",
-				"endpoint_id":       "eni-1",
-				"endpoint_type":     "public_network_interface",
-				"external_exposure": "true",
-				"host":              "ec2-203-0-113-10.compute-1.amazonaws.com",
-				"internet_exposed":  "true",
-				"ip":                "203.0.113.10",
-				"public":            "true",
-				"resource_id":       "eni-1",
-				"resource_name":     "prod-web-eni",
-				"resource_provider": "aws",
-				"resource_type":     "network_interface",
-				"target_host":       "d111111abcdef8.cloudfront.net",
-				"alternate_hosts":   "app.writer.com",
+				"domain":               "123456789012",
+				"endpoint_id":          "eni-1",
+				"endpoint_type":        "public_network_interface",
+				"external_exposure":    "true",
+				"host":                 "ec2-203-0-113-10.compute-1.amazonaws.com",
+				"internet_exposed":     "true",
+				"ip":                   "203.0.113.10",
+				"public":               "true",
+				"resource_id":          "eni-1",
+				"resource_name":        "prod-web-eni",
+				"resource_provider":    "aws",
+				"resource_type":        "network_interface",
+				"target_host":          "d111111abcdef8.cloudfront.net",
+				"alternate_hosts":      "app.writer.com",
+				"attached_instance_id": "i-network-1",
+			},
+		},
+		{
+			Id:       "aws-public-eip",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.public_endpoint",
+			Attributes: map[string]string{
+				"associated_instance_id": "i-eip-1",
+				"domain":                 "123456789012",
+				"endpoint_id":            "eipalloc-1",
+				"endpoint_type":          "public_ip",
+				"external_exposure":      "true",
+				"internet_exposed":       "true",
+				"ip":                     "203.0.113.20",
+				"public":                 "true",
+				"resource_id":            "eipalloc-1",
+				"resource_name":          "eipalloc-1",
+				"resource_provider":      "aws",
+				"resource_type":          "elastic_ip",
 			},
 		},
 		{
@@ -2512,6 +2572,8 @@ func TestProjectCloudExposureAndPrivilegePaths(t *testing.T) {
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationRepresents, "urn:cerebro:writer:internet_host:d111111abcdef8.cloudfront.net")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationRepresents, "urn:cerebro:writer:internet_host:app.writer.com")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationRepresents, "urn:cerebro:writer:internet_ip:203.0.113.10")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationAttachedTo, "urn:cerebro:writer:aws_ec2_instance:i-network-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_elastic_ip:eipalloc-1", relationAssociatedWith, "urn:cerebro:writer:aws_ec2_instance:i-eip-1")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_role:arn:aws:iam::999999999999:role/ExternalAdmin", relationCanAssume, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/AdminRole")
 	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_user:admin@writer.com", relationCanImpersonate, "urn:cerebro:writer:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com")
 	assertProjectedLink(t, state, "urn:cerebro:writer:azure_service_principal:sp-1", relationAssignedTo, "urn:cerebro:writer:azure_service_principal:sp-resource-1")

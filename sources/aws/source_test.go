@@ -430,7 +430,7 @@ func TestReadAWSExposureAndTrustPreview(t *testing.T) {
 				IpProtocol: awssdk.String("tcp"), FromPort: awssdk.Int32(443), ToPort: awssdk.Int32(443), IpRanges: []ec2types.IpRange{{CidrIp: awssdk.String("0.0.0.0/0")}},
 			}},
 		}},
-		addresses: []ec2types.Address{{AllocationId: awssdk.String("eipalloc-1"), PublicIp: awssdk.String("203.0.113.10"), NetworkInterfaceId: awssdk.String("eni-1")}},
+		addresses: []ec2types.Address{{AllocationId: awssdk.String("eipalloc-1"), PublicIp: awssdk.String("203.0.113.10"), NetworkInterfaceId: awssdk.String("eni-1"), InstanceId: awssdk.String("i-1")}},
 	})
 	for _, tt := range []struct {
 		family string
@@ -460,8 +460,43 @@ func TestReadAWSExposureAndTrustPreview(t *testing.T) {
 				if got := pull.Events[0].Attributes["resource_id"]; got != "eipalloc-1" {
 					t.Fatalf("resource_id = %q, want eipalloc-1", got)
 				}
+				if got := pull.Events[0].Attributes["associated_instance_id"]; got != "i-1" {
+					t.Fatalf("associated_instance_id = %q, want i-1", got)
+				}
 			}
 		})
+	}
+}
+
+func TestReadAWSNetworkInterfacePublicEndpointIncludesAttachedInstance(t *testing.T) {
+	endpoints, _, err := listNetworkInterfacePublicEndpoints(context.Background(), awsClients{ec2: fakeAWS{
+		networkInterfaces: []ec2types.NetworkInterface{{
+			NetworkInterfaceId: awssdk.String("eni-1"),
+			Description:        awssdk.String("prod-web-eni"),
+			Association: &ec2types.NetworkInterfaceAssociation{
+				PublicDnsName: awssdk.String("ec2-203-0-113-10.compute-1.amazonaws.com"),
+				PublicIp:      awssdk.String("203.0.113.10"),
+			},
+			Attachment: &ec2types.NetworkInterfaceAttachment{
+				InstanceId: awssdk.String("i-1234567890abcdef0"),
+			},
+		}},
+	}}, settings{accountID: "123456789012", region: "us-east-1"}, publicEndpointCursor{}, 10)
+	if err != nil {
+		t.Fatalf("listNetworkInterfacePublicEndpoints() error = %v", err)
+	}
+	if len(endpoints) != 1 {
+		t.Fatalf("len(endpoints) = %d, want 1", len(endpoints))
+	}
+	event, err := publicEndpointEvent(settings{accountID: "123456789012"}, endpoints[0])
+	if err != nil {
+		t.Fatalf("publicEndpointEvent() error = %v", err)
+	}
+	if got := event.Attributes["attached_instance_id"]; got != "i-1234567890abcdef0" {
+		t.Fatalf("attached_instance_id = %q, want attached EC2 instance", got)
+	}
+	if got := event.Attributes["resource_type"]; got != "network_interface" {
+		t.Fatalf("resource_type = %q, want network_interface", got)
 	}
 }
 

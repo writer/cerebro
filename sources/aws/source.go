@@ -200,25 +200,27 @@ type awsResourceExposure struct {
 }
 
 type awsPublicEndpoint struct {
-	ResourceID     string
-	ResourceName   string
-	ResourceType   string
-	EndpointID     string
-	EndpointType   string
-	Host           string
-	TargetHost     string
-	TargetHosts    []string
-	AlternateHosts []string
-	IP             string
-	TargetIP       string
-	TargetIPs      []string
-	DNSRecordType  string
-	HostedZoneID   string
-	HostedZoneName string
-	PrivateZone    bool
-	Region         string
-	Scope          string
-	Service        string
+	ResourceID           string
+	ResourceName         string
+	ResourceType         string
+	EndpointID           string
+	EndpointType         string
+	Host                 string
+	TargetHost           string
+	TargetHosts          []string
+	AlternateHosts       []string
+	IP                   string
+	TargetIP             string
+	TargetIPs            []string
+	DNSRecordType        string
+	HostedZoneID         string
+	HostedZoneName       string
+	PrivateZone          bool
+	Region               string
+	Scope                string
+	Service              string
+	AttachedInstanceID   string
+	AssociatedInstanceID string
 }
 
 const (
@@ -1075,16 +1077,18 @@ func listAddressPublicEndpoints(ctx context.Context, clients awsClients, setting
 		}
 		allocationID := awssdk.ToString(address.AllocationId)
 		networkInterfaceID := awssdk.ToString(address.NetworkInterfaceId)
+		instanceID := awssdk.ToString(address.InstanceId)
 		endpoints = append(endpoints, awsPublicEndpoint{
-			ResourceID:   firstNonEmpty(allocationID, ip),
-			ResourceName: firstNonEmpty(allocationID, networkInterfaceID, ip),
-			ResourceType: "elastic_ip",
-			EndpointID:   firstNonEmpty(allocationID, ip),
-			EndpointType: "public_ip",
-			IP:           ip,
-			Region:       settings.region,
-			Scope:        settings.accountID,
-			Service:      "ec2",
+			ResourceID:           firstNonEmpty(allocationID, ip),
+			ResourceName:         firstNonEmpty(allocationID, networkInterfaceID, ip),
+			ResourceType:         "elastic_ip",
+			EndpointID:           firstNonEmpty(allocationID, ip),
+			EndpointType:         "public_ip",
+			IP:                   ip,
+			Region:               settings.region,
+			Scope:                settings.accountID,
+			Service:              "ec2",
+			AssociatedInstanceID: instanceID,
 		})
 	}
 	return endpoints, encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageENI}), nil
@@ -1106,17 +1110,22 @@ func listNetworkInterfacePublicEndpoints(ctx context.Context, clients awsClients
 			continue
 		}
 		networkInterfaceID := awssdk.ToString(ni.NetworkInterfaceId)
+		instanceID := ""
+		if ni.Attachment != nil {
+			instanceID = awssdk.ToString(ni.Attachment.InstanceId)
+		}
 		endpoints = append(endpoints, awsPublicEndpoint{
-			ResourceID:   firstNonEmpty(networkInterfaceID, ip, host),
-			ResourceName: firstNonEmpty(tagValue(ni.TagSet, "Name"), awssdk.ToString(ni.Description), networkInterfaceID, ip, host),
-			ResourceType: "network_interface",
-			EndpointID:   firstNonEmpty(networkInterfaceID, ip, host),
-			EndpointType: "public_network_interface",
-			Host:         host,
-			IP:           ip,
-			Region:       settings.region,
-			Scope:        settings.accountID,
-			Service:      "ec2",
+			ResourceID:         firstNonEmpty(networkInterfaceID, ip, host),
+			ResourceName:       firstNonEmpty(tagValue(ni.TagSet, "Name"), awssdk.ToString(ni.Description), networkInterfaceID, ip, host),
+			ResourceType:       "network_interface",
+			EndpointID:         firstNonEmpty(networkInterfaceID, ip, host),
+			EndpointType:       "public_network_interface",
+			Host:               host,
+			IP:                 ip,
+			Region:             settings.region,
+			Scope:              settings.accountID,
+			Service:            "ec2",
+			AttachedInstanceID: instanceID,
 		})
 	}
 	if awssdk.ToString(out.NextToken) != "" {
@@ -1823,31 +1832,33 @@ func resourceExposureEvent(settings settings, exposure awsResourceExposure) (*pr
 
 func publicEndpointEvent(settings settings, endpoint awsPublicEndpoint) (*primitives.Event, error) {
 	attributes := map[string]string{
-		"alternate_hosts":   strings.Join(cleanHosts(endpoint.AlternateHosts), ","),
-		"dns_record_type":   endpoint.DNSRecordType,
-		"domain":            settings.accountID,
-		"endpoint_id":       endpoint.EndpointID,
-		"endpoint_type":     endpoint.EndpointType,
-		"external_exposure": boolString(!endpoint.PrivateZone),
-		"family":            familyPublicEndpoint,
-		"host":              endpoint.Host,
-		"hosted_zone_id":    endpoint.HostedZoneID,
-		"hosted_zone_name":  endpoint.HostedZoneName,
-		"internet_exposed":  boolString(!endpoint.PrivateZone),
-		"ip":                endpoint.IP,
-		"private_zone":      boolString(endpoint.PrivateZone),
-		"public":            boolString(!endpoint.PrivateZone),
-		"region":            endpoint.Region,
-		"resource_id":       endpoint.ResourceID,
-		"resource_name":     endpoint.ResourceName,
-		"resource_provider": "aws",
-		"resource_type":     endpoint.ResourceType,
-		"scope":             endpoint.Scope,
-		"service":           endpoint.Service,
-		"target_host":       endpoint.TargetHost,
-		"target_hosts":      strings.Join(cleanHosts(endpoint.TargetHosts), ","),
-		"target_ip":         endpoint.TargetIP,
-		"target_ips":        strings.Join(cleanStrings(endpoint.TargetIPs), ","),
+		"alternate_hosts":        strings.Join(cleanHosts(endpoint.AlternateHosts), ","),
+		"associated_instance_id": endpoint.AssociatedInstanceID,
+		"attached_instance_id":   endpoint.AttachedInstanceID,
+		"dns_record_type":        endpoint.DNSRecordType,
+		"domain":                 settings.accountID,
+		"endpoint_id":            endpoint.EndpointID,
+		"endpoint_type":          endpoint.EndpointType,
+		"external_exposure":      boolString(!endpoint.PrivateZone),
+		"family":                 familyPublicEndpoint,
+		"host":                   endpoint.Host,
+		"hosted_zone_id":         endpoint.HostedZoneID,
+		"hosted_zone_name":       endpoint.HostedZoneName,
+		"internet_exposed":       boolString(!endpoint.PrivateZone),
+		"ip":                     endpoint.IP,
+		"private_zone":           boolString(endpoint.PrivateZone),
+		"public":                 boolString(!endpoint.PrivateZone),
+		"region":                 endpoint.Region,
+		"resource_id":            endpoint.ResourceID,
+		"resource_name":          endpoint.ResourceName,
+		"resource_provider":      "aws",
+		"resource_type":          endpoint.ResourceType,
+		"scope":                  endpoint.Scope,
+		"service":                endpoint.Service,
+		"target_host":            endpoint.TargetHost,
+		"target_hosts":           strings.Join(cleanHosts(endpoint.TargetHosts), ","),
+		"target_ip":              endpoint.TargetIP,
+		"target_ips":             strings.Join(cleanStrings(endpoint.TargetIPs), ","),
 	}
 	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "endpoint": endpoint})
 	if err != nil {

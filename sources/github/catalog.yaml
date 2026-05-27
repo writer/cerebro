@@ -3,6 +3,7 @@ name: GitHub
 description: GitHub audit, pull request, and Dependabot alert source.
 emitted_kinds:
   - github.audit
+  - github.code.repository
   - github.dependabot_alert
   - github.pull_request
 event_contracts:
@@ -14,6 +15,16 @@ event_contracts:
     required_payload_fields:
       - action
       - org
+  - kind: github.code.repository
+    schema_ref: github/code_repository/v1
+    required_attributes:
+      - owner_login
+      - repository
+      - resource_id
+      - resource_type
+    required_payload_fields:
+      - full_name
+      - owner_login
   - kind: github.dependabot_alert
     schema_ref: github/dependabot_alert/v1
     required_attributes:

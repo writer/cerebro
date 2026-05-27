@@ -348,6 +348,50 @@ func TestProjectGRCPersonIdentifier(t *testing.T) {
 		t.Fatalf("person entity missing: %#v", entity)
 	}
 	assertProjectedLink(t, state, personURN, relationHasIdentifier, identifierURN)
+	assertProjectedLink(t, state, personURN, relationSameActor, "urn:cerebro:writer:identity:email:alice@writer.com")
+	assertProjectedLink(t, state, "urn:cerebro:writer:identity:email:alice@writer.com", relationSameActor, personURN)
+}
+
+func TestProjectGRCPersonAndUserSameActorByEmail(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	for _, event := range []*cerebrov1.EventEnvelope{
+		{
+			Id:       "grc-person-person-1",
+			TenantId: "writer",
+			SourceId: "grc",
+			Kind:     "grc.person",
+			Attributes: map[string]string{
+				"provider":  "vanta",
+				"person_id": "person-1",
+				"email":     "alice@writer.com",
+			},
+		},
+		{
+			Id:       "grc-user-user-1",
+			TenantId: "writer",
+			SourceId: "grc",
+			Kind:     "grc.user",
+			Attributes: map[string]string{
+				"provider": "vanta",
+				"user_id":  "user-1",
+				"email":    "alice@writer.com",
+			},
+		},
+	} {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%s) error = %v", event.GetKind(), err)
+		}
+	}
+
+	personURN := "urn:cerebro:writer:person:vanta:person-1"
+	userURN := "urn:cerebro:writer:user:vanta:user-1"
+	identityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
+	assertProjectedLink(t, state, personURN, relationSameActor, identityURN)
+	assertProjectedLink(t, state, userURN, relationSameActor, identityURN)
+	assertProjectedLink(t, state, identityURN, relationSameActor, personURN)
+	assertProjectedLink(t, state, identityURN, relationSameActor, userURN)
 }
 
 func TestProjectGRCPersonStampsIdentifierLinksWithObservationTime(t *testing.T) {
@@ -862,6 +906,9 @@ func TestProjectGRCVulnerableAssetLabelsAndLinksGitHubRepoToIntegration(t *testi
 	}
 	if repo.Label != "writer/cerebro" {
 		t.Fatalf("github repo label = %q, want resource_name %q", repo.Label, "writer/cerebro")
+	}
+	if got := repo.Attributes["owner_login"]; got != "writer" {
+		t.Fatalf("github repo owner_login = %q, want writer", got)
 	}
 	assertProjectedLink(t, state, repoURN, relationBelongsTo, integrationURN)
 }

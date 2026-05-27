@@ -44,6 +44,7 @@ func sentinelOneAgentProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 			"agent_id":          agentID,
 			"agent_uuid":        strings.TrimSpace(attrs["uuid"]),
 			"computer_name":     strings.TrimSpace(attrs["computer_name"]),
+			"hostname":          strings.TrimSpace(firstNonEmpty(attrs["hostname"], attrs["computer_name"])),
 			"os_name":           strings.TrimSpace(attrs["os_name"]),
 			"os_type":           strings.TrimSpace(attrs["os_type"]),
 			"os_revision":       strings.TrimSpace(attrs["os_revision"]),
@@ -61,7 +62,13 @@ func sentinelOneAgentProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 			"machine_type":      strings.TrimSpace(attrs["machine_type"]),
 			"model_name":        strings.TrimSpace(attrs["model_name"]),
 			"serial_number":     strings.TrimSpace(attrs["serial_number"]),
+			"agent_ip_v4":       strings.TrimSpace(attrs["agent_ip_v4"]),
+			"agent_ip_v6":       strings.TrimSpace(attrs["agent_ip_v6"]),
 			"external_ip":       strings.TrimSpace(attrs["external_ip"]),
+			"group_ip":          strings.TrimSpace(attrs["group_ip"]),
+			"ip":                strings.TrimSpace(attrs["ip"]),
+			"ip_addresses":      strings.TrimSpace(attrs["ip_addresses"]),
+			"last_ip_to_mgmt":   strings.TrimSpace(attrs["last_ip_to_mgmt"]),
 			"domain":            strings.TrimSpace(attrs["domain"]),
 			"network_status":    strings.TrimSpace(attrs["network_status"]),
 			"operational_state": strings.TrimSpace(attrs["operational_state"]),
@@ -161,12 +168,17 @@ func sentinelOneThreatProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 			Attributes: map[string]string{
 				"agent_id":       agentID,
 				"computer_name":  strings.TrimSpace(attrs["computer_name"]),
+				"hostname":       strings.TrimSpace(firstNonEmpty(attrs["hostname"], attrs["computer_name"], attrs["agent_name"])),
 				"os_name":        strings.TrimSpace(attrs["agent_os_name"]),
 				"os_type":        strings.TrimSpace(attrs["agent_os_type"]),
 				"is_active":      strings.TrimSpace(attrs["is_active"]),
 				"is_infected":    strings.TrimSpace(attrs["is_infected"]),
 				"active_threats": strings.TrimSpace(attrs["active_threats"]),
-				"external_ip":    firstNonEmpty(strings.TrimSpace(attrs["external_ip"]), strings.TrimSpace(attrs["agent_ip_v4"])),
+				"agent_ip_v4":    strings.TrimSpace(attrs["agent_ip_v4"]),
+				"agent_ip_v6":    strings.TrimSpace(attrs["agent_ip_v6"]),
+				"external_ip":    strings.TrimSpace(attrs["external_ip"]),
+				"ip":             firstNonEmpty(strings.TrimSpace(attrs["ip"]), strings.TrimSpace(attrs["external_ip"]), strings.TrimSpace(attrs["agent_ip_v4"]), strings.TrimSpace(attrs["agent_ip_v6"])),
+				"ip_addresses":   strings.TrimSpace(attrs["ip_addresses"]),
 				"site_id":        strings.TrimSpace(attrs["site_id"]),
 				"group_id":       strings.TrimSpace(attrs["group_id"]),
 				"tenant_host":    strings.TrimSpace(attrs["tenant_host"]),
@@ -192,21 +204,25 @@ func sentinelOneThreatProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 }
 
 func addSentinelOneInternetContext(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenant string, event *cerebrov1.EventEnvelope, agentURN string, attrs map[string]string) {
-	for _, rawIP := range []string{attrs["external_ip"], attrs["agent_ip_v4"]} {
-		ipURN, ip := internetIPURN(tenant, rawIP)
-		if ipURN == "" {
-			continue
+	for _, rawIPs := range []string{attrs["external_ip"], attrs["agent_ip_v4"], attrs["agent_ip_v6"], attrs["ip"], attrs["ip_addresses"]} {
+		for _, rawIP := range splitCloudAttributeList(rawIPs) {
+			ipURN, ip := internetIPURN(tenant, rawIP)
+			if ipURN == "" {
+				continue
+			}
+			addInternetIPEntity(entities, tenant, event.GetSourceId(), ipURN, ip)
+			addLink(links, projectedLink(tenant, event.GetSourceId(), agentURN, ipURN, relationHasIdentifier, map[string]string{
+				"confidence": "0.80",
+				"at":         eventObservedAt(event),
+				"event_id":   event.GetId(),
+				"ip":         ip,
+				"match_type": "sentinelone_agent_ip",
+			}))
 		}
-		addInternetIPEntity(entities, tenant, event.GetSourceId(), ipURN, ip)
-		addLink(links, projectedLink(tenant, event.GetSourceId(), agentURN, ipURN, relationHasIdentifier, map[string]string{
-			"confidence": "0.80",
-			"at":         eventObservedAt(event),
-			"event_id":   event.GetId(),
-			"ip":         ip,
-			"match_type": "sentinelone_agent_ip",
-		}))
 	}
-	host := internetHostIfLikely(firstNonEmpty(attrs["computer_name"], attrs["agent_name"], attrs["hostname"]))
+	rawHost := firstNonEmpty(attrs["hostname"], attrs["computer_name"], attrs["agent_name"])
+	addEndpointIdentifierLink(entities, links, tenant, event.GetSourceId(), event, agentURN, "hostname", rawHost, "0.80")
+	host := internetHostIfLikely(rawHost)
 	if host == "" {
 		return
 	}

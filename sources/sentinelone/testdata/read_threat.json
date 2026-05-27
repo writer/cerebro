@@ -18,6 +18,10 @@
         "mitigation_status": "not_mitigated"
       },
       "agent_detection": {
+        "ip_v4": "203.0.113.20",
+        "ip_v6": "2001:db8::20",
+        "ip_addresses": "203.0.113.20,2001:db8::20,198.51.100.20",
+        "external_ip": "198.51.100.20",
         "uuid": "agent-uuid-1",
         "site_id": "site-fixture-1",
         "group_id": "group-fixture-1"
@@ -25,6 +29,7 @@
       "agent_realtime": {
         "agent_id": "agent-fixture-1",
         "computer_name": "host-fixture-1",
+        "hostname": "host-fixture-1",
         "is_active": true,
         "is_decommissioned": false,
         "is_infected": true,
@@ -38,13 +43,19 @@
     },
     "attributes": {
       "agent_id": "agent-fixture-1",
+      "agent_ip_v4": "203.0.113.20",
+      "agent_ip_v6": "2001:db8::20",
       "agent_uuid": "agent-uuid-1",
       "analyst_verdict": "true_positive",
       "classification": "Malware",
       "classification_source": "Engine",
       "computer_name": "host-fixture-1",
+      "external_ip": "198.51.100.20",
       "confidence_level": "malicious",
       "family": "threat",
+      "hostname": "host-fixture-1",
+      "ip": "203.0.113.20",
+      "ip_addresses": "203.0.113.20,2001:db8::20,198.51.100.20",
       "indicator_categories": "Malware",
       "incident_status": "unresolved",
       "is_active": "true",
