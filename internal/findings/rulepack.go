@@ -63,7 +63,7 @@ func builtinRulePacks() []RulePack {
 			ID:          "grc",
 			Name:        "GRC",
 			Description: "Provider-neutral GRC control, vulnerability, and vendor-risk findings.",
-			Rules: []Rule{
+			Rules: append([]Rule{
 				newGRCControlTestNeedsAttentionRule(),
 				newGRCVulnerabilitySLAOverdueRule(),
 				newGRCVendorReviewOverdueRule(),
@@ -71,7 +71,7 @@ func builtinRulePacks() []RulePack {
 				newGRCPrivilegedAccountMissingPersonRule(),
 				newGRCOverdueVulnerabilityLiveOnAssetsRule(),
 				newGRCFailingControlOpenOperationalFindingsRule(),
-			},
+			}, newCoordinationGraphRules()...),
 		},
 		{
 			ID:          "sentinelone",
