@@ -49,6 +49,7 @@ func cosmoFactProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 		return nil, nil, nil
 	}
 	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
 	factURN := projectionURN(tenantID, "cosmo_fact", factID)
 	addEntity(entities, cosmoEntity(event, factURN, "cosmo.fact", factID, cosmoAttributes(attrs, map[string]string{
 		"record_id":  attrs["record_id"],
@@ -57,7 +58,10 @@ func cosmoFactProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 		"source":     attrs["source"],
 		"confidence": attrs["confidence"],
 	})))
-	projectedEntities, projectedLinks := entitiesAndLinks(entities, nil)
+	if sessionID := cosmoFactSessionID(attrs["source"]); sessionID != "" {
+		addCosmoSessionLink(entities, links, event, tenantID, factURN, sessionID)
+	}
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }
 
@@ -158,4 +162,12 @@ func addCosmoSessionLink(entities map[string]*ports.ProjectedEntity, links map[s
 	}
 	addEntity(entities, cosmoEntity(event, sessionURN, "cosmo.session", sessionID, map[string]string{"ticket_id": strings.TrimSpace(sessionID)}))
 	addLink(links, projectedLink(tenantID, event.GetSourceId(), fromURN, sessionURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+}
+
+func cosmoFactSessionID(source string) string {
+	source = strings.TrimSpace(source)
+	if strings.HasPrefix(source, "session:") {
+		return strings.TrimSpace(strings.TrimPrefix(source, "session:"))
+	}
+	return ""
 }
