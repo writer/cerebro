@@ -326,7 +326,9 @@ func cursorWatermark(cursor aureliusCursor) time.Time {
 }
 
 func watermarkString(watermark time.Time, fallback time.Time) string {
-	if watermark.IsZero() {
+	if !watermark.IsZero() && !fallback.IsZero() && fallback.After(watermark) {
+		watermark = fallback
+	} else if watermark.IsZero() {
 		watermark = fallback
 	}
 	if watermark.IsZero() {
@@ -463,10 +465,12 @@ func (s *Source) readFamily(ctx context.Context, st settings, cursor *cerebrov1.
 		pull.Checkpoint = &cerebrov1.SourceCheckpoint{
 			CursorOpaque: checkpointCursor,
 		}
-		if !watermark.IsZero() {
-			pull.Checkpoint.Watermark = timestamppb.New(watermark.UTC())
-		} else if !priorWatermark.IsZero() {
-			pull.Checkpoint.Watermark = timestamppb.New(priorWatermark)
+		checkpointWatermark := watermark
+		if priorWatermark.After(checkpointWatermark) {
+			checkpointWatermark = priorWatermark
+		}
+		if !checkpointWatermark.IsZero() {
+			pull.Checkpoint.Watermark = timestamppb.New(checkpointWatermark.UTC())
 		}
 	}
 	return pull, nil

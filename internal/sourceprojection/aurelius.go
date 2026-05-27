@@ -24,20 +24,20 @@ func aureliusImageScanProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 	scanID := firstAttribute(attrs, "scan_id", "image_digest")
 	scanURN := projectionURN(tenantID, "aurelius_image_scan", scanID)
 	if scanURN != "" {
+		scanAttrs := map[string]string{}
+		addAureliusAttribute(scanAttrs, "completed_at", firstAttribute(attrs, "completed_at"))
+		addAureliusAttribute(scanAttrs, "image_digest", firstAttribute(attrs, "image_digest"))
+		addAureliusAttribute(scanAttrs, "registry", firstAttribute(attrs, "registry"))
+		addAureliusAttribute(scanAttrs, "scanner", firstAttribute(attrs, "scanner"))
+		addAureliusAttribute(scanAttrs, "status", firstAttribute(attrs, "status"))
+		addAureliusAttribute(scanAttrs, "verdict", firstAttribute(attrs, "verdict"))
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        scanURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
 			EntityType: "aurelius.image_scan",
 			Label:      firstAttribute(attrs, "scan_id", "image_digest"),
-			Attributes: map[string]string{
-				"completed_at": firstAttribute(attrs, "completed_at"),
-				"image_digest": firstAttribute(attrs, "image_digest"),
-				"registry":     firstAttribute(attrs, "registry"),
-				"scanner":      firstAttribute(attrs, "scanner"),
-				"status":       firstAttribute(attrs, "status"),
-				"verdict":      firstAttribute(attrs, "verdict"),
-			},
+			Attributes: scanAttrs,
 		})
 		if imageURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), scanURN, imageURN, relationObservedOn, map[string]string{"event_id": event.GetId()}))
@@ -161,19 +161,19 @@ func aureliusCatalogPromotionProjections(event *cerebrov1.EventEnvelope) ([]*por
 	promotionKey := track + "|" + firstAttribute(attrs, "image_digest")
 	promotionURN := projectionURN(tenantID, "aurelius_catalog_promotion", promotionKey)
 	if promotionURN != "" {
+		promotionAttrs := map[string]string{}
+		addAureliusAttribute(promotionAttrs, "image_digest", firstAttribute(attrs, "image_digest"))
+		addAureliusAttribute(promotionAttrs, "promoted_by", firstAttribute(attrs, "promoted_by"))
+		addAureliusAttribute(promotionAttrs, "promoted_at", firstAttribute(attrs, "promoted_at"))
+		addAureliusAttribute(promotionAttrs, "track", track)
+		addAureliusAttribute(promotionAttrs, "verdict", firstAttribute(attrs, "verdict"))
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        promotionURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
 			EntityType: "aurelius.catalog_promotion",
 			Label:      strings.TrimSpace(track + ":" + firstAttribute(attrs, "image_digest")),
-			Attributes: map[string]string{
-				"image_digest": firstAttribute(attrs, "image_digest"),
-				"promoted_by":  firstAttribute(attrs, "promoted_by"),
-				"promoted_at":  firstAttribute(attrs, "promoted_at"),
-				"track":        track,
-				"verdict":      firstAttribute(attrs, "verdict"),
-			},
+			Attributes: promotionAttrs,
 		})
 		if imageURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), promotionURN, imageURN, relationRepresents, map[string]string{"event_id": event.GetId()}))

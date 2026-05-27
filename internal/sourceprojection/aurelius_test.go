@@ -174,6 +174,66 @@ func TestProjectAureliusSparseImageOmitsEmptyImageMetadata(t *testing.T) {
 	}
 }
 
+func TestProjectAureliusImageScanOmitsBlankOptionalMetadata(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "aurelius-image-scan-sparse",
+		TenantId: "writer",
+		SourceId: "aurelius",
+		Kind:     "aurelius.image_scan",
+		Payload: mustJSON(t, map[string]any{
+			"completed_at": "2026-05-22T15:30:00Z",
+			"image_digest": "sha256:scan",
+			"registry":     "us-docker.pkg.dev",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	entity := state.entities["urn:cerebro:writer:aurelius_image_scan:sha256:scan"]
+	if entity == nil {
+		t.Fatal("image scan entity missing")
+	}
+	for _, key := range []string{"scanner", "status", "verdict"} {
+		if value, ok := entity.Attributes[key]; ok {
+			t.Fatalf("image scan attribute %q = %q, want omitted", key, value)
+		}
+	}
+}
+
+func TestProjectAureliusCatalogPromotionOmitsBlankOptionalMetadata(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "aurelius-catalog-promotion-sparse",
+		TenantId: "writer",
+		SourceId: "aurelius",
+		Kind:     "aurelius.catalog_promotion",
+		Payload: mustJSON(t, map[string]any{
+			"image_digest": "sha256:promoted",
+			"promoted_by":  "release-bot",
+			"track":        "prod",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	entity := state.entities["urn:cerebro:writer:aurelius_catalog_promotion:prod|sha256:promoted"]
+	if entity == nil {
+		t.Fatal("catalog promotion entity missing")
+	}
+	for _, key := range []string{"promoted_at", "verdict"} {
+		if value, ok := entity.Attributes[key]; ok {
+			t.Fatalf("catalog promotion attribute %q = %q, want omitted", key, value)
+		}
+	}
+}
+
 func TestProjectAureliusFindingUsesPayloadVersionEvidence(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

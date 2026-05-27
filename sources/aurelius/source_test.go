@@ -679,6 +679,57 @@ func TestReadPreservesCheckpointWatermarkOnEmptyFollowup(t *testing.T) {
 	}
 }
 
+func TestReadKeepsCheckpointWatermarkMonotonic(t *testing.T) {
+	src, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	priorWatermark := time.Date(2026, 5, 22, 15, 30, 0, 0, time.UTC)
+	olderEventTime := priorWatermark.Add(-time.Hour)
+	const key = "findings/2026/05/22/16/backfill.ndjson"
+	client := newFakeS3([]fakeObject{{
+		key: key,
+		records: []aureliusRecord{{
+			EventID:    "01HX-backfill",
+			OccurredAt: olderEventTime,
+			Attributes: map[string]string{
+				"image_digest": "sha256:aaa",
+				"severity":     "high",
+			},
+			Payload: map[string]interface{}{
+				"cve_id":  "CVE-2026-1111",
+				"package": "openssl",
+			},
+		}},
+	}})
+	src.newClient = func(context.Context, settings) (s3API, error) { return client, nil }
+
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"family":    familyFinding,
+		"bucket":    "writer-aurelius-telemetry",
+		"prefix":    "findings/",
+		"tenant_id": "writer",
+	})
+	cursor := &cerebrov1.SourceCursor{Opaque: encodeCursor(aureliusCursor{
+		LastKey:   "findings/2026/05/22/15/batch.ndjson",
+		Watermark: priorWatermark.Format(time.RFC3339Nano),
+	})}
+	pull, err := src.Read(context.Background(), cfg, cursor)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Checkpoint.GetWatermark().AsTime(); !got.Equal(priorWatermark) {
+		t.Fatalf("checkpoint watermark = %v, want prior %v", got, priorWatermark)
+	}
+	checkpoint := mustDecodeAureliusCursor(t, pull.Checkpoint.GetCursorOpaque())
+	if checkpoint.Watermark != priorWatermark.Format(time.RFC3339Nano) {
+		t.Fatalf("cursor watermark = %q, want %q", checkpoint.Watermark, priorWatermark.Format(time.RFC3339Nano))
+	}
+}
+
 func TestBuildEventPromotesFindingPayloadVulnerabilityAttributes(t *testing.T) {
 	event, err := buildEvent(settings{tenantID: "writer"}, aureliusRecord{
 		EventID:    "01HX0010-finding-a",
