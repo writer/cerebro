@@ -240,8 +240,12 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if st.tenantID == "" {
 		return settings{}, ErrTenantIDRequired
 	}
-	if raw, ok := cfg.Lookup("page_size"); ok && strings.TrimSpace(raw) != "" {
-		size, err := strconv.Atoi(strings.TrimSpace(raw))
+	rawPageSize, ok := cfg.Lookup("per_page")
+	if !ok || strings.TrimSpace(rawPageSize) == "" {
+		rawPageSize, ok = cfg.Lookup("page_size")
+	}
+	if ok && strings.TrimSpace(rawPageSize) != "" {
+		size, err := strconv.Atoi(strings.TrimSpace(rawPageSize))
 		if err != nil {
 			return settings{}, fmt.Errorf("%w: %w", ErrInvalidPageSize, err)
 		}

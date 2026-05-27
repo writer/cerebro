@@ -77,13 +77,28 @@ func TestParseSettings(t *testing.T) {
 				"bucket":    "writer-aurelius-telemetry",
 				"prefix":    "findings/",
 				"region":    "us-west-2",
-				"page_size": "250",
+				"per_page":  "250",
 				"tenant_id": "writer",
 			},
 			want: settings{
 				family: familyFinding, bucket: "writer-aurelius-telemetry",
 				prefix: "findings/", region: "us-west-2", tenantID: "writer",
 				perPage: 250,
+			},
+		},
+		{
+			name: "per-page-precedes-legacy-page-size",
+			values: map[string]string{
+				"bucket":    "writer-aurelius-telemetry",
+				"prefix":    "verdicts/",
+				"per_page":  "25",
+				"page_size": "250",
+				"tenant_id": "writer",
+			},
+			want: settings{
+				family: familyVerdict, bucket: "writer-aurelius-telemetry",
+				prefix: "verdicts/", region: defaultRegion, tenantID: "writer",
+				perPage: 25,
 			},
 		},
 		{
