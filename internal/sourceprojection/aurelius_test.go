@@ -209,3 +209,37 @@ func TestProjectAureliusFindingUsesPayloadVersionEvidence(t *testing.T) {
 		t.Fatalf("fixed_version = %q, want 3.0.12", got)
 	}
 }
+
+func TestProjectAureliusPolicyExceptionOmitsBlankVulnerabilityMetadata(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "aurelius-policy-exception-sparse",
+		TenantId: "writer",
+		SourceId: "aurelius",
+		Kind:     "aurelius.policy_exception",
+		Payload: mustJSON(t, map[string]any{
+			"cve_id":     "CVE-2026-1111",
+			"expires_at": "2026-06-01T00:00:00Z",
+			"status":     "active",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	vulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-1111"
+	entity := state.entities[vulnerabilityURN]
+	if entity == nil {
+		t.Fatalf("vulnerability entity %q missing", vulnerabilityURN)
+	}
+	if got := entity.Attributes["identifier"]; got != "CVE-2026-1111" {
+		t.Fatalf("identifier = %q, want CVE-2026-1111; attrs=%v", got, entity.Attributes)
+	}
+	for _, key := range []string{"severity", "source_provider", "vulnerability_type"} {
+		if value, ok := entity.Attributes[key]; ok {
+			t.Fatalf("vulnerability attribute %q = %q, want omitted", key, value)
+		}
+	}
+}
