@@ -90,7 +90,7 @@ RETURN source.urn AS primary_urn,
        'HIGH' AS severity,
        'Source integration has ' + toString(finding_count) + ' open finding(s)' AS summary,
        'Prioritize remediation at the source integration level' AS action,
-       [source.urn] + [f IN findings[0..20] | f.urn] AS resource_urns,
+       [source.urn] AS resource_urns,
        [f IN findings[0..20] | {urn: f.urn, label: f.label, entity_type: f.entity_type, relation: 'has_finding', attributes_json: coalesce(f.attributes_json, '')}] AS evidence
 ORDER BY finding_count DESC, source.urn
 LIMIT $row_limit`, map[string]any{"finding_threshold": int64(coordinationGraphConcentrationMinimum)})
@@ -324,7 +324,7 @@ RETURN resource.urn AS primary_urn,
        'HIGH' AS severity,
        'Resource has ' + toString(finding_count) + ' open finding(s)' AS summary,
        'Coordinate remediation by the shared graph resource' AS action,
-       [resource.urn] + [f IN findings[0..20] | f.urn] AS resource_urns,
+       [resource.urn] AS resource_urns,
        [f IN findings[0..20] | {urn: f.urn, label: f.label, entity_type: f.entity_type, relation: 'has_finding', attributes_json: coalesce(f.attributes_json, '')}] AS evidence
 ORDER BY finding_count DESC, resource.urn
 LIMIT $row_limit`, map[string]any{"finding_threshold": int64(coordinationGraphConcentrationMinimum)})
@@ -465,12 +465,26 @@ func (r *coordinationGraphRule) EvaluateRows(_ context.Context, runtime *cerebro
 }
 
 func limitedCoordinationResourceURNs(primaryURN string, relatedURNs []string) []string {
-	resourceURNs := deduplicateStrings(append([]string{primaryURN}, relatedURNs...))
+	primaryURN = strings.TrimSpace(primaryURN)
+	resourceURNs := []string{primaryURN}
+	for _, relatedURN := range relatedURNs {
+		relatedURN = strings.TrimSpace(relatedURN)
+		if relatedURN == "" || relatedURN != primaryURN && isFindingResourceURN(relatedURN) {
+			continue
+		}
+		resourceURNs = append(resourceURNs, relatedURN)
+	}
+	resourceURNs = deduplicateStrings(resourceURNs)
 	limit := coordinationGraphRelatedResourceLimit + 1
 	if len(resourceURNs) > limit {
 		resourceURNs = resourceURNs[:limit]
 	}
 	return resourceURNs
+}
+
+func isFindingResourceURN(urn string) bool {
+	parts := strings.Split(strings.TrimSpace(urn), ":")
+	return len(parts) >= 4 && parts[0] == "urn" && parts[1] == "cerebro" && parts[3] == "finding"
 }
 
 func coordinationRowStrings(row ports.CypherRow, key string) []string {

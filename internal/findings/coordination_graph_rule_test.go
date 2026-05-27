@@ -35,8 +35,11 @@ func TestCoordinationGraphRuleQueryRequiresTenant(t *testing.T) {
 	if !strings.Contains(query.Query, "LIMIT $row_limit") {
 		t.Fatalf("query missing LIMIT $row_limit: %s", query.Query)
 	}
-	if !strings.Contains(query.Query, "findings[0..20] | f.urn") {
-		t.Fatalf("query does not cap related finding ResourceURNs: %s", query.Query)
+	if !strings.Contains(query.Query, "findings[0..20] | {urn: f.urn") {
+		t.Fatalf("query does not cap related finding evidence: %s", query.Query)
+	}
+	if strings.Contains(query.Query, "+ [f IN findings") {
+		t.Fatalf("query projects related finding anchors as ResourceURNs: %s", query.Query)
 	}
 	if !strings.Contains(query.Query, "ORDER BY finding.urn") {
 		t.Fatalf("query does not deterministically order findings before capping: %s", query.Query)
@@ -103,8 +106,8 @@ func TestCoordinationGraphRuleEvaluateRowsBuildsFinding(t *testing.T) {
 	if finding.Attributes["primary_resource_urn"] != "urn:cerebro:writer:source:vanta:integration:aws" {
 		t.Fatalf("primary_resource_urn = %q", finding.Attributes["primary_resource_urn"])
 	}
-	if len(finding.ResourceURNs) != 2 {
-		t.Fatalf("ResourceURNs = %#v, want primary and evidence", finding.ResourceURNs)
+	if len(finding.ResourceURNs) != 1 || finding.ResourceURNs[0] != "urn:cerebro:writer:source:vanta:integration:aws" {
+		t.Fatalf("ResourceURNs = %#v, want only the primary remediation anchor", finding.ResourceURNs)
 	}
 	if len(finding.GraphEvidenceRows) != 1 {
 		t.Fatalf("len(GraphEvidenceRows) = %d, want 1", len(finding.GraphEvidenceRows))
@@ -116,7 +119,7 @@ func TestCoordinationGraphRuleEvaluateRowsCapsResourceURNs(t *testing.T) {
 	runtime := &cerebrov1.SourceRuntime{Id: "writer-cosmo-survey-feedback", TenantId: "writer", SourceId: "cosmo", Config: map[string]string{"family": "survey_feedback"}}
 	resourceURNs := []any{"urn:cerebro:writer:resource:one"}
 	for i := 1; i <= coordinationGraphRelatedResourceLimit+5; i++ {
-		resourceURNs = append(resourceURNs, fmt.Sprintf("urn:cerebro:writer:finding:%02d", i))
+		resourceURNs = append(resourceURNs, fmt.Sprintf("urn:cerebro:writer:resource:related:%02d", i))
 	}
 
 	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{{Values: map[string]any{
@@ -141,15 +144,53 @@ func TestCoordinationGraphRuleEvaluateRowsCapsResourceURNs(t *testing.T) {
 	}
 }
 
+func TestCoordinationGraphRuleEvaluateRowsDropsEvidenceFindingURNResources(t *testing.T) {
+	rule := newResourceMultipleOpenFindingsRule().(GraphRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-cosmo-message", TenantId: "writer", SourceId: "cosmo", Config: map[string]string{"family": "message"}}
+
+	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{{Values: map[string]any{
+		"primary_urn":     "urn:cerebro:writer:resource:one",
+		"primary_label":   "Resource One",
+		"primary_type":    "resource",
+		"fingerprint_key": "urn:cerebro:writer:resource:one",
+		"severity":        "HIGH",
+		"summary":         "Resource has many open finding(s)",
+		"action":          "Coordinate remediation by the shared graph resource",
+		"resource_urns": []any{
+			"urn:cerebro:writer:resource:one",
+			"urn:cerebro:writer:finding:existing",
+		},
+		"evidence": []any{map[string]any{
+			"urn":             "urn:cerebro:writer:finding:existing",
+			"label":           "Existing finding",
+			"entity_type":     "finding",
+			"relation":        "has_finding",
+			"attributes_json": `{"status":"open","rule_id":"example"}`,
+		}},
+	}}})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("len(findings) = %d, want 1", len(findings))
+	}
+	if got := findings[0].ResourceURNs; len(got) != 1 || got[0] != "urn:cerebro:writer:resource:one" {
+		t.Fatalf("ResourceURNs = %#v, want only the primary remediation anchor", got)
+	}
+	if len(findings[0].GraphEvidenceRows) != 1 {
+		t.Fatalf("len(GraphEvidenceRows) = %d, want evidence finding retained", len(findings[0].GraphEvidenceRows))
+	}
+}
+
 func TestCoordinationGraphRuleMergeDropsHistoricalResourceOverflow(t *testing.T) {
 	primaryURN := "urn:cerebro:writer:resource:one"
 	existingURNs := []string{primaryURN}
 	for i := 1; i <= coordinationGraphRelatedResourceLimit+10; i++ {
-		existingURNs = append(existingURNs, fmt.Sprintf("urn:cerebro:writer:finding:old:%02d", i))
+		existingURNs = append(existingURNs, fmt.Sprintf("urn:cerebro:writer:resource:old:%02d", i))
 	}
 	incomingURNs := []string{primaryURN}
 	for i := 1; i <= coordinationGraphRelatedResourceLimit; i++ {
-		incomingURNs = append(incomingURNs, fmt.Sprintf("urn:cerebro:writer:finding:fresh:%02d", i))
+		incomingURNs = append(incomingURNs, fmt.Sprintf("urn:cerebro:writer:resource:fresh:%02d", i))
 	}
 
 	merged := mergeFindingEvidenceForUpsert(&ports.FindingRecord{
@@ -167,10 +208,10 @@ func TestCoordinationGraphRuleMergeDropsHistoricalResourceOverflow(t *testing.T)
 	if got, want := len(merged.ResourceURNs), coordinationGraphRelatedResourceLimit+1; got != want {
 		t.Fatalf("len(ResourceURNs) = %d, want %d: %#v", got, want, merged.ResourceURNs)
 	}
-	if containsString(merged.ResourceURNs, "urn:cerebro:writer:finding:old:01") {
+	if containsString(merged.ResourceURNs, "urn:cerebro:writer:resource:old:01") {
 		t.Fatalf("merged ResourceURNs carried historical overflow: %#v", merged.ResourceURNs)
 	}
-	if !containsString(merged.ResourceURNs, "urn:cerebro:writer:finding:fresh:20") {
+	if !containsString(merged.ResourceURNs, "urn:cerebro:writer:resource:fresh:20") {
 		t.Fatalf("merged ResourceURNs missing capped fresh resource: %#v", merged.ResourceURNs)
 	}
 	if !containsString(merged.EventIDs, "event-old") || !containsString(merged.EventIDs, "event-new") {
