@@ -390,6 +390,10 @@ func (h *deviceAuthHTTPHandler) handleIngestTelemetry(w http.ResponseWriter, r *
 		writeDeviceAuthError(w, http.StatusRequestEntityTooLarge, "request_too_large", "telemetry body exceeds limit")
 		return
 	}
+	if err := validateTelemetryBody(body); err != nil {
+		writeDeviceAuthError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
 	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
 	result, err := h.service.IngestTelemetry(r.Context(), deviceauth.IngestPayload{
 		DeviceID:       auth.principal.DeviceID,
@@ -406,6 +410,17 @@ func (h *deviceAuthHTTPHandler) handleIngestTelemetry(w http.ResponseWriter, r *
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(result.Status)
 	_, _ = w.Write(result.Body)
+}
+
+func validateTelemetryBody(body []byte) error {
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return fmt.Errorf("telemetry body must be a JSON object: %w", err)
+	}
+	if payload == nil {
+		return errors.New("telemetry body must be a JSON object")
+	}
+	return nil
 }
 
 func (h *deviceAuthHTTPHandler) handleJWKS(w http.ResponseWriter, _ *http.Request) {

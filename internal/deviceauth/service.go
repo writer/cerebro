@@ -298,6 +298,10 @@ func (s *Service) Enroll(ctx context.Context, request EnrollRequest) (EnrollResp
 	}
 	if jkt != "" {
 		metadata["dpop_jkt"] = jkt
+	} else if existing.Metadata != nil {
+		if priorJKT := strings.TrimSpace(existing.Metadata["dpop_jkt"]); priorJKT != "" {
+			metadata["dpop_jkt"] = priorJKT
+		}
 	}
 	if attResult.KeyID != "" {
 		metadata["attestation_keyid"] = attResult.KeyID

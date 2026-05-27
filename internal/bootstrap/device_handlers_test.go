@@ -434,6 +434,37 @@ func TestAuthMiddlewarePreservesDPoPErrorCodes(t *testing.T) {
 	}
 }
 
+func TestTelemetryIngestRejectsMalformedBodies(t *testing.T) {
+	app, _, _ := newAppForDeviceTest(t)
+	handler := app.Handler()
+	bootstrap, err := app.deviceService.IssueBootstrapToken(context.Background(), deviceauth.IssueBootstrapTokenRequest{
+		HardwareUUID: "hw-json",
+		TenantID:     "writer",
+	})
+	if err != nil {
+		t.Fatalf("IssueBootstrapToken: %v", err)
+	}
+	enroll, err := app.deviceService.Enroll(context.Background(), deviceauth.EnrollRequest{
+		BootstrapToken: bootstrap.Token,
+		HardwareUUID:   "hw-json",
+	})
+	if err != nil {
+		t.Fatalf("Enroll: %v", err)
+	}
+
+	for _, body := range []string{"", "not-json", "[]", "null"} {
+		req := httptest.NewRequest(http.MethodPost, "/platform/telemetry/ingest", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+enroll.AccessToken)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Idempotency-Key", "telemetry-json-"+body)
+		resp := httptest.NewRecorder()
+		handler.ServeHTTP(resp, req)
+		if resp.Code != http.StatusBadRequest {
+			t.Fatalf("body %q status = %d, want 400; response=%s", body, resp.Code, resp.Body.String())
+		}
+	}
+}
+
 func TestRemoteIPForRateLimitIgnoresClientForwardedFor(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/platform/devices/enroll", nil)
 	req.RemoteAddr = "198.51.100.10:12345"
