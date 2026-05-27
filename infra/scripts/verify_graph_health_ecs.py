@@ -388,6 +388,7 @@ def _verify_current_ingest_runs(
     payload: dict[str, Any],
     declared_runtime_ids: set[str] | None = None,
     max_running_minutes: int = DEFAULT_MAX_RUNNING_MINUTES,
+    allow_transient_source_failures: bool = False,
     now: datetime | None = None,
 ) -> int:
     latest_by_runtime = _latest_ingest_runs_by_runtime(payload)
@@ -398,7 +399,13 @@ def _verify_current_ingest_runs(
             f"missing graph ingest run history for {len(missing)} declared runtime(s): {', '.join(missing)}",
             retryable=False,
         )
-    failed = [run for run in latest_by_runtime.values() if str(run.get("status") or "").strip() == "failed"]
+    successful_runtime_ids = _successful_ingest_runtime_ids(payload)
+    failed = [
+        run
+        for run in latest_by_runtime.values()
+        if str(run.get("status") or "").strip() == "failed"
+        and not _can_ignore_transient_source_failure(run, successful_runtime_ids, allow_transient_source_failures)
+    ]
     if failed:
         summary = ", ".join(_ingest_run_summary(run) for run in failed)
         raise CurrentIngestRunsError(f"latest graph ingest run failed for {len(failed)} runtime(s): {summary}", retryable=True)
@@ -424,6 +431,39 @@ def _verify_current_ingest_runs(
         summary = ", ".join(_ingest_run_summary(run) for run in zero_projection)
         raise CurrentIngestRunsError(f"latest graph ingest projected no graph records for {len(zero_projection)} runtime(s): {summary}", retryable=True)
     return len(latest_by_runtime)
+
+
+def _successful_ingest_runtime_ids(payload: dict[str, Any]) -> set[str]:
+    runtime_ids: set[str] = set()
+    for run in payload.get("runs") or []:
+        if not isinstance(run, dict):
+            continue
+        if str(run.get("status") or "").strip() != "completed":
+            continue
+        runtime_id = str(run.get("runtime_id") or run.get("id") or "").strip()
+        if runtime_id:
+            runtime_ids.add(runtime_id)
+    return runtime_ids
+
+
+def _can_ignore_transient_source_failure(run: dict[str, Any], successful_runtime_ids: set[str], enabled: bool) -> bool:
+    if not enabled:
+        return False
+    runtime_id = str(run.get("runtime_id") or run.get("id") or "").strip()
+    if runtime_id not in successful_runtime_ids:
+        return False
+    error = str(run.get("error") or "").lower()
+    return any(
+        token in error
+        for token in (
+            "client.timeout exceeded",
+            "context deadline exceeded",
+            "i/o timeout",
+            "request canceled",
+            "temporary failure",
+            "tls handshake timeout",
+        )
+    )
 
 
 def _ingest_run_summary(run: dict[str, Any]) -> str:
@@ -456,6 +496,7 @@ def _verify_current_ingest_runs_with_retries(
     graph_command_retry_seconds: int,
     ingest_health_retry_seconds: int,
     max_running_minutes: int,
+    allow_transient_source_failures: bool,
 ) -> tuple[GraphCommandResult, int]:
     deadline = time.time() + ingest_health_retry_seconds
     while True:
@@ -472,6 +513,7 @@ def _verify_current_ingest_runs_with_retries(
             current_ingest_runtimes = _verify_current_ingest_runs(
                 ingest_runs.payload,
                 max_running_minutes=max_running_minutes,
+                allow_transient_source_failures=allow_transient_source_failures,
             )
             return ingest_runs, current_ingest_runtimes
         except CurrentIngestRunsError as exc:
@@ -577,6 +619,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-running-minutes", type=int, default=DEFAULT_MAX_RUNNING_MINUTES)
     parser.add_argument("--graph-command-retry-seconds", type=int, default=300)
     parser.add_argument("--ingest-health-retry-seconds", type=int, default=1800)
+    parser.add_argument(
+        "--allow-transient-source-failures",
+        action="store_true",
+        help="Do not fail deployment health when the latest source ingest failed due to a transient provider timeout and older successful graph ingest history exists.",
+    )
     args = parser.parse_args(argv)
 
     stack = _stack_name(args.stack_file)
@@ -661,6 +708,7 @@ def main(argv: list[str] | None = None) -> int:
         args.graph_command_retry_seconds,
         args.ingest_health_retry_seconds,
         args.max_running_minutes,
+        args.allow_transient_source_failures,
     )
     missing_ingest_runtimes = _missing_declared_ingest_runtime_ids(ingest_runs.payload, declared_runtime_ids)
     if missing_ingest_runtimes:
