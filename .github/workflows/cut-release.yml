@@ -1,6 +1,9 @@
 name: Cut Release
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       release_tag:
@@ -13,7 +16,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: cut-release-${{ inputs.release_tag }}
+  group: cut-release-${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || 'main' }}
   cancel-in-progress: false
 
 jobs:
@@ -35,16 +38,40 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
+          REQUESTED_RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || '' }}
         run: |
           set -euo pipefail
-          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "ERROR: release_tag '${RELEASE_TAG}' must match vMAJOR.MINOR.PATCH[-PRERELEASE]"
-            exit 1
-          fi
 
           git fetch origin main --tags
           git checkout --detach origin/main
+
+          if [ -n "${REQUESTED_RELEASE_TAG}" ]; then
+            RELEASE_TAG="${REQUESTED_RELEASE_TAG}"
+            if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "ERROR: release_tag '${RELEASE_TAG}' must match vMAJOR.MINOR.PATCH[-PRERELEASE]"
+              exit 1
+            fi
+          else
+            head_tags="$(git tag --points-at HEAD --list 'v*')"
+            if [ -n "${head_tags}" ]; then
+              echo "HEAD already has release tag(s):"
+              printf '%s\n' "${head_tags}"
+              echo "Skipping automatic release."
+              exit 0
+            fi
+
+            latest_tag="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
+            if [ -z "${latest_tag}" ]; then
+              echo "ERROR: could not resolve latest stable vMAJOR.MINOR.PATCH tag"
+              exit 1
+            fi
+
+            version="${latest_tag#v}"
+            IFS=. read -r major minor patch <<< "${version}"
+            RELEASE_TAG="v${major}.${minor}.$((patch + 1))"
+            echo "Resolved automatic release tag ${RELEASE_TAG} from ${latest_tag}"
+          fi
+
           make verify
 
           if git rev-parse -q --verify "refs/tags/${RELEASE_TAG}" >/dev/null; then
