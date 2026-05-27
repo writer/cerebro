@@ -330,8 +330,12 @@ func identityApplicationProjections(event *cerebrov1.EventEnvelope, profile iden
 	}
 	attributes := event.GetAttributes()
 	provider := profile.Provider
+	domain := strings.TrimSpace(attributes["domain"])
 	appURN := identityApplicationURN(tenantID, provider, firstNonEmpty(attributes["app_id"], attributes["application_id"], attributes["client_id"], attributes["id"]))
 	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	orgURN := identityOrgURN(tenantID, provider, domain)
+	addIdentityOrg(entities, tenantID, event.GetSourceId(), provider, domain, orgURN)
 	if appURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        appURN,
@@ -340,17 +344,31 @@ func identityApplicationProjections(event *cerebrov1.EventEnvelope, profile iden
 			EntityType: profile.entityType("application"),
 			Label:      firstNonEmpty(attributes["app_name"], attributes["app_label"], attributes["name"], attributes["client_id"], attributes["app_id"]),
 			Attributes: map[string]string{
-				"app_id":       firstNonEmpty(attributes["app_id"], attributes["application_id"], attributes["client_id"], attributes["id"]),
-				"app_name":     firstNonEmpty(attributes["app_name"], attributes["app_label"], attributes["name"]),
-				"oauth2":       strings.TrimSpace(attributes["oauth2"]),
-				"saml":         strings.TrimSpace(attributes["saml"]),
-				"domain_wide":  strings.TrimSpace(attributes["domain_wide_delegation"]),
-				"status":       strings.TrimSpace(attributes["status"]),
-				"sign_on_mode": strings.TrimSpace(attributes["sign_on_mode"]),
+				"app_id":                         firstNonEmpty(attributes["app_id"], attributes["application_id"], attributes["client_id"], attributes["id"]),
+				"app_name":                       firstNonEmpty(attributes["app_name"], attributes["app_label"], attributes["name"]),
+				"application_type":               strings.TrimSpace(attributes["application_type"]),
+				"client_id":                      strings.TrimSpace(attributes["client_id"]),
+				"domain":                         domain,
+				"grant_types":                    strings.TrimSpace(attributes["grant_types"]),
+				"oauth2":                         strings.TrimSpace(attributes["oauth2"]),
+				"oauth_client_type":              strings.TrimSpace(attributes["oauth_client_type"]),
+				"oauth_public_client":            strings.TrimSpace(attributes["oauth_public_client"]),
+				"post_logout_redirect_uri_count": strings.TrimSpace(attributes["post_logout_redirect_uri_count"]),
+				"redirect_uri_count":             strings.TrimSpace(attributes["redirect_uri_count"]),
+				"response_types":                 strings.TrimSpace(attributes["response_types"]),
+				"saml":                           strings.TrimSpace(attributes["saml"]),
+				"domain_wide":                    strings.TrimSpace(attributes["domain_wide_delegation"]),
+				"status":                         strings.TrimSpace(attributes["status"]),
+				"sign_on_mode":                   strings.TrimSpace(attributes["sign_on_mode"]),
+				"token_endpoint_auth_method":     strings.TrimSpace(attributes["token_endpoint_auth_method"]),
+				"wildcard_redirect":              strings.TrimSpace(attributes["wildcard_redirect"]),
 			},
 		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), appURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
 	}
-	return identityProjectionResult(entities, nil)
+	return identityProjectionResult(entities, links)
 }
 
 func identityPolicyRuleProjections(event *cerebrov1.EventEnvelope, profile identityProjectionProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {

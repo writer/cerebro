@@ -409,6 +409,7 @@ func cloudEffectivePermissionProjections(event *cerebrov1.EventEnvelope, profile
 			"condition":       strings.TrimSpace(attributes["condition"]),
 			"effect":          strings.TrimSpace(attributes["effect"]),
 			"event_id":        event.GetId(),
+			"is_admin":        boolString(identityProjectionPrivileged(attributes)),
 			"permission":      firstNonEmpty(attributes["permission"], attributes["actions"]),
 			"privilege_level": strings.TrimSpace(attributes["privilege_level"]),
 			"role_id":         strings.TrimSpace(attributes["role_id"]),

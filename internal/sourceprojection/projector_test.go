@@ -443,11 +443,12 @@ func TestProjectOktaApplicationIncludesLifecycleAttributes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	if result.EntitiesProjected != 1 {
-		t.Fatalf("Project().EntitiesProjected = %d, want 1", result.EntitiesProjected)
+	if result.EntitiesProjected != 2 {
+		t.Fatalf("Project().EntitiesProjected = %d, want 2", result.EntitiesProjected)
 	}
 
 	clientURN := "urn:cerebro:writer:okta_application:0oa-client"
+	orgURN := "urn:cerebro:writer:okta_org:writer.okta.com"
 	entity, ok := state.entities[clientURN]
 	if !ok {
 		t.Fatalf("state entity %q missing", clientURN)
@@ -455,6 +456,7 @@ func TestProjectOktaApplicationIncludesLifecycleAttributes(t *testing.T) {
 	wantAttributes := map[string]string{
 		"app_id":       "0oa-client",
 		"app_name":     "Production Client",
+		"domain":       "writer.okta.com",
 		"status":       "ACTIVE",
 		"sign_on_mode": "OPENID_CONNECT",
 	}
@@ -463,6 +465,7 @@ func TestProjectOktaApplicationIncludesLifecycleAttributes(t *testing.T) {
 			t.Fatalf("Attributes[%q] = %q, want %q", key, got, want)
 		}
 	}
+	assertProjectedLink(t, state, clientURN, relationBelongsTo, orgURN)
 }
 
 func TestProjectOktaPolicyRule(t *testing.T) {
@@ -1816,6 +1819,70 @@ func TestProjectGitHubAuditProjectsUnresolvedPublicKeyAsCredential(t *testing.T)
 	}
 }
 
+func TestProjectGitHubAuditProjectsProgrammaticResourceAsCredential(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &projectionRecorder{}
+	_, err := New(state, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-audit-pat",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.audit",
+		Attributes: map[string]string{
+			"actor":                    "octocat",
+			"action":                   "personal_access_token.access_granted",
+			"org":                      "writer",
+			"programmatic_access_type": "Fine-grained personal access token",
+			"resource_id":              "octocat",
+			"resource_type":            "personal_access_token",
+			"scope":                    "organization",
+			"token_id":                 "555",
+			"user":                     "octocat",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	credentialURN := "urn:cerebro:writer:github_credential:personal_access_token:555"
+	credential, ok := graph.entities[credentialURN]
+	if !ok {
+		t.Fatalf("github.credential entity %q missing: %#v", credentialURN, graph.entities)
+	}
+	for key, want := range map[string]string{
+		"credential_type":          "personal_access_token",
+		"programmatic_access_type": "Fine-grained personal access token",
+		"resource_type":            "personal_access_token",
+		"status":                   "active",
+		"token_id":                 "555",
+	} {
+		if got := credential.Attributes[key]; got != want {
+			t.Fatalf("credential attributes[%s] = %q, want %q", key, got, want)
+		}
+	}
+	assertProjectedLink(t, graph, credentialURN, relationBelongsTo, "urn:cerebro:writer:github_org:writer")
+
+	_, err = New(state, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-audit-pat-revoked",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.audit",
+		Attributes: map[string]string{
+			"actor":         "octocat",
+			"action":        "personal_access_token.revoked",
+			"org":           "writer",
+			"resource_id":   "octocat",
+			"resource_type": "personal_access_token",
+			"scope":         "organization",
+			"token_id":      "555",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() revoke error = %v", err)
+	}
+	if got := graph.entities[credentialURN].Attributes["status"]; got != "inactive" {
+		t.Fatalf("revoked credential status = %q, want inactive", got)
+	}
+}
+
 // Missing actor_id alone is not enough to call an audit actor a credential:
 // GitHub git audit rows for real users can also omit actor_id. The source
 // resolves those actors through /users/{login} and stamps actor_type=User, and
@@ -2666,7 +2733,13 @@ func TestProjectEffectivePermissionsKubernetesRuntimeAndData(t *testing.T) {
 		}
 	}
 
-	assertProjectedLink(t, state, "urn:cerebro:writer:aws_user:admin@writer.com", relationCanPerform, "urn:cerebro:writer:aws_account:123456789012")
+	permissionLink := state.links["urn:cerebro:writer:aws_user:admin@writer.com|"+relationCanPerform+"|urn:cerebro:writer:aws_account:123456789012"]
+	if permissionLink == nil {
+		t.Fatalf("effective permission link missing")
+	}
+	if got := permissionLink.Attributes["is_admin"]; got != "true" {
+		t.Fatalf("permission link is_admin = %q, want true", got)
+	}
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_account:123456789012", relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
 	assertProjectedLink(t, state, "urn:cerebro:writer:kubernetes_workload:prod-cluster:payments:workload-1", relationRunsAs, "urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:api")
 	assertProjectedLink(t, state, "urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:api", relationCanImpersonate, "urn:cerebro:writer:gcp_service_account:payments-sa@writer-prod.iam.gserviceaccount.com")

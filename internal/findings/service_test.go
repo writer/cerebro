@@ -3054,9 +3054,9 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 		githubRepositoryMadePublicRuleID:          {},
 		githubProtectedBranchPolicyOverrideRuleID: {},
 		githubCriticalResourceDeletedRuleID:       {},
+		githubSelfHostedRunnerChangeRuleID:        {},
 	}
 	activeRuleIDs := []string{
-		githubSelfHostedRunnerChangeRuleID,
 		githubRepositoryCollaboratorAddedRuleID,
 		githubOrganizationOwnerAddedRuleID,
 		githubCodeSecurityControlsDisabledRuleID,

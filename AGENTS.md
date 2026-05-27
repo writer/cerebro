@@ -20,6 +20,14 @@
 - Do not hand-edit generated or contract-governed outputs without running the matching `Makefile` check/sync target.
 - Public-facing config/example changes should run `python3 scripts/oss_audit.py` when that script is present.
 
+## Public PR Data Safety
+
+- Treat public PR titles, descriptions, comments, commit messages, and check summaries as public internet content.
+- Do not include tenant names, environment names, hostnames, account IDs, graph counts, candidate counts, rule-hit counts, finding examples, resource labels, URNs, operational endpoints, deployment details, or closeout/backfill details in public PR metadata.
+- Keep public PR descriptions high-level: summarize the code intent, tests run, and any non-sensitive compatibility notes only.
+- Put sensitive analysis, rollout notes, validation counts, environment-specific observations, and closeout plans in internal channels or local notes, not in public repository metadata.
+- Before creating or editing a public PR, re-read the body and remove any concrete customer, infrastructure, security-finding, or environment data.
+
 ## Scope Discipline
 
 - [`docs/NON_GOALS.md`](docs/NON_GOALS.md) is the canonical list of things Cerebro intentionally does not do. Read it before proposing changes that touch storage shape, the Source CDK budget, the Cypher safety validator, the findings platform contract, the action engine, runtime response, or the platform/security namespace boundary.

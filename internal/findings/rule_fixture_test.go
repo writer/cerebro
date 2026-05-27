@@ -89,8 +89,8 @@ func TestGitHubSecretScanningAlertCreatedFixture(t *testing.T) {
 	assertRuleFixture(t, newGitHubSecretScanningAlertCreatedRule(), "testdata/rules/github-secret-scanning-alert-created.json")
 }
 
-func TestGitHubSelfHostedRunnerChangeFixture(t *testing.T) {
-	assertRuleFixture(t, newGitHubSelfHostedRunnerChangeRule(), "testdata/rules/github-self-hosted-runner-change.json")
+func TestGitHubSelfHostedRunnerChangeFixtureRetired(t *testing.T) {
+	assertRetiredEventRuleFixture(t, newGitHubSelfHostedRunnerChangeRule(), "testdata/rules/github-self-hosted-runner-change.json")
 }
 
 func TestGitHubRepositoryCollaboratorAddedFixture(t *testing.T) {

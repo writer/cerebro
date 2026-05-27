@@ -64,7 +64,7 @@ func TestRulepackAllRulesDeclareLifecycle(t *testing.T) {
 func TestNoConvertRuleUsesEventIdOrMatchedAtFingerprint(t *testing.T) {
 	metadataByID := rulepackAuditMetadataByID(t)
 	convertRules := rulepackAuditRulesByClass(t, rulepackAuditClassConvert)
-	if got, want := len(convertRules), 27; got != want {
+	if got, want := len(convertRules), 26; got != want {
 		t.Fatalf("CONVERT_TO_CURRENT_STATE rule count = %d, want %d", got, want)
 	}
 	rows := make([]string, 0, len(convertRules))
@@ -89,6 +89,7 @@ func TestAlreadyRetiredRulesParity(t *testing.T) {
 		githubPushProtectionDisabledRuleID,
 		githubRepositoryMadePublicRuleID,
 		githubSecretScanningDisabledRuleID,
+		githubSelfHostedRunnerChangeRuleID,
 		sentinelOneRetiredInfectedEndpointRuleID,
 		sentinelOneRetiredMaliciousOrFilelessRuleID,
 		sentinelOneRetiredUnresolvedThreatRuleID,
@@ -356,17 +357,6 @@ func rulepackConvertReplayFixtures() map[string]rulepackConvertReplayFixture {
 				"repo":                        "writer/cerebro",
 				"secret_scanning_alert.state": "open",
 				"secret_type":                 "github_personal_access_token",
-			},
-		},
-		githubSelfHostedRunnerChangeRuleID: {
-			runtime: rulepackConvertRuntime("github", "audit"),
-			kind:    "github.audit",
-			attributes: map[string]string{
-				"action":            "repo.register_self_hosted_runner",
-				"repo":              "writer/cerebro",
-				"runner_ephemeral":  "false",
-				"runner_id":         "777",
-				"runner_registered": "true",
 			},
 		},
 		githubWebhookModifiedRuleID: {
@@ -933,7 +923,7 @@ func TestNetNewRetiredRulesNoEmit(t *testing.T) {
 func TestKeepAsIsRulesUnchanged(t *testing.T) {
 	metadataByID := rulepackAuditMetadataByID(t)
 	keepRules := rulepackAuditRulesByClass(t, rulepackAuditClassKeep)
-	if got, want := len(keepRules), 24; got != want {
+	if got, want := len(keepRules), 31; got != want {
 		t.Fatalf("KEEP_AS_IS rule count = %d, want %d", got, want)
 	}
 	for _, entry := range keepRules {
@@ -1095,6 +1085,7 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "cloud-effective-admin-permission", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "cloud"},
 		{RuleID: "cloud-privilege-path-granted", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "cloud"},
 		{RuleID: "cloud-public-exposure-privileged-principal", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "cloud"},
+		{RuleID: "cloud-current-public-exposure-review-needed", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "cloud"},
 		{RuleID: "cloud-public-resource-exposure", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "cloud"},
 		{RuleID: "data-sensitive-asset-risk", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "asset"},
 		{RuleID: "github-app-integration-installed", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
@@ -1114,7 +1105,8 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "github-repository-ruleset-modified", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
 		{RuleID: "github-secret-scanning-alert-created", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
 		{RuleID: "github-secret-scanning-disabled", Classification: "RETIRE", BulkCloseoutThreshold: ">7d", Source: "github"},
-		{RuleID: "github-self-hosted-runner-change", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
+		{RuleID: "github-self-hosted-runner-change", Classification: "RETIRE", BulkCloseoutThreshold: ">7d", Source: "github"},
+		{RuleID: "github-programmatic-credential-review-needed", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "github"},
 		{RuleID: "github-webhook-modified", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
 		{RuleID: "grc-control-test-needs-attention", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "grc"},
 		{RuleID: "grc-failing-control-open-operational-findings", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "grc"},
@@ -1135,15 +1127,19 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "identity-external-or-personal-group-member", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "identity"},
 		{RuleID: "identity-github-active-without-okta-link", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "github"},
 		{RuleID: "identity-mfa-factor-reset-or-disabled", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "identity"},
+		{RuleID: "identity-okta-oauth-public-client-review-needed", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "identity"},
 		{RuleID: "identity-okta-deprovisioned-active-in-github", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "okta"},
 		{RuleID: "identity-okta-policy-rule-lifecycle-tampering", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "okta"},
 		{RuleID: "identity-privileged-account-without-mfa", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">24h", Source: "identity"},
 		{RuleID: "identity-privileged-no-mfa-plus-sensitive-access", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">24h", Source: "identity"},
 		{RuleID: "identity-stale-privileged-account", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">24h", Source: "identity"},
 		{RuleID: "finding-isolated-open-anchor", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "graph"},
+		{RuleID: "graph-aws-ec2-eni-link-missing", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "graph"},
+		{RuleID: "graph-orphan-nonfinding-node", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "graph"},
 		{RuleID: "graph-resource-multiple-open-findings", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "graph"},
 		{RuleID: "runtime-active-threat-evidence", Classification: "TTL_EVIDENCE_ONLY", BulkCloseoutThreshold: ">24h", Source: "runtime"},
 		{RuleID: "sentinelone-agent-detect-only-mode", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},
+		{RuleID: "sentinelone-agent-not-up-to-date", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},
 		{RuleID: "sentinelone-agent-stale", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},
 		{RuleID: "sentinelone-endpoint-active-infection", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},
 		{RuleID: "sentinelone-infected-endpoint", Classification: "RETIRE", BulkCloseoutThreshold: ">7d", Source: "sentinelone"},
@@ -1152,6 +1148,7 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "sentinelone-protection-control-tampering", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "sentinelone"},
 		{RuleID: "sentinelone-risky-exclusion", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},
 		{RuleID: "sentinelone-unresolved-threat", Classification: "RETIRE", BulkCloseoutThreshold: ">7d", Source: "sentinelone"},
+		{RuleID: "sentinelone-unmitigated-threat", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "sentinelone"},
 		{RuleID: "vulnview-actionable-external-finding", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "vulnview"},
 		{RuleID: "vulnview-external-asset-concentrated-signal", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "vulnview"},
 	}
