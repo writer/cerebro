@@ -23,6 +23,7 @@ on:
         type: string
 
 permissions:
+  actions: write
   contents: write
   packages: read
   pull-requests: write
@@ -279,8 +280,47 @@ jobs:
               -m "Digest: ${IMAGE_DIGEST}" \
               -m "Release: ${RELEASE_URL}" \
               -m "Supply chain: ${VERIFY_SUMMARY}"
+            deploy_sha="$(git rev-parse HEAD)"
             git push "https://x-access-token:${GH_TOKEN}@github.com/WriterInternal/cerebro.git" "HEAD:main"
-            echo "Pushed ${STACK_NAME} deploy commit for ${IMAGE_TAG}; infra-deploy will deploy from main."
+
+            wait_for_run() {
+              local workflow="$1"
+              local event="$2"
+              local run_id=""
+              for _ in {1..24}; do
+                run_id="$(gh run list \
+                  --workflow "${workflow}" \
+                  --event "${event}" \
+                  --branch main \
+                  --limit 20 \
+                  --json databaseId,headSha \
+                  --jq ".[] | select(.headSha == \"${deploy_sha}\") | .databaseId" | head -n 1)"
+                if [ -n "${run_id}" ]; then
+                  break
+                fi
+                sleep 5
+              done
+              if [ -z "${run_id}" ]; then
+                echo "Could not find ${workflow} run for ${deploy_sha}" >&2
+                exit 1
+              fi
+
+              while true; do
+                status="$(gh run view "${run_id}" --json status,conclusion --jq '.status + ":" + (.conclusion // "")')"
+                echo "${workflow} ${run_id}: ${status}"
+                case "${status}" in
+                  completed:success) break ;;
+                  completed:*) exit 1 ;;
+                esac
+                sleep 30
+              done
+            }
+
+            echo "Pushed ${STACK_NAME} deploy commit for ${IMAGE_TAG}; dispatching ordered sec-dev publish and deploy workflows."
+            gh workflow run ci.yml --ref main
+            wait_for_run ci.yml workflow_dispatch
+            gh workflow run infra-deploy.yml --ref main -f environment="${STACK_NAME}"
+            wait_for_run infra-deploy.yml workflow_dispatch
             exit 0
           fi
 
