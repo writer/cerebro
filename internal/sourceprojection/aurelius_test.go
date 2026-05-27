@@ -151,6 +151,7 @@ func TestProjectAureliusSparseImageOmitsEmptyImageMetadata(t *testing.T) {
 		Attributes: map[string]string{
 			"cve_id":       "CVE-2026-1111",
 			"image_digest": "sha256:c6b86af5b3d40000",
+			"image_uri":    "us-docker.pkg.dev/writer/prod/api@sha256:c6b86af5b3d40000",
 			"package":      "openssl",
 			"severity":     "high",
 		},
@@ -159,7 +160,7 @@ func TestProjectAureliusSparseImageOmitsEmptyImageMetadata(t *testing.T) {
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	imageURN := "urn:cerebro:writer:gcp_artifact_registry_image:sha256:c6b86af5b3d40000"
+	imageURN := "urn:cerebro:writer:gcp_artifact_registry_image:us-docker.pkg.dev/writer/prod/api@sha256:c6b86af5b3d40000"
 	entity := state.entities[imageURN]
 	if entity == nil {
 		t.Fatalf("image entity %q missing", imageURN)
@@ -167,10 +168,37 @@ func TestProjectAureliusSparseImageOmitsEmptyImageMetadata(t *testing.T) {
 	if entity.Attributes["digest"] != "sha256:c6b86af5b3d40000" {
 		t.Fatalf("digest = %q, want sha256:c6b86af5b3d40000", entity.Attributes["digest"])
 	}
-	for _, key := range []string{"image_uri", "registry", "repository"} {
+	if entity.Attributes["image_uri"] != "us-docker.pkg.dev/writer/prod/api@sha256:c6b86af5b3d40000" {
+		t.Fatalf("image_uri = %q, want canonical image URI", entity.Attributes["image_uri"])
+	}
+	for _, key := range []string{"registry", "repository"} {
 		if value, ok := entity.Attributes[key]; ok {
 			t.Fatalf("sparse image attribute %q = %q, want omitted so existing metadata is preserved", key, value)
 		}
+	}
+}
+
+func TestProjectAureliusDigestOnlyFindingDoesNotCreateArtifactRegistryImage(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "aurelius-finding-digest-only",
+		TenantId: "writer",
+		SourceId: "aurelius",
+		Kind:     "aurelius.finding",
+		Attributes: map[string]string{
+			"cve_id":       "CVE-2026-1111",
+			"image_digest": "sha256:c6b86af5b3d40000",
+			"package":      "openssl",
+			"severity":     "high",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if entity := state.entities["urn:cerebro:writer:gcp_artifact_registry_image:sha256:c6b86af5b3d40000"]; entity != nil {
+		t.Fatalf("digest-only event created non-canonical image entity: %#v", entity)
 	}
 }
 
@@ -247,6 +275,7 @@ func TestProjectAureliusFindingUsesPayloadVersionEvidence(t *testing.T) {
 			"cve_id":            "CVE-2026-1111",
 			"fixed_version":     "3.0.12",
 			"image_digest":      "sha256:c6b86af5b3d40000",
+			"image_uri":         "us-docker.pkg.dev/writer/prod/api@sha256:c6b86af5b3d40000",
 			"installed_version": "3.0.0",
 			"package":           "openssl",
 			"severity":          "high",
@@ -256,7 +285,7 @@ func TestProjectAureliusFindingUsesPayloadVersionEvidence(t *testing.T) {
 		t.Fatalf("Project() error = %v", err)
 	}
 
-	imageURN := "urn:cerebro:writer:gcp_artifact_registry_image:sha256:c6b86af5b3d40000"
+	imageURN := "urn:cerebro:writer:gcp_artifact_registry_image:us-docker.pkg.dev/writer/prod/api@sha256:c6b86af5b3d40000"
 	vulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-1111"
 	link := state.links[imageURN+"|"+relationAffectedBy+"|"+vulnerabilityURN]
 	if link == nil {

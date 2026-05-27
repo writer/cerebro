@@ -226,17 +226,31 @@ func aureliusPolicyExceptionProjections(event *cerebrov1.EventEnvelope) ([]*port
 }
 
 func aureliusImageURN(tenantID string, attrs map[string]string) string {
-	id := firstAttribute(attrs, "image_uri", "image_digest", "image")
+	id := aureliusImageIdentifier(attrs)
 	if id == "" {
 		return ""
 	}
 	return projectionURN(tenantID, "gcp_artifact_registry_image", id)
 }
 
+func aureliusImageIdentifier(attrs map[string]string) string {
+	if id := firstAttribute(attrs, "image_uri", "image", "resource_uri", "resource_id", "artifact_uri"); id != "" {
+		return id
+	}
+	registry := strings.Trim(strings.TrimSpace(attrs["registry"]), "/")
+	repository := strings.Trim(strings.TrimSpace(attrs["repository"]), "/")
+	digest := strings.TrimSpace(attrs["image_digest"])
+	if registry == "" || repository == "" || digest == "" {
+		return ""
+	}
+	return registry + "/" + repository + "@" + digest
+}
+
 func aureliusImageEntity(tenantID, sourceID, urn string, attrs map[string]string) *ports.ProjectedEntity {
+	imageID := aureliusImageIdentifier(attrs)
 	imageAttrs := map[string]string{}
 	addAureliusAttribute(imageAttrs, "digest", firstAttribute(attrs, "image_digest"))
-	addAureliusAttribute(imageAttrs, "image_uri", firstAttribute(attrs, "image_uri"))
+	addAureliusAttribute(imageAttrs, "image_uri", imageID)
 	addAureliusAttribute(imageAttrs, "registry", firstAttribute(attrs, "registry"))
 	addAureliusAttribute(imageAttrs, "repository", firstAttribute(attrs, "repository"))
 	return &ports.ProjectedEntity{
@@ -244,7 +258,7 @@ func aureliusImageEntity(tenantID, sourceID, urn string, attrs map[string]string
 		TenantID:   tenantID,
 		SourceID:   sourceID,
 		EntityType: "gcp.artifact_registry_image",
-		Label:      firstAttribute(attrs, "image_uri", "image", "image_digest"),
+		Label:      firstAttribute(attrs, "image_uri", "image", "resource_uri", "resource_id", "artifact_uri", "image_digest"),
 		Attributes: imageAttrs,
 	}
 }
