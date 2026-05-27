@@ -3838,6 +3838,61 @@ func TestFindingWorkflowSnapshotDoesNotMergeFreshReasonsWithStoredRisk(t *testin
 	}
 }
 
+func TestFindingWorkflowSnapshotBoundsEventIDsAndPreservesResourceURNs(t *testing.T) {
+	resourceURNs := make([]string, 0, maxFindingSnapshotEventIDs+10)
+	for i := 0; i < maxFindingSnapshotEventIDs+10; i++ {
+		resourceURNs = append(resourceURNs, "urn:cerebro:tenant-a:asset:"+strconv.Itoa(i))
+	}
+	primaryResourceURN := "urn:cerebro:tenant-a:asset:primary"
+	resourceURNs = append(resourceURNs, primaryResourceURN)
+	eventIDs := make([]string, 0, maxFindingSnapshotEventIDs+10)
+	for i := 0; i < maxFindingSnapshotEventIDs+10; i++ {
+		eventIDs = append(eventIDs, "event-"+strconv.Itoa(i))
+	}
+
+	snapshot := findingWorkflowSnapshot(&ports.FindingRecord{
+		ID:           "finding-1",
+		TenantID:     "tenant-a",
+		RuntimeID:    "runtime-audit",
+		RuleID:       "graph-rule",
+		Status:       "open",
+		Severity:     "HIGH",
+		ResourceURNs: resourceURNs,
+		EventIDs:     eventIDs,
+		Attributes: map[string]string{
+			"primary_resource_urn": primaryResourceURN,
+		},
+	}, "tenant-a", "runtime-audit")
+
+	if got := len(snapshot.ResourceURNs); got != len(resourceURNs) {
+		t.Fatalf("len(ResourceURNs) = %d, want all %d resources preserved for graph links", got, len(resourceURNs))
+	}
+	if got := len(snapshot.EventIDs); got != maxFindingSnapshotEventIDs {
+		t.Fatalf("len(EventIDs) = %d, want %d", got, maxFindingSnapshotEventIDs)
+	}
+	if snapshot.ResourceCount != len(resourceURNs) {
+		t.Fatalf("ResourceCount = %d, want full count %d", snapshot.ResourceCount, len(resourceURNs))
+	}
+	if snapshot.EventCount != len(eventIDs) {
+		t.Fatalf("EventCount = %d, want full count %d", snapshot.EventCount, len(eventIDs))
+	}
+	for _, resourceURN := range resourceURNs {
+		if !slices.Contains(snapshot.ResourceURNs, resourceURN) {
+			t.Fatalf("snapshot ResourceURNs missing %q", resourceURN)
+		}
+	}
+	event, err := workflowevents.NewFindingRecordedEvent(workflowevents.FindingRecorded{
+		Finding:    snapshot,
+		RecordedAt: time.Now().UTC().Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		t.Fatalf("NewFindingRecordedEvent() error = %v", err)
+	}
+	if got := len(event.GetPayload()); got > 128<<10 {
+		t.Fatalf("finding recorded payload = %d bytes, want below 128KiB", got)
+	}
+}
+
 func TestUpsertFindingWithRiskRecomputesAfterWorkflowPreservation(t *testing.T) {
 	dueAt := time.Now().UTC().Add(-time.Hour)
 	store := &stubFindingStore{

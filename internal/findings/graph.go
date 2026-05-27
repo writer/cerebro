@@ -18,6 +18,7 @@ import (
 
 const (
 	findingDecisionStatusCompleted = "completed"
+	maxFindingSnapshotEventIDs     = 256
 )
 
 func (s *Service) projectFindingAnchor(ctx context.Context, finding *ports.FindingRecord) error {
@@ -269,6 +270,8 @@ func (s *Service) recordAndProjectWorkflowEvent(ctx context.Context, event *cere
 func findingWorkflowSnapshot(finding *ports.FindingRecord, tenantID string, sourceID string) workflowevents.FindingSnapshot {
 	resourceURNs := uniqueSortedStrings(finding.ResourceURNs)
 	eventIDs := uniqueSortedStrings(finding.EventIDs)
+	eventCount := len(eventIDs)
+	eventIDs = boundedFindingSnapshotIDs(eventIDs, maxFindingSnapshotEventIDs)
 	var risk FindingRiskContext
 	if finding.RiskScore == 0 || finding.LikelihoodScore == 0 || finding.ImpactScore == 0 || finding.ConfidenceScore == 0 {
 		risk = AnalyzeFindingRiskContext(finding, time.Time{})
@@ -316,7 +319,7 @@ func findingWorkflowSnapshot(finding *ports.FindingRecord, tenantID string, sour
 		FirstObservedAt:    findingSnapshotTimestamp(finding.FirstObservedAt),
 		LastObservedAt:     findingSnapshotTimestamp(finding.LastObservedAt),
 		ResourceCount:      len(resourceURNs),
-		EventCount:         len(eventIDs),
+		EventCount:         eventCount,
 		ControlRefs:        findingControlRefSnapshots(finding.ControlRefs),
 		FindingRiskSnapshot: workflowevents.FindingRiskSnapshot{
 			RiskScore:         riskScore,
@@ -331,6 +334,13 @@ func findingWorkflowSnapshot(finding *ports.FindingRecord, tenantID string, sour
 		},
 		Metadata: findingRiskMetadata(finding),
 	}
+}
+
+func boundedFindingSnapshotIDs(ids []string, max int) []string {
+	if len(ids) <= max {
+		return ids
+	}
+	return append([]string(nil), ids[:max]...)
 }
 
 func findingSnapshotTimestamp(value time.Time) string {
