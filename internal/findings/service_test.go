@@ -4073,7 +4073,10 @@ func TestMergeVulnViewActionableEvidenceUsesActiveGeneratedRow(t *testing.T) {
 		},
 		LastObservedAt: now.Add(time.Minute),
 	}
-	merged := service.mergeVulnViewActionableEvidence(context.Background(), incoming)
+	merged, err := service.mergeExistingFindingEvidence(context.Background(), incoming)
+	if err != nil {
+		t.Fatalf("mergeExistingFindingEvidence() error = %v", err)
+	}
 	if containsTrimmed(merged.EventIDs, "event-stale") {
 		t.Fatalf("EventIDs = %#v, want no tombstoned stale event id", merged.EventIDs)
 	}
