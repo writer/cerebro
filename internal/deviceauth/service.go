@@ -455,6 +455,9 @@ func (s *Service) RefreshTokenRateLimitKey(ctx context.Context, refreshToken str
 	if err != nil {
 		return "", err
 	}
+	if row.FamilyRevoked || !row.ConsumedAt.IsZero() {
+		return "", ErrRefreshReplay
+	}
 	deviceID := strings.TrimSpace(row.DeviceID)
 	if deviceID == "" {
 		return "", ErrRefreshNotFound

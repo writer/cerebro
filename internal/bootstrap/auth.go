@@ -115,7 +115,7 @@ func authMiddleware(cfg config.AuthConfig, deps AuthDependencies, next http.Hand
 		if deviceJKT != "" {
 			if err := verifyDPoPHeader(deps.DPoPVerifier, r, deviceJKT, presentedToken); err != nil {
 				denialReason = "dpop_invalid"
-				writeAuthError(recorder, http.StatusUnauthorized, "dpop invalid")
+				writeDeviceAuthServiceError(recorder, err)
 				return
 			}
 		}

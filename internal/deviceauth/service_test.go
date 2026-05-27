@@ -247,6 +247,26 @@ func TestServiceReenrollActiveHardwarePreservesRefreshLineage(t *testing.T) {
 	}
 }
 
+func TestRefreshTokenRateLimitKeyRejectsConsumedTokens(t *testing.T) {
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	bootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
+	enroll, err := service.Enroll(ctx, EnrollRequest{BootstrapToken: bootstrap.Token, HardwareUUID: "hw-1"})
+	if err != nil {
+		t.Fatalf("Enroll: %v", err)
+	}
+	rotated, err := service.IssueToken(ctx, TokenRequest{GrantType: "refresh_token", RefreshToken: enroll.RefreshToken})
+	if err != nil {
+		t.Fatalf("IssueToken: %v", err)
+	}
+	if _, err := service.RefreshTokenRateLimitKey(ctx, enroll.RefreshToken); !errors.Is(err, ErrRefreshReplay) {
+		t.Fatalf("RefreshTokenRateLimitKey(consumed) err = %v, want ErrRefreshReplay", err)
+	}
+	if got, err := service.RefreshTokenRateLimitKey(ctx, rotated.RefreshToken); err != nil || got != "device:"+enroll.DeviceID {
+		t.Fatalf("RefreshTokenRateLimitKey(live) = %q, %v; want device:%s", got, err, enroll.DeviceID)
+	}
+}
+
 func TestServiceIngestTelemetryRequiresIdempotencyKey(t *testing.T) {
 	ctx := context.Background()
 	service, _, _ := newServiceForTest(t)

@@ -382,6 +382,58 @@ func TestWriteDeviceAuthServiceErrorMapsAttestationFailures(t *testing.T) {
 	}
 }
 
+func TestAuthMiddlewarePreservesDPoPErrorCodes(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	signer, err := deviceauth.NewLocalSigner([]deviceauth.SigningKey{{KID: "k1", Public: pub, Private: priv}})
+	if err != nil {
+		t.Fatalf("NewLocalSigner: %v", err)
+	}
+	keyset := &deviceauth.KeySet{Keys: []deviceauth.SigningKey{{KID: "k1", Public: pub}}}
+	clock := func() time.Time { return time.Date(2026, 5, 22, 12, 0, 0, 0, time.UTC) }
+	issuer, err := deviceauth.NewJWTIssuer(deviceauth.IssuerConfig{Now: clock}, signer)
+	if err != nil {
+		t.Fatalf("NewJWTIssuer: %v", err)
+	}
+	verifier, err := deviceauth.NewJWTVerifier(deviceauth.VerifierConfig{Now: clock}, keyset)
+	if err != nil {
+		t.Fatalf("NewJWTVerifier: %v", err)
+	}
+	token, err := issuer.IssueAccessWithOptions(
+		deviceauth.DeviceRecord{DeviceID: "dev-1", TenantID: "writer", HardwareUUID: "hw-1"},
+		[]string{deviceauth.ScopeTelemetryIngest},
+		deviceauth.AccessOptions{DPoPJKT: "expected-jkt"},
+	)
+	if err != nil {
+		t.Fatalf("IssueAccessWithOptions: %v", err)
+	}
+	dpop := deviceauth.NewDPoPVerifier(time.Minute, time.Minute)
+	dpop.SetClock(clock)
+	handler := authMiddleware(config.AuthConfig{Enabled: true}, AuthDependencies{
+		DeviceVerifier: verifier,
+		DPoPVerifier:   dpop,
+	}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("next handler should not be called without DPoP proof")
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/platform/telemetry/ingest", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401; body=%s", resp.Code, resp.Body.String())
+	}
+	var body map[string]string
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["error"] != "dpop_required" {
+		t.Fatalf("error = %q, want dpop_required; body=%s", body["error"], resp.Body.String())
+	}
+}
+
 func TestRemoteIPForRateLimitIgnoresClientForwardedFor(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/platform/devices/enroll", nil)
 	req.RemoteAddr = "198.51.100.10:12345"
