@@ -220,6 +220,18 @@ func TestLoadRejectsDeviceAuthMultipleReplicasWithoutSharedDPoPReplay(t *testing
 	}
 }
 
+func TestLoadRejectsDeviceAuthEnabledWithoutCurrentKID(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_DEVICE_AUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON", `[{"kid":"k1","public_pem":"public"}]`)
+	t.Setenv("CEREBRO_DEVICE_AUTH_CURRENT_KID", "")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
 func TestLoadRejectsAuthEnabledWithoutKeys(t *testing.T) {
 	clearDependencyEnv(t)
 	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")

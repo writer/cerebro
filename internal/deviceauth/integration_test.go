@@ -279,14 +279,35 @@ func TestServiceRefreshRejectsMissingDPoPOnBoundDevice(t *testing.T) {
 		t.Fatalf("missing-DPoP err = %v, want ErrDPoPMissing", err)
 	}
 	proof := newDPoPProofES256(t, devKey, "POST", "https://cerebro.test/platform/devices/token", now, "jti-after-missing")
-	if _, err := service.IssueToken(ctx, TokenRequest{
+	rotated, err := service.IssueToken(ctx, TokenRequest{
 		GrantType:    "refresh_token",
 		RefreshToken: enroll.RefreshToken,
 		DPoPProof:    proof,
 		HTTPMethod:   "POST",
 		HTTPURL:      "https://cerebro.test/platform/devices/token",
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("valid DPoP after missing-DPoP attempt should still work: %v", err)
+	}
+	if _, err := service.IssueToken(ctx, TokenRequest{
+		GrantType:    "refresh_token",
+		RefreshToken: enroll.RefreshToken,
+		HTTPMethod:   "POST",
+		HTTPURL:      "https://cerebro.test/platform/devices/token",
+	}); !errors.Is(err, ErrDPoPMissing) {
+		t.Fatalf("stale refresh without DPoP err = %v, want ErrDPoPMissing", err)
+	}
+	now = now.Add(time.Second)
+	dpop.SetClock(clock)
+	proof = newDPoPProofES256(t, devKey, "POST", "https://cerebro.test/platform/devices/token", now, "jti-after-stale-replay")
+	if _, err := service.IssueToken(ctx, TokenRequest{
+		GrantType:    "refresh_token",
+		RefreshToken: rotated.RefreshToken,
+		DPoPProof:    proof,
+		HTTPMethod:   "POST",
+		HTTPURL:      "https://cerebro.test/platform/devices/token",
+	}); err != nil {
+		t.Fatalf("valid rotated refresh after stale missing-DPoP replay should still work: %v", err)
 	}
 }
 

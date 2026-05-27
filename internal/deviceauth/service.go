@@ -402,10 +402,8 @@ func (s *Service) IssueToken(ctx context.Context, request TokenRequest) (TokenRe
 	if device.Status != "" && device.Status != "active" {
 		return TokenResponse{}, ErrDeviceInactive
 	}
-	if peek.ConsumedAt.IsZero() && !peek.FamilyRevoked {
-		if err := s.verifyDPoPForRefresh(device, request); err != nil {
-			return TokenResponse{}, err
-		}
+	if err := s.verifyDPoPForRefresh(device, request); err != nil {
+		return TokenResponse{}, err
 	}
 	consumed, err := s.store.ConsumeRefreshToken(ctx, refreshHash, now)
 	if err != nil {

@@ -93,7 +93,7 @@ func loadDeviceAuthConfig() (DeviceAuthConfig, error) {
 		return DeviceAuthConfig{}, err
 	}
 	cfg.SigningKeys = keys
-	if cfg.CurrentKID == "" && len(keys) > 0 {
+	if !cfg.Enabled && cfg.CurrentKID == "" && len(keys) > 0 {
 		cfg.CurrentKID = keys[0].KID
 	}
 	if cfg.Enabled {
