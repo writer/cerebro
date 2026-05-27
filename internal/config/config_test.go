@@ -30,6 +30,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS", "")
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_AUDIENCE", "")
 	t.Setenv("CEREBRO_ALLOWED_TENANTS", "")
+	clearDeviceAuthEnv(t)
 
 	cfg, err := Load()
 	if err != nil {
@@ -55,6 +56,9 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.Auth.Enabled {
 		t.Fatal("Auth.Enabled = true, want false")
+	}
+	if cfg.Auth.DeviceAuth.ReplicaCount != 1 {
+		t.Fatalf("DeviceAuth.ReplicaCount = %d, want 1", cfg.Auth.DeviceAuth.ReplicaCount)
 	}
 }
 
@@ -86,6 +90,7 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS", "")
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_AUDIENCE", "")
 	t.Setenv("CEREBRO_ALLOWED_TENANTS", "security,writer,writer")
+	clearDeviceAuthEnv(t)
 
 	cfg, err := Load()
 	if err != nil {
@@ -155,6 +160,7 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS", "")
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_AUDIENCE", "")
 	t.Setenv("CEREBRO_ALLOWED_TENANTS", "")
+	clearDeviceAuthEnv(t)
 }
 
 func clearGraphAgentEnv(t *testing.T) {
@@ -166,6 +172,64 @@ func clearGraphAgentEnv(t *testing.T) {
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_HAIKU", "")
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MAX_TOKENS", "")
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_TEMPERATURE", "")
+}
+
+func clearDeviceAuthEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("CEREBRO_DEVICE_AUTH_ENABLED", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_ISSUER", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_AUDIENCE", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_CURRENT_KID", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_ACCESS_TTL", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_REFRESH_TTL", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_BOOTSTRAP_TOKEN_TTL", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_IDEMPOTENCY_TTL", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_CLOCK_SKEW", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_ENROLL_RPS", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_ENROLL_BURST", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_TOKEN_RPS", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_TOKEN_BURST", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_DPOP_PROOF_TTL", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_REPLICA_COUNT", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_RISK_ELEVATED", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_RISK_HIGH", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_ATTESTATION_REQUIRED", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_APPLE_TEAM_ID", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_APPLE_BUNDLE_IDS", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON", "")
+}
+
+func TestLoadRejectsRequiredDeviceAuthAttestationWithoutVerifier(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_DEVICE_AUTH_ATTESTATION_REQUIRED", "true")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsDeviceAuthMultipleReplicasWithoutSharedDPoPReplay(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_DEVICE_AUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_DEVICE_AUTH_REPLICA_COUNT", "2")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsDeviceAuthEnabledWithoutCurrentKID(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_DEVICE_AUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON", `[{"kid":"k1","public_pem":"public"}]`)
+	t.Setenv("CEREBRO_DEVICE_AUTH_CURRENT_KID", "")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
 }
 
 func TestLoadRejectsAuthEnabledWithoutKeys(t *testing.T) {

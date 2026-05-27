@@ -97,6 +97,65 @@ type AuthConfig struct {
 	CapabilityTokenSecrets  []string
 	CapabilityTokenAudience string
 	AllowedTenants          []string
+	DeviceAuth              DeviceAuthConfig
+}
+
+// DeviceAuthSigningKey is one Ed25519 keypair the issuer can sign with. This
+// bootstrap path requires PrivatePEM on the current signing key; external KMS
+// signing is intentionally unsupported until a signer implementation is wired.
+type DeviceAuthSigningKey struct {
+	KID        string `json:"kid"`
+	PublicPEM  string `json:"public_pem"`
+	PrivatePEM string `json:"private_pem,omitempty"`
+}
+
+// DeviceAuthConfig configures the SeCheck device-auth surface. The surface is
+// disabled when Enabled is false.
+type DeviceAuthConfig struct {
+	Enabled                     bool
+	Issuer                      string
+	Audience                    string
+	AccessTTL                   time.Duration
+	RefreshTTL                  time.Duration
+	BootstrapTokenTTL           time.Duration
+	IdempotencyTTL              time.Duration
+	ClockSkew                   time.Duration
+	SigningKeys                 []DeviceAuthSigningKey
+	CurrentKID                  string
+	EnrollPerIPRatePerSecond    float64
+	EnrollPerIPBurst            int
+	TokenPerDeviceRatePerSecond float64
+	TokenPerDeviceBurst         int
+	// DPoPProofTTL bounds how long an RFC 9449 DPoP proof JWT remains
+	// valid; defaults to 60s if zero.
+	DPoPProofTTL time.Duration
+	// ReplicaCount is the number of concurrently serving bootstrap API
+	// replicas for this device-auth deployment. Values greater than one
+	// require shared DPoP replay state.
+	ReplicaCount int
+	// RiskElevatedThreshold and RiskHighThreshold map composite risk
+	// scores (0..100) to "elevated" and "high" levels. Defaults are 30
+	// and 70.
+	RiskElevatedThreshold int
+	RiskHighThreshold     int
+	// Attestation configures the device-bound proof verifiers wired into
+	// Service.Enroll.
+	Attestation DeviceAuthAttestationConfig
+}
+
+// DeviceAuthAttestationConfig configures the Phase-2 device-bound proof
+// verifiers. When Required is true, enroll requests must carry a non-empty
+// attestation statement; when false, a missing statement returns a
+// software-assurance result.
+type DeviceAuthAttestationConfig struct {
+	Required bool
+	Apple    DeviceAuthAppleConfig
+}
+
+// DeviceAuthAppleConfig configures the Apple App Attest verifier.
+type DeviceAuthAppleConfig struct {
+	TeamID    string
+	BundleIDs []string
 }
 
 // Load reads and validates process configuration.
@@ -151,6 +210,11 @@ func Load() (Config, error) {
 	if len(cfg.Auth.CapabilityTokenSecrets) > 0 && cfg.Auth.CapabilityTokenAudience == "" {
 		cfg.Auth.CapabilityTokenAudience = "cerebro-api"
 	}
+	deviceAuth, err := loadDeviceAuthConfig()
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.Auth.DeviceAuth = deviceAuth
 	if cfg.HTTPAddr == "" {
 		cfg.HTTPAddr = defaultHTTPAddr
 	}

@@ -24,6 +24,8 @@ import (
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/claims"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/deviceauth"
+	"github.com/writer/cerebro/internal/deviceauth/risk"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/graphingest"
@@ -50,12 +52,18 @@ type Dependencies struct {
 
 // App is the minimal Connect/bootstrap composition root for the rewrite skeleton.
 type App struct {
-	cfg     config.Config
-	deps    Dependencies
-	sources *sourcecdk.Registry
-	mux     *http.ServeMux
-	handler http.Handler
-	server  *http.Server
+	cfg              config.Config
+	deps             Dependencies
+	sources          *sourcecdk.Registry
+	mux              *http.ServeMux
+	handler          http.Handler
+	server           *http.Server
+	deviceService    *deviceauth.Service
+	deviceHandler    *deviceAuthHTTPHandler
+	deviceVerifier   *deviceauth.JWTVerifier
+	dpopVerifier     *deviceauth.DPoPVerifier
+	riskScorer       *risk.Scorer
+	observationStore risk.ObservationStore
 }
 
 type bootstrapService struct {
@@ -71,18 +79,66 @@ const (
 )
 
 var (
-	errInvalidHTTPRequest    = errors.New("invalid http request")
-	errProtoJSONBodyTooLarge = errors.New("request JSON body exceeds maximum size")
+	errInvalidHTTPRequest                 = errors.New("invalid http request")
+	errProtoJSONBodyTooLarge              = errors.New("request JSON body exceeds maximum size")
+	errDeviceAuthRequiresAPIAuth          = errors.New("device-auth requires CEREBRO_API_AUTH_ENABLED=true")
+	errDeviceAuthRequiresStore            = errors.New("device-auth requires a device-auth capable state store")
+	errDeviceAuthRequiresSharedDPoPReplay = errors.New("device-auth DPoP replay protection requires shared state for multiple replicas")
 )
 
 // New constructs the minimal bootstrap app and registers the Connect handlers.
 func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App {
+	app, _ := NewWithError(cfg, deps, sources)
+	return app
+}
+
+// NewWithError constructs the minimal bootstrap app and returns configuration
+// errors instead of panicking. Production startup should use this form so
+// security-sensitive surfaces fail closed when misconfigured.
+func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) (*App, error) {
+	app := &App{cfg: cfg, deps: deps, sources: sources}
+	if cfg.Auth.DeviceAuth.Enabled && !cfg.Auth.Enabled {
+		return nil, errDeviceAuthRequiresAPIAuth
+	}
+	if cfg.Auth.DeviceAuth.Enabled && deviceAuthReplicaCount(cfg.Auth.DeviceAuth) > 1 {
+		dpop := deviceauth.NewDPoPVerifier(cfg.Auth.DeviceAuth.ClockSkew, cfg.Auth.DeviceAuth.DPoPProofTTL)
+		if !dpop.ReplayStateShared() {
+			return nil, errDeviceAuthRequiresSharedDPoPReplay
+		}
+	}
+	deviceStore := deviceAuthStore(deps.StateStore)
+	if cfg.Auth.DeviceAuth.Enabled && deviceStore == nil {
+		return nil, errDeviceAuthRequiresStore
+	}
+	if deviceStore != nil {
+		dpop := deviceauth.NewDPoPVerifier(cfg.Auth.DeviceAuth.ClockSkew, cfg.Auth.DeviceAuth.DPoPProofTTL)
+		obsStore := risk.NewInMemoryObservationStore()
+		riskScorer := risk.NewScorer(
+			risk.Thresholds{Elevated: cfg.Auth.DeviceAuth.RiskElevatedThreshold, High: cfg.Auth.DeviceAuth.RiskHighThreshold},
+			risk.NoOpLookup{},
+			risk.NoOpEmitter{},
+			risk.NewVelocityDetector(),
+			risk.NewCountryDriftDetector(),
+			risk.NewASNDriftDetector(),
+		)
+		service, err := buildDeviceAuthService(cfg.Auth.DeviceAuth, deviceStore, dpop, riskScorer, obsStore)
+		if err != nil {
+			return nil, fmt.Errorf("device-auth bootstrap failed: %w", err)
+		}
+		if service != nil {
+			app.deviceService = service
+			app.deviceVerifier = service.Verifier()
+			app.dpopVerifier = dpop
+			app.riskScorer = riskScorer
+			app.observationStore = obsStore
+			app.deviceHandler = newDeviceAuthHTTPHandler(service, cfg.Auth.DeviceAuth)
+		}
+	}
 	mux := http.NewServeMux()
 	service := &bootstrapService{cfg: cfg, deps: deps, sources: sources}
 	path, handler := cerebrov1connect.NewBootstrapServiceHandler(service, connect.WithInterceptors(authInterceptor(cfg.Auth)))
 	mux.Handle(path, handler)
-
-	app := &App{cfg: cfg, deps: deps, sources: sources, mux: mux}
+	app.mux = mux
 	mux.HandleFunc("/health", app.handleHealth)
 	mux.HandleFunc("/healthz", app.handleHealth)
 	mux.HandleFunc("GET /openapi.yaml", app.handleOpenAPI)
@@ -148,13 +204,26 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("GET /source-runtimes/{runtimeID}/finding-evaluation-runs", app.handleListFindingEvaluationRuns)
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/finding-rules/evaluate", app.handleEvaluateSourceRuntimeFindingRules)
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/findings/evaluate", app.handleEvaluateSourceRuntimeFindings)
-	app.handler = authMiddleware(cfg.Auth, mux)
+	if app.deviceHandler != nil {
+		mux.HandleFunc("POST /platform/devices/enroll", app.deviceHandler.handleEnroll)
+		mux.HandleFunc("POST /platform/devices/token", app.deviceHandler.handleToken)
+		mux.HandleFunc("POST /platform/devices/bootstrap-tokens", app.deviceHandler.handleIssueBootstrapToken)
+		mux.HandleFunc("POST /platform/devices/{deviceID}/revoke", app.deviceHandler.handleRevoke)
+		mux.HandleFunc("POST /platform/telemetry/ingest", app.deviceHandler.handleIngestTelemetry)
+		mux.HandleFunc("GET /.well-known/device-jwks.json", app.deviceHandler.handleJWKS)
+	}
+	app.handler = authMiddleware(cfg.Auth, AuthDependencies{
+		DeviceVerifier: app.deviceVerifier,
+		DPoPVerifier:   app.dpopVerifier,
+		RiskScorer:     app.riskScorer,
+		Observations:   app.observationStore,
+	}, mux)
 	app.server = &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           app.handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-	return app
+	return app, nil
 }
 
 // Handler returns the composed HTTP handler for embedding in tests or another server.
@@ -2906,6 +2975,21 @@ func claimStore(store ports.StateStore) ports.ClaimStore {
 		return nil
 	}
 	return claimStore
+}
+
+func deviceAuthStore(store ports.StateStore) deviceauth.Store {
+	deviceStore, ok := store.(deviceauth.Store)
+	if !ok || isNilInterface(deviceStore) {
+		return nil
+	}
+	return deviceStore
+}
+
+func deviceAuthReplicaCount(cfg config.DeviceAuthConfig) int {
+	if cfg.ReplicaCount <= 0 {
+		return 1
+	}
+	return cfg.ReplicaCount
 }
 
 func isNilInterface(value any) bool {

@@ -1756,7 +1756,7 @@ func TestAuthMiddlewareProtectsNonPublicRoutes(t *testing.T) {
 func TestAuthenticateRequestPrefersStructuredCredentialMetadata(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/sources", nil)
 	req.Header.Set("Authorization", "Bearer shared-token")
-	principal, ok := authenticateRequest(config.AuthConfig{
+	principal, _, _, ok := authenticateRequest(config.AuthConfig{
 		APIKeys: []config.APIKey{{
 			Key:       "shared-token",
 			Principal: "legacy",
@@ -1770,7 +1770,7 @@ func TestAuthenticateRequestPrefersStructuredCredentialMetadata(t *testing.T) {
 			TenantID:       "writer",
 			AllowedTenants: []string{"writer"},
 		}},
-	}, req)
+	}, nil, req)
 	if !ok {
 		t.Fatal("authenticateRequest() ok = false, want true")
 	}

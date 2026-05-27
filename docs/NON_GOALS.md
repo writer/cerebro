@@ -71,6 +71,13 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 - Enforced in: [`PLAN.md`](../PLAN.md) §5.3 "Plugin boundary".
 - What would change this: a documented operational threshold (source count, deploy blast radius, third-party authoring need) that justifies the cost of an out-of-process plugin contract, with a separate design doc covering signing, sandboxing, and lifecycle.
 
+### Agent push surface (device-keyed write) is bounded to first-party fleet agents.
+
+- Cerebro accepts push traffic only from first-party agents Cerebro itself authenticates and authorizes per-device. The current concrete instance is the SeCheck endpoint agent (see [`docs/proposals/SECHECK_DEVICE_AUTH.md`](./proposals/SECHECK_DEVICE_AUTH.md)). Third-party services and unmanaged callers do not write to the platform: they integrate via the Source CDK's pull contract.
+- Why: a first-party agent is a substantively different trust shape from a third-party API. Cerebro provisions the device identity (bootstrap token via MDM), signs the JWTs, owns the rotation key material, and revokes the device. None of those affordances exist for third-party callers, and conflating them would erase the Source-CDK boundary that makes replay, rebuild, and rule evaluation deterministic. Distinct affordance gets distinct entry.
+- Enforced in: [`internal/deviceauth`](../internal/deviceauth) (token issuance, rotation, replay detection); the bootstrap auth pipeline in [`internal/bootstrap/auth.go`](../internal/bootstrap/auth.go) (the device-JWT verifier sits next to the existing API-key and capability-token paths, not as a separate service); the `platform.devices.*`, `platform.telemetry.ingest`, and `security.devices.findings.read` scope set wired through `authorizeHTTPRequestScope`.
+- What would change this: a second first-party agent class with materially different posture (e.g. server-side runtime agents, container sidecars). That belongs to its own design proposal and its own [`docs/NON_GOALS.md`](./NON_GOALS.md) entry; reusing the SeCheck shape by default is not the answer.
+
 ## Graph And Cypher
 
 ### Neo4j is a projection, not a write target.
