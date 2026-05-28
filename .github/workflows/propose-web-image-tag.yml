@@ -73,7 +73,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.CEREBRO_AUTORELEASE_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Verify GHCR image exists
         shell: bash
