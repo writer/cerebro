@@ -1,0 +1,147 @@
+package graphagent
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"testing"
+)
+
+type stubHTTPDoer struct {
+	statusCode  int
+	body        []byte
+	err         error
+	lastURL     string
+	lastHeaders map[string]string
+}
+
+func (s *stubHTTPDoer) Post(_ context.Context, url string, headers map[string]string, _ []byte) (int, []byte, error) {
+	s.lastURL = url
+	s.lastHeaders = headers
+	return s.statusCode, s.body, s.err
+}
+
+func TestNewOpenRouterLLMClient_MissingAPIKey(t *testing.T) {
+	_, err := NewOpenRouterLLMClient(OpenRouterConfig{HTTPDoer: &stubHTTPDoer{}})
+	if err == nil {
+		t.Fatal("expected error for missing API key")
+	}
+	if !errors.Is(err, ErrRuntimeUnavailable) {
+		t.Fatalf("expected ErrRuntimeUnavailable, got: %v", err)
+	}
+}
+
+func TestNewOpenRouterLLMClient_MissingHTTPDoer(t *testing.T) {
+	_, err := NewOpenRouterLLMClient(OpenRouterConfig{APIKey: "test-key"})
+	if err == nil {
+		t.Fatal("expected error for missing HTTPDoer")
+	}
+	if !errors.Is(err, ErrRuntimeUnavailable) {
+		t.Fatalf("expected ErrRuntimeUnavailable, got: %v", err)
+	}
+}
+
+func TestOpenRouterLLMClient_DraftCypher(t *testing.T) {
+	respBody, _ := json.Marshal(map[string]any{
+		"choices": []map[string]any{{
+			"message": map[string]string{
+				"content": `{"rationale":"test rationale","cypher":"MATCH (n) RETURN n LIMIT 5","refusal":""}`,
+			},
+		}},
+	})
+	doer := &stubHTTPDoer{statusCode: 200, body: respBody}
+
+	client, err := NewOpenRouterLLMClient(OpenRouterConfig{
+		APIKey:    "test-key",
+		HTTPDoer:  doer,
+		MaxTokens: 100,
+	})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	resp, err := client.DraftCypher(context.Background(), DraftRequest{
+		TenantID: "test",
+		Question: "Show all nodes",
+		Model:    "claude-sonnet-4-6",
+	})
+	if err != nil {
+		t.Fatalf("draft cypher: %v", err)
+	}
+	if resp.Rationale != "test rationale" {
+		t.Errorf("expected 'test rationale', got %q", resp.Rationale)
+	}
+	if resp.Cypher != "MATCH (n) RETURN n LIMIT 5" {
+		t.Errorf("unexpected cypher: %q", resp.Cypher)
+	}
+	if doer.lastHeaders["Authorization"] != "Bearer test-key" {
+		t.Errorf("expected Bearer test-key, got %s", doer.lastHeaders["Authorization"])
+	}
+	if doer.lastURL != openRouterBaseURL {
+		t.Errorf("expected URL %s, got %s", openRouterBaseURL, doer.lastURL)
+	}
+}
+
+func TestOpenRouterLLMClient_Summarize(t *testing.T) {
+	respBody, _ := json.Marshal(map[string]any{
+		"choices": []map[string]any{{
+			"message": map[string]string{
+				"content": "Summary of results.",
+			},
+		}},
+	})
+	doer := &stubHTTPDoer{statusCode: 200, body: respBody}
+
+	client, err := NewOpenRouterLLMClient(OpenRouterConfig{APIKey: "test-key", HTTPDoer: doer})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	text, err := client.Summarize(context.Background(), SummarizeRequest{
+		TenantID: "test",
+		Question: "Show nodes",
+		Cypher:   "MATCH (n) RETURN n",
+		Rows:     []map[string]any{{"urn": "test"}},
+	})
+	if err != nil {
+		t.Fatalf("summarize: %v", err)
+	}
+	if text != "Summary of results." {
+		t.Errorf("unexpected summary: %q", text)
+	}
+}
+
+func TestOpenRouterLLMClient_ErrorResponse(t *testing.T) {
+	doer := &stubHTTPDoer{statusCode: 429, body: []byte(`{"error":{"message":"rate limited"}}`)}
+
+	client, err := NewOpenRouterLLMClient(OpenRouterConfig{APIKey: "test-key", HTTPDoer: doer})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	_, err = client.DraftCypher(context.Background(), DraftRequest{
+		TenantID: "test",
+		Question: "Show nodes",
+	})
+	if err == nil {
+		t.Fatal("expected error for 429 response")
+	}
+}
+
+func TestOpenRouterLLMClient_HTTPDoerError(t *testing.T) {
+	doer := &stubHTTPDoer{err: fmt.Errorf("connection refused")}
+
+	client, err := NewOpenRouterLLMClient(OpenRouterConfig{APIKey: "test-key", HTTPDoer: doer})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	_, err = client.DraftCypher(context.Background(), DraftRequest{
+		TenantID: "test",
+		Question: "Show nodes",
+	})
+	if err == nil {
+		t.Fatal("expected error for connection failure")
+	}
+}

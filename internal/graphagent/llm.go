@@ -55,7 +55,17 @@ type LLMConfig struct {
 	Temperature float64
 }
 
+type LLMConfigWithSecrets struct {
+	LLMConfig
+	OpenRouterAPIKey string
+	HTTPDoer         HTTPDoer
+}
+
 func NewLLMClient(ctx context.Context, cfg LLMConfig) (LLMClient, error) {
+	return NewLLMClientWithSecrets(ctx, LLMConfigWithSecrets{LLMConfig: cfg})
+}
+
+func NewLLMClientWithSecrets(ctx context.Context, cfg LLMConfigWithSecrets) (LLMClient, error) {
 	provider := strings.ToLower(strings.TrimSpace(cfg.Provider))
 	if provider == "" {
 		provider = "bedrock"
@@ -65,6 +75,17 @@ func NewLLMClient(ctx context.Context, cfg LLMConfig) (LLMClient, error) {
 		return NewStubLLMClient(), nil
 	case "bedrock":
 		return NewBedrockLLMClient(ctx, BedrockConfig{
+			DefaultModel: cfg.Model,
+			SonnetModel:  cfg.SonnetModel,
+			OpusModel:    cfg.OpusModel,
+			HaikuModel:   cfg.HaikuModel,
+			MaxTokens:    cfg.MaxTokens,
+			Temperature:  cfg.Temperature,
+		})
+	case "openrouter":
+		return NewOpenRouterLLMClient(OpenRouterConfig{
+			APIKey:       cfg.OpenRouterAPIKey,
+			HTTPDoer:     cfg.HTTPDoer,
 			DefaultModel: cfg.Model,
 			SonnetModel:  cfg.SonnetModel,
 			OpusModel:    cfg.OpusModel,

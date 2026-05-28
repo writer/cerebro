@@ -59,13 +59,14 @@ type GraphStoreConfig struct {
 
 // GraphAgentLLMConfig selects and configures the graph ask LLM adapter.
 type GraphAgentLLMConfig struct {
-	Provider    string
-	Model       string
-	SonnetModel string
-	OpusModel   string
-	HaikuModel  string
-	MaxTokens   int
-	Temperature float64
+	Provider         string
+	Model            string
+	SonnetModel      string
+	OpusModel        string
+	HaikuModel       string
+	MaxTokens        int
+	Temperature      float64
+	OpenRouterAPIKey string
 }
 
 // APIKey grants one bearer token access to the bootstrap API.
@@ -224,6 +225,7 @@ func Load() (Config, error) {
 	if cfg.GraphAgentLLM.Temperature, err = parseFloatEnv("CEREBRO_GRAPH_AGENT_LLM_TEMPERATURE", 0); err != nil {
 		return Config{}, err
 	}
+	cfg.GraphAgentLLM.OpenRouterAPIKey = strings.TrimSpace(os.Getenv("CEREBRO_OPENROUTER_API_KEY"))
 	if raw, ok := os.LookupEnv("CEREBRO_SHUTDOWN_TIMEOUT"); ok && strings.TrimSpace(raw) != "" {
 		duration, err := time.ParseDuration(strings.TrimSpace(raw))
 		if err != nil {
