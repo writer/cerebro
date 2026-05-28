@@ -506,26 +506,32 @@ func githubCodeRepositoryProjections(event *cerebrov1.EventEnvelope) ([]*ports.P
 
 	codeRepoURN := projectionURN(tenantID, "github_code_repository", repoID)
 	if codeRepoURN != "" {
+		codeRepoAttrs := map[string]string{
+			"archived":       strings.TrimSpace(attributes["archived"]),
+			"default_branch": strings.TrimSpace(attributes["default_branch"]),
+			"fork":           strings.TrimSpace(attributes["fork"]),
+			"html_url":       strings.TrimSpace(attributes["html_url"]),
+			"name":           strings.TrimSpace(attributes["name"]),
+			"owner_login":    owner,
+			"private":        strings.TrimSpace(attributes["private"]),
+			"repo_id":        strings.TrimSpace(attributes["repo_id"]),
+			"repository":     repository,
+			"resource_id":    repoID,
+			"resource_type":  "code_repository",
+			"visibility":     strings.TrimSpace(attributes["visibility"]),
+		}
+		for _, key := range []string{"secret_scanning", "secret_scanning_push_protection", "dependabot_security_updates"} {
+			if v := strings.TrimSpace(attributes[key]); v != "" {
+				codeRepoAttrs[key] = v
+			}
+		}
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        codeRepoURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
 			EntityType: "github.code.repository",
 			Label:      firstNonEmpty(repository, repoID),
-			Attributes: map[string]string{
-				"archived":       strings.TrimSpace(attributes["archived"]),
-				"default_branch": strings.TrimSpace(attributes["default_branch"]),
-				"fork":           strings.TrimSpace(attributes["fork"]),
-				"html_url":       strings.TrimSpace(attributes["html_url"]),
-				"name":           strings.TrimSpace(attributes["name"]),
-				"owner_login":    owner,
-				"private":        strings.TrimSpace(attributes["private"]),
-				"repo_id":        strings.TrimSpace(attributes["repo_id"]),
-				"repository":     repository,
-				"resource_id":    repoID,
-				"resource_type":  "code_repository",
-				"visibility":     strings.TrimSpace(attributes["visibility"]),
-			},
+			Attributes: codeRepoAttrs,
 		})
 		if orgURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), codeRepoURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "owner_login": owner}))
@@ -1230,17 +1236,23 @@ func oktaUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 
 	userURN := oktaUserURN(tenantID, userID)
 	if userURN != "" {
+		userAttrs := map[string]string{
+			"email":  email,
+			"login":  login,
+			"status": strings.TrimSpace(attributes["status"]),
+		}
+		for _, key := range []string{"mfa_enrolled", "mfa_factor_count", "mfa_factor_types", "mfa_phishing_resistant"} {
+			if v := strings.TrimSpace(attributes[key]); v != "" {
+				userAttrs[key] = v
+			}
+		}
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        userURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
 			EntityType: "okta.user",
 			Label:      firstNonEmpty(email, login, userID),
-			Attributes: map[string]string{
-				"email":  email,
-				"login":  login,
-				"status": strings.TrimSpace(attributes["status"]),
-			},
+			Attributes: userAttrs,
 		})
 		if orgURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), userURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
