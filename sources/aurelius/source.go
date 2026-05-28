@@ -47,7 +47,7 @@ const (
 	assumeRoleSessionName = "cerebro-aurelius-source"
 	maxObjectBytes        = 64 << 20
 	maxLineBytes          = 1 << 20
-	maxEventsPerPull      = 10000
+	maxEventsPerPull      = 1000
 	cursorSource          = "aurelius/s3-ndjson/v1"
 
 	familyVerdict          = "verdict"

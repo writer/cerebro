@@ -556,6 +556,9 @@ func TestReadResumesFromCursor(t *testing.T) {
 }
 
 func TestReadDoesNotAdvancePastPartiallyProcessedArchive(t *testing.T) {
+	if maxEventsPerPull > 1000 {
+		t.Fatalf("maxEventsPerPull = %d, want <= 1000 to keep graph ingest batches below the orchestrator phase timeout", maxEventsPerPull)
+	}
 	src, err := New()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
