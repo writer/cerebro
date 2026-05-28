@@ -385,21 +385,27 @@ func identityPolicyRuleProjections(event *cerebrov1.EventEnvelope, profile ident
 	policyRuleURN := projectionURN(tenantID, profile.Provider+"_policy_rule", policyID, policyRuleID)
 	entities := map[string]*ports.ProjectedEntity{}
 	if policyRuleURN != "" {
+		policyRuleAttrs := map[string]string{
+			"policy_id":      policyID,
+			"policy_rule_id": policyRuleID,
+			"policy_type":    strings.TrimSpace(attributes["policy_type"]),
+			"name":           firstNonEmpty(attributes["name"], attributes["policy_rule_name"]),
+			"status":         strings.TrimSpace(attributes["status"]),
+			"priority":       strings.TrimSpace(attributes["priority"]),
+			"system":         strings.TrimSpace(attributes["system"]),
+		}
+		for _, key := range []string{"access", "requires_mfa", "mfa_prompt", "mfa_lifetime_minutes", "session_max_lifetime_minutes", "session_idle_minutes", "session_persistent", "network_connection", "risk_level"} {
+			if v := strings.TrimSpace(attributes[key]); v != "" {
+				policyRuleAttrs[key] = v
+			}
+		}
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        policyRuleURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
 			EntityType: profile.entityType("policy_rule"),
 			Label:      firstNonEmpty(attributes["name"], attributes["policy_rule_name"], policyRuleID),
-			Attributes: map[string]string{
-				"policy_id":      policyID,
-				"policy_rule_id": policyRuleID,
-				"policy_type":    strings.TrimSpace(attributes["policy_type"]),
-				"name":           firstNonEmpty(attributes["name"], attributes["policy_rule_name"]),
-				"status":         strings.TrimSpace(attributes["status"]),
-				"priority":       strings.TrimSpace(attributes["priority"]),
-				"system":         strings.TrimSpace(attributes["system"]),
-			},
+			Attributes: policyRuleAttrs,
 		})
 	}
 	return identityProjectionResult(entities, nil)

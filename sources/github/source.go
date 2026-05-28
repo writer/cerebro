@@ -78,19 +78,22 @@ type pullRequestPayload struct {
 }
 
 type repositoryPayload struct {
-	ID            int64      `json:"id,omitempty"`
-	OwnerLogin    string     `json:"owner_login"`
-	Name          string     `json:"name"`
-	FullName      string     `json:"full_name"`
-	URL           string     `json:"url,omitempty"`
-	Visibility    string     `json:"visibility,omitempty"`
-	Private       bool       `json:"private"`
-	Archived      bool       `json:"archived"`
-	Fork          bool       `json:"fork"`
-	DefaultBranch string     `json:"default_branch,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	PushedAt      *time.Time `json:"pushed_at,omitempty"`
+	ID                               int64      `json:"id,omitempty"`
+	OwnerLogin                       string     `json:"owner_login"`
+	Name                             string     `json:"name"`
+	FullName                         string     `json:"full_name"`
+	URL                              string     `json:"url,omitempty"`
+	Visibility                       string     `json:"visibility,omitempty"`
+	Private                          bool       `json:"private"`
+	Archived                         bool       `json:"archived"`
+	Fork                             bool       `json:"fork"`
+	DefaultBranch                    string     `json:"default_branch,omitempty"`
+	CreatedAt                        time.Time  `json:"created_at"`
+	UpdatedAt                        time.Time  `json:"updated_at"`
+	PushedAt                         *time.Time `json:"pushed_at,omitempty"`
+	SecretScanningEnabled            string     `json:"secret_scanning_enabled,omitempty"`
+	SecretScanningPushProtection     string     `json:"secret_scanning_push_protection,omitempty"`
+	DependabotSecurityUpdatesEnabled string     `json:"dependabot_security_updates_enabled,omitempty"`
 }
 
 // New constructs the live GitHub source.
@@ -794,25 +797,56 @@ func repositoryEvent(settings settings, repo *gogithub.Repository) (*primitives.
 	if repo.GetID() != 0 {
 		repoID = strconv.FormatInt(repo.GetID(), 10)
 	}
+	secretScanning, pushProtection, dependabotUpdates := repoSecurityAnalysis(repo)
 	payloadBytes, err := json.Marshal(repositoryPayload{
-		ID:            repo.GetID(),
-		OwnerLogin:    ownerLogin,
-		Name:          repo.GetName(),
-		FullName:      fullName,
-		URL:           repo.GetHTMLURL(),
-		Visibility:    repo.GetVisibility(),
-		Private:       repo.GetPrivate(),
-		Archived:      repo.GetArchived(),
-		Fork:          repo.GetFork(),
-		DefaultBranch: repo.GetDefaultBranch(),
-		CreatedAt:     createdAt,
-		UpdatedAt:     occurredAt,
-		PushedAt:      timestamp(repo.PushedAt),
+		ID:                               repo.GetID(),
+		OwnerLogin:                       ownerLogin,
+		Name:                             repo.GetName(),
+		FullName:                         fullName,
+		URL:                              repo.GetHTMLURL(),
+		Visibility:                       repo.GetVisibility(),
+		Private:                          repo.GetPrivate(),
+		Archived:                         repo.GetArchived(),
+		Fork:                             repo.GetFork(),
+		DefaultBranch:                    repo.GetDefaultBranch(),
+		CreatedAt:                        createdAt,
+		UpdatedAt:                        occurredAt,
+		PushedAt:                         timestamp(repo.PushedAt),
+		SecretScanningEnabled:            secretScanning,
+		SecretScanningPushProtection:     pushProtection,
+		DependabotSecurityUpdatesEnabled: dependabotUpdates,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal github repository payload: %w", err)
 	}
 	resourceID := firstNonEmptyString(repoID, fullName)
+	attrs := map[string]string{
+		"archived":       strconv.FormatBool(repo.GetArchived()),
+		"default_branch": repo.GetDefaultBranch(),
+		"fork":           strconv.FormatBool(repo.GetFork()),
+		"full_name":      fullName,
+		"html_url":       repo.GetHTMLURL(),
+		"name":           repo.GetName(),
+		"owner":          settings.owner,
+		"owner_login":    ownerLogin,
+		"private":        strconv.FormatBool(repo.GetPrivate()),
+		"repo":           repo.GetName(),
+		"repo_id":        repoID,
+		"repository":     fullName,
+		"resource_id":    resourceID,
+		"resource_name":  fullName,
+		"resource_type":  "code_repository",
+		"visibility":     repo.GetVisibility(),
+	}
+	if secretScanning != "" {
+		attrs["secret_scanning"] = secretScanning
+	}
+	if pushProtection != "" {
+		attrs["secret_scanning_push_protection"] = pushProtection
+	}
+	if dependabotUpdates != "" {
+		attrs["dependabot_security_updates"] = dependabotUpdates
+	}
 	return &primitives.Event{
 		Id:         fmt.Sprintf("github-code-repository-%s-%d", normalizeRepositoryEventID(resourceID), occurredAt.Unix()),
 		TenantId:   settings.owner,
@@ -821,25 +855,28 @@ func repositoryEvent(settings settings, repo *gogithub.Repository) (*primitives.
 		OccurredAt: timestamppb.New(occurredAt.UTC()),
 		SchemaRef:  "github/code_repository/v1",
 		Payload:    payloadBytes,
-		Attributes: map[string]string{
-			"archived":       strconv.FormatBool(repo.GetArchived()),
-			"default_branch": repo.GetDefaultBranch(),
-			"fork":           strconv.FormatBool(repo.GetFork()),
-			"full_name":      fullName,
-			"html_url":       repo.GetHTMLURL(),
-			"name":           repo.GetName(),
-			"owner":          settings.owner,
-			"owner_login":    ownerLogin,
-			"private":        strconv.FormatBool(repo.GetPrivate()),
-			"repo":           repo.GetName(),
-			"repo_id":        repoID,
-			"repository":     fullName,
-			"resource_id":    resourceID,
-			"resource_name":  fullName,
-			"resource_type":  "code_repository",
-			"visibility":     repo.GetVisibility(),
-		},
+		Attributes: attrs,
 	}, nil
+}
+
+func repoSecurityAnalysis(repo *gogithub.Repository) (secretScanning, pushProtection, dependabotUpdates string) {
+	if repo == nil {
+		return "", "", ""
+	}
+	sa := repo.GetSecurityAndAnalysis()
+	if sa == nil {
+		return "", "", ""
+	}
+	if ss := sa.GetSecretScanning(); ss != nil {
+		secretScanning = ss.GetStatus()
+	}
+	if pp := sa.GetSecretScanningPushProtection(); pp != nil {
+		pushProtection = pp.GetStatus()
+	}
+	if du := sa.GetDependabotSecurityUpdates(); du != nil {
+		dependabotUpdates = du.GetStatus()
+	}
+	return secretScanning, pushProtection, dependabotUpdates
 }
 
 func repositoryOwnerLogin(fallback string, repo *gogithub.Repository) string {

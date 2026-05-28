@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -132,6 +133,8 @@ type userFactorRecord struct {
 type userMFASummary struct {
 	known             bool
 	activeFactorCount int
+	factorTypes       []string
+	phishingResistant bool
 }
 
 type groupRecord struct {
@@ -819,12 +822,19 @@ func (s *Source) userMFASummary(ctx context.Context, settings settings, userID s
 		return userMFASummary{}, fmt.Errorf("list okta user %q factors: %w", userID, err)
 	}
 	activeCount := 0
+	var factorTypes []string
+	phishingResistant := false
 	for _, factor := range factors {
 		if oktaMFAFactorEnrolled(factor) {
 			activeCount++
+			kind := strings.ToLower(strings.TrimSpace(firstNonEmpty(factor.Kind, factor.FactorType)))
+			factorTypes = append(factorTypes, kind)
+			if kind == "webauthn" || kind == "u2f" || kind == "signed_nonce" {
+				phishingResistant = true
+			}
 		}
 	}
-	return userMFASummary{known: true, activeFactorCount: activeCount}, nil
+	return userMFASummary{known: true, activeFactorCount: activeCount, factorTypes: factorTypes, phishingResistant: phishingResistant}, nil
 }
 
 func (s *Source) listGroups(ctx context.Context, settings settings, after string, limit int) ([]groupRecord, string, error) {
@@ -1402,6 +1412,11 @@ func userAttributes(settings settings, record userRecord) map[string]string {
 	if record.mfa.known {
 		attributes["mfa_enrolled"] = boolString(record.mfa.activeFactorCount > 0)
 		attributes["mfa_factor_count"] = strconv.Itoa(record.mfa.activeFactorCount)
+		if len(record.mfa.factorTypes) > 0 {
+			sort.Strings(record.mfa.factorTypes)
+			attributes["mfa_factor_types"] = strings.Join(record.mfa.factorTypes, ",")
+		}
+		attributes["mfa_phishing_resistant"] = boolString(record.mfa.phishingResistant)
 	}
 	addAttribute(attributes, "email", stringMap(record.Profile, "email"))
 	addAttribute(attributes, "login", stringMap(record.Profile, "login"))

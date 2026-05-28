@@ -380,7 +380,82 @@ func policyRuleAttributes(settings settings, entry policyRuleEntry) map[string]s
 	} else if entry.Policy.System != nil {
 		attributes["system"] = boolString(*entry.Policy.System)
 	}
+	policyRuleActionsAttributes(entry.Rule.raw, attributes)
+	policyRuleConditionsAttributes(entry.Rule.raw, attributes)
 	return attributes
+}
+
+func policyRuleActionsAttributes(raw json.RawMessage, attrs map[string]string) {
+	var rule struct {
+		Actions struct {
+			Signon struct {
+				Access        string `json:"access"`
+				RequireFactor bool   `json:"requireFactor"`
+				FactorPrompt  string `json:"factorPromptMode"`
+				FactorLife    int    `json:"factorLifetime"`
+				Session       struct {
+					UsePersistent bool `json:"usePersistentCookie"`
+					MaxLifetime   int  `json:"maxSessionLifetimeMinutes"`
+					Idle          int  `json:"maxSessionIdleMinutes"`
+				} `json:"session"`
+			} `json:"signon"`
+			AppSignOn struct {
+				Access string `json:"access"`
+			} `json:"appSignOn"`
+		} `json:"actions"`
+	}
+	if err := json.Unmarshal(raw, &rule); err != nil {
+		return
+	}
+	a := rule.Actions
+	if a.Signon.Access != "" {
+		attrs["access"] = strings.ToUpper(a.Signon.Access)
+		attrs["requires_mfa"] = boolString(a.Signon.RequireFactor)
+		if a.Signon.FactorPrompt != "" {
+			attrs["mfa_prompt"] = strings.ToUpper(a.Signon.FactorPrompt)
+		}
+		if a.Signon.FactorLife > 0 {
+			attrs["mfa_lifetime_minutes"] = strconv.Itoa(a.Signon.FactorLife)
+		}
+		if a.Signon.Session.MaxLifetime > 0 {
+			attrs["session_max_lifetime_minutes"] = strconv.Itoa(a.Signon.Session.MaxLifetime)
+		}
+		if a.Signon.Session.Idle > 0 {
+			attrs["session_idle_minutes"] = strconv.Itoa(a.Signon.Session.Idle)
+		}
+		attrs["session_persistent"] = boolString(a.Signon.Session.UsePersistent)
+	}
+	if a.AppSignOn.Access != "" {
+		attrs["access"] = strings.ToUpper(a.AppSignOn.Access)
+	}
+}
+
+func policyRuleConditionsAttributes(raw json.RawMessage, attrs map[string]string) {
+	var rule struct {
+		Conditions struct {
+			Network struct {
+				Connection string `json:"connection"`
+			} `json:"network"`
+			Risk struct {
+				Level string `json:"level"`
+			} `json:"risk"`
+			Platform struct {
+				Include []struct {
+					Type string `json:"type"`
+				} `json:"include"`
+			} `json:"platform"`
+		} `json:"conditions"`
+	}
+	if err := json.Unmarshal(raw, &rule); err != nil {
+		return
+	}
+	c := rule.Conditions
+	if c.Network.Connection != "" {
+		attrs["network_connection"] = strings.ToUpper(c.Network.Connection)
+	}
+	if c.Risk.Level != "" {
+		attrs["risk_level"] = strings.ToUpper(c.Risk.Level)
+	}
 }
 
 func policyRuleURN(settings settings, policy policyRecord, rule policyRuleRecord) string {
