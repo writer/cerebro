@@ -11,6 +11,8 @@
 #   range <base..head>     scan a git revision range (used by CI; range may
 #                          be passed as a single positional argument or via
 #                          $LEAK_CHECK_BASE_REF and $LEAK_CHECK_HEAD_REF)
+#   pr-body <title> <body> scan a PR title and body (also reads PR_TITLE /
+#                          PR_BODY from the environment when args are empty)
 #
 # Bypass: set CEREBRO_LEAK_CHECK_BYPASS=1 to skip the check. Bypasses are
 # logged so they show up in shell history and CI logs.
@@ -212,8 +214,33 @@ ${commits_diff}"
     fi
     ;;
 
+  pr-body)
+    # Scans a PR title and body supplied via environment variables or
+    # positional arguments: pr-body <title> <body>
+    # Can also read PR_TITLE / PR_BODY from the environment.
+    pr_title="${1:-${PR_TITLE:-}}"
+    pr_body="${2:-${PR_BODY:-}}"
+    shift 2 2>/dev/null || true
+    pr_content="${pr_title}
+${pr_body}"
+    if [ -z "$(printf '%s' "$pr_content" | tr -d '[:space:]')" ]; then
+      exit 0
+    fi
+    if ! scan_input "<pr-body>" "$pr_content"; then
+      cat >&2 <<'EOF'
+
+leak-check: tenant data pattern matched in PR title or body.
+
+  - Review the matches above.
+  - Rewrite the PR description to remove tenant-specific data.
+  - See AGENTS.md "Public PR Data Safety" for guidance.
+EOF
+      exit 1
+    fi
+    ;;
+
   *)
-    echo "leak-check: unknown mode '$mode' (expected: staged | commit-msg | pushed | range)" >&2
+    echo "leak-check: unknown mode '$mode' (expected: staged | commit-msg | pushed | range | pr-body)" >&2
     exit 1
     ;;
 esac

@@ -67,9 +67,18 @@ jobs:
           echo "range=${range}"
           echo "range=${range}" >> "$GITHUB_OUTPUT"
 
-      - name: Run leak check
+      - name: Run leak check (commits)
         env:
           RANGE: ${{ steps.range.outputs.range }}
         run: |
           set -euo pipefail
           ./scripts/leak_check.sh range "$RANGE"
+
+      - name: Run leak check (PR metadata)
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          ./scripts/leak_check.sh pr-body "$PR_TITLE" "$PR_BODY"
