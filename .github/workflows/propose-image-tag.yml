@@ -316,6 +316,20 @@ jobs:
               done
             }
 
+            # Clean up stale sec-dev automation branches and PRs from prior runs
+            gh pr list --state open --json number,headRefName \
+              --jq ".[] | select(.headRefName | startswith(\"automation/cerebro-image-${STACK_NAME}-\")) | .number" \
+            | while read -r old_pr; do
+              echo "Closing superseded PR #${old_pr}"
+              gh pr close "${old_pr}" --comment "Superseded by direct-push of ${IMAGE_TAG}." --delete-branch || true
+            done
+            gh api "repos/${GITHUB_REPOSITORY}/branches" --paginate -q '.[].name' \
+            | grep -E "^automation/cerebro-image-${STACK_NAME}-" \
+            | while read -r old_branch; do
+              echo "Deleting stale branch ${old_branch}"
+              gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${old_branch}" 2>/dev/null || true
+            done
+
             echo "Pushed ${STACK_NAME} deploy commit for ${IMAGE_TAG}; dispatching ordered sec-dev publish and deploy workflows."
             gh workflow run ci.yml --ref main
             wait_for_run ci.yml workflow_dispatch
@@ -352,6 +366,23 @@ jobs:
             echo
             echo "Deployment remains review-gated: merge this PR to let the existing mirror and Pulumi deploy workflows run."
           } > "${body}"
+
+          # Close superseded automation PRs and delete their branches
+          gh pr list --state open --json number,headRefName \
+            --jq ".[] | select(.headRefName | startswith(\"automation/cerebro-image-${STACK_NAME}-\")) | select(.headRefName != \"${branch}\") | .number" \
+          | while read -r old_pr; do
+            echo "Closing superseded PR #${old_pr}"
+            gh pr close "${old_pr}" --comment "Superseded by ${IMAGE_TAG}." --delete-branch || true
+          done
+
+          # Delete stale automation branches with no open PR
+          gh api "repos/${GITHUB_REPOSITORY}/branches" --paginate -q '.[].name' \
+          | grep -E "^automation/cerebro-image-${STACK_NAME}-" \
+          | grep -v "^${branch}$" \
+          | while read -r old_branch; do
+            echo "Deleting stale branch ${old_branch}"
+            gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${old_branch}" 2>/dev/null || true
+          done
 
           existing_pr="$(gh pr list --head "${branch}" --json url --jq '.[0].url // empty')"
           if [ -n "${existing_pr}" ]; then
