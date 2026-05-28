@@ -765,6 +765,7 @@ config:
         page_size: "100"
         prefix: aurelius/verdicts/
         region: us-east-1
+        role_arn: arn:aws:iam::502497380968:role/cerebro-aurelius-source-dev
         tenant_id: writer
     - id: writer-aurelius-findings
       sourceId: aurelius
@@ -775,6 +776,7 @@ config:
         page_size: "100"
         prefix: aurelius/findings/
         region: us-east-1
+        role_arn: arn:aws:iam::502497380968:role/cerebro-aurelius-source-dev
         tenant_id: writer
     - id: writer-aurelius-image-scans
       sourceId: aurelius
@@ -785,6 +787,7 @@ config:
         page_size: "100"
         prefix: aurelius/image_scans/
         region: us-east-1
+        role_arn: arn:aws:iam::502497380968:role/cerebro-aurelius-source-dev
         tenant_id: writer
     - id: writer-aurelius-catalog-promotions
       sourceId: aurelius
@@ -795,6 +798,7 @@ config:
         page_size: "100"
         prefix: aurelius/catalog_promotions/
         region: us-east-1
+        role_arn: arn:aws:iam::502497380968:role/cerebro-aurelius-source-dev
         tenant_id: writer
     - id: writer-aurelius-policy-exceptions
       sourceId: aurelius
@@ -805,6 +809,7 @@ config:
         page_size: "100"
         prefix: aurelius/policy_exceptions/
         region: us-east-1
+        role_arn: arn:aws:iam::502497380968:role/cerebro-aurelius-source-dev
         tenant_id: writer
   cerebro:enableWaf: true
   cerebro:albInternal: true

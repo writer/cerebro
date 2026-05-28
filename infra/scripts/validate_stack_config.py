@@ -128,6 +128,25 @@ def _source_secret_names(source_secret_keys: Any) -> set[str]:
     return names
 
 
+def _s3_source_role_requirements(s3_sources: Any) -> list[tuple[str, str, str]]:
+    requirements: list[tuple[str, str, str]] = []
+    if not isinstance(s3_sources, list):
+        return requirements
+    for source in s3_sources:
+        if not isinstance(source, dict):
+            continue
+        role_arn = str(source.get("roleArn", "")).strip()
+        bucket = str(source.get("bucket", "")).strip()
+        prefixes = source.get("prefixes") or []
+        if not role_arn or not bucket or not isinstance(prefixes, list):
+            continue
+        for prefix in prefixes:
+            prefix_text = str(prefix).strip()
+            if prefix_text:
+                requirements.append((bucket, prefix_text, role_arn))
+    return requirements
+
+
 def _runtime_id_from_command(command: Any) -> str | None:
     if not isinstance(command, list):
         return None
@@ -572,6 +591,7 @@ def validate_stack(path: Path) -> list[Finding]:
 
     runtime_ids: set[str] = set()
     source_secret_names = _source_secret_names(config.get("sourceSecretKeys") or [])
+    s3_role_requirements = _s3_source_role_requirements(config.get("s3Sources") or [])
     for index, runtime in enumerate(source_runtimes):
         runtime_path = f"cerebro:sourceRuntimes[{index}]"
         if not isinstance(runtime, dict):
@@ -595,15 +615,29 @@ def validate_stack(path: Path) -> list[Finding]:
             findings.append(_finding("error", stack, f"{runtime_path}.config", "runtime config must be an object"))
             continue
 
-        if str(runtime.get("sourceId", "")).strip() == "aws":
-            account_id = str(runtime_config.get("account_id", "")).strip()
-            role_arn = str(runtime_config.get("role_arn", "")).strip()
-            if role_arn:
-                match = AWS_ROLE_ARN_RE.match(role_arn)
-                if not match:
-                    findings.append(_finding("error", stack, f"{runtime_path}.config.role_arn", "must be an IAM role ARN"))
-                elif account_id and match.group(2) != account_id:
-                    findings.append(_finding("error", stack, f"{runtime_path}.config.role_arn", "account must match account_id"))
+        account_id = str(runtime_config.get("account_id", "")).strip()
+        role_arn = str(runtime_config.get("role_arn", "")).strip()
+        if role_arn:
+            match = AWS_ROLE_ARN_RE.match(role_arn)
+            if not match:
+                findings.append(_finding("error", stack, f"{runtime_path}.config.role_arn", "must be an IAM role ARN"))
+            elif str(runtime.get("sourceId", "")).strip() == "aws" and account_id and match.group(2) != account_id:
+                findings.append(_finding("error", stack, f"{runtime_path}.config.role_arn", "account must match account_id"))
+
+        runtime_bucket = str(runtime_config.get("bucket", "")).strip()
+        runtime_prefix = str(runtime_config.get("prefix", "")).strip()
+        for bucket, prefix, required_role_arn in s3_role_requirements:
+            if runtime_bucket != bucket or runtime_prefix != prefix:
+                continue
+            if role_arn != required_role_arn:
+                findings.append(
+                    _finding(
+                        "error",
+                        stack,
+                        f"{runtime_path}.config.role_arn",
+                        f"S3 source runtime for s3://{bucket}/{prefix} must set role_arn to the configured s3Sources roleArn",
+                    )
+                )
 
         for env_name, env_path in _env_refs(runtime_config, f"{runtime_path}.config"):
             if not env_name:
