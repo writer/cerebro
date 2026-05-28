@@ -23,13 +23,13 @@ func newGitHubSelfHostedRunnerReviewRule() Rule {
 		ControlRefs:       []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.6"}, {FrameworkName: "ISO 27001:2022", ControlID: "A.8.9"}},
 		Lifecycle:         Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 	}, map[string][]string{"github": {"audit"}}, `MATCH (runner:Entity {tenant_id: $tenant_id, entity_type: 'github.runner'})
-OPTIONAL MATCH (runner)-[scopeRel:RELATION {relation: 'belongs_to'}]->(scope:Entity {tenant_id: $tenant_id})
 WHERE NOT coalesce(runner.attributes_json, '') CONTAINS '"runner_status":"inactive"'
   AND (
     NOT coalesce(runner.attributes_json, '') CONTAINS '"runner_ephemeral":"true"'
     OR coalesce(runner.attributes_json, '') CONTAINS '"runner_untrusted":"true"'
     OR coalesce(runner.attributes_json, '') CONTAINS '"host_trusted":"false"'
   )
+OPTIONAL MATCH (runner)-[scopeRel:RELATION {relation: 'belongs_to'}]->(scope:Entity {tenant_id: $tenant_id})
 RETURN runner.urn AS primary_urn,
        runner.label AS primary_label,
        runner.entity_type AS primary_type,

@@ -625,7 +625,7 @@ func TestIdentityApiTokenOrOauthAppCreated_OAuthTrajectory(t *testing.T) {
 		t.Fatalf("oauth attributes[org] = %q, want writer.okta.com", got)
 	}
 	if got := oauthFinding.Attributes["oauth_app_id"]; got != "0oa-client" {
-		t.Fatalf("oauth attributes[oauth_app_id] = %q, want 0oa-client", got)
+		t.Fatalf("oauth attributes[oauth_app_id] = %q, want 0oa-client to preserve existing finding fingerprints", got)
 	}
 	if got := oauthFinding.Attributes["status"]; got != "ACTIVE" {
 		t.Fatalf("oauth attributes[status] = %q, want ACTIVE", got)
@@ -637,6 +637,14 @@ func TestIdentityApiTokenOrOauthAppCreated_OAuthTrajectory(t *testing.T) {
 	openAnchor := counterRule.OpenAnchor(oauthFinding.Attributes)
 	if openAnchor == "" {
 		t.Fatalf("OpenAnchor(%v) = empty, want org/oauth_app_id anchor", oauthFinding.Attributes)
+	}
+	if want := "org=writer.okta.com|oauth_app_id=oauth-client-id"; openAnchor != want {
+		t.Fatalf("OpenAnchor(%v) = %q, want %q", oauthFinding.Attributes, openAnchor, want)
+	}
+	legacyOpenAttributes := cloneIdentitySignalAttributes(oauthFinding.Attributes)
+	legacyOpenAttributes["oauth_app_id"] = legacyOpenAttributes["app_id"]
+	if got := counterRule.OpenAnchor(legacyOpenAttributes); got != openAnchor {
+		t.Fatalf("OpenAnchor(legacy oauth_app_id attrs) = %q, want current client_id anchor %q", got, openAnchor)
 	}
 
 	inactiveAttrs := cloneIdentitySignalAttributes(oauthAttrs)
