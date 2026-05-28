@@ -45,3 +45,9 @@
 
 # ---- Generic secret-style key/value (broad; tighten if noisy) ----
 (?i)\b(aws_secret_access_key|api[_-]?key|access[_-]?token|bearer)\b[[:space:]]*[:=][[:space:]]*['\"][A-Za-z0-9/_+=.\-]{20,}['\"]
+
+# ---- Tenant runtime data shapes ----
+# Tenant-specific patterns (domains, account IDs, runtime IDs) belong
+# in the user-local file at $HOME/.config/cerebro/leak_patterns.txt
+# (see scripts/leak_patterns.user.example.txt). The patterns below
+# only cover structural shapes that are safe for a public repo.
