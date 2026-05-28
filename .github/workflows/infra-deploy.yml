@@ -739,6 +739,7 @@ jobs:
           stack-name: ${{ github.event.inputs.environment }}
           work-dir: infra/aws
           diff: true
+          refresh: true
 
       - name: Refresh AWS credentials for runtime verification (sec-dev)
         if: github.event.inputs.environment == 'sec-dev'
