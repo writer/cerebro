@@ -379,6 +379,16 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 		}),
 		s.policyRuleFamily(),
+		oktaFamily(oktaFamilyOptions[authenticatorRecord]{
+			Name:  familyAuthenticator,
+			Label: "okta authenticators",
+			List:  s.listAuthenticators,
+			Event: authenticatorEvent,
+			URN: func(settings settings, auth authenticatorRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:authenticator:%s", settings.domain, auth.ID), nil
+			},
+		}),
+		s.threatInsightFamily(),
 		oktaFamily(oktaFamilyOptions[groupRecord]{
 			Name:  familyGroup,
 			Label: "okta groups",
@@ -517,7 +527,7 @@ func parseSettings(cfg sourcecdk.Config, allowLoopbackBaseURL bool) (settings, e
 		settings.family = defaultFamily
 	}
 	switch settings.family {
-	case familyAdminRole, familyAppAssign, familyApplication, familyAudit, familyGroup, familyGroupMember, familyPolicyRule, familyUser:
+	case familyAdminRole, familyAppAssign, familyApplication, familyAudit, familyAuthenticator, familyGroup, familyGroupMember, familyPolicyRule, familyThreatInsight, familyUser:
 	default:
 		return settings, fmt.Errorf("okta family must be one of admin_role, app_assignment, application, audit, group, group_membership, policy_rule, or user")
 	}
