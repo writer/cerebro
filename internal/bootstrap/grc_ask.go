@@ -41,14 +41,18 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 	llm := a.deps.GraphAgentLLM
 	if llm == nil {
 		var err error
-		llm, err = graphagent.NewLLMClient(r.Context(), graphagent.LLMConfig{
-			Provider:    a.cfg.GraphAgentLLM.Provider,
-			Model:       a.cfg.GraphAgentLLM.Model,
-			SonnetModel: a.cfg.GraphAgentLLM.SonnetModel,
-			OpusModel:   a.cfg.GraphAgentLLM.OpusModel,
-			HaikuModel:  a.cfg.GraphAgentLLM.HaikuModel,
-			MaxTokens:   a.cfg.GraphAgentLLM.MaxTokens,
-			Temperature: a.cfg.GraphAgentLLM.Temperature,
+		llm, err = graphagent.NewLLMClientWithSecrets(r.Context(), graphagent.LLMConfigWithSecrets{
+			LLMConfig: graphagent.LLMConfig{
+				Provider:    a.cfg.GraphAgentLLM.Provider,
+				Model:       a.cfg.GraphAgentLLM.Model,
+				SonnetModel: a.cfg.GraphAgentLLM.SonnetModel,
+				OpusModel:   a.cfg.GraphAgentLLM.OpusModel,
+				HaikuModel:  a.cfg.GraphAgentLLM.HaikuModel,
+				MaxTokens:   a.cfg.GraphAgentLLM.MaxTokens,
+				Temperature: a.cfg.GraphAgentLLM.Temperature,
+			},
+			OpenRouterAPIKey: a.cfg.GraphAgentLLM.OpenRouterAPIKey,
+			HTTPDoer:         NewHTTPDoer(),
 		})
 		if err != nil {
 			writeGRCError(w, err)
