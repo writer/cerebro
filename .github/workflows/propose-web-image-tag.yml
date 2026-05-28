@@ -1,0 +1,149 @@
+name: Propose Web Image Tag
+run-name: Web image ${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'sec-dev' }} ${{ github.event.client_payload.web_image_tag || github.event.inputs.image_tag || 'latest' }}
+
+on:
+  repository_dispatch:
+    types:
+      - cerebro-web-release-published
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Stack to update
+        required: true
+        default: sec-dev
+        type: choice
+        options:
+          - sec-dev
+      image_tag:
+        description: Web image tag (e.g. sha-7609e30ed701)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  packages: read
+
+concurrency:
+  group: propose-web-image-tag-${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'sec-dev' }}
+  cancel-in-progress: false
+
+env:
+  WEB_GHCR_IMAGE: ghcr.io/writerinternal/cerebro-web
+
+jobs:
+  propose:
+    name: Update web image tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Resolve inputs
+        id: inputs
+        shell: bash
+        env:
+          DISPATCH_TAG: ${{ github.event.client_payload.web_image_tag || '' }}
+          DISPATCH_ENV: ${{ github.event.client_payload.target_environment || '' }}
+          DISPATCH_MODE: ${{ github.event.client_payload.apply_mode || '' }}
+          INPUT_TAG: ${{ github.event.inputs.image_tag || '' }}
+          INPUT_ENV: ${{ github.event.inputs.environment || '' }}
+        run: |
+          set -euo pipefail
+          tag="${DISPATCH_TAG:-${INPUT_TAG}}"
+          env="${DISPATCH_ENV:-${INPUT_ENV:-sec-dev}}"
+          mode="${DISPATCH_MODE:-direct_push}"
+
+          if [ -z "${tag}" ]; then
+            echo "No web image tag provided" >&2
+            exit 1
+          fi
+          if [ "${env}" != "sec-dev" ]; then
+            echo "Web image promotion is currently only supported for sec-dev" >&2
+            exit 1
+          fi
+
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "env=${env}" >> "$GITHUB_OUTPUT"
+          echo "mode=${mode}" >> "$GITHUB_OUTPUT"
+          echo "Resolved: ${WEB_GHCR_IMAGE}:${tag} -> ${env} (${mode})"
+
+      - name: Verify GHCR image exists
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ steps.inputs.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! docker manifest inspect "${WEB_GHCR_IMAGE}:${IMAGE_TAG}" >/dev/null 2>&1; then
+            echo "Image ${WEB_GHCR_IMAGE}:${IMAGE_TAG} not found in GHCR" >&2
+            exit 1
+          fi
+          echo "Verified ${WEB_GHCR_IMAGE}:${IMAGE_TAG} exists"
+
+      - name: Update Pulumi stack config
+        id: update
+        shell: bash
+        env:
+          STACK_NAME: ${{ steps.inputs.outputs.env }}
+          IMAGE_TAG: ${{ steps.inputs.outputs.tag }}
+        run: |
+          set -euo pipefail
+          config_file="infra/aws/Pulumi.${STACK_NAME}.yaml"
+
+          current_tag="$(awk '$1 == "cerebro:webImageTag:" { print $2; exit }' "${config_file}")"
+          echo "current_tag=${current_tag}" >> "$GITHUB_OUTPUT"
+
+          if [ "${current_tag}" = "${IMAGE_TAG}" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Stack ${STACK_NAME} already uses web image ${IMAGE_TAG}"
+            exit 0
+          fi
+
+          sed -i "s|cerebro:webImageTag:.*|cerebro:webImageTag: ${IMAGE_TAG}|" "${config_file}"
+
+          if ! grep -q "cerebro:webImageTag: ${IMAGE_TAG}" "${config_file}"; then
+            echo "Failed to update webImageTag in ${config_file}" >&2
+            exit 1
+          fi
+
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "Updated ${STACK_NAME} web image: ${current_tag} -> ${IMAGE_TAG}"
+
+      - name: Push update
+        if: steps.update.outputs.changed == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.CEREBRO_AUTORELEASE_TOKEN || github.token }}
+          STACK_NAME: ${{ steps.inputs.outputs.env }}
+          IMAGE_TAG: ${{ steps.inputs.outputs.tag }}
+          CURRENT_TAG: ${{ steps.update.outputs.current_tag }}
+          APPLY_MODE: ${{ steps.inputs.outputs.mode }}
+          SOURCE_REPO: ${{ github.event.client_payload.source_repository || 'manual' }}
+          SOURCE_REF: ${{ github.event.client_payload.source_ref || github.sha }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          expected_file="infra/aws/Pulumi.${STACK_NAME}.yaml"
+          changed_files="$(git diff --name-only)"
+          if [ "${changed_files}" != "${expected_file}" ]; then
+            echo "Unexpected changed files: ${changed_files}" >&2
+            exit 1
+          fi
+
+          git add "${expected_file}"
+          git commit -m "chore: deploy ${STACK_NAME} cerebro-web ${IMAGE_TAG}" \
+            -m "Source: ${SOURCE_REPO}@${SOURCE_REF}" \
+            -m "Image: ${WEB_GHCR_IMAGE}:${IMAGE_TAG}" \
+            -m "Previous: ${CURRENT_TAG}"
+
+          if [ "${APPLY_MODE}" = "direct_push" ] && [ "${STACK_NAME}" = "sec-dev" ]; then
+            git push origin HEAD:main
+            echo "Pushed ${STACK_NAME} web deploy commit; infra-deploy will deploy from main."
+          else
+            branch="automation/cerebro-web-${STACK_NAME}-${IMAGE_TAG}"
+            git checkout -B "${branch}"
+            git push --force-with-lease origin "HEAD:${branch}"
+            echo "Pushed branch ${branch} for review."
+          fi
