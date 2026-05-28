@@ -1239,6 +1239,50 @@
       ]
     },
     {
+      "id": "github-self-hosted-runner-review-needed",
+      "pack_id": "github",
+      "pack_name": "GitHub",
+      "name": "GitHub Self-Hosted Runner Needs Review",
+      "description": "Detect active non-ephemeral or untrusted GitHub self-hosted runners from projected runner state.",
+      "source_id": "github",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "github.audit"
+      ],
+      "output_kind": "finding.github_self_hosted_runner_review_needed",
+      "severity": "MEDIUM",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "actions",
+        "attack.t1195",
+        "github",
+        "graph-rule",
+        "self-hosted-runner",
+        "supply-chain"
+      ],
+      "references": [
+        "https://docs.github.com/en/actions/hosting-your-own-runners/about-self-hosted-runners"
+      ],
+      "false_positives": [
+        "Approved persistent runner pools with documented owner, hardening baseline, and network isolation."
+      ],
+      "runbook": "Validate runner ownership, scope, host trust, ephemeral posture, and recent jobs; remove or isolate unauthorized runners.",
+      "fingerprint_fields": [
+        "runner_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.6"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.9"
+        }
+      ]
+    },
+    {
       "id": "github-webhook-modified",
       "pack_id": "github",
       "pack_name": "GitHub",

@@ -1861,25 +1861,91 @@ func TestProjectGitHubAuditProjectsProgrammaticResourceAsCredential(t *testing.T
 	assertProjectedLink(t, graph, credentialURN, relationBelongsTo, "urn:cerebro:writer:github_org:writer")
 
 	_, err = New(state, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
-		Id:       "github-audit-pat-revoked",
+		Id:       "github-audit-pat-expired",
 		TenantId: "writer",
 		SourceId: "github",
 		Kind:     "github.audit",
 		Attributes: map[string]string{
-			"actor":         "octocat",
-			"action":        "personal_access_token.revoked",
-			"org":           "writer",
-			"resource_id":   "octocat",
-			"resource_type": "personal_access_token",
-			"scope":         "organization",
-			"token_id":      "555",
+			"actor":          "octocat",
+			"action":         "personal_access_token.access_granted",
+			"operation_type": "expired",
+			"org":            "writer",
+			"resource_id":    "octocat",
+			"resource_type":  "personal_access_token",
+			"scope":          "organization",
+			"token_id":       "555",
 		},
 	})
 	if err != nil {
-		t.Fatalf("Project() revoke error = %v", err)
+		t.Fatalf("Project() expired error = %v", err)
 	}
 	if got := graph.entities[credentialURN].Attributes["status"]; got != "inactive" {
-		t.Fatalf("revoked credential status = %q, want inactive", got)
+		t.Fatalf("expired credential status = %q, want inactive", got)
+	}
+}
+
+func TestProjectGitHubAuditProjectsSelfHostedRunnerState(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &projectionRecorder{}
+	_, err := New(state, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-audit-runner",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.audit",
+		Attributes: map[string]string{
+			"action":              "repo.register_self_hosted_runner",
+			"org":                 "writer",
+			"repo":                "writer/cerebro",
+			"resource_id":         "writer/cerebro",
+			"resource_type":       "repo",
+			"runner_ephemeral":    "false",
+			"runner_host_trusted": "false",
+			"runner_id":           "777",
+			"runner_name":         "prod-runner-1",
+			"runner_registered":   "true",
+			"runner_scope":        "repo:writer/cerebro",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	runnerURN := "urn:cerebro:writer:github_runner:repo:writer/cerebro:777"
+	runner, ok := graph.entities[runnerURN]
+	if !ok {
+		t.Fatalf("github.runner entity %q missing: %#v", runnerURN, graph.entities)
+	}
+	for key, want := range map[string]string{
+		"host_trusted":      "false",
+		"runner_ephemeral":  "false",
+		"runner_id":         "777",
+		"runner_scope":      "repo:writer/cerebro",
+		"runner_scope_type": "repo",
+		"runner_status":     "active",
+	} {
+		if got := runner.Attributes[key]; got != want {
+			t.Fatalf("runner attributes[%s] = %q, want %q", key, got, want)
+		}
+	}
+	assertProjectedLink(t, graph, runnerURN, relationBelongsTo, "urn:cerebro:writer:github_repo:writer/cerebro")
+
+	_, err = New(state, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-audit-runner-remove",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.audit",
+		Attributes: map[string]string{
+			"action":       "repo.remove_self_hosted_runner",
+			"org":          "writer",
+			"repo":         "writer/cerebro",
+			"runner_id":    "777",
+			"runner_scope": "repo:writer/cerebro",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() remove error = %v", err)
+	}
+	if got := graph.entities[runnerURN].Attributes["runner_status"]; got != "inactive" {
+		t.Fatalf("removed runner status = %q, want inactive", got)
 	}
 }
 

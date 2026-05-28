@@ -128,6 +128,7 @@ func cloudResourceExposureProjections(event *cerebrov1.EventEnvelope, profile id
 	if publicURN != "" && resourceURN != "" {
 		reachabilityAttrs := map[string]string{
 			"action":        strings.TrimSpace(attributes["action"]),
+			"at":            eventObservedAt(event),
 			"direction":     strings.TrimSpace(attributes["direction"]),
 			"event_id":      event.GetId(),
 			"exposure_type": strings.TrimSpace(attributes["exposure_type"]),
@@ -223,6 +224,7 @@ func cloudPublicEndpointProjections(event *cerebrov1.EventEnvelope, profile iden
 		if publicURN != "" && projectionBool(firstNonEmpty(attributes["internet_exposed"], attributes["public"], attributes["external_exposure"])) {
 			reachabilityAttrs := map[string]string{
 				"direction":     "ingress",
+				"at":            eventObservedAt(event),
 				"event_id":      event.GetId(),
 				"exposure_type": "public_endpoint",
 				"host":          strings.TrimSpace(attributes["host"]),
