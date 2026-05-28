@@ -15,6 +15,7 @@ config:
   cerebro:webCertificateDomain: cerebro-web.adm.dev.qordobadev.com
   cerebro:webApiBase: https://cerebro.adm.dev.qordobadev.com
   cerebro:webForwardAuthHeaders: false
+  cerebro:webProxyTimeoutMs: 600000
   cerebro:webOidcEnabled: true
   cerebro:webOidcIssuer: https://writer.okta.com
   cerebro:webOidcAuthorizationEndpoint: https://writer.okta.com/oauth2/v1/authorize
@@ -25,6 +26,8 @@ config:
   cerebro:webMemory: 1024
   cerebro:webMinInstances: 1
   cerebro:webMaxInstances: 2
+  cerebro:albIdleTimeoutSeconds: 600
+  cerebro:webAlbIdleTimeoutSeconds: 600
   cerebro:useExistingVpc: true
   cerebro:vpcId: vpc-06bac7242cd09af4d
   cerebro:vpcCidr: "10.10.0.0/16"

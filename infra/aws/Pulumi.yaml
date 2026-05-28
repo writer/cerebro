@@ -65,6 +65,10 @@ config:
     type: boolean
     default: false
     description: Forward caller auth headers from the web console to the Cerebro API
+  cerebro:webProxyTimeoutMs:
+    type: integer
+    default: 600000
+    description: Web console server-side Cerebro API proxy timeout in milliseconds
   cerebro:webApiKeySecretName:
     type: string
     default: CEREBRO_API_KEYS
@@ -439,6 +443,14 @@ config:
     type: boolean
     default: true
     description: Deploy ALB as internal-only
+  cerebro:albIdleTimeoutSeconds:
+    type: integer
+    default: 60
+    description: API ALB connection idle timeout in seconds
+  cerebro:webAlbIdleTimeoutSeconds:
+    type: integer
+    default: 60
+    description: Web console ALB connection idle timeout in seconds
   cerebro:albIngressCidrs:
     type: array
     items:

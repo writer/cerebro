@@ -141,6 +141,7 @@ web_max_instances = _config_int("webMaxInstances", 1)
 web_container_port = _config_int("webContainerPort", 3000)
 web_api_base = config.get("webApiBase") or (f"https://{domain}" if domain else "")
 web_forward_auth_headers = _config_bool("webForwardAuthHeaders", False)
+web_proxy_timeout_ms = _config_int("webProxyTimeoutMs", 600000)
 web_api_key_secret_name = config.get("webApiKeySecretName") or "CEREBRO_API_KEYS"
 web_oidc_enabled = _config_bool("webOidcEnabled", False)
 web_oidc_issuer = (config.get("webOidcIssuer") or "").rstrip("/")
@@ -181,6 +182,8 @@ if web_oidc_enabled:
     }
 
 alb_internal = _config_bool("albInternal", True)
+alb_idle_timeout_seconds = _config_int("albIdleTimeoutSeconds", 60)
+web_alb_idle_timeout_seconds = _config_int("webAlbIdleTimeoutSeconds", alb_idle_timeout_seconds)
 configured_alb_ingress_cidrs = config.get_object("albIngressCidrs") or None
 is_production = "prod" in environment.lower()
 
@@ -501,6 +504,7 @@ alb_stack = load_balancer.create_alb(
     enable_access_logs=enable_alb_access_logs,
     access_logs_retention_days=alb_access_logs_retention_days,
     allowed_hostnames=[domain] if domain else None,
+    idle_timeout_seconds=alb_idle_timeout_seconds,
 )
 
 web_alb_stack = None
@@ -520,6 +524,7 @@ if web_enabled:
         access_logs_retention_days=alb_access_logs_retention_days,
         allowed_hostnames=[web_domain] if web_domain else None,
         oidc_auth=web_oidc_auth,
+        idle_timeout_seconds=web_alb_idle_timeout_seconds,
     )
 
 # =============================================================================
@@ -639,6 +644,7 @@ if web_enabled:
         environment={
             "CEREBRO_API_BASE": web_api_base,
             "CEREBRO_FORWARD_AUTH_HEADERS": str(web_forward_auth_headers).lower(),
+            "CEREBRO_PROXY_TIMEOUT_MS": str(web_proxy_timeout_ms),
             "NEXT_TELEMETRY_DISABLED": "1",
         },
         secret_keys=web_secret_keys,

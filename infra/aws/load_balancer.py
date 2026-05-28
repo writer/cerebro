@@ -23,6 +23,7 @@ def create_alb(
     access_logs_retention_days: int = 90,
     allowed_hostnames: list[str] = None,
     oidc_auth: dict = None,
+    idle_timeout_seconds: int = 60,
 ) -> dict:
     """
     Create Application Load Balancer.
@@ -42,6 +43,7 @@ def create_alb(
         access_logs_retention_days: Days to retain access logs
         allowed_hostnames: Host headers allowed to reach the target group
         oidc_auth: Optional ALB OIDC authentication settings
+        idle_timeout_seconds: Connection idle timeout in seconds
     """
     def oidc_default_action(order: int):
         return aws.lb.ListenerDefaultActionArgs(
@@ -223,6 +225,7 @@ def create_alb(
         subnets=subnet_ids,
         enable_deletion_protection=enable_deletion_protection,
         enable_http2=True,
+        idle_timeout=idle_timeout_seconds,
         drop_invalid_header_fields=True,
         access_logs=(
             aws.lb.LoadBalancerAccessLogsArgs(
