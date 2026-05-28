@@ -102,14 +102,8 @@ func TestAuditAttributes_ForwardsRunnerID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Evaluate(source-backed runner audit event) error = %v", err)
 	}
-	if len(records) != 1 {
-		t.Fatalf("Evaluate(source-backed runner audit event) returned %d findings, want 1; attrs=%v", len(records), event.Attributes)
-	}
-	if got := records[0].Attributes["runner_id"]; got != "777" {
-		t.Fatalf("finding runner_id = %q, want 777", got)
-	}
-	if got := records[0].Attributes["primary_resource_urn"]; got != "urn:cerebro:writer:github_repo:writer/cerebro" {
-		t.Fatalf("primary_resource_urn = %q, want repo anchor from source-backed runner event", got)
+	if len(records) != 0 {
+		t.Fatalf("Evaluate(source-backed runner audit event) returned %d findings, want 0 for retired runner rule; attrs=%v", len(records), event.Attributes)
 	}
 }
 

@@ -145,13 +145,15 @@ type groupRecord struct {
 }
 
 type appRecord struct {
-	ID          string     `json:"id"`
-	Name        string     `json:"name"`
-	Label       string     `json:"label"`
-	Status      string     `json:"status"`
-	SignOnMode  string     `json:"signOnMode"`
-	Created     *time.Time `json:"created"`
-	LastUpdated *time.Time `json:"lastUpdated"`
+	ID          string         `json:"id"`
+	Name        string         `json:"name"`
+	Label       string         `json:"label"`
+	Status      string         `json:"status"`
+	SignOnMode  string         `json:"signOnMode"`
+	Created     *time.Time     `json:"created"`
+	LastUpdated *time.Time     `json:"lastUpdated"`
+	Credentials map[string]any `json:"credentials"`
+	Settings    map[string]any `json:"settings"`
 	raw         json.RawMessage
 }
 
@@ -1449,6 +1451,12 @@ func groupMembershipAttributes(settings settings, record userRecord) map[string]
 
 func applicationAttributes(settings settings, record appRecord) map[string]string {
 	mode := strings.ToLower(record.Name + " " + record.SignOnMode)
+	oauthClient := nestedMap(record.Settings, "oauthClient")
+	oauthCredential := nestedMap(record.Credentials, "oauthClient")
+	applicationType := stringMap(oauthClient, "application_type")
+	tokenAuthMethod := stringMap(oauthCredential, "token_endpoint_auth_method")
+	grantTypes := stringSliceMap(oauthClient, "grant_types")
+	responseTypes := stringSliceMap(oauthClient, "response_types")
 	attributes := map[string]string{
 		"domain":   settings.domain,
 		"family":   familyApplication,
@@ -1459,9 +1467,48 @@ func applicationAttributes(settings settings, record appRecord) map[string]strin
 	addAttribute(attributes, "app_label", record.Label)
 	addAttribute(attributes, "name", record.Name)
 	addAttribute(attributes, "sign_on_mode", record.SignOnMode)
-	addAttribute(attributes, "oauth2", boolString(strings.Contains(mode, "oidc") || strings.Contains(mode, "oauth")))
+	addAttribute(attributes, "client_id", stringMap(oauthCredential, "client_id"))
+	addAttribute(attributes, "application_type", applicationType)
+	addAttribute(attributes, "grant_types", strings.Join(grantTypes, ","))
+	addAttribute(attributes, "response_types", strings.Join(responseTypes, ","))
+	addAttribute(attributes, "token_endpoint_auth_method", tokenAuthMethod)
+	addAttribute(attributes, "oauth_client_type", oktaOAuthClientType(applicationType, tokenAuthMethod))
+	addAttribute(attributes, "oauth_public_client", boolString(oktaOAuthPublicClient(applicationType, tokenAuthMethod)))
+	addAttribute(attributes, "redirect_uri_count", strconv.Itoa(len(stringSliceMap(oauthClient, "redirect_uris"))))
+	addAttribute(attributes, "post_logout_redirect_uri_count", strconv.Itoa(len(stringSliceMap(oauthClient, "post_logout_redirect_uris"))))
+	addAttribute(attributes, "wildcard_redirect", boolString(oktaOAuthWildcardRedirect(oauthClient)))
+	addAttribute(attributes, "oauth2", boolString(strings.Contains(mode, "oidc") || strings.Contains(mode, "oauth") || len(grantTypes) != 0 || len(responseTypes) != 0 || applicationType != ""))
 	addAttribute(attributes, "saml", boolString(strings.Contains(mode, "saml")))
 	return attributes
+}
+
+func oktaOAuthClientType(applicationType string, tokenAuthMethod string) string {
+	if oktaOAuthPublicClient(applicationType, tokenAuthMethod) {
+		return "PublicClientApp"
+	}
+	if strings.TrimSpace(applicationType) != "" || strings.TrimSpace(tokenAuthMethod) != "" {
+		return "ConfidentialClientApp"
+	}
+	return ""
+}
+
+func oktaOAuthPublicClient(applicationType string, tokenAuthMethod string) bool {
+	switch strings.ToLower(strings.TrimSpace(applicationType)) {
+	case "browser", "native", "spa":
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(tokenAuthMethod), "none")
+}
+
+func oktaOAuthWildcardRedirect(oauthClient map[string]any) bool {
+	for _, key := range []string{"redirect_uris", "post_logout_redirect_uris"} {
+		for _, uri := range stringSliceMap(oauthClient, key) {
+			if strings.Contains(uri, "*") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func appAssignmentAttributes(settings settings, record appAssignmentRecord) map[string]string {
@@ -1864,6 +1911,29 @@ func stringMap(values map[string]any, key string) string {
 		return ""
 	}
 	return strings.TrimSpace(text)
+}
+
+func stringSliceMap(values map[string]any, key string) []string {
+	value, ok := values[key]
+	if !ok {
+		return nil
+	}
+	items, ok := value.([]any)
+	if !ok {
+		return nil
+	}
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		text, ok := item.(string)
+		if !ok {
+			continue
+		}
+		trimmed := strings.TrimSpace(text)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 func firstNonEmpty(values ...string) string {

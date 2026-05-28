@@ -664,6 +664,27 @@ func TestReadLiveOktaIdentityJoinFamilies(t *testing.T) {
 			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
 				t.Fatalf("Read(%s).Events[0].Attributes[%q] = %q, want %q", tt.family, tt.attr, got, tt.want)
 			}
+			if tt.family == "application" {
+				for key, want := range map[string]string{
+					"application_type":           "browser",
+					"client_id":                  "0oa-client-id",
+					"grant_types":                "authorization_code,refresh_token",
+					"oauth2":                     "true",
+					"oauth_client_type":          "PublicClientApp",
+					"oauth_public_client":        "true",
+					"redirect_uri_count":         "2",
+					"response_types":             "code",
+					"token_endpoint_auth_method": "none",
+					"wildcard_redirect":          "true",
+				} {
+					if got := pull.Events[0].Attributes[key]; got != want {
+						t.Fatalf("Read(application).Events[0].Attributes[%q] = %q, want %q", key, got, want)
+					}
+				}
+				if _, ok := pull.Events[0].Attributes["client_secret"]; ok {
+					t.Fatal("Read(application) leaked client_secret attribute")
+				}
+			}
 		})
 	}
 }
@@ -1435,6 +1456,21 @@ func newOktaAPIHandler(t *testing.T) http.Handler {
 			"signOnMode":  "OPENID_CONNECT",
 			"created":     "2026-04-20T00:00:00Z",
 			"lastUpdated": "2026-04-23T00:00:00Z",
+			"credentials": map[string]any{
+				"oauthClient": map[string]any{
+					"client_id":                  "0oa-client-id",
+					"client_secret":              "do-not-project",
+					"token_endpoint_auth_method": "none",
+				},
+			},
+			"settings": map[string]any{
+				"oauthClient": map[string]any{
+					"application_type": "browser",
+					"grant_types":      []string{"authorization_code", "refresh_token"},
+					"redirect_uris":    []string{"https://app.example/callback", "https://*.example/callback"},
+					"response_types":   []string{"code"},
+				},
+			},
 		},
 	}
 	appAssignmentRecords := []map[string]any{

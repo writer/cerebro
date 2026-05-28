@@ -201,6 +201,17 @@ func TestCheckDiscoverAndReadLiveThreats(t *testing.T) {
 		t.Fatalf("threat attribute mitre_tactics = %q, want Execution", got)
 	}
 	for key, want := range map[string]string{
+		"analyst_verdict_norm":   "true_positive",
+		"automatically_resolved": "false",
+		"classification_norm":    "malware",
+		"incident_status_norm":   "unresolved",
+		"mitigation_status_norm": "not_mitigated",
+	} {
+		if got := first.Events[0].Attributes[key]; got != want {
+			t.Fatalf("threat attribute %s = %q, want %q", key, got, want)
+		}
+	}
+	for key, want := range map[string]string{
 		"hostname":     "host-A-1",
 		"agent_ip_v4":  "203.0.113.20",
 		"agent_ip_v6":  "2001:db8::20",

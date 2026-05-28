@@ -21,24 +21,25 @@ func TestProjectSentinelOneAgentBuildsAgentEntity(t *testing.T) {
 		Kind:       "sentinelone.agent",
 		OccurredAt: timestamppb.New(occurred),
 		Attributes: map[string]string{
-			"agent_id":          "agent-1",
-			"computer_name":     "host-1",
-			"os_name":           "macOS",
-			"os_type":           "macos",
-			"is_active":         "true",
-			"is_decommissioned": "false",
-			"is_up_to_date":     "true",
-			"infected":          "false",
-			"firewall_enabled":  "false",
-			"active_threats":    "0",
-			"hostname":          "host-1",
-			"external_ip":       "203.0.113.10",
-			"last_active_date":  "2026-04-23T01:00:00Z",
-			"site_id":           "site-1",
-			"site_name":         "Production",
-			"group_id":          "group-1",
-			"group_name":        "Default",
-			"tenant_host":       "writer.sentinelone.example",
+			"agent_id":             "agent-1",
+			"computer_name":        "host-1",
+			"os_name":              "macOS",
+			"os_type":              "macos",
+			"is_active":            "true",
+			"is_decommissioned":    "false",
+			"is_pending_uninstall": "false",
+			"is_up_to_date":        "true",
+			"infected":             "false",
+			"firewall_enabled":     "false",
+			"active_threats":       "0",
+			"hostname":             "host-1",
+			"external_ip":          "203.0.113.10",
+			"last_active_date":     "2026-04-23T01:00:00Z",
+			"site_id":              "site-1",
+			"site_name":            "Production",
+			"group_id":             "group-1",
+			"group_name":           "Default",
+			"tenant_host":          "writer.sentinelone.example",
 		},
 	})
 	if err != nil {
@@ -73,6 +74,9 @@ func TestProjectSentinelOneAgentBuildsAgentEntity(t *testing.T) {
 	}
 	if got := state.entities[agentURN].Attributes["control_state"]; got != "disabled" {
 		t.Fatalf("agent control_state = %q, want disabled", got)
+	}
+	if got := state.entities[agentURN].Attributes["is_pending_uninstall"]; got != "false" {
+		t.Fatalf("agent is_pending_uninstall = %q, want false", got)
 	}
 	if entity := state.entities[ipURN]; entity == nil || entity.EntityType != "internet.ip" {
 		t.Fatalf("internet ip entity missing: %#v", entity)
@@ -116,26 +120,31 @@ func TestProjectSentinelOneThreatLinksThreatToAgent(t *testing.T) {
 		Kind:       "sentinelone.threat",
 		OccurredAt: timestamppb.New(occurred),
 		Attributes: map[string]string{
-			"threat_id":             "threat-1",
-			"agent_id":              "agent-1",
-			"agent_name":            "host-1",
-			"computer_name":         "host-1",
-			"hostname":              "host-1",
-			"agent_ip_v6":           "2001:db8::20",
-			"external_ip":           "203.0.113.20",
-			"ip_addresses":          "203.0.113.20,2001:db8::20",
-			"classification":        "Malware",
-			"classification_source": "Engine",
-			"analyst_verdict":       "true_positive",
-			"incident_status":       "unresolved",
-			"mitigation_status":     "not_mitigated",
-			"confidence_level":      "malicious",
-			"site_id":               "site-1",
-			"group_id":              "group-1",
-			"mitre_tactics":         "Execution",
-			"mitre_techniques":      "Native API",
-			"is_active":             "true",
-			"is_fileless":           "false",
+			"threat_id":              "threat-1",
+			"agent_id":               "agent-1",
+			"agent_name":             "host-1",
+			"computer_name":          "host-1",
+			"hostname":               "host-1",
+			"agent_ip_v6":            "2001:db8::20",
+			"external_ip":            "203.0.113.20",
+			"ip_addresses":           "203.0.113.20,2001:db8::20",
+			"classification":         "Malware",
+			"classification_norm":    "malware",
+			"classification_source":  "Engine",
+			"analyst_verdict":        "true_positive",
+			"analyst_verdict_norm":   "true_positive",
+			"automatically_resolved": "false",
+			"incident_status":        "unresolved",
+			"incident_status_norm":   "unresolved",
+			"mitigation_status":      "not_mitigated",
+			"mitigation_status_norm": "not_mitigated",
+			"confidence_level":       "malicious",
+			"site_id":                "site-1",
+			"group_id":               "group-1",
+			"mitre_tactics":          "Execution",
+			"mitre_techniques":       "Native API",
+			"is_active":              "true",
+			"is_fileless":            "false",
 		},
 	})
 	if err != nil {
@@ -166,6 +175,9 @@ func TestProjectSentinelOneThreatLinksThreatToAgent(t *testing.T) {
 	assertProjectedLink(t, state, threatURN, relationMemberOf, groupURN)
 	if got := state.entities[threatURN].Attributes["classification"]; got != "Malware" {
 		t.Fatalf("threat classification = %q, want Malware", got)
+	}
+	if got := state.entities[threatURN].Attributes["mitigation_status_norm"]; got != "not_mitigated" {
+		t.Fatalf("threat mitigation_status_norm = %q, want not_mitigated", got)
 	}
 	if got := state.entities[threatURN].Attributes["mitre_tactics"]; got != "Execution" {
 		t.Fatalf("threat mitre_tactics = %q, want Execution", got)

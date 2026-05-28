@@ -631,7 +631,8 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 	}
 
 	repoURN := projectionURN(tenantID, "github_repo", firstNonEmpty(repo, resourceID))
-	if repo != "" || (resourceID != "" && strings.Contains(resourceID, "/")) {
+	repoScopePresent := repo != "" || (resourceID != "" && strings.Contains(resourceID, "/"))
+	if repoScopePresent {
 		label := firstNonEmpty(repo, resourceID)
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        repoURN,
@@ -647,6 +648,11 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 	}
 
 	resourceURN := githubResourceURN(tenantID, resourceType, resourceID, repoURN)
+	programmaticCredential := githubAuditProgrammaticCredentialResource(resourceType)
+	programmaticCredentialURN := ""
+	if programmaticCredential {
+		programmaticCredentialURN = githubCredentialURN(tenantID, githubProgrammaticCredentialID(attributes))
+	}
 	if resourceURN != "" {
 		label := firstNonEmpty(resourceID, resourceType)
 		entityType := "github.resource"
@@ -654,22 +660,59 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 			entityType = "github.repo"
 			label = firstNonEmpty(repo, resourceID)
 		}
+		resourceAttrs := map[string]string{
+			"resource_id":   resourceID,
+			"resource_type": resourceType,
+		}
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        resourceURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
 			EntityType: entityType,
 			Label:      label,
-			Attributes: map[string]string{
-				"resource_id":   resourceID,
-				"resource_type": resourceType,
-			},
+			Attributes: resourceAttrs,
 		})
 		if orgURN != "" && repoURN == "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
 		if repoURN != "" && resourceURN != repoURN {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, repoURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+	if programmaticCredentialURN != "" {
+		credentialAttrs := map[string]string{
+			"credential_type":          resourceType,
+			"programmatic_access_type": programmaticAccessType,
+			"resource_id":              resourceID,
+			"resource_type":            resourceType,
+			"status":                   githubProgrammaticCredentialStatus(attributes["action"]),
+		}
+		addProjectedAttribute(credentialAttrs, "actor", actor)
+		addProjectedAttribute(credentialAttrs, "github_app_id", strings.TrimSpace(attributes["github_app_id"]))
+		addProjectedAttribute(credentialAttrs, "org", org)
+		addProjectedAttribute(credentialAttrs, "org_id", orgID)
+		addProjectedAttribute(credentialAttrs, "repository", repo)
+		addProjectedAttribute(credentialAttrs, "scope", strings.TrimSpace(attributes["scope"]))
+		addProjectedAttribute(credentialAttrs, "token_id", tokenID)
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        programmaticCredentialURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "github.credential",
+			Label:      firstNonEmpty(attributes["name"], attributes["github_app_id"], tokenID, resourceID, resourceType),
+			Attributes: credentialAttrs,
+		})
+		if resourceURN != "" && resourceURN != programmaticCredentialURN {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), programmaticCredentialURN, resourceURN, relationActedOn, map[string]string{
+				"action":                   strings.TrimSpace(attributes["action"]),
+				"event_id":                 event.GetId(),
+				"programmatic_access_type": programmaticAccessType,
+			}))
+		}
+		if repoScopePresent && repoURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), programmaticCredentialURN, repoURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		} else if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), programmaticCredentialURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
 	}
 
@@ -877,6 +920,67 @@ func githubPublicKeyCredentialID(tokenID string, actor string, repo string, reso
 
 func githubCredentialURN(tenantID string, credentialID string) string {
 	return projectionURN(tenantID, "github_credential", credentialID)
+}
+
+func githubAuditProgrammaticCredentialResource(resourceType string) bool {
+	switch strings.ToLower(strings.TrimSpace(resourceType)) {
+	case "personal_access_token",
+		"org_credential_authorization",
+		"integration_installation",
+		"integration_installation_request",
+		"oauth_application",
+		"integration":
+		return true
+	default:
+		return false
+	}
+}
+
+func githubProgrammaticCredentialID(attributes map[string]string) string {
+	resourceType := strings.TrimSpace(attributes["resource_type"])
+	prefix := firstNonEmpty(resourceType, "programmatic_credential")
+	switch strings.ToLower(resourceType) {
+	case "personal_access_token", "org_credential_authorization":
+		if tokenID := strings.TrimSpace(attributes["token_id"]); tokenID != "" {
+			return prefix + ":" + tokenID
+		}
+	case "integration_installation", "integration_installation_request", "integration":
+		if appID := strings.TrimSpace(attributes["github_app_id"]); appID != "" {
+			return prefix + ":" + appID
+		}
+	}
+	scope := firstNonEmpty(attributes["repo"], attributes["org"], attributes["scope"])
+	return strings.Join(nonEmptyStrings(prefix, attributes["resource_id"], scope, attributes["actor"]), ":")
+}
+
+func githubProgrammaticCredentialStatus(action string) string {
+	normalized := strings.ToLower(strings.TrimSpace(action))
+	if containsAny(normalized, "revoke", "revoked", "deauthorize", "delete", "remove", "destroy", "suspend") {
+		return "inactive"
+	}
+	if containsAny(normalized, "create", "grant", "authorize", "install", "request", "access_granted", "approve") {
+		return "active"
+	}
+	return "unknown"
+}
+
+func containsAny(value string, needles ...string) bool {
+	for _, needle := range needles {
+		if strings.Contains(value, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func nonEmptyStrings(values ...string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 func githubDependabotAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {

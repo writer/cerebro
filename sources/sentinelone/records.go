@@ -1259,11 +1259,16 @@ func threatAttributes(s settings, record threatRecord, indicators indicatorPaylo
 		"is_fileless":       boolString(record.ThreatInfo.IsFileless),
 	}
 	addAttribute(attrs, "classification", record.ThreatInfo.Classification)
+	addAttribute(attrs, "classification_norm", normalizeSentinelOnePostureValue(record.ThreatInfo.Classification))
 	addAttribute(attrs, "classification_source", record.ThreatInfo.ClassificationSource)
 	addAttribute(attrs, "analyst_verdict", record.ThreatInfo.AnalystVerdict)
+	addAttribute(attrs, "analyst_verdict_norm", normalizeSentinelOnePostureValue(record.ThreatInfo.AnalystVerdict))
 	addAttribute(attrs, "incident_status", record.ThreatInfo.IncidentStatus)
+	addAttribute(attrs, "incident_status_norm", normalizeSentinelOnePostureValue(record.ThreatInfo.IncidentStatus))
 	addAttribute(attrs, "confidence_level", record.ThreatInfo.ConfidenceLevel)
 	addAttribute(attrs, "mitigation_status", record.ThreatInfo.MitigationStatus)
+	addAttribute(attrs, "mitigation_status_norm", normalizeSentinelOnePostureValue(record.ThreatInfo.MitigationStatus))
+	addAttribute(attrs, "automatically_resolved", boolString(record.ThreatInfo.AutomaticallyResolved))
 	addAttribute(attrs, "detection_type", record.ThreatInfo.DetectionType)
 	addAttribute(attrs, "threat_name", record.ThreatInfo.ThreatName)
 	addAttribute(attrs, "file_path", record.ThreatInfo.FilePath)
@@ -1298,6 +1303,13 @@ func threatAttributes(s settings, record threatRecord, indicators indicatorPaylo
 		attrs["indicator_categories"] = strings.Join(indicators.Categories, ",")
 	}
 	return attrs
+}
+
+func normalizeSentinelOnePostureValue(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.ReplaceAll(normalized, "-", "_")
+	normalized = strings.ReplaceAll(normalized, " ", "_")
+	return normalized
 }
 
 func agentAttributes(s settings, record agentRecord) map[string]string {

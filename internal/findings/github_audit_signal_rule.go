@@ -485,27 +485,6 @@ var githubPrivateRepositoryForkingEnabledDefinition = RuleDefinition{
 // posture graph rules will reintroduce the trigger logic in a durable
 // state-based form.
 
-var githubSelfHostedRunnerChangeConfig = githubAuditSignalConfig{
-	definition:  githubSelfHostedRunnerChangeDefinition,
-	predicate:   githubSelfHostedRunnerRegisteredAndPolicyViolating,
-	fingerprint: githubSelfHostedRunnerFingerprintInputs,
-	primaryEntityType: func(attributes map[string]string) string {
-		scopeType, _ := githubSelfHostedRunnerScope(attributes)
-		switch scopeType {
-		case "repo":
-			return "github.repo"
-		case "org", "enterprise":
-			return "github.org"
-		default:
-			return ""
-		}
-	},
-	summary: func(attributes map[string]string) string {
-		runner := firstNonEmpty(attributes["runner_name"], attributes["runner_id"], "unknown runner")
-		return fmt.Sprintf("%s registered policy-violating self-hosted runner %s for %s", githubAuditActor(attributes), runner, githubAuditTarget(attributes))
-	},
-}
-
 var githubRepositoryCollaboratorAddedConfig = githubAuditSignalConfig{
 	definition: githubRepositoryCollaboratorAddedDefinition,
 	actions:    githubAuditActionSet("repo.add_member"),
@@ -709,7 +688,7 @@ func newGitHubSecretScanningAlertCreatedRule() Rule {
 }
 
 func newGitHubSelfHostedRunnerChangeRule() Rule {
-	return newGitHubAuditCounterEventRule(githubSelfHostedRunnerChangeConfig, githubSelfHostedRunnerAnchor, githubSelfHostedRunnerCloseAnchor)
+	return newRetiredGitHubAuditRule(githubSelfHostedRunnerChangeDefinition)
 }
 
 func newGitHubRepositoryCollaboratorAddedRule() Rule {
@@ -1236,46 +1215,6 @@ func githubPersonalAccessTokenLifecycleClosed(attributes map[string]string) bool
 		return true
 	}
 	return containsAny(strings.ToLower(firstNonEmpty(attributes["change_type"], attributes["changes"])), "revoke", "remove", "expire", "expired")
-}
-
-func githubSelfHostedRunnerAnchor(attributes map[string]string) string {
-	_, scopeID := githubSelfHostedRunnerScope(attributes)
-	runnerID := strings.TrimSpace(attributes["runner_id"])
-	return githubCounterEventAnchor(map[string]string{"scope": scopeID, "runner_id": runnerID}, "scope", "runner_id")
-}
-
-func githubSelfHostedRunnerCloseAnchor(event Event) (string, bool) {
-	if !githubAuditSignalKindMatcher(event) {
-		return "", false
-	}
-	attributes := eventAttributes(event)
-	if !githubSelfHostedRunnerDeregistered(attributes) && !githubSelfHostedRunnerEphemeralConversion(attributes) {
-		return "", false
-	}
-	anchor := githubSelfHostedRunnerAnchor(attributes)
-	return anchor, anchor != ""
-}
-
-func githubSelfHostedRunnerDeregistered(attributes map[string]string) bool {
-	action := strings.ToLower(strings.TrimSpace(attributes["action"]))
-	switch action {
-	case "enterprise.remove_self_hosted_runner",
-		"org.remove_self_hosted_runner",
-		"repo.remove_self_hosted_runner",
-		"runner_group.runner_removed":
-		return true
-	default:
-		return strings.Contains(action, "remove_self_hosted_runner") ||
-			strings.Contains(action, "deregister_self_hosted_runner") ||
-			strings.Contains(action, "runner_group.runner_removed") ||
-			strings.Contains(action, "runner_group_runner_removed")
-	}
-}
-
-func githubSelfHostedRunnerEphemeralConversion(attributes map[string]string) bool {
-	action := strings.ToLower(strings.TrimSpace(attributes["action"]))
-	return strings.HasSuffix(action, ".register_self_hosted_runner") &&
-		findingAttributeBool(attributes, "runner_ephemeral", "ephemeral", "is_ephemeral")
 }
 
 func githubOrgPostureAnchor(attributes map[string]string) string {
@@ -1871,52 +1810,6 @@ func githubPrivateRepositoryForkingScope(attributes map[string]string) (string, 
 		return "", ""
 	}
 	return "org", org
-}
-
-func githubSelfHostedRunnerFingerprintInputs(event *cerebrov1.EventEnvelope, _ RuleDefinition) []string {
-	_, scopeID := githubSelfHostedRunnerScope(eventAttributes(event))
-	runnerID := strings.TrimSpace(eventAttributes(event)["runner_id"])
-	if scopeID == "" || runnerID == "" {
-		return nil
-	}
-	return []string{scopeID, runnerID}
-}
-
-func githubSelfHostedRunnerRegisteredAndPolicyViolating(attributes map[string]string) bool {
-	_, scopeID := githubSelfHostedRunnerScope(attributes)
-	if scopeID == "" || strings.TrimSpace(attributes["runner_id"]) == "" {
-		return false
-	}
-	if !githubSelfHostedRunnerRegistered(attributes) {
-		return false
-	}
-	return githubSelfHostedRunnerPolicyViolating(attributes)
-}
-
-func githubSelfHostedRunnerRegistered(attributes map[string]string) bool {
-	if githubAttributeExplicitlyFalse(attributes, "runner_registered", "registered", "is_registered") {
-		return false
-	}
-	state := strings.ToLower(strings.TrimSpace(firstNonEmpty(attributes["runner_state"], attributes["state"], attributes["status"])))
-	switch state {
-	case "removed", "deleted", "deregistered", "unregistered":
-		return false
-	}
-	if githubSelfHostedRunnerDeregistered(attributes) {
-		return false
-	}
-	if findingAttributeBool(attributes, "runner_registered", "registered", "is_registered") {
-		return true
-	}
-	return strings.TrimSpace(attributes["runner_id"]) != ""
-}
-
-func githubSelfHostedRunnerPolicyViolating(attributes map[string]string) bool {
-	if findingAttributeBool(attributes, "runner_untrusted", "untrusted_host", "host_untrusted") ||
-		githubAttributeExplicitlyFalse(attributes, "runner_host_trusted", "host_trusted", "trusted_host") {
-		return true
-	}
-	return !findingAttributeBool(attributes, "runner_ephemeral", "ephemeral", "is_ephemeral")
 }
 
 func githubSelfHostedRunnerScope(attributes map[string]string) (string, string) {

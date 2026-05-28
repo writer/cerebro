@@ -89,6 +89,7 @@ func newCloudSignalRules() []Rule {
 			predicate:   matchesCloudPrivilegePath,
 			fingerprint: cloudPrivilegePathGrantedFingerprintInputs,
 		}),
+		newCloudPublicResourceExposureGraphRule(),
 		newCloudPublicExposurePrivilegedPrincipalRule(),
 	}
 }

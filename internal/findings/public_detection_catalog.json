@@ -2,6 +2,54 @@
   "version": "2026-05-21",
   "detections": [
     {
+      "id": "cloud-current-public-exposure-review-needed",
+      "pack_id": "cloud",
+      "pack_name": "Cloud",
+      "name": "Cloud Current Public Exposure Needs Review",
+      "description": "Detect current cloud resources with public internet exposure from the projected graph when no open exposure finding already anchors the resource.",
+      "source_id": "cloud",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "aws.public_endpoint",
+        "aws.resource_exposure",
+        "azure.resource_exposure",
+        "gcp.resource_exposure"
+      ],
+      "output_kind": "finding.cloud_current_public_exposure_review_needed",
+      "severity": "HIGH",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "attack.t1190",
+        "cloud",
+        "exposure",
+        "graph-rule",
+        "public"
+      ],
+      "references": [
+        "https://www.cisecurity.org/benchmark/amazon_web_services",
+        "https://www.cisecurity.org/benchmark/google_cloud_computing_platform",
+        "https://www.cisecurity.org/benchmark/microsoft_azure"
+      ],
+      "false_positives": [
+        "Approved exposure or trust path during a documented change window."
+      ],
+      "runbook": "Review the exposed resource or trust path, linked principals, scope, and adjacent identity findings.",
+      "fingerprint_fields": [
+        "exposed_resource_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.6"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.20"
+        }
+      ]
+    },
+    {
       "id": "cloud-effective-admin-permission",
       "pack_id": "cloud",
       "pack_name": "Cloud",
@@ -738,6 +786,50 @@
       ]
     },
     {
+      "id": "github-programmatic-credential-review-needed",
+      "pack_id": "github",
+      "pack_name": "GitHub",
+      "name": "GitHub Programmatic Credential Needs Review",
+      "description": "Detect current GitHub programmatic credentials, integrations, OAuth apps, and credential authorizations that should have explicit ownership and review.",
+      "source_id": "github",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "github.audit"
+      ],
+      "output_kind": "finding.github_programmatic_credential_review_needed",
+      "severity": "MEDIUM",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "attack.t1098",
+        "credential",
+        "github",
+        "graph-rule",
+        "programmatic-access"
+      ],
+      "references": [
+        "https://docs.github.com/en/apps/using-github-apps/reviewing-and-revoking-authorization-of-github-apps",
+        "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token"
+      ],
+      "false_positives": [
+        "Approved deploy keys, service accounts, or GitHub Apps with documented owner, scope, and rotation process."
+      ],
+      "runbook": "Confirm owner, scope, last-use/need, and rotation for the credential or integration; remove unused access or document the exception.",
+      "fingerprint_fields": [
+        "github_credential_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.2"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.18"
+        }
+      ]
+    },
+    {
       "id": "github-protected-branch-policy-override",
       "pack_id": "github",
       "pack_name": "GitHub",
@@ -1099,7 +1191,7 @@
       "pack_id": "github",
       "pack_name": "GitHub",
       "name": "GitHub Self-Hosted Runner Change",
-      "description": "Detect GitHub audit events that register or modify self-hosted runner configuration.",
+      "description": "Retired GitHub audit-mirror rule retained so stale open findings auto-resolve; durable coverage moved to posture findings.",
       "source_id": "github",
       "evaluation_mode": "event",
       "event_kinds": [
@@ -1108,11 +1200,13 @@
       "output_kind": "finding.github_self_hosted_runner_change",
       "severity": "MEDIUM",
       "status": "open",
-      "maturity": "test",
+      "maturity": "retired",
       "tags": [
         "actions",
         "attack.t1195",
+        "cleanup",
         "github",
+        "retired",
         "self-hosted-runner",
         "supply-chain"
       ],
@@ -1222,6 +1316,92 @@
       "runbook": "Check why the rule emitted no ResourceURNs for an open finding, fix the rule projection context, or resolve stale anchors.",
       "fingerprint_fields": [
         "finding_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.35"
+        }
+      ]
+    },
+    {
+      "id": "graph-aws-ec2-eni-link-missing",
+      "pack_id": "grc",
+      "pack_name": "GRC",
+      "name": "AWS EC2 ENI Link Missing",
+      "description": "Detect AWS network interface public-endpoint nodes that name an EC2 instance but lack the graph link to that instance.",
+      "source_id": "graph",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "aws.public_endpoint"
+      ],
+      "output_kind": "finding.graph_aws_ec2_eni_link_missing",
+      "severity": "LOW",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "aws",
+        "ec2",
+        "enrichment",
+        "graph",
+        "network-interface"
+      ],
+      "references": [
+        "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-eni.html"
+      ],
+      "false_positives": [
+        "The referenced EC2 instance may have been terminated between endpoint and instance inventory snapshots."
+      ],
+      "runbook": "Backfill or fix the public endpoint projection so ENIs are linked to their attached or associated EC2 instance.",
+      "fingerprint_fields": [
+        "network_interface_urn",
+        "instance_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.35"
+        }
+      ]
+    },
+    {
+      "id": "graph-orphan-nonfinding-node",
+      "pack_id": "grc",
+      "pack_name": "GRC",
+      "name": "Graph Orphan Non-Finding Node",
+      "description": "Detect non-finding graph nodes with no relationships, indicating source projection or enrichment gaps.",
+      "source_id": "graph",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "graph"
+      ],
+      "output_kind": "finding.graph_orphan_nonfinding_node",
+      "severity": "LOW",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "enrichment",
+        "graph",
+        "graph-hygiene",
+        "orphan"
+      ],
+      "references": [
+        "https://www.iso.org/standard/27001"
+      ],
+      "false_positives": [
+        "Some source records may intentionally be inventory-only and not yet connected to the rest of the graph."
+      ],
+      "runbook": "Review the source projection for the entity type and add ownership, source, identity, or resource relations where appropriate.",
+      "fingerprint_fields": [
+        "orphan_urn"
       ],
       "control_refs": [
         {
@@ -2284,6 +2464,52 @@
       ]
     },
     {
+      "id": "identity-okta-oauth-public-client-review-needed",
+      "pack_id": "identity",
+      "pack_name": "Identity",
+      "name": "Okta OAuth Or Public Client Needs Review",
+      "description": "Detect active Okta OAuth/OIDC applications and public-client actors that should have owner, grant, and scope review.",
+      "source_id": "okta",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "okta.application",
+        "okta.publicclientapp"
+      ],
+      "output_kind": "finding.identity_okta_oauth_public_client_review_needed",
+      "severity": "MEDIUM",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "attack.t1098",
+        "graph-rule",
+        "identity",
+        "oauth",
+        "okta",
+        "public-client"
+      ],
+      "references": [
+        "https://datatracker.ietf.org/doc/html/rfc6749",
+        "https://help.okta.com/"
+      ],
+      "false_positives": [
+        "Approved first-party Okta clients, documented public clients, or applications reviewed by identity/security."
+      ],
+      "runbook": "Validate app owner, OAuth grants, public-client status, redirect URIs, assignments, and whether the client is still needed.",
+      "fingerprint_fields": [
+        "okta_client_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.17"
+        }
+      ]
+    },
+    {
       "id": "identity-okta-policy-rule-lifecycle-tampering",
       "pack_id": "identity",
       "pack_name": "Identity",
@@ -2569,6 +2795,49 @@
         {
           "framework_name": "ISO 27001:2022",
           "control_id": "A.8.7"
+        }
+      ]
+    },
+    {
+      "id": "sentinelone-agent-not-up-to-date",
+      "pack_id": "sentinelone",
+      "pack_name": "SentinelOne",
+      "name": "SentinelOne Agent Not Up To Date",
+      "description": "Detect active SentinelOne agents whose protection agent version is not up to date.",
+      "source_id": "sentinelone",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "sentinelone.agent"
+      ],
+      "output_kind": "finding.sentinelone_agent_not_up_to_date",
+      "severity": "MEDIUM",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "agent-version",
+        "coverage",
+        "endpoint",
+        "graph-rule",
+        "sentinelone"
+      ],
+      "references": [
+        "https://docs.sentinelone.com/"
+      ],
+      "false_positives": [
+        "Endpoint is in a documented rollout ring, maintenance window, or decommissioning workflow not yet reflected in inventory."
+      ],
+      "runbook": "Update the SentinelOne agent, confirm policy assignment, or document a temporary exception for the endpoint rollout ring.",
+      "fingerprint_fields": [
+        "agent_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.6"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.16"
         }
       ]
     },
@@ -2859,6 +3128,49 @@
         {
           "framework_name": "ISO 27001:2022",
           "control_id": "A.8.9"
+        }
+      ]
+    },
+    {
+      "id": "sentinelone-unmitigated-threat",
+      "pack_id": "sentinelone",
+      "pack_name": "SentinelOne",
+      "name": "SentinelOne Unmitigated Threat",
+      "description": "Detect current SentinelOne threats that remain unresolved or not mitigated in the projected graph.",
+      "source_id": "sentinelone",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "sentinelone.threat"
+      ],
+      "output_kind": "finding.sentinelone_unmitigated_threat_current",
+      "severity": "HIGH",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "graph-rule",
+        "malware",
+        "mitigation",
+        "sentinelone",
+        "threat"
+      ],
+      "references": [
+        "https://docs.sentinelone.com/"
+      ],
+      "false_positives": [
+        "Benign or false-positive verdicts not yet synchronized into the graph."
+      ],
+      "runbook": "Review the SentinelOne incident, mitigation status, endpoint context, and analyst verdict; mitigate or mark benign in SentinelOne.",
+      "fingerprint_fields": [
+        "threat_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.2"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.25"
         }
       ]
     },
