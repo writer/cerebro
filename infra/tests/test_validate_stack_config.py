@@ -249,6 +249,18 @@ class ValidateStackConfigTest(unittest.TestCase):
         findings = self._validate(content, name="Pulumi.sec-dev.yaml")
         self.assertTrue(any(finding.severity == "error" and "page_limit <= 5" in finding.message for finding in findings))
 
+    def test_sec_dev_aurelius_findings_schedule_graph_budget_is_bounded(self) -> None:
+        content = BASE_STACK.replace("runtime_id=writer-okta-audit", "runtime_id=writer-aurelius-findings").replace(
+            "    - id: writer-okta-audit\n      sourceId: okta\n",
+            "    - id: writer-aurelius-findings\n      sourceId: aurelius\n",
+        ).replace(
+            "        - runtime_id=writer-aurelius-findings\n",
+            "        - runtime_id=writer-aurelius-findings\n        - page_limit=20\n        - graph_page_limit=100\n",
+        )
+        findings = self._validate(content, name="Pulumi.sec-dev.yaml")
+        self.assertTrue(any(finding.severity == "error" and "page_limit <= 5" in finding.message for finding in findings))
+        self.assertTrue(any(finding.severity == "error" and "graph_page_limit <= 5" in finding.message for finding in findings))
+
     def test_sec_dev_global_graph_page_limit_is_bounded_for_high_contention_runtimes(self) -> None:
         content = BASE_STACK.replace(
             "  cerebro:orchestratorSchedules:",

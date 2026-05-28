@@ -32,6 +32,7 @@ SEC_DEV_HIGH_CONTENTION_GRAPH_RUNTIMES = {
     "writer-okta-audit",
     "writer-okta-audit-2026-04",
     "writer-okta-audit-2026-q1",
+    "writer-aurelius-findings",
 }
 SEC_DEV_MAX_HIGH_CONTENTION_PAGE_LIMIT = 5
 SEC_DEV_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT = 5
