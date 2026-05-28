@@ -5,6 +5,8 @@ emitted_kinds:
   - github.audit
   - github.code.repository
   - github.dependabot_alert
+  - github.org_installation
+  - github.org_member
   - github.pull_request
   - github.secret_scanning_alert
 event_contracts:
@@ -46,6 +48,26 @@ event_contracts:
     required_payload_fields:
       - number
       - repository
+  - kind: github.org_member
+    schema_ref: github/org_member/v1
+    required_attributes:
+      - login
+      - owner
+      - role
+    required_payload_fields:
+      - login
+      - org
+      - role
+  - kind: github.org_installation
+    schema_ref: github/org_installation/v1
+    required_attributes:
+      - app_slug
+      - installation_id
+      - owner
+    required_payload_fields:
+      - app_slug
+      - id
+      - org
   - kind: github.secret_scanning_alert
     schema_ref: github/secret_scanning_alert/v1
     required_attributes:

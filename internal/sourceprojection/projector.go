@@ -1280,6 +1280,170 @@ func githubSecretScanningAlertProjections(event *cerebrov1.EventEnvelope) ([]*po
 	return projectedEntities, projectedLinks, nil
 }
 
+func githubOrgMemberProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	owner := strings.TrimSpace(attributes["owner"])
+	login := strings.TrimSpace(attributes["login"])
+	role := strings.TrimSpace(attributes["role"])
+	userID := strings.TrimSpace(attributes["user_id"])
+
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+
+	orgURN := projectionURN(tenantID, "github_org", owner)
+	if owner != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN: orgURN, TenantID: tenantID, SourceID: event.GetSourceId(),
+			EntityType: "github.org", Label: owner,
+			Attributes: map[string]string{"org": owner},
+		})
+	}
+
+	memberURN := projectionURN(tenantID, "github_user", login)
+	if login != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN: memberURN, TenantID: tenantID, SourceID: event.GetSourceId(),
+			EntityType: "github.user", Label: login,
+			Attributes: map[string]string{"login": login, "user_id": userID, "role": role},
+		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), memberURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "role": role}))
+		}
+	}
+
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
+func githubOrgInstallationProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	owner := strings.TrimSpace(attributes["owner"])
+	installID := strings.TrimSpace(attributes["installation_id"])
+	appSlug := strings.TrimSpace(attributes["app_slug"])
+
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+
+	orgURN := projectionURN(tenantID, "github_org", owner)
+	if owner != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN: orgURN, TenantID: tenantID, SourceID: event.GetSourceId(),
+			EntityType: "github.org", Label: owner,
+			Attributes: map[string]string{"org": owner},
+		})
+	}
+
+	installURN := projectionURN(tenantID, "github_installation", installID)
+	if installID != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN: installURN, TenantID: tenantID, SourceID: event.GetSourceId(),
+			EntityType: "github.org_installation", Label: firstNonEmpty(appSlug, installID),
+			Attributes: map[string]string{
+				"app_slug":             appSlug,
+				"installation_id":      installID,
+				"repository_selection": strings.TrimSpace(attributes["repository_selection"]),
+				"target_type":          strings.TrimSpace(attributes["target_type"]),
+			},
+		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), installURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
+func oktaAuthenticatorProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	domain := strings.TrimSpace(attributes["domain"])
+	authID := strings.TrimSpace(attributes["authenticator_id"])
+
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+
+	orgURN := projectionURN(tenantID, "okta_org", domain)
+	if domain != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN: orgURN, TenantID: tenantID, SourceID: event.GetSourceId(),
+			EntityType: "okta.org", Label: domain,
+			Attributes: map[string]string{"domain": domain},
+		})
+	}
+
+	authURN := projectionURN(tenantID, "okta_authenticator", authID)
+	if authID != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN: authURN, TenantID: tenantID, SourceID: event.GetSourceId(),
+			EntityType: "okta.authenticator", Label: firstNonEmpty(attributes["name"], authID),
+			Attributes: map[string]string{
+				"authenticator_id": authID,
+				"key":              strings.TrimSpace(attributes["key"]),
+				"name":             strings.TrimSpace(attributes["name"]),
+				"status":           strings.TrimSpace(attributes["status"]),
+				"type":             strings.TrimSpace(attributes["type"]),
+			},
+		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), authURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
+func oktaThreatInsightProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	domain := strings.TrimSpace(attributes["domain"])
+
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+
+	orgURN := projectionURN(tenantID, "okta_org", domain)
+	if domain != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN: orgURN, TenantID: tenantID, SourceID: event.GetSourceId(),
+			EntityType: "okta.org", Label: domain,
+			Attributes: map[string]string{"domain": domain},
+		})
+	}
+
+	tiURN := projectionURN(tenantID, "okta_threat_insight", domain)
+	if domain != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN: tiURN, TenantID: tenantID, SourceID: event.GetSourceId(),
+			EntityType: "okta.threat_insight", Label: "ThreatInsight",
+			Attributes: map[string]string{
+				"action":             strings.TrimSpace(attributes["action"]),
+				"exclude_zone_count": strings.TrimSpace(attributes["exclude_zone_count"]),
+			},
+		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), tiURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
 func oktaUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
