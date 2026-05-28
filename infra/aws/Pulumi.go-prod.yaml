@@ -5,7 +5,7 @@ config:
   cerebro:certificateDomain: cerebro.adm.prod.writer.com
   cerebro:certificateImportArn: arn:aws:acm:us-east-1:837279440628:certificate/7fcbcda8-da84-4780-8065-6591ae9de3de
   cerebro:ecrBaseUri: 837279440628.dkr.ecr.us-east-1.amazonaws.com/cerebro
-  cerebro:imageTag: v2.1.58
+  cerebro:imageTag: v2.1.77
   cerebro:useExistingVpc: true
   cerebro:vpcId: vpc-0bec76c1fba4b8ad2
   cerebro:vpcCidr: "10.20.0.0/16"
@@ -18,7 +18,11 @@ config:
   cerebro:apiCpu: 2048
   cerebro:apiMemory: 4096
   cerebro:apiMinInstances: 1
-  cerebro:apiMaxInstances: 1
+  cerebro:apiMaxInstances: 2
+  cerebro:apiRequestCountPerTargetScalingTarget: 500
+  cerebro:apiRequestCountPerTargetAlarmThreshold: 1000
+  cerebro:apiLatencyP95AlarmThresholdSeconds: 3
+  cerebro:dashboardLatencyP95AlarmThresholdMs: 3000
   cerebro:postgresInstanceClass: db.t4g.small
   cerebro:postgresAllocatedStorage: 100
   cerebro:postgresStorageType: gp3
@@ -304,7 +308,7 @@ config:
         - graph_page_limit=2
         - event_limit=1000
     - name: cosmo-survey-feedback
-      scheduleExpression: cron(7,37 * * * ? *)
+      scheduleExpression: cron(18,48 * * * ? *)
       taskCount: 1
       command:
         - orchestrator
@@ -322,6 +326,16 @@ config:
         - runtime_id=writer-grc-vulnerable-asset
         - page_limit=1
         - graph_page_limit=1
+        - event_limit=1000
+    - name: grc-control-test-inventory
+      scheduleExpression: rate(30 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-grc-control-test
+        - page_limit=20
+        - graph_page_limit=100
         - event_limit=1000
   cerebro:sourceRuntimes:
     - id: writer-grc-framework

@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - 'infra/**'
+      - '.github/workflows/infra-deploy.yml'
   push:
     branches: [main]
     paths:
       - 'infra/**'
+      - '.github/workflows/infra-deploy.yml'
   workflow_dispatch:
     inputs:
       environment:
@@ -122,6 +124,7 @@ jobs:
         run: |
           uv run python -m compileall aws gcp scripts tests
           uv run python scripts/validate_stack_config.py
+          uv run python scripts/validate_gcp_config.py
           uv run python -m unittest discover -s tests
 
   # ===========================================================================
@@ -132,7 +135,7 @@ jobs:
   deploy-sec-dev:
     name: Preview sec-dev
     runs-on: ubuntu-latest
-    needs: changes
+    needs: [changes, static-validation]
     if: github.event_name == 'pull_request' && needs.changes.outputs.aws_sec_dev == 'true'
     permissions:
       id-token: write
@@ -188,7 +191,7 @@ jobs:
   preview-go-prod:
     name: Preview go-prod
     runs-on: ubuntu-latest
-    needs: changes
+    needs: [changes, static-validation]
     if: github.event_name == 'pull_request' && needs.changes.outputs.aws_go_prod == 'true'
     permissions:
       id-token: write
@@ -244,7 +247,7 @@ jobs:
   deploy-sec-dev-main:
     name: Deploy sec-dev
     runs-on: ubuntu-latest
-    needs: changes
+    needs: [changes, static-validation]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.aws_sec_dev == 'true'
     concurrency:
       group: infra-deploy-sec-dev
@@ -312,10 +315,28 @@ jobs:
         with:
           assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
 
-      - name: Verify Cosmo source runtimes (sec-dev)
+      - name: Verify AWS scan-role trust (sec-dev)
         shell: bash
         working-directory: infra
-        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --source-id cosmo --run --run-page-limit 1 --run-graph-page-limit 1 --run-event-limit 10 --stop-running-before-run --stop-timeout-seconds 300 --allow-lease-contention-skip --failed-run-retry-seconds 600 --run-attempt-timeout-seconds 300 --max-age-minutes 60 --wait-timeout-seconds 3600
+        run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.sec-dev.yaml
+
+      - name: Verify Cosmo source runtimes (sec-dev)
+        id: verify_cosmo_source_runtimes_sec_dev
+        continue-on-error: true
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --source-id cosmo --run --run-page-limit 1 --run-graph-page-limit 1 --run-event-limit 10 --stop-running-before-run --stop-timeout-seconds 600 --allow-lease-contention-skip --failed-run-retry-seconds 600 --run-attempt-timeout-seconds 900 --max-age-minutes 60 --wait-timeout-seconds 3600
+
+      - name: Report Cosmo source runtime degradation (sec-dev)
+        if: steps.verify_cosmo_source_runtimes_sec_dev.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "::warning::Cosmo source runtime verification failed after deployment; rollout will continue and graph-health integrity checks remain blocking."
+          {
+            echo "### Source runtime verification degraded (sec-dev)"
+            echo
+            echo "Cosmo source runtime verification failed after deployment. This is reported as degraded source-provider health instead of blocking the service rollout."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Refresh AWS credentials for public-endpoint runtime verification (sec-dev)
         if: steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
@@ -337,13 +358,21 @@ jobs:
       - name: Verify graph health (sec-dev)
         shell: bash
         working-directory: infra
-        run: uv run python scripts/verify_graph_health_ecs.py --stack-file aws/Pulumi.sec-dev.yaml
+        run: uv run python scripts/verify_graph_health_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --allow-transient-source-failures | tee graph-health-sec-dev.tsv
+
+      - name: Upload graph health summary (sec-dev)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: graph-health-sec-dev
+          path: infra/graph-health-sec-dev.tsv
+          if-no-files-found: ignore
 
   # Main merge: Pulumi up for go-prod stack
   deploy-go-prod:
     name: Deploy go-prod
     runs-on: ubuntu-latest
-    needs: changes
+    needs: [changes, static-validation]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.aws_go_prod == 'true'
     environment: production
     concurrency:
@@ -413,9 +442,22 @@ jobs:
           assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
 
       - name: Verify Cosmo source runtimes (go-prod)
+        id: verify_cosmo_source_runtimes_go_prod
+        continue-on-error: true
         shell: bash
         working-directory: infra
-        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.go-prod.yaml --source-id cosmo --run --run-page-limit 1 --run-graph-page-limit 1 --run-event-limit 10 --failed-run-retry-seconds 600 --run-attempt-timeout-seconds 300 --max-age-minutes 60 --wait-timeout-seconds 3600
+        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.go-prod.yaml --source-id cosmo --run --run-page-limit 1 --run-graph-page-limit 1 --run-event-limit 10 --stop-timeout-seconds 600 --failed-run-retry-seconds 600 --run-attempt-timeout-seconds 900 --max-age-minutes 60 --wait-timeout-seconds 3600
+
+      - name: Report Cosmo source runtime degradation (go-prod)
+        if: steps.verify_cosmo_source_runtimes_go_prod.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "::warning::Cosmo source runtime verification failed after deployment; rollout will continue and graph-health integrity checks remain blocking."
+          {
+            echo "### Source runtime verification degraded (go-prod)"
+            echo
+            echo "Cosmo source runtime verification failed after deployment. This is reported as degraded source-provider health instead of blocking the service rollout."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Refresh AWS credentials for public-endpoint runtime verification (sec-prod)
         if: steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
@@ -437,7 +479,15 @@ jobs:
       - name: Verify graph health (go-prod)
         shell: bash
         working-directory: infra
-        run: uv run python scripts/verify_graph_health_ecs.py --stack-file aws/Pulumi.go-prod.yaml
+        run: uv run python scripts/verify_graph_health_ecs.py --stack-file aws/Pulumi.go-prod.yaml --allow-transient-source-failures | tee graph-health-go-prod.tsv
+
+      - name: Upload graph health summary (go-prod)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: graph-health-go-prod
+          path: infra/graph-health-go-prod.tsv
+          if-no-files-found: ignore
 
   # ===========================================================================
   # GCP jobs
@@ -447,7 +497,7 @@ jobs:
   deploy-gcp-dev:
     name: Preview gcp-dev
     runs-on: ubuntu-latest
-    needs: changes
+    needs: [changes, static-validation]
     if: github.event_name == 'pull_request' && needs.changes.outputs.gcp == 'true'
     permissions:
       id-token: write
@@ -498,7 +548,7 @@ jobs:
   preview-gcp-prod:
     name: Preview gcp-prod
     runs-on: ubuntu-latest
-    needs: changes
+    needs: [changes, static-validation]
     if: github.event_name == 'pull_request' && needs.changes.outputs.gcp == 'true'
     permissions:
       id-token: write
@@ -549,7 +599,7 @@ jobs:
   deploy-gcp-prod:
     name: Deploy gcp-prod
     runs-on: ubuntu-latest
-    needs: changes
+    needs: [changes, static-validation]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.gcp == 'true'
     environment: production
     concurrency:
@@ -606,6 +656,7 @@ jobs:
     name: Manual Deploy
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
+    needs: static-validation
     environment: production
     concurrency:
       group: infra-deploy-${{ github.event.inputs.environment }}
@@ -695,6 +746,12 @@ jobs:
         with:
           assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
 
+      - name: Verify AWS scan-role trust (sec-dev)
+        if: github.event.inputs.environment == 'sec-dev'
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.sec-dev.yaml
+
       - name: Refresh AWS credentials for runtime verification (sec-prod)
         if: github.event.inputs.environment == 'go-prod'
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
@@ -702,7 +759,9 @@ jobs:
           assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
 
       - name: Verify Cosmo source runtimes (AWS)
+        id: verify_cosmo_source_runtimes_manual
         if: "!startsWith(github.event.inputs.environment, 'gcp-')"
+        continue-on-error: true
         shell: bash
         working-directory: infra
         env:
@@ -710,9 +769,22 @@ jobs:
         run: |
           extra_args=()
           if [ "${STACK_NAME}" = "sec-dev" ]; then
-            extra_args+=(--stop-running-before-run --stop-timeout-seconds 300 --allow-lease-contention-skip)
+            extra_args+=(--stop-running-before-run --allow-lease-contention-skip)
           fi
-          uv run python scripts/verify_source_runtime_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --source-id cosmo --run --run-page-limit 1 --run-graph-page-limit 1 --run-event-limit 10 "${extra_args[@]}" --failed-run-retry-seconds 600 --run-attempt-timeout-seconds 300 --max-age-minutes 60 --wait-timeout-seconds 3600
+          uv run python scripts/verify_source_runtime_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --source-id cosmo --run --run-page-limit 1 --run-graph-page-limit 1 --run-event-limit 10 "${extra_args[@]}" --stop-timeout-seconds 600 --failed-run-retry-seconds 600 --run-attempt-timeout-seconds 900 --max-age-minutes 60 --wait-timeout-seconds 3600
+
+      - name: Report Cosmo source runtime degradation (AWS)
+        if: "!startsWith(github.event.inputs.environment, 'gcp-') && steps.verify_cosmo_source_runtimes_manual.outcome == 'failure'"
+        shell: bash
+        env:
+          STACK_NAME: ${{ github.event.inputs.environment }}
+        run: |
+          echo "::warning::Cosmo source runtime verification failed after deployment; rollout will continue and graph-health integrity checks remain blocking."
+          {
+            echo "### Source runtime verification degraded (${STACK_NAME})"
+            echo
+            echo "Cosmo source runtime verification failed after deployment. This is reported as degraded source-provider health instead of blocking the service rollout."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Refresh AWS credentials for public-endpoint runtime verification (sec-dev)
         if: github.event.inputs.environment == 'sec-dev' && steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
@@ -752,7 +824,15 @@ jobs:
         working-directory: infra
         env:
           STACK_NAME: ${{ github.event.inputs.environment }}
-        run: uv run python scripts/verify_graph_health_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml"
+        run: uv run python scripts/verify_graph_health_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --allow-transient-source-failures | tee "graph-health-${STACK_NAME}.tsv"
+
+      - name: Upload graph health summary (AWS)
+        if: "!startsWith(github.event.inputs.environment, 'gcp-') && always()"
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: graph-health-${{ github.event.inputs.environment }}
+          path: infra/graph-health-${{ github.event.inputs.environment }}.tsv
+          if-no-files-found: ignore
 
       - name: Pulumi Up (GCP)
         if: startsWith(github.event.inputs.environment, 'gcp-')

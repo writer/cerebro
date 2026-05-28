@@ -29,6 +29,7 @@ REQUIRED_RELATIONS = {"belongs_to", "represents"}
 AWS_CAN_REACH_REQUIRED_FAMILIES = {"resource_exposure"}
 AWS_ATTACK_PATH_RELATIONS = {"can_perform", "can_assume", "can_admin", "can_impersonate"}
 GRAPH_RELATIONS_TO_OBSERVE = AWS_ATTACK_PATH_RELATIONS | {"can_reach"}
+INGEST_RUN_ERROR_DETAIL_LIMIT = 500
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,12 @@ class GraphCommandResult:
     task_arn: str
     exit_code: int | None
     payload: dict[str, Any]
+
+
+class CurrentIngestRunsError(RuntimeError):
+    def __init__(self, message: str, *, retryable: bool) -> None:
+        self.retryable = retryable
+        super().__init__(message)
 
 
 def _stack_name(path: Path) -> str:
@@ -381,17 +388,27 @@ def _verify_current_ingest_runs(
     payload: dict[str, Any],
     declared_runtime_ids: set[str] | None = None,
     max_running_minutes: int = DEFAULT_MAX_RUNNING_MINUTES,
+    allow_transient_source_failures: bool = False,
     now: datetime | None = None,
 ) -> int:
     latest_by_runtime = _latest_ingest_runs_by_runtime(payload)
     declared_runtime_ids = declared_runtime_ids or set()
     missing = sorted(declared_runtime_ids - set(latest_by_runtime))
     if missing:
-        raise RuntimeError(f"missing graph ingest run history for {len(missing)} declared runtime(s): {', '.join(missing)}")
-    failed = [run for run in latest_by_runtime.values() if str(run.get("status") or "").strip() == "failed"]
+        raise CurrentIngestRunsError(
+            f"missing graph ingest run history for {len(missing)} declared runtime(s): {', '.join(missing)}",
+            retryable=False,
+        )
+    successful_runtime_ids = _successful_ingest_runtime_ids(payload)
+    failed = [
+        run
+        for run in latest_by_runtime.values()
+        if str(run.get("status") or "").strip() == "failed"
+        and not _can_ignore_transient_source_failure(run, successful_runtime_ids, allow_transient_source_failures)
+    ]
     if failed:
-        summary = ", ".join(f"{run.get('runtime_id')}:{run.get('id')}" for run in failed)
-        raise RuntimeError(f"latest graph ingest run failed for {len(failed)} runtime(s): {summary}")
+        summary = ", ".join(_ingest_run_summary(run) for run in failed)
+        raise CurrentIngestRunsError(f"latest graph ingest run failed for {len(failed)} runtime(s): {summary}", retryable=True)
     running = [run for run in latest_by_runtime.values() if str(run.get("status") or "").strip() == "running"]
     now = now or datetime.now(UTC)
     stale_running = []
@@ -400,8 +417,8 @@ def _verify_current_ingest_runs(
         if started_at is not None and (now - started_at).total_seconds() > max_running_minutes * 60:
             stale_running.append(run)
     if stale_running:
-        summary = ", ".join(f"{run.get('runtime_id')}:{run.get('id')}:{run.get('started_at')}" for run in stale_running)
-        raise RuntimeError(f"latest graph ingest run is stale-running for {len(stale_running)} runtime(s): {summary}")
+        summary = ", ".join(_ingest_run_summary(run) for run in stale_running)
+        raise CurrentIngestRunsError(f"latest graph ingest run is stale-running for {len(stale_running)} runtime(s): {summary}", retryable=True)
     zero_projection = [
         run
         for run in latest_by_runtime.values()
@@ -411,9 +428,100 @@ def _verify_current_ingest_runs(
         and int(run.get("links_projected") or 0) == 0
     ]
     if zero_projection:
-        summary = ", ".join(f"{run.get('runtime_id')}:{run.get('id')}:events={run.get('events_read')}" for run in zero_projection)
-        raise RuntimeError(f"latest graph ingest projected no graph records for {len(zero_projection)} runtime(s): {summary}")
+        summary = ", ".join(_ingest_run_summary(run) for run in zero_projection)
+        raise CurrentIngestRunsError(f"latest graph ingest projected no graph records for {len(zero_projection)} runtime(s): {summary}", retryable=True)
     return len(latest_by_runtime)
+
+
+def _successful_ingest_runtime_ids(payload: dict[str, Any]) -> set[str]:
+    runtime_ids: set[str] = set()
+    for run in payload.get("runs") or []:
+        if not isinstance(run, dict):
+            continue
+        if str(run.get("status") or "").strip() != "completed":
+            continue
+        runtime_id = str(run.get("runtime_id") or run.get("id") or "").strip()
+        if runtime_id:
+            runtime_ids.add(runtime_id)
+    return runtime_ids
+
+
+def _can_ignore_transient_source_failure(run: dict[str, Any], successful_runtime_ids: set[str], enabled: bool) -> bool:
+    if not enabled:
+        return False
+    runtime_id = str(run.get("runtime_id") or run.get("id") or "").strip()
+    if runtime_id not in successful_runtime_ids:
+        return False
+    error = str(run.get("error") or "").lower()
+    return any(
+        token in error
+        for token in (
+            "client.timeout exceeded",
+            "context deadline exceeded",
+            "i/o timeout",
+            "request canceled",
+            "temporary failure",
+            "tls handshake timeout",
+        )
+    )
+
+
+def _ingest_run_summary(run: dict[str, Any]) -> str:
+    runtime_id = str(run.get("runtime_id") or "").strip()
+    run_id = str(run.get("id") or "").strip()
+    summary = f"{runtime_id}:{run_id}" if runtime_id or run_id else "<unknown-runtime>"
+    for key in ("status", "started_at", "finished_at", "events_read", "entities_projected", "links_projected"):
+        value = run.get(key)
+        if value is not None and str(value).strip() != "":
+            summary = f"{summary}:{key}={value}"
+    error = str(run.get("error") or "").strip()
+    if error:
+        summary = f"{summary}:error={_truncate_detail(error, INGEST_RUN_ERROR_DETAIL_LIMIT)}"
+    return summary
+
+
+def _truncate_detail(value: str, limit: int) -> str:
+    if len(value) <= limit:
+        return value
+    return f"{value[: max(0, limit - 3)]}..."
+
+
+def _verify_current_ingest_runs_with_retries(
+    resource_prefix: str,
+    service: dict[str, Any],
+    declared_runtime_ids: set[str],
+    wait_timeout_seconds: int,
+    poll_seconds: int,
+    region: str,
+    graph_command_retry_seconds: int,
+    ingest_health_retry_seconds: int,
+    max_running_minutes: int,
+    allow_transient_source_failures: bool,
+) -> tuple[GraphCommandResult, int]:
+    deadline = time.time() + ingest_health_retry_seconds
+    while True:
+        ingest_runs = _run_graph_command_with_retries(
+            resource_prefix,
+            service,
+            ["graph", "ingest-runs", f"limit={_ingest_run_limit(declared_runtime_ids)}"],
+            wait_timeout_seconds,
+            poll_seconds,
+            region,
+            graph_command_retry_seconds,
+        )
+        try:
+            current_ingest_runtimes = _verify_current_ingest_runs(
+                ingest_runs.payload,
+                max_running_minutes=max_running_minutes,
+                allow_transient_source_failures=allow_transient_source_failures,
+            )
+            return ingest_runs, current_ingest_runtimes
+        except CurrentIngestRunsError as exc:
+            now = time.time()
+            if ingest_health_retry_seconds <= 0 or not exc.retryable or now >= deadline:
+                raise
+            print(f"WARNING: {exc}; retrying graph ingest health", file=sys.stderr)
+            time.sleep(min(poll_seconds, max(1, int(deadline - now))))
 
 
 def _latest_ingest_runs_by_runtime(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -510,6 +618,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--poll-seconds", type=int, default=10)
     parser.add_argument("--max-running-minutes", type=int, default=DEFAULT_MAX_RUNNING_MINUTES)
     parser.add_argument("--graph-command-retry-seconds", type=int, default=300)
+    parser.add_argument("--ingest-health-retry-seconds", type=int, default=1800)
+    parser.add_argument(
+        "--allow-transient-source-failures",
+        action="store_true",
+        help="Do not fail deployment health when the latest source ingest failed due to a transient provider timeout and older successful graph ingest history exists.",
+    )
     args = parser.parse_args(argv)
 
     stack = _stack_name(args.stack_file)
@@ -584,18 +698,17 @@ def main(argv: list[str] | None = None) -> int:
             if not _is_graph_paths_timeout(exc):
                 raise
             print(f"WARNING: skipping graph path relation assertions after timeout: {exc}", file=sys.stderr)
-    ingest_runs = _run_graph_command_with_retries(
+    ingest_runs, current_ingest_runtimes = _verify_current_ingest_runs_with_retries(
         resource_prefix,
         service,
-        ["graph", "ingest-runs", f"limit={_ingest_run_limit(declared_runtime_ids)}"],
+        declared_runtime_ids,
         args.wait_timeout_seconds,
         args.poll_seconds,
         args.region,
         args.graph_command_retry_seconds,
-    )
-    current_ingest_runtimes = _verify_current_ingest_runs(
-        ingest_runs.payload,
-        max_running_minutes=args.max_running_minutes,
+        args.ingest_health_retry_seconds,
+        args.max_running_minutes,
+        args.allow_transient_source_failures,
     )
     missing_ingest_runtimes = _missing_declared_ingest_runtime_ids(ingest_runs.payload, declared_runtime_ids)
     if missing_ingest_runtimes:

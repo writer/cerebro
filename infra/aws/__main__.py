@@ -10,6 +10,7 @@ Deploys a private ECS service backed by:
 import pulumi
 import pulumi_aws as aws
 
+import audit_storage
 import certificate as cert
 import compute
 import ecr
@@ -110,14 +111,11 @@ def _secret_env_name(secret_key) -> str:
     return str(secret_key).strip()
 
 
-def _append_missing_source_secrets(secret_keys: list, env_refs: list[str]) -> list:
-    result = list(secret_keys or [])
-    existing = {_secret_env_name(secret_key) for secret_key in result}
-    for env_name in env_refs:
-        if env_name not in existing:
-            result.append(env_name)
-            existing.add(env_name)
-    return result
+def _validate_source_secret_refs(secret_keys: list, env_refs: list[str]) -> None:
+    existing = {_secret_env_name(secret_key) for secret_key in (secret_keys or [])}
+    missing = [env_name for env_name in env_refs if env_name not in existing]
+    if missing:
+        raise ValueError(f"source runtime env refs must be declared in cerebro:sourceSecretKeys: {', '.join(missing)}")
 
 
 environment = _get_environment()
@@ -190,6 +188,7 @@ api_cpu = _config_int("apiCpu", 1024)
 api_memory = _config_int("apiMemory", 2048)
 api_min_instances = _config_int("apiMinInstances", 1)
 api_max_instances = _config_int("apiMaxInstances", 1)
+api_request_count_per_target_scaling_target = _config_int("apiRequestCountPerTargetScalingTarget", 0)
 orchestrator_enabled = _config_bool("orchestratorEnabled", False)
 orchestrator_schedule_expression = config.get("orchestratorScheduleExpression") or "rate(1 hour)"
 orchestrator_cpu = _config_int("orchestratorCpu", api_cpu)
@@ -249,6 +248,8 @@ postgres_storage_throughput = (
 postgres_backup_retention_days = _config_int("postgresBackupRetentionDays", 14 if is_production else 3)
 postgres_deletion_protection = _config_bool("postgresDeletionProtection", is_production)
 postgres_multi_az = _config_bool("postgresMultiAz", is_production)
+postgres_apply_immediately = _config_bool("postgresApplyImmediately", not is_production)
+postgres_final_snapshot_identifier = config.get("postgresFinalSnapshotIdentifier") or None
 retain_legacy_jobs_table = _config_bool("retainLegacyJobsTableForDeletionProtectionTransition", False)
 
 nats_cpu = _config_int("natsCpu", 512)
@@ -258,6 +259,10 @@ jetstream_stream_name = config.get("jetstreamStreamName") or "CEREBRO_EVENTS"
 enable_jetstream_lag_probe = _config_bool("enableJetstreamLagProbe", True)
 jetstream_lag_probe_interval_seconds = _config_int("jetstreamLagProbeIntervalSeconds", 60)
 jetstream_lag_alarm_threshold = _config_int("jetstreamLagAlarmThreshold", 10000)
+api_request_count_per_target_alarm_threshold = _config_int("apiRequestCountPerTargetAlarmThreshold", 0)
+api_latency_p95_alarm_threshold_seconds = _config_int("apiLatencyP95AlarmThresholdSeconds", 3)
+web_latency_p95_alarm_threshold_seconds = _config_int("webLatencyP95AlarmThresholdSeconds", 3)
+dashboard_latency_p95_alarm_threshold_ms = _config_int("dashboardLatencyP95AlarmThresholdMs", 3000)
 access_audit_denied_alarm_threshold = _config_int("accessAuditDeniedAlarmThreshold", 0)
 access_audit_auth_failure_alarm_threshold = _config_int("accessAuditAuthFailureAlarmThreshold", 0)
 access_audit_tenant_mismatch_alarm_threshold = _config_int("accessAuditTenantMismatchAlarmThreshold", -1)
@@ -289,7 +294,7 @@ capability_token_audience = config.get("capabilityTokenAudience") or "cerebro-ap
 source_secret_keys = config.get_object("sourceSecretKeys") or []
 source_runtimes = config.get_object("sourceRuntimes") or []
 source_runtime_env_refs = _source_runtime_env_refs(source_runtimes)
-source_secret_keys = _append_missing_source_secrets(source_secret_keys, source_runtime_env_refs)
+_validate_source_secret_refs(source_secret_keys, source_runtime_env_refs)
 
 # Optional IAM grants for S3-backed sources. Source configuration now lives in
 # source runtimes, not process env; this only scopes task-role permissions.
@@ -386,6 +391,8 @@ postgres_stack = postgres.create_postgres(
     backup_retention_days=postgres_backup_retention_days,
     deletion_protection=postgres_deletion_protection,
     multi_az=postgres_multi_az,
+    apply_immediately=postgres_apply_immediately,
+    final_snapshot_identifier=postgres_final_snapshot_identifier,
 )
 
 nats_stack = nats.create_nats_service(
@@ -572,10 +579,13 @@ ecs_stack = compute.create_ecs_cluster(
     kms_key_id=kms_key["key_id"],
     target_group_arn=alb_stack["target_group"].arn,
     container_image=container_image,
+    alb_arn_suffix=alb_stack["alb"].arn_suffix,
+    target_group_arn_suffix=alb_stack["target_group"].arn_suffix,
     api_cpu=api_cpu,
     api_memory=api_memory,
     api_min_instances=api_min_instances,
     api_max_instances=api_max_instances,
+    api_request_count_per_target_scaling_target=api_request_count_per_target_scaling_target,
     log_retention_days=log_retention_days,
     environment=app_environment,
     secret_keys=secret_keys,
@@ -635,6 +645,7 @@ monitoring_stack = monitoring.create_monitoring(
     target_group_arn_suffix=alb_stack["target_group"].arn_suffix,
     ecs_cluster_name=ecs_stack["cluster"].name,
     ecs_service_name=ecs_stack["api_service"].name,
+    postgres_identifier=f"cerebro-{environment}-postgres",
     web_alb_arn_suffix=web_alb_stack["alb"].arn_suffix if web_alb_stack else None,
     web_target_group_arn_suffix=web_alb_stack["target_group"].arn_suffix if web_alb_stack else None,
     web_ecs_service_name=web_stack["service"].name if web_stack else None,
@@ -642,6 +653,10 @@ monitoring_stack = monitoring.create_monitoring(
     log_retention_days=log_retention_days,
     jetstream_stream_name=jetstream_stream_name,
     jetstream_lag_alarm_threshold=jetstream_lag_alarm_threshold,
+    api_request_count_per_target_alarm_threshold=api_request_count_per_target_alarm_threshold,
+    api_latency_p95_alarm_threshold_seconds=api_latency_p95_alarm_threshold_seconds,
+    web_latency_p95_alarm_threshold_seconds=web_latency_p95_alarm_threshold_seconds,
+    dashboard_latency_p95_alarm_threshold_ms=dashboard_latency_p95_alarm_threshold_ms,
     access_audit_denied_alarm_threshold=access_audit_denied_alarm_threshold,
     access_audit_auth_failure_alarm_threshold=access_audit_auth_failure_alarm_threshold,
     access_audit_tenant_mismatch_alarm_threshold=access_audit_tenant_mismatch_alarm_threshold,
@@ -709,6 +724,26 @@ repository = ecr.create_ecr_repository(
 )
 
 # =============================================================================
+# CLOSEOUT AUDIT BUCKET
+# =============================================================================
+
+audit_bucket_stack = None
+if pulumi.get_stack() == "sec-dev":
+    audit_bucket_stack = audit_storage.create_audit_bucket(
+        name=f"cerebro-{environment}",
+        bucket_name=f"cerebro-{environment}-audit",
+        kms_key_arn=kms_key["key_arn"],
+        task_role=ecs_stack["task_role"],
+    )
+elif pulumi.get_stack() == "go-prod":
+    audit_bucket_stack = audit_storage.create_audit_bucket(
+        name="cerebro-go-prod",
+        bucket_name="cerebro-go-prod-audit",
+        kms_key_arn=kms_key["key_arn"],
+        task_role=ecs_stack["task_role"],
+    )
+
+# =============================================================================
 # OUTPUTS
 # =============================================================================
 
@@ -760,3 +795,6 @@ if infisical_stack:
 if tailscale_stack:
     pulumi.export("tailscale_instance_id", tailscale_stack["instance_id"])
     pulumi.export("tailscale_private_ip", tailscale_stack["private_ip"])
+if audit_bucket_stack:
+    pulumi.export("cerebro_audit_bucket", audit_bucket_stack["bucket"].bucket)
+    pulumi.export("cerebro_audit_bucket_kms_key_arn", audit_bucket_stack["kms_key_arn"])

@@ -73,6 +73,7 @@ def create_monitoring(
     target_group_arn_suffix: pulumi.Output[str],
     ecs_cluster_name: pulumi.Output[str],
     ecs_service_name: pulumi.Output[str],
+    postgres_identifier: pulumi.Input[str] = None,
     web_alb_arn_suffix: pulumi.Output[str] = None,
     web_target_group_arn_suffix: pulumi.Output[str] = None,
     web_ecs_service_name: pulumi.Output[str] = None,
@@ -80,6 +81,10 @@ def create_monitoring(
     log_retention_days: int = 30,
     jetstream_stream_name: str = "CEREBRO_EVENTS",
     jetstream_lag_alarm_threshold: int = 10000,
+    api_request_count_per_target_alarm_threshold: int = 0,
+    api_latency_p95_alarm_threshold_seconds: int = 3,
+    web_latency_p95_alarm_threshold_seconds: int = 3,
+    dashboard_latency_p95_alarm_threshold_ms: int = 3000,
     access_audit_denied_alarm_threshold: int = 0,
     access_audit_auth_failure_alarm_threshold: int = 0,
     access_audit_tenant_mismatch_alarm_threshold: int = -1,
@@ -150,6 +155,47 @@ def create_monitoring(
         },
         tags={"Name": f"{name}-latency-alarm"},
     )
+    if api_latency_p95_alarm_threshold_seconds > 0:
+        aws.cloudwatch.MetricAlarm(
+            f"{name}-latency-p95-alarm",
+            name=f"{name}-high-latency-p95",
+            comparison_operator="GreaterThanThreshold",
+            evaluation_periods=3,
+            metric_name="TargetResponseTime",
+            namespace="AWS/ApplicationELB",
+            period=300,
+            extended_statistic="p95",
+            threshold=api_latency_p95_alarm_threshold_seconds,
+            alarm_description=f"High API p95 latency (>{api_latency_p95_alarm_threshold_seconds}s)",
+            alarm_actions=alarm_actions,
+            treat_missing_data="notBreaching",
+            dimensions={
+                "LoadBalancer": alb_arn_suffix,
+                "TargetGroup": target_group_arn_suffix,
+            },
+            tags={"Name": f"{name}-latency-p95-alarm"},
+        )
+
+    if api_request_count_per_target_alarm_threshold > 0:
+        aws.cloudwatch.MetricAlarm(
+            f"{name}-request-count-per-target-alarm",
+            name=f"{name}-request-count-per-target",
+            comparison_operator="GreaterThanThreshold",
+            evaluation_periods=3,
+            metric_name="RequestCountPerTarget",
+            namespace="AWS/ApplicationELB",
+            period=300,
+            statistic="Sum",
+            threshold=api_request_count_per_target_alarm_threshold,
+            alarm_description="API requests per target exceeded autoscaling saturation threshold",
+            alarm_actions=alarm_actions,
+            treat_missing_data="notBreaching",
+            dimensions={
+                "LoadBalancer": alb_arn_suffix,
+                "TargetGroup": target_group_arn_suffix,
+            },
+            tags={"Name": f"{name}-request-count-per-target-alarm"},
+        )
 
     # Unhealthy targets alarm
     aws.cloudwatch.MetricAlarm(
@@ -231,6 +277,48 @@ def create_monitoring(
         tags={"Name": f"{name}-memory-alarm"},
     )
 
+    if postgres_identifier:
+        _rds_metric_alarm(
+            resource_name=f"{name}-postgres-queue-depth-alarm",
+            alarm_name=f"{name}-postgres-disk-queue-depth",
+            db_identifier=postgres_identifier,
+            metric_name="DiskQueueDepth",
+            threshold=5,
+            description="Postgres disk queue depth is high enough to affect API latency",
+            alarm_actions=alarm_actions,
+            statistic="Average",
+        )
+        _rds_metric_alarm(
+            resource_name=f"{name}-postgres-read-latency-alarm",
+            alarm_name=f"{name}-postgres-read-latency",
+            db_identifier=postgres_identifier,
+            metric_name="ReadLatency",
+            threshold=0.05,
+            description="Postgres read latency is elevated",
+            alarm_actions=alarm_actions,
+            statistic="Average",
+        )
+        _rds_metric_alarm(
+            resource_name=f"{name}-postgres-write-latency-alarm",
+            alarm_name=f"{name}-postgres-write-latency",
+            db_identifier=postgres_identifier,
+            metric_name="WriteLatency",
+            threshold=0.1,
+            description="Postgres write latency is elevated",
+            alarm_actions=alarm_actions,
+            statistic="Average",
+        )
+        _rds_metric_alarm(
+            resource_name=f"{name}-postgres-cpu-alarm",
+            alarm_name=f"{name}-postgres-high-cpu",
+            db_identifier=postgres_identifier,
+            metric_name="CPUUtilization",
+            threshold=80,
+            description="Postgres CPU utilization is high",
+            alarm_actions=alarm_actions,
+            statistic="Average",
+        )
+
     if web_alb_arn_suffix and web_target_group_arn_suffix and web_ecs_service_name:
         aws.cloudwatch.MetricAlarm(
             f"{name}-web-5xx-alarm",
@@ -271,6 +359,26 @@ def create_monitoring(
             },
             tags={"Name": f"{name}-web-latency-alarm"},
         )
+        if web_latency_p95_alarm_threshold_seconds > 0:
+            aws.cloudwatch.MetricAlarm(
+                f"{name}-web-latency-p95-alarm",
+                name=f"{name}-web-high-latency-p95",
+                comparison_operator="GreaterThanThreshold",
+                evaluation_periods=3,
+                metric_name="TargetResponseTime",
+                namespace="AWS/ApplicationELB",
+                period=300,
+                extended_statistic="p95",
+                threshold=web_latency_p95_alarm_threshold_seconds,
+                alarm_description=f"High web console p95 latency (>{web_latency_p95_alarm_threshold_seconds}s)",
+                alarm_actions=alarm_actions,
+                treat_missing_data="notBreaching",
+                dimensions={
+                    "LoadBalancer": web_alb_arn_suffix,
+                    "TargetGroup": web_target_group_arn_suffix,
+                },
+                tags={"Name": f"{name}-web-latency-p95-alarm"},
+            )
 
         aws.cloudwatch.MetricAlarm(
             f"{name}-web-unhealthy-alarm",
@@ -439,6 +547,23 @@ def create_monitoring(
                 description="Cerebro API denied sensitive actions exceeded the configured threshold",
                 alarm_actions=alarm_actions,
             )
+        if dashboard_latency_p95_alarm_threshold_ms > 0:
+            aws.cloudwatch.MetricAlarm(
+                f"{name}-grc-dashboard-latency-p95-alarm",
+                name=f"{name}-grc-dashboard-latency-p95",
+                comparison_operator="GreaterThanThreshold",
+                evaluation_periods=3,
+                metric_name="GRCDashboardLatencyMs",
+                namespace=telemetry_namespace,
+                period=300,
+                extended_statistic="p95",
+                threshold=dashboard_latency_p95_alarm_threshold_ms,
+                treat_missing_data="notBreaching",
+                alarm_description="GRC dashboard p95 application latency exceeded threshold",
+                alarm_actions=alarm_actions,
+                dimensions={"Dashboard": "grc"},
+                tags={"Name": f"{name}-grc-dashboard-latency-p95-alarm"},
+            )
 
     if jetstream_lag_alarm_threshold > 0:
         _custom_metric_alarm(
@@ -513,7 +638,7 @@ def create_monitoring(
         f"{name}-dashboard",
         dashboard_name=f"{name}-dashboard",
         dashboard_body=pulumi.Output.all(
-            alb_arn_suffix, target_group_arn_suffix, ecs_cluster_name, ecs_service_name
+            alb_arn_suffix, target_group_arn_suffix, ecs_cluster_name, ecs_service_name, postgres_identifier
         ).apply(lambda args: _dashboard_body(name, *args, jetstream_stream_name)),
     )
 
@@ -550,6 +675,34 @@ def _custom_metric_alarm(
         alarm_actions=alarm_actions,
         dimensions=dimensions,
         tags={"Name": alarm_name},
+    )
+
+
+def _rds_metric_alarm(
+    resource_name: str,
+    alarm_name: str,
+    db_identifier: pulumi.Input[str],
+    metric_name: str,
+    threshold: float,
+    description: str,
+    alarm_actions: list[pulumi.Input[str]],
+    statistic: str = "Average",
+) -> aws.cloudwatch.MetricAlarm:
+    return aws.cloudwatch.MetricAlarm(
+        resource_name,
+        name=alarm_name,
+        comparison_operator="GreaterThanThreshold",
+        evaluation_periods=3,
+        metric_name=metric_name,
+        namespace="AWS/RDS",
+        period=300,
+        statistic=statistic,
+        threshold=threshold,
+        treat_missing_data="notBreaching",
+        alarm_description=description,
+        alarm_actions=alarm_actions,
+        dimensions={"DBInstanceIdentifier": db_identifier},
+        tags={"Name": resource_name},
     )
 
 
@@ -761,6 +914,18 @@ def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[st
                 dimensions={"RuntimeId": "$.runtime_id"},
             ),
         ),
+        "grc_dashboard_latency": aws.cloudwatch.LogMetricFilter(
+            f"{name}-grc-dashboard-latency-filter",
+            name=f"{name}-grc-dashboard-latency",
+            log_group_name=log_group_name,
+            pattern='{ $.kind = "span_end" && $.name = "grc.dashboard" && $.dashboard = "grc" && $.duration_ms = * }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="GRCDashboardLatencyMs",
+                namespace=namespace,
+                value="$.duration_ms",
+                dimensions={"Dashboard": "$.dashboard"},
+            ),
+        ),
         **_create_access_audit_metric_filters(name, log_group_name, namespace),
         "graph_entities": aws.cloudwatch.LogMetricFilter(
             f"{name}-graph-entities-filter",
@@ -890,18 +1055,26 @@ def _graph_ingest_failure_pattern() -> str:
     return '{ $.kind = "span_end" && $.status = "failed" && ($.name = "graph.*" || $.name = "graph.ingest_runtime" || $.name = "orchestrator.graph_ingest") }'
 
 
-def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service: str, jetstream_stream_name: str) -> str:
+def _dashboard_body(
+    name: str,
+    alb_arn: str,
+    tg_arn: str,
+    cluster: str,
+    service: str,
+    postgres_identifier: str | None,
+    jetstream_stream_name: str,
+) -> str:
     import json
     telemetry_namespace = f"Cerebro/{name}"
-    return json.dumps({
-        "widgets": [
+    widgets = [
             {
                 "type": "metric",
                 "x": 0, "y": 0, "width": 12, "height": 6,
                 "properties": {
                     "title": "Request Count",
                     "metrics": [
-                        ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", alb_arn, {"stat": "Sum"}]
+                        ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", alb_arn, {"stat": "Sum"}],
+                        [".", "RequestCountPerTarget", ".", ".", "TargetGroup", tg_arn, {"stat": "Sum", "yAxis": "right"}],
                     ],
                     "period": 60,
                     "region": aws.get_region().region,
@@ -913,7 +1086,8 @@ def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service:
                 "properties": {
                     "title": "Response Time",
                     "metrics": [
-                        ["AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", alb_arn, {"stat": "Average"}]
+                        ["AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", alb_arn, {"stat": "Average"}],
+                        [".", ".", ".", ".", {"stat": "p95"}],
                     ],
                     "period": 60,
                     "region": aws.get_region().region,
@@ -1052,6 +1226,19 @@ def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service:
                 "type": "metric",
                 "x": 0, "y": 36, "width": 12, "height": 6,
                 "properties": {
+                    "title": "GRC Dashboard Latency",
+                    "metrics": [
+                        [telemetry_namespace, "GRCDashboardLatencyMs", "Dashboard", "grc", {"stat": "Average"}],
+                        [".", ".", ".", ".", {"stat": "p95"}],
+                    ],
+                    "period": 300,
+                    "region": aws.get_region().region,
+                },
+            },
+            {
+                "type": "metric",
+                "x": 12, "y": 36, "width": 12, "height": 6,
+                "properties": {
                     "title": "Finding Evaluation Throughput",
                     "metrics": [
                         [telemetry_namespace, "FindingEvaluationEventsProcessed", {"stat": "Sum"}],
@@ -1064,7 +1251,7 @@ def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service:
             },
             {
                 "type": "metric",
-                "x": 12, "y": 36, "width": 12, "height": 6,
+                "x": 0, "y": 42, "width": 12, "height": 6,
                 "properties": {
                     "title": "Finding Evaluation / Graph Rule Health",
                     "metrics": [
@@ -1078,7 +1265,7 @@ def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service:
             },
             {
                 "type": "metric",
-                "x": 0, "y": 42, "width": 12, "height": 6,
+                "x": 12, "y": 42, "width": 12, "height": 6,
                 "properties": {
                     "title": "API Access Audit Volume",
                     "metrics": [
@@ -1095,7 +1282,7 @@ def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service:
             },
             {
                 "type": "metric",
-                "x": 12, "y": 42, "width": 12, "height": 6,
+                "x": 0, "y": 54, "width": 12, "height": 6,
                 "properties": {
                     "title": "API Access Denials",
                     "metrics": [
@@ -1112,5 +1299,36 @@ def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service:
                     "region": aws.get_region().region,
                 },
             },
-        ],
-    })
+        ]
+    if postgres_identifier:
+        widgets.extend([
+            {
+                "type": "metric",
+                "x": 0, "y": 48, "width": 12, "height": 6,
+                "properties": {
+                    "title": "Postgres Latency / Queue",
+                    "metrics": [
+                        ["AWS/RDS", "DiskQueueDepth", "DBInstanceIdentifier", postgres_identifier, {"stat": "Average", "yAxis": "right"}],
+                        [".", "ReadLatency", ".", ".", {"stat": "Average"}],
+                        [".", "WriteLatency", ".", ".", {"stat": "Average"}],
+                    ],
+                    "period": 300,
+                    "region": aws.get_region().region,
+                },
+            },
+            {
+                "type": "metric",
+                "x": 12, "y": 54, "width": 12, "height": 6,
+                "properties": {
+                    "title": "Postgres CPU / Connections / Memory",
+                    "metrics": [
+                        ["AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", postgres_identifier, {"stat": "Average"}],
+                        [".", "DatabaseConnections", ".", ".", {"stat": "Average", "yAxis": "right"}],
+                        [".", "FreeableMemory", ".", ".", {"stat": "Average", "yAxis": "right"}],
+                    ],
+                    "period": 300,
+                    "region": aws.get_region().region,
+                },
+            },
+        ])
+    return json.dumps({"widgets": widgets})

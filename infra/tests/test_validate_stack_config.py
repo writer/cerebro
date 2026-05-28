@@ -107,7 +107,7 @@ config:
   cerebro:environment: go-production
   cerebro:ecrBaseUri: 123456789012.dkr.ecr.us-east-1.amazonaws.com/cerebro
   cerebro:imageTag: v2.1.36
-  cerebro:apiMaxInstances: 1
+  cerebro:apiMaxInstances: 2
   cerebro:postgresDeletionProtection: true
   cerebro:postgresBackupRetentionDays: 14
   cerebro:apiAuthEnabled: true
@@ -156,6 +156,10 @@ class ValidateStackConfigTest(unittest.TestCase):
     def test_valid_stack_has_no_errors(self) -> None:
         findings = self._validate(BASE_STACK)
         self.assertEqual([finding for finding in findings if finding.severity == "error"], [])
+
+    def test_latency_alarm_thresholds_must_be_non_negative(self) -> None:
+        content = BASE_STACK + "  cerebro:dashboardLatencyP95AlarmThresholdMs: -1\n"
+        self.assertTrue(any("must be a non-negative integer" in message for message in self._messages(content)))
 
     def test_missing_source_secret_is_error(self) -> None:
         content = BASE_STACK.replace(f"    - {API_TOKEN_KEY}\n", "")
@@ -243,6 +247,48 @@ class ValidateStackConfigTest(unittest.TestCase):
         findings = self._validate(content, name="Pulumi.sec-dev.yaml")
         self.assertTrue(any(finding.severity == "error" and "page_limit <= 5" in finding.message for finding in findings))
 
+    def test_sec_dev_postgres_requires_gp3_sized_storage_and_non_micro_class(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:apiMaxInstances: 2\n",
+            "  cerebro:apiMaxInstances: 2\n"
+            "  cerebro:postgresInstanceClass: db.t4g.micro\n"
+            "  cerebro:postgresAllocatedStorage: 20\n"
+            "  cerebro:postgresStorageType: gp2\n",
+        )
+        findings = self._validate(content, name="Pulumi.sec-dev.yaml")
+
+        self.assertTrue(any(finding.path == "cerebro:postgresInstanceClass" for finding in findings))
+        self.assertTrue(any(finding.path == "cerebro:postgresAllocatedStorage" for finding in findings))
+        self.assertTrue(any(finding.path == "cerebro:postgresStorageType" for finding in findings))
+
+    def test_sec_dev_postgres_accepts_gp3_sized_storage(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:apiMaxInstances: 2\n",
+            "  cerebro:apiMaxInstances: 2\n"
+            "  cerebro:postgresInstanceClass: db.t4g.small\n"
+            "  cerebro:postgresAllocatedStorage: 100\n"
+            "  cerebro:postgresMaxAllocatedStorage: 200\n"
+            "  cerebro:postgresStorageType: gp3\n",
+        )
+        findings = self._validate(content, name="Pulumi.sec-dev.yaml")
+
+        self.assertFalse(
+            any(finding.severity == "error" and finding.path.startswith("cerebro:postgres") for finding in findings)
+        )
+
+    def test_sec_dev_postgres_max_storage_must_cover_allocated_storage(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:apiMaxInstances: 2\n",
+            "  cerebro:apiMaxInstances: 2\n"
+            "  cerebro:postgresInstanceClass: db.t4g.small\n"
+            "  cerebro:postgresAllocatedStorage: 100\n"
+            "  cerebro:postgresMaxAllocatedStorage: 50\n"
+            "  cerebro:postgresStorageType: gp3\n",
+        )
+        findings = self._validate(content, name="Pulumi.sec-dev.yaml")
+
+        self.assertTrue(any(finding.path == "cerebro:postgresMaxAllocatedStorage" for finding in findings))
+
     def test_prod_high_contention_graph_budgets_are_bounded(self) -> None:
         content = BASE_STACK.replace(
             "        - runtime_id=writer-okta-audit\n",
@@ -258,6 +304,24 @@ class ValidateStackConfigTest(unittest.TestCase):
     def test_prod_guardrails_are_errors(self) -> None:
         content = BASE_STACK.replace("  cerebro:postgresDeletionProtection: true", "  cerebro:postgresDeletionProtection: false")
         self.assertTrue(any("deletion protection" in message for message in self._messages(content)))
+
+    def test_prod_rejects_immediate_postgres_apply(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:postgresBackupRetentionDays: 14\n",
+            "  cerebro:postgresBackupRetentionDays: 14\n  cerebro:postgresApplyImmediately: true\n",
+        )
+        self.assertTrue(any("maintenance window" in message for message in self._messages(content)))
+
+    def test_active_environments_require_api_headroom(self) -> None:
+        content = BASE_STACK.replace("  cerebro:apiMaxInstances: 2", "  cerebro:apiMaxInstances: 1")
+        self.assertTrue(any("at least two API tasks" in message for message in self._messages(content)))
+
+    def test_enabled_web_console_requires_headroom(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:apiMaxInstances: 2\n",
+            "  cerebro:apiMaxInstances: 2\n  cerebro:webEnabled: true\n  cerebro:webMaxInstances: 1\n",
+        )
+        self.assertTrue(any("at least two tasks" in message for message in self._messages(content)))
 
     def test_prod_postgres_must_not_use_gp2_storage(self) -> None:
         content = BASE_STACK.replace(
@@ -308,22 +372,22 @@ class ValidateStackConfigTest(unittest.TestCase):
         self.assertTrue(any(finding.severity == "error" and "notification route" in finding.message for finding in findings))
 
     def test_alb_access_log_retention_must_be_positive(self) -> None:
-        content = BASE_STACK.replace("  cerebro:apiMaxInstances: 1\n", "  cerebro:apiMaxInstances: 1\n  cerebro:albAccessLogsRetentionDays: 0\n")
+        content = BASE_STACK.replace("  cerebro:apiMaxInstances: 2\n", "  cerebro:apiMaxInstances: 2\n  cerebro:albAccessLogsRetentionDays: 0\n")
         findings = self._validate(content)
         self.assertTrue(any(finding.severity == "error" and "albAccessLogsRetentionDays" in finding.path for finding in findings))
 
     def test_access_audit_alarm_thresholds_must_be_non_negative(self) -> None:
         content = BASE_STACK.replace(
-            "  cerebro:apiMaxInstances: 1\n",
-            "  cerebro:apiMaxInstances: 1\n  cerebro:accessAuditDeniedAlarmThreshold: -1\n",
+            "  cerebro:apiMaxInstances: 2\n",
+            "  cerebro:apiMaxInstances: 2\n  cerebro:accessAuditDeniedAlarmThreshold: -1\n",
         )
         findings = self._validate(content)
         self.assertTrue(any(finding.severity == "error" and "accessAuditDeniedAlarmThreshold" in finding.path for finding in findings))
 
     def test_sensitive_access_audit_alarm_thresholds_allow_minus_one_disable(self) -> None:
         content = BASE_STACK.replace(
-            "  cerebro:apiMaxInstances: 1\n",
-            "  cerebro:apiMaxInstances: 1\n  cerebro:accessAuditTenantMismatchAlarmThreshold: -1\n  cerebro:accessAuditSensitiveDeniedAlarmThreshold: -2\n",
+            "  cerebro:apiMaxInstances: 2\n",
+            "  cerebro:apiMaxInstances: 2\n  cerebro:accessAuditTenantMismatchAlarmThreshold: -1\n  cerebro:accessAuditSensitiveDeniedAlarmThreshold: -2\n",
         )
         findings = self._validate(content)
         self.assertFalse(any(finding.severity == "error" and "accessAuditTenantMismatchAlarmThreshold" in finding.path for finding in findings))

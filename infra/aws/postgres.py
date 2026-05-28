@@ -25,6 +25,8 @@ def create_postgres(
     backup_retention_days: int = 7,
     deletion_protection: bool = False,
     multi_az: bool = False,
+    apply_immediately: bool = True,
+    final_snapshot_identifier: str | None = None,
 ) -> dict:
     """Create the RDS Postgres database and expose its DSN through Secrets Manager."""
     security_group = aws.ec2.SecurityGroup(
@@ -90,8 +92,8 @@ def create_postgres(
         deletion_protection=deletion_protection,
         multi_az=multi_az,
         skip_final_snapshot=not deletion_protection,
-        final_snapshot_identifier=f"{name}-postgres-final" if deletion_protection else None,
-        apply_immediately=True,
+        final_snapshot_identifier=final_snapshot_identifier or (f"{name}-postgres-final" if deletion_protection else None),
+        apply_immediately=apply_immediately,
         tags={"Name": f"{name}-postgres"},
     )
 

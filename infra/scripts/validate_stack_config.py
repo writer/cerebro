@@ -55,7 +55,7 @@ SEC_DEV_AWS_GLOBAL_FAMILIES = {
     "iam_user",
 }
 SEC_DEV_AWS_REGIONAL_FAMILIES = {"cloudtrail", "public_endpoint", "resource_exposure"}
-SEC_DEV_AWS_CLOUDTRAIL_SINCE = "PT24H"
+SEC_DEV_AWS_CLOUDTRAIL_SINCE = "PT15M"
 
 
 @dataclass(frozen=True)
@@ -376,7 +376,7 @@ def _validate_sec_dev_aws_coverage(
                 "error",
                 stack,
                 "cerebro:imageTag",
-                "AWS effective_permission and since=PT24H CloudTrail runtimes require cerebro:imageTag >= v2.1.46",
+                f"AWS effective_permission and since={SEC_DEV_AWS_CLOUDTRAIL_SINCE} CloudTrail runtimes require cerebro:imageTag >= v2.1.46",
             )
         )
 
@@ -456,6 +456,27 @@ def validate_stack(path: Path) -> list[Finding]:
                 "values above 1 require cerebro:imageTag >= v2.1.25",
             )
         )
+    if (stack == "sec-dev" or "prod" in str(config.get("environment", stack)).lower() or stack.endswith("prod")) and (
+        not isinstance(api_max_instances, int) or api_max_instances < 2
+    ):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:apiMaxInstances",
+                "active Cerebro environments must allow at least two API tasks for latency headroom",
+            )
+        )
+    web_max_instances = config.get("webMaxInstances", 1)
+    if config.get("webEnabled") is True and (not isinstance(web_max_instances, int) or web_max_instances < 2):
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:webMaxInstances",
+                "enabled web consoles must allow at least two tasks for proxy latency headroom",
+            )
+        )
 
     alb_access_logs_retention_days = config.get("albAccessLogsRetentionDays", 30)
     if not isinstance(alb_access_logs_retention_days, int) or alb_access_logs_retention_days < 1:
@@ -466,10 +487,70 @@ def validate_stack(path: Path) -> list[Finding]:
         if not isinstance(threshold, int) or threshold < 0:
             findings.append(_finding("error", stack, f"cerebro:{key}", "must be a non-negative integer"))
 
+    for key in (
+        "apiRequestCountPerTargetScalingTarget",
+        "apiRequestCountPerTargetAlarmThreshold",
+        "apiLatencyP95AlarmThresholdSeconds",
+        "webLatencyP95AlarmThresholdSeconds",
+        "dashboardLatencyP95AlarmThresholdMs",
+    ):
+        threshold = config.get(key, 0)
+        if not isinstance(threshold, int) or threshold < 0:
+            findings.append(_finding("error", stack, f"cerebro:{key}", "must be a non-negative integer"))
+
     for key in ("accessAuditTenantMismatchAlarmThreshold", "accessAuditSensitiveDeniedAlarmThreshold"):
         threshold = config.get(key, -1)
         if not isinstance(threshold, int) or threshold < -1:
             findings.append(_finding("error", stack, f"cerebro:{key}", "must be an integer greater than or equal to -1"))
+
+    if stack == "sec-dev":
+        postgres_instance_class = str(config.get("postgresInstanceClass", "")).strip()
+        if not postgres_instance_class or postgres_instance_class.endswith(".micro"):
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:postgresInstanceClass",
+                    "sec-dev Postgres instance class must be larger than micro for dashboard query load",
+                )
+            )
+
+        postgres_allocated_storage = config.get("postgresAllocatedStorage")
+        if not isinstance(postgres_allocated_storage, int) or postgres_allocated_storage < 100:
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:postgresAllocatedStorage",
+                    "sec-dev Postgres allocated storage must be at least 100 GB",
+                )
+            )
+
+        postgres_max_allocated_storage = config.get("postgresMaxAllocatedStorage")
+        if postgres_max_allocated_storage is not None and (
+            not isinstance(postgres_max_allocated_storage, int)
+            or not isinstance(postgres_allocated_storage, int)
+            or postgres_max_allocated_storage < postgres_allocated_storage
+        ):
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:postgresMaxAllocatedStorage",
+                    "sec-dev Postgres max allocated storage must be greater than or equal to allocated storage",
+                )
+            )
+
+        postgres_storage_type = str(config.get("postgresStorageType", "")).strip().lower()
+        if postgres_storage_type != "gp3":
+            findings.append(
+                _finding(
+                    "error",
+                    stack,
+                    "cerebro:postgresStorageType",
+                    "sec-dev Postgres storage type must be gp3",
+                )
+            )
 
     alarm_action_arns = config.get("alarmActionArns") or []
     if alarm_action_arns and not isinstance(alarm_action_arns, list):
@@ -698,6 +779,10 @@ def validate_stack(path: Path) -> list[Finding]:
         if isinstance(backup_retention, int) and backup_retention < 14:
             findings.append(
                 _finding("error", stack, "cerebro:postgresBackupRetentionDays", "production backups must retain at least 14 days")
+            )
+        if config.get("postgresApplyImmediately") is True:
+            findings.append(
+                _finding("error", stack, "cerebro:postgresApplyImmediately", "production RDS changes must use the maintenance window")
             )
 
         allowed_tenants = config.get("allowedTenants") or []

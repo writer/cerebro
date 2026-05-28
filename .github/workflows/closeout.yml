@@ -1,0 +1,272 @@
+name: Cerebro Bulk Closeout
+
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - sec-dev
+          - go-prod
+      dry_run:
+        description: 'Dry run (no DB or graph mutations)'
+        required: true
+        type: boolean
+        default: true
+      rule_ids:
+        description: 'Comma-separated rule IDs to close out'
+        required: false
+        type: string
+        default: ''
+      source:
+        description: 'Comma-separated rule sources (e.g. github,okta,aws)'
+        required: false
+        type: string
+        default: ''
+      tenant_id:
+        description: 'Tenant ID to close out. Common values: writer (canonical sec-dev tenant discovered from findings rows).'
+        required: true
+        type: string
+      older_than:
+        description: 'Minimum age of findings to close out (Go duration, e.g. 24h, 7d)'
+        required: false
+        type: string
+        default: ''
+      reason:
+        description: 'Reason for closeout (required, recorded in audit trail)'
+        required: true
+        type: string
+      change_ticket:
+        description: 'Change ticket (required for env=go-prod)'
+        required: false
+        type: string
+        default: ''
+
+concurrency:
+  group: cerebro-closeout-${{ github.event.inputs.env }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    name: Pre-flight validation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Validate workflow inputs
+        shell: bash
+        env:
+          INPUT_ENV: ${{ github.event.inputs.env }}
+          INPUT_REASON: ${{ github.event.inputs.reason }}
+          INPUT_TENANT_ID: ${{ github.event.inputs.tenant_id }}
+          INPUT_CHANGE_TICKET: ${{ github.event.inputs.change_ticket }}
+        run: |
+          set -euo pipefail
+          errors=0
+
+          if [ -z "${INPUT_REASON// /}" ]; then
+            echo "::error title=closeout::Input 'reason' is required and must not be empty."
+            errors=$((errors + 1))
+          fi
+
+          if [ -z "${INPUT_TENANT_ID// /}" ]; then
+            echo "::error title=closeout::Input 'tenant_id' is required and must not be empty."
+            errors=$((errors + 1))
+          fi
+
+          # older_than syntax is validated by the cerebro CLI inside the ECS
+          # task (the container exits non-zero on parse failure). Preflight
+          # accepts any value here, including the empty default.
+
+          if [ "${INPUT_ENV}" = "go-prod" ]; then
+            if [ -z "${INPUT_CHANGE_TICKET// /}" ]; then
+              echo "::error title=closeout::Input 'change_ticket' is required when env=go-prod."
+              errors=$((errors + 1))
+            fi
+          fi
+
+          if [ "${errors}" -gt 0 ]; then
+            echo "::error title=closeout::Pre-flight validation failed; refusing to assume AWS role."
+            exit 1
+          fi
+          echo "Pre-flight validation passed for env=${INPUT_ENV}"
+
+  closeout-sec-dev:
+    name: Closeout (sec-dev)
+    needs: preflight
+    if: ${{ github.event.inputs.env == 'sec-dev' }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: us-east-1
+      CEREBRO_ENV: sec-dev
+      CEREBRO_CLUSTER: cerebro-sec-dev-cluster
+      CEREBRO_TASK_FAMILY: cerebro-sec-dev
+      CEREBRO_SERVICE: cerebro-sec-dev-api
+      CEREBRO_LOG_GROUP: /ecs/cerebro-sec-dev
+      CEREBRO_TASK_ROLE_NAME: cerebro-sec-dev-task-role
+      PULUMI_STACK: sec-dev
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "infra/pyproject.toml"
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install infra dependencies
+        shell: bash
+        working-directory: infra
+        run: uv sync
+
+      - name: Configure AWS credentials (sec-dev)
+        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
+        with:
+          assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
+
+      - name: Authenticate with Pulumi Cloud
+        uses: pulumi/auth-actions@1c89817aab0c66407723cdef72b05266e7376640 # v1
+        with:
+          organization: writer-ai
+          requested-token-type: urn:pulumi:token-type:access_token:organization
+
+      - name: Resolve audit bucket from Pulumi stack outputs
+        id: pulumi_outputs
+        shell: bash
+        working-directory: infra/aws
+        run: |
+          set -euo pipefail
+          bucket="$(uv run pulumi stack output --stack "${PULUMI_STACK}" cerebro_audit_bucket)"
+          kms_arn="$(uv run pulumi stack output --stack "${PULUMI_STACK}" cerebro_audit_bucket_kms_key_arn)"
+          if [ -z "${bucket}" ] || [ -z "${kms_arn}" ]; then
+            echo "::error title=closeout::Pulumi stack outputs missing (cerebro_audit_bucket / cerebro_audit_bucket_kms_key_arn)"
+            exit 1
+          fi
+          echo "audit_bucket=${bucket}" >> "$GITHUB_OUTPUT"
+          echo "audit_bucket_kms_key_arn=${kms_arn}" >> "$GITHUB_OUTPUT"
+
+      - name: Assert task role KMS encrypt permissions
+        shell: bash
+        env:
+          AUDIT_BUCKET_KMS_KEY_ARN: ${{ steps.pulumi_outputs.outputs.audit_bucket_kms_key_arn }}
+        run: bash infra/scripts/run_closeout_ecs.sh assert-kms-allow
+
+      - name: Dispatch closeout ECS task
+        id: closeout
+        shell: bash
+        env:
+          AUDIT_BUCKET: ${{ steps.pulumi_outputs.outputs.audit_bucket }}
+          INPUT_ENV: ${{ github.event.inputs.env }}
+          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run }}
+          INPUT_RULE_IDS: ${{ github.event.inputs.rule_ids }}
+          INPUT_SOURCE: ${{ github.event.inputs.source }}
+          INPUT_TENANT_ID: ${{ github.event.inputs.tenant_id }}
+          INPUT_OLDER_THAN: ${{ github.event.inputs.older_than }}
+          INPUT_REASON: ${{ github.event.inputs.reason }}
+          INPUT_CHANGE_TICKET: ${{ github.event.inputs.change_ticket }}
+          GITHUB_ACTOR_ARG: ${{ github.actor }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: bash infra/scripts/run_closeout_ecs.sh run
+
+  closeout-go-prod:
+    name: Closeout (go-prod)
+    needs: preflight
+    if: ${{ github.event.inputs.env == 'go-prod' }}
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: us-east-1
+      CEREBRO_ENV: go-prod
+      CEREBRO_CLUSTER: cerebro-go-production-cluster
+      CEREBRO_TASK_FAMILY: cerebro-go-production
+      CEREBRO_SERVICE: cerebro-go-production-api
+      CEREBRO_LOG_GROUP: /ecs/cerebro-go-production
+      CEREBRO_TASK_ROLE_NAME: cerebro-go-production-task-role
+      PULUMI_STACK: go-prod
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "infra/pyproject.toml"
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install infra dependencies
+        shell: bash
+        working-directory: infra
+        run: uv sync
+
+      - name: Configure AWS credentials (go-prod)
+        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
+        with:
+          assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
+
+      - name: Authenticate with Pulumi Cloud
+        uses: pulumi/auth-actions@1c89817aab0c66407723cdef72b05266e7376640 # v1
+        with:
+          organization: writer-ai
+          requested-token-type: urn:pulumi:token-type:access_token:organization
+
+      - name: Resolve audit bucket from Pulumi stack outputs
+        id: pulumi_outputs
+        shell: bash
+        working-directory: infra/aws
+        run: |
+          set -euo pipefail
+          bucket="$(uv run pulumi stack output --stack "${PULUMI_STACK}" cerebro_audit_bucket)"
+          kms_arn="$(uv run pulumi stack output --stack "${PULUMI_STACK}" cerebro_audit_bucket_kms_key_arn)"
+          if [ -z "${bucket}" ] || [ -z "${kms_arn}" ]; then
+            echo "::error title=closeout::Pulumi stack outputs missing (cerebro_audit_bucket / cerebro_audit_bucket_kms_key_arn)"
+            exit 1
+          fi
+          echo "audit_bucket=${bucket}" >> "$GITHUB_OUTPUT"
+          echo "audit_bucket_kms_key_arn=${kms_arn}" >> "$GITHUB_OUTPUT"
+
+      - name: Assert task role KMS encrypt permissions
+        shell: bash
+        env:
+          AUDIT_BUCKET_KMS_KEY_ARN: ${{ steps.pulumi_outputs.outputs.audit_bucket_kms_key_arn }}
+        run: bash infra/scripts/run_closeout_ecs.sh assert-kms-allow
+
+      - name: Dispatch closeout ECS task
+        id: closeout
+        shell: bash
+        env:
+          AUDIT_BUCKET: ${{ steps.pulumi_outputs.outputs.audit_bucket }}
+          INPUT_ENV: ${{ github.event.inputs.env }}
+          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run }}
+          INPUT_RULE_IDS: ${{ github.event.inputs.rule_ids }}
+          INPUT_SOURCE: ${{ github.event.inputs.source }}
+          INPUT_TENANT_ID: ${{ github.event.inputs.tenant_id }}
+          INPUT_OLDER_THAN: ${{ github.event.inputs.older_than }}
+          INPUT_REASON: ${{ github.event.inputs.reason }}
+          INPUT_CHANGE_TICKET: ${{ github.event.inputs.change_ticket }}
+          GITHUB_ACTOR_ARG: ${{ github.actor }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: bash infra/scripts/run_closeout_ecs.sh run

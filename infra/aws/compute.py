@@ -16,10 +16,13 @@ def create_ecs_cluster(
     kms_key_id: pulumi.Input[str],
     target_group_arn: pulumi.Input[str],
     container_image: str,
+    alb_arn_suffix: pulumi.Input[str] = None,
+    target_group_arn_suffix: pulumi.Input[str] = None,
     api_cpu: int = 1024,
     api_memory: int = 2048,
     api_min_instances: int = 1,
     api_max_instances: int = 1,
+    api_request_count_per_target_scaling_target: int = 0,
     log_retention_days: int = 30,
     environment: dict = None,
     secret_keys: list[str] = None,
@@ -67,7 +70,7 @@ def create_ecs_cluster(
     )
 
     execution_role = _create_execution_role(name, kms_key_id, external_secrets_prefix)
-    task_role = _create_task_role(name, s3_source_iam_configs, efs_file_system_id)
+    task_role = _create_task_role(name, s3_source_iam_configs, efs_file_system_id, _source_runtime_aws_role_arns(source_runtimes or []))
     worker_task_role = None
 
     log_group = aws.cloudwatch.LogGroup(
@@ -103,7 +106,7 @@ def create_ecs_cluster(
     orchestrator_task_definitions = []
     orchestrator_events_role = None
     if orchestrator_enabled:
-        worker_task_role = _create_task_role(f"{name}-worker", s3_source_iam_configs, efs_file_system_id)
+        worker_task_role = _create_task_role(f"{name}-worker", s3_source_iam_configs, efs_file_system_id, _source_runtime_aws_role_arns(source_runtimes or []))
         schedules = _orchestrator_schedules(
             orchestrator_schedule_expression,
             orchestrator_command or ["orchestrator", "run"],
@@ -272,6 +275,23 @@ def create_ecs_cluster(
                 scale_out_cooldown=60,
             ),
         )
+        if api_request_count_per_target_scaling_target > 0 and alb_arn_suffix and target_group_arn_suffix:
+            aws.appautoscaling.Policy(
+                f"{name}-request-count-scaling",
+                service_namespace="ecs",
+                resource_id=scaling_target.resource_id,
+                scalable_dimension="ecs:service:DesiredCount",
+                policy_type="TargetTrackingScaling",
+                target_tracking_scaling_policy_configuration=aws.appautoscaling.PolicyTargetTrackingScalingPolicyConfigurationArgs(
+                    target_value=float(api_request_count_per_target_scaling_target),
+                    predefined_metric_specification=aws.appautoscaling.PolicyTargetTrackingScalingPolicyConfigurationPredefinedMetricSpecificationArgs(
+                        predefined_metric_type="ALBRequestCountPerTarget",
+                        resource_label=pulumi.Output.concat(alb_arn_suffix, "/", target_group_arn_suffix),
+                    ),
+                    scale_in_cooldown=300,
+                    scale_out_cooldown=60,
+                ),
+            )
 
     return {
         "cluster": cluster,
@@ -315,6 +335,21 @@ def _source_runtime_aws_role_entries(source_runtimes: list[dict]) -> list[str]:
         if role_arn:
             role_entries.add(f"{tenant_id}={role_arn}")
     return sorted(role_entries)
+
+
+def _source_runtime_aws_role_arns(source_runtimes: list[dict]) -> list[str]:
+    role_arns = set()
+    for runtime in source_runtimes:
+        source_id = _runtime_field(runtime, "sourceId", "source_id")
+        if source_id != "aws":
+            continue
+        config = runtime.get("config") or {}
+        if not isinstance(config, dict):
+            continue
+        role_arn = str(config.get("role_arn", "")).strip()
+        if role_arn:
+            role_arns.add(role_arn)
+    return sorted(role_arns)
 
 
 def _create_execution_role(name: str, kms_key_id: pulumi.Input[str], external_secrets_prefix: str) -> aws.iam.Role:
@@ -372,6 +407,7 @@ def _create_task_role(
     name: str,
     s3_source_iam_configs: list[dict] = None,
     efs_file_system_id: pulumi.Input[str] = None,
+    assume_role_arns: list[str] = None,
 ) -> aws.iam.Role:
     role = aws.iam.Role(
         f"{name}-task-role",
@@ -400,21 +436,19 @@ def _create_task_role(
         }),
     )
 
-    aws.iam.RolePolicy(
-        f"{name}-task-assume-role",
-        role=role.name,
-        policy=json.dumps({
-            "Version": "2012-10-17",
-            "Statement": [{
-                "Effect": "Allow",
-                "Action": ["sts:AssumeRole", "sts:TagSession"],
-                "Resource": [
-                    "arn:aws:iam::*:role/cerebro-org-scan-role",
-                    "arn:aws:iam::*:role/cerebro-*-source-*",
-                ],
-            }],
-        }),
-    )
+    if assume_role_arns:
+        aws.iam.RolePolicy(
+            f"{name}-task-assume-role",
+            role=role.name,
+            policy=json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Action": ["sts:AssumeRole", "sts:TagSession"],
+                    "Resource": sorted(set(assume_role_arns)),
+                }],
+            }),
+        )
 
     if s3_source_iam_configs:
         bucket_arns = []

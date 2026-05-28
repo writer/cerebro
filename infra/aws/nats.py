@@ -103,82 +103,18 @@ def create_nats_service(
 
     region = aws.get_region().region
 
-    def build_container_definitions(log_group_name: str) -> str:
-        log_options = {
-            "awslogs-group": log_group_name,
-            "awslogs-region": region,
-        }
-        containers = [
-            {
-                "name": "nats",
-                "image": "nats:2.10-alpine",
-                "essential": True,
-                "command": ["-js", "-sd", "/data", "-m", "8222"],
-                "portMappings": [
-                    {"containerPort": 4222, "protocol": "tcp"},
-                    {"containerPort": 8222, "protocol": "tcp"},
-                ],
-                "mountPoints": [{"sourceVolume": "nats-data", "containerPath": "/data", "readOnly": False}],
-                "healthCheck": {
-                    "command": ["CMD-SHELL", "wget -qO- 'http://127.0.0.1:8222/healthz?js-enabled-only=true' >/dev/null || exit 1"],
-                    "interval": 10,
-                    "timeout": 5,
-                    "retries": 6,
-                    "startPeriod": 10,
-                },
-                "logConfiguration": {
-                    "logDriver": "awslogs",
-                    "options": {**log_options, "awslogs-stream-prefix": "nats"},
-                },
-            },
-            {
-                "name": "jetstream-bootstrap",
-                "image": "natsio/nats-box:0.16.0",
-                "essential": False,
-                "dependsOn": [{"containerName": "nats", "condition": "HEALTHY"}],
-                "environment": [
-                    {"name": "NATS_URL", "value": "nats://127.0.0.1:4222"},
-                    {"name": "STREAM_NAME", "value": stream_name},
-                    {"name": "SUBJECT_PREFIX", "value": subject_prefix},
-                ],
-                "command": [
-                    "sh",
-                    "-ec",
-                    (
-                        'if nats --server "$NATS_URL" stream info "$STREAM_NAME" >/dev/null 2>&1; then '
-                        'echo "JetStream stream $STREAM_NAME already exists"; exit 0; fi; '
-                        'nats --server "$NATS_URL" stream add "$STREAM_NAME" '
-                        '--subjects "${SUBJECT_PREFIX}.>" --storage file --retention limits '
-                        '--discard old --replicas 1 --defaults'
-                    ),
-                ],
-                "logConfiguration": {
-                    "logDriver": "awslogs",
-                    "options": {**log_options, "awslogs-stream-prefix": "jetstream-bootstrap"},
-                },
-            },
-            {
-                "name": "jetstream-lag-probe",
-                "image": lag_probe_image,
-                "essential": False,
-                "dependsOn": [{"containerName": "nats", "condition": "HEALTHY"}],
-                "environment": [
-                    {"name": "NATS_MONITOR_URL", "value": "http://127.0.0.1:8222"},
-                    {"name": "SERVICE_NAME", "value": name},
-                    {"name": "STREAM_NAME", "value": stream_name},
-                    {"name": "PROBE_INTERVAL_SECONDS", "value": str(max(15, int(lag_probe_interval_seconds or 60)))},
-                    {"name": "METRIC_NAMESPACE", "value": f"Cerebro/{name}"},
-                ],
-                "command": ["python", "-u", "-c", _lag_probe_script()],
-                "logConfiguration": {
-                    "logDriver": "awslogs",
-                    "options": {**log_options, "awslogs-stream-prefix": "jetstream-lag-probe"},
-                },
-            } if enable_lag_probe else None,
-        ]
-        return json.dumps([container for container in containers if container is not None])
-
-    container_definitions = log_group.name.apply(build_container_definitions)
+    container_definitions = log_group.name.apply(
+        lambda log_group_name: _build_container_definitions(
+            name=name,
+            log_group_name=log_group_name,
+            region=region,
+            stream_name=stream_name,
+            subject_prefix=subject_prefix,
+            lag_probe_image=lag_probe_image,
+            lag_probe_interval_seconds=lag_probe_interval_seconds,
+            enable_lag_probe=enable_lag_probe,
+        )
+    )
 
     task_definition = aws.ecs.TaskDefinition(
         f"{name}-nats-task",
@@ -239,6 +175,96 @@ def create_nats_service(
         "stream_name": stream_name,
         "lag_probe_enabled": enable_lag_probe,
     }
+
+
+def _build_container_definitions(
+    name: str,
+    log_group_name: str,
+    region: str,
+    stream_name: str,
+    subject_prefix: str,
+    lag_probe_image: str,
+    lag_probe_interval_seconds: int,
+    enable_lag_probe: bool,
+) -> str:
+    log_options = {
+        "awslogs-group": log_group_name,
+        "awslogs-region": region,
+    }
+    containers = [
+        {
+            "name": "nats",
+            "image": "nats:2.10-alpine",
+            "essential": True,
+            "user": "10001",
+            "readonlyRootFilesystem": True,
+            "command": ["-js", "-sd", "/data", "-m", "8222"],
+            "portMappings": [
+                {"containerPort": 4222, "protocol": "tcp"},
+                {"containerPort": 8222, "protocol": "tcp"},
+            ],
+            "mountPoints": [{"sourceVolume": "nats-data", "containerPath": "/data", "readOnly": False}],
+            "healthCheck": {
+                "command": ["CMD-SHELL", "wget -qO- 'http://127.0.0.1:8222/healthz?js-enabled-only=true' >/dev/null || exit 1"],
+                "interval": 10,
+                "timeout": 5,
+                "retries": 6,
+                "startPeriod": 10,
+            },
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {**log_options, "awslogs-stream-prefix": "nats"},
+            },
+        },
+        {
+            "name": "jetstream-bootstrap",
+            "image": "natsio/nats-box:0.16.0",
+            "essential": False,
+            "user": "10001",
+            "dependsOn": [{"containerName": "nats", "condition": "HEALTHY"}],
+            "environment": [
+                {"name": "NATS_URL", "value": "nats://127.0.0.1:4222"},
+                {"name": "STREAM_NAME", "value": stream_name},
+                {"name": "SUBJECT_PREFIX", "value": subject_prefix},
+            ],
+            "command": [
+                "sh",
+                "-ec",
+                (
+                    'if nats --server "$NATS_URL" stream info "$STREAM_NAME" >/dev/null 2>&1; then '
+                    'echo "JetStream stream $STREAM_NAME already exists"; exit 0; fi; '
+                    'nats --server "$NATS_URL" stream add "$STREAM_NAME" '
+                    '--subjects "${SUBJECT_PREFIX}.>" --storage file --retention limits '
+                    '--discard old --replicas 1 --defaults'
+                ),
+            ],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {**log_options, "awslogs-stream-prefix": "jetstream-bootstrap"},
+            },
+        },
+        {
+            "name": "jetstream-lag-probe",
+            "image": lag_probe_image,
+            "essential": False,
+            "user": "10001",
+            "readonlyRootFilesystem": True,
+            "dependsOn": [{"containerName": "nats", "condition": "HEALTHY"}],
+            "environment": [
+                {"name": "NATS_MONITOR_URL", "value": "http://127.0.0.1:8222"},
+                {"name": "SERVICE_NAME", "value": name},
+                {"name": "STREAM_NAME", "value": stream_name},
+                {"name": "PROBE_INTERVAL_SECONDS", "value": str(max(15, int(lag_probe_interval_seconds or 60)))},
+                {"name": "METRIC_NAMESPACE", "value": f"Cerebro/{name}"},
+            ],
+            "command": ["python", "-u", "-c", _lag_probe_script()],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {**log_options, "awslogs-stream-prefix": "jetstream-lag-probe"},
+            },
+        } if enable_lag_probe else None,
+    ]
+    return json.dumps([container for container in containers if container is not None])
 
 
 def _execution_role(name: str) -> aws.iam.Role:

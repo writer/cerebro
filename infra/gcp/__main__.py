@@ -11,6 +11,8 @@ Security model:
   No service account keys; short-lived credentials only.
 """
 
+import re
+
 import pulumi
 import pulumi_gcp as gcp
 
@@ -22,6 +24,8 @@ gcp_project = pulumi.Config("gcp").require("project")
 # ---------------------------------------------------------------------------
 trusted_aws_account_id = config.require("trustedAwsAccountId")
 trusted_aws_role_arns: list[str] = config.require_object("trustedAwsRoleArns")
+scanner_role_projects: list[str] = config.require_object("scannerRoleProjects")
+scanner_roles: list[str] = config.require_object("scannerRoles")
 
 # ---------------------------------------------------------------------------
 # Optional config with defaults
@@ -29,6 +33,32 @@ trusted_aws_role_arns: list[str] = config.require_object("trustedAwsRoleArns")
 pool_id = config.get("wifPoolId") or "cerebro-aws-pool"
 provider_id = config.get("wifProviderId") or "cerebro-aws-provider"
 scanner_sa_id = config.get("scannerServiceAccountId") or "cerebro-scanner"
+
+_role_arn_pattern = re.compile(r"^arn:aws:iam::([0-9]{12}):role/([A-Za-z0-9+=,.@_/-]+)$")
+_allowed_scanner_roles = {"roles/viewer", "roles/logging.privateLogViewer"}
+
+
+def _validate_config() -> None:
+    if not re.fullmatch(r"[0-9]{12}", trusted_aws_account_id):
+        raise ValueError("cerebro:trustedAwsAccountId must be a 12 digit AWS account ID")
+    if not trusted_aws_role_arns:
+        raise ValueError("cerebro:trustedAwsRoleArns must not be empty")
+    for arn in trusted_aws_role_arns:
+        match = _role_arn_pattern.fullmatch(str(arn).strip())
+        if not match:
+            raise ValueError(f"trusted AWS role ARN is invalid: {arn}")
+        if match.group(1) != trusted_aws_account_id:
+            raise ValueError(f"trusted AWS role ARN account {match.group(1)} must match {trusted_aws_account_id}")
+    if not scanner_role_projects:
+        raise ValueError("cerebro:scannerRoleProjects must not be empty")
+    if not scanner_roles:
+        raise ValueError("cerebro:scannerRoles must not be empty")
+    disallowed = sorted(set(scanner_roles) - _allowed_scanner_roles)
+    if disallowed:
+        raise ValueError(f"scanner roles are not allowed: {', '.join(disallowed)}")
+
+
+_validate_config()
 
 # Extract role names from ARNs for attribute conditions and principal bindings.
 # arn:aws:iam::<account>:role/<name> -> <name>
@@ -96,12 +126,6 @@ for name in role_names:
         role="roles/iam.workloadIdentityUser",
         member=principal,
     )
-
-# Project-level roles for scanner SA -- fully config-driven.
-scanner_role_projects: list[str] = config.require_object("scannerRoleProjects")
-scanner_roles: list[str] = config.require_object("scannerRoles")
-
-import re
 
 def _sanitize(name: str) -> str:
     return re.sub(r"[^a-zA-Z0-9-]", "-", name)
