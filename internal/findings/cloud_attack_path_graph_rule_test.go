@@ -2,6 +2,7 @@ package findings
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -65,5 +66,21 @@ func TestCloudPublicExposurePrivilegedPrincipalGraphRuleRequiresEffectivePermiss
 		if rule.SupportsRuntime(runtime) {
 			t.Fatalf("SupportsRuntime(%s/%s) = true, want false", runtime.GetSourceId(), runtime.GetConfig()["family"])
 		}
+	}
+}
+
+func TestCloudCurrentPublicExposureGraphRuleRequiresStampedRecentReachability(t *testing.T) {
+	rule := newCloudPublicResourceExposureGraphRule().(GraphRule)
+	query := rule.QueryFor(&cerebrov1.SourceRuntime{Id: "writer-aws-resource-exposure", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "resource_exposure"}})
+	for _, fragment := range []string{
+		`coalesce(reach.attributes_json, '') CONTAINS '"at":"'`,
+		`datetime(split(split(coalesce(reach.attributes_json, ''), '"at":"')[1], '"')[0]) >= datetime() - duration('P30D')`,
+	} {
+		if !strings.Contains(query.Query, fragment) {
+			t.Fatalf("QueryFor() missing reachability recency fragment %q:\n%s", fragment, query.Query)
+		}
+	}
+	if strings.Contains(query.Query, `NOT coalesce(reach.attributes_json, '') CONTAINS '"at":"'`) {
+		t.Fatalf("QueryFor() allows legacy unstamped reachability edges:\n%s", query.Query)
 	}
 }

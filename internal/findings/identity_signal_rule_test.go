@@ -638,6 +638,11 @@ func TestIdentityApiTokenOrOauthAppCreated_OAuthTrajectory(t *testing.T) {
 	if openAnchor == "" {
 		t.Fatalf("OpenAnchor(%v) = empty, want org/oauth_app_id anchor", oauthFinding.Attributes)
 	}
+	legacyOpenAttributes := cloneIdentitySignalAttributes(oauthFinding.Attributes)
+	legacyOpenAttributes["oauth_app_id"] = legacyOpenAttributes["app_id"]
+	if got := counterRule.OpenAnchor(legacyOpenAttributes); got != openAnchor {
+		t.Fatalf("OpenAnchor(legacy oauth_app_id attrs) = %q, want current client_id anchor %q", got, openAnchor)
+	}
 
 	inactiveAttrs := cloneIdentitySignalAttributes(oauthAttrs)
 	inactiveAttrs["status"] = "INACTIVE"

@@ -526,7 +526,7 @@ func identityAPITokenOrOAuthAnchor(attributes map[string]string) string {
 			"credential_id": tokenID,
 		}, "user", "credential_id")
 	}
-	if oauthAppID := identityOAuthAppID(attributes); oauthAppID != "" {
+	if oauthAppID := identityOAuthAppAnchorID(attributes); oauthAppID != "" {
 		return identityCounterEventAnchor(map[string]string{
 			"org":          identityOrgValue(attributes),
 			"oauth_app_id": oauthAppID,
@@ -844,6 +844,17 @@ func identityOAuthAppID(attributes map[string]string) string {
 		return firstNonEmpty(attributes["resource_id"], attributes["target_id"])
 	}
 	return ""
+}
+
+func identityOAuthAppAnchorID(attributes map[string]string) string {
+	if oauthAppID := firstNonEmpty(
+		attributes["oauth_client_id"],
+		attributes["oauth2_client_id"],
+		attributes["client_id"],
+	); oauthAppID != "" {
+		return oauthAppID
+	}
+	return identityOAuthAppID(attributes)
 }
 
 func identityOrgValue(attributes map[string]string) string {
