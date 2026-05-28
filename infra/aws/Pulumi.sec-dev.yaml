@@ -66,6 +66,8 @@ config:
   cerebro:accessAuditTenantMismatchAlarmThreshold: 0
   cerebro:accessAuditSensitiveDeniedAlarmThreshold: 0
   cerebro:capabilityTokenSecretName: CEREBRO_CAPABILITY_TOKEN_SECRETS_SEC_DEV
+  cerebro:graphAgentLlmProvider: openrouter
+  cerebro:openrouterApiKeySecret: CEREBRO_OPENROUTER_API_KEY
   cerebro:sourceSecretKeys:
     - CEREBRO_SOURCE_COSMO_BASE_URL
     - CEREBRO_SOURCE_COSMO_EXPORT_SECRET

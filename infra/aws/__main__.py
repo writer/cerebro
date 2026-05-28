@@ -564,6 +564,13 @@ if allowed_tenants:
 if source_runtime_env_refs:
     app_environment["CEREBRO_SOURCE_CONFIG_ENV_ALLOWLIST"] = ",".join(source_runtime_env_refs)
 
+graph_agent_llm_provider = config.get("graphAgentLlmProvider")
+if graph_agent_llm_provider:
+    app_environment["CEREBRO_GRAPH_AGENT_LLM_PROVIDER"] = graph_agent_llm_provider
+openrouter_api_key_secret = config.get("openrouterApiKeySecret")
+if openrouter_api_key_secret:
+    secret_keys.append({"name": "CEREBRO_OPENROUTER_API_KEY", "source": openrouter_api_key_secret})
+
 runtime_dependencies = [
     postgres_stack["secret_version"],
     nats_stack["service"],
