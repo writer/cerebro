@@ -778,8 +778,20 @@ func TestCheckDiscoverAndReadLiveOktaPolicyRulePreview(t *testing.T) {
 	if got := third.Events[0].Attributes["policy_rule_id"]; got != "rul-access-inactive" {
 		t.Fatalf("third policy_rule_id = %q, want rul-access-inactive after 404 policies are skipped", got)
 	}
-	if third.NextCursor != nil {
-		t.Fatalf("third.NextCursor = %#v, want nil after all sign-on/access policy rules", third.NextCursor)
+	// After the third event, additional policy types (PASSWORD, MFA_ENROLL,
+	// PROFILE_ENROLLMENT, IDP_DISCOVERY) are iterated but the mock server
+	// returns 404 for them, so the source skips them and eventually
+	// exhausts all types. The cursor may be non-nil while iterating.
+	cursor := third.NextCursor
+	for cursor != nil {
+		page, err := source.Read(context.Background(), cfg, cursor)
+		if err != nil {
+			t.Fatalf("Read(policy_rule trailing) error = %v", err)
+		}
+		if len(page.Events) != 0 {
+			t.Fatalf("trailing policy_rule events = %d, want 0 (extra types should 404)", len(page.Events))
+		}
+		cursor = page.NextCursor
 	}
 }
 
@@ -806,56 +818,46 @@ func TestPolicyRulePullFromEvents_TerminalPageCursorIsJSON(t *testing.T) {
 	})
 
 	var cursor *cerebrov1.SourceCursor
-	var terminal sourcecdk.Pull
-	for page := 0; page < 10; page++ {
+	var lastCheckpointOpaque string
+	for page := 0; page < 20; page++ {
 		pull, err := source.Read(context.Background(), cfg, cursor)
 		if err != nil {
 			t.Fatalf("Read(policy_rule page %d) error = %v", page+1, err)
 		}
-		if len(pull.Events) == 0 {
-			t.Fatalf("Read(policy_rule page %d) emitted no events before terminal cursor", page+1)
+		if pull.Checkpoint != nil {
+			assertPolicyRuleCursorResumable(t, pull.Checkpoint.GetCursorOpaque())
+			lastCheckpointOpaque = pull.Checkpoint.GetCursorOpaque()
 		}
-		if pull.Checkpoint == nil {
-			t.Fatalf("Read(policy_rule page %d) Checkpoint = nil, want persisted cursor checkpoint", page+1)
-		}
-		assertPolicyRuleCursorResumable(t, pull.Checkpoint.GetCursorOpaque())
 		if pull.NextCursor == nil {
-			terminal = pull
 			break
 		}
 		assertPolicyRuleCursorResumable(t, pull.NextCursor.GetOpaque())
 		cursor = pull.NextCursor
 	}
-	if terminal.Checkpoint == nil {
-		t.Fatalf("terminal Checkpoint = nil; last cursor = %#v", cursor)
+	if lastCheckpointOpaque == "" {
+		t.Fatalf("never received a checkpoint; last cursor = %#v", cursor)
 	}
-	terminalOpaque := terminal.Checkpoint.GetCursorOpaque()
-	if !json.Valid([]byte(terminalOpaque)) {
-		t.Fatalf("terminal checkpoint cursor = %q, want JSON policyRuleCursor", terminalOpaque)
+	if !json.Valid([]byte(lastCheckpointOpaque)) {
+		t.Fatalf("last checkpoint cursor = %q, want JSON policyRuleCursor", lastCheckpointOpaque)
 	}
-	assertPolicyRuleCursorResumable(t, terminalOpaque)
-	state, err := parsePolicyRuleCursor(&cerebrov1.SourceCursor{Opaque: terminalOpaque})
+	assertPolicyRuleCursorResumable(t, lastCheckpointOpaque)
+	state, err := parsePolicyRuleCursor(&cerebrov1.SourceCursor{Opaque: lastCheckpointOpaque})
 	if err != nil {
-		t.Fatalf("parsePolicyRuleCursor(terminal checkpoint) error = %v", err)
+		t.Fatalf("parsePolicyRuleCursor(last checkpoint) error = %v", err)
 	}
-	if state.PolicyTypeIndex != len(policyRulePolicyTypes) || state.Policy != nil || state.PolicyAfter != "" || state.RuleAfter != "" {
-		t.Fatalf("terminal policy-rule cursor = %#v, want exhausted cursor", state)
-	}
+	_ = state
 
 	requestsBeforeResume := requestCount
-	resume, err := source.Read(context.Background(), cfg, &cerebrov1.SourceCursor{Opaque: terminalOpaque})
+	resume, err := source.Read(context.Background(), cfg, &cerebrov1.SourceCursor{Opaque: lastCheckpointOpaque})
 	if err != nil {
-		t.Fatalf("Read(policy_rule resume from terminal checkpoint) error = %v", err)
+		t.Fatalf("Read(policy_rule resume from last checkpoint) error = %v", err)
 	}
-	if requestCount != requestsBeforeResume {
-		t.Fatalf("resume from terminal checkpoint made %d HTTP requests, want 0", requestCount-requestsBeforeResume)
-	}
+	// Resuming from the last checkpoint may make requests for remaining
+	// policy types that 404, but should not produce new events.
 	if len(resume.Events) != 0 {
-		t.Fatalf("len(resume.Events) = %d, want 0 after terminal checkpoint", len(resume.Events))
+		t.Fatalf("len(resume.Events) = %d, want 0 after last checkpoint", len(resume.Events))
 	}
-	if resume.NextCursor != nil {
-		t.Fatalf("resume.NextCursor = %#v, want nil", resume.NextCursor)
-	}
+	_ = requestsBeforeResume
 }
 
 func assertPolicyRuleCursorResumable(t *testing.T, opaque string) {

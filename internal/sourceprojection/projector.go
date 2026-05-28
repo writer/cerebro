@@ -1208,6 +1208,78 @@ func githubDependabotAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 	return projectedEntities, projectedLinks, nil
 }
 
+func githubSecretScanningAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	owner := strings.TrimSpace(attributes["owner"])
+	repository := strings.TrimSpace(attributes["repository"])
+	alertNumber := strings.TrimSpace(attributes["alert_number"])
+
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+
+	orgURN := projectionURN(tenantID, "github_org", owner)
+	if owner != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        orgURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "github.org",
+			Label:      owner,
+			Attributes: map[string]string{"org": owner},
+		})
+	}
+
+	repoURN := projectionURN(tenantID, "github_repo", repository)
+	if repository != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        repoURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "github.repo",
+			Label:      repository,
+			Attributes: map[string]string{"repository": repository},
+		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), repoURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+
+	alertLabel := repository + "#" + alertNumber
+	if repository == "" {
+		alertLabel = owner + "#" + alertNumber
+	}
+	alertURN := projectionURN(tenantID, "github_secret_scanning_alert", owner, alertNumber)
+	if alertNumber != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        alertURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "github.secret_scanning_alert",
+			Label:      alertLabel,
+			Attributes: map[string]string{
+				"alert_number":             alertNumber,
+				"html_url":                 strings.TrimSpace(attributes["html_url"]),
+				"push_protection_bypassed": strings.TrimSpace(attributes["push_protection_bypassed"]),
+				"repository":               repository,
+				"resolution":               strings.TrimSpace(attributes["resolution"]),
+				"secret_type":              strings.TrimSpace(attributes["secret_type"]),
+				"secret_type_display_name": strings.TrimSpace(attributes["secret_type_display_name"]),
+				"state":                    strings.TrimSpace(attributes["state"]),
+			},
+		})
+		if repoURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), alertURN, repoURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
 func oktaUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {

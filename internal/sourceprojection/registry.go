@@ -52,6 +52,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"github.audit":                         githubAuditProjections,
 	"github.code.repository":               githubCodeRepositoryProjections,
 	"github.dependabot_alert":              githubDependabotAlertProjections,
+	"github.secret_scanning_alert":         githubSecretScanningAlertProjections,
 	"asset.crown_jewel":                    assetCrownJewelProjections,
 	"asset.data_sensitivity":               assetDataSensitivityProjections,
 	"aws.access_key":                       awsAccessKeyProjections,

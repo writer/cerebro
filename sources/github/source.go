@@ -125,6 +125,9 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	if settings.family == familyDependabot {
 		return s.checkDependabotAlerts(ctx, client, settings)
 	}
+	if settings.family == familySecretScanning {
+		return s.checkSecretScanningAlerts(ctx, client, settings)
+	}
 	if settings.family == familyRepository {
 		if settings.repo != "" {
 			_, err := getRepo(ctx, client, settings.owner, settings.repo)
@@ -152,6 +155,9 @@ func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecd
 	}
 	if settings.family == familyDependabot {
 		return s.discoverDependabotAlerts(ctx, client, settings)
+	}
+	if settings.family == familySecretScanning {
+		return s.discoverSecretScanningAlerts(ctx, client, settings)
 	}
 	if settings.repo != "" {
 		repo, err := getRepo(ctx, client, settings.owner, settings.repo)
@@ -190,6 +196,9 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	}
 	if settings.family == familyDependabot {
 		return s.readDependabotAlerts(ctx, client, settings, cursor)
+	}
+	if settings.family == familySecretScanning {
+		return s.readSecretScanningAlerts(ctx, client, settings, cursor)
 	}
 	if settings.family == familyRepository {
 		return s.readRepositories(ctx, client, settings, cursor)
@@ -402,9 +411,9 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL 
 		settings.family = defaultFamily
 	}
 	switch settings.family {
-	case familyAudit, familyDependabot, familyPullRequest, familyRepository:
+	case familyAudit, familyDependabot, familyPullRequest, familyRepository, familySecretScanning:
 	default:
-		return settings, fmt.Errorf("github family must be one of %s, %s, %s, or %s", familyPullRequest, familyAudit, familyDependabot, familyRepository)
+		return settings, fmt.Errorf("github family must be one of %s, %s, %s, %s, or %s", familyPullRequest, familyAudit, familyDependabot, familyRepository, familySecretScanning)
 	}
 	if rawPerPage, ok := cfg.Lookup("per_page"); ok && strings.TrimSpace(rawPerPage) != "" {
 		perPage, err := strconv.Atoi(strings.TrimSpace(rawPerPage))
@@ -446,6 +455,24 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL 
 		case "auto_dismissed", "dismissed", "fixed", "open":
 		default:
 			return settings, fmt.Errorf("github state must be one of auto_dismissed, dismissed, fixed, or open when family=%q", familyDependabot)
+		}
+		if settings.auditInclude != "" || settings.auditOrder != "" || settings.auditPhrase != "" {
+			return settings, fmt.Errorf("github include, order, and phrase are only supported when family=%q", familyAudit)
+		}
+	case familySecretScanning:
+		if settings.token == "" {
+			return settings, fmt.Errorf("github token is required when family=%q", familySecretScanning)
+		}
+		if settings.repo != "" {
+			return settings, fmt.Errorf("github repo is not supported when family=%q (org-level scan)", familySecretScanning)
+		}
+		if settings.state == "" {
+			settings.state = defaultState
+		}
+		switch settings.state {
+		case "open", "resolved":
+		default:
+			return settings, fmt.Errorf("github state must be one of open or resolved when family=%q", familySecretScanning)
 		}
 		if settings.auditInclude != "" || settings.auditOrder != "" || settings.auditPhrase != "" {
 			return settings, fmt.Errorf("github include, order, and phrase are only supported when family=%q", familyAudit)

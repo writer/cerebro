@@ -6,6 +6,7 @@ emitted_kinds:
   - github.code.repository
   - github.dependabot_alert
   - github.pull_request
+  - github.secret_scanning_alert
 event_contracts:
   - kind: github.audit
     schema_ref: github/audit/v1
@@ -45,6 +46,11 @@ event_contracts:
     required_payload_fields:
       - number
       - repository
-kind_lifecycle:
-  - kind: github.secret_scanning
-    status: planned
+  - kind: github.secret_scanning_alert
+    schema_ref: github/secret_scanning_alert/v1
+    required_attributes:
+      - owner
+      - state
+    required_payload_fields:
+      - number
+      - state
