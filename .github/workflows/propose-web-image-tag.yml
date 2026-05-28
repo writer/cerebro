@@ -61,10 +61,19 @@ jobs:
             exit 1
           fi
 
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "env=${env}" >> "$GITHUB_OUTPUT"
-          echo "mode=${mode}" >> "$GITHUB_OUTPUT"
+          {
+            echo "tag=${tag}"
+            echo "env=${env}"
+            echo "mode=${mode}"
+          } >> "$GITHUB_OUTPUT"
           echo "Resolved: ${WEB_GHCR_IMAGE}:${tag} -> ${env} (${mode})"
+
+      - name: Log in to GHCR for web image
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify GHCR image exists
         shell: bash
