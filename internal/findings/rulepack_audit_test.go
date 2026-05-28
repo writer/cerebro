@@ -923,7 +923,7 @@ func TestNetNewRetiredRulesNoEmit(t *testing.T) {
 func TestKeepAsIsRulesUnchanged(t *testing.T) {
 	metadataByID := rulepackAuditMetadataByID(t)
 	keepRules := rulepackAuditRulesByClass(t, rulepackAuditClassKeep)
-	if got, want := len(keepRules), 32; got != want {
+	if got, want := len(keepRules), 35; got != want {
 		t.Fatalf("KEEP_AS_IS rule count = %d, want %d", got, want)
 	}
 	for _, entry := range keepRules {
@@ -1107,6 +1107,7 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "github-secret-scanning-disabled", Classification: "RETIRE", BulkCloseoutThreshold: ">7d", Source: "github"},
 		{RuleID: "github-self-hosted-runner-change", Classification: "RETIRE", BulkCloseoutThreshold: ">7d", Source: "github"},
 		{RuleID: "github-self-hosted-runner-review-needed", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "github"},
+		{RuleID: "github-org-owner-role-review-needed", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "github"},
 		{RuleID: "github-programmatic-credential-review-needed", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "github"},
 		{RuleID: "github-webhook-modified", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
 		{RuleID: "grc-control-test-needs-attention", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "grc"},
@@ -1128,7 +1129,9 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "identity-external-or-personal-group-member", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "identity"},
 		{RuleID: "identity-github-active-without-okta-link", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "github"},
 		{RuleID: "identity-mfa-factor-reset-or-disabled", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "identity"},
+		{RuleID: "identity-okta-authenticator-weak-factor-enabled", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "identity"},
 		{RuleID: "identity-okta-oauth-public-client-review-needed", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "identity"},
+		{RuleID: "identity-okta-threat-insight-not-blocking", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "identity"},
 		{RuleID: "identity-okta-deprovisioned-active-in-github", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "okta"},
 		{RuleID: "identity-okta-policy-rule-lifecycle-tampering", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "okta"},
 		{RuleID: "identity-privileged-account-without-mfa", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">24h", Source: "identity"},
