@@ -251,7 +251,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.aws_sec_dev == 'true'
     concurrency:
       group: infra-deploy-sec-dev
-      cancel-in-progress: false
+      cancel-in-progress: true
     permissions:
       id-token: write
       contents: read

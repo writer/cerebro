@@ -30,7 +30,7 @@ permissions:
 
 concurrency:
   group: propose-cerebro-image-tag-${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'go-prod' }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   GHCR_IMAGE: ghcr.io/writer/cerebro
