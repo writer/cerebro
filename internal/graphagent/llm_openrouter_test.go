@@ -14,11 +14,13 @@ type stubHTTPDoer struct {
 	err         error
 	lastURL     string
 	lastHeaders map[string]string
+	lastBody    []byte
 }
 
-func (s *stubHTTPDoer) Post(_ context.Context, url string, headers map[string]string, _ []byte) (int, []byte, error) {
+func (s *stubHTTPDoer) Post(_ context.Context, url string, headers map[string]string, body []byte) (int, []byte, error) {
 	s.lastURL = url
 	s.lastHeaders = headers
+	s.lastBody = append(s.lastBody[:0], body...)
 	return s.statusCode, s.body, s.err
 }
 
@@ -81,6 +83,33 @@ func TestOpenRouterLLMClient_DraftCypher(t *testing.T) {
 	if doer.lastURL != openRouterBaseURL {
 		t.Errorf("expected URL %s, got %s", openRouterBaseURL, doer.lastURL)
 	}
+	assertOpenRouterRequestModel(t, doer.lastBody, defaultOpenRouterModel)
+}
+
+func TestOpenRouterLLMClient_MapsAnthropicAliasToOpenRouterModel(t *testing.T) {
+	respBody, _ := json.Marshal(map[string]any{
+		"choices": []map[string]any{{
+			"message": map[string]string{
+				"content": `{"rationale":"ok","cypher":"MATCH (n) RETURN n","refusal":""}`,
+			},
+		}},
+	})
+	doer := &stubHTTPDoer{statusCode: 200, body: respBody}
+
+	client, err := NewOpenRouterLLMClient(OpenRouterConfig{APIKey: "test-key", HTTPDoer: doer})
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	_, err = client.DraftCypher(context.Background(), DraftRequest{
+		TenantID: "test",
+		Question: "Show nodes",
+		Model:    DefaultModel,
+	})
+	if err != nil {
+		t.Fatalf("draft cypher: %v", err)
+	}
+	assertOpenRouterRequestModel(t, doer.lastBody, "anthropic/claude-sonnet-4.6")
 }
 
 func TestOpenRouterLLMClient_Summarize(t *testing.T) {
@@ -143,5 +172,18 @@ func TestOpenRouterLLMClient_HTTPDoerError(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for connection failure")
+	}
+}
+
+func assertOpenRouterRequestModel(t *testing.T, body []byte, want string) {
+	t.Helper()
+	var payload struct {
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("unmarshal OpenRouter request body: %v", err)
+	}
+	if payload.Model != want {
+		t.Fatalf("OpenRouter model = %q, want %q", payload.Model, want)
 	}
 }
