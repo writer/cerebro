@@ -36,6 +36,11 @@ SEC_DEV_HIGH_CONTENTION_GRAPH_RUNTIMES = {
 }
 SEC_DEV_MAX_HIGH_CONTENTION_PAGE_LIMIT = 5
 SEC_DEV_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT = 5
+SEC_DEV_STRICT_GRAPH_RUNTIMES = {
+    "writer-aurelius-findings",
+}
+SEC_DEV_MAX_STRICT_PAGE_LIMIT = 1
+SEC_DEV_MAX_STRICT_GRAPH_PAGE_LIMIT = 1
 PROD_HIGH_CONTENTION_GRAPH_RUNTIMES = {
     "writer-grc-vulnerable-asset",
     "writer-vulnview-dns-alert",
@@ -209,7 +214,10 @@ def _finding(severity: str, stack: str, path: str, message: str) -> Finding:
 
 
 def _validate_graph_page_budget(stack: str, runtime_id: str, command: Any, path: str, findings: list[Finding]) -> None:
-    if stack == "sec-dev" and runtime_id in SEC_DEV_HIGH_CONTENTION_GRAPH_RUNTIMES:
+    if stack == "sec-dev" and runtime_id in SEC_DEV_STRICT_GRAPH_RUNTIMES:
+        max_page_limit = SEC_DEV_MAX_STRICT_PAGE_LIMIT
+        max_graph_page_limit = SEC_DEV_MAX_STRICT_GRAPH_PAGE_LIMIT
+    elif stack == "sec-dev" and runtime_id in SEC_DEV_HIGH_CONTENTION_GRAPH_RUNTIMES:
         max_page_limit = SEC_DEV_MAX_HIGH_CONTENTION_PAGE_LIMIT
         max_graph_page_limit = SEC_DEV_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT
     elif stack == "go-prod" and runtime_id in PROD_HIGH_CONTENTION_GRAPH_RUNTIMES:

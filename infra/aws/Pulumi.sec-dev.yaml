@@ -83,8 +83,8 @@ config:
   cerebro:orchestratorCommand:
     - orchestrator
     - run
-    - page_limit=5
-    - graph_page_limit=5
+    - page_limit=1
+    - graph_page_limit=1
     - event_limit=1000
   cerebro:orchestratorSchedules:
     - name: okta-audit-live
@@ -416,8 +416,8 @@ config:
         - orchestrator
         - run
         - runtime_id=writer-aurelius-findings
-        - page_limit=5
-        - graph_page_limit=5
+        - page_limit=1
+        - graph_page_limit=1
         - event_limit=2000
     - name: aurelius-image-scans-live
       scheduleExpression: rate(15 minutes)
