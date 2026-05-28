@@ -20,6 +20,7 @@ on:
         type: string
 
 permissions:
+  actions: write
   contents: write
   packages: read
 
@@ -122,6 +123,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.CEREBRO_AUTORELEASE_TOKEN || github.token }}
+          AUTORELEASE_TOKEN_CONFIGURED: ${{ secrets.CEREBRO_AUTORELEASE_TOKEN != '' }}
           STACK_NAME: ${{ steps.inputs.outputs.env }}
           IMAGE_TAG: ${{ steps.inputs.outputs.tag }}
           CURRENT_TAG: ${{ steps.update.outputs.current_tag }}
@@ -148,8 +150,52 @@ jobs:
             -m "Previous: ${CURRENT_TAG}"
 
           if [ "${APPLY_MODE}" = "direct_push" ] && [ "${STACK_NAME}" = "sec-dev" ]; then
-            git push origin HEAD:main
-            echo "Pushed ${STACK_NAME} web deploy commit; infra-deploy will deploy from main."
+            if [ "${AUTORELEASE_TOKEN_CONFIGURED}" != "true" ]; then
+              echo "CEREBRO_AUTORELEASE_TOKEN is required for direct_push so deployment workflows run" >&2
+              exit 1
+            fi
+
+            deploy_sha="$(git rev-parse HEAD)"
+            git push "https://x-access-token:${GH_TOKEN}@github.com/WriterInternal/cerebro.git" "HEAD:main"
+
+            wait_for_run() {
+              local workflow="$1"
+              local event="$2"
+              local run_id=""
+              for _ in {1..24}; do
+                run_id="$(gh run list \
+                  --workflow "${workflow}" \
+                  --event "${event}" \
+                  --branch main \
+                  --limit 20 \
+                  --json databaseId,headSha \
+                  --jq ".[] | select(.headSha == \"${deploy_sha}\") | .databaseId" | head -n 1)"
+                if [ -n "${run_id}" ]; then
+                  break
+                fi
+                sleep 5
+              done
+              if [ -z "${run_id}" ]; then
+                echo "Could not find ${workflow} run for ${deploy_sha}" >&2
+                exit 1
+              fi
+
+              while true; do
+                status="$(gh run view "${run_id}" --json status,conclusion --jq '.status + ":" + (.conclusion // "")')"
+                echo "${workflow} ${run_id}: ${status}"
+                case "${status}" in
+                  completed:success) break ;;
+                  completed:*) exit 1 ;;
+                esac
+                sleep 30
+              done
+            }
+
+            echo "Pushed ${STACK_NAME} web deploy commit; dispatching ordered sec-dev publish and deploy workflows."
+            gh workflow run ci.yml --ref main
+            wait_for_run ci.yml workflow_dispatch
+            gh workflow run infra-deploy.yml --ref main -f environment="${STACK_NAME}"
+            wait_for_run infra-deploy.yml workflow_dispatch
           else
             branch="automation/cerebro-web-${STACK_NAME}-${IMAGE_TAG}"
             git checkout -B "${branch}"
