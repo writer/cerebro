@@ -29,20 +29,18 @@ func newOktaOAuthPublicClientReviewRule() Rule {
 			{FrameworkName: "SOC 2", ControlID: "CC6.1"},
 			{FrameworkName: "ISO 27001:2022", ControlID: "A.5.17"},
 		},
-	}, map[string][]string{"okta": {"application", "audit"}}, `MATCH (client:Entity {tenant_id: $tenant_id})
-WHERE client.entity_type IN ['okta.application', 'okta.publicclientapp', 'okta.publicclientappentity']
+	}, map[string][]string{"okta": {"application"}}, `MATCH (client:Entity {tenant_id: $tenant_id, entity_type: 'okta.application'})
+WHERE coalesce(client.attributes_json, '') CONTAINS '"status":"ACTIVE"'
   AND (
-    client.entity_type <> 'okta.application'
-    OR (
-      coalesce(client.attributes_json, '') CONTAINS '"status":"ACTIVE"'
-      AND (
-        coalesce(client.attributes_json, '') CONTAINS '"oauth2":"true"'
-        OR coalesce(client.attributes_json, '') CONTAINS '"oauth_client_type":"PublicClientApp"'
-        OR coalesce(client.attributes_json, '') CONTAINS '"oauth_client_type":"PublicClientAppEntity"'
-        OR coalesce(client.attributes_json, '') CONTAINS '"oauth_public_client":"true"'
-        OR coalesce(client.attributes_json, '') CONTAINS '"sign_on_mode":"OPENID_CONNECT"'
-      )
-    )
+    coalesce(client.attributes_json, '') CONTAINS '"oauth2":"true"'
+    OR coalesce(client.attributes_json, '') CONTAINS '"oauth_client_type":"PublicClientApp"'
+    OR coalesce(client.attributes_json, '') CONTAINS '"oauth_public_client":"true"'
+    OR coalesce(client.attributes_json, '') CONTAINS '"sign_on_mode":"OPENID_CONNECT"'
+  )
+  AND NOT EXISTS {
+    MATCH (client)-[:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+    WHERE coalesce(finding.attributes_json, '') CONTAINS '"status":"open"'
+      AND coalesce(finding.attributes_json, '') CONTAINS '"rule_id":"identity-api-token-or-oauth-app-created"'
   )
 RETURN client.urn AS primary_urn,
        client.label AS primary_label,

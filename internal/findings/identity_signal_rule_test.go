@@ -599,6 +599,7 @@ func TestIdentityApiTokenOrOauthAppCreated_OAuthTrajectory(t *testing.T) {
 	oauthAttrs := map[string]string{
 		"app_id":       "0oa-client",
 		"app_name":     "Production Client",
+		"client_id":    "oauth-client-id",
 		"domain":       "writer.okta.com",
 		"oauth2":       "true",
 		"sign_on_mode": "OPENID_CONNECT",

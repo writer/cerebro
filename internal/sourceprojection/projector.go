@@ -685,7 +685,7 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 			"programmatic_access_type": programmaticAccessType,
 			"resource_id":              resourceID,
 			"resource_type":            resourceType,
-			"status":                   githubProgrammaticCredentialStatus(attributes["action"]),
+			"status":                   githubProgrammaticCredentialStatus(attributes),
 		}
 		addProjectedAttribute(credentialAttrs, "actor", actor)
 		addProjectedAttribute(credentialAttrs, "github_app_id", strings.TrimSpace(attributes["github_app_id"]))
@@ -713,6 +713,21 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), programmaticCredentialURN, repoURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		} else if orgURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), programmaticCredentialURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+	if runnerURN, runnerAttrs := githubSelfHostedRunnerProjection(tenantID, attributes); runnerURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        runnerURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "github.runner",
+			Label:      firstNonEmpty(runnerAttrs["runner_name"], runnerAttrs["runner_id"]),
+			Attributes: runnerAttrs,
+		})
+		if repoScopePresent && repoURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), runnerURN, repoURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		} else if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), runnerURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
 	}
 
@@ -953,8 +968,12 @@ func githubProgrammaticCredentialID(attributes map[string]string) string {
 	return strings.Join(nonEmptyStrings(prefix, attributes["resource_id"], scope, attributes["actor"]), ":")
 }
 
-func githubProgrammaticCredentialStatus(action string) string {
-	normalized := strings.ToLower(strings.TrimSpace(action))
+func githubProgrammaticCredentialStatus(attributes map[string]string) string {
+	normalized := strings.ToLower(strings.TrimSpace(attributes["action"]))
+	operationType := strings.ToLower(strings.TrimSpace(attributes["operation_type"]))
+	if containsAny(operationType, "remove", "removed", "revoke", "revoked", "expire", "expired", "delete", "deleted") {
+		return "inactive"
+	}
 	if containsAny(normalized, "revoke", "revoked", "deauthorize", "delete", "remove", "destroy", "suspend") {
 		return "inactive"
 	}
@@ -962,6 +981,77 @@ func githubProgrammaticCredentialStatus(action string) string {
 		return "active"
 	}
 	return "unknown"
+}
+
+func githubSelfHostedRunnerProjection(tenantID string, attributes map[string]string) (string, map[string]string) {
+	runnerID := strings.TrimSpace(attributes["runner_id"])
+	if runnerID == "" {
+		return "", nil
+	}
+	scope := strings.TrimSpace(firstNonEmpty(attributes["runner_scope"], attributes["scope"], attributes["repo"], attributes["org"]))
+	if scope == "" {
+		return "", nil
+	}
+	scopeType, scopeID := githubRunnerScope(scope)
+	if scopeID == "" {
+		return "", nil
+	}
+	attrs := map[string]string{
+		"action":            strings.TrimSpace(attributes["action"]),
+		"runner_id":         runnerID,
+		"runner_name":       strings.TrimSpace(attributes["runner_name"]),
+		"runner_scope":      scopeID,
+		"runner_scope_type": scopeType,
+		"runner_status":     githubSelfHostedRunnerStatus(attributes),
+	}
+	addProjectedAttribute(attrs, "host_trusted", firstNonEmpty(attributes["runner_host_trusted"], attributes["host_trusted"], attributes["trusted_host"]))
+	addProjectedAttribute(attrs, "runner_ephemeral", firstNonEmpty(attributes["runner_ephemeral"], attributes["ephemeral"], attributes["is_ephemeral"]))
+	addProjectedAttribute(attrs, "runner_group_name", attributes["runner_group_name"])
+	addProjectedAttribute(attrs, "runner_registered", firstNonEmpty(attributes["runner_registered"], attributes["registered"], attributes["is_registered"]))
+	addProjectedAttribute(attrs, "runner_state", attributes["runner_state"])
+	addProjectedAttribute(attrs, "runner_untrusted", firstNonEmpty(attributes["runner_untrusted"], attributes["host_untrusted"], attributes["untrusted_host"]))
+	return projectionURN(tenantID, "github_runner", scopeID, runnerID), attrs
+}
+
+func githubRunnerScope(scope string) (string, string) {
+	normalized := strings.TrimSpace(scope)
+	if normalized == "" {
+		return "", ""
+	}
+	lower := strings.ToLower(normalized)
+	switch {
+	case strings.HasPrefix(lower, "repo:"), strings.Contains(normalized, "/"):
+		return "repo", normalizeGitHubRunnerScopeID(normalized, "repo")
+	case strings.HasPrefix(lower, "enterprise:"):
+		return "enterprise", normalizeGitHubRunnerScopeID(normalized, "enterprise")
+	case strings.HasPrefix(lower, "org:"):
+		return "org", normalizeGitHubRunnerScopeID(normalized, "org")
+	default:
+		return "org", "org:" + normalized
+	}
+}
+
+func normalizeGitHubRunnerScopeID(scope string, kind string) string {
+	normalized := strings.TrimSpace(scope)
+	prefix := kind + ":"
+	if strings.HasPrefix(strings.ToLower(normalized), prefix) {
+		return normalized
+	}
+	return prefix + normalized
+}
+
+func githubSelfHostedRunnerStatus(attributes map[string]string) string {
+	action := strings.ToLower(strings.TrimSpace(attributes["action"]))
+	state := strings.ToLower(strings.TrimSpace(firstNonEmpty(attributes["runner_state"], attributes["state"], attributes["status"])))
+	registered := strings.ToLower(strings.TrimSpace(firstNonEmpty(attributes["runner_registered"], attributes["registered"], attributes["is_registered"])))
+	if registered == "false" || registered == "0" || registered == "no" {
+		return "inactive"
+	}
+	if containsAny(state, "removed", "deleted", "deregistered", "unregistered") ||
+		containsAny(action, "remove_self_hosted_runner", "deregister_self_hosted_runner", "runner_removed") {
+		return "inactive"
+	}
+	return "active"
 }
 
 func containsAny(value string, needles ...string) bool {

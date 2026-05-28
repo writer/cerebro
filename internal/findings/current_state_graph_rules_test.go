@@ -48,6 +48,21 @@ func TestCurrentStateGraphRulesEmitStableFindings(t *testing.T) {
 			}},
 		},
 		{
+			name:    "github self hosted runner",
+			rule:    newGitHubSelfHostedRunnerReviewRule(),
+			runtime: runtime,
+			row: ports.CypherRow{Values: map[string]any{
+				"primary_urn":     "urn:cerebro:writer:github_runner:repo:writer/cerebro:777",
+				"primary_label":   "prod-runner-1",
+				"primary_type":    "github.runner",
+				"fingerprint_key": "urn:cerebro:writer:github_runner:repo:writer/cerebro:777",
+				"severity":        "MEDIUM",
+				"summary":         "GitHub self-hosted runner prod-runner-1 needs security review",
+				"action":          "review",
+				"resource_urns":   []any{"urn:cerebro:writer:github_runner:repo:writer/cerebro:777"},
+			}},
+		},
+		{
 			name:    "s1 agent out of date",
 			rule:    newSentinelOneAgentNotUpToDateRule(),
 			runtime: &cerebrov1.SourceRuntime{Id: "s1-agent", SourceId: "sentinelone", TenantId: "writer", Config: map[string]string{"family": "agent"}},
@@ -95,14 +110,19 @@ func TestCurrentStateGraphRuleQueriesUseEnrichedCurrentState(t *testing.T) {
 		want []string
 	}{
 		{
-			name: "cloud exposure uses reachability edge",
+			name: "cloud exposure uses recent reachability edge and current attributes",
 			rule: newCloudPublicResourceExposureGraphRule(),
-			want: []string{"relation: 'can_reach'", ".public_principal", "WITH DISTINCT resource"},
+			want: []string{"relation: 'can_reach'", ".public_principal", `"internet_exposed":"true"`, `duration('P30D')`, "WITH DISTINCT resource"},
 		},
 		{
 			name: "github credentials exclude inactive resources",
 			rule: newGitHubProgrammaticCredentialReviewRule(),
-			want: []string{`resource.entity_type = 'github.credential'`, `"status":"inactive"`},
+			want: []string{`entity_type: 'github.credential'`, `"status":"inactive"`},
+		},
+		{
+			name: "github self-hosted runner uses projected runner state",
+			rule: newGitHubSelfHostedRunnerReviewRule(),
+			want: []string{`entity_type: 'github.runner'`, `"runner_status":"inactive"`, `"runner_ephemeral":"true"`},
 		},
 		{
 			name: "sentinelone stale agents require active non-pending inventory",

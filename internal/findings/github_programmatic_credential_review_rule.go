@@ -29,20 +29,15 @@ func newGitHubProgrammaticCredentialReviewRule() Rule {
 			{FrameworkName: "SOC 2", ControlID: "CC6.2"},
 			{FrameworkName: "ISO 27001:2022", ControlID: "A.5.18"},
 		},
-	}, map[string][]string{"github": {"audit"}}, `MATCH (resource:Entity {tenant_id: $tenant_id})
+	}, map[string][]string{"github": {"audit"}}, `MATCH (resource:Entity {tenant_id: $tenant_id, entity_type: 'github.credential'})
 WHERE (
-    resource.entity_type = 'github.credential'
-    OR (
-      resource.entity_type = 'github.resource'
-      AND (
-        coalesce(resource.attributes_json, '') CONTAINS '"resource_type":"personal_access_token"'
-        OR coalesce(resource.attributes_json, '') CONTAINS '"resource_type":"org_credential_authorization"'
-        OR coalesce(resource.attributes_json, '') CONTAINS '"resource_type":"integration_installation"'
-        OR coalesce(resource.attributes_json, '') CONTAINS '"resource_type":"integration_installation_request"'
-        OR coalesce(resource.attributes_json, '') CONTAINS '"resource_type":"oauth_application"'
-        OR coalesce(resource.attributes_json, '') CONTAINS '"resource_type":"integration"'
-      )
-    )
+    coalesce(resource.attributes_json, '') CONTAINS '"resource_type":"personal_access_token"'
+    OR coalesce(resource.attributes_json, '') CONTAINS '"resource_type":"org_credential_authorization"'
+    OR coalesce(resource.attributes_json, '') CONTAINS '"resource_type":"integration_installation"'
+    OR coalesce(resource.attributes_json, '') CONTAINS '"resource_type":"integration_installation_request"'
+    OR coalesce(resource.attributes_json, '') CONTAINS '"resource_type":"oauth_application"'
+    OR coalesce(resource.attributes_json, '') CONTAINS '"resource_type":"integration"'
+    OR coalesce(resource.attributes_json, '') CONTAINS '"credential_type":"public_key"'
   )
   AND NOT coalesce(resource.attributes_json, '') CONTAINS '"status":"inactive"'
 RETURN resource.urn AS primary_urn,

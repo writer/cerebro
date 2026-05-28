@@ -34,6 +34,7 @@ func builtinRulePacks() []RulePack {
 				newGitHubSecretScanningAlertCreatedRule(),
 				newGitHubSecretScanningDisabledRule(),
 				newGitHubSelfHostedRunnerChangeRule(),
+				newGitHubSelfHostedRunnerReviewRule(),
 				newGitHubWebhookModifiedRule(),
 			},
 		},
