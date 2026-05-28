@@ -322,9 +322,6 @@ def _source_runtime_environment(environment: dict, source_runtimes: list[dict]) 
 def _source_runtime_aws_role_entries(source_runtimes: list[dict]) -> list[str]:
     role_entries = set()
     for runtime in source_runtimes:
-        source_id = _runtime_field(runtime, "sourceId", "source_id")
-        if source_id != "aws":
-            continue
         tenant_id = _runtime_field(runtime, "tenantId", "tenant_id")
         if not tenant_id:
             continue
@@ -340,9 +337,6 @@ def _source_runtime_aws_role_entries(source_runtimes: list[dict]) -> list[str]:
 def _source_runtime_aws_role_arns(source_runtimes: list[dict]) -> list[str]:
     role_arns = set()
     for runtime in source_runtimes:
-        source_id = _runtime_field(runtime, "sourceId", "source_id")
-        if source_id != "aws":
-            continue
         config = runtime.get("config") or {}
         if not isinstance(config, dict):
             continue
