@@ -624,8 +624,8 @@ func TestIdentityApiTokenOrOauthAppCreated_OAuthTrajectory(t *testing.T) {
 	if got := oauthFinding.Attributes["org"]; got != "writer.okta.com" {
 		t.Fatalf("oauth attributes[org] = %q, want writer.okta.com", got)
 	}
-	if got := oauthFinding.Attributes["oauth_app_id"]; got != "0oa-client" {
-		t.Fatalf("oauth attributes[oauth_app_id] = %q, want 0oa-client", got)
+	if got := oauthFinding.Attributes["oauth_app_id"]; got != "oauth-client-id" {
+		t.Fatalf("oauth attributes[oauth_app_id] = %q, want oauth-client-id (client_id anchor)", got)
 	}
 	if got := oauthFinding.Attributes["status"]; got != "ACTIVE" {
 		t.Fatalf("oauth attributes[status] = %q, want ACTIVE", got)

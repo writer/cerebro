@@ -830,11 +830,11 @@ func identityCredentialRepresentsOAuthApp(attributes map[string]string) bool {
 func identityOAuthAppID(attributes map[string]string) string {
 	if oauthAppID := firstNonEmpty(
 		attributes["oauth_app_id"],
-		attributes["app_id"],
-		attributes["application_id"],
 		attributes["oauth_client_id"],
 		attributes["oauth2_client_id"],
 		attributes["client_id"],
+		attributes["app_id"],
+		attributes["application_id"],
 	); oauthAppID != "" {
 		return oauthAppID
 	}
