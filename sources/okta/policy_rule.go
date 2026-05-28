@@ -16,7 +16,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
-var policyRulePolicyTypes = []string{"OKTA_SIGN_ON", "ACCESS_POLICY"}
+var policyRulePolicyTypes = []string{"OKTA_SIGN_ON", "ACCESS_POLICY", "PASSWORD", "MFA_ENROLL", "PROFILE_ENROLLMENT", "IDP_DISCOVERY"}
 
 type policyRecord struct {
 	ID          string     `json:"id"`
