@@ -7,7 +7,10 @@ import (
 	"strings"
 )
 
-const openRouterBaseURL = "https://openrouter.ai/api/v1/chat/completions"
+const (
+	openRouterBaseURL      = "https://openrouter.ai/api/v1/chat/completions"
+	defaultOpenRouterModel = "anthropic/claude-sonnet-4.6"
+)
 
 // HTTPDoer abstracts HTTP POST so graphagent stays outside the net/http boundary.
 type HTTPDoer interface {
@@ -44,7 +47,7 @@ func NewOpenRouterLLMClient(cfg OpenRouterConfig) (*OpenRouterLLMClient, error) 
 		return nil, fmt.Errorf("%w: HTTPDoer is required for the openrouter LLM provider", ErrRuntimeUnavailable)
 	}
 	if cfg.DefaultModel == "" {
-		cfg.DefaultModel = "anthropic/claude-sonnet-4-20250514"
+		cfg.DefaultModel = defaultOpenRouterModel
 	}
 	if cfg.MaxTokens <= 0 {
 		cfg.MaxTokens = 1200
