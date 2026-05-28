@@ -410,6 +410,56 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 	}
 }
 
+func TestProjectFindingRecordedLinksPrimaryResourceWhenResourceURNsEmpty(t *testing.T) {
+	graph := &projectionRecorder{}
+	service := New(graph)
+	finding := workflowevents.FindingSnapshot{
+		TenantID:           "example",
+		SourceSystem:       "example-okta-audit",
+		FindingID:          "finding-primary-only",
+		Fingerprint:        "fp-primary-only",
+		Title:              "Identity API Token Or OAuth App Created",
+		Summary:            "OAuth credential was created",
+		RuleID:             "identity-api-token-or-oauth-app-created",
+		Severity:           "high",
+		Status:             "open",
+		PrimaryResourceURN: "urn:cerebro:example:okta_resource:oauth2clientsecretentity:secret-1",
+	}
+	recordedEvent, err := workflowevents.NewFindingRecordedEvent(workflowevents.FindingRecorded{
+		Finding:    finding,
+		RecordedAt: "2026-05-28T18:59:00Z",
+	})
+	if err != nil {
+		t.Fatalf("NewFindingRecordedEvent() error = %v", err)
+	}
+	if _, err := service.Project(context.Background(), recordedEvent); err != nil {
+		t.Fatalf("Project(recorded) error = %v", err)
+	}
+	linkKey := "urn:cerebro:example:okta_resource:oauth2clientsecretentity:secret-1|has_finding|urn:cerebro:example:finding:finding-primary-only"
+	if _, ok := graph.links[linkKey]; !ok {
+		t.Fatalf("primary resource finding link %q missing", linkKey)
+	}
+
+	finding.Status = "resolved"
+	statusEvent, err := workflowevents.NewFindingStatusChangedEvent(workflowevents.FindingStatusChanged{
+		Finding:     finding,
+		Status:      "resolved",
+		Reason:      "manually resolved",
+		Source:      workflowevents.FindingStatusSourceManual,
+		UpdatedAt:   "2026-05-28T19:00:00Z",
+		OutcomeType: "finding-resolution",
+	})
+	if err != nil {
+		t.Fatalf("NewFindingStatusChangedEvent() error = %v", err)
+	}
+	if _, err := service.Project(context.Background(), statusEvent); err != nil {
+		t.Fatalf("Project(status) error = %v", err)
+	}
+	if _, ok := graph.links[linkKey]; ok {
+		t.Fatalf("primary resource finding link %q should be removed after resolved status", linkKey)
+	}
+}
+
 func TestProjectFindingRecordedPrunesStaleActiveLinks(t *testing.T) {
 	graph := &projectionRecorder{}
 	service := New(graph)

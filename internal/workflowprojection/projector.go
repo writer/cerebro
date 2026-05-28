@@ -418,7 +418,7 @@ func (s *Service) ensureFindingActiveLinks(ctx context.Context, finding workflow
 	tenantID := strings.TrimSpace(finding.TenantID)
 	sourceID := strings.TrimSpace(finding.SourceSystem)
 	anchorURN := findingURN(tenantID, finding.FindingID)
-	resourceURNs := normalizeIDs(finding.ResourceURNs)
+	resourceURNs := findingResourceURNs(finding)
 	for _, resourceURN := range resourceURNs {
 		if err := s.upsertLink(ctx, &ports.ProjectedLink{
 			TenantID:   tenantID,
@@ -513,7 +513,7 @@ func (s *Service) deleteFindingActiveLinks(ctx context.Context, finding workflow
 	sourceID := strings.TrimSpace(finding.SourceSystem)
 	anchorURN := findingURN(tenantID, finding.FindingID)
 	var deleted uint32
-	for _, resourceURN := range normalizeIDs(finding.ResourceURNs) {
+	for _, resourceURN := range findingResourceURNs(finding) {
 		if err := deleter.DeleteProjectedLink(ctx, &ports.ProjectedLink{
 			TenantID: tenantID,
 			SourceID: sourceID,
@@ -529,7 +529,11 @@ func (s *Service) deleteFindingActiveLinks(ctx context.Context, finding workflow
 }
 
 func findingTargetURNs(finding workflowevents.FindingSnapshot) []string {
-	return normalizeIDs(append(normalizeIDs(finding.ResourceURNs), findingURN(strings.TrimSpace(finding.TenantID), finding.FindingID)))
+	return normalizeIDs(append(findingResourceURNs(finding), findingURN(strings.TrimSpace(finding.TenantID), finding.FindingID)))
+}
+
+func findingResourceURNs(finding workflowevents.FindingSnapshot) []string {
+	return normalizeIDs(append([]string{strings.TrimSpace(finding.PrimaryResourceURN)}, finding.ResourceURNs...))
 }
 
 func (s *Service) upsertEntity(ctx context.Context, entity *ports.ProjectedEntity, result *ports.ProjectionResult) error {
