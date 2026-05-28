@@ -15,13 +15,16 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -33,16 +36,19 @@ import (
 //go:embed catalog.yaml
 var catalogFS embed.FS
 
+var awsRoleARNPattern = regexp.MustCompile(`^arn:(aws|aws-us-gov|aws-cn):iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+$`)
+
 const (
 	sourceID = "aurelius"
 
-	defaultPageSize  = 100
-	maxPageSize      = 1000
-	defaultRegion    = "us-east-1"
-	maxObjectBytes   = 64 << 20
-	maxLineBytes     = 1 << 20
-	maxEventsPerPull = 10000
-	cursorSource     = "aurelius/s3-ndjson/v1"
+	defaultPageSize       = 100
+	maxPageSize           = 1000
+	defaultRegion         = "us-east-1"
+	assumeRoleSessionName = "cerebro-aurelius-source"
+	maxObjectBytes        = 64 << 20
+	maxLineBytes          = 1 << 20
+	maxEventsPerPull      = 10000
+	cursorSource          = "aurelius/s3-ndjson/v1"
 
 	familyVerdict          = "verdict"
 	familyFinding          = "finding"
@@ -100,12 +106,15 @@ type Source struct {
 }
 
 type settings struct {
-	family   string
-	bucket   string
-	prefix   string
-	region   string
-	tenantID string
-	perPage  int32
+	family         string
+	bucket         string
+	prefix         string
+	region         string
+	tenantID       string
+	roleARN        string
+	externalID     string
+	assumeRoleARNs string
+	perPage        int32
 }
 
 type aureliusRecord struct {
@@ -181,6 +190,15 @@ func defaultClientFactory(ctx context.Context, st settings) (s3API, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load aws config: %w", err)
 	}
+	if st.roleARN != "" {
+		provider := stscreds.NewAssumeRoleProvider(sts.NewFromConfig(cfg), st.roleARN, func(options *stscreds.AssumeRoleOptions) {
+			options.RoleSessionName = assumeRoleSessionName
+			if st.externalID != "" {
+				options.ExternalID = awssdk.String(st.externalID)
+			}
+		})
+		cfg.Credentials = awssdk.NewCredentialsCache(provider)
+	}
 	return s3.NewFromConfig(cfg), nil
 }
 
@@ -216,12 +234,15 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		tenantID = runtimeTenantID
 	}
 	st := settings{
-		family:   strings.TrimSpace(configValue(cfg, "family")),
-		bucket:   strings.TrimSpace(configValue(cfg, "bucket")),
-		prefix:   strings.TrimSpace(configValue(cfg, "prefix")),
-		region:   strings.TrimSpace(configValue(cfg, "region")),
-		tenantID: tenantID,
-		perPage:  defaultPageSize,
+		family:         strings.TrimSpace(configValue(cfg, "family")),
+		bucket:         strings.TrimSpace(configValue(cfg, "bucket")),
+		prefix:         strings.TrimSpace(configValue(cfg, "prefix")),
+		region:         strings.TrimSpace(configValue(cfg, "region")),
+		tenantID:       tenantID,
+		roleARN:        strings.TrimSpace(configValue(cfg, "role_arn")),
+		externalID:     strings.TrimSpace(configValue(cfg, "external_id")),
+		assumeRoleARNs: strings.TrimSpace(configValue(cfg, sourceconfig.AWSAssumeRoleAllowlistKey)),
+		perPage:        defaultPageSize,
 	}
 	if st.family == "" {
 		st.family = familyVerdict
@@ -240,6 +261,13 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	}
 	if st.tenantID == "" {
 		return settings{}, ErrTenantIDRequired
+	}
+	if st.roleARN != "" {
+		if err := validateAssumeRoleConfig(st); err != nil {
+			return settings{}, err
+		}
+	} else if st.externalID != "" {
+		return settings{}, fmt.Errorf("aurelius external_id requires role_arn")
 	}
 	rawPageSize, ok := cfg.Lookup("per_page")
 	if !ok || strings.TrimSpace(rawPageSize) == "" {
@@ -265,6 +293,39 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		return settings{}, fmt.Errorf("%w: %q must not contain slashes", ErrInvalidBucket, st.bucket)
 	}
 	return st, nil
+}
+
+func validateAssumeRoleConfig(st settings) error {
+	if len(awsRoleARNPattern.FindStringSubmatch(st.roleARN)) != 3 {
+		return fmt.Errorf("aurelius role_arn must be an IAM role ARN")
+	}
+	if st.tenantID == "" {
+		return fmt.Errorf("aurelius role_arn requires runtime tenant_id")
+	}
+	if !assumeRoleARNAllowed(st.tenantID, st.roleARN, st.assumeRoleARNs) {
+		return fmt.Errorf("aurelius role_arn is not allowed")
+	}
+	return nil
+}
+
+func assumeRoleARNAllowed(tenantID string, roleARN string, allowlist string) bool {
+	tenantID = strings.TrimSpace(tenantID)
+	roleARN = strings.TrimSpace(roleARN)
+	if tenantID == "" || roleARN == "" {
+		return false
+	}
+	for _, value := range strings.FieldsFunc(allowlist, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\t' || r == ' '
+	}) {
+		tenant, arn, ok := strings.Cut(strings.TrimSpace(value), "=")
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(tenant) == tenantID && strings.TrimSpace(arn) == roleARN {
+			return true
+		}
+	}
+	return false
 }
 
 func isKnownFamily(name string) bool {

@@ -128,6 +128,21 @@ func TestResolveSourceRuntimeConfigInjectsAWSAssumeRoleAllowlist(t *testing.T) {
 	}
 }
 
+func TestResolveSourceRuntimeConfigInjectsAssumeRoleAllowlistForRoleARN(t *testing.T) {
+	t.Setenv(awsAssumeRoleARNsEnv, "writer=arn:aws:iam::502497380968:role/cerebro-aurelius-source-dev")
+	resolved, err := ResolveSourceRuntimeConfigSecretReferences(context.Background(), "aurelius", map[string]string{
+		"bucket":   "writer-aurelius-scan-results-dev",
+		"prefix":   "aurelius/verdicts/",
+		"role_arn": "arn:aws:iam::502497380968:role/cerebro-aurelius-source-dev",
+	})
+	if err != nil {
+		t.Fatalf("ResolveSourceRuntimeConfigSecretReferences() error = %v", err)
+	}
+	if got := resolved[sourceconfig.AWSAssumeRoleAllowlistKey]; got != "writer=arn:aws:iam::502497380968:role/cerebro-aurelius-source-dev" {
+		t.Fatalf("resolved assume-role allowlist = %q", got)
+	}
+}
+
 func TestResolveSourceConfigDoesNotInjectRuntimeAWSAllowlist(t *testing.T) {
 	t.Setenv(awsAssumeRoleARNsEnv, "writer=arn:aws:iam::123456789012:role/cerebro-org-scan-role")
 	resolved, err := ResolveSourceConfigSecretReferences(context.Background(), "aws", map[string]string{

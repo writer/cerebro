@@ -49,7 +49,7 @@ func resolveSourceConfigSecretReferences(ctx context.Context, sourceID string, v
 		}
 		resolved[key] = secret
 	}
-	if injectRuntimeAllowlist && strings.EqualFold(strings.TrimSpace(sourceID), "aws") {
+	if injectRuntimeAllowlist && (strings.EqualFold(strings.TrimSpace(sourceID), "aws") || strings.TrimSpace(values["role_arn"]) != "") {
 		resolved[sourceconfig.AWSAssumeRoleAllowlistKey] = strings.TrimSpace(os.Getenv(awsAssumeRoleARNsEnv))
 	}
 	return resolved, nil
