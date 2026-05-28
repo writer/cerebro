@@ -115,6 +115,25 @@ func TestParseSettings(t *testing.T) {
 			},
 		},
 		{
+			name: "assume-role",
+			values: map[string]string{
+				"bucket":                               "writer-aurelius-telemetry",
+				"prefix":                               "verdicts/",
+				"tenant_id":                            "writer",
+				"role_arn":                             "arn:aws:iam::502497380968:role/cerebro-aurelius-source-dev",
+				"external_id":                          "external-1",
+				sourceconfig.AWSAssumeRoleAllowlistKey: "writer=arn:aws:iam::502497380968:role/cerebro-aurelius-source-dev",
+			},
+			want: settings{
+				family: familyVerdict, bucket: "writer-aurelius-telemetry",
+				prefix: "verdicts/", region: defaultRegion, tenantID: "writer",
+				roleARN:        "arn:aws:iam::502497380968:role/cerebro-aurelius-source-dev",
+				externalID:     "external-1",
+				assumeRoleARNs: "writer=arn:aws:iam::502497380968:role/cerebro-aurelius-source-dev",
+				perPage:        defaultPageSize,
+			},
+		},
+		{
 			name:      "missing-bucket",
 			values:    map[string]string{"prefix": "verdicts/", "tenant_id": "writer"},
 			wantErrIs: ErrBucketRequired,
