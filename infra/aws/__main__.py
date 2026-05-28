@@ -567,6 +567,9 @@ if source_runtime_env_refs:
 graph_agent_llm_provider = config.get("graphAgentLlmProvider")
 if graph_agent_llm_provider:
     app_environment["CEREBRO_GRAPH_AGENT_LLM_PROVIDER"] = graph_agent_llm_provider
+graph_agent_llm_model = config.get("graphAgentLlmModel")
+if graph_agent_llm_model:
+    app_environment["CEREBRO_GRAPH_AGENT_LLM_MODEL"] = graph_agent_llm_model
 openrouter_api_key_secret = config.get("openrouterApiKeySecret")
 if openrouter_api_key_secret:
     secret_keys.append({"name": "CEREBRO_OPENROUTER_API_KEY", "source": openrouter_api_key_secret})

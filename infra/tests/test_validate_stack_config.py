@@ -161,6 +161,24 @@ class ValidateStackConfigTest(unittest.TestCase):
         content = BASE_STACK + "  cerebro:dashboardLatencyP95AlarmThresholdMs: -1\n"
         self.assertTrue(any("must be a non-negative integer" in message for message in self._messages(content)))
 
+    def test_openrouter_provider_requires_explicit_model(self) -> None:
+        content = BASE_STACK + "  cerebro:graphAgentLlmProvider: openrouter\n"
+        self.assertTrue(any("OpenRouter provider must set an explicit OpenRouter model id" in message for message in self._messages(content)))
+
+    def test_openrouter_provider_rejects_anthropic_dated_model_id(self) -> None:
+        content = BASE_STACK + (
+            "  cerebro:graphAgentLlmProvider: openrouter\n"
+            "  cerebro:graphAgentLlmModel: anthropic/claude-sonnet-4-20250514\n"
+        )
+        self.assertTrue(any("not an Anthropic dated model id" in message for message in self._messages(content)))
+
+    def test_openrouter_provider_accepts_openrouter_slug(self) -> None:
+        content = BASE_STACK + (
+            "  cerebro:graphAgentLlmProvider: openrouter\n"
+            "  cerebro:graphAgentLlmModel: anthropic/claude-sonnet-4.6\n"
+        )
+        self.assertFalse(any("OpenRouter model" in message for message in self._messages(content)))
+
     def test_missing_source_secret_is_error(self) -> None:
         content = BASE_STACK.replace(f"    - {API_TOKEN_KEY}\n", "")
         self.assertTrue(any("not listed in cerebro:sourceSecretKeys" in message for message in self._messages(content)))

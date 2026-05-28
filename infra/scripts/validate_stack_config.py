@@ -486,6 +486,15 @@ def validate_stack(path: Path) -> list[Finding]:
                 "active Cerebro environments must allow at least two API tasks for latency headroom",
             )
         )
+    graph_agent_llm_provider = str(config.get("graphAgentLlmProvider", "")).strip().lower()
+    graph_agent_llm_model = str(config.get("graphAgentLlmModel", "")).strip()
+    if graph_agent_llm_provider == "openrouter":
+        if not graph_agent_llm_model:
+            findings.append(_finding("error", stack, "cerebro:graphAgentLlmModel", "OpenRouter provider must set an explicit OpenRouter model id"))
+        elif "/" not in graph_agent_llm_model:
+            findings.append(_finding("error", stack, "cerebro:graphAgentLlmModel", "OpenRouter model must use provider/model form"))
+        elif re.search(r"claude-[a-z0-9.-]+-\d{8}$", graph_agent_llm_model):
+            findings.append(_finding("error", stack, "cerebro:graphAgentLlmModel", "OpenRouter model must use an OpenRouter slug, not an Anthropic dated model id"))
     web_max_instances = config.get("webMaxInstances", 1)
     if config.get("webEnabled") is True and (not isinstance(web_max_instances, int) or web_max_instances < 2):
         findings.append(
