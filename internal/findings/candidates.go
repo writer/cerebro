@@ -303,7 +303,7 @@ func (s *Service) PromoteFindingCandidate(ctx context.Context, request PromoteCa
 	if len(candidate.Evidence) == 0 {
 		return nil, fmt.Errorf("%w: finding candidate has no evidence", ErrInvalidRequest)
 	}
-	now := candidateLifecycleObservedAt(candidate, time.Now().UTC())
+	now := time.Now().UTC()
 	production := cloneFindingRecord(candidate.Finding)
 	if production.Attributes == nil {
 		production.Attributes = map[string]string{}
@@ -389,7 +389,7 @@ func (s *Service) RejectFindingCandidate(ctx context.Context, request RejectCand
 		emitFindingCandidateRejectionTelemetry(ctx, "already_rejected", candidate, strings.TrimSpace(candidate.DecisionID), startedAt)
 		return &RejectCandidateResult{Candidate: candidate, DecisionID: strings.TrimSpace(candidate.DecisionID)}, nil
 	}
-	now := candidateLifecycleObservedAt(candidate, time.Now().UTC())
+	now := time.Now().UTC()
 	decisionID := candidateRejectionDecisionID(candidate, now)
 	if err := s.recordCandidateRejectionDecision(ctx, candidate, request, now, decisionID); err != nil {
 		return nil, err
@@ -475,20 +475,6 @@ func candidateRejectionDecisionID(candidate *ports.FindingCandidateRecord, obser
 	return workflowevents.CanonicalWorkflowID(tenantID, "decision", strings.TrimSpace(candidate.ID)+"-rejection", findingCandidateRejectionType, []string{
 		findingCandidateURN(tenantID, candidate.ID),
 	}, observedAt)
-}
-
-func candidateLifecycleObservedAt(candidate *ports.FindingCandidateRecord, fallback time.Time) time.Time {
-	if candidate != nil {
-		for _, value := range []time.Time{candidate.PromotedAt, candidate.RejectedAt, candidate.UpdatedAt, candidate.CreatedAt, candidate.LastObservedAt, candidate.FirstObservedAt} {
-			if !value.IsZero() {
-				return value.UTC()
-			}
-		}
-	}
-	if fallback.IsZero() {
-		return time.Now().UTC()
-	}
-	return fallback.UTC()
 }
 
 func (s *Service) recordCandidatePromotionDecision(ctx context.Context, candidate *ports.FindingCandidateRecord, finding *ports.FindingRecord, request PromoteCandidateRequest, observedAt time.Time, decisionID string) error {

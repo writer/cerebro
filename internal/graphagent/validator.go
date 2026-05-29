@@ -181,6 +181,8 @@ func lexCypher(query string) []cypherToken {
 			continue
 		case ch == '\'' || ch == '"':
 			i = skipQuotedLiteral(query, i, ch)
+		case ch == '`':
+			i = skipEscapedIdentifier(query, i)
 		case ch == '/' && i+1 < len(query) && query[i+1] == '/':
 			for i+1 < len(query) && query[i+1] != '\n' && query[i+1] != '\r' {
 				i++
@@ -220,6 +222,19 @@ func lexCypher(query string) []cypherToken {
 		}
 	}
 	return tokens
+}
+
+func skipEscapedIdentifier(query string, start int) int {
+	for i := start + 1; i < len(query); i++ {
+		if query[i] == '`' {
+			if i+1 < len(query) && query[i+1] == '`' {
+				i++
+				continue
+			}
+			return i
+		}
+	}
+	return len(query) - 1
 }
 
 func hasForbiddenWriteOrBulkLoad(tokens []cypherToken) bool {

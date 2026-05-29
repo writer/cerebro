@@ -198,6 +198,22 @@ LIMIT 25`, map[string]any{"tenant_id": "example"})
 	}
 }
 
+func TestValidatorAcceptsEscapedLimitAlias(t *testing.T) {
+	validator := NewValidator(nil, ValidatorOptions{})
+	result, limit, err := validator.validate(context.Background(), `MATCH (e:Entity {tenant_id: $tenant_id})
+RETURN e.urn AS `+"`limit`"+`
+LIMIT 25`, map[string]any{"tenant_id": "example"})
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if !result.OK {
+		t.Fatalf("Validate() = %#v, want ok", result)
+	}
+	if limit != 25 {
+		t.Fatalf("limit = %d, want 25", limit)
+	}
+}
+
 func TestValidatorAcceptsBoundVariableReuse(t *testing.T) {
 	validator := NewValidator(nil, ValidatorOptions{})
 	result, limit, err := validator.validate(context.Background(), `MATCH (e:Entity {tenant_id: $tenant_id})

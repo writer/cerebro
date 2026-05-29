@@ -125,7 +125,7 @@ func forwardedClientIP(header string, cfg config.RequestOriginConfig) string {
 	}
 	trustedProxyCount := cfg.TrustedProxyCount
 	if trustedProxyCount <= 0 {
-		trustedProxyCount = trailingTrustedForwardedHops(parts)
+		trustedProxyCount = trailingTrustedForwardedHops(parts, cfg)
 		if trustedProxyCount == 0 {
 			trustedProxyCount = 1
 		}
@@ -144,14 +144,30 @@ func forwardedClientIP(header string, cfg config.RequestOriginConfig) string {
 	return ""
 }
 
-func trailingTrustedForwardedHops(parts []string) int {
+func trailingTrustedForwardedHops(parts []string, cfg config.RequestOriginConfig) int {
 	count := 0
 	for i := len(parts) - 1; i >= 0; i-- {
 		ip := net.ParseIP(strings.TrimSpace(parts[i]))
-		if ip == nil || !accessAuditTrustsForwardedFor(ip) {
+		if ip == nil || !forwardedHopTrusted(ip, cfg) {
 			break
 		}
 		count++
 	}
 	return count
+}
+
+func forwardedHopTrusted(ip net.IP, cfg config.RequestOriginConfig) bool {
+	if ip == nil {
+		return false
+	}
+	for _, rawCIDR := range cfg.TrustedProxyCIDRs {
+		_, network, err := net.ParseCIDR(strings.TrimSpace(rawCIDR))
+		if err == nil && network.Contains(ip) {
+			return true
+		}
+	}
+	if len(cfg.TrustedProxyCIDRs) > 0 {
+		return false
+	}
+	return accessAuditTrustsForwardedFor(ip)
 }

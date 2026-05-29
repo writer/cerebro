@@ -3001,7 +3001,7 @@ func TestPromoteFindingCandidateRecoversConcurrentCompletedPromotion(t *testing.
 		FirstObservedAt:  now,
 		LastObservedAt:   now,
 	}
-	decisionID := candidatePromotionDecisionID(candidate, finding, candidateLifecycleObservedAt(candidate, now))
+	decisionID := candidatePromotionDecisionID(candidate, finding, now)
 	store := &stubFindingStore{
 		candidateState: stubFindingCandidateState{
 			candidates: map[string]*ports.FindingCandidateRecord{candidate.ID: cloneFindingCandidate(candidate)},
@@ -3212,7 +3212,7 @@ func TestRejectFindingCandidateRecoversConcurrentCompletedRejection(t *testing.T
 		FirstObservedAt:  now,
 		LastObservedAt:   now,
 	}
-	decisionID := candidateRejectionDecisionID(candidate, candidateLifecycleObservedAt(candidate, now))
+	decisionID := candidateRejectionDecisionID(candidate, now)
 	store := &stubFindingStore{
 		candidateState: stubFindingCandidateState{
 			candidates: map[string]*ports.FindingCandidateRecord{candidate.ID: cloneFindingCandidate(candidate)},
