@@ -3001,7 +3001,15 @@ func TestPromoteFindingCandidateRecoversConcurrentCompletedPromotion(t *testing.
 		FirstObservedAt:  now,
 		LastObservedAt:   now,
 	}
-	decisionID := candidatePromotionDecisionID(candidate, finding, now)
+	request := PromoteCandidateRequest{
+		CandidateID:           "candidate-1",
+		PromotedBy:            "analyst@example.com",
+		Rationale:             "Validated against source data.",
+		ChangeTicket:          "SEC-123",
+		FalsePositiveReviewed: true,
+		GraphCoverageReviewed: true,
+	}
+	decisionID := candidatePromotionDecisionID(candidate, finding, request, now)
 	store := &stubFindingStore{
 		candidateState: stubFindingCandidateState{
 			candidates: map[string]*ports.FindingCandidateRecord{candidate.ID: cloneFindingCandidate(candidate)},
@@ -3014,6 +3022,8 @@ func TestPromoteFindingCandidateRecoversConcurrentCompletedPromotion(t *testing.
 		updated.PromotedFindingID = finding.ID
 		updated.DecisionID = decisionID
 		updated.PromotedBy = "analyst@example.com"
+		updated.PromotionRationale = "Validated against source data."
+		updated.ChangeTicket = "SEC-123"
 		updated.PromotedAt = now
 		store.candidateState.candidates[updated.ID] = updated
 		winningFinding := cloneFinding(finding)
@@ -3032,14 +3042,7 @@ func TestPromoteFindingCandidateRecoversConcurrentCompletedPromotion(t *testing.
 		nil,
 	).WithFindingCandidateStore(store).WithAppendLog(&recordingAppendLog{})
 
-	result, err := service.PromoteFindingCandidate(context.Background(), PromoteCandidateRequest{
-		CandidateID:           "candidate-1",
-		PromotedBy:            "analyst@example.com",
-		Rationale:             "Validated against source data.",
-		ChangeTicket:          "SEC-123",
-		FalsePositiveReviewed: true,
-		GraphCoverageReviewed: true,
-	})
+	result, err := service.PromoteFindingCandidate(context.Background(), request)
 	if err != nil {
 		t.Fatalf("PromoteFindingCandidate() error = %v", err)
 	}
@@ -3218,7 +3221,12 @@ func TestRejectFindingCandidateRecoversConcurrentCompletedRejection(t *testing.T
 		FirstObservedAt:  now,
 		LastObservedAt:   now,
 	}
-	decisionID := candidateRejectionDecisionID(candidate, now)
+	request := RejectCandidateRequest{
+		CandidateID: "candidate-1",
+		RejectedBy:  "analyst@example.com",
+		Rationale:   "Confirmed false positive.",
+	}
+	decisionID := candidateRejectionDecisionID(candidate, request, now)
 	store := &stubFindingStore{
 		candidateState: stubFindingCandidateState{
 			candidates: map[string]*ports.FindingCandidateRecord{candidate.ID: cloneFindingCandidate(candidate)},
@@ -3230,6 +3238,7 @@ func TestRejectFindingCandidateRecoversConcurrentCompletedRejection(t *testing.T
 		updated.Status = findingCandidateStatusRejected
 		updated.DecisionID = decisionID
 		updated.RejectedBy = "analyst@example.com"
+		updated.RejectionRationale = "Confirmed false positive."
 		updated.RejectedAt = now
 		store.candidateState.candidates[updated.ID] = updated
 	}
@@ -3237,11 +3246,7 @@ func TestRejectFindingCandidateRecoversConcurrentCompletedRejection(t *testing.T
 		WithFindingCandidateStore(store).
 		WithAppendLog(&recordingAppendLog{})
 
-	result, err := service.RejectFindingCandidate(context.Background(), RejectCandidateRequest{
-		CandidateID: "candidate-1",
-		RejectedBy:  "analyst@example.com",
-		Rationale:   "Confirmed false positive.",
-	})
+	result, err := service.RejectFindingCandidate(context.Background(), request)
 	if err != nil {
 		t.Fatalf("RejectFindingCandidate() error = %v", err)
 	}

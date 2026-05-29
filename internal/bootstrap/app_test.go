@@ -2257,6 +2257,28 @@ func TestResolveRequestOriginInfersConfiguredTrustedProxyHops(t *testing.T) {
 	}
 }
 
+func TestResolveRequestOriginDoesNotTrustCallerSuppliedForwardedFor(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/sources", nil)
+	req.RemoteAddr = "10.0.1.20:443"
+	req.Header.Set("X-Forwarded-For", "198.51.100.99, 203.0.113.200")
+
+	origin := resolveRequestOrigin(req, config.RequestOriginConfig{})
+	if got := origin.ClientIP; got != "203.0.113.200" {
+		t.Fatalf("ClientIP = %q, want proxy-appended client IP", got)
+	}
+}
+
+func TestResolveRequestOriginRejectsMalformedForwardedHost(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/sources", nil)
+	req.RemoteAddr = "10.0.1.20:443"
+	req.Header.Set("X-Forwarded-Host", "user@evil.example")
+
+	origin := resolveRequestOrigin(req, config.RequestOriginConfig{})
+	if got := origin.PublicURL; got != "http://example.com/sources" {
+		t.Fatalf("PublicURL = %q, want request host when forwarded host is malformed", got)
+	}
+}
+
 func TestResolveRequestOriginIgnoresForwardedHostFromUntrustedRemote(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "http://internal.local/platform/devices/token", nil)
 	req.RemoteAddr = "198.51.100.20:54321"

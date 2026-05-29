@@ -313,7 +313,7 @@ func (s *Service) PromoteFindingCandidate(ctx context.Context, request PromoteCa
 	production.Attributes["promotion_rationale"] = strings.TrimSpace(request.Rationale)
 	production.Attributes["promoted_by"] = strings.TrimSpace(request.PromotedBy)
 	production.Attributes["promoted_at"] = now.Format(time.RFC3339Nano)
-	decisionID := candidatePromotionDecisionID(candidate, production, now)
+	decisionID := candidatePromotionDecisionID(candidate, production, request, now)
 	stored, err := s.upsertFindingWithRisk(ctx, production, &cerebrov1.SourceRuntime{
 		Id:       strings.TrimSpace(candidate.RuntimeID),
 		TenantId: strings.TrimSpace(candidate.TenantID),
@@ -350,7 +350,7 @@ func (s *Service) PromoteFindingCandidate(ctx context.Context, request PromoteCa
 		PromotedAt:        now,
 	})
 	if err != nil {
-		recovered, recoverErr := s.recoverPromotedCandidate(ctx, candidate.ID, stored.ID, decisionID)
+		recovered, recoverErr := s.recoverPromotedCandidate(ctx, candidate.ID, stored.ID, decisionID, request)
 		if recoverErr == nil {
 			recoveredFinding, loadErr := s.store.GetFinding(ctx, strings.TrimSpace(recovered.PromotedFindingID))
 			if loadErr != nil {
@@ -394,7 +394,7 @@ func (s *Service) RejectFindingCandidate(ctx context.Context, request RejectCand
 		return &RejectCandidateResult{Candidate: candidate, DecisionID: strings.TrimSpace(candidate.DecisionID)}, nil
 	}
 	now := time.Now().UTC()
-	decisionID := candidateRejectionDecisionID(candidate, now)
+	decisionID := candidateRejectionDecisionID(candidate, request, now)
 	if err := s.recordCandidateRejectionDecision(ctx, candidate, request, now, decisionID); err != nil {
 		return nil, err
 	}
@@ -406,7 +406,7 @@ func (s *Service) RejectFindingCandidate(ctx context.Context, request RejectCand
 		RejectedAt:  now,
 	})
 	if err != nil {
-		recovered, recoverErr := s.recoverRejectedCandidate(ctx, candidate.ID, decisionID)
+		recovered, recoverErr := s.recoverRejectedCandidate(ctx, candidate.ID, decisionID, request)
 		if recoverErr == nil {
 			emitFindingCandidateRejectionTelemetry(ctx, "rejected_recovered", recovered, decisionID, startedAt)
 			return &RejectCandidateResult{Candidate: recovered, DecisionID: decisionID}, nil
@@ -435,7 +435,7 @@ func (s *Service) findingCandidateLifecycleConflict(ctx context.Context, candida
 	}
 }
 
-func (s *Service) recoverPromotedCandidate(ctx context.Context, candidateID string, findingID string, decisionID string) (*ports.FindingCandidateRecord, error) {
+func (s *Service) recoverPromotedCandidate(ctx context.Context, candidateID string, findingID string, decisionID string, request PromoteCandidateRequest) (*ports.FindingCandidateRecord, error) {
 	current, err := s.candidateStore.GetFindingCandidate(ctx, candidateID)
 	if err != nil {
 		return nil, err
@@ -446,10 +446,15 @@ func (s *Service) recoverPromotedCandidate(ctx context.Context, candidateID stri
 	if strings.TrimSpace(current.PromotedFindingID) != strings.TrimSpace(findingID) || strings.TrimSpace(current.DecisionID) != strings.TrimSpace(decisionID) {
 		return nil, ErrInvalidRequest
 	}
+	if strings.TrimSpace(current.PromotedBy) != strings.TrimSpace(request.PromotedBy) ||
+		strings.TrimSpace(current.PromotionRationale) != strings.TrimSpace(request.Rationale) ||
+		strings.TrimSpace(current.ChangeTicket) != strings.TrimSpace(request.ChangeTicket) {
+		return nil, ErrInvalidRequest
+	}
 	return current, nil
 }
 
-func (s *Service) recoverRejectedCandidate(ctx context.Context, candidateID string, decisionID string) (*ports.FindingCandidateRecord, error) {
+func (s *Service) recoverRejectedCandidate(ctx context.Context, candidateID string, decisionID string, request RejectCandidateRequest) (*ports.FindingCandidateRecord, error) {
 	current, err := s.candidateStore.GetFindingCandidate(ctx, candidateID)
 	if err != nil {
 		return nil, err
@@ -457,28 +462,52 @@ func (s *Service) recoverRejectedCandidate(ctx context.Context, candidateID stri
 	if !strings.EqualFold(strings.TrimSpace(current.Status), findingCandidateStatusRejected) || strings.TrimSpace(current.DecisionID) != strings.TrimSpace(decisionID) {
 		return nil, ErrInvalidRequest
 	}
+	if strings.TrimSpace(current.RejectedBy) != strings.TrimSpace(request.RejectedBy) ||
+		strings.TrimSpace(current.RejectionRationale) != strings.TrimSpace(request.Rationale) {
+		return nil, ErrInvalidRequest
+	}
 	return current, nil
 }
 
-func candidatePromotionDecisionID(candidate *ports.FindingCandidateRecord, finding *ports.FindingRecord, observedAt time.Time) string {
+func candidatePromotionDecisionID(candidate *ports.FindingCandidateRecord, finding *ports.FindingRecord, request PromoteCandidateRequest, observedAt time.Time) string {
 	if candidate == nil || finding == nil {
 		return ""
 	}
 	tenantID := strings.TrimSpace(candidate.TenantID)
-	return workflowevents.CanonicalWorkflowID(tenantID, "decision", strings.TrimSpace(candidate.ID)+"-promotion", findingCandidateDecisionType, []string{
+	reviewID := candidateReviewDecisionSuffix(
+		"promotion",
+		candidate.ID,
+		finding.ID,
+		request.PromotedBy,
+		request.Rationale,
+		request.ChangeTicket,
+		fmt.Sprint(request.FalsePositiveReviewed),
+		fmt.Sprint(request.GraphCoverageReviewed),
+	)
+	return workflowevents.CanonicalWorkflowID(tenantID, "decision", reviewID, findingCandidateDecisionType, []string{
 		findingGraphFindingURN(tenantID, finding),
 		findingCandidateURN(tenantID, candidate.ID),
 	}, observedAt)
 }
 
-func candidateRejectionDecisionID(candidate *ports.FindingCandidateRecord, observedAt time.Time) string {
+func candidateRejectionDecisionID(candidate *ports.FindingCandidateRecord, request RejectCandidateRequest, observedAt time.Time) string {
 	if candidate == nil {
 		return ""
 	}
 	tenantID := strings.TrimSpace(candidate.TenantID)
-	return workflowevents.CanonicalWorkflowID(tenantID, "decision", strings.TrimSpace(candidate.ID)+"-rejection", findingCandidateRejectionType, []string{
+	reviewID := candidateReviewDecisionSuffix("rejection", candidate.ID, request.RejectedBy, request.Rationale)
+	return workflowevents.CanonicalWorkflowID(tenantID, "decision", reviewID, findingCandidateRejectionType, []string{
 		findingCandidateURN(tenantID, candidate.ID),
 	}, observedAt)
+}
+
+func candidateReviewDecisionSuffix(parts ...string) string {
+	normalized := make([]string, 0, len(parts))
+	for _, part := range parts {
+		normalized = append(normalized, strings.TrimSpace(part))
+	}
+	digest := sha256.Sum256([]byte(strings.Join(normalized, "\x00")))
+	return strings.TrimSpace(parts[1]) + "-" + strings.TrimSpace(parts[0]) + "-" + hex.EncodeToString(digest[:8])
 }
 
 func (s *Service) recordCandidatePromotionDecision(ctx context.Context, candidate *ports.FindingCandidateRecord, finding *ports.FindingRecord, request PromoteCandidateRequest, observedAt time.Time, decisionID string) error {

@@ -113,8 +113,9 @@ func trustedForwardedHost(header string) string {
 		if host == "" {
 			continue
 		}
-		if _, err := url.Parse("//" + host); err == nil {
-			return host
+		parsed, err := url.Parse("//" + host)
+		if err == nil && parsed.Host != "" && parsed.User == nil && parsed.RawQuery == "" && !parsed.ForceQuery && parsed.Fragment == "" && parsed.Path == "" {
+			return parsed.Host
 		}
 	}
 	return ""
@@ -128,9 +129,6 @@ func forwardedClientIP(header string, cfg config.RequestOriginConfig) string {
 	trustedProxyCount := cfg.TrustedProxyCount
 	if trustedProxyCount <= 0 {
 		trustedProxyCount = trailingTrustedForwardedHops(parts, cfg)
-		if trustedProxyCount == 0 {
-			trustedProxyCount = 1
-		}
 	}
 	for i := len(parts) - 1 - trustedProxyCount; i >= 0; i-- {
 		if ip := net.ParseIP(strings.TrimSpace(parts[i])); ip != nil {
