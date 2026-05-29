@@ -9,6 +9,7 @@ import (
 )
 
 const (
+	EventProgress  = "progress"
 	EventRationale = "rationale"
 	EventCypher    = "cypher"
 	EventRows      = "rows"
@@ -25,6 +26,12 @@ type Event struct {
 type ValidatorResult struct {
 	OK     bool   `json:"ok"`
 	Reason string `json:"reason,omitempty"`
+}
+
+type ProgressEvent struct {
+	Stage     string `json:"stage"`
+	Message   string `json:"message"`
+	ElapsedMS int64  `json:"elapsed_ms"`
 }
 
 type RationaleEvent struct {

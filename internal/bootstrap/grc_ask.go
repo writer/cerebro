@@ -93,7 +93,7 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 	service := graphagent.NewService(graphStore, llm, graphagent.ValidatorOptions{Explain: true})
 	var eventCount int
 	streamStarted := false
-	if err := service.Stream(r.Context(), request, func(event graphagent.Event) error {
+	err := service.Stream(r.Context(), request, func(event graphagent.Event) error {
 		if !streamStarted {
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.Header().Set("Cache-Control", "no-cache, no-transform")
@@ -109,10 +109,29 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 		return nil
-	}); err != nil && !streamStarted {
+	})
+	if err != nil && !streamStarted {
 		evt.failureStage = "stream"
 		evt.finish(r, w, started, http.StatusServiceUnavailable, err)
 		writeGRCError(w, err)
+		return
+	}
+	if err != nil {
+		evt.failureStage = "stream"
+		writeErr := graphagent.WriteSSEEvent(w, graphagent.Event{Name: graphagent.EventError, Data: graphagent.ErrorEvent{
+			Code:    "ask_failed",
+			Message: err.Error(),
+		}})
+		if writeErr == nil {
+			eventCount++
+			if flusher != nil {
+				flusher.Flush()
+			}
+		} else {
+			log.Printf("write grc ask SSE error event: %v", writeErr)
+		}
+		evt.sseEvents = eventCount
+		evt.finish(r, w, started, http.StatusOK, err)
 		return
 	}
 	evt.sseEvents = eventCount

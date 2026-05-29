@@ -27,6 +27,7 @@ const (
 	MaxPageLimit             = 100
 	DefaultStatusLimit       = 25
 	MaxStatusLimit           = 500
+	progressRunUpdateTimeout = 15 * time.Second
 	terminalRunUpdateTimeout = 15 * time.Second
 	defaultCleanupLimit      = 1000
 )
@@ -83,6 +84,8 @@ type pageProjectionResult struct {
 	EntitiesProjected uint32
 	LinksProjected    uint32
 }
+
+type progressReporter func(*IngestResult)
 
 type RuntimeRequest struct {
 	RuntimeID                string
@@ -223,7 +226,13 @@ func (s *Service) RunRuntime(ctx context.Context, request RuntimeRequest) (resul
 	if err := runStore.PutIngestRun(ctx, run); err != nil {
 		return result, err
 	}
-	ingest, err := s.ingestSource(ctx, ingestRequest)
+	ingest, err := s.ingestSource(ctx, ingestRequest, func(progress *IngestResult) {
+		progressRun := runningRunProgress(run, progress)
+		result.Run = progressRun
+		if err := s.putProgressIngestRun(ctx, runStore, progressRun); err != nil {
+			log.Printf("graph ingest progress update failed run_id=%q runtime_id=%q error=%v", progressRun.ID, progressRun.RuntimeID, err)
+		}
+	})
 	result.Ingest = ingest
 	if err != nil {
 		return s.failRun(ctx, runStore, run, result, ingest, err)
@@ -413,6 +422,12 @@ func (s *Service) putTerminalIngestRun(ctx context.Context, runStore RunStore, r
 	return runStore.PutIngestRun(persistCtx, run)
 }
 
+func (s *Service) putProgressIngestRun(ctx context.Context, runStore RunStore, run graphstore.IngestRun) error {
+	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), progressRunUpdateTimeout)
+	defer cancel()
+	return runStore.PutIngestRun(persistCtx, run)
+}
+
 func (s *Service) preparedConfig(ctx context.Context, runtime *cerebrov1.SourceRuntime) (map[string]string, error) {
 	config := sourceconfig.WithRuntimeTenant(runtime.GetConfig(), runtime.GetTenantId())
 	config = sourceconfig.WithLegacyTenantlessAssumeRole(config, runtime.GetSourceId(), runtime.GetTenantId())
@@ -435,10 +450,14 @@ type sourceRequest struct {
 	ResetCompletedCheckpoint bool
 }
 
-func (s *Service) ingestSource(ctx context.Context, request sourceRequest) (*IngestResult, error) {
+func (s *Service) ingestSource(ctx context.Context, request sourceRequest, reporters ...progressReporter) (*IngestResult, error) {
 	result := &IngestResult{
 		SourceID: strings.TrimSpace(request.SourceID),
 		TenantID: strings.TrimSpace(request.TenantID),
+	}
+	var report progressReporter
+	if len(reporters) != 0 {
+		report = reporters[0]
 	}
 	cursor := request.Cursor
 	checkpointStore, err := s.prepareCheckpoint(ctx, request, result, &cursor)
@@ -492,6 +511,9 @@ func (s *Service) ingestSource(ctx context.Context, request sourceRequest) (*Ing
 			if err := persistCheckpoint(ctx, checkpointStore, request, result, response, cursor); err != nil {
 				return result, err
 			}
+		}
+		if report != nil {
+			report(result)
 		}
 		if cursor == nil {
 			break
@@ -1034,6 +1056,25 @@ func finishRun(run graphstore.IngestRun, result *IngestResult, status string, ru
 		finished.Error = runErr.Error()
 	}
 	return finished
+}
+
+func runningRunProgress(run graphstore.IngestRun, result *IngestResult) graphstore.IngestRun {
+	progress := run
+	progress.Status = graphstore.IngestRunStatusRunning
+	progress.FinishedAt = ""
+	progress.Error = ""
+	if result != nil {
+		progress.CheckpointID = result.CheckpointID
+		progress.PagesRead = int64(result.PagesRead)
+		progress.EventsRead = int64(result.EventsRead)
+		progress.EntitiesProjected = int64(result.EntitiesProjected)
+		progress.LinksProjected = int64(result.LinksProjected)
+		progress.GraphNodesBefore = result.GraphNodesBefore
+		progress.GraphLinksBefore = result.GraphLinksBefore
+		progress.GraphNodesAfter = result.GraphNodesAfter
+		progress.GraphLinksAfter = result.GraphLinksAfter
+	}
+	return progress
 }
 
 func configHash(config map[string]string) string {
