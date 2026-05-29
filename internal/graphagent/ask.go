@@ -58,6 +58,9 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	params := askParams(request)
 	traceID := newTraceID()
 
+	if err := emitProgress(emit, started, "drafting_query", "Drafting a read-only graph query."); err != nil {
+		return err
+	}
 	draft, err := s.llm.DraftCypher(ctx, DraftRequest{
 		TenantID:  strings.TrimSpace(request.TenantID),
 		Question:  strings.TrimSpace(request.Question),
@@ -78,29 +81,32 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	if rationale == "" {
 		rationale = "Drafting a bounded read-only Cypher query for the requested graph question."
 	}
+	if err := emit(Event{Name: EventRationale, Data: RationaleEvent{Text: rationale}}); err != nil {
+		return err
+	}
 
 	cypher := strings.TrimSpace(draft.Cypher)
 	if cypher == "" {
-		if err := emit(Event{Name: EventRationale, Data: RationaleEvent{Text: rationale}}); err != nil {
-			return err
-		}
 		reason := firstNonEmpty(draft.Refusal, "LLM refused to draft Cypher")
 		return emitRefusal(emit, traceID, started, cypher, reason)
+	}
+	if err := emitProgress(emit, started, "validating_query", "Validating generated Cypher against read-only guardrails."); err != nil {
+		return err
 	}
 	validation, rowLimit, err := s.validator.validate(ctx, cypher, params)
 	if err != nil {
 		return err
 	}
+	if err := emit(Event{Name: EventCypher, Data: CypherEvent{Cypher: cypher, Validator: validation}}); err != nil {
+		return err
+	}
 	if !validation.OK {
-		if err := emit(Event{Name: EventRationale, Data: RationaleEvent{Text: rationale}}); err != nil {
-			return err
-		}
-		if err := emit(Event{Name: EventCypher, Data: CypherEvent{Cypher: cypher, Validator: validation}}); err != nil {
-			return err
-		}
 		return emitRefusal(emit, traceID, started, cypher, validation.Reason)
 	}
 
+	if err := emitProgress(emit, started, "executing_query", "Executing the validated graph query."); err != nil {
+		return err
+	}
 	execStarted := time.Now()
 	rows, err := s.store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
 		Query:    cypher,
@@ -116,7 +122,13 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		Graph:  scopedNeighborhood(ctx, s.store, request.ScopeURN),
 		ExecMS: time.Since(execStarted).Milliseconds(),
 	}
+	if err := emit(Event{Name: EventRows, Data: rowsEvent}); err != nil {
+		return err
+	}
 
+	if err := emitProgress(emit, started, "summarizing", "Summarizing graph rows into a user-facing answer."); err != nil {
+		return err
+	}
 	summary, err := s.llm.Summarize(ctx, SummarizeRequest{
 		TenantID: strings.TrimSpace(request.TenantID),
 		Question: strings.TrimSpace(request.Question),
@@ -133,19 +145,18 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		summary = fallbackSummary(rowMaps)
 	}
 	summary = strings.TrimSpace(summary)
-	if err := emit(Event{Name: EventRationale, Data: RationaleEvent{Text: rationale}}); err != nil {
-		return err
-	}
-	if err := emit(Event{Name: EventCypher, Data: CypherEvent{Cypher: cypher, Validator: validation}}); err != nil {
-		return err
-	}
-	if err := emit(Event{Name: EventRows, Data: rowsEvent}); err != nil {
-		return err
-	}
 	if err := emit(Event{Name: EventSummary, Data: SummaryEvent{Markdown: summary, Citations: citationsFor(summary, rowMaps)}}); err != nil {
 		return err
 	}
 	return emit(Event{Name: EventDone, Data: DoneEvent{TraceID: traceID, TotalMS: time.Since(started).Milliseconds()}})
+}
+
+func emitProgress(emit Emitter, started time.Time, stage string, message string) error {
+	return emit(Event{Name: EventProgress, Data: ProgressEvent{
+		Stage:     strings.TrimSpace(stage),
+		Message:   strings.TrimSpace(message),
+		ElapsedMS: time.Since(started).Milliseconds(),
+	}})
 }
 
 func ValidateRequest(request AskRequest) error {

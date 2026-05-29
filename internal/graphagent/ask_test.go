@@ -44,10 +44,17 @@ LIMIT 25`,
 	if err != nil {
 		t.Fatalf("Stream() error = %v", err)
 	}
-	assertEventNames(t, events, []string{EventRationale, EventCypher, EventRows, EventSummary, EventDone})
-	rowsEvent, ok := events[2].Data.(RowsEvent)
+	assertEventNames(t, events, []string{EventProgress, EventRationale, EventProgress, EventCypher, EventProgress, EventRows, EventProgress, EventSummary, EventDone})
+	progressEvent, ok := events[0].Data.(ProgressEvent)
 	if !ok {
-		t.Fatalf("rows event data = %T", events[2].Data)
+		t.Fatalf("progress event data = %T", events[0].Data)
+	}
+	if progressEvent.Stage != "drafting_query" {
+		t.Fatalf("first progress stage = %q, want drafting_query", progressEvent.Stage)
+	}
+	rowsEvent, ok := events[5].Data.(RowsEvent)
+	if !ok {
+		t.Fatalf("rows event data = %T", events[5].Data)
 	}
 	if len(rowsEvent.Rows) != 1 || rowsEvent.Rows[0]["entity_urn"] != "urn:cerebro:example:asset:alpha" {
 		t.Fatalf("rows = %#v", rowsEvent.Rows)
@@ -55,9 +62,9 @@ LIMIT 25`,
 	if rowsEvent.Graph == nil || rowsEvent.Graph.Root == nil {
 		t.Fatalf("graph neighborhood missing")
 	}
-	summaryEvent, ok := events[3].Data.(SummaryEvent)
+	summaryEvent, ok := events[7].Data.(SummaryEvent)
 	if !ok {
-		t.Fatalf("summary event data = %T", events[3].Data)
+		t.Fatalf("summary event data = %T", events[7].Data)
 	}
 	if len(summaryEvent.Citations) != 1 || summaryEvent.Citations[0].URN != "urn:cerebro:example:asset:alpha" {
 		t.Fatalf("citations = %#v", summaryEvent.Citations)
@@ -83,12 +90,12 @@ func TestServiceRefusesValidatorRejectedCypher(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Stream() error = %v", err)
 	}
-	assertEventNames(t, events, []string{EventRationale, EventCypher, EventSummary, EventDone})
-	cypherEvent := events[1].Data.(CypherEvent)
+	assertEventNames(t, events, []string{EventProgress, EventRationale, EventProgress, EventCypher, EventSummary, EventDone})
+	cypherEvent := events[3].Data.(CypherEvent)
 	if cypherEvent.Validator.OK {
 		t.Fatalf("validator ok = true, want false")
 	}
-	done := events[3].Data.(DoneEvent)
+	done := events[5].Data.(DoneEvent)
 	if !done.CypherRefused {
 		t.Fatalf("done.CypherRefused = false, want true")
 	}

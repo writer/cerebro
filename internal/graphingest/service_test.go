@@ -13,6 +13,7 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
+	"github.com/writer/cerebro/internal/sourceops"
 )
 
 type stubRunStore struct {
@@ -164,6 +165,33 @@ func (s *singlePageSource) Discover(context.Context, sourcecdk.Config) ([]source
 
 func (s *singlePageSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
 	return sourcecdk.Pull{Events: s.events}, nil
+}
+
+type cursorPagedSource struct {
+	id    string
+	pages [][]*cerebrov1.EventEnvelope
+}
+
+func (s *cursorPagedSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: s.id, Name: "Cursor Paged"}
+}
+
+func (s *cursorPagedSource) Check(context.Context, sourcecdk.Config) error { return nil }
+
+func (s *cursorPagedSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (s *cursorPagedSource) Read(_ context.Context, _ sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	page := 0
+	if cursor != nil && cursor.GetOpaque() == "page-1" {
+		page = 1
+	}
+	pull := sourcecdk.Pull{Events: s.pages[page]}
+	if page+1 < len(s.pages) {
+		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: "page-1"}
+	}
+	return pull, nil
 }
 
 func (s *recordingProjectionGraphStore) DeleteProjectedEntity(_ context.Context, urn string) error {
@@ -795,6 +823,59 @@ func TestMergeStringMapClearsOlderObservationMetadataMissingFromNewerAt(t *testi
 		if got, exists := merged[key]; exists {
 			t.Fatalf("merged[%s] = %q, want missing because newer observation omitted it", key, got)
 		}
+	}
+}
+
+func TestIngestSourceReportsProgressAfterEachPersistedPage(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(&cursorPagedSource{
+		id: "paged",
+		pages: [][]*cerebrov1.EventEnvelope{
+			{{Id: "event-1", SourceId: "paged"}},
+			{{Id: "event-2", SourceId: "paged"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &checkpointProjectionGraphStore{}
+	service := &Service{
+		sourceService: sourceops.New(registry),
+		graphStore:    store,
+		projector: recordProjectorFunc(func(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+			return []*ports.ProjectedEntity{{
+				URN:        "urn:cerebro:writer:paged:" + event.GetId(),
+				TenantID:   event.GetTenantId(),
+				SourceID:   event.GetSourceId(),
+				EntityType: "paged.entity",
+				Label:      event.GetId(),
+			}}, nil, nil
+		}),
+	}
+	var snapshots []IngestResult
+	result, err := service.ingestSource(context.Background(), sourceRequest{
+		SourceID:          "paged",
+		RuntimeID:         "runtime-1",
+		TenantID:          "writer",
+		PageLimit:         2,
+		CheckpointEnabled: true,
+		CheckpointID:      "checkpoint-1",
+	}, func(progress *IngestResult) {
+		snapshots = append(snapshots, *progress)
+	})
+	if err != nil {
+		t.Fatalf("ingestSource() error = %v", err)
+	}
+	if result.PagesRead != 2 || result.EventsRead != 2 || result.EntitiesProjected != 2 {
+		t.Fatalf("result pages/events/entities = %d/%d/%d, want 2/2/2", result.PagesRead, result.EventsRead, result.EntitiesProjected)
+	}
+	if len(snapshots) != 2 {
+		t.Fatalf("progress snapshots = %d, want 2", len(snapshots))
+	}
+	if snapshots[0].PagesRead != 1 || snapshots[0].EventsRead != 1 || !snapshots[0].CheckpointPersisted {
+		t.Fatalf("first progress = %#v, want one persisted page", snapshots[0])
+	}
+	if snapshots[1].PagesRead != 2 || snapshots[1].EventsRead != 2 || !snapshots[1].CheckpointComplete {
+		t.Fatalf("second progress = %#v, want completed second page", snapshots[1])
 	}
 }
 

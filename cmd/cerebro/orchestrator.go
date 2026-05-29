@@ -29,24 +29,18 @@ const defaultSourceRuntimeLeaseTTL = 30 * time.Minute
 const sourceRuntimeLeaseReleaseTimeout = 5 * time.Second
 const sourceRuntimeLeaseOverscanLimit = 100
 
-// orchestratorPhaseTimeout bounds each post-sync runtime phase
-// (`finding_rules`, `graph_ingest`, `graph_rules`) independently so a
-// single blocked downstream call (e.g. a Neo4j tx waiting on a row lock,
-// or a source.Read() retrying against an exhausted GitHub rate-limit
-// budget) cannot stall the orchestrator iteration indefinitely. The
-// limit is conservative: writer-org runs in production observe ~2.5 min
-// for all three phases combined, so 15 min/step leaves ~4× headroom for
-// slower tenants and concurrent contention while still cutting off
-// pathologically stuck runs well within the lease TTL. On timeout the
-// phase fails fast, the runtime lease releases, and the next iteration
-// retries from a clean context.
-const orchestratorPhaseTimeout = 15 * time.Minute
+const (
+	defaultOrchestratorPhaseTimeout       = 15 * time.Minute
+	defaultOrchestratorGraphIngestTimeout = 45 * time.Minute
+)
 
 type orchestratorOptions struct {
 	Filter         ports.SourceRuntimeFilter `json:"filter"`
 	PageLimit      uint32                    `json:"page_limit,omitempty"`
 	EventLimit     uint32                    `json:"event_limit,omitempty"`
 	GraphPageLimit uint32                    `json:"graph_page_limit,omitempty"`
+	PhaseTimeout   time.Duration             `json:"-"`
+	GraphTimeout   time.Duration             `json:"-"`
 	Interval       time.Duration             `json:"-"`
 	Iterations     uint32                    `json:"iterations"`
 	RunForever     bool                      `json:"run_forever,omitempty"`
@@ -87,7 +81,7 @@ type orchestratorRuntimeResult struct {
 
 func runOrchestrator(args []string) error {
 	if len(args) == 0 || args[0] != "run" {
-		return usageError(fmt.Sprintf("usage: %s orchestrator run [runtime_id=<runtime-id>] [tenant_id=<tenant-id>] [source_id=<source-id>] [limit=N] [page_limit=N] [event_limit=N] [graph_page_limit=N] [interval=30s] [iterations=N|forever]", os.Args[0]))
+		return usageError(fmt.Sprintf("usage: %s orchestrator run [runtime_id=<runtime-id>] [tenant_id=<tenant-id>] [source_id=<source-id>] [limit=N] [page_limit=N] [event_limit=N] [graph_page_limit=N] [phase_timeout=15m] [graph_timeout=45m] [interval=30s] [iterations=N|forever]", os.Args[0]))
 	}
 	options, err := parseOrchestratorOptions(args[1:])
 	if err != nil {
@@ -114,7 +108,11 @@ func orchestratorShutdownSignals() []os.Signal {
 }
 
 func parseOrchestratorOptions(args []string) (orchestratorOptions, error) {
-	options := orchestratorOptions{Iterations: defaultOrchestratorIterations}
+	options := orchestratorOptions{
+		Iterations:   defaultOrchestratorIterations,
+		PhaseTimeout: defaultOrchestratorPhaseTimeout,
+		GraphTimeout: defaultOrchestratorGraphIngestTimeout,
+	}
 	for _, arg := range args {
 		key, value, ok := strings.Cut(arg, "=")
 		if !ok {
@@ -154,6 +152,18 @@ func parseOrchestratorOptions(args []string) (orchestratorOptions, error) {
 				return orchestratorOptions{}, fmt.Errorf("parse graph_page_limit: %w", err)
 			}
 			options.GraphPageLimit = uint32(parsed)
+		case "phase_timeout":
+			parsed, err := parsePositiveDurationArg("phase_timeout", value)
+			if err != nil {
+				return orchestratorOptions{}, err
+			}
+			options.PhaseTimeout = parsed
+		case "graph_timeout", "graph_ingest_timeout":
+			parsed, err := parsePositiveDurationArg(key, value)
+			if err != nil {
+				return orchestratorOptions{}, err
+			}
+			options.GraphTimeout = parsed
 		case "interval":
 			parsed, err := time.ParseDuration(strings.TrimSpace(value))
 			if err != nil {
@@ -188,6 +198,17 @@ func parseOrchestratorOptions(args []string) (orchestratorOptions, error) {
 	return options, nil
 }
 
+func parsePositiveDurationArg(name string, value string) (time.Duration, error) {
+	parsed, err := time.ParseDuration(strings.TrimSpace(value))
+	if err != nil {
+		return 0, fmt.Errorf("parse %s: %w", name, err)
+	}
+	if parsed <= 0 {
+		return 0, fmt.Errorf("%s must be positive", name)
+	}
+	return parsed, nil
+}
+
 func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (result *orchestratorResult, err error) {
 	ctx, span := telemetry.Start(ctx, "orchestrator.run", telemetry.Attrs(
 		telemetryField("runtime_id", options.Filter.RuntimeID),
@@ -197,6 +218,8 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (resu
 		telemetryField("page_limit", options.PageLimit),
 		telemetryField("event_limit", options.EventLimit),
 		telemetryField("graph_page_limit", options.GraphPageLimit),
+		telemetryField("phase_timeout_ms", options.PhaseTimeout.Milliseconds()),
+		telemetryField("graph_timeout_ms", options.GraphTimeout.Milliseconds()),
 		telemetryField("iterations", options.Iterations),
 		telemetryField("run_forever", options.RunForever),
 	))
@@ -366,6 +389,8 @@ func runOrchestratorIteration(
 		telemetryField("tenant_id", options.Filter.TenantID),
 		telemetryField("source_id", options.Filter.SourceID),
 		telemetryField("limit", options.Filter.Limit),
+		telemetryField("phase_timeout_ms", options.PhaseTimeout.Milliseconds()),
+		telemetryField("graph_timeout_ms", options.GraphTimeout.Milliseconds()),
 	))
 	status := "failed"
 	spanAttributes := telemetry.Attrs()
@@ -468,20 +493,7 @@ func runOrchestratorIteration(
 		runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "effective_graph_page_limit", graphPageLimit)
 		runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "reset_graph_checkpoint", resetGraphCheckpoint)
 		runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "reset_completed_graph_checkpoint", resetCompletedGraphCheckpoint)
-		// Each post-sync phase runs under its own telemetry span and a
-		// dedicated context timeout. Both are intentional: the span gives
-		// operators a span_end event per phase so a stall shows up as a
-		// missing span_end on the specific phase rather than an opaque
-		// silence between source_runtime.sync.span_end and
-		// orchestrator.runtime.span_end; the timeout lets a single
-		// pathologically blocked downstream (Neo4j row lock contention
-		// across concurrent runtimes writing the same tenant, or a
-		// source.Read() retry storm against an exhausted upstream rate
-		// limit) fail fast so the lease renews and the next iteration
-		// retries from a clean state. The phase contexts are derived
-		// from runtimeCtx (NOT ctx) so they inherit lease-renewal
-		// cancellation while still being independently bounded.
-		graphResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.graph_ingest", iteration, runtime, orchestratorPhaseTimeout, func(phaseCtx context.Context) (*graphingest.RunResult, error) {
+		graphResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.graph_ingest", iteration, runtime, options.GraphTimeout, func(phaseCtx context.Context) (*graphingest.RunResult, error) {
 			return graphService.RunRuntime(phaseCtx, graphingest.RuntimeRequest{
 				RuntimeID:                runtime.GetId(),
 				PageLimit:                graphPageLimit,
@@ -499,7 +511,7 @@ func runOrchestratorIteration(
 		} else {
 			runtimeResult.GraphIngest = "completed"
 		}
-		findingResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.finding_rules", iteration, runtime, orchestratorPhaseTimeout, func(phaseCtx context.Context) (*findings.EvaluateRulesResult, error) {
+		findingResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.finding_rules", iteration, runtime, options.PhaseTimeout, func(phaseCtx context.Context) (*findings.EvaluateRulesResult, error) {
 			return findingService.EvaluateSourceRuntimeRules(phaseCtx, findings.EvaluateRulesRequest{RuntimeID: runtime.GetId(), EventLimit: options.EventLimit})
 		})
 		if err != nil {
@@ -523,7 +535,7 @@ func runOrchestratorIteration(
 		// reached by source sync, even if a trailing PutIngestRun(completed) write
 		// failed. The graph is fresh enough for read-only rules at that point.
 		if graphIngestReadyForGraphRules(graphResult, syncResult.GetRuntime().GetNextCursor()) {
-			graphRulesResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.graph_rules", iteration, runtime, orchestratorPhaseTimeout, func(phaseCtx context.Context) (*findings.EvaluateGraphRulesResult, error) {
+			graphRulesResult, err := runOrchestratorPhase(runtimeCtx, "orchestrator.graph_rules", iteration, runtime, options.PhaseTimeout, func(phaseCtx context.Context) (*findings.EvaluateGraphRulesResult, error) {
 				return findingService.EvaluateSourceRuntimeGraphRules(phaseCtx, findings.EvaluateGraphRulesRequest{RuntimeID: runtime.GetId()})
 			})
 			runtimeSpanAttrs = applyGraphRuleCounters(runtimeResult, graphRulesResult, runtimeSpanAttrs)

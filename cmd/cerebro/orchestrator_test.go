@@ -56,6 +56,12 @@ func TestParseOrchestratorOptionsRejectsZeroLimit(t *testing.T) {
 	}
 }
 
+func TestParseOrchestratorOptionsRejectsNonPositiveTimeout(t *testing.T) {
+	if _, err := parseOrchestratorOptions([]string{"graph_timeout=0s"}); err == nil {
+		t.Fatal("parseOrchestratorOptions(graph_timeout=0s) error = nil, want error")
+	}
+}
+
 func TestParseOrchestratorOptionsAcceptsRuntimeID(t *testing.T) {
 	options, err := parseOrchestratorOptions([]string{"runtime_id=writer-okta-audit"})
 	if err != nil {

@@ -55,7 +55,7 @@ LIMIT 25`,
 		t.Fatalf("content-type = %q, want text/event-stream", got)
 	}
 	events := readSSEEvents(t, resp)
-	want := []string{"rationale", "cypher", "rows", "summary", "done"}
+	want := []string{"progress", "rationale", "progress", "cypher", "progress", "rows", "progress", "summary", "done"}
 	if len(events) != len(want) {
 		t.Fatalf("events = %#v, want names %v", events, want)
 	}
@@ -100,8 +100,13 @@ func TestGRCAskDraftFailureReturnsServiceUnavailable(t *testing.T) {
 		t.Fatalf("POST /grc/ask error = %v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusServiceUnavailable)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d with streamed error event", resp.StatusCode, http.StatusOK)
+	}
+	events := readSSEEvents(t, resp)
+	assertSSEEventNames(t, events, []string{"progress", "error"})
+	if !strings.Contains(string(events[1].Data), "draft cypher") {
+		t.Fatalf("error event = %s, want draft failure", events[1].Data)
 	}
 }
 
@@ -118,8 +123,13 @@ func TestGRCAskExplainFailureReturnsServiceUnavailable(t *testing.T) {
 		t.Fatalf("POST /grc/ask error = %v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusServiceUnavailable)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d with streamed error event", resp.StatusCode, http.StatusOK)
+	}
+	events := readSSEEvents(t, resp)
+	assertSSEEventNames(t, events, []string{"progress", "rationale", "progress", "error"})
+	if !strings.Contains(string(events[3].Data), "explain cypher") {
+		t.Fatalf("error event = %s, want explain failure", events[3].Data)
 	}
 }
 
@@ -153,4 +163,16 @@ func readSSEEvents(t *testing.T, resp *http.Response) []sseRecord {
 		t.Fatalf("scan SSE: %v", err)
 	}
 	return events
+}
+
+func assertSSEEventNames(t *testing.T, events []sseRecord, want []string) {
+	t.Helper()
+	if len(events) != len(want) {
+		t.Fatalf("events = %#v, want names %v", events, want)
+	}
+	for i, name := range want {
+		if events[i].Name != name {
+			t.Fatalf("event[%d] = %q, want %q", i, events[i].Name, name)
+		}
+	}
 }
