@@ -187,6 +187,49 @@ def find_drift(
     return drift
 
 
+def _markdown_escape(value: str) -> str:
+    return value.replace("|", "\\|")
+
+
+def _summary_markdown(stack: str, expected_count: int, actual_count: int, drift: list[Drift]) -> str:
+    error_count = sum(1 for finding in drift if finding.severity == "error")
+    warning_count = sum(1 for finding in drift if finding.severity == "warning")
+    status = "failed" if error_count else "passed"
+    lines = [
+        f"## Source Runtime Drift: `{stack}`",
+        "",
+        f"Status: **{status}**",
+        f"Declared runtimes: `{expected_count}`",
+        f"Live runtimes: `{actual_count}`",
+        f"Errors: `{error_count}`",
+        f"Warnings: `{warning_count}`",
+        "",
+    ]
+    if drift:
+        lines.extend(
+            [
+                "| Severity | Runtime | Finding |",
+                "| --- | --- | --- |",
+            ]
+        )
+        for finding in drift:
+            lines.append(
+                f"| `{_markdown_escape(finding.severity)}` | `{_markdown_escape(finding.runtime_id)}` | {_markdown_escape(finding.message)} |"
+            )
+    else:
+        lines.append("Live source runtimes match the stack declaration.")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _write_github_summary(stack: str, expected_count: int, actual_count: int, drift: list[Drift]) -> None:
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not summary_path:
+        return
+    with open(summary_path, "a", encoding="utf-8") as handle:
+        handle.write(_summary_markdown(stack, expected_count, actual_count, drift))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Compare declared source runtimes with the live Cerebro API.")
     parser.add_argument("--stack-file", type=Path, required=True)
@@ -204,7 +247,9 @@ def main(argv: list[str] | None = None) -> int:
 
     expected = _load_stack_runtimes(args.stack_file)
     actual = _load_actual(args.actual_json, api_url, args.api_key, args.tenant_id, args.timeout)
-    drift = find_drift(expected, actual, args.max_age_hours, ALLOWED_UNDECLARED_SOURCE_RUNTIMES.get(_stack_name(args.stack_file), set()))
+    stack = _stack_name(args.stack_file)
+    drift = find_drift(expected, actual, args.max_age_hours, ALLOWED_UNDECLARED_SOURCE_RUNTIMES.get(stack, set()))
+    _write_github_summary(stack, len(expected), len(actual), drift)
 
     for finding in drift:
         print(f"{finding.severity.upper()}: {finding.runtime_id}: {finding.message}")

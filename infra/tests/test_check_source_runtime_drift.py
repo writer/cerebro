@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from scripts.check_source_runtime_drift import _normalize_api_url, find_drift
+from scripts.check_source_runtime_drift import Drift, _normalize_api_url, _summary_markdown, find_drift
 
 
 EXPECTED = {
@@ -118,6 +118,31 @@ class SourceRuntimeDriftTest(unittest.TestCase):
             ),
             "https://internal-cerebro-go-production-alb-1917539768.us-east-1.elb.amazonaws.com",
         )
+
+    def test_summary_markdown_lists_drift_counts(self) -> None:
+        summary = _summary_markdown(
+            "go-prod",
+            2,
+            1,
+            [
+                Drift("error", "writer-okta-audit", "expected runtime is missing from the live API"),
+                Drift("warning", "writer-extra", "live runtime is not declared in stack config"),
+            ],
+        )
+
+        self.assertIn("Status: **failed**", summary)
+        self.assertIn("Declared runtimes: `2`", summary)
+        self.assertIn("Live runtimes: `1`", summary)
+        self.assertIn("Errors: `1`", summary)
+        self.assertIn("Warnings: `1`", summary)
+        self.assertIn("`writer-okta-audit`", summary)
+        self.assertIn("`writer-extra`", summary)
+
+    def test_summary_markdown_reports_success(self) -> None:
+        summary = _summary_markdown("sec-dev", 1, 1, [])
+
+        self.assertIn("Status: **passed**", summary)
+        self.assertIn("Live source runtimes match the stack declaration.", summary)
 
 
 if __name__ == "__main__":
