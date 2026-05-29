@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"sort"
 	"testing"
 	"time"
 
@@ -468,6 +469,79 @@ func TestReadAWSExposureAndTrustPreview(t *testing.T) {
 	}
 }
 
+func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
+	basePrincipalData := func(fake *recordingAWS) {
+		fake.users = []iamtypes.User{{UserName: awssdk.String("admin@writer.com"), UserId: awssdk.String("AIDAADMIN")}}
+		fake.groups = []iamtypes.Group{{GroupName: awssdk.String("Security"), GroupId: awssdk.String("AGPSECURITY")}}
+		fake.roles = []iamtypes.Role{{RoleName: awssdk.String("AdminRole"), RoleId: awssdk.String("AROADMIN"), Arn: awssdk.String("arn:aws:iam::123456789012:role/AdminRole")}}
+		fake.attachedPolicies = []iamtypes.AttachedPolicy{{PolicyName: awssdk.String("AdministratorAccess"), PolicyArn: awssdk.String("arn:aws:iam::aws:policy/AdministratorAccess")}}
+	}
+	for _, tt := range []struct {
+		family  string
+		seed    func(*recordingAWS)
+		wantAPI []string
+	}{
+		{
+			family:  familyAccessKey,
+			seed:    basePrincipalData,
+			wantAPI: []string{"iam:ListAccessKeys", "iam:ListUsers"},
+		},
+		{
+			family:  familyEffectivePermission,
+			seed:    basePrincipalData,
+			wantAPI: []string{"iam:ListAttachedGroupPolicies", "iam:ListAttachedRolePolicies", "iam:ListAttachedUserPolicies", "iam:ListGroups", "iam:ListRoles", "iam:ListUsers"},
+		},
+		{
+			family:  familyIAMGroup,
+			wantAPI: []string{"iam:ListGroups"},
+		},
+		{
+			family:  familyIAMMembership,
+			seed:    basePrincipalData,
+			wantAPI: []string{"iam:GetGroup", "iam:ListGroups"},
+		},
+		{
+			family:  familyIAMRole,
+			wantAPI: []string{"iam:ListRoles"},
+		},
+		{
+			family:  familyIAMRoleAssign,
+			seed:    basePrincipalData,
+			wantAPI: []string{"iam:ListAttachedGroupPolicies", "iam:ListAttachedRolePolicies", "iam:ListAttachedUserPolicies", "iam:ListGroups", "iam:ListRoles", "iam:ListUsers"},
+		},
+		{
+			family:  familyIAMRoleTrust,
+			wantAPI: []string{"iam:ListRoles"},
+		},
+		{
+			family:  familyIAMUser,
+			wantAPI: []string{"iam:ListUsers"},
+		},
+		{
+			family:  familyPublicEndpoint,
+			wantAPI: []string{"apigateway:GET", "cloudfront:ListDistributions", "ec2:DescribeAddresses", "ec2:DescribeNetworkInterfaces", "elasticloadbalancing:DescribeLoadBalancers", "route53:ListHostedZones"},
+		},
+		{
+			family:  familyResourceExposure,
+			wantAPI: []string{"ec2:DescribeSecurityGroups"},
+		},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			fake := &recordingAWS{}
+			if tt.seed != nil {
+				tt.seed(fake)
+			}
+			source := newRecordingSource(t, fake)
+
+			readAllPages(t, source, sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}))
+
+			if !sameStringSet(fake.calls, tt.wantAPI) {
+				t.Fatalf("AWS API calls for %s = %v, want %v", tt.family, sortedUnique(fake.calls), sortedUnique(tt.wantAPI))
+			}
+		})
+	}
+}
+
 func TestReadAWSNetworkInterfacePublicEndpointIncludesAttachedInstance(t *testing.T) {
 	endpoints, _, err := listNetworkInterfacePublicEndpoints(context.Background(), awsClients{ec2: fakeAWS{
 		networkInterfaces: []ec2types.NetworkInterface{{
@@ -698,6 +772,65 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 	return source
 }
 
+func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
+	t.Helper()
+	spec, err := loadSpec()
+	if err != nil {
+		t.Fatalf("loadSpec() error = %v", err)
+	}
+	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}}, nil
+	}}
+	source.families, err = source.newFamilyEngine()
+	if err != nil {
+		t.Fatalf("newFamilyEngine() error = %v", err)
+	}
+	return source
+}
+
+func readAllPages(t *testing.T, source *Source, cfg sourcecdk.Config) {
+	t.Helper()
+	var cursor *cerebrov1.SourceCursor
+	for page := 0; page < 20; page++ {
+		pull, err := source.Read(context.Background(), cfg, cursor)
+		if err != nil {
+			t.Fatalf("Read page %d error = %v", page, err)
+		}
+		if pull.NextCursor == nil {
+			return
+		}
+		cursor = pull.NextCursor
+	}
+	t.Fatal("Read did not finish within 20 pages")
+}
+
+func sameStringSet(got []string, want []string) bool {
+	gotSet := sortedUnique(got)
+	wantSet := sortedUnique(want)
+	if len(gotSet) != len(wantSet) {
+		return false
+	}
+	for index := range gotSet {
+		if gotSet[index] != wantSet[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func sortedUnique(values []string) []string {
+	seen := map[string]bool{}
+	for _, value := range values {
+		seen[value] = true
+	}
+	result := make([]string, 0, len(seen))
+	for value := range seen {
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
+}
+
 type fakeAWS struct {
 	users             []iamtypes.User
 	groups            []iamtypes.Group
@@ -717,6 +850,105 @@ type fakeAWS struct {
 	restAPIs          []apigatewaytypes.RestApi
 	apiV2Domains      []apigatewayv2types.DomainName
 	apiV2APIs         []apigatewayv2types.Api
+}
+
+type recordingAWS struct {
+	fakeAWS
+	calls []string
+}
+
+func (f *recordingAWS) record(action string) {
+	f.calls = append(f.calls, action)
+}
+
+func (f *recordingAWS) ListUsers(ctx context.Context, input *iam.ListUsersInput, options ...func(*iam.Options)) (*iam.ListUsersOutput, error) {
+	f.record("iam:ListUsers")
+	return f.fakeAWS.ListUsers(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListGroups(ctx context.Context, input *iam.ListGroupsInput, options ...func(*iam.Options)) (*iam.ListGroupsOutput, error) {
+	f.record("iam:ListGroups")
+	return f.fakeAWS.ListGroups(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListRoles(ctx context.Context, input *iam.ListRolesInput, options ...func(*iam.Options)) (*iam.ListRolesOutput, error) {
+	f.record("iam:ListRoles")
+	return f.fakeAWS.ListRoles(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListAccessKeys(ctx context.Context, input *iam.ListAccessKeysInput, options ...func(*iam.Options)) (*iam.ListAccessKeysOutput, error) {
+	f.record("iam:ListAccessKeys")
+	return f.fakeAWS.ListAccessKeys(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetGroup(ctx context.Context, input *iam.GetGroupInput, options ...func(*iam.Options)) (*iam.GetGroupOutput, error) {
+	f.record("iam:GetGroup")
+	return f.fakeAWS.GetGroup(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListAttachedUserPolicies(ctx context.Context, input *iam.ListAttachedUserPoliciesInput, options ...func(*iam.Options)) (*iam.ListAttachedUserPoliciesOutput, error) {
+	f.record("iam:ListAttachedUserPolicies")
+	return f.fakeAWS.ListAttachedUserPolicies(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListAttachedGroupPolicies(ctx context.Context, input *iam.ListAttachedGroupPoliciesInput, options ...func(*iam.Options)) (*iam.ListAttachedGroupPoliciesOutput, error) {
+	f.record("iam:ListAttachedGroupPolicies")
+	return f.fakeAWS.ListAttachedGroupPolicies(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListAttachedRolePolicies(ctx context.Context, input *iam.ListAttachedRolePoliciesInput, options ...func(*iam.Options)) (*iam.ListAttachedRolePoliciesOutput, error) {
+	f.record("iam:ListAttachedRolePolicies")
+	return f.fakeAWS.ListAttachedRolePolicies(ctx, input, options...)
+}
+
+func (f *recordingAWS) LookupEvents(ctx context.Context, input *cloudtrail.LookupEventsInput, options ...func(*cloudtrail.Options)) (*cloudtrail.LookupEventsOutput, error) {
+	f.record("cloudtrail:LookupEvents")
+	return f.fakeAWS.LookupEvents(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeSecurityGroups(ctx context.Context, input *ec2.DescribeSecurityGroupsInput, options ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
+	f.record("ec2:DescribeSecurityGroups")
+	return f.fakeAWS.DescribeSecurityGroups(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeAddresses(ctx context.Context, input *ec2.DescribeAddressesInput, options ...func(*ec2.Options)) (*ec2.DescribeAddressesOutput, error) {
+	f.record("ec2:DescribeAddresses")
+	return f.fakeAWS.DescribeAddresses(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeNetworkInterfaces(ctx context.Context, input *ec2.DescribeNetworkInterfacesInput, options ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error) {
+	f.record("ec2:DescribeNetworkInterfaces")
+	return f.fakeAWS.DescribeNetworkInterfaces(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListHostedZones(ctx context.Context, input *route53.ListHostedZonesInput, options ...func(*route53.Options)) (*route53.ListHostedZonesOutput, error) {
+	f.record("route53:ListHostedZones")
+	return f.fakeAWS.ListHostedZones(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListResourceRecordSets(ctx context.Context, input *route53.ListResourceRecordSetsInput, options ...func(*route53.Options)) (*route53.ListResourceRecordSetsOutput, error) {
+	f.record("route53:ListResourceRecordSets")
+	return f.fakeAWS.ListResourceRecordSets(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListDistributions(ctx context.Context, input *cloudfront.ListDistributionsInput, options ...func(*cloudfront.Options)) (*cloudfront.ListDistributionsOutput, error) {
+	f.record("cloudfront:ListDistributions")
+	return f.fakeAWS.ListDistributions(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeLoadBalancers(ctx context.Context, input *elbv2.DescribeLoadBalancersInput, options ...func(*elbv2.Options)) (*elbv2.DescribeLoadBalancersOutput, error) {
+	f.record("elasticloadbalancing:DescribeLoadBalancers")
+	return f.fakeAWS.DescribeLoadBalancers(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetDomainNames(ctx context.Context, input *apigateway.GetDomainNamesInput, options ...func(*apigateway.Options)) (*apigateway.GetDomainNamesOutput, error) {
+	f.record("apigateway:GET")
+	return f.fakeAWS.GetDomainNames(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetRestApis(ctx context.Context, input *apigateway.GetRestApisInput, options ...func(*apigateway.Options)) (*apigateway.GetRestApisOutput, error) {
+	f.record("apigateway:GET")
+	return f.fakeAWS.GetRestApis(ctx, input, options...)
 }
 
 func (f fakeAWS) ListUsers(context.Context, *iam.ListUsersInput, ...func(*iam.Options)) (*iam.ListUsersOutput, error) {
