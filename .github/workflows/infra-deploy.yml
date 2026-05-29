@@ -325,7 +325,7 @@ jobs:
         continue-on-error: true
         shell: bash
         working-directory: infra
-        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --source-id cosmo --run --run-page-limit 1 --run-graph-page-limit 1 --run-event-limit 10 --stop-running-before-run --stop-timeout-seconds 600 --allow-lease-contention-skip --failed-run-retry-seconds 600 --run-attempt-timeout-seconds 3600 --max-age-minutes 60 --wait-timeout-seconds 3600
+        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --source-id cosmo --run --run-page-limit 1 --run-graph-page-limit 1 --run-event-limit 10 --stop-running-before-run --stop-timeout-seconds 600 --allow-lease-contention-skip --failed-run-retry-seconds 300 --run-attempt-timeout-seconds 900 --max-age-minutes 60 --wait-timeout-seconds 1200
 
       - name: Report Cosmo source runtime degradation (sec-dev)
         if: steps.verify_cosmo_source_runtimes_sec_dev.outcome == 'failure'
@@ -451,7 +451,7 @@ jobs:
         continue-on-error: true
         shell: bash
         working-directory: infra
-        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.go-prod.yaml --source-id cosmo --run --run-page-limit 1 --run-graph-page-limit 1 --run-event-limit 10 --stop-timeout-seconds 600 --failed-run-retry-seconds 600 --run-attempt-timeout-seconds 3600 --max-age-minutes 60 --wait-timeout-seconds 3600
+        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.go-prod.yaml --source-id cosmo --run --run-page-limit 1 --run-graph-page-limit 1 --run-event-limit 10 --stop-timeout-seconds 600 --allow-lease-contention-skip --failed-run-retry-seconds 300 --run-attempt-timeout-seconds 900 --max-age-minutes 60 --wait-timeout-seconds 1200
 
       - name: Report Cosmo source runtime degradation (go-prod)
         if: steps.verify_cosmo_source_runtimes_go_prod.outcome == 'failure'
@@ -776,10 +776,11 @@ jobs:
           STACK_NAME: ${{ github.event.inputs.environment }}
         run: |
           extra_args=()
+          extra_args+=(--allow-lease-contention-skip)
           if [ "${STACK_NAME}" = "sec-dev" ]; then
-            extra_args+=(--stop-running-before-run --allow-lease-contention-skip)
+            extra_args+=(--stop-running-before-run)
           fi
-          uv run python scripts/verify_source_runtime_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --source-id cosmo --run --run-page-limit 1 --run-graph-page-limit 1 --run-event-limit 10 "${extra_args[@]}" --stop-timeout-seconds 600 --failed-run-retry-seconds 600 --run-attempt-timeout-seconds 3600 --max-age-minutes 60 --wait-timeout-seconds 3600
+          uv run python scripts/verify_source_runtime_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --source-id cosmo --run --run-page-limit 1 --run-graph-page-limit 1 --run-event-limit 10 "${extra_args[@]}" --stop-timeout-seconds 600 --failed-run-retry-seconds 300 --run-attempt-timeout-seconds 900 --max-age-minutes 60 --wait-timeout-seconds 1200
 
       - name: Report Cosmo source runtime degradation (AWS)
         if: "!startsWith(github.event.inputs.environment, 'gcp-') && steps.verify_cosmo_source_runtimes_manual.outcome == 'failure'"
