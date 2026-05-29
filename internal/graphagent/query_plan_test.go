@@ -1,6 +1,7 @@
 package graphagent
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -11,6 +12,22 @@ func TestOntologyCanonicalizesAliases(t *testing.T) {
 	}
 	if got, ok := canonicalRelation("BELONGS_TO_SOURCE"); !ok || got != "belongs_to" {
 		t.Fatalf("canonicalRelation(BELONGS_TO_SOURCE) = %q, %v; want belongs_to, true", got, ok)
+	}
+}
+
+func TestAskQueryPlanUnmarshalCoercesFilterValues(t *testing.T) {
+	var plan AskQueryPlan
+	if err := json.Unmarshal([]byte(`{"intent":"top_risk_findings","filters":{"risk_score":50,"active":true,"source":"github"}}`), &plan); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if got := plan.Filters["risk_score"]; got != "50" {
+		t.Fatalf("risk_score filter = %q, want 50", got)
+	}
+	if got := plan.Filters["active"]; got != "true" {
+		t.Fatalf("active filter = %q, want true", got)
+	}
+	if got := plan.Filters["source"]; got != "github" {
+		t.Fatalf("source filter = %q, want github", got)
 	}
 }
 

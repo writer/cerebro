@@ -1,6 +1,7 @@
 package graphagent
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -22,6 +23,54 @@ type AskQueryPlan struct {
 	Limit      int               `json:"limit,omitempty"`
 	Filters    map[string]string `json:"filters,omitempty"`
 	GroupBy    string            `json:"group_by,omitempty"`
+}
+
+func (p *AskQueryPlan) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Intent     string         `json:"intent"`
+		Confidence float64        `json:"confidence,omitempty"`
+		ScopeURN   string         `json:"scope_urn,omitempty"`
+		Limit      int            `json:"limit,omitempty"`
+		Filters    map[string]any `json:"filters,omitempty"`
+		GroupBy    string         `json:"group_by,omitempty"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	p.Intent = raw.Intent
+	p.Confidence = raw.Confidence
+	p.ScopeURN = raw.ScopeURN
+	p.Limit = raw.Limit
+	p.GroupBy = raw.GroupBy
+	if raw.Filters == nil {
+		p.Filters = nil
+		return nil
+	}
+	p.Filters = make(map[string]string, len(raw.Filters))
+	for key, value := range raw.Filters {
+		filterValue := stringifyPlanFilter(value)
+		if filterValue != "" {
+			p.Filters[key] = filterValue
+		}
+	}
+	return nil
+}
+
+func stringifyPlanFilter(value any) string {
+	switch typed := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return strings.TrimSpace(typed)
+	case float64, bool:
+		return strings.TrimSpace(fmt.Sprint(typed))
+	default:
+		raw, err := json.Marshal(typed)
+		if err != nil {
+			return strings.TrimSpace(fmt.Sprint(typed))
+		}
+		return string(raw)
+	}
 }
 
 type ConversionDiagnostic struct {

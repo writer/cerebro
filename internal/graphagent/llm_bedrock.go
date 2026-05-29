@@ -166,6 +166,7 @@ Conversation history:
 
 Return ONLY compact JSON:
 {"rationale":"short explanation","plan":{"intent":"top_risk_findings","confidence":0.8,"limit":25,"filters":{}},"cypher":"MATCH ... LIMIT 25","refusal":""}
+All plan.filters values must be JSON strings, even for numbers or booleans (for example {"risk_score":"50"}).
 
 If the question asks for mutation, deletion, credential disclosure, or anything unsafe, return:
 {"rationale":"why refused","plan":{"intent":"raw_cypher","confidence":0},"cypher":null,"refusal":"safe refusal message"}
