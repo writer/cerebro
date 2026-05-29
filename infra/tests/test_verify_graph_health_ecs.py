@@ -24,6 +24,7 @@ from scripts.verify_graph_health_ecs import (
     _is_graph_paths_timeout,
     _latest_active_task_definition,
     _missing_declared_ingest_runtime_ids,
+    _missing_required_graph_relation_counts,
     _resource_prefix,
     _supports_attack_path_relations,
     _supports_relation_counts,
@@ -418,6 +419,14 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "can_assume, can_perform"):
             _verify_required_graph_relation_counts(payload, {"effective_permission", "iam_role_trust"})
 
+    def test_missing_required_graph_relation_counts_returns_missing_edges(self) -> None:
+        counts = {"belongs_to": 4, "represents": 2, "can_perform": 0, "can_assume": 0}
+
+        self.assertEqual(
+            _missing_required_graph_relation_counts(counts, {"effective_permission", "iam_role_trust"}),
+            ["can_assume", "can_perform"],
+        )
+
     def test_graph_relation_observation_includes_optional_can_reach(self) -> None:
         self.assertIn("can_reach", GRAPH_RELATIONS_TO_OBSERVE)
 
@@ -468,6 +477,7 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             27,
             27,
             [],
+            [],
             {"public_endpoint"},
         )
 
@@ -489,11 +499,30 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             1,
             2,
             ["runtime-b"],
+            [],
             set(),
         )
 
         self.assertIn("Status: **failed**", summary)
         self.assertIn("| `runtime-b` |", summary)
+
+    def test_summary_markdown_marks_missing_graph_relation_failed(self) -> None:
+        summary = _summary_markdown(
+            "go-prod",
+            {"nodes": 1, "relations": 1},
+            {"passed": 7, "failed": 0},
+            {"belongs_to": 1, "represents": 1, "can_assume": 0},
+            {"belongs_to", "represents"},
+            2,
+            2,
+            [],
+            ["can_assume"],
+            {"iam_role_trust"},
+        )
+
+        self.assertIn("Status: **failed**", summary)
+        self.assertIn("| Missing graph relation |", summary)
+        self.assertIn("| `can_assume` |", summary)
 
 
 if __name__ == "__main__":
