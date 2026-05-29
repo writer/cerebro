@@ -38,6 +38,8 @@ class VerificationResult:
     graph_ingest_status: str
     events_appended: int | None
     pages_read: int | None
+    entities_projected: int | None = None
+    links_projected: int | None = None
 
 
 class RuntimeSkippedError(RuntimeError):
@@ -463,6 +465,8 @@ def _summarize_log_messages(messages: list[dict[str, Any]], limit: int = 20) -> 
         "reason",
         "events_appended",
         "pages_read",
+        "entities_projected",
+        "links_projected",
     )
     lines = []
     for message in messages[-limit:]:
@@ -529,6 +533,8 @@ def _verify_task(target: RuntimeTarget, task_arn: str, region: str) -> Verificat
         graph_ingest_status=graph_ingest_status,
         events_appended=sync_span.get("events_appended") if sync_span else None,
         pages_read=sync_span.get("pages_read") if sync_span else None,
+        entities_projected=graph_ingest_span.get("entities_projected") if graph_ingest_span else None,
+        links_projected=graph_ingest_span.get("links_projected") if graph_ingest_span else None,
     )
 
 
@@ -701,7 +707,7 @@ def main(argv: list[str] | None = None) -> int:
             task_arn = _latest_task(target, args.max_age_minutes, args.region)
             results.append(_verify_task(target, task_arn, args.region))
 
-    print("runtime_id\texit\tsync\tevents_appended\tpages_read\tgraph_ingest\ttask_arn")
+    print("runtime_id\texit\tsync\tevents_appended\tpages_read\tgraph_ingest\tentities_projected\tlinks_projected\ttask_arn")
     for result in results:
         print(
             "\t".join(
@@ -712,6 +718,8 @@ def main(argv: list[str] | None = None) -> int:
                     str(result.events_appended),
                     str(result.pages_read),
                     result.graph_ingest_status,
+                    str(result.entities_projected),
+                    str(result.links_projected),
                     result.task_arn,
                 ]
             )
