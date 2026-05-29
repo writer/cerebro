@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -18,6 +19,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
 //go:embed catalog.yaml
@@ -43,9 +45,11 @@ const (
 
 // Source reads Azure Entra ID inventory, Azure RBAC, and audit/activity logs.
 type Source struct {
-	spec     *cerebrov1.SourceSpec
-	client   *http.Client
-	families *sourcecdk.FamilyEngine[settings]
+	spec                 *cerebrov1.SourceSpec
+	client               *http.Client
+	families             *sourcecdk.FamilyEngine[settings]
+	allowLoopbackBaseURL bool
+	lookupIPAddrs        func(context.Context, string) ([]net.IPAddr, error)
 }
 
 type settings struct {
@@ -331,7 +335,8 @@ func New() (*Source, error) {
 	if err != nil {
 		return nil, err
 	}
-	source := &Source{spec: spec, client: &http.Client{Timeout: 30 * time.Second}}
+	source := &Source{spec: spec, lookupIPAddrs: net.DefaultResolver.LookupIPAddr}
+	source.client = source.safeClient()
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
 		return nil, err
@@ -1081,9 +1086,22 @@ func getARMJSON(ctx context.Context, source *Source, settings settings, method s
 }
 
 func getJSON(ctx context.Context, source *Source, baseURL string, token string, method string, requestPath string, query url.Values, body any, target any) error {
-	endpoint := requestPath
-	if !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
-		endpoint = strings.TrimRight(baseURL, "/") + requestPath
+	normalizedBaseURL, _, err := sourcehttp.NormalizeBaseURL("azure", baseURL, source != nil && source.allowLoopbackBaseURL)
+	if err != nil {
+		return err
+	}
+	endpoint := strings.TrimSpace(requestPath)
+	if strings.HasPrefix(endpoint, "http://") || strings.HasPrefix(endpoint, "https://") {
+		endpoint, err = sourcehttp.SameOriginAbsoluteURL("azure", normalizedBaseURL, endpoint)
+		if err != nil {
+			return err
+		}
+	} else {
+		path, err := sourcehttp.NormalizeRequestPath("azure", endpoint)
+		if err != nil {
+			return err
+		}
+		endpoint = normalizedBaseURL + path
 	}
 	if encoded := query.Encode(); encoded != "" {
 		separator := "?"
@@ -1118,7 +1136,7 @@ func getJSON(ctx context.Context, source *Source, baseURL string, token string, 
 		return fmt.Errorf("request %s: %w", requestPath, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	content, err := io.ReadAll(resp.Body)
+	content, err := sourcehttp.ReadLimitedBody(resp.Body)
 	if err != nil {
 		return fmt.Errorf("read %s response: %w", requestPath, err)
 	}
@@ -1129,6 +1147,30 @@ func getJSON(ctx context.Context, source *Source, baseURL string, token string, 
 		return fmt.Errorf("decode %s response: %w", requestPath, err)
 	}
 	return nil
+}
+
+func (s *Source) safeClient() *http.Client {
+	return &http.Client{
+		Timeout:       30 * time.Second,
+		Transport:     s.safeTransport(),
+		CheckRedirect: sourcehttp.NoRedirect,
+	}
+}
+
+func (s *Source) safeTransport() http.RoundTripper {
+	return sourcehttp.SafeRoundTripper{
+		Base:          http.DefaultTransport,
+		SourceID:      "azure",
+		AllowLoopback: s != nil && s.allowLoopbackBaseURL,
+		LookupIPAddrs: lookupIPAddrs(s),
+	}
+}
+
+func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, error) {
+	if source != nil && source.lookupIPAddrs != nil {
+		return source.lookupIPAddrs
+	}
+	return net.DefaultResolver.LookupIPAddr
 }
 
 func decodeAzureRecords[T any](rawRecords []json.RawMessage, label string, setRaw func(*T, json.RawMessage)) ([]T, error) {

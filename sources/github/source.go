@@ -19,6 +19,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
 //go:embed catalog.yaml
@@ -369,23 +370,8 @@ func sourceHTTPClientNoRedirect(client *http.Client, allowLoopback bool, lookupI
 	if transport == nil {
 		transport = http.DefaultTransport
 	}
-	cloned.Transport = safeSourceRoundTripper{base: transport, allowLoopback: allowLoopback, lookupIPAddrs: lookupIPAddrs}
+	cloned.Transport = sourcehttp.SafeRoundTripper{Base: transport, SourceID: "github", AllowLoopback: allowLoopback, LookupIPAddrs: lookupIPAddrs}
 	return &cloned
-}
-
-type safeSourceRoundTripper struct {
-	base          http.RoundTripper
-	allowLoopback bool
-	lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)
-}
-
-func (rt safeSourceRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req != nil && req.URL != nil {
-		if err := rejectResolvedUnsafeHost(req.Context(), req.URL.Hostname(), rt.allowLoopback, rt.lookupIPAddrs); err != nil {
-			return nil, err
-		}
-	}
-	return rt.base.RoundTrip(req)
 }
 
 func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL bool) (_ settings, err error) {
@@ -609,35 +595,6 @@ func isUnsafeIP(ip net.IP) bool {
 		ip.IsLinkLocalMulticast() ||
 		ip.IsUnspecified() ||
 		ip.IsMulticast()
-}
-
-func rejectResolvedUnsafeHost(ctx context.Context, host string, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) error {
-	normalized := normalizedIPHost(host)
-	if normalized == "" {
-		return nil
-	}
-	if isUnsafeHost(normalized) {
-		if allowLoopback && isLoopbackHost(normalized) {
-			return nil
-		}
-		return errUnsafeBaseURLHost
-	}
-	if lookupIPAddrs == nil {
-		lookupIPAddrs = net.DefaultResolver.LookupIPAddr
-	}
-	addrs, err := lookupIPAddrs(ctx, normalized)
-	if err != nil {
-		return fmt.Errorf("resolve github base_url host %q: %w", normalized, err)
-	}
-	for _, addr := range addrs {
-		if isUnsafeIP(addr.IP) {
-			if allowLoopback && addr.IP != nil && addr.IP.IsLoopback() {
-				continue
-			}
-			return errUnsafeBaseURLHost
-		}
-	}
-	return nil
 }
 
 func normalizedIPHost(host string) string {

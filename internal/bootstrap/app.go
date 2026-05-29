@@ -632,6 +632,10 @@ func (a *App) handleRunReport(w http.ResponseWriter, r *http.Request) {
 	for key, value := range config {
 		request.Parameters[key] = value
 	}
+	if err := authorizeTenantID(r.Context(), request.GetParameters()["tenant_id"]); err != nil {
+		writeReportError(w, err)
+		return
+	}
 	response, err := a.reportService().Run(r.Context(), request)
 	if err != nil {
 		writeReportError(w, err)
@@ -1749,6 +1753,9 @@ func (s *bootstrapService) ListFindingRules(_ context.Context, _ *connect.Reques
 }
 
 func (s *bootstrapService) RunReport(ctx context.Context, req *connect.Request[cerebrov1.RunReportRequest]) (*connect.Response[cerebrov1.RunReportResponse], error) {
+	if err := authorizeTenantID(ctx, req.Msg.GetParameters()["tenant_id"]); err != nil {
+		return nil, reportConnectError(err)
+	}
 	response, err := reports.New(
 		findingStore(s.deps.StateStore),
 		graphQueryStore(s.deps.GraphStore),

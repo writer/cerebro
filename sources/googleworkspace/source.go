@@ -5,7 +5,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
-	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -17,6 +17,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
 //go:embed catalog.yaml
@@ -37,9 +38,11 @@ const (
 
 // Source reads Google Workspace Directory and Admin audit records.
 type Source struct {
-	spec     *cerebrov1.SourceSpec
-	client   *http.Client
-	families *sourcecdk.FamilyEngine[settings]
+	spec                 *cerebrov1.SourceSpec
+	client               *http.Client
+	families             *sourcecdk.FamilyEngine[settings]
+	allowLoopbackBaseURL bool
+	lookupIPAddrs        func(context.Context, string) ([]net.IPAddr, error)
 }
 
 type settings struct {
@@ -146,7 +149,8 @@ func New() (*Source, error) {
 	if err != nil {
 		return nil, err
 	}
-	source := &Source{spec: spec, client: &http.Client{Timeout: 30 * time.Second}}
+	source := &Source{spec: spec, lookupIPAddrs: net.DefaultResolver.LookupIPAddr}
+	source.client = source.safeClient()
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
 		return nil, err
@@ -282,12 +286,6 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	}
 	if settings.baseURL == "" {
 		settings.baseURL = defaultBaseURL
-	} else {
-		parsed, err := url.Parse(strings.TrimSpace(settings.baseURL))
-		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-			return settings, fmt.Errorf("google_workspace base_url must include scheme and host")
-		}
-		settings.baseURL = strings.TrimRight(parsed.String(), "/")
 	}
 	if settings.family == familyGroupMember && settings.groupKey == "" {
 		return settings, fmt.Errorf("google_workspace group_key is required when family=%q", familyGroupMember)
@@ -355,7 +353,15 @@ func (r pageResponse) records(field string) []json.RawMessage {
 }
 
 func (s *Source) getJSON(ctx context.Context, settings settings, path string, query url.Values, target any) error {
-	endpoint := settings.baseURL + path
+	baseURL, _, err := sourcehttp.NormalizeBaseURL("google_workspace", settings.baseURL, s != nil && s.allowLoopbackBaseURL)
+	if err != nil {
+		return err
+	}
+	requestPath, err := sourcehttp.NormalizeRequestPath("google_workspace", path)
+	if err != nil {
+		return err
+	}
+	endpoint := baseURL + requestPath
 	if encoded := query.Encode(); encoded != "" {
 		endpoint += "?" + encoded
 	}
@@ -374,7 +380,7 @@ func (s *Source) getJSON(ctx context.Context, settings settings, path string, qu
 		return fmt.Errorf("request %s: %w", path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	body, err := io.ReadAll(resp.Body)
+	body, err := sourcehttp.ReadLimitedBody(resp.Body)
 	if err != nil {
 		return fmt.Errorf("read %s response: %w", path, err)
 	}
@@ -385,6 +391,30 @@ func (s *Source) getJSON(ctx context.Context, settings settings, path string, qu
 		return fmt.Errorf("decode %s response: %w", path, err)
 	}
 	return nil
+}
+
+func (s *Source) safeClient() *http.Client {
+	return &http.Client{
+		Timeout:       30 * time.Second,
+		Transport:     s.safeTransport(),
+		CheckRedirect: sourcehttp.NoRedirect,
+	}
+}
+
+func (s *Source) safeTransport() http.RoundTripper {
+	return sourcehttp.SafeRoundTripper{
+		Base:          http.DefaultTransport,
+		SourceID:      "google_workspace",
+		AllowLoopback: s != nil && s.allowLoopbackBaseURL,
+		LookupIPAddrs: lookupIPAddrs(s),
+	}
+}
+
+func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, error) {
+	if source != nil && source.lookupIPAddrs != nil {
+		return source.lookupIPAddrs
+	}
+	return net.DefaultResolver.LookupIPAddr
 }
 
 func sourceEvent(settings settings, raw json.RawMessage) (*primitives.Event, error) {

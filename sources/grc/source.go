@@ -23,6 +23,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
 //go:embed catalog.yaml
@@ -477,11 +478,7 @@ func (s *Source) doJSON(req *http.Request, target any) error {
 	if transport == nil {
 		transport = http.DefaultTransport
 	}
-	cloned.Transport = safeRoundTripper{
-		base:          transport,
-		allowLoopback: s.allowLoopbackBaseURL,
-		lookupIPAddrs: lookupIPAddrs(s),
-	}
+	cloned.Transport = sourcehttp.SafeRoundTripper{Base: transport, SourceID: "grc", AllowLoopback: s.allowLoopbackBaseURL, LookupIPAddrs: lookupIPAddrs(s)}
 	resp, err := cloned.Do(req)
 	if err != nil {
 		return fmt.Errorf("request %s: %w", req.URL.Path, err)
@@ -1442,59 +1439,11 @@ func validateTrustedVantaOrigin(raw string, allowLoopback bool) error {
 	return fmt.Errorf("grc Vanta host %q is not trusted", host)
 }
 
-type safeRoundTripper struct {
-	base          http.RoundTripper
-	allowLoopback bool
-	lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)
-}
-
-func (rt safeRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req != nil && req.URL != nil {
-		if err := rejectResolvedUnsafeHost(req.Context(), req.URL.Hostname(), rt.allowLoopback, rt.lookupIPAddrs); err != nil {
-			return nil, err
-		}
-	}
-	return rt.base.RoundTrip(req)
-}
-
 func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, error) {
 	if source != nil && source.lookupIPAddrs != nil {
 		return source.lookupIPAddrs
 	}
 	return net.DefaultResolver.LookupIPAddr
-}
-
-func rejectResolvedUnsafeHost(ctx context.Context, host string, allowLoopback bool, lookup func(context.Context, string) ([]net.IPAddr, error)) error {
-	normalized := strings.ToLower(strings.TrimSpace(host))
-	if normalized == "" {
-		return fmt.Errorf("grc host is required")
-	}
-	if ip := net.ParseIP(normalized); ip != nil {
-		if unsafeIP(ip, allowLoopback) {
-			return fmt.Errorf("grc host must not target loopback, private, or link-local addresses")
-		}
-		return nil
-	}
-	addrs, err := lookup(ctx, normalized)
-	if err != nil {
-		return fmt.Errorf("resolve grc host %q: %w", normalized, err)
-	}
-	for _, addr := range addrs {
-		if unsafeIP(addr.IP, allowLoopback) {
-			return fmt.Errorf("grc host must not resolve to loopback, private, or link-local addresses")
-		}
-	}
-	return nil
-}
-
-func unsafeIP(ip net.IP, allowLoopback bool) bool {
-	if ip == nil {
-		return true
-	}
-	if allowLoopback && ip.IsLoopback() {
-		return false
-	}
-	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()
 }
 
 func isLoopbackHost(host string) bool {

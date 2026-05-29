@@ -1040,10 +1040,16 @@ func accessAuditClientIP(r *http.Request) string {
 	if remoteIP == nil || !accessAuditTrustsForwardedFor(remoteIP) {
 		return ""
 	}
-	for _, part := range strings.Split(r.Header.Get("X-Forwarded-For"), ",") {
-		if ip := net.ParseIP(strings.TrimSpace(part)); ip != nil {
-			return ip.String()
+	parts := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
+	for i := len(parts) - 1; i >= 0; i-- {
+		ip := net.ParseIP(strings.TrimSpace(parts[i]))
+		if ip == nil {
+			continue
 		}
+		if accessAuditTrustsForwardedFor(ip) {
+			continue
+		}
+		return ip.String()
 	}
 	return ""
 }

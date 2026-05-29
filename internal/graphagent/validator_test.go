@@ -50,6 +50,18 @@ func TestValidatorRejectsUnsafeCypher(t *testing.T) {
 			reason: "every node",
 		},
 		{
+			name: "comment marker inside string does not hide unscoped match",
+			cypher: `MATCH (a:Entity {tenant_id:$tenant_id})
+WITH a, 'x //' AS c MATCH (b:Entity)
+RETURN b.urn AS urn LIMIT 25`,
+			reason: "every node",
+		},
+		{
+			name:   "write clause after comment marker inside string",
+			cypher: `MATCH (a:Entity {tenant_id:$tenant_id}) WITH 'x //' AS c CREATE (b:Entity) RETURN b LIMIT 25`,
+			reason: "forbidden",
+		},
+		{
 			name:   "unlabeled second node",
 			cypher: `MATCH (a:Entity {tenant_id: $tenant_id}), (b) RETURN b LIMIT 25`,
 			reason: "every node",
@@ -75,6 +87,11 @@ func TestValidatorRejectsUnsafeCypher(t *testing.T) {
 			reason: "inline tenant_id",
 		},
 		{
+			name:   "union branch limit too high",
+			cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e.urn AS urn LIMIT 1000 UNION MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e.urn AS urn LIMIT 25`,
+			reason: "exceeds",
+		},
+		{
 			name:   "call subquery has independent scope",
 			cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) CALL { MATCH (e) RETURN e.urn AS leaked LIMIT 25 } RETURN leaked LIMIT 25`,
 			reason: "inline tenant_id",
@@ -98,6 +115,11 @@ func TestValidatorRejectsUnsafeCypher(t *testing.T) {
 			name:   "existential subquery binding cannot escape",
 			cypher: `MATCH (seed:Entity {tenant_id: $tenant_id}) WHERE EXISTS { MATCH (tmp:Entity {tenant_id: $tenant_id}) RETURN tmp LIMIT 1 } MATCH (tmp) RETURN tmp.urn LIMIT 25`,
 			reason: "inline tenant_id",
+		},
+		{
+			name:   "unparseable nested property pattern fails closed",
+			cypher: `MATCH (seed:Entity {tenant_id: $tenant_id}) RETURN [(x:Entity {metadata: {tenant_id: $tenant_id}}) | x.urn] AS urn LIMIT 25`,
+			reason: "every node",
 		},
 	}
 

@@ -624,9 +624,6 @@ func TestSourceHTTPClientRejectsHostsResolvingToPrivateIPs(t *testing.T) {
 	if err == nil {
 		t.Fatal("Do() error = nil, want non-nil")
 	}
-	if !errors.Is(err, errUnsafeBaseURLHost) {
-		t.Fatalf("Do() error = %v, want %v", err, errUnsafeBaseURLHost)
-	}
 	if called {
 		t.Fatal("Do() reached wrapped transport for unsafe resolved host")
 	}
