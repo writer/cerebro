@@ -373,24 +373,36 @@ def _run_graph_command_with_retries(
 
 
 def _verify_counts(payload: dict[str, Any]) -> None:
+    errors = _count_health_errors(payload)
+    if errors:
+        raise RuntimeError("; ".join(errors))
+
+
+def _count_health_errors(payload: dict[str, Any]) -> list[str]:
     nodes = int(payload.get("nodes") or 0)
     relations = int(payload.get("relations") or 0)
+    errors: list[str] = []
     if nodes <= 0:
-        raise RuntimeError(f"graph node count must be positive, got {nodes}")
+        errors.append(f"graph node count must be positive, got {nodes}")
     if relations <= 0:
-        raise RuntimeError(f"graph relation count must be positive, got {relations}")
+        errors.append(f"graph relation count must be positive, got {relations}")
+    return errors
 
 
 def _verify_integrity(payload: dict[str, Any]) -> None:
     failed = int(payload.get("failed") or 0)
-    checks = payload.get("checks") or []
     if failed != 0:
-        failed_checks = [
-            f"{check.get('name')}={check.get('actual')}"
-            for check in checks
-            if isinstance(check, dict) and not bool(check.get("passed"))
-        ]
+        failed_checks = _failed_integrity_checks(payload)
         raise RuntimeError(f"graph integrity failed {failed} checks: {', '.join(failed_checks)}")
+
+
+def _failed_integrity_checks(payload: dict[str, Any]) -> list[str]:
+    checks = payload.get("checks") or []
+    return [
+        f"{check.get('name')}={check.get('actual')}"
+        for check in checks
+        if isinstance(check, dict) and not bool(check.get("passed"))
+    ]
 
 
 def _parse_time(value: Any) -> datetime | None:
@@ -656,12 +668,14 @@ def _summary_markdown(
     graph_relations: set[str],
     current_ingest_runtimes: int,
     declared_runtime_count: int,
+    graph_health_errors: list[str],
+    failed_integrity_checks: list[str],
     missing_ingest_runtimes: list[str],
     missing_graph_relations: list[str],
     aws_families: set[str],
 ) -> str:
     failed_checks = int(integrity_payload.get("failed") or 0)
-    status = "failed" if failed_checks or missing_ingest_runtimes or missing_graph_relations else "passed"
+    status = "failed" if graph_health_errors or failed_checks or missing_ingest_runtimes or missing_graph_relations else "passed"
     lines = [
         f"## Graph Health: `{stack}`",
         "",
@@ -674,6 +688,26 @@ def _summary_markdown(
         f"Observed relation families: `{', '.join(sorted(graph_relations)) if graph_relations else 'none'}`",
         "",
     ]
+    if graph_health_errors:
+        lines.extend(
+            [
+                "| Graph health failure |",
+                "| --- |",
+            ]
+        )
+        for error in graph_health_errors:
+            lines.append(f"| `{_markdown_escape(error)}` |")
+        lines.append("")
+    if failed_integrity_checks:
+        lines.extend(
+            [
+                "| Failed integrity check |",
+                "| --- |",
+            ]
+        )
+        for check in failed_integrity_checks:
+            lines.append(f"| `{_markdown_escape(check)}` |")
+        lines.append("")
     if missing_ingest_runtimes:
         lines.extend(
             [
@@ -715,6 +749,8 @@ def _write_github_summary(
     graph_relations: set[str],
     current_ingest_runtimes: int,
     declared_runtime_count: int,
+    graph_health_errors: list[str],
+    failed_integrity_checks: list[str],
     missing_ingest_runtimes: list[str],
     missing_graph_relations: list[str],
     aws_families: set[str],
@@ -732,6 +768,8 @@ def _write_github_summary(
                 graph_relations,
                 current_ingest_runtimes,
                 declared_runtime_count,
+                graph_health_errors,
+                failed_integrity_checks,
                 missing_ingest_runtimes,
                 missing_graph_relations,
                 aws_families,
@@ -775,7 +813,7 @@ def main(argv: list[str] | None = None) -> int:
         args.region,
         args.graph_command_retry_seconds,
     )
-    _verify_counts(counts.payload)
+    graph_health_errors = _count_health_errors(counts.payload)
     integrity = _run_graph_command_with_retries(
         resource_prefix,
         service,
@@ -785,7 +823,7 @@ def main(argv: list[str] | None = None) -> int:
         args.region,
         args.graph_command_retry_seconds,
     )
-    _verify_integrity(integrity.payload)
+    failed_integrity_checks = _failed_integrity_checks(integrity.payload)
     aws_families = _declared_aws_families(config)
     attack_path_relations_supported = _supports_attack_path_relations(config)
     graph_relations: set[str] = set()
@@ -862,11 +900,18 @@ def main(argv: list[str] | None = None) -> int:
         graph_relations,
         current_ingest_runtimes,
         len(declared_runtime_ids),
+        graph_health_errors,
+        failed_integrity_checks,
         missing_ingest_runtimes,
         missing_graph_relations,
         aws_families,
     )
 
+    failures = [*graph_health_errors]
+    if failed_integrity_checks:
+        failures.append(f"graph integrity failed {int(integrity.payload.get('failed') or 0)} checks: {', '.join(failed_integrity_checks)}")
+    if failures:
+        raise RuntimeError("; ".join(failures))
     if missing_graph_relations:
         raise RuntimeError(f"graph relation counts missing required relation(s): {', '.join(missing_graph_relations)}")
 

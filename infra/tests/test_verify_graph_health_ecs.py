@@ -11,8 +11,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import scripts.verify_graph_health_ecs as verify_graph_health_ecs
 from scripts.verify_graph_health_ecs import (
     GRAPH_RELATIONS_TO_OBSERVE,
+    _count_health_errors,
     _declared_aws_families,
     _extract_json_payload,
+    _failed_integrity_checks,
     _declared_runtime_ids,
     _graph_command_overrides,
     _graph_path_relations,
@@ -399,6 +401,26 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             {"belongs_to": 4, "represents": 2, "missing": 0},
         )
 
+    def test_count_health_errors_reports_zero_counts(self) -> None:
+        self.assertEqual(
+            _count_health_errors({"nodes": 0, "relations": 0}),
+            [
+                "graph node count must be positive, got 0",
+                "graph relation count must be positive, got 0",
+            ],
+        )
+
+    def test_failed_integrity_checks_lists_failed_checks(self) -> None:
+        payload = {
+            "failed": 1,
+            "checks": [
+                {"name": "has_nodes", "actual": 0, "passed": False},
+                {"name": "has_relations", "actual": 12, "passed": True},
+            ],
+        }
+
+        self.assertEqual(_failed_integrity_checks(payload), ["has_nodes=0"])
+
     def test_verify_required_graph_relation_counts_requires_positive_counts(self) -> None:
         payload = {"relations": {"belongs_to": 4, "represents": 2, "can_reach": 0}}
 
@@ -478,6 +500,8 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             27,
             [],
             [],
+            [],
+            [],
             {"public_endpoint"},
         )
 
@@ -498,6 +522,8 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             {"belongs_to"},
             1,
             2,
+            [],
+            [],
             ["runtime-b"],
             [],
             set(),
@@ -516,6 +542,8 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             2,
             2,
             [],
+            [],
+            [],
             ["can_assume"],
             {"iam_role_trust"},
         )
@@ -523,6 +551,28 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
         self.assertIn("Status: **failed**", summary)
         self.assertIn("| Missing graph relation |", summary)
         self.assertIn("| `can_assume` |", summary)
+
+    def test_summary_markdown_includes_count_and_integrity_failures(self) -> None:
+        summary = _summary_markdown(
+            "go-prod",
+            {"nodes": 0, "relations": 0},
+            {"passed": 6, "failed": 1},
+            {},
+            set(),
+            2,
+            2,
+            ["graph node count must be positive, got 0"],
+            ["has_nodes=0"],
+            [],
+            [],
+            set(),
+        )
+
+        self.assertIn("Status: **failed**", summary)
+        self.assertIn("| Graph health failure |", summary)
+        self.assertIn("| `graph node count must be positive, got 0` |", summary)
+        self.assertIn("| Failed integrity check |", summary)
+        self.assertIn("| `has_nodes=0` |", summary)
 
 
 if __name__ == "__main__":
