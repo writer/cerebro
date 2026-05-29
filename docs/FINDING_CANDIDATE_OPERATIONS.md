@@ -36,19 +36,24 @@ Candidate workflows emit structured telemetry events:
   `runtime_id`, `rule_id`, `status`, `events_evaluated`, `events_matched`,
   `candidates_emitted`, and `duration_ms`.
 - `finding_candidate.list`: list-time health signal with `candidate_count`,
-  `open_candidate_count`, `promoted_count`, and `stale_candidate_count`.
+  `open_candidate_count`, `promoted_count`, `rejected_count`, and
+  `stale_candidate_count`.
 - `finding_candidate.promotion`: one event per promotion or idempotent
   re-promotion, with `candidate_id`, `finding_id`, `decision_id`, `outcome`,
+  `observation_count`, and `duration_ms`.
+- `finding_candidate.rejection`: one event per rejection or idempotent
+  re-rejection, with `candidate_id`, `decision_id`, `outcome`,
   `observation_count`, and `duration_ms`.
 
 These events are intentionally low-cardinality except for object IDs needed to
 debug one workflow. Dashboards should aggregate by `runtime_id`, `rule_id`,
 `status`, and `outcome`.
 
-## Promotion Authorization
+## Candidate Lifecycle Authorization
 
-Promotion mutates production finding state. When API auth is enabled, promotion
-requires the dedicated scope:
+Promotion mutates production finding state, and rejection closes a reviewed
+candidate. When API auth is enabled, both lifecycle writes require the dedicated
+scope:
 
 ```text
 cerebro.finding_candidates.promote
@@ -56,20 +61,18 @@ cerebro.finding_candidates.promote
 
 Tenant authorization still applies before the scope check. Read-only security
 clients with `cerebro.cosmo.security.read` can list/get candidates but cannot
-promote them.
+promote or reject them.
 
 ## Next Lifecycle Slice
 
-The current durable statuses are `candidate` and `promoted`. The next lifecycle
-slice should add:
+The current durable statuses are `candidate`, `promoted`, and `rejected`. The next
+lifecycle slice should add:
 
-- `rejected`: reviewer confirmed this candidate should not become a production finding.
 - `expired`: candidate aged out without review after a configured TTL.
 - `superseded`: a newer candidate fingerprint or rule version replaced this snapshot.
 
 Recommended follow-up API additions:
 
-- `POST /finding-candidates/{candidateID}/reject`
 - `POST /finding-candidates/{candidateID}/expire`
 - `GET /source-runtimes/{runtimeID}/finding-candidates?status=rejected`
 

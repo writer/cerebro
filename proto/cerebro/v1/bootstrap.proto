@@ -32,6 +32,7 @@ service BootstrapService {
   rpc GetFindingCandidate(GetFindingCandidateRequest) returns (GetFindingCandidateResponse);
   rpc EvaluateSourceRuntimeFindingCandidates(EvaluateSourceRuntimeFindingCandidatesRequest) returns (EvaluateSourceRuntimeFindingCandidatesResponse);
   rpc PromoteFindingCandidate(PromoteFindingCandidateRequest) returns (PromoteFindingCandidateResponse);
+  rpc RejectFindingCandidate(RejectFindingCandidateRequest) returns (RejectFindingCandidateResponse);
   rpc ResolveFinding(ResolveFindingRequest) returns (ResolveFindingResponse);
   rpc SuppressFinding(SuppressFindingRequest) returns (SuppressFindingResponse);
   rpc AssignFinding(AssignFindingRequest) returns (AssignFindingResponse);
@@ -627,6 +628,9 @@ message FindingCandidate {
   google.protobuf.Timestamp promoted_at = 18;
   google.protobuf.Timestamp created_at = 19;
   google.protobuf.Timestamp updated_at = 20;
+  string rejected_by = 21;
+  string rejection_rationale = 22;
+  google.protobuf.Timestamp rejected_at = 23;
 }
 
 // ListFindingCandidatesRequest queries isolated candidate finding snapshots for one runtime.
@@ -690,6 +694,19 @@ message PromoteFindingCandidateResponse {
   Finding finding = 1;
   FindingCandidate candidate = 2;
   string decision_id = 3;
+}
+
+// RejectFindingCandidateRequest records a reviewed candidate as not production-worthy.
+message RejectFindingCandidateRequest {
+  string id = 1;
+  string rejected_by = 2;
+  string rationale = 3;
+}
+
+// RejectFindingCandidateResponse returns the rejected candidate and audit decision.
+message RejectFindingCandidateResponse {
+  FindingCandidate candidate = 1;
+  string decision_id = 2;
 }
 
 // EvaluateSourceRuntimeFindingsRequest replays one stored runtime through one registered finding rule.

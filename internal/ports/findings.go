@@ -388,6 +388,9 @@ type FindingCandidateRecord struct {
 	PromotionRationale string
 	ChangeTicket       string
 	PromotedAt         time.Time
+	RejectedBy         string
+	RejectionRationale string
+	RejectedAt         time.Time
 }
 
 // ListFindingCandidatesRequest scopes one candidate-finding query.
@@ -411,6 +414,16 @@ type FindingCandidatePromotion struct {
 	Rationale         string
 	ChangeTicket      string
 	PromotedAt        time.Time
+}
+
+// FindingCandidateRejection marks one candidate as reviewed and rejected without
+// writing production finding state.
+type FindingCandidateRejection struct {
+	CandidateID string
+	DecisionID  string
+	RejectedBy  string
+	Rationale   string
+	RejectedAt  time.Time
 }
 
 // FindingStore persists normalized findings in the state store.
@@ -452,4 +465,5 @@ type FindingCandidateStore interface {
 	GetFindingCandidate(context.Context, string) (*FindingCandidateRecord, error)
 	ListFindingCandidates(context.Context, ListFindingCandidatesRequest) ([]*FindingCandidateRecord, error)
 	MarkFindingCandidatePromoted(context.Context, FindingCandidatePromotion) (*FindingCandidateRecord, error)
+	MarkFindingCandidateRejected(context.Context, FindingCandidateRejection) (*FindingCandidateRecord, error)
 }

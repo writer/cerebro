@@ -21,7 +21,9 @@ import (
 const (
 	findingCandidateStatusCandidate = "candidate"
 	findingCandidateStatusPromoted  = "promoted"
+	findingCandidateStatusRejected  = "rejected"
 	findingCandidateDecisionType    = "finding_candidate_promotion"
+	findingCandidateRejectionType   = "finding_candidate_rejection"
 )
 
 // EvaluateCandidateRulesRequest scopes one non-production candidate evaluation.
@@ -74,6 +76,19 @@ type PromoteCandidateRequest struct {
 type PromoteCandidateResult struct {
 	Candidate  *ports.FindingCandidateRecord
 	Finding    *ports.FindingRecord
+	DecisionID string
+}
+
+// RejectCandidateRequest rejects one reviewed candidate without production writes.
+type RejectCandidateRequest struct {
+	CandidateID string
+	RejectedBy  string
+	Rationale   string
+}
+
+// RejectCandidateResult reports the updated candidate and audit decision.
+type RejectCandidateResult struct {
+	Candidate  *ports.FindingCandidateRecord
 	DecisionID string
 }
 
@@ -279,6 +294,9 @@ func (s *Service) PromoteFindingCandidate(ctx context.Context, request PromoteCa
 		emitFindingCandidatePromotionTelemetry(ctx, "already_promoted", candidate, finding, strings.TrimSpace(candidate.DecisionID), startedAt)
 		return &PromoteCandidateResult{Candidate: candidate, Finding: finding, DecisionID: strings.TrimSpace(candidate.DecisionID)}, nil
 	}
+	if strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusRejected) {
+		return nil, fmt.Errorf("%w: rejected finding candidate cannot be promoted", ErrInvalidRequest)
+	}
 	if candidate.Finding == nil {
 		return nil, fmt.Errorf("%w: finding candidate has no finding snapshot", ErrInvalidRequest)
 	}
@@ -295,6 +313,7 @@ func (s *Service) PromoteFindingCandidate(ctx context.Context, request PromoteCa
 	production.Attributes["promotion_rationale"] = strings.TrimSpace(request.Rationale)
 	production.Attributes["promoted_by"] = strings.TrimSpace(request.PromotedBy)
 	production.Attributes["promoted_at"] = now.Format(time.RFC3339Nano)
+	decisionID := candidatePromotionDecisionID(candidate, production, now)
 	stored, err := s.upsertFindingWithRisk(ctx, production, &cerebrov1.SourceRuntime{
 		Id:       strings.TrimSpace(candidate.RuntimeID),
 		TenantId: strings.TrimSpace(candidate.TenantID),
@@ -318,8 +337,7 @@ func (s *Service) PromoteFindingCandidate(ctx context.Context, request PromoteCa
 	if err := s.projectFindingAnchor(ctx, stored); err != nil {
 		return nil, fmt.Errorf("project promoted candidate %q finding %q: %w", candidate.ID, stored.ID, err)
 	}
-	decisionID, err := s.recordCandidatePromotionDecision(ctx, candidate, stored, request, now)
-	if err != nil {
+	if err := s.recordCandidatePromotionDecision(ctx, candidate, stored, request, now, decisionID); err != nil {
 		return nil, err
 	}
 	promoted, err := s.candidateStore.MarkFindingCandidatePromoted(ctx, ports.FindingCandidatePromotion{
@@ -332,22 +350,107 @@ func (s *Service) PromoteFindingCandidate(ctx context.Context, request PromoteCa
 		PromotedAt:        now,
 	})
 	if err != nil {
-		return nil, err
+		return nil, s.findingCandidateLifecycleConflict(ctx, candidate.ID, findingCandidateStatusPromoted, err)
 	}
 	emitFindingCandidatePromotionTelemetry(ctx, "promoted", promoted, stored, decisionID, startedAt)
 	return &PromoteCandidateResult{Candidate: promoted, Finding: stored, DecisionID: decisionID}, nil
 }
 
-func (s *Service) recordCandidatePromotionDecision(ctx context.Context, candidate *ports.FindingCandidateRecord, finding *ports.FindingRecord, request PromoteCandidateRequest, observedAt time.Time) (string, error) {
+// RejectFindingCandidate marks a reviewed candidate as intentionally not
+// production-worthy and records the review decision for audit.
+func (s *Service) RejectFindingCandidate(ctx context.Context, request RejectCandidateRequest) (*RejectCandidateResult, error) {
+	if s == nil || s.candidateStore == nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	startedAt := time.Now().UTC()
+	candidateID := strings.TrimSpace(request.CandidateID)
+	if candidateID == "" {
+		return nil, fmt.Errorf("%w: finding candidate id is required", ErrInvalidRequest)
+	}
+	if strings.TrimSpace(request.RejectedBy) == "" {
+		return nil, fmt.Errorf("%w: rejected_by is required", ErrInvalidRequest)
+	}
+	if strings.TrimSpace(request.Rationale) == "" {
+		return nil, fmt.Errorf("%w: rejection rationale is required", ErrInvalidRequest)
+	}
+	candidate, err := s.candidateStore.GetFindingCandidate(ctx, candidateID)
+	if err != nil {
+		return nil, err
+	}
+	if strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusPromoted) {
+		return nil, fmt.Errorf("%w: promoted finding candidate cannot be rejected", ErrInvalidRequest)
+	}
+	if strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusRejected) {
+		emitFindingCandidateRejectionTelemetry(ctx, "already_rejected", candidate, strings.TrimSpace(candidate.DecisionID), startedAt)
+		return &RejectCandidateResult{Candidate: candidate, DecisionID: strings.TrimSpace(candidate.DecisionID)}, nil
+	}
+	now := time.Now().UTC()
+	decisionID := candidateRejectionDecisionID(candidate, now)
+	if err := s.recordCandidateRejectionDecision(ctx, candidate, request, now, decisionID); err != nil {
+		return nil, err
+	}
+	rejected, err := s.candidateStore.MarkFindingCandidateRejected(ctx, ports.FindingCandidateRejection{
+		CandidateID: candidate.ID,
+		DecisionID:  decisionID,
+		RejectedBy:  strings.TrimSpace(request.RejectedBy),
+		Rationale:   strings.TrimSpace(request.Rationale),
+		RejectedAt:  now,
+	})
+	if err != nil {
+		return nil, s.findingCandidateLifecycleConflict(ctx, candidate.ID, findingCandidateStatusRejected, err)
+	}
+	emitFindingCandidateRejectionTelemetry(ctx, "rejected", rejected, decisionID, startedAt)
+	return &RejectCandidateResult{Candidate: rejected, DecisionID: decisionID}, nil
+}
+
+func (s *Service) findingCandidateLifecycleConflict(ctx context.Context, candidateID string, attemptedStatus string, err error) error {
+	if !errors.Is(err, ports.ErrFindingCandidateNotFound) {
+		return err
+	}
+	current, lookupErr := s.candidateStore.GetFindingCandidate(ctx, candidateID)
+	if lookupErr != nil {
+		return err
+	}
+	switch strings.TrimSpace(current.Status) {
+	case findingCandidateStatusPromoted:
+		return fmt.Errorf("%w: promoted finding candidate cannot transition to %s", ErrInvalidRequest, strings.TrimSpace(attemptedStatus))
+	case findingCandidateStatusRejected:
+		return fmt.Errorf("%w: rejected finding candidate cannot transition to %s", ErrInvalidRequest, strings.TrimSpace(attemptedStatus))
+	default:
+		return fmt.Errorf("%w: finding candidate status changed before lifecycle transition", ErrInvalidRequest)
+	}
+}
+
+func candidatePromotionDecisionID(candidate *ports.FindingCandidateRecord, finding *ports.FindingRecord, observedAt time.Time) string {
 	if candidate == nil || finding == nil {
-		return "", errors.New("candidate and finding are required")
+		return ""
+	}
+	tenantID := strings.TrimSpace(candidate.TenantID)
+	return workflowevents.CanonicalWorkflowID(tenantID, "decision", candidate.ID, findingCandidateDecisionType, []string{
+		findingGraphFindingURN(tenantID, finding),
+		findingCandidateURN(tenantID, candidate.ID),
+	}, observedAt)
+}
+
+func candidateRejectionDecisionID(candidate *ports.FindingCandidateRecord, observedAt time.Time) string {
+	if candidate == nil {
+		return ""
+	}
+	tenantID := strings.TrimSpace(candidate.TenantID)
+	return workflowevents.CanonicalWorkflowID(tenantID, "decision", candidate.ID, findingCandidateRejectionType, []string{
+		findingCandidateURN(tenantID, candidate.ID),
+	}, observedAt)
+}
+
+func (s *Service) recordCandidatePromotionDecision(ctx context.Context, candidate *ports.FindingCandidateRecord, finding *ports.FindingRecord, request PromoteCandidateRequest, observedAt time.Time, decisionID string) error {
+	if candidate == nil || finding == nil {
+		return errors.New("candidate and finding are required")
 	}
 	tenantID := strings.TrimSpace(candidate.TenantID)
 	targetIDs := []string{
 		findingGraphFindingURN(tenantID, finding),
 		findingCandidateURN(tenantID, candidate.ID),
 	}
-	decisionID := workflowevents.CanonicalWorkflowID(tenantID, "decision", candidate.ID, findingCandidateDecisionType, targetIDs, observedAt)
 	event, err := workflowevents.NewDecisionRecordedEvent(workflowevents.DecisionRecorded{
 		TenantID:      tenantID,
 		DecisionID:    decisionID,
@@ -374,12 +477,48 @@ func (s *Service) recordCandidatePromotionDecision(ctx context.Context, candidat
 		},
 	})
 	if err != nil {
-		return "", err
+		return err
 	}
 	if err := s.recordAndProjectWorkflowEvent(ctx, event); err != nil {
-		return "", fmt.Errorf("record finding candidate %q promotion decision: %w", candidate.ID, err)
+		return fmt.Errorf("record finding candidate %q promotion decision: %w", candidate.ID, err)
 	}
-	return decisionID, nil
+	return nil
+}
+
+func (s *Service) recordCandidateRejectionDecision(ctx context.Context, candidate *ports.FindingCandidateRecord, request RejectCandidateRequest, observedAt time.Time, decisionID string) error {
+	if candidate == nil {
+		return errors.New("candidate is required")
+	}
+	tenantID := strings.TrimSpace(candidate.TenantID)
+	targetIDs := []string{findingCandidateURN(tenantID, candidate.ID)}
+	event, err := workflowevents.NewDecisionRecordedEvent(workflowevents.DecisionRecorded{
+		TenantID:      tenantID,
+		DecisionID:    decisionID,
+		DecisionType:  findingCandidateRejectionType,
+		Status:        findingDecisionStatusCompleted,
+		MadeBy:        strings.TrimSpace(request.RejectedBy),
+		Rationale:     strings.TrimSpace(request.Rationale),
+		TargetIDs:     targetIDs,
+		EvidenceIDs:   candidateEvidenceIDs(candidate.Evidence),
+		SourceSystem:  "findings",
+		SourceEventID: strings.TrimSpace(candidate.ID),
+		ObservedAt:    observedAt.Format(time.RFC3339Nano),
+		ValidFrom:     observedAt.Format(time.RFC3339Nano),
+		Metadata: map[string]any{
+			"tenant_id":                   tenantID,
+			"candidate_id":                strings.TrimSpace(candidate.ID),
+			"runtime_id":                  strings.TrimSpace(candidate.RuntimeID),
+			"rule_id":                     strings.TrimSpace(candidate.RuleID),
+			"candidate_observation_count": candidate.ObservationCount,
+		},
+	})
+	if err != nil {
+		return err
+	}
+	if err := s.recordAndProjectWorkflowEvent(ctx, event); err != nil {
+		return fmt.Errorf("record finding candidate %q rejection decision: %w", candidate.ID, err)
+	}
+	return nil
 }
 
 func normalizeCandidateFinding(record *ports.FindingRecord, runtime *cerebrov1.SourceRuntime, observedAt time.Time) *ports.FindingRecord {
@@ -506,7 +645,7 @@ func emitFindingCandidateRunTelemetry(ctx context.Context, run *ports.FindingCan
 }
 
 func emitFindingCandidateListTelemetry(ctx context.Context, runtimeID string, candidates []*ports.FindingCandidateRecord, request ListCandidatesRequest) {
-	candidateCount, promotedCount, staleCount := 0, 0, 0
+	candidateCount, promotedCount, rejectedCount, staleCount := 0, 0, 0, 0
 	now := time.Now().UTC()
 	for _, candidate := range candidates {
 		if candidate == nil {
@@ -515,6 +654,10 @@ func emitFindingCandidateListTelemetry(ctx context.Context, runtimeID string, ca
 		candidateCount++
 		if strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusPromoted) {
 			promotedCount++
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusRejected) {
+			rejectedCount++
 			continue
 		}
 		if !candidate.LastObservedAt.IsZero() && now.Sub(candidate.LastObservedAt.UTC()) > 7*24*time.Hour {
@@ -527,7 +670,8 @@ func emitFindingCandidateListTelemetry(ctx context.Context, runtimeID string, ca
 		telemetry.Field{Key: "status_filter", Value: strings.TrimSpace(request.Status)},
 		telemetry.Field{Key: "candidate_count", Value: candidateCount},
 		telemetry.Field{Key: "promoted_count", Value: promotedCount},
-		telemetry.Field{Key: "open_candidate_count", Value: candidateCount - promotedCount},
+		telemetry.Field{Key: "rejected_count", Value: rejectedCount},
+		telemetry.Field{Key: "open_candidate_count", Value: candidateCount - promotedCount - rejectedCount},
 		telemetry.Field{Key: "stale_candidate_count", Value: staleCount},
 	))
 }
@@ -549,6 +693,22 @@ func emitFindingCandidatePromotionTelemetry(ctx context.Context, outcome string,
 		attrs = attrs.WithField(telemetry.Field{Key: "finding_id", Value: strings.TrimSpace(finding.ID)})
 	}
 	telemetry.Event(ctx, "finding_candidate.promotion", attrs)
+}
+
+func emitFindingCandidateRejectionTelemetry(ctx context.Context, outcome string, candidate *ports.FindingCandidateRecord, decisionID string, startedAt time.Time) {
+	attrs := telemetry.Attrs(
+		telemetry.Field{Key: "outcome", Value: strings.TrimSpace(outcome)},
+		telemetry.Field{Key: "decision_id", Value: strings.TrimSpace(decisionID)},
+		telemetry.Field{Key: "duration_ms", Value: time.Since(startedAt).Milliseconds()},
+	)
+	if candidate != nil {
+		attrs = attrs.WithField(telemetry.Field{Key: "candidate_id", Value: strings.TrimSpace(candidate.ID)})
+		attrs = attrs.WithField(telemetry.Field{Key: "tenant_id", Value: strings.TrimSpace(candidate.TenantID)})
+		attrs = attrs.WithField(telemetry.Field{Key: "runtime_id", Value: strings.TrimSpace(candidate.RuntimeID)})
+		attrs = attrs.WithField(telemetry.Field{Key: "rule_id", Value: strings.TrimSpace(candidate.RuleID)})
+		attrs = attrs.WithField(telemetry.Field{Key: "observation_count", Value: candidate.ObservationCount})
+	}
+	telemetry.Event(ctx, "finding_candidate.rejection", attrs)
 }
 
 func (s *Service) markCandidateEvaluationFailed(ctx context.Context, state *candidateRuleEvaluationState, evaluationErr error) error {

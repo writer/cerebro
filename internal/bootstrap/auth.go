@@ -567,7 +567,7 @@ func scopeForHTTPRequest(r *http.Request) string {
 		return scope
 	}
 	if r.Method != http.MethodGet {
-		if r.Method == http.MethodPost && strings.HasPrefix(path, "/finding-candidates/") && strings.HasSuffix(path, "/promote") {
+		if r.Method == http.MethodPost && strings.HasPrefix(path, "/finding-candidates/") && (strings.HasSuffix(path, "/promote") || strings.HasSuffix(path, "/reject")) {
 			return scopeFindingCandidatePromote
 		}
 		return ""
@@ -631,7 +631,8 @@ func scopeForConnectProcedure(procedure string) string {
 		cerebrov1connect.BootstrapServiceListGraphIngestRunsProcedure,
 		cerebrov1connect.BootstrapServiceCheckGraphIngestHealthProcedure:
 		return scopeCosmoSecurityRead
-	case cerebrov1connect.BootstrapServicePromoteFindingCandidateProcedure:
+	case cerebrov1connect.BootstrapServicePromoteFindingCandidateProcedure,
+		cerebrov1connect.BootstrapServiceRejectFindingCandidateProcedure:
 		return scopeFindingCandidatePromote
 	default:
 		return ""
@@ -1294,6 +1295,7 @@ var knownAccessAuditConnectProcedures = map[string]struct{}{
 	cerebrov1connect.BootstrapServiceGetFindingCandidateProcedure:                    {},
 	cerebrov1connect.BootstrapServiceEvaluateSourceRuntimeFindingCandidatesProcedure: {},
 	cerebrov1connect.BootstrapServicePromoteFindingCandidateProcedure:                {},
+	cerebrov1connect.BootstrapServiceRejectFindingCandidateProcedure:                 {},
 	cerebrov1connect.BootstrapServiceResolveFindingProcedure:                         {},
 	cerebrov1connect.BootstrapServiceSuppressFindingProcedure:                        {},
 	cerebrov1connect.BootstrapServiceAssignFindingProcedure:                          {},
@@ -1416,8 +1418,8 @@ func fallbackFindingCandidateRoute(path string) string {
 	}
 	parts := strings.SplitN(suffix, "/", 2)
 	switch parts[1] {
-	case "promote":
-		return "/finding-candidates/{candidateID}/promote"
+	case "promote", "reject":
+		return "/finding-candidates/{candidateID}/" + parts[1]
 	default:
 		return "/finding-candidates/{candidateID}/{subresource}"
 	}
