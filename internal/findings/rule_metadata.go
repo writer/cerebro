@@ -100,6 +100,15 @@ type PublicDetection struct {
 	ControlRefs        []ports.FindingControlRef `json:"control_refs,omitempty"`
 }
 
+const (
+	RuleMaturityTest         = "test"
+	RuleMaturityCandidate    = "candidate"
+	RuleMaturityExperimental = "experimental"
+	RuleMaturityGA           = "ga"
+	RuleMaturityProduction   = "production"
+	RuleMaturityRetired      = "retired"
+)
+
 var builtinRuleMetadataCache struct {
 	once      sync.Once
 	metadata  []RuleDefinition
@@ -300,6 +309,9 @@ func ValidateRuleMetadataCompleteness(metadatas []RuleDefinition) []error {
 				errs = append(errs, fmt.Errorf("rule %q %s is required", id, field))
 			}
 		}
+		if maturity := strings.TrimSpace(metadata.Maturity); maturity != "" && !validRuleMaturity(maturity) {
+			errs = append(errs, fmt.Errorf("rule %q maturity %q is not supported", id, maturity))
+		}
 		requiredSlices := map[string][]string{
 			"tags":               metadata.Tags,
 			"references":         metadata.References,
@@ -319,6 +331,15 @@ func ValidateRuleMetadataCompleteness(metadatas []RuleDefinition) []error {
 		}
 	}
 	return errs
+}
+
+func validRuleMaturity(maturity string) bool {
+	switch strings.TrimSpace(maturity) {
+	case RuleMaturityTest, RuleMaturityCandidate, RuleMaturityExperimental, RuleMaturityGA, RuleMaturityProduction, RuleMaturityRetired:
+		return true
+	default:
+		return false
+	}
 }
 
 func ruleMetadata(rule Rule) (RuleDefinition, bool) {

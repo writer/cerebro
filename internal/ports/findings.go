@@ -137,6 +137,9 @@ var ErrFindingNotFound = errors.New("finding not found")
 // ErrFindingEvidenceNotFound indicates that persisted finding evidence does not exist.
 var ErrFindingEvidenceNotFound = errors.New("finding evidence not found")
 
+// ErrFindingCandidateNotFound indicates that a persisted finding candidate does not exist.
+var ErrFindingCandidateNotFound = errors.New("finding candidate not found")
+
 // ErrCloseoutRunInFlight indicates that another closeout run is currently running.
 var ErrCloseoutRunInFlight = errors.New("another closeout run is in flight")
 
@@ -345,6 +348,71 @@ type ListFindingEvidenceRequest struct {
 	CreatedOrder bool
 }
 
+// FindingCandidateRun records one candidate-rule evaluation pass. Candidate runs
+// are intentionally separate from production finding evaluation runs because they
+// do not upsert current-state findings.
+type FindingCandidateRun struct {
+	ID              string
+	TenantID        string
+	RuntimeID       string
+	RuleID          string
+	Status          string
+	EventLimit      uint32
+	EventsEvaluated uint32
+	EventsMatched   uint32
+	Candidates      uint32
+	StartedAt       time.Time
+	FinishedAt      time.Time
+	Error           string
+}
+
+// FindingCandidateRecord stores a reviewed-but-not-yet-production finding snapshot.
+type FindingCandidateRecord struct {
+	ID                 string
+	TenantID           string
+	RuntimeID          string
+	RuleID             string
+	Fingerprint        string
+	Status             string
+	Finding            *FindingRecord
+	Evidence           []*cerebrov1.FindingEvidence
+	LastRunID          string
+	ObservationCount   uint32
+	FirstObservedAt    time.Time
+	LastObservedAt     time.Time
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	PromotedFindingID  string
+	DecisionID         string
+	PromotedBy         string
+	PromotionRationale string
+	ChangeTicket       string
+	PromotedAt         time.Time
+}
+
+// ListFindingCandidatesRequest scopes one candidate-finding query.
+type ListFindingCandidatesRequest struct {
+	TenantID    string
+	RuntimeID   string
+	CandidateID string
+	RuleID      string
+	Status      string
+	Fingerprint string
+	Limit       uint32
+}
+
+// FindingCandidatePromotion marks one candidate as promoted after the production
+// finding and audit decision are durable.
+type FindingCandidatePromotion struct {
+	CandidateID       string
+	PromotedFindingID string
+	DecisionID        string
+	PromotedBy        string
+	Rationale         string
+	ChangeTicket      string
+	PromotedAt        time.Time
+}
+
 // FindingStore persists normalized findings in the state store.
 type FindingStore interface {
 	StateStore
@@ -372,4 +440,16 @@ type FindingEvidenceStore interface {
 	PutFindingEvidence(context.Context, *cerebrov1.FindingEvidence) error
 	GetFindingEvidence(context.Context, string) (*cerebrov1.FindingEvidence, error)
 	ListFindingEvidence(context.Context, ListFindingEvidenceRequest) ([]*cerebrov1.FindingEvidence, error)
+}
+
+// FindingCandidateStore persists non-production candidate finding outputs.
+type FindingCandidateStore interface {
+	StateStore
+	PutFindingCandidateRun(context.Context, *FindingCandidateRun) error
+	GetFindingCandidateRun(context.Context, string) (*FindingCandidateRun, error)
+	ListFindingCandidateRuns(context.Context, ListFindingCandidatesRequest) ([]*FindingCandidateRun, error)
+	UpsertFindingCandidate(context.Context, *FindingCandidateRecord) (*FindingCandidateRecord, error)
+	GetFindingCandidate(context.Context, string) (*FindingCandidateRecord, error)
+	ListFindingCandidates(context.Context, ListFindingCandidatesRequest) ([]*FindingCandidateRecord, error)
+	MarkFindingCandidatePromoted(context.Context, FindingCandidatePromotion) (*FindingCandidateRecord, error)
 }
