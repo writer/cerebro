@@ -42,7 +42,7 @@ type conversionResult struct {
 var (
 	upperRelationPattern  = regexp.MustCompile(`:\s*([A-Z][A-Z0-9_]+)\b`)
 	nonEntityLabelPattern = regexp.MustCompile(`\([^){}]*:\s*(Finding|FINDING|finding|repo|repository|identity|connector)\b`)
-	apocUsagePattern      = regexp.MustCompile(`(?i)\bapoc\.`)
+	apocUsagePattern      = regexp.MustCompile(`(?i)\bapoc\.[A-Za-z0-9_.]+\s*\(`)
 )
 
 func convertDraftToQuery(request AskRequest, draft *DraftResponse, maxRows int) conversionResult {
@@ -249,7 +249,8 @@ RETURN finding.urn AS finding_urn,
 ORDER BY risk_score DESC, severity_rank DESC, finding_urn
 LIMIT %d`, limit), true
 	case IntentExplainFinding:
-		return fmt.Sprintf(`MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+		return fmt.Sprintf(`MATCH (finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+OPTIONAL MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(finding)
 WHERE $scope_urn = '' OR finding.urn = $scope_urn OR resource.urn = $scope_urn
 WITH resource, r, finding,
      coalesce(
@@ -284,6 +285,8 @@ WHERE left.urn < right.urn
   AND left.entity_type <> right.entity_type
   AND NOT left.entity_type STARTS WITH 'identity'
   AND NOT right.entity_type STARTS WITH 'identity'
+  AND NOT left.entity_type STARTS WITH 'identifier'
+  AND NOT right.entity_type STARTS WITH 'identifier'
   AND coalesce(leftRel.attributes_json, '') CONTAINS '"at":"'
   AND coalesce(rightRel.attributes_json, '') CONTAINS '"at":"'
 WITH left, right, identity,
@@ -305,6 +308,7 @@ ORDER BY identity_label, left_urn, right_urn
 LIMIT %d`, limit), true
 	case IntentConnectorHealth:
 		return fmt.Sprintf(`MATCH (source:Entity {tenant_id: $tenant_id, entity_type: 'source'})
+WHERE $scope_urn = '' OR source.urn = $scope_urn
 RETURN source.urn AS source_urn,
        coalesce(source.label, source.urn) AS source_label,
        source.source_id AS source_id,

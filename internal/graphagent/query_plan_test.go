@@ -127,8 +127,28 @@ func TestConvertDraftToQueryExplainFindingAvoidsBrittleSummaryExtraction(t *test
 	if strings.Contains(result.Cypher, `"summary":"`) || strings.Contains(result.Cypher, "split(split(finding.attributes_json, '\"summary\"") {
 		t.Fatalf("converted cypher should not split raw JSON summary values:\n%s", result.Cypher)
 	}
+	if !strings.Contains(result.Cypher, "MATCH (finding:Entity") || !strings.Contains(result.Cypher, "OPTIONAL MATCH (resource:Entity") {
+		t.Fatalf("converted cypher should start from the finding anchor and optional-match resources:\n%s", result.Cypher)
+	}
 	if !strings.Contains(result.Cypher, "finding_attributes_json_internal") {
 		t.Fatalf("converted cypher should expose internal attributes for server-side summary extraction:\n%s", result.Cypher)
+	}
+}
+
+func TestConvertDraftToQueryScopesConnectorHealthTemplate(t *testing.T) {
+	result := convertDraftToQuery(AskRequest{
+		TenantID: "writer",
+		Question: "Show this source health",
+		ScopeURN: "urn:cerebro:writer:source:github",
+	}, &DraftResponse{
+		Plan: &AskQueryPlan{Intent: IntentConnectorHealth, Limit: 25},
+	}, 100)
+
+	if result.Plan.Intent != IntentConnectorHealth || !result.Deterministic {
+		t.Fatalf("conversion result = %#v, want deterministic connector health", result)
+	}
+	if !strings.Contains(result.Cypher, "WHERE $scope_urn = '' OR source.urn = $scope_urn") {
+		t.Fatalf("converted cypher missing connector scope predicate:\n%s", result.Cypher)
 	}
 }
 
@@ -146,6 +166,7 @@ func TestConvertDraftToQueryUsesCanonicalIdentityBridgeTemplate(t *testing.T) {
 	for _, want := range []string{
 		"relation: 'represents_identity'",
 		"left.entity_type <> right.entity_type",
+		"NOT left.entity_type STARTS WITH 'identifier'",
 		"datetime(left_seen_at) >= datetime() - duration('P90D')",
 		"identity.urn AS identity_urn",
 	} {
@@ -155,6 +176,17 @@ func TestConvertDraftToQueryUsesCanonicalIdentityBridgeTemplate(t *testing.T) {
 	}
 	if strings.Contains(result.Cypher, "relation: 'has_identifier'") {
 		t.Fatalf("converted cypher should not bridge concrete identities via identifier anchors:\n%s", result.Cypher)
+	}
+}
+
+func TestOntologyDiagnosticsTreatsAPOCVariableAsSafe(t *testing.T) {
+	diagnostics := ontologyDiagnostics(`MATCH (apoc:Entity {tenant_id: $tenant_id})
+RETURN apoc.urn AS urn
+LIMIT 25`)
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Code == "apoc_not_allowed" {
+			t.Fatalf("ontologyDiagnostics() emitted APOC warning for variable property access: %#v", diagnostics)
+		}
 	}
 }
 
