@@ -2,7 +2,6 @@ package graphagent
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 )
 
@@ -140,13 +139,4 @@ func canonicalRelation(value string) (string, bool) {
 		}
 	}
 	return normalized, false
-}
-
-func knownEntityTypes() []string {
-	values := make([]string, 0, len(canonicalGraphOntology.Entities))
-	for _, entity := range canonicalGraphOntology.Entities {
-		values = append(values, entity.Type)
-	}
-	sort.Strings(values)
-	return values
 }
