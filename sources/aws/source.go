@@ -2401,14 +2401,26 @@ func trustExternalIDRequired(statement trustStatement) bool {
 
 func containsStringAction(value any, expected ...string) bool {
 	for _, action := range stringList(value) {
-		if action == "*" {
-			return true
-		}
 		for _, candidate := range expected {
-			if strings.EqualFold(action, candidate) {
+			if stringActionMatches(action, candidate) {
 				return true
 			}
 		}
+	}
+	return false
+}
+
+func stringActionMatches(action string, expected string) bool {
+	normalizedAction := strings.ToLower(strings.TrimSpace(action))
+	normalizedExpected := strings.ToLower(strings.TrimSpace(expected))
+	if normalizedAction == "" || normalizedExpected == "" {
+		return false
+	}
+	if normalizedAction == "*" || normalizedAction == normalizedExpected {
+		return true
+	}
+	if strings.HasSuffix(normalizedAction, "*") {
+		return strings.HasPrefix(normalizedExpected, strings.TrimSuffix(normalizedAction, "*"))
 	}
 	return false
 }

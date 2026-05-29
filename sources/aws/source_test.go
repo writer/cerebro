@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -461,6 +462,33 @@ func TestIAMRoleTrustClassifiesPrincipalTypes(t *testing.T) {
 	}
 	if got := events["SAMLTrust"].Attributes["trust_action"]; got != "sts:AssumeRoleWithSAML" {
 		t.Fatalf("saml trust_action = %q, want sts:AssumeRoleWithSAML", got)
+	}
+}
+
+func TestIAMRoleTrustIncludesWildcardAssumeActions(t *testing.T) {
+	for _, action := range []any{"sts:*", "sts:AssumeRole*", []any{"sts:TagSession", "sts:AssumeRole*"}} {
+		t.Run(fmt.Sprint(action), func(t *testing.T) {
+			role := iamtypes.Role{
+				Arn:      awssdk.String("arn:aws:iam::123456789012:role/WildcardRole"),
+				RoleId:   awssdk.String("AROWILDCARD"),
+				RoleName: awssdk.String("WildcardRole"),
+			}
+			statement := trustStatement{
+				Effect:    "Allow",
+				Action:    action,
+				Principal: json.RawMessage(`{"AWS":"arn:aws:iam::999999999999:role/ExternalAdmin"}`),
+			}
+			payload, err := json.Marshal(trustPolicyDocument{Statement: []trustStatement{statement}})
+			if err != nil {
+				t.Fatalf("Marshal() error = %v", err)
+			}
+			role.AssumeRolePolicyDocument = awssdk.String(string(payload))
+
+			trusts := roleTrusts(role)
+			if len(trusts) != 1 {
+				t.Fatalf("len(roleTrusts) = %d, want 1", len(trusts))
+			}
+		})
 	}
 }
 
