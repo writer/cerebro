@@ -61,11 +61,11 @@ var canonicalGraphOntology = GraphOntology{
 			Examples:    []string{"urn:cerebro:writer:identity:login:alice"},
 		},
 		{
-			Type:        "connector",
-			Description: "Source/runtime connector-like graph nodes. Exact source runtimes may also appear as source-specific entity types.",
+			Type:        "source",
+			Description: "Projected source/integration nodes used for connector health. Freshness and health metadata are stored in attributes_json.",
 			Aliases:     []string{"source", "source runtime", "runtime", "connector"},
-			Properties:  []string{"source_id", "runtime_id", "status", "last_sync_minutes"},
-			Examples:    []string{"urn:cerebro:writer:connector:github"},
+			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:source:github"},
 		},
 	},
 	Relations: []OntologyRelation{
@@ -109,6 +109,7 @@ func (o GraphOntology) PromptHint() string {
 	fmt.Fprintf(&b, "- Relationships use label `RELATION` and lowercase `relation` property; never use relationship types like `:HAS_SOURCE`.\n")
 	fmt.Fprintf(&b, "- Active finding shape: `(resource:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})`.\n")
 	fmt.Fprintf(&b, "- Canonical identity anchors use `entity_type` values `identity.email` and `identity.login`; there is no generic `identity` entity_type or top-level `email` property. Match identity values through `urn`, `label`, or controlled `attributes_json` extraction.\n")
+	fmt.Fprintf(&b, "- Connector/source health nodes use `entity_type: 'source'`; there is no `connector` entity_type and no top-level `status` or `last_sync_minutes` property. Read source health metadata from controlled `attributes_json` extraction.\n")
 	fmt.Fprintf(&b, "- Finding source grouping should prefer controlled `attributes_json.source_family` string extraction, then fall back to `finding.source_id`.\n")
 	for _, entity := range o.Entities {
 		fmt.Fprintf(&b, "- Entity `%s`: %s Aliases: %s. Useful properties: %s.\n", entity.Type, entity.Description, strings.Join(entity.Aliases, ", "), strings.Join(entity.Properties, ", "))

@@ -34,6 +34,22 @@ func TestOntologyPromptUsesProjectedIdentityShape(t *testing.T) {
 	}
 }
 
+func TestOntologyPromptUsesProjectedSourceShape(t *testing.T) {
+	hint := canonicalGraphOntology.PromptHint()
+	for _, want := range []string{
+		"Entity `source`",
+		"Connector/source health nodes use `entity_type: 'source'`",
+		"there is no `connector` entity_type and no top-level `status` or `last_sync_minutes` property",
+	} {
+		if !strings.Contains(hint, want) {
+			t.Fatalf("PromptHint() missing %q:\n%s", want, hint)
+		}
+	}
+	if strings.Contains(hint, "Entity `connector`:") || strings.Contains(hint, "Useful properties: source_id, runtime_id, status, last_sync_minutes") {
+		t.Fatalf("PromptHint() still advertises connector node shape:\n%s", hint)
+	}
+}
+
 func TestAskQueryPlanUnmarshalCoercesFilterValues(t *testing.T) {
 	var plan AskQueryPlan
 	if err := json.Unmarshal([]byte(`{"intent":"top_risk_findings","filters":{"risk_score":50,"active":true,"source":"github"}}`), &plan); err != nil {
