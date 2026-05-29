@@ -145,6 +145,26 @@ RETURN b.urn AS urn LIMIT 25`,
 	}
 }
 
+func TestValidatorPreservesCodeForOversizedUnionLimit(t *testing.T) {
+	validator := NewValidator(nil, ValidatorOptions{})
+	result, _, err := validator.validate(context.Background(), `MATCH (e:Entity {tenant_id: $tenant_id})
+RETURN e.urn AS urn
+LIMIT 1000
+UNION
+MATCH (e:Entity {tenant_id: $tenant_id})
+RETURN e.urn AS urn
+LIMIT 25`, map[string]any{"tenant_id": "example"})
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if result.OK {
+		t.Fatalf("Validate() ok = true, want false")
+	}
+	if result.Code != "limit_exceeded" {
+		t.Fatalf("code = %q, want limit_exceeded; result = %#v", result.Code, result)
+	}
+}
+
 func TestValidatorAcceptsBoundedTenantScopedRead(t *testing.T) {
 	store := &validatorStore{}
 	validator := NewValidator(store, ValidatorOptions{Explain: true})

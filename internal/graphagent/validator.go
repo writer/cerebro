@@ -89,7 +89,7 @@ func (v *Validator) validate(ctx context.Context, cypher string, params map[stri
 		return validatorRefusal("limit_exceeded", fmt.Sprintf("LIMIT %d exceeds maximum %d", limit, v.options.MaxRows)), 0, nil
 	}
 	if oversized := oversizedLimit(safeQuery, v.options.MaxRows); oversized > 0 {
-		return ValidatorResult{OK: false, Reason: fmt.Sprintf("LIMIT %d exceeds maximum %d", oversized, v.options.MaxRows)}, 0, nil
+		return validatorRefusal("limit_exceeded", fmt.Sprintf("LIMIT %d exceeds maximum %d", oversized, v.options.MaxRows)), 0, nil
 	}
 	if !allNodePatternsTenantScoped(safeQuery) {
 		return validatorRefusal("tenant_scope_required", "every node pattern must use Entity label and inline tenant_id"), 0, nil
