@@ -1371,23 +1371,43 @@ func listIAMPolicyAssignments(ctx context.Context, clients awsClients, settings 
 	}
 	var policies []iamtypes.AttachedPolicy
 	var next string
+	parsed := parseIAMPrincipalAssignmentCursor(cursor)
+	stage := parsed.Stage
+	marker := parsed.Marker
+	if strings.TrimSpace(cursor) == "" {
+		stage = "attached"
+	}
+	if stage != "attached" && stage != "inline" {
+		stage = "attached"
+		marker = strings.TrimSpace(cursor)
+	}
+	if stage == "inline" {
+		assignments, next, err := inlinePolicyAssignmentsPage(ctx, clients, settings.principalType, settings.principalName, marker, limit)
+		if err != nil {
+			return nil, "", err
+		}
+		if next != "" {
+			return assignments, encodeIAMPrincipalAssignmentCursor(iamPrincipalAssignmentCursor{Stage: "inline", Marker: next}), nil
+		}
+		return assignments, "", nil
+	}
 	switch settings.principalType {
 	case "group":
-		out, err := clients.iam.ListAttachedGroupPolicies(ctx, &iam.ListAttachedGroupPoliciesInput{GroupName: awssdk.String(settings.principalName), Marker: stringPtr(cursor), MaxItems: int32Ptr(limit)})
+		out, err := clients.iam.ListAttachedGroupPolicies(ctx, &iam.ListAttachedGroupPoliciesInput{GroupName: awssdk.String(settings.principalName), Marker: stringPtr(marker), MaxItems: int32Ptr(limit)})
 		if err != nil {
 			return nil, "", err
 		}
 		policies = out.AttachedPolicies
 		next = nextMarker(out.IsTruncated, out.Marker)
 	case "role":
-		out, err := clients.iam.ListAttachedRolePolicies(ctx, &iam.ListAttachedRolePoliciesInput{RoleName: awssdk.String(settings.principalName), Marker: stringPtr(cursor), MaxItems: int32Ptr(limit)})
+		out, err := clients.iam.ListAttachedRolePolicies(ctx, &iam.ListAttachedRolePoliciesInput{RoleName: awssdk.String(settings.principalName), Marker: stringPtr(marker), MaxItems: int32Ptr(limit)})
 		if err != nil {
 			return nil, "", err
 		}
 		policies = out.AttachedPolicies
 		next = nextMarker(out.IsTruncated, out.Marker)
 	default:
-		out, err := clients.iam.ListAttachedUserPolicies(ctx, &iam.ListAttachedUserPoliciesInput{UserName: awssdk.String(settings.principalName), Marker: stringPtr(cursor), MaxItems: int32Ptr(limit)})
+		out, err := clients.iam.ListAttachedUserPolicies(ctx, &iam.ListAttachedUserPoliciesInput{UserName: awssdk.String(settings.principalName), Marker: stringPtr(marker), MaxItems: int32Ptr(limit)})
 		if err != nil {
 			return nil, "", err
 		}
@@ -1398,12 +1418,22 @@ func listIAMPolicyAssignments(ctx context.Context, clients awsClients, settings 
 	if err != nil {
 		return nil, "", err
 	}
-	inlineAssignments, err := inlinePolicyAssignments(ctx, clients, settings.principalType, settings.principalName)
+	if next != "" {
+		return assignments, encodeIAMPrincipalAssignmentCursor(iamPrincipalAssignmentCursor{Stage: "attached", Marker: next}), nil
+	}
+	remaining := limit - len(assignments)
+	if remaining <= 0 {
+		return assignments, encodeIAMPrincipalAssignmentCursor(iamPrincipalAssignmentCursor{Stage: "inline"}), nil
+	}
+	inlineAssignments, inlineNext, err := inlinePolicyAssignmentsPage(ctx, clients, settings.principalType, settings.principalName, "", remaining)
 	if err != nil {
 		return nil, "", err
 	}
 	assignments = append(assignments, inlineAssignments...)
-	return assignments, next, nil
+	if inlineNext != "" {
+		return assignments, encodeIAMPrincipalAssignmentCursor(iamPrincipalAssignmentCursor{Stage: "inline", Marker: inlineNext}), nil
+	}
+	return assignments, "", nil
 }
 
 func listEffectivePermissions(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]iamPolicyAssignment, string, error) {
@@ -1580,30 +1610,50 @@ func managedPolicyActions(ctx context.Context, clients awsClients, policyARN str
 }
 
 func inlinePolicyAssignments(ctx context.Context, clients awsClients, principalType string, principalName string) ([]iamPolicyAssignment, error) {
+	assignments := make([]iamPolicyAssignment, 0)
+	marker := ""
+	for {
+		page, next, err := inlinePolicyAssignmentsPage(ctx, clients, principalType, principalName, marker, 1000)
+		if err != nil {
+			return nil, err
+		}
+		assignments = append(assignments, page...)
+		if next == "" {
+			return assignments, nil
+		}
+		marker = next
+	}
+}
+
+func inlinePolicyAssignmentsPage(ctx context.Context, clients awsClients, principalType string, principalName string, cursor string, limit int) ([]iamPolicyAssignment, string, error) {
 	principalName = strings.TrimSpace(principalName)
 	if principalName == "" {
-		return nil, nil
+		return nil, "", nil
 	}
 	var policyNames []string
+	var next string
 	switch principalType {
 	case "group":
-		out, err := clients.iam.ListGroupPolicies(ctx, &iam.ListGroupPoliciesInput{GroupName: awssdk.String(principalName), MaxItems: awssdk.Int32(1000)})
+		out, err := clients.iam.ListGroupPolicies(ctx, &iam.ListGroupPoliciesInput{GroupName: awssdk.String(principalName), Marker: stringPtr(cursor), MaxItems: int32Ptr(limit)})
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		policyNames = out.PolicyNames
+		next = nextMarker(out.IsTruncated, out.Marker)
 	case "role":
-		out, err := clients.iam.ListRolePolicies(ctx, &iam.ListRolePoliciesInput{RoleName: awssdk.String(principalName), MaxItems: awssdk.Int32(1000)})
+		out, err := clients.iam.ListRolePolicies(ctx, &iam.ListRolePoliciesInput{RoleName: awssdk.String(principalName), Marker: stringPtr(cursor), MaxItems: int32Ptr(limit)})
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		policyNames = out.PolicyNames
+		next = nextMarker(out.IsTruncated, out.Marker)
 	default:
-		out, err := clients.iam.ListUserPolicies(ctx, &iam.ListUserPoliciesInput{UserName: awssdk.String(principalName), MaxItems: awssdk.Int32(1000)})
+		out, err := clients.iam.ListUserPolicies(ctx, &iam.ListUserPoliciesInput{UserName: awssdk.String(principalName), Marker: stringPtr(cursor), MaxItems: int32Ptr(limit)})
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		policyNames = out.PolicyNames
+		next = nextMarker(out.IsTruncated, out.Marker)
 		principalType = "user"
 	}
 	assignments := make([]iamPolicyAssignment, 0, len(policyNames))
@@ -1614,7 +1664,7 @@ func inlinePolicyAssignments(ctx context.Context, clients awsClients, principalT
 		}
 		document, err := inlinePolicyDocument(ctx, clients, principalType, principalName, policyName)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		assignments = append(assignments, iamPolicyAssignment{
 			PrincipalType: principalType,
@@ -1627,7 +1677,7 @@ func inlinePolicyAssignments(ctx context.Context, clients awsClients, principalT
 			Actions:      policyDocumentActions(document),
 		})
 	}
-	return assignments, nil
+	return assignments, next, nil
 }
 
 func inlinePolicyDocument(ctx context.Context, clients awsClients, principalType string, principalName string, policyName string) (string, error) {
@@ -1912,7 +1962,7 @@ func iamRoleAssignmentEvent(settings settings, assignment iamPolicyAssignment) (
 func effectivePermissionEvent(settings settings, assignment iamPolicyAssignment) (*primitives.Event, error) {
 	policyName := awssdk.ToString(assignment.Policy.PolicyName)
 	policyARN := awssdk.ToString(assignment.Policy.PolicyArn)
-	admin := isAdminPolicy(policyName, policyARN)
+	admin := isAdminPolicy(policyName, policyARN) || policyActionsAdmin(assignment.Actions)
 	permission := firstNonEmpty(strings.Join(assignment.Actions, ","), policyName, policyARN)
 	attributes := map[string]string{
 		"actions":         permission,
@@ -1943,6 +1993,16 @@ func effectivePermissionEvent(settings settings, assignment iamPolicyAssignment)
 	}
 	id := fmt.Sprintf("aws-effective-permission-%s-%s", assignment.PrincipalName, firstNonEmpty(policyARN, policyName))
 	return sourceEvent(settings, id, "aws.effective_permission", "aws/effective_permission/v1", payload, attributes, time.Now().UTC())
+}
+
+func policyActionsAdmin(actions []string) bool {
+	for _, action := range actions {
+		normalized := strings.ToLower(strings.TrimSpace(action))
+		if normalized == "*" || strings.HasSuffix(normalized, ":*") {
+			return true
+		}
+	}
+	return false
 }
 
 func accessKeyEvent(settings settings, key iamtypes.AccessKeyMetadata) (*primitives.Event, error) {

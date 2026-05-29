@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
+	"strconv"
 	"testing"
 	"time"
 
@@ -570,8 +571,56 @@ func TestReadAWSEffectivePermissionIncludesInlinePolicies(t *testing.T) {
 	if got := attrs["actions"]; got != "iam:*,s3:GetObject" {
 		t.Fatalf("actions = %q, want inline allow actions", got)
 	}
+	if got := attrs["is_admin"]; got != "true" {
+		t.Fatalf("is_admin = %q, want true for wildcard inline actions", got)
+	}
 	if got := attrs["role_id"]; got != "inline:user:admin@writer.com:InlineAdmin" {
 		t.Fatalf("role_id = %q, want synthetic inline policy id", got)
+	}
+}
+
+func TestReadAWSEffectivePermissionPaginatesInlinePolicies(t *testing.T) {
+	source := newTestSource(t, fakeAWS{
+		inlinePolicyNames: []string{"InlineOne", "InlineTwo"},
+		inlinePolicyDocuments: map[string]string{
+			"InlineOne": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:GetObject","Resource":"*"}]}`,
+			"InlineTwo": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:ListBucket","Resource":"*"}]}`,
+		},
+	})
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"account_id":     "123456789012",
+		"family":         familyEffectivePermission,
+		"principal_name": "admin@writer.com",
+		"principal_type": "user",
+		"per_page":       "1",
+	})
+
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(first inline policy page) error = %v", err)
+	}
+	if len(first.Events) != 1 {
+		t.Fatalf("len(first.Events) = %d, want 1", len(first.Events))
+	}
+	if got := first.Events[0].Attributes["role_name"]; got != "InlineOne" {
+		t.Fatalf("first inline role_name = %q, want InlineOne", got)
+	}
+	if first.NextCursor == nil {
+		t.Fatal("first.NextCursor = nil, want cursor for second inline policy")
+	}
+
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second inline policy page) error = %v", err)
+	}
+	if len(second.Events) != 1 {
+		t.Fatalf("len(second.Events) = %d, want 1", len(second.Events))
+	}
+	if got := second.Events[0].Attributes["role_name"]; got != "InlineTwo" {
+		t.Fatalf("second inline role_name = %q, want InlineTwo", got)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second.NextCursor = %v, want nil", second.NextCursor)
 	}
 }
 
@@ -1257,16 +1306,19 @@ func (f fakeAWS) ListAttachedRolePolicies(context.Context, *iam.ListAttachedRole
 	return &iam.ListAttachedRolePoliciesOutput{AttachedPolicies: f.attachedPolicies}, nil
 }
 
-func (f fakeAWS) ListUserPolicies(context.Context, *iam.ListUserPoliciesInput, ...func(*iam.Options)) (*iam.ListUserPoliciesOutput, error) {
-	return &iam.ListUserPoliciesOutput{PolicyNames: f.inlinePolicyNames}, nil
+func (f fakeAWS) ListUserPolicies(_ context.Context, input *iam.ListUserPoliciesInput, _ ...func(*iam.Options)) (*iam.ListUserPoliciesOutput, error) {
+	names, truncated, marker := paginateStringValues(f.inlinePolicyNames, awssdk.ToString(input.Marker), int(awssdk.ToInt32(input.MaxItems)))
+	return &iam.ListUserPoliciesOutput{PolicyNames: names, IsTruncated: truncated, Marker: stringPtr(marker)}, nil
 }
 
-func (f fakeAWS) ListGroupPolicies(context.Context, *iam.ListGroupPoliciesInput, ...func(*iam.Options)) (*iam.ListGroupPoliciesOutput, error) {
-	return &iam.ListGroupPoliciesOutput{PolicyNames: f.inlinePolicyNames}, nil
+func (f fakeAWS) ListGroupPolicies(_ context.Context, input *iam.ListGroupPoliciesInput, _ ...func(*iam.Options)) (*iam.ListGroupPoliciesOutput, error) {
+	names, truncated, marker := paginateStringValues(f.inlinePolicyNames, awssdk.ToString(input.Marker), int(awssdk.ToInt32(input.MaxItems)))
+	return &iam.ListGroupPoliciesOutput{PolicyNames: names, IsTruncated: truncated, Marker: stringPtr(marker)}, nil
 }
 
-func (f fakeAWS) ListRolePolicies(context.Context, *iam.ListRolePoliciesInput, ...func(*iam.Options)) (*iam.ListRolePoliciesOutput, error) {
-	return &iam.ListRolePoliciesOutput{PolicyNames: f.inlinePolicyNames}, nil
+func (f fakeAWS) ListRolePolicies(_ context.Context, input *iam.ListRolePoliciesInput, _ ...func(*iam.Options)) (*iam.ListRolePoliciesOutput, error) {
+	names, truncated, marker := paginateStringValues(f.inlinePolicyNames, awssdk.ToString(input.Marker), int(awssdk.ToInt32(input.MaxItems)))
+	return &iam.ListRolePoliciesOutput{PolicyNames: names, IsTruncated: truncated, Marker: stringPtr(marker)}, nil
 }
 
 func (f fakeAWS) GetPolicy(_ context.Context, input *iam.GetPolicyInput, _ ...func(*iam.Options)) (*iam.GetPolicyOutput, error) {
@@ -1301,6 +1353,21 @@ func (f fakeAWS) managedPolicyDocument(policyARN string) string {
 		return f.managedPolicyDocuments[policyARN]
 	}
 	return ""
+}
+
+func paginateStringValues(values []string, marker string, limit int) ([]string, bool, string) {
+	start := 0
+	if marker != "" {
+		parsed, err := strconv.Atoi(marker)
+		if err == nil && parsed >= 0 && parsed <= len(values) {
+			start = parsed
+		}
+	}
+	if limit <= 0 || start+limit >= len(values) {
+		return values[start:], false, ""
+	}
+	next := strconv.Itoa(start + limit)
+	return values[start : start+limit], true, next
 }
 
 func (f fakeAWS) LookupEvents(ctx context.Context, input *cloudtrail.LookupEventsInput, _ ...func(*cloudtrail.Options)) (*cloudtrail.LookupEventsOutput, error) {
