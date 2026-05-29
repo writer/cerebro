@@ -2774,6 +2774,51 @@ func TestProjectAWSServiceTrustPrincipal(t *testing.T) {
 	assertProjectedLink(t, state, servicePrincipalURN, relationCanAssume, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/LambdaRole")
 }
 
+func TestProjectAWSInlineEffectivePermission(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-inline-effective-permission",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.effective_permission",
+		Attributes: map[string]string{
+			"actions":       "iam:*,s3:GetObject",
+			"domain":        "123456789012",
+			"effect":        "allow",
+			"is_admin":      "true",
+			"permission":    "iam:*,s3:GetObject",
+			"policy_source": "inline",
+			"resource_id":   "inline:user:admin@writer.com:InlineAdmin",
+			"resource_name": "InlineAdmin",
+			"resource_type": "aws_iam_policy",
+			"role_id":       "inline:user:admin@writer.com:InlineAdmin",
+			"role_name":     "InlineAdmin",
+			"subject_id":    "admin@writer.com",
+			"subject_type":  "user",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	policyURN := "urn:cerebro:writer:aws_aws_iam_policy:inline:user:admin@writer.com:InlineAdmin"
+	permissionLink := state.links["urn:cerebro:writer:aws_user:admin@writer.com|"+relationCanPerform+"|"+policyURN]
+	if permissionLink == nil {
+		t.Fatalf("inline effective permission link missing")
+	}
+	if got := permissionLink.Attributes["actions"]; got != "iam:*,s3:GetObject" {
+		t.Fatalf("permission link actions = %q, want inline actions", got)
+	}
+	if got := permissionLink.Attributes["policy_source"]; got != "inline" {
+		t.Fatalf("permission link policy_source = %q, want inline", got)
+	}
+	if got := permissionLink.Attributes["is_admin"]; got != "true" {
+		t.Fatalf("permission link is_admin = %q, want true", got)
+	}
+}
+
 func TestProjectEffectivePermissionsKubernetesRuntimeAndData(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
