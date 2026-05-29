@@ -59,6 +59,45 @@ uv run pulumi up --stack sec-dev
 uv run pulumi up --stack go-prod
 ```
 
+### Go-prod source-role trust rollout
+
+When a go-prod deploy is blocked by source runtime role trust drift:
+
+1. Land the IAM trust change in the owning GitOps repository (`aws-account-automation`) and wait for its main deployment workflow to finish.
+2. Verify the scan roles trust the task roles before starting a Cerebro rollout:
+
+   ```bash
+   cd infra
+   uv run python scripts/verify_aws_scan_role_trust.py \
+     --stack-file aws/Pulumi.go-prod.yaml \
+     --profile-by-account 009160076449=writer-prod \
+     --profile-by-account 381491964434=writer-devops \
+     --profile-by-account 944130631940=cerebro-sec-dev
+   ```
+
+3. Dispatch the `Infrastructure Deploy` workflow for `go-prod`.
+4. Confirm ECS settles on the intended task definition and the API reports ready:
+
+   ```bash
+   aws ecs describe-services \
+     --profile writer-sec-prod-us1 \
+     --cluster cerebro-go-production-cluster \
+     --services cerebro-go-production-api
+
+   curl -fsS https://cerebro.adm.prod.writer.com/health
+   ```
+
+5. Run graph health after rollout:
+
+   ```bash
+   cd infra
+   uv run python scripts/verify_graph_health_ecs.py \
+     --stack-file aws/Pulumi.go-prod.yaml \
+     --wait-timeout-seconds 3600 \
+     --graph-command-retry-seconds 3600 \
+     --allow-transient-source-failures
+   ```
+
 ## Important config
 
 | Key | Required | Description |
