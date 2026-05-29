@@ -419,6 +419,51 @@ func TestIAMRoleTrustEventTargetsSameRoleIdentifierAsIAMRoleEvent(t *testing.T) 
 	}
 }
 
+func TestIAMRoleTrustClassifiesPrincipalTypes(t *testing.T) {
+	trustPolicy := `{"Version":"2012-10-17","Statement":[{"Sid":"AccountTrust","Effect":"Allow","Principal":{"AWS":"arn:aws:iam::999999999999:root"},"Action":"sts:AssumeRole"},{"Sid":"ServiceTrust","Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"},{"Sid":"OIDCTrust","Effect":"Allow","Principal":{"Federated":"arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"},"Action":["sts:AssumeRoleWithWebIdentity","sts:TagSession"]},{"Sid":"SAMLTrust","Effect":"Allow","Principal":{"Federated":"arn:aws:iam::123456789012:saml-provider/Okta"},"Action":"sts:AssumeRoleWithSAML"}]}`
+	role := iamtypes.Role{
+		Arn:                      awssdk.String("arn:aws:iam::123456789012:role/DeployRole"),
+		AssumeRolePolicyDocument: awssdk.String(trustPolicy),
+		RoleId:                   awssdk.String("ARODEPLOY"),
+		RoleName:                 awssdk.String("DeployRole"),
+	}
+
+	trusts := roleTrusts(role)
+	if len(trusts) != 4 {
+		t.Fatalf("len(roleTrusts) = %d, want 4", len(trusts))
+	}
+
+	events := make(map[string]*cerebrov1.EventEnvelope, len(trusts))
+	for _, trust := range trusts {
+		event, err := iamRoleTrustEvent(settings{accountID: "123456789012"}, trust)
+		if err != nil {
+			t.Fatalf("iamRoleTrustEvent() error = %v", err)
+		}
+		events[event.Attributes["statement_sid"]] = event
+	}
+	if got := events["AccountTrust"].Attributes["subject_type"]; got != "account" {
+		t.Fatalf("account subject_type = %q, want account", got)
+	}
+	if got := events["AccountTrust"].Attributes["subject_id"]; got != "999999999999" {
+		t.Fatalf("account subject_id = %q, want external account ID", got)
+	}
+	if got := events["AccountTrust"].Attributes["is_external"]; got != "true" {
+		t.Fatalf("account is_external = %q, want true", got)
+	}
+	if got := events["ServiceTrust"].Attributes["subject_type"]; got != "service_principal" {
+		t.Fatalf("service subject_type = %q, want service_principal", got)
+	}
+	if got := events["ServiceTrust"].Attributes["subject_id"]; got != "lambda.amazonaws.com" {
+		t.Fatalf("service subject_id = %q, want lambda.amazonaws.com", got)
+	}
+	if got := events["OIDCTrust"].Attributes["subject_type"]; got != "service_principal" {
+		t.Fatalf("oidc subject_type = %q, want service_principal", got)
+	}
+	if got := events["SAMLTrust"].Attributes["trust_action"]; got != "sts:AssumeRoleWithSAML" {
+		t.Fatalf("saml trust_action = %q, want sts:AssumeRoleWithSAML", got)
+	}
+}
+
 func TestReadAWSExposureAndTrustPreview(t *testing.T) {
 	trustPolicy := `{"Version":"2012-10-17","Statement":[{"Sid":"ExternalTrust","Effect":"Allow","Principal":{"AWS":"arn:aws:iam::999999999999:role/ExternalAdmin"},"Action":"sts:AssumeRole"}]}`
 	source := newTestSource(t, fakeAWS{

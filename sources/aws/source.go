@@ -250,9 +250,15 @@ type publicEndpointCursor struct {
 }
 
 type iamRoleTrust struct {
-	Role      iamtypes.Role
-	Statement trustStatement
-	Principal string
+	Role          iamtypes.Role
+	Statement     trustStatement
+	Principal     string
+	PrincipalType string
+}
+
+type iamTrustPrincipal struct {
+	Type  string
+	Value string
 }
 
 type trustPolicyDocument struct {
@@ -1687,7 +1693,7 @@ func iamRoleTrustEvent(settings settings, trust iamRoleTrust) (*primitives.Event
 	roleARN := awssdk.ToString(trust.Role.Arn)
 	roleUniqueID := awssdk.ToString(trust.Role.RoleId)
 	roleID := firstNonEmpty(roleARN, roleUniqueID, roleName)
-	subjectType, subjectID := awsTrustPrincipal(trust.Principal)
+	subjectType, subjectID := awsTrustPrincipal(trust.Principal, trust.PrincipalType)
 	attributes := map[string]string{
 		"domain":               settings.accountID,
 		"external_id_required": boolString(trustExternalIDRequired(trust.Statement)),
@@ -2312,36 +2318,51 @@ func roleTrusts(role iamtypes.Role) []iamRoleTrust {
 	}
 	trusts := make([]iamRoleTrust, 0)
 	for _, statement := range document.Statement {
-		if !strings.EqualFold(statement.Effect, "Allow") || !containsStringAction(statement.Action, "sts:AssumeRole") {
+		if !strings.EqualFold(statement.Effect, "Allow") || !containsStringAction(statement.Action, trustAssumeActions()...) {
 			continue
 		}
 		for _, principal := range trustPrincipals(statement.Principal) {
-			trusts = append(trusts, iamRoleTrust{Role: role, Statement: statement, Principal: principal})
+			trusts = append(trusts, iamRoleTrust{Role: role, Statement: statement, Principal: principal.Value, PrincipalType: principal.Type})
 		}
 	}
 	return trusts
 }
 
-func trustPrincipals(raw json.RawMessage) []string {
+func trustPrincipals(raw json.RawMessage) []iamTrustPrincipal {
 	if len(raw) == 0 {
 		return nil
 	}
 	if string(raw) == `"*"` {
-		return []string{"*"}
+		return []iamTrustPrincipal{{Type: "public", Value: "*"}}
 	}
 	var values map[string]any
 	if err := json.Unmarshal(raw, &values); err != nil {
 		return nil
 	}
-	principals := make([]string, 0)
-	for _, value := range values {
-		principals = append(principals, stringList(value)...)
+	principals := make([]iamTrustPrincipal, 0)
+	for principalType, value := range values {
+		for _, principal := range stringList(value) {
+			if strings.TrimSpace(principal) == "" {
+				continue
+			}
+			principals = append(principals, iamTrustPrincipal{Type: principalType, Value: principal})
+		}
 	}
 	return principals
 }
 
-func awsTrustPrincipal(value string) (string, string) {
+func trustAssumeActions() []string {
+	return []string{"sts:AssumeRole", "sts:AssumeRoleWithSAML", "sts:AssumeRoleWithWebIdentity"}
+}
+
+func awsTrustPrincipal(value string, principalType string) (string, string) {
 	trimmed := strings.TrimSpace(value)
+	switch strings.ToLower(strings.TrimSpace(principalType)) {
+	case "public":
+		return "public", "public"
+	case "service", "federated":
+		return "service_principal", trimmed
+	}
 	switch {
 	case trimmed == "*" || strings.EqualFold(trimmed, "anonymous"):
 		return "public", "public"
@@ -2349,6 +2370,8 @@ func awsTrustPrincipal(value string) (string, string) {
 		return "role", trimmed
 	case strings.Contains(trimmed, ":user/"):
 		return "user", trimmed
+	case awsAccountPrincipalID(trimmed) != "":
+		return "account", awsAccountPrincipalID(trimmed)
 	case strings.Contains(trimmed, "@"):
 		return "user", trimmed
 	default:
@@ -2358,7 +2381,13 @@ func awsTrustPrincipal(value string) (string, string) {
 
 func trustExternal(accountID string, principal string) bool {
 	trimmed := strings.TrimSpace(principal)
-	return trimmed == "*" || accountID != "" && strings.Contains(trimmed, ":iam::") && !strings.Contains(trimmed, ":iam::"+accountID+":")
+	if accountID == "" {
+		return trimmed == "*"
+	}
+	if principalAccountID := awsAccountPrincipalID(trimmed); principalAccountID != "" {
+		return principalAccountID != accountID
+	}
+	return trimmed == "*" || strings.Contains(trimmed, ":iam::") && !strings.Contains(trimmed, ":iam::"+accountID+":")
 }
 
 func trustExternalIDRequired(statement trustStatement) bool {
@@ -2370,13 +2399,48 @@ func trustExternalIDRequired(statement trustStatement) bool {
 	return false
 }
 
-func containsStringAction(value any, expected string) bool {
+func containsStringAction(value any, expected ...string) bool {
 	for _, action := range stringList(value) {
-		if strings.EqualFold(action, expected) || action == "*" {
+		if action == "*" {
 			return true
+		}
+		for _, candidate := range expected {
+			if strings.EqualFold(action, candidate) {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+func awsAccountPrincipalID(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if isAWSAccountID(trimmed) {
+		return trimmed
+	}
+	marker := ":iam::"
+	index := strings.Index(trimmed, marker)
+	if index < 0 || !strings.HasSuffix(trimmed, ":root") {
+		return ""
+	}
+	rest := trimmed[index+len(marker):]
+	accountID, _, _ := strings.Cut(rest, ":")
+	if isAWSAccountID(accountID) {
+		return accountID
+	}
+	return ""
+}
+
+func isAWSAccountID(value string) bool {
+	if len(value) != 12 {
+		return false
+	}
+	for _, char := range value {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func stringList(value any) []string {

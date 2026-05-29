@@ -651,6 +651,8 @@ func identityPrincipalURN(tenantID string, provider string, principalType string
 		return projectionURN(tenantID, provider+"_service_account", firstNonEmpty(principalID, email))
 	case "role":
 		return projectionURN(tenantID, provider+"_role", principalID)
+	case "account":
+		return projectionURN(tenantID, provider+"_account", principalID)
 	case "public":
 		return projectionURN(tenantID, provider+"_public_principal", principalID)
 	default:
@@ -674,6 +676,9 @@ func identityPrincipalType(value string) string {
 	}
 	if strings.Contains(normalized, "role") {
 		return "role"
+	}
+	if strings.Contains(normalized, "account") {
+		return "account"
 	}
 	if strings.Contains(normalized, "public") || strings.Contains(normalized, "allusers") || strings.Contains(normalized, "allauthenticatedusers") {
 		return "public"
