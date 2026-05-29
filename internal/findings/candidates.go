@@ -314,18 +314,6 @@ func (s *Service) PromoteFindingCandidate(ctx context.Context, request PromoteCa
 	production.Attributes["promoted_by"] = strings.TrimSpace(request.PromotedBy)
 	production.Attributes["promoted_at"] = now.Format(time.RFC3339Nano)
 	decisionID := candidatePromotionDecisionID(candidate, production, now)
-	promoted, err := s.candidateStore.MarkFindingCandidatePromoted(ctx, ports.FindingCandidatePromotion{
-		CandidateID:       candidate.ID,
-		PromotedFindingID: production.ID,
-		DecisionID:        decisionID,
-		PromotedBy:        strings.TrimSpace(request.PromotedBy),
-		Rationale:         strings.TrimSpace(request.Rationale),
-		ChangeTicket:      strings.TrimSpace(request.ChangeTicket),
-		PromotedAt:        now,
-	})
-	if err != nil {
-		return nil, s.findingCandidateLifecycleConflict(ctx, candidate.ID, findingCandidateStatusPromoted, err)
-	}
 	stored, err := s.upsertFindingWithRisk(ctx, production, &cerebrov1.SourceRuntime{
 		Id:       strings.TrimSpace(candidate.RuntimeID),
 		TenantId: strings.TrimSpace(candidate.TenantID),
@@ -349,8 +337,20 @@ func (s *Service) PromoteFindingCandidate(ctx context.Context, request PromoteCa
 	if err := s.projectFindingAnchor(ctx, stored); err != nil {
 		return nil, fmt.Errorf("project promoted candidate %q finding %q: %w", candidate.ID, stored.ID, err)
 	}
-	if err := s.recordCandidatePromotionDecision(ctx, promoted, stored, request, now, decisionID); err != nil {
+	if err := s.recordCandidatePromotionDecision(ctx, candidate, stored, request, now, decisionID); err != nil {
 		return nil, err
+	}
+	promoted, err := s.candidateStore.MarkFindingCandidatePromoted(ctx, ports.FindingCandidatePromotion{
+		CandidateID:       candidate.ID,
+		PromotedFindingID: stored.ID,
+		DecisionID:        decisionID,
+		PromotedBy:        strings.TrimSpace(request.PromotedBy),
+		Rationale:         strings.TrimSpace(request.Rationale),
+		ChangeTicket:      strings.TrimSpace(request.ChangeTicket),
+		PromotedAt:        now,
+	})
+	if err != nil {
+		return nil, s.findingCandidateLifecycleConflict(ctx, candidate.ID, findingCandidateStatusPromoted, err)
 	}
 	emitFindingCandidatePromotionTelemetry(ctx, "promoted", promoted, stored, decisionID, startedAt)
 	return &PromoteCandidateResult{Candidate: promoted, Finding: stored, DecisionID: decisionID}, nil
@@ -386,6 +386,9 @@ func (s *Service) RejectFindingCandidate(ctx context.Context, request RejectCand
 	}
 	now := time.Now().UTC()
 	decisionID := candidateRejectionDecisionID(candidate, now)
+	if err := s.recordCandidateRejectionDecision(ctx, candidate, request, now, decisionID); err != nil {
+		return nil, err
+	}
 	rejected, err := s.candidateStore.MarkFindingCandidateRejected(ctx, ports.FindingCandidateRejection{
 		CandidateID: candidate.ID,
 		DecisionID:  decisionID,
@@ -395,9 +398,6 @@ func (s *Service) RejectFindingCandidate(ctx context.Context, request RejectCand
 	})
 	if err != nil {
 		return nil, s.findingCandidateLifecycleConflict(ctx, candidate.ID, findingCandidateStatusRejected, err)
-	}
-	if err := s.recordCandidateRejectionDecision(ctx, rejected, request, now, decisionID); err != nil {
-		return nil, err
 	}
 	emitFindingCandidateRejectionTelemetry(ctx, "rejected", rejected, decisionID, startedAt)
 	return &RejectCandidateResult{Candidate: rejected, DecisionID: decisionID}, nil
