@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	correlationruntime "github.com/writer/cerebro/internal/correlation/runtime"
@@ -17,10 +16,14 @@ import (
 //go:embed correlation_patterns/builtin.json
 var builtinCorrelationPatternCatalog []byte
 
-var builtinCorrelationPatternCache struct {
-	once     sync.Once
-	patterns []FindingCorrelationPattern
-	err      error
+var builtinCorrelationPatterns []FindingCorrelationPattern
+
+func init() {
+	patterns, err := loadBuiltinFindingCorrelationPatterns()
+	if err != nil {
+		panic(fmt.Sprintf("build builtin finding correlation patterns: %v", err))
+	}
+	builtinCorrelationPatterns = patterns
 }
 
 type correlationPatternCatalog struct {
@@ -42,23 +45,7 @@ type correlationPatternRaw struct {
 // BuiltinFindingCorrelationPatterns returns the checked-in declarative pattern catalog
 // plus runtime correlation hints that enrich underlying state-anchored findings.
 func BuiltinFindingCorrelationPatterns() []FindingCorrelationPattern {
-	builtinCorrelationPatternCache.once.Do(func() {
-		patterns, err := LoadFindingCorrelationPatterns(builtinCorrelationPatternCatalog)
-		if err != nil {
-			builtinCorrelationPatternCache.err = err
-			return
-		}
-		runtimePatterns, err := LoadRuntimeCorrelationPatterns(correlationruntime.BuiltinHints())
-		if err != nil {
-			builtinCorrelationPatternCache.err = err
-			return
-		}
-		builtinCorrelationPatternCache.patterns, builtinCorrelationPatternCache.err = mergeFindingCorrelationPatterns(patterns, runtimePatterns)
-	})
-	if builtinCorrelationPatternCache.err != nil {
-		panic(fmt.Sprintf("build builtin finding correlation patterns: %v", builtinCorrelationPatternCache.err))
-	}
-	return cloneFindingCorrelationPatterns(builtinCorrelationPatternCache.patterns)
+	return cloneFindingCorrelationPatterns(builtinCorrelationPatterns)
 }
 
 // BuiltinFindingCorrelationPatternCatalogJSON returns the canonical checked-in catalog bytes.
@@ -93,6 +80,18 @@ func LoadFindingCorrelationPatterns(data []byte) ([]FindingCorrelationPattern, e
 		return patterns[i].ID < patterns[j].ID
 	})
 	return patterns, nil
+}
+
+func loadBuiltinFindingCorrelationPatterns() ([]FindingCorrelationPattern, error) {
+	patterns, err := LoadFindingCorrelationPatterns(builtinCorrelationPatternCatalog)
+	if err != nil {
+		return nil, err
+	}
+	runtimePatterns, err := LoadRuntimeCorrelationPatterns(correlationruntime.BuiltinHints())
+	if err != nil {
+		return nil, err
+	}
+	return mergeFindingCorrelationPatterns(patterns, runtimePatterns)
 }
 
 func LoadRuntimeCorrelationPatterns(hints []correlationruntime.CorrelationHint) ([]FindingCorrelationPattern, error) {

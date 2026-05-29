@@ -27,10 +27,14 @@ type Registry struct {
 	rules map[string]Rule
 }
 
+var builtinRegistry *Registry
+
 func init() {
-	if _, err := newBuiltinRegistry(); err != nil {
+	registry, err := newBuiltinRegistry()
+	if err != nil {
 		panic(fmt.Sprintf("build builtin finding registry: %v", err))
 	}
+	builtinRegistry = registry
 }
 
 // NewRegistry constructs a finding rule registry and rejects duplicate or invalid specs.
@@ -69,11 +73,7 @@ func NewRegistry(rules ...Rule) (*Registry, error) {
 // Keeping the built-in catalog in one place makes the current platform surface discoverable
 // to clients and gives future rule packages one consistent registration seam.
 func Builtin() *Registry {
-	registry, err := newBuiltinRegistry()
-	if err != nil {
-		panic(fmt.Sprintf("build builtin finding registry: %v", err))
-	}
-	return registry
+	return builtinRegistry
 }
 
 func newBuiltinRegistry() (*Registry, error) {
