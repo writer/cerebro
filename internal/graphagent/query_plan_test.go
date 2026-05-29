@@ -40,10 +40,15 @@ func TestOntologyPromptMentionsLegacyRepositoryShape(t *testing.T) {
 		"Entity `github.code.repository`",
 		"Entity `github.repo`",
 		"Repository questions should consider both `entity_type: 'github.code.repository'` and legacy `entity_type: 'github.repo'`",
+		"Repository metadata such as `owner_login` is stored in `attributes_json`",
+		"urn:cerebro:writer:github_code_repository:repo-123",
 	} {
 		if !strings.Contains(hint, want) {
 			t.Fatalf("PromptHint() missing %q:\n%s", want, hint)
 		}
+	}
+	if strings.Contains(hint, "Useful properties: owner_login") {
+		t.Fatalf("PromptHint() still advertises owner_login as top-level repository property:\n%s", hint)
 	}
 }
 

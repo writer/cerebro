@@ -43,8 +43,8 @@ var canonicalGraphOntology = GraphOntology{
 			Type:        "github.code.repository",
 			Description: "GitHub code repositories and normalized repository resources.",
 			Aliases:     []string{"repo", "repository", "github repo", "code repository"},
-			Properties:  []string{"owner_login", "source_id", "runtime_id"},
-			Examples:    []string{"urn:cerebro:writer:github_repo:writer/cerebro"},
+			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:github_code_repository:repo-123"},
 		},
 		{
 			Type:        "github.repo",
@@ -116,12 +116,15 @@ func (o GraphOntology) PromptHint() string {
 	fmt.Fprintf(&b, "- Relationships use label `RELATION` and lowercase `relation` property; never use relationship types like `:HAS_SOURCE`.\n")
 	fmt.Fprintf(&b, "- Active finding shape: `(resource:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})`.\n")
 	fmt.Fprintf(&b, "- Finding metadata such as `severity`, `effective_severity`, `status`, `risk_score`, `summary`, and `primary_resource_urn` is stored in `attributes_json`, not as top-level finding properties.\n")
-	fmt.Fprintf(&b, "- Repository questions should consider both `entity_type: 'github.code.repository'` and legacy `entity_type: 'github.repo'` unless the question clearly asks for only one shape.\n")
+	fmt.Fprintf(&b, "- Repository questions should consider both `entity_type: 'github.code.repository'` and legacy `entity_type: 'github.repo'` unless the question clearly asks for only one shape. Repository metadata such as `owner_login` is stored in `attributes_json`, not as a top-level property.\n")
 	fmt.Fprintf(&b, "- Canonical identity anchors use `entity_type` values `identity.email` and `identity.login`; there is no generic `identity` entity_type or top-level `email` property. Match identity values through `urn`, `label`, or controlled `attributes_json` extraction.\n")
 	fmt.Fprintf(&b, "- Connector/source health nodes use `entity_type: 'source'`; there is no `connector` entity_type and no top-level `status` or `last_sync_minutes` property. Read source health metadata from controlled `attributes_json` extraction.\n")
 	fmt.Fprintf(&b, "- Finding source grouping should prefer controlled `attributes_json.source_family` string extraction, then fall back to `finding.source_id`.\n")
 	for _, entity := range o.Entities {
 		fmt.Fprintf(&b, "- Entity `%s`: %s Aliases: %s. Useful properties: %s.\n", entity.Type, entity.Description, strings.Join(entity.Aliases, ", "), strings.Join(entity.Properties, ", "))
+		if len(entity.Examples) > 0 {
+			fmt.Fprintf(&b, "  Examples: %s.\n", strings.Join(entity.Examples, ", "))
+		}
 	}
 	for _, relation := range o.Relations {
 		fmt.Fprintf(&b, "- Relation `%s`: %s Aliases: %s.\n", relation.Relation, relation.Description, strings.Join(relation.Aliases, ", "))
