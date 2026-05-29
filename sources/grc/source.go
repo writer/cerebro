@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -478,7 +477,7 @@ func (s *Source) doJSON(req *http.Request, target any) error {
 	defer func() {
 		_ = resp.Body.Close()
 	}()
-	body, err := readLimitedBody(resp.Body)
+	body, err := sourcehttp.ReadLimitedBodyWithLimit(resp.Body, maxBodyBytes)
 	if err != nil {
 		return fmt.Errorf("read %s response: %w", req.URL.Path, err)
 	}
@@ -1444,18 +1443,6 @@ func isLoopbackHost(host string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
-}
-
-func readLimitedBody(body io.Reader) ([]byte, error) {
-	limited := io.LimitReader(body, maxBodyBytes+1)
-	data, err := io.ReadAll(limited)
-	if err != nil {
-		return nil, err
-	}
-	if len(data) > maxBodyBytes {
-		return nil, fmt.Errorf("response body exceeds %d bytes", maxBodyBytes)
-	}
-	return data, nil
 }
 
 func decodeResponseError(statusCode int, body []byte) error {

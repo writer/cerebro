@@ -35,3 +35,10 @@ func TestReadLimitedBodyRejectsOversizedResponse(t *testing.T) {
 		t.Fatal("ReadLimitedBody() error = nil, want oversized response error")
 	}
 }
+
+func TestReadLimitedBodyWithLimitRejectsCustomOversizedResponse(t *testing.T) {
+	_, err := ReadLimitedBodyWithLimit(strings.NewReader("abcdef"), 5)
+	if err == nil {
+		t.Fatal("ReadLimitedBodyWithLimit() error = nil, want oversized response error")
+	}
+}

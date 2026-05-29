@@ -3,12 +3,14 @@ package bootstrap
 import (
 	"bytes"
 	"context"
-	"io"
 	"net/http"
 	"time"
 
 	"github.com/writer/cerebro/internal/graphagent"
+	"github.com/writer/cerebro/internal/sourcehttp"
 )
+
+const maxHTTPDoerResponseBytes = 4 << 20
 
 type stdHTTPDoer struct {
 	client *http.Client
@@ -31,7 +33,7 @@ func (d *stdHTTPDoer) Post(ctx context.Context, url string, headers map[string]s
 		return 0, nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := sourcehttp.ReadLimitedBodyWithLimit(resp.Body, maxHTTPDoerResponseBytes)
 	if err != nil {
 		return resp.StatusCode, nil, err
 	}

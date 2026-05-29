@@ -128,6 +128,7 @@ func TestSourcesUseSharedHTTPSafety(t *testing.T) {
 			"&http.Client{",
 			"io.ReadAll(resp.Body)",
 			"io.ReadAll(response.Body)",
+			"func readLimitedBody(",
 			"type safeRoundTripper",
 		} {
 			if bytes.Contains(body, []byte(marker)) {
