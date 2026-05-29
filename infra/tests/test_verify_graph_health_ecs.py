@@ -405,12 +405,18 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             _verify_required_graph_relation_counts(payload, {"resource_exposure"})
 
     def test_verify_required_graph_relation_counts_accepts_required_relations(self) -> None:
-        payload = {"relations": {"belongs_to": 4, "represents": 2, "can_reach": 1, "can_perform": 0, "can_assume": 0}}
+        payload = {"relations": {"belongs_to": 4, "represents": 2, "can_reach": 1, "can_perform": 3, "can_assume": 5}}
 
         self.assertEqual(
             _verify_required_graph_relation_counts(payload, {"resource_exposure", "effective_permission", "iam_role_trust"}),
-            {"belongs_to", "represents", "can_reach"},
+            {"belongs_to", "can_assume", "can_perform", "can_reach", "represents"},
         )
+
+    def test_verify_required_graph_relation_counts_requires_declared_iam_edges(self) -> None:
+        payload = {"relations": {"belongs_to": 4, "represents": 2, "can_perform": 0, "can_assume": 0}}
+
+        with self.assertRaisesRegex(RuntimeError, "can_assume, can_perform"):
+            _verify_required_graph_relation_counts(payload, {"effective_permission", "iam_role_trust"})
 
     def test_graph_relation_observation_includes_optional_can_reach(self) -> None:
         self.assertIn("can_reach", GRAPH_RELATIONS_TO_OBSERVE)

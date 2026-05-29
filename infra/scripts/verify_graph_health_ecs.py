@@ -30,6 +30,8 @@ ATTACK_PATH_RELATION_MIN_TAG = (2, 1, 46)
 RELATION_COUNT_MIN_TAG = (2, 1, 50)
 REQUIRED_RELATIONS = {"belongs_to", "represents"}
 AWS_CAN_REACH_REQUIRED_FAMILIES = {"resource_exposure"}
+AWS_CAN_ASSUME_REQUIRED_FAMILIES = {"iam_role_trust"}
+AWS_CAN_PERFORM_REQUIRED_FAMILIES = {"effective_permission"}
 AWS_ATTACK_PATH_RELATIONS = {"can_perform", "can_assume", "can_admin", "can_impersonate"}
 GRAPH_RELATIONS_TO_OBSERVE = AWS_ATTACK_PATH_RELATIONS | {"can_reach"}
 INGEST_RUN_ERROR_DETAIL_LIMIT = 500
@@ -590,6 +592,10 @@ def _required_graph_relations(
     if attack_path_relations_supported:
         if aws_families & AWS_CAN_REACH_REQUIRED_FAMILIES:
             required.add("can_reach")
+        if aws_families & AWS_CAN_ASSUME_REQUIRED_FAMILIES:
+            required.add("can_assume")
+        if aws_families & AWS_CAN_PERFORM_REQUIRED_FAMILIES:
+            required.add("can_perform")
     return required
 
 
