@@ -159,6 +159,53 @@ LIMIT 10`,
 	}
 }
 
+func TestServiceSanitizesInternalFindingAttributes(t *testing.T) {
+	store := &askStore{
+		rows: []ports.CypherRow{{
+			Values: map[string]any{
+				"finding_urn":                      "urn:cerebro:writer:finding:quoted-summary",
+				"finding_label":                    "Quoted finding",
+				"summary":                          "",
+				"status":                           "",
+				"severity":                         "",
+				"finding_attributes_json_internal": `{"summary":"Okta policy rule \"Admins\" is INACTIVE","status":"open","severity":"HIGH","risk_score":"47"}`,
+			},
+		}},
+	}
+	llm := &StubLLMClient{
+		DraftResponse: &DraftResponse{
+			Rationale: "Explaining the scoped finding.",
+			Plan:      &AskQueryPlan{Intent: IntentExplainFinding, Limit: 25},
+		},
+		Summary: "Quoted finding should be reviewed.",
+	}
+	service := NewService(store, llm, ValidatorOptions{})
+
+	var events []Event
+	err := service.Stream(context.Background(), AskRequest{
+		TenantID: "writer",
+		Question: "Explain this finding",
+		ScopeURN: "urn:cerebro:writer:finding:quoted-summary",
+	}, func(event Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	rowsEvent := events[6].Data.(RowsEvent)
+	row := rowsEvent.Rows[0]
+	if _, exists := row["finding_attributes_json_internal"]; exists {
+		t.Fatalf("internal attributes leaked in row: %#v", row)
+	}
+	if got := row["summary"]; got != `Okta policy rule "Admins" is INACTIVE` {
+		t.Fatalf("summary = %q, want full quoted summary", got)
+	}
+	if got := row["severity"]; got != "HIGH" {
+		t.Fatalf("severity = %q, want HIGH", got)
+	}
+}
+
 func TestServiceRequiresTenantID(t *testing.T) {
 	service := NewService(&askStore{}, NewStubLLMClient(), ValidatorOptions{})
 	err := service.Stream(context.Background(), AskRequest{Question: "hello"}, func(Event) error { return nil })

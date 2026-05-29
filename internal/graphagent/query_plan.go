@@ -194,6 +194,9 @@ func inferIntent(question string, cypher string) string {
 }
 
 func renderDeterministicPlan(plan AskQueryPlan, maxRows int) (string, bool) {
+	if hasUnsupportedDeterministicModifiers(plan) {
+		return "", false
+	}
 	limit := boundedLimit(plan.Limit, maxRows)
 	switch plan.Intent {
 	case IntentAggregateFindingsBySource:
@@ -269,7 +272,8 @@ RETURN finding.urn AS finding_urn,
        summary,
        resource.urn AS resource_urn,
        coalesce(resource.label, resource.urn) AS resource_label,
-       risk_score
+       risk_score,
+       coalesce(finding.attributes_json, '') AS finding_attributes_json_internal
 ORDER BY risk_score DESC, finding_urn
 LIMIT %d`, limit), true
 	case IntentIdentityBridge:
@@ -298,6 +302,17 @@ LIMIT %d`, limit), true
 	default:
 		return "", false
 	}
+}
+
+func hasUnsupportedDeterministicModifiers(plan AskQueryPlan) bool {
+	if len(plan.Filters) > 0 {
+		return true
+	}
+	groupBy := strings.ToLower(strings.TrimSpace(plan.GroupBy))
+	if groupBy == "" {
+		return false
+	}
+	return plan.Intent != IntentAggregateFindingsBySource || groupBy != "source_family"
 }
 
 func ontologyDiagnostics(cypher string) []ConversionDiagnostic {

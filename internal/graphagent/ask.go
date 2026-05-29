@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -122,6 +123,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		return fmt.Errorf("%w: execute cypher: %w", ErrRuntimeUnavailable, err)
 	}
 	rowMaps := cypherRowsToMaps(rows)
+	sanitizeInternalRowFields(rowMaps)
 	rowsEvent := RowsEvent{
 		Rows:   rowMaps,
 		Graph:  scopedNeighborhood(ctx, s.store, request.ScopeURN),
@@ -233,6 +235,48 @@ func cypherRowsToMaps(rows []ports.CypherRow) []map[string]any {
 		result = append(result, values)
 	}
 	return result
+}
+
+func sanitizeInternalRowFields(rows []map[string]any) {
+	for _, row := range rows {
+		mergeFindingAttributes(row, "finding_attributes_json_internal")
+	}
+}
+
+func mergeFindingAttributes(row map[string]any, key string) {
+	raw, ok := row[key].(string)
+	delete(row, key)
+	if !ok || strings.TrimSpace(raw) == "" {
+		return
+	}
+	var attrs map[string]any
+	if err := json.Unmarshal([]byte(raw), &attrs); err != nil {
+		return
+	}
+	for _, field := range []string{"summary", "status", "severity", "effective_severity", "risk_score"} {
+		if !rowValueEmpty(row[field]) {
+			continue
+		}
+		value, ok := attrs[field]
+		if !ok {
+			continue
+		}
+		if text := strings.TrimSpace(fmt.Sprint(value)); text != "" {
+			row[field] = text
+		}
+	}
+}
+
+func rowValueEmpty(value any) bool {
+	if value == nil {
+		return true
+	}
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed) == ""
+	default:
+		return false
+	}
 }
 
 func scopedNeighborhood(ctx context.Context, store ports.GraphQueryStore, scopeURN string) *ports.EntityNeighborhood {

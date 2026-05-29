@@ -89,6 +89,26 @@ func TestConvertDraftToQueryScopesTopRiskAndReturnsOnlyScalarFields(t *testing.T
 	}
 }
 
+func TestConvertDraftToQuerySkipsTemplateForUnsupportedFilters(t *testing.T) {
+	draftCypher := `MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+RETURN finding.urn AS finding_urn
+LIMIT 25`
+	result := convertDraftToQuery(AskRequest{
+		TenantID: "writer",
+		Question: "Show high findings",
+	}, &DraftResponse{
+		Plan:   &AskQueryPlan{Intent: IntentTopRiskFindings, Filters: map[string]string{"severity": "HIGH"}},
+		Cypher: draftCypher,
+	}, 100)
+
+	if result.Deterministic || result.Source != "llm" {
+		t.Fatalf("conversion result = %#v, want LLM fallback for filtered plan", result)
+	}
+	if result.Cypher != draftCypher {
+		t.Fatalf("cypher = %q, want unmodified draft", result.Cypher)
+	}
+}
+
 func TestConvertDraftToQueryExplainFindingAvoidsBrittleSummaryExtraction(t *testing.T) {
 	result := convertDraftToQuery(AskRequest{
 		TenantID: "writer",
@@ -103,6 +123,9 @@ func TestConvertDraftToQueryExplainFindingAvoidsBrittleSummaryExtraction(t *test
 	}
 	if strings.Contains(result.Cypher, `"summary":"`) || strings.Contains(result.Cypher, "split(split(finding.attributes_json, '\"summary\"") {
 		t.Fatalf("converted cypher should not split raw JSON summary values:\n%s", result.Cypher)
+	}
+	if !strings.Contains(result.Cypher, "finding_attributes_json_internal") {
+		t.Fatalf("converted cypher should expose internal attributes for server-side summary extraction:\n%s", result.Cypher)
 	}
 }
 
