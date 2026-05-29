@@ -105,6 +105,39 @@ func TestServiceRefusesValidatorRejectedCypher(t *testing.T) {
 	}
 }
 
+func TestServiceRefusesUnsupportedPlanOnlyDraftAsConversionFailure(t *testing.T) {
+	store := &askStore{}
+	llm := &StubLLMClient{DraftResponse: &DraftResponse{
+		Rationale: "Planning filtered high-risk findings.",
+		Plan:      &AskQueryPlan{Intent: IntentTopRiskFindings, Filters: map[string]string{"severity": "HIGH"}},
+	}}
+	service := NewService(store, llm, ValidatorOptions{})
+
+	var events []Event
+	err := service.Stream(context.Background(), AskRequest{TenantID: "example", Question: "show HIGH risk findings"}, func(event Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	assertEventNames(t, events, []string{EventProgress, EventRationale, EventQueryPlan, EventCypher, EventSummary, EventDone})
+	planEvent := events[2].Data.(QueryPlanEvent)
+	if planEvent.Source != "conversion_refusal" || len(planEvent.Diagnostics) == 0 || planEvent.Diagnostics[0].Code != "query_plan_conversion_failed" {
+		t.Fatalf("query plan event = %#v, want conversion refusal diagnostic", planEvent)
+	}
+	cypherEvent := events[3].Data.(CypherEvent)
+	if cypherEvent.Validator.OK || strings.Contains(cypherEvent.Validator.Reason, "LLM refused") {
+		t.Fatalf("cypher validator = %#v, want backend conversion refusal", cypherEvent.Validator)
+	}
+	if !strings.Contains(cypherEvent.Validator.Reason, "could not be converted") {
+		t.Fatalf("refusal reason = %q, want conversion failure", cypherEvent.Validator.Reason)
+	}
+	if len(store.requests) != 0 {
+		t.Fatalf("store executed conversion-refused query: %#v", store.requests)
+	}
+}
+
 func TestServiceConvertsFindingSourceAggregationDraft(t *testing.T) {
 	store := &askStore{
 		rows: []ports.CypherRow{{

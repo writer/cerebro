@@ -175,6 +175,25 @@ LIMIT 25`
 	}
 }
 
+func TestConvertDraftToQueryRefusesUnsupportedPlanOnlyDraft(t *testing.T) {
+	result := convertDraftToQuery(AskRequest{
+		TenantID: "writer",
+		Question: "Show high risk findings",
+	}, &DraftResponse{
+		Plan: &AskQueryPlan{Intent: IntentTopRiskFindings, Filters: map[string]string{"severity": "HIGH"}},
+	}, 100)
+
+	if result.Cypher != "" || result.Source != "conversion_refusal" {
+		t.Fatalf("conversion result = %#v, want conversion refusal without cypher", result)
+	}
+	if !strings.Contains(result.Refusal, "could not be converted") {
+		t.Fatalf("refusal = %q, want backend conversion failure", result.Refusal)
+	}
+	if len(result.Diagnostics) == 0 || result.Diagnostics[0].Code != "query_plan_conversion_failed" {
+		t.Fatalf("diagnostics = %#v, want query_plan_conversion_failed", result.Diagnostics)
+	}
+}
+
 func TestConvertDraftToQueryExplainFindingAvoidsBrittleSummaryExtraction(t *testing.T) {
 	result := convertDraftToQuery(AskRequest{
 		TenantID: "writer",

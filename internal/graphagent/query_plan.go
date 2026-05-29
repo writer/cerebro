@@ -84,6 +84,7 @@ type conversionResult struct {
 	Cypher        string
 	Diagnostics   []ConversionDiagnostic
 	Source        string
+	Refusal       string
 	Deterministic bool
 	Corrected     bool
 }
@@ -137,6 +138,14 @@ func convertDraftToQuery(request AskRequest, draft *DraftResponse, maxRows int) 
 			result.Corrected = true
 			result.Diagnostics = append(result.Diagnostics, diagnostic)
 		}
+	} else if plan.Intent != IntentRawCypher {
+		result.Source = "conversion_refusal"
+		result.Refusal = fmt.Sprintf("Ask query plan %q could not be converted to Cypher and no fallback Cypher was provided.", plan.Intent)
+		result.Diagnostics = append(result.Diagnostics, ConversionDiagnostic{
+			Level:   "warn",
+			Code:    "query_plan_conversion_failed",
+			Message: result.Refusal,
+		})
 	}
 	result.Diagnostics = append(result.Diagnostics, ontologyDiagnostics(cypher)...)
 	if result.Deterministic {

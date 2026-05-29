@@ -92,7 +92,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		return err
 	}
 	if cypher == "" {
-		reason := firstNonEmpty(draft.Refusal, "LLM refused to draft Cypher")
+		reason := firstNonEmpty(draft.Refusal, conversion.Refusal, "LLM refused to draft Cypher")
 		return emitRefusal(emit, traceID, started, cypher, reason)
 	}
 	if err := emitProgress(emit, started, "validating_query", "Validating generated Cypher against read-only guardrails."); err != nil {
