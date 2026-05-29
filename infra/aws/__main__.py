@@ -182,7 +182,7 @@ if web_oidc_enabled:
     }
 
 alb_internal = _config_bool("albInternal", True)
-alb_idle_timeout_seconds = _config_int("albIdleTimeoutSeconds", 60)
+alb_idle_timeout_seconds = _config_int("albIdleTimeoutSeconds", 300)
 web_alb_idle_timeout_seconds = _config_int("webAlbIdleTimeoutSeconds", alb_idle_timeout_seconds)
 configured_alb_ingress_cidrs = config.get_object("albIngressCidrs") or None
 is_production = "prod" in environment.lower()
@@ -503,8 +503,8 @@ alb_stack = load_balancer.create_alb(
     enable_deletion_protection=enable_alb_deletion_protection,
     enable_access_logs=enable_alb_access_logs,
     access_logs_retention_days=alb_access_logs_retention_days,
-    allowed_hostnames=[domain] if domain else None,
     idle_timeout_seconds=alb_idle_timeout_seconds,
+    allowed_hostnames=[domain] if domain else None,
 )
 
 web_alb_stack = None

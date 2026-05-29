@@ -20,6 +20,8 @@ EXPECTED_STACK_ACCOUNTS = {
     "go-prod": "837279440628",
 }
 DEFAULT_MAX_RUNNING_MINUTES = 60
+DEFAULT_WAIT_TIMEOUT_SECONDS = 3600
+DEFAULT_GRAPH_COMMAND_RETRY_SECONDS = 3600
 MIN_INGEST_RUN_LIMIT = 100
 INGEST_RUN_LIMIT_MULTIPLIER = 20
 MAX_INGEST_RUN_LIMIT = 500
@@ -231,14 +233,31 @@ def _graph_command_overrides(task_definition: str, command: list[str], region: s
 
 
 def _wait_for_task(cluster: str, task_arn: str, timeout_seconds: int, poll_seconds: int, region: str) -> None:
+    task_id = _task_id(task_arn)
+    started = time.time()
     deadline = time.time() + timeout_seconds
+    next_progress = 0.0
     while True:
         tasks = _describe_tasks(cluster, [task_arn], region)
-        if tasks and tasks[0].get("lastStatus") == "STOPPED":
+        status = str(tasks[0].get("lastStatus") or "UNKNOWN") if tasks else "UNKNOWN"
+        if status == "STOPPED":
             return
-        if time.time() >= deadline:
+        now = time.time()
+        if now >= deadline:
             break
-        time.sleep(min(poll_seconds, max(1, int(deadline - time.time()))))
+        if now >= next_progress:
+            elapsed = int(now - started)
+            width = 20
+            progress = min(1.0, elapsed / max(1, timeout_seconds))
+            filled = int(progress * width)
+            bar = "#" * filled + "-" * (width - filled)
+            print(
+                f"WAIT graph command task={task_id} status={status} [{bar}] {elapsed}s/{timeout_seconds}s",
+                file=sys.stderr,
+                flush=True,
+            )
+            next_progress = now + max(30, poll_seconds)
+        time.sleep(min(poll_seconds, max(1, int(deadline - now))))
     raise TimeoutError(f"task {task_arn} did not stop within {timeout_seconds} seconds")
 
 
@@ -614,10 +633,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Verify live Cerebro graph health through a one-off ECS task.")
     parser.add_argument("--stack-file", type=Path, required=True)
     parser.add_argument("--region", default="us-east-1")
-    parser.add_argument("--wait-timeout-seconds", type=int, default=600)
+    parser.add_argument("--wait-timeout-seconds", type=int, default=DEFAULT_WAIT_TIMEOUT_SECONDS)
     parser.add_argument("--poll-seconds", type=int, default=10)
     parser.add_argument("--max-running-minutes", type=int, default=DEFAULT_MAX_RUNNING_MINUTES)
-    parser.add_argument("--graph-command-retry-seconds", type=int, default=300)
+    parser.add_argument("--graph-command-retry-seconds", type=int, default=DEFAULT_GRAPH_COMMAND_RETRY_SECONDS)
     parser.add_argument("--ingest-health-retry-seconds", type=int, default=1800)
     parser.add_argument(
         "--allow-transient-source-failures",

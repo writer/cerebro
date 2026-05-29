@@ -439,18 +439,18 @@ config:
     type: integer
     default: 30
     description: Number of days to retain ALB access log objects in S3
+  cerebro:albIdleTimeoutSeconds:
+    type: integer
+    default: 300
+    description: API ALB idle timeout in seconds for long-lived HTTP/SSE streams
   cerebro:albInternal:
     type: boolean
     default: true
     description: Deploy ALB as internal-only
-  cerebro:albIdleTimeoutSeconds:
-    type: integer
-    default: 60
-    description: API ALB connection idle timeout in seconds
   cerebro:webAlbIdleTimeoutSeconds:
     type: integer
-    default: 60
-    description: Web console ALB connection idle timeout in seconds
+    default: 300
+    description: Web console ALB idle timeout in seconds for long-lived HTTP/SSE streams
   cerebro:albIngressCidrs:
     type: array
     items:

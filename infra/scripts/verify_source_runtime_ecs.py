@@ -390,11 +390,28 @@ def _describe_tasks(cluster_arn: str, task_arns: list[str], region: str) -> list
 
 
 def _wait_for_task(cluster_arn: str, task_arn: str, timeout_seconds: int, poll_seconds: int, region: str) -> None:
+    task_id = _task_id(task_arn)
+    started = time.time()
     deadline = time.time() + timeout_seconds
+    next_progress = 0.0
     while time.time() < deadline:
         tasks = _describe_tasks(cluster_arn, [task_arn], region)
-        if tasks and tasks[0].get("lastStatus") == "STOPPED":
+        status = str(tasks[0].get("lastStatus") or "UNKNOWN") if tasks else "UNKNOWN"
+        if status == "STOPPED":
             return
+        now = time.time()
+        if now >= next_progress:
+            elapsed = int(now - started)
+            width = 20
+            progress = min(1.0, elapsed / max(1, timeout_seconds))
+            filled = int(progress * width)
+            bar = "#" * filled + "-" * (width - filled)
+            print(
+                f"WAIT source runtime task={task_id} status={status} [{bar}] {elapsed}s/{timeout_seconds}s",
+                file=sys.stderr,
+                flush=True,
+            )
+            next_progress = now + max(30, poll_seconds)
         time.sleep(poll_seconds)
     raise TimeoutError(f"task {task_arn} did not stop within {timeout_seconds} seconds")
 
@@ -638,7 +655,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-age-minutes", type=int, default=180)
     parser.add_argument("--failed-run-retry-seconds", type=int, default=0, help="Retry failed verification tasks for this many seconds before failing.")
     parser.add_argument("--run-attempt-timeout-seconds", type=int, default=0, help="Stop and retry a --run verification task if one attempt runs longer than this.")
-    parser.add_argument("--wait-timeout-seconds", type=int, default=900)
+    parser.add_argument("--wait-timeout-seconds", type=int, default=3600)
     parser.add_argument("--poll-seconds", type=int, default=10)
     args = parser.parse_args(argv)
 
