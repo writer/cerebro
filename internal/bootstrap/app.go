@@ -1611,6 +1611,10 @@ func (a *App) handlePromoteFindingCandidate(w http.ResponseWriter, r *http.Reque
 		writeFindingError(w, err)
 		return
 	}
+	if err := authorizeFindingCandidatePromotion(r.Context()); err != nil {
+		writeFindingError(w, err)
+		return
+	}
 	response, err := a.findingService().PromoteFindingCandidate(r.Context(), findings.PromoteCandidateRequest{
 		CandidateID:           request.GetId(),
 		PromotedBy:            request.GetPromotedBy(),
@@ -2018,6 +2022,9 @@ func (s *bootstrapService) PromoteFindingCandidate(ctx context.Context, req *con
 		return nil, findingConnectError(err)
 	}
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), candidate.RuntimeID, false); err != nil {
+		return nil, findingConnectError(err)
+	}
+	if err := authorizeFindingCandidatePromotion(ctx); err != nil {
 		return nil, findingConnectError(err)
 	}
 	response, err := service.PromoteFindingCandidate(ctx, findings.PromoteCandidateRequest{

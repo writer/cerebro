@@ -2321,6 +2321,52 @@ func TestScopeForHTTPRequestIncludesGRCAskPost(t *testing.T) {
 	}
 }
 
+func TestCandidatePromotionRequiresExplicitScope(t *testing.T) {
+	readOnly := context.WithValue(context.Background(), authContextKey{}, authContext{
+		principal: authPrincipal{Scopes: []string{scopeCosmoSecurityRead}},
+	})
+	if err := authorizeFindingCandidatePromotion(readOnly); !errors.Is(err, errScopeForbidden) {
+		t.Fatalf("authorizeFindingCandidatePromotion(read-only) error = %v, want %v", err, errScopeForbidden)
+	}
+	promoter := context.WithValue(context.Background(), authContextKey{}, authContext{
+		principal: authPrincipal{Scopes: []string{scopeFindingCandidatePromote}},
+	})
+	if err := authorizeFindingCandidatePromotion(promoter); err != nil {
+		t.Fatalf("authorizeFindingCandidatePromotion(promoter) error = %v", err)
+	}
+	if err := authorizeFindingCandidatePromotion(context.Background()); err != nil {
+		t.Fatalf("authorizeFindingCandidatePromotion(no auth) error = %v", err)
+	}
+}
+
+func TestCandidateScopesCoverReadAndPromotionRoutes(t *testing.T) {
+	for _, tt := range []struct {
+		method string
+		path   string
+		want   string
+	}{
+		{method: http.MethodGet, path: "/finding-candidates/candidate-1", want: scopeCosmoSecurityRead},
+		{method: http.MethodPost, path: "/finding-candidates/candidate-1/promote", want: scopeFindingCandidatePromote},
+	} {
+		req := httptest.NewRequest(tt.method, tt.path, nil)
+		if got := scopeForHTTPRequest(req); got != tt.want {
+			t.Fatalf("scopeForHTTPRequest(%s %s) = %q, want %q", tt.method, tt.path, got, tt.want)
+		}
+	}
+	for _, tt := range []struct {
+		procedure string
+		want      string
+	}{
+		{procedure: cerebrov1connect.BootstrapServiceListFindingCandidatesProcedure, want: scopeCosmoSecurityRead},
+		{procedure: cerebrov1connect.BootstrapServiceGetFindingCandidateProcedure, want: scopeCosmoSecurityRead},
+		{procedure: cerebrov1connect.BootstrapServicePromoteFindingCandidateProcedure, want: scopeFindingCandidatePromote},
+	} {
+		if got := scopeForConnectProcedure(tt.procedure); got != tt.want {
+			t.Fatalf("scopeForConnectProcedure(%s) = %q, want %q", tt.procedure, got, tt.want)
+		}
+	}
+}
+
 func TestScopedCosmoCredentialEnforcesConnectProcedures(t *testing.T) {
 	cfg := config.Config{
 		HTTPAddr:        "127.0.0.1:0",
