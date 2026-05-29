@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -2419,8 +2420,9 @@ func stringActionMatches(action string, expected string) bool {
 	if normalizedAction == "*" || normalizedAction == normalizedExpected {
 		return true
 	}
-	if strings.HasSuffix(normalizedAction, "*") {
-		return strings.HasPrefix(normalizedExpected, strings.TrimSuffix(normalizedAction, "*"))
+	matched, err := path.Match(normalizedAction, normalizedExpected)
+	if err == nil && matched {
+		return true
 	}
 	return false
 }

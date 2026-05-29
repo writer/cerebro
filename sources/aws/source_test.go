@@ -466,7 +466,7 @@ func TestIAMRoleTrustClassifiesPrincipalTypes(t *testing.T) {
 }
 
 func TestIAMRoleTrustIncludesWildcardAssumeActions(t *testing.T) {
-	for _, action := range []any{"sts:*", "sts:AssumeRole*", []any{"sts:TagSession", "sts:AssumeRole*"}} {
+	for _, action := range []any{"sts:*", "sts:AssumeRole*", "*:AssumeRole", []any{"sts:TagSession", "sts:AssumeRole*"}} {
 		t.Run(fmt.Sprint(action), func(t *testing.T) {
 			role := iamtypes.Role{
 				Arn:      awssdk.String("arn:aws:iam::123456789012:role/WildcardRole"),
