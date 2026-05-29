@@ -47,11 +47,18 @@ var canonicalGraphOntology = GraphOntology{
 			Examples:    []string{"urn:cerebro:writer:github_repo:writer/cerebro"},
 		},
 		{
-			Type:        "identity",
-			Description: "Canonical identity/resource nodes linked through identifier relationships.",
-			Aliases:     []string{"user", "identity", "principal", "account"},
-			Properties:  []string{"email", "source_id", "runtime_id"},
-			Examples:    []string{"urn:cerebro:writer:identity:alice@writer.com"},
+			Type:        "identity.email",
+			Description: "Canonical email identity anchors linked from concrete principals through represents_identity.",
+			Aliases:     []string{"email identity", "canonical email", "identity email", "principal email"},
+			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:identity:email:alice@writer.com"},
+		},
+		{
+			Type:        "identity.login",
+			Description: "Canonical login identity anchors linked from concrete principals through represents_identity.",
+			Aliases:     []string{"login identity", "canonical login", "identity login", "username identity"},
+			Properties:  []string{"urn", "label", "source_id", "runtime_id", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:identity:login:alice"},
 		},
 		{
 			Type:        "connector",
@@ -85,10 +92,10 @@ var canonicalGraphOntology = GraphOntology{
 		},
 		{
 			Relation:    "represents_identity",
-			Description: "Edge between concrete identities and canonical identity nodes.",
+			Description: "Edge between concrete principals, identifier anchors, and canonical identity.email/identity.login nodes.",
 			Aliases:     []string{"REPRESENTS_IDENTITY", "represents"},
 			FromTypes:   []string{"*"},
-			ToTypes:     []string{"identity"},
+			ToTypes:     []string{"identity.email", "identity.login"},
 		},
 	},
 }
@@ -101,7 +108,8 @@ func (o GraphOntology) PromptHint() string {
 	fmt.Fprintf(&b, "- Entity types are stored in lowercase `entity_type`; never use labels like `:Finding`, `:repo`, or `:identity`.\n")
 	fmt.Fprintf(&b, "- Relationships use label `RELATION` and lowercase `relation` property; never use relationship types like `:HAS_SOURCE`.\n")
 	fmt.Fprintf(&b, "- Active finding shape: `(resource:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})`.\n")
-	fmt.Fprintf(&b, "- Finding source grouping should prefer `finding.source_id`; only use controlled `attributes_json` string extraction as fallback.\n")
+	fmt.Fprintf(&b, "- Canonical identity anchors use `entity_type` values `identity.email` and `identity.login`; there is no generic `identity` entity_type or top-level `email` property. Match identity values through `urn`, `label`, or controlled `attributes_json` extraction.\n")
+	fmt.Fprintf(&b, "- Finding source grouping should prefer controlled `attributes_json.source_family` string extraction, then fall back to `finding.source_id`.\n")
 	for _, entity := range o.Entities {
 		fmt.Fprintf(&b, "- Entity `%s`: %s Aliases: %s. Useful properties: %s.\n", entity.Type, entity.Description, strings.Join(entity.Aliases, ", "), strings.Join(entity.Properties, ", "))
 	}

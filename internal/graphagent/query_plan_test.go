@@ -10,8 +10,27 @@ func TestOntologyCanonicalizesAliases(t *testing.T) {
 	if got := canonicalEntityType("Finding"); got != "finding" {
 		t.Fatalf("canonicalEntityType(Finding) = %q, want finding", got)
 	}
+	if got := canonicalEntityType("email identity"); got != "identity.email" {
+		t.Fatalf("canonicalEntityType(email identity) = %q, want identity.email", got)
+	}
 	if got, ok := canonicalRelation("BELONGS_TO_SOURCE"); !ok || got != "belongs_to" {
 		t.Fatalf("canonicalRelation(BELONGS_TO_SOURCE) = %q, %v; want belongs_to, true", got, ok)
+	}
+}
+
+func TestOntologyPromptUsesProjectedIdentityShape(t *testing.T) {
+	hint := canonicalGraphOntology.PromptHint()
+	for _, want := range []string{
+		"identity.email",
+		"identity.login",
+		"there is no generic `identity` entity_type or top-level `email` property",
+	} {
+		if !strings.Contains(hint, want) {
+			t.Fatalf("PromptHint() missing %q:\n%s", want, hint)
+		}
+	}
+	if strings.Contains(hint, "Entity `identity`:") || strings.Contains(hint, "Useful properties: email, source_id") {
+		t.Fatalf("PromptHint() still advertises generic identity shape:\n%s", hint)
 	}
 }
 
