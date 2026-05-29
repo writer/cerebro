@@ -47,6 +47,20 @@ var (
 
 func convertDraftToQuery(request AskRequest, draft *DraftResponse, maxRows int) conversionResult {
 	cypher := strings.TrimSpace(draft.Cypher)
+	if cypher == "" && strings.TrimSpace(draft.Refusal) != "" {
+		plan := normalizePlanWithoutInference(draft.Plan, request, maxRows)
+		return conversionResult{
+			Plan:      plan,
+			Cypher:    "",
+			Source:    "llm_refusal",
+			Corrected: false,
+			Diagnostics: []ConversionDiagnostic{{
+				Level:   "info",
+				Code:    "llm_refusal_preserved",
+				Message: "The LLM explicitly refused to produce Cypher, so deterministic conversion was skipped.",
+			}},
+		}
+	}
 	plan := normalizePlan(draft.Plan, request, cypher, maxRows)
 	result := conversionResult{
 		Plan:      plan,
@@ -123,6 +137,23 @@ func normalizePlan(plan *AskQueryPlan, request AskRequest, cypher string, maxRow
 	return out
 }
 
+func normalizePlanWithoutInference(plan *AskQueryPlan, request AskRequest, maxRows int) AskQueryPlan {
+	out := AskQueryPlan{Intent: IntentRawCypher}
+	if plan != nil {
+		out = *plan
+	}
+	out.Intent = canonicalIntent(out.Intent)
+	if out.Intent == "" {
+		out.Intent = IntentRawCypher
+	}
+	out.ScopeURN = firstNonEmpty(out.ScopeURN, strings.TrimSpace(request.ScopeURN))
+	out.Limit = boundedLimit(out.Limit, maxRows)
+	if out.Filters == nil {
+		out.Filters = map[string]string{}
+	}
+	return out
+}
+
 func canonicalIntent(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "", "raw", "cypher", "raw_cypher":
@@ -172,10 +203,10 @@ func renderDeterministicPlan(plan AskQueryPlan, maxRows int) (string, bool) {
 		return fmt.Sprintf(`MATCH (resource:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'has_finding'}]->(f:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
 WITH DISTINCT f,
      coalesce(
-       f.source_id,
        CASE WHEN coalesce(f.attributes_json, '') CONTAINS '"source_family":"' THEN split(split(f.attributes_json, '"source_family":"')[1], '"')[0] END,
        CASE WHEN coalesce(f.attributes_json, '') CONTAINS '"sourceFamily":"' THEN split(split(f.attributes_json, '"sourceFamily":"')[1], '"')[0] END,
        CASE WHEN coalesce(f.attributes_json, '') CONTAINS '"source_system":"' THEN split(split(f.attributes_json, '"source_system":"')[1], '"')[0] END,
+       f.source_id,
        'Unknown'
      ) AS source_family
 RETURN source_family, count(DISTINCT f) AS finding_count
@@ -230,10 +261,7 @@ WITH resource, r, finding,
        CASE WHEN coalesce(finding.attributes_json, '') CONTAINS '"status":"' THEN split(split(finding.attributes_json, '"status":"')[1], '"')[0] END,
        ''
      ) AS status,
-     coalesce(
-       CASE WHEN coalesce(finding.attributes_json, '') CONTAINS '"summary":"' THEN split(split(finding.attributes_json, '"summary":"')[1], '"')[0] END,
-       ''
-     ) AS summary
+     '' AS summary
 RETURN finding.urn AS finding_urn,
        coalesce(finding.label, finding.urn) AS finding_label,
        severity,

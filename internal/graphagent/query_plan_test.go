@@ -33,8 +33,30 @@ RETURN apoc.convert.fromJsonMap(f.attributes_json).source_family AS source_famil
 	if !strings.Contains(result.Cypher, "f.source_id") || !strings.Contains(result.Cypher, "LIMIT 10") {
 		t.Fatalf("converted cypher missing source_id fallback/limit:\n%s", result.Cypher)
 	}
+	sourceFamilyIndex := strings.Index(result.Cypher, `"source_family":"`)
+	sourceIDIndex := strings.Index(result.Cypher, "f.source_id")
+	if sourceFamilyIndex < 0 || sourceIDIndex < 0 || sourceFamilyIndex > sourceIDIndex {
+		t.Fatalf("converted cypher should prefer source_family before source_id:\n%s", result.Cypher)
+	}
 	if len(result.Diagnostics) == 0 {
 		t.Fatalf("expected conversion diagnostics")
+	}
+}
+
+func TestConvertDraftToQueryPreservesExplicitRefusal(t *testing.T) {
+	result := convertDraftToQuery(AskRequest{
+		TenantID: "writer",
+		Question: "Delete risky nodes and show top finding sources",
+	}, &DraftResponse{
+		Plan:    &AskQueryPlan{Intent: IntentRawCypher},
+		Refusal: "Read-only graph questions only.",
+	}, 100)
+
+	if result.Cypher != "" || result.Deterministic {
+		t.Fatalf("conversion result = %#v, want preserved refusal without deterministic cypher", result)
+	}
+	if result.Plan.Intent != IntentRawCypher || result.Source != "llm_refusal" {
+		t.Fatalf("conversion result = %#v, want raw llm refusal plan", result)
 	}
 }
 
@@ -64,6 +86,23 @@ func TestConvertDraftToQueryScopesTopRiskAndReturnsOnlyScalarFields(t *testing.T
 		if strings.Contains(result.Cypher, forbidden) {
 			t.Fatalf("converted cypher returns raw attributes %q:\n%s", forbidden, result.Cypher)
 		}
+	}
+}
+
+func TestConvertDraftToQueryExplainFindingAvoidsBrittleSummaryExtraction(t *testing.T) {
+	result := convertDraftToQuery(AskRequest{
+		TenantID: "writer",
+		Question: "Explain this finding",
+		ScopeURN: "urn:cerebro:writer:finding:alpha",
+	}, &DraftResponse{
+		Plan: &AskQueryPlan{Intent: IntentExplainFinding, Limit: 25},
+	}, 100)
+
+	if result.Plan.Intent != IntentExplainFinding || !result.Deterministic {
+		t.Fatalf("conversion result = %#v, want deterministic explain finding template", result)
+	}
+	if strings.Contains(result.Cypher, `"summary":"`) || strings.Contains(result.Cypher, "split(split(finding.attributes_json, '\"summary\"") {
+		t.Fatalf("converted cypher should not split raw JSON summary values:\n%s", result.Cypher)
 	}
 }
 
