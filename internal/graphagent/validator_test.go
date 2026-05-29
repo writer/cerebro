@@ -165,6 +165,26 @@ LIMIT 25`, map[string]any{"tenant_id": "example"})
 	}
 }
 
+func FuzzValidatorMaliciousCorpus(f *testing.F) {
+	for _, cypher := range []string{
+		`MATCH (a:Entity {tenant_id:$tenant_id}) WITH 'x //' AS c CREATE (b:Entity) RETURN b LIMIT 25`,
+		`MATCH (a:Entity {tenant_id:$tenant_id}) WITH "/*" AS c MATCH (b:Entity) RETURN b LIMIT 25`,
+		`MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT 25 UNION MATCH (x:Entity {tenant_id: $tenant_id}) RETURN x LIMIT 1000`,
+		`MATCH (seed:Entity {tenant_id: $tenant_id}) RETURN [(x:Entity {metadata: {tenant_id: $tenant_id}}) | x.urn] AS urn LIMIT 25`,
+		`LOAD CSV FROM 'https://example.test/x.csv' AS row RETURN row LIMIT 1`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) CALL db.labels() YIELD label RETURN label LIMIT 25`,
+	} {
+		f.Add(cypher)
+	}
+	validator := NewValidator(nil, ValidatorOptions{})
+	f.Fuzz(func(t *testing.T, cypher string) {
+		if len(cypher) > 4096 {
+			t.Skip("query too large for validator fuzz seed")
+		}
+		_, _, _ = validator.validate(context.Background(), cypher, map[string]any{"tenant_id": "example"})
+	})
+}
+
 func TestValidatorAcceptsBoundedTenantScopedRead(t *testing.T) {
 	store := &validatorStore{}
 	validator := NewValidator(store, ValidatorOptions{Explain: true})
@@ -207,6 +227,22 @@ func TestValidatorAcceptsScopedRelationshipReadWithReturnFunctions(t *testing.T)
 	result, limit, err := validator.validate(context.Background(), `MATCH (src:Entity {tenant_id: $tenant_id})-[r:RELATION]->(dst:Entity {tenant_id: $tenant_id})
 RETURN src.urn AS src, dst.urn AS dst, coalesce(src.label, src.urn) AS label
 ORDER BY label
+LIMIT 25`, map[string]any{"tenant_id": "example"})
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if !result.OK {
+		t.Fatalf("Validate() = %#v, want ok", result)
+	}
+	if limit != 25 {
+		t.Fatalf("limit = %d, want 25", limit)
+	}
+}
+
+func TestValidatorAcceptsEscapedLimitAlias(t *testing.T) {
+	validator := NewValidator(nil, ValidatorOptions{})
+	result, limit, err := validator.validate(context.Background(), `MATCH (e:Entity {tenant_id: $tenant_id})
+RETURN e.urn AS `+"`limit`"+`
 LIMIT 25`, map[string]any{"tenant_id": "example"})
 	if err != nil {
 		t.Fatalf("Validate() error = %v", err)

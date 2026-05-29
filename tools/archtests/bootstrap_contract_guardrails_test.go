@@ -102,3 +102,40 @@ func TestSourceCDKOwnsExternalHTTPClients(t *testing.T) {
 		t.Fatalf("scan net/http imports: %v", err)
 	}
 }
+
+func TestSourcesUseSharedHTTPSafety(t *testing.T) {
+	root := repoRoot(t)
+	if err := filepath.WalkDir(filepath.Join(root, "sources"), func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			if entry.Name() == "testdata" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		rel := shortPath(root, path)
+		for _, marker := range []string{
+			"http.DefaultClient",
+			"&http.Client{",
+			"io.ReadAll(resp.Body)",
+			"io.ReadAll(response.Body)",
+			"type safeRoundTripper",
+		} {
+			if bytes.Contains(body, []byte(marker)) {
+				t.Fatalf("%s uses %s; source connectors must go through internal/sourcehttp", rel, marker)
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("scan source HTTP safety: %v", err)
+	}
+}

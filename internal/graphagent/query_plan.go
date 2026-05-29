@@ -92,6 +92,7 @@ var (
 	upperRelationPattern  = regexp.MustCompile(`:\s*([A-Z][A-Z0-9_]+)\b`)
 	nonEntityLabelPattern = regexp.MustCompile(`\([^){}]*:\s*(Finding|FINDING|finding|repo|repository|identity|connector)\b`)
 	apocUsagePattern      = regexp.MustCompile(`(?i)\bapoc\.[A-Za-z0-9_.]+\s*\(`)
+	cypherLimitPattern    = regexp.MustCompile(`(?i)\bLIMIT\s+(\d+)\b`)
 )
 
 func convertDraftToQuery(request AskRequest, draft *DraftResponse, maxRows int) conversionResult {
@@ -434,7 +435,7 @@ func enforceCypherLimit(cypher string, maxRows int) (string, ConversionDiagnosti
 	if trimmed == "" {
 		return cypher, ConversionDiagnostic{}, false
 	}
-	matches := limitPattern.FindAllStringSubmatchIndex(trimmed, -1)
+	matches := cypherLimitPattern.FindAllStringSubmatchIndex(trimmed, -1)
 	if len(matches) == 0 {
 		return trimmed + fmt.Sprintf("\nLIMIT %d", limit), ConversionDiagnostic{
 			Level:   "info",
@@ -443,7 +444,7 @@ func enforceCypherLimit(cypher string, maxRows int) (string, ConversionDiagnosti
 		}, true
 	}
 	valueStart, valueEnd := matches[len(matches)-1][2], matches[len(matches)-1][3]
-	current, ok := queryLimit(trimmed)
+	current, ok := queryLimit(lexCypher(trimmed))
 	if !ok || current <= limit {
 		return cypher, ConversionDiagnostic{}, false
 	}

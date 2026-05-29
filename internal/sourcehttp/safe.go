@@ -8,9 +8,59 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 const MaxBodyBytes = 8 << 20
+const DefaultTimeout = 30 * time.Second
+
+type ClientOptions struct {
+	SourceID      string
+	Timeout       time.Duration
+	BaseTransport http.RoundTripper
+	AllowLoopback bool
+	LookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)
+}
+
+func NewClient(options ClientOptions) *http.Client {
+	return HardenClient(nil, options)
+}
+
+func HardenClient(client *http.Client, options ClientOptions) *http.Client {
+	if client == nil {
+		client = &http.Client{}
+	}
+	cloned := *client
+	if cloned.Timeout <= 0 {
+		cloned.Timeout = firstDuration(options.Timeout, DefaultTimeout)
+	}
+	if cloned.CheckRedirect == nil {
+		cloned.CheckRedirect = NoRedirect
+	}
+	transport := options.BaseTransport
+	if transport == nil {
+		transport = cloned.Transport
+	}
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	cloned.Transport = SafeRoundTripper{
+		Base:          transport,
+		SourceID:      strings.TrimSpace(options.SourceID),
+		AllowLoopback: options.AllowLoopback,
+		LookupIPAddrs: options.LookupIPAddrs,
+	}
+	return &cloned
+}
+
+func firstDuration(values ...time.Duration) time.Duration {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return 0
+}
 
 // NormalizeBaseURL validates source-configured API origins before credentials are
 // attached to requests.
@@ -48,8 +98,8 @@ func NormalizeRequestPath(sourceID string, raw string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("parse %s request path: %w", sourceID, err)
 	}
-	if parsed.IsAbs() || parsed.Host != "" || parsed.User != nil || parsed.Fragment != "" {
-		return "", fmt.Errorf("%s request path must be an absolute path without host or fragment", sourceID)
+	if parsed.IsAbs() || parsed.Host != "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		return "", fmt.Errorf("%s request path must be an absolute path without query or fragment", sourceID)
 	}
 	if !strings.HasPrefix(value, "/") {
 		return "", fmt.Errorf("%s request path must start with /", sourceID)

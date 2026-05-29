@@ -373,7 +373,7 @@ func (s *Source) getJSON(ctx context.Context, settings settings, path string, qu
 	req.Header.Set("Authorization", "Bearer "+settings.token)
 	client := s.client
 	if client == nil {
-		client = http.DefaultClient
+		client = sourcehttp.NewClient(sourcehttp.ClientOptions{SourceID: "google_workspace"})
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -394,20 +394,12 @@ func (s *Source) getJSON(ctx context.Context, settings settings, path string, qu
 }
 
 func (s *Source) safeClient() *http.Client {
-	return &http.Client{
-		Timeout:       30 * time.Second,
-		Transport:     s.safeTransport(),
-		CheckRedirect: sourcehttp.NoRedirect,
-	}
-}
-
-func (s *Source) safeTransport() http.RoundTripper {
-	return sourcehttp.SafeRoundTripper{
-		Base:          http.DefaultTransport,
+	return sourcehttp.NewClient(sourcehttp.ClientOptions{
 		SourceID:      "google_workspace",
+		Timeout:       30 * time.Second,
 		AllowLoopback: s != nil && s.allowLoopbackBaseURL,
 		LookupIPAddrs: lookupIPAddrs(s),
-	}
+	})
 }
 
 func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, error) {

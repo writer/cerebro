@@ -465,20 +465,12 @@ func (s *Source) doJSON(req *http.Request, target any) error {
 		return fmt.Errorf("grc source is required")
 	}
 	client := s.client
-	if client == nil {
-		client = &http.Client{Timeout: httpTimeout}
-	}
-	cloned := *client
-	if cloned.CheckRedirect == nil {
-		cloned.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
-			return http.ErrUseLastResponse
-		}
-	}
-	transport := cloned.Transport
-	if transport == nil {
-		transport = http.DefaultTransport
-	}
-	cloned.Transport = sourcehttp.SafeRoundTripper{Base: transport, SourceID: "grc", AllowLoopback: s.allowLoopbackBaseURL, LookupIPAddrs: lookupIPAddrs(s)}
+	cloned := sourcehttp.HardenClient(client, sourcehttp.ClientOptions{
+		SourceID:      "grc",
+		Timeout:       httpTimeout,
+		AllowLoopback: s.allowLoopbackBaseURL,
+		LookupIPAddrs: lookupIPAddrs(s),
+	})
 	resp, err := cloned.Do(req)
 	if err != nil {
 		return fmt.Errorf("request %s: %w", req.URL.Path, err)

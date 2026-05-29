@@ -1006,21 +1006,12 @@ func sleepContext(ctx context.Context, delay time.Duration) error {
 }
 
 func oktaHTTPClientNoRedirect(client *http.Client, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) *http.Client {
-	if client == nil {
-		client = &http.Client{Timeout: oktaHTTPTimeout}
-	}
-	cloned := *client
-	if cloned.CheckRedirect == nil {
-		cloned.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
-			return http.ErrUseLastResponse
-		}
-	}
-	transport := cloned.Transport
-	if transport == nil {
-		transport = http.DefaultTransport
-	}
-	cloned.Transport = sourcehttp.SafeRoundTripper{Base: transport, SourceID: "okta", AllowLoopback: allowLoopback, LookupIPAddrs: lookupIPAddrs}
-	return &cloned
+	return sourcehttp.HardenClient(client, sourcehttp.ClientOptions{
+		SourceID:      "okta",
+		Timeout:       oktaHTTPTimeout,
+		AllowLoopback: allowLoopback,
+		LookupIPAddrs: lookupIPAddrs,
+	})
 }
 
 func oktaLookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, error) {
