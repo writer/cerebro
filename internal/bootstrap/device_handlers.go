@@ -131,18 +131,20 @@ func orderCurrentFirst(keys []deviceauth.SigningKey, currentKID string) []device
 }
 
 type deviceAuthHTTPHandler struct {
-	service     *deviceauth.Service
-	enrollLimit *deviceauth.TokenBucket
-	tokenLimit  *deviceauth.TokenBucket
-	now         func() time.Time
+	service      *deviceauth.Service
+	enrollLimit  *deviceauth.TokenBucket
+	tokenLimit   *deviceauth.TokenBucket
+	originConfig config.RequestOriginConfig
+	now          func() time.Time
 }
 
-func newDeviceAuthHTTPHandler(service *deviceauth.Service, cfg config.DeviceAuthConfig) *deviceAuthHTTPHandler {
+func newDeviceAuthHTTPHandler(service *deviceauth.Service, cfg config.DeviceAuthConfig, originConfig config.RequestOriginConfig) *deviceAuthHTTPHandler {
 	return &deviceAuthHTTPHandler{
-		service:     service,
-		enrollLimit: deviceauth.NewTokenBucket(cfg.EnrollPerIPRatePerSecond, cfg.EnrollPerIPBurst),
-		tokenLimit:  deviceauth.NewTokenBucket(cfg.TokenPerDeviceRatePerSecond, cfg.TokenPerDeviceBurst),
-		now:         time.Now,
+		service:      service,
+		enrollLimit:  deviceauth.NewTokenBucket(cfg.EnrollPerIPRatePerSecond, cfg.EnrollPerIPBurst),
+		tokenLimit:   deviceauth.NewTokenBucket(cfg.TokenPerDeviceRatePerSecond, cfg.TokenPerDeviceBurst),
+		originConfig: originConfig,
+		now:          time.Now,
 	}
 }
 
@@ -201,7 +203,8 @@ func (h *deviceAuthHTTPHandler) handleEnroll(w http.ResponseWriter, r *http.Requ
 		writeDeviceAuthError(w, http.StatusServiceUnavailable, "device_auth_disabled", "device-auth is not enabled")
 		return
 	}
-	clientIP := remoteIPForRateLimit(r)
+	origin := resolveRequestOrigin(r, h.originConfig)
+	clientIP := firstNonEmpty(origin.ClientIP, "unknown")
 	if !h.enrollLimit.Allow(clientIP) {
 		writeDeviceAuthError(w, http.StatusTooManyRequests, "rate_limited", "too many enrollment attempts")
 		return
@@ -249,7 +252,9 @@ func (h *deviceAuthHTTPHandler) handleToken(w http.ResponseWriter, r *http.Reque
 		writeDeviceAuthError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
-	limitKey := remoteIPForRateLimit(r)
+	origin := resolveRequestOrigin(r, h.originConfig)
+	requestIP := firstNonEmpty(origin.ClientIP, "unknown")
+	limitKey := requestIP
 	if deviceKey, err := h.service.RefreshTokenRateLimitKey(r.Context(), body.RefreshToken); err == nil && deviceKey != "" {
 		limitKey = deviceKey
 	}
@@ -257,26 +262,14 @@ func (h *deviceAuthHTTPHandler) handleToken(w http.ResponseWriter, r *http.Reque
 		writeDeviceAuthError(w, http.StatusTooManyRequests, "rate_limited", "too many token requests")
 		return
 	}
-	scheme := "https"
-	if r.TLS == nil {
-		scheme = "http"
-	}
-	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); forwarded != "" {
-		scheme = forwarded
-	}
-	host := r.Host
-	if host == "" {
-		host = "cerebro"
-	}
-	url := scheme + "://" + host + r.URL.RequestURI()
 	dpopProof := strings.TrimSpace(r.Header.Get("DPoP"))
 	response, err := h.service.IssueToken(r.Context(), deviceauth.TokenRequest{
 		GrantType:    body.GrantType,
 		RefreshToken: body.RefreshToken,
 		DPoPProof:    dpopProof,
 		HTTPMethod:   r.Method,
-		HTTPURL:      url,
-		RemoteIP:     net.ParseIP(remoteIPForRateLimit(r)),
+		HTTPURL:      origin.PublicURL,
+		RemoteIP:     net.ParseIP(requestIP),
 	})
 	if err != nil {
 		writeDeviceAuthServiceError(w, err)
@@ -503,14 +496,7 @@ func remoteIPForRateLimit(r *http.Request) string {
 	if r == nil {
 		return "unknown"
 	}
-	if clientIP := accessAuditClientIP(r); clientIP != "" {
-		return clientIP
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return strings.TrimSpace(r.RemoteAddr)
-	}
-	return host
+	return firstNonEmpty(resolveRequestOrigin(r, config.RequestOriginConfig{}).ClientIP, "unknown")
 }
 
 func principalNameFromContext(r *http.Request) string {

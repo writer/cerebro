@@ -100,6 +100,9 @@ The bootstrap binary currently reads these environment variables:
 | `CEREBRO_API_AUTH_ENABLED` | require bearer/API-key auth for non-public routes | `false` |
 | `CEREBRO_API_KEYS` | comma-separated `key[:principal[:tenant_id]]` entries | unset |
 | `CEREBRO_ALLOWED_TENANTS` | optional tenant allowlist for unscoped API keys | unset |
+| `CEREBRO_PUBLIC_ORIGIN` | canonical external origin for DPoP and proxy-aware URL reconstruction | request host |
+| `CEREBRO_TRUSTED_PROXY_CIDRS` | comma-separated trusted proxy/load-balancer CIDRs for forwarded headers | private/link-local remotes |
+| `CEREBRO_TRUSTED_PROXY_COUNT` | trusted trailing `X-Forwarded-For` hops | `0` |
 | `CEREBRO_APPEND_LOG_DRIVER` | append-log driver; supported value: `jetstream` | unset |
 | `CEREBRO_JETSTREAM_URL` | NATS URL for JetStream | unset |
 | `CEREBRO_JETSTREAM_SUBJECT_PREFIX` | JetStream subject prefix | `events` |

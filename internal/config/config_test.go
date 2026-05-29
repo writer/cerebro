@@ -30,6 +30,9 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS", "")
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_AUDIENCE", "")
 	t.Setenv("CEREBRO_ALLOWED_TENANTS", "")
+	t.Setenv("CEREBRO_PUBLIC_ORIGIN", "")
+	t.Setenv("CEREBRO_TRUSTED_PROXY_CIDRS", "")
+	t.Setenv("CEREBRO_TRUSTED_PROXY_COUNT", "")
 	clearDeviceAuthEnv(t)
 
 	cfg, err := Load()
@@ -90,6 +93,9 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS", "")
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_AUDIENCE", "")
 	t.Setenv("CEREBRO_ALLOWED_TENANTS", "security,writer,writer")
+	t.Setenv("CEREBRO_PUBLIC_ORIGIN", "https://api.writer.com")
+	t.Setenv("CEREBRO_TRUSTED_PROXY_CIDRS", "10.0.0.0/8, 192.168.0.0/16")
+	t.Setenv("CEREBRO_TRUSTED_PROXY_COUNT", "1")
 	clearDeviceAuthEnv(t)
 
 	cfg, err := Load()
@@ -126,6 +132,15 @@ func TestLoadFromEnv(t *testing.T) {
 	if !cfg.Auth.Enabled {
 		t.Fatal("Auth.Enabled = false, want true")
 	}
+	if got := cfg.Auth.RequestOrigin.PublicOrigin; got != "https://api.writer.com" {
+		t.Fatalf("PublicOrigin = %q, want https://api.writer.com", got)
+	}
+	if got := cfg.Auth.RequestOrigin.TrustedProxyCount; got != 1 {
+		t.Fatalf("TrustedProxyCount = %d, want 1", got)
+	}
+	if got := cfg.Auth.RequestOrigin.TrustedProxyCIDRs; len(got) != 2 || got[0] != "10.0.0.0/8" || got[1] != "192.168.0.0/16" {
+		t.Fatalf("TrustedProxyCIDRs = %#v, want two configured CIDRs", got)
+	}
 	if len(cfg.Auth.APIKeys) != 2 {
 		t.Fatalf("Auth.APIKeys length = %d, want 2", len(cfg.Auth.APIKeys))
 	}
@@ -160,6 +175,9 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS", "")
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_AUDIENCE", "")
 	t.Setenv("CEREBRO_ALLOWED_TENANTS", "")
+	t.Setenv("CEREBRO_PUBLIC_ORIGIN", "")
+	t.Setenv("CEREBRO_TRUSTED_PROXY_CIDRS", "")
+	t.Setenv("CEREBRO_TRUSTED_PROXY_COUNT", "")
 	clearDeviceAuthEnv(t)
 }
 
@@ -239,6 +257,26 @@ func TestLoadRejectsAuthEnabledWithoutKeys(t *testing.T) {
 
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsInvalidRequestOriginConfig(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		key  string
+		val  string
+	}{
+		{name: "public origin with path", key: "CEREBRO_PUBLIC_ORIGIN", val: "https://api.writer.com/cerebro"},
+		{name: "invalid proxy cidr", key: "CEREBRO_TRUSTED_PROXY_CIDRS", val: "not-cidr"},
+		{name: "negative proxy count", key: "CEREBRO_TRUSTED_PROXY_COUNT", val: "-1"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			clearDependencyEnv(t)
+			t.Setenv(tt.key, tt.val)
+			if _, err := Load(); err == nil {
+				t.Fatal("Load() error = nil, want invalid request-origin config error")
+			}
+		})
 	}
 }
 

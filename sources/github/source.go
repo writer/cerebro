@@ -338,9 +338,6 @@ func (s *Source) newClient(cfg sourcecdk.Config, requireRepo bool) (*gogithub.Cl
 	if s != nil {
 		httpClient = s.client
 	}
-	if httpClient == nil {
-		httpClient = &http.Client{Timeout: sourceHTTPTimeout}
-	}
 	httpClient = sourceHTTPClientNoRedirect(httpClient, allowLoopbackBaseURL, lookupIPAddrs)
 	client := gogithub.NewClient(httpClient)
 	if settings.token != "" {
@@ -357,21 +354,12 @@ func (s *Source) newClient(cfg sourcecdk.Config, requireRepo bool) (*gogithub.Cl
 }
 
 func sourceHTTPClientNoRedirect(client *http.Client, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) *http.Client {
-	if client == nil {
-		client = &http.Client{Timeout: sourceHTTPTimeout}
-	}
-	cloned := *client
-	if cloned.CheckRedirect == nil {
-		cloned.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
-			return http.ErrUseLastResponse
-		}
-	}
-	transport := cloned.Transport
-	if transport == nil {
-		transport = http.DefaultTransport
-	}
-	cloned.Transport = sourcehttp.SafeRoundTripper{Base: transport, SourceID: "github", AllowLoopback: allowLoopback, LookupIPAddrs: lookupIPAddrs}
-	return &cloned
+	return sourcehttp.HardenClient(client, sourcehttp.ClientOptions{
+		SourceID:      "github",
+		Timeout:       sourceHTTPTimeout,
+		AllowLoopback: allowLoopback,
+		LookupIPAddrs: lookupIPAddrs,
+	})
 }
 
 func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL bool) (_ settings, err error) {

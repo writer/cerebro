@@ -16,11 +16,6 @@ const (
 )
 
 var (
-	forbiddenTokenPattern = regexp.MustCompile(`(?i)\b(CREATE|MERGE|DELETE|REMOVE|SET|DROP|FOREACH)\b`)
-	loadCSVPattern        = regexp.MustCompile(`(?i)\bLOAD\s+CSV\b`)
-	usingPeriodicPattern  = regexp.MustCompile(`(?i)\bUSING\s+PERIODIC\b`)
-	forbiddenAPOCPattern  = regexp.MustCompile(`(?i)\bCALL\s+apoc\.(trigger|periodic)\.`)
-	limitPattern          = regexp.MustCompile(`(?i)\bLIMIT\s+(\d+)\b`)
 	matchClausePattern    = regexp.MustCompile(`(?i)\b(?:OPTIONAL\s+MATCH|MATCH)\b`)
 	matchClauseEndPattern = regexp.MustCompile(`(?i)\b(?:WHERE|RETURN|WITH|ORDER\s+BY|LIMIT|UNWIND|CALL|UNION|CREATE|MERGE|DELETE|SET|REMOVE|DROP|FOREACH)\b`)
 	nodeBodyPattern       = regexp.MustCompile(`(?is)^\s*([A-Za-z_][A-Za-z0-9_]*)?\s*((?::\s*[A-Za-z_][A-Za-z0-9_]*)*)\s*(\{[^{}]*\})?\s*$`)
@@ -39,6 +34,21 @@ type subqueryScope struct {
 	imports   map[string]struct{}
 	bodyStart int
 	end       int
+}
+
+type cypherTokenKind int
+
+const (
+	cypherTokenIdentifier cypherTokenKind = iota
+	cypherTokenNumber
+	cypherTokenSymbol
+	cypherTokenParameter
+)
+
+type cypherToken struct {
+	kind cypherTokenKind
+	text string
+	pos  int
 }
 
 type ValidatorOptions struct {
@@ -68,23 +78,24 @@ func (v *Validator) validate(ctx context.Context, cypher string, params map[stri
 		return ValidatorResult{OK: false, Reason: "cypher is required"}, 0, nil
 	}
 	safeQuery := scrubCypher(query)
-	if forbiddenTokenPattern.MatchString(safeQuery) || loadCSVPattern.MatchString(safeQuery) || usingPeriodicPattern.MatchString(safeQuery) {
+	tokens := lexCypher(query)
+	if hasForbiddenWriteOrBulkLoad(tokens) {
 		return ValidatorResult{OK: false, Reason: "write or bulk-load Cypher clauses are forbidden"}, 0, nil
 	}
-	if forbiddenAPOCPattern.MatchString(safeQuery) {
+	if hasForbiddenAPOCCall(tokens) {
 		return ValidatorResult{OK: false, Reason: "apoc trigger and periodic procedures are forbidden"}, 0, nil
 	}
-	if hasProcedureCall(safeQuery) {
+	if hasProcedureCall(tokens) {
 		return ValidatorResult{OK: false, Reason: "procedure CALL clauses are forbidden"}, 0, nil
 	}
-	limit, limitsOK := queryLimit(safeQuery)
+	limit, limitsOK := queryLimit(tokens)
 	if !limitsOK {
 		return ValidatorResult{OK: false, Reason: "read Cypher must include a numeric LIMIT clause"}, 0, nil
 	}
 	if limit > v.options.MaxRows {
 		return ValidatorResult{OK: false, Reason: fmt.Sprintf("LIMIT %d exceeds maximum %d", limit, v.options.MaxRows)}, 0, nil
 	}
-	if oversized := oversizedLimit(safeQuery, v.options.MaxRows); oversized > 0 {
+	if oversized := oversizedLimit(tokens, v.options.MaxRows); oversized > 0 {
 		return ValidatorResult{OK: false, Reason: fmt.Sprintf("LIMIT %d exceeds maximum %d", oversized, v.options.MaxRows)}, 0, nil
 	}
 	if !allNodePatternsTenantScoped(safeQuery) {
@@ -106,16 +117,6 @@ func (v *Validator) validate(ctx context.Context, cypher string, params map[stri
 		}
 	}
 	return ValidatorResult{OK: true}, limit, nil
-}
-
-func oversizedLimit(query string, maxRows int) int {
-	for _, match := range limitPattern.FindAllStringSubmatch(query, -1) {
-		limit, err := strconv.Atoi(match[1])
-		if err == nil && limit > maxRows {
-			return limit
-		}
-	}
-	return 0
 }
 
 func scrubCypher(query string) string {
@@ -171,17 +172,136 @@ func skipQuotedLiteral(query string, start int, quote byte) int {
 	return len(query) - 1
 }
 
-func queryLimit(query string) (int, bool) {
-	matches := limitPattern.FindAllStringSubmatch(query, -1)
-	if len(matches) == 0 {
-		return 0, false
+func lexCypher(query string) []cypherToken {
+	tokens := make([]cypherToken, 0, len(query)/4)
+	for i := 0; i < len(query); i++ {
+		ch := query[i]
+		switch {
+		case isWhitespace(ch):
+			continue
+		case ch == '\'' || ch == '"':
+			i = skipQuotedLiteral(query, i, ch)
+		case ch == '`':
+			i = skipEscapedIdentifier(query, i)
+		case ch == '/' && i+1 < len(query) && query[i+1] == '/':
+			for i+1 < len(query) && query[i+1] != '\n' && query[i+1] != '\r' {
+				i++
+			}
+		case ch == '/' && i+1 < len(query) && query[i+1] == '*':
+			i += 2
+			for i+1 < len(query) && (query[i] != '*' || query[i+1] != '/') {
+				i++
+			}
+			if i+1 < len(query) {
+				i++
+			}
+		case ch == '$':
+			start := i
+			i++
+			for i < len(query) && isIdentifierByte(query[i]) {
+				i++
+			}
+			tokens = append(tokens, cypherToken{kind: cypherTokenParameter, text: query[start:i], pos: start})
+			i--
+		case isIdentifierStart(ch):
+			start := i
+			for i < len(query) && (isIdentifierByte(query[i]) || query[i] == '.') {
+				i++
+			}
+			tokens = append(tokens, cypherToken{kind: cypherTokenIdentifier, text: query[start:i], pos: start})
+			i--
+		case ch >= '0' && ch <= '9':
+			start := i
+			for i < len(query) && (query[i] >= '0' && query[i] <= '9' || query[i] == '.') {
+				i++
+			}
+			tokens = append(tokens, cypherToken{kind: cypherTokenNumber, text: query[start:i], pos: start})
+			i--
+		default:
+			tokens = append(tokens, cypherToken{kind: cypherTokenSymbol, text: string(ch), pos: i})
+		}
 	}
-	value := matches[len(matches)-1][1]
-	limit, err := strconv.Atoi(value)
-	if err != nil {
-		return 0, false
+	return tokens
+}
+
+func skipEscapedIdentifier(query string, start int) int {
+	for i := start + 1; i < len(query); i++ {
+		if query[i] == '`' {
+			if i+1 < len(query) && query[i+1] == '`' {
+				i++
+				continue
+			}
+			return i
+		}
 	}
-	return limit, true
+	return len(query) - 1
+}
+
+func hasForbiddenWriteOrBulkLoad(tokens []cypherToken) bool {
+	for i, token := range tokens {
+		if token.kind != cypherTokenIdentifier {
+			continue
+		}
+		switch upperToken(token) {
+		case "CREATE", "MERGE", "DELETE", "REMOVE", "SET", "DROP", "FOREACH":
+			return true
+		case "LOAD":
+			if keywordTokenAt(tokens, i+1, "CSV") {
+				return true
+			}
+		case "USING":
+			if keywordTokenAt(tokens, i+1, "PERIODIC") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func hasForbiddenAPOCCall(tokens []cypherToken) bool {
+	for i, token := range tokens {
+		if !keywordToken(token, "CALL") || i+1 >= len(tokens) {
+			continue
+		}
+		procedure := strings.ToLower(tokens[i+1].text)
+		if strings.HasPrefix(procedure, "apoc.trigger.") || strings.HasPrefix(procedure, "apoc.periodic.") {
+			return true
+		}
+	}
+	return false
+}
+
+func queryLimit(tokens []cypherToken) (int, bool) {
+	limit := 0
+	found := false
+	for i, token := range tokens {
+		if !keywordToken(token, "LIMIT") {
+			continue
+		}
+		if i+1 >= len(tokens) || tokens[i+1].kind != cypherTokenNumber {
+			return 0, false
+		}
+		value, err := strconv.Atoi(tokens[i+1].text)
+		if err != nil {
+			return 0, false
+		}
+		limit = value
+		found = true
+	}
+	return limit, found
+}
+
+func oversizedLimit(tokens []cypherToken, maxRows int) int {
+	for i, token := range tokens {
+		if !keywordToken(token, "LIMIT") || i+1 >= len(tokens) || tokens[i+1].kind != cypherTokenNumber {
+			continue
+		}
+		limit, err := strconv.Atoi(tokens[i+1].text)
+		if err == nil && limit > maxRows {
+			return limit
+		}
+	}
+	return 0
 }
 
 func allNodePatternsTenantScoped(query string) bool {
@@ -267,9 +387,9 @@ func allNodePatternsTenantScoped(query string) bool {
 	return sawNode
 }
 
-func hasProcedureCall(query string) bool {
-	for i := 0; i < len(query); i++ {
-		if keywordAt(query, i, "CALL") && subqueryStartBrace(query, i+len("CALL")) < 0 {
+func hasProcedureCall(tokens []cypherToken) bool {
+	for i, token := range tokens {
+		if keywordToken(token, "CALL") && !symbolTokenAt(tokens, i+1, "{") {
 			return true
 		}
 	}
@@ -528,6 +648,22 @@ func keywordAt(query string, index int, keyword string) bool {
 	return true
 }
 
+func keywordTokenAt(tokens []cypherToken, index int, keyword string) bool {
+	return index >= 0 && index < len(tokens) && keywordToken(tokens[index], keyword)
+}
+
+func keywordToken(token cypherToken, keyword string) bool {
+	return token.kind == cypherTokenIdentifier && strings.EqualFold(token.text, keyword)
+}
+
+func upperToken(token cypherToken) string {
+	return strings.ToUpper(token.text)
+}
+
+func symbolTokenAt(tokens []cypherToken, index int, symbol string) bool {
+	return index >= 0 && index < len(tokens) && tokens[index].kind == cypherTokenSymbol && tokens[index].text == symbol
+}
+
 func isWhitespaceOrSubqueryStart(value byte) bool {
 	return isWhitespace(value) || value == '{'
 }
@@ -579,6 +715,12 @@ func isIdentifierByte(value byte) bool {
 	return value >= 'a' && value <= 'z' ||
 		value >= 'A' && value <= 'Z' ||
 		value >= '0' && value <= '9' ||
+		value == '_'
+}
+
+func isIdentifierStart(value byte) bool {
+	return value >= 'a' && value <= 'z' ||
+		value >= 'A' && value <= 'Z' ||
 		value == '_'
 }
 

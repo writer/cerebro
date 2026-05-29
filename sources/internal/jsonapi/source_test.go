@@ -11,6 +11,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
 func TestReadPagesJSONAPIRecords(t *testing.T) {
@@ -274,13 +275,13 @@ func TestRejectsUnsafeBaseURL(t *testing.T) {
 
 func TestSafeRoundTripperPinsValidatedHostnameAddress(t *testing.T) {
 	var dialed string
-	rt := safeRoundTripper{
-		sourceID: "test",
-		base: &http.Transport{DialContext: func(_ context.Context, _ string, address string) (net.Conn, error) {
+	rt := sourcehttp.SafeRoundTripper{
+		SourceID: "test",
+		Base: &http.Transport{DialContext: func(_ context.Context, _ string, address string) (net.Conn, error) {
 			dialed = address
 			return nil, errors.New("stop")
 		}},
-		lookupIPAddrs: func(context.Context, string) ([]net.IPAddr, error) {
+		LookupIPAddrs: func(context.Context, string) ([]net.IPAddr, error) {
 			return []net.IPAddr{{IP: net.ParseIP("203.0.113.10")}}, nil
 		},
 	}
@@ -302,13 +303,13 @@ func TestSafeRoundTripperPinsValidatedHostnameAddress(t *testing.T) {
 
 func TestSafeRoundTripperRejectsUnsafeResolvedHostnameBeforeDial(t *testing.T) {
 	var dialed bool
-	rt := safeRoundTripper{
-		sourceID: "test",
-		base: &http.Transport{DialContext: func(_ context.Context, _ string, _ string) (net.Conn, error) {
+	rt := sourcehttp.SafeRoundTripper{
+		SourceID: "test",
+		Base: &http.Transport{DialContext: func(_ context.Context, _ string, _ string) (net.Conn, error) {
 			dialed = true
 			return nil, errors.New("should not dial")
 		}},
-		lookupIPAddrs: func(context.Context, string) ([]net.IPAddr, error) {
+		LookupIPAddrs: func(context.Context, string) ([]net.IPAddr, error) {
 			return []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}}, nil
 		},
 	}
