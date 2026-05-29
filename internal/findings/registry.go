@@ -71,7 +71,7 @@ func NewRegistry(rules ...Rule) (*Registry, error) {
 func Builtin() *Registry {
 	registry, err := newBuiltinRegistry()
 	if err != nil {
-		return &Registry{rules: map[string]Rule{}}
+		panic(fmt.Sprintf("build builtin finding registry: %v", err))
 	}
 	return registry
 }

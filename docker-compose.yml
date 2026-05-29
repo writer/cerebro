@@ -1,27 +1,74 @@
-version: '3.8'
+version: "3.9"
 
 services:
-  cerebro:
-    build: .
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js", "-sd", "/data"]
     ports:
-      - "8080:8080"
-    environment:
-      API_PORT: 8080
-      LOG_LEVEL: info
-      SNOWFLAKE_ACCOUNT: ${SNOWFLAKE_ACCOUNT:-}
-      SNOWFLAKE_USER: ${SNOWFLAKE_USER:-}
-      SNOWFLAKE_PRIVATE_KEY: ${SNOWFLAKE_PRIVATE_KEY:-}
-      SNOWFLAKE_DATABASE: ${SNOWFLAKE_DATABASE:-CEREBRO}
-      SNOWFLAKE_SCHEMA: ${SNOWFLAKE_SCHEMA:-CEREBRO}
-      CEDAR_POLICIES_PATH: /app/policies
+      - "4222:4222"
+      - "8222:8222"
     volumes:
-      - ./policies:/app/policies:ro
+      - nats-data:/data
     healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8222/healthz"]
       interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 12
 
-networks:
-  default:
-    name: cerebro-network
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: cerebro
+      POSTGRES_PASSWORD: cerebro
+      POSTGRES_DB: cerebro
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cerebro -d cerebro"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  neo4j:
+    image: neo4j:5-community
+    environment:
+      NEO4J_AUTH: neo4j/local-password
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p local-password 'RETURN 1' >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+
+  cerebro:
+    build: .
+    environment:
+      CEREBRO_HTTP_ADDR: :8080
+      CEREBRO_APPEND_LOG_DRIVER: jetstream
+      CEREBRO_JETSTREAM_URL: nats://nats:4222
+      CEREBRO_STATE_STORE_DRIVER: postgres
+      CEREBRO_POSTGRES_DSN: postgres://cerebro:cerebro@postgres:5432/cerebro?sslmode=disable
+      CEREBRO_GRAPH_STORE_DRIVER: neo4j
+      CEREBRO_NEO4J_URI: bolt://neo4j:7687
+      CEREBRO_NEO4J_USERNAME: neo4j
+      CEREBRO_NEO4J_PASSWORD: local-password
+    ports:
+      - "8080:8080"
+    depends_on:
+      nats:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+
+volumes:
+  nats-data:
+  postgres-data:
+  neo4j-data:

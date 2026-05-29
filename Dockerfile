@@ -1,29 +1,33 @@
 # syntax=docker/dockerfile:1.7
 
 # Build stage - use buildx cross-compilation (no QEMU needed)
-ARG GO_VERSION
+ARG GO_VERSION=1.26.3
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
+ARG GO_BUILD_PARALLELISM=2
 
 WORKDIR /app
 
 RUN apk add --no-cache git ca-certificates
 
 COPY go.mod go.sum* ./
+COPY internal/eventregistry/go.mod ./internal/eventregistry/go.mod
 RUN --mount=type=cache,id=cerebro-go-mod-cache,target=/go/pkg/mod,sharing=locked \
     go mod download
 
 COPY api ./api
 COPY cmd ./cmd
+COPY gen ./gen
 COPY internal ./internal
+COPY sources ./sources
 
 # Cross-compile for target platform (fast, no emulation)
 RUN --mount=type=cache,id=cerebro-go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=cerebro-go-build-cache,target=/root/.cache/go-build,sharing=locked \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -buildvcs=false -trimpath -ldflags="-s -w" -o /cerebro ./cmd/cerebro
+    go build -p=${GO_BUILD_PARALLELISM} -buildvcs=false -trimpath -ldflags="-s -w" -o /cerebro ./cmd/cerebro
 
 # Runtime image
 FROM alpine:3.23

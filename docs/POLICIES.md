@@ -2,7 +2,9 @@
 
 ## Overview
 
-Cerebro uses a Cedar-style policy engine to evaluate cloud assets against security best practices. Policies are defined as JSON files and organized by cloud provider.
+The `policies/` tree is a checked-in security policy and control-mapping catalog. It is validated by `make catalog-check` and documented here for authoring consistency.
+
+The current bootstrap server does not evaluate these JSON files at request time. Runtime findings are produced by Go rule implementations in `internal/findings/` and source/runtime projections. Treat this catalog as compliance and policy metadata unless a future change explicitly wires a runtime evaluator.
 
 ## Policy Structure
 

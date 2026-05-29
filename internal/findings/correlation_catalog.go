@@ -56,7 +56,7 @@ func BuiltinFindingCorrelationPatterns() []FindingCorrelationPattern {
 		builtinCorrelationPatternCache.patterns, builtinCorrelationPatternCache.err = mergeFindingCorrelationPatterns(patterns, runtimePatterns)
 	})
 	if builtinCorrelationPatternCache.err != nil {
-		return nil
+		panic(fmt.Sprintf("build builtin finding correlation patterns: %v", builtinCorrelationPatternCache.err))
 	}
 	return cloneFindingCorrelationPatterns(builtinCorrelationPatternCache.patterns)
 }

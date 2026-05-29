@@ -79,6 +79,14 @@ curl -sS http://127.0.0.1:8080/health
 curl -sS http://127.0.0.1:8080/sources
 ```
 
+For a durable local stack that matches the bootstrap runtime dependencies, use Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+The compose stack starts Cerebro with NATS JetStream, Postgres, and Neo4j using the `CEREBRO_*` environment variables documented below.
+
 ---
 
 ## Configuration

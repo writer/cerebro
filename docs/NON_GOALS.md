@@ -36,7 +36,7 @@ Each section lists what Cerebro will not do, why that boundary exists, where in 
 
 ### Snowflake is not a store of record.
 
-- Cerebro's current `main` is the bootstrap service described in [`README.md`](../README.md) and [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md). It does not require, and is not coupled to, the historical Snowflake-centered monolith. Documents that still assume Snowflake (for example parts of [`docs/QUICKREF.md`](./QUICKREF.md) and the local-mode section of [`CONTRIBUTING.md`](../CONTRIBUTING.md)) describe legacy behavior that is being retired, not target architecture.
+- Cerebro's current `main` is the bootstrap service described in [`README.md`](../README.md), [`docs/QUICKREF.md`](./QUICKREF.md), and [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md). It does not require, and is not coupled to, the historical Snowflake-centered monolith. Documents that still assume Snowflake describe legacy behavior that is being retired, not target architecture.
 - Why: tying Cerebro to one warehouse vendor blocks the "boring, proven, operable" stance from [`PLAN.md`](../PLAN.md) §2 and conflicts with the cloud-agnostic non-goal listed there.
 - Enforced in: bootstrap config surface in [`internal/config`](../internal/config), env vars in [`README.md`](../README.md) "Configuration".
 - What would change this: nothing inside this repo. Warehouse-shaped query workloads belong to a separate analytics layer that consumes Cerebro's events.

@@ -2,67 +2,45 @@
 
 Thanks for contributing.
 
-## Development setup
+## Development Setup
 
-1. Install Go `1.25.x`.
+1. Install Go 1.26+.
 2. Clone the repository.
-   ```bash
-   git clone https://github.com/writer/cerebro.git
-   cd cerebro
-   ```
-3. Run:
+3. Download modules:
 
 ```bash
-make setup
+go mod download
 ```
 
-## Local mode (no Snowflake)
-
-You can run Cerebro without Snowflake credentials for local development.
+Run the lightweight server:
 
 ```bash
-unset SNOWFLAKE_PRIVATE_KEY SNOWFLAKE_ACCOUNT SNOWFLAKE_USER
-export CEREBRO_DB_PATH=.cerebro/cerebro.db
 make serve
 ```
 
-In this mode, findings persist to local SQLite and some Snowflake-dependent features (for example, data-lake queries and security graph) are limited or disabled.
-
-## Code quality checks
-
-Before opening a PR, run:
+Run the durable local stack:
 
 ```bash
-go test ./...
-golangci-lint run ./...
-go vet ./...
-make policy-validate
+docker compose up --build
 ```
 
-## Dependency and `vendor/` strategy
+## Code Quality Checks
 
-This repository keeps `vendor/` committed for reproducible builds and OSS consumers in restricted environments.
-
-If you change dependencies:
+Before opening a PR, run the focused tests for your change and then:
 
 ```bash
-go mod tidy
-go mod vendor
+make check
 ```
 
-Make sure `go.mod`, `go.sum`, and `vendor/` are all committed together.
-
-## Security checks
-
-For source security scanning:
+For CI-parity validation:
 
 ```bash
-$(go env GOPATH)/bin/gosec -severity medium -confidence medium -exclude-generated ./...
-$(go env GOPATH)/bin/govulncheck ./...
+make verify
 ```
 
-For built artifact scanning:
+## Architecture Boundaries
 
-```bash
-make security-scan-built
-```
+- Use `CEREBRO_*` configuration variables only.
+- Do not add embedded or in-memory production stores.
+- Keep new source integrations within the Source CDK budget unless the shared CDK changes first.
+- Update `docs/NON_GOALS.md` when intentionally crossing a documented non-goal.
