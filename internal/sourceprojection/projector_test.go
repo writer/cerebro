@@ -2712,6 +2712,113 @@ func TestProjectCloudExposureAndPrivilegePaths(t *testing.T) {
 	assertProjectedLink(t, state, "urn:cerebro:writer:azure_service_principal:sp-1", relationAssignedTo, "urn:cerebro:writer:azure_service_principal:sp-resource-1")
 }
 
+func TestProjectAWSAccountTrustPrincipal(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-account-role-trust",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.iam_role_trust",
+		Attributes: map[string]string{
+			"domain":       "123456789012",
+			"path_type":    "assume_role_trust",
+			"relationship": "can_assume",
+			"subject_id":   "999999999999",
+			"subject_type": "account",
+			"target_id":    "arn:aws:iam::123456789012:role/AdminRole",
+			"target_name":  "AdminRole",
+			"target_type":  "role",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	accountURN := "urn:cerebro:writer:aws_account:999999999999"
+	if entity := state.entities[accountURN]; entity == nil || entity.EntityType != "aws.account" {
+		t.Fatalf("aws account principal entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, accountURN, relationCanAssume, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/AdminRole")
+}
+
+func TestProjectAWSServiceTrustPrincipal(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-service-role-trust",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.iam_role_trust",
+		Attributes: map[string]string{
+			"domain":       "123456789012",
+			"path_type":    "assume_role_trust",
+			"relationship": "can_assume",
+			"subject_id":   "lambda.amazonaws.com",
+			"subject_type": "service_principal",
+			"target_id":    "arn:aws:iam::123456789012:role/LambdaRole",
+			"target_name":  "LambdaRole",
+			"target_type":  "role",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	servicePrincipalURN := "urn:cerebro:writer:aws_service_principal:lambda.amazonaws.com"
+	if entity := state.entities[servicePrincipalURN]; entity == nil || entity.EntityType != "aws.service_principal" {
+		t.Fatalf("aws service principal entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, servicePrincipalURN, relationCanAssume, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/LambdaRole")
+}
+
+func TestProjectAWSInlineEffectivePermission(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-inline-effective-permission",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.effective_permission",
+		Attributes: map[string]string{
+			"actions":       "iam:*,s3:GetObject",
+			"domain":        "123456789012",
+			"effect":        "allow",
+			"is_admin":      "true",
+			"permission":    "iam:*,s3:GetObject",
+			"policy_source": "inline",
+			"resource_id":   "inline:user:admin@writer.com:InlineAdmin",
+			"resource_name": "InlineAdmin",
+			"resource_type": "aws_iam_policy",
+			"role_id":       "inline:user:admin@writer.com:InlineAdmin",
+			"role_name":     "InlineAdmin",
+			"subject_id":    "admin@writer.com",
+			"subject_type":  "user",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	policyURN := "urn:cerebro:writer:aws_aws_iam_policy:inline:user:admin@writer.com:InlineAdmin"
+	permissionLink := state.links["urn:cerebro:writer:aws_user:admin@writer.com|"+relationCanPerform+"|"+policyURN]
+	if permissionLink == nil {
+		t.Fatalf("inline effective permission link missing")
+	}
+	if got := permissionLink.Attributes["actions"]; got != "iam:*,s3:GetObject" {
+		t.Fatalf("permission link actions = %q, want inline actions", got)
+	}
+	if got := permissionLink.Attributes["policy_source"]; got != "inline" {
+		t.Fatalf("permission link policy_source = %q, want inline", got)
+	}
+	if got := permissionLink.Attributes["is_admin"]; got != "true" {
+		t.Fatalf("permission link is_admin = %q, want true", got)
+	}
+}
+
 func TestProjectEffectivePermissionsKubernetesRuntimeAndData(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
