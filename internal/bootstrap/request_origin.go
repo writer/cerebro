@@ -93,7 +93,9 @@ func normalizedPublicOrigin(raw string) *url.URL {
 }
 
 func trustedForwardedProto(header string) string {
-	for _, part := range strings.Split(header, ",") {
+	parts := strings.Split(header, ",")
+	for i := len(parts) - 1; i >= 0; i-- {
+		part := parts[i]
 		switch strings.ToLower(strings.TrimSpace(part)) {
 		case "https":
 			return "https"

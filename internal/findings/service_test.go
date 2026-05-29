@@ -3016,6 +3016,9 @@ func TestPromoteFindingCandidateRecoversConcurrentCompletedPromotion(t *testing.
 		updated.PromotedBy = "analyst@example.com"
 		updated.PromotedAt = now
 		store.candidateState.candidates[updated.ID] = updated
+		winningFinding := cloneFinding(finding)
+		winningFinding.Attributes = map[string]string{"promoted_by": "winner@example.com"}
+		store.findings[winningFinding.ID] = winningFinding
 	}
 	service := NewWithRegistry(
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
@@ -3045,6 +3048,9 @@ func TestPromoteFindingCandidateRecoversConcurrentCompletedPromotion(t *testing.
 	}
 	if got := result.DecisionID; got != decisionID {
 		t.Fatalf("decision id = %q, want recovered %q", got, decisionID)
+	}
+	if got := result.Finding.Attributes["promoted_by"]; got != "winner@example.com" {
+		t.Fatalf("recovered finding promoted_by = %q, want winning persisted finding", got)
 	}
 }
 

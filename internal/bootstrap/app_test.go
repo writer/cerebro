@@ -2244,12 +2244,16 @@ func TestResolveRequestOriginInfersConfiguredTrustedProxyHops(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/sources", nil)
 	req.RemoteAddr = "203.0.113.20:443"
 	req.Header.Set("X-Forwarded-For", "198.51.100.99, 192.0.2.10, 203.0.113.20")
+	req.Header.Set("X-Forwarded-Proto", "http, https")
 
 	origin := resolveRequestOrigin(req, config.RequestOriginConfig{
 		TrustedProxyCIDRs: []string{"192.0.2.0/24", "203.0.113.0/24"},
 	})
 	if got := origin.ClientIP; got != "198.51.100.99" {
 		t.Fatalf("ClientIP = %q, want configured trusted-proxy client", got)
+	}
+	if got := origin.PublicURL; got != "https://example.com/sources" {
+		t.Fatalf("PublicURL = %q, want trailing trusted forwarded proto", got)
 	}
 }
 

@@ -253,7 +253,8 @@ func (h *deviceAuthHTTPHandler) handleToken(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	origin := resolveRequestOrigin(r, h.originConfig)
-	limitKey := firstNonEmpty(origin.ClientIP, "unknown")
+	requestIP := firstNonEmpty(origin.ClientIP, "unknown")
+	limitKey := requestIP
 	if deviceKey, err := h.service.RefreshTokenRateLimitKey(r.Context(), body.RefreshToken); err == nil && deviceKey != "" {
 		limitKey = deviceKey
 	}
@@ -268,7 +269,7 @@ func (h *deviceAuthHTTPHandler) handleToken(w http.ResponseWriter, r *http.Reque
 		DPoPProof:    dpopProof,
 		HTTPMethod:   r.Method,
 		HTTPURL:      origin.PublicURL,
-		RemoteIP:     net.ParseIP(limitKey),
+		RemoteIP:     net.ParseIP(requestIP),
 	})
 	if err != nil {
 		writeDeviceAuthServiceError(w, err)

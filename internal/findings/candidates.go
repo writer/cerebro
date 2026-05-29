@@ -352,8 +352,12 @@ func (s *Service) PromoteFindingCandidate(ctx context.Context, request PromoteCa
 	if err != nil {
 		recovered, recoverErr := s.recoverPromotedCandidate(ctx, candidate.ID, stored.ID, decisionID)
 		if recoverErr == nil {
-			emitFindingCandidatePromotionTelemetry(ctx, "promoted_recovered", recovered, stored, decisionID, startedAt)
-			return &PromoteCandidateResult{Candidate: recovered, Finding: stored, DecisionID: decisionID}, nil
+			recoveredFinding, loadErr := s.store.GetFinding(ctx, strings.TrimSpace(recovered.PromotedFindingID))
+			if loadErr != nil {
+				return nil, loadErr
+			}
+			emitFindingCandidatePromotionTelemetry(ctx, "promoted_recovered", recovered, recoveredFinding, decisionID, startedAt)
+			return &PromoteCandidateResult{Candidate: recovered, Finding: recoveredFinding, DecisionID: decisionID}, nil
 		}
 		return nil, s.findingCandidateLifecycleConflict(ctx, candidate.ID, findingCandidateStatusPromoted, err)
 	}
