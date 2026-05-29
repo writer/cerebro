@@ -47,6 +47,16 @@ func TestOntologyPromptMentionsLegacyRepositoryShape(t *testing.T) {
 	}
 }
 
+func TestOntologyPromptStoresFindingMetadataInAttributesJSON(t *testing.T) {
+	hint := canonicalGraphOntology.PromptHint()
+	if !strings.Contains(hint, "Finding metadata such as `severity`, `effective_severity`, `status`, `risk_score`, `summary`, and `primary_resource_urn` is stored in `attributes_json`") {
+		t.Fatalf("PromptHint() missing finding attributes_json guidance:\n%s", hint)
+	}
+	if strings.Contains(hint, "Useful properties: finding_id, severity, status, risk_score") {
+		t.Fatalf("PromptHint() still advertises finding metadata as top-level properties:\n%s", hint)
+	}
+}
+
 func TestOntologyPromptUsesProjectedSourceShape(t *testing.T) {
 	hint := canonicalGraphOntology.PromptHint()
 	for _, want := range []string{
