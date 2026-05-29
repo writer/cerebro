@@ -72,34 +72,42 @@ func (s *recordingAppendLog) Append(_ context.Context, event *cerebrov1.EventEnv
 }
 
 type stubFindingStore struct {
-	findings                   map[string]*ports.FindingRecord
-	request                    ports.ListFindingsRequest
-	listFindingsRequests       []ports.ListFindingsRequest
-	listFindingsErr            error
-	claims                     map[string]*ports.ClaimRecord
-	claimListRequest           ports.ListClaimsRequest
-	runs                       map[string]*cerebrov1.FindingEvaluationRun
-	runList                    ports.ListFindingEvaluationRunsRequest
-	runPutCount                int
-	failRunPutOn               int
-	failRunPutErr              error
-	failRunPutByCall           map[int]error
-	evidence                   map[string]*cerebrov1.FindingEvidence
-	evidenceList               ports.ListFindingEvidenceRequest
-	candidateRuns              map[string]*ports.FindingCandidateRun
-	candidates                 map[string]*ports.FindingCandidateRecord
-	candidateListRequest       ports.ListFindingCandidatesRequest
-	dropReturnedGraphEvidence  bool
-	upsertCount                int
-	candidateUpsertCount       int
-	updateRiskCount            int
-	markRiskProjectedCount     int
-	markRiskProjectedErr       error
-	backfillRiskResults        []*ports.FindingRecord
-	backfillRiskErr            error
-	backfillIncludeUnprojected bool
-	updateStatusCallCount      int
-	updateStatusCalls          []ports.FindingStatusUpdate
+	findings                  map[string]*ports.FindingRecord
+	request                   ports.ListFindingsRequest
+	listFindingsRequests      []ports.ListFindingsRequest
+	listFindingsErr           error
+	claims                    map[string]*ports.ClaimRecord
+	claimListRequest          ports.ListClaimsRequest
+	runs                      map[string]*cerebrov1.FindingEvaluationRun
+	runList                   ports.ListFindingEvaluationRunsRequest
+	runPutCount               int
+	failRunPutOn              int
+	failRunPutErr             error
+	failRunPutByCall          map[int]error
+	evidence                  map[string]*cerebrov1.FindingEvidence
+	evidenceList              ports.ListFindingEvidenceRequest
+	candidateState            stubFindingCandidateState
+	dropReturnedGraphEvidence bool
+	upsertCount               int
+	updateRiskCount           int
+	markRiskProjectedCount    int
+	markRiskProjectedErr      error
+	backfillState             stubFindingBackfillState
+	updateStatusCallCount     int
+	updateStatusCalls         []ports.FindingStatusUpdate
+}
+
+type stubFindingCandidateState struct {
+	runs        map[string]*ports.FindingCandidateRun
+	candidates  map[string]*ports.FindingCandidateRecord
+	listRequest ports.ListFindingCandidatesRequest
+	upsertCount int
+}
+
+type stubFindingBackfillState struct {
+	results            []*ports.FindingRecord
+	err                error
+	includeUnprojected bool
 }
 
 func (s *stubFindingStore) Ping(context.Context) error { return nil }
@@ -172,12 +180,12 @@ func (s *stubFindingStore) MarkFindingRiskProjected(_ context.Context, request p
 }
 
 func (s *stubFindingStore) BackfillFindingRisk(_ context.Context, includeUnprojected bool) ([]*ports.FindingRecord, error) {
-	s.backfillIncludeUnprojected = includeUnprojected
-	if s.backfillRiskErr != nil {
-		return nil, s.backfillRiskErr
+	s.backfillState.includeUnprojected = includeUnprojected
+	if s.backfillState.err != nil {
+		return nil, s.backfillState.err
 	}
-	results := make([]*ports.FindingRecord, 0, len(s.backfillRiskResults))
-	for _, finding := range s.backfillRiskResults {
+	results := make([]*ports.FindingRecord, 0, len(s.backfillState.results))
+	for _, finding := range s.backfillState.results {
 		results = append(results, cloneFinding(finding))
 	}
 	return results, nil
@@ -546,16 +554,16 @@ func (s *stubFindingStore) PutFindingCandidateRun(_ context.Context, run *ports.
 	if run == nil {
 		return errors.New("finding candidate run is required")
 	}
-	if s.candidateRuns == nil {
-		s.candidateRuns = make(map[string]*ports.FindingCandidateRun)
+	if s.candidateState.runs == nil {
+		s.candidateState.runs = make(map[string]*ports.FindingCandidateRun)
 	}
 	cloned := *run
-	s.candidateRuns[cloned.ID] = &cloned
+	s.candidateState.runs[cloned.ID] = &cloned
 	return nil
 }
 
 func (s *stubFindingStore) GetFindingCandidateRun(_ context.Context, id string) (*ports.FindingCandidateRun, error) {
-	run, ok := s.candidateRuns[strings.TrimSpace(id)]
+	run, ok := s.candidateState.runs[strings.TrimSpace(id)]
 	if !ok {
 		return nil, ports.ErrFindingEvaluationRunNotFound
 	}
@@ -564,8 +572,8 @@ func (s *stubFindingStore) GetFindingCandidateRun(_ context.Context, id string) 
 }
 
 func (s *stubFindingStore) ListFindingCandidateRuns(_ context.Context, request ports.ListFindingCandidatesRequest) ([]*ports.FindingCandidateRun, error) {
-	runs := make([]*ports.FindingCandidateRun, 0, len(s.candidateRuns))
-	for _, run := range s.candidateRuns {
+	runs := make([]*ports.FindingCandidateRun, 0, len(s.candidateState.runs))
+	for _, run := range s.candidateState.runs {
 		if strings.TrimSpace(request.RuntimeID) != "" && strings.TrimSpace(run.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
 			continue
 		}
@@ -585,12 +593,12 @@ func (s *stubFindingStore) UpsertFindingCandidate(_ context.Context, candidate *
 	if candidate == nil {
 		return nil, errors.New("finding candidate is required")
 	}
-	s.candidateUpsertCount++
-	if s.candidates == nil {
-		s.candidates = make(map[string]*ports.FindingCandidateRecord)
+	s.candidateState.upsertCount++
+	if s.candidateState.candidates == nil {
+		s.candidateState.candidates = make(map[string]*ports.FindingCandidateRecord)
 	}
 	cloned := cloneFindingCandidate(candidate)
-	if existing := s.candidates[cloned.ID]; existing != nil {
+	if existing := s.candidateState.candidates[cloned.ID]; existing != nil {
 		cloned.ObservationCount += existing.ObservationCount
 		if existing.Status == findingCandidateStatusPromoted {
 			cloned.Status = existing.Status
@@ -602,12 +610,12 @@ func (s *stubFindingStore) UpsertFindingCandidate(_ context.Context, candidate *
 			cloned.PromotedAt = existing.PromotedAt
 		}
 	}
-	s.candidates[cloned.ID] = cloned
+	s.candidateState.candidates[cloned.ID] = cloned
 	return cloneFindingCandidate(cloned), nil
 }
 
 func (s *stubFindingStore) GetFindingCandidate(_ context.Context, id string) (*ports.FindingCandidateRecord, error) {
-	candidate, ok := s.candidates[strings.TrimSpace(id)]
+	candidate, ok := s.candidateState.candidates[strings.TrimSpace(id)]
 	if !ok {
 		return nil, ports.ErrFindingCandidateNotFound
 	}
@@ -615,9 +623,9 @@ func (s *stubFindingStore) GetFindingCandidate(_ context.Context, id string) (*p
 }
 
 func (s *stubFindingStore) ListFindingCandidates(_ context.Context, request ports.ListFindingCandidatesRequest) ([]*ports.FindingCandidateRecord, error) {
-	s.candidateListRequest = request
-	candidates := make([]*ports.FindingCandidateRecord, 0, len(s.candidates))
-	for _, candidate := range s.candidates {
+	s.candidateState.listRequest = request
+	candidates := make([]*ports.FindingCandidateRecord, 0, len(s.candidateState.candidates))
+	for _, candidate := range s.candidateState.candidates {
 		if strings.TrimSpace(request.RuntimeID) != "" && strings.TrimSpace(candidate.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
 			continue
 		}
@@ -639,7 +647,7 @@ func (s *stubFindingStore) ListFindingCandidates(_ context.Context, request port
 }
 
 func (s *stubFindingStore) MarkFindingCandidatePromoted(_ context.Context, promotion ports.FindingCandidatePromotion) (*ports.FindingCandidateRecord, error) {
-	candidate, ok := s.candidates[strings.TrimSpace(promotion.CandidateID)]
+	candidate, ok := s.candidateState.candidates[strings.TrimSpace(promotion.CandidateID)]
 	if !ok {
 		return nil, ports.ErrFindingCandidateNotFound
 	}
@@ -651,7 +659,7 @@ func (s *stubFindingStore) MarkFindingCandidatePromoted(_ context.Context, promo
 	cloned.PromotionRationale = strings.TrimSpace(promotion.Rationale)
 	cloned.ChangeTicket = strings.TrimSpace(promotion.ChangeTicket)
 	cloned.PromotedAt = promotion.PromotedAt.UTC()
-	s.candidates[cloned.ID] = cloned
+	s.candidateState.candidates[cloned.ID] = cloned
 	return cloneFindingCandidate(cloned), nil
 }
 
@@ -2645,7 +2653,7 @@ func TestEvaluateSourceRuntimeCandidateRulesDoesNotWriteProductionFindings(t *te
 	if got := store.updateStatusCallCount; got != 0 {
 		t.Fatalf("production status updates = %d, want 0", got)
 	}
-	if got := store.candidateUpsertCount; got != 1 {
+	if got := store.candidateState.upsertCount; got != 1 {
 		t.Fatalf("candidate upserts = %d, want 1", got)
 	}
 	if got := len(result.Evaluations); got != 1 {
@@ -2711,8 +2719,10 @@ func TestPromoteFindingCandidateWritesProductionFindingEvidenceAndAudit(t *testi
 		LastObservedAt:   now,
 	}
 	store := &stubFindingStore{
-		candidates: map[string]*ports.FindingCandidateRecord{candidate.ID: cloneFindingCandidate(candidate)},
-		findings:   map[string]*ports.FindingRecord{},
+		candidateState: stubFindingCandidateState{
+			candidates: map[string]*ports.FindingCandidateRecord{candidate.ID: cloneFindingCandidate(candidate)},
+		},
+		findings: map[string]*ports.FindingRecord{},
 	}
 	appendLog := &recordingAppendLog{}
 	service := NewWithRegistry(
@@ -3900,7 +3910,9 @@ func TestBackfillFindingRiskProjectsUpdatedRiskRows(t *testing.T) {
 			openFinding.ID:   cloneFinding(openFinding),
 			closedFinding.ID: cloneFinding(closedFinding),
 		},
-		backfillRiskResults: []*ports.FindingRecord{openFinding, closedFinding},
+		backfillState: stubFindingBackfillState{
+			results: []*ports.FindingRecord{openFinding, closedFinding},
+		},
 	}
 	graphStore := &stubGraphStore{}
 	appendLog := &recordingAppendLog{}
@@ -3908,7 +3920,7 @@ func TestBackfillFindingRiskProjectsUpdatedRiskRows(t *testing.T) {
 	if err := service.BackfillFindingRisk(context.Background()); err != nil {
 		t.Fatalf("BackfillFindingRisk() error = %v", err)
 	}
-	if !store.backfillIncludeUnprojected {
+	if !store.backfillState.includeUnprojected {
 		t.Fatal("BackfillFindingRisk() did not request unprojected rows with graph configured")
 	}
 	graphFinding := graphStore.entities["urn:cerebro:tenant-a:finding:finding-1"]
@@ -3962,7 +3974,9 @@ func TestBackfillFindingRiskProjectsCurrentRiskAfterConcurrentUpdate(t *testing.
 		findings: map[string]*ports.FindingRecord{
 			finding.ID: cloneFinding(finding),
 		},
-		backfillRiskResults: []*ports.FindingRecord{finding},
+		backfillState: stubFindingBackfillState{
+			results: []*ports.FindingRecord{finding},
+		},
 	}
 	store.findings[finding.ID].RiskScore = 95
 	graphStore := &stubGraphStore{}
@@ -3997,14 +4011,16 @@ func TestBackfillFindingRiskDoesNotMarkProjectedWithoutGraph(t *testing.T) {
 		},
 	}
 	store := &stubFindingStore{
-		findings:            map[string]*ports.FindingRecord{finding.ID: cloneFinding(finding)},
-		backfillRiskResults: []*ports.FindingRecord{finding},
+		findings: map[string]*ports.FindingRecord{finding.ID: cloneFinding(finding)},
+		backfillState: stubFindingBackfillState{
+			results: []*ports.FindingRecord{finding},
+		},
 	}
 	service := New(nil, nil, store, store, store, store)
 	if err := service.BackfillFindingRisk(context.Background()); err != nil {
 		t.Fatalf("BackfillFindingRisk() error = %v", err)
 	}
-	if store.backfillIncludeUnprojected {
+	if store.backfillState.includeUnprojected {
 		t.Fatal("BackfillFindingRisk() requested unprojected rows without graph configured")
 	}
 	if got := store.findings["finding-1"].Attributes[FindingRiskGraphProjectedModelVersionAttribute]; got != "" {
