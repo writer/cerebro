@@ -123,6 +123,47 @@ def _find_missing_trust(role_arns: list[str], expected_principals: list[str], ro
     return findings
 
 
+def _markdown_escape(value: str) -> str:
+    return value.replace("|", "\\|")
+
+
+def _finding_role_arn(finding: TrustFinding) -> str:
+    return f"arn:aws:iam::{finding.account_id}:role/{finding.role_name}"
+
+
+def _summary_markdown(stack: str, role_arns: list[str], expected_principals: list[str], findings: list[TrustFinding]) -> str:
+    status = "failed" if findings else "passed"
+    lines = [
+        f"## AWS Scan Role Trust: `{stack}`",
+        "",
+        f"Status: **{status}**",
+        f"Checked roles: `{len(role_arns)}`",
+        f"Expected principals per role: `{len(expected_principals)}`",
+        "",
+    ]
+    if findings:
+        lines.extend(
+            [
+                "| Target role | Missing trusted principal |",
+                "| --- | --- |",
+            ]
+        )
+        for finding in findings:
+            lines.append(f"| `{_markdown_escape(_finding_role_arn(finding))}` | `{_markdown_escape(finding.principal_arn)}` |")
+    else:
+        lines.append("All checked source runtime roles trust the expected task principals.")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _write_github_summary(stack: str, role_arns: list[str], expected_principals: list[str], findings: list[TrustFinding]) -> None:
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not summary_path:
+        return
+    with open(summary_path, "a", encoding="utf-8") as handle:
+        handle.write(_summary_markdown(stack, role_arns, expected_principals, findings))
+
+
 def _parse_profile_map(entries: list[str]) -> dict[str, str]:
     result: dict[str, str] = {}
     for entry in entries:
@@ -170,6 +211,7 @@ def main(argv: list[str] | None = None) -> int:
         role_policies[role_arn] = role.get("AssumeRolePolicyDocument") or {}
 
     findings = _find_missing_trust(role_arns, expected_principals, role_policies)
+    _write_github_summary(stack, role_arns, expected_principals, findings)
     for finding in findings:
         print(
             f"ERROR: arn:aws:iam::{finding.account_id}:role/{finding.role_name} does not trust {finding.principal_arn}",

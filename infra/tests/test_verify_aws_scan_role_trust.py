@@ -83,6 +83,39 @@ class AwsScanRoleTrustTest(unittest.TestCase):
 
         self.assertEqual(findings, [])
 
+    def test_summary_markdown_lists_missing_trust(self) -> None:
+        summary = verify_aws_scan_role_trust._summary_markdown(
+            "go-prod",
+            ["arn:aws:iam::837279440628:role/cerebro-org-scan-role"],
+            [
+                "arn:aws:iam::837279440628:role/cerebro-go-production-task-role",
+                "arn:aws:iam::837279440628:role/cerebro-go-production-worker-task-role",
+            ],
+            [
+                verify_aws_scan_role_trust.TrustFinding(
+                    "837279440628",
+                    "cerebro-org-scan-role",
+                    "arn:aws:iam::837279440628:role/cerebro-go-production-task-role",
+                )
+            ],
+        )
+
+        self.assertIn("Status: **failed**", summary)
+        self.assertIn("Checked roles: `1`", summary)
+        self.assertIn("`arn:aws:iam::837279440628:role/cerebro-org-scan-role`", summary)
+        self.assertIn("`arn:aws:iam::837279440628:role/cerebro-go-production-task-role`", summary)
+
+    def test_summary_markdown_reports_success(self) -> None:
+        summary = verify_aws_scan_role_trust._summary_markdown(
+            "sec-dev",
+            ["arn:aws:iam::944130631940:role/cerebro-org-scan-role"],
+            ["arn:aws:iam::944130631940:role/cerebro-sec-dev-task-role"],
+            [],
+        )
+
+        self.assertIn("Status: **passed**", summary)
+        self.assertIn("All checked source runtime roles trust the expected task principals.", summary)
+
     def test_same_account_role_filter_keeps_stack_account_roles(self) -> None:
         self.assertEqual(
             verify_aws_scan_role_trust._same_account_role_arns(
