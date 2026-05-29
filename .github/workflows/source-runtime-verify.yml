@@ -69,6 +69,11 @@ jobs:
         with:
           assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
 
+      - name: Check source role trust drift
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.sec-dev.yaml --same-account-only
+
       - name: Verify Cosmo source runtimes
         shell: bash
         working-directory: infra
@@ -113,6 +118,11 @@ jobs:
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
         with:
           assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
+
+      - name: Check source role trust drift
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.go-prod.yaml --same-account-only
 
       - name: Verify Cosmo source runtimes
         shell: bash
