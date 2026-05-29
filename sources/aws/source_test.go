@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"sort"
 	"testing"
 	"time"
@@ -542,12 +543,46 @@ func TestReadAWSExposureAndTrustPreview(t *testing.T) {
 	}
 }
 
+func TestReadAWSEffectivePermissionIncludesInlinePolicies(t *testing.T) {
+	source := newTestSource(t, fakeAWS{
+		inlinePolicyNames: []string{"InlineAdmin"},
+		inlinePolicyDocuments: map[string]string{
+			"InlineAdmin": url.QueryEscape(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["iam:*","s3:GetObject"],"Resource":"*"},{"Effect":"Deny","Action":"ec2:*","Resource":"*"}]}`),
+		},
+	})
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"account_id":     "123456789012",
+		"family":         familyEffectivePermission,
+		"principal_name": "admin@writer.com",
+		"principal_type": "user",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(effective_permission inline policy) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	if got := attrs["policy_source"]; got != "inline" {
+		t.Fatalf("policy_source = %q, want inline", got)
+	}
+	if got := attrs["actions"]; got != "iam:*,s3:GetObject" {
+		t.Fatalf("actions = %q, want inline allow actions", got)
+	}
+	if got := attrs["role_id"]; got != "inline:user:admin@writer.com:InlineAdmin" {
+		t.Fatalf("role_id = %q, want synthetic inline policy id", got)
+	}
+}
+
 func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 	basePrincipalData := func(fake *recordingAWS) {
 		fake.users = []iamtypes.User{{UserName: awssdk.String("admin@writer.com"), UserId: awssdk.String("AIDAADMIN")}}
 		fake.groups = []iamtypes.Group{{GroupName: awssdk.String("Security"), GroupId: awssdk.String("AGPSECURITY")}}
 		fake.roles = []iamtypes.Role{{RoleName: awssdk.String("AdminRole"), RoleId: awssdk.String("AROADMIN"), Arn: awssdk.String("arn:aws:iam::123456789012:role/AdminRole")}}
 		fake.attachedPolicies = []iamtypes.AttachedPolicy{{PolicyName: awssdk.String("AdministratorAccess"), PolicyArn: awssdk.String("arn:aws:iam::aws:policy/AdministratorAccess")}}
+		fake.inlinePolicyNames = []string{"InlineAdmin"}
+		fake.inlinePolicyDocuments = map[string]string{"InlineAdmin": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"iam:*","Resource":"*"}]}`}
 	}
 	publicEndpointData := func(fake *recordingAWS) {
 		fake.hostedZones = []route53types.HostedZone{{
@@ -613,7 +648,7 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		{
 			family:  familyEffectivePermission,
 			seed:    basePrincipalData,
-			wantAPI: []string{"iam:ListAttachedGroupPolicies", "iam:ListAttachedRolePolicies", "iam:ListAttachedUserPolicies", "iam:ListGroups", "iam:ListRoles", "iam:ListUsers"},
+			wantAPI: []string{"iam:GetGroupPolicy", "iam:GetRolePolicy", "iam:GetUserPolicy", "iam:ListAttachedGroupPolicies", "iam:ListAttachedRolePolicies", "iam:ListAttachedUserPolicies", "iam:ListGroupPolicies", "iam:ListGroups", "iam:ListRolePolicies", "iam:ListRoles", "iam:ListUserPolicies", "iam:ListUsers"},
 		},
 		{
 			family:  familyIAMGroup,
@@ -631,7 +666,7 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		{
 			family:  familyIAMRoleAssign,
 			seed:    basePrincipalData,
-			wantAPI: []string{"iam:ListAttachedGroupPolicies", "iam:ListAttachedRolePolicies", "iam:ListAttachedUserPolicies", "iam:ListGroups", "iam:ListRoles", "iam:ListUsers"},
+			wantAPI: []string{"iam:GetGroupPolicy", "iam:GetRolePolicy", "iam:GetUserPolicy", "iam:ListAttachedGroupPolicies", "iam:ListAttachedRolePolicies", "iam:ListAttachedUserPolicies", "iam:ListGroupPolicies", "iam:ListGroups", "iam:ListRolePolicies", "iam:ListRoles", "iam:ListUserPolicies", "iam:ListUsers"},
 		},
 		{
 			family:  familyIAMRoleTrust,
@@ -957,24 +992,26 @@ func sortedUnique(values []string) []string {
 }
 
 type fakeAWS struct {
-	users             []iamtypes.User
-	groups            []iamtypes.Group
-	roles             []iamtypes.Role
-	accessKeys        []iamtypes.AccessKeyMetadata
-	attachedPolicies  []iamtypes.AttachedPolicy
-	cloudTrailEvents  []cloudtrailtypes.Event
-	cloudTrailLookup  func(context.Context, *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error)
-	securityGroups    []ec2types.SecurityGroup
-	addresses         []ec2types.Address
-	networkInterfaces []ec2types.NetworkInterface
-	hostedZones       []route53types.HostedZone
-	recordSets        []route53types.ResourceRecordSet
-	distributions     []cloudfronttypes.DistributionSummary
-	loadBalancers     []elbv2types.LoadBalancer
-	apiDomains        []apigatewaytypes.DomainName
-	restAPIs          []apigatewaytypes.RestApi
-	apiV2Domains      []apigatewayv2types.DomainName
-	apiV2APIs         []apigatewayv2types.Api
+	users                 []iamtypes.User
+	groups                []iamtypes.Group
+	roles                 []iamtypes.Role
+	accessKeys            []iamtypes.AccessKeyMetadata
+	attachedPolicies      []iamtypes.AttachedPolicy
+	inlinePolicyNames     []string
+	inlinePolicyDocuments map[string]string
+	cloudTrailEvents      []cloudtrailtypes.Event
+	cloudTrailLookup      func(context.Context, *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error)
+	securityGroups        []ec2types.SecurityGroup
+	addresses             []ec2types.Address
+	networkInterfaces     []ec2types.NetworkInterface
+	hostedZones           []route53types.HostedZone
+	recordSets            []route53types.ResourceRecordSet
+	distributions         []cloudfronttypes.DistributionSummary
+	loadBalancers         []elbv2types.LoadBalancer
+	apiDomains            []apigatewaytypes.DomainName
+	restAPIs              []apigatewaytypes.RestApi
+	apiV2Domains          []apigatewayv2types.DomainName
+	apiV2APIs             []apigatewayv2types.Api
 }
 
 type recordingAWS struct {
@@ -1024,6 +1061,36 @@ func (f *recordingAWS) ListAttachedGroupPolicies(ctx context.Context, input *iam
 func (f *recordingAWS) ListAttachedRolePolicies(ctx context.Context, input *iam.ListAttachedRolePoliciesInput, options ...func(*iam.Options)) (*iam.ListAttachedRolePoliciesOutput, error) {
 	f.record("iam:ListAttachedRolePolicies")
 	return f.fakeAWS.ListAttachedRolePolicies(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListUserPolicies(ctx context.Context, input *iam.ListUserPoliciesInput, options ...func(*iam.Options)) (*iam.ListUserPoliciesOutput, error) {
+	f.record("iam:ListUserPolicies")
+	return f.fakeAWS.ListUserPolicies(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListGroupPolicies(ctx context.Context, input *iam.ListGroupPoliciesInput, options ...func(*iam.Options)) (*iam.ListGroupPoliciesOutput, error) {
+	f.record("iam:ListGroupPolicies")
+	return f.fakeAWS.ListGroupPolicies(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListRolePolicies(ctx context.Context, input *iam.ListRolePoliciesInput, options ...func(*iam.Options)) (*iam.ListRolePoliciesOutput, error) {
+	f.record("iam:ListRolePolicies")
+	return f.fakeAWS.ListRolePolicies(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetUserPolicy(ctx context.Context, input *iam.GetUserPolicyInput, options ...func(*iam.Options)) (*iam.GetUserPolicyOutput, error) {
+	f.record("iam:GetUserPolicy")
+	return f.fakeAWS.GetUserPolicy(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetGroupPolicy(ctx context.Context, input *iam.GetGroupPolicyInput, options ...func(*iam.Options)) (*iam.GetGroupPolicyOutput, error) {
+	f.record("iam:GetGroupPolicy")
+	return f.fakeAWS.GetGroupPolicy(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetRolePolicy(ctx context.Context, input *iam.GetRolePolicyInput, options ...func(*iam.Options)) (*iam.GetRolePolicyOutput, error) {
+	f.record("iam:GetRolePolicy")
+	return f.fakeAWS.GetRolePolicy(ctx, input, options...)
 }
 
 func (f *recordingAWS) LookupEvents(ctx context.Context, input *cloudtrail.LookupEventsInput, options ...func(*cloudtrail.Options)) (*cloudtrail.LookupEventsOutput, error) {
@@ -1120,6 +1187,37 @@ func (f fakeAWS) ListAttachedGroupPolicies(context.Context, *iam.ListAttachedGro
 
 func (f fakeAWS) ListAttachedRolePolicies(context.Context, *iam.ListAttachedRolePoliciesInput, ...func(*iam.Options)) (*iam.ListAttachedRolePoliciesOutput, error) {
 	return &iam.ListAttachedRolePoliciesOutput{AttachedPolicies: f.attachedPolicies}, nil
+}
+
+func (f fakeAWS) ListUserPolicies(context.Context, *iam.ListUserPoliciesInput, ...func(*iam.Options)) (*iam.ListUserPoliciesOutput, error) {
+	return &iam.ListUserPoliciesOutput{PolicyNames: f.inlinePolicyNames}, nil
+}
+
+func (f fakeAWS) ListGroupPolicies(context.Context, *iam.ListGroupPoliciesInput, ...func(*iam.Options)) (*iam.ListGroupPoliciesOutput, error) {
+	return &iam.ListGroupPoliciesOutput{PolicyNames: f.inlinePolicyNames}, nil
+}
+
+func (f fakeAWS) ListRolePolicies(context.Context, *iam.ListRolePoliciesInput, ...func(*iam.Options)) (*iam.ListRolePoliciesOutput, error) {
+	return &iam.ListRolePoliciesOutput{PolicyNames: f.inlinePolicyNames}, nil
+}
+
+func (f fakeAWS) GetUserPolicy(_ context.Context, input *iam.GetUserPolicyInput, _ ...func(*iam.Options)) (*iam.GetUserPolicyOutput, error) {
+	return &iam.GetUserPolicyOutput{PolicyDocument: awssdk.String(f.inlinePolicyDocument(awssdk.ToString(input.PolicyName)))}, nil
+}
+
+func (f fakeAWS) GetGroupPolicy(_ context.Context, input *iam.GetGroupPolicyInput, _ ...func(*iam.Options)) (*iam.GetGroupPolicyOutput, error) {
+	return &iam.GetGroupPolicyOutput{PolicyDocument: awssdk.String(f.inlinePolicyDocument(awssdk.ToString(input.PolicyName)))}, nil
+}
+
+func (f fakeAWS) GetRolePolicy(_ context.Context, input *iam.GetRolePolicyInput, _ ...func(*iam.Options)) (*iam.GetRolePolicyOutput, error) {
+	return &iam.GetRolePolicyOutput{PolicyDocument: awssdk.String(f.inlinePolicyDocument(awssdk.ToString(input.PolicyName)))}, nil
+}
+
+func (f fakeAWS) inlinePolicyDocument(policyName string) string {
+	if f.inlinePolicyDocuments != nil {
+		return f.inlinePolicyDocuments[policyName]
+	}
+	return ""
 }
 
 func (f fakeAWS) LookupEvents(ctx context.Context, input *cloudtrail.LookupEventsInput, _ ...func(*cloudtrail.Options)) (*cloudtrail.LookupEventsOutput, error) {

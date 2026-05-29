@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -126,6 +127,12 @@ type awsIAMAPI interface {
 	ListAttachedUserPolicies(context.Context, *iam.ListAttachedUserPoliciesInput, ...func(*iam.Options)) (*iam.ListAttachedUserPoliciesOutput, error)
 	ListAttachedGroupPolicies(context.Context, *iam.ListAttachedGroupPoliciesInput, ...func(*iam.Options)) (*iam.ListAttachedGroupPoliciesOutput, error)
 	ListAttachedRolePolicies(context.Context, *iam.ListAttachedRolePoliciesInput, ...func(*iam.Options)) (*iam.ListAttachedRolePoliciesOutput, error)
+	ListUserPolicies(context.Context, *iam.ListUserPoliciesInput, ...func(*iam.Options)) (*iam.ListUserPoliciesOutput, error)
+	ListGroupPolicies(context.Context, *iam.ListGroupPoliciesInput, ...func(*iam.Options)) (*iam.ListGroupPoliciesOutput, error)
+	ListRolePolicies(context.Context, *iam.ListRolePoliciesInput, ...func(*iam.Options)) (*iam.ListRolePoliciesOutput, error)
+	GetUserPolicy(context.Context, *iam.GetUserPolicyInput, ...func(*iam.Options)) (*iam.GetUserPolicyOutput, error)
+	GetGroupPolicy(context.Context, *iam.GetGroupPolicyInput, ...func(*iam.Options)) (*iam.GetGroupPolicyOutput, error)
+	GetRolePolicy(context.Context, *iam.GetRolePolicyInput, ...func(*iam.Options)) (*iam.GetRolePolicyOutput, error)
 }
 
 type awsCloudTrailAPI interface {
@@ -175,6 +182,8 @@ type iamPolicyAssignment struct {
 	PrincipalType string
 	PrincipalName string
 	Policy        iamtypes.AttachedPolicy
+	PolicySource  string
+	Actions       []string
 }
 
 type iamGroupMember struct {
@@ -1385,8 +1394,13 @@ func listIAMPolicyAssignments(ctx context.Context, clients awsClients, settings 
 	}
 	assignments := make([]iamPolicyAssignment, 0, len(policies))
 	for _, policy := range policies {
-		assignments = append(assignments, iamPolicyAssignment{PrincipalType: settings.principalType, PrincipalName: settings.principalName, Policy: policy})
+		assignments = append(assignments, iamPolicyAssignment{PrincipalType: settings.principalType, PrincipalName: settings.principalName, Policy: policy, PolicySource: "attached"})
 	}
+	inlineAssignments, err := inlinePolicyAssignments(ctx, clients, settings.principalType, settings.principalName)
+	if err != nil {
+		return nil, "", err
+	}
+	assignments = append(assignments, inlineAssignments...)
 	return assignments, next, nil
 }
 
@@ -1456,8 +1470,13 @@ func attachedUserPolicyAssignments(ctx context.Context, clients awsClients, user
 			return nil, err
 		}
 		for _, policy := range out.AttachedPolicies {
-			assignments = append(assignments, iamPolicyAssignment{PrincipalType: "user", PrincipalName: userName, Policy: policy})
+			assignments = append(assignments, iamPolicyAssignment{PrincipalType: "user", PrincipalName: userName, Policy: policy, PolicySource: "attached"})
 		}
+		inlineAssignments, err := inlinePolicyAssignments(ctx, clients, "user", userName)
+		if err != nil {
+			return nil, err
+		}
+		assignments = append(assignments, inlineAssignments...)
 	}
 	return assignments, nil
 }
@@ -1474,8 +1493,13 @@ func attachedGroupPolicyAssignments(ctx context.Context, clients awsClients, gro
 			return nil, err
 		}
 		for _, policy := range out.AttachedPolicies {
-			assignments = append(assignments, iamPolicyAssignment{PrincipalType: "group", PrincipalName: groupName, Policy: policy})
+			assignments = append(assignments, iamPolicyAssignment{PrincipalType: "group", PrincipalName: groupName, Policy: policy, PolicySource: "attached"})
 		}
+		inlineAssignments, err := inlinePolicyAssignments(ctx, clients, "group", groupName)
+		if err != nil {
+			return nil, err
+		}
+		assignments = append(assignments, inlineAssignments...)
 	}
 	return assignments, nil
 }
@@ -1492,10 +1516,93 @@ func attachedRolePolicyAssignments(ctx context.Context, clients awsClients, role
 			return nil, err
 		}
 		for _, policy := range out.AttachedPolicies {
-			assignments = append(assignments, iamPolicyAssignment{PrincipalType: "role", PrincipalName: roleName, Policy: policy})
+			assignments = append(assignments, iamPolicyAssignment{PrincipalType: "role", PrincipalName: roleName, Policy: policy, PolicySource: "attached"})
 		}
+		inlineAssignments, err := inlinePolicyAssignments(ctx, clients, "role", roleName)
+		if err != nil {
+			return nil, err
+		}
+		assignments = append(assignments, inlineAssignments...)
 	}
 	return assignments, nil
+}
+
+func inlinePolicyAssignments(ctx context.Context, clients awsClients, principalType string, principalName string) ([]iamPolicyAssignment, error) {
+	principalName = strings.TrimSpace(principalName)
+	if principalName == "" {
+		return nil, nil
+	}
+	var policyNames []string
+	switch principalType {
+	case "group":
+		out, err := clients.iam.ListGroupPolicies(ctx, &iam.ListGroupPoliciesInput{GroupName: awssdk.String(principalName), MaxItems: awssdk.Int32(1000)})
+		if err != nil {
+			return nil, err
+		}
+		policyNames = out.PolicyNames
+	case "role":
+		out, err := clients.iam.ListRolePolicies(ctx, &iam.ListRolePoliciesInput{RoleName: awssdk.String(principalName), MaxItems: awssdk.Int32(1000)})
+		if err != nil {
+			return nil, err
+		}
+		policyNames = out.PolicyNames
+	default:
+		out, err := clients.iam.ListUserPolicies(ctx, &iam.ListUserPoliciesInput{UserName: awssdk.String(principalName), MaxItems: awssdk.Int32(1000)})
+		if err != nil {
+			return nil, err
+		}
+		policyNames = out.PolicyNames
+		principalType = "user"
+	}
+	assignments := make([]iamPolicyAssignment, 0, len(policyNames))
+	for _, policyName := range policyNames {
+		policyName = strings.TrimSpace(policyName)
+		if policyName == "" {
+			continue
+		}
+		document, err := inlinePolicyDocument(ctx, clients, principalType, principalName, policyName)
+		if err != nil {
+			return nil, err
+		}
+		assignments = append(assignments, iamPolicyAssignment{
+			PrincipalType: principalType,
+			PrincipalName: principalName,
+			Policy: iamtypes.AttachedPolicy{
+				PolicyArn:  awssdk.String(inlinePolicyURN(principalType, principalName, policyName)),
+				PolicyName: awssdk.String(policyName),
+			},
+			PolicySource: "inline",
+			Actions:      policyDocumentActions(document),
+		})
+	}
+	return assignments, nil
+}
+
+func inlinePolicyDocument(ctx context.Context, clients awsClients, principalType string, principalName string, policyName string) (string, error) {
+	switch principalType {
+	case "group":
+		out, err := clients.iam.GetGroupPolicy(ctx, &iam.GetGroupPolicyInput{GroupName: awssdk.String(principalName), PolicyName: awssdk.String(policyName)})
+		if err != nil {
+			return "", err
+		}
+		return awssdk.ToString(out.PolicyDocument), nil
+	case "role":
+		out, err := clients.iam.GetRolePolicy(ctx, &iam.GetRolePolicyInput{RoleName: awssdk.String(principalName), PolicyName: awssdk.String(policyName)})
+		if err != nil {
+			return "", err
+		}
+		return awssdk.ToString(out.PolicyDocument), nil
+	default:
+		out, err := clients.iam.GetUserPolicy(ctx, &iam.GetUserPolicyInput{UserName: awssdk.String(principalName), PolicyName: awssdk.String(policyName)})
+		if err != nil {
+			return "", err
+		}
+		return awssdk.ToString(out.PolicyDocument), nil
+	}
+}
+
+func inlinePolicyURN(principalType string, principalName string, policyName string) string {
+	return "inline:" + strings.Join(cleanStrings([]string{principalType, principalName, policyName}), ":")
 }
 
 func listCloudTrailEvents(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]cloudtrailtypes.Event, string, error) {
@@ -1735,6 +1842,7 @@ func iamRoleAssignmentEvent(settings settings, assignment iamPolicyAssignment) (
 		"role_id":        firstNonEmpty(policyARN, policyName),
 		"role_name":      policyName,
 		"role_type":      "aws_iam_policy",
+		"policy_source":  firstNonEmpty(assignment.PolicySource, "attached"),
 		"subject_email":  emailLike(assignment.PrincipalName),
 		"subject_id":     assignment.PrincipalName,
 		"subject_login":  assignment.PrincipalName,
@@ -1753,7 +1861,7 @@ func effectivePermissionEvent(settings settings, assignment iamPolicyAssignment)
 	policyName := awssdk.ToString(assignment.Policy.PolicyName)
 	policyARN := awssdk.ToString(assignment.Policy.PolicyArn)
 	admin := isAdminPolicy(policyName, policyARN)
-	permission := firstNonEmpty(policyName, policyARN)
+	permission := firstNonEmpty(strings.Join(assignment.Actions, ","), policyName, policyARN)
 	attributes := map[string]string{
 		"actions":         permission,
 		"domain":          settings.accountID,
@@ -1761,6 +1869,7 @@ func effectivePermissionEvent(settings settings, assignment iamPolicyAssignment)
 		"family":          familyEffectivePermission,
 		"is_admin":        boolString(admin),
 		"permission":      permission,
+		"policy_source":   firstNonEmpty(assignment.PolicySource, "attached"),
 		"principal_type":  assignment.PrincipalType,
 		"privilege_level": map[bool]string{true: "admin", false: "policy_attachment"}[admin],
 		"resource_id":     firstNonEmpty(policyARN, policyName, settings.accountID),
@@ -2411,6 +2520,39 @@ func containsStringAction(value any, expected ...string) bool {
 	return false
 }
 
+func policyDocumentActions(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	if decoded, err := url.QueryUnescape(raw); err == nil {
+		raw = decoded
+	}
+	var document map[string]any
+	if err := json.Unmarshal([]byte(raw), &document); err != nil {
+		return nil
+	}
+	return sortedUniqueStrings(policyDocumentActionValues(document["Statement"]))
+}
+
+func policyDocumentActionValues(value any) []string {
+	switch typed := value.(type) {
+	case []any:
+		values := make([]string, 0)
+		for _, item := range typed {
+			values = append(values, policyDocumentActionValues(item)...)
+		}
+		return values
+	case map[string]any:
+		if effect := strings.TrimSpace(fmt.Sprint(typed["Effect"])); effect != "" && !strings.EqualFold(effect, "Allow") {
+			return nil
+		}
+		return stringList(typed["Action"])
+	default:
+		return nil
+	}
+}
+
 func stringActionMatches(action string, expected string) bool {
 	normalizedAction := strings.ToLower(strings.TrimSpace(action))
 	normalizedExpected := strings.ToLower(strings.TrimSpace(expected))
@@ -2425,6 +2567,21 @@ func stringActionMatches(action string, expected string) bool {
 		return true
 	}
 	return false
+}
+
+func sortedUniqueStrings(values []string) []string {
+	seen := map[string]bool{}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" || seen[trimmed] {
+			continue
+		}
+		seen[trimmed] = true
+		result = append(result, trimmed)
+	}
+	sort.Strings(result)
+	return result
 }
 
 func awsAccountPrincipalID(value string) string {
