@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -543,7 +542,7 @@ func (s *Source) getJSON(ctx context.Context, settings settings, requestPath str
 		_ = resp.Body.Close()
 	}()
 
-	body, err := readLimitedBody(resp.Body)
+	body, err := sourcehttp.ReadLimitedBodyWithLimit(resp.Body, maxBodyBytes)
 	if err != nil {
 		return fmt.Errorf("read %s response: %w", requestPath, err)
 	}
@@ -573,18 +572,6 @@ func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, 
 		return source.lookupIPAddrs
 	}
 	return net.DefaultResolver.LookupIPAddr
-}
-
-func readLimitedBody(body io.Reader) ([]byte, error) {
-	limited := io.LimitReader(body, maxBodyBytes+1)
-	payload, err := io.ReadAll(limited)
-	if err != nil {
-		return nil, err
-	}
-	if len(payload) > maxBodyBytes {
-		return nil, fmt.Errorf("sentinelone response body exceeds %d bytes", maxBodyBytes)
-	}
-	return payload, nil
 }
 
 func decodeResponseError(statusCode int, body []byte) error {

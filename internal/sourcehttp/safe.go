@@ -246,13 +246,20 @@ func IsLoopbackHost(host string) bool {
 }
 
 func ReadLimitedBody(body io.Reader) ([]byte, error) {
-	limited := io.LimitReader(body, MaxBodyBytes+1)
+	return ReadLimitedBodyWithLimit(body, MaxBodyBytes)
+}
+
+func ReadLimitedBodyWithLimit(body io.Reader, maxBytes int) ([]byte, error) {
+	if maxBytes <= 0 {
+		maxBytes = MaxBodyBytes
+	}
+	limited := io.LimitReader(body, int64(maxBytes)+1)
 	payload, err := io.ReadAll(limited)
 	if err != nil {
 		return nil, err
 	}
-	if len(payload) > MaxBodyBytes {
-		return nil, fmt.Errorf("response body exceeds %d bytes", MaxBodyBytes)
+	if len(payload) > maxBytes {
+		return nil, fmt.Errorf("response body exceeds %d bytes", maxBytes)
 	}
 	return payload, nil
 }

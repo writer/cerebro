@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -951,7 +950,7 @@ func (s *Source) getJSON(ctx context.Context, settings settings, requestPath str
 	}()
 	headers := resp.Header.Clone()
 
-	body, err := readLimitedBody(resp.Body)
+	body, err := sourcehttp.ReadLimitedBodyWithLimit(resp.Body, maxOktaBodyBytes)
 	if err != nil {
 		return headers, fmt.Errorf("read %s response: %w", requestPath, err)
 	}
@@ -1019,18 +1018,6 @@ func oktaLookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAd
 		return source.lookupIPAddrs
 	}
 	return net.DefaultResolver.LookupIPAddr
-}
-
-func readLimitedBody(body io.Reader) ([]byte, error) {
-	limited := io.LimitReader(body, maxOktaBodyBytes+1)
-	payload, err := io.ReadAll(limited)
-	if err != nil {
-		return nil, err
-	}
-	if len(payload) > maxOktaBodyBytes {
-		return nil, fmt.Errorf("okta response body exceeds %d bytes", maxOktaBodyBytes)
-	}
-	return payload, nil
 }
 
 func decodeResponseError(statusCode int, body []byte) error {
