@@ -2743,6 +2743,37 @@ func TestProjectAWSAccountTrustPrincipal(t *testing.T) {
 	assertProjectedLink(t, state, accountURN, relationCanAssume, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/AdminRole")
 }
 
+func TestProjectAWSServiceTrustPrincipal(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-service-role-trust",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.iam_role_trust",
+		Attributes: map[string]string{
+			"domain":       "123456789012",
+			"path_type":    "assume_role_trust",
+			"relationship": "can_assume",
+			"subject_id":   "lambda.amazonaws.com",
+			"subject_type": "service_principal",
+			"target_id":    "arn:aws:iam::123456789012:role/LambdaRole",
+			"target_name":  "LambdaRole",
+			"target_type":  "role",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	servicePrincipalURN := "urn:cerebro:writer:aws_service_principal:lambda.amazonaws.com"
+	if entity := state.entities[servicePrincipalURN]; entity == nil || entity.EntityType != "aws.service_principal" {
+		t.Fatalf("aws service principal entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, servicePrincipalURN, relationCanAssume, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/LambdaRole")
+}
+
 func TestProjectEffectivePermissionsKubernetesRuntimeAndData(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
