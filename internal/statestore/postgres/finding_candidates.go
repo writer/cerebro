@@ -52,9 +52,15 @@ var ensureFindingCandidateStatements = []string{
   promotion_rationale TEXT NOT NULL DEFAULT '',
   change_ticket TEXT NOT NULL DEFAULT '',
   promoted_at TIMESTAMPTZ,
+  rejected_by TEXT NOT NULL DEFAULT '',
+  rejection_rationale TEXT NOT NULL DEFAULT '',
+  rejected_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )`,
+	`ALTER TABLE finding_candidates ADD COLUMN IF NOT EXISTS rejected_by TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE finding_candidates ADD COLUMN IF NOT EXISTS rejection_rationale TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE finding_candidates ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ`,
 	`CREATE INDEX IF NOT EXISTS finding_candidates_runtime_idx ON finding_candidates (tenant_id, runtime_id, last_observed_at DESC, id)`,
 	`CREATE INDEX IF NOT EXISTS finding_candidates_rule_idx ON finding_candidates (tenant_id, rule_id, last_observed_at DESC, id)`,
 	`CREATE INDEX IF NOT EXISTS finding_candidates_status_idx ON finding_candidates (tenant_id, status, last_observed_at DESC, id)`,
@@ -268,7 +274,7 @@ DO UPDATE SET
   runtime_id = EXCLUDED.runtime_id,
   rule_id = EXCLUDED.rule_id,
   fingerprint = EXCLUDED.fingerprint,
-  status = CASE WHEN finding_candidates.status = 'promoted' THEN finding_candidates.status ELSE EXCLUDED.status END,
+  status = CASE WHEN finding_candidates.status IN ('promoted', 'rejected') THEN finding_candidates.status ELSE EXCLUDED.status END,
   finding_json = EXCLUDED.finding_json,
   evidence_json = EXCLUDED.evidence_json,
   last_run_id = EXCLUDED.last_run_id,
@@ -411,10 +417,60 @@ RETURNING `+findingCandidateSelectColumns,
 	return candidate, nil
 }
 
+// MarkFindingCandidateRejected records rejection metadata on one candidate row.
+func (s *Store) MarkFindingCandidateRejected(ctx context.Context, rejection ports.FindingCandidateRejection) (*ports.FindingCandidateRecord, error) {
+	id := strings.TrimSpace(rejection.CandidateID)
+	if id == "" {
+		return nil, errors.New("finding candidate id is required")
+	}
+	if strings.TrimSpace(rejection.DecisionID) == "" {
+		return nil, errors.New("rejection decision id is required")
+	}
+	if strings.TrimSpace(rejection.RejectedBy) == "" {
+		return nil, errors.New("rejected by is required")
+	}
+	if strings.TrimSpace(rejection.Rationale) == "" {
+		return nil, errors.New("rejection rationale is required")
+	}
+	rejectedAt := rejection.RejectedAt.UTC()
+	if rejectedAt.IsZero() {
+		rejectedAt = time.Now().UTC()
+	}
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
+	}
+	if err := s.ensureFindingCandidateTables(ctx); err != nil {
+		return nil, err
+	}
+	candidate, err := s.queryFindingCandidate(ctx, `
+UPDATE finding_candidates
+SET status = 'rejected',
+  decision_id = $2,
+  rejected_by = $3,
+  rejection_rationale = $4,
+  rejected_at = $5,
+  updated_at = NOW()
+WHERE id = $1
+RETURNING `+findingCandidateSelectColumns,
+		id,
+		strings.TrimSpace(rejection.DecisionID),
+		strings.TrimSpace(rejection.RejectedBy),
+		strings.TrimSpace(rejection.Rationale),
+		rejectedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("%w: %s", ports.ErrFindingCandidateNotFound, id)
+		}
+		return nil, fmt.Errorf("mark finding candidate %q rejected: %w", id, err)
+	}
+	return candidate, nil
+}
+
 const findingCandidateSelectColumns = `id, tenant_id, runtime_id, rule_id, fingerprint, status,
   finding_json::text, evidence_json::text, last_run_id, observation_count, first_observed_at,
   last_observed_at, promoted_finding_id, decision_id, promoted_by, promotion_rationale,
-  change_ticket, promoted_at, created_at, updated_at`
+  change_ticket, promoted_at, rejected_by, rejection_rationale, rejected_at, created_at, updated_at`
 
 type findingCandidateScanner interface {
 	Scan(dest ...any) error
@@ -429,6 +485,7 @@ func scanFindingCandidate(scanner findingCandidateScanner) (*ports.FindingCandid
 	var findingJSON string
 	var evidenceJSON string
 	var promotedAt sql.NullTime
+	var rejectedAt sql.NullTime
 	if err := scanner.Scan(
 		&candidate.ID,
 		&candidate.TenantID,
@@ -448,6 +505,9 @@ func scanFindingCandidate(scanner findingCandidateScanner) (*ports.FindingCandid
 		&candidate.PromotionRationale,
 		&candidate.ChangeTicket,
 		&promotedAt,
+		&candidate.RejectedBy,
+		&candidate.RejectionRationale,
+		&rejectedAt,
 		&candidate.CreatedAt,
 		&candidate.UpdatedAt,
 	); err != nil {
@@ -465,6 +525,9 @@ func scanFindingCandidate(scanner findingCandidateScanner) (*ports.FindingCandid
 	candidate.Evidence = evidence
 	if promotedAt.Valid {
 		candidate.PromotedAt = promotedAt.Time.UTC()
+	}
+	if rejectedAt.Valid {
+		candidate.RejectedAt = rejectedAt.Time.UTC()
 	}
 	return candidate, nil
 }

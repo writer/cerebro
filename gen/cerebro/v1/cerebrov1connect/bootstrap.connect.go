@@ -96,6 +96,9 @@ const (
 	// BootstrapServicePromoteFindingCandidateProcedure is the fully-qualified name of the
 	// BootstrapService's PromoteFindingCandidate RPC.
 	BootstrapServicePromoteFindingCandidateProcedure = "/cerebro.v1.BootstrapService/PromoteFindingCandidate"
+	// BootstrapServiceRejectFindingCandidateProcedure is the fully-qualified name of the
+	// BootstrapService's RejectFindingCandidate RPC.
+	BootstrapServiceRejectFindingCandidateProcedure = "/cerebro.v1.BootstrapService/RejectFindingCandidate"
 	// BootstrapServiceResolveFindingProcedure is the fully-qualified name of the BootstrapService's
 	// ResolveFinding RPC.
 	BootstrapServiceResolveFindingProcedure = "/cerebro.v1.BootstrapService/ResolveFinding"
@@ -184,6 +187,7 @@ type BootstrapServiceClient interface {
 	GetFindingCandidate(context.Context, *connect.Request[v1.GetFindingCandidateRequest]) (*connect.Response[v1.GetFindingCandidateResponse], error)
 	EvaluateSourceRuntimeFindingCandidates(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingCandidatesRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingCandidatesResponse], error)
 	PromoteFindingCandidate(context.Context, *connect.Request[v1.PromoteFindingCandidateRequest]) (*connect.Response[v1.PromoteFindingCandidateResponse], error)
+	RejectFindingCandidate(context.Context, *connect.Request[v1.RejectFindingCandidateRequest]) (*connect.Response[v1.RejectFindingCandidateResponse], error)
 	ResolveFinding(context.Context, *connect.Request[v1.ResolveFindingRequest]) (*connect.Response[v1.ResolveFindingResponse], error)
 	SuppressFinding(context.Context, *connect.Request[v1.SuppressFindingRequest]) (*connect.Response[v1.SuppressFindingResponse], error)
 	AssignFinding(context.Context, *connect.Request[v1.AssignFindingRequest]) (*connect.Response[v1.AssignFindingResponse], error)
@@ -344,6 +348,12 @@ func NewBootstrapServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(bootstrapServiceMethods.ByName("PromoteFindingCandidate")),
 			connect.WithClientOptions(opts...),
 		),
+		rejectFindingCandidate: connect.NewClient[v1.RejectFindingCandidateRequest, v1.RejectFindingCandidateResponse](
+			httpClient,
+			baseURL+BootstrapServiceRejectFindingCandidateProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("RejectFindingCandidate")),
+			connect.WithClientOptions(opts...),
+		),
 		resolveFinding: connect.NewClient[v1.ResolveFindingRequest, v1.ResolveFindingResponse](
 			httpClient,
 			baseURL+BootstrapServiceResolveFindingProcedure,
@@ -496,6 +506,7 @@ type bootstrapServiceClient struct {
 	getFindingCandidate                    *connect.Client[v1.GetFindingCandidateRequest, v1.GetFindingCandidateResponse]
 	evaluateSourceRuntimeFindingCandidates *connect.Client[v1.EvaluateSourceRuntimeFindingCandidatesRequest, v1.EvaluateSourceRuntimeFindingCandidatesResponse]
 	promoteFindingCandidate                *connect.Client[v1.PromoteFindingCandidateRequest, v1.PromoteFindingCandidateResponse]
+	rejectFindingCandidate                 *connect.Client[v1.RejectFindingCandidateRequest, v1.RejectFindingCandidateResponse]
 	resolveFinding                         *connect.Client[v1.ResolveFindingRequest, v1.ResolveFindingResponse]
 	suppressFinding                        *connect.Client[v1.SuppressFindingRequest, v1.SuppressFindingResponse]
 	assignFinding                          *connect.Client[v1.AssignFindingRequest, v1.AssignFindingResponse]
@@ -623,6 +634,11 @@ func (c *bootstrapServiceClient) EvaluateSourceRuntimeFindingCandidates(ctx cont
 // PromoteFindingCandidate calls cerebro.v1.BootstrapService.PromoteFindingCandidate.
 func (c *bootstrapServiceClient) PromoteFindingCandidate(ctx context.Context, req *connect.Request[v1.PromoteFindingCandidateRequest]) (*connect.Response[v1.PromoteFindingCandidateResponse], error) {
 	return c.promoteFindingCandidate.CallUnary(ctx, req)
+}
+
+// RejectFindingCandidate calls cerebro.v1.BootstrapService.RejectFindingCandidate.
+func (c *bootstrapServiceClient) RejectFindingCandidate(ctx context.Context, req *connect.Request[v1.RejectFindingCandidateRequest]) (*connect.Response[v1.RejectFindingCandidateResponse], error) {
+	return c.rejectFindingCandidate.CallUnary(ctx, req)
 }
 
 // ResolveFinding calls cerebro.v1.BootstrapService.ResolveFinding.
@@ -754,6 +770,7 @@ type BootstrapServiceHandler interface {
 	GetFindingCandidate(context.Context, *connect.Request[v1.GetFindingCandidateRequest]) (*connect.Response[v1.GetFindingCandidateResponse], error)
 	EvaluateSourceRuntimeFindingCandidates(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingCandidatesRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingCandidatesResponse], error)
 	PromoteFindingCandidate(context.Context, *connect.Request[v1.PromoteFindingCandidateRequest]) (*connect.Response[v1.PromoteFindingCandidateResponse], error)
+	RejectFindingCandidate(context.Context, *connect.Request[v1.RejectFindingCandidateRequest]) (*connect.Response[v1.RejectFindingCandidateResponse], error)
 	ResolveFinding(context.Context, *connect.Request[v1.ResolveFindingRequest]) (*connect.Response[v1.ResolveFindingResponse], error)
 	SuppressFinding(context.Context, *connect.Request[v1.SuppressFindingRequest]) (*connect.Response[v1.SuppressFindingResponse], error)
 	AssignFinding(context.Context, *connect.Request[v1.AssignFindingRequest]) (*connect.Response[v1.AssignFindingResponse], error)
@@ -908,6 +925,12 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 		BootstrapServicePromoteFindingCandidateProcedure,
 		svc.PromoteFindingCandidate,
 		connect.WithSchema(bootstrapServiceMethods.ByName("PromoteFindingCandidate")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceRejectFindingCandidateHandler := connect.NewUnaryHandler(
+		BootstrapServiceRejectFindingCandidateProcedure,
+		svc.RejectFindingCandidate,
+		connect.WithSchema(bootstrapServiceMethods.ByName("RejectFindingCandidate")),
 		connect.WithHandlerOptions(opts...),
 	)
 	bootstrapServiceResolveFindingHandler := connect.NewUnaryHandler(
@@ -1080,6 +1103,8 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 			bootstrapServiceEvaluateSourceRuntimeFindingCandidatesHandler.ServeHTTP(w, r)
 		case BootstrapServicePromoteFindingCandidateProcedure:
 			bootstrapServicePromoteFindingCandidateHandler.ServeHTTP(w, r)
+		case BootstrapServiceRejectFindingCandidateProcedure:
+			bootstrapServiceRejectFindingCandidateHandler.ServeHTTP(w, r)
 		case BootstrapServiceResolveFindingProcedure:
 			bootstrapServiceResolveFindingHandler.ServeHTTP(w, r)
 		case BootstrapServiceSuppressFindingProcedure:
@@ -1213,6 +1238,10 @@ func (UnimplementedBootstrapServiceHandler) EvaluateSourceRuntimeFindingCandidat
 
 func (UnimplementedBootstrapServiceHandler) PromoteFindingCandidate(context.Context, *connect.Request[v1.PromoteFindingCandidateRequest]) (*connect.Response[v1.PromoteFindingCandidateResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.PromoteFindingCandidate is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) RejectFindingCandidate(context.Context, *connect.Request[v1.RejectFindingCandidateRequest]) (*connect.Response[v1.RejectFindingCandidateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.RejectFindingCandidate is not implemented"))
 }
 
 func (UnimplementedBootstrapServiceHandler) ResolveFinding(context.Context, *connect.Request[v1.ResolveFindingRequest]) (*connect.Response[v1.ResolveFindingResponse], error) {

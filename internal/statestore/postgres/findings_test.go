@@ -279,6 +279,27 @@ func TestValidateFindingCandidateRequiresSnapshotAndLastRun(t *testing.T) {
 	}
 }
 
+func TestMarkFindingCandidateRejectedValidatesReviewMetadata(t *testing.T) {
+	store := &Store{}
+	_, err := store.MarkFindingCandidateRejected(context.Background(), ports.FindingCandidateRejection{
+		CandidateID: "candidate-1",
+		DecisionID:  "decision-1",
+		RejectedBy:  "analyst@example.com",
+	})
+	if err == nil {
+		t.Fatal("MarkFindingCandidateRejected() error = nil, want missing rationale error")
+	}
+	_, err = store.MarkFindingCandidateRejected(context.Background(), ports.FindingCandidateRejection{
+		CandidateID: "candidate-1",
+		DecisionID:  "decision-1",
+		RejectedBy:  "analyst@example.com",
+		Rationale:   "Expected fixture candidate.",
+	})
+	if err == nil {
+		t.Fatal("MarkFindingCandidateRejected() error = nil, want unconfigured postgres error")
+	}
+}
+
 func TestFindingListQueryIncludesOptionalFilters(t *testing.T) {
 	query, args, err := findingListQuery(ports.ListFindingsRequest{
 		TenantID:    "tenant-a",

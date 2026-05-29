@@ -462,6 +462,31 @@ paths:
                     $ref: '#/components/schemas/FindingCandidate'
                   decision_id:
                     type: string
+  /finding-candidates/{candidateID}/reject:
+    post:
+      summary: Reject candidate finding
+      tags:
+        - Findings
+      parameters:
+        - $ref: '#/components/parameters/candidateID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectFindingCandidateRequest'
+      responses:
+        '200':
+          description: Rejected candidate metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  candidate:
+                    $ref: '#/components/schemas/FindingCandidate'
+                  decision_id:
+                    type: string
   /findings/{findingID}/resolve:
     post:
       summary: Resolve finding
@@ -1743,7 +1768,7 @@ components:
           type: string
         status:
           type: string
-          enum: [candidate, promoted]
+          enum: [candidate, promoted, rejected]
         finding:
           $ref: '#/components/schemas/Finding'
         evidence:
@@ -1774,6 +1799,13 @@ components:
         promoted_at:
           type: string
           format: date-time
+        rejected_by:
+          type: string
+        rejection_rationale:
+          type: string
+        rejected_at:
+          type: string
+          format: date-time
         created_at:
           type: string
           format: date-time
@@ -1797,6 +1829,16 @@ components:
           type: boolean
         graph_coverage_reviewed:
           type: boolean
+    RejectFindingCandidateRequest:
+      type: object
+      required: [rejected_by, rationale]
+      properties:
+        rejected_by:
+          type: string
+          minLength: 1
+        rationale:
+          type: string
+          minLength: 1
     Finding:
       type: object
       properties:

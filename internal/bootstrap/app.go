@@ -160,6 +160,7 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 	mux.HandleFunc("GET /findings/{findingID}", app.handleGetFinding)
 	mux.HandleFunc("GET /finding-candidates/{candidateID}", app.handleGetFindingCandidate)
 	mux.HandleFunc("POST /finding-candidates/{candidateID}/promote", app.handlePromoteFindingCandidate)
+	mux.HandleFunc("POST /finding-candidates/{candidateID}/reject", app.handleRejectFindingCandidate)
 	mux.HandleFunc("POST /findings/{findingID}/resolve", app.handleResolveFinding)
 	mux.HandleFunc("POST /findings/{findingID}/suppress", app.handleSuppressFinding)
 	mux.HandleFunc("PUT /findings/{findingID}/assign", app.handleAssignFinding)
@@ -1630,6 +1631,38 @@ func (a *App) handlePromoteFindingCandidate(w http.ResponseWriter, r *http.Reque
 	writeProtoJSON(w, http.StatusOK, promoteFindingCandidateResponse(response))
 }
 
+func (a *App) handleRejectFindingCandidate(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.RejectFindingCandidateRequest{}
+	if err := readProtoJSON(r, request); err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	request.Id = r.PathValue("candidateID")
+	candidate, err := a.findingService().GetFindingCandidate(r.Context(), request.GetId())
+	if err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), candidate.RuntimeID, false); err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	if err := authorizeFindingCandidatePromotion(r.Context()); err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	response, err := a.findingService().RejectFindingCandidate(r.Context(), findings.RejectCandidateRequest{
+		CandidateID: request.GetId(),
+		RejectedBy:  request.GetRejectedBy(),
+		Rationale:   request.GetRationale(),
+	})
+	if err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, rejectFindingCandidateResponse(response))
+}
+
 func (a *App) handleListFindingEvidence(w http.ResponseWriter, r *http.Request) {
 	request := &cerebrov1.ListFindingEvidenceRequest{
 		RuntimeId:    r.PathValue("runtimeID"),
@@ -2039,6 +2072,36 @@ func (s *bootstrapService) PromoteFindingCandidate(ctx context.Context, req *con
 		return nil, findingConnectError(err)
 	}
 	return connect.NewResponse(promoteFindingCandidateResponse(response)), nil
+}
+
+func (s *bootstrapService) RejectFindingCandidate(ctx context.Context, req *connect.Request[cerebrov1.RejectFindingCandidateRequest]) (*connect.Response[cerebrov1.RejectFindingCandidateResponse], error) {
+	service := findings.New(
+		sourceRuntimeStore(s.deps.StateStore),
+		eventReplayer(s.deps.AppendLog),
+		findingStore(s.deps.StateStore),
+		findingEvaluationRunStore(s.deps.StateStore),
+		findingEvidenceStore(s.deps.StateStore),
+		claimStore(s.deps.StateStore),
+	).WithFindingCandidateStore(findingCandidateStore(s.deps.StateStore)).WithGraphStore(sourceProjectionGraphStore(s.deps.GraphStore)).WithGraphQueryStore(graphQueryStore(s.deps.GraphStore)).WithAppendLog(s.deps.AppendLog)
+	candidate, err := service.GetFindingCandidate(ctx, req.Msg.GetId())
+	if err != nil {
+		return nil, findingConnectError(err)
+	}
+	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), candidate.RuntimeID, false); err != nil {
+		return nil, findingConnectError(err)
+	}
+	if err := authorizeFindingCandidatePromotion(ctx); err != nil {
+		return nil, findingConnectError(err)
+	}
+	response, err := service.RejectFindingCandidate(ctx, findings.RejectCandidateRequest{
+		CandidateID: req.Msg.GetId(),
+		RejectedBy:  req.Msg.GetRejectedBy(),
+		Rationale:   req.Msg.GetRationale(),
+	})
+	if err != nil {
+		return nil, findingConnectError(err)
+	}
+	return connect.NewResponse(rejectFindingCandidateResponse(response)), nil
 }
 
 func (s *bootstrapService) ResolveFinding(ctx context.Context, req *connect.Request[cerebrov1.ResolveFindingRequest]) (*connect.Response[cerebrov1.ResolveFindingResponse], error) {
@@ -3430,6 +3493,16 @@ func promoteFindingCandidateResponse(result *findings.PromoteCandidateResult) *c
 	}
 }
 
+func rejectFindingCandidateResponse(result *findings.RejectCandidateResult) *cerebrov1.RejectFindingCandidateResponse {
+	if result == nil {
+		return &cerebrov1.RejectFindingCandidateResponse{}
+	}
+	return &cerebrov1.RejectFindingCandidateResponse{
+		Candidate:  findingCandidateMessage(result.Candidate),
+		DecisionId: result.DecisionID,
+	}
+}
+
 func findingMessages(findings []*ports.FindingRecord) []*cerebrov1.Finding {
 	messages := make([]*cerebrov1.Finding, 0, len(findings))
 	for _, finding := range findings {
@@ -3491,6 +3564,8 @@ func findingCandidateMessage(candidate *ports.FindingCandidateRecord) *cerebrov1
 		PromotedBy:         candidate.PromotedBy,
 		PromotionRationale: candidate.PromotionRationale,
 		ChangeTicket:       candidate.ChangeTicket,
+		RejectedBy:         candidate.RejectedBy,
+		RejectionRationale: candidate.RejectionRationale,
 	}
 	if !candidate.FirstObservedAt.IsZero() {
 		message.FirstObservedAt = timestamppb.New(candidate.FirstObservedAt.UTC())
@@ -3500,6 +3575,9 @@ func findingCandidateMessage(candidate *ports.FindingCandidateRecord) *cerebrov1
 	}
 	if !candidate.PromotedAt.IsZero() {
 		message.PromotedAt = timestamppb.New(candidate.PromotedAt.UTC())
+	}
+	if !candidate.RejectedAt.IsZero() {
+		message.RejectedAt = timestamppb.New(candidate.RejectedAt.UTC())
 	}
 	if !candidate.CreatedAt.IsZero() {
 		message.CreatedAt = timestamppb.New(candidate.CreatedAt.UTC())

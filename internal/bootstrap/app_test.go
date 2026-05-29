@@ -1234,6 +1234,24 @@ func (s *stubRuntimeStore) MarkFindingCandidatePromoted(_ context.Context, promo
 	return cloneFindingCandidate(cloned), nil
 }
 
+func (s *stubRuntimeStore) MarkFindingCandidateRejected(_ context.Context, rejection ports.FindingCandidateRejection) (*ports.FindingCandidateRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	candidate, ok := s.findingCandidates[strings.TrimSpace(rejection.CandidateID)]
+	if !ok {
+		return nil, ports.ErrFindingCandidateNotFound
+	}
+	cloned := cloneFindingCandidate(candidate)
+	cloned.Status = "rejected"
+	cloned.DecisionID = strings.TrimSpace(rejection.DecisionID)
+	cloned.RejectedBy = strings.TrimSpace(rejection.RejectedBy)
+	cloned.RejectionRationale = strings.TrimSpace(rejection.Rationale)
+	cloned.RejectedAt = rejection.RejectedAt.UTC()
+	s.findingCandidates[cloned.ID] = cloned
+	return cloneFindingCandidate(cloned), nil
+}
+
 func (s *stubRuntimeStore) PutFindingEvaluationRun(_ context.Context, run *cerebrov1.FindingEvaluationRun) error {
 	if s.err != nil {
 		return s.err
@@ -2347,6 +2365,7 @@ func TestCandidateScopesCoverReadAndPromotionRoutes(t *testing.T) {
 	}{
 		{method: http.MethodGet, path: "/finding-candidates/candidate-1", want: scopeCosmoSecurityRead},
 		{method: http.MethodPost, path: "/finding-candidates/candidate-1/promote", want: scopeFindingCandidatePromote},
+		{method: http.MethodPost, path: "/finding-candidates/candidate-1/reject", want: scopeFindingCandidatePromote},
 	} {
 		req := httptest.NewRequest(tt.method, tt.path, nil)
 		if got := scopeForHTTPRequest(req); got != tt.want {
@@ -2360,6 +2379,7 @@ func TestCandidateScopesCoverReadAndPromotionRoutes(t *testing.T) {
 		{procedure: cerebrov1connect.BootstrapServiceListFindingCandidatesProcedure, want: scopeCosmoSecurityRead},
 		{procedure: cerebrov1connect.BootstrapServiceGetFindingCandidateProcedure, want: scopeCosmoSecurityRead},
 		{procedure: cerebrov1connect.BootstrapServicePromoteFindingCandidateProcedure, want: scopeFindingCandidatePromote},
+		{procedure: cerebrov1connect.BootstrapServiceRejectFindingCandidateProcedure, want: scopeFindingCandidatePromote},
 	} {
 		if got := scopeForConnectProcedure(tt.procedure); got != tt.want {
 			t.Fatalf("scopeForConnectProcedure(%s) = %q, want %q", tt.procedure, got, tt.want)
@@ -5305,6 +5325,35 @@ func TestFindingCandidateEndpointsEvaluateListGetAndPromote(t *testing.T) {
 	}
 	if promotePayload["decision_id"] == "" {
 		t.Fatal("promotion decision_id is empty")
+	}
+
+	rejectCandidateID := candidateID + "-reject"
+	rejectCandidate := cloneFindingCandidate(runtimeStore.findingCandidates[candidateID])
+	rejectCandidate.ID = rejectCandidateID
+	rejectCandidate.Status = "candidate"
+	rejectCandidate.DecisionID = ""
+	rejectCandidate.PromotedFindingID = ""
+	rejectCandidate.PromotedBy = ""
+	rejectCandidate.PromotionRationale = ""
+	rejectCandidate.ChangeTicket = ""
+	rejectCandidate.PromotedAt = time.Time{}
+	runtimeStore.findingCandidates[rejectCandidateID] = rejectCandidate
+	rejectResp, err := client.RejectFindingCandidate(context.Background(), connect.NewRequest(&cerebrov1.RejectFindingCandidateRequest{
+		Id:         rejectCandidateID,
+		RejectedBy: "analyst@example.com",
+		Rationale:  "Expected inactive policy rule fixture.",
+	}))
+	if err != nil {
+		t.Fatalf("RejectFindingCandidate() error = %v", err)
+	}
+	if got := rejectResp.Msg.GetCandidate().GetStatus(); got != "rejected" {
+		t.Fatalf("RejectFindingCandidate().Candidate.Status = %q, want rejected", got)
+	}
+	if rejectResp.Msg.GetDecisionId() == "" {
+		t.Fatal("RejectFindingCandidate().DecisionId is empty")
+	}
+	if got := len(runtimeStore.findings); got != 1 {
+		t.Fatalf("production findings after reject = %d, want 1", got)
 	}
 }
 
