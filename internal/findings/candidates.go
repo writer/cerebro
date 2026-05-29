@@ -14,6 +14,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/telemetry"
 	"github.com/writer/cerebro/internal/workflowevents"
 )
 
@@ -190,6 +191,7 @@ func (s *Service) EvaluateSourceRuntimeCandidateRules(ctx context.Context, reque
 		if err := s.candidateStore.PutFindingCandidateRun(ctx, state.run); err != nil {
 			return nil, s.markCandidateEvaluationsFailed(ctx, unfinishedCandidateEvaluations(states, state), fmt.Errorf("persist finding candidate run %q: %w", state.run.ID, err))
 		}
+		emitFindingCandidateRunTelemetry(ctx, state.run)
 	}
 	return result, nil
 }
@@ -219,6 +221,7 @@ func (s *Service) ListFindingCandidates(ctx context.Context, request ListCandida
 	if err != nil {
 		return nil, fmt.Errorf("list finding candidates for runtime %q: %w", runtimeID, err)
 	}
+	emitFindingCandidateListTelemetry(ctx, runtimeID, candidates, request)
 	return &ListCandidatesResult{Candidates: candidates}, nil
 }
 
@@ -244,6 +247,7 @@ func (s *Service) PromoteFindingCandidate(ctx context.Context, request PromoteCa
 	if s == nil || s.candidateStore == nil || s.store == nil || s.evidenceStore == nil {
 		return nil, ErrRuntimeUnavailable
 	}
+	startedAt := time.Now().UTC()
 	candidateID := strings.TrimSpace(request.CandidateID)
 	if candidateID == "" {
 		return nil, fmt.Errorf("%w: finding candidate id is required", ErrInvalidRequest)
@@ -272,6 +276,7 @@ func (s *Service) PromoteFindingCandidate(ctx context.Context, request PromoteCa
 		if err != nil {
 			return nil, err
 		}
+		emitFindingCandidatePromotionTelemetry(ctx, "already_promoted", candidate, finding, strings.TrimSpace(candidate.DecisionID), startedAt)
 		return &PromoteCandidateResult{Candidate: candidate, Finding: finding, DecisionID: strings.TrimSpace(candidate.DecisionID)}, nil
 	}
 	if candidate.Finding == nil {
@@ -329,6 +334,7 @@ func (s *Service) PromoteFindingCandidate(ctx context.Context, request PromoteCa
 	if err != nil {
 		return nil, err
 	}
+	emitFindingCandidatePromotionTelemetry(ctx, "promoted", promoted, stored, decisionID, startedAt)
 	return &PromoteCandidateResult{Candidate: promoted, Finding: stored, DecisionID: decisionID}, nil
 }
 
@@ -477,6 +483,74 @@ func candidateEvidenceIDs(evidence []*cerebrov1.FindingEvidence) []string {
 	return uniqueSortedStrings(ids)
 }
 
+func emitFindingCandidateRunTelemetry(ctx context.Context, run *ports.FindingCandidateRun) {
+	if run == nil {
+		return
+	}
+	durationMS := int64(0)
+	if !run.StartedAt.IsZero() && !run.FinishedAt.IsZero() {
+		durationMS = run.FinishedAt.Sub(run.StartedAt).Milliseconds()
+	}
+	telemetry.Event(ctx, "finding_candidate.run", telemetry.Attrs(
+		telemetry.Field{Key: "run_id", Value: strings.TrimSpace(run.ID)},
+		telemetry.Field{Key: "tenant_id", Value: strings.TrimSpace(run.TenantID)},
+		telemetry.Field{Key: "runtime_id", Value: strings.TrimSpace(run.RuntimeID)},
+		telemetry.Field{Key: "rule_id", Value: strings.TrimSpace(run.RuleID)},
+		telemetry.Field{Key: "status", Value: strings.TrimSpace(run.Status)},
+		telemetry.Field{Key: "event_limit", Value: run.EventLimit},
+		telemetry.Field{Key: "events_evaluated", Value: run.EventsEvaluated},
+		telemetry.Field{Key: "events_matched", Value: run.EventsMatched},
+		telemetry.Field{Key: "candidates_emitted", Value: run.Candidates},
+		telemetry.Field{Key: "duration_ms", Value: durationMS},
+	))
+}
+
+func emitFindingCandidateListTelemetry(ctx context.Context, runtimeID string, candidates []*ports.FindingCandidateRecord, request ListCandidatesRequest) {
+	candidateCount, promotedCount, staleCount := 0, 0, 0
+	now := time.Now().UTC()
+	for _, candidate := range candidates {
+		if candidate == nil {
+			continue
+		}
+		candidateCount++
+		if strings.EqualFold(strings.TrimSpace(candidate.Status), findingCandidateStatusPromoted) {
+			promotedCount++
+			continue
+		}
+		if !candidate.LastObservedAt.IsZero() && now.Sub(candidate.LastObservedAt.UTC()) > 7*24*time.Hour {
+			staleCount++
+		}
+	}
+	telemetry.Event(ctx, "finding_candidate.list", telemetry.Attrs(
+		telemetry.Field{Key: "runtime_id", Value: strings.TrimSpace(runtimeID)},
+		telemetry.Field{Key: "rule_id", Value: strings.TrimSpace(request.RuleID)},
+		telemetry.Field{Key: "status_filter", Value: strings.TrimSpace(request.Status)},
+		telemetry.Field{Key: "candidate_count", Value: candidateCount},
+		telemetry.Field{Key: "promoted_count", Value: promotedCount},
+		telemetry.Field{Key: "open_candidate_count", Value: candidateCount - promotedCount},
+		telemetry.Field{Key: "stale_candidate_count", Value: staleCount},
+	))
+}
+
+func emitFindingCandidatePromotionTelemetry(ctx context.Context, outcome string, candidate *ports.FindingCandidateRecord, finding *ports.FindingRecord, decisionID string, startedAt time.Time) {
+	attrs := telemetry.Attrs(
+		telemetry.Field{Key: "outcome", Value: strings.TrimSpace(outcome)},
+		telemetry.Field{Key: "decision_id", Value: strings.TrimSpace(decisionID)},
+		telemetry.Field{Key: "duration_ms", Value: time.Since(startedAt).Milliseconds()},
+	)
+	if candidate != nil {
+		attrs = attrs.WithField(telemetry.Field{Key: "candidate_id", Value: strings.TrimSpace(candidate.ID)})
+		attrs = attrs.WithField(telemetry.Field{Key: "tenant_id", Value: strings.TrimSpace(candidate.TenantID)})
+		attrs = attrs.WithField(telemetry.Field{Key: "runtime_id", Value: strings.TrimSpace(candidate.RuntimeID)})
+		attrs = attrs.WithField(telemetry.Field{Key: "rule_id", Value: strings.TrimSpace(candidate.RuleID)})
+		attrs = attrs.WithField(telemetry.Field{Key: "observation_count", Value: candidate.ObservationCount})
+	}
+	if finding != nil {
+		attrs = attrs.WithField(telemetry.Field{Key: "finding_id", Value: strings.TrimSpace(finding.ID)})
+	}
+	telemetry.Event(ctx, "finding_candidate.promotion", attrs)
+}
+
 func (s *Service) markCandidateEvaluationFailed(ctx context.Context, state *candidateRuleEvaluationState, evaluationErr error) error {
 	if state == nil || state.run == nil {
 		return evaluationErr
@@ -489,6 +563,7 @@ func (s *Service) markCandidateEvaluationFailed(ctx context.Context, state *cand
 	if err := s.candidateStore.PutFindingCandidateRun(ctx, state.run); err != nil {
 		return errors.Join(evaluationErr, fmt.Errorf("persist finding candidate run %q: %w", state.run.ID, err))
 	}
+	emitFindingCandidateRunTelemetry(ctx, state.run)
 	state.failed = true
 	return nil
 }

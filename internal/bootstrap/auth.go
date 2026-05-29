@@ -488,7 +488,18 @@ func authorizeTenantID(ctx context.Context, tenantID string) error {
 	return nil
 }
 
-const scopeCosmoSecurityRead = "cerebro.cosmo.security.read"
+func authorizeFindingCandidatePromotion(ctx context.Context) error {
+	auth, ok := ctx.Value(authContextKey{}).(authContext)
+	if !ok {
+		return nil
+	}
+	return authorizePrincipalScope(auth.principal, scopeFindingCandidatePromote)
+}
+
+const (
+	scopeCosmoSecurityRead       = "cerebro.cosmo.security.read"
+	scopeFindingCandidatePromote = "cerebro.finding_candidates.promote"
+)
 
 func scopeForDeviceRoute(method string, path string) string {
 	switch {
@@ -556,6 +567,9 @@ func scopeForHTTPRequest(r *http.Request) string {
 		return scope
 	}
 	if r.Method != http.MethodGet {
+		if r.Method == http.MethodPost && strings.HasPrefix(path, "/finding-candidates/") && strings.HasSuffix(path, "/promote") {
+			return scopeFindingCandidatePromote
+		}
 		return ""
 	}
 	switch {
@@ -564,6 +578,8 @@ func scopeForHTTPRequest(r *http.Request) string {
 	case path == "/source-runtimes" || strings.HasPrefix(path, "/source-runtimes/"):
 		return scopeCosmoSecurityRead
 	case strings.HasPrefix(path, "/findings/"):
+		return scopeCosmoSecurityRead
+	case strings.HasPrefix(path, "/finding-candidates/"):
 		return scopeCosmoSecurityRead
 	case strings.HasPrefix(path, "/finding-evaluation-runs/"), strings.HasPrefix(path, "/finding-evidence/"):
 		return scopeCosmoSecurityRead
@@ -604,6 +620,8 @@ func scopeForConnectProcedure(procedure string) string {
 		cerebrov1connect.BootstrapServiceListClaimsProcedure,
 		cerebrov1connect.BootstrapServiceListFindingsProcedure,
 		cerebrov1connect.BootstrapServiceGetFindingProcedure,
+		cerebrov1connect.BootstrapServiceListFindingCandidatesProcedure,
+		cerebrov1connect.BootstrapServiceGetFindingCandidateProcedure,
 		cerebrov1connect.BootstrapServiceListFindingEvaluationRunsProcedure,
 		cerebrov1connect.BootstrapServiceGetFindingEvaluationRunProcedure,
 		cerebrov1connect.BootstrapServiceListFindingEvidenceProcedure,
@@ -613,6 +631,8 @@ func scopeForConnectProcedure(procedure string) string {
 		cerebrov1connect.BootstrapServiceListGraphIngestRunsProcedure,
 		cerebrov1connect.BootstrapServiceCheckGraphIngestHealthProcedure:
 		return scopeCosmoSecurityRead
+	case cerebrov1connect.BootstrapServicePromoteFindingCandidateProcedure:
+		return scopeFindingCandidatePromote
 	default:
 		return ""
 	}
@@ -1195,7 +1215,7 @@ func accessAuditRouteFamily(route string) string {
 		return "finding_evaluation"
 	case strings.Contains(route, "/finding-evidence"):
 		return "finding_evidence"
-	case strings.Contains(route, "/finding-rules"), strings.Contains(route, "/findings"), strings.Contains(route, "/vulnerability-findings"):
+	case strings.Contains(route, "/finding-rules"), strings.Contains(route, "/finding-candidates"), strings.Contains(route, "/findings"), strings.Contains(route, "/vulnerability-findings"):
 		return "finding"
 	case strings.Contains(route, "/grc/"):
 		return "grc"
@@ -1253,44 +1273,48 @@ func accessAuditConnectProcedure(path string) string {
 }
 
 var knownAccessAuditConnectProcedures = map[string]struct{}{
-	cerebrov1connect.BootstrapServiceGetVersionProcedure:                        {},
-	cerebrov1connect.BootstrapServiceCheckHealthProcedure:                       {},
-	cerebrov1connect.BootstrapServiceListReportDefinitionsProcedure:             {},
-	cerebrov1connect.BootstrapServiceListFindingRulesProcedure:                  {},
-	cerebrov1connect.BootstrapServiceRunReportProcedure:                         {},
-	cerebrov1connect.BootstrapServiceGetReportRunProcedure:                      {},
-	cerebrov1connect.BootstrapServiceListSourcesProcedure:                       {},
-	cerebrov1connect.BootstrapServiceCheckSourceProcedure:                       {},
-	cerebrov1connect.BootstrapServiceDiscoverSourceProcedure:                    {},
-	cerebrov1connect.BootstrapServiceReadSourceProcedure:                        {},
-	cerebrov1connect.BootstrapServicePutSourceRuntimeProcedure:                  {},
-	cerebrov1connect.BootstrapServiceGetSourceRuntimeProcedure:                  {},
-	cerebrov1connect.BootstrapServiceSyncSourceRuntimeProcedure:                 {},
-	cerebrov1connect.BootstrapServiceWriteClaimsProcedure:                       {},
-	cerebrov1connect.BootstrapServiceListClaimsProcedure:                        {},
-	cerebrov1connect.BootstrapServiceListFindingsProcedure:                      {},
-	cerebrov1connect.BootstrapServiceGetFindingProcedure:                        {},
-	cerebrov1connect.BootstrapServiceResolveFindingProcedure:                    {},
-	cerebrov1connect.BootstrapServiceSuppressFindingProcedure:                   {},
-	cerebrov1connect.BootstrapServiceAssignFindingProcedure:                     {},
-	cerebrov1connect.BootstrapServiceSetFindingDueDateProcedure:                 {},
-	cerebrov1connect.BootstrapServiceAddFindingNoteProcedure:                    {},
-	cerebrov1connect.BootstrapServiceLinkFindingTicketProcedure:                 {},
-	cerebrov1connect.BootstrapServiceListFindingEvaluationRunsProcedure:         {},
-	cerebrov1connect.BootstrapServiceGetFindingEvaluationRunProcedure:           {},
-	cerebrov1connect.BootstrapServiceListFindingEvidenceProcedure:               {},
-	cerebrov1connect.BootstrapServiceGetFindingEvidenceProcedure:                {},
-	cerebrov1connect.BootstrapServiceEvaluateSourceRuntimeFindingRulesProcedure: {},
-	cerebrov1connect.BootstrapServiceEvaluateSourceRuntimeFindingsProcedure:     {},
-	cerebrov1connect.BootstrapServiceWriteDecisionProcedure:                     {},
-	cerebrov1connect.BootstrapServiceWriteActionProcedure:                       {},
-	cerebrov1connect.BootstrapServiceWriteOutcomeProcedure:                      {},
-	cerebrov1connect.BootstrapServiceReplayWorkflowEventsProcedure:              {},
-	cerebrov1connect.BootstrapServiceGetEntityNeighborhoodProcedure:             {},
-	cerebrov1connect.BootstrapServiceRunGraphIngestRuntimeProcedure:             {},
-	cerebrov1connect.BootstrapServiceGetGraphIngestRunProcedure:                 {},
-	cerebrov1connect.BootstrapServiceListGraphIngestRunsProcedure:               {},
-	cerebrov1connect.BootstrapServiceCheckGraphIngestHealthProcedure:            {},
+	cerebrov1connect.BootstrapServiceGetVersionProcedure:                             {},
+	cerebrov1connect.BootstrapServiceCheckHealthProcedure:                            {},
+	cerebrov1connect.BootstrapServiceListReportDefinitionsProcedure:                  {},
+	cerebrov1connect.BootstrapServiceListFindingRulesProcedure:                       {},
+	cerebrov1connect.BootstrapServiceRunReportProcedure:                              {},
+	cerebrov1connect.BootstrapServiceGetReportRunProcedure:                           {},
+	cerebrov1connect.BootstrapServiceListSourcesProcedure:                            {},
+	cerebrov1connect.BootstrapServiceCheckSourceProcedure:                            {},
+	cerebrov1connect.BootstrapServiceDiscoverSourceProcedure:                         {},
+	cerebrov1connect.BootstrapServiceReadSourceProcedure:                             {},
+	cerebrov1connect.BootstrapServicePutSourceRuntimeProcedure:                       {},
+	cerebrov1connect.BootstrapServiceGetSourceRuntimeProcedure:                       {},
+	cerebrov1connect.BootstrapServiceSyncSourceRuntimeProcedure:                      {},
+	cerebrov1connect.BootstrapServiceWriteClaimsProcedure:                            {},
+	cerebrov1connect.BootstrapServiceListClaimsProcedure:                             {},
+	cerebrov1connect.BootstrapServiceListFindingsProcedure:                           {},
+	cerebrov1connect.BootstrapServiceGetFindingProcedure:                             {},
+	cerebrov1connect.BootstrapServiceListFindingCandidatesProcedure:                  {},
+	cerebrov1connect.BootstrapServiceGetFindingCandidateProcedure:                    {},
+	cerebrov1connect.BootstrapServiceEvaluateSourceRuntimeFindingCandidatesProcedure: {},
+	cerebrov1connect.BootstrapServicePromoteFindingCandidateProcedure:                {},
+	cerebrov1connect.BootstrapServiceResolveFindingProcedure:                         {},
+	cerebrov1connect.BootstrapServiceSuppressFindingProcedure:                        {},
+	cerebrov1connect.BootstrapServiceAssignFindingProcedure:                          {},
+	cerebrov1connect.BootstrapServiceSetFindingDueDateProcedure:                      {},
+	cerebrov1connect.BootstrapServiceAddFindingNoteProcedure:                         {},
+	cerebrov1connect.BootstrapServiceLinkFindingTicketProcedure:                      {},
+	cerebrov1connect.BootstrapServiceListFindingEvaluationRunsProcedure:              {},
+	cerebrov1connect.BootstrapServiceGetFindingEvaluationRunProcedure:                {},
+	cerebrov1connect.BootstrapServiceListFindingEvidenceProcedure:                    {},
+	cerebrov1connect.BootstrapServiceGetFindingEvidenceProcedure:                     {},
+	cerebrov1connect.BootstrapServiceEvaluateSourceRuntimeFindingRulesProcedure:      {},
+	cerebrov1connect.BootstrapServiceEvaluateSourceRuntimeFindingsProcedure:          {},
+	cerebrov1connect.BootstrapServiceWriteDecisionProcedure:                          {},
+	cerebrov1connect.BootstrapServiceWriteActionProcedure:                            {},
+	cerebrov1connect.BootstrapServiceWriteOutcomeProcedure:                           {},
+	cerebrov1connect.BootstrapServiceReplayWorkflowEventsProcedure:                   {},
+	cerebrov1connect.BootstrapServiceGetEntityNeighborhoodProcedure:                  {},
+	cerebrov1connect.BootstrapServiceRunGraphIngestRuntimeProcedure:                  {},
+	cerebrov1connect.BootstrapServiceGetGraphIngestRunProcedure:                      {},
+	cerebrov1connect.BootstrapServiceListGraphIngestRunsProcedure:                    {},
+	cerebrov1connect.BootstrapServiceCheckGraphIngestHealthProcedure:                 {},
 }
 
 func fallbackAccessAuditRoute(method string, path string) string {
@@ -1320,6 +1344,8 @@ func fallbackAccessAuditRoute(method string, path string) string {
 		return prefix + "/finding-rules"
 	case strings.HasPrefix(path, "/findings/"):
 		return prefix + fallbackFindingRoute(path)
+	case strings.HasPrefix(path, "/finding-candidates/"):
+		return prefix + fallbackFindingCandidateRoute(path)
 	case strings.HasPrefix(path, "/finding-evaluation-runs/"):
 		return prefix + "/finding-evaluation-runs/{runID}"
 	case strings.HasPrefix(path, "/finding-evidence/"):
@@ -1356,10 +1382,12 @@ func fallbackRuntimeRoute(path string) string {
 	}
 	parts := strings.SplitN(suffix, "/", 2)
 	switch parts[1] {
-	case "sync", "graph-ingest-runs", "claims", "findings", "finding-evidence", "finding-evaluation-runs":
+	case "sync", "graph-ingest-runs", "claims", "findings", "finding-candidates", "finding-evidence", "finding-evaluation-runs":
 		return "/source-runtimes/{runtimeID}/" + parts[1]
 	case "finding-rules/evaluate":
 		return "/source-runtimes/{runtimeID}/finding-rules/evaluate"
+	case "finding-candidates/evaluate":
+		return "/source-runtimes/{runtimeID}/finding-candidates/evaluate"
 	case "findings/evaluate":
 		return "/source-runtimes/{runtimeID}/findings/evaluate"
 	default:
@@ -1378,6 +1406,20 @@ func fallbackFindingRoute(path string) string {
 		return "/findings/{findingID}/" + parts[1]
 	default:
 		return "/findings/{findingID}/{subresource}"
+	}
+}
+
+func fallbackFindingCandidateRoute(path string) string {
+	suffix := strings.TrimPrefix(path, "/finding-candidates/")
+	if !strings.Contains(suffix, "/") {
+		return "/finding-candidates/{candidateID}"
+	}
+	parts := strings.SplitN(suffix, "/", 2)
+	switch parts[1] {
+	case "promote":
+		return "/finding-candidates/{candidateID}/promote"
+	default:
+		return "/finding-candidates/{candidateID}/{subresource}"
 	}
 }
 
