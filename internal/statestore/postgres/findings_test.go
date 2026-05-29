@@ -223,6 +223,83 @@ func TestFindingListQueryAcceptsTenantAndRuleWithoutRuntime(t *testing.T) {
 	}
 }
 
+func TestFindingCandidateListQueryRequiresTenantAndScope(t *testing.T) {
+	if _, _, err := findingCandidateListQuery(ports.ListFindingCandidatesRequest{RuntimeID: "writer-okta-audit"}); err == nil {
+		t.Fatal("findingCandidateListQuery() error = nil, want tenant error")
+	}
+	if _, _, err := findingCandidateListQuery(ports.ListFindingCandidatesRequest{TenantID: "writer"}); err == nil {
+		t.Fatal("findingCandidateListQuery() error = nil, want scope error")
+	}
+}
+
+func TestFindingCandidateListQueryFiltersRuntimeRuleStatusAndFingerprint(t *testing.T) {
+	query, args, err := findingCandidateListQuery(ports.ListFindingCandidatesRequest{
+		TenantID:    "writer",
+		RuntimeID:   "writer-okta-audit",
+		RuleID:      "rule-a",
+		Status:      "candidate",
+		Fingerprint: "fingerprint-1",
+		Limit:       5,
+	})
+	if err != nil {
+		t.Fatalf("findingCandidateListQuery() error = %v", err)
+	}
+	for _, want := range []string{"tenant_id = $1", "runtime_id = $2", "rule_id = $3", "status = $4", "fingerprint = $5", "LIMIT $6"} {
+		if !strings.Contains(query, want) {
+			t.Fatalf("findingCandidateListQuery() missing %q in query: %s", want, query)
+		}
+	}
+	if got := len(args); got != 6 {
+		t.Fatalf("len(args) = %d, want 6", got)
+	}
+}
+
+func TestValidateFindingCandidateRequiresSnapshotAndLastRun(t *testing.T) {
+	err := validateFindingCandidate(&ports.FindingCandidateRecord{
+		ID:          "candidate-1",
+		TenantID:    "writer",
+		RuntimeID:   "writer-okta-audit",
+		RuleID:      "rule-a",
+		Fingerprint: "fingerprint-1",
+	})
+	if err == nil {
+		t.Fatal("validateFindingCandidate() error = nil, want missing last run/finding error")
+	}
+	valid := &ports.FindingCandidateRecord{
+		ID:          "candidate-1",
+		TenantID:    "writer",
+		RuntimeID:   "writer-okta-audit",
+		RuleID:      "rule-a",
+		Fingerprint: "fingerprint-1",
+		LastRunID:   "candidate-run-1",
+		Finding:     newUpsertFinding("finding-1", "fingerprint-1", "open", time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)),
+	}
+	if err := validateFindingCandidate(valid); err != nil {
+		t.Fatalf("validateFindingCandidate() error = %v", err)
+	}
+}
+
+func TestMarkFindingCandidateRejectedValidatesReviewMetadata(t *testing.T) {
+	store := &Store{}
+	_, err := store.MarkFindingCandidateRejected(context.Background(), ports.FindingCandidateRejection{
+		CandidateID: "candidate-1",
+		DecisionID:  "decision-1",
+		RejectedBy:  "analyst@example.com",
+	})
+	if err == nil {
+		t.Fatal("MarkFindingCandidateRejected() error = nil, want missing rationale error")
+	}
+	_, err = store.MarkFindingCandidateRejected(context.Background(), ports.FindingCandidateRejection{
+		CandidateID: "candidate-1",
+		DecisionID:  "decision-1",
+		RejectedBy:  "analyst@example.com",
+		Rationale:   "Expected fixture candidate.",
+	})
+	if err == nil {
+		t.Fatal("MarkFindingCandidateRejected() error = nil, want unconfigured postgres error")
+	}
+}
+
 func TestFindingListQueryIncludesOptionalFilters(t *testing.T) {
 	query, args, err := findingListQuery(ports.ListFindingsRequest{
 		TenantID:    "tenant-a",

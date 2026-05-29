@@ -3,6 +3,8 @@ package findings
 import (
 	"slices"
 	"testing"
+
+	"github.com/writer/cerebro/internal/ports"
 )
 
 func TestBuiltinRuleMetadataIsComplete(t *testing.T) {
@@ -39,6 +41,52 @@ func TestBuiltinRuleMetadataReturnsIsolatedCopies(t *testing.T) {
 	}
 	if second[index].Tags[0] == "mutated" {
 		t.Fatal("BuiltinRuleMetadata() returned mutable cached metadata tags")
+	}
+}
+
+func TestValidateRuleMetadataCompletenessAcceptsCandidateAndProductionMaturity(t *testing.T) {
+	for _, maturity := range []string{RuleMaturityTest, RuleMaturityCandidate, RuleMaturityExperimental, RuleMaturityGA, RuleMaturityProduction, RuleMaturityRetired} {
+		metadata := RuleDefinition{
+			ID:                "rule-" + maturity,
+			Name:              "Rule " + maturity,
+			Description:       "Rule description",
+			SourceID:          "okta",
+			OutputKind:        "finding",
+			Severity:          "LOW",
+			Status:            "active",
+			Maturity:          maturity,
+			Tags:              []string{"identity"},
+			References:        []string{"https://example.com"},
+			FalsePositives:    []string{"test"},
+			Runbook:           "Review source evidence.",
+			FingerprintFields: []string{"tenant_id"},
+			ControlRefs:       []ports.FindingControlRef{{FrameworkName: "SOC2", ControlID: "CC6.1"}},
+		}
+		if errs := ValidateRuleMetadataCompleteness([]RuleDefinition{metadata}); len(errs) != 0 {
+			t.Fatalf("ValidateRuleMetadataCompleteness(%q) errors = %v", maturity, errs)
+		}
+	}
+}
+
+func TestValidateRuleMetadataCompletenessRejectsUnknownMaturity(t *testing.T) {
+	metadata := RuleDefinition{
+		ID:                "rule-unknown",
+		Name:              "Rule unknown",
+		Description:       "Rule description",
+		SourceID:          "okta",
+		OutputKind:        "finding",
+		Severity:          "LOW",
+		Status:            "active",
+		Maturity:          "preview-ish",
+		Tags:              []string{"identity"},
+		References:        []string{"https://example.com"},
+		FalsePositives:    []string{"test"},
+		Runbook:           "Review source evidence.",
+		FingerprintFields: []string{"tenant_id"},
+		ControlRefs:       []ports.FindingControlRef{{FrameworkName: "SOC2", ControlID: "CC6.1"}},
+	}
+	if errs := ValidateRuleMetadataCompleteness([]RuleDefinition{metadata}); len(errs) == 0 {
+		t.Fatal("ValidateRuleMetadataCompleteness() errors = 0, want unsupported maturity")
 	}
 }
 

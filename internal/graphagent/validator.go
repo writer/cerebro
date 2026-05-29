@@ -26,8 +26,6 @@ var (
 	matchClauseEndPattern = regexp.MustCompile(`(?i)\b(?:WHERE|RETURN|WITH|ORDER\s+BY|LIMIT|UNWIND|CALL|UNION|CREATE|MERGE|DELETE|SET|REMOVE|DROP|FOREACH)\b`)
 	nodeBodyPattern       = regexp.MustCompile(`(?is)^\s*([A-Za-z_][A-Za-z0-9_]*)?\s*((?::\s*[A-Za-z_][A-Za-z0-9_]*)*)\s*(\{[^{}]*\})?\s*$`)
 	inlineTenantPattern   = regexp.MustCompile(`(?i)\btenant_id\s*:\s*\$tenant_id\b`)
-	quotedLiteralPattern  = regexp.MustCompile(`'[^']*'|"[^"]*"`)
-	commentPattern        = regexp.MustCompile(`(?m)//.*$|/\*.*?\*/`)
 	numberPattern         = regexp.MustCompile(`\d+(?:\.\d+)?`)
 )
 
@@ -90,6 +88,9 @@ func (v *Validator) validate(ctx context.Context, cypher string, params map[stri
 	if limit > v.options.MaxRows {
 		return validatorRefusal("limit_exceeded", fmt.Sprintf("LIMIT %d exceeds maximum %d", limit, v.options.MaxRows)), 0, nil
 	}
+	if oversized := oversizedLimit(safeQuery, v.options.MaxRows); oversized > 0 {
+		return ValidatorResult{OK: false, Reason: fmt.Sprintf("LIMIT %d exceeds maximum %d", oversized, v.options.MaxRows)}, 0, nil
+	}
 	if !allNodePatternsTenantScoped(safeQuery) {
 		return validatorRefusal("tenant_scope_required", "every node pattern must use Entity label and inline tenant_id"), 0, nil
 	}
@@ -115,9 +116,67 @@ func validatorRefusal(code string, reason string) ValidatorResult {
 	return ValidatorResult{OK: false, Code: code, Reason: reason}
 }
 
+func oversizedLimit(query string, maxRows int) int {
+	for _, match := range limitPattern.FindAllStringSubmatch(query, -1) {
+		limit, err := strconv.Atoi(match[1])
+		if err == nil && limit > maxRows {
+			return limit
+		}
+	}
+	return 0
+}
+
 func scrubCypher(query string) string {
-	noComments := commentPattern.ReplaceAllString(query, " ")
-	return quotedLiteralPattern.ReplaceAllString(noComments, "''")
+	var builder strings.Builder
+	builder.Grow(len(query))
+	for i := 0; i < len(query); i++ {
+		switch query[i] {
+		case '\'', '"':
+			quote := query[i]
+			builder.WriteString("''")
+			i = skipQuotedLiteral(query, i, quote)
+		case '/':
+			if i+1 < len(query) && query[i+1] == '/' {
+				builder.WriteByte(' ')
+				for i+1 < len(query) && query[i+1] != '\n' && query[i+1] != '\r' {
+					i++
+				}
+				continue
+			}
+			if i+1 < len(query) && query[i+1] == '*' {
+				builder.WriteByte(' ')
+				i += 2
+				for i+1 < len(query) && (query[i] != '*' || query[i+1] != '/') {
+					i++
+				}
+				if i+1 < len(query) {
+					i++
+				}
+				continue
+			}
+			builder.WriteByte(query[i])
+		default:
+			builder.WriteByte(query[i])
+		}
+	}
+	return builder.String()
+}
+
+func skipQuotedLiteral(query string, start int, quote byte) int {
+	for i := start + 1; i < len(query); i++ {
+		if query[i] == '\\' && i+1 < len(query) {
+			i++
+			continue
+		}
+		if query[i] == quote {
+			if i+1 < len(query) && query[i+1] == quote {
+				i++
+				continue
+			}
+			return i
+		}
+	}
+	return len(query) - 1
 }
 
 func queryLimit(query string) (int, bool) {
@@ -192,9 +251,12 @@ func allNodePatternsTenantScoped(query string) bool {
 			i += len("UNION") - 1
 			continue
 		}
-		pattern, ok := nodePatternAt(query, i, false)
-		if !ok {
+		pattern, found, valid := nodePatternAt(query, i)
+		if !found {
 			continue
+		}
+		if !valid {
+			return false
 		}
 		sawNode = true
 		if nodePatternHasInlineTenantScope(pattern) {
@@ -295,19 +357,16 @@ func nodePatternsInText(text string, requireValid bool) ([]nodePattern, bool) {
 	return patterns, true
 }
 
-func nodePatternAt(text string, index int, requireValid bool) (nodePattern, bool) {
+func nodePatternAt(text string, index int) (nodePattern, bool, bool) {
 	if text[index] != '(' || index > 0 && isIdentifierByte(text[index-1]) {
-		return nodePattern{}, false
+		return nodePattern{}, false, false
 	}
 	closeIndex := strings.IndexByte(text[index+1:], ')')
 	if closeIndex < 0 {
-		return nodePattern{}, false
+		return nodePattern{}, true, false
 	}
 	pattern, ok := parseNodePattern(text[index+1 : index+1+closeIndex])
-	if !ok && requireValid {
-		return nodePattern{}, false
-	}
-	return pattern, ok
+	return pattern, true, ok
 }
 
 func parseNodePattern(body string) (nodePattern, bool) {

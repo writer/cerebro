@@ -73,7 +73,7 @@ func TestReadLiveGoogleWorkspaceUserPreview(t *testing.T) {
 	server := httptest.NewServer(newGoogleWorkspaceAPIHandler(t))
 	defer server.Close()
 
-	source, err := New()
+	source, err := newLiveTestSource()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -116,7 +116,7 @@ func TestReadLiveGoogleWorkspaceRoleAndAuditPreview(t *testing.T) {
 	server := httptest.NewServer(newGoogleWorkspaceAPIHandler(t))
 	defer server.Close()
 
-	source, err := New()
+	source, err := newLiveTestSource()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -145,6 +145,16 @@ func TestReadLiveGoogleWorkspaceRoleAndAuditPreview(t *testing.T) {
 			}
 		})
 	}
+}
+
+func newLiveTestSource() (*Source, error) {
+	source, err := New()
+	if err != nil {
+		return nil, err
+	}
+	source.allowLoopbackBaseURL = true
+	source.client = source.safeClient()
+	return source, nil
 }
 
 func newGoogleWorkspaceAPIHandler(t *testing.T) http.Handler {

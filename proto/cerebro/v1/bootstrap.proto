@@ -28,6 +28,11 @@ service BootstrapService {
   rpc ListClaims(ListClaimsRequest) returns (ListClaimsResponse);
   rpc ListFindings(ListFindingsRequest) returns (ListFindingsResponse);
   rpc GetFinding(GetFindingRequest) returns (GetFindingResponse);
+  rpc ListFindingCandidates(ListFindingCandidatesRequest) returns (ListFindingCandidatesResponse);
+  rpc GetFindingCandidate(GetFindingCandidateRequest) returns (GetFindingCandidateResponse);
+  rpc EvaluateSourceRuntimeFindingCandidates(EvaluateSourceRuntimeFindingCandidatesRequest) returns (EvaluateSourceRuntimeFindingCandidatesResponse);
+  rpc PromoteFindingCandidate(PromoteFindingCandidateRequest) returns (PromoteFindingCandidateResponse);
+  rpc RejectFindingCandidate(RejectFindingCandidateRequest) returns (RejectFindingCandidateResponse);
   rpc ResolveFinding(ResolveFindingRequest) returns (ResolveFindingResponse);
   rpc SuppressFinding(SuppressFindingRequest) returns (SuppressFindingResponse);
   rpc AssignFinding(AssignFindingRequest) returns (AssignFindingResponse);
@@ -583,6 +588,125 @@ message LinkFindingTicketResponse {
 // ListFindingsResponse returns the matched persisted findings.
 message ListFindingsResponse {
   repeated Finding findings = 1;
+}
+
+// FindingCandidateRun is the durable audit envelope for one non-production candidate evaluation.
+message FindingCandidateRun {
+  string id = 1;
+  string tenant_id = 2;
+  string runtime_id = 3;
+  string rule_id = 4;
+  string status = 5;
+  uint32 event_limit = 6;
+  uint32 events_evaluated = 7;
+  uint32 events_matched = 8;
+  uint32 candidates = 9;
+  google.protobuf.Timestamp started_at = 10;
+  google.protobuf.Timestamp finished_at = 11;
+  string error = 12;
+}
+
+// FindingCandidate stores a reviewed candidate finding snapshot outside production alerts.
+message FindingCandidate {
+  string id = 1;
+  string tenant_id = 2;
+  string runtime_id = 3;
+  string rule_id = 4;
+  string fingerprint = 5;
+  string status = 6;
+  Finding finding = 7;
+  repeated FindingEvidence evidence = 8;
+  string last_run_id = 9;
+  uint32 observation_count = 10;
+  google.protobuf.Timestamp first_observed_at = 11;
+  google.protobuf.Timestamp last_observed_at = 12;
+  string promoted_finding_id = 13;
+  string decision_id = 14;
+  string promoted_by = 15;
+  string promotion_rationale = 16;
+  string change_ticket = 17;
+  google.protobuf.Timestamp promoted_at = 18;
+  google.protobuf.Timestamp created_at = 19;
+  google.protobuf.Timestamp updated_at = 20;
+  string rejected_by = 21;
+  string rejection_rationale = 22;
+  google.protobuf.Timestamp rejected_at = 23;
+}
+
+// ListFindingCandidatesRequest queries isolated candidate finding snapshots for one runtime.
+message ListFindingCandidatesRequest {
+  string runtime_id = 1;
+  string candidate_id = 2;
+  string rule_id = 3;
+  string status = 4;
+  string fingerprint = 5;
+  uint32 limit = 6;
+}
+
+// ListFindingCandidatesResponse returns the matched candidate finding snapshots.
+message ListFindingCandidatesResponse {
+  repeated FindingCandidate candidates = 1;
+}
+
+// GetFindingCandidateRequest loads one isolated candidate finding by durable identifier.
+message GetFindingCandidateRequest {
+  string id = 1;
+}
+
+// GetFindingCandidateResponse returns one candidate finding snapshot.
+message GetFindingCandidateResponse {
+  FindingCandidate candidate = 1;
+}
+
+// EvaluateSourceRuntimeFindingCandidatesRequest replays one runtime through candidate rules without writing production findings.
+message EvaluateSourceRuntimeFindingCandidatesRequest {
+  string id = 1;
+  repeated string rule_ids = 2;
+  uint32 event_limit = 3;
+}
+
+// FindingCandidateRuleEvaluation returns one rule's isolated candidate outputs.
+message FindingCandidateRuleEvaluation {
+  RuleSpec rule = 1;
+  FindingCandidateRun run = 2;
+  repeated FindingCandidate candidates = 3;
+}
+
+// EvaluateSourceRuntimeFindingCandidatesResponse returns non-production candidate outputs for one runtime replay.
+message EvaluateSourceRuntimeFindingCandidatesResponse {
+  SourceRuntime runtime = 1;
+  uint32 events_evaluated = 2;
+  repeated FindingCandidateRuleEvaluation evaluations = 3;
+}
+
+// PromoteFindingCandidateRequest promotes one reviewed candidate into production findings.
+message PromoteFindingCandidateRequest {
+  string id = 1;
+  string promoted_by = 2;
+  string rationale = 3;
+  string change_ticket = 4;
+  bool false_positive_reviewed = 5;
+  bool graph_coverage_reviewed = 6;
+}
+
+// PromoteFindingCandidateResponse returns the production finding and updated candidate.
+message PromoteFindingCandidateResponse {
+  Finding finding = 1;
+  FindingCandidate candidate = 2;
+  string decision_id = 3;
+}
+
+// RejectFindingCandidateRequest records a reviewed candidate as not production-worthy.
+message RejectFindingCandidateRequest {
+  string id = 1;
+  string rejected_by = 2;
+  string rationale = 3;
+}
+
+// RejectFindingCandidateResponse returns the rejected candidate and audit decision.
+message RejectFindingCandidateResponse {
+  FindingCandidate candidate = 1;
+  string decision_id = 2;
 }
 
 // EvaluateSourceRuntimeFindingsRequest replays one stored runtime through one registered finding rule.

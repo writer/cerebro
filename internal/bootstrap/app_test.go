@@ -656,6 +656,9 @@ type stubRuntimeStore struct {
 	findingEvidenceListRequest      ports.ListFindingEvidenceRequest
 	findingEvaluationRuns           map[string]*cerebrov1.FindingEvaluationRun
 	findingEvaluationRunListRequest ports.ListFindingEvaluationRunsRequest
+	findingCandidateRuns            map[string]*ports.FindingCandidateRun
+	findingCandidates               map[string]*ports.FindingCandidateRecord
+	findingCandidateListRequest     ports.ListFindingCandidatesRequest
 	reportRuns                      map[string]*cerebrov1.ReportRun
 }
 
@@ -1111,6 +1114,148 @@ func (s *stubRuntimeStore) CountFindingEvidence(_ context.Context, request ports
 		}
 	}
 	return count, nil
+}
+
+func (s *stubRuntimeStore) PutFindingCandidateRun(_ context.Context, run *ports.FindingCandidateRun) error {
+	if s.err != nil {
+		return s.err
+	}
+	if run == nil {
+		return nil
+	}
+	if s.findingCandidateRuns == nil {
+		s.findingCandidateRuns = make(map[string]*ports.FindingCandidateRun)
+	}
+	cloned := *run
+	s.findingCandidateRuns[cloned.ID] = &cloned
+	return nil
+}
+
+func (s *stubRuntimeStore) GetFindingCandidateRun(_ context.Context, id string) (*ports.FindingCandidateRun, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	run, ok := s.findingCandidateRuns[strings.TrimSpace(id)]
+	if !ok {
+		return nil, ports.ErrFindingEvaluationRunNotFound
+	}
+	cloned := *run
+	return &cloned, nil
+}
+
+func (s *stubRuntimeStore) ListFindingCandidateRuns(_ context.Context, request ports.ListFindingCandidatesRequest) ([]*ports.FindingCandidateRun, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	runs := []*ports.FindingCandidateRun{}
+	for _, run := range s.findingCandidateRuns {
+		if request.RuntimeID != "" && strings.TrimSpace(run.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+			continue
+		}
+		cloned := *run
+		runs = append(runs, &cloned)
+	}
+	return runs, nil
+}
+
+func (s *stubRuntimeStore) UpsertFindingCandidate(_ context.Context, candidate *ports.FindingCandidateRecord) (*ports.FindingCandidateRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	if candidate == nil {
+		return nil, nil
+	}
+	if s.findingCandidates == nil {
+		s.findingCandidates = make(map[string]*ports.FindingCandidateRecord)
+	}
+	cloned := cloneFindingCandidate(candidate)
+	if existing := s.findingCandidates[cloned.ID]; existing != nil {
+		cloned.ObservationCount += existing.ObservationCount
+	}
+	s.findingCandidates[cloned.ID] = cloned
+	return cloneFindingCandidate(cloned), nil
+}
+
+func (s *stubRuntimeStore) GetFindingCandidate(_ context.Context, id string) (*ports.FindingCandidateRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	candidate, ok := s.findingCandidates[strings.TrimSpace(id)]
+	if !ok {
+		return nil, ports.ErrFindingCandidateNotFound
+	}
+	return cloneFindingCandidate(candidate), nil
+}
+
+func (s *stubRuntimeStore) ListFindingCandidates(_ context.Context, request ports.ListFindingCandidatesRequest) ([]*ports.FindingCandidateRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	s.findingCandidateListRequest = request
+	candidates := []*ports.FindingCandidateRecord{}
+	for _, candidate := range s.findingCandidates {
+		if request.RuntimeID != "" && strings.TrimSpace(candidate.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+			continue
+		}
+		if request.CandidateID != "" && strings.TrimSpace(candidate.ID) != strings.TrimSpace(request.CandidateID) {
+			continue
+		}
+		if request.RuleID != "" && strings.TrimSpace(candidate.RuleID) != strings.TrimSpace(request.RuleID) {
+			continue
+		}
+		if request.Status != "" && strings.TrimSpace(candidate.Status) != strings.TrimSpace(request.Status) {
+			continue
+		}
+		if request.Fingerprint != "" && strings.TrimSpace(candidate.Fingerprint) != strings.TrimSpace(request.Fingerprint) {
+			continue
+		}
+		candidates = append(candidates, cloneFindingCandidate(candidate))
+	}
+	return candidates, nil
+}
+
+func (s *stubRuntimeStore) MarkFindingCandidatePromoted(_ context.Context, promotion ports.FindingCandidatePromotion) (*ports.FindingCandidateRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	candidate, ok := s.findingCandidates[strings.TrimSpace(promotion.CandidateID)]
+	if !ok {
+		return nil, ports.ErrFindingCandidateNotFound
+	}
+	cloned := cloneFindingCandidate(candidate)
+	if cloned.Status != "candidate" {
+		return nil, ports.ErrFindingCandidateNotFound
+	}
+	cloned.Status = "promoted"
+	cloned.PromotedFindingID = strings.TrimSpace(promotion.PromotedFindingID)
+	cloned.DecisionID = strings.TrimSpace(promotion.DecisionID)
+	cloned.PromotedBy = strings.TrimSpace(promotion.PromotedBy)
+	cloned.PromotionRationale = strings.TrimSpace(promotion.Rationale)
+	cloned.ChangeTicket = strings.TrimSpace(promotion.ChangeTicket)
+	cloned.PromotedAt = promotion.PromotedAt.UTC()
+	s.findingCandidates[cloned.ID] = cloned
+	return cloneFindingCandidate(cloned), nil
+}
+
+func (s *stubRuntimeStore) MarkFindingCandidateRejected(_ context.Context, rejection ports.FindingCandidateRejection) (*ports.FindingCandidateRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	candidate, ok := s.findingCandidates[strings.TrimSpace(rejection.CandidateID)]
+	if !ok {
+		return nil, ports.ErrFindingCandidateNotFound
+	}
+	cloned := cloneFindingCandidate(candidate)
+	if cloned.Status != "candidate" {
+		return nil, ports.ErrFindingCandidateNotFound
+	}
+	cloned.Status = "rejected"
+	cloned.DecisionID = strings.TrimSpace(rejection.DecisionID)
+	cloned.RejectedBy = strings.TrimSpace(rejection.RejectedBy)
+	cloned.RejectionRationale = strings.TrimSpace(rejection.Rationale)
+	cloned.RejectedAt = rejection.RejectedAt.UTC()
+	s.findingCandidates[cloned.ID] = cloned
+	return cloneFindingCandidate(cloned), nil
 }
 
 func (s *stubRuntimeStore) PutFindingEvaluationRun(_ context.Context, run *cerebrov1.FindingEvaluationRun) error {
@@ -2197,6 +2342,54 @@ func TestScopeForHTTPRequestIncludesGRCAskPost(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/grc/ask", nil)
 	if got := scopeForHTTPRequest(req); got != scopeCosmoSecurityRead {
 		t.Fatalf("scopeForHTTPRequest(POST /grc/ask) = %q, want %q", got, scopeCosmoSecurityRead)
+	}
+}
+
+func TestCandidatePromotionRequiresExplicitScope(t *testing.T) {
+	readOnly := context.WithValue(context.Background(), authContextKey{}, authContext{
+		principal: authPrincipal{Scopes: []string{scopeCosmoSecurityRead}},
+	})
+	if err := authorizeFindingCandidatePromotion(readOnly); !errors.Is(err, errScopeForbidden) {
+		t.Fatalf("authorizeFindingCandidatePromotion(read-only) error = %v, want %v", err, errScopeForbidden)
+	}
+	promoter := context.WithValue(context.Background(), authContextKey{}, authContext{
+		principal: authPrincipal{Scopes: []string{scopeFindingCandidatePromote}},
+	})
+	if err := authorizeFindingCandidatePromotion(promoter); err != nil {
+		t.Fatalf("authorizeFindingCandidatePromotion(promoter) error = %v", err)
+	}
+	if err := authorizeFindingCandidatePromotion(context.Background()); err != nil {
+		t.Fatalf("authorizeFindingCandidatePromotion(no auth) error = %v", err)
+	}
+}
+
+func TestCandidateScopesCoverReadAndPromotionRoutes(t *testing.T) {
+	for _, tt := range []struct {
+		method string
+		path   string
+		want   string
+	}{
+		{method: http.MethodGet, path: "/finding-candidates/candidate-1", want: scopeCosmoSecurityRead},
+		{method: http.MethodPost, path: "/finding-candidates/candidate-1/promote", want: scopeFindingCandidatePromote},
+		{method: http.MethodPost, path: "/finding-candidates/candidate-1/reject", want: scopeFindingCandidatePromote},
+	} {
+		req := httptest.NewRequest(tt.method, tt.path, nil)
+		if got := scopeForHTTPRequest(req); got != tt.want {
+			t.Fatalf("scopeForHTTPRequest(%s %s) = %q, want %q", tt.method, tt.path, got, tt.want)
+		}
+	}
+	for _, tt := range []struct {
+		procedure string
+		want      string
+	}{
+		{procedure: cerebrov1connect.BootstrapServiceListFindingCandidatesProcedure, want: scopeCosmoSecurityRead},
+		{procedure: cerebrov1connect.BootstrapServiceGetFindingCandidateProcedure, want: scopeCosmoSecurityRead},
+		{procedure: cerebrov1connect.BootstrapServicePromoteFindingCandidateProcedure, want: scopeFindingCandidatePromote},
+		{procedure: cerebrov1connect.BootstrapServiceRejectFindingCandidateProcedure, want: scopeFindingCandidatePromote},
+	} {
+		if got := scopeForConnectProcedure(tt.procedure); got != tt.want {
+			t.Fatalf("scopeForConnectProcedure(%s) = %q, want %q", tt.procedure, got, tt.want)
+		}
 	}
 }
 
@@ -4997,6 +5190,179 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 }
 
+func TestFindingCandidateEndpointsEvaluateListGetAndPromote(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	appendLog := &recordingAppendLog{
+		replayEvents: []*cerebrov1.EventEnvelope{
+			findingPolicyRuleTestEvent("okta-policy-rule-active", "ACTIVE"),
+			findingPolicyRuleTestEvent("okta-policy-rule-inactive", "INACTIVE"),
+		},
+	}
+	runtimeStore := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-policy-rule": {
+				Id:       "writer-okta-policy-rule",
+				SourceId: "okta",
+				TenantId: "writer",
+				Config:   map[string]string{"family": "policy_rule", "token": "super-secret"},
+			},
+		},
+		claims: map[string]*ports.ClaimRecord{
+			"claim-1": {
+				ID:            "claim-1",
+				RuntimeID:     "writer-okta-policy-rule",
+				TenantID:      "writer",
+				SubjectURN:    "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1",
+				Predicate:     "status",
+				ObjectValue:   "INACTIVE",
+				ClaimType:     "attribute",
+				Status:        "asserted",
+				SourceEventID: "okta-policy-rule-inactive",
+				ObservedAt:    time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
+			},
+		},
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		AppendLog:  appendLog,
+		StateStore: runtimeStore,
+		GraphStore: &stubGraphStore{},
+	}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	evaluateReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-policy-rule/finding-candidates/evaluate?event_limit=2&rule_id=identity-okta-policy-rule-lifecycle-tampering", nil)
+	if err != nil {
+		t.Fatalf("new candidate evaluate request: %v", err)
+	}
+	evaluateResp, err := server.Client().Do(evaluateReq)
+	if err != nil {
+		t.Fatalf("POST /source-runtimes/{id}/finding-candidates/evaluate error = %v", err)
+	}
+	defer func() {
+		if closeErr := evaluateResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close candidate evaluate response body: %v", closeErr)
+		}
+	}()
+	if evaluateResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(evaluateResp.Body)
+		t.Fatalf("candidate evaluate status = %d body=%s", evaluateResp.StatusCode, string(body))
+	}
+	var evaluatePayload map[string]any
+	if err := json.NewDecoder(evaluateResp.Body).Decode(&evaluatePayload); err != nil {
+		t.Fatalf("decode candidate evaluate response: %v", err)
+	}
+	evaluations := evaluatePayload["evaluations"].([]any)
+	candidates := evaluations[0].(map[string]any)["candidates"].([]any)
+	candidatePayload := candidates[0].(map[string]any)
+	candidateID := candidatePayload["id"].(string)
+	if candidateID == "" {
+		t.Fatal("candidate id is empty")
+	}
+	if got := len(runtimeStore.findings); got != 0 {
+		t.Fatalf("production findings after candidate evaluate = %d, want 0", got)
+	}
+
+	listResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-policy-rule/finding-candidates?status=candidate&limit=1")
+	if err != nil {
+		t.Fatalf("GET /source-runtimes/{id}/finding-candidates error = %v", err)
+	}
+	defer func() {
+		if closeErr := listResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close candidate list response body: %v", closeErr)
+		}
+	}()
+	var listPayload map[string]any
+	if err := json.NewDecoder(listResp.Body).Decode(&listPayload); err != nil {
+		t.Fatalf("decode candidate list response: %v", err)
+	}
+	listCandidates := listPayload["candidates"].([]any)
+	if got := len(listCandidates); got != 1 {
+		t.Fatalf("listed candidates = %d, want 1", got)
+	}
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	getResp, err := client.GetFindingCandidate(context.Background(), connect.NewRequest(&cerebrov1.GetFindingCandidateRequest{Id: candidateID}))
+	if err != nil {
+		t.Fatalf("GetFindingCandidate() error = %v", err)
+	}
+	if got := getResp.Msg.GetCandidate().GetId(); got != candidateID {
+		t.Fatalf("GetFindingCandidate().Candidate.Id = %q, want %q", got, candidateID)
+	}
+
+	promoteBody, err := protojson.Marshal(&cerebrov1.PromoteFindingCandidateRequest{
+		PromotedBy:            "analyst@example.com",
+		Rationale:             "Validated against source data.",
+		ChangeTicket:          "SEC-123",
+		FalsePositiveReviewed: true,
+		GraphCoverageReviewed: true,
+	})
+	if err != nil {
+		t.Fatalf("marshal promote request: %v", err)
+	}
+	promoteResp, err := server.Client().Post(server.URL+"/finding-candidates/"+candidateID+"/promote", "application/json", bytes.NewReader(promoteBody))
+	if err != nil {
+		t.Fatalf("POST /finding-candidates/{id}/promote error = %v", err)
+	}
+	defer func() {
+		if closeErr := promoteResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close candidate promote response body: %v", closeErr)
+		}
+	}()
+	if promoteResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(promoteResp.Body)
+		t.Fatalf("candidate promote status = %d body=%s", promoteResp.StatusCode, string(body))
+	}
+	var promotePayload map[string]any
+	if err := json.NewDecoder(promoteResp.Body).Decode(&promotePayload); err != nil {
+		t.Fatalf("decode candidate promote response: %v", err)
+	}
+	promotedCandidate := promotePayload["candidate"].(map[string]any)
+	if got := promotedCandidate["status"]; got != "promoted" {
+		t.Fatalf("promoted candidate status = %#v, want promoted", got)
+	}
+	if got := len(runtimeStore.findings); got != 1 {
+		t.Fatalf("production findings after promote = %d, want 1", got)
+	}
+	if got := len(runtimeStore.findingEvidence); got != 1 {
+		t.Fatalf("production finding evidence after promote = %d, want 1", got)
+	}
+	if promotePayload["decision_id"] == "" {
+		t.Fatal("promotion decision_id is empty")
+	}
+
+	rejectCandidateID := candidateID + "-reject"
+	rejectCandidate := cloneFindingCandidate(runtimeStore.findingCandidates[candidateID])
+	rejectCandidate.ID = rejectCandidateID
+	rejectCandidate.Status = "candidate"
+	rejectCandidate.DecisionID = ""
+	rejectCandidate.PromotedFindingID = ""
+	rejectCandidate.PromotedBy = ""
+	rejectCandidate.PromotionRationale = ""
+	rejectCandidate.ChangeTicket = ""
+	rejectCandidate.PromotedAt = time.Time{}
+	runtimeStore.findingCandidates[rejectCandidateID] = rejectCandidate
+	rejectResp, err := client.RejectFindingCandidate(context.Background(), connect.NewRequest(&cerebrov1.RejectFindingCandidateRequest{
+		Id:         rejectCandidateID,
+		RejectedBy: "analyst@example.com",
+		Rationale:  "Expected inactive policy rule fixture.",
+	}))
+	if err != nil {
+		t.Fatalf("RejectFindingCandidate() error = %v", err)
+	}
+	if got := rejectResp.Msg.GetCandidate().GetStatus(); got != "rejected" {
+		t.Fatalf("RejectFindingCandidate().Candidate.Status = %q, want rejected", got)
+	}
+	if rejectResp.Msg.GetDecisionId() == "" {
+		t.Fatal("RejectFindingCandidate().DecisionId is empty")
+	}
+	if got := len(runtimeStore.findings); got != 1 {
+		t.Fatalf("production findings after reject = %d, want 1", got)
+	}
+}
+
 func TestEndpointVulnerabilityFindingsHTTPRoute(t *testing.T) {
 	now := time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC)
 	store := &stubRuntimeStore{findings: map[string]*ports.FindingRecord{
@@ -6358,6 +6724,19 @@ func cloneFindingEvidence(evidence *cerebrov1.FindingEvidence) *cerebrov1.Findin
 		return nil
 	}
 	return proto.Clone(evidence).(*cerebrov1.FindingEvidence)
+}
+
+func cloneFindingCandidate(candidate *ports.FindingCandidateRecord) *ports.FindingCandidateRecord {
+	if candidate == nil {
+		return nil
+	}
+	cloned := *candidate
+	cloned.Finding = cloneFinding(candidate.Finding)
+	cloned.Evidence = make([]*cerebrov1.FindingEvidence, 0, len(candidate.Evidence))
+	for _, evidence := range candidate.Evidence {
+		cloned.Evidence = append(cloned.Evidence, cloneFindingEvidence(evidence))
+	}
+	return &cloned
 }
 
 func cloneNeighborhood(neighborhood *ports.EntityNeighborhood) *ports.EntityNeighborhood {

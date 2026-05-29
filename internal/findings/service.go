@@ -65,6 +65,7 @@ type Service struct {
 	store                     ports.FindingStore
 	runStore                  ports.FindingEvaluationRunStore
 	evidenceStore             ports.FindingEvidenceStore
+	candidateStore            ports.FindingCandidateStore
 	claimStore                ports.ClaimStore
 	graphQuery                ports.GraphQueryStore
 	graph                     ports.ProjectionGraphStore
@@ -223,6 +224,17 @@ func (s *Service) WithAppendLog(appendLog ports.AppendLog) *Service {
 		return nil
 	}
 	s.appendLog = appendLog
+	return s
+}
+
+// WithFindingCandidateStore wires the isolated candidate-finding persistence
+// boundary. Candidate evaluations do not write production findings until an
+// explicit promotion call uses the production store.
+func (s *Service) WithFindingCandidateStore(store ports.FindingCandidateStore) *Service {
+	if s == nil {
+		return nil
+	}
+	s.candidateStore = store
 	return s
 }
 

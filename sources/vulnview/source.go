@@ -24,6 +24,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
 //go:embed catalog.yaml
@@ -677,7 +678,7 @@ func (s *Source) httpClient() *http.Client {
 	if transport == nil {
 		transport = http.DefaultTransport
 	}
-	cloned.Transport = safeRoundTripper{base: transport, allowLoopback: allowLoopback, lookupIPAddrs: lookupIPAddrs(s)}
+	cloned.Transport = sourcehttp.SafeRoundTripper{Base: transport, SourceID: "vulnview", AllowLoopback: allowLoopback, LookupIPAddrs: lookupIPAddrs(s)}
 	return &cloned
 }
 
@@ -980,52 +981,11 @@ func normalizeParsedURL(parsed *url.URL, allowLoopback bool) (string, error) {
 	return strings.TrimRight(parsed.String(), "/"), nil
 }
 
-type safeRoundTripper struct {
-	base          http.RoundTripper
-	allowLoopback bool
-	lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)
-}
-
-func (rt safeRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req != nil && req.URL != nil {
-		if err := rejectResolvedUnsafeHost(req.Context(), req.URL.Hostname(), rt.allowLoopback, rt.lookupIPAddrs); err != nil {
-			return nil, err
-		}
-	}
-	return rt.base.RoundTrip(req)
-}
-
 func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, error) {
 	if source != nil && source.lookupIPAddrs != nil {
 		return source.lookupIPAddrs
 	}
 	return net.DefaultResolver.LookupIPAddr
-}
-
-func rejectResolvedUnsafeHost(ctx context.Context, host string, allowLoopback bool, lookup func(context.Context, string) ([]net.IPAddr, error)) error {
-	normalized := strings.ToLower(strings.TrimSpace(host))
-	if normalized == "" {
-		return fmt.Errorf("vulnview host is required")
-	}
-	if ip := net.ParseIP(normalized); ip != nil {
-		if unsafeIP(ip, allowLoopback) {
-			return fmt.Errorf("vulnview host must not target loopback, private, or link-local addresses")
-		}
-		return nil
-	}
-	if lookup == nil {
-		lookup = net.DefaultResolver.LookupIPAddr
-	}
-	addrs, err := lookup(ctx, normalized)
-	if err != nil {
-		return fmt.Errorf("resolve vulnview host %q: %w", normalized, err)
-	}
-	for _, addr := range addrs {
-		if unsafeIP(addr.IP, allowLoopback) {
-			return fmt.Errorf("vulnview host must not resolve to loopback, private, or link-local addresses")
-		}
-	}
-	return nil
 }
 
 func isUnsafeHost(host string) bool {

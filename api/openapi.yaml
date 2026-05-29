@@ -245,6 +245,76 @@ paths:
       responses:
         '200':
           description: Rule evaluation result.
+  /source-runtimes/{runtimeID}/finding-candidates:
+    get:
+      summary: List candidate findings for one runtime
+      tags:
+        - Sources
+      parameters:
+        - $ref: '#/components/parameters/runtimeID'
+        - name: candidate_id
+          in: query
+          schema:
+            type: string
+        - name: rule_id
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [candidate, promoted, rejected]
+        - name: fingerprint
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/limitQuery'
+      responses:
+        '200':
+          description: Candidate finding list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  candidates:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FindingCandidate'
+  /source-runtimes/{runtimeID}/finding-candidates/evaluate:
+    post:
+      summary: Evaluate candidate findings for one runtime
+      tags:
+        - Sources
+      parameters:
+        - $ref: '#/components/parameters/runtimeID'
+        - name: rule_id
+          in: query
+          schema:
+            type: string
+        - name: event_limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Candidate finding evaluation result.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runtime:
+                    type: object
+                  events_evaluated:
+                    type: integer
+                    minimum: 0
+                  evaluations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FindingCandidateRuleEvaluation'
   /source-runtimes/{runtimeID}/findings/evaluate:
     post:
       summary: Evaluate and persist findings for one runtime
@@ -348,6 +418,75 @@ paths:
                 properties:
                   finding:
                     $ref: '#/components/schemas/Finding'
+  /finding-candidates/{candidateID}:
+    get:
+      summary: Get candidate finding
+      tags:
+        - Findings
+      parameters:
+        - $ref: '#/components/parameters/candidateID'
+      responses:
+        '200':
+          description: Candidate finding.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  candidate:
+                    $ref: '#/components/schemas/FindingCandidate'
+  /finding-candidates/{candidateID}/promote:
+    post:
+      summary: Promote candidate finding
+      tags:
+        - Findings
+      parameters:
+        - $ref: '#/components/parameters/candidateID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromoteFindingCandidateRequest'
+      responses:
+        '200':
+          description: Promoted finding and candidate metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  finding:
+                    $ref: '#/components/schemas/Finding'
+                  candidate:
+                    $ref: '#/components/schemas/FindingCandidate'
+                  decision_id:
+                    type: string
+  /finding-candidates/{candidateID}/reject:
+    post:
+      summary: Reject candidate finding
+      tags:
+        - Findings
+      parameters:
+        - $ref: '#/components/parameters/candidateID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectFindingCandidateRequest'
+      responses:
+        '200':
+          description: Rejected candidate metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  candidate:
+                    $ref: '#/components/schemas/FindingCandidate'
+                  decision_id:
+                    type: string
   /findings/{findingID}/resolve:
     post:
       summary: Resolve finding
@@ -1318,6 +1457,12 @@ components:
       required: true
       schema:
         type: string
+    candidateID:
+      name: candidateID
+      in: path
+      required: true
+      schema:
+        type: string
     runID:
       name: runID
       in: path
@@ -1564,6 +1709,136 @@ components:
           format: date-time
         error:
           type: string
+    FindingCandidateRun:
+      type: object
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        runtime_id:
+          type: string
+        rule_id:
+          type: string
+        status:
+          type: string
+        event_limit:
+          type: integer
+          minimum: 0
+        events_evaluated:
+          type: integer
+          minimum: 0
+        events_matched:
+          type: integer
+          minimum: 0
+        candidates:
+          type: integer
+          minimum: 0
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        error:
+          type: string
+    FindingCandidateRuleEvaluation:
+      type: object
+      properties:
+        rule:
+          type: object
+        run:
+          $ref: '#/components/schemas/FindingCandidateRun'
+        candidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/FindingCandidate'
+    FindingCandidate:
+      type: object
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        runtime_id:
+          type: string
+        rule_id:
+          type: string
+        fingerprint:
+          type: string
+        status:
+          type: string
+          enum: [candidate, promoted, rejected]
+        finding:
+          $ref: '#/components/schemas/Finding'
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/FindingEvidence'
+        last_run_id:
+          type: string
+        observation_count:
+          type: integer
+          minimum: 0
+        first_observed_at:
+          type: string
+          format: date-time
+        last_observed_at:
+          type: string
+          format: date-time
+        promoted_finding_id:
+          type: string
+        decision_id:
+          type: string
+        promoted_by:
+          type: string
+        promotion_rationale:
+          type: string
+        change_ticket:
+          type: string
+        promoted_at:
+          type: string
+          format: date-time
+        rejected_by:
+          type: string
+        rejection_rationale:
+          type: string
+        rejected_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PromoteFindingCandidateRequest:
+      type: object
+      required: [promoted_by, rationale, change_ticket, false_positive_reviewed, graph_coverage_reviewed]
+      properties:
+        promoted_by:
+          type: string
+          minLength: 1
+        rationale:
+          type: string
+          minLength: 1
+        change_ticket:
+          type: string
+          minLength: 1
+        false_positive_reviewed:
+          type: boolean
+        graph_coverage_reviewed:
+          type: boolean
+    RejectFindingCandidateRequest:
+      type: object
+      required: [rejected_by, rationale]
+      properties:
+        rejected_by:
+          type: string
+          minLength: 1
+        rationale:
+          type: string
+          minLength: 1
     Finding:
       type: object
       properties:
