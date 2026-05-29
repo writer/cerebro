@@ -130,6 +130,8 @@ type awsIAMAPI interface {
 	ListUserPolicies(context.Context, *iam.ListUserPoliciesInput, ...func(*iam.Options)) (*iam.ListUserPoliciesOutput, error)
 	ListGroupPolicies(context.Context, *iam.ListGroupPoliciesInput, ...func(*iam.Options)) (*iam.ListGroupPoliciesOutput, error)
 	ListRolePolicies(context.Context, *iam.ListRolePoliciesInput, ...func(*iam.Options)) (*iam.ListRolePoliciesOutput, error)
+	GetPolicy(context.Context, *iam.GetPolicyInput, ...func(*iam.Options)) (*iam.GetPolicyOutput, error)
+	GetPolicyVersion(context.Context, *iam.GetPolicyVersionInput, ...func(*iam.Options)) (*iam.GetPolicyVersionOutput, error)
 	GetUserPolicy(context.Context, *iam.GetUserPolicyInput, ...func(*iam.Options)) (*iam.GetUserPolicyOutput, error)
 	GetGroupPolicy(context.Context, *iam.GetGroupPolicyInput, ...func(*iam.Options)) (*iam.GetGroupPolicyOutput, error)
 	GetRolePolicy(context.Context, *iam.GetRolePolicyInput, ...func(*iam.Options)) (*iam.GetRolePolicyOutput, error)
@@ -1392,9 +1394,9 @@ func listIAMPolicyAssignments(ctx context.Context, clients awsClients, settings 
 		policies = out.AttachedPolicies
 		next = nextMarker(out.IsTruncated, out.Marker)
 	}
-	assignments := make([]iamPolicyAssignment, 0, len(policies))
-	for _, policy := range policies {
-		assignments = append(assignments, iamPolicyAssignment{PrincipalType: settings.principalType, PrincipalName: settings.principalName, Policy: policy, PolicySource: "attached"})
+	assignments, err := attachedPolicyAssignments(ctx, clients, settings.principalType, settings.principalName, policies)
+	if err != nil {
+		return nil, "", err
 	}
 	inlineAssignments, err := inlinePolicyAssignments(ctx, clients, settings.principalType, settings.principalName)
 	if err != nil {
@@ -1469,9 +1471,11 @@ func attachedUserPolicyAssignments(ctx context.Context, clients awsClients, user
 		if err != nil {
 			return nil, err
 		}
-		for _, policy := range out.AttachedPolicies {
-			assignments = append(assignments, iamPolicyAssignment{PrincipalType: "user", PrincipalName: userName, Policy: policy, PolicySource: "attached"})
+		attachedAssignments, err := attachedPolicyAssignments(ctx, clients, "user", userName, out.AttachedPolicies)
+		if err != nil {
+			return nil, err
 		}
+		assignments = append(assignments, attachedAssignments...)
 		inlineAssignments, err := inlinePolicyAssignments(ctx, clients, "user", userName)
 		if err != nil {
 			return nil, err
@@ -1492,9 +1496,11 @@ func attachedGroupPolicyAssignments(ctx context.Context, clients awsClients, gro
 		if err != nil {
 			return nil, err
 		}
-		for _, policy := range out.AttachedPolicies {
-			assignments = append(assignments, iamPolicyAssignment{PrincipalType: "group", PrincipalName: groupName, Policy: policy, PolicySource: "attached"})
+		attachedAssignments, err := attachedPolicyAssignments(ctx, clients, "group", groupName, out.AttachedPolicies)
+		if err != nil {
+			return nil, err
 		}
+		assignments = append(assignments, attachedAssignments...)
 		inlineAssignments, err := inlinePolicyAssignments(ctx, clients, "group", groupName)
 		if err != nil {
 			return nil, err
@@ -1515,9 +1521,11 @@ func attachedRolePolicyAssignments(ctx context.Context, clients awsClients, role
 		if err != nil {
 			return nil, err
 		}
-		for _, policy := range out.AttachedPolicies {
-			assignments = append(assignments, iamPolicyAssignment{PrincipalType: "role", PrincipalName: roleName, Policy: policy, PolicySource: "attached"})
+		attachedAssignments, err := attachedPolicyAssignments(ctx, clients, "role", roleName, out.AttachedPolicies)
+		if err != nil {
+			return nil, err
 		}
+		assignments = append(assignments, attachedAssignments...)
 		inlineAssignments, err := inlinePolicyAssignments(ctx, clients, "role", roleName)
 		if err != nil {
 			return nil, err
@@ -1525,6 +1533,50 @@ func attachedRolePolicyAssignments(ctx context.Context, clients awsClients, role
 		assignments = append(assignments, inlineAssignments...)
 	}
 	return assignments, nil
+}
+
+func attachedPolicyAssignments(ctx context.Context, clients awsClients, principalType string, principalName string, policies []iamtypes.AttachedPolicy) ([]iamPolicyAssignment, error) {
+	assignments := make([]iamPolicyAssignment, 0, len(policies))
+	for _, policy := range policies {
+		actions, err := managedPolicyActions(ctx, clients, awssdk.ToString(policy.PolicyArn))
+		if err != nil {
+			return nil, err
+		}
+		assignments = append(assignments, iamPolicyAssignment{
+			PrincipalType: principalType,
+			PrincipalName: principalName,
+			Policy:        policy,
+			PolicySource:  "attached",
+			Actions:       actions,
+		})
+	}
+	return assignments, nil
+}
+
+func managedPolicyActions(ctx context.Context, clients awsClients, policyARN string) ([]string, error) {
+	policyARN = strings.TrimSpace(policyARN)
+	if policyARN == "" {
+		return nil, nil
+	}
+	policy, err := clients.iam.GetPolicy(ctx, &iam.GetPolicyInput{PolicyArn: awssdk.String(policyARN)})
+	if err != nil {
+		return nil, err
+	}
+	versionID := ""
+	if policy.Policy != nil {
+		versionID = awssdk.ToString(policy.Policy.DefaultVersionId)
+	}
+	if versionID == "" {
+		return nil, nil
+	}
+	version, err := clients.iam.GetPolicyVersion(ctx, &iam.GetPolicyVersionInput{PolicyArn: awssdk.String(policyARN), VersionId: awssdk.String(versionID)})
+	if err != nil {
+		return nil, err
+	}
+	if version.PolicyVersion == nil {
+		return nil, nil
+	}
+	return policyDocumentActions(awssdk.ToString(version.PolicyVersion.Document)), nil
 }
 
 func inlinePolicyAssignments(ctx context.Context, clients awsClients, principalType string, principalName string) ([]iamPolicyAssignment, error) {

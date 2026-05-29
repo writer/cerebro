@@ -575,6 +575,39 @@ func TestReadAWSEffectivePermissionIncludesInlinePolicies(t *testing.T) {
 	}
 }
 
+func TestReadAWSEffectivePermissionIncludesManagedPolicyActions(t *testing.T) {
+	policyARN := "arn:aws:iam::123456789012:policy/CustomReadOnly"
+	source := newTestSource(t, fakeAWS{
+		attachedPolicies: []iamtypes.AttachedPolicy{{PolicyName: awssdk.String("CustomReadOnly"), PolicyArn: awssdk.String(policyARN)}},
+		managedPolicyDocuments: map[string]string{
+			policyARN: url.QueryEscape(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject","s3:ListBucket"],"Resource":"*"},{"Effect":"Deny","Action":"s3:DeleteObject","Resource":"*"}]}`),
+		},
+	})
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"account_id":     "123456789012",
+		"family":         familyEffectivePermission,
+		"principal_name": "analyst@writer.com",
+		"principal_type": "user",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(effective_permission managed policy) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	if got := attrs["policy_source"]; got != "attached" {
+		t.Fatalf("policy_source = %q, want attached", got)
+	}
+	if got := attrs["actions"]; got != "s3:GetObject,s3:ListBucket" {
+		t.Fatalf("actions = %q, want managed policy allow actions", got)
+	}
+	if got := attrs["role_id"]; got != policyARN {
+		t.Fatalf("role_id = %q, want policy ARN", got)
+	}
+}
+
 func TestDiscoverAWSEffectivePermissionIncludesInlinePolicies(t *testing.T) {
 	source := newTestSource(t, fakeAWS{
 		inlinePolicyNames: []string{"InlineAdmin"},
@@ -604,6 +637,7 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.groups = []iamtypes.Group{{GroupName: awssdk.String("Security"), GroupId: awssdk.String("AGPSECURITY")}}
 		fake.roles = []iamtypes.Role{{RoleName: awssdk.String("AdminRole"), RoleId: awssdk.String("AROADMIN"), Arn: awssdk.String("arn:aws:iam::123456789012:role/AdminRole")}}
 		fake.attachedPolicies = []iamtypes.AttachedPolicy{{PolicyName: awssdk.String("AdministratorAccess"), PolicyArn: awssdk.String("arn:aws:iam::aws:policy/AdministratorAccess")}}
+		fake.managedPolicyDocuments = map[string]string{"arn:aws:iam::aws:policy/AdministratorAccess": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}`}
 		fake.inlinePolicyNames = []string{"InlineAdmin"}
 		fake.inlinePolicyDocuments = map[string]string{"InlineAdmin": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"iam:*","Resource":"*"}]}`}
 	}
@@ -671,7 +705,7 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		{
 			family:  familyEffectivePermission,
 			seed:    basePrincipalData,
-			wantAPI: []string{"iam:GetGroupPolicy", "iam:GetRolePolicy", "iam:GetUserPolicy", "iam:ListAttachedGroupPolicies", "iam:ListAttachedRolePolicies", "iam:ListAttachedUserPolicies", "iam:ListGroupPolicies", "iam:ListGroups", "iam:ListRolePolicies", "iam:ListRoles", "iam:ListUserPolicies", "iam:ListUsers"},
+			wantAPI: []string{"iam:GetGroupPolicy", "iam:GetPolicy", "iam:GetPolicyVersion", "iam:GetRolePolicy", "iam:GetUserPolicy", "iam:ListAttachedGroupPolicies", "iam:ListAttachedRolePolicies", "iam:ListAttachedUserPolicies", "iam:ListGroupPolicies", "iam:ListGroups", "iam:ListRolePolicies", "iam:ListRoles", "iam:ListUserPolicies", "iam:ListUsers"},
 		},
 		{
 			family:  familyIAMGroup,
@@ -689,7 +723,7 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		{
 			family:  familyIAMRoleAssign,
 			seed:    basePrincipalData,
-			wantAPI: []string{"iam:GetGroupPolicy", "iam:GetRolePolicy", "iam:GetUserPolicy", "iam:ListAttachedGroupPolicies", "iam:ListAttachedRolePolicies", "iam:ListAttachedUserPolicies", "iam:ListGroupPolicies", "iam:ListGroups", "iam:ListRolePolicies", "iam:ListRoles", "iam:ListUserPolicies", "iam:ListUsers"},
+			wantAPI: []string{"iam:GetGroupPolicy", "iam:GetPolicy", "iam:GetPolicyVersion", "iam:GetRolePolicy", "iam:GetUserPolicy", "iam:ListAttachedGroupPolicies", "iam:ListAttachedRolePolicies", "iam:ListAttachedUserPolicies", "iam:ListGroupPolicies", "iam:ListGroups", "iam:ListRolePolicies", "iam:ListRoles", "iam:ListUserPolicies", "iam:ListUsers"},
 		},
 		{
 			family:  familyIAMRoleTrust,
@@ -1015,26 +1049,27 @@ func sortedUnique(values []string) []string {
 }
 
 type fakeAWS struct {
-	users                 []iamtypes.User
-	groups                []iamtypes.Group
-	roles                 []iamtypes.Role
-	accessKeys            []iamtypes.AccessKeyMetadata
-	attachedPolicies      []iamtypes.AttachedPolicy
-	inlinePolicyNames     []string
-	inlinePolicyDocuments map[string]string
-	cloudTrailEvents      []cloudtrailtypes.Event
-	cloudTrailLookup      func(context.Context, *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error)
-	securityGroups        []ec2types.SecurityGroup
-	addresses             []ec2types.Address
-	networkInterfaces     []ec2types.NetworkInterface
-	hostedZones           []route53types.HostedZone
-	recordSets            []route53types.ResourceRecordSet
-	distributions         []cloudfronttypes.DistributionSummary
-	loadBalancers         []elbv2types.LoadBalancer
-	apiDomains            []apigatewaytypes.DomainName
-	restAPIs              []apigatewaytypes.RestApi
-	apiV2Domains          []apigatewayv2types.DomainName
-	apiV2APIs             []apigatewayv2types.Api
+	users                  []iamtypes.User
+	groups                 []iamtypes.Group
+	roles                  []iamtypes.Role
+	accessKeys             []iamtypes.AccessKeyMetadata
+	attachedPolicies       []iamtypes.AttachedPolicy
+	managedPolicyDocuments map[string]string
+	inlinePolicyNames      []string
+	inlinePolicyDocuments  map[string]string
+	cloudTrailEvents       []cloudtrailtypes.Event
+	cloudTrailLookup       func(context.Context, *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error)
+	securityGroups         []ec2types.SecurityGroup
+	addresses              []ec2types.Address
+	networkInterfaces      []ec2types.NetworkInterface
+	hostedZones            []route53types.HostedZone
+	recordSets             []route53types.ResourceRecordSet
+	distributions          []cloudfronttypes.DistributionSummary
+	loadBalancers          []elbv2types.LoadBalancer
+	apiDomains             []apigatewaytypes.DomainName
+	restAPIs               []apigatewaytypes.RestApi
+	apiV2Domains           []apigatewayv2types.DomainName
+	apiV2APIs              []apigatewayv2types.Api
 }
 
 type recordingAWS struct {
@@ -1099,6 +1134,16 @@ func (f *recordingAWS) ListGroupPolicies(ctx context.Context, input *iam.ListGro
 func (f *recordingAWS) ListRolePolicies(ctx context.Context, input *iam.ListRolePoliciesInput, options ...func(*iam.Options)) (*iam.ListRolePoliciesOutput, error) {
 	f.record("iam:ListRolePolicies")
 	return f.fakeAWS.ListRolePolicies(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetPolicy(ctx context.Context, input *iam.GetPolicyInput, options ...func(*iam.Options)) (*iam.GetPolicyOutput, error) {
+	f.record("iam:GetPolicy")
+	return f.fakeAWS.GetPolicy(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetPolicyVersion(ctx context.Context, input *iam.GetPolicyVersionInput, options ...func(*iam.Options)) (*iam.GetPolicyVersionOutput, error) {
+	f.record("iam:GetPolicyVersion")
+	return f.fakeAWS.GetPolicyVersion(ctx, input, options...)
 }
 
 func (f *recordingAWS) GetUserPolicy(ctx context.Context, input *iam.GetUserPolicyInput, options ...func(*iam.Options)) (*iam.GetUserPolicyOutput, error) {
@@ -1224,6 +1269,14 @@ func (f fakeAWS) ListRolePolicies(context.Context, *iam.ListRolePoliciesInput, .
 	return &iam.ListRolePoliciesOutput{PolicyNames: f.inlinePolicyNames}, nil
 }
 
+func (f fakeAWS) GetPolicy(_ context.Context, input *iam.GetPolicyInput, _ ...func(*iam.Options)) (*iam.GetPolicyOutput, error) {
+	return &iam.GetPolicyOutput{Policy: &iamtypes.Policy{Arn: input.PolicyArn, DefaultVersionId: awssdk.String("v1")}}, nil
+}
+
+func (f fakeAWS) GetPolicyVersion(_ context.Context, input *iam.GetPolicyVersionInput, _ ...func(*iam.Options)) (*iam.GetPolicyVersionOutput, error) {
+	return &iam.GetPolicyVersionOutput{PolicyVersion: &iamtypes.PolicyVersion{Document: awssdk.String(f.managedPolicyDocument(awssdk.ToString(input.PolicyArn))), VersionId: input.VersionId}}, nil
+}
+
 func (f fakeAWS) GetUserPolicy(_ context.Context, input *iam.GetUserPolicyInput, _ ...func(*iam.Options)) (*iam.GetUserPolicyOutput, error) {
 	return &iam.GetUserPolicyOutput{PolicyDocument: awssdk.String(f.inlinePolicyDocument(awssdk.ToString(input.PolicyName)))}, nil
 }
@@ -1239,6 +1292,13 @@ func (f fakeAWS) GetRolePolicy(_ context.Context, input *iam.GetRolePolicyInput,
 func (f fakeAWS) inlinePolicyDocument(policyName string) string {
 	if f.inlinePolicyDocuments != nil {
 		return f.inlinePolicyDocuments[policyName]
+	}
+	return ""
+}
+
+func (f fakeAWS) managedPolicyDocument(policyARN string) string {
+	if f.managedPolicyDocuments != nil {
+		return f.managedPolicyDocuments[policyARN]
 	}
 	return ""
 }
