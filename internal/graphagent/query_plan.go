@@ -322,8 +322,12 @@ ORDER BY risk_score DESC, severity_rank DESC, finding_urn
 LIMIT %d`, limit), true
 	case IntentExplainFinding:
 		return fmt.Sprintf(`MATCH (finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+WHERE $scope_urn = ''
+   OR finding.urn = $scope_urn
+   OR EXISTS {
+     MATCH (scopedResource:Entity {tenant_id: $tenant_id, urn: $scope_urn})-[:RELATION {relation: 'has_finding'}]->(finding)
+   }
 OPTIONAL MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(finding)
-WHERE $scope_urn = '' OR finding.urn = $scope_urn OR resource.urn = $scope_urn
 WITH resource, r, finding,
      coalesce(
        CASE WHEN coalesce(r.attributes_json, '') CONTAINS '"risk_score":"' THEN toInteger(split(split(r.attributes_json, '"risk_score":"')[1], '"')[0]) END,

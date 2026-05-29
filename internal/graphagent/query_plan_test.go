@@ -34,6 +34,19 @@ func TestOntologyPromptUsesProjectedIdentityShape(t *testing.T) {
 	}
 }
 
+func TestOntologyPromptMentionsLegacyRepositoryShape(t *testing.T) {
+	hint := canonicalGraphOntology.PromptHint()
+	for _, want := range []string{
+		"Entity `github.code.repository`",
+		"Entity `github.repo`",
+		"Repository questions should consider both `entity_type: 'github.code.repository'` and legacy `entity_type: 'github.repo'`",
+	} {
+		if !strings.Contains(hint, want) {
+			t.Fatalf("PromptHint() missing %q:\n%s", want, hint)
+		}
+	}
+}
+
 func TestOntologyPromptUsesProjectedSourceShape(t *testing.T) {
 	hint := canonicalGraphOntology.PromptHint()
 	for _, want := range []string{
@@ -209,7 +222,18 @@ func TestConvertDraftToQueryExplainFindingAvoidsBrittleSummaryExtraction(t *test
 	if strings.Contains(result.Cypher, `"summary":"`) || strings.Contains(result.Cypher, "split(split(finding.attributes_json, '\"summary\"") {
 		t.Fatalf("converted cypher should not split raw JSON summary values:\n%s", result.Cypher)
 	}
-	if !strings.Contains(result.Cypher, "MATCH (finding:Entity") || !strings.Contains(result.Cypher, "OPTIONAL MATCH (resource:Entity") {
+	for _, want := range []string{
+		"MATCH (finding:Entity",
+		"OR finding.urn = $scope_urn",
+		"EXISTS {",
+		"scopedResource:Entity {tenant_id: $tenant_id, urn: $scope_urn}",
+		"OPTIONAL MATCH (resource:Entity",
+	} {
+		if !strings.Contains(result.Cypher, want) {
+			t.Fatalf("converted cypher missing %q:\n%s", want, result.Cypher)
+		}
+	}
+	if strings.Contains(result.Cypher, "WHERE $scope_urn = '' OR finding.urn = $scope_urn OR resource.urn = $scope_urn") {
 		t.Fatalf("converted cypher should start from the finding anchor and optional-match resources:\n%s", result.Cypher)
 	}
 	if !strings.Contains(result.Cypher, "finding_attributes_json_internal") {

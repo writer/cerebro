@@ -47,6 +47,13 @@ var canonicalGraphOntology = GraphOntology{
 			Examples:    []string{"urn:cerebro:writer:github_repo:writer/cerebro"},
 		},
 		{
+			Type:        "github.repo",
+			Description: "Legacy GitHub repository anchors still emitted by source projection; include alongside github.code.repository for broad repository questions.",
+			Aliases:     []string{"legacy github repo", "github repository anchor"},
+			Properties:  []string{"source_id", "runtime_id", "label", "attributes_json"},
+			Examples:    []string{"urn:cerebro:writer:github_repo:writer/cerebro"},
+		},
+		{
 			Type:        "identity.email",
 			Description: "Canonical email identity anchors linked from concrete principals through represents_identity.",
 			Aliases:     []string{"email identity", "canonical email", "identity email", "principal email"},
@@ -108,6 +115,7 @@ func (o GraphOntology) PromptHint() string {
 	fmt.Fprintf(&b, "- Entity types are stored in lowercase `entity_type`; never use labels like `:Finding`, `:repo`, or `:identity`.\n")
 	fmt.Fprintf(&b, "- Relationships use label `RELATION` and lowercase `relation` property; never use relationship types like `:HAS_SOURCE`.\n")
 	fmt.Fprintf(&b, "- Active finding shape: `(resource:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})`.\n")
+	fmt.Fprintf(&b, "- Repository questions should consider both `entity_type: 'github.code.repository'` and legacy `entity_type: 'github.repo'` unless the question clearly asks for only one shape.\n")
 	fmt.Fprintf(&b, "- Canonical identity anchors use `entity_type` values `identity.email` and `identity.login`; there is no generic `identity` entity_type or top-level `email` property. Match identity values through `urn`, `label`, or controlled `attributes_json` extraction.\n")
 	fmt.Fprintf(&b, "- Connector/source health nodes use `entity_type: 'source'`; there is no `connector` entity_type and no top-level `status` or `last_sync_minutes` property. Read source health metadata from controlled `attributes_json` extraction.\n")
 	fmt.Fprintf(&b, "- Finding source grouping should prefer controlled `attributes_json.source_family` string extraction, then fall back to `finding.source_id`.\n")
