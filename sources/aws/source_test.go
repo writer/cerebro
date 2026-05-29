@@ -476,6 +476,57 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.roles = []iamtypes.Role{{RoleName: awssdk.String("AdminRole"), RoleId: awssdk.String("AROADMIN"), Arn: awssdk.String("arn:aws:iam::123456789012:role/AdminRole")}}
 		fake.attachedPolicies = []iamtypes.AttachedPolicy{{PolicyName: awssdk.String("AdministratorAccess"), PolicyArn: awssdk.String("arn:aws:iam::aws:policy/AdministratorAccess")}}
 	}
+	publicEndpointData := func(fake *recordingAWS) {
+		fake.hostedZones = []route53types.HostedZone{{
+			Id:     awssdk.String("/hostedzone/Z123"),
+			Name:   awssdk.String("writer.com."),
+			Config: &route53types.HostedZoneConfig{PrivateZone: false},
+		}}
+		fake.recordSets = []route53types.ResourceRecordSet{{
+			Name: awssdk.String("app.writer.com."),
+			Type: route53types.RRTypeCname,
+			ResourceRecords: []route53types.ResourceRecord{{
+				Value: awssdk.String("d111111abcdef8.cloudfront.net."),
+			}},
+		}}
+		fake.distributions = []cloudfronttypes.DistributionSummary{{
+			ARN:        awssdk.String("arn:aws:cloudfront::123456789012:distribution/EDFDVBD632BHDS5"),
+			Id:         awssdk.String("EDFDVBD632BHDS5"),
+			DomainName: awssdk.String("d111111abcdef8.cloudfront.net"),
+			Enabled:    awssdk.Bool(true),
+		}}
+		fake.loadBalancers = []elbv2types.LoadBalancer{{
+			LoadBalancerArn:  awssdk.String("arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/prod-web/123"),
+			LoadBalancerName: awssdk.String("prod-web"),
+			DNSName:          awssdk.String("prod-web-123.us-east-1.elb.amazonaws.com"),
+			Scheme:           elbv2types.LoadBalancerSchemeEnumInternetFacing,
+		}}
+		fake.apiDomains = []apigatewaytypes.DomainName{{
+			DomainName:    awssdk.String("api.writer.com"),
+			DomainNameArn: awssdk.String("arn:aws:apigateway:us-east-1::/domainnames/api.writer.com"),
+		}}
+		fake.restAPIs = []apigatewaytypes.RestApi{{
+			Id:   awssdk.String("rest123"),
+			Name: awssdk.String("orders"),
+		}}
+		fake.apiV2Domains = []apigatewayv2types.DomainName{{
+			DomainName: awssdk.String("events.writer.com"),
+		}}
+		fake.apiV2APIs = []apigatewayv2types.Api{{
+			ApiId:        awssdk.String("v2abc"),
+			ApiEndpoint:  awssdk.String("https://v2abc.execute-api.us-east-1.amazonaws.com"),
+			Name:         awssdk.String("events"),
+			ProtocolType: apigatewayv2types.ProtocolTypeHttp,
+		}}
+		fake.addresses = []ec2types.Address{{
+			AllocationId: awssdk.String("eipalloc-1"),
+			PublicIp:     awssdk.String("203.0.113.10"),
+		}}
+		fake.networkInterfaces = []ec2types.NetworkInterface{{
+			NetworkInterfaceId: awssdk.String("eni-1"),
+			Association:        &ec2types.NetworkInterfaceAssociation{PublicIp: awssdk.String("203.0.113.20")},
+		}}
+	}
 	for _, tt := range []struct {
 		family  string
 		seed    func(*recordingAWS)
@@ -519,7 +570,8 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		},
 		{
 			family:  familyPublicEndpoint,
-			wantAPI: []string{"apigateway:GET", "cloudfront:ListDistributions", "ec2:DescribeAddresses", "ec2:DescribeNetworkInterfaces", "elasticloadbalancing:DescribeLoadBalancers", "route53:ListHostedZones"},
+			seed:    publicEndpointData,
+			wantAPI: []string{"apigateway:GetDomainNames", "apigateway:GetRestApis", "apigatewayv2:GetApis", "apigatewayv2:GetDomainNames", "cloudfront:ListDistributions", "ec2:DescribeAddresses", "ec2:DescribeNetworkInterfaces", "elasticloadbalancing:DescribeLoadBalancers", "route53:ListHostedZones", "route53:ListResourceRecordSets"},
 		},
 		{
 			family:  familyResourceExposure,
@@ -779,7 +831,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -942,13 +994,27 @@ func (f *recordingAWS) DescribeLoadBalancers(ctx context.Context, input *elbv2.D
 }
 
 func (f *recordingAWS) GetDomainNames(ctx context.Context, input *apigateway.GetDomainNamesInput, options ...func(*apigateway.Options)) (*apigateway.GetDomainNamesOutput, error) {
-	f.record("apigateway:GET")
+	f.record("apigateway:GetDomainNames")
 	return f.fakeAWS.GetDomainNames(ctx, input, options...)
 }
 
 func (f *recordingAWS) GetRestApis(ctx context.Context, input *apigateway.GetRestApisInput, options ...func(*apigateway.Options)) (*apigateway.GetRestApisOutput, error) {
-	f.record("apigateway:GET")
+	f.record("apigateway:GetRestApis")
 	return f.fakeAWS.GetRestApis(ctx, input, options...)
+}
+
+type recordingAPIGatewayV2 struct {
+	fake *recordingAWS
+}
+
+func (f recordingAPIGatewayV2) GetApis(ctx context.Context, input *apigatewayv2.GetApisInput, options ...func(*apigatewayv2.Options)) (*apigatewayv2.GetApisOutput, error) {
+	f.fake.record("apigatewayv2:GetApis")
+	return fakeAPIGatewayV2{domains: f.fake.apiV2Domains, apis: f.fake.apiV2APIs}.GetApis(ctx, input, options...)
+}
+
+func (f recordingAPIGatewayV2) GetDomainNames(ctx context.Context, input *apigatewayv2.GetDomainNamesInput, options ...func(*apigatewayv2.Options)) (*apigatewayv2.GetDomainNamesOutput, error) {
+	f.fake.record("apigatewayv2:GetDomainNames")
+	return fakeAPIGatewayV2{domains: f.fake.apiV2Domains, apis: f.fake.apiV2APIs}.GetDomainNames(ctx, input, options...)
 }
 
 func (f fakeAWS) ListUsers(context.Context, *iam.ListUsersInput, ...func(*iam.Options)) (*iam.ListUsersOutput, error) {
