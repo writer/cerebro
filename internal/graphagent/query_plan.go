@@ -183,6 +183,7 @@ ORDER BY finding_count DESC, source_family
 LIMIT %d`, limit), true
 	case IntentTopRiskFindings:
 		return fmt.Sprintf(`MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+WHERE $scope_urn = '' OR resource.urn = $scope_urn OR finding.urn = $scope_urn
 WITH resource, r, finding,
      coalesce(
        CASE WHEN coalesce(r.attributes_json, '') CONTAINS '"risk_score":"' THEN toInteger(split(split(r.attributes_json, '"risk_score":"')[1], '"')[0]) END,
@@ -196,15 +197,21 @@ WITH resource, r, finding,
        CASE WHEN coalesce(finding.attributes_json, '') CONTAINS '"severity":"' THEN split(split(finding.attributes_json, '"severity":"')[1], '"')[0] END,
        ''
      ) AS severity
+WITH resource, finding, risk_score, severity,
+     CASE toUpper(severity)
+       WHEN 'CRITICAL' THEN 4
+       WHEN 'HIGH' THEN 3
+       WHEN 'MEDIUM' THEN 2
+       WHEN 'LOW' THEN 1
+       ELSE 0
+     END AS severity_rank
 RETURN finding.urn AS finding_urn,
        coalesce(finding.label, finding.urn) AS finding_label,
        resource.urn AS resource_urn,
        coalesce(resource.label, resource.urn) AS resource_label,
        risk_score,
-       severity,
-       coalesce(finding.attributes_json, '') AS finding_attributes_json,
-       coalesce(r.attributes_json, '') AS relation_attributes_json
-ORDER BY risk_score DESC, severity DESC, finding_urn
+       severity
+ORDER BY risk_score DESC, severity_rank DESC, finding_urn
 LIMIT %d`, limit), true
 	case IntentExplainFinding:
 		return fmt.Sprintf(`MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
@@ -234,9 +241,7 @@ RETURN finding.urn AS finding_urn,
        summary,
        resource.urn AS resource_urn,
        coalesce(resource.label, resource.urn) AS resource_label,
-       risk_score,
-       coalesce(finding.attributes_json, '') AS finding_attributes_json,
-       coalesce(r.attributes_json, '') AS relation_attributes_json
+       risk_score
 ORDER BY risk_score DESC, finding_urn
 LIMIT %d`, limit), true
 	case IntentIdentityBridge:

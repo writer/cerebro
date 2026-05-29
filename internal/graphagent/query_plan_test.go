@@ -38,6 +38,35 @@ RETURN apoc.convert.fromJsonMap(f.attributes_json).source_family AS source_famil
 	}
 }
 
+func TestConvertDraftToQueryScopesTopRiskAndReturnsOnlyScalarFields(t *testing.T) {
+	result := convertDraftToQuery(AskRequest{
+		TenantID: "writer",
+		Question: "Show top risk findings for this repo",
+		ScopeURN: "urn:cerebro:writer:repo:alpha",
+	}, &DraftResponse{
+		Plan: &AskQueryPlan{Intent: IntentTopRiskFindings, Limit: 25},
+	}, 100)
+
+	if result.Plan.Intent != IntentTopRiskFindings || !result.Deterministic {
+		t.Fatalf("conversion result = %#v, want deterministic top risk template", result)
+	}
+	for _, want := range []string{
+		"WHERE $scope_urn = '' OR resource.urn = $scope_urn OR finding.urn = $scope_urn",
+		"CASE toUpper(severity)",
+		"WHEN 'CRITICAL' THEN 4",
+		"ORDER BY risk_score DESC, severity_rank DESC, finding_urn",
+	} {
+		if !strings.Contains(result.Cypher, want) {
+			t.Fatalf("converted cypher missing %q:\n%s", want, result.Cypher)
+		}
+	}
+	for _, forbidden := range []string{"finding_attributes_json", "relation_attributes_json", " AS attributes_json"} {
+		if strings.Contains(result.Cypher, forbidden) {
+			t.Fatalf("converted cypher returns raw attributes %q:\n%s", forbidden, result.Cypher)
+		}
+	}
+}
+
 func TestConvertDraftToQueryInjectsFallbackLimit(t *testing.T) {
 	result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: "show entities"}, &DraftResponse{
 		Cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e.urn AS urn`,
