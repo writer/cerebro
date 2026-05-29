@@ -66,6 +66,19 @@ class AwsScanRoleTrustTest(unittest.TestCase):
 
         self.assertEqual(findings, [])
 
+    def test_same_account_role_filter_keeps_stack_account_roles(self) -> None:
+        self.assertEqual(
+            verify_aws_scan_role_trust._same_account_role_arns(
+                [
+                    "arn:aws:iam::009160076449:role/cerebro-org-scan-role",
+                    "arn:aws:iam::837279440628:role/cerebro-org-scan-role",
+                    "arn:aws:iam::944130631940:role/cerebro-org-scan-role",
+                ],
+                "837279440628",
+            ),
+            ["arn:aws:iam::837279440628:role/cerebro-org-scan-role"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

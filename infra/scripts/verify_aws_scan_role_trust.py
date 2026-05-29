@@ -68,6 +68,17 @@ def _source_runtime_role_arns(config: dict[str, Any]) -> list[str]:
     return sorted(role_arns)
 
 
+def _same_account_role_arns(role_arns: list[str], account_id: str) -> list[str]:
+    result: list[str] = []
+    for role_arn in role_arns:
+        match = ROLE_ARN_RE.fullmatch(role_arn)
+        if not match:
+            raise ValueError(f"invalid AWS role ARN: {role_arn}")
+        if match.group("account") == account_id:
+            result.append(role_arn)
+    return result
+
+
 def _expected_stack_principals(stack: str, config: dict[str, Any], account_id: str) -> list[str]:
     environment = str(config.get("environment") or stack).strip()
     prefix = f"cerebro-{environment}"
@@ -131,6 +142,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--stack-file", type=Path, required=True)
     parser.add_argument("--region", default="us-east-1")
     parser.add_argument("--profile-by-account", action="append", default=[], help="AWS profile to read a target role account, as ACCOUNT_ID=PROFILE.")
+    parser.add_argument("--same-account-only", action="store_true", help="Verify only source roles in the stack account.")
     args = parser.parse_args(argv)
 
     stack = _stack_name(args.stack_file)
@@ -140,6 +152,8 @@ def main(argv: list[str] | None = None) -> int:
         raise RuntimeError(f"no expected AWS account is registered for stack {stack!r}")
 
     role_arns = _source_runtime_role_arns(config)
+    if args.same_account_only:
+        role_arns = _same_account_role_arns(role_arns, stack_account)
     expected_principals = _expected_stack_principals(stack, config, stack_account)
     profiles = _parse_profile_map(args.profile_by_account)
 

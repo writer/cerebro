@@ -302,6 +302,11 @@ jobs:
         working-directory: infra
         run: uv run python scripts/detect_public_endpoint_refresh.py --stack-file aws/Pulumi.sec-dev.yaml --github-output "$GITHUB_OUTPUT"
 
+      - name: Verify AWS scan-role trust (sec-dev)
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.sec-dev.yaml --same-account-only
+
       - name: Pulumi Up (sec-dev)
         uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6
         with:
@@ -314,11 +319,6 @@ jobs:
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
         with:
           assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
-
-      - name: Verify AWS scan-role trust (sec-dev)
-        shell: bash
-        working-directory: infra
-        run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.sec-dev.yaml
 
       - name: Verify Cosmo source runtimes (sec-dev)
         id: verify_cosmo_source_runtimes_sec_dev
@@ -427,6 +427,11 @@ jobs:
         shell: bash
         working-directory: infra
         run: uv run python scripts/detect_public_endpoint_refresh.py --stack-file aws/Pulumi.go-prod.yaml --github-output "$GITHUB_OUTPUT"
+
+      - name: Verify AWS scan-role trust (go-prod)
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.go-prod.yaml --same-account-only
 
       - name: Pulumi Up (go-prod)
         uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6
@@ -731,6 +736,14 @@ jobs:
           STACK_NAME: ${{ github.event.inputs.environment }}
         run: uv run python scripts/detect_public_endpoint_refresh.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --github-output "$GITHUB_OUTPUT"
 
+      - name: Verify AWS scan-role trust (AWS)
+        if: github.event.inputs.environment == 'sec-dev' || github.event.inputs.environment == 'go-prod'
+        shell: bash
+        working-directory: infra
+        env:
+          STACK_NAME: ${{ github.event.inputs.environment }}
+        run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --same-account-only
+
       - name: Pulumi Up (AWS)
         if: "!startsWith(github.event.inputs.environment, 'gcp-')"
         uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6
@@ -746,12 +759,6 @@ jobs:
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
         with:
           assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
-
-      - name: Verify AWS scan-role trust (sec-dev)
-        if: github.event.inputs.environment == 'sec-dev'
-        shell: bash
-        working-directory: infra
-        run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.sec-dev.yaml
 
       - name: Refresh AWS credentials for runtime verification (sec-prod)
         if: github.event.inputs.environment == 'go-prod'
