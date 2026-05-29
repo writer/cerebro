@@ -169,8 +169,8 @@ func renderDeterministicPlan(plan AskQueryPlan, maxRows int) (string, bool) {
 		if limit > 10 {
 			limit = 10
 		}
-		return fmt.Sprintf(`MATCH (f:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
-WITH f,
+		return fmt.Sprintf(`MATCH (resource:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'has_finding'}]->(f:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+WITH DISTINCT f,
      coalesce(
        f.source_id,
        CASE WHEN coalesce(f.attributes_json, '') CONTAINS '"source_family":"' THEN split(split(f.attributes_json, '"source_family":"')[1], '"')[0] END,
@@ -183,26 +183,60 @@ ORDER BY finding_count DESC, source_family
 LIMIT %d`, limit), true
 	case IntentTopRiskFindings:
 		return fmt.Sprintf(`MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+WITH resource, r, finding,
+     coalesce(
+       CASE WHEN coalesce(r.attributes_json, '') CONTAINS '"risk_score":"' THEN toInteger(split(split(r.attributes_json, '"risk_score":"')[1], '"')[0]) END,
+       CASE WHEN coalesce(finding.attributes_json, '') CONTAINS '"risk_score":"' THEN toInteger(split(split(finding.attributes_json, '"risk_score":"')[1], '"')[0]) END,
+       0
+     ) AS risk_score,
+     coalesce(
+       CASE WHEN coalesce(r.attributes_json, '') CONTAINS '"effective_severity":"' THEN split(split(r.attributes_json, '"effective_severity":"')[1], '"')[0] END,
+       CASE WHEN coalesce(finding.attributes_json, '') CONTAINS '"effective_severity":"' THEN split(split(finding.attributes_json, '"effective_severity":"')[1], '"')[0] END,
+       CASE WHEN coalesce(r.attributes_json, '') CONTAINS '"severity":"' THEN split(split(r.attributes_json, '"severity":"')[1], '"')[0] END,
+       CASE WHEN coalesce(finding.attributes_json, '') CONTAINS '"severity":"' THEN split(split(finding.attributes_json, '"severity":"')[1], '"')[0] END,
+       ''
+     ) AS severity
 RETURN finding.urn AS finding_urn,
        coalesce(finding.label, finding.urn) AS finding_label,
        resource.urn AS resource_urn,
        coalesce(resource.label, resource.urn) AS resource_label,
-       toInteger(coalesce(r.risk_score, finding.risk_score, '0')) AS risk_score,
-       coalesce(r.effective_severity, finding.effective_severity, r.severity, finding.severity, '') AS severity
+       risk_score,
+       severity,
+       coalesce(finding.attributes_json, '') AS finding_attributes_json,
+       coalesce(r.attributes_json, '') AS relation_attributes_json
 ORDER BY risk_score DESC, severity DESC, finding_urn
 LIMIT %d`, limit), true
 	case IntentExplainFinding:
-		return fmt.Sprintf(`MATCH (finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
-WHERE ($scope_urn <> '' AND finding.urn = $scope_urn) OR ($scope_urn = '' AND coalesce(finding.status, '') = 'open')
-OPTIONAL MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(finding)
+		return fmt.Sprintf(`MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+WHERE $scope_urn = '' OR finding.urn = $scope_urn OR resource.urn = $scope_urn
+WITH resource, r, finding,
+     coalesce(
+       CASE WHEN coalesce(r.attributes_json, '') CONTAINS '"risk_score":"' THEN toInteger(split(split(r.attributes_json, '"risk_score":"')[1], '"')[0]) END,
+       CASE WHEN coalesce(finding.attributes_json, '') CONTAINS '"risk_score":"' THEN toInteger(split(split(finding.attributes_json, '"risk_score":"')[1], '"')[0]) END,
+       0
+     ) AS risk_score,
+     coalesce(
+       CASE WHEN coalesce(finding.attributes_json, '') CONTAINS '"severity":"' THEN split(split(finding.attributes_json, '"severity":"')[1], '"')[0] END,
+       ''
+     ) AS severity,
+     coalesce(
+       CASE WHEN coalesce(finding.attributes_json, '') CONTAINS '"status":"' THEN split(split(finding.attributes_json, '"status":"')[1], '"')[0] END,
+       ''
+     ) AS status,
+     coalesce(
+       CASE WHEN coalesce(finding.attributes_json, '') CONTAINS '"summary":"' THEN split(split(finding.attributes_json, '"summary":"')[1], '"')[0] END,
+       ''
+     ) AS summary
 RETURN finding.urn AS finding_urn,
        coalesce(finding.label, finding.urn) AS finding_label,
-       finding.severity AS severity,
-       finding.status AS status,
-       finding.summary AS summary,
+       severity,
+       status,
+       summary,
        resource.urn AS resource_urn,
        coalesce(resource.label, resource.urn) AS resource_label,
-       coalesce(r.risk_score, finding.risk_score, '') AS risk_score
+       risk_score,
+       coalesce(finding.attributes_json, '') AS finding_attributes_json,
+       coalesce(r.attributes_json, '') AS relation_attributes_json
 ORDER BY risk_score DESC, finding_urn
 LIMIT %d`, limit), true
 	case IntentIdentityBridge:
@@ -220,18 +254,13 @@ RETURN left.urn AS left_urn,
 ORDER BY identifier_label, left_urn, right_urn
 LIMIT %d`, limit), true
 	case IntentConnectorHealth:
-		return fmt.Sprintf(`MATCH (connector:Entity {tenant_id: $tenant_id})
-WHERE connector.entity_type IN ['connector', 'source_runtime', 'runtime']
-   OR connector.entity_type CONTAINS 'connector'
-   OR connector.entity_type CONTAINS 'runtime'
-RETURN connector.urn AS connector_urn,
-       coalesce(connector.label, connector.urn) AS connector_label,
-       connector.entity_type AS entity_type,
-       connector.source_id AS source_id,
-       connector.runtime_id AS runtime_id,
-       connector.status AS status,
-       connector.last_sync_minutes AS last_sync_minutes
-ORDER BY connector_label, connector_urn
+		return fmt.Sprintf(`MATCH (source:Entity {tenant_id: $tenant_id, entity_type: 'source'})
+RETURN source.urn AS source_urn,
+       coalesce(source.label, source.urn) AS source_label,
+       source.source_id AS source_id,
+       source.runtime_id AS runtime_id,
+       coalesce(source.attributes_json, '') AS source_attributes_json
+ORDER BY source_label, source_urn
 LIMIT %d`, limit), true
 	default:
 		return "", false
