@@ -329,6 +329,34 @@ func TestReplayFiltersWorkflowEventsByKindPrefixTenantAndAttribute(t *testing.T)
 	}
 }
 
+func TestReplaySkipsDecodeForSubjectsOutsideKindPrefix(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{
+					Name:     "CEREBRO_EVENTS",
+					Subjects: []string{"events.>"},
+				},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: 1},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				1: &natsjetstream.RawStreamMsg{Subject: "events.github.audit", Data: []byte("not protobuf")},
+			},
+		},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{KindPrefix: "workflow.v1."})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("len(events) = %d, want 0", len(events))
+	}
+}
+
 func TestReplayDecodesSharedWorkflowEnvelope(t *testing.T) {
 	event, err := workflowevents.NewDecisionRecordedEvent(workflowevents.DecisionRecorded{
 		TenantID:      "writer",

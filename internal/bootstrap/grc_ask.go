@@ -61,34 +61,17 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 
 	llm := a.deps.GraphAgentLLM
 	if llm == nil {
-		llmStarted := time.Now()
-		var err error
-		llm, err = graphagent.NewLLMClientWithSecrets(r.Context(), graphagent.LLMConfigWithSecrets{
-			LLMConfig: graphagent.LLMConfig{
-				Provider:    a.cfg.GraphAgentLLM.Provider,
-				Model:       a.cfg.GraphAgentLLM.Model,
-				SonnetModel: a.cfg.GraphAgentLLM.SonnetModel,
-				OpusModel:   a.cfg.GraphAgentLLM.OpusModel,
-				HaikuModel:  a.cfg.GraphAgentLLM.HaikuModel,
-				MaxTokens:   a.cfg.GraphAgentLLM.MaxTokens,
-				Temperature: a.cfg.GraphAgentLLM.Temperature,
-			},
-			OpenRouterAPIKey: a.cfg.GraphAgentLLM.OpenRouterAPIKey,
-			HTTPDoer:         NewHTTPDoer(),
-		})
-		evt.llmInitMs = time.Since(llmStarted).Milliseconds()
-		if err != nil {
-			evt.failureStage = "llm_init"
-			evt.llmInitError = err.Error()
-			evt.finish(r, w, started, http.StatusServiceUnavailable, err)
-			writeGRCError(w, err)
-			return
-		}
-	} else {
-		evt.llmPreCached = true
+		err := errors.Join(graphagent.ErrRuntimeUnavailable, errors.New("graph agent llm is not configured"))
+		evt.failureStage = "llm_init"
+		evt.llmInitError = err.Error()
+		evt.finish(r, w, started, http.StatusServiceUnavailable, err)
+		writeGRCError(w, err)
+		return
 	}
+	evt.llmPreCached = true
 	evt.llmOK = true
 
+	clearStreamingWriteDeadline(w)
 	flusher, _ := w.(http.Flusher)
 	service := graphagent.NewService(graphStore, llm, graphagent.ValidatorOptions{Explain: true})
 	var eventCount int
@@ -212,4 +195,8 @@ func (e *askWideEvent) finish(r *http.Request, w http.ResponseWriter, started ti
 		log.Printf("grc ask failed stage=%s provider=%s graph_store_ok=%v llm_ok=%v error=%q",
 			e.failureStage, providerDesc, e.graphStoreOK, e.llmOK, err)
 	}
+}
+
+func clearStreamingWriteDeadline(w http.ResponseWriter) {
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
 }

@@ -26,6 +26,7 @@ type Store struct {
 	findingEvaluationRunReady bool
 	vulnDBTablesReady         bool
 	deviceAuthTablesReady     bool
+	startupLeaseTableReady    bool
 }
 
 // Open opens a Postgres-backed current-state store.

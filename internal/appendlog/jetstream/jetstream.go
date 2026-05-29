@@ -178,6 +178,7 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 	if err != nil {
 		return nil, err
 	}
+	subjectPrefix := replaySubjectPrefix(prefix, request.KindPrefix)
 	limit := normalizeReplayLimit(request.Limit)
 	candidateLimit := normalizeReplayCandidateLimit(limit)
 	streamRef, err := l.replay.Stream(ctx, stream.Config.Name)
@@ -199,7 +200,7 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 			}
 			return nil, fmt.Errorf("get replay message %s:%d: %w", stream.Config.Name, seq, err)
 		}
-		if raw != nil && strings.HasPrefix(strings.TrimSpace(raw.Subject), prefix+".") {
+		if raw != nil && replaySubjectMatchesPrefix(raw.Subject, subjectPrefix) {
 			event, err := decodeReplayEvent(raw)
 			if err != nil {
 				return nil, fmt.Errorf("decode replay message %s:%d: %w", stream.Config.Name, seq, err)
@@ -229,6 +230,21 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 		events = append(events, candidate.event)
 	}
 	return events, nil
+}
+
+func replaySubjectPrefix(prefix string, kindPrefix string) string {
+	normalized := strings.Trim(strings.TrimSpace(prefix), ".")
+	kindPrefix = strings.Trim(strings.TrimSpace(kindPrefix), ".")
+	if kindPrefix == "" {
+		return normalized
+	}
+	return normalized + "." + kindPrefix
+}
+
+func replaySubjectMatchesPrefix(subject string, prefix string) bool {
+	subject = strings.TrimSpace(subject)
+	prefix = strings.TrimSpace(prefix)
+	return subject == prefix || strings.HasPrefix(subject, prefix+".")
 }
 
 func publishPayload(event *cerebrov1.EventEnvelope) ([]byte, error) {

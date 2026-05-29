@@ -17,3 +17,16 @@ func TestConsumeRefreshTokenLocksDeviceRow(t *testing.T) {
 		}
 	}
 }
+
+func TestDeviceAuthSchemaIncludesRiskObservationStore(t *testing.T) {
+	joined := strings.Join(ensureDeviceAuthStatements, "\n")
+	for _, want := range []string{
+		"CREATE TABLE IF NOT EXISTS device_risk_observations",
+		"device_id TEXT PRIMARY KEY",
+		"observed_at TIMESTAMPTZ NOT NULL",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("device auth schema missing %q:\n%s", want, joined)
+		}
+	}
+}
