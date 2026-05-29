@@ -33,6 +33,9 @@ RETURN apoc.convert.fromJsonMap(f.attributes_json).source_family AS source_famil
 	if !strings.Contains(result.Cypher, "f.source_id") || !strings.Contains(result.Cypher, "LIMIT 10") {
 		t.Fatalf("converted cypher missing source_id fallback/limit:\n%s", result.Cypher)
 	}
+	if !strings.Contains(result.Cypher, "WHERE $scope_urn = '' OR resource.urn = $scope_urn OR f.urn = $scope_urn") {
+		t.Fatalf("converted cypher missing scope predicate:\n%s", result.Cypher)
+	}
 	sourceFamilyIndex := strings.Index(result.Cypher, `"source_family":"`)
 	sourceIDIndex := strings.Index(result.Cypher, "f.source_id")
 	if sourceFamilyIndex < 0 || sourceIDIndex < 0 || sourceFamilyIndex > sourceIDIndex {
@@ -126,6 +129,32 @@ func TestConvertDraftToQueryExplainFindingAvoidsBrittleSummaryExtraction(t *test
 	}
 	if !strings.Contains(result.Cypher, "finding_attributes_json_internal") {
 		t.Fatalf("converted cypher should expose internal attributes for server-side summary extraction:\n%s", result.Cypher)
+	}
+}
+
+func TestConvertDraftToQueryUsesCanonicalIdentityBridgeTemplate(t *testing.T) {
+	result := convertDraftToQuery(AskRequest{
+		TenantID: "writer",
+		Question: "Which identities bridge Okta and GitHub?",
+	}, &DraftResponse{
+		Plan: &AskQueryPlan{Intent: IntentIdentityBridge, Limit: 25},
+	}, 100)
+
+	if result.Plan.Intent != IntentIdentityBridge || !result.Deterministic {
+		t.Fatalf("conversion result = %#v, want deterministic identity bridge", result)
+	}
+	for _, want := range []string{
+		"relation: 'represents_identity'",
+		"left.entity_type <> right.entity_type",
+		"datetime(left_seen_at) >= datetime() - duration('P90D')",
+		"identity.urn AS identity_urn",
+	} {
+		if !strings.Contains(result.Cypher, want) {
+			t.Fatalf("converted cypher missing %q:\n%s", want, result.Cypher)
+		}
+	}
+	if strings.Contains(result.Cypher, "relation: 'has_identifier'") {
+		t.Fatalf("converted cypher should not bridge concrete identities via identifier anchors:\n%s", result.Cypher)
 	}
 }
 

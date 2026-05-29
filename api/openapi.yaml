@@ -544,7 +544,7 @@ paths:
               $ref: '#/components/schemas/GRCAskRequest'
       responses:
         '200':
-          description: Server-sent graph answer events. Successful streams emit progress, rationale, cypher, rows, summary, and done events; failures after streaming starts emit an error event.
+          description: Server-sent graph answer events. Successful streams emit progress, rationale, query_plan, cypher, rows, summary, and done events; failures after streaming starts emit an error event.
           content:
             text/event-stream:
               schema:

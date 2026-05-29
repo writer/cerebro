@@ -204,6 +204,7 @@ func renderDeterministicPlan(plan AskQueryPlan, maxRows int) (string, bool) {
 			limit = 10
 		}
 		return fmt.Sprintf(`MATCH (resource:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'has_finding'}]->(f:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+WHERE $scope_urn = '' OR resource.urn = $scope_urn OR f.urn = $scope_urn
 WITH DISTINCT f,
      coalesce(
        CASE WHEN coalesce(f.attributes_json, '') CONTAINS '"source_family":"' THEN split(split(f.attributes_json, '"source_family":"')[1], '"')[0] END,
@@ -277,18 +278,30 @@ RETURN finding.urn AS finding_urn,
 ORDER BY risk_score DESC, finding_urn
 LIMIT %d`, limit), true
 	case IntentIdentityBridge:
-		return fmt.Sprintf(`MATCH (left:Entity {tenant_id: $tenant_id})-[leftRel:RELATION {relation: 'has_identifier'}]->(identifier:Entity {tenant_id: $tenant_id})<-[rightRel:RELATION {relation: 'has_identifier'}]-(right:Entity {tenant_id: $tenant_id})
+		return fmt.Sprintf(`MATCH (left:Entity {tenant_id: $tenant_id})-[leftRel:RELATION {relation: 'represents_identity'}]->(identity:Entity {tenant_id: $tenant_id})
+MATCH (right:Entity {tenant_id: $tenant_id})-[rightRel:RELATION {relation: 'represents_identity'}]->(identity)
 WHERE left.urn < right.urn
-  AND (identifier.entity_type CONTAINS 'identifier' OR identifier.urn CONTAINS ':identifier:')
+  AND left.entity_type <> right.entity_type
+  AND NOT left.entity_type STARTS WITH 'identity'
+  AND NOT right.entity_type STARTS WITH 'identity'
+  AND coalesce(leftRel.attributes_json, '') CONTAINS '"at":"'
+  AND coalesce(rightRel.attributes_json, '') CONTAINS '"at":"'
+WITH left, right, identity,
+     split(split(leftRel.attributes_json, '"at":"')[1], '"')[0] AS left_seen_at,
+     split(split(rightRel.attributes_json, '"at":"')[1], '"')[0] AS right_seen_at
+WHERE datetime(left_seen_at) >= datetime() - duration('P90D')
+  AND datetime(right_seen_at) >= datetime() - duration('P90D')
 RETURN left.urn AS left_urn,
        coalesce(left.label, left.urn) AS left_label,
        left.entity_type AS left_type,
        right.urn AS right_urn,
        coalesce(right.label, right.urn) AS right_label,
        right.entity_type AS right_type,
-       identifier.urn AS identifier_urn,
-       coalesce(identifier.label, identifier.urn) AS identifier_label
-ORDER BY identifier_label, left_urn, right_urn
+       identity.urn AS identity_urn,
+       coalesce(identity.label, identity.urn) AS identity_label,
+       left_seen_at,
+       right_seen_at
+ORDER BY identity_label, left_urn, right_urn
 LIMIT %d`, limit), true
 	case IntentConnectorHealth:
 		return fmt.Sprintf(`MATCH (source:Entity {tenant_id: $tenant_id, entity_type: 'source'})

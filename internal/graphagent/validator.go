@@ -20,7 +20,7 @@ var (
 	loadCSVPattern        = regexp.MustCompile(`(?i)\bLOAD\s+CSV\b`)
 	usingPeriodicPattern  = regexp.MustCompile(`(?i)\bUSING\s+PERIODIC\b`)
 	forbiddenAPOCPattern  = regexp.MustCompile(`(?i)\bCALL\s+apoc\.(trigger|periodic)\.`)
-	apocPattern           = regexp.MustCompile(`(?i)\bapoc\.`)
+	apocInvocationPattern = regexp.MustCompile(`(?i)\bapoc\.[A-Za-z0-9_.]+\s*\(`)
 	limitPattern          = regexp.MustCompile(`(?i)\bLIMIT\s+(\d+)\b`)
 	matchClausePattern    = regexp.MustCompile(`(?i)\b(?:OPTIONAL\s+MATCH|MATCH)\b`)
 	matchClauseEndPattern = regexp.MustCompile(`(?i)\b(?:WHERE|RETURN|WITH|ORDER\s+BY|LIMIT|UNWIND|CALL|UNION|CREATE|MERGE|DELETE|SET|REMOVE|DROP|FOREACH)\b`)
@@ -77,7 +77,7 @@ func (v *Validator) validate(ctx context.Context, cypher string, params map[stri
 	if forbiddenAPOCPattern.MatchString(safeQuery) {
 		return validatorRefusal("unsafe_apoc", "apoc trigger and periodic procedures are forbidden"), 0, nil
 	}
-	if apocPattern.MatchString(safeQuery) {
+	if apocInvocationPattern.MatchString(safeQuery) {
 		return validatorRefusal("apoc_not_allowed", "APOC functions and procedures are not available in Ask Cerebro"), 0, nil
 	}
 	if hasProcedureCall(safeQuery) {

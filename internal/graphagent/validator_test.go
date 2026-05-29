@@ -144,6 +144,22 @@ LIMIT 25`, map[string]any{"tenant_id": "example"})
 	}
 }
 
+func TestValidatorAcceptsAPOCVariablePropertyAccess(t *testing.T) {
+	validator := NewValidator(nil, ValidatorOptions{})
+	result, limit, err := validator.validate(context.Background(), `MATCH (apoc:Entity {tenant_id: $tenant_id})
+RETURN apoc.urn AS urn
+LIMIT 25`, map[string]any{"tenant_id": "example"})
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if !result.OK {
+		t.Fatalf("Validate() = %#v, want ok", result)
+	}
+	if limit != 25 {
+		t.Fatalf("limit = %d, want 25", limit)
+	}
+}
+
 func TestValidatorAcceptsScopedRelationshipReadWithReturnFunctions(t *testing.T) {
 	validator := NewValidator(nil, ValidatorOptions{})
 	result, limit, err := validator.validate(context.Background(), `MATCH (src:Entity {tenant_id: $tenant_id})-[r:RELATION]->(dst:Entity {tenant_id: $tenant_id})
