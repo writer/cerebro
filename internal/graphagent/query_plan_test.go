@@ -50,6 +50,15 @@ func TestAskQueryPlanUnmarshalCoercesFilterValues(t *testing.T) {
 	}
 }
 
+func TestInferIntentPrefersTopRiskOverSourceBreakdown(t *testing.T) {
+	if got := inferIntent("show top risk findings from the GitHub source", ""); got != IntentTopRiskFindings {
+		t.Fatalf("inferIntent() = %q, want %q", got, IntentTopRiskFindings)
+	}
+	if got := inferIntent("show top finding sources", ""); got != IntentAggregateFindingsBySource {
+		t.Fatalf("inferIntent(top finding sources) = %q, want %q", got, IntentAggregateFindingsBySource)
+	}
+}
+
 func TestConvertDraftToQueryUsesDeterministicFindingSourceTemplate(t *testing.T) {
 	result := convertDraftToQuery(AskRequest{
 		TenantID: "writer",
