@@ -100,13 +100,28 @@ scan_input() {
 
 ignored_path_re='^(vendor/|scripts/leak_patterns\.txt$|go\.sum$|.*\.pem$|.*\.crt$)'
 
+added_diff_for_changed_files() {
+  local diff_args=("$@")
+  local files=()
+  while IFS= read -r file; do
+    files+=("$file")
+  done < <(git diff --name-only --diff-filter=ACM "${diff_args[@]}" -- 2>/dev/null | grep -vE "$ignored_path_re" || true)
+  if [ "${#files[@]}" -eq 0 ]; then
+    return 0
+  fi
+  git diff --no-color "${diff_args[@]}" -- "${files[@]}" | grep '^+' | grep -v '^+++' || true
+}
+
 case "$mode" in
   staged)
-    staged_files="$(git diff --cached --name-only --diff-filter=ACM | grep -vE "$ignored_path_re" || true)"
-    if [ -z "$staged_files" ]; then
+    staged_files=()
+    while IFS= read -r file; do
+      staged_files+=("$file")
+    done < <(git diff --cached --name-only --diff-filter=ACM -- | grep -vE "$ignored_path_re" || true)
+    if [ "${#staged_files[@]}" -eq 0 ]; then
       exit 0
     fi
-    diff_content="$(git diff --cached --no-color -- $staged_files | grep '^+' | grep -v '^+++' || true)"
+    diff_content="$(git diff --cached --no-color -- "${staged_files[@]}" | grep '^+' | grep -v '^+++' || true)"
     if [ -z "$diff_content" ]; then
       exit 0
     fi
@@ -160,7 +175,7 @@ EOF
       exit 1
     fi
     commits_meta="$(git log --format='%H%n%s%n%b%n%an %ae%n---' "$range" 2>/dev/null || true)"
-    commits_diff="$(git diff --no-color "$range" 2>/dev/null | grep '^+' | grep -v '^+++' || true)"
+    commits_diff="$(added_diff_for_changed_files "$range")"
     combined="${commits_meta}
 ${commits_diff}"
     if [ -z "$(printf '%s' "$commits_meta$commits_diff" | tr -d '[:space:]')" ]; then
@@ -199,7 +214,7 @@ ${commits_diff}"
         range="${remote_sha}..${local_sha}"
       fi
       commits_meta="$(git log --format='%H%n%s%n%b%n%an %ae%n---' "$range" 2>/dev/null || true)"
-      commits_diff="$(git diff --no-color "$range" 2>/dev/null | grep '^+' | grep -v '^+++' || true)"
+      commits_diff="$(added_diff_for_changed_files "$range")"
       combined="${commits_meta}
 ${commits_diff}"
       if ! scan_input "<pushed:$local_ref>" "$combined"; then
