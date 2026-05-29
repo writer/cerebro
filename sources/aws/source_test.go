@@ -575,6 +575,29 @@ func TestReadAWSEffectivePermissionIncludesInlinePolicies(t *testing.T) {
 	}
 }
 
+func TestDiscoverAWSEffectivePermissionIncludesInlinePolicies(t *testing.T) {
+	source := newTestSource(t, fakeAWS{
+		inlinePolicyNames: []string{"InlineAdmin"},
+		inlinePolicyDocuments: map[string]string{
+			"InlineAdmin": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"iam:*","Resource":"*"}]}`,
+		},
+	})
+
+	urns, err := source.Discover(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"account_id":     "123456789012",
+		"family":         familyEffectivePermission,
+		"principal_name": "admin@writer.com",
+		"principal_type": "user",
+	}))
+	if err != nil {
+		t.Fatalf("Discover(effective_permission inline policy) error = %v", err)
+	}
+	want := sourcecdk.URN("urn:cerebro:123456789012:effective_permission:admin@writer.com:inline:user:admin@writer.com:InlineAdmin")
+	if len(urns) != 1 || urns[0] != want {
+		t.Fatalf("Discover inline policy URNs = %v, want [%s]", urns, want)
+	}
+}
+
 func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 	basePrincipalData := func(fake *recordingAWS) {
 		fake.users = []iamtypes.User{{UserName: awssdk.String("admin@writer.com"), UserId: awssdk.String("AIDAADMIN")}}
