@@ -277,7 +277,7 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: aws-secprod-us1-resource-exposure
+    - name: aws-secprod-us1-res-exp
       scheduleExpression: cron(3 1/2 * * ? *)
       taskCount: 1
       command:
@@ -287,7 +287,7 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: aws-secprod-us2-resource-exposure
+    - name: aws-secprod-us2-res-exp
       scheduleExpression: cron(8 1/2 * * ? *)
       taskCount: 1
       command:
@@ -297,7 +297,7 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: aws-prod-us1-resource-exposure
+    - name: aws-prod-us1-res-exp
       scheduleExpression: cron(13 1/2 * * ? *)
       taskCount: 1
       command:
@@ -307,7 +307,7 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: aws-prod-us2-resource-exposure
+    - name: aws-prod-us2-res-exp
       scheduleExpression: cron(18 1/2 * * ? *)
       taskCount: 1
       command:
@@ -317,7 +317,7 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: aws-devops-us1-resource-exposure
+    - name: aws-devops-us1-res-exp
       scheduleExpression: cron(23 1/2 * * ? *)
       taskCount: 1
       command:
@@ -327,7 +327,7 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: aws-devops-us2-resource-exposure
+    - name: aws-devops-us2-res-exp
       scheduleExpression: cron(28 1/2 * * ? *)
       taskCount: 1
       command:
@@ -337,7 +337,7 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: aws-secdev-us1-resource-exposure
+    - name: aws-secdev-us1-res-exp
       scheduleExpression: cron(33 1/2 * * ? *)
       taskCount: 1
       command:
@@ -347,7 +347,7 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: aws-secdev-us2-resource-exposure
+    - name: aws-secdev-us2-res-exp
       scheduleExpression: cron(38 1/2 * * ? *)
       taskCount: 1
       command:
@@ -377,7 +377,7 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: aws-secprod-iam-group-membership
+    - name: aws-secprod-iam-grp-member
       scheduleExpression: cron(12 2/6 * * ? *)
       taskCount: 1
       command:
@@ -407,7 +407,7 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: aws-secprod-iam-role-assignment
+    - name: aws-secprod-iam-role-assign
       scheduleExpression: cron(27 2/6 * * ? *)
       taskCount: 1
       command:
@@ -427,7 +427,7 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: aws-secprod-effective-permission
+    - name: aws-secprod-eff-perm
       scheduleExpression: cron(37 2/6 * * ? *)
       taskCount: 1
       command:
@@ -457,7 +457,7 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: aws-prod-iam-group-membership
+    - name: aws-prod-iam-grp-member
       scheduleExpression: cron(13 3/6 * * ? *)
       taskCount: 1
       command:
@@ -487,7 +487,7 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: aws-prod-iam-role-assignment
+    - name: aws-prod-iam-role-assign
       scheduleExpression: cron(28 3/6 * * ? *)
       taskCount: 1
       command:
@@ -507,7 +507,7 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: aws-prod-effective-permission
+    - name: aws-prod-eff-perm
       scheduleExpression: cron(38 3/6 * * ? *)
       taskCount: 1
       command:
@@ -537,7 +537,7 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: aws-devops-iam-group-membership
+    - name: aws-devops-iam-grp-member
       scheduleExpression: cron(14 4/6 * * ? *)
       taskCount: 1
       command:
@@ -567,7 +567,7 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: aws-devops-iam-role-assignment
+    - name: aws-devops-iam-role-assign
       scheduleExpression: cron(29 4/6 * * ? *)
       taskCount: 1
       command:
@@ -587,7 +587,7 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: aws-devops-effective-permission
+    - name: aws-devops-eff-perm
       scheduleExpression: cron(39 4/6 * * ? *)
       taskCount: 1
       command:
@@ -617,7 +617,7 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: aws-secdev-iam-group-membership
+    - name: aws-secdev-iam-grp-member
       scheduleExpression: cron(15 5/6 * * ? *)
       taskCount: 1
       command:
@@ -647,7 +647,7 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: aws-secdev-iam-role-assignment
+    - name: aws-secdev-iam-role-assign
       scheduleExpression: cron(30 5/6 * * ? *)
       taskCount: 1
       command:
@@ -667,7 +667,7 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: aws-secdev-effective-permission
+    - name: aws-secdev-eff-perm
       scheduleExpression: cron(40 5/6 * * ? *)
       taskCount: 1
       command:
