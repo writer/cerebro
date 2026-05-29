@@ -18,6 +18,7 @@ from scripts.verify_graph_health_ecs import (
     _graph_path_relations,
     _graph_relation_counts,
     _run_graph_command_with_retries,
+    _summary_markdown,
     _image_tag_version,
     _ingest_run_limit,
     _is_graph_paths_timeout,
@@ -450,6 +451,43 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             ),
             {"belongs_to", "represents"},
         )
+
+    def test_summary_markdown_includes_graph_shape(self) -> None:
+        summary = _summary_markdown(
+            "go-prod",
+            {"nodes": 36278, "relations": 85586},
+            {"passed": 8, "failed": 0},
+            {"belongs_to": 11437, "can_assume": 0, "can_reach": 454},
+            {"belongs_to", "can_reach"},
+            27,
+            27,
+            [],
+            {"public_endpoint"},
+        )
+
+        self.assertIn("Status: **passed**", summary)
+        self.assertIn("Nodes: `36278`", summary)
+        self.assertIn("Relationships: `85586`", summary)
+        self.assertIn("Integrity checks: `8 passed / 0 failed`", summary)
+        self.assertIn("AWS source families: `public_endpoint`", summary)
+        self.assertIn("| `can_assume` | 0 |", summary)
+        self.assertIn("| `can_reach` | 454 |", summary)
+
+    def test_summary_markdown_marks_missing_ingest_runtime_failed(self) -> None:
+        summary = _summary_markdown(
+            "sec-dev",
+            {"nodes": 1, "relations": 1},
+            {"passed": 7, "failed": 0},
+            {},
+            {"belongs_to"},
+            1,
+            2,
+            ["runtime-b"],
+            set(),
+        )
+
+        self.assertIn("Status: **failed**", summary)
+        self.assertIn("| `runtime-b` |", summary)
 
 
 if __name__ == "__main__":

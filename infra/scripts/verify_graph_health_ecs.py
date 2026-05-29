@@ -5,6 +5,7 @@ import argparse
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -625,6 +626,88 @@ def _verify_required_graph_relation_counts(
     return {relation for relation, count in counts.items() if count > 0}
 
 
+def _markdown_escape(value: str) -> str:
+    return value.replace("|", "\\|")
+
+
+def _summary_markdown(
+    stack: str,
+    counts_payload: dict[str, Any],
+    integrity_payload: dict[str, Any],
+    relation_counts: dict[str, int],
+    graph_relations: set[str],
+    current_ingest_runtimes: int,
+    declared_runtime_count: int,
+    missing_ingest_runtimes: list[str],
+    aws_families: set[str],
+) -> str:
+    failed_checks = int(integrity_payload.get("failed") or 0)
+    status = "failed" if failed_checks or missing_ingest_runtimes else "passed"
+    lines = [
+        f"## Graph Health: `{stack}`",
+        "",
+        f"Status: **{status}**",
+        f"Nodes: `{counts_payload.get('nodes')}`",
+        f"Relationships: `{counts_payload.get('relations')}`",
+        f"Integrity checks: `{integrity_payload.get('passed', 0)} passed / {failed_checks} failed`",
+        f"Current ingest runtimes: `{current_ingest_runtimes}` / `{declared_runtime_count}`",
+        f"AWS source families: `{', '.join(sorted(aws_families)) if aws_families else 'none'}`",
+        f"Observed relation families: `{', '.join(sorted(graph_relations)) if graph_relations else 'none'}`",
+        "",
+    ]
+    if missing_ingest_runtimes:
+        lines.extend(
+            [
+                "| Missing ingest runtime |",
+                "| --- |",
+            ]
+        )
+        for runtime_id in missing_ingest_runtimes:
+            lines.append(f"| `{_markdown_escape(runtime_id)}` |")
+        lines.append("")
+    if relation_counts:
+        lines.extend(
+            [
+                "| Relation | Count |",
+                "| --- | ---: |",
+            ]
+        )
+        for relation, count in sorted(relation_counts.items()):
+            lines.append(f"| `{_markdown_escape(relation)}` | {count} |")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _write_github_summary(
+    stack: str,
+    counts_payload: dict[str, Any],
+    integrity_payload: dict[str, Any],
+    relation_counts: dict[str, int],
+    graph_relations: set[str],
+    current_ingest_runtimes: int,
+    declared_runtime_count: int,
+    missing_ingest_runtimes: list[str],
+    aws_families: set[str],
+) -> None:
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not summary_path:
+        return
+    with open(summary_path, "a", encoding="utf-8") as handle:
+        handle.write(
+            _summary_markdown(
+                stack,
+                counts_payload,
+                integrity_payload,
+                relation_counts,
+                graph_relations,
+                current_ingest_runtimes,
+                declared_runtime_count,
+                missing_ingest_runtimes,
+                aws_families,
+            )
+        )
+
+
 def _is_graph_paths_timeout(exc: Exception) -> bool:
     return "context deadline exceeded" in str(exc).lower()
 
@@ -675,6 +758,7 @@ def main(argv: list[str] | None = None) -> int:
     aws_families = _declared_aws_families(config)
     attack_path_relations_supported = _supports_attack_path_relations(config)
     graph_relations: set[str] = set()
+    relation_counts_payload: dict[str, int] = {}
     paths_task_arn = ""
     if _supports_relation_counts(config):
         required_relations = _required_graph_relations(
@@ -691,6 +775,7 @@ def main(argv: list[str] | None = None) -> int:
             args.graph_command_retry_seconds,
         )
         paths_task_arn = relation_counts.task_arn
+        relation_counts_payload = _graph_relation_counts(relation_counts.payload)
         graph_relations = _verify_required_graph_relation_counts(
             relation_counts.payload,
             aws_families,
@@ -735,6 +820,18 @@ def main(argv: list[str] | None = None) -> int:
             f"WARNING: missing graph ingest run history for declared runtime(s): {', '.join(missing_ingest_runtimes)}",
             file=sys.stderr,
         )
+
+    _write_github_summary(
+        stack,
+        counts.payload,
+        integrity.payload,
+        relation_counts_payload,
+        graph_relations,
+        current_ingest_runtimes,
+        len(declared_runtime_ids),
+        missing_ingest_runtimes,
+        aws_families,
+    )
 
     print("checked_at\tstack\tnodes\trelations\tintegrity_passed\tintegrity_failed\tgraph_relations\tcurrent_ingest_runtimes\tdeclared_runtimes\tmissing_ingest_runtimes\tcounts_task\tintegrity_task\tpaths_task\tingest_runs_task")
     print(
