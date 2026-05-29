@@ -42,10 +42,12 @@ func resolveRequestOrigin(r *http.Request, cfg config.RequestOriginConfig) reque
 	origin.TrustedProxy = requestOriginTrustsProxy(remoteIP, cfg)
 	if origin.TrustedProxy {
 		if publicOrigin := normalizedPublicOrigin(cfg.PublicOrigin); publicOrigin == nil {
-			if forwardedProto := trustedForwardedProto(r.Header.Get("X-Forwarded-Proto")); forwardedProto != "" {
+			forwardedProto, malformedProto := trustedForwardedProto(r.Header.Get("X-Forwarded-Proto"))
+			forwardedHost, malformedHost := trustedForwardedHost(r.Header.Get("X-Forwarded-Host"))
+			if !malformedProto && !malformedHost && forwardedProto != "" {
 				origin.Scheme = forwardedProto
 			}
-			if forwardedHost := trustedForwardedHost(r.Header.Get("X-Forwarded-Host")); forwardedHost != "" {
+			if !malformedProto && !malformedHost && forwardedHost != "" {
 				origin.Host = forwardedHost
 			}
 		}
@@ -92,21 +94,24 @@ func normalizedPublicOrigin(raw string) *url.URL {
 	return parsed
 }
 
-func trustedForwardedProto(header string) string {
+func trustedForwardedProto(header string) (string, bool) {
 	parts := strings.Split(header, ",")
 	for i := len(parts) - 1; i >= 0; i-- {
 		part := parts[i]
 		switch strings.ToLower(strings.TrimSpace(part)) {
 		case "https":
-			return "https"
+			return "https", false
 		case "http":
-			return "http"
+			return "http", false
+		case "":
+			continue
 		}
+		return "", true
 	}
-	return ""
+	return "", false
 }
 
-func trustedForwardedHost(header string) string {
+func trustedForwardedHost(header string) (string, bool) {
 	parts := strings.Split(header, ",")
 	for i := len(parts) - 1; i >= 0; i-- {
 		host := strings.TrimSpace(parts[i])
@@ -115,10 +120,11 @@ func trustedForwardedHost(header string) string {
 		}
 		parsed, err := url.Parse("//" + host)
 		if err == nil && parsed.Host != "" && parsed.User == nil && parsed.RawQuery == "" && !parsed.ForceQuery && parsed.Fragment == "" && parsed.Path == "" {
-			return parsed.Host
+			return parsed.Host, false
 		}
+		return "", true
 	}
-	return ""
+	return "", false
 }
 
 func forwardedClientIP(header string, cfg config.RequestOriginConfig) string {
