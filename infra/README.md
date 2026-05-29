@@ -110,6 +110,9 @@ When a go-prod deploy is blocked by source runtime role trust drift:
 | `cerebro:sourceRuntimes` | Optional | Declarative source runtime definitions. |
 | `cerebro:orchestratorEnabled` | Optional | Enables scheduled ECS orchestrator tasks. |
 | `cerebro:apiKeys` | Shared envs | Pulumi-encrypted API key set. |
+| `cerebro:publicOrigin` | Optional | Canonical external API origin. Defaults to `https://<cerebro:domain>` and is exported as `CEREBRO_PUBLIC_ORIGIN`. |
+| `cerebro:trustedProxyCIDRs` | Optional | CIDRs whose forwarded headers are trusted. Defaults to the runtime VPC CIDR for internal ALB stacks and is exported as `CEREBRO_TRUSTED_PROXY_CIDRS`. |
+| `cerebro:trustedProxyCount` | Optional | Trusted trailing `X-Forwarded-For` hops. Defaults to `1` when trusted proxy CIDRs are configured. |
 | `cerebro:neo4jAura*` | Graph envs | Neo4j/Aura instance and credential settings. |
 | `cerebro:s3Sources` | S3-backed sources | IAM scope for S3 source runtimes. |
 | `cerebro:enableInfisicalSyncRole` | Shared envs | Allows Infisical-managed secret sync. |
