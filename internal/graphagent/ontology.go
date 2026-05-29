@@ -123,6 +123,9 @@ func (o GraphOntology) PromptHint() string {
 	fmt.Fprintf(&b, "- Finding source grouping should prefer controlled `attributes_json.source_family` string extraction, then fall back to `finding.source_id`.\n")
 	for _, entity := range o.Entities {
 		fmt.Fprintf(&b, "- Entity `%s`: %s Aliases: %s. Useful properties: %s.\n", entity.Type, entity.Description, strings.Join(entity.Aliases, ", "), strings.Join(entity.Properties, ", "))
+		if len(entity.Examples) > 0 {
+			fmt.Fprintf(&b, "  Examples: %s.\n", strings.Join(entity.Examples, ", "))
+		}
 	}
 	for _, relation := range o.Relations {
 		fmt.Fprintf(&b, "- Relation `%s`: %s Aliases: %s.\n", relation.Relation, relation.Description, strings.Join(relation.Aliases, ", "))
