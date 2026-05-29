@@ -86,8 +86,12 @@ type stubFindingStore struct {
 	failRunPutByCall           map[int]error
 	evidence                   map[string]*cerebrov1.FindingEvidence
 	evidenceList               ports.ListFindingEvidenceRequest
+	candidateRuns              map[string]*ports.FindingCandidateRun
+	candidates                 map[string]*ports.FindingCandidateRecord
+	candidateListRequest       ports.ListFindingCandidatesRequest
 	dropReturnedGraphEvidence  bool
 	upsertCount                int
+	candidateUpsertCount       int
 	updateRiskCount            int
 	markRiskProjectedCount     int
 	markRiskProjectedErr       error
@@ -536,6 +540,119 @@ func (s *stubFindingStore) ListFindingEvidence(_ context.Context, request ports.
 		evidence = evidence[:int(request.Limit)]
 	}
 	return evidence, nil
+}
+
+func (s *stubFindingStore) PutFindingCandidateRun(_ context.Context, run *ports.FindingCandidateRun) error {
+	if run == nil {
+		return errors.New("finding candidate run is required")
+	}
+	if s.candidateRuns == nil {
+		s.candidateRuns = make(map[string]*ports.FindingCandidateRun)
+	}
+	cloned := *run
+	s.candidateRuns[cloned.ID] = &cloned
+	return nil
+}
+
+func (s *stubFindingStore) GetFindingCandidateRun(_ context.Context, id string) (*ports.FindingCandidateRun, error) {
+	run, ok := s.candidateRuns[strings.TrimSpace(id)]
+	if !ok {
+		return nil, ports.ErrFindingEvaluationRunNotFound
+	}
+	cloned := *run
+	return &cloned, nil
+}
+
+func (s *stubFindingStore) ListFindingCandidateRuns(_ context.Context, request ports.ListFindingCandidatesRequest) ([]*ports.FindingCandidateRun, error) {
+	runs := make([]*ports.FindingCandidateRun, 0, len(s.candidateRuns))
+	for _, run := range s.candidateRuns {
+		if strings.TrimSpace(request.RuntimeID) != "" && strings.TrimSpace(run.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+			continue
+		}
+		if strings.TrimSpace(request.RuleID) != "" && strings.TrimSpace(run.RuleID) != strings.TrimSpace(request.RuleID) {
+			continue
+		}
+		if strings.TrimSpace(request.Status) != "" && strings.TrimSpace(run.Status) != strings.TrimSpace(request.Status) {
+			continue
+		}
+		cloned := *run
+		runs = append(runs, &cloned)
+	}
+	return runs, nil
+}
+
+func (s *stubFindingStore) UpsertFindingCandidate(_ context.Context, candidate *ports.FindingCandidateRecord) (*ports.FindingCandidateRecord, error) {
+	if candidate == nil {
+		return nil, errors.New("finding candidate is required")
+	}
+	s.candidateUpsertCount++
+	if s.candidates == nil {
+		s.candidates = make(map[string]*ports.FindingCandidateRecord)
+	}
+	cloned := cloneFindingCandidate(candidate)
+	if existing := s.candidates[cloned.ID]; existing != nil {
+		cloned.ObservationCount += existing.ObservationCount
+		if existing.Status == findingCandidateStatusPromoted {
+			cloned.Status = existing.Status
+			cloned.PromotedFindingID = existing.PromotedFindingID
+			cloned.DecisionID = existing.DecisionID
+			cloned.PromotedBy = existing.PromotedBy
+			cloned.PromotionRationale = existing.PromotionRationale
+			cloned.ChangeTicket = existing.ChangeTicket
+			cloned.PromotedAt = existing.PromotedAt
+		}
+	}
+	s.candidates[cloned.ID] = cloned
+	return cloneFindingCandidate(cloned), nil
+}
+
+func (s *stubFindingStore) GetFindingCandidate(_ context.Context, id string) (*ports.FindingCandidateRecord, error) {
+	candidate, ok := s.candidates[strings.TrimSpace(id)]
+	if !ok {
+		return nil, ports.ErrFindingCandidateNotFound
+	}
+	return cloneFindingCandidate(candidate), nil
+}
+
+func (s *stubFindingStore) ListFindingCandidates(_ context.Context, request ports.ListFindingCandidatesRequest) ([]*ports.FindingCandidateRecord, error) {
+	s.candidateListRequest = request
+	candidates := make([]*ports.FindingCandidateRecord, 0, len(s.candidates))
+	for _, candidate := range s.candidates {
+		if strings.TrimSpace(request.RuntimeID) != "" && strings.TrimSpace(candidate.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+			continue
+		}
+		if strings.TrimSpace(request.RuleID) != "" && strings.TrimSpace(candidate.RuleID) != strings.TrimSpace(request.RuleID) {
+			continue
+		}
+		if strings.TrimSpace(request.Status) != "" && strings.TrimSpace(candidate.Status) != strings.TrimSpace(request.Status) {
+			continue
+		}
+		if strings.TrimSpace(request.CandidateID) != "" && strings.TrimSpace(candidate.ID) != strings.TrimSpace(request.CandidateID) {
+			continue
+		}
+		if strings.TrimSpace(request.Fingerprint) != "" && strings.TrimSpace(candidate.Fingerprint) != strings.TrimSpace(request.Fingerprint) {
+			continue
+		}
+		candidates = append(candidates, cloneFindingCandidate(candidate))
+	}
+	return candidates, nil
+}
+
+func (s *stubFindingStore) MarkFindingCandidatePromoted(_ context.Context, promotion ports.FindingCandidatePromotion) (*ports.FindingCandidateRecord, error) {
+	candidate, ok := s.candidates[strings.TrimSpace(promotion.CandidateID)]
+	if !ok {
+		return nil, ports.ErrFindingCandidateNotFound
+	}
+	cloned := cloneFindingCandidate(candidate)
+	cloned.Status = findingCandidateStatusPromoted
+	cloned.PromotedFindingID = strings.TrimSpace(promotion.PromotedFindingID)
+	cloned.DecisionID = strings.TrimSpace(promotion.DecisionID)
+	cloned.PromotedBy = strings.TrimSpace(promotion.PromotedBy)
+	cloned.PromotionRationale = strings.TrimSpace(promotion.Rationale)
+	cloned.ChangeTicket = strings.TrimSpace(promotion.ChangeTicket)
+	cloned.PromotedAt = promotion.PromotedAt.UTC()
+	s.candidates[cloned.ID] = cloned
+	return cloneFindingCandidate(cloned), nil
 }
 
 type emittingRule struct {
@@ -2473,6 +2590,177 @@ func TestEvaluateSourceRuntimeRulesReplaysOnceAcrossMultipleRules(t *testing.T) 
 	}
 	if got := len(store.evidence); got != 2 {
 		t.Fatalf("len(store.evidence) = %d, want 2", got)
+	}
+}
+
+func TestEvaluateSourceRuntimeCandidateRulesDoesNotWriteProductionFindings(t *testing.T) {
+	registry, err := NewRegistry(&emittingRule{
+		spec:               &cerebrov1.RuleSpec{Id: "rule-a", Name: "Rule A"},
+		supportedSourceIDs: map[string]struct{}{"okta": {}},
+		triggerEventID:     "okta-audit-2",
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	replayer := &stubReplayer{events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS")}}
+	store := &stubFindingStore{
+		claims: map[string]*ports.ClaimRecord{
+			"claim-1": {
+				ID:            "claim-1",
+				RuntimeID:     "writer-okta-audit",
+				TenantID:      "writer",
+				SourceEventID: "okta-audit-2",
+				ObservedAt:    time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
+			},
+		},
+	}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		}},
+		replayer,
+		store,
+		store,
+		store,
+		store,
+		registry,
+	).WithFindingCandidateStore(store)
+
+	result, err := service.EvaluateSourceRuntimeCandidateRules(context.Background(), EvaluateCandidateRulesRequest{
+		RuntimeID:  "writer-okta-audit",
+		EventLimit: 1,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeCandidateRules() error = %v", err)
+	}
+	if got := result.EventsEvaluated; got != 1 {
+		t.Fatalf("EventsEvaluated = %d, want 1", got)
+	}
+	if got := store.upsertCount; got != 0 {
+		t.Fatalf("production UpsertFinding calls = %d, want 0", got)
+	}
+	if got := len(store.evidence); got != 0 {
+		t.Fatalf("production evidence rows = %d, want 0", got)
+	}
+	if got := store.updateStatusCallCount; got != 0 {
+		t.Fatalf("production status updates = %d, want 0", got)
+	}
+	if got := store.candidateUpsertCount; got != 1 {
+		t.Fatalf("candidate upserts = %d, want 1", got)
+	}
+	if got := len(result.Evaluations); got != 1 {
+		t.Fatalf("evaluations = %d, want 1", got)
+	}
+	evaluation := result.Evaluations[0]
+	if got := evaluation.Run.Status; got != "completed" {
+		t.Fatalf("candidate run status = %q, want completed", got)
+	}
+	if got := len(evaluation.Candidates); got != 1 {
+		t.Fatalf("candidates = %d, want 1", got)
+	}
+	candidate := evaluation.Candidates[0]
+	if got := candidate.Status; got != findingCandidateStatusCandidate {
+		t.Fatalf("candidate status = %q, want %q", got, findingCandidateStatusCandidate)
+	}
+	if got := candidate.Evidence[0].GetClaimIds()[0]; got != "claim-1" {
+		t.Fatalf("candidate evidence claim = %q, want claim-1", got)
+	}
+}
+
+func TestPromoteFindingCandidateWritesProductionFindingEvidenceAndAudit(t *testing.T) {
+	now := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
+	finding := &ports.FindingRecord{
+		ID:              "finding-1",
+		Fingerprint:     "fingerprint-1",
+		TenantID:        "writer",
+		RuntimeID:       "writer-okta-audit",
+		RuleID:          "rule-a",
+		Title:           "Rule A",
+		Severity:        "MEDIUM",
+		Status:          findingStatusOpen,
+		Summary:         "candidate summary",
+		ResourceURNs:    []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+		EventIDs:        []string{"okta-audit-2"},
+		FirstObservedAt: now,
+		LastObservedAt:  now,
+	}
+	evidence := &cerebrov1.FindingEvidence{
+		Id:             "evidence-1",
+		RuntimeId:      "writer-okta-audit",
+		RuleId:         "rule-a",
+		FindingId:      "finding-1",
+		RunId:          "candidate-run-1",
+		ClaimIds:       []string{"claim-1"},
+		EventIds:       []string{"okta-audit-2"},
+		GraphRootUrns:  []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+		CreatedAt:      timestamppb.New(now),
+		LastObservedAt: timestamppb.New(now),
+	}
+	candidate := &ports.FindingCandidateRecord{
+		ID:               "candidate-1",
+		TenantID:         "writer",
+		RuntimeID:        "writer-okta-audit",
+		RuleID:           "rule-a",
+		Fingerprint:      "fingerprint-1",
+		Status:           findingCandidateStatusCandidate,
+		Finding:          cloneFinding(finding),
+		Evidence:         []*cerebrov1.FindingEvidence{evidence},
+		LastRunID:        "candidate-run-1",
+		ObservationCount: 1,
+		FirstObservedAt:  now,
+		LastObservedAt:   now,
+	}
+	store := &stubFindingStore{
+		candidates: map[string]*ports.FindingCandidateRecord{candidate.ID: cloneFindingCandidate(candidate)},
+		findings:   map[string]*ports.FindingRecord{},
+	}
+	appendLog := &recordingAppendLog{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		}},
+		nil,
+		store,
+		store,
+		store,
+		store,
+		nil,
+	).WithFindingCandidateStore(store).WithAppendLog(appendLog)
+
+	result, err := service.PromoteFindingCandidate(context.Background(), PromoteCandidateRequest{
+		CandidateID:           "candidate-1",
+		PromotedBy:            "analyst@example.com",
+		Rationale:             "Validated against source data.",
+		ChangeTicket:          "SEC-123",
+		FalsePositiveReviewed: true,
+		GraphCoverageReviewed: true,
+	})
+	if err != nil {
+		t.Fatalf("PromoteFindingCandidate() error = %v", err)
+	}
+	if result.Finding == nil {
+		t.Fatal("PromoteFindingCandidate().Finding = nil")
+	}
+	if got := store.upsertCount; got == 0 {
+		t.Fatalf("production UpsertFinding calls = %d, want > 0", got)
+	}
+	if got := len(store.evidence); got != 1 {
+		t.Fatalf("production evidence rows = %d, want 1", got)
+	}
+	if got := result.Candidate.Status; got != findingCandidateStatusPromoted {
+		t.Fatalf("candidate status = %q, want promoted", got)
+	}
+	if got := result.Candidate.PromotedFindingID; got != "finding-1" {
+		t.Fatalf("promoted finding id = %q, want finding-1", got)
+	}
+	if result.DecisionID == "" {
+		t.Fatal("DecisionID is empty")
+	}
+	if got := len(appendLog.events); got != 1 {
+		t.Fatalf("append log events = %d, want 1", got)
+	}
+	if got := appendLog.events[0].GetKind(); got != workflowevents.EventKindKnowledgeDecisionRecorded {
+		t.Fatalf("promotion audit event kind = %q, want %q", got, workflowevents.EventKindKnowledgeDecisionRecorded)
 	}
 }
 
@@ -4758,6 +5046,19 @@ func cloneFindingEvidence(evidence *cerebrov1.FindingEvidence) *cerebrov1.Findin
 		return nil
 	}
 	return proto.Clone(evidence).(*cerebrov1.FindingEvidence)
+}
+
+func cloneFindingCandidate(candidate *ports.FindingCandidateRecord) *ports.FindingCandidateRecord {
+	if candidate == nil {
+		return nil
+	}
+	cloned := *candidate
+	cloned.Finding = cloneFinding(candidate.Finding)
+	cloned.Evidence = make([]*cerebrov1.FindingEvidence, 0, len(candidate.Evidence))
+	for _, evidence := range candidate.Evidence {
+		cloned.Evidence = append(cloned.Evidence, cloneFindingEvidence(evidence))
+	}
+	return &cloned
 }
 
 func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRecord) bool {

@@ -24,6 +24,7 @@ type Store struct {
 	sourceRuntimeTableReady   bool
 	findingEvidenceReady      bool
 	findingEvaluationRunReady bool
+	findingCandidateReady     bool
 	vulnDBTablesReady         bool
 	deviceAuthTablesReady     bool
 	startupLeaseTableReady    bool
