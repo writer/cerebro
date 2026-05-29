@@ -2774,6 +2774,87 @@ func TestPromoteFindingCandidateWritesProductionFindingEvidenceAndAudit(t *testi
 	}
 }
 
+func TestPromoteFindingCandidateAlreadyPromotedReturnsExistingFinding(t *testing.T) {
+	now := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
+	finding := &ports.FindingRecord{
+		ID:              "finding-1",
+		Fingerprint:     "fingerprint-1",
+		TenantID:        "writer",
+		RuntimeID:       "writer-okta-audit",
+		RuleID:          "rule-a",
+		Title:           "Rule A",
+		Severity:        "MEDIUM",
+		Status:          findingStatusOpen,
+		Summary:         "candidate summary",
+		FirstObservedAt: now,
+		LastObservedAt:  now,
+	}
+	candidate := &ports.FindingCandidateRecord{
+		ID:                "candidate-1",
+		TenantID:          "writer",
+		RuntimeID:         "writer-okta-audit",
+		RuleID:            "rule-a",
+		Fingerprint:       "fingerprint-1",
+		Status:            findingCandidateStatusPromoted,
+		Finding:           cloneFinding(finding),
+		LastRunID:         "candidate-run-1",
+		ObservationCount:  1,
+		FirstObservedAt:   now,
+		LastObservedAt:    now,
+		PromotedFindingID: "finding-1",
+		DecisionID:        "decision-1",
+		PromotedBy:        "analyst@example.com",
+		PromotedAt:        now,
+	}
+	store := &stubFindingStore{
+		candidateState: stubFindingCandidateState{
+			candidates: map[string]*ports.FindingCandidateRecord{candidate.ID: cloneFindingCandidate(candidate)},
+		},
+		findings: map[string]*ports.FindingRecord{
+			finding.ID: cloneFinding(finding),
+		},
+	}
+	appendLog := &recordingAppendLog{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		}},
+		nil,
+		store,
+		store,
+		store,
+		store,
+		nil,
+	).WithFindingCandidateStore(store).WithAppendLog(appendLog)
+
+	result, err := service.PromoteFindingCandidate(context.Background(), PromoteCandidateRequest{
+		CandidateID:           "candidate-1",
+		PromotedBy:            "analyst@example.com",
+		Rationale:             "Validated against source data.",
+		ChangeTicket:          "SEC-123",
+		FalsePositiveReviewed: true,
+		GraphCoverageReviewed: true,
+	})
+	if err != nil {
+		t.Fatalf("PromoteFindingCandidate() error = %v", err)
+	}
+	if got := result.DecisionID; got != "decision-1" {
+		t.Fatalf("DecisionID = %q, want decision-1", got)
+	}
+	if got := result.Finding.ID; got != "finding-1" {
+		t.Fatalf("Finding.ID = %q, want finding-1", got)
+	}
+	if got := store.upsertCount; got != 0 {
+		t.Fatalf("production UpsertFinding calls = %d, want 0", got)
+	}
+	if got := len(store.evidence); got != 0 {
+		t.Fatalf("production evidence rows = %d, want 0", got)
+	}
+	if got := len(appendLog.events); got != 0 {
+		t.Fatalf("append log events = %d, want 0", got)
+	}
+}
+
 func TestEvaluateSourceRuntimeRulesIncludesUnsupportedRulesWithOpenFindings(t *testing.T) {
 	registry, err := NewRegistry(&emittingRule{
 		spec:               &cerebrov1.RuleSpec{Id: "old-family-rule", Name: "Old Family Rule"},
