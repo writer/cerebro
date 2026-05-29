@@ -665,21 +665,12 @@ func (s *Source) httpClient() *http.Client {
 		client = s.client
 		allowLoopback = s.allowLoopbackBaseURL
 	}
-	if client == nil {
-		client = &http.Client{Timeout: httpTimeout}
-	}
-	cloned := *client
-	if cloned.CheckRedirect == nil {
-		cloned.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
-			return http.ErrUseLastResponse
-		}
-	}
-	transport := cloned.Transport
-	if transport == nil {
-		transport = http.DefaultTransport
-	}
-	cloned.Transport = sourcehttp.SafeRoundTripper{Base: transport, SourceID: "vulnview", AllowLoopback: allowLoopback, LookupIPAddrs: lookupIPAddrs(s)}
-	return &cloned
+	return sourcehttp.HardenClient(client, sourcehttp.ClientOptions{
+		SourceID:      "vulnview",
+		Timeout:       httpTimeout,
+		AllowLoopback: allowLoopback,
+		LookupIPAddrs: lookupIPAddrs(s),
+	})
 }
 
 func (settings settings) query() url.Values {

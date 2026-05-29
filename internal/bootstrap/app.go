@@ -135,7 +135,7 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 			app.dpopVerifier = dpop
 			app.riskScorer = riskScorer
 			app.observationStore = obsStore
-			app.deviceHandler = newDeviceAuthHTTPHandler(service, cfg.Auth.DeviceAuth)
+			app.deviceHandler = newDeviceAuthHTTPHandler(service, cfg.Auth.DeviceAuth, cfg.Auth.RequestOrigin)
 		}
 	}
 	mux := http.NewServeMux()

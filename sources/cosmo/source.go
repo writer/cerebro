@@ -939,21 +939,12 @@ func minTime(left time.Time, right time.Time) time.Time {
 }
 
 func httpClientNoRedirect(client *http.Client, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) *http.Client {
-	if client == nil {
-		client = &http.Client{Timeout: httpTimeout}
-	}
-	cloned := *client
-	if cloned.CheckRedirect == nil {
-		cloned.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
-			return http.ErrUseLastResponse
-		}
-	}
-	transport := cloned.Transport
-	if transport == nil {
-		transport = http.DefaultTransport
-	}
-	cloned.Transport = sourcehttp.SafeRoundTripper{Base: transport, SourceID: "cosmo", AllowLoopback: allowLoopback, LookupIPAddrs: lookupIPAddrs}
-	return &cloned
+	return sourcehttp.HardenClient(client, sourcehttp.ClientOptions{
+		SourceID:      "cosmo",
+		Timeout:       httpTimeout,
+		AllowLoopback: allowLoopback,
+		LookupIPAddrs: lookupIPAddrs,
+	})
 }
 
 func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, error) {

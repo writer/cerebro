@@ -140,6 +140,26 @@ RETURN b.urn AS urn LIMIT 25`,
 	}
 }
 
+func FuzzValidatorMaliciousCorpus(f *testing.F) {
+	for _, cypher := range []string{
+		`MATCH (a:Entity {tenant_id:$tenant_id}) WITH 'x //' AS c CREATE (b:Entity) RETURN b LIMIT 25`,
+		`MATCH (a:Entity {tenant_id:$tenant_id}) WITH "/*" AS c MATCH (b:Entity) RETURN b LIMIT 25`,
+		`MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT 25 UNION MATCH (x:Entity {tenant_id: $tenant_id}) RETURN x LIMIT 1000`,
+		`MATCH (seed:Entity {tenant_id: $tenant_id}) RETURN [(x:Entity {metadata: {tenant_id: $tenant_id}}) | x.urn] AS urn LIMIT 25`,
+		`LOAD CSV FROM 'https://example.test/x.csv' AS row RETURN row LIMIT 1`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) CALL db.labels() YIELD label RETURN label LIMIT 25`,
+	} {
+		f.Add(cypher)
+	}
+	validator := NewValidator(nil, ValidatorOptions{})
+	f.Fuzz(func(t *testing.T, cypher string) {
+		if len(cypher) > 4096 {
+			t.Skip("query too large for validator fuzz seed")
+		}
+		_, _, _ = validator.validate(context.Background(), cypher, map[string]any{"tenant_id": "example"})
+	})
+}
+
 func TestValidatorAcceptsBoundedTenantScopedRead(t *testing.T) {
 	store := &validatorStore{}
 	validator := NewValidator(store, ValidatorOptions{Explain: true})

@@ -90,13 +90,14 @@ func authMiddleware(cfg config.AuthConfig, deps AuthDependencies, next http.Hand
 		started := time.Now()
 		recorder := &accessAuditResponseWriter{ResponseWriter: w}
 		auditResult := &accessAuditResult{RequestedTenantID: requestTenantHint(r)}
+		origin := resolveRequestOrigin(r, cfg.RequestOrigin)
 		principal := authPrincipal{}
 		outcome := "denied"
 		denialReason := ""
 		defer func() {
 			status := recorder.Status()
 			finalOutcome, finalDenialReason := accessAuditOutcome(status, outcome, denialReason, auditResult.ConnectCode)
-			emitAccessAuditEvent(r, principal, status, time.Since(started), finalOutcome, finalDenialReason, auditResult)
+			emitAccessAuditEvent(r, origin, principal, status, time.Since(started), finalOutcome, finalDenialReason, auditResult)
 		}()
 		if isUnauthenticatedDevicePath(r.URL.Path) {
 			outcome = "allowed"
@@ -113,7 +114,7 @@ func authMiddleware(cfg config.AuthConfig, deps AuthDependencies, next http.Hand
 			return
 		}
 		if deviceJKT != "" {
-			if err := verifyDPoPHeader(deps.DPoPVerifier, r, deviceJKT, presentedToken); err != nil {
+			if err := verifyDPoPHeader(deps.DPoPVerifier, r, origin.PublicURL, deviceJKT, presentedToken); err != nil {
 				denialReason = "dpop_invalid"
 				writeDeviceAuthServiceError(recorder, err)
 				return
@@ -123,7 +124,7 @@ func authMiddleware(cfg config.AuthConfig, deps AuthDependencies, next http.Hand
 			scoreSig := risk.Signal{
 				DeviceID:  principal.DeviceID,
 				TenantID:  principal.TenantID,
-				RemoteIP:  net.ParseIP(accessAuditRemoteIP(r.RemoteAddr)),
+				RemoteIP:  net.ParseIP(origin.ClientIP),
 				UserAgent: r.Header.Get("User-Agent"),
 				Method:    r.Method,
 				Path:      r.URL.Path,
@@ -168,7 +169,7 @@ func authMiddleware(cfg config.AuthConfig, deps AuthDependencies, next http.Hand
 // authenticated device JWT carries a cnf.jkt claim. The proof must be a
 // valid DPoP+JWT, htm/htu must match the request, and the JWK thumbprint
 // must equal the expected jkt that was bound at enroll time.
-func verifyDPoPHeader(verifier *deviceauth.DPoPVerifier, r *http.Request, expectedJKT string, accessToken string) error {
+func verifyDPoPHeader(verifier *deviceauth.DPoPVerifier, r *http.Request, publicURL string, expectedJKT string, accessToken string) error {
 	if verifier == nil {
 		return nil
 	}
@@ -176,19 +177,10 @@ func verifyDPoPHeader(verifier *deviceauth.DPoPVerifier, r *http.Request, expect
 	if proof == "" {
 		return deviceauth.ErrDPoPMissing
 	}
-	scheme := "https"
-	if r.TLS == nil {
-		scheme = "http"
+	if strings.TrimSpace(publicURL) == "" && r != nil {
+		publicURL = resolveRequestOrigin(r, config.RequestOriginConfig{}).PublicURL
 	}
-	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); forwarded != "" {
-		scheme = forwarded
-	}
-	host := strings.TrimSpace(r.Host)
-	if host == "" {
-		host = "cerebro"
-	}
-	url := scheme + "://" + host + r.URL.RequestURI()
-	res, err := verifier.Verify(proof, r.Method, url, accessToken)
+	res, err := verifier.Verify(proof, r.Method, publicURL, accessToken)
 	if err != nil {
 		return err
 	}
@@ -910,7 +902,7 @@ func mergeAccessAuditTenantID(existing string, tenantID string) string {
 	return "multiple"
 }
 
-func emitAccessAuditEvent(r *http.Request, principal authPrincipal, status int, duration time.Duration, outcome string, denialReason string, auditResult *accessAuditResult) {
+func emitAccessAuditEvent(r *http.Request, origin requestOrigin, principal authPrincipal, status int, duration time.Duration, outcome string, denialReason string, auditResult *accessAuditResult) {
 	if r == nil {
 		return
 	}
@@ -928,10 +920,10 @@ func emitAccessAuditEvent(r *http.Request, principal authPrincipal, status int, 
 		telemetry.Field{Key: "operation_type", Value: operation.Type},
 		telemetry.Field{Key: "duration_ms", Value: duration.Milliseconds()},
 	)
-	if remoteIP := accessAuditRemoteIP(r.RemoteAddr); remoteIP != "" {
+	if remoteIP := strings.TrimSpace(origin.RemoteIP); remoteIP != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "remote_ip", Value: remoteIP})
 	}
-	if clientIP := accessAuditClientIP(r); clientIP != "" {
+	if clientIP := strings.TrimSpace(origin.ClientIP); clientIP != "" && clientIP != strings.TrimSpace(origin.RemoteIP) {
 		attrs = attrs.WithField(telemetry.Field{Key: "client_ip", Value: clientIP})
 	}
 	if requestID := accessAuditRequestID(r); requestID != "" {

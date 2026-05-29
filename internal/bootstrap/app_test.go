@@ -2219,6 +2219,44 @@ func TestAccessAuditClientIPTrustsForwardedForFromPrivateRemote(t *testing.T) {
 	}
 }
 
+func TestResolveRequestOriginUsesConfiguredPublicOrigin(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "http://internal.local/platform/devices/token?rotate=true", nil)
+	req.RemoteAddr = "10.0.0.5:54321"
+	req.Host = "internal.local"
+	req.Header.Set("X-Forwarded-Proto", "http")
+	req.Header.Set("X-Forwarded-Host", "attacker.example")
+	req.Header.Set("X-Forwarded-For", "198.51.100.10, 10.0.0.5")
+
+	origin := resolveRequestOrigin(req, config.RequestOriginConfig{
+		PublicOrigin:      "https://api.writer.com",
+		TrustedProxyCIDRs: []string{"10.0.0.0/8"},
+		TrustedProxyCount: 1,
+	})
+	if got := origin.PublicURL; got != "https://api.writer.com/platform/devices/token?rotate=true" {
+		t.Fatalf("PublicURL = %q, want configured public origin URL", got)
+	}
+	if got := origin.ClientIP; got != "198.51.100.10" {
+		t.Fatalf("ClientIP = %q, want forwarded client", got)
+	}
+}
+
+func TestResolveRequestOriginIgnoresForwardedHostFromUntrustedRemote(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "http://internal.local/platform/devices/token", nil)
+	req.RemoteAddr = "198.51.100.20:54321"
+	req.Host = "internal.local"
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Header.Set("X-Forwarded-Host", "attacker.example")
+	req.Header.Set("X-Forwarded-For", "203.0.113.10")
+
+	origin := resolveRequestOrigin(req, config.RequestOriginConfig{TrustedProxyCIDRs: []string{"10.0.0.0/8"}})
+	if got := origin.PublicURL; got != "http://internal.local/platform/devices/token" {
+		t.Fatalf("PublicURL = %q, want direct request URL", got)
+	}
+	if got := origin.ClientIP; got != "198.51.100.20" {
+		t.Fatalf("ClientIP = %q, want remote address", got)
+	}
+}
+
 func TestAccessAuditOperationClassifiesFamiliesAndSensitiveActions(t *testing.T) {
 	for _, tt := range []struct {
 		method        string

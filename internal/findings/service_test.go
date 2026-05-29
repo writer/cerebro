@@ -109,6 +109,8 @@ type stubFindingCandidateState struct {
 	upsertCount       int
 	markPromotedCount int
 	markRejectedCount int
+	beforeMarkPromote func()
+	beforeMarkReject  func()
 }
 
 type stubFindingBackfillState struct {
@@ -665,6 +667,9 @@ func (s *stubFindingStore) ListFindingCandidates(_ context.Context, request port
 
 func (s *stubFindingStore) MarkFindingCandidatePromoted(_ context.Context, promotion ports.FindingCandidatePromotion) (*ports.FindingCandidateRecord, error) {
 	s.candidateState.markPromotedCount++
+	if s.candidateState.beforeMarkPromote != nil {
+		s.candidateState.beforeMarkPromote()
+	}
 	candidate, ok := s.candidateState.candidates[strings.TrimSpace(promotion.CandidateID)]
 	if !ok {
 		return nil, ports.ErrFindingCandidateNotFound
@@ -686,6 +691,9 @@ func (s *stubFindingStore) MarkFindingCandidatePromoted(_ context.Context, promo
 
 func (s *stubFindingStore) MarkFindingCandidateRejected(_ context.Context, rejection ports.FindingCandidateRejection) (*ports.FindingCandidateRecord, error) {
 	s.candidateState.markRejectedCount++
+	if s.candidateState.beforeMarkReject != nil {
+		s.candidateState.beforeMarkReject()
+	}
 	candidate, ok := s.candidateState.candidates[strings.TrimSpace(rejection.CandidateID)]
 	if !ok {
 		return nil, ports.ErrFindingCandidateNotFound
@@ -2967,6 +2975,79 @@ func TestPromoteFindingCandidateAlreadyPromotedReturnsExistingFinding(t *testing
 	}
 }
 
+func TestPromoteFindingCandidateRecoversConcurrentCompletedPromotion(t *testing.T) {
+	now := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
+	finding := &ports.FindingRecord{
+		ID:              "finding-1",
+		Fingerprint:     "fingerprint-1",
+		TenantID:        "writer",
+		RuntimeID:       "writer-okta-audit",
+		RuleID:          "rule-a",
+		Status:          findingStatusOpen,
+		FirstObservedAt: now,
+		LastObservedAt:  now,
+	}
+	candidate := &ports.FindingCandidateRecord{
+		ID:               "candidate-1",
+		TenantID:         "writer",
+		RuntimeID:        "writer-okta-audit",
+		RuleID:           "rule-a",
+		Fingerprint:      "fingerprint-1",
+		Status:           findingCandidateStatusCandidate,
+		Finding:          cloneFinding(finding),
+		Evidence:         []*cerebrov1.FindingEvidence{{Id: "evidence-1", FindingId: "finding-1"}},
+		LastRunID:        "candidate-run-1",
+		ObservationCount: 1,
+		FirstObservedAt:  now,
+		LastObservedAt:   now,
+	}
+	decisionID := candidatePromotionDecisionID(candidate, finding, candidateLifecycleObservedAt(candidate, now))
+	store := &stubFindingStore{
+		candidateState: stubFindingCandidateState{
+			candidates: map[string]*ports.FindingCandidateRecord{candidate.ID: cloneFindingCandidate(candidate)},
+		},
+		findings: map[string]*ports.FindingRecord{},
+	}
+	store.candidateState.beforeMarkPromote = func() {
+		updated := cloneFindingCandidate(candidate)
+		updated.Status = findingCandidateStatusPromoted
+		updated.PromotedFindingID = finding.ID
+		updated.DecisionID = decisionID
+		updated.PromotedBy = "analyst@example.com"
+		updated.PromotedAt = now
+		store.candidateState.candidates[updated.ID] = updated
+	}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		}},
+		nil,
+		store,
+		store,
+		store,
+		store,
+		nil,
+	).WithFindingCandidateStore(store).WithAppendLog(&recordingAppendLog{})
+
+	result, err := service.PromoteFindingCandidate(context.Background(), PromoteCandidateRequest{
+		CandidateID:           "candidate-1",
+		PromotedBy:            "analyst@example.com",
+		Rationale:             "Validated against source data.",
+		ChangeTicket:          "SEC-123",
+		FalsePositiveReviewed: true,
+		GraphCoverageReviewed: true,
+	})
+	if err != nil {
+		t.Fatalf("PromoteFindingCandidate() error = %v", err)
+	}
+	if got := result.Candidate.Status; got != findingCandidateStatusPromoted {
+		t.Fatalf("candidate status = %q, want promoted", got)
+	}
+	if got := result.DecisionID; got != decisionID {
+		t.Fatalf("decision id = %q, want recovered %q", got, decisionID)
+	}
+}
+
 func TestRejectFindingCandidateRecordsAuditWithoutProductionWrites(t *testing.T) {
 	now := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
 	finding := &ports.FindingRecord{
@@ -3102,6 +3183,67 @@ func TestRejectFindingCandidateDoesNotMarkRejectedBeforeAudit(t *testing.T) {
 	}
 	if got := store.candidateState.candidates["candidate-1"].Status; got != findingCandidateStatusCandidate {
 		t.Fatalf("candidate status = %q, want candidate", got)
+	}
+}
+
+func TestRejectFindingCandidateRecoversConcurrentCompletedRejection(t *testing.T) {
+	now := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
+	finding := &ports.FindingRecord{
+		ID:              "finding-1",
+		Fingerprint:     "fingerprint-1",
+		TenantID:        "writer",
+		RuntimeID:       "writer-okta-audit",
+		RuleID:          "rule-a",
+		Status:          findingStatusOpen,
+		FirstObservedAt: now,
+		LastObservedAt:  now,
+	}
+	candidate := &ports.FindingCandidateRecord{
+		ID:               "candidate-1",
+		TenantID:         "writer",
+		RuntimeID:        "writer-okta-audit",
+		RuleID:           "rule-a",
+		Fingerprint:      "fingerprint-1",
+		Status:           findingCandidateStatusCandidate,
+		Finding:          cloneFinding(finding),
+		Evidence:         []*cerebrov1.FindingEvidence{{Id: "evidence-1", FindingId: "finding-1"}},
+		LastRunID:        "candidate-run-1",
+		ObservationCount: 1,
+		FirstObservedAt:  now,
+		LastObservedAt:   now,
+	}
+	decisionID := candidateRejectionDecisionID(candidate, candidateLifecycleObservedAt(candidate, now))
+	store := &stubFindingStore{
+		candidateState: stubFindingCandidateState{
+			candidates: map[string]*ports.FindingCandidateRecord{candidate.ID: cloneFindingCandidate(candidate)},
+		},
+		findings: map[string]*ports.FindingRecord{},
+	}
+	store.candidateState.beforeMarkReject = func() {
+		updated := cloneFindingCandidate(candidate)
+		updated.Status = findingCandidateStatusRejected
+		updated.DecisionID = decisionID
+		updated.RejectedBy = "analyst@example.com"
+		updated.RejectedAt = now
+		store.candidateState.candidates[updated.ID] = updated
+	}
+	service := NewWithRegistry(nil, nil, store, store, store, store, nil).
+		WithFindingCandidateStore(store).
+		WithAppendLog(&recordingAppendLog{})
+
+	result, err := service.RejectFindingCandidate(context.Background(), RejectCandidateRequest{
+		CandidateID: "candidate-1",
+		RejectedBy:  "analyst@example.com",
+		Rationale:   "Confirmed false positive.",
+	})
+	if err != nil {
+		t.Fatalf("RejectFindingCandidate() error = %v", err)
+	}
+	if got := result.Candidate.Status; got != findingCandidateStatusRejected {
+		t.Fatalf("candidate status = %q, want rejected", got)
+	}
+	if got := result.DecisionID; got != decisionID {
+		t.Fatalf("decision id = %q, want recovered %q", got, decisionID)
 	}
 }
 

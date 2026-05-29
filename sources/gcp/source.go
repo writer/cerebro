@@ -779,7 +779,7 @@ func getJSON(ctx context.Context, source *Source, settings settings, defaultBase
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	client := http.DefaultClient
+	client := sourcehttp.NewClient(sourcehttp.ClientOptions{SourceID: "gcp"})
 	if source != nil && source.client != nil {
 		client = source.client
 	}
@@ -802,20 +802,12 @@ func getJSON(ctx context.Context, source *Source, settings settings, defaultBase
 }
 
 func (s *Source) safeClient() *http.Client {
-	return &http.Client{
-		Timeout:       30 * time.Second,
-		Transport:     s.safeTransport(),
-		CheckRedirect: sourcehttp.NoRedirect,
-	}
-}
-
-func (s *Source) safeTransport() http.RoundTripper {
-	return sourcehttp.SafeRoundTripper{
-		Base:          http.DefaultTransport,
+	return sourcehttp.NewClient(sourcehttp.ClientOptions{
 		SourceID:      "gcp",
+		Timeout:       30 * time.Second,
 		AllowLoopback: s != nil && s.allowLoopbackBaseURL,
 		LookupIPAddrs: lookupIPAddrs(s),
-	}
+	})
 }
 
 func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, error) {

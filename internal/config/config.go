@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"sort"
 	"strconv"
@@ -99,6 +101,15 @@ type AuthConfig struct {
 	CapabilityTokenAudience string
 	AllowedTenants          []string
 	DeviceAuth              DeviceAuthConfig
+	RequestOrigin           RequestOriginConfig
+}
+
+// RequestOriginConfig controls how bootstrap reconstructs client IPs and public
+// request URLs when requests traverse reverse proxies.
+type RequestOriginConfig struct {
+	PublicOrigin      string
+	TrustedProxyCIDRs []string
+	TrustedProxyCount int
 }
 
 // DeviceAuthSigningKey is one Ed25519 keypair the issuer can sign with. This
@@ -201,6 +212,10 @@ func Load() (Config, error) {
 			CapabilityTokenSecrets:  parseCSV(os.Getenv("CEREBRO_CAPABILITY_TOKEN_SECRETS")),
 			CapabilityTokenAudience: strings.TrimSpace(os.Getenv("CEREBRO_CAPABILITY_TOKEN_AUDIENCE")),
 			AllowedTenants:          parseCSV(os.Getenv("CEREBRO_ALLOWED_TENANTS")),
+			RequestOrigin: RequestOriginConfig{
+				PublicOrigin:      strings.TrimRight(strings.TrimSpace(os.Getenv("CEREBRO_PUBLIC_ORIGIN")), "/"),
+				TrustedProxyCIDRs: parseCSV(os.Getenv("CEREBRO_TRUSTED_PROXY_CIDRS")),
+			},
 		},
 	}
 	authEnabled, err := parseBoolEnv("CEREBRO_API_AUTH_ENABLED", false)
@@ -208,6 +223,15 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	cfg.Auth.Enabled = authEnabled
+	if cfg.Auth.RequestOrigin.TrustedProxyCount, err = parseIntEnv("CEREBRO_TRUSTED_PROXY_COUNT", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.Auth.RequestOrigin.TrustedProxyCount < 0 {
+		return Config{}, fmt.Errorf("CEREBRO_TRUSTED_PROXY_COUNT must be greater than or equal to zero")
+	}
+	if err := validateRequestOriginConfig(cfg.Auth.RequestOrigin); err != nil {
+		return Config{}, err
+	}
 	if len(cfg.Auth.CapabilityTokenSecrets) > 0 && cfg.Auth.CapabilityTokenAudience == "" {
 		cfg.Auth.CapabilityTokenAudience = "cerebro-api"
 	}
@@ -285,6 +309,27 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("CEREBRO_API_KEYS, CEREBRO_API_CREDENTIALS_JSON, or CEREBRO_CAPABILITY_TOKEN_SECRETS is required when CEREBRO_API_AUTH_ENABLED=true")
 	}
 	return cfg, nil
+}
+
+func validateRequestOriginConfig(cfg RequestOriginConfig) error {
+	if raw := strings.TrimSpace(cfg.PublicOrigin); raw != "" {
+		parsed, err := url.Parse(strings.TrimRight(raw, "/"))
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			return fmt.Errorf("CEREBRO_PUBLIC_ORIGIN must be an http(s) origin")
+		}
+		if parsed.Scheme != "https" && parsed.Scheme != "http" {
+			return fmt.Errorf("CEREBRO_PUBLIC_ORIGIN must use http or https")
+		}
+		if parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || strings.Trim(parsed.Path, "/") != "" {
+			return fmt.Errorf("CEREBRO_PUBLIC_ORIGIN must not include user info, path, query, or fragment")
+		}
+	}
+	for _, rawCIDR := range cfg.TrustedProxyCIDRs {
+		if _, _, err := net.ParseCIDR(strings.TrimSpace(rawCIDR)); err != nil {
+			return fmt.Errorf("CEREBRO_TRUSTED_PROXY_CIDRS contains invalid CIDR %q: %w", rawCIDR, err)
+		}
+	}
+	return nil
 }
 
 func parseBoolEnv(name string, defaultValue bool) (bool, error) {
