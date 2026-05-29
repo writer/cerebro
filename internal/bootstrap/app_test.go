@@ -2292,6 +2292,19 @@ func TestResolveRequestOriginRejectsMalformedTrailingForwardedOrigin(t *testing.
 	}
 }
 
+func TestResolveRequestOriginDoesNotMixForwardedOriginWithFallback(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "http://internal.local/sources", nil)
+	req.RemoteAddr = "10.0.1.20:443"
+	req.Host = "internal.local"
+	req.Header.Set("X-Forwarded-Proto", "https, gopher")
+	req.Header.Set("X-Forwarded-Host", "api.writer.com, api.writer.com")
+
+	origin := resolveRequestOrigin(req, config.RequestOriginConfig{})
+	if got := origin.PublicURL; got != "http://internal.local/sources" {
+		t.Fatalf("PublicURL = %q, want request origin when forwarded proto is malformed", got)
+	}
+}
+
 func TestResolveRequestOriginIgnoresForwardedHostFromUntrustedRemote(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "http://internal.local/platform/devices/token", nil)
 	req.RemoteAddr = "198.51.100.20:54321"
