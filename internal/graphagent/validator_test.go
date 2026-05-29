@@ -30,6 +30,11 @@ func TestValidatorRejectsUnsafeCypher(t *testing.T) {
 			reason: "apoc",
 		},
 		{
+			name:   "apoc function",
+			cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN apoc.convert.fromJsonMap(e.attributes_json).source_family AS source_family LIMIT 25`,
+			reason: "APOC",
+		},
+		{
 			name:   "missing limit",
 			cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e.urn`,
 			reason: "LIMIT",

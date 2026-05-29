@@ -3,6 +3,7 @@ package graphagent
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/ports"
@@ -44,7 +45,7 @@ LIMIT 25`,
 	if err != nil {
 		t.Fatalf("Stream() error = %v", err)
 	}
-	assertEventNames(t, events, []string{EventProgress, EventRationale, EventProgress, EventCypher, EventProgress, EventRows, EventProgress, EventSummary, EventDone})
+	assertEventNames(t, events, []string{EventProgress, EventRationale, EventQueryPlan, EventProgress, EventCypher, EventProgress, EventRows, EventProgress, EventSummary, EventDone})
 	progressEvent, ok := events[0].Data.(ProgressEvent)
 	if !ok {
 		t.Fatalf("progress event data = %T", events[0].Data)
@@ -52,9 +53,9 @@ LIMIT 25`,
 	if progressEvent.Stage != "drafting_query" {
 		t.Fatalf("first progress stage = %q, want drafting_query", progressEvent.Stage)
 	}
-	rowsEvent, ok := events[5].Data.(RowsEvent)
+	rowsEvent, ok := events[6].Data.(RowsEvent)
 	if !ok {
-		t.Fatalf("rows event data = %T", events[5].Data)
+		t.Fatalf("rows event data = %T", events[6].Data)
 	}
 	if len(rowsEvent.Rows) != 1 || rowsEvent.Rows[0]["entity_urn"] != "urn:cerebro:example:asset:alpha" {
 		t.Fatalf("rows = %#v", rowsEvent.Rows)
@@ -62,9 +63,9 @@ LIMIT 25`,
 	if rowsEvent.Graph == nil || rowsEvent.Graph.Root == nil {
 		t.Fatalf("graph neighborhood missing")
 	}
-	summaryEvent, ok := events[7].Data.(SummaryEvent)
+	summaryEvent, ok := events[8].Data.(SummaryEvent)
 	if !ok {
-		t.Fatalf("summary event data = %T", events[7].Data)
+		t.Fatalf("summary event data = %T", events[8].Data)
 	}
 	if len(summaryEvent.Citations) != 1 || summaryEvent.Citations[0].URN != "urn:cerebro:example:asset:alpha" {
 		t.Fatalf("citations = %#v", summaryEvent.Citations)
@@ -90,17 +91,71 @@ func TestServiceRefusesValidatorRejectedCypher(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Stream() error = %v", err)
 	}
-	assertEventNames(t, events, []string{EventProgress, EventRationale, EventProgress, EventCypher, EventSummary, EventDone})
-	cypherEvent := events[3].Data.(CypherEvent)
+	assertEventNames(t, events, []string{EventProgress, EventRationale, EventQueryPlan, EventProgress, EventCypher, EventSummary, EventDone})
+	cypherEvent := events[4].Data.(CypherEvent)
 	if cypherEvent.Validator.OK {
 		t.Fatalf("validator ok = true, want false")
 	}
-	done := events[5].Data.(DoneEvent)
+	done := events[6].Data.(DoneEvent)
 	if !done.CypherRefused {
 		t.Fatalf("done.CypherRefused = false, want true")
 	}
 	if len(store.requests) != 0 {
 		t.Fatalf("store executed rejected query: %#v", store.requests)
+	}
+}
+
+func TestServiceConvertsFindingSourceAggregationDraft(t *testing.T) {
+	store := &askStore{
+		rows: []ports.CypherRow{{
+			Values: map[string]any{
+				"source_family": "okta",
+				"finding_count": int64(3),
+			},
+		}},
+	}
+	llm := &StubLLMClient{
+		DraftResponse: &DraftResponse{
+			Rationale: "Counting findings by source family.",
+			Cypher: `MATCH (f:Entity {tenant_id: $tenant_id})
+WHERE f.entity_type = 'Finding'
+OPTIONAL MATCH (f)-[r:RELATION]->(src:Entity {tenant_id: $tenant_id})
+WHERE r.relation = 'HAS_SOURCE' OR r.relation = 'BELONGS_TO_SOURCE'
+WITH f, src,
+     coalesce(src.label,
+              apoc.convert.fromJsonMap(f.attributes_json).source_family,
+              apoc.convert.fromJsonMap(f.attributes_json).sourceFamily,
+              'Unknown') AS source_family
+RETURN source_family, count(f) AS finding_count
+ORDER BY finding_count DESC
+LIMIT 10`,
+		},
+		Summary: "okta has the most findings.",
+	}
+	service := NewService(store, llm, ValidatorOptions{})
+
+	var events []Event
+	err := service.Stream(context.Background(), AskRequest{TenantID: "writer", Question: "top finding sources"}, func(event Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	assertEventNames(t, events, []string{EventProgress, EventRationale, EventQueryPlan, EventProgress, EventCypher, EventProgress, EventRows, EventProgress, EventSummary, EventDone})
+	planEvent := events[2].Data.(QueryPlanEvent)
+	if planEvent.Plan.Intent != IntentAggregateFindingsBySource || !planEvent.Deterministic || !planEvent.Corrected {
+		t.Fatalf("query plan event = %#v, want deterministic corrected source aggregation", planEvent)
+	}
+	cypher := events[4].Data.(CypherEvent)
+	if !cypher.Validator.OK {
+		t.Fatalf("validator = %#v, want ok", cypher.Validator)
+	}
+	if strings.Contains(cypher.Cypher, "apoc.") || strings.Contains(cypher.Cypher, "HAS_SOURCE") || strings.Contains(cypher.Cypher, "entity_type = 'Finding'") {
+		t.Fatalf("cypher was not canonicalized:\n%s", cypher.Cypher)
+	}
+	if len(store.requests) != 1 || !strings.Contains(store.requests[0].Query, "entity_type: 'finding'") || !strings.Contains(store.requests[0].Query, "count(DISTINCT f)") {
+		t.Fatalf("store request = %#v", store.requests)
 	}
 }
 

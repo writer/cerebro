@@ -11,6 +11,7 @@ import (
 const (
 	EventProgress  = "progress"
 	EventRationale = "rationale"
+	EventQueryPlan = "query_plan"
 	EventCypher    = "cypher"
 	EventRows      = "rows"
 	EventSummary   = "summary"
@@ -24,8 +25,10 @@ type Event struct {
 }
 
 type ValidatorResult struct {
-	OK     bool   `json:"ok"`
-	Reason string `json:"reason,omitempty"`
+	OK       bool     `json:"ok"`
+	Code     string   `json:"code,omitempty"`
+	Reason   string   `json:"reason,omitempty"`
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 type ProgressEvent struct {
@@ -36,6 +39,14 @@ type ProgressEvent struct {
 
 type RationaleEvent struct {
 	Text string `json:"text"`
+}
+
+type QueryPlanEvent struct {
+	Plan          AskQueryPlan           `json:"plan"`
+	Diagnostics   []ConversionDiagnostic `json:"diagnostics,omitempty"`
+	Source        string                 `json:"source"`
+	Deterministic bool                   `json:"deterministic"`
+	Corrected     bool                   `json:"corrected"`
 }
 
 type CypherEvent struct {

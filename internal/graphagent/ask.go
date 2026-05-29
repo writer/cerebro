@@ -85,7 +85,11 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		return err
 	}
 
-	cypher := strings.TrimSpace(draft.Cypher)
+	conversion := convertDraftToQuery(request, draft, defaultMaxRows)
+	cypher := strings.TrimSpace(conversion.Cypher)
+	if err := emitQueryPlan(emit, conversion); err != nil {
+		return err
+	}
 	if cypher == "" {
 		reason := firstNonEmpty(draft.Refusal, "LLM refused to draft Cypher")
 		return emitRefusal(emit, traceID, started, cypher, reason)
@@ -97,6 +101,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	if err != nil {
 		return err
 	}
+	validation.Warnings = append(validation.Warnings, conversionWarnings(conversion.Diagnostics)...)
 	if err := emit(Event{Name: EventCypher, Data: CypherEvent{Cypher: cypher, Validator: validation}}); err != nil {
 		return err
 	}
@@ -178,6 +183,26 @@ func askParams(request AskRequest) map[string]any {
 		"tenant_id": strings.TrimSpace(request.TenantID),
 		"scope_urn": strings.TrimSpace(request.ScopeURN),
 	}
+}
+
+func emitQueryPlan(emit Emitter, conversion conversionResult) error {
+	return emit(Event{Name: EventQueryPlan, Data: QueryPlanEvent{
+		Plan:          conversion.Plan,
+		Diagnostics:   conversion.Diagnostics,
+		Source:        conversion.Source,
+		Deterministic: conversion.Deterministic,
+		Corrected:     conversion.Corrected,
+	}})
+}
+
+func conversionWarnings(diagnostics []ConversionDiagnostic) []string {
+	var warnings []string
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Level == "warn" || diagnostic.Level == "info" {
+			warnings = append(warnings, diagnostic.Code+": "+diagnostic.Message)
+		}
+	}
+	return warnings
 }
 
 func emitRefusal(emit Emitter, traceID string, started time.Time, cypher string, reason string) error {
@@ -292,11 +317,7 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-const graphAgentSchemaHint = `Graph shape:
-- Entity nodes use label Entity with properties tenant_id, urn, entity_type, label.
-- Relationships use label RELATION with relation and attributes_json properties.
-- Always filter at least one Entity by tenant_id: $tenant_id.
-- Prefer returning URNs and compact scalar columns.`
+var graphAgentSchemaHint = canonicalGraphOntology.PromptHint()
 
 const graphAgentGuardrail = `Rules:
 - Generate read-only Cypher only.

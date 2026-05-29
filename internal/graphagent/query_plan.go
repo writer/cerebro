@@ -1,0 +1,319 @@
+package graphagent
+
+import (
+	"fmt"
+	"regexp"
+	"strings"
+)
+
+const (
+	IntentRawCypher                 = "raw_cypher"
+	IntentAggregateFindingsBySource = "aggregate_findings_by_source"
+	IntentTopRiskFindings           = "top_risk_findings"
+	IntentExplainFinding            = "explain_finding"
+	IntentIdentityBridge            = "identity_bridge"
+	IntentConnectorHealth           = "connector_health"
+)
+
+type AskQueryPlan struct {
+	Intent     string            `json:"intent"`
+	Confidence float64           `json:"confidence,omitempty"`
+	ScopeURN   string            `json:"scope_urn,omitempty"`
+	Limit      int               `json:"limit,omitempty"`
+	Filters    map[string]string `json:"filters,omitempty"`
+	GroupBy    string            `json:"group_by,omitempty"`
+}
+
+type ConversionDiagnostic struct {
+	Level   string `json:"level"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+type conversionResult struct {
+	Plan          AskQueryPlan
+	Cypher        string
+	Diagnostics   []ConversionDiagnostic
+	Source        string
+	Deterministic bool
+	Corrected     bool
+}
+
+var (
+	upperRelationPattern  = regexp.MustCompile(`:\s*([A-Z][A-Z0-9_]+)\b`)
+	nonEntityLabelPattern = regexp.MustCompile(`\([^){}]*:\s*(Finding|FINDING|finding|repo|repository|identity|connector)\b`)
+	apocUsagePattern      = regexp.MustCompile(`(?i)\bapoc\.`)
+)
+
+func convertDraftToQuery(request AskRequest, draft *DraftResponse, maxRows int) conversionResult {
+	cypher := strings.TrimSpace(draft.Cypher)
+	plan := normalizePlan(draft.Plan, request, cypher, maxRows)
+	result := conversionResult{
+		Plan:      plan,
+		Cypher:    cypher,
+		Source:    "llm",
+		Corrected: false,
+	}
+	if rendered, ok := renderDeterministicPlan(plan, maxRows); ok {
+		result.Cypher = rendered
+		result.Source = "deterministic_template"
+		result.Deterministic = true
+		result.Corrected = strings.TrimSpace(cypher) != "" && normalizeCypherForCompare(cypher) != normalizeCypherForCompare(rendered)
+		if result.Corrected {
+			result.Diagnostics = append(result.Diagnostics, ConversionDiagnostic{
+				Level:   "info",
+				Code:    "canonicalized_to_template",
+				Message: fmt.Sprintf("Converted LLM draft into canonical %s template.", plan.Intent),
+			})
+		}
+	} else if cypher != "" {
+		limited, diagnostic, changed := enforceCypherLimit(cypher, maxRows)
+		if changed {
+			result.Cypher = limited
+			result.Corrected = true
+			result.Diagnostics = append(result.Diagnostics, diagnostic)
+		}
+	}
+	result.Diagnostics = append(result.Diagnostics, ontologyDiagnostics(cypher)...)
+	if result.Deterministic {
+		result.Diagnostics = append(result.Diagnostics, ConversionDiagnostic{
+			Level:   "info",
+			Code:    "deterministic_query_plan",
+			Message: "Graph access used a deterministic Cerebro query template; LLM variance is limited to intent extraction and summary text.",
+		})
+	}
+	return result
+}
+
+func normalizePlan(plan *AskQueryPlan, request AskRequest, cypher string, maxRows int) AskQueryPlan {
+	var out AskQueryPlan
+	if plan != nil {
+		out = *plan
+	}
+	out.Intent = canonicalIntent(out.Intent)
+	if out.Intent == "" || out.Intent == IntentRawCypher {
+		out.Intent = inferIntent(request.Question, cypher)
+	}
+	out.ScopeURN = firstNonEmpty(out.ScopeURN, strings.TrimSpace(request.ScopeURN))
+	out.Limit = boundedLimit(out.Limit, maxRows)
+	if out.Confidence == 0 && out.Intent != IntentRawCypher {
+		out.Confidence = 0.85
+	}
+	if out.Filters == nil {
+		out.Filters = map[string]string{}
+	}
+	for key, value := range out.Filters {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			delete(out.Filters, key)
+			continue
+		}
+		if strings.EqualFold(key, "entity_type") {
+			out.Filters[key] = canonicalEntityType(trimmed)
+			continue
+		}
+		if strings.EqualFold(key, "relation") {
+			if canonical, ok := canonicalRelation(trimmed); ok {
+				out.Filters[key] = canonical
+				continue
+			}
+		}
+		out.Filters[key] = trimmed
+	}
+	return out
+}
+
+func canonicalIntent(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "raw", "cypher", "raw_cypher":
+		return IntentRawCypher
+	case "aggregate_findings_by_source", "finding_source_counts", "findings_by_source", "source_breakdown":
+		return IntentAggregateFindingsBySource
+	case "top_risk_findings", "high_risk_findings", "findings":
+		return IntentTopRiskFindings
+	case "explain_finding", "finding_explanation":
+		return IntentExplainFinding
+	case "identity_bridge", "identity_bridges":
+		return IntentIdentityBridge
+	case "connector_health", "source_health", "runtime_health":
+		return IntentConnectorHealth
+	default:
+		return strings.ToLower(strings.TrimSpace(value))
+	}
+}
+
+func inferIntent(question string, cypher string) string {
+	haystack := strings.ToLower(question + "\n" + cypher)
+	switch {
+	case strings.Contains(haystack, "source") && strings.Contains(haystack, "finding") && (strings.Contains(haystack, "count") || strings.Contains(haystack, "breakdown") || strings.Contains(haystack, "group") || strings.Contains(haystack, "top")):
+		return IntentAggregateFindingsBySource
+	case strings.Contains(haystack, "has_source") || strings.Contains(haystack, "belongs_to_source") || strings.Contains(haystack, "source_family"):
+		return IntentAggregateFindingsBySource
+	case strings.Contains(haystack, "connector") || strings.Contains(haystack, "runtime health") || strings.Contains(haystack, "source health"):
+		return IntentConnectorHealth
+	case strings.Contains(haystack, "bridge") && (strings.Contains(haystack, "identity") || strings.Contains(haystack, "okta") || strings.Contains(haystack, "github")):
+		return IntentIdentityBridge
+	case strings.Contains(haystack, "explain") && strings.Contains(haystack, "finding"):
+		return IntentExplainFinding
+	case (strings.Contains(haystack, "high risk") || strings.Contains(haystack, "top risk") || strings.Contains(haystack, "critical")) && strings.Contains(haystack, "finding"):
+		return IntentTopRiskFindings
+	default:
+		return IntentRawCypher
+	}
+}
+
+func renderDeterministicPlan(plan AskQueryPlan, maxRows int) (string, bool) {
+	limit := boundedLimit(plan.Limit, maxRows)
+	switch plan.Intent {
+	case IntentAggregateFindingsBySource:
+		if limit > 10 {
+			limit = 10
+		}
+		return fmt.Sprintf(`MATCH (f:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+WITH f,
+     coalesce(
+       f.source_id,
+       CASE WHEN coalesce(f.attributes_json, '') CONTAINS '"source_family":"' THEN split(split(f.attributes_json, '"source_family":"')[1], '"')[0] END,
+       CASE WHEN coalesce(f.attributes_json, '') CONTAINS '"sourceFamily":"' THEN split(split(f.attributes_json, '"sourceFamily":"')[1], '"')[0] END,
+       CASE WHEN coalesce(f.attributes_json, '') CONTAINS '"source_system":"' THEN split(split(f.attributes_json, '"source_system":"')[1], '"')[0] END,
+       'Unknown'
+     ) AS source_family
+RETURN source_family, count(DISTINCT f) AS finding_count
+ORDER BY finding_count DESC, source_family
+LIMIT %d`, limit), true
+	case IntentTopRiskFindings:
+		return fmt.Sprintf(`MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+RETURN finding.urn AS finding_urn,
+       coalesce(finding.label, finding.urn) AS finding_label,
+       resource.urn AS resource_urn,
+       coalesce(resource.label, resource.urn) AS resource_label,
+       toInteger(coalesce(r.risk_score, finding.risk_score, '0')) AS risk_score,
+       coalesce(r.effective_severity, finding.effective_severity, r.severity, finding.severity, '') AS severity
+ORDER BY risk_score DESC, severity DESC, finding_urn
+LIMIT %d`, limit), true
+	case IntentExplainFinding:
+		return fmt.Sprintf(`MATCH (finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+WHERE ($scope_urn <> '' AND finding.urn = $scope_urn) OR ($scope_urn = '' AND coalesce(finding.status, '') = 'open')
+OPTIONAL MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(finding)
+RETURN finding.urn AS finding_urn,
+       coalesce(finding.label, finding.urn) AS finding_label,
+       finding.severity AS severity,
+       finding.status AS status,
+       finding.summary AS summary,
+       resource.urn AS resource_urn,
+       coalesce(resource.label, resource.urn) AS resource_label,
+       coalesce(r.risk_score, finding.risk_score, '') AS risk_score
+ORDER BY risk_score DESC, finding_urn
+LIMIT %d`, limit), true
+	case IntentIdentityBridge:
+		return fmt.Sprintf(`MATCH (left:Entity {tenant_id: $tenant_id})-[leftRel:RELATION {relation: 'has_identifier'}]->(identifier:Entity {tenant_id: $tenant_id})<-[rightRel:RELATION {relation: 'has_identifier'}]-(right:Entity {tenant_id: $tenant_id})
+WHERE left.urn < right.urn
+  AND (identifier.entity_type CONTAINS 'identifier' OR identifier.urn CONTAINS ':identifier:')
+RETURN left.urn AS left_urn,
+       coalesce(left.label, left.urn) AS left_label,
+       left.entity_type AS left_type,
+       right.urn AS right_urn,
+       coalesce(right.label, right.urn) AS right_label,
+       right.entity_type AS right_type,
+       identifier.urn AS identifier_urn,
+       coalesce(identifier.label, identifier.urn) AS identifier_label
+ORDER BY identifier_label, left_urn, right_urn
+LIMIT %d`, limit), true
+	case IntentConnectorHealth:
+		return fmt.Sprintf(`MATCH (connector:Entity {tenant_id: $tenant_id})
+WHERE connector.entity_type IN ['connector', 'source_runtime', 'runtime']
+   OR connector.entity_type CONTAINS 'connector'
+   OR connector.entity_type CONTAINS 'runtime'
+RETURN connector.urn AS connector_urn,
+       coalesce(connector.label, connector.urn) AS connector_label,
+       connector.entity_type AS entity_type,
+       connector.source_id AS source_id,
+       connector.runtime_id AS runtime_id,
+       connector.status AS status,
+       connector.last_sync_minutes AS last_sync_minutes
+ORDER BY connector_label, connector_urn
+LIMIT %d`, limit), true
+	default:
+		return "", false
+	}
+}
+
+func ontologyDiagnostics(cypher string) []ConversionDiagnostic {
+	if strings.TrimSpace(cypher) == "" {
+		return nil
+	}
+	var diagnostics []ConversionDiagnostic
+	if nonEntityLabelPattern.MatchString(cypher) {
+		diagnostics = append(diagnostics, ConversionDiagnostic{
+			Level:   "warn",
+			Code:    "non_canonical_entity_label",
+			Message: "Draft used domain labels like :Finding/:repo; Cerebro graph nodes must use :Entity with entity_type filters.",
+		})
+	}
+	for _, match := range upperRelationPattern.FindAllStringSubmatch(cypher, -1) {
+		if len(match) < 2 {
+			continue
+		}
+		if _, ok := canonicalRelation(match[1]); ok {
+			diagnostics = append(diagnostics, ConversionDiagnostic{
+				Level:   "warn",
+				Code:    "relation_alias_canonicalized",
+				Message: fmt.Sprintf("Draft used relationship alias %s; Cerebro stores lowercase relation values on :RELATION.", match[1]),
+			})
+		}
+	}
+	if apocUsagePattern.MatchString(cypher) {
+		diagnostics = append(diagnostics, ConversionDiagnostic{
+			Level:   "warn",
+			Code:    "apoc_not_allowed",
+			Message: "Draft used APOC; Ask Cerebro does not depend on APOC for read-only graph answers.",
+		})
+	}
+	return diagnostics
+}
+
+func enforceCypherLimit(cypher string, maxRows int) (string, ConversionDiagnostic, bool) {
+	limit := boundedLimit(maxRows, maxRows)
+	trimmed := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(cypher), ";"))
+	if trimmed == "" {
+		return cypher, ConversionDiagnostic{}, false
+	}
+	matches := limitPattern.FindAllStringSubmatchIndex(trimmed, -1)
+	if len(matches) == 0 {
+		return trimmed + fmt.Sprintf("\nLIMIT %d", limit), ConversionDiagnostic{
+			Level:   "info",
+			Code:    "limit_injected",
+			Message: fmt.Sprintf("Added LIMIT %d to LLM fallback Cypher.", limit),
+		}, true
+	}
+	valueStart, valueEnd := matches[len(matches)-1][2], matches[len(matches)-1][3]
+	current, ok := queryLimit(trimmed)
+	if !ok || current <= limit {
+		return cypher, ConversionDiagnostic{}, false
+	}
+	return trimmed[:valueStart] + fmt.Sprintf("%d", limit) + trimmed[valueEnd:], ConversionDiagnostic{
+		Level:   "info",
+		Code:    "limit_capped",
+		Message: fmt.Sprintf("Capped LLM fallback Cypher LIMIT from %d to %d.", current, limit),
+	}, true
+}
+
+func boundedLimit(limit int, maxRows int) int {
+	if maxRows <= 0 {
+		maxRows = defaultMaxRows
+	}
+	if limit <= 0 {
+		if maxRows < 25 {
+			return maxRows
+		}
+		return 25
+	}
+	if limit > maxRows {
+		return maxRows
+	}
+	return limit
+}
+
+func normalizeCypherForCompare(value string) string {
+	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(value))), " ")
+}

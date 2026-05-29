@@ -71,14 +71,15 @@ func (c *OpenRouterLLMClient) DraftCypher(ctx context.Context, req DraftRequest)
 		return nil, err
 	}
 	var payload struct {
-		Rationale string  `json:"rationale"`
-		Cypher    *string `json:"cypher"`
-		Refusal   string  `json:"refusal"`
+		Rationale string        `json:"rationale"`
+		Plan      *AskQueryPlan `json:"plan"`
+		Cypher    *string       `json:"cypher"`
+		Refusal   string        `json:"refusal"`
 	}
 	if err := json.Unmarshal(extractJSONObject(text), &payload); err != nil {
 		return nil, fmt.Errorf("parse draft response JSON: %w", err)
 	}
-	response := &DraftResponse{Rationale: strings.TrimSpace(payload.Rationale), Refusal: strings.TrimSpace(payload.Refusal)}
+	response := &DraftResponse{Rationale: strings.TrimSpace(payload.Rationale), Plan: payload.Plan, Refusal: strings.TrimSpace(payload.Refusal)}
 	if payload.Cypher != nil {
 		response.Cypher = strings.TrimSpace(*payload.Cypher)
 	}

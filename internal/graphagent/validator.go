@@ -20,6 +20,7 @@ var (
 	loadCSVPattern        = regexp.MustCompile(`(?i)\bLOAD\s+CSV\b`)
 	usingPeriodicPattern  = regexp.MustCompile(`(?i)\bUSING\s+PERIODIC\b`)
 	forbiddenAPOCPattern  = regexp.MustCompile(`(?i)\bCALL\s+apoc\.(trigger|periodic)\.`)
+	apocPattern           = regexp.MustCompile(`(?i)\bapoc\.`)
 	limitPattern          = regexp.MustCompile(`(?i)\bLIMIT\s+(\d+)\b`)
 	matchClausePattern    = regexp.MustCompile(`(?i)\b(?:OPTIONAL\s+MATCH|MATCH)\b`)
 	matchClauseEndPattern = regexp.MustCompile(`(?i)\b(?:WHERE|RETURN|WITH|ORDER\s+BY|LIMIT|UNWIND|CALL|UNION|CREATE|MERGE|DELETE|SET|REMOVE|DROP|FOREACH)\b`)
@@ -67,27 +68,30 @@ func NewValidator(store ports.GraphQueryStore, options ValidatorOptions) *Valida
 func (v *Validator) validate(ctx context.Context, cypher string, params map[string]any) (ValidatorResult, int, error) {
 	query := strings.TrimSpace(cypher)
 	if query == "" {
-		return ValidatorResult{OK: false, Reason: "cypher is required"}, 0, nil
+		return validatorRefusal("cypher_required", "cypher is required"), 0, nil
 	}
 	safeQuery := scrubCypher(query)
 	if forbiddenTokenPattern.MatchString(safeQuery) || loadCSVPattern.MatchString(safeQuery) || usingPeriodicPattern.MatchString(safeQuery) {
-		return ValidatorResult{OK: false, Reason: "write or bulk-load Cypher clauses are forbidden"}, 0, nil
+		return validatorRefusal("unsafe_clause", "write or bulk-load Cypher clauses are forbidden"), 0, nil
 	}
 	if forbiddenAPOCPattern.MatchString(safeQuery) {
-		return ValidatorResult{OK: false, Reason: "apoc trigger and periodic procedures are forbidden"}, 0, nil
+		return validatorRefusal("unsafe_apoc", "apoc trigger and periodic procedures are forbidden"), 0, nil
+	}
+	if apocPattern.MatchString(safeQuery) {
+		return validatorRefusal("apoc_not_allowed", "APOC functions and procedures are not available in Ask Cerebro"), 0, nil
 	}
 	if hasProcedureCall(safeQuery) {
-		return ValidatorResult{OK: false, Reason: "procedure CALL clauses are forbidden"}, 0, nil
+		return validatorRefusal("procedure_call_not_allowed", "procedure CALL clauses are forbidden"), 0, nil
 	}
 	limit, ok := queryLimit(safeQuery)
 	if !ok {
-		return ValidatorResult{OK: false, Reason: "read Cypher must include a numeric LIMIT clause"}, 0, nil
+		return validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause"), 0, nil
 	}
 	if limit > v.options.MaxRows {
-		return ValidatorResult{OK: false, Reason: fmt.Sprintf("LIMIT %d exceeds maximum %d", limit, v.options.MaxRows)}, 0, nil
+		return validatorRefusal("limit_exceeded", fmt.Sprintf("LIMIT %d exceeds maximum %d", limit, v.options.MaxRows)), 0, nil
 	}
 	if !allNodePatternsTenantScoped(safeQuery) {
-		return ValidatorResult{OK: false, Reason: "every node pattern must use Entity label and inline tenant_id"}, 0, nil
+		return validatorRefusal("tenant_scope_required", "every node pattern must use Entity label and inline tenant_id"), 0, nil
 	}
 	if v.options.Explain && v.store != nil {
 		explainer, ok := v.store.(interface {
@@ -101,10 +105,14 @@ func (v *Validator) validate(ctx context.Context, cypher string, params map[stri
 			return ValidatorResult{}, 0, fmt.Errorf("%w: explain cypher: %w", ErrRuntimeUnavailable, err)
 		}
 		if allNodesScanOverLimit(plan, v.options.AllNodesScanLimit) {
-			return ValidatorResult{OK: false, Reason: fmt.Sprintf("EXPLAIN plan contains AllNodesScan over more than %d nodes", v.options.AllNodesScanLimit)}, 0, nil
+			return validatorRefusal("all_nodes_scan_over_limit", fmt.Sprintf("EXPLAIN plan contains AllNodesScan over more than %d nodes", v.options.AllNodesScanLimit)), 0, nil
 		}
 	}
 	return ValidatorResult{OK: true}, limit, nil
+}
+
+func validatorRefusal(code string, reason string) ValidatorResult {
+	return ValidatorResult{OK: false, Code: code, Reason: reason}
 }
 
 func scrubCypher(query string) string {

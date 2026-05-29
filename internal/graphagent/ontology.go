@@ -1,0 +1,152 @@
+package graphagent
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
+
+type OntologyEntity struct {
+	Type        string
+	Description string
+	Aliases     []string
+	Properties  []string
+	Examples    []string
+}
+
+type OntologyRelation struct {
+	Relation    string
+	Description string
+	Aliases     []string
+	FromTypes   []string
+	ToTypes     []string
+}
+
+type GraphOntology struct {
+	Label      string
+	Entities   []OntologyEntity
+	Relations  []OntologyRelation
+	Properties []string
+}
+
+var canonicalGraphOntology = GraphOntology{
+	Label:      "Entity",
+	Properties: []string{"tenant_id", "urn", "source_id", "runtime_id", "entity_type", "label", "attributes_json"},
+	Entities: []OntologyEntity{
+		{
+			Type:        "finding",
+			Description: "Workflow finding anchors. Active findings are linked from affected resources via relation 'has_finding'.",
+			Aliases:     []string{"Finding", "FINDING", "finding", "alert", "issue"},
+			Properties:  []string{"finding_id", "severity", "status", "risk_score", "source_id", "runtime_id", "primary_resource_urn"},
+			Examples:    []string{"urn:cerebro:writer:finding:finding-1"},
+		},
+		{
+			Type:        "github.code.repository",
+			Description: "GitHub code repositories and normalized repository resources.",
+			Aliases:     []string{"repo", "repository", "github repo", "code repository"},
+			Properties:  []string{"owner_login", "source_id", "runtime_id"},
+			Examples:    []string{"urn:cerebro:writer:github_repo:writer/cerebro"},
+		},
+		{
+			Type:        "identity",
+			Description: "Canonical identity/resource nodes linked through identifier relationships.",
+			Aliases:     []string{"user", "identity", "principal", "account"},
+			Properties:  []string{"email", "source_id", "runtime_id"},
+			Examples:    []string{"urn:cerebro:writer:identity:alice@writer.com"},
+		},
+		{
+			Type:        "connector",
+			Description: "Source/runtime connector-like graph nodes. Exact source runtimes may also appear as source-specific entity types.",
+			Aliases:     []string{"source", "source runtime", "runtime", "connector"},
+			Properties:  []string{"source_id", "runtime_id", "status", "last_sync_minutes"},
+			Examples:    []string{"urn:cerebro:writer:connector:github"},
+		},
+	},
+	Relations: []OntologyRelation{
+		{
+			Relation:    "has_finding",
+			Description: "Active edge from an affected resource Entity to a finding Entity.",
+			Aliases:     []string{"HAS_FINDING", "finding", "has finding"},
+			FromTypes:   []string{"*"},
+			ToTypes:     []string{"finding"},
+		},
+		{
+			Relation:    "belongs_to",
+			Description: "Ownership/scope edge, such as repository to org, finding to scan, or runtime child to parent.",
+			Aliases:     []string{"BELONGS_TO", "BELONGS_TO_SOURCE", "belongs to source", "source"},
+			FromTypes:   []string{"*"},
+			ToTypes:     []string{"*"},
+		},
+		{
+			Relation:    "has_identifier",
+			Description: "Edge from a concrete identity/resource node to a normalized identifier node.",
+			Aliases:     []string{"HAS_IDENTIFIER", "identity_email", "email", "identifier"},
+			FromTypes:   []string{"*"},
+			ToTypes:     []string{"identifier"},
+		},
+		{
+			Relation:    "represents_identity",
+			Description: "Edge between concrete identities and canonical identity nodes.",
+			Aliases:     []string{"REPRESENTS_IDENTITY", "represents"},
+			FromTypes:   []string{"*"},
+			ToTypes:     []string{"identity"},
+		},
+	},
+}
+
+func (o GraphOntology) PromptHint() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Canonical Cerebro graph ontology:\n")
+	fmt.Fprintf(&b, "- All graph nodes use label `%s`.\n", o.Label)
+	fmt.Fprintf(&b, "- Node properties: %s.\n", strings.Join(o.Properties, ", "))
+	fmt.Fprintf(&b, "- Entity types are stored in lowercase `entity_type`; never use labels like `:Finding`, `:repo`, or `:identity`.\n")
+	fmt.Fprintf(&b, "- Relationships use label `RELATION` and lowercase `relation` property; never use relationship types like `:HAS_SOURCE`.\n")
+	fmt.Fprintf(&b, "- Active finding shape: `(resource:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})`.\n")
+	fmt.Fprintf(&b, "- Finding source grouping should prefer `finding.source_id`; only use controlled `attributes_json` string extraction as fallback.\n")
+	for _, entity := range o.Entities {
+		fmt.Fprintf(&b, "- Entity `%s`: %s Aliases: %s. Useful properties: %s.\n", entity.Type, entity.Description, strings.Join(entity.Aliases, ", "), strings.Join(entity.Properties, ", "))
+	}
+	for _, relation := range o.Relations {
+		fmt.Fprintf(&b, "- Relation `%s`: %s Aliases: %s.\n", relation.Relation, relation.Description, strings.Join(relation.Aliases, ", "))
+	}
+	return strings.TrimSpace(b.String())
+}
+
+func canonicalEntityType(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	for _, entity := range canonicalGraphOntology.Entities {
+		if normalized == strings.ToLower(entity.Type) {
+			return entity.Type
+		}
+		for _, alias := range entity.Aliases {
+			if normalized == strings.ToLower(alias) {
+				return entity.Type
+			}
+		}
+	}
+	return normalized
+}
+
+func canonicalRelation(value string) (string, bool) {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	for _, relation := range canonicalGraphOntology.Relations {
+		if normalized == strings.ToLower(relation.Relation) {
+			return relation.Relation, true
+		}
+		for _, alias := range relation.Aliases {
+			if normalized == strings.ToLower(alias) {
+				return relation.Relation, true
+			}
+		}
+	}
+	return normalized, false
+}
+
+func knownEntityTypes() []string {
+	values := make([]string, 0, len(canonicalGraphOntology.Entities))
+	for _, entity := range canonicalGraphOntology.Entities {
+		values = append(values, entity.Type)
+	}
+	sort.Strings(values)
+	return values
+}
