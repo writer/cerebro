@@ -81,7 +81,7 @@ func TestNewFixtureReplaysAzureFamilies(t *testing.T) {
 func TestReadLiveAzureGraphIdentityPreview(t *testing.T) {
 	server := httptest.NewServer(newAzureAPIHandler(t))
 	defer server.Close()
-	source, err := New()
+	source, err := newLiveTestSource()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -125,7 +125,7 @@ func TestReadLiveAzureGraphIdentityPreview(t *testing.T) {
 func TestReadLiveAzureCredentialPreview(t *testing.T) {
 	server := httptest.NewServer(newAzureAPIHandler(t))
 	defer server.Close()
-	source, err := New()
+	source, err := newLiveTestSource()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -147,7 +147,7 @@ func TestReadLiveAzureCredentialPreview(t *testing.T) {
 func TestReadLiveAzureARMPreview(t *testing.T) {
 	server := httptest.NewServer(newAzureAPIHandler(t))
 	defer server.Close()
-	source, err := New()
+	source, err := newLiveTestSource()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -183,6 +183,16 @@ func TestReadLiveAzureARMPreview(t *testing.T) {
 			}
 		})
 	}
+}
+
+func newLiveTestSource() (*Source, error) {
+	source, err := New()
+	if err != nil {
+		return nil, err
+	}
+	source.allowLoopbackBaseURL = true
+	source.client = source.safeClient()
+	return source, nil
 }
 
 func newAzureAPIHandler(t *testing.T) http.Handler {

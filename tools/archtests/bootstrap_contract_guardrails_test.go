@@ -90,7 +90,9 @@ func TestSourceCDKOwnsExternalHTTPClients(t *testing.T) {
 			if strings.Trim(importSpec.Path.Value, `"`) != "net/http" {
 				continue
 			}
-			if strings.HasPrefix(rel, "sources"+string(filepath.Separator)) || strings.HasPrefix(rel, filepath.Join("internal", "bootstrap")+string(filepath.Separator)) {
+			if strings.HasPrefix(rel, "sources"+string(filepath.Separator)) ||
+				strings.HasPrefix(rel, filepath.Join("internal", "bootstrap")+string(filepath.Separator)) ||
+				strings.HasPrefix(rel, filepath.Join("internal", "sourcehttp")+string(filepath.Separator)) {
 				continue
 			}
 			t.Fatalf("%s imports net/http outside Source CDK or bootstrap boundary", rel)

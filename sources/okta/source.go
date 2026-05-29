@@ -20,6 +20,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
 //go:embed catalog.yaml
@@ -1018,7 +1019,7 @@ func oktaHTTPClientNoRedirect(client *http.Client, allowLoopback bool, lookupIPA
 	if transport == nil {
 		transport = http.DefaultTransport
 	}
-	cloned.Transport = safeOktaRoundTripper{base: transport, allowLoopback: allowLoopback, lookupIPAddrs: lookupIPAddrs}
+	cloned.Transport = sourcehttp.SafeRoundTripper{Base: transport, SourceID: "okta", AllowLoopback: allowLoopback, LookupIPAddrs: lookupIPAddrs}
 	return &cloned
 }
 
@@ -1027,50 +1028,6 @@ func oktaLookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAd
 		return source.lookupIPAddrs
 	}
 	return net.DefaultResolver.LookupIPAddr
-}
-
-type safeOktaRoundTripper struct {
-	base          http.RoundTripper
-	allowLoopback bool
-	lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)
-}
-
-func (rt safeOktaRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req != nil && req.URL != nil {
-		if err := rejectResolvedUnsafeHost(req.Context(), req.URL.Hostname(), rt.allowLoopback, rt.lookupIPAddrs); err != nil {
-			return nil, err
-		}
-	}
-	return rt.base.RoundTrip(req)
-}
-
-func rejectResolvedUnsafeHost(ctx context.Context, host string, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) error {
-	normalized := normalizedIPHost(host)
-	if normalized == "" {
-		return nil
-	}
-	if isUnsafeHost(normalized) {
-		if allowLoopback && isLoopbackHost(normalized) {
-			return nil
-		}
-		return fmt.Errorf("okta base_url must not target loopback, private, or link-local hosts")
-	}
-	if lookupIPAddrs == nil {
-		lookupIPAddrs = net.DefaultResolver.LookupIPAddr
-	}
-	addrs, err := lookupIPAddrs(ctx, normalized)
-	if err != nil {
-		return fmt.Errorf("resolve okta base_url host %q: %w", normalized, err)
-	}
-	for _, addr := range addrs {
-		if isUnsafeIP(addr.IP) {
-			if allowLoopback && addr.IP != nil && addr.IP.IsLoopback() {
-				continue
-			}
-			return fmt.Errorf("okta base_url must not target loopback, private, or link-local hosts")
-		}
-	}
-	return nil
 }
 
 func readLimitedBody(body io.Reader) ([]byte, error) {

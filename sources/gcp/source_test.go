@@ -87,7 +87,7 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 func TestReadLiveGCPServiceAccountPreview(t *testing.T) {
 	server := httptest.NewServer(newGCPAPIHandler(t))
 	defer server.Close()
-	source, err := New()
+	source, err := newLiveTestSource()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -120,7 +120,7 @@ func TestReadLiveGCPServiceAccountPreview(t *testing.T) {
 func TestReadLiveGCPRoleAndAuditPreview(t *testing.T) {
 	server := httptest.NewServer(newGCPAPIHandler(t))
 	defer server.Close()
-	source, err := New()
+	source, err := newLiveTestSource()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -149,7 +149,7 @@ func TestReadLiveGCPRoleAndAuditPreview(t *testing.T) {
 func TestReadLiveGCPServiceAccountKeyPreview(t *testing.T) {
 	server := httptest.NewServer(newGCPAPIHandler(t))
 	defer server.Close()
-	source, err := New()
+	source, err := newLiveTestSource()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -174,7 +174,7 @@ func TestReadLiveGCPServiceAccountKeyPreview(t *testing.T) {
 func TestReadLiveGCPExposureAndImpersonationPreview(t *testing.T) {
 	server := httptest.NewServer(newGCPAPIHandler(t))
 	defer server.Close()
-	source, err := New()
+	source, err := newLiveTestSource()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -213,7 +213,7 @@ func TestReadLiveGCPExposureAndImpersonationPreview(t *testing.T) {
 func TestReadLiveGCPGroupMembershipResolvesGroupKeys(t *testing.T) {
 	server := httptest.NewServer(newGCPAPIHandler(t))
 	defer server.Close()
-	source, err := New()
+	source, err := newLiveTestSource()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -236,6 +236,16 @@ func TestReadLiveGCPGroupMembershipResolvesGroupKeys(t *testing.T) {
 			}
 		})
 	}
+}
+
+func newLiveTestSource() (*Source, error) {
+	source, err := New()
+	if err != nil {
+		return nil, err
+	}
+	source.allowLoopbackBaseURL = true
+	source.client = source.safeClient()
+	return source, nil
 }
 
 func newGCPAPIHandler(t *testing.T) http.Handler {
