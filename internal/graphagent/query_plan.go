@@ -359,6 +359,7 @@ LIMIT %d`, limit), true
 MATCH (right:Entity {tenant_id: $tenant_id})-[rightRel:RELATION {relation: 'represents_identity'}]->(identity)
 WHERE left.urn < right.urn
   AND left.entity_type <> right.entity_type
+  AND ($scope_urn = '' OR left.urn = $scope_urn OR right.urn = $scope_urn OR identity.urn = $scope_urn)
   AND NOT left.entity_type STARTS WITH 'identity'
   AND NOT right.entity_type STARTS WITH 'identity'
   AND NOT left.entity_type STARTS WITH 'identifier'

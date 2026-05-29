@@ -277,6 +277,7 @@ func TestConvertDraftToQueryUsesCanonicalIdentityBridgeTemplate(t *testing.T) {
 	result := convertDraftToQuery(AskRequest{
 		TenantID: "writer",
 		Question: "Which identities bridge Okta and GitHub?",
+		ScopeURN: "urn:cerebro:writer:github_user:alice",
 	}, &DraftResponse{
 		Plan: &AskQueryPlan{Intent: IntentIdentityBridge, Limit: 25},
 	}, 100)
@@ -287,6 +288,7 @@ func TestConvertDraftToQueryUsesCanonicalIdentityBridgeTemplate(t *testing.T) {
 	for _, want := range []string{
 		"relation: 'represents_identity'",
 		"left.entity_type <> right.entity_type",
+		"$scope_urn = '' OR left.urn = $scope_urn OR right.urn = $scope_urn OR identity.urn = $scope_urn",
 		"NOT left.entity_type STARTS WITH 'identifier'",
 		"datetime(left_seen_at) >= datetime() - duration('P90D')",
 		"identity.urn AS identity_urn",
