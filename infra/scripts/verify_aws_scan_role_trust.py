@@ -57,7 +57,7 @@ def _aws(args: list[str], region: str, profile: str | None = None) -> dict[str, 
 def _source_runtime_role_arns(config: dict[str, Any]) -> list[str]:
     role_arns: set[str] = set()
     for runtime in config.get("sourceRuntimes") or []:
-        if not isinstance(runtime, dict) or str(runtime.get("sourceId", "")).strip() != "aws":
+        if not isinstance(runtime, dict):
             continue
         runtime_config = runtime.get("config") or {}
         if not isinstance(runtime_config, dict):

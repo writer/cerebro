@@ -11,6 +11,23 @@ spec.loader.exec_module(verify_aws_scan_role_trust)
 
 
 class AwsScanRoleTrustTest(unittest.TestCase):
+    def test_source_runtime_role_arns_include_all_source_types(self) -> None:
+        self.assertEqual(
+            verify_aws_scan_role_trust._source_runtime_role_arns(
+                {
+                    "sourceRuntimes": [
+                        {"sourceId": "aws", "config": {"role_arn": "arn:aws:iam::222222222222:role/cerebro-org-scan-role"}},
+                        {"sourceId": "aurelius", "config": {"role_arn": "arn:aws:iam::333333333333:role/cerebro-aurelius-source-dev"}},
+                        {"sourceId": "github", "config": {"token": "env:GITHUB_TOKEN"}},
+                    ]
+                }
+            ),
+            [
+                "arn:aws:iam::222222222222:role/cerebro-org-scan-role",
+                "arn:aws:iam::333333333333:role/cerebro-aurelius-source-dev",
+            ],
+        )
+
     def test_expected_principals_include_worker_role_for_scheduled_stack(self) -> None:
         self.assertEqual(
             verify_aws_scan_role_trust._expected_stack_principals("go-prod", {"environment": "go-production"}, "837279440628"),
