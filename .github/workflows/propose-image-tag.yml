@@ -323,9 +323,11 @@ jobs:
               echo "Closing superseded PR #${old_pr}"
               gh pr close "${old_pr}" --comment "Superseded by direct-push of ${IMAGE_TAG}." --delete-branch || true
             done
-            gh api "repos/${GITHUB_REPOSITORY}/branches" --paginate -q '.[].name' \
-            | grep -E "^automation/cerebro-image-${STACK_NAME}-" \
-            | while read -r old_branch; do
+            mapfile -t stale_branches < <(
+              gh api "repos/${GITHUB_REPOSITORY}/branches" --paginate -q '.[].name' \
+              | grep -E "^automation/cerebro-image-${STACK_NAME}-" || true
+            )
+            for old_branch in "${stale_branches[@]}"; do
               echo "Deleting stale branch ${old_branch}"
               gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${old_branch}" 2>/dev/null || true
             done
@@ -376,10 +378,12 @@ jobs:
           done
 
           # Delete stale automation branches with no open PR
-          gh api "repos/${GITHUB_REPOSITORY}/branches" --paginate -q '.[].name' \
-          | grep -E "^automation/cerebro-image-${STACK_NAME}-" \
-          | grep -v "^${branch}$" \
-          | while read -r old_branch; do
+          mapfile -t stale_branches < <(
+            gh api "repos/${GITHUB_REPOSITORY}/branches" --paginate -q '.[].name' \
+            | grep -E "^automation/cerebro-image-${STACK_NAME}-" \
+            | grep -v "^${branch}$" || true
+          )
+          for old_branch in "${stale_branches[@]}"; do
             echo "Deleting stale branch ${old_branch}"
             gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${old_branch}" 2>/dev/null || true
           done
