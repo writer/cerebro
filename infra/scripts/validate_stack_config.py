@@ -62,6 +62,15 @@ SEC_DEV_AWS_GLOBAL_FAMILIES = {
 }
 SEC_DEV_AWS_REGIONAL_FAMILIES = {"cloudtrail", "public_endpoint", "resource_exposure"}
 SEC_DEV_AWS_CLOUDTRAIL_SINCE = "PT15M"
+GO_PROD_AWS_ACCOUNTS = {
+    "sec-prod": "837279440628",
+    "prod": "009160076449",
+    "devops": "381491964434",
+    "sec-dev": "944130631940",
+}
+GO_PROD_AWS_GLOBAL_FAMILIES = SEC_DEV_AWS_GLOBAL_FAMILIES
+GO_PROD_AWS_REGIONAL_FAMILIES = {"public_endpoint", "resource_exposure"}
+GO_PROD_AWS_REGIONS = {"us1": "us-east-1", "us2": "us-west-2"}
 
 
 @dataclass(frozen=True)
@@ -463,6 +472,83 @@ def _validate_sec_dev_aws_coverage(
             findings.append(_finding("error", stack, "cerebro:orchestratorSchedules", f"required sec-dev AWS schedule for {runtime_id!r} is missing"))
 
 
+def _validate_go_prod_aws_coverage(
+    stack: str,
+    source_runtimes: list[Any],
+    schedules: list[Any],
+    findings: list[Finding],
+) -> None:
+    if stack != "go-prod":
+        return
+
+    runtime_entries: dict[str, tuple[int, dict[str, Any]]] = {}
+    has_aws_public_endpoint = False
+    for index, runtime in enumerate(source_runtimes):
+        if not isinstance(runtime, dict):
+            continue
+        runtime_id = str(runtime.get("id", "")).strip()
+        if runtime_id:
+            runtime_entries[runtime_id] = (index, runtime)
+        if str(runtime.get("sourceId", "")).strip() != "aws":
+            continue
+        runtime_config = runtime.get("config") or {}
+        if isinstance(runtime_config, dict) and str(runtime_config.get("family", "")).strip() == "public_endpoint":
+            has_aws_public_endpoint = True
+
+    if not has_aws_public_endpoint:
+        return
+
+    schedules_by_runtime: dict[str, list[int]] = {}
+    for index, schedule in enumerate(schedules):
+        if isinstance(schedule, dict):
+            runtime_id = _runtime_id_from_command(schedule.get("command"))
+            if runtime_id:
+                schedules_by_runtime.setdefault(runtime_id, []).append(index)
+
+    required: dict[str, dict[str, str]] = {}
+    for account_slug, account_id in sorted(GO_PROD_AWS_ACCOUNTS.items()):
+        role_arn = f"arn:aws:iam::{account_id}:role/cerebro-org-scan-role"
+        for family in sorted(GO_PROD_AWS_GLOBAL_FAMILIES):
+            required[f"writer-aws-{account_slug}-{family.replace('_', '-')}"] = {
+                "account_id": account_id,
+                "family": family,
+                "include_global": "true",
+                "region": "us-east-1",
+                "role_arn": role_arn,
+            }
+        for region_slug, region in sorted(GO_PROD_AWS_REGIONS.items()):
+            for family in sorted(GO_PROD_AWS_REGIONAL_FAMILIES):
+                required[f"writer-aws-{account_slug}-{region_slug}-{family.replace('_', '-')}"] = {
+                    "account_id": account_id,
+                    "family": family,
+                    "include_global": "true" if region == "us-east-1" else "false",
+                    "per_page": "100",
+                    "region": region,
+                    "role_arn": role_arn,
+                }
+
+    for runtime_id, expected_config in sorted(required.items()):
+        runtime_entry = runtime_entries.get(runtime_id)
+        if runtime_entry is None:
+            findings.append(_finding("error", stack, "cerebro:sourceRuntimes", f"required go-prod AWS coverage runtime {runtime_id!r} is missing"))
+            continue
+        runtime_index, runtime = runtime_entry
+        runtime_path = f"cerebro:sourceRuntimes[{runtime_index}]"
+        if str(runtime.get("sourceId", "")).strip() != "aws":
+            findings.append(_finding("error", stack, f"{runtime_path}.sourceId", f"{runtime_id} must use sourceId aws"))
+        if str(runtime.get("tenantId", "")).strip() != "writer":
+            findings.append(_finding("error", stack, f"{runtime_path}.tenantId", f"{runtime_id} must use tenantId writer"))
+        runtime_config = runtime.get("config") or {}
+        if isinstance(runtime_config, dict):
+            for key, expected in expected_config.items():
+                actual = str(runtime_config.get(key, "")).strip()
+                if actual != expected:
+                    findings.append(_finding("error", stack, f"{runtime_path}.config.{key}", f"{runtime_id} must set {key} to {expected!r}"))
+
+        if runtime_id not in schedules_by_runtime:
+            findings.append(_finding("error", stack, "cerebro:orchestratorSchedules", f"required go-prod AWS schedule for {runtime_id!r} is missing"))
+
+
 def validate_stack(path: Path) -> list[Finding]:
     stack = _stack_name(path)
     config = _load_config(path)
@@ -769,6 +855,7 @@ def validate_stack(path: Path) -> list[Finding]:
 
     _validate_cosmo_gitops(stack, config, source_runtimes, schedules, source_secret_names, findings)
     _validate_sec_dev_aws_coverage(stack, config, source_runtimes, schedules, findings)
+    _validate_go_prod_aws_coverage(stack, source_runtimes, schedules, findings)
 
     environment = str(config.get("environment", stack)).lower()
     is_prod = stack.endswith("prod") or "prod" in environment
