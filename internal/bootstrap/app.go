@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -112,7 +113,10 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 	}
 	if deviceStore != nil {
 		dpop := deviceauth.NewDPoPVerifier(cfg.Auth.DeviceAuth.ClockSkew, cfg.Auth.DeviceAuth.DPoPProofTTL)
-		obsStore := risk.NewInMemoryObservationStore()
+		obsStore := deviceRiskObservationStore(deps.StateStore)
+		if obsStore == nil {
+			obsStore = risk.NewInMemoryObservationStore()
+		}
 		riskScorer := risk.NewScorer(
 			risk.Thresholds{Elevated: cfg.Auth.DeviceAuth.RiskElevatedThreshold, High: cfg.Auth.DeviceAuth.RiskHighThreshold},
 			risk.NoOpLookup{},
@@ -222,6 +226,9 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 		Addr:              cfg.HTTPAddr,
 		Handler:           app.handler,
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       2 * time.Minute,
 	}
 	return app, nil
 }
@@ -2458,10 +2465,30 @@ func (a *App) findingService() *findings.Service {
 	).WithGraphStore(sourceProjectionGraphStore(a.deps.GraphStore)).WithGraphQueryStore(graphQueryStore(a.deps.GraphStore)).WithAppendLog(a.deps.AppendLog)
 }
 
+const (
+	startupFindingRiskBackfillJobID    = "finding-risk-backfill"
+	startupFindingRiskBackfillLeaseTTL = 30 * time.Minute
+)
+
 // BackfillFindingRisk runs server-start finding risk migration work.
 func (a *App) BackfillFindingRisk(ctx context.Context) error {
 	if findingStore(a.deps.StateStore) == nil {
 		return nil
+	}
+	if leaseStore := startupJobLeaseStore(a.deps.StateStore); leaseStore != nil {
+		owner := startupJobLeaseOwner()
+		acquired, err := leaseStore.AcquireStartupJobLease(ctx, startupFindingRiskBackfillJobID, owner, startupFindingRiskBackfillLeaseTTL)
+		if err != nil {
+			return err
+		}
+		if !acquired {
+			return nil
+		}
+		defer func() {
+			releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
+			_ = leaseStore.ReleaseStartupJobLease(releaseCtx, startupFindingRiskBackfillJobID, owner)
+		}()
 	}
 	return a.findingService().BackfillFindingRisk(ctx)
 }
@@ -2983,6 +3010,35 @@ func deviceAuthStore(store ports.StateStore) deviceauth.Store {
 		return nil
 	}
 	return deviceStore
+}
+
+func deviceRiskObservationStore(store ports.StateStore) risk.ObservationStore {
+	observationStore, ok := store.(risk.ObservationStore)
+	if !ok || isNilInterface(observationStore) {
+		return nil
+	}
+	return observationStore
+}
+
+type startupJobLeaseProvider interface {
+	AcquireStartupJobLease(context.Context, string, string, time.Duration) (bool, error)
+	ReleaseStartupJobLease(context.Context, string, string) error
+}
+
+func startupJobLeaseStore(store ports.StateStore) startupJobLeaseProvider {
+	leaseStore, ok := store.(startupJobLeaseProvider)
+	if !ok || isNilInterface(leaseStore) {
+		return nil
+	}
+	return leaseStore
+}
+
+func startupJobLeaseOwner() string {
+	hostname, err := os.Hostname()
+	if err != nil || strings.TrimSpace(hostname) == "" {
+		hostname = "unknown-host"
+	}
+	return fmt.Sprintf("%s/%d/%d", hostname, os.Getpid(), time.Now().UnixNano())
 }
 
 func deviceAuthReplicaCount(cfg config.DeviceAuthConfig) int {

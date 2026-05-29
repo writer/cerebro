@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/deviceauth"
+	"github.com/writer/cerebro/internal/deviceauth/risk"
 )
 
 var ensureDeviceAuthStatements = []string{
@@ -74,6 +75,16 @@ var ensureDeviceAuthStatements = []string{
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )`,
 	`CREATE INDEX IF NOT EXISTS device_idempotency_keys_expires_idx ON device_idempotency_keys (expires_at)`,
+	`CREATE TABLE IF NOT EXISTS device_risk_observations (
+  device_id TEXT PRIMARY KEY,
+  ip TEXT NOT NULL DEFAULT '',
+  country TEXT NOT NULL DEFAULT '',
+  asn TEXT NOT NULL DEFAULT '',
+  latitude DOUBLE PRECISION NOT NULL DEFAULT 0,
+  longitude DOUBLE PRECISION NOT NULL DEFAULT 0,
+  observed_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)`,
 }
 
 const consumeRefreshDeviceStatusSQL = `SELECT status FROM device_records WHERE device_id = $1 FOR UPDATE`
@@ -515,6 +526,66 @@ ON CONFLICT (cache_key) DO NOTHING`,
 		nullableUTC(expiresAt),
 	); err != nil {
 		return fmt.Errorf("put idempotency: %w", err)
+	}
+	return nil
+}
+
+// Get returns the most recent device risk observation for risk scoring.
+func (s *Store) Get(ctx context.Context, deviceID string) (*risk.Observation, bool) {
+	if err := s.ensureDeviceAuthTables(ctx); err != nil {
+		return nil, false
+	}
+	var obs risk.Observation
+	err := s.db.QueryRowContext(ctx, `
+SELECT ip, country, asn, latitude, longitude, observed_at
+FROM device_risk_observations
+WHERE device_id = $1`,
+		strings.TrimSpace(deviceID)).
+		Scan(&obs.IP, &obs.Country, &obs.ASN, &obs.Latitude, &obs.Longitude, &obs.At)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, false
+	}
+	if err != nil {
+		return nil, false
+	}
+	obs.At = obs.At.UTC()
+	return &obs, true
+}
+
+// Put persists the latest successful device risk observation.
+func (s *Store) Put(ctx context.Context, deviceID string, obs risk.Observation) error {
+	if err := s.ensureDeviceAuthTables(ctx); err != nil {
+		return err
+	}
+	deviceID = strings.TrimSpace(deviceID)
+	if deviceID == "" {
+		return errors.New("device_id is required")
+	}
+	if obs.At.IsZero() {
+		obs.At = time.Now()
+	}
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO device_risk_observations (
+  device_id, ip, country, asn, latitude, longitude, observed_at
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (device_id) DO UPDATE SET
+  ip = EXCLUDED.ip,
+  country = EXCLUDED.country,
+  asn = EXCLUDED.asn,
+  latitude = EXCLUDED.latitude,
+  longitude = EXCLUDED.longitude,
+  observed_at = EXCLUDED.observed_at,
+  updated_at = NOW()`,
+		deviceID,
+		strings.TrimSpace(obs.IP),
+		strings.TrimSpace(obs.Country),
+		strings.TrimSpace(obs.ASN),
+		obs.Latitude,
+		obs.Longitude,
+		nullableUTC(obs.At))
+	if err != nil {
+		return fmt.Errorf("upsert device risk observation %q: %w", deviceID, err)
 	}
 	return nil
 }

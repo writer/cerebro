@@ -26,6 +26,32 @@ func TestOpenDependenciesAllowsUnconfiguredStores(t *testing.T) {
 	}
 }
 
+func TestOpenDependenciesInitializesConfiguredGraphAgentLLM(t *testing.T) {
+	deps, closeAll, err := OpenDependencies(context.Background(), config.Config{
+		GraphAgentLLM: config.GraphAgentLLMConfig{Provider: "stub"},
+	})
+	if err != nil {
+		t.Fatalf("OpenDependencies() error = %v", err)
+	}
+	defer func() {
+		if err := closeAll(); err != nil {
+			t.Fatalf("closeAll() error = %v", err)
+		}
+	}()
+	if deps.GraphAgentLLM == nil {
+		t.Fatal("GraphAgentLLM = nil, want configured startup client")
+	}
+}
+
+func TestOpenDependenciesRejectsInvalidGraphAgentLLMAtStartup(t *testing.T) {
+	_, _, err := OpenDependencies(context.Background(), config.Config{
+		GraphAgentLLM: config.GraphAgentLLMConfig{Provider: "openrouter"},
+	})
+	if err == nil {
+		t.Fatal("OpenDependencies() error = nil, want invalid LLM config error")
+	}
+}
+
 func TestOpenDependenciesRejectsIncompleteJetStreamConfig(t *testing.T) {
 	_, _, err := OpenDependencies(context.Background(), config.Config{
 		AppendLog: config.AppendLogConfig{Driver: config.AppendLogDriverJetStream},

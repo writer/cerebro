@@ -8,6 +8,7 @@ import (
 
 	appendlogjetstream "github.com/writer/cerebro/internal/appendlog/jetstream"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/graphagent"
 	graphstoreneo4j "github.com/writer/cerebro/internal/graphstore/neo4j"
 	statestorepostgres "github.com/writer/cerebro/internal/statestore/postgres"
 )
@@ -81,7 +82,37 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 	if err := pingDependency(ctx, "graph store", deps.GraphStore); err != nil {
 		return fail(err)
 	}
+	if graphAgentLLMConfigured(cfg.GraphAgentLLM) {
+		llm, err := graphagent.NewLLMClientWithSecrets(ctx, graphagent.LLMConfigWithSecrets{
+			LLMConfig: graphagent.LLMConfig{
+				Provider:    cfg.GraphAgentLLM.Provider,
+				Model:       cfg.GraphAgentLLM.Model,
+				SonnetModel: cfg.GraphAgentLLM.SonnetModel,
+				OpusModel:   cfg.GraphAgentLLM.OpusModel,
+				HaikuModel:  cfg.GraphAgentLLM.HaikuModel,
+				MaxTokens:   cfg.GraphAgentLLM.MaxTokens,
+				Temperature: cfg.GraphAgentLLM.Temperature,
+			},
+			OpenRouterAPIKey: cfg.GraphAgentLLM.OpenRouterAPIKey,
+			HTTPDoer:         NewHTTPDoer(),
+		})
+		if err != nil {
+			return fail(fmt.Errorf("open graph agent llm: %w", err))
+		}
+		deps.GraphAgentLLM = llm
+	}
 	return deps, closeAll, nil
+}
+
+func graphAgentLLMConfigured(cfg config.GraphAgentLLMConfig) bool {
+	return cfg.Provider != "" ||
+		cfg.Model != "" ||
+		cfg.SonnetModel != "" ||
+		cfg.OpusModel != "" ||
+		cfg.HaikuModel != "" ||
+		cfg.OpenRouterAPIKey != "" ||
+		cfg.MaxTokens != 0 ||
+		cfg.Temperature != 0
 }
 
 // pingDependency runs Ping with its own dependencyPingTimeout-bounded context so
