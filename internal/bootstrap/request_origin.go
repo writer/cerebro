@@ -101,7 +101,10 @@ func trustedForwardedProto(header string) string {
 			return "https"
 		case "http":
 			return "http"
+		case "":
+			continue
 		}
+		return ""
 	}
 	return ""
 }
@@ -117,6 +120,7 @@ func trustedForwardedHost(header string) string {
 		if err == nil && parsed.Host != "" && parsed.User == nil && parsed.RawQuery == "" && !parsed.ForceQuery && parsed.Fragment == "" && parsed.Path == "" {
 			return parsed.Host
 		}
+		return ""
 	}
 	return ""
 }
