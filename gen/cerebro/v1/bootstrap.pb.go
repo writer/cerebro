@@ -4777,11 +4777,11 @@ type FindingCandidate struct {
 	PromotionRationale string                 `protobuf:"bytes,16,opt,name=promotion_rationale,json=promotionRationale,proto3" json:"promotion_rationale,omitempty"`
 	ChangeTicket       string                 `protobuf:"bytes,17,opt,name=change_ticket,json=changeTicket,proto3" json:"change_ticket,omitempty"`
 	PromotedAt         *timestamppb.Timestamp `protobuf:"bytes,18,opt,name=promoted_at,json=promotedAt,proto3" json:"promoted_at,omitempty"`
-	RejectedBy         string                 `protobuf:"bytes,19,opt,name=rejected_by,json=rejectedBy,proto3" json:"rejected_by,omitempty"`
-	RejectionRationale string                 `protobuf:"bytes,20,opt,name=rejection_rationale,json=rejectionRationale,proto3" json:"rejection_rationale,omitempty"`
-	RejectedAt         *timestamppb.Timestamp `protobuf:"bytes,21,opt,name=rejected_at,json=rejectedAt,proto3" json:"rejected_at,omitempty"`
-	CreatedAt          *timestamppb.Timestamp `protobuf:"bytes,22,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt          *timestamppb.Timestamp `protobuf:"bytes,23,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	CreatedAt          *timestamppb.Timestamp `protobuf:"bytes,19,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt          *timestamppb.Timestamp `protobuf:"bytes,20,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	RejectedBy         string                 `protobuf:"bytes,21,opt,name=rejected_by,json=rejectedBy,proto3" json:"rejected_by,omitempty"`
+	RejectionRationale string                 `protobuf:"bytes,22,opt,name=rejection_rationale,json=rejectionRationale,proto3" json:"rejection_rationale,omitempty"`
+	RejectedAt         *timestamppb.Timestamp `protobuf:"bytes,23,opt,name=rejected_at,json=rejectedAt,proto3" json:"rejected_at,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -4942,6 +4942,20 @@ func (x *FindingCandidate) GetPromotedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *FindingCandidate) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *FindingCandidate) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
 func (x *FindingCandidate) GetRejectedBy() string {
 	if x != nil {
 		return x.RejectedBy
@@ -4959,20 +4973,6 @@ func (x *FindingCandidate) GetRejectionRationale() string {
 func (x *FindingCandidate) GetRejectedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.RejectedAt
-	}
-	return nil
-}
-
-func (x *FindingCandidate) GetCreatedAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.CreatedAt
-	}
-	return nil
-}
-
-func (x *FindingCandidate) GetUpdatedAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.UpdatedAt
 	}
 	return nil
 }
@@ -8294,16 +8294,16 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\x13promotion_rationale\x18\x10 \x01(\tR\x12promotionRationale\x12#\n" +
 	"\rchange_ticket\x18\x11 \x01(\tR\fchangeTicket\x12;\n" +
 	"\vpromoted_at\x18\x12 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"promotedAt\x12\x1f\n" +
-	"\vrejected_by\x18\x13 \x01(\tR\n" +
+	"promotedAt\x129\n" +
+	"\n" +
+	"created_at\x18\x13 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"\n" +
+	"updated_at\x18\x14 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x1f\n" +
+	"\vrejected_by\x18\x15 \x01(\tR\n" +
 	"rejectedBy\x12/\n" +
-	"\x13rejection_rationale\x18\x14 \x01(\tR\x12rejectionRationale\x12;\n" +
-	"\vrejected_at\x18\x15 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"rejectedAt\x129\n" +
-	"\n" +
-	"created_at\x18\x16 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
-	"\n" +
-	"updated_at\x18\x17 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xc9\x01\n" +
+	"\x13rejection_rationale\x18\x16 \x01(\tR\x12rejectionRationale\x12;\n" +
+	"\vrejected_at\x18\x17 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"rejectedAt\"\xc9\x01\n" +
 	"\x1cListFindingCandidatesRequest\x12\x1d\n" +
 	"\n" +
 	"runtime_id\x18\x01 \x01(\tR\truntimeId\x12!\n" +
@@ -8868,9 +8868,9 @@ var file_cerebro_v1_bootstrap_proto_depIdxs = []int32{
 	123, // 79: cerebro.v1.FindingCandidate.first_observed_at:type_name -> google.protobuf.Timestamp
 	123, // 80: cerebro.v1.FindingCandidate.last_observed_at:type_name -> google.protobuf.Timestamp
 	123, // 81: cerebro.v1.FindingCandidate.promoted_at:type_name -> google.protobuf.Timestamp
-	123, // 82: cerebro.v1.FindingCandidate.rejected_at:type_name -> google.protobuf.Timestamp
-	123, // 83: cerebro.v1.FindingCandidate.created_at:type_name -> google.protobuf.Timestamp
-	123, // 84: cerebro.v1.FindingCandidate.updated_at:type_name -> google.protobuf.Timestamp
+	123, // 82: cerebro.v1.FindingCandidate.created_at:type_name -> google.protobuf.Timestamp
+	123, // 83: cerebro.v1.FindingCandidate.updated_at:type_name -> google.protobuf.Timestamp
+	123, // 84: cerebro.v1.FindingCandidate.rejected_at:type_name -> google.protobuf.Timestamp
 	72,  // 85: cerebro.v1.ListFindingCandidatesResponse.candidates:type_name -> cerebro.v1.FindingCandidate
 	72,  // 86: cerebro.v1.GetFindingCandidateResponse.candidate:type_name -> cerebro.v1.FindingCandidate
 	125, // 87: cerebro.v1.FindingCandidateRuleEvaluation.rule:type_name -> cerebro.v1.RuleSpec

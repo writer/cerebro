@@ -659,6 +659,9 @@ func (s *stubFindingStore) MarkFindingCandidatePromoted(_ context.Context, promo
 		return nil, ports.ErrFindingCandidateNotFound
 	}
 	cloned := cloneFindingCandidate(candidate)
+	if cloned.Status != findingCandidateStatusCandidate {
+		return nil, ports.ErrFindingCandidateNotFound
+	}
 	cloned.Status = findingCandidateStatusPromoted
 	cloned.PromotedFindingID = strings.TrimSpace(promotion.PromotedFindingID)
 	cloned.DecisionID = strings.TrimSpace(promotion.DecisionID)
@@ -676,6 +679,9 @@ func (s *stubFindingStore) MarkFindingCandidateRejected(_ context.Context, rejec
 		return nil, ports.ErrFindingCandidateNotFound
 	}
 	cloned := cloneFindingCandidate(candidate)
+	if cloned.Status != findingCandidateStatusCandidate {
+		return nil, ports.ErrFindingCandidateNotFound
+	}
 	cloned.Status = findingCandidateStatusRejected
 	cloned.DecisionID = strings.TrimSpace(rejection.DecisionID)
 	cloned.RejectedBy = strings.TrimSpace(rejection.RejectedBy)

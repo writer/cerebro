@@ -399,6 +399,7 @@ SET status = 'promoted',
   promoted_at = $7,
   updated_at = NOW()
 WHERE id = $1
+  AND status = 'candidate'
 RETURNING `+findingCandidateSelectColumns,
 		id,
 		strings.TrimSpace(promotion.PromotedFindingID),
@@ -451,6 +452,7 @@ SET status = 'rejected',
   rejected_at = $5,
   updated_at = NOW()
 WHERE id = $1
+  AND status = 'candidate'
 RETURNING `+findingCandidateSelectColumns,
 		id,
 		strings.TrimSpace(rejection.DecisionID),

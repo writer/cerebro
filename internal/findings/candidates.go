@@ -313,6 +313,19 @@ func (s *Service) PromoteFindingCandidate(ctx context.Context, request PromoteCa
 	production.Attributes["promotion_rationale"] = strings.TrimSpace(request.Rationale)
 	production.Attributes["promoted_by"] = strings.TrimSpace(request.PromotedBy)
 	production.Attributes["promoted_at"] = now.Format(time.RFC3339Nano)
+	decisionID := candidatePromotionDecisionID(candidate, production, now)
+	promoted, err := s.candidateStore.MarkFindingCandidatePromoted(ctx, ports.FindingCandidatePromotion{
+		CandidateID:       candidate.ID,
+		PromotedFindingID: production.ID,
+		DecisionID:        decisionID,
+		PromotedBy:        strings.TrimSpace(request.PromotedBy),
+		Rationale:         strings.TrimSpace(request.Rationale),
+		ChangeTicket:      strings.TrimSpace(request.ChangeTicket),
+		PromotedAt:        now,
+	})
+	if err != nil {
+		return nil, s.findingCandidateLifecycleConflict(ctx, candidate.ID, findingCandidateStatusPromoted, err)
+	}
 	stored, err := s.upsertFindingWithRisk(ctx, production, &cerebrov1.SourceRuntime{
 		Id:       strings.TrimSpace(candidate.RuntimeID),
 		TenantId: strings.TrimSpace(candidate.TenantID),
@@ -336,20 +349,7 @@ func (s *Service) PromoteFindingCandidate(ctx context.Context, request PromoteCa
 	if err := s.projectFindingAnchor(ctx, stored); err != nil {
 		return nil, fmt.Errorf("project promoted candidate %q finding %q: %w", candidate.ID, stored.ID, err)
 	}
-	decisionID, err := s.recordCandidatePromotionDecision(ctx, candidate, stored, request, now)
-	if err != nil {
-		return nil, err
-	}
-	promoted, err := s.candidateStore.MarkFindingCandidatePromoted(ctx, ports.FindingCandidatePromotion{
-		CandidateID:       candidate.ID,
-		PromotedFindingID: stored.ID,
-		DecisionID:        decisionID,
-		PromotedBy:        strings.TrimSpace(request.PromotedBy),
-		Rationale:         strings.TrimSpace(request.Rationale),
-		ChangeTicket:      strings.TrimSpace(request.ChangeTicket),
-		PromotedAt:        now,
-	})
-	if err != nil {
+	if err := s.recordCandidatePromotionDecision(ctx, promoted, stored, request, now, decisionID); err != nil {
 		return nil, err
 	}
 	emitFindingCandidatePromotionTelemetry(ctx, "promoted", promoted, stored, decisionID, startedAt)
@@ -385,10 +385,7 @@ func (s *Service) RejectFindingCandidate(ctx context.Context, request RejectCand
 		return &RejectCandidateResult{Candidate: candidate, DecisionID: strings.TrimSpace(candidate.DecisionID)}, nil
 	}
 	now := time.Now().UTC()
-	decisionID, err := s.recordCandidateRejectionDecision(ctx, candidate, request, now)
-	if err != nil {
-		return nil, err
-	}
+	decisionID := candidateRejectionDecisionID(candidate, now)
 	rejected, err := s.candidateStore.MarkFindingCandidateRejected(ctx, ports.FindingCandidateRejection{
 		CandidateID: candidate.ID,
 		DecisionID:  decisionID,
@@ -397,22 +394,63 @@ func (s *Service) RejectFindingCandidate(ctx context.Context, request RejectCand
 		RejectedAt:  now,
 	})
 	if err != nil {
+		return nil, s.findingCandidateLifecycleConflict(ctx, candidate.ID, findingCandidateStatusRejected, err)
+	}
+	if err := s.recordCandidateRejectionDecision(ctx, rejected, request, now, decisionID); err != nil {
 		return nil, err
 	}
 	emitFindingCandidateRejectionTelemetry(ctx, "rejected", rejected, decisionID, startedAt)
 	return &RejectCandidateResult{Candidate: rejected, DecisionID: decisionID}, nil
 }
 
-func (s *Service) recordCandidatePromotionDecision(ctx context.Context, candidate *ports.FindingCandidateRecord, finding *ports.FindingRecord, request PromoteCandidateRequest, observedAt time.Time) (string, error) {
+func (s *Service) findingCandidateLifecycleConflict(ctx context.Context, candidateID string, attemptedStatus string, err error) error {
+	if !errors.Is(err, ports.ErrFindingCandidateNotFound) {
+		return err
+	}
+	current, lookupErr := s.candidateStore.GetFindingCandidate(ctx, candidateID)
+	if lookupErr != nil {
+		return err
+	}
+	switch strings.TrimSpace(current.Status) {
+	case findingCandidateStatusPromoted:
+		return fmt.Errorf("%w: promoted finding candidate cannot transition to %s", ErrInvalidRequest, strings.TrimSpace(attemptedStatus))
+	case findingCandidateStatusRejected:
+		return fmt.Errorf("%w: rejected finding candidate cannot transition to %s", ErrInvalidRequest, strings.TrimSpace(attemptedStatus))
+	default:
+		return fmt.Errorf("%w: finding candidate status changed before lifecycle transition", ErrInvalidRequest)
+	}
+}
+
+func candidatePromotionDecisionID(candidate *ports.FindingCandidateRecord, finding *ports.FindingRecord, observedAt time.Time) string {
 	if candidate == nil || finding == nil {
-		return "", errors.New("candidate and finding are required")
+		return ""
+	}
+	tenantID := strings.TrimSpace(candidate.TenantID)
+	return workflowevents.CanonicalWorkflowID(tenantID, "decision", candidate.ID, findingCandidateDecisionType, []string{
+		findingGraphFindingURN(tenantID, finding),
+		findingCandidateURN(tenantID, candidate.ID),
+	}, observedAt)
+}
+
+func candidateRejectionDecisionID(candidate *ports.FindingCandidateRecord, observedAt time.Time) string {
+	if candidate == nil {
+		return ""
+	}
+	tenantID := strings.TrimSpace(candidate.TenantID)
+	return workflowevents.CanonicalWorkflowID(tenantID, "decision", candidate.ID, findingCandidateRejectionType, []string{
+		findingCandidateURN(tenantID, candidate.ID),
+	}, observedAt)
+}
+
+func (s *Service) recordCandidatePromotionDecision(ctx context.Context, candidate *ports.FindingCandidateRecord, finding *ports.FindingRecord, request PromoteCandidateRequest, observedAt time.Time, decisionID string) error {
+	if candidate == nil || finding == nil {
+		return errors.New("candidate and finding are required")
 	}
 	tenantID := strings.TrimSpace(candidate.TenantID)
 	targetIDs := []string{
 		findingGraphFindingURN(tenantID, finding),
 		findingCandidateURN(tenantID, candidate.ID),
 	}
-	decisionID := workflowevents.CanonicalWorkflowID(tenantID, "decision", candidate.ID, findingCandidateDecisionType, targetIDs, observedAt)
 	event, err := workflowevents.NewDecisionRecordedEvent(workflowevents.DecisionRecorded{
 		TenantID:      tenantID,
 		DecisionID:    decisionID,
@@ -439,21 +477,20 @@ func (s *Service) recordCandidatePromotionDecision(ctx context.Context, candidat
 		},
 	})
 	if err != nil {
-		return "", err
+		return err
 	}
 	if err := s.recordAndProjectWorkflowEvent(ctx, event); err != nil {
-		return "", fmt.Errorf("record finding candidate %q promotion decision: %w", candidate.ID, err)
+		return fmt.Errorf("record finding candidate %q promotion decision: %w", candidate.ID, err)
 	}
-	return decisionID, nil
+	return nil
 }
 
-func (s *Service) recordCandidateRejectionDecision(ctx context.Context, candidate *ports.FindingCandidateRecord, request RejectCandidateRequest, observedAt time.Time) (string, error) {
+func (s *Service) recordCandidateRejectionDecision(ctx context.Context, candidate *ports.FindingCandidateRecord, request RejectCandidateRequest, observedAt time.Time, decisionID string) error {
 	if candidate == nil {
-		return "", errors.New("candidate is required")
+		return errors.New("candidate is required")
 	}
 	tenantID := strings.TrimSpace(candidate.TenantID)
 	targetIDs := []string{findingCandidateURN(tenantID, candidate.ID)}
-	decisionID := workflowevents.CanonicalWorkflowID(tenantID, "decision", candidate.ID, findingCandidateRejectionType, targetIDs, observedAt)
 	event, err := workflowevents.NewDecisionRecordedEvent(workflowevents.DecisionRecorded{
 		TenantID:      tenantID,
 		DecisionID:    decisionID,
@@ -476,12 +513,12 @@ func (s *Service) recordCandidateRejectionDecision(ctx context.Context, candidat
 		},
 	})
 	if err != nil {
-		return "", err
+		return err
 	}
 	if err := s.recordAndProjectWorkflowEvent(ctx, event); err != nil {
-		return "", fmt.Errorf("record finding candidate %q rejection decision: %w", candidate.ID, err)
+		return fmt.Errorf("record finding candidate %q rejection decision: %w", candidate.ID, err)
 	}
-	return decisionID, nil
+	return nil
 }
 
 func normalizeCandidateFinding(record *ports.FindingRecord, runtime *cerebrov1.SourceRuntime, observedAt time.Time) *ports.FindingRecord {

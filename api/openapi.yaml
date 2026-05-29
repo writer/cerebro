@@ -264,7 +264,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [candidate, promoted]
+            enum: [candidate, promoted, rejected]
         - name: fingerprint
           in: query
           schema:

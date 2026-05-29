@@ -626,11 +626,11 @@ message FindingCandidate {
   string promotion_rationale = 16;
   string change_ticket = 17;
   google.protobuf.Timestamp promoted_at = 18;
-  string rejected_by = 19;
-  string rejection_rationale = 20;
-  google.protobuf.Timestamp rejected_at = 21;
-  google.protobuf.Timestamp created_at = 22;
-  google.protobuf.Timestamp updated_at = 23;
+  google.protobuf.Timestamp created_at = 19;
+  google.protobuf.Timestamp updated_at = 20;
+  string rejected_by = 21;
+  string rejection_rationale = 22;
+  google.protobuf.Timestamp rejected_at = 23;
 }
 
 // ListFindingCandidatesRequest queries isolated candidate finding snapshots for one runtime.
