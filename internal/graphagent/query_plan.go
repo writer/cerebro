@@ -240,10 +240,23 @@ WITH resource, finding, risk_score, severity,
        WHEN 'LOW' THEN 1
        ELSE 0
      END AS severity_rank
+WITH finding,
+     collect(DISTINCT resource.urn) AS resource_urns,
+     collect(DISTINCT coalesce(resource.label, resource.urn)) AS resource_labels,
+     max(risk_score) AS risk_score,
+     max(severity_rank) AS severity_rank
+WITH finding, resource_urns, resource_labels, risk_score, severity_rank,
+     CASE severity_rank
+       WHEN 4 THEN 'CRITICAL'
+       WHEN 3 THEN 'HIGH'
+       WHEN 2 THEN 'MEDIUM'
+       WHEN 1 THEN 'LOW'
+       ELSE ''
+     END AS severity
 RETURN finding.urn AS finding_urn,
        coalesce(finding.label, finding.urn) AS finding_label,
-       resource.urn AS resource_urn,
-       coalesce(resource.label, resource.urn) AS resource_label,
+       resource_urns,
+       resource_labels,
        risk_score,
        severity
 ORDER BY risk_score DESC, severity_rank DESC, finding_urn

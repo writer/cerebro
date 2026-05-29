@@ -79,6 +79,8 @@ func TestConvertDraftToQueryScopesTopRiskAndReturnsOnlyScalarFields(t *testing.T
 		"WHERE $scope_urn = '' OR resource.urn = $scope_urn OR finding.urn = $scope_urn",
 		"CASE toUpper(severity)",
 		"WHEN 'CRITICAL' THEN 4",
+		"collect(DISTINCT resource.urn) AS resource_urns",
+		"max(risk_score) AS risk_score",
 		"ORDER BY risk_score DESC, severity_rank DESC, finding_urn",
 	} {
 		if !strings.Contains(result.Cypher, want) {
