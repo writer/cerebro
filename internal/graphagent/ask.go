@@ -83,12 +83,12 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		Schema:    graphAgentSchemaHint,
 		Guardrail: graphAgentGuardrail,
 	})
-	if err != nil {
-		return fmt.Errorf("%w: draft cypher: %w", ErrRuntimeUnavailable, err)
-	}
 	timings.DraftMS = time.Since(draftStarted).Milliseconds()
+	if err != nil {
+		return streamErrorf(timings, "%w: draft cypher: %w", ErrRuntimeUnavailable, err)
+	}
 	if draft == nil {
-		return fmt.Errorf("%w: LLM returned no draft", ErrRuntimeUnavailable)
+		return streamErrorf(timings, "%w: LLM returned no draft", ErrRuntimeUnavailable)
 	}
 	rationale := strings.TrimSpace(draft.Rationale)
 	if rationale == "" {
@@ -107,23 +107,23 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	}
 	if cypher == "" {
 		reason := firstNonEmpty(draft.Refusal, conversion.Refusal, "LLM refused to draft Cypher")
-		return emitRefusal(emit, traceID, started, cypher, reason, timings)
+		return emitRefusal(emit, traceID, started, cypher, reason, refusalCode(reason, draft, conversion, ValidatorResult{}), timings)
 	}
 	if err := emitProgress(emit, started, "validating_query", "Validating generated Cypher against read-only guardrails."); err != nil {
 		return err
 	}
 	validateStarted := time.Now()
 	validation, rowLimit, err := s.validateConversion(ctx, conversion, cypher, params)
-	if err != nil {
-		return err
-	}
 	timings.ValidateMS = time.Since(validateStarted).Milliseconds()
+	if err != nil {
+		return streamErrorf(timings, "%w", err)
+	}
 	validation.Warnings = append(validation.Warnings, conversionWarnings(conversion.Diagnostics)...)
 	if err := emit(Event{Name: EventCypher, Data: CypherEvent{Cypher: cypher, Validator: validation}}); err != nil {
 		return err
 	}
 	if !validation.OK {
-		return emitRefusal(emit, traceID, started, cypher, validation.Reason, timings)
+		return emitRefusal(emit, traceID, started, cypher, validation.Reason, refusalCode(validation.Reason, draft, conversion, validation), timings)
 	}
 
 	if err := emitProgress(emit, started, "executing_query", "Executing the validated graph query."); err != nil {
@@ -135,12 +135,12 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		Params:   params,
 		RowLimit: rowLimit,
 	})
-	if err != nil {
-		return fmt.Errorf("%w: execute cypher: %w", ErrRuntimeUnavailable, err)
-	}
 	timings.ExecuteMS = time.Since(execStarted).Milliseconds()
+	if err != nil {
+		return streamErrorf(timings, "%w: execute cypher: %w", ErrRuntimeUnavailable, err)
+	}
 	if postProcessingCandidateLimitHit(conversion.Plan, rows, rowLimit) {
-		return emitRefusal(emit, traceID, started, cypher, "The deterministic Ask query matched more graph rows than can be safely post-processed without risking an incomplete answer. Narrow the scope or ask for a more specific subset.", timings)
+		return emitRefusal(emit, traceID, started, cypher, "The deterministic Ask query matched more graph rows than can be safely post-processed without risking an incomplete answer. Narrow the scope or ask for a more specific subset.", "post_processing_candidate_limit", timings)
 	}
 	rowMaps := cypherRowsToMaps(rows)
 	rowMaps = postProcessAskRows(conversion.Plan, rowMaps)
@@ -167,10 +167,10 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		Rows:     rowMaps,
 		History:  history,
 	})
-	if err != nil {
-		return fmt.Errorf("%w: summarize graph rows: %w", ErrRuntimeUnavailable, err)
-	}
 	timings.SummarizeMS = time.Since(summarizeStarted).Milliseconds()
+	if err != nil {
+		return streamErrorf(timings, "%w: summarize graph rows: %w", ErrRuntimeUnavailable, err)
+	}
 	if strings.TrimSpace(summary) == "" {
 		summary = fallbackSummary(rowMaps)
 	}
@@ -193,6 +193,31 @@ func (s *Service) validateConversion(ctx context.Context, conversion conversionR
 		validator = NewValidator(validator.store, options)
 	}
 	return validator.validate(ctx, cypher, params)
+}
+
+type timedStreamError struct {
+	err     error
+	timings StageTimings
+}
+
+func (e timedStreamError) Error() string {
+	return e.err.Error()
+}
+
+func (e timedStreamError) Unwrap() error {
+	return e.err
+}
+
+func streamErrorf(timings StageTimings, format string, args ...any) error {
+	return timedStreamError{err: fmt.Errorf(format, args...), timings: timings}
+}
+
+func ErrorTimings(err error) (StageTimings, bool) {
+	var timed timedStreamError
+	if errors.As(err, &timed) {
+		return timed.timings, true
+	}
+	return StageTimings{}, false
 }
 
 func emitProgress(emit Emitter, started time.Time, stage string, message string) error {
@@ -244,14 +269,14 @@ func conversionWarnings(diagnostics []ConversionDiagnostic) []string {
 	return warnings
 }
 
-func emitRefusal(emit Emitter, traceID string, started time.Time, cypher string, reason string, timings StageTimings) error {
+func emitRefusal(emit Emitter, traceID string, started time.Time, cypher string, reason string, code string, timings StageTimings) error {
 	reason = firstNonEmpty(reason, "Read-only Cypher validator refused the draft.")
 	if cypher == "" {
-		if err := emit(Event{Name: EventCypher, Data: CypherEvent{Cypher: "", Validator: ValidatorResult{OK: false, Reason: reason}}}); err != nil {
+		if err := emit(Event{Name: EventCypher, Data: CypherEvent{Cypher: "", Validator: ValidatorResult{OK: false, Code: code, Reason: reason}}}); err != nil {
 			return err
 		}
 	}
-	rescue := unsupportedQuery(reason, traceID)
+	rescue := unsupportedQuery(reason, traceID, code)
 	if err := emit(Event{Name: EventSummary, Data: SummaryEvent{Markdown: reason, UnsupportedQuery: &rescue}}); err != nil {
 		return err
 	}
@@ -455,7 +480,7 @@ func matchesTopRiskFilters(plan AskQueryPlan, row map[string]any, severity strin
 func resourceTypeMatchesFilter(resourceType string, resourceURN string, filter string) bool {
 	canonical := canonicalEntityType(filter)
 	if canonical == "github.code.repository" || canonical == "github.repo" {
-		return resourceType == "github.code.repository" || resourceType == "github.repo" || strings.Contains(resourceURN, ":repo:") || strings.Contains(resourceURN, ":github_repo:")
+		return resourceType == "github.code.repository" || resourceType == "github.repo"
 	}
 	return strings.EqualFold(resourceType, canonical)
 }
@@ -744,9 +769,31 @@ func urnsFromSummary(summary string) []string {
 	return urns
 }
 
-func unsupportedQuery(reason string, traceID string) UnsupportedQuery {
+func refusalCode(reason string, draft *DraftResponse, conversion conversionResult, validation ValidatorResult) string {
+	if validation.Code != "" {
+		return "validator_refusal"
+	}
+	if conversionDiagnosticsContain(conversion.Diagnostics, "query_plan_conversion_failed") {
+		return "query_plan_conversion_failed"
+	}
+	if draft != nil && strings.TrimSpace(draft.Refusal) != "" {
+		return "llm_refusal"
+	}
+	return unsupportedQueryCode(firstNonEmpty(reason, conversion.Refusal))
+}
+
+func conversionDiagnosticsContain(diagnostics []ConversionDiagnostic, code string) bool {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Code == code {
+			return true
+		}
+	}
+	return false
+}
+
+func unsupportedQuery(reason string, traceID string, code string) UnsupportedQuery {
 	return UnsupportedQuery{
-		Code:             unsupportedQueryCode(reason),
+		Code:             firstNonEmpty(code, unsupportedQueryCode(reason)),
 		Reason:           reason,
 		SupportedIntents: []string{IntentTopRiskFindings, IntentAggregateFindingsBySource, IntentExplainFinding, IntentIdentityBridge, IntentConnectorHealth},
 		SuggestedRewrites: []string{

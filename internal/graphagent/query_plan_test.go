@@ -228,15 +228,30 @@ LIMIT 25`
 	if !result.Deterministic || result.Source != "deterministic_template" {
 		t.Fatalf("conversion result = %#v, want deterministic filtered template", result)
 	}
-	for _, want := range []string{"resource.entity_type AS resource_type", "relation_attributes_json_internal", "finding_attributes_json_internal"} {
+	for _, want := range []string{
+		"toUpper(filter_severity) = 'HIGH'",
+		"toLower(filter_status) = 'open'",
+		"resource.entity_type IN ['github.code.repository', 'github.repo']",
+		"resource.entity_type AS resource_type",
+		"relation_attributes_json_internal",
+		"finding_attributes_json_internal",
+	} {
 		if !strings.Contains(result.Cypher, want) {
 			t.Fatalf("filtered cypher missing %q:\n%s", want, result.Cypher)
 		}
 	}
-	for _, forbidden := range []string{"toUpper(severity)", "toLower(status)", "resource.entity_type IN", "split(split"} {
+	for _, forbidden := range []string{"max(risk_score)", "CASE toUpper"} {
 		if strings.Contains(result.Cypher, forbidden) {
-			t.Fatalf("filtered cypher should leave filter evaluation to Go; found %q:\n%s", forbidden, result.Cypher)
+			t.Fatalf("filtered cypher should leave ranking to Go; found %q:\n%s", forbidden, result.Cypher)
 		}
+	}
+}
+
+func TestCypherStringLiteralEscapesBackslashBeforeQuote(t *testing.T) {
+	got := cypherStringLiteral(`open\' OR true`)
+	want := `'open\\\' OR true'`
+	if got != want {
+		t.Fatalf("cypherStringLiteral() = %q, want %q", got, want)
 	}
 }
 
@@ -330,6 +345,9 @@ func TestConvertDraftToQueryUsesCanonicalIdentityBridgeTemplate(t *testing.T) {
 		"left.entity_type <> right.entity_type",
 		"$scope_urn = '' OR left.urn = $scope_urn OR right.urn = $scope_urn OR identity.urn = $scope_urn",
 		"NOT left.entity_type STARTS WITH 'identifier'",
+		"left_seen_at =~ '^\\\\d{4}-\\\\d{2}-\\\\d{2}T.*'",
+		"datetime(left_seen_at) >= datetime() - duration('P90D')",
+		"datetime(right_seen_at) >= datetime() - duration('P90D')",
 		"identity.urn AS identity_urn",
 	} {
 		if !strings.Contains(result.Cypher, want) {
