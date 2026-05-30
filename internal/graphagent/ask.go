@@ -480,7 +480,7 @@ func matchesTopRiskFilters(plan AskQueryPlan, row map[string]any, severity strin
 func resourceTypeMatchesFilter(resourceType string, resourceURN string, filter string) bool {
 	canonical := canonicalEntityType(filter)
 	if canonical == "github.code.repository" || canonical == "github.repo" {
-		return resourceType == "github.code.repository" || resourceType == "github.repo" || strings.Contains(resourceURN, ":repo:") || strings.Contains(resourceURN, ":github_repo:")
+		return resourceType == "github.code.repository" || resourceType == "github.repo"
 	}
 	return strings.EqualFold(resourceType, canonical)
 }

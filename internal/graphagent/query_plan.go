@@ -420,7 +420,7 @@ func resourceTypePredicate(value string) string {
 	canonical := canonicalEntityType(value)
 	switch canonical {
 	case "github.code.repository", "github.repo":
-		return "CASE WHEN resource.entity_type IN ['github.code.repository', 'github.repo'] THEN true WHEN resource.urn CONTAINS ':repo:' THEN true WHEN resource.urn CONTAINS ':github_repo:' THEN true ELSE false END"
+		return "resource.entity_type IN ['github.code.repository', 'github.repo']"
 	default:
 		return "resource.entity_type = " + cypherStringLiteral(canonical)
 	}

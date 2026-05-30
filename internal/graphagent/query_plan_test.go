@@ -231,7 +231,7 @@ LIMIT 25`
 	for _, want := range []string{
 		"toUpper(filter_severity) = 'HIGH'",
 		"toLower(filter_status) = 'open'",
-		"CASE WHEN resource.entity_type IN ['github.code.repository', 'github.repo'] THEN true",
+		"resource.entity_type IN ['github.code.repository', 'github.repo']",
 		"resource.entity_type AS resource_type",
 		"relation_attributes_json_internal",
 		"finding_attributes_json_internal",

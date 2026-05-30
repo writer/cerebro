@@ -435,7 +435,7 @@ func TestServicePushesTopRiskFiltersBeforeCandidateLimit(t *testing.T) {
 		t.Fatalf("Stream() error = %v", err)
 	}
 	assertEventNames(t, events, []string{EventProgress, EventRationale, EventQueryPlan, EventProgress, EventCypher, EventProgress, EventRows, EventProgress, EventSummary, EventDone})
-	if !strings.Contains(store.requests[0].Query, "toLower(filter_status) = 'open'") || !strings.Contains(store.requests[0].Query, "CASE WHEN resource.entity_type IN ['github.code.repository', 'github.repo'] THEN true") {
+	if !strings.Contains(store.requests[0].Query, "toLower(filter_status) = 'open'") || !strings.Contains(store.requests[0].Query, "resource.entity_type IN ['github.code.repository', 'github.repo']") {
 		t.Fatalf("store request should push supported filters into Cypher:\n%s", store.requests[0].Query)
 	}
 	rowsEvent := events[6].Data.(RowsEvent)
@@ -445,6 +445,15 @@ func TestServicePushesTopRiskFiltersBeforeCandidateLimit(t *testing.T) {
 	done := events[9].Data.(DoneEvent)
 	if done.CypherRefused {
 		t.Fatalf("done.CypherRefused = true, want filtered saturated candidate window to proceed")
+	}
+}
+
+func TestResourceTypeMatchesRepositoryFilterByEntityTypeOnly(t *testing.T) {
+	if resourceTypeMatchesFilter("github.runner", "urn:cerebro:writer:github_runner:repo:writer/cerebro:777", "repository") {
+		t.Fatal("repository filter matched github.runner because its URN contains repo")
+	}
+	if !resourceTypeMatchesFilter("github.repo", "urn:cerebro:writer:github_runner:repo:writer/cerebro:777", "repository") {
+		t.Fatal("repository filter did not match github.repo entity type")
 	}
 }
 
