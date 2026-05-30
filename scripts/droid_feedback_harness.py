@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+"""Summarize active Droid feedback and suggest local regression checks."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from dataclasses import dataclass
+
+
+@dataclass
+class DroidComment:
+    kind: str
+    url: str
+    path: str
+    line: int | None
+    body: str
+
+
+def gh_json(args: list[str]) -> object:
+    completed = subprocess.run(
+        ["gh", *args],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return json.loads(completed.stdout)
+
+
+def collect_comments(pr_number: str) -> list[DroidComment]:
+    review_comments = gh_json(
+        [
+            "api",
+            f"repos/writer/cerebro/pulls/{pr_number}/comments",
+            "--paginate",
+        ]
+    )
+    issue_comments = gh_json(
+        [
+            "api",
+            f"repos/writer/cerebro/issues/{pr_number}/comments",
+            "--paginate",
+        ]
+    )
+    comments: list[DroidComment] = []
+    for item in review_comments:
+        if not is_droid(item):
+            continue
+        body = item.get("body", "")
+        if is_superseded(body):
+            continue
+        comments.append(
+            DroidComment(
+                kind="review",
+                url=item.get("html_url", ""),
+                path=item.get("path", ""),
+                line=item.get("line") or item.get("original_line"),
+                body=body,
+            )
+        )
+    for item in issue_comments:
+        if not is_droid(item):
+            continue
+        body = item.get("body", "")
+        if is_superseded(body):
+            continue
+        comments.append(
+            DroidComment(
+                kind="summary",
+                url=item.get("html_url", ""),
+                path="",
+                line=None,
+                body=body,
+            )
+        )
+    return comments
+
+
+def is_droid(item: dict[str, object]) -> bool:
+    user = item.get("user") or {}
+    if not isinstance(user, dict):
+        return False
+    return str(user.get("login", "")).lower() in {"factory-droid", "factory-droid[bot]"}
+
+
+def is_superseded(body: str) -> bool:
+    lowered = body.lower()
+    return "superseded" in lowered or "view job" in lowered and "encountered an error" in lowered
+
+
+def suggested_checks(comment: DroidComment) -> list[str]:
+    text = f"{comment.path}\n{comment.body}".lower()
+    checks: list[str] = []
+    if "io.readall" in text or "limitreader" in text or "body read" in text:
+        checks.append("make droid-review-preflight")
+        checks.append("go test ./tools/droidreview/...")
+        checks.append("go test ./tools/archtests -run '^TestProductionBodyReadsAreBounded$' -count=1 -v")
+    if "cypher" in text or "graphagent" in text or "tenant" in text:
+        checks.append("go test ./internal/graphagent -count=1")
+    if "sourcehttp" in text or "ssrf" in text or "dns" in text:
+        checks.append("go test ./tools/archtests -run '^TestSourcesUseSharedHTTPSafety$' -count=1 -v")
+    if "candidate" in text or "compare-and-swap" in text or "atomic" in text:
+        checks.append("go test ./internal/findings -count=1")
+    if not checks:
+        checks.append("add a focused regression test near the changed package")
+    return checks
+
+
+def first_sentence(markdown: str) -> str:
+    for line in markdown.splitlines():
+        stripped = line.strip(" #*>-")
+        if stripped:
+            return stripped[:180]
+    return "(empty comment)"
+
+
+def regression_checklist(comments: list[DroidComment]) -> str:
+    lines = ["# Droid Feedback Regression Checklist", ""]
+    if not comments:
+        lines.append("No active Droid comments found.")
+        lines.append("")
+        return "\n".join(lines)
+    for index, comment in enumerate(comments, start=1):
+        location = comment.path
+        if comment.line:
+            location = f"{location}:{comment.line}"
+        location = location or comment.kind
+        lines.extend(
+            [
+                f"## {index}. {location}",
+                "",
+                f"- Comment: {first_sentence(comment.body)}",
+                f"- URL: {comment.url}",
+                "- Regression checks:",
+            ]
+        )
+        for check in suggested_checks(comment):
+            lines.append(f"  - [ ] `{check}`")
+        lines.extend(
+            [
+                "- Local test added/updated:",
+                "  - [ ] Yes",
+                "- Notes:",
+                "",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("pr", help="pull request number")
+    parser.add_argument("--markdown-out", help="optional path for a markdown regression checklist")
+    args = parser.parse_args()
+
+    try:
+        comments = collect_comments(args.pr)
+    except subprocess.CalledProcessError as exc:
+        print(exc.stderr, file=sys.stderr)
+        return exc.returncode
+
+    if not comments:
+        print(f"No Droid comments found on PR #{args.pr}.")
+        if args.markdown_out:
+            ensure_parent_dir(args.markdown_out)
+            with open(args.markdown_out, "w", encoding="utf-8") as handle:
+                handle.write(regression_checklist(comments))
+        return 0
+
+    print(f"Found {len(comments)} Droid comment(s) on PR #{args.pr}.\n")
+    for index, comment in enumerate(comments, start=1):
+        location = comment.path
+        if comment.line:
+            location = f"{location}:{comment.line}"
+        location = location or comment.kind
+        print(f"{index}. {location}")
+        print(f"   {first_sentence(comment.body)}")
+        print(f"   {comment.url}")
+        print("   Suggested local checks:")
+        for check in suggested_checks(comment):
+            print(f"   - {check}")
+        print()
+    if args.markdown_out:
+        ensure_parent_dir(args.markdown_out)
+        with open(args.markdown_out, "w", encoding="utf-8") as handle:
+            handle.write(regression_checklist(comments))
+        print(f"Wrote regression checklist to {args.markdown_out}.")
+    return 0
+
+
+def ensure_parent_dir(path: str) -> None:
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

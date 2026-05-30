@@ -1,4 +1,4 @@
-.PHONY: build serve test workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke lint lint-bootstrap proto-lint proto-generate openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check oss-audit govulncheck clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: build serve test workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke lint lint-bootstrap proto-lint proto-generate openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check oss-audit govulncheck droid-review-preflight droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
@@ -30,6 +30,10 @@ GRAPH_REBUILD_PAGE_LIMIT ?= 1
 GRAPH_REBUILD_EVENT_LIMIT ?= 100
 GRAPH_REBUILD_PREVIEW_LIMIT ?= 10
 CANDIDATE_SMOKE_EVENT_LIMIT ?= 25
+DROID_REVIEW_BASE ?= origin/main
+DROID_REVIEW_HEAD ?= HEAD
+DROID_PR ?=
+DROID_FEEDBACK_OUT ?=
 
 build:
 	go build -o bin/cerebro ./cmd/cerebro
@@ -120,6 +124,14 @@ oss-audit:
 
 govulncheck:
 	$(GOVULNCHECK) ./...
+
+droid-review-preflight:
+	go test ./tools/droidreview/...
+	go run ./tools/droidreview --base "$(DROID_REVIEW_BASE)" --head "$(DROID_REVIEW_HEAD)"
+
+droid-feedback:
+	@if [ -z "$(DROID_PR)" ]; then echo "DROID_PR is required, e.g. make droid-feedback DROID_PR=719" >&2; exit 2; fi
+	python3 scripts/droid_feedback_harness.py "$(DROID_PR)" $(if $(DROID_FEEDBACK_OUT),--markdown-out "$(DROID_FEEDBACK_OUT)")
 
 clean:
 	rm -rf bin/
