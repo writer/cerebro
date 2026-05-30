@@ -330,6 +330,9 @@ func TestConvertDraftToQueryUsesCanonicalIdentityBridgeTemplate(t *testing.T) {
 		"left.entity_type <> right.entity_type",
 		"$scope_urn = '' OR left.urn = $scope_urn OR right.urn = $scope_urn OR identity.urn = $scope_urn",
 		"NOT left.entity_type STARTS WITH 'identifier'",
+		"left_seen_at =~ '^\\\\d{4}-\\\\d{2}-\\\\d{2}T.*'",
+		"datetime(left_seen_at) >= datetime() - duration('P90D')",
+		"datetime(right_seen_at) >= datetime() - duration('P90D')",
 		"identity.urn AS identity_urn",
 	} {
 		if !strings.Contains(result.Cypher, want) {

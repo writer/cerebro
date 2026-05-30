@@ -332,6 +332,10 @@ WHERE left.urn < right.urn
 WITH left, right, identity,
      coalesce(%s, '') AS left_seen_at,
      coalesce(%s, '') AS right_seen_at
+WHERE left_seen_at =~ '^\\d{4}-\\d{2}-\\d{2}T.*'
+  AND right_seen_at =~ '^\\d{4}-\\d{2}-\\d{2}T.*'
+  AND datetime(left_seen_at) >= datetime() - duration('P90D')
+  AND datetime(right_seen_at) >= datetime() - duration('P90D')
 RETURN left.urn AS left_urn,
        coalesce(left.label, left.urn) AS left_label,
        left.entity_type AS left_type,

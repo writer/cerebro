@@ -104,8 +104,9 @@ type DoneEvent struct {
 }
 
 type ErrorEvent struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code    string       `json:"code"`
+	Message string       `json:"message"`
+	Timings StageTimings `json:"timings,omitempty"`
 }
 
 func WriteSSEEvent(w io.Writer, event Event) error {
