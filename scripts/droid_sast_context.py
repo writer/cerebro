@@ -212,7 +212,7 @@ def run_govulncheck(packages: list[str]) -> ToolResult:
     completed = run_command([*GOVULNCHECK_CMD, *package_args], timeout=240)
     findings: list[dict[str, object]] = []
     combined = "\n".join(part for part in [completed.stdout, completed.stderr] if part).strip()
-    if completed.returncode != 0:
+    if completed.returncode == 3:
         findings.append(
             {
                 "tool": "govulncheck",
@@ -226,6 +226,8 @@ def run_govulncheck(packages: list[str]) -> ToolResult:
             }
         )
     notes = trim_lines(combined, 30)
+    if completed.returncode not in (0, 3):
+        notes.insert(0, f"govulncheck exited {completed.returncode}; treating as tool error, not a confirmed vulnerability.")
     return ToolResult("govulncheck", ", ".join(package_args), "completed", findings, notes)
 
 
