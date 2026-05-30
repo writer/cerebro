@@ -406,7 +406,10 @@ func cloudEffectivePermissionProjections(event *cerebrov1.EventEnvelope, profile
 		addCloudAccountLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, cloudEffectivePermissionAccountID(attributes, provider), provider)
 	}
 	roleID := strings.TrimSpace(attributes["role_id"])
-	roleURN := identityPrincipalURN(tenantID, provider, "role", roleID, "")
+	roleURN := ""
+	if roleID != "" {
+		roleURN = identityPrincipalURN(tenantID, provider, "role", roleID, "")
+	}
 	if roleURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        roleURN,

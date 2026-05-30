@@ -1509,6 +1509,25 @@ func TestGitHubAutomationCredentialIDSkipsEmptyFallback(t *testing.T) {
 	}
 }
 
+func TestProjectGitHubAuditSkipsSparseAutomationCredential(t *testing.T) {
+	graph := &projectionRecorder{}
+	_, err := New(nil, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-audit-sparse-automation",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.audit",
+		Attributes: map[string]string{
+			"actor_is_bot": "true",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if credential := graph.entities["urn:cerebro:writer:github_credential"]; credential != nil {
+		t.Fatalf("sparse automation event should not create placeholder credential: %#v", credential)
+	}
+}
+
 func TestProjectGitHubAuditSkipsSyntheticTargetUsersFromIdentityGraph(t *testing.T) {
 	for _, targetLogin := range []string{"pullrequest[bot]", "Renovate[Bot]", "deploy_key", "deploy-key"} {
 		t.Run(targetLogin, func(t *testing.T) {
@@ -2924,6 +2943,9 @@ func TestProjectAWSEffectivePermissionWithoutRoleIDSkipsRoleNode(t *testing.T) {
 	roleURN := "urn:cerebro:writer:aws_role:ReadOnlyAccess"
 	if role := state.entities[roleURN]; role != nil {
 		t.Fatalf("role entity should not be created when role_id is missing: %#v", role)
+	}
+	if role := state.entities["urn:cerebro:writer:aws_role"]; role != nil {
+		t.Fatalf("placeholder role entity should not be created when role_id is missing: %#v", role)
 	}
 	resourceURN := "urn:cerebro:writer:aws_bucket:arn:aws:s3:::writer-bucket"
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_user:analyst@writer.com", relationCanPerform, resourceURN)

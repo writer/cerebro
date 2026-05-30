@@ -791,8 +791,9 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 			}
 		}
 	} else if actorIsAutomation {
-		credentialURN := githubCredentialURN(tenantID, githubAutomationCredentialID(attributes))
-		if credentialURN != "" {
+		credentialID := githubAutomationCredentialID(attributes)
+		if credentialID != "" {
+			credentialURN := githubCredentialURN(tenantID, credentialID)
 			credentialAttrs := map[string]string{
 				"actor":                    actor,
 				"actor_is_agent":           actorIsAgent,
