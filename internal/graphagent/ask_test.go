@@ -239,6 +239,55 @@ func TestServiceSanitizesInternalFindingAttributes(t *testing.T) {
 	}
 }
 
+func TestServiceSanitizesInternalSourceAttributes(t *testing.T) {
+	store := &askStore{
+		rows: []ports.CypherRow{{
+			Values: map[string]any{
+				"source_urn":                      "urn:cerebro:writer:source:github",
+				"source_label":                    "GitHub",
+				"source_id":                       "github",
+				"runtime_id":                      "runtime-1",
+				"source_attributes_json_internal": `{"status":"healthy","last_sync_minutes":3,"last_error":"none"}`,
+			},
+		}},
+	}
+	llm := &StubLLMClient{
+		DraftResponse: &DraftResponse{
+			Rationale: "Checking source health.",
+			Plan:      &AskQueryPlan{Intent: IntentConnectorHealth, Limit: 25},
+		},
+		Summary: "GitHub is healthy.",
+	}
+	service := NewService(store, llm, ValidatorOptions{})
+
+	var events []Event
+	err := service.Stream(context.Background(), AskRequest{
+		TenantID: "writer",
+		Question: "Show GitHub health",
+		ScopeURN: "urn:cerebro:writer:source:github",
+	}, func(event Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	rowsEvent := events[6].Data.(RowsEvent)
+	row := rowsEvent.Rows[0]
+	if _, exists := row["source_attributes_json_internal"]; exists {
+		t.Fatalf("internal source attributes leaked in row: %#v", row)
+	}
+	if got := row["status"]; got != "healthy" {
+		t.Fatalf("status = %q, want healthy", got)
+	}
+	if got := row["last_sync_minutes"]; got != "3" {
+		t.Fatalf("last_sync_minutes = %q, want 3", got)
+	}
+	if len(store.requests) != 1 || !strings.Contains(store.requests[0].Query, "source_attributes_json_internal") {
+		t.Fatalf("store request = %#v, want internal source attributes", store.requests)
+	}
+}
+
 func TestServiceRequiresTenantID(t *testing.T) {
 	service := NewService(&askStore{}, NewStubLLMClient(), ValidatorOptions{})
 	err := service.Stream(context.Background(), AskRequest{Question: "hello"}, func(Event) error { return nil })

@@ -239,11 +239,12 @@ func cypherRowsToMaps(rows []ports.CypherRow) []map[string]any {
 
 func sanitizeInternalRowFields(rows []map[string]any) {
 	for _, row := range rows {
-		mergeFindingAttributes(row, "finding_attributes_json_internal")
+		mergeInternalAttributes(row, "finding_attributes_json_internal", []string{"summary", "status", "severity", "effective_severity", "risk_score"})
+		mergeInternalAttributes(row, "source_attributes_json_internal", []string{"status", "health", "last_sync_at", "last_sync_minutes", "last_success_at", "last_error"})
 	}
 }
 
-func mergeFindingAttributes(row map[string]any, key string) {
+func mergeInternalAttributes(row map[string]any, key string, fields []string) {
 	raw, ok := row[key].(string)
 	delete(row, key)
 	if !ok || strings.TrimSpace(raw) == "" {
@@ -253,7 +254,7 @@ func mergeFindingAttributes(row map[string]any, key string) {
 	if err := json.Unmarshal([]byte(raw), &attrs); err != nil {
 		return
 	}
-	for _, field := range []string{"summary", "status", "severity", "effective_severity", "risk_score"} {
+	for _, field := range fields {
 		if !rowValueEmpty(row[field]) {
 			continue
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -17,11 +18,36 @@ type failUpsertStore struct {
 	failID string
 }
 
+type repeatedByteReader struct {
+	remaining int64
+}
+
+func (r *repeatedByteReader) Read(p []byte) (int, error) {
+	if r.remaining <= 0 {
+		return 0, io.EOF
+	}
+	if int64(len(p)) > r.remaining {
+		p = p[:r.remaining]
+	}
+	for i := range p {
+		p[i] = 'x'
+	}
+	r.remaining -= int64(len(p))
+	return len(p), nil
+}
+
 func (s failUpsertStore) UpsertVulnerability(ctx context.Context, vulnerability Vulnerability) error {
 	if NormalizeIdentifier(vulnerability.ID) == NormalizeIdentifier(s.failID) {
 		return errors.New("upsert failed")
 	}
 	return s.MemoryStore.UpsertVulnerability(ctx, vulnerability)
+}
+
+func TestReadLimitedVulnDBFeedRejectsOversizedPayload(t *testing.T) {
+	_, err := readLimitedVulnDBFeed(SourceOSV, &repeatedByteReader{remaining: 11}, 10)
+	if !errors.Is(err, ErrVulnDBFeedTooLarge) {
+		t.Fatalf("readLimitedVulnDBFeed() error = %v, want ErrVulnDBFeedTooLarge", err)
+	}
 }
 
 func TestMemoryStoreAliasAndPackageMatching(t *testing.T) {

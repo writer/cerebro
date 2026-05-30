@@ -390,7 +390,7 @@ RETURN source.urn AS source_urn,
        coalesce(source.label, source.urn) AS source_label,
        source.source_id AS source_id,
        source.runtime_id AS runtime_id,
-       coalesce(source.attributes_json, '') AS source_attributes_json
+       coalesce(source.attributes_json, '') AS source_attributes_json_internal
 ORDER BY source_label, source_urn
 LIMIT %d`, limit), true
 	default:
