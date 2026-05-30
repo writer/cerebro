@@ -28,9 +28,9 @@ rules:
         - sources/**/*.go
       exclude:
         - "**/*_test.go"
-    patterns:
-      - pattern: io.ReadAll($BODY)
-      - pattern-not: io.ReadAll(io.LimitReader(...))
+    pattern-either:
+      - pattern: io.ReadAll($RESP.Body)
+      - pattern: io.ReadAll($RESP.Body())
 
   - id: cerebro.github-actions.unpinned-action
     languages: [yaml]
