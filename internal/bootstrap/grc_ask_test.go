@@ -229,6 +229,35 @@ func TestGRCAskExplainFailureReturnsServiceUnavailable(t *testing.T) {
 	}
 }
 
+func TestGRCAskTelemetryCopiesErrorEventTimings(t *testing.T) {
+	evt := askWideEvent{tenantID: "example", question: "hello", graphStoreOK: true, llmOK: true}
+	evt.observe(graphagent.Event{Name: graphagent.EventError, Data: graphagent.ErrorEvent{
+		Code:    "ask_failed",
+		Message: "explain cypher failed",
+		Timings: graphagent.StageTimings{
+			DraftMS:      11,
+			ConversionMS: 7,
+			ValidateMS:   5,
+		},
+	}})
+
+	req := httptest.NewRequest(http.MethodPost, "/grc/ask", nil)
+	stderr := captureBootstrapStderr(t, func() {
+		evt.finish(req, httptest.NewRecorder(), time.Now(), http.StatusOK, errors.New("explain cypher failed"))
+	})
+	payload := decodeBootstrapTelemetryPayload(t, stderr)
+	for key, want := range map[string]any{
+		"terminal_event":      graphagent.EventError,
+		"stage.draft_ms":      float64(11),
+		"stage.conversion_ms": float64(7),
+		"stage.validate_ms":   float64(5),
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+}
+
 type sseRecord struct {
 	Name string
 	Data json.RawMessage

@@ -105,8 +105,8 @@ func TestServiceRefusesValidatorRejectedCypher(t *testing.T) {
 		t.Fatalf("validator ok = true, want false")
 	}
 	summary := events[5].Data.(SummaryEvent)
-	if summary.UnsupportedQuery == nil || summary.UnsupportedQuery.Code == "" || len(summary.UnsupportedQuery.SuggestedRewrites) == 0 {
-		t.Fatalf("unsupported query rescue = %#v, want structured suggestions", summary.UnsupportedQuery)
+	if summary.UnsupportedQuery == nil || summary.UnsupportedQuery.Code != "validator_refusal" || len(summary.UnsupportedQuery.SuggestedRewrites) == 0 {
+		t.Fatalf("unsupported query rescue = %#v, want validator refusal with structured suggestions", summary.UnsupportedQuery)
 	}
 	done := events[6].Data.(DoneEvent)
 	if !done.CypherRefused {
@@ -151,6 +151,24 @@ func TestServiceRefusesUnsupportedPlanOnlyDraftAsConversionFailure(t *testing.T)
 	}
 	if len(store.requests) != 0 {
 		t.Fatalf("store executed conversion-refused query: %#v", store.requests)
+	}
+}
+
+func TestServiceClassifiesEmptyDraftAsLLMRefusal(t *testing.T) {
+	service := NewService(&askStore{}, &StubLLMClient{DraftResponse: &DraftResponse{}}, ValidatorOptions{})
+
+	var events []Event
+	err := service.Stream(context.Background(), AskRequest{TenantID: "example", Question: "what is risky?"}, func(event Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	assertEventNames(t, events, []string{EventProgress, EventRationale, EventQueryPlan, EventCypher, EventSummary, EventDone})
+	summary := events[4].Data.(SummaryEvent)
+	if summary.UnsupportedQuery == nil || summary.UnsupportedQuery.Code != "llm_refusal" {
+		t.Fatalf("unsupported query = %#v, want llm_refusal", summary.UnsupportedQuery)
 	}
 }
 
@@ -487,6 +505,62 @@ func TestServiceRefusesSaturatedPostProcessingCandidateWindow(t *testing.T) {
 	done := events[7].Data.(DoneEvent)
 	if !done.CypherRefused {
 		t.Fatalf("done.CypherRefused = false, want true")
+	}
+}
+
+func TestServicePushesTopRiskFiltersBeforeCandidateLimit(t *testing.T) {
+	rows := []ports.CypherRow{{
+		Values: map[string]any{
+			"finding_urn":                       "urn:cerebro:writer:finding:open-repo",
+			"finding_label":                     "Open repository finding",
+			"resource_urn":                      "urn:cerebro:writer:repo:alpha",
+			"resource_label":                    "repo-alpha",
+			"resource_type":                     "github.repo",
+			"relation_attributes_json_internal": `{"risk_score":88,"severity":"HIGH","status":"open"}`,
+			"finding_attributes_json_internal":  `{}`,
+		},
+	}}
+	store := &askStore{rows: rows}
+	llm := &StubLLMClient{
+		DraftResponse: &DraftResponse{
+			Rationale: "Filtering open repository risk.",
+			Plan:      &AskQueryPlan{Intent: IntentTopRiskFindings, Limit: 10, Filters: map[string]string{"status": "open", "resource_type": "repository"}},
+		},
+		Summary: "One open repository finding remains.",
+	}
+	service := NewService(store, llm, ValidatorOptions{})
+
+	var events []Event
+	err := service.Stream(context.Background(), AskRequest{
+		TenantID: "writer",
+		Question: "Show open high-risk repository findings",
+	}, func(event Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	assertEventNames(t, events, []string{EventProgress, EventRationale, EventQueryPlan, EventProgress, EventCypher, EventProgress, EventRows, EventProgress, EventSummary, EventDone})
+	if !strings.Contains(store.requests[0].Query, "toLower(filter_status) = 'open'") || !strings.Contains(store.requests[0].Query, "resource.entity_type IN ['github.code.repository', 'github.repo']") {
+		t.Fatalf("store request should push supported filters into Cypher:\n%s", store.requests[0].Query)
+	}
+	rowsEvent := events[6].Data.(RowsEvent)
+	if len(rowsEvent.Rows) != 1 {
+		t.Fatalf("rows = %#v, want one filtered top-risk row", rowsEvent.Rows)
+	}
+	done := events[9].Data.(DoneEvent)
+	if done.CypherRefused {
+		t.Fatalf("done.CypherRefused = true, want filtered saturated candidate window to proceed")
+	}
+}
+
+func TestResourceTypeMatchesRepositoryFilterByEntityTypeOnly(t *testing.T) {
+	if resourceTypeMatchesFilter("github.runner", "urn:cerebro:writer:github_runner:repo:writer/cerebro:777", "repository") {
+		t.Fatal("repository filter matched github.runner because its URN contains repo")
+	}
+	if !resourceTypeMatchesFilter("github.repo", "urn:cerebro:writer:github_runner:repo:writer/cerebro:777", "repository") {
+		t.Fatal("repository filter did not match github.repo entity type")
 	}
 }
 

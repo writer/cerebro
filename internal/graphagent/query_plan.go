@@ -272,8 +272,11 @@ RETURN f.urn AS finding_urn,
 ORDER BY finding_urn
 LIMIT %d`, postProcessingCandidateRowLimit), true
 	case IntentTopRiskFindings:
+		filterProjection, filterPredicate := topRiskFilterClauses(plan.Filters)
 		return fmt.Sprintf(`MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
 WHERE $scope_urn = '' OR resource.urn = $scope_urn OR finding.urn = $scope_urn
+WITH resource, r, finding%s
+%s
 RETURN finding.urn AS finding_urn,
        coalesce(finding.label, finding.urn) AS finding_label,
        resource.urn AS resource_urn,
@@ -282,7 +285,7 @@ RETURN finding.urn AS finding_urn,
        coalesce(r.attributes_json, '') AS relation_attributes_json_internal,
        coalesce(finding.attributes_json, '') AS finding_attributes_json_internal
 ORDER BY finding_urn, resource_urn
-LIMIT %d`, postProcessingCandidateRowLimit), true
+LIMIT %d`, filterProjection, filterPredicate, postProcessingCandidateRowLimit), true
 	case IntentExplainFinding:
 		return fmt.Sprintf(`MATCH (finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
 WHERE $scope_urn = ''
@@ -332,6 +335,10 @@ WHERE left.urn < right.urn
 WITH left, right, identity,
      coalesce(%s, '') AS left_seen_at,
      coalesce(%s, '') AS right_seen_at
+WHERE left_seen_at =~ '^\\d{4}-\\d{2}-\\d{2}T.*'
+  AND right_seen_at =~ '^\\d{4}-\\d{2}-\\d{2}T.*'
+  AND datetime(left_seen_at) >= datetime() - duration('P90D')
+  AND datetime(right_seen_at) >= datetime() - duration('P90D')
 RETURN left.urn AS left_urn,
        coalesce(left.label, left.urn) AS left_label,
        left.entity_type AS left_type,
@@ -380,6 +387,45 @@ func cypherJSONQuotedStringToken(key string) string {
 	return fmt.Sprintf(`"%s":"`, key)
 }
 
+func topRiskFilterClauses(filters map[string]string) (string, string) {
+	var projection []string
+	var predicates []string
+	if severity := planFilterValue(filters, "severity"); severity != "" {
+		projection = append(projection, fmt.Sprintf("coalesce(\n       %s,\n       ''\n     ) AS filter_severity", strings.Join([]string{
+			cypherJSONStringAttributes("r.attributes_json", "effective_severity", "severity"),
+			cypherJSONStringAttributes("finding.attributes_json", "effective_severity", "severity"),
+		}, ",\n       ")))
+		predicates = append(predicates, "toUpper(filter_severity) = "+cypherStringLiteral(strings.ToUpper(severity)))
+	}
+	if status := planFilterValue(filters, "status"); status != "" {
+		projection = append(projection, fmt.Sprintf("coalesce(\n       %s,\n       ''\n     ) AS filter_status", strings.Join([]string{
+			cypherJSONStringAttributes("r.attributes_json", "status"),
+			cypherJSONStringAttributes("finding.attributes_json", "status"),
+		}, ",\n       ")))
+		predicates = append(predicates, "toLower(filter_status) = "+cypherStringLiteral(strings.ToLower(status)))
+	}
+	if resourceType := firstNonEmpty(planFilterValue(filters, "resource_type"), planFilterValue(filters, "entity_type")); resourceType != "" {
+		predicates = append(predicates, resourceTypePredicate(resourceType))
+	}
+	if len(predicates) == 0 {
+		return "", ""
+	}
+	if len(projection) == 0 {
+		return "", "WHERE " + strings.Join(predicates, "\n  AND ")
+	}
+	return ",\n     " + strings.Join(projection, ",\n     "), "WHERE " + strings.Join(predicates, "\n  AND ")
+}
+
+func resourceTypePredicate(value string) string {
+	canonical := canonicalEntityType(value)
+	switch canonical {
+	case "github.code.repository", "github.repo":
+		return "resource.entity_type IN ['github.code.repository', 'github.repo']"
+	default:
+		return "resource.entity_type = " + cypherStringLiteral(canonical)
+	}
+}
+
 func planFilterValue(filters map[string]string, key string) string {
 	for filterKey, value := range filters {
 		if strings.EqualFold(filterKey, key) {
@@ -387,6 +433,12 @@ func planFilterValue(filters map[string]string, key string) string {
 		}
 	}
 	return ""
+}
+
+func cypherStringLiteral(value string) string {
+	escaped := strings.ReplaceAll(value, "\\", "\\\\")
+	escaped = strings.ReplaceAll(escaped, "'", "\\'")
+	return "'" + escaped + "'"
 }
 
 func hasUnsupportedDeterministicModifiers(plan AskQueryPlan) bool {
