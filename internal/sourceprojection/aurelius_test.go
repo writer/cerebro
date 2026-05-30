@@ -202,6 +202,35 @@ func TestProjectAureliusDigestOnlyFindingDoesNotCreateArtifactRegistryImage(t *t
 	}
 }
 
+func TestProjectAureliusImageScanLinksImageRepositoryHierarchy(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "aurelius-image-scan-context",
+		TenantId: "writer",
+		SourceId: "aurelius",
+		Kind:     "aurelius.image_scan",
+		Payload: mustJSON(t, map[string]any{
+			"image_digest": "sha256:scan",
+			"project_id":   "writer-prod",
+			"registry":     "us-docker.pkg.dev",
+			"repository":   "writer-prod/prod",
+			"scan_id":      "scan-context",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	imageURN := "urn:cerebro:writer:gcp_artifact_registry_image:us-docker.pkg.dev/writer-prod/prod@sha256:scan"
+	repositoryURN := "urn:cerebro:writer:container_repository:us-docker.pkg.dev:writer-prod/prod"
+	registryURN := "urn:cerebro:writer:container_registry:us-docker.pkg.dev"
+	assertProjectedLink(t, state, imageURN, relationBelongsTo, repositoryURN)
+	assertProjectedLink(t, state, repositoryURN, relationBelongsTo, registryURN)
+	assertProjectedLink(t, state, imageURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:writer-prod")
+}
+
 func TestProjectAureliusImageScanOmitsBlankOptionalMetadata(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

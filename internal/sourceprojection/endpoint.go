@@ -115,6 +115,7 @@ func endpointDeviceProjections(event *cerebrov1.EventEnvelope, profile endpointP
 	endpointURN := addEndpointEntity(entities, tenantID, event.GetSourceId(), attrs, profile)
 	addEndpointOwnerLinks(entities, links, tenantID, event.GetSourceId(), event, endpointURN, attrs)
 	addEndpointIdentifierLinks(entities, links, tenantID, event.GetSourceId(), event, endpointURN, attrs)
+	addKandjiBlueprintLink(entities, links, tenantID, event.GetSourceId(), event, endpointURN, attrs, profile)
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }
@@ -191,6 +192,32 @@ func addEndpointAttribute(attrs map[string]string, key string, value string) {
 	if trimmed := strings.TrimSpace(value); trimmed != "" {
 		attrs[key] = trimmed
 	}
+}
+
+func addKandjiBlueprintLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, endpointURN string, attrs map[string]string, profile endpointProjectionProfile) {
+	blueprintID := firstAttribute(attrs, "blueprint_id")
+	if profile.Provider != "kandji" || endpointURN == "" || blueprintID == "" {
+		return
+	}
+	blueprintURN := projectionURN(tenantID, "kandji_blueprint", blueprintID)
+	if blueprintURN == "" {
+		return
+	}
+	blueprintName := firstAttribute(attrs, "blueprint_name")
+	blueprintAttrs := map[string]string{"blueprint_id": blueprintID}
+	addEndpointAttribute(blueprintAttrs, "blueprint_name", blueprintName)
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        blueprintURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "kandji.blueprint",
+		Label:      firstNonEmpty(blueprintName, blueprintID),
+		Attributes: blueprintAttrs,
+	})
+	addLink(links, projectedLink(tenantID, sourceID, endpointURN, blueprintURN, relationBelongsTo, map[string]string{
+		"event_id":   event.GetId(),
+		"match_type": "kandji_blueprint",
+	}))
 }
 
 func addEndpointOwnerLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, endpointURN string, attrs map[string]string) {
