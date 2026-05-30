@@ -401,23 +401,18 @@ func TestServiceRefusesSaturatedPostProcessingCandidateWindow(t *testing.T) {
 	}
 }
 
-func TestServiceAppliesTopRiskFiltersBeforeSaturationRefusal(t *testing.T) {
-	rows := make([]ports.CypherRow, 0, postProcessingCandidateRowLimit)
-	for i := 0; i < postProcessingCandidateRowLimit; i++ {
-		status := "closed"
-		if i == 42 {
-			status = "open"
-		}
-		rows = append(rows, ports.CypherRow{Values: map[string]any{
-			"finding_urn":                       "urn:cerebro:writer:finding:" + strconv.Itoa(i),
-			"finding_label":                     "Finding " + strconv.Itoa(i),
-			"resource_urn":                      "urn:cerebro:writer:repo:" + strconv.Itoa(i),
-			"resource_label":                    "repo-" + strconv.Itoa(i),
+func TestServicePushesTopRiskFiltersBeforeCandidateLimit(t *testing.T) {
+	rows := []ports.CypherRow{{
+		Values: map[string]any{
+			"finding_urn":                       "urn:cerebro:writer:finding:open-repo",
+			"finding_label":                     "Open repository finding",
+			"resource_urn":                      "urn:cerebro:writer:repo:alpha",
+			"resource_label":                    "repo-alpha",
 			"resource_type":                     "github.repo",
-			"relation_attributes_json_internal": `{"risk_score":88,"severity":"HIGH","status":"` + status + `"}`,
+			"relation_attributes_json_internal": `{"risk_score":88,"severity":"HIGH","status":"open"}`,
 			"finding_attributes_json_internal":  `{}`,
-		}})
-	}
+		},
+	}}
 	store := &askStore{rows: rows}
 	llm := &StubLLMClient{
 		DraftResponse: &DraftResponse{
@@ -440,6 +435,9 @@ func TestServiceAppliesTopRiskFiltersBeforeSaturationRefusal(t *testing.T) {
 		t.Fatalf("Stream() error = %v", err)
 	}
 	assertEventNames(t, events, []string{EventProgress, EventRationale, EventQueryPlan, EventProgress, EventCypher, EventProgress, EventRows, EventProgress, EventSummary, EventDone})
+	if !strings.Contains(store.requests[0].Query, "toLower(filter_status) = 'open'") || !strings.Contains(store.requests[0].Query, "CASE WHEN resource.entity_type IN ['github.code.repository', 'github.repo'] THEN true") {
+		t.Fatalf("store request should push supported filters into Cypher:\n%s", store.requests[0].Query)
+	}
 	rowsEvent := events[6].Data.(RowsEvent)
 	if len(rowsEvent.Rows) != 1 {
 		t.Fatalf("rows = %#v, want one filtered top-risk row", rowsEvent.Rows)

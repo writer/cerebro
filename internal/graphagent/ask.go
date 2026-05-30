@@ -324,37 +324,7 @@ func usesPostProcessingCandidates(plan AskQueryPlan) bool {
 }
 
 func postProcessingCandidateLimitHit(plan AskQueryPlan, rows []ports.CypherRow, rowLimit int) bool {
-	if !usesPostProcessingCandidates(plan) || rowLimit < postProcessingCandidateRowLimit || len(rows) < rowLimit {
-		return false
-	}
-	if plan.Intent == IntentTopRiskFindings {
-		return topRiskFilteredCandidateCount(plan, rows) >= rowLimit
-	}
-	return true
-}
-
-func topRiskFilteredCandidateCount(plan AskQueryPlan, rows []ports.CypherRow) int {
-	count := 0
-	for _, row := range rows {
-		rowMap := map[string]any{}
-		for key, value := range row.Values {
-			rowMap[key] = value
-		}
-		relationAttrs := decodeInternalAttributes(rowMap["relation_attributes_json_internal"])
-		findingAttrs := decodeInternalAttributes(rowMap["finding_attributes_json_internal"])
-		severity := firstNonEmpty(
-			firstAttributeString(relationAttrs, "effective_severity", "severity"),
-			firstAttributeString(findingAttrs, "effective_severity", "severity"),
-		)
-		status := firstNonEmpty(
-			firstAttributeString(relationAttrs, "status"),
-			firstAttributeString(findingAttrs, "status"),
-		)
-		if matchesTopRiskFilters(plan, rowMap, severity, status) {
-			count++
-		}
-	}
-	return count
+	return usesPostProcessingCandidates(plan) && rowLimit >= postProcessingCandidateRowLimit && len(rows) >= rowLimit
 }
 
 func postProcessFindingSourceRows(plan AskQueryPlan, rows []map[string]any) []map[string]any {

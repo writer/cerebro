@@ -228,14 +228,21 @@ LIMIT 25`
 	if !result.Deterministic || result.Source != "deterministic_template" {
 		t.Fatalf("conversion result = %#v, want deterministic filtered template", result)
 	}
-	for _, want := range []string{"resource.entity_type AS resource_type", "relation_attributes_json_internal", "finding_attributes_json_internal"} {
+	for _, want := range []string{
+		"toUpper(filter_severity) = 'HIGH'",
+		"toLower(filter_status) = 'open'",
+		"CASE WHEN resource.entity_type IN ['github.code.repository', 'github.repo'] THEN true",
+		"resource.entity_type AS resource_type",
+		"relation_attributes_json_internal",
+		"finding_attributes_json_internal",
+	} {
 		if !strings.Contains(result.Cypher, want) {
 			t.Fatalf("filtered cypher missing %q:\n%s", want, result.Cypher)
 		}
 	}
-	for _, forbidden := range []string{"toUpper(severity)", "toLower(status)", "resource.entity_type IN", "split(split"} {
+	for _, forbidden := range []string{"max(risk_score)", "CASE toUpper"} {
 		if strings.Contains(result.Cypher, forbidden) {
-			t.Fatalf("filtered cypher should leave filter evaluation to Go; found %q:\n%s", forbidden, result.Cypher)
+			t.Fatalf("filtered cypher should leave ranking to Go; found %q:\n%s", forbidden, result.Cypher)
 		}
 	}
 }
