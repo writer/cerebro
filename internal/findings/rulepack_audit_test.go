@@ -616,7 +616,7 @@ func assertRulepackConvertEventReplaySingleOpenRow(t *testing.T, rule Rule, defi
 }
 
 func rulepackConvertReplayEvents(ruleID string, fixture rulepackConvertReplayFixture, count int) []*cerebrov1.EventEnvelope {
-	baseTime := time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC)
+	baseTime := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
 	events := make([]*cerebrov1.EventEnvelope, 0, count)
 	for i := 0; i < count; i++ {
 		observedAt := baseTime.Add(time.Duration(i) * time.Minute)
