@@ -112,7 +112,8 @@ jobs:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
           automatic_security_review: true
-          # Fast automatic reviews keep the feedback loop short. Escalate to a
-          # manual deep pass with @droid when a PR changes broad security logic.
-          review_depth: shallow
+          # Fast deterministic preflight runs first; use Opus for the actual
+          # bug-finding review so Droid does not fall back to stale depth presets.
+          review_model: claude-opus-4-8
+          security_model: gpt-5.4
           allowed_bots: dependabot
