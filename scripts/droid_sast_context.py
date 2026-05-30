@@ -414,7 +414,13 @@ def main() -> int:
     parser.add_argument("--head", default=os.environ.get("DROID_REVIEW_HEAD", "HEAD"))
     parser.add_argument("--markdown-out", default=os.environ.get("DROID_SAST_OUT", "tmp/droid-sast-context.md"))
     parser.add_argument("--post-comment", action="store_true")
+    parser.add_argument("--post-existing", help="post an existing SAST markdown report and exit")
     args = parser.parse_args()
+
+    if args.post_existing:
+        markdown = Path(args.post_existing).read_text(encoding="utf-8")
+        post_sticky_comment(markdown)
+        return 0
 
     files = changed_files(args.base, args.head)
     lines_by_file = changed_lines(args.base, args.head)
