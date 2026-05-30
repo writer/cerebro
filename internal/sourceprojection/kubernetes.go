@@ -17,6 +17,7 @@ func kubernetesServiceAccountProjections(event *cerebrov1.EventEnvelope) ([]*por
 	links := map[string]*ports.ProjectedLink{}
 	serviceAccountURN := kubernetesServiceAccountURN(tenantID, attributes)
 	namespaceURN := kubernetesNamespaceURN(tenantID, attributes)
+	clusterURN := kubernetesClusterURN(tenantID, attributes)
 	if serviceAccountURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        serviceAccountURN,
@@ -33,10 +34,12 @@ func kubernetesServiceAccountProjections(event *cerebrov1.EventEnvelope) ([]*por
 			},
 		})
 	}
+	addKubernetesCluster(entities, tenantID, event.GetSourceId(), attributes, clusterURN)
 	addKubernetesNamespace(entities, tenantID, event.GetSourceId(), attributes, namespaceURN)
 	if serviceAccountURN != "" && namespaceURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), serviceAccountURN, namespaceURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 	}
+	addKubernetesClusterLinks(entities, links, tenantID, event.GetSourceId(), event, attributes, namespaceURN, clusterURN)
 	return identityProjectionResult(entities, links)
 }
 
@@ -51,6 +54,7 @@ func kubernetesWorkloadProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 	workloadURN := kubernetesWorkloadURN(tenantID, attributes)
 	serviceAccountURN := kubernetesServiceAccountURN(tenantID, attributes)
 	namespaceURN := kubernetesNamespaceURN(tenantID, attributes)
+	clusterURN := kubernetesClusterURN(tenantID, attributes)
 	if workloadURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        workloadURN,
@@ -72,6 +76,7 @@ func kubernetesWorkloadProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 	if serviceAccountURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{URN: serviceAccountURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "kubernetes.service_account", Label: firstNonEmpty(attributes["service_account_name"], "default")})
 	}
+	addKubernetesCluster(entities, tenantID, event.GetSourceId(), attributes, clusterURN)
 	addKubernetesNamespace(entities, tenantID, event.GetSourceId(), attributes, namespaceURN)
 	if workloadURN != "" && serviceAccountURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), workloadURN, serviceAccountURN, relationRunsAs, map[string]string{"event_id": event.GetId()}))
@@ -79,6 +84,7 @@ func kubernetesWorkloadProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 	if workloadURN != "" && namespaceURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), workloadURN, namespaceURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 	}
+	addKubernetesClusterLinks(entities, links, tenantID, event.GetSourceId(), event, attributes, namespaceURN, clusterURN)
 	return identityProjectionResult(entities, links)
 }
 
@@ -91,9 +97,13 @@ func kubernetesWorkloadIdentityBindingProjections(event *cerebrov1.EventEnvelope
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 	serviceAccountURN := kubernetesServiceAccountURN(tenantID, attributes)
+	namespaceURN := kubernetesNamespaceURN(tenantID, attributes)
+	clusterURN := kubernetesClusterURN(tenantID, attributes)
 	if serviceAccountURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{URN: serviceAccountURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "kubernetes.service_account", Label: firstNonEmpty(attributes["service_account_name"], "default")})
 	}
+	addKubernetesCluster(entities, tenantID, event.GetSourceId(), attributes, clusterURN)
+	addKubernetesNamespace(entities, tenantID, event.GetSourceId(), attributes, namespaceURN)
 	provider := firstNonEmpty(attributes["cloud_provider"], "cloud")
 	profile := identityProjectionProfile{Provider: provider}
 	targetType := firstNonEmpty(attributes["target_type"], attributes["cloud_principal_type"], "role")
@@ -120,7 +130,41 @@ func kubernetesWorkloadIdentityBindingProjections(event *cerebrov1.EventEnvelope
 			"role_name":    strings.TrimSpace(attributes["role_name"]),
 		}))
 	}
+	if serviceAccountURN != "" && namespaceURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), serviceAccountURN, namespaceURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+	}
+	addKubernetesClusterLinks(entities, links, tenantID, event.GetSourceId(), event, attributes, namespaceURN, clusterURN)
 	return identityProjectionResult(entities, links)
+}
+
+func addKubernetesCluster(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, attributes map[string]string, clusterURN string) {
+	if clusterURN == "" {
+		return
+	}
+	clusterID := kubernetesClusterIdentity(attributes)
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        clusterURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "kubernetes.cluster",
+		Label:      clusterID,
+		Attributes: map[string]string{
+			"cloud_account_id": kubernetesCloudAccountID(attributes),
+			"cloud_provider":   strings.TrimSpace(firstNonEmpty(attributes["cloud_provider"], attributes["provider"])),
+			"cluster_id":       strings.TrimSpace(attributes["cluster_id"]),
+			"cluster_name":     strings.TrimSpace(attributes["cluster_name"]),
+		},
+	})
+}
+
+func addKubernetesClusterLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, attributes map[string]string, namespaceURN string, clusterURN string) {
+	if clusterURN == "" {
+		return
+	}
+	if namespaceURN != "" {
+		addLink(links, projectedLink(tenantID, sourceID, namespaceURN, clusterURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+	}
+	addCloudAccountLink(entities, links, tenantID, sourceID, event, clusterURN, kubernetesCloudAccountID(attributes), firstNonEmpty(attributes["cloud_provider"], attributes["provider"]))
 }
 
 func addKubernetesNamespace(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, attributes map[string]string, namespaceURN string) {
@@ -133,18 +177,94 @@ func addKubernetesNamespace(entities map[string]*ports.ProjectedEntity, tenantID
 		SourceID:   sourceID,
 		EntityType: "kubernetes.namespace",
 		Label:      firstNonEmpty(attributes["namespace"], "default"),
-		Attributes: map[string]string{"cluster_id": strings.TrimSpace(attributes["cluster_id"]), "namespace": firstNonEmpty(attributes["namespace"], "default")},
+		Attributes: map[string]string{"cluster_id": strings.TrimSpace(attributes["cluster_id"]), "cluster_name": strings.TrimSpace(attributes["cluster_name"]), "namespace": firstNonEmpty(attributes["namespace"], "default")},
 	})
 }
 
+func kubernetesClusterURN(tenantID string, attributes map[string]string) string {
+	clusterID := kubernetesClusterIdentity(attributes)
+	if clusterID == "" {
+		return ""
+	}
+	return projectionURN(tenantID, "kubernetes_cluster", clusterID)
+}
+
 func kubernetesServiceAccountURN(tenantID string, attributes map[string]string) string {
-	return projectionURN(tenantID, "kubernetes_service_account", firstNonEmpty(attributes["cluster_id"], attributes["cluster_name"]), firstNonEmpty(attributes["namespace"], "default"), firstNonEmpty(attributes["service_account_name"], attributes["name"], "default"))
+	clusterID := kubernetesClusterIdentity(attributes)
+	if clusterID == "" {
+		return ""
+	}
+	return projectionURN(tenantID, "kubernetes_service_account", clusterID, firstNonEmpty(attributes["namespace"], "default"), firstNonEmpty(attributes["service_account_name"], attributes["name"], "default"))
 }
 
 func kubernetesNamespaceURN(tenantID string, attributes map[string]string) string {
-	return projectionURN(tenantID, "kubernetes_namespace", firstNonEmpty(attributes["cluster_id"], attributes["cluster_name"]), firstNonEmpty(attributes["namespace"], "default"))
+	clusterID := kubernetesClusterIdentity(attributes)
+	if clusterID == "" {
+		return ""
+	}
+	return projectionURN(tenantID, "kubernetes_namespace", clusterID, firstNonEmpty(attributes["namespace"], "default"))
 }
 
 func kubernetesWorkloadURN(tenantID string, attributes map[string]string) string {
-	return projectionURN(tenantID, "kubernetes_workload", firstNonEmpty(attributes["cluster_id"], attributes["cluster_name"]), firstNonEmpty(attributes["namespace"], "default"), firstNonEmpty(attributes["workload_uid"], attributes["workload_kind"]+"/"+attributes["workload_name"], attributes["name"]))
+	clusterID := kubernetesClusterIdentity(attributes)
+	if clusterID == "" {
+		return ""
+	}
+	workloadID := strings.TrimSpace(attributes["workload_uid"])
+	if workloadID == "" && strings.TrimSpace(attributes["workload_kind"]) != "" && strings.TrimSpace(attributes["workload_name"]) != "" {
+		workloadID = strings.TrimSpace(attributes["workload_kind"]) + "/" + strings.TrimSpace(attributes["workload_name"])
+	}
+	workloadID = firstNonEmpty(workloadID, attributes["name"])
+	if workloadID == "" {
+		return ""
+	}
+	return projectionURN(tenantID, "kubernetes_workload", clusterID, firstNonEmpty(attributes["namespace"], "default"), workloadID)
+}
+
+func kubernetesClusterIdentity(attributes map[string]string) string {
+	if clusterID := strings.TrimSpace(attributes["cluster_id"]); clusterID != "" {
+		return clusterID
+	}
+	clusterName := strings.TrimSpace(attributes["cluster_name"])
+	if clusterName == "" {
+		return ""
+	}
+	if scope := firstNonEmpty(kubernetesCloudAccountID(attributes), attributes["cloud_provider"], attributes["provider"]); scope != "" {
+		return scope + ":" + clusterName
+	}
+	return clusterName
+}
+
+func kubernetesCloudAccountID(attributes map[string]string) string {
+	provider := normalizeIdentifier(firstNonEmpty(attributes["cloud_provider"], attributes["provider"]))
+	switch provider {
+	case "aws":
+		return firstNonEmpty(
+			awsAccountID(attributes["cloud_account_external_id"]),
+			awsAccountID(attributes["cloud_account_id"]),
+			awsAccountID(attributes["account_id"]),
+			awsAccountID(attributes["aws_account_id"]),
+		)
+	case "azure":
+		return firstNonEmpty(
+			attributes["subscription_id"],
+			attributes["cloud_account_external_id"],
+			azureSubscriptionIDFromScope(attributes["scope"]),
+			azureSubscriptionIDFromScope(attributes["resource_id"]),
+			azureSubscriptionIDFromScope(attributes["target_id"]),
+		)
+	case "gcp":
+		return firstNonEmpty(
+			attributes["gcp_project_id"],
+			attributes["project_id"],
+			attributes["cloud_account_external_id"],
+		)
+	default:
+		return firstNonEmpty(
+			attributes["subscription_id"],
+			attributes["aws_account_id"],
+			attributes["gcp_project_id"],
+			attributes["project_id"],
+		)
+	}
 }

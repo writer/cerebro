@@ -12,7 +12,7 @@ import (
 func TestProjectSentinelOneAgentBuildsAgentEntity(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
-	occurred := time.Date(2026, time.April, 23, 1, 0, 0, 0, time.UTC)
+	occurred := time.Unix(1_700_000_000, 0).UTC()
 
 	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:         "s1-agent-1",
@@ -90,6 +90,59 @@ func TestProjectSentinelOneAgentBuildsAgentEntity(t *testing.T) {
 	}
 }
 
+func TestProjectSentinelOneAgentLinksOwnerIdentity(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	occurred := time.Date(2026, time.April, 23, 1, 0, 0, 0, time.UTC)
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:         "s1-agent-owner",
+		TenantId:   "writer",
+		SourceId:   "sentinelone",
+		Kind:       "sentinelone.agent",
+		OccurredAt: timestamppb.New(occurred),
+		Attributes: map[string]string{
+			"agent_id":  "agent-1",
+			"user_mail": "owner@writer.com",
+			"user_name": "owner",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	agentURN := "urn:cerebro:writer:sentinelone_agent:agent-1"
+	identityURN := "urn:cerebro:writer:identity:email:owner@writer.com"
+	identifierURN := "urn:cerebro:writer:identifier:email:owner@writer.com"
+	assertProjectedLink(t, state, agentURN, relationOwnedBy, identityURN)
+	assertProjectedLink(t, state, agentURN, relationRepresentsIdentity, identityURN)
+	assertProjectedLink(t, state, agentURN, relationHasIdentifier, identifierURN)
+}
+
+func TestProjectSentinelOneAgentUserNameOnlySkipsStrongOwnerIdentityEdges(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "s1-agent-owner-username",
+		TenantId: "writer",
+		SourceId: "sentinelone",
+		Kind:     "sentinelone.agent",
+		Attributes: map[string]string{
+			"agent_id":  "agent-2",
+			"user_name": "owner",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	agentURN := "urn:cerebro:writer:sentinelone_agent:agent-2"
+	identityURN := "urn:cerebro:writer:identity:login:owner"
+	if _, ok := state.links[agentURN+"|"+relationOwnedBy+"|"+identityURN]; ok {
+		t.Fatalf("user_name-only owner edge should not emit owned_by: %#v", state.links)
+	}
+	if _, ok := state.links[agentURN+"|"+relationRepresentsIdentity+"|"+identityURN]; ok {
+		t.Fatalf("user_name-only owner edge should not emit represents_identity: %#v", state.links)
+	}
+}
+
 func TestProjectSentinelOneAgentSkipsWhenAgentIDMissing(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
@@ -145,6 +198,7 @@ func TestProjectSentinelOneThreatLinksThreatToAgent(t *testing.T) {
 			"mitre_techniques":       "Native API",
 			"is_active":              "true",
 			"is_fileless":            "false",
+			"user_mail":              "owner@writer.com",
 		},
 	})
 	if err != nil {
@@ -165,6 +219,8 @@ func TestProjectSentinelOneThreatLinksThreatToAgent(t *testing.T) {
 		t.Fatalf("agent entity missing")
 	}
 	assertProjectedLink(t, state, agentURN, relationAffectedBy, threatURN)
+	assertProjectedLink(t, state, agentURN, relationOwnedBy, "urn:cerebro:writer:identity:email:owner@writer.com")
+	assertProjectedLink(t, state, agentURN, relationRepresentsIdentity, "urn:cerebro:writer:identity:email:owner@writer.com")
 	assertProjectedLink(t, state, agentURN, relationHasIdentifier, ipURN)
 	assertProjectedLink(t, state, agentURN, relationHasIdentifier, ipv6URN)
 	assertProjectedLink(t, state, agentURN, relationHasIdentifier, hostIdentifierURN)
