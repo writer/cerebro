@@ -63,6 +63,20 @@ func TestOntologyPromptStoresFindingMetadataInAttributesJSON(t *testing.T) {
 	}
 }
 
+func TestOntologyEntityPropertiesStayWithinProjectedContract(t *testing.T) {
+	projected := map[string]struct{}{}
+	for _, property := range canonicalGraphOntology.Properties {
+		projected[property] = struct{}{}
+	}
+	for _, entity := range canonicalGraphOntology.Entities {
+		for _, property := range entity.Properties {
+			if _, ok := projected[property]; !ok {
+				t.Fatalf("ontology entity %q advertises non-projected top-level property %q", entity.Type, property)
+			}
+		}
+	}
+}
+
 func TestOntologyPromptUsesProjectedSourceShape(t *testing.T) {
 	hint := canonicalGraphOntology.PromptHint()
 	for _, want := range []string{
@@ -272,6 +286,9 @@ func TestConvertDraftToQueryScopesConnectorHealthTemplate(t *testing.T) {
 	if !strings.Contains(result.Cypher, "WHERE $scope_urn = '' OR source.urn = $scope_urn") {
 		t.Fatalf("converted cypher missing connector scope predicate:\n%s", result.Cypher)
 	}
+	if !strings.Contains(result.Cypher, "source_attributes_json_internal") || strings.Contains(result.Cypher, " AS source_attributes_json\n") {
+		t.Fatalf("converted cypher should keep raw source attributes internal:\n%s", result.Cypher)
+	}
 }
 
 func TestConvertDraftToQueryUsesCanonicalIdentityBridgeTemplate(t *testing.T) {
@@ -300,6 +317,49 @@ func TestConvertDraftToQueryUsesCanonicalIdentityBridgeTemplate(t *testing.T) {
 	}
 	if strings.Contains(result.Cypher, "relation: 'has_identifier'") {
 		t.Fatalf("converted cypher should not bridge concrete identities via identifier anchors:\n%s", result.Cypher)
+	}
+}
+
+func TestDeterministicTemplatesUseProjectedGraphContract(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		intent string
+		scope  string
+	}{
+		{name: "source aggregation", intent: IntentAggregateFindingsBySource, scope: "urn:cerebro:writer:asset:alpha"},
+		{name: "top risk", intent: IntentTopRiskFindings, scope: "urn:cerebro:writer:asset:alpha"},
+		{name: "explain finding", intent: IntentExplainFinding, scope: "urn:cerebro:writer:finding:alpha"},
+		{name: "identity bridge", intent: IntentIdentityBridge, scope: "urn:cerebro:writer:github_user:alice"},
+		{name: "connector health", intent: IntentConnectorHealth, scope: "urn:cerebro:writer:source:github"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			result := convertDraftToQuery(AskRequest{
+				TenantID: "writer",
+				Question: tt.name,
+				ScopeURN: tt.scope,
+			}, &DraftResponse{Plan: &AskQueryPlan{Intent: tt.intent, Limit: 25}}, 100)
+			if !result.Deterministic {
+				t.Fatalf("conversion result = %#v, want deterministic template", result)
+			}
+			if !strings.Contains(result.Cypher, "$scope_urn") {
+				t.Fatalf("deterministic template ignores scope_urn:\n%s", result.Cypher)
+			}
+			for _, forbidden := range []string{
+				"finding.status",
+				"finding.summary",
+				"finding.risk_score",
+				"finding.effective_severity",
+				"source.status",
+				"source.last_sync_minutes",
+				"source.last_sync_at",
+				"repository.owner_login",
+				"repository.visibility",
+			} {
+				if strings.Contains(result.Cypher, forbidden) {
+					t.Fatalf("deterministic template references non-projected top-level field %q:\n%s", forbidden, result.Cypher)
+				}
+			}
+		})
 	}
 }
 

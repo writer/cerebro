@@ -140,3 +140,64 @@ func TestSourcesUseSharedHTTPSafety(t *testing.T) {
 		t.Fatalf("scan source HTTP safety: %v", err)
 	}
 }
+
+func TestProductionBodyReadsAreBounded(t *testing.T) {
+	root := repoRoot(t)
+	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			switch entry.Name() {
+			case ".git", "vendor", "gen", "sdk", "testdata":
+				return filepath.SkipDir
+			default:
+				return nil
+			}
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		rel := shortPath(root, path)
+		lines := strings.Split(string(body), "\n")
+		for i, line := range lines {
+			if !strings.Contains(line, "io.ReadAll(") {
+				continue
+			}
+			if boundedReadAllContext(lines, i) {
+				continue
+			}
+			t.Fatalf("%s uses io.ReadAll without a nearby io.LimitReader or shared limited reader", rel)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("scan bounded body reads: %v", err)
+	}
+}
+
+func boundedReadAllContext(lines []string, index int) bool {
+	start := index - 4
+	if start < 0 {
+		start = 0
+	}
+	end := index + 1
+	if end >= len(lines) {
+		end = len(lines) - 1
+	}
+	context := strings.Join(lines[start:end+1], "\n")
+	for _, marker := range []string{
+		"io.LimitReader(",
+		"sourcehttp.ReadLimitedBody(",
+		"sourcehttp.ReadLimitedBodyWithLimit(",
+		"readLimitedVulnDBFeed(",
+	} {
+		if strings.Contains(context, marker) {
+			return true
+		}
+	}
+	return false
+}
