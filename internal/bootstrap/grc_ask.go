@@ -159,10 +159,13 @@ type askResultTelemetry struct {
 	validatorWarningsCount int
 	rowCount               int
 	citationCount          int
+	citationWarningsCount  int
+	unsupportedQueryCode   string
 	traceID                string
 	runtimeErrorCode       string
 	cypherRefused          bool
 	terminalEvent          string
+	timings                graphagent.StageTimings
 }
 
 func (e *askWideEvent) observe(event graphagent.Event) {
@@ -182,10 +185,17 @@ func (e *askWideEvent) observe(event graphagent.Event) {
 		e.result.rowCount = len(data.Rows)
 	case graphagent.SummaryEvent:
 		e.result.citationCount = len(data.Citations)
+		if data.CitationValidation != nil {
+			e.result.citationWarningsCount = len(data.CitationValidation.Warnings)
+		}
+		if data.UnsupportedQuery != nil {
+			e.result.unsupportedQueryCode = data.UnsupportedQuery.Code
+		}
 	case graphagent.DoneEvent:
 		e.result.traceID = data.TraceID
 		e.result.cypherRefused = data.CypherRefused
 		e.result.terminalEvent = graphagent.EventDone
+		e.result.timings = data.Timings
 	case graphagent.ErrorEvent:
 		e.result.terminalEvent = graphagent.EventError
 		e.result.runtimeErrorCode = data.Code
@@ -242,12 +252,22 @@ func (e *askWideEvent) finish(r *http.Request, w http.ResponseWriter, started ti
 		WithField(telemetry.Field{Key: "validator.warnings_count", Value: e.result.validatorWarningsCount}).
 		WithField(telemetry.Field{Key: "cypher_refused", Value: e.result.cypherRefused}).
 		WithField(telemetry.Field{Key: "row_count", Value: e.result.rowCount}).
-		WithField(telemetry.Field{Key: "citation_count", Value: e.result.citationCount})
+		WithField(telemetry.Field{Key: "citation_count", Value: e.result.citationCount}).
+		WithField(telemetry.Field{Key: "citation_validation.warnings_count", Value: e.result.citationWarningsCount}).
+		WithField(telemetry.Field{Key: "stage.draft_ms", Value: e.result.timings.DraftMS}).
+		WithField(telemetry.Field{Key: "stage.conversion_ms", Value: e.result.timings.ConversionMS}).
+		WithField(telemetry.Field{Key: "stage.validate_ms", Value: e.result.timings.ValidateMS}).
+		WithField(telemetry.Field{Key: "stage.execute_ms", Value: e.result.timings.ExecuteMS}).
+		WithField(telemetry.Field{Key: "stage.summarize_ms", Value: e.result.timings.SummarizeMS}).
+		WithField(telemetry.Field{Key: "stage.citation_validation_ms", Value: e.result.timings.CitationValidationMS})
 	if e.result.validatorCode != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "validator.code", Value: e.result.validatorCode})
 	}
 	if e.result.runtimeErrorCode != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "runtime_error.code", Value: e.result.runtimeErrorCode})
+	}
+	if e.result.unsupportedQueryCode != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "unsupported_query.code", Value: e.result.unsupportedQueryCode})
 	}
 	if e.failureStage != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "failure_stage", Value: e.failureStage})

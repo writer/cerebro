@@ -71,6 +71,13 @@ LIMIT 25`,
 	if len(summaryEvent.Citations) != 1 || summaryEvent.Citations[0].URN != "urn:cerebro:example:asset:alpha" {
 		t.Fatalf("citations = %#v", summaryEvent.Citations)
 	}
+	if summaryEvent.CitationValidation == nil || !summaryEvent.CitationValidation.OK {
+		t.Fatalf("citation validation = %#v, want ok", summaryEvent.CitationValidation)
+	}
+	doneEvent := events[9].Data.(DoneEvent)
+	if doneEvent.Timings.DraftMS < 0 || doneEvent.Timings.SummarizeMS < 0 || doneEvent.Timings.CitationValidationMS < 0 {
+		t.Fatalf("done timings = %#v, want non-negative timings", doneEvent.Timings)
+	}
 	if len(store.requests) != 1 || store.requests[0].Params["tenant_id"] != "example" {
 		t.Fatalf("store requests = %#v", store.requests)
 	}
@@ -97,6 +104,10 @@ func TestServiceRefusesValidatorRejectedCypher(t *testing.T) {
 	if cypherEvent.Validator.OK {
 		t.Fatalf("validator ok = true, want false")
 	}
+	summary := events[5].Data.(SummaryEvent)
+	if summary.UnsupportedQuery == nil || summary.UnsupportedQuery.Code == "" || len(summary.UnsupportedQuery.SuggestedRewrites) == 0 {
+		t.Fatalf("unsupported query rescue = %#v, want structured suggestions", summary.UnsupportedQuery)
+	}
 	done := events[6].Data.(DoneEvent)
 	if !done.CypherRefused {
 		t.Fatalf("done.CypherRefused = false, want true")
@@ -110,12 +121,12 @@ func TestServiceRefusesUnsupportedPlanOnlyDraftAsConversionFailure(t *testing.T)
 	store := &askStore{}
 	llm := &StubLLMClient{DraftResponse: &DraftResponse{
 		Rationale: "Planning filtered high-risk findings.",
-		Plan:      &AskQueryPlan{Intent: IntentTopRiskFindings, Filters: map[string]string{"severity": "HIGH"}},
+		Plan:      &AskQueryPlan{Intent: IntentTopRiskFindings, Filters: map[string]string{"owner": "security"}},
 	}}
 	service := NewService(store, llm, ValidatorOptions{})
 
 	var events []Event
-	err := service.Stream(context.Background(), AskRequest{TenantID: "example", Question: "show HIGH risk findings"}, func(event Event) error {
+	err := service.Stream(context.Background(), AskRequest{TenantID: "example", Question: "show security-owned risk findings"}, func(event Event) error {
 		events = append(events, event)
 		return nil
 	})
@@ -134,8 +145,51 @@ func TestServiceRefusesUnsupportedPlanOnlyDraftAsConversionFailure(t *testing.T)
 	if !strings.Contains(cypherEvent.Validator.Reason, "could not be converted") {
 		t.Fatalf("refusal reason = %q, want conversion failure", cypherEvent.Validator.Reason)
 	}
+	summaryEvent := events[4].Data.(SummaryEvent)
+	if summaryEvent.UnsupportedQuery == nil || summaryEvent.UnsupportedQuery.Code != "query_plan_conversion_failed" {
+		t.Fatalf("unsupported query = %#v, want conversion rescue", summaryEvent.UnsupportedQuery)
+	}
 	if len(store.requests) != 0 {
 		t.Fatalf("store executed conversion-refused query: %#v", store.requests)
+	}
+}
+
+func TestServiceFlagsUngroundedSummaryURNs(t *testing.T) {
+	store := &askStore{
+		rows: []ports.CypherRow{{
+			Values: map[string]any{
+				"finding_urn": "urn:cerebro:writer:finding:alpha",
+				"resource_urns": []any{
+					"urn:cerebro:writer:repo:writerinternal/cerebro",
+				},
+			},
+		}},
+	}
+	llm := &StubLLMClient{
+		DraftResponse: &DraftResponse{
+			Rationale: "Finding scoped graph rows.",
+			Cypher: `MATCH (e:Entity {tenant_id: $tenant_id})
+RETURN e.urn AS finding_urn
+LIMIT 25`,
+		},
+		Summary: "Review `urn:cerebro:writer:finding:missing` immediately.",
+	}
+	service := NewService(store, llm, ValidatorOptions{})
+
+	var events []Event
+	err := service.Stream(context.Background(), AskRequest{TenantID: "writer", Question: "What is risky?"}, func(event Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	summary := events[8].Data.(SummaryEvent)
+	if summary.CitationValidation == nil || summary.CitationValidation.OK {
+		t.Fatalf("citation validation = %#v, want ungrounded warning", summary.CitationValidation)
+	}
+	if got := strings.Join(summary.CitationValidation.Warnings, ","); !strings.Contains(got, "summary_urn_not_row_backed") {
+		t.Fatalf("warnings = %v, want summary grounding warning", summary.CitationValidation.Warnings)
 	}
 }
 
@@ -357,7 +411,7 @@ func TestServiceDoesNotPostProcessLLMFallbackRows(t *testing.T) {
 	llm := &StubLLMClient{
 		DraftResponse: &DraftResponse{
 			Rationale: "Ranking filtered risky findings.",
-			Plan:      &AskQueryPlan{Intent: IntentTopRiskFindings, Filters: map[string]string{"severity": "HIGH"}, Limit: 10},
+			Plan:      &AskQueryPlan{Intent: IntentTopRiskFindings, Filters: map[string]string{"source_family": "okta"}, Limit: 10},
 			Cypher: `MATCH (finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
 RETURN finding.urn AS finding_urn,
        coalesce(finding.label, finding.urn) AS finding_label,
@@ -372,7 +426,7 @@ LIMIT 10`,
 	var events []Event
 	err := service.Stream(context.Background(), AskRequest{
 		TenantID: "writer",
-		Question: "Show high severity top risk findings",
+		Question: "Show Okta top risk findings",
 	}, func(event Event) error {
 		events = append(events, event)
 		return nil

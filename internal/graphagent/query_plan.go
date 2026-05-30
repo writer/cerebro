@@ -278,6 +278,7 @@ RETURN finding.urn AS finding_urn,
        coalesce(finding.label, finding.urn) AS finding_label,
        resource.urn AS resource_urn,
        coalesce(resource.label, resource.urn) AS resource_label,
+       resource.entity_type AS resource_type,
        coalesce(r.attributes_json, '') AS relation_attributes_json_internal,
        coalesce(finding.attributes_json, '') AS finding_attributes_json_internal
 ORDER BY finding_urn, resource_urn
@@ -328,13 +329,9 @@ WHERE left.urn < right.urn
   AND NOT right.entity_type STARTS WITH 'identity'
   AND NOT left.entity_type STARTS WITH 'identifier'
   AND NOT right.entity_type STARTS WITH 'identifier'
-  AND coalesce(leftRel.attributes_json, '') CONTAINS '"at":"'
-  AND coalesce(rightRel.attributes_json, '') CONTAINS '"at":"'
 WITH left, right, identity,
-     %s AS left_seen_at,
-     %s AS right_seen_at
-WHERE datetime(left_seen_at) >= datetime() - duration('P90D')
-  AND datetime(right_seen_at) >= datetime() - duration('P90D')
+     coalesce(%s, '') AS left_seen_at,
+     coalesce(%s, '') AS right_seen_at
 RETURN left.urn AS left_urn,
        coalesce(left.label, left.urn) AS left_label,
        left.entity_type AS left_type,
@@ -346,7 +343,7 @@ RETURN left.urn AS left_urn,
        left_seen_at,
        right_seen_at
 ORDER BY identity_label, left_urn, right_urn
-LIMIT %d`, cypherJSONRawStringAttribute("leftRel.attributes_json", "at"), cypherJSONRawStringAttribute("rightRel.attributes_json", "at"), limit), true
+LIMIT %d`, cypherJSONStringAttributes("leftRel.attributes_json", "at"), cypherJSONStringAttributes("rightRel.attributes_json", "at"), limit), true
 	case IntentConnectorHealth:
 		return fmt.Sprintf(`MATCH (source:Entity {tenant_id: $tenant_id, entity_type: 'source'})
 WHERE $scope_urn = '' OR source.urn = $scope_urn
@@ -383,15 +380,32 @@ func cypherJSONQuotedStringToken(key string) string {
 	return fmt.Sprintf(`"%s":"`, key)
 }
 
+func planFilterValue(filters map[string]string, key string) string {
+	for filterKey, value := range filters {
+		if strings.EqualFold(filterKey, key) {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
 func hasUnsupportedDeterministicModifiers(plan AskQueryPlan) bool {
-	if len(plan.Filters) > 0 {
+	groupBy := strings.ToLower(strings.TrimSpace(plan.GroupBy))
+	if groupBy != "" && (plan.Intent != IntentAggregateFindingsBySource || groupBy != "source_family") {
 		return true
 	}
-	groupBy := strings.ToLower(strings.TrimSpace(plan.GroupBy))
-	if groupBy == "" {
-		return false
+	for key := range plan.Filters {
+		normalized := strings.ToLower(strings.TrimSpace(key))
+		switch plan.Intent {
+		case IntentTopRiskFindings:
+			if normalized != "severity" && normalized != "status" && normalized != "resource_type" && normalized != "entity_type" {
+				return true
+			}
+		default:
+			return true
+		}
 	}
-	return plan.Intent != IntentAggregateFindingsBySource || groupBy != "source_family"
+	return false
 }
 
 func ontologyDiagnostics(cypher string) []ConversionDiagnostic {
