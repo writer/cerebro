@@ -344,6 +344,27 @@ def render_markdown(base: str, head: str, files: list[str], packages: list[str],
     return "\n".join(lines).rstrip() + "\n"
 
 
+def render_json_context(base: str, head: str, files: list[str], packages: list[str], results: list[ToolResult]) -> dict[str, object]:
+    return {
+        "kind": "droid_sast_context",
+        "base": base,
+        "head": head,
+        "changed_files": files,
+        "changed_go_packages": packages,
+        "blocking_findings": blocking_findings(results),
+        "tools": [
+            {
+                "name": result.name,
+                "scope": result.scope,
+                "status": result.status,
+                "findings": result.findings,
+                "notes": result.notes,
+            }
+            for result in results
+        ],
+    }
+
+
 def escape_pipe(value: str) -> str:
     return value.replace("|", "\\|").replace("\n", " ")
 
@@ -413,6 +434,7 @@ def main() -> int:
     parser.add_argument("--base", default=os.environ.get("DROID_REVIEW_BASE", "origin/main"))
     parser.add_argument("--head", default=os.environ.get("DROID_REVIEW_HEAD", "HEAD"))
     parser.add_argument("--markdown-out", default=os.environ.get("DROID_SAST_OUT", "tmp/droid-sast-context.md"))
+    parser.add_argument("--json-out", default=os.environ.get("DROID_SAST_JSON_OUT", ""))
     parser.add_argument("--post-comment", action="store_true")
     parser.add_argument("--post-existing", help="post an existing SAST markdown report and exit")
     args = parser.parse_args()
@@ -434,6 +456,13 @@ def main() -> int:
     out_path = Path(args.markdown_out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(markdown, encoding="utf-8")
+    if args.json_out:
+        json_path = Path(args.json_out)
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        json_path.write_text(
+            json.dumps(render_json_context(args.base, args.head, files, packages, results), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
     print(markdown)
     if args.post_comment:
         post_sticky_comment(markdown)

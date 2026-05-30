@@ -3261,6 +3261,14 @@ func graphQueryStore(store ports.GraphStore) ports.GraphQueryStore {
 	return queryStore
 }
 
+func askTrajectoryStore(store ports.StateStore) ports.AskTrajectoryStore {
+	trajectoryStore, ok := store.(ports.AskTrajectoryStore)
+	if !ok || isNilInterface(trajectoryStore) {
+		return nil
+	}
+	return trajectoryStore
+}
+
 func findingStore(store ports.StateStore) ports.FindingStore {
 	findingStore, ok := store.(ports.FindingStore)
 	if !ok || isNilInterface(findingStore) {

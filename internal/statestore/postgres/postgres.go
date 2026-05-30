@@ -28,6 +28,7 @@ type Store struct {
 	vulnDBTablesReady         bool
 	deviceAuthTablesReady     bool
 	startupLeaseTableReady    bool
+	askTrajectoryReady        bool
 }
 
 // Open opens a Postgres-backed current-state store.

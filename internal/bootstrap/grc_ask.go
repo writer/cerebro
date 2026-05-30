@@ -73,7 +73,14 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 
 	clearStreamingWriteDeadline(w)
 	flusher, _ := w.(http.Flusher)
-	service := graphagent.NewService(graphStore, llm, graphagent.ValidatorOptions{Explain: true})
+	service := graphagent.NewServiceWithOptions(graphStore, llm, graphagent.ValidatorOptions{Explain: true}, graphagent.ServiceOptions{
+		TrajectoryStore:   askTrajectoryStore(a.deps.StateStore),
+		EnableGraphProbes: true,
+		EnableRecovery:    true,
+		EnableMapReduce:   true,
+		MaxDepth:          2,
+		MaxChildren:       2,
+	})
 	var eventCount int
 	streamStarted := false
 	err := service.Stream(r.Context(), request, func(event graphagent.Event) error {
@@ -147,6 +154,7 @@ type askWideEvent struct {
 
 	queryPlan askQueryPlanTelemetry
 	result    askResultTelemetry
+	probe     askProbeTelemetry
 }
 
 type askQueryPlanTelemetry struct {
@@ -173,8 +181,20 @@ type askResultTelemetry struct {
 	timings                graphagent.StageTimings
 }
 
+type askProbeTelemetry struct {
+	entityTypeCount int
+	relationCount   int
+	warningsCount   int
+	scopeFound      bool
+}
+
 func (e *askWideEvent) observe(event graphagent.Event) {
 	switch data := event.Data.(type) {
+	case graphagent.GraphProbeEvent:
+		e.probe.entityTypeCount = len(data.Probe.EntityTypes)
+		e.probe.relationCount = len(data.Probe.Relations)
+		e.probe.warningsCount = len(data.Probe.Warnings)
+		e.probe.scopeFound = data.Probe.ScopeFound
 	case graphagent.QueryPlanEvent:
 		e.queryPlan.intent = data.Plan.Intent
 		e.queryPlan.source = data.Source
@@ -262,6 +282,11 @@ func (e *askWideEvent) finish(r *http.Request, w http.ResponseWriter, started ti
 		WithField(telemetry.Field{Key: "row_count", Value: e.result.rowCount}).
 		WithField(telemetry.Field{Key: "citation_count", Value: e.result.citationCount}).
 		WithField(telemetry.Field{Key: "citation_validation.warnings_count", Value: e.result.citationWarningsCount}).
+		WithField(telemetry.Field{Key: "graph_probe.entity_type_count", Value: e.probe.entityTypeCount}).
+		WithField(telemetry.Field{Key: "graph_probe.relation_count", Value: e.probe.relationCount}).
+		WithField(telemetry.Field{Key: "graph_probe.warnings_count", Value: e.probe.warningsCount}).
+		WithField(telemetry.Field{Key: "graph_probe.scope_found", Value: e.probe.scopeFound}).
+		WithField(telemetry.Field{Key: "stage.probe_ms", Value: e.result.timings.ProbeMS}).
 		WithField(telemetry.Field{Key: "stage.draft_ms", Value: e.result.timings.DraftMS}).
 		WithField(telemetry.Field{Key: "stage.conversion_ms", Value: e.result.timings.ConversionMS}).
 		WithField(telemetry.Field{Key: "stage.validate_ms", Value: e.result.timings.ValidateMS}).

@@ -27,6 +27,7 @@ type preflightResult struct {
 	ReviewReason   string
 	Findings       []checkFinding
 	Checks         []string
+	ProbePlan      []reviewProbePass
 }
 
 type checkFinding struct {
@@ -34,6 +35,12 @@ type checkFinding struct {
 	File    string
 	Line    int
 	Message string
+}
+
+type reviewProbePass struct {
+	Name     string
+	Why      string
+	Commands []string
 }
 
 func main() {
@@ -67,6 +74,7 @@ func run(base, head, repo string) (preflightResult, error) {
 		"ask-post-processing-boundary",
 		"candidate-lifecycle-atomicity",
 	}
+	result.ProbePlan = reviewProbePlan(files)
 	for _, file := range files {
 		if !strings.HasSuffix(file, ".go") || strings.HasSuffix(file, "_test.go") {
 			continue
@@ -110,6 +118,49 @@ func run(base, head, repo string) (preflightResult, error) {
 	}
 	fmt.Printf("Droid review preflight passed for %d changed files. run_droid_review=%t review_model=%s reason=%q\n", len(files), result.RunDroidReview, result.ReviewModel, result.ReviewReason)
 	return result, nil
+}
+
+func reviewProbePlan(files []string) []reviewProbePass {
+	passes := []reviewProbePass{{
+		Name:     "changed-invariants",
+		Why:      "Map changed paths to repository invariants before reviewing diffs.",
+		Commands: []string{"make droid-review-preflight"},
+	}}
+	if anyFile(files, func(file string) bool {
+		return strings.HasPrefix(file, "internal/graphagent/") || strings.HasPrefix(file, "internal/graphquery/")
+	}) {
+		passes = append(passes, reviewProbePass{
+			Name:     "ask-trajectory",
+			Why:      "Ask changes must preserve tenant-scoped read-only Cypher, deterministic routes, recovery events, and citation validation.",
+			Commands: []string{"go test ./internal/graphagent -run 'TestAskTrajectory|TestService|TestConvertDraftToQuery'"},
+		})
+	}
+	if anyFile(files, func(file string) bool {
+		return strings.HasPrefix(file, ".github/workflows/") || strings.HasPrefix(file, "scripts/") || strings.HasPrefix(file, "sources/")
+	}) {
+		passes = append(passes, reviewProbePass{
+			Name:     "security-context",
+			Why:      "Workflow, script, and connector changes need scanner context plus manual exploitability validation.",
+			Commands: []string{"make droid-review-sast"},
+		})
+	}
+	if anyFile(files, func(file string) bool { return strings.HasSuffix(file, ".go") }) {
+		passes = append(passes, reviewProbePass{
+			Name:     "focused-go-tests",
+			Why:      "Run the narrow Go packages touched by the diff before relying on the full verify gate.",
+			Commands: []string{"go test ./tools/droidreview/..."},
+		})
+	}
+	return passes
+}
+
+func anyFile(files []string, pred func(string) bool) bool {
+	for _, file := range files {
+		if pred(file) {
+			return true
+		}
+	}
+	return false
 }
 
 func changedFiles(base, head, repo string) ([]string, error) {
@@ -349,6 +400,12 @@ func writeGitHubMetadata(result preflightResult, duration time.Duration, runErr 
 			summary.WriteString("\nChecks:\n")
 			for _, check := range result.Checks {
 				fmt.Fprintf(&summary, "- `%s`\n", check)
+			}
+		}
+		if len(result.ProbePlan) > 0 {
+			summary.WriteString("\nProbe plan:\n")
+			for _, pass := range result.ProbePlan {
+				fmt.Fprintf(&summary, "- `%s`: %s Commands: `%s`\n", pass.Name, pass.Why, strings.Join(pass.Commands, "`, `"))
 			}
 		}
 		if len(result.Findings) > 0 {

@@ -42,13 +42,19 @@ type Service struct {
 	store     ports.GraphQueryStore
 	llm       LLMClient
 	validator *Validator
+	options   ServiceOptions
 }
 
 func NewService(store ports.GraphQueryStore, llm LLMClient, options ValidatorOptions) *Service {
+	return NewServiceWithOptions(store, llm, options, ServiceOptions{})
+}
+
+func NewServiceWithOptions(store ports.GraphQueryStore, llm LLMClient, validatorOptions ValidatorOptions, serviceOptions ServiceOptions) *Service {
 	return &Service{
 		store:     store,
 		llm:       llm,
-		validator: NewValidator(store, options),
+		validator: NewValidator(store, validatorOptions),
+		options:   normalizeServiceOptions(serviceOptions),
 	}
 }
 
@@ -68,7 +74,28 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	history := normalizeHistory(request.History)
 	params := askParams(request)
 	traceID := newTraceID()
+	exec := AskExecutionContext{TraceID: traceID, Depth: 0, Attempt: 0, MaxDepth: s.options.MaxDepth, MaxChildren: s.options.MaxChildren}
+	recorder := newTrajectoryRecorder(s.options.TrajectoryStore, request, traceID, started, exec)
+	recorder.start(ctx, request, exec)
+	status := "error"
+	defer func() {
+		recorder.finish(ctx, status)
+	}()
+	emit = recorder.wrap(ctx, emit)
 
+	var probe *GraphProbe
+	if s.options.EnableGraphProbes {
+		if err := emitProgress(emit, started, "probing_graph", "Inspecting graph shape before drafting a query."); err != nil {
+			return err
+		}
+		probeStarted := time.Now()
+		collected := collectGraphProbe(ctx, s.store, request, params)
+		timings.ProbeMS = time.Since(probeStarted).Milliseconds()
+		probe = &collected
+		if err := emit(Event{Name: EventGraphProbe, Data: GraphProbeEvent{Probe: collected}}); err != nil {
+			return err
+		}
+	}
 	if err := emitProgress(emit, started, "drafting_query", "Drafting a read-only graph query."); err != nil {
 		return err
 	}
@@ -82,6 +109,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		MaxRows:   defaultMaxRows,
 		Schema:    graphAgentSchemaHint,
 		Guardrail: graphAgentGuardrail,
+		Probe:     probe,
 	})
 	timings.DraftMS = time.Since(draftStarted).Milliseconds()
 	if err != nil {
@@ -107,6 +135,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	}
 	if cypher == "" {
 		reason := firstNonEmpty(draft.Refusal, conversion.Refusal, "LLM refused to draft Cypher")
+		status = "refused"
 		return emitRefusal(emit, traceID, started, cypher, reason, refusalCode(reason, draft, conversion, ValidatorResult{}), timings)
 	}
 	if err := emitProgress(emit, started, "validating_query", "Validating generated Cypher against read-only guardrails."); err != nil {
@@ -123,6 +152,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		return err
 	}
 	if !validation.OK {
+		status = "refused"
 		return emitRefusal(emit, traceID, started, cypher, validation.Reason, refusalCode(validation.Reason, draft, conversion, validation), timings)
 	}
 
@@ -140,11 +170,27 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		return streamErrorf(traceID, timings, "%w: execute cypher: %w", ErrRuntimeUnavailable, err)
 	}
 	if postProcessingCandidateLimitHit(conversion, rows, rowLimit) {
+		status = "refused"
 		return emitRefusal(emit, traceID, started, cypher, "The deterministic Ask query matched more graph rows than can be safely post-processed without risking an incomplete answer. Narrow the scope or ask for a more specific subset.", "post_processing_candidate_limit", timings)
 	}
 	rowMaps := cypherRowsToMaps(rows)
 	rowMaps = postProcessAskRows(conversion, rowMaps)
 	sanitizeInternalRowFields(rowMaps)
+	if s.options.EnableRecovery {
+		recoveredRows, recoveredCypher, recoveredValidation, ok, terminal, err := s.recoverWeakRows(ctx, traceID, started, timings, conversion, rowMaps, params, emit)
+		if err != nil {
+			return err
+		}
+		if terminal {
+			status = "refused"
+			return nil
+		}
+		if ok {
+			rowMaps = recoveredRows
+			cypher = recoveredCypher
+			validation = recoveredValidation
+		}
+	}
 	rowsEvent := RowsEvent{
 		Rows:   rowMaps,
 		Graph:  scopedNeighborhood(ctx, s.store, request.ScopeURN),
@@ -158,15 +204,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		return err
 	}
 	summarizeStarted := time.Now()
-	summary, err := s.llm.Summarize(ctx, SummarizeRequest{
-		TenantID: strings.TrimSpace(request.TenantID),
-		Question: strings.TrimSpace(request.Question),
-		ScopeURN: strings.TrimSpace(request.ScopeURN),
-		Model:    model,
-		Cypher:   cypher,
-		Rows:     rowMaps,
-		History:  history,
-	})
+	summary, err := s.summarizeRows(ctx, request, model, cypher, rowMaps, history)
 	timings.SummarizeMS = time.Since(summarizeStarted).Milliseconds()
 	if err != nil {
 		return streamErrorf(traceID, timings, "%w: summarize graph rows: %w", ErrRuntimeUnavailable, err)
@@ -182,7 +220,11 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	if err := emit(Event{Name: EventSummary, Data: SummaryEvent{Markdown: summary, Citations: citations, CitationValidation: &citationValidation}}); err != nil {
 		return err
 	}
-	return emit(Event{Name: EventDone, Data: DoneEvent{TraceID: traceID, TotalMS: time.Since(started).Milliseconds(), Timings: timings}})
+	err = emit(Event{Name: EventDone, Data: DoneEvent{TraceID: traceID, TotalMS: time.Since(started).Milliseconds(), Timings: timings}})
+	if err == nil {
+		status = "success"
+	}
+	return err
 }
 
 func (s *Service) validateConversion(ctx context.Context, conversion conversionResult, cypher string, params map[string]any) (ValidatorResult, int, error) {

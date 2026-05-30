@@ -1409,6 +1409,12 @@ func (s *stubGraphStore) ExecuteReadCypher(_ context.Context, request ports.Cyph
 		return nil, s.err
 	}
 	s.cypherRequests = append(s.cypherRequests, request)
+	if strings.Contains(request.Query, "RETURN n.entity_type AS name") {
+		return []ports.CypherRow{{Values: map[string]any{"name": "asset", "count": int64(1)}}}, nil
+	}
+	if strings.Contains(request.Query, "RETURN r.relation AS name") {
+		return nil, nil
+	}
 	if len(s.cypherRows) > 0 {
 		rows := s.cypherRows[0]
 		s.cypherRows = s.cypherRows[1:]

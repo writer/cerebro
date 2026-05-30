@@ -55,7 +55,7 @@ LIMIT 25`,
 		t.Fatalf("content-type = %q, want text/event-stream", got)
 	}
 	events := readSSEEvents(t, resp)
-	want := []string{"progress", "rationale", "query_plan", "progress", "cypher", "progress", "rows", "progress", "summary", "done"}
+	want := []string{"progress", "graph_probe", "progress", "rationale", "query_plan", "progress", "cypher", "progress", "rows", "progress", "summary", "done"}
 	if len(events) != len(want) {
 		t.Fatalf("events = %#v, want names %v", events, want)
 	}
@@ -64,11 +64,11 @@ LIMIT 25`,
 			t.Fatalf("event[%d] = %q, want %q", i, events[i].Name, name)
 		}
 	}
-	if len(graphStore.cypherRequests) != 2 {
-		t.Fatalf("cypher request count = %d, want EXPLAIN + execute", len(graphStore.cypherRequests))
+	if len(graphStore.cypherRequests) != 4 {
+		t.Fatalf("cypher request count = %d, want 2 probes + EXPLAIN + execute", len(graphStore.cypherRequests))
 	}
-	if !strings.HasPrefix(graphStore.cypherRequests[0].Query, "EXPLAIN ") {
-		t.Fatalf("first cypher request = %q, want EXPLAIN", graphStore.cypherRequests[0].Query)
+	if !strings.HasPrefix(graphStore.cypherRequests[2].Query, "EXPLAIN ") {
+		t.Fatalf("third cypher request = %q, want EXPLAIN", graphStore.cypherRequests[2].Query)
 	}
 }
 
@@ -95,7 +95,7 @@ func TestGRCAskTelemetryIncludesQueryPlanDiagnostics(t *testing.T) {
 		}
 		events = readSSEEvents(t, resp)
 	})
-	assertSSEEventNames(t, events, []string{"progress", "rationale", "query_plan", "cypher", "summary", "done"})
+	assertSSEEventNames(t, events, []string{"progress", "graph_probe", "progress", "rationale", "query_plan", "cypher", "summary", "done"})
 
 	payload := decodeBootstrapTelemetryPayload(t, stderr)
 	for key, want := range map[string]any{
@@ -104,7 +104,7 @@ func TestGRCAskTelemetryIncludesQueryPlanDiagnostics(t *testing.T) {
 		"outcome":                            "success",
 		"status":                             float64(http.StatusOK),
 		"tenant_id":                          "example",
-		"sse_events":                         float64(6),
+		"sse_events":                         float64(8),
 		"query_plan.intent":                  graphagent.IntentTopRiskFindings,
 		"query_plan.source":                  "conversion_refusal",
 		"query_plan.deterministic":           false,
@@ -183,12 +183,12 @@ func TestGRCAskDraftFailureReturnsServiceUnavailable(t *testing.T) {
 		}
 		events = readSSEEvents(t, resp)
 	})
-	assertSSEEventNames(t, events, []string{"progress", "error"})
-	if !strings.Contains(string(events[1].Data), "draft cypher") {
-		t.Fatalf("error event = %s, want draft failure", events[1].Data)
+	assertSSEEventNames(t, events, []string{"progress", "graph_probe", "progress", "error"})
+	if !strings.Contains(string(events[3].Data), "draft cypher") {
+		t.Fatalf("error event = %s, want draft failure", events[3].Data)
 	}
 	var errorEvent graphagent.ErrorEvent
-	if err := json.Unmarshal(events[1].Data, &errorEvent); err != nil {
+	if err := json.Unmarshal(events[3].Data, &errorEvent); err != nil {
 		t.Fatalf("unmarshal error event: %v", err)
 	}
 	if errorEvent.TraceID == "" {
@@ -223,9 +223,9 @@ func TestGRCAskExplainFailureReturnsServiceUnavailable(t *testing.T) {
 		t.Fatalf("status = %d, want %d with streamed error event", resp.StatusCode, http.StatusOK)
 	}
 	events := readSSEEvents(t, resp)
-	assertSSEEventNames(t, events, []string{"progress", "rationale", "query_plan", "progress", "error"})
-	if !strings.Contains(string(events[4].Data), "explain cypher") {
-		t.Fatalf("error event = %s, want explain failure", events[4].Data)
+	assertSSEEventNames(t, events, []string{"progress", "graph_probe", "progress", "rationale", "query_plan", "progress", "error"})
+	if !strings.Contains(string(events[6].Data), "explain cypher") {
+		t.Fatalf("error event = %s, want explain failure", events[6].Data)
 	}
 }
 

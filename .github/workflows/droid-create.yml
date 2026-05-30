@@ -570,7 +570,7 @@ jobs:
               "- Prefer existing Go, Makefile, source connector, graph, findings, and SDK patterns.",
               "- Add or update tests for behavioral changes and for every review finding that can regress.",
               "- Run focused tests first, then run `make verify` when feasible.",
-              "- Run `make droid-review-sast` for security-sensitive changes and use the report as review context.",
+              "- Run `make droid-review-sast` for security-sensitive changes and `make droid-ci-context` when PR checks/log context matters; use both as advisory review context.",
               "- Keep PRs small: split business-logic fixes from static-analyzer/tooling rewrites when possible.",
               "- Preserve known invariants from `.factory/skills/review-guidelines/SKILL.md` and cite the local command that validates them.",
               "- If a validator cannot run because of the GitHub Actions environment, report the exact blocker.",

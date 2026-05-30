@@ -22,6 +22,7 @@ type DraftRequest struct {
 	MaxRows   int
 	Schema    string
 	Guardrail string
+	Probe     *GraphProbe
 }
 
 type DraftResponse struct {
