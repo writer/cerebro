@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -21,44 +22,65 @@ import (
 const opusBugReviewModel = "claude-opus-4-8"
 
 type preflightResult struct {
-	ChangedFiles   []string
-	RunDroidReview bool
-	ReviewModel    string
-	ReviewReason   string
-	Findings       []checkFinding
-	Checks         []string
-	ProbePlan      []reviewProbePass
+	ChangedFiles   []string          `json:"changed_files"`
+	RunDroidReview bool              `json:"run_droid_review"`
+	ReviewModel    string            `json:"review_model"`
+	ReviewReason   string            `json:"review_reason"`
+	Findings       []checkFinding    `json:"findings"`
+	Checks         []string          `json:"checks"`
+	ProbePlan      []reviewProbePass `json:"probe_plan"`
 }
 
 type checkFinding struct {
-	Rule    string
-	File    string
-	Line    int
-	Message string
+	Rule    string `json:"rule"`
+	File    string `json:"file"`
+	Line    int    `json:"line"`
+	Message string `json:"message"`
 }
 
 type reviewProbePass struct {
-	Name     string
-	Why      string
-	Commands []string
+	Name     string   `json:"name"`
+	Why      string   `json:"why"`
+	Commands []string `json:"commands"`
 }
 
 func main() {
 	var base string
 	var head string
 	var repo string
+	var jsonOut string
 	flag.StringVar(&base, "base", "origin/main", "base git revision for changed-file preflight")
 	flag.StringVar(&head, "head", "HEAD", "head git revision for changed-file preflight")
 	flag.StringVar(&repo, "repo", ".", "repository root")
+	flag.StringVar(&jsonOut, "json-out", "", "optional path for structured Droid preflight JSON")
 	flag.Parse()
 
 	started := time.Now()
 	result, err := run(base, head, repo)
+	if jsonOut != "" {
+		if writeErr := writeJSONFile(jsonOut, result); writeErr != nil && err == nil {
+			err = writeErr
+		}
+	}
 	writeGitHubMetadata(result, time.Since(started), err)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func writeJSONFile(path string, result preflightResult) error {
+	payload, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal preflight json: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil && filepath.Dir(path) != "." {
+		return fmt.Errorf("create preflight json dir: %w", err)
+	}
+	if err := os.WriteFile(path, append(payload, '\n'), 0o600); err != nil {
+		return fmt.Errorf("write preflight json: %w", err)
+	}
+	return nil
 }
 
 func run(base, head, repo string) (preflightResult, error) {

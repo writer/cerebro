@@ -1,4 +1,4 @@
-.PHONY: build serve test workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke lint lint-bootstrap proto-lint proto-generate openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check oss-audit govulncheck droid-review-preflight droid-review-sast droid-ci-context droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: build serve test workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke lint lint-bootstrap proto-lint proto-generate openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check oss-audit govulncheck droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
@@ -32,12 +32,18 @@ GRAPH_REBUILD_PREVIEW_LIMIT ?= 10
 CANDIDATE_SMOKE_EVENT_LIMIT ?= 25
 DROID_REVIEW_BASE ?= origin/main
 DROID_REVIEW_HEAD ?= HEAD
+DROID_PREFLIGHT_JSON_OUT ?= tmp/droid-preflight.json
 DROID_PR ?=
 DROID_FEEDBACK_OUT ?=
+DROID_FEEDBACK_JSON_OUT ?= tmp/droid-feedback.json
 DROID_SAST_OUT ?= tmp/droid-sast-context.md
 DROID_SAST_JSON_OUT ?= tmp/droid-sast-context.json
 DROID_CI_OUT ?= tmp/droid-ci-context.md
 DROID_CI_JSON_OUT ?= tmp/droid-ci-context.json
+DROID_CONTEXT_OUT ?= tmp/droid-review-context.md
+DROID_CONTEXT_JSON_OUT ?= tmp/droid-review-context.json
+DROID_POST_MERGE_OUT ?= tmp/droid-post-merge-health.md
+DROID_POST_MERGE_JSON_OUT ?= tmp/droid-post-merge-health.json
 DROID_SAST_POST_COMMENT ?= false
 
 build:
@@ -132,7 +138,7 @@ govulncheck:
 
 droid-review-preflight:
 	go test ./tools/droidreview/...
-	go run ./tools/droidreview --base "$(DROID_REVIEW_BASE)" --head "$(DROID_REVIEW_HEAD)"
+	go run ./tools/droidreview --base "$(DROID_REVIEW_BASE)" --head "$(DROID_REVIEW_HEAD)" --json-out "$(DROID_PREFLIGHT_JSON_OUT)"
 
 droid-review-sast:
 	python3 scripts/droid_sast_context.py --base "$(DROID_REVIEW_BASE)" --head "$(DROID_REVIEW_HEAD)" --markdown-out "$(DROID_SAST_OUT)" --json-out "$(DROID_SAST_JSON_OUT)" $(if $(filter true,$(DROID_SAST_POST_COMMENT)),--post-comment,)
@@ -140,9 +146,15 @@ droid-review-sast:
 droid-ci-context:
 	python3 scripts/droid_ci_context.py --head "$(DROID_REVIEW_HEAD)" --markdown-out "$(DROID_CI_OUT)" --json-out "$(DROID_CI_JSON_OUT)"
 
+droid-review-context:
+	python3 scripts/droid_review_context.py --base "$(DROID_REVIEW_BASE)" --head "$(DROID_REVIEW_HEAD)" --preflight-json "$(DROID_PREFLIGHT_JSON_OUT)" --sast-json "$(DROID_SAST_JSON_OUT)" --ci-json "$(DROID_CI_JSON_OUT)" --feedback-json "$(DROID_FEEDBACK_JSON_OUT)" --markdown-out "$(DROID_CONTEXT_OUT)" --json-out "$(DROID_CONTEXT_JSON_OUT)"
+
+droid-post-merge-health:
+	python3 scripts/droid_post_merge_health.py --markdown-out "$(DROID_POST_MERGE_OUT)" --json-out "$(DROID_POST_MERGE_JSON_OUT)"
+
 droid-feedback:
 	@if [ -z "$(DROID_PR)" ]; then echo "DROID_PR is required, e.g. make droid-feedback DROID_PR=719" >&2; exit 2; fi
-	python3 scripts/droid_feedback_harness.py "$(DROID_PR)" $(if $(DROID_FEEDBACK_OUT),--markdown-out "$(DROID_FEEDBACK_OUT)")
+	python3 scripts/droid_feedback_harness.py "$(DROID_PR)" $(if $(DROID_FEEDBACK_OUT),--markdown-out "$(DROID_FEEDBACK_OUT)") --json-out "$(DROID_FEEDBACK_JSON_OUT)"
 
 clean:
 	rm -rf bin/

@@ -1,0 +1,35 @@
+{
+  "changed_files": [
+    "internal/graphagent/ask.go",
+    ".github/workflows/droid-review.yml",
+    "scripts/droid_ci_context.py"
+  ],
+  "run_droid_review": true,
+  "review_model": "claude-opus-4-8",
+  "review_reason": "code, workflow, API, source, or security-sensitive paths changed",
+  "checks": [
+    "bounded-body-read",
+    "source-http-safety",
+    "cypher-safety",
+    "ask-post-processing-boundary",
+    "candidate-lifecycle-atomicity"
+  ],
+  "findings": [],
+  "probe_plan": [
+    {
+      "name": "changed-invariants",
+      "why": "Map changed paths to repository invariants before reviewing diffs.",
+      "commands": ["make droid-review-preflight"]
+    },
+    {
+      "name": "ask-trajectory",
+      "why": "Ask changes must preserve tenant-scoped read-only Cypher, deterministic routes, recovery events, and citation validation.",
+      "commands": ["go test ./internal/graphagent -run 'TestAskTrajectory|TestService|TestConvertDraftToQuery'"]
+    },
+    {
+      "name": "security-context",
+      "why": "Workflow, script, and connector changes need scanner context plus manual exploitability validation.",
+      "commands": ["make droid-review-sast"]
+    }
+  ]
+}

@@ -6,6 +6,7 @@ description: Repository-specific Cerebro review invariants and triage guidance f
 # Cerebro Review Guidelines
 
 Use this context to keep Droid reviews focused and fast.
+Review pass contracts live in `.factory/review-passes.json`; review memory lives in `.factory/review-memory.json`. Use both as context, but validate every claim against changed code.
 
 ## Known Invariants
 
@@ -22,5 +23,6 @@ Use this context to keep Droid reviews focused and fast.
 - Prioritize concrete correctness, authorization, tenant isolation, SSRF/body-size, and state-transition bugs over style suggestions.
 - Treat matching local regression coverage as strong evidence; ask for focused tests only when the behavior can regress.
 - If a finding matches an invariant above, cite the invariant and the exact local command that would have caught it.
-- Run reviews as bounded subpasses: scanner validation, changed behavior, tenant/security invariants, tests/evals, workflow permissions, and CI/log context. State which pass found the issue.
+- Run reviews as bounded subpasses: scanner validation, changed behavior, tenant/security invariants, tests/evals, workflow permissions, feedback validation, and CI/log context. State which pass found the issue.
 - Keep comments scoped to changed code. Avoid broad architecture restatements when a PR changes only tests, docs, or workflow plumbing.
+- Use `scripts/droid_review_context.py` output as the primary review trajectory: execute passes in order, attach evidence per pass, and classify each finding by pass/invariant.
