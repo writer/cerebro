@@ -4,10 +4,14 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -218,20 +222,54 @@ func cypherFindings(file string, body []byte) []checkFinding {
 	if strings.HasSuffix(file, "_test.go") {
 		return nil
 	}
-	upper := bytes.ToUpper(body)
-	markers := []string{"CREATE ", "MERGE ", "DELETE ", "DETACH DELETE", " SET ", "REMOVE ", "LOAD CSV", "CALL DBMS", "CALL APOC"}
 	var findings []checkFinding
-	for _, marker := range markers {
-		if index := bytes.Index(upper, []byte(marker)); index >= 0 {
+	fset := token.NewFileSet()
+	parsed, err := parser.ParseFile(fset, file, body, 0)
+	if err != nil {
+		return findings
+	}
+	ast.Inspect(parsed, func(node ast.Node) bool {
+		lit, ok := node.(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING {
+			return true
+		}
+		value, err := strconv.Unquote(lit.Value)
+		if err != nil {
+			return true
+		}
+		marker := suspiciousCypherToken(value)
+		if marker != "" {
 			findings = append(findings, checkFinding{
 				Rule:    "cypher-safety",
 				File:    file,
-				Line:    lineForIndex(upper, index),
-				Message: fmt.Sprintf("Cypher templates must stay read-only and validator-covered; suspicious token %q found", strings.TrimSpace(marker)),
+				Line:    fset.Position(lit.Pos()).Line,
+				Message: fmt.Sprintf("Cypher templates must stay read-only and validator-covered; suspicious token %q found", marker),
 			})
 		}
-	}
+		return true
+	})
 	return findings
+}
+
+func suspiciousCypherToken(value string) string {
+	upper := strings.ToUpper(value)
+	cypherSignals := []string{"MATCH ", " RETURN ", "\nRETURN ", "WHERE ", "OPTIONAL MATCH", "UNWIND ", " LIMIT "}
+	hasCypherSignal := false
+	for _, signal := range cypherSignals {
+		if strings.Contains(upper, signal) {
+			hasCypherSignal = true
+			break
+		}
+	}
+	if !hasCypherSignal {
+		return ""
+	}
+	for _, marker := range []string{"CREATE ", "MERGE ", "DELETE ", "DETACH DELETE", " SET ", "REMOVE ", "LOAD CSV", "CALL DBMS", "CALL APOC"} {
+		if strings.Contains(upper, marker) {
+			return strings.TrimSpace(marker)
+		}
+	}
+	return ""
 }
 
 func askPostProcessingFindings(file string, body []byte) []checkFinding {

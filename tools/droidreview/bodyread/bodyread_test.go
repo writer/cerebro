@@ -202,6 +202,33 @@ func f(resp interface{ Body() io.Reader }) {
 			want: 1,
 		},
 		{
+			name: "non executed function literal is ignored",
+			code: `package fixture
+import "io"
+func f(resp interface{ Body() io.Reader }) {
+	reader := io.LimitReader(resp.Body(), 1024)
+	_ = func() {
+		reader = resp.Body()
+	}
+	_, _ = io.ReadAll(reader)
+}`,
+			want: 0,
+		},
+		{
+			name: "labeled statement mutation is modeled",
+			code: `package fixture
+import "io"
+func f(resp interface{ Body() io.Reader }) {
+	reader := io.LimitReader(resp.Body(), 1024)
+raw:
+	{
+		reader = resp.Body()
+	}
+	_, _ = io.ReadAll(reader)
+}`,
+			want: 1,
+		},
+		{
 			name: "loop mutation is conservative",
 			code: `package fixture
 import "io"

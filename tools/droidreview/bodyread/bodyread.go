@@ -76,6 +76,8 @@ func collectUnboundedReadAllLines(fset *token.FileSet, statements []ast.Stmt, li
 			blockVars := cloneLimitedVars(limitedVars)
 			collectUnboundedReadAllLines(fset, stmt.List, blockVars, ioImports, lines)
 			mergeLimitedVars(limitedVars, blockVars)
+		case *ast.LabeledStmt:
+			collectUnboundedReadAllLines(fset, []ast.Stmt{stmt.Stmt}, limitedVars, ioImports, lines)
 		case *ast.IfStmt:
 			ifVars := cloneLimitedVars(limitedVars)
 			if stmt.Init != nil {
@@ -226,12 +228,20 @@ func recordUnboundedReadAllInNode(fset *token.FileSet, node ast.Node, limitedVar
 		return
 	}
 	ast.Inspect(node, func(node ast.Node) bool {
-		if fn, ok := node.(*ast.FuncLit); ok {
-			collectUnboundedReadAllLines(fset, fn.Body.List, limitedVars, ioImports, lines)
+		if _, ok := node.(*ast.FuncLit); ok {
 			return false
 		}
 		call, ok := node.(*ast.CallExpr)
-		if !ok || !isSelectorCall(call.Fun, ioImports, "ReadAll") {
+		if !ok {
+			return true
+		}
+		if fn, ok := unwrapParen(call.Fun).(*ast.FuncLit); ok {
+			funcVars := cloneLimitedVars(limitedVars)
+			collectUnboundedReadAllLines(fset, fn.Body.List, funcVars, ioImports, lines)
+			mergeLimitedVars(limitedVars, funcVars)
+			return false
+		}
+		if !isSelectorCall(call.Fun, ioImports, "ReadAll") {
 			return true
 		}
 		if !readAllCallIsBounded(call, limitedVars, ioImports) {
