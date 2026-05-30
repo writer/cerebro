@@ -171,7 +171,7 @@ func TestProductionBodyReadsAreBounded(t *testing.T) {
 			if boundedReadAllContext(lines, i) {
 				continue
 			}
-			t.Fatalf("%s uses io.ReadAll without a nearby io.LimitReader or shared limited reader", rel)
+			t.Fatalf("%s:%d uses io.ReadAll without a nearby explicit io.LimitReader", rel, i+1)
 		}
 		return nil
 	}); err != nil {
@@ -188,14 +188,13 @@ func boundedReadAllContext(lines []string, index int) bool {
 	if end >= len(lines) {
 		end = len(lines) - 1
 	}
-	context := strings.Join(lines[start:end+1], "\n")
-	for _, marker := range []string{
-		"io.LimitReader(",
-		"sourcehttp.ReadLimitedBody(",
-		"sourcehttp.ReadLimitedBodyWithLimit(",
-		"readLimitedVulnDBFeed(",
-	} {
-		if strings.Contains(context, marker) {
+	readLine := strings.TrimSpace(lines[index])
+	if strings.Contains(readLine, "io.ReadAll(io.LimitReader(") {
+		return true
+	}
+	for _, line := range lines[start : end+1] {
+		trimmed := strings.TrimSpace(line)
+		if strings.Contains(trimmed, ":= io.LimitReader(") || strings.Contains(trimmed, "= io.LimitReader(") {
 			return true
 		}
 	}

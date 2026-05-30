@@ -140,12 +140,29 @@ func TestServiceRefusesUnsupportedPlanOnlyDraftAsConversionFailure(t *testing.T)
 
 func TestServiceConvertsFindingSourceAggregationDraft(t *testing.T) {
 	store := &askStore{
-		rows: []ports.CypherRow{{
-			Values: map[string]any{
-				"source_family": "okta",
-				"finding_count": int64(3),
+		rows: []ports.CypherRow{
+			{
+				Values: map[string]any{
+					"finding_urn":                      "urn:cerebro:writer:finding:alpha",
+					"source_id":                        "fallback",
+					"finding_attributes_json_internal": "{\n  \"source_family\": \"okta\"\n}",
+				},
 			},
-		}},
+			{
+				Values: map[string]any{
+					"finding_urn":                      "urn:cerebro:writer:finding:beta",
+					"source_id":                        "fallback",
+					"finding_attributes_json_internal": `{"sourceFamily":"okta"}`,
+				},
+			},
+			{
+				Values: map[string]any{
+					"finding_urn":                      "urn:cerebro:writer:finding:gamma",
+					"source_id":                        "fallback",
+					"finding_attributes_json_internal": `{"source_system":"GitHub \"Enterprise\""}`,
+				},
+			},
+		},
 	}
 	llm := &StubLLMClient{
 		DraftResponse: &DraftResponse{
@@ -187,8 +204,102 @@ LIMIT 10`,
 	if strings.Contains(cypher.Cypher, "apoc.") || strings.Contains(cypher.Cypher, "HAS_SOURCE") || strings.Contains(cypher.Cypher, "entity_type = 'Finding'") {
 		t.Fatalf("cypher was not canonicalized:\n%s", cypher.Cypher)
 	}
-	if len(store.requests) != 1 || !strings.Contains(store.requests[0].Query, "entity_type: 'finding'") || !strings.Contains(store.requests[0].Query, "count(DISTINCT f)") {
+	if len(store.requests) != 1 || !strings.Contains(store.requests[0].Query, "entity_type: 'finding'") || !strings.Contains(store.requests[0].Query, "finding_attributes_json_internal") {
 		t.Fatalf("store request = %#v", store.requests)
+	}
+	if strings.Contains(store.requests[0].Query, "split(split") || strings.Contains(store.requests[0].Query, "count(DISTINCT f)") {
+		t.Fatalf("store request should leave JSON parsing and aggregation to Go:\n%s", store.requests[0].Query)
+	}
+	rowsEvent := events[6].Data.(RowsEvent)
+	if len(rowsEvent.Rows) != 2 {
+		t.Fatalf("rows = %#v, want two source groups", rowsEvent.Rows)
+	}
+	if rowsEvent.Rows[0]["source_family"] != "okta" || rowsEvent.Rows[0]["finding_count"] != int64(2) {
+		t.Fatalf("first source row = %#v, want okta count 2", rowsEvent.Rows[0])
+	}
+	if rowsEvent.Rows[1]["source_family"] != `GitHub "Enterprise"` || rowsEvent.Rows[1]["finding_count"] != int64(1) {
+		t.Fatalf("second source row = %#v, want escaped source_system fallback", rowsEvent.Rows[1])
+	}
+}
+
+func TestServicePostProcessesTopRiskFindingRows(t *testing.T) {
+	store := &askStore{
+		rows: []ports.CypherRow{
+			{
+				Values: map[string]any{
+					"finding_urn":                       "urn:cerebro:writer:finding:alpha",
+					"finding_label":                     "Alpha",
+					"resource_urn":                      "urn:cerebro:writer:asset:alpha",
+					"resource_label":                    "Alpha resource",
+					"relation_attributes_json_internal": `{}`,
+					"finding_attributes_json_internal":  `{"risk_score":"40","severity":"CRITICAL"}`,
+				},
+			},
+			{
+				Values: map[string]any{
+					"finding_urn":                       "urn:cerebro:writer:finding:beta",
+					"finding_label":                     "Beta",
+					"resource_urn":                      "urn:cerebro:writer:asset:beta",
+					"resource_label":                    "Beta resource",
+					"relation_attributes_json_internal": "{\n  \"risk_score\": 95\n}",
+					"finding_attributes_json_internal":  `{"severity":"HIGH"}`,
+				},
+			},
+			{
+				Values: map[string]any{
+					"finding_urn":                       "urn:cerebro:writer:finding:gamma",
+					"finding_label":                     "Gamma",
+					"resource_urn":                      "urn:cerebro:writer:asset:gamma",
+					"resource_label":                    "Gamma resource",
+					"relation_attributes_json_internal": `{}`,
+					"finding_attributes_json_internal":  `{}`,
+				},
+			},
+		},
+	}
+	llm := &StubLLMClient{
+		DraftResponse: &DraftResponse{
+			Rationale: "Ranking risky findings.",
+			Plan:      &AskQueryPlan{Intent: IntentTopRiskFindings, Limit: 2},
+		},
+		Summary: "Beta is highest risk.",
+	}
+	service := NewService(store, llm, ValidatorOptions{})
+
+	var events []Event
+	err := service.Stream(context.Background(), AskRequest{
+		TenantID: "writer",
+		Question: "Show top risk findings for this asset",
+		ScopeURN: "urn:cerebro:writer:asset:beta",
+	}, func(event Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	if len(store.requests) != 1 || !strings.Contains(store.requests[0].Query, "relation_attributes_json_internal") {
+		t.Fatalf("store request = %#v, want internal relation attributes", store.requests)
+	}
+	if !strings.Contains(store.requests[0].Query, "WHERE $scope_urn = '' OR resource.urn = $scope_urn OR finding.urn = $scope_urn") {
+		t.Fatalf("store request missing scope predicate:\n%s", store.requests[0].Query)
+	}
+	if strings.Contains(store.requests[0].Query, "split(split") || strings.Contains(store.requests[0].Query, "CASE toUpper") {
+		t.Fatalf("store request should leave JSON parsing and ranking to Go:\n%s", store.requests[0].Query)
+	}
+	rowsEvent := events[6].Data.(RowsEvent)
+	if len(rowsEvent.Rows) != 2 {
+		t.Fatalf("rows = %#v, want two limited top-risk rows", rowsEvent.Rows)
+	}
+	first := rowsEvent.Rows[0]
+	if first["finding_urn"] != "urn:cerebro:writer:finding:beta" || first["risk_score"] != 95 || first["severity"] != "HIGH" {
+		t.Fatalf("first top-risk row = %#v, want beta risk 95 HIGH", first)
+	}
+	if _, exists := first["finding_attributes_json_internal"]; exists {
+		t.Fatalf("internal finding attributes leaked: %#v", first)
+	}
+	if _, exists := first["relation_attributes_json_internal"]; exists {
+		t.Fatalf("internal relation attributes leaked: %#v", first)
 	}
 }
 
