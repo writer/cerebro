@@ -1,3 +1,8 @@
+---
+name: review-guidelines
+description: Repository-specific Cerebro review invariants and triage guidance for Droid code and security reviews.
+---
+
 # Cerebro Review Guidelines
 
 Use this context to keep Droid reviews focused and fast.
