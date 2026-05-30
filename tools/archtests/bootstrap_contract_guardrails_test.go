@@ -6,8 +6,11 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/writer/cerebro/tools/droidreview/bodyread"
 )
 
 func TestOpenAPIContractDescribesCurrentBootstrapSurface(t *testing.T) {
@@ -162,41 +165,23 @@ func TestProductionBodyReadsAreBounded(t *testing.T) {
 		if err != nil {
 			return err
 		}
+		if !bytes.Contains(body, []byte("io.ReadAll(")) {
+			return nil
+		}
 		rel := shortPath(root, path)
-		lines := strings.Split(string(body), "\n")
-		for i, line := range lines {
-			if !strings.Contains(line, "io.ReadAll(") {
-				continue
+		findings, err := bodyread.FindUnboundedReadAll(rel, body)
+		if err != nil {
+			return err
+		}
+		if len(findings) > 0 {
+			var lines []string
+			for _, finding := range findings {
+				lines = append(lines, finding.File+":"+strconv.Itoa(finding.Line))
 			}
-			if boundedReadAllContext(lines, i) {
-				continue
-			}
-			t.Fatalf("%s:%d uses io.ReadAll without a nearby explicit io.LimitReader", rel, i+1)
+			t.Fatalf("production io.ReadAll calls must use io.LimitReader; unbounded reads: %s", strings.Join(lines, ", "))
 		}
 		return nil
 	}); err != nil {
 		t.Fatalf("scan bounded body reads: %v", err)
 	}
-}
-
-func boundedReadAllContext(lines []string, index int) bool {
-	start := index - 4
-	if start < 0 {
-		start = 0
-	}
-	end := index + 1
-	if end >= len(lines) {
-		end = len(lines) - 1
-	}
-	readLine := strings.TrimSpace(lines[index])
-	if strings.Contains(readLine, "io.ReadAll(io.LimitReader(") {
-		return true
-	}
-	for _, line := range lines[start : end+1] {
-		trimmed := strings.TrimSpace(line)
-		if strings.Contains(trimmed, ":= io.LimitReader(") || strings.Contains(trimmed, "= io.LimitReader(") {
-			return true
-		}
-	}
-	return false
 }
