@@ -77,7 +77,7 @@ func TestGRCAskTelemetryIncludesQueryPlanDiagnostics(t *testing.T) {
 		GraphStore: &stubGraphStore{},
 		GraphAgentLLM: &graphagent.StubLLMClient{DraftResponse: &graphagent.DraftResponse{
 			Rationale: "Planning filtered high-risk findings.",
-			Plan:      &graphagent.AskQueryPlan{Intent: graphagent.IntentTopRiskFindings, Filters: map[string]string{"severity": "HIGH"}},
+			Plan:      &graphagent.AskQueryPlan{Intent: graphagent.IntentTopRiskFindings, Filters: map[string]string{"owner": "security"}},
 		}},
 	}, nil)
 	server := httptest.NewServer(app.Handler())
@@ -85,7 +85,7 @@ func TestGRCAskTelemetryIncludesQueryPlanDiagnostics(t *testing.T) {
 
 	var events []sseRecord
 	stderr := captureBootstrapStderr(t, func() {
-		resp, err := server.Client().Post(server.URL+"/grc/ask", "application/json", strings.NewReader(`{"tenant_id":"example","question":"show HIGH risk findings"}`))
+		resp, err := server.Client().Post(server.URL+"/grc/ask", "application/json", strings.NewReader(`{"tenant_id":"example","question":"show security-owned risk findings"}`))
 		if err != nil {
 			t.Fatalf("POST /grc/ask error = %v", err)
 		}
@@ -99,26 +99,33 @@ func TestGRCAskTelemetryIncludesQueryPlanDiagnostics(t *testing.T) {
 
 	payload := decodeBootstrapTelemetryPayload(t, stderr)
 	for key, want := range map[string]any{
-		"name":                         "cerebro.grc.ask",
-		"operation":                    "grc.ask",
-		"outcome":                      "success",
-		"status":                       float64(http.StatusOK),
-		"tenant_id":                    "example",
-		"sse_events":                   float64(6),
-		"query_plan.intent":            graphagent.IntentTopRiskFindings,
-		"query_plan.source":            "conversion_refusal",
-		"query_plan.deterministic":     false,
-		"query_plan.corrected":         false,
-		"query_plan.diagnostics_count": float64(1),
-		"query_plan.diagnostic_codes":  "query_plan_conversion_failed",
-		"terminal_event":               "done",
-		"cypher_refused":               true,
-		"validator.ok":                 false,
-		"row_count":                    float64(0),
-		"citation_count":               float64(0),
+		"name":                               "cerebro.grc.ask",
+		"operation":                          "grc.ask",
+		"outcome":                            "success",
+		"status":                             float64(http.StatusOK),
+		"tenant_id":                          "example",
+		"sse_events":                         float64(6),
+		"query_plan.intent":                  graphagent.IntentTopRiskFindings,
+		"query_plan.source":                  "conversion_refusal",
+		"query_plan.deterministic":           false,
+		"query_plan.corrected":               false,
+		"query_plan.diagnostics_count":       float64(1),
+		"query_plan.diagnostic_codes":        "query_plan_conversion_failed",
+		"terminal_event":                     "done",
+		"cypher_refused":                     true,
+		"validator.ok":                       false,
+		"row_count":                          float64(0),
+		"citation_count":                     float64(0),
+		"citation_validation.warnings_count": float64(0),
+		"unsupported_query.code":             "query_plan_conversion_failed",
 	} {
 		if got := payload[key]; got != want {
 			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	for _, key := range []string{"stage.draft_ms", "stage.conversion_ms"} {
+		if _, ok := payload[key].(float64); !ok {
+			t.Fatalf("telemetry %s = %#v, want numeric stage timing; payload=%#v", key, payload[key], payload)
 		}
 	}
 	if traceID, ok := payload["ask_trace_id"].(string); !ok || traceID == "" {

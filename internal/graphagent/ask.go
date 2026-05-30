@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -24,6 +25,8 @@ const (
 	maxInternalAttributeValueBytes = 4096
 	maxInternalAttributesJSONBytes = 64 << 10
 )
+
+var summaryURNPattern = regexp.MustCompile(`urn:cerebro:[A-Za-z0-9_:@./#%+-]+`)
 
 type AskRequest struct {
 	TenantID string           `json:"tenant_id"`
@@ -60,6 +63,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		return ErrRuntimeUnavailable
 	}
 	started := time.Now()
+	var timings StageTimings
 	model := normalizeModel(request.Model)
 	history := normalizeHistory(request.History)
 	params := askParams(request)
@@ -68,6 +72,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	if err := emitProgress(emit, started, "drafting_query", "Drafting a read-only graph query."); err != nil {
 		return err
 	}
+	draftStarted := time.Now()
 	draft, err := s.llm.DraftCypher(ctx, DraftRequest{
 		TenantID:  strings.TrimSpace(request.TenantID),
 		Question:  strings.TrimSpace(request.Question),
@@ -81,6 +86,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	if err != nil {
 		return fmt.Errorf("%w: draft cypher: %w", ErrRuntimeUnavailable, err)
 	}
+	timings.DraftMS = time.Since(draftStarted).Milliseconds()
 	if draft == nil {
 		return fmt.Errorf("%w: LLM returned no draft", ErrRuntimeUnavailable)
 	}
@@ -92,28 +98,32 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		return err
 	}
 
+	conversionStarted := time.Now()
 	conversion := convertDraftToQuery(request, draft, defaultMaxRows)
+	timings.ConversionMS = time.Since(conversionStarted).Milliseconds()
 	cypher := strings.TrimSpace(conversion.Cypher)
 	if err := emitQueryPlan(emit, conversion); err != nil {
 		return err
 	}
 	if cypher == "" {
 		reason := firstNonEmpty(draft.Refusal, conversion.Refusal, "LLM refused to draft Cypher")
-		return emitRefusal(emit, traceID, started, cypher, reason)
+		return emitRefusal(emit, traceID, started, cypher, reason, timings)
 	}
 	if err := emitProgress(emit, started, "validating_query", "Validating generated Cypher against read-only guardrails."); err != nil {
 		return err
 	}
+	validateStarted := time.Now()
 	validation, rowLimit, err := s.validateConversion(ctx, conversion, cypher, params)
 	if err != nil {
 		return err
 	}
+	timings.ValidateMS = time.Since(validateStarted).Milliseconds()
 	validation.Warnings = append(validation.Warnings, conversionWarnings(conversion.Diagnostics)...)
 	if err := emit(Event{Name: EventCypher, Data: CypherEvent{Cypher: cypher, Validator: validation}}); err != nil {
 		return err
 	}
 	if !validation.OK {
-		return emitRefusal(emit, traceID, started, cypher, validation.Reason)
+		return emitRefusal(emit, traceID, started, cypher, validation.Reason, timings)
 	}
 
 	if err := emitProgress(emit, started, "executing_query", "Executing the validated graph query."); err != nil {
@@ -128,8 +138,9 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	if err != nil {
 		return fmt.Errorf("%w: execute cypher: %w", ErrRuntimeUnavailable, err)
 	}
+	timings.ExecuteMS = time.Since(execStarted).Milliseconds()
 	if postProcessingCandidateLimitHit(conversion.Plan, rows, rowLimit) {
-		return emitRefusal(emit, traceID, started, cypher, "The deterministic Ask query matched more graph rows than can be safely post-processed without risking an incomplete answer. Narrow the scope or ask for a more specific subset.")
+		return emitRefusal(emit, traceID, started, cypher, "The deterministic Ask query matched more graph rows than can be safely post-processed without risking an incomplete answer. Narrow the scope or ask for a more specific subset.", timings)
 	}
 	rowMaps := cypherRowsToMaps(rows)
 	rowMaps = postProcessAskRows(conversion.Plan, rowMaps)
@@ -137,7 +148,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	rowsEvent := RowsEvent{
 		Rows:   rowMaps,
 		Graph:  scopedNeighborhood(ctx, s.store, request.ScopeURN),
-		ExecMS: time.Since(execStarted).Milliseconds(),
+		ExecMS: timings.ExecuteMS,
 	}
 	if err := emit(Event{Name: EventRows, Data: rowsEvent}); err != nil {
 		return err
@@ -146,6 +157,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	if err := emitProgress(emit, started, "summarizing", "Summarizing graph rows into a user-facing answer."); err != nil {
 		return err
 	}
+	summarizeStarted := time.Now()
 	summary, err := s.llm.Summarize(ctx, SummarizeRequest{
 		TenantID: strings.TrimSpace(request.TenantID),
 		Question: strings.TrimSpace(request.Question),
@@ -158,14 +170,19 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	if err != nil {
 		return fmt.Errorf("%w: summarize graph rows: %w", ErrRuntimeUnavailable, err)
 	}
+	timings.SummarizeMS = time.Since(summarizeStarted).Milliseconds()
 	if strings.TrimSpace(summary) == "" {
 		summary = fallbackSummary(rowMaps)
 	}
 	summary = strings.TrimSpace(summary)
-	if err := emit(Event{Name: EventSummary, Data: SummaryEvent{Markdown: summary, Citations: citationsFor(summary, rowMaps)}}); err != nil {
+	citationStarted := time.Now()
+	citations := citationsFor(summary, rowMaps)
+	citationValidation := validateSummaryCitations(summary, rowMaps, citations)
+	timings.CitationValidationMS = time.Since(citationStarted).Milliseconds()
+	if err := emit(Event{Name: EventSummary, Data: SummaryEvent{Markdown: summary, Citations: citations, CitationValidation: &citationValidation}}); err != nil {
 		return err
 	}
-	return emit(Event{Name: EventDone, Data: DoneEvent{TraceID: traceID, TotalMS: time.Since(started).Milliseconds()}})
+	return emit(Event{Name: EventDone, Data: DoneEvent{TraceID: traceID, TotalMS: time.Since(started).Milliseconds(), Timings: timings}})
 }
 
 func (s *Service) validateConversion(ctx context.Context, conversion conversionResult, cypher string, params map[string]any) (ValidatorResult, int, error) {
@@ -227,17 +244,18 @@ func conversionWarnings(diagnostics []ConversionDiagnostic) []string {
 	return warnings
 }
 
-func emitRefusal(emit Emitter, traceID string, started time.Time, cypher string, reason string) error {
+func emitRefusal(emit Emitter, traceID string, started time.Time, cypher string, reason string, timings StageTimings) error {
 	reason = firstNonEmpty(reason, "Read-only Cypher validator refused the draft.")
 	if cypher == "" {
 		if err := emit(Event{Name: EventCypher, Data: CypherEvent{Cypher: "", Validator: ValidatorResult{OK: false, Reason: reason}}}); err != nil {
 			return err
 		}
 	}
-	if err := emit(Event{Name: EventSummary, Data: SummaryEvent{Markdown: reason}}); err != nil {
+	rescue := unsupportedQuery(reason, traceID)
+	if err := emit(Event{Name: EventSummary, Data: SummaryEvent{Markdown: reason, UnsupportedQuery: &rescue}}); err != nil {
 		return err
 	}
-	return emit(Event{Name: EventDone, Data: DoneEvent{TraceID: traceID, TotalMS: time.Since(started).Milliseconds(), CypherRefused: true}})
+	return emit(Event{Name: EventDone, Data: DoneEvent{TraceID: traceID, TotalMS: time.Since(started).Milliseconds(), CypherRefused: true, Timings: timings}})
 }
 
 func cypherRowsToMaps(rows []ports.CypherRow) []map[string]any {
@@ -351,6 +369,19 @@ func postProcessTopRiskFindingRows(plan AskQueryPlan, rows []map[string]any) []m
 		if findingURN == "" {
 			findingURN = fmt.Sprintf("row:%d", index)
 		}
+		relationAttrs := decodeInternalAttributes(row["relation_attributes_json_internal"])
+		findingAttrs := decodeInternalAttributes(row["finding_attributes_json_internal"])
+		severity := firstNonEmpty(
+			firstAttributeString(relationAttrs, "effective_severity", "severity"),
+			firstAttributeString(findingAttrs, "effective_severity", "severity"),
+		)
+		status := firstNonEmpty(
+			firstAttributeString(relationAttrs, "status"),
+			firstAttributeString(findingAttrs, "status"),
+		)
+		if !matchesTopRiskFilters(plan, row, severity, status) {
+			continue
+		}
 		current := byFinding[findingURN]
 		if current == nil {
 			current = &topRiskFindingRow{
@@ -368,16 +399,10 @@ func postProcessTopRiskFindingRows(plan AskQueryPlan, rows []map[string]any) []m
 				current.ResourceLabels = append(current.ResourceLabels, firstNonEmpty(stringRowValue(row, "resource_label"), resourceURN))
 			}
 		}
-		relationAttrs := decodeInternalAttributes(row["relation_attributes_json_internal"])
-		findingAttrs := decodeInternalAttributes(row["finding_attributes_json_internal"])
 		riskScore := firstAttributeInt(relationAttrs, findingAttrs, "risk_score")
 		if riskScore > current.riskScore {
 			current.riskScore = riskScore
 		}
-		severity := firstNonEmpty(
-			firstAttributeString(relationAttrs, "effective_severity", "severity"),
-			firstAttributeString(findingAttrs, "effective_severity", "severity"),
-		)
 		if rank := severityRank(severity); rank > current.severityRank {
 			current.severityRank = rank
 		}
@@ -412,6 +437,27 @@ func postProcessTopRiskFindingRows(plan AskQueryPlan, rows []map[string]any) []m
 		})
 	}
 	return result
+}
+
+func matchesTopRiskFilters(plan AskQueryPlan, row map[string]any, severity string, status string) bool {
+	if want := planFilterValue(plan.Filters, "severity"); want != "" && !strings.EqualFold(severity, want) {
+		return false
+	}
+	if want := planFilterValue(plan.Filters, "status"); want != "" && !strings.EqualFold(status, want) {
+		return false
+	}
+	if want := firstNonEmpty(planFilterValue(plan.Filters, "resource_type"), planFilterValue(plan.Filters, "entity_type")); want != "" {
+		return resourceTypeMatchesFilter(stringRowValue(row, "resource_type"), stringRowValue(row, "resource_urn"), want)
+	}
+	return true
+}
+
+func resourceTypeMatchesFilter(resourceType string, resourceURN string, filter string) bool {
+	canonical := canonicalEntityType(filter)
+	if canonical == "github.code.repository" || canonical == "github.repo" {
+		return resourceType == "github.code.repository" || resourceType == "github.repo" || strings.Contains(resourceURN, ":repo:") || strings.Contains(resourceURN, ":github_repo:")
+	}
+	return strings.EqualFold(resourceType, canonical)
 }
 
 func postProcessedRowLimit(plan AskQueryPlan) int {
@@ -601,24 +647,130 @@ func scopedNeighborhood(ctx context.Context, store ports.GraphQueryStore, scopeU
 func citationsFor(summary string, rows []map[string]any) []Citation {
 	seen := map[string]struct{}{}
 	var citations []Citation
-	for _, row := range rows {
-		for _, value := range row {
-			urn, ok := value.(string)
-			if !ok || !strings.HasPrefix(urn, "urn:cerebro:") {
-				continue
-			}
-			if _, exists := seen[urn]; exists {
-				continue
-			}
-			start := strings.Index(summary, urn)
-			if start < 0 {
-				continue
-			}
-			seen[urn] = struct{}{}
-			citations = append(citations, Citation{URN: urn, Span: [2]int{start, start + len(urn)}})
+	for _, urn := range collectRowURNs(rows) {
+		if _, exists := seen[urn]; exists {
+			continue
 		}
+		start := strings.Index(summary, urn)
+		if start < 0 {
+			continue
+		}
+		seen[urn] = struct{}{}
+		citations = append(citations, Citation{URN: urn, Span: [2]int{start, start + len(urn)}})
 	}
 	return citations
+}
+
+func validateSummaryCitations(summary string, rows []map[string]any, citations []Citation) CitationValidation {
+	rowURNs := map[string]struct{}{}
+	for _, urn := range collectRowURNs(rows) {
+		rowURNs[urn] = struct{}{}
+	}
+	referencedURNs := urnsFromSummary(summary)
+	var warnings []string
+	for _, citation := range citations {
+		if _, ok := rowURNs[citation.URN]; !ok {
+			warnings = append(warnings, "citation_not_row_backed:"+citation.URN)
+		}
+		if citation.Span[0] < 0 || citation.Span[1] <= citation.Span[0] || citation.Span[1] > len(summary) {
+			warnings = append(warnings, "citation_invalid_span:"+citation.URN)
+			continue
+		}
+		if summary[citation.Span[0]:citation.Span[1]] != citation.URN {
+			warnings = append(warnings, "citation_span_mismatch:"+citation.URN)
+		}
+	}
+	for _, urn := range referencedURNs {
+		if _, ok := rowURNs[urn]; !ok {
+			warnings = append(warnings, "summary_urn_not_row_backed:"+urn)
+		}
+	}
+	sort.Strings(warnings)
+	return CitationValidation{
+		OK:                 len(warnings) == 0,
+		Warnings:           warnings,
+		RowURNCount:        len(rowURNs),
+		ReferencedURNCount: len(referencedURNs),
+	}
+}
+
+func collectRowURNs(rows []map[string]any) []string {
+	seen := map[string]struct{}{}
+	var urns []string
+	var visit func(any)
+	visit = func(value any) {
+		switch typed := value.(type) {
+		case string:
+			if strings.HasPrefix(typed, "urn:cerebro:") {
+				if _, exists := seen[typed]; !exists {
+					seen[typed] = struct{}{}
+					urns = append(urns, typed)
+				}
+			}
+		case []string:
+			for _, item := range typed {
+				visit(item)
+			}
+		case []any:
+			for _, item := range typed {
+				visit(item)
+			}
+		case map[string]any:
+			for _, item := range typed {
+				visit(item)
+			}
+		}
+	}
+	for _, row := range rows {
+		visit(row)
+	}
+	sort.Strings(urns)
+	return urns
+}
+
+func urnsFromSummary(summary string) []string {
+	matches := summaryURNPattern.FindAllString(summary, -1)
+	seen := map[string]struct{}{}
+	var urns []string
+	for _, match := range matches {
+		urn := strings.TrimRight(match, ".,;:!?")
+		if _, exists := seen[urn]; exists {
+			continue
+		}
+		seen[urn] = struct{}{}
+		urns = append(urns, urn)
+	}
+	sort.Strings(urns)
+	return urns
+}
+
+func unsupportedQuery(reason string, traceID string) UnsupportedQuery {
+	return UnsupportedQuery{
+		Code:             unsupportedQueryCode(reason),
+		Reason:           reason,
+		SupportedIntents: []string{IntentTopRiskFindings, IntentAggregateFindingsBySource, IntentExplainFinding, IntentIdentityBridge, IntentConnectorHealth},
+		SuggestedRewrites: []string{
+			"Summarize open high-risk findings and cite the affected entities.",
+			"Count findings by source family.",
+			"Show source health and freshness for security integrations.",
+			"Explain the evidence for a specific finding URN.",
+		},
+		TraceID: traceID,
+	}
+}
+
+func unsupportedQueryCode(reason string) string {
+	lower := strings.ToLower(reason)
+	switch {
+	case strings.Contains(lower, "could not be converted"):
+		return "query_plan_conversion_failed"
+	case strings.Contains(lower, "refused"):
+		return "llm_refusal"
+	case strings.Contains(lower, "read-only") || strings.Contains(lower, "write"):
+		return "validator_refusal"
+	default:
+		return "unsupported_query"
+	}
 }
 
 func fallbackSummary(rows []map[string]any) string {
