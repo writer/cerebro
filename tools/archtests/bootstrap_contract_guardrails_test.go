@@ -322,6 +322,59 @@ func readBody(reader io.Reader) ([]byte, error) {
 	}
 }
 
+func TestProductionBodyReadGuardIgnoresNonExecutedFunctionLiteral(t *testing.T) {
+	source := `package sample
+
+import "io"
+
+func readBody(reader io.Reader) ([]byte, error) {
+	body := io.LimitReader(reader, 1025)
+	_ = func() {
+		body = reader
+	}
+	return io.ReadAll(body)
+}`
+	if lines := unboundedReadAllLinesForSource(t, source); len(lines) != 0 {
+		t.Fatalf("unbounded lines = %v, want non-executed function literal ignored", lines)
+	}
+}
+
+func TestProductionBodyReadGuardStopsBareBlockAfterContinue(t *testing.T) {
+	source := `package sample
+
+import "io"
+
+func readBody(reader io.Reader, cond bool) ([]byte, error) {
+	body := io.LimitReader(reader, 1025)
+	for cond {
+		continue
+		body = reader
+	}
+	return io.ReadAll(body)
+}`
+	if lines := unboundedReadAllLinesForSource(t, source); len(lines) != 0 {
+		t.Fatalf("unbounded lines = %v, want unreachable assignment after continue ignored", lines)
+	}
+}
+
+func TestProductionBodyReadGuardCarriesContinueMutation(t *testing.T) {
+	source := `package sample
+
+import "io"
+
+func readBody(reader io.Reader, cond bool) ([]byte, error) {
+	body := io.LimitReader(reader, 1025)
+	for cond {
+		body = reader
+		continue
+	}
+	return io.ReadAll(body)
+}`
+	if lines := unboundedReadAllLinesForSource(t, source); len(lines) != 1 {
+		t.Fatalf("unbounded lines = %v, want mutation before continue rejected", lines)
+	}
+}
+
 func TestProductionBodyReadGuardCarriesSwitchFallthrough(t *testing.T) {
 	source := `package sample
 
@@ -465,6 +518,9 @@ func collectUnboundedReadAllLines(fset *token.FileSet, statements []ast.Stmt, li
 		default:
 			recordUnboundedReadAllInNode(fset, stmt, limitedVars, lines)
 		}
+		if !statementMayReachNextStatement(statement) {
+			return
+		}
 	}
 }
 
@@ -547,11 +603,19 @@ func recordUnboundedReadAllInNode(fset *token.FileSet, node ast.Node, limitedVar
 		return
 	}
 	ast.Inspect(node, func(node ast.Node) bool {
-		if fn, ok := node.(*ast.FuncLit); ok {
-			collectUnboundedReadAllLines(fset, fn.Body.List, limitedVars, lines)
+		if _, ok := node.(*ast.FuncLit); ok {
 			return false
 		}
 		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if fn, ok := unwrapParen(call.Fun).(*ast.FuncLit); ok {
+			funcVars := cloneLimitedVars(limitedVars)
+			collectUnboundedReadAllLines(fset, fn.Body.List, funcVars, lines)
+			mergeLimitedVars(limitedVars, funcVars)
+			return false
+		}
 		if !ok || !isSelectorCall(call.Fun, "io", "ReadAll") {
 			return true
 		}
@@ -632,6 +696,19 @@ func statementMayContinue(statement ast.Stmt) bool {
 		return statementsMayContinue(stmt.List)
 	case *ast.IfStmt:
 		return stmt.Else == nil || statementMayContinue(stmt.Body) || statementMayContinue(stmt.Else)
+	default:
+		return true
+	}
+}
+
+func statementMayReachNextStatement(statement ast.Stmt) bool {
+	switch stmt := statement.(type) {
+	case *ast.ReturnStmt, *ast.BranchStmt:
+		return false
+	case *ast.BlockStmt:
+		return statementsMayContinue(stmt.List)
+	case *ast.IfStmt:
+		return stmt.Else == nil || statementMayReachNextStatement(stmt.Body) || statementMayReachNextStatement(stmt.Else)
 	default:
 		return true
 	}
