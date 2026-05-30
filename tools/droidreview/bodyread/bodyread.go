@@ -112,9 +112,10 @@ func collectUnboundedReadAllLines(fset *token.FileSet, statements []ast.Stmt, li
 			mergeLimitedVars(limitedVars, loopVars, bodyVars)
 		case *ast.RangeStmt:
 			recordUnboundedReadAllInNode(fset, stmt.X, limitedVars, ioImports, lines)
-			bodyVars := cloneLimitedVars(limitedVars)
+			rangeVars := cloneLimitedVars(limitedVars)
+			bodyVars := cloneLimitedVars(rangeVars)
 			collectUnboundedReadAllLines(fset, stmt.Body.List, bodyVars, ioImports, lines)
-			mergeLimitedVars(limitedVars, bodyVars)
+			mergeLimitedVars(limitedVars, rangeVars, bodyVars)
 		case *ast.SwitchStmt:
 			switchVars := cloneLimitedVars(limitedVars)
 			if stmt.Init != nil {

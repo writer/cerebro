@@ -11,6 +11,7 @@ Use this context to keep Droid reviews focused and fast.
 
 - Source connectors must use `internal/sourcehttp` for outbound HTTP safety; do not reintroduce connector-local `http.Client`, transport, body-read, SSRF, or DNS-rebinding logic.
 - Production `io.ReadAll` calls must read from `io.LimitReader` or be replaced with streaming code. The fast local check is `make droid-review-preflight`.
+- Review security context should include changed-line SAST output from `make droid-review-sast`; treat it as scanner context, not a substitute for validating exploitability.
 - Graph Ask Cypher must be tenant-scoped, read-only, row-limited, and validated before execution. Prefer deterministic query templates for supported intents.
 - Ask post-processing may only run for deterministic templates; LLM fallback rows must not be reshaped by deterministic Go post-processing.
 - Candidate finding state transitions must be atomic and idempotent. Avoid split read-then-write state changes unless a store method owns the compare-and-swap.

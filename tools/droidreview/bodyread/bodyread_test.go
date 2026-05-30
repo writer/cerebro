@@ -242,6 +242,32 @@ func f(resp interface{ Body() io.Reader }, ok bool) {
 			want: 1,
 		},
 		{
+			name: "range body may not execute",
+			code: `package fixture
+import "io"
+func f(resp interface{ Body() io.Reader }, values []string) {
+	reader := resp.Body()
+	for range values {
+		reader = io.LimitReader(resp.Body(), 1024)
+	}
+	_, _ = io.ReadAll(reader)
+}`,
+			want: 1,
+		},
+		{
+			name: "range keeps reader bounded when already bounded",
+			code: `package fixture
+import "io"
+func f(resp interface{ Body() io.Reader }, values []string) {
+	reader := io.LimitReader(resp.Body(), 1024)
+	for range values {
+		reader = io.LimitReader(resp.Body(), 2048)
+	}
+	_, _ = io.ReadAll(reader)
+}`,
+			want: 0,
+		},
+		{
 			name: "early return keeps unsafe branch from escaping",
 			code: `package fixture
 import "io"
