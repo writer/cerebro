@@ -79,10 +79,10 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		Guardrail: graphAgentGuardrail,
 	})
 	if err != nil {
-		return fmt.Errorf("%w: draft cypher: %w", ErrRuntimeUnavailable, err)
+		return streamRuntimeError(traceID, fmt.Errorf("%w: draft cypher: %w", ErrRuntimeUnavailable, err))
 	}
 	if draft == nil {
-		return fmt.Errorf("%w: LLM returned no draft", ErrRuntimeUnavailable)
+		return streamRuntimeError(traceID, fmt.Errorf("%w: LLM returned no draft", ErrRuntimeUnavailable))
 	}
 	rationale := strings.TrimSpace(draft.Rationale)
 	if rationale == "" {
@@ -106,7 +106,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	}
 	validation, rowLimit, err := s.validateConversion(ctx, conversion, cypher, params)
 	if err != nil {
-		return err
+		return streamRuntimeError(traceID, err)
 	}
 	validation.Warnings = append(validation.Warnings, conversionWarnings(conversion.Diagnostics)...)
 	if err := emit(Event{Name: EventCypher, Data: CypherEvent{Cypher: cypher, Validator: validation}}); err != nil {
@@ -126,13 +126,13 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		RowLimit: rowLimit,
 	})
 	if err != nil {
-		return fmt.Errorf("%w: execute cypher: %w", ErrRuntimeUnavailable, err)
+		return streamRuntimeError(traceID, fmt.Errorf("%w: execute cypher: %w", ErrRuntimeUnavailable, err))
 	}
-	if postProcessingCandidateLimitHit(conversion.Plan, rows, rowLimit) {
+	if postProcessingCandidateLimitHit(conversion, rows, rowLimit) {
 		return emitRefusal(emit, traceID, started, cypher, "The deterministic Ask query matched more graph rows than can be safely post-processed without risking an incomplete answer. Narrow the scope or ask for a more specific subset.")
 	}
 	rowMaps := cypherRowsToMaps(rows)
-	rowMaps = postProcessAskRows(conversion.Plan, rowMaps)
+	rowMaps = postProcessAskRows(conversion, rowMaps)
 	sanitizeInternalRowFields(rowMaps)
 	rowsEvent := RowsEvent{
 		Rows:   rowMaps,
@@ -156,7 +156,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		History:  history,
 	})
 	if err != nil {
-		return fmt.Errorf("%w: summarize graph rows: %w", ErrRuntimeUnavailable, err)
+		return streamRuntimeError(traceID, fmt.Errorf("%w: summarize graph rows: %w", ErrRuntimeUnavailable, err))
 	}
 	if strings.TrimSpace(summary) == "" {
 		summary = fallbackSummary(rowMaps)
@@ -170,12 +170,46 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 
 func (s *Service) validateConversion(ctx context.Context, conversion conversionResult, cypher string, params map[string]any) (ValidatorResult, int, error) {
 	validator := s.validator
-	if usesPostProcessingCandidates(conversion.Plan) && validator != nil && validator.options.MaxRows < postProcessingCandidateRowLimit {
+	if usesPostProcessingCandidates(conversion) && validator != nil && validator.options.MaxRows < postProcessingCandidateRowLimit {
 		options := validator.options
 		options.MaxRows = postProcessingCandidateRowLimit
 		validator = NewValidator(validator.store, options)
 	}
 	return validator.validate(ctx, cypher, params)
+}
+
+type StreamError struct {
+	TraceID string
+	Err     error
+}
+
+func (e *StreamError) Error() string {
+	if e == nil || e.Err == nil {
+		return ""
+	}
+	return e.Err.Error()
+}
+
+func (e *StreamError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+func streamRuntimeError(traceID string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &StreamError{TraceID: traceID, Err: err}
+}
+
+func ErrorTraceID(err error) string {
+	var streamErr *StreamError
+	if errors.As(err, &streamErr) {
+		return streamErr.TraceID
+	}
+	return ""
 }
 
 func emitProgress(emit Emitter, started time.Time, stage string, message string) error {
@@ -265,23 +299,26 @@ func sanitizeInternalRowFields(rows []map[string]any) {
 	}
 }
 
-func postProcessAskRows(plan AskQueryPlan, rows []map[string]any) []map[string]any {
-	switch plan.Intent {
+func postProcessAskRows(conversion conversionResult, rows []map[string]any) []map[string]any {
+	if !usesPostProcessingCandidates(conversion) {
+		return rows
+	}
+	switch conversion.Plan.Intent {
 	case IntentAggregateFindingsBySource:
-		return postProcessFindingSourceRows(plan, rows)
+		return postProcessFindingSourceRows(conversion.Plan, rows)
 	case IntentTopRiskFindings:
-		return postProcessTopRiskFindingRows(plan, rows)
+		return postProcessTopRiskFindingRows(conversion.Plan, rows)
 	default:
 		return rows
 	}
 }
 
-func usesPostProcessingCandidates(plan AskQueryPlan) bool {
-	return plan.Intent == IntentAggregateFindingsBySource || plan.Intent == IntentTopRiskFindings
+func usesPostProcessingCandidates(conversion conversionResult) bool {
+	return conversion.Deterministic && (conversion.Plan.Intent == IntentAggregateFindingsBySource || conversion.Plan.Intent == IntentTopRiskFindings)
 }
 
-func postProcessingCandidateLimitHit(plan AskQueryPlan, rows []ports.CypherRow, rowLimit int) bool {
-	return usesPostProcessingCandidates(plan) && rowLimit >= postProcessingCandidateRowLimit && len(rows) >= rowLimit
+func postProcessingCandidateLimitHit(conversion conversionResult, rows []ports.CypherRow, rowLimit int) bool {
+	return usesPostProcessingCandidates(conversion) && rowLimit >= postProcessingCandidateRowLimit && len(rows) >= rowLimit
 }
 
 func postProcessFindingSourceRows(plan AskQueryPlan, rows []map[string]any) []map[string]any {
@@ -375,8 +412,10 @@ func postProcessTopRiskFindingRows(plan AskQueryPlan, rows []map[string]any) []m
 			current.riskScore = riskScore
 		}
 		severity := firstNonEmpty(
-			firstAttributeString(relationAttrs, "effective_severity", "severity"),
-			firstAttributeString(findingAttrs, "effective_severity", "severity"),
+			firstAttributeString(relationAttrs, "effective_severity"),
+			firstAttributeString(findingAttrs, "effective_severity"),
+			firstAttributeString(relationAttrs, "severity"),
+			firstAttributeString(findingAttrs, "severity"),
 		)
 		if rank := severityRank(severity); rank > current.severityRank {
 			current.severityRank = rank

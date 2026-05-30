@@ -164,18 +164,38 @@ func TestGRCAskDraftFailureReturnsServiceUnavailable(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	resp, err := server.Client().Post(server.URL+"/grc/ask", "application/json", strings.NewReader(`{"tenant_id":"example","question":"hello"}`))
-	if err != nil {
-		t.Fatalf("POST /grc/ask error = %v", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want %d with streamed error event", resp.StatusCode, http.StatusOK)
-	}
-	events := readSSEEvents(t, resp)
+	var events []sseRecord
+	stderr := captureBootstrapStderr(t, func() {
+		resp, err := server.Client().Post(server.URL+"/grc/ask", "application/json", strings.NewReader(`{"tenant_id":"example","question":"hello"}`))
+		if err != nil {
+			t.Fatalf("POST /grc/ask error = %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want %d with streamed error event", resp.StatusCode, http.StatusOK)
+		}
+		events = readSSEEvents(t, resp)
+	})
 	assertSSEEventNames(t, events, []string{"progress", "error"})
 	if !strings.Contains(string(events[1].Data), "draft cypher") {
 		t.Fatalf("error event = %s, want draft failure", events[1].Data)
+	}
+	var errorEvent graphagent.ErrorEvent
+	if err := json.Unmarshal(events[1].Data, &errorEvent); err != nil {
+		t.Fatalf("unmarshal error event: %v", err)
+	}
+	if errorEvent.TraceID == "" {
+		t.Fatalf("error trace_id is empty: %#v", errorEvent)
+	}
+	payload := decodeBootstrapTelemetryPayload(t, stderr)
+	if got := payload["runtime_error.code"]; got != "ask_failed" {
+		t.Fatalf("runtime_error.code = %#v, want ask_failed; payload=%#v", got, payload)
+	}
+	if _, exists := payload["validator.code"]; exists {
+		t.Fatalf("validator.code recorded runtime error: payload=%#v", payload)
+	}
+	if got := payload["ask_trace_id"]; got != errorEvent.TraceID {
+		t.Fatalf("ask_trace_id = %#v, want error trace %q; payload=%#v", got, errorEvent.TraceID, payload)
 	}
 }
 

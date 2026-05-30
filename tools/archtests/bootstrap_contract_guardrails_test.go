@@ -2,6 +2,7 @@ package archtests
 
 import (
 	"bytes"
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
@@ -163,15 +164,13 @@ func TestProductionBodyReadsAreBounded(t *testing.T) {
 			return err
 		}
 		rel := shortPath(root, path)
-		lines := strings.Split(string(body), "\n")
-		for i, line := range lines {
-			if !strings.Contains(line, "io.ReadAll(") {
-				continue
-			}
-			if boundedReadAllContext(lines, i) {
-				continue
-			}
-			t.Fatalf("%s:%d uses io.ReadAll without a nearby explicit io.LimitReader", rel, i+1)
+		fset := token.NewFileSet()
+		file, err := parser.ParseFile(fset, path, body, 0)
+		if err != nil {
+			return err
+		}
+		if lines := unboundedReadAllLines(fset, file); len(lines) > 0 {
+			t.Fatalf("%s:%d uses io.ReadAll without an explicit io.LimitReader", rel, lines[0])
 		}
 		return nil
 	}); err != nil {
@@ -179,24 +178,137 @@ func TestProductionBodyReadsAreBounded(t *testing.T) {
 	}
 }
 
-func boundedReadAllContext(lines []string, index int) bool {
-	start := index - 4
-	if start < 0 {
-		start = 0
+func TestProductionBodyReadGuardAcceptsMultilineLimitReader(t *testing.T) {
+	source := `package sample
+
+import "io"
+
+func readBody(reader io.Reader) ([]byte, error) {
+	return io.ReadAll(
+		io.LimitReader(reader, 1025),
+	)
+}`
+	if lines := unboundedReadAllLinesForSource(t, source); len(lines) != 0 {
+		t.Fatalf("unbounded lines = %v, want multiline io.LimitReader accepted", lines)
 	}
-	end := index + 1
-	if end >= len(lines) {
-		end = len(lines) - 1
+}
+
+func TestProductionBodyReadGuardIgnoresCommentsAndStrings(t *testing.T) {
+	source := `package sample
+
+import "io"
+
+func readBody(reader io.Reader) ([]byte, error) {
+	_ = "io.LimitReader(reader, 1025)"
+	// TODO: limited := io.LimitReader(reader, 1025)
+	return io.ReadAll(reader)
+}`
+	if lines := unboundedReadAllLinesForSource(t, source); len(lines) != 1 {
+		t.Fatalf("unbounded lines = %v, want comment/string markers ignored", lines)
 	}
-	readLine := strings.TrimSpace(lines[index])
-	if strings.Contains(readLine, "io.ReadAll(io.LimitReader(") {
+}
+
+func unboundedReadAllLinesForSource(t *testing.T, source string) []int {
+	t.Helper()
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "sample.go", source, 0)
+	if err != nil {
+		t.Fatalf("parse sample: %v", err)
+	}
+	return unboundedReadAllLines(fset, file)
+}
+
+func unboundedReadAllLines(fset *token.FileSet, file *ast.File) []int {
+	var lines []int
+	ast.Inspect(file, func(node ast.Node) bool {
+		fn, ok := node.(*ast.FuncDecl)
+		if !ok || fn.Body == nil {
+			return true
+		}
+		limitedVars := limitedReaderAssignments(fn.Body)
+		ast.Inspect(fn.Body, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok || !isSelectorCall(call.Fun, "io", "ReadAll") {
+				return true
+			}
+			if readAllCallIsBounded(call, limitedVars) {
+				return true
+			}
+			lines = append(lines, fset.Position(call.Pos()).Line)
+			return true
+		})
+		return false
+	})
+	return lines
+}
+
+func limitedReaderAssignments(body *ast.BlockStmt) map[string][]token.Pos {
+	assignments := map[string][]token.Pos{}
+	ast.Inspect(body, func(node ast.Node) bool {
+		assign, ok := node.(*ast.AssignStmt)
+		if !ok {
+			return true
+		}
+		for index, rhs := range assign.Rhs {
+			if !isIOLimitReaderCall(rhs) {
+				continue
+			}
+			lhsIndex := index
+			if len(assign.Lhs) == 1 {
+				lhsIndex = 0
+			}
+			if lhsIndex >= len(assign.Lhs) {
+				continue
+			}
+			if ident, ok := assign.Lhs[lhsIndex].(*ast.Ident); ok {
+				assignments[ident.Name] = append(assignments[ident.Name], assign.Pos())
+			}
+		}
+		return true
+	})
+	return assignments
+}
+
+func readAllCallIsBounded(call *ast.CallExpr, limitedVars map[string][]token.Pos) bool {
+	if len(call.Args) == 0 {
+		return false
+	}
+	arg := unwrapParen(call.Args[0])
+	if isIOLimitReaderCall(arg) {
 		return true
 	}
-	for _, line := range lines[start : end+1] {
-		trimmed := strings.TrimSpace(line)
-		if strings.Contains(trimmed, ":= io.LimitReader(") || strings.Contains(trimmed, "= io.LimitReader(") {
+	ident, ok := arg.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	for _, pos := range limitedVars[ident.Name] {
+		if pos < call.Pos() {
 			return true
 		}
 	}
 	return false
+}
+
+func isIOLimitReaderCall(expr ast.Expr) bool {
+	call, ok := unwrapParen(expr).(*ast.CallExpr)
+	return ok && isSelectorCall(call.Fun, "io", "LimitReader")
+}
+
+func isSelectorCall(expr ast.Expr, qualifier string, name string) bool {
+	selector, ok := unwrapParen(expr).(*ast.SelectorExpr)
+	if !ok || selector.Sel.Name != name {
+		return false
+	}
+	ident, ok := selector.X.(*ast.Ident)
+	return ok && ident.Name == qualifier
+}
+
+func unwrapParen(expr ast.Expr) ast.Expr {
+	for {
+		paren, ok := expr.(*ast.ParenExpr)
+		if !ok {
+			return expr
+		}
+		expr = paren.X
+	}
 }

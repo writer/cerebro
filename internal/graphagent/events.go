@@ -79,6 +79,7 @@ type DoneEvent struct {
 type ErrorEvent struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	TraceID string `json:"trace_id,omitempty"`
 }
 
 func WriteSSEEvent(w io.Writer, event Event) error {

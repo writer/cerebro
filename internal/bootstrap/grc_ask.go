@@ -102,16 +102,15 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		evt.failureStage = "stream"
-		writeErr := graphagent.WriteSSEEvent(w, graphagent.Event{Name: graphagent.EventError, Data: graphagent.ErrorEvent{
+		errorEvent := graphagent.Event{Name: graphagent.EventError, Data: graphagent.ErrorEvent{
 			Code:    "ask_failed",
 			Message: err.Error(),
-		}})
+			TraceID: graphagent.ErrorTraceID(err),
+		}}
+		writeErr := graphagent.WriteSSEEvent(w, errorEvent)
 		if writeErr == nil {
 			eventCount++
-			evt.observe(graphagent.Event{Name: graphagent.EventError, Data: graphagent.ErrorEvent{
-				Code:    "ask_failed",
-				Message: err.Error(),
-			}})
+			evt.observe(errorEvent)
 			if flusher != nil {
 				flusher.Flush()
 			}
@@ -161,6 +160,7 @@ type askResultTelemetry struct {
 	rowCount               int
 	citationCount          int
 	traceID                string
+	runtimeErrorCode       string
 	cypherRefused          bool
 	terminalEvent          string
 }
@@ -188,8 +188,9 @@ func (e *askWideEvent) observe(event graphagent.Event) {
 		e.result.terminalEvent = graphagent.EventDone
 	case graphagent.ErrorEvent:
 		e.result.terminalEvent = graphagent.EventError
-		if e.result.validatorCode == "" {
-			e.result.validatorCode = data.Code
+		e.result.runtimeErrorCode = data.Code
+		if data.TraceID != "" {
+			e.result.traceID = data.TraceID
 		}
 	}
 }
@@ -244,6 +245,9 @@ func (e *askWideEvent) finish(r *http.Request, w http.ResponseWriter, started ti
 		WithField(telemetry.Field{Key: "citation_count", Value: e.result.citationCount})
 	if e.result.validatorCode != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "validator.code", Value: e.result.validatorCode})
+	}
+	if e.result.runtimeErrorCode != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "runtime_error.code", Value: e.result.runtimeErrorCode})
 	}
 	if e.failureStage != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "failure_stage", Value: e.failureStage})
