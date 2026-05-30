@@ -107,7 +107,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	}
 	if cypher == "" {
 		reason := firstNonEmpty(draft.Refusal, conversion.Refusal, "LLM refused to draft Cypher")
-		return emitRefusal(emit, traceID, started, cypher, reason, refusalCode(draft, conversion, ValidatorResult{}), timings)
+		return emitRefusal(emit, traceID, started, cypher, reason, refusalCode(reason, draft, conversion, ValidatorResult{}), timings)
 	}
 	if err := emitProgress(emit, started, "validating_query", "Validating generated Cypher against read-only guardrails."); err != nil {
 		return err
@@ -123,7 +123,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		return err
 	}
 	if !validation.OK {
-		return emitRefusal(emit, traceID, started, cypher, validation.Reason, refusalCode(draft, conversion, validation), timings)
+		return emitRefusal(emit, traceID, started, cypher, validation.Reason, refusalCode(validation.Reason, draft, conversion, validation), timings)
 	}
 
 	if err := emitProgress(emit, started, "executing_query", "Executing the validated graph query."); err != nil {
@@ -769,7 +769,7 @@ func urnsFromSummary(summary string) []string {
 	return urns
 }
 
-func refusalCode(draft *DraftResponse, conversion conversionResult, validation ValidatorResult) string {
+func refusalCode(reason string, draft *DraftResponse, conversion conversionResult, validation ValidatorResult) string {
 	if validation.Code != "" {
 		return "validator_refusal"
 	}
@@ -779,7 +779,7 @@ func refusalCode(draft *DraftResponse, conversion conversionResult, validation V
 	if draft != nil && strings.TrimSpace(draft.Refusal) != "" {
 		return "llm_refusal"
 	}
-	return unsupportedQueryCode(conversion.Refusal)
+	return unsupportedQueryCode(firstNonEmpty(reason, conversion.Refusal))
 }
 
 func conversionDiagnosticsContain(diagnostics []ConversionDiagnostic, code string) bool {

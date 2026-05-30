@@ -154,6 +154,24 @@ func TestServiceRefusesUnsupportedPlanOnlyDraftAsConversionFailure(t *testing.T)
 	}
 }
 
+func TestServiceClassifiesEmptyDraftAsLLMRefusal(t *testing.T) {
+	service := NewService(&askStore{}, &StubLLMClient{DraftResponse: &DraftResponse{}}, ValidatorOptions{})
+
+	var events []Event
+	err := service.Stream(context.Background(), AskRequest{TenantID: "example", Question: "what is risky?"}, func(event Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	assertEventNames(t, events, []string{EventProgress, EventRationale, EventQueryPlan, EventCypher, EventSummary, EventDone})
+	summary := events[4].Data.(SummaryEvent)
+	if summary.UnsupportedQuery == nil || summary.UnsupportedQuery.Code != "llm_refusal" {
+		t.Fatalf("unsupported query = %#v, want llm_refusal", summary.UnsupportedQuery)
+	}
+}
+
 func TestServiceFlagsUngroundedSummaryURNs(t *testing.T) {
 	store := &askStore{
 		rows: []ports.CypherRow{{
