@@ -88,6 +88,7 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 		if err := graphagent.WriteSSEEvent(w, event); err != nil {
 			return err
 		}
+		evt.observe(event)
 		if flusher != nil {
 			flusher.Flush()
 		}
@@ -107,6 +108,10 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 		}})
 		if writeErr == nil {
 			eventCount++
+			evt.observe(graphagent.Event{Name: graphagent.EventError, Data: graphagent.ErrorEvent{
+				Code:    "ask_failed",
+				Message: err.Error(),
+			}})
 			if flusher != nil {
 				flusher.Flush()
 			}
@@ -135,6 +140,58 @@ type askWideEvent struct {
 	llmInitError string
 	failureStage string
 	sseEvents    int
+
+	queryPlan askQueryPlanTelemetry
+	result    askResultTelemetry
+}
+
+type askQueryPlanTelemetry struct {
+	intent           string
+	source           string
+	deterministic    bool
+	corrected        bool
+	diagnosticsCount int
+	diagnosticCodes  string
+}
+
+type askResultTelemetry struct {
+	validatorOK            bool
+	validatorCode          string
+	validatorWarningsCount int
+	rowCount               int
+	citationCount          int
+	traceID                string
+	cypherRefused          bool
+	terminalEvent          string
+}
+
+func (e *askWideEvent) observe(event graphagent.Event) {
+	switch data := event.Data.(type) {
+	case graphagent.QueryPlanEvent:
+		e.queryPlan.intent = data.Plan.Intent
+		e.queryPlan.source = data.Source
+		e.queryPlan.deterministic = data.Deterministic
+		e.queryPlan.corrected = data.Corrected
+		e.queryPlan.diagnosticsCount = len(data.Diagnostics)
+		e.queryPlan.diagnosticCodes = askDiagnosticCodes(data.Diagnostics)
+	case graphagent.CypherEvent:
+		e.result.validatorOK = data.Validator.OK
+		e.result.validatorCode = data.Validator.Code
+		e.result.validatorWarningsCount = len(data.Validator.Warnings)
+	case graphagent.RowsEvent:
+		e.result.rowCount = len(data.Rows)
+	case graphagent.SummaryEvent:
+		e.result.citationCount = len(data.Citations)
+	case graphagent.DoneEvent:
+		e.result.traceID = data.TraceID
+		e.result.cypherRefused = data.CypherRefused
+		e.result.terminalEvent = graphagent.EventDone
+	case graphagent.ErrorEvent:
+		e.result.terminalEvent = graphagent.EventError
+		if e.result.validatorCode == "" {
+			e.result.validatorCode = data.Code
+		}
+	}
 }
 
 func (e *askWideEvent) finish(r *http.Request, w http.ResponseWriter, started time.Time, status int, err error) {
@@ -162,6 +219,32 @@ func (e *askWideEvent) finish(r *http.Request, w http.ResponseWriter, started ti
 		telemetry.Field{Key: "graph_store.ok", Value: e.graphStoreOK},
 		telemetry.Field{Key: "sse_events", Value: e.sseEvents},
 	)
+	if e.queryPlan.intent != "" {
+		attrs = attrs.
+			WithField(telemetry.Field{Key: "query_plan.intent", Value: e.queryPlan.intent}).
+			WithField(telemetry.Field{Key: "query_plan.source", Value: e.queryPlan.source}).
+			WithField(telemetry.Field{Key: "query_plan.deterministic", Value: e.queryPlan.deterministic}).
+			WithField(telemetry.Field{Key: "query_plan.corrected", Value: e.queryPlan.corrected}).
+			WithField(telemetry.Field{Key: "query_plan.diagnostics_count", Value: e.queryPlan.diagnosticsCount})
+	}
+	if e.queryPlan.diagnosticCodes != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "query_plan.diagnostic_codes", Value: e.queryPlan.diagnosticCodes})
+	}
+	if e.result.terminalEvent != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "terminal_event", Value: e.result.terminalEvent})
+	}
+	if e.result.traceID != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "ask_trace_id", Value: e.result.traceID})
+	}
+	attrs = attrs.
+		WithField(telemetry.Field{Key: "validator.ok", Value: e.result.validatorOK}).
+		WithField(telemetry.Field{Key: "validator.warnings_count", Value: e.result.validatorWarningsCount}).
+		WithField(telemetry.Field{Key: "cypher_refused", Value: e.result.cypherRefused}).
+		WithField(telemetry.Field{Key: "row_count", Value: e.result.rowCount}).
+		WithField(telemetry.Field{Key: "citation_count", Value: e.result.citationCount})
+	if e.result.validatorCode != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "validator.code", Value: e.result.validatorCode})
+	}
 	if e.failureStage != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "failure_stage", Value: e.failureStage})
 	}
@@ -199,4 +282,15 @@ func (e *askWideEvent) finish(r *http.Request, w http.ResponseWriter, started ti
 
 func clearStreamingWriteDeadline(w http.ResponseWriter) {
 	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
+}
+
+func askDiagnosticCodes(diagnostics []graphagent.ConversionDiagnostic) string {
+	var codes []string
+	for _, diagnostic := range diagnostics {
+		code := strings.TrimSpace(diagnostic.Code)
+		if code != "" {
+			codes = append(codes, code)
+		}
+	}
+	return strings.Join(codes, ",")
 }
