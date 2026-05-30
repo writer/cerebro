@@ -252,6 +252,9 @@ func cypherFindings(file string, body []byte) []checkFinding {
 }
 
 func suspiciousCypherToken(value string) string {
+	if isCypherSafetyGuidance(value) {
+		return ""
+	}
 	upper := strings.ToUpper(value)
 	cypherSignals := []string{"MATCH ", " RETURN ", "\nRETURN ", "WHERE ", "OPTIONAL MATCH", "UNWIND ", " LIMIT "}
 	hasCypherSignal := false
@@ -270,6 +273,13 @@ func suspiciousCypherToken(value string) string {
 		}
 	}
 	return ""
+}
+
+func isCypherSafetyGuidance(value string) bool {
+	lower := strings.ToLower(strings.TrimSpace(value))
+	return strings.HasPrefix(lower, "rules:") &&
+		strings.Contains(lower, "generate read-only cypher") &&
+		strings.Contains(lower, "do not use")
 }
 
 func askPostProcessingFindings(file string, body []byte) []checkFinding {
