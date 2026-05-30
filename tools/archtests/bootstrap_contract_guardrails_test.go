@@ -163,6 +163,9 @@ func TestProductionBodyReadsAreBounded(t *testing.T) {
 		if err != nil {
 			return err
 		}
+		if !bytes.Contains(body, []byte("io.ReadAll(")) {
+			return nil
+		}
 		rel := shortPath(root, path)
 		fset := token.NewFileSet()
 		file, err := parser.ParseFile(fset, path, body, 0)
@@ -226,6 +229,48 @@ func readBody(reader io.Reader, cond bool) ([]byte, error) {
 	}
 }
 
+func TestProductionBodyReadGuardKeepsIfInitializerScoped(t *testing.T) {
+	source := `package sample
+
+import "io"
+
+func readBody(reader io.Reader, cond bool) ([]byte, error) {
+	body := reader
+	if body := io.LimitReader(reader, 1025); cond {
+		_ = body
+	}
+	return io.ReadAll(body)
+}`
+	if lines := unboundedReadAllLinesForSource(t, source); len(lines) != 1 {
+		t.Fatalf("unbounded lines = %v, want if initializer limited reader scoped to if", lines)
+	}
+}
+
+func TestProductionBodyReadGuardScopesSwitchAndSelectCases(t *testing.T) {
+	source := `package sample
+
+import "io"
+
+func readBody(reader io.Reader, ch <-chan struct{}, mode string) ([]byte, error) {
+	body := io.LimitReader(reader, 1025)
+	switch mode {
+	case "raw":
+		body = reader
+		return io.ReadAll(body)
+	}
+	select {
+	case <-ch:
+		body = reader
+		return io.ReadAll(body)
+	default:
+		return io.ReadAll(body)
+	}
+}`
+	if lines := unboundedReadAllLinesForSource(t, source); len(lines) != 2 {
+		t.Fatalf("unbounded lines = %v, want switch/select case resets rejected", lines)
+	}
+}
+
 func unboundedReadAllLinesForSource(t *testing.T, source string) []int {
 	t.Helper()
 	fset := token.NewFileSet()
@@ -260,13 +305,14 @@ func collectUnboundedReadAllLines(fset *token.FileSet, statements []ast.Stmt, li
 		case *ast.BlockStmt:
 			collectUnboundedReadAllLines(fset, stmt.List, cloneLimitedVars(limitedVars), lines)
 		case *ast.IfStmt:
+			ifVars := cloneLimitedVars(limitedVars)
 			if stmt.Init != nil {
-				collectUnboundedReadAllLines(fset, []ast.Stmt{stmt.Init}, limitedVars, lines)
+				collectUnboundedReadAllLines(fset, []ast.Stmt{stmt.Init}, ifVars, lines)
 			}
-			recordUnboundedReadAllInNode(fset, stmt.Cond, limitedVars, lines)
-			collectUnboundedReadAllLines(fset, stmt.Body.List, cloneLimitedVars(limitedVars), lines)
+			recordUnboundedReadAllInNode(fset, stmt.Cond, ifVars, lines)
+			collectUnboundedReadAllLines(fset, stmt.Body.List, cloneLimitedVars(ifVars), lines)
 			if stmt.Else != nil {
-				collectUnboundedReadAllInElse(fset, stmt.Else, cloneLimitedVars(limitedVars), lines)
+				collectUnboundedReadAllInElse(fset, stmt.Else, cloneLimitedVars(ifVars), lines)
 			}
 		case *ast.ForStmt:
 			loopVars := cloneLimitedVars(limitedVars)
@@ -281,9 +327,61 @@ func collectUnboundedReadAllLines(fset *token.FileSet, statements []ast.Stmt, li
 		case *ast.RangeStmt:
 			recordUnboundedReadAllInNode(fset, stmt.X, limitedVars, lines)
 			collectUnboundedReadAllLines(fset, stmt.Body.List, cloneLimitedVars(limitedVars), lines)
+		case *ast.SwitchStmt:
+			switchVars := cloneLimitedVars(limitedVars)
+			if stmt.Init != nil {
+				collectUnboundedReadAllLines(fset, []ast.Stmt{stmt.Init}, switchVars, lines)
+			}
+			recordUnboundedReadAllInNode(fset, stmt.Tag, switchVars, lines)
+			collectUnboundedReadAllInCaseClauses(fset, stmt.Body, switchVars, lines)
+		case *ast.TypeSwitchStmt:
+			switchVars := cloneLimitedVars(limitedVars)
+			if stmt.Init != nil {
+				collectUnboundedReadAllLines(fset, []ast.Stmt{stmt.Init}, switchVars, lines)
+			}
+			recordUnboundedReadAllInNode(fset, stmt.Assign, switchVars, lines)
+			collectUnboundedReadAllInCaseClauses(fset, stmt.Body, switchVars, lines)
+		case *ast.SelectStmt:
+			collectUnboundedReadAllInCommClauses(fset, stmt.Body, limitedVars, lines)
 		default:
 			recordUnboundedReadAllInNode(fset, stmt, limitedVars, lines)
 		}
+	}
+}
+
+func collectUnboundedReadAllInCaseClauses(fset *token.FileSet, body *ast.BlockStmt, limitedVars map[string]bool, lines *[]int) {
+	if body == nil {
+		return
+	}
+	for _, statement := range body.List {
+		clause, ok := statement.(*ast.CaseClause)
+		if !ok {
+			recordUnboundedReadAllInNode(fset, statement, limitedVars, lines)
+			continue
+		}
+		caseVars := cloneLimitedVars(limitedVars)
+		for _, expr := range clause.List {
+			recordUnboundedReadAllInNode(fset, expr, caseVars, lines)
+		}
+		collectUnboundedReadAllLines(fset, clause.Body, caseVars, lines)
+	}
+}
+
+func collectUnboundedReadAllInCommClauses(fset *token.FileSet, body *ast.BlockStmt, limitedVars map[string]bool, lines *[]int) {
+	if body == nil {
+		return
+	}
+	for _, statement := range body.List {
+		clause, ok := statement.(*ast.CommClause)
+		if !ok {
+			recordUnboundedReadAllInNode(fset, statement, limitedVars, lines)
+			continue
+		}
+		commVars := cloneLimitedVars(limitedVars)
+		if clause.Comm != nil {
+			collectUnboundedReadAllLines(fset, []ast.Stmt{clause.Comm}, commVars, lines)
+		}
+		collectUnboundedReadAllLines(fset, clause.Body, commVars, lines)
 	}
 }
 
