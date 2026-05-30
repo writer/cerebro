@@ -312,7 +312,7 @@ func cloudEffectivePermissionPrincipalURN(event *cerebrov1.EventEnvelope, attrib
 	case "public":
 		return identityProjectionURN(tenantID, provider+"_public_principal", principalID)
 	default:
-		return identityProjectionURN(tenantID, provider+"_user", firstNonEmpty(principalEmail, principalID))
+		return identityProjectionURN(tenantID, provider+"_user", firstNonEmpty(principalID, principalEmail))
 	}
 }
 

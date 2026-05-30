@@ -431,6 +431,22 @@ func TestCloudEffectiveAdminPermission(t *testing.T) {
 	}
 }
 
+func TestCloudEffectivePermissionPrincipalURNPrefersSubjectID(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{
+		TenantId: "writer",
+		SourceId: "aws",
+	}
+	attributes := map[string]string{
+		"subject_email": "admin@writer.com",
+		"subject_id":    "AIDAEXAMPLE",
+		"subject_type":  "user",
+	}
+
+	if got, want := cloudEffectivePermissionPrincipalURN(event, attributes), "urn:cerebro:writer:aws_user:AIDAEXAMPLE"; got != want {
+		t.Fatalf("cloudEffectivePermissionPrincipalURN() = %q, want %q", got, want)
+	}
+}
+
 func TestCloudPrivilegePathGranted(t *testing.T) {
 	rules := cloudRulesByID(t)
 	rule := rules[cloudPrivilegePathGrantedRuleID]
