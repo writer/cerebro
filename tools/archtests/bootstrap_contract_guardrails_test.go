@@ -246,6 +246,23 @@ func readBody(reader io.Reader, cond bool) ([]byte, error) {
 	}
 }
 
+func TestProductionBodyReadGuardPreservesIfBodyOuterReassignment(t *testing.T) {
+	source := `package sample
+
+import "io"
+
+func readBody(reader io.Reader, cond bool) ([]byte, error) {
+	body := io.LimitReader(reader, 1025)
+	if cond {
+		body = reader
+	}
+	return io.ReadAll(body)
+}`
+	if lines := unboundedReadAllLinesForSource(t, source); len(lines) != 1 {
+		t.Fatalf("unbounded lines = %v, want if body outer reassignment rejected", lines)
+	}
+}
+
 func TestProductionBodyReadGuardScopesSwitchAndSelectCases(t *testing.T) {
 	source := `package sample
 
@@ -288,12 +305,12 @@ func unboundedReadAllLines(fset *token.FileSet, file *ast.File) []int {
 		if !ok || fn.Body == nil {
 			continue
 		}
-		collectUnboundedReadAllLines(fset, fn.Body.List, map[string]bool{}, &lines)
+		collectUnboundedReadAllLines(fset, fn.Body.List, map[*ast.Object]bool{}, &lines)
 	}
 	return lines
 }
 
-func collectUnboundedReadAllLines(fset *token.FileSet, statements []ast.Stmt, limitedVars map[string]bool, lines *[]int) {
+func collectUnboundedReadAllLines(fset *token.FileSet, statements []ast.Stmt, limitedVars map[*ast.Object]bool, lines *[]int) {
 	for _, statement := range statements {
 		switch stmt := statement.(type) {
 		case *ast.AssignStmt:
@@ -310,10 +327,20 @@ func collectUnboundedReadAllLines(fset *token.FileSet, statements []ast.Stmt, li
 				collectUnboundedReadAllLines(fset, []ast.Stmt{stmt.Init}, ifVars, lines)
 			}
 			recordUnboundedReadAllInNode(fset, stmt.Cond, ifVars, lines)
-			collectUnboundedReadAllLines(fset, stmt.Body.List, cloneLimitedVars(ifVars), lines)
+			thenVars := cloneLimitedVars(ifVars)
+			collectUnboundedReadAllLines(fset, stmt.Body.List, thenVars, lines)
+			elseVars := cloneLimitedVars(ifVars)
 			if stmt.Else != nil {
-				collectUnboundedReadAllInElse(fset, stmt.Else, cloneLimitedVars(ifVars), lines)
+				collectUnboundedReadAllInElse(fset, stmt.Else, elseVars, lines)
 			}
+			var branches []map[*ast.Object]bool
+			if statementsMayContinue(stmt.Body.List) {
+				branches = append(branches, thenVars)
+			}
+			if stmt.Else == nil || statementMayContinue(stmt.Else) {
+				branches = append(branches, elseVars)
+			}
+			mergeLimitedVars(limitedVars, branches...)
 		case *ast.ForStmt:
 			loopVars := cloneLimitedVars(limitedVars)
 			if stmt.Init != nil {
@@ -323,69 +350,103 @@ func collectUnboundedReadAllLines(fset *token.FileSet, statements []ast.Stmt, li
 			if stmt.Post != nil {
 				recordUnboundedReadAllInNode(fset, stmt.Post, loopVars, lines)
 			}
-			collectUnboundedReadAllLines(fset, stmt.Body.List, loopVars, lines)
+			bodyVars := cloneLimitedVars(loopVars)
+			collectUnboundedReadAllLines(fset, stmt.Body.List, bodyVars, lines)
+			mergeLimitedVars(limitedVars, loopVars, bodyVars)
 		case *ast.RangeStmt:
 			recordUnboundedReadAllInNode(fset, stmt.X, limitedVars, lines)
-			collectUnboundedReadAllLines(fset, stmt.Body.List, cloneLimitedVars(limitedVars), lines)
+			bodyVars := cloneLimitedVars(limitedVars)
+			collectUnboundedReadAllLines(fset, stmt.Body.List, bodyVars, lines)
+			mergeLimitedVars(limitedVars, bodyVars)
 		case *ast.SwitchStmt:
 			switchVars := cloneLimitedVars(limitedVars)
 			if stmt.Init != nil {
 				collectUnboundedReadAllLines(fset, []ast.Stmt{stmt.Init}, switchVars, lines)
 			}
 			recordUnboundedReadAllInNode(fset, stmt.Tag, switchVars, lines)
-			collectUnboundedReadAllInCaseClauses(fset, stmt.Body, switchVars, lines)
+			caseVars, hasDefault := collectUnboundedReadAllInCaseClauses(fset, stmt.Body, switchVars, lines)
+			if !hasDefault {
+				caseVars = append(caseVars, switchVars)
+			}
+			mergeLimitedVars(limitedVars, caseVars...)
 		case *ast.TypeSwitchStmt:
 			switchVars := cloneLimitedVars(limitedVars)
 			if stmt.Init != nil {
 				collectUnboundedReadAllLines(fset, []ast.Stmt{stmt.Init}, switchVars, lines)
 			}
 			recordUnboundedReadAllInNode(fset, stmt.Assign, switchVars, lines)
-			collectUnboundedReadAllInCaseClauses(fset, stmt.Body, switchVars, lines)
+			caseVars, hasDefault := collectUnboundedReadAllInCaseClauses(fset, stmt.Body, switchVars, lines)
+			if !hasDefault {
+				caseVars = append(caseVars, switchVars)
+			}
+			mergeLimitedVars(limitedVars, caseVars...)
 		case *ast.SelectStmt:
-			collectUnboundedReadAllInCommClauses(fset, stmt.Body, limitedVars, lines)
+			commVars, hasDefault := collectUnboundedReadAllInCommClauses(fset, stmt.Body, limitedVars, lines)
+			if !hasDefault {
+				commVars = append(commVars, limitedVars)
+			}
+			mergeLimitedVars(limitedVars, commVars...)
 		default:
 			recordUnboundedReadAllInNode(fset, stmt, limitedVars, lines)
 		}
 	}
 }
 
-func collectUnboundedReadAllInCaseClauses(fset *token.FileSet, body *ast.BlockStmt, limitedVars map[string]bool, lines *[]int) {
+func collectUnboundedReadAllInCaseClauses(fset *token.FileSet, body *ast.BlockStmt, limitedVars map[*ast.Object]bool, lines *[]int) ([]map[*ast.Object]bool, bool) {
 	if body == nil {
-		return
+		return nil, false
 	}
+	var branches []map[*ast.Object]bool
+	hasDefault := false
 	for _, statement := range body.List {
 		clause, ok := statement.(*ast.CaseClause)
 		if !ok {
 			recordUnboundedReadAllInNode(fset, statement, limitedVars, lines)
 			continue
 		}
+		if len(clause.List) == 0 {
+			hasDefault = true
+		}
 		caseVars := cloneLimitedVars(limitedVars)
 		for _, expr := range clause.List {
 			recordUnboundedReadAllInNode(fset, expr, caseVars, lines)
 		}
 		collectUnboundedReadAllLines(fset, clause.Body, caseVars, lines)
+		if statementsMayContinue(clause.Body) {
+			branches = append(branches, caseVars)
+		}
 	}
+	return branches, hasDefault
 }
 
-func collectUnboundedReadAllInCommClauses(fset *token.FileSet, body *ast.BlockStmt, limitedVars map[string]bool, lines *[]int) {
+func collectUnboundedReadAllInCommClauses(fset *token.FileSet, body *ast.BlockStmt, limitedVars map[*ast.Object]bool, lines *[]int) ([]map[*ast.Object]bool, bool) {
 	if body == nil {
-		return
+		return nil, false
 	}
+	var branches []map[*ast.Object]bool
+	hasDefault := false
 	for _, statement := range body.List {
 		clause, ok := statement.(*ast.CommClause)
 		if !ok {
 			recordUnboundedReadAllInNode(fset, statement, limitedVars, lines)
 			continue
 		}
+		if clause.Comm == nil {
+			hasDefault = true
+		}
 		commVars := cloneLimitedVars(limitedVars)
 		if clause.Comm != nil {
 			collectUnboundedReadAllLines(fset, []ast.Stmt{clause.Comm}, commVars, lines)
 		}
 		collectUnboundedReadAllLines(fset, clause.Body, commVars, lines)
+		if statementsMayContinue(clause.Body) {
+			branches = append(branches, commVars)
+		}
 	}
+	return branches, hasDefault
 }
 
-func collectUnboundedReadAllInElse(fset *token.FileSet, statement ast.Stmt, limitedVars map[string]bool, lines *[]int) {
+func collectUnboundedReadAllInElse(fset *token.FileSet, statement ast.Stmt, limitedVars map[*ast.Object]bool, lines *[]int) {
 	switch stmt := statement.(type) {
 	case *ast.BlockStmt:
 		collectUnboundedReadAllLines(fset, stmt.List, limitedVars, lines)
@@ -396,7 +457,7 @@ func collectUnboundedReadAllInElse(fset *token.FileSet, statement ast.Stmt, limi
 	}
 }
 
-func recordUnboundedReadAllInNode(fset *token.FileSet, node ast.Node, limitedVars map[string]bool, lines *[]int) {
+func recordUnboundedReadAllInNode(fset *token.FileSet, node ast.Node, limitedVars map[*ast.Object]bool, lines *[]int) {
 	if node == nil {
 		return
 	}
@@ -412,21 +473,21 @@ func recordUnboundedReadAllInNode(fset *token.FileSet, node ast.Node, limitedVar
 	})
 }
 
-func recordLimitedAssignments(lhs []ast.Expr, rhs []ast.Expr, limitedVars map[string]bool) {
+func recordLimitedAssignments(lhs []ast.Expr, rhs []ast.Expr, limitedVars map[*ast.Object]bool) {
 	for index, left := range lhs {
 		ident, ok := left.(*ast.Ident)
-		if !ok {
+		if !ok || ident.Obj == nil {
 			continue
 		}
 		rhsIndex := index
 		if len(rhs) == 1 {
 			rhsIndex = 0
 		}
-		limitedVars[ident.Name] = rhsIndex < len(rhs) && isIOLimitReaderCall(rhs[rhsIndex])
+		limitedVars[ident.Obj] = rhsIndex < len(rhs) && isIOLimitReaderCall(rhs[rhsIndex])
 	}
 }
 
-func recordLimitedValueSpecs(statement *ast.DeclStmt, limitedVars map[string]bool) {
+func recordLimitedValueSpecs(statement *ast.DeclStmt, limitedVars map[*ast.Object]bool) {
 	decl, ok := statement.Decl.(*ast.GenDecl)
 	if !ok {
 		return
@@ -437,24 +498,69 @@ func recordLimitedValueSpecs(statement *ast.DeclStmt, limitedVars map[string]boo
 			continue
 		}
 		for index, name := range valueSpec.Names {
+			if name.Obj == nil {
+				continue
+			}
 			valueIndex := index
 			if len(valueSpec.Values) == 1 {
 				valueIndex = 0
 			}
-			limitedVars[name.Name] = valueIndex < len(valueSpec.Values) && isIOLimitReaderCall(valueSpec.Values[valueIndex])
+			limitedVars[name.Obj] = valueIndex < len(valueSpec.Values) && isIOLimitReaderCall(valueSpec.Values[valueIndex])
 		}
 	}
 }
 
-func cloneLimitedVars(values map[string]bool) map[string]bool {
-	clone := make(map[string]bool, len(values))
+func cloneLimitedVars(values map[*ast.Object]bool) map[*ast.Object]bool {
+	clone := make(map[*ast.Object]bool, len(values))
 	for key, value := range values {
 		clone[key] = value
 	}
 	return clone
 }
 
-func readAllCallIsBounded(call *ast.CallExpr, limitedVars map[string]bool) bool {
+func statementsMayContinue(statements []ast.Stmt) bool {
+	if len(statements) == 0 {
+		return true
+	}
+	return statementMayContinue(statements[len(statements)-1])
+}
+
+func statementMayContinue(statement ast.Stmt) bool {
+	switch stmt := statement.(type) {
+	case *ast.ReturnStmt:
+		return false
+	case *ast.BlockStmt:
+		return statementsMayContinue(stmt.List)
+	case *ast.IfStmt:
+		return stmt.Else == nil || statementMayContinue(stmt.Body) || statementMayContinue(stmt.Else)
+	default:
+		return true
+	}
+}
+
+func mergeLimitedVars(target map[*ast.Object]bool, branches ...map[*ast.Object]bool) {
+	if len(branches) == 0 {
+		return
+	}
+	keys := map[*ast.Object]struct{}{}
+	for key := range target {
+		keys[key] = struct{}{}
+	}
+	for _, branch := range branches {
+		for key := range branch {
+			keys[key] = struct{}{}
+		}
+	}
+	for key := range keys {
+		limited := true
+		for _, branch := range branches {
+			limited = limited && branch[key]
+		}
+		target[key] = limited
+	}
+}
+
+func readAllCallIsBounded(call *ast.CallExpr, limitedVars map[*ast.Object]bool) bool {
 	if len(call.Args) == 0 {
 		return false
 	}
@@ -466,7 +572,10 @@ func readAllCallIsBounded(call *ast.CallExpr, limitedVars map[string]bool) bool 
 	if !ok {
 		return false
 	}
-	return limitedVars[ident.Name]
+	if ident.Obj == nil {
+		return false
+	}
+	return limitedVars[ident.Obj]
 }
 
 func isIOLimitReaderCall(expr ast.Expr) bool {
