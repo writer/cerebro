@@ -208,6 +208,24 @@ func readBody(reader io.Reader) ([]byte, error) {
 	}
 }
 
+func TestProductionBodyReadGuardRejectsShadowedLimitReader(t *testing.T) {
+	source := `package sample
+
+import "io"
+
+func readBody(reader io.Reader, cond bool) ([]byte, error) {
+	body := reader
+	if cond {
+		body := io.LimitReader(reader, 1025)
+		_ = body
+	}
+	return io.ReadAll(body)
+}`
+	if lines := unboundedReadAllLinesForSource(t, source); len(lines) != 1 {
+		t.Fatalf("unbounded lines = %v, want shadowed limited reader rejected", lines)
+	}
+}
+
 func unboundedReadAllLinesForSource(t *testing.T, source string) []int {
 	t.Helper()
 	fset := token.NewFileSet()
@@ -220,56 +238,125 @@ func unboundedReadAllLinesForSource(t *testing.T, source string) []int {
 
 func unboundedReadAllLines(fset *token.FileSet, file *ast.File) []int {
 	var lines []int
-	ast.Inspect(file, func(node ast.Node) bool {
-		fn, ok := node.(*ast.FuncDecl)
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
 		if !ok || fn.Body == nil {
-			return true
+			continue
 		}
-		limitedVars := limitedReaderAssignments(fn.Body)
-		ast.Inspect(fn.Body, func(node ast.Node) bool {
-			call, ok := node.(*ast.CallExpr)
-			if !ok || !isSelectorCall(call.Fun, "io", "ReadAll") {
-				return true
-			}
-			if readAllCallIsBounded(call, limitedVars) {
-				return true
-			}
-			lines = append(lines, fset.Position(call.Pos()).Line)
-			return true
-		})
-		return false
-	})
+		collectUnboundedReadAllLines(fset, fn.Body.List, map[string]bool{}, &lines)
+	}
 	return lines
 }
 
-func limitedReaderAssignments(body *ast.BlockStmt) map[string][]token.Pos {
-	assignments := map[string][]token.Pos{}
-	ast.Inspect(body, func(node ast.Node) bool {
-		assign, ok := node.(*ast.AssignStmt)
-		if !ok {
+func collectUnboundedReadAllLines(fset *token.FileSet, statements []ast.Stmt, limitedVars map[string]bool, lines *[]int) {
+	for _, statement := range statements {
+		switch stmt := statement.(type) {
+		case *ast.AssignStmt:
+			recordUnboundedReadAllInNode(fset, stmt, limitedVars, lines)
+			recordLimitedAssignments(stmt.Lhs, stmt.Rhs, limitedVars)
+		case *ast.DeclStmt:
+			recordUnboundedReadAllInNode(fset, stmt, limitedVars, lines)
+			recordLimitedValueSpecs(stmt, limitedVars)
+		case *ast.BlockStmt:
+			collectUnboundedReadAllLines(fset, stmt.List, cloneLimitedVars(limitedVars), lines)
+		case *ast.IfStmt:
+			if stmt.Init != nil {
+				collectUnboundedReadAllLines(fset, []ast.Stmt{stmt.Init}, limitedVars, lines)
+			}
+			recordUnboundedReadAllInNode(fset, stmt.Cond, limitedVars, lines)
+			collectUnboundedReadAllLines(fset, stmt.Body.List, cloneLimitedVars(limitedVars), lines)
+			if stmt.Else != nil {
+				collectUnboundedReadAllInElse(fset, stmt.Else, cloneLimitedVars(limitedVars), lines)
+			}
+		case *ast.ForStmt:
+			loopVars := cloneLimitedVars(limitedVars)
+			if stmt.Init != nil {
+				collectUnboundedReadAllLines(fset, []ast.Stmt{stmt.Init}, loopVars, lines)
+			}
+			recordUnboundedReadAllInNode(fset, stmt.Cond, loopVars, lines)
+			if stmt.Post != nil {
+				recordUnboundedReadAllInNode(fset, stmt.Post, loopVars, lines)
+			}
+			collectUnboundedReadAllLines(fset, stmt.Body.List, loopVars, lines)
+		case *ast.RangeStmt:
+			recordUnboundedReadAllInNode(fset, stmt.X, limitedVars, lines)
+			collectUnboundedReadAllLines(fset, stmt.Body.List, cloneLimitedVars(limitedVars), lines)
+		default:
+			recordUnboundedReadAllInNode(fset, stmt, limitedVars, lines)
+		}
+	}
+}
+
+func collectUnboundedReadAllInElse(fset *token.FileSet, statement ast.Stmt, limitedVars map[string]bool, lines *[]int) {
+	switch stmt := statement.(type) {
+	case *ast.BlockStmt:
+		collectUnboundedReadAllLines(fset, stmt.List, limitedVars, lines)
+	case *ast.IfStmt:
+		collectUnboundedReadAllLines(fset, []ast.Stmt{stmt}, limitedVars, lines)
+	default:
+		recordUnboundedReadAllInNode(fset, stmt, limitedVars, lines)
+	}
+}
+
+func recordUnboundedReadAllInNode(fset *token.FileSet, node ast.Node, limitedVars map[string]bool, lines *[]int) {
+	if node == nil {
+		return
+	}
+	ast.Inspect(node, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok || !isSelectorCall(call.Fun, "io", "ReadAll") {
 			return true
 		}
-		for index, rhs := range assign.Rhs {
-			if !isIOLimitReaderCall(rhs) {
-				continue
-			}
-			lhsIndex := index
-			if len(assign.Lhs) == 1 {
-				lhsIndex = 0
-			}
-			if lhsIndex >= len(assign.Lhs) {
-				continue
-			}
-			if ident, ok := assign.Lhs[lhsIndex].(*ast.Ident); ok {
-				assignments[ident.Name] = append(assignments[ident.Name], assign.Pos())
-			}
+		if !readAllCallIsBounded(call, limitedVars) {
+			*lines = append(*lines, fset.Position(call.Pos()).Line)
 		}
 		return true
 	})
-	return assignments
 }
 
-func readAllCallIsBounded(call *ast.CallExpr, limitedVars map[string][]token.Pos) bool {
+func recordLimitedAssignments(lhs []ast.Expr, rhs []ast.Expr, limitedVars map[string]bool) {
+	for index, left := range lhs {
+		ident, ok := left.(*ast.Ident)
+		if !ok {
+			continue
+		}
+		rhsIndex := index
+		if len(rhs) == 1 {
+			rhsIndex = 0
+		}
+		limitedVars[ident.Name] = rhsIndex < len(rhs) && isIOLimitReaderCall(rhs[rhsIndex])
+	}
+}
+
+func recordLimitedValueSpecs(statement *ast.DeclStmt, limitedVars map[string]bool) {
+	decl, ok := statement.Decl.(*ast.GenDecl)
+	if !ok {
+		return
+	}
+	for _, spec := range decl.Specs {
+		valueSpec, ok := spec.(*ast.ValueSpec)
+		if !ok {
+			continue
+		}
+		for index, name := range valueSpec.Names {
+			valueIndex := index
+			if len(valueSpec.Values) == 1 {
+				valueIndex = 0
+			}
+			limitedVars[name.Name] = valueIndex < len(valueSpec.Values) && isIOLimitReaderCall(valueSpec.Values[valueIndex])
+		}
+	}
+}
+
+func cloneLimitedVars(values map[string]bool) map[string]bool {
+	clone := make(map[string]bool, len(values))
+	for key, value := range values {
+		clone[key] = value
+	}
+	return clone
+}
+
+func readAllCallIsBounded(call *ast.CallExpr, limitedVars map[string]bool) bool {
 	if len(call.Args) == 0 {
 		return false
 	}
@@ -281,12 +368,7 @@ func readAllCallIsBounded(call *ast.CallExpr, limitedVars map[string][]token.Pos
 	if !ok {
 		return false
 	}
-	for _, pos := range limitedVars[ident.Name] {
-		if pos < call.Pos() {
-			return true
-		}
-	}
-	return false
+	return limitedVars[ident.Name]
 }
 
 func isIOLimitReaderCall(expr ast.Expr) bool {
