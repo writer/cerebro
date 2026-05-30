@@ -376,6 +376,95 @@ func TestServicePostProcessesTopRiskFindingRows(t *testing.T) {
 	}
 }
 
+func TestServicePostProcessesTopRiskSeverityPrecedence(t *testing.T) {
+	store := &askStore{
+		rows: []ports.CypherRow{{
+			Values: map[string]any{
+				"finding_urn":                       "urn:cerebro:writer:finding:alpha",
+				"finding_label":                     "Alpha",
+				"resource_urn":                      "urn:cerebro:writer:asset:alpha",
+				"resource_label":                    "Alpha resource",
+				"relation_attributes_json_internal": `{"severity":"LOW"}`,
+				"finding_attributes_json_internal":  `{"effective_severity":"CRITICAL","severity":"MEDIUM"}`,
+			},
+		}},
+	}
+	llm := &StubLLMClient{
+		DraftResponse: &DraftResponse{
+			Rationale: "Ranking risky findings.",
+			Plan:      &AskQueryPlan{Intent: IntentTopRiskFindings, Limit: 1},
+		},
+		Summary: "Alpha is critical.",
+	}
+	service := NewService(store, llm, ValidatorOptions{})
+
+	var events []Event
+	err := service.Stream(context.Background(), AskRequest{
+		TenantID: "writer",
+		Question: "Show top risk findings",
+	}, func(event Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	rowsEvent := events[6].Data.(RowsEvent)
+	if len(rowsEvent.Rows) != 1 || rowsEvent.Rows[0]["severity"] != "CRITICAL" {
+		t.Fatalf("rows = %#v, want finding effective severity before relation plain severity", rowsEvent.Rows)
+	}
+}
+
+func TestServiceDoesNotPostProcessLLMFallbackRows(t *testing.T) {
+	store := &askStore{
+		rows: []ports.CypherRow{{
+			Values: map[string]any{
+				"finding_urn":   "urn:cerebro:writer:finding:alpha",
+				"finding_label": "Alpha",
+				"risk_score":    88,
+				"severity":      "HIGH",
+			},
+		}},
+	}
+	llm := &StubLLMClient{
+		DraftResponse: &DraftResponse{
+			Rationale: "Ranking filtered risky findings.",
+			Plan:      &AskQueryPlan{Intent: IntentTopRiskFindings, Filters: map[string]string{"source_family": "okta"}, Limit: 10},
+			Cypher: `MATCH (finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+RETURN finding.urn AS finding_urn,
+       coalesce(finding.label, finding.urn) AS finding_label,
+       88 AS risk_score,
+       'HIGH' AS severity
+LIMIT 10`,
+		},
+		Summary: "Alpha is highest risk.",
+	}
+	service := NewService(store, llm, ValidatorOptions{})
+
+	var events []Event
+	err := service.Stream(context.Background(), AskRequest{
+		TenantID: "writer",
+		Question: "Show Okta top risk findings",
+	}, func(event Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	planEvent := events[2].Data.(QueryPlanEvent)
+	if planEvent.Deterministic || planEvent.Source != "llm" {
+		t.Fatalf("query plan event = %#v, want LLM fallback", planEvent)
+	}
+	if len(store.requests) != 1 || store.requests[0].RowLimit != 10 {
+		t.Fatalf("store request = %#v, want fallback row limit", store.requests)
+	}
+	rowsEvent := events[6].Data.(RowsEvent)
+	if len(rowsEvent.Rows) != 1 || rowsEvent.Rows[0]["risk_score"] != 88 || rowsEvent.Rows[0]["severity"] != "HIGH" {
+		t.Fatalf("rows = %#v, want unmodified fallback rows", rowsEvent.Rows)
+	}
+}
+
 func TestServiceRefusesSaturatedPostProcessingCandidateWindow(t *testing.T) {
 	rows := make([]ports.CypherRow, 0, postProcessingCandidateRowLimit)
 	for i := 0; i < postProcessingCandidateRowLimit; i++ {

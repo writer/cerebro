@@ -106,18 +106,16 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 		if timings != (graphagent.StageTimings{}) {
 			evt.result.timings = timings
 		}
-		writeErr := graphagent.WriteSSEEvent(w, graphagent.Event{Name: graphagent.EventError, Data: graphagent.ErrorEvent{
+		errorEvent := graphagent.Event{Name: graphagent.EventError, Data: graphagent.ErrorEvent{
 			Code:    "ask_failed",
 			Message: err.Error(),
+			TraceID: graphagent.ErrorTraceID(err),
 			Timings: timings,
-		}})
+		}}
+		writeErr := graphagent.WriteSSEEvent(w, errorEvent)
 		if writeErr == nil {
 			eventCount++
-			evt.observe(graphagent.Event{Name: graphagent.EventError, Data: graphagent.ErrorEvent{
-				Code:    "ask_failed",
-				Message: err.Error(),
-				Timings: timings,
-			}})
+			evt.observe(errorEvent)
 			if flusher != nil {
 				flusher.Flush()
 			}
@@ -169,6 +167,7 @@ type askResultTelemetry struct {
 	citationWarningsCount  int
 	unsupportedQueryCode   string
 	traceID                string
+	runtimeErrorCode       string
 	cypherRefused          bool
 	terminalEvent          string
 	timings                graphagent.StageTimings
@@ -204,11 +203,12 @@ func (e *askWideEvent) observe(event graphagent.Event) {
 		e.result.timings = data.Timings
 	case graphagent.ErrorEvent:
 		e.result.terminalEvent = graphagent.EventError
+		e.result.runtimeErrorCode = data.Code
+		if data.TraceID != "" {
+			e.result.traceID = data.TraceID
+		}
 		if data.Timings != (graphagent.StageTimings{}) {
 			e.result.timings = data.Timings
-		}
-		if e.result.validatorCode == "" {
-			e.result.validatorCode = data.Code
 		}
 	}
 }
@@ -270,6 +270,9 @@ func (e *askWideEvent) finish(r *http.Request, w http.ResponseWriter, started ti
 		WithField(telemetry.Field{Key: "stage.citation_validation_ms", Value: e.result.timings.CitationValidationMS})
 	if e.result.validatorCode != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "validator.code", Value: e.result.validatorCode})
+	}
+	if e.result.runtimeErrorCode != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "runtime_error.code", Value: e.result.runtimeErrorCode})
 	}
 	if e.result.unsupportedQueryCode != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "unsupported_query.code", Value: e.result.unsupportedQueryCode})

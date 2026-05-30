@@ -85,10 +85,10 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	})
 	timings.DraftMS = time.Since(draftStarted).Milliseconds()
 	if err != nil {
-		return streamErrorf(timings, "%w: draft cypher: %w", ErrRuntimeUnavailable, err)
+		return streamErrorf(traceID, timings, "%w: draft cypher: %w", ErrRuntimeUnavailable, err)
 	}
 	if draft == nil {
-		return streamErrorf(timings, "%w: LLM returned no draft", ErrRuntimeUnavailable)
+		return streamErrorf(traceID, timings, "%w: LLM returned no draft", ErrRuntimeUnavailable)
 	}
 	rationale := strings.TrimSpace(draft.Rationale)
 	if rationale == "" {
@@ -116,7 +116,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	validation, rowLimit, err := s.validateConversion(ctx, conversion, cypher, params)
 	timings.ValidateMS = time.Since(validateStarted).Milliseconds()
 	if err != nil {
-		return streamErrorf(timings, "%w", err)
+		return streamErrorf(traceID, timings, "%w", err)
 	}
 	validation.Warnings = append(validation.Warnings, conversionWarnings(conversion.Diagnostics)...)
 	if err := emit(Event{Name: EventCypher, Data: CypherEvent{Cypher: cypher, Validator: validation}}); err != nil {
@@ -137,13 +137,13 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	})
 	timings.ExecuteMS = time.Since(execStarted).Milliseconds()
 	if err != nil {
-		return streamErrorf(timings, "%w: execute cypher: %w", ErrRuntimeUnavailable, err)
+		return streamErrorf(traceID, timings, "%w: execute cypher: %w", ErrRuntimeUnavailable, err)
 	}
-	if postProcessingCandidateLimitHit(conversion.Plan, rows, rowLimit) {
+	if postProcessingCandidateLimitHit(conversion, rows, rowLimit) {
 		return emitRefusal(emit, traceID, started, cypher, "The deterministic Ask query matched more graph rows than can be safely post-processed without risking an incomplete answer. Narrow the scope or ask for a more specific subset.", "post_processing_candidate_limit", timings)
 	}
 	rowMaps := cypherRowsToMaps(rows)
-	rowMaps = postProcessAskRows(conversion.Plan, rowMaps)
+	rowMaps = postProcessAskRows(conversion, rowMaps)
 	sanitizeInternalRowFields(rowMaps)
 	rowsEvent := RowsEvent{
 		Rows:   rowMaps,
@@ -169,7 +169,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	})
 	timings.SummarizeMS = time.Since(summarizeStarted).Milliseconds()
 	if err != nil {
-		return streamErrorf(timings, "%w: summarize graph rows: %w", ErrRuntimeUnavailable, err)
+		return streamErrorf(traceID, timings, "%w: summarize graph rows: %w", ErrRuntimeUnavailable, err)
 	}
 	if strings.TrimSpace(summary) == "" {
 		summary = fallbackSummary(rowMaps)
@@ -187,7 +187,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 
 func (s *Service) validateConversion(ctx context.Context, conversion conversionResult, cypher string, params map[string]any) (ValidatorResult, int, error) {
 	validator := s.validator
-	if usesPostProcessingCandidates(conversion.Plan) && validator != nil && validator.options.MaxRows < postProcessingCandidateRowLimit {
+	if usesPostProcessingCandidates(conversion) && validator != nil && validator.options.MaxRows < postProcessingCandidateRowLimit {
 		options := validator.options
 		options.MaxRows = postProcessingCandidateRowLimit
 		validator = NewValidator(validator.store, options)
@@ -195,27 +195,46 @@ func (s *Service) validateConversion(ctx context.Context, conversion conversionR
 	return validator.validate(ctx, cypher, params)
 }
 
-type timedStreamError struct {
-	err     error
-	timings StageTimings
+type StreamError struct {
+	TraceID string
+	Err     error
+	Timings StageTimings
 }
 
-func (e timedStreamError) Error() string {
-	return e.err.Error()
+func (e *StreamError) Error() string {
+	if e == nil || e.Err == nil {
+		return ""
+	}
+	return e.Err.Error()
 }
 
-func (e timedStreamError) Unwrap() error {
-	return e.err
+func (e *StreamError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
 }
 
-func streamErrorf(timings StageTimings, format string, args ...any) error {
-	return timedStreamError{err: fmt.Errorf(format, args...), timings: timings}
+func streamErrorf(traceID string, timings StageTimings, format string, args ...any) error {
+	return &StreamError{
+		TraceID: traceID,
+		Err:     fmt.Errorf(format, args...),
+		Timings: timings,
+	}
+}
+
+func ErrorTraceID(err error) string {
+	var streamErr *StreamError
+	if errors.As(err, &streamErr) {
+		return streamErr.TraceID
+	}
+	return ""
 }
 
 func ErrorTimings(err error) (StageTimings, bool) {
-	var timed timedStreamError
-	if errors.As(err, &timed) {
-		return timed.timings, true
+	var streamErr *StreamError
+	if errors.As(err, &streamErr) && streamErr.Timings != (StageTimings{}) {
+		return streamErr.Timings, true
 	}
 	return StageTimings{}, false
 }
@@ -308,23 +327,26 @@ func sanitizeInternalRowFields(rows []map[string]any) {
 	}
 }
 
-func postProcessAskRows(plan AskQueryPlan, rows []map[string]any) []map[string]any {
-	switch plan.Intent {
+func postProcessAskRows(conversion conversionResult, rows []map[string]any) []map[string]any {
+	if !usesPostProcessingCandidates(conversion) {
+		return rows
+	}
+	switch conversion.Plan.Intent {
 	case IntentAggregateFindingsBySource:
-		return postProcessFindingSourceRows(plan, rows)
+		return postProcessFindingSourceRows(conversion.Plan, rows)
 	case IntentTopRiskFindings:
-		return postProcessTopRiskFindingRows(plan, rows)
+		return postProcessTopRiskFindingRows(conversion.Plan, rows)
 	default:
 		return rows
 	}
 }
 
-func usesPostProcessingCandidates(plan AskQueryPlan) bool {
-	return plan.Intent == IntentAggregateFindingsBySource || plan.Intent == IntentTopRiskFindings
+func usesPostProcessingCandidates(conversion conversionResult) bool {
+	return conversion.Deterministic && (conversion.Plan.Intent == IntentAggregateFindingsBySource || conversion.Plan.Intent == IntentTopRiskFindings)
 }
 
-func postProcessingCandidateLimitHit(plan AskQueryPlan, rows []ports.CypherRow, rowLimit int) bool {
-	return usesPostProcessingCandidates(plan) && rowLimit >= postProcessingCandidateRowLimit && len(rows) >= rowLimit
+func postProcessingCandidateLimitHit(conversion conversionResult, rows []ports.CypherRow, rowLimit int) bool {
+	return usesPostProcessingCandidates(conversion) && rowLimit >= postProcessingCandidateRowLimit && len(rows) >= rowLimit
 }
 
 func postProcessFindingSourceRows(plan AskQueryPlan, rows []map[string]any) []map[string]any {
@@ -397,8 +419,10 @@ func postProcessTopRiskFindingRows(plan AskQueryPlan, rows []map[string]any) []m
 		relationAttrs := decodeInternalAttributes(row["relation_attributes_json_internal"])
 		findingAttrs := decodeInternalAttributes(row["finding_attributes_json_internal"])
 		severity := firstNonEmpty(
-			firstAttributeString(relationAttrs, "effective_severity", "severity"),
-			firstAttributeString(findingAttrs, "effective_severity", "severity"),
+			firstAttributeString(relationAttrs, "effective_severity"),
+			firstAttributeString(findingAttrs, "effective_severity"),
+			firstAttributeString(relationAttrs, "severity"),
+			firstAttributeString(findingAttrs, "severity"),
 		)
 		status := firstNonEmpty(
 			firstAttributeString(relationAttrs, "status"),
