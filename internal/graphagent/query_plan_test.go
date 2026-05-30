@@ -134,7 +134,7 @@ RETURN apoc.convert.fromJsonMap(f.attributes_json).source_family AS source_famil
 	if strings.Contains(result.Cypher, "apoc.") || strings.Contains(result.Cypher, "HAS_SOURCE") || strings.Contains(result.Cypher, "'Finding'") {
 		t.Fatalf("converted cypher is not canonical:\n%s", result.Cypher)
 	}
-	if !strings.Contains(result.Cypher, "f.source_id AS source_id") || !strings.Contains(result.Cypher, "finding_attributes_json_internal") || !strings.Contains(result.Cypher, "LIMIT 5000") {
+	if !strings.Contains(result.Cypher, "f.source_id AS source_id") || !strings.Contains(result.Cypher, "finding_attributes_json_internal") || !strings.Contains(result.Cypher, "LIMIT 3000") {
 		t.Fatalf("converted cypher missing candidate source fields/limit:\n%s", result.Cypher)
 	}
 	if !strings.Contains(result.Cypher, "WHERE $scope_urn = '' OR resource.urn = $scope_urn OR f.urn = $scope_urn") {

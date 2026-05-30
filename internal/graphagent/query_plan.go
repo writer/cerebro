@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/writer/cerebro/internal/ports"
 )
 
 const (
@@ -15,7 +17,7 @@ const (
 	IntentIdentityBridge            = "identity_bridge"
 	IntentConnectorHealth           = "connector_health"
 
-	postProcessingCandidateRowLimit = 5000
+	postProcessingCandidateRowLimit = ports.MaxCypherQueryRows
 )
 
 type AskQueryPlan struct {
