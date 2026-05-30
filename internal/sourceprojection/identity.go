@@ -218,6 +218,7 @@ func identityUserProjections(event *cerebrov1.EventEnvelope, profile identityPro
 		if orgURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), userURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
+		addCloudIdentityAccountLink(entities, links, tenantID, event.GetSourceId(), event, userURN, profile, attributes, principalType, userID)
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, email, event.GetOccurredAt())
 		if !sameIdentifier(email, login) {
 			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, login, event.GetOccurredAt())
@@ -263,6 +264,7 @@ func identityGroupProjections(event *cerebrov1.EventEnvelope, profile identityPr
 		if orgURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), groupURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
+		addCloudIdentityAccountLink(entities, links, tenantID, event.GetSourceId(), event, groupURN, profile, attributes, "group", groupID)
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), groupURN, groupEmail, event.GetOccurredAt())
 	}
 	return identityProjectionResult(entities, links)
@@ -487,6 +489,7 @@ func identityRoleAssignmentProjections(event *cerebrov1.EventEnvelope, profile i
 			Label:      firstNonEmpty(attributes["subject_name"], subjectEmail, subjectID),
 			Attributes: subjectAttributes,
 		})
+		addCloudIdentityAccountLink(entities, links, tenantID, event.GetSourceId(), event, subjectURN, profile, attributes, subjectType, subjectID)
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), subjectURN, firstNonEmpty(subjectEmail, subjectID), event.GetOccurredAt())
 	}
 	if roleURN != "" {
@@ -498,6 +501,7 @@ func identityRoleAssignmentProjections(event *cerebrov1.EventEnvelope, profile i
 			Label:      firstNonEmpty(attributes["role_name"], attributes["role_type"], roleID),
 			Attributes: map[string]string{"is_admin": boolString(privileged), "role_id": roleID, "role_type": strings.TrimSpace(attributes["role_type"])},
 		})
+		addCloudIdentityAccountLink(entities, links, tenantID, event.GetSourceId(), event, roleURN, profile, attributes, roleKind, roleID)
 	}
 	if subjectURN != "" && roleURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectURN, roleURN, relation, map[string]string{"event_id": event.GetId()}))
@@ -530,6 +534,7 @@ func identityCredentialProjections(event *cerebrov1.EventEnvelope, profile ident
 			Label:      firstNonEmpty(attributes["subject_name"], subjectEmail, subjectID),
 			Attributes: map[string]string{"email": subjectEmail, "subject_type": subjectType},
 		})
+		addCloudIdentityAccountLink(entities, links, tenantID, event.GetSourceId(), event, subjectURN, profile, attributes, subjectType, subjectID)
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), subjectURN, firstNonEmpty(subjectEmail, subjectID), event.GetOccurredAt())
 	}
 	if credentialURN != "" {
@@ -541,6 +546,7 @@ func identityCredentialProjections(event *cerebrov1.EventEnvelope, profile ident
 			Label:      firstNonEmpty(attributes["credential_name"], credentialID),
 			Attributes: map[string]string{"credential_id": credentialID, "credential_type": credentialType, "status": strings.TrimSpace(attributes["status"])},
 		})
+		addCloudIdentityAccountLink(entities, links, tenantID, event.GetSourceId(), event, credentialURN, profile, attributes, "credential", credentialID)
 	}
 	if subjectURN != "" && credentialURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectURN, credentialURN, relationAssignedTo, map[string]string{"event_id": event.GetId()}))
@@ -589,6 +595,7 @@ func identityAuditProjections(event *cerebrov1.EventEnvelope, profile identityPr
 			"event_type": firstNonEmpty(attributes["event_type"], attributes["event_name"]),
 		}))
 	}
+	addAzureResourceGroupLinks(entities, links, tenantID, event.GetSourceId(), event, profile, attributes, resourceURN)
 	return identityProjectionResult(entities, links)
 }
 
@@ -609,6 +616,163 @@ func addIdentityOrg(entities map[string]*ports.ProjectedEntity, tenantID string,
 		Label:      domain,
 		Attributes: map[string]string{"domain": domain},
 	})
+}
+
+func addCloudIdentityAccountLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, profile identityProjectionProfile, attributes map[string]string, principalType string, principalID string) {
+	accountID := cloudIdentityAccountID(profile, attributes, principalType, principalID)
+	if accountID == "" {
+		return
+	}
+	addCloudAccountLink(entities, links, tenantID, sourceID, event, fromURN, accountID, profile.Provider)
+}
+
+func cloudIdentityAccountID(profile identityProjectionProfile, attributes map[string]string, principalType string, principalID string) string {
+	switch profile.Provider {
+	case "aws":
+		return firstNonEmpty(
+			awsAccountID(attributes["domain"]),
+			awsAccountID(attributes["aws_account_id"]),
+			awsAccountIDFromARN(principalID),
+			awsAccountIDFromARN(attributes["subject_id"]),
+			awsAccountIDFromARN(attributes["user_id"]),
+			awsAccountIDFromARN(attributes["resource_id"]),
+			awsAccountIDFromARN(attributes["target_id"]),
+		)
+	case "gcp":
+		if identityPrincipalType(principalType) != "service_account" && !strings.EqualFold(principalType, "credential") {
+			return ""
+		}
+		return firstNonEmpty(
+			attributes["gcp_project_id"],
+			attributes["project_id"],
+			gcpProjectIDFromResource(attributes["credential_id"]),
+			gcpProjectIDFromResource(principalID),
+			gcpProjectIDFromServiceAccountEmail(attributes["subject_email"]),
+			gcpProjectIDFromServiceAccountEmail(attributes["email"]),
+			gcpProjectIDFromServiceAccountEmail(principalID),
+			attributes["domain"],
+		)
+	case "azure":
+		return firstNonEmpty(
+			attributes["subscription_id"],
+			azureSubscriptionIDFromScope(attributes["scope"]),
+			azureSubscriptionIDFromScope(attributes["resource_id"]),
+			azureSubscriptionIDFromScope(attributes["target_id"]),
+		)
+	default:
+		return ""
+	}
+}
+
+func awsAccountID(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) != 12 {
+		return ""
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return ""
+		}
+	}
+	return value
+}
+
+func awsAccountIDFromARN(value string) string {
+	parts := strings.Split(strings.TrimSpace(value), ":")
+	if len(parts) < 5 || parts[0] != "arn" || parts[2] == "" {
+		return ""
+	}
+	return awsAccountID(parts[4])
+}
+
+func gcpProjectIDFromResource(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	parts := strings.Split(value, "/")
+	for index := 0; index+1 < len(parts); index++ {
+		if parts[index] == "projects" && strings.TrimSpace(parts[index+1]) != "" {
+			return strings.TrimSpace(parts[index+1])
+		}
+	}
+	return ""
+}
+
+func gcpProjectIDFromServiceAccountEmail(value string) string {
+	value = strings.TrimSpace(value)
+	if !strings.HasSuffix(value, ".iam.gserviceaccount.com") {
+		return ""
+	}
+	_, domain, ok := strings.Cut(value, "@")
+	if !ok {
+		return ""
+	}
+	return strings.TrimSuffix(domain, ".iam.gserviceaccount.com")
+}
+
+func azureSubscriptionIDFromScope(value string) string {
+	parts := strings.Split(strings.TrimSpace(value), "/")
+	for index := 0; index+1 < len(parts); index++ {
+		if strings.EqualFold(parts[index], "subscriptions") && strings.TrimSpace(parts[index+1]) != "" {
+			return strings.TrimSpace(parts[index+1])
+		}
+	}
+	return ""
+}
+
+func addAzureResourceGroupLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, profile identityProjectionProfile, attributes map[string]string, resourceURN string) {
+	if profile.Provider != "azure" || resourceURN == "" {
+		return
+	}
+	subscriptionID := firstNonEmpty(
+		attributes["subscription_id"],
+		azureSubscriptionIDFromScope(attributes["scope"]),
+		azureSubscriptionIDFromScope(attributes["resource_id"]),
+		azureSubscriptionIDFromScope(attributes["target_id"]),
+	)
+	resourceGroup := azureResourceGroupName(attributes)
+	if subscriptionID == "" || resourceGroup == "" {
+		return
+	}
+	resourceGroupURN := projectionURN(tenantID, "azure_resource_group", subscriptionID, resourceGroup)
+	if resourceGroupURN == "" {
+		return
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        resourceGroupURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "azure.resource_group",
+		Label:      resourceGroup,
+		Attributes: map[string]string{
+			"resource_group":  resourceGroup,
+			"subscription_id": subscriptionID,
+		},
+	})
+	addLink(links, projectedLink(tenantID, sourceID, resourceURN, resourceGroupURN, relationBelongsTo, map[string]string{
+		"event_id":         event.GetId(),
+		"resource_group":   resourceGroup,
+		"subscription_id":  subscriptionID,
+		"relationship_by":  "azure_resource_group",
+		"source_attribute": "resource_group",
+	}))
+	addCloudAccountLink(entities, links, tenantID, sourceID, event, resourceGroupURN, subscriptionID, "azure")
+}
+
+func azureResourceGroupName(attributes map[string]string) string {
+	if resourceGroup := firstNonEmpty(attributes["resource_group"], attributes["resource_group_name"]); resourceGroup != "" {
+		return resourceGroup
+	}
+	for _, value := range []string{attributes["scope"], attributes["resource_id"], attributes["target_id"]} {
+		parts := strings.Split(strings.TrimSpace(value), "/")
+		for index := 0; index+1 < len(parts); index++ {
+			if strings.EqualFold(parts[index], "resourceGroups") && strings.TrimSpace(parts[index+1]) != "" {
+				return strings.TrimSpace(parts[index+1])
+			}
+		}
+	}
+	return ""
 }
 
 func identityOrgURN(tenantID string, provider string, domain string) string {

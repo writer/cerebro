@@ -251,12 +251,12 @@ func cloudFingerprintAttributes(fields []string, values []string) map[string]str
 
 func cloudEffectiveAdminPermissionFingerprintInputs(event *cerebrov1.EventEnvelope, attributes map[string]string, projection findingProjectionContext) []string {
 	tenantID := strings.TrimSpace(event.GetTenantId())
-	accountID := firstNonEmpty(attributes["scope"], attributes["domain"])
+	accountID := cloudEffectivePermissionAccountID(attributes)
 	accountURN := projection.EntityURNByType("cloud.account")
 	if accountURN == "" && accountID != "" && tenantID != "" {
 		accountURN = fmt.Sprintf("urn:cerebro:%s:cloud_account:%s", tenantID, strings.TrimSpace(accountID))
 	}
-	principalURN := projection.PrimaryActorURN
+	principalURN := firstNonEmpty(cloudEffectivePermissionPrincipalURN(event, attributes), projection.PrimaryActorURN)
 	permissionKey := strings.ToLower(strings.TrimSpace(firstNonEmpty(
 		attributes["permission"],
 		attributes["actions"],
@@ -273,6 +273,73 @@ func cloudEffectiveAdminPermissionFingerprintInputs(event *cerebrov1.EventEnvelo
 		}
 	}
 	return []string{accountURN, principalURN, permissionURN}
+}
+
+func cloudEffectivePermissionAccountID(attributes map[string]string) string {
+	return firstNonEmpty(
+		attributes["domain"],
+		attributes["aws_account_id"],
+		attributes["subscription_id"],
+		attributes["project_id"],
+		attributes["gcp_project_id"],
+		attributes["account_id"],
+		attributes["scope"],
+	)
+}
+
+func cloudEffectivePermissionPrincipalURN(event *cerebrov1.EventEnvelope, attributes map[string]string) string {
+	tenantID := strings.TrimSpace(event.GetTenantId())
+	provider := strings.TrimSpace(event.GetSourceId())
+	principalID := firstNonEmpty(attributes["subject_id"], attributes["principal_id"], attributes["assigned_to"], attributes["email"])
+	principalEmail := firstNonEmpty(attributes["subject_email"], attributes["principal_email"], attributes["email"])
+	principalType := cloudEffectivePermissionPrincipalType(firstNonEmpty(attributes["subject_type"], attributes["principal_type"], "user"))
+	if tenantID == "" || provider == "" {
+		return ""
+	}
+	switch principalType {
+	case "group":
+		return identityProjectionURN(tenantID, provider+"_group", firstNonEmpty(principalID, principalEmail))
+	case "application":
+		return identityProjectionURN(tenantID, provider+"_application", principalID)
+	case "service_principal":
+		return identityProjectionURN(tenantID, provider+"_service_principal", firstNonEmpty(principalID, principalEmail))
+	case "service_account":
+		return identityProjectionURN(tenantID, provider+"_service_account", firstNonEmpty(principalID, principalEmail))
+	case "role":
+		return identityProjectionURN(tenantID, provider+"_role", principalID)
+	case "account":
+		return identityProjectionURN(tenantID, provider+"_account", principalID)
+	case "public":
+		return identityProjectionURN(tenantID, provider+"_public_principal", principalID)
+	default:
+		return identityProjectionURN(tenantID, provider+"_user", firstNonEmpty(principalID, principalEmail))
+	}
+}
+
+func cloudEffectivePermissionPrincipalType(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if strings.Contains(normalized, "group") {
+		return "group"
+	}
+	if strings.Contains(normalized, "service_principal") || strings.Contains(normalized, "serviceprincipal") {
+		return "service_principal"
+	}
+	if strings.Contains(normalized, "service_account") || strings.Contains(normalized, "serviceaccount") {
+		return "service_account"
+	}
+	if strings.Contains(normalized, "application") {
+		return "application"
+	}
+	if strings.Contains(normalized, "role") {
+		return "role"
+	}
+	if strings.Contains(normalized, "account") {
+		return "account"
+	}
+	if strings.Contains(normalized, "public") || strings.Contains(normalized, "allusers") || strings.Contains(normalized, "allauthenticatedusers") {
+		return "public"
+	}
+	return "user"
 }
 
 func cloudPublicResourceExposureFingerprintInputs(_ *cerebrov1.EventEnvelope, attributes map[string]string, projection findingProjectionContext) []string {

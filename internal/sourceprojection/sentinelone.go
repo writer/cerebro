@@ -88,6 +88,7 @@ func sentinelOneAgentProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 
 	addSentinelOneScopeLinks(entities, links, tenant, event, agentURN, attrs)
 	addSentinelOneInternetContext(entities, links, tenant, event, agentURN, attrs)
+	addSentinelOneOwnerIdentityLinks(entities, links, tenant, event, agentURN, attrs)
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
@@ -202,6 +203,7 @@ func sentinelOneThreatProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 			"mitigation_status_norm": strings.TrimSpace(attrs["mitigation_status_norm"]),
 		}))
 		addSentinelOneInternetContext(entities, links, tenant, event, agentURN, attrs)
+		addSentinelOneOwnerIdentityLinks(entities, links, tenant, event, agentURN, attrs)
 	}
 
 	addSentinelOneScopeLinks(entities, links, tenant, event, threatURN, attrs)
@@ -245,6 +247,31 @@ func addSentinelOneInternetContext(entities map[string]*ports.ProjectedEntity, l
 		"host":       host,
 		"match_type": "sentinelone_agent_hostname",
 	}))
+}
+
+func addSentinelOneOwnerIdentityLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenant string, event *cerebrov1.EventEnvelope, agentURN string, attrs map[string]string) {
+	if agentURN == "" {
+		return
+	}
+	ownerEmail := strings.TrimSpace(firstNonEmpty(attrs["user_mail"], attrs["user_email"]))
+	if ownerEmail != "" {
+		addIdentifierLink(entities, links, tenant, event.GetSourceId(), event.GetId(), agentURN, ownerEmail, event.GetOccurredAt())
+		identityURN, _ := canonicalIdentityURN(tenant, ownerEmail)
+		if identityURN != "" {
+			linkAttrs := map[string]string{
+				"at":         eventObservedAt(event),
+				"confidence": "0.85",
+				"event_id":   event.GetId(),
+				"match_type": "sentinelone_owner_email",
+			}
+			addLink(links, projectedLink(tenant, event.GetSourceId(), agentURN, identityURN, relationOwnedBy, linkAttrs))
+		}
+	}
+	ownerUser := strings.TrimSpace(attrs["user_name"])
+	if ownerUser != "" {
+		addEndpointIdentifierLink(entities, links, tenant, event.GetSourceId(), event, agentURN, "sentinelone_user_name", ownerUser, "0.60")
+	}
+	addEndpointIdentifierLink(entities, links, tenant, event.GetSourceId(), event, agentURN, "sentinelone_user_id", attrs["user_id"], "0.70")
 }
 
 func sentinelOneSiteProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {

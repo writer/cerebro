@@ -61,6 +61,9 @@ func assetClassificationProjections(event *cerebrov1.EventEnvelope, crownJewelEv
 	if resourceURN != "" && classificationURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, classificationURN, relationHasClassification, map[string]string{"event_id": event.GetId()}))
 	}
+	if accountID := assetCloudAccountID(provider, resourceID, resourceURN, attributes); resourceURN != "" && accountID != "" {
+		addCloudAccountLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, accountID, provider)
+	}
 	if crownJewel && resourceURN != "" {
 		tagURN := projectionURN(tenantID, "asset_tag", "crown_jewel")
 		addEntity(entities, &ports.ProjectedEntity{URN: tagURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "asset.tag", Label: "crown_jewel", Attributes: map[string]string{"tag": "crown_jewel"}})
@@ -72,4 +75,31 @@ func assetClassificationProjections(event *cerebrov1.EventEnvelope, crownJewelEv
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, ownerURN, relationOwnedBy, map[string]string{"event_id": event.GetId()}))
 	}
 	return identityProjectionResult(entities, links)
+}
+
+func assetCloudAccountID(provider string, resourceID string, resourceURN string, attributes map[string]string) string {
+	provider = normalizeIdentifier(provider)
+	switch provider {
+	case "aws":
+		return firstNonEmpty(
+			awsAccountID(attributes["aws_account_id"]),
+			awsAccountIDFromARN(resourceID),
+			awsAccountIDFromARN(resourceURN),
+		)
+	case "azure":
+		return firstNonEmpty(
+			attributes["subscription_id"],
+			azureSubscriptionIDFromScope(resourceID),
+			azureSubscriptionIDFromScope(resourceURN),
+		)
+	case "gcp":
+		return firstNonEmpty(
+			attributes["gcp_project_id"],
+			attributes["project_id"],
+			gcpProjectIDFromResource(resourceID),
+			gcpProjectIDFromResource(resourceURN),
+		)
+	default:
+		return ""
+	}
 }

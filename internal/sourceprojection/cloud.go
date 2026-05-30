@@ -403,21 +403,57 @@ func cloudEffectivePermissionProjections(event *cerebrov1.EventEnvelope, profile
 			Label:      firstNonEmpty(attributes["resource_name"], attributes["target_name"], resourceID),
 			Attributes: map[string]string{"resource_id": resourceID, "resource_type": resourceType, "scope": strings.TrimSpace(attributes["scope"])},
 		})
-		addCloudAccountLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, firstNonEmpty(attributes["scope"], attributes["domain"]), provider)
+		addCloudAccountLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, cloudEffectivePermissionAccountID(attributes, provider), provider)
+	}
+	roleID := strings.TrimSpace(attributes["role_id"])
+	roleURN := ""
+	if roleID != "" {
+		roleURN = identityPrincipalURN(tenantID, provider, "role", roleID, "")
+	}
+	if roleURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        roleURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: profile.entityType("role"),
+			Label:      firstNonEmpty(attributes["role_name"], attributes["role_id"]),
+			Attributes: map[string]string{
+				"role_id":   strings.TrimSpace(attributes["role_id"]),
+				"role_name": strings.TrimSpace(attributes["role_name"]),
+			},
+		})
+		addCloudAccountLink(entities, links, tenantID, event.GetSourceId(), event, roleURN, cloudEffectivePermissionAccountID(attributes, provider), provider)
+	}
+	canPerformAttrs := map[string]string{
+		"actions":         strings.TrimSpace(attributes["actions"]),
+		"condition":       strings.TrimSpace(attributes["condition"]),
+		"effect":          strings.TrimSpace(attributes["effect"]),
+		"event_id":        event.GetId(),
+		"is_admin":        boolString(identityProjectionPrivileged(attributes)),
+		"permission":      firstNonEmpty(attributes["permission"], attributes["actions"]),
+		"policy_source":   strings.TrimSpace(attributes["policy_source"]),
+		"privilege_level": strings.TrimSpace(attributes["privilege_level"]),
+		"role_id":         strings.TrimSpace(attributes["role_id"]),
+		"role_name":       strings.TrimSpace(attributes["role_name"]),
+	}
+	if roleURN != "" {
+		canPerformAttrs["role_urn"] = roleURN
+	}
+	if subjectURN != "" && roleURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectURN, roleURN, relationAssignedTo, map[string]string{
+			"event_id":   event.GetId(),
+			"match_type": "effective_permission_role_binding",
+			"role_id":    strings.TrimSpace(attributes["role_id"]),
+			"role_name":  strings.TrimSpace(attributes["role_name"]),
+		}))
+	}
+	if roleURN != "" && resourceURN != "" {
+		roleCanPerformAttrs := cloneStringMap(canPerformAttrs)
+		roleCanPerformAttrs["match_type"] = "effective_permission_role_resource"
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), roleURN, resourceURN, relationCanPerform, roleCanPerformAttrs))
 	}
 	if subjectURN != "" && resourceURN != "" {
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectURN, resourceURN, relationCanPerform, map[string]string{
-			"actions":         strings.TrimSpace(attributes["actions"]),
-			"condition":       strings.TrimSpace(attributes["condition"]),
-			"effect":          strings.TrimSpace(attributes["effect"]),
-			"event_id":        event.GetId(),
-			"is_admin":        boolString(identityProjectionPrivileged(attributes)),
-			"permission":      firstNonEmpty(attributes["permission"], attributes["actions"]),
-			"policy_source":   strings.TrimSpace(attributes["policy_source"]),
-			"privilege_level": strings.TrimSpace(attributes["privilege_level"]),
-			"role_id":         strings.TrimSpace(attributes["role_id"]),
-			"role_name":       strings.TrimSpace(attributes["role_name"]),
-		}))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectURN, resourceURN, relationCanPerform, canPerformAttrs))
 	}
 	return identityProjectionResult(entities, links)
 }
@@ -443,6 +479,38 @@ func cloudPrivilegeRelation(attributes map[string]string) string {
 		return relationCanAdmin
 	default:
 		return relationAssignedTo
+	}
+}
+
+func cloudEffectivePermissionAccountID(attributes map[string]string, provider string) string {
+	switch provider {
+	case "aws":
+		return firstNonEmpty(
+			awsAccountID(attributes["domain"]),
+			awsAccountID(attributes["account_id"]),
+			awsAccountID(attributes["aws_account_id"]),
+			awsAccountIDFromARN(attributes["scope"]),
+			awsAccountIDFromARN(attributes["resource_id"]),
+			awsAccountIDFromARN(attributes["target_id"]),
+		)
+	case "azure":
+		return firstNonEmpty(
+			attributes["subscription_id"],
+			azureSubscriptionIDFromScope(attributes["scope"]),
+			azureSubscriptionIDFromScope(attributes["resource_id"]),
+			azureSubscriptionIDFromScope(attributes["target_id"]),
+		)
+	case "gcp":
+		return firstNonEmpty(
+			attributes["project_id"],
+			attributes["gcp_project_id"],
+			attributes["domain"],
+			gcpProjectIDFromResource(attributes["scope"]),
+			gcpProjectIDFromResource(attributes["resource_id"]),
+			gcpProjectIDFromResource(attributes["target_id"]),
+		)
+	default:
+		return ""
 	}
 }
 

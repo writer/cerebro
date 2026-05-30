@@ -166,6 +166,7 @@ func (s *Service) ProjectRecords(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 	if err != nil {
 		return nil, nil, err
 	}
+	normalizeProjectedEntityTypes(entities)
 	stampProjectionRuntime(event, entities, links)
 	return entities, links, nil
 }
@@ -790,9 +791,41 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 			}
 		}
 	} else if actorIsAutomation {
-		// Automation actors are GitHub Apps/agents, not human identities. Keep the
-		// audit event in the append log but do not project them into the identity
-		// graph or repeatedly rewrite hot bot->repo acted_on edges.
+		credentialID := githubAutomationCredentialID(attributes)
+		if credentialID != "" {
+			credentialURN := githubCredentialURN(tenantID, credentialID)
+			credentialAttrs := map[string]string{
+				"actor":                    actor,
+				"actor_is_agent":           actorIsAgent,
+				"actor_is_bot":             actorIsBot,
+				"actor_type":               actorType,
+				"credential_type":          "automation_actor",
+				"programmatic_access_type": programmaticAccessType,
+			}
+			addProjectedAttribute(credentialAttrs, "github_app_id", strings.TrimSpace(attributes["github_app_id"]))
+			addProjectedAttribute(credentialAttrs, "org", org)
+			addProjectedAttribute(credentialAttrs, "org_id", orgID)
+			addProjectedAttribute(credentialAttrs, "repository", repo)
+			addProjectedAttribute(credentialAttrs, "token_id", tokenID)
+			addEntity(entities, &ports.ProjectedEntity{
+				URN:        credentialURN,
+				TenantID:   tenantID,
+				SourceID:   event.GetSourceId(),
+				EntityType: "github.credential",
+				Label:      firstNonEmpty(strings.TrimSpace(attributes["github_app_name"]), strings.TrimSpace(attributes["github_app_id"]), actor, tokenID),
+				Attributes: credentialAttrs,
+			})
+			if resourceURN != "" && resourceURN != credentialURN {
+				automationActedAttrs := cloneStringMap(actedAttrs)
+				automationActedAttrs["match_type"] = "automation_actor"
+				addLink(links, projectedLink(tenantID, event.GetSourceId(), credentialURN, resourceURN, relationActedOn, automationActedAttrs))
+			}
+			if repoScopePresent && repoURN != "" {
+				addLink(links, projectedLink(tenantID, event.GetSourceId(), credentialURN, repoURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+			} else if orgURN != "" {
+				addLink(links, projectedLink(tenantID, event.GetSourceId(), credentialURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+			}
+		}
 	} else {
 		actorURN := githubUserURN(tenantID, actor)
 		if actorURN != "" {
@@ -972,6 +1005,21 @@ func githubProgrammaticCredentialID(attributes map[string]string) string {
 	}
 	scope := firstNonEmpty(attributes["repo"], attributes["org"], attributes["scope"])
 	return strings.Join(nonEmptyStrings(prefix, attributes["resource_id"], scope, attributes["actor"]), ":")
+}
+
+func githubAutomationCredentialID(attributes map[string]string) string {
+	if appID := strings.TrimSpace(attributes["github_app_id"]); appID != "" {
+		return "automation_app:" + appID
+	}
+	if tokenID := strings.TrimSpace(attributes["token_id"]); tokenID != "" {
+		return "automation_token:" + tokenID
+	}
+	actor := strings.TrimSpace(attributes["actor"])
+	scope := strings.TrimSpace(firstNonEmpty(attributes["repo"], attributes["resource_id"], attributes["org"], attributes["scope"]))
+	if actor == "" && scope == "" {
+		return ""
+	}
+	return strings.Join(nonEmptyStrings("automation_actor", actor, scope), ":")
 }
 
 func githubProgrammaticCredentialStatus(attributes map[string]string) string {
@@ -2026,6 +2074,34 @@ func sameIdentifier(left string, right string) bool {
 
 func normalizeIdentifier(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func normalizeProjectedEntityTypes(entities []*ports.ProjectedEntity) {
+	for _, entity := range entities {
+		if entity == nil {
+			continue
+		}
+		entity.EntityType = canonicalProjectedEntityType(entity.EntityType)
+	}
+}
+
+func canonicalProjectedEntityType(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if normalized == "" {
+		return normalized
+	}
+	normalized = strings.ReplaceAll(normalized, " ", "_")
+	normalized = strings.ReplaceAll(normalized, "..", ".")
+	if strings.HasPrefix(normalized, "aws.aws.") {
+		normalized = strings.TrimPrefix(normalized, "aws.")
+	}
+	switch normalized {
+	case "okta.publicclientappentity":
+		return "okta.publicclientapp"
+	case "okta.ip_address":
+		return "okta.ip"
+	}
+	return normalized
 }
 
 func payloadMap(event *cerebrov1.EventEnvelope) map[string]any {

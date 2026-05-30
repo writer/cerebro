@@ -1422,7 +1422,7 @@ func TestProjectGitHubAuditOmitsAtWhenOccurredAtMissing(t *testing.T) {
 	}
 }
 
-func TestProjectGitHubAuditSkipsAutomationActorsFromIdentityGraph(t *testing.T) {
+func TestProjectGitHubAuditProjectsAutomationActorsAsCredentials(t *testing.T) {
 	cases := []struct {
 		name  string
 		actor string
@@ -1484,15 +1484,47 @@ func TestProjectGitHubAuditSkipsAutomationActorsFromIdentityGraph(t *testing.T) 
 			if _, ok := graph.entities[actorURN]; ok {
 				t.Fatalf("automation actor %q should not be projected as github.user: %#v", actorURN, graph.entities[actorURN])
 			}
-			if _, ok := graph.links[actorURN+"|"+relationActedOn+"|urn:cerebro:writer:github_repo:writer/cerebro"]; ok {
-				t.Fatalf("automation actor %q should not emit acted_on repo links", actorURN)
+			credentialID := githubAutomationCredentialID(attrs)
+			credentialURN := "urn:cerebro:writer:github_credential:" + credentialID
+			credential := graph.entities[credentialURN]
+			if credential == nil {
+				t.Fatalf("automation actor should project github.credential %q; got entities=%#v", credentialURN, graph.entities)
 			}
+			if got := credential.EntityType; got != "github.credential" {
+				t.Fatalf("credential entity_type = %q, want github.credential", got)
+			}
+			assertProjectedLink(t, graph, credentialURN, relationActedOn, "urn:cerebro:writer:github_repo:writer/cerebro")
 			for key := range graph.links {
 				if strings.HasPrefix(key, actorURN+"|") {
 					t.Fatalf("automation actor %q emitted identity graph link %q", actorURN, key)
 				}
 			}
 		})
+	}
+}
+
+func TestGitHubAutomationCredentialIDSkipsEmptyFallback(t *testing.T) {
+	if got := githubAutomationCredentialID(map[string]string{}); got != "" {
+		t.Fatalf("githubAutomationCredentialID(empty) = %q, want empty", got)
+	}
+}
+
+func TestProjectGitHubAuditSkipsSparseAutomationCredential(t *testing.T) {
+	graph := &projectionRecorder{}
+	_, err := New(nil, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-audit-sparse-automation",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.audit",
+		Attributes: map[string]string{
+			"actor_is_bot": "true",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if credential := graph.entities["urn:cerebro:writer:github_credential"]; credential != nil {
+		t.Fatalf("sparse automation event should not create placeholder credential: %#v", credential)
 	}
 }
 
@@ -2299,6 +2331,9 @@ func TestProjectIdentityProviderJoinEdges(t *testing.T) {
 	assertProjectedLink(t, state, awsUserURN, relationCanAdmin, "urn:cerebro:writer:aws_admin_role:AdministratorAccess")
 	assertProjectedLink(t, state, gcpUserURN, relationCanAdmin, "urn:cerebro:writer:gcp_admin_role:roles/owner")
 	assertProjectedLink(t, state, googleUserURN, relationActedOn, "urn:cerebro:writer:google_workspace_security_setting:two_step")
+	assertProjectedLink(t, state, awsUserURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_admin_role:AdministratorAccess", relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLinkMissing(t, state, gcpUserURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:writer-prod")
 }
 
 func TestProjectCloudReadOnlyRoleAssignmentsAvoidAdminEdges(t *testing.T) {
@@ -2404,6 +2439,11 @@ func TestProjectCloudReadOnlyRoleAssignmentsAvoidAdminEdges(t *testing.T) {
 	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com", relationHasIdentifier, "urn:cerebro:writer:identifier:email:sa@writer-prod.iam.gserviceaccount.com")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_user:analyst@writer.com", relationAssignedTo, "urn:cerebro:writer:aws_credential:AKIAEXAMPLE")
 	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com", relationAssignedTo, "urn:cerebro:writer:gcp_credential:projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com/keys/key-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_user:analyst@writer.com", relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_role:ReadOnlyAccess", relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_credential:AKIAEXAMPLE", relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com", relationBelongsTo, "urn:cerebro:writer:cloud_account:writer-prod")
+	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_credential:projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com/keys/key-1", relationBelongsTo, "urn:cerebro:writer:cloud_account:writer-prod")
 }
 
 func TestProjectAzureIdentityEdges(t *testing.T) {
@@ -2466,12 +2506,13 @@ func TestProjectAzureIdentityEdges(t *testing.T) {
 			SourceId: "azure",
 			Kind:     "azure.service_principal",
 			Attributes: map[string]string{
-				"app_id":         "app-client-1",
-				"display_name":   "Prod App",
-				"domain":         "tenant-1",
-				"login":          "app-client-1",
-				"principal_type": "service_principal",
-				"user_id":        "sp-1",
+				"app_id":          "app-client-1",
+				"display_name":    "Prod App",
+				"domain":          "tenant-1",
+				"login":           "app-client-1",
+				"principal_type":  "service_principal",
+				"subscription_id": "sub-1",
+				"user_id":         "sp-1",
 			},
 		},
 		{
@@ -2496,13 +2537,14 @@ func TestProjectAzureIdentityEdges(t *testing.T) {
 			SourceId: "azure",
 			Kind:     "azure.iam_role_assignment",
 			Attributes: map[string]string{
-				"domain":       "tenant-1",
-				"is_admin":     "false",
-				"role_id":      "Reader",
-				"role_name":    "Reader",
-				"role_type":    "azure_rbac_role",
-				"subject_id":   "sp-1",
-				"subject_type": "service_principal",
+				"domain":          "tenant-1",
+				"is_admin":        "false",
+				"role_id":         "Reader",
+				"role_name":       "Reader",
+				"role_type":       "azure_rbac_role",
+				"subscription_id": "sub-1",
+				"subject_id":      "sp-1",
+				"subject_type":    "service_principal",
 			},
 		},
 		{
@@ -2514,6 +2556,7 @@ func TestProjectAzureIdentityEdges(t *testing.T) {
 				"credential_id":   "app-password-1",
 				"credential_type": "azure_application_password",
 				"domain":          "tenant-1",
+				"subscription_id": "sub-1",
 				"subject_id":      "app-client-1",
 				"subject_type":    "application",
 			},
@@ -2530,6 +2573,19 @@ func TestProjectAzureIdentityEdges(t *testing.T) {
 				"event_type":    "Update conditional access policy",
 				"resource_id":   "policy-1",
 				"resource_type": "conditional_access_policy",
+			},
+		},
+		{
+			Id:       "azure-activity",
+			TenantId: "writer",
+			SourceId: "azure",
+			Kind:     "azure.activity_log",
+			Attributes: map[string]string{
+				"actor_id":      "sp-1",
+				"event_type":    "Microsoft.Compute/virtualMachines/write",
+				"resource_id":   "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm-1",
+				"resource_name": "vm-1",
+				"resource_type": "virtual_machine",
 			},
 		},
 	}
@@ -2550,6 +2606,37 @@ func TestProjectAzureIdentityEdges(t *testing.T) {
 	assertProjectedLinkMissing(t, state, azureServicePrincipalURN, relationCanAdmin, "urn:cerebro:writer:azure_admin_role:Reader")
 	assertProjectedLink(t, state, azureApplicationURN, relationAssignedTo, "urn:cerebro:writer:azure_credential:app-password-1")
 	assertProjectedLink(t, state, azureUserURN, relationActedOn, "urn:cerebro:writer:azure_conditional_access_policy:policy-1")
+	assertProjectedLink(t, state, azureServicePrincipalURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:sub-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:azure_role:Reader", relationBelongsTo, "urn:cerebro:writer:cloud_account:sub-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:azure_credential:app-password-1", relationBelongsTo, "urn:cerebro:writer:cloud_account:sub-1")
+	assertProjectedLinkMissing(t, state, azureUserURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:tenant-1")
+	azureVMURN := "urn:cerebro:writer:azure_virtual_machine:/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm-1"
+	resourceGroupURN := "urn:cerebro:writer:azure_resource_group:sub-1:rg-prod"
+	assertProjectedLink(t, state, azureVMURN, relationBelongsTo, resourceGroupURN)
+	assertProjectedLink(t, state, resourceGroupURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:sub-1")
+}
+
+func TestProjectAzureActivitySkipsResourceGroupWithoutSubscription(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "azure-activity-no-subscription",
+		TenantId: "writer",
+		SourceId: "azure",
+		Kind:     "azure.activity_log",
+		Attributes: map[string]string{
+			"event_type":     "Microsoft.Compute/virtualMachines/write",
+			"resource_group": "rg-prod",
+			"resource_id":    "vm-1",
+			"resource_type":  "virtual_machine",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:azure_virtual_machine:vm-1", relationBelongsTo, "urn:cerebro:writer:azure_resource_group:rg-prod")
 }
 
 func TestProjectCloudExposureAndPrivilegePaths(t *testing.T) {
@@ -2794,6 +2881,7 @@ func TestProjectAWSInlineEffectivePermission(t *testing.T) {
 			"resource_type": "aws_iam_policy",
 			"role_id":       "inline:user:admin@writer.com:InlineAdmin",
 			"role_name":     "InlineAdmin",
+			"scope":         "arn:aws:s3:::writer-bucket",
 			"subject_id":    "admin@writer.com",
 			"subject_type":  "user",
 		},
@@ -2804,6 +2892,7 @@ func TestProjectAWSInlineEffectivePermission(t *testing.T) {
 	}
 
 	policyURN := "urn:cerebro:writer:aws_aws_iam_policy:inline:user:admin@writer.com:InlineAdmin"
+	roleURN := "urn:cerebro:writer:aws_role:inline:user:admin@writer.com:InlineAdmin"
 	permissionLink := state.links["urn:cerebro:writer:aws_user:admin@writer.com|"+relationCanPerform+"|"+policyURN]
 	if permissionLink == nil {
 		t.Fatalf("inline effective permission link missing")
@@ -2817,6 +2906,49 @@ func TestProjectAWSInlineEffectivePermission(t *testing.T) {
 	if got := permissionLink.Attributes["is_admin"]; got != "true" {
 		t.Fatalf("permission link is_admin = %q, want true", got)
 	}
+	if role := state.entities[roleURN]; role == nil || role.EntityType != "aws.role" {
+		t.Fatalf("role entity missing or wrong type: %#v", role)
+	}
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_user:admin@writer.com", relationAssignedTo, roleURN)
+	assertProjectedLink(t, state, roleURN, relationCanPerform, policyURN)
+	assertProjectedLink(t, state, roleURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLinkMissing(t, state, roleURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:arn:aws:s3:::writer-bucket")
+}
+
+func TestProjectAWSEffectivePermissionWithoutRoleIDSkipsRoleNode(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-effective-permission-no-role-id",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.effective_permission",
+		Attributes: map[string]string{
+			"actions":       "s3:GetObject",
+			"domain":        "123456789012",
+			"effect":        "allow",
+			"permission":    "s3:GetObject",
+			"policy_source": "managed",
+			"resource_id":   "arn:aws:s3:::writer-bucket",
+			"resource_name": "writer-bucket",
+			"resource_type": "bucket",
+			"role_name":     "ReadOnlyAccess",
+			"subject_id":    "analyst@writer.com",
+			"subject_type":  "user",
+		},
+	}
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	roleURN := "urn:cerebro:writer:aws_role:ReadOnlyAccess"
+	if role := state.entities[roleURN]; role != nil {
+		t.Fatalf("role entity should not be created when role_id is missing: %#v", role)
+	}
+	if role := state.entities["urn:cerebro:writer:aws_role"]; role != nil {
+		t.Fatalf("placeholder role entity should not be created when role_id is missing: %#v", role)
+	}
+	resourceURN := "urn:cerebro:writer:aws_bucket:arn:aws:s3:::writer-bucket"
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_user:analyst@writer.com", relationCanPerform, resourceURN)
 }
 
 func TestProjectEffectivePermissionsKubernetesRuntimeAndData(t *testing.T) {
@@ -2920,6 +3052,340 @@ func TestProjectEffectivePermissionsKubernetesRuntimeAndData(t *testing.T) {
 	assertProjectedLink(t, state, "urn:cerebro:writer:runtime_evidence:evidence-1", relationObservedOn, "urn:cerebro:writer:kubernetes_workload:prod-cluster:payments:workload-1")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_secret_store:prod-secrets", relationHasClassification, "urn:cerebro:writer:data_classification:restricted")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_secret_store:prod-secrets", relationTaggedAs, "urn:cerebro:writer:asset_tag:crown_jewel")
+}
+
+func TestProjectKubernetesWorkloadBuildsClusterAndCloudAccountLinks(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "k8s-workload-cluster",
+		TenantId: "writer",
+		SourceId: "kubernetes",
+		Kind:     "kubernetes.workload",
+		Attributes: map[string]string{
+			"cloud_account_external_id": "123456789012",
+			"cloud_provider":            "aws",
+			"cluster_id":                "prod-cluster",
+			"namespace":                 "payments",
+			"service_account_name":      "api",
+			"workload_kind":             "Deployment",
+			"workload_name":             "payments-api",
+			"workload_uid":              "workload-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	clusterURN := "urn:cerebro:writer:kubernetes_cluster:prod-cluster"
+	namespaceURN := "urn:cerebro:writer:kubernetes_namespace:prod-cluster:payments"
+	assertProjectedLink(t, state, namespaceURN, relationBelongsTo, clusterURN)
+	assertProjectedLink(t, state, clusterURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	if got := state.entities[clusterURN].EntityType; got != "kubernetes.cluster" {
+		t.Fatalf("cluster entity_type = %q, want kubernetes.cluster", got)
+	}
+}
+
+func TestProjectKubernetesWorkloadIdentityBindingAddsContainmentLinks(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "k8s-wid-cluster",
+		TenantId: "writer",
+		SourceId: "kubernetes",
+		Kind:     "kubernetes.workload_identity_binding",
+		Attributes: map[string]string{
+			"cloud_provider":       "gcp",
+			"cluster_id":           "prod-cluster",
+			"gcp_project_id":       "writer-prod",
+			"namespace":            "payments",
+			"relationship":         "can_impersonate",
+			"service_account_name": "api",
+			"target_email":         "payments-sa@writer-prod.iam.gserviceaccount.com",
+			"target_id":            "payments-sa@writer-prod.iam.gserviceaccount.com",
+			"target_type":          "service_account",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	serviceAccountURN := "urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:api"
+	namespaceURN := "urn:cerebro:writer:kubernetes_namespace:prod-cluster:payments"
+	clusterURN := "urn:cerebro:writer:kubernetes_cluster:prod-cluster"
+	assertProjectedLink(t, state, serviceAccountURN, relationBelongsTo, namespaceURN)
+	assertProjectedLink(t, state, namespaceURN, relationBelongsTo, clusterURN)
+	assertProjectedLink(t, state, clusterURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:writer-prod")
+	assertProjectedLink(t, state, serviceAccountURN, relationCanImpersonate, "urn:cerebro:writer:gcp_service_account:payments-sa@writer-prod.iam.gserviceaccount.com")
+}
+
+func TestProjectKubernetesWorkloadFallbackURNIncludesKind(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	for _, kind := range []string{"Deployment", "CronJob"} {
+		_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+			Id:       "k8s-workload-" + kind,
+			TenantId: "writer",
+			SourceId: "kubernetes",
+			Kind:     "kubernetes.workload",
+			Attributes: map[string]string{
+				"cluster_id":           "prod-cluster",
+				"name":                 "payments-api",
+				"namespace":            "payments",
+				"service_account_name": "api",
+				"workload_kind":        kind,
+				"workload_name":        "payments-api",
+			},
+		})
+		if err != nil {
+			t.Fatalf("Project() error = %v", err)
+		}
+	}
+
+	assertProjectedLink(t, state, "urn:cerebro:writer:kubernetes_workload:prod-cluster:payments:Deployment/payments-api", relationRunsAs, "urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:api")
+	assertProjectedLink(t, state, "urn:cerebro:writer:kubernetes_workload:prod-cluster:payments:CronJob/payments-api", relationRunsAs, "urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:api")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:kubernetes_workload:prod-cluster:payments:payments-api", relationRunsAs, "urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:api")
+}
+
+func TestProjectKubernetesClusterNameFallbackIsScopedByAccount(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	for _, accountID := range []string{"account-a", "account-b"} {
+		_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+			Id:       "k8s-cluster-name-" + accountID,
+			TenantId: "writer",
+			SourceId: "kubernetes",
+			Kind:     "kubernetes.workload",
+			Attributes: map[string]string{
+				"cloud_account_external_id": accountID,
+				"cloud_provider":            "azure",
+				"cluster_name":              "prod",
+				"namespace":                 "payments",
+				"service_account_name":      "api",
+				"workload_kind":             "Deployment",
+				"workload_name":             "payments-api",
+			},
+		})
+		if err != nil {
+			t.Fatalf("Project() error = %v", err)
+		}
+	}
+
+	assertProjectedLink(t, state, "urn:cerebro:writer:kubernetes_cluster:account-a:prod", relationBelongsTo, "urn:cerebro:writer:cloud_account:account-a")
+	assertProjectedLink(t, state, "urn:cerebro:writer:kubernetes_cluster:account-b:prod", relationBelongsTo, "urn:cerebro:writer:cloud_account:account-b")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:kubernetes_cluster:prod", relationBelongsTo, "urn:cerebro:writer:cloud_account:account-a")
+}
+
+func TestProjectKubernetesClusterNameFallbackRequiresAccountScope(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "k8s-cluster-name-provider-only",
+		TenantId: "writer",
+		SourceId: "kubernetes",
+		Kind:     "kubernetes.workload",
+		Attributes: map[string]string{
+			"cloud_provider":       "aws",
+			"cluster_name":         "prod",
+			"namespace":            "payments",
+			"service_account_name": "api",
+			"workload_kind":        "Deployment",
+			"workload_name":        "payments-api",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	if entity := state.entities["urn:cerebro:writer:kubernetes_cluster:aws:prod"]; entity != nil {
+		t.Fatalf("provider-only cluster_name fallback should not create scoped cluster: %#v", entity)
+	}
+	if entity := state.entities["urn:cerebro:writer:kubernetes_cluster:prod"]; entity != nil {
+		t.Fatalf("provider-only cluster_name fallback should not create unscoped cluster: %#v", entity)
+	}
+}
+
+func TestProjectKubernetesCloudAccountIDUsesProjectIDFallback(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "k8s-gcp-project-id",
+		TenantId: "writer",
+		SourceId: "kubernetes",
+		Kind:     "kubernetes.workload",
+		Attributes: map[string]string{
+			"cluster_id":           "gke-prod",
+			"namespace":            "payments",
+			"project_id":           "writer-prod",
+			"service_account_name": "api",
+			"workload_kind":        "Deployment",
+			"workload_name":        "payments-api",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	assertProjectedLink(t, state, "urn:cerebro:writer:kubernetes_cluster:gke-prod", relationBelongsTo, "urn:cerebro:writer:cloud_account:writer-prod")
+}
+
+func TestProjectKubernetesAzureSkipsGenericAccountID(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "k8s-azure-generic-account",
+		TenantId: "writer",
+		SourceId: "kubernetes",
+		Kind:     "kubernetes.workload",
+		Attributes: map[string]string{
+			"account_id":           "tenant-or-local-account",
+			"cloud_provider":       "azure",
+			"cluster_id":           "aks-prod",
+			"namespace":            "payments",
+			"service_account_name": "api",
+			"workload_kind":        "Deployment",
+			"workload_name":        "payments-api",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:kubernetes_cluster:aks-prod", relationBelongsTo, "urn:cerebro:writer:cloud_account:tenant-or-local-account")
+}
+
+func TestProjectKubernetesSparseEventsSkipPlaceholderURNs(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:       "k8s-workload-no-cluster",
+			TenantId: "writer",
+			SourceId: "kubernetes",
+			Kind:     "kubernetes.workload",
+			Attributes: map[string]string{
+				"namespace":     "payments",
+				"workload_kind": "Deployment",
+				"workload_name": "payments-api",
+			},
+		},
+		{
+			Id:       "k8s-workload-no-id",
+			TenantId: "writer",
+			SourceId: "kubernetes",
+			Kind:     "kubernetes.workload",
+			Attributes: map[string]string{
+				"cluster_id":     "prod-cluster",
+				"namespace":      "payments",
+				"workload_kind":  "Deployment",
+				"workload_name":  "",
+				"workload_uid":   "",
+				"workload_image": "api",
+			},
+		},
+		{
+			Id:       "k8s-service-account-no-cluster",
+			TenantId: "writer",
+			SourceId: "kubernetes",
+			Kind:     "kubernetes.service_account",
+			Attributes: map[string]string{
+				"namespace":            "payments",
+				"service_account_name": "api",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%s) error = %v", event.GetId(), err)
+		}
+	}
+
+	for _, urn := range []string{
+		"urn:cerebro:writer:kubernetes_workload:payments:Deployment/payments-api",
+		"urn:cerebro:writer:kubernetes_workload:prod-cluster:payments:/",
+		"urn:cerebro:writer:kubernetes_service_account:payments:api",
+		"urn:cerebro:writer:kubernetes_namespace:payments",
+	} {
+		if _, ok := state.entities[urn]; ok {
+			t.Fatalf("sparse event minted placeholder entity %q", urn)
+		}
+	}
+}
+
+func TestProjectAssetClassificationLinksStrongCloudResourceIDsToAccounts(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:       "asset-aws-arn",
+			TenantId: "writer",
+			SourceId: "asset",
+			Kind:     "asset.data_sensitivity",
+			Attributes: map[string]string{
+				"data_classification": "restricted",
+				"resource_id":         "arn:aws:s3:::writer-bucket",
+				"resource_name":       "writer-bucket",
+				"resource_type":       "bucket",
+				"source_provider":     "aws",
+				"aws_account_id":      "123456789012",
+			},
+		},
+		{
+			Id:       "asset-azure-arm",
+			TenantId: "writer",
+			SourceId: "asset",
+			Kind:     "asset.data_sensitivity",
+			Attributes: map[string]string{
+				"data_classification": "confidential",
+				"resource_id":         "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Storage/storageAccounts/data",
+				"resource_type":       "storage_account",
+				"source_provider":     "azure",
+			},
+		},
+		{
+			Id:       "asset-gcp-resource",
+			TenantId: "writer",
+			SourceId: "asset",
+			Kind:     "asset.data_sensitivity",
+			Attributes: map[string]string{
+				"data_classification": "internal",
+				"resource_id":         "projects/writer-prod/buckets/data",
+				"resource_type":       "bucket",
+				"source_provider":     "gcp",
+			},
+		},
+		{
+			Id:       "asset-bare-name",
+			TenantId: "writer",
+			SourceId: "asset",
+			Kind:     "asset.data_sensitivity",
+			Attributes: map[string]string{
+				"data_classification": "restricted",
+				"resource_id":         "prod-secrets",
+				"resource_type":       "secret_store",
+				"source_provider":     "aws",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%s) error = %v", event.GetId(), err)
+		}
+	}
+
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_bucket:arn:aws:s3:::writer-bucket", relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, "urn:cerebro:writer:azure_storage_account:/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Storage/storageAccounts/data", relationBelongsTo, "urn:cerebro:writer:cloud_account:sub-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_bucket:projects/writer-prod/buckets/data", relationBelongsTo, "urn:cerebro:writer:cloud_account:writer-prod")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:aws_secret_store:prod-secrets", relationBelongsTo, "urn:cerebro:writer:cloud_account:prod-secrets")
 }
 
 func assertProjectedLink(t *testing.T, recorder *projectionRecorder, fromURN string, relation string, toURN string) {
