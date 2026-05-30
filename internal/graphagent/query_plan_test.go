@@ -134,16 +134,14 @@ RETURN apoc.convert.fromJsonMap(f.attributes_json).source_family AS source_famil
 	if strings.Contains(result.Cypher, "apoc.") || strings.Contains(result.Cypher, "HAS_SOURCE") || strings.Contains(result.Cypher, "'Finding'") {
 		t.Fatalf("converted cypher is not canonical:\n%s", result.Cypher)
 	}
-	if !strings.Contains(result.Cypher, "f.source_id") || !strings.Contains(result.Cypher, "LIMIT 10") {
-		t.Fatalf("converted cypher missing source_id fallback/limit:\n%s", result.Cypher)
+	if !strings.Contains(result.Cypher, "f.source_id AS source_id") || !strings.Contains(result.Cypher, "finding_attributes_json_internal") || !strings.Contains(result.Cypher, "LIMIT 3000") {
+		t.Fatalf("converted cypher missing candidate source fields/limit:\n%s", result.Cypher)
 	}
 	if !strings.Contains(result.Cypher, "WHERE $scope_urn = '' OR resource.urn = $scope_urn OR f.urn = $scope_urn") {
 		t.Fatalf("converted cypher missing scope predicate:\n%s", result.Cypher)
 	}
-	sourceFamilyIndex := strings.Index(result.Cypher, `"source_family":"`)
-	sourceIDIndex := strings.Index(result.Cypher, "f.source_id")
-	if sourceFamilyIndex < 0 || sourceIDIndex < 0 || sourceFamilyIndex > sourceIDIndex {
-		t.Fatalf("converted cypher should prefer source_family before source_id:\n%s", result.Cypher)
+	if strings.Contains(result.Cypher, "split(split") || strings.Contains(result.Cypher, "count(DISTINCT f)") {
+		t.Fatalf("converted cypher should leave JSON parsing and aggregation to Go:\n%s", result.Cypher)
 	}
 	if len(result.Diagnostics) == 0 {
 		t.Fatalf("expected conversion diagnostics")
@@ -181,19 +179,18 @@ func TestConvertDraftToQueryScopesTopRiskAndReturnsOnlyScalarFields(t *testing.T
 	}
 	for _, want := range []string{
 		"WHERE $scope_urn = '' OR resource.urn = $scope_urn OR finding.urn = $scope_urn",
-		"CASE toUpper(severity)",
-		"WHEN 'CRITICAL' THEN 4",
-		"collect(DISTINCT resource.urn) AS resource_urns",
-		"max(risk_score) AS risk_score",
-		"ORDER BY risk_score DESC, severity_rank DESC, finding_urn",
+		"resource.urn AS resource_urn",
+		"coalesce(r.attributes_json, '') AS relation_attributes_json_internal",
+		"coalesce(finding.attributes_json, '') AS finding_attributes_json_internal",
+		"ORDER BY finding_urn, resource_urn",
 	} {
 		if !strings.Contains(result.Cypher, want) {
 			t.Fatalf("converted cypher missing %q:\n%s", want, result.Cypher)
 		}
 	}
-	for _, forbidden := range []string{"finding_attributes_json", "relation_attributes_json", " AS attributes_json"} {
+	for _, forbidden := range []string{"split(split", "CASE toUpper", "max(risk_score)", " AS attributes_json"} {
 		if strings.Contains(result.Cypher, forbidden) {
-			t.Fatalf("converted cypher returns raw attributes %q:\n%s", forbidden, result.Cypher)
+			t.Fatalf("converted cypher still performs JSON ranking/unsafe attribute return %q:\n%s", forbidden, result.Cypher)
 		}
 	}
 }

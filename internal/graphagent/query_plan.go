@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/writer/cerebro/internal/ports"
 )
 
 const (
@@ -14,6 +16,8 @@ const (
 	IntentExplainFinding            = "explain_finding"
 	IntentIdentityBridge            = "identity_bridge"
 	IntentConnectorHealth           = "connector_health"
+
+	postProcessingCandidateRowLimit = ports.MaxCypherQueryRows
 )
 
 type AskQueryPlan struct {
@@ -259,67 +263,25 @@ func renderDeterministicPlan(plan AskQueryPlan, maxRows int) (string, bool) {
 	limit := boundedLimit(plan.Limit, maxRows)
 	switch plan.Intent {
 	case IntentAggregateFindingsBySource:
-		if limit > 10 {
-			limit = 10
-		}
 		return fmt.Sprintf(`MATCH (resource:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'has_finding'}]->(f:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
 WHERE $scope_urn = '' OR resource.urn = $scope_urn OR f.urn = $scope_urn
-WITH DISTINCT f,
-     coalesce(
-       %s,
-       f.source_id,
-       'Unknown'
-     ) AS source_family
-RETURN source_family, count(DISTINCT f) AS finding_count
-ORDER BY finding_count DESC, source_family
-LIMIT %d`, cypherJSONStringAttributes("f.attributes_json", "source_family", "sourceFamily", "source_system"), limit), true
+WITH DISTINCT f
+RETURN f.urn AS finding_urn,
+       f.source_id AS source_id,
+       coalesce(f.attributes_json, '') AS finding_attributes_json_internal
+ORDER BY finding_urn
+LIMIT %d`, postProcessingCandidateRowLimit), true
 	case IntentTopRiskFindings:
 		return fmt.Sprintf(`MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
 WHERE $scope_urn = '' OR resource.urn = $scope_urn OR finding.urn = $scope_urn
-WITH resource, r, finding,
-     coalesce(
-       %s,
-       0
-     ) AS risk_score,
-     coalesce(
-       %s,
-       ''
-     ) AS severity
-WITH resource, finding, risk_score, severity,
-     CASE toUpper(severity)
-       WHEN 'CRITICAL' THEN 4
-       WHEN 'HIGH' THEN 3
-       WHEN 'MEDIUM' THEN 2
-       WHEN 'LOW' THEN 1
-       ELSE 0
-     END AS severity_rank
-WITH finding,
-     collect(DISTINCT resource.urn) AS resource_urns,
-     collect(DISTINCT coalesce(resource.label, resource.urn)) AS resource_labels,
-     max(risk_score) AS risk_score,
-     max(severity_rank) AS severity_rank
-WITH finding, resource_urns, resource_labels, risk_score, severity_rank,
-     CASE severity_rank
-       WHEN 4 THEN 'CRITICAL'
-       WHEN 3 THEN 'HIGH'
-       WHEN 2 THEN 'MEDIUM'
-       WHEN 1 THEN 'LOW'
-       ELSE ''
-     END AS severity
 RETURN finding.urn AS finding_urn,
        coalesce(finding.label, finding.urn) AS finding_label,
-       resource_urns,
-       resource_labels,
-       risk_score,
-       severity
-ORDER BY risk_score DESC, severity_rank DESC, finding_urn
-LIMIT %d`, strings.Join([]string{
-			cypherJSONIntegerAttribute("r.attributes_json", "risk_score"),
-			cypherJSONIntegerAttribute("finding.attributes_json", "risk_score"),
-		}, ",\n       "), strings.Join([]string{
-			cypherJSONStringAttributes("r.attributes_json", "effective_severity", "severity"),
-			cypherJSONStringAttributes("finding.attributes_json", "effective_severity", "severity"),
-		}, ",\n       "), limit), true
+       resource.urn AS resource_urn,
+       coalesce(resource.label, resource.urn) AS resource_label,
+       coalesce(r.attributes_json, '') AS relation_attributes_json_internal,
+       coalesce(finding.attributes_json, '') AS finding_attributes_json_internal
+ORDER BY finding_urn, resource_urn
+LIMIT %d`, postProcessingCandidateRowLimit), true
 	case IntentExplainFinding:
 		return fmt.Sprintf(`MATCH (finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
 WHERE $scope_urn = ''
