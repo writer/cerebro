@@ -19,6 +19,7 @@ func aureliusImageScanProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 	imageURN := aureliusImageURN(tenantID, attrs)
 	if imageURN != "" {
 		addEntity(entities, aureliusImageEntity(tenantID, event.GetSourceId(), imageURN, attrs))
+		addAureliusImageContextLinks(entities, links, tenantID, event, imageURN, attrs)
 	}
 
 	scanID := firstAttribute(attrs, "scan_id", "image_digest")
@@ -61,6 +62,7 @@ func aureliusVerdictProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 	imageURN := aureliusImageURN(tenantID, attrs)
 	if imageURN != "" {
 		addEntity(entities, aureliusImageEntity(tenantID, event.GetSourceId(), imageURN, attrs))
+		addAureliusImageContextLinks(entities, links, tenantID, event, imageURN, attrs)
 	}
 
 	verdictKey := firstAttribute(attrs, "image_digest")
@@ -101,6 +103,7 @@ func aureliusFindingProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 	imageURN := aureliusImageURN(tenantID, attrs)
 	if imageURN != "" {
 		addEntity(entities, aureliusImageEntity(tenantID, event.GetSourceId(), imageURN, attrs))
+		addAureliusImageContextLinks(entities, links, tenantID, event, imageURN, attrs)
 	}
 
 	vulnerabilityURN := addCanonicalVulnerabilityEntity(entities, tenantID, event.GetSourceId(), attrs)
@@ -141,6 +144,7 @@ func aureliusCatalogPromotionProjections(event *cerebrov1.EventEnvelope) ([]*por
 	imageURN := aureliusImageURN(tenantID, attrs)
 	if imageURN != "" {
 		addEntity(entities, aureliusImageEntity(tenantID, event.GetSourceId(), imageURN, attrs))
+		addAureliusImageContextLinks(entities, links, tenantID, event, imageURN, attrs)
 	}
 
 	track := firstAttribute(attrs, "track")
@@ -263,6 +267,10 @@ func aureliusImageEntity(tenantID, sourceID, urn string, attrs map[string]string
 	}
 }
 
+func addAureliusImageContextLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, imageURN string, attrs map[string]string) {
+	addContainerImageContextLinks(entities, links, tenantID, event.GetSourceId(), event, imageURN, attrs)
+}
+
 func aureliusProjectionAttributes(event *cerebrov1.EventEnvelope) map[string]string {
 	attrs := make(map[string]string, len(event.GetAttributes()))
 	for key, value := range event.GetAttributes() {
@@ -287,8 +295,12 @@ func aureliusProjectionAttributes(event *cerebrov1.EventEnvelope) map[string]str
 		"image_uri",
 		"installed_version",
 		"package",
+		"gcp_project_id",
+		"image_registry",
+		"image_repository",
 		"promoted_at",
 		"promoted_by",
+		"project_id",
 		"reason",
 		"registry",
 		"repository",
