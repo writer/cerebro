@@ -14,8 +14,12 @@
 #   pr-body <title> <body> scan a PR title and body (also reads PR_TITLE /
 #                          PR_BODY from the environment when args are empty)
 #
-# Bypass: set CEREBRO_LEAK_CHECK_BYPASS=1 to skip the check. Bypasses are
-# logged so they show up in shell history and CI logs.
+# Local false-positive escape hatch: staged and commit-msg scans honor an
+# inline comment containing "leak-check: allow <reason>" on the same line
+# as the match. Range/push scans ignore inline allowances by default so
+# committed allow markers cannot hide leaked content. For whole-run emergency
+# bypasses, set CEREBRO_LEAK_CHECK_BYPASS=1. Bypasses are logged so they show
+# up in shell history and CI logs.
 #
 # Additional patterns may be supplied via a user-local file at
 # $CEREBRO_LEAK_USER_PATTERNS (default: $HOME/.config/cerebro/leak_patterns.txt).
@@ -41,6 +45,18 @@ fi
 mode="${1:-staged}"
 shift || true
 
+allow_inline="${CEREBRO_LEAK_CHECK_ALLOW_INLINE:-}"
+if [ -z "$allow_inline" ]; then
+  case "$mode" in
+    staged | commit-msg)
+      allow_inline=1
+      ;;
+    *)
+      allow_inline=0
+      ;;
+  esac
+fi
+
 collect_patterns() {
   grep -vE '^[[:space:]]*(#|$)' "$patterns_file"
   if [ -f "$user_patterns_file" ]; then
@@ -54,6 +70,8 @@ if [ -z "$patterns" ]; then
   echo "leak-check: no patterns configured (mode=$mode)" >&2
   exit 0
 fi
+
+allow_line_re='leak-check:[[:space:]]*allow[[:space:]]+[^[:space:]]'
 
 # redact_matches <input> <pattern>
 # Replaces each occurrence of <pattern> in <input> with a length-only
@@ -83,10 +101,14 @@ scan_input() {
   local label="$1"
   local input="$2"
   local matched=0
+  local scan_lines="$input"
+  if [ "$allow_inline" = "1" ]; then
+    scan_lines="$(printf '%s\n' "$input" | grep -vE "$allow_line_re" || true)"
+  fi
   while IFS= read -r pattern; do
     [ -z "$pattern" ] && continue
     local hits
-    hits="$(printf '%s\n' "$input" | grep -E -n -- "$pattern" || true)"
+    hits="$(printf '%s\n' "$scan_lines" | grep -E -n -- "$pattern" || true)"
     if [ -n "$hits" ]; then
       matched=1
       printf '%s: pattern matched (%d hit(s))\n' "$label" "$(printf '%s\n' "$hits" | wc -l | tr -d ' ')" >&2
@@ -109,7 +131,13 @@ added_diff_for_changed_files() {
   if [ "${#files[@]}" -eq 0 ]; then
     return 0
   fi
-  git diff --no-color "${diff_args[@]}" -- "${files[@]}" | grep '^+' | grep -v '^+++' || true
+  git diff --no-color "${diff_args[@]}" -- \
+    "${files[@]}" \
+    ':(exclude)*.pem' \
+    ':(exclude)**/*.pem' \
+    ':(exclude)*.crt' \
+    ':(exclude)**/*.crt' \
+    | grep '^+' | grep -v '^+++' || true
 }
 
 case "$mode" in
@@ -131,8 +159,8 @@ case "$mode" in
 leak-check: tenant data pattern matched in staged changes.
 
   - Review the matches above.
-  - If the match is a false positive, narrow the pattern in
-    scripts/leak_patterns.txt or use synthetic data.
+  - If the match is a false positive, prefer synthetic data or add
+    a local-only inline "leak-check: allow <reason>" comment.
   - If the match is intentional (e.g. fixture-only), you can bypass
     with: CEREBRO_LEAK_CHECK_BYPASS=1 git commit ...
     Bypasses are logged.
@@ -174,7 +202,11 @@ EOF
       echo "leak-check: cannot resolve head ref for range '$range'" >&2
       exit 1
     fi
-    commits_meta="$(git log --format='%H%n%s%n%b%n%an %ae%n---' "$range" 2>/dev/null || true)"
+    commits_range="$range"
+    if [[ "$range" == *...* ]]; then
+      commits_range="${base_part}..${head_part}"
+    fi
+    commits_meta="$(git log --format='%H%nAuthor: %an <%ae>%nCommitter: %cn <%ce>%n%s%n%b%n---' "$commits_range" 2>/dev/null || true)"
     commits_diff="$(added_diff_for_changed_files "$range")"
     combined="${commits_meta}
 ${commits_diff}"
@@ -213,7 +245,7 @@ ${commits_diff}"
       else
         range="${remote_sha}..${local_sha}"
       fi
-      commits_meta="$(git log --format='%H%n%s%n%b%n%an %ae%n---' "$range" 2>/dev/null || true)"
+      commits_meta="$(git log --format='%H%nAuthor: %an <%ae>%nCommitter: %cn <%ce>%n%s%n%b%n---' "$range" 2>/dev/null || true)"
       commits_diff="$(added_diff_for_changed_files "$range")"
       combined="${commits_meta}
 ${commits_diff}"
