@@ -343,6 +343,25 @@ func readBody(reader io.Reader, mode string) ([]byte, error) {
 	}
 }
 
+func TestProductionBodyReadGuardTreatsBreakAsContinuing(t *testing.T) {
+	source := `package sample
+
+import "io"
+
+func readBody(reader io.Reader, mode string) ([]byte, error) {
+	body := io.LimitReader(reader, 1025)
+	switch mode {
+	case "raw":
+		body = reader
+		break
+	}
+	return io.ReadAll(body)
+}`
+	if lines := unboundedReadAllLinesForSource(t, source); len(lines) != 1 {
+		t.Fatalf("unbounded lines = %v, want break branch reassignment rejected", lines)
+	}
+}
+
 func unboundedReadAllLinesForSource(t *testing.T, source string) []int {
 	t.Helper()
 	fset := token.NewFileSet()
@@ -608,7 +627,7 @@ func statementMayContinue(statement ast.Stmt) bool {
 	case *ast.ReturnStmt:
 		return false
 	case *ast.BranchStmt:
-		return stmt.Tok == token.FALLTHROUGH
+		return true
 	case *ast.BlockStmt:
 		return statementsMayContinue(stmt.List)
 	case *ast.IfStmt:
