@@ -75,31 +75,34 @@ func NewValidator(store ports.GraphQueryStore, options ValidatorOptions) *Valida
 func (v *Validator) validate(ctx context.Context, cypher string, params map[string]any) (ValidatorResult, int, error) {
 	query := strings.TrimSpace(cypher)
 	if query == "" {
-		return ValidatorResult{OK: false, Reason: "cypher is required"}, 0, nil
+		return validatorRefusal("cypher_required", "cypher is required"), 0, nil
 	}
 	safeQuery := scrubCypher(query)
 	tokens := lexCypher(query)
 	if hasForbiddenWriteOrBulkLoad(tokens) {
-		return ValidatorResult{OK: false, Reason: "write or bulk-load Cypher clauses are forbidden"}, 0, nil
+		return validatorRefusal("unsafe_clause", "write or bulk-load Cypher clauses are forbidden"), 0, nil
 	}
 	if hasForbiddenAPOCCall(tokens) {
-		return ValidatorResult{OK: false, Reason: "apoc trigger and periodic procedures are forbidden"}, 0, nil
+		return validatorRefusal("unsafe_apoc", "apoc trigger and periodic procedures are forbidden"), 0, nil
+	}
+	if hasAPOCInvocation(tokens) {
+		return validatorRefusal("apoc_not_allowed", "APOC functions and procedures are not available in Ask Cerebro"), 0, nil
 	}
 	if hasProcedureCall(tokens) {
-		return ValidatorResult{OK: false, Reason: "procedure CALL clauses are forbidden"}, 0, nil
+		return validatorRefusal("procedure_call_not_allowed", "procedure CALL clauses are forbidden"), 0, nil
 	}
-	limit, limitsOK := queryLimit(tokens)
-	if !limitsOK {
-		return ValidatorResult{OK: false, Reason: "read Cypher must include a numeric LIMIT clause"}, 0, nil
+	limit, ok := queryLimit(tokens)
+	if !ok {
+		return validatorRefusal("limit_required", "read Cypher must include a numeric LIMIT clause"), 0, nil
 	}
 	if limit > v.options.MaxRows {
-		return ValidatorResult{OK: false, Reason: fmt.Sprintf("LIMIT %d exceeds maximum %d", limit, v.options.MaxRows)}, 0, nil
+		return validatorRefusal("limit_exceeded", fmt.Sprintf("LIMIT %d exceeds maximum %d", limit, v.options.MaxRows)), 0, nil
 	}
 	if oversized := oversizedLimit(tokens, v.options.MaxRows); oversized > 0 {
-		return ValidatorResult{OK: false, Reason: fmt.Sprintf("LIMIT %d exceeds maximum %d", oversized, v.options.MaxRows)}, 0, nil
+		return validatorRefusal("limit_exceeded", fmt.Sprintf("LIMIT %d exceeds maximum %d", oversized, v.options.MaxRows)), 0, nil
 	}
 	if !allNodePatternsTenantScoped(safeQuery) {
-		return ValidatorResult{OK: false, Reason: "every node pattern must use Entity label and inline tenant_id"}, 0, nil
+		return validatorRefusal("tenant_scope_required", "every node pattern must use Entity label and inline tenant_id"), 0, nil
 	}
 	if v.options.Explain && v.store != nil {
 		explainer, ok := v.store.(interface {
@@ -113,10 +116,14 @@ func (v *Validator) validate(ctx context.Context, cypher string, params map[stri
 			return ValidatorResult{}, 0, fmt.Errorf("%w: explain cypher: %w", ErrRuntimeUnavailable, err)
 		}
 		if allNodesScanOverLimit(plan, v.options.AllNodesScanLimit) {
-			return ValidatorResult{OK: false, Reason: fmt.Sprintf("EXPLAIN plan contains AllNodesScan over more than %d nodes", v.options.AllNodesScanLimit)}, 0, nil
+			return validatorRefusal("all_nodes_scan_over_limit", fmt.Sprintf("EXPLAIN plan contains AllNodesScan over more than %d nodes", v.options.AllNodesScanLimit)), 0, nil
 		}
 	}
 	return ValidatorResult{OK: true}, limit, nil
+}
+
+func validatorRefusal(code string, reason string) ValidatorResult {
+	return ValidatorResult{OK: false, Code: code, Reason: reason}
 }
 
 func scrubCypher(query string) string {
@@ -265,6 +272,15 @@ func hasForbiddenAPOCCall(tokens []cypherToken) bool {
 		}
 		procedure := strings.ToLower(tokens[i+1].text)
 		if strings.HasPrefix(procedure, "apoc.trigger.") || strings.HasPrefix(procedure, "apoc.periodic.") {
+			return true
+		}
+	}
+	return false
+}
+
+func hasAPOCInvocation(tokens []cypherToken) bool {
+	for i, token := range tokens {
+		if token.kind == cypherTokenIdentifier && strings.HasPrefix(strings.ToLower(token.text), "apoc.") && symbolTokenAt(tokens, i+1, "(") {
 			return true
 		}
 	}

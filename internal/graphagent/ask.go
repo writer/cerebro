@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -85,9 +86,13 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		return err
 	}
 
-	cypher := strings.TrimSpace(draft.Cypher)
+	conversion := convertDraftToQuery(request, draft, defaultMaxRows)
+	cypher := strings.TrimSpace(conversion.Cypher)
+	if err := emitQueryPlan(emit, conversion); err != nil {
+		return err
+	}
 	if cypher == "" {
-		reason := firstNonEmpty(draft.Refusal, "LLM refused to draft Cypher")
+		reason := firstNonEmpty(draft.Refusal, conversion.Refusal, "LLM refused to draft Cypher")
 		return emitRefusal(emit, traceID, started, cypher, reason)
 	}
 	if err := emitProgress(emit, started, "validating_query", "Validating generated Cypher against read-only guardrails."); err != nil {
@@ -97,6 +102,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	if err != nil {
 		return err
 	}
+	validation.Warnings = append(validation.Warnings, conversionWarnings(conversion.Diagnostics)...)
 	if err := emit(Event{Name: EventCypher, Data: CypherEvent{Cypher: cypher, Validator: validation}}); err != nil {
 		return err
 	}
@@ -117,6 +123,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		return fmt.Errorf("%w: execute cypher: %w", ErrRuntimeUnavailable, err)
 	}
 	rowMaps := cypherRowsToMaps(rows)
+	sanitizeInternalRowFields(rowMaps)
 	rowsEvent := RowsEvent{
 		Rows:   rowMaps,
 		Graph:  scopedNeighborhood(ctx, s.store, request.ScopeURN),
@@ -180,6 +187,26 @@ func askParams(request AskRequest) map[string]any {
 	}
 }
 
+func emitQueryPlan(emit Emitter, conversion conversionResult) error {
+	return emit(Event{Name: EventQueryPlan, Data: QueryPlanEvent{
+		Plan:          conversion.Plan,
+		Diagnostics:   conversion.Diagnostics,
+		Source:        conversion.Source,
+		Deterministic: conversion.Deterministic,
+		Corrected:     conversion.Corrected,
+	}})
+}
+
+func conversionWarnings(diagnostics []ConversionDiagnostic) []string {
+	var warnings []string
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Level == "warn" || diagnostic.Level == "info" {
+			warnings = append(warnings, diagnostic.Code+": "+diagnostic.Message)
+		}
+	}
+	return warnings
+}
+
 func emitRefusal(emit Emitter, traceID string, started time.Time, cypher string, reason string) error {
 	reason = firstNonEmpty(reason, "Read-only Cypher validator refused the draft.")
 	if cypher == "" {
@@ -208,6 +235,48 @@ func cypherRowsToMaps(rows []ports.CypherRow) []map[string]any {
 		result = append(result, values)
 	}
 	return result
+}
+
+func sanitizeInternalRowFields(rows []map[string]any) {
+	for _, row := range rows {
+		mergeFindingAttributes(row, "finding_attributes_json_internal")
+	}
+}
+
+func mergeFindingAttributes(row map[string]any, key string) {
+	raw, ok := row[key].(string)
+	delete(row, key)
+	if !ok || strings.TrimSpace(raw) == "" {
+		return
+	}
+	var attrs map[string]any
+	if err := json.Unmarshal([]byte(raw), &attrs); err != nil {
+		return
+	}
+	for _, field := range []string{"summary", "status", "severity", "effective_severity", "risk_score"} {
+		if !rowValueEmpty(row[field]) {
+			continue
+		}
+		value, ok := attrs[field]
+		if !ok {
+			continue
+		}
+		if text := strings.TrimSpace(fmt.Sprint(value)); text != "" {
+			row[field] = text
+		}
+	}
+}
+
+func rowValueEmpty(value any) bool {
+	if value == nil {
+		return true
+	}
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed) == ""
+	default:
+		return false
+	}
 }
 
 func scopedNeighborhood(ctx context.Context, store ports.GraphQueryStore, scopeURN string) *ports.EntityNeighborhood {
@@ -292,11 +361,7 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-const graphAgentSchemaHint = `Graph shape:
-- Entity nodes use label Entity with properties tenant_id, urn, entity_type, label.
-- Relationships use label RELATION with relation and attributes_json properties.
-- Always filter at least one Entity by tenant_id: $tenant_id.
-- Prefer returning URNs and compact scalar columns.`
+var graphAgentSchemaHint = canonicalGraphOntology.PromptHint()
 
 const graphAgentGuardrail = `Rules:
 - Generate read-only Cypher only.

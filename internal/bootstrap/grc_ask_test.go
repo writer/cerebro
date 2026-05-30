@@ -55,7 +55,7 @@ LIMIT 25`,
 		t.Fatalf("content-type = %q, want text/event-stream", got)
 	}
 	events := readSSEEvents(t, resp)
-	want := []string{"progress", "rationale", "progress", "cypher", "progress", "rows", "progress", "summary", "done"}
+	want := []string{"progress", "rationale", "query_plan", "progress", "cypher", "progress", "rows", "progress", "summary", "done"}
 	if len(events) != len(want) {
 		t.Fatalf("events = %#v, want names %v", events, want)
 	}
@@ -142,9 +142,9 @@ func TestGRCAskExplainFailureReturnsServiceUnavailable(t *testing.T) {
 		t.Fatalf("status = %d, want %d with streamed error event", resp.StatusCode, http.StatusOK)
 	}
 	events := readSSEEvents(t, resp)
-	assertSSEEventNames(t, events, []string{"progress", "rationale", "progress", "error"})
-	if !strings.Contains(string(events[3].Data), "explain cypher") {
-		t.Fatalf("error event = %s, want explain failure", events[3].Data)
+	assertSSEEventNames(t, events, []string{"progress", "rationale", "query_plan", "progress", "error"})
+	if !strings.Contains(string(events[4].Data), "explain cypher") {
+		t.Fatalf("error event = %s, want explain failure", events[4].Data)
 	}
 }
 

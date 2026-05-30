@@ -30,6 +30,11 @@ func TestValidatorRejectsUnsafeCypher(t *testing.T) {
 			reason: "apoc",
 		},
 		{
+			name:   "apoc function",
+			cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN apoc.convert.fromJsonMap(e.attributes_json).source_family AS source_family LIMIT 25`,
+			reason: "APOC",
+		},
+		{
 			name:   "missing limit",
 			cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e.urn`,
 			reason: "LIMIT",
@@ -140,6 +145,26 @@ RETURN b.urn AS urn LIMIT 25`,
 	}
 }
 
+func TestValidatorPreservesCodeForOversizedUnionLimit(t *testing.T) {
+	validator := NewValidator(nil, ValidatorOptions{})
+	result, _, err := validator.validate(context.Background(), `MATCH (e:Entity {tenant_id: $tenant_id})
+RETURN e.urn AS urn
+LIMIT 1000
+UNION
+MATCH (e:Entity {tenant_id: $tenant_id})
+RETURN e.urn AS urn
+LIMIT 25`, map[string]any{"tenant_id": "example"})
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if result.OK {
+		t.Fatalf("Validate() ok = true, want false")
+	}
+	if result.Code != "limit_exceeded" {
+		t.Fatalf("code = %q, want limit_exceeded; result = %#v", result.Code, result)
+	}
+}
+
 func FuzzValidatorMaliciousCorpus(f *testing.F) {
 	for _, cypher := range []string{
 		`MATCH (a:Entity {tenant_id:$tenant_id}) WITH 'x //' AS c CREATE (b:Entity) RETURN b LIMIT 25`,
@@ -178,6 +203,22 @@ LIMIT 25`, map[string]any{"tenant_id": "example"})
 	}
 	if len(store.requests) != 1 || !strings.HasPrefix(store.requests[0].Query, "MATCH") {
 		t.Fatalf("EXPLAIN requests = %#v", store.requests)
+	}
+}
+
+func TestValidatorAcceptsAPOCVariablePropertyAccess(t *testing.T) {
+	validator := NewValidator(nil, ValidatorOptions{})
+	result, limit, err := validator.validate(context.Background(), `MATCH (apoc:Entity {tenant_id: $tenant_id})
+RETURN apoc.urn AS urn
+LIMIT 25`, map[string]any{"tenant_id": "example"})
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if !result.OK {
+		t.Fatalf("Validate() = %#v, want ok", result)
+	}
+	if limit != 25 {
+		t.Fatalf("limit = %d, want 25", limit)
 	}
 }
 

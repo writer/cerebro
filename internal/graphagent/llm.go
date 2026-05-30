@@ -25,9 +25,10 @@ type DraftRequest struct {
 }
 
 type DraftResponse struct {
-	Rationale string `json:"rationale"`
-	Cypher    string `json:"cypher,omitempty"`
-	Refusal   string `json:"refusal,omitempty"`
+	Rationale string        `json:"rationale"`
+	Plan      *AskQueryPlan `json:"plan,omitempty"`
+	Cypher    string        `json:"cypher,omitempty"`
+	Refusal   string        `json:"refusal,omitempty"`
 }
 
 type SummarizeRequest struct {
