@@ -65,15 +65,42 @@ type Citation struct {
 	Span [2]int `json:"span"`
 }
 
+type CitationValidation struct {
+	OK                 bool     `json:"ok"`
+	Warnings           []string `json:"warnings,omitempty"`
+	RowURNCount        int      `json:"row_urn_count"`
+	ReferencedURNCount int      `json:"referenced_urn_count"`
+}
+
+type UnsupportedQuery struct {
+	Code              string   `json:"code"`
+	Reason            string   `json:"reason"`
+	SupportedIntents  []string `json:"supported_intents"`
+	SuggestedRewrites []string `json:"suggested_rewrites"`
+	TraceID           string   `json:"trace_id"`
+}
+
 type SummaryEvent struct {
-	Markdown  string     `json:"markdown"`
-	Citations []Citation `json:"citations"`
+	Markdown           string              `json:"markdown"`
+	Citations          []Citation          `json:"citations"`
+	CitationValidation *CitationValidation `json:"citation_validation,omitempty"`
+	UnsupportedQuery   *UnsupportedQuery   `json:"unsupported_query,omitempty"`
+}
+
+type StageTimings struct {
+	DraftMS              int64 `json:"draft_ms,omitempty"`
+	ConversionMS         int64 `json:"conversion_ms,omitempty"`
+	ValidateMS           int64 `json:"validate_ms,omitempty"`
+	ExecuteMS            int64 `json:"execute_ms,omitempty"`
+	SummarizeMS          int64 `json:"summarize_ms,omitempty"`
+	CitationValidationMS int64 `json:"citation_validation_ms,omitempty"`
 }
 
 type DoneEvent struct {
-	TraceID       string `json:"trace_id"`
-	TotalMS       int64  `json:"total_ms"`
-	CypherRefused bool   `json:"cypher_refused"`
+	TraceID       string       `json:"trace_id"`
+	TotalMS       int64        `json:"total_ms"`
+	CypherRefused bool         `json:"cypher_refused"`
+	Timings       StageTimings `json:"timings,omitempty"`
 }
 
 type ErrorEvent struct {

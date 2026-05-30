@@ -18,6 +18,24 @@ func TestOntologyCanonicalizesAliases(t *testing.T) {
 	}
 }
 
+func TestOntologyAliasesRoundTripToCanonicalValues(t *testing.T) {
+	for _, entity := range canonicalGraphOntology.Entities {
+		for _, alias := range append([]string{entity.Type}, entity.Aliases...) {
+			if got := canonicalEntityType(alias); got != entity.Type {
+				t.Fatalf("canonicalEntityType(%q) = %q, want %q", alias, got, entity.Type)
+			}
+		}
+	}
+	for _, relation := range canonicalGraphOntology.Relations {
+		for _, alias := range append([]string{relation.Relation}, relation.Aliases...) {
+			got, ok := canonicalRelation(alias)
+			if !ok || got != relation.Relation {
+				t.Fatalf("canonicalRelation(%q) = %q, %v; want %q, true", alias, got, ok, relation.Relation)
+			}
+		}
+	}
+}
+
 func TestOntologyPromptUsesProjectedIdentityShape(t *testing.T) {
 	hint := canonicalGraphOntology.PromptHint()
 	for _, want := range []string{
@@ -363,6 +381,62 @@ func TestDeterministicTemplatesUseProjectedGraphContract(t *testing.T) {
 	}
 }
 
+func TestOntologyMutationDiagnosticsCatchNonCanonicalDrafts(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		cypher string
+		want   string
+	}{
+		{
+			name:   "domain finding label",
+			cypher: "MATCH (f:Finding {tenant_id: $tenant_id}) RETURN f LIMIT 10",
+			want:   "non_canonical_entity_label",
+		},
+		{
+			name:   "uppercase relationship alias",
+			cypher: "MATCH (f:Entity)-[:BELONGS_TO_SOURCE]->(s:Entity) RETURN f LIMIT 10",
+			want:   "relation_alias_canonicalized",
+		},
+		{
+			name:   "apoc call",
+			cypher: "MATCH (f:Entity) RETURN apoc.convert.fromJsonMap(f.attributes_json) LIMIT 10",
+			want:   "apoc_not_allowed",
+		},
+		{
+			name:   "connector label",
+			cypher: "MATCH (c:connector {tenant_id: $tenant_id}) RETURN c LIMIT 10",
+			want:   "non_canonical_entity_label",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if !containsDiagnosticCode(ontologyDiagnostics(tt.cypher), tt.want) {
+				t.Fatalf("ontologyDiagnostics(%q) missing %q", tt.cypher, tt.want)
+			}
+		})
+	}
+}
+
+func TestUnsupportedPlanOnlyMutationsAreRefused(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		plan AskQueryPlan
+	}{
+		{name: "unsupported top risk severity filter", plan: AskQueryPlan{Intent: IntentTopRiskFindings, Filters: map[string]string{"severity": "HIGH"}}},
+		{name: "unsupported source runtime filter", plan: AskQueryPlan{Intent: IntentConnectorHealth, Filters: map[string]string{"entity_type": "runtime"}}},
+		{name: "unsupported identity bridge group", plan: AskQueryPlan{Intent: IntentIdentityBridge, GroupBy: "email"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			result := convertDraftToQuery(AskRequest{TenantID: "writer", Question: tt.name}, &DraftResponse{Plan: &tt.plan}, 100)
+			if result.Cypher != "" || result.Source != "conversion_refusal" {
+				t.Fatalf("conversion result = %#v, want conversion refusal", result)
+			}
+			if !containsDiagnosticCode(result.Diagnostics, "query_plan_conversion_failed") {
+				t.Fatalf("diagnostics = %#v, want query_plan_conversion_failed", result.Diagnostics)
+			}
+		})
+	}
+}
+
 func TestOntologyDiagnosticsTreatsAPOCVariableAsSafe(t *testing.T) {
 	diagnostics := ontologyDiagnostics(`MATCH (apoc:Entity {tenant_id: $tenant_id})
 RETURN apoc.urn AS urn
@@ -372,6 +446,15 @@ LIMIT 25`)
 			t.Fatalf("ontologyDiagnostics() emitted APOC warning for variable property access: %#v", diagnostics)
 		}
 	}
+}
+
+func containsDiagnosticCode(diagnostics []ConversionDiagnostic, code string) bool {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Code == code {
+			return true
+		}
+	}
+	return false
 }
 
 func TestConvertDraftToQueryInjectsFallbackLimit(t *testing.T) {
