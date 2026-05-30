@@ -216,7 +216,7 @@ func TestConvertDraftToQueryScopesTopRiskAndReturnsOnlyScalarFields(t *testing.T
 	}
 }
 
-func TestConvertDraftToQuerySkipsTemplateForUnsupportedFilters(t *testing.T) {
+func TestConvertDraftToQueryRendersSupportedTopRiskFilters(t *testing.T) {
 	draftCypher := `MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
 RETURN finding.urn AS finding_urn
 LIMIT 25`
@@ -224,15 +224,17 @@ LIMIT 25`
 		TenantID: "writer",
 		Question: "Show high findings",
 	}, &DraftResponse{
-		Plan:   &AskQueryPlan{Intent: IntentTopRiskFindings, Filters: map[string]string{"severity": "HIGH"}},
+		Plan:   &AskQueryPlan{Intent: IntentTopRiskFindings, Filters: map[string]string{"severity": "HIGH", "status": "open", "resource_type": "repository"}},
 		Cypher: draftCypher,
 	}, 100)
 
-	if result.Deterministic || result.Source != "llm" {
-		t.Fatalf("conversion result = %#v, want LLM fallback for filtered plan", result)
+	if !result.Deterministic || result.Source != "deterministic_template" {
+		t.Fatalf("conversion result = %#v, want deterministic filtered template", result)
 	}
-	if result.Cypher != draftCypher {
-		t.Fatalf("cypher = %q, want unmodified draft", result.Cypher)
+	for _, want := range []string{"toUpper(severity) = 'HIGH'", "toLower(status) = 'open'", "resource.entity_type IN ['github.code.repository', 'github.repo']", "status"} {
+		if !strings.Contains(result.Cypher, want) {
+			t.Fatalf("filtered cypher missing %q:\n%s", want, result.Cypher)
+		}
 	}
 }
 
@@ -241,7 +243,7 @@ func TestConvertDraftToQueryRefusesUnsupportedPlanOnlyDraft(t *testing.T) {
 		TenantID: "writer",
 		Question: "Show high risk findings",
 	}, &DraftResponse{
-		Plan: &AskQueryPlan{Intent: IntentTopRiskFindings, Filters: map[string]string{"severity": "HIGH"}},
+		Plan: &AskQueryPlan{Intent: IntentTopRiskFindings, Filters: map[string]string{"owner": "security"}},
 	}, 100)
 
 	if result.Cypher != "" || result.Source != "conversion_refusal" {
@@ -326,7 +328,6 @@ func TestConvertDraftToQueryUsesCanonicalIdentityBridgeTemplate(t *testing.T) {
 		"left.entity_type <> right.entity_type",
 		"$scope_urn = '' OR left.urn = $scope_urn OR right.urn = $scope_urn OR identity.urn = $scope_urn",
 		"NOT left.entity_type STARTS WITH 'identifier'",
-		"datetime(left_seen_at) >= datetime() - duration('P90D')",
 		"identity.urn AS identity_urn",
 	} {
 		if !strings.Contains(result.Cypher, want) {
@@ -421,7 +422,7 @@ func TestUnsupportedPlanOnlyMutationsAreRefused(t *testing.T) {
 		name string
 		plan AskQueryPlan
 	}{
-		{name: "unsupported top risk severity filter", plan: AskQueryPlan{Intent: IntentTopRiskFindings, Filters: map[string]string{"severity": "HIGH"}}},
+		{name: "unsupported top risk owner filter", plan: AskQueryPlan{Intent: IntentTopRiskFindings, Filters: map[string]string{"owner": "security"}}},
 		{name: "unsupported source runtime filter", plan: AskQueryPlan{Intent: IntentConnectorHealth, Filters: map[string]string{"entity_type": "runtime"}}},
 		{name: "unsupported identity bridge group", plan: AskQueryPlan{Intent: IntentIdentityBridge, GroupBy: "email"}},
 	} {

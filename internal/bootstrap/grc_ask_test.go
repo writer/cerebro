@@ -77,7 +77,7 @@ func TestGRCAskTelemetryIncludesQueryPlanDiagnostics(t *testing.T) {
 		GraphStore: &stubGraphStore{},
 		GraphAgentLLM: &graphagent.StubLLMClient{DraftResponse: &graphagent.DraftResponse{
 			Rationale: "Planning filtered high-risk findings.",
-			Plan:      &graphagent.AskQueryPlan{Intent: graphagent.IntentTopRiskFindings, Filters: map[string]string{"severity": "HIGH"}},
+			Plan:      &graphagent.AskQueryPlan{Intent: graphagent.IntentTopRiskFindings, Filters: map[string]string{"owner": "security"}},
 		}},
 	}, nil)
 	server := httptest.NewServer(app.Handler())
@@ -85,7 +85,7 @@ func TestGRCAskTelemetryIncludesQueryPlanDiagnostics(t *testing.T) {
 
 	var events []sseRecord
 	stderr := captureBootstrapStderr(t, func() {
-		resp, err := server.Client().Post(server.URL+"/grc/ask", "application/json", strings.NewReader(`{"tenant_id":"example","question":"show HIGH risk findings"}`))
+		resp, err := server.Client().Post(server.URL+"/grc/ask", "application/json", strings.NewReader(`{"tenant_id":"example","question":"show security-owned risk findings"}`))
 		if err != nil {
 			t.Fatalf("POST /grc/ask error = %v", err)
 		}

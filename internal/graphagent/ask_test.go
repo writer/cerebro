@@ -120,12 +120,12 @@ func TestServiceRefusesUnsupportedPlanOnlyDraftAsConversionFailure(t *testing.T)
 	store := &askStore{}
 	llm := &StubLLMClient{DraftResponse: &DraftResponse{
 		Rationale: "Planning filtered high-risk findings.",
-		Plan:      &AskQueryPlan{Intent: IntentTopRiskFindings, Filters: map[string]string{"severity": "HIGH"}},
+		Plan:      &AskQueryPlan{Intent: IntentTopRiskFindings, Filters: map[string]string{"owner": "security"}},
 	}}
 	service := NewService(store, llm, ValidatorOptions{})
 
 	var events []Event
-	err := service.Stream(context.Background(), AskRequest{TenantID: "example", Question: "show HIGH risk findings"}, func(event Event) error {
+	err := service.Stream(context.Background(), AskRequest{TenantID: "example", Question: "show security-owned risk findings"}, func(event Event) error {
 		events = append(events, event)
 		return nil
 	})
