@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,7 +21,10 @@ var (
 	ErrInvalidRequest     = errors.New("invalid graph agent request")
 )
 
-const maxInternalAttributeValueBytes = 4096
+const (
+	maxInternalAttributeValueBytes = 4096
+	maxInternalAttributesJSONBytes = 64 << 10
+)
 
 var summaryURNPattern = regexp.MustCompile(`urn:cerebro:[A-Za-z0-9_:@./#%+-]+`)
 
@@ -109,7 +113,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		return err
 	}
 	validateStarted := time.Now()
-	validation, rowLimit, err := s.validator.validate(ctx, cypher, params)
+	validation, rowLimit, err := s.validateConversion(ctx, conversion, cypher, params)
 	if err != nil {
 		return err
 	}
@@ -135,7 +139,11 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		return fmt.Errorf("%w: execute cypher: %w", ErrRuntimeUnavailable, err)
 	}
 	timings.ExecuteMS = time.Since(execStarted).Milliseconds()
+	if postProcessingCandidateLimitHit(conversion.Plan, rows, rowLimit) {
+		return emitRefusal(emit, traceID, started, cypher, "The deterministic Ask query matched more graph rows than can be safely post-processed without risking an incomplete answer. Narrow the scope or ask for a more specific subset.", timings)
+	}
 	rowMaps := cypherRowsToMaps(rows)
+	rowMaps = postProcessAskRows(conversion.Plan, rowMaps)
 	sanitizeInternalRowFields(rowMaps)
 	rowsEvent := RowsEvent{
 		Rows:   rowMaps,
@@ -175,6 +183,16 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		return err
 	}
 	return emit(Event{Name: EventDone, Data: DoneEvent{TraceID: traceID, TotalMS: time.Since(started).Milliseconds(), Timings: timings}})
+}
+
+func (s *Service) validateConversion(ctx context.Context, conversion conversionResult, cypher string, params map[string]any) (ValidatorResult, int, error) {
+	validator := s.validator
+	if usesPostProcessingCandidates(conversion.Plan) && validator != nil && validator.options.MaxRows < postProcessingCandidateRowLimit {
+		options := validator.options
+		options.MaxRows = postProcessingCandidateRowLimit
+		validator = NewValidator(validator.store, options)
+	}
+	return validator.validate(ctx, cypher, params)
 }
 
 func emitProgress(emit Emitter, started time.Time, stage string, message string) error {
@@ -260,7 +278,287 @@ func cypherRowsToMaps(rows []ports.CypherRow) []map[string]any {
 func sanitizeInternalRowFields(rows []map[string]any) {
 	for _, row := range rows {
 		mergeInternalAttributes(row, "finding_attributes_json_internal", []string{"summary", "status", "severity", "effective_severity", "risk_score"})
+		mergeInternalAttributes(row, "relation_attributes_json_internal", []string{"severity", "effective_severity", "risk_score"})
 		mergeInternalAttributes(row, "source_attributes_json_internal", []string{"status", "health", "last_sync_at", "last_sync_minutes", "last_success_at", "last_error"})
+	}
+}
+
+func postProcessAskRows(plan AskQueryPlan, rows []map[string]any) []map[string]any {
+	switch plan.Intent {
+	case IntentAggregateFindingsBySource:
+		return postProcessFindingSourceRows(plan, rows)
+	case IntentTopRiskFindings:
+		return postProcessTopRiskFindingRows(plan, rows)
+	default:
+		return rows
+	}
+}
+
+func usesPostProcessingCandidates(plan AskQueryPlan) bool {
+	return plan.Intent == IntentAggregateFindingsBySource || plan.Intent == IntentTopRiskFindings
+}
+
+func postProcessingCandidateLimitHit(plan AskQueryPlan, rows []ports.CypherRow, rowLimit int) bool {
+	return usesPostProcessingCandidates(plan) && rowLimit >= postProcessingCandidateRowLimit && len(rows) >= rowLimit
+}
+
+func postProcessFindingSourceRows(plan AskQueryPlan, rows []map[string]any) []map[string]any {
+	counts := map[string]int64{}
+	seenFindings := map[string]struct{}{}
+	for index, row := range rows {
+		findingURN := stringRowValue(row, "finding_urn")
+		if findingURN == "" {
+			findingURN = fmt.Sprintf("row:%d", index)
+		}
+		if _, seen := seenFindings[findingURN]; seen {
+			continue
+		}
+		seenFindings[findingURN] = struct{}{}
+		attrs := decodeInternalAttributes(row["finding_attributes_json_internal"])
+		sourceFamily := firstAttributeString(attrs, "source_family", "sourceFamily", "source_system")
+		if sourceFamily == "" {
+			sourceFamily = stringRowValue(row, "source_id")
+		}
+		if sourceFamily == "" {
+			sourceFamily = "Unknown"
+		}
+		counts[sourceFamily]++
+	}
+	sourceFamilies := make([]string, 0, len(counts))
+	for sourceFamily := range counts {
+		sourceFamilies = append(sourceFamilies, sourceFamily)
+	}
+	sort.Slice(sourceFamilies, func(i, j int) bool {
+		left, right := sourceFamilies[i], sourceFamilies[j]
+		if counts[left] != counts[right] {
+			return counts[left] > counts[right]
+		}
+		return left < right
+	})
+	limit := postProcessedRowLimit(plan)
+	if plan.Intent == IntentAggregateFindingsBySource && limit > 10 {
+		limit = 10
+	}
+	if len(sourceFamilies) < limit {
+		limit = len(sourceFamilies)
+	}
+	result := make([]map[string]any, 0, limit)
+	for _, sourceFamily := range sourceFamilies[:limit] {
+		result = append(result, map[string]any{
+			"source_family": sourceFamily,
+			"finding_count": counts[sourceFamily],
+		})
+	}
+	return result
+}
+
+type topRiskFindingRow struct {
+	FindingURN     string
+	FindingLabel   string
+	ResourceURNs   []string
+	ResourceLabels []string
+	riskScore      int
+	severityRank   int
+	seenResources  map[string]struct{}
+}
+
+func postProcessTopRiskFindingRows(plan AskQueryPlan, rows []map[string]any) []map[string]any {
+	byFinding := map[string]*topRiskFindingRow{}
+	for index, row := range rows {
+		findingURN := stringRowValue(row, "finding_urn")
+		if findingURN == "" {
+			findingURN = fmt.Sprintf("row:%d", index)
+		}
+		relationAttrs := decodeInternalAttributes(row["relation_attributes_json_internal"])
+		findingAttrs := decodeInternalAttributes(row["finding_attributes_json_internal"])
+		severity := firstNonEmpty(
+			firstAttributeString(relationAttrs, "effective_severity", "severity"),
+			firstAttributeString(findingAttrs, "effective_severity", "severity"),
+		)
+		status := firstNonEmpty(
+			firstAttributeString(relationAttrs, "status"),
+			firstAttributeString(findingAttrs, "status"),
+		)
+		if !matchesTopRiskFilters(plan, row, severity, status) {
+			continue
+		}
+		current := byFinding[findingURN]
+		if current == nil {
+			current = &topRiskFindingRow{
+				FindingURN:    findingURN,
+				FindingLabel:  firstNonEmpty(stringRowValue(row, "finding_label"), findingURN),
+				seenResources: map[string]struct{}{},
+			}
+			byFinding[findingURN] = current
+		}
+		resourceURN := stringRowValue(row, "resource_urn")
+		if resourceURN != "" {
+			if _, seen := current.seenResources[resourceURN]; !seen {
+				current.seenResources[resourceURN] = struct{}{}
+				current.ResourceURNs = append(current.ResourceURNs, resourceURN)
+				current.ResourceLabels = append(current.ResourceLabels, firstNonEmpty(stringRowValue(row, "resource_label"), resourceURN))
+			}
+		}
+		riskScore := firstAttributeInt(relationAttrs, findingAttrs, "risk_score")
+		if riskScore > current.riskScore {
+			current.riskScore = riskScore
+		}
+		if rank := severityRank(severity); rank > current.severityRank {
+			current.severityRank = rank
+		}
+	}
+	findings := make([]*topRiskFindingRow, 0, len(byFinding))
+	for _, finding := range byFinding {
+		findings = append(findings, finding)
+	}
+	sort.Slice(findings, func(i, j int) bool {
+		left, right := findings[i], findings[j]
+		if left.riskScore != right.riskScore {
+			return left.riskScore > right.riskScore
+		}
+		if left.severityRank != right.severityRank {
+			return left.severityRank > right.severityRank
+		}
+		return left.FindingURN < right.FindingURN
+	})
+	limit := postProcessedRowLimit(plan)
+	if len(findings) < limit {
+		limit = len(findings)
+	}
+	result := make([]map[string]any, 0, limit)
+	for _, finding := range findings[:limit] {
+		result = append(result, map[string]any{
+			"finding_urn":     finding.FindingURN,
+			"finding_label":   finding.FindingLabel,
+			"resource_urns":   append([]string(nil), finding.ResourceURNs...),
+			"resource_labels": append([]string(nil), finding.ResourceLabels...),
+			"risk_score":      finding.riskScore,
+			"severity":        severityName(finding.severityRank),
+		})
+	}
+	return result
+}
+
+func matchesTopRiskFilters(plan AskQueryPlan, row map[string]any, severity string, status string) bool {
+	if want := planFilterValue(plan.Filters, "severity"); want != "" && !strings.EqualFold(severity, want) {
+		return false
+	}
+	if want := planFilterValue(plan.Filters, "status"); want != "" && !strings.EqualFold(status, want) {
+		return false
+	}
+	if want := firstNonEmpty(planFilterValue(plan.Filters, "resource_type"), planFilterValue(plan.Filters, "entity_type")); want != "" {
+		return resourceTypeMatchesFilter(stringRowValue(row, "resource_type"), stringRowValue(row, "resource_urn"), want)
+	}
+	return true
+}
+
+func resourceTypeMatchesFilter(resourceType string, resourceURN string, filter string) bool {
+	canonical := canonicalEntityType(filter)
+	if canonical == "github.code.repository" || canonical == "github.repo" {
+		return resourceType == "github.code.repository" || resourceType == "github.repo" || strings.Contains(resourceURN, ":repo:") || strings.Contains(resourceURN, ":github_repo:")
+	}
+	return strings.EqualFold(resourceType, canonical)
+}
+
+func postProcessedRowLimit(plan AskQueryPlan) int {
+	return boundedLimit(plan.Limit, defaultMaxRows)
+}
+
+func decodeInternalAttributes(value any) map[string]any {
+	raw, ok := value.(string)
+	if !ok {
+		return nil
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" || len(raw) > maxInternalAttributesJSONBytes {
+		return nil
+	}
+	var attrs map[string]any
+	if err := json.Unmarshal([]byte(raw), &attrs); err != nil {
+		return nil
+	}
+	return attrs
+}
+
+func firstAttributeString(attrs map[string]any, fields ...string) string {
+	for _, field := range fields {
+		value, ok := attrs[field]
+		if !ok {
+			continue
+		}
+		if text, ok := internalAttributeText(value); ok {
+			return text
+		}
+	}
+	return ""
+}
+
+func firstAttributeInt(primary map[string]any, fallback map[string]any, field string) int {
+	if value, ok := attributeInt(primary[field]); ok {
+		return value
+	}
+	if value, ok := attributeInt(fallback[field]); ok {
+		return value
+	}
+	return 0
+}
+
+func attributeInt(value any) (int, bool) {
+	switch typed := value.(type) {
+	case float64:
+		return int(typed), true
+	case int:
+		return typed, true
+	case int64:
+		return int(typed), true
+	case json.Number:
+		parsed, err := typed.Int64()
+		if err == nil {
+			return int(parsed), true
+		}
+	case string:
+		parsed, err := strconv.Atoi(strings.TrimSpace(typed))
+		if err == nil {
+			return parsed, true
+		}
+	}
+	return 0, false
+}
+
+func stringRowValue(row map[string]any, key string) string {
+	if text, ok := internalAttributeText(row[key]); ok {
+		return text
+	}
+	return ""
+}
+
+func severityRank(severity string) int {
+	switch strings.ToUpper(strings.TrimSpace(severity)) {
+	case "CRITICAL":
+		return 4
+	case "HIGH":
+		return 3
+	case "MEDIUM":
+		return 2
+	case "LOW":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func severityName(rank int) string {
+	switch rank {
+	case 4:
+		return "CRITICAL"
+	case 3:
+		return "HIGH"
+	case 2:
+		return "MEDIUM"
+	case 1:
+		return "LOW"
+	default:
+		return ""
 	}
 }
 
@@ -293,7 +591,7 @@ func internalAttributeText(value any) (string, bool) {
 	switch typed := value.(type) {
 	case string:
 		text = typed
-	case float64, bool, json.Number:
+	case float64, int, int64, bool, json.Number:
 		text = fmt.Sprint(typed)
 	default:
 		return "", false
