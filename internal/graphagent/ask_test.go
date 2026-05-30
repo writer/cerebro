@@ -3,6 +3,7 @@ package graphagent
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -300,6 +301,49 @@ func TestServicePostProcessesTopRiskFindingRows(t *testing.T) {
 	}
 	if _, exists := first["relation_attributes_json_internal"]; exists {
 		t.Fatalf("internal relation attributes leaked: %#v", first)
+	}
+}
+
+func TestServiceRefusesSaturatedPostProcessingCandidateWindow(t *testing.T) {
+	rows := make([]ports.CypherRow, 0, postProcessingCandidateRowLimit)
+	for i := 0; i < postProcessingCandidateRowLimit; i++ {
+		rows = append(rows, ports.CypherRow{Values: map[string]any{
+			"finding_urn":                      "urn:cerebro:writer:finding:" + strconv.Itoa(i),
+			"source_id":                        "github",
+			"finding_attributes_json_internal": `{"source_family":"github"}`,
+		}})
+	}
+	store := &askStore{rows: rows}
+	llm := &StubLLMClient{
+		DraftResponse: &DraftResponse{
+			Rationale: "Counting findings by source family.",
+			Plan:      &AskQueryPlan{Intent: IntentAggregateFindingsBySource, Limit: 10},
+		},
+	}
+	service := NewService(store, llm, ValidatorOptions{})
+
+	var events []Event
+	err := service.Stream(context.Background(), AskRequest{
+		TenantID: "writer",
+		Question: "top finding sources",
+	}, func(event Event) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	assertEventNames(t, events, []string{EventProgress, EventRationale, EventQueryPlan, EventProgress, EventCypher, EventProgress, EventSummary, EventDone})
+	if len(store.requests) != 1 || store.requests[0].RowLimit != postProcessingCandidateRowLimit {
+		t.Fatalf("store requests = %#v, want candidate row limit", store.requests)
+	}
+	summaryEvent := events[6].Data.(SummaryEvent)
+	if !strings.Contains(summaryEvent.Markdown, "more graph rows than can be safely post-processed") {
+		t.Fatalf("summary = %q, want saturated candidate refusal", summaryEvent.Markdown)
+	}
+	done := events[7].Data.(DoneEvent)
+	if !done.CypherRefused {
+		t.Fatalf("done.CypherRefused = false, want true")
 	}
 }
 

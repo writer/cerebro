@@ -104,7 +104,7 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	if err := emitProgress(emit, started, "validating_query", "Validating generated Cypher against read-only guardrails."); err != nil {
 		return err
 	}
-	validation, rowLimit, err := s.validator.validate(ctx, cypher, params)
+	validation, rowLimit, err := s.validateConversion(ctx, conversion, cypher, params)
 	if err != nil {
 		return err
 	}
@@ -127,6 +127,9 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	})
 	if err != nil {
 		return fmt.Errorf("%w: execute cypher: %w", ErrRuntimeUnavailable, err)
+	}
+	if postProcessingCandidateLimitHit(conversion.Plan, rows, rowLimit) {
+		return emitRefusal(emit, traceID, started, cypher, "The deterministic Ask query matched more graph rows than can be safely post-processed without risking an incomplete answer. Narrow the scope or ask for a more specific subset.")
 	}
 	rowMaps := cypherRowsToMaps(rows)
 	rowMaps = postProcessAskRows(conversion.Plan, rowMaps)
@@ -163,6 +166,16 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		return err
 	}
 	return emit(Event{Name: EventDone, Data: DoneEvent{TraceID: traceID, TotalMS: time.Since(started).Milliseconds()}})
+}
+
+func (s *Service) validateConversion(ctx context.Context, conversion conversionResult, cypher string, params map[string]any) (ValidatorResult, int, error) {
+	validator := s.validator
+	if usesPostProcessingCandidates(conversion.Plan) && validator != nil && validator.options.MaxRows < postProcessingCandidateRowLimit {
+		options := validator.options
+		options.MaxRows = postProcessingCandidateRowLimit
+		validator = NewValidator(validator.store, options)
+	}
+	return validator.validate(ctx, cypher, params)
 }
 
 func emitProgress(emit Emitter, started time.Time, stage string, message string) error {
@@ -261,6 +274,14 @@ func postProcessAskRows(plan AskQueryPlan, rows []map[string]any) []map[string]a
 	default:
 		return rows
 	}
+}
+
+func usesPostProcessingCandidates(plan AskQueryPlan) bool {
+	return plan.Intent == IntentAggregateFindingsBySource || plan.Intent == IntentTopRiskFindings
+}
+
+func postProcessingCandidateLimitHit(plan AskQueryPlan, rows []ports.CypherRow, rowLimit int) bool {
+	return usesPostProcessingCandidates(plan) && rowLimit >= postProcessingCandidateRowLimit && len(rows) >= rowLimit
 }
 
 func postProcessFindingSourceRows(plan AskQueryPlan, rows []map[string]any) []map[string]any {

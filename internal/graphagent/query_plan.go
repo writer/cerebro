@@ -14,6 +14,8 @@ const (
 	IntentExplainFinding            = "explain_finding"
 	IntentIdentityBridge            = "identity_bridge"
 	IntentConnectorHealth           = "connector_health"
+
+	postProcessingCandidateRowLimit = 5000
 )
 
 type AskQueryPlan struct {
@@ -266,7 +268,7 @@ RETURN f.urn AS finding_urn,
        f.source_id AS source_id,
        coalesce(f.attributes_json, '') AS finding_attributes_json_internal
 ORDER BY finding_urn
-LIMIT %d`, maxRows), true
+LIMIT %d`, postProcessingCandidateRowLimit), true
 	case IntentTopRiskFindings:
 		return fmt.Sprintf(`MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
 WHERE $scope_urn = '' OR resource.urn = $scope_urn OR finding.urn = $scope_urn
@@ -277,7 +279,7 @@ RETURN finding.urn AS finding_urn,
        coalesce(r.attributes_json, '') AS relation_attributes_json_internal,
        coalesce(finding.attributes_json, '') AS finding_attributes_json_internal
 ORDER BY finding_urn, resource_urn
-LIMIT %d`, maxRows), true
+LIMIT %d`, postProcessingCandidateRowLimit), true
 	case IntentExplainFinding:
 		return fmt.Sprintf(`MATCH (finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
 WHERE $scope_urn = ''
