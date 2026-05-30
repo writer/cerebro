@@ -14,34 +14,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
-      - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: Run fast Droid review preflight
-        env:
-          DROID_REVIEW_BASE: ${{ github.event.pull_request.base.sha }}
-          DROID_REVIEW_HEAD: ${{ github.event.pull_request.head.sha }}
-        run: make droid-review-preflight
-
-  droid-review:
-    needs: droid-review-preflight
-    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
       pull-requests: write
       issues: write
-      id-token: write
-      actions: read
+    outputs:
+      run_droid_review: ${{ steps.preflight.outputs.run_droid_review }}
+      review_model: ${{ steps.preflight.outputs.review_model }}
+      review_reason: ${{ steps.preflight.outputs.review_reason }}
     steps:
-      - name: Supersede previous Droid security summary
+      - name: Supersede previous Droid comments
         if: github.event.action == 'synchronize'
         shell: bash
         env:
@@ -54,11 +34,15 @@ jobs:
           import os
           import urllib.request
 
-          marker = "## Security Review Summary"
-          replacement = "## Superseded Security Review Summary"
           repository = os.environ["GITHUB_REPOSITORY"]
           token = os.environ["GH_TOKEN"]
           pr_number = os.environ["PR_NUMBER"]
+
+          replacements = [
+              ("## Security Review Summary", "## Superseded Security Review Summary"),
+              ("**Droid encountered an error**", "**Superseded Droid error**"),
+              ("Droid is reviewing code and running a security check", "Superseded Droid review in progress"),
+          ]
 
           def request_json(method, path, payload=None):
               data = None if payload is None else json.dumps(payload).encode("utf-8")
@@ -87,21 +71,64 @@ jobs:
               for comment in comments:
                   user = comment.get("user") or {}
                   login = (user.get("login") or "").lower()
-                  user_type = (user.get("type") or "").lower()
+                  if login not in {"factory-droid", "factory-droid[bot]"}:
+                      continue
                   body = comment.get("body") or ""
-                  if (
-                      login == "factory-droid[bot]"
-                      and user_type == "bot"
-                      and marker in body
-                  ):
+                  updated = body
+                  for marker, replacement in replacements:
+                      if marker in updated:
+                          updated = updated.replace(marker, replacement, 1)
+                  if updated != body and "Superseded by a newer commit." not in updated:
+                      updated = updated.rstrip() + "\n\n_Superseded by a newer commit._"
+                  if updated != body:
                       request_json(
                           "PATCH",
                           f"/repos/{repository}/issues/comments/{comment['id']}",
-                          {"body": body.replace(marker, replacement, 1)},
+                          {"body": updated},
                       )
               page += 1
           PY
 
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Run fast Droid review preflight
+        id: preflight
+        shell: bash
+        env:
+          DROID_REVIEW_BASE: ${{ github.event.pull_request.base.sha }}
+          DROID_REVIEW_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set +e
+          started="$(date +%s)"
+          make droid-review-preflight
+          status="$?"
+          duration="$(( $(date +%s) - started ))"
+          {
+            echo "### Droid Review Preflight"
+            echo
+            echo "- Duration: ${duration}s"
+            echo "- Status: $([ "${status}" -eq 0 ] && echo success || echo failure)"
+          } >> "${GITHUB_STEP_SUMMARY}"
+          exit "${status}"
+
+  droid-review:
+    needs: droid-review-preflight
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository && needs.droid-review-preflight.outputs.run_droid_review == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -114,6 +141,6 @@ jobs:
           automatic_security_review: true
           # Fast deterministic preflight runs first; use Opus for the actual
           # bug-finding review so Droid does not fall back to stale depth presets.
-          review_model: claude-opus-4-8
+          review_model: ${{ needs.droid-review-preflight.outputs.review_model || 'claude-opus-4-8' }}
           security_model: gpt-5.4
           allowed_bots: dependabot

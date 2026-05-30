@@ -9,9 +9,28 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/writer/cerebro/tools/droidreview/bodyread"
 )
+
+const opusBugReviewModel = "claude-opus-4-8"
+
+type preflightResult struct {
+	ChangedFiles   []string
+	RunDroidReview bool
+	ReviewModel    string
+	ReviewReason   string
+	Findings       []checkFinding
+	Checks         []string
+}
+
+type checkFinding struct {
+	Rule    string
+	File    string
+	Line    int
+	Message string
+}
 
 func main() {
 	var base string
@@ -22,18 +41,28 @@ func main() {
 	flag.StringVar(&repo, "repo", ".", "repository root")
 	flag.Parse()
 
-	if err := run(base, head, repo); err != nil {
+	started := time.Now()
+	result, err := run(base, head, repo)
+	writeGitHubMetadata(result, time.Since(started), err)
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run(base, head, repo string) error {
+func run(base, head, repo string) (preflightResult, error) {
 	files, err := changedFiles(base, head, repo)
 	if err != nil {
-		return err
+		return preflightResult{RunDroidReview: true, ReviewModel: opusBugReviewModel}, err
 	}
-	var findings []bodyread.Finding
+	result := classifyReview(files)
+	result.Checks = []string{
+		"bounded-body-read",
+		"source-http-safety",
+		"cypher-safety",
+		"ask-post-processing-boundary",
+		"candidate-lifecycle-atomicity",
+	}
 	for _, file := range files {
 		if !strings.HasSuffix(file, ".go") || strings.HasSuffix(file, "_test.go") {
 			continue
@@ -48,25 +77,35 @@ func run(base, head, repo string) error {
 		path := filepath.Join(repo, filepath.FromSlash(file))
 		body, err := os.ReadFile(path)
 		if err != nil {
-			return fmt.Errorf("read %s: %w", file, err)
+			return result, fmt.Errorf("read %s: %w", file, err)
 		}
 		fileFindings, err := bodyread.FindUnboundedReadAll(file, body)
 		if err != nil {
-			return fmt.Errorf("scan %s: %w", file, err)
+			return result, fmt.Errorf("scan %s: %w", file, err)
 		}
-		findings = append(findings, fileFindings...)
+		for _, finding := range fileFindings {
+			result.Findings = append(result.Findings, checkFinding{
+				Rule:    "bounded-body-read",
+				File:    finding.File,
+				Line:    finding.Line,
+				Message: "io.ReadAll must read from io.LimitReader or be replaced with streaming code",
+			})
+		}
+		result.Findings = append(result.Findings, sourceHTTPFindings(file, body)...)
+		result.Findings = append(result.Findings, cypherFindings(file, body)...)
+		result.Findings = append(result.Findings, askPostProcessingFindings(file, body)...)
+		result.Findings = append(result.Findings, candidateLifecycleFindings(file, body)...)
 	}
-	if len(findings) > 0 {
+	if len(result.Findings) > 0 {
 		var message strings.Builder
-		message.WriteString("Droid review preflight found unbounded io.ReadAll calls:\n")
-		for _, finding := range findings {
-			fmt.Fprintf(&message, "- %s:%d\n", finding.File, finding.Line)
+		message.WriteString("Droid review preflight found invariant violations:\n")
+		for _, finding := range result.Findings {
+			fmt.Fprintf(&message, "- [%s] %s:%d %s\n", finding.Rule, finding.File, finding.Line, finding.Message)
 		}
-		message.WriteString("\nWrap external/body reads in io.LimitReader or stream them instead.\n")
-		return fmt.Errorf("%s", strings.TrimRight(message.String(), "\n"))
+		return result, fmt.Errorf("%s", strings.TrimRight(message.String(), "\n"))
 	}
-	fmt.Printf("Droid review preflight passed for %d changed files.\n", len(files))
-	return nil
+	fmt.Printf("Droid review preflight passed for %d changed files. run_droid_review=%t review_model=%s reason=%q\n", len(files), result.RunDroidReview, result.ReviewModel, result.ReviewReason)
+	return result, nil
 }
 
 func changedFiles(base, head, repo string) ([]string, error) {
@@ -107,4 +146,185 @@ func gitOutput(repo string, args ...string) (string, error) {
 		return "", fmt.Errorf("git %s: %w\n%s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}
 	return stdout.String(), nil
+}
+
+func classifyReview(files []string) preflightResult {
+	result := preflightResult{
+		ChangedFiles:   files,
+		RunDroidReview: false,
+		ReviewModel:    opusBugReviewModel,
+		ReviewReason:   "docs/templates only; fast preflight and CI are sufficient",
+	}
+	for _, file := range files {
+		if requiresBugReview(file) {
+			result.RunDroidReview = true
+			result.ReviewReason = "code, workflow, API, source, or security-sensitive paths changed"
+			break
+		}
+	}
+	return result
+}
+
+func requiresBugReview(file string) bool {
+	switch {
+	case strings.HasSuffix(file, ".go"),
+		file == "go.mod",
+		file == "go.sum",
+		file == "Makefile",
+		strings.HasPrefix(file, ".github/workflows/"),
+		strings.HasPrefix(file, "api/"),
+		strings.HasPrefix(file, "cmd/"),
+		strings.HasPrefix(file, "gen/"),
+		strings.HasPrefix(file, "internal/"),
+		strings.HasPrefix(file, "scripts/"),
+		strings.HasPrefix(file, "sources/"),
+		strings.HasPrefix(file, "tools/"):
+		return true
+	default:
+		return false
+	}
+}
+
+func sourceHTTPFindings(file string, body []byte) []checkFinding {
+	if !strings.HasPrefix(file, "sources/") {
+		return nil
+	}
+	markers := []string{
+		"http.DefaultClient",
+		"&http.Client{",
+		"io.ReadAll(resp.Body)",
+		"io.ReadAll(response.Body)",
+		"func readLimitedBody(",
+		"type safeRoundTripper",
+	}
+	var findings []checkFinding
+	for _, marker := range markers {
+		if index := bytes.Index(body, []byte(marker)); index >= 0 {
+			findings = append(findings, checkFinding{
+				Rule:    "source-http-safety",
+				File:    file,
+				Line:    lineForIndex(body, index),
+				Message: fmt.Sprintf("%s must stay centralized in internal/sourcehttp", marker),
+			})
+		}
+	}
+	return findings
+}
+
+func cypherFindings(file string, body []byte) []checkFinding {
+	if !strings.HasPrefix(file, "internal/graphagent/") && !strings.HasPrefix(file, "internal/graphquery/") {
+		return nil
+	}
+	if strings.HasSuffix(file, "_test.go") {
+		return nil
+	}
+	upper := bytes.ToUpper(body)
+	markers := []string{"CREATE ", "MERGE ", "DELETE ", "DETACH DELETE", " SET ", "REMOVE ", "LOAD CSV", "CALL DBMS", "CALL APOC"}
+	var findings []checkFinding
+	for _, marker := range markers {
+		if index := bytes.Index(upper, []byte(marker)); index >= 0 {
+			findings = append(findings, checkFinding{
+				Rule:    "cypher-safety",
+				File:    file,
+				Line:    lineForIndex(upper, index),
+				Message: fmt.Sprintf("Cypher templates must stay read-only and validator-covered; suspicious token %q found", strings.TrimSpace(marker)),
+			})
+		}
+	}
+	return findings
+}
+
+func askPostProcessingFindings(file string, body []byte) []checkFinding {
+	if file != "internal/graphagent/ask.go" && file != "internal/graphagent/query_plan.go" {
+		return nil
+	}
+	if !bytes.Contains(body, []byte("postProcessAskRows")) {
+		return nil
+	}
+	if bytes.Contains(body, []byte("conversion.Deterministic")) || bytes.Contains(body, []byte(".Deterministic")) {
+		return nil
+	}
+	return []checkFinding{{
+		Rule:    "ask-post-processing-boundary",
+		File:    file,
+		Line:    lineForIndex(body, bytes.Index(body, []byte("postProcessAskRows"))),
+		Message: "Ask post-processing must remain gated to deterministic templates, not LLM fallback rows",
+	}}
+}
+
+func candidateLifecycleFindings(file string, body []byte) []checkFinding {
+	if !strings.HasPrefix(file, "internal/findings/") && !strings.HasPrefix(file, "internal/statestore/") {
+		return nil
+	}
+	if !bytes.Contains(body, []byte("FindingCandidate")) {
+		return nil
+	}
+	hasRead := bytes.Contains(body, []byte("GetFindingCandidate")) || bytes.Contains(body, []byte("ListFindingCandidates"))
+	hasWrite := bytes.Contains(body, []byte("UpdateFindingCandidate")) || bytes.Contains(body, []byte("RejectFindingCandidate"))
+	hasAtomicHint := bytes.Contains(bytes.ToLower(body), []byte("compare-and-swap")) || bytes.Contains(bytes.ToLower(body), []byte("transaction"))
+	if !hasRead || !hasWrite || hasAtomicHint {
+		return nil
+	}
+	return []checkFinding{{
+		Rule:    "candidate-lifecycle-atomicity",
+		File:    file,
+		Line:    lineForIndex(body, bytes.Index(body, []byte("FindingCandidate"))),
+		Message: "candidate lifecycle code that reads and writes candidate state must use store-owned CAS or a transaction",
+	}}
+}
+
+func lineForIndex(body []byte, index int) int {
+	if index < 0 {
+		return 1
+	}
+	return bytes.Count(body[:index], []byte("\n")) + 1
+}
+
+func writeGitHubMetadata(result preflightResult, duration time.Duration, runErr error) {
+	if path := os.Getenv("GITHUB_OUTPUT"); path != "" {
+		_ = appendFile(path, []byte(fmt.Sprintf("run_droid_review=%t\nreview_model=%s\nreview_reason=%s\n", result.RunDroidReview, result.ReviewModel, sanitizeOutput(result.ReviewReason))))
+	}
+	if path := os.Getenv("GITHUB_STEP_SUMMARY"); path != "" {
+		var summary strings.Builder
+		summary.WriteString("\n### Droid Review Decision\n\n")
+		fmt.Fprintf(&summary, "- Changed files: %d\n", len(result.ChangedFiles))
+		fmt.Fprintf(&summary, "- Run Droid model review: `%t`\n", result.RunDroidReview)
+		fmt.Fprintf(&summary, "- Review model: `%s`\n", result.ReviewModel)
+		fmt.Fprintf(&summary, "- Reason: %s\n", result.ReviewReason)
+		fmt.Fprintf(&summary, "- Preflight duration: %.1fs\n", duration.Seconds())
+		if runErr != nil {
+			fmt.Fprintf(&summary, "- Result: failed with %d finding(s)\n", len(result.Findings))
+		} else {
+			summary.WriteString("- Result: passed\n")
+		}
+		if len(result.Checks) > 0 {
+			summary.WriteString("\nChecks:\n")
+			for _, check := range result.Checks {
+				fmt.Fprintf(&summary, "- `%s`\n", check)
+			}
+		}
+		if len(result.Findings) > 0 {
+			summary.WriteString("\nFindings:\n")
+			for _, finding := range result.Findings {
+				fmt.Fprintf(&summary, "- `%s` %s:%d %s\n", finding.Rule, finding.File, finding.Line, finding.Message)
+			}
+		}
+		_ = appendFile(path, []byte(summary.String()))
+	}
+}
+
+func appendFile(path string, body []byte) error {
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	_, err = file.Write(body)
+	return err
+}
+
+func sanitizeOutput(value string) string {
+	value = strings.ReplaceAll(value, "\n", " ")
+	value = strings.ReplaceAll(value, "\r", " ")
+	return value
 }

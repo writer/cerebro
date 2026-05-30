@@ -33,6 +33,7 @@ CANDIDATE_SMOKE_EVENT_LIMIT ?= 25
 DROID_REVIEW_BASE ?= origin/main
 DROID_REVIEW_HEAD ?= HEAD
 DROID_PR ?=
+DROID_FEEDBACK_OUT ?=
 
 build:
 	go build -o bin/cerebro ./cmd/cerebro
@@ -130,7 +131,7 @@ droid-review-preflight:
 
 droid-feedback:
 	@if [ -z "$(DROID_PR)" ]; then echo "DROID_PR is required, e.g. make droid-feedback DROID_PR=719" >&2; exit 2; fi
-	python3 scripts/droid_feedback_harness.py "$(DROID_PR)"
+	python3 scripts/droid_feedback_harness.py "$(DROID_PR)" $(if $(DROID_FEEDBACK_OUT),--markdown-out "$(DROID_FEEDBACK_OUT)")
 
 clean:
 	rm -rf bin/

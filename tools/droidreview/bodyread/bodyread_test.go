@@ -31,6 +31,26 @@ func f(resp interface{ Body() io.Reader }) {
 			want: 0,
 		},
 		{
+			name: "aliased io import",
+			code: `package fixture
+import stdio "io"
+func f(resp interface{ Body() stdio.Reader }) {
+	_, _ = stdio.ReadAll(stdio.LimitReader(resp.Body(), 1024))
+}`,
+			want: 0,
+		},
+		{
+			name: "local io value is ignored",
+			code: `package fixture
+type localIO struct{}
+func (localIO) ReadAll(any) ([]byte, error) { return nil, nil }
+func f(body any) {
+	io := localIO{}
+	_, _ = io.ReadAll(body)
+}`,
+			want: 0,
+		},
+		{
 			name: "multiline limit reader",
 			code: `package fixture
 import "io"
