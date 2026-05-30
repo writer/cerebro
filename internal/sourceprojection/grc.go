@@ -644,7 +644,8 @@ func addGRCPlatformAssetLinks(entities map[string]*ports.ProjectedEntity, links 
 			"resource_type": resourceType,
 			"resource_name": strings.TrimSpace(ref.ResourceName),
 		}
-		if ownerLogin := githubRepositoryOwnerLogin(provider, resourceType, ref.ResourceName); ownerLogin != "" {
+		ownerLogin := githubRepositoryOwnerLogin(provider, resourceType, ref.ResourceName)
+		if ownerLogin != "" {
 			entityAttrs["owner_login"] = ownerLogin
 		}
 		addEntity(entities, &ports.ProjectedEntity{
@@ -672,7 +673,34 @@ func addGRCPlatformAssetLinks(entities map[string]*ports.ProjectedEntity, links 
 			addEntity(entities, grcIntegrationReferenceEntity(tenantID, sourceID, integrationURN, integrationID, grcProviderName))
 			addLink(links, projectedLink(tenantID, sourceID, resourceURN, integrationURN, relationBelongsTo, grcIntegrationLinkAttributes(event, integrationID)))
 		}
+		addGRCGitHubRepositoryOrgLink(entities, links, tenantID, sourceID, event, resourceURN, ownerLogin)
 	}
+}
+
+func addGRCGitHubRepositoryOrgLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, repositoryURN string, ownerLogin string) {
+	ownerLogin = strings.TrimSpace(ownerLogin)
+	repositoryURN = strings.TrimSpace(repositoryURN)
+	if ownerLogin == "" || repositoryURN == "" {
+		return
+	}
+	orgURN := projectionURN(tenantID, "github_org", ownerLogin)
+	if orgURN == "" {
+		return
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        orgURN,
+		TenantID:   tenantID,
+		SourceID:   "github",
+		EntityType: "github.org",
+		Label:      ownerLogin,
+		Attributes: map[string]string{"org": ownerLogin, "owner_login": ownerLogin},
+	})
+	addLink(links, projectedLink(tenantID, sourceID, repositoryURN, orgURN, relationBelongsTo, map[string]string{
+		"event_id":     event.GetId(),
+		"match_type":   "grc_platform_repository_owner",
+		"owner_login":  ownerLogin,
+		"source_scope": "platform_asset_ref",
+	}))
 }
 
 func githubRepositoryOwnerLogin(provider string, resourceType string, resourceName string) string {

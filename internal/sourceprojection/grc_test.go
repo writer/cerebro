@@ -898,6 +898,7 @@ func TestProjectGRCVulnerableAssetLabelsAndLinksGitHubRepoToIntegration(t *testi
 	}
 
 	repoURN := "urn:cerebro:writer:github_code_repository:1242719606"
+	orgURN := "urn:cerebro:writer:github_org:writer"
 	integrationURN := "urn:cerebro:writer:source:vanta:integration:github"
 
 	repo := state.entities[repoURN]
@@ -910,6 +911,10 @@ func TestProjectGRCVulnerableAssetLabelsAndLinksGitHubRepoToIntegration(t *testi
 	if got := repo.Attributes["owner_login"]; got != "writer" {
 		t.Fatalf("github repo owner_login = %q, want writer", got)
 	}
+	if org := state.entities[orgURN]; org == nil || org.EntityType != "github.org" {
+		t.Fatalf("github org entity %q missing or wrong type: %#v", orgURN, org)
+	}
+	assertProjectedLink(t, state, repoURN, relationBelongsTo, orgURN)
 	assertProjectedLink(t, state, repoURN, relationBelongsTo, integrationURN)
 }
 
