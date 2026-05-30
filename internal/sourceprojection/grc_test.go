@@ -890,7 +890,7 @@ func TestProjectGRCVulnerableAssetLabelsAndLinksGitHubRepoToIntegration(t *testi
 			"provider":            "vanta",
 			"target_id":           "github-repo-asset",
 			"integration_id":      "github",
-			"platform_asset_refs": `[{"provider":"github","resource_id":"1242719606","resource_name":"writer/cerebro","resource_type":"code_repository"}]`,
+			"platform_asset_refs": `[{"provider":"github","resource_id":"1242719606","resource_name":"Writer/cerebro","resource_type":"code_repository"}]`,
 		},
 	})
 	if err != nil {
@@ -898,18 +898,18 @@ func TestProjectGRCVulnerableAssetLabelsAndLinksGitHubRepoToIntegration(t *testi
 	}
 
 	repoURN := "urn:cerebro:writer:github_code_repository:1242719606"
-	orgURN := "urn:cerebro:writer:github_org:writer"
+	orgURN := "urn:cerebro:writer:github_org:Writer"
 	integrationURN := "urn:cerebro:writer:source:vanta:integration:github"
 
 	repo := state.entities[repoURN]
 	if repo == nil {
 		t.Fatalf("github code repository entity %q missing", repoURN)
 	}
-	if repo.Label != "writer/cerebro" {
-		t.Fatalf("github repo label = %q, want resource_name %q", repo.Label, "writer/cerebro")
+	if repo.Label != "Writer/cerebro" {
+		t.Fatalf("github repo label = %q, want resource_name %q", repo.Label, "Writer/cerebro")
 	}
-	if got := repo.Attributes["owner_login"]; got != "writer" {
-		t.Fatalf("github repo owner_login = %q, want writer", got)
+	if got := repo.Attributes["owner_login"]; got != "Writer" {
+		t.Fatalf("github repo owner_login = %q, want Writer", got)
 	}
 	if org := state.entities[orgURN]; org == nil || org.EntityType != "github.org" {
 		t.Fatalf("github org entity %q missing or wrong type: %#v", orgURN, org)

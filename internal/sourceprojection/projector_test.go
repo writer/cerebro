@@ -3180,6 +3180,36 @@ func TestProjectKubernetesClusterNameFallbackIsScopedByAccount(t *testing.T) {
 	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:kubernetes_cluster:prod", relationBelongsTo, "urn:cerebro:writer:cloud_account:account-a")
 }
 
+func TestProjectKubernetesClusterNameFallbackRequiresAccountScope(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "k8s-cluster-name-provider-only",
+		TenantId: "writer",
+		SourceId: "kubernetes",
+		Kind:     "kubernetes.workload",
+		Attributes: map[string]string{
+			"cloud_provider":       "aws",
+			"cluster_name":         "prod",
+			"namespace":            "payments",
+			"service_account_name": "api",
+			"workload_kind":        "Deployment",
+			"workload_name":        "payments-api",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	if entity := state.entities["urn:cerebro:writer:kubernetes_cluster:aws:prod"]; entity != nil {
+		t.Fatalf("provider-only cluster_name fallback should not create scoped cluster: %#v", entity)
+	}
+	if entity := state.entities["urn:cerebro:writer:kubernetes_cluster:prod"]; entity != nil {
+		t.Fatalf("provider-only cluster_name fallback should not create unscoped cluster: %#v", entity)
+	}
+}
+
 func TestProjectKubernetesCloudAccountIDUsesProjectIDFallback(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

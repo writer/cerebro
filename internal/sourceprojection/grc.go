@@ -711,7 +711,7 @@ func githubRepositoryOwnerLogin(provider string, resourceType string, resourceNa
 	if !ok {
 		return ""
 	}
-	return normalizeIdentifier(owner)
+	return strings.TrimSpace(owner)
 }
 
 func grcPlatformAssetReferences(attrs map[string]string) []grcPlatformAssetReference {

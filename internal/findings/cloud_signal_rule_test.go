@@ -447,6 +447,21 @@ func TestCloudEffectivePermissionPrincipalURNPrefersSubjectID(t *testing.T) {
 	}
 }
 
+func TestCloudEffectivePermissionPrincipalTypeMatchesProjectionHyphenBehavior(t *testing.T) {
+	event := &cerebrov1.EventEnvelope{
+		TenantId: "writer",
+		SourceId: "gcp",
+	}
+	attributes := map[string]string{
+		"subject_id":   "payments-sa@writer-prod.iam.gserviceaccount.com",
+		"subject_type": "service-account",
+	}
+
+	if got, want := cloudEffectivePermissionPrincipalURN(event, attributes), "urn:cerebro:writer:gcp_account:payments-sa@writer-prod.iam.gserviceaccount.com"; got != want {
+		t.Fatalf("cloudEffectivePermissionPrincipalURN() = %q, want %q", got, want)
+	}
+}
+
 func TestCloudPrivilegePathGranted(t *testing.T) {
 	rules := cloudRulesByID(t)
 	rule := rules[cloudPrivilegePathGrantedRuleID]

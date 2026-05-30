@@ -317,7 +317,7 @@ func cloudEffectivePermissionPrincipalURN(event *cerebrov1.EventEnvelope, attrib
 }
 
 func cloudEffectivePermissionPrincipalType(value string) string {
-	normalized := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(value, "-", "_")))
+	normalized := strings.ToLower(strings.TrimSpace(value))
 	if strings.Contains(normalized, "group") {
 		return "group"
 	}

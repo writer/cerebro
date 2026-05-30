@@ -229,10 +229,11 @@ func kubernetesClusterIdentity(attributes map[string]string) string {
 	if clusterName == "" {
 		return ""
 	}
-	if scope := firstNonEmpty(kubernetesCloudAccountID(attributes), attributes["cloud_provider"], attributes["provider"]); scope != "" {
-		return scope + ":" + clusterName
+	accountID := kubernetesCloudAccountID(attributes)
+	if accountID == "" {
+		return ""
 	}
-	return clusterName
+	return accountID + ":" + clusterName
 }
 
 func kubernetesCloudAccountID(attributes map[string]string) string {
