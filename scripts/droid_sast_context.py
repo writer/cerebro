@@ -385,6 +385,10 @@ def post_sticky_comment(markdown: str) -> None:
     pr_number = os.environ.get("PR_NUMBER")
     if not token or not repository or not pr_number:
         raise RuntimeError("GH_TOKEN/GITHUB_REPOSITORY/PR_NUMBER are required to post SAST context")
+    marker = COMMENT_MARKER
+    first_line = markdown.splitlines()[0].strip() if markdown.splitlines() else ""
+    if first_line.startswith("<!--") and first_line.endswith("-->"):
+        marker = first_line
 
     def request_json(method: str, path: str, payload: dict[str, object] | None = None) -> object:
         data = None if payload is None else json.dumps(payload).encode("utf-8")
@@ -414,7 +418,7 @@ def post_sticky_comment(markdown: str) -> None:
             if not isinstance(comment, dict):
                 continue
             body = str(comment.get("body") or "")
-            if COMMENT_MARKER in body:
+            if marker in body:
                 request_json(
                     "PATCH",
                     f"/repos/{repository}/issues/comments/{comment['id']}",

@@ -89,7 +89,13 @@ def is_droid(item: dict[str, object]) -> bool:
 
 def is_superseded(body: str) -> bool:
     lowered = body.lower()
-    return "superseded" in lowered or "view job" in lowered and "encountered an error" in lowered
+    return (
+        "superseded" in lowered
+        or "view job" in lowered and "encountered an error" in lowered
+        or "lgtm" in lowered
+        or "no issues found" in lowered
+        or "no inline comments to post" in lowered
+    )
 
 
 def suggested_checks(comment: DroidComment) -> list[str]:
@@ -108,6 +114,39 @@ def suggested_checks(comment: DroidComment) -> list[str]:
     if not checks:
         checks.append("add a focused regression test near the changed package")
     return checks
+
+
+def classify_pass(comment: DroidComment) -> str:
+    text = f"{comment.path}\n{comment.body}".lower()
+    if "ssrf" in text or "sourcehttp" in text or "body read" in text or "io.readall" in text:
+        return "scanner-validation"
+    if "cypher" in text or "tenant" in text or "authorization" in text:
+        return "tenant-security-invariants"
+    if "workflow" in text or ".github/workflows" in text or "permission" in text or "token" in text:
+        return "workflow-permissions"
+    if "candidate" in text or "finding" in text or "ttl" in text or "atomic" in text:
+        return "finding-state"
+    if "test" in text or "regression" in text or "flake" in text:
+        return "tests-evals"
+    return "changed-behavior"
+
+
+def comments_json(comments: list[DroidComment]) -> dict[str, object]:
+    return {
+        "kind": "droid_feedback_context",
+        "active_comments": [
+            {
+                "kind": comment.kind,
+                "url": comment.url,
+                "path": comment.path,
+                "line": comment.line,
+                "summary": first_sentence(comment.body),
+                "pass": classify_pass(comment),
+                "suggested_checks": suggested_checks(comment),
+            }
+            for comment in comments
+        ],
+    }
 
 
 def first_sentence(markdown: str) -> str:
@@ -155,6 +194,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("pr", help="pull request number")
     parser.add_argument("--markdown-out", help="optional path for a markdown regression checklist")
+    parser.add_argument("--json-out", help="optional path for structured feedback context")
     args = parser.parse_args()
 
     try:
@@ -169,6 +209,11 @@ def main() -> int:
             ensure_parent_dir(args.markdown_out)
             with open(args.markdown_out, "w", encoding="utf-8") as handle:
                 handle.write(regression_checklist(comments))
+        if args.json_out:
+            ensure_parent_dir(args.json_out)
+            with open(args.json_out, "w", encoding="utf-8") as handle:
+                json.dump(comments_json(comments), handle, indent=2, sort_keys=True)
+                handle.write("\n")
         return 0
 
     print(f"Found {len(comments)} Droid comment(s) on PR #{args.pr}.\n")
@@ -189,6 +234,12 @@ def main() -> int:
         with open(args.markdown_out, "w", encoding="utf-8") as handle:
             handle.write(regression_checklist(comments))
         print(f"Wrote regression checklist to {args.markdown_out}.")
+    if args.json_out:
+        ensure_parent_dir(args.json_out)
+        with open(args.json_out, "w", encoding="utf-8") as handle:
+            json.dump(comments_json(comments), handle, indent=2, sort_keys=True)
+            handle.write("\n")
+        print(f"Wrote feedback context JSON to {args.json_out}.")
     return 0
 
 

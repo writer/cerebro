@@ -1,0 +1,18 @@
+{
+  "changed_files": [
+    "internal/graphagent/ask.go",
+    ".github/workflows/droid-review.yml"
+  ],
+  "run_droid_review": true,
+  "review_model": "claude-opus-4-8",
+  "review_reason": "code, workflow, API, source, or security-sensitive paths changed",
+  "findings": [],
+  "checks": ["cypher-safety"],
+  "probe_plan": [
+    {
+      "name": "ask-trajectory",
+      "why": "Ask changes must preserve tenant-scoped behavior.",
+      "commands": ["go test ./internal/graphagent"]
+    }
+  ]
+}
