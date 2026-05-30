@@ -103,6 +103,9 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		evt.failureStage = "stream"
 		timings, _ := graphagent.ErrorTimings(err)
+		if timings != (graphagent.StageTimings{}) {
+			evt.result.timings = timings
+		}
 		writeErr := graphagent.WriteSSEEvent(w, graphagent.Event{Name: graphagent.EventError, Data: graphagent.ErrorEvent{
 			Code:    "ask_failed",
 			Message: err.Error(),

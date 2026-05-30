@@ -436,7 +436,9 @@ func planFilterValue(filters map[string]string, key string) string {
 }
 
 func cypherStringLiteral(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "\\'") + "'"
+	escaped := strings.ReplaceAll(value, "\\", "\\\\")
+	escaped = strings.ReplaceAll(escaped, "'", "\\'")
+	return "'" + escaped + "'"
 }
 
 func hasUnsupportedDeterministicModifiers(plan AskQueryPlan) bool {

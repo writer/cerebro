@@ -247,6 +247,14 @@ LIMIT 25`
 	}
 }
 
+func TestCypherStringLiteralEscapesBackslashBeforeQuote(t *testing.T) {
+	got := cypherStringLiteral(`open\' OR true`)
+	want := `'open\\\' OR true'`
+	if got != want {
+		t.Fatalf("cypherStringLiteral() = %q, want %q", got, want)
+	}
+}
+
 func TestConvertDraftToQueryRefusesUnsupportedPlanOnlyDraft(t *testing.T) {
 	result := convertDraftToQuery(AskRequest{
 		TenantID: "writer",
