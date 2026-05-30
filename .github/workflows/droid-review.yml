@@ -117,6 +117,51 @@ jobs:
             echo "- Status: $([ "${status}" -eq 0 ] && echo success || echo failure)"
           } >> "${GITHUB_STEP_SUMMARY}"
           exit "${status}"
+      - name: Install Semgrep
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --user 'semgrep==1.136.0'
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+      - name: Run Droid SAST context
+        id: sast
+        shell: bash
+        env:
+          DROID_REVIEW_BASE: ${{ github.event.pull_request.base.sha }}
+          DROID_REVIEW_HEAD: ${{ github.event.pull_request.head.sha }}
+          DROID_SAST_OUT: tmp/droid-sast-context.md
+        run: |
+          set +e
+          make droid-review-sast
+          status="$?"
+          if [ -s "${DROID_SAST_OUT}" ]; then
+            {
+              echo
+              echo "### Droid SAST Context"
+              echo
+              sed 's/^/    /' "${DROID_SAST_OUT}"
+            } >> "${GITHUB_STEP_SUMMARY}"
+          fi
+          if [ "${status}" -ne 0 ]; then
+            echo "::warning::Droid SAST context reported blocking findings or failed; keeping Droid review running so findings can be validated."
+          fi
+          exit 0
+      - name: Publish Droid SAST context
+        if: always() && steps.sast.outcome != 'skipped'
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          DROID_SAST_OUT: tmp/droid-sast-context.md
+        run: |
+          set -euo pipefail
+          if [ -s "${DROID_SAST_OUT}" ]; then
+            python3 scripts/droid_sast_context.py --post-existing "${DROID_SAST_OUT}"
+          else
+            echo "No SAST context report to publish."
+          fi
 
   droid-review:
     needs: droid-review-preflight
