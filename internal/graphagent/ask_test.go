@@ -288,6 +288,32 @@ func TestServiceSanitizesInternalSourceAttributes(t *testing.T) {
 	}
 }
 
+func TestSanitizeInternalAttributesKeepsOnlyBoundedScalars(t *testing.T) {
+	rows := []map[string]any{{
+		"finding_attributes_json_internal": `{"summary":"` + strings.Repeat("a", maxInternalAttributeValueBytes+20) + `","status":{"nested":true},"risk_score":73}`,
+	}}
+
+	sanitizeInternalRowFields(rows)
+
+	row := rows[0]
+	if _, exists := row["finding_attributes_json_internal"]; exists {
+		t.Fatalf("internal attributes leaked in row: %#v", row)
+	}
+	summary, ok := row["summary"].(string)
+	if !ok {
+		t.Fatalf("summary = %#v, want string", row["summary"])
+	}
+	if len(summary) != maxInternalAttributeValueBytes {
+		t.Fatalf("summary length = %d, want %d", len(summary), maxInternalAttributeValueBytes)
+	}
+	if _, exists := row["status"]; exists {
+		t.Fatalf("structured status should not be merged into row: %#v", row)
+	}
+	if got := row["risk_score"]; got != "73" {
+		t.Fatalf("risk_score = %q, want 73", got)
+	}
+}
+
 func TestServiceRequiresTenantID(t *testing.T) {
 	service := NewService(&askStore{}, NewStubLLMClient(), ValidatorOptions{})
 	err := service.Stream(context.Background(), AskRequest{Question: "hello"}, func(Event) error { return nil })
