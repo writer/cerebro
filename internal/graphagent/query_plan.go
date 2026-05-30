@@ -324,10 +324,17 @@ LIMIT %d`, strings.Join([]string{
 		}, ",\n       "), cypherJSONStringAttributes("finding.attributes_json", "severity"), cypherJSONStringAttributes("finding.attributes_json", "status"), limit), true
 	case IntentIdentityBridge:
 		return fmt.Sprintf(`MATCH (left:Entity {tenant_id: $tenant_id})-[leftRel:RELATION {relation: 'represents_identity'}]->(identity:Entity {tenant_id: $tenant_id})
-MATCH (right:Entity {tenant_id: $tenant_id})-[rightRel:RELATION {relation: 'represents_identity'}]->(identity)
+MATCH (right:Entity {tenant_id: $tenant_id})-[rightRel:RELATION {relation: 'represents_identity'}]->(identity2:Entity {tenant_id: $tenant_id})
 WHERE left.urn < right.urn
+  AND identity2.urn = identity.urn
   AND left.entity_type <> right.entity_type
-  AND ($scope_urn = '' OR left.urn = $scope_urn OR right.urn = $scope_urn OR identity.urn = $scope_urn)
+  AND CASE
+        WHEN $scope_urn = '' THEN true
+        WHEN left.urn = $scope_urn THEN true
+        WHEN right.urn = $scope_urn THEN true
+        WHEN identity.urn = $scope_urn THEN true
+        ELSE false
+      END
   AND NOT left.entity_type STARTS WITH 'identity'
   AND NOT right.entity_type STARTS WITH 'identity'
   AND NOT left.entity_type STARTS WITH 'identifier'

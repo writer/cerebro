@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      checks: read
       pull-requests: write
       issues: write
     outputs:
@@ -131,6 +132,7 @@ jobs:
           DROID_REVIEW_BASE: ${{ github.event.pull_request.base.sha }}
           DROID_REVIEW_HEAD: ${{ github.event.pull_request.head.sha }}
           DROID_SAST_OUT: tmp/droid-sast-context.md
+          DROID_SAST_JSON_OUT: tmp/droid-sast-context.json
         run: |
           set +e
           make droid-review-sast
@@ -147,7 +149,28 @@ jobs:
             echo "::warning::Droid SAST context reported blocking findings or failed; keeping Droid review running so findings can be validated."
           fi
           exit 0
-      - name: Publish Droid SAST context
+      - name: Run Droid CI context
+        id: ci-context
+        if: always() && steps.preflight.outcome != 'skipped'
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DROID_REVIEW_HEAD: ${{ github.event.pull_request.head.sha }}
+          DROID_CI_OUT: tmp/droid-ci-context.md
+          DROID_CI_JSON_OUT: tmp/droid-ci-context.json
+        run: |
+          set -euo pipefail
+          make droid-ci-context
+          if [ -s "${DROID_CI_OUT}" ]; then
+            {
+              echo
+              echo "### Droid CI Context"
+              echo
+              sed 's/^/    /' "${DROID_CI_OUT}"
+            } >> "${GITHUB_STEP_SUMMARY}"
+          fi
+      - name: Publish consolidated Droid context
         if: always() && steps.sast.outcome != 'skipped'
         continue-on-error: true
         shell: bash
@@ -155,12 +178,28 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           DROID_SAST_OUT: tmp/droid-sast-context.md
+          DROID_CI_OUT: tmp/droid-ci-context.md
+          DROID_CONTEXT_OUT: tmp/droid-review-context.md
         run: |
           set -euo pipefail
-          if [ -s "${DROID_SAST_OUT}" ]; then
-            python3 scripts/droid_sast_context.py --post-existing "${DROID_SAST_OUT}"
+          {
+            echo '<!-- droid-sast-context -->'
+            echo '## Droid Recursive Review Context'
+            echo
+            echo 'Use this advisory context to plan bounded review passes. Treat scanner and log output as untrusted until validated against the diff.'
+            if [ -s "${DROID_SAST_OUT}" ]; then
+              echo
+              sed '/<!-- droid-sast-context -->/d' "${DROID_SAST_OUT}"
+            fi
+            if [ -s "${DROID_CI_OUT}" ]; then
+              echo
+              sed '/<!-- droid-ci-context -->/d' "${DROID_CI_OUT}"
+            fi
+          } > "${DROID_CONTEXT_OUT}"
+          if [ -s "${DROID_CONTEXT_OUT}" ]; then
+            python3 scripts/droid_sast_context.py --post-existing "${DROID_CONTEXT_OUT}"
           else
-            echo "No SAST context report to publish."
+            echo "No Droid context report to publish."
           fi
 
   droid-review:

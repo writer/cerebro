@@ -1,0 +1,98 @@
+[
+  {
+    "name": "top_risk_findings",
+    "question": "Show the top risky findings.",
+    "draft_plan": {"intent": "top_risk_findings", "limit": 5},
+    "rows": [
+      {
+        "finding_urn": "urn:cerebro:writer:finding:alpha",
+        "finding_label": "Public repo token",
+        "resource_urn": "urn:cerebro:writer:repo:alpha",
+        "resource_label": "repo alpha",
+        "risk_score": 91
+      }
+    ],
+    "summary": "Review `urn:cerebro:writer:finding:alpha` on `urn:cerebro:writer:repo:alpha` first.",
+    "expected_intent": "top_risk_findings",
+    "expected_min_rows": 1,
+    "expected_urns": ["urn:cerebro:writer:finding:alpha"],
+    "expect_citations_ok": true
+  },
+  {
+    "name": "aggregate_findings_by_source",
+    "question": "Count findings by source family.",
+    "draft_plan": {"intent": "aggregate_findings_by_source", "limit": 10},
+    "rows": [
+      {"finding_urn": "urn:cerebro:writer:finding:okta1", "source_id": "okta", "finding_attributes_json_internal": "{\"source_family\":\"okta\"}"},
+      {"finding_urn": "urn:cerebro:writer:finding:github1", "source_id": "github", "finding_attributes_json_internal": "{\"source_family\":\"github\"}"}
+    ],
+    "summary": "okta and github both have one finding.",
+    "expected_intent": "aggregate_findings_by_source",
+    "expected_min_rows": 2
+  },
+  {
+    "name": "explain_finding",
+    "question": "Explain this finding.",
+    "scope_urn": "urn:cerebro:writer:finding:alpha",
+    "draft_plan": {"intent": "explain_finding", "limit": 5},
+    "rows": [
+      {
+        "finding_urn": "urn:cerebro:writer:finding:alpha",
+        "finding_label": "Public repo token",
+        "resource_urn": "urn:cerebro:writer:repo:alpha",
+        "risk_score": 91
+      }
+    ],
+    "summary": "`urn:cerebro:writer:finding:alpha` affects `urn:cerebro:writer:repo:alpha`.",
+    "expected_intent": "explain_finding",
+    "expected_min_rows": 1,
+    "expected_urns": ["urn:cerebro:writer:finding:alpha"],
+    "expect_citations_ok": true
+  },
+  {
+    "name": "identity_bridge_recovery",
+    "question": "Show identity bridges.",
+    "draft_plan": {"intent": "identity_bridge", "limit": 5},
+    "rows": [],
+    "recovery_rows": [
+      {
+        "left_urn": "urn:cerebro:writer:okta:user:alice",
+        "right_urn": "urn:cerebro:writer:github:user:alice",
+        "identity_urn": "urn:cerebro:writer:identity:alice"
+      }
+    ],
+    "summary": "`urn:cerebro:writer:identity:alice` bridges Okta and GitHub identities.",
+    "expected_intent": "identity_bridge",
+    "expected_min_rows": 1,
+    "expected_urns": ["urn:cerebro:writer:identity:alice"],
+    "expect_recovery": true,
+    "expect_citations_ok": true
+  },
+  {
+    "name": "connector_health",
+    "question": "Show connector health.",
+    "draft_plan": {"intent": "connector_health", "limit": 10},
+    "rows": [
+      {
+        "source_urn": "urn:cerebro:writer:source:okta",
+        "source_label": "Okta",
+        "source_id": "okta",
+        "source_attributes_json_internal": "{\"status\":\"healthy\",\"last_sync_at\":\"2026-05-30T00:00:00Z\"}"
+      }
+    ],
+    "summary": "`urn:cerebro:writer:source:okta` is healthy.",
+    "expected_intent": "connector_health",
+    "expected_min_rows": 1,
+    "expected_urns": ["urn:cerebro:writer:source:okta"],
+    "expect_citations_ok": true
+  },
+  {
+    "name": "unsupported_filtered_owner",
+    "question": "Show security-owned risk findings.",
+    "draft_plan": {"intent": "top_risk_findings", "filters": {"owner": "security"}},
+    "rows": [],
+    "summary": "",
+    "expected_intent": "top_risk_findings",
+    "expect_unsupported_code": "query_plan_conversion_failed"
+  }
+]

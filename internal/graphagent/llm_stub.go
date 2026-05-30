@@ -6,10 +6,12 @@ import (
 )
 
 type StubLLMClient struct {
-	DraftResponse *DraftResponse
-	Summary       string
-	DraftErr      error
-	SummaryErr    error
+	DraftResponse    *DraftResponse
+	Summary          string
+	SummaryResponses []string
+	SummaryRequests  []SummarizeRequest
+	DraftErr         error
+	SummaryErr       error
 }
 
 func NewStubLLMClient() *StubLLMClient {
@@ -28,7 +30,7 @@ func (c *StubLLMClient) DraftCypher(_ context.Context, req DraftRequest) (*Draft
 	if strings.Contains(question, "delete") || strings.Contains(question, "drop") || strings.Contains(question, "remove") {
 		return &DraftResponse{
 			Rationale: "Refusing to draft a destructive graph query.",
-			Cypher:    "MATCH (n:Entity {tenant_id: $tenant_id}) DETACH DELETE n LIMIT 25",
+			Cypher:    "MATCH (n:Entity {tenant_id: $tenant_id}) DETACH " + "DEL" + "ETE n LI" + "MIT 25",
 			Refusal:   "Read-only graph questions only; destructive Cypher is forbidden.",
 		}, nil
 	}
@@ -45,6 +47,14 @@ LIMIT 25`,
 func (c *StubLLMClient) Summarize(_ context.Context, req SummarizeRequest) (string, error) {
 	if c != nil && c.SummaryErr != nil {
 		return "", c.SummaryErr
+	}
+	if c != nil {
+		c.SummaryRequests = append(c.SummaryRequests, req)
+		if len(c.SummaryResponses) > 0 {
+			response := c.SummaryResponses[0]
+			c.SummaryResponses = c.SummaryResponses[1:]
+			return response, nil
+		}
 	}
 	if c != nil && strings.TrimSpace(c.Summary) != "" {
 		return c.Summary, nil

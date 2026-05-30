@@ -9,14 +9,16 @@ import (
 )
 
 const (
-	EventProgress  = "progress"
-	EventRationale = "rationale"
-	EventQueryPlan = "query_plan"
-	EventCypher    = "cypher"
-	EventRows      = "rows"
-	EventSummary   = "summary"
-	EventDone      = "done"
-	EventError     = "error"
+	EventProgress   = "progress"
+	EventGraphProbe = "graph_probe"
+	EventRationale  = "rationale"
+	EventQueryPlan  = "query_plan"
+	EventCypher     = "cypher"
+	EventRecovery   = "recovery"
+	EventRows       = "rows"
+	EventSummary    = "summary"
+	EventDone       = "done"
+	EventError      = "error"
 )
 
 type Event struct {
@@ -37,6 +39,10 @@ type ProgressEvent struct {
 	ElapsedMS int64  `json:"elapsed_ms"`
 }
 
+type GraphProbeEvent struct {
+	Probe GraphProbe `json:"probe"`
+}
+
 type RationaleEvent struct {
 	Text string `json:"text"`
 }
@@ -52,6 +58,15 @@ type QueryPlanEvent struct {
 type CypherEvent struct {
 	Cypher    string          `json:"cypher"`
 	Validator ValidatorResult `json:"validator"`
+}
+
+type RecoveryEvent struct {
+	Attempt    int    `json:"attempt"`
+	Reason     string `json:"reason"`
+	Action     string `json:"action"`
+	Intent     string `json:"intent,omitempty"`
+	RowsBefore int    `json:"rows_before"`
+	RowsAfter  int    `json:"rows_after,omitempty"`
 }
 
 type RowsEvent struct {
@@ -88,6 +103,7 @@ type SummaryEvent struct {
 }
 
 type StageTimings struct {
+	ProbeMS              int64 `json:"probe_ms,omitempty"`
 	DraftMS              int64 `json:"draft_ms,omitempty"`
 	ConversionMS         int64 `json:"conversion_ms,omitempty"`
 	ValidateMS           int64 `json:"validate_ms,omitempty"`
