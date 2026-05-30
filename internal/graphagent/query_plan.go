@@ -266,29 +266,23 @@ func renderDeterministicPlan(plan AskQueryPlan, maxRows int) (string, bool) {
 WHERE $scope_urn = '' OR resource.urn = $scope_urn OR f.urn = $scope_urn
 WITH DISTINCT f,
      coalesce(
-       CASE WHEN coalesce(f.attributes_json, '') CONTAINS '"source_family":"' THEN split(split(f.attributes_json, '"source_family":"')[1], '"')[0] END,
-       CASE WHEN coalesce(f.attributes_json, '') CONTAINS '"sourceFamily":"' THEN split(split(f.attributes_json, '"sourceFamily":"')[1], '"')[0] END,
-       CASE WHEN coalesce(f.attributes_json, '') CONTAINS '"source_system":"' THEN split(split(f.attributes_json, '"source_system":"')[1], '"')[0] END,
+       %s,
        f.source_id,
        'Unknown'
      ) AS source_family
 RETURN source_family, count(DISTINCT f) AS finding_count
 ORDER BY finding_count DESC, source_family
-LIMIT %d`, limit), true
+LIMIT %d`, cypherJSONStringAttributes("f.attributes_json", "source_family", "sourceFamily", "source_system"), limit), true
 	case IntentTopRiskFindings:
 		return fmt.Sprintf(`MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
 WHERE $scope_urn = '' OR resource.urn = $scope_urn OR finding.urn = $scope_urn
 WITH resource, r, finding,
      coalesce(
-       CASE WHEN coalesce(r.attributes_json, '') CONTAINS '"risk_score":"' THEN toInteger(split(split(r.attributes_json, '"risk_score":"')[1], '"')[0]) END,
-       CASE WHEN coalesce(finding.attributes_json, '') CONTAINS '"risk_score":"' THEN toInteger(split(split(finding.attributes_json, '"risk_score":"')[1], '"')[0]) END,
+       %s,
        0
      ) AS risk_score,
      coalesce(
-       CASE WHEN coalesce(r.attributes_json, '') CONTAINS '"effective_severity":"' THEN split(split(r.attributes_json, '"effective_severity":"')[1], '"')[0] END,
-       CASE WHEN coalesce(finding.attributes_json, '') CONTAINS '"effective_severity":"' THEN split(split(finding.attributes_json, '"effective_severity":"')[1], '"')[0] END,
-       CASE WHEN coalesce(r.attributes_json, '') CONTAINS '"severity":"' THEN split(split(r.attributes_json, '"severity":"')[1], '"')[0] END,
-       CASE WHEN coalesce(finding.attributes_json, '') CONTAINS '"severity":"' THEN split(split(finding.attributes_json, '"severity":"')[1], '"')[0] END,
+       %s,
        ''
      ) AS severity
 WITH resource, finding, risk_score, severity,
@@ -319,7 +313,13 @@ RETURN finding.urn AS finding_urn,
        risk_score,
        severity
 ORDER BY risk_score DESC, severity_rank DESC, finding_urn
-LIMIT %d`, limit), true
+LIMIT %d`, strings.Join([]string{
+			cypherJSONIntegerAttribute("r.attributes_json", "risk_score"),
+			cypherJSONIntegerAttribute("finding.attributes_json", "risk_score"),
+		}, ",\n       "), strings.Join([]string{
+			cypherJSONStringAttributes("r.attributes_json", "effective_severity", "severity"),
+			cypherJSONStringAttributes("finding.attributes_json", "effective_severity", "severity"),
+		}, ",\n       "), limit), true
 	case IntentExplainFinding:
 		return fmt.Sprintf(`MATCH (finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
 WHERE $scope_urn = ''
@@ -330,16 +330,15 @@ WHERE $scope_urn = ''
 OPTIONAL MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(finding)
 WITH resource, r, finding,
      coalesce(
-       CASE WHEN coalesce(r.attributes_json, '') CONTAINS '"risk_score":"' THEN toInteger(split(split(r.attributes_json, '"risk_score":"')[1], '"')[0]) END,
-       CASE WHEN coalesce(finding.attributes_json, '') CONTAINS '"risk_score":"' THEN toInteger(split(split(finding.attributes_json, '"risk_score":"')[1], '"')[0]) END,
+       %s,
        0
      ) AS risk_score,
      coalesce(
-       CASE WHEN coalesce(finding.attributes_json, '') CONTAINS '"severity":"' THEN split(split(finding.attributes_json, '"severity":"')[1], '"')[0] END,
+       %s,
        ''
      ) AS severity,
      coalesce(
-       CASE WHEN coalesce(finding.attributes_json, '') CONTAINS '"status":"' THEN split(split(finding.attributes_json, '"status":"')[1], '"')[0] END,
+       %s,
        ''
      ) AS status,
      '' AS summary
@@ -353,7 +352,10 @@ RETURN finding.urn AS finding_urn,
        risk_score,
        coalesce(finding.attributes_json, '') AS finding_attributes_json_internal
 ORDER BY risk_score DESC, finding_urn
-LIMIT %d`, limit), true
+LIMIT %d`, strings.Join([]string{
+			cypherJSONIntegerAttribute("r.attributes_json", "risk_score"),
+			cypherJSONIntegerAttribute("finding.attributes_json", "risk_score"),
+		}, ",\n       "), cypherJSONStringAttributes("finding.attributes_json", "severity"), cypherJSONStringAttributes("finding.attributes_json", "status"), limit), true
 	case IntentIdentityBridge:
 		return fmt.Sprintf(`MATCH (left:Entity {tenant_id: $tenant_id})-[leftRel:RELATION {relation: 'represents_identity'}]->(identity:Entity {tenant_id: $tenant_id})
 MATCH (right:Entity {tenant_id: $tenant_id})-[rightRel:RELATION {relation: 'represents_identity'}]->(identity)
@@ -367,8 +369,8 @@ WHERE left.urn < right.urn
   AND coalesce(leftRel.attributes_json, '') CONTAINS '"at":"'
   AND coalesce(rightRel.attributes_json, '') CONTAINS '"at":"'
 WITH left, right, identity,
-     split(split(leftRel.attributes_json, '"at":"')[1], '"')[0] AS left_seen_at,
-     split(split(rightRel.attributes_json, '"at":"')[1], '"')[0] AS right_seen_at
+     %s AS left_seen_at,
+     %s AS right_seen_at
 WHERE datetime(left_seen_at) >= datetime() - duration('P90D')
   AND datetime(right_seen_at) >= datetime() - duration('P90D')
 RETURN left.urn AS left_urn,
@@ -382,7 +384,7 @@ RETURN left.urn AS left_urn,
        left_seen_at,
        right_seen_at
 ORDER BY identity_label, left_urn, right_urn
-LIMIT %d`, limit), true
+LIMIT %d`, cypherJSONRawStringAttribute("leftRel.attributes_json", "at"), cypherJSONRawStringAttribute("rightRel.attributes_json", "at"), limit), true
 	case IntentConnectorHealth:
 		return fmt.Sprintf(`MATCH (source:Entity {tenant_id: $tenant_id, entity_type: 'source'})
 WHERE $scope_urn = '' OR source.urn = $scope_urn
@@ -396,6 +398,27 @@ LIMIT %d`, limit), true
 	default:
 		return "", false
 	}
+}
+
+func cypherJSONStringAttributes(expression string, keys ...string) string {
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, fmt.Sprintf("CASE WHEN coalesce(%s, '') CONTAINS '%s' THEN %s END", expression, cypherJSONQuotedStringToken(key), cypherJSONRawStringAttribute(expression, key)))
+	}
+	return strings.Join(parts, ",\n       ")
+}
+
+func cypherJSONIntegerAttribute(expression string, key string) string {
+	return fmt.Sprintf("CASE WHEN coalesce(%s, '') CONTAINS '%s' THEN toInteger(%s) END", expression, cypherJSONQuotedStringToken(key), cypherJSONRawStringAttribute(expression, key))
+}
+
+func cypherJSONRawStringAttribute(expression string, key string) string {
+	token := cypherJSONQuotedStringToken(key)
+	return fmt.Sprintf(`split(split(%s, '%s')[1], '"')[0]`, expression, token)
+}
+
+func cypherJSONQuotedStringToken(key string) string {
+	return fmt.Sprintf(`"%s":"`, key)
 }
 
 func hasUnsupportedDeterministicModifiers(plan AskQueryPlan) bool {

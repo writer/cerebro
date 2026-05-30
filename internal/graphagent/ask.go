@@ -19,6 +19,8 @@ var (
 	ErrInvalidRequest     = errors.New("invalid graph agent request")
 )
 
+const maxInternalAttributeValueBytes = 4096
+
 type AskRequest struct {
 	TenantID string           `json:"tenant_id"`
 	Question string           `json:"question"`
@@ -262,10 +264,44 @@ func mergeInternalAttributes(row map[string]any, key string, fields []string) {
 		if !ok {
 			continue
 		}
-		if text := strings.TrimSpace(fmt.Sprint(value)); text != "" {
+		if text, ok := internalAttributeText(value); ok {
 			row[field] = text
 		}
 	}
+}
+
+func internalAttributeText(value any) (string, bool) {
+	var text string
+	switch typed := value.(type) {
+	case string:
+		text = typed
+	case float64, bool, json.Number:
+		text = fmt.Sprint(typed)
+	default:
+		return "", false
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "", false
+	}
+	return truncateStringBytes(text, maxInternalAttributeValueBytes), true
+}
+
+func truncateStringBytes(text string, maxBytes int) string {
+	if maxBytes <= 0 || len(text) <= maxBytes {
+		return text
+	}
+	end := 0
+	for i := range text {
+		if i > maxBytes {
+			break
+		}
+		end = i
+	}
+	if end == 0 {
+		return ""
+	}
+	return text[:end]
 }
 
 func rowValueEmpty(value any) bool {
