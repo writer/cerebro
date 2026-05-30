@@ -72,6 +72,60 @@ LIMIT 25`,
 	}
 }
 
+func TestGRCAskTelemetryIncludesQueryPlanDiagnostics(t *testing.T) {
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		GraphStore: &stubGraphStore{},
+		GraphAgentLLM: &graphagent.StubLLMClient{DraftResponse: &graphagent.DraftResponse{
+			Rationale: "Planning filtered high-risk findings.",
+			Plan:      &graphagent.AskQueryPlan{Intent: graphagent.IntentTopRiskFindings, Filters: map[string]string{"severity": "HIGH"}},
+		}},
+	}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	var events []sseRecord
+	stderr := captureBootstrapStderr(t, func() {
+		resp, err := server.Client().Post(server.URL+"/grc/ask", "application/json", strings.NewReader(`{"tenant_id":"example","question":"show HIGH risk findings"}`))
+		if err != nil {
+			t.Fatalf("POST /grc/ask error = %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("POST /grc/ask status = %d, want %d", resp.StatusCode, http.StatusOK)
+		}
+		events = readSSEEvents(t, resp)
+	})
+	assertSSEEventNames(t, events, []string{"progress", "rationale", "query_plan", "cypher", "summary", "done"})
+
+	payload := decodeBootstrapTelemetryPayload(t, stderr)
+	for key, want := range map[string]any{
+		"name":                         "cerebro.grc.ask",
+		"operation":                    "grc.ask",
+		"outcome":                      "success",
+		"status":                       float64(http.StatusOK),
+		"tenant_id":                    "example",
+		"sse_events":                   float64(6),
+		"query_plan.intent":            graphagent.IntentTopRiskFindings,
+		"query_plan.source":            "conversion_refusal",
+		"query_plan.deterministic":     false,
+		"query_plan.corrected":         false,
+		"query_plan.diagnostics_count": float64(1),
+		"query_plan.diagnostic_codes":  "query_plan_conversion_failed",
+		"terminal_event":               "done",
+		"cypher_refused":               true,
+		"validator.ok":                 false,
+		"row_count":                    float64(0),
+		"citation_count":               float64(0),
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	if traceID, ok := payload["ask_trace_id"].(string); !ok || traceID == "" {
+		t.Fatalf("ask_trace_id = %#v, want non-empty string; payload=%#v", payload["ask_trace_id"], payload)
+	}
+}
+
 func TestGRCAskMissingTenantReturnsBadRequest(t *testing.T) {
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{GraphStore: &stubGraphStore{}, GraphAgentLLM: graphagent.NewStubLLMClient()}, nil)
 	server := httptest.NewServer(app.Handler())
