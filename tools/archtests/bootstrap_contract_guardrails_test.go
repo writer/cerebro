@@ -288,6 +288,61 @@ func readBody(reader io.Reader, ch <-chan struct{}, mode string) ([]byte, error)
 	}
 }
 
+func TestProductionBodyReadGuardPreservesBareBlockReassignment(t *testing.T) {
+	source := `package sample
+
+import "io"
+
+func readBody(reader io.Reader) ([]byte, error) {
+	body := io.LimitReader(reader, 1025)
+	{
+		body = reader
+	}
+	return io.ReadAll(body)
+}`
+	if lines := unboundedReadAllLinesForSource(t, source); len(lines) != 1 {
+		t.Fatalf("unbounded lines = %v, want bare block outer reassignment rejected", lines)
+	}
+}
+
+func TestProductionBodyReadGuardModelsFunctionLiteralReassignment(t *testing.T) {
+	source := `package sample
+
+import "io"
+
+func readBody(reader io.Reader) ([]byte, error) {
+	body := io.LimitReader(reader, 1025)
+	func() {
+		body = reader
+	}()
+	return io.ReadAll(body)
+}`
+	if lines := unboundedReadAllLinesForSource(t, source); len(lines) != 1 {
+		t.Fatalf("unbounded lines = %v, want function literal reassignment rejected", lines)
+	}
+}
+
+func TestProductionBodyReadGuardCarriesSwitchFallthrough(t *testing.T) {
+	source := `package sample
+
+import "io"
+
+func readBody(reader io.Reader, mode string) ([]byte, error) {
+	body := io.LimitReader(reader, 1025)
+	switch mode {
+	case "raw":
+		body = reader
+		fallthrough
+	default:
+		return io.ReadAll(body)
+	}
+	return nil, nil
+}`
+	if lines := unboundedReadAllLinesForSource(t, source); len(lines) != 1 {
+		t.Fatalf("unbounded lines = %v, want fallthrough reassignment rejected", lines)
+	}
+}
+
 func unboundedReadAllLinesForSource(t *testing.T, source string) []int {
 	t.Helper()
 	fset := token.NewFileSet()
@@ -320,7 +375,9 @@ func collectUnboundedReadAllLines(fset *token.FileSet, statements []ast.Stmt, li
 			recordUnboundedReadAllInNode(fset, stmt, limitedVars, lines)
 			recordLimitedValueSpecs(stmt, limitedVars)
 		case *ast.BlockStmt:
-			collectUnboundedReadAllLines(fset, stmt.List, cloneLimitedVars(limitedVars), lines)
+			blockVars := cloneLimitedVars(limitedVars)
+			collectUnboundedReadAllLines(fset, stmt.List, blockVars, lines)
+			mergeLimitedVars(limitedVars, blockVars)
 		case *ast.IfStmt:
 			ifVars := cloneLimitedVars(limitedVars)
 			if stmt.Init != nil {
@@ -398,6 +455,7 @@ func collectUnboundedReadAllInCaseClauses(fset *token.FileSet, body *ast.BlockSt
 	}
 	var branches []map[*ast.Object]bool
 	hasDefault := false
+	var fallthroughVars map[*ast.Object]bool
 	for _, statement := range body.List {
 		clause, ok := statement.(*ast.CaseClause)
 		if !ok {
@@ -408,10 +466,18 @@ func collectUnboundedReadAllInCaseClauses(fset *token.FileSet, body *ast.BlockSt
 			hasDefault = true
 		}
 		caseVars := cloneLimitedVars(limitedVars)
+		if fallthroughVars != nil {
+			mergeLimitedVars(caseVars, caseVars, fallthroughVars)
+			fallthroughVars = nil
+		}
 		for _, expr := range clause.List {
 			recordUnboundedReadAllInNode(fset, expr, caseVars, lines)
 		}
 		collectUnboundedReadAllLines(fset, clause.Body, caseVars, lines)
+		if statementsFallThrough(clause.Body) {
+			fallthroughVars = caseVars
+			continue
+		}
 		if statementsMayContinue(clause.Body) {
 			branches = append(branches, caseVars)
 		}
@@ -462,6 +528,10 @@ func recordUnboundedReadAllInNode(fset *token.FileSet, node ast.Node, limitedVar
 		return
 	}
 	ast.Inspect(node, func(node ast.Node) bool {
+		if fn, ok := node.(*ast.FuncLit); ok {
+			collectUnboundedReadAllLines(fset, fn.Body.List, limitedVars, lines)
+			return false
+		}
 		call, ok := node.(*ast.CallExpr)
 		if !ok || !isSelectorCall(call.Fun, "io", "ReadAll") {
 			return true
@@ -525,10 +595,20 @@ func statementsMayContinue(statements []ast.Stmt) bool {
 	return statementMayContinue(statements[len(statements)-1])
 }
 
+func statementsFallThrough(statements []ast.Stmt) bool {
+	if len(statements) == 0 {
+		return false
+	}
+	branch, ok := statements[len(statements)-1].(*ast.BranchStmt)
+	return ok && branch.Tok == token.FALLTHROUGH
+}
+
 func statementMayContinue(statement ast.Stmt) bool {
 	switch stmt := statement.(type) {
 	case *ast.ReturnStmt:
 		return false
+	case *ast.BranchStmt:
+		return stmt.Tok == token.FALLTHROUGH
 	case *ast.BlockStmt:
 		return statementsMayContinue(stmt.List)
 	case *ast.IfStmt:
