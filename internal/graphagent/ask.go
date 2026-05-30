@@ -177,9 +177,13 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 	rowMaps = postProcessAskRows(conversion, rowMaps)
 	sanitizeInternalRowFields(rowMaps)
 	if s.options.EnableRecovery {
-		recoveredRows, recoveredCypher, recoveredValidation, ok, err := s.recoverWeakRows(ctx, conversion, rowMaps, params, emit)
+		recoveredRows, recoveredCypher, recoveredValidation, ok, terminal, err := s.recoverWeakRows(ctx, traceID, started, timings, conversion, rowMaps, params, emit)
 		if err != nil {
 			return err
+		}
+		if terminal {
+			status = "refused"
+			return nil
 		}
 		if ok {
 			rowMaps = recoveredRows

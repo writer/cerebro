@@ -3,17 +3,18 @@ package graphagent
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/writer/cerebro/internal/ports"
 )
 
-func (s *Service) recoverWeakRows(ctx context.Context, conversion conversionResult, rows []map[string]any, params map[string]any, emit Emitter) ([]map[string]any, string, ValidatorResult, bool, error) {
+func (s *Service) recoverWeakRows(ctx context.Context, traceID string, started time.Time, timings StageTimings, conversion conversionResult, rows []map[string]any, params map[string]any, emit Emitter) ([]map[string]any, string, ValidatorResult, bool, bool, error) {
 	if len(rows) > 0 {
-		return nil, "", ValidatorResult{}, false, nil
+		return nil, "", ValidatorResult{}, false, false, nil
 	}
 	recoveredConversion, recoveredParams, action, ok := recoveryConversion(conversion, params)
 	if !ok {
-		return nil, "", ValidatorResult{}, false, nil
+		return nil, "", ValidatorResult{}, false, false, nil
 	}
 	if err := emit(Event{Name: EventRecovery, Data: RecoveryEvent{
 		Attempt:    1,
@@ -22,17 +23,17 @@ func (s *Service) recoverWeakRows(ctx context.Context, conversion conversionResu
 		Intent:     conversion.Plan.Intent,
 		RowsBefore: len(rows),
 	}}); err != nil {
-		return nil, "", ValidatorResult{}, false, err
+		return nil, "", ValidatorResult{}, false, false, err
 	}
 	validation, rowLimit, err := s.validateConversion(ctx, recoveredConversion, recoveredConversion.Cypher, recoveredParams)
 	if err != nil {
-		return nil, "", ValidatorResult{}, false, err
+		return nil, "", ValidatorResult{}, false, false, err
 	}
 	if err := emit(Event{Name: EventCypher, Data: CypherEvent{Cypher: recoveredConversion.Cypher, Validator: validation}}); err != nil {
-		return nil, "", ValidatorResult{}, false, err
+		return nil, "", ValidatorResult{}, false, false, err
 	}
 	if !validation.OK {
-		return nil, "", validation, false, nil
+		return nil, "", validation, false, false, nil
 	}
 	recoveredRaw, err := s.store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
 		Query:    recoveredConversion.Cypher,
@@ -40,7 +41,11 @@ func (s *Service) recoverWeakRows(ctx context.Context, conversion conversionResu
 		RowLimit: rowLimit,
 	})
 	if err != nil {
-		return nil, "", ValidatorResult{}, false, fmt.Errorf("%w: execute recovery cypher: %w", ErrRuntimeUnavailable, err)
+		return nil, "", ValidatorResult{}, false, false, fmt.Errorf("%w: execute recovery cypher: %w", ErrRuntimeUnavailable, err)
+	}
+	if postProcessingCandidateLimitHit(recoveredConversion, recoveredRaw, rowLimit) {
+		err := emitRefusal(emit, traceID, started, recoveredConversion.Cypher, "The deterministic Ask recovery query matched more graph rows than can be safely post-processed without risking an incomplete answer. Narrow the scope or ask for a more specific subset.", "post_processing_candidate_limit", timings)
+		return nil, "", validation, false, true, err
 	}
 	recoveredRows := cypherRowsToMaps(recoveredRaw)
 	recoveredRows = postProcessAskRows(recoveredConversion, recoveredRows)
@@ -53,12 +58,12 @@ func (s *Service) recoverWeakRows(ctx context.Context, conversion conversionResu
 		RowsBefore: len(rows),
 		RowsAfter:  len(recoveredRows),
 	}}); err != nil {
-		return nil, "", ValidatorResult{}, false, err
+		return nil, "", ValidatorResult{}, false, false, err
 	}
 	if len(recoveredRows) == 0 {
-		return nil, "", validation, false, nil
+		return nil, "", validation, false, false, nil
 	}
-	return recoveredRows, recoveredConversion.Cypher, validation, true, nil
+	return recoveredRows, recoveredConversion.Cypher, validation, true, false, nil
 }
 
 func recoveryConversion(conversion conversionResult, params map[string]any) (conversionResult, map[string]any, string, bool) {

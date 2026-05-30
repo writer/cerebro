@@ -171,6 +171,37 @@ LIMIT 25`,
 	}
 }
 
+func TestAskRecoveryRefusesSaturatedCandidateWindow(t *testing.T) {
+	recoveryRows := make([]ports.CypherRow, 0, postProcessingCandidateRowLimit)
+	for i := 0; i < postProcessingCandidateRowLimit; i++ {
+		recoveryRows = append(recoveryRows, ports.CypherRow{Values: map[string]any{
+			"finding_urn":                       "urn:cerebro:writer:finding:" + string(rune('a'+i%26)),
+			"resource_urn":                      "urn:cerebro:writer:repo:alpha",
+			"relation_attributes_json_internal": `{"risk_score":42}`,
+			"finding_attributes_json_internal":  `{"severity":"HIGH"}`,
+		}})
+	}
+	store := &askEvalStore{rows: nil, recoveryRows: recoveryRows}
+	service := NewServiceWithOptions(store, &StubLLMClient{DraftResponse: &DraftResponse{
+		Rationale: "recover top risk",
+		Plan:      &AskQueryPlan{Intent: IntentTopRiskFindings, Filters: map[string]string{"severity": "critical"}, Limit: 10},
+	}}, ValidatorOptions{}, ServiceOptions{EnableRecovery: true})
+	var events []Event
+	if err := service.Stream(context.Background(), AskRequest{TenantID: "writer", Question: "show critical risk findings"}, func(event Event) error {
+		events = append(events, event)
+		return nil
+	}); err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	summary := eventData[SummaryEvent](t, events, EventSummary)
+	if summary.UnsupportedQuery == nil || summary.UnsupportedQuery.Code != "post_processing_candidate_limit" {
+		t.Fatalf("unsupported query = %#v, want post_processing_candidate_limit", summary.UnsupportedQuery)
+	}
+	if countEvents(events, EventRows) != 0 {
+		t.Fatalf("recovery emitted rows after saturated candidate window: %#v", events)
+	}
+}
+
 type askEvalStore struct {
 	rows         []ports.CypherRow
 	recoveryRows []ports.CypherRow
