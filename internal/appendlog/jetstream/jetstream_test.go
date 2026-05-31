@@ -14,6 +14,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/securityevents"
 	"github.com/writer/cerebro/internal/workflowevents"
 )
 
@@ -96,6 +97,33 @@ func TestAppendPublishesEnvelope(t *testing.T) {
 	}
 	if !proto.Equal(&decoded, event) {
 		t.Fatalf("decoded envelope = %#v, want %#v", &decoded, event)
+	}
+}
+
+func TestAppendPublishesCanonicalSecuritySubjectWithoutLegacyPrefix(t *testing.T) {
+	pub := &fakePublisher{}
+	log := &Log{js: pub, subjectPrefix: "events"}
+
+	event := &cerebrov1.EventEnvelope{
+		Id:       "evt-1",
+		TenantId: "tenant-1",
+		Kind:     securityevents.FindingRecorded,
+	}
+	if err := log.Append(context.Background(), event); err != nil {
+		t.Fatalf("Append() error = %v", err)
+	}
+	if pub.published == nil {
+		t.Fatal("published message = nil")
+	}
+	if pub.published.Subject != securityevents.FindingRecorded {
+		t.Fatalf("subject = %q, want %q", pub.published.Subject, securityevents.FindingRecorded)
+	}
+	var decoded cerebrov1.EventEnvelope
+	if err := proto.Unmarshal(pub.published.Data, &decoded); err != nil {
+		t.Fatalf("proto.Unmarshal() error = %v", err)
+	}
+	if got := decoded.GetKind(); got != securityevents.FindingRecorded {
+		t.Fatalf("decoded kind = %q, want %q", got, securityevents.FindingRecorded)
 	}
 }
 
@@ -205,6 +233,16 @@ func TestEventSubjectDefaultsAndValidatesPrefix(t *testing.T) {
 	}
 	if _, err := eventSubject("events.", "entity.update"); err == nil {
 		t.Fatal("eventSubject(invalid prefix) error = nil, want non-nil")
+	}
+}
+
+func TestEventSubjectKeepsCanonicalSecurityKindAbsolute(t *testing.T) {
+	subject, err := eventSubject("events", securityevents.APIAccessAudit)
+	if err != nil {
+		t.Fatalf("eventSubject() error = %v", err)
+	}
+	if subject != securityevents.APIAccessAudit {
+		t.Fatalf("eventSubject() = %q, want %q", subject, securityevents.APIAccessAudit)
 	}
 }
 
@@ -318,6 +356,39 @@ func TestReplayFiltersWorkflowEventsByKindPrefixTenantAndAttribute(t *testing.T)
 			"workflow_kind": "knowledge_decision",
 		},
 	})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(events))
+	}
+	if got := events[0].GetId(); got != "evt-1" {
+		t.Fatalf("replayed id = %q, want evt-1", got)
+	}
+}
+
+func TestReplayFiltersCanonicalSecurityEventsByKindPrefix(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{
+					Name:     "CEREBRO_EVENTS",
+					Subjects: []string{"events.>", "sec.>"},
+				},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: 3},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				1: rawReplayMsg(t, securityevents.FindingRecorded, replayEvent("evt-1", securityevents.FindingRecorded, "writer-github")),
+				2: rawReplayMsg(t, securityevents.APIAccessAudit, replayEvent("evt-2", securityevents.APIAccessAudit, "")),
+				3: rawReplayMsg(t, "events.github.audit", replayEvent("evt-3", "github.audit", "writer-github")),
+			},
+		},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{KindPrefix: securityevents.FindingsV1Prefix})
 	if err != nil {
 		t.Fatalf("Replay() error = %v", err)
 	}
