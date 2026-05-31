@@ -57,7 +57,7 @@ class Client:
         query = {"root_urn": normalized_root_urn}
         if limit > 0:
             query["limit"] = str(limit)
-        result, _ = self._request_json("GET", f"/graph/neighborhood?{parse.urlencode(query)}")
+        result, _ = self._request_json("GET", f"/platform/graph/neighborhood?{parse.urlencode(query)}")
         return result
 
     def integration(self, runtime_id: str, tenant_id: str, integration: str) -> "IntegrationClient":

@@ -238,10 +238,10 @@ Connect RPC procedures are served under `/cerebro.v1.BootstrapService/{Method}`.
 | `GET /report-runs/{runID}` | get a report run |
 | `POST /platform/knowledge/decisions` | write a knowledge decision |
 | `POST /platform/knowledge/actions` | write a workflow action |
-| `POST /graph/actuate/recommendation` | write an action through the graph actuation route |
-| `POST /graph/write/outcome` | write a workflow outcome |
+| `POST /platform/knowledge/actions/recommendation` | write an action recommendation |
+| `POST /platform/knowledge/outcomes` | write a workflow outcome |
 | `POST /platform/workflow/replay` | replay workflow events |
-| `GET /graph/neighborhood` | query graph neighborhood |
+| `GET /platform/graph/neighborhood` | query graph neighborhood |
 
 ---
 

@@ -53,7 +53,7 @@ export class Client {
         if (limit > 0) {
             query.set("limit", String(limit));
         }
-        return this.requestJson("GET", `/graph/neighborhood?${query.toString()}`);
+        return this.requestJson("GET", `/platform/graph/neighborhood?${query.toString()}`);
     }
     integration(options) {
         return new IntegrationClient(this, options);
