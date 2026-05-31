@@ -25,6 +25,7 @@ import (
 	"github.com/writer/cerebro/internal/sourceprojection"
 	"github.com/writer/cerebro/internal/sourceregistry"
 	"github.com/writer/cerebro/internal/sourceruntime"
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 type usageError string
@@ -149,8 +150,24 @@ func startGRCReadModelWarmup(ctx context.Context, stateStore ports.StateStore, l
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+		_, hasPreparer := stateStore.(grcReadModelPreparer)
+		ctx, span := telemetry.Start(ctx, "grc.read_model_warmup", telemetry.Attrs(
+			telemetry.Field{Key: "preparer_present", Value: hasPreparer},
+		))
+		status := "completed"
+		attrs := telemetry.Attrs(telemetry.Field{Key: "preparer_present", Value: hasPreparer})
+		if !hasPreparer {
+			status = "skipped"
+		}
+		defer func() {
+			telemetry.End(span, status, attrs)
+		}()
 		if err := prepareGRCReadModels(ctx, stateStore); err != nil && ctx.Err() == nil {
+			status = "failed"
+			attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: "grc_read_model_warmup_failed"})
 			logf("%v", err)
+		} else if ctx.Err() != nil {
+			status = "canceled"
 		}
 	}()
 	return done
@@ -159,13 +176,29 @@ func startGRCReadModelWarmup(ctx context.Context, stateStore ports.StateStore, l
 func startFindingRiskBackfill(ctx context.Context, backfiller findingRiskBackfiller, logf func(string, ...any)) <-chan struct{} {
 	done := make(chan struct{})
 	if backfiller == nil {
+		_, span := telemetry.Start(ctx, "finding.risk_backfill", telemetry.Attrs(
+			telemetry.Field{Key: "backfiller_present", Value: false},
+		))
+		telemetry.End(span, "skipped", telemetry.Attrs(telemetry.Field{Key: "backfiller_present", Value: false}))
 		close(done)
 		return done
 	}
 	go func() {
 		defer close(done)
+		ctx, span := telemetry.Start(ctx, "finding.risk_backfill", telemetry.Attrs(
+			telemetry.Field{Key: "backfiller_present", Value: true},
+		))
+		status := "completed"
+		attrs := telemetry.Attrs(telemetry.Field{Key: "backfiller_present", Value: true})
+		defer func() {
+			telemetry.End(span, status, attrs)
+		}()
 		if err := backfiller.BackfillFindingRisk(ctx); err != nil && ctx.Err() == nil {
+			status = "failed"
+			attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: "finding_risk_backfill_failed"})
 			logf("backfill finding risk: %v", err)
+		} else if ctx.Err() != nil {
+			status = "canceled"
 		}
 	}()
 	return done

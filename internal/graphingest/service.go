@@ -167,7 +167,7 @@ func (s *Service) RunRuntime(ctx context.Context, request RuntimeRequest) (resul
 			spanAttributes = graphIngestTelemetryAttributes(spanAttributes, result)
 		}
 		if err != nil {
-			spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "error", Value: err.Error()})
+			spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "error_kind", Value: graphIngestTelemetryErrorKind(err)})
 		}
 		telemetry.End(span, status, spanAttributes)
 	}()
@@ -270,7 +270,40 @@ func graphIngestTelemetryAttributes(attributes telemetry.Attributes, result *Run
 	return attributes
 }
 
-func (s *Service) GetRun(ctx context.Context, id string) (graphstore.IngestRun, error) {
+func graphIngestTelemetryErrorKind(err error) string {
+	switch {
+	case errors.Is(err, ErrInvalidRequest):
+		return "invalid_request"
+	case errors.Is(err, ErrRuntimeUnavailable):
+		return "runtime_unavailable"
+	case errors.Is(err, ErrRunNotFound):
+		return "run_not_found"
+	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
+		return "runtime_not_found"
+	case errors.Is(err, sourcecdk.ErrInvalidEventEnvelope):
+		return "invalid_event"
+	case errors.Is(err, sourcecdk.ErrInvalidConfig):
+		return "invalid_source_config"
+	default:
+		return "ingest_failed"
+	}
+}
+
+func (s *Service) GetRun(ctx context.Context, id string) (run graphstore.IngestRun, err error) {
+	attrs := telemetry.Attrs(
+		telemetry.Field{Key: "run_id_present", Value: strings.TrimSpace(id) != ""},
+	)
+	ctx, span := telemetry.Start(ctx, "graph.ingest_get_run", attrs)
+	status := "completed"
+	defer func() {
+		if err != nil {
+			status = "failed"
+			attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: graphIngestTelemetryErrorKind(err)})
+		} else {
+			attrs = attrs.WithField(telemetry.Field{Key: "run_status", Value: strings.TrimSpace(run.Status)})
+		}
+		telemetry.End(span, status, attrs)
+	}()
 	runStore, err := s.runStore()
 	if err != nil {
 		return graphstore.IngestRun{}, err
@@ -289,7 +322,25 @@ func (s *Service) GetRun(ctx context.Context, id string) (graphstore.IngestRun, 
 	return run, nil
 }
 
-func (s *Service) ListRuns(ctx context.Context, filter graphstore.IngestRunFilter) (*ListResult, error) {
+func (s *Service) ListRuns(ctx context.Context, filter graphstore.IngestRunFilter) (result *ListResult, err error) {
+	attrs := telemetry.Attrs(
+		telemetry.Field{Key: "runtime_filter_present", Value: strings.TrimSpace(filter.RuntimeID) != ""},
+		telemetry.Field{Key: "status_filter_present", Value: strings.TrimSpace(filter.Status) != ""},
+		telemetry.Field{Key: "limit", Value: filter.Limit},
+	)
+	ctx, span := telemetry.Start(ctx, "graph.ingest_list_runs", attrs)
+	status := "completed"
+	defer func() {
+		if err != nil {
+			status = "failed"
+			attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: graphIngestTelemetryErrorKind(err)})
+		} else if result != nil {
+			attrs = attrs.
+				WithField(telemetry.Field{Key: "run_count", Value: len(result.Runs)}).
+				WithField(telemetry.Field{Key: "failed_count", Value: result.FailedCount})
+		}
+		telemetry.End(span, status, attrs)
+	}()
 	runStore, err := s.runStore()
 	if err != nil {
 		return nil, err
@@ -313,7 +364,24 @@ func (s *Service) ListRuns(ctx context.Context, filter graphstore.IngestRunFilte
 	return &ListResult{Runs: runs, FailedCount: uint32(len(failed))}, nil
 }
 
-func (s *Service) Health(ctx context.Context, limit uint32) (*HealthResult, error) {
+func (s *Service) Health(ctx context.Context, limit uint32) (result *HealthResult, err error) {
+	attrs := telemetry.Attrs(
+		telemetry.Field{Key: "limit", Value: limit},
+	)
+	ctx, span := telemetry.Start(ctx, "graph.ingest_health", attrs)
+	status := "completed"
+	defer func() {
+		if err != nil {
+			status = "failed"
+			attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: graphIngestTelemetryErrorKind(err)})
+		} else if result != nil {
+			attrs = attrs.
+				WithField(telemetry.Field{Key: "health_status", Value: result.Status}).
+				WithField(telemetry.Field{Key: "failed_count", Value: result.FailedCount}).
+				WithField(telemetry.Field{Key: "running_count", Value: result.RunningCount})
+		}
+		telemetry.End(span, status, attrs)
+	}()
 	runStore, err := s.runStore()
 	if err != nil {
 		return nil, err
@@ -333,12 +401,12 @@ func (s *Service) Health(ctx context.Context, limit uint32) (*HealthResult, erro
 	if normalizedLimit > 0 && len(failed) > normalizedLimit {
 		failed = failed[:normalizedLimit]
 	}
-	status := "ready"
+	healthStatus := "ready"
 	if len(allFailed) != 0 {
-		status = "degraded"
+		healthStatus = "degraded"
 	}
 	return &HealthResult{
-		Status:       status,
+		Status:       healthStatus,
 		CheckedAt:    time.Now().UTC(),
 		FailedCount:  uint32(len(allFailed)),
 		RunningCount: uint32(len(running)),
@@ -1053,7 +1121,7 @@ func finishRun(run graphstore.IngestRun, result *IngestResult, status string, ru
 		finished.GraphLinksAfter = result.GraphLinksAfter
 	}
 	if runErr != nil {
-		finished.Error = runErr.Error()
+		finished.Error = graphIngestTelemetryErrorKind(runErr)
 	}
 	return finished
 }

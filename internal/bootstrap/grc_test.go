@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -167,6 +168,87 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 	}
 	if payload.Connectors[0].CheckpointWatermark == nil && payload.Connectors[1].CheckpointWatermark == nil {
 		t.Fatalf("connector checkpoint watermarks were not surfaced")
+	}
+}
+
+func TestGRCDashboardEmitsLatencyTelemetry(t *testing.T) {
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-grc": {
+				Id:       "writer-grc",
+				SourceId: "grc",
+				TenantId: "writer",
+			},
+		},
+		findings:        map[string]*ports.FindingRecord{},
+		findingEvidence: map[string]*cerebrov1.FindingEvidence{},
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	stderr := captureBootstrapStderr(t, func() {
+		resp, err := server.Client().Get(server.URL + "/grc/dashboard?tenant_id=writer&limit=1")
+		if err != nil {
+			t.Fatalf("GET /grc/dashboard error = %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET /grc/dashboard status = %d, want %d", resp.StatusCode, http.StatusOK)
+		}
+	})
+
+	payload := decodeBootstrapTelemetryPayload(t, stderr)
+	for key, want := range map[string]any{
+		"kind":           "span_end",
+		"name":           "grc.dashboard",
+		"status":         "completed",
+		"route":          "/grc/dashboard",
+		"dashboard":      "grc",
+		"status_code":    float64(http.StatusOK),
+		"limit":          float64(1),
+		"preview_limit":  float64(1),
+		"runtime_count":  float64(1),
+		"finding_count":  float64(0),
+		"evidence_count": float64(0),
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	if _, ok := payload["duration_ms"].(float64); !ok {
+		t.Fatalf("telemetry duration_ms = %#v, want number; payload=%#v", payload["duration_ms"], payload)
+	}
+}
+
+func TestGRCDashboardTelemetryRecordsHTTPErrorStatus(t *testing.T) {
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: &stubRuntimeStore{}}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	stderr := captureBootstrapStderr(t, func() {
+		resp, err := server.Client().Get(server.URL + "/grc/dashboard?tenant_id=writer&limit=501")
+		if err != nil {
+			t.Fatalf("GET /grc/dashboard error = %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("GET /grc/dashboard status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+		}
+	})
+
+	payload := decodeBootstrapTelemetryPayload(t, stderr)
+	if got := payload["status"]; got != "failed" {
+		t.Fatalf("telemetry status = %#v, want failed; payload=%#v", got, payload)
+	}
+	if got := payload["status_code"]; got != float64(http.StatusBadRequest) {
+		t.Fatalf("telemetry status_code = %#v, want %d; payload=%#v", got, http.StatusBadRequest, payload)
+	}
+	if got := payload["error_kind"]; got != "invalid_request" {
+		t.Fatalf("telemetry error_kind = %#v, want invalid_request; payload=%#v", got, payload)
+	}
+	if strings.Contains(stderr, "limit must be <= 500") {
+		t.Fatalf("GRC dashboard telemetry leaked raw error: %s", stderr)
 	}
 }
 
