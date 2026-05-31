@@ -97,11 +97,9 @@ func serve() error {
 	if err != nil {
 		return fmt.Errorf("bootstrap app: %w", err)
 	}
-	if err := prepareGRCReadModels(context.Background(), deps.StateStore); err != nil {
-		return err
-	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	startGRCReadModelWarmup(ctx, deps.StateStore, log.Printf)
 	startFindingRiskBackfill(ctx, app, log.Printf)
 
 	errCh := make(chan error, 1)
@@ -145,6 +143,17 @@ func prepareGRCReadModels(ctx context.Context, stateStore ports.StateStore) erro
 		return fmt.Errorf("prepare grc read models: %w", err)
 	}
 	return nil
+}
+
+func startGRCReadModelWarmup(ctx context.Context, stateStore ports.StateStore, logf func(string, ...any)) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if err := prepareGRCReadModels(ctx, stateStore); err != nil && ctx.Err() == nil {
+			logf("%v", err)
+		}
+	}()
+	return done
 }
 
 func startFindingRiskBackfill(ctx context.Context, backfiller findingRiskBackfiller, logf func(string, ...any)) <-chan struct{} {

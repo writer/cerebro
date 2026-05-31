@@ -101,6 +101,56 @@ func TestPrepareGRCReadModelsWrapsErrors(t *testing.T) {
 	}
 }
 
+func TestStartGRCReadModelWarmupDoesNotBlockStartup(t *testing.T) {
+	store := &blockingPreparingStateStore{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := startGRCReadModelWarmup(ctx, store, func(string, ...any) {})
+	select {
+	case <-store.started:
+	case <-time.After(time.Second):
+		t.Fatal("GRC read-model warmup did not start")
+	}
+	select {
+	case <-done:
+		t.Fatal("GRC read-model warmup completed while still blocked")
+	default:
+	}
+
+	close(store.release)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("GRC read-model warmup did not finish after release")
+	}
+}
+
+func TestStartGRCReadModelWarmupLogsErrors(t *testing.T) {
+	store := &preparingStateStore{err: errors.New("boom")}
+	logged := make(chan string, 1)
+
+	done := startGRCReadModelWarmup(context.Background(), store, func(format string, args ...any) {
+		logged <- fmt.Sprintf(format, args...)
+	})
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("GRC read-model warmup did not finish")
+	}
+	select {
+	case message := <-logged:
+		if !strings.Contains(message, "prepare grc read models: boom") {
+			t.Fatalf("logged message = %q, want wrapped warmup error", message)
+		}
+	default:
+		t.Fatal("GRC read-model warmup error was not logged")
+	}
+}
+
 func TestParseSourceRuntimePutArgsSeparatesTenantID(t *testing.T) {
 	t.Setenv("CEREBRO_TEST_TOKEN", "test")
 	runtime, err := parseSourceRuntimePutArgs([]string{
@@ -337,6 +387,12 @@ type preparingStateStore struct {
 	err   error
 }
 
+type blockingPreparingStateStore struct {
+	basicStateStore
+	started chan struct{}
+	release chan struct{}
+}
+
 type blockingFindingRiskBackfiller struct {
 	started chan struct{}
 	release chan struct{}
@@ -367,6 +423,12 @@ func (s *basicStateStore) Ping(context.Context) error {
 func (s *preparingStateStore) PrepareGRCReadModels(context.Context) error {
 	s.calls++
 	return s.err
+}
+
+func (s *blockingPreparingStateStore) PrepareGRCReadModels(context.Context) error {
+	close(s.started)
+	<-s.release
+	return nil
 }
 
 func (s *commandRuntimeStore) PutSourceRuntime(_ context.Context, runtime *cerebrov1.SourceRuntime) error {
