@@ -861,8 +861,8 @@ func TestProjectGRCVulnerableAssetLinksPlatformResources(t *testing.T) {
 	assertProjectedLink(t, state, targetURN, relationRepresents, hostURN)
 	assertProjectedLink(t, state, targetURN, relationRepresents, ipURN)
 	assertProjectedLinkMissing(t, state, awsInstanceURN, relationBelongsTo, accountURN)
-	assertProjectedLinkMissing(t, state, awsInstanceURN, relationRepresents, hostURN)
-	assertProjectedLinkMissing(t, state, awsInstanceURN, relationRepresents, ipURN)
+	assertProjectedLink(t, state, awsInstanceURN, relationRepresents, hostURN)
+	assertProjectedLink(t, state, awsInstanceURN, relationRepresents, ipURN)
 
 	// The platform resource gets a human-friendly label so dashboards and the
 	// ask-the-graph UX surface "ip-10-86-43-17.ec2.internal" instead of the URN.

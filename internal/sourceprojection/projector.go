@@ -1138,6 +1138,7 @@ func githubDependabotAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 	alertNumber := strings.TrimSpace(attributes["alert_number"])
 	packageName := strings.TrimSpace(attributes["package"])
 	ecosystem := strings.TrimSpace(attributes["ecosystem"])
+	manifestPath := strings.TrimSpace(attributes["manifest_path"])
 	advisoryID := firstNonEmpty(attributes["advisory_ghsa_id"], attributes["advisory_cve_id"])
 	vulnerabilityID := firstNonEmpty(canonicalVulnerabilityIdentifier(attributes), advisoryID)
 
@@ -1251,9 +1252,64 @@ func githubDependabotAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 	if packageURN != "" && canonicalPackageURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), packageURN, canonicalPackageURN, relationRepresents, packageIdentityAttributes(event, attributes, ecosystem)))
 	}
+	addGitHubDependabotDependencyContext(entities, links, tenantID, event, repoURN, alertURN, packageURN, repository, manifestPath, ecosystem, packageName)
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
+}
+
+func addGitHubDependabotDependencyContext(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, repoURN string, alertURN string, packageURN string, repository string, manifestPath string, ecosystem string, packageName string) {
+	repository = strings.TrimSpace(repository)
+	manifestPath = strings.TrimSpace(manifestPath)
+	packageName = strings.TrimSpace(packageName)
+	if repository == "" || manifestPath == "" || packageName == "" {
+		return
+	}
+	manifestURN := projectionURN(tenantID, "github_dependency_manifest", repository, manifestPath)
+	dependencyURN := projectionURN(tenantID, "github_dependency", repository, manifestPath, ecosystem, packageName)
+	if manifestURN == "" || dependencyURN == "" {
+		return
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        manifestURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: "github.dependency_manifest",
+		Label:      manifestPath,
+		Attributes: map[string]string{
+			"ecosystem":     strings.TrimSpace(ecosystem),
+			"manifest_path": manifestPath,
+			"repository":    repository,
+		},
+	})
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        dependencyURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: "github.dependency",
+		Label:      packageName,
+		Attributes: map[string]string{
+			"ecosystem":     strings.TrimSpace(ecosystem),
+			"manifest_path": manifestPath,
+			"package":       packageName,
+			"repository":    repository,
+		},
+	})
+	if repoURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), manifestURN, repoURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+	}
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), dependencyURN, manifestURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+	if packageURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), dependencyURN, packageURN, relationRepresents, map[string]string{
+			"ecosystem":     strings.TrimSpace(ecosystem),
+			"event_id":      event.GetId(),
+			"manifest_path": manifestPath,
+			"package":       packageName,
+		}))
+	}
+	if alertURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), alertURN, dependencyURN, relationAffects, map[string]string{"event_id": event.GetId()}))
+	}
 }
 
 func githubSecretScanningAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
