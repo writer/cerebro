@@ -493,6 +493,137 @@ func TestGRCDashboardUsesHeaderOnlyFindingLister(t *testing.T) {
 	}
 }
 
+func TestGRCFindingsUsesGroupedEvidenceCounts(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	runtimeID := "runtime-alpha"
+	tenantID := "tenant"
+	store := &stubGRCEvidenceCountStore{stubRuntimeStore: &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			runtimeID: {
+				Id:           runtimeID,
+				SourceId:     "okta",
+				TenantId:     tenantID,
+				LastSyncedAt: timestamppb.New(now),
+				Checkpoint:   &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now)},
+			},
+		},
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:             "finding-1",
+				TenantID:       tenantID,
+				RuntimeID:      runtimeID,
+				Title:          "Finding 1",
+				Severity:       "HIGH",
+				Status:         "open",
+				LastObservedAt: now,
+			},
+		},
+		findingEvidence: map[string]*cerebrov1.FindingEvidence{
+			"evidence-1": {Id: "evidence-1", RuntimeId: runtimeID, FindingId: "finding-1", CreatedAt: timestamppb.New(now)},
+			"evidence-2": {Id: "evidence-2", RuntimeId: runtimeID, FindingId: "finding-1", CreatedAt: timestamppb.New(now.Add(-time.Minute))},
+		},
+	}}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/grc/findings?tenant_id=" + tenantID + "&limit=1")
+	if err != nil {
+		t.Fatalf("GET /grc/findings error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /grc/findings status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var payload struct {
+		Findings []grcFindingItem `json:"findings"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode /grc/findings: %v", err)
+	}
+	if len(payload.Findings) != 1 || payload.Findings[0].EvidenceCount != 2 {
+		t.Fatalf("findings = %+v, want grouped evidence count 2", payload.Findings)
+	}
+	if store.groupedCountCalls != 1 {
+		t.Fatalf("grouped count calls = %d, want 1", store.groupedCountCalls)
+	}
+	if store.fullEvidenceCalls != 0 {
+		t.Fatalf("full evidence calls = %d, want 0", store.fullEvidenceCalls)
+	}
+	if store.groupedCountRequest.Limit != 0 {
+		t.Fatalf("grouped count limit = %d, want unpaginated 0", store.groupedCountRequest.Limit)
+	}
+	if len(store.groupedCountRequest.FindingIDs) != 1 || store.groupedCountRequest.FindingIDs[0] != "finding-1" {
+		t.Fatalf("grouped count finding ids = %#v, want finding-1", store.groupedCountRequest.FindingIDs)
+	}
+}
+
+func TestGRCControlsUsesGroupedEvidenceCounts(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	runtimeID := "runtime-alpha"
+	tenantID := "tenant"
+	store := &stubGRCEvidenceCountStore{stubRuntimeStore: &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			runtimeID: {
+				Id:           runtimeID,
+				SourceId:     "okta",
+				TenantId:     tenantID,
+				LastSyncedAt: timestamppb.New(now),
+				Checkpoint:   &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now)},
+			},
+		},
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:             "finding-1",
+				TenantID:       tenantID,
+				RuntimeID:      runtimeID,
+				Title:          "Finding 1",
+				Severity:       "HIGH",
+				Status:         "open",
+				ControlRefs:    []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.1"}},
+				LastObservedAt: now,
+			},
+		},
+		findingEvidence: map[string]*cerebrov1.FindingEvidence{
+			"evidence-1": {Id: "evidence-1", RuntimeId: runtimeID, FindingId: "finding-1", CreatedAt: timestamppb.New(now)},
+			"evidence-2": {Id: "evidence-2", RuntimeId: runtimeID, FindingId: "finding-1", CreatedAt: timestamppb.New(now.Add(-time.Minute))},
+		},
+	}}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/grc/controls?tenant_id=" + tenantID + "&limit=1")
+	if err != nil {
+		t.Fatalf("GET /grc/controls error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /grc/controls status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var payload struct {
+		Controls []grcControlItem `json:"controls"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode /grc/controls: %v", err)
+	}
+	if len(payload.Controls) != 1 || payload.Controls[0].EvidenceItems != 2 {
+		t.Fatalf("controls = %+v, want grouped evidence count 2", payload.Controls)
+	}
+	if store.groupedCountCalls != 1 {
+		t.Fatalf("grouped count calls = %d, want 1", store.groupedCountCalls)
+	}
+	if store.fullEvidenceCalls != 0 {
+		t.Fatalf("full evidence calls = %d, want 0", store.fullEvidenceCalls)
+	}
+	if store.groupedCountRequest.Limit != 0 {
+		t.Fatalf("grouped count limit = %d, want unpaginated 0", store.groupedCountRequest.Limit)
+	}
+	if len(store.groupedCountRequest.FindingIDs) != 1 || store.groupedCountRequest.FindingIDs[0] != "finding-1" {
+		t.Fatalf("grouped count finding ids = %#v, want finding-1", store.groupedCountRequest.FindingIDs)
+	}
+}
+
 func TestGRCDashboardUsesPurposeBuiltAggregateStore(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	runtimeID := "tenant-okta-audit"
@@ -711,4 +842,31 @@ func (s *stubGRCFindingHeaderStore) ListGRCFindings(ctx context.Context, request
 func (s *stubGRCFindingHeaderStore) ListFindings(ctx context.Context, request ports.ListFindingsRequest) ([]*ports.FindingRecord, error) {
 	s.fullFindingCalls++
 	return s.stubRuntimeStore.ListFindings(ctx, request)
+}
+
+type stubGRCEvidenceCountStore struct {
+	*stubRuntimeStore
+	groupedCountCalls   int
+	groupedCountRequest ports.ListFindingEvidenceRequest
+	fullEvidenceCalls   int
+}
+
+func (s *stubGRCEvidenceCountStore) CountGRCFindingEvidenceByFindingID(_ context.Context, request ports.ListFindingEvidenceRequest) (map[string]int, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	s.groupedCountCalls++
+	s.groupedCountRequest = request
+	counts := map[string]int{}
+	for _, record := range s.findingEvidence {
+		if record != nil && findingEvidenceMatches(request, record) {
+			counts[record.GetFindingId()]++
+		}
+	}
+	return counts, nil
+}
+
+func (s *stubGRCEvidenceCountStore) ListFindingEvidence(ctx context.Context, request ports.ListFindingEvidenceRequest) ([]*cerebrov1.FindingEvidence, error) {
+	s.fullEvidenceCalls++
+	return s.stubRuntimeStore.ListFindingEvidence(ctx, request)
 }
