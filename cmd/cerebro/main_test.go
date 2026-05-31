@@ -73,6 +73,34 @@ func TestStartFindingRiskBackfillLogsErrors(t *testing.T) {
 	}
 }
 
+func TestPrepareGRCReadModelsSkipsStoresWithoutPreparer(t *testing.T) {
+	if err := prepareGRCReadModels(context.Background(), &basicStateStore{}); err != nil {
+		t.Fatalf("prepareGRCReadModels() error = %v", err)
+	}
+}
+
+func TestPrepareGRCReadModelsCallsPreparer(t *testing.T) {
+	store := &preparingStateStore{}
+	if err := prepareGRCReadModels(context.Background(), store); err != nil {
+		t.Fatalf("prepareGRCReadModels() error = %v", err)
+	}
+	if store.calls != 1 {
+		t.Fatalf("PrepareGRCReadModels calls = %d, want 1", store.calls)
+	}
+}
+
+func TestPrepareGRCReadModelsWrapsErrors(t *testing.T) {
+	boom := errors.New("boom")
+	store := &preparingStateStore{err: boom}
+	err := prepareGRCReadModels(context.Background(), store)
+	if err == nil {
+		t.Fatal("prepareGRCReadModels() error = nil, want error")
+	}
+	if !errors.Is(err, boom) {
+		t.Fatalf("prepareGRCReadModels() error = %v, want wrapped boom", err)
+	}
+}
+
 func TestParseSourceRuntimePutArgsSeparatesTenantID(t *testing.T) {
 	t.Setenv("CEREBRO_TEST_TOKEN", "test")
 	runtime, err := parseSourceRuntimePutArgs([]string{
@@ -301,6 +329,14 @@ type commandRuntimeStore struct {
 	runtimes map[string]*cerebrov1.SourceRuntime
 }
 
+type basicStateStore struct{}
+
+type preparingStateStore struct {
+	basicStateStore
+	calls int
+	err   error
+}
+
 type blockingFindingRiskBackfiller struct {
 	started chan struct{}
 	release chan struct{}
@@ -322,6 +358,15 @@ func (b *errorFindingRiskBackfiller) BackfillFindingRisk(context.Context) error 
 
 func (s *commandRuntimeStore) Ping(context.Context) error {
 	return nil
+}
+
+func (s *basicStateStore) Ping(context.Context) error {
+	return nil
+}
+
+func (s *preparingStateStore) PrepareGRCReadModels(context.Context) error {
+	s.calls++
+	return s.err
 }
 
 func (s *commandRuntimeStore) PutSourceRuntime(_ context.Context, runtime *cerebrov1.SourceRuntime) error {
