@@ -40,6 +40,12 @@ jobs:
       aws: ${{ steps.filter.outputs.aws }}
       aws_sec_dev: ${{ steps.filter.outputs.aws_sec_dev }}
       aws_go_prod: ${{ steps.filter.outputs.aws_go_prod }}
+      aws_sec_dev_deploy: ${{ steps.filter.outputs.aws_sec_dev_deploy }}
+      aws_go_prod_deploy: ${{ steps.filter.outputs.aws_go_prod_deploy }}
+      aws_sec_dev_runtime_verify: ${{ steps.filter.outputs.aws_sec_dev_runtime_verify }}
+      aws_go_prod_runtime_verify: ${{ steps.filter.outputs.aws_go_prod_runtime_verify }}
+      aws_sec_dev_graph_health: ${{ steps.filter.outputs.aws_sec_dev_graph_health }}
+      aws_go_prod_graph_health: ${{ steps.filter.outputs.aws_go_prod_graph_health }}
       gcp: ${{ steps.filter.outputs.gcp }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -64,29 +70,76 @@ jobs:
             git diff --name-only "${base}" "${head}" > changed.txt
           fi
 
-          aws_sec_dev=false
-          aws_go_prod=false
+          aws_sec_dev_deploy=false
+          aws_go_prod_deploy=false
+          aws_sec_dev_runtime_verify=false
+          aws_go_prod_runtime_verify=false
+          aws_sec_dev_graph_health=false
+          aws_go_prod_graph_health=false
           gcp=false
-          if grep -Eq '^infra/aws/Pulumi\.sec-dev\.yaml$' changed.txt; then aws_sec_dev=true; fi
-          if grep -Eq '^infra/aws/Pulumi\.go-prod\.yaml$' changed.txt; then aws_go_prod=true; fi
+          source_runtime_verifier_changed=false
+          graph_health_verifier_changed=false
+
+          if grep -Eq '^infra/scripts/verify_source_runtime_ecs\.py$|^infra/tests/test_verify_source_runtime_ecs\.py$' changed.txt; then
+            source_runtime_verifier_changed=true
+          fi
+          if grep -Eq '^infra/scripts/verify_graph_health_ecs\.py$|^infra/tests/test_verify_graph_health_ecs\.py$' changed.txt; then
+            graph_health_verifier_changed=true
+          fi
+
+          if grep -Eq '^infra/aws/Pulumi\.sec-dev\.yaml$' changed.txt; then aws_sec_dev_deploy=true; fi
+          if grep -Eq '^infra/aws/Pulumi\.go-prod\.yaml$' changed.txt; then aws_go_prod_deploy=true; fi
           if grep -Eq '^infra/aws/' changed.txt && grep -Ev '^infra/aws/Pulumi\.(sec-dev|go-prod)\.yaml$' changed.txt | grep -Eq '^infra/aws/'; then
-            aws_sec_dev=true
-            aws_go_prod=true
+            aws_sec_dev_deploy=true
+            aws_go_prod_deploy=true
           fi
           if grep -Eq '^infra/gcp/' changed.txt; then gcp=true; fi
-          if grep -Eq '^infra/(pyproject.toml|uv.lock)$|^infra/scripts/|^infra/tests/' changed.txt; then
-            aws_sec_dev=true
-            aws_go_prod=true
-            if grep -Ev '^infra/scripts/verify_(graph_health|source_runtime)_ecs.py$|^infra/tests/test_verify_(graph_health|source_runtime)_ecs.py$' changed.txt | grep -Eq '^infra/(pyproject.toml|uv.lock)$|^infra/scripts/|^infra/tests/'; then
-              gcp=true
-            fi
+          if grep -Eq '^infra/(pyproject.toml|uv.lock)$' changed.txt; then
+            aws_sec_dev_deploy=true
+            aws_go_prod_deploy=true
+            gcp=true
           fi
+          if grep -Ev '^infra/scripts/verify_(graph_health|source_runtime)_ecs\.py$|^infra/tests/test_verify_(graph_health|source_runtime)_ecs\.py$' changed.txt | grep -Eq '^infra/scripts/|^infra/tests/'; then
+            aws_sec_dev_deploy=true
+            aws_go_prod_deploy=true
+            gcp=true
+          fi
+
+          if [ "${source_runtime_verifier_changed}" = "true" ]; then
+            aws_sec_dev_runtime_verify=true
+            aws_go_prod_runtime_verify=true
+            aws_sec_dev_graph_health=true
+            aws_go_prod_graph_health=true
+          fi
+          if [ "${graph_health_verifier_changed}" = "true" ]; then
+            aws_sec_dev_graph_health=true
+            aws_go_prod_graph_health=true
+          fi
+          if [ "${aws_sec_dev_deploy}" = "true" ]; then
+            aws_sec_dev_runtime_verify=true
+            aws_sec_dev_graph_health=true
+          fi
+          if [ "${aws_go_prod_deploy}" = "true" ]; then
+            aws_go_prod_runtime_verify=true
+            aws_go_prod_graph_health=true
+          fi
+
+          aws_sec_dev=false
+          aws_go_prod=false
+          if [ "${aws_sec_dev_deploy}" = "true" ] || [ "${aws_sec_dev_runtime_verify}" = "true" ] || [ "${aws_sec_dev_graph_health}" = "true" ]; then aws_sec_dev=true; fi
+          if [ "${aws_go_prod_deploy}" = "true" ] || [ "${aws_go_prod_runtime_verify}" = "true" ] || [ "${aws_go_prod_graph_health}" = "true" ]; then aws_go_prod=true; fi
           aws=false
           if [ "${aws_sec_dev}" = "true" ] || [ "${aws_go_prod}" = "true" ]; then aws=true; fi
           {
             echo "aws=${aws}"
             echo "aws_sec_dev=${aws_sec_dev}"
             echo "aws_go_prod=${aws_go_prod}"
+            echo "aws_sec_dev_deploy=${aws_sec_dev_deploy}"
+            echo "aws_go_prod_deploy=${aws_go_prod_deploy}"
+            echo "aws_sec_dev_runtime_verify=${aws_sec_dev_runtime_verify}"
+            echo "aws_go_prod_runtime_verify=${aws_go_prod_runtime_verify}"
+            echo "aws_sec_dev_graph_health=${aws_sec_dev_graph_health}"
+            echo "aws_go_prod_graph_health=${aws_go_prod_graph_health}"
             echo "gcp=${gcp}"
           } >> "$GITHUB_OUTPUT"
           printf 'Changed infra paths:\n'
@@ -136,7 +189,7 @@ jobs:
     name: Preview sec-dev
     runs-on: ubuntu-latest
     needs: [changes, static-validation]
-    if: github.event_name == 'pull_request' && needs.changes.outputs.aws_sec_dev == 'true'
+    if: github.event_name == 'pull_request' && needs.changes.outputs.aws_sec_dev_deploy == 'true'
     permissions:
       id-token: write
       contents: read
@@ -168,12 +221,14 @@ jobs:
           assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
 
       - name: Authenticate with Pulumi Cloud
+        if: needs.changes.outputs.aws_sec_dev_deploy == 'true'
         uses: pulumi/auth-actions@1c89817aab0c66407723cdef72b05266e7376640 # v1
         with:
           organization: writer-ai
           requested-token-type: urn:pulumi:token-type:access_token:organization
 
       - name: Set Infisical External ID
+        if: needs.changes.outputs.aws_sec_dev_deploy == 'true'
         shell: bash
         working-directory: infra/aws
         run: uv run pulumi config set --stack sec-dev --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
@@ -192,7 +247,7 @@ jobs:
     name: Preview go-prod
     runs-on: ubuntu-latest
     needs: [changes, static-validation]
-    if: github.event_name == 'pull_request' && needs.changes.outputs.aws_go_prod == 'true'
+    if: github.event_name == 'pull_request' && needs.changes.outputs.aws_go_prod_deploy == 'true'
     permissions:
       id-token: write
       contents: read
@@ -224,12 +279,14 @@ jobs:
           assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
 
       - name: Authenticate with Pulumi Cloud
+        if: needs.changes.outputs.aws_go_prod_deploy == 'true'
         uses: pulumi/auth-actions@1c89817aab0c66407723cdef72b05266e7376640 # v1
         with:
           organization: writer-ai
           requested-token-type: urn:pulumi:token-type:access_token:organization
 
       - name: Set Infisical External ID
+        if: needs.changes.outputs.aws_go_prod_deploy == 'true'
         shell: bash
         working-directory: infra/aws
         run: uv run pulumi config set --stack go-prod --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
@@ -282,32 +339,38 @@ jobs:
           assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
 
       - name: Authenticate with Pulumi Cloud
+        if: needs.changes.outputs.aws_sec_dev_deploy == 'true'
         uses: pulumi/auth-actions@1c89817aab0c66407723cdef72b05266e7376640 # v1
         with:
           organization: writer-ai
           requested-token-type: urn:pulumi:token-type:access_token:organization
 
       - name: Set Infisical External ID
+        if: needs.changes.outputs.aws_sec_dev_deploy == 'true'
         shell: bash
         working-directory: infra/aws
         run: uv run pulumi config set --stack sec-dev --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
 
       - name: Wait for ECR image (sec-dev)
+        if: needs.changes.outputs.aws_sec_dev_deploy == 'true'
         shell: bash
         run: bash .github/scripts/wait-for-ecr-image.sh sec-dev
 
       - name: Detect AWS public-endpoint refresh need (sec-dev)
+        if: needs.changes.outputs.aws_sec_dev_deploy == 'true'
         id: aws_public_endpoint_refresh
         shell: bash
         working-directory: infra
         run: uv run python scripts/detect_public_endpoint_refresh.py --stack-file aws/Pulumi.sec-dev.yaml --github-output "$GITHUB_OUTPUT"
 
       - name: Verify AWS scan-role trust (sec-dev)
+        if: needs.changes.outputs.aws_sec_dev_deploy == 'true'
         shell: bash
         working-directory: infra
         run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.sec-dev.yaml --same-account-only
 
       - name: Pulumi Up (sec-dev)
+        if: needs.changes.outputs.aws_sec_dev_deploy == 'true'
         uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6
         with:
           command: up
@@ -316,11 +379,13 @@ jobs:
           diff: true
 
       - name: Refresh AWS credentials for runtime verification (sec-dev)
+        if: needs.changes.outputs.aws_sec_dev_runtime_verify == 'true'
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
         with:
           assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
 
       - name: Verify Cosmo source runtimes (sec-dev)
+        if: needs.changes.outputs.aws_sec_dev_runtime_verify == 'true'
         id: verify_cosmo_source_runtimes_sec_dev
         continue-on-error: true
         shell: bash
@@ -328,7 +393,7 @@ jobs:
         run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --source-id cosmo --run --run-page-limit 1 --run-graph-page-limit 1 --run-event-limit 10 --succeed-after-graph-ingest --stop-running-before-run --stop-timeout-seconds 600 --allow-lease-contention-skip --failed-run-retry-seconds 300 --run-attempt-timeout-seconds 900 --max-age-minutes 60 --wait-timeout-seconds 1200 --poll-seconds 5
 
       - name: Report Cosmo source runtime degradation (sec-dev)
-        if: steps.verify_cosmo_source_runtimes_sec_dev.outcome == 'failure'
+        if: needs.changes.outputs.aws_sec_dev_runtime_verify == 'true' && steps.verify_cosmo_source_runtimes_sec_dev.outcome == 'failure'
         shell: bash
         run: |
           echo "::warning::Cosmo source runtime verification failed after deployment; rollout will continue and graph-health integrity checks remain blocking."
@@ -339,29 +404,31 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Refresh AWS credentials for public-endpoint runtime verification (sec-dev)
-        if: steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
+        if: needs.changes.outputs.aws_sec_dev_deploy == 'true' && steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
         with:
           assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
 
       - name: Refresh AWS public-endpoint runtimes (sec-dev)
-        if: steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
+        if: needs.changes.outputs.aws_sec_dev_deploy == 'true' && steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
         shell: bash
         working-directory: infra
         run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --source-id aws --family public_endpoint --run --succeed-after-graph-ingest --allow-lease-contention-skip --run-attempt-timeout-seconds 900 --max-age-minutes 60 --wait-timeout-seconds 1200 --poll-seconds 5
 
       - name: Refresh AWS credentials for graph verification (sec-dev)
+        if: needs.changes.outputs.aws_sec_dev_graph_health == 'true'
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
         with:
           assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
 
       - name: Verify graph health (sec-dev)
+        if: needs.changes.outputs.aws_sec_dev_graph_health == 'true'
         shell: bash
         working-directory: infra
         run: uv run python scripts/verify_graph_health_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --wait-timeout-seconds 3600 --graph-command-retry-seconds 1800 --poll-seconds 5 --allow-transient-source-failures | tee graph-health-sec-dev.tsv
 
       - name: Upload graph health summary (sec-dev)
-        if: always()
+        if: always() && needs.changes.outputs.aws_sec_dev_graph_health == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: graph-health-sec-dev
@@ -408,32 +475,38 @@ jobs:
           assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
 
       - name: Authenticate with Pulumi Cloud
+        if: needs.changes.outputs.aws_go_prod_deploy == 'true'
         uses: pulumi/auth-actions@1c89817aab0c66407723cdef72b05266e7376640 # v1
         with:
           organization: writer-ai
           requested-token-type: urn:pulumi:token-type:access_token:organization
 
       - name: Set Infisical External ID
+        if: needs.changes.outputs.aws_go_prod_deploy == 'true'
         shell: bash
         working-directory: infra/aws
         run: uv run pulumi config set --stack go-prod --secret cerebro:infisicalExternalId "${{ secrets.INFISICAL_EXTERNAL_ID }}"
 
       - name: Wait for ECR image (go-prod)
+        if: needs.changes.outputs.aws_go_prod_deploy == 'true'
         shell: bash
         run: bash .github/scripts/wait-for-ecr-image.sh go-prod
 
       - name: Detect AWS public-endpoint refresh need (go-prod)
+        if: needs.changes.outputs.aws_go_prod_deploy == 'true'
         id: aws_public_endpoint_refresh
         shell: bash
         working-directory: infra
         run: uv run python scripts/detect_public_endpoint_refresh.py --stack-file aws/Pulumi.go-prod.yaml --github-output "$GITHUB_OUTPUT"
 
       - name: Verify AWS scan-role trust (go-prod)
+        if: needs.changes.outputs.aws_go_prod_deploy == 'true'
         shell: bash
         working-directory: infra
         run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.go-prod.yaml --same-account-only
 
       - name: Pulumi Up (go-prod)
+        if: needs.changes.outputs.aws_go_prod_deploy == 'true'
         uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6
         with:
           command: up
@@ -442,11 +515,13 @@ jobs:
           diff: true
 
       - name: Refresh AWS credentials for runtime verification (sec-prod)
+        if: needs.changes.outputs.aws_go_prod_runtime_verify == 'true'
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
         with:
           assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
 
       - name: Verify Cosmo source runtimes (go-prod)
+        if: needs.changes.outputs.aws_go_prod_runtime_verify == 'true'
         id: verify_cosmo_source_runtimes_go_prod
         continue-on-error: true
         shell: bash
@@ -454,7 +529,7 @@ jobs:
         run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.go-prod.yaml --source-id cosmo --run --run-page-limit 1 --run-graph-page-limit 1 --run-event-limit 10 --succeed-after-graph-ingest --stop-timeout-seconds 600 --allow-lease-contention-skip --failed-run-retry-seconds 300 --run-attempt-timeout-seconds 900 --max-age-minutes 60 --wait-timeout-seconds 1200 --poll-seconds 5
 
       - name: Report Cosmo source runtime degradation (go-prod)
-        if: steps.verify_cosmo_source_runtimes_go_prod.outcome == 'failure'
+        if: needs.changes.outputs.aws_go_prod_runtime_verify == 'true' && steps.verify_cosmo_source_runtimes_go_prod.outcome == 'failure'
         shell: bash
         run: |
           echo "::warning::Cosmo source runtime verification failed after deployment; rollout will continue and graph-health integrity checks remain blocking."
@@ -465,29 +540,31 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Refresh AWS credentials for public-endpoint runtime verification (sec-prod)
-        if: steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
+        if: needs.changes.outputs.aws_go_prod_deploy == 'true' && steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
         with:
           assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
 
       - name: Refresh AWS public-endpoint runtimes (go-prod)
-        if: steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
+        if: needs.changes.outputs.aws_go_prod_deploy == 'true' && steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
         shell: bash
         working-directory: infra
         run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.go-prod.yaml --source-id aws --family public_endpoint --run --succeed-after-graph-ingest --allow-lease-contention-skip --run-attempt-timeout-seconds 900 --max-age-minutes 60 --wait-timeout-seconds 1200 --poll-seconds 5
 
       - name: Refresh AWS credentials for graph verification (sec-prod)
+        if: needs.changes.outputs.aws_go_prod_graph_health == 'true'
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
         with:
           assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
 
       - name: Verify graph health (go-prod)
+        if: needs.changes.outputs.aws_go_prod_graph_health == 'true'
         shell: bash
         working-directory: infra
         run: uv run python scripts/verify_graph_health_ecs.py --stack-file aws/Pulumi.go-prod.yaml --wait-timeout-seconds 3600 --graph-command-retry-seconds 1800 --poll-seconds 5 --allow-transient-source-failures | tee graph-health-go-prod.tsv
 
       - name: Upload graph health summary (go-prod)
-        if: always()
+        if: always() && needs.changes.outputs.aws_go_prod_graph_health == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: graph-health-go-prod

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
@@ -24,6 +25,8 @@ DEFAULT_MAX_RUNNING_MINUTES = 60
 DEFAULT_WAIT_TIMEOUT_SECONDS = 3600
 DEFAULT_GRAPH_COMMAND_RETRY_SECONDS = 1800
 DEFAULT_CREDENTIAL_SAFE_TIMEOUT_SECONDS = 3300
+DEFAULT_LOG_WAIT_SECONDS = 60
+DEFAULT_LOG_POLL_SECONDS = 2
 MIN_INGEST_RUN_LIMIT = 100
 INGEST_RUN_LIMIT_MULTIPLIER = 20
 MAX_INGEST_RUN_LIMIT = 500
@@ -332,6 +335,19 @@ def _task_messages(
     return [str(event.get("message") or "") for event in events.get("events") or []]
 
 
+def _wait_for_task_messages(fetch_messages, timeout_seconds: int = DEFAULT_LOG_WAIT_SECONDS) -> list[str]:
+    deadline = time.time() + timeout_seconds
+    messages: list[str] = []
+    while True:
+        messages = fetch_messages()
+        if any(message.strip() for message in messages):
+            return messages
+        now = time.time()
+        if now >= deadline:
+            return messages
+        time.sleep(min(DEFAULT_LOG_POLL_SECONDS, max(1, int(deadline - now))))
+
+
 def _is_span_log_message(message: str) -> bool:
     text = message.strip()
     if not text.startswith("{") or not text.endswith("}"):
@@ -398,6 +414,26 @@ def _extract_graph_payload_or_raise(command: list[str], task_arn: str, messages:
         ) from exc
 
 
+def _extract_graph_payload_with_retries(command: list[str], task_arn: str, fetch_messages) -> tuple[list[str], dict[str, Any]]:
+    deadline = time.time() + DEFAULT_LOG_WAIT_SECONDS
+    messages: list[str] = []
+    last_error: Exception | None = None
+    while True:
+        messages = fetch_messages()
+        try:
+            return messages, _extract_json_payload(messages)
+        except Exception as exc:
+            last_error = exc
+            now = time.time()
+            if now >= deadline:
+                break
+            time.sleep(min(DEFAULT_LOG_POLL_SECONDS, max(1, int(deadline - now))))
+    raise RuntimeError(
+        f"graph command {' '.join(command)} did not emit valid JSON for {task_arn}: {last_error}; "
+        f"log tail: {_log_tail(messages)}"
+    ) from last_error
+
+
 def _run_graph_command(
     resource_prefix: str,
     service: dict[str, Any],
@@ -441,10 +477,11 @@ def _run_graph_command(
     containers = task.get("containers") or []
     cerebro_container = next((container for container in containers if container.get("name") == "cerebro"), None)
     exit_code = cerebro_container.get("exitCode") if cerebro_container else None
-    messages = _task_messages(task, region, (context.log_group, context.stream_prefix))
+    fetch_messages = lambda: _task_messages(task, region, (context.log_group, context.stream_prefix))
     if exit_code != 0:
+        messages = _wait_for_task_messages(fetch_messages)
         raise RuntimeError(f"graph command {' '.join(command)} exited with {exit_code}: {task_arn}; log tail: {_log_tail(messages)}")
-    payload = _extract_graph_payload_or_raise(command, task_arn, messages)
+    messages, payload = _extract_graph_payload_with_retries(command, task_arn, fetch_messages)
     return GraphCommandResult(command=command, task_arn=task_arn, exit_code=exit_code, payload=payload)
 
 
@@ -917,46 +954,14 @@ def main(argv: list[str] | None = None) -> int:
     service = _describe_api_service(resource_prefix, args.region)
     graph_command_context = _graph_command_context(resource_prefix, service, args.region)
     declared_runtime_ids = _declared_runtime_ids(config)
-
-    counts = _run_graph_command_with_retries(
-        resource_prefix,
-        service,
-        ["graph", "counts"],
-        args.wait_timeout_seconds,
-        args.poll_seconds,
-        args.region,
-        args.graph_command_retry_seconds,
-        graph_command_context,
-        overall_deadline=overall_deadline,
-    )
-    graph_health_errors = _count_health_errors(counts.payload)
-    integrity = _run_graph_command_with_retries(
-        resource_prefix,
-        service,
-        ["graph", "integrity"],
-        args.wait_timeout_seconds,
-        args.poll_seconds,
-        args.region,
-        args.graph_command_retry_seconds,
-        graph_command_context,
-        overall_deadline=overall_deadline,
-    )
-    failed_integrity_checks = _failed_integrity_checks(integrity.payload)
     aws_families = _declared_aws_families(config)
     attack_path_relations_supported = _supports_attack_path_relations(config)
-    graph_relations: set[str] = set()
-    relation_counts_payload: dict[str, int] = {}
-    missing_graph_relations: list[str] = []
-    paths_task_arn = ""
-    if _supports_relation_counts(config):
-        required_relations = _required_graph_relations(
-            aws_families,
-            attack_path_relations_supported=attack_path_relations_supported,
-        )
-        relation_counts = _run_graph_command_with_retries(
+
+    def run_graph_command(command: list[str]) -> GraphCommandResult:
+        return _run_graph_command_with_retries(
             resource_prefix,
             service,
-            ["graph", "relation-counts", f"relations={','.join(sorted(required_relations | GRAPH_RELATIONS_TO_OBSERVE))}"],
+            command,
             args.wait_timeout_seconds,
             args.poll_seconds,
             args.region,
@@ -964,51 +969,78 @@ def main(argv: list[str] | None = None) -> int:
             graph_command_context,
             overall_deadline=overall_deadline,
         )
-        paths_task_arn = relation_counts.task_arn
-        relation_counts_payload = _graph_relation_counts(relation_counts.payload)
-        missing_graph_relations = _missing_required_graph_relation_counts(
-            relation_counts_payload,
-            aws_families,
-            attack_path_relations_supported=attack_path_relations_supported,
+
+    graph_relations: set[str] = set()
+    relation_counts_payload: dict[str, int] = {}
+    missing_graph_relations: list[str] = []
+    paths_task_arn = ""
+    supports_relation_counts = _supports_relation_counts(config)
+    required_relations = _required_graph_relations(
+        aws_families,
+        attack_path_relations_supported=attack_path_relations_supported,
+    )
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        counts_future = executor.submit(run_graph_command, ["graph", "counts"])
+        integrity_future = executor.submit(run_graph_command, ["graph", "integrity"])
+        ingest_runs_future = executor.submit(
+            _verify_current_ingest_runs_with_retries,
+            resource_prefix,
+            service,
+            declared_runtime_ids,
+            args.wait_timeout_seconds,
+            args.poll_seconds,
+            args.region,
+            args.graph_command_retry_seconds,
+            args.ingest_health_retry_seconds,
+            args.max_running_minutes,
+            args.allow_transient_source_failures,
+            graph_command_context,
+            overall_deadline=overall_deadline,
         )
-        graph_relations = {relation for relation, count in relation_counts_payload.items() if count > 0}
-    else:
-        try:
-            paths = _run_graph_command_with_retries(
-                resource_prefix,
-                service,
-                ["graph", "paths", "limit=100"],
-                args.wait_timeout_seconds,
-                args.poll_seconds,
-                args.region,
-                args.graph_command_retry_seconds,
-                graph_command_context,
-                overall_deadline=overall_deadline,
+        if supports_relation_counts:
+            relation_future = executor.submit(
+                run_graph_command,
+                ["graph", "relation-counts", f"relations={','.join(sorted(required_relations | GRAPH_RELATIONS_TO_OBSERVE))}"],
             )
-            paths_task_arn = paths.task_arn
-            graph_relations = _verify_required_graph_relations(
-                paths.payload,
+            paths_future = None
+        else:
+            relation_future = None
+            paths_future = executor.submit(
+                run_graph_command,
+                ["graph", "paths", "limit=100"],
+            )
+
+        counts = counts_future.result()
+        graph_health_errors = _count_health_errors(counts.payload)
+        integrity = integrity_future.result()
+        failed_integrity_checks = _failed_integrity_checks(integrity.payload)
+        if relation_future is not None:
+            relation_counts = relation_future.result()
+            paths_task_arn = relation_counts.task_arn
+            relation_counts_payload = _graph_relation_counts(relation_counts.payload)
+            missing_graph_relations = _missing_required_graph_relation_counts(
+                relation_counts_payload,
                 aws_families,
                 attack_path_relations_supported=attack_path_relations_supported,
             )
-        except Exception as exc:
-            if not _is_graph_paths_timeout(exc):
-                raise
-            print(f"WARNING: skipping graph path relation assertions after timeout: {exc}", file=sys.stderr)
-    ingest_runs, current_ingest_runtimes = _verify_current_ingest_runs_with_retries(
-        resource_prefix,
-        service,
-        declared_runtime_ids,
-        args.wait_timeout_seconds,
-        args.poll_seconds,
-        args.region,
-        args.graph_command_retry_seconds,
-        args.ingest_health_retry_seconds,
-        args.max_running_minutes,
-        args.allow_transient_source_failures,
-        graph_command_context,
-        overall_deadline=overall_deadline,
-    )
+            graph_relations = {relation for relation, count in relation_counts_payload.items() if count > 0}
+        elif paths_future is not None:
+            try:
+                paths = paths_future.result()
+            except Exception as exc:
+                if not _is_graph_paths_timeout(exc):
+                    raise
+                print(f"WARNING: skipping graph path relation assertions after timeout: {exc}", file=sys.stderr)
+            else:
+                paths_task_arn = paths.task_arn
+                graph_relations = _verify_required_graph_relations(
+                    paths.payload,
+                    aws_families,
+                    attack_path_relations_supported=attack_path_relations_supported,
+                )
+        ingest_runs, current_ingest_runtimes = ingest_runs_future.result()
+
     missing_ingest_runtimes = _missing_declared_ingest_runtime_ids(ingest_runs.payload, declared_runtime_ids)
     if missing_ingest_runtimes:
         print(
