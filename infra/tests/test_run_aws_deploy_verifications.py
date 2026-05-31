@@ -22,8 +22,10 @@ class FakeProcess:
         self.timeout_once = timeout_once
         self.terminated = False
         self.killed = False
+        self.wait_timeouts: list[int | None] = []
 
     def wait(self, timeout: int | None = None) -> int:
+        self.wait_timeouts.append(timeout)
         if timeout is not None and self.timeout_once:
             self.timeout_once = False
             raise subprocess.TimeoutExpired("fake", timeout)
@@ -77,6 +79,24 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
 
         self.assertEqual(status, 0)
         self.assertIn("Source runtime verification degraded (sec-dev)", summary)
+
+    def test_source_runtime_default_grace_after_graph_health_is_short(self) -> None:
+        fake_source = FakeProcess(0)
+        with (
+            patch("scripts.run_aws_deploy_verifications._start_process", return_value=fake_source),
+            patch("scripts.run_aws_deploy_verifications._stream_graph_health", return_value=0),
+        ):
+            status = run_aws_deploy_verifications.main(
+                [
+                    "--stack-file",
+                    "aws/Pulumi.go-prod.yaml",
+                    "--source-runtime-verify",
+                    "--graph-health",
+                ]
+            )
+
+        self.assertEqual(status, 0)
+        self.assertEqual(fake_source.wait_timeouts, [10])
 
     def test_source_runtime_timeout_after_graph_health_is_degraded(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -148,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--source-runtime-grace-seconds",
         type=_non_negative_int,
-        default=30,
+        default=10,
         help="After graph health completes, wait this long for non-blocking source verification before degrading it.",
     )
     parser.add_argument("--stop-running-source-before-run", action="store_true")

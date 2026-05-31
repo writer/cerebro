@@ -124,6 +124,44 @@ def _runtime_id_from_command(command: Any) -> str:
     return ""
 
 
+def _container_override_command(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return []
+    overrides = value.get("containerOverrides") or []
+    if not isinstance(overrides, list):
+        return []
+    for override in overrides:
+        if not isinstance(override, dict) or override.get("name") != "cerebro":
+            continue
+        command = override.get("command")
+        if isinstance(command, list):
+            return [str(part) for part in command]
+    return []
+
+
+def _target_command(target: RuntimeTarget) -> list[str]:
+    raw_input = target.target.get("Input")
+    if not raw_input:
+        return []
+    try:
+        return _container_override_command(json.loads(str(raw_input)))
+    except json.JSONDecodeError:
+        return []
+
+
+def _task_command(task: dict[str, Any]) -> list[str]:
+    return _container_override_command(task.get("overrides") or {})
+
+
+def _task_matches_target(task: dict[str, Any], target: RuntimeTarget) -> bool:
+    runtime_id = _runtime_id_from_command(_task_command(task))
+    if runtime_id:
+        return runtime_id == target.runtime_id
+    if _target_command(target):
+        return False
+    return _task_family(str(task.get("taskDefinitionArn") or "")) == _task_family(target.target["EcsParameters"]["TaskDefinitionArn"])
+
+
 def _schedule_suffix(value: str) -> str:
     chars = []
     for char in str(value).strip().lower():
@@ -287,11 +325,12 @@ def _run_task(target: RuntimeTarget, region: str, command_override: list[str] | 
         "--network-configuration",
         f"awsvpcConfiguration={{subnets=[{subnets}],securityGroups=[{security_groups}],assignPublicIp={assign_public_ip}}}",
     ]
-    if command_override is not None:
+    effective_command = command_override if command_override is not None else _target_command(target)
+    if effective_command:
         args.extend(
             [
                 "--overrides",
-                json.dumps({"containerOverrides": [{"name": "cerebro", "command": command_override}]}),
+                json.dumps({"containerOverrides": [{"name": "cerebro", "command": effective_command}]}),
             ]
         )
     response = _aws(args, region)
@@ -321,7 +360,11 @@ def _running_task_arns(target: RuntimeTarget, region: str) -> list[str]:
         ],
         region,
     )
-    return [str(task_arn) for task_arn in response.get("taskArns") or []]
+    task_arns = [str(task_arn) for task_arn in response.get("taskArns") or []]
+    if not task_arns:
+        return []
+    tasks = _describe_tasks(target.target["Arn"], task_arns, region)
+    return [str(task["taskArn"]) for task in tasks if _task_matches_target(task, target)]
 
 
 def _stop_running_tasks(
@@ -397,7 +440,7 @@ def _latest_task(target: RuntimeTarget, max_age_minutes: int, region: str) -> st
             "--family",
             family,
             "--max-results",
-            "10",
+            "100",
         ],
         region,
     )
@@ -408,6 +451,8 @@ def _latest_task(target: RuntimeTarget, max_age_minutes: int, region: str) -> st
     now = datetime.now(UTC)
     fresh_tasks = []
     for task in tasks:
+        if not _task_matches_target(task, target):
+            continue
         stopped_at = _parse_aws_datetime(task.get("stoppedAt")) or _parse_aws_datetime(task.get("createdAt"))
         if stopped_at is not None and now - stopped_at <= timedelta(minutes=max_age_minutes):
             fresh_tasks.append(task)
