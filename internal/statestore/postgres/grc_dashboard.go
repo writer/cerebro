@@ -46,6 +46,7 @@ func (s *Store) SummarizeGRCDashboard(ctx context.Context, request ports.GRCDash
 	}
 	var aggregate ports.GRCDashboardAggregate
 	var controlRefsJSON string
+	var evidenceCountsJSON string
 	if err := s.db.QueryRowContext(ctx, query, args...).Scan(
 		&aggregate.FindingSummary.OpenFindings,
 		&aggregate.FindingSummary.CriticalFindings,
@@ -54,6 +55,7 @@ func (s *Store) SummarizeGRCDashboard(ctx context.Context, request ports.GRCDash
 		&aggregate.FindingSummary.Unassigned,
 		&controlRefsJSON,
 		&aggregate.EvidenceCount,
+		&evidenceCountsJSON,
 	); err != nil {
 		return ports.GRCDashboardAggregate{}, fmt.Errorf("summarize grc dashboard: %w", err)
 	}
@@ -63,6 +65,11 @@ func (s *Store) SummarizeGRCDashboard(ctx context.Context, request ports.GRCDash
 	}
 	aggregate.FindingSummary.FailingControlKeys = controlKeys
 	aggregate.FindingSummary.ControlsFailing = len(controlKeys)
+	evidenceCounts, err := decodeGRCDashboardEvidenceCounts(evidenceCountsJSON)
+	if err != nil {
+		return ports.GRCDashboardAggregate{}, fmt.Errorf("decode grc dashboard evidence counts: %w", err)
+	}
+	aggregate.EvidenceCountsByFindingID = evidenceCounts
 	return aggregate, nil
 }
 
@@ -89,6 +96,22 @@ func decodeGRCDashboardControlKeys(controlRefsJSON string) ([]string, error) {
 	}
 	sort.Strings(keys)
 	return keys, nil
+}
+
+func decodeGRCDashboardEvidenceCounts(evidenceCountsJSON string) (map[string]int, error) {
+	counts := map[string]int{}
+	if strings.TrimSpace(evidenceCountsJSON) == "" {
+		return counts, nil
+	}
+	if err := json.Unmarshal([]byte(evidenceCountsJSON), &counts); err != nil {
+		return nil, err
+	}
+	for findingID := range counts {
+		if strings.TrimSpace(findingID) == "" {
+			delete(counts, findingID)
+		}
+	}
+	return counts, nil
 }
 
 func grcDashboardAggregateQuery(request ports.GRCDashboardAggregateRequest) (string, []any, error) {
@@ -135,9 +158,15 @@ control_refs AS (
   WHERE LOWER(status) = 'open'
 ),
 evidence_summary AS (
-  SELECT COUNT(*) AS evidence_count
-  FROM finding_evidence
-  WHERE ` + whereEvidence + `
+  SELECT
+    COALESCE(SUM(evidence_count), 0)::bigint AS evidence_count,
+    COALESCE(jsonb_object_agg(finding_id, evidence_count), '{}'::jsonb)::text AS evidence_counts_json
+  FROM (
+    SELECT finding_id, COUNT(*) AS evidence_count
+    FROM finding_evidence
+    WHERE ` + whereEvidence + `
+    GROUP BY finding_id
+  ) counts
 )
 SELECT
   summary.open_findings,
@@ -146,7 +175,8 @@ SELECT
   summary.overdue_findings,
   summary.unassigned,
   COALESCE((SELECT jsonb_agg(jsonb_build_object('framework_name', framework_name, 'control_id', control_id) ORDER BY framework_name, control_id)::text FROM control_refs), '[]'),
-  evidence_summary.evidence_count
+  evidence_summary.evidence_count,
+  evidence_summary.evidence_counts_json
 FROM summary
 CROSS JOIN evidence_summary`
 	return query, args, nil

@@ -239,6 +239,9 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	runtimeSourceIDs := grcRuntimeSourceIDs(runtimes)
 	evidenceCounts := grcEvidenceCounts(evidence)
+	if aggregate != nil && len(aggregate.EvidenceCountsByFindingID) > 0 {
+		evidenceCounts = aggregate.EvidenceCountsByFindingID
+	}
 	findingItems := grcFindingItems(findings, runtimeSourceIDs, evidenceCounts)
 	evidenceItems := grcEvidenceItems(evidence, grcFindingTitleMap(findings))
 	controls := grcControlItems(findingItems, evidenceItems)
@@ -845,6 +848,7 @@ func (a *App) grcDashboardAggregate(r *http.Request, runtimes []*cerebrov1.Sourc
 		return &aggregate, nil
 	}
 	var aggregate ports.GRCDashboardAggregate
+	aggregate.EvidenceCountsByFindingID = map[string]int{}
 	controlKeys := map[string]struct{}{}
 	for tenantID, runtimeIDs := range runtimeIDsByTenant {
 		item, err := provider.SummarizeGRCDashboard(r.Context(), ports.GRCDashboardAggregateRequest{
@@ -878,6 +882,11 @@ func (a *App) grcDashboardAggregate(r *http.Request, runtimes []*cerebrov1.Sourc
 		aggregate.FindingSummary.OverdueFindings += item.FindingSummary.OverdueFindings
 		aggregate.FindingSummary.Unassigned += item.FindingSummary.Unassigned
 		aggregate.EvidenceCount += item.EvidenceCount
+		for findingID, count := range item.EvidenceCountsByFindingID {
+			if trimmed := strings.TrimSpace(findingID); trimmed != "" {
+				aggregate.EvidenceCountsByFindingID[trimmed] += count
+			}
+		}
 		for _, key := range item.FindingSummary.FailingControlKeys {
 			if trimmed := strings.TrimSpace(key); trimmed != "" {
 				controlKeys[trimmed] = struct{}{}
@@ -1060,7 +1069,11 @@ func grcControlItems(findings []grcFindingItem, evidence []grcEvidenceItem) []gr
 					control.HighFindings++
 				}
 			}
-			control.EvidenceItems += evidenceByFinding[finding.ID]
+			if finding.EvidenceCount != 0 {
+				control.EvidenceItems += finding.EvidenceCount
+			} else {
+				control.EvidenceItems += evidenceByFinding[finding.ID]
+			}
 		}
 	}
 	controls := make([]grcControlItem, 0, len(controlMap))
