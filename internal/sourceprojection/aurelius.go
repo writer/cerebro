@@ -116,6 +116,9 @@ func aureliusFindingProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 		addVulnerablePackageEntity(entities, tenantID, event.GetSourceId(), packageURN, attrs, "aurelius")
 		if imageURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), imageURN, packageURN, relationContains, map[string]string{"event_id": event.GetId()}))
+			if canonicalPackageURN != "" {
+				addLink(links, projectedLink(tenantID, event.GetSourceId(), imageURN, canonicalPackageURN, relationContains, packageIdentityAttributes(event, attrs, "aurelius")))
+			}
 		}
 		if vulnerabilityURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), packageURN, vulnerabilityURN, relationAffectedBy, vulnerabilityEvidenceAttributes(event, attrs)))

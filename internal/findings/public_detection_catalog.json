@@ -156,6 +156,8 @@
       "evaluation_mode": "graph",
       "event_kinds": [
         "aws.effective_permission",
+        "aws.iam_role_assignment",
+        "aws.iam_role_trust",
         "aws.public_endpoint",
         "aws.resource_exposure"
       ],

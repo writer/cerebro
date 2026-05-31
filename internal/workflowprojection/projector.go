@@ -65,9 +65,9 @@ func (s *Service) projectDecision(ctx context.Context, event *cerebrov1.EventEnv
 			FromURN:  payload.DecisionID,
 			ToURN:    targetID,
 			Relation: relationTargets,
-			Attributes: map[string]string{
+			Attributes: workflowEdgeAttributes(payload.SourceSystem, payload.SourceEventID, payload.ObservedAt, payload.ValidFrom, payload.Confidence, map[string]string{
 				"decision_id": payload.DecisionID,
-			},
+			}),
 		}, &result); err != nil {
 			return ports.ProjectionResult{}, err
 		}
@@ -134,9 +134,9 @@ func (s *Service) projectAction(ctx context.Context, event *cerebrov1.EventEnvel
 			FromURN:  payload.ActionID,
 			ToURN:    targetID,
 			Relation: relationTargets,
-			Attributes: map[string]string{
+			Attributes: workflowEdgeAttributes(payload.SourceSystem, payload.SourceEventID, payload.ObservedAt, payload.ValidFrom, payload.Confidence, map[string]string{
 				"action_id": payload.ActionID,
-			},
+			}),
 		}, &result); err != nil {
 			return ports.ProjectionResult{}, err
 		}
@@ -181,10 +181,10 @@ func (s *Service) projectOutcome(ctx context.Context, event *cerebrov1.EventEnve
 		FromURN:  payload.OutcomeID,
 		ToURN:    payload.DecisionID,
 		Relation: relationEvaluates,
-		Attributes: map[string]string{
+		Attributes: workflowEdgeAttributes(payload.SourceSystem, payload.SourceEventID, payload.ObservedAt, payload.ValidFrom, payload.Confidence, map[string]string{
 			"outcome_id":  payload.OutcomeID,
 			"decision_id": payload.DecisionID,
-		},
+		}),
 	}, &result); err != nil {
 		return ports.ProjectionResult{}, err
 	}
@@ -195,9 +195,9 @@ func (s *Service) projectOutcome(ctx context.Context, event *cerebrov1.EventEnve
 			FromURN:  payload.OutcomeID,
 			ToURN:    targetID,
 			Relation: relationTargets,
-			Attributes: map[string]string{
+			Attributes: workflowEdgeAttributes(payload.SourceSystem, payload.SourceEventID, payload.ObservedAt, payload.ValidFrom, payload.Confidence, map[string]string{
 				"outcome_id": payload.OutcomeID,
-			},
+			}),
 		}, &result); err != nil {
 			return ports.ProjectionResult{}, err
 		}
@@ -645,6 +645,21 @@ func outcomeAttributes(payload *workflowevents.OutcomeRecorded) map[string]strin
 	return attributes
 }
 
+func workflowEdgeAttributes(sourceSystem string, sourceEventID string, observedAt string, validFrom string, confidence float64, attributes map[string]string) map[string]string {
+	if attributes == nil {
+		attributes = map[string]string{}
+	}
+	attributes["source_system"] = strings.TrimSpace(sourceSystem)
+	attributes["source_event_id"] = strings.TrimSpace(sourceEventID)
+	attributes["observed_at"] = strings.TrimSpace(observedAt)
+	attributes["valid_from"] = strings.TrimSpace(validFrom)
+	if confidence != 0 {
+		attributes["confidence"] = fmt.Sprintf("%.6g", confidence)
+	}
+	trimEmptyProjectionAttributes(attributes)
+	return attributes
+}
+
 func findingAnchorAttributes(finding workflowevents.FindingSnapshot) map[string]string {
 	attributes := map[string]string{
 		"finding_id":           strings.TrimSpace(finding.FindingID),
@@ -721,6 +736,10 @@ func findingAnchorLinkAttributes(finding workflowevents.FindingSnapshot) map[str
 		"severity":             strings.TrimSpace(finding.Severity),
 		"status":               strings.TrimSpace(finding.Status),
 		"primary_resource_urn": strings.TrimSpace(finding.PrimaryResourceURN),
+		"source_system":        strings.TrimSpace(finding.SourceSystem),
+		"source_event_id":      findingSourceEventID(finding),
+		"observed_at":          strings.TrimSpace(finding.LastObservedAt),
+		"valid_from":           strings.TrimSpace(finding.FirstObservedAt),
 		"last_observed_at":     strings.TrimSpace(finding.LastObservedAt),
 	}
 	if finding.RiskScore != 0 {
@@ -735,11 +754,24 @@ func findingAnchorLinkAttributes(finding workflowevents.FindingSnapshot) map[str
 	if finding.ImpactScore != 0 {
 		attributes["impact_score"] = fmt.Sprintf("%d", finding.ImpactScore)
 	}
+	if finding.ConfidenceScore != 0 {
+		attributes["confidence"] = fmt.Sprintf("%.6g", float64(finding.ConfidenceScore)/100)
+		attributes["confidence_score"] = fmt.Sprintf("%d", finding.ConfidenceScore)
+	}
 	if finding.EventCount != 0 {
 		attributes["event_count"] = fmt.Sprintf("%d", finding.EventCount)
 	}
 	trimEmptyProjectionAttributes(attributes)
 	return attributes
+}
+
+func findingSourceEventID(finding workflowevents.FindingSnapshot) string {
+	for _, eventID := range normalizeIDs(finding.EventIDs) {
+		if strings.TrimSpace(eventID) != "" {
+			return strings.TrimSpace(eventID)
+		}
+	}
+	return strings.TrimSpace(finding.FindingID)
 }
 
 func findingControlRefsAttribute(refs []workflowevents.FindingControlRefSnapshot) string {

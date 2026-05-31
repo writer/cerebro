@@ -223,6 +223,7 @@ func identityUserProjections(event *cerebrov1.EventEnvelope, profile identityPro
 		if !sameIdentifier(email, login) {
 			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, login, event.GetOccurredAt())
 		}
+		addAWSPrincipalIdentifierLinks(entities, links, tenantID, event.GetSourceId(), event, userURN, profile, attributes, principalType, userID, login, attributes["arn"])
 	}
 	return identityProjectionResult(entities, links)
 }
@@ -266,6 +267,7 @@ func identityGroupProjections(event *cerebrov1.EventEnvelope, profile identityPr
 		}
 		addCloudIdentityAccountLink(entities, links, tenantID, event.GetSourceId(), event, groupURN, profile, attributes, "group", groupID)
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), groupURN, groupEmail, event.GetOccurredAt())
+		addAWSPrincipalIdentifierLinks(entities, links, tenantID, event.GetSourceId(), event, groupURN, profile, attributes, "group", groupID, attributes["group_name"], attributes["arn"])
 	}
 	return identityProjectionResult(entities, links)
 }
@@ -314,6 +316,7 @@ func identityGroupMembershipProjections(event *cerebrov1.EventEnvelope, profile 
 			},
 		})
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), memberURN, memberEmail, event.GetOccurredAt())
+		addAWSPrincipalIdentifierLinks(entities, links, tenantID, event.GetSourceId(), event, memberURN, profile, attributes, memberType, memberID, attributes["member_user_id"], memberEmail)
 		if groupURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), memberURN, groupURN, relationMemberOf, map[string]string{
 				"event_id": event.GetId(),
@@ -491,6 +494,7 @@ func identityRoleAssignmentProjections(event *cerebrov1.EventEnvelope, profile i
 		})
 		addCloudIdentityAccountLink(entities, links, tenantID, event.GetSourceId(), event, subjectURN, profile, attributes, subjectType, subjectID)
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), subjectURN, firstNonEmpty(subjectEmail, subjectID), event.GetOccurredAt())
+		addAWSPrincipalIdentifierLinks(entities, links, tenantID, event.GetSourceId(), event, subjectURN, profile, attributes, subjectType, subjectID, attributes["subject_login"], attributes["subject_name"], attributes["subject_arn"], attributes["principal_arn"])
 	}
 	if roleURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
@@ -536,6 +540,7 @@ func identityCredentialProjections(event *cerebrov1.EventEnvelope, profile ident
 		})
 		addCloudIdentityAccountLink(entities, links, tenantID, event.GetSourceId(), event, subjectURN, profile, attributes, subjectType, subjectID)
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), subjectURN, firstNonEmpty(subjectEmail, subjectID), event.GetOccurredAt())
+		addAWSPrincipalIdentifierLinks(entities, links, tenantID, event.GetSourceId(), event, subjectURN, profile, attributes, subjectType, subjectID, attributes["subject_login"], attributes["subject_name"], attributes["subject_arn"], attributes["principal_arn"])
 	}
 	if credentialURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
@@ -578,6 +583,8 @@ func identityAuditProjections(event *cerebrov1.EventEnvelope, profile identityPr
 			Attributes: map[string]string{"email": actorEmail, "actor_id": strings.TrimSpace(attributes["actor_id"])},
 		})
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorEmail, event.GetOccurredAt())
+		addCloudIdentityAccountLink(entities, links, tenantID, event.GetSourceId(), event, actorURN, profile, attributes, attributes["actor_type"], firstNonEmpty(attributes["actor_id"], actorEmail))
+		addAWSPrincipalIdentifierLinks(entities, links, tenantID, event.GetSourceId(), event, actorURN, profile, attributes, attributes["actor_type"], firstNonEmpty(attributes["actor_id"], actorEmail), attributes["actor_alternate_id"], attributes["actor_name"], actorEmail)
 	}
 	if resourceURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
@@ -616,6 +623,115 @@ func addIdentityOrg(entities map[string]*ports.ProjectedEntity, tenantID string,
 		Label:      domain,
 		Attributes: map[string]string{"domain": domain},
 	})
+}
+
+func addAWSPrincipalIdentifierLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, profile identityProjectionProfile, attributes map[string]string, principalType string, principalID string, values ...string) {
+	if profile.Provider != "aws" || strings.TrimSpace(fromURN) == "" {
+		return
+	}
+	accountID := cloudIdentityAccountID(profile, attributes, principalType, principalID)
+	kind := awsPrincipalIdentifierKind(principalType)
+	seen := map[string]struct{}{}
+	for _, value := range append([]string{principalID}, values...) {
+		for _, identifier := range awsPrincipalScopedIdentifiers(accountID, kind, value) {
+			if _, ok := seen[identifier]; ok {
+				continue
+			}
+			seen[identifier] = struct{}{}
+			addIdentifierLink(entities, links, tenantID, sourceID, event.GetId(), fromURN, identifier, event.GetOccurredAt())
+		}
+	}
+}
+
+func awsPrincipalScopedIdentifiers(accountID string, kind string, value string) []string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	parsedAccountID, parsedKind, parsedName := awsPrincipalIdentifierFromARN(trimmed)
+	if parsedAccountID != "" && parsedName != "" {
+		if identifier := awsPrincipalScopedIdentifier(parsedAccountID, parsedKind, parsedName); identifier != "" {
+			return []string{identifier}
+		}
+		return nil
+	}
+	if accountID == "" || kind == "" || strings.Contains(trimmed, "@") {
+		return nil
+	}
+	name := awsPrincipalName(trimmed)
+	if name == "" {
+		return nil
+	}
+	if identifier := awsPrincipalScopedIdentifier(accountID, kind, name); identifier != "" {
+		return []string{identifier}
+	}
+	return nil
+}
+
+func awsPrincipalScopedIdentifier(accountID string, kind string, name string) string {
+	accountID = strings.TrimSpace(accountID)
+	kind = strings.TrimSpace(kind)
+	name = awsPrincipalName(name)
+	if accountID == "" || kind == "" || name == "" || strings.Contains(name, "@") {
+		return ""
+	}
+	return "aws:" + accountID + ":" + kind + ":" + name
+}
+
+func awsPrincipalIdentifierKind(principalType string) string {
+	switch identityPrincipalType(principalType) {
+	case "role":
+		return "role"
+	case "group":
+		return "group"
+	case "user":
+		return "user"
+	default:
+		return ""
+	}
+}
+
+func awsPrincipalIdentifierFromARN(value string) (string, string, string) {
+	parts := strings.SplitN(strings.TrimSpace(value), ":", 6)
+	if len(parts) != 6 || parts[0] != "arn" {
+		return "", "", ""
+	}
+	accountID := awsAccountID(parts[4])
+	if accountID == "" {
+		return "", "", ""
+	}
+	resource := strings.TrimSpace(parts[5])
+	switch {
+	case strings.HasPrefix(resource, "user/"):
+		return accountID, "user", awsPrincipalName(strings.TrimPrefix(resource, "user/"))
+	case strings.HasPrefix(resource, "role/"):
+		return accountID, "role", awsPrincipalName(strings.TrimPrefix(resource, "role/"))
+	case strings.HasPrefix(resource, "group/"):
+		return accountID, "group", awsPrincipalName(strings.TrimPrefix(resource, "group/"))
+	case strings.HasPrefix(resource, "assumed-role/"):
+		remainder := strings.TrimPrefix(resource, "assumed-role/")
+		roleName, _, _ := strings.Cut(remainder, "/")
+		return accountID, "role", awsPrincipalName(roleName)
+	case strings.HasPrefix(resource, "federated-user/"):
+		return accountID, "user", awsPrincipalName(strings.TrimPrefix(resource, "federated-user/"))
+	default:
+		return "", "", ""
+	}
+}
+
+func awsPrincipalName(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if _, _, name := awsPrincipalIdentifierFromARN(value); name != "" {
+		return name
+	}
+	if strings.Contains(value, "/") {
+		parts := strings.Split(value, "/")
+		return strings.TrimSpace(parts[len(parts)-1])
+	}
+	return value
 }
 
 func addCloudIdentityAccountLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, profile identityProjectionProfile, attributes map[string]string, principalType string, principalID string) {

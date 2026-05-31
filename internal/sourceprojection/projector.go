@@ -1252,13 +1252,13 @@ func githubDependabotAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 	if packageURN != "" && canonicalPackageURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), packageURN, canonicalPackageURN, relationRepresents, packageIdentityAttributes(event, attributes, ecosystem)))
 	}
-	addGitHubDependabotDependencyContext(entities, links, tenantID, event, repoURN, alertURN, packageURN, repository, manifestPath, ecosystem, packageName)
+	addGitHubDependabotDependencyContext(entities, links, tenantID, event, repoURN, alertURN, packageURN, canonicalPackageURN, repository, manifestPath, ecosystem, packageName)
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }
 
-func addGitHubDependabotDependencyContext(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, repoURN string, alertURN string, packageURN string, repository string, manifestPath string, ecosystem string, packageName string) {
+func addGitHubDependabotDependencyContext(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, repoURN string, alertURN string, packageURN string, canonicalPackageURN string, repository string, manifestPath string, ecosystem string, packageName string) {
 	repository = strings.TrimSpace(repository)
 	manifestPath = strings.TrimSpace(manifestPath)
 	packageName = strings.TrimSpace(packageName)
@@ -1297,8 +1297,15 @@ func addGitHubDependabotDependencyContext(entities map[string]*ports.ProjectedEn
 	})
 	if repoURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), manifestURN, repoURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), repoURN, dependencyURN, relationContains, map[string]string{
+			"ecosystem":     strings.TrimSpace(ecosystem),
+			"event_id":      event.GetId(),
+			"manifest_path": manifestPath,
+			"package":       packageName,
+		}))
 	}
 	addLink(links, projectedLink(tenantID, event.GetSourceId(), dependencyURN, manifestURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), manifestURN, dependencyURN, relationContains, map[string]string{"event_id": event.GetId()}))
 	if packageURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), dependencyURN, packageURN, relationRepresents, map[string]string{
 			"ecosystem":     strings.TrimSpace(ecosystem),
@@ -1306,6 +1313,33 @@ func addGitHubDependabotDependencyContext(entities map[string]*ports.ProjectedEn
 			"manifest_path": manifestPath,
 			"package":       packageName,
 		}))
+		if repoURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), repoURN, packageURN, relationContains, map[string]string{
+				"ecosystem":     strings.TrimSpace(ecosystem),
+				"event_id":      event.GetId(),
+				"manifest_path": manifestPath,
+				"package":       packageName,
+			}))
+		}
+	}
+	if canonicalPackageURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), dependencyURN, canonicalPackageURN, relationRepresents, packageIdentityAttributes(event, event.GetAttributes(), ecosystem)))
+		if repoURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), repoURN, canonicalPackageURN, relationContains, map[string]string{
+				"ecosystem":     strings.TrimSpace(ecosystem),
+				"event_id":      event.GetId(),
+				"manifest_path": manifestPath,
+				"package":       packageName,
+			}))
+		}
+		if alertURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), alertURN, canonicalPackageURN, relationAffects, map[string]string{
+				"ecosystem":     strings.TrimSpace(ecosystem),
+				"event_id":      event.GetId(),
+				"manifest_path": manifestPath,
+				"package":       packageName,
+			}))
+		}
 	}
 	if alertURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), alertURN, dependencyURN, relationAffects, map[string]string{"event_id": event.GetId()}))
