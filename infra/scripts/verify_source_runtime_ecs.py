@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import json
@@ -48,6 +49,24 @@ class TaskLogOptions:
     stream_prefix: str
 
 
+@dataclass(frozen=True)
+class VerificationOptions:
+    run: bool = False
+    wait_timeout_seconds: int = 3600
+    poll_seconds: int = 10
+    region: str = "us-east-1"
+    run_page_limit: int | None = None
+    run_graph_page_limit: int | None = None
+    run_event_limit: int | None = None
+    allow_lease_contention_skip: bool = False
+    stop_running_before_run: bool = False
+    stop_timeout_seconds: int = 180
+    failed_run_retry_seconds: int = 0
+    run_attempt_timeout_seconds: int = 0
+    succeed_after_graph_ingest: bool = False
+    max_age_minutes: int = 180
+
+
 class RuntimeSkippedError(RuntimeError):
     def __init__(self, runtime_id: str, task_arn: str, reason: str) -> None:
         self.runtime_id = runtime_id
@@ -64,6 +83,15 @@ class RuntimeTaskFailedError(RuntimeError):
         self.exit_code = exit_code
         detail = f"\nRecent task logs:\n{log_summary}" if log_summary else ""
         super().__init__(f"{runtime_id} task exited with {exit_code}: {task_arn}{detail}")
+
+
+class RuntimeVerificationFailedError(RuntimeError):
+    def __init__(self, runtime_id: str, task_arn: str, phase: str, status: str) -> None:
+        self.runtime_id = runtime_id
+        self.task_arn = task_arn
+        self.phase = phase
+        self.status = status
+        super().__init__(f"{runtime_id} {phase} status is {status}: {task_arn}")
 
 
 def _stack_name(path: Path) -> str:
@@ -542,9 +570,9 @@ def _verification_result_from_logs(
     if runtime_status == "skipped":
         raise RuntimeSkippedError(target.runtime_id, task_arn, _runtime_skip_reason(runtime_span))
     if sync_status == "failed":
-        raise RuntimeError(f"{target.runtime_id} source sync status is failed")
+        raise RuntimeVerificationFailedError(target.runtime_id, task_arn, "source sync", sync_status)
     if graph_ingest_status == "failed":
-        raise RuntimeError(f"{target.runtime_id} graph ingest status is failed")
+        raise RuntimeVerificationFailedError(target.runtime_id, task_arn, "graph ingest", graph_ingest_status)
     if require_runtime_completed and runtime_status != "completed":
         raise RuntimeError(f"{target.runtime_id} orchestrator runtime status is {runtime_status}")
     if sync_status != "completed":
@@ -749,7 +777,7 @@ def _run_and_verify_task_with_retries(
                 file=sys.stderr,
             )
             time.sleep(min(poll_seconds, remaining))
-        except RuntimeTaskFailedError:
+        except (RuntimeTaskFailedError, RuntimeVerificationFailedError):
             now = time.time()
             if failed_run_retry_deadline is None or now >= failed_run_retry_deadline:
                 raise
@@ -771,6 +799,57 @@ def _verify_account(stack: str, region: str) -> None:
     actual = str(caller.get("Account", ""))
     if actual != expected:
         raise RuntimeError(f"stack {stack} must run in AWS account {expected}, got {actual}")
+
+
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be >= 1")
+    return parsed
+
+
+def _verify_runtime_target(target: RuntimeTarget, options: VerificationOptions) -> VerificationResult:
+    if options.run:
+        command_override = _verification_command(
+            target.runtime_id,
+            options.run_page_limit,
+            options.run_graph_page_limit,
+            options.run_event_limit,
+        )
+        return _run_and_verify_task_with_retries(
+            target,
+            options.wait_timeout_seconds,
+            options.poll_seconds,
+            options.region,
+            command_override,
+            options.allow_lease_contention_skip,
+            options.stop_running_before_run,
+            options.stop_timeout_seconds,
+            options.failed_run_retry_seconds,
+            options.run_attempt_timeout_seconds,
+            options.succeed_after_graph_ingest,
+        )
+    task_arn = _latest_task(target, options.max_age_minutes, options.region)
+    return _verify_task(target, task_arn, options.region)
+
+
+def _verify_runtime_targets(
+    targets: list[RuntimeTarget],
+    options: VerificationOptions,
+    target_concurrency: int,
+) -> list[VerificationResult]:
+    if target_concurrency <= 1 or len(targets) <= 1:
+        return [_verify_runtime_target(target, options) for target in targets]
+
+    results: list[VerificationResult | None] = [None] * len(targets)
+    with ThreadPoolExecutor(max_workers=min(target_concurrency, len(targets))) as executor:
+        future_indexes = {
+            executor.submit(_verify_runtime_target, target, options): index
+            for index, target in enumerate(targets)
+        }
+        for future in as_completed(future_indexes):
+            results[future_indexes[future]] = future.result()
+    return [result for result in results if result is not None]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -801,6 +880,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--wait-timeout-seconds", type=int, default=3600)
     parser.add_argument("--poll-seconds", type=int, default=10)
+    parser.add_argument("--target-concurrency", type=_positive_int, default=1, help="Verify up to this many source runtime targets concurrently.")
     args = parser.parse_args(argv)
 
     stack = _stack_name(args.stack_file)
@@ -818,33 +898,26 @@ def main(argv: list[str] | None = None) -> int:
 
     _verify_account(stack, args.region)
     targets = _runtime_targets(config, runtime_ids, resource_prefix, args.region)
-    results = []
-    for target in targets:
-        if args.run:
-            command_override = _verification_command(
-                target.runtime_id,
-                args.run_page_limit,
-                args.run_graph_page_limit,
-                args.run_event_limit,
-            )
-            results.append(
-                _run_and_verify_task_with_retries(
-                    target,
-                    args.wait_timeout_seconds,
-                    args.poll_seconds,
-                    args.region,
-                    command_override,
-                    args.allow_lease_contention_skip,
-                    args.stop_running_before_run,
-                    args.stop_timeout_seconds,
-                    args.failed_run_retry_seconds,
-                    args.run_attempt_timeout_seconds,
-                    args.succeed_after_graph_ingest,
-                )
-            )
-        else:
-            task_arn = _latest_task(target, args.max_age_minutes, args.region)
-            results.append(_verify_task(target, task_arn, args.region))
+    results = _verify_runtime_targets(
+        targets,
+        VerificationOptions(
+            run=args.run,
+            wait_timeout_seconds=args.wait_timeout_seconds,
+            poll_seconds=args.poll_seconds,
+            region=args.region,
+            run_page_limit=args.run_page_limit,
+            run_graph_page_limit=args.run_graph_page_limit,
+            run_event_limit=args.run_event_limit,
+            allow_lease_contention_skip=args.allow_lease_contention_skip,
+            stop_running_before_run=args.stop_running_before_run,
+            stop_timeout_seconds=args.stop_timeout_seconds,
+            failed_run_retry_seconds=args.failed_run_retry_seconds,
+            run_attempt_timeout_seconds=args.run_attempt_timeout_seconds,
+            succeed_after_graph_ingest=args.succeed_after_graph_ingest,
+            max_age_minutes=args.max_age_minutes,
+        ),
+        args.target_concurrency,
+    )
 
     print("runtime_id\texit\tsync\tevents_appended\tpages_read\tgraph_ingest\tentities_projected\tlinks_projected\ttask_arn")
     for result in results:
