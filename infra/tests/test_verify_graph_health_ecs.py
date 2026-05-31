@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import sys
 import unittest
 from datetime import UTC, datetime
@@ -220,6 +222,29 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
         self.assertEqual(result.payload, {"nodes": 1, "relations": 1})
         self.assertEqual(calls, 2)
 
+    def test_run_graph_command_with_retries_logs_underlying_failure(self) -> None:
+        original_run_graph_command = verify_graph_health_ecs._run_graph_command
+        original_time = verify_graph_health_ecs.time.time
+        original_sleep = verify_graph_health_ecs.time.sleep
+        times = iter([0, 0, 2])
+
+        verify_graph_health_ecs._run_graph_command = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("specific graph boom")
+        )
+        verify_graph_health_ecs.time.time = lambda: next(times)
+        verify_graph_health_ecs.time.sleep = lambda _seconds: None
+        stderr = io.StringIO()
+        try:
+            with self.assertRaisesRegex(RuntimeError, "specific graph boom"):
+                with contextlib.redirect_stderr(stderr):
+                    _run_graph_command_with_retries("prefix", {}, ["graph", "counts"], 10, 1, "us-east-1", 1)
+        finally:
+            verify_graph_health_ecs._run_graph_command = original_run_graph_command
+            verify_graph_health_ecs.time.time = original_time
+            verify_graph_health_ecs.time.sleep = original_sleep
+
+        self.assertIn("specific graph boom", stderr.getvalue())
+
     def test_run_graph_command_uses_cached_context(self) -> None:
         original_aws = verify_graph_health_ecs._aws
         original_wait_for_task = verify_graph_health_ecs._wait_for_task
@@ -267,10 +292,69 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
         self.assertEqual(result.payload, {"nodes": 1, "relations": 2})
         self.assertEqual(describe_definition_calls, 0)
 
+    def test_run_graph_command_reports_exit_failure_log_tail(self) -> None:
+        original_aws = verify_graph_health_ecs._aws
+        original_wait_for_task = verify_graph_health_ecs._wait_for_task
+        context = GraphCommandContext(
+            cluster="cluster",
+            task_definition="arn:aws:ecs:us-east-1:123:task-definition/cerebro-go-production:45",
+            network_configuration={
+                "awsvpcConfiguration": {
+                    "subnets": ["subnet-1"],
+                    "securityGroups": ["sg-1"],
+                    "assignPublicIp": "DISABLED",
+                }
+            },
+            log_group="/ecs/cerebro",
+            stream_prefix="runtime",
+            has_source_runtime_bootstrap=False,
+        )
+
+        def fake_aws(args, _region):
+            if args[:2] == ["ecs", "run-task"]:
+                return {"tasks": [{"taskArn": "task-arn"}]}
+            if args[:2] == ["ecs", "describe-tasks"]:
+                return {"tasks": [{"taskArn": "task-arn", "containers": [{"name": "cerebro", "exitCode": 1}]}]}
+            if args[:2] == ["logs", "get-log-events"]:
+                return {"events": [{"message": "fatal graph boom"}]}
+            raise AssertionError(f"unexpected args: {args}")
+
+        verify_graph_health_ecs._aws = fake_aws
+        verify_graph_health_ecs._wait_for_task = lambda *_args, **_kwargs: None
+        try:
+            with self.assertRaisesRegex(RuntimeError, "exited with 1.*fatal graph boom"):
+                _run_graph_command("prefix", {}, ["graph", "counts"], 10, 1, "us-east-1", context)
+        finally:
+            verify_graph_health_ecs._aws = original_aws
+            verify_graph_health_ecs._wait_for_task = original_wait_for_task
+
     def test_extract_json_payload_from_pretty_logs(self) -> None:
         payload = _extract_json_payload(['{"nodes": 2,', ' "relations": 3}'])
 
         self.assertEqual(payload, {"nodes": 2, "relations": 3})
+
+    def test_extract_json_payload_filters_interleaved_span_logs(self) -> None:
+        payload = _extract_json_payload(
+            [
+                '{"kind":"span_start","name":"graph.ingest_list_runs"}',
+                "{",
+                '  "runs": [',
+                "    {",
+                '      "id": "run-a",',
+                '      "runtime_id": "runtime-a",',
+                '      "status": "completed"',
+                '{"kind":"span_end","name":"graph.ingest_list_runs","status":"completed"}',
+                "    }",
+                "  ],",
+                '  "failed_count": 0',
+                "}",
+            ]
+        )
+
+        self.assertEqual(
+            payload,
+            {"runs": [{"id": "run-a", "runtime_id": "runtime-a", "status": "completed"}], "failed_count": 0},
+        )
 
     def test_verify_counts_rejects_empty_graph(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "node count"):

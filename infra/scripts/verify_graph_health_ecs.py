@@ -22,7 +22,7 @@ EXPECTED_STACK_ACCOUNTS = {
 }
 DEFAULT_MAX_RUNNING_MINUTES = 60
 DEFAULT_WAIT_TIMEOUT_SECONDS = 3600
-DEFAULT_GRAPH_COMMAND_RETRY_SECONDS = 3600
+DEFAULT_GRAPH_COMMAND_RETRY_SECONDS = 300
 MIN_INGEST_RUN_LIMIT = 100
 INGEST_RUN_LIMIT_MULTIPLIER = 20
 MAX_INGEST_RUN_LIMIT = 500
@@ -331,16 +331,57 @@ def _task_messages(
     return [str(event.get("message") or "") for event in events.get("events") or []]
 
 
-def _extract_json_payload(messages: list[str]) -> dict[str, Any]:
+def _is_span_log_message(message: str) -> bool:
+    text = message.strip()
+    if not text.startswith("{") or not text.endswith("}"):
+        return False
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(payload, dict) and str(payload.get("kind") or "").startswith("span_")
+
+
+def _looks_like_graph_payload(payload: dict[str, Any]) -> bool:
+    return bool({"nodes", "relations", "checks", "runs", "patterns", "traversals"} & set(payload))
+
+
+def _log_tail(messages: list[str], limit: int = 1000) -> str:
     text = "\n".join(message for message in messages if message.strip())
-    start = text.find("{")
-    end = text.rfind("}")
-    if start < 0 or end < start:
+    return _truncate_detail(text[-limit:], limit)
+
+
+def _extract_json_payload(messages: list[str]) -> dict[str, Any]:
+    text = "\n".join(message for message in messages if message.strip() and not _is_span_log_message(message))
+    decoder = json.JSONDecoder()
+    objects: list[dict[str, Any]] = []
+    index = 0
+    while index < len(text):
+        start = text.find("{", index)
+        if start < 0:
+            break
+        try:
+            payload, end = decoder.raw_decode(text[start:])
+        except json.JSONDecodeError:
+            index = start + 1
+            continue
+        if isinstance(payload, dict):
+            objects.append(payload)
+        index = start + end
+    if not objects:
         raise ValueError(f"graph command did not emit a JSON object: {text[-500:]}")
-    payload = json.loads(text[start : end + 1])
-    if not isinstance(payload, dict):
-        raise ValueError("graph command JSON payload must be an object")
-    return payload
+    graph_payloads = [payload for payload in objects if _looks_like_graph_payload(payload)]
+    return graph_payloads[-1] if graph_payloads else objects[-1]
+
+
+def _extract_graph_payload_or_raise(command: list[str], task_arn: str, messages: list[str]) -> dict[str, Any]:
+    try:
+        return _extract_json_payload(messages)
+    except Exception as exc:
+        raise RuntimeError(
+            f"graph command {' '.join(command)} did not emit valid JSON for {task_arn}: {exc}; "
+            f"log tail: {_log_tail(messages)}"
+        ) from exc
 
 
 def _run_graph_command(
@@ -387,9 +428,9 @@ def _run_graph_command(
     cerebro_container = next((container for container in containers if container.get("name") == "cerebro"), None)
     exit_code = cerebro_container.get("exitCode") if cerebro_container else None
     messages = _task_messages(task, region, (context.log_group, context.stream_prefix))
-    payload = _extract_json_payload(messages)
     if exit_code != 0:
-        raise RuntimeError(f"graph command {' '.join(command)} exited with {exit_code}: {task_arn}")
+        raise RuntimeError(f"graph command {' '.join(command)} exited with {exit_code}: {task_arn}; log tail: {_log_tail(messages)}")
+    payload = _extract_graph_payload_or_raise(command, task_arn, messages)
     return GraphCommandResult(command=command, task_arn=task_arn, exit_code=exit_code, payload=payload)
 
 
@@ -407,11 +448,14 @@ def _run_graph_command_with_retries(
     while True:
         try:
             return _run_graph_command(resource_prefix, service, command, timeout_seconds, poll_seconds, region, context)
-        except Exception:
+        except Exception as exc:
             now = time.time()
             if retry_seconds <= 0 or now >= deadline:
                 raise
-            print(f"WARNING: graph command {' '.join(command)} failed; retrying", file=sys.stderr)
+            print(
+                f"WARNING: graph command {' '.join(command)} failed: {_truncate_detail(str(exc), 1000)}; retrying",
+                file=sys.stderr,
+            )
             time.sleep(min(poll_seconds, max(1, int(deadline - now))))
 
 
