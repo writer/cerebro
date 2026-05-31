@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package cerebro.v1;
+
+option go_package = "github.com/writer/cerebro/gen/cerebro/v1;cerebrov1";
+
+import "google/protobuf/timestamp.proto";
+
+enum ToolHealthStatus {
+  TOOL_HEALTH_STATUS_UNSPECIFIED = 0;
+  TOOL_HEALTH_STATUS_HEALTHY = 1;
+  TOOL_HEALTH_STATUS_DEGRADED = 2;
+  TOOL_HEALTH_STATUS_UNHEALTHY = 3;
+}
+
+// ToolRegistration describes one tool exposed by a security platform service.
+message ToolRegistration {
+  string tool_name = 1;
+  string service = 2;
+  string endpoint = 3;
+  string version = 4;
+  repeated string capabilities = 5;
+  repeated string oauth_scopes = 6;
+  map<string, string> attributes = 7;
+  google.protobuf.Timestamp registered_at = 8;
+}
+
+// ToolHealth reports one tool's current health snapshot.
+message ToolHealth {
+  string tool_name = 1;
+  string service = 2;
+  string endpoint = 3;
+  string version = 4;
+  ToolHealthStatus status = 5;
+  string detail = 6;
+  int64 latency_ms = 7;
+  google.protobuf.Timestamp checked_at = 8;
+  map<string, string> attributes = 9;
+}
