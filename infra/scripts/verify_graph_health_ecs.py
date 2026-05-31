@@ -332,8 +332,24 @@ def _task_messages(
     return [str(event.get("message") or "") for event in events.get("events") or []]
 
 
-def _extract_json_payload(messages: list[str]) -> dict[str, Any]:
+def _is_span_log_message(message: str) -> bool:
+    text = message.strip()
+    if not text.startswith("{") or not text.endswith("}"):
+        return False
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(payload, dict) and str(payload.get("kind") or "").startswith("span_")
+
+
+def _log_tail(messages: list[str], limit: int = 1000) -> str:
     text = "\n".join(message for message in messages if message.strip())
+    return _truncate_detail(text[-limit:], limit)
+
+
+def _extract_json_payload(messages: list[str]) -> dict[str, Any]:
+    text = "\n".join(message for message in messages if message.strip() and not _is_span_log_message(message))
     decoder = json.JSONDecoder()
     candidates: list[dict[str, Any]] = []
     for index, char in enumerate(text):
@@ -370,6 +386,16 @@ def _credential_safe_timeout(overall_deadline: float | None, timeout_seconds: in
     if remaining <= 0:
         raise TimeoutError("graph health verification reached credential-safe timeout before AWS credentials can expire")
     return min(timeout_seconds, remaining)
+
+
+def _extract_graph_payload_or_raise(command: list[str], task_arn: str, messages: list[str]) -> dict[str, Any]:
+    try:
+        return _extract_json_payload(messages)
+    except Exception as exc:
+        raise RuntimeError(
+            f"graph command {' '.join(command)} did not emit valid JSON for {task_arn}: {exc}; "
+            f"log tail: {_log_tail(messages)}"
+        ) from exc
 
 
 def _run_graph_command(
@@ -416,9 +442,9 @@ def _run_graph_command(
     cerebro_container = next((container for container in containers if container.get("name") == "cerebro"), None)
     exit_code = cerebro_container.get("exitCode") if cerebro_container else None
     messages = _task_messages(task, region, (context.log_group, context.stream_prefix))
-    payload = _extract_json_payload(messages)
     if exit_code != 0:
-        raise RuntimeError(f"graph command {' '.join(command)} exited with {exit_code}: {task_arn}")
+        raise RuntimeError(f"graph command {' '.join(command)} exited with {exit_code}: {task_arn}; log tail: {_log_tail(messages)}")
+    payload = _extract_graph_payload_or_raise(command, task_arn, messages)
     return GraphCommandResult(command=command, task_arn=task_arn, exit_code=exit_code, payload=payload)
 
 
