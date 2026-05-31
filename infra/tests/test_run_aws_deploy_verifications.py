@@ -62,7 +62,7 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
                 patch("scripts.run_aws_deploy_verifications._start_process", return_value=FakeProcess(1)),
                 patch("scripts.run_aws_deploy_verifications._stream_graph_health", return_value=0),
             ):
-                with contextlib.redirect_stdout(io.StringIO()):
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                     status = run_aws_deploy_verifications.main(
                         [
                             "--stack-file",
@@ -87,18 +87,19 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
                 patch("scripts.run_aws_deploy_verifications._start_process", return_value=fake_source),
                 patch("scripts.run_aws_deploy_verifications._stream_graph_health", return_value=0),
             ):
-                status = run_aws_deploy_verifications.main(
-                    [
-                        "--stack-file",
-                        "aws/Pulumi.go-prod.yaml",
-                        "--source-runtime-verify",
-                        "--graph-health",
-                        "--graph-health-output",
-                        str(Path(temp_dir) / "graph.tsv"),
-                        "--source-runtime-grace-seconds",
-                        "1",
-                    ]
-                )
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    status = run_aws_deploy_verifications.main(
+                        [
+                            "--stack-file",
+                            "aws/Pulumi.go-prod.yaml",
+                            "--source-runtime-verify",
+                            "--graph-health",
+                            "--graph-health-output",
+                            str(Path(temp_dir) / "graph.tsv"),
+                            "--source-runtime-grace-seconds",
+                            "1",
+                        ]
+                    )
                 summary = summary_path.read_text(encoding="utf-8")
 
         self.assertEqual(status, 0)
