@@ -328,6 +328,55 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             verify_graph_health_ecs._aws = original_aws
             verify_graph_health_ecs._wait_for_task = original_wait_for_task
 
+    def test_run_graph_command_retries_delayed_logs(self) -> None:
+        original_aws = verify_graph_health_ecs._aws
+        original_wait_for_task = verify_graph_health_ecs._wait_for_task
+        original_time = verify_graph_health_ecs.time.time
+        original_sleep = verify_graph_health_ecs.time.sleep
+        log_calls = 0
+        context = GraphCommandContext(
+            cluster="cluster",
+            task_definition="arn:aws:ecs:us-east-1:123:task-definition/cerebro-go-production:45",
+            network_configuration={
+                "awsvpcConfiguration": {
+                    "subnets": ["subnet-1"],
+                    "securityGroups": ["sg-1"],
+                    "assignPublicIp": "DISABLED",
+                }
+            },
+            log_group="/ecs/cerebro",
+            stream_prefix="runtime",
+            has_source_runtime_bootstrap=False,
+        )
+
+        def fake_aws(args, _region):
+            nonlocal log_calls
+            if args[:2] == ["ecs", "run-task"]:
+                return {"tasks": [{"taskArn": "task-arn"}]}
+            if args[:2] == ["ecs", "describe-tasks"]:
+                return {"tasks": [{"taskArn": "task-arn", "containers": [{"name": "cerebro", "exitCode": 0}]}]}
+            if args[:2] == ["logs", "get-log-events"]:
+                log_calls += 1
+                if log_calls == 1:
+                    return {"events": []}
+                return {"events": [{"message": '{"nodes": 1, "relations": 2}'}]}
+            raise AssertionError(f"unexpected args: {args}")
+
+        verify_graph_health_ecs._aws = fake_aws
+        verify_graph_health_ecs._wait_for_task = lambda *_args, **_kwargs: None
+        verify_graph_health_ecs.time.time = lambda: 0
+        verify_graph_health_ecs.time.sleep = lambda _seconds: None
+        try:
+            result = _run_graph_command("prefix", {}, ["graph", "counts"], 10, 1, "us-east-1", context)
+        finally:
+            verify_graph_health_ecs._aws = original_aws
+            verify_graph_health_ecs._wait_for_task = original_wait_for_task
+            verify_graph_health_ecs.time.time = original_time
+            verify_graph_health_ecs.time.sleep = original_sleep
+
+        self.assertEqual(result.payload, {"nodes": 1, "relations": 2})
+        self.assertEqual(log_calls, 2)
+
     def test_run_graph_command_with_retries_stops_before_credential_expiry(self) -> None:
         original_run_graph_command = verify_graph_health_ecs._run_graph_command
         original_time = verify_graph_health_ecs.time.time
