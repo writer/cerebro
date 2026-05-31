@@ -56,6 +56,13 @@ func TestListGRCFindingEvidenceRejectsUnconfiguredStore(t *testing.T) {
 	}
 }
 
+func TestCountGRCFindingEvidenceByFindingIDRejectsUnconfiguredStore(t *testing.T) {
+	store := &Store{}
+	if _, err := store.CountGRCFindingEvidenceByFindingID(context.Background(), ports.ListFindingEvidenceRequest{RuntimeID: "runtime-alpha"}); err == nil {
+		t.Fatal("CountGRCFindingEvidenceByFindingID() error = nil, want non-nil")
+	}
+}
+
 func TestFindingEvidenceListQueryIncludesOptionalFilters(t *testing.T) {
 	query, args, err := findingEvidenceListQuery(ports.ListFindingEvidenceRequest{
 		RuntimeID:    "runtime-alpha",
@@ -123,6 +130,37 @@ func TestFindingEvidenceHeaderListQueryAvoidsFullPayload(t *testing.T) {
 	}
 	if got := len(args); got != 5 {
 		t.Fatalf("len(findingEvidenceHeaderListQuery().args) = %d, want 5", got)
+	}
+}
+
+func TestFindingEvidenceCountByFindingIDQueryUsesGroupedCounts(t *testing.T) {
+	query, args, err := findingEvidenceCountByFindingIDQuery(ports.ListFindingEvidenceRequest{
+		RuntimeIDs: []string{"runtime-alpha", "runtime-beta"},
+		FindingIDs: []string{"finding-high", "finding-critical"},
+		Limit:      25,
+	})
+	if err != nil {
+		t.Fatalf("findingEvidenceCountByFindingIDQuery() error = %v", err)
+	}
+	for _, fragment := range []string{
+		"SELECT finding_id, COUNT(*)",
+		"FROM finding_evidence",
+		"runtime_id IN ($1, $2)",
+		"finding_id IN ($3, $4)",
+		"GROUP BY finding_id",
+		"ORDER BY finding_id",
+	} {
+		if !strings.Contains(query, fragment) {
+			t.Fatalf("findingEvidenceCountByFindingIDQuery() query missing %q: %s", fragment, query)
+		}
+	}
+	for _, forbidden := range []string{"finding_evidence_json", "LIMIT"} {
+		if strings.Contains(query, forbidden) {
+			t.Fatalf("findingEvidenceCountByFindingIDQuery() included %q: %s", forbidden, query)
+		}
+	}
+	if got := len(args); got != 4 {
+		t.Fatalf("len(findingEvidenceCountByFindingIDQuery().args) = %d, want 4", got)
 	}
 }
 

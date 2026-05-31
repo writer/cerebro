@@ -344,6 +344,45 @@ WHERE `+strings.Join(clauses, " AND "), args...).Scan(&count); err != nil {
 	return count, nil
 }
 
+// CountGRCFindingEvidenceByFindingID returns unpaginated evidence counts grouped by finding.
+func (s *Store) CountGRCFindingEvidenceByFindingID(ctx context.Context, request ports.ListFindingEvidenceRequest) (_ map[string]int, err error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
+	}
+	if err := s.ensureFindingEvidenceTables(ctx); err != nil {
+		return nil, err
+	}
+	query, args, err := findingEvidenceCountByFindingIDQuery(request)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("count grc finding evidence by finding for runtime %q: %w", strings.TrimSpace(request.RuntimeID), err)
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("close grc finding evidence count rows: %w", closeErr)
+		}
+	}()
+
+	counts := map[string]int{}
+	for rows.Next() {
+		var findingID string
+		var count int
+		if err := rows.Scan(&findingID, &count); err != nil {
+			return nil, fmt.Errorf("scan grc finding evidence count row: %w", err)
+		}
+		if trimmed := strings.TrimSpace(findingID); trimmed != "" {
+			counts[trimmed] = count
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate grc finding evidence count rows: %w", err)
+	}
+	return counts, nil
+}
+
 func (s *Store) ensureFindingEvidenceTables(ctx context.Context) error {
 	return s.ensureStatements(ctx, &s.findingEvidenceReady, "finding evidence", ensureFindingEvidenceStatements)
 }
@@ -379,6 +418,20 @@ ORDER BY ` + findingEvidenceListOrder(request)
 		args = append(args, int64(request.Limit))
 		query += fmt.Sprintf(" LIMIT $%d", len(args))
 	}
+	return query, args, nil
+}
+
+func findingEvidenceCountByFindingIDQuery(request ports.ListFindingEvidenceRequest) (string, []any, error) {
+	clauses, args, err := findingEvidenceFilterClauses(request)
+	if err != nil {
+		return "", nil, err
+	}
+	query := `
+SELECT finding_id, COUNT(*)
+FROM finding_evidence
+WHERE ` + strings.Join(clauses, " AND ") + `
+GROUP BY finding_id
+ORDER BY finding_id`
 	return query, args, nil
 }
 
