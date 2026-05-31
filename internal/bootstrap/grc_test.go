@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -316,6 +317,81 @@ func TestGRCDashboardSummaryUsesUnpaginatedAggregates(t *testing.T) {
 	}
 	if payload.Summary.EvidenceItems != 1 {
 		t.Fatalf("summary evidence items = %d, want visible finding evidence total 1", payload.Summary.EvidenceItems)
+	}
+}
+
+func TestGRCDashboardCapsPreviewWorkToRenderedLimit(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	runtimeID := "tenant-okta-audit"
+	tenantID := "tenant"
+	store := &stubGRCAggregateStore{stubRuntimeStore: &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			runtimeID: {
+				Id:           runtimeID,
+				SourceId:     "okta",
+				TenantId:     tenantID,
+				LastSyncedAt: timestamppb.New(now),
+				Checkpoint:   &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now)},
+			},
+		},
+		findings:        map[string]*ports.FindingRecord{},
+		findingEvidence: map[string]*cerebrov1.FindingEvidence{},
+	}}
+	for i := range 40 {
+		id := fmt.Sprintf("finding-%02d", i)
+		store.findings[id] = &ports.FindingRecord{
+			ID:             id,
+			TenantID:       tenantID,
+			RuntimeID:      runtimeID,
+			Title:          fmt.Sprintf("Finding %02d", i),
+			Severity:       "HIGH",
+			Status:         "open",
+			ControlRefs:    []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.1"}},
+			LastObservedAt: now.Add(-time.Duration(i) * time.Minute),
+		}
+		store.findingEvidence["evidence-"+id] = &cerebrov1.FindingEvidence{
+			Id:        "evidence-" + id,
+			RuntimeId: runtimeID,
+			FindingId: id,
+			CreatedAt: timestamppb.New(now.Add(-time.Duration(i) * time.Minute)),
+		}
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/grc/dashboard?tenant_id=" + tenantID + "&limit=500")
+	if err != nil {
+		t.Fatalf("GET /grc/dashboard error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /grc/dashboard status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var payload grcDashboardResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode /grc/dashboard: %v", err)
+	}
+	if len(payload.Findings) != 25 {
+		t.Fatalf("findings len = %d, want capped preview 25", len(payload.Findings))
+	}
+	if len(payload.Evidence) != 25 {
+		t.Fatalf("evidence len = %d, want capped preview 25", len(payload.Evidence))
+	}
+	if store.findingListRequest.Limit != grcDashboardPreviewLimit {
+		t.Fatalf("finding list limit = %d, want dashboard preview limit %d", store.findingListRequest.Limit, grcDashboardPreviewLimit)
+	}
+	if store.findingEvidenceListRequest.Limit != grcDashboardPreviewLimit {
+		t.Fatalf("evidence list limit = %d, want dashboard preview limit %d", store.findingEvidenceListRequest.Limit, grcDashboardPreviewLimit)
+	}
+	if got := len(store.findingEvidenceListRequest.FindingIDs); got != int(grcDashboardPreviewLimit) {
+		t.Fatalf("evidence finding id count = %d, want dashboard preview limit %d", got, grcDashboardPreviewLimit)
+	}
+	if payload.Summary.OpenFindings != 40 {
+		t.Fatalf("summary open findings = %d, want unpaginated total 40", payload.Summary.OpenFindings)
+	}
+	if store.aggregateCalls != 1 {
+		t.Fatalf("aggregate calls = %d, want 1", store.aggregateCalls)
 	}
 }
 

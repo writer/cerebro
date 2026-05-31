@@ -21,8 +21,9 @@ import (
 )
 
 const (
-	grcDefaultLimit = uint32(100)
-	grcMaxLimit     = uint32(500)
+	grcDefaultLimit          = uint32(100)
+	grcMaxLimit              = uint32(500)
+	grcDashboardPreviewLimit = uint32(25)
 )
 
 type grcScope struct {
@@ -162,6 +163,8 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	endAttrs = endAttrs.WithField(telemetry.Field{Key: "limit", Value: scope.Limit})
+	previewLimit := grcDashboardPreviewLimitFor(scope.Limit)
+	endAttrs = endAttrs.WithField(telemetry.Field{Key: "preview_limit", Value: previewLimit})
 	ctx, runtimesSpan := telemetry.Start(r.Context(), "grc.dashboard.runtimes", grcDashboardScopeTelemetryAttrs(scope))
 	runtimesRequest := r.WithContext(ctx)
 	runtimes, err := a.grcListRuntimes(runtimesRequest, scope)
@@ -173,7 +176,7 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, findingsSpan := telemetry.Start(r.Context(), "grc.dashboard.findings", grcDashboardScopeTelemetryAttrs(scope))
 	findingsRequest := r.WithContext(ctx)
-	findings, err := a.grcListFindingRecords(findingsRequest, runtimes, grcFindingFilter{Status: "open", Limit: scope.Limit})
+	findings, err := a.grcListFindingRecords(findingsRequest, runtimes, grcFindingFilter{Status: "open", Limit: previewLimit})
 	telemetry.End(findingsSpan, grcTelemetryStatus(err), telemetry.Attrs(telemetry.Field{Key: "finding_count", Value: len(findings)}))
 	if err != nil {
 		status, endAttrs = grcTelemetryError(endAttrs, err)
@@ -195,7 +198,7 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		var err error
 		ctx, evidenceSpan := telemetry.Start(r.Context(), "grc.dashboard.evidence", telemetry.Attrs(telemetry.Field{Key: "finding_count", Value: len(findingIDs)}))
 		evidenceRequest := r.WithContext(ctx)
-		evidence, err = a.grcListEvidenceRecords(evidenceRequest, runtimes, grcEvidenceFilter{FindingIDs: findingIDs, Limit: scope.Limit})
+		evidence, err = a.grcListEvidenceRecords(evidenceRequest, runtimes, grcEvidenceFilter{FindingIDs: findingIDs, Limit: previewLimit})
 		telemetry.End(evidenceSpan, grcTelemetryStatus(err), telemetry.Attrs(telemetry.Field{Key: "evidence_count", Value: len(evidence)}))
 		if err != nil {
 			errs <- err
@@ -251,6 +254,13 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		Connectors:  grcConnectorItems(runtimes),
 		GeneratedAt: time.Now().UTC(),
 	})
+}
+
+func grcDashboardPreviewLimitFor(limit uint32) uint32 {
+	if limit == 0 || limit > grcDashboardPreviewLimit {
+		return grcDashboardPreviewLimit
+	}
+	return limit
 }
 
 func (a *App) handleGRCFindings(w http.ResponseWriter, r *http.Request) {
