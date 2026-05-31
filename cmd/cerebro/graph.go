@@ -36,6 +36,12 @@ const (
 	defaultGraphPathsTimeout        = 60 * time.Second
 )
 
+var (
+	errEndpointOwnerIDCleanupUnsupported = errors.New("endpoint owner-id link cleanup is unsupported by configured stores")
+	errEndpointOwnerIDStateCleanupFailed = errors.New("state endpoint owner-id link cleanup failed")
+	errEndpointOwnerIDGraphCleanupFailed = errors.New("graph endpoint owner-id link cleanup failed")
+)
+
 type graphCountsStore interface {
 	Counts(context.Context) (graphstore.Counts, error)
 }
@@ -543,7 +549,7 @@ func cleanupEndpointOwnerIDLinks(ctx context.Context, deps bootstrap.Dependencie
 		}
 		if err != nil {
 			status = "error"
-			fields = append(fields, telemetry.Field{Key: "error", Value: err.Error()})
+			fields = append(fields, telemetry.Field{Key: "error_kind", Value: graphEndpointOwnerIDCleanupErrorKind(err)})
 		}
 		telemetry.End(span, status, telemetry.Attrs(fields...))
 	}()
@@ -559,20 +565,33 @@ func cleanupEndpointOwnerIDLinks(ctx context.Context, deps bootstrap.Dependencie
 		cleaned = true
 		result.StateStore, err = cleaner.CleanupEndpointOwnerIDLinks(ctx, request)
 		if err != nil {
-			return result, fmt.Errorf("cleanup state endpoint owner-id links: %w", err)
+			return result, fmt.Errorf("%w: %w", errEndpointOwnerIDStateCleanupFailed, err)
 		}
 	}
 	if cleaner, ok := deps.GraphStore.(ports.EndpointOwnerIDLinkCleaner); ok {
 		cleaned = true
 		result.GraphStore, err = cleaner.CleanupEndpointOwnerIDLinks(ctx, request)
 		if err != nil {
-			return result, fmt.Errorf("cleanup graph endpoint owner-id links: %w", err)
+			return result, fmt.Errorf("%w: %w", errEndpointOwnerIDGraphCleanupFailed, err)
 		}
 	}
 	if !cleaned {
-		return result, fmt.Errorf("endpoint owner-id link cleanup is unsupported by configured stores")
+		return result, errEndpointOwnerIDCleanupUnsupported
 	}
 	return result, nil
+}
+
+func graphEndpointOwnerIDCleanupErrorKind(err error) string {
+	switch {
+	case errors.Is(err, errEndpointOwnerIDCleanupUnsupported):
+		return "cleanup_unsupported"
+	case errors.Is(err, errEndpointOwnerIDStateCleanupFailed):
+		return "state_cleanup_failed"
+	case errors.Is(err, errEndpointOwnerIDGraphCleanupFailed):
+		return "graph_cleanup_failed"
+	default:
+		return "cleanup_failed"
+	}
 }
 
 func cleanupProjectedEntities(ctx context.Context, deps bootstrap.Dependencies, options graphProjectedEntityCleanupOptions) (result graphProjectedEntityCleanupResult, err error) {

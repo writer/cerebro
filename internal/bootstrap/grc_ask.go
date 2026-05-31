@@ -63,7 +63,7 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 	if llm == nil {
 		err := errors.Join(graphagent.ErrRuntimeUnavailable, errors.New("graph agent llm is not configured"))
 		evt.failureStage = "llm_init"
-		evt.llmInitError = err.Error()
+		evt.llmInitErrorKind = grcTelemetryErrorKind(err)
 		evt.finish(r, w, started, http.StatusServiceUnavailable, err)
 		writeGRCError(w, err)
 		return
@@ -138,19 +138,19 @@ func (a *App) handleGRCAsk(w http.ResponseWriter, r *http.Request) {
 }
 
 type askWideEvent struct {
-	tenantID     string
-	question     string
-	scopeURN     string
-	model        string
-	historyLen   int
-	provider     string
-	graphStoreOK bool
-	llmOK        bool
-	llmPreCached bool
-	llmInitMs    int64
-	llmInitError string
-	failureStage string
-	sseEvents    int
+	tenantID         string
+	question         string
+	scopeURN         string
+	model            string
+	historyLen       int
+	provider         string
+	graphStoreOK     bool
+	llmOK            bool
+	llmPreCached     bool
+	llmInitMs        int64
+	llmInitErrorKind string
+	failureStage     string
+	sseEvents        int
 
 	queryPlan askQueryPlanTelemetry
 	result    askResultTelemetry
@@ -305,15 +305,11 @@ func (e *askWideEvent) finish(r *http.Request, w http.ResponseWriter, started ti
 	if e.failureStage != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "failure_stage", Value: e.failureStage})
 	}
-	if e.llmInitError != "" {
-		attrs = attrs.WithField(telemetry.Field{Key: "llm.init_error", Value: e.llmInitError})
+	if e.llmInitErrorKind != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "llm.init_error_kind", Value: e.llmInitErrorKind})
 	}
 	if err != nil {
-		errMsg := err.Error()
-		if len(errMsg) > 256 {
-			errMsg = errMsg[:256]
-		}
-		attrs = attrs.WithField(telemetry.Field{Key: "error", Value: errMsg})
+		attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: grcTelemetryErrorKind(err)})
 	}
 	if r != nil {
 		attrs = attrs.WithField(telemetry.Field{Key: "http.method", Value: r.Method})

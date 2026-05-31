@@ -198,6 +198,12 @@ func TestGRCAskDraftFailureReturnsServiceUnavailable(t *testing.T) {
 	if got := payload["runtime_error.code"]; got != "ask_failed" {
 		t.Fatalf("runtime_error.code = %#v, want ask_failed; payload=%#v", got, payload)
 	}
+	if got := payload["error_kind"]; got != "runtime_unavailable" {
+		t.Fatalf("error_kind = %#v, want runtime_unavailable; payload=%#v", got, payload)
+	}
+	if _, exists := payload["error"]; exists {
+		t.Fatalf("raw error recorded in telemetry: payload=%#v", payload)
+	}
 	if _, exists := payload["validator.code"]; exists {
 		t.Fatalf("validator.code recorded runtime error: payload=%#v", payload)
 	}
@@ -248,6 +254,7 @@ func TestGRCAskTelemetryCopiesErrorEventTimings(t *testing.T) {
 	payload := decodeBootstrapTelemetryPayload(t, stderr)
 	for key, want := range map[string]any{
 		"terminal_event":      graphagent.EventError,
+		"error_kind":          "grc_request_failed",
 		"stage.draft_ms":      float64(11),
 		"stage.conversion_ms": float64(7),
 		"stage.validate_ms":   float64(5),
@@ -255,6 +262,9 @@ func TestGRCAskTelemetryCopiesErrorEventTimings(t *testing.T) {
 		if got := payload[key]; got != want {
 			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
 		}
+	}
+	if _, exists := payload["error"]; exists {
+		t.Fatalf("raw error recorded in telemetry: payload=%#v", payload)
 	}
 }
 

@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 type cleanupStateStore struct {
 	request           ports.ProjectionLinkCleanupRequest
 	result            ports.ProjectionLinkCleanupResult
+	err               error
 	projectionRequest ports.ProjectionCleanupRequest
 	projectionResult  ports.ProjectionCleanupResult
 }
@@ -22,7 +25,7 @@ func (s *cleanupStateStore) Ping(context.Context) error { return nil }
 
 func (s *cleanupStateStore) CleanupEndpointOwnerIDLinks(_ context.Context, request ports.ProjectionLinkCleanupRequest) (ports.ProjectionLinkCleanupResult, error) {
 	s.request = request
-	return s.result, nil
+	return s.result, s.err
 }
 
 func (s *cleanupStateStore) CleanupProjectedEntities(_ context.Context, request ports.ProjectionCleanupRequest) (ports.ProjectionCleanupResult, error) {
@@ -203,6 +206,33 @@ func TestCleanupEndpointOwnerIDLinksAllowsStateStoreOnly(t *testing.T) {
 	}
 	if result.StateStore.LinksMatched != 3 || result.GraphStore.LinksMatched != 0 {
 		t.Fatalf("cleanup result = %#v, want state-only result", result)
+	}
+}
+
+func TestCleanupEndpointOwnerIDLinksTelemetryClassifiesErrors(t *testing.T) {
+	state := &cleanupStateStore{err: errors.New("cleanup backend failed credential=fake-sensitive-value")}
+	stderr := captureCommandStderr(t, func() {
+		_, err := cleanupEndpointOwnerIDLinks(context.Background(), bootstrap.Dependencies{StateStore: state}, graphEndpointOwnerIDCleanupOptions{
+			TenantID: "writer",
+			DryRun:   true,
+		})
+		if !errors.Is(err, errEndpointOwnerIDStateCleanupFailed) {
+			t.Fatalf("cleanupEndpointOwnerIDLinks() error = %v, want state cleanup failure", err)
+		}
+	})
+
+	payload := lastCommandTelemetryPayload(t, stderr)
+	if got := payload["name"]; got != "projection_cleanup.endpoint_owner_id_links" {
+		t.Fatalf("telemetry name = %#v, want projection cleanup; payload=%#v", got, payload)
+	}
+	if got := payload["status"]; got != "error" {
+		t.Fatalf("telemetry status = %#v, want error; payload=%#v", got, payload)
+	}
+	if got := payload["error_kind"]; got != "state_cleanup_failed" {
+		t.Fatalf("telemetry error_kind = %#v, want state_cleanup_failed; payload=%#v", got, payload)
+	}
+	if strings.Contains(stderr, "fake-sensitive-value") || strings.Contains(stderr, "credential=") {
+		t.Fatalf("cleanup telemetry leaked raw error: %s", stderr)
 	}
 }
 
