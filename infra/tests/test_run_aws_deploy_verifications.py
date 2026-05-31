@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import os
 from pathlib import Path
 import sys
@@ -44,16 +46,17 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
                 patch("scripts.run_aws_deploy_verifications._start_process", return_value=FakeProcess(1)),
                 patch("scripts.run_aws_deploy_verifications._stream_graph_health", return_value=0),
             ):
-                status = run_aws_deploy_verifications.main(
-                    [
-                        "--stack-file",
-                        "aws/Pulumi.sec-dev.yaml",
-                        "--source-runtime-verify",
-                        "--graph-health",
-                        "--graph-health-output",
-                        str(Path(temp_dir) / "graph.tsv"),
-                    ]
-                )
+                with contextlib.redirect_stdout(io.StringIO()):
+                    status = run_aws_deploy_verifications.main(
+                        [
+                            "--stack-file",
+                            "aws/Pulumi.sec-dev.yaml",
+                            "--source-runtime-verify",
+                            "--graph-health",
+                            "--graph-health-output",
+                            str(Path(temp_dir) / "graph.tsv"),
+                        ]
+                    )
                 summary = summary_path.read_text(encoding="utf-8")
 
         self.assertEqual(status, 0)
