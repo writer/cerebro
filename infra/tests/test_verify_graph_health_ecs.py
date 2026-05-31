@@ -21,6 +21,8 @@ from scripts.verify_graph_health_ecs import (
     _declared_runtime_ids,
     _graph_command_overrides,
     _graph_path_relations,
+    _graph_health_command,
+    _graph_health_errors,
     _graph_relation_counts,
     _run_graph_command_with_retries,
     _summary_markdown,
@@ -32,7 +34,9 @@ from scripts.verify_graph_health_ecs import (
     _missing_required_graph_relation_counts,
     _resource_prefix,
     _run_graph_command,
+    _run_graph_health_command_with_retries,
     _supports_attack_path_relations,
+    _supports_graph_health_command,
     _supports_relation_counts,
     _verify_counts,
     _verify_current_ingest_runs,
@@ -85,6 +89,10 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
     def test_supports_relation_counts_requires_min_image_tag(self) -> None:
         self.assertFalse(_supports_relation_counts({"imageTag": "v2.1.49"}))
         self.assertTrue(_supports_relation_counts({"imageTag": "v2.1.50"}))
+
+    def test_supports_graph_health_command_requires_min_image_tag(self) -> None:
+        self.assertFalse(_supports_graph_health_command({"imageTag": "v2.1.139"}))
+        self.assertTrue(_supports_graph_health_command({"imageTag": "v2.1.140"}))
 
     def test_is_graph_paths_timeout_matches_neo4j_deadline(self) -> None:
         self.assertTrue(_is_graph_paths_timeout(RuntimeError("query graph path patterns: ConnectivityError: context deadline exceeded")))
@@ -328,6 +336,60 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             verify_graph_health_ecs._aws = original_aws
             verify_graph_health_ecs._wait_for_task = original_wait_for_task
 
+    def test_run_graph_command_allows_nonzero_graph_health_payload(self) -> None:
+        original_aws = verify_graph_health_ecs._aws
+        original_wait_for_task = verify_graph_health_ecs._wait_for_task
+        context = GraphCommandContext(
+            cluster="cluster",
+            task_definition="arn:aws:ecs:us-east-1:123:task-definition/cerebro-go-production:45",
+            network_configuration={
+                "awsvpcConfiguration": {
+                    "subnets": ["subnet-1"],
+                    "securityGroups": ["sg-1"],
+                    "assignPublicIp": "DISABLED",
+                }
+            },
+            log_group="/ecs/cerebro",
+            stream_prefix="runtime",
+            has_source_runtime_bootstrap=False,
+        )
+
+        def fake_aws(args, _region):
+            if args[:2] == ["ecs", "run-task"]:
+                return {"tasks": [{"taskArn": "task-arn"}]}
+            if args[:2] == ["ecs", "describe-tasks"]:
+                return {"tasks": [{"taskArn": "task-arn", "containers": [{"name": "cerebro", "exitCode": 1}]}]}
+            if args[:2] == ["logs", "get-log-events"]:
+                return {
+                    "events": [
+                        {
+                            "message": '{"status":"failed","counts":{"nodes":1,"relations":1},"integrity":{"passed":1,"failed":0},"failures":["latest ingest failed"]}'
+                        }
+                    ]
+                }
+            raise AssertionError(f"unexpected args: {args}")
+
+        verify_graph_health_ecs._aws = fake_aws
+        verify_graph_health_ecs._wait_for_task = lambda *_args, **_kwargs: None
+        try:
+            result = _run_graph_command(
+                "prefix",
+                {},
+                ["graph", "health"],
+                10,
+                1,
+                "us-east-1",
+                context,
+                allow_nonzero=True,
+            )
+        finally:
+            verify_graph_health_ecs._aws = original_aws
+            verify_graph_health_ecs._wait_for_task = original_wait_for_task
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertEqual(result.payload["status"], "failed")
+        self.assertEqual(_graph_health_errors(result.payload, result.exit_code), ["latest ingest failed"])
+
     def test_run_graph_command_retries_delayed_logs(self) -> None:
         original_aws = verify_graph_health_ecs._aws
         original_wait_for_task = verify_graph_health_ecs._wait_for_task
@@ -456,6 +518,17 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             {"runs": [{"id": "run-a", "runtime_id": "runtime-a", "status": "completed"}], "failed_count": 0},
         )
 
+    def test_extract_json_payload_selects_graph_health_payload(self) -> None:
+        payload = _extract_json_payload(
+            [
+                '{"span":"graph.health","status":"completed"}',
+                '{"status":"passed","counts":{"nodes":2,"relations":3},"integrity":{"passed":5,"failed":0},"ingest":{"current_runtime_count":2}}',
+            ]
+        )
+
+        self.assertEqual(payload["status"], "passed")
+        self.assertEqual(payload["counts"], {"nodes": 2, "relations": 3})
+
     def test_verify_counts_rejects_empty_graph(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "node count"):
             _verify_counts({"nodes": 0, "relations": 1})
@@ -577,6 +650,78 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
 
         self.assertEqual(current_count, 1)
         self.assertEqual(ingest_runs.task_arn, "task-2")
+        self.assertEqual(calls, 2)
+
+    def test_graph_health_command_builds_single_health_check(self) -> None:
+        self.assertEqual(
+            _graph_health_command({"runtime-a", "runtime-b"}, {"belongs_to", "represents"}, 45, True),
+            [
+                "graph",
+                "health",
+                "limit=100",
+                "max_running_minutes=45",
+                "relations=belongs_to,represents",
+                "allow_transient_source_failures=true",
+            ],
+        )
+
+    def test_run_graph_health_command_with_retries_recovers_after_failed_status(self) -> None:
+        original_run_graph_command_with_retries = verify_graph_health_ecs._run_graph_command_with_retries
+        original_time = verify_graph_health_ecs.time.time
+        original_sleep = verify_graph_health_ecs.time.sleep
+        calls = 0
+
+        def fake_run_graph_command_with_retries(*_args, **kwargs):
+            nonlocal calls
+            calls += 1
+            self.assertTrue(kwargs.get("allow_nonzero"))
+            if calls == 1:
+                return verify_graph_health_ecs.GraphCommandResult(
+                    command=["graph", "health"],
+                    task_arn="task-1",
+                    exit_code=1,
+                    payload={
+                        "status": "failed",
+                        "counts": {"nodes": 1, "relations": 1},
+                        "integrity": {"passed": 1, "failed": 0},
+                        "failures": ["latest graph ingest run failed"],
+                    },
+                )
+            return verify_graph_health_ecs.GraphCommandResult(
+                command=["graph", "health"],
+                task_arn="task-2",
+                exit_code=0,
+                payload={
+                    "status": "passed",
+                    "counts": {"nodes": 1, "relations": 1},
+                    "integrity": {"passed": 1, "failed": 0},
+                    "ingest": {"current_runtime_count": 1},
+                },
+            )
+
+        verify_graph_health_ecs._run_graph_command_with_retries = fake_run_graph_command_with_retries
+        verify_graph_health_ecs.time.time = lambda: 0
+        verify_graph_health_ecs.time.sleep = lambda _seconds: None
+        try:
+            result = _run_graph_health_command_with_retries(
+                "prefix",
+                {},
+                {"runtime-a"},
+                {"belongs_to"},
+                10,
+                1,
+                "us-east-1",
+                5,
+                30,
+                60,
+                False,
+            )
+        finally:
+            verify_graph_health_ecs._run_graph_command_with_retries = original_run_graph_command_with_retries
+            verify_graph_health_ecs.time.time = original_time
+            verify_graph_health_ecs.time.sleep = original_sleep
+
+        self.assertEqual(result.task_arn, "task-2")
         self.assertEqual(calls, 2)
 
     def test_verify_current_ingest_runs_rejects_missing_declared_runtime(self) -> None:
