@@ -80,10 +80,10 @@ jobs:
           source_runtime_verifier_changed=false
           graph_health_verifier_changed=false
 
-          if grep -Eq '^infra/scripts/verify_source_runtime_ecs\.py$|^infra/tests/test_verify_source_runtime_ecs\.py$' changed.txt; then
+          if grep -Eq '^infra/scripts/(verify_source_runtime_ecs|run_aws_deploy_verifications)\.py$|^infra/tests/test_(verify_source_runtime_ecs|run_aws_deploy_verifications)\.py$' changed.txt; then
             source_runtime_verifier_changed=true
           fi
-          if grep -Eq '^infra/scripts/verify_graph_health_ecs\.py$|^infra/tests/test_verify_graph_health_ecs\.py$' changed.txt; then
+          if grep -Eq '^infra/scripts/(verify_graph_health_ecs|run_aws_deploy_verifications)\.py$|^infra/tests/test_(verify_graph_health_ecs|run_aws_deploy_verifications)\.py$' changed.txt; then
             graph_health_verifier_changed=true
           fi
 
@@ -99,7 +99,7 @@ jobs:
             aws_go_prod_deploy=true
             gcp=true
           fi
-          if grep -Ev '^infra/scripts/verify_(graph_health|source_runtime)_ecs\.py$|^infra/tests/test_verify_(graph_health|source_runtime)_ecs\.py$' changed.txt | grep -Eq '^infra/scripts/|^infra/tests/'; then
+          if grep -Ev '^infra/scripts/(verify_(graph_health|source_runtime)_ecs|run_aws_deploy_verifications)\.py$|^infra/tests/test_(verify_(graph_health|source_runtime)_ecs|run_aws_deploy_verifications)\.py$' changed.txt | grep -Eq '^infra/scripts/|^infra/tests/'; then
             aws_sec_dev_deploy=true
             aws_go_prod_deploy=true
             gcp=true
@@ -378,31 +378,6 @@ jobs:
           work-dir: infra/aws
           diff: true
 
-      - name: Refresh AWS credentials for runtime verification (sec-dev)
-        if: needs.changes.outputs.aws_sec_dev_runtime_verify == 'true'
-        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
-        with:
-          assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
-
-      - name: Verify Cosmo source runtimes (sec-dev)
-        if: needs.changes.outputs.aws_sec_dev_runtime_verify == 'true'
-        id: verify_cosmo_source_runtimes_sec_dev
-        continue-on-error: true
-        shell: bash
-        working-directory: infra
-        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --source-id cosmo --run --run-page-limit 1 --run-graph-page-limit 1 --run-event-limit 10 --succeed-after-graph-ingest --stop-running-before-run --stop-timeout-seconds 600 --allow-lease-contention-skip --failed-run-retry-seconds 300 --run-attempt-timeout-seconds 900 --max-age-minutes 60 --wait-timeout-seconds 1200 --poll-seconds 5
-
-      - name: Report Cosmo source runtime degradation (sec-dev)
-        if: needs.changes.outputs.aws_sec_dev_runtime_verify == 'true' && steps.verify_cosmo_source_runtimes_sec_dev.outcome == 'failure'
-        shell: bash
-        run: |
-          echo "::warning::Cosmo source runtime verification failed after deployment; rollout will continue and graph-health integrity checks remain blocking."
-          {
-            echo "### Source runtime verification degraded (sec-dev)"
-            echo
-            echo "Cosmo source runtime verification failed after deployment. This is reported as degraded source-provider health instead of blocking the service rollout."
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Refresh AWS credentials for public-endpoint runtime verification (sec-dev)
         if: needs.changes.outputs.aws_sec_dev_deploy == 'true' && steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
@@ -415,17 +390,25 @@ jobs:
         working-directory: infra
         run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --source-id aws --family public_endpoint --run --succeed-after-graph-ingest --allow-lease-contention-skip --run-attempt-timeout-seconds 900 --max-age-minutes 60 --wait-timeout-seconds 1200 --poll-seconds 5
 
-      - name: Refresh AWS credentials for graph verification (sec-dev)
-        if: needs.changes.outputs.aws_sec_dev_graph_health == 'true'
+      - name: Refresh AWS credentials for deployment verification (sec-dev)
+        if: needs.changes.outputs.aws_sec_dev_runtime_verify == 'true' || needs.changes.outputs.aws_sec_dev_graph_health == 'true'
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
         with:
           assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
 
-      - name: Verify graph health (sec-dev)
-        if: needs.changes.outputs.aws_sec_dev_graph_health == 'true'
+      - name: Verify deployment health (sec-dev)
+        if: needs.changes.outputs.aws_sec_dev_runtime_verify == 'true' || needs.changes.outputs.aws_sec_dev_graph_health == 'true'
         shell: bash
         working-directory: infra
-        run: uv run python scripts/verify_graph_health_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --wait-timeout-seconds 3600 --graph-command-retry-seconds 1800 --poll-seconds 5 --allow-transient-source-failures | tee graph-health-sec-dev.tsv
+        run: |
+          args=()
+          if [ "${{ needs.changes.outputs.aws_sec_dev_runtime_verify }}" = "true" ]; then
+            args+=(--source-runtime-verify --stop-running-source-before-run)
+          fi
+          if [ "${{ needs.changes.outputs.aws_sec_dev_graph_health }}" = "true" ]; then
+            args+=(--graph-health --graph-health-output graph-health-sec-dev.tsv)
+          fi
+          uv run python scripts/run_aws_deploy_verifications.py --stack-file aws/Pulumi.sec-dev.yaml "${args[@]}"
 
       - name: Upload graph health summary (sec-dev)
         if: always() && needs.changes.outputs.aws_sec_dev_graph_health == 'true'
@@ -514,31 +497,6 @@ jobs:
           work-dir: infra/aws
           diff: true
 
-      - name: Refresh AWS credentials for runtime verification (sec-prod)
-        if: needs.changes.outputs.aws_go_prod_runtime_verify == 'true'
-        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
-        with:
-          assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
-
-      - name: Verify Cosmo source runtimes (go-prod)
-        if: needs.changes.outputs.aws_go_prod_runtime_verify == 'true'
-        id: verify_cosmo_source_runtimes_go_prod
-        continue-on-error: true
-        shell: bash
-        working-directory: infra
-        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.go-prod.yaml --source-id cosmo --run --run-page-limit 1 --run-graph-page-limit 1 --run-event-limit 10 --succeed-after-graph-ingest --stop-timeout-seconds 600 --allow-lease-contention-skip --failed-run-retry-seconds 300 --run-attempt-timeout-seconds 900 --max-age-minutes 60 --wait-timeout-seconds 1200 --poll-seconds 5
-
-      - name: Report Cosmo source runtime degradation (go-prod)
-        if: needs.changes.outputs.aws_go_prod_runtime_verify == 'true' && steps.verify_cosmo_source_runtimes_go_prod.outcome == 'failure'
-        shell: bash
-        run: |
-          echo "::warning::Cosmo source runtime verification failed after deployment; rollout will continue and graph-health integrity checks remain blocking."
-          {
-            echo "### Source runtime verification degraded (go-prod)"
-            echo
-            echo "Cosmo source runtime verification failed after deployment. This is reported as degraded source-provider health instead of blocking the service rollout."
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Refresh AWS credentials for public-endpoint runtime verification (sec-prod)
         if: needs.changes.outputs.aws_go_prod_deploy == 'true' && steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
@@ -551,17 +509,25 @@ jobs:
         working-directory: infra
         run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.go-prod.yaml --source-id aws --family public_endpoint --run --succeed-after-graph-ingest --allow-lease-contention-skip --run-attempt-timeout-seconds 900 --max-age-minutes 60 --wait-timeout-seconds 1200 --poll-seconds 5
 
-      - name: Refresh AWS credentials for graph verification (sec-prod)
-        if: needs.changes.outputs.aws_go_prod_graph_health == 'true'
+      - name: Refresh AWS credentials for deployment verification (sec-prod)
+        if: needs.changes.outputs.aws_go_prod_runtime_verify == 'true' || needs.changes.outputs.aws_go_prod_graph_health == 'true'
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
         with:
           assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
 
-      - name: Verify graph health (go-prod)
-        if: needs.changes.outputs.aws_go_prod_graph_health == 'true'
+      - name: Verify deployment health (go-prod)
+        if: needs.changes.outputs.aws_go_prod_runtime_verify == 'true' || needs.changes.outputs.aws_go_prod_graph_health == 'true'
         shell: bash
         working-directory: infra
-        run: uv run python scripts/verify_graph_health_ecs.py --stack-file aws/Pulumi.go-prod.yaml --wait-timeout-seconds 3600 --graph-command-retry-seconds 1800 --poll-seconds 5 --allow-transient-source-failures | tee graph-health-go-prod.tsv
+        run: |
+          args=()
+          if [ "${{ needs.changes.outputs.aws_go_prod_runtime_verify }}" = "true" ]; then
+            args+=(--source-runtime-verify)
+          fi
+          if [ "${{ needs.changes.outputs.aws_go_prod_graph_health }}" = "true" ]; then
+            args+=(--graph-health --graph-health-output graph-health-go-prod.tsv)
+          fi
+          uv run python scripts/run_aws_deploy_verifications.py --stack-file aws/Pulumi.go-prod.yaml "${args[@]}"
 
       - name: Upload graph health summary (go-prod)
         if: always() && needs.changes.outputs.aws_go_prod_graph_health == 'true'
@@ -831,47 +797,6 @@ jobs:
           diff: true
           refresh: true
 
-      - name: Refresh AWS credentials for runtime verification (sec-dev)
-        if: github.event.inputs.environment == 'sec-dev'
-        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
-        with:
-          assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
-
-      - name: Refresh AWS credentials for runtime verification (sec-prod)
-        if: github.event.inputs.environment == 'go-prod'
-        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
-        with:
-          assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
-
-      - name: Verify Cosmo source runtimes (AWS)
-        id: verify_cosmo_source_runtimes_manual
-        if: "!startsWith(github.event.inputs.environment, 'gcp-')"
-        continue-on-error: true
-        shell: bash
-        working-directory: infra
-        env:
-          STACK_NAME: ${{ github.event.inputs.environment }}
-        run: |
-          extra_args=()
-          extra_args+=(--allow-lease-contention-skip)
-          if [ "${STACK_NAME}" = "sec-dev" ]; then
-            extra_args+=(--stop-running-before-run)
-          fi
-          uv run python scripts/verify_source_runtime_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --source-id cosmo --run --run-page-limit 1 --run-graph-page-limit 1 --run-event-limit 10 --succeed-after-graph-ingest "${extra_args[@]}" --stop-timeout-seconds 600 --failed-run-retry-seconds 300 --run-attempt-timeout-seconds 900 --max-age-minutes 60 --wait-timeout-seconds 1200 --poll-seconds 5
-
-      - name: Report Cosmo source runtime degradation (AWS)
-        if: "!startsWith(github.event.inputs.environment, 'gcp-') && steps.verify_cosmo_source_runtimes_manual.outcome == 'failure'"
-        shell: bash
-        env:
-          STACK_NAME: ${{ github.event.inputs.environment }}
-        run: |
-          echo "::warning::Cosmo source runtime verification failed after deployment; rollout will continue and graph-health integrity checks remain blocking."
-          {
-            echo "### Source runtime verification degraded (${STACK_NAME})"
-            echo
-            echo "Cosmo source runtime verification failed after deployment. This is reported as degraded source-provider health instead of blocking the service rollout."
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Refresh AWS credentials for public-endpoint runtime verification (sec-dev)
         if: github.event.inputs.environment == 'sec-dev' && steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
@@ -892,25 +817,30 @@ jobs:
           STACK_NAME: ${{ github.event.inputs.environment }}
         run: uv run python scripts/verify_source_runtime_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --source-id aws --family public_endpoint --run --succeed-after-graph-ingest --allow-lease-contention-skip --run-attempt-timeout-seconds 900 --max-age-minutes 60 --wait-timeout-seconds 1200 --poll-seconds 5
 
-      - name: Refresh AWS credentials for graph verification (sec-dev)
+      - name: Refresh AWS credentials for deployment verification (sec-dev)
         if: github.event.inputs.environment == 'sec-dev'
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
         with:
           assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
 
-      - name: Refresh AWS credentials for graph verification (sec-prod)
+      - name: Refresh AWS credentials for deployment verification (sec-prod)
         if: github.event.inputs.environment == 'go-prod'
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
         with:
           assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
 
-      - name: Verify graph health (AWS)
+      - name: Verify deployment health (AWS)
         if: "!startsWith(github.event.inputs.environment, 'gcp-')"
         shell: bash
         working-directory: infra
         env:
           STACK_NAME: ${{ github.event.inputs.environment }}
-        run: uv run python scripts/verify_graph_health_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --wait-timeout-seconds 3600 --graph-command-retry-seconds 1800 --poll-seconds 5 --allow-transient-source-failures | tee "graph-health-${STACK_NAME}.tsv"
+        run: |
+          args=(--source-runtime-verify --graph-health --graph-health-output "graph-health-${STACK_NAME}.tsv")
+          if [ "${STACK_NAME}" = "sec-dev" ]; then
+            args+=(--stop-running-source-before-run)
+          fi
+          uv run python scripts/run_aws_deploy_verifications.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" "${args[@]}"
 
       - name: Upload graph health summary (AWS)
         if: "!startsWith(github.event.inputs.environment, 'gcp-') && always()"
