@@ -418,12 +418,12 @@ func (s *Service) ensureFindingActiveLinks(ctx context.Context, finding workflow
 	tenantID := strings.TrimSpace(finding.TenantID)
 	sourceID := strings.TrimSpace(finding.SourceSystem)
 	anchorURN := findingURN(tenantID, finding.FindingID)
-	resourceURNs := findingResourceURNs(finding)
-	for _, resourceURN := range resourceURNs {
+	targetURNs := findingActiveTargetURNs(finding)
+	for _, targetURN := range targetURNs {
 		if err := s.upsertLink(ctx, &ports.ProjectedLink{
 			TenantID:   tenantID,
 			SourceID:   sourceID,
-			FromURN:    resourceURN,
+			FromURN:    targetURN,
 			ToURN:      anchorURN,
 			Relation:   relationHasFinding,
 			Attributes: findingAnchorLinkAttributes(finding),
@@ -431,7 +431,7 @@ func (s *Service) ensureFindingActiveLinks(ctx context.Context, finding workflow
 			return err
 		}
 	}
-	if err := s.pruneFindingActiveLinks(ctx, tenantID, sourceID, anchorURN, resourceURNs, result); err != nil {
+	if err := s.pruneFindingActiveLinks(ctx, tenantID, sourceID, anchorURN, targetURNs, result); err != nil {
 		return err
 	}
 	return nil
@@ -513,7 +513,7 @@ func (s *Service) deleteFindingActiveLinks(ctx context.Context, finding workflow
 	sourceID := strings.TrimSpace(finding.SourceSystem)
 	anchorURN := findingURN(tenantID, finding.FindingID)
 	var deleted uint32
-	for _, resourceURN := range findingResourceURNs(finding) {
+	for _, resourceURN := range findingActiveTargetURNs(finding) {
 		if err := deleter.DeleteProjectedLink(ctx, &ports.ProjectedLink{
 			TenantID: tenantID,
 			SourceID: sourceID,
@@ -529,11 +529,46 @@ func (s *Service) deleteFindingActiveLinks(ctx context.Context, finding workflow
 }
 
 func findingTargetURNs(finding workflowevents.FindingSnapshot) []string {
-	return normalizeIDs(append(findingResourceURNs(finding), findingURN(strings.TrimSpace(finding.TenantID), finding.FindingID)))
+	return normalizeIDs(append(findingActiveTargetURNs(finding), findingURN(strings.TrimSpace(finding.TenantID), finding.FindingID)))
+}
+
+func findingActiveTargetURNs(finding workflowevents.FindingSnapshot) []string {
+	return normalizeIDs(append(findingResourceURNs(finding), findingActorURNs(finding)...))
 }
 
 func findingResourceURNs(finding workflowevents.FindingSnapshot) []string {
 	return normalizeIDs(append([]string{strings.TrimSpace(finding.PrimaryResourceURN)}, finding.ResourceURNs...))
+}
+
+func findingActorURNs(finding workflowevents.FindingSnapshot) []string {
+	if len(finding.Metadata) == 0 {
+		return nil
+	}
+	candidates := []string{
+		finding.Metadata["actor_urn"],
+		finding.Metadata["primary_actor_urn"],
+	}
+	urns := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		if urn := canonicalFindingActorURN(strings.TrimSpace(finding.TenantID), candidate); urn != "" {
+			urns = append(urns, urn)
+		}
+	}
+	return normalizeIDs(urns)
+}
+
+func canonicalFindingActorURN(tenantID string, urn string) string {
+	value := strings.TrimSpace(urn)
+	if value == "" || !strings.HasPrefix(value, "urn:cerebro:") {
+		return ""
+	}
+	parts := strings.SplitN(value, ":", 6)
+	if len(parts) == 6 && parts[0] == "urn" && parts[1] == "cerebro" && parts[3] == "okta_actor" && parts[4] == "user" && strings.TrimSpace(parts[5]) != "" {
+		if tenant := strings.TrimSpace(tenantID); tenant == "" || tenant == parts[2] {
+			return fmt.Sprintf("urn:cerebro:%s:okta_user:%s", parts[2], strings.TrimSpace(parts[5]))
+		}
+	}
+	return value
 }
 
 func (s *Service) upsertEntity(ctx context.Context, entity *ports.ProjectedEntity, result *ports.ProjectionResult) error {

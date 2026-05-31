@@ -21,6 +21,10 @@ func aureliusImageScanProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 		addEntity(entities, aureliusImageEntity(tenantID, event.GetSourceId(), imageURN, attrs))
 		addAureliusImageContextLinks(entities, links, tenantID, event, imageURN, attrs)
 	}
+	digestURN := addAureliusImageDigestEntity(entities, tenantID, event.GetSourceId(), attrs)
+	if imageURN != "" && digestURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), imageURN, digestURN, relationRepresents, map[string]string{"event_id": event.GetId(), "match_type": "container_image_digest"}))
+	}
 
 	scanID := firstAttribute(attrs, "scan_id", "image_digest")
 	scanURN := projectionURN(tenantID, "aurelius_image_scan", scanID)
@@ -44,6 +48,10 @@ func aureliusImageScanProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), scanURN, imageURN, relationObservedOn, map[string]string{"event_id": event.GetId()}))
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), imageURN, scanURN, relationHasEvidence, map[string]string{"event_id": event.GetId()}))
 		}
+		if digestURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), scanURN, digestURN, relationObservedOn, map[string]string{"event_id": event.GetId(), "match_type": "container_image_digest"}))
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), digestURN, scanURN, relationHasEvidence, map[string]string{"event_id": event.GetId(), "match_type": "container_image_digest"}))
+		}
 	}
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
@@ -63,6 +71,10 @@ func aureliusVerdictProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 	if imageURN != "" {
 		addEntity(entities, aureliusImageEntity(tenantID, event.GetSourceId(), imageURN, attrs))
 		addAureliusImageContextLinks(entities, links, tenantID, event, imageURN, attrs)
+	}
+	digestURN := addAureliusImageDigestEntity(entities, tenantID, event.GetSourceId(), attrs)
+	if imageURN != "" && digestURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), imageURN, digestURN, relationRepresents, map[string]string{"event_id": event.GetId(), "match_type": "container_image_digest"}))
 	}
 
 	verdictKey := firstAttribute(attrs, "image_digest")
@@ -84,6 +96,10 @@ func aureliusVerdictProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 		if imageURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), verdictURN, imageURN, relationObservedOn, map[string]string{"event_id": event.GetId()}))
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), imageURN, verdictURN, relationHasEvidence, map[string]string{"event_id": event.GetId()}))
+		}
+		if digestURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), verdictURN, digestURN, relationObservedOn, map[string]string{"event_id": event.GetId(), "match_type": "container_image_digest"}))
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), digestURN, verdictURN, relationHasEvidence, map[string]string{"event_id": event.GetId(), "match_type": "container_image_digest"}))
 		}
 	}
 
@@ -265,6 +281,23 @@ func aureliusImageEntity(tenantID, sourceID, urn string, attrs map[string]string
 		Label:      firstAttribute(attrs, "image_uri", "image", "resource_uri", "resource_id", "artifact_uri", "image_digest"),
 		Attributes: imageAttrs,
 	}
+}
+
+func addAureliusImageDigestEntity(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, attrs map[string]string) string {
+	digest := firstAttribute(attrs, "image_digest", "digest")
+	digestURN := projectionURN(tenantID, "container_image_digest", digest)
+	if digestURN == "" {
+		return ""
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        digestURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "container.image_digest",
+		Label:      digest,
+		Attributes: map[string]string{"digest": digest},
+	})
+	return digestURN
 }
 
 func addAureliusImageContextLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, imageURN string, attrs map[string]string) {
