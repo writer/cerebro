@@ -12,6 +12,23 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
+// PrepareGRCReadModels warms the read-model tables used by dashboard requests.
+func (s *Store) PrepareGRCReadModels(ctx context.Context) error {
+	if s == nil || s.db == nil {
+		return errors.New("postgres is not configured")
+	}
+	if err := s.ensureSourceRuntimeTable(ctx); err != nil {
+		return err
+	}
+	if err := s.ensureFindingTables(ctx); err != nil {
+		return err
+	}
+	if err := s.ensureFindingEvidenceTables(ctx); err != nil {
+		return err
+	}
+	return nil
+}
+
 // SummarizeGRCDashboard loads dashboard summary and evidence counts in one aggregate query.
 func (s *Store) SummarizeGRCDashboard(ctx context.Context, request ports.GRCDashboardAggregateRequest) (ports.GRCDashboardAggregate, error) {
 	if s == nil || s.db == nil {
