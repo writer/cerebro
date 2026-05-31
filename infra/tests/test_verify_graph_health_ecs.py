@@ -11,8 +11,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import scripts.verify_graph_health_ecs as verify_graph_health_ecs
 from scripts.verify_graph_health_ecs import (
     GRAPH_RELATIONS_TO_OBSERVE,
+    GraphCommandContext,
+    _count_health_errors,
     _declared_aws_families,
     _extract_json_payload,
+    _failed_integrity_checks,
     _declared_runtime_ids,
     _graph_command_overrides,
     _graph_path_relations,
@@ -24,7 +27,9 @@ from scripts.verify_graph_health_ecs import (
     _is_graph_paths_timeout,
     _latest_active_task_definition,
     _missing_declared_ingest_runtime_ids,
+    _missing_required_graph_relation_counts,
     _resource_prefix,
+    _run_graph_command,
     _supports_attack_path_relations,
     _supports_relation_counts,
     _verify_counts,
@@ -215,6 +220,53 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
         self.assertEqual(result.payload, {"nodes": 1, "relations": 1})
         self.assertEqual(calls, 2)
 
+    def test_run_graph_command_uses_cached_context(self) -> None:
+        original_aws = verify_graph_health_ecs._aws
+        original_wait_for_task = verify_graph_health_ecs._wait_for_task
+        describe_definition_calls = 0
+        context = GraphCommandContext(
+            cluster="cluster",
+            task_definition="arn:aws:ecs:us-east-1:123:task-definition/cerebro-go-production:45",
+            network_configuration={
+                "awsvpcConfiguration": {
+                    "subnets": ["subnet-1"],
+                    "securityGroups": ["sg-1"],
+                    "assignPublicIp": "DISABLED",
+                }
+            },
+            log_group="/ecs/cerebro",
+            stream_prefix="runtime",
+            has_source_runtime_bootstrap=True,
+        )
+
+        def fake_aws(args, _region):
+            nonlocal describe_definition_calls
+            if args[:2] == ["ecs", "describe-task-definition"]:
+                describe_definition_calls += 1
+                raise AssertionError("task definition metadata should come from the cached context")
+            if args[:2] == ["ecs", "run-task"]:
+                self.assertIn("--overrides", args)
+                override = args[args.index("--overrides") + 1]
+                self.assertIn("source-runtime-bootstrap", override)
+                return {"tasks": [{"taskArn": "task-arn"}]}
+            if args[:2] == ["ecs", "describe-tasks"]:
+                return {"tasks": [{"taskArn": "task-arn", "containers": [{"name": "cerebro", "exitCode": 0}]}]}
+            if args[:2] == ["logs", "get-log-events"]:
+                self.assertIn("/ecs/cerebro", args)
+                return {"events": [{"message": '{"nodes": 1, "relations": 2}'}]}
+            raise AssertionError(f"unexpected args: {args}")
+
+        verify_graph_health_ecs._aws = fake_aws
+        verify_graph_health_ecs._wait_for_task = lambda *_args, **_kwargs: None
+        try:
+            result = _run_graph_command("prefix", {}, ["graph", "counts"], 10, 1, "us-east-1", context)
+        finally:
+            verify_graph_health_ecs._aws = original_aws
+            verify_graph_health_ecs._wait_for_task = original_wait_for_task
+
+        self.assertEqual(result.payload, {"nodes": 1, "relations": 2})
+        self.assertEqual(describe_definition_calls, 0)
+
     def test_extract_json_payload_from_pretty_logs(self) -> None:
         payload = _extract_json_payload(['{"nodes": 2,', ' "relations": 3}'])
 
@@ -398,6 +450,26 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             {"belongs_to": 4, "represents": 2, "missing": 0},
         )
 
+    def test_count_health_errors_reports_zero_counts(self) -> None:
+        self.assertEqual(
+            _count_health_errors({"nodes": 0, "relations": 0}),
+            [
+                "graph node count must be positive, got 0",
+                "graph relation count must be positive, got 0",
+            ],
+        )
+
+    def test_failed_integrity_checks_lists_failed_checks(self) -> None:
+        payload = {
+            "failed": 1,
+            "checks": [
+                {"name": "has_nodes", "actual": 0, "passed": False},
+                {"name": "has_relations", "actual": 12, "passed": True},
+            ],
+        }
+
+        self.assertEqual(_failed_integrity_checks(payload), ["has_nodes=0"])
+
     def test_verify_required_graph_relation_counts_requires_positive_counts(self) -> None:
         payload = {"relations": {"belongs_to": 4, "represents": 2, "can_reach": 0}}
 
@@ -405,11 +477,25 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             _verify_required_graph_relation_counts(payload, {"resource_exposure"})
 
     def test_verify_required_graph_relation_counts_accepts_required_relations(self) -> None:
-        payload = {"relations": {"belongs_to": 4, "represents": 2, "can_reach": 1, "can_perform": 0, "can_assume": 0}}
+        payload = {"relations": {"belongs_to": 4, "represents": 2, "can_reach": 1, "can_perform": 3, "can_assume": 5}}
 
         self.assertEqual(
             _verify_required_graph_relation_counts(payload, {"resource_exposure", "effective_permission", "iam_role_trust"}),
-            {"belongs_to", "represents", "can_reach"},
+            {"belongs_to", "can_assume", "can_perform", "can_reach", "represents"},
+        )
+
+    def test_verify_required_graph_relation_counts_requires_declared_iam_edges(self) -> None:
+        payload = {"relations": {"belongs_to": 4, "represents": 2, "can_perform": 0, "can_assume": 0}}
+
+        with self.assertRaisesRegex(RuntimeError, "can_assume, can_perform"):
+            _verify_required_graph_relation_counts(payload, {"effective_permission", "iam_role_trust"})
+
+    def test_missing_required_graph_relation_counts_returns_missing_edges(self) -> None:
+        counts = {"belongs_to": 4, "represents": 2, "can_perform": 0, "can_assume": 0}
+
+        self.assertEqual(
+            _missing_required_graph_relation_counts(counts, {"effective_permission", "iam_role_trust"}),
+            ["can_assume", "can_perform"],
         )
 
     def test_graph_relation_observation_includes_optional_can_reach(self) -> None:
@@ -462,6 +548,9 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             27,
             27,
             [],
+            [],
+            [],
+            [],
             {"public_endpoint"},
         )
 
@@ -482,12 +571,57 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             {"belongs_to"},
             1,
             2,
+            [],
+            [],
             ["runtime-b"],
+            [],
             set(),
         )
 
         self.assertIn("Status: **failed**", summary)
         self.assertIn("| `runtime-b` |", summary)
+
+    def test_summary_markdown_marks_missing_graph_relation_failed(self) -> None:
+        summary = _summary_markdown(
+            "go-prod",
+            {"nodes": 1, "relations": 1},
+            {"passed": 7, "failed": 0},
+            {"belongs_to": 1, "represents": 1, "can_assume": 0},
+            {"belongs_to", "represents"},
+            2,
+            2,
+            [],
+            [],
+            [],
+            ["can_assume"],
+            {"iam_role_trust"},
+        )
+
+        self.assertIn("Status: **failed**", summary)
+        self.assertIn("| Missing graph relation |", summary)
+        self.assertIn("| `can_assume` |", summary)
+
+    def test_summary_markdown_includes_count_and_integrity_failures(self) -> None:
+        summary = _summary_markdown(
+            "go-prod",
+            {"nodes": 0, "relations": 0},
+            {"passed": 6, "failed": 1},
+            {},
+            set(),
+            2,
+            2,
+            ["graph node count must be positive, got 0"],
+            ["has_nodes=0"],
+            [],
+            [],
+            set(),
+        )
+
+        self.assertIn("Status: **failed**", summary)
+        self.assertIn("| Graph health failure |", summary)
+        self.assertIn("| `graph node count must be positive, got 0` |", summary)
+        self.assertIn("| Failed integrity check |", summary)
+        self.assertIn("| `has_nodes=0` |", summary)
 
 
 if __name__ == "__main__":

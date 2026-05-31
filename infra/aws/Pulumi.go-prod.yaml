@@ -277,8 +277,128 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
+    - name: aws-secprod-us1-res-exp
+      scheduleExpression: cron(3 1/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-prod-us1-resource-exposure
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-secprod-us2-res-exp
+      scheduleExpression: cron(8 1/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-prod-us2-resource-exposure
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-prod-us1-res-exp
+      scheduleExpression: cron(13 1/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-prod-us1-resource-exposure
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-prod-us2-res-exp
+      scheduleExpression: cron(18 1/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-prod-us2-resource-exposure
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-devops-us1-res-exp
+      scheduleExpression: cron(23 1/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-devops-us1-resource-exposure
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-devops-us2-res-exp
+      scheduleExpression: cron(28 1/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-devops-us2-resource-exposure
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-secdev-us1-res-exp
+      scheduleExpression: cron(33 1/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-us1-resource-exposure
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-secdev-us2-res-exp
+      scheduleExpression: cron(38 1/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-us2-resource-exposure
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-secprod-iam-user
+      scheduleExpression: cron(2 2/6 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-prod-iam-user
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-secprod-iam-group
+      scheduleExpression: cron(7 2/6 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-prod-iam-group
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-secprod-iam-grp-member
+      scheduleExpression: cron(12 2/6 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-prod-iam-group-membership
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-secprod-iam-role
+      scheduleExpression: cron(17 2/6 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-prod-iam-role
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
     - name: aws-secprod-iam-role-trust
-      scheduleExpression: cron(45 0/2 * * ? *)
+      scheduleExpression: cron(22 2/6 * * ? *)
       taskCount: 1
       command:
         - orchestrator
@@ -287,8 +407,28 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: aws-secprod-effective-perm
-      scheduleExpression: cron(47 0/2 * * ? *)
+    - name: aws-secprod-iam-role-assign
+      scheduleExpression: cron(27 2/6 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-prod-iam-role-assignment
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-secprod-access-key
+      scheduleExpression: cron(32 2/6 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-prod-access-key
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-secprod-eff-perm
+      scheduleExpression: cron(37 2/6 * * ? *)
       taskCount: 1
       command:
         - orchestrator
@@ -297,8 +437,48 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
+    - name: aws-prod-iam-user
+      scheduleExpression: cron(3 3/6 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-prod-iam-user
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-prod-iam-group
+      scheduleExpression: cron(8 3/6 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-prod-iam-group
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-prod-iam-grp-member
+      scheduleExpression: cron(13 3/6 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-prod-iam-group-membership
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-prod-iam-role
+      scheduleExpression: cron(18 3/6 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-prod-iam-role
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
     - name: aws-prod-iam-role-trust
-      scheduleExpression: cron(49 0/2 * * ? *)
+      scheduleExpression: cron(23 3/6 * * ? *)
       taskCount: 1
       command:
         - orchestrator
@@ -307,8 +487,28 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: aws-prod-effective-perm
-      scheduleExpression: cron(51 0/2 * * ? *)
+    - name: aws-prod-iam-role-assign
+      scheduleExpression: cron(28 3/6 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-prod-iam-role-assignment
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-prod-access-key
+      scheduleExpression: cron(33 3/6 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-prod-access-key
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-prod-eff-perm
+      scheduleExpression: cron(38 3/6 * * ? *)
       taskCount: 1
       command:
         - orchestrator
@@ -317,8 +517,48 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
+    - name: aws-devops-iam-user
+      scheduleExpression: cron(4 4/6 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-devops-iam-user
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-devops-iam-group
+      scheduleExpression: cron(9 4/6 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-devops-iam-group
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-devops-iam-grp-member
+      scheduleExpression: cron(14 4/6 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-devops-iam-group-membership
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-devops-iam-role
+      scheduleExpression: cron(19 4/6 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-devops-iam-role
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
     - name: aws-devops-iam-role-trust
-      scheduleExpression: cron(53 0/2 * * ? *)
+      scheduleExpression: cron(24 4/6 * * ? *)
       taskCount: 1
       command:
         - orchestrator
@@ -327,8 +567,28 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: aws-devops-effective-perm
-      scheduleExpression: cron(55 0/2 * * ? *)
+    - name: aws-devops-iam-role-assign
+      scheduleExpression: cron(29 4/6 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-devops-iam-role-assignment
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-devops-access-key
+      scheduleExpression: cron(34 4/6 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-devops-access-key
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-devops-eff-perm
+      scheduleExpression: cron(39 4/6 * * ? *)
       taskCount: 1
       command:
         - orchestrator
@@ -337,8 +597,48 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
+    - name: aws-secdev-iam-user
+      scheduleExpression: cron(5 5/6 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-iam-user
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-secdev-iam-group
+      scheduleExpression: cron(10 5/6 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-iam-group
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-secdev-iam-grp-member
+      scheduleExpression: cron(15 5/6 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-iam-group-membership
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-secdev-iam-role
+      scheduleExpression: cron(20 5/6 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-iam-role
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
     - name: aws-secdev-iam-role-trust
-      scheduleExpression: cron(57 0/2 * * ? *)
+      scheduleExpression: cron(25 5/6 * * ? *)
       taskCount: 1
       command:
         - orchestrator
@@ -347,8 +647,28 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
-    - name: aws-secdev-effective-perm
-      scheduleExpression: cron(59 0/2 * * ? *)
+    - name: aws-secdev-iam-role-assign
+      scheduleExpression: cron(30 5/6 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-iam-role-assignment
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-secdev-access-key
+      scheduleExpression: cron(35 5/6 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-access-key
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-secdev-eff-perm
+      scheduleExpression: cron(40 5/6 * * ? *)
       taskCount: 1
       command:
         - orchestrator
@@ -651,78 +971,290 @@ config:
         per_page: "100"
         region: us-west-2
         role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+    - id: writer-aws-sec-prod-us1-resource-exposure
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "837279440628"
+        family: resource_exposure
+        include_global: "true"
+        per_page: "100"
+        region: us-east-1
+        role_arn: arn:aws:iam::837279440628:role/cerebro-org-scan-role
+    - id: writer-aws-sec-prod-us2-resource-exposure
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "837279440628"
+        family: resource_exposure
+        include_global: "false"
+        per_page: "100"
+        region: us-west-2
+        role_arn: arn:aws:iam::837279440628:role/cerebro-org-scan-role
+    - id: writer-aws-prod-us1-resource-exposure
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "009160076449"
+        family: resource_exposure
+        include_global: "true"
+        per_page: "100"
+        region: us-east-1
+        role_arn: arn:aws:iam::009160076449:role/cerebro-org-scan-role
+    - id: writer-aws-prod-us2-resource-exposure
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "009160076449"
+        family: resource_exposure
+        include_global: "false"
+        per_page: "100"
+        region: us-west-2
+        role_arn: arn:aws:iam::009160076449:role/cerebro-org-scan-role
+    - id: writer-aws-devops-us1-resource-exposure
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "381491964434"
+        family: resource_exposure
+        include_global: "true"
+        per_page: "100"
+        region: us-east-1
+        role_arn: arn:aws:iam::381491964434:role/cerebro-org-scan-role
+    - id: writer-aws-devops-us2-resource-exposure
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "381491964434"
+        family: resource_exposure
+        include_global: "false"
+        per_page: "100"
+        region: us-west-2
+        role_arn: arn:aws:iam::381491964434:role/cerebro-org-scan-role
+    - id: writer-aws-sec-dev-us1-resource-exposure
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "944130631940"
+        family: resource_exposure
+        include_global: "true"
+        per_page: "100"
+        region: us-east-1
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+    - id: writer-aws-sec-dev-us2-resource-exposure
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "944130631940"
+        family: resource_exposure
+        include_global: "false"
+        per_page: "100"
+        region: us-west-2
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+    - id: writer-aws-sec-prod-iam-user
+      sourceId: aws
+      tenantId: writer
+      config: &aws_sec_prod_global_config
+        account_id: "837279440628"
+        family: iam_user
+        include_global: "true"
+        region: us-east-1
+        role_arn: arn:aws:iam::837279440628:role/cerebro-org-scan-role
+    - id: writer-aws-sec-prod-iam-group
+      sourceId: aws
+      tenantId: writer
+      config:
+        <<: *aws_sec_prod_global_config
+        family: iam_group
+    - id: writer-aws-sec-prod-iam-group-membership
+      sourceId: aws
+      tenantId: writer
+      config:
+        <<: *aws_sec_prod_global_config
+        family: iam_group_membership
+    - id: writer-aws-sec-prod-iam-role
+      sourceId: aws
+      tenantId: writer
+      config:
+        <<: *aws_sec_prod_global_config
+        family: iam_role
     - id: writer-aws-sec-prod-iam-role-trust
       sourceId: aws
       tenantId: writer
       config:
-        account_id: "837279440628"
+        <<: *aws_sec_prod_global_config
         family: iam_role_trust
-        include_global: "true"
-        region: us-east-1
-        role_arn: arn:aws:iam::837279440628:role/cerebro-org-scan-role
+    - id: writer-aws-sec-prod-iam-role-assignment
+      sourceId: aws
+      tenantId: writer
+      config:
+        <<: *aws_sec_prod_global_config
+        family: iam_role_assignment
+    - id: writer-aws-sec-prod-access-key
+      sourceId: aws
+      tenantId: writer
+      config:
+        <<: *aws_sec_prod_global_config
+        family: access_key
     - id: writer-aws-sec-prod-effective-permission
       sourceId: aws
       tenantId: writer
       config:
-        account_id: "837279440628"
+        <<: *aws_sec_prod_global_config
         family: effective_permission
+    - id: writer-aws-prod-iam-user
+      sourceId: aws
+      tenantId: writer
+      config: &aws_prod_global_config
+        account_id: "009160076449"
+        family: iam_user
         include_global: "true"
         region: us-east-1
-        role_arn: arn:aws:iam::837279440628:role/cerebro-org-scan-role
+        role_arn: arn:aws:iam::009160076449:role/cerebro-org-scan-role
+    - id: writer-aws-prod-iam-group
+      sourceId: aws
+      tenantId: writer
+      config:
+        <<: *aws_prod_global_config
+        family: iam_group
+    - id: writer-aws-prod-iam-group-membership
+      sourceId: aws
+      tenantId: writer
+      config:
+        <<: *aws_prod_global_config
+        family: iam_group_membership
+    - id: writer-aws-prod-iam-role
+      sourceId: aws
+      tenantId: writer
+      config:
+        <<: *aws_prod_global_config
+        family: iam_role
     - id: writer-aws-prod-iam-role-trust
       sourceId: aws
       tenantId: writer
       config:
-        account_id: "009160076449"
+        <<: *aws_prod_global_config
         family: iam_role_trust
-        include_global: "true"
-        region: us-east-1
-        role_arn: arn:aws:iam::009160076449:role/cerebro-org-scan-role
+    - id: writer-aws-prod-iam-role-assignment
+      sourceId: aws
+      tenantId: writer
+      config:
+        <<: *aws_prod_global_config
+        family: iam_role_assignment
+    - id: writer-aws-prod-access-key
+      sourceId: aws
+      tenantId: writer
+      config:
+        <<: *aws_prod_global_config
+        family: access_key
     - id: writer-aws-prod-effective-permission
       sourceId: aws
       tenantId: writer
       config:
-        account_id: "009160076449"
+        <<: *aws_prod_global_config
         family: effective_permission
+    - id: writer-aws-devops-iam-user
+      sourceId: aws
+      tenantId: writer
+      config: &aws_devops_global_config
+        account_id: "381491964434"
+        family: iam_user
         include_global: "true"
         region: us-east-1
-        role_arn: arn:aws:iam::009160076449:role/cerebro-org-scan-role
+        role_arn: arn:aws:iam::381491964434:role/cerebro-org-scan-role
+    - id: writer-aws-devops-iam-group
+      sourceId: aws
+      tenantId: writer
+      config:
+        <<: *aws_devops_global_config
+        family: iam_group
+    - id: writer-aws-devops-iam-group-membership
+      sourceId: aws
+      tenantId: writer
+      config:
+        <<: *aws_devops_global_config
+        family: iam_group_membership
+    - id: writer-aws-devops-iam-role
+      sourceId: aws
+      tenantId: writer
+      config:
+        <<: *aws_devops_global_config
+        family: iam_role
     - id: writer-aws-devops-iam-role-trust
       sourceId: aws
       tenantId: writer
       config:
-        account_id: "381491964434"
+        <<: *aws_devops_global_config
         family: iam_role_trust
-        include_global: "true"
-        region: us-east-1
-        role_arn: arn:aws:iam::381491964434:role/cerebro-org-scan-role
+    - id: writer-aws-devops-iam-role-assignment
+      sourceId: aws
+      tenantId: writer
+      config:
+        <<: *aws_devops_global_config
+        family: iam_role_assignment
+    - id: writer-aws-devops-access-key
+      sourceId: aws
+      tenantId: writer
+      config:
+        <<: *aws_devops_global_config
+        family: access_key
     - id: writer-aws-devops-effective-permission
       sourceId: aws
       tenantId: writer
       config:
-        account_id: "381491964434"
+        <<: *aws_devops_global_config
         family: effective_permission
+    - id: writer-aws-sec-dev-iam-user
+      sourceId: aws
+      tenantId: writer
+      config: &aws_sec_dev_global_config
+        account_id: "944130631940"
+        family: iam_user
         include_global: "true"
         region: us-east-1
-        role_arn: arn:aws:iam::381491964434:role/cerebro-org-scan-role
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+    - id: writer-aws-sec-dev-iam-group
+      sourceId: aws
+      tenantId: writer
+      config:
+        <<: *aws_sec_dev_global_config
+        family: iam_group
+    - id: writer-aws-sec-dev-iam-group-membership
+      sourceId: aws
+      tenantId: writer
+      config:
+        <<: *aws_sec_dev_global_config
+        family: iam_group_membership
+    - id: writer-aws-sec-dev-iam-role
+      sourceId: aws
+      tenantId: writer
+      config:
+        <<: *aws_sec_dev_global_config
+        family: iam_role
     - id: writer-aws-sec-dev-iam-role-trust
       sourceId: aws
       tenantId: writer
       config:
-        account_id: "944130631940"
+        <<: *aws_sec_dev_global_config
         family: iam_role_trust
-        include_global: "true"
-        region: us-east-1
-        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+    - id: writer-aws-sec-dev-iam-role-assignment
+      sourceId: aws
+      tenantId: writer
+      config:
+        <<: *aws_sec_dev_global_config
+        family: iam_role_assignment
+    - id: writer-aws-sec-dev-access-key
+      sourceId: aws
+      tenantId: writer
+      config:
+        <<: *aws_sec_dev_global_config
+        family: access_key
     - id: writer-aws-sec-dev-effective-permission
       sourceId: aws
       tenantId: writer
       config:
-        account_id: "944130631940"
+        <<: *aws_sec_dev_global_config
         family: effective_permission
-        include_global: "true"
-        region: us-east-1
-        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
     - id: writer-cosmo-session
       sourceId: cosmo
       tenantId: writer

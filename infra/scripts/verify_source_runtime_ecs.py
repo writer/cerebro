@@ -42,6 +42,12 @@ class VerificationResult:
     links_projected: int | None = None
 
 
+@dataclass(frozen=True)
+class TaskLogOptions:
+    log_group: str
+    stream_prefix: str
+
+
 class RuntimeSkippedError(RuntimeError):
     def __init__(self, runtime_id: str, task_arn: str, reason: str) -> None:
         self.runtime_id = runtime_id
@@ -422,21 +428,37 @@ def _task_id(task_arn: str) -> str:
     return task_arn.rsplit("/", 1)[-1]
 
 
-def _task_logs(task: dict[str, Any], region: str) -> list[dict[str, Any]]:
-    task_definition = task["taskDefinitionArn"]
+def _task_log_options(
+    task_definition: str,
+    region: str,
+    cache: dict[str, TaskLogOptions] | None = None,
+) -> TaskLogOptions:
+    if cache is not None and task_definition in cache:
+        return cache[task_definition]
     response = _aws(["ecs", "describe-task-definition", "--task-definition", task_definition], region)
     container_definitions = response["taskDefinition"]["containerDefinitions"]
     cerebro_container = next(container for container in container_definitions if container.get("name") == "cerebro")
     options = cerebro_container["logConfiguration"]["options"]
-    log_group = options["awslogs-group"]
-    stream_prefix = options["awslogs-stream-prefix"]
-    stream = f"{stream_prefix}/cerebro/{_task_id(task['taskArn'])}"
+    result = TaskLogOptions(options["awslogs-group"], options["awslogs-stream-prefix"])
+    if cache is not None:
+        cache[task_definition] = result
+    return result
+
+
+def _task_logs(
+    task: dict[str, Any],
+    region: str,
+    log_options_cache: dict[str, TaskLogOptions] | None = None,
+) -> list[dict[str, Any]]:
+    task_definition = task["taskDefinitionArn"]
+    options = _task_log_options(task_definition, region, log_options_cache)
+    stream = f"{options.stream_prefix}/cerebro/{_task_id(task['taskArn'])}"
     events = _aws(
         [
             "logs",
             "get-log-events",
             "--log-group-name",
-            log_group,
+            options.log_group,
             "--log-stream-name",
             stream,
             "--limit",
@@ -588,6 +610,7 @@ def _verify_task_until_graph_ingested(
     next_progress = 0.0
     last_task: dict[str, Any] | None = None
     last_log_error: Exception | None = None
+    log_options_cache: dict[str, TaskLogOptions] = {}
     while time.time() < deadline:
         tasks = _describe_tasks(target.target["Arn"], [task_arn], region)
         task = tasks[0] if tasks else {}
@@ -596,12 +619,13 @@ def _verify_task_until_graph_ingested(
         containers = task.get("containers") or []
         cerebro_container = next((container for container in containers if container.get("name") == "cerebro"), None)
         exit_code = cerebro_container.get("exitCode") if cerebro_container else None
-        try:
-            messages = _task_logs(task, region) if task else []
-            last_log_error = None
-        except Exception as exc:
-            messages = []
-            last_log_error = exc
+        messages: list[dict[str, Any]] = []
+        if task and status in {"RUNNING", "STOPPED"}:
+            try:
+                messages = _task_logs(task, region, log_options_cache)
+                last_log_error = None
+            except Exception as exc:
+                last_log_error = exc
         if messages:
             result = _verification_result_from_logs(target, task_arn, exit_code, messages, require_runtime_completed=False)
             if result is not None:
@@ -634,7 +658,7 @@ def _verify_task_until_graph_ingested(
         time.sleep(poll_seconds)
     if last_task is not None:
         try:
-            messages = _task_logs(last_task, region)
+            messages = _task_logs(last_task, region, log_options_cache)
             result = _verification_result_from_logs(target, task_arn, None, messages, require_runtime_completed=False)
             if result is not None:
                 return result

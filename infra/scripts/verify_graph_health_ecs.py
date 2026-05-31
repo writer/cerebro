@@ -30,6 +30,8 @@ ATTACK_PATH_RELATION_MIN_TAG = (2, 1, 46)
 RELATION_COUNT_MIN_TAG = (2, 1, 50)
 REQUIRED_RELATIONS = {"belongs_to", "represents"}
 AWS_CAN_REACH_REQUIRED_FAMILIES = {"resource_exposure"}
+AWS_CAN_ASSUME_REQUIRED_FAMILIES = {"iam_role_trust"}
+AWS_CAN_PERFORM_REQUIRED_FAMILIES = {"effective_permission"}
 AWS_ATTACK_PATH_RELATIONS = {"can_perform", "can_assume", "can_admin", "can_impersonate"}
 GRAPH_RELATIONS_TO_OBSERVE = AWS_ATTACK_PATH_RELATIONS | {"can_reach"}
 INGEST_RUN_ERROR_DETAIL_LIMIT = 500
@@ -41,6 +43,16 @@ class GraphCommandResult:
     task_arn: str
     exit_code: int | None
     payload: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class GraphCommandContext:
+    cluster: str
+    task_definition: str
+    network_configuration: dict[str, Any]
+    log_group: str
+    stream_prefix: str
+    has_source_runtime_bootstrap: bool
 
 
 class CurrentIngestRunsError(RuntimeError):
@@ -226,11 +238,36 @@ def _task_definition_container_names(task_definition: str, region: str) -> set[s
     }
 
 
-def _graph_command_overrides(task_definition: str, command: list[str], region: str) -> dict[str, Any]:
+def _graph_command_overrides_from_names(command: list[str], container_names: set[str]) -> dict[str, Any]:
     container_overrides = [{"name": "cerebro", "command": command}]
-    if "source-runtime-bootstrap" in _task_definition_container_names(task_definition, region):
+    if "source-runtime-bootstrap" in container_names:
         container_overrides.append({"name": "source-runtime-bootstrap", "command": ["graph", "counts"]})
     return {"containerOverrides": container_overrides}
+
+
+def _graph_command_overrides(task_definition: str, command: list[str], region: str) -> dict[str, Any]:
+    return _graph_command_overrides_from_names(command, _task_definition_container_names(task_definition, region))
+
+
+def _graph_command_context(resource_prefix: str, service: dict[str, Any], region: str) -> GraphCommandContext:
+    task_definition = _latest_active_task_definition(service["taskDefinition"], region)
+    response = _aws(["ecs", "describe-task-definition", "--task-definition", task_definition], region)
+    container_definitions = response["taskDefinition"]["containerDefinitions"]
+    container_names = {
+        str(container.get("name") or "").strip()
+        for container in container_definitions
+        if str(container.get("name") or "").strip()
+    }
+    cerebro_container = next(container for container in container_definitions if container.get("name") == "cerebro")
+    options = cerebro_container["logConfiguration"]["options"]
+    return GraphCommandContext(
+        cluster=f"{resource_prefix}-cluster",
+        task_definition=task_definition,
+        network_configuration=_network_configuration(service),
+        log_group=options["awslogs-group"],
+        stream_prefix=options["awslogs-stream-prefix"],
+        has_source_runtime_bootstrap="source-runtime-bootstrap" in container_names,
+    )
 
 
 def _wait_for_task(cluster: str, task_arn: str, timeout_seconds: int, poll_seconds: int, region: str) -> None:
@@ -270,8 +307,12 @@ def _log_options(task_definition: str, region: str) -> tuple[str, str]:
     return options["awslogs-group"], options["awslogs-stream-prefix"]
 
 
-def _task_messages(task: dict[str, Any], region: str) -> list[str]:
-    log_group, stream_prefix = _log_options(task["taskDefinitionArn"], region)
+def _task_messages(
+    task: dict[str, Any],
+    region: str,
+    log_options: tuple[str, str] | None = None,
+) -> list[str]:
+    log_group, stream_prefix = log_options if log_options is not None else _log_options(task["taskDefinitionArn"], region)
     stream = f"{stream_prefix}/cerebro/{_task_id(task['taskArn'])}"
     events = _aws(
         [
@@ -309,22 +350,25 @@ def _run_graph_command(
     timeout_seconds: int,
     poll_seconds: int,
     region: str,
+    context: GraphCommandContext | None = None,
 ) -> GraphCommandResult:
-    cluster = f"{resource_prefix}-cluster"
-    task_definition = _latest_active_task_definition(service["taskDefinition"], region)
-    overrides = _graph_command_overrides(task_definition, command, region)
+    context = context or _graph_command_context(resource_prefix, service, region)
+    overrides = _graph_command_overrides_from_names(
+        command,
+        {"source-runtime-bootstrap"} if context.has_source_runtime_bootstrap else set(),
+    )
     response = _aws(
         [
             "ecs",
             "run-task",
             "--cluster",
-            cluster,
+            context.cluster,
             "--task-definition",
-            task_definition,
+            context.task_definition,
             "--launch-type",
             "FARGATE",
             "--network-configuration",
-            json.dumps(_network_configuration(service), separators=(",", ":")),
+            json.dumps(context.network_configuration, separators=(",", ":")),
             "--overrides",
             json.dumps(overrides, separators=(",", ":")),
         ],
@@ -337,12 +381,12 @@ def _run_graph_command(
     if len(tasks) != 1:
         raise RuntimeError(f"expected one task for graph command {' '.join(command)}, got {len(tasks)}")
     task_arn = tasks[0]["taskArn"]
-    _wait_for_task(cluster, task_arn, timeout_seconds, poll_seconds, region)
-    task = _describe_tasks(cluster, [task_arn], region)[0]
+    _wait_for_task(context.cluster, task_arn, timeout_seconds, poll_seconds, region)
+    task = _describe_tasks(context.cluster, [task_arn], region)[0]
     containers = task.get("containers") or []
     cerebro_container = next((container for container in containers if container.get("name") == "cerebro"), None)
     exit_code = cerebro_container.get("exitCode") if cerebro_container else None
-    messages = _task_messages(task, region)
+    messages = _task_messages(task, region, (context.log_group, context.stream_prefix))
     payload = _extract_json_payload(messages)
     if exit_code != 0:
         raise RuntimeError(f"graph command {' '.join(command)} exited with {exit_code}: {task_arn}")
@@ -357,11 +401,12 @@ def _run_graph_command_with_retries(
     poll_seconds: int,
     region: str,
     retry_seconds: int,
+    context: GraphCommandContext | None = None,
 ) -> GraphCommandResult:
     deadline = time.time() + retry_seconds
     while True:
         try:
-            return _run_graph_command(resource_prefix, service, command, timeout_seconds, poll_seconds, region)
+            return _run_graph_command(resource_prefix, service, command, timeout_seconds, poll_seconds, region, context)
         except Exception:
             now = time.time()
             if retry_seconds <= 0 or now >= deadline:
@@ -371,24 +416,36 @@ def _run_graph_command_with_retries(
 
 
 def _verify_counts(payload: dict[str, Any]) -> None:
+    errors = _count_health_errors(payload)
+    if errors:
+        raise RuntimeError("; ".join(errors))
+
+
+def _count_health_errors(payload: dict[str, Any]) -> list[str]:
     nodes = int(payload.get("nodes") or 0)
     relations = int(payload.get("relations") or 0)
+    errors: list[str] = []
     if nodes <= 0:
-        raise RuntimeError(f"graph node count must be positive, got {nodes}")
+        errors.append(f"graph node count must be positive, got {nodes}")
     if relations <= 0:
-        raise RuntimeError(f"graph relation count must be positive, got {relations}")
+        errors.append(f"graph relation count must be positive, got {relations}")
+    return errors
 
 
 def _verify_integrity(payload: dict[str, Any]) -> None:
     failed = int(payload.get("failed") or 0)
-    checks = payload.get("checks") or []
     if failed != 0:
-        failed_checks = [
-            f"{check.get('name')}={check.get('actual')}"
-            for check in checks
-            if isinstance(check, dict) and not bool(check.get("passed"))
-        ]
+        failed_checks = _failed_integrity_checks(payload)
         raise RuntimeError(f"graph integrity failed {failed} checks: {', '.join(failed_checks)}")
+
+
+def _failed_integrity_checks(payload: dict[str, Any]) -> list[str]:
+    checks = payload.get("checks") or []
+    return [
+        f"{check.get('name')}={check.get('actual')}"
+        for check in checks
+        if isinstance(check, dict) and not bool(check.get("passed"))
+    ]
 
 
 def _parse_time(value: Any) -> datetime | None:
@@ -517,6 +574,7 @@ def _verify_current_ingest_runs_with_retries(
     ingest_health_retry_seconds: int,
     max_running_minutes: int,
     allow_transient_source_failures: bool,
+    context: GraphCommandContext | None = None,
 ) -> tuple[GraphCommandResult, int]:
     deadline = time.time() + ingest_health_retry_seconds
     while True:
@@ -528,6 +586,7 @@ def _verify_current_ingest_runs_with_retries(
             poll_seconds,
             region,
             graph_command_retry_seconds,
+            context,
         )
         try:
             current_ingest_runtimes = _verify_current_ingest_runs(
@@ -590,6 +649,10 @@ def _required_graph_relations(
     if attack_path_relations_supported:
         if aws_families & AWS_CAN_REACH_REQUIRED_FAMILIES:
             required.add("can_reach")
+        if aws_families & AWS_CAN_ASSUME_REQUIRED_FAMILIES:
+            required.add("can_assume")
+        if aws_families & AWS_CAN_PERFORM_REQUIRED_FAMILIES:
+            required.add("can_perform")
     return required
 
 
@@ -619,11 +682,23 @@ def _verify_required_graph_relation_counts(
     attack_path_relations_supported: bool = True,
 ) -> set[str]:
     counts = _graph_relation_counts(payload)
-    required = _required_graph_relations(aws_families, attack_path_relations_supported)
-    missing = sorted(relation for relation in required if counts.get(relation, 0) <= 0)
+    missing = _missing_required_graph_relation_counts(
+        counts,
+        aws_families,
+        attack_path_relations_supported=attack_path_relations_supported,
+    )
     if missing:
         raise RuntimeError(f"graph relation counts missing required relation(s): {', '.join(missing)}")
     return {relation for relation, count in counts.items() if count > 0}
+
+
+def _missing_required_graph_relation_counts(
+    relation_counts: dict[str, int],
+    aws_families: set[str] | None = None,
+    attack_path_relations_supported: bool = True,
+) -> list[str]:
+    required = _required_graph_relations(aws_families, attack_path_relations_supported)
+    return sorted(relation for relation in required if relation_counts.get(relation, 0) <= 0)
 
 
 def _markdown_escape(value: str) -> str:
@@ -638,11 +713,14 @@ def _summary_markdown(
     graph_relations: set[str],
     current_ingest_runtimes: int,
     declared_runtime_count: int,
+    graph_health_errors: list[str],
+    failed_integrity_checks: list[str],
     missing_ingest_runtimes: list[str],
+    missing_graph_relations: list[str],
     aws_families: set[str],
 ) -> str:
     failed_checks = int(integrity_payload.get("failed") or 0)
-    status = "failed" if failed_checks or missing_ingest_runtimes else "passed"
+    status = "failed" if graph_health_errors or failed_checks or missing_ingest_runtimes or missing_graph_relations else "passed"
     lines = [
         f"## Graph Health: `{stack}`",
         "",
@@ -655,6 +733,26 @@ def _summary_markdown(
         f"Observed relation families: `{', '.join(sorted(graph_relations)) if graph_relations else 'none'}`",
         "",
     ]
+    if graph_health_errors:
+        lines.extend(
+            [
+                "| Graph health failure |",
+                "| --- |",
+            ]
+        )
+        for error in graph_health_errors:
+            lines.append(f"| `{_markdown_escape(error)}` |")
+        lines.append("")
+    if failed_integrity_checks:
+        lines.extend(
+            [
+                "| Failed integrity check |",
+                "| --- |",
+            ]
+        )
+        for check in failed_integrity_checks:
+            lines.append(f"| `{_markdown_escape(check)}` |")
+        lines.append("")
     if missing_ingest_runtimes:
         lines.extend(
             [
@@ -664,6 +762,16 @@ def _summary_markdown(
         )
         for runtime_id in missing_ingest_runtimes:
             lines.append(f"| `{_markdown_escape(runtime_id)}` |")
+        lines.append("")
+    if missing_graph_relations:
+        lines.extend(
+            [
+                "| Missing graph relation |",
+                "| --- |",
+            ]
+        )
+        for relation in missing_graph_relations:
+            lines.append(f"| `{_markdown_escape(relation)}` |")
         lines.append("")
     if relation_counts:
         lines.extend(
@@ -686,7 +794,10 @@ def _write_github_summary(
     graph_relations: set[str],
     current_ingest_runtimes: int,
     declared_runtime_count: int,
+    graph_health_errors: list[str],
+    failed_integrity_checks: list[str],
     missing_ingest_runtimes: list[str],
+    missing_graph_relations: list[str],
     aws_families: set[str],
 ) -> None:
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
@@ -702,7 +813,10 @@ def _write_github_summary(
                 graph_relations,
                 current_ingest_runtimes,
                 declared_runtime_count,
+                graph_health_errors,
+                failed_integrity_checks,
                 missing_ingest_runtimes,
+                missing_graph_relations,
                 aws_families,
             )
         )
@@ -733,6 +847,7 @@ def main(argv: list[str] | None = None) -> int:
     _verify_account(stack, args.region)
     resource_prefix = _resource_prefix(config, stack)
     service = _describe_api_service(resource_prefix, args.region)
+    graph_command_context = _graph_command_context(resource_prefix, service, args.region)
     declared_runtime_ids = _declared_runtime_ids(config)
 
     counts = _run_graph_command_with_retries(
@@ -743,8 +858,9 @@ def main(argv: list[str] | None = None) -> int:
         args.poll_seconds,
         args.region,
         args.graph_command_retry_seconds,
+        graph_command_context,
     )
-    _verify_counts(counts.payload)
+    graph_health_errors = _count_health_errors(counts.payload)
     integrity = _run_graph_command_with_retries(
         resource_prefix,
         service,
@@ -753,12 +869,14 @@ def main(argv: list[str] | None = None) -> int:
         args.poll_seconds,
         args.region,
         args.graph_command_retry_seconds,
+        graph_command_context,
     )
-    _verify_integrity(integrity.payload)
+    failed_integrity_checks = _failed_integrity_checks(integrity.payload)
     aws_families = _declared_aws_families(config)
     attack_path_relations_supported = _supports_attack_path_relations(config)
     graph_relations: set[str] = set()
     relation_counts_payload: dict[str, int] = {}
+    missing_graph_relations: list[str] = []
     paths_task_arn = ""
     if _supports_relation_counts(config):
         required_relations = _required_graph_relations(
@@ -773,14 +891,16 @@ def main(argv: list[str] | None = None) -> int:
             args.poll_seconds,
             args.region,
             args.graph_command_retry_seconds,
+            graph_command_context,
         )
         paths_task_arn = relation_counts.task_arn
         relation_counts_payload = _graph_relation_counts(relation_counts.payload)
-        graph_relations = _verify_required_graph_relation_counts(
-            relation_counts.payload,
+        missing_graph_relations = _missing_required_graph_relation_counts(
+            relation_counts_payload,
             aws_families,
             attack_path_relations_supported=attack_path_relations_supported,
         )
+        graph_relations = {relation for relation, count in relation_counts_payload.items() if count > 0}
     else:
         try:
             paths = _run_graph_command_with_retries(
@@ -791,6 +911,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.poll_seconds,
                 args.region,
                 args.graph_command_retry_seconds,
+                graph_command_context,
             )
             paths_task_arn = paths.task_arn
             graph_relations = _verify_required_graph_relations(
@@ -813,6 +934,7 @@ def main(argv: list[str] | None = None) -> int:
         args.ingest_health_retry_seconds,
         args.max_running_minutes,
         args.allow_transient_source_failures,
+        graph_command_context,
     )
     missing_ingest_runtimes = _missing_declared_ingest_runtime_ids(ingest_runs.payload, declared_runtime_ids)
     if missing_ingest_runtimes:
@@ -829,9 +951,20 @@ def main(argv: list[str] | None = None) -> int:
         graph_relations,
         current_ingest_runtimes,
         len(declared_runtime_ids),
+        graph_health_errors,
+        failed_integrity_checks,
         missing_ingest_runtimes,
+        missing_graph_relations,
         aws_families,
     )
+
+    failures = [*graph_health_errors]
+    if failed_integrity_checks:
+        failures.append(f"graph integrity failed {int(integrity.payload.get('failed') or 0)} checks: {', '.join(failed_integrity_checks)}")
+    if failures:
+        raise RuntimeError("; ".join(failures))
+    if missing_graph_relations:
+        raise RuntimeError(f"graph relation counts missing required relation(s): {', '.join(missing_graph_relations)}")
 
     print("checked_at\tstack\tnodes\trelations\tintegrity_passed\tintegrity_failed\tgraph_relations\tcurrent_ingest_runtimes\tdeclared_runtimes\tmissing_ingest_runtimes\tcounts_task\tintegrity_task\tpaths_task\tingest_runs_task")
     print(

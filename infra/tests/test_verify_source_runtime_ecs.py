@@ -23,6 +23,8 @@ from scripts.verify_source_runtime_ecs import (
     _stop_running_tasks,
     _summarize_log_messages,
     _task_family,
+    _task_logs,
+    _verify_task,
     _verification_command,
 )
 
@@ -350,16 +352,90 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         wait_for_task.assert_any_call("cluster", "task-1", 30, 10, "us-east-1")
         stop_task.assert_called_once()
 
+    def test_verify_task_reports_graph_projection_counts(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-aws-public",
+            schedule_name="aws-public",
+            rule_name="cerebro-sec-dev-orchestrator-aws-public",
+            target={"Arn": "cluster"},
+        )
+        task = {
+            "taskArn": "task-arn",
+            "taskDefinitionArn": "task-def",
+            "containers": [{"name": "cerebro", "exitCode": 0}],
+        }
+        messages = [
+            {"kind": "span_end", "name": "orchestrator.runtime", "status": "completed"},
+            {"kind": "span_end", "name": "source_runtime.sync", "status": "completed", "events_appended": 7, "pages_read": 2},
+            {
+                "kind": "span_end",
+                "name": "orchestrator.graph_ingest",
+                "status": "completed",
+                "entities_projected": 5,
+                "links_projected": 3,
+            },
+        ]
+
+        with (
+            patch("scripts.verify_source_runtime_ecs._describe_tasks", return_value=[task]),
+            patch("scripts.verify_source_runtime_ecs._task_logs", return_value=messages),
+        ):
+            result = _verify_task(target, "task-arn", "us-east-1")
+
+        self.assertEqual(result.events_appended, 7)
+        self.assertEqual(result.pages_read, 2)
+        self.assertEqual(result.entities_projected, 5)
+        self.assertEqual(result.links_projected, 3)
+
+    def test_task_logs_caches_log_options_by_task_definition(self) -> None:
+        task = {
+            "taskArn": "arn:aws:ecs:us-east-1:123:task/cluster/task-1",
+            "taskDefinitionArn": "arn:aws:ecs:us-east-1:123:task-definition/runtime:4",
+        }
+        describe_calls = 0
+
+        def fake_aws(args: list[str], _region: str) -> dict[str, object]:
+            nonlocal describe_calls
+            if args[:2] == ["ecs", "describe-task-definition"]:
+                describe_calls += 1
+                return {
+                    "taskDefinition": {
+                        "containerDefinitions": [
+                            {
+                                "name": "cerebro",
+                                "logConfiguration": {
+                                    "options": {
+                                        "awslogs-group": "/ecs/cerebro",
+                                        "awslogs-stream-prefix": "runtime",
+                                    }
+                                },
+                            }
+                        ]
+                    }
+                }
+            if args[:2] == ["logs", "get-log-events"]:
+                return {"events": [{"message": '{"kind":"span_end","name":"source_runtime.sync"}'}]}
+            raise AssertionError(f"unexpected args: {args}")
+
+        cache = {}
+        with patch("scripts.verify_source_runtime_ecs._aws", side_effect=fake_aws):
+            self.assertEqual(len(_task_logs(task, "us-east-1", cache)), 1)
+            self.assertEqual(len(_task_logs(task, "us-east-1", cache)), 1)
+
+        self.assertEqual(describe_calls, 1)
+
     def test_summarize_log_messages_limits_fields_and_length(self) -> None:
         summary = _summarize_log_messages(
             [
                 {"message": "old"},
-                {"level": "error", "message": "x" * 2500, "secret": "not included"},
+                {"level": "error", "message": "x" * 2500, "entities_projected": 0, "links_projected": 0, "secret": "not included"},
             ],
             limit=1,
         )
 
         self.assertIn('"level": "error"', summary)
+        self.assertIn('"entities_projected": 0', summary)
+        self.assertIn('"links_projected": 0', summary)
         self.assertIn('"message": "', summary)
         self.assertNotIn("secret", summary)
         self.assertLessEqual(len(summary), 2000)
