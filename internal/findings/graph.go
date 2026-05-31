@@ -270,17 +270,18 @@ func (s *Service) recordAndProjectWorkflowEvent(ctx context.Context, event *cere
 		if err := s.appendLog.Append(ctx, event); err != nil {
 			return err
 		}
+	}
+	if s.graph != nil {
+		if _, err := workflowprojection.New(s.graph).Project(ctx, event); err != nil {
+			return err
+		}
+	}
+	if s.appendLog != nil {
 		if canonical, ok := canonicalFindingWorkflowEvent(event); ok {
 			if err := s.appendLog.Append(ctx, canonical); err != nil {
 				return err
 			}
 		}
-	}
-	if s.graph == nil {
-		return nil
-	}
-	if _, err := workflowprojection.New(s.graph).Project(ctx, event); err != nil {
-		return err
 	}
 	return nil
 }

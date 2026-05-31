@@ -7,6 +7,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/securityevents"
 	"github.com/writer/cerebro/internal/workflowevents"
 )
 
@@ -47,8 +48,11 @@ func TestProjectFindingWorkflowAppendsEventsWithoutGraph(t *testing.T) {
 
 	wantKinds := []string{
 		workflowevents.EventKindFindingRecorded,
+		securityevents.FindingRecorded,
 		workflowevents.EventKindFindingNoteAdded,
+		securityevents.FindingNoteAdded,
 		workflowevents.EventKindFindingTicketLinked,
+		securityevents.FindingTicketLinked,
 	}
 	if len(appendLog.events) != len(wantKinds) {
 		t.Fatalf("appended events = %d, want %d", len(appendLog.events), len(wantKinds))
@@ -72,11 +76,14 @@ func TestRecordFindingStatusWorkflowAppendsWithoutGraph(t *testing.T) {
 	if err := service.recordFindingStatusWorkflow(context.Background(), finding, "manual"); err != nil {
 		t.Fatalf("recordFindingStatusWorkflow() error = %v", err)
 	}
-	if len(appendLog.events) != 1 {
-		t.Fatalf("appended events = %d, want 1", len(appendLog.events))
+	if len(appendLog.events) != 2 {
+		t.Fatalf("appended events = %d, want 2", len(appendLog.events))
 	}
 	if got := appendLog.events[0].GetKind(); got != workflowevents.EventKindFindingStatusChanged {
 		t.Fatalf("event kind = %q, want %q", got, workflowevents.EventKindFindingStatusChanged)
+	}
+	if got := appendLog.events[1].GetKind(); got != securityevents.FindingStatusChanged {
+		t.Fatalf("canonical event kind = %q, want %q", got, securityevents.FindingStatusChanged)
 	}
 }
 
