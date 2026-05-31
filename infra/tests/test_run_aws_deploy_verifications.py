@@ -5,6 +5,7 @@ import contextlib
 import io
 import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -16,11 +17,23 @@ from scripts import run_aws_deploy_verifications
 
 
 class FakeProcess:
-    def __init__(self, status: int) -> None:
+    def __init__(self, status: int, *, timeout_once: bool = False) -> None:
         self.status = status
+        self.timeout_once = timeout_once
+        self.terminated = False
+        self.killed = False
 
-    def wait(self) -> int:
+    def wait(self, timeout: int | None = None) -> int:
+        if timeout is not None and self.timeout_once:
+            self.timeout_once = False
+            raise subprocess.TimeoutExpired("fake", timeout)
         return self.status
+
+    def terminate(self) -> None:
+        self.terminated = True
+
+    def kill(self) -> None:
+        self.killed = True
 
 
 class RunAwsDeployVerificationsTest(unittest.TestCase):
@@ -36,6 +49,9 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
         self.assertIn("scripts/verify_source_runtime_ecs.py", command)
         self.assertIn("--target-concurrency", command)
         self.assertEqual(command[command.index("--target-concurrency") + 1], "2")
+        self.assertEqual(command[command.index("--failed-run-retry-seconds") + 1], "0")
+        self.assertEqual(command[command.index("--run-attempt-timeout-seconds") + 1], "300")
+        self.assertEqual(command[command.index("--wait-timeout-seconds") + 1], "300")
         self.assertIn("--stop-running-before-run", command)
 
     def test_source_failure_reports_warning_but_does_not_fail_without_graph_failure(self) -> None:
@@ -61,6 +77,34 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
 
         self.assertEqual(status, 0)
         self.assertIn("Source runtime verification degraded (sec-dev)", summary)
+
+    def test_source_runtime_timeout_after_graph_health_is_degraded(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            summary_path = Path(temp_dir) / "summary.md"
+            fake_source = FakeProcess(0, timeout_once=True)
+            with (
+                patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": str(summary_path)}),
+                patch("scripts.run_aws_deploy_verifications._start_process", return_value=fake_source),
+                patch("scripts.run_aws_deploy_verifications._stream_graph_health", return_value=0),
+            ):
+                status = run_aws_deploy_verifications.main(
+                    [
+                        "--stack-file",
+                        "aws/Pulumi.go-prod.yaml",
+                        "--source-runtime-verify",
+                        "--graph-health",
+                        "--graph-health-output",
+                        str(Path(temp_dir) / "graph.tsv"),
+                        "--source-runtime-grace-seconds",
+                        "1",
+                    ]
+                )
+                summary = summary_path.read_text(encoding="utf-8")
+
+        self.assertEqual(status, 0)
+        self.assertTrue(fake_source.terminated)
+        self.assertFalse(fake_source.killed)
+        self.assertIn("Source runtime verification degraded (go-prod)", summary)
 
     def test_graph_failure_remains_blocking(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

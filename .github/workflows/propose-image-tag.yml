@@ -53,10 +53,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Set up Go
-        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+      - name: Set up cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
-          go-version: "1.26.3"
+          cosign-release: v2.6.1
 
       - name: Install dependencies
         shell: bash
@@ -145,10 +145,9 @@ jobs:
           COSIGN_EXPERIMENTAL: "true"
         run: |
           set -euo pipefail
-          GOBIN="${RUNNER_TEMP}/cosign" go install github.com/sigstore/cosign/v2/cmd/cosign@v2.6.1
           image_ref="${GHCR_IMAGE}@${IMAGE_DIGEST}"
 
-          "${RUNNER_TEMP}/cosign/cosign" verify \
+          cosign verify \
             --certificate-identity-regexp "https://github.com/writer/cerebro/.github/workflows/release.yml@refs/tags/${IMAGE_TAG}" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
             "${image_ref}" > cosign-verify.json
@@ -184,8 +183,7 @@ jobs:
             --pattern cerebro-runtime-contract.json.sig \
             --pattern cerebro-runtime-contract.json.pem
 
-          GOBIN="${RUNNER_TEMP}/cosign" go install github.com/sigstore/cosign/v2/cmd/cosign@v2.6.1
-          "${RUNNER_TEMP}/cosign/cosign" verify-blob \
+          cosign verify-blob \
             --certificate runtime-contract/cerebro-runtime-contract.json.pem \
             --signature runtime-contract/cerebro-runtime-contract.json.sig \
             --certificate-identity-regexp "https://github.com/writer/cerebro/.github/workflows/release.yml@refs/tags/${IMAGE_TAG}" \
@@ -240,6 +238,8 @@ jobs:
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
           RELEASE_URL: ${{ steps.release.outputs.url }}
           VERIFY_SUMMARY: ${{ steps.verify.outputs.verify_summary }}
+          DISPATCH_SOURCE_REPOSITORY: ${{ github.event.client_payload.source_repository || '' }}
+          DISPATCH_SOURCE_REF: ${{ github.event.client_payload.source_ref || '' }}
         run: |
           set -euo pipefail
 
@@ -390,8 +390,53 @@ jobs:
 
           existing_pr="$(gh pr list --head "${branch}" --json url --jq '.[0].url // empty')"
           if [ -n "${existing_pr}" ]; then
-            gh pr edit "${existing_pr}" --title "${title}" --body-file "${body}"
-            echo "Updated ${existing_pr}"
+            pr_url="${existing_pr}"
+            gh pr edit "${pr_url}" --title "${title}" --body-file "${body}"
+            echo "Updated ${pr_url}"
           else
-            gh pr create --base main --head "${branch}" --title "${title}" --body-file "${body}"
+            pr_url="$(gh pr create --base main --head "${branch}" --title "${title}" --body-file "${body}")"
+            echo "Created ${pr_url}"
           fi
+
+          auto_merge_trusted_pr() {
+            local pr_url="$1"
+            local expected_file="infra/aws/Pulumi.${STACK_NAME}.yaml"
+            local changed_files=""
+            local check_count=""
+
+            if [ "${EVENT_NAME}" != "repository_dispatch" ] || [ "${STACK_NAME}" != "go-prod" ] || [ "${APPLY_MODE}" != "pull_request" ]; then
+              return 0
+            fi
+            if [ "${AUTORELEASE_TOKEN_CONFIGURED}" != "true" ]; then
+              echo "::notice::CEREBRO_AUTORELEASE_TOKEN is not configured; leaving ${pr_url} for manual merge."
+              return 0
+            fi
+            if [ "${DISPATCH_SOURCE_REPOSITORY}" != "writer/cerebro" ] || [ "${DISPATCH_SOURCE_REF}" != "refs/tags/${IMAGE_TAG}" ]; then
+              echo "Refusing to auto-merge untrusted dispatch source ${DISPATCH_SOURCE_REPOSITORY} ${DISPATCH_SOURCE_REF}" >&2
+              exit 1
+            fi
+
+            changed_files="$(gh pr diff "${pr_url}" --name-only)"
+            if [ "${changed_files}" != "${expected_file}" ]; then
+              echo "Refusing to auto-merge ${pr_url}; expected only ${expected_file}, got:" >&2
+              printf '%s\n' "${changed_files}" >&2
+              exit 1
+            fi
+
+            for _ in {1..36}; do
+              check_count="$(gh pr checks "${pr_url}" --json name --jq 'length' 2>/dev/null || true)"
+              if [[ "${check_count}" =~ ^[0-9]+$ ]] && [ "${check_count}" -gt 0 ]; then
+                break
+              fi
+              sleep 5
+            done
+            if ! [[ "${check_count}" =~ ^[0-9]+$ ]] || [ "${check_count}" -eq 0 ]; then
+              echo "No PR checks registered for ${pr_url}; refusing trusted auto-merge." >&2
+              exit 1
+            fi
+
+            gh pr checks "${pr_url}" --watch --interval 10 --fail-fast
+            gh pr merge "${pr_url}" --merge --delete-branch
+          }
+
+          auto_merge_trusted_pr "${pr_url}"
