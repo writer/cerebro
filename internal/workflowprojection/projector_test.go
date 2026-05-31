@@ -325,6 +325,9 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 	if got := resourceFindingLink.Attributes["confidence"]; got != "0.8" {
 		t.Fatalf("has_finding confidence = %q", got)
 	}
+	if _, ok := graph.links["urn:cerebro:writer:okta_user:00u1|has_finding|urn:cerebro:writer:finding:finding-1"]; !ok {
+		t.Fatal("actor finding link missing after recorded event")
+	}
 	noteEvent, err := workflowevents.NewFindingNoteAddedEvent(workflowevents.FindingNoteAdded{
 		Finding:   finding,
 		NoteID:    "note-1",
@@ -382,6 +385,9 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 	}
 	if _, ok := graph.links["urn:cerebro:writer:okta_resource:policyrule:pol-1|has_finding|urn:cerebro:writer:finding:finding-1"]; ok {
 		t.Fatal("manually resolved finding should not keep active has_finding link")
+	}
+	if _, ok := graph.links["urn:cerebro:writer:okta_user:00u1|has_finding|urn:cerebro:writer:finding:finding-1"]; ok {
+		t.Fatal("manually resolved finding should not keep active actor has_finding link")
 	}
 
 	if _, err := service.Project(context.Background(), recordedEvent); err != nil {
@@ -449,6 +455,9 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 	}
 	if _, ok := graph.links["urn:cerebro:writer:okta_resource:policyrule:pol-1|has_finding|urn:cerebro:writer:finding:finding-1"]; ok {
 		t.Fatal("resolved finding has_finding link should be pruned from graph")
+	}
+	if _, ok := graph.links["urn:cerebro:writer:okta_user:00u1|has_finding|urn:cerebro:writer:finding:finding-1"]; ok {
+		t.Fatal("resolved finding actor has_finding link should be pruned from graph")
 	}
 	if _, ok := graph.entities[annotationURN]; ok {
 		t.Fatal("isolated finding note annotation should be pruned from graph")
