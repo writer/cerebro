@@ -105,6 +105,13 @@ func TestListFindingsRejectsUnconfiguredStore(t *testing.T) {
 	}
 }
 
+func TestListGRCFindingsRejectsUnconfiguredStore(t *testing.T) {
+	store := &Store{}
+	if _, err := store.ListGRCFindings(context.Background(), ports.ListFindingsRequest{TenantID: "tenant", RuntimeID: "runtime-alpha"}); err == nil {
+		t.Fatal("ListGRCFindings() error = nil, want non-nil")
+	}
+}
+
 // Graph rules call ListFindings with tenant + rule (no runtime) so the contract must accept
 // that combination; only an unconfigured Store should fail at this point.
 func TestListFindingsAcceptsTenantAndRuleWithoutRuntime(t *testing.T) {
@@ -220,6 +227,52 @@ func TestFindingListQueryAcceptsTenantAndRuleWithoutRuntime(t *testing.T) {
 	}
 	if got := args[1]; got != "identity-okta-deprovisioned-active-in-github" {
 		t.Fatalf("findingListQuery().args[1] = %#v, want rule id", got)
+	}
+}
+
+func TestFindingGRCListQueryAvoidsFullPayload(t *testing.T) {
+	query, args, err := findingGRCListQuery(ports.ListFindingsRequest{
+		TenantID:   "tenant",
+		RuntimeIDs: []string{"runtime-alpha", "runtime-beta"},
+		Status:     "open",
+		Limit:      25,
+		Order:      ports.FindingOrderRiskScore,
+	})
+	if err != nil {
+		t.Fatalf("findingGRCListQuery() error = %v", err)
+	}
+	for _, fragment := range []string{
+		"SELECT id, tenant_id, runtime_id, rule_id, title, UPPER(COALESCE(NULLIF(attributes_json->>'effective_severity', ''), severity)) AS severity",
+		"risk_reasons_json::text",
+		"resource_urns_json::text",
+		"control_refs_json::text",
+		"runtime_id IN ($2, $3)",
+		"status = $4",
+		"ORDER BY risk_score DESC",
+		"LIMIT $5",
+	} {
+		if !strings.Contains(query, fragment) {
+			t.Fatalf("findingGRCListQuery() query missing %q: %s", fragment, query)
+		}
+	}
+	for _, forbidden := range []string{
+		"fingerprint",
+		"event_ids_json::text",
+		"observed_policy_ids_json::text",
+		"notes_json",
+		"tickets_json",
+		"attributes_json::text",
+		"tombstoned_by",
+		"tombstoned_reason",
+		"status_reason",
+		"check_name",
+	} {
+		if strings.Contains(query, forbidden) {
+			t.Fatalf("findingGRCListQuery() selected unused payload %q: %s", forbidden, query)
+		}
+	}
+	if got := len(args); got != 5 {
+		t.Fatalf("len(findingGRCListQuery().args) = %d, want 5", got)
 	}
 }
 

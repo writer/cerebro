@@ -569,6 +569,52 @@ func (s *Store) ListFindings(ctx context.Context, request ports.ListFindingsRequ
 	return findings, nil
 }
 
+// ListGRCFindings loads the denormalized finding fields needed by GRC read models.
+func (s *Store) ListGRCFindings(ctx context.Context, request ports.ListFindingsRequest) (_ []*ports.FindingRecord, err error) {
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID == "" {
+		return nil, errors.New("finding tenant id is required")
+	}
+	runtimeID := strings.TrimSpace(request.RuntimeID)
+	runtimeIDs := normalizedNonEmptyStrings(append(request.RuntimeIDs, runtimeID))
+	ruleID := strings.TrimSpace(request.RuleID)
+	if len(runtimeIDs) == 0 && ruleID == "" {
+		return nil, errors.New("finding runtime id or rule id is required")
+	}
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
+	}
+	if err := s.ensureFindingTables(ctx); err != nil {
+		return nil, err
+	}
+	query, args, err := findingGRCListQuery(request)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query grc findings for tenant %q runtime %q rule %q: %w", tenantID, runtimeID, ruleID, err)
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("close grc findings rows: %w", closeErr)
+		}
+	}()
+
+	findings := []*ports.FindingRecord{}
+	for rows.Next() {
+		record, err := scanGRCFindingRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate grc findings rows: %w", err)
+	}
+	return findings, nil
+}
+
 // SummarizeFindings loads aggregate finding counts for one filtered query without
 // applying row pagination.
 func (s *Store) SummarizeFindings(ctx context.Context, request ports.ListFindingsRequest) (ports.FindingSummary, error) {
@@ -1002,6 +1048,25 @@ func findingListQuery(request ports.ListFindingsRequest) (string, []any, error) 
 	}
 	query := `
 SELECT ` + findingSelectColumns + `
+FROM findings
+WHERE ` + strings.Join(clauses, " AND ") + `
+ORDER BY ` + findingOrderClause(request)
+	if request.Limit != 0 {
+		args = append(args, int64(request.Limit))
+		query += fmt.Sprintf(" LIMIT $%d", len(args))
+	}
+	return query, args, nil
+}
+
+func findingGRCListQuery(request ports.ListFindingsRequest) (string, []any, error) {
+	clauses, args, err := findingFilterClauses(request)
+	if err != nil {
+		return "", nil, err
+	}
+	query := `
+SELECT id, tenant_id, runtime_id, rule_id, title, ` + findingEffectiveSeveritySQL() + ` AS severity, status, summary,
+  risk_score, likelihood_score, impact_score, confidence_score, likelihood_level, impact_level, risk_reasons_json::text, risk_model_version,
+  resource_urns_json::text, control_refs_json::text, policy_id, policy_name, assignee, due_at, first_observed_at, last_observed_at
 FROM findings
 WHERE ` + strings.Join(clauses, " AND ") + `
 ORDER BY ` + findingOrderClause(request)
@@ -2037,6 +2102,26 @@ type findingRow struct {
 	findingTombstoneRow
 }
 
+type grcFindingRow struct {
+	ID        string
+	TenantID  string
+	RuntimeID string
+	RuleID    string
+	Title     string
+	Severity  string
+	Status    string
+	Summary   string
+	findingRiskRow
+	ResourceURNsJSON string
+	ControlRefsJSON  string
+	PolicyID         string
+	PolicyName       string
+	Assignee         string
+	DueAt            sql.NullTime
+	FirstObservedAt  time.Time
+	LastObservedAt   time.Time
+}
+
 func scanFindingRow(scanner findingRowScanner, row *findingRow) error {
 	return scanner.Scan(
 		&row.ID,
@@ -2081,6 +2166,82 @@ func scanFindingRow(scanner findingRowScanner, row *findingRow) error {
 		&row.PriorStatus,
 		&row.TombstoneGeneration,
 	)
+}
+
+func scanGRCFindingRow(scanner findingRowScanner) (*ports.FindingRecord, error) {
+	var row grcFindingRow
+	if err := scanner.Scan(
+		&row.ID,
+		&row.TenantID,
+		&row.RuntimeID,
+		&row.RuleID,
+		&row.Title,
+		&row.Severity,
+		&row.Status,
+		&row.Summary,
+		&row.RiskScore,
+		&row.LikelihoodScore,
+		&row.ImpactScore,
+		&row.ConfidenceScore,
+		&row.LikelihoodLevel,
+		&row.ImpactLevel,
+		&row.RiskReasonsJSON,
+		&row.RiskModelVersion,
+		&row.ResourceURNsJSON,
+		&row.ControlRefsJSON,
+		&row.PolicyID,
+		&row.PolicyName,
+		&row.Assignee,
+		&row.DueAt,
+		&row.FirstObservedAt,
+		&row.LastObservedAt,
+	); err != nil {
+		return nil, fmt.Errorf("scan grc finding row: %w", err)
+	}
+	resourceURNs, err := findingStringSliceFromJSON(row.ResourceURNsJSON)
+	if err != nil {
+		return nil, fmt.Errorf("decode grc finding resource urns: %w", err)
+	}
+	controlRefs := []ports.FindingControlRef{}
+	if strings.TrimSpace(row.ControlRefsJSON) != "" {
+		if err := json.Unmarshal([]byte(row.ControlRefsJSON), &controlRefs); err != nil {
+			return nil, fmt.Errorf("decode grc finding control refs: %w", err)
+		}
+	}
+	riskReasons, err := findingStringSliceFromJSON(row.RiskReasonsJSON)
+	if err != nil {
+		return nil, fmt.Errorf("decode grc finding risk reasons: %w", err)
+	}
+	return &ports.FindingRecord{
+		ID:        row.ID,
+		TenantID:  row.TenantID,
+		RuntimeID: row.RuntimeID,
+		RuleID:    row.RuleID,
+		Title:     row.Title,
+		Severity:  row.Severity,
+		Status:    row.Status,
+		Summary:   row.Summary,
+		FindingRisk: ports.FindingRisk{
+			RiskScore:        row.RiskScore,
+			LikelihoodScore:  row.LikelihoodScore,
+			ImpactScore:      row.ImpactScore,
+			ConfidenceScore:  row.ConfidenceScore,
+			LikelihoodLevel:  row.LikelihoodLevel,
+			ImpactLevel:      row.ImpactLevel,
+			RiskReasons:      riskReasons,
+			RiskModelVersion: row.RiskModelVersion,
+		},
+		ResourceURNs: resourceURNs,
+		PolicyID:     row.PolicyID,
+		PolicyName:   row.PolicyName,
+		ControlRefs:  controlRefs,
+		FindingWorkflow: ports.FindingWorkflow{
+			Assignee: row.Assignee,
+			DueAt:    findingTimestamp(row.DueAt),
+		},
+		FirstObservedAt: row.FirstObservedAt.UTC(),
+		LastObservedAt:  row.LastObservedAt.UTC(),
+	}, nil
 }
 
 func (r findingRow) record() (*ports.FindingRecord, error) {
