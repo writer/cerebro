@@ -24,11 +24,83 @@ env:
   WEB_GHCR_IMAGE: ghcr.io/writerinternal/cerebro-web
 
 jobs:
+  changes:
+    name: Detect CI-relevant changes
+    runs-on: ubuntu-latest
+    outputs:
+      sec_dev: ${{ steps.filter.outputs.sec_dev }}
+      go_prod: ${{ steps.filter.outputs.go_prod }}
+      ci_workflow: ${{ steps.filter.outputs.ci_workflow }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed deployment inputs
+        id: filter
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before || '' }}
+          HEAD_SHA: ${{ github.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
+        run: |
+          set -euo pipefail
+
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            {
+              echo "sec_dev=true"
+              echo "go_prod=true"
+              echo "ci_workflow=true"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "${EVENT_NAME}" = "pull_request" ]; then
+            base="${PR_BASE_SHA}"
+            head="${PR_HEAD_SHA}"
+          else
+            base="${BEFORE_SHA}"
+            head="${HEAD_SHA}"
+            if [ -z "${base}" ] || [[ "${base}" =~ ^0+$ ]]; then
+              base="${HEAD_SHA}^"
+            fi
+          fi
+
+          if ! git diff --name-only "${base}" "${head}" > changed-files.txt; then
+            echo "::warning::Could not diff ${base}..${head}; running all deployment CI jobs"
+            {
+              echo "sec_dev=true"
+              echo "go_prod=true"
+              echo "ci_workflow=true"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          sec_dev=false
+          go_prod=false
+          ci_workflow=false
+          while IFS= read -r file; do
+            case "${file}" in
+              infra/aws/Pulumi.sec-dev.yaml) sec_dev=true ;;
+              infra/aws/Pulumi.go-prod.yaml) go_prod=true ;;
+              .github/workflows/ci.yml) ci_workflow=true ;;
+            esac
+          done < changed-files.txt
+
+          {
+            echo "sec_dev=${sec_dev}"
+            echo "go_prod=${go_prod}"
+            echo "ci_workflow=${ci_workflow}"
+          } >> "$GITHUB_OUTPUT"
+
   # Pull from GHCR and push to sec-dev ECR for PR previews and main deploys.
   publish-sec-dev:
     name: Publish to sec-dev ECR
+    needs: [changes]
     runs-on: ubuntu-24.04-arm
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false) || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    if: github.event_name == 'workflow_dispatch' || (((github.event_name == 'pull_request' && github.event.pull_request.draft == false) || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && (needs.changes.outputs.sec_dev == 'true' || needs.changes.outputs.ci_workflow == 'true'))
     permissions:
       id-token: write
       contents: read
@@ -125,7 +197,8 @@ jobs:
           echo "image=${ecr_image}" >> "$GITHUB_OUTPUT"
 
           if aws ecr describe-images --repository-name "${ECR_REPOSITORY}" --image-ids imageTag="${IMAGE_TAG}" >/dev/null 2>&1; then
-            echo "${ecr_image} already exists; skipping immutable ECR push"
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            echo "${ecr_image} already exists; skipping immutable ECR push and Trivy scan"
             exit 0
           fi
 
@@ -135,6 +208,7 @@ jobs:
           docker tag "${GHCR_IMAGE}:${IMAGE_TAG}" "${ecr_image}"
           docker push "${ecr_image}"
 
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
           echo "Pushed ${IMAGE_TAG} to sec-dev ECR"
 
       - name: Pull web from GHCR, retag, and push to ECR
@@ -150,7 +224,8 @@ jobs:
           echo "image=${ecr_image}" >> "$GITHUB_OUTPUT"
 
           if aws ecr describe-images --repository-name "${ECR_REPOSITORY}" --image-ids imageTag="${IMAGE_TAG}" >/dev/null 2>&1; then
-            echo "${ecr_image} already exists; skipping immutable ECR push"
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            echo "${ecr_image} already exists; skipping immutable ECR push and Trivy scan"
             exit 0
           fi
 
@@ -160,10 +235,11 @@ jobs:
           docker tag "${WEB_GHCR_IMAGE}:${IMAGE_TAG}" "${ecr_image}"
           docker push "${ecr_image}"
 
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
           echo "Pushed web ${IMAGE_TAG} to sec-dev ECR"
 
       - name: Scan sec-dev ECR image
-        if: steps.ghcr-image.outputs.available == 'true'
+        if: steps.publish.outputs.pushed == 'true'
         shell: bash
         env:
           ECR_IMAGE: ${{ steps.publish.outputs.image }}
@@ -190,7 +266,7 @@ jobs:
             "${ECR_IMAGE}"
 
       - name: Scan sec-dev web ECR image
-        if: steps.web-ghcr-image.outputs.available == 'true'
+        if: steps.publish-web.outputs.pushed == 'true'
         shell: bash
         env:
           ECR_IMAGE: ${{ steps.publish-web.outputs.image }}
@@ -219,8 +295,9 @@ jobs:
   # Main merge: Pull from GHCR and push to sec-prod ECR
   publish-sec-prod:
     name: Publish to sec-prod ECR
+    needs: [changes]
     runs-on: ubuntu-24.04-arm
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.changes.outputs.go_prod == 'true' || needs.changes.outputs.ci_workflow == 'true')
     permissions:
       id-token: write
       contents: read
@@ -264,7 +341,8 @@ jobs:
           echo "image=${ecr_image}" >> "$GITHUB_OUTPUT"
 
           if aws ecr describe-images --repository-name "${ECR_REPOSITORY}" --image-ids imageTag="${IMAGE_TAG}" >/dev/null 2>&1; then
-            echo "${ecr_image} already exists; skipping immutable ECR push"
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            echo "${ecr_image} already exists; skipping immutable ECR push and Trivy scan"
             exit 0
           fi
 
@@ -274,9 +352,11 @@ jobs:
           docker tag "${GHCR_IMAGE}:${IMAGE_TAG}" "${ecr_image}"
           docker push "${ecr_image}"
 
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
           echo "Pushed ${IMAGE_TAG} to sec-prod ECR"
 
       - name: Scan sec-prod ECR image
+        if: steps.publish.outputs.pushed == 'true'
         shell: bash
         env:
           ECR_IMAGE: ${{ steps.publish.outputs.image }}

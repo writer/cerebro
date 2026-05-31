@@ -283,37 +283,31 @@ jobs:
             deploy_sha="$(git rev-parse HEAD)"
             git push "https://x-access-token:${GH_TOKEN}@github.com/WriterInternal/cerebro.git" "HEAD:main"
 
-            wait_for_run() {
+            dispatch_and_require_run() {
               local workflow="$1"
-              local event="$2"
+              shift
               local run_id=""
+              local run_url=""
+              local run=""
+
+              gh workflow run "${workflow}" --ref main "$@"
               for _ in {1..24}; do
-                run_id="$(gh run list \
+                run="$(gh run list \
                   --workflow "${workflow}" \
-                  --event "${event}" \
+                  --event workflow_dispatch \
                   --branch main \
                   --limit 20 \
-                  --json databaseId,headSha \
-                  --jq ".[] | select(.headSha == \"${deploy_sha}\") | .databaseId" | head -n 1)"
-                if [ -n "${run_id}" ]; then
-                  break
+                  --json databaseId,headSha,url \
+                  --jq ".[] | select(.headSha == \"${deploy_sha}\") | [.databaseId, .url] | @tsv" | head -n 1)"
+                if [ -n "${run}" ]; then
+                  IFS=$'\t' read -r run_id run_url <<< "${run}"
+                  echo "Created ${workflow} workflow_dispatch run ${run_id} for ${deploy_sha}: ${run_url}"
+                  return 0
                 fi
                 sleep 5
               done
-              if [ -z "${run_id}" ]; then
-                echo "Could not find ${workflow} run for ${deploy_sha}" >&2
-                exit 1
-              fi
-
-              while true; do
-                status="$(gh run view "${run_id}" --json status,conclusion --jq '.status + ":" + (.conclusion // "")')"
-                echo "${workflow} ${run_id}: ${status}"
-                case "${status}" in
-                  completed:success) break ;;
-                  completed:*) exit 1 ;;
-                esac
-                sleep 30
-              done
+              echo "Could not find ${workflow} workflow_dispatch run for ${deploy_sha}" >&2
+              exit 1
             }
 
             # Clean up stale sec-dev automation branches and PRs from prior runs
@@ -332,11 +326,9 @@ jobs:
               gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${old_branch}" 2>/dev/null || true
             done
 
-            echo "Pushed ${STACK_NAME} deploy commit for ${IMAGE_TAG}; dispatching ordered sec-dev publish and deploy workflows."
-            gh workflow run ci.yml --ref main
-            wait_for_run ci.yml workflow_dispatch
-            gh workflow run infra-deploy.yml --ref main -f environment="${STACK_NAME}"
-            wait_for_run infra-deploy.yml workflow_dispatch
+            echo "Pushed ${STACK_NAME} deploy commit for ${IMAGE_TAG}; dispatching sec-dev publish and deploy workflows."
+            dispatch_and_require_run ci.yml
+            dispatch_and_require_run infra-deploy.yml -f environment="${STACK_NAME}"
             exit 0
           fi
 
