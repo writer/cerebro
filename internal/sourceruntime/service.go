@@ -224,7 +224,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	defer func() {
 		if err != nil {
 			status = "failed"
-			spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "error", Value: err.Error()})
+			spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "error_kind", Value: sourceRuntimeTelemetryErrorKind(err)})
 		}
 		telemetry.End(span, status, spanAttributes)
 	}()
@@ -286,10 +286,6 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			if syncedEvent == nil {
 				continue
 			}
-			if syncedEvent.Attributes == nil {
-				syncedEvent.Attributes = make(map[string]string)
-			}
-			telemetry.InjectEventAttributes(ctx, syncedEvent.Attributes)
 			if err := sourcecdk.ValidateEventEnvelopeWithContracts(syncedEvent, eventContracts); err != nil {
 				return nil, fmt.Errorf("validate source event %q: %w", syncedEvent.GetId(), err)
 			}
@@ -343,6 +339,23 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		EntitiesProjected: entitiesProjected,
 		LinksProjected:    linksProjected,
 	}, nil
+}
+
+func sourceRuntimeTelemetryErrorKind(err error) string {
+	switch {
+	case errors.Is(err, ErrInvalidRequest):
+		return "invalid_request"
+	case errors.Is(err, ErrRuntimeUnavailable):
+		return "runtime_unavailable"
+	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
+		return "runtime_not_found"
+	case errors.Is(err, sourcecdk.ErrInvalidEventEnvelope):
+		return "invalid_event"
+	case errors.Is(err, sourcecdk.ErrInvalidConfig):
+		return "invalid_source_config"
+	default:
+		return "sync_failed"
+	}
 }
 
 func runtimeWatermarkLag(runtime *cerebrov1.SourceRuntime, now time.Time) (time.Time, int64, bool) {

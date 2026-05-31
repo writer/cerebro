@@ -572,7 +572,32 @@ func grcTelemetryError(attrs telemetry.Attributes, err error) (string, telemetry
 	if err == nil {
 		return "completed", attrs
 	}
-	return "failed", attrs.WithField(telemetry.Field{Key: "error", Value: err.Error()})
+	return "failed", attrs.WithField(telemetry.Field{Key: "error_kind", Value: grcTelemetryErrorKind(err)})
+}
+
+func grcTelemetryErrorKind(err error) string {
+	switch {
+	case errors.Is(err, errTenantForbidden):
+		return "tenant_forbidden"
+	case errors.Is(err, ports.ErrSourceRuntimeNotFound),
+		errors.Is(err, ports.ErrFindingNotFound),
+		errors.Is(err, ports.ErrFindingEvidenceNotFound),
+		errors.Is(err, ports.ErrGraphEntityNotFound):
+		return "not_found"
+	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable),
+		errors.Is(err, findings.ErrRuntimeUnavailable),
+		errors.Is(err, graphagent.ErrRuntimeUnavailable),
+		errors.Is(err, graphquery.ErrRuntimeUnavailable):
+		return "runtime_unavailable"
+	case errors.Is(err, sourceruntime.ErrInvalidRequest),
+		errors.Is(err, findings.ErrInvalidRequest),
+		errors.Is(err, graphagent.ErrInvalidRequest),
+		errors.Is(err, graphquery.ErrInvalidRequest),
+		errors.Is(err, errInvalidHTTPRequest):
+		return "invalid_request"
+	default:
+		return "grc_request_failed"
+	}
 }
 
 func grcScopeFromRequest(r *http.Request) (grcScope, error) {

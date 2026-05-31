@@ -1991,23 +1991,24 @@ func TestAuthMiddlewareEmitsAccessAuditEvents(t *testing.T) {
 	})
 	payload := decodeBootstrapTelemetryPayload(t, stderr)
 	for key, want := range map[string]any{
-		"kind":                "event",
-		"name":                "cerebro.api.access",
-		"outcome":             "allowed",
-		"status":              float64(http.StatusOK),
-		"status_code":         float64(http.StatusOK),
-		"method":              http.MethodGet,
-		"route":               "GET /sources",
-		"tenant_id":           "writer",
-		"effective_tenant_id": "writer",
-		"requested_tenant_id": "writer",
-		"principal_tenant_id": "writer",
-		"principal":           "ci",
-		"auth_mode":           "api_key",
-		"operation_family":    "source",
-		"operation_type":      "read",
-		"client_ip":           "198.51.100.7",
-		"request_id":          "audit-request-1",
+		"kind":                  "event",
+		"name":                  "cerebro.api.access",
+		"outcome":               "allowed",
+		"status":                float64(http.StatusOK),
+		"status_code":           float64(http.StatusOK),
+		"effective_status_code": float64(http.StatusOK),
+		"method":                http.MethodGet,
+		"route":                 "GET /sources",
+		"tenant_id":             "writer",
+		"effective_tenant_id":   "writer",
+		"requested_tenant_id":   "writer",
+		"principal_tenant_id":   "writer",
+		"principal":             "ci",
+		"auth_mode":             "api_key",
+		"operation_family":      "source",
+		"operation_type":        "read",
+		"client_ip":             "198.51.100.7",
+		"request_id":            "audit-request-1",
 	} {
 		if got := payload[key]; got != want {
 			t.Fatalf("audit payload[%q] = %#v, want %#v; payload=%#v", key, got, want, payload)
@@ -2056,17 +2057,18 @@ func TestAuthMiddlewareEmitsDeniedAccessAuditEvents(t *testing.T) {
 	})
 	unauthPayload := decodeBootstrapTelemetryPayload(t, unauthStderr)
 	for key, want := range map[string]any{
-		"name":                "cerebro.api.access",
-		"outcome":             "denied",
-		"status":              float64(http.StatusUnauthorized),
-		"status_code":         float64(http.StatusUnauthorized),
-		"route":               "GET /sources",
-		"tenant_id":           "writer",
-		"effective_tenant_id": "writer",
-		"requested_tenant_id": "writer",
-		"operation_family":    "source",
-		"operation_type":      "read",
-		"denial_reason":       "unauthenticated",
+		"name":                  "cerebro.api.access",
+		"outcome":               "denied",
+		"status":                float64(http.StatusUnauthorized),
+		"status_code":           float64(http.StatusUnauthorized),
+		"effective_status_code": float64(http.StatusUnauthorized),
+		"route":                 "GET /sources",
+		"tenant_id":             "writer",
+		"effective_tenant_id":   "writer",
+		"requested_tenant_id":   "writer",
+		"operation_family":      "source",
+		"operation_type":        "read",
+		"denial_reason":         "unauthenticated",
 	} {
 		if got := unauthPayload[key]; got != want {
 			t.Fatalf("unauth audit payload[%q] = %#v, want %#v; payload=%#v", key, got, want, unauthPayload)
@@ -2093,21 +2095,22 @@ func TestAuthMiddlewareEmitsDeniedAccessAuditEvents(t *testing.T) {
 	})
 	forbiddenPayload := decodeBootstrapTelemetryPayload(t, forbiddenStderr)
 	for key, want := range map[string]any{
-		"name":                "cerebro.api.access",
-		"outcome":             "denied",
-		"status":              float64(http.StatusForbidden),
-		"status_code":         float64(http.StatusForbidden),
-		"route":               "GET /sources",
-		"tenant_id":           "other",
-		"effective_tenant_id": "writer",
-		"requested_tenant_id": "other",
-		"principal":           "ci",
-		"principal_tenant_id": "writer",
-		"auth_mode":           "api_key",
-		"operation_family":    "source",
-		"operation_type":      "read",
-		"tenant_mismatch":     true,
-		"denial_reason":       "tenant_forbidden",
+		"name":                  "cerebro.api.access",
+		"outcome":               "denied",
+		"status":                float64(http.StatusForbidden),
+		"status_code":           float64(http.StatusForbidden),
+		"effective_status_code": float64(http.StatusForbidden),
+		"route":                 "GET /sources",
+		"tenant_id":             "other",
+		"effective_tenant_id":   "writer",
+		"requested_tenant_id":   "other",
+		"principal":             "ci",
+		"principal_tenant_id":   "writer",
+		"auth_mode":             "api_key",
+		"operation_family":      "source",
+		"operation_type":        "read",
+		"tenant_mismatch":       true,
+		"denial_reason":         "tenant_forbidden",
 	} {
 		if got := forbiddenPayload[key]; got != want {
 			t.Fatalf("forbidden audit payload[%q] = %#v, want %#v; payload=%#v", key, got, want, forbiddenPayload)
@@ -2155,6 +2158,15 @@ func TestAccessAuditOutcomeClassifiesDownstreamAuthorizationFailures(t *testing.
 	outcome, reason = accessAuditOutcome(http.StatusOK, "allowed", "", "permission_denied")
 	if outcome != "denied" || reason != "authorization_failed" {
 		t.Fatalf("accessAuditOutcome(gRPC permission_denied) = (%q, %q), want denied authorization_failed", outcome, reason)
+	}
+	if got := accessAuditEffectiveStatusCode(http.StatusOK, "permission_denied"); got != http.StatusForbidden {
+		t.Fatalf("accessAuditEffectiveStatusCode(permission_denied) = %d, want %d", got, http.StatusForbidden)
+	}
+	if got := accessAuditEffectiveStatusCode(http.StatusOK, "unauthenticated"); got != http.StatusUnauthorized {
+		t.Fatalf("accessAuditEffectiveStatusCode(unauthenticated) = %d, want %d", got, http.StatusUnauthorized)
+	}
+	if got := accessAuditEffectiveStatusCode(http.StatusOK, "aborted"); got != http.StatusConflict {
+		t.Fatalf("accessAuditEffectiveStatusCode(aborted) = %d, want %d", got, http.StatusConflict)
 	}
 }
 
@@ -2614,19 +2626,20 @@ func TestScopedCosmoCredentialAuditsGRPCProcedureDenials(t *testing.T) {
 	})
 	payload := decodeBootstrapTelemetryPayload(t, stderr)
 	for key, want := range map[string]any{
-		"name":                "cerebro.api.access",
-		"outcome":             "denied",
-		"status":              float64(http.StatusOK),
-		"route":               "/cerebro.v1.BootstrapService/{Procedure}",
-		"connect_procedure":   "cerebro.v1.BootstrapService/SyncSourceRuntime",
-		"connect_code":        "permission_denied",
-		"denial_reason":       "authorization_failed",
-		"principal":           "cosmo-security",
-		"principal_tenant_id": "writer",
-		"auth_mode":           "api_credential",
-		"operation_family":    "source_runtime",
-		"operation_type":      "write",
-		"sensitive_action":    true,
+		"name":                  "cerebro.api.access",
+		"outcome":               "denied",
+		"status":                float64(http.StatusOK),
+		"route":                 "/cerebro.v1.BootstrapService/{Procedure}",
+		"connect_procedure":     "cerebro.v1.BootstrapService/SyncSourceRuntime",
+		"connect_code":          "permission_denied",
+		"effective_status_code": float64(http.StatusForbidden),
+		"denial_reason":         "authorization_failed",
+		"principal":             "cosmo-security",
+		"principal_tenant_id":   "writer",
+		"auth_mode":             "api_credential",
+		"operation_family":      "source_runtime",
+		"operation_type":        "write",
+		"sensitive_action":      true,
 	} {
 		if got := payload[key]; got != want {
 			t.Fatalf("gRPC audit payload[%q] = %#v, want %#v; payload=%#v", key, got, want, payload)

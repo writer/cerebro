@@ -911,10 +911,12 @@ func emitAccessAuditEvent(r *http.Request, origin requestOrigin, principal authP
 	}
 	route := accessAuditRoute(r)
 	operation := accessAuditOperation(r, route)
+	effectiveStatusCode := accessAuditEffectiveStatusCode(status, auditResult.ConnectCode)
 	attrs := telemetry.Attrs(
 		telemetry.Field{Key: "outcome", Value: outcome},
 		telemetry.Field{Key: "status", Value: status},
 		telemetry.Field{Key: "status_code", Value: status},
+		telemetry.Field{Key: "effective_status_code", Value: effectiveStatusCode},
 		telemetry.Field{Key: "method", Value: r.Method},
 		telemetry.Field{Key: "route", Value: route},
 		telemetry.Field{Key: "operation_family", Value: operation.Family},
@@ -982,6 +984,32 @@ func emitAccessAuditEvent(r *http.Request, origin requestOrigin, principal authP
 		attrs = attrs.WithField(telemetry.Field{Key: "denial_reason", Value: denialReason})
 	}
 	telemetry.Event(r.Context(), "cerebro.api.access", attrs)
+}
+
+func accessAuditEffectiveStatusCode(status int, connectCode string) int {
+	switch strings.ToLower(strings.TrimSpace(connectCode)) {
+	case "":
+		return status
+	case "unauthenticated":
+		return http.StatusUnauthorized
+	case "permission_denied":
+		return http.StatusForbidden
+	case "aborted", "already_exists", "failed_precondition":
+		return http.StatusConflict
+	case "invalid_argument", "out_of_range":
+		return http.StatusBadRequest
+	case "not_found":
+		return http.StatusNotFound
+	case "unavailable":
+		return http.StatusServiceUnavailable
+	case "internal", "unknown", "data_loss":
+		return http.StatusInternalServerError
+	default:
+		if status >= 400 {
+			return status
+		}
+		return http.StatusInternalServerError
+	}
 }
 
 func accessAuditOutcome(status int, outcome string, denialReason string, connectCode string) (string, string) {

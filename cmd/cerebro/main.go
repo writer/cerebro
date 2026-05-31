@@ -164,7 +164,7 @@ func startGRCReadModelWarmup(ctx context.Context, stateStore ports.StateStore, l
 		}()
 		if err := prepareGRCReadModels(ctx, stateStore); err != nil && ctx.Err() == nil {
 			status = "failed"
-			attrs = attrs.WithField(telemetry.Field{Key: "error", Value: err.Error()})
+			attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: "grc_read_model_warmup_failed"})
 			logf("%v", err)
 		} else if ctx.Err() != nil {
 			status = "canceled"
@@ -195,7 +195,7 @@ func startFindingRiskBackfill(ctx context.Context, backfiller findingRiskBackfil
 		}()
 		if err := backfiller.BackfillFindingRisk(ctx); err != nil && ctx.Err() == nil {
 			status = "failed"
-			attrs = attrs.WithField(telemetry.Field{Key: "error", Value: fmt.Errorf("backfill finding risk: %w", err).Error()})
+			attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: "finding_risk_backfill_failed"})
 			logf("backfill finding risk: %v", err)
 		} else if ctx.Err() != nil {
 			status = "canceled"

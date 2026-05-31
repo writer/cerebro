@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -1120,6 +1122,62 @@ func TestHealthFailedCountDoesNotDependOnPagingLimit(t *testing.T) {
 	}
 }
 
+func TestHealthEmitsTelemetry(t *testing.T) {
+	store := &stubRunStore{
+		runs: []graphstore.IngestRun{
+			{ID: "failed-1", Status: graphstore.IngestRunStatusFailed},
+			{ID: "running-1", Status: graphstore.IngestRunStatusRunning},
+		},
+	}
+	stderr := captureGraphIngestStderr(t, func() {
+		result, err := New(nil, nil, nil, store).Health(context.Background(), 1)
+		if err != nil {
+			t.Fatalf("Health() error = %v", err)
+		}
+		if result.Status != "degraded" {
+			t.Fatalf("Health().Status = %q, want degraded", result.Status)
+		}
+	})
+
+	payload := graphIngestTelemetryPayload(t, stderr, "graph.ingest_health")
+	for key, want := range map[string]any{
+		"kind":          "span_end",
+		"name":          "graph.ingest_health",
+		"status":        "completed",
+		"limit":         float64(1),
+		"health_status": "degraded",
+		"failed_count":  float64(1),
+		"running_count": float64(1),
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	if _, ok := payload["duration_ms"].(float64); !ok {
+		t.Fatalf("telemetry duration_ms = %#v, want number; payload=%#v", payload["duration_ms"], payload)
+	}
+}
+
+func TestListRunsTelemetryRecordsInvalidRequest(t *testing.T) {
+	stderr := captureGraphIngestStderr(t, func() {
+		_, err := New(nil, nil, nil, &stubRunStore{}).ListRuns(context.Background(), graphstore.IngestRunFilter{Status: "bogus"})
+		if !errors.Is(err, ErrInvalidRequest) {
+			t.Fatalf("ListRuns() error = %v, want ErrInvalidRequest", err)
+		}
+	})
+
+	payload := graphIngestTelemetryPayload(t, stderr, "graph.ingest_list_runs")
+	if got := payload["status"]; got != "failed" {
+		t.Fatalf("telemetry status = %#v, want failed; payload=%#v", got, payload)
+	}
+	if got := payload["error_kind"]; got != "invalid_request" {
+		t.Fatalf("telemetry error_kind = %#v, want invalid_request; payload=%#v", got, payload)
+	}
+	if strings.Contains(stderr, "bogus") {
+		t.Fatalf("ListRuns telemetry leaked raw invalid status value: %s", stderr)
+	}
+}
+
 func TestHealthUsesLatestRunPerRuntime(t *testing.T) {
 	store := &stubRunStore{
 		runs: []graphstore.IngestRun{
@@ -1181,6 +1239,17 @@ func TestPutTerminalIngestRunIgnoresParentCancellation(t *testing.T) {
 	}
 }
 
+func TestFinishRunClassifiesErrorsWithoutRawSecret(t *testing.T) {
+	run := graphstore.IngestRun{ID: "run-1", Status: graphstore.IngestRunStatusRunning}
+	finished := finishRun(run, nil, graphstore.IngestRunStatusFailed, errors.New("provider failed credential=fake-sensitive-value"))
+	if finished.Error != "ingest_failed" {
+		t.Fatalf("finishRun error = %q, want ingest_failed", finished.Error)
+	}
+	if strings.Contains(finished.Error, "fake-sensitive-value") || strings.Contains(finished.Error, "credential=") {
+		t.Fatalf("finishRun leaked raw error: %q", finished.Error)
+	}
+}
+
 func TestGetRunRejectsEmptyID(t *testing.T) {
 	_, err := New(nil, nil, nil, &stubRunStore{}).GetRun(context.Background(), " ")
 	if !errors.Is(err, ErrInvalidRequest) {
@@ -1202,4 +1271,45 @@ func TestListResultJSONUsesStableKeys(t *testing.T) {
 	if !strings.Contains(string(payload), `"runs"`) || !strings.Contains(string(payload), `"failed_count"`) {
 		t.Fatalf("ListResult JSON missing stable keys: %s", payload)
 	}
+}
+
+func captureGraphIngestStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	oldStderr := os.Stderr
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe stderr: %v", err)
+	}
+	os.Stderr = writer
+	defer func() {
+		os.Stderr = oldStderr
+	}()
+	fn()
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close stderr writer: %v", err)
+	}
+	payload, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("read stderr: %v", err)
+	}
+	return string(payload)
+}
+
+func graphIngestTelemetryPayload(t *testing.T, stderr string, name string) map[string]any {
+	t.Helper()
+	lines := strings.Split(strings.TrimSpace(stderr), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) == "" {
+			continue
+		}
+		payload := map[string]any{}
+		if err := json.Unmarshal([]byte(lines[i]), &payload); err != nil {
+			t.Fatalf("unmarshal telemetry payload %q: %v", lines[i], err)
+		}
+		if payload["kind"] == "span_end" && payload["name"] == name {
+			return payload
+		}
+	}
+	t.Fatalf("telemetry span_end %q not found in stderr: %s", name, stderr)
+	return nil
 }

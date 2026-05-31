@@ -244,8 +244,11 @@ func TestGRCDashboardTelemetryRecordsHTTPErrorStatus(t *testing.T) {
 	if got := payload["status_code"]; got != float64(http.StatusBadRequest) {
 		t.Fatalf("telemetry status_code = %#v, want %d; payload=%#v", got, http.StatusBadRequest, payload)
 	}
-	if got := fmt.Sprint(payload["error"]); !strings.Contains(got, "limit must be <= 500") {
-		t.Fatalf("telemetry error = %q, want limit error; payload=%#v", got, payload)
+	if got := payload["error_kind"]; got != "invalid_request" {
+		t.Fatalf("telemetry error_kind = %#v, want invalid_request; payload=%#v", got, payload)
+	}
+	if strings.Contains(stderr, "limit must be <= 500") {
+		t.Fatalf("GRC dashboard telemetry leaked raw error: %s", stderr)
 	}
 }
 

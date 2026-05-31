@@ -117,8 +117,11 @@ func TestStartFindingRiskBackfillTelemetryRecordsFailures(t *testing.T) {
 	if got := payload["status"]; got != "failed" {
 		t.Fatalf("telemetry status = %#v, want failed; payload=%#v", got, payload)
 	}
-	if got := fmt.Sprint(payload["error"]); !strings.Contains(got, "backfill finding risk: boom") {
-		t.Fatalf("telemetry error = %q, want wrapped backfill error; payload=%#v", got, payload)
+	if got := payload["error_kind"]; got != "finding_risk_backfill_failed" {
+		t.Fatalf("telemetry error_kind = %#v, want finding_risk_backfill_failed; payload=%#v", got, payload)
+	}
+	if strings.Contains(stderr, "boom") {
+		t.Fatalf("backfill telemetry leaked raw error: %s", stderr)
 	}
 }
 
@@ -244,8 +247,11 @@ func TestStartGRCReadModelWarmupTelemetryRecordsFailures(t *testing.T) {
 	if got := payload["status"]; got != "failed" {
 		t.Fatalf("telemetry status = %#v, want failed; payload=%#v", got, payload)
 	}
-	if got := fmt.Sprint(payload["error"]); !strings.Contains(got, "prepare grc read models: boom") {
-		t.Fatalf("telemetry error = %q, want wrapped warmup error; payload=%#v", got, payload)
+	if got := payload["error_kind"]; got != "grc_read_model_warmup_failed" {
+		t.Fatalf("telemetry error_kind = %#v, want grc_read_model_warmup_failed; payload=%#v", got, payload)
+	}
+	if strings.Contains(stderr, "boom") {
+		t.Fatalf("GRC read-model warmup telemetry leaked raw error: %s", stderr)
 	}
 }
 
