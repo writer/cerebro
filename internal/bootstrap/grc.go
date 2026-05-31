@@ -511,6 +511,10 @@ type grcFindingEvidenceHeaderLister interface {
 	ListGRCFindingEvidence(context.Context, ports.ListFindingEvidenceRequest) ([]*cerebrov1.FindingEvidence, error)
 }
 
+type grcFindingHeaderLister interface {
+	ListGRCFindings(context.Context, ports.ListFindingsRequest) ([]*ports.FindingRecord, error)
+}
+
 func grcDashboardTelemetryAttrs() telemetry.Attributes {
 	return telemetry.Attrs(
 		telemetry.Field{Key: "route", Value: "/grc/dashboard"},
@@ -618,7 +622,7 @@ func (a *App) grcListFindingRecords(r *http.Request, runtimes []*cerebrov1.Sourc
 	}
 	var records []*ports.FindingRecord
 	for tenantID, runtimeIDs := range runtimeIDsByTenant {
-		items, err := store.ListFindings(r.Context(), ports.ListFindingsRequest{
+		request := ports.ListFindingsRequest{
 			TenantID:      tenantID,
 			RuntimeIDs:    runtimeIDs,
 			FindingID:     filter.FindingID,
@@ -631,7 +635,16 @@ func (a *App) grcListFindingRecords(r *http.Request, runtimes []*cerebrov1.Sourc
 			Limit:         limit,
 			PriorityOrder: true,
 			Order:         ports.FindingOrderRiskScore,
-		})
+		}
+		var (
+			items []*ports.FindingRecord
+			err   error
+		)
+		if lister, ok := store.(grcFindingHeaderLister); ok {
+			items, err = lister.ListGRCFindings(r.Context(), request)
+		} else {
+			items, err = store.ListFindings(r.Context(), request)
+		}
 		if err != nil {
 			return nil, err
 		}

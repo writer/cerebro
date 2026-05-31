@@ -444,6 +444,55 @@ func TestGRCDashboardUsesHeaderOnlyEvidenceLister(t *testing.T) {
 	}
 }
 
+func TestGRCDashboardUsesHeaderOnlyFindingLister(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	runtimeID := "runtime-alpha"
+	tenantID := "tenant"
+	store := &stubGRCFindingHeaderStore{stubGRCAggregateStore: &stubGRCAggregateStore{stubRuntimeStore: &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			runtimeID: {
+				Id:           runtimeID,
+				SourceId:     "okta",
+				TenantId:     tenantID,
+				LastSyncedAt: timestamppb.New(now),
+				Checkpoint:   &cerebrov1.SourceCheckpoint{Watermark: timestamppb.New(now)},
+			},
+		},
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:             "finding-1",
+				TenantID:       tenantID,
+				RuntimeID:      runtimeID,
+				Title:          "Finding 1",
+				Severity:       "HIGH",
+				Status:         "open",
+				LastObservedAt: now,
+			},
+		},
+		findingEvidence: map[string]*cerebrov1.FindingEvidence{
+			"evidence-1": {Id: "evidence-1", RuntimeId: runtimeID, FindingId: "finding-1", CreatedAt: timestamppb.New(now)},
+		},
+	}}}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/grc/dashboard?tenant_id=" + tenantID)
+	if err != nil {
+		t.Fatalf("GET /grc/dashboard error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /grc/dashboard status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	if store.headerFindingCalls != 1 {
+		t.Fatalf("header finding calls = %d, want 1", store.headerFindingCalls)
+	}
+	if store.fullFindingCalls != 0 {
+		t.Fatalf("full finding calls = %d, want 0", store.fullFindingCalls)
+	}
+}
+
 func TestGRCDashboardUsesPurposeBuiltAggregateStore(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	runtimeID := "tenant-okta-audit"
@@ -628,4 +677,20 @@ func (s *stubGRCEvidenceHeaderStore) ListGRCFindingEvidence(ctx context.Context,
 func (s *stubGRCEvidenceHeaderStore) ListFindingEvidence(ctx context.Context, request ports.ListFindingEvidenceRequest) ([]*cerebrov1.FindingEvidence, error) {
 	s.fullEvidenceCalls++
 	return s.stubRuntimeStore.ListFindingEvidence(ctx, request)
+}
+
+type stubGRCFindingHeaderStore struct {
+	*stubGRCAggregateStore
+	headerFindingCalls int
+	fullFindingCalls   int
+}
+
+func (s *stubGRCFindingHeaderStore) ListGRCFindings(ctx context.Context, request ports.ListFindingsRequest) ([]*ports.FindingRecord, error) {
+	s.headerFindingCalls++
+	return s.stubRuntimeStore.ListFindings(ctx, request)
+}
+
+func (s *stubGRCFindingHeaderStore) ListFindings(ctx context.Context, request ports.ListFindingsRequest) ([]*ports.FindingRecord, error) {
+	s.fullFindingCalls++
+	return s.stubRuntimeStore.ListFindings(ctx, request)
 }
