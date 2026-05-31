@@ -16,6 +16,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/securityevents"
 	"github.com/writer/cerebro/internal/workflowevents"
 )
 
@@ -238,6 +239,9 @@ func replaySubjectPrefix(prefix string, kindPrefix string) string {
 	if kindPrefix == "" {
 		return normalized
 	}
+	if securityevents.IsCanonicalKind(kindPrefix) {
+		return kindPrefix
+	}
 	return normalized + "." + kindPrefix
 }
 
@@ -347,6 +351,9 @@ func eventSubject(prefix string, kind string) (string, error) {
 	normalizedKind := strings.TrimSpace(kind)
 	if err := validateEventKind(normalizedKind); err != nil {
 		return "", err
+	}
+	if securityevents.IsCanonicalKind(normalizedKind) {
+		return normalizedKind, nil
 	}
 	return normalizedPrefix + "." + normalizedKind, nil
 }
