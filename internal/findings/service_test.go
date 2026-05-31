@@ -2814,12 +2814,22 @@ func TestPromoteFindingCandidateWritesProductionFindingEvidenceAndAudit(t *testi
 	if result.DecisionID == "" {
 		t.Fatal("DecisionID is empty")
 	}
-	if got := len(appendLog.events); got != 1 {
-		t.Fatalf("append log events = %d, want 1", got)
+	if got := countWorkflowEventsByKind(appendLog.events, workflowevents.EventKindKnowledgeDecisionRecorded); got != 1 {
+		t.Fatalf("promotion audit events = %d, want 1", got)
 	}
-	if got := appendLog.events[0].GetKind(); got != workflowevents.EventKindKnowledgeDecisionRecorded {
-		t.Fatalf("promotion audit event kind = %q, want %q", got, workflowevents.EventKindKnowledgeDecisionRecorded)
+	if got := countWorkflowEventsByKind(appendLog.events, workflowevents.EventKindFindingRecorded); got != 1 {
+		t.Fatalf("finding recorded events = %d, want 1", got)
 	}
+}
+
+func countWorkflowEventsByKind(events []*cerebrov1.EventEnvelope, kind string) int {
+	count := 0
+	for _, event := range events {
+		if event.GetKind() == kind {
+			count++
+		}
+	}
+	return count
 }
 
 func TestPromoteFindingCandidateDoesNotMarkPromotedBeforeDownstreamSuccess(t *testing.T) {
