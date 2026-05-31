@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -148,6 +151,55 @@ func TestStartGRCReadModelWarmupLogsErrors(t *testing.T) {
 		}
 	default:
 		t.Fatal("GRC read-model warmup error was not logged")
+	}
+}
+
+func TestStartGRCReadModelWarmupEmitsTelemetry(t *testing.T) {
+	store := &preparingStateStore{}
+	stderr := captureCommandStderr(t, func() {
+		done := startGRCReadModelWarmup(context.Background(), store, func(string, ...any) {})
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("GRC read-model warmup did not finish")
+		}
+	})
+
+	payload := lastCommandTelemetryPayload(t, stderr)
+	if got := payload["kind"]; got != "span_end" {
+		t.Fatalf("telemetry kind = %#v, want span_end; payload=%#v", got, payload)
+	}
+	if got := payload["name"]; got != "grc.read_model_warmup" {
+		t.Fatalf("telemetry name = %#v, want grc.read_model_warmup; payload=%#v", got, payload)
+	}
+	if got := payload["status"]; got != "completed" {
+		t.Fatalf("telemetry status = %#v, want completed; payload=%#v", got, payload)
+	}
+	if got := payload["preparer_present"]; got != true {
+		t.Fatalf("telemetry preparer_present = %#v, want true; payload=%#v", got, payload)
+	}
+	if _, ok := payload["duration_ms"].(float64); !ok {
+		t.Fatalf("telemetry duration_ms = %#v, want number; payload=%#v", payload["duration_ms"], payload)
+	}
+}
+
+func TestStartGRCReadModelWarmupTelemetryRecordsFailures(t *testing.T) {
+	store := &preparingStateStore{err: errors.New("boom")}
+	stderr := captureCommandStderr(t, func() {
+		done := startGRCReadModelWarmup(context.Background(), store, func(string, ...any) {})
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("GRC read-model warmup did not finish")
+		}
+	})
+
+	payload := lastCommandTelemetryPayload(t, stderr)
+	if got := payload["status"]; got != "failed" {
+		t.Fatalf("telemetry status = %#v, want failed; payload=%#v", got, payload)
+	}
+	if got := fmt.Sprint(payload["error"]); !strings.Contains(got, "prepare grc read models: boom") {
+		t.Fatalf("telemetry error = %q, want wrapped warmup error; payload=%#v", got, payload)
 	}
 }
 
@@ -428,6 +480,45 @@ func (s *preparingStateStore) PrepareGRCReadModels(context.Context) error {
 func (s *blockingPreparingStateStore) PrepareGRCReadModels(context.Context) error {
 	close(s.started)
 	<-s.release
+	return nil
+}
+
+func captureCommandStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	oldStderr := os.Stderr
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe stderr: %v", err)
+	}
+	os.Stderr = writer
+	defer func() {
+		os.Stderr = oldStderr
+	}()
+	fn()
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close stderr writer: %v", err)
+	}
+	payload, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("read stderr: %v", err)
+	}
+	return string(payload)
+}
+
+func lastCommandTelemetryPayload(t *testing.T, stderr string) map[string]any {
+	t.Helper()
+	lines := strings.Split(strings.TrimSpace(stderr), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) == "" {
+			continue
+		}
+		payload := map[string]any{}
+		if err := json.Unmarshal([]byte(lines[i]), &payload); err != nil {
+			t.Fatalf("unmarshal telemetry payload %q: %v", lines[i], err)
+		}
+		return payload
+	}
+	t.Fatal("telemetry stderr is empty")
 	return nil
 }
 

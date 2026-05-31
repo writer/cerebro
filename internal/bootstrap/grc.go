@@ -152,12 +152,15 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 	ctx, span := telemetry.Start(r.Context(), "grc.dashboard", grcDashboardTelemetryAttrs())
 	r = r.WithContext(ctx)
 	status := "completed"
+	statusCode := http.StatusOK
 	endAttrs := grcDashboardTelemetryAttrs()
 	defer func() {
+		endAttrs = endAttrs.WithField(telemetry.Field{Key: "status_code", Value: statusCode})
 		telemetry.End(span, status, endAttrs)
 	}()
 	scope, err := grcScopeFromRequest(r)
 	if err != nil {
+		statusCode = grcHTTPStatusCode(err)
 		status, endAttrs = grcTelemetryError(endAttrs, err)
 		writeGRCError(w, err)
 		return
@@ -170,6 +173,7 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 	runtimes, err := a.grcListRuntimes(runtimesRequest, scope)
 	telemetry.End(runtimesSpan, grcTelemetryStatus(err), telemetry.Attrs(telemetry.Field{Key: "runtime_count", Value: len(runtimes)}))
 	if err != nil {
+		statusCode = grcHTTPStatusCode(err)
 		status, endAttrs = grcTelemetryError(endAttrs, err)
 		writeGRCError(w, err)
 		return
@@ -179,6 +183,7 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 	findings, err := a.grcListFindingRecords(findingsRequest, runtimes, grcFindingFilter{Status: "open", Limit: previewLimit})
 	telemetry.End(findingsSpan, grcTelemetryStatus(err), telemetry.Attrs(telemetry.Field{Key: "finding_count", Value: len(findings)}))
 	if err != nil {
+		statusCode = grcHTTPStatusCode(err)
 		status, endAttrs = grcTelemetryError(endAttrs, err)
 		writeGRCError(w, err)
 		return
@@ -229,6 +234,7 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 	wg.Wait()
 	close(errs)
 	if err := <-errs; err != nil {
+		statusCode = grcHTTPStatusCode(err)
 		status, endAttrs = grcTelemetryError(endAttrs, err)
 		writeGRCError(w, err)
 		return
@@ -1384,6 +1390,11 @@ func timestampPtr(value *timestamppb.Timestamp) *time.Time {
 }
 
 func writeGRCError(w http.ResponseWriter, err error) {
+	statusCode := grcHTTPStatusCode(err)
+	http.Error(w, http.StatusText(statusCode), statusCode)
+}
+
+func grcHTTPStatusCode(err error) int {
 	statusCode := http.StatusInternalServerError
 	switch {
 	case errors.Is(err, errTenantForbidden):
@@ -1405,5 +1416,5 @@ func writeGRCError(w http.ResponseWriter, err error) {
 		errors.Is(err, errInvalidHTTPRequest):
 		statusCode = http.StatusBadRequest
 	}
-	http.Error(w, http.StatusText(statusCode), statusCode)
+	return statusCode
 }

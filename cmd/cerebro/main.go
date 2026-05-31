@@ -25,6 +25,7 @@ import (
 	"github.com/writer/cerebro/internal/sourceprojection"
 	"github.com/writer/cerebro/internal/sourceregistry"
 	"github.com/writer/cerebro/internal/sourceruntime"
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 type usageError string
@@ -149,8 +150,24 @@ func startGRCReadModelWarmup(ctx context.Context, stateStore ports.StateStore, l
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+		_, hasPreparer := stateStore.(grcReadModelPreparer)
+		ctx, span := telemetry.Start(ctx, "grc.read_model_warmup", telemetry.Attrs(
+			telemetry.Field{Key: "preparer_present", Value: hasPreparer},
+		))
+		status := "completed"
+		attrs := telemetry.Attrs(telemetry.Field{Key: "preparer_present", Value: hasPreparer})
+		if !hasPreparer {
+			status = "skipped"
+		}
+		defer func() {
+			telemetry.End(span, status, attrs)
+		}()
 		if err := prepareGRCReadModels(ctx, stateStore); err != nil && ctx.Err() == nil {
+			status = "failed"
+			attrs = attrs.WithField(telemetry.Field{Key: "error", Value: err.Error()})
 			logf("%v", err)
+		} else if ctx.Err() != nil {
+			status = "canceled"
 		}
 	}()
 	return done
