@@ -438,7 +438,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh release upload "${RELEASE_TAG}" \
+          gh release upload "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" \
             .dist/cerebro-runtime-contract.json \
             .dist/cerebro-runtime-contract.json.sig \
             .dist/cerebro-runtime-contract.json.pem \
