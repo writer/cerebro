@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/findingevidence"
@@ -284,6 +286,42 @@ func (s *Store) ListFindingEvidence(ctx context.Context, request ports.ListFindi
 	return evidence, nil
 }
 
+// ListGRCFindingEvidence loads only denormalized evidence fields needed by GRC read models.
+func (s *Store) ListGRCFindingEvidence(ctx context.Context, request ports.ListFindingEvidenceRequest) (_ []*cerebrov1.FindingEvidence, err error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
+	}
+	if err := s.ensureFindingEvidenceTables(ctx); err != nil {
+		return nil, err
+	}
+	query, args, err := findingEvidenceHeaderListQuery(request)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query grc finding evidence for runtime %q: %w", strings.TrimSpace(request.RuntimeID), err)
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("close grc finding evidence rows: %w", closeErr)
+		}
+	}()
+
+	evidence := []*cerebrov1.FindingEvidence{}
+	for rows.Next() {
+		record, err := scanFindingEvidenceHeader(rows)
+		if err != nil {
+			return nil, err
+		}
+		evidence = append(evidence, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate grc finding evidence rows: %w", err)
+	}
+	return evidence, nil
+}
+
 // CountFindingEvidence returns the unpaginated number of evidence rows for one filtered query.
 func (s *Store) CountFindingEvidence(ctx context.Context, request ports.ListFindingEvidenceRequest) (int, error) {
 	if s == nil || s.db == nil {
@@ -327,6 +365,23 @@ ORDER BY ` + findingEvidenceListOrder(request)
 	return query, args, nil
 }
 
+func findingEvidenceHeaderListQuery(request ports.ListFindingEvidenceRequest) (string, []any, error) {
+	clauses, args, err := findingEvidenceFilterClauses(request)
+	if err != nil {
+		return "", nil, err
+	}
+	query := `
+SELECT id, runtime_id, rule_id, finding_id, run_id, claim_ids_json::text, event_ids_json::text, graph_root_urns_json::text, created_at
+FROM finding_evidence
+WHERE ` + strings.Join(clauses, " AND ") + `
+ORDER BY ` + findingEvidenceListOrder(request)
+	if request.Limit != 0 {
+		args = append(args, int64(request.Limit))
+		query += fmt.Sprintf(" LIMIT $%d", len(args))
+	}
+	return query, args, nil
+}
+
 func findingEvidenceFilterClauses(request ports.ListFindingEvidenceRequest) ([]string, []any, error) {
 	runtimeID := strings.TrimSpace(request.RuntimeID)
 	runtimeIDs := normalizedNonEmptyStrings(append(request.RuntimeIDs, runtimeID))
@@ -359,6 +414,55 @@ func findingEvidenceFilterClauses(request ports.ListFindingEvidenceRequest) ([]s
 		return nil, nil, err
 	}
 	return clauses, args, nil
+}
+
+func scanFindingEvidenceHeader(rows interface {
+	Scan(dest ...any) error
+}) (*cerebrov1.FindingEvidence, error) {
+	var (
+		record            cerebrov1.FindingEvidence
+		claimIDsJSON      string
+		eventIDsJSON      string
+		graphRootURNsJSON string
+		createdAt         time.Time
+	)
+	if err := rows.Scan(
+		&record.Id,
+		&record.RuntimeId,
+		&record.RuleId,
+		&record.FindingId,
+		&record.RunId,
+		&claimIDsJSON,
+		&eventIDsJSON,
+		&graphRootURNsJSON,
+		&createdAt,
+	); err != nil {
+		return nil, fmt.Errorf("scan grc finding evidence row: %w", err)
+	}
+	var err error
+	if record.ClaimIds, err = findingStringSliceFromJSON(claimIDsJSON); err != nil {
+		return nil, fmt.Errorf("decode grc finding evidence claim ids: %w", err)
+	}
+	if record.EventIds, err = findingStringSliceFromJSON(eventIDsJSON); err != nil {
+		return nil, fmt.Errorf("decode grc finding evidence event ids: %w", err)
+	}
+	if record.GraphRootUrns, err = findingStringSliceFromJSON(graphRootURNsJSON); err != nil {
+		return nil, fmt.Errorf("decode grc finding evidence graph roots: %w", err)
+	}
+	record.CreatedAt = timestamppb.New(createdAt.UTC())
+	return &record, nil
+}
+
+func findingStringSliceFromJSON(payload string) ([]string, error) {
+	payload = strings.TrimSpace(payload)
+	if payload == "" || payload == "[]" {
+		return nil, nil
+	}
+	var values []string
+	if err := json.Unmarshal([]byte(payload), &values); err != nil {
+		return nil, err
+	}
+	return normalizedNonEmptyStrings(values), nil
 }
 
 func findingEvidenceListOrder(request ports.ListFindingEvidenceRequest) string {

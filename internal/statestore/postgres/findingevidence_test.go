@@ -49,6 +49,13 @@ func TestListFindingEvidenceRejectsUnconfiguredStore(t *testing.T) {
 	}
 }
 
+func TestListGRCFindingEvidenceRejectsUnconfiguredStore(t *testing.T) {
+	store := &Store{}
+	if _, err := store.ListGRCFindingEvidence(context.Background(), ports.ListFindingEvidenceRequest{RuntimeID: "runtime-alpha"}); err == nil {
+		t.Fatal("ListGRCFindingEvidence() error = nil, want non-nil")
+	}
+}
+
 func TestFindingEvidenceListQueryIncludesOptionalFilters(t *testing.T) {
 	query, args, err := findingEvidenceListQuery(ports.ListFindingEvidenceRequest{
 		RuntimeID:    "runtime-alpha",
@@ -87,6 +94,35 @@ func TestFindingEvidenceListQueryIncludesOptionalFilters(t *testing.T) {
 	}
 	if got := args[8]; got != int64(25) {
 		t.Fatalf("findingEvidenceListQuery().args[8] = %#v, want 25", got)
+	}
+}
+
+func TestFindingEvidenceHeaderListQueryAvoidsFullPayload(t *testing.T) {
+	query, args, err := findingEvidenceHeaderListQuery(ports.ListFindingEvidenceRequest{
+		RuntimeIDs:   []string{"runtime-alpha", "runtime-beta"},
+		FindingIDs:   []string{"finding-high", "finding-critical"},
+		Limit:        25,
+		CreatedOrder: true,
+	})
+	if err != nil {
+		t.Fatalf("findingEvidenceHeaderListQuery() error = %v", err)
+	}
+	for _, fragment := range []string{
+		"SELECT id, runtime_id, rule_id, finding_id, run_id, claim_ids_json::text, event_ids_json::text, graph_root_urns_json::text, created_at",
+		"runtime_id IN ($1, $2)",
+		"finding_id IN ($3, $4)",
+		"ORDER BY created_at DESC, id",
+		"LIMIT $5",
+	} {
+		if !strings.Contains(query, fragment) {
+			t.Fatalf("findingEvidenceHeaderListQuery() query missing %q: %s", fragment, query)
+		}
+	}
+	if strings.Contains(query, "finding_evidence_json") {
+		t.Fatalf("findingEvidenceHeaderListQuery() selected full payload: %s", query)
+	}
+	if got := len(args); got != 5 {
+		t.Fatalf("len(findingEvidenceHeaderListQuery().args) = %d, want 5", got)
 	}
 }
 

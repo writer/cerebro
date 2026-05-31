@@ -507,6 +507,10 @@ type grcFindingEvidenceCounter interface {
 	CountFindingEvidence(context.Context, ports.ListFindingEvidenceRequest) (int, error)
 }
 
+type grcFindingEvidenceHeaderLister interface {
+	ListGRCFindingEvidence(context.Context, ports.ListFindingEvidenceRequest) ([]*cerebrov1.FindingEvidence, error)
+}
+
 func grcDashboardTelemetryAttrs() telemetry.Attributes {
 	return telemetry.Attrs(
 		telemetry.Field{Key: "route", Value: "/grc/dashboard"},
@@ -727,7 +731,7 @@ func (a *App) grcListEvidenceRecords(r *http.Request, runtimes []*cerebrov1.Sour
 	if filter.FindingIDs != nil && strings.TrimSpace(filter.FindingID) == "" && len(grcNonEmptyFindingIDs(filter.FindingIDs)) == 0 {
 		return nil, nil
 	}
-	records, err := store.ListFindingEvidence(r.Context(), ports.ListFindingEvidenceRequest{
+	request := ports.ListFindingEvidenceRequest{
 		RuntimeIDs:   runtimeIDs,
 		FindingID:    filter.FindingID,
 		FindingIDs:   filter.FindingIDs,
@@ -736,7 +740,16 @@ func (a *App) grcListEvidenceRecords(r *http.Request, runtimes []*cerebrov1.Sour
 		GraphRootURN: filter.GraphRootURN,
 		Limit:        limit,
 		CreatedOrder: true,
-	})
+	}
+	var (
+		records []*cerebrov1.FindingEvidence
+		err     error
+	)
+	if lister, ok := store.(grcFindingEvidenceHeaderLister); ok {
+		records, err = lister.ListGRCFindingEvidence(r.Context(), request)
+	} else {
+		records, err = store.ListFindingEvidence(r.Context(), request)
+	}
 	if err != nil {
 		return nil, err
 	}
