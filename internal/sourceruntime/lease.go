@@ -10,6 +10,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 const (
@@ -64,16 +65,31 @@ type SyncWithLeaseOptions struct {
 //     task has taken over.
 //   - Release runs on a detached timeout-bounded context so it still
 //     happens when the parent context is already cancelled.
-func (s *Service) SyncWithLease(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequest, opts SyncWithLeaseOptions) (*cerebrov1.SyncSourceRuntimeResponse, error) {
+func (s *Service) SyncWithLease(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequest, opts SyncWithLeaseOptions) (_ *cerebrov1.SyncSourceRuntimeResponse, err error) {
+	runtimeID := strings.TrimSpace(req.GetId())
+	ttl := opts.LeaseTTL
+	if ttl <= 0 {
+		ttl = DefaultLeaseTTL
+	}
+	attrs := syncWithLeaseTelemetryAttrs(req, opts.LeaseStore != nil, ttl)
+	ctx, span := telemetry.Start(ctx, "source_runtime.sync_with_lease", attrs)
+	status := "completed"
+	errorKind := ""
+	defer func() {
+		if err != nil {
+			status = syncWithLeaseTelemetryStatus(err)
+			if errorKind == "" {
+				errorKind = syncWithLeaseTelemetryErrorKind(err)
+			}
+			attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: errorKind})
+		}
+		telemetry.End(span, status, attrs)
+	}()
 	if s == nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	if opts.LeaseStore == nil {
 		return s.Sync(ctx, req)
-	}
-	runtimeID := ""
-	if req != nil {
-		runtimeID = strings.TrimSpace(req.GetId())
 	}
 	if runtimeID == "" {
 		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
@@ -82,20 +98,20 @@ func (s *Service) SyncWithLease(ctx context.Context, req *cerebrov1.SyncSourceRu
 	if owner == "" {
 		owner = DefaultAPILeaseOwner()
 	}
-	ttl := opts.LeaseTTL
-	if ttl <= 0 {
-		ttl = DefaultLeaseTTL
-	}
 	acquired, err := opts.LeaseStore.AcquireSourceRuntimeLease(ctx, runtimeID, owner, ttl)
 	if err != nil {
+		errorKind = "lease_acquire_failed"
+		attrs = attrs.WithField(telemetry.Field{Key: "lease_acquired", Value: false})
 		return nil, fmt.Errorf("acquire source runtime lease %q: %w", runtimeID, err)
 	}
+	attrs = attrs.WithField(telemetry.Field{Key: "lease_acquired", Value: acquired})
 	if !acquired {
 		if s.store != nil {
 			if _, lookupErr := s.lookupRuntime(ctx, runtimeID); lookupErr != nil {
 				return nil, lookupErr
 			}
 		}
+		attrs = attrs.WithField(telemetry.Field{Key: "lease_conflict", Value: true})
 		return nil, fmt.Errorf("%w: %s", ErrSyncInProgress, runtimeID)
 	}
 	syncCtx, cancelSync := context.WithCancel(ctx)
@@ -108,12 +124,45 @@ func (s *Service) SyncWithLease(ctx context.Context, req *cerebrov1.SyncSourceRu
 		return nil, syncErr
 	}
 	if renewalErr != nil {
+		errorKind = "lease_renew_failed"
 		return nil, fmt.Errorf("renew source runtime lease %q: %w", runtimeID, renewalErr)
 	}
 	if releaseErr != nil {
+		errorKind = "lease_release_failed"
 		return nil, fmt.Errorf("release source runtime lease %q: %w", runtimeID, releaseErr)
 	}
 	return response, nil
+}
+
+func syncWithLeaseTelemetryAttrs(req *cerebrov1.SyncSourceRuntimeRequest, leaseStorePresent bool, ttl time.Duration) telemetry.Attributes {
+	return telemetry.Attrs(
+		telemetry.Field{Key: "runtime_id", Value: strings.TrimSpace(req.GetId())},
+		telemetry.Field{Key: "page_limit", Value: req.GetPageLimit()},
+		telemetry.Field{Key: "lease_store_present", Value: leaseStorePresent},
+		telemetry.Field{Key: "lease_ttl_seconds", Value: int64(ttl.Seconds())},
+	)
+}
+
+func syncWithLeaseTelemetryStatus(err error) string {
+	if errors.Is(err, ErrSyncInProgress) {
+		return "conflict"
+	}
+	return "failed"
+}
+
+func syncWithLeaseTelemetryErrorKind(err error) string {
+	switch {
+	case errors.Is(err, ErrSyncInProgress):
+		return "sync_in_progress"
+	case errors.Is(err, ErrInvalidRequest):
+		return "invalid_request"
+	case errors.Is(err, ErrRuntimeUnavailable):
+		return "runtime_unavailable"
+	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
+		return "runtime_not_found"
+	default:
+		return "sync_failed"
+	}
 }
 
 // DefaultAPILeaseOwner returns an owner identifier suitable for the API
