@@ -411,10 +411,17 @@ func TestProjectGitHubDependabotAlertLinksRepoScopedDependency(t *testing.T) {
 	manifestURN := "urn:cerebro:writer:github_dependency_manifest:writer/cerebro:go.mod"
 	dependencyURN := "urn:cerebro:writer:github_dependency:writer/cerebro:go.mod:go:golang.org/x/crypto"
 	packageURN := "urn:cerebro:writer:package:go:golang.org/x/crypto"
+	canonicalPackageURN := "urn:cerebro:writer:package:canonical:golang.org/x/crypto"
 	assertProjectedLink(t, state, manifestURN, relationBelongsTo, repoURN)
 	assertProjectedLink(t, state, dependencyURN, relationBelongsTo, manifestURN)
+	assertProjectedLink(t, state, manifestURN, relationContains, dependencyURN)
+	assertProjectedLink(t, state, repoURN, relationContains, dependencyURN)
+	assertProjectedLink(t, state, repoURN, relationContains, packageURN)
+	assertProjectedLink(t, state, repoURN, relationContains, canonicalPackageURN)
 	assertProjectedLink(t, state, dependencyURN, relationRepresents, packageURN)
+	assertProjectedLink(t, state, dependencyURN, relationRepresents, canonicalPackageURN)
 	assertProjectedLink(t, state, alertURN, relationAffects, dependencyURN)
+	assertProjectedLink(t, state, alertURN, relationAffects, canonicalPackageURN)
 }
 
 func TestProjectOktaOAuthGrantAsApplicationTelemetry(t *testing.T) {
@@ -2101,6 +2108,19 @@ func TestProjectReusesCrossSourceIdentifierWithinTenant(t *testing.T) {
 				"resource_type":      "account",
 			},
 		},
+		{
+			Id:       "aws-iam-role-sso",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.iam_role",
+			Attributes: map[string]string{
+				"arn":            "arn:aws:iam::123456789012:role/AWSReservedSSO_admin",
+				"domain":         "123456789012",
+				"login":          "AWSReservedSSO_admin",
+				"principal_type": "role",
+				"user_id":        "AROASSOADMIN",
+			},
+		},
 	}
 
 	for _, event := range events {
@@ -2149,6 +2169,14 @@ func TestProjectReusesCrossSourceIdentifierWithinTenant(t *testing.T) {
 	}
 	if got := awsIdentityLink.Attributes["confidence"]; got != "0.85" {
 		t.Fatalf("aws identity confidence = %q, want 0.85", got)
+	}
+	awsScopedIdentityURN := "urn:cerebro:writer:identity:login:aws:123456789012:role:awsreservedsso_admin"
+	awsRoleURN := "urn:cerebro:writer:aws_role:AROASSOADMIN"
+	if _, ok := state.links[awsActorURN+"|"+relationRepresentsIdentity+"|"+awsScopedIdentityURN]; !ok {
+		t.Fatalf("aws assumed-role scoped identity link missing for %q", awsScopedIdentityURN)
+	}
+	if _, ok := state.links[awsRoleURN+"|"+relationRepresentsIdentity+"|"+awsScopedIdentityURN]; !ok {
+		t.Fatalf("aws iam role scoped identity link missing for %q", awsScopedIdentityURN)
 	}
 
 	// Reverse pointer keeps identity traversal symmetric: starting at the
@@ -2826,6 +2854,9 @@ func TestProjectCloudExposureAndPrivilegePaths(t *testing.T) {
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationRepresents, "urn:cerebro:writer:internet_host:d111111abcdef8.cloudfront.net")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationRepresents, "urn:cerebro:writer:internet_host:app.writer.com")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationRepresents, "urn:cerebro:writer:internet_ip:203.0.113.10")
+	assertProjectedLink(t, state, "urn:cerebro:writer:internet_host:app.writer.com", relationBelongsTo, "urn:cerebro:writer:internet_domain:writer.com")
+	assertProjectedLink(t, state, "urn:cerebro:writer:internet_host:d111111abcdef8.cloudfront.net", relationBelongsTo, "urn:cerebro:writer:internet_domain:d111111abcdef8.cloudfront.net")
+	assertProjectedLink(t, state, "urn:cerebro:writer:internet_host:ec2-203-0-113-10.compute-1.amazonaws.com", relationResolvesTo, "urn:cerebro:writer:internet_ip:203.0.113.10")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationAttachedTo, "urn:cerebro:writer:aws_ec2_instance:i-network-1")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_elastic_ip:eipalloc-1", relationAssociatedWith, "urn:cerebro:writer:aws_ec2_instance:i-eip-1")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_role:arn:aws:iam::999999999999:role/ExternalAdmin", relationCanAssume, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/AdminRole")

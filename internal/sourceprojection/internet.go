@@ -167,6 +167,23 @@ func addInternetHostDomainLink(entities map[string]*ports.ProjectedEntity, links
 	}))
 }
 
+func addInternetHostResolvesToIPLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, rawHost string, rawIP string, matchType string, confidence string) {
+	hostURN, host := internetHostURN(tenantID, rawHost)
+	ipURN, ip := internetIPURN(tenantID, rawIP)
+	if hostURN == "" || ipURN == "" || host == ip {
+		return
+	}
+	addInternetHostEntity(entities, tenantID, sourceID, hostURN, host)
+	addInternetIPEntity(entities, tenantID, sourceID, ipURN, ip)
+	addLink(links, projectedLink(tenantID, sourceID, hostURN, ipURN, relationResolvesTo, map[string]string{
+		"confidence": confidence,
+		"event_id":   event.GetId(),
+		"host":       host,
+		"ip":         ip,
+		"match_type": matchType,
+	}))
+}
+
 func dnsRecordURN(tenantID string, host string, recordType string, recordValue string) string {
 	host = internetHost(host)
 	recordType = strings.ToUpper(strings.TrimSpace(recordType))

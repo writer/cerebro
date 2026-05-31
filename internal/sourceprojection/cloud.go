@@ -211,14 +211,24 @@ func cloudPublicEndpointProjections(event *cerebrov1.EventEnvelope, profile iden
 			},
 		})
 		addCloudPublicEndpointInstanceLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, provider, resourceType, attributes)
-		for _, host := range splitCloudAttributeList(attributes["host"]) {
+		primaryHosts := splitCloudAttributeList(attributes["host"])
+		targetHosts := splitCloudAttributeList(strings.Join([]string{attributes["alternate_hosts"], attributes["target_hosts"], attributes["target_host"]}, ","))
+		ips := splitCloudAttributeList(strings.Join([]string{attributes["ip"], attributes["target_ips"], attributes["target_ip"]}, ","))
+		for _, host := range primaryHosts {
 			addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, relationRepresents, host, "aws_public_endpoint_host", "0.95")
+			addInternetHostDomainLink(entities, links, tenantID, event.GetSourceId(), event, host, "aws_public_endpoint_domain", "0.85")
 		}
-		for _, host := range splitCloudAttributeList(strings.Join([]string{attributes["alternate_hosts"], attributes["target_hosts"], attributes["target_host"]}, ",")) {
+		for _, host := range targetHosts {
 			addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, relationRepresents, host, "aws_public_endpoint_target_host", "0.90")
+			addInternetHostDomainLink(entities, links, tenantID, event.GetSourceId(), event, host, "aws_public_endpoint_target_domain", "0.80")
 		}
-		for _, ip := range splitCloudAttributeList(strings.Join([]string{attributes["ip"], attributes["target_ips"], attributes["target_ip"]}, ",")) {
+		for _, ip := range ips {
 			addInternetIPLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, ip, "aws_public_endpoint_ip", "0.95")
+		}
+		for _, host := range primaryHosts {
+			for _, ip := range ips {
+				addInternetHostResolvesToIPLink(entities, links, tenantID, event.GetSourceId(), event, host, ip, "aws_public_endpoint_host_ip", "0.80")
+			}
 		}
 		addCloudAccountLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, cloudResourceExposureAccountID(attributes, provider), provider)
 		if publicURN != "" && projectionBool(firstNonEmpty(attributes["internet_exposed"], attributes["public"], attributes["external_exposure"])) {

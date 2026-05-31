@@ -31,7 +31,7 @@ func newCloudPublicExposurePrivilegedPrincipalRule() Rule {
 			Name:        "Cloud Public Exposure With Privileged Principal",
 			Description: "Detect cloud accounts where public reachability and admin-equivalent permissions intersect.",
 			SourceID:    "cloud",
-			EventKinds:  []string{"aws.effective_permission", "aws.public_endpoint", "aws.resource_exposure"},
+			EventKinds:  []string{"aws.effective_permission", "aws.iam_role_assignment", "aws.iam_role_trust", "aws.public_endpoint", "aws.resource_exposure"},
 			OutputKind:  cloudPublicExposurePrivilegedPrincipalKind,
 			Severity:    "CRITICAL",
 			Status:      findingStatusOpen,
@@ -69,7 +69,7 @@ func (r *cloudPublicExposurePrivilegedPrincipalRule) SupportsRuntime(runtime *ce
 	if runtime == nil || !strings.EqualFold(strings.TrimSpace(runtime.GetSourceId()), "aws") {
 		return false
 	}
-	return strings.EqualFold(strings.TrimSpace(runtime.GetConfig()["family"]), "effective_permission")
+	return runtimeMayEmitEventKind(runtime, r.definition.EventKinds)
 }
 
 func (r *cloudPublicExposurePrivilegedPrincipalRule) Evaluate(context.Context, *cerebrov1.SourceRuntime, *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
