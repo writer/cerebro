@@ -914,6 +914,7 @@ func emitAccessAuditEvent(r *http.Request, origin requestOrigin, principal authP
 	attrs := telemetry.Attrs(
 		telemetry.Field{Key: "outcome", Value: outcome},
 		telemetry.Field{Key: "status", Value: status},
+		telemetry.Field{Key: "status_code", Value: status},
 		telemetry.Field{Key: "method", Value: r.Method},
 		telemetry.Field{Key: "route", Value: route},
 		telemetry.Field{Key: "operation_family", Value: operation.Family},

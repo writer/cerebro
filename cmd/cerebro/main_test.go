@@ -76,6 +76,52 @@ func TestStartFindingRiskBackfillLogsErrors(t *testing.T) {
 	}
 }
 
+func TestStartFindingRiskBackfillEmitsTelemetry(t *testing.T) {
+	backfiller := &errorFindingRiskBackfiller{}
+	stderr := captureCommandStderr(t, func() {
+		done := startFindingRiskBackfill(context.Background(), backfiller, func(string, ...any) {})
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("finding risk backfill did not finish")
+		}
+	})
+
+	payload := lastCommandTelemetryPayload(t, stderr)
+	if got := payload["name"]; got != "finding.risk_backfill" {
+		t.Fatalf("telemetry name = %#v, want finding.risk_backfill; payload=%#v", got, payload)
+	}
+	if got := payload["status"]; got != "completed" {
+		t.Fatalf("telemetry status = %#v, want completed; payload=%#v", got, payload)
+	}
+	if got := payload["backfiller_present"]; got != true {
+		t.Fatalf("telemetry backfiller_present = %#v, want true; payload=%#v", got, payload)
+	}
+	if _, ok := payload["duration_ms"].(float64); !ok {
+		t.Fatalf("telemetry duration_ms = %#v, want number; payload=%#v", payload["duration_ms"], payload)
+	}
+}
+
+func TestStartFindingRiskBackfillTelemetryRecordsFailures(t *testing.T) {
+	backfiller := &errorFindingRiskBackfiller{err: errors.New("boom")}
+	stderr := captureCommandStderr(t, func() {
+		done := startFindingRiskBackfill(context.Background(), backfiller, func(string, ...any) {})
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("finding risk backfill did not finish")
+		}
+	})
+
+	payload := lastCommandTelemetryPayload(t, stderr)
+	if got := payload["status"]; got != "failed" {
+		t.Fatalf("telemetry status = %#v, want failed; payload=%#v", got, payload)
+	}
+	if got := fmt.Sprint(payload["error"]); !strings.Contains(got, "backfill finding risk: boom") {
+		t.Fatalf("telemetry error = %q, want wrapped backfill error; payload=%#v", got, payload)
+	}
+}
+
 func TestPrepareGRCReadModelsSkipsStoresWithoutPreparer(t *testing.T) {
 	if err := prepareGRCReadModels(context.Background(), &basicStateStore{}); err != nil {
 		t.Fatalf("prepareGRCReadModels() error = %v", err)

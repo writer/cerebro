@@ -176,13 +176,29 @@ func startGRCReadModelWarmup(ctx context.Context, stateStore ports.StateStore, l
 func startFindingRiskBackfill(ctx context.Context, backfiller findingRiskBackfiller, logf func(string, ...any)) <-chan struct{} {
 	done := make(chan struct{})
 	if backfiller == nil {
+		_, span := telemetry.Start(ctx, "finding.risk_backfill", telemetry.Attrs(
+			telemetry.Field{Key: "backfiller_present", Value: false},
+		))
+		telemetry.End(span, "skipped", telemetry.Attrs(telemetry.Field{Key: "backfiller_present", Value: false}))
 		close(done)
 		return done
 	}
 	go func() {
 		defer close(done)
+		ctx, span := telemetry.Start(ctx, "finding.risk_backfill", telemetry.Attrs(
+			telemetry.Field{Key: "backfiller_present", Value: true},
+		))
+		status := "completed"
+		attrs := telemetry.Attrs(telemetry.Field{Key: "backfiller_present", Value: true})
+		defer func() {
+			telemetry.End(span, status, attrs)
+		}()
 		if err := backfiller.BackfillFindingRisk(ctx); err != nil && ctx.Err() == nil {
+			status = "failed"
+			attrs = attrs.WithField(telemetry.Field{Key: "error", Value: fmt.Errorf("backfill finding risk: %w", err).Error()})
 			logf("backfill finding risk: %v", err)
+		} else if ctx.Err() != nil {
+			status = "canceled"
 		}
 	}()
 	return done
