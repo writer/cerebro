@@ -45,6 +45,16 @@ class GraphCommandResult:
     payload: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class GraphCommandContext:
+    cluster: str
+    task_definition: str
+    network_configuration: dict[str, Any]
+    log_group: str
+    stream_prefix: str
+    has_source_runtime_bootstrap: bool
+
+
 class CurrentIngestRunsError(RuntimeError):
     def __init__(self, message: str, *, retryable: bool) -> None:
         self.retryable = retryable
@@ -228,11 +238,36 @@ def _task_definition_container_names(task_definition: str, region: str) -> set[s
     }
 
 
-def _graph_command_overrides(task_definition: str, command: list[str], region: str) -> dict[str, Any]:
+def _graph_command_overrides_from_names(command: list[str], container_names: set[str]) -> dict[str, Any]:
     container_overrides = [{"name": "cerebro", "command": command}]
-    if "source-runtime-bootstrap" in _task_definition_container_names(task_definition, region):
+    if "source-runtime-bootstrap" in container_names:
         container_overrides.append({"name": "source-runtime-bootstrap", "command": ["graph", "counts"]})
     return {"containerOverrides": container_overrides}
+
+
+def _graph_command_overrides(task_definition: str, command: list[str], region: str) -> dict[str, Any]:
+    return _graph_command_overrides_from_names(command, _task_definition_container_names(task_definition, region))
+
+
+def _graph_command_context(resource_prefix: str, service: dict[str, Any], region: str) -> GraphCommandContext:
+    task_definition = _latest_active_task_definition(service["taskDefinition"], region)
+    response = _aws(["ecs", "describe-task-definition", "--task-definition", task_definition], region)
+    container_definitions = response["taskDefinition"]["containerDefinitions"]
+    container_names = {
+        str(container.get("name") or "").strip()
+        for container in container_definitions
+        if str(container.get("name") or "").strip()
+    }
+    cerebro_container = next(container for container in container_definitions if container.get("name") == "cerebro")
+    options = cerebro_container["logConfiguration"]["options"]
+    return GraphCommandContext(
+        cluster=f"{resource_prefix}-cluster",
+        task_definition=task_definition,
+        network_configuration=_network_configuration(service),
+        log_group=options["awslogs-group"],
+        stream_prefix=options["awslogs-stream-prefix"],
+        has_source_runtime_bootstrap="source-runtime-bootstrap" in container_names,
+    )
 
 
 def _wait_for_task(cluster: str, task_arn: str, timeout_seconds: int, poll_seconds: int, region: str) -> None:
@@ -272,8 +307,12 @@ def _log_options(task_definition: str, region: str) -> tuple[str, str]:
     return options["awslogs-group"], options["awslogs-stream-prefix"]
 
 
-def _task_messages(task: dict[str, Any], region: str) -> list[str]:
-    log_group, stream_prefix = _log_options(task["taskDefinitionArn"], region)
+def _task_messages(
+    task: dict[str, Any],
+    region: str,
+    log_options: tuple[str, str] | None = None,
+) -> list[str]:
+    log_group, stream_prefix = log_options if log_options is not None else _log_options(task["taskDefinitionArn"], region)
     stream = f"{stream_prefix}/cerebro/{_task_id(task['taskArn'])}"
     events = _aws(
         [
@@ -311,22 +350,25 @@ def _run_graph_command(
     timeout_seconds: int,
     poll_seconds: int,
     region: str,
+    context: GraphCommandContext | None = None,
 ) -> GraphCommandResult:
-    cluster = f"{resource_prefix}-cluster"
-    task_definition = _latest_active_task_definition(service["taskDefinition"], region)
-    overrides = _graph_command_overrides(task_definition, command, region)
+    context = context or _graph_command_context(resource_prefix, service, region)
+    overrides = _graph_command_overrides_from_names(
+        command,
+        {"source-runtime-bootstrap"} if context.has_source_runtime_bootstrap else set(),
+    )
     response = _aws(
         [
             "ecs",
             "run-task",
             "--cluster",
-            cluster,
+            context.cluster,
             "--task-definition",
-            task_definition,
+            context.task_definition,
             "--launch-type",
             "FARGATE",
             "--network-configuration",
-            json.dumps(_network_configuration(service), separators=(",", ":")),
+            json.dumps(context.network_configuration, separators=(",", ":")),
             "--overrides",
             json.dumps(overrides, separators=(",", ":")),
         ],
@@ -339,12 +381,12 @@ def _run_graph_command(
     if len(tasks) != 1:
         raise RuntimeError(f"expected one task for graph command {' '.join(command)}, got {len(tasks)}")
     task_arn = tasks[0]["taskArn"]
-    _wait_for_task(cluster, task_arn, timeout_seconds, poll_seconds, region)
-    task = _describe_tasks(cluster, [task_arn], region)[0]
+    _wait_for_task(context.cluster, task_arn, timeout_seconds, poll_seconds, region)
+    task = _describe_tasks(context.cluster, [task_arn], region)[0]
     containers = task.get("containers") or []
     cerebro_container = next((container for container in containers if container.get("name") == "cerebro"), None)
     exit_code = cerebro_container.get("exitCode") if cerebro_container else None
-    messages = _task_messages(task, region)
+    messages = _task_messages(task, region, (context.log_group, context.stream_prefix))
     payload = _extract_json_payload(messages)
     if exit_code != 0:
         raise RuntimeError(f"graph command {' '.join(command)} exited with {exit_code}: {task_arn}")
@@ -359,11 +401,12 @@ def _run_graph_command_with_retries(
     poll_seconds: int,
     region: str,
     retry_seconds: int,
+    context: GraphCommandContext | None = None,
 ) -> GraphCommandResult:
     deadline = time.time() + retry_seconds
     while True:
         try:
-            return _run_graph_command(resource_prefix, service, command, timeout_seconds, poll_seconds, region)
+            return _run_graph_command(resource_prefix, service, command, timeout_seconds, poll_seconds, region, context)
         except Exception:
             now = time.time()
             if retry_seconds <= 0 or now >= deadline:
@@ -531,6 +574,7 @@ def _verify_current_ingest_runs_with_retries(
     ingest_health_retry_seconds: int,
     max_running_minutes: int,
     allow_transient_source_failures: bool,
+    context: GraphCommandContext | None = None,
 ) -> tuple[GraphCommandResult, int]:
     deadline = time.time() + ingest_health_retry_seconds
     while True:
@@ -542,6 +586,7 @@ def _verify_current_ingest_runs_with_retries(
             poll_seconds,
             region,
             graph_command_retry_seconds,
+            context,
         )
         try:
             current_ingest_runtimes = _verify_current_ingest_runs(
@@ -802,6 +847,7 @@ def main(argv: list[str] | None = None) -> int:
     _verify_account(stack, args.region)
     resource_prefix = _resource_prefix(config, stack)
     service = _describe_api_service(resource_prefix, args.region)
+    graph_command_context = _graph_command_context(resource_prefix, service, args.region)
     declared_runtime_ids = _declared_runtime_ids(config)
 
     counts = _run_graph_command_with_retries(
@@ -812,6 +858,7 @@ def main(argv: list[str] | None = None) -> int:
         args.poll_seconds,
         args.region,
         args.graph_command_retry_seconds,
+        graph_command_context,
     )
     graph_health_errors = _count_health_errors(counts.payload)
     integrity = _run_graph_command_with_retries(
@@ -822,6 +869,7 @@ def main(argv: list[str] | None = None) -> int:
         args.poll_seconds,
         args.region,
         args.graph_command_retry_seconds,
+        graph_command_context,
     )
     failed_integrity_checks = _failed_integrity_checks(integrity.payload)
     aws_families = _declared_aws_families(config)
@@ -843,6 +891,7 @@ def main(argv: list[str] | None = None) -> int:
             args.poll_seconds,
             args.region,
             args.graph_command_retry_seconds,
+            graph_command_context,
         )
         paths_task_arn = relation_counts.task_arn
         relation_counts_payload = _graph_relation_counts(relation_counts.payload)
@@ -862,6 +911,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.poll_seconds,
                 args.region,
                 args.graph_command_retry_seconds,
+                graph_command_context,
             )
             paths_task_arn = paths.task_arn
             graph_relations = _verify_required_graph_relations(
@@ -884,6 +934,7 @@ def main(argv: list[str] | None = None) -> int:
         args.ingest_health_retry_seconds,
         args.max_running_minutes,
         args.allow_transient_source_failures,
+        graph_command_context,
     )
     missing_ingest_runtimes = _missing_declared_ingest_runtime_ids(ingest_runs.payload, declared_runtime_ids)
     if missing_ingest_runtimes:

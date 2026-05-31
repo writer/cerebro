@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import scripts.verify_graph_health_ecs as verify_graph_health_ecs
 from scripts.verify_graph_health_ecs import (
     GRAPH_RELATIONS_TO_OBSERVE,
+    GraphCommandContext,
     _count_health_errors,
     _declared_aws_families,
     _extract_json_payload,
@@ -28,6 +29,7 @@ from scripts.verify_graph_health_ecs import (
     _missing_declared_ingest_runtime_ids,
     _missing_required_graph_relation_counts,
     _resource_prefix,
+    _run_graph_command,
     _supports_attack_path_relations,
     _supports_relation_counts,
     _verify_counts,
@@ -217,6 +219,53 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
 
         self.assertEqual(result.payload, {"nodes": 1, "relations": 1})
         self.assertEqual(calls, 2)
+
+    def test_run_graph_command_uses_cached_context(self) -> None:
+        original_aws = verify_graph_health_ecs._aws
+        original_wait_for_task = verify_graph_health_ecs._wait_for_task
+        describe_definition_calls = 0
+        context = GraphCommandContext(
+            cluster="cluster",
+            task_definition="arn:aws:ecs:us-east-1:123:task-definition/cerebro-go-production:45",
+            network_configuration={
+                "awsvpcConfiguration": {
+                    "subnets": ["subnet-1"],
+                    "securityGroups": ["sg-1"],
+                    "assignPublicIp": "DISABLED",
+                }
+            },
+            log_group="/ecs/cerebro",
+            stream_prefix="runtime",
+            has_source_runtime_bootstrap=True,
+        )
+
+        def fake_aws(args, _region):
+            nonlocal describe_definition_calls
+            if args[:2] == ["ecs", "describe-task-definition"]:
+                describe_definition_calls += 1
+                raise AssertionError("task definition metadata should come from the cached context")
+            if args[:2] == ["ecs", "run-task"]:
+                self.assertIn("--overrides", args)
+                override = args[args.index("--overrides") + 1]
+                self.assertIn("source-runtime-bootstrap", override)
+                return {"tasks": [{"taskArn": "task-arn"}]}
+            if args[:2] == ["ecs", "describe-tasks"]:
+                return {"tasks": [{"taskArn": "task-arn", "containers": [{"name": "cerebro", "exitCode": 0}]}]}
+            if args[:2] == ["logs", "get-log-events"]:
+                self.assertIn("/ecs/cerebro", args)
+                return {"events": [{"message": '{"nodes": 1, "relations": 2}'}]}
+            raise AssertionError(f"unexpected args: {args}")
+
+        verify_graph_health_ecs._aws = fake_aws
+        verify_graph_health_ecs._wait_for_task = lambda *_args, **_kwargs: None
+        try:
+            result = _run_graph_command("prefix", {}, ["graph", "counts"], 10, 1, "us-east-1", context)
+        finally:
+            verify_graph_health_ecs._aws = original_aws
+            verify_graph_health_ecs._wait_for_task = original_wait_for_task
+
+        self.assertEqual(result.payload, {"nodes": 1, "relations": 2})
+        self.assertEqual(describe_definition_calls, 0)
 
     def test_extract_json_payload_from_pretty_logs(self) -> None:
         payload = _extract_json_payload(['{"nodes": 2,', ' "relations": 3}'])
