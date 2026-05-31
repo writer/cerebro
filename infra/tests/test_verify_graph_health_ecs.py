@@ -267,10 +267,61 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
         self.assertEqual(result.payload, {"nodes": 1, "relations": 2})
         self.assertEqual(describe_definition_calls, 0)
 
+    def test_run_graph_command_with_retries_stops_before_credential_expiry(self) -> None:
+        original_run_graph_command = verify_graph_health_ecs._run_graph_command
+        original_time = verify_graph_health_ecs.time.time
+        calls = 0
+
+        def fake_run_graph_command(*_args, **_kwargs):
+            nonlocal calls
+            calls += 1
+            return verify_graph_health_ecs.GraphCommandResult(
+                command=["graph", "counts"],
+                task_arn="task-arn",
+                exit_code=0,
+                payload={"nodes": 1, "relations": 1},
+            )
+
+        verify_graph_health_ecs._run_graph_command = fake_run_graph_command
+        verify_graph_health_ecs.time.time = lambda: 100
+        try:
+            with self.assertRaisesRegex(TimeoutError, "credential-safe timeout"):
+                _run_graph_command_with_retries(
+                    "prefix",
+                    {},
+                    ["graph", "counts"],
+                    10,
+                    1,
+                    "us-east-1",
+                    5,
+                    overall_deadline=99,
+                )
+        finally:
+            verify_graph_health_ecs._run_graph_command = original_run_graph_command
+            verify_graph_health_ecs.time.time = original_time
+
+        self.assertEqual(calls, 0)
+
     def test_extract_json_payload_from_pretty_logs(self) -> None:
         payload = _extract_json_payload(['{"nodes": 2,', ' "relations": 3}'])
 
         self.assertEqual(payload, {"nodes": 2, "relations": 3})
+
+    def test_extract_json_payload_ignores_telemetry_json(self) -> None:
+        payload = _extract_json_payload(
+            [
+                '{"span":"graph.ingest_list_runs","status":"completed"}',
+                "{",
+                '  "runs": [',
+                '    {"id": "run-1", "runtime_id": "runtime-a", "status": "completed"}',
+                "  ],",
+                '  "failed_count": 0',
+                "}",
+            ]
+        )
+
+        self.assertEqual(payload["runs"][0]["id"], "run-1")
+        self.assertEqual(payload["failed_count"], 0)
 
     def test_verify_counts_rejects_empty_graph(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "node count"):
