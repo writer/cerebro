@@ -28,6 +28,8 @@ func TestGRCDashboardAggregateQueryCombinesFindingAndEvidenceCounts(t *testing.T
 		"jsonb_array_elements",
 		"jsonb_build_object('framework_name', framework_name, 'control_id', control_id)",
 		"evidence_summary AS",
+		"jsonb_object_agg(finding_id, evidence_count)",
+		"GROUP BY finding_id",
 		"FROM finding_evidence",
 		"runtime_id IN ($5, $6)",
 		"finding_id IN ($7, $8)",
@@ -58,6 +60,16 @@ func TestDecodeGRCDashboardControlKeysBuildsKeysInGo(t *testing.T) {
 	want := []string{"SOC 2\x00CC6.1", "Unmapped\x00Needs mapping"}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("decodeGRCDashboardControlKeys() = %#v, want %#v", got, want)
+	}
+}
+
+func TestDecodeGRCDashboardEvidenceCounts(t *testing.T) {
+	got, err := decodeGRCDashboardEvidenceCounts(`{"finding-1":2,"":5}`)
+	if err != nil {
+		t.Fatalf("decodeGRCDashboardEvidenceCounts() error = %v", err)
+	}
+	if len(got) != 1 || got["finding-1"] != 2 {
+		t.Fatalf("decodeGRCDashboardEvidenceCounts() = %#v, want finding-1=2 only", got)
 	}
 }
 

@@ -10,8 +10,9 @@ type GRCDashboardAggregateRequest struct {
 
 // GRCDashboardAggregate contains dashboard summary counts fetched without row payloads.
 type GRCDashboardAggregate struct {
-	FindingSummary FindingSummary
-	EvidenceCount  int
+	FindingSummary            FindingSummary
+	EvidenceCount             int
+	EvidenceCountsByFindingID map[string]int
 }
 
 // GRCDashboardAggregateStore provides a purpose-built aggregate path for the GRC dashboard.

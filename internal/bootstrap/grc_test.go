@@ -521,13 +521,14 @@ func TestGRCDashboardUsesPurposeBuiltAggregateStore(t *testing.T) {
 		},
 		findingEvidence: map[string]*cerebrov1.FindingEvidence{
 			"evidence-1": {Id: "evidence-1", RuntimeId: runtimeID, FindingId: "finding-1", CreatedAt: timestamppb.New(now)},
+			"evidence-2": {Id: "evidence-2", RuntimeId: runtimeID, FindingId: "finding-1", CreatedAt: timestamppb.New(now.Add(-time.Minute))},
 		},
 	}}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	resp, err := server.Client().Get(server.URL + "/grc/dashboard?tenant_id=" + tenantID)
+	resp, err := server.Client().Get(server.URL + "/grc/dashboard?tenant_id=" + tenantID + "&limit=1")
 	if err != nil {
 		t.Fatalf("GET /grc/dashboard error = %v", err)
 	}
@@ -542,8 +543,14 @@ func TestGRCDashboardUsesPurposeBuiltAggregateStore(t *testing.T) {
 	if store.aggregateCalls != 1 {
 		t.Fatalf("aggregate calls = %d, want 1", store.aggregateCalls)
 	}
-	if payload.Summary.OpenFindings != 1 || payload.Summary.EvidenceItems != 1 {
+	if payload.Summary.OpenFindings != 1 || payload.Summary.EvidenceItems != 2 {
 		t.Fatalf("summary = %+v, want aggregate finding/evidence counts", payload.Summary)
+	}
+	if len(payload.Findings) != 1 || payload.Findings[0].EvidenceCount != 2 {
+		t.Fatalf("findings = %+v, want aggregate evidence count 2", payload.Findings)
+	}
+	if len(payload.Controls) != 1 || payload.Controls[0].EvidenceItems != 2 {
+		t.Fatalf("controls = %+v, want aggregate evidence count 2", payload.Controls)
 	}
 }
 
@@ -660,7 +667,18 @@ func (s *stubGRCAggregateStore) SummarizeGRCDashboard(ctx context.Context, reque
 	if err != nil {
 		return ports.GRCDashboardAggregate{}, err
 	}
-	return ports.GRCDashboardAggregate{FindingSummary: summary, EvidenceCount: count}, nil
+	countsByFindingID := map[string]int{}
+	for _, evidence := range s.findingEvidence {
+		if evidence == nil {
+			continue
+		}
+		for _, findingID := range request.EvidenceRequest.FindingIDs {
+			if evidence.GetFindingId() == findingID {
+				countsByFindingID[findingID]++
+			}
+		}
+	}
+	return ports.GRCDashboardAggregate{FindingSummary: summary, EvidenceCount: count, EvidenceCountsByFindingID: countsByFindingID}, nil
 }
 
 type stubGRCEvidenceHeaderStore struct {
