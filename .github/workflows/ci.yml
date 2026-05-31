@@ -8,8 +8,29 @@ on:
   workflow_dispatch:
 
 jobs:
-  verify:
+  verify-shard:
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: build
+            command: make build
+          - name: test
+            command: make test
+          - name: lint
+            command: make lint
+          - name: proto-lint
+            command: make proto-lint
+          - name: openapi
+            command: make openapi-check openapi-lint
+          - name: catalog
+            command: make catalog-check detection-catalog-check
+          - name: oss-audit
+            command: make oss-audit
+          - name: structural
+            command: make check-structural check-structural-test check-arch
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -19,8 +40,18 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Install golangci-lint
-        run: make lint-bootstrap
+      - name: Run ${{ matrix.name }}
+        run: ${{ matrix.command }}
 
-      - name: Verify
-        run: make verify
+  verify:
+    runs-on: ubuntu-latest
+    needs: [verify-shard]
+    if: always()
+    steps:
+      - name: Check verify shards
+        run: |
+          if [ "${{ needs.verify-shard.result }}" != "success" ]; then
+            echo "One or more verify shards failed"
+            exit 1
+          fi
+          echo "All verify shards passed"
