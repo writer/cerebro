@@ -22,7 +22,8 @@ EXPECTED_STACK_ACCOUNTS = {
 }
 DEFAULT_MAX_RUNNING_MINUTES = 60
 DEFAULT_WAIT_TIMEOUT_SECONDS = 3600
-DEFAULT_GRAPH_COMMAND_RETRY_SECONDS = 300
+DEFAULT_GRAPH_COMMAND_RETRY_SECONDS = 1800
+DEFAULT_CREDENTIAL_SAFE_TIMEOUT_SECONDS = 3300
 MIN_INGEST_RUN_LIMIT = 100
 INGEST_RUN_LIMIT_MULTIPLIER = 20
 MAX_INGEST_RUN_LIMIT = 500
@@ -342,10 +343,6 @@ def _is_span_log_message(message: str) -> bool:
     return isinstance(payload, dict) and str(payload.get("kind") or "").startswith("span_")
 
 
-def _looks_like_graph_payload(payload: dict[str, Any]) -> bool:
-    return bool({"nodes", "relations", "checks", "runs", "patterns", "traversals"} & set(payload))
-
-
 def _log_tail(messages: list[str], limit: int = 1000) -> str:
     text = "\n".join(message for message in messages if message.strip())
     return _truncate_detail(text[-limit:], limit)
@@ -354,24 +351,41 @@ def _log_tail(messages: list[str], limit: int = 1000) -> str:
 def _extract_json_payload(messages: list[str]) -> dict[str, Any]:
     text = "\n".join(message for message in messages if message.strip() and not _is_span_log_message(message))
     decoder = json.JSONDecoder()
-    objects: list[dict[str, Any]] = []
-    index = 0
-    while index < len(text):
-        start = text.find("{", index)
-        if start < 0:
-            break
+    candidates: list[dict[str, Any]] = []
+    for index, char in enumerate(text):
+        if char != "{":
+            continue
         try:
-            payload, end = decoder.raw_decode(text[start:])
+            payload, _ = decoder.raw_decode(text[index:])
         except json.JSONDecodeError:
-            index = start + 1
             continue
         if isinstance(payload, dict):
-            objects.append(payload)
-        index = start + end
-    if not objects:
+            candidates.append(payload)
+    if not candidates:
         raise ValueError(f"graph command did not emit a JSON object: {text[-500:]}")
-    graph_payloads = [payload for payload in objects if _looks_like_graph_payload(payload)]
-    return graph_payloads[-1] if graph_payloads else objects[-1]
+    for payload in reversed(candidates):
+        if _looks_like_graph_command_payload(payload):
+            return payload
+    return candidates[-1]
+
+
+def _looks_like_graph_command_payload(payload: dict[str, Any]) -> bool:
+    if "nodes" in payload and "relations" in payload:
+        return True
+    if "checks" in payload or "runs" in payload:
+        return True
+    if "patterns" in payload or "traversals" in payload or "topology" in payload:
+        return True
+    return isinstance(payload.get("relations"), dict)
+
+
+def _credential_safe_timeout(overall_deadline: float | None, timeout_seconds: int) -> int:
+    if overall_deadline is None:
+        return timeout_seconds
+    remaining = int(overall_deadline - time.time())
+    if remaining <= 0:
+        raise TimeoutError("graph health verification reached credential-safe timeout before AWS credentials can expire")
+    return min(timeout_seconds, remaining)
 
 
 def _extract_graph_payload_or_raise(command: list[str], task_arn: str, messages: list[str]) -> dict[str, Any]:
@@ -443,20 +457,22 @@ def _run_graph_command_with_retries(
     region: str,
     retry_seconds: int,
     context: GraphCommandContext | None = None,
+    overall_deadline: float | None = None,
 ) -> GraphCommandResult:
-    deadline = time.time() + retry_seconds
+    retry_deadline = time.time() + retry_seconds
+    if overall_deadline is not None:
+        retry_deadline = min(retry_deadline, overall_deadline)
     while True:
         try:
-            return _run_graph_command(resource_prefix, service, command, timeout_seconds, poll_seconds, region, context)
+            attempt_timeout_seconds = _credential_safe_timeout(overall_deadline, timeout_seconds)
+            return _run_graph_command(resource_prefix, service, command, attempt_timeout_seconds, poll_seconds, region, context)
         except Exception as exc:
             now = time.time()
-            if retry_seconds <= 0 or now >= deadline:
+            if retry_seconds <= 0 or now >= retry_deadline:
                 raise
-            print(
-                f"WARNING: graph command {' '.join(command)} failed: {_truncate_detail(str(exc), 1000)}; retrying",
-                file=sys.stderr,
-            )
-            time.sleep(min(poll_seconds, max(1, int(deadline - now))))
+            detail = _truncate_detail(str(exc), INGEST_RUN_ERROR_DETAIL_LIMIT)
+            print(f"WARNING: graph command {' '.join(command)} failed: {detail}; retrying", file=sys.stderr)
+            time.sleep(min(poll_seconds, max(1, int(retry_deadline - now))))
 
 
 def _verify_counts(payload: dict[str, Any]) -> None:
@@ -619,8 +635,11 @@ def _verify_current_ingest_runs_with_retries(
     max_running_minutes: int,
     allow_transient_source_failures: bool,
     context: GraphCommandContext | None = None,
+    overall_deadline: float | None = None,
 ) -> tuple[GraphCommandResult, int]:
     deadline = time.time() + ingest_health_retry_seconds
+    if overall_deadline is not None:
+        deadline = min(deadline, overall_deadline)
     while True:
         ingest_runs = _run_graph_command_with_retries(
             resource_prefix,
@@ -631,6 +650,7 @@ def _verify_current_ingest_runs_with_retries(
             region,
             graph_command_retry_seconds,
             context,
+            overall_deadline=overall_deadline,
         )
         try:
             current_ingest_runtimes = _verify_current_ingest_runs(
@@ -879,12 +899,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-running-minutes", type=int, default=DEFAULT_MAX_RUNNING_MINUTES)
     parser.add_argument("--graph-command-retry-seconds", type=int, default=DEFAULT_GRAPH_COMMAND_RETRY_SECONDS)
     parser.add_argument("--ingest-health-retry-seconds", type=int, default=1800)
+    parser.add_argument("--credential-safe-timeout-seconds", type=int, default=DEFAULT_CREDENTIAL_SAFE_TIMEOUT_SECONDS)
     parser.add_argument(
         "--allow-transient-source-failures",
         action="store_true",
         help="Do not fail deployment health when the latest source ingest failed due to a transient provider timeout and older successful graph ingest history exists.",
     )
     args = parser.parse_args(argv)
+    overall_deadline = None
+    if args.credential_safe_timeout_seconds > 0:
+        overall_deadline = time.time() + args.credential_safe_timeout_seconds
 
     stack = _stack_name(args.stack_file)
     config = _load_config(args.stack_file)
@@ -903,6 +927,7 @@ def main(argv: list[str] | None = None) -> int:
         args.region,
         args.graph_command_retry_seconds,
         graph_command_context,
+        overall_deadline=overall_deadline,
     )
     graph_health_errors = _count_health_errors(counts.payload)
     integrity = _run_graph_command_with_retries(
@@ -914,6 +939,7 @@ def main(argv: list[str] | None = None) -> int:
         args.region,
         args.graph_command_retry_seconds,
         graph_command_context,
+        overall_deadline=overall_deadline,
     )
     failed_integrity_checks = _failed_integrity_checks(integrity.payload)
     aws_families = _declared_aws_families(config)
@@ -936,6 +962,7 @@ def main(argv: list[str] | None = None) -> int:
             args.region,
             args.graph_command_retry_seconds,
             graph_command_context,
+            overall_deadline=overall_deadline,
         )
         paths_task_arn = relation_counts.task_arn
         relation_counts_payload = _graph_relation_counts(relation_counts.payload)
@@ -956,6 +983,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.region,
                 args.graph_command_retry_seconds,
                 graph_command_context,
+                overall_deadline=overall_deadline,
             )
             paths_task_arn = paths.task_arn
             graph_relations = _verify_required_graph_relations(
@@ -979,6 +1007,7 @@ def main(argv: list[str] | None = None) -> int:
         args.max_running_minutes,
         args.allow_transient_source_failures,
         graph_command_context,
+        overall_deadline=overall_deadline,
     )
     missing_ingest_runtimes = _missing_declared_ingest_runtime_ids(ingest_runs.payload, declared_runtime_ids)
     if missing_ingest_runtimes:

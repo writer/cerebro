@@ -358,7 +358,7 @@ jobs:
       - name: Verify graph health (sec-dev)
         shell: bash
         working-directory: infra
-        run: uv run python scripts/verify_graph_health_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --wait-timeout-seconds 3600 --graph-command-retry-seconds 300 --poll-seconds 5 --allow-transient-source-failures | tee graph-health-sec-dev.tsv
+        run: uv run python scripts/verify_graph_health_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --wait-timeout-seconds 3600 --graph-command-retry-seconds 1800 --poll-seconds 5 --allow-transient-source-failures | tee graph-health-sec-dev.tsv
 
       - name: Upload graph health summary (sec-dev)
         if: always()
@@ -484,7 +484,7 @@ jobs:
       - name: Verify graph health (go-prod)
         shell: bash
         working-directory: infra
-        run: uv run python scripts/verify_graph_health_ecs.py --stack-file aws/Pulumi.go-prod.yaml --wait-timeout-seconds 3600 --graph-command-retry-seconds 300 --poll-seconds 5 --allow-transient-source-failures | tee graph-health-go-prod.tsv
+        run: uv run python scripts/verify_graph_health_ecs.py --stack-file aws/Pulumi.go-prod.yaml --wait-timeout-seconds 3600 --graph-command-retry-seconds 1800 --poll-seconds 5 --allow-transient-source-failures | tee graph-health-go-prod.tsv
 
       - name: Upload graph health summary (go-prod)
         if: always()
@@ -833,7 +833,7 @@ jobs:
         working-directory: infra
         env:
           STACK_NAME: ${{ github.event.inputs.environment }}
-        run: uv run python scripts/verify_graph_health_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --wait-timeout-seconds 3600 --graph-command-retry-seconds 300 --poll-seconds 5 --allow-transient-source-failures | tee "graph-health-${STACK_NAME}.tsv"
+        run: uv run python scripts/verify_graph_health_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --wait-timeout-seconds 3600 --graph-command-retry-seconds 1800 --poll-seconds 5 --allow-transient-source-failures | tee "graph-health-${STACK_NAME}.tsv"
 
       - name: Upload graph health summary (AWS)
         if: "!startsWith(github.event.inputs.environment, 'gcp-') && always()"
