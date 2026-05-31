@@ -34,6 +34,8 @@ const (
 	maxGraphIngestPageLimit         = 100
 	maxGraphIngestRuntimeIterations = 10000
 	defaultGraphPathsTimeout        = 60 * time.Second
+	defaultGraphHealthRunningWindow = 60
+	graphHealthErrorDetailLimit     = 500
 )
 
 var (
@@ -64,6 +66,10 @@ type graphPathStore interface {
 
 type graphIntegrityStore interface {
 	IntegrityChecks(context.Context) ([]graphstore.IntegrityCheck, error)
+}
+
+type graphIngestRunStore interface {
+	ListIngestRuns(context.Context, graphstore.IngestRunFilter) ([]graphstore.IngestRun, error)
 }
 
 type graphIngestCheckpointStore interface {
@@ -124,6 +130,35 @@ type graphIngestRunsOptions struct {
 	RuntimeID string
 	Status    string
 	Limit     int
+}
+
+type graphHealthOptions struct {
+	IngestLimit                  int
+	MaxRunningMinutes            int
+	RequiredRelations            []string
+	DeclaredRuntimeIDs           []string
+	AllowTransientSourceFailures bool
+}
+
+type graphHealthResult struct {
+	Status         string                    `json:"status"`
+	CheckedAt      time.Time                 `json:"checked_at"`
+	Counts         graphstore.Counts         `json:"counts"`
+	Integrity      graphIntegrityResult      `json:"integrity"`
+	RelationCounts graphstore.RelationCounts `json:"relation_counts,omitempty"`
+	Ingest         graphHealthIngestResult   `json:"ingest"`
+	Failures       []string                  `json:"failures,omitempty"`
+	Warnings       []string                  `json:"warnings,omitempty"`
+}
+
+type graphHealthIngestResult struct {
+	CurrentRuntimeCount        int                    `json:"current_runtime_count"`
+	DeclaredRuntimeCount       int                    `json:"declared_runtime_count,omitempty"`
+	MissingRuntimeIDs          []string               `json:"missing_runtime_ids,omitempty"`
+	FailedRuns                 []graphstore.IngestRun `json:"failed_runs,omitempty"`
+	StaleRunningRuns           []graphstore.IngestRun `json:"stale_running_runs,omitempty"`
+	ZeroProjectionRuns         []graphstore.IngestRun `json:"zero_projection_runs,omitempty"`
+	IgnoredTransientFailedRuns []graphstore.IngestRun `json:"ignored_transient_failed_runs,omitempty"`
 }
 
 type graphEndpointOwnerIDCleanupOptions struct {
@@ -277,6 +312,8 @@ func runGraph(args []string) error {
 			return printErr
 		}
 		return err
+	case "health":
+		return runGraphHealth(args[1:])
 	case "counts", "neighborhood", "paths", "relation-counts", "integrity":
 		return runGraphInspect(args)
 	case "cve-impact", "package-exposure", "asset-vulns":
@@ -332,7 +369,7 @@ func runGraph(args []string) error {
 }
 
 func graphUsage() string {
-	return fmt.Sprintf("usage: %s graph [counts|neighborhood|paths|relation-counts|integrity|cve-impact|package-exposure|asset-vulns|ingest|ingest-runtime|ingest-run|ingest-runs|cleanup-endpoint-owner-id-links|cleanup-projected-entities|rebuild|inspect] ...", os.Args[0])
+	return fmt.Sprintf("usage: %s graph [health|counts|neighborhood|paths|relation-counts|integrity|cve-impact|package-exposure|asset-vulns|ingest|ingest-runtime|ingest-run|ingest-runs|cleanup-endpoint-owner-id-links|cleanup-projected-entities|rebuild|inspect] ...", os.Args[0])
 }
 
 func graphIngestUsage() string {
@@ -455,6 +492,158 @@ func runGraphInspect(args []string) error {
 	default:
 		return usageError(graphInspectUsage())
 	}
+}
+
+func runGraphHealth(args []string) error {
+	options, err := parseGraphHealthArgs(args)
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	deps, closeDeps, err := openGraphDependencies(ctx)
+	if err != nil {
+		return err
+	}
+	defer logClose(closeDeps)
+	result, err := checkGraphHealth(ctx, deps.GraphStore, options, time.Now().UTC())
+	if printErr := printJSON(result); printErr != nil {
+		return printErr
+	}
+	return err
+}
+
+func checkGraphHealth(ctx context.Context, store ports.GraphStore, options graphHealthOptions, now time.Time) (graphHealthResult, error) {
+	result := graphHealthResult{
+		Status:    "passed",
+		CheckedAt: now.UTC(),
+		Ingest: graphHealthIngestResult{
+			DeclaredRuntimeCount: len(options.DeclaredRuntimeIDs),
+		},
+	}
+	addFailure := func(format string, args ...any) {
+		result.Failures = append(result.Failures, fmt.Sprintf(format, args...))
+	}
+	addWarning := func(format string, args ...any) {
+		result.Warnings = append(result.Warnings, fmt.Sprintf(format, args...))
+	}
+
+	countsStore, ok := store.(graphCountsStore)
+	if !ok {
+		addFailure("graph store does not support counts")
+	} else {
+		counts, err := countsStore.Counts(ctx)
+		if err != nil {
+			addFailure("count graph records: %v", err)
+		} else {
+			result.Counts = counts
+			if counts.Nodes <= 0 {
+				addFailure("graph has zero nodes")
+			}
+			if counts.Relations <= 0 {
+				addFailure("graph has zero relationships")
+			}
+		}
+	}
+
+	integrityStore, ok := store.(graphIntegrityStore)
+	if !ok {
+		addFailure("graph store does not support integrity checks")
+	} else {
+		checks, err := integrityStore.IntegrityChecks(ctx)
+		if err != nil {
+			addFailure("run graph integrity checks: %v", err)
+		} else {
+			result.Integrity.Checks = checks
+			for _, check := range checks {
+				if check.Passed {
+					result.Integrity.Passed++
+				} else {
+					result.Integrity.Failed++
+					addFailure("graph integrity check %q failed: actual=%d expected=%d", check.Name, check.Actual, check.Expected)
+				}
+			}
+		}
+	}
+
+	if len(options.RequiredRelations) != 0 {
+		relationStore, ok := store.(graphRelationCountsStore)
+		if !ok {
+			addFailure("graph store does not support relation counts")
+		} else {
+			counts, err := relationStore.RelationCounts(ctx, options.RequiredRelations)
+			if err != nil {
+				addFailure("count graph relation records: %v", err)
+			} else {
+				result.RelationCounts = counts
+				for _, relation := range options.RequiredRelations {
+					if counts[relation] <= 0 {
+						addFailure("graph relation %q has zero relationships", relation)
+					}
+				}
+			}
+		}
+	}
+
+	runStore, ok := store.(graphIngestRunStore)
+	if !ok {
+		addFailure("graph store does not support ingest run history")
+	} else {
+		runs, err := runStore.ListIngestRuns(ctx, graphstore.IngestRunFilter{Limit: options.IngestLimit})
+		if err != nil {
+			addFailure("list graph ingest runs: %v", err)
+		} else {
+			current := latestGraphHealthRunsByRuntime(runs)
+			result.Ingest.CurrentRuntimeCount = len(current)
+			if len(current) == 0 {
+				addFailure("graph ingest run history is empty")
+			}
+			successfulRuntimeIDs := successfulGraphHealthRuntimeIDs(runs)
+			currentRuntimeIDs := make(map[string]struct{}, len(current))
+			for runtimeID, run := range current {
+				currentRuntimeIDs[runtimeID] = struct{}{}
+				switch strings.TrimSpace(run.Status) {
+				case graphstore.IngestRunStatusFailed:
+					if canIgnoreGraphHealthTransientFailure(run, successfulRuntimeIDs, options.AllowTransientSourceFailures) {
+						result.Ingest.IgnoredTransientFailedRuns = append(result.Ingest.IgnoredTransientFailedRuns, run)
+						addWarning("ignored transient source failure for runtime %q because prior successful history exists", runtimeID)
+					} else {
+						result.Ingest.FailedRuns = append(result.Ingest.FailedRuns, run)
+					}
+				case graphstore.IngestRunStatusRunning:
+					if graphHealthRunIsStale(run, now, options.MaxRunningMinutes) {
+						result.Ingest.StaleRunningRuns = append(result.Ingest.StaleRunningRuns, run)
+					}
+				case graphstore.IngestRunStatusCompleted:
+					if run.EventsRead > 0 && run.EntitiesProjected == 0 && run.LinksProjected == 0 {
+						result.Ingest.ZeroProjectionRuns = append(result.Ingest.ZeroProjectionRuns, run)
+					}
+				}
+			}
+			for _, runtimeID := range options.DeclaredRuntimeIDs {
+				if _, ok := currentRuntimeIDs[runtimeID]; !ok {
+					result.Ingest.MissingRuntimeIDs = append(result.Ingest.MissingRuntimeIDs, runtimeID)
+				}
+			}
+			if len(result.Ingest.MissingRuntimeIDs) != 0 {
+				addFailure("missing graph ingest run history for %d declared runtime(s): %s", len(result.Ingest.MissingRuntimeIDs), strings.Join(result.Ingest.MissingRuntimeIDs, ", "))
+			}
+			if len(result.Ingest.FailedRuns) != 0 {
+				addFailure("latest graph ingest run failed for %d runtime(s): %s", len(result.Ingest.FailedRuns), graphHealthRunSummaries(result.Ingest.FailedRuns))
+			}
+			if len(result.Ingest.StaleRunningRuns) != 0 {
+				addFailure("latest graph ingest run is stale-running for %d runtime(s): %s", len(result.Ingest.StaleRunningRuns), graphHealthRunSummaries(result.Ingest.StaleRunningRuns))
+			}
+			if len(result.Ingest.ZeroProjectionRuns) != 0 {
+				addFailure("latest graph ingest projected no graph records for %d runtime(s): %s", len(result.Ingest.ZeroProjectionRuns), graphHealthRunSummaries(result.Ingest.ZeroProjectionRuns))
+			}
+		}
+	}
+
+	if len(result.Failures) != 0 {
+		result.Status = "failed"
+		return result, fmt.Errorf("graph health failed: %s", strings.Join(result.Failures, "; "))
+	}
+	return result, nil
 }
 
 func runGraphImpact(args []string) error {
@@ -691,6 +880,55 @@ func parseGraphRelationCountsArgs(args []string) ([]string, error) {
 		return nil, fmt.Errorf("relations must include at most 50 values")
 	}
 	return relations, nil
+}
+
+func parseGraphHealthArgs(args []string) (graphHealthOptions, error) {
+	options := graphHealthOptions{
+		IngestLimit:       graphingest.MaxStatusLimit,
+		MaxRunningMinutes: defaultGraphHealthRunningWindow,
+	}
+	for _, arg := range args {
+		key, value, ok := strings.Cut(arg, "=")
+		if !ok {
+			return graphHealthOptions{}, usageError(fmt.Sprintf("expected key=value argument, got %q", arg))
+		}
+		switch strings.TrimSpace(key) {
+		case "ingest_limit", "limit":
+			parsed, err := strconv.Atoi(strings.TrimSpace(value))
+			if err != nil {
+				return graphHealthOptions{}, fmt.Errorf("parse ingest_limit: %w", err)
+			}
+			if parsed < 1 || parsed > graphingest.MaxStatusLimit {
+				return graphHealthOptions{}, fmt.Errorf("ingest_limit must be between 1 and %d", graphingest.MaxStatusLimit)
+			}
+			options.IngestLimit = parsed
+		case "max_running_minutes":
+			parsed, err := strconv.Atoi(strings.TrimSpace(value))
+			if err != nil {
+				return graphHealthOptions{}, fmt.Errorf("parse max_running_minutes: %w", err)
+			}
+			if parsed < 1 {
+				return graphHealthOptions{}, fmt.Errorf("max_running_minutes must be greater than zero")
+			}
+			options.MaxRunningMinutes = parsed
+		case "relations", "required_relations":
+			options.RequiredRelations = appendUniqueGraphHealthValues(options.RequiredRelations, splitCleanupValues(value))
+			if len(options.RequiredRelations) > 50 {
+				return graphHealthOptions{}, fmt.Errorf("relations must include at most 50 values")
+			}
+		case "declared_runtime_ids", "runtime_ids":
+			options.DeclaredRuntimeIDs = appendUniqueGraphHealthValues(options.DeclaredRuntimeIDs, splitCleanupValues(value))
+		case "allow_transient_source_failures":
+			parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+			if err != nil {
+				return graphHealthOptions{}, fmt.Errorf("parse allow_transient_source_failures: %w", err)
+			}
+			options.AllowTransientSourceFailures = parsed
+		default:
+			return graphHealthOptions{}, usageError(fmt.Sprintf("unsupported graph health argument %q", key))
+		}
+	}
+	return options, nil
 }
 
 func parseGraphImpactArgs(args []string) (graphquery.ImpactRequest, error) {
@@ -1129,6 +1367,167 @@ func splitCleanupValues(value string) []string {
 		values = append(values, part)
 	}
 	return values
+}
+
+func appendUniqueGraphHealthValues(values []string, additions []string) []string {
+	seen := make(map[string]struct{}, len(values)+len(additions))
+	for _, value := range values {
+		seen[value] = struct{}{}
+	}
+	for _, value := range additions {
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		values = append(values, value)
+	}
+	return values
+}
+
+func latestGraphHealthRunsByRuntime(runs []graphstore.IngestRun) map[string]graphstore.IngestRun {
+	latest := map[string]graphstore.IngestRun{}
+	for _, run := range runs {
+		runtimeID := graphHealthRunRuntimeID(run)
+		if runtimeID == "" {
+			continue
+		}
+		if current, ok := latest[runtimeID]; !ok || graphHealthRunStartedAfter(run, current) {
+			latest[runtimeID] = run
+		}
+	}
+	return latest
+}
+
+func successfulGraphHealthRuntimeIDs(runs []graphstore.IngestRun) map[string]struct{} {
+	successful := map[string]struct{}{}
+	for _, run := range runs {
+		if strings.TrimSpace(run.Status) != graphstore.IngestRunStatusCompleted {
+			continue
+		}
+		if runtimeID := graphHealthRunRuntimeID(run); runtimeID != "" {
+			successful[runtimeID] = struct{}{}
+		}
+	}
+	return successful
+}
+
+func graphHealthRunRuntimeID(run graphstore.IngestRun) string {
+	if runtimeID := strings.TrimSpace(run.RuntimeID); runtimeID != "" {
+		return runtimeID
+	}
+	return strings.TrimSpace(run.ID)
+}
+
+func graphHealthRunStartedAfter(left, right graphstore.IngestRun) bool {
+	leftStarted, leftOK := parseGraphHealthRunTime(left.StartedAt)
+	rightStarted, rightOK := parseGraphHealthRunTime(right.StartedAt)
+	switch {
+	case leftOK && rightOK:
+		if leftStarted.Equal(rightStarted) {
+			return strings.TrimSpace(left.ID) > strings.TrimSpace(right.ID)
+		}
+		return leftStarted.After(rightStarted)
+	case leftOK:
+		return true
+	case rightOK:
+		return false
+	default:
+		return strings.TrimSpace(left.ID) > strings.TrimSpace(right.ID)
+	}
+}
+
+func graphHealthRunIsStale(run graphstore.IngestRun, now time.Time, maxRunningMinutes int) bool {
+	startedAt, ok := parseGraphHealthRunTime(run.StartedAt)
+	return ok && now.UTC().Sub(startedAt) > time.Duration(maxRunningMinutes)*time.Minute
+}
+
+func parseGraphHealthRunTime(value string) (time.Time, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, false
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return parsed.UTC(), true
+}
+
+func canIgnoreGraphHealthTransientFailure(run graphstore.IngestRun, successfulRuntimeIDs map[string]struct{}, enabled bool) bool {
+	if !enabled {
+		return false
+	}
+	if _, ok := successfulRuntimeIDs[graphHealthRunRuntimeID(run)]; !ok {
+		return false
+	}
+	errorText := strings.ToLower(strings.TrimSpace(run.Error))
+	if errorText == "" {
+		return false
+	}
+	for _, token := range []string{
+		"client.timeout exceeded",
+		"context deadline exceeded",
+		"i/o timeout",
+		"request canceled",
+		"temporary failure",
+		"tls handshake timeout",
+	} {
+		if strings.Contains(errorText, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func graphHealthRunSummaries(runs []graphstore.IngestRun) string {
+	summaries := make([]string, 0, len(runs))
+	for _, run := range runs {
+		summaries = append(summaries, graphHealthRunSummary(run))
+	}
+	sort.Strings(summaries)
+	return strings.Join(summaries, ", ")
+}
+
+func graphHealthRunSummary(run graphstore.IngestRun) string {
+	runtimeID := strings.TrimSpace(run.RuntimeID)
+	runID := strings.TrimSpace(run.ID)
+	summary := "<unknown-runtime>"
+	if runtimeID != "" && runID != "" {
+		summary = runtimeID + ":" + runID
+	} else if runtimeID != "" {
+		summary = runtimeID
+	} else if runID != "" {
+		summary = runID
+	}
+	for _, field := range []struct {
+		name  string
+		value string
+	}{
+		{name: "status", value: run.Status},
+		{name: "started_at", value: run.StartedAt},
+		{name: "finished_at", value: run.FinishedAt},
+		{name: "events_read", value: strconv.FormatInt(run.EventsRead, 10)},
+		{name: "entities_projected", value: strconv.FormatInt(run.EntitiesProjected, 10)},
+		{name: "links_projected", value: strconv.FormatInt(run.LinksProjected, 10)},
+	} {
+		if strings.TrimSpace(field.value) != "" {
+			summary += ":" + field.name + "=" + field.value
+		}
+	}
+	if errorText := strings.TrimSpace(run.Error); errorText != "" {
+		summary += ":error=" + truncateGraphHealthDetail(errorText, graphHealthErrorDetailLimit)
+	}
+	return summary
+}
+
+func truncateGraphHealthDetail(value string, limit int) string {
+	if len(value) <= limit {
+		return value
+	}
+	if limit <= 3 {
+		return value[:limit]
+	}
+	return value[:limit-3] + "..."
 }
 
 func ingestGraph(

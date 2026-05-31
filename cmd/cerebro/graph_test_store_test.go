@@ -73,6 +73,25 @@ func (s *graphTestStore) Counts(context.Context) (graphstore.Counts, error) {
 	return graphstore.Counts{Nodes: int64(len(s.entities)), Relations: int64(len(s.links))}, nil
 }
 
+func (s *graphTestStore) RelationCounts(_ context.Context, relations []string) (graphstore.RelationCounts, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	counts := graphstore.RelationCounts{}
+	for _, relation := range relations {
+		counts[relation] = 0
+	}
+	for _, link := range s.links {
+		if len(relations) == 0 {
+			counts[link.Relation]++
+			continue
+		}
+		if _, ok := counts[link.Relation]; ok {
+			counts[link.Relation]++
+		}
+	}
+	return counts, nil
+}
+
 func (s *graphTestStore) GetEntityNeighborhood(_ context.Context, urn string, limit int) (*ports.EntityNeighborhood, error) {
 	urn = strings.TrimSpace(urn)
 	s.mu.Lock()
