@@ -374,6 +374,12 @@ else:
         app_ingress_ports=app_ingress_ports,
     )
 
+public_origin = config.get("publicOrigin") or f"https://{domain}"
+trusted_proxy_cidrs = config.get_object("trustedProxyCIDRs")
+if trusted_proxy_cidrs is None:
+    trusted_proxy_cidrs = [vpc_cidr] if alb_internal else []
+trusted_proxy_count = _config_int("trustedProxyCount", 1 if trusted_proxy_cidrs else 0)
+
 # =============================================================================
 # RUNTIME BACKING SERVICES
 # =============================================================================
@@ -552,6 +558,8 @@ app_environment = {
     "CEREBRO_IMAGE_TAG": image_tag,
     "CEREBRO_API_AUTH_ENABLED": str(api_auth_enabled).lower(),
     "API_AUTH_ENABLED": str(api_auth_enabled).lower(),
+    "CEREBRO_PUBLIC_ORIGIN": public_origin,
+    "CEREBRO_TRUSTED_PROXY_COUNT": str(trusted_proxy_count),
     "CEREBRO_CAPABILITY_TOKEN_AUDIENCE": capability_token_audience,
     "CEREBRO_APPEND_LOG_DRIVER": "jetstream",
     "CEREBRO_JETSTREAM_URL": nats_stack["url"],
@@ -566,6 +574,8 @@ if neo4j_database:
 if allowed_tenants:
     app_environment["CEREBRO_ALLOWED_TENANTS"] = ",".join(allowed_tenants)
     app_environment["ALLOWED_TENANTS"] = ",".join(allowed_tenants)
+if trusted_proxy_cidrs:
+    app_environment["CEREBRO_TRUSTED_PROXY_CIDRS"] = ",".join(trusted_proxy_cidrs)
 if source_runtime_env_refs:
     app_environment["CEREBRO_SOURCE_CONFIG_ENV_ALLOWLIST"] = ",".join(source_runtime_env_refs)
 

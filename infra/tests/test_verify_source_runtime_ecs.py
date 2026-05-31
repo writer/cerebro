@@ -256,6 +256,61 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         self.assertEqual(result, verified)
         self.assertEqual(run_task.call_count, 2)
 
+    def test_run_verify_can_succeed_after_graph_ingest_before_task_stops(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-aws-devops-iam-role-trust",
+            schedule_name="aws-devops-iam-role-trust",
+            rule_name="cerebro-go-production-orchestrator-aws-devops-iam-role-trust",
+            target={"Arn": "cluster"},
+        )
+        messages = [
+            {
+                "kind": "span_end",
+                "name": "source_runtime.sync",
+                "status": "completed",
+                "events_appended": 12,
+                "pages_read": 1,
+            },
+            {
+                "kind": "span_end",
+                "name": "graph.ingest_runtime",
+                "status": "completed",
+                "entities_projected": 367,
+                "links_projected": 474,
+            },
+            {
+                "kind": "span_end",
+                "name": "orchestrator.graph_ingest",
+                "status": "completed",
+            },
+        ]
+
+        with (
+            patch("scripts.verify_source_runtime_ecs._run_task", return_value="task-arn"),
+            patch(
+                "scripts.verify_source_runtime_ecs._describe_tasks",
+                return_value=[{"taskArn": "task-arn", "lastStatus": "RUNNING", "containers": [{"name": "cerebro"}]}],
+            ),
+            patch("scripts.verify_source_runtime_ecs._task_logs", return_value=messages),
+            patch("scripts.verify_source_runtime_ecs._wait_for_task") as wait_for_task,
+        ):
+            result = _run_and_verify_task_with_retries(
+                target,
+                wait_timeout_seconds=100,
+                poll_seconds=10,
+                region="us-east-1",
+                succeed_after_graph_ingest=True,
+            )
+
+        self.assertEqual(result.runtime_status, "running")
+        self.assertEqual(result.sync_status, "completed")
+        self.assertEqual(result.graph_ingest_status, "completed")
+        self.assertEqual(result.events_appended, 12)
+        self.assertEqual(result.pages_read, 1)
+        self.assertEqual(result.entities_projected, 367)
+        self.assertEqual(result.links_projected, 474)
+        wait_for_task.assert_not_called()
+
     def test_run_verify_stops_and_retries_timed_out_attempt(self) -> None:
         target = RuntimeTarget(
             runtime_id="writer-cosmo-fact",

@@ -486,6 +486,13 @@ def _latest_span(messages: list[dict[str, Any]], name: str) -> dict[str, Any] | 
     return None
 
 
+def _first_present(*values: Any) -> Any:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
 def _runtime_skip_reason(runtime_span: dict[str, Any] | None) -> str:
     if not runtime_span:
         return ""
@@ -494,6 +501,59 @@ def _runtime_skip_reason(runtime_span: dict[str, Any] | None) -> str:
 
 def _runtime_skip_retryable(reason: str) -> bool:
     return reason == "lease_not_acquired"
+
+
+def _verification_result_from_logs(
+    target: RuntimeTarget,
+    task_arn: str,
+    exit_code: int | None,
+    messages: list[dict[str, Any]],
+    require_runtime_completed: bool,
+) -> VerificationResult | None:
+    runtime_span = _latest_span(messages, "orchestrator.runtime")
+    sync_span = _latest_span(messages, "source_runtime.sync")
+    graph_ingest_span = _latest_span(messages, "orchestrator.graph_ingest")
+    graph_runtime_span = _latest_span(messages, "graph.ingest_runtime")
+    runtime_status = str((runtime_span or {}).get("status") or "missing")
+    sync_status = str((sync_span or {}).get("status") or "missing")
+    graph_ingest_status = str((graph_ingest_span or {}).get("status") or "missing")
+    if runtime_status == "skipped":
+        raise RuntimeSkippedError(target.runtime_id, task_arn, _runtime_skip_reason(runtime_span))
+    if sync_status == "failed":
+        raise RuntimeError(f"{target.runtime_id} source sync status is failed")
+    if graph_ingest_status == "failed":
+        raise RuntimeError(f"{target.runtime_id} graph ingest status is failed")
+    if require_runtime_completed and runtime_status != "completed":
+        raise RuntimeError(f"{target.runtime_id} orchestrator runtime status is {runtime_status}")
+    if sync_status != "completed":
+        if require_runtime_completed:
+            raise RuntimeError(f"{target.runtime_id} source sync status is {sync_status}")
+        return None
+    if graph_ingest_status != "completed":
+        if require_runtime_completed:
+            raise RuntimeError(f"{target.runtime_id} graph ingest status is {graph_ingest_status}")
+        return None
+
+    return VerificationResult(
+        runtime_id=target.runtime_id,
+        task_arn=task_arn,
+        exit_code=exit_code,
+        runtime_status=runtime_status if runtime_status != "missing" else "running",
+        sync_status=sync_status,
+        graph_ingest_status=graph_ingest_status,
+        events_appended=sync_span.get("events_appended") if sync_span else None,
+        pages_read=sync_span.get("pages_read") if sync_span else None,
+        entities_projected=_first_present(
+            (graph_runtime_span or {}).get("entities_projected"),
+            (graph_ingest_span or {}).get("entities_projected"),
+            (sync_span or {}).get("entities_projected"),
+        ),
+        links_projected=_first_present(
+            (graph_runtime_span or {}).get("links_projected"),
+            (graph_ingest_span or {}).get("links_projected"),
+            (sync_span or {}).get("links_projected"),
+        ),
+    )
 
 
 def _verify_task(target: RuntimeTarget, task_arn: str, region: str) -> VerificationResult:
@@ -509,33 +569,78 @@ def _verify_task(target: RuntimeTarget, task_arn: str, region: str) -> Verificat
         raise RuntimeTaskFailedError(target.runtime_id, task_arn, exit_code, log_summary)
 
     messages = _task_logs(task, region)
-    runtime_span = _latest_span(messages, "orchestrator.runtime")
-    sync_span = _latest_span(messages, "source_runtime.sync")
-    graph_ingest_span = _latest_span(messages, "orchestrator.graph_ingest")
-    runtime_status = str((runtime_span or {}).get("status") or "missing")
-    sync_status = str((sync_span or {}).get("status") or "missing")
-    graph_ingest_status = str((graph_ingest_span or {}).get("status") or "missing")
-    if runtime_status == "skipped":
-        raise RuntimeSkippedError(target.runtime_id, task_arn, _runtime_skip_reason(runtime_span))
-    if runtime_status != "completed":
-        raise RuntimeError(f"{target.runtime_id} orchestrator runtime status is {runtime_status}")
-    if sync_status != "completed":
-        raise RuntimeError(f"{target.runtime_id} source sync status is {sync_status}")
-    if graph_ingest_status != "completed":
-        raise RuntimeError(f"{target.runtime_id} graph ingest status is {graph_ingest_status}")
+    result = _verification_result_from_logs(target, task_arn, exit_code, messages, require_runtime_completed=True)
+    if result is None:
+        raise RuntimeError(f"{target.runtime_id} verification did not produce source sync and graph ingest spans")
+    return result
 
-    return VerificationResult(
-        runtime_id=target.runtime_id,
-        task_arn=task_arn,
-        exit_code=exit_code,
-        runtime_status=runtime_status,
-        sync_status=sync_status,
-        graph_ingest_status=graph_ingest_status,
-        events_appended=sync_span.get("events_appended") if sync_span else None,
-        pages_read=sync_span.get("pages_read") if sync_span else None,
-        entities_projected=graph_ingest_span.get("entities_projected") if graph_ingest_span else None,
-        links_projected=graph_ingest_span.get("links_projected") if graph_ingest_span else None,
-    )
+
+def _verify_task_until_graph_ingested(
+    target: RuntimeTarget,
+    task_arn: str,
+    timeout_seconds: int,
+    poll_seconds: int,
+    region: str,
+) -> VerificationResult:
+    task_id = _task_id(task_arn)
+    started = time.time()
+    deadline = time.time() + timeout_seconds
+    next_progress = 0.0
+    last_task: dict[str, Any] | None = None
+    last_log_error: Exception | None = None
+    while time.time() < deadline:
+        tasks = _describe_tasks(target.target["Arn"], [task_arn], region)
+        task = tasks[0] if tasks else {}
+        last_task = task
+        status = str(task.get("lastStatus") or "UNKNOWN")
+        containers = task.get("containers") or []
+        cerebro_container = next((container for container in containers if container.get("name") == "cerebro"), None)
+        exit_code = cerebro_container.get("exitCode") if cerebro_container else None
+        try:
+            messages = _task_logs(task, region) if task else []
+            last_log_error = None
+        except Exception as exc:
+            messages = []
+            last_log_error = exc
+        if messages:
+            result = _verification_result_from_logs(target, task_arn, exit_code, messages, require_runtime_completed=False)
+            if result is not None:
+                print(
+                    f"INFO: {target.runtime_id} source sync and graph ingest completed; task may continue finding-rule work",
+                    file=sys.stderr,
+                )
+                return result
+        if status == "STOPPED":
+            if messages:
+                result = _verification_result_from_logs(target, task_arn, exit_code, messages, require_runtime_completed=True)
+                if result is not None:
+                    return result
+            if last_log_error is not None:
+                raise RuntimeError(f"unable to fetch stopped task logs for {target.runtime_id}: {last_log_error}") from last_log_error
+            return _verify_task(target, task_arn, region)
+        now = time.time()
+        if now >= next_progress:
+            elapsed = int(now - started)
+            width = 20
+            progress = min(1.0, elapsed / max(1, timeout_seconds))
+            filled = int(progress * width)
+            bar = "#" * filled + "-" * (width - filled)
+            print(
+                f"WAIT source runtime graph ingest task={task_id} status={status} [{bar}] {elapsed}s/{timeout_seconds}s",
+                file=sys.stderr,
+                flush=True,
+            )
+            next_progress = now + max(30, poll_seconds)
+        time.sleep(poll_seconds)
+    if last_task is not None:
+        try:
+            messages = _task_logs(last_task, region)
+            result = _verification_result_from_logs(target, task_arn, None, messages, require_runtime_completed=False)
+            if result is not None:
+                return result
+        except Exception:
+            pass
+    raise TimeoutError(f"task {task_arn} did not complete source sync and graph ingest within {timeout_seconds} seconds")
 
 
 def _run_and_verify_task_with_retries(
@@ -549,6 +654,7 @@ def _run_and_verify_task_with_retries(
     stop_timeout_seconds: int = 180,
     failed_run_retry_seconds: int = 0,
     run_attempt_timeout_seconds: int = 0,
+    succeed_after_graph_ingest: bool = False,
 ) -> VerificationResult:
     if stop_running_before_run:
         _stop_running_tasks(
@@ -566,8 +672,11 @@ def _run_and_verify_task_with_retries(
         task_arn = _run_task(target, region, command_override)
         attempt_timeout = min(remaining, run_attempt_timeout_seconds) if run_attempt_timeout_seconds > 0 else remaining
         try:
-            _wait_for_task(target.target["Arn"], task_arn, attempt_timeout, poll_seconds, region)
-            return _verify_task(target, task_arn, region)
+            if succeed_after_graph_ingest:
+                return _verify_task_until_graph_ingested(target, task_arn, attempt_timeout, poll_seconds, region)
+            else:
+                _wait_for_task(target.target["Arn"], task_arn, attempt_timeout, poll_seconds, region)
+                return _verify_task(target, task_arn, region)
         except TimeoutError:
             now = time.time()
             if failed_run_retry_deadline is None or now >= failed_run_retry_deadline:
@@ -661,6 +770,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-age-minutes", type=int, default=180)
     parser.add_argument("--failed-run-retry-seconds", type=int, default=0, help="Retry failed verification tasks for this many seconds before failing.")
     parser.add_argument("--run-attempt-timeout-seconds", type=int, default=0, help="Stop and retry a --run verification task if one attempt runs longer than this.")
+    parser.add_argument(
+        "--succeed-after-graph-ingest",
+        action="store_true",
+        help="For --run, return after source sync and graph ingest complete instead of waiting for post-ingest work.",
+    )
     parser.add_argument("--wait-timeout-seconds", type=int, default=3600)
     parser.add_argument("--poll-seconds", type=int, default=10)
     args = parser.parse_args(argv)
@@ -701,6 +815,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.stop_timeout_seconds,
                     args.failed_run_retry_seconds,
                     args.run_attempt_timeout_seconds,
+                    args.succeed_after_graph_ingest,
                 )
             )
         else:
