@@ -383,6 +383,40 @@ func TestProjectGitHubDependabotAlert(t *testing.T) {
 	}
 }
 
+func TestProjectGitHubDependabotAlertLinksRepoScopedDependency(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-dependabot-alert-manifest",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.dependabot_alert",
+		Attributes: map[string]string{
+			"alert_number":  "7",
+			"ecosystem":     "go",
+			"manifest_path": "go.mod",
+			"owner":         "writer",
+			"package":       "golang.org/x/crypto",
+			"repository":    "writer/cerebro",
+			"state":         "open",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	alertURN := "urn:cerebro:writer:github_dependabot_alert:writer/cerebro:7"
+	repoURN := "urn:cerebro:writer:github_repo:writer/cerebro"
+	manifestURN := "urn:cerebro:writer:github_dependency_manifest:writer/cerebro:go.mod"
+	dependencyURN := "urn:cerebro:writer:github_dependency:writer/cerebro:go.mod:go:golang.org/x/crypto"
+	packageURN := "urn:cerebro:writer:package:go:golang.org/x/crypto"
+	assertProjectedLink(t, state, manifestURN, relationBelongsTo, repoURN)
+	assertProjectedLink(t, state, dependencyURN, relationBelongsTo, manifestURN)
+	assertProjectedLink(t, state, dependencyURN, relationRepresents, packageURN)
+	assertProjectedLink(t, state, alertURN, relationAffects, dependencyURN)
+}
+
 func TestProjectOktaOAuthGrantAsApplicationTelemetry(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

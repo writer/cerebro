@@ -674,6 +674,20 @@ func addGRCPlatformAssetLinks(entities map[string]*ports.ProjectedEntity, links 
 			addLink(links, projectedLink(tenantID, sourceID, resourceURN, integrationURN, relationBelongsTo, grcIntegrationLinkAttributes(event, integrationID)))
 		}
 		addGRCGitHubRepositoryOrgLink(entities, links, tenantID, sourceID, event, resourceURN, ownerLogin)
+		addGRCPlatformNetworkLinks(entities, links, tenantID, sourceID, event, resourceURN, ref)
+	}
+}
+
+func addGRCPlatformNetworkLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, resourceURN string, ref grcPlatformAssetReference) {
+	resourceURN = strings.TrimSpace(resourceURN)
+	if resourceURN == "" {
+		return
+	}
+	for _, rawHost := range splitCloudAttributeList(ref.Hostnames) {
+		addInternetHostLink(entities, links, tenantID, sourceID, event, resourceURN, relationRepresents, rawHost, "grc_platform_resource_host", "0.90")
+	}
+	for _, rawIP := range splitCloudAttributeList(ref.IPs) {
+		addInternetIPLink(entities, links, tenantID, sourceID, event, resourceURN, rawIP, "grc_platform_resource_ip", "0.90")
 	}
 }
 

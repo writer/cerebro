@@ -89,6 +89,7 @@ func cosmoMessageProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projected
 		"run_url":    attrs["run_url"],
 	})))
 	addCosmoSessionLink(entities, links, event, tenantID, messageURN, firstNonEmpty(attrs["ticket_id"], stringValue(payload, "ticket_id")))
+	addCosmoMessageUserLink(entities, links, event, tenantID, messageURN, attrs, payload)
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }
@@ -162,6 +163,15 @@ func addCosmoSessionLink(entities map[string]*ports.ProjectedEntity, links map[s
 	}
 	addEntity(entities, cosmoEntity(event, sessionURN, "cosmo.session", sessionID, map[string]string{"ticket_id": strings.TrimSpace(sessionID)}))
 	addLink(links, projectedLink(tenantID, event.GetSourceId(), fromURN, sessionURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+}
+
+func addCosmoMessageUserLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, event *cerebrov1.EventEnvelope, tenantID string, messageURN string, attrs map[string]string, payload map[string]any) {
+	role := strings.ToLower(strings.TrimSpace(firstNonEmpty(attrs["role"], stringValue(payload, "role"))))
+	if role != "user" && role != "customer" {
+		return
+	}
+	user := firstNonEmpty(attrs["user"], attrs["user_id"], attrs["email"], stringValue(payload, "user"), stringValue(payload, "user_id"), stringValue(payload, "userId"), stringValue(payload, "email"))
+	addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), messageURN, user, event.GetOccurredAt())
 }
 
 func cosmoFactSessionID(source string) string {
