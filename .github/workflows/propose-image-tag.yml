@@ -416,18 +416,18 @@ jobs:
             fi
 
             for _ in {1..36}; do
-              check_count="$(gh pr checks "${pr_url}" --json name --jq 'length' 2>/dev/null || true)"
+              check_count="$(gh pr checks "${pr_url}" --required --json name --jq 'length' 2>/dev/null || true)"
               if [[ "${check_count}" =~ ^[0-9]+$ ]] && [ "${check_count}" -gt 0 ]; then
                 break
               fi
               sleep 5
             done
             if ! [[ "${check_count}" =~ ^[0-9]+$ ]] || [ "${check_count}" -eq 0 ]; then
-              echo "No PR checks registered for ${pr_url}; refusing trusted auto-merge." >&2
+              echo "No required PR checks registered for ${pr_url}; refusing trusted auto-merge." >&2
               exit 1
             fi
 
-            gh pr checks "${pr_url}" --watch --interval 10 --fail-fast
+            gh pr checks "${pr_url}" --required --watch --interval 10 --fail-fast
             gh pr merge "${pr_url}" --merge --delete-branch
           }
 

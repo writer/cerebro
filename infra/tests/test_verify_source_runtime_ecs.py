@@ -18,6 +18,7 @@ from scripts.verify_source_runtime_ecs import (
     VerificationResult,
     _declared_runtime_ids,
     _latest_active_task_definition,
+    _latest_task,
     _run_and_verify_task_with_retries,
     _run_task,
     _runtime_id_from_command,
@@ -174,13 +175,64 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
                 self.assertIn("--reason", args)
                 return {"task": {"taskArn": "task-1"}}
             if args[:2] == ["ecs", "describe-tasks"]:
-                return {"tasks": [{"taskArn": "task-1", "lastStatus": "STOPPED"}]}
+                return {
+                    "tasks": [
+                        {
+                            "taskArn": "task-1",
+                            "taskDefinitionArn": "arn:aws:ecs:us-east-1:123456789012:task-definition/runtime:3",
+                            "lastStatus": "STOPPED",
+                        }
+                    ]
+                }
             raise AssertionError(f"unexpected args: {args}")
 
         with patch("scripts.verify_source_runtime_ecs._aws", side_effect=fake_aws):
             _stop_running_tasks(target, "us-east-1", "test cleanup", 10, 1)
 
-        self.assertEqual([call[:2] for call in calls], [["ecs", "list-tasks"], ["ecs", "stop-task"], ["ecs", "describe-tasks"]])
+        self.assertEqual(
+            [call[:2] for call in calls],
+            [["ecs", "list-tasks"], ["ecs", "describe-tasks"], ["ecs", "stop-task"], ["ecs", "describe-tasks"]],
+        )
+
+    def test_shared_orchestrator_target_filters_tasks_by_command_override(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-cosmo-fact",
+            schedule_name="cosmo-fact",
+            rule_name="cerebro-sec-dev-orchestrator-cosmo-fact",
+            target={
+                "Arn": "cluster",
+                "Input": '{"containerOverrides":[{"name":"cerebro","command":["orchestrator","run","runtime_id=writer-cosmo-fact"]}]}',
+                "EcsParameters": {
+                    "TaskDefinitionArn": "arn:aws:ecs:us-east-1:123456789012:task-definition/cerebro-sec-dev-orchestrator:3"
+                },
+            },
+        )
+        now = time.time()
+        matching_task = {
+            "taskArn": "task-match",
+            "taskDefinitionArn": "arn:aws:ecs:us-east-1:123456789012:task-definition/cerebro-sec-dev-orchestrator:3",
+            "lastStatus": "STOPPED",
+            "stoppedAt": now,
+            "overrides": {"containerOverrides": [{"name": "cerebro", "command": ["orchestrator", "run", "runtime_id=writer-cosmo-fact"]}]},
+        }
+        other_task = {
+            "taskArn": "task-other",
+            "taskDefinitionArn": "arn:aws:ecs:us-east-1:123456789012:task-definition/cerebro-sec-dev-orchestrator:3",
+            "lastStatus": "STOPPED",
+            "stoppedAt": now,
+            "overrides": {"containerOverrides": [{"name": "cerebro", "command": ["orchestrator", "run", "runtime_id=writer-cosmo-session"]}]},
+        }
+
+        def fake_aws(args: list[str], _region: str) -> dict[str, object]:
+            if args[:2] == ["ecs", "list-tasks"]:
+                self.assertEqual(args[args.index("--max-results") + 1], "100")
+                return {"taskArns": ["task-other", "task-match"]}
+            if args[:2] == ["ecs", "describe-tasks"]:
+                return {"tasks": [other_task, matching_task]}
+            raise AssertionError(f"unexpected args: {args}")
+
+        with patch("scripts.verify_source_runtime_ecs._aws", side_effect=fake_aws):
+            self.assertEqual(_latest_task(target, 60, "us-east-1"), "task-match")
 
     def test_runtime_skip_reason_is_retryable_for_lease_contention(self) -> None:
         span = {"status": "skipped", "reason": "lease_not_acquired"}
