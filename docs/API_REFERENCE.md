@@ -28,4 +28,4 @@ Set `CEREBRO_API_AUTH_ENABLED=true` and pass `Authorization: Bearer <key>` or `X
 - `GET /platform/graph/ingest-runs`
 - `GET /platform/graph/ingest-runs/{runID}`
 
-Legacy `/graph/*` aliases remain for compatibility and emit deprecation headers.
+Legacy `/graph/*` aliases have been removed; use `/platform/graph/*` routes instead.

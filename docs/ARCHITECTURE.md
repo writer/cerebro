@@ -45,8 +45,15 @@ Kuzu and embedded/in-memory database backends are intentionally rejected by conf
 
 - Connect RPCs live under the generated `BootstrapService` path from `proto/cerebro/v1/bootstrap.proto`.
 - Current platform routes prefer `/platform/*` for shared platform resources.
-- Legacy `/graph/*` aliases are retained only for compatibility and emit deprecation headers.
+- Legacy `/graph/*` aliases have been removed; use the `/platform/graph/*` routes or the matching Connect RPCs.
+- HTTP-only surfaces are route-grouped in `internal/bootstrap/routes.go` so platform, internal, and public routes are explicit while the remaining Connect coverage gap is closed.
 - Public unauthenticated routes are limited to `/health`, `/healthz`, and `/openapi.yaml` when API auth is enabled.
+
+## Postgres migrations
+
+State-store schema preparation runs at service startup and before store operations. Most migrations use additive `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, or `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` patterns.
+
+Claims projection indexes may require an `ACCESS EXCLUSIVE` lock while Postgres validates or rewrites the affected table metadata. This is expected migration-time behavior, but large deployments should run the migration during a maintenance window, verify no long-running claim reads/writes are active, and monitor Postgres lock waits until schema preparation completes.
 
 ## Auth and tenant scope
 

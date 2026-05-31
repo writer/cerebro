@@ -577,9 +577,9 @@ func scopeForHTTPRequest(r *http.Request) string {
 		return scopeCosmoSecurityRead
 	case strings.HasPrefix(path, "/grc/"):
 		return scopeCosmoSecurityRead
-	case path == "/platform/graph/neighborhood", path == "/graph/neighborhood":
+	case path == "/platform/graph/neighborhood":
 		return scopeCosmoSecurityRead
-	case strings.HasPrefix(path, "/platform/graph/impact/"), strings.HasPrefix(path, "/graph/impact/"):
+	case strings.HasPrefix(path, "/platform/graph/impact/"):
 		return scopeCosmoSecurityRead
 	case path == "/platform/graph/attack-paths",
 		path == "/platform/graph/aws-public-endpoint-insights",
@@ -587,11 +587,9 @@ func scopeForHTTPRequest(r *http.Request) string {
 		return scopeCosmoSecurityRead
 	case strings.HasPrefix(path, "/platform/endpoints/") && strings.HasSuffix(path, "/vulnerability-findings"):
 		return scopeCosmoSecurityRead
-	case path == "/platform/graph/ingest-health", path == "/graph/ingest-health":
+	case path == "/platform/graph/ingest-health":
 		return scopeCosmoSecurityRead
 	case path == "/platform/graph/ingest-runs", strings.HasPrefix(path, "/platform/graph/ingest-runs/"):
-		return scopeCosmoSecurityRead
-	case path == "/graph/ingest-runs", strings.HasPrefix(path, "/graph/ingest-runs/"):
 		return scopeCosmoSecurityRead
 	case strings.HasPrefix(path, "/report-runs/"):
 		return scopeCosmoSecurityRead
@@ -1218,11 +1216,11 @@ func accessAuditRouteFamily(route string) string {
 		return "finding"
 	case strings.Contains(route, "/grc/"):
 		return "grc"
-	case strings.Contains(route, "/platform/knowledge"), strings.Contains(route, "/graph/write"), strings.Contains(route, "/graph/actuate"):
+	case strings.Contains(route, "/platform/knowledge"):
 		return "platform_knowledge"
 	case strings.Contains(route, "/platform/workflow"):
 		return "workflow"
-	case strings.Contains(route, "/platform/graph"), strings.Contains(route, "/graph/"):
+	case strings.Contains(route, "/platform/graph"):
 		return "graph"
 	case route == "":
 		return "unknown"
@@ -1367,8 +1365,6 @@ func fallbackAccessAuditRoute(method string, path string) string {
 		return prefix + "/endpoint-vulnerability-findings"
 	case strings.HasPrefix(path, "/platform/endpoints/") && strings.HasSuffix(path, "/vulnerability-findings"):
 		return prefix + "/platform/endpoints/{deviceKey}/vulnerability-findings"
-	case strings.HasPrefix(path, "/graph/ingest-runs/"):
-		return prefix + "/graph/ingest-runs/{runID}"
 	case isKnownStaticAccessPath(path):
 		return prefix + path
 	}
@@ -1428,23 +1424,16 @@ func isKnownStaticAccessPath(path string) bool {
 	case "/platform/knowledge/decisions",
 		"/platform/knowledge/actions",
 		"/platform/knowledge/actions/recommendation",
-		"/graph/actuate/recommendation",
 		"/platform/knowledge/outcomes",
-		"/graph/write/outcome",
 		"/platform/workflow/replay",
 		"/platform/graph/neighborhood",
-		"/graph/neighborhood",
 		"/platform/graph/impact/package",
-		"/graph/impact/package",
 		"/platform/graph/impact/asset",
-		"/graph/impact/asset",
 		"/platform/graph/attack-paths",
 		"/platform/graph/aws-public-endpoint-insights",
 		"/platform/graph/crown-jewel-rankings",
 		"/platform/graph/ingest-health",
-		"/graph/ingest-health",
 		"/platform/graph/ingest-runs",
-		"/graph/ingest-runs",
 		"/platform/devices",
 		"/platform/devices/enroll",
 		"/platform/devices/token",

@@ -4383,9 +4383,9 @@ func TestGraphIngestEndpoints(t *testing.T) {
 		t.Fatalf("graph ingest override checkpoint_id = %#v, want body-checkpoint", got)
 	}
 
-	getResp, err := server.Client().Get(server.URL + "/graph/ingest-runs/" + runID)
+	getResp, err := server.Client().Get(server.URL + "/platform/graph/ingest-runs/" + runID)
 	if err != nil {
-		t.Fatalf("GET /graph/ingest-runs/{id} error = %v", err)
+		t.Fatalf("GET /platform/graph/ingest-runs/{id} error = %v", err)
 	}
 	defer func() {
 		if closeErr := getResp.Body.Close(); closeErr != nil {
@@ -6211,18 +6211,18 @@ func TestGraphNeighborhoodEndpoints(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	resp, err := server.Client().Get(server.URL + "/graph/neighborhood?root_urn=urn:cerebro:writer:github_pull_request:writer/cerebro%23447&limit=5")
+	resp, err := server.Client().Get(server.URL + "/platform/graph/neighborhood?root_urn=urn:cerebro:writer:github_pull_request:writer/cerebro%23447&limit=5")
 	if err != nil {
-		t.Fatalf("GET /graph/neighborhood error = %v", err)
+		t.Fatalf("GET /platform/graph/neighborhood error = %v", err)
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			t.Fatalf("close /graph/neighborhood response body: %v", closeErr)
+			t.Fatalf("close /platform/graph/neighborhood response body: %v", closeErr)
 		}
 	}()
 	var payload map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode /graph/neighborhood response: %v", err)
+		t.Fatalf("decode /platform/graph/neighborhood response: %v", err)
 	}
 	rootPayload, ok := payload["root"].(map[string]any)
 	if !ok {
@@ -6258,6 +6258,44 @@ func TestGraphNeighborhoodEndpoints(t *testing.T) {
 	}
 	if len(neighborhoodResp.Msg.GetRelations()) != 2 {
 		t.Fatalf("len(GetEntityNeighborhood.Relations) = %d, want 2", len(neighborhoodResp.Msg.GetRelations()))
+	}
+}
+
+func TestLegacyGraphAliasesAreRemoved(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	for _, tc := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/graph/neighborhood"},
+		{method: http.MethodGet, path: "/graph/impact/vulnerability/CVE-2026-1111"},
+		{method: http.MethodGet, path: "/graph/impact/package"},
+		{method: http.MethodGet, path: "/graph/impact/asset"},
+		{method: http.MethodGet, path: "/graph/ingest-health"},
+		{method: http.MethodGet, path: "/graph/ingest-runs"},
+		{method: http.MethodGet, path: "/graph/ingest-runs/run-1"},
+		{method: http.MethodPost, path: "/graph/actuate/recommendation"},
+		{method: http.MethodPost, path: "/graph/write/outcome"},
+	} {
+		req, err := http.NewRequest(tc.method, server.URL+tc.path, nil)
+		if err != nil {
+			t.Fatalf("NewRequest(%s %s): %v", tc.method, tc.path, err)
+		}
+		resp, err := server.Client().Do(req)
+		if err != nil {
+			t.Fatalf("%s %s error = %v", tc.method, tc.path, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusMethodNotAllowed {
+			t.Fatalf("%s %s status = %d, want removed route status", tc.method, tc.path, resp.StatusCode)
+		}
 	}
 }
 
