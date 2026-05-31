@@ -87,7 +87,7 @@ workflow-replay:
 
 workflow-neighborhood:
 	@if [ -z "$(ROOT_URN)" ]; then echo "ROOT_URN is required, e.g. make workflow-neighborhood ROOT_URN=urn:cerebro:writer:decision:decision-1" >&2; exit 2; fi
-	curl -sS --get "$(CEREBRO_BASE_URL)/graph/neighborhood" \
+	curl -sS --get "$(CEREBRO_BASE_URL)/platform/graph/neighborhood" \
 		--data-urlencode "root_urn=$(ROOT_URN)" \
 		--data-urlencode "limit=$(WORKFLOW_NEIGHBORHOOD_LIMIT)" \
 		| python3 -m json.tool

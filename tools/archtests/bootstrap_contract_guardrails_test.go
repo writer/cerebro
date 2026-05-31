@@ -30,7 +30,6 @@ func TestOpenAPIContractDescribesCurrentBootstrapSurface(t *testing.T) {
 		"/platform/graph/neighborhood:",
 		"/platform/endpoints/{deviceKey}/vulnerability-findings:",
 		"x-cerebro-required-any-query:",
-		"deprecated: true",
 		"bearerAuth:",
 	} {
 		if !bytes.Contains(body, []byte(current)) {

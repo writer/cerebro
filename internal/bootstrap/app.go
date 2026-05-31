@@ -21,7 +21,6 @@ import (
 
 	apicontract "github.com/writer/cerebro/api"
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
-	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/claims"
 	"github.com/writer/cerebro/internal/config"
@@ -139,88 +138,8 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 		}
 	}
 	mux := http.NewServeMux()
-	service := &bootstrapService{cfg: cfg, deps: deps, sources: sources}
-	path, handler := cerebrov1connect.NewBootstrapServiceHandler(service, connect.WithInterceptors(authInterceptor(cfg.Auth)))
-	mux.Handle(path, handler)
 	app.mux = mux
-	mux.HandleFunc("/health", app.handleHealth)
-	mux.HandleFunc("/healthz", app.handleHealth)
-	mux.HandleFunc("GET /openapi.yaml", app.handleOpenAPI)
-	mux.HandleFunc("GET /reports", app.handleListReportDefinitions)
-	mux.HandleFunc("GET /finding-rules", app.handleListFindingRules)
-	mux.HandleFunc("POST /reports/{reportID}/runs", app.handleRunReport)
-	mux.HandleFunc("GET /report-runs/{runID}", app.handleGetReportRun)
-	mux.HandleFunc("GET /grc/dashboard", app.handleGRCDashboard)
-	mux.HandleFunc("POST /grc/ask", app.handleGRCAsk)
-	mux.HandleFunc("GET /grc/findings", app.handleGRCFindings)
-	mux.HandleFunc("GET /grc/controls", app.handleGRCControls)
-	mux.HandleFunc("GET /grc/evidence", app.handleGRCEvidence)
-	mux.HandleFunc("GET /grc/entities/{entityID}/impact", app.handleGRCEntityImpact)
-	mux.HandleFunc("GET /grc/audit-packets/{packetID}", app.handleGRCAuditPacket)
-	mux.HandleFunc("GET /findings/{findingID}", app.handleGetFinding)
-	mux.HandleFunc("GET /finding-candidates/{candidateID}", app.handleGetFindingCandidate)
-	mux.HandleFunc("POST /finding-candidates/{candidateID}/promote", app.handlePromoteFindingCandidate)
-	mux.HandleFunc("POST /finding-candidates/{candidateID}/reject", app.handleRejectFindingCandidate)
-	mux.HandleFunc("POST /findings/{findingID}/resolve", app.handleResolveFinding)
-	mux.HandleFunc("POST /findings/{findingID}/suppress", app.handleSuppressFinding)
-	mux.HandleFunc("PUT /findings/{findingID}/assign", app.handleAssignFinding)
-	mux.HandleFunc("PUT /findings/{findingID}/due", app.handleSetFindingDueDate)
-	mux.HandleFunc("POST /findings/{findingID}/notes", app.handleAddFindingNote)
-	mux.HandleFunc("POST /findings/{findingID}/tickets", app.handleLinkFindingTicket)
-	mux.HandleFunc("GET /endpoint-vulnerability-findings", app.handleListEndpointVulnerabilityFindings)
-	mux.HandleFunc("GET /finding-evaluation-runs/{runID}", app.handleGetFindingEvaluationRun)
-	mux.HandleFunc("GET /finding-evidence/{evidenceID}", app.handleGetFindingEvidence)
-	mux.HandleFunc("/sources", app.handleSources)
-	mux.HandleFunc("GET /sources/{sourceID}/check", app.handleCheckSource)
-	mux.HandleFunc("GET /sources/{sourceID}/discover", app.handleDiscoverSource)
-	mux.HandleFunc("GET /sources/{sourceID}/read", app.handleReadSource)
-	mux.HandleFunc("POST /platform/knowledge/decisions", app.handleWriteDecision)
-	mux.HandleFunc("POST /platform/knowledge/actions", app.handleWriteAction)
-	mux.HandleFunc("POST /platform/knowledge/actions/recommendation", app.handleWriteAction)
-	mux.HandleFunc("POST /graph/actuate/recommendation", deprecatedRoute(app.handleWriteAction))
-	mux.HandleFunc("POST /platform/knowledge/outcomes", app.handleWriteOutcome)
-	mux.HandleFunc("POST /graph/write/outcome", deprecatedRoute(app.handleWriteOutcome))
-	mux.HandleFunc("POST /platform/workflow/replay", app.handleReplayWorkflowEvents)
-	mux.HandleFunc("GET /platform/graph/neighborhood", app.handleGetEntityNeighborhood)
-	mux.HandleFunc("GET /graph/neighborhood", deprecatedRoute(app.handleGetEntityNeighborhood))
-	mux.HandleFunc("GET /platform/graph/impact/vulnerability/{id}", app.handleGetVulnerabilityImpact)
-	mux.HandleFunc("GET /graph/impact/vulnerability/{id}", deprecatedRoute(app.handleGetVulnerabilityImpact))
-	mux.HandleFunc("GET /platform/graph/impact/package", app.handleGetPackageImpact)
-	mux.HandleFunc("GET /graph/impact/package", deprecatedRoute(app.handleGetPackageImpact))
-	mux.HandleFunc("GET /platform/graph/impact/asset", app.handleGetAssetImpact)
-	mux.HandleFunc("GET /graph/impact/asset", deprecatedRoute(app.handleGetAssetImpact))
-	mux.HandleFunc("GET /platform/graph/attack-paths", app.handleGetAttackPaths)
-	mux.HandleFunc("GET /platform/graph/crown-jewel-rankings", app.handleGetCrownJewelRankings)
-	mux.HandleFunc("GET /platform/graph/aws-public-endpoint-insights", app.handleGetAWSPublicEndpointInsights)
-	mux.HandleFunc("GET /platform/endpoints/{deviceKey}/vulnerability-findings", app.handleListEndpointVulnerabilityFindings)
-	mux.HandleFunc("GET /platform/graph/ingest-health", app.handleCheckGraphIngestHealth)
-	mux.HandleFunc("GET /graph/ingest-health", deprecatedRoute(app.handleCheckGraphIngestHealth))
-	mux.HandleFunc("GET /platform/graph/ingest-runs", app.handleListGraphIngestRuns)
-	mux.HandleFunc("GET /graph/ingest-runs", deprecatedRoute(app.handleListGraphIngestRuns))
-	mux.HandleFunc("GET /platform/graph/ingest-runs/{runID}", app.handleGetGraphIngestRun)
-	mux.HandleFunc("GET /graph/ingest-runs/{runID}", deprecatedRoute(app.handleGetGraphIngestRun))
-	mux.HandleFunc("GET /source-runtimes", app.handleListSourceRuntimes)
-	mux.HandleFunc("PUT /source-runtimes/{runtimeID}", app.handlePutSourceRuntime)
-	mux.HandleFunc("GET /source-runtimes/{runtimeID}", app.handleGetSourceRuntime)
-	mux.HandleFunc("POST /source-runtimes/{runtimeID}/sync", app.handleSyncSourceRuntime)
-	mux.HandleFunc("POST /source-runtimes/{runtimeID}/graph-ingest-runs", app.handleRunGraphIngestRuntime)
-	mux.HandleFunc("GET /source-runtimes/{runtimeID}/claims", app.handleListClaims)
-	mux.HandleFunc("POST /source-runtimes/{runtimeID}/claims", app.handleWriteClaims)
-	mux.HandleFunc("GET /source-runtimes/{runtimeID}/findings", app.handleListFindings)
-	mux.HandleFunc("GET /source-runtimes/{runtimeID}/finding-candidates", app.handleListFindingCandidates)
-	mux.HandleFunc("GET /source-runtimes/{runtimeID}/finding-evidence", app.handleListFindingEvidence)
-	mux.HandleFunc("GET /source-runtimes/{runtimeID}/finding-evaluation-runs", app.handleListFindingEvaluationRuns)
-	mux.HandleFunc("POST /source-runtimes/{runtimeID}/finding-candidates/evaluate", app.handleEvaluateSourceRuntimeFindingCandidates)
-	mux.HandleFunc("POST /source-runtimes/{runtimeID}/finding-rules/evaluate", app.handleEvaluateSourceRuntimeFindingRules)
-	mux.HandleFunc("POST /source-runtimes/{runtimeID}/findings/evaluate", app.handleEvaluateSourceRuntimeFindings)
-	if app.deviceHandler != nil {
-		mux.HandleFunc("POST /platform/devices/enroll", app.deviceHandler.handleEnroll)
-		mux.HandleFunc("POST /platform/devices/token", app.deviceHandler.handleToken)
-		mux.HandleFunc("POST /platform/devices/bootstrap-tokens", app.deviceHandler.handleIssueBootstrapToken)
-		mux.HandleFunc("POST /platform/devices/{deviceID}/revoke", app.deviceHandler.handleRevoke)
-		mux.HandleFunc("POST /platform/telemetry/ingest", app.deviceHandler.handleIngestTelemetry)
-		mux.HandleFunc("GET /.well-known/device-jwks.json", app.deviceHandler.handleJWKS)
-	}
+	app.registerRoutes(mux, cfg, deps, sources)
 	app.handler = authMiddleware(cfg.Auth, AuthDependencies{
 		DeviceVerifier: app.deviceVerifier,
 		DPoPVerifier:   app.dpopVerifier,
@@ -265,14 +184,6 @@ func (a *App) handleOpenAPI(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(apicontract.OpenAPIYAML)
-}
-
-func deprecatedRoute(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Deprecation", "true")
-		w.Header().Set("Link", `<https://github.com/writer/cerebro/blob/main/README.md>; rel="deprecation"`)
-		next(w, r)
-	}
 }
 
 func authorizeSourceRuntimeIDTenant(ctx context.Context, store ports.SourceRuntimeStore, runtimeID string, allowMissing bool) error {
