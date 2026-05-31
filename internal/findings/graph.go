@@ -12,6 +12,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/knowledge"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/securityevents"
 	"github.com/writer/cerebro/internal/workflowevents"
 	"github.com/writer/cerebro/internal/workflowprojection"
 )
@@ -270,13 +271,60 @@ func (s *Service) recordAndProjectWorkflowEvent(ctx context.Context, event *cere
 			return err
 		}
 	}
-	if s.graph == nil {
-		return nil
+	if s.graph != nil {
+		if _, err := workflowprojection.New(s.graph).Project(ctx, event); err != nil {
+			return err
+		}
 	}
-	if _, err := workflowprojection.New(s.graph).Project(ctx, event); err != nil {
-		return err
+	if s.appendLog != nil {
+		if canonical, ok := canonicalFindingWorkflowEvent(event); ok {
+			if err := s.appendLog.Append(ctx, canonical); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
+}
+
+func canonicalFindingWorkflowEvent(event *cerebrov1.EventEnvelope) (*cerebrov1.EventEnvelope, bool) {
+	kind := canonicalFindingWorkflowKind(event.GetKind())
+	if kind == "" {
+		return nil, false
+	}
+	attributes := make(map[string]string, len(event.GetAttributes())+1)
+	for key, value := range event.GetAttributes() {
+		attributes[key] = value
+	}
+	attributes["canonical_kind"] = kind
+	return &cerebrov1.EventEnvelope{
+		Id:         canonicalFindingWorkflowEventID(event.GetId(), kind),
+		TenantId:   event.GetTenantId(),
+		SourceId:   event.GetSourceId(),
+		Kind:       kind,
+		OccurredAt: event.GetOccurredAt(),
+		SchemaRef:  event.GetSchemaRef(),
+		Payload:    append([]byte(nil), event.GetPayload()...),
+		Attributes: attributes,
+	}, true
+}
+
+func canonicalFindingWorkflowKind(kind string) string {
+	switch strings.TrimSpace(kind) {
+	case workflowevents.EventKindFindingRecorded:
+		return securityevents.FindingRecorded
+	case workflowevents.EventKindFindingStatusChanged:
+		return securityevents.FindingStatusChanged
+	case workflowevents.EventKindFindingNoteAdded:
+		return securityevents.FindingNoteAdded
+	case workflowevents.EventKindFindingTicketLinked:
+		return securityevents.FindingTicketLinked
+	default:
+		return ""
+	}
+}
+
+func canonicalFindingWorkflowEventID(id string, kind string) string {
+	return strings.TrimSpace(id) + "|canonical|" + strings.TrimSpace(kind)
 }
 
 func findingWorkflowSnapshot(finding *ports.FindingRecord, tenantID string, sourceID string) workflowevents.FindingSnapshot {

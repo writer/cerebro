@@ -11,6 +11,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/securityevents"
 	"github.com/writer/cerebro/internal/workflowevents"
 )
 
@@ -609,6 +610,9 @@ func decodeStatusChangedPayloads(t *testing.T, events []*cerebrov1.EventEnvelope
 	payloads := make([]*workflowevents.FindingStatusChanged, 0, len(events))
 	for i, event := range events {
 		if event.GetKind() != workflowevents.EventKindFindingStatusChanged {
+			if event.GetKind() == securityevents.FindingStatusChanged {
+				continue
+			}
 			t.Fatalf("appendLog.events[%d].Kind = %q, want %q", i, event.GetKind(), workflowevents.EventKindFindingStatusChanged)
 		}
 		payload, err := workflowevents.DecodeFindingStatusChanged(event)

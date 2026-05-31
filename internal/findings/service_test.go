@@ -19,6 +19,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/findingevidence"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/securityevents"
 	"github.com/writer/cerebro/internal/workflowevents"
 )
 
@@ -1285,11 +1286,14 @@ func TestEvaluateSourceRuntimeFindingsProjectsRecordedFindingToGraph(t *testing.
 	if _, ok := graph.links[primaryResourceURN+"|has_finding|"+findingURN]; !ok {
 		t.Fatalf("graph has_finding link missing for %s -> %s", primaryResourceURN, findingURN)
 	}
-	if got := len(appendLog.events); got != 1 {
-		t.Fatalf("len(appendLog.events) = %d, want 1", got)
+	if got := len(appendLog.events); got != 2 {
+		t.Fatalf("len(appendLog.events) = %d, want 2", got)
 	}
 	if got := appendLog.events[0].GetKind(); got != workflowevents.EventKindFindingRecorded {
 		t.Fatalf("appendLog.events[0].Kind = %q, want %q", got, workflowevents.EventKindFindingRecorded)
+	}
+	if got := appendLog.events[1].GetKind(); got != securityevents.FindingRecorded {
+		t.Fatalf("appendLog.events[1].Kind = %q, want %q", got, securityevents.FindingRecorded)
 	}
 }
 
@@ -4261,11 +4265,14 @@ func TestResolveFindingBridgesDecisionAndOutcomeWhenGraphConfigured(t *testing.T
 	if outcomeCount != 1 {
 		t.Fatalf("outcome entity count = %d, want 1", outcomeCount)
 	}
-	if len(appendLog.events) != 3 {
-		t.Fatalf("len(appendLog.events) = %d, want 3", len(appendLog.events))
+	if len(appendLog.events) != 4 {
+		t.Fatalf("len(appendLog.events) = %d, want 4", len(appendLog.events))
 	}
 	if got := appendLog.events[0].GetKind(); got != workflowevents.EventKindFindingStatusChanged {
 		t.Fatalf("first append event kind = %q, want %q", got, workflowevents.EventKindFindingStatusChanged)
+	}
+	if got := appendLog.events[1].GetKind(); got != securityevents.FindingStatusChanged {
+		t.Fatalf("canonical status event kind = %q, want %q", got, securityevents.FindingStatusChanged)
 	}
 }
 
@@ -4430,14 +4437,20 @@ func TestBackfillFindingRiskProjectsUpdatedRiskRows(t *testing.T) {
 	if closed := graphStore.entities["urn:cerebro:tenant-a:finding:finding-closed"]; closed == nil || closed.Attributes["risk_score"] != "83" {
 		t.Fatalf("closed projected finding = %#v, want risk_score 83", closed)
 	}
-	if got := len(appendLog.events); got != 2 {
-		t.Fatalf("len(appended events) = %d, want 2", got)
+	if got := len(appendLog.events); got != 4 {
+		t.Fatalf("len(appended events) = %d, want 4", got)
 	}
 	if eventTime := appendLog.events[0].GetOccurredAt().AsTime(); time.Since(eventTime) > time.Minute {
 		t.Fatalf("backfill event occurred_at = %s, want startup time", eventTime.Format(time.RFC3339Nano))
 	}
-	if got := appendLog.events[1].GetKind(); got != workflowevents.EventKindFindingStatusChanged {
+	if got := appendLog.events[1].GetKind(); got != securityevents.FindingRecorded {
+		t.Fatalf("canonical open finding event kind = %q, want %q", got, securityevents.FindingRecorded)
+	}
+	if got := appendLog.events[2].GetKind(); got != workflowevents.EventKindFindingStatusChanged {
 		t.Fatalf("closed finding event kind = %q, want status_changed", got)
+	}
+	if got := appendLog.events[3].GetKind(); got != securityevents.FindingStatusChanged {
+		t.Fatalf("canonical closed finding event kind = %q, want %q", got, securityevents.FindingStatusChanged)
 	}
 	if got := store.findings["finding-1"].Attributes[FindingRiskGraphProjectedModelVersionAttribute]; got != defaultFindingRiskModelVersion {
 		t.Fatalf("projection marker = %q, want %q", got, defaultFindingRiskModelVersion)
@@ -4596,10 +4609,10 @@ func TestSetFindingDueDateProjectsUpdatedRisk(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SetFindingDueDate(second) error = %v", err)
 	}
-	if got := len(appendLog.events); got != 2 {
-		t.Fatalf("len(appended events) = %d, want 2", got)
+	if got := len(appendLog.events); got != 4 {
+		t.Fatalf("len(appended events) = %d, want 4", got)
 	}
-	if secondEventID := appendLog.events[1].GetId(); secondEventID == firstEventID {
+	if secondEventID := appendLog.events[2].GetId(); secondEventID == firstEventID {
 		t.Fatalf("SetFindingDueDate() reused finding_record event id %q, want non-deduplicated refresh event", secondEventID)
 	}
 }
@@ -4939,11 +4952,14 @@ func TestAddFindingNoteUpdatesPersistedWorkflow(t *testing.T) {
 	if _, ok := graphStore.links["urn:cerebro:writer:finding:finding-1|annotated_with|"+annotationURN]; !ok {
 		t.Fatal("finding annotation link missing")
 	}
-	if len(appendLog.events) != 1 {
-		t.Fatalf("len(appendLog.events) = %d, want 1", len(appendLog.events))
+	if len(appendLog.events) != 2 {
+		t.Fatalf("len(appendLog.events) = %d, want 2", len(appendLog.events))
 	}
 	if got := appendLog.events[0].GetKind(); got != workflowevents.EventKindFindingNoteAdded {
 		t.Fatalf("append event kind = %q, want %q", got, workflowevents.EventKindFindingNoteAdded)
+	}
+	if got := appendLog.events[1].GetKind(); got != securityevents.FindingNoteAdded {
+		t.Fatalf("canonical append event kind = %q, want %q", got, securityevents.FindingNoteAdded)
 	}
 }
 
@@ -4992,11 +5008,14 @@ func TestLinkFindingTicketUpdatesPersistedWorkflow(t *testing.T) {
 	if _, ok := graphStore.links["urn:cerebro:writer:finding:finding-1|tracked_by|"+ticketURN]; !ok {
 		t.Fatal("finding ticket link missing")
 	}
-	if len(appendLog.events) != 1 {
-		t.Fatalf("len(appendLog.events) = %d, want 1", len(appendLog.events))
+	if len(appendLog.events) != 2 {
+		t.Fatalf("len(appendLog.events) = %d, want 2", len(appendLog.events))
 	}
 	if got := appendLog.events[0].GetKind(); got != workflowevents.EventKindFindingTicketLinked {
 		t.Fatalf("append event kind = %q, want %q", got, workflowevents.EventKindFindingTicketLinked)
+	}
+	if got := appendLog.events[1].GetKind(); got != securityevents.FindingTicketLinked {
+		t.Fatalf("canonical append event kind = %q, want %q", got, securityevents.FindingTicketLinked)
 	}
 }
 
