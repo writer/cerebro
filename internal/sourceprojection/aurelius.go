@@ -288,6 +288,9 @@ func aureliusImageEntity(tenantID, sourceID, urn string, attrs map[string]string
 
 func addAureliusImageDigestEntity(entities map[string]*ports.ProjectedEntity, tenantID string, sourceID string, attrs map[string]string) string {
 	digest := firstAttribute(attrs, "image_digest", "digest")
+	if strings.TrimSpace(digest) == "" {
+		return ""
+	}
 	digestURN := projectionURN(tenantID, "container_image_digest", digest)
 	if digestURN == "" {
 		return ""
