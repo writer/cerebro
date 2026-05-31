@@ -202,6 +202,53 @@ func TestProjectAureliusDigestOnlyFindingDoesNotCreateArtifactRegistryImage(t *t
 	}
 }
 
+func TestProjectAureliusScanAndVerdictShareDigestAnchor(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:       "aurelius-image-scan-digest",
+			TenantId: "writer",
+			SourceId: "aurelius",
+			Kind:     "aurelius.image_scan",
+			Attributes: map[string]string{
+				"image_digest": "sha256:shared",
+				"scan_id":      "scan-shared",
+			},
+		},
+		{
+			Id:       "aurelius-verdict-digest",
+			TenantId: "writer",
+			SourceId: "aurelius",
+			Kind:     "aurelius.verdict",
+			Attributes: map[string]string{
+				"image_digest": "sha256:shared",
+				"verdict":      "warn",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%s) error = %v", event.GetKind(), err)
+		}
+	}
+
+	digestURN := "urn:cerebro:writer:container_image_digest:sha256:shared"
+	scanURN := "urn:cerebro:writer:aurelius_image_scan:scan-shared"
+	verdictURN := "urn:cerebro:writer:aurelius_verdict:sha256:shared"
+	if entity := state.entities[digestURN]; entity == nil || entity.EntityType != "container.image_digest" {
+		t.Fatalf("digest anchor missing or wrong: %#v", entity)
+	}
+	assertProjectedLink(t, state, scanURN, relationObservedOn, digestURN)
+	assertProjectedLink(t, state, digestURN, relationHasEvidence, scanURN)
+	assertProjectedLink(t, state, verdictURN, relationObservedOn, digestURN)
+	assertProjectedLink(t, state, digestURN, relationHasEvidence, verdictURN)
+	if entity := state.entities["urn:cerebro:writer:gcp_artifact_registry_image:sha256:shared"]; entity != nil {
+		t.Fatalf("digest-only scan/verdict created non-canonical image entity: %#v", entity)
+	}
+}
+
 func TestProjectAureliusImageScanLinksImageRepositoryHierarchy(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
