@@ -22,6 +22,13 @@ def _positive_int(value: str) -> int:
     return parsed
 
 
+def _non_negative_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be >= 0")
+    return parsed
+
+
 def _source_runtime_command(args: argparse.Namespace) -> list[str]:
     command = [
         sys.executable,
@@ -42,13 +49,13 @@ def _source_runtime_command(args: argparse.Namespace) -> list[str]:
         "--stop-timeout-seconds",
         "600",
         "--failed-run-retry-seconds",
-        "300",
+        "0",
         "--run-attempt-timeout-seconds",
-        "900",
+        "300",
         "--max-age-minutes",
         "60",
         "--wait-timeout-seconds",
-        "1200",
+        "300",
         "--poll-seconds",
         "5",
         "--target-concurrency",
@@ -92,6 +99,26 @@ def _stream_graph_health(command: list[str], output_path: Path) -> int:
         return process.wait()
 
 
+def _finish_source_process(process: subprocess.Popen[str], grace_seconds: int | None) -> int:
+    if grace_seconds is None:
+        return process.wait()
+    try:
+        return process.wait(timeout=grace_seconds)
+    except subprocess.TimeoutExpired:
+        print(
+            f"Source runtime verification did not finish within {grace_seconds}s after graph health; marking it degraded.",
+            file=sys.stderr,
+            flush=True,
+        )
+        process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+        return 124
+
+
 def _report_source_degradation(stack: str, summary: TextIO | None = None) -> None:
     print(
         "::warning::Cosmo source runtime verification failed after deployment; rollout will continue and graph-health integrity checks remain blocking."
@@ -117,7 +144,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--source-runtime-verify", action="store_true")
     parser.add_argument("--graph-health", action="store_true")
     parser.add_argument("--graph-health-output", type=Path, default=Path("graph-health.tsv"))
-    parser.add_argument("--source-target-concurrency", type=_positive_int, default=2)
+    parser.add_argument("--source-target-concurrency", type=_positive_int, default=4)
+    parser.add_argument(
+        "--source-runtime-grace-seconds",
+        type=_non_negative_int,
+        default=30,
+        help="After graph health completes, wait this long for non-blocking source verification before degrading it.",
+    )
     parser.add_argument("--stop-running-source-before-run", action="store_true")
     args = parser.parse_args(argv)
 
@@ -132,7 +165,8 @@ def main(argv: list[str] | None = None) -> int:
             graph_status = _stream_graph_health(_graph_health_command(args), args.graph_health_output)
     finally:
         if source_process is not None:
-            source_status = source_process.wait()
+            grace_seconds = args.source_runtime_grace_seconds if args.graph_health else None
+            source_status = _finish_source_process(source_process, grace_seconds)
 
     if source_status != 0:
         _report_source_degradation(stack)
