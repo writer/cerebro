@@ -312,6 +312,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      issues: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -397,18 +398,27 @@ jobs:
           assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
 
       - name: Verify deployment health (sec-dev)
+        id: deployment_health_sec_dev
         if: needs.changes.outputs.aws_sec_dev_runtime_verify == 'true' || needs.changes.outputs.aws_sec_dev_graph_health == 'true'
         shell: bash
         working-directory: infra
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           args=()
           if [ "${{ needs.changes.outputs.aws_sec_dev_runtime_verify }}" = "true" ]; then
             args+=(--source-runtime-verify --stop-running-source-before-run)
           fi
           if [ "${{ needs.changes.outputs.aws_sec_dev_graph_health }}" = "true" ]; then
-            args+=(--graph-health --graph-health-output graph-health-sec-dev.tsv --allow-graph-health-degradation)
+            args+=(--graph-health --graph-health-output graph-health-sec-dev.tsv --allow-graph-health-degradation --graph-health-heal --graph-health-issue --graph-health-artifact-name graph-health-sec-dev --github-output "$GITHUB_OUTPUT")
           fi
           uv run python scripts/run_aws_deploy_verifications.py --stack-file aws/Pulumi.sec-dev.yaml "${args[@]}"
+
+      - name: Report graph health degradation (sec-dev)
+        if: always() && steps.deployment_health_sec_dev.outputs.graph_health_degraded == 'true'
+        shell: bash
+        run: |
+          echo "::warning title=Graph health degraded::sec-dev graph health degraded with category '${{ steps.deployment_health_sec_dev.outputs.graph_health_degradation_category }}'. See the graph-health-sec-dev artifact and follow-up issue."
 
       - name: Upload graph health summary (sec-dev)
         if: always() && needs.changes.outputs.aws_sec_dev_graph_health == 'true'
@@ -431,6 +441,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      issues: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -516,18 +527,27 @@ jobs:
           assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
 
       - name: Verify deployment health (go-prod)
+        id: deployment_health_go_prod
         if: needs.changes.outputs.aws_go_prod_runtime_verify == 'true' || needs.changes.outputs.aws_go_prod_graph_health == 'true'
         shell: bash
         working-directory: infra
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           args=()
           if [ "${{ needs.changes.outputs.aws_go_prod_runtime_verify }}" = "true" ]; then
             args+=(--source-runtime-verify)
           fi
           if [ "${{ needs.changes.outputs.aws_go_prod_graph_health }}" = "true" ]; then
-            args+=(--graph-health --graph-health-output graph-health-go-prod.tsv --allow-graph-health-degradation)
+            args+=(--graph-health --graph-health-output graph-health-go-prod.tsv --allow-graph-health-degradation --graph-health-heal --graph-health-issue --graph-health-artifact-name graph-health-go-prod --github-output "$GITHUB_OUTPUT")
           fi
           uv run python scripts/run_aws_deploy_verifications.py --stack-file aws/Pulumi.go-prod.yaml "${args[@]}"
+
+      - name: Report graph health degradation (go-prod)
+        if: always() && steps.deployment_health_go_prod.outputs.graph_health_degraded == 'true'
+        shell: bash
+        run: |
+          echo "::warning title=Graph health degraded::go-prod graph health degraded with category '${{ steps.deployment_health_go_prod.outputs.graph_health_degradation_category }}'. See the graph-health-go-prod artifact and follow-up issue."
 
       - name: Upload graph health summary (go-prod)
         if: always() && needs.changes.outputs.aws_go_prod_graph_health == 'true'
@@ -712,6 +732,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      issues: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -830,17 +851,27 @@ jobs:
           assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
 
       - name: Verify deployment health (AWS)
+        id: deployment_health_manual_aws
         if: "!startsWith(github.event.inputs.environment, 'gcp-')"
         shell: bash
         working-directory: infra
         env:
           STACK_NAME: ${{ github.event.inputs.environment }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          args=(--source-runtime-verify --graph-health --graph-health-output "graph-health-${STACK_NAME}.tsv")
+          args=(--source-runtime-verify --graph-health --graph-health-output "graph-health-${STACK_NAME}.tsv" --allow-graph-health-degradation --graph-health-heal --graph-health-issue --graph-health-artifact-name "graph-health-${STACK_NAME}" --github-output "$GITHUB_OUTPUT")
           if [ "${STACK_NAME}" = "sec-dev" ]; then
             args+=(--stop-running-source-before-run)
           fi
           uv run python scripts/run_aws_deploy_verifications.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" "${args[@]}"
+
+      - name: Report graph health degradation (AWS)
+        if: always() && steps.deployment_health_manual_aws.outputs.graph_health_degraded == 'true'
+        shell: bash
+        env:
+          STACK_NAME: ${{ github.event.inputs.environment }}
+        run: |
+          echo "::warning title=Graph health degraded::${STACK_NAME} graph health degraded with category '${{ steps.deployment_health_manual_aws.outputs.graph_health_degradation_category }}'. See the graph-health-${STACK_NAME} artifact and follow-up issue."
 
       - name: Upload graph health summary (AWS)
         if: "!startsWith(github.event.inputs.environment, 'gcp-') && always()"
