@@ -572,8 +572,13 @@ func identityAuditProjections(event *cerebrov1.EventEnvelope, profile identityPr
 	actorIdentifier := firstNonEmpty(actorEmail, attributes["actor_alternate_id"])
 	actorURN := identityUserURN(tenantID, provider, firstNonEmpty(attributes["actor_id"], actorIdentifier), actorIdentifier)
 	resourceID := firstNonEmpty(attributes["resource_id"], attributes["target_id"], attributes["app_id"], attributes["group_id"], attributes["role_id"])
+	resourceEmail := firstNonEmpty(attributes["resource_email"], attributes["target_email"])
+	if resourceID == "" && extractEmailIdentifier(attributes["target_alternate_id"]) != "" {
+		resourceID = attributes["target_alternate_id"]
+	}
+	resourceIdentifier := firstNonEmpty(resourceID, resourceEmail)
 	resourceType := normalizeIdentifier(firstNonEmpty(attributes["resource_type"], attributes["target_type"], "resource"))
-	resourceURN := projectionURN(tenantID, provider+"_"+resourceType, resourceID)
+	resourceURN := projectionURN(tenantID, provider+"_"+resourceType, firstNonEmpty(normalizeIdentifier(extractEmailIdentifier(resourceIdentifier)), resourceIdentifier))
 	if actorURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        actorURN,
@@ -599,9 +604,12 @@ func identityAuditProjections(event *cerebrov1.EventEnvelope, profile identityPr
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
 			EntityType: profile.entityType(strings.ReplaceAll(resourceType, "_", ".")),
-			Label:      firstNonEmpty(attributes["resource_name"], attributes["target_name"], resourceID),
+			Label:      firstNonEmpty(attributes["resource_name"], attributes["target_name"], resourceEmail, resourceID),
 			Attributes: map[string]string{"resource_id": resourceID, "resource_type": resourceType},
 		})
+		if resourceIdentifier := firstNonEmpty(resourceEmail, resourceID); extractEmailIdentifier(resourceIdentifier) != "" {
+			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), resourceURN, resourceIdentifier, event.GetOccurredAt())
+		}
 	}
 	if actorURN != "" && resourceURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, resourceURN, relationActedOn, map[string]string{

@@ -2444,6 +2444,65 @@ func TestProjectAWSCloudTrailActorEmailPreservesAlternateIdentifier(t *testing.T
 	}
 }
 
+func TestProjectGoogleWorkspaceAuditTargetEmailLinksIdentity(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "google-workspace-audit-target-email",
+		TenantId: "writer",
+		SourceId: "google_workspace",
+		Kind:     "google_workspace.audit",
+		Attributes: map[string]string{
+			"actor_email":   "admin@example.com",
+			"actor_id":      "admin-1",
+			"event_name":    "USER_SETTINGS_CHANGE",
+			"resource_type": "user",
+			"target_email":  "alice@example.com",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	targetURN := "urn:cerebro:writer:google_workspace_user:alice@example.com"
+	targetIdentityURN := "urn:cerebro:writer:identity:email:alice@example.com"
+	assertProjectedLink(t, state, "urn:cerebro:writer:google_workspace_user:admin-1", relationActedOn, targetURN)
+	assertProjectedLink(t, state, targetURN, relationRepresentsIdentity, targetIdentityURN)
+	assertProjectedLink(t, state, "urn:cerebro:writer:identifier:email:alice@example.com", relationRepresentsIdentity, targetIdentityURN)
+}
+
+func TestProjectGoogleWorkspaceAuditTargetEmailNormalizesResourceURN(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "google-workspace-audit-target-email-case",
+		TenantId: "writer",
+		SourceId: "google_workspace",
+		Kind:     "google_workspace.audit",
+		Attributes: map[string]string{
+			"actor_email":   "admin@example.com",
+			"actor_id":      "admin-1",
+			"event_name":    "USER_SETTINGS_CHANGE",
+			"resource_type": "user",
+			"target_email":  "Alice@Example.com",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	targetURN := "urn:cerebro:writer:google_workspace_user:alice@example.com"
+	unnormalizedTargetURN := "urn:cerebro:writer:google_workspace_user:Alice@Example.com"
+	targetIdentityURN := "urn:cerebro:writer:identity:email:alice@example.com"
+	assertProjectedLink(t, state, "urn:cerebro:writer:google_workspace_user:admin-1", relationActedOn, targetURN)
+	assertProjectedLink(t, state, targetURN, relationRepresentsIdentity, targetIdentityURN)
+	if _, ok := state.entities[unnormalizedTargetURN]; ok {
+		t.Fatalf("projected unnormalized target entity %q", unnormalizedTargetURN)
+	}
+}
+
 func TestProjectIdentityProviderJoinEdges(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
