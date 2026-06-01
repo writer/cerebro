@@ -626,6 +626,7 @@ type agentLocationPayload struct {
 	GroupName    string `json:"group_name,omitempty"`
 	SiteID       string `json:"site_id,omitempty"`
 	SiteName     string `json:"site_name,omitempty"`
+	UserName     string `json:"user_name,omitempty"`
 }
 
 type sitePayload struct {
@@ -831,6 +832,7 @@ func agentEvent(s settings, record agentRecord) (*primitives.Event, error) {
 			GroupName:    record.GroupName,
 			SiteID:       record.SiteID,
 			SiteName:     record.SiteName,
+			UserName:     sentinelOneAgentUserName(record),
 		},
 		TenantHost: s.host,
 		Tags:       record.Tags,
@@ -1348,6 +1350,9 @@ func agentAttributes(s settings, record agentRecord) map[string]string {
 	addAttribute(attrs, "site_name", record.SiteName)
 	addAttribute(attrs, "group_id", record.GroupID)
 	addAttribute(attrs, "group_name", record.GroupName)
+	userName := sentinelOneAgentUserName(record)
+	addAttribute(attrs, "user_name", userName)
+	addAttribute(attrs, "user_email", sentinelOneEmailLike(userName))
 	addAttribute(attrs, "account_id", record.AccountID)
 	addAttribute(attrs, "account_name", record.AccountName)
 	addAttribute(attrs, "machine_type", record.MachineType)
@@ -1360,6 +1365,18 @@ func agentAttributes(s settings, record agentRecord) map[string]string {
 		attrs["user_actions_needed"] = strings.Join(record.UserActionsNeeded, ",")
 	}
 	return attrs
+}
+
+func sentinelOneAgentUserName(record agentRecord) string {
+	return firstNonEmpty(record.LastLoggedInUserName, record.OSUsername)
+}
+
+func sentinelOneEmailLike(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if strings.Contains(trimmed, "@") {
+		return strings.ToLower(trimmed)
+	}
+	return ""
 }
 
 func joinedEndpointIPs(values ...string) string {

@@ -143,6 +143,30 @@ func TestProjectSentinelOneAgentUserNameOnlySkipsStrongOwnerIdentityEdges(t *tes
 	}
 }
 
+func TestProjectSentinelOneAgentUserNameEmailLinksOwnerIdentity(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "s1-agent-owner-username-email",
+		TenantId: "writer",
+		SourceId: "sentinelone",
+		Kind:     "sentinelone.agent",
+		Attributes: map[string]string{
+			"agent_id":  "agent-3",
+			"user_name": "owner@writer.com",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	agentURN := "urn:cerebro:writer:sentinelone_agent:agent-3"
+	identityURN := "urn:cerebro:writer:identity:email:owner@writer.com"
+	identifierURN := "urn:cerebro:writer:identifier:email:owner@writer.com"
+	assertProjectedLink(t, state, agentURN, relationOwnedBy, identityURN)
+	assertProjectedLink(t, state, agentURN, relationRepresentsIdentity, identityURN)
+	assertProjectedLink(t, state, agentURN, relationHasIdentifier, identifierURN)
+}
+
 func TestProjectSentinelOneAgentSkipsWhenAgentIDMissing(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
