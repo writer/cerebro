@@ -956,6 +956,34 @@ func TestProjectGRCVulnerableAssetLabelsAndLinksGitHubRepoToIntegration(t *testi
 	assertProjectedLink(t, state, repoURN, relationBelongsTo, integrationURN)
 }
 
+func TestProjectGRCVulnerableAssetDoesNotCreateGitHubAliasForNonGitHubSlashName(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-vulnerable-asset-non-github-slash",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.vulnerable_asset",
+		Attributes: map[string]string{
+			"provider":            "vanta",
+			"target_id":           "non-github-slash-asset",
+			"integration_id":      "aws",
+			"platform_asset_refs": `[{"provider":"aws","resource_id":"arn:aws:s3:::prod-app","resource_name":"prod/app","resource_type":"bucket"}]`,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	if entity := state.entities["urn:cerebro:writer:github_repo:prod/app"]; entity != nil {
+		t.Fatalf("non-github platform asset unexpectedly created github repo alias: %#v", entity)
+	}
+	if entity := state.entities["urn:cerebro:writer:github_org:prod"]; entity != nil {
+		t.Fatalf("non-github platform asset unexpectedly created github org: %#v", entity)
+	}
+}
+
 func TestGRCAWSResourceTypeFromARNHandlesAPIGatewayCustomDomain(t *testing.T) {
 	got := grcAWSResourceTypeFromARN("arn:aws:apigateway:us-east-1::/domainnames/api.writer.com")
 	if got != "apigateway_domain" {

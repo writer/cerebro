@@ -675,7 +675,7 @@ func addGRCPlatformAssetLinks(entities map[string]*ports.ProjectedEntity, links 
 			addLink(links, projectedLink(tenantID, sourceID, resourceURN, integrationURN, relationBelongsTo, grcIntegrationLinkAttributes(event, integrationID)))
 		}
 		addGRCGitHubRepositoryOrgLink(entities, links, tenantID, sourceID, event, resourceURN, ownerLogin)
-		addGRCGitHubRepositoryAliasLink(entities, links, tenantID, sourceID, event, resourceURN, ref.ResourceName, ownerLogin)
+		addGRCGitHubRepositoryAliasLink(entities, links, tenantID, sourceID, event, resourceURN, provider, resourceType, ref.ResourceName, ownerLogin)
 		addGRCPlatformNetworkLinks(entities, links, tenantID, sourceID, event, resourceURN, ref)
 	}
 }
@@ -719,14 +719,16 @@ func addGRCGitHubRepositoryOrgLink(entities map[string]*ports.ProjectedEntity, l
 	}))
 }
 
-func addGRCGitHubRepositoryAliasLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, codeRepositoryURN string, repository string, ownerLogin string) {
+func addGRCGitHubRepositoryAliasLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, codeRepositoryURN string, provider string, resourceType string, repository string, ownerLogin string) {
 	codeRepositoryURN = strings.TrimSpace(codeRepositoryURN)
+	provider = strings.TrimSpace(provider)
+	resourceType = strings.TrimSpace(resourceType)
 	repository = strings.TrimSpace(repository)
-	if codeRepositoryURN == "" || repository == "" || !strings.Contains(repository, "/") {
+	if provider != "github" || resourceType != "code_repository" || codeRepositoryURN == "" || repository == "" || !strings.Contains(repository, "/") {
 		return
 	}
 	if ownerLogin = strings.TrimSpace(ownerLogin); ownerLogin == "" {
-		ownerLogin = githubRepositoryOwnerLogin("github", "code_repository", repository)
+		ownerLogin = githubRepositoryOwnerLogin(provider, resourceType, repository)
 	}
 	if ownerLogin == "" {
 		return
