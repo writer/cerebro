@@ -36,6 +36,8 @@ type dependabotAlertPayload struct {
 	CreatedAt              time.Time  `json:"created_at"`
 	UpdatedAt              time.Time  `json:"updated_at"`
 	DismissedAt            *time.Time `json:"dismissed_at,omitempty"`
+	DismissedBy            string     `json:"dismissed_by,omitempty"`
+	DismissedByID          int64      `json:"dismissed_by_id,omitempty"`
 	FixedAt                *time.Time `json:"fixed_at,omitempty"`
 }
 
@@ -157,6 +159,8 @@ func dependabotAlertEvent(settings settings, alert *gogithub.DependabotAlert) (*
 		CreatedAt:              createdAt,
 		UpdatedAt:              occurredAt,
 		DismissedAt:            timestamp(alert.DismissedAt),
+		DismissedBy:            githubUserLogin(alert.DismissedBy),
+		DismissedByID:          githubUserID(alert.DismissedBy),
 		FixedAt:                timestamp(alert.FixedAt),
 	}
 	payloadBytes, err := json.Marshal(payload)
@@ -177,6 +181,10 @@ func dependabotAlertEvent(settings settings, alert *gogithub.DependabotAlert) (*
 	addAttribute(attributes, "advisory_ghsa_id", payload.GHSAID)
 	addAttribute(attributes, "advisory_severity", payload.AdvisorySeverity)
 	addAttribute(attributes, "dependency_scope", payload.DependencyScope)
+	addAttribute(attributes, "dismissed_by", payload.DismissedBy)
+	if payload.DismissedByID != 0 {
+		addAttribute(attributes, "dismissed_by_id", strconv.FormatInt(payload.DismissedByID, 10))
+	}
 	addAttribute(attributes, "ecosystem", payload.Ecosystem)
 	addAttribute(attributes, "first_patched_version", payload.FirstPatchedVersion)
 	addAttribute(attributes, "html_url", payload.HTMLURL)
