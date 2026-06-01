@@ -18,20 +18,24 @@ import (
 const familySecretScanning = "secret_scanning_alert"
 
 type secretScanningAlertPayload struct {
-	Number                   int        `json:"number"`
-	Repository               string     `json:"repository"`
-	State                    string     `json:"state"`
-	SecretType               string     `json:"secret_type,omitempty"`
-	SecretTypeDisplayName    string     `json:"secret_type_display_name,omitempty"`
-	Resolution               string     `json:"resolution,omitempty"`
-	ResolutionComment        string     `json:"resolution_comment,omitempty"`
-	PushProtectionBypassed   bool       `json:"push_protection_bypassed"`
-	URL                      string     `json:"url,omitempty"`
-	HTMLURL                  string     `json:"html_url,omitempty"`
-	CreatedAt                time.Time  `json:"created_at"`
-	UpdatedAt                time.Time  `json:"updated_at"`
-	ResolvedAt               *time.Time `json:"resolved_at,omitempty"`
-	PushProtectionBypassedAt *time.Time `json:"push_protection_bypassed_at,omitempty"`
+	Number                     int        `json:"number"`
+	Repository                 string     `json:"repository"`
+	State                      string     `json:"state"`
+	SecretType                 string     `json:"secret_type,omitempty"`
+	SecretTypeDisplayName      string     `json:"secret_type_display_name,omitempty"`
+	Resolution                 string     `json:"resolution,omitempty"`
+	ResolutionComment          string     `json:"resolution_comment,omitempty"`
+	ResolvedBy                 string     `json:"resolved_by,omitempty"`
+	ResolvedByID               int64      `json:"resolved_by_id,omitempty"`
+	PushProtectionBypassed     bool       `json:"push_protection_bypassed"`
+	PushProtectionBypassedBy   string     `json:"push_protection_bypassed_by,omitempty"`
+	PushProtectionBypassedByID int64      `json:"push_protection_bypassed_by_id,omitempty"`
+	URL                        string     `json:"url,omitempty"`
+	HTMLURL                    string     `json:"html_url,omitempty"`
+	CreatedAt                  time.Time  `json:"created_at"`
+	UpdatedAt                  time.Time  `json:"updated_at"`
+	ResolvedAt                 *time.Time `json:"resolved_at,omitempty"`
+	PushProtectionBypassedAt   *time.Time `json:"push_protection_bypassed_at,omitempty"`
 }
 
 func (s *Source) checkSecretScanningAlerts(ctx context.Context, client *gogithub.Client, settings settings) error {
@@ -108,20 +112,24 @@ func secretScanningAlertEvent(settings settings, alert *gogithub.SecretScanningA
 		repoName = repo.GetFullName()
 	}
 	payload := secretScanningAlertPayload{
-		Number:                   alert.GetNumber(),
-		Repository:               repoName,
-		State:                    alert.GetState(),
-		SecretType:               alert.GetSecretType(),
-		SecretTypeDisplayName:    alert.GetSecretTypeDisplayName(),
-		Resolution:               alert.GetResolution(),
-		ResolutionComment:        alert.GetResolutionComment(),
-		PushProtectionBypassed:   alert.GetPushProtectionBypassed(),
-		URL:                      alert.GetURL(),
-		HTMLURL:                  alert.GetHTMLURL(),
-		CreatedAt:                createdAt,
-		UpdatedAt:                occurredAt,
-		ResolvedAt:               secretScanningTimestamp(alert.ResolvedAt),
-		PushProtectionBypassedAt: secretScanningTimestamp(alert.PushProtectionBypassedAt),
+		Number:                     alert.GetNumber(),
+		Repository:                 repoName,
+		State:                      alert.GetState(),
+		SecretType:                 alert.GetSecretType(),
+		SecretTypeDisplayName:      alert.GetSecretTypeDisplayName(),
+		Resolution:                 alert.GetResolution(),
+		ResolutionComment:          alert.GetResolutionComment(),
+		ResolvedBy:                 githubUserLogin(alert.ResolvedBy),
+		ResolvedByID:               githubUserID(alert.ResolvedBy),
+		PushProtectionBypassed:     alert.GetPushProtectionBypassed(),
+		PushProtectionBypassedBy:   githubUserLogin(alert.PushProtectionBypassedBy),
+		PushProtectionBypassedByID: githubUserID(alert.PushProtectionBypassedBy),
+		URL:                        alert.GetURL(),
+		HTMLURL:                    alert.GetHTMLURL(),
+		CreatedAt:                  createdAt,
+		UpdatedAt:                  occurredAt,
+		ResolvedAt:                 secretScanningTimestamp(alert.ResolvedAt),
+		PushProtectionBypassedAt:   secretScanningTimestamp(alert.PushProtectionBypassedAt),
 	}
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
@@ -140,9 +148,17 @@ func secretScanningAlertEvent(settings settings, alert *gogithub.SecretScanningA
 	addAttribute(attributes, "html_url", payload.HTMLURL)
 	addAttribute(attributes, "repository", repoName)
 	addAttribute(attributes, "resolution", payload.Resolution)
+	addAttribute(attributes, "resolved_by", payload.ResolvedBy)
+	if payload.ResolvedByID != 0 {
+		addAttribute(attributes, "resolved_by_id", strconv.FormatInt(payload.ResolvedByID, 10))
+	}
 	addAttribute(attributes, "secret_type", payload.SecretType)
 	addAttribute(attributes, "secret_type_display_name", payload.SecretTypeDisplayName)
 	addAttribute(attributes, "push_protection_bypassed", strconv.FormatBool(payload.PushProtectionBypassed))
+	addAttribute(attributes, "push_protection_bypassed_by", payload.PushProtectionBypassedBy)
+	if payload.PushProtectionBypassedByID != 0 {
+		addAttribute(attributes, "push_protection_bypassed_by_id", strconv.FormatInt(payload.PushProtectionBypassedByID, 10))
+	}
 	return &primitives.Event{
 		Id:         fmt.Sprintf("github-secret-scanning-%s-%d-%d", normalizeRepositoryEventID(repo), alert.GetNumber(), occurredAt.Unix()),
 		TenantId:   settings.owner,

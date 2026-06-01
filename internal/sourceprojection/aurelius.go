@@ -204,12 +204,36 @@ func aureliusCatalogPromotionProjections(event *cerebrov1.EventEnvelope) ([]*por
 		if trackURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), promotionURN, trackURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
+		addAureliusContactEmailLink(entities, links, tenantID, event.GetSourceId(), event, promotionURN, firstAttribute(attrs, "promoted_by"), "promoted_by")
 	}
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }
 
+func addAureliusContactEmailLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, email string, contactType string) {
+	normalizedEmail := normalizeIdentifier(extractEmailIdentifier(email))
+	if strings.TrimSpace(fromURN) == "" || normalizedEmail == "" {
+		return
+	}
+	identityURN := projectionURN(tenantID, "identity", "email", normalizedEmail)
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        identityURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "identity.email",
+		Label:      normalizedEmail,
+		Attributes: map[string]string{"value": normalizedEmail},
+	})
+	linkAttrs := map[string]string{
+		"confidence":   "0.90",
+		"contact_type": strings.TrimSpace(contactType),
+		"event_id":     event.GetId(),
+		"match_type":   "contact_email",
+	}
+	addProjectedAttribute(linkAttrs, "at", eventObservedAt(event))
+	addLink(links, projectedLink(tenantID, sourceID, fromURN, identityURN, relationAssociatedWith, linkAttrs))
+}
 func aureliusPolicyExceptionProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
@@ -242,6 +266,7 @@ func aureliusPolicyExceptionProjections(event *cerebrov1.EventEnvelope) ([]*port
 		if vulnerabilityURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), exceptionURN, vulnerabilityURN, relationRepresents, map[string]string{"event_id": event.GetId()}))
 		}
+		addSecurityContactEmailLink(entities, links, tenantID, event.GetSourceId(), event, exceptionURN, firstAttribute(attrs, "approver"), "approver")
 	}
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)

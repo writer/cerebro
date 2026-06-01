@@ -276,10 +276,23 @@ func TestCheckDiscoverAndReadLiveAgents(t *testing.T) {
 		"ip_addresses":  "203.0.113.10,10.0.0.10",
 		"is_active":     "true",
 		"family":        "agent",
+		"user_email":    "owner@writer.com",
+		"user_name":     "owner@writer.com",
 	} {
 		if got := attrs[k]; got != want {
 			t.Fatalf("agent attribute %s = %q, want %q", k, got, want)
 		}
+	}
+}
+
+func TestSentinelOneEmailLikeRejectsUsernameOnlyUPNs(t *testing.T) {
+	for _, value := range []string{"owner@WRITER", "user@localhost", "jdoe@"} {
+		if got := sentinelOneEmailLike(value); got != "" {
+			t.Fatalf("sentinelOneEmailLike(%q) = %q, want empty", value, got)
+		}
+	}
+	if got := sentinelOneEmailLike(" Owner@Writer.COM "); got != "owner@writer.com" {
+		t.Fatalf("sentinelOneEmailLike(valid email) = %q", got)
 	}
 }
 
@@ -673,18 +686,19 @@ func newTestAPIHandler(t *testing.T) http.Handler {
 	}
 	agents := []map[string]any{
 		{
-			"id":             "A-1",
-			"computerName":   "host-A-1",
-			"osName":         "macOS",
-			"osType":         "macos",
-			"isActive":       true,
-			"isUpToDate":     true,
-			"externalIp":     "203.0.113.10",
-			"lastIpToMgmt":   "10.0.0.10",
-			"siteId":         "S-1",
-			"groupId":        "G-1",
-			"lastActiveDate": "2026-04-23T01:00:00Z",
-			"updatedAt":      "2026-04-23T01:00:00Z",
+			"id":                   "A-1",
+			"computerName":         "host-A-1",
+			"osName":               "macOS",
+			"osType":               "macos",
+			"isActive":             true,
+			"isUpToDate":           true,
+			"externalIp":           "203.0.113.10",
+			"lastIpToMgmt":         "10.0.0.10",
+			"lastLoggedInUserName": "owner@writer.com",
+			"siteId":               "S-1",
+			"groupId":              "G-1",
+			"lastActiveDate":       "2026-04-23T01:00:00Z",
+			"updatedAt":            "2026-04-23T01:00:00Z",
 		},
 		{
 			"id":             "A-2",

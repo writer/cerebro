@@ -1257,6 +1257,7 @@ func githubDependabotAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), packageURN, canonicalPackageURN, relationRepresents, packageIdentityAttributes(event, attributes, ecosystem)))
 	}
 	addGitHubDependabotDependencyContext(entities, links, tenantID, event, repoURN, alertURN, packageURN, canonicalPackageURN, repository, manifestPath, ecosystem, packageName)
+	addGitHubAlertActorLinks(entities, links, tenantID, event, alertURN, attributes["dismissed_by"], attributes["dismissed_by_id"], "dismissed_by")
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
@@ -1417,9 +1418,67 @@ func githubSecretScanningAlertProjections(event *cerebrov1.EventEnvelope) ([]*po
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), alertURN, repoURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
 	}
+	addGitHubAlertActorLinks(entities, links, tenantID, event, alertURN, attributes["resolved_by"], attributes["resolved_by_id"], "resolved_by")
+	addGitHubAlertActorLinks(entities, links, tenantID, event, alertURN, attributes["push_protection_bypassed_by"], attributes["push_protection_bypassed_by_id"], "push_protection_bypassed_by")
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
+}
+
+func addGitHubAlertActorLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, alertURN string, login string, userID string, actorRole string) {
+	login = strings.TrimSpace(login)
+	alertURN = strings.TrimSpace(alertURN)
+	if login == "" || alertURN == "" {
+		return
+	}
+	userID = strings.TrimSpace(userID)
+	actorRole = strings.TrimSpace(actorRole)
+	actorURN := projectionURN(tenantID, "github_user", login)
+	actorAttrs := map[string]string{"login": login}
+	if userID != "" {
+		actorAttrs["user_id"] = userID
+	}
+	if actorRole != "" {
+		actorAttrs["actor_role"] = actorRole
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        actorURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: "github.user",
+		Label:      login,
+		Attributes: actorAttrs,
+	})
+	linkAttrs := map[string]string{"event_id": event.GetId()}
+	if actorRole != "" {
+		linkAttrs["actor_role"] = actorRole
+	}
+	linkKey := actorURN + "|" + relationActedOn + "|" + alertURN
+	if existing := links[linkKey]; existing != nil {
+		mergeCSVLinkAttribute(existing.Attributes, "event_id", event.GetId())
+		mergeCSVLinkAttribute(existing.Attributes, "actor_role", actorRole)
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, login, event.GetOccurredAt())
+		return
+	}
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, alertURN, relationActedOn, linkAttrs))
+	addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, login, event.GetOccurredAt())
+}
+
+func mergeCSVLinkAttribute(attributes map[string]string, key string, value string) {
+	value = strings.TrimSpace(value)
+	if attributes == nil || key == "" || value == "" {
+		return
+	}
+	for _, existing := range strings.Split(attributes[key], ",") {
+		if strings.TrimSpace(existing) == value {
+			return
+		}
+	}
+	if strings.TrimSpace(attributes[key]) == "" {
+		attributes[key] = value
+		return
+	}
+	attributes[key] += "," + value
 }
 
 func githubOrgMemberProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -1455,6 +1514,7 @@ func githubOrgMemberProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 		if orgURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), memberURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "role": role}))
 		}
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), memberURN, login, event.GetOccurredAt())
 	}
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
@@ -1673,6 +1733,8 @@ func oktaAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 	actorDisplayName := strings.TrimSpace(attributes["actor_display_name"])
 	resourceID := strings.TrimSpace(attributes["resource_id"])
 	resourceType := strings.TrimSpace(attributes["resource_type"])
+	targetType := strings.TrimSpace(attributes["target_type"])
+	targetAlternateID := strings.TrimSpace(attributes["target_alternate_id"])
 	oauthClientID := firstNonEmpty(attributes["oauth_client_id"], attributes["client_id"])
 	oauthClientLabel := firstNonEmpty(attributes["oauth_client_label"], attributes["actor_display_name"], oauthClientID)
 
@@ -1714,6 +1776,9 @@ func oktaAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 		})
 		if orgURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+		if oktaAuditTargetUser(resourceType, targetType) {
+			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), resourceURN, targetAlternateID, event.GetOccurredAt())
 		}
 	}
 
@@ -2109,6 +2174,10 @@ func oktaResourceURN(tenantID string, resourceType string, resourceID string) st
 		return oktaUserURN(tenantID, resourceID)
 	}
 	return projectionURN(tenantID, "okta_resource", normalizeIdentifier(resourceType), strings.TrimSpace(resourceID))
+}
+
+func oktaAuditTargetUser(resourceType string, targetType string) bool {
+	return strings.EqualFold(resourceType, "user") || strings.EqualFold(targetType, "user")
 }
 
 func projectionURN(tenantID string, kind string, parts ...string) string {

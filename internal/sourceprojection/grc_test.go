@@ -68,6 +68,35 @@ func TestProjectGRCVendorWithOwner(t *testing.T) {
 	assertProjectedLink(t, state, vendorURN, relationHasIdentifier, hostURN)
 }
 
+func TestProjectGRCVendorLinksAccountManagerEmail(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-vendor-contact",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.vendor",
+		Attributes: map[string]string{
+			"provider":              "vanta",
+			"vendor_id":             "vendor-1",
+			"name":                  "Acme SaaS",
+			"account_manager_email": "manager@example.com",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	vendorURN := "urn:cerebro:writer:vendor:vanta:vendor-1"
+	identityURN := "urn:cerebro:writer:identity:email:manager@example.com"
+	assertProjectedLink(t, state, vendorURN, relationAssociatedWith, identityURN)
+	link := state.links[vendorURN+"|"+relationAssociatedWith+"|"+identityURN]
+	if got := link.Attributes["contact_type"]; got != "account_manager" {
+		t.Fatalf("contact_type = %q, want account_manager", got)
+	}
+}
+
 func TestProjectGRCDocumentLinksURLAndCategory(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
@@ -316,11 +345,13 @@ func TestProjectGRCRiskScenarioOwnerDoesNotCreatePersonIdentityBridge(t *testing
 	riskURN := "urn:cerebro:writer:claim:vanta:risk_scenario:risk-1"
 	contactURN := "urn:cerebro:writer:contact:vanta:owner:alice@writer.com"
 	personURN := "urn:cerebro:writer:person:vanta:owner:alice@writer.com"
+	identityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
 	assertProjectedLink(t, state, riskURN, relationAssignedTo, contactURN)
 	if _, ok := state.entities[personURN]; ok {
 		t.Fatalf("risk owner projected as GRC person: %#v", state.entities[personURN])
 	}
-	assertProjectedLinkMissing(t, state, contactURN, relationRepresentsIdentity, "urn:cerebro:writer:identity:email:alice@writer.com")
+	assertProjectedLinkMissing(t, state, contactURN, relationRepresentsIdentity, identityURN)
+	assertProjectedLink(t, state, contactURN, relationAssociatedWith, identityURN)
 }
 
 func TestProjectGRCPersonIdentifier(t *testing.T) {
