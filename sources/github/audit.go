@@ -21,6 +21,7 @@ import (
 type auditPayload struct {
 	Action                   string         `json:"action"`
 	Actor                    string         `json:"actor,omitempty"`
+	ActorEmail               string         `json:"actor_email,omitempty"`
 	ActorID                  int64          `json:"actor_id,omitempty"`
 	ActorIP                  string         `json:"actor_ip,omitempty"`
 	ActorIsAgent             bool           `json:"actor_is_agent,omitempty"`
@@ -139,6 +140,7 @@ type auditActorResolution struct {
 	Login string
 	Type  string
 	ID    int64
+	Email string
 }
 
 func resolveAuditActor(ctx context.Context, client *gogithub.Client, actor string, cache map[string]auditActorResolution) auditActorResolution {
@@ -163,6 +165,7 @@ func resolveAuditActor(ctx context.Context, client *gogithub.Client, actor strin
 	}
 	resolution.Type = strings.TrimSpace(user.GetType())
 	resolution.ID = user.GetID()
+	resolution.Email = strings.TrimSpace(user.GetEmail())
 	if login := strings.TrimSpace(user.GetLogin()); login != "" {
 		resolution.Login = login
 	}
@@ -183,6 +186,7 @@ func auditEvent(settings settings, entry *gogithub.AuditEntry, actorResolution a
 	payload, err := json.Marshal(auditPayload{
 		Action:                   entry.GetAction(),
 		Actor:                    entry.GetActor(),
+		ActorEmail:               actorResolution.Email,
 		ActorID:                  actorID,
 		ActorIP:                  rawString(raw, "actor_ip"),
 		ActorIsAgent:             rawBool(raw, "actor_is_agent"),
@@ -291,6 +295,7 @@ func auditAttributes(entry *gogithub.AuditEntry, raw map[string]any, settings se
 		"scope":          auditScope(entry, raw, settings),
 	}
 	addAttribute(attributes, "actor", entry.GetActor())
+	addAttribute(attributes, "actor_email", actorResolution.Email)
 	addAttribute(attributes, "actor_id", positiveInt64String(firstPositiveInt64(entry.GetActorID(), actorResolution.ID)))
 	addAttribute(attributes, "actor_is_agent", boolString(raw, "actor_is_agent"))
 	addAttribute(attributes, "actor_is_bot", boolString(raw, "actor_is_bot"))

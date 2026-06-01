@@ -2188,6 +2188,74 @@ func TestProjectReusesCrossSourceIdentifierWithinTenant(t *testing.T) {
 	}
 }
 
+func TestProjectGitHubAuditActorEmailEmitsEmailIdentity(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := &cerebrov1.EventEnvelope{
+		Id:       "github-audit-email",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.audit",
+		Attributes: map[string]string{
+			"actor":         "alice",
+			"actor_email":   "alice@writer.com",
+			"org":           "writer",
+			"repo":          "writer/cerebro",
+			"resource_id":   "writer/cerebro",
+			"resource_type": "repository",
+		},
+	}
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	actorURN := "urn:cerebro:writer:github_user:alice"
+	emailIdentityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
+	loginIdentityURN := "urn:cerebro:writer:identity:login:alice"
+	if _, ok := state.links[actorURN+"|"+relationRepresentsIdentity+"|"+emailIdentityURN]; !ok {
+		t.Fatalf("github actor email identity link missing for %q", emailIdentityURN)
+	}
+	if _, ok := state.links[actorURN+"|"+relationRepresentsIdentity+"|"+loginIdentityURN]; !ok {
+		t.Fatalf("github actor login identity link missing for %q", loginIdentityURN)
+	}
+}
+
+func TestProjectAWSCloudTrailActorEmailPreservesAlternateIdentifier(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-cloudtrail-email",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.cloudtrail",
+		Attributes: map[string]string{
+			"actor_alternate_id": "AWSReservedSSO_admin/alice",
+			"actor_email":        "alice@writer.com",
+			"actor_id":           "arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice",
+			"actor_type":         "AssumedRole",
+			"domain":             "123456789012",
+			"event_type":         "ListRoles",
+			"resource_id":        "123456789012",
+			"resource_type":      "account",
+		},
+	}
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	actorURN := "urn:cerebro:writer:aws_user:arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice"
+	emailIdentityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
+	alternateIdentifierURN := "urn:cerebro:writer:identifier:login:awsreservedsso_admin/alice"
+	if _, ok := state.links[actorURN+"|"+relationRepresentsIdentity+"|"+emailIdentityURN]; !ok {
+		t.Fatalf("aws actor email identity link missing for %q", emailIdentityURN)
+	}
+	if _, ok := state.links[actorURN+"|"+relationHasIdentifier+"|"+alternateIdentifierURN]; !ok {
+		t.Fatalf("aws actor alternate identifier link missing for %q", alternateIdentifierURN)
+	}
+}
+
 func TestProjectIdentityProviderJoinEdges(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
