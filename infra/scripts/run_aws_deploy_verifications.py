@@ -315,7 +315,7 @@ def _write_github_output(path: Path | None, **values: str) -> None:
             handle.write(f"{key}={value}\n")
 
 
-def _create_graph_health_issue(stack: str, status: int, category: str, artifact_name: str) -> None:
+def _create_graph_health_issue(stack: str, status: int, category: str, artifact_name: str, *, degraded: bool = True) -> None:
     token = os.environ.get("GITHUB_TOKEN")
     repository = os.environ.get("GITHUB_REPOSITORY")
     run_id = os.environ.get("GITHUB_RUN_ID")
@@ -323,12 +323,13 @@ def _create_graph_health_issue(stack: str, status: int, category: str, artifact_
         print("WARNING: cannot create graph-health issue without GITHUB_TOKEN, GITHUB_REPOSITORY, and GITHUB_RUN_ID", file=sys.stderr)
         return
     run_url = f"https://github.com/{repository}/actions/runs/{run_id}"
+    outcome = "degraded" if degraded else "blocked deployment"
     payload = json.dumps(
         {
-            "title": f"Graph health degraded for {stack}",
+            "title": f"Graph health {outcome} for {stack}",
             "body": "\n".join(
                 [
-                    f"Graph health verification degraded after an infrastructure deployment for `{stack}`.",
+                    f"Graph health verification {outcome} after an infrastructure deployment for `{stack}`.",
                     "",
                     f"- Category: `{category}`",
                     f"- Exit code: `{status}`",
@@ -419,6 +420,9 @@ def main(argv: list[str] | None = None) -> int:
             if args.graph_health_issue:
                 _create_graph_health_issue(stack, graph_status, category, args.graph_health_artifact_name)
             return 0
+        _write_github_output(args.github_output, graph_health_degraded="false", graph_health_degradation_category="", graph_health_blocked="true")
+        if args.graph_health_issue:
+            _create_graph_health_issue(stack, graph_status, category or "blocking_graph_health_failure", args.graph_health_artifact_name, degraded=False)
         return graph_status
     _write_github_output(args.github_output, graph_health_degraded="false", graph_health_degradation_category="")
     return 0
