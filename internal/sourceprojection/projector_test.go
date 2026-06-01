@@ -505,6 +505,41 @@ func TestProjectGitHubSecretScanningAlertLinksResolverAndBypasser(t *testing.T) 
 	}
 }
 
+func TestProjectGitHubSecretScanningAlertPreservesMultipleActorRolesForSameUser(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &projectionRecorder{}
+	service := New(state, graph)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-secret-scanning-alert-same-actor",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.secret_scanning_alert",
+		Attributes: map[string]string{
+			"alert_number":                   "43",
+			"owner":                          "writer",
+			"push_protection_bypassed":       "true",
+			"push_protection_bypassed_by":    "alice",
+			"push_protection_bypassed_by_id": "123",
+			"repository":                     "writer/cerebro",
+			"resolved_by":                    "alice",
+			"resolved_by_id":                 "123",
+			"state":                          "resolved",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	alertURN := "urn:cerebro:writer:github_secret_scanning_alert:writer:43"
+	actorURN := "urn:cerebro:writer:github_user:alice"
+	assertProjectedLink(t, graph, actorURN, relationActedOn, alertURN)
+	link := graph.links[actorURN+"|"+relationActedOn+"|"+alertURN]
+	if got := link.Attributes["actor_role"]; got != "resolved_by,push_protection_bypassed_by" {
+		t.Fatalf("actor_role = %q, want both roles", got)
+	}
+}
+
 func TestProjectOktaOAuthGrantAsApplicationTelemetry(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

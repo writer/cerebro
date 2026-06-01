@@ -1453,8 +1453,32 @@ func addGitHubAlertActorLinks(entities map[string]*ports.ProjectedEntity, links 
 	if actorRole != "" {
 		linkAttrs["actor_role"] = actorRole
 	}
+	linkKey := actorURN + "|" + relationActedOn + "|" + alertURN
+	if existing := links[linkKey]; existing != nil {
+		mergeCSVLinkAttribute(existing.Attributes, "event_id", event.GetId())
+		mergeCSVLinkAttribute(existing.Attributes, "actor_role", actorRole)
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, login, event.GetOccurredAt())
+		return
+	}
 	addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, alertURN, relationActedOn, linkAttrs))
 	addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, login, event.GetOccurredAt())
+}
+
+func mergeCSVLinkAttribute(attributes map[string]string, key string, value string) {
+	value = strings.TrimSpace(value)
+	if attributes == nil || key == "" || value == "" {
+		return
+	}
+	for _, existing := range strings.Split(attributes[key], ",") {
+		if strings.TrimSpace(existing) == value {
+			return
+		}
+	}
+	if strings.TrimSpace(attributes[key]) == "" {
+		attributes[key] = value
+		return
+	}
+	attributes[key] += "," + value
 }
 
 func githubOrgMemberProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
