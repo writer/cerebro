@@ -2066,22 +2066,32 @@ func addSameActorEmailLink(entities map[string]*ports.ProjectedEntity, links map
 func identifierEvidenceAttributes(rawValue string, identifierType string, normalizedValue string, eventID string, occurredAt *timestamppb.Timestamp) map[string]string {
 	matchType := "login"
 	confidence := "0.60"
+	identityQuality := "weak_login"
+	identityScope := "source_local"
+	crossSourceIdentity := "false"
 	value := strings.TrimSpace(rawValue)
 	if identifierType == "identifier.email" {
+		identityScope = "global"
+		crossSourceIdentity = "true"
 		if strings.EqualFold(normalizeIdentifier(value), normalizedValue) {
 			matchType = "exact_email"
 			confidence = "0.95"
+			identityQuality = "stable_email"
 		} else {
 			matchType = "extracted_email"
 			confidence = "0.85"
+			identityQuality = "extracted_email"
 		}
 	}
 	attributes := map[string]string{
-		"confidence":       confidence,
-		"evidence_type":    "shared_identifier",
-		"identifier_type":  strings.TrimPrefix(identifierType, "identifier."),
-		"identifier_value": normalizedValue,
-		"match_type":       matchType,
+		"confidence":            confidence,
+		"cross_source_identity": crossSourceIdentity,
+		"evidence_type":         "shared_identifier",
+		"identifier_type":       strings.TrimPrefix(identifierType, "identifier."),
+		"identifier_value":      normalizedValue,
+		"identity_quality":      identityQuality,
+		"identity_scope":        identityScope,
+		"match_type":            matchType,
 	}
 	if normalizedEventID := strings.TrimSpace(eventID); normalizedEventID != "" {
 		attributes["source_event_id"] = normalizedEventID

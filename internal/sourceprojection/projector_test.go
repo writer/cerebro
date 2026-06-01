@@ -137,6 +137,40 @@ func projectionRecorderCleanupMatches(request ports.ProjectionCleanupRequest, en
 	return false
 }
 
+func TestIdentifierEvidenceAttributesMarksEmailAsGlobalCrossSource(t *testing.T) {
+	attrs := identifierEvidenceAttributes(" Alice@Writer.COM ", "identifier.email", "alice@writer.com", "event-1", nil)
+
+	if got := attrs["identity_quality"]; got != "stable_email" {
+		t.Fatalf("identity_quality = %q, want stable_email", got)
+	}
+	if got := attrs["identity_scope"]; got != "global" {
+		t.Fatalf("identity_scope = %q, want global", got)
+	}
+	if got := attrs["cross_source_identity"]; got != "true" {
+		t.Fatalf("cross_source_identity = %q, want true", got)
+	}
+	if got := attrs["confidence"]; got != "0.95" {
+		t.Fatalf("confidence = %q, want 0.95", got)
+	}
+}
+
+func TestIdentifierEvidenceAttributesMarksLoginAsSourceLocalWeak(t *testing.T) {
+	attrs := identifierEvidenceAttributes("alice", "identifier.login", "alice", "event-1", nil)
+
+	if got := attrs["identity_quality"]; got != "weak_login" {
+		t.Fatalf("identity_quality = %q, want weak_login", got)
+	}
+	if got := attrs["identity_scope"]; got != "source_local" {
+		t.Fatalf("identity_scope = %q, want source_local", got)
+	}
+	if got := attrs["cross_source_identity"]; got != "false" {
+		t.Fatalf("cross_source_identity = %q, want false", got)
+	}
+	if got := attrs["confidence"]; got != "0.60" {
+		t.Fatalf("confidence = %q, want 0.60", got)
+	}
+}
+
 func TestProjectGitHubPullRequest(t *testing.T) {
 	state := &projectionRecorder{}
 	graph := &projectionRecorder{}
