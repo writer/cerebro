@@ -38,6 +38,7 @@ type Family struct {
 	Attributes       map[string]string
 	StaticAttributes map[string]string
 	StaticQuery      map[string]string
+	PageSizeParams   []string
 	RequireID        bool
 }
 
@@ -215,8 +216,9 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 			query.Set(strings.TrimSpace(key), strings.TrimSpace(value))
 		}
 	}
-	query.Set("limit", strconv.Itoa(pageSize))
-	query.Set("per_page", strconv.Itoa(pageSize))
+	for _, param := range pageSizeParams(family) {
+		query.Set(param, strconv.Itoa(pageSize))
+	}
 	if cursor := strings.TrimSpace(cursor); cursor != "" {
 		query.Set("cursor", cursor)
 	}
@@ -239,6 +241,22 @@ func (s *Source) list(ctx context.Context, family Family, settings settings, cur
 		}
 	}
 	return records, next, nil
+}
+
+func pageSizeParams(family Family) []string {
+	if len(family.PageSizeParams) == 0 {
+		return []string{"limit", "per_page"}
+	}
+	params := make([]string, 0, len(family.PageSizeParams))
+	for _, param := range family.PageSizeParams {
+		if param = strings.TrimSpace(param); param != "" {
+			params = append(params, param)
+		}
+	}
+	if len(params) == 0 {
+		return []string{"limit", "per_page"}
+	}
+	return params
 }
 
 func (s *Source) getJSON(ctx context.Context, settings settings, query url.Values, target any) error {

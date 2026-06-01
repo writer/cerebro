@@ -68,6 +68,7 @@ func New() (*Source, error) {
 				},
 				StaticAttributes: map[string]string{"source_product": "backstage"},
 				StaticQuery:      map[string]string{"filter": "kind=component"},
+				PageSizeParams:   []string{"limit"},
 			},
 		},
 	})

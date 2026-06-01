@@ -32,6 +32,12 @@ func TestReadComponentFamily(t *testing.T) {
 		if got := r.URL.Query().Get("filter"); got != "kind=component" {
 			t.Fatalf("filter query = %q, want kind=component", got)
 		}
+		if got := r.URL.Query().Get("limit"); got != "100" {
+			t.Fatalf("limit query = %q, want 100", got)
+		}
+		if got := r.URL.Query().Get("per_page"); got != "" {
+			t.Fatalf("per_page query = %q, want empty", got)
+		}
 		if got := r.Header.Get("Authorization"); got != "Bearer backstage-token" {
 			t.Fatalf("Authorization = %q, want Bearer backstage-token", got)
 		}
