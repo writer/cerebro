@@ -231,6 +231,60 @@ func TestReadAzureIAMRoleAssignmentResolvesPrincipalEmail(t *testing.T) {
 	}
 }
 
+func TestListAzureIAMRoleAssignmentsCachesResolvedMetadata(t *testing.T) {
+	var roleDefinitionLookups int
+	var principalLookups int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/subscriptions/sub-1/providers/Microsoft.Authorization/roleAssignments":
+			writeJSON(t, w, map[string]any{"value": []map[string]any{
+				{"id": "/subscriptions/sub-1/providers/Microsoft.Authorization/roleAssignments/ra-1", "name": "ra-1", "properties": map[string]any{"principalId": "user-1", "principalType": "User", "roleDefinitionId": "/subscriptions/sub-1/providers/Microsoft.Authorization/roleDefinitions/owner-role", "scope": "/subscriptions/sub-1"}},
+				{"id": "/subscriptions/sub-1/providers/Microsoft.Authorization/roleAssignments/ra-2", "name": "ra-2", "properties": map[string]any{"principalId": "user-1", "principalType": "User", "roleDefinitionId": "/subscriptions/sub-1/providers/Microsoft.Authorization/roleDefinitions/owner-role", "scope": "/subscriptions/sub-1"}},
+			}})
+		case "/subscriptions/sub-1/providers/Microsoft.Authorization/roleDefinitions/owner-role":
+			roleDefinitionLookups++
+			writeJSON(t, w, map[string]any{"properties": map[string]any{"roleName": "Owner"}})
+		case "/v1.0/users/user-1":
+			principalLookups++
+			writeJSON(t, w, map[string]any{"@odata.type": "#microsoft.graph.user", "id": "user-1", "userPrincipalName": "admin@writer.com", "mail": "admin@writer.com"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	settings := settings{baseURL: server.URL, tenantID: "tenant-1", subscriptionID: "sub-1", token: "test-token"}
+
+	baseRecords, _, err := listIAMRoleAssignmentsBase(context.Background(), source, settings, "", 10)
+	if err != nil {
+		t.Fatalf("listIAMRoleAssignmentsBase() error = %v", err)
+	}
+	if len(baseRecords) != 2 {
+		t.Fatalf("len(baseRecords) = %d, want 2", len(baseRecords))
+	}
+	if roleDefinitionLookups != 0 || principalLookups != 0 {
+		t.Fatalf("base list made enrichment calls: role=%d principal=%d", roleDefinitionLookups, principalLookups)
+	}
+
+	records, _, err := listIAMRoleAssignments(context.Background(), source, settings, "", 10)
+	if err != nil {
+		t.Fatalf("listIAMRoleAssignments() error = %v", err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("len(records) = %d, want 2", len(records))
+	}
+	if roleDefinitionLookups != 1 {
+		t.Fatalf("role definition lookups = %d, want 1", roleDefinitionLookups)
+	}
+	if principalLookups != 1 {
+		t.Fatalf("principal lookups = %d, want 1", principalLookups)
+	}
+}
+
 func newLiveTestSource() (*Source, error) {
 	source, err := New()
 	if err != nil {

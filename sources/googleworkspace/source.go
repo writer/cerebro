@@ -226,8 +226,15 @@ func (s *Source) readFamily(ctx context.Context, settings settings, cursor *cere
 		return sourcecdk.Pull{}, nil
 	}
 	events := make([]*primitives.Event, 0, len(rawRecords))
+	userCache := map[string]googleWorkspaceUserLookup{}
 	for _, raw := range rawRecords {
-		event, err := s.sourceEvent(ctx, settings, raw)
+		var event *primitives.Event
+		var err error
+		if settings.family == familyRoleAssign {
+			event, err = s.roleAssignmentEvent(ctx, settings, raw, userCache)
+		} else {
+			event, err = s.sourceEvent(ctx, settings, raw)
+		}
 		if err != nil {
 			return sourcecdk.Pull{}, err
 		}
@@ -415,18 +422,43 @@ func (s *Source) sourceEvent(ctx context.Context, settings settings, raw json.Ra
 	if settings.family != familyRoleAssign {
 		return sourceEvent(settings, raw)
 	}
+	return s.roleAssignmentEvent(ctx, settings, raw, nil)
+}
+
+func (s *Source) roleAssignmentEvent(ctx context.Context, settings settings, raw json.RawMessage, userCache map[string]googleWorkspaceUserLookup) (*primitives.Event, error) {
 	var record roleAssignmentRecord
 	if err := json.Unmarshal(raw, &record); err != nil {
 		return nil, fmt.Errorf("decode google_workspace role assignment: %w", err)
 	}
 	record.raw = append(json.RawMessage(nil), raw...)
 	if strings.EqualFold(record.AssigneeType, "user") {
-		if user, ok := s.lookupUser(ctx, settings, record.AssignedTo); ok {
+		if user, ok := s.lookupUserCached(ctx, settings, record.AssignedTo, userCache); ok {
 			record.SubjectEmail = user.PrimaryEmail
 			record.SubjectName = user.Name.FullName
 		}
 	}
 	return roleAssignmentEvent(settings, record)
+}
+
+type googleWorkspaceUserLookup struct {
+	record userRecord
+	ok     bool
+}
+
+func (s *Source) lookupUserCached(ctx context.Context, settings settings, userKey string, cache map[string]googleWorkspaceUserLookup) (userRecord, bool) {
+	userKey = strings.TrimSpace(userKey)
+	if userKey == "" {
+		return userRecord{}, false
+	}
+	if cache == nil {
+		return s.lookupUser(ctx, settings, userKey)
+	}
+	if cached, ok := cache[userKey]; ok {
+		return cached.record, cached.ok
+	}
+	user, ok := s.lookupUser(ctx, settings, userKey)
+	cache[userKey] = googleWorkspaceUserLookup{record: user, ok: ok}
+	return user, ok
 }
 
 func (s *Source) lookupUser(ctx context.Context, settings settings, userKey string) (userRecord, bool) {
