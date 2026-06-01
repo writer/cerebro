@@ -327,6 +327,74 @@ func TestCleanupProjectedEntitiesAllowsStateStoreOnly(t *testing.T) {
 	}
 }
 
+func TestParseGraphOpenFindingPrimaryLinkRepairArgsDefaultsDryRun(t *testing.T) {
+	options, err := parseGraphOpenFindingPrimaryLinkRepairArgs([]string{"limit=7"})
+	if err != nil {
+		t.Fatalf("parseGraphOpenFindingPrimaryLinkRepairArgs() error = %v", err)
+	}
+	if !options.DryRun || options.Limit != 7 {
+		t.Fatalf("options = %#v, want dry-run limit 7", options)
+	}
+}
+
+func TestParseGraphOpenFindingPrimaryLinkRepairArgsRequiresApply(t *testing.T) {
+	if _, err := parseGraphOpenFindingPrimaryLinkRepairArgs([]string{"dry_run=false"}); err == nil {
+		t.Fatal("parseGraphOpenFindingPrimaryLinkRepairArgs() error = nil, want apply requirement")
+	}
+	options, err := parseGraphOpenFindingPrimaryLinkRepairArgs([]string{"apply=true"})
+	if err != nil {
+		t.Fatalf("parseGraphOpenFindingPrimaryLinkRepairArgs(apply) error = %v", err)
+	}
+	if options.DryRun {
+		t.Fatalf("DryRun = true, want apply mode")
+	}
+}
+
+func TestRepairOpenFindingPrimaryLinksCreatesMissingEdge(t *testing.T) {
+	store := newGraphTestStore()
+	resourceURN := "urn:cerebro:writer:resource:primary"
+	findingURN := "urn:cerebro:writer:finding:finding-1"
+	if err := store.UpsertProjectedEntity(context.Background(), &ports.ProjectedEntity{
+		URN:        resourceURN,
+		TenantID:   "writer",
+		SourceID:   "example",
+		EntityType: "resource",
+	}); err != nil {
+		t.Fatalf("UpsertProjectedEntity(resource) error = %v", err)
+	}
+	if err := store.UpsertProjectedEntity(context.Background(), &ports.ProjectedEntity{
+		URN:        findingURN,
+		TenantID:   "writer",
+		SourceID:   "example",
+		RuntimeID:  "example-runtime",
+		EntityType: "finding",
+		Attributes: map[string]string{
+			"status":               "open",
+			"primary_resource_urn": resourceURN,
+		},
+	}); err != nil {
+		t.Fatalf("UpsertProjectedEntity(finding) error = %v", err)
+	}
+
+	dryRun, err := repairOpenFindingPrimaryLinks(context.Background(), bootstrap.Dependencies{GraphStore: store}, graphOpenFindingPrimaryLinkRepairOptions{DryRun: true})
+	if err != nil {
+		t.Fatalf("repairOpenFindingPrimaryLinks(dry-run) error = %v", err)
+	}
+	if dryRun.LinksMatched != 1 || dryRun.LinksCreated != 0 || !dryRun.DryRun {
+		t.Fatalf("dryRun result = %#v, want one matched and no creates", dryRun)
+	}
+	applied, err := repairOpenFindingPrimaryLinks(context.Background(), bootstrap.Dependencies{GraphStore: store}, graphOpenFindingPrimaryLinkRepairOptions{DryRun: false})
+	if err != nil {
+		t.Fatalf("repairOpenFindingPrimaryLinks(apply) error = %v", err)
+	}
+	if applied.LinksMatched != 1 || applied.LinksCreated != 1 || applied.DryRun {
+		t.Fatalf("applied result = %#v, want one created", applied)
+	}
+	if _, ok := store.links[resourceURN+"|has_finding|"+findingURN]; !ok {
+		t.Fatal("missing repaired has_finding edge")
+	}
+}
+
 func TestGraphIngestCheckpointIDScrubsSensitiveConfig(t *testing.T) {
 	options := graphIngestOptions{
 		SourceID: "github",
