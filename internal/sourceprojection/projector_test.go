@@ -1120,6 +1120,44 @@ func TestProjectOktaAuditSuppressesSelfActedOnEdge(t *testing.T) {
 	assertProjectedLinkMissing(t, state, userURN, relationActedOn, userURN)
 }
 
+func TestProjectOktaAuditTargetUserLinksAlternateIDIdentity(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &projectionRecorder{}
+	service := New(state, graph)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:         "okta-target-user",
+		TenantId:   "writer",
+		SourceId:   "okta",
+		Kind:       "okta.audit",
+		OccurredAt: timestamppb.New(time.Date(2026, time.May, 12, 1, 2, 3, 0, time.UTC)),
+		Attributes: map[string]string{
+			"domain":              "writer.okta.com",
+			"event_type":          "user.lifecycle.update",
+			"actor_id":            "00u-admin",
+			"actor_type":          "User",
+			"actor_alternate_id":  "admin@writer.com",
+			"resource_id":         "00u-target",
+			"resource_type":       "User",
+			"target_id":           "00u-target",
+			"target_type":         "User",
+			"target_alternate_id": "alice@writer.com",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	targetURN := "urn:cerebro:writer:okta_user:00u-target"
+	identityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
+	identifierURN := "urn:cerebro:writer:identifier:email:alice@writer.com"
+	assertProjectedLink(t, graph, "urn:cerebro:writer:okta_user:00u-admin", relationActedOn, targetURN)
+	assertProjectedLink(t, graph, targetURN, relationRepresentsIdentity, identityURN)
+	assertProjectedLink(t, graph, targetURN, relationHasIdentifier, identifierURN)
+	assertProjectedLink(t, graph, identityURN, relationHasIdentifier, identifierURN)
+	assertProjectedLink(t, graph, identifierURN, relationRepresentsIdentity, identityURN)
+}
+
 func TestProjectOktaAuditActedOnEdgesCarryTemporalContext(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

@@ -1673,6 +1673,8 @@ func oktaAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 	actorDisplayName := strings.TrimSpace(attributes["actor_display_name"])
 	resourceID := strings.TrimSpace(attributes["resource_id"])
 	resourceType := strings.TrimSpace(attributes["resource_type"])
+	targetType := strings.TrimSpace(attributes["target_type"])
+	targetAlternateID := strings.TrimSpace(attributes["target_alternate_id"])
 	oauthClientID := firstNonEmpty(attributes["oauth_client_id"], attributes["client_id"])
 	oauthClientLabel := firstNonEmpty(attributes["oauth_client_label"], attributes["actor_display_name"], oauthClientID)
 
@@ -1714,6 +1716,9 @@ func oktaAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 		})
 		if orgURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+		if oktaAuditTargetUser(resourceType, targetType) {
+			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), resourceURN, targetAlternateID, event.GetOccurredAt())
 		}
 	}
 
@@ -2109,6 +2114,10 @@ func oktaResourceURN(tenantID string, resourceType string, resourceID string) st
 		return oktaUserURN(tenantID, resourceID)
 	}
 	return projectionURN(tenantID, "okta_resource", normalizeIdentifier(resourceType), strings.TrimSpace(resourceID))
+}
+
+func oktaAuditTargetUser(resourceType string, targetType string) bool {
+	return strings.EqualFold(resourceType, "user") || strings.EqualFold(targetType, "user")
 }
 
 func projectionURN(tenantID string, kind string, parts ...string) string {
