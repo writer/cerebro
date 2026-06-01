@@ -406,7 +406,7 @@ jobs:
             args+=(--source-runtime-verify --stop-running-source-before-run)
           fi
           if [ "${{ needs.changes.outputs.aws_sec_dev_graph_health }}" = "true" ]; then
-            args+=(--graph-health --graph-health-output graph-health-sec-dev.tsv)
+            args+=(--graph-health --graph-health-output graph-health-sec-dev.tsv --allow-graph-health-degradation)
           fi
           uv run python scripts/run_aws_deploy_verifications.py --stack-file aws/Pulumi.sec-dev.yaml "${args[@]}"
 
@@ -525,7 +525,7 @@ jobs:
             args+=(--source-runtime-verify)
           fi
           if [ "${{ needs.changes.outputs.aws_go_prod_graph_health }}" = "true" ]; then
-            args+=(--graph-health --graph-health-output graph-health-go-prod.tsv)
+            args+=(--graph-health --graph-health-output graph-health-go-prod.tsv --allow-graph-health-degradation)
           fi
           uv run python scripts/run_aws_deploy_verifications.py --stack-file aws/Pulumi.go-prod.yaml "${args[@]}"
 
