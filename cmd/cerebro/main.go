@@ -25,6 +25,7 @@ import (
 	"github.com/writer/cerebro/internal/sourceprojection"
 	"github.com/writer/cerebro/internal/sourceregistry"
 	"github.com/writer/cerebro/internal/sourceruntime"
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 type usageError string
@@ -65,11 +66,13 @@ func run(args []string) error {
 		return runSourceRuntime(args[1:])
 	case "vulndb":
 		return runVulnDB(args[1:])
+	case "closeout":
+		return runCloseout(args[1:])
 	case "version":
 		fmt.Printf("%s %s\n", buildinfo.ServiceName, buildinfo.Version)
 		return nil
 	}
-	return usageError(fmt.Sprintf("usage: %s [serve|version|graph|orchestrator|finding-rule|source|source-runtime|vulndb]", os.Args[0]))
+	return usageError(fmt.Sprintf("usage: %s [serve|version|graph|orchestrator|finding-rule|source|source-runtime|vulndb|closeout]", os.Args[0]))
 }
 
 func serve() error {
@@ -91,9 +94,13 @@ func serve() error {
 		return fmt.Errorf("open source registry: %w", err)
 	}
 
-	app := bootstrap.New(cfg, deps, sources)
+	app, err := bootstrap.NewWithError(cfg, deps, sources)
+	if err != nil {
+		return fmt.Errorf("bootstrap app: %w", err)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	startGRCReadModelWarmup(ctx, deps.StateStore, log.Printf)
 	startFindingRiskBackfill(ctx, app, log.Printf)
 
 	errCh := make(chan error, 1)
@@ -124,16 +131,74 @@ type findingRiskBackfiller interface {
 	BackfillFindingRisk(context.Context) error
 }
 
+type grcReadModelPreparer interface {
+	PrepareGRCReadModels(context.Context) error
+}
+
+func prepareGRCReadModels(ctx context.Context, stateStore ports.StateStore) error {
+	preparer, ok := stateStore.(grcReadModelPreparer)
+	if !ok {
+		return nil
+	}
+	if err := preparer.PrepareGRCReadModels(ctx); err != nil {
+		return fmt.Errorf("prepare grc read models: %w", err)
+	}
+	return nil
+}
+
+func startGRCReadModelWarmup(ctx context.Context, stateStore ports.StateStore, logf func(string, ...any)) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, hasPreparer := stateStore.(grcReadModelPreparer)
+		ctx, span := telemetry.Start(ctx, "grc.read_model_warmup", telemetry.Attrs(
+			telemetry.Field{Key: "preparer_present", Value: hasPreparer},
+		))
+		status := "completed"
+		attrs := telemetry.Attrs(telemetry.Field{Key: "preparer_present", Value: hasPreparer})
+		if !hasPreparer {
+			status = "skipped"
+		}
+		defer func() {
+			telemetry.End(span, status, attrs)
+		}()
+		if err := prepareGRCReadModels(ctx, stateStore); err != nil && ctx.Err() == nil {
+			status = "failed"
+			attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: "grc_read_model_warmup_failed"})
+			logf("%v", err)
+		} else if ctx.Err() != nil {
+			status = "canceled"
+		}
+	}()
+	return done
+}
+
 func startFindingRiskBackfill(ctx context.Context, backfiller findingRiskBackfiller, logf func(string, ...any)) <-chan struct{} {
 	done := make(chan struct{})
 	if backfiller == nil {
+		_, span := telemetry.Start(ctx, "finding.risk_backfill", telemetry.Attrs(
+			telemetry.Field{Key: "backfiller_present", Value: false},
+		))
+		telemetry.End(span, "skipped", telemetry.Attrs(telemetry.Field{Key: "backfiller_present", Value: false}))
 		close(done)
 		return done
 	}
 	go func() {
 		defer close(done)
+		ctx, span := telemetry.Start(ctx, "finding.risk_backfill", telemetry.Attrs(
+			telemetry.Field{Key: "backfiller_present", Value: true},
+		))
+		status := "completed"
+		attrs := telemetry.Attrs(telemetry.Field{Key: "backfiller_present", Value: true})
+		defer func() {
+			telemetry.End(span, status, attrs)
+		}()
 		if err := backfiller.BackfillFindingRisk(ctx); err != nil && ctx.Err() == nil {
+			status = "failed"
+			attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: "finding_risk_backfill_failed"})
 			logf("backfill finding risk: %v", err)
+		} else if ctx.Err() != nil {
+			status = "canceled"
 		}
 	}()
 	return done

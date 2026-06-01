@@ -51,6 +51,26 @@ func TestProjectCosmoFact(t *testing.T) {
 	}
 }
 
+func TestProjectCosmoFactLinksSourceSession(t *testing.T) {
+	entities, links, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
+		Id:       "cosmo-writer-fact-risk",
+		TenantId: "writer",
+		SourceId: "cosmo",
+		Kind:     "cosmo.fact",
+		Attributes: map[string]string{
+			"record_id": "risk:key",
+			"key":       "risk:key",
+			"source":    "session:slack-C123-1779126269.376359",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_fact:risk:key", "cosmo.fact")
+	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_session:slack-C123-1779126269.376359", "cosmo.session")
+	assertCosmoProjectedLink(t, links, "urn:cerebro:writer:cosmo_fact:risk:key", relationBelongsTo, "urn:cerebro:writer:cosmo_session:slack-C123-1779126269.376359")
+}
+
 func TestProjectCosmoMessageLinksSession(t *testing.T) {
 	entities, links, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
 		Id:       "cosmo-writer-message-msg-1",
@@ -70,6 +90,27 @@ func TestProjectCosmoMessageLinksSession(t *testing.T) {
 	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_message:msg-1", "cosmo.message")
 	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_session:ticket-1", "cosmo.session")
 	assertCosmoProjectedLink(t, links, "urn:cerebro:writer:cosmo_message:msg-1", relationBelongsTo, "urn:cerebro:writer:cosmo_session:ticket-1")
+}
+
+func TestProjectCosmoUserMessageLinksIdentity(t *testing.T) {
+	entities, links, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
+		Id:       "cosmo-writer-message-msg-2",
+		TenantId: "writer",
+		SourceId: "cosmo",
+		Kind:     "cosmo.message",
+		Attributes: map[string]string{
+			"record_id": "msg-2",
+			"ticket_id": "ticket-1",
+			"role":      "user",
+			"user":      "alice@example.com",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_message:msg-2", "cosmo.message")
+	assertCosmoProjectedEntity(t, entities, "urn:cerebro:writer:identity:email:alice@example.com", "identity.email")
+	assertCosmoProjectedLink(t, links, "urn:cerebro:writer:cosmo_message:msg-2", relationRepresentsIdentity, "urn:cerebro:writer:identity:email:alice@example.com")
 }
 
 func TestProjectCosmoSurveyFeedbackLinksSessionAndUser(t *testing.T) {

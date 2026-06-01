@@ -200,6 +200,29 @@ func TestCheckDiscoverAndReadLiveThreats(t *testing.T) {
 	if got := first.Events[0].Attributes["mitre_tactics"]; got != "Execution" {
 		t.Fatalf("threat attribute mitre_tactics = %q, want Execution", got)
 	}
+	for key, want := range map[string]string{
+		"analyst_verdict_norm":   "true_positive",
+		"automatically_resolved": "false",
+		"classification_norm":    "malware",
+		"incident_status_norm":   "unresolved",
+		"mitigation_status_norm": "not_mitigated",
+	} {
+		if got := first.Events[0].Attributes[key]; got != want {
+			t.Fatalf("threat attribute %s = %q, want %q", key, got, want)
+		}
+	}
+	for key, want := range map[string]string{
+		"hostname":     "host-A-1",
+		"agent_ip_v4":  "203.0.113.20",
+		"agent_ip_v6":  "2001:db8::20",
+		"external_ip":  "198.51.100.20",
+		"ip":           "203.0.113.20",
+		"ip_addresses": "203.0.113.20,2001:db8::20,198.51.100.20",
+	} {
+		if got := first.Events[0].Attributes[key]; got != want {
+			t.Fatalf("threat attribute %s = %q, want %q", key, got, want)
+		}
+	}
 
 	second, err := source.Read(context.Background(), cfg, first.NextCursor)
 	if err != nil {
@@ -248,12 +271,61 @@ func TestCheckDiscoverAndReadLiveAgents(t *testing.T) {
 	for k, want := range map[string]string{
 		"agent_id":      "A-1",
 		"computer_name": "host-A-1",
+		"hostname":      "host-A-1",
+		"ip":            "203.0.113.10",
+		"ip_addresses":  "203.0.113.10,10.0.0.10",
 		"is_active":     "true",
 		"family":        "agent",
 	} {
 		if got := attrs[k]; got != want {
 			t.Fatalf("agent attribute %s = %q, want %q", k, got, want)
 		}
+	}
+}
+
+func TestRecords_FirewallEnabledConditionalEmit(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		raw         string
+		want        string
+		wantPresent bool
+	}{
+		{
+			name: "missing",
+			raw:  `{"id":"agent-missing","computerName":"host-missing","isActive":true,"updatedAt":"2026-04-23T01:00:00Z"}`,
+		},
+		{
+			name:        "explicit_false",
+			raw:         `{"id":"agent-false","computerName":"host-false","firewallEnabled":false,"updatedAt":"2026-04-23T01:00:00Z"}`,
+			want:        "false",
+			wantPresent: true,
+		},
+		{
+			name:        "explicit_true",
+			raw:         `{"id":"agent-true","computerName":"host-true","firewallEnabled":true,"updatedAt":"2026-04-23T01:00:00Z"}`,
+			want:        "true",
+			wantPresent: true,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var record agentRecord
+			raw := json.RawMessage(tt.raw)
+			if err := json.Unmarshal(raw, &record); err != nil {
+				t.Fatalf("unmarshal agent: %v", err)
+			}
+			record.setRaw(raw)
+			event, err := agentEvent(settings{host: "sentinelone.example.test"}, record)
+			if err != nil {
+				t.Fatalf("agentEvent() error = %v", err)
+			}
+			got, exists := event.Attributes["firewall_enabled"]
+			if exists != tt.wantPresent {
+				t.Fatalf("firewall_enabled present = %v with value %q, want present=%v; attrs=%v", exists, got, tt.wantPresent, event.Attributes)
+			}
+			if exists && got != tt.want {
+				t.Fatalf("firewall_enabled = %q, want %q; attrs=%v", got, tt.want, event.Attributes)
+			}
+		})
 	}
 }
 
@@ -576,8 +648,11 @@ func newTestAPIHandler(t *testing.T) http.Handler {
 				"agentInfected":     true,
 			},
 			"agentDetectionInfo": map[string]any{
-				"siteId":  "S-1",
-				"groupId": "G-1",
+				"agentIpV4":  "203.0.113.20",
+				"agentIpV6":  "2001:db8::20",
+				"externalIp": "198.51.100.20",
+				"siteId":     "S-1",
+				"groupId":    "G-1",
 			},
 			"indicators": []map[string]any{
 				{"category": "Malware", "tactics": []map[string]any{{"name": "Execution"}}},
@@ -604,6 +679,8 @@ func newTestAPIHandler(t *testing.T) http.Handler {
 			"osType":         "macos",
 			"isActive":       true,
 			"isUpToDate":     true,
+			"externalIp":     "203.0.113.10",
+			"lastIpToMgmt":   "10.0.0.10",
 			"siteId":         "S-1",
 			"groupId":        "G-1",
 			"lastActiveDate": "2026-04-23T01:00:00Z",

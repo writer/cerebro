@@ -2,6 +2,54 @@
   "version": "2026-05-21",
   "detections": [
     {
+      "id": "cloud-current-public-exposure-review-needed",
+      "pack_id": "cloud",
+      "pack_name": "Cloud",
+      "name": "Cloud Current Public Exposure Needs Review",
+      "description": "Detect current cloud resources with public internet exposure from the projected graph when no open exposure finding already anchors the resource.",
+      "source_id": "cloud",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "aws.public_endpoint",
+        "aws.resource_exposure",
+        "azure.resource_exposure",
+        "gcp.resource_exposure"
+      ],
+      "output_kind": "finding.cloud_current_public_exposure_review_needed",
+      "severity": "HIGH",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "attack.t1190",
+        "cloud",
+        "exposure",
+        "graph-rule",
+        "public"
+      ],
+      "references": [
+        "https://www.cisecurity.org/benchmark/amazon_web_services",
+        "https://www.cisecurity.org/benchmark/google_cloud_computing_platform",
+        "https://www.cisecurity.org/benchmark/microsoft_azure"
+      ],
+      "false_positives": [
+        "Approved exposure or trust path during a documented change window."
+      ],
+      "runbook": "Review the exposed resource or trust path, linked principals, scope, and adjacent identity findings.",
+      "fingerprint_fields": [
+        "exposed_resource_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.6"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.20"
+        }
+      ]
+    },
+    {
       "id": "cloud-effective-admin-permission",
       "pack_id": "cloud",
       "pack_name": "Cloud",
@@ -34,7 +82,9 @@
       ],
       "runbook": "Review the exposed resource or trust path, linked principals, scope, and adjacent identity findings.",
       "fingerprint_fields": [
-        "event_id"
+        "cloud_account_urn",
+        "principal_urn",
+        "permission_urn"
       ],
       "control_refs": [
         {
@@ -81,7 +131,9 @@
       ],
       "runbook": "Review the exposed resource or trust path, linked principals, scope, and adjacent identity findings.",
       "fingerprint_fields": [
-        "event_id"
+        "principal_urn",
+        "target_principal_urn",
+        "relationship"
       ],
       "control_refs": [
         {
@@ -104,6 +156,8 @@
       "evaluation_mode": "graph",
       "event_kinds": [
         "aws.effective_permission",
+        "aws.iam_role_assignment",
+        "aws.iam_role_trust",
         "aws.public_endpoint",
         "aws.resource_exposure"
       ],
@@ -179,7 +233,7 @@
       ],
       "runbook": "Review the exposed resource or trust path, linked principals, scope, and adjacent identity findings.",
       "fingerprint_fields": [
-        "event_id"
+        "exposed_resource_urn"
       ],
       "control_refs": [
         {
@@ -225,7 +279,7 @@
         "resource_id"
       ],
       "fingerprint_fields": [
-        "event_id"
+        "asset_urn"
       ],
       "control_refs": [
         {
@@ -270,13 +324,13 @@
       ],
       "runbook": "Review installer, app publisher, requested permissions, repository scope, and revoke unauthorized installations.",
       "required_attributes": [
-        "action"
+        "action",
+        "github_app_id",
+        "org"
       ],
       "fingerprint_fields": [
         "org",
-        "repo",
-        "name",
-        "action"
+        "github_app_id"
       ],
       "control_refs": [
         {
@@ -373,13 +427,9 @@
         "Approved security control migration or temporary configuration rollback by authorized administrators."
       ],
       "runbook": "Confirm authorization, re-enable code security controls, review package and secret exposure during the disabled window, and inspect adjacent repository changes by the actor.",
-      "required_attributes": [
-        "action"
-      ],
       "fingerprint_fields": [
         "repo",
-        "resource_id",
-        "action"
+        "org"
       ],
       "control_refs": [
         {
@@ -397,7 +447,7 @@
       "pack_id": "github",
       "pack_name": "GitHub",
       "name": "GitHub Critical Resource Deleted",
-      "description": "Detect deletion of critical GitHub resources such as repositories, environments, projects, or codespaces.",
+      "description": "Retired GitHub audit-mirror rule retained so stale open findings auto-resolve; durable coverage moved to posture findings.",
       "source_id": "github",
       "evaluation_mode": "event",
       "event_kinds": [
@@ -406,12 +456,14 @@
       "output_kind": "finding.github_critical_resource_deleted",
       "severity": "HIGH",
       "status": "open",
-      "maturity": "test",
+      "maturity": "retired",
       "tags": [
         "attack.t1485",
+        "cleanup",
         "destructive-action",
         "github",
-        "impact"
+        "impact",
+        "retired"
       ],
       "references": [
         "https://github.com/SigmaHQ/sigma/blob/master/rules/application/github/audit/github_delete_action_invoked.yml",
@@ -475,6 +527,7 @@
         "state"
       ],
       "fingerprint_fields": [
+        "tenant_id",
         "repository",
         "alert_number"
       ],
@@ -522,12 +575,10 @@
       ],
       "runbook": "Verify the owner action, review organization membership and token activity around the change, and restore SAML/2FA/OAuth restrictions if unauthorized.",
       "required_attributes": [
-        "action",
         "org"
       ],
       "fingerprint_fields": [
-        "org",
-        "action"
+        "org"
       ],
       "control_refs": [
         {
@@ -571,12 +622,10 @@
       ],
       "runbook": "Validate the IP allow list change, remove unauthorized CIDRs, and correlate actor access from newly allowed networks.",
       "required_attributes": [
-        "action",
         "org"
       ],
       "fingerprint_fields": [
-        "org",
-        "action"
+        "org"
       ],
       "control_refs": [
         {
@@ -586,6 +635,50 @@
         {
           "framework_name": "ISO 27001:2022",
           "control_id": "A.8.9"
+        }
+      ]
+    },
+    {
+      "id": "github-org-owner-role-review-needed",
+      "pack_id": "github",
+      "pack_name": "GitHub",
+      "name": "GitHub Organization Owner Needs Review",
+      "description": "Detect GitHub organization members with the owner role, which grants unrestricted administrative access including billing, membership, and security settings.",
+      "source_id": "github",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "github.org_member"
+      ],
+      "output_kind": "finding.github_org_owner_role_review_needed",
+      "severity": "MEDIUM",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "attack.t1098",
+        "github",
+        "graph-rule",
+        "identity",
+        "org-owner",
+        "privilege"
+      ],
+      "references": [
+        "https://docs.github.com/en/organizations/managing-peoples-access-to-your-organization-with-roles/roles-in-an-organization"
+      ],
+      "false_positives": [
+        "Designated org owners with documented need for administrative access and active operational responsibilities."
+      ],
+      "runbook": "Validate each org owner has a documented business need for the owner role. Demote members to the member role where administrative access is not required. Ensure owner accounts have MFA and are not shared.",
+      "fingerprint_fields": [
+        "member_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.3"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.2"
         }
       ]
     },
@@ -620,13 +713,13 @@
       "runbook": "Validate the new owner, revoke unauthorized access immediately, review owner activity, and require MFA/SSO re-verification.",
       "required_attributes": [
         "action",
+        "org",
         "permission",
         "user"
       ],
       "fingerprint_fields": [
         "org",
-        "user",
-        "action"
+        "user"
       ],
       "control_refs": [
         {
@@ -673,11 +766,12 @@
       "required_attributes": [
         "action",
         "operation_type",
-        "user"
+        "token_id",
+        "user_id"
       ],
       "fingerprint_fields": [
-        "user",
-        "action"
+        "user_id",
+        "token_id"
       ],
       "control_refs": [
         {
@@ -720,13 +814,11 @@
       ],
       "runbook": "Validate forking policy approval, disable unauthorized private forking, and enumerate forks created after the policy change.",
       "required_attributes": [
-        "action",
         "org"
       ],
       "fingerprint_fields": [
         "org",
-        "repo",
-        "action"
+        "repo"
       ],
       "control_refs": [
         {
@@ -736,6 +828,50 @@
         {
           "framework_name": "ISO 27001:2022",
           "control_id": "A.8.9"
+        }
+      ]
+    },
+    {
+      "id": "github-programmatic-credential-review-needed",
+      "pack_id": "github",
+      "pack_name": "GitHub",
+      "name": "GitHub Programmatic Credential Needs Review",
+      "description": "Detect current GitHub programmatic credentials, integrations, OAuth apps, and credential authorizations that should have explicit ownership and review.",
+      "source_id": "github",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "github.audit"
+      ],
+      "output_kind": "finding.github_programmatic_credential_review_needed",
+      "severity": "MEDIUM",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "attack.t1098",
+        "credential",
+        "github",
+        "graph-rule",
+        "programmatic-access"
+      ],
+      "references": [
+        "https://docs.github.com/en/apps/using-github-apps/reviewing-and-revoking-authorization-of-github-apps",
+        "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token"
+      ],
+      "false_positives": [
+        "Approved deploy keys, service accounts, or GitHub Apps with documented owner, scope, and rotation process."
+      ],
+      "runbook": "Confirm owner, scope, last-use/need, and rotation for the credential or integration; remove unused access or document the exception.",
+      "fingerprint_fields": [
+        "github_credential_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.2"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.18"
         }
       ]
     },
@@ -880,8 +1016,7 @@
       ],
       "fingerprint_fields": [
         "repo",
-        "user",
-        "action"
+        "user"
       ],
       "control_refs": [
         {
@@ -978,12 +1113,12 @@
       "runbook": "Review changed ruleset enforcement and bypass actors, restore required checks/reviews, and inspect protected branch activity.",
       "required_attributes": [
         "action",
-        "repo"
+        "repo",
+        "ruleset_id"
       ],
       "fingerprint_fields": [
         "repo",
-        "ruleset_id",
-        "action"
+        "ruleset_id"
       ],
       "control_refs": [
         {
@@ -1001,7 +1136,7 @@
       "pack_id": "github",
       "pack_name": "GitHub",
       "name": "GitHub Secret Scanning Alert Created",
-      "description": "Detect GitHub audit events indicating a new secret scanning alert.",
+      "description": "Detect open GitHub secret scanning alerts replayed from GitHub audit events.",
       "source_id": "github",
       "evaluation_mode": "event",
       "event_kinds": [
@@ -1028,7 +1163,8 @@
       "required_attributes": [
         "action",
         "number",
-        "repo"
+        "repo",
+        "secret_scanning_alert.state"
       ],
       "fingerprint_fields": [
         "repo",
@@ -1101,7 +1237,7 @@
       "pack_id": "github",
       "pack_name": "GitHub",
       "name": "GitHub Self-Hosted Runner Change",
-      "description": "Detect GitHub audit events that register or modify self-hosted runner configuration.",
+      "description": "Retired GitHub audit-mirror rule retained so stale open findings auto-resolve; durable coverage moved to posture findings.",
       "source_id": "github",
       "evaluation_mode": "event",
       "event_kinds": [
@@ -1110,11 +1246,13 @@
       "output_kind": "finding.github_self_hosted_runner_change",
       "severity": "MEDIUM",
       "status": "open",
-      "maturity": "test",
+      "maturity": "retired",
       "tags": [
         "actions",
         "attack.t1195",
+        "cleanup",
         "github",
+        "retired",
         "self-hosted-runner",
         "supply-chain"
       ],
@@ -1128,12 +1266,56 @@
       ],
       "runbook": "Validate the runner owner and host, inspect recent workflows assigned to it, and isolate the runner if authorization is unclear.",
       "required_attributes": [
-        "action"
+        "runner_id",
+        "scope"
       ],
       "fingerprint_fields": [
-        "repo",
-        "resource_id",
-        "action"
+        "scope",
+        "runner_id"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.6"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.9"
+        }
+      ]
+    },
+    {
+      "id": "github-self-hosted-runner-review-needed",
+      "pack_id": "github",
+      "pack_name": "GitHub",
+      "name": "GitHub Self-Hosted Runner Needs Review",
+      "description": "Detect active non-ephemeral or untrusted GitHub self-hosted runners from projected runner state.",
+      "source_id": "github",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "github.audit"
+      ],
+      "output_kind": "finding.github_self_hosted_runner_review_needed",
+      "severity": "MEDIUM",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "actions",
+        "attack.t1195",
+        "github",
+        "graph-rule",
+        "self-hosted-runner",
+        "supply-chain"
+      ],
+      "references": [
+        "https://docs.github.com/en/actions/hosting-your-own-runners/about-self-hosted-runners"
+      ],
+      "false_positives": [
+        "Approved persistent runner pools with documented owner, hardening baseline, and network isolation."
+      ],
+      "runbook": "Validate runner ownership, scope, host trust, ephemeral posture, and recent jobs; remove or isolate unauthorized runners.",
+      "fingerprint_fields": [
+        "runner_urn"
       ],
       "control_refs": [
         {
@@ -1177,12 +1359,12 @@
       "runbook": "Verify webhook destination and events, remove unauthorized hooks, and rotate secrets if repository data may have been sent externally.",
       "required_attributes": [
         "action",
+        "hook_id",
         "repo"
       ],
       "fingerprint_fields": [
         "repo",
-        "hook_id",
-        "action"
+        "hook_id"
       ],
       "control_refs": [
         {
@@ -1192,6 +1374,218 @@
         {
           "framework_name": "ISO 27001:2022",
           "control_id": "A.8.9"
+        }
+      ]
+    },
+    {
+      "id": "finding-isolated-open-anchor",
+      "pack_id": "grc",
+      "pack_name": "GRC",
+      "name": "Open Finding Isolated From Resources",
+      "description": "Detect open finding anchors that have no graph resource relationship.",
+      "source_id": "graph",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "finding"
+      ],
+      "output_kind": "finding.graph_isolated_open_finding_anchor",
+      "severity": "LOW",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "finding",
+        "graph-hygiene",
+        "graph-rule"
+      ],
+      "references": [
+        "https://www.iso.org/standard/27001"
+      ],
+      "false_positives": [
+        "Resolved or suppressed historical finding anchors may intentionally remain without active resource links."
+      ],
+      "runbook": "Check why the rule emitted no ResourceURNs for an open finding, fix the rule projection context, or resolve stale anchors.",
+      "fingerprint_fields": [
+        "finding_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.35"
+        }
+      ]
+    },
+    {
+      "id": "graph-aws-ec2-eni-link-missing",
+      "pack_id": "grc",
+      "pack_name": "GRC",
+      "name": "AWS EC2 ENI Link Missing",
+      "description": "Detect AWS network interface public-endpoint nodes that name an EC2 instance but lack the graph link to that instance.",
+      "source_id": "graph",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "aws.public_endpoint"
+      ],
+      "output_kind": "finding.graph_aws_ec2_eni_link_missing",
+      "severity": "LOW",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "aws",
+        "ec2",
+        "enrichment",
+        "graph",
+        "network-interface"
+      ],
+      "references": [
+        "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-eni.html"
+      ],
+      "false_positives": [
+        "The referenced EC2 instance may have been terminated between endpoint and instance inventory snapshots."
+      ],
+      "runbook": "Backfill or fix the public endpoint projection so ENIs are linked to their attached or associated EC2 instance.",
+      "fingerprint_fields": [
+        "network_interface_urn",
+        "instance_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.35"
+        }
+      ]
+    },
+    {
+      "id": "graph-orphan-nonfinding-node",
+      "pack_id": "grc",
+      "pack_name": "GRC",
+      "name": "Graph Orphan Non-Finding Node",
+      "description": "Detect non-finding graph nodes with no relationships, indicating source projection or enrichment gaps.",
+      "source_id": "graph",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "graph"
+      ],
+      "output_kind": "finding.graph_orphan_nonfinding_node",
+      "severity": "LOW",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "enrichment",
+        "graph",
+        "graph-hygiene",
+        "orphan"
+      ],
+      "references": [
+        "https://www.iso.org/standard/27001"
+      ],
+      "false_positives": [
+        "Some source records may intentionally be inventory-only and not yet connected to the rest of the graph."
+      ],
+      "runbook": "Review the source projection for the entity type and add ownership, source, identity, or resource relations where appropriate.",
+      "fingerprint_fields": [
+        "orphan_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.35"
+        }
+      ]
+    },
+    {
+      "id": "graph-resource-multiple-open-findings",
+      "pack_id": "grc",
+      "pack_name": "GRC",
+      "name": "Graph Resource Has Multiple Open Findings",
+      "description": "Detect resources with multiple active findings so remediation can be coordinated by shared resource rather than by individual alert.",
+      "source_id": "graph",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "finding"
+      ],
+      "output_kind": "finding.graph_resource_multiple_open_findings",
+      "severity": "HIGH",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "coordination",
+        "finding",
+        "graph-rule",
+        "prioritization"
+      ],
+      "references": [
+        "https://www.iso.org/standard/27001"
+      ],
+      "false_positives": [
+        "Multiple findings may be duplicate projections of one upstream issue until deduplication rules converge."
+      ],
+      "runbook": "Prioritize the shared resource, group the findings by rule and owner, and remediate the common root cause.",
+      "fingerprint_fields": [
+        "resource_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.7"
+        }
+      ]
+    },
+    {
+      "id": "grc-control-missing-evidence-coverage",
+      "pack_id": "grc",
+      "pack_name": "GRC",
+      "name": "GRC Control Missing Evidence Coverage",
+      "description": "Detect GRC controls that have an owner but no linked control-test evidence in the graph.",
+      "source_id": "grc",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "grc.control",
+        "grc.control_test"
+      ],
+      "output_kind": "finding.grc_control_missing_evidence_coverage",
+      "severity": "MEDIUM",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "control",
+        "evidence",
+        "graph-rule",
+        "grc"
+      ],
+      "references": [
+        "https://www.iso.org/standard/27001"
+      ],
+      "false_positives": [
+        "The control may be manually assessed outside Vanta or intentionally not test-backed."
+      ],
+      "runbook": "Confirm whether the control should have automated or manual test evidence, then map the control test or document the accepted exception.",
+      "fingerprint_fields": [
+        "control_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC1.2"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.36"
         }
       ]
     },
@@ -1241,6 +1635,48 @@
         {
           "framework_name": "ISO 27001:2022",
           "control_id": "A.5.35"
+        }
+      ]
+    },
+    {
+      "id": "grc-document-needs-owner-or-upload",
+      "pack_id": "grc",
+      "pack_name": "GRC",
+      "name": "GRC Document Needs Owner Or Upload",
+      "description": "Detect GRC document records that still need a document upload or lack an accountable owner.",
+      "source_id": "grc",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "grc.document"
+      ],
+      "output_kind": "finding.grc_document_needs_owner_or_upload",
+      "severity": "MEDIUM",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "document",
+        "graph-rule",
+        "grc",
+        "ownership"
+      ],
+      "references": [
+        "https://www.iso.org/standard/27001"
+      ],
+      "false_positives": [
+        "Some document placeholders may intentionally track future evidence collection."
+      ],
+      "runbook": "Assign an owner for the document, upload the missing evidence, or close the placeholder if the document is no longer required.",
+      "fingerprint_fields": [
+        "document_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC2.2"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.37"
         }
       ]
     },
@@ -1295,6 +1731,50 @@
         {
           "framework_name": "SOC 2",
           "control_id": "CC7.2"
+        }
+      ]
+    },
+    {
+      "id": "grc-failing-control-test-unhealthy-integration",
+      "pack_id": "grc",
+      "pack_name": "GRC",
+      "name": "GRC Failing Control Test On Unhealthy Integration",
+      "description": "Detect failing GRC control-test evidence that belongs to an integration with disabled or errored connections.",
+      "source_id": "grc",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "grc.control_test",
+        "grc.integration"
+      ],
+      "output_kind": "finding.grc_failing_control_test_unhealthy_integration",
+      "severity": "HIGH",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "control",
+        "graph-rule",
+        "grc",
+        "integration"
+      ],
+      "references": [
+        "https://www.iso.org/standard/27001"
+      ],
+      "false_positives": [
+        "The integration error count may be stale if the upstream GRC provider has not refreshed connection status yet."
+      ],
+      "runbook": "Repair the unhealthy source integration, rerun the failing control test, and verify whether the control failure clears once evidence collection is healthy.",
+      "fingerprint_fields": [
+        "test_urn",
+        "integration_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.2"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.15"
         }
       ]
     },
@@ -1360,6 +1840,48 @@
         {
           "framework_name": "ISO 27001:2022",
           "control_id": "A.5.18"
+        }
+      ]
+    },
+    {
+      "id": "grc-isolated-target-enrichment-gap",
+      "pack_id": "grc",
+      "pack_name": "GRC",
+      "name": "GRC Target Enrichment Gap",
+      "description": "Detect GRC vulnerable-asset targets that are isolated and therefore cannot coordinate to assets, sources, vulnerabilities, or packages.",
+      "source_id": "grc",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "grc.vulnerable_asset"
+      ],
+      "output_kind": "finding.grc_isolated_target_enrichment_gap",
+      "severity": "LOW",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "enrichment",
+        "graph-hygiene",
+        "graph-rule",
+        "grc"
+      ],
+      "references": [
+        "https://www.iso.org/standard/27001"
+      ],
+      "false_positives": [
+        "Some upstream targets may be placeholders that intentionally lack asset, integration, or vulnerability references."
+      ],
+      "runbook": "Inspect the upstream vulnerable asset payload and add host, IP, platform resource, integration, vulnerability, or package fields so the target can be coordinated.",
+      "fingerprint_fields": [
+        "target_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.8"
         }
       ]
     },
@@ -1477,6 +1999,51 @@
         {
           "framework_name": "ISO 27001:2022",
           "control_id": "A.5.18"
+        }
+      ]
+    },
+    {
+      "id": "grc-source-integration-concentrated-open-findings",
+      "pack_id": "grc",
+      "pack_name": "GRC",
+      "name": "GRC Source Integration Concentrated Open Findings",
+      "description": "Detect GRC source integrations that accumulate many active findings and should be prioritized as a coordinated remediation surface.",
+      "source_id": "grc",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "grc.integration",
+        "grc.vulnerability",
+        "grc.vulnerable_asset"
+      ],
+      "output_kind": "finding.grc_source_integration_concentrated_open_findings",
+      "severity": "HIGH",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "coordination",
+        "graph-rule",
+        "grc",
+        "prioritization"
+      ],
+      "references": [
+        "https://www.iso.org/standard/27001"
+      ],
+      "false_positives": [
+        "Multiple findings may represent duplicate upstream vulnerability records on the same integration.",
+        "The source integration may be intentionally broad and owned by an active remediation program."
+      ],
+      "runbook": "Review the integration owner, cluster the active findings by vulnerability and target, and drive remediation at the source integration level rather than ticketing each duplicate individually.",
+      "fingerprint_fields": [
+        "source_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.8"
         }
       ]
     },
@@ -1618,7 +2185,8 @@
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
       "fingerprint_fields": [
-        "event_id"
+        "user",
+        "role"
       ],
       "control_refs": [
         {
@@ -1648,6 +2216,7 @@
         "gcp.audit",
         "gcp.service_account_key",
         "google_workspace.audit",
+        "okta.application",
         "okta.audit"
       ],
       "output_kind": "finding.identity_api_token_or_oauth_app_created",
@@ -1670,7 +2239,10 @@
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
       "fingerprint_fields": [
-        "event_id"
+        "user",
+        "credential_id",
+        "org",
+        "oauth_app_id"
       ],
       "control_refs": [
         {
@@ -1718,7 +2290,8 @@
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
       "fingerprint_fields": [
-        "event_id"
+        "idp_id",
+        "policy_id"
       ],
       "control_refs": [
         {
@@ -1736,7 +2309,7 @@
       "pack_id": "identity",
       "pack_name": "Identity",
       "name": "Identity Control Tamper Or Credential Change",
-      "description": "Detect control tampering and sensitive credential changes so exposure analysis can correlate them by actor or resource.",
+      "description": "Retired identity correlation-mirror rule retained so stale open findings auto-resolve; correlation moved to runtime enrichment hints on the underlying state-anchored identity findings.",
       "source_id": "identity",
       "evaluation_mode": "event",
       "event_kinds": [
@@ -1750,12 +2323,14 @@
       "output_kind": "finding.identity_control_tamper_or_credential_change",
       "severity": "HIGH",
       "status": "open",
-      "maturity": "test",
+      "maturity": "retired",
       "tags": [
+        "cleanup",
         "correlation",
         "credential-access",
         "defense-evasion",
-        "identity"
+        "identity",
+        "retired"
       ],
       "references": [
         "https://developers.google.com/admin-sdk/reports/v1/guides/manage-audit-admin",
@@ -1812,7 +2387,8 @@
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
       "fingerprint_fields": [
-        "event_id"
+        "group_urn",
+        "member_email"
       ],
       "control_refs": [
         {
@@ -1886,16 +2462,13 @@
       "pack_id": "identity",
       "pack_name": "Identity",
       "name": "Identity MFA Factor Reset Or Disabled",
-      "description": "Detect MFA/2SV resets, unenrollment, disablement, or enforcement changes.",
+      "description": "Detect source-backed MFA/2SV posture gaps for Okta, Google Workspace, and GCP service-account identities; AWS IAM and Azure user MFA posture require source-adapter extensions before this rule claims those providers.",
       "source_id": "identity",
       "evaluation_mode": "event",
       "event_kinds": [
-        "aws.cloudtrail",
-        "azure.activity_log",
-        "azure.directory_audit",
-        "gcp.audit",
-        "google_workspace.audit",
-        "okta.audit"
+        "gcp.service_account",
+        "google_workspace.user",
+        "okta.user"
       ],
       "output_kind": "finding.identity_mfa_factor_reset_or_disabled",
       "severity": "HIGH",
@@ -1916,7 +2489,7 @@
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
       "fingerprint_fields": [
-        "event_id"
+        "user"
       ],
       "control_refs": [
         {
@@ -1926,6 +2499,52 @@
         {
           "framework_name": "ISO 27001:2022",
           "control_id": "A.5.16"
+        }
+      ]
+    },
+    {
+      "id": "identity-okta-authenticator-weak-factor-enabled",
+      "pack_id": "identity",
+      "pack_name": "Identity",
+      "name": "Okta Authenticator Weak Factor Enabled",
+      "description": "Detect active Okta authenticators using phishing-susceptible factor types such as SMS, voice call, or email, which weaken org-wide MFA posture.",
+      "source_id": "okta",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "okta.authenticator"
+      ],
+      "output_kind": "finding.identity_okta_authenticator_weak_factor_enabled",
+      "severity": "MEDIUM",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "attack.t1111",
+        "authenticator",
+        "graph-rule",
+        "identity",
+        "mfa",
+        "okta",
+        "phishing"
+      ],
+      "references": [
+        "https://help.okta.com/en-us/content/topics/security/authenticators/about-authenticators.htm",
+        "https://pages.nist.gov/800-63-3/sp800-63b.html"
+      ],
+      "false_positives": [
+        "Org intentionally enables SMS/voice as a fallback for users who cannot use hardware tokens or mobile apps."
+      ],
+      "runbook": "Review the active authenticator and migrate users to phishing-resistant factors (FIDO2/WebAuthn, Okta Verify with push). Disable weak factors once migration is complete.",
+      "fingerprint_fields": [
+        "authenticator_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.5"
         }
       ]
     },
@@ -1981,15 +2600,61 @@
       ]
     },
     {
+      "id": "identity-okta-oauth-public-client-review-needed",
+      "pack_id": "identity",
+      "pack_name": "Identity",
+      "name": "Okta OAuth Or Public Client Needs Review",
+      "description": "Detect active Okta OAuth/OIDC applications and public-client actors that should have owner, grant, and scope review.",
+      "source_id": "okta",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "okta.application",
+        "okta.publicclientapp"
+      ],
+      "output_kind": "finding.identity_okta_oauth_public_client_review_needed",
+      "severity": "MEDIUM",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "attack.t1098",
+        "graph-rule",
+        "identity",
+        "oauth",
+        "okta",
+        "public-client"
+      ],
+      "references": [
+        "https://datatracker.ietf.org/doc/html/rfc6749",
+        "https://help.okta.com/"
+      ],
+      "false_positives": [
+        "Approved first-party Okta clients, documented public clients, or applications reviewed by identity/security."
+      ],
+      "runbook": "Validate app owner, OAuth grants, public-client status, redirect URIs, assignments, and whether the client is still needed.",
+      "fingerprint_fields": [
+        "okta_client_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.17"
+        }
+      ]
+    },
+    {
       "id": "identity-okta-policy-rule-lifecycle-tampering",
       "pack_id": "identity",
       "pack_name": "Identity",
       "name": "Okta Policy Rule Lifecycle Tampering",
-      "description": "Detect successful Okta policy rule update, deactivate, or delete events replayed from one source runtime.",
+      "description": "Detect Okta policy rules that remain deactivated, disabled, or inactive in projected identity state.",
       "source_id": "okta",
       "evaluation_mode": "event",
       "event_kinds": [
-        "okta.audit"
+        "okta.policy_rule"
       ],
       "output_kind": "finding.okta_policy_rule_lifecycle_tampering",
       "severity": "HIGH",
@@ -2010,11 +2675,12 @@
       ],
       "runbook": "Review actor, target policy rule, administrative change ticket, and adjacent identity events before reverting or escalating.",
       "required_attributes": [
-        "event_type",
-        "resource_id"
+        "policy_id",
+        "policy_rule_id",
+        "status"
       ],
       "fingerprint_fields": [
-        "event_id"
+        "okta_policy_rule_urn"
       ],
       "control_refs": [
         {
@@ -2028,18 +2694,58 @@
       ]
     },
     {
+      "id": "identity-okta-threat-insight-not-blocking",
+      "pack_id": "identity",
+      "pack_name": "Identity",
+      "name": "Okta ThreatInsight Not Blocking",
+      "description": "Detect Okta ThreatInsight configuration that is set to audit-only or disabled, leaving the org without automated brute-force and credential-stuffing protection.",
+      "source_id": "okta",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "okta.threat_insight"
+      ],
+      "output_kind": "finding.identity_okta_threat_insight_not_blocking",
+      "severity": "HIGH",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "attack.t1110",
+        "brute-force",
+        "graph-rule",
+        "identity",
+        "okta",
+        "threat-insight"
+      ],
+      "references": [
+        "https://help.okta.com/en-us/content/topics/security/threat-insight/configure-threatinsight-system-log.htm"
+      ],
+      "false_positives": [
+        "Org intentionally running ThreatInsight in audit mode during initial rollout or policy evaluation period."
+      ],
+      "runbook": "Review ThreatInsight configuration and set action to 'block' to enable automated brute-force protection. Verify exclude zones are intentional.",
+      "fingerprint_fields": [
+        "threat_insight_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.1"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.16"
+        }
+      ]
+    },
+    {
       "id": "identity-privileged-account-without-mfa",
       "pack_id": "identity",
       "pack_name": "Identity",
       "name": "Identity Privileged Account Without MFA",
-      "description": "Detect privileged identity accounts that are not enrolled in MFA/2SV.",
+      "description": "Detect source-backed privileged identity accounts that are not enrolled in MFA/2SV; AWS IAM and Azure user MFA posture require source-adapter extensions before this rule claims those users.",
       "source_id": "identity",
       "evaluation_mode": "event",
       "event_kinds": [
-        "aws.iam_role",
-        "aws.iam_user",
-        "azure.service_principal",
-        "azure.user",
         "gcp.service_account",
         "google_workspace.user",
         "okta.user"
@@ -2063,7 +2769,7 @@
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
       "fingerprint_fields": [
-        "event_id"
+        "user"
       ],
       "control_refs": [
         {
@@ -2081,29 +2787,22 @@
       "pack_id": "identity",
       "pack_name": "Identity",
       "name": "Identity Privileged No-MFA Account With Sensitive Access",
-      "description": "Detect privileged no-MFA identities or sensitive access grants that should be joined through the graph.",
+      "description": "Detect source-backed privileged no-MFA identities that currently have access to crown-jewel or sensitive classified resources in the graph; AWS IAM and Azure user MFA posture require source-adapter extensions before those user entity types are included.",
       "source_id": "identity",
-      "evaluation_mode": "event",
+      "evaluation_mode": "graph",
       "event_kinds": [
-        "aws.iam_group_membership",
-        "aws.iam_role",
+        "asset.crown_jewel",
+        "asset.data_sensitivity",
         "aws.iam_role_assignment",
-        "aws.iam_user",
         "azure.app_role_assignment",
         "azure.directory_role_assignment",
-        "azure.group_membership",
         "azure.iam_role_assignment",
-        "azure.service_principal",
-        "azure.user",
-        "gcp.group_membership",
         "gcp.iam_role_assignment",
         "gcp.service_account",
-        "google_workspace.group_member",
         "google_workspace.role_assignment",
         "google_workspace.user",
         "okta.admin_role",
         "okta.app_assignment",
-        "okta.group_membership",
         "okta.user"
       ],
       "output_kind": "finding.identity_privileged_no_mfa_sensitive_access",
@@ -2121,11 +2820,12 @@
         "https://help.okta.com/en-us/content/topics/reports/reports_syslog.htm"
       ],
       "false_positives": [
-        "Approved identity administration during a documented change window."
+        "Break-glass identity with approved compensating controls and time-bound exception.",
+        "Resource incorrectly tagged as crown-jewel or sensitive classification in the graph."
       ],
-      "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
+      "runbook": "Enroll MFA for the identity or remove its privileged access to the sensitive resource. Validate the resource classification/tag and revoke any stale access edge in the identity or cloud provider.",
       "fingerprint_fields": [
-        "event_id"
+        "user"
       ],
       "control_refs": [
         {
@@ -2173,7 +2873,7 @@
       ],
       "runbook": "Review the actor, identity target, linked graph identities, and adjacent findings by the same actor or shared identifier.",
       "fingerprint_fields": [
-        "event_id"
+        "user"
       ],
       "control_refs": [
         {
@@ -2275,6 +2975,49 @@
         {
           "framework_name": "ISO 27001:2022",
           "control_id": "A.8.7"
+        }
+      ]
+    },
+    {
+      "id": "sentinelone-agent-not-up-to-date",
+      "pack_id": "sentinelone",
+      "pack_name": "SentinelOne",
+      "name": "SentinelOne Agent Not Up To Date",
+      "description": "Detect active SentinelOne agents whose protection agent version is not up to date.",
+      "source_id": "sentinelone",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "sentinelone.agent"
+      ],
+      "output_kind": "finding.sentinelone_agent_not_up_to_date",
+      "severity": "MEDIUM",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "agent-version",
+        "coverage",
+        "endpoint",
+        "graph-rule",
+        "sentinelone"
+      ],
+      "references": [
+        "https://docs.sentinelone.com/"
+      ],
+      "false_positives": [
+        "Endpoint is in a documented rollout ring, maintenance window, or decommissioning workflow not yet reflected in inventory."
+      ],
+      "runbook": "Update the SentinelOne agent, confirm policy assignment, or document a temporary exception for the endpoint rollout ring.",
+      "fingerprint_fields": [
+        "agent_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC6.6"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.8.16"
         }
       ]
     },
@@ -2480,11 +3223,11 @@
       "pack_id": "sentinelone",
       "pack_name": "SentinelOne",
       "name": "SentinelOne Protection Control Tampering",
-      "description": "Detect SentinelOne activity that changes protection controls such as exclusions, policies, quarantine, or uninstall state.",
+      "description": "Detect SentinelOne agents where a named protection control remains in a tampered state.",
       "source_id": "sentinelone",
       "evaluation_mode": "event",
       "event_kinds": [
-        "sentinelone.activity"
+        "sentinelone.agent"
       ],
       "output_kind": "finding.sentinelone_protection_control_tampering",
       "severity": "HIGH",
@@ -2505,10 +3248,11 @@
       ],
       "runbook": "Review SentinelOne endpoint state, linked threat/activity evidence, policy scope, and documented exceptions before remediation or closure.",
       "required_attributes": [
-        "activity_id"
+        "agent_id"
       ],
       "fingerprint_fields": [
-        "activity_id"
+        "agent_id",
+        "control_type"
       ],
       "control_refs": [
         {
@@ -2568,6 +3312,49 @@
       ]
     },
     {
+      "id": "sentinelone-unmitigated-threat",
+      "pack_id": "sentinelone",
+      "pack_name": "SentinelOne",
+      "name": "SentinelOne Unmitigated Threat",
+      "description": "Detect current SentinelOne threats that remain unresolved or not mitigated in the projected graph.",
+      "source_id": "sentinelone",
+      "evaluation_mode": "graph",
+      "event_kinds": [
+        "sentinelone.threat"
+      ],
+      "output_kind": "finding.sentinelone_unmitigated_threat_current",
+      "severity": "HIGH",
+      "status": "open",
+      "maturity": "test",
+      "tags": [
+        "graph-rule",
+        "malware",
+        "mitigation",
+        "sentinelone",
+        "threat"
+      ],
+      "references": [
+        "https://docs.sentinelone.com/"
+      ],
+      "false_positives": [
+        "Benign or false-positive verdicts not yet synchronized into the graph."
+      ],
+      "runbook": "Review the SentinelOne incident, mitigation status, endpoint context, and analyst verdict; mitigate or mark benign in SentinelOne.",
+      "fingerprint_fields": [
+        "threat_urn"
+      ],
+      "control_refs": [
+        {
+          "framework_name": "SOC 2",
+          "control_id": "CC7.2"
+        },
+        {
+          "framework_name": "ISO 27001:2022",
+          "control_id": "A.5.25"
+        }
+      ]
+    },
+    {
       "id": "sentinelone-unresolved-threat",
       "pack_id": "sentinelone",
       "pack_name": "SentinelOne",
@@ -2600,7 +3387,7 @@
       "pack_id": "vulnview",
       "pack_name": "VulnView",
       "name": "VulnView Actionable External Finding",
-      "description": "Detect VulnView external attack-surface findings that require AppSec triage.",
+      "description": "Detect open VulnView external attack-surface findings that require AppSec triage.",
       "source_id": "vulnview",
       "evaluation_mode": "event",
       "event_kinds": [
@@ -2625,13 +3412,12 @@
       ],
       "runbook": "Validate exploitability and asset ownership, link duplicate external findings, patch or mitigate the exposed service, and document accepted risk.",
       "required_attributes": [
-        "severity"
+        "severity",
+        "vulnview_finding_state"
       ],
       "fingerprint_fields": [
-        "template_id",
-        "alert",
-        "target_id",
-        "matched_at"
+        "asset_urn",
+        "template_id"
       ],
       "control_refs": [
         {

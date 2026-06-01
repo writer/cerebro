@@ -27,6 +27,16 @@ type Registry struct {
 	rules map[string]Rule
 }
 
+var builtinRegistry *Registry
+
+func init() {
+	registry, err := newBuiltinRegistry()
+	if err != nil {
+		panic(fmt.Sprintf("build builtin finding registry: %v", err))
+	}
+	builtinRegistry = registry
+}
+
 // NewRegistry constructs a finding rule registry and rejects duplicate or invalid specs.
 func NewRegistry(rules ...Rule) (*Registry, error) {
 	indexed := make(map[string]Rule, len(rules))
@@ -45,6 +55,14 @@ func NewRegistry(rules ...Rule) (*Registry, error) {
 		if _, exists := indexed[id]; exists {
 			return nil, fmt.Errorf("duplicate finding rule id %q", id)
 		}
+		if metadataRule, ok := rule.(MetadataRule); ok {
+			metadata := metadataRule.RuleMetadata()
+			if !metadata.IsZero() {
+				if err := metadata.Validate(); err != nil {
+					return nil, fmt.Errorf("finding rule %q metadata: %w", id, err)
+				}
+			}
+		}
 		indexed[id] = rule
 	}
 	return &Registry{rules: indexed}, nil
@@ -55,11 +73,11 @@ func NewRegistry(rules ...Rule) (*Registry, error) {
 // Keeping the built-in catalog in one place makes the current platform surface discoverable
 // to clients and gives future rule packages one consistent registration seam.
 func Builtin() *Registry {
-	registry, err := NewRegistry(flattenRulePacks(builtinRulePacks())...)
-	if err != nil {
-		return &Registry{rules: map[string]Rule{}}
-	}
-	return registry
+	return builtinRegistry
+}
+
+func newBuiltinRegistry() (*Registry, error) {
+	return NewRegistry(flattenRulePacks(builtinRulePacks())...)
 }
 
 // Get returns a registered finding rule by ID.

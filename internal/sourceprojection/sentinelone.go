@@ -33,6 +33,7 @@ func sentinelOneAgentProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 		return nil, nil, nil
 	}
 	agentURN := sentinelOneAgentURN(tenant, agentID)
+	firewallControlState := sentinelOneFirewallControlState(attrs["firewall_enabled"])
 	addEntity(entities, &ports.ProjectedEntity{
 		URN:        agentURN,
 		TenantID:   tenant,
@@ -40,45 +41,75 @@ func sentinelOneAgentProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 		EntityType: sentinelOneEntityAgent,
 		Label:      firstNonEmpty(attrs["computer_name"], attrs["uuid"], agentID),
 		Attributes: map[string]string{
-			"agent_id":          agentID,
-			"agent_uuid":        strings.TrimSpace(attrs["uuid"]),
-			"computer_name":     strings.TrimSpace(attrs["computer_name"]),
-			"os_name":           strings.TrimSpace(attrs["os_name"]),
-			"os_type":           strings.TrimSpace(attrs["os_type"]),
-			"os_revision":       strings.TrimSpace(attrs["os_revision"]),
-			"agent_version":     strings.TrimSpace(attrs["agent_version"]),
-			"is_active":         strings.TrimSpace(attrs["is_active"]),
-			"is_decommissioned": strings.TrimSpace(attrs["is_decommissioned"]),
-			"is_uninstalled":    strings.TrimSpace(attrs["is_uninstalled"]),
-			"is_up_to_date":     strings.TrimSpace(attrs["is_up_to_date"]),
-			"is_infected":       strings.TrimSpace(attrs["infected"]),
-			"active_threats":    strings.TrimSpace(attrs["active_threats"]),
-			"last_active_date":  strings.TrimSpace(attrs["last_active_date"]),
-			"machine_type":      strings.TrimSpace(attrs["machine_type"]),
-			"model_name":        strings.TrimSpace(attrs["model_name"]),
-			"serial_number":     strings.TrimSpace(attrs["serial_number"]),
-			"external_ip":       strings.TrimSpace(attrs["external_ip"]),
-			"domain":            strings.TrimSpace(attrs["domain"]),
-			"network_status":    strings.TrimSpace(attrs["network_status"]),
-			"operational_state": strings.TrimSpace(attrs["operational_state"]),
-			"mitigation_mode":   strings.TrimSpace(attrs["mitigation_mode"]),
-			"site_id":           strings.TrimSpace(attrs["site_id"]),
-			"site_name":         strings.TrimSpace(attrs["site_name"]),
-			"group_id":          strings.TrimSpace(attrs["group_id"]),
-			"group_name":        strings.TrimSpace(attrs["group_name"]),
-			"account_id":        strings.TrimSpace(attrs["account_id"]),
-			"account_name":      strings.TrimSpace(attrs["account_name"]),
-			"tenant_host":       strings.TrimSpace(attrs["tenant_host"]),
-			"event_id":          event.GetId(),
-			"at":                eventObservedAt(event),
+			"agent_id":             agentID,
+			"agent_uuid":           strings.TrimSpace(attrs["uuid"]),
+			"computer_name":        strings.TrimSpace(attrs["computer_name"]),
+			"hostname":             strings.TrimSpace(firstNonEmpty(attrs["hostname"], attrs["computer_name"])),
+			"os_name":              strings.TrimSpace(attrs["os_name"]),
+			"os_type":              strings.TrimSpace(attrs["os_type"]),
+			"os_revision":          strings.TrimSpace(attrs["os_revision"]),
+			"agent_version":        strings.TrimSpace(attrs["agent_version"]),
+			"is_active":            strings.TrimSpace(attrs["is_active"]),
+			"is_decommissioned":    strings.TrimSpace(attrs["is_decommissioned"]),
+			"is_pending_uninstall": strings.TrimSpace(attrs["is_pending_uninstall"]),
+			"is_uninstalled":       strings.TrimSpace(attrs["is_uninstalled"]),
+			"is_up_to_date":        strings.TrimSpace(attrs["is_up_to_date"]),
+			"is_infected":          strings.TrimSpace(attrs["infected"]),
+			"firewall_enabled":     strings.TrimSpace(attrs["firewall_enabled"]),
+			"control_type":         sentinelOneFirewallControlType(firewallControlState),
+			"control_state":        firewallControlState,
+			"active_threats":       strings.TrimSpace(attrs["active_threats"]),
+			"last_active_date":     strings.TrimSpace(attrs["last_active_date"]),
+			"machine_type":         strings.TrimSpace(attrs["machine_type"]),
+			"model_name":           strings.TrimSpace(attrs["model_name"]),
+			"serial_number":        strings.TrimSpace(attrs["serial_number"]),
+			"agent_ip_v4":          strings.TrimSpace(attrs["agent_ip_v4"]),
+			"agent_ip_v6":          strings.TrimSpace(attrs["agent_ip_v6"]),
+			"external_ip":          strings.TrimSpace(attrs["external_ip"]),
+			"group_ip":             strings.TrimSpace(attrs["group_ip"]),
+			"ip":                   strings.TrimSpace(attrs["ip"]),
+			"ip_addresses":         strings.TrimSpace(attrs["ip_addresses"]),
+			"last_ip_to_mgmt":      strings.TrimSpace(attrs["last_ip_to_mgmt"]),
+			"domain":               strings.TrimSpace(attrs["domain"]),
+			"network_status":       strings.TrimSpace(attrs["network_status"]),
+			"operational_state":    strings.TrimSpace(attrs["operational_state"]),
+			"mitigation_mode":      strings.TrimSpace(attrs["mitigation_mode"]),
+			"site_id":              strings.TrimSpace(attrs["site_id"]),
+			"site_name":            strings.TrimSpace(attrs["site_name"]),
+			"group_id":             strings.TrimSpace(attrs["group_id"]),
+			"group_name":           strings.TrimSpace(attrs["group_name"]),
+			"account_id":           strings.TrimSpace(attrs["account_id"]),
+			"account_name":         strings.TrimSpace(attrs["account_name"]),
+			"tenant_host":          strings.TrimSpace(attrs["tenant_host"]),
+			"event_id":             event.GetId(),
+			"at":                   eventObservedAt(event),
 		},
 	})
 
 	addSentinelOneScopeLinks(entities, links, tenant, event, agentURN, attrs)
 	addSentinelOneInternetContext(entities, links, tenant, event, agentURN, attrs)
+	addSentinelOneOwnerIdentityLinks(entities, links, tenant, event, agentURN, attrs)
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
+}
+
+func sentinelOneFirewallControlState(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "t", "true", "yes", "y", "enabled", "active", "on", "protected":
+		return "enabled"
+	case "0", "f", "false", "no", "n", "disabled", "inactive", "off", "unprotected", "not_protected":
+		return "disabled"
+	default:
+		return ""
+	}
+}
+
+func sentinelOneFirewallControlType(controlState string) string {
+	if controlState == "" {
+		return ""
+	}
+	return "firewall"
 }
 
 func sentinelOneThreatProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -102,28 +133,33 @@ func sentinelOneThreatProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 		EntityType: sentinelOneEntityThreat,
 		Label:      firstNonEmpty(attrs["threat_name"], attrs["classification"], threatID),
 		Attributes: map[string]string{
-			"threat_id":             threatID,
-			"classification":        strings.TrimSpace(attrs["classification"]),
-			"classification_source": strings.TrimSpace(attrs["classification_source"]),
-			"analyst_verdict":       strings.TrimSpace(attrs["analyst_verdict"]),
-			"incident_status":       strings.TrimSpace(attrs["incident_status"]),
-			"confidence_level":      strings.TrimSpace(attrs["confidence_level"]),
-			"mitigation_status":     strings.TrimSpace(attrs["mitigation_status"]),
-			"detection_type":        strings.TrimSpace(attrs["detection_type"]),
-			"is_fileless":           strings.TrimSpace(attrs["is_fileless"]),
-			"file_path":             strings.TrimSpace(attrs["file_path"]),
-			"sha256":                strings.TrimSpace(attrs["sha256"]),
-			"mitre_tactics":         strings.TrimSpace(attrs["mitre_tactics"]),
-			"mitre_techniques":      strings.TrimSpace(attrs["mitre_techniques"]),
-			"indicator_categories":  strings.TrimSpace(attrs["indicator_categories"]),
-			"site_id":               strings.TrimSpace(attrs["site_id"]),
-			"group_id":              strings.TrimSpace(attrs["group_id"]),
-			"tenant_host":           strings.TrimSpace(attrs["tenant_host"]),
-			"threat_name":           strings.TrimSpace(attrs["threat_name"]),
-			"is_infected":           strings.TrimSpace(attrs["is_infected"]),
-			"active_threats":        strings.TrimSpace(attrs["active_threats"]),
-			"event_id":              event.GetId(),
-			"at":                    eventObservedAt(event),
+			"threat_id":              threatID,
+			"classification":         strings.TrimSpace(attrs["classification"]),
+			"classification_norm":    strings.TrimSpace(attrs["classification_norm"]),
+			"classification_source":  strings.TrimSpace(attrs["classification_source"]),
+			"analyst_verdict":        strings.TrimSpace(attrs["analyst_verdict"]),
+			"analyst_verdict_norm":   strings.TrimSpace(attrs["analyst_verdict_norm"]),
+			"automatically_resolved": strings.TrimSpace(attrs["automatically_resolved"]),
+			"incident_status":        strings.TrimSpace(attrs["incident_status"]),
+			"incident_status_norm":   strings.TrimSpace(attrs["incident_status_norm"]),
+			"confidence_level":       strings.TrimSpace(attrs["confidence_level"]),
+			"mitigation_status":      strings.TrimSpace(attrs["mitigation_status"]),
+			"mitigation_status_norm": strings.TrimSpace(attrs["mitigation_status_norm"]),
+			"detection_type":         strings.TrimSpace(attrs["detection_type"]),
+			"is_fileless":            strings.TrimSpace(attrs["is_fileless"]),
+			"file_path":              strings.TrimSpace(attrs["file_path"]),
+			"sha256":                 strings.TrimSpace(attrs["sha256"]),
+			"mitre_tactics":          strings.TrimSpace(attrs["mitre_tactics"]),
+			"mitre_techniques":       strings.TrimSpace(attrs["mitre_techniques"]),
+			"indicator_categories":   strings.TrimSpace(attrs["indicator_categories"]),
+			"site_id":                strings.TrimSpace(attrs["site_id"]),
+			"group_id":               strings.TrimSpace(attrs["group_id"]),
+			"tenant_host":            strings.TrimSpace(attrs["tenant_host"]),
+			"threat_name":            strings.TrimSpace(attrs["threat_name"]),
+			"is_infected":            strings.TrimSpace(attrs["is_infected"]),
+			"active_threats":         strings.TrimSpace(attrs["active_threats"]),
+			"event_id":               event.GetId(),
+			"at":                     eventObservedAt(event),
 		},
 	})
 
@@ -139,12 +175,17 @@ func sentinelOneThreatProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 			Attributes: map[string]string{
 				"agent_id":       agentID,
 				"computer_name":  strings.TrimSpace(attrs["computer_name"]),
+				"hostname":       strings.TrimSpace(firstNonEmpty(attrs["hostname"], attrs["computer_name"], attrs["agent_name"])),
 				"os_name":        strings.TrimSpace(attrs["agent_os_name"]),
 				"os_type":        strings.TrimSpace(attrs["agent_os_type"]),
 				"is_active":      strings.TrimSpace(attrs["is_active"]),
 				"is_infected":    strings.TrimSpace(attrs["is_infected"]),
 				"active_threats": strings.TrimSpace(attrs["active_threats"]),
-				"external_ip":    firstNonEmpty(strings.TrimSpace(attrs["external_ip"]), strings.TrimSpace(attrs["agent_ip_v4"])),
+				"agent_ip_v4":    strings.TrimSpace(attrs["agent_ip_v4"]),
+				"agent_ip_v6":    strings.TrimSpace(attrs["agent_ip_v6"]),
+				"external_ip":    strings.TrimSpace(attrs["external_ip"]),
+				"ip":             firstNonEmpty(strings.TrimSpace(attrs["ip"]), strings.TrimSpace(attrs["external_ip"]), strings.TrimSpace(attrs["agent_ip_v4"]), strings.TrimSpace(attrs["agent_ip_v6"])),
+				"ip_addresses":   strings.TrimSpace(attrs["ip_addresses"]),
 				"site_id":        strings.TrimSpace(attrs["site_id"]),
 				"group_id":       strings.TrimSpace(attrs["group_id"]),
 				"tenant_host":    strings.TrimSpace(attrs["tenant_host"]),
@@ -153,14 +194,16 @@ func sentinelOneThreatProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 			},
 		})
 		addLink(links, projectedLink(tenant, event.GetSourceId(), agentURN, threatURN, relationAffectedBy, map[string]string{
-			"event_id":          event.GetId(),
-			"at":                eventObservedAt(event),
-			"classification":    strings.TrimSpace(attrs["classification"]),
-			"analyst_verdict":   strings.TrimSpace(attrs["analyst_verdict"]),
-			"incident_status":   strings.TrimSpace(attrs["incident_status"]),
-			"mitigation_status": strings.TrimSpace(attrs["mitigation_status"]),
+			"event_id":               event.GetId(),
+			"at":                     eventObservedAt(event),
+			"classification":         strings.TrimSpace(attrs["classification"]),
+			"analyst_verdict":        strings.TrimSpace(attrs["analyst_verdict"]),
+			"incident_status":        strings.TrimSpace(attrs["incident_status"]),
+			"mitigation_status":      strings.TrimSpace(attrs["mitigation_status"]),
+			"mitigation_status_norm": strings.TrimSpace(attrs["mitigation_status_norm"]),
 		}))
 		addSentinelOneInternetContext(entities, links, tenant, event, agentURN, attrs)
+		addSentinelOneOwnerIdentityLinks(entities, links, tenant, event, agentURN, attrs)
 	}
 
 	addSentinelOneScopeLinks(entities, links, tenant, event, threatURN, attrs)
@@ -170,21 +213,25 @@ func sentinelOneThreatProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 }
 
 func addSentinelOneInternetContext(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenant string, event *cerebrov1.EventEnvelope, agentURN string, attrs map[string]string) {
-	for _, rawIP := range []string{attrs["external_ip"], attrs["agent_ip_v4"]} {
-		ipURN, ip := internetIPURN(tenant, rawIP)
-		if ipURN == "" {
-			continue
+	for _, rawIPs := range []string{attrs["external_ip"], attrs["agent_ip_v4"], attrs["agent_ip_v6"], attrs["ip"], attrs["ip_addresses"]} {
+		for _, rawIP := range splitCloudAttributeList(rawIPs) {
+			ipURN, ip := internetIPURN(tenant, rawIP)
+			if ipURN == "" {
+				continue
+			}
+			addInternetIPEntity(entities, tenant, event.GetSourceId(), ipURN, ip)
+			addLink(links, projectedLink(tenant, event.GetSourceId(), agentURN, ipURN, relationHasIdentifier, map[string]string{
+				"confidence": "0.80",
+				"at":         eventObservedAt(event),
+				"event_id":   event.GetId(),
+				"ip":         ip,
+				"match_type": "sentinelone_agent_ip",
+			}))
 		}
-		addInternetIPEntity(entities, tenant, event.GetSourceId(), ipURN, ip)
-		addLink(links, projectedLink(tenant, event.GetSourceId(), agentURN, ipURN, relationHasIdentifier, map[string]string{
-			"confidence": "0.80",
-			"at":         eventObservedAt(event),
-			"event_id":   event.GetId(),
-			"ip":         ip,
-			"match_type": "sentinelone_agent_ip",
-		}))
 	}
-	host := internetHostIfLikely(firstNonEmpty(attrs["computer_name"], attrs["agent_name"], attrs["hostname"]))
+	rawHost := firstNonEmpty(attrs["hostname"], attrs["computer_name"], attrs["agent_name"])
+	addEndpointIdentifierLink(entities, links, tenant, event.GetSourceId(), event, agentURN, "hostname", rawHost, "0.80")
+	host := internetHostIfLikely(rawHost)
 	if host == "" {
 		return
 	}
@@ -200,6 +247,31 @@ func addSentinelOneInternetContext(entities map[string]*ports.ProjectedEntity, l
 		"host":       host,
 		"match_type": "sentinelone_agent_hostname",
 	}))
+}
+
+func addSentinelOneOwnerIdentityLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenant string, event *cerebrov1.EventEnvelope, agentURN string, attrs map[string]string) {
+	if agentURN == "" {
+		return
+	}
+	ownerEmail := strings.TrimSpace(firstNonEmpty(attrs["user_mail"], attrs["user_email"]))
+	if ownerEmail != "" {
+		addIdentifierLink(entities, links, tenant, event.GetSourceId(), event.GetId(), agentURN, ownerEmail, event.GetOccurredAt())
+		identityURN, _ := canonicalIdentityURN(tenant, ownerEmail)
+		if identityURN != "" {
+			linkAttrs := map[string]string{
+				"at":         eventObservedAt(event),
+				"confidence": "0.85",
+				"event_id":   event.GetId(),
+				"match_type": "sentinelone_owner_email",
+			}
+			addLink(links, projectedLink(tenant, event.GetSourceId(), agentURN, identityURN, relationOwnedBy, linkAttrs))
+		}
+	}
+	ownerUser := strings.TrimSpace(attrs["user_name"])
+	if ownerUser != "" {
+		addEndpointIdentifierLink(entities, links, tenant, event.GetSourceId(), event, agentURN, "sentinelone_user_name", ownerUser, "0.60")
+	}
+	addEndpointIdentifierLink(entities, links, tenant, event.GetSourceId(), event, agentURN, "sentinelone_user_id", attrs["user_id"], "0.70")
 }
 
 func sentinelOneSiteProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {

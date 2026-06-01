@@ -113,6 +113,31 @@ func TestNewFixtureReplaysFixturePages(t *testing.T) {
 	}
 }
 
+func TestNewFixtureReplaysRepositoryFamily(t *testing.T) {
+	source, err := NewFixture()
+	if err != nil {
+		t.Fatalf("NewFixture() error = %v", err)
+	}
+	cfg := sourcecdk.NewConfig(map[string]string{"family": familyRepository, "token": "test"})
+	urns, err := source.Discover(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Discover(repository) error = %v", err)
+	}
+	if len(urns) != 1 {
+		t.Fatalf("len(repository Discover()) = %d, want 1", len(urns))
+	}
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(repository) error = %v", err)
+	}
+	if len(pull.Events) != 1 || pull.Events[0].Kind != "github.code.repository" {
+		t.Fatalf("repository fixture events = %#v, want one github.code.repository event", pull.Events)
+	}
+	if got := pull.Events[0].Attributes["owner_login"]; got != "writer" {
+		t.Fatalf("owner_login = %q, want writer", got)
+	}
+}
+
 func TestReadRejectsNegativeCursor(t *testing.T) {
 	source, err := New()
 	if err != nil {
@@ -224,6 +249,52 @@ func TestCheckDiscoverAndReadLiveGitHubPullRequestPreview(t *testing.T) {
 	}
 	if len(final.Events) != 0 {
 		t.Fatalf("len(final.Events) = %d, want 0", len(final.Events))
+	}
+}
+
+func TestReadLiveGitHubRepositoryPreviewIncludesOwnerLogin(t *testing.T) {
+	server := httptest.NewServer(newGitHubAPIHandler(t))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   familyRepository,
+		"owner":    "writer",
+		"per_page": "1",
+	})
+	pull, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(repository) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(repository Events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if event.Kind != "github.code.repository" {
+		t.Fatalf("repository event kind = %q, want github.code.repository", event.Kind)
+	}
+	for key, want := range map[string]string{
+		"owner_login":   "writer",
+		"repo_id":       "1",
+		"repository":    "writer/cerebro",
+		"resource_id":   "1",
+		"resource_type": "code_repository",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("repository attribute %s = %q, want %q", key, got, want)
+		}
+	}
+	var payload repositoryPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		t.Fatalf("unmarshal repository payload: %v", err)
+	}
+	if payload.OwnerLogin != "writer" || payload.FullName != "writer/cerebro" {
+		t.Fatalf("repository payload = %#v, want owner/full name", payload)
 	}
 }
 
@@ -553,9 +624,6 @@ func TestSourceHTTPClientRejectsHostsResolvingToPrivateIPs(t *testing.T) {
 	if err == nil {
 		t.Fatal("Do() error = nil, want non-nil")
 	}
-	if !errors.Is(err, errUnsafeBaseURLHost) {
-		t.Fatalf("Do() error = %v, want %v", err, errUnsafeBaseURLHost)
-	}
 	if called {
 		t.Fatal("Do() reached wrapped transport for unsafe resolved host")
 	}
@@ -656,10 +724,20 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 	t.Helper()
 
 	repo := map[string]any{
-		"id":        1,
-		"name":      "cerebro",
-		"full_name": "writer/cerebro",
-		"html_url":  "https://github.com/writer/cerebro",
+		"id":             1,
+		"name":           "cerebro",
+		"full_name":      "writer/cerebro",
+		"html_url":       "https://github.com/writer/cerebro",
+		"visibility":     "public",
+		"default_branch": "main",
+		"private":        false,
+		"archived":       false,
+		"fork":           false,
+		"created_at":     "2026-04-22T00:00:00Z",
+		"updated_at":     "2026-04-23T00:00:00Z",
+		"owner": map[string]any{
+			"login": "writer",
+		},
 	}
 	pulls := []map[string]any{
 		{

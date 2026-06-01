@@ -12,7 +12,7 @@ import (
 func TestProjectSentinelOneAgentBuildsAgentEntity(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
-	occurred := time.Date(2026, time.April, 23, 1, 0, 0, 0, time.UTC)
+	occurred := time.Unix(1_700_000_000, 0).UTC()
 
 	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
 		Id:         "s1-agent-1",
@@ -21,38 +21,42 @@ func TestProjectSentinelOneAgentBuildsAgentEntity(t *testing.T) {
 		Kind:       "sentinelone.agent",
 		OccurredAt: timestamppb.New(occurred),
 		Attributes: map[string]string{
-			"agent_id":          "agent-1",
-			"computer_name":     "host-1",
-			"os_name":           "macOS",
-			"os_type":           "macos",
-			"is_active":         "true",
-			"is_decommissioned": "false",
-			"is_up_to_date":     "true",
-			"infected":          "false",
-			"active_threats":    "0",
-			"external_ip":       "203.0.113.10",
-			"last_active_date":  "2026-04-23T01:00:00Z",
-			"site_id":           "site-1",
-			"site_name":         "Production",
-			"group_id":          "group-1",
-			"group_name":        "Default",
-			"tenant_host":       "writer.sentinelone.example",
+			"agent_id":             "agent-1",
+			"computer_name":        "host-1",
+			"os_name":              "macOS",
+			"os_type":              "macos",
+			"is_active":            "true",
+			"is_decommissioned":    "false",
+			"is_pending_uninstall": "false",
+			"is_up_to_date":        "true",
+			"infected":             "false",
+			"firewall_enabled":     "false",
+			"active_threats":       "0",
+			"hostname":             "host-1",
+			"external_ip":          "203.0.113.10",
+			"last_active_date":     "2026-04-23T01:00:00Z",
+			"site_id":              "site-1",
+			"site_name":            "Production",
+			"group_id":             "group-1",
+			"group_name":           "Default",
+			"tenant_host":          "writer.sentinelone.example",
 		},
 	})
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	if result.EntitiesProjected != 4 {
-		t.Fatalf("EntitiesProjected = %d, want 4", result.EntitiesProjected)
+	if result.EntitiesProjected != 5 {
+		t.Fatalf("EntitiesProjected = %d, want 5", result.EntitiesProjected)
 	}
-	if result.LinksProjected != 3 {
-		t.Fatalf("LinksProjected = %d, want 3", result.LinksProjected)
+	if result.LinksProjected != 4 {
+		t.Fatalf("LinksProjected = %d, want 4", result.LinksProjected)
 	}
 
 	agentURN := "urn:cerebro:writer:sentinelone_agent:agent-1"
 	siteURN := "urn:cerebro:writer:sentinelone_site:site-1"
 	groupURN := "urn:cerebro:writer:sentinelone_group:group-1"
 	ipURN := "urn:cerebro:writer:internet_ip:203.0.113.10"
+	hostIdentifierURN := "urn:cerebro:writer:endpoint_identifier:hostname:host-1"
 	if state.entities[agentURN] == nil {
 		t.Fatalf("agent entity missing: %#v", state.entities)
 	}
@@ -62,14 +66,80 @@ func TestProjectSentinelOneAgentBuildsAgentEntity(t *testing.T) {
 	if state.entities[agentURN].Attributes["computer_name"] != "host-1" {
 		t.Fatalf("agent computer_name = %q, want host-1", state.entities[agentURN].Attributes["computer_name"])
 	}
+	if got := state.entities[agentURN].Attributes["hostname"]; got != "host-1" {
+		t.Fatalf("agent hostname = %q, want host-1", got)
+	}
+	if got := state.entities[agentURN].Attributes["control_type"]; got != "firewall" {
+		t.Fatalf("agent control_type = %q, want firewall", got)
+	}
+	if got := state.entities[agentURN].Attributes["control_state"]; got != "disabled" {
+		t.Fatalf("agent control_state = %q, want disabled", got)
+	}
+	if got := state.entities[agentURN].Attributes["is_pending_uninstall"]; got != "false" {
+		t.Fatalf("agent is_pending_uninstall = %q, want false", got)
+	}
 	if entity := state.entities[ipURN]; entity == nil || entity.EntityType != "internet.ip" {
 		t.Fatalf("internet ip entity missing: %#v", entity)
 	}
 	assertProjectedLink(t, state, agentURN, relationBelongsTo, siteURN)
 	assertProjectedLink(t, state, agentURN, relationMemberOf, groupURN)
 	assertProjectedLink(t, state, agentURN, relationHasIdentifier, ipURN)
+	assertProjectedLink(t, state, agentURN, relationHasIdentifier, hostIdentifierURN)
 	if got := state.links[agentURN+"|"+relationHasIdentifier+"|"+ipURN].Attributes["at"]; got != occurred.Format(time.RFC3339) {
 		t.Fatalf("identifier link at = %q, want %q", got, occurred.Format(time.RFC3339))
+	}
+}
+
+func TestProjectSentinelOneAgentLinksOwnerIdentity(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	occurred := time.Date(2026, time.April, 23, 1, 0, 0, 0, time.UTC)
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:         "s1-agent-owner",
+		TenantId:   "writer",
+		SourceId:   "sentinelone",
+		Kind:       "sentinelone.agent",
+		OccurredAt: timestamppb.New(occurred),
+		Attributes: map[string]string{
+			"agent_id":  "agent-1",
+			"user_mail": "owner@writer.com",
+			"user_name": "owner",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	agentURN := "urn:cerebro:writer:sentinelone_agent:agent-1"
+	identityURN := "urn:cerebro:writer:identity:email:owner@writer.com"
+	identifierURN := "urn:cerebro:writer:identifier:email:owner@writer.com"
+	assertProjectedLink(t, state, agentURN, relationOwnedBy, identityURN)
+	assertProjectedLink(t, state, agentURN, relationRepresentsIdentity, identityURN)
+	assertProjectedLink(t, state, agentURN, relationHasIdentifier, identifierURN)
+}
+
+func TestProjectSentinelOneAgentUserNameOnlySkipsStrongOwnerIdentityEdges(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "s1-agent-owner-username",
+		TenantId: "writer",
+		SourceId: "sentinelone",
+		Kind:     "sentinelone.agent",
+		Attributes: map[string]string{
+			"agent_id":  "agent-2",
+			"user_name": "owner",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	agentURN := "urn:cerebro:writer:sentinelone_agent:agent-2"
+	identityURN := "urn:cerebro:writer:identity:login:owner"
+	if _, ok := state.links[agentURN+"|"+relationOwnedBy+"|"+identityURN]; ok {
+		t.Fatalf("user_name-only owner edge should not emit owned_by: %#v", state.links)
+	}
+	if _, ok := state.links[agentURN+"|"+relationRepresentsIdentity+"|"+identityURN]; ok {
+		t.Fatalf("user_name-only owner edge should not emit represents_identity: %#v", state.links)
 	}
 }
 
@@ -103,23 +173,32 @@ func TestProjectSentinelOneThreatLinksThreatToAgent(t *testing.T) {
 		Kind:       "sentinelone.threat",
 		OccurredAt: timestamppb.New(occurred),
 		Attributes: map[string]string{
-			"threat_id":             "threat-1",
-			"agent_id":              "agent-1",
-			"agent_name":            "host-1",
-			"computer_name":         "host-1",
-			"external_ip":           "203.0.113.20",
-			"classification":        "Malware",
-			"classification_source": "Engine",
-			"analyst_verdict":       "true_positive",
-			"incident_status":       "unresolved",
-			"mitigation_status":     "not_mitigated",
-			"confidence_level":      "malicious",
-			"site_id":               "site-1",
-			"group_id":              "group-1",
-			"mitre_tactics":         "Execution",
-			"mitre_techniques":      "Native API",
-			"is_active":             "true",
-			"is_fileless":           "false",
+			"threat_id":              "threat-1",
+			"agent_id":               "agent-1",
+			"agent_name":             "host-1",
+			"computer_name":          "host-1",
+			"hostname":               "host-1",
+			"agent_ip_v6":            "2001:db8::20",
+			"external_ip":            "203.0.113.20",
+			"ip_addresses":           "203.0.113.20,2001:db8::20",
+			"classification":         "Malware",
+			"classification_norm":    "malware",
+			"classification_source":  "Engine",
+			"analyst_verdict":        "true_positive",
+			"analyst_verdict_norm":   "true_positive",
+			"automatically_resolved": "false",
+			"incident_status":        "unresolved",
+			"incident_status_norm":   "unresolved",
+			"mitigation_status":      "not_mitigated",
+			"mitigation_status_norm": "not_mitigated",
+			"confidence_level":       "malicious",
+			"site_id":                "site-1",
+			"group_id":               "group-1",
+			"mitre_tactics":          "Execution",
+			"mitre_techniques":       "Native API",
+			"is_active":              "true",
+			"is_fileless":            "false",
+			"user_mail":              "owner@writer.com",
 		},
 	})
 	if err != nil {
@@ -128,6 +207,8 @@ func TestProjectSentinelOneThreatLinksThreatToAgent(t *testing.T) {
 	threatURN := "urn:cerebro:writer:sentinelone_threat:threat-1"
 	agentURN := "urn:cerebro:writer:sentinelone_agent:agent-1"
 	ipURN := "urn:cerebro:writer:internet_ip:203.0.113.20"
+	ipv6URN := "urn:cerebro:writer:internet_ip:2001:db8::20"
+	hostIdentifierURN := "urn:cerebro:writer:endpoint_identifier:hostname:host-1"
 	siteURN := "urn:cerebro:writer:sentinelone_site:site-1"
 	groupURN := "urn:cerebro:writer:sentinelone_group:group-1"
 
@@ -138,7 +219,11 @@ func TestProjectSentinelOneThreatLinksThreatToAgent(t *testing.T) {
 		t.Fatalf("agent entity missing")
 	}
 	assertProjectedLink(t, state, agentURN, relationAffectedBy, threatURN)
+	assertProjectedLink(t, state, agentURN, relationOwnedBy, "urn:cerebro:writer:identity:email:owner@writer.com")
+	assertProjectedLink(t, state, agentURN, relationRepresentsIdentity, "urn:cerebro:writer:identity:email:owner@writer.com")
 	assertProjectedLink(t, state, agentURN, relationHasIdentifier, ipURN)
+	assertProjectedLink(t, state, agentURN, relationHasIdentifier, ipv6URN)
+	assertProjectedLink(t, state, agentURN, relationHasIdentifier, hostIdentifierURN)
 	if got := state.links[agentURN+"|"+relationHasIdentifier+"|"+ipURN].Attributes["at"]; got != occurred.Format(time.RFC3339) {
 		t.Fatalf("identifier link at = %q, want %q", got, occurred.Format(time.RFC3339))
 	}
@@ -146,6 +231,9 @@ func TestProjectSentinelOneThreatLinksThreatToAgent(t *testing.T) {
 	assertProjectedLink(t, state, threatURN, relationMemberOf, groupURN)
 	if got := state.entities[threatURN].Attributes["classification"]; got != "Malware" {
 		t.Fatalf("threat classification = %q, want Malware", got)
+	}
+	if got := state.entities[threatURN].Attributes["mitigation_status_norm"]; got != "not_mitigated" {
+		t.Fatalf("threat mitigation_status_norm = %q, want not_mitigated", got)
 	}
 	if got := state.entities[threatURN].Attributes["mitre_tactics"]; got != "Execution" {
 		t.Fatalf("threat mitre_tactics = %q, want Execution", got)

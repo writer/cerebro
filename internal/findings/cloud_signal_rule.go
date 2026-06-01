@@ -19,11 +19,14 @@ const (
 
 type cloudSignalPredicate func(*cerebrov1.EventEnvelope, map[string]string) bool
 
+type cloudFingerprintFn func(event *cerebrov1.EventEnvelope, attributes map[string]string, projection findingProjectionContext) []string
+
 type cloudSignalConfig struct {
-	definition RuleDefinition
-	sourceIDs  []string
-	eventKinds []string
-	predicate  cloudSignalPredicate
+	definition  RuleDefinition
+	sourceIDs   []string
+	eventKinds  []string
+	predicate   cloudSignalPredicate
+	fingerprint cloudFingerprintFn
 }
 
 type cloudSignalRule struct {
@@ -49,10 +52,12 @@ func newCloudSignalRules() []Rule {
 				"HIGH",
 				"finding.cloud_effective_admin_permission",
 				[]string{"cloud", "ciem", "least-privilege", "attack.t1098"},
+				[]string{"cloud_account_urn", "principal_urn", "permission_urn"},
 			),
-			sourceIDs:  sourceIDs,
-			eventKinds: capabilities.EventKinds(cloudCapabilityEffectivePermission),
-			predicate:  matchesCloudEffectiveAdminPermission,
+			sourceIDs:   sourceIDs,
+			eventKinds:  capabilities.EventKinds(cloudCapabilityEffectivePermission),
+			predicate:   matchesCloudEffectiveAdminPermission,
+			fingerprint: cloudEffectiveAdminPermissionFingerprintInputs,
 		}),
 		newCloudSignalRule(cloudSignalConfig{
 			definition: cloudRuleDefinition(
@@ -62,10 +67,12 @@ func newCloudSignalRules() []Rule {
 				"HIGH",
 				"finding.cloud_public_resource_exposure",
 				[]string{"cloud", "exposure", "public", "attack.t1190"},
+				[]string{"exposed_resource_urn"},
 			),
-			sourceIDs:  sourceIDs,
-			eventKinds: capabilities.EventKinds(cloudCapabilityResourceExposure),
-			predicate:  matchesCloudPublicExposure,
+			sourceIDs:   sourceIDs,
+			eventKinds:  capabilities.EventKinds(cloudCapabilityResourceExposure),
+			predicate:   matchesCloudPublicExposure,
+			fingerprint: cloudPublicResourceExposureFingerprintInputs,
 		}),
 		newCloudSignalRule(cloudSignalConfig{
 			definition: cloudRuleDefinition(
@@ -75,16 +82,19 @@ func newCloudSignalRules() []Rule {
 				"HIGH",
 				"finding.cloud_privilege_path_granted",
 				[]string{"cloud", "privilege-escalation", "identity", "attack.t1098"},
+				[]string{"principal_urn", "target_principal_urn", "relationship"},
 			),
-			sourceIDs:  sourceIDs,
-			eventKinds: capabilities.EventKinds(cloudCapabilityPrivilegePath),
-			predicate:  matchesCloudPrivilegePath,
+			sourceIDs:   sourceIDs,
+			eventKinds:  capabilities.EventKinds(cloudCapabilityPrivilegePath),
+			predicate:   matchesCloudPrivilegePath,
+			fingerprint: cloudPrivilegePathGrantedFingerprintInputs,
 		}),
+		newCloudPublicResourceExposureGraphRule(),
 		newCloudPublicExposurePrivilegedPrincipalRule(),
 	}
 }
 
-func cloudRuleDefinition(id string, name string, description string, severity string, outputKind string, tags []string) RuleDefinition {
+func cloudRuleDefinition(id string, name string, description string, severity string, outputKind string, tags []string, fingerprintFields []string) RuleDefinition {
 	return RuleDefinition{
 		ID:                id,
 		Name:              name,
@@ -98,11 +108,12 @@ func cloudRuleDefinition(id string, name string, description string, severity st
 		References:        []string{"https://www.cisecurity.org/benchmark/amazon_web_services", "https://www.cisecurity.org/benchmark/microsoft_azure", "https://www.cisecurity.org/benchmark/google_cloud_computing_platform"},
 		FalsePositives:    []string{"Approved exposure or trust path during a documented change window."},
 		Runbook:           "Review the exposed resource or trust path, linked principals, scope, and adjacent identity findings.",
-		FingerprintFields: []string{"event_id"},
+		FingerprintFields: fingerprintFields,
 		ControlRefs: []ports.FindingControlRef{
 			{FrameworkName: "SOC 2", ControlID: "CC6.6"},
 			{FrameworkName: "ISO 27001:2022", ControlID: "A.8.20"},
 		},
+		Lifecycle: Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 	}
 }
 
@@ -141,6 +152,9 @@ func (r *cloudSignalRule) Evaluate(ctx context.Context, runtime *cerebrov1.Sourc
 	if err != nil {
 		return nil, err
 	}
+	if record == nil {
+		return nil, nil
+	}
 	return []*ports.FindingRecord{record}, nil
 }
 
@@ -166,7 +180,17 @@ func (r *cloudSignalRule) buildFinding(ctx context.Context, runtime *cerebrov1.S
 		observedAt = event.GetOccurredAt().AsTime().UTC()
 	}
 	attributes := cloudFindingAttributes(event, runtime, r.config, projectedContext)
-	fingerprint := hashFindingFingerprint(r.config.definition.ID, event.GetId(), projectedContext.PrimaryResourceURN, compoundRiskAction(&ports.FindingRecord{Attributes: attributes}))
+	fingerprintInputs := r.fingerprintInputs(event, eventAttrs, projectedContext)
+	if !cloudFingerprintInputsValid(fingerprintInputs) {
+		return nil, nil
+	}
+	for key, value := range cloudFingerprintAttributes(r.config.definition.FingerprintFields, fingerprintInputs) {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		attributes[key] = value
+	}
+	fingerprint := hashFindingFingerprint(append([]string{r.config.definition.ID}, fingerprintInputs...)...)
 	return &ports.FindingRecord{
 		ID:                fingerprint,
 		Fingerprint:       fingerprint,
@@ -191,15 +215,182 @@ func (r *cloudSignalRule) buildFinding(ctx context.Context, runtime *cerebrov1.S
 	}, nil
 }
 
+func (r *cloudSignalRule) fingerprintInputs(event *cerebrov1.EventEnvelope, attributes map[string]string, projection findingProjectionContext) []string {
+	if r == nil || r.config.fingerprint == nil {
+		return nil
+	}
+	return r.config.fingerprint(event, attributes, projection)
+}
+
+func cloudFingerprintInputsValid(inputs []string) bool {
+	if len(inputs) == 0 {
+		return false
+	}
+	for _, value := range inputs {
+		if strings.TrimSpace(value) == "" {
+			return false
+		}
+	}
+	return true
+}
+
+func cloudFingerprintAttributes(fields []string, values []string) map[string]string {
+	if len(fields) == 0 || len(fields) != len(values) {
+		return nil
+	}
+	attributes := make(map[string]string, len(fields))
+	for i, field := range fields {
+		key := strings.TrimSpace(field)
+		if key == "" {
+			continue
+		}
+		attributes[key] = strings.TrimSpace(values[i])
+	}
+	return attributes
+}
+
+func cloudEffectiveAdminPermissionFingerprintInputs(event *cerebrov1.EventEnvelope, attributes map[string]string, projection findingProjectionContext) []string {
+	tenantID := strings.TrimSpace(event.GetTenantId())
+	accountID := cloudEffectivePermissionAccountID(attributes)
+	accountURN := projection.EntityURNByType("cloud.account")
+	if accountURN == "" && accountID != "" && tenantID != "" {
+		accountURN = fmt.Sprintf("urn:cerebro:%s:cloud_account:%s", tenantID, strings.TrimSpace(accountID))
+	}
+	principalURN := firstNonEmpty(cloudEffectivePermissionPrincipalURN(event, attributes), projection.PrimaryActorURN)
+	permissionKey := strings.ToLower(strings.TrimSpace(firstNonEmpty(
+		attributes["permission"],
+		attributes["actions"],
+		attributes["role_id"],
+		attributes["role_name"],
+		attributes["privilege_level"],
+	)))
+	permissionURN := ""
+	if permissionKey != "" && tenantID != "" {
+		if accountID != "" {
+			permissionURN = fmt.Sprintf("urn:cerebro:%s:cloud_permission:%s:%s", tenantID, strings.TrimSpace(accountID), permissionKey)
+		} else {
+			permissionURN = fmt.Sprintf("urn:cerebro:%s:cloud_permission:%s", tenantID, permissionKey)
+		}
+	}
+	return []string{accountURN, principalURN, permissionURN}
+}
+
+func cloudEffectivePermissionAccountID(attributes map[string]string) string {
+	return firstNonEmpty(
+		attributes["domain"],
+		attributes["aws_account_id"],
+		attributes["subscription_id"],
+		attributes["project_id"],
+		attributes["gcp_project_id"],
+		attributes["account_id"],
+		attributes["scope"],
+	)
+}
+
+func cloudEffectivePermissionPrincipalURN(event *cerebrov1.EventEnvelope, attributes map[string]string) string {
+	tenantID := strings.TrimSpace(event.GetTenantId())
+	provider := strings.TrimSpace(event.GetSourceId())
+	principalID := firstNonEmpty(attributes["subject_id"], attributes["principal_id"], attributes["assigned_to"], attributes["email"])
+	principalEmail := firstNonEmpty(attributes["subject_email"], attributes["principal_email"], attributes["email"])
+	principalType := cloudEffectivePermissionPrincipalType(firstNonEmpty(attributes["subject_type"], attributes["principal_type"], "user"))
+	if tenantID == "" || provider == "" {
+		return ""
+	}
+	switch principalType {
+	case "group":
+		return identityProjectionURN(tenantID, provider+"_group", firstNonEmpty(principalID, principalEmail))
+	case "application":
+		return identityProjectionURN(tenantID, provider+"_application", principalID)
+	case "service_principal":
+		return identityProjectionURN(tenantID, provider+"_service_principal", firstNonEmpty(principalID, principalEmail))
+	case "service_account":
+		return identityProjectionURN(tenantID, provider+"_service_account", firstNonEmpty(principalID, principalEmail))
+	case "role":
+		return identityProjectionURN(tenantID, provider+"_role", principalID)
+	case "account":
+		return identityProjectionURN(tenantID, provider+"_account", principalID)
+	case "public":
+		return identityProjectionURN(tenantID, provider+"_public_principal", principalID)
+	default:
+		return identityProjectionURN(tenantID, provider+"_user", firstNonEmpty(principalID, principalEmail))
+	}
+}
+
+func cloudEffectivePermissionPrincipalType(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if strings.Contains(normalized, "group") {
+		return "group"
+	}
+	if strings.Contains(normalized, "service_principal") || strings.Contains(normalized, "serviceprincipal") {
+		return "service_principal"
+	}
+	if strings.Contains(normalized, "service_account") || strings.Contains(normalized, "serviceaccount") {
+		return "service_account"
+	}
+	if strings.Contains(normalized, "application") {
+		return "application"
+	}
+	if strings.Contains(normalized, "role") {
+		return "role"
+	}
+	if strings.Contains(normalized, "account") {
+		return "account"
+	}
+	if strings.Contains(normalized, "public") || strings.Contains(normalized, "allusers") || strings.Contains(normalized, "allauthenticatedusers") {
+		return "public"
+	}
+	return "user"
+}
+
+func cloudPublicResourceExposureFingerprintInputs(_ *cerebrov1.EventEnvelope, attributes map[string]string, projection findingProjectionContext) []string {
+	resourceID := strings.TrimSpace(firstNonEmpty(attributes["resource_id"], attributes["resource_name"], attributes["exposure_id"]))
+	if resourceID != "" {
+		for _, entity := range projection.Entities {
+			if entity == nil || strings.TrimSpace(entity.URN) == "" {
+				continue
+			}
+			if strings.TrimSpace(entity.Attributes["resource_id"]) == resourceID {
+				return []string{strings.TrimSpace(entity.URN)}
+			}
+		}
+	}
+	for _, entity := range projection.Entities {
+		if entity == nil || strings.TrimSpace(entity.URN) == "" {
+			continue
+		}
+		entityType := strings.ToLower(strings.TrimSpace(entity.EntityType))
+		if strings.Contains(entityType, "public_principal") || entityType == "cloud.account" {
+			continue
+		}
+		return []string{strings.TrimSpace(entity.URN)}
+	}
+	return []string{projection.PrimaryResourceURN}
+}
+
+func cloudPrivilegePathGrantedFingerprintInputs(_ *cerebrov1.EventEnvelope, attributes map[string]string, projection findingProjectionContext) []string {
+	relationship := projection.LinkRelationBetween(projection.PrimaryActorURN, projection.PrimaryResourceURN)
+	if relationship == "" {
+		relationship = strings.ToLower(strings.TrimSpace(firstNonEmpty(attributes["relationship"], attributes["path_type"])))
+	}
+	return []string{projection.PrimaryActorURN, projection.PrimaryResourceURN, relationship}
+}
+
 func cloudFindingAttributes(event *cerebrov1.EventEnvelope, runtime *cerebrov1.SourceRuntime, config cloudSignalConfig, context findingProjectionContext) map[string]string {
 	eventAttrs := eventAttributes(event)
+	primaryResourceURN := context.PrimaryResourceURN
+	if config.definition.ID == cloudPublicResourceExposureRuleID && config.fingerprint != nil {
+		fingerprintInputs := config.fingerprint(event, eventAttrs, context)
+		if len(fingerprintInputs) > 0 {
+			primaryResourceURN = firstNonEmpty(fingerprintInputs[0], primaryResourceURN)
+		}
+	}
 	attributes := map[string]string{
 		"action":               firstNonEmpty(eventAttrs["relationship"], eventAttrs["exposure_type"], eventAttrs["event_type"], eventAttrs["family"]),
 		"event_id":             strings.TrimSpace(event.GetId()),
 		"event_kind":           strings.TrimSpace(event.GetKind()),
 		"family":               strings.TrimSpace(eventAttrs["family"]),
 		"primary_actor_urn":    context.PrimaryActorURN,
-		"primary_resource_urn": context.PrimaryResourceURN,
+		"primary_resource_urn": primaryResourceURN,
 		"resource_id":          firstNonEmpty(eventAttrs["resource_id"], eventAttrs["target_id"], eventAttrs["role_id"]),
 		"resource_label":       context.ResourceLabel,
 		"resource_type":        firstNonEmpty(eventAttrs["resource_type"], eventAttrs["target_type"], eventAttrs["family"]),

@@ -1,13 +1,73 @@
 package findings
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/writer/cerebro/internal/ports"
 )
+
+// LifecycleKind enumerates the supported finding lifecycle classifications.
+type LifecycleKind string
+
+const (
+	LifecycleDurableState  LifecycleKind = "durable_state"
+	LifecycleAuditEvidence LifecycleKind = "audit_evidence"
+	LifecycleTTLEvidence   LifecycleKind = "ttl_evidence"
+	LifecycleRetired       LifecycleKind = "retired"
+)
+
+// LifecycleAnchor identifies what a finding is anchored to.
+type LifecycleAnchor string
+
+const (
+	AnchorGraphAnchored LifecycleAnchor = "graph_anchored"
+	AnchorSourceState   LifecycleAnchor = "source_state"
+	AnchorNone          LifecycleAnchor = "none"
+)
+
+// Lifecycle captures the lifecycle semantics declared by a rule definition.
+type Lifecycle struct {
+	Kind   LifecycleKind
+	TTL    time.Duration
+	Anchor LifecycleAnchor
+}
+
+func validateLifecycle(ruleID string, lifecycle Lifecycle) error {
+	id := strings.TrimSpace(ruleID)
+	kind := LifecycleKind(strings.TrimSpace(string(lifecycle.Kind)))
+	if kind == "" {
+		if id == "" {
+			return errors.New("rule lifecycle kind is required")
+		}
+		return fmt.Errorf("rule %q lifecycle kind is required", id)
+	}
+	switch kind {
+	case LifecycleTTLEvidence:
+		if lifecycle.TTL <= 0 {
+			return fmt.Errorf("rule %q lifecycle ttl_evidence requires TTL > 0", id)
+		}
+	case LifecycleRetired:
+		anchor := LifecycleAnchor(strings.TrimSpace(string(lifecycle.Anchor)))
+		if anchor != AnchorNone {
+			return fmt.Errorf("rule %q lifecycle retired requires anchor=none", id)
+		}
+	case LifecycleDurableState:
+		anchor := LifecycleAnchor(strings.TrimSpace(string(lifecycle.Anchor)))
+		if anchor == AnchorNone {
+			return fmt.Errorf("rule %q lifecycle durable_state forbids anchor=none", id)
+		}
+	case LifecycleAuditEvidence:
+		// audit_evidence places no additional anchor or TTL constraints.
+	default:
+		return fmt.Errorf("rule %q lifecycle kind %q is not recognized", id, string(kind))
+	}
+	return nil
+}
 
 type MetadataRule interface {
 	RuleMetadata() RuleDefinition
@@ -39,6 +99,15 @@ type PublicDetection struct {
 	FingerprintFields  []string                  `json:"fingerprint_fields,omitempty"`
 	ControlRefs        []ports.FindingControlRef `json:"control_refs,omitempty"`
 }
+
+const (
+	RuleMaturityTest         = "test"
+	RuleMaturityCandidate    = "candidate"
+	RuleMaturityExperimental = "experimental"
+	RuleMaturityGA           = "ga"
+	RuleMaturityProduction   = "production"
+	RuleMaturityRetired      = "retired"
+)
 
 var builtinRuleMetadataCache struct {
 	once      sync.Once
@@ -82,6 +151,13 @@ func (r *deprovisionedOktaActiveGitHubRule) RuleMetadata() RuleDefinition {
 }
 
 func (r *githubActiveWithoutOktaLinkRule) RuleMetadata() RuleDefinition {
+	if r == nil {
+		return RuleDefinition{}
+	}
+	return cloneRuleDefinition(r.definition)
+}
+
+func (r *identityPrivilegedNoMFAAccessRule) RuleMetadata() RuleDefinition {
 	if r == nil {
 		return RuleDefinition{}
 	}
@@ -233,6 +309,9 @@ func ValidateRuleMetadataCompleteness(metadatas []RuleDefinition) []error {
 				errs = append(errs, fmt.Errorf("rule %q %s is required", id, field))
 			}
 		}
+		if maturity := strings.TrimSpace(metadata.Maturity); maturity != "" && !validRuleMaturity(maturity) {
+			errs = append(errs, fmt.Errorf("rule %q maturity %q is not supported", id, maturity))
+		}
 		requiredSlices := map[string][]string{
 			"tags":               metadata.Tags,
 			"references":         metadata.References,
@@ -252,6 +331,15 @@ func ValidateRuleMetadataCompleteness(metadatas []RuleDefinition) []error {
 		}
 	}
 	return errs
+}
+
+func validRuleMaturity(maturity string) bool {
+	switch strings.TrimSpace(maturity) {
+	case RuleMaturityTest, RuleMaturityCandidate, RuleMaturityExperimental, RuleMaturityGA, RuleMaturityProduction, RuleMaturityRetired:
+		return true
+	default:
+		return false
+	}
 }
 
 func ruleMetadata(rule Rule) (RuleDefinition, bool) {
@@ -304,6 +392,7 @@ func cloneRuleDefinition(definition RuleDefinition) RuleDefinition {
 		RequiredAttributes: cloneStringSlice(definition.RequiredAttributes),
 		FingerprintFields:  cloneStringSlice(definition.FingerprintFields),
 		ControlRefs:        cloneFindingControlRefs(definition.ControlRefs),
+		Lifecycle:          definition.Lifecycle,
 	}
 }
 

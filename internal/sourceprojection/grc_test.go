@@ -68,6 +68,61 @@ func TestProjectGRCVendorWithOwner(t *testing.T) {
 	assertProjectedLink(t, state, vendorURN, relationHasIdentifier, hostURN)
 }
 
+func TestProjectGRCDocumentLinksURLAndCategory(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-document-doc-1",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.document",
+		Attributes: map[string]string{
+			"provider":    "vanta",
+			"document_id": "doc-1",
+			"title":       "AWS Architecture",
+			"category":    "Infrastructure",
+			"url":         "https://docs.writer.com/security/aws-architecture",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	documentURN := "urn:cerebro:writer:document:vanta:doc-1"
+	hostURN := "urn:cerebro:writer:internet_host:docs.writer.com"
+	categoryURN := "urn:cerebro:writer:asset_tag:grc_category:infrastructure"
+	assertProjectedLink(t, state, documentURN, relationHasIdentifier, hostURN)
+	assertProjectedLink(t, state, documentURN, relationTaggedAs, categoryURN)
+}
+
+func TestProjectGRCIntegrationTagsResourceKinds(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-integration-aws",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.integration",
+		Attributes: map[string]string{
+			"provider":       "vanta",
+			"integration_id": "aws",
+			"display_name":   "AWS",
+			"resource_kinds": "AwsAccountMetadata,CloudTrail",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	sourceURN := "urn:cerebro:writer:source:vanta:integration:aws"
+	accountMetadataURN := "urn:cerebro:writer:asset_tag:grc_resource_kind:awsaccountmetadata"
+	cloudTrailURN := "urn:cerebro:writer:asset_tag:grc_resource_kind:cloudtrail"
+	assertProjectedLink(t, state, sourceURN, relationTaggedAs, accountMetadataURN)
+	assertProjectedLink(t, state, sourceURN, relationTaggedAs, cloudTrailURN)
+}
+
 func TestProjectGRCControlTestSupportsControlReferences(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
@@ -102,6 +157,39 @@ func TestProjectGRCControlTestSupportsControlReferences(t *testing.T) {
 	}
 }
 
+func TestProjectGRCControlTestLinksOwnerIntegrationAndCategory(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-control-test-1",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.control_test",
+		Attributes: map[string]string{
+			"provider":     "vanta",
+			"test_id":      "test-1",
+			"name":         "AWS Config enabled",
+			"owner_id":     "user-1",
+			"integrations": "aws,gcp",
+			"category":     "Infrastructure",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	testURN := "urn:cerebro:writer:evidence:vanta:control_test:test-1"
+	ownerURN := "urn:cerebro:writer:user:vanta:user-1"
+	awsSourceURN := "urn:cerebro:writer:source:vanta:integration:aws"
+	gcpSourceURN := "urn:cerebro:writer:source:vanta:integration:gcp"
+	categoryURN := "urn:cerebro:writer:asset_tag:grc_category:infrastructure"
+	assertProjectedLink(t, state, testURN, relationOwnedBy, ownerURN)
+	assertProjectedLink(t, state, testURN, relationBelongsTo, awsSourceURN)
+	assertProjectedLink(t, state, testURN, relationBelongsTo, gcpSourceURN)
+	assertProjectedLink(t, state, testURN, relationTaggedAs, categoryURN)
+}
+
 func TestProjectGRCControlTestKeepsPairedControlReferences(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
@@ -132,6 +220,37 @@ func TestProjectGRCControlTestKeepsPairedControlReferences(t *testing.T) {
 	if got := state.entities[secondControlURN].Attributes["control_external_id"]; got != "CC7.1" {
 		t.Fatalf("second control_external_id = %q, want CC7.1", got)
 	}
+}
+
+func TestProjectGRCControlLinksOwnerAndDomains(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-control-1",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.control",
+		Attributes: map[string]string{
+			"provider":    "vanta",
+			"control_id":  "control-1",
+			"name":        "Access Reviews",
+			"owner_id":    "user-1",
+			"domains":     "COMPLIANCE, SECURITY & PRIVACY GOVERNANCE",
+			"description": "Access is reviewed periodically",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	controlURN := "urn:cerebro:writer:policy:vanta:control:control-1"
+	ownerURN := "urn:cerebro:writer:user:vanta:user-1"
+	complianceURN := "urn:cerebro:writer:asset_tag:grc_domain:compliance"
+	securityURN := "urn:cerebro:writer:asset_tag:grc_domain:security_privacy_governance"
+	assertProjectedLink(t, state, controlURN, relationOwnedBy, ownerURN)
+	assertProjectedLink(t, state, controlURN, relationTaggedAs, complianceURN)
+	assertProjectedLink(t, state, controlURN, relationTaggedAs, securityURN)
 }
 
 func TestProjectGRCControlTestDoesNotRegressControlLabelWhenExternalIDMissingLater(t *testing.T) {
@@ -229,6 +348,50 @@ func TestProjectGRCPersonIdentifier(t *testing.T) {
 		t.Fatalf("person entity missing: %#v", entity)
 	}
 	assertProjectedLink(t, state, personURN, relationHasIdentifier, identifierURN)
+	assertProjectedLink(t, state, personURN, relationSameActor, "urn:cerebro:writer:identity:email:alice@writer.com")
+	assertProjectedLink(t, state, "urn:cerebro:writer:identity:email:alice@writer.com", relationSameActor, personURN)
+}
+
+func TestProjectGRCPersonAndUserSameActorByEmail(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	for _, event := range []*cerebrov1.EventEnvelope{
+		{
+			Id:       "grc-person-person-1",
+			TenantId: "writer",
+			SourceId: "grc",
+			Kind:     "grc.person",
+			Attributes: map[string]string{
+				"provider":  "vanta",
+				"person_id": "person-1",
+				"email":     "alice@writer.com",
+			},
+		},
+		{
+			Id:       "grc-user-user-1",
+			TenantId: "writer",
+			SourceId: "grc",
+			Kind:     "grc.user",
+			Attributes: map[string]string{
+				"provider": "vanta",
+				"user_id":  "user-1",
+				"email":    "alice@writer.com",
+			},
+		},
+	} {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%s) error = %v", event.GetKind(), err)
+		}
+	}
+
+	personURN := "urn:cerebro:writer:person:vanta:person-1"
+	userURN := "urn:cerebro:writer:user:vanta:user-1"
+	identityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
+	assertProjectedLink(t, state, personURN, relationSameActor, identityURN)
+	assertProjectedLink(t, state, userURN, relationSameActor, identityURN)
+	assertProjectedLink(t, state, identityURN, relationSameActor, personURN)
+	assertProjectedLink(t, state, identityURN, relationSameActor, userURN)
 }
 
 func TestProjectGRCPersonStampsIdentifierLinksWithObservationTime(t *testing.T) {
@@ -698,8 +861,61 @@ func TestProjectGRCVulnerableAssetLinksPlatformResources(t *testing.T) {
 	assertProjectedLink(t, state, targetURN, relationRepresents, hostURN)
 	assertProjectedLink(t, state, targetURN, relationRepresents, ipURN)
 	assertProjectedLinkMissing(t, state, awsInstanceURN, relationBelongsTo, accountURN)
-	assertProjectedLinkMissing(t, state, awsInstanceURN, relationRepresents, hostURN)
-	assertProjectedLinkMissing(t, state, awsInstanceURN, relationRepresents, ipURN)
+	assertProjectedLink(t, state, awsInstanceURN, relationRepresents, hostURN)
+	assertProjectedLink(t, state, awsInstanceURN, relationRepresents, ipURN)
+
+	// The platform resource gets a human-friendly label so dashboards and the
+	// ask-the-graph UX surface "ip-10-86-43-17.ec2.internal" instead of the URN.
+	if entity := state.entities[awsInstanceURN]; entity == nil || entity.Label == awsInstanceURN || entity.Label == "" {
+		t.Fatalf("aws instance label = %q, want human-readable resource_name", entity.Label)
+	}
+
+	// Vanta-discovered platform resources must back-link to the originating
+	// GRC integration so that orphan checks and source-of-truth queries can
+	// traverse from github.code.repository / aws.* into the integration node.
+	integrationURN := "urn:cerebro:writer:source:vanta:integration:aws"
+	assertProjectedLink(t, state, awsInstanceURN, relationBelongsTo, integrationURN)
+}
+
+func TestProjectGRCVulnerableAssetLabelsAndLinksGitHubRepoToIntegration(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-vulnerable-asset-github",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.vulnerable_asset",
+		Attributes: map[string]string{
+			"provider":            "vanta",
+			"target_id":           "github-repo-asset",
+			"integration_id":      "github",
+			"platform_asset_refs": `[{"provider":"github","resource_id":"1242719606","resource_name":"Writer/cerebro","resource_type":"code_repository"}]`,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	repoURN := "urn:cerebro:writer:github_code_repository:1242719606"
+	orgURN := "urn:cerebro:writer:github_org:Writer"
+	integrationURN := "urn:cerebro:writer:source:vanta:integration:github"
+
+	repo := state.entities[repoURN]
+	if repo == nil {
+		t.Fatalf("github code repository entity %q missing", repoURN)
+	}
+	if repo.Label != "Writer/cerebro" {
+		t.Fatalf("github repo label = %q, want resource_name %q", repo.Label, "Writer/cerebro")
+	}
+	if got := repo.Attributes["owner_login"]; got != "Writer" {
+		t.Fatalf("github repo owner_login = %q, want Writer", got)
+	}
+	if org := state.entities[orgURN]; org == nil || org.EntityType != "github.org" {
+		t.Fatalf("github org entity %q missing or wrong type: %#v", orgURN, org)
+	}
+	assertProjectedLink(t, state, repoURN, relationBelongsTo, orgURN)
+	assertProjectedLink(t, state, repoURN, relationBelongsTo, integrationURN)
 }
 
 func TestGRCAWSResourceTypeFromARNHandlesAPIGatewayCustomDomain(t *testing.T) {

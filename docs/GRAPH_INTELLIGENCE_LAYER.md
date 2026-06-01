@@ -288,13 +288,9 @@ MCP adapter strategy:
 - Preserve traceability: every response carries IDs/evidence references.
 - Preserve source-attribution honesty: claims should only look source-backed when explicit source identity or source metadata was actually supplied.
 
-Gateway surfaces:
-- Typed REST: `/api/v1/agent-sdk/*`
-- Generic tool discovery/invoke: `/api/v1/agent-sdk/tools`
-- MCP JSON-RPC + SSE: `/api/v1/mcp`
-
-See [AGENT_SDK_GATEWAY_ARCHITECTURE.md](./AGENT_SDK_GATEWAY_ARCHITECTURE.md) for the public IDs, permission model, and transport contract details.
-Generated SDK catalogs live in [AGENT_SDK_AUTOGEN.md](./AGENT_SDK_AUTOGEN.md) and [AGENT_SDK_CONTRACTS.json](./AGENT_SDK_CONTRACTS.json).
+Gateway status:
+- The historical Agent SDK/MCP gateway described in earlier drafts is retired on current `main`.
+- Supported SDK helpers should reference only the current bootstrap OpenAPI and Connect contracts.
 
 SDK execution/attribution rule:
 - `cerebro_report` should resolve to durable `ReportRun` resources regardless of whether it is called over typed REST, generic tool invoke, or MCP.

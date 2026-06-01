@@ -193,8 +193,8 @@ func TestProjectKolideVulnerabilityUsesCanonicalEndpointPackageAndCVE(t *testing
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	if result.LinksProjected != 5 {
-		t.Fatalf("LinksProjected = %d, want 5", result.LinksProjected)
+	if result.LinksProjected != 6 {
+		t.Fatalf("LinksProjected = %d, want 6", result.LinksProjected)
 	}
 	endpointURN := "urn:cerebro:writer:kolide_device:device-1"
 	packageURN := "urn:cerebro:writer:package:osquery:openssl"
@@ -202,5 +202,6 @@ func TestProjectKolideVulnerabilityUsesCanonicalEndpointPackageAndCVE(t *testing
 	vulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-0001"
 	assertProjectedLink(t, state, endpointURN, relationAffectedBy, vulnerabilityURN)
 	assertProjectedLink(t, state, endpointURN, relationContains, packageURN)
+	assertProjectedLink(t, state, endpointURN, relationContains, canonicalPackageURN)
 	assertProjectedLink(t, state, packageURN, relationRepresents, canonicalPackageURN)
 }

@@ -6,6 +6,7 @@ option go_package = "github.com/writer/cerebro/gen/cerebro/v1;cerebrov1";
 
 import "cerebro/v1/primitives.proto";
 import "cerebro/v1/source.proto";
+import "cerebro/v1/finding.proto";
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
@@ -28,6 +29,11 @@ service BootstrapService {
   rpc ListClaims(ListClaimsRequest) returns (ListClaimsResponse);
   rpc ListFindings(ListFindingsRequest) returns (ListFindingsResponse);
   rpc GetFinding(GetFindingRequest) returns (GetFindingResponse);
+  rpc ListFindingCandidates(ListFindingCandidatesRequest) returns (ListFindingCandidatesResponse);
+  rpc GetFindingCandidate(GetFindingCandidateRequest) returns (GetFindingCandidateResponse);
+  rpc EvaluateSourceRuntimeFindingCandidates(EvaluateSourceRuntimeFindingCandidatesRequest) returns (EvaluateSourceRuntimeFindingCandidatesResponse);
+  rpc PromoteFindingCandidate(PromoteFindingCandidateRequest) returns (PromoteFindingCandidateResponse);
+  rpc RejectFindingCandidate(RejectFindingCandidateRequest) returns (RejectFindingCandidateResponse);
   rpc ResolveFinding(ResolveFindingRequest) returns (ResolveFindingResponse);
   rpc SuppressFinding(SuppressFindingRequest) returns (SuppressFindingResponse);
   rpc AssignFinding(AssignFindingRequest) returns (AssignFindingResponse);
@@ -127,33 +133,6 @@ message ListFindingRulesResponse {
   repeated RuleSpec rules = 1;
 }
 
-// FindingEvaluationRun is the durable audit envelope for one rule evaluation over one source runtime.
-message FindingEvaluationRun {
-  string id = 1;
-  string runtime_id = 2;
-  string rule_id = 3;
-  string status = 4;
-  uint32 event_limit = 5;
-  uint32 events_evaluated = 6;
-  uint32 findings_upserted = 7;
-  repeated string finding_ids = 8;
-  google.protobuf.Timestamp started_at = 9;
-  google.protobuf.Timestamp finished_at = 10;
-  string error = 11;
-  uint32 events_processed = 12;
-  uint32 events_matched = 13;
-  uint32 findings_emitted = 14;
-  // graph_rule discriminates graph-rule evaluation runs (whose counters live on
-  // graph_rows_read) from event-rule runs (whose counters live on events_*).
-  // Operators reading events_evaluated=0 rely on this flag to tell graph runs
-  // apart from event rules that simply never saw events.
-  optional bool graph_rule = 15;
-  // graph_rows_read records how many cypher rows the rule's read transaction
-  // returned. It is the graph-rule analog of events_evaluated and lets operators
-  // distinguish "graph rule fetched zero rows" from "graph rule never ran".
-  optional uint32 graph_rows_read = 16;
-}
-
 // ListFindingEvaluationRunsRequest requests persisted finding evaluation runs for one stored runtime.
 message ListFindingEvaluationRunsRequest {
   string runtime_id = 1;
@@ -175,57 +154,6 @@ message GetFindingEvaluationRunRequest {
 // GetFindingEvaluationRunResponse returns one persisted finding evaluation run.
 message GetFindingEvaluationRunResponse {
   FindingEvaluationRun run = 1;
-}
-
-// GraphEvidencePath captures one supporting graph edge for a graph-backed finding.
-message GraphEvidencePath {
-  string from_urn = 1;
-  string from_label = 2;
-  string from_type = 3;
-  string relation = 4;
-  string to_urn = 5;
-  string to_label = 6;
-  string to_type = 7;
-  map<string, string> attributes = 8;
-  string observed_at = 9;
-}
-
-// GraphEvidenceRow captures one rule-specific graph row and its supporting paths.
-message GraphEvidenceRow {
-  string label = 1;
-  map<string, string> attributes = 2;
-  repeated GraphEvidencePath paths = 3;
-}
-
-// FindingEvidenceObservation captures one observed occurrence of a deduplicated evidence record.
-message FindingEvidenceObservation {
-  string run_id = 1;
-  google.protobuf.Timestamp observed_at = 2;
-  repeated string claim_ids = 3;
-  repeated string event_ids = 4;
-  repeated string graph_root_urns = 5;
-  repeated string graph_path_urns = 6;
-  repeated GraphEvidenceRow graph_rows = 7;
-}
-
-// FindingEvidence links one persisted finding and one evaluation run to its supporting claims, events, graph roots, and graph rows.
-message FindingEvidence {
-  string id = 1;
-  string runtime_id = 2;
-  string rule_id = 3;
-  string finding_id = 4;
-  string run_id = 5;
-  repeated string claim_ids = 6;
-  repeated string event_ids = 7;
-  repeated string graph_root_urns = 8;
-  google.protobuf.Timestamp created_at = 9;
-  repeated GraphEvidenceRow graph_rows = 10;
-  google.protobuf.Timestamp last_observed_at = 11;
-  map<string, string> attributes = 12;
-  repeated string graph_path_urns = 13;
-  repeated string run_ids = 14;
-  uint32 observation_count = 15;
-  repeated FindingEvidenceObservation observations = 16;
 }
 
 // ListFindingEvidenceRequest queries persisted finding evidence for one stored runtime.
@@ -429,79 +357,6 @@ message ListFindingsRequest {
   FindingOrder order = 10;
 }
 
-enum FindingStatus {
-  FINDING_STATUS_UNSPECIFIED = 0;
-  FINDING_STATUS_OPEN = 1;
-  FINDING_STATUS_RESOLVED = 2;
-  FINDING_STATUS_SUPPRESSED = 3;
-}
-
-enum FindingOrder {
-  FINDING_ORDER_UNSPECIFIED = 0;
-  FINDING_ORDER_LAST_OBSERVED = 1;
-  FINDING_ORDER_PRIORITY = 2;
-  FINDING_ORDER_RISK_SCORE = 3;
-}
-
-// FindingControlRef maps one finding to one compliance framework control.
-message FindingControlRef {
-  string framework_name = 1;
-  string control_id = 2;
-}
-
-// FindingNote captures one analyst note attached to one finding.
-message FindingNote {
-  string id = 1;
-  string body = 2;
-  google.protobuf.Timestamp created_at = 3;
-}
-
-// FindingTicket captures one external ticket reference attached to one finding.
-message FindingTicket {
-  string url = 1;
-  string name = 2;
-  string external_id = 3;
-  google.protobuf.Timestamp linked_at = 4;
-}
-
-// Finding is the normalized persisted finding view for the first runtime evaluator slice.
-message Finding {
-  string id = 1;
-  string fingerprint = 2;
-  string tenant_id = 3;
-  string runtime_id = 4;
-  string rule_id = 5;
-  string title = 6;
-  string severity = 7;
-  FindingStatus status = 8;
-  string summary = 9;
-  repeated string resource_urns = 10;
-  repeated string event_ids = 11;
-  map<string, string> attributes = 12;
-  google.protobuf.Timestamp first_observed_at = 13;
-  google.protobuf.Timestamp last_observed_at = 14;
-  string assignee = 15;
-  string status_reason = 16;
-  google.protobuf.Timestamp status_updated_at = 17;
-  repeated string observed_policy_ids = 18;
-  string policy_id = 19;
-  string policy_name = 20;
-  string check_id = 21;
-  string check_name = 22;
-  repeated FindingControlRef control_refs = 23;
-  google.protobuf.Timestamp due_at = 24;
-  repeated FindingNote notes = 25;
-  repeated FindingTicket tickets = 26;
-  int32 risk_score = 27;
-  int32 likelihood_score = 28;
-  int32 impact_score = 29;
-  int32 confidence_score = 30;
-  string likelihood_level = 31;
-  string impact_level = 32;
-  repeated string risk_reasons = 33;
-  string risk_model_version = 34;
-}
-
 // GetFindingRequest loads one persisted finding by its durable identifier.
 message GetFindingRequest {
   string id = 1;
@@ -583,6 +438,82 @@ message LinkFindingTicketResponse {
 // ListFindingsResponse returns the matched persisted findings.
 message ListFindingsResponse {
   repeated Finding findings = 1;
+}
+
+// ListFindingCandidatesRequest queries isolated candidate finding snapshots for one runtime.
+message ListFindingCandidatesRequest {
+  string runtime_id = 1;
+  string candidate_id = 2;
+  string rule_id = 3;
+  string status = 4;
+  string fingerprint = 5;
+  uint32 limit = 6;
+}
+
+// ListFindingCandidatesResponse returns the matched candidate finding snapshots.
+message ListFindingCandidatesResponse {
+  repeated FindingCandidate candidates = 1;
+}
+
+// GetFindingCandidateRequest loads one isolated candidate finding by durable identifier.
+message GetFindingCandidateRequest {
+  string id = 1;
+}
+
+// GetFindingCandidateResponse returns one candidate finding snapshot.
+message GetFindingCandidateResponse {
+  FindingCandidate candidate = 1;
+}
+
+// EvaluateSourceRuntimeFindingCandidatesRequest replays one runtime through candidate rules without writing production findings.
+message EvaluateSourceRuntimeFindingCandidatesRequest {
+  string id = 1;
+  repeated string rule_ids = 2;
+  uint32 event_limit = 3;
+}
+
+// FindingCandidateRuleEvaluation returns one rule's isolated candidate outputs.
+message FindingCandidateRuleEvaluation {
+  RuleSpec rule = 1;
+  FindingCandidateRun run = 2;
+  repeated FindingCandidate candidates = 3;
+}
+
+// EvaluateSourceRuntimeFindingCandidatesResponse returns non-production candidate outputs for one runtime replay.
+message EvaluateSourceRuntimeFindingCandidatesResponse {
+  SourceRuntime runtime = 1;
+  uint32 events_evaluated = 2;
+  repeated FindingCandidateRuleEvaluation evaluations = 3;
+}
+
+// PromoteFindingCandidateRequest promotes one reviewed candidate into production findings.
+message PromoteFindingCandidateRequest {
+  string id = 1;
+  string promoted_by = 2;
+  string rationale = 3;
+  string change_ticket = 4;
+  bool false_positive_reviewed = 5;
+  bool graph_coverage_reviewed = 6;
+}
+
+// PromoteFindingCandidateResponse returns the production finding and updated candidate.
+message PromoteFindingCandidateResponse {
+  Finding finding = 1;
+  FindingCandidate candidate = 2;
+  string decision_id = 3;
+}
+
+// RejectFindingCandidateRequest records a reviewed candidate as not production-worthy.
+message RejectFindingCandidateRequest {
+  string id = 1;
+  string rejected_by = 2;
+  string rationale = 3;
+}
+
+// RejectFindingCandidateResponse returns the rejected candidate and audit decision.
+message RejectFindingCandidateResponse {
+  FindingCandidate candidate = 1;
+  string decision_id = 2;
 }
 
 // EvaluateSourceRuntimeFindingsRequest replays one stored runtime through one registered finding rule.

@@ -12,12 +12,14 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/knowledge"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/securityevents"
 	"github.com/writer/cerebro/internal/workflowevents"
 	"github.com/writer/cerebro/internal/workflowprojection"
 )
 
 const (
 	findingDecisionStatusCompleted = "completed"
+	maxFindingSnapshotEventIDs     = 256
 )
 
 func (s *Service) projectFindingAnchor(ctx context.Context, finding *ports.FindingRecord) error {
@@ -28,13 +30,16 @@ func (s *Service) projectFindingAnchor(ctx context.Context, finding *ports.Findi
 }
 
 func (s *Service) projectFindingAnchorRevision(ctx context.Context, finding *ports.FindingRecord, revision string) error {
-	if s == nil || s.graph == nil {
+	if s == nil {
 		return nil
 	}
 	if finding == nil {
 		return errors.New("finding is required")
 	}
 	tenantID, sourceID := findingGraphScope(finding)
+	if !findingWorkflowEventScopeValid(tenantID, sourceID, finding) {
+		return nil
+	}
 	recordedAt := finding.LastObservedAt.UTC()
 	if recordedAt.IsZero() {
 		recordedAt = finding.FirstObservedAt.UTC()
@@ -105,7 +110,7 @@ func (s *Service) markFindingRiskProjected(ctx context.Context, finding *ports.F
 }
 
 func (s *Service) projectFindingNote(ctx context.Context, finding *ports.FindingRecord, note ports.FindingNote) error {
-	if s == nil || s.graph == nil {
+	if s == nil {
 		return nil
 	}
 	if finding == nil {
@@ -120,6 +125,9 @@ func (s *Service) projectFindingNote(ctx context.Context, finding *ports.Finding
 		return nil
 	}
 	tenantID, sourceID := findingGraphScope(finding)
+	if !findingWorkflowEventScopeValid(tenantID, sourceID, finding) {
+		return nil
+	}
 	event, err := workflowevents.NewFindingNoteAddedEvent(workflowevents.FindingNoteAdded{
 		Finding:   findingWorkflowSnapshot(finding, tenantID, sourceID),
 		NoteID:    strings.TrimSpace(note.ID),
@@ -133,7 +141,7 @@ func (s *Service) projectFindingNote(ctx context.Context, finding *ports.Finding
 }
 
 func (s *Service) projectFindingTicket(ctx context.Context, finding *ports.FindingRecord, ticket ports.FindingTicket) error {
-	if s == nil || s.graph == nil {
+	if s == nil {
 		return nil
 	}
 	if finding == nil {
@@ -148,6 +156,9 @@ func (s *Service) projectFindingTicket(ctx context.Context, finding *ports.Findi
 		return nil
 	}
 	tenantID, sourceID := findingGraphScope(finding)
+	if !findingWorkflowEventScopeValid(tenantID, sourceID, finding) {
+		return nil
+	}
 	event, err := workflowevents.NewFindingTicketLinkedEvent(workflowevents.FindingTicketLinked{
 		Finding:    findingWorkflowSnapshot(finding, tenantID, sourceID),
 		URL:        normalizedURL,
@@ -162,7 +173,7 @@ func (s *Service) projectFindingTicket(ctx context.Context, finding *ports.Findi
 }
 
 func (s *Service) recordFindingStatusWorkflow(ctx context.Context, finding *ports.FindingRecord, statusSource string) error {
-	if s == nil || s.graph == nil || finding == nil {
+	if s == nil || finding == nil {
 		return nil
 	}
 	status := strings.TrimSpace(finding.Status)
@@ -170,6 +181,9 @@ func (s *Service) recordFindingStatusWorkflow(ctx context.Context, finding *port
 		return nil
 	}
 	tenantID, sourceID := findingGraphScope(finding)
+	if !findingWorkflowEventScopeValid(tenantID, sourceID, finding) {
+		return nil
+	}
 	targetURNs := []string{findingGraphFindingURN(tenantID, finding)}
 	decisionType := "finding-resolution"
 	if status == findingStatusSuppressed {
@@ -201,7 +215,7 @@ func (s *Service) recordFindingStatusWorkflow(ctx context.Context, finding *port
 	if pruneGraph {
 		return nil
 	}
-	if s.graphQuery == nil {
+	if s.graph == nil || s.graphQuery == nil {
 		return nil
 	}
 	workflowMetadata := map[string]any{
@@ -257,18 +271,67 @@ func (s *Service) recordAndProjectWorkflowEvent(ctx context.Context, event *cere
 			return err
 		}
 	}
-	if s.graph == nil {
-		return nil
+	if s.graph != nil {
+		if _, err := workflowprojection.New(s.graph).Project(ctx, event); err != nil {
+			return err
+		}
 	}
-	if _, err := workflowprojection.New(s.graph).Project(ctx, event); err != nil {
-		return err
+	if s.appendLog != nil {
+		if canonical, ok := canonicalFindingWorkflowEvent(event); ok {
+			if err := s.appendLog.Append(ctx, canonical); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
+}
+
+func canonicalFindingWorkflowEvent(event *cerebrov1.EventEnvelope) (*cerebrov1.EventEnvelope, bool) {
+	kind := canonicalFindingWorkflowKind(event.GetKind())
+	if kind == "" {
+		return nil, false
+	}
+	attributes := make(map[string]string, len(event.GetAttributes())+1)
+	for key, value := range event.GetAttributes() {
+		attributes[key] = value
+	}
+	attributes["canonical_kind"] = kind
+	return &cerebrov1.EventEnvelope{
+		Id:         canonicalFindingWorkflowEventID(event.GetId(), kind),
+		TenantId:   event.GetTenantId(),
+		SourceId:   event.GetSourceId(),
+		Kind:       kind,
+		OccurredAt: event.GetOccurredAt(),
+		SchemaRef:  event.GetSchemaRef(),
+		Payload:    append([]byte(nil), event.GetPayload()...),
+		Attributes: attributes,
+	}, true
+}
+
+func canonicalFindingWorkflowKind(kind string) string {
+	switch strings.TrimSpace(kind) {
+	case workflowevents.EventKindFindingRecorded:
+		return securityevents.FindingRecorded
+	case workflowevents.EventKindFindingStatusChanged:
+		return securityevents.FindingStatusChanged
+	case workflowevents.EventKindFindingNoteAdded:
+		return securityevents.FindingNoteAdded
+	case workflowevents.EventKindFindingTicketLinked:
+		return securityevents.FindingTicketLinked
+	default:
+		return ""
+	}
+}
+
+func canonicalFindingWorkflowEventID(id string, kind string) string {
+	return strings.TrimSpace(id) + "|canonical|" + strings.TrimSpace(kind)
 }
 
 func findingWorkflowSnapshot(finding *ports.FindingRecord, tenantID string, sourceID string) workflowevents.FindingSnapshot {
 	resourceURNs := uniqueSortedStrings(finding.ResourceURNs)
 	eventIDs := uniqueSortedStrings(finding.EventIDs)
+	eventCount := len(eventIDs)
+	eventIDs = boundedFindingSnapshotIDs(eventIDs, maxFindingSnapshotEventIDs)
 	var risk FindingRiskContext
 	if finding.RiskScore == 0 || finding.LikelihoodScore == 0 || finding.ImpactScore == 0 || finding.ConfidenceScore == 0 {
 		risk = AnalyzeFindingRiskContext(finding, time.Time{})
@@ -316,7 +379,7 @@ func findingWorkflowSnapshot(finding *ports.FindingRecord, tenantID string, sour
 		FirstObservedAt:    findingSnapshotTimestamp(finding.FirstObservedAt),
 		LastObservedAt:     findingSnapshotTimestamp(finding.LastObservedAt),
 		ResourceCount:      len(resourceURNs),
-		EventCount:         len(eventIDs),
+		EventCount:         eventCount,
 		ControlRefs:        findingControlRefSnapshots(finding.ControlRefs),
 		FindingRiskSnapshot: workflowevents.FindingRiskSnapshot{
 			RiskScore:         riskScore,
@@ -331,6 +394,13 @@ func findingWorkflowSnapshot(finding *ports.FindingRecord, tenantID string, sour
 		},
 		Metadata: findingRiskMetadata(finding),
 	}
+}
+
+func boundedFindingSnapshotIDs(ids []string, max int) []string {
+	if len(ids) <= max {
+		return ids
+	}
+	return append([]string(nil), ids[:max]...)
 }
 
 func findingSnapshotTimestamp(value time.Time) string {
@@ -372,6 +442,10 @@ func findingGraphScope(finding *ports.FindingRecord) (string, string) {
 		sourceID = "finding:" + strings.TrimSpace(finding.ID)
 	}
 	return tenantID, sourceID
+}
+
+func findingWorkflowEventScopeValid(tenantID string, sourceID string, finding *ports.FindingRecord) bool {
+	return strings.TrimSpace(tenantID) != "" && strings.TrimSpace(sourceID) != "" && finding != nil && strings.TrimSpace(finding.ID) != ""
 }
 
 func findingGraphFindingURN(tenantID string, finding *ports.FindingRecord) string {

@@ -21,6 +21,7 @@
         "resource_id": "writer",
         "resource_type": "org",
         "source_runtime_id": "writer-github-audit",
+        "two_factor_requirement_enabled": "false",
         "action": "org.disable_two_factor_requirement"
       }
     },
@@ -55,7 +56,7 @@
       "attributes": {
         "action": "org.disable_two_factor_requirement",
         "org": "writer",
-        "primary_resource_urn": "urn:cerebro:writer:github_resource:org:writer",
+        "primary_resource_urn": "urn:cerebro:writer:github_org:writer",
         "rule_tags": "github,organization,authentication,persistence,privilege-escalation,defense-evasion,attack.t1098"
       }
     }

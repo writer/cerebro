@@ -19,6 +19,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/findingevidence"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/securityevents"
 	"github.com/writer/cerebro/internal/workflowevents"
 )
 
@@ -43,10 +44,16 @@ func (s *stubRuntimeStore) GetSourceRuntime(_ context.Context, id string) (*cere
 type stubReplayer struct {
 	request ports.ReplayRequest
 	events  []*cerebrov1.EventEnvelope
+	calls   int
+	err     error
 }
 
 func (s *stubReplayer) Replay(_ context.Context, request ports.ReplayRequest) ([]*cerebrov1.EventEnvelope, error) {
+	s.calls++
 	s.request = request
+	if s.err != nil {
+		return nil, s.err
+	}
 	events := make([]*cerebrov1.EventEnvelope, 0, len(s.events))
 	for _, event := range s.events {
 		events = append(events, proto.Clone(event).(*cerebrov1.EventEnvelope))
@@ -56,38 +63,61 @@ func (s *stubReplayer) Replay(_ context.Context, request ports.ReplayRequest) ([
 
 type recordingAppendLog struct {
 	events []*cerebrov1.EventEnvelope
+	err    error
 }
 
 func (s *recordingAppendLog) Ping(context.Context) error { return nil }
 
 func (s *recordingAppendLog) Append(_ context.Context, event *cerebrov1.EventEnvelope) error {
+	if s.err != nil {
+		return s.err
+	}
 	s.events = append(s.events, proto.Clone(event).(*cerebrov1.EventEnvelope))
 	return nil
 }
 
 type stubFindingStore struct {
-	findings                   map[string]*ports.FindingRecord
-	request                    ports.ListFindingsRequest
-	listFindingsRequests       []ports.ListFindingsRequest
-	listFindingsErr            error
-	claims                     map[string]*ports.ClaimRecord
-	claimListRequest           ports.ListClaimsRequest
-	runs                       map[string]*cerebrov1.FindingEvaluationRun
-	runList                    ports.ListFindingEvaluationRunsRequest
-	runPutCount                int
-	failRunPutOn               int
-	failRunPutErr              error
-	failRunPutByCall           map[int]error
-	evidence                   map[string]*cerebrov1.FindingEvidence
-	evidenceList               ports.ListFindingEvidenceRequest
-	dropReturnedGraphEvidence  bool
-	upsertCount                int
-	updateRiskCount            int
-	markRiskProjectedCount     int
-	markRiskProjectedErr       error
-	backfillRiskResults        []*ports.FindingRecord
-	backfillRiskErr            error
-	backfillIncludeUnprojected bool
+	findings                  map[string]*ports.FindingRecord
+	request                   ports.ListFindingsRequest
+	listFindingsRequests      []ports.ListFindingsRequest
+	listFindingsErr           error
+	claims                    map[string]*ports.ClaimRecord
+	claimListRequest          ports.ListClaimsRequest
+	runs                      map[string]*cerebrov1.FindingEvaluationRun
+	runList                   ports.ListFindingEvaluationRunsRequest
+	runPutCount               int
+	failRunPutOn              int
+	failRunPutErr             error
+	failRunPutByCall          map[int]error
+	evidence                  map[string]*cerebrov1.FindingEvidence
+	evidenceList              ports.ListFindingEvidenceRequest
+	putEvidenceErr            error
+	candidateState            stubFindingCandidateState
+	dropReturnedGraphEvidence bool
+	upsertCount               int
+	updateRiskCount           int
+	markRiskProjectedCount    int
+	markRiskProjectedErr      error
+	backfillState             stubFindingBackfillState
+	updateStatusCallCount     int
+	updateStatusCalls         []ports.FindingStatusUpdate
+}
+
+type stubFindingCandidateState struct {
+	runs              map[string]*ports.FindingCandidateRun
+	candidates        map[string]*ports.FindingCandidateRecord
+	listRequest       ports.ListFindingCandidatesRequest
+	upsertCount       int
+	markPromotedCount int
+	markRejectedCount int
+	beforeMarkPromote func()
+	beforeMarkReject  func()
+}
+
+type stubFindingBackfillState struct {
+	results            []*ports.FindingRecord
+	err                error
+	includeUnprojected bool
 }
 
 func (s *stubFindingStore) Ping(context.Context) error { return nil }
@@ -160,12 +190,12 @@ func (s *stubFindingStore) MarkFindingRiskProjected(_ context.Context, request p
 }
 
 func (s *stubFindingStore) BackfillFindingRisk(_ context.Context, includeUnprojected bool) ([]*ports.FindingRecord, error) {
-	s.backfillIncludeUnprojected = includeUnprojected
-	if s.backfillRiskErr != nil {
-		return nil, s.backfillRiskErr
+	s.backfillState.includeUnprojected = includeUnprojected
+	if s.backfillState.err != nil {
+		return nil, s.backfillState.err
 	}
-	results := make([]*ports.FindingRecord, 0, len(s.backfillRiskResults))
-	for _, finding := range s.backfillRiskResults {
+	results := make([]*ports.FindingRecord, 0, len(s.backfillState.results))
+	for _, finding := range s.backfillState.results {
 		results = append(results, cloneFinding(finding))
 	}
 	return results, nil
@@ -217,10 +247,28 @@ func (s *stubFindingStore) UpdateFindingStatus(_ context.Context, request ports.
 	if !ok {
 		return nil, ports.ErrFindingNotFound
 	}
+	s.updateStatusCallCount++
+	s.updateStatusCalls = append(s.updateStatusCalls, request)
 	cloned := cloneFinding(finding)
 	cloned.Status = strings.TrimSpace(request.Status)
 	cloned.StatusReason = strings.TrimSpace(request.Reason)
 	cloned.StatusUpdatedAt = request.UpdatedAt.UTC()
+	if len(request.EventIDs) != 0 {
+		cloned.EventIDs = uniqueTrimmedStringsPreserveOrder(append(append([]string(nil), cloned.EventIDs...), request.EventIDs...))
+	}
+	if request.Tombstone != nil {
+		t := request.Tombstone
+		tombstonedAt := t.TombstonedAt.UTC()
+		if tombstonedAt.IsZero() {
+			tombstonedAt = cloned.StatusUpdatedAt
+		}
+		cloned.Tombstoned = true
+		cloned.TombstonedAt = tombstonedAt
+		cloned.TombstonedBy = strings.TrimSpace(t.By)
+		cloned.TombstonedReason = strings.TrimSpace(t.Reason)
+		cloned.TombstonedRunID = strings.TrimSpace(t.RunID)
+		cloned.PriorStatus = strings.TrimSpace(t.PriorStatus)
+	}
 	s.findings[cloned.ID] = cloned
 	return cloneFinding(cloned), nil
 }
@@ -462,6 +510,9 @@ func (s *stubFindingStore) ListFindingEvaluationRuns(_ context.Context, request 
 }
 
 func (s *stubFindingStore) PutFindingEvidence(_ context.Context, evidence *cerebrov1.FindingEvidence) error {
+	if s.putEvidenceErr != nil {
+		return s.putEvidenceErr
+	}
 	if evidence == nil {
 		return errors.New("finding evidence is required")
 	}
@@ -512,6 +563,155 @@ func (s *stubFindingStore) ListFindingEvidence(_ context.Context, request ports.
 	return evidence, nil
 }
 
+func (s *stubFindingStore) PutFindingCandidateRun(_ context.Context, run *ports.FindingCandidateRun) error {
+	if run == nil {
+		return errors.New("finding candidate run is required")
+	}
+	if s.candidateState.runs == nil {
+		s.candidateState.runs = make(map[string]*ports.FindingCandidateRun)
+	}
+	cloned := *run
+	s.candidateState.runs[cloned.ID] = &cloned
+	return nil
+}
+
+func (s *stubFindingStore) GetFindingCandidateRun(_ context.Context, id string) (*ports.FindingCandidateRun, error) {
+	run, ok := s.candidateState.runs[strings.TrimSpace(id)]
+	if !ok {
+		return nil, ports.ErrFindingEvaluationRunNotFound
+	}
+	cloned := *run
+	return &cloned, nil
+}
+
+func (s *stubFindingStore) ListFindingCandidateRuns(_ context.Context, request ports.ListFindingCandidatesRequest) ([]*ports.FindingCandidateRun, error) {
+	runs := make([]*ports.FindingCandidateRun, 0, len(s.candidateState.runs))
+	for _, run := range s.candidateState.runs {
+		if strings.TrimSpace(request.RuntimeID) != "" && strings.TrimSpace(run.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+			continue
+		}
+		if strings.TrimSpace(request.RuleID) != "" && strings.TrimSpace(run.RuleID) != strings.TrimSpace(request.RuleID) {
+			continue
+		}
+		if strings.TrimSpace(request.Status) != "" && strings.TrimSpace(run.Status) != strings.TrimSpace(request.Status) {
+			continue
+		}
+		cloned := *run
+		runs = append(runs, &cloned)
+	}
+	return runs, nil
+}
+
+func (s *stubFindingStore) UpsertFindingCandidate(_ context.Context, candidate *ports.FindingCandidateRecord) (*ports.FindingCandidateRecord, error) {
+	if candidate == nil {
+		return nil, errors.New("finding candidate is required")
+	}
+	s.candidateState.upsertCount++
+	if s.candidateState.candidates == nil {
+		s.candidateState.candidates = make(map[string]*ports.FindingCandidateRecord)
+	}
+	cloned := cloneFindingCandidate(candidate)
+	if existing := s.candidateState.candidates[cloned.ID]; existing != nil {
+		cloned.ObservationCount += existing.ObservationCount
+		switch existing.Status {
+		case findingCandidateStatusPromoted:
+			cloned.Status = existing.Status
+			cloned.PromotedFindingID = existing.PromotedFindingID
+			cloned.DecisionID = existing.DecisionID
+			cloned.PromotedBy = existing.PromotedBy
+			cloned.PromotionRationale = existing.PromotionRationale
+			cloned.ChangeTicket = existing.ChangeTicket
+			cloned.PromotedAt = existing.PromotedAt
+		case findingCandidateStatusRejected:
+			cloned.Status = existing.Status
+			cloned.DecisionID = existing.DecisionID
+			cloned.RejectedBy = existing.RejectedBy
+			cloned.RejectionRationale = existing.RejectionRationale
+			cloned.RejectedAt = existing.RejectedAt
+		}
+	}
+	s.candidateState.candidates[cloned.ID] = cloned
+	return cloneFindingCandidate(cloned), nil
+}
+
+func (s *stubFindingStore) GetFindingCandidate(_ context.Context, id string) (*ports.FindingCandidateRecord, error) {
+	candidate, ok := s.candidateState.candidates[strings.TrimSpace(id)]
+	if !ok {
+		return nil, ports.ErrFindingCandidateNotFound
+	}
+	return cloneFindingCandidate(candidate), nil
+}
+
+func (s *stubFindingStore) ListFindingCandidates(_ context.Context, request ports.ListFindingCandidatesRequest) ([]*ports.FindingCandidateRecord, error) {
+	s.candidateState.listRequest = request
+	candidates := make([]*ports.FindingCandidateRecord, 0, len(s.candidateState.candidates))
+	for _, candidate := range s.candidateState.candidates {
+		if strings.TrimSpace(request.RuntimeID) != "" && strings.TrimSpace(candidate.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+			continue
+		}
+		if strings.TrimSpace(request.RuleID) != "" && strings.TrimSpace(candidate.RuleID) != strings.TrimSpace(request.RuleID) {
+			continue
+		}
+		if strings.TrimSpace(request.Status) != "" && strings.TrimSpace(candidate.Status) != strings.TrimSpace(request.Status) {
+			continue
+		}
+		if strings.TrimSpace(request.CandidateID) != "" && strings.TrimSpace(candidate.ID) != strings.TrimSpace(request.CandidateID) {
+			continue
+		}
+		if strings.TrimSpace(request.Fingerprint) != "" && strings.TrimSpace(candidate.Fingerprint) != strings.TrimSpace(request.Fingerprint) {
+			continue
+		}
+		candidates = append(candidates, cloneFindingCandidate(candidate))
+	}
+	return candidates, nil
+}
+
+func (s *stubFindingStore) MarkFindingCandidatePromoted(_ context.Context, promotion ports.FindingCandidatePromotion) (*ports.FindingCandidateRecord, error) {
+	s.candidateState.markPromotedCount++
+	if s.candidateState.beforeMarkPromote != nil {
+		s.candidateState.beforeMarkPromote()
+	}
+	candidate, ok := s.candidateState.candidates[strings.TrimSpace(promotion.CandidateID)]
+	if !ok {
+		return nil, ports.ErrFindingCandidateNotFound
+	}
+	cloned := cloneFindingCandidate(candidate)
+	if cloned.Status != findingCandidateStatusCandidate {
+		return nil, ports.ErrFindingCandidateNotFound
+	}
+	cloned.Status = findingCandidateStatusPromoted
+	cloned.PromotedFindingID = strings.TrimSpace(promotion.PromotedFindingID)
+	cloned.DecisionID = strings.TrimSpace(promotion.DecisionID)
+	cloned.PromotedBy = strings.TrimSpace(promotion.PromotedBy)
+	cloned.PromotionRationale = strings.TrimSpace(promotion.Rationale)
+	cloned.ChangeTicket = strings.TrimSpace(promotion.ChangeTicket)
+	cloned.PromotedAt = promotion.PromotedAt.UTC()
+	s.candidateState.candidates[cloned.ID] = cloned
+	return cloneFindingCandidate(cloned), nil
+}
+
+func (s *stubFindingStore) MarkFindingCandidateRejected(_ context.Context, rejection ports.FindingCandidateRejection) (*ports.FindingCandidateRecord, error) {
+	s.candidateState.markRejectedCount++
+	if s.candidateState.beforeMarkReject != nil {
+		s.candidateState.beforeMarkReject()
+	}
+	candidate, ok := s.candidateState.candidates[strings.TrimSpace(rejection.CandidateID)]
+	if !ok {
+		return nil, ports.ErrFindingCandidateNotFound
+	}
+	cloned := cloneFindingCandidate(candidate)
+	if cloned.Status != findingCandidateStatusCandidate {
+		return nil, ports.ErrFindingCandidateNotFound
+	}
+	cloned.Status = findingCandidateStatusRejected
+	cloned.DecisionID = strings.TrimSpace(rejection.DecisionID)
+	cloned.RejectedBy = strings.TrimSpace(rejection.RejectedBy)
+	cloned.RejectionRationale = strings.TrimSpace(rejection.Rationale)
+	cloned.RejectedAt = rejection.RejectedAt.UTC()
+	s.candidateState.candidates[cloned.ID] = cloned
+	return cloneFindingCandidate(cloned), nil
+}
+
 type emittingRule struct {
 	spec               *cerebrov1.RuleSpec
 	supportedSourceIDs map[string]struct{}
@@ -558,6 +758,148 @@ func (r *emittingRule) Evaluate(_ context.Context, runtime *cerebrov1.SourceRunt
 	}, nil
 }
 
+type counterAnchorRule struct {
+	spec       *cerebrov1.RuleSpec
+	definition RuleDefinition
+	sourceID   string
+}
+
+var _ CounterEventRule = (*counterAnchorRule)(nil)
+
+func newCounterAnchorRule(ruleID string) *counterAnchorRule {
+	definition := RuleDefinition{
+		ID:          strings.TrimSpace(ruleID),
+		Name:        "Counter Anchor Rule",
+		SourceID:    "github",
+		EventKinds:  []string{"github.audit"},
+		OutputKind:  "finding",
+		Severity:    "HIGH",
+		Status:      "active",
+		Maturity:    "experimental",
+		Lifecycle:   Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
+		ControlRefs: []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC6.6"}},
+	}
+	return &counterAnchorRule{
+		spec:       &cerebrov1.RuleSpec{Id: strings.TrimSpace(ruleID), Name: definition.Name},
+		definition: definition,
+		sourceID:   definition.SourceID,
+	}
+}
+
+func (r *counterAnchorRule) Spec() *cerebrov1.RuleSpec {
+	if r == nil {
+		return nil
+	}
+	return proto.Clone(r.spec).(*cerebrov1.RuleSpec)
+}
+
+func (r *counterAnchorRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool {
+	if r == nil || runtime == nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(runtime.GetSourceId()), strings.TrimSpace(r.sourceID))
+}
+
+func (r *counterAnchorRule) RuleMetadata() RuleDefinition {
+	if r == nil {
+		return RuleDefinition{}
+	}
+	return cloneRuleDefinition(r.definition)
+}
+
+func (r *counterAnchorRule) Evaluate(_ context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
+	if r == nil || runtime == nil || event == nil || strings.TrimSpace(event.GetAttributes()["action"]) != "open" {
+		return nil, nil
+	}
+	anchor := r.OpenAnchor(event.GetAttributes())
+	if anchor == "" {
+		return nil, nil
+	}
+	observedAt := event.GetOccurredAt().AsTime().UTC()
+	findingIDReplacer := strings.NewReplacer("|", "-", "/", "-")
+	findingID := strings.TrimSpace(r.spec.GetId()) + "-" + findingIDReplacer.Replace(anchor)
+	return []*ports.FindingRecord{
+		{
+			ID:              findingID,
+			Fingerprint:     findingID,
+			TenantID:        strings.TrimSpace(event.GetTenantId()),
+			RuntimeID:       strings.TrimSpace(runtime.GetId()),
+			RuleID:          strings.TrimSpace(r.spec.GetId()),
+			Title:           r.spec.GetName(),
+			Severity:        "HIGH",
+			Status:          findingStatusOpen,
+			Summary:         "counter anchor rule open finding",
+			ResourceURNs:    []string{"urn:cerebro:writer:github_repo:" + strings.TrimSpace(event.GetAttributes()["repo"])},
+			EventIDs:        []string{strings.TrimSpace(event.GetId())},
+			ControlRefs:     cloneFindingControlRefs(r.definition.ControlRefs),
+			Attributes:      map[string]string{"repo": strings.TrimSpace(event.GetAttributes()["repo"]), "user": strings.TrimSpace(event.GetAttributes()["user"])},
+			FirstObservedAt: observedAt,
+			LastObservedAt:  observedAt,
+		},
+	}, nil
+}
+
+func (r *counterAnchorRule) OpenAnchor(attributes map[string]string) string {
+	return counterRuleAnchor(attributes)
+}
+
+func (r *counterAnchorRule) CloseOnEvent(event *cerebrov1.EventEnvelope) (string, bool) {
+	if event == nil || strings.TrimSpace(event.GetAttributes()["action"]) != "close" {
+		return "", false
+	}
+	anchor := counterRuleAnchor(event.GetAttributes())
+	return anchor, anchor != ""
+}
+
+type nonCounterAnchorRule struct {
+	spec       *cerebrov1.RuleSpec
+	definition RuleDefinition
+	sourceID   string
+}
+
+func newNonCounterAnchorRule(ruleID string) *nonCounterAnchorRule {
+	counter := newCounterAnchorRule(ruleID)
+	return &nonCounterAnchorRule{
+		spec:       counter.spec,
+		definition: counter.definition,
+		sourceID:   counter.sourceID,
+	}
+}
+
+func (r *nonCounterAnchorRule) Spec() *cerebrov1.RuleSpec {
+	if r == nil {
+		return nil
+	}
+	return proto.Clone(r.spec).(*cerebrov1.RuleSpec)
+}
+
+func (r *nonCounterAnchorRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool {
+	if r == nil || runtime == nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(runtime.GetSourceId()), strings.TrimSpace(r.sourceID))
+}
+
+func (r *nonCounterAnchorRule) RuleMetadata() RuleDefinition {
+	if r == nil {
+		return RuleDefinition{}
+	}
+	return cloneRuleDefinition(r.definition)
+}
+
+func (r *nonCounterAnchorRule) Evaluate(_ context.Context, _ *cerebrov1.SourceRuntime, _ *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
+	return nil, nil
+}
+
+func counterRuleAnchor(attributes map[string]string) string {
+	repo := strings.TrimSpace(attributes["repo"])
+	user := strings.TrimSpace(attributes["user"])
+	if repo == "" || user == "" {
+		return ""
+	}
+	return repo + "|" + user
+}
+
 type failingRule struct {
 	spec               *cerebrov1.RuleSpec
 	supportedSourceIDs map[string]struct{}
@@ -586,46 +928,47 @@ func (r *failingRule) Evaluate(context.Context, *cerebrov1.SourceRuntime, *cereb
 func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t *testing.T) {
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-1", "user.session.start", "SUCCESS"),
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newOktaPolicyRuleEvent("okta-policy-rule-active", "ACTIVE"),
+			newOktaPolicyRuleEvent("okta-policy-rule-inactive", "INACTIVE"),
 		},
 	}
 	store := &stubFindingStore{
 		claims: map[string]*ports.ClaimRecord{
 			"claim-1": {
 				ID:            "claim-1",
-				RuntimeID:     "writer-okta-audit",
+				RuntimeID:     "writer-okta-policy-rule",
 				TenantID:      "writer",
-				SubjectURN:    "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+				SubjectURN:    "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1",
 				Predicate:     "status",
-				ObjectValue:   "updated",
+				ObjectValue:   "INACTIVE",
 				ClaimType:     "attribute",
 				Status:        "asserted",
-				SourceEventID: "okta-audit-2",
+				SourceEventID: "okta-policy-rule-inactive",
 				ObservedAt:    time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
 			},
 		},
 	}
 	service := New(&stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {
-				Id:       "writer-okta-audit",
+			"writer-okta-policy-rule": {
+				Id:       "writer-okta-policy-rule",
 				SourceId: "okta",
 				TenantId: "writer",
+				Config:   map[string]string{"family": "policy_rule"},
 			},
 		},
 	}, replayer, store, store, store, store)
 
 	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID:  "writer-okta-audit",
+		RuntimeID:  "writer-okta-policy-rule",
 		RuleID:     oktaPolicyRuleLifecycleTamperingRuleID,
 		EventLimit: 25,
 	})
 	if err != nil {
 		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
 	}
-	if result.Runtime.GetId() != "writer-okta-audit" {
-		t.Fatalf("Runtime.ID = %q, want writer-okta-audit", result.Runtime.GetId())
+	if result.Runtime.GetId() != "writer-okta-policy-rule" {
+		t.Fatalf("Runtime.ID = %q, want writer-okta-policy-rule", result.Runtime.GetId())
 	}
 	if result.Rule.GetId() != oktaPolicyRuleLifecycleTamperingRuleID {
 		t.Fatalf("Rule.ID = %q, want %q", result.Rule.GetId(), oktaPolicyRuleLifecycleTamperingRuleID)
@@ -633,8 +976,8 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 	if result.EventsEvaluated != 2 {
 		t.Fatalf("EventsEvaluated = %d, want 2", result.EventsEvaluated)
 	}
-	if got := replayer.request.RuntimeID; got != "writer-okta-audit" {
-		t.Fatalf("Replay().RuntimeID = %q, want writer-okta-audit", got)
+	if got := replayer.request.RuntimeID; got != "writer-okta-policy-rule" {
+		t.Fatalf("Replay().RuntimeID = %q, want writer-okta-policy-rule", got)
 	}
 	if got := replayer.request.Limit; got != 25 {
 		t.Fatalf("Replay().Limit = %d, want 25", got)
@@ -652,29 +995,23 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 	if finding.Status != "open" {
 		t.Fatalf("Finding.Status = %q, want open", finding.Status)
 	}
-	if finding.Summary != "admin@writer.com performed policy.rule.update on pol-1" {
-		t.Fatalf("Finding.Summary = %q, want admin@writer.com performed policy.rule.update on pol-1", finding.Summary)
+	if finding.Summary != "Okta policy rule Require MFA is INACTIVE" {
+		t.Fatalf("Finding.Summary = %q, want Okta policy rule Require MFA is INACTIVE", finding.Summary)
 	}
-	if len(finding.ResourceURNs) != 2 {
-		t.Fatalf("len(Finding.ResourceURNs) = %d, want 2", len(finding.ResourceURNs))
+	if len(finding.ResourceURNs) != 1 {
+		t.Fatalf("len(Finding.ResourceURNs) = %d, want 1", len(finding.ResourceURNs))
 	}
-	if finding.ResourceURNs[0] != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+	if finding.ResourceURNs[0] != "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1" {
 		t.Fatalf("Finding.ResourceURNs[0] = %q, want policy rule urn", finding.ResourceURNs[0])
 	}
-	if finding.ResourceURNs[1] != "urn:cerebro:writer:okta_user:00u2" {
-		t.Fatalf("Finding.ResourceURNs[1] = %q, want actor urn", finding.ResourceURNs[1])
-	}
-	if finding.Attributes["primary_actor_urn"] != "urn:cerebro:writer:okta_user:00u2" {
-		t.Fatalf("Finding.Attributes[primary_actor_urn] = %q, want actor urn", finding.Attributes["primary_actor_urn"])
-	}
-	if finding.Attributes["primary_resource_urn"] != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+	if finding.Attributes["primary_resource_urn"] != "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1" {
 		t.Fatalf("Finding.Attributes[primary_resource_urn] = %q, want resource urn", finding.Attributes["primary_resource_urn"])
 	}
 	if finding.PolicyID != "pol-1" {
 		t.Fatalf("Finding.PolicyID = %q, want pol-1", finding.PolicyID)
 	}
-	if finding.PolicyName != "pol-1" {
-		t.Fatalf("Finding.PolicyName = %q, want pol-1", finding.PolicyName)
+	if finding.PolicyName != "Require MFA" {
+		t.Fatalf("Finding.PolicyName = %q, want Require MFA", finding.PolicyName)
 	}
 	if len(finding.ObservedPolicyIDs) != 1 || finding.ObservedPolicyIDs[0] != "pol-1" {
 		t.Fatalf("Finding.ObservedPolicyIDs = %#v, want [pol-1]", finding.ObservedPolicyIDs)
@@ -732,12 +1069,13 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 	}
 }
 
-func TestEvaluateSourceRuntimeFindingsReusesLegacyOktaTamperingID(t *testing.T) {
-	eventID := "okta-audit-2"
+func TestEvaluateSourceRuntimeFindingsUsesDurableOktaPolicyRuleFingerprint(t *testing.T) {
+	eventID := "okta-policy-rule-inactive"
 	legacyID := hashFindingFingerprint(oktaPolicyRuleLifecycleTamperingRuleID, eventID)
+	durableID := hashFindingFingerprint(oktaPolicyRuleLifecycleTamperingRuleID, "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1")
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent(eventID, "policy.rule.update", "SUCCESS"),
+			newOktaPolicyRuleEvent(eventID, "INACTIVE"),
 		},
 	}
 	store := &stubFindingStore{
@@ -746,13 +1084,13 @@ func TestEvaluateSourceRuntimeFindingsReusesLegacyOktaTamperingID(t *testing.T) 
 				ID:           legacyID,
 				Fingerprint:  legacyID,
 				TenantID:     "writer",
-				RuntimeID:    "writer-okta-audit",
+				RuntimeID:    "writer-okta-policy-rule",
 				RuleID:       oktaPolicyRuleLifecycleTamperingRuleID,
 				Title:        oktaPolicyRuleLifecycleTamperingTitle,
 				Severity:     "HIGH",
 				Status:       findingStatusSuppressed,
 				Summary:      "legacy finding",
-				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+				ResourceURNs: []string{"urn:cerebro:writer:okta_policy_rule:pol-1:rul-1"},
 				EventIDs:     []string{eventID},
 				FindingWorkflow: ports.FindingWorkflow{
 					StatusReason:    "accepted risk",
@@ -765,16 +1103,17 @@ func TestEvaluateSourceRuntimeFindingsReusesLegacyOktaTamperingID(t *testing.T) 
 	}
 	service := New(&stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {
-				Id:       "writer-okta-audit",
+			"writer-okta-policy-rule": {
+				Id:       "writer-okta-policy-rule",
 				SourceId: "okta",
 				TenantId: "writer",
+				Config:   map[string]string{"family": "policy_rule"},
 			},
 		},
 	}, replayer, store, store, store, store)
 
 	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID: "writer-okta-audit",
+		RuntimeID: "writer-okta-policy-rule",
 		RuleID:    oktaPolicyRuleLifecycleTamperingRuleID,
 	})
 	if err != nil {
@@ -784,39 +1123,53 @@ func TestEvaluateSourceRuntimeFindingsReusesLegacyOktaTamperingID(t *testing.T) 
 		t.Fatalf("len(Findings) = %d, want 1", len(result.Findings))
 	}
 	finding := result.Findings[0]
-	if got := finding.ID; got != legacyID {
-		t.Fatalf("Finding.ID = %q, want legacy id %q", got, legacyID)
+	if got := finding.ID; got != durableID {
+		t.Fatalf("Finding.ID = %q, want durable policy-rule id %q", got, durableID)
 	}
-	if got := finding.Fingerprint; got != legacyID {
-		t.Fatalf("Finding.Fingerprint = %q, want legacy fingerprint %q", got, legacyID)
+	if got := finding.Fingerprint; got != durableID {
+		t.Fatalf("Finding.Fingerprint = %q, want durable policy-rule fingerprint %q", got, durableID)
 	}
-	if got := finding.Status; got != findingStatusSuppressed {
-		t.Fatalf("Finding.Status = %q, want suppressed", got)
+	if got := finding.Status; got != findingStatusOpen {
+		t.Fatalf("Finding.Status = %q, want open", got)
 	}
-	if got := finding.StatusReason; got != "accepted risk" {
-		t.Fatalf("Finding.StatusReason = %q, want accepted risk", got)
+	if got := finding.Attributes["okta_policy_rule_urn"]; got != "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1" {
+		t.Fatalf("Finding.Attributes[okta_policy_rule_urn] = %q, want policy rule urn", got)
 	}
-	if len(store.findings) != 1 {
-		t.Fatalf("len(store.findings) = %d, want 1", len(store.findings))
+	if _, ok := store.findings[legacyID]; !ok {
+		t.Fatalf("legacy finding %q missing; durable conversion should not mutate it", legacyID)
 	}
-	if got := result.Evidence[0].GetFindingId(); got != legacyID {
-		t.Fatalf("Evidence[0].FindingId = %q, want legacy id %q", got, legacyID)
+	if len(store.findings) != 2 {
+		t.Fatalf("len(store.findings) = %d, want legacy row plus new durable row", len(store.findings))
+	}
+	if got := result.Evidence[0].GetFindingId(); got != durableID {
+		t.Fatalf("Evidence[0].FindingId = %q, want durable id %q", got, durableID)
 	}
 }
 
-func TestOktaPolicyRuleLifecycleTamperingRequiresSuccessfulOutcome(t *testing.T) {
-	missingOutcome := newAuditEvent("okta-audit-2", "policy.rule.update", "")
-	delete(missingOutcome.Attributes, "outcome_result")
-	if matchesOktaPolicyRuleLifecycleTampering(missingOutcome) {
-		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = true for missing outcome, want false")
+func TestOktaPolicyRuleLifecycleTamperingMatchesProjectedStateOnly(t *testing.T) {
+	auditEvent := newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS")
+	auditEvent.Attributes["policy_id"] = "pol-1"
+	auditEvent.Attributes["policy_rule_id"] = "rul-1"
+	auditEvent.Attributes["status"] = "INACTIVE"
+	if matchesOktaPolicyRuleLifecycleTampering(auditEvent) {
+		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = true for audit event, want false")
 	}
-	failedOutcome := newAuditEvent("okta-audit-3", "policy.rule.update", "FAILURE")
-	if matchesOktaPolicyRuleLifecycleTampering(failedOutcome) {
-		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = true for failed outcome, want false")
+	missingStatus := newOktaPolicyRuleEvent("okta-policy-rule-missing-status", "")
+	delete(missingStatus.Attributes, "status")
+	if matchesOktaPolicyRuleLifecycleTampering(missingStatus) {
+		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = true for missing status, want false")
 	}
-	successOutcome := newAuditEvent("okta-audit-4", "policy.rule.update", "SUCCESS")
-	if !matchesOktaPolicyRuleLifecycleTampering(successOutcome) {
-		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = false for success outcome, want true")
+	active := newOktaPolicyRuleEvent("okta-policy-rule-active", "ACTIVE")
+	if matchesOktaPolicyRuleLifecycleTampering(active) {
+		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = true for active projected state, want false")
+	}
+	inactive := newOktaPolicyRuleEvent("okta-policy-rule-inactive", "INACTIVE")
+	if !matchesOktaPolicyRuleLifecycleTampering(inactive) {
+		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = false for inactive projected state, want true")
+	}
+	deleted := newOktaPolicyRuleEvent("okta-policy-rule-deleted", "DELETED_PERMANENTLY")
+	if matchesOktaPolicyRuleLifecycleTampering(deleted) {
+		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = true for permanently deleted projected state, want false until source-backed delete synthesis exists")
 	}
 }
 
@@ -835,6 +1188,7 @@ func TestEvaluateSourceRuntimeFindingsReplaysGitHubDependabotAlert(t *testing.T)
 					Id:       "writer-github",
 					SourceId: "github",
 					TenantId: "writer",
+					Config:   map[string]string{"family": "dependabot_alert"},
 				},
 			},
 		},
@@ -898,6 +1252,7 @@ func TestEvaluateSourceRuntimeFindingsProjectsRecordedFindingToGraph(t *testing.
 					Id:       "writer-github",
 					SourceId: "github",
 					TenantId: "writer",
+					Config:   map[string]string{"family": "dependabot_alert"},
 				},
 			},
 		},
@@ -931,11 +1286,14 @@ func TestEvaluateSourceRuntimeFindingsProjectsRecordedFindingToGraph(t *testing.
 	if _, ok := graph.links[primaryResourceURN+"|has_finding|"+findingURN]; !ok {
 		t.Fatalf("graph has_finding link missing for %s -> %s", primaryResourceURN, findingURN)
 	}
-	if got := len(appendLog.events); got != 1 {
-		t.Fatalf("len(appendLog.events) = %d, want 1", got)
+	if got := len(appendLog.events); got != 2 {
+		t.Fatalf("len(appendLog.events) = %d, want 2", got)
 	}
 	if got := appendLog.events[0].GetKind(); got != workflowevents.EventKindFindingRecorded {
 		t.Fatalf("appendLog.events[0].Kind = %q, want %q", got, workflowevents.EventKindFindingRecorded)
+	}
+	if got := appendLog.events[1].GetKind(); got != securityevents.FindingRecorded {
+		t.Fatalf("appendLog.events[1].Kind = %q, want %q", got, securityevents.FindingRecorded)
 	}
 }
 
@@ -1058,7 +1416,7 @@ func TestEvaluateSourceRuntimeRetiredRuleResolvesOpenFindingsOutsideReplayWindow
 	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{retiredFinding.ID: retiredFinding}}
 	service := NewWithRegistry(
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-github-audit": {Id: "writer-github-audit", SourceId: "github", TenantId: "writer"},
+			"writer-github-audit": {Id: "writer-github-audit", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}},
 		}},
 		&stubReplayer{events: []*cerebrov1.EventEnvelope{{
 			Id:       "github-recent-event",
@@ -1093,6 +1451,424 @@ func TestEvaluateSourceRuntimeRetiredRuleResolvesOpenFindingsOutsideReplayWindow
 	}
 	if got := resolved.StatusReason; got != workflowevents.FindingStatusReasonNoLongerEmitted {
 		t.Fatalf("retired finding status reason = %q, want %q", got, workflowevents.FindingStatusReasonNoLongerEmitted)
+	}
+}
+
+func TestCounterEventRule_AnchorClose(t *testing.T) {
+	rule := newCounterAnchorRule("counter-anchor-rule")
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	openedAt := time.Date(2026, 5, 7, 19, 54, 0, 0, time.UTC)
+	staleFinding := &ports.FindingRecord{
+		ID:              "counter-anchor-rule-writer-cerebro-alice",
+		Fingerprint:     "counter-anchor-rule-writer-cerebro-alice",
+		TenantID:        "writer",
+		RuntimeID:       "example-github-audit",
+		RuleID:          "counter-anchor-rule",
+		Title:           "Counter Anchor Rule",
+		Severity:        "HIGH",
+		Status:          findingStatusOpen,
+		Summary:         "repository collaborator remained risky",
+		ResourceURNs:    []string{"urn:cerebro:writer:github_repo:writer/cerebro"},
+		EventIDs:        []string{"github-open-event"},
+		Attributes:      map[string]string{"repo": "writer/cerebro", "user": "alice"},
+		FirstObservedAt: openedAt,
+		LastObservedAt:  openedAt,
+	}
+	tombstonedFinding := cloneFinding(staleFinding)
+	tombstonedFinding.ID = "counter-anchor-rule-tombstoned"
+	tombstonedFinding.Fingerprint = "counter-anchor-rule-tombstoned"
+	tombstonedFinding.Tombstoned = true
+	tombstonedFinding.TombstonedAt = openedAt.Add(time.Hour)
+	tombstonedFinding.EventIDs = []string{"github-open-tombstoned-event"}
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{
+		staleFinding.ID:      cloneFinding(staleFinding),
+		tombstonedFinding.ID: cloneFinding(tombstonedFinding),
+	}}
+	appendLog := &recordingAppendLog{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"example-github-audit": {Id: "example-github-audit", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}},
+		}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{{
+			Id:       "github-open-same-run",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.audit",
+			Attributes: map[string]string{
+				"action": "open",
+				"repo":   "writer/cerebro",
+				"user":   "bob",
+			},
+			OccurredAt: timestamppb.New(openedAt.Add(23 * time.Hour)),
+		}, {
+			Id:       "github-counter-event",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.audit",
+			Attributes: map[string]string{
+				"action": "close",
+				"repo":   "writer/cerebro",
+				"user":   "alice",
+			},
+			OccurredAt: timestamppb.New(openedAt.Add(24 * time.Hour)),
+		}, {
+			Id:       "github-counter-same-run",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.audit",
+			Attributes: map[string]string{
+				"action": "close",
+				"repo":   "writer/cerebro",
+				"user":   "bob",
+			},
+			OccurredAt: timestamppb.New(openedAt.Add(25 * time.Hour)),
+		}}},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	).WithGraphStore(&stubGraphStore{}).WithAppendLog(appendLog)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "example-github-audit",
+		RuleID:    "counter-anchor-rule",
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if got := len(result.Findings); got != 1 {
+		t.Fatalf("len(Findings) = %d, want 1 same-run open finding before counter close", got)
+	}
+	if got := strings.TrimSpace(result.Findings[0].ID); got != "counter-anchor-rule-writer-cerebro-bob" {
+		t.Fatalf("result finding ID = %q, want same-run bob finding", got)
+	}
+	if got := result.Findings[0].Status; got != findingStatusResolved {
+		t.Fatalf("result same-run finding status = %q, want %q", got, findingStatusResolved)
+	}
+	if got := result.Findings[0].StatusReason; got != workflowevents.FindingStatusReasonClosedByCounterEvent {
+		t.Fatalf("result same-run finding status reason = %q, want %q", got, workflowevents.FindingStatusReasonClosedByCounterEvent)
+	}
+	if !containsTrimmed(result.Findings[0].EventIDs, "github-counter-same-run") {
+		t.Fatalf("result same-run finding EventIDs = %#v, want counter event evidence", result.Findings[0].EventIDs)
+	}
+	resolved := store.findings[staleFinding.ID]
+	if got := resolved.Status; got != findingStatusResolved {
+		t.Fatalf("counter-event finding status = %q, want %q", got, findingStatusResolved)
+	}
+	if got := resolved.StatusReason; got != workflowevents.FindingStatusReasonClosedByCounterEvent {
+		t.Fatalf("counter-event finding status reason = %q, want %q", got, workflowevents.FindingStatusReasonClosedByCounterEvent)
+	}
+	if !containsTrimmed(resolved.EventIDs, "github-open-event") || !containsTrimmed(resolved.EventIDs, "github-counter-event") {
+		t.Fatalf("counter-event finding EventIDs = %#v, want original and counter event IDs", resolved.EventIDs)
+	}
+	sameRun := store.findings["counter-anchor-rule-writer-cerebro-bob"]
+	if sameRun == nil {
+		t.Fatal("same-run emitted finding was not persisted")
+	}
+	if got := sameRun.Status; got != findingStatusResolved {
+		t.Fatalf("same-run counter-event finding status = %q, want %q", got, findingStatusResolved)
+	}
+	if got := sameRun.StatusReason; got != workflowevents.FindingStatusReasonClosedByCounterEvent {
+		t.Fatalf("same-run counter-event finding status reason = %q, want %q", got, workflowevents.FindingStatusReasonClosedByCounterEvent)
+	}
+	if !containsTrimmed(sameRun.EventIDs, "github-open-same-run") || !containsTrimmed(sameRun.EventIDs, "github-counter-same-run") {
+		t.Fatalf("same-run counter-event finding EventIDs = %#v, want original and counter event IDs", sameRun.EventIDs)
+	}
+	tombstoned := store.findings[tombstonedFinding.ID]
+	if got := tombstoned.Status; got != findingStatusOpen {
+		t.Fatalf("tombstoned matching finding status = %q, want open", got)
+	}
+	if containsTrimmed(tombstoned.EventIDs, "github-counter-event") {
+		t.Fatalf("tombstoned matching finding EventIDs = %#v, want no counter event evidence", tombstoned.EventIDs)
+	}
+	statusEvent := findStatusChangedPayload(t, appendLog.events, staleFinding.ID)
+	if got := statusEvent.Reason; got != workflowevents.FindingStatusReasonClosedByCounterEvent {
+		t.Fatalf("workflow status reason = %q, want %q", got, workflowevents.FindingStatusReasonClosedByCounterEvent)
+	}
+	if got := statusEvent.Source; got != workflowevents.FindingStatusSourceStaleEvaluation {
+		t.Fatalf("workflow status source = %q, want %q", got, workflowevents.FindingStatusSourceStaleEvaluation)
+	}
+	if !containsTrimmed(statusEvent.Finding.EventIDs, "github-counter-event") {
+		t.Fatalf("workflow finding event_ids = %#v, want counter event evidence", statusEvent.Finding.EventIDs)
+	}
+	sameRunStatusEvent := findStatusChangedPayload(t, appendLog.events, sameRun.ID)
+	if !containsTrimmed(sameRunStatusEvent.Finding.EventIDs, "github-counter-same-run") {
+		t.Fatalf("same-run workflow finding event_ids = %#v, want counter event evidence", sameRunStatusEvent.Finding.EventIDs)
+	}
+	staleEvidence, err := service.ListEvidence(context.Background(), ListEvidenceRequest{
+		RuntimeID: "example-github-audit",
+		FindingID: staleFinding.ID,
+		EventID:   "github-counter-event",
+	})
+	if err != nil {
+		t.Fatalf("ListEvidence(stale close event) error = %v", err)
+	}
+	if got := len(staleEvidence.Evidence); got == 0 {
+		t.Fatalf("ListEvidence(stale close event) returned %d rows, want close-event evidence", got)
+	}
+	sameRunEvidence, err := service.ListEvidence(context.Background(), ListEvidenceRequest{
+		RuntimeID: "example-github-audit",
+		FindingID: sameRun.ID,
+		EventID:   "github-counter-same-run",
+	})
+	if err != nil {
+		t.Fatalf("ListEvidence(same-run close event) error = %v", err)
+	}
+	if got := len(sameRunEvidence.Evidence); got == 0 {
+		t.Fatalf("ListEvidence(same-run close event) returned %d rows, want close-event evidence", got)
+	}
+}
+
+func TestResolveCounterEventOpenFindings_RefreshesResults(t *testing.T) {
+	_, _, result := evaluateCounterEventSameRunClose(t)
+	if got := len(result.Findings); got != 1 {
+		t.Fatalf("len(Findings) = %d, want 1 same-run finding", got)
+	}
+	finding := result.Findings[0]
+	if got := finding.Status; got != findingStatusResolved {
+		t.Fatalf("result finding status = %q, want %q", got, findingStatusResolved)
+	}
+	if got := finding.StatusReason; got != workflowevents.FindingStatusReasonClosedByCounterEvent {
+		t.Fatalf("result finding status reason = %q, want %q", got, workflowevents.FindingStatusReasonClosedByCounterEvent)
+	}
+	if !containsTrimmed(finding.EventIDs, "github-open-same-run") || !containsTrimmed(finding.EventIDs, "github-counter-same-run") {
+		t.Fatalf("result finding EventIDs = %#v, want open and close event IDs", finding.EventIDs)
+	}
+}
+
+func TestResolveCounterEventOpenFindings_PersistsCloseEvidence(t *testing.T) {
+	service, _, result := evaluateCounterEventSameRunClose(t)
+	if got := len(result.Findings); got != 1 {
+		t.Fatalf("len(Findings) = %d, want 1 same-run finding", got)
+	}
+	finding := result.Findings[0]
+	evidence, err := service.ListEvidence(context.Background(), ListEvidenceRequest{
+		RuntimeID: "example-github-audit",
+		FindingID: finding.ID,
+		EventID:   "github-counter-same-run",
+	})
+	if err != nil {
+		t.Fatalf("ListEvidence(close event) error = %v", err)
+	}
+	if got := len(evidence.Evidence); got == 0 {
+		t.Fatalf("ListEvidence(close event) returned %d rows, want close-event evidence", got)
+	}
+	if !containsTrimmed(evidence.Evidence[0].EventIds, "github-open-same-run") || !containsTrimmed(evidence.Evidence[0].EventIds, "github-counter-same-run") {
+		t.Fatalf("close evidence EventIds = %#v, want open and close event IDs", evidence.Evidence[0].EventIds)
+	}
+}
+
+func evaluateCounterEventSameRunClose(t *testing.T) (*Service, *stubFindingStore, *EvaluateResult) {
+	t.Helper()
+	rule := newCounterAnchorRule("counter-anchor-rule")
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	openedAt := time.Date(2026, 5, 7, 19, 54, 0, 0, time.UTC)
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{}}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"example-github-audit": {Id: "example-github-audit", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}},
+		}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{{
+			Id:       "github-open-same-run",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.audit",
+			Attributes: map[string]string{
+				"action": "open",
+				"repo":   "writer/cerebro",
+				"user":   "bob",
+			},
+			OccurredAt: timestamppb.New(openedAt),
+		}, {
+			Id:       "github-counter-same-run",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.audit",
+			Attributes: map[string]string{
+				"action": "close",
+				"repo":   "writer/cerebro",
+				"user":   "bob",
+			},
+			OccurredAt: timestamppb.New(openedAt.Add(time.Hour)),
+		}}},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	).WithGraphStore(&stubGraphStore{})
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "example-github-audit",
+		RuleID:    "counter-anchor-rule",
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	return service, store, result
+}
+
+func TestCounterEventRule_OlderCloseDoesNotResolveNewerOpenFinding(t *testing.T) {
+	rule := newCounterAnchorRule("counter-anchor-rule")
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	openedAt := time.Date(2026, 5, 7, 19, 54, 0, 0, time.UTC)
+	newerOpenAt := openedAt.Add(2 * time.Hour)
+	currentFinding := &ports.FindingRecord{
+		ID:              "counter-anchor-rule-writer-cerebro-alice",
+		Fingerprint:     "counter-anchor-rule-writer-cerebro-alice",
+		TenantID:        "writer",
+		RuntimeID:       "example-github-audit",
+		RuleID:          "counter-anchor-rule",
+		Title:           "Counter Anchor Rule",
+		Severity:        "HIGH",
+		Status:          findingStatusOpen,
+		Summary:         "repository collaborator remained risky after an older close",
+		ResourceURNs:    []string{"urn:cerebro:writer:github_repo:writer/cerebro"},
+		EventIDs:        []string{"github-newer-open-event"},
+		Attributes:      map[string]string{"repo": "writer/cerebro", "user": "alice"},
+		FirstObservedAt: openedAt,
+		LastObservedAt:  newerOpenAt,
+	}
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{
+		currentFinding.ID: cloneFinding(currentFinding),
+	}}
+	appendLog := &recordingAppendLog{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"example-github-audit": {Id: "example-github-audit", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}},
+		}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{{
+			Id:       "github-older-counter-event",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.audit",
+			Attributes: map[string]string{
+				"action": "close",
+				"repo":   "writer/cerebro",
+				"user":   "alice",
+			},
+			OccurredAt: timestamppb.New(openedAt.Add(time.Hour)),
+		}}},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	).WithGraphStore(&stubGraphStore{}).WithAppendLog(appendLog)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "example-github-audit",
+		RuleID:    "counter-anchor-rule",
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if got := len(result.Findings); got != 0 {
+		t.Fatalf("len(Findings) = %d, want 0 because replay only contains an older close", got)
+	}
+	unchanged := store.findings[currentFinding.ID]
+	if got := unchanged.Status; got != findingStatusOpen {
+		t.Fatalf("newer open finding status = %q, want %q", got, findingStatusOpen)
+	}
+	if unchanged.StatusReason != "" {
+		t.Fatalf("newer open finding status reason = %q, want empty", unchanged.StatusReason)
+	}
+	if containsTrimmed(unchanged.EventIDs, "github-older-counter-event") {
+		t.Fatalf("newer open finding EventIDs = %#v, want no older counter-event evidence", unchanged.EventIDs)
+	}
+	if store.updateStatusCallCount != 0 {
+		t.Fatalf("UpdateFindingStatus calls = %d, want 0", store.updateStatusCallCount)
+	}
+	if len(appendLog.events) != 0 {
+		t.Fatalf("append log events = %d, want 0", len(appendLog.events))
+	}
+}
+
+func TestCounterEventRule_NonImplementingUnaffected(t *testing.T) {
+	rule := newNonCounterAnchorRule("non-counter-anchor-rule")
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	openedAt := time.Date(2026, 5, 7, 19, 54, 0, 0, time.UTC)
+	staleFinding := &ports.FindingRecord{
+		ID:              "non-counter-anchor-rule-writer-cerebro-alice",
+		Fingerprint:     "non-counter-anchor-rule-writer-cerebro-alice",
+		TenantID:        "writer",
+		RuntimeID:       "example-github-audit",
+		RuleID:          "non-counter-anchor-rule",
+		Title:           "Non-Counter Anchor Rule",
+		Severity:        "HIGH",
+		Status:          findingStatusOpen,
+		Summary:         "repository collaborator remained risky",
+		ResourceURNs:    []string{"urn:cerebro:writer:github_repo:writer/cerebro"},
+		EventIDs:        []string{"github-open-event"},
+		Attributes:      map[string]string{"repo": "writer/cerebro", "user": "alice"},
+		FirstObservedAt: openedAt,
+		LastObservedAt:  openedAt,
+	}
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{
+		staleFinding.ID: cloneFinding(staleFinding),
+	}}
+	appendLog := &recordingAppendLog{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"example-github-audit": {Id: "example-github-audit", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}},
+		}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{{
+			Id:       "github-counter-event",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.audit",
+			Attributes: map[string]string{
+				"action": "close",
+				"repo":   "writer/cerebro",
+				"user":   "alice",
+			},
+			OccurredAt: timestamppb.New(openedAt.Add(24 * time.Hour)),
+		}}},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	).WithGraphStore(&stubGraphStore{}).WithAppendLog(appendLog)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "example-github-audit",
+		RuleID:    "non-counter-anchor-rule",
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if got := len(result.Findings); got != 0 {
+		t.Fatalf("len(Findings) = %d, want 0", got)
+	}
+	unchanged := store.findings[staleFinding.ID]
+	if got := unchanged.Status; got != findingStatusOpen {
+		t.Fatalf("non-counter finding status = %q, want %q", got, findingStatusOpen)
+	}
+	if unchanged.StatusReason != "" {
+		t.Fatalf("non-counter finding status reason = %q, want empty", unchanged.StatusReason)
+	}
+	if containsTrimmed(unchanged.EventIDs, "github-counter-event") {
+		t.Fatalf("non-counter finding EventIDs = %#v, want no counter event evidence", unchanged.EventIDs)
+	}
+	if store.updateStatusCallCount != 0 {
+		t.Fatalf("UpdateFindingStatus calls = %d, want 0", store.updateStatusCallCount)
+	}
+	if len(appendLog.events) != 0 {
+		t.Fatalf("append log events = %d, want 0", len(appendLog.events))
 	}
 }
 
@@ -1164,8 +1940,8 @@ func TestEvaluateSourceRuntimeFindingsPersistsNormalizedFailedRun(t *testing.T) 
 	}
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-1", "policy.rule.update", "SUCCESS"),
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newAuditEvent("okta-audit-1", "policy.rule.deactivate", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
 		},
 	}
 	store := &stubFindingStore{}
@@ -1231,7 +2007,7 @@ func TestEvaluateSourceRuntimeFindingsCleansUpRemainingRunsWhenFailurePersistenc
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
 	replayer := &stubReplayer{
-		events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-1", "policy.rule.update", "SUCCESS")},
+		events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-1", "policy.rule.deactivate", "SUCCESS")},
 	}
 	store := &stubFindingStore{
 		failRunPutByCall: map[int]error{3: errors.New("persist failed run failed")},
@@ -1280,8 +2056,8 @@ func TestEvaluateSourceRuntimeFindingsDeduplicatesEvidencePerRun(t *testing.T) {
 	}
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
 		},
 	}
 	store := &stubFindingStore{}
@@ -1386,7 +2162,7 @@ func TestEvaluateSourceRuntimeFindingsDeduplicatesEvidenceAcrossRuns(t *testing.
 	}
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
 		},
 	}
 	store := &stubFindingStore{}
@@ -1540,16 +2316,17 @@ func TestListRulesReturnsBuiltinCatalog(t *testing.T) {
 func TestEvaluateSourceRuntimeFindingsSelectsRequestedRule(t *testing.T) {
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newOktaPolicyRuleEvent("okta-policy-rule-inactive", "INACTIVE"),
 		},
 	}
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-okta-audit": {
-					Id:       "writer-okta-audit",
+				"writer-okta-policy-rule": {
+					Id:       "writer-okta-policy-rule",
 					SourceId: "okta",
 					TenantId: "writer",
+					Config:   map[string]string{"family": "policy_rule"},
 				},
 			},
 		},
@@ -1561,7 +2338,7 @@ func TestEvaluateSourceRuntimeFindingsSelectsRequestedRule(t *testing.T) {
 	)
 
 	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID:  "writer-okta-audit",
+		RuntimeID:  "writer-okta-policy-rule",
 		RuleID:     oktaPolicyRuleLifecycleTamperingRuleID,
 		EventLimit: 10,
 	})
@@ -1647,6 +2424,7 @@ func TestEvaluateSourceRuntimeFindingsRejectsUnsupportedRule(t *testing.T) {
 					Id:       "writer-github-audit",
 					SourceId: "github",
 					TenantId: "writer",
+					Config:   map[string]string{"family": "audit"},
 				},
 			},
 		},
@@ -1683,11 +2461,12 @@ func TestEvaluateSourceRuntimeFindingsAllowsExplicitUnsupportedRuleWithOpenFindi
 			EventIDs:  []string{"old-event"},
 		},
 	}}
+	replayer := &stubReplayer{err: errors.New("unexpected replay")}
 	service := NewWithRegistry(
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
 			"writer-aws-public-endpoint": {Id: "writer-aws-public-endpoint", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "public_endpoint"}},
 		}},
-		&stubReplayer{},
+		replayer,
 		store,
 		store,
 		store,
@@ -1704,6 +2483,9 @@ func TestEvaluateSourceRuntimeFindingsAllowsExplicitUnsupportedRuleWithOpenFindi
 	}
 	if got := store.findings["finding-old"].Status; got != findingStatusResolved {
 		t.Fatalf("stale finding status = %q, want %q", got, findingStatusResolved)
+	}
+	if replayer.calls != 0 {
+		t.Fatalf("Replay() calls = %d, want 0 for unsupported stale-only cleanup", replayer.calls)
 	}
 }
 
@@ -1781,7 +2563,7 @@ func TestEvaluateSourceRuntimeRulesReplaysOnceAcrossMultipleRules(t *testing.T) 
 	}
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
 			newAuditEvent("okta-audit-3", "policy.rule.delete", "SUCCESS"),
 		},
 	}
@@ -1871,6 +2653,625 @@ func TestEvaluateSourceRuntimeRulesReplaysOnceAcrossMultipleRules(t *testing.T) 
 	}
 }
 
+func TestEvaluateSourceRuntimeCandidateRulesDoesNotWriteProductionFindings(t *testing.T) {
+	registry, err := NewRegistry(&emittingRule{
+		spec:               &cerebrov1.RuleSpec{Id: "rule-a", Name: "Rule A"},
+		supportedSourceIDs: map[string]struct{}{"okta": {}},
+		triggerEventID:     "okta-audit-2",
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	replayer := &stubReplayer{events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS")}}
+	store := &stubFindingStore{
+		claims: map[string]*ports.ClaimRecord{
+			"claim-1": {
+				ID:            "claim-1",
+				RuntimeID:     "writer-okta-audit",
+				TenantID:      "writer",
+				SourceEventID: "okta-audit-2",
+				ObservedAt:    time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
+			},
+		},
+	}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		}},
+		replayer,
+		store,
+		store,
+		store,
+		store,
+		registry,
+	).WithFindingCandidateStore(store)
+
+	result, err := service.EvaluateSourceRuntimeCandidateRules(context.Background(), EvaluateCandidateRulesRequest{
+		RuntimeID:  "writer-okta-audit",
+		EventLimit: 1,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeCandidateRules() error = %v", err)
+	}
+	if got := result.EventsEvaluated; got != 1 {
+		t.Fatalf("EventsEvaluated = %d, want 1", got)
+	}
+	if got := store.upsertCount; got != 0 {
+		t.Fatalf("production UpsertFinding calls = %d, want 0", got)
+	}
+	if got := len(store.evidence); got != 0 {
+		t.Fatalf("production evidence rows = %d, want 0", got)
+	}
+	if got := store.updateStatusCallCount; got != 0 {
+		t.Fatalf("production status updates = %d, want 0", got)
+	}
+	if got := store.candidateState.upsertCount; got != 1 {
+		t.Fatalf("candidate upserts = %d, want 1", got)
+	}
+	if got := len(result.Evaluations); got != 1 {
+		t.Fatalf("evaluations = %d, want 1", got)
+	}
+	evaluation := result.Evaluations[0]
+	if got := evaluation.Run.Status; got != "completed" {
+		t.Fatalf("candidate run status = %q, want completed", got)
+	}
+	if got := len(evaluation.Candidates); got != 1 {
+		t.Fatalf("candidates = %d, want 1", got)
+	}
+	candidate := evaluation.Candidates[0]
+	if got := candidate.Status; got != findingCandidateStatusCandidate {
+		t.Fatalf("candidate status = %q, want %q", got, findingCandidateStatusCandidate)
+	}
+	if got := candidate.Evidence[0].GetClaimIds()[0]; got != "claim-1" {
+		t.Fatalf("candidate evidence claim = %q, want claim-1", got)
+	}
+}
+
+func TestPromoteFindingCandidateWritesProductionFindingEvidenceAndAudit(t *testing.T) {
+	now := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
+	finding := &ports.FindingRecord{
+		ID:              "finding-1",
+		Fingerprint:     "fingerprint-1",
+		TenantID:        "writer",
+		RuntimeID:       "writer-okta-audit",
+		RuleID:          "rule-a",
+		Title:           "Rule A",
+		Severity:        "MEDIUM",
+		Status:          findingStatusOpen,
+		Summary:         "candidate summary",
+		ResourceURNs:    []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+		EventIDs:        []string{"okta-audit-2"},
+		FirstObservedAt: now,
+		LastObservedAt:  now,
+	}
+	evidence := &cerebrov1.FindingEvidence{
+		Id:             "evidence-1",
+		RuntimeId:      "writer-okta-audit",
+		RuleId:         "rule-a",
+		FindingId:      "finding-1",
+		RunId:          "candidate-run-1",
+		ClaimIds:       []string{"claim-1"},
+		EventIds:       []string{"okta-audit-2"},
+		GraphRootUrns:  []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+		CreatedAt:      timestamppb.New(now),
+		LastObservedAt: timestamppb.New(now),
+	}
+	candidate := &ports.FindingCandidateRecord{
+		ID:               "candidate-1",
+		TenantID:         "writer",
+		RuntimeID:        "writer-okta-audit",
+		RuleID:           "rule-a",
+		Fingerprint:      "fingerprint-1",
+		Status:           findingCandidateStatusCandidate,
+		Finding:          cloneFinding(finding),
+		Evidence:         []*cerebrov1.FindingEvidence{evidence},
+		LastRunID:        "candidate-run-1",
+		ObservationCount: 1,
+		FirstObservedAt:  now,
+		LastObservedAt:   now,
+	}
+	store := &stubFindingStore{
+		candidateState: stubFindingCandidateState{
+			candidates: map[string]*ports.FindingCandidateRecord{candidate.ID: cloneFindingCandidate(candidate)},
+		},
+		findings: map[string]*ports.FindingRecord{},
+	}
+	appendLog := &recordingAppendLog{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		}},
+		nil,
+		store,
+		store,
+		store,
+		store,
+		nil,
+	).WithFindingCandidateStore(store).WithAppendLog(appendLog)
+
+	result, err := service.PromoteFindingCandidate(context.Background(), PromoteCandidateRequest{
+		CandidateID:           "candidate-1",
+		PromotedBy:            "analyst@example.com",
+		Rationale:             "Validated against source data.",
+		ChangeTicket:          "SEC-123",
+		FalsePositiveReviewed: true,
+		GraphCoverageReviewed: true,
+	})
+	if err != nil {
+		t.Fatalf("PromoteFindingCandidate() error = %v", err)
+	}
+	if result.Finding == nil {
+		t.Fatal("PromoteFindingCandidate().Finding = nil")
+	}
+	if got := store.upsertCount; got == 0 {
+		t.Fatalf("production UpsertFinding calls = %d, want > 0", got)
+	}
+	if got := len(store.evidence); got != 1 {
+		t.Fatalf("production evidence rows = %d, want 1", got)
+	}
+	if got := result.Candidate.Status; got != findingCandidateStatusPromoted {
+		t.Fatalf("candidate status = %q, want promoted", got)
+	}
+	if got := result.Candidate.PromotedFindingID; got != "finding-1" {
+		t.Fatalf("promoted finding id = %q, want finding-1", got)
+	}
+	if result.DecisionID == "" {
+		t.Fatal("DecisionID is empty")
+	}
+	if got := countWorkflowEventsByKind(appendLog.events, workflowevents.EventKindKnowledgeDecisionRecorded); got != 1 {
+		t.Fatalf("promotion audit events = %d, want 1", got)
+	}
+	if got := countWorkflowEventsByKind(appendLog.events, workflowevents.EventKindFindingRecorded); got != 1 {
+		t.Fatalf("finding recorded events = %d, want 1", got)
+	}
+}
+
+func countWorkflowEventsByKind(events []*cerebrov1.EventEnvelope, kind string) int {
+	count := 0
+	for _, event := range events {
+		if event.GetKind() == kind {
+			count++
+		}
+	}
+	return count
+}
+
+func TestPromoteFindingCandidateDoesNotMarkPromotedBeforeDownstreamSuccess(t *testing.T) {
+	now := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
+	finding := &ports.FindingRecord{
+		ID:              "finding-1",
+		Fingerprint:     "fingerprint-1",
+		TenantID:        "writer",
+		RuntimeID:       "writer-okta-audit",
+		RuleID:          "rule-a",
+		Title:           "Rule A",
+		Severity:        "MEDIUM",
+		Status:          findingStatusOpen,
+		Summary:         "candidate summary",
+		ResourceURNs:    []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+		FirstObservedAt: now,
+		LastObservedAt:  now,
+	}
+	candidate := &ports.FindingCandidateRecord{
+		ID:               "candidate-1",
+		TenantID:         "writer",
+		RuntimeID:        "writer-okta-audit",
+		RuleID:           "rule-a",
+		Fingerprint:      "fingerprint-1",
+		Status:           findingCandidateStatusCandidate,
+		Finding:          cloneFinding(finding),
+		Evidence:         []*cerebrov1.FindingEvidence{{Id: "evidence-1", FindingId: "finding-1"}},
+		LastRunID:        "candidate-run-1",
+		ObservationCount: 1,
+		FirstObservedAt:  now,
+		LastObservedAt:   now,
+	}
+	store := &stubFindingStore{
+		candidateState: stubFindingCandidateState{
+			candidates: map[string]*ports.FindingCandidateRecord{candidate.ID: cloneFindingCandidate(candidate)},
+		},
+		findings:       map[string]*ports.FindingRecord{},
+		putEvidenceErr: errors.New("evidence write failed"),
+	}
+	appendLog := &recordingAppendLog{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		}},
+		nil,
+		store,
+		store,
+		store,
+		store,
+		nil,
+	).WithFindingCandidateStore(store).WithAppendLog(appendLog)
+
+	_, err := service.PromoteFindingCandidate(context.Background(), PromoteCandidateRequest{
+		CandidateID:           "candidate-1",
+		PromotedBy:            "analyst@example.com",
+		Rationale:             "Validated against source data.",
+		ChangeTicket:          "SEC-123",
+		FalsePositiveReviewed: true,
+		GraphCoverageReviewed: true,
+	})
+	if err == nil {
+		t.Fatal("PromoteFindingCandidate() error = nil, want downstream failure")
+	}
+	if got := store.candidateState.markPromotedCount; got != 0 {
+		t.Fatalf("MarkFindingCandidatePromoted calls = %d, want 0", got)
+	}
+	if got := store.candidateState.candidates["candidate-1"].Status; got != findingCandidateStatusCandidate {
+		t.Fatalf("candidate status = %q, want candidate", got)
+	}
+	if got := len(appendLog.events); got != 0 {
+		t.Fatalf("append log events = %d, want 0", got)
+	}
+}
+
+func TestPromoteFindingCandidateAlreadyPromotedReturnsExistingFinding(t *testing.T) {
+	now := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
+	finding := &ports.FindingRecord{
+		ID:              "finding-1",
+		Fingerprint:     "fingerprint-1",
+		TenantID:        "writer",
+		RuntimeID:       "writer-okta-audit",
+		RuleID:          "rule-a",
+		Title:           "Rule A",
+		Severity:        "MEDIUM",
+		Status:          findingStatusOpen,
+		Summary:         "candidate summary",
+		FirstObservedAt: now,
+		LastObservedAt:  now,
+	}
+	candidate := &ports.FindingCandidateRecord{
+		ID:                "candidate-1",
+		TenantID:          "writer",
+		RuntimeID:         "writer-okta-audit",
+		RuleID:            "rule-a",
+		Fingerprint:       "fingerprint-1",
+		Status:            findingCandidateStatusPromoted,
+		Finding:           cloneFinding(finding),
+		LastRunID:         "candidate-run-1",
+		ObservationCount:  1,
+		FirstObservedAt:   now,
+		LastObservedAt:    now,
+		PromotedFindingID: "finding-1",
+		DecisionID:        "decision-1",
+		PromotedBy:        "analyst@example.com",
+		PromotedAt:        now,
+	}
+	store := &stubFindingStore{
+		candidateState: stubFindingCandidateState{
+			candidates: map[string]*ports.FindingCandidateRecord{candidate.ID: cloneFindingCandidate(candidate)},
+		},
+		findings: map[string]*ports.FindingRecord{
+			finding.ID: cloneFinding(finding),
+		},
+	}
+	appendLog := &recordingAppendLog{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		}},
+		nil,
+		store,
+		store,
+		store,
+		store,
+		nil,
+	).WithFindingCandidateStore(store).WithAppendLog(appendLog)
+
+	result, err := service.PromoteFindingCandidate(context.Background(), PromoteCandidateRequest{
+		CandidateID:           "candidate-1",
+		PromotedBy:            "analyst@example.com",
+		Rationale:             "Validated against source data.",
+		ChangeTicket:          "SEC-123",
+		FalsePositiveReviewed: true,
+		GraphCoverageReviewed: true,
+	})
+	if err != nil {
+		t.Fatalf("PromoteFindingCandidate() error = %v", err)
+	}
+	if got := result.DecisionID; got != "decision-1" {
+		t.Fatalf("DecisionID = %q, want decision-1", got)
+	}
+	if got := result.Finding.ID; got != "finding-1" {
+		t.Fatalf("Finding.ID = %q, want finding-1", got)
+	}
+	if got := store.upsertCount; got != 0 {
+		t.Fatalf("production UpsertFinding calls = %d, want 0", got)
+	}
+	if got := len(store.evidence); got != 0 {
+		t.Fatalf("production evidence rows = %d, want 0", got)
+	}
+	if got := len(appendLog.events); got != 0 {
+		t.Fatalf("append log events = %d, want 0", got)
+	}
+}
+
+func TestPromoteFindingCandidateRecoversConcurrentCompletedPromotion(t *testing.T) {
+	now := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
+	finding := &ports.FindingRecord{
+		ID:              "finding-1",
+		Fingerprint:     "fingerprint-1",
+		TenantID:        "writer",
+		RuntimeID:       "writer-okta-audit",
+		RuleID:          "rule-a",
+		Status:          findingStatusOpen,
+		FirstObservedAt: now,
+		LastObservedAt:  now,
+	}
+	candidate := &ports.FindingCandidateRecord{
+		ID:               "candidate-1",
+		TenantID:         "writer",
+		RuntimeID:        "writer-okta-audit",
+		RuleID:           "rule-a",
+		Fingerprint:      "fingerprint-1",
+		Status:           findingCandidateStatusCandidate,
+		Finding:          cloneFinding(finding),
+		Evidence:         []*cerebrov1.FindingEvidence{{Id: "evidence-1", FindingId: "finding-1"}},
+		LastRunID:        "candidate-run-1",
+		ObservationCount: 1,
+		FirstObservedAt:  now,
+		LastObservedAt:   now,
+	}
+	request := PromoteCandidateRequest{
+		CandidateID:           "candidate-1",
+		PromotedBy:            "analyst@example.com",
+		Rationale:             "Validated against source data.",
+		ChangeTicket:          "SEC-123",
+		FalsePositiveReviewed: true,
+		GraphCoverageReviewed: true,
+	}
+	decisionID := candidatePromotionDecisionID(candidate, finding, request, now)
+	store := &stubFindingStore{
+		candidateState: stubFindingCandidateState{
+			candidates: map[string]*ports.FindingCandidateRecord{candidate.ID: cloneFindingCandidate(candidate)},
+		},
+		findings: map[string]*ports.FindingRecord{},
+	}
+	store.candidateState.beforeMarkPromote = func() {
+		updated := cloneFindingCandidate(candidate)
+		updated.Status = findingCandidateStatusPromoted
+		updated.PromotedFindingID = finding.ID
+		updated.DecisionID = decisionID
+		updated.PromotedBy = "analyst@example.com"
+		updated.PromotionRationale = "Validated against source data."
+		updated.ChangeTicket = "SEC-123"
+		updated.PromotedAt = now
+		store.candidateState.candidates[updated.ID] = updated
+		winningFinding := cloneFinding(finding)
+		winningFinding.Attributes = map[string]string{"promoted_by": "winner@example.com"}
+		store.findings[winningFinding.ID] = winningFinding
+	}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		}},
+		nil,
+		store,
+		store,
+		store,
+		store,
+		nil,
+	).WithFindingCandidateStore(store).WithAppendLog(&recordingAppendLog{})
+
+	result, err := service.PromoteFindingCandidate(context.Background(), request)
+	if err != nil {
+		t.Fatalf("PromoteFindingCandidate() error = %v", err)
+	}
+	if got := result.Candidate.Status; got != findingCandidateStatusPromoted {
+		t.Fatalf("candidate status = %q, want promoted", got)
+	}
+	if got := result.DecisionID; got != decisionID {
+		t.Fatalf("decision id = %q, want recovered %q", got, decisionID)
+	}
+	if got := result.Finding.Attributes["promoted_by"]; got != "winner@example.com" {
+		t.Fatalf("recovered finding promoted_by = %q, want winning persisted finding", got)
+	}
+}
+
+func TestRejectFindingCandidateRecordsAuditWithoutProductionWrites(t *testing.T) {
+	now := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
+	finding := &ports.FindingRecord{
+		ID:              "finding-1",
+		Fingerprint:     "fingerprint-1",
+		TenantID:        "writer",
+		RuntimeID:       "writer-okta-audit",
+		RuleID:          "rule-a",
+		Title:           "Rule A",
+		Severity:        "LOW",
+		Status:          findingStatusOpen,
+		Summary:         "candidate summary",
+		FirstObservedAt: now,
+		LastObservedAt:  now,
+	}
+	candidate := &ports.FindingCandidateRecord{
+		ID:               "candidate-1",
+		TenantID:         "writer",
+		RuntimeID:        "writer-okta-audit",
+		RuleID:           "rule-a",
+		Fingerprint:      "fingerprint-1",
+		Status:           findingCandidateStatusCandidate,
+		Finding:          cloneFinding(finding),
+		Evidence:         []*cerebrov1.FindingEvidence{{Id: "evidence-1", FindingId: "finding-1"}},
+		LastRunID:        "candidate-run-1",
+		ObservationCount: 1,
+		FirstObservedAt:  now,
+		LastObservedAt:   now,
+	}
+	store := &stubFindingStore{
+		candidateState: stubFindingCandidateState{
+			candidates: map[string]*ports.FindingCandidateRecord{candidate.ID: cloneFindingCandidate(candidate)},
+		},
+		findings: map[string]*ports.FindingRecord{},
+	}
+	appendLog := &recordingAppendLog{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		}},
+		nil,
+		store,
+		store,
+		store,
+		store,
+		nil,
+	).WithFindingCandidateStore(store).WithAppendLog(appendLog)
+
+	result, err := service.RejectFindingCandidate(context.Background(), RejectCandidateRequest{
+		CandidateID: "candidate-1",
+		RejectedBy:  "analyst@example.com",
+		Rationale:   "Matched expected break-glass test account.",
+	})
+	if err != nil {
+		t.Fatalf("RejectFindingCandidate() error = %v", err)
+	}
+	if got := result.Candidate.Status; got != findingCandidateStatusRejected {
+		t.Fatalf("candidate status = %q, want rejected", got)
+	}
+	if got := result.Candidate.RejectedBy; got != "analyst@example.com" {
+		t.Fatalf("RejectedBy = %q, want analyst@example.com", got)
+	}
+	if result.DecisionID == "" {
+		t.Fatal("DecisionID is empty")
+	}
+	if got := store.upsertCount; got != 0 {
+		t.Fatalf("production UpsertFinding calls = %d, want 0", got)
+	}
+	if got := len(store.evidence); got != 0 {
+		t.Fatalf("production evidence rows = %d, want 0", got)
+	}
+	if got := len(appendLog.events); got != 1 {
+		t.Fatalf("append log events = %d, want 1", got)
+	}
+}
+
+func TestRejectFindingCandidateDoesNotMarkRejectedBeforeAudit(t *testing.T) {
+	now := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
+	finding := &ports.FindingRecord{
+		ID:              "finding-1",
+		Fingerprint:     "fingerprint-1",
+		TenantID:        "writer",
+		RuntimeID:       "writer-okta-audit",
+		RuleID:          "rule-a",
+		Title:           "Rule A",
+		Severity:        "LOW",
+		Status:          findingStatusOpen,
+		Summary:         "candidate summary",
+		FirstObservedAt: now,
+		LastObservedAt:  now,
+	}
+	candidate := &ports.FindingCandidateRecord{
+		ID:               "candidate-1",
+		TenantID:         "writer",
+		RuntimeID:        "writer-okta-audit",
+		RuleID:           "rule-a",
+		Fingerprint:      "fingerprint-1",
+		Status:           findingCandidateStatusCandidate,
+		Finding:          cloneFinding(finding),
+		LastRunID:        "candidate-run-1",
+		ObservationCount: 1,
+		FirstObservedAt:  now,
+		LastObservedAt:   now,
+	}
+	store := &stubFindingStore{
+		candidateState: stubFindingCandidateState{
+			candidates: map[string]*ports.FindingCandidateRecord{candidate.ID: cloneFindingCandidate(candidate)},
+		},
+	}
+	appendLog := &recordingAppendLog{err: errors.New("append failed")}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		}},
+		nil,
+		store,
+		store,
+		store,
+		store,
+		nil,
+	).WithFindingCandidateStore(store).WithAppendLog(appendLog)
+
+	_, err := service.RejectFindingCandidate(context.Background(), RejectCandidateRequest{
+		CandidateID: "candidate-1",
+		RejectedBy:  "analyst@example.com",
+		Rationale:   "Matched expected break-glass test account.",
+	})
+	if err == nil {
+		t.Fatal("RejectFindingCandidate() error = nil, want audit failure")
+	}
+	if got := store.candidateState.markRejectedCount; got != 0 {
+		t.Fatalf("MarkFindingCandidateRejected calls = %d, want 0", got)
+	}
+	if got := store.candidateState.candidates["candidate-1"].Status; got != findingCandidateStatusCandidate {
+		t.Fatalf("candidate status = %q, want candidate", got)
+	}
+}
+
+func TestRejectFindingCandidateRecoversConcurrentCompletedRejection(t *testing.T) {
+	now := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
+	finding := &ports.FindingRecord{
+		ID:              "finding-1",
+		Fingerprint:     "fingerprint-1",
+		TenantID:        "writer",
+		RuntimeID:       "writer-okta-audit",
+		RuleID:          "rule-a",
+		Status:          findingStatusOpen,
+		FirstObservedAt: now,
+		LastObservedAt:  now,
+	}
+	candidate := &ports.FindingCandidateRecord{
+		ID:               "candidate-1",
+		TenantID:         "writer",
+		RuntimeID:        "writer-okta-audit",
+		RuleID:           "rule-a",
+		Fingerprint:      "fingerprint-1",
+		Status:           findingCandidateStatusCandidate,
+		Finding:          cloneFinding(finding),
+		Evidence:         []*cerebrov1.FindingEvidence{{Id: "evidence-1", FindingId: "finding-1"}},
+		LastRunID:        "candidate-run-1",
+		ObservationCount: 1,
+		FirstObservedAt:  now,
+		LastObservedAt:   now,
+	}
+	request := RejectCandidateRequest{
+		CandidateID: "candidate-1",
+		RejectedBy:  "analyst@example.com",
+		Rationale:   "Confirmed false positive.",
+	}
+	decisionID := candidateRejectionDecisionID(candidate, request, now)
+	store := &stubFindingStore{
+		candidateState: stubFindingCandidateState{
+			candidates: map[string]*ports.FindingCandidateRecord{candidate.ID: cloneFindingCandidate(candidate)},
+		},
+		findings: map[string]*ports.FindingRecord{},
+	}
+	store.candidateState.beforeMarkReject = func() {
+		updated := cloneFindingCandidate(candidate)
+		updated.Status = findingCandidateStatusRejected
+		updated.DecisionID = decisionID
+		updated.RejectedBy = "analyst@example.com"
+		updated.RejectionRationale = "Confirmed false positive."
+		updated.RejectedAt = now
+		store.candidateState.candidates[updated.ID] = updated
+	}
+	service := NewWithRegistry(nil, nil, store, store, store, store, nil).
+		WithFindingCandidateStore(store).
+		WithAppendLog(&recordingAppendLog{})
+
+	result, err := service.RejectFindingCandidate(context.Background(), request)
+	if err != nil {
+		t.Fatalf("RejectFindingCandidate() error = %v", err)
+	}
+	if got := result.Candidate.Status; got != findingCandidateStatusRejected {
+		t.Fatalf("candidate status = %q, want rejected", got)
+	}
+	if got := result.DecisionID; got != decisionID {
+		t.Fatalf("decision id = %q, want recovered %q", got, decisionID)
+	}
+}
+
 func TestEvaluateSourceRuntimeRulesIncludesUnsupportedRulesWithOpenFindings(t *testing.T) {
 	registry, err := NewRegistry(&emittingRule{
 		spec:               &cerebrov1.RuleSpec{Id: "old-family-rule", Name: "Old Family Rule"},
@@ -1890,11 +3291,12 @@ func TestEvaluateSourceRuntimeRulesIncludesUnsupportedRulesWithOpenFindings(t *t
 			EventIDs:  []string{"old-event"},
 		},
 	}}
+	replayer := &stubReplayer{err: errors.New("unexpected replay")}
 	service := NewWithRegistry(
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
 			"writer-aws-public-endpoint": {Id: "writer-aws-public-endpoint", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "public_endpoint"}},
 		}},
-		&stubReplayer{},
+		replayer,
 		store,
 		store,
 		store,
@@ -1911,6 +3313,37 @@ func TestEvaluateSourceRuntimeRulesIncludesUnsupportedRulesWithOpenFindings(t *t
 	}
 	if got := store.findings["finding-old"].Status; got != findingStatusResolved {
 		t.Fatalf("stale finding status = %q, want %q", got, findingStatusResolved)
+	}
+	if replayer.calls != 0 {
+		t.Fatalf("Replay() calls = %d, want 0 for unsupported stale-only cleanup", replayer.calls)
+	}
+}
+
+func TestEvaluateSourceRuntimeRulesSkipsBuiltinRulesForExplicitUnmatchedFamily(t *testing.T) {
+	replayer := &stubReplayer{err: errors.New("unexpected replay")}
+	store := &stubFindingStore{}
+	service := New(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-grc-integration": {
+				Id:       "writer-grc-integration",
+				SourceId: "grc",
+				TenantId: "writer",
+				Config:   map[string]string{"family": "integration"},
+			},
+		}},
+		replayer,
+		store,
+		store,
+		store,
+		store,
+	)
+
+	_, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-grc-integration"})
+	if !errors.Is(err, ErrRuleUnavailable) {
+		t.Fatalf("EvaluateSourceRuntimeRules() error = %v, want %v", err, ErrRuleUnavailable)
+	}
+	if replayer.calls != 0 {
+		t.Fatalf("Replay() calls = %d, want 0 when no builtin rule can emit for explicit runtime family", replayer.calls)
 	}
 }
 
@@ -2203,7 +3636,7 @@ func TestEvaluateSourceRuntimeRulesPreservesEarlierFailureWhenCompletionCleanupR
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
 			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
 		}},
-		&stubReplayer{events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-1", "policy.rule.update", "SUCCESS")}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-1", "policy.rule.deactivate", "SUCCESS")}},
 		store,
 		store,
 		store,
@@ -2247,7 +3680,7 @@ func TestEvaluateSourceRuntimeRulesReturnsEvaluationAndRunFailureCauses(t *testi
 		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
 			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
 		}},
-		&stubReplayer{events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-1", "policy.rule.update", "SUCCESS")}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-1", "policy.rule.deactivate", "SUCCESS")}},
 		store,
 		store,
 		store,
@@ -2278,8 +3711,8 @@ func TestEvaluateSourceRuntimeRulesDeduplicatesEvidencePerRun(t *testing.T) {
 	}
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
 		},
 	}
 	store := &stubFindingStore{
@@ -2384,7 +3817,7 @@ func TestEvaluateSourceRuntimeRulesSelectsExplicitRules(t *testing.T) {
 		},
 		&stubReplayer{
 			events: []*cerebrov1.EventEnvelope{
-				newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+				newAuditEvent("okta-audit-2", "policy.rule.deactivate", "SUCCESS"),
 				newAuditEvent("okta-audit-3", "policy.rule.delete", "SUCCESS"),
 			},
 		},
@@ -2416,10 +3849,10 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 		githubBranchProtectionDisabledRuleID:      {},
 		githubRepositoryMadePublicRuleID:          {},
 		githubProtectedBranchPolicyOverrideRuleID: {},
+		githubCriticalResourceDeletedRuleID:       {},
+		githubSelfHostedRunnerChangeRuleID:        {},
 	}
 	activeRuleIDs := []string{
-		githubSecretScanningAlertCreatedRuleID,
-		githubSelfHostedRunnerChangeRuleID,
 		githubRepositoryCollaboratorAddedRuleID,
 		githubOrganizationOwnerAddedRuleID,
 		githubCodeSecurityControlsDisabledRuleID,
@@ -2428,7 +3861,6 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 		githubAppIntegrationInstalledRuleID,
 		githubPersonalAccessTokenCreatedRuleID,
 		githubRepositoryRulesetModifiedRuleID,
-		githubCriticalResourceDeletedRuleID,
 		githubWebhookModifiedRuleID,
 		githubPrivateRepositoryForkingEnabledRuleID,
 	}
@@ -2444,6 +3876,7 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 					Id:       "writer-github-audit",
 					SourceId: "github",
 					TenantId: "writer",
+					Config:   map[string]string{"family": "audit"},
 				},
 			},
 		},
@@ -2454,19 +3887,19 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 				newGitHubAuditSignalEvent("github-audit-branch-protection-disabled", map[string]string{"action": "protected_branch.destroy", "repo": "writer/cerebro", "resource_type": "protected_branch"}),
 				newGitHubAuditSignalEvent("github-audit-repo-made-public", map[string]string{"action": "repo.access", "repo": "writer/cerebro", "previous_visibility": "private", "visibility": "public", "resource_type": "repo"}),
 				newGitHubAuditSignalEvent("github-audit-secret-alert-created", map[string]string{"action": "secret_scanning_alert.create", "repo": "writer/cerebro", "number": "12", "resource_type": "secret_scanning_alert"}),
-				newGitHubAuditSignalEvent("github-audit-runner-registered", map[string]string{"action": "repo.register_self_hosted_runner", "repo": "writer/cerebro", "resource_type": "repo"}),
+				newGitHubAuditSignalEvent("github-audit-runner-registered", map[string]string{"action": "repo.register_self_hosted_runner", "repo": "writer/cerebro", "resource_type": "repo", "runner_ephemeral": "false", "runner_id": "777", "runner_registered": "true"}),
 				newGitHubAuditSignalEvent("github-audit-collaborator-added", map[string]string{"action": "repo.add_member", "repo": "writer/cerebro", "resource_type": "repo", "user": "octocat"}),
 				newGitHubAuditSignalEvent("github-audit-owner-added", map[string]string{"action": "org.add_member", "resource_id": "writer", "resource_type": "org", "permission": "admin", "user": "octocat"}),
-				newGitHubAuditSignalEvent("github-audit-code-security-disabled", map[string]string{"action": "dependabot_alerts.disable", "repo": "writer/cerebro", "resource_type": "dependabot_alerts"}),
-				newGitHubAuditSignalEvent("github-audit-org-auth-modified", map[string]string{"action": "org.disable_two_factor_requirement", "resource_id": "writer", "resource_type": "org"}),
-				newGitHubAuditSignalEvent("github-audit-ip-allow-list-disabled", map[string]string{"action": "ip_allow_list.disable", "resource_id": "writer", "resource_type": "ip_allow_list"}),
-				newGitHubAuditSignalEvent("github-audit-app-installed", map[string]string{"action": "integration_installation.create", "name": "ci-deployer", "resource_id": "writer", "resource_type": "integration_installation"}),
-				newGitHubAuditSignalEvent("github-audit-pat-created", map[string]string{"action": "personal_access_token.access_granted", "operation_type": "create", "resource_id": "octocat", "resource_type": "personal_access_token", "user": "octocat"}),
+				newGitHubAuditSignalEvent("github-audit-code-security-disabled", map[string]string{"action": "dependabot_alerts.disable", "dependabot_alerts_enabled": "false", "repo": "writer/cerebro", "resource_type": "dependabot_alerts"}),
+				newGitHubAuditSignalEvent("github-audit-org-auth-modified", map[string]string{"action": "org.disable_two_factor_requirement", "resource_id": "writer", "resource_type": "org", "two_factor_requirement_enabled": "false"}),
+				newGitHubAuditSignalEvent("github-audit-ip-allow-list-disabled", map[string]string{"action": "ip_allow_list.disable", "ip_allow_list_enabled": "false", "resource_id": "writer", "resource_type": "ip_allow_list"}),
+				newGitHubAuditSignalEvent("github-audit-app-installed", map[string]string{"action": "integration_installation.create", "github_app_id": "123456", "name": "ci-deployer", "resource_id": "writer", "resource_type": "integration_installation"}),
+				newGitHubAuditSignalEvent("github-audit-pat-created", map[string]string{"action": "personal_access_token.access_granted", "operation_type": "create", "resource_id": "octocat", "resource_type": "personal_access_token", "token_id": "555", "user": "octocat", "user_id": "12345"}),
 				newGitHubAuditSignalEvent("github-audit-branch-policy-override", map[string]string{"action": "protected_branch.policy_override", "branch": "main", "repo": "writer/cerebro", "resource_type": "protected_branch"}),
 				newGitHubAuditSignalEvent("github-audit-ruleset-modified", map[string]string{"action": "repository_ruleset.destroy", "repo": "writer/cerebro", "resource_type": "repository_ruleset", "ruleset_id": "42", "ruleset_name": "main protections"}),
 				newGitHubAuditSignalEvent("github-audit-repo-destroyed", map[string]string{"action": "repo.destroy", "repo": "writer/cerebro", "resource_type": "repo"}),
 				newGitHubAuditSignalEvent("github-audit-hook-created", map[string]string{"action": "hook.create", "hook_id": "99", "repo": "writer/cerebro", "resource_type": "hook"}),
-				newGitHubAuditSignalEvent("github-audit-private-forking-enabled", map[string]string{"action": "private_repository_forking.enable", "resource_id": "writer", "resource_type": "org"}),
+				newGitHubAuditSignalEvent("github-audit-private-forking-enabled", map[string]string{"action": "private_repository_forking.enable", "private_repository_forking_enabled": "true", "resource_id": "writer", "resource_type": "org"}),
 			},
 		},
 		&stubFindingStore{},
@@ -2832,11 +4265,14 @@ func TestResolveFindingBridgesDecisionAndOutcomeWhenGraphConfigured(t *testing.T
 	if outcomeCount != 1 {
 		t.Fatalf("outcome entity count = %d, want 1", outcomeCount)
 	}
-	if len(appendLog.events) != 3 {
-		t.Fatalf("len(appendLog.events) = %d, want 3", len(appendLog.events))
+	if len(appendLog.events) != 4 {
+		t.Fatalf("len(appendLog.events) = %d, want 4", len(appendLog.events))
 	}
 	if got := appendLog.events[0].GetKind(); got != workflowevents.EventKindFindingStatusChanged {
 		t.Fatalf("first append event kind = %q, want %q", got, workflowevents.EventKindFindingStatusChanged)
+	}
+	if got := appendLog.events[1].GetKind(); got != securityevents.FindingStatusChanged {
+		t.Fatalf("canonical status event kind = %q, want %q", got, securityevents.FindingStatusChanged)
 	}
 }
 
@@ -2975,7 +4411,9 @@ func TestBackfillFindingRiskProjectsUpdatedRiskRows(t *testing.T) {
 			openFinding.ID:   cloneFinding(openFinding),
 			closedFinding.ID: cloneFinding(closedFinding),
 		},
-		backfillRiskResults: []*ports.FindingRecord{openFinding, closedFinding},
+		backfillState: stubFindingBackfillState{
+			results: []*ports.FindingRecord{openFinding, closedFinding},
+		},
 	}
 	graphStore := &stubGraphStore{}
 	appendLog := &recordingAppendLog{}
@@ -2983,7 +4421,7 @@ func TestBackfillFindingRiskProjectsUpdatedRiskRows(t *testing.T) {
 	if err := service.BackfillFindingRisk(context.Background()); err != nil {
 		t.Fatalf("BackfillFindingRisk() error = %v", err)
 	}
-	if !store.backfillIncludeUnprojected {
+	if !store.backfillState.includeUnprojected {
 		t.Fatal("BackfillFindingRisk() did not request unprojected rows with graph configured")
 	}
 	graphFinding := graphStore.entities["urn:cerebro:tenant-a:finding:finding-1"]
@@ -2999,14 +4437,20 @@ func TestBackfillFindingRiskProjectsUpdatedRiskRows(t *testing.T) {
 	if closed := graphStore.entities["urn:cerebro:tenant-a:finding:finding-closed"]; closed == nil || closed.Attributes["risk_score"] != "83" {
 		t.Fatalf("closed projected finding = %#v, want risk_score 83", closed)
 	}
-	if got := len(appendLog.events); got != 2 {
-		t.Fatalf("len(appended events) = %d, want 2", got)
+	if got := len(appendLog.events); got != 4 {
+		t.Fatalf("len(appended events) = %d, want 4", got)
 	}
 	if eventTime := appendLog.events[0].GetOccurredAt().AsTime(); time.Since(eventTime) > time.Minute {
 		t.Fatalf("backfill event occurred_at = %s, want startup time", eventTime.Format(time.RFC3339Nano))
 	}
-	if got := appendLog.events[1].GetKind(); got != workflowevents.EventKindFindingStatusChanged {
+	if got := appendLog.events[1].GetKind(); got != securityevents.FindingRecorded {
+		t.Fatalf("canonical open finding event kind = %q, want %q", got, securityevents.FindingRecorded)
+	}
+	if got := appendLog.events[2].GetKind(); got != workflowevents.EventKindFindingStatusChanged {
 		t.Fatalf("closed finding event kind = %q, want status_changed", got)
+	}
+	if got := appendLog.events[3].GetKind(); got != securityevents.FindingStatusChanged {
+		t.Fatalf("canonical closed finding event kind = %q, want %q", got, securityevents.FindingStatusChanged)
 	}
 	if got := store.findings["finding-1"].Attributes[FindingRiskGraphProjectedModelVersionAttribute]; got != defaultFindingRiskModelVersion {
 		t.Fatalf("projection marker = %q, want %q", got, defaultFindingRiskModelVersion)
@@ -3037,7 +4481,9 @@ func TestBackfillFindingRiskProjectsCurrentRiskAfterConcurrentUpdate(t *testing.
 		findings: map[string]*ports.FindingRecord{
 			finding.ID: cloneFinding(finding),
 		},
-		backfillRiskResults: []*ports.FindingRecord{finding},
+		backfillState: stubFindingBackfillState{
+			results: []*ports.FindingRecord{finding},
+		},
 	}
 	store.findings[finding.ID].RiskScore = 95
 	graphStore := &stubGraphStore{}
@@ -3072,14 +4518,16 @@ func TestBackfillFindingRiskDoesNotMarkProjectedWithoutGraph(t *testing.T) {
 		},
 	}
 	store := &stubFindingStore{
-		findings:            map[string]*ports.FindingRecord{finding.ID: cloneFinding(finding)},
-		backfillRiskResults: []*ports.FindingRecord{finding},
+		findings: map[string]*ports.FindingRecord{finding.ID: cloneFinding(finding)},
+		backfillState: stubFindingBackfillState{
+			results: []*ports.FindingRecord{finding},
+		},
 	}
 	service := New(nil, nil, store, store, store, store)
 	if err := service.BackfillFindingRisk(context.Background()); err != nil {
 		t.Fatalf("BackfillFindingRisk() error = %v", err)
 	}
-	if store.backfillIncludeUnprojected {
+	if store.backfillState.includeUnprojected {
 		t.Fatal("BackfillFindingRisk() requested unprojected rows without graph configured")
 	}
 	if got := store.findings["finding-1"].Attributes[FindingRiskGraphProjectedModelVersionAttribute]; got != "" {
@@ -3161,10 +4609,10 @@ func TestSetFindingDueDateProjectsUpdatedRisk(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SetFindingDueDate(second) error = %v", err)
 	}
-	if got := len(appendLog.events); got != 2 {
-		t.Fatalf("len(appended events) = %d, want 2", got)
+	if got := len(appendLog.events); got != 4 {
+		t.Fatalf("len(appended events) = %d, want 4", got)
 	}
-	if secondEventID := appendLog.events[1].GetId(); secondEventID == firstEventID {
+	if secondEventID := appendLog.events[2].GetId(); secondEventID == firstEventID {
 		t.Fatalf("SetFindingDueDate() reused finding_record event id %q, want non-deduplicated refresh event", secondEventID)
 	}
 }
@@ -3198,6 +4646,61 @@ func TestFindingWorkflowSnapshotDoesNotMergeFreshReasonsWithStoredRisk(t *testin
 	}
 	if !slices.Contains(snapshot.RiskReasons, "stored_reason") {
 		t.Fatalf("findingWorkflowSnapshot().RiskReasons = %#v, want stored_reason", snapshot.RiskReasons)
+	}
+}
+
+func TestFindingWorkflowSnapshotBoundsEventIDsAndPreservesResourceURNs(t *testing.T) {
+	resourceURNs := make([]string, 0, maxFindingSnapshotEventIDs+10)
+	for i := 0; i < maxFindingSnapshotEventIDs+10; i++ {
+		resourceURNs = append(resourceURNs, "urn:cerebro:tenant-a:asset:"+strconv.Itoa(i))
+	}
+	primaryResourceURN := "urn:cerebro:tenant-a:asset:primary"
+	resourceURNs = append(resourceURNs, primaryResourceURN)
+	eventIDs := make([]string, 0, maxFindingSnapshotEventIDs+10)
+	for i := 0; i < maxFindingSnapshotEventIDs+10; i++ {
+		eventIDs = append(eventIDs, "event-"+strconv.Itoa(i))
+	}
+
+	snapshot := findingWorkflowSnapshot(&ports.FindingRecord{
+		ID:           "finding-1",
+		TenantID:     "tenant-a",
+		RuntimeID:    "runtime-audit",
+		RuleID:       "graph-rule",
+		Status:       "open",
+		Severity:     "HIGH",
+		ResourceURNs: resourceURNs,
+		EventIDs:     eventIDs,
+		Attributes: map[string]string{
+			"primary_resource_urn": primaryResourceURN,
+		},
+	}, "tenant-a", "runtime-audit")
+
+	if got := len(snapshot.ResourceURNs); got != len(resourceURNs) {
+		t.Fatalf("len(ResourceURNs) = %d, want all %d resources preserved for graph links", got, len(resourceURNs))
+	}
+	if got := len(snapshot.EventIDs); got != maxFindingSnapshotEventIDs {
+		t.Fatalf("len(EventIDs) = %d, want %d", got, maxFindingSnapshotEventIDs)
+	}
+	if snapshot.ResourceCount != len(resourceURNs) {
+		t.Fatalf("ResourceCount = %d, want full count %d", snapshot.ResourceCount, len(resourceURNs))
+	}
+	if snapshot.EventCount != len(eventIDs) {
+		t.Fatalf("EventCount = %d, want full count %d", snapshot.EventCount, len(eventIDs))
+	}
+	for _, resourceURN := range resourceURNs {
+		if !slices.Contains(snapshot.ResourceURNs, resourceURN) {
+			t.Fatalf("snapshot ResourceURNs missing %q", resourceURN)
+		}
+	}
+	event, err := workflowevents.NewFindingRecordedEvent(workflowevents.FindingRecorded{
+		Finding:    snapshot,
+		RecordedAt: time.Now().UTC().Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		t.Fatalf("NewFindingRecordedEvent() error = %v", err)
+	}
+	if got := len(event.GetPayload()); got > 128<<10 {
+		t.Fatalf("finding recorded payload = %d bytes, want below 128KiB", got)
 	}
 }
 
@@ -3278,6 +4781,135 @@ func TestUpsertFindingWithRiskPreservesGraphEvidenceDuringRecompute(t *testing.T
 	}
 }
 
+func TestUpsertFindingWithRiskMergesVulnViewMatchedLocationEvidence(t *testing.T) {
+	store := &stubFindingStore{}
+	service := New(nil, nil, store, store, store, store)
+	now := time.Now().UTC()
+	first := &ports.FindingRecord{
+		ID:           "vulnview-finding",
+		Fingerprint:  "vulnview-finding",
+		TenantID:     "tenant-a",
+		RuntimeID:    "runtime-vulnview",
+		RuleID:       vulnViewActionableExternalFindingRuleID,
+		Title:        "VulnView Actionable External Finding",
+		Severity:     "HIGH",
+		Status:       "open",
+		Summary:      "first finding",
+		ResourceURNs: []string{"urn:cerebro:tenant-a:external_asset:app.writer.com"},
+		EventIDs:     []string{"event-1"},
+		Attributes: map[string]string{
+			"matched_at": "https://app.writer.com/login",
+		},
+		FirstObservedAt: now,
+		LastObservedAt:  now,
+	}
+	if _, err := service.upsertFindingWithRisk(context.Background(), first, nil, now); err != nil {
+		t.Fatalf("upsertFindingWithRisk(first) error = %v", err)
+	}
+	second := cloneFinding(first)
+	second.EventIDs = []string{"event-2"}
+	second.Attributes["matched_at"] = "https://app.writer.com/admin"
+	second.LastObservedAt = now.Add(time.Minute)
+	stored, err := service.upsertFindingWithRisk(context.Background(), second, nil, now.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("upsertFindingWithRisk(second) error = %v", err)
+	}
+	if !containsTrimmed(stored.EventIDs, "event-1") || !containsTrimmed(stored.EventIDs, "event-2") {
+		t.Fatalf("EventIDs = %#v, want both event IDs", stored.EventIDs)
+	}
+	var locations []string
+	if err := json.Unmarshal([]byte(stored.Attributes["matched_locations_json"]), &locations); err != nil {
+		t.Fatalf("matched_locations_json = %q is invalid JSON array: %v", stored.Attributes["matched_locations_json"], err)
+	}
+	for _, location := range []string{"https://app.writer.com/login", "https://app.writer.com/admin"} {
+		if !slices.Contains(locations, location) {
+			t.Fatalf("matched_locations_json = %#v, missing %q", locations, location)
+		}
+	}
+}
+
+func TestMergeVulnViewActionableEvidenceUsesActiveGeneratedRow(t *testing.T) {
+	now := time.Now().UTC()
+	baseID := "vulnview-finding"
+	activeID := baseID + "#g2"
+	assetURN := "urn:cerebro:tenant-a:external_asset:app.writer.com"
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			baseID: {
+				ID:           baseID,
+				Fingerprint:  baseID,
+				TenantID:     "tenant-a",
+				RuntimeID:    "runtime-vulnview",
+				RuleID:       vulnViewActionableExternalFindingRuleID,
+				PolicyID:     "template-1",
+				Status:       findingStatusResolved,
+				ResourceURNs: []string{assetURN},
+				EventIDs:     []string{"event-stale"},
+				Attributes: map[string]string{
+					"matched_locations_json": `["https://app.writer.com/stale"]`,
+				},
+				FindingTombstone: ports.FindingTombstone{Tombstoned: true},
+				LastObservedAt:   now.Add(-2 * time.Hour),
+			},
+			activeID: {
+				ID:           activeID,
+				Fingerprint:  baseID,
+				TenantID:     "tenant-a",
+				RuntimeID:    "runtime-vulnview",
+				RuleID:       vulnViewActionableExternalFindingRuleID,
+				PolicyID:     "template-1",
+				Status:       findingStatusOpen,
+				ResourceURNs: []string{assetURN},
+				EventIDs:     []string{"event-live"},
+				Attributes: map[string]string{
+					"matched_locations_json": `["https://app.writer.com/live"]`,
+				},
+				LastObservedAt: now,
+			},
+		},
+	}
+	service := New(nil, nil, store, store, store, store)
+	incoming := &ports.FindingRecord{
+		ID:           baseID,
+		Fingerprint:  baseID,
+		TenantID:     "tenant-a",
+		RuntimeID:    "runtime-vulnview",
+		RuleID:       vulnViewActionableExternalFindingRuleID,
+		PolicyID:     "template-1",
+		Status:       findingStatusOpen,
+		ResourceURNs: []string{assetURN},
+		EventIDs:     []string{"event-new"},
+		Attributes: map[string]string{
+			"matched_at": "https://app.writer.com/new",
+		},
+		LastObservedAt: now.Add(time.Minute),
+	}
+	merged, err := service.mergeExistingFindingEvidence(context.Background(), incoming)
+	if err != nil {
+		t.Fatalf("mergeExistingFindingEvidence() error = %v", err)
+	}
+	if containsTrimmed(merged.EventIDs, "event-stale") {
+		t.Fatalf("EventIDs = %#v, want no tombstoned stale event id", merged.EventIDs)
+	}
+	for _, eventID := range []string{"event-live", "event-new"} {
+		if !containsTrimmed(merged.EventIDs, eventID) {
+			t.Fatalf("EventIDs = %#v, missing %q", merged.EventIDs, eventID)
+		}
+	}
+	var locations []string
+	if err := json.Unmarshal([]byte(merged.Attributes["matched_locations_json"]), &locations); err != nil {
+		t.Fatalf("matched_locations_json = %q is invalid JSON array: %v", merged.Attributes["matched_locations_json"], err)
+	}
+	if slices.Contains(locations, "https://app.writer.com/stale") {
+		t.Fatalf("matched_locations_json = %#v, want no tombstoned stale location", locations)
+	}
+	for _, location := range []string{"https://app.writer.com/live", "https://app.writer.com/new"} {
+		if !slices.Contains(locations, location) {
+			t.Fatalf("matched_locations_json = %#v, missing %q", locations, location)
+		}
+	}
+}
+
 func TestAddFindingNoteUpdatesPersistedWorkflow(t *testing.T) {
 	store := &stubFindingStore{
 		findings: map[string]*ports.FindingRecord{
@@ -3320,11 +4952,14 @@ func TestAddFindingNoteUpdatesPersistedWorkflow(t *testing.T) {
 	if _, ok := graphStore.links["urn:cerebro:writer:finding:finding-1|annotated_with|"+annotationURN]; !ok {
 		t.Fatal("finding annotation link missing")
 	}
-	if len(appendLog.events) != 1 {
-		t.Fatalf("len(appendLog.events) = %d, want 1", len(appendLog.events))
+	if len(appendLog.events) != 2 {
+		t.Fatalf("len(appendLog.events) = %d, want 2", len(appendLog.events))
 	}
 	if got := appendLog.events[0].GetKind(); got != workflowevents.EventKindFindingNoteAdded {
 		t.Fatalf("append event kind = %q, want %q", got, workflowevents.EventKindFindingNoteAdded)
+	}
+	if got := appendLog.events[1].GetKind(); got != securityevents.FindingNoteAdded {
+		t.Fatalf("canonical append event kind = %q, want %q", got, securityevents.FindingNoteAdded)
 	}
 }
 
@@ -3373,42 +5008,46 @@ func TestLinkFindingTicketUpdatesPersistedWorkflow(t *testing.T) {
 	if _, ok := graphStore.links["urn:cerebro:writer:finding:finding-1|tracked_by|"+ticketURN]; !ok {
 		t.Fatal("finding ticket link missing")
 	}
-	if len(appendLog.events) != 1 {
-		t.Fatalf("len(appendLog.events) = %d, want 1", len(appendLog.events))
+	if len(appendLog.events) != 2 {
+		t.Fatalf("len(appendLog.events) = %d, want 2", len(appendLog.events))
 	}
 	if got := appendLog.events[0].GetKind(); got != workflowevents.EventKindFindingTicketLinked {
 		t.Fatalf("append event kind = %q, want %q", got, workflowevents.EventKindFindingTicketLinked)
+	}
+	if got := appendLog.events[1].GetKind(); got != securityevents.FindingTicketLinked {
+		t.Fatalf("canonical append event kind = %q, want %q", got, securityevents.FindingTicketLinked)
 	}
 }
 
 func TestEvaluateSourceRuntimePreservesManualWorkflowFields(t *testing.T) {
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
-			newAuditEvent("okta-audit-1", "user.session.start", "SUCCESS"),
-			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newOktaPolicyRuleEvent("okta-policy-rule-active", "ACTIVE"),
+			newOktaPolicyRuleEvent("okta-policy-rule-inactive", "INACTIVE"),
 		},
 	}
 	store := &stubFindingStore{
 		claims: map[string]*ports.ClaimRecord{
 			"claim-1": {
 				ID:            "claim-1",
-				RuntimeID:     "writer-okta-audit",
-				SourceEventID: "okta-audit-2",
+				RuntimeID:     "writer-okta-policy-rule",
+				SourceEventID: "okta-policy-rule-inactive",
 			},
 		},
 	}
 	service := New(&stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {
-				Id:       "writer-okta-audit",
+			"writer-okta-policy-rule": {
+				Id:       "writer-okta-policy-rule",
 				SourceId: "okta",
 				TenantId: "writer",
+				Config:   map[string]string{"family": "policy_rule"},
 			},
 		},
 	}, replayer, store, store, store, store)
 
 	first, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID:  "writer-okta-audit",
+		RuntimeID:  "writer-okta-policy-rule",
 		RuleID:     oktaPolicyRuleLifecycleTamperingRuleID,
 		EventLimit: 25,
 	})
@@ -3434,7 +5073,7 @@ func TestEvaluateSourceRuntimePreservesManualWorkflowFields(t *testing.T) {
 	}
 
 	second, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
-		RuntimeID:  "writer-okta-audit",
+		RuntimeID:  "writer-okta-policy-rule",
 		RuleID:     oktaPolicyRuleLifecycleTamperingRuleID,
 		EventLimit: 25,
 	})
@@ -3713,6 +5352,32 @@ func newAuditEvent(id string, eventType string, outcome string) *cerebrov1.Event
 	}
 }
 
+func newOktaPolicyRuleEvent(id string, status string) *cerebrov1.EventEnvelope {
+	return &cerebrov1.EventEnvelope{
+		Id:         id,
+		TenantId:   "writer",
+		SourceId:   "okta",
+		Kind:       "okta.policy_rule",
+		OccurredAt: timestamppb.New(time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)),
+		SchemaRef:  "okta/policy_rule/v1",
+		Attributes: map[string]string{
+			"domain":                            "writer.okta.com",
+			"family":                            "policy_rule",
+			"policy_id":                         "pol-1",
+			"policy_rule_id":                    "rul-1",
+			"policy_type":                       "OKTA_SIGN_ON",
+			"name":                              "Require MFA",
+			"priority":                          "1",
+			"resource_id":                       "rul-1",
+			"resource_type":                     "PolicyRule",
+			"status":                            status,
+			"policy_rule_status":                status,
+			"system":                            "false",
+			ports.EventAttributeSourceRuntimeID: "writer-okta-policy-rule",
+		},
+	}
+}
+
 func newGitHubDependabotAlertEvent(id string, state string) *cerebrov1.EventEnvelope {
 	alertNumber := "7"
 	if strings.Contains(id, "8") {
@@ -3828,6 +5493,15 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 			StatusReason:    finding.StatusReason,
 			StatusUpdatedAt: finding.StatusUpdatedAt,
 		},
+		FindingTombstone: ports.FindingTombstone{
+			Tombstoned:          finding.Tombstoned,
+			TombstonedAt:        finding.TombstonedAt,
+			TombstonedBy:        finding.TombstonedBy,
+			TombstonedReason:    finding.TombstonedReason,
+			TombstonedRunID:     finding.TombstonedRunID,
+			PriorStatus:         finding.PriorStatus,
+			TombstoneGeneration: finding.TombstoneGeneration,
+		},
 		Attributes:      attributes,
 		FirstObservedAt: finding.FirstObservedAt,
 		LastObservedAt:  finding.LastObservedAt,
@@ -3903,6 +5577,19 @@ func cloneFindingEvidence(evidence *cerebrov1.FindingEvidence) *cerebrov1.Findin
 	return proto.Clone(evidence).(*cerebrov1.FindingEvidence)
 }
 
+func cloneFindingCandidate(candidate *ports.FindingCandidateRecord) *ports.FindingCandidateRecord {
+	if candidate == nil {
+		return nil
+	}
+	cloned := *candidate
+	cloned.Finding = cloneFinding(candidate.Finding)
+	cloned.Evidence = make([]*cerebrov1.FindingEvidence, 0, len(candidate.Evidence))
+	for _, evidence := range candidate.Evidence {
+		cloned.Evidence = append(cloned.Evidence, cloneFindingEvidence(evidence))
+	}
+	return &cloned
+}
+
 func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRecord) bool {
 	if finding == nil {
 		return false
@@ -3910,7 +5597,7 @@ func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRec
 	if request.TenantID != "" && strings.TrimSpace(finding.TenantID) != strings.TrimSpace(request.TenantID) {
 		return false
 	}
-	if strings.TrimSpace(finding.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+	if strings.TrimSpace(request.RuntimeID) != "" && strings.TrimSpace(finding.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
 		return false
 	}
 	if request.FindingID != "" && strings.TrimSpace(finding.ID) != strings.TrimSpace(request.FindingID) {
@@ -3945,6 +5632,24 @@ func containsTrimmed(values []string, expected string) bool {
 		}
 	}
 	return false
+}
+
+func findStatusChangedPayload(t *testing.T, events []*cerebrov1.EventEnvelope, findingID string) *workflowevents.FindingStatusChanged {
+	t.Helper()
+	for _, event := range events {
+		if event.GetKind() != workflowevents.EventKindFindingStatusChanged {
+			continue
+		}
+		payload, err := workflowevents.DecodeFindingStatusChanged(event)
+		if err != nil {
+			t.Fatalf("DecodeFindingStatusChanged(%q): %v", event.GetId(), err)
+		}
+		if strings.TrimSpace(payload.Finding.FindingID) == strings.TrimSpace(findingID) {
+			return payload
+		}
+	}
+	t.Fatalf("workflow status changed event for finding %q not found in %d events", findingID, len(events))
+	return nil
 }
 
 func claimMatches(request ports.ListClaimsRequest, claim *ports.ClaimRecord) bool {

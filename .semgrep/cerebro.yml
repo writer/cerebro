@@ -1,0 +1,45 @@
+rules:
+  - id: cerebro.source.raw-http-client
+    languages: [go]
+    severity: ERROR
+    message: Source connectors must use internal/sourcehttp rather than local HTTP clients.
+    metadata:
+      confidence: high
+      category: security
+    paths:
+      include:
+        - sources/**/*.go
+      exclude:
+        - "**/*_test.go"
+    pattern-either:
+      - pattern: http.DefaultClient
+      - pattern: '&http.Client{...}'
+      - pattern: http.Client{...}
+
+  - id: cerebro.source.direct-readall
+    languages: [go]
+    severity: ERROR
+    message: Source connectors should not read response bodies directly; use internal/sourcehttp bounded helpers.
+    metadata:
+      confidence: high
+      category: security
+    paths:
+      include:
+        - sources/**/*.go
+      exclude:
+        - "**/*_test.go"
+    pattern-either:
+      - pattern: io.ReadAll($RESP.Body)
+      - pattern: io.ReadAll($RESP.Body())
+
+  - id: cerebro.github-actions.unpinned-action
+    languages: [yaml]
+    severity: WARNING
+    message: GitHub Actions should be pinned to immutable commit SHAs unless the workflow documents an exception.
+    metadata:
+      confidence: high
+      category: supply-chain
+    paths:
+      include:
+        - .github/workflows/*.yml
+    pattern-regex: 'uses:\s+[^@\s]+@(main|master|v[0-9]+(?:\.[0-9]+){0,2})\s*$'

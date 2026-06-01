@@ -27,6 +27,8 @@ const (
 	relationCanPerform         = "can_perform"
 	relationHasIdentifier      = "has_identifier"
 	relationAssignedTo         = "assigned_to"
+	relationAssociatedWith     = "associated_with"
+	relationAttachedTo         = "attached_to"
 	relationCanAssume          = "can_assume"
 	relationCanAdmin           = "can_admin"
 	relationCanImpersonate     = "can_impersonate"
@@ -42,6 +44,7 @@ const (
 	relationRepresentsIdentity = "represents_identity"
 	relationResolvesTo         = "resolves_to"
 	relationRunsAs             = "runs_as"
+	relationSameActor          = "same_actor"
 	relationSupports           = "supports"
 	relationTaggedAs           = "tagged_as"
 	relationTargeted           = "targeted"
@@ -163,6 +166,7 @@ func (s *Service) ProjectRecords(event *cerebrov1.EventEnvelope) ([]*ports.Proje
 	if err != nil {
 		return nil, nil, err
 	}
+	normalizeProjectedEntityTypes(entities)
 	stampProjectionRuntime(event, entities, links)
 	return entities, links, nil
 }
@@ -473,6 +477,92 @@ func githubPullRequestProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 	return projectedEntities, projectedLinks, nil
 }
 
+func githubCodeRepositoryProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	repository := strings.TrimSpace(firstNonEmpty(attributes["repository"], attributes["full_name"], attributes["resource_name"]))
+	owner := strings.TrimSpace(firstNonEmpty(attributes["owner_login"], attributes["owner"]))
+	repoID := strings.TrimSpace(firstNonEmpty(attributes["repo_id"], attributes["resource_id"], repository))
+	if repoID == "" {
+		return nil, nil, nil
+	}
+
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+
+	orgURN := projectionURN(tenantID, "github_org", owner)
+	if owner != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        orgURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "github.org",
+			Label:      owner,
+			Attributes: map[string]string{"org": owner, "owner_login": owner},
+		})
+	}
+
+	codeRepoURN := projectionURN(tenantID, "github_code_repository", repoID)
+	if codeRepoURN != "" {
+		codeRepoAttrs := map[string]string{
+			"archived":       strings.TrimSpace(attributes["archived"]),
+			"default_branch": strings.TrimSpace(attributes["default_branch"]),
+			"fork":           strings.TrimSpace(attributes["fork"]),
+			"html_url":       strings.TrimSpace(attributes["html_url"]),
+			"name":           strings.TrimSpace(attributes["name"]),
+			"owner_login":    owner,
+			"private":        strings.TrimSpace(attributes["private"]),
+			"repo_id":        strings.TrimSpace(attributes["repo_id"]),
+			"repository":     repository,
+			"resource_id":    repoID,
+			"resource_type":  "code_repository",
+			"visibility":     strings.TrimSpace(attributes["visibility"]),
+		}
+		for _, key := range []string{"secret_scanning", "secret_scanning_push_protection", "dependabot_security_updates"} {
+			if v := strings.TrimSpace(attributes[key]); v != "" {
+				codeRepoAttrs[key] = v
+			}
+		}
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        codeRepoURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "github.code.repository",
+			Label:      firstNonEmpty(repository, repoID),
+			Attributes: codeRepoAttrs,
+		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), codeRepoURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "owner_login": owner}))
+		}
+	}
+
+	legacyRepoURN := projectionURN(tenantID, "github_repo", repository)
+	if repository != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        legacyRepoURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "github.repo",
+			Label:      repository,
+			Attributes: map[string]string{"owner_login": owner, "repository": repository},
+		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), legacyRepoURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "owner_login": owner}))
+		}
+		if codeRepoURN != "" {
+			attrs := map[string]string{"event_id": event.GetId(), "match_type": "github_repository_full_name"}
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), legacyRepoURN, codeRepoURN, relationRepresents, attrs))
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), codeRepoURN, legacyRepoURN, relationRepresents, attrs))
+		}
+	}
+
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
 func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
@@ -548,7 +638,8 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 	}
 
 	repoURN := projectionURN(tenantID, "github_repo", firstNonEmpty(repo, resourceID))
-	if repo != "" || (resourceID != "" && strings.Contains(resourceID, "/")) {
+	repoScopePresent := repo != "" || (resourceID != "" && strings.Contains(resourceID, "/"))
+	if repoScopePresent {
 		label := firstNonEmpty(repo, resourceID)
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        repoURN,
@@ -564,6 +655,11 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 	}
 
 	resourceURN := githubResourceURN(tenantID, resourceType, resourceID, repoURN)
+	programmaticCredential := githubAuditProgrammaticCredentialResource(resourceType)
+	programmaticCredentialURN := ""
+	if programmaticCredential {
+		programmaticCredentialURN = githubCredentialURN(tenantID, githubProgrammaticCredentialID(attributes))
+	}
 	if resourceURN != "" {
 		label := firstNonEmpty(resourceID, resourceType)
 		entityType := "github.resource"
@@ -571,22 +667,74 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 			entityType = "github.repo"
 			label = firstNonEmpty(repo, resourceID)
 		}
+		resourceAttrs := map[string]string{
+			"resource_id":   resourceID,
+			"resource_type": resourceType,
+		}
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        resourceURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
 			EntityType: entityType,
 			Label:      label,
-			Attributes: map[string]string{
-				"resource_id":   resourceID,
-				"resource_type": resourceType,
-			},
+			Attributes: resourceAttrs,
 		})
 		if orgURN != "" && repoURN == "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
 		if repoURN != "" && resourceURN != repoURN {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, repoURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+	if programmaticCredentialURN != "" {
+		credentialAttrs := map[string]string{
+			"credential_type":          resourceType,
+			"programmatic_access_type": programmaticAccessType,
+			"resource_id":              resourceID,
+			"resource_type":            resourceType,
+			"status":                   githubProgrammaticCredentialStatus(attributes),
+		}
+		addProjectedAttribute(credentialAttrs, "actor", actor)
+		addProjectedAttribute(credentialAttrs, "github_app_id", strings.TrimSpace(attributes["github_app_id"]))
+		addProjectedAttribute(credentialAttrs, "org", org)
+		addProjectedAttribute(credentialAttrs, "org_id", orgID)
+		addProjectedAttribute(credentialAttrs, "repository", repo)
+		addProjectedAttribute(credentialAttrs, "scope", strings.TrimSpace(attributes["scope"]))
+		addProjectedAttribute(credentialAttrs, "token_id", tokenID)
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        programmaticCredentialURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "github.credential",
+			Label:      firstNonEmpty(attributes["name"], attributes["github_app_id"], tokenID, resourceID, resourceType),
+			Attributes: credentialAttrs,
+		})
+		if resourceURN != "" && resourceURN != programmaticCredentialURN {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), programmaticCredentialURN, resourceURN, relationActedOn, map[string]string{
+				"action":                   strings.TrimSpace(attributes["action"]),
+				"event_id":                 event.GetId(),
+				"programmatic_access_type": programmaticAccessType,
+			}))
+		}
+		if repoScopePresent && repoURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), programmaticCredentialURN, repoURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		} else if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), programmaticCredentialURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+	if runnerURN, runnerAttrs := githubSelfHostedRunnerProjection(tenantID, attributes); runnerURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        runnerURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "github.runner",
+			Label:      firstNonEmpty(runnerAttrs["runner_name"], runnerAttrs["runner_id"]),
+			Attributes: runnerAttrs,
+		})
+		if repoScopePresent && repoURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), runnerURN, repoURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		} else if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), runnerURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
 	}
 
@@ -643,9 +791,41 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 			}
 		}
 	} else if actorIsAutomation {
-		// Automation actors are GitHub Apps/agents, not human identities. Keep the
-		// audit event in the append log but do not project them into the identity
-		// graph or repeatedly rewrite hot bot->repo acted_on edges.
+		credentialID := githubAutomationCredentialID(attributes)
+		if credentialID != "" {
+			credentialURN := githubCredentialURN(tenantID, credentialID)
+			credentialAttrs := map[string]string{
+				"actor":                    actor,
+				"actor_is_agent":           actorIsAgent,
+				"actor_is_bot":             actorIsBot,
+				"actor_type":               actorType,
+				"credential_type":          "automation_actor",
+				"programmatic_access_type": programmaticAccessType,
+			}
+			addProjectedAttribute(credentialAttrs, "github_app_id", strings.TrimSpace(attributes["github_app_id"]))
+			addProjectedAttribute(credentialAttrs, "org", org)
+			addProjectedAttribute(credentialAttrs, "org_id", orgID)
+			addProjectedAttribute(credentialAttrs, "repository", repo)
+			addProjectedAttribute(credentialAttrs, "token_id", tokenID)
+			addEntity(entities, &ports.ProjectedEntity{
+				URN:        credentialURN,
+				TenantID:   tenantID,
+				SourceID:   event.GetSourceId(),
+				EntityType: "github.credential",
+				Label:      firstNonEmpty(strings.TrimSpace(attributes["github_app_name"]), strings.TrimSpace(attributes["github_app_id"]), actor, tokenID),
+				Attributes: credentialAttrs,
+			})
+			if resourceURN != "" && resourceURN != credentialURN {
+				automationActedAttrs := cloneStringMap(actedAttrs)
+				automationActedAttrs["match_type"] = "automation_actor"
+				addLink(links, projectedLink(tenantID, event.GetSourceId(), credentialURN, resourceURN, relationActedOn, automationActedAttrs))
+			}
+			if repoScopePresent && repoURN != "" {
+				addLink(links, projectedLink(tenantID, event.GetSourceId(), credentialURN, repoURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+			} else if orgURN != "" {
+				addLink(links, projectedLink(tenantID, event.GetSourceId(), credentialURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+			}
+		}
 	} else {
 		actorURN := githubUserURN(tenantID, actor)
 		if actorURN != "" {
@@ -796,6 +976,157 @@ func githubCredentialURN(tenantID string, credentialID string) string {
 	return projectionURN(tenantID, "github_credential", credentialID)
 }
 
+func githubAuditProgrammaticCredentialResource(resourceType string) bool {
+	switch strings.ToLower(strings.TrimSpace(resourceType)) {
+	case "personal_access_token",
+		"org_credential_authorization",
+		"integration_installation",
+		"integration_installation_request",
+		"oauth_application",
+		"integration":
+		return true
+	default:
+		return false
+	}
+}
+
+func githubProgrammaticCredentialID(attributes map[string]string) string {
+	resourceType := strings.TrimSpace(attributes["resource_type"])
+	prefix := firstNonEmpty(resourceType, "programmatic_credential")
+	switch strings.ToLower(resourceType) {
+	case "personal_access_token", "org_credential_authorization":
+		if tokenID := strings.TrimSpace(attributes["token_id"]); tokenID != "" {
+			return prefix + ":" + tokenID
+		}
+	case "integration_installation", "integration_installation_request", "integration":
+		if appID := strings.TrimSpace(attributes["github_app_id"]); appID != "" {
+			return prefix + ":" + appID
+		}
+	}
+	scope := firstNonEmpty(attributes["repo"], attributes["org"], attributes["scope"])
+	return strings.Join(nonEmptyStrings(prefix, attributes["resource_id"], scope, attributes["actor"]), ":")
+}
+
+func githubAutomationCredentialID(attributes map[string]string) string {
+	if appID := strings.TrimSpace(attributes["github_app_id"]); appID != "" {
+		return "automation_app:" + appID
+	}
+	if tokenID := strings.TrimSpace(attributes["token_id"]); tokenID != "" {
+		return "automation_token:" + tokenID
+	}
+	actor := strings.TrimSpace(attributes["actor"])
+	scope := strings.TrimSpace(firstNonEmpty(attributes["repo"], attributes["resource_id"], attributes["org"], attributes["scope"]))
+	if actor == "" && scope == "" {
+		return ""
+	}
+	return strings.Join(nonEmptyStrings("automation_actor", actor, scope), ":")
+}
+
+func githubProgrammaticCredentialStatus(attributes map[string]string) string {
+	normalized := strings.ToLower(strings.TrimSpace(attributes["action"]))
+	operationType := strings.ToLower(strings.TrimSpace(attributes["operation_type"]))
+	if containsAny(operationType, "remove", "removed", "revoke", "revoked", "expire", "expired", "delete", "deleted") {
+		return "inactive"
+	}
+	if containsAny(normalized, "revoke", "revoked", "deauthorize", "delete", "remove", "destroy", "suspend") {
+		return "inactive"
+	}
+	if containsAny(normalized, "create", "grant", "authorize", "install", "request", "access_granted", "approve") {
+		return "active"
+	}
+	return "unknown"
+}
+
+func githubSelfHostedRunnerProjection(tenantID string, attributes map[string]string) (string, map[string]string) {
+	runnerID := strings.TrimSpace(attributes["runner_id"])
+	if runnerID == "" {
+		return "", nil
+	}
+	scope := strings.TrimSpace(firstNonEmpty(attributes["runner_scope"], attributes["scope"], attributes["repo"], attributes["org"]))
+	if scope == "" {
+		return "", nil
+	}
+	scopeType, scopeID := githubRunnerScope(scope)
+	if scopeID == "" {
+		return "", nil
+	}
+	attrs := map[string]string{
+		"action":            strings.TrimSpace(attributes["action"]),
+		"runner_id":         runnerID,
+		"runner_name":       strings.TrimSpace(attributes["runner_name"]),
+		"runner_scope":      scopeID,
+		"runner_scope_type": scopeType,
+		"runner_status":     githubSelfHostedRunnerStatus(attributes),
+	}
+	addProjectedAttribute(attrs, "host_trusted", firstNonEmpty(attributes["runner_host_trusted"], attributes["host_trusted"], attributes["trusted_host"]))
+	addProjectedAttribute(attrs, "runner_ephemeral", firstNonEmpty(attributes["runner_ephemeral"], attributes["ephemeral"], attributes["is_ephemeral"]))
+	addProjectedAttribute(attrs, "runner_group_name", attributes["runner_group_name"])
+	addProjectedAttribute(attrs, "runner_registered", firstNonEmpty(attributes["runner_registered"], attributes["registered"], attributes["is_registered"]))
+	addProjectedAttribute(attrs, "runner_state", attributes["runner_state"])
+	addProjectedAttribute(attrs, "runner_untrusted", firstNonEmpty(attributes["runner_untrusted"], attributes["host_untrusted"], attributes["untrusted_host"]))
+	return projectionURN(tenantID, "github_runner", scopeID, runnerID), attrs
+}
+
+func githubRunnerScope(scope string) (string, string) {
+	normalized := strings.TrimSpace(scope)
+	if normalized == "" {
+		return "", ""
+	}
+	lower := strings.ToLower(normalized)
+	switch {
+	case strings.HasPrefix(lower, "repo:"), strings.Contains(normalized, "/"):
+		return "repo", normalizeGitHubRunnerScopeID(normalized, "repo")
+	case strings.HasPrefix(lower, "enterprise:"):
+		return "enterprise", normalizeGitHubRunnerScopeID(normalized, "enterprise")
+	case strings.HasPrefix(lower, "org:"):
+		return "org", normalizeGitHubRunnerScopeID(normalized, "org")
+	default:
+		return "org", "org:" + normalized
+	}
+}
+
+func normalizeGitHubRunnerScopeID(scope string, kind string) string {
+	normalized := strings.TrimSpace(scope)
+	prefix := kind + ":"
+	if strings.HasPrefix(strings.ToLower(normalized), prefix) {
+		return normalized
+	}
+	return prefix + normalized
+}
+
+func githubSelfHostedRunnerStatus(attributes map[string]string) string {
+	action := strings.ToLower(strings.TrimSpace(attributes["action"]))
+	state := strings.ToLower(strings.TrimSpace(firstNonEmpty(attributes["runner_state"], attributes["state"], attributes["status"])))
+	registered := strings.ToLower(strings.TrimSpace(firstNonEmpty(attributes["runner_registered"], attributes["registered"], attributes["is_registered"])))
+	if registered == "false" || registered == "0" || registered == "no" {
+		return "inactive"
+	}
+	if containsAny(state, "removed", "deleted", "deregistered", "unregistered") ||
+		containsAny(action, "remove_self_hosted_runner", "deregister_self_hosted_runner", "runner_removed") {
+		return "inactive"
+	}
+	return "active"
+}
+
+func containsAny(value string, needles ...string) bool {
+	for _, needle := range needles {
+		if strings.Contains(value, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func nonEmptyStrings(values ...string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
 func githubDependabotAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
@@ -807,6 +1138,7 @@ func githubDependabotAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 	alertNumber := strings.TrimSpace(attributes["alert_number"])
 	packageName := strings.TrimSpace(attributes["package"])
 	ecosystem := strings.TrimSpace(attributes["ecosystem"])
+	manifestPath := strings.TrimSpace(attributes["manifest_path"])
 	advisoryID := firstNonEmpty(attributes["advisory_ghsa_id"], attributes["advisory_cve_id"])
 	vulnerabilityID := firstNonEmpty(canonicalVulnerabilityIdentifier(attributes), advisoryID)
 
@@ -920,6 +1252,331 @@ func githubDependabotAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 	if packageURN != "" && canonicalPackageURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), packageURN, canonicalPackageURN, relationRepresents, packageIdentityAttributes(event, attributes, ecosystem)))
 	}
+	addGitHubDependabotDependencyContext(entities, links, tenantID, event, repoURN, alertURN, packageURN, canonicalPackageURN, repository, manifestPath, ecosystem, packageName)
+
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
+func addGitHubDependabotDependencyContext(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, repoURN string, alertURN string, packageURN string, canonicalPackageURN string, repository string, manifestPath string, ecosystem string, packageName string) {
+	repository = strings.TrimSpace(repository)
+	manifestPath = strings.TrimSpace(manifestPath)
+	packageName = strings.TrimSpace(packageName)
+	if repository == "" || manifestPath == "" || packageName == "" {
+		return
+	}
+	manifestURN := projectionURN(tenantID, "github_dependency_manifest", repository, manifestPath)
+	dependencyURN := projectionURN(tenantID, "github_dependency", repository, manifestPath, ecosystem, packageName)
+	if manifestURN == "" || dependencyURN == "" {
+		return
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        manifestURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: "github.dependency_manifest",
+		Label:      manifestPath,
+		Attributes: map[string]string{
+			"ecosystem":     strings.TrimSpace(ecosystem),
+			"manifest_path": manifestPath,
+			"repository":    repository,
+		},
+	})
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        dependencyURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: "github.dependency",
+		Label:      packageName,
+		Attributes: map[string]string{
+			"ecosystem":     strings.TrimSpace(ecosystem),
+			"manifest_path": manifestPath,
+			"package":       packageName,
+			"repository":    repository,
+		},
+	})
+	if repoURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), manifestURN, repoURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), repoURN, dependencyURN, relationContains, map[string]string{
+			"ecosystem":     strings.TrimSpace(ecosystem),
+			"event_id":      event.GetId(),
+			"manifest_path": manifestPath,
+			"package":       packageName,
+		}))
+	}
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), dependencyURN, manifestURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), manifestURN, dependencyURN, relationContains, map[string]string{"event_id": event.GetId()}))
+	if packageURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), dependencyURN, packageURN, relationRepresents, map[string]string{
+			"ecosystem":     strings.TrimSpace(ecosystem),
+			"event_id":      event.GetId(),
+			"manifest_path": manifestPath,
+			"package":       packageName,
+		}))
+		if repoURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), repoURN, packageURN, relationContains, map[string]string{
+				"ecosystem":     strings.TrimSpace(ecosystem),
+				"event_id":      event.GetId(),
+				"manifest_path": manifestPath,
+				"package":       packageName,
+			}))
+		}
+	}
+	if canonicalPackageURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), dependencyURN, canonicalPackageURN, relationRepresents, packageIdentityAttributes(event, event.GetAttributes(), ecosystem)))
+		if repoURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), repoURN, canonicalPackageURN, relationContains, map[string]string{
+				"ecosystem":     strings.TrimSpace(ecosystem),
+				"event_id":      event.GetId(),
+				"manifest_path": manifestPath,
+				"package":       packageName,
+			}))
+		}
+		if alertURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), alertURN, canonicalPackageURN, relationAffects, map[string]string{
+				"ecosystem":     strings.TrimSpace(ecosystem),
+				"event_id":      event.GetId(),
+				"manifest_path": manifestPath,
+				"package":       packageName,
+			}))
+		}
+	}
+	if alertURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), alertURN, dependencyURN, relationAffects, map[string]string{"event_id": event.GetId()}))
+	}
+}
+
+func githubSecretScanningAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	owner := strings.TrimSpace(attributes["owner"])
+	repository := strings.TrimSpace(attributes["repository"])
+	alertNumber := strings.TrimSpace(attributes["alert_number"])
+
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+
+	orgURN := projectionURN(tenantID, "github_org", owner)
+	if owner != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        orgURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "github.org",
+			Label:      owner,
+			Attributes: map[string]string{"org": owner},
+		})
+	}
+
+	repoURN := projectionURN(tenantID, "github_repo", repository)
+	if repository != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        repoURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "github.repo",
+			Label:      repository,
+			Attributes: map[string]string{"repository": repository},
+		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), repoURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+
+	alertLabel := repository + "#" + alertNumber
+	if repository == "" {
+		alertLabel = owner + "#" + alertNumber
+	}
+	alertURN := projectionURN(tenantID, "github_secret_scanning_alert", owner, alertNumber)
+	if alertNumber != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        alertURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "github.secret_scanning_alert",
+			Label:      alertLabel,
+			Attributes: map[string]string{
+				"alert_number":             alertNumber,
+				"html_url":                 strings.TrimSpace(attributes["html_url"]),
+				"push_protection_bypassed": strings.TrimSpace(attributes["push_protection_bypassed"]),
+				"repository":               repository,
+				"resolution":               strings.TrimSpace(attributes["resolution"]),
+				"secret_type":              strings.TrimSpace(attributes["secret_type"]),
+				"secret_type_display_name": strings.TrimSpace(attributes["secret_type_display_name"]),
+				"state":                    strings.TrimSpace(attributes["state"]),
+			},
+		})
+		if repoURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), alertURN, repoURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
+func githubOrgMemberProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	owner := strings.TrimSpace(attributes["owner"])
+	login := strings.TrimSpace(attributes["login"])
+	role := strings.TrimSpace(attributes["role"])
+	userID := strings.TrimSpace(attributes["user_id"])
+
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+
+	orgURN := projectionURN(tenantID, "github_org", owner)
+	if owner != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN: orgURN, TenantID: tenantID, SourceID: event.GetSourceId(),
+			EntityType: "github.org", Label: owner,
+			Attributes: map[string]string{"org": owner},
+		})
+	}
+
+	memberURN := projectionURN(tenantID, "github_user", login)
+	if login != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN: memberURN, TenantID: tenantID, SourceID: event.GetSourceId(),
+			EntityType: "github.user", Label: login,
+			Attributes: map[string]string{"login": login, "user_id": userID, "role": role},
+		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), memberURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "role": role}))
+		}
+	}
+
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
+func githubOrgInstallationProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	owner := strings.TrimSpace(attributes["owner"])
+	installID := strings.TrimSpace(attributes["installation_id"])
+	appSlug := strings.TrimSpace(attributes["app_slug"])
+
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+
+	orgURN := projectionURN(tenantID, "github_org", owner)
+	if owner != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN: orgURN, TenantID: tenantID, SourceID: event.GetSourceId(),
+			EntityType: "github.org", Label: owner,
+			Attributes: map[string]string{"org": owner},
+		})
+	}
+
+	installURN := projectionURN(tenantID, "github_installation", installID)
+	if installID != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN: installURN, TenantID: tenantID, SourceID: event.GetSourceId(),
+			EntityType: "github.org_installation", Label: firstNonEmpty(appSlug, installID),
+			Attributes: map[string]string{
+				"app_slug":             appSlug,
+				"installation_id":      installID,
+				"repository_selection": strings.TrimSpace(attributes["repository_selection"]),
+				"target_type":          strings.TrimSpace(attributes["target_type"]),
+			},
+		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), installURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
+func oktaAuthenticatorProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	domain := strings.TrimSpace(attributes["domain"])
+	authID := strings.TrimSpace(attributes["authenticator_id"])
+
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+
+	orgURN := projectionURN(tenantID, "okta_org", domain)
+	if domain != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN: orgURN, TenantID: tenantID, SourceID: event.GetSourceId(),
+			EntityType: "okta.org", Label: domain,
+			Attributes: map[string]string{"domain": domain},
+		})
+	}
+
+	authURN := projectionURN(tenantID, "okta_authenticator", authID)
+	if authID != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN: authURN, TenantID: tenantID, SourceID: event.GetSourceId(),
+			EntityType: "okta.authenticator", Label: firstNonEmpty(attributes["name"], authID),
+			Attributes: map[string]string{
+				"authenticator_id": authID,
+				"key":              strings.TrimSpace(attributes["key"]),
+				"name":             strings.TrimSpace(attributes["name"]),
+				"status":           strings.TrimSpace(attributes["status"]),
+				"type":             strings.TrimSpace(attributes["type"]),
+			},
+		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), authURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
+func oktaThreatInsightProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	domain := strings.TrimSpace(attributes["domain"])
+
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+
+	orgURN := projectionURN(tenantID, "okta_org", domain)
+	if domain != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN: orgURN, TenantID: tenantID, SourceID: event.GetSourceId(),
+			EntityType: "okta.org", Label: domain,
+			Attributes: map[string]string{"domain": domain},
+		})
+	}
+
+	tiURN := projectionURN(tenantID, "okta_threat_insight", domain)
+	if domain != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN: tiURN, TenantID: tenantID, SourceID: event.GetSourceId(),
+			EntityType: "okta.threat_insight", Label: "ThreatInsight",
+			Attributes: map[string]string{
+				"action":             strings.TrimSpace(attributes["action"]),
+				"exclude_zone_count": strings.TrimSpace(attributes["exclude_zone_count"]),
+			},
+		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), tiURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
@@ -953,17 +1610,23 @@ func oktaUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 
 	userURN := oktaUserURN(tenantID, userID)
 	if userURN != "" {
+		userAttrs := map[string]string{
+			"email":  email,
+			"login":  login,
+			"status": strings.TrimSpace(attributes["status"]),
+		}
+		for _, key := range []string{"mfa_enrolled", "mfa_factor_count", "mfa_factor_types", "mfa_phishing_resistant"} {
+			if v := strings.TrimSpace(attributes[key]); v != "" {
+				userAttrs[key] = v
+			}
+		}
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        userURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
 			EntityType: "okta.user",
 			Label:      firstNonEmpty(email, login, userID),
-			Attributes: map[string]string{
-				"email":  email,
-				"login":  login,
-				"status": strings.TrimSpace(attributes["status"]),
-			},
+			Attributes: userAttrs,
 		})
 		if orgURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), userURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
@@ -1298,7 +1961,37 @@ func addIdentifierLink(entities map[string]*ports.ProjectedEntity, links map[str
 	addLink(links, projectedLink(tenantID, sourceID, fromURN, identifierURN, relationHasIdentifier, evidenceAttributes))
 	if canonicalIdentityURN != "" {
 		addLink(links, projectedLink(tenantID, sourceID, canonicalIdentityURN, identifierURN, relationHasIdentifier, evidenceAttributes))
+		// Reverse pointer from identifier.* to identity.*. The canonical identity is the
+		// stable anchor; the identifier nodes are evidence pointing back to it, so they
+		// need a represents_identity edge to keep cross-source identity traversal
+		// symmetric (otherwise queries that start at identifier.email cannot reach the
+		// identity without going through the original actor).
+		addLink(links, projectedLink(tenantID, sourceID, identifierURN, canonicalIdentityURN, relationRepresentsIdentity, evidenceAttributes))
 	}
+}
+
+func addSameActorEmailLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, eventID string, fromURN string, email string, occurredAt *timestamppb.Timestamp) {
+	normalizedEmail := normalizeIdentifier(extractEmailIdentifier(email))
+	if normalizedEmail == "" || strings.TrimSpace(fromURN) == "" {
+		return
+	}
+	identityURN := projectionURN(tenantID, "identity", "email", normalizedEmail)
+	if identityURN == "" {
+		return
+	}
+	attributes := identifierEvidenceAttributes(email, "identifier.email", normalizedEmail, eventID, occurredAt)
+	attributes["match_type"] = "shared_identity_email"
+	attributes["relationship"] = relationSameActor
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        identityURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "identity.email",
+		Label:      normalizedEmail,
+		Attributes: map[string]string{"value": normalizedEmail},
+	})
+	addLink(links, projectedLink(tenantID, sourceID, fromURN, identityURN, relationSameActor, attributes))
+	addLink(links, projectedLink(tenantID, sourceID, identityURN, fromURN, relationSameActor, attributes))
 }
 
 func identifierEvidenceAttributes(rawValue string, identifierType string, normalizedValue string, eventID string, occurredAt *timestamppb.Timestamp) map[string]string {
@@ -1471,6 +2164,34 @@ func sameIdentifier(left string, right string) bool {
 
 func normalizeIdentifier(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func normalizeProjectedEntityTypes(entities []*ports.ProjectedEntity) {
+	for _, entity := range entities {
+		if entity == nil {
+			continue
+		}
+		entity.EntityType = canonicalProjectedEntityType(entity.EntityType)
+	}
+}
+
+func canonicalProjectedEntityType(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if normalized == "" {
+		return normalized
+	}
+	normalized = strings.ReplaceAll(normalized, " ", "_")
+	normalized = strings.ReplaceAll(normalized, "..", ".")
+	if strings.HasPrefix(normalized, "aws.aws.") {
+		normalized = strings.TrimPrefix(normalized, "aws.")
+	}
+	switch normalized {
+	case "okta.publicclientappentity":
+		return "okta.publicclientapp"
+	case "okta.ip_address":
+		return "okta.ip"
+	}
+	return normalized
 }
 
 func payloadMap(event *cerebrov1.EventEnvelope) map[string]any {

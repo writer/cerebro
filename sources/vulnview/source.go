@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"net"
 	"net/http"
@@ -24,6 +23,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
 //go:embed catalog.yaml
@@ -549,7 +549,7 @@ func (s *Source) getJSONWithToken(ctx context.Context, settings settings, reques
 	defer func() {
 		_ = resp.Body.Close()
 	}()
-	body, err := readLimitedBody(resp.Body)
+	body, err := sourcehttp.ReadLimitedBodyWithLimit(resp.Body, maxBodyBytes)
 	if err != nil {
 		return fmt.Errorf("read %s response: %w", requestPath, err)
 	}
@@ -633,7 +633,7 @@ func (s *Source) fetchToken(ctx context.Context, settings settings) (string, tim
 	defer func() {
 		_ = resp.Body.Close()
 	}()
-	body, err := readLimitedBody(resp.Body)
+	body, err := sourcehttp.ReadLimitedBodyWithLimit(resp.Body, maxBodyBytes)
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("read VulnView token response: %w", err)
 	}
@@ -664,21 +664,12 @@ func (s *Source) httpClient() *http.Client {
 		client = s.client
 		allowLoopback = s.allowLoopbackBaseURL
 	}
-	if client == nil {
-		client = &http.Client{Timeout: httpTimeout}
-	}
-	cloned := *client
-	if cloned.CheckRedirect == nil {
-		cloned.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
-			return http.ErrUseLastResponse
-		}
-	}
-	transport := cloned.Transport
-	if transport == nil {
-		transport = http.DefaultTransport
-	}
-	cloned.Transport = safeRoundTripper{base: transport, allowLoopback: allowLoopback, lookupIPAddrs: lookupIPAddrs(s)}
-	return &cloned
+	return sourcehttp.HardenClient(client, sourcehttp.ClientOptions{
+		SourceID:      "vulnview",
+		Timeout:       httpTimeout,
+		AllowLoopback: allowLoopback,
+		LookupIPAddrs: lookupIPAddrs(s),
+	})
 }
 
 func (settings settings) query() url.Values {
@@ -840,6 +831,7 @@ func attributesFor(family string, record record) map[string]string {
 			"site_name":        "siteName",
 			"timestamp":        "timestamp",
 		})
+		addVulnViewFindingStateAttributes(attrs, values)
 		if attrs["template_id"] == "" {
 			copyFields(attrs, values, map[string]string{"template_id": "template-id", "vulnerability_id": "template-id"})
 		}
@@ -882,10 +874,33 @@ func attributesFor(family string, record record) map[string]string {
 			"sites":        "siteNames",
 			"scan_names":   "scanNames",
 		})
+		addVulnViewFindingStateAttributes(attrs, values)
 		attrs["target_type"] = "external_asset"
 	}
 	trimEmptyAttributes(attrs)
 	return attrs
+}
+
+func addVulnViewFindingStateAttributes(attrs map[string]string, values map[string]any) {
+	stateFields := map[string][]string{
+		"vulnview_status":            {"status"},
+		"vulnview_state":             {"state"},
+		"vulnview_finding_status":    {"findingStatus", "finding_status"},
+		"vulnview_remediation_state": {"remediationState", "remediation_state"},
+		"vulnview_lifecycle_state":   {"lifecycleState", "lifecycle_state"},
+	}
+	for attr, fields := range stateFields {
+		if value := firstValueString(values, fields...); value != "" {
+			attrs[attr] = value
+		}
+	}
+	attrs["vulnview_finding_state"] = firstNonEmpty(
+		attrs["vulnview_status"],
+		attrs["vulnview_state"],
+		attrs["vulnview_finding_status"],
+		attrs["vulnview_remediation_state"],
+		attrs["vulnview_lifecycle_state"],
+	)
 }
 
 func occurredAtFor(values map[string]any) time.Time {
@@ -956,52 +971,11 @@ func normalizeParsedURL(parsed *url.URL, allowLoopback bool) (string, error) {
 	return strings.TrimRight(parsed.String(), "/"), nil
 }
 
-type safeRoundTripper struct {
-	base          http.RoundTripper
-	allowLoopback bool
-	lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)
-}
-
-func (rt safeRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req != nil && req.URL != nil {
-		if err := rejectResolvedUnsafeHost(req.Context(), req.URL.Hostname(), rt.allowLoopback, rt.lookupIPAddrs); err != nil {
-			return nil, err
-		}
-	}
-	return rt.base.RoundTrip(req)
-}
-
 func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, error) {
 	if source != nil && source.lookupIPAddrs != nil {
 		return source.lookupIPAddrs
 	}
 	return net.DefaultResolver.LookupIPAddr
-}
-
-func rejectResolvedUnsafeHost(ctx context.Context, host string, allowLoopback bool, lookup func(context.Context, string) ([]net.IPAddr, error)) error {
-	normalized := strings.ToLower(strings.TrimSpace(host))
-	if normalized == "" {
-		return fmt.Errorf("vulnview host is required")
-	}
-	if ip := net.ParseIP(normalized); ip != nil {
-		if unsafeIP(ip, allowLoopback) {
-			return fmt.Errorf("vulnview host must not target loopback, private, or link-local addresses")
-		}
-		return nil
-	}
-	if lookup == nil {
-		lookup = net.DefaultResolver.LookupIPAddr
-	}
-	addrs, err := lookup(ctx, normalized)
-	if err != nil {
-		return fmt.Errorf("resolve vulnview host %q: %w", normalized, err)
-	}
-	for _, addr := range addrs {
-		if unsafeIP(addr.IP, allowLoopback) {
-			return fmt.Errorf("vulnview host must not resolve to loopback, private, or link-local addresses")
-		}
-	}
-	return nil
 }
 
 func isUnsafeHost(host string) bool {
@@ -1029,18 +1003,6 @@ func isLoopbackHost(host string) bool {
 	}
 	ip := net.ParseIP(strings.Trim(host, "[]"))
 	return ip != nil && ip.IsLoopback()
-}
-
-func readLimitedBody(body io.Reader) ([]byte, error) {
-	limited := io.LimitReader(body, maxBodyBytes+1)
-	payload, err := io.ReadAll(limited)
-	if err != nil {
-		return nil, err
-	}
-	if len(payload) > maxBodyBytes {
-		return nil, fmt.Errorf("vulnview response body exceeds %d bytes", maxBodyBytes)
-	}
-	return payload, nil
 }
 
 func decodeResponseError(service string, statusCode int, body []byte) error {

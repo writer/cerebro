@@ -24,6 +24,8 @@
       "domain": "writer.okta.com",
       "family": "user",
       "login": "alice@writer.com",
+      "mfa_enrolled": "true",
+      "mfa_factor_count": "1",
       "status": "ACTIVE",
       "user_id": "00u1"
     }
@@ -53,6 +55,8 @@
       "domain": "writer.okta.com",
       "family": "user",
       "login": "admin@writer.com",
+      "mfa_enrolled": "false",
+      "mfa_factor_count": "0",
       "status": "SUSPENDED",
       "user_id": "00u2"
     }

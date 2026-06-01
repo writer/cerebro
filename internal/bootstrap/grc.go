@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -15,12 +16,14 @@ import (
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourceruntime"
+	"github.com/writer/cerebro/internal/telemetry"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
-	grcDefaultLimit = uint32(100)
-	grcMaxLimit     = uint32(500)
+	grcDefaultLimit          = uint32(100)
+	grcMaxLimit              = uint32(500)
+	grcDashboardPreviewLimit = uint32(25)
 )
 
 type grcScope struct {
@@ -146,41 +149,111 @@ type grcAuditPacketResponse struct {
 }
 
 func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
+	ctx, span := telemetry.Start(r.Context(), "grc.dashboard", grcDashboardTelemetryAttrs())
+	r = r.WithContext(ctx)
+	status := "completed"
+	statusCode := http.StatusOK
+	endAttrs := grcDashboardTelemetryAttrs()
+	defer func() {
+		endAttrs = endAttrs.WithField(telemetry.Field{Key: "status_code", Value: statusCode})
+		telemetry.End(span, status, endAttrs)
+	}()
 	scope, err := grcScopeFromRequest(r)
 	if err != nil {
+		statusCode = grcHTTPStatusCode(err)
+		status, endAttrs = grcTelemetryError(endAttrs, err)
 		writeGRCError(w, err)
 		return
 	}
-	runtimes, err := a.grcListRuntimes(r, scope)
+	endAttrs = endAttrs.WithField(telemetry.Field{Key: "limit", Value: scope.Limit})
+	previewLimit := grcDashboardPreviewLimitFor(scope.Limit)
+	endAttrs = endAttrs.WithField(telemetry.Field{Key: "preview_limit", Value: previewLimit})
+	ctx, runtimesSpan := telemetry.Start(r.Context(), "grc.dashboard.runtimes", grcDashboardScopeTelemetryAttrs(scope))
+	runtimesRequest := r.WithContext(ctx)
+	runtimes, err := a.grcListRuntimes(runtimesRequest, scope)
+	telemetry.End(runtimesSpan, grcTelemetryStatus(err), telemetry.Attrs(telemetry.Field{Key: "runtime_count", Value: len(runtimes)}))
 	if err != nil {
+		statusCode = grcHTTPStatusCode(err)
+		status, endAttrs = grcTelemetryError(endAttrs, err)
 		writeGRCError(w, err)
 		return
 	}
-	findings, err := a.grcListFindingRecords(r, runtimes, grcFindingFilter{Status: "open", Limit: scope.Limit})
+	ctx, findingsSpan := telemetry.Start(r.Context(), "grc.dashboard.findings", grcDashboardScopeTelemetryAttrs(scope))
+	findingsRequest := r.WithContext(ctx)
+	findings, err := a.grcListFindingRecords(findingsRequest, runtimes, grcFindingFilter{Status: "open", Limit: previewLimit})
+	telemetry.End(findingsSpan, grcTelemetryStatus(err), telemetry.Attrs(telemetry.Field{Key: "finding_count", Value: len(findings)}))
 	if err != nil {
+		statusCode = grcHTTPStatusCode(err)
+		status, endAttrs = grcTelemetryError(endAttrs, err)
 		writeGRCError(w, err)
 		return
 	}
-	evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings), Limit: scope.Limit})
-	if err != nil {
+	findingIDs := grcFindingIDs(findings)
+	var (
+		evidence       []*cerebrov1.FindingEvidence
+		findingSummary *ports.FindingSummary
+		evidenceCount  *int
+		aggregate      *ports.GRCDashboardAggregate
+		wg             sync.WaitGroup
+		errs           = make(chan error, 3)
+	)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		var err error
+		ctx, evidenceSpan := telemetry.Start(r.Context(), "grc.dashboard.evidence", telemetry.Attrs(telemetry.Field{Key: "finding_count", Value: len(findingIDs)}))
+		evidenceRequest := r.WithContext(ctx)
+		evidence, err = a.grcListEvidenceRecords(evidenceRequest, runtimes, grcEvidenceFilter{FindingIDs: findingIDs, Limit: previewLimit})
+		telemetry.End(evidenceSpan, grcTelemetryStatus(err), telemetry.Attrs(telemetry.Field{Key: "evidence_count", Value: len(evidence)}))
+		if err != nil {
+			errs <- err
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		var err error
+		ctx, aggregateSpan := telemetry.Start(r.Context(), "grc.dashboard.aggregate", telemetry.Attrs(telemetry.Field{Key: "finding_count", Value: len(findingIDs)}))
+		aggregateRequest := r.WithContext(ctx)
+		aggregate, err = a.grcDashboardAggregate(aggregateRequest, runtimes, grcFindingFilter{Status: "open"}, grcEvidenceFilter{FindingIDs: findingIDs})
+		if err == nil && aggregate == nil {
+			findingSummary, err = a.grcFindingSummary(aggregateRequest, runtimes, grcFindingFilter{Status: "open"})
+			if err == nil {
+				evidenceCount, err = a.grcEvidenceCount(aggregateRequest, runtimes, grcEvidenceFilter{FindingIDs: findingIDs})
+			}
+		}
+		attrs := telemetry.Attrs()
+		if aggregate != nil {
+			attrs = attrs.WithField(telemetry.Field{Key: "evidence_count", Value: aggregate.EvidenceCount})
+			attrs = attrs.WithField(telemetry.Field{Key: "open_findings", Value: aggregate.FindingSummary.OpenFindings})
+		}
+		telemetry.End(aggregateSpan, grcTelemetryStatus(err), attrs)
+		if err != nil {
+			errs <- err
+		}
+	}()
+	wg.Wait()
+	close(errs)
+	if err := <-errs; err != nil {
+		statusCode = grcHTTPStatusCode(err)
+		status, endAttrs = grcTelemetryError(endAttrs, err)
 		writeGRCError(w, err)
 		return
+	}
+	if aggregate != nil {
+		findingSummary = &aggregate.FindingSummary
+		evidenceCount = &aggregate.EvidenceCount
 	}
 	runtimeSourceIDs := grcRuntimeSourceIDs(runtimes)
 	evidenceCounts := grcEvidenceCounts(evidence)
+	if aggregate != nil && len(aggregate.EvidenceCountsByFindingID) > 0 {
+		evidenceCounts = aggregate.EvidenceCountsByFindingID
+	}
 	findingItems := grcFindingItems(findings, runtimeSourceIDs, evidenceCounts)
 	evidenceItems := grcEvidenceItems(evidence, grcFindingTitleMap(findings))
 	controls := grcControlItems(findingItems, evidenceItems)
-	findingSummary, err := a.grcFindingSummary(r, runtimes, grcFindingFilter{Status: "open"})
-	if err != nil {
-		writeGRCError(w, err)
-		return
-	}
-	evidenceCount, err := a.grcEvidenceCount(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings)})
-	if err != nil {
-		writeGRCError(w, err)
-		return
-	}
+	endAttrs = endAttrs.WithField(telemetry.Field{Key: "runtime_count", Value: len(runtimes)})
+	endAttrs = endAttrs.WithField(telemetry.Field{Key: "finding_count", Value: len(findingItems)})
+	endAttrs = endAttrs.WithField(telemetry.Field{Key: "evidence_count", Value: len(evidenceItems)})
 
 	writeJSON(w, http.StatusOK, grcDashboardResponse{
 		Summary:     grcBuildSummary(findingItems, controls, evidenceItems, runtimes, findingSummary, evidenceCount),
@@ -190,6 +263,13 @@ func (a *App) handleGRCDashboard(w http.ResponseWriter, r *http.Request) {
 		Connectors:  grcConnectorItems(runtimes),
 		GeneratedAt: time.Now().UTC(),
 	})
+}
+
+func grcDashboardPreviewLimitFor(limit uint32) uint32 {
+	if limit == 0 || limit > grcDashboardPreviewLimit {
+		return grcDashboardPreviewLimit
+	}
+	return limit
 }
 
 func (a *App) handleGRCFindings(w http.ResponseWriter, r *http.Request) {
@@ -223,13 +303,21 @@ func (a *App) handleGRCFindings(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings), Limit: scope.Limit})
+	evidenceCounts, counted, err := a.grcEvidenceCountsByFindingID(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings)})
 	if err != nil {
 		writeGRCError(w, err)
 		return
 	}
+	if !counted {
+		evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings), Limit: scope.Limit})
+		if err != nil {
+			writeGRCError(w, err)
+			return
+		}
+		evidenceCounts = grcEvidenceCounts(evidence)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"findings":     grcFindingItems(findings, grcRuntimeSourceIDs(runtimes), grcEvidenceCounts(evidence)),
+		"findings":     grcFindingItems(findings, grcRuntimeSourceIDs(runtimes), evidenceCounts),
 		"generated_at": time.Now().UTC(),
 	})
 }
@@ -250,14 +338,24 @@ func (a *App) handleGRCControls(w http.ResponseWriter, r *http.Request) {
 		writeGRCError(w, err)
 		return
 	}
-	evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings), Limit: scope.Limit})
+	evidenceCounts, counted, err := a.grcEvidenceCountsByFindingID(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings)})
 	if err != nil {
 		writeGRCError(w, err)
 		return
 	}
-	items := grcFindingItems(findings, grcRuntimeSourceIDs(runtimes), grcEvidenceCounts(evidence))
+	var evidenceItems []grcEvidenceItem
+	if !counted {
+		evidence, err := a.grcListEvidenceRecords(r, runtimes, grcEvidenceFilter{FindingIDs: grcFindingIDs(findings), Limit: scope.Limit})
+		if err != nil {
+			writeGRCError(w, err)
+			return
+		}
+		evidenceCounts = grcEvidenceCounts(evidence)
+		evidenceItems = grcEvidenceItems(evidence, grcFindingTitleMap(findings))
+	}
+	items := grcFindingItems(findings, grcRuntimeSourceIDs(runtimes), evidenceCounts)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"controls":     grcControlItems(items, grcEvidenceItems(evidence, grcFindingTitleMap(findings))),
+		"controls":     grcControlItems(items, evidenceItems),
 		"generated_at": time.Now().UTC(),
 	})
 }
@@ -436,6 +534,72 @@ type grcFindingEvidenceCounter interface {
 	CountFindingEvidence(context.Context, ports.ListFindingEvidenceRequest) (int, error)
 }
 
+type grcFindingEvidenceByFindingCounter interface {
+	CountGRCFindingEvidenceByFindingID(context.Context, ports.ListFindingEvidenceRequest) (map[string]int, error)
+}
+
+type grcFindingEvidenceHeaderLister interface {
+	ListGRCFindingEvidence(context.Context, ports.ListFindingEvidenceRequest) ([]*cerebrov1.FindingEvidence, error)
+}
+
+type grcFindingHeaderLister interface {
+	ListGRCFindings(context.Context, ports.ListFindingsRequest) ([]*ports.FindingRecord, error)
+}
+
+func grcDashboardTelemetryAttrs() telemetry.Attributes {
+	return telemetry.Attrs(
+		telemetry.Field{Key: "route", Value: "/grc/dashboard"},
+		telemetry.Field{Key: "dashboard", Value: "grc"},
+	)
+}
+
+func grcDashboardScopeTelemetryAttrs(scope grcScope) telemetry.Attributes {
+	return grcDashboardTelemetryAttrs().
+		WithField(telemetry.Field{Key: "tenant_id", Value: scope.TenantID}).
+		WithField(telemetry.Field{Key: "runtime_id", Value: scope.RuntimeID}).
+		WithField(telemetry.Field{Key: "source_id", Value: scope.SourceID}).
+		WithField(telemetry.Field{Key: "limit", Value: scope.Limit})
+}
+
+func grcTelemetryStatus(err error) string {
+	if err != nil {
+		return "failed"
+	}
+	return "completed"
+}
+
+func grcTelemetryError(attrs telemetry.Attributes, err error) (string, telemetry.Attributes) {
+	if err == nil {
+		return "completed", attrs
+	}
+	return "failed", attrs.WithField(telemetry.Field{Key: "error_kind", Value: grcTelemetryErrorKind(err)})
+}
+
+func grcTelemetryErrorKind(err error) string {
+	switch {
+	case errors.Is(err, errTenantForbidden):
+		return "tenant_forbidden"
+	case errors.Is(err, ports.ErrSourceRuntimeNotFound),
+		errors.Is(err, ports.ErrFindingNotFound),
+		errors.Is(err, ports.ErrFindingEvidenceNotFound),
+		errors.Is(err, ports.ErrGraphEntityNotFound):
+		return "not_found"
+	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable),
+		errors.Is(err, findings.ErrRuntimeUnavailable),
+		errors.Is(err, graphagent.ErrRuntimeUnavailable),
+		errors.Is(err, graphquery.ErrRuntimeUnavailable):
+		return "runtime_unavailable"
+	case errors.Is(err, sourceruntime.ErrInvalidRequest),
+		errors.Is(err, findings.ErrInvalidRequest),
+		errors.Is(err, graphagent.ErrInvalidRequest),
+		errors.Is(err, graphquery.ErrInvalidRequest),
+		errors.Is(err, errInvalidHTTPRequest):
+		return "invalid_request"
+	default:
+		return "grc_request_failed"
+	}
+}
+
 func grcScopeFromRequest(r *http.Request) (grcScope, error) {
 	limit, err := grcLimitFromRequest(r)
 	if err != nil {
@@ -514,7 +678,7 @@ func (a *App) grcListFindingRecords(r *http.Request, runtimes []*cerebrov1.Sourc
 	}
 	var records []*ports.FindingRecord
 	for tenantID, runtimeIDs := range runtimeIDsByTenant {
-		items, err := store.ListFindings(r.Context(), ports.ListFindingsRequest{
+		request := ports.ListFindingsRequest{
 			TenantID:      tenantID,
 			RuntimeIDs:    runtimeIDs,
 			FindingID:     filter.FindingID,
@@ -527,7 +691,16 @@ func (a *App) grcListFindingRecords(r *http.Request, runtimes []*cerebrov1.Sourc
 			Limit:         limit,
 			PriorityOrder: true,
 			Order:         ports.FindingOrderRiskScore,
-		})
+		}
+		var (
+			items []*ports.FindingRecord
+			err   error
+		)
+		if lister, ok := store.(grcFindingHeaderLister); ok {
+			items, err = lister.ListGRCFindings(r.Context(), request)
+		} else {
+			items, err = store.ListFindings(r.Context(), request)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -627,7 +800,7 @@ func (a *App) grcListEvidenceRecords(r *http.Request, runtimes []*cerebrov1.Sour
 	if filter.FindingIDs != nil && strings.TrimSpace(filter.FindingID) == "" && len(grcNonEmptyFindingIDs(filter.FindingIDs)) == 0 {
 		return nil, nil
 	}
-	records, err := store.ListFindingEvidence(r.Context(), ports.ListFindingEvidenceRequest{
+	request := ports.ListFindingEvidenceRequest{
 		RuntimeIDs:   runtimeIDs,
 		FindingID:    filter.FindingID,
 		FindingIDs:   filter.FindingIDs,
@@ -636,7 +809,16 @@ func (a *App) grcListEvidenceRecords(r *http.Request, runtimes []*cerebrov1.Sour
 		GraphRootURN: filter.GraphRootURN,
 		Limit:        limit,
 		CreatedOrder: true,
-	})
+	}
+	var (
+		records []*cerebrov1.FindingEvidence
+		err     error
+	)
+	if lister, ok := store.(grcFindingEvidenceHeaderLister); ok {
+		records, err = lister.ListGRCFindingEvidence(r.Context(), request)
+	} else {
+		records, err = store.ListFindingEvidence(r.Context(), request)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -691,6 +873,121 @@ func (a *App) grcEvidenceCount(r *http.Request, runtimes []*cerebrov1.SourceRunt
 	}
 	count += item
 	return &count, nil
+}
+
+func (a *App) grcEvidenceCountsByFindingID(r *http.Request, runtimes []*cerebrov1.SourceRuntime, filter grcEvidenceFilter) (map[string]int, bool, error) {
+	store := findingEvidenceStore(a.deps.StateStore)
+	counter, ok := store.(grcFindingEvidenceByFindingCounter)
+	if !ok {
+		return nil, false, nil
+	}
+	if filter.FindingIDs != nil && strings.TrimSpace(filter.FindingID) == "" && len(grcNonEmptyFindingIDs(filter.FindingIDs)) == 0 {
+		return map[string]int{}, true, nil
+	}
+	var runtimeIDs []string
+	for _, runtime := range runtimes {
+		if runtime == nil {
+			continue
+		}
+		if runtimeID := strings.TrimSpace(runtime.GetId()); runtimeID != "" {
+			runtimeIDs = append(runtimeIDs, runtimeID)
+		}
+	}
+	if len(runtimeIDs) == 0 {
+		return map[string]int{}, true, nil
+	}
+	counts, err := counter.CountGRCFindingEvidenceByFindingID(r.Context(), ports.ListFindingEvidenceRequest{
+		RuntimeIDs:   runtimeIDs,
+		FindingID:    filter.FindingID,
+		FindingIDs:   filter.FindingIDs,
+		RunID:        filter.RunID,
+		RuleID:       filter.RuleID,
+		GraphRootURN: filter.GraphRootURN,
+		Limit:        0,
+	})
+	if err != nil {
+		return nil, true, err
+	}
+	return counts, true, nil
+}
+
+func (a *App) grcDashboardAggregate(r *http.Request, runtimes []*cerebrov1.SourceRuntime, findingFilter grcFindingFilter, evidenceFilter grcEvidenceFilter) (*ports.GRCDashboardAggregate, error) {
+	provider, ok := a.deps.StateStore.(ports.GRCDashboardAggregateStore)
+	if !ok {
+		return nil, nil
+	}
+	if evidenceFilter.FindingIDs != nil && strings.TrimSpace(evidenceFilter.FindingID) == "" && len(grcNonEmptyFindingIDs(evidenceFilter.FindingIDs)) == 0 {
+		aggregate := ports.GRCDashboardAggregate{}
+		return &aggregate, nil
+	}
+	runtimeIDsByTenant := map[string][]string{}
+	for _, runtime := range runtimes {
+		if runtime == nil {
+			continue
+		}
+		tenantID := strings.TrimSpace(runtime.GetTenantId())
+		runtimeID := strings.TrimSpace(runtime.GetId())
+		if tenantID == "" || runtimeID == "" {
+			continue
+		}
+		runtimeIDsByTenant[tenantID] = append(runtimeIDsByTenant[tenantID], runtimeID)
+	}
+	if len(runtimeIDsByTenant) == 0 {
+		aggregate := ports.GRCDashboardAggregate{}
+		return &aggregate, nil
+	}
+	var aggregate ports.GRCDashboardAggregate
+	aggregate.EvidenceCountsByFindingID = map[string]int{}
+	controlKeys := map[string]struct{}{}
+	for tenantID, runtimeIDs := range runtimeIDsByTenant {
+		item, err := provider.SummarizeGRCDashboard(r.Context(), ports.GRCDashboardAggregateRequest{
+			FindingRequest: ports.ListFindingsRequest{
+				TenantID:    tenantID,
+				RuntimeIDs:  runtimeIDs,
+				FindingID:   findingFilter.FindingID,
+				RuleID:      findingFilter.RuleID,
+				Severity:    findingFilter.Severity,
+				Status:      findingFilter.Status,
+				ResourceURN: findingFilter.ResourceURN,
+				EventID:     findingFilter.EventID,
+				PolicyID:    findingFilter.PolicyID,
+			},
+			EvidenceRequest: ports.ListFindingEvidenceRequest{
+				RuntimeIDs:   runtimeIDs,
+				FindingID:    evidenceFilter.FindingID,
+				FindingIDs:   evidenceFilter.FindingIDs,
+				RunID:        evidenceFilter.RunID,
+				RuleID:       evidenceFilter.RuleID,
+				GraphRootURN: evidenceFilter.GraphRootURN,
+				Limit:        0,
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		aggregate.FindingSummary.OpenFindings += item.FindingSummary.OpenFindings
+		aggregate.FindingSummary.CriticalFindings += item.FindingSummary.CriticalFindings
+		aggregate.FindingSummary.HighFindings += item.FindingSummary.HighFindings
+		aggregate.FindingSummary.OverdueFindings += item.FindingSummary.OverdueFindings
+		aggregate.FindingSummary.Unassigned += item.FindingSummary.Unassigned
+		aggregate.EvidenceCount += item.EvidenceCount
+		for findingID, count := range item.EvidenceCountsByFindingID {
+			if trimmed := strings.TrimSpace(findingID); trimmed != "" {
+				aggregate.EvidenceCountsByFindingID[trimmed] += count
+			}
+		}
+		for _, key := range item.FindingSummary.FailingControlKeys {
+			if trimmed := strings.TrimSpace(key); trimmed != "" {
+				controlKeys[trimmed] = struct{}{}
+			}
+		}
+	}
+	for key := range controlKeys {
+		aggregate.FindingSummary.FailingControlKeys = append(aggregate.FindingSummary.FailingControlKeys, key)
+	}
+	sort.Strings(aggregate.FindingSummary.FailingControlKeys)
+	aggregate.FindingSummary.ControlsFailing = len(aggregate.FindingSummary.FailingControlKeys)
+	return &aggregate, nil
 }
 
 func grcRuntimeSourceIDs(runtimes []*cerebrov1.SourceRuntime) map[string]string {
@@ -861,7 +1158,11 @@ func grcControlItems(findings []grcFindingItem, evidence []grcEvidenceItem) []gr
 					control.HighFindings++
 				}
 			}
-			control.EvidenceItems += evidenceByFinding[finding.ID]
+			if finding.EvidenceCount != 0 {
+				control.EvidenceItems += finding.EvidenceCount
+			} else {
+				control.EvidenceItems += evidenceByFinding[finding.ID]
+			}
 		}
 	}
 	controls := make([]grcControlItem, 0, len(controlMap))
@@ -1114,6 +1415,11 @@ func timestampPtr(value *timestamppb.Timestamp) *time.Time {
 }
 
 func writeGRCError(w http.ResponseWriter, err error) {
+	statusCode := grcHTTPStatusCode(err)
+	http.Error(w, http.StatusText(statusCode), statusCode)
+}
+
+func grcHTTPStatusCode(err error) int {
 	statusCode := http.StatusInternalServerError
 	switch {
 	case errors.Is(err, errTenantForbidden):
@@ -1135,5 +1441,5 @@ func writeGRCError(w http.ResponseWriter, err error) {
 		errors.Is(err, errInvalidHTTPRequest):
 		statusCode = http.StatusBadRequest
 	}
-	http.Error(w, http.StatusText(statusCode), statusCode)
+	return statusCode
 }

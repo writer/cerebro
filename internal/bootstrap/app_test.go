@@ -656,6 +656,9 @@ type stubRuntimeStore struct {
 	findingEvidenceListRequest      ports.ListFindingEvidenceRequest
 	findingEvaluationRuns           map[string]*cerebrov1.FindingEvaluationRun
 	findingEvaluationRunListRequest ports.ListFindingEvaluationRunsRequest
+	findingCandidateRuns            map[string]*ports.FindingCandidateRun
+	findingCandidates               map[string]*ports.FindingCandidateRecord
+	findingCandidateListRequest     ports.ListFindingCandidatesRequest
 	reportRuns                      map[string]*cerebrov1.ReportRun
 }
 
@@ -1113,6 +1116,148 @@ func (s *stubRuntimeStore) CountFindingEvidence(_ context.Context, request ports
 	return count, nil
 }
 
+func (s *stubRuntimeStore) PutFindingCandidateRun(_ context.Context, run *ports.FindingCandidateRun) error {
+	if s.err != nil {
+		return s.err
+	}
+	if run == nil {
+		return nil
+	}
+	if s.findingCandidateRuns == nil {
+		s.findingCandidateRuns = make(map[string]*ports.FindingCandidateRun)
+	}
+	cloned := *run
+	s.findingCandidateRuns[cloned.ID] = &cloned
+	return nil
+}
+
+func (s *stubRuntimeStore) GetFindingCandidateRun(_ context.Context, id string) (*ports.FindingCandidateRun, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	run, ok := s.findingCandidateRuns[strings.TrimSpace(id)]
+	if !ok {
+		return nil, ports.ErrFindingEvaluationRunNotFound
+	}
+	cloned := *run
+	return &cloned, nil
+}
+
+func (s *stubRuntimeStore) ListFindingCandidateRuns(_ context.Context, request ports.ListFindingCandidatesRequest) ([]*ports.FindingCandidateRun, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	runs := []*ports.FindingCandidateRun{}
+	for _, run := range s.findingCandidateRuns {
+		if request.RuntimeID != "" && strings.TrimSpace(run.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+			continue
+		}
+		cloned := *run
+		runs = append(runs, &cloned)
+	}
+	return runs, nil
+}
+
+func (s *stubRuntimeStore) UpsertFindingCandidate(_ context.Context, candidate *ports.FindingCandidateRecord) (*ports.FindingCandidateRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	if candidate == nil {
+		return nil, nil
+	}
+	if s.findingCandidates == nil {
+		s.findingCandidates = make(map[string]*ports.FindingCandidateRecord)
+	}
+	cloned := cloneFindingCandidate(candidate)
+	if existing := s.findingCandidates[cloned.ID]; existing != nil {
+		cloned.ObservationCount += existing.ObservationCount
+	}
+	s.findingCandidates[cloned.ID] = cloned
+	return cloneFindingCandidate(cloned), nil
+}
+
+func (s *stubRuntimeStore) GetFindingCandidate(_ context.Context, id string) (*ports.FindingCandidateRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	candidate, ok := s.findingCandidates[strings.TrimSpace(id)]
+	if !ok {
+		return nil, ports.ErrFindingCandidateNotFound
+	}
+	return cloneFindingCandidate(candidate), nil
+}
+
+func (s *stubRuntimeStore) ListFindingCandidates(_ context.Context, request ports.ListFindingCandidatesRequest) ([]*ports.FindingCandidateRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	s.findingCandidateListRequest = request
+	candidates := []*ports.FindingCandidateRecord{}
+	for _, candidate := range s.findingCandidates {
+		if request.RuntimeID != "" && strings.TrimSpace(candidate.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+			continue
+		}
+		if request.CandidateID != "" && strings.TrimSpace(candidate.ID) != strings.TrimSpace(request.CandidateID) {
+			continue
+		}
+		if request.RuleID != "" && strings.TrimSpace(candidate.RuleID) != strings.TrimSpace(request.RuleID) {
+			continue
+		}
+		if request.Status != "" && strings.TrimSpace(candidate.Status) != strings.TrimSpace(request.Status) {
+			continue
+		}
+		if request.Fingerprint != "" && strings.TrimSpace(candidate.Fingerprint) != strings.TrimSpace(request.Fingerprint) {
+			continue
+		}
+		candidates = append(candidates, cloneFindingCandidate(candidate))
+	}
+	return candidates, nil
+}
+
+func (s *stubRuntimeStore) MarkFindingCandidatePromoted(_ context.Context, promotion ports.FindingCandidatePromotion) (*ports.FindingCandidateRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	candidate, ok := s.findingCandidates[strings.TrimSpace(promotion.CandidateID)]
+	if !ok {
+		return nil, ports.ErrFindingCandidateNotFound
+	}
+	cloned := cloneFindingCandidate(candidate)
+	if cloned.Status != "candidate" {
+		return nil, ports.ErrFindingCandidateNotFound
+	}
+	cloned.Status = "promoted"
+	cloned.PromotedFindingID = strings.TrimSpace(promotion.PromotedFindingID)
+	cloned.DecisionID = strings.TrimSpace(promotion.DecisionID)
+	cloned.PromotedBy = strings.TrimSpace(promotion.PromotedBy)
+	cloned.PromotionRationale = strings.TrimSpace(promotion.Rationale)
+	cloned.ChangeTicket = strings.TrimSpace(promotion.ChangeTicket)
+	cloned.PromotedAt = promotion.PromotedAt.UTC()
+	s.findingCandidates[cloned.ID] = cloned
+	return cloneFindingCandidate(cloned), nil
+}
+
+func (s *stubRuntimeStore) MarkFindingCandidateRejected(_ context.Context, rejection ports.FindingCandidateRejection) (*ports.FindingCandidateRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	candidate, ok := s.findingCandidates[strings.TrimSpace(rejection.CandidateID)]
+	if !ok {
+		return nil, ports.ErrFindingCandidateNotFound
+	}
+	cloned := cloneFindingCandidate(candidate)
+	if cloned.Status != "candidate" {
+		return nil, ports.ErrFindingCandidateNotFound
+	}
+	cloned.Status = "rejected"
+	cloned.DecisionID = strings.TrimSpace(rejection.DecisionID)
+	cloned.RejectedBy = strings.TrimSpace(rejection.RejectedBy)
+	cloned.RejectionRationale = strings.TrimSpace(rejection.Rationale)
+	cloned.RejectedAt = rejection.RejectedAt.UTC()
+	s.findingCandidates[cloned.ID] = cloned
+	return cloneFindingCandidate(cloned), nil
+}
+
 func (s *stubRuntimeStore) PutFindingEvaluationRun(_ context.Context, run *cerebrov1.FindingEvaluationRun) error {
 	if s.err != nil {
 		return s.err
@@ -1264,6 +1409,12 @@ func (s *stubGraphStore) ExecuteReadCypher(_ context.Context, request ports.Cyph
 		return nil, s.err
 	}
 	s.cypherRequests = append(s.cypherRequests, request)
+	if strings.Contains(request.Query, "RETURN n.entity_type AS name") {
+		return []ports.CypherRow{{Values: map[string]any{"name": "asset", "count": int64(1)}}}, nil
+	}
+	if strings.Contains(request.Query, "RETURN r.relation AS name") {
+		return nil, nil
+	}
 	if len(s.cypherRows) > 0 {
 		rows := s.cypherRows[0]
 		s.cypherRows = s.cypherRows[1:]
@@ -1725,8 +1876,8 @@ func TestAuthMiddlewareProtectsNonPublicRoutes(t *testing.T) {
 		t.Fatalf("GET /openapi.yaml without auth error = %v", err)
 	}
 	_ = openAPIResp.Body.Close()
-	if openAPIResp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("GET /openapi.yaml without auth status = %d, want %d", openAPIResp.StatusCode, http.StatusUnauthorized)
+	if openAPIResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /openapi.yaml without auth status = %d, want %d", openAPIResp.StatusCode, http.StatusOK)
 	}
 
 	unauthResp, err := server.Client().Get(server.URL + "/sources")
@@ -1756,7 +1907,7 @@ func TestAuthMiddlewareProtectsNonPublicRoutes(t *testing.T) {
 func TestAuthenticateRequestPrefersStructuredCredentialMetadata(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/sources", nil)
 	req.Header.Set("Authorization", "Bearer shared-token")
-	principal, ok := authenticateRequest(config.AuthConfig{
+	principal, _, _, ok := authenticateRequest(config.AuthConfig{
 		APIKeys: []config.APIKey{{
 			Key:       "shared-token",
 			Principal: "legacy",
@@ -1770,7 +1921,7 @@ func TestAuthenticateRequestPrefersStructuredCredentialMetadata(t *testing.T) {
 			TenantID:       "writer",
 			AllowedTenants: []string{"writer"},
 		}},
-	}, req)
+	}, nil, req)
 	if !ok {
 		t.Fatal("authenticateRequest() ok = false, want true")
 	}
@@ -1840,22 +1991,24 @@ func TestAuthMiddlewareEmitsAccessAuditEvents(t *testing.T) {
 	})
 	payload := decodeBootstrapTelemetryPayload(t, stderr)
 	for key, want := range map[string]any{
-		"kind":                "event",
-		"name":                "cerebro.api.access",
-		"outcome":             "allowed",
-		"status":              float64(http.StatusOK),
-		"method":              http.MethodGet,
-		"route":               "GET /sources",
-		"tenant_id":           "writer",
-		"effective_tenant_id": "writer",
-		"requested_tenant_id": "writer",
-		"principal_tenant_id": "writer",
-		"principal":           "ci",
-		"auth_mode":           "api_key",
-		"operation_family":    "source",
-		"operation_type":      "read",
-		"client_ip":           "198.51.100.7",
-		"request_id":          "audit-request-1",
+		"kind":                  "event",
+		"name":                  "cerebro.api.access",
+		"outcome":               "allowed",
+		"status":                float64(http.StatusOK),
+		"status_code":           float64(http.StatusOK),
+		"effective_status_code": float64(http.StatusOK),
+		"method":                http.MethodGet,
+		"route":                 "GET /sources",
+		"tenant_id":             "writer",
+		"effective_tenant_id":   "writer",
+		"requested_tenant_id":   "writer",
+		"principal_tenant_id":   "writer",
+		"principal":             "ci",
+		"auth_mode":             "api_key",
+		"operation_family":      "source",
+		"operation_type":        "read",
+		"client_ip":             "198.51.100.7",
+		"request_id":            "audit-request-1",
 	} {
 		if got := payload[key]; got != want {
 			t.Fatalf("audit payload[%q] = %#v, want %#v; payload=%#v", key, got, want, payload)
@@ -1904,16 +2057,18 @@ func TestAuthMiddlewareEmitsDeniedAccessAuditEvents(t *testing.T) {
 	})
 	unauthPayload := decodeBootstrapTelemetryPayload(t, unauthStderr)
 	for key, want := range map[string]any{
-		"name":                "cerebro.api.access",
-		"outcome":             "denied",
-		"status":              float64(http.StatusUnauthorized),
-		"route":               "GET /sources",
-		"tenant_id":           "writer",
-		"effective_tenant_id": "writer",
-		"requested_tenant_id": "writer",
-		"operation_family":    "source",
-		"operation_type":      "read",
-		"denial_reason":       "unauthenticated",
+		"name":                  "cerebro.api.access",
+		"outcome":               "denied",
+		"status":                float64(http.StatusUnauthorized),
+		"status_code":           float64(http.StatusUnauthorized),
+		"effective_status_code": float64(http.StatusUnauthorized),
+		"route":                 "GET /sources",
+		"tenant_id":             "writer",
+		"effective_tenant_id":   "writer",
+		"requested_tenant_id":   "writer",
+		"operation_family":      "source",
+		"operation_type":        "read",
+		"denial_reason":         "unauthenticated",
 	} {
 		if got := unauthPayload[key]; got != want {
 			t.Fatalf("unauth audit payload[%q] = %#v, want %#v; payload=%#v", key, got, want, unauthPayload)
@@ -1940,20 +2095,22 @@ func TestAuthMiddlewareEmitsDeniedAccessAuditEvents(t *testing.T) {
 	})
 	forbiddenPayload := decodeBootstrapTelemetryPayload(t, forbiddenStderr)
 	for key, want := range map[string]any{
-		"name":                "cerebro.api.access",
-		"outcome":             "denied",
-		"status":              float64(http.StatusForbidden),
-		"route":               "GET /sources",
-		"tenant_id":           "other",
-		"effective_tenant_id": "writer",
-		"requested_tenant_id": "other",
-		"principal":           "ci",
-		"principal_tenant_id": "writer",
-		"auth_mode":           "api_key",
-		"operation_family":    "source",
-		"operation_type":      "read",
-		"tenant_mismatch":     true,
-		"denial_reason":       "tenant_forbidden",
+		"name":                  "cerebro.api.access",
+		"outcome":               "denied",
+		"status":                float64(http.StatusForbidden),
+		"status_code":           float64(http.StatusForbidden),
+		"effective_status_code": float64(http.StatusForbidden),
+		"route":                 "GET /sources",
+		"tenant_id":             "other",
+		"effective_tenant_id":   "writer",
+		"requested_tenant_id":   "other",
+		"principal":             "ci",
+		"principal_tenant_id":   "writer",
+		"auth_mode":             "api_key",
+		"operation_family":      "source",
+		"operation_type":        "read",
+		"tenant_mismatch":       true,
+		"denial_reason":         "tenant_forbidden",
 	} {
 		if got := forbiddenPayload[key]; got != want {
 			t.Fatalf("forbidden audit payload[%q] = %#v, want %#v; payload=%#v", key, got, want, forbiddenPayload)
@@ -2001,6 +2158,15 @@ func TestAccessAuditOutcomeClassifiesDownstreamAuthorizationFailures(t *testing.
 	outcome, reason = accessAuditOutcome(http.StatusOK, "allowed", "", "permission_denied")
 	if outcome != "denied" || reason != "authorization_failed" {
 		t.Fatalf("accessAuditOutcome(gRPC permission_denied) = (%q, %q), want denied authorization_failed", outcome, reason)
+	}
+	if got := accessAuditEffectiveStatusCode(http.StatusOK, "permission_denied"); got != http.StatusForbidden {
+		t.Fatalf("accessAuditEffectiveStatusCode(permission_denied) = %d, want %d", got, http.StatusForbidden)
+	}
+	if got := accessAuditEffectiveStatusCode(http.StatusOK, "unauthenticated"); got != http.StatusUnauthorized {
+		t.Fatalf("accessAuditEffectiveStatusCode(unauthenticated) = %d, want %d", got, http.StatusUnauthorized)
+	}
+	if got := accessAuditEffectiveStatusCode(http.StatusOK, "aborted"); got != http.StatusConflict {
+		t.Fatalf("accessAuditEffectiveStatusCode(aborted) = %d, want %d", got, http.StatusConflict)
 	}
 }
 
@@ -2071,6 +2237,109 @@ func TestAccessAuditClientIPTrustsForwardedForFromPrivateRemote(t *testing.T) {
 	req.RemoteAddr = "203.0.113.20:54321"
 	if got := accessAuditClientIP(req); got != "" {
 		t.Fatalf("accessAuditClientIP(public remote) = %q, want empty", got)
+	}
+}
+
+func TestResolveRequestOriginUsesConfiguredPublicOrigin(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "http://internal.local/platform/devices/token?rotate=true", nil)
+	req.RemoteAddr = "10.0.0.5:54321"
+	req.Host = "internal.local"
+	req.Header.Set("X-Forwarded-Proto", "http")
+	req.Header.Set("X-Forwarded-Host", "attacker.example")
+	req.Header.Set("X-Forwarded-For", "198.51.100.10, 10.0.0.5")
+
+	origin := resolveRequestOrigin(req, config.RequestOriginConfig{
+		PublicOrigin:      "https://api.writer.com",
+		TrustedProxyCIDRs: []string{"10.0.0.0/8"},
+		TrustedProxyCount: 1,
+	})
+	if got := origin.PublicURL; got != "https://api.writer.com/platform/devices/token?rotate=true" {
+		t.Fatalf("PublicURL = %q, want configured public origin URL", got)
+	}
+	if got := origin.ClientIP; got != "198.51.100.10" {
+		t.Fatalf("ClientIP = %q, want forwarded client", got)
+	}
+}
+
+func TestResolveRequestOriginInfersConfiguredTrustedProxyHops(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/sources", nil)
+	req.RemoteAddr = "203.0.113.20:443"
+	req.Header.Set("X-Forwarded-For", "198.51.100.99, 192.0.2.10, 203.0.113.20")
+	req.Header.Set("X-Forwarded-Proto", "http, https")
+
+	origin := resolveRequestOrigin(req, config.RequestOriginConfig{
+		TrustedProxyCIDRs: []string{"192.0.2.0/24", "203.0.113.0/24"},
+	})
+	if got := origin.ClientIP; got != "198.51.100.99" {
+		t.Fatalf("ClientIP = %q, want configured trusted-proxy client", got)
+	}
+	if got := origin.PublicURL; got != "https://example.com/sources" {
+		t.Fatalf("PublicURL = %q, want trailing trusted forwarded proto", got)
+	}
+}
+
+func TestResolveRequestOriginDoesNotTrustCallerSuppliedForwardedFor(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/sources", nil)
+	req.RemoteAddr = "10.0.1.20:443"
+	req.Header.Set("X-Forwarded-For", "198.51.100.99, 203.0.113.200")
+
+	origin := resolveRequestOrigin(req, config.RequestOriginConfig{})
+	if got := origin.ClientIP; got != "203.0.113.200" {
+		t.Fatalf("ClientIP = %q, want proxy-appended client IP", got)
+	}
+}
+
+func TestResolveRequestOriginRejectsMalformedForwardedHost(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/sources", nil)
+	req.RemoteAddr = "10.0.1.20:443"
+	req.Header.Set("X-Forwarded-Host", "user@evil.example")
+
+	origin := resolveRequestOrigin(req, config.RequestOriginConfig{})
+	if got := origin.PublicURL; got != "http://example.com/sources" {
+		t.Fatalf("PublicURL = %q, want request host when forwarded host is malformed", got)
+	}
+}
+
+func TestResolveRequestOriginRejectsMalformedTrailingForwardedOrigin(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "http://internal.local/sources", nil)
+	req.RemoteAddr = "10.0.1.20:443"
+	req.Host = "internal.local"
+	req.Header.Set("X-Forwarded-Proto", "https, gopher")
+	req.Header.Set("X-Forwarded-Host", "stale.example, user@evil.example")
+
+	origin := resolveRequestOrigin(req, config.RequestOriginConfig{})
+	if got := origin.PublicURL; got != "http://internal.local/sources" {
+		t.Fatalf("PublicURL = %q, want request origin when trailing forwarded origin is malformed", got)
+	}
+}
+
+func TestResolveRequestOriginDoesNotMixForwardedOriginWithFallback(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "http://internal.local/sources", nil)
+	req.RemoteAddr = "10.0.1.20:443"
+	req.Host = "internal.local"
+	req.Header.Set("X-Forwarded-Proto", "https, gopher")
+	req.Header.Set("X-Forwarded-Host", "api.writer.com, api.writer.com")
+
+	origin := resolveRequestOrigin(req, config.RequestOriginConfig{})
+	if got := origin.PublicURL; got != "http://internal.local/sources" {
+		t.Fatalf("PublicURL = %q, want request origin when forwarded proto is malformed", got)
+	}
+}
+
+func TestResolveRequestOriginIgnoresForwardedHostFromUntrustedRemote(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "http://internal.local/platform/devices/token", nil)
+	req.RemoteAddr = "198.51.100.20:54321"
+	req.Host = "internal.local"
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Header.Set("X-Forwarded-Host", "attacker.example")
+	req.Header.Set("X-Forwarded-For", "203.0.113.10")
+
+	origin := resolveRequestOrigin(req, config.RequestOriginConfig{TrustedProxyCIDRs: []string{"10.0.0.0/8"}})
+	if got := origin.PublicURL; got != "http://internal.local/platform/devices/token" {
+		t.Fatalf("PublicURL = %q, want direct request URL", got)
+	}
+	if got := origin.ClientIP; got != "198.51.100.20" {
+		t.Fatalf("ClientIP = %q, want remote address", got)
 	}
 }
 
@@ -2200,6 +2469,54 @@ func TestScopeForHTTPRequestIncludesGRCAskPost(t *testing.T) {
 	}
 }
 
+func TestCandidatePromotionRequiresExplicitScope(t *testing.T) {
+	readOnly := context.WithValue(context.Background(), authContextKey{}, authContext{
+		principal: authPrincipal{Scopes: []string{scopeCosmoSecurityRead}},
+	})
+	if err := authorizeFindingCandidatePromotion(readOnly); !errors.Is(err, errScopeForbidden) {
+		t.Fatalf("authorizeFindingCandidatePromotion(read-only) error = %v, want %v", err, errScopeForbidden)
+	}
+	promoter := context.WithValue(context.Background(), authContextKey{}, authContext{
+		principal: authPrincipal{Scopes: []string{scopeFindingCandidatePromote}},
+	})
+	if err := authorizeFindingCandidatePromotion(promoter); err != nil {
+		t.Fatalf("authorizeFindingCandidatePromotion(promoter) error = %v", err)
+	}
+	if err := authorizeFindingCandidatePromotion(context.Background()); err != nil {
+		t.Fatalf("authorizeFindingCandidatePromotion(no auth) error = %v", err)
+	}
+}
+
+func TestCandidateScopesCoverReadAndPromotionRoutes(t *testing.T) {
+	for _, tt := range []struct {
+		method string
+		path   string
+		want   string
+	}{
+		{method: http.MethodGet, path: "/finding-candidates/candidate-1", want: scopeCosmoSecurityRead},
+		{method: http.MethodPost, path: "/finding-candidates/candidate-1/promote", want: scopeFindingCandidatePromote},
+		{method: http.MethodPost, path: "/finding-candidates/candidate-1/reject", want: scopeFindingCandidatePromote},
+	} {
+		req := httptest.NewRequest(tt.method, tt.path, nil)
+		if got := scopeForHTTPRequest(req); got != tt.want {
+			t.Fatalf("scopeForHTTPRequest(%s %s) = %q, want %q", tt.method, tt.path, got, tt.want)
+		}
+	}
+	for _, tt := range []struct {
+		procedure string
+		want      string
+	}{
+		{procedure: cerebrov1connect.BootstrapServiceListFindingCandidatesProcedure, want: scopeCosmoSecurityRead},
+		{procedure: cerebrov1connect.BootstrapServiceGetFindingCandidateProcedure, want: scopeCosmoSecurityRead},
+		{procedure: cerebrov1connect.BootstrapServicePromoteFindingCandidateProcedure, want: scopeFindingCandidatePromote},
+		{procedure: cerebrov1connect.BootstrapServiceRejectFindingCandidateProcedure, want: scopeFindingCandidatePromote},
+	} {
+		if got := scopeForConnectProcedure(tt.procedure); got != tt.want {
+			t.Fatalf("scopeForConnectProcedure(%s) = %q, want %q", tt.procedure, got, tt.want)
+		}
+	}
+}
+
 func TestScopedCosmoCredentialEnforcesConnectProcedures(t *testing.T) {
 	cfg := config.Config{
 		HTTPAddr:        "127.0.0.1:0",
@@ -2309,19 +2626,20 @@ func TestScopedCosmoCredentialAuditsGRPCProcedureDenials(t *testing.T) {
 	})
 	payload := decodeBootstrapTelemetryPayload(t, stderr)
 	for key, want := range map[string]any{
-		"name":                "cerebro.api.access",
-		"outcome":             "denied",
-		"status":              float64(http.StatusOK),
-		"route":               "/cerebro.v1.BootstrapService/{Procedure}",
-		"connect_procedure":   "cerebro.v1.BootstrapService/SyncSourceRuntime",
-		"connect_code":        "permission_denied",
-		"denial_reason":       "authorization_failed",
-		"principal":           "cosmo-security",
-		"principal_tenant_id": "writer",
-		"auth_mode":           "api_credential",
-		"operation_family":    "source_runtime",
-		"operation_type":      "write",
-		"sensitive_action":    true,
+		"name":                  "cerebro.api.access",
+		"outcome":               "denied",
+		"status":                float64(http.StatusOK),
+		"route":                 "/cerebro.v1.BootstrapService/{Procedure}",
+		"connect_procedure":     "cerebro.v1.BootstrapService/SyncSourceRuntime",
+		"connect_code":          "permission_denied",
+		"effective_status_code": float64(http.StatusForbidden),
+		"denial_reason":         "authorization_failed",
+		"principal":             "cosmo-security",
+		"principal_tenant_id":   "writer",
+		"auth_mode":             "api_credential",
+		"operation_family":      "source_runtime",
+		"operation_type":        "write",
+		"sensitive_action":      true,
 	} {
 		if got := payload[key]; got != want {
 			t.Fatalf("gRPC audit payload[%q] = %#v, want %#v; payload=%#v", key, got, want, payload)
@@ -3810,8 +4128,8 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	if got := syncPayload["entities_projected"]; got != float64(4) {
 		t.Fatalf("sync entities_projected = %#v, want 4", got)
 	}
-	if got := syncPayload["links_projected"]; got != float64(4) {
-		t.Fatalf("sync links_projected = %#v, want 4", got)
+	if got := syncPayload["links_projected"]; got != float64(5) {
+		t.Fatalf("sync links_projected = %#v, want 5", got)
 	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
@@ -3859,8 +4177,8 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	if syncRuntimeResp.Msg.GetEntitiesProjected() != 4 {
 		t.Fatalf("SyncSourceRuntime entities_projected = %d, want 4", syncRuntimeResp.Msg.GetEntitiesProjected())
 	}
-	if syncRuntimeResp.Msg.GetLinksProjected() != 4 {
-		t.Fatalf("SyncSourceRuntime links_projected = %d, want 4", syncRuntimeResp.Msg.GetLinksProjected())
+	if syncRuntimeResp.Msg.GetLinksProjected() != 5 {
+		t.Fatalf("SyncSourceRuntime links_projected = %d, want 5", syncRuntimeResp.Msg.GetLinksProjected())
 	}
 	if len(appendLog.events) != 2 {
 		t.Fatalf("len(appendLog.events) = %d, want 2", len(appendLog.events))
@@ -4081,9 +4399,9 @@ func TestGraphIngestEndpoints(t *testing.T) {
 		t.Fatalf("graph ingest override checkpoint_id = %#v, want body-checkpoint", got)
 	}
 
-	getResp, err := server.Client().Get(server.URL + "/graph/ingest-runs/" + runID)
+	getResp, err := server.Client().Get(server.URL + "/platform/graph/ingest-runs/" + runID)
 	if err != nil {
-		t.Fatalf("GET /graph/ingest-runs/{id} error = %v", err)
+		t.Fatalf("GET /platform/graph/ingest-runs/{id} error = %v", err)
 	}
 	defer func() {
 		if closeErr := getResp.Body.Close(); closeErr != nil {
@@ -4202,30 +4520,30 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	appendLog := &recordingAppendLog{
 		replayEvents: []*cerebrov1.EventEnvelope{
-			findingTestEvent("okta-audit-1", "user.session.start", "SUCCESS"),
-			findingTestEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			findingPolicyRuleTestEvent("okta-policy-rule-active", "ACTIVE"),
+			findingPolicyRuleTestEvent("okta-policy-rule-inactive", "INACTIVE"),
 		},
 	}
 	runtimeStore := &stubRuntimeStore{
 		runtimes: map[string]*cerebrov1.SourceRuntime{
-			"writer-okta-audit": {
-				Id:       "writer-okta-audit",
+			"writer-okta-policy-rule": {
+				Id:       "writer-okta-policy-rule",
 				SourceId: "okta",
 				TenantId: "writer",
-				Config:   map[string]string{"token": "super-secret"},
+				Config:   map[string]string{"family": "policy_rule", "token": "super-secret"},
 			},
 		},
 		claims: map[string]*ports.ClaimRecord{
 			"claim-1": {
 				ID:            "claim-1",
-				RuntimeID:     "writer-okta-audit",
+				RuntimeID:     "writer-okta-policy-rule",
 				TenantID:      "writer",
-				SubjectURN:    "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+				SubjectURN:    "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1",
 				Predicate:     "status",
-				ObjectValue:   "updated",
+				ObjectValue:   "INACTIVE",
 				ClaimType:     "attribute",
 				Status:        "asserted",
-				SourceEventID: "okta-audit-2",
+				SourceEventID: "okta-policy-rule-inactive",
 				ObservedAt:    time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
 			},
 		},
@@ -4239,7 +4557,7 @@ func TestFindingEndpoints(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	evaluateReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-audit/findings/evaluate?event_limit=2&rule_id=identity-okta-policy-rule-lifecycle-tampering", nil)
+	evaluateReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-policy-rule/findings/evaluate?event_limit=2&rule_id=identity-okta-policy-rule-lifecycle-tampering", nil)
 	if err != nil {
 		t.Fatalf("new evaluate findings request: %v", err)
 	}
@@ -4284,14 +4602,14 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := findingPayload["rule_id"]; got != "identity-okta-policy-rule-lifecycle-tampering" {
 		t.Fatalf("evaluate finding rule_id = %#v, want identity-okta-policy-rule-lifecycle-tampering", got)
 	}
-	if got := findingPayload["summary"]; got != "admin@writer.com performed policy.rule.update on pol-1" {
-		t.Fatalf("evaluate finding summary = %#v, want admin summary", got)
+	if got := findingPayload["summary"]; got != "Okta policy rule Require MFA is INACTIVE" {
+		t.Fatalf("evaluate finding summary = %#v, want current-state summary", got)
 	}
 	if got := findingPayload["policy_id"]; got != "pol-1" {
 		t.Fatalf("evaluate finding policy_id = %#v, want pol-1", got)
 	}
-	if got := findingPayload["policy_name"]; got != "pol-1" {
-		t.Fatalf("evaluate finding policy_name = %#v, want pol-1", got)
+	if got := findingPayload["policy_name"]; got != "Require MFA" {
+		t.Fatalf("evaluate finding policy_name = %#v, want Require MFA", got)
 	}
 	if got := findingPayload["check_id"]; got != "identity-okta-policy-rule-lifecycle-tampering-30d" {
 		t.Fatalf("evaluate finding check_id = %#v, want identity-okta-policy-rule-lifecycle-tampering-30d", got)
@@ -4342,12 +4660,12 @@ func TestFindingEndpoints(t *testing.T) {
 		t.Fatalf("evaluate evidence finding_id = %#v, want finding id %#v", got, findingPayload["id"])
 	}
 	eventIDs, ok := evidenceEntry["event_ids"].([]any)
-	if !ok || len(eventIDs) != 1 || eventIDs[0] != "okta-audit-2" {
-		t.Fatalf("evaluate evidence event_ids = %#v, want [okta-audit-2]", evidenceEntry["event_ids"])
+	if !ok || len(eventIDs) != 1 || eventIDs[0] != "okta-policy-rule-inactive" {
+		t.Fatalf("evaluate evidence event_ids = %#v, want [okta-policy-rule-inactive]", evidenceEntry["event_ids"])
 	}
 	evidenceAttributes, ok := evidenceEntry["attributes"].(map[string]any)
-	if !ok || evidenceAttributes["event_type"] != "policy.rule.update" {
-		t.Fatalf("evaluate evidence attributes = %#v, want event_type snapshot", evidenceEntry["attributes"])
+	if !ok || evidenceAttributes["policy_rule_status"] != "inactive" {
+		t.Fatalf("evaluate evidence attributes = %#v, want policy_rule_status snapshot", evidenceEntry["attributes"])
 	}
 	if _, ok := evidenceEntry["last_observed_at"].(string); !ok {
 		t.Fatalf("evaluate evidence last_observed_at = %#v, want timestamp", evidenceEntry["last_observed_at"])
@@ -4356,7 +4674,7 @@ func TestFindingEndpoints(t *testing.T) {
 	if !ok || len(claimIDs) != 1 || claimIDs[0] != "claim-1" {
 		t.Fatalf("evaluate evidence claim_ids = %#v, want [claim-1]", evidenceEntry["claim_ids"])
 	}
-	listResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-audit/findings?rule_id=identity-okta-policy-rule-lifecycle-tampering&status=open&event_id=okta-audit-2&limit=1")
+	listResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-policy-rule/findings?rule_id=identity-okta-policy-rule-lifecycle-tampering&status=open&event_id=okta-policy-rule-inactive&limit=1")
 	if err != nil {
 		t.Fatalf("GET /source-runtimes/{id}/findings error = %v", err)
 	}
@@ -4380,7 +4698,7 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := listedFinding["rule_id"]; got != "identity-okta-policy-rule-lifecycle-tampering" {
 		t.Fatalf("list finding rule_id = %#v, want identity-okta-policy-rule-lifecycle-tampering", got)
 	}
-	runListResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-audit/finding-evaluation-runs?rule_id=identity-okta-policy-rule-lifecycle-tampering&status=completed&limit=1")
+	runListResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-policy-rule/finding-evaluation-runs?rule_id=identity-okta-policy-rule-lifecycle-tampering&status=completed&limit=1")
 	if err != nil {
 		t.Fatalf("GET /source-runtimes/{id}/finding-evaluation-runs error = %v", err)
 	}
@@ -4419,7 +4737,7 @@ func TestFindingEndpoints(t *testing.T) {
 	if got, present := runEntry["graph_rows_read"]; !present || got != float64(0) {
 		t.Fatalf("list evaluation run graph_rows_read = %#v (present=%t), want 0 present", got, present)
 	}
-	evidenceListResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-audit/finding-evidence?finding_id=" + findingPayload["id"].(string) + "&run_id=" + runID + "&claim_id=claim-1&event_id=okta-audit-2&graph_root_urn=urn:cerebro:writer:okta_resource:policyrule:pol-1&limit=1")
+	evidenceListResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-policy-rule/finding-evidence?finding_id=" + findingPayload["id"].(string) + "&run_id=" + runID + "&claim_id=claim-1&event_id=okta-policy-rule-inactive&graph_root_urn=urn:cerebro:writer:okta_policy_rule:pol-1:rul-1&graph_path_urn=urn:cerebro:writer:okta_user:00u2&limit=1")
 	if err != nil {
 		t.Fatalf("GET /source-runtimes/{id}/finding-evidence error = %v", err)
 	}
@@ -4442,6 +4760,9 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := listedEvidence["id"]; got != evidenceID {
 		t.Fatalf("list finding evidence id = %#v, want %q", got, evidenceID)
+	}
+	if got := runtimeStore.findingEvidenceListRequest.GraphPathURN; got != "urn:cerebro:writer:okta_user:00u2" {
+		t.Fatalf("runtimeStore.findingEvidenceListRequest.GraphPathURN = %q, want graph path urn", got)
 	}
 	getEvidenceResp, err := server.Client().Get(server.URL + "/finding-evidence/" + evidenceID)
 	if err != nil {
@@ -4489,7 +4810,7 @@ func TestFindingEndpoints(t *testing.T) {
 	if got, present := getRunBody["graph_rows_read"]; !present || got != float64(0) {
 		t.Fatalf("get evaluation run graph_rows_read = %#v (present=%t), want 0 present", got, present)
 	}
-	missingRuleResp, err := server.Client().Post(server.URL+"/source-runtimes/writer-okta-audit/findings/evaluate?rule_id=does-not-exist", "application/json", nil)
+	missingRuleResp, err := server.Client().Post(server.URL+"/source-runtimes/writer-okta-policy-rule/findings/evaluate?rule_id=does-not-exist", "application/json", nil)
 	if err != nil {
 		t.Fatalf("POST /source-runtimes/{id}/findings/evaluate unknown rule error = %v", err)
 	}
@@ -4501,7 +4822,7 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := missingRuleResp.StatusCode; got != http.StatusNotFound {
 		t.Fatalf("unknown rule status = %d, want %d", got, http.StatusNotFound)
 	}
-	batchEvaluateReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-audit/finding-rules/evaluate?event_limit=2", nil)
+	batchEvaluateReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-policy-rule/finding-rules/evaluate?event_limit=2", nil)
 	if err != nil {
 		t.Fatalf("new batch evaluate request: %v", err)
 	}
@@ -4562,7 +4883,7 @@ func TestFindingEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal batch evaluate body: %v", err)
 	}
-	batchBodyReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-audit/finding-rules/evaluate?event_limit=2", bytes.NewReader(batchBody))
+	batchBodyReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-policy-rule/finding-rules/evaluate?event_limit=2", bytes.NewReader(batchBody))
 	if err != nil {
 		t.Fatalf("new body batch evaluate request: %v", err)
 	}
@@ -4587,7 +4908,7 @@ func TestFindingEndpoints(t *testing.T) {
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	evaluateFindingsResp, err := client.EvaluateSourceRuntimeFindings(context.Background(), connect.NewRequest(&cerebrov1.EvaluateSourceRuntimeFindingsRequest{
-		Id:         "writer-okta-audit",
+		Id:         "writer-okta-policy-rule",
 		RuleId:     "identity-okta-policy-rule-lifecycle-tampering",
 		EventLimit: 5,
 	}))
@@ -4619,13 +4940,13 @@ func TestFindingEndpoints(t *testing.T) {
 		t.Fatalf("EvaluateSourceRuntimeFindings evidence claim ids = %#v, want [claim-1]", got)
 	}
 	listFindingsResp, err := client.ListFindings(context.Background(), connect.NewRequest(&cerebrov1.ListFindingsRequest{
-		RuntimeId:   "writer-okta-audit",
+		RuntimeId:   "writer-okta-policy-rule",
 		RuleId:      "identity-okta-policy-rule-lifecycle-tampering",
 		Severity:    "HIGH",
 		Status:      cerebrov1.FindingStatus_FINDING_STATUS_OPEN,
 		PolicyId:    "pol-1",
-		ResourceUrn: "urn:cerebro:writer:okta_resource:policyrule:pol-1",
-		EventId:     "okta-audit-2",
+		ResourceUrn: "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1",
+		EventId:     "okta-policy-rule-inactive",
 		Limit:       1,
 	}))
 	if err != nil {
@@ -4652,17 +4973,17 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := runtimeStore.findingListRequest.RuleID; got != "identity-okta-policy-rule-lifecycle-tampering" {
 		t.Fatalf("runtimeStore.findingListRequest.RuleID = %q, want identity-okta-policy-rule-lifecycle-tampering", got)
 	}
-	if got := runtimeStore.findingListRequest.ResourceURN; got != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+	if got := runtimeStore.findingListRequest.ResourceURN; got != "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1" {
 		t.Fatalf("runtimeStore.findingListRequest.ResourceURN = %q, want policy rule urn", got)
 	}
-	if got := runtimeStore.findingListRequest.EventID; got != "okta-audit-2" {
-		t.Fatalf("runtimeStore.findingListRequest.EventID = %q, want okta-audit-2", got)
+	if got := runtimeStore.findingListRequest.EventID; got != "okta-policy-rule-inactive" {
+		t.Fatalf("runtimeStore.findingListRequest.EventID = %q, want okta-policy-rule-inactive", got)
 	}
 	if got := runtimeStore.findingListRequest.PolicyID; got != "pol-1" {
 		t.Fatalf("runtimeStore.findingListRequest.PolicyID = %q, want pol-1", got)
 	}
 	listRunsResp, err := client.ListFindingEvaluationRuns(context.Background(), connect.NewRequest(&cerebrov1.ListFindingEvaluationRunsRequest{
-		RuntimeId: "writer-okta-audit",
+		RuntimeId: "writer-okta-policy-rule",
 		RuleId:    "identity-okta-policy-rule-lifecycle-tampering",
 		Status:    "completed",
 		Limit:     1,
@@ -4674,7 +4995,7 @@ func TestFindingEndpoints(t *testing.T) {
 		t.Fatalf("len(ListFindingEvaluationRuns().Runs) = %d, want 1", got)
 	}
 	evaluateFindingRulesResp, err := client.EvaluateSourceRuntimeFindingRules(context.Background(), connect.NewRequest(&cerebrov1.EvaluateSourceRuntimeFindingRulesRequest{
-		Id:         "writer-okta-audit",
+		Id:         "writer-okta-policy-rule",
 		EventLimit: 2,
 	}))
 	if err != nil {
@@ -4700,13 +5021,13 @@ func TestFindingEndpoints(t *testing.T) {
 		t.Fatalf("len(EvaluateSourceRuntimeFindingRules().Evaluations[0].Evidence) = %d, want 1", got)
 	}
 	listEvidenceResp, err := client.ListFindingEvidence(context.Background(), connect.NewRequest(&cerebrov1.ListFindingEvidenceRequest{
-		RuntimeId:    "writer-okta-audit",
+		RuntimeId:    "writer-okta-policy-rule",
 		FindingId:    evaluateFindingsResp.Msg.GetFindings()[0].GetId(),
 		RunId:        lifecycleEvaluation.GetRun().GetId(),
 		RuleId:       "identity-okta-policy-rule-lifecycle-tampering",
 		ClaimId:      "claim-1",
-		EventId:      "okta-audit-2",
-		GraphRootUrn: "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+		EventId:      "okta-policy-rule-inactive",
+		GraphRootUrn: "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1",
 		Limit:        1,
 	}))
 	if err != nil {
@@ -4955,8 +5276,8 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := runtimeStore.findingEvidenceListRequest.ClaimID; got != "claim-1" {
 		t.Fatalf("runtimeStore.findingEvidenceListRequest.ClaimID = %q, want claim-1", got)
 	}
-	if got := runtimeStore.findingEvidenceListRequest.EventID; got != "okta-audit-2" {
-		t.Fatalf("runtimeStore.findingEvidenceListRequest.EventID = %q, want okta-audit-2", got)
+	if got := runtimeStore.findingEvidenceListRequest.EventID; got != "okta-policy-rule-inactive" {
+		t.Fatalf("runtimeStore.findingEvidenceListRequest.EventID = %q, want okta-policy-rule-inactive", got)
 	}
 	if len(runtimeStore.findingEvaluationRuns) < 4 {
 		t.Fatalf("len(runtimeStore.findingEvaluationRuns) = %d, want at least 4", len(runtimeStore.findingEvaluationRuns))
@@ -4964,14 +5285,14 @@ func TestFindingEndpoints(t *testing.T) {
 	if len(runtimeStore.findings) < 1 {
 		t.Fatalf("len(runtimeStore.findings) = %d, want at least 1", len(runtimeStore.findings))
 	}
-	if len(runtimeStore.findingEvidence) < 3 {
-		t.Fatalf("len(runtimeStore.findingEvidence) = %d, want at least 3", len(runtimeStore.findingEvidence))
+	if len(runtimeStore.findingEvidence) < 1 {
+		t.Fatalf("len(runtimeStore.findingEvidence) = %d, want at least 1", len(runtimeStore.findingEvidence))
 	}
 	if got := len(graphStore.entities); got < 9 {
 		t.Fatalf("len(graphStore.entities) = %d, want at least 9", got)
 	}
-	if got := len(graphStore.links); got < 20 {
-		t.Fatalf("len(graphStore.links) = %d, want at least 20", got)
+	if got := len(graphStore.links); got < 15 {
+		t.Fatalf("len(graphStore.links) = %d, want at least 15", got)
 	}
 	decisionCount := 0
 	outcomeCount := 0
@@ -4991,6 +5312,179 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if outcomeCount != 2 {
 		t.Fatalf("outcome entity count = %d, want 2", outcomeCount)
+	}
+}
+
+func TestFindingCandidateEndpointsEvaluateListGetAndPromote(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	appendLog := &recordingAppendLog{
+		replayEvents: []*cerebrov1.EventEnvelope{
+			findingPolicyRuleTestEvent("okta-policy-rule-active", "ACTIVE"),
+			findingPolicyRuleTestEvent("okta-policy-rule-inactive", "INACTIVE"),
+		},
+	}
+	runtimeStore := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-policy-rule": {
+				Id:       "writer-okta-policy-rule",
+				SourceId: "okta",
+				TenantId: "writer",
+				Config:   map[string]string{"family": "policy_rule", "token": "super-secret"},
+			},
+		},
+		claims: map[string]*ports.ClaimRecord{
+			"claim-1": {
+				ID:            "claim-1",
+				RuntimeID:     "writer-okta-policy-rule",
+				TenantID:      "writer",
+				SubjectURN:    "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1",
+				Predicate:     "status",
+				ObjectValue:   "INACTIVE",
+				ClaimType:     "attribute",
+				Status:        "asserted",
+				SourceEventID: "okta-policy-rule-inactive",
+				ObservedAt:    time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
+			},
+		},
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		AppendLog:  appendLog,
+		StateStore: runtimeStore,
+		GraphStore: &stubGraphStore{},
+	}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	evaluateReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-policy-rule/finding-candidates/evaluate?event_limit=2&rule_id=identity-okta-policy-rule-lifecycle-tampering", nil)
+	if err != nil {
+		t.Fatalf("new candidate evaluate request: %v", err)
+	}
+	evaluateResp, err := server.Client().Do(evaluateReq)
+	if err != nil {
+		t.Fatalf("POST /source-runtimes/{id}/finding-candidates/evaluate error = %v", err)
+	}
+	defer func() {
+		if closeErr := evaluateResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close candidate evaluate response body: %v", closeErr)
+		}
+	}()
+	if evaluateResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(evaluateResp.Body)
+		t.Fatalf("candidate evaluate status = %d body=%s", evaluateResp.StatusCode, string(body))
+	}
+	var evaluatePayload map[string]any
+	if err := json.NewDecoder(evaluateResp.Body).Decode(&evaluatePayload); err != nil {
+		t.Fatalf("decode candidate evaluate response: %v", err)
+	}
+	evaluations := evaluatePayload["evaluations"].([]any)
+	candidates := evaluations[0].(map[string]any)["candidates"].([]any)
+	candidatePayload := candidates[0].(map[string]any)
+	candidateID := candidatePayload["id"].(string)
+	if candidateID == "" {
+		t.Fatal("candidate id is empty")
+	}
+	if got := len(runtimeStore.findings); got != 0 {
+		t.Fatalf("production findings after candidate evaluate = %d, want 0", got)
+	}
+
+	listResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-policy-rule/finding-candidates?status=candidate&limit=1")
+	if err != nil {
+		t.Fatalf("GET /source-runtimes/{id}/finding-candidates error = %v", err)
+	}
+	defer func() {
+		if closeErr := listResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close candidate list response body: %v", closeErr)
+		}
+	}()
+	var listPayload map[string]any
+	if err := json.NewDecoder(listResp.Body).Decode(&listPayload); err != nil {
+		t.Fatalf("decode candidate list response: %v", err)
+	}
+	listCandidates := listPayload["candidates"].([]any)
+	if got := len(listCandidates); got != 1 {
+		t.Fatalf("listed candidates = %d, want 1", got)
+	}
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	getResp, err := client.GetFindingCandidate(context.Background(), connect.NewRequest(&cerebrov1.GetFindingCandidateRequest{Id: candidateID}))
+	if err != nil {
+		t.Fatalf("GetFindingCandidate() error = %v", err)
+	}
+	if got := getResp.Msg.GetCandidate().GetId(); got != candidateID {
+		t.Fatalf("GetFindingCandidate().Candidate.Id = %q, want %q", got, candidateID)
+	}
+
+	promoteBody, err := protojson.Marshal(&cerebrov1.PromoteFindingCandidateRequest{
+		PromotedBy:            "analyst@example.com",
+		Rationale:             "Validated against source data.",
+		ChangeTicket:          "SEC-123",
+		FalsePositiveReviewed: true,
+		GraphCoverageReviewed: true,
+	})
+	if err != nil {
+		t.Fatalf("marshal promote request: %v", err)
+	}
+	promoteResp, err := server.Client().Post(server.URL+"/finding-candidates/"+candidateID+"/promote", "application/json", bytes.NewReader(promoteBody))
+	if err != nil {
+		t.Fatalf("POST /finding-candidates/{id}/promote error = %v", err)
+	}
+	defer func() {
+		if closeErr := promoteResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close candidate promote response body: %v", closeErr)
+		}
+	}()
+	if promoteResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(promoteResp.Body)
+		t.Fatalf("candidate promote status = %d body=%s", promoteResp.StatusCode, string(body))
+	}
+	var promotePayload map[string]any
+	if err := json.NewDecoder(promoteResp.Body).Decode(&promotePayload); err != nil {
+		t.Fatalf("decode candidate promote response: %v", err)
+	}
+	promotedCandidate := promotePayload["candidate"].(map[string]any)
+	if got := promotedCandidate["status"]; got != "promoted" {
+		t.Fatalf("promoted candidate status = %#v, want promoted", got)
+	}
+	if got := len(runtimeStore.findings); got != 1 {
+		t.Fatalf("production findings after promote = %d, want 1", got)
+	}
+	if got := len(runtimeStore.findingEvidence); got != 1 {
+		t.Fatalf("production finding evidence after promote = %d, want 1", got)
+	}
+	if promotePayload["decision_id"] == "" {
+		t.Fatal("promotion decision_id is empty")
+	}
+
+	rejectCandidateID := candidateID + "-reject"
+	rejectCandidate := cloneFindingCandidate(runtimeStore.findingCandidates[candidateID])
+	rejectCandidate.ID = rejectCandidateID
+	rejectCandidate.Status = "candidate"
+	rejectCandidate.DecisionID = ""
+	rejectCandidate.PromotedFindingID = ""
+	rejectCandidate.PromotedBy = ""
+	rejectCandidate.PromotionRationale = ""
+	rejectCandidate.ChangeTicket = ""
+	rejectCandidate.PromotedAt = time.Time{}
+	runtimeStore.findingCandidates[rejectCandidateID] = rejectCandidate
+	rejectResp, err := client.RejectFindingCandidate(context.Background(), connect.NewRequest(&cerebrov1.RejectFindingCandidateRequest{
+		Id:         rejectCandidateID,
+		RejectedBy: "analyst@example.com",
+		Rationale:  "Expected inactive policy rule fixture.",
+	}))
+	if err != nil {
+		t.Fatalf("RejectFindingCandidate() error = %v", err)
+	}
+	if got := rejectResp.Msg.GetCandidate().GetStatus(); got != "rejected" {
+		t.Fatalf("RejectFindingCandidate().Candidate.Status = %q, want rejected", got)
+	}
+	if rejectResp.Msg.GetDecisionId() == "" {
+		t.Fatal("RejectFindingCandidate().DecisionId is empty")
+	}
+	if got := len(runtimeStore.findings); got != 1 {
+		t.Fatalf("production findings after reject = %d, want 1", got)
 	}
 }
 
@@ -5733,18 +6227,18 @@ func TestGraphNeighborhoodEndpoints(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	resp, err := server.Client().Get(server.URL + "/graph/neighborhood?root_urn=urn:cerebro:writer:github_pull_request:writer/cerebro%23447&limit=5")
+	resp, err := server.Client().Get(server.URL + "/platform/graph/neighborhood?root_urn=urn:cerebro:writer:github_pull_request:writer/cerebro%23447&limit=5")
 	if err != nil {
-		t.Fatalf("GET /graph/neighborhood error = %v", err)
+		t.Fatalf("GET /platform/graph/neighborhood error = %v", err)
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			t.Fatalf("close /graph/neighborhood response body: %v", closeErr)
+			t.Fatalf("close /platform/graph/neighborhood response body: %v", closeErr)
 		}
 	}()
 	var payload map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode /graph/neighborhood response: %v", err)
+		t.Fatalf("decode /platform/graph/neighborhood response: %v", err)
 	}
 	rootPayload, ok := payload["root"].(map[string]any)
 	if !ok {
@@ -5780,6 +6274,44 @@ func TestGraphNeighborhoodEndpoints(t *testing.T) {
 	}
 	if len(neighborhoodResp.Msg.GetRelations()) != 2 {
 		t.Fatalf("len(GetEntityNeighborhood.Relations) = %d, want 2", len(neighborhoodResp.Msg.GetRelations()))
+	}
+}
+
+func TestLegacyGraphAliasesAreRemoved(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	for _, tc := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/graph/neighborhood"},
+		{method: http.MethodGet, path: "/graph/impact/vulnerability/CVE-2026-1111"},
+		{method: http.MethodGet, path: "/graph/impact/package"},
+		{method: http.MethodGet, path: "/graph/impact/asset"},
+		{method: http.MethodGet, path: "/graph/ingest-health"},
+		{method: http.MethodGet, path: "/graph/ingest-runs"},
+		{method: http.MethodGet, path: "/graph/ingest-runs/run-1"},
+		{method: http.MethodPost, path: "/graph/actuate/recommendation"},
+		{method: http.MethodPost, path: "/graph/write/outcome"},
+	} {
+		req, err := http.NewRequest(tc.method, server.URL+tc.path, nil)
+		if err != nil {
+			t.Fatalf("NewRequest(%s %s): %v", tc.method, tc.path, err)
+		}
+		resp, err := server.Client().Do(req)
+		if err != nil {
+			t.Fatalf("%s %s error = %v", tc.method, tc.path, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusMethodNotAllowed {
+			t.Fatalf("%s %s status = %d, want removed route status", tc.method, tc.path, resp.StatusCode)
+		}
 	}
 }
 
@@ -6357,6 +6889,19 @@ func cloneFindingEvidence(evidence *cerebrov1.FindingEvidence) *cerebrov1.Findin
 	return proto.Clone(evidence).(*cerebrov1.FindingEvidence)
 }
 
+func cloneFindingCandidate(candidate *ports.FindingCandidateRecord) *ports.FindingCandidateRecord {
+	if candidate == nil {
+		return nil
+	}
+	cloned := *candidate
+	cloned.Finding = cloneFinding(candidate.Finding)
+	cloned.Evidence = make([]*cerebrov1.FindingEvidence, 0, len(candidate.Evidence))
+	for _, evidence := range candidate.Evidence {
+		cloned.Evidence = append(cloned.Evidence, cloneFindingEvidence(evidence))
+	}
+	return &cloned
+}
+
 func cloneNeighborhood(neighborhood *ports.EntityNeighborhood) *ports.EntityNeighborhood {
 	if neighborhood == nil {
 		return nil
@@ -6409,25 +6954,28 @@ func cloneStringMap(values map[string]string) map[string]string {
 	return cloned
 }
 
-func findingTestEvent(id string, eventType string, outcome string) *cerebrov1.EventEnvelope {
+func findingPolicyRuleTestEvent(id string, status string) *cerebrov1.EventEnvelope {
 	return &cerebrov1.EventEnvelope{
 		Id:         id,
 		TenantId:   "writer",
 		SourceId:   "okta",
-		Kind:       "okta.audit",
+		Kind:       "okta.policy_rule",
 		OccurredAt: timestamppb.New(time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)),
-		SchemaRef:  "okta/audit/v1",
+		SchemaRef:  "okta/policy_rule/v1",
 		Attributes: map[string]string{
 			"domain":                            "writer.okta.com",
-			"event_type":                        eventType,
-			"resource_id":                       "pol-1",
+			"family":                            "policy_rule",
+			"policy_id":                         "pol-1",
+			"policy_rule_id":                    "rul-1",
+			"policy_type":                       "OKTA_SIGN_ON",
+			"name":                              "Require MFA",
+			"priority":                          "1",
+			"resource_id":                       "rul-1",
 			"resource_type":                     "PolicyRule",
-			"actor_id":                          "00u2",
-			"actor_type":                        "User",
-			"actor_alternate_id":                "admin@writer.com",
-			"actor_display_name":                "Admin Example",
-			"outcome_result":                    outcome,
-			ports.EventAttributeSourceRuntimeID: "writer-okta-audit",
+			"status":                            status,
+			"policy_rule_status":                status,
+			"system":                            "false",
+			ports.EventAttributeSourceRuntimeID: "writer-okta-policy-rule",
 		},
 	}
 }

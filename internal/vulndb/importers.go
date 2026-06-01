@@ -19,7 +19,15 @@ const (
 	SourceCISAKEV = "cisa-kev"
 	SourceEPSS    = "epss"
 	SourceNVD     = "nvd"
+
+	maxOSVImportBytes     = 256 << 20
+	maxCISAKEVImportBytes = 32 << 20
+	maxEPSSImportBytes    = 128 << 20
+	maxNVDImportBytes     = 512 << 20
 )
+
+// ErrVulnDBFeedTooLarge indicates an advisory feed exceeded its importer byte limit.
+var ErrVulnDBFeedTooLarge = errors.New("vulndb feed exceeds byte limit")
 
 // ImportResult summarizes imported feed records.
 type ImportResult struct {
@@ -33,7 +41,7 @@ func ImportOSV(ctx context.Context, store Store, reader io.Reader) (ImportResult
 	if store == nil {
 		return ImportResult{}, fmt.Errorf("vulnerability store is required")
 	}
-	data, err := io.ReadAll(reader)
+	data, err := readLimitedVulnDBFeed(SourceOSV, reader, maxOSVImportBytes)
 	if err != nil {
 		return ImportResult{}, err
 	}
@@ -80,7 +88,11 @@ func ImportCISAKEV(ctx context.Context, store Store, reader io.Reader) (ImportRe
 		return ImportResult{}, fmt.Errorf("vulnerability store is required")
 	}
 	var catalog kevCatalog
-	if err := json.NewDecoder(reader).Decode(&catalog); err != nil {
+	data, err := readLimitedVulnDBFeed(SourceCISAKEV, reader, maxCISAKEVImportBytes)
+	if err != nil {
+		return ImportResult{}, err
+	}
+	if err := json.Unmarshal(data, &catalog); err != nil {
 		return ImportResult{}, err
 	}
 	var result ImportResult
@@ -133,7 +145,11 @@ func ImportEPSS(ctx context.Context, store Store, reader io.Reader) (ImportResul
 	if store == nil {
 		return ImportResult{}, fmt.Errorf("vulnerability store is required")
 	}
-	stripped, err := skipCommentLines(reader)
+	data, err := readLimitedVulnDBFeed(SourceEPSS, reader, maxEPSSImportBytes)
+	if err != nil {
+		return ImportResult{}, err
+	}
+	stripped, err := skipCommentLines(strings.NewReader(string(data)))
 	if err != nil {
 		return ImportResult{}, err
 	}
@@ -208,7 +224,11 @@ func ImportNVD(ctx context.Context, store Store, reader io.Reader) (ImportResult
 		return ImportResult{}, fmt.Errorf("vulnerability store is required")
 	}
 	var feed nvdFeed
-	if err := json.NewDecoder(reader).Decode(&feed); err != nil {
+	data, err := readLimitedVulnDBFeed(SourceNVD, reader, maxNVDImportBytes)
+	if err != nil {
+		return ImportResult{}, err
+	}
+	if err := json.Unmarshal(data, &feed); err != nil {
 		return ImportResult{}, err
 	}
 	var result ImportResult
@@ -998,6 +1018,20 @@ func skipCommentLines(reader io.Reader) (io.Reader, error) {
 		return nil, err
 	}
 	return strings.NewReader(builder.String()), nil
+}
+
+func readLimitedVulnDBFeed(source string, reader io.Reader, maxBytes int64) ([]byte, error) {
+	if maxBytes <= 0 {
+		return nil, fmt.Errorf("%s feed byte limit must be positive", normalizeSource(source))
+	}
+	payload, err := io.ReadAll(io.LimitReader(reader, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(payload)) > maxBytes {
+		return nil, fmt.Errorf("%w: %s feed exceeds %d bytes", ErrVulnDBFeedTooLarge, normalizeSource(source), maxBytes)
+	}
+	return payload, nil
 }
 
 func firstNonEmpty(values ...string) string {

@@ -26,6 +26,14 @@ func NewFixture() (sourcecdk.Source, error) {
 	if err != nil {
 		return nil, err
 	}
+	repositoryURNs, err := sourcecdk.LoadFixtureURNs(fixtureFS, "testdata/discover_repository.json")
+	if err != nil {
+		return nil, err
+	}
+	repositoryEvents, err := sourcecdk.LoadFixtureEvents(fixtureFS, "testdata/read_repository.json")
+	if err != nil {
+		return nil, err
+	}
 	return sourcecdk.NewFixtureSource(sourcecdk.FixtureSourceOptions{
 		Spec:          spec,
 		DefaultFamily: defaultFamily,
@@ -34,6 +42,10 @@ func NewFixture() (sourcecdk.Source, error) {
 			Name:   defaultFamily,
 			URNs:   urns,
 			Events: events,
+		}, {
+			Name:   familyRepository,
+			URNs:   repositoryURNs,
+			Events: repositoryEvents,
 		}},
 	})
 }

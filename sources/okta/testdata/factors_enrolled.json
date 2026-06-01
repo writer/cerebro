@@ -1,0 +1,8 @@
+[
+  {
+    "id": "opf-push",
+    "factorType": "push",
+    "provider": "OKTA",
+    "status": "ACTIVE"
+  }
+]

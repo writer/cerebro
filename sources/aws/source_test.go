@@ -4,6 +4,10 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"net/url"
+	"sort"
+	"strconv"
 	"testing"
 	"time"
 
@@ -25,6 +29,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 )
@@ -139,6 +144,98 @@ func TestAWSPullFromRecordsPreservesNextCursorWithoutEvents(t *testing.T) {
 	}
 	if got := pull.NextCursor.GetOpaque(); got != "next-page" {
 		t.Fatalf("NextCursor = %q, want next-page", got)
+	}
+}
+
+func TestCloudTrailCursorFreezesRelativeSinceAcrossPages(t *testing.T) {
+	var inputs []cloudtrail.LookupEventsInput
+	source := newTestSource(t, fakeAWS{cloudTrailLookup: func(_ context.Context, input *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error) {
+		inputs = append(inputs, *input)
+		if len(inputs) == 1 {
+			return &cloudtrail.LookupEventsOutput{NextToken: awssdk.String("token-1")}, nil
+		}
+		return &cloudtrail.LookupEventsOutput{}, nil
+	}})
+	config := sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyCloudTrail, "since": "PT2H"})
+
+	first, err := source.Read(context.Background(), config, nil)
+	if err != nil {
+		t.Fatalf("Read(cloudtrail first) error = %v", err)
+	}
+	if first.NextCursor == nil {
+		t.Fatal("first.NextCursor = nil, want encoded cursor")
+	}
+	if _, ok := parseCloudTrailCursor(first.NextCursor.GetOpaque(), settings{since: "PT2H"}, time.Now().UTC()); !ok {
+		t.Fatalf("first.NextCursor is not a resumable CloudTrail cursor: %q", first.NextCursor.GetOpaque())
+	}
+	if _, err = source.Read(context.Background(), config, first.NextCursor); err != nil {
+		t.Fatalf("Read(cloudtrail second) error = %v", err)
+	}
+
+	if len(inputs) != 2 {
+		t.Fatalf("LookupEvents calls = %d, want 2", len(inputs))
+	}
+	if got := awssdk.ToString(inputs[1].NextToken); got != "token-1" {
+		t.Fatalf("second NextToken = %q, want token-1", got)
+	}
+	if inputs[0].StartTime == nil || inputs[1].StartTime == nil {
+		t.Fatalf("StartTime values = %v, %v; want both set", inputs[0].StartTime, inputs[1].StartTime)
+	}
+	if !inputs[0].StartTime.Equal(*inputs[1].StartTime) {
+		t.Fatalf("second StartTime = %s, want frozen first StartTime %s", inputs[1].StartTime.Format(time.RFC3339Nano), inputs[0].StartTime.Format(time.RFC3339Nano))
+	}
+}
+
+func TestCloudTrailCursorInvalidatesUnsafeTokens(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		cursor string
+		config map[string]string
+	}{
+		{
+			name: "expired encoded cursor",
+			cursor: encodeCloudTrailCursor(
+				settings{since: "PT2H"},
+				&cloudtrail.LookupEventsInput{StartTime: timePtr("2026-05-24T00:00:00Z")},
+				"expired-token",
+				time.Now().UTC().Add(-2*time.Hour),
+			),
+			config: map[string]string{"account_id": "123456789012", "family": familyCloudTrail, "since": "PT2H"},
+		},
+		{
+			name: "selector changed",
+			cursor: encodeCloudTrailCursor(
+				settings{since: "PT1H"},
+				&cloudtrail.LookupEventsInput{StartTime: timePtr("2026-05-24T00:00:00Z")},
+				"mismatched-token",
+				time.Now().UTC(),
+			),
+			config: map[string]string{"account_id": "123456789012", "family": familyCloudTrail, "since": "PT2H"},
+		},
+		{
+			name:   "legacy raw token",
+			cursor: "legacy-aws-token",
+			config: map[string]string{"account_id": "123456789012", "family": familyCloudTrail, "since": "PT2H"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotInput *cloudtrail.LookupEventsInput
+			source := newTestSource(t, fakeAWS{cloudTrailLookup: func(_ context.Context, input *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error) {
+				copy := *input
+				gotInput = &copy
+				return &cloudtrail.LookupEventsOutput{}, nil
+			}})
+
+			if _, err := source.Read(context.Background(), sourcecdk.NewConfig(tt.config), &cerebrov1.SourceCursor{Opaque: tt.cursor}); err != nil {
+				t.Fatalf("Read(cloudtrail) error = %v", err)
+			}
+			if gotInput == nil {
+				t.Fatal("LookupEvents was not called")
+			}
+			if got := awssdk.ToString(gotInput.NextToken); got != "" {
+				t.Fatalf("NextToken = %q, want discarded token", got)
+			}
+		})
 	}
 }
 
@@ -325,6 +422,78 @@ func TestIAMRoleTrustEventTargetsSameRoleIdentifierAsIAMRoleEvent(t *testing.T) 
 	}
 }
 
+func TestIAMRoleTrustClassifiesPrincipalTypes(t *testing.T) {
+	trustPolicy := `{"Version":"2012-10-17","Statement":[{"Sid":"AccountTrust","Effect":"Allow","Principal":{"AWS":"arn:aws:iam::999999999999:root"},"Action":"sts:AssumeRole"},{"Sid":"ServiceTrust","Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"},{"Sid":"OIDCTrust","Effect":"Allow","Principal":{"Federated":"arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"},"Action":["sts:AssumeRoleWithWebIdentity","sts:TagSession"]},{"Sid":"SAMLTrust","Effect":"Allow","Principal":{"Federated":"arn:aws:iam::123456789012:saml-provider/Okta"},"Action":"sts:AssumeRoleWithSAML"}]}`
+	role := iamtypes.Role{
+		Arn:                      awssdk.String("arn:aws:iam::123456789012:role/DeployRole"),
+		AssumeRolePolicyDocument: awssdk.String(trustPolicy),
+		RoleId:                   awssdk.String("ARODEPLOY"),
+		RoleName:                 awssdk.String("DeployRole"),
+	}
+
+	trusts := roleTrusts(role)
+	if len(trusts) != 4 {
+		t.Fatalf("len(roleTrusts) = %d, want 4", len(trusts))
+	}
+
+	events := make(map[string]*cerebrov1.EventEnvelope, len(trusts))
+	for _, trust := range trusts {
+		event, err := iamRoleTrustEvent(settings{accountID: "123456789012"}, trust)
+		if err != nil {
+			t.Fatalf("iamRoleTrustEvent() error = %v", err)
+		}
+		events[event.Attributes["statement_sid"]] = event
+	}
+	if got := events["AccountTrust"].Attributes["subject_type"]; got != "account" {
+		t.Fatalf("account subject_type = %q, want account", got)
+	}
+	if got := events["AccountTrust"].Attributes["subject_id"]; got != "999999999999" {
+		t.Fatalf("account subject_id = %q, want external account ID", got)
+	}
+	if got := events["AccountTrust"].Attributes["is_external"]; got != "true" {
+		t.Fatalf("account is_external = %q, want true", got)
+	}
+	if got := events["ServiceTrust"].Attributes["subject_type"]; got != "service_principal" {
+		t.Fatalf("service subject_type = %q, want service_principal", got)
+	}
+	if got := events["ServiceTrust"].Attributes["subject_id"]; got != "lambda.amazonaws.com" {
+		t.Fatalf("service subject_id = %q, want lambda.amazonaws.com", got)
+	}
+	if got := events["OIDCTrust"].Attributes["subject_type"]; got != "service_principal" {
+		t.Fatalf("oidc subject_type = %q, want service_principal", got)
+	}
+	if got := events["SAMLTrust"].Attributes["trust_action"]; got != "sts:AssumeRoleWithSAML" {
+		t.Fatalf("saml trust_action = %q, want sts:AssumeRoleWithSAML", got)
+	}
+}
+
+func TestIAMRoleTrustIncludesWildcardAssumeActions(t *testing.T) {
+	for _, action := range []any{"sts:*", "sts:AssumeRole*", "*:AssumeRole", []any{"sts:TagSession", "sts:AssumeRole*"}} {
+		t.Run(fmt.Sprint(action), func(t *testing.T) {
+			role := iamtypes.Role{
+				Arn:      awssdk.String("arn:aws:iam::123456789012:role/WildcardRole"),
+				RoleId:   awssdk.String("AROWILDCARD"),
+				RoleName: awssdk.String("WildcardRole"),
+			}
+			statement := trustStatement{
+				Effect:    "Allow",
+				Action:    action,
+				Principal: json.RawMessage(`{"AWS":"arn:aws:iam::999999999999:role/ExternalAdmin"}`),
+			}
+			payload, err := json.Marshal(trustPolicyDocument{Statement: []trustStatement{statement}})
+			if err != nil {
+				t.Fatalf("Marshal() error = %v", err)
+			}
+			role.AssumeRolePolicyDocument = awssdk.String(string(payload))
+
+			trusts := roleTrusts(role)
+			if len(trusts) != 1 {
+				t.Fatalf("len(roleTrusts) = %d, want 1", len(trusts))
+			}
+		})
+	}
+}
+
 func TestReadAWSExposureAndTrustPreview(t *testing.T) {
 	trustPolicy := `{"Version":"2012-10-17","Statement":[{"Sid":"ExternalTrust","Effect":"Allow","Principal":{"AWS":"arn:aws:iam::999999999999:role/ExternalAdmin"},"Action":"sts:AssumeRole"}]}`
 	source := newTestSource(t, fakeAWS{
@@ -337,7 +506,7 @@ func TestReadAWSExposureAndTrustPreview(t *testing.T) {
 				IpProtocol: awssdk.String("tcp"), FromPort: awssdk.Int32(443), ToPort: awssdk.Int32(443), IpRanges: []ec2types.IpRange{{CidrIp: awssdk.String("0.0.0.0/0")}},
 			}},
 		}},
-		addresses: []ec2types.Address{{AllocationId: awssdk.String("eipalloc-1"), PublicIp: awssdk.String("203.0.113.10"), NetworkInterfaceId: awssdk.String("eni-1")}},
+		addresses: []ec2types.Address{{AllocationId: awssdk.String("eipalloc-1"), PublicIp: awssdk.String("203.0.113.10"), NetworkInterfaceId: awssdk.String("eni-1"), InstanceId: awssdk.String("i-1")}},
 	})
 	for _, tt := range []struct {
 		family string
@@ -367,8 +536,307 @@ func TestReadAWSExposureAndTrustPreview(t *testing.T) {
 				if got := pull.Events[0].Attributes["resource_id"]; got != "eipalloc-1" {
 					t.Fatalf("resource_id = %q, want eipalloc-1", got)
 				}
+				if got := pull.Events[0].Attributes["associated_instance_id"]; got != "i-1" {
+					t.Fatalf("associated_instance_id = %q, want i-1", got)
+				}
 			}
 		})
+	}
+}
+
+func TestReadAWSEffectivePermissionIncludesInlinePolicies(t *testing.T) {
+	source := newTestSource(t, fakeAWS{
+		inlinePolicyNames: []string{"InlineAdmin"},
+		inlinePolicyDocuments: map[string]string{
+			"InlineAdmin": url.QueryEscape(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["iam:*","s3:GetObject"],"Resource":"*"},{"Effect":"Deny","Action":"ec2:*","Resource":"*"}]}`),
+		},
+	})
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"account_id":     "123456789012",
+		"family":         familyEffectivePermission,
+		"principal_name": "admin@writer.com",
+		"principal_type": "user",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(effective_permission inline policy) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	if got := attrs["policy_source"]; got != "inline" {
+		t.Fatalf("policy_source = %q, want inline", got)
+	}
+	if got := attrs["actions"]; got != "iam:*,s3:GetObject" {
+		t.Fatalf("actions = %q, want inline allow actions", got)
+	}
+	if got := attrs["is_admin"]; got != "true" {
+		t.Fatalf("is_admin = %q, want true for wildcard inline actions", got)
+	}
+	if got := attrs["role_id"]; got != "inline:user:admin@writer.com:InlineAdmin" {
+		t.Fatalf("role_id = %q, want synthetic inline policy id", got)
+	}
+}
+
+func TestReadAWSEffectivePermissionPaginatesInlinePolicies(t *testing.T) {
+	source := newTestSource(t, fakeAWS{
+		inlinePolicyNames: []string{"InlineOne", "InlineTwo"},
+		inlinePolicyDocuments: map[string]string{
+			"InlineOne": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:GetObject","Resource":"*"}]}`,
+			"InlineTwo": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:ListBucket","Resource":"*"}]}`,
+		},
+	})
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"account_id":     "123456789012",
+		"family":         familyEffectivePermission,
+		"principal_name": "admin@writer.com",
+		"principal_type": "user",
+		"per_page":       "1",
+	})
+
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(first inline policy page) error = %v", err)
+	}
+	if len(first.Events) != 1 {
+		t.Fatalf("len(first.Events) = %d, want 1", len(first.Events))
+	}
+	if got := first.Events[0].Attributes["role_name"]; got != "InlineOne" {
+		t.Fatalf("first inline role_name = %q, want InlineOne", got)
+	}
+	if first.NextCursor == nil {
+		t.Fatal("first.NextCursor = nil, want cursor for second inline policy")
+	}
+
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(second inline policy page) error = %v", err)
+	}
+	if len(second.Events) != 1 {
+		t.Fatalf("len(second.Events) = %d, want 1", len(second.Events))
+	}
+	if got := second.Events[0].Attributes["role_name"]; got != "InlineTwo" {
+		t.Fatalf("second inline role_name = %q, want InlineTwo", got)
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second.NextCursor = %v, want nil", second.NextCursor)
+	}
+}
+
+func TestReadAWSEffectivePermissionIncludesManagedPolicyActions(t *testing.T) {
+	policyARN := "arn:aws:iam::123456789012:policy/CustomReadOnly"
+	source := newTestSource(t, fakeAWS{
+		attachedPolicies: []iamtypes.AttachedPolicy{{PolicyName: awssdk.String("CustomReadOnly"), PolicyArn: awssdk.String(policyARN)}},
+		managedPolicyDocuments: map[string]string{
+			policyARN: url.QueryEscape(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject","s3:ListBucket"],"Resource":"*"},{"Effect":"Deny","Action":"s3:DeleteObject","Resource":"*"}]}`),
+		},
+	})
+
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"account_id":     "123456789012",
+		"family":         familyEffectivePermission,
+		"principal_name": "analyst@writer.com",
+		"principal_type": "user",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(effective_permission managed policy) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	if got := attrs["policy_source"]; got != "attached" {
+		t.Fatalf("policy_source = %q, want attached", got)
+	}
+	if got := attrs["actions"]; got != "s3:GetObject,s3:ListBucket" {
+		t.Fatalf("actions = %q, want managed policy allow actions", got)
+	}
+	if got := attrs["role_id"]; got != policyARN {
+		t.Fatalf("role_id = %q, want policy ARN", got)
+	}
+}
+
+func TestDiscoverAWSEffectivePermissionIncludesInlinePolicies(t *testing.T) {
+	source := newTestSource(t, fakeAWS{
+		inlinePolicyNames: []string{"InlineAdmin"},
+		inlinePolicyDocuments: map[string]string{
+			"InlineAdmin": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"iam:*","Resource":"*"}]}`,
+		},
+	})
+
+	urns, err := source.Discover(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"account_id":     "123456789012",
+		"family":         familyEffectivePermission,
+		"principal_name": "admin@writer.com",
+		"principal_type": "user",
+	}))
+	if err != nil {
+		t.Fatalf("Discover(effective_permission inline policy) error = %v", err)
+	}
+	want := sourcecdk.URN("urn:cerebro:123456789012:effective_permission:admin@writer.com:inline:user:admin@writer.com:InlineAdmin")
+	if len(urns) != 1 || urns[0] != want {
+		t.Fatalf("Discover inline policy URNs = %v, want [%s]", urns, want)
+	}
+}
+
+func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
+	basePrincipalData := func(fake *recordingAWS) {
+		fake.users = []iamtypes.User{{UserName: awssdk.String("admin@writer.com"), UserId: awssdk.String("AIDAADMIN")}}
+		fake.groups = []iamtypes.Group{{GroupName: awssdk.String("Security"), GroupId: awssdk.String("AGPSECURITY")}}
+		fake.roles = []iamtypes.Role{{RoleName: awssdk.String("AdminRole"), RoleId: awssdk.String("AROADMIN"), Arn: awssdk.String("arn:aws:iam::123456789012:role/AdminRole")}}
+		fake.attachedPolicies = []iamtypes.AttachedPolicy{{PolicyName: awssdk.String("AdministratorAccess"), PolicyArn: awssdk.String("arn:aws:iam::aws:policy/AdministratorAccess")}}
+		fake.managedPolicyDocuments = map[string]string{"arn:aws:iam::aws:policy/AdministratorAccess": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}`}
+		fake.inlinePolicyNames = []string{"InlineAdmin"}
+		fake.inlinePolicyDocuments = map[string]string{"InlineAdmin": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"iam:*","Resource":"*"}]}`}
+	}
+	publicEndpointData := func(fake *recordingAWS) {
+		fake.hostedZones = []route53types.HostedZone{{
+			Id:     awssdk.String("/hostedzone/Z123"),
+			Name:   awssdk.String("writer.com."),
+			Config: &route53types.HostedZoneConfig{PrivateZone: false},
+		}}
+		fake.recordSets = []route53types.ResourceRecordSet{{
+			Name: awssdk.String("app.writer.com."),
+			Type: route53types.RRTypeCname,
+			ResourceRecords: []route53types.ResourceRecord{{
+				Value: awssdk.String("d111111abcdef8.cloudfront.net."),
+			}},
+		}}
+		fake.distributions = []cloudfronttypes.DistributionSummary{{
+			ARN:        awssdk.String("arn:aws:cloudfront::123456789012:distribution/EDFDVBD632BHDS5"),
+			Id:         awssdk.String("EDFDVBD632BHDS5"),
+			DomainName: awssdk.String("d111111abcdef8.cloudfront.net"),
+			Enabled:    awssdk.Bool(true),
+		}}
+		fake.loadBalancers = []elbv2types.LoadBalancer{{
+			LoadBalancerArn:  awssdk.String("arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/prod-web/123"),
+			LoadBalancerName: awssdk.String("prod-web"),
+			DNSName:          awssdk.String("prod-web-123.us-east-1.elb.amazonaws.com"),
+			Scheme:           elbv2types.LoadBalancerSchemeEnumInternetFacing,
+		}}
+		fake.apiDomains = []apigatewaytypes.DomainName{{
+			DomainName:    awssdk.String("api.writer.com"),
+			DomainNameArn: awssdk.String("arn:aws:apigateway:us-east-1::/domainnames/api.writer.com"),
+		}}
+		fake.restAPIs = []apigatewaytypes.RestApi{{
+			Id:   awssdk.String("rest123"),
+			Name: awssdk.String("orders"),
+		}}
+		fake.apiV2Domains = []apigatewayv2types.DomainName{{
+			DomainName: awssdk.String("events.writer.com"),
+		}}
+		fake.apiV2APIs = []apigatewayv2types.Api{{
+			ApiId:        awssdk.String("v2abc"),
+			ApiEndpoint:  awssdk.String("https://v2abc.execute-api.us-east-1.amazonaws.com"),
+			Name:         awssdk.String("events"),
+			ProtocolType: apigatewayv2types.ProtocolTypeHttp,
+		}}
+		fake.addresses = []ec2types.Address{{
+			AllocationId: awssdk.String("eipalloc-1"),
+			PublicIp:     awssdk.String("203.0.113.10"),
+		}}
+		fake.networkInterfaces = []ec2types.NetworkInterface{{
+			NetworkInterfaceId: awssdk.String("eni-1"),
+			Association:        &ec2types.NetworkInterfaceAssociation{PublicIp: awssdk.String("203.0.113.20")},
+		}}
+	}
+	for _, tt := range []struct {
+		family  string
+		seed    func(*recordingAWS)
+		wantAPI []string
+	}{
+		{
+			family:  familyAccessKey,
+			seed:    basePrincipalData,
+			wantAPI: []string{"iam:ListAccessKeys", "iam:ListUsers"},
+		},
+		{
+			family:  familyEffectivePermission,
+			seed:    basePrincipalData,
+			wantAPI: []string{"iam:GetGroupPolicy", "iam:GetPolicy", "iam:GetPolicyVersion", "iam:GetRolePolicy", "iam:GetUserPolicy", "iam:ListAttachedGroupPolicies", "iam:ListAttachedRolePolicies", "iam:ListAttachedUserPolicies", "iam:ListGroupPolicies", "iam:ListGroups", "iam:ListRolePolicies", "iam:ListRoles", "iam:ListUserPolicies", "iam:ListUsers"},
+		},
+		{
+			family:  familyIAMGroup,
+			wantAPI: []string{"iam:ListGroups"},
+		},
+		{
+			family:  familyIAMMembership,
+			seed:    basePrincipalData,
+			wantAPI: []string{"iam:GetGroup", "iam:ListGroups"},
+		},
+		{
+			family:  familyIAMRole,
+			wantAPI: []string{"iam:ListRoles"},
+		},
+		{
+			family:  familyIAMRoleAssign,
+			seed:    basePrincipalData,
+			wantAPI: []string{"iam:GetGroupPolicy", "iam:GetPolicy", "iam:GetPolicyVersion", "iam:GetRolePolicy", "iam:GetUserPolicy", "iam:ListAttachedGroupPolicies", "iam:ListAttachedRolePolicies", "iam:ListAttachedUserPolicies", "iam:ListGroupPolicies", "iam:ListGroups", "iam:ListRolePolicies", "iam:ListRoles", "iam:ListUserPolicies", "iam:ListUsers"},
+		},
+		{
+			family:  familyIAMRoleTrust,
+			wantAPI: []string{"iam:ListRoles"},
+		},
+		{
+			family:  familyIAMUser,
+			wantAPI: []string{"iam:ListUsers"},
+		},
+		{
+			family:  familyPublicEndpoint,
+			seed:    publicEndpointData,
+			wantAPI: []string{"apigateway:GetDomainNames", "apigateway:GetRestApis", "apigatewayv2:GetApis", "apigatewayv2:GetDomainNames", "cloudfront:ListDistributions", "ec2:DescribeAddresses", "ec2:DescribeNetworkInterfaces", "elasticloadbalancing:DescribeLoadBalancers", "route53:ListHostedZones", "route53:ListResourceRecordSets"},
+		},
+		{
+			family:  familyResourceExposure,
+			wantAPI: []string{"ec2:DescribeSecurityGroups"},
+		},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			fake := &recordingAWS{}
+			if tt.seed != nil {
+				tt.seed(fake)
+			}
+			source := newRecordingSource(t, fake)
+
+			readAllPages(t, source, sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}))
+
+			if !sameStringSet(fake.calls, tt.wantAPI) {
+				t.Fatalf("AWS API calls for %s = %v, want %v", tt.family, sortedUnique(fake.calls), sortedUnique(tt.wantAPI))
+			}
+		})
+	}
+}
+
+func TestReadAWSNetworkInterfacePublicEndpointIncludesAttachedInstance(t *testing.T) {
+	endpoints, _, err := listNetworkInterfacePublicEndpoints(context.Background(), awsClients{ec2: fakeAWS{
+		networkInterfaces: []ec2types.NetworkInterface{{
+			NetworkInterfaceId: awssdk.String("eni-1"),
+			Description:        awssdk.String("prod-web-eni"),
+			Association: &ec2types.NetworkInterfaceAssociation{
+				PublicDnsName: awssdk.String("ec2-203-0-113-10.compute-1.amazonaws.com"),
+				PublicIp:      awssdk.String("203.0.113.10"),
+			},
+			Attachment: &ec2types.NetworkInterfaceAttachment{
+				InstanceId: awssdk.String("i-1234567890abcdef0"),
+			},
+		}},
+	}}, settings{accountID: "123456789012", region: "us-east-1"}, publicEndpointCursor{}, 10)
+	if err != nil {
+		t.Fatalf("listNetworkInterfacePublicEndpoints() error = %v", err)
+	}
+	if len(endpoints) != 1 {
+		t.Fatalf("len(endpoints) = %d, want 1", len(endpoints))
+	}
+	event, err := publicEndpointEvent(settings{accountID: "123456789012"}, endpoints[0])
+	if err != nil {
+		t.Fatalf("publicEndpointEvent() error = %v", err)
+	}
+	if got := event.Attributes["attached_instance_id"]; got != "i-1234567890abcdef0" {
+		t.Fatalf("attached_instance_id = %q, want attached EC2 instance", got)
+	}
+	if got := event.Attributes["resource_type"]; got != "network_interface" {
+		t.Fatalf("resource_type = %q, want network_interface", got)
 	}
 }
 
@@ -570,24 +1038,240 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 	return source
 }
 
+func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
+	t.Helper()
+	spec, err := loadSpec()
+	if err != nil {
+		t.Fatalf("loadSpec() error = %v", err)
+	}
+	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}}, nil
+	}}
+	source.families, err = source.newFamilyEngine()
+	if err != nil {
+		t.Fatalf("newFamilyEngine() error = %v", err)
+	}
+	return source
+}
+
+func readAllPages(t *testing.T, source *Source, cfg sourcecdk.Config) {
+	t.Helper()
+	var cursor *cerebrov1.SourceCursor
+	for page := 0; page < 20; page++ {
+		pull, err := source.Read(context.Background(), cfg, cursor)
+		if err != nil {
+			t.Fatalf("Read page %d error = %v", page, err)
+		}
+		if pull.NextCursor == nil {
+			return
+		}
+		cursor = pull.NextCursor
+	}
+	t.Fatal("Read did not finish within 20 pages")
+}
+
+func sameStringSet(got []string, want []string) bool {
+	gotSet := sortedUnique(got)
+	wantSet := sortedUnique(want)
+	if len(gotSet) != len(wantSet) {
+		return false
+	}
+	for index := range gotSet {
+		if gotSet[index] != wantSet[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func sortedUnique(values []string) []string {
+	seen := map[string]bool{}
+	for _, value := range values {
+		seen[value] = true
+	}
+	result := make([]string, 0, len(seen))
+	for value := range seen {
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
+}
+
 type fakeAWS struct {
-	users             []iamtypes.User
-	groups            []iamtypes.Group
-	roles             []iamtypes.Role
-	accessKeys        []iamtypes.AccessKeyMetadata
-	attachedPolicies  []iamtypes.AttachedPolicy
-	cloudTrailEvents  []cloudtrailtypes.Event
-	securityGroups    []ec2types.SecurityGroup
-	addresses         []ec2types.Address
-	networkInterfaces []ec2types.NetworkInterface
-	hostedZones       []route53types.HostedZone
-	recordSets        []route53types.ResourceRecordSet
-	distributions     []cloudfronttypes.DistributionSummary
-	loadBalancers     []elbv2types.LoadBalancer
-	apiDomains        []apigatewaytypes.DomainName
-	restAPIs          []apigatewaytypes.RestApi
-	apiV2Domains      []apigatewayv2types.DomainName
-	apiV2APIs         []apigatewayv2types.Api
+	users                  []iamtypes.User
+	groups                 []iamtypes.Group
+	roles                  []iamtypes.Role
+	accessKeys             []iamtypes.AccessKeyMetadata
+	attachedPolicies       []iamtypes.AttachedPolicy
+	managedPolicyDocuments map[string]string
+	inlinePolicyNames      []string
+	inlinePolicyDocuments  map[string]string
+	cloudTrailEvents       []cloudtrailtypes.Event
+	cloudTrailLookup       func(context.Context, *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error)
+	securityGroups         []ec2types.SecurityGroup
+	addresses              []ec2types.Address
+	networkInterfaces      []ec2types.NetworkInterface
+	hostedZones            []route53types.HostedZone
+	recordSets             []route53types.ResourceRecordSet
+	distributions          []cloudfronttypes.DistributionSummary
+	loadBalancers          []elbv2types.LoadBalancer
+	apiDomains             []apigatewaytypes.DomainName
+	restAPIs               []apigatewaytypes.RestApi
+	apiV2Domains           []apigatewayv2types.DomainName
+	apiV2APIs              []apigatewayv2types.Api
+}
+
+type recordingAWS struct {
+	fakeAWS
+	calls []string
+}
+
+func (f *recordingAWS) record(action string) {
+	f.calls = append(f.calls, action)
+}
+
+func (f *recordingAWS) ListUsers(ctx context.Context, input *iam.ListUsersInput, options ...func(*iam.Options)) (*iam.ListUsersOutput, error) {
+	f.record("iam:ListUsers")
+	return f.fakeAWS.ListUsers(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListGroups(ctx context.Context, input *iam.ListGroupsInput, options ...func(*iam.Options)) (*iam.ListGroupsOutput, error) {
+	f.record("iam:ListGroups")
+	return f.fakeAWS.ListGroups(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListRoles(ctx context.Context, input *iam.ListRolesInput, options ...func(*iam.Options)) (*iam.ListRolesOutput, error) {
+	f.record("iam:ListRoles")
+	return f.fakeAWS.ListRoles(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListAccessKeys(ctx context.Context, input *iam.ListAccessKeysInput, options ...func(*iam.Options)) (*iam.ListAccessKeysOutput, error) {
+	f.record("iam:ListAccessKeys")
+	return f.fakeAWS.ListAccessKeys(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetGroup(ctx context.Context, input *iam.GetGroupInput, options ...func(*iam.Options)) (*iam.GetGroupOutput, error) {
+	f.record("iam:GetGroup")
+	return f.fakeAWS.GetGroup(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListAttachedUserPolicies(ctx context.Context, input *iam.ListAttachedUserPoliciesInput, options ...func(*iam.Options)) (*iam.ListAttachedUserPoliciesOutput, error) {
+	f.record("iam:ListAttachedUserPolicies")
+	return f.fakeAWS.ListAttachedUserPolicies(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListAttachedGroupPolicies(ctx context.Context, input *iam.ListAttachedGroupPoliciesInput, options ...func(*iam.Options)) (*iam.ListAttachedGroupPoliciesOutput, error) {
+	f.record("iam:ListAttachedGroupPolicies")
+	return f.fakeAWS.ListAttachedGroupPolicies(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListAttachedRolePolicies(ctx context.Context, input *iam.ListAttachedRolePoliciesInput, options ...func(*iam.Options)) (*iam.ListAttachedRolePoliciesOutput, error) {
+	f.record("iam:ListAttachedRolePolicies")
+	return f.fakeAWS.ListAttachedRolePolicies(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListUserPolicies(ctx context.Context, input *iam.ListUserPoliciesInput, options ...func(*iam.Options)) (*iam.ListUserPoliciesOutput, error) {
+	f.record("iam:ListUserPolicies")
+	return f.fakeAWS.ListUserPolicies(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListGroupPolicies(ctx context.Context, input *iam.ListGroupPoliciesInput, options ...func(*iam.Options)) (*iam.ListGroupPoliciesOutput, error) {
+	f.record("iam:ListGroupPolicies")
+	return f.fakeAWS.ListGroupPolicies(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListRolePolicies(ctx context.Context, input *iam.ListRolePoliciesInput, options ...func(*iam.Options)) (*iam.ListRolePoliciesOutput, error) {
+	f.record("iam:ListRolePolicies")
+	return f.fakeAWS.ListRolePolicies(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetPolicy(ctx context.Context, input *iam.GetPolicyInput, options ...func(*iam.Options)) (*iam.GetPolicyOutput, error) {
+	f.record("iam:GetPolicy")
+	return f.fakeAWS.GetPolicy(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetPolicyVersion(ctx context.Context, input *iam.GetPolicyVersionInput, options ...func(*iam.Options)) (*iam.GetPolicyVersionOutput, error) {
+	f.record("iam:GetPolicyVersion")
+	return f.fakeAWS.GetPolicyVersion(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetUserPolicy(ctx context.Context, input *iam.GetUserPolicyInput, options ...func(*iam.Options)) (*iam.GetUserPolicyOutput, error) {
+	f.record("iam:GetUserPolicy")
+	return f.fakeAWS.GetUserPolicy(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetGroupPolicy(ctx context.Context, input *iam.GetGroupPolicyInput, options ...func(*iam.Options)) (*iam.GetGroupPolicyOutput, error) {
+	f.record("iam:GetGroupPolicy")
+	return f.fakeAWS.GetGroupPolicy(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetRolePolicy(ctx context.Context, input *iam.GetRolePolicyInput, options ...func(*iam.Options)) (*iam.GetRolePolicyOutput, error) {
+	f.record("iam:GetRolePolicy")
+	return f.fakeAWS.GetRolePolicy(ctx, input, options...)
+}
+
+func (f *recordingAWS) LookupEvents(ctx context.Context, input *cloudtrail.LookupEventsInput, options ...func(*cloudtrail.Options)) (*cloudtrail.LookupEventsOutput, error) {
+	f.record("cloudtrail:LookupEvents")
+	return f.fakeAWS.LookupEvents(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeSecurityGroups(ctx context.Context, input *ec2.DescribeSecurityGroupsInput, options ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error) {
+	f.record("ec2:DescribeSecurityGroups")
+	return f.fakeAWS.DescribeSecurityGroups(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeAddresses(ctx context.Context, input *ec2.DescribeAddressesInput, options ...func(*ec2.Options)) (*ec2.DescribeAddressesOutput, error) {
+	f.record("ec2:DescribeAddresses")
+	return f.fakeAWS.DescribeAddresses(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeNetworkInterfaces(ctx context.Context, input *ec2.DescribeNetworkInterfacesInput, options ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error) {
+	f.record("ec2:DescribeNetworkInterfaces")
+	return f.fakeAWS.DescribeNetworkInterfaces(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListHostedZones(ctx context.Context, input *route53.ListHostedZonesInput, options ...func(*route53.Options)) (*route53.ListHostedZonesOutput, error) {
+	f.record("route53:ListHostedZones")
+	return f.fakeAWS.ListHostedZones(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListResourceRecordSets(ctx context.Context, input *route53.ListResourceRecordSetsInput, options ...func(*route53.Options)) (*route53.ListResourceRecordSetsOutput, error) {
+	f.record("route53:ListResourceRecordSets")
+	return f.fakeAWS.ListResourceRecordSets(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListDistributions(ctx context.Context, input *cloudfront.ListDistributionsInput, options ...func(*cloudfront.Options)) (*cloudfront.ListDistributionsOutput, error) {
+	f.record("cloudfront:ListDistributions")
+	return f.fakeAWS.ListDistributions(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeLoadBalancers(ctx context.Context, input *elbv2.DescribeLoadBalancersInput, options ...func(*elbv2.Options)) (*elbv2.DescribeLoadBalancersOutput, error) {
+	f.record("elasticloadbalancing:DescribeLoadBalancers")
+	return f.fakeAWS.DescribeLoadBalancers(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetDomainNames(ctx context.Context, input *apigateway.GetDomainNamesInput, options ...func(*apigateway.Options)) (*apigateway.GetDomainNamesOutput, error) {
+	f.record("apigateway:GetDomainNames")
+	return f.fakeAWS.GetDomainNames(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetRestApis(ctx context.Context, input *apigateway.GetRestApisInput, options ...func(*apigateway.Options)) (*apigateway.GetRestApisOutput, error) {
+	f.record("apigateway:GetRestApis")
+	return f.fakeAWS.GetRestApis(ctx, input, options...)
+}
+
+type recordingAPIGatewayV2 struct {
+	fake *recordingAWS
+}
+
+func (f recordingAPIGatewayV2) GetApis(ctx context.Context, input *apigatewayv2.GetApisInput, options ...func(*apigatewayv2.Options)) (*apigatewayv2.GetApisOutput, error) {
+	f.fake.record("apigatewayv2:GetApis")
+	return fakeAPIGatewayV2{domains: f.fake.apiV2Domains, apis: f.fake.apiV2APIs}.GetApis(ctx, input, options...)
+}
+
+func (f recordingAPIGatewayV2) GetDomainNames(ctx context.Context, input *apigatewayv2.GetDomainNamesInput, options ...func(*apigatewayv2.Options)) (*apigatewayv2.GetDomainNamesOutput, error) {
+	f.fake.record("apigatewayv2:GetDomainNames")
+	return fakeAPIGatewayV2{domains: f.fake.apiV2Domains, apis: f.fake.apiV2APIs}.GetDomainNames(ctx, input, options...)
 }
 
 func (f fakeAWS) ListUsers(context.Context, *iam.ListUsersInput, ...func(*iam.Options)) (*iam.ListUsersOutput, error) {
@@ -622,7 +1306,74 @@ func (f fakeAWS) ListAttachedRolePolicies(context.Context, *iam.ListAttachedRole
 	return &iam.ListAttachedRolePoliciesOutput{AttachedPolicies: f.attachedPolicies}, nil
 }
 
-func (f fakeAWS) LookupEvents(context.Context, *cloudtrail.LookupEventsInput, ...func(*cloudtrail.Options)) (*cloudtrail.LookupEventsOutput, error) {
+func (f fakeAWS) ListUserPolicies(_ context.Context, input *iam.ListUserPoliciesInput, _ ...func(*iam.Options)) (*iam.ListUserPoliciesOutput, error) {
+	names, truncated, marker := paginateStringValues(f.inlinePolicyNames, awssdk.ToString(input.Marker), int(awssdk.ToInt32(input.MaxItems)))
+	return &iam.ListUserPoliciesOutput{PolicyNames: names, IsTruncated: truncated, Marker: stringPtr(marker)}, nil
+}
+
+func (f fakeAWS) ListGroupPolicies(_ context.Context, input *iam.ListGroupPoliciesInput, _ ...func(*iam.Options)) (*iam.ListGroupPoliciesOutput, error) {
+	names, truncated, marker := paginateStringValues(f.inlinePolicyNames, awssdk.ToString(input.Marker), int(awssdk.ToInt32(input.MaxItems)))
+	return &iam.ListGroupPoliciesOutput{PolicyNames: names, IsTruncated: truncated, Marker: stringPtr(marker)}, nil
+}
+
+func (f fakeAWS) ListRolePolicies(_ context.Context, input *iam.ListRolePoliciesInput, _ ...func(*iam.Options)) (*iam.ListRolePoliciesOutput, error) {
+	names, truncated, marker := paginateStringValues(f.inlinePolicyNames, awssdk.ToString(input.Marker), int(awssdk.ToInt32(input.MaxItems)))
+	return &iam.ListRolePoliciesOutput{PolicyNames: names, IsTruncated: truncated, Marker: stringPtr(marker)}, nil
+}
+
+func (f fakeAWS) GetPolicy(_ context.Context, input *iam.GetPolicyInput, _ ...func(*iam.Options)) (*iam.GetPolicyOutput, error) {
+	return &iam.GetPolicyOutput{Policy: &iamtypes.Policy{Arn: input.PolicyArn, DefaultVersionId: awssdk.String("v1")}}, nil
+}
+
+func (f fakeAWS) GetPolicyVersion(_ context.Context, input *iam.GetPolicyVersionInput, _ ...func(*iam.Options)) (*iam.GetPolicyVersionOutput, error) {
+	return &iam.GetPolicyVersionOutput{PolicyVersion: &iamtypes.PolicyVersion{Document: awssdk.String(f.managedPolicyDocument(awssdk.ToString(input.PolicyArn))), VersionId: input.VersionId}}, nil
+}
+
+func (f fakeAWS) GetUserPolicy(_ context.Context, input *iam.GetUserPolicyInput, _ ...func(*iam.Options)) (*iam.GetUserPolicyOutput, error) {
+	return &iam.GetUserPolicyOutput{PolicyDocument: awssdk.String(f.inlinePolicyDocument(awssdk.ToString(input.PolicyName)))}, nil
+}
+
+func (f fakeAWS) GetGroupPolicy(_ context.Context, input *iam.GetGroupPolicyInput, _ ...func(*iam.Options)) (*iam.GetGroupPolicyOutput, error) {
+	return &iam.GetGroupPolicyOutput{PolicyDocument: awssdk.String(f.inlinePolicyDocument(awssdk.ToString(input.PolicyName)))}, nil
+}
+
+func (f fakeAWS) GetRolePolicy(_ context.Context, input *iam.GetRolePolicyInput, _ ...func(*iam.Options)) (*iam.GetRolePolicyOutput, error) {
+	return &iam.GetRolePolicyOutput{PolicyDocument: awssdk.String(f.inlinePolicyDocument(awssdk.ToString(input.PolicyName)))}, nil
+}
+
+func (f fakeAWS) inlinePolicyDocument(policyName string) string {
+	if f.inlinePolicyDocuments != nil {
+		return f.inlinePolicyDocuments[policyName]
+	}
+	return ""
+}
+
+func (f fakeAWS) managedPolicyDocument(policyARN string) string {
+	if f.managedPolicyDocuments != nil {
+		return f.managedPolicyDocuments[policyARN]
+	}
+	return ""
+}
+
+func paginateStringValues(values []string, marker string, limit int) ([]string, bool, string) {
+	start := 0
+	if marker != "" {
+		parsed, err := strconv.Atoi(marker)
+		if err == nil && parsed >= 0 && parsed <= len(values) {
+			start = parsed
+		}
+	}
+	if limit <= 0 || start+limit >= len(values) {
+		return values[start:], false, ""
+	}
+	next := strconv.Itoa(start + limit)
+	return values[start : start+limit], true, next
+}
+
+func (f fakeAWS) LookupEvents(ctx context.Context, input *cloudtrail.LookupEventsInput, _ ...func(*cloudtrail.Options)) (*cloudtrail.LookupEventsOutput, error) {
+	if f.cloudTrailLookup != nil {
+		return f.cloudTrailLookup(ctx, input)
+	}
 	return &cloudtrail.LookupEventsOutput{Events: f.cloudTrailEvents}, nil
 }
 

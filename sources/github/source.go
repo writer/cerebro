@@ -19,6 +19,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
 //go:embed catalog.yaml
@@ -33,6 +34,7 @@ const (
 	defaultAuditInclude = "all"
 	defaultAuditOrder   = "desc"
 	familyAudit         = "audit"
+	familyRepository    = "repository"
 	familyDependabot    = "dependabot_alert"
 	familyPullRequest   = "pull_request"
 )
@@ -76,6 +78,25 @@ type pullRequestPayload struct {
 	MergedAt   *time.Time `json:"merged_at,omitempty"`
 }
 
+type repositoryPayload struct {
+	ID                               int64      `json:"id,omitempty"`
+	OwnerLogin                       string     `json:"owner_login"`
+	Name                             string     `json:"name"`
+	FullName                         string     `json:"full_name"`
+	URL                              string     `json:"url,omitempty"`
+	Visibility                       string     `json:"visibility,omitempty"`
+	Private                          bool       `json:"private"`
+	Archived                         bool       `json:"archived"`
+	Fork                             bool       `json:"fork"`
+	DefaultBranch                    string     `json:"default_branch,omitempty"`
+	CreatedAt                        time.Time  `json:"created_at"`
+	UpdatedAt                        time.Time  `json:"updated_at"`
+	PushedAt                         *time.Time `json:"pushed_at,omitempty"`
+	SecretScanningEnabled            string     `json:"secret_scanning_enabled,omitempty"`
+	SecretScanningPushProtection     string     `json:"secret_scanning_push_protection,omitempty"`
+	DependabotSecurityUpdatesEnabled string     `json:"dependabot_security_updates_enabled,omitempty"`
+}
+
 // New constructs the live GitHub source.
 func New() (*Source, error) {
 	spec, err := loadSpec()
@@ -105,6 +126,20 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	if settings.family == familyDependabot {
 		return s.checkDependabotAlerts(ctx, client, settings)
 	}
+	if settings.family == familySecretScanning {
+		return s.checkSecretScanningAlerts(ctx, client, settings)
+	}
+	if settings.family == familyOrgInventory {
+		return s.checkOrgInventory(ctx, client, settings)
+	}
+	if settings.family == familyRepository {
+		if settings.repo != "" {
+			_, err := getRepo(ctx, client, settings.owner, settings.repo)
+			return err
+		}
+		_, err := listRepos(ctx, client, settings.owner, settings.perPage)
+		return err
+	}
 	if settings.repo != "" {
 		_, err := getRepo(ctx, client, settings.owner, settings.repo)
 		return err
@@ -124,6 +159,12 @@ func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecd
 	}
 	if settings.family == familyDependabot {
 		return s.discoverDependabotAlerts(ctx, client, settings)
+	}
+	if settings.family == familySecretScanning {
+		return s.discoverSecretScanningAlerts(ctx, client, settings)
+	}
+	if settings.family == familyOrgInventory {
+		return s.discoverOrgInventory(ctx, client, settings)
 	}
 	if settings.repo != "" {
 		repo, err := getRepo(ctx, client, settings.owner, settings.repo)
@@ -163,6 +204,15 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	if settings.family == familyDependabot {
 		return s.readDependabotAlerts(ctx, client, settings, cursor)
 	}
+	if settings.family == familySecretScanning {
+		return s.readSecretScanningAlerts(ctx, client, settings, cursor)
+	}
+	if settings.family == familyOrgInventory {
+		return s.readOrgInventory(ctx, client, settings, cursor)
+	}
+	if settings.family == familyRepository {
+		return s.readRepositories(ctx, client, settings, cursor)
+	}
 	page, err := readPage(cursor)
 	if err != nil {
 		return sourcecdk.Pull{}, err
@@ -185,6 +235,62 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	events := make([]*primitives.Event, 0, len(pulls))
 	for _, pullRequest := range pulls {
 		event, err := pullRequestEvent(settings, pullRequest)
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		events = append(events, event)
+	}
+	nextPage := page + 1
+	pull := sourcecdk.Pull{
+		Events: events,
+		Checkpoint: &cerebrov1.SourceCheckpoint{
+			Watermark:    events[len(events)-1].OccurredAt,
+			CursorOpaque: strconv.Itoa(nextPage),
+		},
+	}
+	if resp != nil && resp.NextPage > 0 {
+		nextPage = resp.NextPage
+		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: strconv.Itoa(resp.NextPage)}
+		pull.Checkpoint.CursorOpaque = strconv.Itoa(nextPage)
+	}
+	return pull, nil
+}
+
+func (s *Source) readRepositories(ctx context.Context, client *gogithub.Client, settings settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	page, err := readPage(cursor)
+	if err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	if settings.repo != "" {
+		if page > 1 {
+			return sourcecdk.Pull{}, nil
+		}
+		repo, err := getRepo(ctx, client, settings.owner, settings.repo)
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		event, err := repositoryEvent(settings, repo)
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		return sourcecdk.Pull{
+			Events: []*primitives.Event{event},
+			Checkpoint: &cerebrov1.SourceCheckpoint{
+				Watermark:    event.OccurredAt,
+				CursorOpaque: "2",
+			},
+		}, nil
+	}
+	repos, resp, err := listReposPage(ctx, client, settings.owner, page, settings.perPage)
+	if err != nil {
+		return sourcecdk.Pull{}, err
+	}
+	if len(repos) == 0 {
+		return sourcecdk.Pull{}, nil
+	}
+	events := make([]*primitives.Event, 0, len(repos))
+	for _, repo := range repos {
+		event, err := repositoryEvent(settings, repo)
 		if err != nil {
 			return sourcecdk.Pull{}, err
 		}
@@ -232,9 +338,6 @@ func (s *Source) newClient(cfg sourcecdk.Config, requireRepo bool) (*gogithub.Cl
 	if s != nil {
 		httpClient = s.client
 	}
-	if httpClient == nil {
-		httpClient = &http.Client{Timeout: sourceHTTPTimeout}
-	}
 	httpClient = sourceHTTPClientNoRedirect(httpClient, allowLoopbackBaseURL, lookupIPAddrs)
 	client := gogithub.NewClient(httpClient)
 	if settings.token != "" {
@@ -251,36 +354,12 @@ func (s *Source) newClient(cfg sourcecdk.Config, requireRepo bool) (*gogithub.Cl
 }
 
 func sourceHTTPClientNoRedirect(client *http.Client, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) *http.Client {
-	if client == nil {
-		client = &http.Client{Timeout: sourceHTTPTimeout}
-	}
-	cloned := *client
-	if cloned.CheckRedirect == nil {
-		cloned.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
-			return http.ErrUseLastResponse
-		}
-	}
-	transport := cloned.Transport
-	if transport == nil {
-		transport = http.DefaultTransport
-	}
-	cloned.Transport = safeSourceRoundTripper{base: transport, allowLoopback: allowLoopback, lookupIPAddrs: lookupIPAddrs}
-	return &cloned
-}
-
-type safeSourceRoundTripper struct {
-	base          http.RoundTripper
-	allowLoopback bool
-	lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)
-}
-
-func (rt safeSourceRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req != nil && req.URL != nil {
-		if err := rejectResolvedUnsafeHost(req.Context(), req.URL.Hostname(), rt.allowLoopback, rt.lookupIPAddrs); err != nil {
-			return nil, err
-		}
-	}
-	return rt.base.RoundTrip(req)
+	return sourcehttp.HardenClient(client, sourcehttp.ClientOptions{
+		SourceID:      "github",
+		Timeout:       sourceHTTPTimeout,
+		AllowLoopback: allowLoopback,
+		LookupIPAddrs: lookupIPAddrs,
+	})
 }
 
 func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL bool) (_ settings, err error) {
@@ -315,9 +394,9 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL 
 		settings.family = defaultFamily
 	}
 	switch settings.family {
-	case familyAudit, familyDependabot, familyPullRequest:
+	case familyAudit, familyDependabot, familyOrgInventory, familyPullRequest, familyRepository, familySecretScanning:
 	default:
-		return settings, fmt.Errorf("github family must be one of %s, %s, or %s", familyPullRequest, familyAudit, familyDependabot)
+		return settings, fmt.Errorf("github family must be one of %s, %s, %s, %s, or %s", familyPullRequest, familyAudit, familyDependabot, familyRepository, familySecretScanning)
 	}
 	if rawPerPage, ok := cfg.Lookup("per_page"); ok && strings.TrimSpace(rawPerPage) != "" {
 		perPage, err := strconv.Atoi(strings.TrimSpace(rawPerPage))
@@ -359,6 +438,44 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL 
 		case "auto_dismissed", "dismissed", "fixed", "open":
 		default:
 			return settings, fmt.Errorf("github state must be one of auto_dismissed, dismissed, fixed, or open when family=%q", familyDependabot)
+		}
+		if settings.auditInclude != "" || settings.auditOrder != "" || settings.auditPhrase != "" {
+			return settings, fmt.Errorf("github include, order, and phrase are only supported when family=%q", familyAudit)
+		}
+	case familyOrgInventory:
+		if settings.token == "" {
+			return settings, fmt.Errorf("github token is required when family=%q", familyOrgInventory)
+		}
+		if settings.repo != "" {
+			return settings, fmt.Errorf("github repo is not supported when family=%q", familyOrgInventory)
+		}
+		if settings.state != "" {
+			return settings, fmt.Errorf("github state is not supported when family=%q", familyOrgInventory)
+		}
+		if settings.auditInclude != "" || settings.auditOrder != "" || settings.auditPhrase != "" {
+			return settings, fmt.Errorf("github include, order, and phrase are only supported when family=%q", familyAudit)
+		}
+	case familySecretScanning:
+		if settings.token == "" {
+			return settings, fmt.Errorf("github token is required when family=%q", familySecretScanning)
+		}
+		if settings.repo != "" {
+			return settings, fmt.Errorf("github repo is not supported when family=%q (org-level scan)", familySecretScanning)
+		}
+		if settings.state == "" {
+			settings.state = defaultState
+		}
+		switch settings.state {
+		case "open", "resolved":
+		default:
+			return settings, fmt.Errorf("github state must be one of open or resolved when family=%q", familySecretScanning)
+		}
+		if settings.auditInclude != "" || settings.auditOrder != "" || settings.auditPhrase != "" {
+			return settings, fmt.Errorf("github include, order, and phrase are only supported when family=%q", familyAudit)
+		}
+	case familyRepository:
+		if settings.state != "" {
+			return settings, fmt.Errorf("github state is only supported when family=%q", familyPullRequest)
 		}
 		if settings.auditInclude != "" || settings.auditOrder != "" || settings.auditPhrase != "" {
 			return settings, fmt.Errorf("github include, order, and phrase are only supported when family=%q", familyAudit)
@@ -468,35 +585,6 @@ func isUnsafeIP(ip net.IP) bool {
 		ip.IsMulticast()
 }
 
-func rejectResolvedUnsafeHost(ctx context.Context, host string, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) error {
-	normalized := normalizedIPHost(host)
-	if normalized == "" {
-		return nil
-	}
-	if isUnsafeHost(normalized) {
-		if allowLoopback && isLoopbackHost(normalized) {
-			return nil
-		}
-		return errUnsafeBaseURLHost
-	}
-	if lookupIPAddrs == nil {
-		lookupIPAddrs = net.DefaultResolver.LookupIPAddr
-	}
-	addrs, err := lookupIPAddrs(ctx, normalized)
-	if err != nil {
-		return fmt.Errorf("resolve github base_url host %q: %w", normalized, err)
-	}
-	for _, addr := range addrs {
-		if isUnsafeIP(addr.IP) {
-			if allowLoopback && addr.IP != nil && addr.IP.IsLoopback() {
-				continue
-			}
-			return errUnsafeBaseURLHost
-		}
-	}
-	return nil
-}
-
 func normalizedIPHost(host string) string {
 	value := strings.TrimRight(strings.ToLower(strings.TrimSpace(host)), ".")
 	value = strings.Trim(value, "[]")
@@ -557,34 +645,39 @@ func getRepo(ctx context.Context, client *gogithub.Client, owner string, repo st
 }
 
 func listRepos(ctx context.Context, client *gogithub.Client, owner string, perPage int) ([]*gogithub.Repository, error) {
-	repos, _, err := client.Repositories.ListByOrg(ctx, owner, &gogithub.RepositoryListByOrgOptions{
+	repos, _, err := listReposPage(ctx, client, owner, 1, perPage)
+	return repos, err
+}
+
+func listReposPage(ctx context.Context, client *gogithub.Client, owner string, page int, perPage int) ([]*gogithub.Repository, *gogithub.Response, error) {
+	repos, resp, err := client.Repositories.ListByOrg(ctx, owner, &gogithub.RepositoryListByOrgOptions{
 		Type:      "all",
 		Sort:      "updated",
 		Direction: "desc",
 		ListOptions: gogithub.ListOptions{
-			Page:    1,
+			Page:    page,
 			PerPage: perPage,
 		},
 	})
 	if err == nil {
-		return repos, nil
+		return repos, resp, nil
 	}
 	if !isNotFound(err) {
-		return nil, fmt.Errorf("list github org repos for %s: %w", owner, err)
+		return nil, nil, fmt.Errorf("list github org repos for %s: %w", owner, err)
 	}
-	repos, _, err = client.Repositories.ListByUser(ctx, owner, &gogithub.RepositoryListByUserOptions{
+	repos, resp, err = client.Repositories.ListByUser(ctx, owner, &gogithub.RepositoryListByUserOptions{
 		Type:      "owner",
 		Sort:      "updated",
 		Direction: "desc",
 		ListOptions: gogithub.ListOptions{
-			Page:    1,
+			Page:    page,
 			PerPage: perPage,
 		},
 	})
 	if err != nil {
-		return nil, wrapLookupError(fmt.Sprintf("github owner %s", owner), err)
+		return nil, nil, wrapLookupError(fmt.Sprintf("github owner %s", owner), err)
 	}
-	return repos, nil
+	return repos, resp, nil
 }
 
 func repoURN(owner string, repo *gogithub.Repository) (sourcecdk.URN, error) {
@@ -669,6 +762,154 @@ func pullRequestEvent(settings settings, pullRequest *gogithub.PullRequest) (*pr
 			"state":       pullRequest.GetState(),
 		},
 	}, nil
+}
+
+func repositoryEvent(settings settings, repo *gogithub.Repository) (*primitives.Event, error) {
+	if repo == nil {
+		return nil, errors.New("repository is required")
+	}
+	occurredAt := repo.GetUpdatedAt().Time
+	if occurredAt.IsZero() {
+		occurredAt = repo.GetPushedAt().Time
+	}
+	if occurredAt.IsZero() {
+		occurredAt = repo.GetCreatedAt().Time
+	}
+	if occurredAt.IsZero() {
+		return nil, errors.New("github repository missing timestamps")
+	}
+	createdAt := repo.GetCreatedAt().Time
+	if createdAt.IsZero() {
+		createdAt = occurredAt
+	}
+	ownerLogin := repositoryOwnerLogin(settings.owner, repo)
+	fullName := repositoryFullName(settings.owner, repo)
+	if fullName == "" {
+		return nil, errors.New("repository full_name is required")
+	}
+	repoID := ""
+	if repo.GetID() != 0 {
+		repoID = strconv.FormatInt(repo.GetID(), 10)
+	}
+	secretScanning, pushProtection, dependabotUpdates := repoSecurityAnalysis(repo)
+	payloadBytes, err := json.Marshal(repositoryPayload{
+		ID:                               repo.GetID(),
+		OwnerLogin:                       ownerLogin,
+		Name:                             repo.GetName(),
+		FullName:                         fullName,
+		URL:                              repo.GetHTMLURL(),
+		Visibility:                       repo.GetVisibility(),
+		Private:                          repo.GetPrivate(),
+		Archived:                         repo.GetArchived(),
+		Fork:                             repo.GetFork(),
+		DefaultBranch:                    repo.GetDefaultBranch(),
+		CreatedAt:                        createdAt,
+		UpdatedAt:                        occurredAt,
+		PushedAt:                         timestamp(repo.PushedAt),
+		SecretScanningEnabled:            secretScanning,
+		SecretScanningPushProtection:     pushProtection,
+		DependabotSecurityUpdatesEnabled: dependabotUpdates,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal github repository payload: %w", err)
+	}
+	resourceID := firstNonEmptyString(repoID, fullName)
+	attrs := map[string]string{
+		"archived":       strconv.FormatBool(repo.GetArchived()),
+		"default_branch": repo.GetDefaultBranch(),
+		"fork":           strconv.FormatBool(repo.GetFork()),
+		"full_name":      fullName,
+		"html_url":       repo.GetHTMLURL(),
+		"name":           repo.GetName(),
+		"owner":          settings.owner,
+		"owner_login":    ownerLogin,
+		"private":        strconv.FormatBool(repo.GetPrivate()),
+		"repo":           repo.GetName(),
+		"repo_id":        repoID,
+		"repository":     fullName,
+		"resource_id":    resourceID,
+		"resource_name":  fullName,
+		"resource_type":  "code_repository",
+		"visibility":     repo.GetVisibility(),
+	}
+	if secretScanning != "" {
+		attrs["secret_scanning"] = secretScanning
+	}
+	if pushProtection != "" {
+		attrs["secret_scanning_push_protection"] = pushProtection
+	}
+	if dependabotUpdates != "" {
+		attrs["dependabot_security_updates"] = dependabotUpdates
+	}
+	return &primitives.Event{
+		Id:         fmt.Sprintf("github-code-repository-%s-%d", normalizeRepositoryEventID(resourceID), occurredAt.Unix()),
+		TenantId:   settings.owner,
+		SourceId:   "github",
+		Kind:       "github.code.repository",
+		OccurredAt: timestamppb.New(occurredAt.UTC()),
+		SchemaRef:  "github/code_repository/v1",
+		Payload:    payloadBytes,
+		Attributes: attrs,
+	}, nil
+}
+
+func repoSecurityAnalysis(repo *gogithub.Repository) (secretScanning, pushProtection, dependabotUpdates string) {
+	if repo == nil {
+		return "", "", ""
+	}
+	sa := repo.GetSecurityAndAnalysis()
+	if sa == nil {
+		return "", "", ""
+	}
+	if ss := sa.GetSecretScanning(); ss != nil {
+		secretScanning = ss.GetStatus()
+	}
+	if pp := sa.GetSecretScanningPushProtection(); pp != nil {
+		pushProtection = pp.GetStatus()
+	}
+	if du := sa.GetDependabotSecurityUpdates(); du != nil {
+		dependabotUpdates = du.GetStatus()
+	}
+	return secretScanning, pushProtection, dependabotUpdates
+}
+
+func repositoryOwnerLogin(fallback string, repo *gogithub.Repository) string {
+	if repo == nil {
+		return strings.TrimSpace(fallback)
+	}
+	if owner := strings.TrimSpace(repo.GetOwner().GetLogin()); owner != "" {
+		return owner
+	}
+	if fullName := strings.TrimSpace(repo.GetFullName()); fullName != "" {
+		if owner, _, ok := strings.Cut(fullName, "/"); ok {
+			return strings.TrimSpace(owner)
+		}
+	}
+	return strings.TrimSpace(fallback)
+}
+
+func repositoryFullName(owner string, repo *gogithub.Repository) string {
+	if repo == nil {
+		return ""
+	}
+	if fullName := strings.TrimSpace(repo.GetFullName()); fullName != "" {
+		return fullName
+	}
+	name := strings.TrimSpace(repo.GetName())
+	if name == "" {
+		return ""
+	}
+	return strings.TrimSpace(owner) + "/" + name
+}
+
+func normalizeRepositoryEventID(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.ReplaceAll(value, "/", "-")
+	value = strings.ReplaceAll(value, ":", "-")
+	if value == "" {
+		return "unknown"
+	}
+	return value
 }
 
 func configValue(cfg sourcecdk.Config, key string) string {

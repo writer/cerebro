@@ -12,6 +12,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 var (
@@ -49,7 +50,17 @@ func (s *Service) List() *cerebrov1.ListSourcesResponse {
 }
 
 // Check validates configuration for a named source.
-func (s *Service) Check(ctx context.Context, req *cerebrov1.CheckSourceRequest) (*cerebrov1.CheckSourceResponse, error) {
+func (s *Service) Check(ctx context.Context, req *cerebrov1.CheckSourceRequest) (_ *cerebrov1.CheckSourceResponse, err error) {
+	ctx, span := telemetry.Start(ctx, "source.check", sourceOperationTelemetryAttrs(req.GetSourceId()))
+	status := "completed"
+	attrs := sourceOperationTelemetryAttrs(req.GetSourceId())
+	defer func() {
+		if err != nil {
+			status = "failed"
+			attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: sourceOperationTelemetryErrorKind(err)})
+		}
+		telemetry.End(span, status, attrs)
+	}()
 	source, err := s.lookup(req.GetSourceId())
 	if err != nil {
 		return nil, err
@@ -68,7 +79,17 @@ func (s *Service) Check(ctx context.Context, req *cerebrov1.CheckSourceRequest) 
 }
 
 // Discover returns the current URNs for a named source.
-func (s *Service) Discover(ctx context.Context, req *cerebrov1.DiscoverSourceRequest) (*cerebrov1.DiscoverSourceResponse, error) {
+func (s *Service) Discover(ctx context.Context, req *cerebrov1.DiscoverSourceRequest) (_ *cerebrov1.DiscoverSourceResponse, err error) {
+	ctx, span := telemetry.Start(ctx, "source.discover", sourceOperationTelemetryAttrs(req.GetSourceId()))
+	status := "completed"
+	attrs := sourceOperationTelemetryAttrs(req.GetSourceId())
+	defer func() {
+		if err != nil {
+			status = "failed"
+			attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: sourceOperationTelemetryErrorKind(err)})
+		}
+		telemetry.End(span, status, attrs)
+	}()
 	source, err := s.lookup(req.GetSourceId())
 	if err != nil {
 		return nil, err
@@ -85,6 +106,7 @@ func (s *Service) Discover(ctx context.Context, req *cerebrov1.DiscoverSourceReq
 	for _, urn := range urns {
 		values = append(values, urn.String())
 	}
+	attrs = attrs.WithField(telemetry.Field{Key: "urn_count", Value: len(values)})
 	return &cerebrov1.DiscoverSourceResponse{
 		Source: source.Spec(),
 		Urns:   values,
@@ -92,7 +114,17 @@ func (s *Service) Discover(ctx context.Context, req *cerebrov1.DiscoverSourceReq
 }
 
 // Read returns one page of events for a named source.
-func (s *Service) Read(ctx context.Context, req *cerebrov1.ReadSourceRequest) (*cerebrov1.ReadSourceResponse, error) {
+func (s *Service) Read(ctx context.Context, req *cerebrov1.ReadSourceRequest) (_ *cerebrov1.ReadSourceResponse, err error) {
+	ctx, span := telemetry.Start(ctx, "source.read", sourceOperationTelemetryAttrs(req.GetSourceId()))
+	status := "completed"
+	attrs := sourceOperationTelemetryAttrs(req.GetSourceId())
+	defer func() {
+		if err != nil {
+			status = "failed"
+			attrs = attrs.WithField(telemetry.Field{Key: "error_kind", Value: sourceOperationTelemetryErrorKind(err)})
+		}
+		telemetry.End(span, status, attrs)
+	}()
 	source, err := s.lookup(req.GetSourceId())
 	if err != nil {
 		return nil, err
@@ -109,6 +141,10 @@ func (s *Service) Read(ctx context.Context, req *cerebrov1.ReadSourceRequest) (*
 	if err != nil {
 		return nil, err
 	}
+	attrs = attrs.
+		WithField(telemetry.Field{Key: "event_count", Value: len(pull.Events)}).
+		WithField(telemetry.Field{Key: "preview_event_count", Value: len(previews)}).
+		WithField(telemetry.Field{Key: "has_next_cursor", Value: pull.NextCursor != nil})
 	return &cerebrov1.ReadSourceResponse{
 		Source:        source.Spec(),
 		Events:        pull.Events,
@@ -176,4 +212,19 @@ func previewEvents(events []*cerebrov1.EventEnvelope) ([]*cerebrov1.SourcePrevie
 		previews = append(previews, preview)
 	}
 	return previews, nil
+}
+
+func sourceOperationTelemetryAttrs(sourceID string) telemetry.Attributes {
+	return telemetry.Attrs(telemetry.Field{Key: "source_id", Value: strings.TrimSpace(sourceID)})
+}
+
+func sourceOperationTelemetryErrorKind(err error) string {
+	switch {
+	case errors.Is(err, ErrSourceNotFound):
+		return "source_not_found"
+	case errors.Is(err, ErrInvalidRequest):
+		return "invalid_request"
+	default:
+		return "operation_failed"
+	}
 }

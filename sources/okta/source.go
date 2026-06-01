@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +19,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
 //go:embed catalog.yaml
@@ -38,8 +39,30 @@ const (
 	familyAdminRole   = "admin_role"
 	familyGroup       = "group"
 	familyGroupMember = "group_membership"
+	familyPolicyRule  = "policy_rule"
 	familyUser        = "user"
 )
+
+var defaultMFAFactorRetryBackoffs = []time.Duration{
+	50 * time.Millisecond,
+	100 * time.Millisecond,
+	250 * time.Millisecond,
+}
+
+var oktaMFAEnrollmentFactorKinds = map[string]struct{}{
+	"call":                {},
+	"custom":              {},
+	"email":               {},
+	"hotp":                {},
+	"push":                {},
+	"question":            {},
+	"signed_nonce":        {},
+	"sms":                 {},
+	"token:hardware":      {},
+	"token:software:totp": {},
+	"u2f":                 {},
+	"webauthn":            {},
+}
 
 // Source is the live Okta source preview used by the builtin registry.
 type Source struct {
@@ -48,6 +71,7 @@ type Source struct {
 	families             *sourcecdk.FamilyEngine[settings]
 	allowLoopbackBaseURL bool
 	lookupIPAddrs        func(context.Context, string) ([]net.IPAddr, error)
+	mfaFactorBackoffs    []time.Duration
 }
 
 type settings struct {
@@ -96,6 +120,21 @@ type userRecord struct {
 	Type            map[string]any `json:"type"`
 	Profile         map[string]any `json:"profile"`
 	raw             json.RawMessage
+	mfa             userMFASummary
+}
+
+type userFactorRecord struct {
+	ID         string `json:"id"`
+	Kind       string `json:"kind"`
+	FactorType string `json:"factorType"`
+	Status     string `json:"status"`
+}
+
+type userMFASummary struct {
+	known             bool
+	activeFactorCount int
+	factorTypes       []string
+	phishingResistant bool
 }
 
 type groupRecord struct {
@@ -109,13 +148,15 @@ type groupRecord struct {
 }
 
 type appRecord struct {
-	ID          string     `json:"id"`
-	Name        string     `json:"name"`
-	Label       string     `json:"label"`
-	Status      string     `json:"status"`
-	SignOnMode  string     `json:"signOnMode"`
-	Created     *time.Time `json:"created"`
-	LastUpdated *time.Time `json:"lastUpdated"`
+	ID          string         `json:"id"`
+	Name        string         `json:"name"`
+	Label       string         `json:"label"`
+	Status      string         `json:"status"`
+	SignOnMode  string         `json:"signOnMode"`
+	Created     *time.Time     `json:"created"`
+	LastUpdated *time.Time     `json:"lastUpdated"`
+	Credentials map[string]any `json:"credentials"`
+	Settings    map[string]any `json:"settings"`
 	raw         json.RawMessage
 }
 
@@ -281,6 +322,7 @@ type oktaFamilyOptions[T any] struct {
 	Name           string
 	Label          string
 	List           oktaListFunc[T]
+	Enrich         func(context.Context, settings, []T) ([]T, error)
 	Event          func(settings, T) (*primitives.Event, error)
 	URN            func(settings, T) (string, error)
 	Discover       func(context.Context, settings) ([]sourcecdk.URN, error)
@@ -336,6 +378,17 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:application:%s", settings.domain, app.ID), nil
 			},
 		}),
+		s.policyRuleFamily(),
+		oktaFamily(oktaFamilyOptions[authenticatorRecord]{
+			Name:  familyAuthenticator,
+			Label: "okta authenticators",
+			List:  s.listAuthenticators,
+			Event: authenticatorEvent,
+			URN: func(settings settings, auth authenticatorRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:authenticator:%s", settings.domain, auth.ID), nil
+			},
+		}),
+		s.threatInsightFamily(),
 		oktaFamily(oktaFamilyOptions[groupRecord]{
 			Name:  familyGroup,
 			Label: "okta groups",
@@ -355,10 +408,11 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 		}),
 		oktaFamily(oktaFamilyOptions[userRecord]{
-			Name:  familyUser,
-			Label: "okta users",
-			List:  s.listUsers,
-			Event: userEvent,
+			Name:   familyUser,
+			Label:  "okta users",
+			List:   s.listUsers,
+			Enrich: s.enrichUsersWithMFAFactors,
+			Event:  userEvent,
 			URN: func(settings settings, user userRecord) (string, error) {
 				urn, err := userURN(settings.domain, user.ID)
 				if err != nil {
@@ -391,6 +445,12 @@ func oktaFamily[T any](options oktaFamilyOptions[T]) sourcecdk.Family[settings] 
 			records, next, err := options.List(ctx, settings, strings.TrimSpace(cursor.GetOpaque()), settings.perPage)
 			if err != nil {
 				return sourcecdk.Pull{}, wrapLookupError(oktaLabel(options.Label, settings), err)
+			}
+			if options.Enrich != nil && len(records) > 0 {
+				records, err = options.Enrich(ctx, settings, records)
+				if err != nil {
+					return sourcecdk.Pull{}, wrapLookupError(oktaLabel(options.Label, settings), err)
+				}
 			}
 			build := func(record T) (*primitives.Event, error) {
 				return options.Event(settings, record)
@@ -467,9 +527,9 @@ func parseSettings(cfg sourcecdk.Config, allowLoopbackBaseURL bool) (settings, e
 		settings.family = defaultFamily
 	}
 	switch settings.family {
-	case familyAdminRole, familyAppAssign, familyApplication, familyAudit, familyGroup, familyGroupMember, familyUser:
+	case familyAdminRole, familyAppAssign, familyApplication, familyAudit, familyAuthenticator, familyGroup, familyGroupMember, familyPolicyRule, familyThreatInsight, familyUser:
 	default:
-		return settings, fmt.Errorf("okta family must be one of admin_role, app_assignment, application, audit, group, group_membership, or user")
+		return settings, fmt.Errorf("okta family must be one of admin_role, app_assignment, application, audit, group, group_membership, policy_rule, or user")
 	}
 	if settings.domain == "" {
 		return settings, fmt.Errorf("okta domain is required")
@@ -520,7 +580,7 @@ func parseSettings(cfg sourcecdk.Config, allowLoopbackBaseURL bool) (settings, e
 		if settings.appID == "" {
 			return settings, fmt.Errorf("okta app_id is required when family=%q", familyAppAssign)
 		}
-	case familyApplication, familyGroup:
+	case familyApplication, familyGroup, familyPolicyRule:
 		if settings.since != "" || settings.until != "" {
 			return settings, fmt.Errorf("okta since and until are only supported when family=%q", familyAudit)
 		}
@@ -748,6 +808,45 @@ func (s *Source) listUsers(ctx context.Context, settings settings, after string,
 	})
 }
 
+func (s *Source) enrichUsersWithMFAFactors(ctx context.Context, settings settings, records []userRecord) ([]userRecord, error) {
+	for i := range records {
+		summary, err := s.userMFASummary(ctx, settings, records[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		records[i].mfa = summary
+	}
+	return records, nil
+}
+
+func (s *Source) userMFASummary(ctx context.Context, settings settings, userID string) (userMFASummary, error) {
+	if strings.TrimSpace(userID) == "" {
+		return userMFASummary{}, nil
+	}
+	var factors []userFactorRecord
+	requestPath := "/api/v1/users/" + url.PathEscape(userID) + "/factors"
+	if err := s.getJSONWithRetry(ctx, settings, requestPath, nil, &factors, isRetryableMFAFactorError); err != nil {
+		if isUnknownMFAFactorError(err) {
+			return userMFASummary{}, nil
+		}
+		return userMFASummary{}, fmt.Errorf("list okta user %q factors: %w", userID, err)
+	}
+	activeCount := 0
+	var factorTypes []string
+	phishingResistant := false
+	for _, factor := range factors {
+		if oktaMFAFactorEnrolled(factor) {
+			activeCount++
+			kind := strings.ToLower(strings.TrimSpace(firstNonEmpty(factor.Kind, factor.FactorType)))
+			factorTypes = append(factorTypes, kind)
+			if kind == "webauthn" || kind == "u2f" || kind == "signed_nonce" {
+				phishingResistant = true
+			}
+		}
+	}
+	return userMFASummary{known: true, activeFactorCount: activeCount, factorTypes: factorTypes, phishingResistant: phishingResistant}, nil
+}
+
 func (s *Source) listGroups(ctx context.Context, settings settings, after string, limit int) ([]groupRecord, string, error) {
 	query := url.Values{}
 	query.Set("limit", strconv.Itoa(limit))
@@ -851,7 +950,7 @@ func (s *Source) getJSON(ctx context.Context, settings settings, requestPath str
 	}()
 	headers := resp.Header.Clone()
 
-	body, err := readLimitedBody(resp.Body)
+	body, err := sourcehttp.ReadLimitedBodyWithLimit(resp.Body, maxOktaBodyBytes)
 	if err != nil {
 		return headers, fmt.Errorf("read %s response: %w", requestPath, err)
 	}
@@ -867,22 +966,51 @@ func (s *Source) getJSON(ctx context.Context, settings settings, requestPath str
 	return headers, nil
 }
 
-func oktaHTTPClientNoRedirect(client *http.Client, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) *http.Client {
-	if client == nil {
-		client = &http.Client{Timeout: oktaHTTPTimeout}
-	}
-	cloned := *client
-	if cloned.CheckRedirect == nil {
-		cloned.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
-			return http.ErrUseLastResponse
+func (s *Source) getJSONWithRetry(ctx context.Context, settings settings, requestPath string, query url.Values, target any, retryable func(error) bool) error {
+	backoffs := s.mfaFactorRetryBackoffs()
+	var err error
+	for attempt := 0; ; attempt++ {
+		_, err = s.getJSON(ctx, settings, requestPath, query, target)
+		if err == nil {
+			return nil
+		}
+		if retryable == nil || !retryable(err) || attempt >= len(backoffs) {
+			return err
+		}
+		if sleepErr := sleepContext(ctx, backoffs[attempt]); sleepErr != nil {
+			return sleepErr
 		}
 	}
-	transport := cloned.Transport
-	if transport == nil {
-		transport = http.DefaultTransport
+}
+
+func (s *Source) mfaFactorRetryBackoffs() []time.Duration {
+	if s != nil && s.mfaFactorBackoffs != nil {
+		return s.mfaFactorBackoffs
 	}
-	cloned.Transport = safeOktaRoundTripper{base: transport, allowLoopback: allowLoopback, lookupIPAddrs: lookupIPAddrs}
-	return &cloned
+	return defaultMFAFactorRetryBackoffs
+}
+
+func sleepContext(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func oktaHTTPClientNoRedirect(client *http.Client, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) *http.Client {
+	return sourcehttp.HardenClient(client, sourcehttp.ClientOptions{
+		SourceID:      "okta",
+		Timeout:       oktaHTTPTimeout,
+		AllowLoopback: allowLoopback,
+		LookupIPAddrs: lookupIPAddrs,
+	})
 }
 
 func oktaLookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, error) {
@@ -890,62 +1018,6 @@ func oktaLookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAd
 		return source.lookupIPAddrs
 	}
 	return net.DefaultResolver.LookupIPAddr
-}
-
-type safeOktaRoundTripper struct {
-	base          http.RoundTripper
-	allowLoopback bool
-	lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)
-}
-
-func (rt safeOktaRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req != nil && req.URL != nil {
-		if err := rejectResolvedUnsafeHost(req.Context(), req.URL.Hostname(), rt.allowLoopback, rt.lookupIPAddrs); err != nil {
-			return nil, err
-		}
-	}
-	return rt.base.RoundTrip(req)
-}
-
-func rejectResolvedUnsafeHost(ctx context.Context, host string, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) error {
-	normalized := normalizedIPHost(host)
-	if normalized == "" {
-		return nil
-	}
-	if isUnsafeHost(normalized) {
-		if allowLoopback && isLoopbackHost(normalized) {
-			return nil
-		}
-		return fmt.Errorf("okta base_url must not target loopback, private, or link-local hosts")
-	}
-	if lookupIPAddrs == nil {
-		lookupIPAddrs = net.DefaultResolver.LookupIPAddr
-	}
-	addrs, err := lookupIPAddrs(ctx, normalized)
-	if err != nil {
-		return fmt.Errorf("resolve okta base_url host %q: %w", normalized, err)
-	}
-	for _, addr := range addrs {
-		if isUnsafeIP(addr.IP) {
-			if allowLoopback && addr.IP != nil && addr.IP.IsLoopback() {
-				continue
-			}
-			return fmt.Errorf("okta base_url must not target loopback, private, or link-local hosts")
-		}
-	}
-	return nil
-}
-
-func readLimitedBody(body io.Reader) ([]byte, error) {
-	limited := io.LimitReader(body, maxOktaBodyBytes+1)
-	payload, err := io.ReadAll(limited)
-	if err != nil {
-		return nil, err
-	}
-	if len(payload) > maxOktaBodyBytes {
-		return nil, fmt.Errorf("okta response body exceeds %d bytes", maxOktaBodyBytes)
-	}
-	return payload, nil
 }
 
 func decodeResponseError(statusCode int, body []byte) error {
@@ -1276,9 +1348,20 @@ func auditAttributes(settings settings, record auditRecord, actor identityPayloa
 
 func userAttributes(settings settings, record userRecord) map[string]string {
 	attributes := map[string]string{
-		"domain":  settings.domain,
-		"family":  familyUser,
-		"user_id": record.ID,
+		"domain":           settings.domain,
+		"family":           familyUser,
+		"mfa_enrolled":     "",
+		"mfa_factor_count": "",
+		"user_id":          record.ID,
+	}
+	if record.mfa.known {
+		attributes["mfa_enrolled"] = boolString(record.mfa.activeFactorCount > 0)
+		attributes["mfa_factor_count"] = strconv.Itoa(record.mfa.activeFactorCount)
+		if len(record.mfa.factorTypes) > 0 {
+			sort.Strings(record.mfa.factorTypes)
+			attributes["mfa_factor_types"] = strings.Join(record.mfa.factorTypes, ",")
+		}
+		attributes["mfa_phishing_resistant"] = boolString(record.mfa.phishingResistant)
 	}
 	addAttribute(attributes, "email", stringMap(record.Profile, "email"))
 	addAttribute(attributes, "login", stringMap(record.Profile, "login"))
@@ -1328,6 +1411,12 @@ func groupMembershipAttributes(settings settings, record userRecord) map[string]
 
 func applicationAttributes(settings settings, record appRecord) map[string]string {
 	mode := strings.ToLower(record.Name + " " + record.SignOnMode)
+	oauthClient := nestedMap(record.Settings, "oauthClient")
+	oauthCredential := nestedMap(record.Credentials, "oauthClient")
+	applicationType := stringMap(oauthClient, "application_type")
+	tokenAuthMethod := stringMap(oauthCredential, "token_endpoint_auth_method")
+	grantTypes := stringSliceMap(oauthClient, "grant_types")
+	responseTypes := stringSliceMap(oauthClient, "response_types")
 	attributes := map[string]string{
 		"domain":   settings.domain,
 		"family":   familyApplication,
@@ -1338,9 +1427,48 @@ func applicationAttributes(settings settings, record appRecord) map[string]strin
 	addAttribute(attributes, "app_label", record.Label)
 	addAttribute(attributes, "name", record.Name)
 	addAttribute(attributes, "sign_on_mode", record.SignOnMode)
-	addAttribute(attributes, "oauth2", boolString(strings.Contains(mode, "oidc") || strings.Contains(mode, "oauth")))
+	addAttribute(attributes, "client_id", stringMap(oauthCredential, "client_id"))
+	addAttribute(attributes, "application_type", applicationType)
+	addAttribute(attributes, "grant_types", strings.Join(grantTypes, ","))
+	addAttribute(attributes, "response_types", strings.Join(responseTypes, ","))
+	addAttribute(attributes, "token_endpoint_auth_method", tokenAuthMethod)
+	addAttribute(attributes, "oauth_client_type", oktaOAuthClientType(applicationType, tokenAuthMethod))
+	addAttribute(attributes, "oauth_public_client", boolString(oktaOAuthPublicClient(applicationType, tokenAuthMethod)))
+	addAttribute(attributes, "redirect_uri_count", strconv.Itoa(len(stringSliceMap(oauthClient, "redirect_uris"))))
+	addAttribute(attributes, "post_logout_redirect_uri_count", strconv.Itoa(len(stringSliceMap(oauthClient, "post_logout_redirect_uris"))))
+	addAttribute(attributes, "wildcard_redirect", boolString(oktaOAuthWildcardRedirect(oauthClient)))
+	addAttribute(attributes, "oauth2", boolString(strings.Contains(mode, "oidc") || strings.Contains(mode, "oauth") || len(grantTypes) != 0 || len(responseTypes) != 0 || applicationType != ""))
 	addAttribute(attributes, "saml", boolString(strings.Contains(mode, "saml")))
 	return attributes
+}
+
+func oktaOAuthClientType(applicationType string, tokenAuthMethod string) string {
+	if oktaOAuthPublicClient(applicationType, tokenAuthMethod) {
+		return "PublicClientApp"
+	}
+	if strings.TrimSpace(applicationType) != "" || strings.TrimSpace(tokenAuthMethod) != "" {
+		return "ConfidentialClientApp"
+	}
+	return ""
+}
+
+func oktaOAuthPublicClient(applicationType string, tokenAuthMethod string) bool {
+	switch strings.ToLower(strings.TrimSpace(applicationType)) {
+	case "browser", "native", "spa":
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(tokenAuthMethod), "none")
+}
+
+func oktaOAuthWildcardRedirect(oauthClient map[string]any) bool {
+	for _, key := range []string{"redirect_uris", "post_logout_redirect_uris"} {
+		for _, uri := range stringSliceMap(oauthClient, key) {
+			if strings.Contains(uri, "*") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func appAssignmentAttributes(settings settings, record appAssignmentRecord) map[string]string {
@@ -1745,6 +1873,29 @@ func stringMap(values map[string]any, key string) string {
 	return strings.TrimSpace(text)
 }
 
+func stringSliceMap(values map[string]any, key string) []string {
+	value, ok := values[key]
+	if !ok {
+		return nil
+	}
+	items, ok := value.([]any)
+	if !ok {
+		return nil
+	}
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		text, ok := item.(string)
+		if !ok {
+			continue
+		}
+		trimmed := strings.TrimSpace(text)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {
@@ -1764,6 +1915,33 @@ func boolString(value bool) string {
 func configValue(cfg sourcecdk.Config, key string) string {
 	value, _ := cfg.Lookup(key)
 	return strings.TrimSpace(value)
+}
+
+func oktaMFAFactorEnrolled(factor userFactorRecord) bool {
+	if !strings.EqualFold(strings.TrimSpace(factor.Status), "ACTIVE") {
+		return false
+	}
+	kind := strings.ToLower(strings.TrimSpace(firstNonEmpty(factor.Kind, factor.FactorType)))
+	_, ok := oktaMFAEnrollmentFactorKinds[kind]
+	return ok
+}
+
+func isRetryableMFAFactorError(err error) bool {
+	var responseErr *responseError
+	if !errors.As(err, &responseErr) {
+		return false
+	}
+	return responseErr.statusCode == http.StatusTooManyRequests || responseErr.statusCode >= http.StatusInternalServerError
+}
+
+func isUnknownMFAFactorError(err error) bool {
+	var responseErr *responseError
+	if !errors.As(err, &responseErr) {
+		return false
+	}
+	return responseErr.statusCode == http.StatusForbidden ||
+		responseErr.statusCode == http.StatusTooManyRequests ||
+		responseErr.statusCode >= http.StatusInternalServerError
 }
 
 func isNotFound(err error) bool {

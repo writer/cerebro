@@ -9,17 +9,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  droid-review:
+  droid-review-preflight:
     if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
+      checks: read
       pull-requests: write
       issues: write
-      id-token: write
-      actions: read
+    outputs:
+      run_droid_review: ${{ steps.preflight.outputs.run_droid_review }}
+      review_model: ${{ steps.preflight.outputs.review_model }}
+      review_reason: ${{ steps.preflight.outputs.review_reason }}
     steps:
-      - name: Supersede previous Droid security summary
+      - name: Supersede previous Droid comments
         if: github.event.action == 'synchronize'
         shell: bash
         env:
@@ -32,11 +35,15 @@ jobs:
           import os
           import urllib.request
 
-          marker = "## Security Review Summary"
-          replacement = "## Superseded Security Review Summary"
           repository = os.environ["GITHUB_REPOSITORY"]
           token = os.environ["GH_TOKEN"]
           pr_number = os.environ["PR_NUMBER"]
+
+          replacements = [
+              ("## Security Review Summary", "## Superseded Security Review Summary"),
+              ("**Droid encountered an error**", "**Superseded Droid error**"),
+              ("Droid is reviewing code and running a security check", "Superseded Droid review in progress"),
+          ]
 
           def request_json(method, path, payload=None):
               data = None if payload is None else json.dumps(payload).encode("utf-8")
@@ -65,21 +72,187 @@ jobs:
               for comment in comments:
                   user = comment.get("user") or {}
                   login = (user.get("login") or "").lower()
-                  user_type = (user.get("type") or "").lower()
+                  if login not in {"factory-droid", "factory-droid[bot]"}:
+                      continue
                   body = comment.get("body") or ""
-                  if (
-                      login == "factory-droid[bot]"
-                      and user_type == "bot"
-                      and marker in body
-                  ):
+                  updated = body
+                  for marker, replacement in replacements:
+                      if marker in updated:
+                          updated = updated.replace(marker, replacement, 1)
+                  if updated != body and "Superseded by a newer commit." not in updated:
+                      updated = updated.rstrip() + "\n\n_Superseded by a newer commit._"
+                  if updated != body:
                       request_json(
                           "PATCH",
                           f"/repos/{repository}/issues/comments/{comment['id']}",
-                          {"body": body.replace(marker, replacement, 1)},
+                          {"body": updated},
                       )
               page += 1
           PY
 
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Run fast Droid review preflight
+        id: preflight
+        shell: bash
+        env:
+          DROID_REVIEW_BASE: ${{ github.event.pull_request.base.sha }}
+          DROID_REVIEW_HEAD: ${{ github.event.pull_request.head.sha }}
+          DROID_PREFLIGHT_JSON_OUT: tmp/droid-preflight.json
+        run: |
+          set +e
+          started="$(date +%s)"
+          make droid-review-preflight
+          status="$?"
+          duration="$(( $(date +%s) - started ))"
+          {
+            echo "### Droid Review Preflight"
+            echo
+            echo "- Duration: ${duration}s"
+            echo "- Status: $([ "${status}" -eq 0 ] && echo success || echo failure)"
+          } >> "${GITHUB_STEP_SUMMARY}"
+          exit "${status}"
+      - name: Install Semgrep
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --user 'semgrep==1.136.0'
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+      - name: Run Droid SAST context
+        id: sast
+        shell: bash
+        env:
+          DROID_REVIEW_BASE: ${{ github.event.pull_request.base.sha }}
+          DROID_REVIEW_HEAD: ${{ github.event.pull_request.head.sha }}
+          DROID_SAST_OUT: tmp/droid-sast-context.md
+          DROID_SAST_JSON_OUT: tmp/droid-sast-context.json
+        run: |
+          set +e
+          make droid-review-sast
+          status="$?"
+          if [ -s "${DROID_SAST_OUT}" ]; then
+            {
+              echo
+              echo "### Droid SAST Context"
+              echo
+              sed 's/^/    /' "${DROID_SAST_OUT}"
+            } >> "${GITHUB_STEP_SUMMARY}"
+          fi
+          if [ "${status}" -ne 0 ]; then
+            echo "::warning::Droid SAST context reported blocking findings or failed; keeping Droid review running so findings can be validated."
+          fi
+          exit 0
+      - name: Run Droid CI context
+        id: ci-context
+        if: always() && steps.preflight.outcome != 'skipped'
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DROID_REVIEW_HEAD: ${{ github.event.pull_request.head.sha }}
+          DROID_CI_OUT: tmp/droid-ci-context.md
+          DROID_CI_JSON_OUT: tmp/droid-ci-context.json
+        run: |
+          set -euo pipefail
+          make droid-ci-context
+          if [ -s "${DROID_CI_OUT}" ]; then
+            {
+              echo
+              echo "### Droid CI Context"
+              echo
+              sed 's/^/    /' "${DROID_CI_OUT}"
+            } >> "${GITHUB_STEP_SUMMARY}"
+          fi
+      - name: Run Droid feedback context
+        id: feedback-context
+        if: always() && steps.preflight.outcome != 'skipped'
+        continue-on-error: true
+        shell: bash
+        env:
+          DROID_PR: ${{ github.event.pull_request.number }}
+          DROID_FEEDBACK_OUT: tmp/droid-feedback.md
+          DROID_FEEDBACK_JSON_OUT: tmp/droid-feedback.json
+        run: |
+          set -euo pipefail
+          make droid-feedback
+          if [ -s "${DROID_FEEDBACK_OUT}" ]; then
+            {
+              echo
+              echo "### Droid Feedback Context"
+              echo
+              sed 's/^/    /' "${DROID_FEEDBACK_OUT}"
+            } >> "${GITHUB_STEP_SUMMARY}"
+          fi
+      - name: Publish consolidated Droid context
+        if: always() && steps.sast.outcome != 'skipped'
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          DROID_SAST_OUT: tmp/droid-sast-context.md
+          DROID_CI_OUT: tmp/droid-ci-context.md
+          DROID_PREFLIGHT_JSON_OUT: tmp/droid-preflight.json
+          DROID_SAST_JSON_OUT: tmp/droid-sast-context.json
+          DROID_CI_JSON_OUT: tmp/droid-ci-context.json
+          DROID_FEEDBACK_JSON_OUT: tmp/droid-feedback.json
+          DROID_CONTEXT_OUT: tmp/droid-review-context.md
+          DROID_CONTEXT_JSON_OUT: tmp/droid-review-context.json
+        run: |
+          set -euo pipefail
+          python3 scripts/droid_review_context.py \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}" \
+            --preflight-json "${DROID_PREFLIGHT_JSON_OUT}" \
+            --sast-json "${DROID_SAST_JSON_OUT}" \
+            --ci-json "${DROID_CI_JSON_OUT}" \
+            --feedback-json "${DROID_FEEDBACK_JSON_OUT}" \
+            --markdown-out "${DROID_CONTEXT_OUT}" \
+            --json-out "${DROID_CONTEXT_JSON_OUT}"
+          if [ -s "${DROID_CONTEXT_OUT}" ]; then
+            {
+              echo
+              echo "### Droid Recursive Review Context"
+              echo
+              sed 's/^/    /' "${DROID_CONTEXT_OUT}"
+            } >> "${GITHUB_STEP_SUMMARY}"
+            python3 scripts/droid_sast_context.py --post-existing "${DROID_CONTEXT_OUT}"
+          else
+            echo "No Droid context report to publish."
+          fi
+      - name: Upload Droid context artifacts
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: droid-review-context
+          path: |
+            tmp/droid-preflight.json
+            tmp/droid-sast-context.json
+            tmp/droid-ci-context.json
+            tmp/droid-feedback.json
+            tmp/droid-review-context.json
+            tmp/droid-review-context.md
+
+  droid-review:
+    needs: droid-review-preflight
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository && needs.droid-review-preflight.outputs.run_droid_review == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -90,11 +263,8 @@ jobs:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
           automatic_security_review: true
-          # Pin the review and security review models to the gpt-5.4 generation so PR scans
-          # benefit from the newer reasoning capabilities; previously the action defaulted to
-          # the gpt-5.2 generation (`review_depth: deep`). Setting `review_model` explicitly
-          # bypasses the depth preset, so re-assert reasoning_effort=high to match `deep`.
-          review_model: gpt-5.4
+          # Fast deterministic preflight runs first; use Opus for the actual
+          # bug-finding review so Droid does not fall back to stale depth presets.
+          review_model: ${{ needs.droid-review-preflight.outputs.review_model || 'claude-opus-4-8' }}
           security_model: gpt-5.4
-          reasoning_effort: high
           allowed_bots: dependabot

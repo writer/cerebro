@@ -30,6 +30,10 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS", "")
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_AUDIENCE", "")
 	t.Setenv("CEREBRO_ALLOWED_TENANTS", "")
+	t.Setenv("CEREBRO_PUBLIC_ORIGIN", "")
+	t.Setenv("CEREBRO_TRUSTED_PROXY_CIDRS", "")
+	t.Setenv("CEREBRO_TRUSTED_PROXY_COUNT", "")
+	clearDeviceAuthEnv(t)
 
 	cfg, err := Load()
 	if err != nil {
@@ -55,6 +59,9 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.Auth.Enabled {
 		t.Fatal("Auth.Enabled = true, want false")
+	}
+	if cfg.Auth.DeviceAuth.ReplicaCount != 1 {
+		t.Fatalf("DeviceAuth.ReplicaCount = %d, want 1", cfg.Auth.DeviceAuth.ReplicaCount)
 	}
 }
 
@@ -86,6 +93,10 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS", "")
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_AUDIENCE", "")
 	t.Setenv("CEREBRO_ALLOWED_TENANTS", "security,writer,writer")
+	t.Setenv("CEREBRO_PUBLIC_ORIGIN", "https://api.writer.com")
+	t.Setenv("CEREBRO_TRUSTED_PROXY_CIDRS", "10.0.0.0/8, 192.168.0.0/16")
+	t.Setenv("CEREBRO_TRUSTED_PROXY_COUNT", "1")
+	clearDeviceAuthEnv(t)
 
 	cfg, err := Load()
 	if err != nil {
@@ -121,6 +132,15 @@ func TestLoadFromEnv(t *testing.T) {
 	if !cfg.Auth.Enabled {
 		t.Fatal("Auth.Enabled = false, want true")
 	}
+	if got := cfg.Auth.RequestOrigin.PublicOrigin; got != "https://api.writer.com" {
+		t.Fatalf("PublicOrigin = %q, want https://api.writer.com", got)
+	}
+	if got := cfg.Auth.RequestOrigin.TrustedProxyCount; got != 1 {
+		t.Fatalf("TrustedProxyCount = %d, want 1", got)
+	}
+	if got := cfg.Auth.RequestOrigin.TrustedProxyCIDRs; len(got) != 2 || got[0] != "10.0.0.0/8" || got[1] != "192.168.0.0/16" {
+		t.Fatalf("TrustedProxyCIDRs = %#v, want two configured CIDRs", got)
+	}
 	if len(cfg.Auth.APIKeys) != 2 {
 		t.Fatalf("Auth.APIKeys length = %d, want 2", len(cfg.Auth.APIKeys))
 	}
@@ -155,6 +175,10 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS", "")
 	t.Setenv("CEREBRO_CAPABILITY_TOKEN_AUDIENCE", "")
 	t.Setenv("CEREBRO_ALLOWED_TENANTS", "")
+	t.Setenv("CEREBRO_PUBLIC_ORIGIN", "")
+	t.Setenv("CEREBRO_TRUSTED_PROXY_CIDRS", "")
+	t.Setenv("CEREBRO_TRUSTED_PROXY_COUNT", "")
+	clearDeviceAuthEnv(t)
 }
 
 func clearGraphAgentEnv(t *testing.T) {
@@ -168,6 +192,64 @@ func clearGraphAgentEnv(t *testing.T) {
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_TEMPERATURE", "")
 }
 
+func clearDeviceAuthEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("CEREBRO_DEVICE_AUTH_ENABLED", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_ISSUER", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_AUDIENCE", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_CURRENT_KID", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_ACCESS_TTL", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_REFRESH_TTL", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_BOOTSTRAP_TOKEN_TTL", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_IDEMPOTENCY_TTL", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_CLOCK_SKEW", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_ENROLL_RPS", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_ENROLL_BURST", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_TOKEN_RPS", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_TOKEN_BURST", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_DPOP_PROOF_TTL", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_REPLICA_COUNT", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_RISK_ELEVATED", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_RISK_HIGH", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_ATTESTATION_REQUIRED", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_APPLE_TEAM_ID", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_APPLE_BUNDLE_IDS", "")
+	t.Setenv("CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON", "")
+}
+
+func TestLoadRejectsRequiredDeviceAuthAttestationWithoutVerifier(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_DEVICE_AUTH_ATTESTATION_REQUIRED", "true")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsDeviceAuthMultipleReplicasWithoutSharedDPoPReplay(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_DEVICE_AUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_DEVICE_AUTH_REPLICA_COUNT", "2")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsDeviceAuthEnabledWithoutCurrentKID(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_DEVICE_AUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON", `[{"kid":"k1","public_pem":"public"}]`)
+	t.Setenv("CEREBRO_DEVICE_AUTH_CURRENT_KID", "")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
 func TestLoadRejectsAuthEnabledWithoutKeys(t *testing.T) {
 	clearDependencyEnv(t)
 	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
@@ -175,6 +257,26 @@ func TestLoadRejectsAuthEnabledWithoutKeys(t *testing.T) {
 
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsInvalidRequestOriginConfig(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		key  string
+		val  string
+	}{
+		{name: "public origin with path", key: "CEREBRO_PUBLIC_ORIGIN", val: "https://api.writer.com/cerebro"},
+		{name: "invalid proxy cidr", key: "CEREBRO_TRUSTED_PROXY_CIDRS", val: "not-cidr"},
+		{name: "negative proxy count", key: "CEREBRO_TRUSTED_PROXY_COUNT", val: "-1"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			clearDependencyEnv(t)
+			t.Setenv(tt.key, tt.val)
+			if _, err := Load(); err == nil {
+				t.Fatal("Load() error = nil, want invalid request-origin config error")
+			}
+		})
 	}
 }
 

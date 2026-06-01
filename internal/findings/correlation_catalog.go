@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"sync"
 	"time"
+
+	correlationruntime "github.com/writer/cerebro/internal/correlation/runtime"
 
 	_ "embed"
 )
@@ -15,10 +16,14 @@ import (
 //go:embed correlation_patterns/builtin.json
 var builtinCorrelationPatternCatalog []byte
 
-var builtinCorrelationPatternCache struct {
-	once     sync.Once
-	patterns []FindingCorrelationPattern
-	err      error
+var builtinCorrelationPatterns []FindingCorrelationPattern
+
+func init() {
+	patterns, err := loadBuiltinFindingCorrelationPatterns()
+	if err != nil {
+		panic(fmt.Sprintf("build builtin finding correlation patterns: %v", err))
+	}
+	builtinCorrelationPatterns = patterns
 }
 
 type correlationPatternCatalog struct {
@@ -37,15 +42,10 @@ type correlationPatternRaw struct {
 	Tests      []FindingCorrelationPatternTest `json:"tests"`
 }
 
-// BuiltinFindingCorrelationPatterns returns the checked-in declarative pattern catalog.
+// BuiltinFindingCorrelationPatterns returns the checked-in declarative pattern catalog
+// plus runtime correlation hints that enrich underlying state-anchored findings.
 func BuiltinFindingCorrelationPatterns() []FindingCorrelationPattern {
-	builtinCorrelationPatternCache.once.Do(func() {
-		builtinCorrelationPatternCache.patterns, builtinCorrelationPatternCache.err = LoadFindingCorrelationPatterns(builtinCorrelationPatternCatalog)
-	})
-	if builtinCorrelationPatternCache.err != nil {
-		return nil
-	}
-	return cloneFindingCorrelationPatterns(builtinCorrelationPatternCache.patterns)
+	return cloneFindingCorrelationPatterns(builtinCorrelationPatterns)
 }
 
 // BuiltinFindingCorrelationPatternCatalogJSON returns the canonical checked-in catalog bytes.
@@ -80,6 +80,65 @@ func LoadFindingCorrelationPatterns(data []byte) ([]FindingCorrelationPattern, e
 		return patterns[i].ID < patterns[j].ID
 	})
 	return patterns, nil
+}
+
+func loadBuiltinFindingCorrelationPatterns() ([]FindingCorrelationPattern, error) {
+	patterns, err := LoadFindingCorrelationPatterns(builtinCorrelationPatternCatalog)
+	if err != nil {
+		return nil, err
+	}
+	runtimePatterns, err := LoadRuntimeCorrelationPatterns(correlationruntime.BuiltinHints())
+	if err != nil {
+		return nil, err
+	}
+	return mergeFindingCorrelationPatterns(patterns, runtimePatterns)
+}
+
+func LoadRuntimeCorrelationPatterns(hints []correlationruntime.CorrelationHint) ([]FindingCorrelationPattern, error) {
+	patterns := make([]FindingCorrelationPattern, 0, len(hints))
+	for _, hint := range hints {
+		tests := make([]FindingCorrelationPatternTest, 0, len(hint.Tests))
+		for _, test := range hint.Tests {
+			tests = append(tests, FindingCorrelationPatternTest{
+				Name:        test.Name,
+				Description: test.Description,
+				ExpectMatch: test.ExpectMatch,
+			})
+		}
+		pattern, err := normalizeCorrelationPattern(correlationPatternRaw{
+			ID:         hint.ID,
+			Name:       hint.Name,
+			RuleIDs:    hint.RuleIDs,
+			Dimensions: hint.Dimensions,
+			Window:     hint.Window.String(),
+			ScoreBonus: hint.ScoreBonus,
+			Reasons:    hint.Reasons,
+			Tests:      tests,
+		})
+		if err != nil {
+			return nil, err
+		}
+		patterns = append(patterns, pattern)
+	}
+	return patterns, nil
+}
+
+func mergeFindingCorrelationPatterns(groups ...[]FindingCorrelationPattern) ([]FindingCorrelationPattern, error) {
+	merged := []FindingCorrelationPattern{}
+	seen := map[string]struct{}{}
+	for _, group := range groups {
+		for _, pattern := range group {
+			if _, ok := seen[pattern.ID]; ok {
+				return nil, fmt.Errorf("duplicate correlation pattern id %q", pattern.ID)
+			}
+			seen[pattern.ID] = struct{}{}
+			merged = append(merged, pattern)
+		}
+	}
+	sort.Slice(merged, func(i int, j int) bool {
+		return merged[i].ID < merged[j].ID
+	})
+	return merged, nil
 }
 
 func ValidateFindingCorrelationPatterns(patterns []FindingCorrelationPattern, knownRuleIDs map[string]struct{}) error {

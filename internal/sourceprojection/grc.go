@@ -66,6 +66,9 @@ func grcControlTestProjections(event *cerebrov1.EventEnvelope) ([]*ports.Project
 		}
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), testURN, controlURN, relationSupports, map[string]string{"event_id": event.GetId()}))
 	}
+	addGRCUserOwnerLink(entities, links, tenantID, event.GetSourceId(), event, testURN, provider, firstAttribute(attrs, "owner_id"))
+	addGRCIntegrationLinks(entities, links, tenantID, event.GetSourceId(), event, testURN, provider, firstAttribute(attrs, "integrations"), "grc_control_test")
+	addGRCAssetTagLinks(entities, links, tenantID, event.GetSourceId(), event, testURN, "grc_category", firstAttribute(attrs, "category"))
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }
@@ -201,10 +204,10 @@ func grcDocumentProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 		Attributes: grcAttributes(attrs, map[string]string{"document_id": documentID, "source_system": provider}),
 	})
 	if ownerID := firstAttribute(attrs, "owner_id"); ownerID != "" {
-		ownerURN := grcUserURN(tenantID, provider, ownerID)
-		addEntity(entities, grcUserEntity(tenantID, event.GetSourceId(), ownerURN, ownerID, map[string]string{"user_id": ownerID, "source_system": provider}))
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), documentURN, ownerURN, relationOwnedBy, map[string]string{"event_id": event.GetId()}))
+		addGRCUserOwnerLink(entities, links, tenantID, event.GetSourceId(), event, documentURN, provider, ownerID)
 	}
+	addInternetHostLink(entities, links, tenantID, event.GetSourceId(), event, documentURN, relationHasIdentifier, firstAttribute(attrs, "url"), "grc_document_url_host", "0.9")
+	addGRCAssetTagLinks(entities, links, tenantID, event.GetSourceId(), event, documentURN, "grc_category", firstAttribute(attrs, "category"))
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }
@@ -617,6 +620,9 @@ type grcPlatformAssetReference struct {
 }
 
 func addGRCPlatformAssetLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, targetURN string, attrs map[string]string) {
+	grcProviderName := grcProvider(attrs)
+	integrationID := firstAttribute(attrs, "integration_id")
+	integrationURN := grcIntegrationURN(tenantID, grcProviderName, integrationID)
 	for _, ref := range grcPlatformAssetReferences(attrs) {
 		provider := grcPlatformProvider(ref.Provider, ref.ResourceID)
 		resourceID := strings.TrimSpace(ref.ResourceID)
@@ -628,17 +634,27 @@ func addGRCPlatformAssetLinks(entities map[string]*ports.ProjectedEntity, links 
 		if resourceURN == "" {
 			continue
 		}
+		// Prefer a human-readable label over the URN so the dashboard, finding
+		// reports, and ask-the-graph traces are interpretable. Falling back to
+		// the resource id keeps the label stable when the source omits a name.
+		label := firstNonEmptyString(strings.TrimSpace(ref.ResourceName), strings.TrimSpace(ref.ScannerResourceID), resourceID)
+		entityAttrs := map[string]string{
+			"provider":      provider,
+			"resource_id":   resourceID,
+			"resource_type": resourceType,
+			"resource_name": strings.TrimSpace(ref.ResourceName),
+		}
+		ownerLogin := githubRepositoryOwnerLogin(provider, resourceType, ref.ResourceName)
+		if ownerLogin != "" {
+			entityAttrs["owner_login"] = ownerLogin
+		}
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        resourceURN,
 			TenantID:   tenantID,
 			SourceID:   provider,
 			EntityType: provider + "." + strings.ReplaceAll(resourceType, "_", "."),
-			Label:      resourceURN,
-			Attributes: map[string]string{
-				"provider":      provider,
-				"resource_id":   resourceID,
-				"resource_type": resourceType,
-			},
+			Label:      label,
+			Attributes: entityAttrs,
 		})
 		addLink(links, projectedLink(tenantID, sourceID, targetURN, resourceURN, relationRepresents, map[string]string{
 			"confidence":           "0.99",
@@ -648,7 +664,68 @@ func addGRCPlatformAssetLinks(entities map[string]*ports.ProjectedEntity, links 
 			"platform_resource_id": resourceID,
 			"resource_type":        resourceType,
 		}))
+		// Connect the platform resource to the GRC integration that surfaced
+		// it. Without this edge a github.code.repository or aws.* node has no
+		// outgoing path back to the source/integration it was discovered
+		// through, which leaves it dangling whenever the parent grc.target is
+		// not the query starting point.
+		if integrationURN != "" {
+			addEntity(entities, grcIntegrationReferenceEntity(tenantID, sourceID, integrationURN, integrationID, grcProviderName))
+			addLink(links, projectedLink(tenantID, sourceID, resourceURN, integrationURN, relationBelongsTo, grcIntegrationLinkAttributes(event, integrationID)))
+		}
+		addGRCGitHubRepositoryOrgLink(entities, links, tenantID, sourceID, event, resourceURN, ownerLogin)
+		addGRCPlatformNetworkLinks(entities, links, tenantID, sourceID, event, resourceURN, ref)
 	}
+}
+
+func addGRCPlatformNetworkLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, resourceURN string, ref grcPlatformAssetReference) {
+	resourceURN = strings.TrimSpace(resourceURN)
+	if resourceURN == "" {
+		return
+	}
+	for _, rawHost := range splitCloudAttributeList(ref.Hostnames) {
+		addInternetHostLink(entities, links, tenantID, sourceID, event, resourceURN, relationRepresents, rawHost, "grc_platform_resource_host", "0.90")
+	}
+	for _, rawIP := range splitCloudAttributeList(ref.IPs) {
+		addInternetIPLink(entities, links, tenantID, sourceID, event, resourceURN, rawIP, "grc_platform_resource_ip", "0.90")
+	}
+}
+
+func addGRCGitHubRepositoryOrgLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, repositoryURN string, ownerLogin string) {
+	ownerLogin = strings.TrimSpace(ownerLogin)
+	repositoryURN = strings.TrimSpace(repositoryURN)
+	if ownerLogin == "" || repositoryURN == "" {
+		return
+	}
+	orgURN := projectionURN(tenantID, "github_org", ownerLogin)
+	if orgURN == "" {
+		return
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        orgURN,
+		TenantID:   tenantID,
+		SourceID:   "github",
+		EntityType: "github.org",
+		Label:      ownerLogin,
+		Attributes: map[string]string{"org": ownerLogin, "owner_login": ownerLogin},
+	})
+	addLink(links, projectedLink(tenantID, sourceID, repositoryURN, orgURN, relationBelongsTo, map[string]string{
+		"event_id":     event.GetId(),
+		"match_type":   "grc_platform_repository_owner",
+		"owner_login":  ownerLogin,
+		"source_scope": "platform_asset_ref",
+	}))
+}
+
+func githubRepositoryOwnerLogin(provider string, resourceType string, resourceName string) string {
+	if provider != "github" || resourceType != "code_repository" {
+		return ""
+	}
+	owner, _, ok := strings.Cut(strings.TrimSpace(resourceName), "/")
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(owner)
 }
 
 func grcPlatformAssetReferences(attrs map[string]string) []grcPlatformAssetReference {
@@ -873,7 +950,9 @@ func grcPersonProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 		Attributes: grcAttributes(attrs, map[string]string{"person_id": personID, "source_system": provider}),
 	})
 	observedAt := timestamppb.New(time.Now().UTC())
-	addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), personURN, firstAttribute(attrs, "email"), observedAt)
+	email := firstAttribute(attrs, "email")
+	addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), personURN, email, observedAt)
+	addSameActorEmailLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), personURN, email, observedAt)
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }
@@ -893,7 +972,9 @@ func grcUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntit
 	links := map[string]*ports.ProjectedLink{}
 	userURN := grcUserURN(tenantID, provider, userID)
 	addEntity(entities, grcUserEntity(tenantID, event.GetSourceId(), userURN, firstAttribute(attrs, "display_name", "email", "user_id"), grcAttributes(attrs, map[string]string{"user_id": userID, "source_system": provider})))
-	addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, firstAttribute(attrs, "email"), event.GetOccurredAt())
+	email := firstAttribute(attrs, "email")
+	addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, email, event.GetOccurredAt())
+	addSameActorEmailLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, email, event.GetOccurredAt())
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }
@@ -912,7 +993,9 @@ func grcIntegrationProjections(event *cerebrov1.EventEnvelope) ([]*ports.Project
 	entities := map[string]*ports.ProjectedEntity{}
 	sourceURN := grcIntegrationURN(tenantID, provider, integrationID)
 	addEntity(entities, grcIntegrationEntity(tenantID, event.GetSourceId(), sourceURN, integrationID, attrs, provider))
-	projectedEntities, projectedLinks := entitiesAndLinks(entities, nil)
+	links := map[string]*ports.ProjectedLink{}
+	addGRCAssetTagLinks(entities, links, tenantID, event.GetSourceId(), event, sourceURN, "grc_resource_kind", firstAttribute(attrs, "resource_kinds"))
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }
 
@@ -942,7 +1025,12 @@ func grcPolicyLikeProjections(event *cerebrov1.EventEnvelope, policyType string,
 			"source_system": provider,
 		}),
 	})
-	projectedEntities, projectedLinks := entitiesAndLinks(entities, nil)
+	links := map[string]*ports.ProjectedLink{}
+	if policyType == "control" {
+		addGRCUserOwnerLink(entities, links, tenantID, event.GetSourceId(), event, policyURN, provider, firstAttribute(attrs, "owner_id"))
+		addGRCAssetTagLinks(entities, links, tenantID, event.GetSourceId(), event, policyURN, "grc_domain", firstAttribute(attrs, "domains"))
+	}
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }
 
@@ -978,4 +1066,84 @@ func grcUserEntity(tenantID string, sourceID string, urn string, label string, a
 		Label:      label,
 		Attributes: attrs,
 	}
+}
+
+func addGRCUserOwnerLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, provider string, ownerID string) {
+	ownerID = strings.TrimSpace(ownerID)
+	if fromURN == "" || ownerID == "" {
+		return
+	}
+	ownerURN := grcUserURN(tenantID, provider, ownerID)
+	addEntity(entities, grcUserEntity(tenantID, sourceID, ownerURN, ownerID, map[string]string{"user_id": ownerID, "source_system": provider}))
+	addLink(links, projectedLink(tenantID, sourceID, fromURN, ownerURN, relationOwnedBy, map[string]string{"event_id": event.GetId()}))
+}
+
+func addGRCIntegrationLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, provider string, rawIntegrations string, relationshipBy string) {
+	if fromURN == "" {
+		return
+	}
+	for _, integrationID := range grcAttributeSequence(rawIntegrations) {
+		integrationURN := grcIntegrationURN(tenantID, provider, integrationID)
+		if integrationURN == "" {
+			continue
+		}
+		addEntity(entities, grcIntegrationReferenceEntity(tenantID, sourceID, integrationURN, integrationID, provider))
+		addLink(links, projectedLink(tenantID, sourceID, fromURN, integrationURN, relationBelongsTo, map[string]string{
+			"event_id":         event.GetId(),
+			"integration_id":   integrationID,
+			"relationship":     relationBelongsTo,
+			"relationship_by":  relationshipBy,
+			"source_reference": "integrations",
+		}))
+	}
+}
+
+func addGRCAssetTagLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, namespace string, rawValues string) {
+	if fromURN == "" {
+		return
+	}
+	for _, value := range grcAttributeSequence(rawValues) {
+		tagID := grcAssetTagID(namespace, value)
+		if tagID == "" {
+			continue
+		}
+		tagURN := projectionURN(tenantID, "asset_tag", namespace, tagID)
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        tagURN,
+			TenantID:   tenantID,
+			SourceID:   sourceID,
+			EntityType: "asset.tag",
+			Label:      value,
+			Attributes: map[string]string{
+				"tag":           tagID,
+				"tag_namespace": namespace,
+				"tag_value":     value,
+			},
+		})
+		addLink(links, projectedLink(tenantID, sourceID, fromURN, tagURN, relationTaggedAs, map[string]string{
+			"event_id":      event.GetId(),
+			"tag_namespace": namespace,
+			"tag_value":     value,
+		}))
+	}
+}
+
+func grcAssetTagID(namespace string, value string) string {
+	normalized := strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z':
+			return r
+		case r >= 'A' && r <= 'Z':
+			return r + ('a' - 'A')
+		case r >= '0' && r <= '9':
+			return r
+		default:
+			return '_'
+		}
+	}, strings.TrimSpace(value))
+	normalized = strings.Trim(normalized, "_")
+	for strings.Contains(normalized, "__") {
+		normalized = strings.ReplaceAll(normalized, "__", "_")
+	}
+	return normalized
 }

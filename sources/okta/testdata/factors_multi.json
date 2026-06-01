@@ -1,0 +1,32 @@
+[
+  {
+    "id": "opf-push",
+    "factorType": "push",
+    "provider": "OKTA",
+    "status": "ACTIVE"
+  },
+  {
+    "id": "opf-sms",
+    "factorType": "sms",
+    "provider": "OKTA",
+    "status": "ACTIVE"
+  },
+  {
+    "id": "opf-totp",
+    "factorType": "token:software:totp",
+    "provider": "GOOGLE",
+    "status": "ACTIVE"
+  },
+  {
+    "id": "opf-email-pending",
+    "factorType": "email",
+    "provider": "OKTA",
+    "status": "PENDING_ACTIVATION"
+  },
+  {
+    "id": "opf-hardware-token",
+    "factorType": "token:hardware",
+    "provider": "OKTA",
+    "status": "ACTIVE"
+  }
+]

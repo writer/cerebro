@@ -59,6 +59,31 @@ func TestEndpointOwnerIDLinkCleanupQueryOrdersLimitedBatch(t *testing.T) {
 	}
 }
 
+func TestIntegrityChecksIncludeOpenFindingPrimaryAnchorInvariant(t *testing.T) {
+	checks, queries := integrityCheckDefinitions()
+	if len(checks) != len(queries) {
+		t.Fatalf("integrity check definitions have %d checks and %d queries", len(checks), len(queries))
+	}
+	for i, check := range checks {
+		if check.Name != "open_findings_missing_primary_has_finding_edge" {
+			continue
+		}
+		query := queries[i]
+		for _, expected := range []string{
+			"\"status\":\"open\"",
+			"\"primary_resource_urn\":\"",
+			"has_finding",
+			"NOT EXISTS",
+		} {
+			if !strings.Contains(query, expected) {
+				t.Fatalf("primary anchor integrity query missing %q:\n%s", expected, query)
+			}
+		}
+		return
+	}
+	t.Fatalf("integrity checks missing open finding primary anchor invariant: %#v", checks)
+}
+
 func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 	if os.Getenv("CEREBRO_RUN_NEO4J_DOCKER") != "1" {
 		t.Skip("set CEREBRO_RUN_NEO4J_DOCKER=1 to run Neo4j Docker integration test")

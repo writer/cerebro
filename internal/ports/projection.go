@@ -28,8 +28,9 @@ type ProjectedLink struct {
 	Attributes map[string]string
 }
 
-// ProjectionResult reports how many entities and links were materialized.
+// ProjectionResult reports how many workflow events, entities, and links were materialized or pruned.
 type ProjectionResult struct {
+	EventsProjected   uint32
 	EntitiesProjected uint32
 	LinksProjected    uint32
 	EntitiesDeleted   uint32

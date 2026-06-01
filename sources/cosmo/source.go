@@ -19,6 +19,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
 //go:embed catalog.yaml
@@ -595,7 +596,7 @@ func (s *Source) getJSON(ctx context.Context, settings settings, method string, 
 		_ = resp.Body.Close()
 	}()
 
-	payload, err := readLimitedBody(resp.Body)
+	payload, err := sourcehttp.ReadLimitedBodyWithLimit(resp.Body, maxBodyBytes)
 	if err != nil {
 		return fmt.Errorf("read %s response: %w", requestPath, err)
 	}
@@ -938,21 +939,12 @@ func minTime(left time.Time, right time.Time) time.Time {
 }
 
 func httpClientNoRedirect(client *http.Client, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) *http.Client {
-	if client == nil {
-		client = &http.Client{Timeout: httpTimeout}
-	}
-	cloned := *client
-	if cloned.CheckRedirect == nil {
-		cloned.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
-			return http.ErrUseLastResponse
-		}
-	}
-	transport := cloned.Transport
-	if transport == nil {
-		transport = http.DefaultTransport
-	}
-	cloned.Transport = safeRoundTripper{base: transport, allowLoopback: allowLoopback, lookupIPAddrs: lookupIPAddrs}
-	return &cloned
+	return sourcehttp.HardenClient(client, sourcehttp.ClientOptions{
+		SourceID:      "cosmo",
+		Timeout:       httpTimeout,
+		AllowLoopback: allowLoopback,
+		LookupIPAddrs: lookupIPAddrs,
+	})
 }
 
 func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, error) {
@@ -960,62 +952,6 @@ func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, 
 		return source.lookupIPAddrs
 	}
 	return net.DefaultResolver.LookupIPAddr
-}
-
-type safeRoundTripper struct {
-	base          http.RoundTripper
-	allowLoopback bool
-	lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)
-}
-
-func (rt safeRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req != nil && req.URL != nil {
-		if err := rejectResolvedUnsafeHost(req.Context(), req.URL.Hostname(), rt.allowLoopback, rt.lookupIPAddrs); err != nil {
-			return nil, err
-		}
-	}
-	return rt.base.RoundTrip(req)
-}
-
-func rejectResolvedUnsafeHost(ctx context.Context, host string, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) error {
-	normalized := normalizedIPHost(host)
-	if normalized == "" {
-		return nil
-	}
-	if isUnsafeHost(normalized) {
-		if allowLoopback && isLoopbackHost(normalized) {
-			return nil
-		}
-		return fmt.Errorf("cosmo base_url must not target loopback, private, or link-local hosts")
-	}
-	if lookupIPAddrs == nil {
-		lookupIPAddrs = net.DefaultResolver.LookupIPAddr
-	}
-	addrs, err := lookupIPAddrs(ctx, normalized)
-	if err != nil {
-		return fmt.Errorf("resolve cosmo base_url host %q: %w", normalized, err)
-	}
-	for _, addr := range addrs {
-		if isUnsafeIP(addr.IP) {
-			if allowLoopback && addr.IP != nil && addr.IP.IsLoopback() {
-				continue
-			}
-			return fmt.Errorf("cosmo base_url must not target loopback, private, or link-local hosts")
-		}
-	}
-	return nil
-}
-
-func readLimitedBody(body io.Reader) ([]byte, error) {
-	limited := io.LimitReader(body, maxBodyBytes+1)
-	payload, err := io.ReadAll(limited)
-	if err != nil {
-		return nil, err
-	}
-	if len(payload) > maxBodyBytes {
-		return nil, fmt.Errorf("cosmo response body exceeds %d bytes", maxBodyBytes)
-	}
-	return payload, nil
 }
 
 func decodeResponseError(statusCode int, body []byte) error {

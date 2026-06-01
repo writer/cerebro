@@ -2,11 +2,11 @@
 
 Generated-by-hand snapshot for the current bootstrap service. Source of truth: `api/openapi.yaml` and `proto/cerebro/v1/bootstrap.proto`.
 
-- HTTP operations: **46** including compatibility aliases across **44** paths.
+- HTTP operations: **67** across **65** paths.
 - Connect RPCs: **38**.
 - Public unauthenticated routes when auth is enabled: `/health`, `/healthz`, `/openapi.yaml`.
 - Preferred shared platform namespace: `/platform/*`.
-- Legacy `/graph/*` routes are compatibility aliases and are marked deprecated in OpenAPI.
+- Legacy `/graph/*` compatibility aliases have been removed; use `/platform/graph/*`.
 
 ## Current route families
 

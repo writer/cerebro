@@ -4,9 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +20,13 @@ var (
 	ErrRuntimeUnavailable = errors.New("graph agent runtime is unavailable")
 	ErrInvalidRequest     = errors.New("invalid graph agent request")
 )
+
+const (
+	maxInternalAttributeValueBytes = 4096
+	maxInternalAttributesJSONBytes = 64 << 10
+)
+
+var summaryURNPattern = regexp.MustCompile(`urn:cerebro:[A-Za-z0-9_:@./#%+-]+`)
 
 type AskRequest struct {
 	TenantID string           `json:"tenant_id"`
@@ -32,13 +42,19 @@ type Service struct {
 	store     ports.GraphQueryStore
 	llm       LLMClient
 	validator *Validator
+	options   ServiceOptions
 }
 
 func NewService(store ports.GraphQueryStore, llm LLMClient, options ValidatorOptions) *Service {
+	return NewServiceWithOptions(store, llm, options, ServiceOptions{})
+}
+
+func NewServiceWithOptions(store ports.GraphQueryStore, llm LLMClient, validatorOptions ValidatorOptions, serviceOptions ServiceOptions) *Service {
 	return &Service{
 		store:     store,
 		llm:       llm,
-		validator: NewValidator(store, options),
+		validator: NewValidator(store, validatorOptions),
+		options:   normalizeServiceOptions(serviceOptions),
 	}
 }
 
@@ -53,11 +69,37 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		return ErrRuntimeUnavailable
 	}
 	started := time.Now()
+	var timings StageTimings
 	model := normalizeModel(request.Model)
 	history := normalizeHistory(request.History)
 	params := askParams(request)
 	traceID := newTraceID()
+	exec := AskExecutionContext{TraceID: traceID, Depth: 0, Attempt: 0, MaxDepth: s.options.MaxDepth, MaxChildren: s.options.MaxChildren}
+	recorder := newTrajectoryRecorder(s.options.TrajectoryStore, request, traceID, started, exec)
+	recorder.start(ctx, request, exec)
+	status := "error"
+	defer func() {
+		recorder.finish(ctx, status)
+	}()
+	emit = recorder.wrap(ctx, emit)
 
+	var probe *GraphProbe
+	if s.options.EnableGraphProbes {
+		if err := emitProgress(emit, started, "probing_graph", "Inspecting graph shape before drafting a query."); err != nil {
+			return err
+		}
+		probeStarted := time.Now()
+		collected := collectGraphProbe(ctx, s.store, request, params)
+		timings.ProbeMS = time.Since(probeStarted).Milliseconds()
+		probe = &collected
+		if err := emit(Event{Name: EventGraphProbe, Data: GraphProbeEvent{Probe: collected}}); err != nil {
+			return err
+		}
+	}
+	if err := emitProgress(emit, started, "drafting_query", "Drafting a read-only graph query."); err != nil {
+		return err
+	}
+	draftStarted := time.Now()
 	draft, err := s.llm.DraftCypher(ctx, DraftRequest{
 		TenantID:  strings.TrimSpace(request.TenantID),
 		Question:  strings.TrimSpace(request.Question),
@@ -67,85 +109,184 @@ func (s *Service) Stream(ctx context.Context, request AskRequest, emit Emitter) 
 		MaxRows:   defaultMaxRows,
 		Schema:    graphAgentSchemaHint,
 		Guardrail: graphAgentGuardrail,
+		Probe:     probe,
 	})
+	timings.DraftMS = time.Since(draftStarted).Milliseconds()
 	if err != nil {
-		return fmt.Errorf("%w: draft cypher: %w", ErrRuntimeUnavailable, err)
+		return streamErrorf(traceID, timings, "%w: draft cypher: %w", ErrRuntimeUnavailable, err)
 	}
 	if draft == nil {
-		return fmt.Errorf("%w: LLM returned no draft", ErrRuntimeUnavailable)
+		return streamErrorf(traceID, timings, "%w: LLM returned no draft", ErrRuntimeUnavailable)
 	}
 	rationale := strings.TrimSpace(draft.Rationale)
 	if rationale == "" {
 		rationale = "Drafting a bounded read-only Cypher query for the requested graph question."
 	}
-
-	cypher := strings.TrimSpace(draft.Cypher)
-	if cypher == "" {
-		if err := emit(Event{Name: EventRationale, Data: RationaleEvent{Text: rationale}}); err != nil {
-			return err
-		}
-		reason := firstNonEmpty(draft.Refusal, "LLM refused to draft Cypher")
-		return emitRefusal(emit, traceID, started, cypher, reason)
+	if err := emit(Event{Name: EventRationale, Data: RationaleEvent{Text: rationale}}); err != nil {
+		return err
 	}
-	validation, rowLimit, err := s.validator.validate(ctx, cypher, params)
+
+	conversionStarted := time.Now()
+	conversion := convertDraftToQuery(request, draft, defaultMaxRows)
+	timings.ConversionMS = time.Since(conversionStarted).Milliseconds()
+	cypher := strings.TrimSpace(conversion.Cypher)
+	if err := emitQueryPlan(emit, conversion); err != nil {
+		return err
+	}
+	if cypher == "" {
+		reason := firstNonEmpty(draft.Refusal, conversion.Refusal, "LLM refused to draft Cypher")
+		status = "refused"
+		return emitRefusal(emit, traceID, started, cypher, reason, refusalCode(reason, draft, conversion, ValidatorResult{}), timings)
+	}
+	if err := emitProgress(emit, started, "validating_query", "Validating generated Cypher against read-only guardrails."); err != nil {
+		return err
+	}
+	validateStarted := time.Now()
+	validation, rowLimit, err := s.validateConversion(ctx, conversion, cypher, params)
+	timings.ValidateMS = time.Since(validateStarted).Milliseconds()
 	if err != nil {
+		return streamErrorf(traceID, timings, "%w", err)
+	}
+	validation.Warnings = append(validation.Warnings, conversionWarnings(conversion.Diagnostics)...)
+	if err := emit(Event{Name: EventCypher, Data: CypherEvent{Cypher: cypher, Validator: validation}}); err != nil {
 		return err
 	}
 	if !validation.OK {
-		if err := emit(Event{Name: EventRationale, Data: RationaleEvent{Text: rationale}}); err != nil {
-			return err
-		}
-		if err := emit(Event{Name: EventCypher, Data: CypherEvent{Cypher: cypher, Validator: validation}}); err != nil {
-			return err
-		}
-		return emitRefusal(emit, traceID, started, cypher, validation.Reason)
+		status = "refused"
+		return emitRefusal(emit, traceID, started, cypher, validation.Reason, refusalCode(validation.Reason, draft, conversion, validation), timings)
 	}
 
+	if err := emitProgress(emit, started, "executing_query", "Executing the validated graph query."); err != nil {
+		return err
+	}
 	execStarted := time.Now()
 	rows, err := s.store.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
 		Query:    cypher,
 		Params:   params,
 		RowLimit: rowLimit,
 	})
+	timings.ExecuteMS = time.Since(execStarted).Milliseconds()
 	if err != nil {
-		return fmt.Errorf("%w: execute cypher: %w", ErrRuntimeUnavailable, err)
+		return streamErrorf(traceID, timings, "%w: execute cypher: %w", ErrRuntimeUnavailable, err)
+	}
+	if postProcessingCandidateLimitHit(conversion, rows, rowLimit) {
+		status = "refused"
+		return emitRefusal(emit, traceID, started, cypher, "The deterministic Ask query matched more graph rows than can be safely post-processed without risking an incomplete answer. Narrow the scope or ask for a more specific subset.", "post_processing_candidate_limit", timings)
 	}
 	rowMaps := cypherRowsToMaps(rows)
+	rowMaps = postProcessAskRows(conversion, rowMaps)
+	sanitizeInternalRowFields(rowMaps)
+	if s.options.EnableRecovery {
+		recoveredRows, recoveredCypher, recoveredValidation, ok, terminal, err := s.recoverWeakRows(ctx, traceID, started, timings, conversion, rowMaps, params, emit)
+		if err != nil {
+			return err
+		}
+		if terminal {
+			status = "refused"
+			return nil
+		}
+		if ok {
+			rowMaps = recoveredRows
+			cypher = recoveredCypher
+			validation = recoveredValidation
+		}
+	}
 	rowsEvent := RowsEvent{
 		Rows:   rowMaps,
 		Graph:  scopedNeighborhood(ctx, s.store, request.ScopeURN),
-		ExecMS: time.Since(execStarted).Milliseconds(),
+		ExecMS: timings.ExecuteMS,
+	}
+	if err := emit(Event{Name: EventRows, Data: rowsEvent}); err != nil {
+		return err
 	}
 
-	summary, err := s.llm.Summarize(ctx, SummarizeRequest{
-		TenantID: strings.TrimSpace(request.TenantID),
-		Question: strings.TrimSpace(request.Question),
-		ScopeURN: strings.TrimSpace(request.ScopeURN),
-		Model:    model,
-		Cypher:   cypher,
-		Rows:     rowMaps,
-		History:  history,
-	})
+	if err := emitProgress(emit, started, "summarizing", "Summarizing graph rows into a user-facing answer."); err != nil {
+		return err
+	}
+	summarizeStarted := time.Now()
+	summary, err := s.summarizeRows(ctx, request, model, cypher, rowMaps, history)
+	timings.SummarizeMS = time.Since(summarizeStarted).Milliseconds()
 	if err != nil {
-		return fmt.Errorf("%w: summarize graph rows: %w", ErrRuntimeUnavailable, err)
+		return streamErrorf(traceID, timings, "%w: summarize graph rows: %w", ErrRuntimeUnavailable, err)
 	}
 	if strings.TrimSpace(summary) == "" {
 		summary = fallbackSummary(rowMaps)
 	}
 	summary = strings.TrimSpace(summary)
-	if err := emit(Event{Name: EventRationale, Data: RationaleEvent{Text: rationale}}); err != nil {
+	citationStarted := time.Now()
+	citations := citationsFor(summary, rowMaps)
+	citationValidation := validateSummaryCitations(summary, rowMaps, citations)
+	timings.CitationValidationMS = time.Since(citationStarted).Milliseconds()
+	if err := emit(Event{Name: EventSummary, Data: SummaryEvent{Markdown: summary, Citations: citations, CitationValidation: &citationValidation}}); err != nil {
 		return err
 	}
-	if err := emit(Event{Name: EventCypher, Data: CypherEvent{Cypher: cypher, Validator: validation}}); err != nil {
-		return err
+	err = emit(Event{Name: EventDone, Data: DoneEvent{TraceID: traceID, TotalMS: time.Since(started).Milliseconds(), Timings: timings}})
+	if err == nil {
+		status = "success"
 	}
-	if err := emit(Event{Name: EventRows, Data: rowsEvent}); err != nil {
-		return err
+	return err
+}
+
+func (s *Service) validateConversion(ctx context.Context, conversion conversionResult, cypher string, params map[string]any) (ValidatorResult, int, error) {
+	validator := s.validator
+	if usesPostProcessingCandidates(conversion) && validator != nil && validator.options.MaxRows < postProcessingCandidateRowLimit {
+		options := validator.options
+		options.MaxRows = postProcessingCandidateRowLimit
+		validator = NewValidator(validator.store, options)
 	}
-	if err := emit(Event{Name: EventSummary, Data: SummaryEvent{Markdown: summary, Citations: citationsFor(summary, rowMaps)}}); err != nil {
-		return err
+	return validator.validate(ctx, cypher, params)
+}
+
+type StreamError struct {
+	TraceID string
+	Err     error
+	Timings StageTimings
+}
+
+func (e *StreamError) Error() string {
+	if e == nil || e.Err == nil {
+		return ""
 	}
-	return emit(Event{Name: EventDone, Data: DoneEvent{TraceID: traceID, TotalMS: time.Since(started).Milliseconds()}})
+	return e.Err.Error()
+}
+
+func (e *StreamError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+func streamErrorf(traceID string, timings StageTimings, format string, args ...any) error {
+	return &StreamError{
+		TraceID: traceID,
+		Err:     fmt.Errorf(format, args...),
+		Timings: timings,
+	}
+}
+
+func ErrorTraceID(err error) string {
+	var streamErr *StreamError
+	if errors.As(err, &streamErr) {
+		return streamErr.TraceID
+	}
+	return ""
+}
+
+func ErrorTimings(err error) (StageTimings, bool) {
+	var streamErr *StreamError
+	if errors.As(err, &streamErr) && streamErr.Timings != (StageTimings{}) {
+		return streamErr.Timings, true
+	}
+	return StageTimings{}, false
+}
+
+func emitProgress(emit Emitter, started time.Time, stage string, message string) error {
+	return emit(Event{Name: EventProgress, Data: ProgressEvent{
+		Stage:     strings.TrimSpace(stage),
+		Message:   strings.TrimSpace(message),
+		ElapsedMS: time.Since(started).Milliseconds(),
+	}})
 }
 
 func ValidateRequest(request AskRequest) error {
@@ -169,17 +310,38 @@ func askParams(request AskRequest) map[string]any {
 	}
 }
 
-func emitRefusal(emit Emitter, traceID string, started time.Time, cypher string, reason string) error {
+func emitQueryPlan(emit Emitter, conversion conversionResult) error {
+	return emit(Event{Name: EventQueryPlan, Data: QueryPlanEvent{
+		Plan:          conversion.Plan,
+		Diagnostics:   conversion.Diagnostics,
+		Source:        conversion.Source,
+		Deterministic: conversion.Deterministic,
+		Corrected:     conversion.Corrected,
+	}})
+}
+
+func conversionWarnings(diagnostics []ConversionDiagnostic) []string {
+	var warnings []string
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Level == "warn" || diagnostic.Level == "info" {
+			warnings = append(warnings, diagnostic.Code+": "+diagnostic.Message)
+		}
+	}
+	return warnings
+}
+
+func emitRefusal(emit Emitter, traceID string, started time.Time, cypher string, reason string, code string, timings StageTimings) error {
 	reason = firstNonEmpty(reason, "Read-only Cypher validator refused the draft.")
 	if cypher == "" {
-		if err := emit(Event{Name: EventCypher, Data: CypherEvent{Cypher: "", Validator: ValidatorResult{OK: false, Reason: reason}}}); err != nil {
+		if err := emit(Event{Name: EventCypher, Data: CypherEvent{Cypher: "", Validator: ValidatorResult{OK: false, Code: code, Reason: reason}}}); err != nil {
 			return err
 		}
 	}
-	if err := emit(Event{Name: EventSummary, Data: SummaryEvent{Markdown: reason}}); err != nil {
+	rescue := unsupportedQuery(reason, traceID, code)
+	if err := emit(Event{Name: EventSummary, Data: SummaryEvent{Markdown: reason, UnsupportedQuery: &rescue}}); err != nil {
 		return err
 	}
-	return emit(Event{Name: EventDone, Data: DoneEvent{TraceID: traceID, TotalMS: time.Since(started).Milliseconds(), CypherRefused: true}})
+	return emit(Event{Name: EventDone, Data: DoneEvent{TraceID: traceID, TotalMS: time.Since(started).Milliseconds(), CypherRefused: true, Timings: timings}})
 }
 
 func cypherRowsToMaps(rows []ports.CypherRow) []map[string]any {
@@ -199,6 +361,368 @@ func cypherRowsToMaps(rows []ports.CypherRow) []map[string]any {
 	return result
 }
 
+func sanitizeInternalRowFields(rows []map[string]any) {
+	for _, row := range rows {
+		mergeInternalAttributes(row, "finding_attributes_json_internal", []string{"summary", "status", "severity", "effective_severity", "risk_score"})
+		mergeInternalAttributes(row, "relation_attributes_json_internal", []string{"severity", "effective_severity", "risk_score"})
+		mergeInternalAttributes(row, "source_attributes_json_internal", []string{"status", "health", "last_sync_at", "last_sync_minutes", "last_success_at", "last_error"})
+	}
+}
+
+func postProcessAskRows(conversion conversionResult, rows []map[string]any) []map[string]any {
+	if !usesPostProcessingCandidates(conversion) {
+		return rows
+	}
+	switch conversion.Plan.Intent {
+	case IntentAggregateFindingsBySource:
+		return postProcessFindingSourceRows(conversion.Plan, rows)
+	case IntentTopRiskFindings:
+		return postProcessTopRiskFindingRows(conversion.Plan, rows)
+	default:
+		return rows
+	}
+}
+
+func usesPostProcessingCandidates(conversion conversionResult) bool {
+	return conversion.Deterministic && (conversion.Plan.Intent == IntentAggregateFindingsBySource || conversion.Plan.Intent == IntentTopRiskFindings)
+}
+
+func postProcessingCandidateLimitHit(conversion conversionResult, rows []ports.CypherRow, rowLimit int) bool {
+	return usesPostProcessingCandidates(conversion) && rowLimit >= postProcessingCandidateRowLimit && len(rows) >= rowLimit
+}
+
+func postProcessFindingSourceRows(plan AskQueryPlan, rows []map[string]any) []map[string]any {
+	counts := map[string]int64{}
+	seenFindings := map[string]struct{}{}
+	for index, row := range rows {
+		findingURN := stringRowValue(row, "finding_urn")
+		if findingURN == "" {
+			findingURN = fmt.Sprintf("row:%d", index)
+		}
+		if _, seen := seenFindings[findingURN]; seen {
+			continue
+		}
+		seenFindings[findingURN] = struct{}{}
+		attrs := decodeInternalAttributes(row["finding_attributes_json_internal"])
+		sourceFamily := firstAttributeString(attrs, "source_family", "sourceFamily", "source_system")
+		if sourceFamily == "" {
+			sourceFamily = stringRowValue(row, "source_id")
+		}
+		if sourceFamily == "" {
+			sourceFamily = "Unknown"
+		}
+		counts[sourceFamily]++
+	}
+	sourceFamilies := make([]string, 0, len(counts))
+	for sourceFamily := range counts {
+		sourceFamilies = append(sourceFamilies, sourceFamily)
+	}
+	sort.Slice(sourceFamilies, func(i, j int) bool {
+		left, right := sourceFamilies[i], sourceFamilies[j]
+		if counts[left] != counts[right] {
+			return counts[left] > counts[right]
+		}
+		return left < right
+	})
+	limit := postProcessedRowLimit(plan)
+	if plan.Intent == IntentAggregateFindingsBySource && limit > 10 {
+		limit = 10
+	}
+	if len(sourceFamilies) < limit {
+		limit = len(sourceFamilies)
+	}
+	result := make([]map[string]any, 0, limit)
+	for _, sourceFamily := range sourceFamilies[:limit] {
+		result = append(result, map[string]any{
+			"source_family": sourceFamily,
+			"finding_count": counts[sourceFamily],
+		})
+	}
+	return result
+}
+
+type topRiskFindingRow struct {
+	FindingURN     string
+	FindingLabel   string
+	ResourceURNs   []string
+	ResourceLabels []string
+	riskScore      int
+	severityRank   int
+	seenResources  map[string]struct{}
+}
+
+func postProcessTopRiskFindingRows(plan AskQueryPlan, rows []map[string]any) []map[string]any {
+	byFinding := map[string]*topRiskFindingRow{}
+	for index, row := range rows {
+		findingURN := stringRowValue(row, "finding_urn")
+		if findingURN == "" {
+			findingURN = fmt.Sprintf("row:%d", index)
+		}
+		relationAttrs := decodeInternalAttributes(row["relation_attributes_json_internal"])
+		findingAttrs := decodeInternalAttributes(row["finding_attributes_json_internal"])
+		severity := firstNonEmpty(
+			firstAttributeString(relationAttrs, "effective_severity"),
+			firstAttributeString(findingAttrs, "effective_severity"),
+			firstAttributeString(relationAttrs, "severity"),
+			firstAttributeString(findingAttrs, "severity"),
+		)
+		status := firstNonEmpty(
+			firstAttributeString(relationAttrs, "status"),
+			firstAttributeString(findingAttrs, "status"),
+		)
+		if !matchesTopRiskFilters(plan, row, severity, status) {
+			continue
+		}
+		current := byFinding[findingURN]
+		if current == nil {
+			current = &topRiskFindingRow{
+				FindingURN:    findingURN,
+				FindingLabel:  firstNonEmpty(stringRowValue(row, "finding_label"), findingURN),
+				seenResources: map[string]struct{}{},
+			}
+			byFinding[findingURN] = current
+		}
+		resourceURN := stringRowValue(row, "resource_urn")
+		if resourceURN != "" {
+			if _, seen := current.seenResources[resourceURN]; !seen {
+				current.seenResources[resourceURN] = struct{}{}
+				current.ResourceURNs = append(current.ResourceURNs, resourceURN)
+				current.ResourceLabels = append(current.ResourceLabels, firstNonEmpty(stringRowValue(row, "resource_label"), resourceURN))
+			}
+		}
+		riskScore := firstAttributeInt(relationAttrs, findingAttrs, "risk_score")
+		if riskScore > current.riskScore {
+			current.riskScore = riskScore
+		}
+		if rank := severityRank(severity); rank > current.severityRank {
+			current.severityRank = rank
+		}
+	}
+	findings := make([]*topRiskFindingRow, 0, len(byFinding))
+	for _, finding := range byFinding {
+		findings = append(findings, finding)
+	}
+	sort.Slice(findings, func(i, j int) bool {
+		left, right := findings[i], findings[j]
+		if left.riskScore != right.riskScore {
+			return left.riskScore > right.riskScore
+		}
+		if left.severityRank != right.severityRank {
+			return left.severityRank > right.severityRank
+		}
+		return left.FindingURN < right.FindingURN
+	})
+	limit := postProcessedRowLimit(plan)
+	if len(findings) < limit {
+		limit = len(findings)
+	}
+	result := make([]map[string]any, 0, limit)
+	for _, finding := range findings[:limit] {
+		result = append(result, map[string]any{
+			"finding_urn":     finding.FindingURN,
+			"finding_label":   finding.FindingLabel,
+			"resource_urns":   append([]string(nil), finding.ResourceURNs...),
+			"resource_labels": append([]string(nil), finding.ResourceLabels...),
+			"risk_score":      finding.riskScore,
+			"severity":        severityName(finding.severityRank),
+		})
+	}
+	return result
+}
+
+func matchesTopRiskFilters(plan AskQueryPlan, row map[string]any, severity string, status string) bool {
+	if want := planFilterValue(plan.Filters, "severity"); want != "" && !strings.EqualFold(severity, want) {
+		return false
+	}
+	if want := planFilterValue(plan.Filters, "status"); want != "" && !strings.EqualFold(status, want) {
+		return false
+	}
+	if want := firstNonEmpty(planFilterValue(plan.Filters, "resource_type"), planFilterValue(plan.Filters, "entity_type")); want != "" {
+		return resourceTypeMatchesFilter(stringRowValue(row, "resource_type"), stringRowValue(row, "resource_urn"), want)
+	}
+	return true
+}
+
+func resourceTypeMatchesFilter(resourceType string, resourceURN string, filter string) bool {
+	canonical := canonicalEntityType(filter)
+	if canonical == "github.code.repository" || canonical == "github.repo" {
+		return resourceType == "github.code.repository" || resourceType == "github.repo"
+	}
+	return strings.EqualFold(resourceType, canonical)
+}
+
+func postProcessedRowLimit(plan AskQueryPlan) int {
+	return boundedLimit(plan.Limit, defaultMaxRows)
+}
+
+func decodeInternalAttributes(value any) map[string]any {
+	raw, ok := value.(string)
+	if !ok {
+		return nil
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" || len(raw) > maxInternalAttributesJSONBytes {
+		return nil
+	}
+	var attrs map[string]any
+	if err := json.Unmarshal([]byte(raw), &attrs); err != nil {
+		return nil
+	}
+	return attrs
+}
+
+func firstAttributeString(attrs map[string]any, fields ...string) string {
+	for _, field := range fields {
+		value, ok := attrs[field]
+		if !ok {
+			continue
+		}
+		if text, ok := internalAttributeText(value); ok {
+			return text
+		}
+	}
+	return ""
+}
+
+func firstAttributeInt(primary map[string]any, fallback map[string]any, field string) int {
+	if value, ok := attributeInt(primary[field]); ok {
+		return value
+	}
+	if value, ok := attributeInt(fallback[field]); ok {
+		return value
+	}
+	return 0
+}
+
+func attributeInt(value any) (int, bool) {
+	switch typed := value.(type) {
+	case float64:
+		return int(typed), true
+	case int:
+		return typed, true
+	case int64:
+		return int(typed), true
+	case json.Number:
+		parsed, err := typed.Int64()
+		if err == nil {
+			return int(parsed), true
+		}
+	case string:
+		parsed, err := strconv.Atoi(strings.TrimSpace(typed))
+		if err == nil {
+			return parsed, true
+		}
+	}
+	return 0, false
+}
+
+func stringRowValue(row map[string]any, key string) string {
+	if text, ok := internalAttributeText(row[key]); ok {
+		return text
+	}
+	return ""
+}
+
+func severityRank(severity string) int {
+	switch strings.ToUpper(strings.TrimSpace(severity)) {
+	case "CRITICAL":
+		return 4
+	case "HIGH":
+		return 3
+	case "MEDIUM":
+		return 2
+	case "LOW":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func severityName(rank int) string {
+	switch rank {
+	case 4:
+		return "CRITICAL"
+	case 3:
+		return "HIGH"
+	case 2:
+		return "MEDIUM"
+	case 1:
+		return "LOW"
+	default:
+		return ""
+	}
+}
+
+func mergeInternalAttributes(row map[string]any, key string, fields []string) {
+	raw, ok := row[key].(string)
+	delete(row, key)
+	if !ok || strings.TrimSpace(raw) == "" {
+		return
+	}
+	var attrs map[string]any
+	if err := json.Unmarshal([]byte(raw), &attrs); err != nil {
+		return
+	}
+	for _, field := range fields {
+		if !rowValueEmpty(row[field]) {
+			continue
+		}
+		value, ok := attrs[field]
+		if !ok {
+			continue
+		}
+		if text, ok := internalAttributeText(value); ok {
+			row[field] = text
+		}
+	}
+}
+
+func internalAttributeText(value any) (string, bool) {
+	var text string
+	switch typed := value.(type) {
+	case string:
+		text = typed
+	case float64, int, int64, bool, json.Number:
+		text = fmt.Sprint(typed)
+	default:
+		return "", false
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "", false
+	}
+	return truncateStringBytes(text, maxInternalAttributeValueBytes), true
+}
+
+func truncateStringBytes(text string, maxBytes int) string {
+	if maxBytes <= 0 || len(text) <= maxBytes {
+		return text
+	}
+	end := 0
+	for i := range text {
+		if i > maxBytes {
+			break
+		}
+		end = i
+	}
+	if end == 0 {
+		return ""
+	}
+	return text[:end]
+}
+
+func rowValueEmpty(value any) bool {
+	if value == nil {
+		return true
+	}
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed) == ""
+	default:
+		return false
+	}
+}
+
 func scopedNeighborhood(ctx context.Context, store ports.GraphQueryStore, scopeURN string) *ports.EntityNeighborhood {
 	scopeURN = strings.TrimSpace(scopeURN)
 	if scopeURN == "" || store == nil {
@@ -214,24 +738,152 @@ func scopedNeighborhood(ctx context.Context, store ports.GraphQueryStore, scopeU
 func citationsFor(summary string, rows []map[string]any) []Citation {
 	seen := map[string]struct{}{}
 	var citations []Citation
-	for _, row := range rows {
-		for _, value := range row {
-			urn, ok := value.(string)
-			if !ok || !strings.HasPrefix(urn, "urn:cerebro:") {
-				continue
-			}
-			if _, exists := seen[urn]; exists {
-				continue
-			}
-			start := strings.Index(summary, urn)
-			if start < 0 {
-				continue
-			}
-			seen[urn] = struct{}{}
-			citations = append(citations, Citation{URN: urn, Span: [2]int{start, start + len(urn)}})
+	for _, urn := range collectRowURNs(rows) {
+		if _, exists := seen[urn]; exists {
+			continue
 		}
+		start := strings.Index(summary, urn)
+		if start < 0 {
+			continue
+		}
+		seen[urn] = struct{}{}
+		citations = append(citations, Citation{URN: urn, Span: [2]int{start, start + len(urn)}})
 	}
 	return citations
+}
+
+func validateSummaryCitations(summary string, rows []map[string]any, citations []Citation) CitationValidation {
+	rowURNs := map[string]struct{}{}
+	for _, urn := range collectRowURNs(rows) {
+		rowURNs[urn] = struct{}{}
+	}
+	referencedURNs := urnsFromSummary(summary)
+	var warnings []string
+	for _, citation := range citations {
+		if _, ok := rowURNs[citation.URN]; !ok {
+			warnings = append(warnings, "citation_not_row_backed:"+citation.URN)
+		}
+		if citation.Span[0] < 0 || citation.Span[1] <= citation.Span[0] || citation.Span[1] > len(summary) {
+			warnings = append(warnings, "citation_invalid_span:"+citation.URN)
+			continue
+		}
+		if summary[citation.Span[0]:citation.Span[1]] != citation.URN {
+			warnings = append(warnings, "citation_span_mismatch:"+citation.URN)
+		}
+	}
+	for _, urn := range referencedURNs {
+		if _, ok := rowURNs[urn]; !ok {
+			warnings = append(warnings, "summary_urn_not_row_backed:"+urn)
+		}
+	}
+	sort.Strings(warnings)
+	return CitationValidation{
+		OK:                 len(warnings) == 0,
+		Warnings:           warnings,
+		RowURNCount:        len(rowURNs),
+		ReferencedURNCount: len(referencedURNs),
+	}
+}
+
+func collectRowURNs(rows []map[string]any) []string {
+	seen := map[string]struct{}{}
+	var urns []string
+	var visit func(any)
+	visit = func(value any) {
+		switch typed := value.(type) {
+		case string:
+			if strings.HasPrefix(typed, "urn:cerebro:") {
+				if _, exists := seen[typed]; !exists {
+					seen[typed] = struct{}{}
+					urns = append(urns, typed)
+				}
+			}
+		case []string:
+			for _, item := range typed {
+				visit(item)
+			}
+		case []any:
+			for _, item := range typed {
+				visit(item)
+			}
+		case map[string]any:
+			for _, item := range typed {
+				visit(item)
+			}
+		}
+	}
+	for _, row := range rows {
+		visit(row)
+	}
+	sort.Strings(urns)
+	return urns
+}
+
+func urnsFromSummary(summary string) []string {
+	matches := summaryURNPattern.FindAllString(summary, -1)
+	seen := map[string]struct{}{}
+	var urns []string
+	for _, match := range matches {
+		urn := strings.TrimRight(match, ".,;:!?")
+		if _, exists := seen[urn]; exists {
+			continue
+		}
+		seen[urn] = struct{}{}
+		urns = append(urns, urn)
+	}
+	sort.Strings(urns)
+	return urns
+}
+
+func refusalCode(reason string, draft *DraftResponse, conversion conversionResult, validation ValidatorResult) string {
+	if validation.Code != "" {
+		return "validator_refusal"
+	}
+	if conversionDiagnosticsContain(conversion.Diagnostics, "query_plan_conversion_failed") {
+		return "query_plan_conversion_failed"
+	}
+	if draft != nil && strings.TrimSpace(draft.Refusal) != "" {
+		return "llm_refusal"
+	}
+	return unsupportedQueryCode(firstNonEmpty(reason, conversion.Refusal))
+}
+
+func conversionDiagnosticsContain(diagnostics []ConversionDiagnostic, code string) bool {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Code == code {
+			return true
+		}
+	}
+	return false
+}
+
+func unsupportedQuery(reason string, traceID string, code string) UnsupportedQuery {
+	return UnsupportedQuery{
+		Code:             firstNonEmpty(code, unsupportedQueryCode(reason)),
+		Reason:           reason,
+		SupportedIntents: []string{IntentTopRiskFindings, IntentAggregateFindingsBySource, IntentExplainFinding, IntentIdentityBridge, IntentConnectorHealth},
+		SuggestedRewrites: []string{
+			"Summarize open high-risk findings and cite the affected entities.",
+			"Count findings by source family.",
+			"Show source health and freshness for security integrations.",
+			"Explain the evidence for a specific finding URN.",
+		},
+		TraceID: traceID,
+	}
+}
+
+func unsupportedQueryCode(reason string) string {
+	lower := strings.ToLower(reason)
+	switch {
+	case strings.Contains(lower, "could not be converted"):
+		return "query_plan_conversion_failed"
+	case strings.Contains(lower, "refused"):
+		return "llm_refusal"
+	case strings.Contains(lower, "read-only") || strings.Contains(lower, "write"):
+		return "validator_refusal"
+	default:
+		return "unsupported_query"
+	}
 }
 
 func fallbackSummary(rows []map[string]any) string {
@@ -281,11 +933,7 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-const graphAgentSchemaHint = `Graph shape:
-- Entity nodes use label Entity with properties tenant_id, urn, entity_type, label.
-- Relationships use label RELATION with relation and attributes_json properties.
-- Always filter at least one Entity by tenant_id: $tenant_id.
-- Prefer returning URNs and compact scalar columns.`
+var graphAgentSchemaHint = canonicalGraphOntology.PromptHint()
 
 const graphAgentGuardrail = `Rules:
 - Generate read-only Cypher only.

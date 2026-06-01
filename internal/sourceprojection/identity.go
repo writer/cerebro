@@ -35,6 +35,10 @@ func oktaApplicationProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 	return identityApplicationProjections(event, oktaIdentityProfile)
 }
 
+func oktaPolicyRuleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityPolicyRuleProjections(event, oktaIdentityProfile)
+}
+
 func oktaAppAssignmentProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return identityAppAssignmentProjections(event, oktaIdentityProfile)
 }
@@ -214,10 +218,12 @@ func identityUserProjections(event *cerebrov1.EventEnvelope, profile identityPro
 		if orgURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), userURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
+		addCloudIdentityAccountLink(entities, links, tenantID, event.GetSourceId(), event, userURN, profile, attributes, principalType, userID)
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, email, event.GetOccurredAt())
 		if !sameIdentifier(email, login) {
 			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, login, event.GetOccurredAt())
 		}
+		addAWSPrincipalIdentifierLinks(entities, links, tenantID, event.GetSourceId(), event, userURN, profile, attributes, principalType, userID, login, attributes["arn"])
 	}
 	return identityProjectionResult(entities, links)
 }
@@ -259,7 +265,9 @@ func identityGroupProjections(event *cerebrov1.EventEnvelope, profile identityPr
 		if orgURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), groupURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
+		addCloudIdentityAccountLink(entities, links, tenantID, event.GetSourceId(), event, groupURN, profile, attributes, "group", groupID)
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), groupURN, groupEmail, event.GetOccurredAt())
+		addAWSPrincipalIdentifierLinks(entities, links, tenantID, event.GetSourceId(), event, groupURN, profile, attributes, "group", groupID, attributes["group_name"], attributes["arn"])
 	}
 	return identityProjectionResult(entities, links)
 }
@@ -308,6 +316,7 @@ func identityGroupMembershipProjections(event *cerebrov1.EventEnvelope, profile 
 			},
 		})
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), memberURN, memberEmail, event.GetOccurredAt())
+		addAWSPrincipalIdentifierLinks(entities, links, tenantID, event.GetSourceId(), event, memberURN, profile, attributes, memberType, memberID, attributes["member_user_id"], memberEmail)
 		if groupURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), memberURN, groupURN, relationMemberOf, map[string]string{
 				"event_id": event.GetId(),
@@ -326,8 +335,12 @@ func identityApplicationProjections(event *cerebrov1.EventEnvelope, profile iden
 	}
 	attributes := event.GetAttributes()
 	provider := profile.Provider
+	domain := strings.TrimSpace(attributes["domain"])
 	appURN := identityApplicationURN(tenantID, provider, firstNonEmpty(attributes["app_id"], attributes["application_id"], attributes["client_id"], attributes["id"]))
 	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	orgURN := identityOrgURN(tenantID, provider, domain)
+	addIdentityOrg(entities, tenantID, event.GetSourceId(), provider, domain, orgURN)
 	if appURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        appURN,
@@ -336,12 +349,68 @@ func identityApplicationProjections(event *cerebrov1.EventEnvelope, profile iden
 			EntityType: profile.entityType("application"),
 			Label:      firstNonEmpty(attributes["app_name"], attributes["app_label"], attributes["name"], attributes["client_id"], attributes["app_id"]),
 			Attributes: map[string]string{
-				"app_id":      firstNonEmpty(attributes["app_id"], attributes["application_id"], attributes["client_id"], attributes["id"]),
-				"app_name":    firstNonEmpty(attributes["app_name"], attributes["app_label"], attributes["name"]),
-				"oauth2":      strings.TrimSpace(attributes["oauth2"]),
-				"saml":        strings.TrimSpace(attributes["saml"]),
-				"domain_wide": strings.TrimSpace(attributes["domain_wide_delegation"]),
+				"app_id":                         firstNonEmpty(attributes["app_id"], attributes["application_id"], attributes["client_id"], attributes["id"]),
+				"app_name":                       firstNonEmpty(attributes["app_name"], attributes["app_label"], attributes["name"]),
+				"application_type":               strings.TrimSpace(attributes["application_type"]),
+				"client_id":                      strings.TrimSpace(attributes["client_id"]),
+				"domain":                         domain,
+				"grant_types":                    strings.TrimSpace(attributes["grant_types"]),
+				"oauth2":                         strings.TrimSpace(attributes["oauth2"]),
+				"oauth_client_type":              strings.TrimSpace(attributes["oauth_client_type"]),
+				"oauth_public_client":            strings.TrimSpace(attributes["oauth_public_client"]),
+				"post_logout_redirect_uri_count": strings.TrimSpace(attributes["post_logout_redirect_uri_count"]),
+				"redirect_uri_count":             strings.TrimSpace(attributes["redirect_uri_count"]),
+				"response_types":                 strings.TrimSpace(attributes["response_types"]),
+				"saml":                           strings.TrimSpace(attributes["saml"]),
+				"domain_wide":                    strings.TrimSpace(attributes["domain_wide_delegation"]),
+				"status":                         strings.TrimSpace(attributes["status"]),
+				"sign_on_mode":                   strings.TrimSpace(attributes["sign_on_mode"]),
+				"token_endpoint_auth_method":     strings.TrimSpace(attributes["token_endpoint_auth_method"]),
+				"wildcard_redirect":              strings.TrimSpace(attributes["wildcard_redirect"]),
 			},
+		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), appURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+	return identityProjectionResult(entities, links)
+}
+
+func identityPolicyRuleProjections(event *cerebrov1.EventEnvelope, profile identityProjectionProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	policyID := strings.TrimSpace(attributes["policy_id"])
+	policyRuleID := firstNonEmpty(attributes["policy_rule_id"], attributes["rule_id"], attributes["resource_id"])
+	if policyID == "" || policyRuleID == "" {
+		return nil, nil, nil
+	}
+	policyRuleURN := projectionURN(tenantID, profile.Provider+"_policy_rule", policyID, policyRuleID)
+	entities := map[string]*ports.ProjectedEntity{}
+	if policyRuleURN != "" {
+		policyRuleAttrs := map[string]string{
+			"policy_id":      policyID,
+			"policy_rule_id": policyRuleID,
+			"policy_type":    strings.TrimSpace(attributes["policy_type"]),
+			"name":           firstNonEmpty(attributes["name"], attributes["policy_rule_name"]),
+			"status":         strings.TrimSpace(attributes["status"]),
+			"priority":       strings.TrimSpace(attributes["priority"]),
+			"system":         strings.TrimSpace(attributes["system"]),
+		}
+		for _, key := range []string{"access", "requires_mfa", "mfa_prompt", "mfa_lifetime_minutes", "session_max_lifetime_minutes", "session_idle_minutes", "session_persistent", "network_connection", "risk_level"} {
+			if v := strings.TrimSpace(attributes[key]); v != "" {
+				policyRuleAttrs[key] = v
+			}
+		}
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        policyRuleURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: profile.entityType("policy_rule"),
+			Label:      firstNonEmpty(attributes["name"], attributes["policy_rule_name"], policyRuleID),
+			Attributes: policyRuleAttrs,
 		})
 	}
 	return identityProjectionResult(entities, nil)
@@ -423,7 +492,9 @@ func identityRoleAssignmentProjections(event *cerebrov1.EventEnvelope, profile i
 			Label:      firstNonEmpty(attributes["subject_name"], subjectEmail, subjectID),
 			Attributes: subjectAttributes,
 		})
+		addCloudIdentityAccountLink(entities, links, tenantID, event.GetSourceId(), event, subjectURN, profile, attributes, subjectType, subjectID)
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), subjectURN, firstNonEmpty(subjectEmail, subjectID), event.GetOccurredAt())
+		addAWSPrincipalIdentifierLinks(entities, links, tenantID, event.GetSourceId(), event, subjectURN, profile, attributes, subjectType, subjectID, attributes["subject_login"], attributes["subject_name"], attributes["subject_arn"], attributes["principal_arn"])
 	}
 	if roleURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
@@ -434,6 +505,7 @@ func identityRoleAssignmentProjections(event *cerebrov1.EventEnvelope, profile i
 			Label:      firstNonEmpty(attributes["role_name"], attributes["role_type"], roleID),
 			Attributes: map[string]string{"is_admin": boolString(privileged), "role_id": roleID, "role_type": strings.TrimSpace(attributes["role_type"])},
 		})
+		addCloudIdentityAccountLink(entities, links, tenantID, event.GetSourceId(), event, roleURN, profile, attributes, roleKind, roleID)
 	}
 	if subjectURN != "" && roleURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectURN, roleURN, relation, map[string]string{"event_id": event.GetId()}))
@@ -466,7 +538,9 @@ func identityCredentialProjections(event *cerebrov1.EventEnvelope, profile ident
 			Label:      firstNonEmpty(attributes["subject_name"], subjectEmail, subjectID),
 			Attributes: map[string]string{"email": subjectEmail, "subject_type": subjectType},
 		})
+		addCloudIdentityAccountLink(entities, links, tenantID, event.GetSourceId(), event, subjectURN, profile, attributes, subjectType, subjectID)
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), subjectURN, firstNonEmpty(subjectEmail, subjectID), event.GetOccurredAt())
+		addAWSPrincipalIdentifierLinks(entities, links, tenantID, event.GetSourceId(), event, subjectURN, profile, attributes, subjectType, subjectID, attributes["subject_login"], attributes["subject_name"], attributes["subject_arn"], attributes["principal_arn"])
 	}
 	if credentialURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
@@ -477,6 +551,7 @@ func identityCredentialProjections(event *cerebrov1.EventEnvelope, profile ident
 			Label:      firstNonEmpty(attributes["credential_name"], credentialID),
 			Attributes: map[string]string{"credential_id": credentialID, "credential_type": credentialType, "status": strings.TrimSpace(attributes["status"])},
 		})
+		addCloudIdentityAccountLink(entities, links, tenantID, event.GetSourceId(), event, credentialURN, profile, attributes, "credential", credentialID)
 	}
 	if subjectURN != "" && credentialURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectURN, credentialURN, relationAssignedTo, map[string]string{"event_id": event.GetId()}))
@@ -508,6 +583,8 @@ func identityAuditProjections(event *cerebrov1.EventEnvelope, profile identityPr
 			Attributes: map[string]string{"email": actorEmail, "actor_id": strings.TrimSpace(attributes["actor_id"])},
 		})
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorEmail, event.GetOccurredAt())
+		addCloudIdentityAccountLink(entities, links, tenantID, event.GetSourceId(), event, actorURN, profile, attributes, attributes["actor_type"], firstNonEmpty(attributes["actor_id"], actorEmail))
+		addAWSPrincipalIdentifierLinks(entities, links, tenantID, event.GetSourceId(), event, actorURN, profile, attributes, attributes["actor_type"], firstNonEmpty(attributes["actor_id"], actorEmail), attributes["actor_alternate_id"], attributes["actor_name"], actorEmail)
 	}
 	if resourceURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
@@ -525,6 +602,7 @@ func identityAuditProjections(event *cerebrov1.EventEnvelope, profile identityPr
 			"event_type": firstNonEmpty(attributes["event_type"], attributes["event_name"]),
 		}))
 	}
+	addAzureResourceGroupLinks(entities, links, tenantID, event.GetSourceId(), event, profile, attributes, resourceURN)
 	return identityProjectionResult(entities, links)
 }
 
@@ -545,6 +623,272 @@ func addIdentityOrg(entities map[string]*ports.ProjectedEntity, tenantID string,
 		Label:      domain,
 		Attributes: map[string]string{"domain": domain},
 	})
+}
+
+func addAWSPrincipalIdentifierLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, profile identityProjectionProfile, attributes map[string]string, principalType string, principalID string, values ...string) {
+	if profile.Provider != "aws" || strings.TrimSpace(fromURN) == "" {
+		return
+	}
+	accountID := cloudIdentityAccountID(profile, attributes, principalType, principalID)
+	kind := awsPrincipalIdentifierKind(principalType)
+	seen := map[string]struct{}{}
+	for _, value := range append([]string{principalID}, values...) {
+		for _, identifier := range awsPrincipalScopedIdentifiers(accountID, kind, value) {
+			if _, ok := seen[identifier]; ok {
+				continue
+			}
+			seen[identifier] = struct{}{}
+			addIdentifierLink(entities, links, tenantID, sourceID, event.GetId(), fromURN, identifier, event.GetOccurredAt())
+		}
+	}
+}
+
+func awsPrincipalScopedIdentifiers(accountID string, kind string, value string) []string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	parsedAccountID, parsedKind, parsedName := awsPrincipalIdentifierFromARN(trimmed)
+	if parsedAccountID != "" && parsedName != "" {
+		if identifier := awsPrincipalScopedIdentifier(parsedAccountID, parsedKind, parsedName); identifier != "" {
+			return []string{identifier}
+		}
+		return nil
+	}
+	if accountID == "" || kind == "" || strings.Contains(trimmed, "@") {
+		return nil
+	}
+	name := awsPrincipalName(trimmed)
+	if name == "" {
+		return nil
+	}
+	if identifier := awsPrincipalScopedIdentifier(accountID, kind, name); identifier != "" {
+		return []string{identifier}
+	}
+	return nil
+}
+
+func awsPrincipalScopedIdentifier(accountID string, kind string, name string) string {
+	accountID = strings.TrimSpace(accountID)
+	kind = strings.TrimSpace(kind)
+	name = awsPrincipalName(name)
+	if accountID == "" || kind == "" || name == "" || strings.Contains(name, "@") {
+		return ""
+	}
+	return "aws:" + accountID + ":" + kind + ":" + name
+}
+
+func awsPrincipalIdentifierKind(principalType string) string {
+	switch identityPrincipalType(principalType) {
+	case "role":
+		return "role"
+	case "group":
+		return "group"
+	case "user":
+		return "user"
+	default:
+		return ""
+	}
+}
+
+func awsPrincipalIdentifierFromARN(value string) (string, string, string) {
+	parts := strings.SplitN(strings.TrimSpace(value), ":", 6)
+	if len(parts) != 6 || parts[0] != "arn" {
+		return "", "", ""
+	}
+	accountID := awsAccountID(parts[4])
+	if accountID == "" {
+		return "", "", ""
+	}
+	resource := strings.TrimSpace(parts[5])
+	switch {
+	case strings.HasPrefix(resource, "user/"):
+		return accountID, "user", awsPrincipalName(strings.TrimPrefix(resource, "user/"))
+	case strings.HasPrefix(resource, "role/"):
+		return accountID, "role", awsPrincipalName(strings.TrimPrefix(resource, "role/"))
+	case strings.HasPrefix(resource, "group/"):
+		return accountID, "group", awsPrincipalName(strings.TrimPrefix(resource, "group/"))
+	case strings.HasPrefix(resource, "assumed-role/"):
+		remainder := strings.TrimPrefix(resource, "assumed-role/")
+		roleName, _, _ := strings.Cut(remainder, "/")
+		return accountID, "role", awsPrincipalName(roleName)
+	case strings.HasPrefix(resource, "federated-user/"):
+		return accountID, "user", awsPrincipalName(strings.TrimPrefix(resource, "federated-user/"))
+	default:
+		return "", "", ""
+	}
+}
+
+func awsPrincipalName(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if _, _, name := awsPrincipalIdentifierFromARN(value); name != "" {
+		return name
+	}
+	if strings.Contains(value, "/") {
+		parts := strings.Split(value, "/")
+		return strings.TrimSpace(parts[len(parts)-1])
+	}
+	return value
+}
+
+func addCloudIdentityAccountLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, profile identityProjectionProfile, attributes map[string]string, principalType string, principalID string) {
+	accountID := cloudIdentityAccountID(profile, attributes, principalType, principalID)
+	if accountID == "" {
+		return
+	}
+	addCloudAccountLink(entities, links, tenantID, sourceID, event, fromURN, accountID, profile.Provider)
+}
+
+func cloudIdentityAccountID(profile identityProjectionProfile, attributes map[string]string, principalType string, principalID string) string {
+	switch profile.Provider {
+	case "aws":
+		return firstNonEmpty(
+			awsAccountID(attributes["domain"]),
+			awsAccountID(attributes["aws_account_id"]),
+			awsAccountIDFromARN(principalID),
+			awsAccountIDFromARN(attributes["subject_id"]),
+			awsAccountIDFromARN(attributes["user_id"]),
+			awsAccountIDFromARN(attributes["resource_id"]),
+			awsAccountIDFromARN(attributes["target_id"]),
+		)
+	case "gcp":
+		if identityPrincipalType(principalType) != "service_account" && !strings.EqualFold(principalType, "credential") {
+			return ""
+		}
+		return firstNonEmpty(
+			attributes["gcp_project_id"],
+			attributes["project_id"],
+			gcpProjectIDFromResource(attributes["credential_id"]),
+			gcpProjectIDFromResource(principalID),
+			gcpProjectIDFromServiceAccountEmail(attributes["subject_email"]),
+			gcpProjectIDFromServiceAccountEmail(attributes["email"]),
+			gcpProjectIDFromServiceAccountEmail(principalID),
+			attributes["domain"],
+		)
+	case "azure":
+		return firstNonEmpty(
+			attributes["subscription_id"],
+			azureSubscriptionIDFromScope(attributes["scope"]),
+			azureSubscriptionIDFromScope(attributes["resource_id"]),
+			azureSubscriptionIDFromScope(attributes["target_id"]),
+		)
+	default:
+		return ""
+	}
+}
+
+func awsAccountID(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) != 12 {
+		return ""
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return ""
+		}
+	}
+	return value
+}
+
+func awsAccountIDFromARN(value string) string {
+	parts := strings.Split(strings.TrimSpace(value), ":")
+	if len(parts) < 5 || parts[0] != "arn" || parts[2] == "" {
+		return ""
+	}
+	return awsAccountID(parts[4])
+}
+
+func gcpProjectIDFromResource(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	parts := strings.Split(value, "/")
+	for index := 0; index+1 < len(parts); index++ {
+		if parts[index] == "projects" && strings.TrimSpace(parts[index+1]) != "" {
+			return strings.TrimSpace(parts[index+1])
+		}
+	}
+	return ""
+}
+
+func gcpProjectIDFromServiceAccountEmail(value string) string {
+	value = strings.TrimSpace(value)
+	if !strings.HasSuffix(value, ".iam.gserviceaccount.com") {
+		return ""
+	}
+	_, domain, ok := strings.Cut(value, "@")
+	if !ok {
+		return ""
+	}
+	return strings.TrimSuffix(domain, ".iam.gserviceaccount.com")
+}
+
+func azureSubscriptionIDFromScope(value string) string {
+	parts := strings.Split(strings.TrimSpace(value), "/")
+	for index := 0; index+1 < len(parts); index++ {
+		if strings.EqualFold(parts[index], "subscriptions") && strings.TrimSpace(parts[index+1]) != "" {
+			return strings.TrimSpace(parts[index+1])
+		}
+	}
+	return ""
+}
+
+func addAzureResourceGroupLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, profile identityProjectionProfile, attributes map[string]string, resourceURN string) {
+	if profile.Provider != "azure" || resourceURN == "" {
+		return
+	}
+	subscriptionID := firstNonEmpty(
+		attributes["subscription_id"],
+		azureSubscriptionIDFromScope(attributes["scope"]),
+		azureSubscriptionIDFromScope(attributes["resource_id"]),
+		azureSubscriptionIDFromScope(attributes["target_id"]),
+	)
+	resourceGroup := azureResourceGroupName(attributes)
+	if subscriptionID == "" || resourceGroup == "" {
+		return
+	}
+	resourceGroupURN := projectionURN(tenantID, "azure_resource_group", subscriptionID, resourceGroup)
+	if resourceGroupURN == "" {
+		return
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        resourceGroupURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: "azure.resource_group",
+		Label:      resourceGroup,
+		Attributes: map[string]string{
+			"resource_group":  resourceGroup,
+			"subscription_id": subscriptionID,
+		},
+	})
+	addLink(links, projectedLink(tenantID, sourceID, resourceURN, resourceGroupURN, relationBelongsTo, map[string]string{
+		"event_id":         event.GetId(),
+		"resource_group":   resourceGroup,
+		"subscription_id":  subscriptionID,
+		"relationship_by":  "azure_resource_group",
+		"source_attribute": "resource_group",
+	}))
+	addCloudAccountLink(entities, links, tenantID, sourceID, event, resourceGroupURN, subscriptionID, "azure")
+}
+
+func azureResourceGroupName(attributes map[string]string) string {
+	if resourceGroup := firstNonEmpty(attributes["resource_group"], attributes["resource_group_name"]); resourceGroup != "" {
+		return resourceGroup
+	}
+	for _, value := range []string{attributes["scope"], attributes["resource_id"], attributes["target_id"]} {
+		parts := strings.Split(strings.TrimSpace(value), "/")
+		for index := 0; index+1 < len(parts); index++ {
+			if strings.EqualFold(parts[index], "resourceGroups") && strings.TrimSpace(parts[index+1]) != "" {
+				return strings.TrimSpace(parts[index+1])
+			}
+		}
+	}
+	return ""
 }
 
 func identityOrgURN(tenantID string, provider string, domain string) string {
@@ -587,6 +931,8 @@ func identityPrincipalURN(tenantID string, provider string, principalType string
 		return projectionURN(tenantID, provider+"_service_account", firstNonEmpty(principalID, email))
 	case "role":
 		return projectionURN(tenantID, provider+"_role", principalID)
+	case "account":
+		return projectionURN(tenantID, provider+"_account", principalID)
 	case "public":
 		return projectionURN(tenantID, provider+"_public_principal", principalID)
 	default:
@@ -610,6 +956,9 @@ func identityPrincipalType(value string) string {
 	}
 	if strings.Contains(normalized, "role") {
 		return "role"
+	}
+	if strings.Contains(normalized, "account") {
+		return "account"
 	}
 	if strings.Contains(normalized, "public") || strings.Contains(normalized, "allusers") || strings.Contains(normalized, "allauthenticatedusers") {
 		return "public"

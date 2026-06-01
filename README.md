@@ -79,6 +79,14 @@ curl -sS http://127.0.0.1:8080/health
 curl -sS http://127.0.0.1:8080/sources
 ```
 
+For a durable local stack that matches the bootstrap runtime dependencies, use Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+The compose stack starts Cerebro with NATS JetStream, Postgres, and Neo4j using the `CEREBRO_*` environment variables documented below.
+
 ---
 
 ## Configuration
@@ -92,6 +100,9 @@ The bootstrap binary currently reads these environment variables:
 | `CEREBRO_API_AUTH_ENABLED` | require bearer/API-key auth for non-public routes | `false` |
 | `CEREBRO_API_KEYS` | comma-separated `key[:principal[:tenant_id]]` entries | unset |
 | `CEREBRO_ALLOWED_TENANTS` | optional tenant allowlist for unscoped API keys | unset |
+| `CEREBRO_PUBLIC_ORIGIN` | canonical external origin for DPoP and proxy-aware URL reconstruction | request host |
+| `CEREBRO_TRUSTED_PROXY_CIDRS` | comma-separated trusted proxy/load-balancer CIDRs for forwarded headers | private/link-local remotes |
+| `CEREBRO_TRUSTED_PROXY_COUNT` | trusted trailing `X-Forwarded-For` hops | `0` |
 | `CEREBRO_APPEND_LOG_DRIVER` | append-log driver; supported value: `jetstream` | unset |
 | `CEREBRO_JETSTREAM_URL` | NATS URL for JetStream | unset |
 | `CEREBRO_JETSTREAM_SUBJECT_PREFIX` | JetStream subject prefix | `events` |
@@ -227,10 +238,10 @@ Connect RPC procedures are served under `/cerebro.v1.BootstrapService/{Method}`.
 | `GET /report-runs/{runID}` | get a report run |
 | `POST /platform/knowledge/decisions` | write a knowledge decision |
 | `POST /platform/knowledge/actions` | write a workflow action |
-| `POST /graph/actuate/recommendation` | write an action through the graph actuation route |
-| `POST /graph/write/outcome` | write a workflow outcome |
+| `POST /platform/knowledge/actions/recommendation` | write an action recommendation |
+| `POST /platform/knowledge/outcomes` | write a workflow outcome |
 | `POST /platform/workflow/replay` | replay workflow events |
-| `GET /graph/neighborhood` | query graph neighborhood |
+| `GET /platform/graph/neighborhood` | query graph neighborhood |
 
 ---
 

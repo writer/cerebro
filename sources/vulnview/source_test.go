@@ -147,6 +147,57 @@ func TestReadVulnerabilitiesPaginatesAndMapsAttributes(t *testing.T) {
 	}
 }
 
+func TestReadVulnerabilitiesMapsFindingStateAttributes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "token_type": "Bearer", "expires_in": 3600})
+		case "/vulnerabilities":
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{
+				"type":       "vulnerability",
+				"templateId": "cve-2026-1234",
+				"name":       "Test CVE",
+				"severity":   "high",
+				"host":       "app.writer.com",
+				"status":     "resolved",
+			}}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id":     "writer",
+		"base_url":      server.URL,
+		"token_url":     server.URL + "/token",
+		"client_id":     "client",
+		"client_secret": "secret",
+		"family":        "vulnerability",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	if got := attrs["vulnview_status"]; got != "resolved" {
+		t.Fatalf("vulnview_status = %q, want resolved", got)
+	}
+	if got := attrs["vulnview_finding_state"]; got != "resolved" {
+		t.Fatalf("vulnview_finding_state = %q, want resolved", got)
+	}
+	if _, ok := attrs["status"]; ok {
+		t.Fatalf("generic status attribute = %q, want status to stay namespaced for vulnerability records", attrs["status"])
+	}
+}
+
 func TestAccessTokenCacheScopesByClientSecret(t *testing.T) {
 	tokenRequests := map[string]int{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -193,6 +244,57 @@ func TestAccessTokenCacheScopesByClientSecret(t *testing.T) {
 	}
 	if tokenRequests["one"] != 1 || tokenRequests["two"] != 1 {
 		t.Fatalf("tokenRequests = %#v, want one request per secret", tokenRequests)
+	}
+}
+
+func TestReadDNSAlertsMapsFindingStateAttributes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "token_type": "Bearer", "expires_in": 3600})
+		case "/assets":
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{
+				"asset": "staging.writer.com",
+				"dnsAlerts": []map[string]any{{
+					"alert":    "dangling-cname",
+					"severity": "high",
+					"state":    "closed",
+				}},
+			}}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id":     "writer",
+		"base_url":      server.URL,
+		"token_url":     server.URL + "/token",
+		"client_id":     "client",
+		"client_secret": "secret",
+		"family":        "dns_alert",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	attrs := pull.Events[0].Attributes
+	if got := attrs["vulnview_state"]; got != "closed" {
+		t.Fatalf("vulnview_state = %q, want closed", got)
+	}
+	if got := attrs["vulnview_finding_state"]; got != "closed" {
+		t.Fatalf("vulnview_finding_state = %q, want closed", got)
+	}
+	if _, ok := attrs["state"]; ok {
+		t.Fatalf("generic state attribute = %q, want state to stay namespaced for DNS alert records", attrs["state"])
 	}
 }
 

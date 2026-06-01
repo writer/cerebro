@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	aureliussource "github.com/writer/cerebro/sources/aurelius"
 	awssource "github.com/writer/cerebro/sources/aws"
 	azuresource "github.com/writer/cerebro/sources/azure"
 	backstagesource "github.com/writer/cerebro/sources/backstage"
@@ -27,6 +28,12 @@ type builtinSourceLoader struct {
 }
 
 var builtinSourceLoaders = []builtinSourceLoader{
+	{
+		name: "aurelius",
+		load: func() (sourcecdk.Source, error) {
+			return aureliussource.New()
+		},
+	},
 	{
 		name: "aws",
 		load: func() (sourcecdk.Source, error) {

@@ -6,6 +6,9 @@ emitted_kinds:
   - okta.admin_role
   - okta.app_assignment
   - okta.application
+  - okta.authenticator
   - okta.group
   - okta.group_membership
+  - okta.policy_rule
+  - okta.threat_insight
   - okta.user

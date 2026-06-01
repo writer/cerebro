@@ -78,6 +78,7 @@ func newDeprovisionedOktaActiveGitHubRule() Rule {
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.5.18"},
 				{FrameworkName: "HIPAA", ControlID: "164.308(a)(3)(ii)(C)"},
 			},
+			Lifecycle: Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 		},
 	}
 }

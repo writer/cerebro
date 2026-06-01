@@ -6,8 +6,11 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/writer/cerebro/tools/droidreview/bodyread"
 )
 
 func TestOpenAPIContractDescribesCurrentBootstrapSurface(t *testing.T) {
@@ -27,7 +30,6 @@ func TestOpenAPIContractDescribesCurrentBootstrapSurface(t *testing.T) {
 		"/platform/graph/neighborhood:",
 		"/platform/endpoints/{deviceKey}/vulnerability-findings:",
 		"x-cerebro-required-any-query:",
-		"deprecated: true",
 		"bearerAuth:",
 	} {
 		if !bytes.Contains(body, []byte(current)) {
@@ -90,7 +92,9 @@ func TestSourceCDKOwnsExternalHTTPClients(t *testing.T) {
 			if strings.Trim(importSpec.Path.Value, `"`) != "net/http" {
 				continue
 			}
-			if strings.HasPrefix(rel, "sources"+string(filepath.Separator)) || strings.HasPrefix(rel, filepath.Join("internal", "bootstrap")+string(filepath.Separator)) {
+			if strings.HasPrefix(rel, "sources"+string(filepath.Separator)) ||
+				strings.HasPrefix(rel, filepath.Join("internal", "bootstrap")+string(filepath.Separator)) ||
+				strings.HasPrefix(rel, filepath.Join("internal", "sourcehttp")+string(filepath.Separator)) {
 				continue
 			}
 			t.Fatalf("%s imports net/http outside Source CDK or bootstrap boundary", rel)
@@ -98,5 +102,85 @@ func TestSourceCDKOwnsExternalHTTPClients(t *testing.T) {
 		return nil
 	}); err != nil {
 		t.Fatalf("scan net/http imports: %v", err)
+	}
+}
+
+func TestSourcesUseSharedHTTPSafety(t *testing.T) {
+	root := repoRoot(t)
+	if err := filepath.WalkDir(filepath.Join(root, "sources"), func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			if entry.Name() == "testdata" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		rel := shortPath(root, path)
+		for _, marker := range []string{
+			"http.DefaultClient",
+			"&http.Client{",
+			"io.ReadAll(resp.Body)",
+			"io.ReadAll(response.Body)",
+			"func readLimitedBody(",
+			"type safeRoundTripper",
+		} {
+			if bytes.Contains(body, []byte(marker)) {
+				t.Fatalf("%s uses %s; source connectors must go through internal/sourcehttp", rel, marker)
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("scan source HTTP safety: %v", err)
+	}
+}
+
+func TestProductionBodyReadsAreBounded(t *testing.T) {
+	root := repoRoot(t)
+	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			switch entry.Name() {
+			case ".git", "vendor", "gen", "sdk", "testdata":
+				return filepath.SkipDir
+			default:
+				return nil
+			}
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if !bytes.Contains(body, []byte("io.ReadAll(")) {
+			return nil
+		}
+		rel := shortPath(root, path)
+		findings, err := bodyread.FindUnboundedReadAll(rel, body)
+		if err != nil {
+			return err
+		}
+		if len(findings) > 0 {
+			var lines []string
+			for _, finding := range findings {
+				lines = append(lines, finding.File+":"+strconv.Itoa(finding.Line))
+			}
+			t.Fatalf("production io.ReadAll calls must use io.LimitReader; unbounded reads: %s", strings.Join(lines, ", "))
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("scan bounded body reads: %v", err)
 	}
 }

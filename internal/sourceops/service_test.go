@@ -2,7 +2,11 @@ package sourceops
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
+	"os"
+	"strings"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -79,6 +83,66 @@ func TestCheckDiscoverAndRead(t *testing.T) {
 	}
 	if !readResp.PreviewEvents[0].PayloadDecoded {
 		t.Fatal("Read().PreviewEvents[0].PayloadDecoded = false, want true")
+	}
+}
+
+func TestReadEmitsSourceOperationTelemetry(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	service := New(registry)
+
+	stderr := captureSourceOpsStderr(t, func() {
+		_, err := service.Read(context.Background(), &cerebrov1.ReadSourceRequest{
+			SourceId: "github",
+			Config:   map[string]string{"token": "test"},
+		})
+		if err != nil {
+			t.Fatalf("Read() error = %v", err)
+		}
+	})
+
+	payload := sourceOpsTelemetryPayload(t, stderr, "source.read")
+	for key, want := range map[string]any{
+		"kind":                "span_end",
+		"name":                "source.read",
+		"status":              "completed",
+		"source_id":           "github",
+		"event_count":         float64(1),
+		"preview_event_count": float64(1),
+		"has_next_cursor":     true,
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	if _, ok := payload["duration_ms"].(float64); !ok {
+		t.Fatalf("telemetry duration_ms = %#v, want number; payload=%#v", payload["duration_ms"], payload)
+	}
+}
+
+func TestSourceOperationTelemetryRecordsFailures(t *testing.T) {
+	service := New(nil)
+
+	stderr := captureSourceOpsStderr(t, func() {
+		_, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{SourceId: "missing"})
+		if !errors.Is(err, ErrSourceNotFound) {
+			t.Fatalf("Check() error = %v, want ErrSourceNotFound", err)
+		}
+	})
+
+	payload := sourceOpsTelemetryPayload(t, stderr, "source.check")
+	for key, want := range map[string]any{
+		"kind":       "span_end",
+		"name":       "source.check",
+		"status":     "failed",
+		"source_id":  "missing",
+		"error_kind": "source_not_found",
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
 	}
 }
 
@@ -290,4 +354,45 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 		return nil, err
 	}
 	return sourcecdk.NewRegistry(source, googleWorkspace, okta)
+}
+
+func captureSourceOpsStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	oldStderr := os.Stderr
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe stderr: %v", err)
+	}
+	os.Stderr = writer
+	defer func() {
+		os.Stderr = oldStderr
+	}()
+	fn()
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close stderr writer: %v", err)
+	}
+	payload, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("read stderr: %v", err)
+	}
+	return string(payload)
+}
+
+func sourceOpsTelemetryPayload(t *testing.T, stderr string, name string) map[string]any {
+	t.Helper()
+	lines := strings.Split(strings.TrimSpace(stderr), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) == "" {
+			continue
+		}
+		payload := map[string]any{}
+		if err := json.Unmarshal([]byte(lines[i]), &payload); err != nil {
+			t.Fatalf("unmarshal telemetry payload %q: %v", lines[i], err)
+		}
+		if payload["kind"] == "span_end" && payload["name"] == name {
+			return payload
+		}
+	}
+	t.Fatalf("telemetry span_end %q not found in stderr: %s", name, stderr)
+	return nil
 }

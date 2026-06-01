@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"sort"
 	"strconv"
@@ -59,13 +61,14 @@ type GraphStoreConfig struct {
 
 // GraphAgentLLMConfig selects and configures the graph ask LLM adapter.
 type GraphAgentLLMConfig struct {
-	Provider    string
-	Model       string
-	SonnetModel string
-	OpusModel   string
-	HaikuModel  string
-	MaxTokens   int
-	Temperature float64
+	Provider         string
+	Model            string
+	SonnetModel      string
+	OpusModel        string
+	HaikuModel       string
+	MaxTokens        int
+	Temperature      float64
+	OpenRouterAPIKey string
 }
 
 // APIKey grants one bearer token access to the bootstrap API.
@@ -97,6 +100,74 @@ type AuthConfig struct {
 	CapabilityTokenSecrets  []string
 	CapabilityTokenAudience string
 	AllowedTenants          []string
+	DeviceAuth              DeviceAuthConfig
+	RequestOrigin           RequestOriginConfig
+}
+
+// RequestOriginConfig controls how bootstrap reconstructs client IPs and public
+// request URLs when requests traverse reverse proxies.
+type RequestOriginConfig struct {
+	PublicOrigin      string
+	TrustedProxyCIDRs []string
+	TrustedProxyCount int
+}
+
+// DeviceAuthSigningKey is one Ed25519 keypair the issuer can sign with. This
+// bootstrap path requires PrivatePEM on the current signing key; external KMS
+// signing is intentionally unsupported until a signer implementation is wired.
+type DeviceAuthSigningKey struct {
+	KID        string `json:"kid"`
+	PublicPEM  string `json:"public_pem"`
+	PrivatePEM string `json:"private_pem,omitempty"`
+}
+
+// DeviceAuthConfig configures the SeCheck device-auth surface. The surface is
+// disabled when Enabled is false.
+type DeviceAuthConfig struct {
+	Enabled                     bool
+	Issuer                      string
+	Audience                    string
+	AccessTTL                   time.Duration
+	RefreshTTL                  time.Duration
+	BootstrapTokenTTL           time.Duration
+	IdempotencyTTL              time.Duration
+	ClockSkew                   time.Duration
+	SigningKeys                 []DeviceAuthSigningKey
+	CurrentKID                  string
+	EnrollPerIPRatePerSecond    float64
+	EnrollPerIPBurst            int
+	TokenPerDeviceRatePerSecond float64
+	TokenPerDeviceBurst         int
+	// DPoPProofTTL bounds how long an RFC 9449 DPoP proof JWT remains
+	// valid; defaults to 60s if zero.
+	DPoPProofTTL time.Duration
+	// ReplicaCount is the number of concurrently serving bootstrap API
+	// replicas for this device-auth deployment. Values greater than one
+	// require shared DPoP replay state.
+	ReplicaCount int
+	// RiskElevatedThreshold and RiskHighThreshold map composite risk
+	// scores (0..100) to "elevated" and "high" levels. Defaults are 30
+	// and 70.
+	RiskElevatedThreshold int
+	RiskHighThreshold     int
+	// Attestation configures the device-bound proof verifiers wired into
+	// Service.Enroll.
+	Attestation DeviceAuthAttestationConfig
+}
+
+// DeviceAuthAttestationConfig configures the Phase-2 device-bound proof
+// verifiers. When Required is true, enroll requests must carry a non-empty
+// attestation statement; when false, a missing statement returns a
+// software-assurance result.
+type DeviceAuthAttestationConfig struct {
+	Required bool
+	Apple    DeviceAuthAppleConfig
+}
+
+// DeviceAuthAppleConfig configures the Apple App Attest verifier.
+type DeviceAuthAppleConfig struct {
+	TeamID    string
+	BundleIDs []string
 }
 
 // Load reads and validates process configuration.
@@ -141,6 +212,10 @@ func Load() (Config, error) {
 			CapabilityTokenSecrets:  parseCSV(os.Getenv("CEREBRO_CAPABILITY_TOKEN_SECRETS")),
 			CapabilityTokenAudience: strings.TrimSpace(os.Getenv("CEREBRO_CAPABILITY_TOKEN_AUDIENCE")),
 			AllowedTenants:          parseCSV(os.Getenv("CEREBRO_ALLOWED_TENANTS")),
+			RequestOrigin: RequestOriginConfig{
+				PublicOrigin:      strings.TrimRight(strings.TrimSpace(os.Getenv("CEREBRO_PUBLIC_ORIGIN")), "/"),
+				TrustedProxyCIDRs: parseCSV(os.Getenv("CEREBRO_TRUSTED_PROXY_CIDRS")),
+			},
 		},
 	}
 	authEnabled, err := parseBoolEnv("CEREBRO_API_AUTH_ENABLED", false)
@@ -148,9 +223,23 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	cfg.Auth.Enabled = authEnabled
+	if cfg.Auth.RequestOrigin.TrustedProxyCount, err = parseIntEnv("CEREBRO_TRUSTED_PROXY_COUNT", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.Auth.RequestOrigin.TrustedProxyCount < 0 {
+		return Config{}, fmt.Errorf("CEREBRO_TRUSTED_PROXY_COUNT must be greater than or equal to zero")
+	}
+	if err := validateRequestOriginConfig(cfg.Auth.RequestOrigin); err != nil {
+		return Config{}, err
+	}
 	if len(cfg.Auth.CapabilityTokenSecrets) > 0 && cfg.Auth.CapabilityTokenAudience == "" {
 		cfg.Auth.CapabilityTokenAudience = "cerebro-api"
 	}
+	deviceAuth, err := loadDeviceAuthConfig()
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.Auth.DeviceAuth = deviceAuth
 	if cfg.HTTPAddr == "" {
 		cfg.HTTPAddr = defaultHTTPAddr
 	}
@@ -160,6 +249,7 @@ func Load() (Config, error) {
 	if cfg.GraphAgentLLM.Temperature, err = parseFloatEnv("CEREBRO_GRAPH_AGENT_LLM_TEMPERATURE", 0); err != nil {
 		return Config{}, err
 	}
+	cfg.GraphAgentLLM.OpenRouterAPIKey = strings.TrimSpace(os.Getenv("CEREBRO_OPENROUTER_API_KEY"))
 	if raw, ok := os.LookupEnv("CEREBRO_SHUTDOWN_TIMEOUT"); ok && strings.TrimSpace(raw) != "" {
 		duration, err := time.ParseDuration(strings.TrimSpace(raw))
 		if err != nil {
@@ -219,6 +309,27 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("CEREBRO_API_KEYS, CEREBRO_API_CREDENTIALS_JSON, or CEREBRO_CAPABILITY_TOKEN_SECRETS is required when CEREBRO_API_AUTH_ENABLED=true")
 	}
 	return cfg, nil
+}
+
+func validateRequestOriginConfig(cfg RequestOriginConfig) error {
+	if raw := strings.TrimSpace(cfg.PublicOrigin); raw != "" {
+		parsed, err := url.Parse(strings.TrimRight(raw, "/"))
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			return fmt.Errorf("CEREBRO_PUBLIC_ORIGIN must be an http(s) origin")
+		}
+		if parsed.Scheme != "https" && parsed.Scheme != "http" {
+			return fmt.Errorf("CEREBRO_PUBLIC_ORIGIN must use http or https")
+		}
+		if parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || strings.Trim(parsed.Path, "/") != "" {
+			return fmt.Errorf("CEREBRO_PUBLIC_ORIGIN must not include user info, path, query, or fragment")
+		}
+	}
+	for _, rawCIDR := range cfg.TrustedProxyCIDRs {
+		if _, _, err := net.ParseCIDR(strings.TrimSpace(rawCIDR)); err != nil {
+			return fmt.Errorf("CEREBRO_TRUSTED_PROXY_CIDRS contains invalid CIDR %q: %w", rawCIDR, err)
+		}
+	}
+	return nil
 }
 
 func parseBoolEnv(name string, defaultValue bool) (bool, error) {

@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"path"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -53,6 +55,8 @@ const (
 	defaultRegion             = "us-east-1"
 	defaultPageSize           = 10
 	maxPageSize               = 200
+	cloudTrailCursorVersion   = 1
+	cloudTrailCursorMaxAge    = 55 * time.Minute
 	publicEndpointCursorV2    = 2
 	awsAssumeRoleSessionName  = "cerebro-source-runtime"
 	familyAccessKey           = "access_key"
@@ -123,6 +127,14 @@ type awsIAMAPI interface {
 	ListAttachedUserPolicies(context.Context, *iam.ListAttachedUserPoliciesInput, ...func(*iam.Options)) (*iam.ListAttachedUserPoliciesOutput, error)
 	ListAttachedGroupPolicies(context.Context, *iam.ListAttachedGroupPoliciesInput, ...func(*iam.Options)) (*iam.ListAttachedGroupPoliciesOutput, error)
 	ListAttachedRolePolicies(context.Context, *iam.ListAttachedRolePoliciesInput, ...func(*iam.Options)) (*iam.ListAttachedRolePoliciesOutput, error)
+	ListUserPolicies(context.Context, *iam.ListUserPoliciesInput, ...func(*iam.Options)) (*iam.ListUserPoliciesOutput, error)
+	ListGroupPolicies(context.Context, *iam.ListGroupPoliciesInput, ...func(*iam.Options)) (*iam.ListGroupPoliciesOutput, error)
+	ListRolePolicies(context.Context, *iam.ListRolePoliciesInput, ...func(*iam.Options)) (*iam.ListRolePoliciesOutput, error)
+	GetPolicy(context.Context, *iam.GetPolicyInput, ...func(*iam.Options)) (*iam.GetPolicyOutput, error)
+	GetPolicyVersion(context.Context, *iam.GetPolicyVersionInput, ...func(*iam.Options)) (*iam.GetPolicyVersionOutput, error)
+	GetUserPolicy(context.Context, *iam.GetUserPolicyInput, ...func(*iam.Options)) (*iam.GetUserPolicyOutput, error)
+	GetGroupPolicy(context.Context, *iam.GetGroupPolicyInput, ...func(*iam.Options)) (*iam.GetGroupPolicyOutput, error)
+	GetRolePolicy(context.Context, *iam.GetRolePolicyInput, ...func(*iam.Options)) (*iam.GetRolePolicyOutput, error)
 }
 
 type awsCloudTrailAPI interface {
@@ -172,6 +184,8 @@ type iamPolicyAssignment struct {
 	PrincipalType string
 	PrincipalName string
 	Policy        iamtypes.AttachedPolicy
+	PolicySource  string
+	Actions       []string
 }
 
 type iamGroupMember struct {
@@ -198,25 +212,27 @@ type awsResourceExposure struct {
 }
 
 type awsPublicEndpoint struct {
-	ResourceID     string
-	ResourceName   string
-	ResourceType   string
-	EndpointID     string
-	EndpointType   string
-	Host           string
-	TargetHost     string
-	TargetHosts    []string
-	AlternateHosts []string
-	IP             string
-	TargetIP       string
-	TargetIPs      []string
-	DNSRecordType  string
-	HostedZoneID   string
-	HostedZoneName string
-	PrivateZone    bool
-	Region         string
-	Scope          string
-	Service        string
+	ResourceID           string
+	ResourceName         string
+	ResourceType         string
+	EndpointID           string
+	EndpointType         string
+	Host                 string
+	TargetHost           string
+	TargetHosts          []string
+	AlternateHosts       []string
+	IP                   string
+	TargetIP             string
+	TargetIPs            []string
+	DNSRecordType        string
+	HostedZoneID         string
+	HostedZoneName       string
+	PrivateZone          bool
+	Region               string
+	Scope                string
+	Service              string
+	AttachedInstanceID   string
+	AssociatedInstanceID string
 }
 
 const (
@@ -246,9 +262,15 @@ type publicEndpointCursor struct {
 }
 
 type iamRoleTrust struct {
-	Role      iamtypes.Role
-	Statement trustStatement
-	Principal string
+	Role          iamtypes.Role
+	Statement     trustStatement
+	Principal     string
+	PrincipalType string
+}
+
+type iamTrustPrincipal struct {
+	Type  string
+	Value string
 }
 
 type trustPolicyDocument struct {
@@ -285,6 +307,18 @@ type cloudTrailResourceRef struct {
 	Name      string `json:"resourceName"`
 	Type      string `json:"resourceType"`
 	AccountID string `json:"accountId"`
+}
+
+type cloudTrailCursor struct {
+	Version       int    `json:"version,omitempty"`
+	Token         string `json:"token,omitempty"`
+	StartTime     string `json:"start_time,omitempty"`
+	EndTime       string `json:"end_time,omitempty"`
+	StartSelector string `json:"start_selector,omitempty"`
+	EndSelector   string `json:"end_selector,omitempty"`
+	LookupKey     string `json:"lookup_key,omitempty"`
+	LookupValue   string `json:"lookup_value,omitempty"`
+	IssuedAt      string `json:"issued_at,omitempty"`
 }
 
 // New constructs the live AWS source.
@@ -1061,16 +1095,18 @@ func listAddressPublicEndpoints(ctx context.Context, clients awsClients, setting
 		}
 		allocationID := awssdk.ToString(address.AllocationId)
 		networkInterfaceID := awssdk.ToString(address.NetworkInterfaceId)
+		instanceID := awssdk.ToString(address.InstanceId)
 		endpoints = append(endpoints, awsPublicEndpoint{
-			ResourceID:   firstNonEmpty(allocationID, ip),
-			ResourceName: firstNonEmpty(allocationID, networkInterfaceID, ip),
-			ResourceType: "elastic_ip",
-			EndpointID:   firstNonEmpty(allocationID, ip),
-			EndpointType: "public_ip",
-			IP:           ip,
-			Region:       settings.region,
-			Scope:        settings.accountID,
-			Service:      "ec2",
+			ResourceID:           firstNonEmpty(allocationID, ip),
+			ResourceName:         firstNonEmpty(allocationID, networkInterfaceID, ip),
+			ResourceType:         "elastic_ip",
+			EndpointID:           firstNonEmpty(allocationID, ip),
+			EndpointType:         "public_ip",
+			IP:                   ip,
+			Region:               settings.region,
+			Scope:                settings.accountID,
+			Service:              "ec2",
+			AssociatedInstanceID: instanceID,
 		})
 	}
 	return endpoints, encodePublicEndpointCursor(publicEndpointCursor{Stage: publicEndpointStageENI}), nil
@@ -1092,17 +1128,22 @@ func listNetworkInterfacePublicEndpoints(ctx context.Context, clients awsClients
 			continue
 		}
 		networkInterfaceID := awssdk.ToString(ni.NetworkInterfaceId)
+		instanceID := ""
+		if ni.Attachment != nil {
+			instanceID = awssdk.ToString(ni.Attachment.InstanceId)
+		}
 		endpoints = append(endpoints, awsPublicEndpoint{
-			ResourceID:   firstNonEmpty(networkInterfaceID, ip, host),
-			ResourceName: firstNonEmpty(tagValue(ni.TagSet, "Name"), awssdk.ToString(ni.Description), networkInterfaceID, ip, host),
-			ResourceType: "network_interface",
-			EndpointID:   firstNonEmpty(networkInterfaceID, ip, host),
-			EndpointType: "public_network_interface",
-			Host:         host,
-			IP:           ip,
-			Region:       settings.region,
-			Scope:        settings.accountID,
-			Service:      "ec2",
+			ResourceID:         firstNonEmpty(networkInterfaceID, ip, host),
+			ResourceName:       firstNonEmpty(tagValue(ni.TagSet, "Name"), awssdk.ToString(ni.Description), networkInterfaceID, ip, host),
+			ResourceType:       "network_interface",
+			EndpointID:         firstNonEmpty(networkInterfaceID, ip, host),
+			EndpointType:       "public_network_interface",
+			Host:               host,
+			IP:                 ip,
+			Region:             settings.region,
+			Scope:              settings.accountID,
+			Service:            "ec2",
+			AttachedInstanceID: instanceID,
 		})
 	}
 	if awssdk.ToString(out.NextToken) != "" {
@@ -1330,34 +1371,69 @@ func listIAMPolicyAssignments(ctx context.Context, clients awsClients, settings 
 	}
 	var policies []iamtypes.AttachedPolicy
 	var next string
+	parsed := parseIAMPrincipalAssignmentCursor(cursor)
+	stage := parsed.Stage
+	marker := parsed.Marker
+	if strings.TrimSpace(cursor) == "" {
+		stage = "attached"
+	}
+	if stage != "attached" && stage != "inline" {
+		stage = "attached"
+		marker = strings.TrimSpace(cursor)
+	}
+	if stage == "inline" {
+		assignments, next, err := inlinePolicyAssignmentsPage(ctx, clients, settings.principalType, settings.principalName, marker, limit)
+		if err != nil {
+			return nil, "", err
+		}
+		if next != "" {
+			return assignments, encodeIAMPrincipalAssignmentCursor(iamPrincipalAssignmentCursor{Stage: "inline", Marker: next}), nil
+		}
+		return assignments, "", nil
+	}
 	switch settings.principalType {
 	case "group":
-		out, err := clients.iam.ListAttachedGroupPolicies(ctx, &iam.ListAttachedGroupPoliciesInput{GroupName: awssdk.String(settings.principalName), Marker: stringPtr(cursor), MaxItems: int32Ptr(limit)})
+		out, err := clients.iam.ListAttachedGroupPolicies(ctx, &iam.ListAttachedGroupPoliciesInput{GroupName: awssdk.String(settings.principalName), Marker: stringPtr(marker), MaxItems: int32Ptr(limit)})
 		if err != nil {
 			return nil, "", err
 		}
 		policies = out.AttachedPolicies
 		next = nextMarker(out.IsTruncated, out.Marker)
 	case "role":
-		out, err := clients.iam.ListAttachedRolePolicies(ctx, &iam.ListAttachedRolePoliciesInput{RoleName: awssdk.String(settings.principalName), Marker: stringPtr(cursor), MaxItems: int32Ptr(limit)})
+		out, err := clients.iam.ListAttachedRolePolicies(ctx, &iam.ListAttachedRolePoliciesInput{RoleName: awssdk.String(settings.principalName), Marker: stringPtr(marker), MaxItems: int32Ptr(limit)})
 		if err != nil {
 			return nil, "", err
 		}
 		policies = out.AttachedPolicies
 		next = nextMarker(out.IsTruncated, out.Marker)
 	default:
-		out, err := clients.iam.ListAttachedUserPolicies(ctx, &iam.ListAttachedUserPoliciesInput{UserName: awssdk.String(settings.principalName), Marker: stringPtr(cursor), MaxItems: int32Ptr(limit)})
+		out, err := clients.iam.ListAttachedUserPolicies(ctx, &iam.ListAttachedUserPoliciesInput{UserName: awssdk.String(settings.principalName), Marker: stringPtr(marker), MaxItems: int32Ptr(limit)})
 		if err != nil {
 			return nil, "", err
 		}
 		policies = out.AttachedPolicies
 		next = nextMarker(out.IsTruncated, out.Marker)
 	}
-	assignments := make([]iamPolicyAssignment, 0, len(policies))
-	for _, policy := range policies {
-		assignments = append(assignments, iamPolicyAssignment{PrincipalType: settings.principalType, PrincipalName: settings.principalName, Policy: policy})
+	assignments, err := attachedPolicyAssignments(ctx, clients, settings.principalType, settings.principalName, policies)
+	if err != nil {
+		return nil, "", err
 	}
-	return assignments, next, nil
+	if next != "" {
+		return assignments, encodeIAMPrincipalAssignmentCursor(iamPrincipalAssignmentCursor{Stage: "attached", Marker: next}), nil
+	}
+	remaining := limit - len(assignments)
+	if remaining <= 0 {
+		return assignments, encodeIAMPrincipalAssignmentCursor(iamPrincipalAssignmentCursor{Stage: "inline"}), nil
+	}
+	inlineAssignments, inlineNext, err := inlinePolicyAssignmentsPage(ctx, clients, settings.principalType, settings.principalName, "", remaining)
+	if err != nil {
+		return nil, "", err
+	}
+	assignments = append(assignments, inlineAssignments...)
+	if inlineNext != "" {
+		return assignments, encodeIAMPrincipalAssignmentCursor(iamPrincipalAssignmentCursor{Stage: "inline", Marker: inlineNext}), nil
+	}
+	return assignments, "", nil
 }
 
 func listEffectivePermissions(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]iamPolicyAssignment, string, error) {
@@ -1425,9 +1501,16 @@ func attachedUserPolicyAssignments(ctx context.Context, clients awsClients, user
 		if err != nil {
 			return nil, err
 		}
-		for _, policy := range out.AttachedPolicies {
-			assignments = append(assignments, iamPolicyAssignment{PrincipalType: "user", PrincipalName: userName, Policy: policy})
+		attachedAssignments, err := attachedPolicyAssignments(ctx, clients, "user", userName, out.AttachedPolicies)
+		if err != nil {
+			return nil, err
 		}
+		assignments = append(assignments, attachedAssignments...)
+		inlineAssignments, err := inlinePolicyAssignments(ctx, clients, "user", userName)
+		if err != nil {
+			return nil, err
+		}
+		assignments = append(assignments, inlineAssignments...)
 	}
 	return assignments, nil
 }
@@ -1443,9 +1526,16 @@ func attachedGroupPolicyAssignments(ctx context.Context, clients awsClients, gro
 		if err != nil {
 			return nil, err
 		}
-		for _, policy := range out.AttachedPolicies {
-			assignments = append(assignments, iamPolicyAssignment{PrincipalType: "group", PrincipalName: groupName, Policy: policy})
+		attachedAssignments, err := attachedPolicyAssignments(ctx, clients, "group", groupName, out.AttachedPolicies)
+		if err != nil {
+			return nil, err
 		}
+		assignments = append(assignments, attachedAssignments...)
+		inlineAssignments, err := inlinePolicyAssignments(ctx, clients, "group", groupName)
+		if err != nil {
+			return nil, err
+		}
+		assignments = append(assignments, inlineAssignments...)
 	}
 	return assignments, nil
 }
@@ -1461,26 +1551,194 @@ func attachedRolePolicyAssignments(ctx context.Context, clients awsClients, role
 		if err != nil {
 			return nil, err
 		}
-		for _, policy := range out.AttachedPolicies {
-			assignments = append(assignments, iamPolicyAssignment{PrincipalType: "role", PrincipalName: roleName, Policy: policy})
+		attachedAssignments, err := attachedPolicyAssignments(ctx, clients, "role", roleName, out.AttachedPolicies)
+		if err != nil {
+			return nil, err
 		}
+		assignments = append(assignments, attachedAssignments...)
+		inlineAssignments, err := inlinePolicyAssignments(ctx, clients, "role", roleName)
+		if err != nil {
+			return nil, err
+		}
+		assignments = append(assignments, inlineAssignments...)
 	}
 	return assignments, nil
 }
 
+func attachedPolicyAssignments(ctx context.Context, clients awsClients, principalType string, principalName string, policies []iamtypes.AttachedPolicy) ([]iamPolicyAssignment, error) {
+	assignments := make([]iamPolicyAssignment, 0, len(policies))
+	for _, policy := range policies {
+		actions, err := managedPolicyActions(ctx, clients, awssdk.ToString(policy.PolicyArn))
+		if err != nil {
+			return nil, err
+		}
+		assignments = append(assignments, iamPolicyAssignment{
+			PrincipalType: principalType,
+			PrincipalName: principalName,
+			Policy:        policy,
+			PolicySource:  "attached",
+			Actions:       actions,
+		})
+	}
+	return assignments, nil
+}
+
+func managedPolicyActions(ctx context.Context, clients awsClients, policyARN string) ([]string, error) {
+	policyARN = strings.TrimSpace(policyARN)
+	if policyARN == "" {
+		return nil, nil
+	}
+	policy, err := clients.iam.GetPolicy(ctx, &iam.GetPolicyInput{PolicyArn: awssdk.String(policyARN)})
+	if err != nil {
+		return nil, err
+	}
+	versionID := ""
+	if policy.Policy != nil {
+		versionID = awssdk.ToString(policy.Policy.DefaultVersionId)
+	}
+	if versionID == "" {
+		return nil, nil
+	}
+	version, err := clients.iam.GetPolicyVersion(ctx, &iam.GetPolicyVersionInput{PolicyArn: awssdk.String(policyARN), VersionId: awssdk.String(versionID)})
+	if err != nil {
+		return nil, err
+	}
+	if version.PolicyVersion == nil {
+		return nil, nil
+	}
+	return policyDocumentActions(awssdk.ToString(version.PolicyVersion.Document)), nil
+}
+
+func inlinePolicyAssignments(ctx context.Context, clients awsClients, principalType string, principalName string) ([]iamPolicyAssignment, error) {
+	assignments := make([]iamPolicyAssignment, 0)
+	marker := ""
+	for {
+		page, next, err := inlinePolicyAssignmentsPage(ctx, clients, principalType, principalName, marker, 1000)
+		if err != nil {
+			return nil, err
+		}
+		assignments = append(assignments, page...)
+		if next == "" {
+			return assignments, nil
+		}
+		marker = next
+	}
+}
+
+func inlinePolicyAssignmentsPage(ctx context.Context, clients awsClients, principalType string, principalName string, cursor string, limit int) ([]iamPolicyAssignment, string, error) {
+	principalName = strings.TrimSpace(principalName)
+	if principalName == "" {
+		return nil, "", nil
+	}
+	var policyNames []string
+	var next string
+	switch principalType {
+	case "group":
+		out, err := clients.iam.ListGroupPolicies(ctx, &iam.ListGroupPoliciesInput{GroupName: awssdk.String(principalName), Marker: stringPtr(cursor), MaxItems: int32Ptr(limit)})
+		if err != nil {
+			return nil, "", err
+		}
+		policyNames = out.PolicyNames
+		next = nextMarker(out.IsTruncated, out.Marker)
+	case "role":
+		out, err := clients.iam.ListRolePolicies(ctx, &iam.ListRolePoliciesInput{RoleName: awssdk.String(principalName), Marker: stringPtr(cursor), MaxItems: int32Ptr(limit)})
+		if err != nil {
+			return nil, "", err
+		}
+		policyNames = out.PolicyNames
+		next = nextMarker(out.IsTruncated, out.Marker)
+	default:
+		out, err := clients.iam.ListUserPolicies(ctx, &iam.ListUserPoliciesInput{UserName: awssdk.String(principalName), Marker: stringPtr(cursor), MaxItems: int32Ptr(limit)})
+		if err != nil {
+			return nil, "", err
+		}
+		policyNames = out.PolicyNames
+		next = nextMarker(out.IsTruncated, out.Marker)
+		principalType = "user"
+	}
+	assignments := make([]iamPolicyAssignment, 0, len(policyNames))
+	for _, policyName := range policyNames {
+		policyName = strings.TrimSpace(policyName)
+		if policyName == "" {
+			continue
+		}
+		document, err := inlinePolicyDocument(ctx, clients, principalType, principalName, policyName)
+		if err != nil {
+			return nil, "", err
+		}
+		assignments = append(assignments, iamPolicyAssignment{
+			PrincipalType: principalType,
+			PrincipalName: principalName,
+			Policy: iamtypes.AttachedPolicy{
+				PolicyArn:  awssdk.String(inlinePolicyURN(principalType, principalName, policyName)),
+				PolicyName: awssdk.String(policyName),
+			},
+			PolicySource: "inline",
+			Actions:      policyDocumentActions(document),
+		})
+	}
+	return assignments, next, nil
+}
+
+func inlinePolicyDocument(ctx context.Context, clients awsClients, principalType string, principalName string, policyName string) (string, error) {
+	switch principalType {
+	case "group":
+		out, err := clients.iam.GetGroupPolicy(ctx, &iam.GetGroupPolicyInput{GroupName: awssdk.String(principalName), PolicyName: awssdk.String(policyName)})
+		if err != nil {
+			return "", err
+		}
+		return awssdk.ToString(out.PolicyDocument), nil
+	case "role":
+		out, err := clients.iam.GetRolePolicy(ctx, &iam.GetRolePolicyInput{RoleName: awssdk.String(principalName), PolicyName: awssdk.String(policyName)})
+		if err != nil {
+			return "", err
+		}
+		return awssdk.ToString(out.PolicyDocument), nil
+	default:
+		out, err := clients.iam.GetUserPolicy(ctx, &iam.GetUserPolicyInput{UserName: awssdk.String(principalName), PolicyName: awssdk.String(policyName)})
+		if err != nil {
+			return "", err
+		}
+		return awssdk.ToString(out.PolicyDocument), nil
+	}
+}
+
+func inlinePolicyURN(principalType string, principalName string, policyName string) string {
+	return "inline:" + strings.Join(cleanStrings([]string{principalType, principalName, policyName}), ":")
+}
+
 func listCloudTrailEvents(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]cloudtrailtypes.Event, string, error) {
-	input := &cloudtrail.LookupEventsInput{MaxResults: awssdk.Int32(int32(limit)), NextToken: stringPtr(cursor)}
+	now := time.Now().UTC()
+	state, resume := parseCloudTrailCursor(cursor, settings, now)
+	input := &cloudtrail.LookupEventsInput{MaxResults: awssdk.Int32(int32(limit))}
+	if resume {
+		input.NextToken = stringPtr(state.Token)
+		if state.StartTime != "" {
+			parsed, err := time.Parse(time.RFC3339Nano, state.StartTime)
+			if err != nil {
+				return nil, "", fmt.Errorf("parse aws cloudtrail cursor start_time: %w", err)
+			}
+			input.StartTime = &parsed
+		}
+		if state.EndTime != "" {
+			parsed, err := time.Parse(time.RFC3339Nano, state.EndTime)
+			if err != nil {
+				return nil, "", fmt.Errorf("parse aws cloudtrail cursor end_time: %w", err)
+			}
+			input.EndTime = &parsed
+		}
+	}
 	if settings.lookupKey != "" && settings.lookupValue != "" {
 		input.LookupAttributes = []cloudtrailtypes.LookupAttribute{{AttributeKey: cloudtrailtypes.LookupAttributeKey(settings.lookupKey), AttributeValue: awssdk.String(settings.lookupValue)}}
 	}
-	if firstNonEmpty(settings.startTime, settings.since) != "" {
-		parsed, err := parseAWSTimeSelector(firstNonEmpty(settings.startTime, settings.since), time.Now().UTC())
+	if !resume && firstNonEmpty(settings.startTime, settings.since) != "" {
+		parsed, err := parseAWSTimeSelector(firstNonEmpty(settings.startTime, settings.since), now)
 		if err != nil {
 			return nil, "", fmt.Errorf("parse aws start_time: %w", err)
 		}
 		input.StartTime = &parsed
 	}
-	if settings.endTime != "" {
+	if !resume && settings.endTime != "" {
 		parsed, err := time.Parse(time.RFC3339, settings.endTime)
 		if err != nil {
 			return nil, "", fmt.Errorf("parse aws end_time: %w", err)
@@ -1491,7 +1749,76 @@ func listCloudTrailEvents(ctx context.Context, clients awsClients, settings sett
 	if err != nil {
 		return nil, "", err
 	}
-	return out.Events, awssdk.ToString(out.NextToken), nil
+	return out.Events, encodeCloudTrailCursor(settings, input, awssdk.ToString(out.NextToken), now), nil
+}
+
+func parseCloudTrailCursor(raw string, settings settings, now time.Time) (cloudTrailCursor, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return cloudTrailCursor{}, false
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		return cloudTrailCursor{}, false
+	}
+	var cursor cloudTrailCursor
+	if err := json.Unmarshal(decoded, &cursor); err != nil {
+		return cloudTrailCursor{}, false
+	}
+	if cursor.Version != cloudTrailCursorVersion || strings.TrimSpace(cursor.Token) == "" {
+		return cloudTrailCursor{}, false
+	}
+	issuedAt, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(cursor.IssuedAt))
+	if err != nil || now.Sub(issuedAt) > cloudTrailCursorMaxAge {
+		return cloudTrailCursor{}, false
+	}
+	cursor.StartTime = strings.TrimSpace(cursor.StartTime)
+	cursor.EndTime = strings.TrimSpace(cursor.EndTime)
+	if cursor.StartTime != "" {
+		if _, err := time.Parse(time.RFC3339Nano, cursor.StartTime); err != nil {
+			return cloudTrailCursor{}, false
+		}
+	}
+	if cursor.EndTime != "" {
+		if _, err := time.Parse(time.RFC3339Nano, cursor.EndTime); err != nil {
+			return cloudTrailCursor{}, false
+		}
+	}
+	if cursor.StartSelector != firstNonEmpty(settings.startTime, settings.since) ||
+		cursor.EndSelector != strings.TrimSpace(settings.endTime) ||
+		cursor.LookupKey != strings.TrimSpace(settings.lookupKey) ||
+		cursor.LookupValue != strings.TrimSpace(settings.lookupValue) {
+		return cloudTrailCursor{}, false
+	}
+	cursor.Token = strings.TrimSpace(cursor.Token)
+	return cursor, true
+}
+
+func encodeCloudTrailCursor(settings settings, input *cloudtrail.LookupEventsInput, token string, issuedAt time.Time) string {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return ""
+	}
+	cursor := cloudTrailCursor{
+		Version:       cloudTrailCursorVersion,
+		Token:         token,
+		StartSelector: firstNonEmpty(settings.startTime, settings.since),
+		EndSelector:   strings.TrimSpace(settings.endTime),
+		LookupKey:     strings.TrimSpace(settings.lookupKey),
+		LookupValue:   strings.TrimSpace(settings.lookupValue),
+		IssuedAt:      issuedAt.UTC().Format(time.RFC3339Nano),
+	}
+	if input != nil && input.StartTime != nil {
+		cursor.StartTime = input.StartTime.UTC().Format(time.RFC3339Nano)
+	}
+	if input != nil && input.EndTime != nil {
+		cursor.EndTime = input.EndTime.UTC().Format(time.RFC3339Nano)
+	}
+	payload, err := json.Marshal(cursor)
+	if err != nil {
+		return ""
+	}
+	return base64.RawURLEncoding.EncodeToString(payload)
 }
 
 func iamUserEvent(settings settings, user iamtypes.User) (*primitives.Event, error) {
@@ -1576,7 +1903,7 @@ func iamRoleTrustEvent(settings settings, trust iamRoleTrust) (*primitives.Event
 	roleARN := awssdk.ToString(trust.Role.Arn)
 	roleUniqueID := awssdk.ToString(trust.Role.RoleId)
 	roleID := firstNonEmpty(roleARN, roleUniqueID, roleName)
-	subjectType, subjectID := awsTrustPrincipal(trust.Principal)
+	subjectType, subjectID := awsTrustPrincipal(trust.Principal, trust.PrincipalType)
 	attributes := map[string]string{
 		"domain":               settings.accountID,
 		"external_id_required": boolString(trustExternalIDRequired(trust.Statement)),
@@ -1617,6 +1944,7 @@ func iamRoleAssignmentEvent(settings settings, assignment iamPolicyAssignment) (
 		"role_id":        firstNonEmpty(policyARN, policyName),
 		"role_name":      policyName,
 		"role_type":      "aws_iam_policy",
+		"policy_source":  firstNonEmpty(assignment.PolicySource, "attached"),
 		"subject_email":  emailLike(assignment.PrincipalName),
 		"subject_id":     assignment.PrincipalName,
 		"subject_login":  assignment.PrincipalName,
@@ -1634,8 +1962,8 @@ func iamRoleAssignmentEvent(settings settings, assignment iamPolicyAssignment) (
 func effectivePermissionEvent(settings settings, assignment iamPolicyAssignment) (*primitives.Event, error) {
 	policyName := awssdk.ToString(assignment.Policy.PolicyName)
 	policyARN := awssdk.ToString(assignment.Policy.PolicyArn)
-	admin := isAdminPolicy(policyName, policyARN)
-	permission := firstNonEmpty(policyName, policyARN)
+	admin := isAdminPolicy(policyName, policyARN) || policyActionsAdmin(assignment.Actions)
+	permission := firstNonEmpty(strings.Join(assignment.Actions, ","), policyName, policyARN)
 	attributes := map[string]string{
 		"actions":         permission,
 		"domain":          settings.accountID,
@@ -1643,6 +1971,7 @@ func effectivePermissionEvent(settings settings, assignment iamPolicyAssignment)
 		"family":          familyEffectivePermission,
 		"is_admin":        boolString(admin),
 		"permission":      permission,
+		"policy_source":   firstNonEmpty(assignment.PolicySource, "attached"),
 		"principal_type":  assignment.PrincipalType,
 		"privilege_level": map[bool]string{true: "admin", false: "policy_attachment"}[admin],
 		"resource_id":     firstNonEmpty(policyARN, policyName, settings.accountID),
@@ -1664,6 +1993,16 @@ func effectivePermissionEvent(settings settings, assignment iamPolicyAssignment)
 	}
 	id := fmt.Sprintf("aws-effective-permission-%s-%s", assignment.PrincipalName, firstNonEmpty(policyARN, policyName))
 	return sourceEvent(settings, id, "aws.effective_permission", "aws/effective_permission/v1", payload, attributes, time.Now().UTC())
+}
+
+func policyActionsAdmin(actions []string) bool {
+	for _, action := range actions {
+		normalized := strings.ToLower(strings.TrimSpace(action))
+		if normalized == "*" || strings.HasSuffix(normalized, ":*") {
+			return true
+		}
+	}
+	return false
 }
 
 func accessKeyEvent(settings settings, key iamtypes.AccessKeyMetadata) (*primitives.Event, error) {
@@ -1721,31 +2060,33 @@ func resourceExposureEvent(settings settings, exposure awsResourceExposure) (*pr
 
 func publicEndpointEvent(settings settings, endpoint awsPublicEndpoint) (*primitives.Event, error) {
 	attributes := map[string]string{
-		"alternate_hosts":   strings.Join(cleanHosts(endpoint.AlternateHosts), ","),
-		"dns_record_type":   endpoint.DNSRecordType,
-		"domain":            settings.accountID,
-		"endpoint_id":       endpoint.EndpointID,
-		"endpoint_type":     endpoint.EndpointType,
-		"external_exposure": boolString(!endpoint.PrivateZone),
-		"family":            familyPublicEndpoint,
-		"host":              endpoint.Host,
-		"hosted_zone_id":    endpoint.HostedZoneID,
-		"hosted_zone_name":  endpoint.HostedZoneName,
-		"internet_exposed":  boolString(!endpoint.PrivateZone),
-		"ip":                endpoint.IP,
-		"private_zone":      boolString(endpoint.PrivateZone),
-		"public":            boolString(!endpoint.PrivateZone),
-		"region":            endpoint.Region,
-		"resource_id":       endpoint.ResourceID,
-		"resource_name":     endpoint.ResourceName,
-		"resource_provider": "aws",
-		"resource_type":     endpoint.ResourceType,
-		"scope":             endpoint.Scope,
-		"service":           endpoint.Service,
-		"target_host":       endpoint.TargetHost,
-		"target_hosts":      strings.Join(cleanHosts(endpoint.TargetHosts), ","),
-		"target_ip":         endpoint.TargetIP,
-		"target_ips":        strings.Join(cleanStrings(endpoint.TargetIPs), ","),
+		"alternate_hosts":        strings.Join(cleanHosts(endpoint.AlternateHosts), ","),
+		"associated_instance_id": endpoint.AssociatedInstanceID,
+		"attached_instance_id":   endpoint.AttachedInstanceID,
+		"dns_record_type":        endpoint.DNSRecordType,
+		"domain":                 settings.accountID,
+		"endpoint_id":            endpoint.EndpointID,
+		"endpoint_type":          endpoint.EndpointType,
+		"external_exposure":      boolString(!endpoint.PrivateZone),
+		"family":                 familyPublicEndpoint,
+		"host":                   endpoint.Host,
+		"hosted_zone_id":         endpoint.HostedZoneID,
+		"hosted_zone_name":       endpoint.HostedZoneName,
+		"internet_exposed":       boolString(!endpoint.PrivateZone),
+		"ip":                     endpoint.IP,
+		"private_zone":           boolString(endpoint.PrivateZone),
+		"public":                 boolString(!endpoint.PrivateZone),
+		"region":                 endpoint.Region,
+		"resource_id":            endpoint.ResourceID,
+		"resource_name":          endpoint.ResourceName,
+		"resource_provider":      "aws",
+		"resource_type":          endpoint.ResourceType,
+		"scope":                  endpoint.Scope,
+		"service":                endpoint.Service,
+		"target_host":            endpoint.TargetHost,
+		"target_hosts":           strings.Join(cleanHosts(endpoint.TargetHosts), ","),
+		"target_ip":              endpoint.TargetIP,
+		"target_ips":             strings.Join(cleanStrings(endpoint.TargetIPs), ","),
 	}
 	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "endpoint": endpoint})
 	if err != nil {
@@ -2199,36 +2540,51 @@ func roleTrusts(role iamtypes.Role) []iamRoleTrust {
 	}
 	trusts := make([]iamRoleTrust, 0)
 	for _, statement := range document.Statement {
-		if !strings.EqualFold(statement.Effect, "Allow") || !containsStringAction(statement.Action, "sts:AssumeRole") {
+		if !strings.EqualFold(statement.Effect, "Allow") || !containsStringAction(statement.Action, trustAssumeActions()...) {
 			continue
 		}
 		for _, principal := range trustPrincipals(statement.Principal) {
-			trusts = append(trusts, iamRoleTrust{Role: role, Statement: statement, Principal: principal})
+			trusts = append(trusts, iamRoleTrust{Role: role, Statement: statement, Principal: principal.Value, PrincipalType: principal.Type})
 		}
 	}
 	return trusts
 }
 
-func trustPrincipals(raw json.RawMessage) []string {
+func trustPrincipals(raw json.RawMessage) []iamTrustPrincipal {
 	if len(raw) == 0 {
 		return nil
 	}
 	if string(raw) == `"*"` {
-		return []string{"*"}
+		return []iamTrustPrincipal{{Type: "public", Value: "*"}}
 	}
 	var values map[string]any
 	if err := json.Unmarshal(raw, &values); err != nil {
 		return nil
 	}
-	principals := make([]string, 0)
-	for _, value := range values {
-		principals = append(principals, stringList(value)...)
+	principals := make([]iamTrustPrincipal, 0)
+	for principalType, value := range values {
+		for _, principal := range stringList(value) {
+			if strings.TrimSpace(principal) == "" {
+				continue
+			}
+			principals = append(principals, iamTrustPrincipal{Type: principalType, Value: principal})
+		}
 	}
 	return principals
 }
 
-func awsTrustPrincipal(value string) (string, string) {
+func trustAssumeActions() []string {
+	return []string{"sts:AssumeRole", "sts:AssumeRoleWithSAML", "sts:AssumeRoleWithWebIdentity"}
+}
+
+func awsTrustPrincipal(value string, principalType string) (string, string) {
 	trimmed := strings.TrimSpace(value)
+	switch strings.ToLower(strings.TrimSpace(principalType)) {
+	case "public":
+		return "public", "public"
+	case "service", "federated":
+		return "service_principal", trimmed
+	}
 	switch {
 	case trimmed == "*" || strings.EqualFold(trimmed, "anonymous"):
 		return "public", "public"
@@ -2236,6 +2592,8 @@ func awsTrustPrincipal(value string) (string, string) {
 		return "role", trimmed
 	case strings.Contains(trimmed, ":user/"):
 		return "user", trimmed
+	case awsAccountPrincipalID(trimmed) != "":
+		return "account", awsAccountPrincipalID(trimmed)
 	case strings.Contains(trimmed, "@"):
 		return "user", trimmed
 	default:
@@ -2245,7 +2603,13 @@ func awsTrustPrincipal(value string) (string, string) {
 
 func trustExternal(accountID string, principal string) bool {
 	trimmed := strings.TrimSpace(principal)
-	return trimmed == "*" || accountID != "" && strings.Contains(trimmed, ":iam::") && !strings.Contains(trimmed, ":iam::"+accountID+":")
+	if accountID == "" {
+		return trimmed == "*"
+	}
+	if principalAccountID := awsAccountPrincipalID(trimmed); principalAccountID != "" {
+		return principalAccountID != accountID
+	}
+	return trimmed == "*" || strings.Contains(trimmed, ":iam::") && !strings.Contains(trimmed, ":iam::"+accountID+":")
 }
 
 func trustExternalIDRequired(statement trustStatement) bool {
@@ -2257,13 +2621,109 @@ func trustExternalIDRequired(statement trustStatement) bool {
 	return false
 }
 
-func containsStringAction(value any, expected string) bool {
+func containsStringAction(value any, expected ...string) bool {
 	for _, action := range stringList(value) {
-		if strings.EqualFold(action, expected) || action == "*" {
-			return true
+		for _, candidate := range expected {
+			if stringActionMatches(action, candidate) {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+func policyDocumentActions(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	if decoded, err := url.QueryUnescape(raw); err == nil {
+		raw = decoded
+	}
+	var document map[string]any
+	if err := json.Unmarshal([]byte(raw), &document); err != nil {
+		return nil
+	}
+	return sortedUniqueStrings(policyDocumentActionValues(document["Statement"]))
+}
+
+func policyDocumentActionValues(value any) []string {
+	switch typed := value.(type) {
+	case []any:
+		values := make([]string, 0)
+		for _, item := range typed {
+			values = append(values, policyDocumentActionValues(item)...)
+		}
+		return values
+	case map[string]any:
+		if effect := strings.TrimSpace(fmt.Sprint(typed["Effect"])); effect != "" && !strings.EqualFold(effect, "Allow") {
+			return nil
+		}
+		return stringList(typed["Action"])
+	default:
+		return nil
+	}
+}
+
+func stringActionMatches(action string, expected string) bool {
+	normalizedAction := strings.ToLower(strings.TrimSpace(action))
+	normalizedExpected := strings.ToLower(strings.TrimSpace(expected))
+	if normalizedAction == "" || normalizedExpected == "" {
+		return false
+	}
+	if normalizedAction == "*" || normalizedAction == normalizedExpected {
+		return true
+	}
+	matched, err := path.Match(normalizedAction, normalizedExpected)
+	if err == nil && matched {
+		return true
+	}
+	return false
+}
+
+func sortedUniqueStrings(values []string) []string {
+	seen := map[string]bool{}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" || seen[trimmed] {
+			continue
+		}
+		seen[trimmed] = true
+		result = append(result, trimmed)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func awsAccountPrincipalID(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if isAWSAccountID(trimmed) {
+		return trimmed
+	}
+	marker := ":iam::"
+	index := strings.Index(trimmed, marker)
+	if index < 0 || !strings.HasSuffix(trimmed, ":root") {
+		return ""
+	}
+	rest := trimmed[index+len(marker):]
+	accountID, _, _ := strings.Cut(rest, ":")
+	if isAWSAccountID(accountID) {
+		return accountID
+	}
+	return ""
+}
+
+func isAWSAccountID(value string) bool {
+	if len(value) != 12 {
+		return false
+	}
+	for _, char := range value {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func stringList(value any) []string {

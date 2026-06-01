@@ -32,8 +32,17 @@
 # \.mycompany-internal\.example\b
 # \bcerebro\.(dev|stg|prod)\.[a-z0-9.-]+\b
 
+# ---- IdP domain examples ----
+# \bmycompany\.okta\.com\b
+# \b[a-z][a-z0-9_-]+\.okta\.com\b
+
 # ---- Runtime ID examples ----
-# \bmycompany-(okta|github|sentinelone)-(audit|signal|graph)\b
+# Okta runtime IDs (00 + single lowercase letter + 17+ alphanum)
+# \b00[a-z][A-Za-z0-9]{17,}\b
+# Cerebro URNs
+# \burn:cerebro:[^\s]+
+# Infisical workspace IDs
+# [Ii]nfisical.*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
 
 # ---- Cloud account ID examples (12-digit AWS account number) ----
 # \b000000000000\b

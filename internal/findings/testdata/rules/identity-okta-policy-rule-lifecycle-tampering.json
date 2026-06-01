@@ -1,47 +1,58 @@
 {
   "rule_id": "identity-okta-policy-rule-lifecycle-tampering",
   "runtime": {
-    "id": "writer-okta-audit",
+    "id": "writer-okta-policy-rule",
     "source_id": "okta",
-    "tenant_id": "writer"
+    "tenant_id": "writer",
+    "config": {
+      "family": "policy_rule"
+    }
   },
   "events": [
     {
-      "id": "okta-audit-1",
+      "id": "okta-policy-rule-active",
       "tenant_id": "writer",
       "source_id": "okta",
-      "kind": "okta.audit",
+      "kind": "okta.policy_rule",
       "occurred_at": "2026-04-23T12:00:00Z",
-      "schema_ref": "okta/audit/v1",
+      "schema_ref": "okta/policy_rule/v1",
       "attributes": {
         "domain": "writer.okta.com",
-        "event_type": "user.session.start",
-        "actor_id": "00u2",
-        "actor_type": "User",
-        "actor_alternate_id": "admin@writer.com",
-        "actor_display_name": "Admin Example",
-        "outcome_result": "SUCCESS",
-        "source_runtime_id": "writer-okta-audit"
+        "family": "policy_rule",
+        "policy_id": "pol-1",
+        "policy_rule_id": "rul-1",
+        "policy_type": "OKTA_SIGN_ON",
+        "name": "Require MFA",
+        "priority": "1",
+        "resource_id": "rul-1",
+        "resource_type": "PolicyRule",
+        "status": "ACTIVE",
+        "policy_rule_status": "ACTIVE",
+        "system": "false",
+        "source_runtime_id": "writer-okta-policy-rule"
       }
     },
     {
-      "id": "okta-audit-2",
+      "id": "okta-policy-rule-inactive",
       "tenant_id": "writer",
       "source_id": "okta",
-      "kind": "okta.audit",
+      "kind": "okta.policy_rule",
       "occurred_at": "2026-04-23T12:00:00Z",
-      "schema_ref": "okta/audit/v1",
+      "schema_ref": "okta/policy_rule/v1",
       "attributes": {
         "domain": "writer.okta.com",
-        "event_type": "policy.rule.update",
-        "resource_id": "pol-1",
+        "family": "policy_rule",
+        "policy_id": "pol-1",
+        "policy_rule_id": "rul-1",
+        "policy_type": "OKTA_SIGN_ON",
+        "name": "Require MFA",
+        "priority": "1",
+        "resource_id": "rul-1",
         "resource_type": "PolicyRule",
-        "actor_id": "00u2",
-        "actor_type": "User",
-        "actor_alternate_id": "admin@writer.com",
-        "actor_display_name": "Admin Example",
-        "outcome_result": "SUCCESS",
-        "source_runtime_id": "writer-okta-audit"
+        "status": "INACTIVE",
+        "policy_rule_status": "INACTIVE",
+        "system": "false",
+        "source_runtime_id": "writer-okta-policy-rule"
       }
     }
   ],
@@ -50,22 +61,24 @@
       "rule_id": "identity-okta-policy-rule-lifecycle-tampering",
       "severity": "HIGH",
       "status": "open",
-      "summary": "admin@writer.com performed policy.rule.update on pol-1",
+      "summary": "Okta policy rule Require MFA is INACTIVE",
       "policy_id": "pol-1",
-      "event_ids": ["okta-audit-2"],
+      "event_ids": ["okta-policy-rule-inactive"],
       "attributes": {
-        "event_type": "policy.rule.update",
-        "primary_actor_urn": "urn:cerebro:writer:okta_user:00u2",
-        "primary_resource_urn": "urn:cerebro:writer:okta_resource:policyrule:pol-1",
-        "rule_required_attributes": "event_type,resource_id",
+        "okta_policy_rule_urn": "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1",
+        "policy_id": "pol-1",
+        "policy_rule_id": "rul-1",
+        "policy_rule_status": "inactive",
+        "primary_resource_urn": "urn:cerebro:writer:okta_policy_rule:pol-1:rul-1",
+        "rule_required_attributes": "policy_id,policy_rule_id,status",
         "rule_tags": "okta,identity,policy,defense-evasion,attack.t1562"
       }
     }
   ],
   "expected_no_match": [
     {
-      "event_id": "okta-audit-1",
-      "reason": "session start is not a policy rule lifecycle change"
+      "event_id": "okta-policy-rule-active",
+      "reason": "active policy rule state is healthy"
     }
   ]
 }

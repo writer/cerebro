@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -70,6 +73,185 @@ func TestStartFindingRiskBackfillLogsErrors(t *testing.T) {
 		}
 	default:
 		t.Fatal("backfill error was not logged")
+	}
+}
+
+func TestStartFindingRiskBackfillEmitsTelemetry(t *testing.T) {
+	backfiller := &errorFindingRiskBackfiller{}
+	stderr := captureCommandStderr(t, func() {
+		done := startFindingRiskBackfill(context.Background(), backfiller, func(string, ...any) {})
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("finding risk backfill did not finish")
+		}
+	})
+
+	payload := lastCommandTelemetryPayload(t, stderr)
+	if got := payload["name"]; got != "finding.risk_backfill" {
+		t.Fatalf("telemetry name = %#v, want finding.risk_backfill; payload=%#v", got, payload)
+	}
+	if got := payload["status"]; got != "completed" {
+		t.Fatalf("telemetry status = %#v, want completed; payload=%#v", got, payload)
+	}
+	if got := payload["backfiller_present"]; got != true {
+		t.Fatalf("telemetry backfiller_present = %#v, want true; payload=%#v", got, payload)
+	}
+	if _, ok := payload["duration_ms"].(float64); !ok {
+		t.Fatalf("telemetry duration_ms = %#v, want number; payload=%#v", payload["duration_ms"], payload)
+	}
+}
+
+func TestStartFindingRiskBackfillTelemetryRecordsFailures(t *testing.T) {
+	backfiller := &errorFindingRiskBackfiller{err: errors.New("boom")}
+	stderr := captureCommandStderr(t, func() {
+		done := startFindingRiskBackfill(context.Background(), backfiller, func(string, ...any) {})
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("finding risk backfill did not finish")
+		}
+	})
+
+	payload := lastCommandTelemetryPayload(t, stderr)
+	if got := payload["status"]; got != "failed" {
+		t.Fatalf("telemetry status = %#v, want failed; payload=%#v", got, payload)
+	}
+	if got := payload["error_kind"]; got != "finding_risk_backfill_failed" {
+		t.Fatalf("telemetry error_kind = %#v, want finding_risk_backfill_failed; payload=%#v", got, payload)
+	}
+	if strings.Contains(stderr, "boom") {
+		t.Fatalf("backfill telemetry leaked raw error: %s", stderr)
+	}
+}
+
+func TestPrepareGRCReadModelsSkipsStoresWithoutPreparer(t *testing.T) {
+	if err := prepareGRCReadModels(context.Background(), &basicStateStore{}); err != nil {
+		t.Fatalf("prepareGRCReadModels() error = %v", err)
+	}
+}
+
+func TestPrepareGRCReadModelsCallsPreparer(t *testing.T) {
+	store := &preparingStateStore{}
+	if err := prepareGRCReadModels(context.Background(), store); err != nil {
+		t.Fatalf("prepareGRCReadModels() error = %v", err)
+	}
+	if store.calls != 1 {
+		t.Fatalf("PrepareGRCReadModels calls = %d, want 1", store.calls)
+	}
+}
+
+func TestPrepareGRCReadModelsWrapsErrors(t *testing.T) {
+	boom := errors.New("boom")
+	store := &preparingStateStore{err: boom}
+	err := prepareGRCReadModels(context.Background(), store)
+	if err == nil {
+		t.Fatal("prepareGRCReadModels() error = nil, want error")
+	}
+	if !errors.Is(err, boom) {
+		t.Fatalf("prepareGRCReadModels() error = %v, want wrapped boom", err)
+	}
+}
+
+func TestStartGRCReadModelWarmupDoesNotBlockStartup(t *testing.T) {
+	store := &blockingPreparingStateStore{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := startGRCReadModelWarmup(ctx, store, func(string, ...any) {})
+	select {
+	case <-store.started:
+	case <-time.After(time.Second):
+		t.Fatal("GRC read-model warmup did not start")
+	}
+	select {
+	case <-done:
+		t.Fatal("GRC read-model warmup completed while still blocked")
+	default:
+	}
+
+	close(store.release)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("GRC read-model warmup did not finish after release")
+	}
+}
+
+func TestStartGRCReadModelWarmupLogsErrors(t *testing.T) {
+	store := &preparingStateStore{err: errors.New("boom")}
+	logged := make(chan string, 1)
+
+	done := startGRCReadModelWarmup(context.Background(), store, func(format string, args ...any) {
+		logged <- fmt.Sprintf(format, args...)
+	})
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("GRC read-model warmup did not finish")
+	}
+	select {
+	case message := <-logged:
+		if !strings.Contains(message, "prepare grc read models: boom") {
+			t.Fatalf("logged message = %q, want wrapped warmup error", message)
+		}
+	default:
+		t.Fatal("GRC read-model warmup error was not logged")
+	}
+}
+
+func TestStartGRCReadModelWarmupEmitsTelemetry(t *testing.T) {
+	store := &preparingStateStore{}
+	stderr := captureCommandStderr(t, func() {
+		done := startGRCReadModelWarmup(context.Background(), store, func(string, ...any) {})
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("GRC read-model warmup did not finish")
+		}
+	})
+
+	payload := lastCommandTelemetryPayload(t, stderr)
+	if got := payload["kind"]; got != "span_end" {
+		t.Fatalf("telemetry kind = %#v, want span_end; payload=%#v", got, payload)
+	}
+	if got := payload["name"]; got != "grc.read_model_warmup" {
+		t.Fatalf("telemetry name = %#v, want grc.read_model_warmup; payload=%#v", got, payload)
+	}
+	if got := payload["status"]; got != "completed" {
+		t.Fatalf("telemetry status = %#v, want completed; payload=%#v", got, payload)
+	}
+	if got := payload["preparer_present"]; got != true {
+		t.Fatalf("telemetry preparer_present = %#v, want true; payload=%#v", got, payload)
+	}
+	if _, ok := payload["duration_ms"].(float64); !ok {
+		t.Fatalf("telemetry duration_ms = %#v, want number; payload=%#v", payload["duration_ms"], payload)
+	}
+}
+
+func TestStartGRCReadModelWarmupTelemetryRecordsFailures(t *testing.T) {
+	store := &preparingStateStore{err: errors.New("boom")}
+	stderr := captureCommandStderr(t, func() {
+		done := startGRCReadModelWarmup(context.Background(), store, func(string, ...any) {})
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("GRC read-model warmup did not finish")
+		}
+	})
+
+	payload := lastCommandTelemetryPayload(t, stderr)
+	if got := payload["status"]; got != "failed" {
+		t.Fatalf("telemetry status = %#v, want failed; payload=%#v", got, payload)
+	}
+	if got := payload["error_kind"]; got != "grc_read_model_warmup_failed" {
+		t.Fatalf("telemetry error_kind = %#v, want grc_read_model_warmup_failed; payload=%#v", got, payload)
+	}
+	if strings.Contains(stderr, "boom") {
+		t.Fatalf("GRC read-model warmup telemetry leaked raw error: %s", stderr)
 	}
 }
 
@@ -301,6 +483,20 @@ type commandRuntimeStore struct {
 	runtimes map[string]*cerebrov1.SourceRuntime
 }
 
+type basicStateStore struct{}
+
+type preparingStateStore struct {
+	basicStateStore
+	calls int
+	err   error
+}
+
+type blockingPreparingStateStore struct {
+	basicStateStore
+	started chan struct{}
+	release chan struct{}
+}
+
 type blockingFindingRiskBackfiller struct {
 	started chan struct{}
 	release chan struct{}
@@ -321,6 +517,60 @@ func (b *errorFindingRiskBackfiller) BackfillFindingRisk(context.Context) error 
 }
 
 func (s *commandRuntimeStore) Ping(context.Context) error {
+	return nil
+}
+
+func (s *basicStateStore) Ping(context.Context) error {
+	return nil
+}
+
+func (s *preparingStateStore) PrepareGRCReadModels(context.Context) error {
+	s.calls++
+	return s.err
+}
+
+func (s *blockingPreparingStateStore) PrepareGRCReadModels(context.Context) error {
+	close(s.started)
+	<-s.release
+	return nil
+}
+
+func captureCommandStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	oldStderr := os.Stderr
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe stderr: %v", err)
+	}
+	os.Stderr = writer
+	defer func() {
+		os.Stderr = oldStderr
+	}()
+	fn()
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close stderr writer: %v", err)
+	}
+	payload, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("read stderr: %v", err)
+	}
+	return string(payload)
+}
+
+func lastCommandTelemetryPayload(t *testing.T, stderr string) map[string]any {
+	t.Helper()
+	lines := strings.Split(strings.TrimSpace(stderr), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) == "" {
+			continue
+		}
+		payload := map[string]any{}
+		if err := json.Unmarshal([]byte(lines[i]), &payload); err != nil {
+			t.Fatalf("unmarshal telemetry payload %q: %v", lines[i], err)
+		}
+		return payload
+	}
+	t.Fatal("telemetry stderr is empty")
 	return nil
 }
 
@@ -380,12 +630,15 @@ func TestSourceRuntimeListJSONUsesProtoJSON(t *testing.T) {
 }
 
 func TestParseOrchestratorOptions(t *testing.T) {
-	options, err := parseOrchestratorOptions([]string{"tenant_id=writer", "source_id=github", "limit=2", "page_limit=3", "event_limit=4", "graph_page_limit=5"})
+	options, err := parseOrchestratorOptions([]string{"tenant_id=writer", "source_id=github", "limit=2", "page_limit=3", "event_limit=4", "graph_page_limit=5", "phase_timeout=10m", "graph_timeout=45m"})
 	if err != nil {
 		t.Fatalf("parseOrchestratorOptions() error = %v", err)
 	}
 	if options.Filter.TenantID != "writer" || options.Filter.SourceID != "github" || options.Filter.Limit != 2 || options.PageLimit != 3 || options.EventLimit != 4 || options.GraphPageLimit != 5 {
 		t.Fatalf("options = %#v", options)
+	}
+	if options.PhaseTimeout != 10*time.Minute || options.GraphTimeout != 45*time.Minute {
+		t.Fatalf("timeouts = %v/%v, want 10m/45m", options.PhaseTimeout, options.GraphTimeout)
 	}
 }
 

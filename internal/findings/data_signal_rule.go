@@ -32,11 +32,12 @@ func dataSensitiveAssetRiskDefinition() RuleDefinition {
 		FalsePositives:     []string{"Data classification is stale, test data is intentionally labeled sensitive, or public exposure is already approved by documented compensating controls."},
 		Runbook:            "Validate the data classification, exposure signal, owner, and compensating controls.",
 		RequiredAttributes: []string{"resource_id"},
-		FingerprintFields:  []string{"event_id"},
+		FingerprintFields:  []string{"asset_urn"},
 		ControlRefs: []ports.FindingControlRef{
 			{FrameworkName: "SOC 2", ControlID: "CC6.1"},
 			{FrameworkName: "ISO 27001:2022", ControlID: "A.5.12"},
 		},
+		Lifecycle: Lifecycle{Kind: LifecycleDurableState, Anchor: AnchorGraphAnchored},
 	}
 }
 
@@ -57,6 +58,10 @@ func buildDataSensitiveAssetFinding(ctx context.Context, runtime *cerebrov1.Sour
 	if event.GetOccurredAt() != nil {
 		observedAt = event.GetOccurredAt().AsTime().UTC()
 	}
+	assetURN := dataAssetURN(projectedContext)
+	if strings.TrimSpace(assetURN) == "" {
+		return nil, nil
+	}
 	findingAttributes := map[string]string{
 		"action":               "sensitive_asset_risk",
 		"asset_criticality":    firstNonEmpty(attributes["asset_criticality"], attributes["business_criticality"], attributes["tier"]),
@@ -65,7 +70,7 @@ func buildDataSensitiveAssetFinding(ctx context.Context, runtime *cerebrov1.Sour
 		"event_id":             strings.TrimSpace(event.GetId()),
 		"event_kind":           strings.TrimSpace(event.GetKind()),
 		"internet_exposed":     strings.TrimSpace(attributes["internet_exposed"]),
-		"primary_resource_urn": projectedContext.PrimaryResourceURN,
+		"primary_resource_urn": assetURN,
 		"resource_id":          firstNonEmpty(attributes["resource_id"], attributes["resource_urn"]),
 		"resource_label":       projectedContext.ResourceLabel,
 		"resource_type":        strings.TrimSpace(attributes["resource_type"]),
@@ -81,9 +86,30 @@ func buildDataSensitiveAssetFinding(ctx context.Context, runtime *cerebrov1.Sour
 	for key, value := range definition.AttributeMap() {
 		findingAttributes["rule_"+key] = value
 	}
+	findingAttributes["asset_urn"] = assetURN
 	trimEmptyAttributes(findingAttributes)
-	fingerprint := hashFindingFingerprint(dataSensitiveAssetRiskRuleID, event.GetId(), projectedContext.PrimaryResourceURN, compoundRiskAction(&ports.FindingRecord{Attributes: findingAttributes}))
+	fingerprint := hashFindingFingerprint(dataSensitiveAssetRiskRuleID, assetURN)
 	return &ports.FindingRecord{ID: fingerprint, Fingerprint: fingerprint, TenantID: strings.TrimSpace(event.GetTenantId()), RuntimeID: strings.TrimSpace(runtime.GetId()), RuleID: dataSensitiveAssetRiskRuleID, Title: "Data Sensitive Asset Risk", Severity: "HIGH", Status: findingStatusOpen, Summary: "Sensitive data asset has exposure or privileged access risk", ResourceURNs: projectedContext.ResourceURNs, EventIDs: []string{event.GetId()}, PolicyID: findingAttributes["resource_id"], CheckID: dataSensitiveAssetRiskRuleID, CheckName: "Data Sensitive Asset Risk", ControlRefs: cloneFindingControlRefs(definition.ControlRefs), Attributes: findingAttributes, FirstObservedAt: observedAt, LastObservedAt: observedAt}, nil
+}
+
+func dataAssetURN(projection findingProjectionContext) string {
+	if urn := strings.TrimSpace(projection.PrimaryActorURN); urn != "" {
+		return urn
+	}
+	for _, entity := range projection.Entities {
+		if entity == nil {
+			continue
+		}
+		entityType := strings.TrimSpace(entity.EntityType)
+		switch entityType {
+		case "data.classification", "asset.tag", "owner":
+			continue
+		}
+		if urn := strings.TrimSpace(entity.URN); urn != "" {
+			return urn
+		}
+	}
+	return strings.TrimSpace(projection.PrimaryResourceURN)
 }
 
 func matchesDataSensitiveAssetRisk(attributes map[string]string) bool {

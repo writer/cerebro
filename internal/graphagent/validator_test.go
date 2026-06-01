@@ -30,6 +30,11 @@ func TestValidatorRejectsUnsafeCypher(t *testing.T) {
 			reason: "apoc",
 		},
 		{
+			name:   "apoc function",
+			cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN apoc.convert.fromJsonMap(e.attributes_json).source_family AS source_family LIMIT 25`,
+			reason: "APOC",
+		},
+		{
 			name:   "missing limit",
 			cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e.urn`,
 			reason: "LIMIT",
@@ -48,6 +53,18 @@ func TestValidatorRejectsUnsafeCypher(t *testing.T) {
 			name:   "unscoped second entity",
 			cypher: `MATCH (a:Entity {tenant_id: $tenant_id}) MATCH (b:Entity) RETURN b.urn LIMIT 25`,
 			reason: "every node",
+		},
+		{
+			name: "comment marker inside string does not hide unscoped match",
+			cypher: `MATCH (a:Entity {tenant_id:$tenant_id})
+WITH a, 'x //' AS c MATCH (b:Entity)
+RETURN b.urn AS urn LIMIT 25`,
+			reason: "every node",
+		},
+		{
+			name:   "write clause after comment marker inside string",
+			cypher: `MATCH (a:Entity {tenant_id:$tenant_id}) WITH 'x //' AS c CREATE (b:Entity) RETURN b LIMIT 25`,
+			reason: "forbidden",
 		},
 		{
 			name:   "unlabeled second node",
@@ -75,6 +92,11 @@ func TestValidatorRejectsUnsafeCypher(t *testing.T) {
 			reason: "inline tenant_id",
 		},
 		{
+			name:   "union branch limit too high",
+			cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e.urn AS urn LIMIT 1000 UNION MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e.urn AS urn LIMIT 25`,
+			reason: "exceeds",
+		},
+		{
 			name:   "call subquery has independent scope",
 			cypher: `MATCH (e:Entity {tenant_id: $tenant_id}) CALL { MATCH (e) RETURN e.urn AS leaked LIMIT 25 } RETURN leaked LIMIT 25`,
 			reason: "inline tenant_id",
@@ -99,6 +121,11 @@ func TestValidatorRejectsUnsafeCypher(t *testing.T) {
 			cypher: `MATCH (seed:Entity {tenant_id: $tenant_id}) WHERE EXISTS { MATCH (tmp:Entity {tenant_id: $tenant_id}) RETURN tmp LIMIT 1 } MATCH (tmp) RETURN tmp.urn LIMIT 25`,
 			reason: "inline tenant_id",
 		},
+		{
+			name:   "unparseable nested property pattern fails closed",
+			cypher: `MATCH (seed:Entity {tenant_id: $tenant_id}) RETURN [(x:Entity {metadata: {tenant_id: $tenant_id}}) | x.urn] AS urn LIMIT 25`,
+			reason: "every node",
+		},
 	}
 
 	validator := NewValidator(nil, ValidatorOptions{})
@@ -116,6 +143,46 @@ func TestValidatorRejectsUnsafeCypher(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidatorPreservesCodeForOversizedUnionLimit(t *testing.T) {
+	validator := NewValidator(nil, ValidatorOptions{})
+	result, _, err := validator.validate(context.Background(), `MATCH (e:Entity {tenant_id: $tenant_id})
+RETURN e.urn AS urn
+LIMIT 1000
+UNION
+MATCH (e:Entity {tenant_id: $tenant_id})
+RETURN e.urn AS urn
+LIMIT 25`, map[string]any{"tenant_id": "example"})
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if result.OK {
+		t.Fatalf("Validate() ok = true, want false")
+	}
+	if result.Code != "limit_exceeded" {
+		t.Fatalf("code = %q, want limit_exceeded; result = %#v", result.Code, result)
+	}
+}
+
+func FuzzValidatorMaliciousCorpus(f *testing.F) {
+	for _, cypher := range []string{
+		`MATCH (a:Entity {tenant_id:$tenant_id}) WITH 'x //' AS c CREATE (b:Entity) RETURN b LIMIT 25`,
+		`MATCH (a:Entity {tenant_id:$tenant_id}) WITH "/*" AS c MATCH (b:Entity) RETURN b LIMIT 25`,
+		`MATCH (e:Entity {tenant_id: $tenant_id}) RETURN e LIMIT 25 UNION MATCH (x:Entity {tenant_id: $tenant_id}) RETURN x LIMIT 1000`,
+		`MATCH (seed:Entity {tenant_id: $tenant_id}) RETURN [(x:Entity {metadata: {tenant_id: $tenant_id}}) | x.urn] AS urn LIMIT 25`,
+		`LOAD CSV FROM 'https://example.test/x.csv' AS row RETURN row LIMIT 1`,
+		`MATCH (e:Entity {tenant_id:$tenant_id}) CALL db.labels() YIELD label RETURN label LIMIT 25`,
+	} {
+		f.Add(cypher)
+	}
+	validator := NewValidator(nil, ValidatorOptions{})
+	f.Fuzz(func(t *testing.T, cypher string) {
+		if len(cypher) > 4096 {
+			t.Skip("query too large for validator fuzz seed")
+		}
+		_, _, _ = validator.validate(context.Background(), cypher, map[string]any{"tenant_id": "example"})
+	})
 }
 
 func TestValidatorAcceptsBoundedTenantScopedRead(t *testing.T) {
@@ -139,11 +206,43 @@ LIMIT 25`, map[string]any{"tenant_id": "example"})
 	}
 }
 
+func TestValidatorAcceptsAPOCVariablePropertyAccess(t *testing.T) {
+	validator := NewValidator(nil, ValidatorOptions{})
+	result, limit, err := validator.validate(context.Background(), `MATCH (apoc:Entity {tenant_id: $tenant_id})
+RETURN apoc.urn AS urn
+LIMIT 25`, map[string]any{"tenant_id": "example"})
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if !result.OK {
+		t.Fatalf("Validate() = %#v, want ok", result)
+	}
+	if limit != 25 {
+		t.Fatalf("limit = %d, want 25", limit)
+	}
+}
+
 func TestValidatorAcceptsScopedRelationshipReadWithReturnFunctions(t *testing.T) {
 	validator := NewValidator(nil, ValidatorOptions{})
 	result, limit, err := validator.validate(context.Background(), `MATCH (src:Entity {tenant_id: $tenant_id})-[r:RELATION]->(dst:Entity {tenant_id: $tenant_id})
 RETURN src.urn AS src, dst.urn AS dst, coalesce(src.label, src.urn) AS label
 ORDER BY label
+LIMIT 25`, map[string]any{"tenant_id": "example"})
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if !result.OK {
+		t.Fatalf("Validate() = %#v, want ok", result)
+	}
+	if limit != 25 {
+		t.Fatalf("limit = %d, want 25", limit)
+	}
+}
+
+func TestValidatorAcceptsEscapedLimitAlias(t *testing.T) {
+	validator := NewValidator(nil, ValidatorOptions{})
+	result, limit, err := validator.validate(context.Background(), `MATCH (e:Entity {tenant_id: $tenant_id})
+RETURN e.urn AS `+"`limit`"+`
 LIMIT 25`, map[string]any{"tenant_id": "example"})
 	if err != nil {
 		t.Fatalf("Validate() error = %v", err)

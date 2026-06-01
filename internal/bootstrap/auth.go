@@ -20,6 +20,8 @@ import (
 
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/deviceauth"
+	"github.com/writer/cerebro/internal/deviceauth/risk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/telemetry"
 )
@@ -45,14 +47,38 @@ type authPrincipal struct {
 	Scopes         []string
 	Groups         []string
 	Capability     bool
+	DeviceID       string
+	HardwareUUID   string
+	// AssuranceLevel is "hardware" or "software" for device principals.
+	AssuranceLevel string
+	// RiskScore / RiskLevel are populated by the risk pipeline during
+	// authentication for device principals. Both are zero / "" for non-
+	// device principals.
+	RiskScore int
+	RiskLevel string
 }
 
 type authContext struct {
-	cfg       config.AuthConfig
-	principal authPrincipal
+	cfg            config.AuthConfig
+	principal      authPrincipal
+	deviceVerifier *deviceauth.JWTVerifier
+	dpopVerifier   *deviceauth.DPoPVerifier
+	riskScorer     *risk.Scorer
+	observations   risk.ObservationStore
 }
 
-func authMiddleware(cfg config.AuthConfig, next http.Handler) http.Handler {
+// AuthDependencies carries the optional verifiers/scorers the auth pipeline
+// uses for device JWT authentication. All fields are optional; the
+// middleware degrades gracefully when nil (DPoP not enforced; risk scoring
+// disabled).
+type AuthDependencies struct {
+	DeviceVerifier *deviceauth.JWTVerifier
+	DPoPVerifier   *deviceauth.DPoPVerifier
+	RiskScorer     *risk.Scorer
+	Observations   risk.ObservationStore
+}
+
+func authMiddleware(cfg config.AuthConfig, deps AuthDependencies, next http.Handler) http.Handler {
 	if !cfg.Enabled {
 		return next
 	}
@@ -64,26 +90,69 @@ func authMiddleware(cfg config.AuthConfig, next http.Handler) http.Handler {
 		started := time.Now()
 		recorder := &accessAuditResponseWriter{ResponseWriter: w}
 		auditResult := &accessAuditResult{RequestedTenantID: requestTenantHint(r)}
+		origin := resolveRequestOrigin(r, cfg.RequestOrigin)
 		principal := authPrincipal{}
 		outcome := "denied"
 		denialReason := ""
 		defer func() {
 			status := recorder.Status()
 			finalOutcome, finalDenialReason := accessAuditOutcome(status, outcome, denialReason, auditResult.ConnectCode)
-			emitAccessAuditEvent(r, principal, status, time.Since(started), finalOutcome, finalDenialReason, auditResult)
+			emitAccessAuditEvent(r, origin, principal, status, time.Since(started), finalOutcome, finalDenialReason, auditResult)
 		}()
-		principal, ok := authenticateRequest(cfg, r)
+		if isUnauthenticatedDevicePath(r.URL.Path) {
+			outcome = "allowed"
+			ctx := context.WithValue(r.Context(), accessAuditContextKey{}, auditResult)
+			next.ServeHTTP(recorder, r.WithContext(ctx))
+			return
+		}
+		var deviceJKT string
+		var presentedToken string
+		principal, deviceJKT, presentedToken, ok := authenticateRequest(cfg, deps.DeviceVerifier, r)
 		if !ok {
 			denialReason = "unauthenticated"
 			writeAuthError(recorder, http.StatusUnauthorized, "unauthorized")
 			return
+		}
+		if deviceJKT != "" {
+			if err := verifyDPoPHeader(deps.DPoPVerifier, r, origin.PublicURL, deviceJKT, presentedToken); err != nil {
+				denialReason = "dpop_invalid"
+				writeDeviceAuthServiceError(recorder, err)
+				return
+			}
+		}
+		if principal.AuthMode == "device_jwt" && deps.RiskScorer != nil {
+			scoreSig := risk.Signal{
+				DeviceID:  principal.DeviceID,
+				TenantID:  principal.TenantID,
+				RemoteIP:  net.ParseIP(origin.ClientIP),
+				UserAgent: r.Header.Get("User-Agent"),
+				Method:    r.Method,
+				Path:      r.URL.Path,
+				Now:       time.Now(),
+			}
+			if deps.Observations != nil {
+				if obs, found := deps.Observations.Get(r.Context(), principal.DeviceID); found {
+					scoreSig.PriorObservation = obs
+				}
+			}
+			decision := deps.RiskScorer.Score(r.Context(), scoreSig)
+			principal.Scopes = decision.FilterScopes(principal.Scopes)
+			principal.RiskScore = decision.Score
+			principal.RiskLevel = decision.Level
 		}
 		if tenantID := auditResult.RequestedTenantID; tenantID != "" && !tenantAllowed(cfg, principal, tenantID) {
 			denialReason = "tenant_forbidden"
 			writeAuthError(recorder, http.StatusForbidden, "tenant forbidden")
 			return
 		}
-		auth := authContext{cfg: cfg, principal: principal}
+		auth := authContext{
+			cfg:            cfg,
+			principal:      principal,
+			deviceVerifier: deps.DeviceVerifier,
+			dpopVerifier:   deps.DPoPVerifier,
+			riskScorer:     deps.RiskScorer,
+			observations:   deps.Observations,
+		}
 		if err := authorizeHTTPRequestScope(auth, r); err != nil {
 			denialReason = "scope_forbidden"
 			writeAuthError(recorder, http.StatusForbidden, "scope forbidden")
@@ -94,6 +163,31 @@ func authMiddleware(cfg config.AuthConfig, next http.Handler) http.Handler {
 		ctx = context.WithValue(ctx, accessAuditContextKey{}, auditResult)
 		next.ServeHTTP(recorder, r.WithContext(ctx))
 	})
+}
+
+// verifyDPoPHeader inspects the DPoP request header (RFC 9449 §4) when the
+// authenticated device JWT carries a cnf.jkt claim. The proof must be a
+// valid DPoP+JWT, htm/htu must match the request, and the JWK thumbprint
+// must equal the expected jkt that was bound at enroll time.
+func verifyDPoPHeader(verifier *deviceauth.DPoPVerifier, r *http.Request, publicURL string, expectedJKT string, accessToken string) error {
+	if verifier == nil {
+		return nil
+	}
+	proof := strings.TrimSpace(r.Header.Get("DPoP"))
+	if proof == "" {
+		return deviceauth.ErrDPoPMissing
+	}
+	if strings.TrimSpace(publicURL) == "" && r != nil {
+		publicURL = resolveRequestOrigin(r, config.RequestOriginConfig{}).PublicURL
+	}
+	res, err := verifier.Verify(proof, r.Method, publicURL, accessToken)
+	if err != nil {
+		return err
+	}
+	if res.JKT != expectedJKT {
+		return deviceauth.ErrDPoPJKTMismatch
+	}
+	return nil
 }
 
 func authInterceptor(cfg config.AuthConfig) connect.Interceptor {
@@ -119,20 +213,31 @@ func authInterceptor(cfg config.AuthConfig) connect.Interceptor {
 
 func isPublicPath(path string) bool {
 	switch path {
-	case "/health", "/healthz":
+	case "/health", "/healthz", "/openapi.yaml":
+		return true
+	case "/.well-known/device-jwks.json":
 		return true
 	default:
 		return false
 	}
 }
 
-func authenticateRequest(cfg config.AuthConfig, r *http.Request) (authPrincipal, bool) {
+func isUnauthenticatedDevicePath(path string) bool {
+	switch path {
+	case "/platform/devices/enroll", "/platform/devices/token":
+		return true
+	default:
+		return false
+	}
+}
+
+func authenticateRequest(cfg config.AuthConfig, deviceVerifier *deviceauth.JWTVerifier, r *http.Request) (authPrincipal, string, string, bool) {
 	token := bearerToken(r.Header.Get("Authorization"))
 	if token == "" {
 		token = strings.TrimSpace(r.Header.Get("X-Cerebro-API-Key"))
 	}
 	if token == "" {
-		return authPrincipal{}, false
+		return authPrincipal{}, "", "", false
 	}
 	for _, credential := range cfg.APICredentials {
 		if apiCredentialMatches(token, credential) {
@@ -144,18 +249,44 @@ func authenticateRequest(cfg config.AuthConfig, r *http.Request) (authPrincipal,
 				AuthMode:       "api_credential",
 				AllowedTenants: credential.AllowedTenants,
 				Scopes:         credential.Scopes,
-			}, true
+			}, "", token, true
 		}
 	}
 	for _, key := range cfg.APIKeys {
 		if constantTimeEqual(token, key.Key) {
-			return authPrincipal{Name: key.Principal, TenantID: key.TenantID, AuthMode: "api_key"}, true
+			return authPrincipal{Name: key.Principal, TenantID: key.TenantID, AuthMode: "api_key"}, "", token, true
 		}
 	}
 	if principal, ok := authenticateCapabilityToken(cfg, token, time.Now()); ok {
-		return principal, true
+		return principal, "", token, true
 	}
-	return authPrincipal{}, false
+	if principal, jkt, ok := authenticateDeviceToken(deviceVerifier, token); ok {
+		return principal, jkt, token, true
+	}
+	return authPrincipal{}, "", "", false
+}
+
+// authenticateDeviceToken verifies an EdDSA device JWT issued by the
+// internal/deviceauth Service. It returns the principal, the cnf.jkt
+// thumbprint when the token was minted DPoP-bound (empty otherwise), and
+// a success flag.
+func authenticateDeviceToken(verifier *deviceauth.JWTVerifier, token string) (authPrincipal, string, bool) {
+	if verifier == nil {
+		return authPrincipal{}, "", false
+	}
+	verified, err := verifier.Verify(token)
+	if err != nil {
+		return authPrincipal{}, "", false
+	}
+	return authPrincipal{
+		Name:           "device:" + verified.DeviceID,
+		TenantID:       verified.TenantID,
+		AuthMode:       "device_jwt",
+		Scopes:         verified.Scopes,
+		DeviceID:       verified.DeviceID,
+		HardwareUUID:   verified.HardwareUUID,
+		AssuranceLevel: verified.AssuranceLevel,
+	}, verified.DPoPJKT, true
 }
 
 func apiCredentialMatches(token string, credential config.APICredential) bool {
@@ -349,7 +480,41 @@ func authorizeTenantID(ctx context.Context, tenantID string) error {
 	return nil
 }
 
-const scopeCosmoSecurityRead = "cerebro.cosmo.security.read"
+func authorizeFindingCandidatePromotion(ctx context.Context) error {
+	auth, ok := ctx.Value(authContextKey{}).(authContext)
+	if !ok {
+		return nil
+	}
+	return authorizePrincipalScope(auth.principal, scopeFindingCandidatePromote)
+}
+
+const (
+	scopeCosmoSecurityRead       = "cerebro.cosmo.security.read"
+	scopeFindingCandidatePromote = "cerebro.finding_candidates.promote"
+)
+
+func scopeForDeviceRoute(method string, path string) string {
+	switch {
+	case method == http.MethodPost && path == "/platform/devices/enroll":
+		return deviceauth.ScopeDevicesEnroll
+	case method == http.MethodPost && path == "/platform/devices/token":
+		return deviceauth.ScopeDevicesToken
+	case method == http.MethodPost && path == "/platform/devices/bootstrap-tokens":
+		return deviceauth.ScopeDevicesBootstrapWrite
+	case method == http.MethodPost && strings.HasPrefix(path, "/platform/devices/") && strings.HasSuffix(path, "/revoke"):
+		return deviceauth.ScopeDevicesRevoke
+	case method == http.MethodGet && path == "/platform/devices":
+		return deviceauth.ScopeDevicesRead
+	case method == http.MethodGet && strings.HasPrefix(path, "/platform/devices/") && !strings.HasSuffix(path, "/revoke"):
+		return deviceauth.ScopeDevicesRead
+	case method == http.MethodPost && path == "/platform/telemetry/ingest":
+		return deviceauth.ScopeTelemetryIngest
+	case method == http.MethodGet && path == "/.well-known/device-jwks.json":
+		return ""
+	default:
+		return ""
+	}
+}
 
 func authorizeHTTPRequestScope(auth authContext, r *http.Request) error {
 	if !principalScopeRestricted(auth.principal) || isConnectProcedurePath(r.URL.Path) {
@@ -390,7 +555,13 @@ func scopeForHTTPRequest(r *http.Request) string {
 	if r.Method == http.MethodPost && path == "/grc/ask" {
 		return scopeCosmoSecurityRead
 	}
+	if scope := scopeForDeviceRoute(r.Method, path); scope != "" {
+		return scope
+	}
 	if r.Method != http.MethodGet {
+		if r.Method == http.MethodPost && strings.HasPrefix(path, "/finding-candidates/") && (strings.HasSuffix(path, "/promote") || strings.HasSuffix(path, "/reject")) {
+			return scopeFindingCandidatePromote
+		}
 		return ""
 	}
 	switch {
@@ -400,13 +571,15 @@ func scopeForHTTPRequest(r *http.Request) string {
 		return scopeCosmoSecurityRead
 	case strings.HasPrefix(path, "/findings/"):
 		return scopeCosmoSecurityRead
+	case strings.HasPrefix(path, "/finding-candidates/"):
+		return scopeCosmoSecurityRead
 	case strings.HasPrefix(path, "/finding-evaluation-runs/"), strings.HasPrefix(path, "/finding-evidence/"):
 		return scopeCosmoSecurityRead
 	case strings.HasPrefix(path, "/grc/"):
 		return scopeCosmoSecurityRead
-	case path == "/platform/graph/neighborhood", path == "/graph/neighborhood":
+	case path == "/platform/graph/neighborhood":
 		return scopeCosmoSecurityRead
-	case strings.HasPrefix(path, "/platform/graph/impact/"), strings.HasPrefix(path, "/graph/impact/"):
+	case strings.HasPrefix(path, "/platform/graph/impact/"):
 		return scopeCosmoSecurityRead
 	case path == "/platform/graph/attack-paths",
 		path == "/platform/graph/aws-public-endpoint-insights",
@@ -414,11 +587,9 @@ func scopeForHTTPRequest(r *http.Request) string {
 		return scopeCosmoSecurityRead
 	case strings.HasPrefix(path, "/platform/endpoints/") && strings.HasSuffix(path, "/vulnerability-findings"):
 		return scopeCosmoSecurityRead
-	case path == "/platform/graph/ingest-health", path == "/graph/ingest-health":
+	case path == "/platform/graph/ingest-health":
 		return scopeCosmoSecurityRead
 	case path == "/platform/graph/ingest-runs", strings.HasPrefix(path, "/platform/graph/ingest-runs/"):
-		return scopeCosmoSecurityRead
-	case path == "/graph/ingest-runs", strings.HasPrefix(path, "/graph/ingest-runs/"):
 		return scopeCosmoSecurityRead
 	case strings.HasPrefix(path, "/report-runs/"):
 		return scopeCosmoSecurityRead
@@ -439,6 +610,8 @@ func scopeForConnectProcedure(procedure string) string {
 		cerebrov1connect.BootstrapServiceListClaimsProcedure,
 		cerebrov1connect.BootstrapServiceListFindingsProcedure,
 		cerebrov1connect.BootstrapServiceGetFindingProcedure,
+		cerebrov1connect.BootstrapServiceListFindingCandidatesProcedure,
+		cerebrov1connect.BootstrapServiceGetFindingCandidateProcedure,
 		cerebrov1connect.BootstrapServiceListFindingEvaluationRunsProcedure,
 		cerebrov1connect.BootstrapServiceGetFindingEvaluationRunProcedure,
 		cerebrov1connect.BootstrapServiceListFindingEvidenceProcedure,
@@ -448,6 +621,9 @@ func scopeForConnectProcedure(procedure string) string {
 		cerebrov1connect.BootstrapServiceListGraphIngestRunsProcedure,
 		cerebrov1connect.BootstrapServiceCheckGraphIngestHealthProcedure:
 		return scopeCosmoSecurityRead
+	case cerebrov1connect.BootstrapServicePromoteFindingCandidateProcedure,
+		cerebrov1connect.BootstrapServiceRejectFindingCandidateProcedure:
+		return scopeFindingCandidatePromote
 	default:
 		return ""
 	}
@@ -724,7 +900,7 @@ func mergeAccessAuditTenantID(existing string, tenantID string) string {
 	return "multiple"
 }
 
-func emitAccessAuditEvent(r *http.Request, principal authPrincipal, status int, duration time.Duration, outcome string, denialReason string, auditResult *accessAuditResult) {
+func emitAccessAuditEvent(r *http.Request, origin requestOrigin, principal authPrincipal, status int, duration time.Duration, outcome string, denialReason string, auditResult *accessAuditResult) {
 	if r == nil {
 		return
 	}
@@ -733,19 +909,22 @@ func emitAccessAuditEvent(r *http.Request, principal authPrincipal, status int, 
 	}
 	route := accessAuditRoute(r)
 	operation := accessAuditOperation(r, route)
+	effectiveStatusCode := accessAuditEffectiveStatusCode(status, auditResult.ConnectCode)
 	attrs := telemetry.Attrs(
 		telemetry.Field{Key: "outcome", Value: outcome},
 		telemetry.Field{Key: "status", Value: status},
+		telemetry.Field{Key: "status_code", Value: status},
+		telemetry.Field{Key: "effective_status_code", Value: effectiveStatusCode},
 		telemetry.Field{Key: "method", Value: r.Method},
 		telemetry.Field{Key: "route", Value: route},
 		telemetry.Field{Key: "operation_family", Value: operation.Family},
 		telemetry.Field{Key: "operation_type", Value: operation.Type},
 		telemetry.Field{Key: "duration_ms", Value: duration.Milliseconds()},
 	)
-	if remoteIP := accessAuditRemoteIP(r.RemoteAddr); remoteIP != "" {
+	if remoteIP := strings.TrimSpace(origin.RemoteIP); remoteIP != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "remote_ip", Value: remoteIP})
 	}
-	if clientIP := accessAuditClientIP(r); clientIP != "" {
+	if clientIP := strings.TrimSpace(origin.ClientIP); clientIP != "" && clientIP != strings.TrimSpace(origin.RemoteIP) {
 		attrs = attrs.WithField(telemetry.Field{Key: "client_ip", Value: clientIP})
 	}
 	if requestID := accessAuditRequestID(r); requestID != "" {
@@ -786,6 +965,16 @@ func emitAccessAuditEvent(r *http.Request, principal authPrincipal, status int, 
 	if procedure := accessAuditConnectProcedure(r.URL.Path); procedure != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "connect_procedure", Value: procedure})
 	}
+	if principal.DeviceID != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "device_id", Value: principal.DeviceID})
+	}
+	if principal.AssuranceLevel != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "assurance_level", Value: principal.AssuranceLevel})
+	}
+	if principal.RiskLevel != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "risk_level", Value: principal.RiskLevel})
+		attrs = attrs.WithField(telemetry.Field{Key: "risk_score", Value: principal.RiskScore})
+	}
 	if auditResult.ConnectCode != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "connect_code", Value: auditResult.ConnectCode})
 	}
@@ -793,6 +982,32 @@ func emitAccessAuditEvent(r *http.Request, principal authPrincipal, status int, 
 		attrs = attrs.WithField(telemetry.Field{Key: "denial_reason", Value: denialReason})
 	}
 	telemetry.Event(r.Context(), "cerebro.api.access", attrs)
+}
+
+func accessAuditEffectiveStatusCode(status int, connectCode string) int {
+	switch strings.ToLower(strings.TrimSpace(connectCode)) {
+	case "":
+		return status
+	case "unauthenticated":
+		return http.StatusUnauthorized
+	case "permission_denied":
+		return http.StatusForbidden
+	case "aborted", "already_exists", "failed_precondition":
+		return http.StatusConflict
+	case "invalid_argument", "out_of_range":
+		return http.StatusBadRequest
+	case "not_found":
+		return http.StatusNotFound
+	case "unavailable":
+		return http.StatusServiceUnavailable
+	case "internal", "unknown", "data_loss":
+		return http.StatusInternalServerError
+	default:
+		if status >= 400 {
+			return status
+		}
+		return http.StatusInternalServerError
+	}
 }
 
 func accessAuditOutcome(status int, outcome string, denialReason string, connectCode string) (string, string) {
@@ -845,10 +1060,16 @@ func accessAuditClientIP(r *http.Request) string {
 	if remoteIP == nil || !accessAuditTrustsForwardedFor(remoteIP) {
 		return ""
 	}
-	for _, part := range strings.Split(r.Header.Get("X-Forwarded-For"), ",") {
-		if ip := net.ParseIP(strings.TrimSpace(part)); ip != nil {
-			return ip.String()
+	parts := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
+	for i := len(parts) - 1; i >= 0; i-- {
+		ip := net.ParseIP(strings.TrimSpace(parts[i]))
+		if ip == nil {
+			continue
 		}
+		if accessAuditTrustsForwardedFor(ip) {
+			continue
+		}
+		return ip.String()
 	}
 	return ""
 }
@@ -1006,6 +1227,10 @@ func accessAuditConnectFamily(procedure string) string {
 func accessAuditRouteFamily(route string) string {
 	route = strings.TrimSpace(route)
 	switch {
+	case strings.Contains(route, "/platform/devices"), strings.Contains(route, "/.well-known/device-jwks"):
+		return "device"
+	case strings.Contains(route, "/platform/telemetry"):
+		return "telemetry"
 	case strings.Contains(route, "/source-runtimes"):
 		return "source_runtime"
 	case strings.Contains(route, "/sources"):
@@ -1016,15 +1241,15 @@ func accessAuditRouteFamily(route string) string {
 		return "finding_evaluation"
 	case strings.Contains(route, "/finding-evidence"):
 		return "finding_evidence"
-	case strings.Contains(route, "/finding-rules"), strings.Contains(route, "/findings"), strings.Contains(route, "/vulnerability-findings"):
+	case strings.Contains(route, "/finding-rules"), strings.Contains(route, "/finding-candidates"), strings.Contains(route, "/findings"), strings.Contains(route, "/vulnerability-findings"):
 		return "finding"
 	case strings.Contains(route, "/grc/"):
 		return "grc"
-	case strings.Contains(route, "/platform/knowledge"), strings.Contains(route, "/graph/write"), strings.Contains(route, "/graph/actuate"):
+	case strings.Contains(route, "/platform/knowledge"):
 		return "platform_knowledge"
 	case strings.Contains(route, "/platform/workflow"):
 		return "workflow"
-	case strings.Contains(route, "/platform/graph"), strings.Contains(route, "/graph/"):
+	case strings.Contains(route, "/platform/graph"):
 		return "graph"
 	case route == "":
 		return "unknown"
@@ -1074,44 +1299,49 @@ func accessAuditConnectProcedure(path string) string {
 }
 
 var knownAccessAuditConnectProcedures = map[string]struct{}{
-	cerebrov1connect.BootstrapServiceGetVersionProcedure:                        {},
-	cerebrov1connect.BootstrapServiceCheckHealthProcedure:                       {},
-	cerebrov1connect.BootstrapServiceListReportDefinitionsProcedure:             {},
-	cerebrov1connect.BootstrapServiceListFindingRulesProcedure:                  {},
-	cerebrov1connect.BootstrapServiceRunReportProcedure:                         {},
-	cerebrov1connect.BootstrapServiceGetReportRunProcedure:                      {},
-	cerebrov1connect.BootstrapServiceListSourcesProcedure:                       {},
-	cerebrov1connect.BootstrapServiceCheckSourceProcedure:                       {},
-	cerebrov1connect.BootstrapServiceDiscoverSourceProcedure:                    {},
-	cerebrov1connect.BootstrapServiceReadSourceProcedure:                        {},
-	cerebrov1connect.BootstrapServicePutSourceRuntimeProcedure:                  {},
-	cerebrov1connect.BootstrapServiceGetSourceRuntimeProcedure:                  {},
-	cerebrov1connect.BootstrapServiceSyncSourceRuntimeProcedure:                 {},
-	cerebrov1connect.BootstrapServiceWriteClaimsProcedure:                       {},
-	cerebrov1connect.BootstrapServiceListClaimsProcedure:                        {},
-	cerebrov1connect.BootstrapServiceListFindingsProcedure:                      {},
-	cerebrov1connect.BootstrapServiceGetFindingProcedure:                        {},
-	cerebrov1connect.BootstrapServiceResolveFindingProcedure:                    {},
-	cerebrov1connect.BootstrapServiceSuppressFindingProcedure:                   {},
-	cerebrov1connect.BootstrapServiceAssignFindingProcedure:                     {},
-	cerebrov1connect.BootstrapServiceSetFindingDueDateProcedure:                 {},
-	cerebrov1connect.BootstrapServiceAddFindingNoteProcedure:                    {},
-	cerebrov1connect.BootstrapServiceLinkFindingTicketProcedure:                 {},
-	cerebrov1connect.BootstrapServiceListFindingEvaluationRunsProcedure:         {},
-	cerebrov1connect.BootstrapServiceGetFindingEvaluationRunProcedure:           {},
-	cerebrov1connect.BootstrapServiceListFindingEvidenceProcedure:               {},
-	cerebrov1connect.BootstrapServiceGetFindingEvidenceProcedure:                {},
-	cerebrov1connect.BootstrapServiceEvaluateSourceRuntimeFindingRulesProcedure: {},
-	cerebrov1connect.BootstrapServiceEvaluateSourceRuntimeFindingsProcedure:     {},
-	cerebrov1connect.BootstrapServiceWriteDecisionProcedure:                     {},
-	cerebrov1connect.BootstrapServiceWriteActionProcedure:                       {},
-	cerebrov1connect.BootstrapServiceWriteOutcomeProcedure:                      {},
-	cerebrov1connect.BootstrapServiceReplayWorkflowEventsProcedure:              {},
-	cerebrov1connect.BootstrapServiceGetEntityNeighborhoodProcedure:             {},
-	cerebrov1connect.BootstrapServiceRunGraphIngestRuntimeProcedure:             {},
-	cerebrov1connect.BootstrapServiceGetGraphIngestRunProcedure:                 {},
-	cerebrov1connect.BootstrapServiceListGraphIngestRunsProcedure:               {},
-	cerebrov1connect.BootstrapServiceCheckGraphIngestHealthProcedure:            {},
+	cerebrov1connect.BootstrapServiceGetVersionProcedure:                             {},
+	cerebrov1connect.BootstrapServiceCheckHealthProcedure:                            {},
+	cerebrov1connect.BootstrapServiceListReportDefinitionsProcedure:                  {},
+	cerebrov1connect.BootstrapServiceListFindingRulesProcedure:                       {},
+	cerebrov1connect.BootstrapServiceRunReportProcedure:                              {},
+	cerebrov1connect.BootstrapServiceGetReportRunProcedure:                           {},
+	cerebrov1connect.BootstrapServiceListSourcesProcedure:                            {},
+	cerebrov1connect.BootstrapServiceCheckSourceProcedure:                            {},
+	cerebrov1connect.BootstrapServiceDiscoverSourceProcedure:                         {},
+	cerebrov1connect.BootstrapServiceReadSourceProcedure:                             {},
+	cerebrov1connect.BootstrapServicePutSourceRuntimeProcedure:                       {},
+	cerebrov1connect.BootstrapServiceGetSourceRuntimeProcedure:                       {},
+	cerebrov1connect.BootstrapServiceSyncSourceRuntimeProcedure:                      {},
+	cerebrov1connect.BootstrapServiceWriteClaimsProcedure:                            {},
+	cerebrov1connect.BootstrapServiceListClaimsProcedure:                             {},
+	cerebrov1connect.BootstrapServiceListFindingsProcedure:                           {},
+	cerebrov1connect.BootstrapServiceGetFindingProcedure:                             {},
+	cerebrov1connect.BootstrapServiceListFindingCandidatesProcedure:                  {},
+	cerebrov1connect.BootstrapServiceGetFindingCandidateProcedure:                    {},
+	cerebrov1connect.BootstrapServiceEvaluateSourceRuntimeFindingCandidatesProcedure: {},
+	cerebrov1connect.BootstrapServicePromoteFindingCandidateProcedure:                {},
+	cerebrov1connect.BootstrapServiceRejectFindingCandidateProcedure:                 {},
+	cerebrov1connect.BootstrapServiceResolveFindingProcedure:                         {},
+	cerebrov1connect.BootstrapServiceSuppressFindingProcedure:                        {},
+	cerebrov1connect.BootstrapServiceAssignFindingProcedure:                          {},
+	cerebrov1connect.BootstrapServiceSetFindingDueDateProcedure:                      {},
+	cerebrov1connect.BootstrapServiceAddFindingNoteProcedure:                         {},
+	cerebrov1connect.BootstrapServiceLinkFindingTicketProcedure:                      {},
+	cerebrov1connect.BootstrapServiceListFindingEvaluationRunsProcedure:              {},
+	cerebrov1connect.BootstrapServiceGetFindingEvaluationRunProcedure:                {},
+	cerebrov1connect.BootstrapServiceListFindingEvidenceProcedure:                    {},
+	cerebrov1connect.BootstrapServiceGetFindingEvidenceProcedure:                     {},
+	cerebrov1connect.BootstrapServiceEvaluateSourceRuntimeFindingRulesProcedure:      {},
+	cerebrov1connect.BootstrapServiceEvaluateSourceRuntimeFindingsProcedure:          {},
+	cerebrov1connect.BootstrapServiceWriteDecisionProcedure:                          {},
+	cerebrov1connect.BootstrapServiceWriteActionProcedure:                            {},
+	cerebrov1connect.BootstrapServiceWriteOutcomeProcedure:                           {},
+	cerebrov1connect.BootstrapServiceReplayWorkflowEventsProcedure:                   {},
+	cerebrov1connect.BootstrapServiceGetEntityNeighborhoodProcedure:                  {},
+	cerebrov1connect.BootstrapServiceRunGraphIngestRuntimeProcedure:                  {},
+	cerebrov1connect.BootstrapServiceGetGraphIngestRunProcedure:                      {},
+	cerebrov1connect.BootstrapServiceListGraphIngestRunsProcedure:                    {},
+	cerebrov1connect.BootstrapServiceCheckGraphIngestHealthProcedure:                 {},
 }
 
 func fallbackAccessAuditRoute(method string, path string) string {
@@ -1141,6 +1371,8 @@ func fallbackAccessAuditRoute(method string, path string) string {
 		return prefix + "/finding-rules"
 	case strings.HasPrefix(path, "/findings/"):
 		return prefix + fallbackFindingRoute(path)
+	case strings.HasPrefix(path, "/finding-candidates/"):
+		return prefix + fallbackFindingCandidateRoute(path)
 	case strings.HasPrefix(path, "/finding-evaluation-runs/"):
 		return prefix + "/finding-evaluation-runs/{runID}"
 	case strings.HasPrefix(path, "/finding-evidence/"):
@@ -1162,8 +1394,6 @@ func fallbackAccessAuditRoute(method string, path string) string {
 		return prefix + "/endpoint-vulnerability-findings"
 	case strings.HasPrefix(path, "/platform/endpoints/") && strings.HasSuffix(path, "/vulnerability-findings"):
 		return prefix + "/platform/endpoints/{deviceKey}/vulnerability-findings"
-	case strings.HasPrefix(path, "/graph/ingest-runs/"):
-		return prefix + "/graph/ingest-runs/{runID}"
 	case isKnownStaticAccessPath(path):
 		return prefix + path
 	}
@@ -1177,10 +1407,12 @@ func fallbackRuntimeRoute(path string) string {
 	}
 	parts := strings.SplitN(suffix, "/", 2)
 	switch parts[1] {
-	case "sync", "graph-ingest-runs", "claims", "findings", "finding-evidence", "finding-evaluation-runs":
+	case "sync", "graph-ingest-runs", "claims", "findings", "finding-candidates", "finding-evidence", "finding-evaluation-runs":
 		return "/source-runtimes/{runtimeID}/" + parts[1]
 	case "finding-rules/evaluate":
 		return "/source-runtimes/{runtimeID}/finding-rules/evaluate"
+	case "finding-candidates/evaluate":
+		return "/source-runtimes/{runtimeID}/finding-candidates/evaluate"
 	case "findings/evaluate":
 		return "/source-runtimes/{runtimeID}/findings/evaluate"
 	default:
@@ -1202,28 +1434,41 @@ func fallbackFindingRoute(path string) string {
 	}
 }
 
+func fallbackFindingCandidateRoute(path string) string {
+	suffix := strings.TrimPrefix(path, "/finding-candidates/")
+	if !strings.Contains(suffix, "/") {
+		return "/finding-candidates/{candidateID}"
+	}
+	parts := strings.SplitN(suffix, "/", 2)
+	switch parts[1] {
+	case "promote", "reject":
+		return "/finding-candidates/{candidateID}/" + parts[1]
+	default:
+		return "/finding-candidates/{candidateID}/{subresource}"
+	}
+}
+
 func isKnownStaticAccessPath(path string) bool {
 	switch path {
 	case "/platform/knowledge/decisions",
 		"/platform/knowledge/actions",
 		"/platform/knowledge/actions/recommendation",
-		"/graph/actuate/recommendation",
 		"/platform/knowledge/outcomes",
-		"/graph/write/outcome",
 		"/platform/workflow/replay",
 		"/platform/graph/neighborhood",
-		"/graph/neighborhood",
 		"/platform/graph/impact/package",
-		"/graph/impact/package",
 		"/platform/graph/impact/asset",
-		"/graph/impact/asset",
 		"/platform/graph/attack-paths",
 		"/platform/graph/aws-public-endpoint-insights",
 		"/platform/graph/crown-jewel-rankings",
 		"/platform/graph/ingest-health",
-		"/graph/ingest-health",
 		"/platform/graph/ingest-runs",
-		"/graph/ingest-runs":
+		"/platform/devices",
+		"/platform/devices/enroll",
+		"/platform/devices/token",
+		"/platform/devices/bootstrap-tokens",
+		"/platform/telemetry/ingest",
+		"/.well-known/device-jwks.json":
 		return true
 	default:
 		return false

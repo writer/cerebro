@@ -23,6 +23,7 @@ type memoryEntity struct {
 	SourceID   string
 	EntityType string
 	Label      string
+	Attributes map[string]string
 }
 
 type memoryLink struct {
@@ -81,12 +82,17 @@ func (s *memoryGraphStore) UpsertProjectedEntity(_ context.Context, entity *port
 	if existing, ok := s.entities[urn]; ok && fallbackLabel {
 		label = existing.Label
 	}
+	attributes := cloneMemoryAttributes(entity.Attributes)
+	if existing, ok := s.entities[urn]; ok {
+		attributes = mergeMemoryAttributes(existing.Attributes, attributes)
+	}
 	s.entities[urn] = memoryEntity{
 		URN:        urn,
 		TenantID:   tenantID,
 		SourceID:   sourceID,
 		EntityType: entityType,
 		Label:      label,
+		Attributes: attributes,
 	}
 	return nil
 }
@@ -142,6 +148,8 @@ func (s *memoryGraphStore) IntegrityChecks(context.Context) ([]graphstore.Integr
 		{Name: "blank_entity_types", Expected: 0},
 		{Name: "blank_relation_types", Expected: 0},
 		{Name: "self_referential_relations", Expected: 0},
+		{Name: "github_code_repositories_without_owner_link", Expected: 0},
+		{Name: "aws_public_endpoints_without_instance_link", Expected: 0},
 	}
 	for _, entity := range s.entities {
 		if entity.Label == "" {
@@ -149,6 +157,12 @@ func (s *memoryGraphStore) IntegrityChecks(context.Context) ([]graphstore.Integr
 		}
 		if entity.EntityType == "" {
 			checks[2].Actual++
+		}
+		if memoryEntityRequiresRepositoryOwnerLink(entity) && !s.memoryEntityHasOutgoingLinkTo(entity.URN, "belongs_to", "github.org") {
+			checks[5].Actual++
+		}
+		if memoryEntityRequiresInstanceLink(entity) && !s.memoryEntityHasInstanceLink(entity.URN) {
+			checks[6].Actual++
 		}
 	}
 	for _, link := range s.links {
@@ -168,6 +182,60 @@ func (s *memoryGraphStore) IntegrityChecks(context.Context) ([]graphstore.Integr
 		checks[index].Passed = checks[index].Actual == checks[index].Expected
 	}
 	return checks, nil
+}
+
+func cloneMemoryAttributes(attributes map[string]string) map[string]string {
+	if len(attributes) == 0 {
+		return nil
+	}
+	clone := make(map[string]string, len(attributes))
+	for key, value := range attributes {
+		clone[key] = value
+	}
+	return clone
+}
+
+func mergeMemoryAttributes(existing map[string]string, incoming map[string]string) map[string]string {
+	if len(existing) == 0 {
+		return cloneMemoryAttributes(incoming)
+	}
+	merged := cloneMemoryAttributes(existing)
+	for key, value := range incoming {
+		merged[key] = value
+	}
+	return merged
+}
+
+func memoryEntityRequiresInstanceLink(entity memoryEntity) bool {
+	switch entity.EntityType {
+	case "aws.elastic.ip", "aws.network.interface":
+	default:
+		return false
+	}
+	return strings.TrimSpace(entity.Attributes["attached_instance_id"]) != "" || strings.TrimSpace(entity.Attributes["associated_instance_id"]) != ""
+}
+
+func memoryEntityRequiresRepositoryOwnerLink(entity memoryEntity) bool {
+	return entity.SourceID == "github" &&
+		entity.EntityType == "github.code.repository" &&
+		strings.TrimSpace(entity.Attributes["owner_login"]) != ""
+}
+
+func (s *memoryGraphStore) memoryEntityHasInstanceLink(urn string) bool {
+	return s.memoryEntityHasOutgoingLinkTo(urn, "attached_to", "aws.ec2.instance") ||
+		s.memoryEntityHasOutgoingLinkTo(urn, "associated_with", "aws.ec2.instance")
+}
+
+func (s *memoryGraphStore) memoryEntityHasOutgoingLinkTo(urn string, relation string, targetType string) bool {
+	for _, link := range s.links {
+		if link.FromURN != urn || link.Relation != relation {
+			continue
+		}
+		if s.entities[link.ToURN].EntityType == targetType {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *memoryGraphStore) PathPatterns(_ context.Context, limit int) ([]graphstore.PathPattern, error) {

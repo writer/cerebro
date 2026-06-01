@@ -10,6 +10,7 @@ servers:
 security:
   - bearerAuth: []
 tags:
+  - name: Devices
   - name: Findings
   - name: GRC
   - name: Graph
@@ -18,6 +19,7 @@ tags:
   - name: Platform
   - name: Reports
   - name: Sources
+  - name: Telemetry
   - name: Workflow
 paths:
   /health:
@@ -243,6 +245,76 @@ paths:
       responses:
         '200':
           description: Rule evaluation result.
+  /source-runtimes/{runtimeID}/finding-candidates:
+    get:
+      summary: List candidate findings for one runtime
+      tags:
+        - Sources
+      parameters:
+        - $ref: '#/components/parameters/runtimeID'
+        - name: candidate_id
+          in: query
+          schema:
+            type: string
+        - name: rule_id
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [candidate, promoted, rejected]
+        - name: fingerprint
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/limitQuery'
+      responses:
+        '200':
+          description: Candidate finding list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  candidates:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FindingCandidate'
+  /source-runtimes/{runtimeID}/finding-candidates/evaluate:
+    post:
+      summary: Evaluate candidate findings for one runtime
+      tags:
+        - Sources
+      parameters:
+        - $ref: '#/components/parameters/runtimeID'
+        - name: rule_id
+          in: query
+          schema:
+            type: string
+        - name: event_limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Candidate finding evaluation result.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runtime:
+                    type: object
+                  events_evaluated:
+                    type: integer
+                    minimum: 0
+                  evaluations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FindingCandidateRuleEvaluation'
   /source-runtimes/{runtimeID}/findings/evaluate:
     post:
       summary: Evaluate and persist findings for one runtime
@@ -346,6 +418,75 @@ paths:
                 properties:
                   finding:
                     $ref: '#/components/schemas/Finding'
+  /finding-candidates/{candidateID}:
+    get:
+      summary: Get candidate finding
+      tags:
+        - Findings
+      parameters:
+        - $ref: '#/components/parameters/candidateID'
+      responses:
+        '200':
+          description: Candidate finding.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  candidate:
+                    $ref: '#/components/schemas/FindingCandidate'
+  /finding-candidates/{candidateID}/promote:
+    post:
+      summary: Promote candidate finding
+      tags:
+        - Findings
+      parameters:
+        - $ref: '#/components/parameters/candidateID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromoteFindingCandidateRequest'
+      responses:
+        '200':
+          description: Promoted finding and candidate metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  finding:
+                    $ref: '#/components/schemas/Finding'
+                  candidate:
+                    $ref: '#/components/schemas/FindingCandidate'
+                  decision_id:
+                    type: string
+  /finding-candidates/{candidateID}/reject:
+    post:
+      summary: Reject candidate finding
+      tags:
+        - Findings
+      parameters:
+        - $ref: '#/components/parameters/candidateID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectFindingCandidateRequest'
+      responses:
+        '200':
+          description: Rejected candidate metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  candidate:
+                    $ref: '#/components/schemas/FindingCandidate'
+                  decision_id:
+                    type: string
   /findings/{findingID}/resolve:
     post:
       summary: Resolve finding
@@ -542,7 +683,7 @@ paths:
               $ref: '#/components/schemas/GRCAskRequest'
       responses:
         '200':
-          description: Server-sent graph answer events in rationale, cypher, rows, summary, done order.
+          description: Server-sent graph answer events. Successful streams emit progress, graph_probe, rationale, query_plan, cypher, optional recovery, rows, summary, and done events; failures after streaming starts emit an error event.
           content:
             text/event-stream:
               schema:
@@ -946,147 +1087,210 @@ paths:
       responses:
         '200':
           description: Graph ingest run.
-  /graph/neighborhood:
-    get:
-      deprecated: true
-      summary: Legacy alias for /platform/graph/neighborhood
+  /platform/devices/enroll:
+    post:
+      summary: Enroll a SeCheck agent
+      description: |
+        Consumes a single-use bootstrap token and provisions a device
+        identity. The bootstrap token is delivered out-of-band by MDM and
+        is bound to the device's hardware_uuid. Returns a short-lived
+        access token (EdDSA JWT) and a long-lived refresh token. Replay
+        of an already-consumed bootstrap token returns 401.
       tags:
-        - Graph
+        - Devices
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceEnrollRequest'
       responses:
         '200':
-          description: Neighborhood result.
-  /graph/impact/vulnerability/{id}:
-    get:
-      deprecated: true
-      summary: Legacy alias for /platform/graph/impact/vulnerability/{id}
+          description: Enrollment succeeded; access + refresh pair returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceTokenResponse'
+        '400':
+          description: Malformed request body.
+        '401':
+          description: Bootstrap token invalid, expired, already consumed, or hardware-uuid mismatch.
+        '429':
+          description: Per-IP enrollment rate limit exceeded.
+  /platform/devices/token:
+    post:
+      summary: Rotate a device refresh token
+      description: |
+        Exchanges a refresh token for a new access + refresh pair. The
+        previous refresh token is consumed atomically. Replaying a
+        consumed refresh token revokes the entire token family per RFC 6819
+        §5.2.2.3.
+
+        When the device was enrolled with a hardware-bound key (App Attest
+        or TPM 2.0), the request MUST carry an RFC 9449 DPoP proof JWT in
+        the `DPoP` header signed by the bound key, with `htm` matching the
+        request method, `htu` matching the canonical request URL, a unique
+        `jti`, and a fresh `iat`. The proof's JWK SHA-256 thumbprint
+        (RFC 7638) must equal the device's stored `dpop_jkt`.
       tags:
-        - Graph
+        - Devices
+      security: []
       parameters:
-        - name: id
+        - in: header
+          name: DPoP
+          required: false
+          schema:
+            type: string
+          description: |
+            RFC 9449 DPoP proof JWT. Required when the device was enrolled
+            with a hardware-bound key. Algorithms: ES256, ES384, EdDSA.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceTokenRequest'
+      responses:
+        '200':
+          description: Rotation succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceTokenResponse'
+        '400':
+          description: Unsupported grant_type.
+        '401':
+          description: |
+            Refresh token unknown, expired, or replayed (family revoked); or
+            DPoP proof is missing (`dpop_required`), malformed
+            (`dpop_malformed`), or invalid -- bad signature, replayed jti,
+            expired iat, htm/htu mismatch, or jkt mismatch (`dpop_invalid`).
+        '429':
+          description: Per-device token rate limit exceeded.
+  /platform/devices/bootstrap-tokens:
+    post:
+      summary: Issue a single-use bootstrap token (operator-only)
+      description: |
+        Mints a single-use enrollment credential bound to a hardware_uuid
+        for one tenant. Requires the platform.devices.bootstrap_tokens.write
+        scope. The plaintext token is returned exactly once; only its
+        SHA-256 digest is persisted.
+      tags:
+        - Devices
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueBootstrapTokenRequest'
+      responses:
+        '201':
+          description: Bootstrap token created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IssueBootstrapTokenResponse'
+        '400':
+          description: Malformed request body.
+        '403':
+          description: Caller lacks the platform.devices.bootstrap_tokens.write scope.
+  /platform/devices/{deviceID}/revoke:
+    post:
+      summary: Revoke a device (operator-only)
+      description: |
+        Marks the device revoked. Subsequent refresh attempts fail with
+        403; access tokens already issued expire on their own at the
+        configured access TTL.
+      tags:
+        - Devices
+      parameters:
+        - name: deviceID
           in: path
           required: true
           schema:
             type: string
-        - name: tenant_id
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-        - name: depth
-          in: query
-          schema:
-            type: integer
-            minimum: 1
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevokeDeviceRequest'
       responses:
         '200':
-          description: Vulnerability impact result.
-  /graph/impact/package:
-    get:
-      deprecated: true
-      summary: Legacy alias for /platform/graph/impact/package
-      tags:
-        - Graph
-      parameters:
-        - name: package
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: tenant_id
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-        - name: depth
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-      responses:
-        '200':
-          description: Package exposure result.
-  /graph/impact/asset:
-    get:
-      deprecated: true
-      summary: Legacy alias for /platform/graph/impact/asset
-      tags:
-        - Graph
-      parameters:
-        - name: urn
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-        - name: depth
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-      responses:
-        '200':
-          description: Asset vulnerability result.
-  /graph/ingest-health:
-    get:
-      deprecated: true
-      summary: Legacy alias for /platform/graph/ingest-health
-      tags:
-        - Graph
-      responses:
-        '200':
-          description: Graph ingest health.
-  /graph/ingest-runs:
-    get:
-      deprecated: true
-      summary: Legacy alias for /platform/graph/ingest-runs
-      tags:
-        - Graph
-      responses:
-        '200':
-          description: Graph ingest runs.
-  /graph/ingest-runs/{runID}:
-    get:
-      deprecated: true
-      summary: Legacy alias for /platform/graph/ingest-runs/{runID}
-      tags:
-        - Graph
-      parameters:
-        - $ref: '#/components/parameters/runID'
-      responses:
-        '200':
-          description: Graph ingest run.
-  /graph/actuate/recommendation:
+          description: Revocation succeeded.
+        '403':
+          description: Caller lacks the platform.devices.revoke scope.
+        '404':
+          description: Device not found.
+  /platform/telemetry/ingest:
     post:
-      deprecated: true
-      summary: Legacy alias for /platform/knowledge/actions/recommendation
+      summary: Ingest device telemetry (device-only)
+      description: |
+        Accepts a telemetry batch from an enrolled SeCheck agent. Requires
+        a device JWT carrying the platform.telemetry.ingest scope and a
+        non-empty Idempotency-Key request header. When the JWT contains a
+        `cnf.jkt` confirmation claim, the request MUST also carry an RFC
+        9449 DPoP proof JWT in the `DPoP` header. A retried submission with
+        the same key + body is replayed without side effects; same key with
+        a different body returns 409 (RFC 5789-inspired idempotency
+        contract).
       tags:
-        - Graph
+        - Telemetry
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            maxLength: 255
+        - in: header
+          name: DPoP
+          required: false
+          schema:
+            type: string
+          description: |
+            RFC 9449 DPoP proof JWT. Required when the bearer device JWT
+            contains a `cnf.jkt` confirmation claim. Algorithms: ES256,
+            ES384, EdDSA.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '202':
+          description: Telemetry accepted.
+        '400':
+          description: Missing Idempotency-Key or malformed body.
+        '401':
+          description: |
+            Bearer token is missing, malformed, expired, or invalid; or DPoP
+            proof is missing (`dpop_required`), malformed
+            (`dpop_malformed`), or invalid -- bad signature, replayed jti,
+            expired iat, htm/htu mismatch, ath mismatch, or jkt mismatch
+            (`dpop_invalid`).
+        '403':
+          description: Caller is not a device principal.
+        '409':
+          description: Idempotency-Key reused with a different body.
+        '413':
+          description: Body exceeds 1 MiB.
+  /.well-known/device-jwks.json:
+    get:
+      summary: Device-JWT verification keys
+      description: |
+        Publishes the active and retiring Ed25519 verification keys as a
+        JWK Set (RFC 7517 §4 + RFC 8037). Cache headers permit short-term
+        caching by downstream verifiers.
+      tags:
+        - Devices
+      security: []
       responses:
         '200':
-          description: Action write result.
-  /graph/write/outcome:
-    post:
-      deprecated: true
-      summary: Legacy alias for /platform/knowledge/outcomes
-      tags:
-        - Graph
-      responses:
-        '200':
-          description: Outcome write result.
+          description: JWK Set document.
 
 components:
   securitySchemes:
@@ -1108,6 +1312,12 @@ components:
         type: string
     findingID:
       name: findingID
+      in: path
+      required: true
+      schema:
+        type: string
+    candidateID:
+      name: candidateID
       in: path
       required: true
       schema:
@@ -1152,6 +1362,127 @@ components:
         type: integer
         minimum: 1
   schemas:
+    DeviceEnrollRequest:
+      type: object
+      required: [bootstrap_token, hardware_uuid]
+      properties:
+        bootstrap_token:
+          type: string
+          minLength: 1
+        hardware_uuid:
+          type: string
+          minLength: 1
+        serial_number:
+          type: string
+        hostname:
+          type: string
+        os_type:
+          type: string
+        os_version:
+          type: string
+        agent_version:
+          type: string
+        attestation:
+          type: string
+          description: |
+            Base64-encoded device-bound attestation statement. On macOS this is
+            an Apple App Attest CBOR attestationObject; on Windows a TPM 2.0
+            quote bundle (JSON envelope with ek_chain, ak_pub_der, quote, signature, alg).
+            Required when CEREBRO_DEVICE_AUTH_ATTESTATION_REQUIRED=true; if
+            present and verified, the server binds a DPoP key (RFC 9449) to
+            subsequent refresh-token rotations and the response includes
+            assurance_level=hardware.
+    DeviceTokenRequest:
+      type: object
+      required: [grant_type, refresh_token]
+      properties:
+        grant_type:
+          type: string
+          enum: [refresh_token]
+        refresh_token:
+          type: string
+          minLength: 1
+    DeviceTokenResponse:
+      type: object
+      required: [access_token, token_type, expires_in, scopes]
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          enum: [Bearer]
+        expires_in:
+          type: integer
+          description: Seconds until access_token expires.
+        refresh_token:
+          type: string
+        refresh_expires_at:
+          type: string
+          format: date-time
+        scopes:
+          type: array
+          items:
+            type: string
+        device_id:
+          type: string
+        assurance_level:
+          type: string
+          enum: [software, hardware]
+          description: |
+            Attestation outcome: "hardware" when the device-bound key was
+            produced by Apple Secure Enclave or a TPM 2.0; "software" when
+            no attestation was supplied or the configured registry runs in
+            non-required mode.
+        attestation_vendor:
+          type: string
+          description: |
+            Backend that produced the attestation result (e.g.
+            "apple-appattest", "tpm-2.0", or "none").
+        risk_score:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Composite 0..100 risk score for this rotation.
+        risk_level:
+          type: string
+          enum: [low, elevated, high]
+          description: |
+            Mapped from risk_score. On "high", sensitive scopes (telemetry
+            ingest, bootstrap-token write, device revoke) are dropped from
+            the issued access token.
+    IssueBootstrapTokenRequest:
+      type: object
+      required: [hardware_uuid]
+      properties:
+        hardware_uuid:
+          type: string
+          minLength: 1
+        tenant_id:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        ttl_seconds:
+          type: integer
+          minimum: 1
+    IssueBootstrapTokenResponse:
+      type: object
+      required: [token_id, token, expires_at]
+      properties:
+        token_id:
+          type: string
+        token:
+          type: string
+          description: Plaintext bootstrap token; returned once and never persisted in clear.
+        expires_at:
+          type: string
+          format: date-time
+    RevokeDeviceRequest:
+      type: object
+      properties:
+        reason:
+          type: string
     GRCAskRequest:
       type: object
       required: [tenant_id, question]
@@ -1237,6 +1568,136 @@ components:
           format: date-time
         error:
           type: string
+    FindingCandidateRun:
+      type: object
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        runtime_id:
+          type: string
+        rule_id:
+          type: string
+        status:
+          type: string
+        event_limit:
+          type: integer
+          minimum: 0
+        events_evaluated:
+          type: integer
+          minimum: 0
+        events_matched:
+          type: integer
+          minimum: 0
+        candidates:
+          type: integer
+          minimum: 0
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        error:
+          type: string
+    FindingCandidateRuleEvaluation:
+      type: object
+      properties:
+        rule:
+          type: object
+        run:
+          $ref: '#/components/schemas/FindingCandidateRun'
+        candidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/FindingCandidate'
+    FindingCandidate:
+      type: object
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        runtime_id:
+          type: string
+        rule_id:
+          type: string
+        fingerprint:
+          type: string
+        status:
+          type: string
+          enum: [candidate, promoted, rejected]
+        finding:
+          $ref: '#/components/schemas/Finding'
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/FindingEvidence'
+        last_run_id:
+          type: string
+        observation_count:
+          type: integer
+          minimum: 0
+        first_observed_at:
+          type: string
+          format: date-time
+        last_observed_at:
+          type: string
+          format: date-time
+        promoted_finding_id:
+          type: string
+        decision_id:
+          type: string
+        promoted_by:
+          type: string
+        promotion_rationale:
+          type: string
+        change_ticket:
+          type: string
+        promoted_at:
+          type: string
+          format: date-time
+        rejected_by:
+          type: string
+        rejection_rationale:
+          type: string
+        rejected_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PromoteFindingCandidateRequest:
+      type: object
+      required: [promoted_by, rationale, change_ticket, false_positive_reviewed, graph_coverage_reviewed]
+      properties:
+        promoted_by:
+          type: string
+          minLength: 1
+        rationale:
+          type: string
+          minLength: 1
+        change_ticket:
+          type: string
+          minLength: 1
+        false_positive_reviewed:
+          type: boolean
+        graph_coverage_reviewed:
+          type: boolean
+    RejectFindingCandidateRequest:
+      type: object
+      required: [rejected_by, rationale]
+      properties:
+        rejected_by:
+          type: string
+          minLength: 1
+        rationale:
+          type: string
+          minLength: 1
     Finding:
       type: object
       properties:

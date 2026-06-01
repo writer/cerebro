@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package cerebro.v1;
+
+option go_package = "github.com/writer/cerebro/gen/cerebro/v1;cerebrov1";
+
+import "google/protobuf/timestamp.proto";
+
+enum AuditOutcome {
+  AUDIT_OUTCOME_UNSPECIFIED = 0;
+  AUDIT_OUTCOME_ALLOWED = 1;
+  AUDIT_OUTCOME_DENIED = 2;
+  AUDIT_OUTCOME_REJECTED = 3;
+  AUDIT_OUTCOME_ERROR = 4;
+}
+
+// AuditActor identifies the principal that initiated an audited action.
+message AuditActor {
+  string id = 1;
+  string name = 2;
+  string type = 3;
+  string tenant_id = 4;
+  string auth_mode = 5;
+  string credential_id = 6;
+  string client_id = 7;
+  string device_id = 8;
+  string assurance_level = 9;
+  string risk_level = 10;
+  int32 risk_score = 11;
+}
+
+// AuditTarget identifies the object, route, or procedure affected by an audited action.
+message AuditTarget {
+  string id = 1;
+  string type = 2;
+  string tenant_id = 3;
+  string route = 4;
+  string method = 5;
+  string connect_procedure = 6;
+  string operation_family = 7;
+  string operation_type = 8;
+}
+
+// AuditEvent is the canonical security audit envelope shared by Cerebro and platform services.
+message AuditEvent {
+  string id = 1;
+  string service = 2;
+  string environment = 3;
+  string tenant_id = 4;
+  string requested_tenant_id = 5;
+  string effective_tenant_id = 6;
+  string request_id = 7;
+  AuditActor actor = 8;
+  string action = 9;
+  AuditTarget target = 10;
+  AuditOutcome outcome = 11;
+  int32 status_code = 12;
+  int32 effective_status_code = 13;
+  string denial_reason = 14;
+  string remote_ip = 15;
+  string client_ip = 16;
+  google.protobuf.Timestamp occurred_at = 17;
+  map<string, string> attributes = 18;
+}

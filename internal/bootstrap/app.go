@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -20,10 +21,11 @@ import (
 
 	apicontract "github.com/writer/cerebro/api"
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
-	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/claims"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/deviceauth"
+	"github.com/writer/cerebro/internal/deviceauth/risk"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/graphingest"
@@ -50,12 +52,18 @@ type Dependencies struct {
 
 // App is the minimal Connect/bootstrap composition root for the rewrite skeleton.
 type App struct {
-	cfg     config.Config
-	deps    Dependencies
-	sources *sourcecdk.Registry
-	mux     *http.ServeMux
-	handler http.Handler
-	server  *http.Server
+	cfg              config.Config
+	deps             Dependencies
+	sources          *sourcecdk.Registry
+	mux              *http.ServeMux
+	handler          http.Handler
+	server           *http.Server
+	deviceService    *deviceauth.Service
+	deviceHandler    *deviceAuthHTTPHandler
+	deviceVerifier   *deviceauth.JWTVerifier
+	dpopVerifier     *deviceauth.DPoPVerifier
+	riskScorer       *risk.Scorer
+	observationStore risk.ObservationStore
 }
 
 type bootstrapService struct {
@@ -71,90 +79,82 @@ const (
 )
 
 var (
-	errInvalidHTTPRequest    = errors.New("invalid http request")
-	errProtoJSONBodyTooLarge = errors.New("request JSON body exceeds maximum size")
+	errInvalidHTTPRequest                 = errors.New("invalid http request")
+	errProtoJSONBodyTooLarge              = errors.New("request JSON body exceeds maximum size")
+	errDeviceAuthRequiresAPIAuth          = errors.New("device-auth requires CEREBRO_API_AUTH_ENABLED=true")
+	errDeviceAuthRequiresStore            = errors.New("device-auth requires a device-auth capable state store")
+	errDeviceAuthRequiresSharedDPoPReplay = errors.New("device-auth DPoP replay protection requires shared state for multiple replicas")
 )
 
 // New constructs the minimal bootstrap app and registers the Connect handlers.
 func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App {
-	mux := http.NewServeMux()
-	service := &bootstrapService{cfg: cfg, deps: deps, sources: sources}
-	path, handler := cerebrov1connect.NewBootstrapServiceHandler(service, connect.WithInterceptors(authInterceptor(cfg.Auth)))
-	mux.Handle(path, handler)
+	app, _ := NewWithError(cfg, deps, sources)
+	return app
+}
 
-	app := &App{cfg: cfg, deps: deps, sources: sources, mux: mux}
-	mux.HandleFunc("/health", app.handleHealth)
-	mux.HandleFunc("/healthz", app.handleHealth)
-	mux.HandleFunc("GET /openapi.yaml", app.handleOpenAPI)
-	mux.HandleFunc("GET /reports", app.handleListReportDefinitions)
-	mux.HandleFunc("GET /finding-rules", app.handleListFindingRules)
-	mux.HandleFunc("POST /reports/{reportID}/runs", app.handleRunReport)
-	mux.HandleFunc("GET /report-runs/{runID}", app.handleGetReportRun)
-	mux.HandleFunc("GET /grc/dashboard", app.handleGRCDashboard)
-	mux.HandleFunc("POST /grc/ask", app.handleGRCAsk)
-	mux.HandleFunc("GET /grc/findings", app.handleGRCFindings)
-	mux.HandleFunc("GET /grc/controls", app.handleGRCControls)
-	mux.HandleFunc("GET /grc/evidence", app.handleGRCEvidence)
-	mux.HandleFunc("GET /grc/entities/{entityID}/impact", app.handleGRCEntityImpact)
-	mux.HandleFunc("GET /grc/audit-packets/{packetID}", app.handleGRCAuditPacket)
-	mux.HandleFunc("GET /findings/{findingID}", app.handleGetFinding)
-	mux.HandleFunc("POST /findings/{findingID}/resolve", app.handleResolveFinding)
-	mux.HandleFunc("POST /findings/{findingID}/suppress", app.handleSuppressFinding)
-	mux.HandleFunc("PUT /findings/{findingID}/assign", app.handleAssignFinding)
-	mux.HandleFunc("PUT /findings/{findingID}/due", app.handleSetFindingDueDate)
-	mux.HandleFunc("POST /findings/{findingID}/notes", app.handleAddFindingNote)
-	mux.HandleFunc("POST /findings/{findingID}/tickets", app.handleLinkFindingTicket)
-	mux.HandleFunc("GET /endpoint-vulnerability-findings", app.handleListEndpointVulnerabilityFindings)
-	mux.HandleFunc("GET /finding-evaluation-runs/{runID}", app.handleGetFindingEvaluationRun)
-	mux.HandleFunc("GET /finding-evidence/{evidenceID}", app.handleGetFindingEvidence)
-	mux.HandleFunc("/sources", app.handleSources)
-	mux.HandleFunc("GET /sources/{sourceID}/check", app.handleCheckSource)
-	mux.HandleFunc("GET /sources/{sourceID}/discover", app.handleDiscoverSource)
-	mux.HandleFunc("GET /sources/{sourceID}/read", app.handleReadSource)
-	mux.HandleFunc("POST /platform/knowledge/decisions", app.handleWriteDecision)
-	mux.HandleFunc("POST /platform/knowledge/actions", app.handleWriteAction)
-	mux.HandleFunc("POST /platform/knowledge/actions/recommendation", app.handleWriteAction)
-	mux.HandleFunc("POST /graph/actuate/recommendation", deprecatedRoute(app.handleWriteAction))
-	mux.HandleFunc("POST /platform/knowledge/outcomes", app.handleWriteOutcome)
-	mux.HandleFunc("POST /graph/write/outcome", deprecatedRoute(app.handleWriteOutcome))
-	mux.HandleFunc("POST /platform/workflow/replay", app.handleReplayWorkflowEvents)
-	mux.HandleFunc("GET /platform/graph/neighborhood", app.handleGetEntityNeighborhood)
-	mux.HandleFunc("GET /graph/neighborhood", deprecatedRoute(app.handleGetEntityNeighborhood))
-	mux.HandleFunc("GET /platform/graph/impact/vulnerability/{id}", app.handleGetVulnerabilityImpact)
-	mux.HandleFunc("GET /graph/impact/vulnerability/{id}", deprecatedRoute(app.handleGetVulnerabilityImpact))
-	mux.HandleFunc("GET /platform/graph/impact/package", app.handleGetPackageImpact)
-	mux.HandleFunc("GET /graph/impact/package", deprecatedRoute(app.handleGetPackageImpact))
-	mux.HandleFunc("GET /platform/graph/impact/asset", app.handleGetAssetImpact)
-	mux.HandleFunc("GET /graph/impact/asset", deprecatedRoute(app.handleGetAssetImpact))
-	mux.HandleFunc("GET /platform/graph/attack-paths", app.handleGetAttackPaths)
-	mux.HandleFunc("GET /platform/graph/crown-jewel-rankings", app.handleGetCrownJewelRankings)
-	mux.HandleFunc("GET /platform/graph/aws-public-endpoint-insights", app.handleGetAWSPublicEndpointInsights)
-	mux.HandleFunc("GET /platform/endpoints/{deviceKey}/vulnerability-findings", app.handleListEndpointVulnerabilityFindings)
-	mux.HandleFunc("GET /platform/graph/ingest-health", app.handleCheckGraphIngestHealth)
-	mux.HandleFunc("GET /graph/ingest-health", deprecatedRoute(app.handleCheckGraphIngestHealth))
-	mux.HandleFunc("GET /platform/graph/ingest-runs", app.handleListGraphIngestRuns)
-	mux.HandleFunc("GET /graph/ingest-runs", deprecatedRoute(app.handleListGraphIngestRuns))
-	mux.HandleFunc("GET /platform/graph/ingest-runs/{runID}", app.handleGetGraphIngestRun)
-	mux.HandleFunc("GET /graph/ingest-runs/{runID}", deprecatedRoute(app.handleGetGraphIngestRun))
-	mux.HandleFunc("GET /source-runtimes", app.handleListSourceRuntimes)
-	mux.HandleFunc("PUT /source-runtimes/{runtimeID}", app.handlePutSourceRuntime)
-	mux.HandleFunc("GET /source-runtimes/{runtimeID}", app.handleGetSourceRuntime)
-	mux.HandleFunc("POST /source-runtimes/{runtimeID}/sync", app.handleSyncSourceRuntime)
-	mux.HandleFunc("POST /source-runtimes/{runtimeID}/graph-ingest-runs", app.handleRunGraphIngestRuntime)
-	mux.HandleFunc("GET /source-runtimes/{runtimeID}/claims", app.handleListClaims)
-	mux.HandleFunc("POST /source-runtimes/{runtimeID}/claims", app.handleWriteClaims)
-	mux.HandleFunc("GET /source-runtimes/{runtimeID}/findings", app.handleListFindings)
-	mux.HandleFunc("GET /source-runtimes/{runtimeID}/finding-evidence", app.handleListFindingEvidence)
-	mux.HandleFunc("GET /source-runtimes/{runtimeID}/finding-evaluation-runs", app.handleListFindingEvaluationRuns)
-	mux.HandleFunc("POST /source-runtimes/{runtimeID}/finding-rules/evaluate", app.handleEvaluateSourceRuntimeFindingRules)
-	mux.HandleFunc("POST /source-runtimes/{runtimeID}/findings/evaluate", app.handleEvaluateSourceRuntimeFindings)
-	app.handler = authMiddleware(cfg.Auth, mux)
+// NewWithError constructs the minimal bootstrap app and returns configuration
+// errors instead of panicking. Production startup should use this form so
+// security-sensitive surfaces fail closed when misconfigured.
+func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) (*App, error) {
+	app := &App{cfg: cfg, deps: deps, sources: sources}
+	if cfg.Auth.DeviceAuth.Enabled && !cfg.Auth.Enabled {
+		return nil, errDeviceAuthRequiresAPIAuth
+	}
+	if cfg.Auth.DeviceAuth.Enabled && deviceAuthReplicaCount(cfg.Auth.DeviceAuth) > 1 {
+		dpop := deviceauth.NewDPoPVerifier(cfg.Auth.DeviceAuth.ClockSkew, cfg.Auth.DeviceAuth.DPoPProofTTL)
+		if !dpop.ReplayStateShared() {
+			return nil, errDeviceAuthRequiresSharedDPoPReplay
+		}
+	}
+	deviceStore := deviceAuthStore(deps.StateStore)
+	if cfg.Auth.DeviceAuth.Enabled && deviceStore == nil {
+		return nil, errDeviceAuthRequiresStore
+	}
+	if deviceStore != nil {
+		dpop := deviceauth.NewDPoPVerifier(cfg.Auth.DeviceAuth.ClockSkew, cfg.Auth.DeviceAuth.DPoPProofTTL)
+		obsStore := deviceRiskObservationStore(deps.StateStore)
+		if obsStore == nil {
+			obsStore = risk.NewInMemoryObservationStore()
+		}
+		riskScorer := risk.NewScorer(
+			risk.Thresholds{Elevated: cfg.Auth.DeviceAuth.RiskElevatedThreshold, High: cfg.Auth.DeviceAuth.RiskHighThreshold},
+			risk.NoOpLookup{},
+			risk.NoOpEmitter{},
+			risk.NewVelocityDetector(),
+			risk.NewCountryDriftDetector(),
+			risk.NewASNDriftDetector(),
+		)
+		service, err := buildDeviceAuthService(cfg.Auth.DeviceAuth, deviceStore, dpop, riskScorer, obsStore)
+		if err != nil {
+			return nil, fmt.Errorf("device-auth bootstrap failed: %w", err)
+		}
+		if service != nil {
+			app.deviceService = service
+			app.deviceVerifier = service.Verifier()
+			app.dpopVerifier = dpop
+			app.riskScorer = riskScorer
+			app.observationStore = obsStore
+			app.deviceHandler = newDeviceAuthHTTPHandler(service, cfg.Auth.DeviceAuth, cfg.Auth.RequestOrigin)
+		}
+	}
+	mux := http.NewServeMux()
+	app.mux = mux
+	app.registerRoutes(mux, cfg, deps, sources)
+	app.handler = authMiddleware(cfg.Auth, AuthDependencies{
+		DeviceVerifier: app.deviceVerifier,
+		DPoPVerifier:   app.dpopVerifier,
+		RiskScorer:     app.riskScorer,
+		Observations:   app.observationStore,
+	}, mux)
 	app.server = &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           app.handler,
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       2 * time.Minute,
 	}
-	return app
+	return app, nil
 }
 
 // Handler returns the composed HTTP handler for embedding in tests or another server.
@@ -184,14 +184,6 @@ func (a *App) handleOpenAPI(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(apicontract.OpenAPIYAML)
-}
-
-func deprecatedRoute(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Deprecation", "true")
-		w.Header().Set("Link", `<https://github.com/writer/cerebro/blob/main/README.md>; rel="deprecation"`)
-		next(w, r)
-	}
 }
 
 func authorizeSourceRuntimeIDTenant(ctx context.Context, store ports.SourceRuntimeStore, runtimeID string, allowMissing bool) error {
@@ -551,6 +543,10 @@ func (a *App) handleRunReport(w http.ResponseWriter, r *http.Request) {
 	}
 	for key, value := range config {
 		request.Parameters[key] = value
+	}
+	if err := authorizeTenantID(r.Context(), request.GetParameters()["tenant_id"]); err != nil {
+		writeReportError(w, err)
+		return
 	}
 	response, err := a.reportService().Run(r.Context(), request)
 	if err != nil {
@@ -1348,6 +1344,41 @@ func (a *App) handleEvaluateSourceRuntimeFindingRules(w http.ResponseWriter, r *
 	writeProtoJSON(w, http.StatusOK, findingRulesResponse(response))
 }
 
+func (a *App) handleEvaluateSourceRuntimeFindingCandidates(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.EvaluateSourceRuntimeFindingCandidatesRequest{}
+	if err := readProtoJSON(r, request); err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	if eventLimit := r.URL.Query().Get("event_limit"); eventLimit != "" {
+		overrides := &cerebrov1.EvaluateSourceRuntimeFindingCandidatesRequest{}
+		body := []byte(`{"event_limit":` + eventLimit + `}`)
+		if err := unmarshalHTTPProtoJSON(body, overrides); err != nil {
+			writeFindingError(w, err)
+			return
+		}
+		request.EventLimit = overrides.GetEventLimit()
+	}
+	request.Id = r.PathValue("runtimeID")
+	if ruleIDs := r.URL.Query()["rule_id"]; len(ruleIDs) != 0 {
+		request.RuleIds = ruleIDs
+	}
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetId(), false); err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	response, err := a.findingService().EvaluateSourceRuntimeCandidateRules(r.Context(), findings.EvaluateCandidateRulesRequest{
+		RuntimeID:  request.GetId(),
+		RuleIDs:    request.GetRuleIds(),
+		EventLimit: request.GetEventLimit(),
+	})
+	if err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, findingCandidateRulesResponse(response))
+}
+
 func (a *App) handleListFindings(w http.ResponseWriter, r *http.Request) {
 	request := &cerebrov1.ListFindingsRequest{
 		RuntimeId:   r.PathValue("runtimeID"),
@@ -1427,6 +1458,126 @@ func (a *App) handleListFindings(w http.ResponseWriter, r *http.Request) {
 	writeProtoJSON(w, http.StatusOK, listFindingsResponse(response))
 }
 
+func (a *App) handleListFindingCandidates(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.ListFindingCandidatesRequest{
+		RuntimeId:   r.PathValue("runtimeID"),
+		CandidateId: r.URL.Query().Get("candidate_id"),
+		RuleId:      r.URL.Query().Get("rule_id"),
+		Status:      r.URL.Query().Get("status"),
+		Fingerprint: r.URL.Query().Get("fingerprint"),
+	}
+	if limit := r.URL.Query().Get("limit"); limit != "" {
+		body := []byte(`{"limit":` + limit + `}`)
+		if err := unmarshalHTTPProtoJSON(body, request); err != nil {
+			writeFindingError(w, err)
+			return
+		}
+		request.RuntimeId = r.PathValue("runtimeID")
+		request.CandidateId = r.URL.Query().Get("candidate_id")
+		request.RuleId = r.URL.Query().Get("rule_id")
+		request.Status = r.URL.Query().Get("status")
+		request.Fingerprint = r.URL.Query().Get("fingerprint")
+	}
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetRuntimeId(), false); err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	response, err := a.findingService().ListFindingCandidates(r.Context(), findings.ListCandidatesRequest{
+		RuntimeID:   request.GetRuntimeId(),
+		CandidateID: request.GetCandidateId(),
+		RuleID:      request.GetRuleId(),
+		Status:      request.GetStatus(),
+		Fingerprint: request.GetFingerprint(),
+		Limit:       request.GetLimit(),
+	})
+	if err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, listFindingCandidatesResponse(response))
+}
+
+func (a *App) handleGetFindingCandidate(w http.ResponseWriter, r *http.Request) {
+	candidateID := r.PathValue("candidateID")
+	candidate, err := a.findingService().GetFindingCandidate(r.Context(), candidateID)
+	if err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), candidate.RuntimeID, false); err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, &cerebrov1.GetFindingCandidateResponse{Candidate: findingCandidateMessage(candidate)})
+}
+
+func (a *App) handlePromoteFindingCandidate(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.PromoteFindingCandidateRequest{}
+	if err := readProtoJSON(r, request); err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	request.Id = r.PathValue("candidateID")
+	candidate, err := a.findingService().GetFindingCandidate(r.Context(), request.GetId())
+	if err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), candidate.RuntimeID, false); err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	if err := authorizeFindingCandidatePromotion(r.Context()); err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	response, err := a.findingService().PromoteFindingCandidate(r.Context(), findings.PromoteCandidateRequest{
+		CandidateID:           request.GetId(),
+		PromotedBy:            request.GetPromotedBy(),
+		Rationale:             request.GetRationale(),
+		ChangeTicket:          request.GetChangeTicket(),
+		FalsePositiveReviewed: request.GetFalsePositiveReviewed(),
+		GraphCoverageReviewed: request.GetGraphCoverageReviewed(),
+	})
+	if err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, promoteFindingCandidateResponse(response))
+}
+
+func (a *App) handleRejectFindingCandidate(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.RejectFindingCandidateRequest{}
+	if err := readProtoJSON(r, request); err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	request.Id = r.PathValue("candidateID")
+	candidate, err := a.findingService().GetFindingCandidate(r.Context(), request.GetId())
+	if err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), candidate.RuntimeID, false); err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	if err := authorizeFindingCandidatePromotion(r.Context()); err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	response, err := a.findingService().RejectFindingCandidate(r.Context(), findings.RejectCandidateRequest{
+		CandidateID: request.GetId(),
+		RejectedBy:  request.GetRejectedBy(),
+		Rationale:   request.GetRationale(),
+	})
+	if err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, rejectFindingCandidateResponse(response))
+}
+
 func (a *App) handleListFindingEvidence(w http.ResponseWriter, r *http.Request) {
 	request := &cerebrov1.ListFindingEvidenceRequest{
 		RuntimeId:    r.PathValue("runtimeID"),
@@ -1465,6 +1616,7 @@ func (a *App) handleListFindingEvidence(w http.ResponseWriter, r *http.Request) 
 		ClaimID:      request.GetClaimId(),
 		EventID:      request.GetEventId(),
 		GraphRootURN: request.GetGraphRootUrn(),
+		GraphPathURN: request.GetGraphPathUrn(),
 		Limit:        request.GetLimit(),
 	})
 	if err != nil {
@@ -1545,6 +1697,9 @@ func (s *bootstrapService) ListFindingRules(_ context.Context, _ *connect.Reques
 }
 
 func (s *bootstrapService) RunReport(ctx context.Context, req *connect.Request[cerebrov1.RunReportRequest]) (*connect.Response[cerebrov1.RunReportResponse], error) {
+	if err := authorizeTenantID(ctx, req.Msg.GetParameters()["tenant_id"]); err != nil {
+		return nil, reportConnectError(err)
+	}
 	response, err := reports.New(
 		findingStore(s.deps.StateStore),
 		graphQueryStore(s.deps.GraphStore),
@@ -1736,6 +1891,135 @@ func (s *bootstrapService) GetFinding(ctx context.Context, req *connect.Request[
 		return nil, findingConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.GetFindingResponse{Finding: findingMessage(finding)}), nil
+}
+
+func (s *bootstrapService) ListFindingCandidates(ctx context.Context, req *connect.Request[cerebrov1.ListFindingCandidatesRequest]) (*connect.Response[cerebrov1.ListFindingCandidatesResponse], error) {
+	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntimeId(), false); err != nil {
+		return nil, findingConnectError(err)
+	}
+	response, err := findings.New(
+		sourceRuntimeStore(s.deps.StateStore),
+		eventReplayer(s.deps.AppendLog),
+		findingStore(s.deps.StateStore),
+		findingEvaluationRunStore(s.deps.StateStore),
+		findingEvidenceStore(s.deps.StateStore),
+		claimStore(s.deps.StateStore),
+	).WithFindingCandidateStore(findingCandidateStore(s.deps.StateStore)).ListFindingCandidates(ctx, findings.ListCandidatesRequest{
+		RuntimeID:   req.Msg.GetRuntimeId(),
+		CandidateID: req.Msg.GetCandidateId(),
+		RuleID:      req.Msg.GetRuleId(),
+		Status:      req.Msg.GetStatus(),
+		Fingerprint: req.Msg.GetFingerprint(),
+		Limit:       req.Msg.GetLimit(),
+	})
+	if err != nil {
+		return nil, findingConnectError(err)
+	}
+	return connect.NewResponse(listFindingCandidatesResponse(response)), nil
+}
+
+func (s *bootstrapService) GetFindingCandidate(ctx context.Context, req *connect.Request[cerebrov1.GetFindingCandidateRequest]) (*connect.Response[cerebrov1.GetFindingCandidateResponse], error) {
+	service := findings.New(
+		sourceRuntimeStore(s.deps.StateStore),
+		eventReplayer(s.deps.AppendLog),
+		findingStore(s.deps.StateStore),
+		findingEvaluationRunStore(s.deps.StateStore),
+		findingEvidenceStore(s.deps.StateStore),
+		claimStore(s.deps.StateStore),
+	).WithFindingCandidateStore(findingCandidateStore(s.deps.StateStore))
+	candidate, err := service.GetFindingCandidate(ctx, req.Msg.GetId())
+	if err != nil {
+		return nil, findingConnectError(err)
+	}
+	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), candidate.RuntimeID, false); err != nil {
+		return nil, findingConnectError(err)
+	}
+	return connect.NewResponse(&cerebrov1.GetFindingCandidateResponse{Candidate: findingCandidateMessage(candidate)}), nil
+}
+
+func (s *bootstrapService) EvaluateSourceRuntimeFindingCandidates(ctx context.Context, req *connect.Request[cerebrov1.EvaluateSourceRuntimeFindingCandidatesRequest]) (*connect.Response[cerebrov1.EvaluateSourceRuntimeFindingCandidatesResponse], error) {
+	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId(), false); err != nil {
+		return nil, findingConnectError(err)
+	}
+	response, err := findings.New(
+		sourceRuntimeStore(s.deps.StateStore),
+		eventReplayer(s.deps.AppendLog),
+		findingStore(s.deps.StateStore),
+		findingEvaluationRunStore(s.deps.StateStore),
+		findingEvidenceStore(s.deps.StateStore),
+		claimStore(s.deps.StateStore),
+	).WithFindingCandidateStore(findingCandidateStore(s.deps.StateStore)).EvaluateSourceRuntimeCandidateRules(ctx, findings.EvaluateCandidateRulesRequest{
+		RuntimeID:  req.Msg.GetId(),
+		RuleIDs:    req.Msg.GetRuleIds(),
+		EventLimit: req.Msg.GetEventLimit(),
+	})
+	if err != nil {
+		return nil, findingConnectError(err)
+	}
+	return connect.NewResponse(findingCandidateRulesResponse(response)), nil
+}
+
+func (s *bootstrapService) PromoteFindingCandidate(ctx context.Context, req *connect.Request[cerebrov1.PromoteFindingCandidateRequest]) (*connect.Response[cerebrov1.PromoteFindingCandidateResponse], error) {
+	service := findings.New(
+		sourceRuntimeStore(s.deps.StateStore),
+		eventReplayer(s.deps.AppendLog),
+		findingStore(s.deps.StateStore),
+		findingEvaluationRunStore(s.deps.StateStore),
+		findingEvidenceStore(s.deps.StateStore),
+		claimStore(s.deps.StateStore),
+	).WithFindingCandidateStore(findingCandidateStore(s.deps.StateStore)).WithGraphStore(sourceProjectionGraphStore(s.deps.GraphStore)).WithGraphQueryStore(graphQueryStore(s.deps.GraphStore)).WithAppendLog(s.deps.AppendLog)
+	candidate, err := service.GetFindingCandidate(ctx, req.Msg.GetId())
+	if err != nil {
+		return nil, findingConnectError(err)
+	}
+	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), candidate.RuntimeID, false); err != nil {
+		return nil, findingConnectError(err)
+	}
+	if err := authorizeFindingCandidatePromotion(ctx); err != nil {
+		return nil, findingConnectError(err)
+	}
+	response, err := service.PromoteFindingCandidate(ctx, findings.PromoteCandidateRequest{
+		CandidateID:           req.Msg.GetId(),
+		PromotedBy:            req.Msg.GetPromotedBy(),
+		Rationale:             req.Msg.GetRationale(),
+		ChangeTicket:          req.Msg.GetChangeTicket(),
+		FalsePositiveReviewed: req.Msg.GetFalsePositiveReviewed(),
+		GraphCoverageReviewed: req.Msg.GetGraphCoverageReviewed(),
+	})
+	if err != nil {
+		return nil, findingConnectError(err)
+	}
+	return connect.NewResponse(promoteFindingCandidateResponse(response)), nil
+}
+
+func (s *bootstrapService) RejectFindingCandidate(ctx context.Context, req *connect.Request[cerebrov1.RejectFindingCandidateRequest]) (*connect.Response[cerebrov1.RejectFindingCandidateResponse], error) {
+	service := findings.New(
+		sourceRuntimeStore(s.deps.StateStore),
+		eventReplayer(s.deps.AppendLog),
+		findingStore(s.deps.StateStore),
+		findingEvaluationRunStore(s.deps.StateStore),
+		findingEvidenceStore(s.deps.StateStore),
+		claimStore(s.deps.StateStore),
+	).WithFindingCandidateStore(findingCandidateStore(s.deps.StateStore)).WithGraphStore(sourceProjectionGraphStore(s.deps.GraphStore)).WithGraphQueryStore(graphQueryStore(s.deps.GraphStore)).WithAppendLog(s.deps.AppendLog)
+	candidate, err := service.GetFindingCandidate(ctx, req.Msg.GetId())
+	if err != nil {
+		return nil, findingConnectError(err)
+	}
+	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), candidate.RuntimeID, false); err != nil {
+		return nil, findingConnectError(err)
+	}
+	if err := authorizeFindingCandidatePromotion(ctx); err != nil {
+		return nil, findingConnectError(err)
+	}
+	response, err := service.RejectFindingCandidate(ctx, findings.RejectCandidateRequest{
+		CandidateID: req.Msg.GetId(),
+		RejectedBy:  req.Msg.GetRejectedBy(),
+		Rationale:   req.Msg.GetRationale(),
+	})
+	if err != nil {
+		return nil, findingConnectError(err)
+	}
+	return connect.NewResponse(rejectFindingCandidateResponse(response)), nil
 }
 
 func (s *bootstrapService) ResolveFinding(ctx context.Context, req *connect.Request[cerebrov1.ResolveFindingRequest]) (*connect.Response[cerebrov1.ResolveFindingResponse], error) {
@@ -2385,13 +2669,33 @@ func (a *App) findingService() *findings.Service {
 		findingEvaluationRunStore(a.deps.StateStore),
 		findingEvidenceStore(a.deps.StateStore),
 		claimStore(a.deps.StateStore),
-	).WithGraphStore(sourceProjectionGraphStore(a.deps.GraphStore)).WithGraphQueryStore(graphQueryStore(a.deps.GraphStore)).WithAppendLog(a.deps.AppendLog)
+	).WithFindingCandidateStore(findingCandidateStore(a.deps.StateStore)).WithGraphStore(sourceProjectionGraphStore(a.deps.GraphStore)).WithGraphQueryStore(graphQueryStore(a.deps.GraphStore)).WithAppendLog(a.deps.AppendLog)
 }
+
+const (
+	startupFindingRiskBackfillJobID    = "finding-risk-backfill"
+	startupFindingRiskBackfillLeaseTTL = 30 * time.Minute
+)
 
 // BackfillFindingRisk runs server-start finding risk migration work.
 func (a *App) BackfillFindingRisk(ctx context.Context) error {
 	if findingStore(a.deps.StateStore) == nil {
 		return nil
+	}
+	if leaseStore := startupJobLeaseStore(a.deps.StateStore); leaseStore != nil {
+		owner := startupJobLeaseOwner()
+		acquired, err := leaseStore.AcquireStartupJobLease(ctx, startupFindingRiskBackfillJobID, owner, startupFindingRiskBackfillLeaseTTL)
+		if err != nil {
+			return err
+		}
+		if !acquired {
+			return nil
+		}
+		defer func() {
+			releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
+			_ = leaseStore.ReleaseStartupJobLease(releaseCtx, startupFindingRiskBackfillJobID, owner)
+		}()
 	}
 	return a.findingService().BackfillFindingRisk(ctx)
 }
@@ -2621,6 +2925,7 @@ func findingConnectError(err error) error {
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound),
 		errors.Is(err, findings.ErrRuleNotFound),
 		errors.Is(err, ports.ErrFindingNotFound),
+		errors.Is(err, ports.ErrFindingCandidateNotFound),
 		errors.Is(err, ports.ErrFindingEvaluationRunNotFound),
 		errors.Is(err, ports.ErrFindingEvidenceNotFound):
 		return connect.NewError(connect.CodeNotFound, err)
@@ -2867,6 +3172,14 @@ func graphQueryStore(store ports.GraphStore) ports.GraphQueryStore {
 	return queryStore
 }
 
+func askTrajectoryStore(store ports.StateStore) ports.AskTrajectoryStore {
+	trajectoryStore, ok := store.(ports.AskTrajectoryStore)
+	if !ok || isNilInterface(trajectoryStore) {
+		return nil
+	}
+	return trajectoryStore
+}
+
 func findingStore(store ports.StateStore) ports.FindingStore {
 	findingStore, ok := store.(ports.FindingStore)
 	if !ok || isNilInterface(findingStore) {
@@ -2891,6 +3204,14 @@ func findingEvidenceStore(store ports.StateStore) ports.FindingEvidenceStore {
 	return evidenceStore
 }
 
+func findingCandidateStore(store ports.StateStore) ports.FindingCandidateStore {
+	candidateStore, ok := store.(ports.FindingCandidateStore)
+	if !ok || isNilInterface(candidateStore) {
+		return nil
+	}
+	return candidateStore
+}
+
 func endpointVulnerabilityFindingStore(store ports.StateStore) ports.EndpointVulnerabilityFindingStore {
 	endpointStore, ok := store.(ports.EndpointVulnerabilityFindingStore)
 	if !ok || isNilInterface(endpointStore) {
@@ -2905,6 +3226,50 @@ func claimStore(store ports.StateStore) ports.ClaimStore {
 		return nil
 	}
 	return claimStore
+}
+
+func deviceAuthStore(store ports.StateStore) deviceauth.Store {
+	deviceStore, ok := store.(deviceauth.Store)
+	if !ok || isNilInterface(deviceStore) {
+		return nil
+	}
+	return deviceStore
+}
+
+func deviceRiskObservationStore(store ports.StateStore) risk.ObservationStore {
+	observationStore, ok := store.(risk.ObservationStore)
+	if !ok || isNilInterface(observationStore) {
+		return nil
+	}
+	return observationStore
+}
+
+type startupJobLeaseProvider interface {
+	AcquireStartupJobLease(context.Context, string, string, time.Duration) (bool, error)
+	ReleaseStartupJobLease(context.Context, string, string) error
+}
+
+func startupJobLeaseStore(store ports.StateStore) startupJobLeaseProvider {
+	leaseStore, ok := store.(startupJobLeaseProvider)
+	if !ok || isNilInterface(leaseStore) {
+		return nil
+	}
+	return leaseStore
+}
+
+func startupJobLeaseOwner() string {
+	hostname, err := os.Hostname()
+	if err != nil || strings.TrimSpace(hostname) == "" {
+		hostname = "unknown-host"
+	}
+	return fmt.Sprintf("%s/%d/%d", hostname, os.Getpid(), time.Now().UnixNano())
+}
+
+func deviceAuthReplicaCount(cfg config.DeviceAuthConfig) int {
+	if cfg.ReplicaCount <= 0 {
+		return 1
+	}
+	return cfg.ReplicaCount
 }
 
 func isNilInterface(value any) bool {
@@ -2967,6 +3332,21 @@ func findingRulesResponse(result *findings.EvaluateRulesResult) *cerebrov1.Evalu
 	}
 }
 
+func findingCandidateRulesResponse(result *findings.EvaluateCandidateRulesResult) *cerebrov1.EvaluateSourceRuntimeFindingCandidatesResponse {
+	if result == nil {
+		return &cerebrov1.EvaluateSourceRuntimeFindingCandidatesResponse{}
+	}
+	evaluations := make([]*cerebrov1.FindingCandidateRuleEvaluation, 0, len(result.Evaluations))
+	for _, evaluation := range result.Evaluations {
+		evaluations = append(evaluations, findingCandidateRuleEvaluationMessage(evaluation))
+	}
+	return &cerebrov1.EvaluateSourceRuntimeFindingCandidatesResponse{
+		Runtime:         redactSourceRuntime(result.Runtime),
+		EventsEvaluated: result.EventsEvaluated,
+		Evaluations:     evaluations,
+	}
+}
+
 func redactSourceRuntime(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceRuntime {
 	if runtime == nil {
 		return nil
@@ -2999,6 +3379,17 @@ func findingRuleEvaluationMessage(result *findings.RuleEvaluationResult) *cerebr
 	}
 }
 
+func findingCandidateRuleEvaluationMessage(result *findings.FindingCandidateEvaluationResult) *cerebrov1.FindingCandidateRuleEvaluation {
+	if result == nil {
+		return &cerebrov1.FindingCandidateRuleEvaluation{}
+	}
+	return &cerebrov1.FindingCandidateRuleEvaluation{
+		Rule:       result.Rule,
+		Run:        findingCandidateRunMessage(result.Run),
+		Candidates: findingCandidateMessages(result.Candidates),
+	}
+}
+
 func listFindingsResponse(result *findings.ListResult) *cerebrov1.ListFindingsResponse {
 	if result == nil {
 		return &cerebrov1.ListFindingsResponse{}
@@ -3008,12 +3399,119 @@ func listFindingsResponse(result *findings.ListResult) *cerebrov1.ListFindingsRe
 	}
 }
 
+func listFindingCandidatesResponse(result *findings.ListCandidatesResult) *cerebrov1.ListFindingCandidatesResponse {
+	if result == nil {
+		return &cerebrov1.ListFindingCandidatesResponse{}
+	}
+	return &cerebrov1.ListFindingCandidatesResponse{
+		Candidates: findingCandidateMessages(result.Candidates),
+	}
+}
+
+func promoteFindingCandidateResponse(result *findings.PromoteCandidateResult) *cerebrov1.PromoteFindingCandidateResponse {
+	if result == nil {
+		return &cerebrov1.PromoteFindingCandidateResponse{}
+	}
+	return &cerebrov1.PromoteFindingCandidateResponse{
+		Finding:    findingMessage(result.Finding),
+		Candidate:  findingCandidateMessage(result.Candidate),
+		DecisionId: result.DecisionID,
+	}
+}
+
+func rejectFindingCandidateResponse(result *findings.RejectCandidateResult) *cerebrov1.RejectFindingCandidateResponse {
+	if result == nil {
+		return &cerebrov1.RejectFindingCandidateResponse{}
+	}
+	return &cerebrov1.RejectFindingCandidateResponse{
+		Candidate:  findingCandidateMessage(result.Candidate),
+		DecisionId: result.DecisionID,
+	}
+}
+
 func findingMessages(findings []*ports.FindingRecord) []*cerebrov1.Finding {
 	messages := make([]*cerebrov1.Finding, 0, len(findings))
 	for _, finding := range findings {
 		messages = append(messages, findingMessage(finding))
 	}
 	return messages
+}
+
+func findingCandidateMessages(candidates []*ports.FindingCandidateRecord) []*cerebrov1.FindingCandidate {
+	messages := make([]*cerebrov1.FindingCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		messages = append(messages, findingCandidateMessage(candidate))
+	}
+	return messages
+}
+
+func findingCandidateRunMessage(run *ports.FindingCandidateRun) *cerebrov1.FindingCandidateRun {
+	if run == nil {
+		return nil
+	}
+	message := &cerebrov1.FindingCandidateRun{
+		Id:              run.ID,
+		TenantId:        run.TenantID,
+		RuntimeId:       run.RuntimeID,
+		RuleId:          run.RuleID,
+		Status:          run.Status,
+		EventLimit:      run.EventLimit,
+		EventsEvaluated: run.EventsEvaluated,
+		EventsMatched:   run.EventsMatched,
+		Candidates:      run.Candidates,
+		Error:           run.Error,
+	}
+	if !run.StartedAt.IsZero() {
+		message.StartedAt = timestamppb.New(run.StartedAt.UTC())
+	}
+	if !run.FinishedAt.IsZero() {
+		message.FinishedAt = timestamppb.New(run.FinishedAt.UTC())
+	}
+	return message
+}
+
+func findingCandidateMessage(candidate *ports.FindingCandidateRecord) *cerebrov1.FindingCandidate {
+	if candidate == nil {
+		return nil
+	}
+	message := &cerebrov1.FindingCandidate{
+		Id:                 candidate.ID,
+		TenantId:           candidate.TenantID,
+		RuntimeId:          candidate.RuntimeID,
+		RuleId:             candidate.RuleID,
+		Fingerprint:        candidate.Fingerprint,
+		Status:             candidate.Status,
+		Finding:            findingMessage(candidate.Finding),
+		Evidence:           candidate.Evidence,
+		LastRunId:          candidate.LastRunID,
+		ObservationCount:   candidate.ObservationCount,
+		PromotedFindingId:  candidate.PromotedFindingID,
+		DecisionId:         candidate.DecisionID,
+		PromotedBy:         candidate.PromotedBy,
+		PromotionRationale: candidate.PromotionRationale,
+		ChangeTicket:       candidate.ChangeTicket,
+		RejectedBy:         candidate.RejectedBy,
+		RejectionRationale: candidate.RejectionRationale,
+	}
+	if !candidate.FirstObservedAt.IsZero() {
+		message.FirstObservedAt = timestamppb.New(candidate.FirstObservedAt.UTC())
+	}
+	if !candidate.LastObservedAt.IsZero() {
+		message.LastObservedAt = timestamppb.New(candidate.LastObservedAt.UTC())
+	}
+	if !candidate.PromotedAt.IsZero() {
+		message.PromotedAt = timestamppb.New(candidate.PromotedAt.UTC())
+	}
+	if !candidate.RejectedAt.IsZero() {
+		message.RejectedAt = timestamppb.New(candidate.RejectedAt.UTC())
+	}
+	if !candidate.CreatedAt.IsZero() {
+		message.CreatedAt = timestamppb.New(candidate.CreatedAt.UTC())
+	}
+	if !candidate.UpdatedAt.IsZero() {
+		message.UpdatedAt = timestamppb.New(candidate.UpdatedAt.UTC())
+	}
+	return message
 }
 
 func findingMessage(finding *ports.FindingRecord) *cerebrov1.Finding {

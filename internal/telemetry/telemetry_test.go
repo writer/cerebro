@@ -4,7 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"io/fs"
 	"os"
+	"path/filepath"
+	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -29,6 +33,49 @@ func TestEventEmitsParseableJSONLineOnStderr(t *testing.T) {
 	}
 	if got := payload["name"]; got != "test.event" {
 		t.Fatalf("name = %v, want test.event", got)
+	}
+}
+
+func TestTelemetryFieldsDoNotUseRawErrorKey(t *testing.T) {
+	_, currentFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
+	pattern := regexp.MustCompile(`telemetry\.Field\s*\{\s*Key:\s*"` + `error"`)
+	var matches []string
+	err := filepath.WalkDir(repoRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			switch entry.Name() {
+			case ".git", ".idea", ".vscode", "bin", "node_modules":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(path) != ".go" {
+			return nil
+		}
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if pattern.Match(contents) {
+			rel, err := filepath.Rel(repoRoot, path)
+			if err != nil {
+				rel = path
+			}
+			matches = append(matches, rel)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk repo: %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("telemetry raw error field is forbidden; use bounded error_kind instead: %s", strings.Join(matches, ", "))
 	}
 }
 

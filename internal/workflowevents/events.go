@@ -3,13 +3,13 @@ package workflowevents
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	eventregistry "github.com/WriterInternal/event-registry/clients/go"
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
@@ -34,9 +34,11 @@ const (
 )
 
 const (
-	FindingStatusReasonNoLongerEmitted = "No longer emitted by latest rule evaluation."
-	FindingStatusSourceManual          = "manual"
-	FindingStatusSourceStaleEvaluation = "stale_rule_evaluation"
+	FindingStatusReasonNoLongerEmitted      = "No longer emitted by latest rule evaluation."
+	FindingStatusReasonClosedByCounterEvent = "closed_by_counter_event"
+	FindingStatusReasonTTLExpired           = "ttl_expired"
+	FindingStatusSourceManual               = "manual"
+	FindingStatusSourceStaleEvaluation      = "stale_rule_evaluation"
 )
 
 const (
@@ -206,7 +208,7 @@ type FindingStatusChanged struct {
 
 // NewDecisionRecordedEvent builds the durable event envelope for one recorded decision.
 func NewDecisionRecordedEvent(payload DecisionRecorded) (*cerebrov1.EventEnvelope, error) {
-	return newEvent(EventKindKnowledgeDecisionRecorded, SchemaKnowledgeDecisionRecorded, payload.TenantID, payload.SourceSystem, payload.DecisionID, payload.ObservedAt, payload, map[string]string{
+	return newEvent(registryDecisionRecorded(payload), SchemaKnowledgeDecisionRecorded, payload.TenantID, payload.SourceSystem, payload.DecisionID, payload.ObservedAt, map[string]string{
 		EventAttributeWorkflowKind: "knowledge_decision",
 		EventAttributeDecisionID:   payload.DecisionID,
 		EventAttributeSourceEvent:  payload.SourceEventID,
@@ -215,7 +217,7 @@ func NewDecisionRecordedEvent(payload DecisionRecorded) (*cerebrov1.EventEnvelop
 
 // NewActionRecordedEvent builds the durable event envelope for one recorded action.
 func NewActionRecordedEvent(payload ActionRecorded) (*cerebrov1.EventEnvelope, error) {
-	return newEvent(EventKindKnowledgeActionRecorded, SchemaKnowledgeActionRecorded, payload.TenantID, payload.SourceSystem, payload.ActionID, payload.ObservedAt, payload, map[string]string{
+	return newEvent(registryActionRecorded(payload), SchemaKnowledgeActionRecorded, payload.TenantID, payload.SourceSystem, payload.ActionID, payload.ObservedAt, map[string]string{
 		EventAttributeWorkflowKind: "knowledge_action",
 		EventAttributeActionID:     payload.ActionID,
 		EventAttributeDecisionID:   payload.DecisionID,
@@ -225,7 +227,7 @@ func NewActionRecordedEvent(payload ActionRecorded) (*cerebrov1.EventEnvelope, e
 
 // NewOutcomeRecordedEvent builds the durable event envelope for one recorded outcome.
 func NewOutcomeRecordedEvent(payload OutcomeRecorded) (*cerebrov1.EventEnvelope, error) {
-	return newEvent(EventKindKnowledgeOutcomeRecorded, SchemaKnowledgeOutcomeRecorded, payload.TenantID, payload.SourceSystem, payload.OutcomeID, payload.ObservedAt, payload, map[string]string{
+	return newEvent(registryOutcomeRecorded(payload), SchemaKnowledgeOutcomeRecorded, payload.TenantID, payload.SourceSystem, payload.OutcomeID, payload.ObservedAt, map[string]string{
 		EventAttributeWorkflowKind: "knowledge_outcome",
 		EventAttributeOutcomeID:    payload.OutcomeID,
 		EventAttributeDecisionID:   payload.DecisionID,
@@ -235,7 +237,7 @@ func NewOutcomeRecordedEvent(payload OutcomeRecorded) (*cerebrov1.EventEnvelope,
 
 // NewFindingRecordedEvent builds the durable event envelope for one upserted finding.
 func NewFindingRecordedEvent(payload FindingRecorded) (*cerebrov1.EventEnvelope, error) {
-	return newEvent(EventKindFindingRecorded, SchemaFindingRecorded, payload.Finding.TenantID, payload.Finding.SourceSystem, payload.Finding.FindingID, payload.RecordedAt, payload, map[string]string{
+	return newEvent(registryFindingRecorded(payload), SchemaFindingRecorded, payload.Finding.TenantID, payload.Finding.SourceSystem, payload.Finding.FindingID, payload.RecordedAt, map[string]string{
 		EventAttributeWorkflowKind: "finding_record",
 		EventAttributeFindingID:    payload.Finding.FindingID,
 	})
@@ -250,7 +252,7 @@ func NewFindingRecordedRevisionEvent(payload FindingRecorded, revision string, o
 	if occurredAt.IsZero() {
 		occurredAt = time.Now().UTC()
 	}
-	return newEvent(EventKindFindingRecorded, SchemaFindingRecorded, payload.Finding.TenantID, payload.Finding.SourceSystem, primaryID, occurredAt.UTC().Format(time.RFC3339Nano), payload, map[string]string{
+	return newEvent(registryFindingRecorded(payload), SchemaFindingRecorded, payload.Finding.TenantID, payload.Finding.SourceSystem, primaryID, occurredAt.UTC().Format(time.RFC3339Nano), map[string]string{
 		EventAttributeWorkflowKind: "finding_record",
 		EventAttributeFindingID:    payload.Finding.FindingID,
 	})
@@ -258,7 +260,7 @@ func NewFindingRecordedRevisionEvent(payload FindingRecorded, revision string, o
 
 // NewFindingNoteAddedEvent builds the durable event envelope for one finding note.
 func NewFindingNoteAddedEvent(payload FindingNoteAdded) (*cerebrov1.EventEnvelope, error) {
-	return newEvent(EventKindFindingNoteAdded, SchemaFindingNoteAdded, payload.Finding.TenantID, payload.Finding.SourceSystem, payload.Finding.FindingID+"|"+payload.NoteID, payload.CreatedAt, payload, map[string]string{
+	return newEvent(registryFindingNoteAdded(payload), SchemaFindingNoteAdded, payload.Finding.TenantID, payload.Finding.SourceSystem, payload.Finding.FindingID+"|"+payload.NoteID, payload.CreatedAt, map[string]string{
 		EventAttributeWorkflowKind: "finding_note",
 		EventAttributeFindingID:    payload.Finding.FindingID,
 	})
@@ -266,7 +268,7 @@ func NewFindingNoteAddedEvent(payload FindingNoteAdded) (*cerebrov1.EventEnvelop
 
 // NewFindingTicketLinkedEvent builds the durable event envelope for one finding ticket link.
 func NewFindingTicketLinkedEvent(payload FindingTicketLinked) (*cerebrov1.EventEnvelope, error) {
-	return newEvent(EventKindFindingTicketLinked, SchemaFindingTicketLinked, payload.Finding.TenantID, payload.Finding.SourceSystem, payload.Finding.FindingID+"|"+payload.URL, payload.LinkedAt, payload, map[string]string{
+	return newEvent(registryFindingTicketLinked(payload), SchemaFindingTicketLinked, payload.Finding.TenantID, payload.Finding.SourceSystem, payload.Finding.FindingID+"|"+payload.URL, payload.LinkedAt, map[string]string{
 		EventAttributeWorkflowKind: "finding_ticket",
 		EventAttributeFindingID:    payload.Finding.FindingID,
 	})
@@ -274,7 +276,7 @@ func NewFindingTicketLinkedEvent(payload FindingTicketLinked) (*cerebrov1.EventE
 
 // NewFindingStatusChangedEvent builds the durable event envelope for one finding status change.
 func NewFindingStatusChangedEvent(payload FindingStatusChanged) (*cerebrov1.EventEnvelope, error) {
-	return newEvent(EventKindFindingStatusChanged, SchemaFindingStatusChanged, payload.Finding.TenantID, payload.Finding.SourceSystem, payload.Finding.FindingID+"|"+payload.Status+"|"+payload.UpdatedAt, payload.UpdatedAt, payload, map[string]string{
+	return newEvent(registryFindingStatusChanged(payload), SchemaFindingStatusChanged, payload.Finding.TenantID, payload.Finding.SourceSystem, payload.Finding.FindingID+"|"+payload.Status+"|"+payload.UpdatedAt, payload.UpdatedAt, map[string]string{
 		EventAttributeWorkflowKind: "finding_status",
 		EventAttributeFindingID:    payload.Finding.FindingID,
 		EventAttributeDecisionID:   payload.DecisionID,
@@ -363,10 +365,13 @@ func CanonicalWorkflowID(tenantID string, entityType string, providedID string, 
 	return fmt.Sprintf("urn:cerebro:%s:%s:%s", strings.TrimSpace(tenantID), entityType, replacer.Replace(value))
 }
 
-func newEvent(kind string, schema string, tenantID string, sourceSystem string, primaryID string, observedAt string, payload any, attributes map[string]string) (*cerebrov1.EventEnvelope, error) {
+func newEvent(contract eventregistry.Event, schema string, tenantID string, sourceSystem string, primaryID string, observedAt string, attributes map[string]string) (*cerebrov1.EventEnvelope, error) {
 	tenantID = strings.TrimSpace(tenantID)
 	sourceSystem = strings.TrimSpace(sourceSystem)
 	primaryID = strings.TrimSpace(primaryID)
+	if contract == nil {
+		return nil, fmt.Errorf("workflow event contract is required")
+	}
 	if tenantID == "" {
 		return nil, fmt.Errorf("workflow event tenant id is required")
 	}
@@ -380,10 +385,6 @@ func newEvent(kind string, schema string, tenantID string, sourceSystem string, 
 	if err != nil {
 		return nil, err
 	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("marshal workflow event payload: %w", err)
-	}
 	eventAttributes := map[string]string{
 		EventAttributeTenantID:     tenantID,
 		EventAttributeSourceSystem: sourceSystem,
@@ -393,15 +394,23 @@ func newEvent(kind string, schema string, tenantID string, sourceSystem string, 
 			eventAttributes[key] = strings.TrimSpace(value)
 		}
 	}
+	encoded, err := (eventregistry.Encoder{}).Encode(contract, eventregistry.EncodeOptions{
+		EventID:    eventID(tenantID, contract.Subject(), primaryID),
+		EmittedAt:  occurredAt,
+		Attributes: eventAttributes,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("encode workflow event payload: %w", err)
+	}
 	return &cerebrov1.EventEnvelope{
-		Id:         eventID(tenantID, kind, primaryID),
+		Id:         encoded.EventID,
 		TenantId:   tenantID,
 		SourceId:   sourceSystem,
-		Kind:       kind,
+		Kind:       contract.Subject(),
 		OccurredAt: timestamppb.New(occurredAt),
 		SchemaRef:  schema,
-		Payload:    body,
-		Attributes: eventAttributes,
+		Payload:    encoded.EnvelopeBytes,
+		Attributes: encoded.Attributes,
 	}, nil
 }
 
@@ -415,10 +424,7 @@ func decodePayload(event *cerebrov1.EventEnvelope, kind string, payload any) err
 	if len(event.GetPayload()) == 0 {
 		return fmt.Errorf("workflow event %q payload is required", event.GetId())
 	}
-	if err := json.Unmarshal(event.GetPayload(), payload); err != nil {
-		return fmt.Errorf("decode workflow event %q payload: %w", event.GetId(), err)
-	}
-	return nil
+	return decodeWorkflowPayload(event, kind, payload)
 }
 
 func parseEventTime(value string) (time.Time, error) {

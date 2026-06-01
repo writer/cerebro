@@ -56,6 +56,12 @@ func TestParseOrchestratorOptionsRejectsZeroLimit(t *testing.T) {
 	}
 }
 
+func TestParseOrchestratorOptionsRejectsNonPositiveTimeout(t *testing.T) {
+	if _, err := parseOrchestratorOptions([]string{"graph_timeout=0s"}); err == nil {
+		t.Fatal("parseOrchestratorOptions(graph_timeout=0s) error = nil, want error")
+	}
+}
+
 func TestParseOrchestratorOptionsAcceptsRuntimeID(t *testing.T) {
 	options, err := parseOrchestratorOptions([]string{"runtime_id=writer-okta-audit"})
 	if err != nil {
@@ -291,8 +297,8 @@ func TestRunOrchestratorIterationPreservesGraphCountersOnPartialFailure(t *testi
 	if runtimeResult.GraphIngest != "failed" {
 		t.Fatalf("graph ingest status = %q, want failed", runtimeResult.GraphIngest)
 	}
-	if runtimeResult.EntitiesProjected != 6 || runtimeResult.LinksProjected != 6 {
-		t.Fatalf("graph counters = %d/%d, want 6/6", runtimeResult.EntitiesProjected, runtimeResult.LinksProjected)
+	if runtimeResult.EntitiesProjected != 6 || runtimeResult.LinksProjected != 7 {
+		t.Fatalf("graph counters = %d/%d, want 6/7", runtimeResult.EntitiesProjected, runtimeResult.LinksProjected)
 	}
 }
 

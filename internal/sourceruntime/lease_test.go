@@ -2,7 +2,11 @@ package sourceruntime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
+	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -120,6 +124,75 @@ func TestSyncWithLeaseReturnsErrSyncInProgressWhenNotAcquired(t *testing.T) {
 	events := store.snapshotEvents()
 	if len(events) != 1 || events[0].verb != "acquire" || events[0].acquired {
 		t.Fatalf("SyncWithLease() events = %#v, want one rejected acquire", events)
+	}
+}
+
+func TestSyncWithLeaseEmitsTelemetryWhenLeaseConflict(t *testing.T) {
+	service := New(nil, nil, nil, nil)
+	store := &stubLeaseStore{rejectNext: true}
+	owner := "owner-should-not-be-logged"
+
+	stderr := captureSourceRuntimeStderr(t, func() {
+		_, err := service.SyncWithLease(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{
+			Id:        "runtime-a",
+			PageLimit: 7,
+		}, SyncWithLeaseOptions{
+			LeaseStore: store,
+			LeaseOwner: owner,
+			LeaseTTL:   time.Minute,
+		})
+		if !errors.Is(err, ErrSyncInProgress) {
+			t.Fatalf("SyncWithLease() err = %v, want ErrSyncInProgress", err)
+		}
+	})
+
+	payload := sourceRuntimeTelemetryPayload(t, stderr, "source_runtime.sync_with_lease")
+	for key, want := range map[string]any{
+		"kind":                "span_end",
+		"name":                "source_runtime.sync_with_lease",
+		"status":              "conflict",
+		"runtime_id":          "runtime-a",
+		"page_limit":          float64(7),
+		"lease_store_present": true,
+		"lease_ttl_seconds":   float64(60),
+		"lease_acquired":      false,
+		"lease_conflict":      true,
+		"error_kind":          "sync_in_progress",
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	if _, ok := payload["duration_ms"].(float64); !ok {
+		t.Fatalf("telemetry duration_ms = %#v, want number; payload=%#v", payload["duration_ms"], payload)
+	}
+	if strings.Contains(stderr, owner) {
+		t.Fatalf("SyncWithLease telemetry leaked lease owner %q in %s", owner, stderr)
+	}
+}
+
+func TestSyncWithLeaseTelemetryRecordsAcquiredFailure(t *testing.T) {
+	service := New(nil, nil, nil, nil)
+	store := &stubLeaseStore{}
+
+	stderr := captureSourceRuntimeStderr(t, func() {
+		_, err := service.SyncWithLease(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "runtime-a"}, SyncWithLeaseOptions{LeaseStore: store})
+		if !errors.Is(err, ErrRuntimeUnavailable) {
+			t.Fatalf("SyncWithLease() err = %v, want ErrRuntimeUnavailable", err)
+		}
+	})
+
+	payload := sourceRuntimeTelemetryPayload(t, stderr, "source_runtime.sync_with_lease")
+	for key, want := range map[string]any{
+		"name":           "source_runtime.sync_with_lease",
+		"status":         "failed",
+		"runtime_id":     "runtime-a",
+		"lease_acquired": true,
+		"error_kind":     "runtime_unavailable",
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
 	}
 }
 
@@ -260,4 +333,45 @@ func itoa(i int) string {
 		buf[pos] = '-'
 	}
 	return string(buf[pos:])
+}
+
+func captureSourceRuntimeStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	oldStderr := os.Stderr
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe stderr: %v", err)
+	}
+	os.Stderr = writer
+	defer func() {
+		os.Stderr = oldStderr
+	}()
+	fn()
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close stderr writer: %v", err)
+	}
+	payload, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("read stderr: %v", err)
+	}
+	return string(payload)
+}
+
+func sourceRuntimeTelemetryPayload(t *testing.T, stderr string, name string) map[string]any {
+	t.Helper()
+	lines := strings.Split(strings.TrimSpace(stderr), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) == "" {
+			continue
+		}
+		payload := map[string]any{}
+		if err := json.Unmarshal([]byte(lines[i]), &payload); err != nil {
+			t.Fatalf("unmarshal telemetry payload %q: %v", lines[i], err)
+		}
+		if payload["kind"] == "span_end" && payload["name"] == name {
+			return payload
+		}
+	}
+	t.Fatalf("telemetry span_end %q not found in stderr: %s", name, stderr)
+	return nil
 }

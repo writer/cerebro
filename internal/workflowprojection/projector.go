@@ -42,34 +42,6 @@ func New(graph ports.ProjectionGraphStore) *Service {
 	return &Service{graph: graph}
 }
 
-// Project applies one workflow event to the configured graph store.
-func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (ports.ProjectionResult, error) {
-	if event == nil {
-		return ports.ProjectionResult{}, fmt.Errorf("workflow event is required")
-	}
-	if s == nil || s.graph == nil {
-		return ports.ProjectionResult{}, fmt.Errorf("workflow graph projection store is required")
-	}
-	switch strings.TrimSpace(event.GetKind()) {
-	case workflowevents.EventKindKnowledgeDecisionRecorded:
-		return s.projectDecision(ctx, event)
-	case workflowevents.EventKindKnowledgeActionRecorded:
-		return s.projectAction(ctx, event)
-	case workflowevents.EventKindKnowledgeOutcomeRecorded:
-		return s.projectOutcome(ctx, event)
-	case workflowevents.EventKindFindingRecorded:
-		return s.projectFindingRecorded(ctx, event)
-	case workflowevents.EventKindFindingNoteAdded:
-		return s.projectFindingNote(ctx, event)
-	case workflowevents.EventKindFindingTicketLinked:
-		return s.projectFindingTicket(ctx, event)
-	case workflowevents.EventKindFindingStatusChanged:
-		return s.projectFindingStatus(ctx, event)
-	default:
-		return ports.ProjectionResult{}, nil
-	}
-}
-
 func (s *Service) projectDecision(ctx context.Context, event *cerebrov1.EventEnvelope) (ports.ProjectionResult, error) {
 	payload, err := workflowevents.DecodeDecisionRecorded(event)
 	if err != nil {
@@ -93,9 +65,9 @@ func (s *Service) projectDecision(ctx context.Context, event *cerebrov1.EventEnv
 			FromURN:  payload.DecisionID,
 			ToURN:    targetID,
 			Relation: relationTargets,
-			Attributes: map[string]string{
+			Attributes: workflowEdgeAttributes(payload.SourceSystem, payload.SourceEventID, payload.ObservedAt, payload.ValidFrom, payload.Confidence, map[string]string{
 				"decision_id": payload.DecisionID,
-			},
+			}),
 		}, &result); err != nil {
 			return ports.ProjectionResult{}, err
 		}
@@ -162,9 +134,9 @@ func (s *Service) projectAction(ctx context.Context, event *cerebrov1.EventEnvel
 			FromURN:  payload.ActionID,
 			ToURN:    targetID,
 			Relation: relationTargets,
-			Attributes: map[string]string{
+			Attributes: workflowEdgeAttributes(payload.SourceSystem, payload.SourceEventID, payload.ObservedAt, payload.ValidFrom, payload.Confidence, map[string]string{
 				"action_id": payload.ActionID,
-			},
+			}),
 		}, &result); err != nil {
 			return ports.ProjectionResult{}, err
 		}
@@ -209,10 +181,10 @@ func (s *Service) projectOutcome(ctx context.Context, event *cerebrov1.EventEnve
 		FromURN:  payload.OutcomeID,
 		ToURN:    payload.DecisionID,
 		Relation: relationEvaluates,
-		Attributes: map[string]string{
+		Attributes: workflowEdgeAttributes(payload.SourceSystem, payload.SourceEventID, payload.ObservedAt, payload.ValidFrom, payload.Confidence, map[string]string{
 			"outcome_id":  payload.OutcomeID,
 			"decision_id": payload.DecisionID,
-		},
+		}),
 	}, &result); err != nil {
 		return ports.ProjectionResult{}, err
 	}
@@ -223,9 +195,9 @@ func (s *Service) projectOutcome(ctx context.Context, event *cerebrov1.EventEnve
 			FromURN:  payload.OutcomeID,
 			ToURN:    targetID,
 			Relation: relationTargets,
-			Attributes: map[string]string{
+			Attributes: workflowEdgeAttributes(payload.SourceSystem, payload.SourceEventID, payload.ObservedAt, payload.ValidFrom, payload.Confidence, map[string]string{
 				"outcome_id": payload.OutcomeID,
-			},
+			}),
 		}, &result); err != nil {
 			return ports.ProjectionResult{}, err
 		}
@@ -446,12 +418,12 @@ func (s *Service) ensureFindingActiveLinks(ctx context.Context, finding workflow
 	tenantID := strings.TrimSpace(finding.TenantID)
 	sourceID := strings.TrimSpace(finding.SourceSystem)
 	anchorURN := findingURN(tenantID, finding.FindingID)
-	resourceURNs := normalizeIDs(finding.ResourceURNs)
-	for _, resourceURN := range resourceURNs {
+	targetURNs := findingActiveTargetURNs(finding)
+	for _, targetURN := range targetURNs {
 		if err := s.upsertLink(ctx, &ports.ProjectedLink{
 			TenantID:   tenantID,
 			SourceID:   sourceID,
-			FromURN:    resourceURN,
+			FromURN:    targetURN,
 			ToURN:      anchorURN,
 			Relation:   relationHasFinding,
 			Attributes: findingAnchorLinkAttributes(finding),
@@ -459,7 +431,77 @@ func (s *Service) ensureFindingActiveLinks(ctx context.Context, finding workflow
 			return err
 		}
 	}
+	if err := s.pruneFindingActiveLinks(ctx, tenantID, sourceID, anchorURN, targetURNs, result); err != nil {
+		return err
+	}
 	return nil
+}
+
+type findingActiveLinkReader interface {
+	ExecuteReadCypher(context.Context, ports.CypherQueryRequest) ([]ports.CypherRow, error)
+}
+
+func (s *Service) pruneFindingActiveLinks(ctx context.Context, tenantID string, sourceID string, anchorURN string, currentResourceURNs []string, result *ports.ProjectionResult) error {
+	reader, ok := s.graph.(findingActiveLinkReader)
+	if !ok {
+		return nil
+	}
+	deleter, ok := s.graph.(ports.ProjectionLinkDeleter)
+	if !ok {
+		return nil
+	}
+	current := make(map[string]struct{}, len(currentResourceURNs))
+	for _, resourceURN := range currentResourceURNs {
+		if resourceURN = strings.TrimSpace(resourceURN); resourceURN != "" {
+			current[resourceURN] = struct{}{}
+		}
+	}
+	lastSeen := ""
+	for {
+		rows, err := reader.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
+			Query: `MATCH (resource:Entity {tenant_id: $tenant_id})-[r:RELATION {relation: 'has_finding'}]->(:Entity {tenant_id: $tenant_id, urn: $finding_urn})
+WHERE resource.urn > $last_seen
+RETURN resource.urn AS resource_urn
+ORDER BY resource.urn
+LIMIT $row_limit`,
+			Params: map[string]any{
+				"tenant_id":   tenantID,
+				"finding_urn": anchorURN,
+				"last_seen":   lastSeen,
+				"row_limit":   int64(ports.MaxCypherQueryRows),
+			},
+			RowLimit: ports.MaxCypherQueryRows,
+		})
+		if err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		for _, row := range rows {
+			resourceURN := strings.TrimSpace(fmt.Sprintf("%v", row.Values["resource_urn"]))
+			if resourceURN == "" || resourceURN == "<nil>" {
+				continue
+			}
+			lastSeen = resourceURN
+			if _, keep := current[resourceURN]; keep {
+				continue
+			}
+			if err := deleter.DeleteProjectedLink(ctx, &ports.ProjectedLink{
+				TenantID: tenantID,
+				SourceID: sourceID,
+				FromURN:  resourceURN,
+				ToURN:    anchorURN,
+				Relation: relationHasFinding,
+			}); err != nil {
+				return err
+			}
+			result.LinksDeleted++
+		}
+		if len(rows) < ports.MaxCypherQueryRows {
+			return nil
+		}
+	}
 }
 
 func (s *Service) deleteFindingActiveLinks(ctx context.Context, finding workflowevents.FindingSnapshot) (uint32, error) {
@@ -471,7 +513,7 @@ func (s *Service) deleteFindingActiveLinks(ctx context.Context, finding workflow
 	sourceID := strings.TrimSpace(finding.SourceSystem)
 	anchorURN := findingURN(tenantID, finding.FindingID)
 	var deleted uint32
-	for _, resourceURN := range normalizeIDs(finding.ResourceURNs) {
+	for _, resourceURN := range findingActiveTargetURNs(finding) {
 		if err := deleter.DeleteProjectedLink(ctx, &ports.ProjectedLink{
 			TenantID: tenantID,
 			SourceID: sourceID,
@@ -487,7 +529,46 @@ func (s *Service) deleteFindingActiveLinks(ctx context.Context, finding workflow
 }
 
 func findingTargetURNs(finding workflowevents.FindingSnapshot) []string {
-	return normalizeIDs(append(normalizeIDs(finding.ResourceURNs), findingURN(strings.TrimSpace(finding.TenantID), finding.FindingID)))
+	return normalizeIDs(append(findingActiveTargetURNs(finding), findingURN(strings.TrimSpace(finding.TenantID), finding.FindingID)))
+}
+
+func findingActiveTargetURNs(finding workflowevents.FindingSnapshot) []string {
+	return normalizeIDs(append(findingResourceURNs(finding), findingActorURNs(finding)...))
+}
+
+func findingResourceURNs(finding workflowevents.FindingSnapshot) []string {
+	return normalizeIDs(append([]string{strings.TrimSpace(finding.PrimaryResourceURN)}, finding.ResourceURNs...))
+}
+
+func findingActorURNs(finding workflowevents.FindingSnapshot) []string {
+	if len(finding.Metadata) == 0 {
+		return nil
+	}
+	candidates := []string{
+		finding.Metadata["actor_urn"],
+		finding.Metadata["primary_actor_urn"],
+	}
+	urns := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		if urn := canonicalFindingActorURN(strings.TrimSpace(finding.TenantID), candidate); urn != "" {
+			urns = append(urns, urn)
+		}
+	}
+	return normalizeIDs(urns)
+}
+
+func canonicalFindingActorURN(tenantID string, urn string) string {
+	value := strings.TrimSpace(urn)
+	if value == "" || !strings.HasPrefix(value, "urn:cerebro:") {
+		return ""
+	}
+	parts := strings.SplitN(value, ":", 6)
+	if len(parts) == 6 && parts[0] == "urn" && parts[1] == "cerebro" && parts[3] == "okta_actor" && parts[4] == "user" && strings.TrimSpace(parts[5]) != "" {
+		if tenant := strings.TrimSpace(tenantID); tenant == "" || tenant == parts[2] {
+			return fmt.Sprintf("urn:cerebro:%s:okta_user:%s", parts[2], strings.TrimSpace(parts[5]))
+		}
+	}
+	return value
 }
 
 func (s *Service) upsertEntity(ctx context.Context, entity *ports.ProjectedEntity, result *ports.ProjectionResult) error {
@@ -599,6 +680,21 @@ func outcomeAttributes(payload *workflowevents.OutcomeRecorded) map[string]strin
 	return attributes
 }
 
+func workflowEdgeAttributes(sourceSystem string, sourceEventID string, observedAt string, validFrom string, confidence float64, attributes map[string]string) map[string]string {
+	if attributes == nil {
+		attributes = map[string]string{}
+	}
+	attributes["source_system"] = strings.TrimSpace(sourceSystem)
+	attributes["source_event_id"] = strings.TrimSpace(sourceEventID)
+	attributes["observed_at"] = strings.TrimSpace(observedAt)
+	attributes["valid_from"] = strings.TrimSpace(validFrom)
+	if confidence != 0 {
+		attributes["confidence"] = fmt.Sprintf("%.6g", confidence)
+	}
+	trimEmptyProjectionAttributes(attributes)
+	return attributes
+}
+
 func findingAnchorAttributes(finding workflowevents.FindingSnapshot) map[string]string {
 	attributes := map[string]string{
 		"finding_id":           strings.TrimSpace(finding.FindingID),
@@ -675,6 +771,10 @@ func findingAnchorLinkAttributes(finding workflowevents.FindingSnapshot) map[str
 		"severity":             strings.TrimSpace(finding.Severity),
 		"status":               strings.TrimSpace(finding.Status),
 		"primary_resource_urn": strings.TrimSpace(finding.PrimaryResourceURN),
+		"source_system":        strings.TrimSpace(finding.SourceSystem),
+		"source_event_id":      findingSourceEventID(finding),
+		"observed_at":          strings.TrimSpace(finding.LastObservedAt),
+		"valid_from":           strings.TrimSpace(finding.FirstObservedAt),
 		"last_observed_at":     strings.TrimSpace(finding.LastObservedAt),
 	}
 	if finding.RiskScore != 0 {
@@ -689,11 +789,24 @@ func findingAnchorLinkAttributes(finding workflowevents.FindingSnapshot) map[str
 	if finding.ImpactScore != 0 {
 		attributes["impact_score"] = fmt.Sprintf("%d", finding.ImpactScore)
 	}
+	if finding.ConfidenceScore != 0 {
+		attributes["confidence"] = fmt.Sprintf("%.6g", float64(finding.ConfidenceScore)/100)
+		attributes["confidence_score"] = fmt.Sprintf("%d", finding.ConfidenceScore)
+	}
 	if finding.EventCount != 0 {
 		attributes["event_count"] = fmt.Sprintf("%d", finding.EventCount)
 	}
 	trimEmptyProjectionAttributes(attributes)
 	return attributes
+}
+
+func findingSourceEventID(finding workflowevents.FindingSnapshot) string {
+	for _, eventID := range normalizeIDs(finding.EventIDs) {
+		if strings.TrimSpace(eventID) != "" {
+			return strings.TrimSpace(eventID)
+		}
+	}
+	return strings.TrimSpace(finding.FindingID)
 }
 
 func findingControlRefsAttribute(refs []workflowevents.FindingControlRefSnapshot) string {

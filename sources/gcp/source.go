@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -18,6 +19,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
 //go:embed catalog.yaml
@@ -39,9 +41,11 @@ const (
 
 // Source reads GCP IAM, Cloud Identity, and Cloud Audit surfaces.
 type Source struct {
-	spec     *cerebrov1.SourceSpec
-	client   *http.Client
-	families *sourcecdk.FamilyEngine[settings]
+	spec                 *cerebrov1.SourceSpec
+	client               *http.Client
+	families             *sourcecdk.FamilyEngine[settings]
+	allowLoopbackBaseURL bool
+	lookupIPAddrs        func(context.Context, string) ([]net.IPAddr, error)
 }
 
 type settings struct {
@@ -198,7 +202,8 @@ func New() (*Source, error) {
 	if err != nil {
 		return nil, err
 	}
-	source := &Source{spec: spec, client: &http.Client{Timeout: 30 * time.Second}}
+	source := &Source{spec: spec, lookupIPAddrs: net.DefaultResolver.LookupIPAddr}
+	source.client = source.safeClient()
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
 		return nil, err
@@ -745,7 +750,15 @@ func getJSON(ctx context.Context, source *Source, settings settings, defaultBase
 	if baseURL == "" {
 		baseURL = defaultBaseURL()
 	}
-	endpoint := baseURL + requestPath
+	baseURL, _, err := sourcehttp.NormalizeBaseURL("gcp", baseURL, source != nil && source.allowLoopbackBaseURL)
+	if err != nil {
+		return err
+	}
+	path, err := sourcehttp.NormalizeRequestPath("gcp", requestPath)
+	if err != nil {
+		return err
+	}
+	endpoint := baseURL + path
 	if encoded := query.Encode(); encoded != "" {
 		endpoint += "?" + encoded
 	}
@@ -766,7 +779,7 @@ func getJSON(ctx context.Context, source *Source, settings settings, defaultBase
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	client := http.DefaultClient
+	client := sourcehttp.NewClient(sourcehttp.ClientOptions{SourceID: "gcp"})
 	if source != nil && source.client != nil {
 		client = source.client
 	}
@@ -775,7 +788,7 @@ func getJSON(ctx context.Context, source *Source, settings settings, defaultBase
 		return fmt.Errorf("request %s: %w", requestPath, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	content, err := io.ReadAll(resp.Body)
+	content, err := sourcehttp.ReadLimitedBody(resp.Body)
 	if err != nil {
 		return fmt.Errorf("read %s response: %w", requestPath, err)
 	}
@@ -786,6 +799,22 @@ func getJSON(ctx context.Context, source *Source, settings settings, defaultBase
 		return fmt.Errorf("decode %s response: %w", requestPath, err)
 	}
 	return nil
+}
+
+func (s *Source) safeClient() *http.Client {
+	return sourcehttp.NewClient(sourcehttp.ClientOptions{
+		SourceID:      "gcp",
+		Timeout:       30 * time.Second,
+		AllowLoopback: s != nil && s.allowLoopbackBaseURL,
+		LookupIPAddrs: lookupIPAddrs(s),
+	})
+}
+
+func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, error) {
+	if source != nil && source.lookupIPAddrs != nil {
+		return source.lookupIPAddrs
+	}
+	return net.DefaultResolver.LookupIPAddr
 }
 
 func decodeRecords[T any](rawRecords []json.RawMessage, label string, setRaw func(*T, json.RawMessage)) ([]T, string, error) {

@@ -1,0 +1,269 @@
+package sourcehttp
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+)
+
+const MaxBodyBytes = 8 << 20
+const DefaultTimeout = 30 * time.Second
+
+type ClientOptions struct {
+	SourceID      string
+	Timeout       time.Duration
+	BaseTransport http.RoundTripper
+	AllowLoopback bool
+	LookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)
+}
+
+func NewClient(options ClientOptions) *http.Client {
+	return HardenClient(nil, options)
+}
+
+func HardenClient(client *http.Client, options ClientOptions) *http.Client {
+	if client == nil {
+		client = &http.Client{}
+	}
+	cloned := *client
+	if cloned.Timeout <= 0 {
+		cloned.Timeout = firstDuration(options.Timeout, DefaultTimeout)
+	}
+	if cloned.CheckRedirect == nil {
+		cloned.CheckRedirect = NoRedirect
+	}
+	transport := options.BaseTransport
+	if transport == nil {
+		transport = cloned.Transport
+	}
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	cloned.Transport = SafeRoundTripper{
+		Base:          transport,
+		SourceID:      strings.TrimSpace(options.SourceID),
+		AllowLoopback: options.AllowLoopback,
+		LookupIPAddrs: options.LookupIPAddrs,
+	}
+	return &cloned
+}
+
+func firstDuration(values ...time.Duration) time.Duration {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return 0
+}
+
+// NormalizeBaseURL validates source-configured API origins before credentials are
+// attached to requests.
+func NormalizeBaseURL(sourceID string, raw string, allowLoopback bool) (string, string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "", "", fmt.Errorf("parse %s base_url: %w", sourceID, err)
+	}
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	allowInsecureLoopback := allowLoopback && parsed.Scheme == "http" && IsLoopbackHost(host)
+	if parsed.Scheme != "https" && !allowInsecureLoopback {
+		return "", "", fmt.Errorf("%s base_url must use https", sourceID)
+	}
+	if host == "" {
+		return "", "", fmt.Errorf("%s base_url must include a host", sourceID)
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		return "", "", fmt.Errorf("%s base_url must not include user info, query, or fragment", sourceID)
+	}
+	if strings.TrimSpace(parsed.Port()) != "" && parsed.Port() != "443" && (!allowLoopback || !IsLoopbackHost(host)) {
+		return "", "", fmt.Errorf("%s base_url must not include a custom port", sourceID)
+	}
+	if IsUnsafeHost(host) && (!allowLoopback || !IsLoopbackHost(host)) {
+		return "", "", fmt.Errorf("%s base_url must not target loopback, private, or link-local hosts", sourceID)
+	}
+	return strings.TrimRight(parsed.String(), "/"), host, nil
+}
+
+func NormalizeRequestPath(sourceID string, raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "", fmt.Errorf("%s request path is required", sourceID)
+	}
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return "", fmt.Errorf("parse %s request path: %w", sourceID, err)
+	}
+	if parsed.IsAbs() || parsed.Host != "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		return "", fmt.Errorf("%s request path must be an absolute path without query or fragment", sourceID)
+	}
+	if !strings.HasPrefix(value, "/") {
+		return "", fmt.Errorf("%s request path must start with /", sourceID)
+	}
+	return value, nil
+}
+
+func SameOriginAbsoluteURL(sourceID string, baseURL string, raw string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "", fmt.Errorf("parse %s url: %w", sourceID, err)
+	}
+	if !parsed.IsAbs() {
+		return "", fmt.Errorf("%s url must be absolute", sourceID)
+	}
+	base, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil {
+		return "", fmt.Errorf("parse %s base_url: %w", sourceID, err)
+	}
+	if !strings.EqualFold(parsed.Scheme, base.Scheme) || !strings.EqualFold(parsed.Host, base.Host) {
+		return "", fmt.Errorf("%s paged url must stay on the configured API host", sourceID)
+	}
+	if parsed.User != nil || parsed.Fragment != "" {
+		return "", fmt.Errorf("%s paged url must not include user info or fragment", sourceID)
+	}
+	return parsed.String(), nil
+}
+
+type SafeRoundTripper struct {
+	Base          http.RoundTripper
+	SourceID      string
+	AllowLoopback bool
+	LookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)
+}
+
+func (rt SafeRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	base := rt.Base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	if req != nil && req.URL != nil {
+		addrs, err := SafeResolvedHostAddrs(req.Context(), rt.SourceID, req.URL.Hostname(), rt.AllowLoopback, rt.LookupIPAddrs)
+		if err != nil {
+			return nil, err
+		}
+		if len(addrs) > 0 {
+			pinned, err := pinnedHostTransport(base, req.URL.Hostname(), addrs[0].IP)
+			if err != nil && isDefaultTransportShape(base) {
+				return nil, err
+			}
+			if err == nil {
+				base = pinned
+			}
+		}
+	}
+	return base.RoundTrip(req)
+}
+
+func isDefaultTransportShape(base http.RoundTripper) bool {
+	_, ok := base.(*http.Transport)
+	return ok
+}
+
+func pinnedHostTransport(base http.RoundTripper, host string, ip net.IP) (http.RoundTripper, error) {
+	transport, ok := base.(*http.Transport)
+	if !ok {
+		return nil, fmt.Errorf("source transport must support pinned host dialing")
+	}
+	clone := transport.Clone()
+	clone.Proxy = nil
+	clone.DialTLSContext = nil
+	dialContext := clone.DialContext
+	if dialContext == nil {
+		dialer := &net.Dialer{}
+		dialContext = dialer.DialContext
+	}
+	requestHost := strings.ToLower(strings.Trim(strings.TrimSpace(host), "[]"))
+	pinnedIP := ip.String()
+	clone.DialContext = func(ctx context.Context, network string, address string) (net.Conn, error) {
+		addressHost, addressPort, err := net.SplitHostPort(address)
+		if err == nil && strings.EqualFold(strings.Trim(addressHost, "[]"), requestHost) {
+			return dialContext(ctx, network, net.JoinHostPort(pinnedIP, addressPort))
+		}
+		return dialContext(ctx, network, address)
+	}
+	return clone, nil
+}
+
+func SafeResolvedHostAddrs(ctx context.Context, sourceID string, host string, allowLoopback bool, lookup func(context.Context, string) ([]net.IPAddr, error)) ([]net.IPAddr, error) {
+	normalized := strings.ToLower(strings.TrimSpace(host))
+	if normalized == "" {
+		return nil, fmt.Errorf("%s host is required", sourceID)
+	}
+	if ip := net.ParseIP(strings.Trim(normalized, "[]")); ip != nil {
+		if unsafeIP(ip, allowLoopback) {
+			return nil, fmt.Errorf("%s host must not target loopback, private, or link-local addresses", sourceID)
+		}
+		return nil, nil
+	}
+	if lookup == nil {
+		lookup = net.DefaultResolver.LookupIPAddr
+	}
+	addrs, err := lookup(ctx, normalized)
+	if err != nil {
+		return nil, fmt.Errorf("resolve %s host %q: %w", sourceID, normalized, err)
+	}
+	if len(addrs) == 0 {
+		return nil, fmt.Errorf("resolve %s host %q: no addresses", sourceID, normalized)
+	}
+	for _, addr := range addrs {
+		if unsafeIP(addr.IP, allowLoopback) {
+			return nil, fmt.Errorf("%s host must not resolve to loopback, private, or link-local addresses", sourceID)
+		}
+	}
+	return addrs, nil
+}
+
+func IsUnsafeHost(host string) bool {
+	value := strings.Trim(strings.ToLower(strings.TrimSpace(host)), "[]")
+	if value == "" || value == "localhost" || strings.HasSuffix(value, ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(value)
+	return ip != nil && unsafeIP(ip, false)
+}
+
+func unsafeIP(ip net.IP, allowLoopback bool) bool {
+	if ip == nil {
+		return true
+	}
+	if allowLoopback && ip.IsLoopback() {
+		return false
+	}
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast()
+}
+
+func IsLoopbackHost(host string) bool {
+	value := strings.Trim(strings.ToLower(strings.TrimSpace(host)), "[]")
+	if value == "localhost" || strings.HasSuffix(value, ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(value)
+	return ip != nil && ip.IsLoopback()
+}
+
+func ReadLimitedBody(body io.Reader) ([]byte, error) {
+	return ReadLimitedBodyWithLimit(body, MaxBodyBytes)
+}
+
+func ReadLimitedBodyWithLimit(body io.Reader, maxBytes int) ([]byte, error) {
+	if maxBytes <= 0 {
+		maxBytes = MaxBodyBytes
+	}
+	limited := io.LimitReader(body, int64(maxBytes)+1)
+	payload, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, err
+	}
+	if len(payload) > maxBytes {
+		return nil, fmt.Errorf("response body exceeds %d bytes", maxBytes)
+	}
+	return payload, nil
+}
+
+func NoRedirect(_ *http.Request, _ []*http.Request) error {
+	return http.ErrUseLastResponse
+}

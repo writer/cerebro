@@ -9,3 +9,5 @@ plugins:
     opt:
       - paths=source_relative
       - package_suffix=connect
+  - remote: buf.build/protocolbuffers/python:v29.5
+    out: sdk/python

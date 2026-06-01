@@ -261,22 +261,22 @@ type agentLifecycleRecord struct {
 }
 
 type agentStatusRecord struct {
-	IsActive                 bool   `json:"isActive"`
-	IsDecommissioned         bool   `json:"isDecommissioned"`
-	IsPendingUninstall       bool   `json:"isPendingUninstall"`
-	IsUninstalled            bool   `json:"isUninstalled"`
-	Infected                 bool   `json:"infected"`
-	ActiveThreats            int    `json:"activeThreats"`
-	FirewallEnabled          bool   `json:"firewallEnabled"`
-	NetworkStatus            string `json:"networkStatus"`
-	OperationalState         string `json:"operationalState"`
-	ScanStatus               string `json:"scanStatus"`
-	MitigationMode           string `json:"mitigationMode"`
-	MitigationModeSuspicious string `json:"mitigationModeSuspicious"`
-	DetectionState           string `json:"detectionState"`
-	AppsVulnerabilityStatus  string `json:"appsVulnerabilityStatus"`
-	ShowAlertIcon            bool   `json:"showAlertIcon"`
-	InRemoteShellSession     bool   `json:"inRemoteShellSession"`
+	IsActive                 bool          `json:"isActive"`
+	IsDecommissioned         bool          `json:"isDecommissioned"`
+	IsPendingUninstall       bool          `json:"isPendingUninstall"`
+	IsUninstalled            bool          `json:"isUninstalled"`
+	Infected                 bool          `json:"infected"`
+	ActiveThreats            int           `json:"activeThreats"`
+	FirewallEnabled          *flexibleBool `json:"firewallEnabled"`
+	NetworkStatus            string        `json:"networkStatus"`
+	OperationalState         string        `json:"operationalState"`
+	ScanStatus               string        `json:"scanStatus"`
+	MitigationMode           string        `json:"mitigationMode"`
+	MitigationModeSuspicious string        `json:"mitigationModeSuspicious"`
+	DetectionState           string        `json:"detectionState"`
+	AppsVulnerabilityStatus  string        `json:"appsVulnerabilityStatus"`
+	ShowAlertIcon            bool          `json:"showAlertIcon"`
+	InRemoteShellSession     bool          `json:"inRemoteShellSession"`
 }
 
 type agentHardwareRecord struct {
@@ -511,6 +511,7 @@ type agentDetectionPayload struct {
 	Domain       string `json:"domain,omitempty"`
 	IPV4         string `json:"ip_v4,omitempty"`
 	IPV6         string `json:"ip_v6,omitempty"`
+	IPAddresses  string `json:"ip_addresses,omitempty"`
 	OSName       string `json:"os_name,omitempty"`
 	OSRevision   string `json:"os_revision,omitempty"`
 	RegisteredAt string `json:"registered_at,omitempty"`
@@ -528,6 +529,7 @@ type agentDetectionPayload struct {
 type agentRealtimePayload struct {
 	AgentID          string `json:"agent_id,omitempty"`
 	ComputerName     string `json:"computer_name,omitempty"`
+	Hostname         string `json:"hostname,omitempty"`
 	OSName           string `json:"os_name,omitempty"`
 	OSType           string `json:"os_type,omitempty"`
 	OSRevision       string `json:"os_revision,omitempty"`
@@ -577,6 +579,7 @@ type agentPayload struct {
 type agentIdentityPayload struct {
 	ID           string `json:"id"`
 	ComputerName string `json:"computer_name"`
+	Hostname     string `json:"hostname,omitempty"`
 	UUID         string `json:"uuid,omitempty"`
 	AccountID    string `json:"account_id,omitempty"`
 	AccountName  string `json:"account_name,omitempty"`
@@ -613,12 +616,16 @@ type agentStatusPayload struct {
 }
 
 type agentLocationPayload struct {
-	Domain     string `json:"domain,omitempty"`
-	ExternalIP string `json:"external_ip,omitempty"`
-	GroupID    string `json:"group_id,omitempty"`
-	GroupName  string `json:"group_name,omitempty"`
-	SiteID     string `json:"site_id,omitempty"`
-	SiteName   string `json:"site_name,omitempty"`
+	Domain       string `json:"domain,omitempty"`
+	ExternalIP   string `json:"external_ip,omitempty"`
+	GroupIP      string `json:"group_ip,omitempty"`
+	IP           string `json:"ip,omitempty"`
+	IPAddresses  string `json:"ip_addresses,omitempty"`
+	LastIPToMgmt string `json:"last_ip_to_mgmt,omitempty"`
+	GroupID      string `json:"group_id,omitempty"`
+	GroupName    string `json:"group_name,omitempty"`
+	SiteID       string `json:"site_id,omitempty"`
+	SiteName     string `json:"site_name,omitempty"`
 }
 
 type sitePayload struct {
@@ -780,6 +787,7 @@ func agentEvent(s settings, record agentRecord) (*primitives.Event, error) {
 		agentIdentityPayload: agentIdentityPayload{
 			ID:           record.ID,
 			ComputerName: record.ComputerName,
+			Hostname:     record.ComputerName,
 			UUID:         record.UUID,
 			AccountID:    record.AccountID,
 			AccountName:  record.AccountName,
@@ -813,12 +821,16 @@ func agentEvent(s settings, record agentRecord) (*primitives.Event, error) {
 			UserActionsNeeded:  record.UserActionsNeeded,
 		},
 		agentLocationPayload: agentLocationPayload{
-			Domain:     record.Domain,
-			ExternalIP: record.ExternalIP,
-			GroupID:    record.GroupID,
-			GroupName:  record.GroupName,
-			SiteID:     record.SiteID,
-			SiteName:   record.SiteName,
+			Domain:       record.Domain,
+			ExternalIP:   record.ExternalIP,
+			GroupIP:      record.GroupIP,
+			IP:           firstNonEmpty(record.ExternalIP, record.LastIPToMgmt, record.GroupIP),
+			IPAddresses:  joinedEndpointIPs(record.ExternalIP, record.LastIPToMgmt, record.GroupIP),
+			LastIPToMgmt: record.LastIPToMgmt,
+			GroupID:      record.GroupID,
+			GroupName:    record.GroupName,
+			SiteID:       record.SiteID,
+			SiteName:     record.SiteName,
 		},
 		TenantHost: s.host,
 		Tags:       record.Tags,
@@ -1135,6 +1147,7 @@ func toAgentDetectionPayload(info agentDetectionInfoRecord) agentDetectionPayloa
 		Domain:       info.AgentDomain,
 		IPV4:         info.AgentIPV4,
 		IPV6:         info.AgentIPV6,
+		IPAddresses:  joinedEndpointIPs(info.AgentIPV4, info.AgentIPV6, info.ExternalIP),
 		OSName:       info.AgentOSName,
 		OSRevision:   info.AgentOSRevision,
 		RegisteredAt: info.AgentRegisteredAt,
@@ -1154,6 +1167,7 @@ func toAgentRealtimePayload(info agentRealtimeInfoRecord) agentRealtimePayload {
 	return agentRealtimePayload{
 		AgentID:          info.AgentID,
 		ComputerName:     info.AgentComputerName,
+		Hostname:         info.AgentComputerName,
 		OSName:           info.AgentOSName,
 		OSType:           info.AgentOSType,
 		OSRevision:       info.AgentOSRevision,
@@ -1245,11 +1259,16 @@ func threatAttributes(s settings, record threatRecord, indicators indicatorPaylo
 		"is_fileless":       boolString(record.ThreatInfo.IsFileless),
 	}
 	addAttribute(attrs, "classification", record.ThreatInfo.Classification)
+	addAttribute(attrs, "classification_norm", normalizeSentinelOnePostureValue(record.ThreatInfo.Classification))
 	addAttribute(attrs, "classification_source", record.ThreatInfo.ClassificationSource)
 	addAttribute(attrs, "analyst_verdict", record.ThreatInfo.AnalystVerdict)
+	addAttribute(attrs, "analyst_verdict_norm", normalizeSentinelOnePostureValue(record.ThreatInfo.AnalystVerdict))
 	addAttribute(attrs, "incident_status", record.ThreatInfo.IncidentStatus)
+	addAttribute(attrs, "incident_status_norm", normalizeSentinelOnePostureValue(record.ThreatInfo.IncidentStatus))
 	addAttribute(attrs, "confidence_level", record.ThreatInfo.ConfidenceLevel)
 	addAttribute(attrs, "mitigation_status", record.ThreatInfo.MitigationStatus)
+	addAttribute(attrs, "mitigation_status_norm", normalizeSentinelOnePostureValue(record.ThreatInfo.MitigationStatus))
+	addAttribute(attrs, "automatically_resolved", boolString(record.ThreatInfo.AutomaticallyResolved))
 	addAttribute(attrs, "detection_type", record.ThreatInfo.DetectionType)
 	addAttribute(attrs, "threat_name", record.ThreatInfo.ThreatName)
 	addAttribute(attrs, "file_path", record.ThreatInfo.FilePath)
@@ -1258,6 +1277,7 @@ func threatAttributes(s settings, record threatRecord, indicators indicatorPaylo
 	addAttribute(attrs, "agent_uuid", record.AgentDetectionInfo.AgentUUID)
 	addAttribute(attrs, "agent_name", record.AgentRealtimeInfo.AgentComputerName)
 	addAttribute(attrs, "computer_name", record.AgentRealtimeInfo.AgentComputerName)
+	addAttribute(attrs, "hostname", record.AgentRealtimeInfo.AgentComputerName)
 	addAttribute(attrs, "site_id", firstNonEmpty(record.AgentDetectionInfo.SiteID, record.AgentRealtimeInfo.SiteID))
 	addAttribute(attrs, "group_id", firstNonEmpty(record.AgentDetectionInfo.GroupID, record.AgentRealtimeInfo.GroupID))
 	addAttribute(attrs, "site_name", firstNonEmpty(record.AgentDetectionInfo.SiteName, record.AgentRealtimeInfo.SiteName))
@@ -1267,7 +1287,10 @@ func threatAttributes(s settings, record threatRecord, indicators indicatorPaylo
 	addAttribute(attrs, "agent_os_name", firstNonEmpty(record.AgentDetectionInfo.AgentOSName, record.AgentRealtimeInfo.AgentOSName))
 	addAttribute(attrs, "agent_os_type", record.AgentRealtimeInfo.AgentOSType)
 	addAttribute(attrs, "agent_ip_v4", record.AgentDetectionInfo.AgentIPV4)
+	addAttribute(attrs, "agent_ip_v6", record.AgentDetectionInfo.AgentIPV6)
 	addAttribute(attrs, "external_ip", record.AgentDetectionInfo.ExternalIP)
+	addAttribute(attrs, "ip", firstNonEmpty(record.AgentDetectionInfo.AgentIPV4, record.AgentDetectionInfo.ExternalIP, record.AgentDetectionInfo.AgentIPV6))
+	addAttribute(attrs, "ip_addresses", joinedEndpointIPs(record.AgentDetectionInfo.AgentIPV4, record.AgentDetectionInfo.AgentIPV6, record.AgentDetectionInfo.ExternalIP))
 	addAttribute(attrs, "user_mail", record.AgentDetectionInfo.AgentLastLoggedInUserMail)
 	addAttribute(attrs, "user_name", record.AgentDetectionInfo.AgentLastLoggedInUserName)
 	if len(indicators.MitreTactics) != 0 {
@@ -1282,6 +1305,13 @@ func threatAttributes(s settings, record threatRecord, indicators indicatorPaylo
 	return attrs
 }
 
+func normalizeSentinelOnePostureValue(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.ReplaceAll(normalized, "-", "_")
+	normalized = strings.ReplaceAll(normalized, " ", "_")
+	return normalized
+}
+
 func agentAttributes(s settings, record agentRecord) map[string]string {
 	attrs := map[string]string{
 		"family":               familyAgent,
@@ -1293,10 +1323,13 @@ func agentAttributes(s settings, record agentRecord) map[string]string {
 		"is_pending_uninstall": boolString(record.IsPendingUninstall),
 		"is_up_to_date":        boolString(record.IsUpToDate),
 		"infected":             boolString(record.Infected),
-		"firewall_enabled":     boolString(record.FirewallEnabled),
 		"active_threats":       intToString(record.ActiveThreats),
 	}
+	if record.FirewallEnabled != nil {
+		attrs["firewall_enabled"] = boolString(bool(*record.FirewallEnabled))
+	}
 	addAttribute(attrs, "computer_name", record.ComputerName)
+	addAttribute(attrs, "hostname", record.ComputerName)
 	addAttribute(attrs, "uuid", record.UUID)
 	addAttribute(attrs, "os_name", record.OSName)
 	addAttribute(attrs, "os_type", record.OSType)
@@ -1307,6 +1340,10 @@ func agentAttributes(s settings, record agentRecord) map[string]string {
 	addAttribute(attrs, "registered_at", record.RegisteredAt)
 	addAttribute(attrs, "domain", record.Domain)
 	addAttribute(attrs, "external_ip", record.ExternalIP)
+	addAttribute(attrs, "group_ip", record.GroupIP)
+	addAttribute(attrs, "ip", firstNonEmpty(record.ExternalIP, record.LastIPToMgmt, record.GroupIP))
+	addAttribute(attrs, "ip_addresses", joinedEndpointIPs(record.ExternalIP, record.LastIPToMgmt, record.GroupIP))
+	addAttribute(attrs, "last_ip_to_mgmt", record.LastIPToMgmt)
 	addAttribute(attrs, "site_id", record.SiteID)
 	addAttribute(attrs, "site_name", record.SiteName)
 	addAttribute(attrs, "group_id", record.GroupID)
@@ -1323,6 +1360,23 @@ func agentAttributes(s settings, record agentRecord) map[string]string {
 		attrs["user_actions_needed"] = strings.Join(record.UserActionsNeeded, ",")
 	}
 	return attrs
+}
+
+func joinedEndpointIPs(values ...string) string {
+	cleaned := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		ip := strings.TrimSpace(value)
+		if ip == "" {
+			continue
+		}
+		if _, ok := seen[ip]; ok {
+			continue
+		}
+		seen[ip] = struct{}{}
+		cleaned = append(cleaned, ip)
+	}
+	return strings.Join(cleaned, ",")
 }
 
 // timeFormatter helper kept to avoid removing time import if not used elsewhere.

@@ -89,8 +89,8 @@ func TestGitHubSecretScanningAlertCreatedFixture(t *testing.T) {
 	assertRuleFixture(t, newGitHubSecretScanningAlertCreatedRule(), "testdata/rules/github-secret-scanning-alert-created.json")
 }
 
-func TestGitHubSelfHostedRunnerChangeFixture(t *testing.T) {
-	assertRuleFixture(t, newGitHubSelfHostedRunnerChangeRule(), "testdata/rules/github-self-hosted-runner-change.json")
+func TestGitHubSelfHostedRunnerChangeFixtureRetired(t *testing.T) {
+	assertRetiredEventRuleFixture(t, newGitHubSelfHostedRunnerChangeRule(), "testdata/rules/github-self-hosted-runner-change.json")
 }
 
 func TestGitHubRepositoryCollaboratorAddedFixture(t *testing.T) {
@@ -130,7 +130,7 @@ func TestGitHubRepositoryRulesetModifiedFixture(t *testing.T) {
 }
 
 func TestGitHubCriticalResourceDeletedFixture(t *testing.T) {
-	assertRuleFixture(t, newGitHubCriticalResourceDeletedRule(), "testdata/rules/github-critical-resource-deleted.json")
+	assertRetiredEventRuleFixture(t, newGitHubCriticalResourceDeletedRule(), "testdata/rules/github-critical-resource-deleted.json")
 }
 
 func TestGitHubWebhookModifiedFixture(t *testing.T) {
@@ -267,6 +267,19 @@ func TestRetiredGitHubMirrorRulesDoNotEmitFindings(t *testing.T) {
 				"resource_type": "protected_branch",
 			},
 		},
+		{
+			ID:         "gh-critical-resource-deleted",
+			TenantID:   "writer",
+			SourceID:   "github",
+			Kind:       "github.audit",
+			OccurredAt: "2026-05-09T07:05:00Z",
+			SchemaRef:  "github/audit/v1",
+			Attributes: map[string]string{
+				"action":        "repo.destroy",
+				"repo":          "writer/cerebro",
+				"resource_type": "repo",
+			},
+		},
 	}
 	rules := []Rule{
 		newGitHubSecretScanningDisabledRule(),
@@ -274,6 +287,7 @@ func TestRetiredGitHubMirrorRulesDoNotEmitFindings(t *testing.T) {
 		newGitHubBranchProtectionDisabledRule(),
 		newGitHubRepositoryMadePublicRule(),
 		newGitHubProtectedBranchPolicyOverrideRule(),
+		newGitHubCriticalResourceDeletedRule(),
 	}
 	for _, rule := range rules {
 		ruleID := rule.Spec().GetId()
@@ -297,6 +311,7 @@ func TestRetiredGitHubMirrorRulesAreCatalogued(t *testing.T) {
 		githubBranchProtectionDisabledRuleID,
 		githubRepositoryMadePublicRuleID,
 		githubProtectedBranchPolicyOverrideRuleID,
+		githubCriticalResourceDeletedRuleID,
 	}
 	registry := Builtin()
 	for _, id := range retiredIDs {
@@ -307,9 +322,9 @@ func TestRetiredGitHubMirrorRulesAreCatalogued(t *testing.T) {
 		if rule == nil {
 			t.Fatalf("Builtin().Get(%q) returned nil rule", id)
 		}
-		runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+		runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer", Config: map[string]string{"family": "audit"}}
 		if !rule.SupportsRuntime(runtime) {
-			t.Fatalf("rule %q should still claim github runtimes so the runtime invokes it during replay (stale-finding sweep)", id)
+			t.Fatalf("rule %q should still claim github audit runtimes so the runtime invokes it during replay (stale-finding sweep)", id)
 		}
 	}
 }

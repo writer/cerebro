@@ -239,6 +239,8 @@ func TestProjectKandjiDeviceAndApplication(t *testing.T) {
 				"device_id":         "device-1",
 				"device_name":       "mba-1",
 				"serial_number":     "SERIAL1",
+				"blueprint_id":      "blueprint-1",
+				"blueprint_name":    "Engineering Macs",
 				"filevault_enabled": "true",
 				"user_email":        "alice@writer.com",
 			},
@@ -264,9 +266,14 @@ func TestProjectKandjiDeviceAndApplication(t *testing.T) {
 
 	deviceURN := "urn:cerebro:writer:kandji_device:device-1"
 	identityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
+	blueprintURN := "urn:cerebro:writer:kandji_blueprint:blueprint-1"
 	packageURN := "urn:cerebro:writer:package:macos:Safari"
 	canonicalPackageURN := "urn:cerebro:writer:package:canonical:pkg:generic/Safari"
 	assertProjectedLink(t, state, deviceURN, relationOwnedBy, identityURN)
+	assertProjectedLink(t, state, deviceURN, relationBelongsTo, blueprintURN)
 	assertProjectedLink(t, state, deviceURN, relationContains, packageURN)
 	assertProjectedLink(t, state, packageURN, relationRepresents, canonicalPackageURN)
+	if blueprint := state.entities[blueprintURN]; blueprint == nil || blueprint.EntityType != "kandji.blueprint" || blueprint.Label != "Engineering Macs" {
+		t.Fatalf("blueprint entity missing or wrong: %#v", blueprint)
+	}
 }
