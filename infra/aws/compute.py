@@ -676,7 +676,7 @@ def _create_task_definition(
             container["portMappings"] = [{"containerPort": 8080, "protocol": "tcp"}]
         if enable_health_check:
             container["healthCheck"] = {
-                "command": ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"],
+                "command": ["CMD-SHELL", "wget -qO- http://localhost:8080/health >/dev/null || exit 1"],
                 "interval": 30,
                 "timeout": 60,
                 "retries": 3,
