@@ -119,6 +119,7 @@ func kubernetesWorkloadIdentityBindingProjections(event *cerebrov1.EventEnvelope
 			Label:      firstNonEmpty(attributes["target_name"], targetEmail, targetID),
 			Attributes: map[string]string{"target_id": targetID, "target_type": targetType},
 		})
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), targetURN, targetEmail, event.GetOccurredAt())
 	}
 	if serviceAccountURN != "" && targetURN != "" {
 		relation := cloudPrivilegeRelation(attributes)

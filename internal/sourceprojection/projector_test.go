@@ -3442,7 +3442,11 @@ func TestProjectKubernetesWorkloadIdentityBindingAddsContainmentLinks(t *testing
 	assertProjectedLink(t, state, serviceAccountURN, relationBelongsTo, namespaceURN)
 	assertProjectedLink(t, state, namespaceURN, relationBelongsTo, clusterURN)
 	assertProjectedLink(t, state, clusterURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:writer-prod")
-	assertProjectedLink(t, state, serviceAccountURN, relationCanImpersonate, "urn:cerebro:writer:gcp_service_account:payments-sa@writer-prod.iam.gserviceaccount.com")
+	targetURN := "urn:cerebro:writer:gcp_service_account:payments-sa@writer-prod.iam.gserviceaccount.com"
+	targetIdentityURN := "urn:cerebro:writer:identity:email:payments-sa@writer-prod.iam.gserviceaccount.com"
+	assertProjectedLink(t, state, serviceAccountURN, relationCanImpersonate, targetURN)
+	assertProjectedLink(t, state, targetURN, relationRepresentsIdentity, targetIdentityURN)
+	assertProjectedLink(t, state, "urn:cerebro:writer:identifier:email:payments-sa@writer-prod.iam.gserviceaccount.com", relationRepresentsIdentity, targetIdentityURN)
 }
 
 func TestProjectKubernetesWorkloadFallbackURNIncludesKind(t *testing.T) {
