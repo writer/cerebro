@@ -7,6 +7,7 @@ import unittest
 from datetime import UTC, datetime
 from pathlib import Path
 import subprocess
+from unittest.mock import patch
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -193,6 +194,46 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             )
         finally:
             verify_graph_health_ecs._aws = original_aws
+
+    def test_main_graph_command_runs_requested_command(self) -> None:
+        context = GraphCommandContext(
+            cluster="cluster",
+            task_definition="task-definition",
+            network_configuration={},
+            log_group="log-group",
+            stream_prefix="prefix",
+            has_source_runtime_bootstrap=True,
+        )
+        with (
+            patch("scripts.verify_graph_health_ecs._load_config", return_value={"environment": "sec-dev"}),
+            patch("scripts.verify_graph_health_ecs._verify_account"),
+            patch("scripts.verify_graph_health_ecs._describe_api_service", return_value={}),
+            patch("scripts.verify_graph_health_ecs._graph_command_context", return_value=context),
+            patch(
+                "scripts.verify_graph_health_ecs._run_graph_command_with_retries",
+                return_value=verify_graph_health_ecs.GraphCommandResult(
+                    command=["graph", "repair-open-finding-primary-links"],
+                    task_arn="task",
+                    exit_code=0,
+                    payload={"links_created": 1},
+                ),
+            ) as run_command,
+            contextlib.redirect_stdout(io.StringIO()) as stdout,
+        ):
+            status = verify_graph_health_ecs.main(
+                [
+                    "--stack-file",
+                    "aws/Pulumi.sec-dev.yaml",
+                    "--graph-command",
+                    "graph",
+                    "repair-open-finding-primary-links",
+                    "apply=true",
+                ]
+            )
+
+        self.assertEqual(status, 0)
+        self.assertIn('"links_created": 1', stdout.getvalue())
+        self.assertEqual(run_command.call_args.args[2], ["graph", "repair-open-finding-primary-links", "apply=true"])
 
     def test_run_graph_command_with_retries_recovers_after_transient_failure(self) -> None:
         original_run_graph_command = verify_graph_health_ecs._run_graph_command

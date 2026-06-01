@@ -1079,6 +1079,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--graph-command-retry-seconds", type=int, default=DEFAULT_GRAPH_COMMAND_RETRY_SECONDS)
     parser.add_argument("--ingest-health-retry-seconds", type=int, default=1800)
     parser.add_argument("--credential-safe-timeout-seconds", type=int, default=DEFAULT_CREDENTIAL_SAFE_TIMEOUT_SECONDS)
+    parser.add_argument("--graph-command", nargs=argparse.REMAINDER, help="Run one graph command through ECS and print its JSON payload.")
     parser.add_argument(
         "--allow-transient-source-failures",
         action="store_true",
@@ -1098,6 +1099,23 @@ def main(argv: list[str] | None = None) -> int:
     declared_runtime_ids = _declared_runtime_ids(config)
     aws_families = _declared_aws_families(config)
     attack_path_relations_supported = _supports_attack_path_relations(config)
+
+    if args.graph_command is not None:
+        if not args.graph_command:
+            raise RuntimeError("--graph-command requires at least one command argument")
+        result = _run_graph_command_with_retries(
+            resource_prefix,
+            service,
+            args.graph_command,
+            args.wait_timeout_seconds,
+            args.poll_seconds,
+            args.region,
+            args.graph_command_retry_seconds,
+            graph_command_context,
+            overall_deadline=overall_deadline,
+        )
+        print(json.dumps(result.payload, sort_keys=True))
+        return 0
 
     def run_graph_command(command: list[str]) -> GraphCommandResult:
         return _run_graph_command_with_retries(

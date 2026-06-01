@@ -240,6 +240,10 @@ def _graph_health_runtime_ids(diagnostics: str) -> list[str]:
     return sorted(runtime_ids)
 
 
+def _graph_health_needs_primary_link_repair(diagnostics: str) -> bool:
+    return "open_findings_missing_primary_has_finding_edge" in diagnostics
+
+
 def _source_id_for_runtime(stack_file: Path, runtime_id: str) -> str:
     with stack_file.open("r", encoding="utf-8") as handle:
         loaded = yaml.safe_load(handle) or {}
@@ -286,11 +290,39 @@ def _graph_health_heal_command(args: argparse.Namespace, runtime_id: str, source
     ]
 
 
+def _graph_health_primary_link_repair_command(args: argparse.Namespace) -> list[str]:
+    return [
+        sys.executable,
+        "scripts/verify_graph_health_ecs.py",
+        "--stack-file",
+        str(args.stack_file),
+        "--wait-timeout-seconds",
+        "900",
+        "--poll-seconds",
+        "5",
+        "--graph-command-retry-seconds",
+        "0",
+        "--credential-safe-timeout-seconds",
+        "900",
+        "--graph-command",
+        "graph",
+        "repair-open-finding-primary-links",
+        "apply=true",
+        "limit=25",
+    ]
+
+
 def _attempt_graph_health_heal(args: argparse.Namespace, diagnostics: str) -> bool:
     runtime_ids = _graph_health_runtime_ids(diagnostics)
-    if not runtime_ids:
-        return False
     healed_any = False
+    if _graph_health_needs_primary_link_repair(diagnostics):
+        command = _graph_health_primary_link_repair_command(args)
+        print(f"Running graph-health primary-link repair command: {' '.join(command)}", file=sys.stderr, flush=True)
+        completed = subprocess.run(command, text=True)
+        if completed.returncode != 0:
+            print(f"WARNING: graph-health primary-link repair command failed with exit code {completed.returncode}", file=sys.stderr)
+        else:
+            healed_any = True
     for runtime_id in runtime_ids:
         source_id = _source_id_for_runtime(args.stack_file, runtime_id)
         if not source_id:
@@ -405,12 +437,11 @@ def main(argv: list[str] | None = None) -> int:
     graph_status = _graph_health_status(graph_result)
     graph_diagnostics = _graph_health_diagnostics(graph_result)
     if graph_status != 0:
-        category = _graph_health_degradation_category(graph_status, graph_diagnostics)
-        if category and args.graph_health_heal and _attempt_graph_health_heal(args, graph_diagnostics):
+        if args.graph_health_heal and _attempt_graph_health_heal(args, graph_diagnostics):
             graph_result = _stream_graph_health(_graph_health_command(args), args.graph_health_output)
             graph_status = _graph_health_status(graph_result)
             graph_diagnostics = _graph_health_diagnostics(graph_result)
-            category = _graph_health_degradation_category(graph_status, graph_diagnostics)
+        category = _graph_health_degradation_category(graph_status, graph_diagnostics)
         if graph_status == 0:
             _write_github_output(args.github_output, graph_health_degraded="false", graph_health_degradation_category="")
             return 0
