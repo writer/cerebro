@@ -20,9 +20,14 @@ on:
           - recent
           - run
       runtime_id:
-        description: Optional single runtime id. Leave blank to verify all Cosmo runtimes.
+        description: Optional single runtime id. Leave blank to verify all runtimes for the source.
         required: false
         default: ''
+        type: string
+      source_id:
+        description: Source id to verify.
+        required: false
+        default: cosmo
         type: string
       max_age_minutes:
         description: Maximum age for recent-mode stopped tasks
@@ -35,7 +40,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: source-runtime-verify-${{ github.event.inputs.stack }}-${{ github.event.inputs.runtime_id || 'cosmo' }}
+  group: source-runtime-verify-${{ github.event.inputs.stack }}-${{ github.event.inputs.source_id || 'cosmo' }}-${{ github.event.inputs.runtime_id || 'all' }}
   cancel-in-progress: false
 
 jobs:
@@ -74,16 +79,17 @@ jobs:
         working-directory: infra
         run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.sec-dev.yaml --same-account-only
 
-      - name: Verify Cosmo source runtimes
+      - name: Verify source runtimes
         shell: bash
         working-directory: infra
         env:
           VERIFY_MODE: ${{ github.event.inputs.mode }}
           RUNTIME_ID: ${{ github.event.inputs.runtime_id }}
+          SOURCE_ID: ${{ github.event.inputs.source_id || 'cosmo' }}
           MAX_AGE_MINUTES: ${{ github.event.inputs.max_age_minutes }}
         run: |
           set -euo pipefail
-          args=(--stack-file aws/Pulumi.sec-dev.yaml --source-id cosmo --max-age-minutes "${MAX_AGE_MINUTES}")
+          args=(--stack-file aws/Pulumi.sec-dev.yaml --source-id "${SOURCE_ID}" --max-age-minutes "${MAX_AGE_MINUTES}")
           if [ "${VERIFY_MODE}" = "run" ]; then args+=(--run); fi
           if [ -n "${RUNTIME_ID}" ]; then args+=(--runtime-id "${RUNTIME_ID}"); fi
           uv run python scripts/verify_source_runtime_ecs.py "${args[@]}"
@@ -124,16 +130,17 @@ jobs:
         working-directory: infra
         run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.go-prod.yaml --same-account-only
 
-      - name: Verify Cosmo source runtimes
+      - name: Verify source runtimes
         shell: bash
         working-directory: infra
         env:
           VERIFY_MODE: ${{ github.event.inputs.mode }}
           RUNTIME_ID: ${{ github.event.inputs.runtime_id }}
+          SOURCE_ID: ${{ github.event.inputs.source_id || 'cosmo' }}
           MAX_AGE_MINUTES: ${{ github.event.inputs.max_age_minutes }}
         run: |
           set -euo pipefail
-          args=(--stack-file aws/Pulumi.go-prod.yaml --source-id cosmo --max-age-minutes "${MAX_AGE_MINUTES}")
+          args=(--stack-file aws/Pulumi.go-prod.yaml --source-id "${SOURCE_ID}" --max-age-minutes "${MAX_AGE_MINUTES}")
           if [ "${VERIFY_MODE}" = "run" ]; then args+=(--run); fi
           if [ -n "${RUNTIME_ID}" ]; then args+=(--runtime-id "${RUNTIME_ID}"); fi
           uv run python scripts/verify_source_runtime_ecs.py "${args[@]}"
