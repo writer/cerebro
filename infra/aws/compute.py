@@ -678,7 +678,7 @@ def _create_task_definition(
             container["healthCheck"] = {
                 "command": ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"],
                 "interval": 30,
-                "timeout": 15,
+                "timeout": 60,
                 "retries": 3,
                 "startPeriod": 60,
             }
