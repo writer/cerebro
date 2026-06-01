@@ -47,6 +47,16 @@ class MonitoringRuntimeTest(unittest.TestCase):
         schedule = {"scheduleExpression": "cron(3 0/6 * * ? *)"}
         self.assertEqual(monitoring._runtime_heartbeat_period_seconds(schedule, 28800), 64800)
 
+    def test_orchestrator_rule_alarm_resource_name_uses_schedule_name(self) -> None:
+        self.assertEqual(
+            monitoring._orchestrator_rule_alarm_resource_name(
+                "cerebro-test",
+                3,
+                {"name": "aws-secdev-us2-res-exp"},
+            ),
+            "cerebro-test-orchestrator-rule-aws-secdev-us2-res-exp-failed-invocations",
+        )
+
     def test_dashboard_includes_access_audit_metrics(self) -> None:
         original_get_region = monitoring.aws.get_region
         monitoring.aws.get_region = lambda: SimpleNamespace(region="us-east-1")

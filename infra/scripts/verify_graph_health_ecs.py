@@ -249,10 +249,7 @@ def _task_definition_container_names(task_definition: str, region: str) -> set[s
 
 
 def _graph_command_overrides_from_names(command: list[str], container_names: set[str]) -> dict[str, Any]:
-    container_overrides = [{"name": "cerebro", "command": command}]
-    if "source-runtime-bootstrap" in container_names:
-        container_overrides.append({"name": "source-runtime-bootstrap", "command": ["graph", "counts"]})
-    return {"containerOverrides": container_overrides}
+    return {"containerOverrides": [{"name": "cerebro", "command": command}]}
 
 
 def _graph_command_overrides(task_definition: str, command: list[str], region: str) -> dict[str, Any]:
