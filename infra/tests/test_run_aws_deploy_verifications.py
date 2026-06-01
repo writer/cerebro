@@ -149,9 +149,16 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
     def test_graph_failure_degrades_when_allowed(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             summary_path = Path(temp_dir) / "summary.md"
+            output_path = Path(temp_dir) / "outputs.txt"
             with (
                 patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": str(summary_path)}),
-                patch("scripts.run_aws_deploy_verifications._stream_graph_health", return_value=23),
+                patch(
+                    "scripts.run_aws_deploy_verifications._stream_graph_health",
+                    return_value=run_aws_deploy_verifications.GraphHealthResult(
+                        23,
+                        "ERROR: latest graph ingest run failed for 1 runtime(s): writer-runtime:graph-ingest:writer-runtime:20260601T000000Z:status=failed",
+                    ),
+                ),
             ):
                 with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                     status = run_aws_deploy_verifications.main(
@@ -162,12 +169,107 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
                             "--graph-health-output",
                             str(Path(temp_dir) / "graph.tsv"),
                             "--allow-graph-health-degradation",
+                            "--github-output",
+                            str(output_path),
                         ]
                     )
                 summary = summary_path.read_text(encoding="utf-8")
+                outputs = output_path.read_text(encoding="utf-8")
 
         self.assertEqual(status, 0)
         self.assertIn("Graph health verification degraded (go-prod)", summary)
+        self.assertIn("graph_health_degraded=true", outputs)
+        self.assertIn("graph_health_degradation_category=stale_or_transient_ingest_run", outputs)
+
+    def test_graph_integrity_failure_remains_blocking_when_degradation_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch(
+                "scripts.run_aws_deploy_verifications._stream_graph_health",
+                return_value=run_aws_deploy_verifications.GraphHealthResult(
+                    23,
+                    "ERROR: graph integrity failed 1 checks: open_findings_missing_primary_has_finding_edge=1",
+                ),
+            ):
+                status = run_aws_deploy_verifications.main(
+                    [
+                        "--stack-file",
+                        "aws/Pulumi.go-prod.yaml",
+                        "--graph-health",
+                        "--graph-health-output",
+                        str(Path(temp_dir) / "graph.tsv"),
+                        "--allow-graph-health-degradation",
+                    ]
+                )
+
+        self.assertEqual(status, 23)
+
+    def test_graph_failure_heals_then_reruns_health(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            results = iter(
+                [
+                    run_aws_deploy_verifications.GraphHealthResult(
+                        23,
+                        "ERROR: latest graph ingest run failed for 1 runtime(s): writer-runtime:graph-ingest:writer-runtime:20260601T000000Z:status=failed",
+                    ),
+                    run_aws_deploy_verifications.GraphHealthResult(0, ""),
+                ]
+            )
+            with (
+                patch("scripts.run_aws_deploy_verifications._stream_graph_health", side_effect=lambda *_args: next(results)) as stream,
+                patch("scripts.run_aws_deploy_verifications._attempt_graph_health_heal", return_value=True) as heal,
+            ):
+                status = run_aws_deploy_verifications.main(
+                    [
+                        "--stack-file",
+                        "aws/Pulumi.go-prod.yaml",
+                        "--graph-health",
+                        "--graph-health-output",
+                        str(Path(temp_dir) / "graph.tsv"),
+                        "--allow-graph-health-degradation",
+                        "--graph-health-heal",
+                    ]
+                )
+
+        self.assertEqual(status, 0)
+        self.assertEqual(stream.call_count, 2)
+        heal.assert_called_once()
+
+    def test_graph_degradation_can_create_followup_issue(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with (
+                patch(
+                    "scripts.run_aws_deploy_verifications._stream_graph_health",
+                    return_value=run_aws_deploy_verifications.GraphHealthResult(
+                        23,
+                        "ERROR: latest graph ingest run is stale-running for 1 runtime(s): writer-runtime:graph-ingest:writer-runtime:20260601T000000Z:status=running",
+                    ),
+                ),
+                patch("scripts.run_aws_deploy_verifications._create_graph_health_issue") as create_issue,
+            ):
+                status = run_aws_deploy_verifications.main(
+                    [
+                        "--stack-file",
+                        "aws/Pulumi.go-prod.yaml",
+                        "--graph-health",
+                        "--graph-health-output",
+                        str(Path(temp_dir) / "graph.tsv"),
+                        "--allow-graph-health-degradation",
+                        "--graph-health-issue",
+                        "--graph-health-artifact-name",
+                        "graph-health-go-prod",
+                    ]
+                )
+
+        self.assertEqual(status, 0)
+        create_issue.assert_called_once_with("go-prod", 23, "stale_ingest_run", "graph-health-go-prod")
+
+    def test_graph_health_runtime_ids_parse_ingest_summaries(self) -> None:
+        diagnostics = (
+            "latest graph ingest run failed for 1 runtime(s): "
+            "writer-vulnview-asset:graph-ingest:writer-vulnview-asset:20260601T172200Z:status=failed"
+        )
+
+        self.assertEqual(run_aws_deploy_verifications._graph_health_runtime_ids(diagnostics), ["writer-vulnview-asset"])
 
 
 if __name__ == "__main__":
