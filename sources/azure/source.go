@@ -190,6 +190,7 @@ type armRoleAssignmentRecord struct {
 	Type       string                `json:"type"`
 	Properties armRoleAssignmentProp `json:"properties"`
 	RoleName   string
+	Principal  graphPrincipalRecord
 	raw        json.RawMessage
 }
 
@@ -324,6 +325,7 @@ type azureFamilyOptions[T any] struct {
 	Name     string
 	Label    string
 	List     func(context.Context, *Source, settings, string, int) ([]T, string, error)
+	Check    func(context.Context, *Source, settings, string, int) ([]T, string, error)
 	Event    func(settings, T) (*primitives.Event, error)
 	URN      func(settings, T) (string, error)
 	Discover func(context.Context, *Source, settings) ([]sourcecdk.URN, error)
@@ -460,9 +462,19 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Name:  familyIAMRoleAssign,
 			Label: "azure rbac role assignments",
 			List:  listIAMRoleAssignments,
+			Check: listIAMRoleAssignmentsBase,
 			Event: iamRoleAssignmentEvent,
 			URN: func(settings settings, assignment armRoleAssignmentRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:azure_iam_role_assignment:%s", tenantID(settings), firstNonEmpty(assignment.ID, assignment.Name)), nil
+			},
+			Discover: func(ctx context.Context, source *Source, cfg settings) ([]sourcecdk.URN, error) {
+				records, _, err := listIAMRoleAssignmentsBase(ctx, source, cfg, "", cfg.perPage)
+				if err != nil {
+					return nil, fmt.Errorf("lookup azure rbac role assignments for %s: %w", tenantID(cfg), err)
+				}
+				return azureURNsFor(cfg, records, func(cfg settings, assignment armRoleAssignmentRecord) (string, error) {
+					return fmt.Sprintf("urn:cerebro:%s:azure_iam_role_assignment:%s", tenantID(cfg), firstNonEmpty(assignment.ID, assignment.Name)), nil
+				})
 			},
 		}),
 		azureFamily(s, azureFamilyOptions[azureResourceExposure]{
@@ -499,7 +511,11 @@ func azureFamily[T any](source *Source, options azureFamilyOptions[T]) sourcecdk
 	return sourcecdk.Family[settings]{
 		Name: options.Name,
 		Check: func(ctx context.Context, settings settings) error {
-			return azureCheck(ctx, source, settings, options.List, options.Label)
+			checkList := options.List
+			if options.Check != nil {
+				checkList = options.Check
+			}
+			return azureCheck(ctx, source, settings, checkList, options.Label)
 		},
 		Discover: func(ctx context.Context, settings settings) ([]sourcecdk.URN, error) {
 			if options.Discover != nil {
@@ -706,7 +722,7 @@ func listDirectoryAudits(ctx context.Context, source *Source, settings settings,
 	return records, graphNext(response), err
 }
 
-func listIAMRoleAssignments(ctx context.Context, source *Source, settings settings, pageToken string, _ int) ([]armRoleAssignmentRecord, string, error) {
+func listIAMRoleAssignmentsBase(ctx context.Context, source *Source, settings settings, pageToken string, _ int) ([]armRoleAssignmentRecord, string, error) {
 	query := url.Values{"api-version": {"2022-04-01"}}
 	var response armPage
 	path := "/subscriptions/" + url.PathEscape(settings.subscriptionID) + "/providers/Microsoft.Authorization/roleAssignments"
@@ -719,10 +735,48 @@ func listIAMRoleAssignments(ctx context.Context, source *Source, settings settin
 	if err != nil {
 		return nil, "", err
 	}
-	for i := range records {
-		records[i].RoleName = firstNonEmpty(records[i].RoleName, resolveARMRoleName(ctx, source, settings, records[i].Properties.RoleDefinitionID))
-	}
 	return records, response.Next, nil
+}
+
+func listIAMRoleAssignments(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]armRoleAssignmentRecord, string, error) {
+	records, next, err := listIAMRoleAssignmentsBase(ctx, source, settings, pageToken, limit)
+	if err != nil {
+		return nil, "", err
+	}
+	roleNames := map[string]string{}
+	principals := map[string]azurePrincipalLookup{}
+	for i := range records {
+		roleDefinitionID := strings.TrimSpace(records[i].Properties.RoleDefinitionID)
+		if roleDefinitionID != "" {
+			roleName, ok := roleNames[roleDefinitionID]
+			if !ok {
+				roleName = resolveARMRoleName(ctx, source, settings, roleDefinitionID)
+				roleNames[roleDefinitionID] = roleName
+			}
+			records[i].RoleName = firstNonEmpty(records[i].RoleName, roleName)
+		}
+		principalID := strings.TrimSpace(records[i].Properties.PrincipalID)
+		if principalID == "" {
+			continue
+		}
+		principalKey := strings.ToLower(strings.TrimSpace(records[i].Properties.PrincipalType)) + ":" + principalID
+		resolved, ok := principals[principalKey]
+		if !ok {
+			principal, found := resolveAzurePrincipal(ctx, source, settings, principalID, records[i].Properties.PrincipalType)
+			resolved = azurePrincipalLookup{record: principal, ok: found}
+			principals[principalKey] = resolved
+		}
+		if resolved.ok {
+			principal := resolved.record
+			records[i].Principal = principal
+		}
+	}
+	return records, next, nil
+}
+
+type azurePrincipalLookup struct {
+	record graphPrincipalRecord
+	ok     bool
 }
 
 func listResourceExposures(ctx context.Context, source *Source, settings settings, pageToken string, _ int) ([]azureResourceExposure, string, error) {
@@ -825,21 +879,27 @@ func groupMembershipEvent(settings settings, record graphPrincipalRecord) (*prim
 
 func appRoleAssignmentEvent(settings settings, record appRoleAssignmentRecord) (*primitives.Event, error) {
 	subjectType := azurePrincipalType(record.PrincipalType, graphPrincipalRecord{})
+	subjectEmail := ""
+	if subjectType == "user" {
+		subjectEmail = emailLike(record.PrincipalDisplayName)
+	}
 	attributes := map[string]string{
-		"domain":       tenantID(settings),
-		"family":       familyAppRoleAssignment,
-		"is_admin":     "true",
-		"path_type":    "app_role_assignment",
-		"relationship": "assigned_to",
-		"role_id":      record.AppRoleID,
-		"role_name":    record.AppRoleID,
-		"role_type":    "azure_app_role",
-		"subject_id":   record.PrincipalID,
-		"subject_name": record.PrincipalDisplayName,
-		"subject_type": subjectType,
-		"target_id":    firstNonEmpty(record.ResourceID, settings.servicePrincipalID),
-		"target_name":  record.ResourceDisplayName,
-		"target_type":  "service_principal",
+		"domain":        tenantID(settings),
+		"family":        familyAppRoleAssignment,
+		"is_admin":      "true",
+		"path_type":     "app_role_assignment",
+		"relationship":  "assigned_to",
+		"role_id":       record.AppRoleID,
+		"role_name":     record.AppRoleID,
+		"role_type":     "azure_app_role",
+		"subject_email": subjectEmail,
+		"subject_id":    record.PrincipalID,
+		"subject_login": subjectEmail,
+		"subject_name":  record.PrincipalDisplayName,
+		"subject_type":  subjectType,
+		"target_id":     firstNonEmpty(record.ResourceID, settings.servicePrincipalID),
+		"target_name":   record.ResourceDisplayName,
+		"target_type":   "service_principal",
 	}
 	payload, err := payloadWithRaw(record.raw, map[string]any{"tenant_id": settings.tenantID, "service_principal_id": settings.servicePrincipalID})
 	if err != nil {
@@ -952,6 +1012,8 @@ func directoryRoleAssignmentEvent(settings settings, record directoryRoleAssignm
 
 func iamRoleAssignmentEvent(settings settings, record armRoleAssignmentRecord) (*primitives.Event, error) {
 	roleName := firstNonEmpty(record.RoleName, record.Properties.RoleDefinitionID)
+	principal := record.Principal
+	subjectEmail := firstNonEmpty(emailLike(principal.Mail), emailLike(principal.UserPrincipalName), emailLike(record.Properties.PrincipalID))
 	attributes := map[string]string{
 		"domain":             tenantID(settings),
 		"family":             familyIAMRoleAssign,
@@ -961,8 +1023,11 @@ func iamRoleAssignmentEvent(settings settings, record armRoleAssignmentRecord) (
 		"role_name":          roleName,
 		"role_type":          "azure_rbac_role",
 		"scope":              record.Properties.Scope,
+		"subject_email":      subjectEmail,
 		"subject_id":         record.Properties.PrincipalID,
-		"subject_type":       azurePrincipalType(record.Properties.PrincipalType, graphPrincipalRecord{}),
+		"subject_login":      subjectEmail,
+		"subject_name":       firstNonEmpty(principal.DisplayName, principal.UserPrincipalName),
+		"subject_type":       azurePrincipalType(record.Properties.PrincipalType, principal),
 		"subscription_id":    settings.subscriptionID,
 	}
 	payload, err := payloadWithRaw(record.raw, map[string]any{"subscription_id": settings.subscriptionID})
@@ -1306,6 +1371,32 @@ func resolveARMRoleName(ctx context.Context, source *Source, settings settings, 
 		return ""
 	}
 	return record.Properties.RoleName
+}
+
+func resolveAzurePrincipal(ctx context.Context, source *Source, settings settings, principalID string, principalType string) (graphPrincipalRecord, bool) {
+	principalID = strings.TrimSpace(principalID)
+	if principalID == "" || graphToken(settings) == "" {
+		return graphPrincipalRecord{}, false
+	}
+	var path string
+	switch azurePrincipalType(principalType, graphPrincipalRecord{}) {
+	case "user":
+		path = "/v1.0/users/" + url.PathEscape(principalID)
+	case "group":
+		path = "/v1.0/groups/" + url.PathEscape(principalID)
+	case "service_principal", "application":
+		path = "/v1.0/servicePrincipals/" + url.PathEscape(principalID)
+	default:
+		path = "/v1.0/directoryObjects/" + url.PathEscape(principalID)
+	}
+	var record graphPrincipalRecord
+	if err := getGraphJSON(ctx, source, settings, http.MethodGet, path, nil, nil, &record); err != nil {
+		return graphPrincipalRecord{}, false
+	}
+	if strings.TrimSpace(record.ID) == "" {
+		record.ID = principalID
+	}
+	return record, true
 }
 
 func graphListQuery(settings settings, limit int) url.Values {

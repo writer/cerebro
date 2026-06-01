@@ -102,6 +102,8 @@ type roleAssignmentRecord struct {
 	AssigneeType     string `json:"assigneeType"`
 	ScopeType        string `json:"scopeType"`
 	OrgUnitID        string `json:"orgUnitId"`
+	SubjectEmail     string
+	SubjectName      string
 	raw              json.RawMessage
 }
 
@@ -224,8 +226,15 @@ func (s *Source) readFamily(ctx context.Context, settings settings, cursor *cere
 		return sourcecdk.Pull{}, nil
 	}
 	events := make([]*primitives.Event, 0, len(rawRecords))
+	userCache := map[string]googleWorkspaceUserLookup{}
 	for _, raw := range rawRecords {
-		event, err := sourceEvent(settings, raw)
+		var event *primitives.Event
+		var err error
+		if settings.family == familyRoleAssign {
+			event, err = s.roleAssignmentEvent(ctx, settings, raw, userCache)
+		} else {
+			event, err = s.sourceEvent(ctx, settings, raw)
+		}
 		if err != nil {
 			return sourcecdk.Pull{}, err
 		}
@@ -407,6 +416,61 @@ func lookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, 
 		return source.lookupIPAddrs
 	}
 	return net.DefaultResolver.LookupIPAddr
+}
+
+func (s *Source) sourceEvent(ctx context.Context, settings settings, raw json.RawMessage) (*primitives.Event, error) {
+	if settings.family != familyRoleAssign {
+		return sourceEvent(settings, raw)
+	}
+	return s.roleAssignmentEvent(ctx, settings, raw, nil)
+}
+
+func (s *Source) roleAssignmentEvent(ctx context.Context, settings settings, raw json.RawMessage, userCache map[string]googleWorkspaceUserLookup) (*primitives.Event, error) {
+	var record roleAssignmentRecord
+	if err := json.Unmarshal(raw, &record); err != nil {
+		return nil, fmt.Errorf("decode google_workspace role assignment: %w", err)
+	}
+	record.raw = append(json.RawMessage(nil), raw...)
+	if strings.EqualFold(record.AssigneeType, "user") {
+		if user, ok := s.lookupUserCached(ctx, settings, record.AssignedTo, userCache); ok {
+			record.SubjectEmail = user.PrimaryEmail
+			record.SubjectName = user.Name.FullName
+		}
+	}
+	return roleAssignmentEvent(settings, record)
+}
+
+type googleWorkspaceUserLookup struct {
+	record userRecord
+	ok     bool
+}
+
+func (s *Source) lookupUserCached(ctx context.Context, settings settings, userKey string, cache map[string]googleWorkspaceUserLookup) (userRecord, bool) {
+	userKey = strings.TrimSpace(userKey)
+	if userKey == "" {
+		return userRecord{}, false
+	}
+	if cache == nil {
+		return s.lookupUser(ctx, settings, userKey)
+	}
+	if cached, ok := cache[userKey]; ok {
+		return cached.record, cached.ok
+	}
+	user, ok := s.lookupUser(ctx, settings, userKey)
+	cache[userKey] = googleWorkspaceUserLookup{record: user, ok: ok}
+	return user, ok
+}
+
+func (s *Source) lookupUser(ctx context.Context, settings settings, userKey string) (userRecord, bool) {
+	userKey = strings.TrimSpace(userKey)
+	if userKey == "" {
+		return userRecord{}, false
+	}
+	var user userRecord
+	if err := s.getJSON(ctx, settings, "/admin/directory/v1/users/"+url.PathEscape(userKey), nil, &user); err != nil {
+		return userRecord{}, false
+	}
+	return user, true
 }
 
 func sourceEvent(settings settings, raw json.RawMessage) (*primitives.Event, error) {
@@ -599,12 +663,16 @@ func groupMemberAttributes(settings settings, record memberRecord) map[string]st
 }
 
 func roleAssignmentAttributes(settings settings, record roleAssignmentRecord) map[string]string {
+	subjectEmail := firstNonEmpty(record.SubjectEmail, emailLike(record.AssignedTo))
 	return trimEmpty(map[string]string{
 		"domain":             settings.domain,
 		"family":             familyRoleAssign,
 		"role_assignment_id": record.RoleAssignmentID,
 		"role_id":            record.RoleID,
+		"subject_email":      subjectEmail,
 		"subject_id":         record.AssignedTo,
+		"subject_login":      subjectEmail,
+		"subject_name":       record.SubjectName,
 		"assigned_to":        record.AssignedTo,
 		"subject_type":       strings.ToLower(record.AssigneeType),
 		"principal_type":     strings.ToLower(record.AssigneeType),
@@ -722,6 +790,14 @@ func firstNonEmpty(values ...string) string {
 		if strings.TrimSpace(value) != "" {
 			return strings.TrimSpace(value)
 		}
+	}
+	return ""
+}
+
+func emailLike(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if strings.Contains(trimmed, "@") {
+		return strings.ToLower(trimmed)
 	}
 	return ""
 }
