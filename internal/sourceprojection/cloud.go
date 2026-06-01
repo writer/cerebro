@@ -353,6 +353,7 @@ func cloudPrivilegePathProjections(event *cerebrov1.EventEnvelope, profile ident
 			Attributes: map[string]string{"email": subjectEmail, "subject_type": subjectType},
 		})
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), subjectURN, firstNonEmpty(subjectEmail, subjectID), event.GetOccurredAt())
+		addAWSPrincipalIdentifierLinks(entities, links, tenantID, event.GetSourceId(), event, subjectURN, profile, attributes, subjectType, subjectID, attributes["subject_login"], attributes["subject_name"], attributes["subject_arn"], attributes["principal_arn"])
 	}
 	if targetURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
@@ -403,6 +404,7 @@ func cloudEffectivePermissionProjections(event *cerebrov1.EventEnvelope, profile
 			Attributes: map[string]string{"email": subjectEmail, "subject_type": subjectType},
 		})
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), subjectURN, firstNonEmpty(subjectEmail, subjectID), event.GetOccurredAt())
+		addAWSPrincipalIdentifierLinks(entities, links, tenantID, event.GetSourceId(), event, subjectURN, profile, attributes, subjectType, subjectID, attributes["subject_login"], attributes["subject_name"], attributes["subject_arn"], attributes["principal_arn"])
 	}
 	if resourceURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{

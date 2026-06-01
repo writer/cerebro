@@ -3116,6 +3116,7 @@ func TestProjectCloudExposureAndPrivilegePaths(t *testing.T) {
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationAttachedTo, "urn:cerebro:writer:aws_ec2_instance:i-network-1")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_elastic_ip:eipalloc-1", relationAssociatedWith, "urn:cerebro:writer:aws_ec2_instance:i-eip-1")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_role:arn:aws:iam::999999999999:role/ExternalAdmin", relationCanAssume, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/AdminRole")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_role:arn:aws:iam::999999999999:role/ExternalAdmin", relationRepresentsIdentity, "urn:cerebro:writer:identity:login:aws:999999999999:role:externaladmin")
 	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_user:admin@writer.com", relationCanImpersonate, "urn:cerebro:writer:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com")
 	assertProjectedLink(t, state, "urn:cerebro:writer:azure_service_principal:sp-1", relationAssignedTo, "urn:cerebro:writer:azure_service_principal:sp-resource-1")
 }
@@ -3254,6 +3255,7 @@ func TestProjectAWSEffectivePermissionWithoutRoleIDSkipsRoleNode(t *testing.T) {
 			"resource_name": "writer-bucket",
 			"resource_type": "bucket",
 			"role_name":     "ReadOnlyAccess",
+			"subject_login": "analyst",
 			"subject_id":    "analyst@writer.com",
 			"subject_type":  "user",
 		},
@@ -3270,6 +3272,7 @@ func TestProjectAWSEffectivePermissionWithoutRoleIDSkipsRoleNode(t *testing.T) {
 	}
 	resourceURN := "urn:cerebro:writer:aws_bucket:arn:aws:s3:::writer-bucket"
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_user:analyst@writer.com", relationCanPerform, resourceURN)
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_user:analyst@writer.com", relationRepresentsIdentity, "urn:cerebro:writer:identity:login:aws:123456789012:user:analyst")
 }
 
 func TestProjectEffectivePermissionsKubernetesRuntimeAndData(t *testing.T) {
