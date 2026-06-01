@@ -185,6 +185,52 @@ func TestReadLiveAzureARMPreview(t *testing.T) {
 	}
 }
 
+func TestAzureAppRoleAssignmentDerivesUserPrincipalEmail(t *testing.T) {
+	event, err := appRoleAssignmentEvent(settings{tenantID: "tenant-1"}, appRoleAssignmentRecord{
+		ID:                   "app-role-assignment-1",
+		PrincipalID:          "user-1",
+		PrincipalDisplayName: "admin@writer.com",
+		PrincipalType:        "User",
+		ResourceID:           "sp-resource-1",
+		ResourceDisplayName:  "Graph API",
+		AppRoleID:            "role-1",
+	})
+	if err != nil {
+		t.Fatalf("appRoleAssignmentEvent() error = %v", err)
+	}
+	if got := event.Attributes["subject_email"]; got != "admin@writer.com" {
+		t.Fatalf("subject_email = %q, want admin@writer.com", got)
+	}
+	if got := event.Attributes["subject_login"]; got != "admin@writer.com" {
+		t.Fatalf("subject_login = %q, want admin@writer.com", got)
+	}
+}
+
+func TestReadAzureIAMRoleAssignmentResolvesPrincipalEmail(t *testing.T) {
+	server := httptest.NewServer(newAzureAPIHandler(t))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":        server.URL,
+		"family":          familyIAMRoleAssign,
+		"subscription_id": "sub-1",
+		"tenant_id":       "tenant-1",
+		"token":           "test-token",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyIAMRoleAssign, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["subject_email"]; got != "admin@writer.com" {
+		t.Fatalf("subject_email = %q, want admin@writer.com", got)
+	}
+}
+
 func newLiveTestSource() (*Source, error) {
 	source, err := New()
 	if err != nil {
@@ -207,6 +253,8 @@ func newAzureAPIHandler(t *testing.T) http.Handler {
 		switch r.URL.Path {
 		case "/v1.0/users":
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "user-1", "userPrincipalName": "admin@writer.com", "mail": "admin@writer.com", "displayName": "Admin", "accountEnabled": true, "createdDateTime": "2026-04-23T00:00:00Z", "signInActivity": map[string]any{"lastSignInDateTime": "2026-04-24T00:00:00Z"}}}})
+		case "/v1.0/users/user-1":
+			writeJSON(t, w, map[string]any{"@odata.type": "#microsoft.graph.user", "id": "user-1", "userPrincipalName": "admin@writer.com", "mail": "admin@writer.com", "displayName": "Admin"})
 		case "/v1.0/groups":
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "group-1", "mail": "security@writer.com", "displayName": "Security", "securityEnabled": true, "mailEnabled": true}}})
 		case "/v1.0/groups/group-1/members":
@@ -222,7 +270,7 @@ func newAzureAPIHandler(t *testing.T) http.Handler {
 		case "/v1.0/auditLogs/directoryAudits":
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "audit-1", "activityDateTime": "2026-04-23T00:00:00Z", "activityDisplayName": "Update conditional access policy", "operationType": "Update", "category": "Policy", "initiatedBy": map[string]any{"user": map[string]any{"id": "user-1", "userPrincipalName": "admin@writer.com", "displayName": "Admin"}}, "targetResources": []map[string]any{{"id": "policy-1", "displayName": "Require MFA", "type": "conditional_access_policy"}}}}})
 		case "/subscriptions/sub-1/providers/Microsoft.Authorization/roleAssignments":
-			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/providers/Microsoft.Authorization/roleAssignments/ra-1", "name": "ra-1", "type": "Microsoft.Authorization/roleAssignments", "properties": map[string]any{"principalId": "sp-1", "principalType": "ServicePrincipal", "roleDefinitionId": "/subscriptions/sub-1/providers/Microsoft.Authorization/roleDefinitions/owner-role", "scope": "/subscriptions/sub-1"}}}})
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/providers/Microsoft.Authorization/roleAssignments/ra-1", "name": "ra-1", "type": "Microsoft.Authorization/roleAssignments", "properties": map[string]any{"principalId": "user-1", "principalType": "User", "roleDefinitionId": "/subscriptions/sub-1/providers/Microsoft.Authorization/roleDefinitions/owner-role", "scope": "/subscriptions/sub-1"}}}})
 		case "/subscriptions/sub-1/providers/Microsoft.Authorization/roleDefinitions/owner-role":
 			writeJSON(t, w, map[string]any{"id": "/subscriptions/sub-1/providers/Microsoft.Authorization/roleDefinitions/owner-role", "name": "owner-role", "properties": map[string]any{"roleName": "Owner", "type": "BuiltInRole"}})
 		case "/subscriptions/sub-1/providers/Microsoft.Network/networkSecurityGroups":
