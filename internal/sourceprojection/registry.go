@@ -43,6 +43,7 @@ func NewRegistry(projectors ...EventProjector) (*Registry, error) {
 }
 
 var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
+	"backstage.component":                  backstageComponentProjections,
 	"aurelius.catalog_promotion":           aureliusCatalogPromotionProjections,
 	"aurelius.finding":                     aureliusFindingProjections,
 	"aurelius.image_scan":                  aureliusImageScanProjections,
@@ -135,6 +136,8 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"kubernetes.workload":                  kubernetesWorkloadProjections,
 	"kubernetes.workload_identity_binding": kubernetesWorkloadIdentityBindingProjections,
 	"runtime.evidence":                     runtimeEvidenceProjections,
+	"security_tooling_map.control_mapping": securityToolingMapControlMappingProjections,
+	"security_tooling_map.tool":            securityToolingMapToolProjections,
 	"sentinelone.activity":                 sentinelOneActivityProjections,
 	"sentinelone.agent":                    sentinelOneAgentProjections,
 	"sentinelone.application_inventory":    sentinelOneApplicationInventoryProjections,

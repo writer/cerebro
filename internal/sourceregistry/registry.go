@@ -7,6 +7,7 @@ import (
 	aureliussource "github.com/writer/cerebro/sources/aurelius"
 	awssource "github.com/writer/cerebro/sources/aws"
 	azuresource "github.com/writer/cerebro/sources/azure"
+	backstagesource "github.com/writer/cerebro/sources/backstage"
 	cosmosource "github.com/writer/cerebro/sources/cosmo"
 	gcpsource "github.com/writer/cerebro/sources/gcp"
 	githubsource "github.com/writer/cerebro/sources/github"
@@ -16,6 +17,7 @@ import (
 	kolidesource "github.com/writer/cerebro/sources/kolide"
 	oktasource "github.com/writer/cerebro/sources/okta"
 	sdksource "github.com/writer/cerebro/sources/sdk"
+	securitytoolingmapsource "github.com/writer/cerebro/sources/securitytoolingmap"
 	sentineloneSource "github.com/writer/cerebro/sources/sentinelone"
 	vulnviewsource "github.com/writer/cerebro/sources/vulnview"
 )
@@ -42,6 +44,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "azure",
 		load: func() (sourcecdk.Source, error) {
 			return azuresource.New()
+		},
+	},
+	{
+		name: "backstage",
+		load: func() (sourcecdk.Source, error) {
+			return backstagesource.New()
 		},
 	},
 	{
@@ -102,6 +110,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "sentinelone",
 		load: func() (sourcecdk.Source, error) {
 			return sentineloneSource.New()
+		},
+	},
+	{
+		name: "security_tooling_map",
+		load: func() (sourcecdk.Source, error) {
+			return securitytoolingmapsource.New()
 		},
 	},
 	{
