@@ -178,6 +178,34 @@ func TestProjectAureliusSparseImageOmitsEmptyImageMetadata(t *testing.T) {
 	}
 }
 
+func TestProjectAureliusCatalogPromotionLinksPromoterEmail(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "aurelius-catalog-promotion-promoter",
+		TenantId: "writer",
+		SourceId: "aurelius",
+		Kind:     "aurelius.catalog_promotion",
+		Payload: mustJSON(t, map[string]any{
+			"image_digest": "sha256:promoted",
+			"promoted_by":  "security@example.com",
+			"track":        "prod",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	promotionURN := "urn:cerebro:writer:aurelius_catalog_promotion:prod|sha256:promoted"
+	identityURN := "urn:cerebro:writer:identity:email:security@example.com"
+	assertProjectedLink(t, state, promotionURN, relationAssociatedWith, identityURN)
+	link := state.links[promotionURN+"|"+relationAssociatedWith+"|"+identityURN]
+	if got := link.Attributes["contact_type"]; got != "promoted_by" {
+		t.Fatalf("contact_type = %q, want promoted_by", got)
+	}
+}
+
 func TestProjectAureliusDigestOnlyFindingDoesNotCreateArtifactRegistryImage(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
@@ -524,5 +552,34 @@ func TestProjectAureliusPolicyExceptionPrefersExceptionIDIdentity(t *testing.T) 
 	}
 	if state.entities["urn:cerebro:writer:aurelius_policy_exception:CVE-2026-1111"] != nil {
 		t.Fatalf("policy exception keyed by cve_id despite exception_id; entities=%v", state.entities)
+	}
+}
+
+func TestProjectAureliusPolicyExceptionLinksApproverEmailIdentity(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "aurelius-policy-exception-approver",
+		TenantId: "writer",
+		SourceId: "aurelius",
+		Kind:     "aurelius.policy_exception",
+		Payload: mustJSON(t, map[string]any{
+			"approver":   "security@example.com",
+			"cve_id":     "CVE-2026-1111",
+			"expires_at": "2026-06-01T00:00:00Z",
+			"status":     "active",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	exceptionURN := "urn:cerebro:writer:aurelius_policy_exception:CVE-2026-1111"
+	identityURN := "urn:cerebro:writer:identity:email:security@example.com"
+	assertProjectedLink(t, state, exceptionURN, relationAssociatedWith, identityURN)
+	link := state.links[exceptionURN+"|"+relationAssociatedWith+"|"+identityURN]
+	if got := link.Attributes["contact_type"]; got != "approver" {
+		t.Fatalf("contact_type = %q, want approver", got)
 	}
 }

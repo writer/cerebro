@@ -81,6 +81,7 @@ func securityToolingMapToolProjections(event *cerebrov1.EventEnvelope) ([]*ports
 			"agent_role":       attrs["agent_role"],
 			"surfaces":         attrs["surfaces"],
 			"capabilities":     attrs["capabilities"],
+			"consumed_by":      attrs["consumed_by"],
 			"source_product":   attrs["source_product"],
 		}),
 	})
@@ -95,6 +96,11 @@ func securityToolingMapToolProjections(event *cerebrov1.EventEnvelope) ([]*ports
 		dependencyURN := projectionURN(tenantID, "security_tool", dependency)
 		addEntity(entities, &ports.ProjectedEntity{URN: dependencyURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "security.tool", Label: dependency, Attributes: map[string]string{"tool_id": dependency}})
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), toolURN, dependencyURN, relationDependsOn, map[string]string{"event_id": event.GetId()}))
+	}
+	for _, consumer := range splitCSV(attrs["consumed_by"]) {
+		consumerURN := projectionURN(tenantID, "security_tool", consumer)
+		addEntity(entities, &ports.ProjectedEntity{URN: consumerURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "security.tool", Label: consumer, Attributes: map[string]string{"tool_id": consumer}})
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), consumerURN, toolURN, relationDependsOn, map[string]string{"event_id": event.GetId(), "relationship": "consumed_by"}))
 	}
 	for _, overlap := range splitCSV(attrs["overlaps_with"]) {
 		overlapURN := projectionURN(tenantID, "security_tool", overlap)

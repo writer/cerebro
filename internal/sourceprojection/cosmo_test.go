@@ -113,6 +113,24 @@ func TestProjectCosmoUserMessageLinksIdentity(t *testing.T) {
 	assertCosmoProjectedLink(t, links, "urn:cerebro:writer:cosmo_message:msg-2", relationRepresentsIdentity, "urn:cerebro:writer:identity:email:alice@example.com")
 }
 
+func TestProjectCosmoMessageLinksPayloadUserIdentity(t *testing.T) {
+	entities, links, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
+		Id:       "cosmo-writer-message-msg-3",
+		TenantId: "writer",
+		SourceId: "cosmo",
+		Kind:     "cosmo.message",
+		Payload:  mustJSON(t, map[string]any{"id": "msg-3", "ticket_id": "ticket-1", "userEmail": "alice@example.com"}),
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	message := cosmoProjectedEntity(t, entities, "urn:cerebro:writer:cosmo_message:msg-3", "cosmo.message")
+	if got := message.Attributes["email"]; got != "alice@example.com" {
+		t.Fatalf("message email = %q, want alice@example.com", got)
+	}
+	assertCosmoProjectedLink(t, links, "urn:cerebro:writer:cosmo_message:msg-3", relationRepresentsIdentity, "urn:cerebro:writer:identity:email:alice@example.com")
+}
+
 func TestProjectCosmoSurveyFeedbackLinksSessionAndUser(t *testing.T) {
 	entities, links, err := BuiltinRegistry().Project(&cerebrov1.EventEnvelope{
 		Id:       "cosmo-writer-survey-feedback-feedback-1",
@@ -156,12 +174,18 @@ func TestProjectCosmoSkipsUnidentifiedEvents(t *testing.T) {
 
 func assertCosmoProjectedEntity(t *testing.T, entities []*ports.ProjectedEntity, urn string, entityType string) {
 	t.Helper()
+	_ = cosmoProjectedEntity(t, entities, urn, entityType)
+}
+
+func cosmoProjectedEntity(t *testing.T, entities []*ports.ProjectedEntity, urn string, entityType string) *ports.ProjectedEntity {
+	t.Helper()
 	for _, entity := range entities {
 		if entity.URN == urn && entity.EntityType == entityType {
-			return
+			return entity
 		}
 	}
 	t.Fatalf("projected entity %q type %q missing from %#v", urn, entityType, entities)
+	return nil
 }
 
 func assertCosmoProjectedLink(t *testing.T, links []*ports.ProjectedLink, from string, relation string, to string) {

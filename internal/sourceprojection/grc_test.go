@@ -68,6 +68,35 @@ func TestProjectGRCVendorWithOwner(t *testing.T) {
 	assertProjectedLink(t, state, vendorURN, relationHasIdentifier, hostURN)
 }
 
+func TestProjectGRCVendorLinksAccountManagerEmail(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "grc-vendor-contact",
+		TenantId: "writer",
+		SourceId: "grc",
+		Kind:     "grc.vendor",
+		Attributes: map[string]string{
+			"provider":              "vanta",
+			"vendor_id":             "vendor-1",
+			"name":                  "Acme SaaS",
+			"account_manager_email": "manager@example.com",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	vendorURN := "urn:cerebro:writer:vendor:vanta:vendor-1"
+	identityURN := "urn:cerebro:writer:identity:email:manager@example.com"
+	assertProjectedLink(t, state, vendorURN, relationAssociatedWith, identityURN)
+	link := state.links[vendorURN+"|"+relationAssociatedWith+"|"+identityURN]
+	if got := link.Attributes["contact_type"]; got != "account_manager" {
+		t.Fatalf("contact_type = %q, want account_manager", got)
+	}
+}
+
 func TestProjectGRCDocumentLinksURLAndCategory(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

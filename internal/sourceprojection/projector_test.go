@@ -184,6 +184,40 @@ func TestProjectGitHubPullRequest(t *testing.T) {
 	}
 }
 
+func TestProjectGitHubOrgMemberLinksLoginIdentity(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &projectionRecorder{}
+	service := New(state, graph)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-org-member-1",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.org_member",
+		OccurredAt: timestamppb.New(time.Date(
+			2026, 4, 23, 12, 0, 0, 0, time.UTC,
+		)),
+		Attributes: map[string]string{
+			"owner":   "writer",
+			"login":   "alice",
+			"role":    "member",
+			"user_id": "123",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	memberURN := "urn:cerebro:writer:github_user:alice"
+	identityURN := "urn:cerebro:writer:identity:login:alice"
+	identifierURN := "urn:cerebro:writer:identifier:login:alice"
+	assertProjectedLink(t, graph, memberURN, relationBelongsTo, "urn:cerebro:writer:github_org:writer")
+	assertProjectedLink(t, graph, memberURN, relationRepresentsIdentity, identityURN)
+	assertProjectedLink(t, graph, memberURN, relationHasIdentifier, identifierURN)
+	assertProjectedLink(t, graph, identityURN, relationHasIdentifier, identifierURN)
+	assertProjectedLink(t, graph, identifierURN, relationRepresentsIdentity, identityURN)
+}
+
 func TestProjectGitHubCodeRepositoryLinksOwnerAndLegacyRepo(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
@@ -422,6 +456,122 @@ func TestProjectGitHubDependabotAlertLinksRepoScopedDependency(t *testing.T) {
 	assertProjectedLink(t, state, dependencyURN, relationRepresents, canonicalPackageURN)
 	assertProjectedLink(t, state, alertURN, relationAffects, dependencyURN)
 	assertProjectedLink(t, state, alertURN, relationAffects, canonicalPackageURN)
+}
+
+func TestProjectGitHubDependabotAlertLinksDismissedByActor(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &projectionRecorder{}
+	service := New(state, graph)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-dependabot-alert-dismissed",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.dependabot_alert",
+		Attributes: map[string]string{
+			"alert_number":    "7",
+			"dismissed_by":    "alice",
+			"dismissed_by_id": "123",
+			"owner":           "writer",
+			"repository":      "writer/cerebro",
+			"state":           "dismissed",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	actorURN := "urn:cerebro:writer:github_user:alice"
+	alertURN := "urn:cerebro:writer:github_dependabot_alert:writer/cerebro:7"
+	identityURN := "urn:cerebro:writer:identity:login:alice"
+	identifierURN := "urn:cerebro:writer:identifier:login:alice"
+	assertProjectedLink(t, graph, actorURN, relationActedOn, alertURN)
+	assertProjectedLink(t, graph, actorURN, relationRepresentsIdentity, identityURN)
+	assertProjectedLink(t, graph, actorURN, relationHasIdentifier, identifierURN)
+	if got := graph.entities[actorURN].Attributes["user_id"]; got != "123" {
+		t.Fatalf("github actor user_id = %q, want 123", got)
+	}
+	if got := graph.links[actorURN+"|"+relationActedOn+"|"+alertURN].Attributes["actor_role"]; got != "dismissed_by" {
+		t.Fatalf("actor_role = %q, want dismissed_by", got)
+	}
+}
+
+func TestProjectGitHubSecretScanningAlertLinksResolverAndBypasser(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &projectionRecorder{}
+	service := New(state, graph)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-secret-scanning-alert-resolved",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.secret_scanning_alert",
+		Attributes: map[string]string{
+			"alert_number":                   "42",
+			"owner":                          "writer",
+			"push_protection_bypassed":       "true",
+			"push_protection_bypassed_by":    "bob",
+			"push_protection_bypassed_by_id": "456",
+			"repository":                     "writer/cerebro",
+			"resolved_by":                    "alice",
+			"resolved_by_id":                 "123",
+			"state":                          "resolved",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	alertURN := "urn:cerebro:writer:github_secret_scanning_alert:writer:42"
+	resolverURN := "urn:cerebro:writer:github_user:alice"
+	bypasserURN := "urn:cerebro:writer:github_user:bob"
+	assertProjectedLink(t, graph, resolverURN, relationActedOn, alertURN)
+	assertProjectedLink(t, graph, resolverURN, relationRepresentsIdentity, "urn:cerebro:writer:identity:login:alice")
+	assertProjectedLink(t, graph, resolverURN, relationHasIdentifier, "urn:cerebro:writer:identifier:login:alice")
+	assertProjectedLink(t, graph, bypasserURN, relationActedOn, alertURN)
+	assertProjectedLink(t, graph, bypasserURN, relationRepresentsIdentity, "urn:cerebro:writer:identity:login:bob")
+	assertProjectedLink(t, graph, bypasserURN, relationHasIdentifier, "urn:cerebro:writer:identifier:login:bob")
+	if got := graph.links[resolverURN+"|"+relationActedOn+"|"+alertURN].Attributes["actor_role"]; got != "resolved_by" {
+		t.Fatalf("resolver actor_role = %q, want resolved_by", got)
+	}
+	if got := graph.links[bypasserURN+"|"+relationActedOn+"|"+alertURN].Attributes["actor_role"]; got != "push_protection_bypassed_by" {
+		t.Fatalf("bypasser actor_role = %q, want push_protection_bypassed_by", got)
+	}
+}
+
+func TestProjectGitHubSecretScanningAlertPreservesMultipleActorRolesForSameUser(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &projectionRecorder{}
+	service := New(state, graph)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-secret-scanning-alert-same-actor",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.secret_scanning_alert",
+		Attributes: map[string]string{
+			"alert_number":                   "43",
+			"owner":                          "writer",
+			"push_protection_bypassed":       "true",
+			"push_protection_bypassed_by":    "alice",
+			"push_protection_bypassed_by_id": "123",
+			"repository":                     "writer/cerebro",
+			"resolved_by":                    "alice",
+			"resolved_by_id":                 "123",
+			"state":                          "resolved",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	alertURN := "urn:cerebro:writer:github_secret_scanning_alert:writer:43"
+	actorURN := "urn:cerebro:writer:github_user:alice"
+	assertProjectedLink(t, graph, actorURN, relationActedOn, alertURN)
+	link := graph.links[actorURN+"|"+relationActedOn+"|"+alertURN]
+	if got := link.Attributes["actor_role"]; got != "resolved_by,push_protection_bypassed_by" {
+		t.Fatalf("actor_role = %q, want both roles", got)
+	}
 }
 
 func TestProjectOktaOAuthGrantAsApplicationTelemetry(t *testing.T) {
@@ -1118,6 +1268,44 @@ func TestProjectOktaAuditSuppressesSelfActedOnEdge(t *testing.T) {
 	}
 	userURN := "urn:cerebro:writer:okta_user:00u-user"
 	assertProjectedLinkMissing(t, state, userURN, relationActedOn, userURN)
+}
+
+func TestProjectOktaAuditTargetUserLinksAlternateIDIdentity(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &projectionRecorder{}
+	service := New(state, graph)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:         "okta-target-user",
+		TenantId:   "writer",
+		SourceId:   "okta",
+		Kind:       "okta.audit",
+		OccurredAt: timestamppb.New(time.Date(2026, time.May, 12, 1, 2, 3, 0, time.UTC)),
+		Attributes: map[string]string{
+			"domain":              "writer.okta.com",
+			"event_type":          "user.lifecycle.update",
+			"actor_id":            "00u-admin",
+			"actor_type":          "User",
+			"actor_alternate_id":  "admin@writer.com",
+			"resource_id":         "00u-target",
+			"resource_type":       "User",
+			"target_id":           "00u-target",
+			"target_type":         "User",
+			"target_alternate_id": "alice@writer.com",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	targetURN := "urn:cerebro:writer:okta_user:00u-target"
+	identityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
+	identifierURN := "urn:cerebro:writer:identifier:email:alice@writer.com"
+	assertProjectedLink(t, graph, "urn:cerebro:writer:okta_user:00u-admin", relationActedOn, targetURN)
+	assertProjectedLink(t, graph, targetURN, relationRepresentsIdentity, identityURN)
+	assertProjectedLink(t, graph, targetURN, relationHasIdentifier, identifierURN)
+	assertProjectedLink(t, graph, identityURN, relationHasIdentifier, identifierURN)
+	assertProjectedLink(t, graph, identifierURN, relationRepresentsIdentity, identityURN)
 }
 
 func TestProjectOktaAuditActedOnEdgesCarryTemporalContext(t *testing.T) {
@@ -2928,6 +3116,7 @@ func TestProjectCloudExposureAndPrivilegePaths(t *testing.T) {
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationAttachedTo, "urn:cerebro:writer:aws_ec2_instance:i-network-1")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_elastic_ip:eipalloc-1", relationAssociatedWith, "urn:cerebro:writer:aws_ec2_instance:i-eip-1")
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_role:arn:aws:iam::999999999999:role/ExternalAdmin", relationCanAssume, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/AdminRole")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_role:arn:aws:iam::999999999999:role/ExternalAdmin", relationRepresentsIdentity, "urn:cerebro:writer:identity:login:aws:999999999999:role:externaladmin")
 	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_user:admin@writer.com", relationCanImpersonate, "urn:cerebro:writer:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com")
 	assertProjectedLink(t, state, "urn:cerebro:writer:azure_service_principal:sp-1", relationAssignedTo, "urn:cerebro:writer:azure_service_principal:sp-resource-1")
 }
@@ -3066,6 +3255,7 @@ func TestProjectAWSEffectivePermissionWithoutRoleIDSkipsRoleNode(t *testing.T) {
 			"resource_name": "writer-bucket",
 			"resource_type": "bucket",
 			"role_name":     "ReadOnlyAccess",
+			"subject_login": "analyst",
 			"subject_id":    "analyst@writer.com",
 			"subject_type":  "user",
 		},
@@ -3082,6 +3272,7 @@ func TestProjectAWSEffectivePermissionWithoutRoleIDSkipsRoleNode(t *testing.T) {
 	}
 	resourceURN := "urn:cerebro:writer:aws_bucket:arn:aws:s3:::writer-bucket"
 	assertProjectedLink(t, state, "urn:cerebro:writer:aws_user:analyst@writer.com", relationCanPerform, resourceURN)
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_user:analyst@writer.com", relationRepresentsIdentity, "urn:cerebro:writer:identity:login:aws:123456789012:user:analyst")
 }
 
 func TestProjectEffectivePermissionsKubernetesRuntimeAndData(t *testing.T) {
@@ -3251,7 +3442,11 @@ func TestProjectKubernetesWorkloadIdentityBindingAddsContainmentLinks(t *testing
 	assertProjectedLink(t, state, serviceAccountURN, relationBelongsTo, namespaceURN)
 	assertProjectedLink(t, state, namespaceURN, relationBelongsTo, clusterURN)
 	assertProjectedLink(t, state, clusterURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:writer-prod")
-	assertProjectedLink(t, state, serviceAccountURN, relationCanImpersonate, "urn:cerebro:writer:gcp_service_account:payments-sa@writer-prod.iam.gserviceaccount.com")
+	targetURN := "urn:cerebro:writer:gcp_service_account:payments-sa@writer-prod.iam.gserviceaccount.com"
+	targetIdentityURN := "urn:cerebro:writer:identity:email:payments-sa@writer-prod.iam.gserviceaccount.com"
+	assertProjectedLink(t, state, serviceAccountURN, relationCanImpersonate, targetURN)
+	assertProjectedLink(t, state, targetURN, relationRepresentsIdentity, targetIdentityURN)
+	assertProjectedLink(t, state, "urn:cerebro:writer:identifier:email:payments-sa@writer-prod.iam.gserviceaccount.com", relationRepresentsIdentity, targetIdentityURN)
 }
 
 func TestProjectKubernetesWorkloadFallbackURNIncludesKind(t *testing.T) {
@@ -3519,6 +3714,52 @@ func TestProjectAssetClassificationLinksStrongCloudResourceIDsToAccounts(t *test
 	assertProjectedLink(t, state, "urn:cerebro:writer:azure_storage_account:/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Storage/storageAccounts/data", relationBelongsTo, "urn:cerebro:writer:cloud_account:sub-1")
 	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_bucket:projects/writer-prod/buckets/data", relationBelongsTo, "urn:cerebro:writer:cloud_account:writer-prod")
 	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:aws_secret_store:prod-secrets", relationBelongsTo, "urn:cerebro:writer:cloud_account:prod-secrets")
+}
+
+func TestProjectAssetClassificationLinksEmailOwnerIdentity(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:       "asset-email-owner",
+			TenantId: "writer",
+			SourceId: "asset",
+			Kind:     "asset.data_sensitivity",
+			Attributes: map[string]string{
+				"owner":               "alice@writer.com",
+				"resource_id":         "writer-bucket",
+				"resource_type":       "bucket",
+				"source_provider":     "aws",
+				"data_classification": "restricted",
+			},
+		},
+		{
+			Id:       "asset-team-owner",
+			TenantId: "writer",
+			SourceId: "asset",
+			Kind:     "asset.data_sensitivity",
+			Attributes: map[string]string{
+				"owner":               "Security Team",
+				"resource_id":         "prod-secrets",
+				"resource_type":       "secret_store",
+				"source_provider":     "aws",
+				"data_classification": "restricted",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%s) error = %v", event.GetId(), err)
+		}
+	}
+
+	emailOwnerURN := "urn:cerebro:writer:owner:alice@writer.com"
+	emailIdentityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_bucket:writer-bucket", relationOwnedBy, emailOwnerURN)
+	assertProjectedLink(t, state, emailOwnerURN, relationRepresentsIdentity, emailIdentityURN)
+	assertProjectedLink(t, state, "urn:cerebro:writer:identifier:email:alice@writer.com", relationRepresentsIdentity, emailIdentityURN)
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_secret_store:prod-secrets", relationOwnedBy, "urn:cerebro:writer:owner:Security Team")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:owner:Security Team", relationRepresentsIdentity, "urn:cerebro:writer:identity:login:security team")
 }
 
 func assertProjectedLink(t *testing.T, recorder *projectionRecorder, fromURN string, relation string, toURN string) {

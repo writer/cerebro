@@ -147,6 +147,83 @@ func TestReadLiveGoogleWorkspaceRoleAndAuditPreview(t *testing.T) {
 	}
 }
 
+func TestGoogleWorkspaceRoleAssignmentResolvesAssignedUserEmail(t *testing.T) {
+	server := httptest.NewServer(newGoogleWorkspaceAPIHandler(t))
+	defer server.Close()
+
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"domain":   "writer.com",
+		"family":   familyRoleAssign,
+		"token":    "test-token",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyRoleAssign, err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["subject_email"]; got != "admin@writer.com" {
+		t.Fatalf("subject_email = %q, want admin@writer.com", got)
+	}
+	if got := pull.Events[0].Attributes["subject_name"]; got != "Admin Writer" {
+		t.Fatalf("subject_name = %q, want Admin Writer", got)
+	}
+}
+
+func TestGoogleWorkspaceRoleAssignmentCachesUserLookupsPerPage(t *testing.T) {
+	var userLookups int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/admin/directory/v1/customer/my_customer/roleassignments":
+			if err := json.NewEncoder(w).Encode(map[string]any{
+				"items": []map[string]any{
+					{"roleAssignmentId": "ra-1", "roleId": "super-admin", "assignedTo": "1001", "assigneeType": "USER", "scopeType": "CUSTOMER"},
+					{"roleAssignmentId": "ra-2", "roleId": "groups-admin", "assignedTo": "1001", "assigneeType": "USER", "scopeType": "CUSTOMER"},
+				},
+			}); err != nil {
+				t.Fatalf("encode role assignments: %v", err)
+			}
+		case "/admin/directory/v1/users/1001":
+			userLookups++
+			if err := json.NewEncoder(w).Encode(map[string]any{
+				"id": "1001", "primaryEmail": "admin@writer.com", "name": map[string]any{"fullName": "Admin Writer"},
+			}); err != nil {
+				t.Fatalf("encode user lookup: %v", err)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"domain":   "writer.com",
+		"family":   familyRoleAssign,
+		"per_page": "2",
+		"token":    "test-token",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(%s) error = %v", familyRoleAssign, err)
+	}
+	if len(pull.Events) != 2 {
+		t.Fatalf("len(events) = %d, want 2", len(pull.Events))
+	}
+	if userLookups != 1 {
+		t.Fatalf("user lookups = %d, want 1", userLookups)
+	}
+}
+
 func newLiveTestSource() (*Source, error) {
 	source, err := New()
 	if err != nil {
@@ -192,6 +269,12 @@ func newGoogleWorkspaceAPIHandler(t *testing.T) http.Handler {
 				}},
 			}); err != nil {
 				t.Fatalf("encode users page 2: %v", err)
+			}
+		case "/admin/directory/v1/users/1001":
+			if err := json.NewEncoder(w).Encode(map[string]any{
+				"id": "1001", "primaryEmail": "admin@writer.com", "name": map[string]any{"fullName": "Admin Writer"},
+			}); err != nil {
+				t.Fatalf("encode user lookup: %v", err)
 			}
 		case "/admin/directory/v1/customer/my_customer/roleassignments":
 			if err := json.NewEncoder(w).Encode(map[string]any{

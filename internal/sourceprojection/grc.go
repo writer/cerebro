@@ -243,6 +243,7 @@ func grcVendorProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 		addEntity(entities, grcUserEntity(tenantID, event.GetSourceId(), ownerURN, ownerID, map[string]string{"user_id": ownerID, "source_system": provider}))
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), vendorURN, ownerURN, relationOwnedBy, map[string]string{"event_id": event.GetId()}))
 	}
+	addSecurityContactEmailLink(entities, links, tenantID, event.GetSourceId(), event, vendorURN, firstAttribute(attrs, "account_manager_email", "security_contact_email", "contact_email"), "account_manager")
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }
@@ -1080,8 +1081,13 @@ func addGRCUserOwnerLink(entities map[string]*ports.ProjectedEntity, links map[s
 }
 
 func addGRCRiskOwnerEmailLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, contactURN string, owner string) {
-	normalizedEmail := normalizeIdentifier(extractEmailIdentifier(owner))
-	if contactURN == "" || normalizedEmail == "" {
+	addSecurityContactEmailLink(entities, links, tenantID, sourceID, event, contactURN, owner, "owner")
+}
+
+func addSecurityContactEmailLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, email string, contactType string) {
+	normalizedEmail := normalizeIdentifier(extractEmailIdentifier(email))
+	fromURN = strings.TrimSpace(fromURN)
+	if fromURN == "" || normalizedEmail == "" {
 		return
 	}
 	identityURN := projectionURN(tenantID, "identity", "email", normalizedEmail)
@@ -1093,12 +1099,14 @@ func addGRCRiskOwnerEmailLink(entities map[string]*ports.ProjectedEntity, links 
 		Label:      normalizedEmail,
 		Attributes: map[string]string{"value": normalizedEmail},
 	})
-	addLink(links, projectedLink(tenantID, sourceID, contactURN, identityURN, relationAssociatedWith, map[string]string{
+	linkAttrs := map[string]string{
 		"confidence":   "0.90",
-		"contact_type": "owner",
+		"contact_type": strings.TrimSpace(contactType),
 		"event_id":     event.GetId(),
 		"match_type":   "contact_email",
-	}))
+	}
+	addProjectedAttribute(linkAttrs, "at", eventObservedAt(event))
+	addLink(links, projectedLink(tenantID, sourceID, fromURN, identityURN, relationAssociatedWith, linkAttrs))
 }
 
 func addGRCIntegrationLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, provider string, rawIntegrations string, relationshipBy string) {

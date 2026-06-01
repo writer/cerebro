@@ -76,6 +76,7 @@ func TestProjectSecurityToolingMapTool(t *testing.T) {
 			"lifecycle_owner": "Security",
 			"categories":      "ai_security,dlp",
 			"depends_on":      "security",
+			"consumed_by":     "cosmo,iris",
 			"overlaps_with":   "cosmo",
 		},
 		Payload: mustJSON(t, map[string]any{"id": "agent-gateway", "name": "agent-gateway"}),
@@ -85,8 +86,8 @@ func TestProjectSecurityToolingMapTool(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	if result.EntitiesProjected != 7 {
-		t.Fatalf("EntitiesProjected = %d, want 7", result.EntitiesProjected)
+	if result.EntitiesProjected != 8 {
+		t.Fatalf("EntitiesProjected = %d, want 8", result.EntitiesProjected)
 	}
 	toolURN := "urn:cerebro:writer:security_tool:agent-gateway"
 	ownerURN := "urn:cerebro:writer:owner:security"
@@ -96,7 +97,13 @@ func TestProjectSecurityToolingMapTool(t *testing.T) {
 	assertProjectedLink(t, state, toolURN, relationHasClassification, "urn:cerebro:writer:security_category:ai_security")
 	assertProjectedLink(t, state, toolURN, relationHasClassification, "urn:cerebro:writer:security_category:dlp")
 	assertProjectedLink(t, state, toolURN, relationDependsOn, "urn:cerebro:writer:security_tool:security")
+	assertProjectedLink(t, state, "urn:cerebro:writer:security_tool:cosmo", relationDependsOn, toolURN)
+	assertProjectedLink(t, state, "urn:cerebro:writer:security_tool:iris", relationDependsOn, toolURN)
 	assertProjectedLink(t, state, toolURN, relationAffects, "urn:cerebro:writer:security_tool:cosmo")
+	consumerLink := state.links["urn:cerebro:writer:security_tool:cosmo|"+relationDependsOn+"|"+toolURN]
+	if got := consumerLink.Attributes["relationship"]; got != "consumed_by" {
+		t.Fatalf("consumer link relationship = %q, want consumed_by", got)
+	}
 }
 
 func TestProjectSecurityToolingMapControlMapping(t *testing.T) {
