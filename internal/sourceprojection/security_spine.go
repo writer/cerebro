@@ -177,9 +177,26 @@ func addRepoLink(entities map[string]*ports.ProjectedEntity, links map[string]*p
 	if repository == "" {
 		return
 	}
+	owner, _, hasOwner := strings.Cut(repository, "/")
+	owner = strings.TrimSpace(owner)
 	repoURN := projectionURN(tenantID, "github_repo", repository)
-	addEntity(entities, &ports.ProjectedEntity{URN: repoURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "github.repo", Label: repository, Attributes: map[string]string{"repository": repository}})
+	repoAttrs := map[string]string{"repository": repository}
+	if hasOwner && owner != "" {
+		repoAttrs["owner_login"] = owner
+	}
+	addEntity(entities, &ports.ProjectedEntity{URN: repoURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "github.repo", Label: repository, Attributes: repoAttrs})
 	addLink(links, projectedLink(tenantID, event.GetSourceId(), fromURN, repoURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "match_type": "repository"}))
+	if !hasOwner || owner == "" {
+		return
+	}
+	orgURN := projectionURN(tenantID, "github_org", owner)
+	addEntity(entities, &ports.ProjectedEntity{URN: orgURN, TenantID: tenantID, SourceID: "github", EntityType: "github.org", Label: owner, Attributes: map[string]string{"org": owner, "owner_login": owner}})
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), repoURN, orgURN, relationBelongsTo, map[string]string{
+		"event_id":     event.GetId(),
+		"match_type":   "repository_owner",
+		"owner_login":  owner,
+		"source_scope": "repository_name",
+	}))
 }
 
 func backstageComponentEntityType(componentType string) string {
