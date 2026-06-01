@@ -578,7 +578,7 @@ func identityAuditProjections(event *cerebrov1.EventEnvelope, profile identityPr
 	}
 	resourceIdentifier := firstNonEmpty(resourceID, resourceEmail)
 	resourceType := normalizeIdentifier(firstNonEmpty(attributes["resource_type"], attributes["target_type"], "resource"))
-	resourceURN := projectionURN(tenantID, provider+"_"+resourceType, resourceIdentifier)
+	resourceURN := projectionURN(tenantID, provider+"_"+resourceType, firstNonEmpty(normalizeIdentifier(extractEmailIdentifier(resourceIdentifier)), resourceIdentifier))
 	if actorURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        actorURN,
