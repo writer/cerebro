@@ -26,8 +26,11 @@ func TestSourceSpec(t *testing.T) {
 
 func TestReadComponentFamily(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/catalog/entities" {
-			t.Fatalf("request path = %q, want /api/catalog/entities", r.URL.Path)
+		if r.URL.Path != "/api/catalog/entities/by-query" {
+			t.Fatalf("request path = %q, want /api/catalog/entities/by-query", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("filter"); got != "kind=component" {
+			t.Fatalf("filter query = %q, want kind=component", got)
 		}
 		if got := r.Header.Get("Authorization"); got != "Bearer backstage-token" {
 			t.Fatalf("Authorization = %q, want Bearer backstage-token", got)
@@ -84,17 +87,20 @@ func TestReadComponentFamily(t *testing.T) {
 
 func TestReadComponentFamilyUsesStableRecordTimestamp(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode([]map[string]any{
-			{
-				"kind":       "Component",
-				"updated_at": "2026-05-01T12:00:00Z",
-				"metadata": map[string]any{
-					"uid":        "component-1",
-					"name":       "cerebro",
-					"etag":       "etag-value",
-					"generation": 7,
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"items": []map[string]any{
+				{
+					"kind":       "Component",
+					"updated_at": "2026-05-01T12:00:00Z",
+					"metadata": map[string]any{
+						"uid":        "component-1",
+						"name":       "cerebro",
+						"etag":       "etag-value",
+						"generation": 7,
+					},
 				},
 			},
+			"pageInfo": map[string]any{"nextCursor": "page-2"},
 		})
 	}))
 	defer server.Close()
@@ -119,5 +125,8 @@ func TestReadComponentFamilyUsesStableRecordTimestamp(t *testing.T) {
 	want := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
 	if got := pull.Events[0].OccurredAt.AsTime(); !got.Equal(want) {
 		t.Fatalf("OccurredAt = %s, want %s", got, want)
+	}
+	if pull.NextCursor.GetOpaque() != "page-2" {
+		t.Fatalf("NextCursor = %q, want page-2", pull.NextCursor.GetOpaque())
 	}
 }

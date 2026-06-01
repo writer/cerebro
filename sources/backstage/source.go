@@ -41,7 +41,7 @@ func New() (*Source, error) {
 		Families: []jsonapi.Family{
 			{
 				Name:    familyComponent,
-				Path:    "/api/catalog/entities",
+				Path:    "/api/catalog/entities/by-query",
 				URNKind: "backstage_component",
 				IDKeys:  []string{"metadata.uid", "metadata.name", "name"},
 				TimestampKeys: []string{
@@ -67,6 +67,7 @@ func New() (*Source, error) {
 					"dora_service": "dora_service",
 				},
 				StaticAttributes: map[string]string{"source_product": "backstage"},
+				StaticQuery:      map[string]string{"filter": "kind=component"},
 			},
 		},
 	})

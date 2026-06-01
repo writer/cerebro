@@ -36,6 +36,7 @@ type Family struct {
 	TimestampKeys    []string
 	Attributes       map[string]string
 	StaticAttributes map[string]string
+	StaticQuery      map[string]string
 	RequireID        bool
 }
 
@@ -208,6 +209,11 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 
 func (s *Source) list(ctx context.Context, family Family, settings settings, cursor string, pageSize int) ([]record, string, error) {
 	query := url.Values{}
+	for key, value := range family.StaticQuery {
+		if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
+			query.Set(strings.TrimSpace(key), strings.TrimSpace(value))
+		}
+	}
 	query.Set("limit", strconv.Itoa(pageSize))
 	query.Set("per_page", strconv.Itoa(pageSize))
 	if cursor := strings.TrimSpace(cursor); cursor != "" {
@@ -309,7 +315,7 @@ func responseCursor(object map[string]json.RawMessage) string {
 			return value
 		}
 	}
-	for _, key := range []string{"pagination", "page", "meta"} {
+	for _, key := range []string{"pagination", "page", "pageInfo", "meta"} {
 		var nested map[string]any
 		if err := json.Unmarshal(object[key], &nested); err != nil {
 			continue
