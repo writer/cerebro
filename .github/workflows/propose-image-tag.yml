@@ -201,10 +201,17 @@ jobs:
         run: |
           set -euo pipefail
 
-          current_tag="$(awk '$1 == "cerebro:imageTag:" { print $2; exit }' "infra/aws/Pulumi.${STACK_NAME}.yaml")"
+          target_config="infra/aws/Pulumi.${STACK_NAME}.yaml"
+          changed_paths=("${target_config}")
+          current_tag="$(awk '$1 == "cerebro:imageTag:" { print $2; exit }' "${target_config}")"
           echo "current_tag=${current_tag}" >> "$GITHUB_OUTPUT"
           uv run --project infra python infra/scripts/set_image_tag.py --stack "${STACK_NAME}" --image-tag "${IMAGE_TAG}"
-          uv run --project infra python infra/scripts/validate_stack_config.py "infra/aws/Pulumi.${STACK_NAME}.yaml"
+          if [ "${STACK_NAME}" = "go-prod" ]; then
+            sec_dev_config="infra/aws/Pulumi.sec-dev.yaml"
+            changed_paths+=("${sec_dev_config}")
+            uv run --project infra python infra/scripts/set_image_tag.py --stack sec-dev --image-tag "${IMAGE_TAG}" --ensure-at-least
+          fi
+          uv run --project infra python infra/scripts/validate_stack_config.py
           if [ -n "${CONTRACT_PATH}" ]; then
             contract_args=()
             if [ "${STACK_NAME}" = "sec-dev" ]; then
@@ -212,11 +219,17 @@ jobs:
             fi
             uv run --project infra python infra/scripts/verify_runtime_contract.py \
               --contract "${CONTRACT_PATH}" \
-              --stack-file "infra/aws/Pulumi.${STACK_NAME}.yaml" \
+              --stack-file "${target_config}" \
               "${contract_args[@]}"
+            if [ "${STACK_NAME}" = "go-prod" ] && ! git diff --quiet -- "${sec_dev_config}"; then
+              uv run --project infra python infra/scripts/verify_runtime_contract.py \
+                --contract "${CONTRACT_PATH}" \
+                --stack-file "${sec_dev_config}" \
+                --require-manifest-runtimes
+            fi
           fi
 
-          if git diff --quiet -- "infra/aws/Pulumi.${STACK_NAME}.yaml"; then
+          if git diff --quiet -- "${changed_paths[@]}"; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "Stack ${STACK_NAME} already uses ${IMAGE_TAG}"
             exit 0
@@ -339,6 +352,9 @@ jobs:
 
           git checkout -B "${branch}"
           git add "infra/aws/Pulumi.${STACK_NAME}.yaml"
+          if [ "${STACK_NAME}" = "go-prod" ]; then
+            git add "infra/aws/Pulumi.sec-dev.yaml"
+          fi
           git commit -m "${title}"
           git push --force-with-lease "https://x-access-token:${GH_TOKEN}@github.com/WriterInternal/cerebro.git" "HEAD:${branch}"
 
@@ -348,6 +364,9 @@ jobs:
             echo
             if [ -n "${CURRENT_TAG}" ]; then
               echo "- Compare: https://github.com/writer/cerebro/compare/${CURRENT_TAG}...${IMAGE_TAG}"
+            fi
+            if [ "${STACK_NAME}" = "go-prod" ]; then
+              echo "- Keeps \`sec-dev\` at least \`${IMAGE_TAG}\` so it cannot lag production."
             fi
             echo "- Image: \`${GHCR_IMAGE}:${IMAGE_TAG}\`"
             if [ -n "${IMAGE_DIGEST}" ]; then
@@ -393,6 +412,8 @@ jobs:
           auto_merge_trusted_pr() {
             local pr_url="$1"
             local expected_file="infra/aws/Pulumi.${STACK_NAME}.yaml"
+            local expected_sec_dev_file="infra/aws/Pulumi.sec-dev.yaml"
+            local expected_files=""
             local changed_files=""
             local check_count=""
 
@@ -408,9 +429,15 @@ jobs:
               exit 1
             fi
 
-            changed_files="$(gh pr diff "${pr_url}" --name-only)"
-            if [ "${changed_files}" != "${expected_file}" ]; then
-              echo "Refusing to auto-merge ${pr_url}; expected only ${expected_file}, got:" >&2
+            changed_files="$(gh pr diff "${pr_url}" --name-only | sort)"
+            expected_files="${expected_file}"
+            if [ "${STACK_NAME}" = "go-prod" ]; then
+              expected_files="$(printf '%s\n%s\n' "${expected_file}" "${expected_sec_dev_file}" | sort)"
+            fi
+            if [ "${changed_files}" != "${expected_file}" ] \
+              && [ "${changed_files}" != "${expected_files}" ] \
+              && { [ "${STACK_NAME}" != "go-prod" ] || [ "${changed_files}" != "${expected_sec_dev_file}" ]; }; then
+              echo "Refusing to auto-merge ${pr_url}; expected ${expected_files}, got:" >&2
               printf '%s\n' "${changed_files}" >&2
               exit 1
             fi
