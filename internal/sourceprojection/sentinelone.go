@@ -253,7 +253,7 @@ func addSentinelOneOwnerIdentityLinks(entities map[string]*ports.ProjectedEntity
 	if agentURN == "" {
 		return
 	}
-	ownerEmail := strings.TrimSpace(firstNonEmpty(attrs["user_mail"], attrs["user_email"]))
+	ownerEmail := strings.TrimSpace(firstNonEmpty(attrs["user_mail"], attrs["user_email"], extractEmailIdentifier(attrs["user_name"])))
 	if ownerEmail != "" {
 		addIdentifierLink(entities, links, tenant, event.GetSourceId(), event.GetId(), agentURN, ownerEmail, event.GetOccurredAt())
 		identityURN, _ := canonicalIdentityURN(tenant, ownerEmail)
