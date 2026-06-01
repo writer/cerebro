@@ -552,6 +552,31 @@ class ValidateStackConfigTest(unittest.TestCase):
         findings = self._validate(content)
         self.assertTrue(any(finding.severity == "error" and "required Cosmo schedule for 'writer-cosmo-fact' is missing" in finding.message for finding in findings))
 
+    def test_sec_dev_cosmo_graph_budgets_are_bounded(self) -> None:
+        content = BASE_STACK.replace(
+            "        - runtime_id=writer-cosmo-session\n",
+            "        - runtime_id=writer-cosmo-session\n"
+            "        - page_limit=20\n"
+            "        - graph_page_limit=100\n"
+            "        - event_limit=1000\n",
+            1,
+        )
+        findings = self._validate(content, name="Pulumi.sec-dev.yaml")
+        self.assertTrue(any(finding.severity == "error" and "page_limit <= 5" in finding.message for finding in findings))
+        self.assertTrue(any(finding.severity == "error" and "graph_page_limit <= 5" in finding.message for finding in findings))
+        self.assertTrue(any(finding.severity == "error" and "event_limit <= 500" in finding.message for finding in findings))
+
+    def test_actual_sec_dev_cosmo_graph_budgets_are_capped(self) -> None:
+        findings = validate_stack(Path(__file__).resolve().parents[1] / "aws/Pulumi.sec-dev.yaml")
+        self.assertFalse(
+            any(
+                finding.severity == "error"
+                and "writer-cosmo-" in finding.message
+                and ("page_limit" in finding.message or "event_limit" in finding.message)
+                for finding in findings
+            )
+        )
+
     def test_cosmo_must_use_dedicated_token_secret(self) -> None:
         content = BASE_STACK.replace(f"{TOKEN_FIELD}: env:{COSMO_TOKEN_KEY}", f"{TOKEN_FIELD}: env:GITHUB_{TOKEN_SUFFIX}", 1)
         findings = self._validate(content)
