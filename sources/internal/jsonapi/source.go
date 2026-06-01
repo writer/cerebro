@@ -19,6 +19,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
@@ -155,7 +156,7 @@ func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
 		return settings{}, fmt.Errorf("jsonapi source is required")
 	}
 	resolved := settings{
-		tenantID: strings.TrimSpace(configValue(cfg, "tenant_id")),
+		tenantID: firstNonEmpty(configValue(cfg, "tenant_id"), configValue(cfg, sourceconfig.RuntimeTenantIDKey)),
 		family:   strings.TrimSpace(configValue(cfg, "family")),
 		baseURL:  strings.TrimSpace(configValue(cfg, "base_url")),
 		token:    firstNonEmpty(configValue(cfg, "token"), configValue(cfg, "api_token")),
