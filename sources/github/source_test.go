@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	gogithub "github.com/google/go-github/v66/github"
 
@@ -539,6 +540,72 @@ func TestCheckDiscoverAndReadLiveGitHubDependabotAlertPreview(t *testing.T) {
 	}
 	if len(second.Events) != 0 {
 		t.Fatalf("len(Read(dependabot_alert second).Events) = %d, want 0", len(second.Events))
+	}
+}
+
+func TestDependabotAlertEventIncludesDismissedBy(t *testing.T) {
+	observedAt := time.Date(2026, 4, 24, 0, 0, 0, 0, time.UTC)
+	event, err := dependabotAlertEvent(settings{owner: "writer", repo: "cerebro"}, &gogithub.DependabotAlert{
+		Number:      gogithub.Int(7),
+		State:       gogithub.String("dismissed"),
+		CreatedAt:   &gogithub.Timestamp{Time: observedAt},
+		UpdatedAt:   &gogithub.Timestamp{Time: observedAt},
+		DismissedBy: &gogithub.User{Login: gogithub.String("alice"), ID: gogithub.Int64(123)},
+	})
+	if err != nil {
+		t.Fatalf("dependabotAlertEvent() error = %v", err)
+	}
+	if got := event.Attributes["dismissed_by"]; got != "alice" {
+		t.Fatalf("dismissed_by = %q, want alice", got)
+	}
+	if got := event.Attributes["dismissed_by_id"]; got != "123" {
+		t.Fatalf("dismissed_by_id = %q, want 123", got)
+	}
+	var payload dependabotAlertPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		t.Fatalf("unmarshal dependabot payload: %v", err)
+	}
+	if payload.DismissedBy != "alice" || payload.DismissedByID != 123 {
+		t.Fatalf("dependabot dismissed actor = %q/%d, want alice/123", payload.DismissedBy, payload.DismissedByID)
+	}
+}
+
+func TestSecretScanningAlertEventIncludesActorLogins(t *testing.T) {
+	observedAt := time.Date(2026, 4, 24, 0, 0, 0, 0, time.UTC)
+	event, err := secretScanningAlertEvent(settings{owner: "writer"}, &gogithub.SecretScanningAlert{
+		Number:                   gogithub.Int(42),
+		State:                    gogithub.String("resolved"),
+		CreatedAt:                &gogithub.Timestamp{Time: observedAt},
+		UpdatedAt:                &gogithub.Timestamp{Time: observedAt},
+		Repository:               &gogithub.Repository{FullName: gogithub.String("writer/cerebro")},
+		ResolvedBy:               &gogithub.User{Login: gogithub.String("alice"), ID: gogithub.Int64(123)},
+		PushProtectionBypassed:   gogithub.Bool(true),
+		PushProtectionBypassedBy: &gogithub.User{Login: gogithub.String("bob"), ID: gogithub.Int64(456)},
+	})
+	if err != nil {
+		t.Fatalf("secretScanningAlertEvent() error = %v", err)
+	}
+	if got := event.Attributes["resolved_by"]; got != "alice" {
+		t.Fatalf("resolved_by = %q, want alice", got)
+	}
+	if got := event.Attributes["resolved_by_id"]; got != "123" {
+		t.Fatalf("resolved_by_id = %q, want 123", got)
+	}
+	if got := event.Attributes["push_protection_bypassed_by"]; got != "bob" {
+		t.Fatalf("push_protection_bypassed_by = %q, want bob", got)
+	}
+	if got := event.Attributes["push_protection_bypassed_by_id"]; got != "456" {
+		t.Fatalf("push_protection_bypassed_by_id = %q, want 456", got)
+	}
+	var payload secretScanningAlertPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		t.Fatalf("unmarshal secret scanning payload: %v", err)
+	}
+	if payload.ResolvedBy != "alice" || payload.ResolvedByID != 123 {
+		t.Fatalf("secret resolved actor = %q/%d, want alice/123", payload.ResolvedBy, payload.ResolvedByID)
+	}
+	if payload.PushProtectionBypassedBy != "bob" || payload.PushProtectionBypassedByID != 456 {
+		t.Fatalf("secret bypass actor = %q/%d, want bob/456", payload.PushProtectionBypassedBy, payload.PushProtectionBypassedByID)
 	}
 }
 

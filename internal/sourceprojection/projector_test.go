@@ -458,6 +458,122 @@ func TestProjectGitHubDependabotAlertLinksRepoScopedDependency(t *testing.T) {
 	assertProjectedLink(t, state, alertURN, relationAffects, canonicalPackageURN)
 }
 
+func TestProjectGitHubDependabotAlertLinksDismissedByActor(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &projectionRecorder{}
+	service := New(state, graph)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-dependabot-alert-dismissed",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.dependabot_alert",
+		Attributes: map[string]string{
+			"alert_number":    "7",
+			"dismissed_by":    "alice",
+			"dismissed_by_id": "123",
+			"owner":           "writer",
+			"repository":      "writer/cerebro",
+			"state":           "dismissed",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	actorURN := "urn:cerebro:writer:github_user:alice"
+	alertURN := "urn:cerebro:writer:github_dependabot_alert:writer/cerebro:7"
+	identityURN := "urn:cerebro:writer:identity:login:alice"
+	identifierURN := "urn:cerebro:writer:identifier:login:alice"
+	assertProjectedLink(t, graph, actorURN, relationActedOn, alertURN)
+	assertProjectedLink(t, graph, actorURN, relationRepresentsIdentity, identityURN)
+	assertProjectedLink(t, graph, actorURN, relationHasIdentifier, identifierURN)
+	if got := graph.entities[actorURN].Attributes["user_id"]; got != "123" {
+		t.Fatalf("github actor user_id = %q, want 123", got)
+	}
+	if got := graph.links[actorURN+"|"+relationActedOn+"|"+alertURN].Attributes["actor_role"]; got != "dismissed_by" {
+		t.Fatalf("actor_role = %q, want dismissed_by", got)
+	}
+}
+
+func TestProjectGitHubSecretScanningAlertLinksResolverAndBypasser(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &projectionRecorder{}
+	service := New(state, graph)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-secret-scanning-alert-resolved",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.secret_scanning_alert",
+		Attributes: map[string]string{
+			"alert_number":                   "42",
+			"owner":                          "writer",
+			"push_protection_bypassed":       "true",
+			"push_protection_bypassed_by":    "bob",
+			"push_protection_bypassed_by_id": "456",
+			"repository":                     "writer/cerebro",
+			"resolved_by":                    "alice",
+			"resolved_by_id":                 "123",
+			"state":                          "resolved",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	alertURN := "urn:cerebro:writer:github_secret_scanning_alert:writer:42"
+	resolverURN := "urn:cerebro:writer:github_user:alice"
+	bypasserURN := "urn:cerebro:writer:github_user:bob"
+	assertProjectedLink(t, graph, resolverURN, relationActedOn, alertURN)
+	assertProjectedLink(t, graph, resolverURN, relationRepresentsIdentity, "urn:cerebro:writer:identity:login:alice")
+	assertProjectedLink(t, graph, resolverURN, relationHasIdentifier, "urn:cerebro:writer:identifier:login:alice")
+	assertProjectedLink(t, graph, bypasserURN, relationActedOn, alertURN)
+	assertProjectedLink(t, graph, bypasserURN, relationRepresentsIdentity, "urn:cerebro:writer:identity:login:bob")
+	assertProjectedLink(t, graph, bypasserURN, relationHasIdentifier, "urn:cerebro:writer:identifier:login:bob")
+	if got := graph.links[resolverURN+"|"+relationActedOn+"|"+alertURN].Attributes["actor_role"]; got != "resolved_by" {
+		t.Fatalf("resolver actor_role = %q, want resolved_by", got)
+	}
+	if got := graph.links[bypasserURN+"|"+relationActedOn+"|"+alertURN].Attributes["actor_role"]; got != "push_protection_bypassed_by" {
+		t.Fatalf("bypasser actor_role = %q, want push_protection_bypassed_by", got)
+	}
+}
+
+func TestProjectGitHubSecretScanningAlertPreservesMultipleActorRolesForSameUser(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &projectionRecorder{}
+	service := New(state, graph)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-secret-scanning-alert-same-actor",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.secret_scanning_alert",
+		Attributes: map[string]string{
+			"alert_number":                   "43",
+			"owner":                          "writer",
+			"push_protection_bypassed":       "true",
+			"push_protection_bypassed_by":    "alice",
+			"push_protection_bypassed_by_id": "123",
+			"repository":                     "writer/cerebro",
+			"resolved_by":                    "alice",
+			"resolved_by_id":                 "123",
+			"state":                          "resolved",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	alertURN := "urn:cerebro:writer:github_secret_scanning_alert:writer:43"
+	actorURN := "urn:cerebro:writer:github_user:alice"
+	assertProjectedLink(t, graph, actorURN, relationActedOn, alertURN)
+	link := graph.links[actorURN+"|"+relationActedOn+"|"+alertURN]
+	if got := link.Attributes["actor_role"]; got != "resolved_by,push_protection_bypassed_by" {
+		t.Fatalf("actor_role = %q, want both roles", got)
+	}
+}
+
 func TestProjectOktaOAuthGrantAsApplicationTelemetry(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
