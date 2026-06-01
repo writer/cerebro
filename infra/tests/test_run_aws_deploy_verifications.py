@@ -238,6 +238,44 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
             degraded=False,
         )
 
+    def test_graph_integrity_failure_repairs_then_reruns_health(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            results = iter(
+                [
+                    run_aws_deploy_verifications.GraphHealthResult(
+                        23,
+                        "ERROR: graph integrity failed 1 checks: open_findings_missing_primary_has_finding_edge=1",
+                    ),
+                    run_aws_deploy_verifications.GraphHealthResult(0, ""),
+                ]
+            )
+            with (
+                patch("scripts.run_aws_deploy_verifications._stream_graph_health", side_effect=lambda *_args: next(results)) as stream,
+                patch(
+                    "scripts.run_aws_deploy_verifications.subprocess.run",
+                    return_value=subprocess.CompletedProcess(["repair"], 0),
+                ) as run,
+            ):
+                status = run_aws_deploy_verifications.main(
+                    [
+                        "--stack-file",
+                        "aws/Pulumi.sec-dev.yaml",
+                        "--graph-health",
+                        "--graph-health-output",
+                        str(Path(temp_dir) / "graph.tsv"),
+                        "--allow-graph-health-degradation",
+                        "--graph-health-heal",
+                    ]
+                )
+
+        self.assertEqual(status, 0)
+        self.assertEqual(stream.call_count, 2)
+        command = run.call_args.args[0]
+        self.assertIn("scripts/verify_graph_health_ecs.py", command)
+        self.assertIn("--graph-command", command)
+        self.assertIn("repair-open-finding-primary-links", command)
+        self.assertIn("apply=true", command)
+
     def test_graph_failure_heals_then_reruns_health(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             results = iter(
