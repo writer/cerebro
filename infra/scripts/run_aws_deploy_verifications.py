@@ -121,7 +121,7 @@ def _finish_source_process(process: subprocess.Popen[str], grace_seconds: int | 
 
 def _report_source_degradation(stack: str, summary: TextIO | None = None) -> None:
     print(
-        "::warning::Cosmo source runtime verification failed after deployment; rollout will continue and graph-health integrity checks remain blocking."
+        "::warning::Cosmo source runtime verification failed after deployment; rollout will continue and graph-health verification remains separately reported."
     )
     summary_path = Path(summary.name) if summary is not None else None
     if summary_path is None:
@@ -138,12 +138,36 @@ def _report_source_degradation(stack: str, summary: TextIO | None = None) -> Non
         )
 
 
+def _report_graph_health_degradation(stack: str, status: int, summary: TextIO | None = None) -> None:
+    print(
+        f"::warning::Graph health verification failed after deployment with exit code {status}; rollout will continue and graph-health artifacts remain available for follow-up."
+    )
+    summary_path = Path(summary.name) if summary is not None else None
+    if summary_path is None:
+        from os import environ
+
+        raw_summary_path = environ.get("GITHUB_STEP_SUMMARY")
+        summary_path = Path(raw_summary_path) if raw_summary_path else None
+    if summary_path is None:
+        return
+    with summary_path.open("a", encoding="utf-8") as handle:
+        handle.write(f"### Graph health verification degraded ({stack})\n\n")
+        handle.write(
+            f"Graph health verification failed after deployment with exit code `{status}`. This is reported as degraded graph health instead of blocking the service rollout; inspect the uploaded graph-health artifact for details.\n"
+        )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run AWS deployment verifications, overlapping non-blocking source checks with graph health.")
     parser.add_argument("--stack-file", type=Path, required=True)
     parser.add_argument("--source-runtime-verify", action="store_true")
     parser.add_argument("--graph-health", action="store_true")
     parser.add_argument("--graph-health-output", type=Path, default=Path("graph-health.tsv"))
+    parser.add_argument(
+        "--allow-graph-health-degradation",
+        action="store_true",
+        help="Report graph health failures as degraded post-deploy health instead of failing the rollout job.",
+    )
     parser.add_argument("--source-target-concurrency", type=_positive_int, default=4)
     parser.add_argument(
         "--source-runtime-grace-seconds",
@@ -171,6 +195,9 @@ def main(argv: list[str] | None = None) -> int:
     if source_status != 0:
         _report_source_degradation(stack)
     if graph_status != 0:
+        if args.allow_graph_health_degradation:
+            _report_graph_health_degradation(stack, graph_status)
+            return 0
         return graph_status
     return 0
 

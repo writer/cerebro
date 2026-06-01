@@ -146,6 +146,29 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
 
         self.assertEqual(status, 23)
 
+    def test_graph_failure_degrades_when_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            summary_path = Path(temp_dir) / "summary.md"
+            with (
+                patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": str(summary_path)}),
+                patch("scripts.run_aws_deploy_verifications._stream_graph_health", return_value=23),
+            ):
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    status = run_aws_deploy_verifications.main(
+                        [
+                            "--stack-file",
+                            "aws/Pulumi.go-prod.yaml",
+                            "--graph-health",
+                            "--graph-health-output",
+                            str(Path(temp_dir) / "graph.tsv"),
+                            "--allow-graph-health-degradation",
+                        ]
+                    )
+                summary = summary_path.read_text(encoding="utf-8")
+
+        self.assertEqual(status, 0)
+        self.assertIn("Graph health verification degraded (go-prod)", summary)
+
 
 if __name__ == "__main__":
     unittest.main()
