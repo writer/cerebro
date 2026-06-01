@@ -526,3 +526,32 @@ func TestProjectAureliusPolicyExceptionPrefersExceptionIDIdentity(t *testing.T) 
 		t.Fatalf("policy exception keyed by cve_id despite exception_id; entities=%v", state.entities)
 	}
 }
+
+func TestProjectAureliusPolicyExceptionLinksApproverEmailIdentity(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "aurelius-policy-exception-approver",
+		TenantId: "writer",
+		SourceId: "aurelius",
+		Kind:     "aurelius.policy_exception",
+		Payload: mustJSON(t, map[string]any{
+			"approver":   "security@example.com",
+			"cve_id":     "CVE-2026-1111",
+			"expires_at": "2026-06-01T00:00:00Z",
+			"status":     "active",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	exceptionURN := "urn:cerebro:writer:aurelius_policy_exception:CVE-2026-1111"
+	identityURN := "urn:cerebro:writer:identity:email:security@example.com"
+	assertProjectedLink(t, state, exceptionURN, relationAssociatedWith, identityURN)
+	link := state.links[exceptionURN+"|"+relationAssociatedWith+"|"+identityURN]
+	if got := link.Attributes["contact_type"]; got != "approver" {
+		t.Fatalf("contact_type = %q, want approver", got)
+	}
+}
