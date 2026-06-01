@@ -147,6 +147,25 @@ func TestCloseoutSelectorCoversAllRetiredAndConvertRules(t *testing.T) {
 	}
 }
 
+func TestCloseoutRuleIDFilesMatchRulepackClassification(t *testing.T) {
+	classifications := loadRulepackAuditClassifications(t)
+	expectedByThreshold := map[string][]string{}
+	for _, entry := range classifications {
+		switch entry.Classification {
+		case rulepackAuditClassConvert, rulepackAuditClassRetire:
+		default:
+			continue
+		}
+		if entry.BulkCloseoutThreshold != ">24h" && entry.BulkCloseoutThreshold != ">7d" {
+			t.Fatalf("closeout target %q has unsupported threshold %q", entry.RuleID, entry.BulkCloseoutThreshold)
+		}
+		expectedByThreshold[entry.BulkCloseoutThreshold] = append(expectedByThreshold[entry.BulkCloseoutThreshold], entry.RuleID)
+	}
+
+	assertCloseoutRuleIDFile(t, "ops/closeout/rule-ids-24h.txt", expectedByThreshold[">24h"])
+	assertCloseoutRuleIDFile(t, "ops/closeout/rule-ids-7d.txt", expectedByThreshold[">7d"])
+}
+
 func TestConvertRulesReplaySingleOpenRow(t *testing.T) {
 	metadataByID := rulepackAuditMetadataByID(t)
 	convertRules := rulepackAuditRulesByClass(t, rulepackAuditClassConvert)
@@ -1078,6 +1097,59 @@ func rulepackAuditPlanningCandidates(t *testing.T) []string {
 		}
 	}
 	return candidates
+}
+
+func assertCloseoutRuleIDFile(t *testing.T, relPath string, expected []string) {
+	t.Helper()
+	path := repoRelativePath(t, relPath)
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", relPath, err)
+	}
+	actual := parseCloseoutRuleIDFile(t, string(payload))
+	sort.Strings(expected)
+	if strings.Join(actual, "\n") != strings.Join(expected, "\n") {
+		t.Fatalf("%s rule IDs mismatch\nactual:\n%s\n\nexpected:\n%s", relPath, strings.Join(actual, "\n"), strings.Join(expected, "\n"))
+	}
+}
+
+func parseCloseoutRuleIDFile(t *testing.T, payload string) []string {
+	t.Helper()
+	seen := map[string]struct{}{}
+	var out []string
+	for lineNumber, line := range strings.Split(payload, "\n") {
+		text := strings.TrimSpace(line)
+		if text == "" || strings.HasPrefix(text, "#") {
+			continue
+		}
+		if _, ok := seen[text]; ok {
+			t.Fatalf("duplicate rule id %q on line %d", text, lineNumber+1)
+		}
+		seen[text] = struct{}{}
+		out = append(out, text)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func repoRelativePath(t *testing.T, relPath string) string {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get wd: %v", err)
+	}
+	for dir := wd; ; dir = filepath.Dir(dir) {
+		candidate := filepath.Join(dir, relPath)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+	}
+	t.Fatalf("could not find %s from %s", relPath, wd)
+	return ""
 }
 
 func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
