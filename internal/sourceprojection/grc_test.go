@@ -345,11 +345,13 @@ func TestProjectGRCRiskScenarioOwnerDoesNotCreatePersonIdentityBridge(t *testing
 	riskURN := "urn:cerebro:writer:claim:vanta:risk_scenario:risk-1"
 	contactURN := "urn:cerebro:writer:contact:vanta:owner:alice@writer.com"
 	personURN := "urn:cerebro:writer:person:vanta:owner:alice@writer.com"
+	identityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
 	assertProjectedLink(t, state, riskURN, relationAssignedTo, contactURN)
 	if _, ok := state.entities[personURN]; ok {
 		t.Fatalf("risk owner projected as GRC person: %#v", state.entities[personURN])
 	}
-	assertProjectedLinkMissing(t, state, contactURN, relationRepresentsIdentity, "urn:cerebro:writer:identity:email:alice@writer.com")
+	assertProjectedLinkMissing(t, state, contactURN, relationRepresentsIdentity, identityURN)
+	assertProjectedLink(t, state, contactURN, relationAssociatedWith, identityURN)
 }
 
 func TestProjectGRCPersonIdentifier(t *testing.T) {

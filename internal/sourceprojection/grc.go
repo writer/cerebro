@@ -923,6 +923,7 @@ func grcRiskScenarioProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 			Attributes: map[string]string{"source_system": provider, "owner": owner},
 		})
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), riskURN, ownerURN, relationAssignedTo, map[string]string{"event_id": event.GetId()}))
+		addGRCRiskOwnerEmailLink(entities, links, tenantID, event.GetSourceId(), event, ownerURN, owner)
 	}
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
@@ -1077,6 +1078,10 @@ func addGRCUserOwnerLink(entities map[string]*ports.ProjectedEntity, links map[s
 	ownerURN := grcUserURN(tenantID, provider, ownerID)
 	addEntity(entities, grcUserEntity(tenantID, sourceID, ownerURN, ownerID, map[string]string{"user_id": ownerID, "source_system": provider}))
 	addLink(links, projectedLink(tenantID, sourceID, fromURN, ownerURN, relationOwnedBy, map[string]string{"event_id": event.GetId()}))
+}
+
+func addGRCRiskOwnerEmailLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, contactURN string, owner string) {
+	addSecurityContactEmailLink(entities, links, tenantID, sourceID, event, contactURN, owner, "owner")
 }
 
 func addSecurityContactEmailLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, event *cerebrov1.EventEnvelope, fromURN string, email string, contactType string) {
