@@ -1455,6 +1455,7 @@ func githubOrgMemberProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projec
 		if orgURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), memberURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "role": role}))
 		}
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), memberURN, login, event.GetOccurredAt())
 	}
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)

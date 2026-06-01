@@ -184,6 +184,40 @@ func TestProjectGitHubPullRequest(t *testing.T) {
 	}
 }
 
+func TestProjectGitHubOrgMemberLinksLoginIdentity(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &projectionRecorder{}
+	service := New(state, graph)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-org-member-1",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.org_member",
+		OccurredAt: timestamppb.New(time.Date(
+			2026, 4, 23, 12, 0, 0, 0, time.UTC,
+		)),
+		Attributes: map[string]string{
+			"owner":   "writer",
+			"login":   "alice",
+			"role":    "member",
+			"user_id": "123",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	memberURN := "urn:cerebro:writer:github_user:alice"
+	identityURN := "urn:cerebro:writer:identity:login:alice"
+	identifierURN := "urn:cerebro:writer:identifier:login:alice"
+	assertProjectedLink(t, graph, memberURN, relationBelongsTo, "urn:cerebro:writer:github_org:writer")
+	assertProjectedLink(t, graph, memberURN, relationRepresentsIdentity, identityURN)
+	assertProjectedLink(t, graph, memberURN, relationHasIdentifier, identifierURN)
+	assertProjectedLink(t, graph, identityURN, relationHasIdentifier, identifierURN)
+	assertProjectedLink(t, graph, identifierURN, relationRepresentsIdentity, identityURN)
+}
+
 func TestProjectGitHubCodeRepositoryLinksOwnerAndLegacyRepo(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
