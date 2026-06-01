@@ -43,6 +43,10 @@ func TestReadComponentFamily(t *testing.T) {
 					"name":        "cerebro",
 					"namespace":   "default",
 					"description": "Security intelligence graph",
+					"annotations": map[string]any{
+						"cerebro.io/criticality":         "high",
+						"cerebro.io/data-classification": "restricted",
+					},
 				},
 				"spec": map[string]any{
 					"type":      "service",
@@ -82,6 +86,9 @@ func TestReadComponentFamily(t *testing.T) {
 	}
 	if event.Attributes["repository"] != "WriterInternal/cerebro" {
 		t.Fatalf("repository = %q, want WriterInternal/cerebro", event.Attributes["repository"])
+	}
+	if event.Attributes["criticality"] != "high" || event.Attributes["data_class"] != "restricted" {
+		t.Fatalf("annotation attrs = %#v, want Backstage annotation attributes", event.Attributes)
 	}
 }
 

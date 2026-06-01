@@ -620,18 +620,35 @@ func valueAt(values map[string]any, path string) any {
 	if len(values) == 0 {
 		return nil
 	}
-	current := any(values)
-	for _, part := range strings.Split(strings.TrimSpace(path), ".") {
-		if part == "" {
+	parts := strings.Split(strings.TrimSpace(path), ".")
+	for _, part := range parts {
+		if strings.TrimSpace(part) == "" {
 			return nil
 		}
-		object, ok := current.(map[string]any)
-		if !ok {
-			return nil
-		}
-		current = object[part]
 	}
-	return current
+	value, _ := valueAtParts(values, parts)
+	return value
+}
+
+func valueAtParts(current any, parts []string) (any, bool) {
+	if len(parts) == 0 {
+		return current, true
+	}
+	object, ok := current.(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	for i := 1; i <= len(parts); i++ {
+		key := strings.Join(parts[:i], ".")
+		next, ok := object[key]
+		if !ok {
+			continue
+		}
+		if value, ok := valueAtParts(next, parts[i:]); ok {
+			return value, true
+		}
+	}
+	return nil, false
 }
 
 func valueString(value any) string {
