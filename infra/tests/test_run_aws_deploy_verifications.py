@@ -203,6 +203,41 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
 
         self.assertEqual(status, 23)
 
+    def test_blocking_graph_failure_can_create_followup_issue(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with (
+                patch(
+                    "scripts.run_aws_deploy_verifications._stream_graph_health",
+                    return_value=run_aws_deploy_verifications.GraphHealthResult(
+                        23,
+                        "ERROR: graph integrity failed 1 checks: open_findings_missing_primary_has_finding_edge=1",
+                    ),
+                ),
+                patch("scripts.run_aws_deploy_verifications._create_graph_health_issue") as create_issue,
+            ):
+                status = run_aws_deploy_verifications.main(
+                    [
+                        "--stack-file",
+                        "aws/Pulumi.sec-dev.yaml",
+                        "--graph-health",
+                        "--graph-health-output",
+                        str(Path(temp_dir) / "graph.tsv"),
+                        "--allow-graph-health-degradation",
+                        "--graph-health-issue",
+                        "--graph-health-artifact-name",
+                        "graph-health-sec-dev",
+                    ]
+                )
+
+        self.assertEqual(status, 23)
+        create_issue.assert_called_once_with(
+            "sec-dev",
+            23,
+            "blocking_graph_health_failure",
+            "graph-health-sec-dev",
+            degraded=False,
+        )
+
     def test_graph_failure_heals_then_reruns_health(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             results = iter(
