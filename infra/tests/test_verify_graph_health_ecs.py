@@ -155,7 +155,7 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
         finally:
             verify_graph_health_ecs._aws = original_aws
 
-    def test_graph_command_overrides_disables_source_runtime_bootstrap_dependency(self) -> None:
+    def test_graph_command_overrides_leave_source_runtime_bootstrap_default(self) -> None:
         original_aws = verify_graph_health_ecs._aws
 
         def fake_aws(args, _region):
@@ -173,12 +173,7 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
         try:
             self.assertEqual(
                 _graph_command_overrides("arn:aws:ecs:us-east-1:123:task-definition/cerebro-sec-dev:72", ["graph", "counts"], "us-east-1"),
-                {
-                    "containerOverrides": [
-                        {"name": "cerebro", "command": ["graph", "counts"]},
-                        {"name": "source-runtime-bootstrap", "command": ["graph", "counts"]},
-                    ]
-                },
+                {"containerOverrides": [{"name": "cerebro", "command": ["graph", "counts"]}]},
             )
         finally:
             verify_graph_health_ecs._aws = original_aws
@@ -280,7 +275,7 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             if args[:2] == ["ecs", "run-task"]:
                 self.assertIn("--overrides", args)
                 override = args[args.index("--overrides") + 1]
-                self.assertIn("source-runtime-bootstrap", override)
+                self.assertNotIn("source-runtime-bootstrap", override)
                 return {"tasks": [{"taskArn": "task-arn"}]}
             if args[:2] == ["ecs", "describe-tasks"]:
                 return {"tasks": [{"taskArn": "task-arn", "containers": [{"name": "cerebro", "exitCode": 0}]}]}
