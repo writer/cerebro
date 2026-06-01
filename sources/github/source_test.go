@@ -359,9 +359,15 @@ func TestCheckDiscoverAndReadLiveGitHubAuditPreview(t *testing.T) {
 	if got := first.Events[0].Attributes["actor_type"]; got != "Bot" {
 		t.Fatalf("first.Events[0].Attributes[actor_type] = %q, want Bot", got)
 	}
+	if got := first.Events[0].Attributes["actor_email"]; got != "dependabot@writer.com" {
+		t.Fatalf("first.Events[0].Attributes[actor_email] = %q, want dependabot@writer.com", got)
+	}
 	var payload map[string]any
 	if err := json.Unmarshal(first.Events[0].Payload, &payload); err != nil {
 		t.Fatalf("unmarshal audit payload: %v", err)
+	}
+	if got := payload["actor_email"]; got != "dependabot@writer.com" {
+		t.Fatalf("audit payload actor_email = %#v, want dependabot@writer.com", got)
 	}
 	if got := payload["resource_type"]; got != "repository_vulnerability_alert" {
 		t.Fatalf("audit payload resource_type = %#v, want repository_vulnerability_alert", got)
@@ -892,6 +898,7 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 				"login": "dependabot[bot]",
 				"id":    49699333,
 				"type":  "Bot",
+				"email": "dependabot@writer.com",
 			}); err != nil {
 				t.Fatalf("encode users response: %v", err)
 			}
@@ -900,6 +907,7 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 				"login": "octocat",
 				"id":    1,
 				"type":  "User",
+				"email": "octocat@writer.com",
 			}); err != nil {
 				t.Fatalf("encode users response: %v", err)
 			}

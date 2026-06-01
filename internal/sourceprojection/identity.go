@@ -568,8 +568,9 @@ func identityAuditProjections(event *cerebrov1.EventEnvelope, profile identityPr
 	provider := profile.Provider
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
-	actorEmail := firstNonEmpty(attributes["actor_email"], attributes["actor_alternate_id"], attributes["email"])
-	actorURN := identityUserURN(tenantID, provider, firstNonEmpty(attributes["actor_id"], actorEmail), actorEmail)
+	actorEmail := firstNonEmpty(attributes["actor_email"], attributes["email"])
+	actorIdentifier := firstNonEmpty(actorEmail, attributes["actor_alternate_id"])
+	actorURN := identityUserURN(tenantID, provider, firstNonEmpty(attributes["actor_id"], actorIdentifier), actorIdentifier)
 	resourceID := firstNonEmpty(attributes["resource_id"], attributes["target_id"], attributes["app_id"], attributes["group_id"], attributes["role_id"])
 	resourceType := normalizeIdentifier(firstNonEmpty(attributes["resource_type"], attributes["target_type"], "resource"))
 	resourceURN := projectionURN(tenantID, provider+"_"+resourceType, resourceID)
@@ -579,12 +580,18 @@ func identityAuditProjections(event *cerebrov1.EventEnvelope, profile identityPr
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
 			EntityType: profile.entityType("user"),
-			Label:      firstNonEmpty(attributes["actor_name"], actorEmail, attributes["actor_id"]),
+			Label:      firstNonEmpty(attributes["actor_name"], actorEmail, attributes["actor_alternate_id"], attributes["actor_id"]),
 			Attributes: map[string]string{"email": actorEmail, "actor_id": strings.TrimSpace(attributes["actor_id"])},
 		})
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorEmail, event.GetOccurredAt())
-		addCloudIdentityAccountLink(entities, links, tenantID, event.GetSourceId(), event, actorURN, profile, attributes, attributes["actor_type"], firstNonEmpty(attributes["actor_id"], actorEmail))
-		addAWSPrincipalIdentifierLinks(entities, links, tenantID, event.GetSourceId(), event, actorURN, profile, attributes, attributes["actor_type"], firstNonEmpty(attributes["actor_id"], actorEmail), attributes["actor_alternate_id"], attributes["actor_name"], actorEmail)
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorIdentifier, event.GetOccurredAt())
+		if !sameIdentifier(actorIdentifier, attributes["actor_alternate_id"]) {
+			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, attributes["actor_alternate_id"], event.GetOccurredAt())
+		}
+		if !sameIdentifier(actorIdentifier, actorEmail) {
+			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorEmail, event.GetOccurredAt())
+		}
+		addCloudIdentityAccountLink(entities, links, tenantID, event.GetSourceId(), event, actorURN, profile, attributes, attributes["actor_type"], firstNonEmpty(attributes["actor_id"], actorIdentifier))
+		addAWSPrincipalIdentifierLinks(entities, links, tenantID, event.GetSourceId(), event, actorURN, profile, attributes, attributes["actor_type"], firstNonEmpty(attributes["actor_id"], actorIdentifier), attributes["actor_alternate_id"], attributes["actor_name"], actorEmail)
 	}
 	if resourceURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{

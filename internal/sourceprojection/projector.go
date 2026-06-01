@@ -578,6 +578,7 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 	actorIsBot := strings.TrimSpace(attributes["actor_is_bot"])
 	actorIsAgent := strings.TrimSpace(attributes["actor_is_agent"])
 	actorType := strings.TrimSpace(attributes["actor_type"])
+	actorEmail := strings.TrimSpace(attributes["actor_email"])
 	actorExternalNameID := strings.TrimSpace(attributes["external_identity_nameid"])
 	actorExternalUsername := strings.TrimSpace(attributes["external_identity_username"])
 	orgID := strings.TrimSpace(attributes["org_id"])
@@ -872,6 +873,9 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 			}
 			if !sameIdentifier(actor, actorExternalUsername) && !sameIdentifier(actorExternalNameID, actorExternalUsername) {
 				addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorExternalUsername, event.GetOccurredAt())
+			}
+			if !sameIdentifier(actor, actorEmail) && !sameIdentifier(actorExternalNameID, actorEmail) && !sameIdentifier(actorExternalUsername, actorEmail) {
+				addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorEmail, event.GetOccurredAt())
 			}
 		}
 	}
