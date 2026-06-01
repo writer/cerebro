@@ -138,6 +138,33 @@ type graphEndpointOwnerIDCleanupResult struct {
 	GraphStore ports.ProjectionLinkCleanupResult `json:"graph_store"`
 }
 
+type graphProjectedEntityCleanupOptions struct {
+	TenantID     string
+	SourceID     string
+	RuntimeID    string
+	FindingID    string
+	EntityTypes  []string
+	URNPrefixes  []string
+	OnlyIsolated bool
+	Limit        uint32
+	DryRun       bool
+	AllowDetach  bool
+}
+
+type graphProjectedEntityCleanupResult struct {
+	TenantID     string                        `json:"tenant_id"`
+	SourceID     string                        `json:"source_id,omitempty"`
+	RuntimeID    string                        `json:"runtime_id,omitempty"`
+	FindingID    string                        `json:"finding_id,omitempty"`
+	EntityTypes  []string                      `json:"entity_types,omitempty"`
+	URNPrefixes  []string                      `json:"urn_prefixes,omitempty"`
+	OnlyIsolated bool                          `json:"only_isolated"`
+	Limit        uint32                        `json:"limit,omitempty"`
+	DryRun       bool                          `json:"dry_run"`
+	StateStore   ports.ProjectionCleanupResult `json:"state_store"`
+	GraphStore   ports.ProjectionCleanupResult `json:"graph_store"`
+}
+
 type graphPathsResult struct {
 	Patterns   []graphstore.PathPattern `json:"patterns"`
 	Traversals []graphstore.Traversal   `json:"traversals"`
@@ -228,6 +255,22 @@ func runGraph(args []string) error {
 			return printErr
 		}
 		return err
+	case "cleanup-projected-entities":
+		options, err := parseGraphProjectedEntityCleanupArgs(args[1:])
+		if err != nil {
+			return err
+		}
+		ctx := context.Background()
+		deps, closeDeps, err := openGraphCleanupDependencies(ctx)
+		if err != nil {
+			return err
+		}
+		defer logClose(closeDeps)
+		result, err := cleanupProjectedEntities(ctx, deps, options)
+		if printErr := printJSON(result); printErr != nil {
+			return printErr
+		}
+		return err
 	case "counts", "neighborhood", "paths", "relation-counts", "integrity":
 		return runGraphInspect(args)
 	case "cve-impact", "package-exposure", "asset-vulns":
@@ -283,7 +326,7 @@ func runGraph(args []string) error {
 }
 
 func graphUsage() string {
-	return fmt.Sprintf("usage: %s graph [counts|neighborhood|paths|relation-counts|integrity|cve-impact|package-exposure|asset-vulns|ingest|ingest-runtime|ingest-run|ingest-runs|cleanup-endpoint-owner-id-links|rebuild|inspect] ...", os.Args[0])
+	return fmt.Sprintf("usage: %s graph [counts|neighborhood|paths|relation-counts|integrity|cve-impact|package-exposure|asset-vulns|ingest|ingest-runtime|ingest-run|ingest-runs|cleanup-endpoint-owner-id-links|cleanup-projected-entities|rebuild|inspect] ...", os.Args[0])
 }
 
 func graphIngestUsage() string {
@@ -308,6 +351,10 @@ func graphImpactUsage() string {
 
 func graphEndpointOwnerIDCleanupUsage() string {
 	return fmt.Sprintf("usage: %s graph cleanup-endpoint-owner-id-links tenant_id=<tenant-id> [source_id=kolide|kandji] [runtime_id=<runtime-id>] [limit=N] [dry_run=true|apply=true]", os.Args[0])
+}
+
+func graphProjectedEntityCleanupUsage() string {
+	return fmt.Sprintf("usage: %s graph cleanup-projected-entities tenant_id=<tenant-id> [source_id=<source-id>] [runtime_id=<runtime-id>] [finding_id=<finding-id>] [entity_type=a,b] [urn_prefix=a,b] [only_isolated=true] [limit=N] [dry_run=true|apply=true] [allow_detach=true]", os.Args[0])
 }
 
 func runGraphInspect(args []string) error {
@@ -524,6 +571,50 @@ func cleanupEndpointOwnerIDLinks(ctx context.Context, deps bootstrap.Dependencie
 	}
 	if !cleaned {
 		return result, fmt.Errorf("endpoint owner-id link cleanup is unsupported by configured stores")
+	}
+	return result, nil
+}
+
+func cleanupProjectedEntities(ctx context.Context, deps bootstrap.Dependencies, options graphProjectedEntityCleanupOptions) (result graphProjectedEntityCleanupResult, err error) {
+	result = graphProjectedEntityCleanupResult{
+		TenantID:     strings.TrimSpace(options.TenantID),
+		SourceID:     strings.TrimSpace(options.SourceID),
+		RuntimeID:    strings.TrimSpace(options.RuntimeID),
+		FindingID:    strings.TrimSpace(options.FindingID),
+		EntityTypes:  append([]string(nil), options.EntityTypes...),
+		URNPrefixes:  append([]string(nil), options.URNPrefixes...),
+		OnlyIsolated: options.OnlyIsolated,
+		Limit:        options.Limit,
+		DryRun:       options.DryRun,
+	}
+	request := ports.ProjectionCleanupRequest{
+		TenantID:     result.TenantID,
+		SourceID:     result.SourceID,
+		RuntimeID:    result.RuntimeID,
+		FindingID:    result.FindingID,
+		EntityTypes:  result.EntityTypes,
+		URNPrefixes:  result.URNPrefixes,
+		OnlyIsolated: result.OnlyIsolated,
+		Limit:        result.Limit,
+		DryRun:       result.DryRun,
+	}
+	cleaned := false
+	if cleaner, ok := deps.StateStore.(ports.ProjectionCleaner); ok {
+		cleaned = true
+		result.StateStore, err = cleaner.CleanupProjectedEntities(ctx, request)
+		if err != nil {
+			return result, fmt.Errorf("cleanup state projected entities: %w", err)
+		}
+	}
+	if cleaner, ok := deps.GraphStore.(ports.ProjectionCleaner); ok {
+		cleaned = true
+		result.GraphStore, err = cleaner.CleanupProjectedEntities(ctx, request)
+		if err != nil {
+			return result, fmt.Errorf("cleanup graph projected entities: %w", err)
+		}
+	}
+	if !cleaned {
+		return result, fmt.Errorf("projected entity cleanup is unsupported by configured stores")
 	}
 	return result, nil
 }
@@ -913,6 +1004,109 @@ func parseGraphEndpointOwnerIDCleanupArgs(args []string) (graphEndpointOwnerIDCl
 		return graphEndpointOwnerIDCleanupOptions{}, fmt.Errorf("apply=true is required before deleting endpoint owner-id links")
 	}
 	return options, nil
+}
+
+func parseGraphProjectedEntityCleanupArgs(args []string) (graphProjectedEntityCleanupOptions, error) {
+	options := graphProjectedEntityCleanupOptions{DryRun: true, OnlyIsolated: true}
+	apply := false
+	dryRunSet := false
+	for _, arg := range args {
+		key, value, ok := strings.Cut(arg, "=")
+		if !ok {
+			return graphProjectedEntityCleanupOptions{}, usageError(fmt.Sprintf("expected key=value argument, got %q", arg))
+		}
+		switch strings.TrimSpace(key) {
+		case "tenant_id":
+			options.TenantID = strings.TrimSpace(value)
+		case "source_id":
+			options.SourceID = strings.TrimSpace(value)
+		case "runtime_id":
+			options.RuntimeID = strings.TrimSpace(value)
+		case "finding_id":
+			options.FindingID = strings.TrimSpace(value)
+		case "entity_type", "entity_types":
+			options.EntityTypes = append(options.EntityTypes, splitCleanupValues(value)...)
+		case "urn_prefix", "urn_prefixes":
+			options.URNPrefixes = append(options.URNPrefixes, splitCleanupValues(value)...)
+		case "only_isolated":
+			parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+			if err != nil {
+				return graphProjectedEntityCleanupOptions{}, fmt.Errorf("parse only_isolated: %w", err)
+			}
+			options.OnlyIsolated = parsed
+		case "allow_detach":
+			parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+			if err != nil {
+				return graphProjectedEntityCleanupOptions{}, fmt.Errorf("parse allow_detach: %w", err)
+			}
+			options.AllowDetach = parsed
+		case "limit":
+			parsed, err := strconv.ParseUint(strings.TrimSpace(value), 10, 32)
+			if err != nil {
+				return graphProjectedEntityCleanupOptions{}, fmt.Errorf("parse limit: %w", err)
+			}
+			if parsed == 0 {
+				return graphProjectedEntityCleanupOptions{}, fmt.Errorf("limit must be positive")
+			}
+			options.Limit = uint32(parsed)
+		case "dry_run":
+			parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+			if err != nil {
+				return graphProjectedEntityCleanupOptions{}, fmt.Errorf("parse dry_run: %w", err)
+			}
+			options.DryRun = parsed
+			dryRunSet = true
+		case "apply":
+			parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+			if err != nil {
+				return graphProjectedEntityCleanupOptions{}, fmt.Errorf("parse apply: %w", err)
+			}
+			apply = parsed
+		default:
+			return graphProjectedEntityCleanupOptions{}, usageError(fmt.Sprintf("unsupported graph cleanup-projected-entities argument %q", key))
+		}
+	}
+	if strings.TrimSpace(options.TenantID) == "" {
+		return graphProjectedEntityCleanupOptions{}, usageError(graphProjectedEntityCleanupUsage())
+	}
+	if strings.TrimSpace(options.SourceID) == "" &&
+		strings.TrimSpace(options.RuntimeID) == "" &&
+		strings.TrimSpace(options.FindingID) == "" &&
+		len(options.EntityTypes) == 0 &&
+		len(options.URNPrefixes) == 0 {
+		return graphProjectedEntityCleanupOptions{}, usageError(graphProjectedEntityCleanupUsage())
+	}
+	if !options.OnlyIsolated && strings.TrimSpace(options.FindingID) == "" && !options.AllowDetach {
+		return graphProjectedEntityCleanupOptions{}, fmt.Errorf("allow_detach=true is required when only_isolated=false without finding_id")
+	}
+	if apply {
+		if dryRunSet && options.DryRun {
+			return graphProjectedEntityCleanupOptions{}, fmt.Errorf("apply=true conflicts with dry_run=true")
+		}
+		options.DryRun = false
+	}
+	if !options.DryRun && !apply {
+		return graphProjectedEntityCleanupOptions{}, fmt.Errorf("apply=true is required before deleting projected entities")
+	}
+	return options, nil
+}
+
+func splitCleanupValues(value string) []string {
+	parts := strings.Split(value, ",")
+	values := make([]string, 0, len(parts))
+	seen := map[string]struct{}{}
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if _, ok := seen[part]; ok {
+			continue
+		}
+		seen[part] = struct{}{}
+		values = append(values, part)
+	}
+	return values
 }
 
 func ingestGraph(

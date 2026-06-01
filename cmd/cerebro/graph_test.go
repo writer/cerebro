@@ -12,8 +12,10 @@ import (
 )
 
 type cleanupStateStore struct {
-	request ports.ProjectionLinkCleanupRequest
-	result  ports.ProjectionLinkCleanupResult
+	request           ports.ProjectionLinkCleanupRequest
+	result            ports.ProjectionLinkCleanupResult
+	projectionRequest ports.ProjectionCleanupRequest
+	projectionResult  ports.ProjectionCleanupResult
 }
 
 func (s *cleanupStateStore) Ping(context.Context) error { return nil }
@@ -21,6 +23,11 @@ func (s *cleanupStateStore) Ping(context.Context) error { return nil }
 func (s *cleanupStateStore) CleanupEndpointOwnerIDLinks(_ context.Context, request ports.ProjectionLinkCleanupRequest) (ports.ProjectionLinkCleanupResult, error) {
 	s.request = request
 	return s.result, nil
+}
+
+func (s *cleanupStateStore) CleanupProjectedEntities(_ context.Context, request ports.ProjectionCleanupRequest) (ports.ProjectionCleanupResult, error) {
+	s.projectionRequest = request
+	return s.projectionResult, nil
 }
 
 func TestParseGraphIngestArgs(t *testing.T) {
@@ -195,6 +202,74 @@ func TestCleanupEndpointOwnerIDLinksAllowsStateStoreOnly(t *testing.T) {
 		t.Fatalf("cleanup request = %#v, want scoped dry-run", state.request)
 	}
 	if result.StateStore.LinksMatched != 3 || result.GraphStore.LinksMatched != 0 {
+		t.Fatalf("cleanup result = %#v, want state-only result", result)
+	}
+}
+
+func TestParseGraphProjectedEntityCleanupArgsDefaultsSafeDryRun(t *testing.T) {
+	options, err := parseGraphProjectedEntityCleanupArgs([]string{
+		"tenant_id=writer",
+		"source_id=example-source",
+		"entity_type=finding,evidence",
+		"urn_prefix=urn:cerebro:writer:finding:",
+		"limit=25",
+	})
+	if err != nil {
+		t.Fatalf("parseGraphProjectedEntityCleanupArgs() error = %v", err)
+	}
+	if !options.DryRun || !options.OnlyIsolated || options.TenantID != "writer" || options.SourceID != "example-source" || options.Limit != 25 {
+		t.Fatalf("options = %#v, want safe dry-run scoped cleanup", options)
+	}
+	if !reflect.DeepEqual(options.EntityTypes, []string{"finding", "evidence"}) {
+		t.Fatalf("EntityTypes = %#v, want finding/evidence", options.EntityTypes)
+	}
+	if !reflect.DeepEqual(options.URNPrefixes, []string{"urn:cerebro:writer:finding:"}) {
+		t.Fatalf("URNPrefixes = %#v, want finding prefix", options.URNPrefixes)
+	}
+}
+
+func TestParseGraphProjectedEntityCleanupArgsRequiresApplyForDeletes(t *testing.T) {
+	args := []string{"tenant_id=writer", "source_id=example-source", "entity_type=finding", "dry_run=false"}
+	if _, err := parseGraphProjectedEntityCleanupArgs(args); err == nil {
+		t.Fatal("parseGraphProjectedEntityCleanupArgs() error = nil, want apply requirement")
+	}
+	options, err := parseGraphProjectedEntityCleanupArgs([]string{"tenant_id=writer", "source_id=example-source", "entity_type=finding", "apply=true"})
+	if err != nil {
+		t.Fatalf("parseGraphProjectedEntityCleanupArgs(apply) error = %v", err)
+	}
+	if options.DryRun {
+		t.Fatalf("DryRun = true, want apply mode")
+	}
+}
+
+func TestParseGraphProjectedEntityCleanupArgsRequiresAllowDetachForBroadDetach(t *testing.T) {
+	_, err := parseGraphProjectedEntityCleanupArgs([]string{
+		"tenant_id=writer",
+		"source_id=example-source",
+		"entity_type=finding",
+		"only_isolated=false",
+	})
+	if err == nil {
+		t.Fatal("parseGraphProjectedEntityCleanupArgs() error = nil, want allow_detach requirement")
+	}
+}
+
+func TestCleanupProjectedEntitiesAllowsStateStoreOnly(t *testing.T) {
+	state := &cleanupStateStore{projectionResult: ports.ProjectionCleanupResult{EntitiesMatched: 3}}
+	result, err := cleanupProjectedEntities(context.Background(), bootstrap.Dependencies{StateStore: state}, graphProjectedEntityCleanupOptions{
+		TenantID:     "writer",
+		SourceID:     "example-source",
+		EntityTypes:  []string{"finding"},
+		OnlyIsolated: true,
+		DryRun:       true,
+	})
+	if err != nil {
+		t.Fatalf("cleanupProjectedEntities() error = %v", err)
+	}
+	if state.projectionRequest.TenantID != "writer" || state.projectionRequest.SourceID != "example-source" || !state.projectionRequest.DryRun || !state.projectionRequest.OnlyIsolated {
+		t.Fatalf("cleanup request = %#v, want scoped dry-run", state.projectionRequest)
+	}
+	if result.StateStore.EntitiesMatched != 3 || result.GraphStore.EntitiesMatched != 0 {
 		t.Fatalf("cleanup result = %#v, want state-only result", result)
 	}
 }
