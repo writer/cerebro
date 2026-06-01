@@ -11,6 +11,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourcehttp"
 )
 
@@ -191,6 +192,30 @@ func TestReadDedupesRecordsByExternalID(t *testing.T) {
 	}
 	if pull.Events[0].Attributes["external_id"] != "device-1" || pull.Events[1].Attributes["external_id"] != "device-2" {
 		t.Fatalf("Events = %#v, want first unique records by external id", pull.Events)
+	}
+}
+
+func TestReadUsesRuntimeTenantID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{"id": "device-1", "name": "macbook-1"}},
+		})
+	}))
+	defer server.Close()
+
+	source := newTestSource(t, server.URL)
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		sourceconfig.RuntimeTenantIDKey: "writer",
+		"token":                         "token-1",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	if pull.Events[0].TenantId != "writer" {
+		t.Fatalf("TenantId = %q, want writer", pull.Events[0].TenantId)
 	}
 }
 
