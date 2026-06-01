@@ -3521,6 +3521,52 @@ func TestProjectAssetClassificationLinksStrongCloudResourceIDsToAccounts(t *test
 	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:aws_secret_store:prod-secrets", relationBelongsTo, "urn:cerebro:writer:cloud_account:prod-secrets")
 }
 
+func TestProjectAssetClassificationLinksEmailOwnerIdentity(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:       "asset-email-owner",
+			TenantId: "writer",
+			SourceId: "asset",
+			Kind:     "asset.data_sensitivity",
+			Attributes: map[string]string{
+				"owner":               "alice@writer.com",
+				"resource_id":         "writer-bucket",
+				"resource_type":       "bucket",
+				"source_provider":     "aws",
+				"data_classification": "restricted",
+			},
+		},
+		{
+			Id:       "asset-team-owner",
+			TenantId: "writer",
+			SourceId: "asset",
+			Kind:     "asset.data_sensitivity",
+			Attributes: map[string]string{
+				"owner":               "Security Team",
+				"resource_id":         "prod-secrets",
+				"resource_type":       "secret_store",
+				"source_provider":     "aws",
+				"data_classification": "restricted",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%s) error = %v", event.GetId(), err)
+		}
+	}
+
+	emailOwnerURN := "urn:cerebro:writer:owner:alice@writer.com"
+	emailIdentityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_bucket:writer-bucket", relationOwnedBy, emailOwnerURN)
+	assertProjectedLink(t, state, emailOwnerURN, relationRepresentsIdentity, emailIdentityURN)
+	assertProjectedLink(t, state, "urn:cerebro:writer:identifier:email:alice@writer.com", relationRepresentsIdentity, emailIdentityURN)
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_secret_store:prod-secrets", relationOwnedBy, "urn:cerebro:writer:owner:Security Team")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:owner:Security Team", relationRepresentsIdentity, "urn:cerebro:writer:identity:login:security team")
+}
+
 func assertProjectedLink(t *testing.T, recorder *projectionRecorder, fromURN string, relation string, toURN string) {
 	t.Helper()
 	key := fromURN + "|" + relation + "|" + toURN
