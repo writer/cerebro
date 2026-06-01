@@ -42,13 +42,14 @@ func TestProjectBackstageComponent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	if result.EntitiesProjected != 4 {
-		t.Fatalf("EntitiesProjected = %d, want 4", result.EntitiesProjected)
+	if result.EntitiesProjected != 5 {
+		t.Fatalf("EntitiesProjected = %d, want 5", result.EntitiesProjected)
 	}
 	serviceURN := "urn:cerebro:writer:service:component/default/cerebro"
 	ownerURN := "urn:cerebro:writer:owner:platform/security"
 	systemURN := "urn:cerebro:writer:system:security"
 	repoURN := "urn:cerebro:writer:github_repo:WriterInternal/cerebro"
+	orgURN := "urn:cerebro:writer:github_org:WriterInternal"
 	entity := state.entities[serviceURN]
 	if entity == nil || entity.EntityType != "service" || entity.Attributes["lifecycle"] != "production" {
 		t.Fatalf("service entity = %#v, want production service", entity)
@@ -56,6 +57,7 @@ func TestProjectBackstageComponent(t *testing.T) {
 	assertProjectedLink(t, state, serviceURN, relationOwnedBy, ownerURN)
 	assertProjectedLink(t, state, serviceURN, relationBelongsTo, systemURN)
 	assertProjectedLink(t, state, serviceURN, relationBelongsTo, repoURN)
+	assertProjectedLink(t, state, repoURN, relationBelongsTo, orgURN)
 }
 
 func TestProjectSecurityToolingMapTool(t *testing.T) {
@@ -86,14 +88,16 @@ func TestProjectSecurityToolingMapTool(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	if result.EntitiesProjected != 8 {
-		t.Fatalf("EntitiesProjected = %d, want 8", result.EntitiesProjected)
+	if result.EntitiesProjected != 9 {
+		t.Fatalf("EntitiesProjected = %d, want 9", result.EntitiesProjected)
 	}
 	toolURN := "urn:cerebro:writer:security_tool:agent-gateway"
 	ownerURN := "urn:cerebro:writer:owner:security"
 	repoURN := "urn:cerebro:writer:github_repo:WriterInternal/agent-gateway"
+	orgURN := "urn:cerebro:writer:github_org:WriterInternal"
 	assertProjectedLink(t, state, toolURN, relationOwnedBy, ownerURN)
 	assertProjectedLink(t, state, toolURN, relationBelongsTo, repoURN)
+	assertProjectedLink(t, state, repoURN, relationBelongsTo, orgURN)
 	assertProjectedLink(t, state, toolURN, relationHasClassification, "urn:cerebro:writer:security_category:ai_security")
 	assertProjectedLink(t, state, toolURN, relationHasClassification, "urn:cerebro:writer:security_category:dlp")
 	assertProjectedLink(t, state, toolURN, relationDependsOn, "urn:cerebro:writer:security_tool:security")
