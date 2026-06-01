@@ -29,6 +29,19 @@ type IntegrityCheck struct {
 	Passed   bool   `json:"passed"`
 }
 
+// OpenFindingPrimaryLinkRepairRequest scopes an idempotent finding graph repair pass.
+type OpenFindingPrimaryLinkRepairRequest struct {
+	Limit  uint32
+	DryRun bool
+}
+
+// OpenFindingPrimaryLinkRepairResult reports missing primary finding links found or created.
+type OpenFindingPrimaryLinkRepairResult struct {
+	LinksMatched uint32 `json:"links_matched"`
+	LinksCreated uint32 `json:"links_created"`
+	DryRun       bool   `json:"dry_run"`
+}
+
 // PathPattern captures one grouped two-hop graph pattern.
 type PathPattern struct {
 	FromType       string `json:"from_type"`

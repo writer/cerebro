@@ -145,6 +145,51 @@ func (s *graphTestStore) IntegrityChecks(context.Context) ([]graphstore.Integrit
 	}, nil
 }
 
+func (s *graphTestStore) RepairOpenFindingPrimaryLinks(_ context.Context, request graphstore.OpenFindingPrimaryLinkRepairRequest) (graphstore.OpenFindingPrimaryLinkRepairResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	limit := int(request.Limit)
+	if limit <= 0 {
+		limit = 25
+	}
+	result := graphstore.OpenFindingPrimaryLinkRepairResult{DryRun: request.DryRun}
+	for _, finding := range s.entities {
+		if result.LinksMatched >= uint32(limit) {
+			break
+		}
+		if finding.EntityType != "finding" || finding.Attributes["status"] != "open" {
+			continue
+		}
+		primaryURN := strings.TrimSpace(finding.Attributes["primary_resource_urn"])
+		if primaryURN == "" {
+			continue
+		}
+		resource := s.entities[primaryURN]
+		if resource == nil || resource.TenantID != finding.TenantID {
+			continue
+		}
+		link := &ports.ProjectedLink{
+			TenantID:  finding.TenantID,
+			SourceID:  finding.SourceID,
+			RuntimeID: finding.RuntimeID,
+			FromURN:   primaryURN,
+			ToURN:     finding.URN,
+			Relation:  "has_finding",
+		}
+		key := testLinkKey(link)
+		if _, ok := s.links[key]; ok {
+			continue
+		}
+		result.LinksMatched++
+		if request.DryRun {
+			continue
+		}
+		s.links[key] = link
+		result.LinksCreated++
+	}
+	return result, nil
+}
+
 func (s *graphTestStore) PathPatterns(_ context.Context, limit int) ([]graphstore.PathPattern, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

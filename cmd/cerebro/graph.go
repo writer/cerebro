@@ -68,6 +68,10 @@ type graphIntegrityStore interface {
 	IntegrityChecks(context.Context) ([]graphstore.IntegrityCheck, error)
 }
 
+type graphOpenFindingPrimaryLinkRepairStore interface {
+	RepairOpenFindingPrimaryLinks(context.Context, graphstore.OpenFindingPrimaryLinkRepairRequest) (graphstore.OpenFindingPrimaryLinkRepairResult, error)
+}
+
 type graphIngestRunStore interface {
 	ListIngestRuns(context.Context, graphstore.IngestRunFilter) ([]graphstore.IngestRun, error)
 }
@@ -192,6 +196,11 @@ type graphProjectedEntityCleanupOptions struct {
 	AllowDetach  bool
 }
 
+type graphOpenFindingPrimaryLinkRepairOptions struct {
+	Limit  uint32
+	DryRun bool
+}
+
 type graphProjectedEntityCleanupResult struct {
 	TenantID     string                        `json:"tenant_id"`
 	SourceID     string                        `json:"source_id,omitempty"`
@@ -312,6 +321,22 @@ func runGraph(args []string) error {
 			return printErr
 		}
 		return err
+	case "repair-open-finding-primary-links":
+		options, err := parseGraphOpenFindingPrimaryLinkRepairArgs(args[1:])
+		if err != nil {
+			return err
+		}
+		ctx := context.Background()
+		deps, closeDeps, err := openGraphCleanupDependencies(ctx)
+		if err != nil {
+			return err
+		}
+		defer logClose(closeDeps)
+		result, err := repairOpenFindingPrimaryLinks(ctx, deps, options)
+		if printErr := printJSON(result); printErr != nil {
+			return printErr
+		}
+		return err
 	case "health":
 		return runGraphHealth(args[1:])
 	case "counts", "neighborhood", "paths", "relation-counts", "integrity":
@@ -369,7 +394,7 @@ func runGraph(args []string) error {
 }
 
 func graphUsage() string {
-	return fmt.Sprintf("usage: %s graph [health|counts|neighborhood|paths|relation-counts|integrity|cve-impact|package-exposure|asset-vulns|ingest|ingest-runtime|ingest-run|ingest-runs|cleanup-endpoint-owner-id-links|cleanup-projected-entities|rebuild|inspect] ...", os.Args[0])
+	return fmt.Sprintf("usage: %s graph [health|counts|neighborhood|paths|relation-counts|integrity|cve-impact|package-exposure|asset-vulns|ingest|ingest-runtime|ingest-run|ingest-runs|cleanup-endpoint-owner-id-links|cleanup-projected-entities|repair-open-finding-primary-links|rebuild|inspect] ...", os.Args[0])
 }
 
 func graphIngestUsage() string {
@@ -825,6 +850,17 @@ func cleanupProjectedEntities(ctx context.Context, deps bootstrap.Dependencies, 
 		return result, fmt.Errorf("projected entity cleanup is unsupported by configured stores")
 	}
 	return result, nil
+}
+
+func repairOpenFindingPrimaryLinks(ctx context.Context, deps bootstrap.Dependencies, options graphOpenFindingPrimaryLinkRepairOptions) (graphstore.OpenFindingPrimaryLinkRepairResult, error) {
+	repairer, ok := deps.GraphStore.(graphOpenFindingPrimaryLinkRepairStore)
+	if !ok {
+		return graphstore.OpenFindingPrimaryLinkRepairResult{DryRun: options.DryRun}, fmt.Errorf("open finding primary link repair is unsupported by configured graph store")
+	}
+	return repairer.RepairOpenFindingPrimaryLinks(ctx, graphstore.OpenFindingPrimaryLinkRepairRequest{
+		Limit:  options.Limit,
+		DryRun: options.DryRun,
+	})
 }
 
 func parseGraphNeighborhoodArgs(args []string) (string, int, error) {
@@ -1347,6 +1383,54 @@ func parseGraphProjectedEntityCleanupArgs(args []string) (graphProjectedEntityCl
 	}
 	if !options.DryRun && strings.TrimSpace(options.FindingID) != "" && !options.AllowDetach {
 		return graphProjectedEntityCleanupOptions{}, fmt.Errorf("allow_detach=true is required before deleting finding-scoped projected entities")
+	}
+	return options, nil
+}
+
+func parseGraphOpenFindingPrimaryLinkRepairArgs(args []string) (graphOpenFindingPrimaryLinkRepairOptions, error) {
+	options := graphOpenFindingPrimaryLinkRepairOptions{DryRun: true}
+	apply := false
+	dryRunSet := false
+	for _, arg := range args {
+		key, value, ok := strings.Cut(arg, "=")
+		if !ok {
+			return graphOpenFindingPrimaryLinkRepairOptions{}, usageError(fmt.Sprintf("expected key=value argument, got %q", arg))
+		}
+		switch strings.TrimSpace(key) {
+		case "limit":
+			parsed, err := strconv.ParseUint(strings.TrimSpace(value), 10, 32)
+			if err != nil {
+				return graphOpenFindingPrimaryLinkRepairOptions{}, fmt.Errorf("parse limit: %w", err)
+			}
+			if parsed == 0 {
+				return graphOpenFindingPrimaryLinkRepairOptions{}, fmt.Errorf("limit must be positive")
+			}
+			options.Limit = uint32(parsed)
+		case "dry_run":
+			parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+			if err != nil {
+				return graphOpenFindingPrimaryLinkRepairOptions{}, fmt.Errorf("parse dry_run: %w", err)
+			}
+			options.DryRun = parsed
+			dryRunSet = true
+		case "apply":
+			parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+			if err != nil {
+				return graphOpenFindingPrimaryLinkRepairOptions{}, fmt.Errorf("parse apply: %w", err)
+			}
+			apply = parsed
+		default:
+			return graphOpenFindingPrimaryLinkRepairOptions{}, usageError(fmt.Sprintf("unsupported graph repair-open-finding-primary-links argument %q", key))
+		}
+	}
+	if apply {
+		if dryRunSet && options.DryRun {
+			return graphOpenFindingPrimaryLinkRepairOptions{}, fmt.Errorf("apply=true conflicts with dry_run=true")
+		}
+		options.DryRun = false
+	}
+	if !options.DryRun && !apply {
+		return graphOpenFindingPrimaryLinkRepairOptions{}, fmt.Errorf("apply=true is required before repairing open finding primary links")
 	}
 	return options, nil
 }

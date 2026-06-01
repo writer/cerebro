@@ -282,6 +282,58 @@ func (s *Store) IntegrityChecks(ctx context.Context) ([]IntegrityCheck, error) {
 	return checks, nil
 }
 
+// RepairOpenFindingPrimaryLinks restores missing has_finding edges for open findings whose primary resource node exists.
+func (s *Store) RepairOpenFindingPrimaryLinks(ctx context.Context, request graphstore.OpenFindingPrimaryLinkRepairRequest) (graphstore.OpenFindingPrimaryLinkRepairResult, error) {
+	if err := s.requireConfigured(); err != nil {
+		return graphstore.OpenFindingPrimaryLinkRepairResult{}, err
+	}
+	if err := s.ensureSchema(ctx); err != nil {
+		return graphstore.OpenFindingPrimaryLinkRepairResult{}, err
+	}
+	limit := int64(request.Limit)
+	if limit <= 0 {
+		limit = 25
+	}
+	params := map[string]any{"limit": limit}
+	result := graphstore.OpenFindingPrimaryLinkRepairResult{DryRun: request.DryRun}
+	query := `MATCH (finding:Entity {entity_type: 'finding'})
+WITH finding, coalesce(finding.attributes_json, '') AS attrs
+WHERE attrs CONTAINS '"status":"open"' AND attrs CONTAINS '"primary_resource_urn":"'
+WITH finding, split(split(attrs, '"primary_resource_urn":"')[1], '"')[0] AS primary_urn
+WHERE primary_urn <> ''
+MATCH (resource:Entity {tenant_id: finding.tenant_id, urn: primary_urn})
+WHERE NOT EXISTS { MATCH (resource)-[:RELATION {relation: 'has_finding'}]->(finding) }
+WITH resource, finding
+ORDER BY finding.urn
+LIMIT $limit`
+	if request.DryRun {
+		value, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+			return queryOneValue(ctx, tx, query+`
+RETURN count(finding)`, params)
+		})
+		if err != nil {
+			return graphstore.OpenFindingPrimaryLinkRepairResult{}, fmt.Errorf("query open finding primary link repair candidates: %w", err)
+		}
+		result.LinksMatched = uint32(toInt64(value))
+		return result, nil
+	}
+	value, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		return queryOneValue(ctx, tx, query+`
+MERGE (resource)-[r:RELATION {relation: 'has_finding'}]->(finding)
+ON CREATE SET r.attributes_json = '{}', r.attributes_version = 0
+SET r.tenant_id = finding.tenant_id,
+    r.source_id = coalesce(finding.source_id, ''),
+    r.runtime_id = coalesce(finding.runtime_id, '')
+RETURN count(r)`, params)
+	})
+	if err != nil {
+		return graphstore.OpenFindingPrimaryLinkRepairResult{}, fmt.Errorf("repair open finding primary links: %w", err)
+	}
+	result.LinksMatched = uint32(toInt64(value))
+	result.LinksCreated = result.LinksMatched
+	return result, nil
+}
+
 func integrityCheckDefinitions() ([]IntegrityCheck, []string) {
 	checks := []IntegrityCheck{
 		{Name: "tenant_mismatched_relations", Expected: 0},
