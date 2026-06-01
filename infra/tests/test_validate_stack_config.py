@@ -250,12 +250,12 @@ class ValidateStackConfigTest(unittest.TestCase):
         self.assertTrue(any(finding.severity == "error" and "page_limit <= 5" in finding.message for finding in findings))
 
     def test_sec_dev_aurelius_findings_schedule_graph_budget_is_bounded(self) -> None:
-        content = BASE_STACK.replace("runtime_id=writer-okta-audit", "runtime_id=writer-aurelius-findings").replace(
+        content = BASE_STACK.replace(
+            "        - runtime_id=writer-okta-audit\n",
+            "        - runtime_id=writer-aurelius-findings\n        - page_limit=2\n        - graph_page_limit=2\n",
+        ).replace(
             "    - id: writer-okta-audit\n      sourceId: okta\n",
             "    - id: writer-aurelius-findings\n      sourceId: aurelius\n",
-        ).replace(
-            "        - runtime_id=writer-aurelius-findings\n",
-            "        - runtime_id=writer-aurelius-findings\n        - page_limit=2\n        - graph_page_limit=2\n",
         )
         findings = self._validate(content, name="Pulumi.sec-dev.yaml")
         self.assertTrue(any(finding.severity == "error" and "page_limit <= 1" in finding.message for finding in findings))
@@ -480,6 +480,62 @@ class ValidateStackConfigTest(unittest.TestCase):
         ).replace("runtime_id=writer-okta-audit", "runtime_id=writer-aws-sec-dev-us1-public-endpoint")
         findings = self._validate(content, name="Pulumi.sec-dev.yaml")
         self.assertTrue(any(finding.severity == "error" and "effective_permission" in finding.message and "v2.1.46" in finding.message for finding in findings))
+
+    def test_go_prod_aws_public_endpoint_requires_expanded_graph_coverage(self) -> None:
+        content = BASE_STACK.replace(
+            "    - id: writer-okta-audit\n      sourceId: okta\n      tenantId: writer\n      config:\n        api_token: env:API_TOKEN\n",
+            """    - id: writer-aws-sec-prod-us1-public-endpoint
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "837279440628"
+        family: public_endpoint
+        include_global: "true"
+        per_page: "100"
+        region: us-east-1
+        role_arn: arn:aws:iam::837279440628:role/cerebro-org-scan-role
+""",
+        ).replace("runtime_id=writer-okta-audit", "runtime_id=writer-aws-sec-prod-us1-public-endpoint")
+
+        findings = self._validate(content, name="Pulumi.go-prod.yaml")
+
+        self.assertTrue(any(finding.severity == "error" and "writer-aws-prod-effective-permission" in finding.message for finding in findings))
+        self.assertTrue(any(finding.severity == "error" and "writer-aws-sec-prod-us1-resource-exposure" in finding.message for finding in findings))
+
+    def test_go_prod_actual_aws_graph_coverage_is_expanded(self) -> None:
+        config = validator._load_config(Path(__file__).resolve().parents[1] / "aws/Pulumi.go-prod.yaml")
+        aws_runtimes = [runtime for runtime in config["sourceRuntimes"] if runtime.get("sourceId") == "aws"]
+        aws_scheduled_runtime_ids = {
+            validator._runtime_id_from_command(schedule.get("command"))
+            for schedule in config["orchestratorSchedules"]
+            if isinstance(schedule, dict)
+        }
+
+        findings = validate_stack(Path(__file__).resolve().parents[1] / "aws/Pulumi.go-prod.yaml")
+
+        self.assertEqual(len(aws_runtimes), 48)
+        self.assertTrue(all(runtime["id"] in aws_scheduled_runtime_ids for runtime in aws_runtimes))
+        self.assertEqual(
+            {
+                str(runtime.get("config", {}).get("family", ""))
+                for runtime in aws_runtimes
+            },
+            {
+                "access_key",
+                "effective_permission",
+                "iam_group",
+                "iam_group_membership",
+                "iam_role",
+                "iam_role_assignment",
+                "iam_role_trust",
+                "iam_user",
+                "public_endpoint",
+                "resource_exposure",
+            },
+        )
+        self.assertFalse(
+            any(finding.severity == "error" and "go-prod AWS coverage" in finding.message for finding in findings)
+        )
 
     def test_cosmo_requires_token_auth_release(self) -> None:
         content = BASE_STACK.replace("  cerebro:imageTag: v2.1.36", "  cerebro:imageTag: v2.1.35")

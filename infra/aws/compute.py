@@ -113,29 +113,26 @@ def create_ecs_cluster(
             orchestrator_task_count,
             orchestrator_schedules or [],
         )
-        for schedule in schedules:
-            schedule_suffix = schedule["suffix"]
-            task_definition_name = f"{name}-orchestrator" if schedule_suffix == "default" else f"{name}-orchestrator-{schedule_suffix}"
-            task_definition = _create_task_definition(
-                name=task_definition_name,
-                container_image=container_image,
-                cpu=orchestrator_cpu,
-                memory=orchestrator_memory,
-                execution_role_arn=execution_role.arn,
-                task_role_arn=worker_task_role.arn,
-                log_group_name=log_group.name,
-                environment=runtime_environment,
-                secret_keys=secret_keys or [],
-                external_secrets_prefix=external_secrets_prefix,
-                efs_file_system_id=efs_file_system_id,
-                efs_access_point_id=efs_access_point_id,
-                efs_container_path=efs_container_path,
-                container_command=schedule["command"],
-                expose_http=False,
-                enable_health_check=False,
-                log_stream_prefix=f"orchestrator-{schedule_suffix}" if schedule_suffix != "default" else "orchestrator",
-            )
-            orchestrator_task_definitions.append(task_definition)
+        task_definition = _create_task_definition(
+            name=f"{name}-orchestrator",
+            container_image=container_image,
+            cpu=orchestrator_cpu,
+            memory=orchestrator_memory,
+            execution_role_arn=execution_role.arn,
+            task_role_arn=worker_task_role.arn,
+            log_group_name=log_group.name,
+            environment=runtime_environment,
+            secret_keys=secret_keys or [],
+            external_secrets_prefix=external_secrets_prefix,
+            efs_file_system_id=efs_file_system_id,
+            efs_access_point_id=efs_access_point_id,
+            efs_container_path=efs_container_path,
+            container_command=[str(part) for part in (orchestrator_command or ["orchestrator", "run"])],
+            expose_http=False,
+            enable_health_check=False,
+            log_stream_prefix="orchestrator",
+        )
+        orchestrator_task_definitions.append(task_definition)
         orchestrator_task_definition = orchestrator_task_definitions[0] if orchestrator_task_definitions else None
         orchestrator_events_role = _create_orchestrator_events_role(
             name=name,
@@ -143,7 +140,7 @@ def create_ecs_cluster(
             execution_role_arn=execution_role.arn,
             task_role_arn=worker_task_role.arn,
         )
-        for schedule, task_definition in zip(schedules, orchestrator_task_definitions):
+        for schedule in schedules:
             schedule_suffix = schedule["suffix"]
             schedule_resource_prefix = f"{name}-orchestrator" if schedule_suffix == "default" else f"{name}-orchestrator-{schedule_suffix}"
             rule = aws.cloudwatch.EventRule(
@@ -159,7 +156,7 @@ def create_ecs_cluster(
                 role_arn=orchestrator_events_role.arn,
                 target_id=f"{schedule_suffix}-ecs"[:64],
                 ecs_target=aws.cloudwatch.EventTargetEcsTargetArgs(
-                    task_definition_arn=task_definition.arn,
+                    task_definition_arn=orchestrator_task_definition.arn,
                     task_count=schedule["task_count"],
                     launch_type="FARGATE",
                     network_configuration=aws.cloudwatch.EventTargetEcsTargetNetworkConfigurationArgs(
@@ -168,6 +165,7 @@ def create_ecs_cluster(
                         assign_public_ip=False,
                     ),
                 ),
+                input=json.dumps({"containerOverrides": [{"name": "cerebro", "command": schedule["command"]}]}),
                 opts=pulumi.ResourceOptions(depends_on=[capacity_providers]),
             )
             orchestrator_rules.append(rule)
@@ -542,7 +540,7 @@ def _orchestrator_schedules(
         return [{
             "suffix": "default",
             "schedule_expression": schedule_expression,
-            "command": command,
+            "command": [str(part) for part in command],
             "task_count": max(1, int(task_count or 1)),
         }]
     schedules = []

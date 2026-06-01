@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import sys
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -11,9 +13,12 @@ from scripts.verify_source_runtime_ecs import (
     RuntimeSkippedError,
     RuntimeTaskFailedError,
     RuntimeTarget,
+    RuntimeVerificationFailedError,
+    VerificationOptions,
     VerificationResult,
     _declared_runtime_ids,
     _latest_active_task_definition,
+    _latest_task,
     _run_and_verify_task_with_retries,
     _run_task,
     _runtime_id_from_command,
@@ -23,6 +28,9 @@ from scripts.verify_source_runtime_ecs import (
     _stop_running_tasks,
     _summarize_log_messages,
     _task_family,
+    _task_logs,
+    _verify_task,
+    _verify_runtime_targets,
     _verification_command,
 )
 
@@ -167,13 +175,64 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
                 self.assertIn("--reason", args)
                 return {"task": {"taskArn": "task-1"}}
             if args[:2] == ["ecs", "describe-tasks"]:
-                return {"tasks": [{"taskArn": "task-1", "lastStatus": "STOPPED"}]}
+                return {
+                    "tasks": [
+                        {
+                            "taskArn": "task-1",
+                            "taskDefinitionArn": "arn:aws:ecs:us-east-1:123456789012:task-definition/runtime:3",
+                            "lastStatus": "STOPPED",
+                        }
+                    ]
+                }
             raise AssertionError(f"unexpected args: {args}")
 
         with patch("scripts.verify_source_runtime_ecs._aws", side_effect=fake_aws):
             _stop_running_tasks(target, "us-east-1", "test cleanup", 10, 1)
 
-        self.assertEqual([call[:2] for call in calls], [["ecs", "list-tasks"], ["ecs", "stop-task"], ["ecs", "describe-tasks"]])
+        self.assertEqual(
+            [call[:2] for call in calls],
+            [["ecs", "list-tasks"], ["ecs", "describe-tasks"], ["ecs", "stop-task"], ["ecs", "describe-tasks"]],
+        )
+
+    def test_shared_orchestrator_target_filters_tasks_by_command_override(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-cosmo-fact",
+            schedule_name="cosmo-fact",
+            rule_name="cerebro-sec-dev-orchestrator-cosmo-fact",
+            target={
+                "Arn": "cluster",
+                "Input": '{"containerOverrides":[{"name":"cerebro","command":["orchestrator","run","runtime_id=writer-cosmo-fact"]}]}',
+                "EcsParameters": {
+                    "TaskDefinitionArn": "arn:aws:ecs:us-east-1:123456789012:task-definition/cerebro-sec-dev-orchestrator:3"
+                },
+            },
+        )
+        now = time.time()
+        matching_task = {
+            "taskArn": "task-match",
+            "taskDefinitionArn": "arn:aws:ecs:us-east-1:123456789012:task-definition/cerebro-sec-dev-orchestrator:3",
+            "lastStatus": "STOPPED",
+            "stoppedAt": now,
+            "overrides": {"containerOverrides": [{"name": "cerebro", "command": ["orchestrator", "run", "runtime_id=writer-cosmo-fact"]}]},
+        }
+        other_task = {
+            "taskArn": "task-other",
+            "taskDefinitionArn": "arn:aws:ecs:us-east-1:123456789012:task-definition/cerebro-sec-dev-orchestrator:3",
+            "lastStatus": "STOPPED",
+            "stoppedAt": now,
+            "overrides": {"containerOverrides": [{"name": "cerebro", "command": ["orchestrator", "run", "runtime_id=writer-cosmo-session"]}]},
+        }
+
+        def fake_aws(args: list[str], _region: str) -> dict[str, object]:
+            if args[:2] == ["ecs", "list-tasks"]:
+                self.assertEqual(args[args.index("--max-results") + 1], "100")
+                return {"taskArns": ["task-other", "task-match"]}
+            if args[:2] == ["ecs", "describe-tasks"]:
+                return {"tasks": [other_task, matching_task]}
+            raise AssertionError(f"unexpected args: {args}")
+
+        with patch("scripts.verify_source_runtime_ecs._aws", side_effect=fake_aws):
+            self.assertEqual(_latest_task(target, 60, "us-east-1"), "task-match")
 
     def test_runtime_skip_reason_is_retryable_for_lease_contention(self) -> None:
         span = {"status": "skipped", "reason": "lease_not_acquired"}
@@ -255,6 +314,45 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         self.assertEqual(result, verified)
         self.assertEqual(run_task.call_count, 2)
 
+    def test_run_verify_retries_runtime_verification_failure_within_budget(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-cosmo-session",
+            schedule_name="cosmo-session",
+            rule_name="cerebro-sec-dev-orchestrator-cosmo-session",
+            target={"Arn": "cluster"},
+        )
+        verified = VerificationResult(
+            runtime_id="writer-cosmo-session",
+            task_arn="task-2",
+            exit_code=0,
+            runtime_status="completed",
+            sync_status="completed",
+            graph_ingest_status="completed",
+            events_appended=1,
+            pages_read=1,
+        )
+
+        with (
+            patch("scripts.verify_source_runtime_ecs.time.time", return_value=0),
+            patch("scripts.verify_source_runtime_ecs.time.sleep"),
+            patch("scripts.verify_source_runtime_ecs._run_task", side_effect=["task-1", "task-2"]) as run_task,
+            patch(
+                "scripts.verify_source_runtime_ecs._verify_task_until_graph_ingested",
+                side_effect=[RuntimeVerificationFailedError("writer-cosmo-session", "task-1", "source sync", "failed"), verified],
+            ),
+        ):
+            result = _run_and_verify_task_with_retries(
+                target,
+                wait_timeout_seconds=100,
+                poll_seconds=10,
+                region="us-east-1",
+                failed_run_retry_seconds=60,
+                succeed_after_graph_ingest=True,
+            )
+
+        self.assertEqual(result, verified)
+        self.assertEqual(run_task.call_count, 2)
+
     def test_run_verify_can_succeed_after_graph_ingest_before_task_stops(self) -> None:
         target = RuntimeTarget(
             runtime_id="writer-aws-devops-iam-role-trust",
@@ -310,6 +408,42 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         self.assertEqual(result.links_projected, 474)
         wait_for_task.assert_not_called()
 
+    def test_verify_runtime_targets_parallel_preserves_result_order(self) -> None:
+        targets = [
+            RuntimeTarget(runtime_id=f"runtime-{index}", schedule_name=f"runtime-{index}", rule_name=f"rule-{index}", target={"Arn": "cluster"})
+            for index in range(3)
+        ]
+        active = 0
+        max_active = 0
+        lock = threading.Lock()
+
+        def fake_verify(target: RuntimeTarget, _options: VerificationOptions) -> VerificationResult:
+            nonlocal active, max_active
+            with lock:
+                active += 1
+                max_active = max(max_active, active)
+            try:
+                time.sleep(0.02)
+                return VerificationResult(
+                    runtime_id=target.runtime_id,
+                    task_arn=f"{target.runtime_id}-task",
+                    exit_code=0,
+                    runtime_status="completed",
+                    sync_status="completed",
+                    graph_ingest_status="completed",
+                    events_appended=1,
+                    pages_read=1,
+                )
+            finally:
+                with lock:
+                    active -= 1
+
+        with patch("scripts.verify_source_runtime_ecs._verify_runtime_target", side_effect=fake_verify):
+            results = _verify_runtime_targets(targets, VerificationOptions(), target_concurrency=2)
+
+        self.assertEqual([result.runtime_id for result in results], ["runtime-0", "runtime-1", "runtime-2"])
+        self.assertEqual(max_active, 2)
+
     def test_run_verify_stops_and_retries_timed_out_attempt(self) -> None:
         target = RuntimeTarget(
             runtime_id="writer-cosmo-fact",
@@ -350,16 +484,90 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         wait_for_task.assert_any_call("cluster", "task-1", 30, 10, "us-east-1")
         stop_task.assert_called_once()
 
+    def test_verify_task_reports_graph_projection_counts(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-aws-public",
+            schedule_name="aws-public",
+            rule_name="cerebro-sec-dev-orchestrator-aws-public",
+            target={"Arn": "cluster"},
+        )
+        task = {
+            "taskArn": "task-arn",
+            "taskDefinitionArn": "task-def",
+            "containers": [{"name": "cerebro", "exitCode": 0}],
+        }
+        messages = [
+            {"kind": "span_end", "name": "orchestrator.runtime", "status": "completed"},
+            {"kind": "span_end", "name": "source_runtime.sync", "status": "completed", "events_appended": 7, "pages_read": 2},
+            {
+                "kind": "span_end",
+                "name": "orchestrator.graph_ingest",
+                "status": "completed",
+                "entities_projected": 5,
+                "links_projected": 3,
+            },
+        ]
+
+        with (
+            patch("scripts.verify_source_runtime_ecs._describe_tasks", return_value=[task]),
+            patch("scripts.verify_source_runtime_ecs._task_logs", return_value=messages),
+        ):
+            result = _verify_task(target, "task-arn", "us-east-1")
+
+        self.assertEqual(result.events_appended, 7)
+        self.assertEqual(result.pages_read, 2)
+        self.assertEqual(result.entities_projected, 5)
+        self.assertEqual(result.links_projected, 3)
+
+    def test_task_logs_caches_log_options_by_task_definition(self) -> None:
+        task = {
+            "taskArn": "arn:aws:ecs:us-east-1:123:task/cluster/task-1",
+            "taskDefinitionArn": "arn:aws:ecs:us-east-1:123:task-definition/runtime:4",
+        }
+        describe_calls = 0
+
+        def fake_aws(args: list[str], _region: str) -> dict[str, object]:
+            nonlocal describe_calls
+            if args[:2] == ["ecs", "describe-task-definition"]:
+                describe_calls += 1
+                return {
+                    "taskDefinition": {
+                        "containerDefinitions": [
+                            {
+                                "name": "cerebro",
+                                "logConfiguration": {
+                                    "options": {
+                                        "awslogs-group": "/ecs/cerebro",
+                                        "awslogs-stream-prefix": "runtime",
+                                    }
+                                },
+                            }
+                        ]
+                    }
+                }
+            if args[:2] == ["logs", "get-log-events"]:
+                return {"events": [{"message": '{"kind":"span_end","name":"source_runtime.sync"}'}]}
+            raise AssertionError(f"unexpected args: {args}")
+
+        cache = {}
+        with patch("scripts.verify_source_runtime_ecs._aws", side_effect=fake_aws):
+            self.assertEqual(len(_task_logs(task, "us-east-1", cache)), 1)
+            self.assertEqual(len(_task_logs(task, "us-east-1", cache)), 1)
+
+        self.assertEqual(describe_calls, 1)
+
     def test_summarize_log_messages_limits_fields_and_length(self) -> None:
         summary = _summarize_log_messages(
             [
                 {"message": "old"},
-                {"level": "error", "message": "x" * 2500, "secret": "not included"},
+                {"level": "error", "message": "x" * 2500, "entities_projected": 0, "links_projected": 0, "secret": "not included"},
             ],
             limit=1,
         )
 
         self.assertIn('"level": "error"', summary)
+        self.assertIn('"entities_projected": 0', summary)
+        self.assertIn('"links_projected": 0', summary)
         self.assertIn('"message": "', summary)
         self.assertNotIn("secret", summary)
         self.assertLessEqual(len(summary), 2000)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import sys
 import unittest
 from datetime import UTC, datetime
@@ -11,11 +13,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import scripts.verify_graph_health_ecs as verify_graph_health_ecs
 from scripts.verify_graph_health_ecs import (
     GRAPH_RELATIONS_TO_OBSERVE,
+    GraphCommandContext,
+    _count_health_errors,
     _declared_aws_families,
     _extract_json_payload,
+    _failed_integrity_checks,
     _declared_runtime_ids,
     _graph_command_overrides,
     _graph_path_relations,
+    _graph_health_command,
+    _graph_health_errors,
     _graph_relation_counts,
     _run_graph_command_with_retries,
     _summary_markdown,
@@ -24,8 +31,12 @@ from scripts.verify_graph_health_ecs import (
     _is_graph_paths_timeout,
     _latest_active_task_definition,
     _missing_declared_ingest_runtime_ids,
+    _missing_required_graph_relation_counts,
     _resource_prefix,
+    _run_graph_command,
+    _run_graph_health_command_with_retries,
     _supports_attack_path_relations,
+    _supports_graph_health_command,
     _supports_relation_counts,
     _verify_counts,
     _verify_current_ingest_runs,
@@ -78,6 +89,10 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
     def test_supports_relation_counts_requires_min_image_tag(self) -> None:
         self.assertFalse(_supports_relation_counts({"imageTag": "v2.1.49"}))
         self.assertTrue(_supports_relation_counts({"imageTag": "v2.1.50"}))
+
+    def test_supports_graph_health_command_requires_min_image_tag(self) -> None:
+        self.assertFalse(_supports_graph_health_command({"imageTag": "v2.1.139"}))
+        self.assertTrue(_supports_graph_health_command({"imageTag": "v2.1.140"}))
 
     def test_is_graph_paths_timeout_matches_neo4j_deadline(self) -> None:
         self.assertTrue(_is_graph_paths_timeout(RuntimeError("query graph path patterns: ConnectivityError: context deadline exceeded")))
@@ -215,10 +230,304 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
         self.assertEqual(result.payload, {"nodes": 1, "relations": 1})
         self.assertEqual(calls, 2)
 
+    def test_run_graph_command_with_retries_logs_underlying_failure(self) -> None:
+        original_run_graph_command = verify_graph_health_ecs._run_graph_command
+        original_time = verify_graph_health_ecs.time.time
+        original_sleep = verify_graph_health_ecs.time.sleep
+        times = iter([0, 0, 2])
+
+        verify_graph_health_ecs._run_graph_command = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("specific graph boom")
+        )
+        verify_graph_health_ecs.time.time = lambda: next(times)
+        verify_graph_health_ecs.time.sleep = lambda _seconds: None
+        stderr = io.StringIO()
+        try:
+            with self.assertRaisesRegex(RuntimeError, "specific graph boom"):
+                with contextlib.redirect_stderr(stderr):
+                    _run_graph_command_with_retries("prefix", {}, ["graph", "counts"], 10, 1, "us-east-1", 1)
+        finally:
+            verify_graph_health_ecs._run_graph_command = original_run_graph_command
+            verify_graph_health_ecs.time.time = original_time
+            verify_graph_health_ecs.time.sleep = original_sleep
+
+        self.assertIn("specific graph boom", stderr.getvalue())
+
+    def test_run_graph_command_uses_cached_context(self) -> None:
+        original_aws = verify_graph_health_ecs._aws
+        original_wait_for_task = verify_graph_health_ecs._wait_for_task
+        describe_definition_calls = 0
+        context = GraphCommandContext(
+            cluster="cluster",
+            task_definition="arn:aws:ecs:us-east-1:123:task-definition/cerebro-go-production:45",
+            network_configuration={
+                "awsvpcConfiguration": {
+                    "subnets": ["subnet-1"],
+                    "securityGroups": ["sg-1"],
+                    "assignPublicIp": "DISABLED",
+                }
+            },
+            log_group="/ecs/cerebro",
+            stream_prefix="runtime",
+            has_source_runtime_bootstrap=True,
+        )
+
+        def fake_aws(args, _region):
+            nonlocal describe_definition_calls
+            if args[:2] == ["ecs", "describe-task-definition"]:
+                describe_definition_calls += 1
+                raise AssertionError("task definition metadata should come from the cached context")
+            if args[:2] == ["ecs", "run-task"]:
+                self.assertIn("--overrides", args)
+                override = args[args.index("--overrides") + 1]
+                self.assertIn("source-runtime-bootstrap", override)
+                return {"tasks": [{"taskArn": "task-arn"}]}
+            if args[:2] == ["ecs", "describe-tasks"]:
+                return {"tasks": [{"taskArn": "task-arn", "containers": [{"name": "cerebro", "exitCode": 0}]}]}
+            if args[:2] == ["logs", "get-log-events"]:
+                self.assertIn("/ecs/cerebro", args)
+                return {"events": [{"message": '{"nodes": 1, "relations": 2}'}]}
+            raise AssertionError(f"unexpected args: {args}")
+
+        verify_graph_health_ecs._aws = fake_aws
+        verify_graph_health_ecs._wait_for_task = lambda *_args, **_kwargs: None
+        try:
+            result = _run_graph_command("prefix", {}, ["graph", "counts"], 10, 1, "us-east-1", context)
+        finally:
+            verify_graph_health_ecs._aws = original_aws
+            verify_graph_health_ecs._wait_for_task = original_wait_for_task
+
+        self.assertEqual(result.payload, {"nodes": 1, "relations": 2})
+        self.assertEqual(describe_definition_calls, 0)
+
+    def test_run_graph_command_reports_exit_failure_log_tail(self) -> None:
+        original_aws = verify_graph_health_ecs._aws
+        original_wait_for_task = verify_graph_health_ecs._wait_for_task
+        context = GraphCommandContext(
+            cluster="cluster",
+            task_definition="arn:aws:ecs:us-east-1:123:task-definition/cerebro-go-production:45",
+            network_configuration={
+                "awsvpcConfiguration": {
+                    "subnets": ["subnet-1"],
+                    "securityGroups": ["sg-1"],
+                    "assignPublicIp": "DISABLED",
+                }
+            },
+            log_group="/ecs/cerebro",
+            stream_prefix="runtime",
+            has_source_runtime_bootstrap=False,
+        )
+
+        def fake_aws(args, _region):
+            if args[:2] == ["ecs", "run-task"]:
+                return {"tasks": [{"taskArn": "task-arn"}]}
+            if args[:2] == ["ecs", "describe-tasks"]:
+                return {"tasks": [{"taskArn": "task-arn", "containers": [{"name": "cerebro", "exitCode": 1}]}]}
+            if args[:2] == ["logs", "get-log-events"]:
+                return {"events": [{"message": "fatal graph boom"}]}
+            raise AssertionError(f"unexpected args: {args}")
+
+        verify_graph_health_ecs._aws = fake_aws
+        verify_graph_health_ecs._wait_for_task = lambda *_args, **_kwargs: None
+        try:
+            with self.assertRaisesRegex(RuntimeError, "exited with 1.*fatal graph boom"):
+                _run_graph_command("prefix", {}, ["graph", "counts"], 10, 1, "us-east-1", context)
+        finally:
+            verify_graph_health_ecs._aws = original_aws
+            verify_graph_health_ecs._wait_for_task = original_wait_for_task
+
+    def test_run_graph_command_allows_nonzero_graph_health_payload(self) -> None:
+        original_aws = verify_graph_health_ecs._aws
+        original_wait_for_task = verify_graph_health_ecs._wait_for_task
+        context = GraphCommandContext(
+            cluster="cluster",
+            task_definition="arn:aws:ecs:us-east-1:123:task-definition/cerebro-go-production:45",
+            network_configuration={
+                "awsvpcConfiguration": {
+                    "subnets": ["subnet-1"],
+                    "securityGroups": ["sg-1"],
+                    "assignPublicIp": "DISABLED",
+                }
+            },
+            log_group="/ecs/cerebro",
+            stream_prefix="runtime",
+            has_source_runtime_bootstrap=False,
+        )
+
+        def fake_aws(args, _region):
+            if args[:2] == ["ecs", "run-task"]:
+                return {"tasks": [{"taskArn": "task-arn"}]}
+            if args[:2] == ["ecs", "describe-tasks"]:
+                return {"tasks": [{"taskArn": "task-arn", "containers": [{"name": "cerebro", "exitCode": 1}]}]}
+            if args[:2] == ["logs", "get-log-events"]:
+                return {
+                    "events": [
+                        {
+                            "message": '{"status":"failed","counts":{"nodes":1,"relations":1},"integrity":{"passed":1,"failed":0},"failures":["latest ingest failed"]}'
+                        }
+                    ]
+                }
+            raise AssertionError(f"unexpected args: {args}")
+
+        verify_graph_health_ecs._aws = fake_aws
+        verify_graph_health_ecs._wait_for_task = lambda *_args, **_kwargs: None
+        try:
+            result = _run_graph_command(
+                "prefix",
+                {},
+                ["graph", "health"],
+                10,
+                1,
+                "us-east-1",
+                context,
+                allow_nonzero=True,
+            )
+        finally:
+            verify_graph_health_ecs._aws = original_aws
+            verify_graph_health_ecs._wait_for_task = original_wait_for_task
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertEqual(result.payload["status"], "failed")
+        self.assertEqual(_graph_health_errors(result.payload, result.exit_code), ["latest ingest failed"])
+
+    def test_run_graph_command_retries_delayed_logs(self) -> None:
+        original_aws = verify_graph_health_ecs._aws
+        original_wait_for_task = verify_graph_health_ecs._wait_for_task
+        original_time = verify_graph_health_ecs.time.time
+        original_sleep = verify_graph_health_ecs.time.sleep
+        log_calls = 0
+        context = GraphCommandContext(
+            cluster="cluster",
+            task_definition="arn:aws:ecs:us-east-1:123:task-definition/cerebro-go-production:45",
+            network_configuration={
+                "awsvpcConfiguration": {
+                    "subnets": ["subnet-1"],
+                    "securityGroups": ["sg-1"],
+                    "assignPublicIp": "DISABLED",
+                }
+            },
+            log_group="/ecs/cerebro",
+            stream_prefix="runtime",
+            has_source_runtime_bootstrap=False,
+        )
+
+        def fake_aws(args, _region):
+            nonlocal log_calls
+            if args[:2] == ["ecs", "run-task"]:
+                return {"tasks": [{"taskArn": "task-arn"}]}
+            if args[:2] == ["ecs", "describe-tasks"]:
+                return {"tasks": [{"taskArn": "task-arn", "containers": [{"name": "cerebro", "exitCode": 0}]}]}
+            if args[:2] == ["logs", "get-log-events"]:
+                log_calls += 1
+                if log_calls == 1:
+                    return {"events": []}
+                return {"events": [{"message": '{"nodes": 1, "relations": 2}'}]}
+            raise AssertionError(f"unexpected args: {args}")
+
+        verify_graph_health_ecs._aws = fake_aws
+        verify_graph_health_ecs._wait_for_task = lambda *_args, **_kwargs: None
+        verify_graph_health_ecs.time.time = lambda: 0
+        verify_graph_health_ecs.time.sleep = lambda _seconds: None
+        try:
+            result = _run_graph_command("prefix", {}, ["graph", "counts"], 10, 1, "us-east-1", context)
+        finally:
+            verify_graph_health_ecs._aws = original_aws
+            verify_graph_health_ecs._wait_for_task = original_wait_for_task
+            verify_graph_health_ecs.time.time = original_time
+            verify_graph_health_ecs.time.sleep = original_sleep
+
+        self.assertEqual(result.payload, {"nodes": 1, "relations": 2})
+        self.assertEqual(log_calls, 2)
+
+    def test_run_graph_command_with_retries_stops_before_credential_expiry(self) -> None:
+        original_run_graph_command = verify_graph_health_ecs._run_graph_command
+        original_time = verify_graph_health_ecs.time.time
+        calls = 0
+
+        def fake_run_graph_command(*_args, **_kwargs):
+            nonlocal calls
+            calls += 1
+            return verify_graph_health_ecs.GraphCommandResult(
+                command=["graph", "counts"],
+                task_arn="task-arn",
+                exit_code=0,
+                payload={"nodes": 1, "relations": 1},
+            )
+
+        verify_graph_health_ecs._run_graph_command = fake_run_graph_command
+        verify_graph_health_ecs.time.time = lambda: 100
+        try:
+            with self.assertRaisesRegex(TimeoutError, "credential-safe timeout"):
+                _run_graph_command_with_retries(
+                    "prefix",
+                    {},
+                    ["graph", "counts"],
+                    10,
+                    1,
+                    "us-east-1",
+                    5,
+                    overall_deadline=99,
+                )
+        finally:
+            verify_graph_health_ecs._run_graph_command = original_run_graph_command
+            verify_graph_health_ecs.time.time = original_time
+
+        self.assertEqual(calls, 0)
+
     def test_extract_json_payload_from_pretty_logs(self) -> None:
         payload = _extract_json_payload(['{"nodes": 2,', ' "relations": 3}'])
 
         self.assertEqual(payload, {"nodes": 2, "relations": 3})
+
+    def test_extract_json_payload_ignores_telemetry_json(self) -> None:
+        payload = _extract_json_payload(
+            [
+                '{"span":"graph.ingest_list_runs","status":"completed"}',
+                "{",
+                '  "runs": [',
+                '    {"id": "run-1", "runtime_id": "runtime-a", "status": "completed"}',
+                "  ],",
+                '  "failed_count": 0',
+                "}",
+            ]
+        )
+
+        self.assertEqual(payload["runs"][0]["id"], "run-1")
+        self.assertEqual(payload["failed_count"], 0)
+
+    def test_extract_json_payload_filters_interleaved_span_logs(self) -> None:
+        payload = _extract_json_payload(
+            [
+                '{"kind":"span_start","name":"graph.ingest_list_runs"}',
+                "{",
+                '  "runs": [',
+                "    {",
+                '      "id": "run-a",',
+                '      "runtime_id": "runtime-a",',
+                '      "status": "completed"',
+                '{"kind":"span_end","name":"graph.ingest_list_runs","status":"completed"}',
+                "    }",
+                "  ],",
+                '  "failed_count": 0',
+                "}",
+            ]
+        )
+
+        self.assertEqual(
+            payload,
+            {"runs": [{"id": "run-a", "runtime_id": "runtime-a", "status": "completed"}], "failed_count": 0},
+        )
+
+    def test_extract_json_payload_selects_graph_health_payload(self) -> None:
+        payload = _extract_json_payload(
+            [
+                '{"span":"graph.health","status":"completed"}',
+                '{"status":"passed","counts":{"nodes":2,"relations":3},"integrity":{"passed":5,"failed":0},"ingest":{"current_runtime_count":2}}',
+            ]
+        )
+
+        self.assertEqual(payload["status"], "passed")
+        self.assertEqual(payload["counts"], {"nodes": 2, "relations": 3})
 
     def test_verify_counts_rejects_empty_graph(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "node count"):
@@ -343,6 +652,78 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
         self.assertEqual(ingest_runs.task_arn, "task-2")
         self.assertEqual(calls, 2)
 
+    def test_graph_health_command_builds_single_health_check(self) -> None:
+        self.assertEqual(
+            _graph_health_command({"runtime-a", "runtime-b"}, {"belongs_to", "represents"}, 45, True),
+            [
+                "graph",
+                "health",
+                "limit=100",
+                "max_running_minutes=45",
+                "relations=belongs_to,represents",
+                "allow_transient_source_failures=true",
+            ],
+        )
+
+    def test_run_graph_health_command_with_retries_recovers_after_failed_status(self) -> None:
+        original_run_graph_command_with_retries = verify_graph_health_ecs._run_graph_command_with_retries
+        original_time = verify_graph_health_ecs.time.time
+        original_sleep = verify_graph_health_ecs.time.sleep
+        calls = 0
+
+        def fake_run_graph_command_with_retries(*_args, **kwargs):
+            nonlocal calls
+            calls += 1
+            self.assertTrue(kwargs.get("allow_nonzero"))
+            if calls == 1:
+                return verify_graph_health_ecs.GraphCommandResult(
+                    command=["graph", "health"],
+                    task_arn="task-1",
+                    exit_code=1,
+                    payload={
+                        "status": "failed",
+                        "counts": {"nodes": 1, "relations": 1},
+                        "integrity": {"passed": 1, "failed": 0},
+                        "failures": ["latest graph ingest run failed"],
+                    },
+                )
+            return verify_graph_health_ecs.GraphCommandResult(
+                command=["graph", "health"],
+                task_arn="task-2",
+                exit_code=0,
+                payload={
+                    "status": "passed",
+                    "counts": {"nodes": 1, "relations": 1},
+                    "integrity": {"passed": 1, "failed": 0},
+                    "ingest": {"current_runtime_count": 1},
+                },
+            )
+
+        verify_graph_health_ecs._run_graph_command_with_retries = fake_run_graph_command_with_retries
+        verify_graph_health_ecs.time.time = lambda: 0
+        verify_graph_health_ecs.time.sleep = lambda _seconds: None
+        try:
+            result = _run_graph_health_command_with_retries(
+                "prefix",
+                {},
+                {"runtime-a"},
+                {"belongs_to"},
+                10,
+                1,
+                "us-east-1",
+                5,
+                30,
+                60,
+                False,
+            )
+        finally:
+            verify_graph_health_ecs._run_graph_command_with_retries = original_run_graph_command_with_retries
+            verify_graph_health_ecs.time.time = original_time
+            verify_graph_health_ecs.time.sleep = original_sleep
+
+        self.assertEqual(result.task_arn, "task-2")
+        self.assertEqual(calls, 2)
+
     def test_verify_current_ingest_runs_rejects_missing_declared_runtime(self) -> None:
         payload = {"runs": [{"id": "run-a", "runtime_id": "runtime-a", "status": "completed"}]}
 
@@ -398,6 +779,26 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             {"belongs_to": 4, "represents": 2, "missing": 0},
         )
 
+    def test_count_health_errors_reports_zero_counts(self) -> None:
+        self.assertEqual(
+            _count_health_errors({"nodes": 0, "relations": 0}),
+            [
+                "graph node count must be positive, got 0",
+                "graph relation count must be positive, got 0",
+            ],
+        )
+
+    def test_failed_integrity_checks_lists_failed_checks(self) -> None:
+        payload = {
+            "failed": 1,
+            "checks": [
+                {"name": "has_nodes", "actual": 0, "passed": False},
+                {"name": "has_relations", "actual": 12, "passed": True},
+            ],
+        }
+
+        self.assertEqual(_failed_integrity_checks(payload), ["has_nodes=0"])
+
     def test_verify_required_graph_relation_counts_requires_positive_counts(self) -> None:
         payload = {"relations": {"belongs_to": 4, "represents": 2, "can_reach": 0}}
 
@@ -405,11 +806,25 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             _verify_required_graph_relation_counts(payload, {"resource_exposure"})
 
     def test_verify_required_graph_relation_counts_accepts_required_relations(self) -> None:
-        payload = {"relations": {"belongs_to": 4, "represents": 2, "can_reach": 1, "can_perform": 0, "can_assume": 0}}
+        payload = {"relations": {"belongs_to": 4, "represents": 2, "can_reach": 1, "can_perform": 3, "can_assume": 5}}
 
         self.assertEqual(
             _verify_required_graph_relation_counts(payload, {"resource_exposure", "effective_permission", "iam_role_trust"}),
-            {"belongs_to", "represents", "can_reach"},
+            {"belongs_to", "can_assume", "can_perform", "can_reach", "represents"},
+        )
+
+    def test_verify_required_graph_relation_counts_requires_declared_iam_edges(self) -> None:
+        payload = {"relations": {"belongs_to": 4, "represents": 2, "can_perform": 0, "can_assume": 0}}
+
+        with self.assertRaisesRegex(RuntimeError, "can_assume, can_perform"):
+            _verify_required_graph_relation_counts(payload, {"effective_permission", "iam_role_trust"})
+
+    def test_missing_required_graph_relation_counts_returns_missing_edges(self) -> None:
+        counts = {"belongs_to": 4, "represents": 2, "can_perform": 0, "can_assume": 0}
+
+        self.assertEqual(
+            _missing_required_graph_relation_counts(counts, {"effective_permission", "iam_role_trust"}),
+            ["can_assume", "can_perform"],
         )
 
     def test_graph_relation_observation_includes_optional_can_reach(self) -> None:
@@ -462,6 +877,9 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             27,
             27,
             [],
+            [],
+            [],
+            [],
             {"public_endpoint"},
         )
 
@@ -482,12 +900,57 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             {"belongs_to"},
             1,
             2,
+            [],
+            [],
             ["runtime-b"],
+            [],
             set(),
         )
 
         self.assertIn("Status: **failed**", summary)
         self.assertIn("| `runtime-b` |", summary)
+
+    def test_summary_markdown_marks_missing_graph_relation_failed(self) -> None:
+        summary = _summary_markdown(
+            "go-prod",
+            {"nodes": 1, "relations": 1},
+            {"passed": 7, "failed": 0},
+            {"belongs_to": 1, "represents": 1, "can_assume": 0},
+            {"belongs_to", "represents"},
+            2,
+            2,
+            [],
+            [],
+            [],
+            ["can_assume"],
+            {"iam_role_trust"},
+        )
+
+        self.assertIn("Status: **failed**", summary)
+        self.assertIn("| Missing graph relation |", summary)
+        self.assertIn("| `can_assume` |", summary)
+
+    def test_summary_markdown_includes_count_and_integrity_failures(self) -> None:
+        summary = _summary_markdown(
+            "go-prod",
+            {"nodes": 0, "relations": 0},
+            {"passed": 6, "failed": 1},
+            {},
+            set(),
+            2,
+            2,
+            ["graph node count must be positive, got 0"],
+            ["has_nodes=0"],
+            [],
+            [],
+            set(),
+        )
+
+        self.assertIn("Status: **failed**", summary)
+        self.assertIn("| Graph health failure |", summary)
+        self.assertIn("| `graph node count must be positive, got 0` |", summary)
+        self.assertIn("| Failed integrity check |", summary)
+        self.assertIn("| `has_nodes=0` |", summary)
 
 
 if __name__ == "__main__":
