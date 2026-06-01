@@ -45,7 +45,7 @@ func New() (*Source, error) {
 				URNKind: "backstage_component",
 				IDKeys:  []string{"metadata.uid", "metadata.name", "name"},
 				TimestampKeys: []string{
-					"metadata.etag", "metadata.generation", "updated_at", "created_at",
+					"updated_at", "created_at",
 				},
 				Attributes: map[string]string{
 					"uid":          "metadata.uid",

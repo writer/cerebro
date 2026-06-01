@@ -73,7 +73,7 @@ func New() (*Source, error) {
 				Name:    familyControlMapping,
 				Path:    "/control-mappings",
 				URNKind: "security_tool_control_mapping",
-				IDKeys:  []string{"id", "tool_id", "control_id"},
+				IDKeys:  []string{"id"},
 				TimestampKeys: []string{
 					"updated_at", "observed_at",
 				},

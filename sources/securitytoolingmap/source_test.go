@@ -121,3 +121,50 @@ func TestReadControlMappingFamily(t *testing.T) {
 		t.Fatalf("control_id = %q, want SOC2-CC6", pull.Events[0].Attributes["control_id"])
 	}
 }
+
+func TestReadControlMappingFamilyKeepsIDLessRowsDistinct(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/control-mappings" {
+			t.Fatalf("request path = %q, want /control-mappings", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"control_mappings": []map[string]any{
+				{
+					"tool_id":    "agent-gateway",
+					"control_id": "SOC2-CC6",
+					"framework":  "SOC2",
+				},
+				{
+					"tool_id":    "agent-gateway",
+					"control_id": "SOC2-CC7",
+					"framework":  "SOC2",
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"base_url":  server.URL,
+		"token":     "map-token",
+		"family":    "control_mapping",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 2 {
+		t.Fatalf("len(Events) = %d, want both id-less control mappings", len(pull.Events))
+	}
+	if pull.Events[0].Id == pull.Events[1].Id {
+		t.Fatalf("event IDs are equal %q, want stable per-record IDs", pull.Events[0].Id)
+	}
+	if pull.Events[0].Attributes["external_id"] == pull.Events[1].Attributes["external_id"] {
+		t.Fatalf("external IDs are equal %q, want stable per-record identities", pull.Events[0].Attributes["external_id"])
+	}
+}

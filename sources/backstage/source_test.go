@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
@@ -78,5 +79,45 @@ func TestReadComponentFamily(t *testing.T) {
 	}
 	if event.Attributes["repository"] != "WriterInternal/cerebro" {
 		t.Fatalf("repository = %q, want WriterInternal/cerebro", event.Attributes["repository"])
+	}
+}
+
+func TestReadComponentFamilyUsesStableRecordTimestamp(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{
+				"kind":       "Component",
+				"updated_at": "2026-05-01T12:00:00Z",
+				"metadata": map[string]any{
+					"uid":        "component-1",
+					"name":       "cerebro",
+					"etag":       "etag-value",
+					"generation": 7,
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackForTest()
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"tenant_id": "writer",
+		"base_url":  server.URL,
+		"token":     "backstage-token",
+		"family":    "component",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+	want := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	if got := pull.Events[0].OccurredAt.AsTime(); !got.Equal(want) {
+		t.Fatalf("OccurredAt = %s, want %s", got, want)
 	}
 }
