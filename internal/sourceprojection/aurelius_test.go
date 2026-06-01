@@ -178,6 +178,34 @@ func TestProjectAureliusSparseImageOmitsEmptyImageMetadata(t *testing.T) {
 	}
 }
 
+func TestProjectAureliusCatalogPromotionLinksPromoterEmail(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "aurelius-catalog-promotion-promoter",
+		TenantId: "writer",
+		SourceId: "aurelius",
+		Kind:     "aurelius.catalog_promotion",
+		Payload: mustJSON(t, map[string]any{
+			"image_digest": "sha256:promoted",
+			"promoted_by":  "security@example.com",
+			"track":        "prod",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	promotionURN := "urn:cerebro:writer:aurelius_catalog_promotion:prod|sha256:promoted"
+	identityURN := "urn:cerebro:writer:identity:email:security@example.com"
+	assertProjectedLink(t, state, promotionURN, relationAssociatedWith, identityURN)
+	link := state.links[promotionURN+"|"+relationAssociatedWith+"|"+identityURN]
+	if got := link.Attributes["contact_type"]; got != "promoted_by" {
+		t.Fatalf("contact_type = %q, want promoted_by", got)
+	}
+}
+
 func TestProjectAureliusDigestOnlyFindingDoesNotCreateArtifactRegistryImage(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
