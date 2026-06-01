@@ -9,10 +9,26 @@ from pathlib import Path
 
 IMAGE_TAG_RE = re.compile(r"^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 IMAGE_TAG_LINE_RE = re.compile(r"^(\s*cerebro:imageTag:\s*)(\S+)(\s*)$")
+IMAGE_TAG_VERSION_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?$")
 
 
 def stack_path(repo_root: Path, stack: str) -> Path:
     return repo_root / "infra" / "aws" / f"Pulumi.{stack}.yaml"
+
+
+def parse_image_tag(image_tag: str) -> tuple[int, int, int] | None:
+    match = IMAGE_TAG_VERSION_RE.match(image_tag)
+    if match is None:
+        return None
+    return tuple(int(part) for part in match.groups())
+
+
+def read_image_tag(path: Path) -> str:
+    for line in path.read_text(encoding="utf-8").splitlines():
+        match = IMAGE_TAG_LINE_RE.match(line)
+        if match:
+            return match.group(2)
+    raise ValueError(f"cerebro:imageTag not found in {path}")
 
 
 def set_image_tag(path: Path, image_tag: str) -> bool:
@@ -45,15 +61,33 @@ def set_image_tag(path: Path, image_tag: str) -> bool:
     return changed
 
 
+def ensure_image_tag_at_least(path: Path, image_tag: str) -> bool:
+    minimum = parse_image_tag(image_tag)
+    if minimum is None:
+        raise ValueError(f"image tag {image_tag!r} must look like vX.Y.Z")
+
+    current_tag = read_image_tag(path)
+    current = parse_image_tag(current_tag)
+    if current is None:
+        raise ValueError(f"current image tag {current_tag!r} in {path} must look like vX.Y.Z")
+    if current >= minimum:
+        return False
+    return set_image_tag(path, image_tag)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Set a Cerebro stack image tag.")
     parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument("--stack", required=True, choices=("sec-dev", "go-prod"))
     parser.add_argument("--image-tag", required=True)
+    parser.add_argument("--ensure-at-least", action="store_true", help="Only update when the current stack tag is older.")
     args = parser.parse_args(argv)
 
     path = stack_path(args.repo_root, args.stack)
-    changed = set_image_tag(path, args.image_tag)
+    if args.ensure_at_least:
+        changed = ensure_image_tag_at_least(path, args.image_tag)
+    else:
+        changed = set_image_tag(path, args.image_tag)
     state = "updated" if changed else "already-current"
     print(f"{state}: {path} -> {args.image_tag}")
     return 0
