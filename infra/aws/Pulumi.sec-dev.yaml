@@ -7,7 +7,7 @@ config:
   cerebro:certificateDomain: cerebro.adm.dev.qordobadev.com
   cerebro:certificateImportArn: arn:aws:acm:us-east-1:944130631940:certificate/09143d7f-c377-4de4-9127-d8cb5c642ba3
   cerebro:ecrBaseUri: 944130631940.dkr.ecr.us-east-1.amazonaws.com/cerebro
-  cerebro:imageTag: v2.1.106
+  cerebro:imageTag: v2.1.146
   cerebro:webEnabled: true
   cerebro:webEcrBaseUri: 944130631940.dkr.ecr.us-east-1.amazonaws.com/cerebro
   cerebro:webImageTag: sha-bbad63234d7d
@@ -97,28 +97,6 @@ config:
         - orchestrator
         - run
         - runtime_id=writer-okta-audit
-        - page_limit=5
-        - graph_page_limit=5
-        - event_limit=1000
-    - name: okta-audit-april-backfill
-      removeAfter: "2026-06-01"
-      scheduleExpression: cron(3,18,33,48 * * * ? *)
-      taskCount: 1
-      command:
-        - orchestrator
-        - run
-        - runtime_id=writer-okta-audit-2026-04
-        - page_limit=5
-        - graph_page_limit=5
-        - event_limit=1000
-    - name: okta-audit-q1-backfill
-      removeAfter: "2026-06-01"
-      scheduleExpression: cron(6,21,36,51 * * * ? *)
-      taskCount: 1
-      command:
-        - orchestrator
-        - run
-        - runtime_id=writer-okta-audit-2026-q1
         - page_limit=5
         - graph_page_limit=5
         - event_limit=1000
