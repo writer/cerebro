@@ -458,6 +458,23 @@ func TestReadMessagesWithoutSinceUsesStableCompatibilityWindow(t *testing.T) {
 	}
 }
 
+func TestMessageAttributesIncludeUserContext(t *testing.T) {
+	attrs := attributesFor(familyMessage, map[string]any{
+		"ticket_id":  "COSMO-1",
+		"event_type": "message",
+		"role":       "user",
+		"userId":     "user-1",
+		"userEmail":  "alice@example.com",
+	})
+
+	if got := attrs["user_id"]; got != "user-1" {
+		t.Fatalf("user_id = %q, want user-1", got)
+	}
+	if got := attrs["email"]; got != "alice@example.com" {
+		t.Fatalf("email = %q, want alice@example.com", got)
+	}
+}
+
 func TestDiscoverMessagesIteratesConfiguredEventTypes(t *testing.T) {
 	var eventTypes []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
