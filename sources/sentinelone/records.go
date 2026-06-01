@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/writer/cerebro/internal/primitives"
 )
+
+var sentinelOneEmailPattern = regexp.MustCompile(`(?i)^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$`)
 
 // raw types are used to capture the raw response body alongside the decoded fields so that
 // downstream projection can read details that we did not statically model.
@@ -1373,7 +1376,7 @@ func sentinelOneAgentUserName(record agentRecord) string {
 
 func sentinelOneEmailLike(value string) string {
 	trimmed := strings.TrimSpace(value)
-	if strings.Contains(trimmed, "@") {
+	if sentinelOneEmailPattern.MatchString(trimmed) {
 		return strings.ToLower(trimmed)
 	}
 	return ""

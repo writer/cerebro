@@ -285,6 +285,17 @@ func TestCheckDiscoverAndReadLiveAgents(t *testing.T) {
 	}
 }
 
+func TestSentinelOneEmailLikeRejectsUsernameOnlyUPNs(t *testing.T) {
+	for _, value := range []string{"owner@WRITER", "user@localhost", "jdoe@"} {
+		if got := sentinelOneEmailLike(value); got != "" {
+			t.Fatalf("sentinelOneEmailLike(%q) = %q, want empty", value, got)
+		}
+	}
+	if got := sentinelOneEmailLike(" Owner@Writer.COM "); got != "owner@writer.com" {
+		t.Fatalf("sentinelOneEmailLike(valid email) = %q", got)
+	}
+}
+
 func TestRecords_FirewallEnabledConditionalEmit(t *testing.T) {
 	for _, tt := range []struct {
 		name        string
