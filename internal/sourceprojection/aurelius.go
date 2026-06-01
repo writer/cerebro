@@ -242,6 +242,7 @@ func aureliusPolicyExceptionProjections(event *cerebrov1.EventEnvelope) ([]*port
 		if vulnerabilityURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), exceptionURN, vulnerabilityURN, relationRepresents, map[string]string{"event_id": event.GetId()}))
 		}
+		addSecurityContactEmailLink(entities, links, tenantID, event.GetSourceId(), event, exceptionURN, firstAttribute(attrs, "approver"), "approver")
 	}
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
