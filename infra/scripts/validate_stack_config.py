@@ -26,6 +26,10 @@ COSMO_RUNTIME_FAMILIES = {
     "writer-cosmo-message": "message",
     "writer-cosmo-survey-feedback": "survey_feedback",
 }
+COSMO_GRAPH_BUDGETED_RUNTIMES = {"writer-cosmo-session", "writer-cosmo-fact"}
+COSMO_MAX_GRAPH_BUDGET_PAGE_LIMIT = 5
+COSMO_MAX_GRAPH_BUDGET_GRAPH_PAGE_LIMIT = 5
+COSMO_MAX_GRAPH_BUDGET_EVENT_LIMIT = 500
 SEC_DEV_HIGH_CONTENTION_GRAPH_RUNTIMES = {
     "writer-github-audit",
     "writer-github-audit-writerinternal",
@@ -372,6 +376,38 @@ def _validate_cosmo_gitops(
                 findings.append(_finding("error", stack, f"{schedule_path}.name", f"{runtime_id} schedule must be named {expected_name!r}"))
             if schedule.get("taskCount", 1) != 1:
                 findings.append(_finding("error", stack, f"{schedule_path}.taskCount", f"{runtime_id} schedule must run exactly one task"))
+            if stack == "sec-dev" and runtime_id in COSMO_GRAPH_BUDGETED_RUNTIMES:
+                command = schedule.get("command")
+                page_limit = _uint_arg_from_command(command, "page_limit")
+                graph_page_limit = _uint_arg_from_command(command, "graph_page_limit")
+                event_limit = _uint_arg_from_command(command, "event_limit")
+                if page_limit is None or page_limit > COSMO_MAX_GRAPH_BUDGET_PAGE_LIMIT:
+                    findings.append(
+                        _finding(
+                            "error",
+                            stack,
+                            f"{schedule_path}.command",
+                            f"{runtime_id} must set page_limit <= {COSMO_MAX_GRAPH_BUDGET_PAGE_LIMIT}",
+                        )
+                    )
+                if graph_page_limit is None or graph_page_limit > COSMO_MAX_GRAPH_BUDGET_GRAPH_PAGE_LIMIT:
+                    findings.append(
+                        _finding(
+                            "error",
+                            stack,
+                            f"{schedule_path}.command",
+                            f"{runtime_id} must set graph_page_limit <= {COSMO_MAX_GRAPH_BUDGET_GRAPH_PAGE_LIMIT}",
+                        )
+                    )
+                if event_limit is None or event_limit > COSMO_MAX_GRAPH_BUDGET_EVENT_LIMIT:
+                    findings.append(
+                        _finding(
+                            "error",
+                            stack,
+                            f"{schedule_path}.command",
+                            f"{runtime_id} must set event_limit <= {COSMO_MAX_GRAPH_BUDGET_EVENT_LIMIT}",
+                        )
+                    )
 
 
 def _validate_sec_dev_aws_coverage(

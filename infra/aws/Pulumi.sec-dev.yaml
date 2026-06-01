@@ -341,25 +341,25 @@ config:
         - graph_page_limit=100
         - event_limit=1000
     - name: cosmo-session
-      scheduleExpression: cron(2,32 * * * ? *)
+      scheduleExpression: cron(6,36 * * * ? *)
       taskCount: 1
       command:
         - orchestrator
         - run
         - runtime_id=writer-cosmo-session
-        - page_limit=20
-        - graph_page_limit=100
-        - event_limit=1000
+        - page_limit=5
+        - graph_page_limit=5
+        - event_limit=500
     - name: cosmo-fact
-      scheduleExpression: cron(12,42 * * * ? *)
+      scheduleExpression: cron(16,46 * * * ? *)
       taskCount: 1
       command:
         - orchestrator
         - run
         - runtime_id=writer-cosmo-fact
         - page_limit=5
-        - graph_page_limit=20
-        - event_limit=1000
+        - graph_page_limit=5
+        - event_limit=500
     - name: cosmo-message
       scheduleExpression: cron(22,52 * * * ? *)
       taskCount: 1
