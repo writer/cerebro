@@ -1,0 +1,23 @@
+id: security_tooling_map
+name: Security Tooling Map
+description: Security and GRC tooling inventory source.
+emitted_kinds:
+  - security_tooling_map.tool
+  - security_tooling_map.control_mapping
+event_contracts:
+  - kind: security_tooling_map.tool
+    schema_ref: security_tooling_map/tool/v1
+    required_attributes:
+      - tool_id
+      - name
+    required_payload_fields:
+      - id
+      - name
+  - kind: security_tooling_map.control_mapping
+    schema_ref: security_tooling_map/control_mapping/v1
+    required_attributes:
+      - tool_id
+      - control_id
+    required_payload_fields:
+      - tool_id
+      - control_id

@@ -21,6 +21,13 @@ func TestBuiltin(t *testing.T) {
 	if azure.Spec().Name != "Azure" {
 		t.Fatalf("azure Spec().Name = %q, want %q", azure.Spec().Name, "Azure")
 	}
+	backstage, ok := registry.Get("backstage")
+	if !ok {
+		t.Fatal("Get(backstage) = false, want true")
+	}
+	if backstage.Spec().Name != "Backstage" {
+		t.Fatalf("backstage Spec().Name = %q, want %q", backstage.Spec().Name, "Backstage")
+	}
 	cosmo, ok := registry.Get("cosmo")
 	if !ok {
 		t.Fatal("Get(cosmo) = false, want true")
@@ -90,5 +97,12 @@ func TestBuiltin(t *testing.T) {
 	}
 	if sentinelone.Spec().Name != "SentinelOne" {
 		t.Fatalf("sentinelone Spec().Name = %q, want %q", sentinelone.Spec().Name, "SentinelOne")
+	}
+	securityToolingMap, ok := registry.Get("security_tooling_map")
+	if !ok {
+		t.Fatal("Get(security_tooling_map) = false, want true")
+	}
+	if securityToolingMap.Spec().Name != "Security Tooling Map" {
+		t.Fatalf("security_tooling_map Spec().Name = %q, want %q", securityToolingMap.Spec().Name, "Security Tooling Map")
 	}
 }

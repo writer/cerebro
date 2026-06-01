@@ -1,0 +1,15 @@
+{
+  "kind": "Component",
+  "metadata": {
+    "uid": "component-1",
+    "name": "cerebro",
+    "namespace": "default"
+  },
+  "spec": {
+    "type": "service",
+    "lifecycle": "production",
+    "owner": "group:platform/security",
+    "system": "security"
+  },
+  "repository": "WriterInternal/cerebro"
+}

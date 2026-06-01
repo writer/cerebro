@@ -1,0 +1,9 @@
+{
+  "id": "agent-gateway",
+  "name": "agent-gateway",
+  "org": "WriterInternal",
+  "repo": "agent-gateway",
+  "status": "beta",
+  "lifecycle_owner": "Security",
+  "categories": ["ai_security", "dlp"]
+}

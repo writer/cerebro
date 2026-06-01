@@ -1,0 +1,13 @@
+id: backstage
+name: Backstage
+description: Backstage catalog source for service ownership and runtime context.
+emitted_kinds:
+  - backstage.component
+event_contracts:
+  - kind: backstage.component
+    schema_ref: backstage/component/v1
+    required_attributes:
+      - name
+      - kind
+    required_payload_fields:
+      - metadata.name
