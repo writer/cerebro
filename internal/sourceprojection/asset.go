@@ -73,6 +73,9 @@ func assetClassificationProjections(event *cerebrov1.EventEnvelope, crownJewelEv
 		ownerURN := projectionURN(tenantID, "owner", owner)
 		addEntity(entities, &ports.ProjectedEntity{URN: ownerURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "owner", Label: owner, Attributes: map[string]string{"owner": owner}})
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, ownerURN, relationOwnedBy, map[string]string{"event_id": event.GetId()}))
+		if extractEmailIdentifier(owner) != "" {
+			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), ownerURN, owner, event.GetOccurredAt())
+		}
 	}
 	return identityProjectionResult(entities, links)
 }
