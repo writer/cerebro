@@ -26,6 +26,8 @@ import (
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
+	resourcegroupstaggingapitypes "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 
@@ -307,6 +309,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		kind   string
 	}{
 		{family: familyAccessKey, config: map[string]string{"user_name": "admin@writer.com"}, kind: "aws.access_key"},
+		{family: familyAssetMetadata, kind: "asset.data_sensitivity"},
 		{family: familyEffectivePermission, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.effective_permission"},
 		{family: familyIAMUser, kind: "aws.iam_user"},
 		{family: familyIAMRole, kind: "aws.iam_role"},
@@ -350,6 +353,76 @@ func TestReadAWSIAMUserPreview(t *testing.T) {
 	}
 	if got := pull.Events[0].Attributes["email"]; got != "admin@writer.com" {
 		t.Fatalf("email = %q, want admin@writer.com", got)
+	}
+}
+
+func TestReadAWSAssetMetadataPreview(t *testing.T) {
+	source := newTestSource(t, fakeAWS{taggedResources: []resourcegroupstaggingapitypes.ResourceTagMapping{{
+		ResourceARN: awssdk.String("arn:aws:ec2:us-east-1:123456789012:security-group/sg-1"),
+		Tags: []resourcegroupstaggingapitypes.Tag{
+			{Key: awssdk.String("Name"), Value: awssdk.String("prod-web")},
+			{Key: awssdk.String("Owner"), Value: awssdk.String("security@writer.com")},
+			{Key: awssdk.String("DataClassification"), Value: awssdk.String("restricted")},
+			{Key: awssdk.String("Criticality"), Value: awssdk.String("tier0")},
+		},
+	}}})
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyAssetMetadata}), nil)
+	if err != nil {
+		t.Fatalf("Read(asset_metadata) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if event.Kind != "asset.data_sensitivity" {
+		t.Fatalf("kind = %q, want asset.data_sensitivity", event.Kind)
+	}
+	for key, want := range map[string]string{
+		"data_classification": "restricted",
+		"owner":               "security@writer.com",
+		"resource_id":         "arn:aws:ec2:us-east-1:123456789012:security-group/sg-1",
+		"resource_name":       "prod-web",
+		"resource_type":       "security_group",
+	} {
+		if got := event.Attributes[key]; got != want {
+			t.Fatalf("attributes[%s] = %q, want %q", key, got, want)
+		}
+	}
+	if got := event.Attributes["crown_jewel"]; got != "true" {
+		t.Fatalf("crown_jewel = %q, want true for tier0 criticality", got)
+	}
+}
+
+func TestReadAWSAssetMetadataPaginatesTaggedResources(t *testing.T) {
+	source := newTestSource(t, fakeAWS{taggedResources: []resourcegroupstaggingapitypes.ResourceTagMapping{
+		{ResourceARN: awssdk.String("arn:aws:ec2:us-east-1:123456789012:security-group/sg-1")},
+		{ResourceARN: awssdk.String("arn:aws:s3:::prod-data")},
+	}})
+	config := sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyAssetMetadata, "per_page": "1"})
+
+	first, err := source.Read(context.Background(), config, nil)
+	if err != nil {
+		t.Fatalf("Read(asset_metadata first page) error = %v", err)
+	}
+	if len(first.Events) != 1 {
+		t.Fatalf("len(first.Events) = %d, want 1", len(first.Events))
+	}
+	if first.NextCursor == nil || first.NextCursor.GetOpaque() == "" {
+		t.Fatal("first.NextCursor = nil/empty, want second page cursor")
+	}
+
+	second, err := source.Read(context.Background(), config, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(asset_metadata second page) error = %v", err)
+	}
+	if len(second.Events) != 1 {
+		t.Fatalf("len(second.Events) = %d, want 1", len(second.Events))
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second.NextCursor = %q, want nil", second.NextCursor.GetOpaque())
+	}
+	if got := second.Events[0].Attributes["resource_id"]; got != "arn:aws:s3:::prod-data" {
+		t.Fatalf("second resource_id = %q, want arn:aws:s3:::prod-data", got)
 	}
 }
 
@@ -741,6 +814,15 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			Association:        &ec2types.NetworkInterfaceAssociation{PublicIp: awssdk.String("203.0.113.20")},
 		}}
 	}
+	assetMetadataData := func(fake *recordingAWS) {
+		fake.taggedResources = []resourcegroupstaggingapitypes.ResourceTagMapping{{
+			ResourceARN: awssdk.String("arn:aws:ec2:us-east-1:123456789012:security-group/sg-1"),
+			Tags: []resourcegroupstaggingapitypes.Tag{
+				{Key: awssdk.String("Owner"), Value: awssdk.String("security@writer.com")},
+				{Key: awssdk.String("DataClassification"), Value: awssdk.String("restricted")},
+			},
+		}}
+	}
 	for _, tt := range []struct {
 		family  string
 		seed    func(*recordingAWS)
@@ -750,6 +832,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyAccessKey,
 			seed:    basePrincipalData,
 			wantAPI: []string{"iam:ListAccessKeys", "iam:ListUsers"},
+		},
+		{
+			family:  familyAssetMetadata,
+			seed:    assetMetadataData,
+			wantAPI: []string{"tagging:GetResources"},
 		},
 		{
 			family:  familyEffectivePermission,
@@ -1029,7 +1116,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, tagging: fake}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1045,7 +1132,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, tagging: fake}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1119,6 +1206,7 @@ type fakeAWS struct {
 	restAPIs               []apigatewaytypes.RestApi
 	apiV2Domains           []apigatewayv2types.DomainName
 	apiV2APIs              []apigatewayv2types.Api
+	taggedResources        []resourcegroupstaggingapitypes.ResourceTagMapping
 }
 
 type recordingAWS struct {
@@ -1260,6 +1348,11 @@ func (f *recordingAWS) GetRestApis(ctx context.Context, input *apigateway.GetRes
 	return f.fakeAWS.GetRestApis(ctx, input, options...)
 }
 
+func (f *recordingAWS) GetResources(ctx context.Context, input *resourcegroupstaggingapi.GetResourcesInput, options ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error) {
+	f.record("tagging:GetResources")
+	return f.fakeAWS.GetResources(ctx, input, options...)
+}
+
 type recordingAPIGatewayV2 struct {
 	fake *recordingAWS
 }
@@ -1370,6 +1463,21 @@ func paginateStringValues(values []string, marker string, limit int) ([]string, 
 	return values[start : start+limit], true, next
 }
 
+func paginateResourceTags(values []resourcegroupstaggingapitypes.ResourceTagMapping, marker string, limit int) ([]resourcegroupstaggingapitypes.ResourceTagMapping, string) {
+	start := 0
+	if marker != "" {
+		parsed, err := strconv.Atoi(marker)
+		if err == nil && parsed >= 0 && parsed <= len(values) {
+			start = parsed
+		}
+	}
+	if limit <= 0 || start+limit >= len(values) {
+		return values[start:], ""
+	}
+	next := strconv.Itoa(start + limit)
+	return values[start : start+limit], next
+}
+
 func (f fakeAWS) LookupEvents(ctx context.Context, input *cloudtrail.LookupEventsInput, _ ...func(*cloudtrail.Options)) (*cloudtrail.LookupEventsOutput, error) {
 	if f.cloudTrailLookup != nil {
 		return f.cloudTrailLookup(ctx, input)
@@ -1411,6 +1519,11 @@ func (f fakeAWS) GetDomainNames(_ context.Context, _ *apigateway.GetDomainNamesI
 
 func (f fakeAWS) GetRestApis(_ context.Context, _ *apigateway.GetRestApisInput, _ ...func(*apigateway.Options)) (*apigateway.GetRestApisOutput, error) {
 	return &apigateway.GetRestApisOutput{Items: f.restAPIs}, nil
+}
+
+func (f fakeAWS) GetResources(_ context.Context, input *resourcegroupstaggingapi.GetResourcesInput, _ ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error) {
+	records, next := paginateResourceTags(f.taggedResources, awssdk.ToString(input.PaginationToken), int(awssdk.ToInt32(input.ResourcesPerPage)))
+	return &resourcegroupstaggingapi.GetResourcesOutput{ResourceTagMappingList: records, PaginationToken: stringPtr(next)}, nil
 }
 
 type fakeAPIGatewayV2 struct {

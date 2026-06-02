@@ -64,6 +64,35 @@ func TestProjectBackstageComponent(t *testing.T) {
 	assertProjectedLinkMissing(t, state, ownerURN, relationRepresentsIdentity, "urn:cerebro:writer:identity:login:security")
 }
 
+func TestProjectBackstageComponentLinksClassificationAndCriticality(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:         "evt-backstage-classification",
+		TenantId:   "writer",
+		SourceId:   "backstage",
+		Kind:       "backstage.component",
+		OccurredAt: timestamppb.New(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)),
+		Attributes: map[string]string{
+			"name":        "payments",
+			"namespace":   "default",
+			"kind":        "Component",
+			"type":        "service",
+			"data_class":  "restricted",
+			"criticality": "tier0",
+		},
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	serviceURN := "urn:cerebro:writer:service:component/default/payments"
+	assertProjectedLink(t, state, serviceURN, relationHasClassification, "urn:cerebro:writer:data_classification:restricted")
+	assertProjectedLink(t, state, serviceURN, relationTaggedAs, "urn:cerebro:writer:asset_tag:criticality:tier0")
+	assertProjectedLink(t, state, serviceURN, relationTaggedAs, "urn:cerebro:writer:asset_tag:crown_jewel")
+}
+
 func TestProjectBackstageComponentLinksKubernetesRuntime(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

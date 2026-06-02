@@ -253,6 +253,10 @@ func TestProjectSentinelOneThreatLinksThreatToAgent(t *testing.T) {
 	}
 	assertProjectedLink(t, state, threatURN, relationBelongsTo, siteURN)
 	assertProjectedLink(t, state, threatURN, relationMemberOf, groupURN)
+	assertProjectedLink(t, state, threatURN, relationHasClassification, "urn:cerebro:writer:sentinelone_threat_classification:malware")
+	assertProjectedLink(t, state, threatURN, relationTaggedAs, "urn:cerebro:writer:sentinelone_threat_tag:analyst_verdict:true_positive")
+	assertProjectedLink(t, state, threatURN, relationTaggedAs, "urn:cerebro:writer:sentinelone_threat_tag:mitigation_status:not_mitigated")
+	assertProjectedLink(t, state, threatURN, relationTaggedAs, "urn:cerebro:writer:sentinelone_threat_tag:mitre_tactic:execution")
 	if got := state.entities[threatURN].Attributes["classification"]; got != "Malware" {
 		t.Fatalf("threat classification = %q, want Malware", got)
 	}

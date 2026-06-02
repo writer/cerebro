@@ -50,6 +50,7 @@ func backstageComponentProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 		}),
 	})
 	addOwnerLink(entities, links, event, tenantID, componentURN, firstNonEmpty(attrs["owner"], nestedString(payload, "spec.owner")))
+	addBackstageClassificationLinks(entities, links, event, tenantID, componentURN, attrs)
 	addSystemLink(entities, links, event, tenantID, componentURN, firstNonEmpty(attrs["system"], nestedString(payload, "spec.system")))
 	addRepoLink(entities, links, event, tenantID, componentURN, firstNonEmpty(
 		attrs["repository"],
@@ -60,6 +61,61 @@ func backstageComponentProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 	addBackstageKubernetesLinks(entities, links, event, tenantID, componentURN, attrs, payload)
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
+}
+
+func addBackstageClassificationLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, event *cerebrov1.EventEnvelope, tenantID string, componentURN string, attrs map[string]string) {
+	for _, classification := range splitCSV(attrs["data_class"]) {
+		classificationURN := projectionURN(tenantID, "data_classification", classification)
+		if classificationURN == "" {
+			continue
+		}
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        classificationURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "data.classification",
+			Label:      classification,
+			Attributes: map[string]string{"classification": classification},
+		})
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), componentURN, classificationURN, relationHasClassification, map[string]string{"event_id": event.GetId(), "source_attribute": "data_class"}))
+	}
+	for _, criticality := range splitCSV(attrs["criticality"]) {
+		tagValue := "criticality:" + normalizeIdentifier(criticality)
+		tagURN := projectionURN(tenantID, "asset_tag", tagValue)
+		if tagURN == "" {
+			continue
+		}
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        tagURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "asset.tag",
+			Label:      tagValue,
+			Attributes: map[string]string{"criticality": criticality, "tag": tagValue},
+		})
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), componentURN, tagURN, relationTaggedAs, map[string]string{"event_id": event.GetId(), "source_attribute": "criticality"}))
+		if backstageCriticalityIsCrownJewel(criticality) {
+			crownJewelURN := projectionURN(tenantID, "asset_tag", "crown_jewel")
+			addEntity(entities, &ports.ProjectedEntity{
+				URN:        crownJewelURN,
+				TenantID:   tenantID,
+				SourceID:   event.GetSourceId(),
+				EntityType: "asset.tag",
+				Label:      "crown_jewel",
+				Attributes: map[string]string{"tag": "crown_jewel"},
+			})
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), componentURN, crownJewelURN, relationTaggedAs, map[string]string{"event_id": event.GetId(), "source_attribute": "criticality"}))
+		}
+	}
+}
+
+func backstageCriticalityIsCrownJewel(value string) bool {
+	switch normalizeIdentifier(value) {
+	case "crown_jewel", "crown-jewel", "tier0", "tier_0", "tier-0", "critical":
+		return true
+	default:
+		return false
+	}
 }
 
 func securityToolingMapToolProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {

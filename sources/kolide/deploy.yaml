@@ -1,0 +1,29 @@
+sourceId: kolide
+secretKeys:
+  - KOLIDE_API_TOKEN
+  - KOLIDE_BASE_URL
+runtimes:
+  - localId: device
+    config:
+      base_url: env:KOLIDE_BASE_URL
+      family: device
+      per_page: "100"
+      token: env:KOLIDE_API_TOKEN
+  - localId: software
+    config:
+      base_url: env:KOLIDE_BASE_URL
+      family: software
+      per_page: "100"
+      token: env:KOLIDE_API_TOKEN
+  - localId: vulnerability
+    config:
+      base_url: env:KOLIDE_BASE_URL
+      family: vulnerability
+      per_page: "100"
+      token: env:KOLIDE_API_TOKEN
+  - localId: check
+    config:
+      base_url: env:KOLIDE_BASE_URL
+      family: check
+      per_page: "100"
+      token: env:KOLIDE_API_TOKEN

@@ -425,6 +425,7 @@ func (r *activityRecord) rawBytes() json.RawMessage  { return r.raw }
 
 // applicationRecord is the per-agent installed application inventory entry.
 type applicationRecord struct {
+	AgentID       string `json:"-"`
 	Name          string `json:"name"`
 	Publisher     string `json:"publisher"`
 	Version       string `json:"version"`
@@ -1098,13 +1099,14 @@ func activityEvent(s settings, record activityRecord) (*primitives.Event, error)
 }
 
 func applicationEvent(s settings, record applicationRecord) (*primitives.Event, error) {
+	agentID := applicationAgentID(s, record)
 	occurredAt := eventOccurredAt(parseTimestamp(record.InstalledDate))
 	raw, err := decodeRaw(record.raw, "sentinelone application")
 	if err != nil {
 		return nil, err
 	}
 	payload, err := json.Marshal(applicationPayload{
-		AgentID:       s.agentID,
+		AgentID:       agentID,
 		TenantHost:    s.host,
 		Name:          record.Name,
 		Publisher:     record.Publisher,
@@ -1118,7 +1120,7 @@ func applicationEvent(s settings, record applicationRecord) (*primitives.Event, 
 	}
 	attrs := map[string]string{
 		"family":      familyApplication,
-		"agent_id":    s.agentID,
+		"agent_id":    agentID,
 		"tenant_host": s.host,
 	}
 	addAttribute(attrs, "application_name", record.Name)
@@ -1126,7 +1128,7 @@ func applicationEvent(s settings, record applicationRecord) (*primitives.Event, 
 	addAttribute(attrs, "version", record.Version)
 	addAttribute(attrs, "installed_date", record.InstalledDate)
 	return &primitives.Event{
-		Id:         eventID("sentinelone-application", s, s.agentID, applicationID(s, record)),
+		Id:         eventID("sentinelone-application", s, agentID, applicationID(s, record)),
 		TenantId:   s.host,
 		SourceId:   "sentinelone",
 		Kind:       "sentinelone.application_inventory",
@@ -1135,6 +1137,10 @@ func applicationEvent(s settings, record applicationRecord) (*primitives.Event, 
 		Payload:    payload,
 		Attributes: attrs,
 	}, nil
+}
+
+func applicationAgentID(s settings, record applicationRecord) string {
+	return firstNonEmpty(record.AgentID, s.agentID)
 }
 
 func toThreatInfoPayload(info threatInfoRecord) threatInfoPayload {
