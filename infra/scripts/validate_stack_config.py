@@ -813,7 +813,8 @@ def validate_stack(path: Path) -> list[Finding]:
     top_level_runtime_id = _runtime_id_from_command(top_level_command)
     if top_level_command:
         if top_level_runtime_id is None:
-            scheduled_runtime_ids.update(runtime_ids)
+            if not schedules:
+                scheduled_runtime_ids.update(runtime_ids)
         elif top_level_runtime_id not in runtime_ids:
             findings.append(
                 _finding(
@@ -824,10 +825,12 @@ def validate_stack(path: Path) -> list[Finding]:
                 )
             )
         else:
-            scheduled_runtime_ids.add(top_level_runtime_id)
-        guarded_runtime_ids = [top_level_runtime_id] if top_level_runtime_id is not None else sorted(runtime_ids)
-        for guarded_runtime_id in guarded_runtime_ids:
-            _validate_graph_page_budget(stack, guarded_runtime_id, top_level_command, "cerebro:orchestratorCommand", findings)
+            if not schedules:
+                scheduled_runtime_ids.add(top_level_runtime_id)
+        if not schedules:
+            guarded_runtime_ids = [top_level_runtime_id] if top_level_runtime_id is not None else sorted(runtime_ids)
+            for guarded_runtime_id in guarded_runtime_ids:
+                _validate_graph_page_budget(stack, guarded_runtime_id, top_level_command, "cerebro:orchestratorCommand", findings)
 
     schedule_names: set[str] = set()
     for index, schedule in enumerate(schedules):
