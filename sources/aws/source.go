@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -777,6 +778,12 @@ func listAssetMetadata(ctx context.Context, clients awsClients, settings setting
 		PaginationToken:  stringPtr(cursor),
 		ResourcesPerPage: int32Ptr(assetMetadataPageSize(limit)),
 	})
+	var expired *resourcegroupstaggingapitypes.PaginationTokenExpiredException
+	if err != nil && strings.TrimSpace(cursor) != "" && errors.As(err, &expired) {
+		out, err = clients.tagging.GetResources(ctx, &resourcegroupstaggingapi.GetResourcesInput{
+			ResourcesPerPage: int32Ptr(assetMetadataPageSize(limit)),
+		})
+	}
 	if err != nil {
 		return nil, "", err
 	}

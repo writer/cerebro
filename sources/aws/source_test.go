@@ -426,6 +426,38 @@ func TestReadAWSAssetMetadataPaginatesTaggedResources(t *testing.T) {
 	}
 }
 
+func TestReadAWSAssetMetadataRestartsExpiredPaginationToken(t *testing.T) {
+	var tokens []string
+	source := newTestSource(t, fakeAWS{getResources: func(_ context.Context, input *resourcegroupstaggingapi.GetResourcesInput, _ ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error) {
+		token := awssdk.ToString(input.PaginationToken)
+		tokens = append(tokens, token)
+		if token == "expired-token" {
+			return nil, &resourcegroupstaggingapitypes.PaginationTokenExpiredException{}
+		}
+		return &resourcegroupstaggingapi.GetResourcesOutput{ResourceTagMappingList: []resourcegroupstaggingapitypes.ResourceTagMapping{{
+			ResourceARN: awssdk.String("arn:aws:s3:::prod-data"),
+		}}}, nil
+	}})
+
+	pull, err := source.Read(
+		context.Background(),
+		sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyAssetMetadata}),
+		&cerebrov1.SourceCursor{Opaque: "expired-token"},
+	)
+	if err != nil {
+		t.Fatalf("Read(asset_metadata expired cursor) error = %v", err)
+	}
+	if len(tokens) != 2 || tokens[0] != "expired-token" || tokens[1] != "" {
+		t.Fatalf("GetResources tokens = %#v, want expired token then restart without token", tokens)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["resource_id"]; got != "arn:aws:s3:::prod-data" {
+		t.Fatalf("resource_id = %q, want arn:aws:s3:::prod-data", got)
+	}
+}
+
 func TestReadAWSRoleAndAccessKeyPreview(t *testing.T) {
 	source := newTestSource(t, fakeAWS{
 		roles: []iamtypes.Role{{
@@ -1207,6 +1239,7 @@ type fakeAWS struct {
 	apiV2Domains           []apigatewayv2types.DomainName
 	apiV2APIs              []apigatewayv2types.Api
 	taggedResources        []resourcegroupstaggingapitypes.ResourceTagMapping
+	getResources           func(context.Context, *resourcegroupstaggingapi.GetResourcesInput, ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error)
 }
 
 type recordingAWS struct {
@@ -1521,7 +1554,10 @@ func (f fakeAWS) GetRestApis(_ context.Context, _ *apigateway.GetRestApisInput, 
 	return &apigateway.GetRestApisOutput{Items: f.restAPIs}, nil
 }
 
-func (f fakeAWS) GetResources(_ context.Context, input *resourcegroupstaggingapi.GetResourcesInput, _ ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error) {
+func (f fakeAWS) GetResources(ctx context.Context, input *resourcegroupstaggingapi.GetResourcesInput, options ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error) {
+	if f.getResources != nil {
+		return f.getResources(ctx, input, options...)
+	}
 	records, next := paginateResourceTags(f.taggedResources, awssdk.ToString(input.PaginationToken), int(awssdk.ToInt32(input.ResourcesPerPage)))
 	return &resourcegroupstaggingapi.GetResourcesOutput{ResourceTagMappingList: records, PaginationToken: stringPtr(next)}, nil
 }
