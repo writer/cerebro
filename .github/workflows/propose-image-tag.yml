@@ -436,19 +436,24 @@ jobs:
               exit 1
             fi
 
-            for _ in {1..36}; do
+            registered=false
+            for _ in {1..60}; do
               check_count="$(gh pr checks "${pr_url}" --required --json name --jq 'length' 2>/dev/null || true)"
               if [[ "${check_count}" =~ ^[0-9]+$ ]] && [ "${check_count}" -gt 0 ]; then
+                registered=true
                 break
               fi
-              sleep 5
+              sleep 10
             done
-            if ! [[ "${check_count}" =~ ^[0-9]+$ ]] || [ "${check_count}" -eq 0 ]; then
-              echo "No required PR checks registered for ${pr_url}; refusing trusted auto-merge." >&2
-              exit 1
+            if [ "${registered}" != "true" ]; then
+              echo "::notice::Required PR checks for ${pr_url} did not register within the wait window; leaving it open for the review-gated merge."
+              return 0
             fi
 
-            gh pr checks "${pr_url}" --required --watch --interval 10 --fail-fast
+            if ! gh pr checks "${pr_url}" --required --watch --interval 10 --fail-fast; then
+              echo "::notice::Required PR checks for ${pr_url} did not all pass; leaving it open for the review-gated merge."
+              return 0
+            fi
             gh pr merge "${pr_url}" --merge --delete-branch
           }
 
