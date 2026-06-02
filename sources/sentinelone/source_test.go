@@ -136,6 +136,76 @@ func TestApplicationFamilyFansOutWithoutAgentID(t *testing.T) {
 	}
 }
 
+func TestApplicationFamilyKeepsAgentCursorWhenPageHasNoApplications(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if got := r.Header.Get("Authorization"); got != "ApiToken "+fixtureToken {
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]any{"errors": []map[string]any{{"detail": "invalid token", "title": "Auth Failed"}}})
+			return
+		}
+		switch r.URL.Path {
+		case "/web/api/v2.1/agents":
+			if r.URL.Query().Get("cursor") == "" {
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"data":       []map[string]any{{"id": "A-empty", "computerName": "empty-host"}},
+					"pagination": map[string]any{"nextCursor": "cursor-A-2"},
+				})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data":       []map[string]any{{"id": "A-2", "computerName": "host-A-2"}},
+				"pagination": map[string]any{},
+			})
+		case "/web/api/v2.1/agents/applications":
+			if r.URL.Query().Get("ids") == "A-empty" {
+				_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{}})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{
+				"name": "Example App", "publisher": "Example Inc", "version": "1.0.0",
+			}}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   "application",
+		"per_page": "1",
+		"token":    fixtureToken,
+	})
+
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(application first empty page) error = %v", err)
+	}
+	if len(first.Events) != 0 {
+		t.Fatalf("len(first.Events) = %d, want 0", len(first.Events))
+	}
+	if first.NextCursor == nil || first.NextCursor.GetOpaque() != "cursor-A-2" {
+		t.Fatalf("first.NextCursor = %#v, want cursor-A-2", first.NextCursor)
+	}
+
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(application second page) error = %v", err)
+	}
+	if len(second.Events) != 1 {
+		t.Fatalf("len(second.Events) = %d, want 1", len(second.Events))
+	}
+	if got := second.Events[0].Attributes["agent_id"]; got != "A-2" {
+		t.Fatalf("second agent_id = %q, want A-2", got)
+	}
+}
+
 func TestSinceRejectedForNonTimeFamilies(t *testing.T) {
 	source, err := New()
 	if err != nil {

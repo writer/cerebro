@@ -496,7 +496,11 @@ func urnsFor[T any](settings settings, records []T, render func(settings, T) (st
 
 func pullFromRecords[T any](records []T, next string, build func(T) (*primitives.Event, error), cursorFallback func(T) string) (sourcecdk.Pull, error) {
 	if len(records) == 0 {
-		return sourcecdk.Pull{}, nil
+		pull := sourcecdk.Pull{}
+		if next != "" {
+			pull.NextCursor = &cerebrov1.SourceCursor{Opaque: next}
+		}
+		return pull, nil
 	}
 	events := make([]*primitives.Event, 0, len(records))
 	for _, record := range records {
