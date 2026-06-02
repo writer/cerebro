@@ -225,6 +225,23 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 	if neighborhood.Root == nil || neighborhood.Root.URN != user.URN || len(neighborhood.Neighbors) != 1 || len(neighborhood.Relations) != 1 {
 		t.Fatalf("GetEntityNeighborhood() = %#v", neighborhood)
 	}
+	target := &ports.ProjectedEntity{URN: "urn:cerebro:writer:grc_target:target-1", TenantID: "writer", SourceID: "grc", EntityType: "grc.target", Label: "target-1"}
+	source := &ports.ProjectedEntity{URN: "urn:cerebro:writer:source:grc", TenantID: "writer", SourceID: "grc", EntityType: "source", Label: "grc"}
+	finding := &ports.ProjectedEntity{URN: "urn:cerebro:writer:finding:finding-1", TenantID: "writer", SourceID: "grc", EntityType: "finding", Label: "finding-1"}
+	for _, entity := range []*ports.ProjectedEntity{target, source, finding} {
+		if err := store.UpsertProjectedEntity(ctx, entity); err != nil {
+			t.Fatalf("UpsertProjectedEntity(%s) error = %v", entity.URN, err)
+		}
+	}
+	for _, link := range []*ports.ProjectedLink{
+		{TenantID: "writer", SourceID: "grc", FromURN: target.URN, Relation: "belongs_to", ToURN: source.URN},
+		{TenantID: "writer", SourceID: "grc", FromURN: source.URN, Relation: "has_finding", ToURN: finding.URN},
+		{TenantID: "writer", SourceID: "github", FromURN: user.URN, Relation: "acted_on", ToURN: source.URN},
+	} {
+		if err := store.UpsertProjectedLink(ctx, link); err != nil {
+			t.Fatalf("UpsertProjectedLink(%s -> %s) error = %v", link.FromURN, link.ToURN, err)
+		}
+	}
 	patterns, err := store.PathPatterns(ctx, 5)
 	if err != nil {
 		t.Fatalf("PathPatterns() error = %v", err)
@@ -243,8 +260,8 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Topology() error = %v", err)
 	}
-	if topology.SourcesOnly != 1 || topology.Intermediates != 1 || topology.SinksOnly != 1 {
-		t.Fatalf("Topology() = %#v, want one source-only, one intermediate, and one sink-only", topology)
+	if topology.SourcesOnly != 2 || topology.Intermediates != 2 || topology.SinksOnly != 2 {
+		t.Fatalf("Topology() = %#v, want two source-only, two intermediate, and two sink-only nodes", topology)
 	}
 	checks, err := store.IntegrityChecks(ctx)
 	if err != nil {

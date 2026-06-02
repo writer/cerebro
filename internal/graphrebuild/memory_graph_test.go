@@ -90,6 +90,54 @@ func TestMemoryGraphStoreIntegrityChecksLinkageGuardrails(t *testing.T) {
 	}
 }
 
+func TestMemoryGraphStoreSuppressesBroadTwoHopPathSummaries(t *testing.T) {
+	store, err := newMemoryGraphStore()
+	if err != nil {
+		t.Fatalf("newMemoryGraphStore() error = %v", err)
+	}
+	scratch := store.(*memoryGraphStore)
+	ctx := context.Background()
+
+	for _, entity := range []*ports.ProjectedEntity{
+		{URN: "urn:target", TenantID: "writer", SourceID: "grc", EntityType: "grc.target", Label: "target"},
+		{URN: "urn:source", TenantID: "writer", SourceID: "grc", EntityType: "source", Label: "source"},
+		{URN: "urn:finding", TenantID: "writer", SourceID: "grc", EntityType: "finding", Label: "finding"},
+		{URN: "urn:vulnerability", TenantID: "writer", SourceID: "grc", EntityType: "vulnerability", Label: "vulnerability"},
+		{URN: "urn:actor", TenantID: "writer", SourceID: "github", EntityType: "github.user", Label: "actor"},
+	} {
+		if err := scratch.UpsertProjectedEntity(ctx, entity); err != nil {
+			t.Fatalf("UpsertProjectedEntity(%s) error = %v", entity.URN, err)
+		}
+	}
+	for _, link := range []*ports.ProjectedLink{
+		{TenantID: "writer", SourceID: "grc", FromURN: "urn:target", Relation: "belongs_to", ToURN: "urn:source"},
+		{TenantID: "writer", SourceID: "grc", FromURN: "urn:source", Relation: "has_finding", ToURN: "urn:finding"},
+		{TenantID: "writer", SourceID: "grc", FromURN: "urn:target", Relation: "affected_by", ToURN: "urn:vulnerability"},
+		{TenantID: "writer", SourceID: "grc", FromURN: "urn:vulnerability", Relation: "has_finding", ToURN: "urn:finding"},
+		{TenantID: "writer", SourceID: "github", FromURN: "urn:actor", Relation: "acted_on", ToURN: "urn:source"},
+	} {
+		if err := scratch.UpsertProjectedLink(ctx, link); err != nil {
+			t.Fatalf("UpsertProjectedLink(%s -> %s) error = %v", link.FromURN, link.ToURN, err)
+		}
+	}
+
+	patterns, err := scratch.PathPatterns(ctx, 10)
+	if err != nil {
+		t.Fatalf("PathPatterns() error = %v", err)
+	}
+	if len(patterns) != 1 || patterns[0].FirstRelation != "affected_by" || patterns[0].SecondRelation != "has_finding" {
+		t.Fatalf("PathPatterns() = %#v, want only direct vulnerability finding pattern", patterns)
+	}
+
+	traversals, err := scratch.SampleTraversals(ctx, 10)
+	if err != nil {
+		t.Fatalf("SampleTraversals() error = %v", err)
+	}
+	if len(traversals) != 1 || traversals[0].FirstRelation != "affected_by" || traversals[0].SecondRelation != "has_finding" {
+		t.Fatalf("SampleTraversals() = %#v, want only direct vulnerability finding traversal", traversals)
+	}
+}
+
 func memoryIntegrityActual(checks []graphstore.IntegrityCheck, name string) int64 {
 	for _, check := range checks {
 		if check.Name == name {

@@ -247,6 +247,9 @@ func (s *memoryGraphStore) PathPatterns(_ context.Context, limit int) ([]graphst
 			if first.ToURN != second.FromURN {
 				continue
 			}
+			if graphstore.SuppressTwoHopPath(first.Relation, second.Relation) {
+				continue
+			}
 			from := s.entities[first.FromURN]
 			via := s.entities[first.ToURN]
 			to := s.entities[second.ToURN]
@@ -312,6 +315,9 @@ func (s *memoryGraphStore) SampleTraversals(_ context.Context, limit int) ([]gra
 	for _, first := range s.links {
 		for _, second := range s.links {
 			if first.ToURN != second.FromURN {
+				continue
+			}
+			if graphstore.SuppressTwoHopPath(first.Relation, second.Relation) {
 				continue
 			}
 			from := s.entities[first.FromURN]
