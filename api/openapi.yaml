@@ -16,6 +16,7 @@ tags:
   - name: Graph
   - name: Health
   - name: Knowledge
+  - name: MCP
   - name: Platform
   - name: Reports
   - name: Sources
@@ -49,6 +50,37 @@ paths:
       responses:
         '200':
           description: Embedded OpenAPI YAML.
+  /api/v1/mcp:
+    get:
+      summary: Open MCP Streamable HTTP event stream
+      tags:
+        - MCP
+      responses:
+        '200':
+          description: MCP server-sent event stream.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+    post:
+      summary: Invoke MCP JSON-RPC method
+      tags:
+        - MCP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: MCP JSON-RPC response.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
   /sources:
     get:
       summary: List registered sources
