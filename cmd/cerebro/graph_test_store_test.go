@@ -145,6 +145,31 @@ func (s *graphTestStore) IntegrityChecks(context.Context) ([]graphstore.Integrit
 	}, nil
 }
 
+func (s *graphTestStore) Topology(context.Context) (graphstore.Topology, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	hasOut := make(map[string]bool, len(s.links))
+	hasIn := make(map[string]bool, len(s.links))
+	for _, link := range s.links {
+		hasOut[link.FromURN] = true
+		hasIn[link.ToURN] = true
+	}
+	var topology graphstore.Topology
+	for urn := range s.entities {
+		switch {
+		case !hasOut[urn] && !hasIn[urn]:
+			topology.Isolated++
+		case hasOut[urn] && !hasIn[urn]:
+			topology.SourcesOnly++
+		case !hasOut[urn] && hasIn[urn]:
+			topology.SinksOnly++
+		default:
+			topology.Intermediates++
+		}
+	}
+	return topology, nil
+}
+
 func (s *graphTestStore) RepairOpenFindingPrimaryLinks(_ context.Context, request graphstore.OpenFindingPrimaryLinkRepairRequest) (graphstore.OpenFindingPrimaryLinkRepairResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
