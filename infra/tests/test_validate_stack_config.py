@@ -537,7 +537,7 @@ class ValidateStackConfigTest(unittest.TestCase):
 
         findings = validate_stack(Path(__file__).resolve().parents[1] / "aws/Pulumi.go-prod.yaml")
 
-        self.assertEqual(len(aws_runtimes), 48)
+        self.assertEqual(len(aws_runtimes), 56)
         self.assertTrue(all(runtime["id"] in aws_scheduled_runtime_ids for runtime in aws_runtimes))
         self.assertEqual(
             {
@@ -546,6 +546,7 @@ class ValidateStackConfigTest(unittest.TestCase):
             },
             {
                 "access_key",
+                "asset_metadata",
                 "effective_permission",
                 "iam_group",
                 "iam_group_membership",

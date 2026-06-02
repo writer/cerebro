@@ -64,7 +64,7 @@ SEC_DEV_AWS_GLOBAL_FAMILIES = {
     "iam_role_trust",
     "iam_user",
 }
-SEC_DEV_AWS_REGIONAL_FAMILIES = {"cloudtrail", "public_endpoint", "resource_exposure"}
+SEC_DEV_AWS_REGIONAL_FAMILIES = {"asset_metadata", "cloudtrail", "public_endpoint", "resource_exposure"}
 SEC_DEV_AWS_CLOUDTRAIL_SINCE = "PT15M"
 GO_PROD_AWS_ACCOUNTS = {
     "sec-prod": "837279440628",
@@ -73,7 +73,7 @@ GO_PROD_AWS_ACCOUNTS = {
     "sec-dev": "944130631940",
 }
 GO_PROD_AWS_GLOBAL_FAMILIES = SEC_DEV_AWS_GLOBAL_FAMILIES
-GO_PROD_AWS_REGIONAL_FAMILIES = {"public_endpoint", "resource_exposure"}
+GO_PROD_AWS_REGIONAL_FAMILIES = {"asset_metadata", "public_endpoint", "resource_exposure"}
 GO_PROD_AWS_REGIONS = {"us1": "us-east-1", "us2": "us-west-2"}
 
 
