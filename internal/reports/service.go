@@ -23,10 +23,14 @@ import (
 const (
 	findingSummaryReportID           = "finding-summary"
 	findingSummaryReportName         = "Finding Summary"
+	riskDeltaReportID                = "risk-delta"
+	riskDeltaReportName              = "Risk Delta"
 	findingSummaryReportStatus       = "completed"
 	reportParameterTenantID          = "tenant_id"
 	reportParameterRuntimeID         = "runtime_id"
 	reportParameterRuntimeIDs        = "runtime_ids"
+	reportParameterScenarioType      = "scenario_type"
+	reportParameterTargetURN         = "target_urn"
 	reportParameterResourceLimit     = "resource_limit"
 	reportParameterGraphLimit        = "graph_limit"
 	defaultResourceEvidenceLimit     = 3
@@ -71,6 +75,7 @@ func (s *Service) List() *cerebrov1.ListReportDefinitionsResponse {
 	return &cerebrov1.ListReportDefinitionsResponse{
 		Reports: []*cerebrov1.ReportDefinition{
 			findingSummaryDefinition(),
+			riskDeltaDefinition(),
 		},
 	}
 }
@@ -98,6 +103,8 @@ func (s *Service) Run(ctx context.Context, request *cerebrov1.RunReportRequest) 
 	switch reportID {
 	case findingSummaryReportID:
 		result, err = s.runFindingSummary(ctx, parameters)
+	case riskDeltaReportID:
+		result, err = s.runRiskDelta(ctx, parameters)
 	default:
 		err = fmt.Errorf("%w: %s", ErrReportNotFound, reportID)
 	}
@@ -325,6 +332,94 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	return result, nil
 }
 
+func (s *Service) runRiskDelta(ctx context.Context, parameters map[string]string) (*structpb.Struct, error) {
+	tenantID := strings.TrimSpace(parameters[reportParameterTenantID])
+	if tenantID == "" {
+		return nil, fmt.Errorf("%w: report parameter %q is required", ErrInvalidRequest, reportParameterTenantID)
+	}
+	runtimeID := strings.TrimSpace(parameters[reportParameterRuntimeID])
+	runtimeIDs := normalizeRuntimeIDs(runtimeID, parameters[reportParameterRuntimeIDs])
+	if len(runtimeIDs) == 0 {
+		return nil, fmt.Errorf("%w: report parameter %q or %q is required", ErrInvalidRequest, reportParameterRuntimeID, reportParameterRuntimeIDs)
+	}
+	resultRuntimeID := ""
+	if len(runtimeIDs) == 1 {
+		resultRuntimeID = runtimeIDs[0]
+	}
+	scenarioType, err := normalizeRiskDeltaScenario(parameters[reportParameterScenarioType])
+	if err != nil {
+		return nil, err
+	}
+	targetURN := strings.TrimSpace(parameters[reportParameterTargetURN])
+	if targetURN == "" {
+		return nil, fmt.Errorf("%w: report parameter %q is required", ErrInvalidRequest, reportParameterTargetURN)
+	}
+	runtimeIDsCSV := strings.Join(runtimeIDs, ",")
+	resourceLimit, err := normalizePositiveLimit(parameters[reportParameterResourceLimit], defaultResourceEvidenceLimit, maxResourceEvidenceLimit, reportParameterResourceLimit)
+	if err != nil {
+		return nil, err
+	}
+	graphLimit, err := normalizePositiveLimit(parameters[reportParameterGraphLimit], defaultNeighborhoodEvidenceLimit, maxNeighborhoodEvidenceLimit, reportParameterGraphLimit)
+	if err != nil {
+		return nil, err
+	}
+	parameters[reportParameterRuntimeIDs] = runtimeIDsCSV
+	parameters[reportParameterScenarioType] = scenarioType
+	parameters[reportParameterTargetURN] = targetURN
+	parameters[reportParameterResourceLimit] = strconv.Itoa(resourceLimit)
+	parameters[reportParameterGraphLimit] = strconv.Itoa(graphLimit)
+	listRequest := ports.ListFindingsRequest{TenantID: tenantID, Order: ports.FindingOrderRiskScore}
+	if len(runtimeIDs) == 1 {
+		listRequest.RuntimeID = runtimeIDs[0]
+	} else {
+		listRequest.RuntimeIDs = runtimeIDs
+	}
+	findings, err := s.findingStore.ListFindings(ctx, listRequest)
+	if err != nil {
+		return nil, fmt.Errorf("list findings for tenant %q runtimes %q: %w", tenantID, runtimeIDsCSV, err)
+	}
+	graphEvidenceStatus := graphEvidenceStatusUnconfigured
+	graphNeighborhoods := map[string]*ports.EntityNeighborhood{}
+	if s.graphStore != nil {
+		graphEvidenceStatus = graphEvidenceStatusIncluded
+		graphNeighborhoods, err = s.riskDeltaGraphNeighborhoods(ctx, targetURN, findings, resourceLimit, graphLimit)
+		if err != nil {
+			return nil, err
+		}
+	}
+	report := findinganalysis.SimulateRiskDelta(findings, findinganalysis.RiskDeltaSimulationOptions{
+		ScenarioType:       scenarioType,
+		TargetURN:          targetURN,
+		Limit:              10,
+		GraphNeighborhoods: graphNeighborhoods,
+	})
+	riskDelta, err := jsonPayload(report)
+	if err != nil {
+		return nil, fmt.Errorf("build risk delta report payload: %w", err)
+	}
+	result, err := structpb.NewStruct(map[string]any{
+		reportParameterTenantID:       tenantID,
+		reportParameterRuntimeID:      resultRuntimeID,
+		reportParameterRuntimeIDs:     reportStringValues(runtimeIDs),
+		reportParameterScenarioType:   scenarioType,
+		reportParameterTargetURN:      targetURN,
+		"total_findings":              len(findings),
+		"graph_evidence_status":       graphEvidenceStatus,
+		"graph_neighborhood_count":    len(graphNeighborhoods),
+		"risk_delta":                  riskDelta,
+		"risk_score_change":           report.RiskScoreChange,
+		"attack_path_score_change":    report.AttackPathScoreChange,
+		"attack_path_count_change":    report.AttackPathCountChange,
+		"risk_score_reduction":        report.RiskScoreReduction,
+		"attack_path_score_reduction": report.AttackPathScoreReduction,
+		"attack_path_count_reduction": report.AttackPathCountReduction,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("build risk delta report result: %w", err)
+	}
+	return result, nil
+}
+
 func jsonPayload(value any) (any, error) {
 	content, err := json.Marshal(value)
 	if err != nil {
@@ -413,6 +508,47 @@ func (s *Service) graphEvidence(ctx context.Context, resourceCounts map[string]i
 	return evidence, neighborhoods, nil
 }
 
+func (s *Service) riskDeltaGraphNeighborhoods(ctx context.Context, targetURN string, findings []*ports.FindingRecord, resourceLimit int, graphLimit int) (map[string]*ports.EntityNeighborhood, error) {
+	roots := []string{strings.TrimSpace(targetURN)}
+	resourceCounts := map[string]int{}
+	for _, finding := range findings {
+		if resourceURN := primaryResourceURN(finding); resourceURN != "" {
+			resourceCounts[resourceURN]++
+		}
+	}
+	for _, entry := range sortedCountEntries(resourceCounts) {
+		if len(roots) >= resourceLimit {
+			break
+		}
+		roots = append(roots, entry.Key)
+	}
+	seen := map[string]struct{}{}
+	neighborhoods := map[string]*ports.EntityNeighborhood{}
+	for _, rootURN := range roots {
+		rootURN = strings.TrimSpace(rootURN)
+		if rootURN == "" {
+			continue
+		}
+		if _, ok := seen[rootURN]; ok {
+			continue
+		}
+		seen[rootURN] = struct{}{}
+		neighborhood, err := s.graphStore.GetEntityNeighborhood(ctx, rootURN, graphLimit)
+		switch {
+		case err == nil:
+			if neighborhood == nil {
+				neighborhood = &ports.EntityNeighborhood{}
+			}
+			neighborhoods[rootURN] = neighborhood
+		case errors.Is(err, ports.ErrGraphEntityNotFound):
+			continue
+		default:
+			return nil, fmt.Errorf("load risk delta graph neighborhood for %q: %w", rootURN, err)
+		}
+	}
+	return neighborhoods, nil
+}
+
 func findingSummaryDefinition() *cerebrov1.ReportDefinition {
 	return &cerebrov1.ReportDefinition{
 		Id:          findingSummaryReportID,
@@ -448,12 +584,72 @@ func findingSummaryDefinition() *cerebrov1.ReportDefinition {
 	}
 }
 
+func riskDeltaDefinition() *cerebrov1.ReportDefinition {
+	return &cerebrov1.ReportDefinition{
+		Id:          riskDeltaReportID,
+		Name:        riskDeltaReportName,
+		Description: "Simulate an in-memory remediation scenario against persisted findings and bounded graph neighborhoods, returning before/after risk, attack-path, and affected-finding deltas without mutating stores.",
+		Parameters: []*cerebrov1.ReportParameter{
+			{
+				Id:          reportParameterTenantID,
+				Description: "Tenant identifier whose persisted findings should be simulated.",
+				Required:    true,
+			},
+			{
+				Id:          reportParameterRuntimeID,
+				Description: "Optional legacy single stored source runtime identifier. Use runtime_ids as the required runtime selector for new clients.",
+				Required:    false,
+			},
+			{
+				Id:          reportParameterRuntimeIDs,
+				Description: "Required comma-separated stored source runtime identifiers for risk delta simulation.",
+				Required:    true,
+			},
+			{
+				Id:          reportParameterScenarioType,
+				Description: "Simulation scenario: remove_public_exposure, remove_privilege, patch_vulnerability, or compromise_identity.",
+				Required:    true,
+			},
+			{
+				Id:          reportParameterTargetURN,
+				Description: "Graph/resource URN targeted by the simulated remediation.",
+				Required:    true,
+			},
+			{
+				Id:          reportParameterResourceLimit,
+				Description: "Optional maximum number of resource roots to include in simulation graph context.",
+				Required:    false,
+			},
+			{
+				Id:          reportParameterGraphLimit,
+				Description: "Optional maximum neighborhood size to read for each simulation graph root.",
+				Required:    false,
+			},
+		},
+	}
+}
+
 func reportDefinition(reportID string) (*cerebrov1.ReportDefinition, error) {
 	switch strings.TrimSpace(reportID) {
 	case findingSummaryReportID:
 		return findingSummaryDefinition(), nil
+	case riskDeltaReportID:
+		return riskDeltaDefinition(), nil
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrReportNotFound, reportID)
+	}
+}
+
+func normalizeRiskDeltaScenario(value string) (string, error) {
+	scenarioType := strings.TrimSpace(value)
+	switch scenarioType {
+	case findinganalysis.RiskDeltaScenarioCompromiseIdentity,
+		findinganalysis.RiskDeltaScenarioPatchVulnerability,
+		findinganalysis.RiskDeltaScenarioRemovePrivilege,
+		findinganalysis.RiskDeltaScenarioRemovePublicExposure:
+		return scenarioType, nil
+	default:
+		return "", fmt.Errorf("%w: report parameter %q must be one of %s, %s, %s, %s", ErrInvalidRequest, reportParameterScenarioType, findinganalysis.RiskDeltaScenarioRemovePublicExposure, findinganalysis.RiskDeltaScenarioRemovePrivilege, findinganalysis.RiskDeltaScenarioPatchVulnerability, findinganalysis.RiskDeltaScenarioCompromiseIdentity)
 	}
 }
 
