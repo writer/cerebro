@@ -80,6 +80,27 @@ class RuntimeContractTest(unittest.TestCase):
         stack = {**STACK, "sourceRuntimes": [runtime]}
         self.assertTrue(any("unsupported github family" in error for error in verify_runtime_contract.verify_contract(CONTRACT, stack)))
 
+    def test_allows_aws_asset_metadata_compatibility_override(self) -> None:
+        contract = {
+            **CONTRACT,
+            "sources": [
+                *CONTRACT["sources"],
+                {"source_id": "aws", "supported_families": ["iam_role"], "runtimes": []},
+            ],
+        }
+        stack = {
+            **STACK,
+            "sourceRuntimes": [
+                {
+                    "id": "writer-aws-test-asset-metadata",
+                    "sourceId": "aws",
+                    "tenantId": "writer",
+                    "config": {"family": "asset_metadata"},
+                }
+            ],
+        }
+        self.assertEqual(verify_runtime_contract.verify_contract(contract, stack), [])
+
     def test_rejects_missing_secret_ref(self) -> None:
         stack = {**STACK, "sourceSecretKeys": ["OKTA_API_TOKEN", "OKTA_DOMAIN"]}
         errors = verify_runtime_contract.verify_contract(CONTRACT, stack, require_manifest_runtimes=True)
@@ -97,6 +118,12 @@ class RuntimeContractTest(unittest.TestCase):
         stack = {**STACK, "sourceRuntimes": [STACK["sourceRuntimes"][1]]}
         self.assertTrue(
             any("contract runtime 'writer-github-audit' is missing" in error for error in verify_runtime_contract.verify_contract(CONTRACT, stack, require_manifest_runtimes=True))
+        )
+
+    def test_allows_missing_manifest_runtime_when_not_required(self) -> None:
+        stack = {**STACK, "sourceRuntimes": [STACK["sourceRuntimes"][1]]}
+        self.assertFalse(
+            any("contract runtime 'writer-github-audit' is missing" in error for error in verify_runtime_contract.verify_contract(CONTRACT, stack))
         )
 
     def test_rejects_manifest_runtime_source_mismatch_when_required(self) -> None:

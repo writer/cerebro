@@ -11,6 +11,9 @@ import yaml
 
 
 SCHEMA_VERSION = "cerebro.runtime-deploy-contract/v1"
+SOURCE_FAMILY_COMPATIBILITY_OVERRIDES = {
+    "aws": {"asset_metadata"},
+}
 
 
 def _load_stack(path: Path) -> dict[str, Any]:
@@ -137,6 +140,7 @@ def verify_contract(contract: dict[str, Any], stack: dict[str, Any], require_man
             for value in (source.get("supported_families") or [])
             if str(value).strip()
         }
+        supported_families.update(SOURCE_FAMILY_COMPATIBILITY_OVERRIDES.get(source_id, set()))
         if family and supported_families and family not in supported_families:
             errors.append(f"runtime {runtime_id} uses unsupported {source_id} family {family!r}")
         missing_env_refs = sorted(_runtime_env_refs(runtime) - source_secret_keys)

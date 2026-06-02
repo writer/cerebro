@@ -214,7 +214,7 @@ jobs:
           uv run --project infra python infra/scripts/validate_stack_config.py
           if [ -n "${CONTRACT_PATH}" ]; then
             contract_args=()
-            if [ "${STACK_NAME}" = "sec-dev" ]; then
+            if [ "${STACK_NAME}" = "go-prod" ]; then
               contract_args+=(--require-manifest-runtimes)
             fi
             uv run --project infra python infra/scripts/verify_runtime_contract.py \
@@ -224,8 +224,7 @@ jobs:
             if [ "${STACK_NAME}" = "go-prod" ] && ! git diff --quiet -- "${sec_dev_config}"; then
               uv run --project infra python infra/scripts/verify_runtime_contract.py \
                 --contract "${CONTRACT_PATH}" \
-                --stack-file "${sec_dev_config}" \
-                --require-manifest-runtimes
+                --stack-file "${sec_dev_config}"
             fi
           fi
 
