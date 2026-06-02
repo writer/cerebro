@@ -182,6 +182,16 @@ config:
         - page_limit=10
         - graph_page_limit=100
         - event_limit=1000
+    - name: sentinelone-application-inventory
+      scheduleExpression: rate(1 hour)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-sentinelone-application
+        - page_limit=10
+        - graph_page_limit=100
+        - event_limit=1000
     - name: sentinelone-exclusion-inventory
       scheduleExpression: rate(1 hour)
       taskCount: 1
@@ -259,6 +269,26 @@ config:
         - orchestrator
         - run
         - runtime_id=writer-aws-sec-dev-us2-resource-exposure
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-sec-dev-us1-asset-metadata
+      scheduleExpression: cron(14 0/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-us1-asset-metadata
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-sec-dev-us2-asset-metadata
+      scheduleExpression: cron(44 0/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-us2-asset-metadata
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
@@ -568,6 +598,14 @@ config:
         family: agent
         per_page: "200"
         token: env:SENTINELONE_API_TOKEN
+    - id: writer-sentinelone-application
+      sourceId: sentinelone
+      tenantId: writer
+      config:
+        base_url: env:SENTINELONE_BASE_URL
+        family: application
+        per_page: "50"
+        token: env:SENTINELONE_API_TOKEN
     - id: writer-sentinelone-exclusion
       sourceId: sentinelone
       tenantId: writer
@@ -621,6 +659,26 @@ config:
       config:
         account_id: "944130631940"
         family: resource_exposure
+        include_global: "false"
+        per_page: "100"
+        region: us-west-2
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+    - id: writer-aws-sec-dev-us1-asset-metadata
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "944130631940"
+        family: asset_metadata
+        include_global: "true"
+        per_page: "100"
+        region: us-east-1
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+    - id: writer-aws-sec-dev-us2-asset-metadata
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "944130631940"
+        family: asset_metadata
         include_global: "false"
         per_page: "100"
         region: us-west-2
