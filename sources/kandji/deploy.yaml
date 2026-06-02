@@ -1,0 +1,23 @@
+sourceId: kandji
+secretKeys:
+  - KANDJI_API_TOKEN
+  - KANDJI_BASE_URL
+runtimes:
+  - localId: device
+    config:
+      base_url: env:KANDJI_BASE_URL
+      family: device
+      per_page: "100"
+      token: env:KANDJI_API_TOKEN
+  - localId: application
+    config:
+      base_url: env:KANDJI_BASE_URL
+      family: application
+      per_page: "100"
+      token: env:KANDJI_API_TOKEN
+  - localId: vulnerability
+    config:
+      base_url: env:KANDJI_BASE_URL
+      family: vulnerability
+      per_page: "100"
+      token: env:KANDJI_API_TOKEN

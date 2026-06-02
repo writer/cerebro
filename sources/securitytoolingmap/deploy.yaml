@@ -1,0 +1,17 @@
+sourceId: security_tooling_map
+secretKeys:
+  - SECURITY_TOOLING_MAP_BASE_URL
+  - SECURITY_TOOLING_MAP_TOKEN
+runtimes:
+  - localId: tool
+    config:
+      base_url: env:SECURITY_TOOLING_MAP_BASE_URL
+      family: tool
+      per_page: "100"
+      token: env:SECURITY_TOOLING_MAP_TOKEN
+  - localId: control-mapping
+    config:
+      base_url: env:SECURITY_TOOLING_MAP_BASE_URL
+      family: control_mapping
+      per_page: "100"
+      token: env:SECURITY_TOOLING_MAP_TOKEN

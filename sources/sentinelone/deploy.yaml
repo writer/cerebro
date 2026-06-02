@@ -15,3 +15,9 @@ runtimes:
       family: agent
       per_page: "200"
       token: env:SENTINELONE_API_TOKEN
+  - localId: application
+    config:
+      base_url: env:SENTINELONE_BASE_URL
+      family: application
+      per_page: "50"
+      token: env:SENTINELONE_API_TOKEN

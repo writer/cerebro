@@ -3,6 +3,7 @@ name: AWS
 description: AWS IAM inventory and CloudTrail source.
 emitted_kinds:
   - aws.access_key
+  - asset.data_sensitivity
   - aws.cloudtrail
   - aws.effective_permission
   - aws.iam_group

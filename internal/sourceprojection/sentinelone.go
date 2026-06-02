@@ -162,6 +162,7 @@ func sentinelOneThreatProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 			"at":                     eventObservedAt(event),
 		},
 	})
+	addSentinelOneThreatClassificationLinks(entities, links, tenant, event, threatURN, attrs)
 
 	agentID := firstNonEmpty(strings.TrimSpace(attrs["agent_id"]), strings.TrimSpace(attrs["agent_uuid"]))
 	if agentID != "" {
@@ -540,6 +541,55 @@ func addSentinelOneScopeLinks(entities map[string]*ports.ProjectedEntity, links 
 			Attributes: map[string]string{"group_id": groupID, "group_name": strings.TrimSpace(attrs["group_name"]), "site_id": strings.TrimSpace(attrs["site_id"])},
 		})
 		addLink(links, projectedLink(tenant, event.GetSourceId(), fromURN, groupURN, relationMemberOf, map[string]string{"event_id": event.GetId()}))
+	}
+}
+
+func addSentinelOneThreatClassificationLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenant string, event *cerebrov1.EventEnvelope, threatURN string, attrs map[string]string) {
+	classification := firstNonEmpty(attrs["classification_norm"], attrs["classification"])
+	if classification != "" {
+		classificationURN := projectionURN(tenant, "sentinelone_threat_classification", normalizeIdentifier(classification))
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        classificationURN,
+			TenantID:   tenant,
+			SourceID:   event.GetSourceId(),
+			EntityType: "sentinelone.threat.classification",
+			Label:      firstNonEmpty(attrs["classification"], classification),
+			Attributes: compactAttributes(map[string]string{
+				"classification":        attrs["classification"],
+				"classification_norm":   normalizeIdentifier(classification),
+				"classification_source": attrs["classification_source"],
+			}),
+		})
+		addLink(links, projectedLink(tenant, event.GetSourceId(), threatURN, classificationURN, relationHasClassification, map[string]string{"event_id": event.GetId(), "source_attribute": "classification"}))
+	}
+	addSentinelOneThreatTagLinks(entities, links, tenant, event, threatURN, "analyst_verdict", firstNonEmpty(attrs["analyst_verdict_norm"], attrs["analyst_verdict"]))
+	addSentinelOneThreatTagLinks(entities, links, tenant, event, threatURN, "incident_status", firstNonEmpty(attrs["incident_status_norm"], attrs["incident_status"]))
+	addSentinelOneThreatTagLinks(entities, links, tenant, event, threatURN, "mitigation_status", firstNonEmpty(attrs["mitigation_status_norm"], attrs["mitigation_status"]))
+	addSentinelOneThreatTagLinks(entities, links, tenant, event, threatURN, "detection_type", attrs["detection_type"])
+	addSentinelOneThreatTagLinks(entities, links, tenant, event, threatURN, "mitre_tactic", attrs["mitre_tactics"])
+	addSentinelOneThreatTagLinks(entities, links, tenant, event, threatURN, "mitre_technique", attrs["mitre_techniques"])
+	addSentinelOneThreatTagLinks(entities, links, tenant, event, threatURN, "indicator_category", attrs["indicator_categories"])
+	if projectionBool(attrs["is_fileless"]) {
+		addSentinelOneThreatTagLinks(entities, links, tenant, event, threatURN, "threat_property", "fileless")
+	}
+}
+
+func addSentinelOneThreatTagLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenant string, event *cerebrov1.EventEnvelope, threatURN string, key string, rawValues string) {
+	for _, value := range splitCSV(rawValues) {
+		tagValue := normalizeIdentifier(key) + ":" + normalizeIdentifier(value)
+		tagURN := projectionURN(tenant, "sentinelone_threat_tag", tagValue)
+		if tagURN == "" {
+			continue
+		}
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        tagURN,
+			TenantID:   tenant,
+			SourceID:   event.GetSourceId(),
+			EntityType: "sentinelone.threat.tag",
+			Label:      tagValue,
+			Attributes: map[string]string{"tag": tagValue, "tag_key": key, "tag_value": value},
+		})
+		addLink(links, projectedLink(tenant, event.GetSourceId(), threatURN, tagURN, relationTaggedAs, map[string]string{"event_id": event.GetId(), "source_attribute": key}))
 	}
 }
 

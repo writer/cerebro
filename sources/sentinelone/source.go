@@ -193,9 +193,6 @@ func parseSettings(cfg sourcecdk.Config, allowLoopbackBaseURL bool) (settings, e
 		}
 		resolved.perPage = perPage
 	}
-	if resolved.family == familyApplication && resolved.agentID == "" {
-		return resolved, fmt.Errorf("sentinelone agent_id is required when family=%q", familyApplication)
-	}
 	switch resolved.family {
 	case familyActivity, familyThreat:
 	default:
@@ -412,14 +409,32 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				if err := agentApplicationCheck(ctx, s, settings); err != nil {
 					return nil, err
 				}
-				urn, err := sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:agent:%s", settings.host, settings.agentID))
-				if err != nil {
-					return nil, err
+				if settings.agentID != "" {
+					urn, err := sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:agent:%s", settings.host, settings.agentID))
+					if err != nil {
+						return nil, err
+					}
+					return []sourcecdk.URN{urn}, nil
 				}
-				return []sourcecdk.URN{urn}, nil
+				agents, _, err := s.listAgents(ctx, settings, "", settings.perPage)
+				if err != nil {
+					return nil, wrapLookupError(label("sentinelone agents", settings), err)
+				}
+				urns := make([]sourcecdk.URN, 0, len(agents))
+				for _, agent := range agents {
+					if strings.TrimSpace(agent.ID) == "" {
+						continue
+					}
+					urn, err := sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:agent:%s", settings.host, agent.ID))
+					if err != nil {
+						return nil, err
+					}
+					urns = append(urns, urn)
+				}
+				return urns, nil
 			},
 			URN: func(settings settings, app applicationRecord) (string, error) {
-				return fmt.Sprintf("urn:cerebro:%s:application_inventory:%s:%s", settings.host, settings.agentID, applicationID(settings, app)), nil
+				return fmt.Sprintf("urn:cerebro:%s:application_inventory:%s:%s", settings.host, applicationAgentID(settings, app), applicationID(settings, app)), nil
 			},
 			CursorFallback: func(app applicationRecord) string { return applicationID(settings{}, app) },
 		}),
@@ -658,12 +673,35 @@ func (s *Source) listActivities(ctx context.Context, settings settings, cursor s
 	return listJSONRecords[activityRecord, *activityRecord](ctx, s, settings, "/web/api/v2.1/activities", query)
 }
 
-func (s *Source) listApplications(ctx context.Context, settings settings, cursor string, _ int) ([]applicationRecord, string, error) {
+func (s *Source) listApplications(ctx context.Context, settings settings, cursor string, limit int) ([]applicationRecord, string, error) {
+	if strings.TrimSpace(settings.agentID) == "" {
+		agents, next, err := s.listAgents(ctx, settings, cursor, limit)
+		if err != nil {
+			return nil, "", err
+		}
+		records := make([]applicationRecord, 0)
+		for _, agent := range agents {
+			agentID := strings.TrimSpace(agent.ID)
+			if agentID == "" {
+				continue
+			}
+			applications, _, err := s.listApplicationsForAgent(ctx, settings, agentID)
+			if err != nil {
+				return nil, "", err
+			}
+			records = append(records, applications...)
+		}
+		return records, next, nil
+	}
 	if cursor != "" {
 		return nil, "", nil
 	}
+	return s.listApplicationsForAgent(ctx, settings, settings.agentID)
+}
+
+func (s *Source) listApplicationsForAgent(ctx context.Context, settings settings, agentID string) ([]applicationRecord, string, error) {
 	query := url.Values{}
-	addQuery(query, "ids", settings.agentID)
+	addQuery(query, "ids", agentID)
 	var resp struct {
 		Data []json.RawMessage `json:"data"`
 	}
@@ -676,6 +714,7 @@ func (s *Source) listApplications(ctx context.Context, settings settings, cursor
 		if err := json.Unmarshal(item, &record); err != nil {
 			return nil, "", fmt.Errorf("decode sentinelone application record: %w", err)
 		}
+		record.AgentID = agentID
 		record.setRaw(cloneRaw(item))
 		records = append(records, record)
 	}

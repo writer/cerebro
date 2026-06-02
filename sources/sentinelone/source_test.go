@@ -93,14 +93,46 @@ func TestParseSettingsRejectsUnknownFamily(t *testing.T) {
 	}
 }
 
-func TestApplicationFamilyRequiresAgentID(t *testing.T) {
+func TestApplicationFamilyFansOutWithoutAgentID(t *testing.T) {
+	server := httptest.NewServer(newTestAPIHandler(t))
+	defer server.Close()
+
 	source, err := New()
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	err = source.Check(context.Background(), sourcecdk.NewConfig(newFixtureConfig("application", nil)))
-	if err == nil {
-		t.Fatal("Check(application) error = nil, want non-nil")
+	source.allowLoopbackBaseURL = true
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   "application",
+		"per_page": "1",
+		"token":    fixtureToken,
+	})
+	if err := source.Check(context.Background(), cfg); err != nil {
+		t.Fatalf("Check(application) error = %v", err)
+	}
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(application first page) error = %v", err)
+	}
+	if len(first.Events) != 1 {
+		t.Fatalf("len(first.Events) = %d, want 1", len(first.Events))
+	}
+	if got := first.Events[0].Attributes["agent_id"]; got != "A-1" {
+		t.Fatalf("first agent_id = %q, want A-1", got)
+	}
+	if first.NextCursor == nil {
+		t.Fatal("first.NextCursor = nil, want second agent page")
+	}
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(application second page) error = %v", err)
+	}
+	if len(second.Events) != 1 {
+		t.Fatalf("len(second.Events) = %d, want 1", len(second.Events))
+	}
+	if got := second.Events[0].Attributes["agent_id"]; got != "A-2" {
+		t.Fatalf("second agent_id = %q, want A-2", got)
 	}
 }
 
@@ -127,9 +159,6 @@ func TestNewFixtureDiscoversAndReadsAllFamilies(t *testing.T) {
 	} {
 		t.Run(family, func(t *testing.T) {
 			cfg := newFixtureConfig(family, nil)
-			if family == familyApplication {
-				cfg["agent_id"] = "agent-fixture-1"
-			}
 			urns, err := source.Discover(context.Background(), sourcecdk.NewConfig(cfg))
 			if err != nil {
 				t.Fatalf("Discover(%s) error = %v", family, err)

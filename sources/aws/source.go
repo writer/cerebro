@@ -33,6 +33,8 @@ import (
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
+	resourcegroupstaggingapitypes "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
@@ -60,6 +62,7 @@ const (
 	publicEndpointCursorV2    = 2
 	awsAssumeRoleSessionName  = "cerebro-source-runtime"
 	familyAccessKey           = "access_key"
+	familyAssetMetadata       = "asset_metadata"
 	familyCloudTrail          = "cloudtrail"
 	familyEffectivePermission = "effective_permission"
 	familyIAMGroup            = "iam_group"
@@ -116,6 +119,7 @@ type awsClients struct {
 	elbv2        awsELBV2API
 	apiGateway   awsAPIGatewayAPI
 	apiGatewayV2 awsAPIGatewayV2API
+	tagging      awsResourceGroupsTaggingAPI
 }
 
 type awsIAMAPI interface {
@@ -168,6 +172,10 @@ type awsAPIGatewayAPI interface {
 type awsAPIGatewayV2API interface {
 	GetApis(context.Context, *apigatewayv2.GetApisInput, ...func(*apigatewayv2.Options)) (*apigatewayv2.GetApisOutput, error)
 	GetDomainNames(context.Context, *apigatewayv2.GetDomainNamesInput, ...func(*apigatewayv2.Options)) (*apigatewayv2.GetDomainNamesOutput, error)
+}
+
+type awsResourceGroupsTaggingAPI interface {
+	GetResources(context.Context, *resourcegroupstaggingapi.GetResourcesInput, ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error)
 }
 
 type awsFamilyOptions[T any] struct {
@@ -233,6 +241,15 @@ type awsPublicEndpoint struct {
 	Service              string
 	AttachedInstanceID   string
 	AssociatedInstanceID string
+}
+
+type awsAssetMetadata struct {
+	ResourceARN  string
+	ResourceID   string
+	ResourceName string
+	ResourceType string
+	Region       string
+	Tags         map[string]string
 }
 
 const (
@@ -378,6 +395,16 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:access_key:%s:%s", settings.accountID, settings.userName, awssdk.ToString(key.AccessKeyId)), nil
 			},
 			CursorFallback: func(key iamtypes.AccessKeyMetadata) string { return awssdk.ToString(key.AccessKeyId) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsAssetMetadata]{
+			Name:  familyAssetMetadata,
+			Label: "aws asset metadata",
+			List:  listAssetMetadata,
+			Event: assetMetadataEvent,
+			URN: func(settings settings, asset awsAssetMetadata) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_asset_metadata:%s", settings.accountID, firstNonEmpty(asset.ResourceARN, asset.ResourceID)), nil
+			},
+			CursorFallback: func(asset awsAssetMetadata) string { return firstNonEmpty(asset.ResourceARN, asset.ResourceID) },
 		}),
 		awsFamily(s.clients, awsFamilyOptions[cloudtrailtypes.Event]{
 			Name:  familyCloudTrail,
@@ -552,6 +579,7 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		elbv2:        elbv2.NewFromConfig(cfg),
 		apiGateway:   apigateway.NewFromConfig(cfg),
 		apiGatewayV2: apigatewayv2.NewFromConfig(cfg),
+		tagging:      resourcegroupstaggingapi.NewFromConfig(cfg),
 	}, nil
 }
 
@@ -608,7 +636,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyCloudTrail, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyPublicEndpoint, familyResourceExposure:
+	case familyAssetMetadata, familyCloudTrail, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyPublicEndpoint, familyResourceExposure:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -623,7 +651,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("aws principal_type must be user, group, or role when family=%q", familyIAMRoleAssign)
 		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of access_key, cloudtrail, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, public_endpoint, or resource_exposure")
+		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, public_endpoint, or resource_exposure")
 	}
 	return settings, nil
 }
@@ -742,6 +770,31 @@ func listIAMRoleTrusts(ctx context.Context, clients awsClients, settings setting
 		trusts = append(trusts, roleTrusts(role)...)
 	}
 	return trusts, next, nil
+}
+
+func listAssetMetadata(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsAssetMetadata, string, error) {
+	out, err := clients.tagging.GetResources(ctx, &resourcegroupstaggingapi.GetResourcesInput{
+		PaginationToken:  stringPtr(cursor),
+		ResourcesPerPage: int32Ptr(assetMetadataPageSize(limit)),
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	records := make([]awsAssetMetadata, 0, len(out.ResourceTagMappingList))
+	for _, mapping := range out.ResourceTagMappingList {
+		arn := awssdk.ToString(mapping.ResourceARN)
+		resourceType, resourceID, resourceName, region := awsAssetMetadataIdentity(settings, arn)
+		tags := awsAssetTagMap(mapping.Tags)
+		records = append(records, awsAssetMetadata{
+			ResourceARN:  arn,
+			ResourceID:   resourceID,
+			ResourceName: firstNonEmpty(tagLookup(tags, "Name"), resourceName, resourceID),
+			ResourceType: resourceType,
+			Region:       firstNonEmpty(region, settings.region),
+			Tags:         tags,
+		})
+	}
+	return records, awssdk.ToString(out.PaginationToken), nil
 }
 
 func listResourceExposures(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsResourceExposure, string, error) {
@@ -2028,6 +2081,45 @@ func accessKeyEvent(settings settings, key iamtypes.AccessKeyMetadata) (*primiti
 	return sourceEvent(settings, "aws-access-key-"+firstNonEmpty(awssdk.ToString(key.AccessKeyId), userName), "aws.access_key", "aws/access_key/v1", payload, attributes, firstTime(key.CreateDate))
 }
 
+func assetMetadataEvent(settings settings, asset awsAssetMetadata) (*primitives.Event, error) {
+	payload, err := json.Marshal(map[string]any{
+		"account_id":    settings.accountID,
+		"region":        asset.Region,
+		"resource_arn":  asset.ResourceARN,
+		"resource_id":   asset.ResourceID,
+		"resource_name": asset.ResourceName,
+		"resource_type": asset.ResourceType,
+		"tags":          asset.Tags,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal aws asset metadata payload: %w", err)
+	}
+	attributes := map[string]string{
+		"asset_criticality":   firstNonEmpty(tagLookup(asset.Tags, "asset_criticality", "business_criticality", "criticality", "tier"), criticalityFromTags(asset.Tags)),
+		"aws_account_id":      settings.accountID,
+		"contains_pci":        tagLookup(asset.Tags, "contains_pci", "pci"),
+		"contains_phi":        tagLookup(asset.Tags, "contains_phi", "phi"),
+		"contains_pii":        tagLookup(asset.Tags, "contains_pii", "pii"),
+		"contains_secrets":    tagLookup(asset.Tags, "contains_secrets", "secrets"),
+		"crown_jewel":         boolString(crownJewelFromTags(asset.Tags)),
+		"data_classification": tagLookup(asset.Tags, "data_classification", "DataClassification", "data-classification", "data class", "data_class", "classification", "sensitivity", "data_sensitivity", "DataSensitivity"),
+		"environment":         tagLookup(asset.Tags, "environment", "env", "stage"),
+		"internet_exposed":    tagLookup(asset.Tags, "internet_exposed", "internet-exposed", "externally_exposed", "external_exposure"),
+		"owner":               tagLookup(asset.Tags, "owner", "application_owner", "business_owner", "service_owner"),
+		"public":              tagLookup(asset.Tags, "public", "public_access"),
+		"region":              asset.Region,
+		"resource_arn":        asset.ResourceARN,
+		"resource_id":         asset.ResourceID,
+		"resource_name":       asset.ResourceName,
+		"resource_provider":   "aws",
+		"resource_type":       asset.ResourceType,
+		"source_provider":     "aws",
+		"team":                tagLookup(asset.Tags, "team", "squad", "group"),
+	}
+	resourceKey := firstNonEmpty(asset.ResourceARN, asset.ResourceID, asset.ResourceName)
+	return sourceEvent(settings, "aws-asset-metadata-"+resourceKey, "asset.data_sensitivity", "asset/data_sensitivity/v1", payload, attributes, time.Now().UTC())
+}
+
 func resourceExposureEvent(settings settings, exposure awsResourceExposure) (*primitives.Event, error) {
 	attributes := map[string]string{
 		"action":            "allow",
@@ -2792,6 +2884,172 @@ func ec2PageSize(limit int) int {
 		return 5
 	}
 	return limit
+}
+
+func assetMetadataPageSize(limit int) int {
+	if limit <= 0 {
+		return defaultPageSize
+	}
+	if limit > 100 {
+		return 100
+	}
+	return limit
+}
+
+func awsAssetTagMap(tags []resourcegroupstaggingapitypes.Tag) map[string]string {
+	values := make(map[string]string, len(tags))
+	for _, tag := range tags {
+		key := strings.TrimSpace(awssdk.ToString(tag.Key))
+		if key == "" {
+			continue
+		}
+		values[key] = strings.TrimSpace(awssdk.ToString(tag.Value))
+	}
+	return values
+}
+
+func tagLookup(tags map[string]string, keys ...string) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	normalized := make(map[string]string, len(tags))
+	for key, value := range tags {
+		normalized[normalizeTagKey(key)] = value
+	}
+	for _, key := range keys {
+		if value := strings.TrimSpace(normalized[normalizeTagKey(key)]); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func normalizeTagKey(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.ReplaceAll(value, "-", "_")
+	value = strings.ReplaceAll(value, " ", "_")
+	value = strings.ReplaceAll(value, ".", "_")
+	value = strings.Trim(value, "_")
+	for strings.Contains(value, "__") {
+		value = strings.ReplaceAll(value, "__", "_")
+	}
+	return value
+}
+
+func crownJewelFromTags(tags map[string]string) bool {
+	if taggedBool(tagLookup(tags, "crown_jewel", "crown-jewel", "tier0", "tier_0", "tier-0", "business_critical", "business-critical")) {
+		return true
+	}
+	switch normalizeTagKey(firstNonEmpty(tagLookup(tags, "criticality", "tier", "asset_criticality"), tagLookup(tags, "data_classification", "sensitivity"))) {
+	case "crown_jewel", "tier0", "tier_0", "critical":
+		return true
+	default:
+		return false
+	}
+}
+
+func criticalityFromTags(tags map[string]string) string {
+	if crownJewelFromTags(tags) {
+		return "critical"
+	}
+	return ""
+}
+
+func taggedBool(value string) bool {
+	switch normalizeTagKey(value) {
+	case "1", "t", "true", "y", "yes", "enabled":
+		return true
+	default:
+		return false
+	}
+}
+
+func awsAssetMetadataIdentity(settings settings, arn string) (string, string, string, string) {
+	parts := strings.SplitN(strings.TrimSpace(arn), ":", 6)
+	if len(parts) < 6 || parts[0] != "arn" {
+		return "resource", strings.TrimSpace(arn), strings.TrimSpace(arn), settings.region
+	}
+	service := strings.ToLower(parts[2])
+	region := firstNonEmpty(parts[3], settings.region)
+	resource := strings.TrimSpace(parts[5])
+	resourceType, resourceID := awsResourceTypeAndID(service, arn, resource)
+	return resourceType, resourceID, awsResourceName(resource), region
+}
+
+func awsResourceTypeAndID(service string, arn string, resource string) (string, string) {
+	switch service {
+	case "ec2":
+		return awsEC2ResourceTypeAndID(arn, resource)
+	case "elasticloadbalancing":
+		return awsELBResourceTypeAndID(arn, resource)
+	case "cloudfront":
+		if id, ok := strings.CutPrefix(resource, "distribution/"); ok {
+			return "cloudfront_distribution", firstNonEmpty(arn, id)
+		}
+	case "s3":
+		return "bucket", firstNonEmpty(arn, strings.TrimPrefix(resource, ":::"))
+	case "rds":
+		if before, after, ok := strings.Cut(resource, ":"); ok {
+			return normalizeAWSResourceType(before), firstNonEmpty(arn, after)
+		}
+	case "lambda":
+		if before, after, ok := strings.Cut(resource, ":"); ok {
+			return normalizeAWSResourceType(before), firstNonEmpty(arn, after)
+		}
+	}
+	resourceType := "resource"
+	resourceID := resource
+	if before, after, ok := strings.Cut(resource, "/"); ok {
+		resourceType = normalizeAWSResourceType(before)
+		resourceID = after
+	} else if before, after, ok := strings.Cut(resource, ":"); ok {
+		resourceType = normalizeAWSResourceType(before)
+		resourceID = after
+	}
+	return resourceType, firstNonEmpty(resourceID, arn)
+}
+
+func awsEC2ResourceTypeAndID(arn string, resource string) (string, string) {
+	resourceType, resourceID, ok := strings.Cut(resource, "/")
+	if !ok {
+		return normalizeAWSResourceType(resource), firstNonEmpty(arn, resource)
+	}
+	switch resourceType {
+	case "security-group":
+		return "security_group", firstNonEmpty(arn, resourceID)
+	case "network-interface":
+		return "network_interface", resourceID
+	case "instance":
+		return "ec2_instance", resourceID
+	default:
+		return normalizeAWSResourceType(resourceType), firstNonEmpty(resourceID, arn)
+	}
+}
+
+func awsELBResourceTypeAndID(arn string, resource string) (string, string) {
+	switch {
+	case strings.HasPrefix(resource, "loadbalancer/app/"):
+		return "application_load_balancer", arn
+	case strings.HasPrefix(resource, "loadbalancer/net/"):
+		return "network_load_balancer", arn
+	case strings.HasPrefix(resource, "loadbalancer/"):
+		return "load_balancer", arn
+	case strings.HasPrefix(resource, "targetgroup/"):
+		return "target_group", arn
+	default:
+		return "load_balancer", firstNonEmpty(arn, resource)
+	}
+}
+
+func awsResourceName(resource string) string {
+	resource = strings.TrimSpace(resource)
+	if resource == "" {
+		return ""
+	}
+	if idx := strings.LastIndexAny(resource, "/:"); idx >= 0 && idx+1 < len(resource) {
+		return resource[idx+1:]
+	}
+	return resource
 }
 
 func firstTime(values ...*time.Time) time.Time {
