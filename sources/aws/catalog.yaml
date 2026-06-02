@@ -5,6 +5,9 @@ emitted_kinds:
   - aws.access_key
   - asset.data_sensitivity
   - aws.cloudtrail
+  - aws.ec2_instance
+  - aws.ecs_service
+  - aws.ecs_task_definition
   - aws.effective_permission
   - aws.iam_group
   - aws.iam_group_membership
@@ -14,10 +17,14 @@ emitted_kinds:
   - aws.iam_user
   - aws.public_endpoint
   - aws.resource_exposure
+  - aws.lambda_function
 runtime_families:
   - access_key
   - asset_metadata
   - cloudtrail
+  - ec2_instance
+  - ecs_service
+  - ecs_task_definition
   - effective_permission
   - iam_group
   - iam_group_membership
@@ -27,3 +34,4 @@ runtime_families:
   - iam_user
   - public_endpoint
   - resource_exposure
+  - lambda_function

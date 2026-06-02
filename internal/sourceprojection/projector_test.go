@@ -3214,6 +3214,114 @@ func TestProjectCloudExposureAndPrivilegePaths(t *testing.T) {
 	assertProjectedLink(t, state, "urn:cerebro:writer:azure_service_principal:sp-1", relationAssignedTo, "urn:cerebro:writer:azure_service_principal:sp-resource-1")
 }
 
+func TestProjectAWSComputeInventoryDepth(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:       "aws-ec2-instance-i-123",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.ec2_instance",
+			Attributes: map[string]string{
+				"domain":                "123456789012",
+				"instance_id":           "i-123",
+				"network_interface_ids": "eni-1",
+				"region":                "us-east-1",
+				"resource_id":           "i-123",
+				"resource_name":         "prod-web",
+				"resource_provider":     "aws",
+				"resource_type":         "ec2_instance",
+				"role_arn":              "arn:aws:iam::123456789012:role/WebInstanceRole",
+				"role_name":             "WebInstanceRole",
+				"security_group_ids":    "sg-1",
+				"subnet_id":             "subnet-1",
+				"vpc_id":                "vpc-1",
+			},
+		},
+		{
+			Id:       "aws-lambda-function-orders",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.lambda_function",
+			Attributes: map[string]string{
+				"domain":             "123456789012",
+				"function_arn":       "arn:aws:lambda:us-east-1:123456789012:function:orders",
+				"function_name":      "orders",
+				"resource_id":        "arn:aws:lambda:us-east-1:123456789012:function:orders",
+				"resource_provider":  "aws",
+				"resource_type":      "lambda_function",
+				"role_arn":           "arn:aws:iam::123456789012:role/LambdaOrdersRole",
+				"role_name":          "LambdaOrdersRole",
+				"security_group_ids": "sg-lambda",
+				"subnet_ids":         "subnet-lambda",
+				"vpc_id":             "vpc-1",
+			},
+		},
+		{
+			Id:       "aws-ecs-service-orders",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.ecs_service",
+			Attributes: map[string]string{
+				"cluster_arn":         "arn:aws:ecs:us-east-1:123456789012:cluster/prod",
+				"cluster_name":        "prod",
+				"domain":              "123456789012",
+				"resource_id":         "arn:aws:ecs:us-east-1:123456789012:service/prod/orders",
+				"resource_name":       "orders",
+				"resource_provider":   "aws",
+				"resource_type":       "ecs_service",
+				"service_arn":         "arn:aws:ecs:us-east-1:123456789012:service/prod/orders",
+				"service_name":        "orders",
+				"task_definition_arn": "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7",
+			},
+		},
+		{
+			Id:       "aws-ecs-task-definition-orders",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.ecs_task_definition",
+			Attributes: map[string]string{
+				"domain":              "123456789012",
+				"execution_role_arn":  "arn:aws:iam::123456789012:role/ECSExecutionRole",
+				"execution_role_name": "ECSExecutionRole",
+				"resource_id":         "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7",
+				"resource_name":       "orders",
+				"resource_provider":   "aws",
+				"resource_type":       "ecs_task_definition",
+				"task_definition_arn": "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7",
+				"task_role_arn":       "arn:aws:iam::123456789012:role/ECSTaskRole",
+				"task_role_name":      "ECSTaskRole",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%q) error = %v", event.GetId(), err)
+		}
+	}
+
+	ec2URN := "urn:cerebro:writer:aws_ec2_instance:i-123"
+	lambdaURN := "urn:cerebro:writer:aws_lambda_function:arn:aws:lambda:us-east-1:123456789012:function:orders"
+	ecsServiceURN := "urn:cerebro:writer:aws_ecs_service:arn:aws:ecs:us-east-1:123456789012:service/prod/orders"
+	ecsTaskDefinitionURN := "urn:cerebro:writer:aws_ecs_task_definition:arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7"
+	if entity := state.entities[ec2URN]; entity == nil || entity.EntityType != "aws.ec2.instance" {
+		t.Fatalf("ec2 entity missing or wrong type: %#v", entity)
+	}
+	assertProjectedLink(t, state, ec2URN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, ec2URN, relationRunsAs, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/WebInstanceRole")
+	assertProjectedLink(t, state, ec2URN, relationBelongsTo, "urn:cerebro:writer:aws_vpc:vpc-1")
+	assertProjectedLink(t, state, ec2URN, relationBelongsTo, "urn:cerebro:writer:aws_subnet:subnet-1")
+	assertProjectedLink(t, state, ec2URN, relationMemberOf, "urn:cerebro:writer:aws_security_group:sg-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-1", relationAttachedTo, ec2URN)
+	assertProjectedLink(t, state, lambdaURN, relationRunsAs, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/LambdaOrdersRole")
+	assertProjectedLink(t, state, lambdaURN, relationMemberOf, "urn:cerebro:writer:aws_security_group:sg-lambda")
+	assertProjectedLink(t, state, ecsServiceURN, relationBelongsTo, "urn:cerebro:writer:aws_ecs_cluster:arn:aws:ecs:us-east-1:123456789012:cluster/prod")
+	assertProjectedLink(t, state, ecsServiceURN, relationDependsOn, ecsTaskDefinitionURN)
+	assertProjectedLink(t, state, ecsTaskDefinitionURN, relationRunsAs, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/ECSTaskRole")
+	assertProjectedLink(t, state, ecsTaskDefinitionURN, relationRunsAs, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/ECSExecutionRole")
+}
+
 func TestProjectAWSAccountTrustPrincipal(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

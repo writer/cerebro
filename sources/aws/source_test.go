@@ -22,10 +22,14 @@ import (
 	cloudtrailtypes "github.com/aws/aws-sdk-go-v2/service/cloudtrail/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/ecs"
+	ecstypes "github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/lambda"
+	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
 	resourcegroupstaggingapitypes "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
@@ -310,8 +314,12 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 	}{
 		{family: familyAccessKey, config: map[string]string{"user_name": "admin@writer.com"}, kind: "aws.access_key"},
 		{family: familyAssetMetadata, kind: "asset.data_sensitivity"},
+		{family: familyEC2Instance, kind: "aws.ec2_instance"},
+		{family: familyECSService, kind: "aws.ecs_service"},
+		{family: familyECSTaskDefinition, kind: "aws.ecs_task_definition"},
 		{family: familyEffectivePermission, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.effective_permission"},
 		{family: familyIAMUser, kind: "aws.iam_user"},
+		{family: familyLambdaFunction, kind: "aws.lambda_function"},
 		{family: familyIAMRole, kind: "aws.iam_role"},
 		{family: familyIAMRoleTrust, kind: "aws.iam_role_trust"},
 		{family: familyIAMGroup, kind: "aws.iam_group"},
@@ -353,6 +361,128 @@ func TestReadAWSIAMUserPreview(t *testing.T) {
 	}
 	if got := pull.Events[0].Attributes["email"]; got != "admin@writer.com" {
 		t.Fatalf("email = %q, want admin@writer.com", got)
+	}
+}
+
+func TestReadAWSComputeInventoryEvents(t *testing.T) {
+	profileARN := "arn:aws:iam::123456789012:instance-profile/WebProfile"
+	instanceRoleARN := "arn:aws:iam::123456789012:role/WebInstanceRole"
+	taskDefinitionARN := "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7"
+	serviceARN := "arn:aws:ecs:us-east-1:123456789012:service/prod/orders"
+	clusterARN := "arn:aws:ecs:us-east-1:123456789012:cluster/prod"
+	source := newTestSource(t, fakeAWS{
+		compute: fakeAWSCompute{
+			instances: []ec2types.Instance{{
+				InstanceId:   awssdk.String("i-123"),
+				ImageId:      awssdk.String("ami-123"),
+				InstanceType: ec2types.InstanceTypeT3Micro,
+				IamInstanceProfile: &ec2types.IamInstanceProfile{
+					Arn: awssdk.String(profileARN),
+					Id:  awssdk.String("AIPROFILE"),
+				},
+				NetworkInterfaces: []ec2types.InstanceNetworkInterface{{
+					NetworkInterfaceId: awssdk.String("eni-1"),
+					Groups:             []ec2types.GroupIdentifier{{GroupId: awssdk.String("sg-1")}},
+				}},
+				Placement:        &ec2types.Placement{AvailabilityZone: awssdk.String("us-east-1a")},
+				PrivateIpAddress: awssdk.String("10.0.1.10"),
+				SecurityGroups:   []ec2types.GroupIdentifier{{GroupId: awssdk.String("sg-1")}},
+				State:            &ec2types.InstanceState{Name: ec2types.InstanceStateNameRunning},
+				SubnetId:         awssdk.String("subnet-1"),
+				Tags:             []ec2types.Tag{{Key: awssdk.String("Name"), Value: awssdk.String("prod-web")}},
+				VpcId:            awssdk.String("vpc-1"),
+			}},
+			instanceProfiles: map[string]iamtypes.InstanceProfile{
+				"WebProfile": {Roles: []iamtypes.Role{{Arn: awssdk.String(instanceRoleARN), RoleName: awssdk.String("WebInstanceRole"), RoleId: awssdk.String("AROWEB")}}},
+			},
+			lambdaFunctions: []lambdatypes.FunctionConfiguration{{
+				FunctionArn:  awssdk.String("arn:aws:lambda:us-east-1:123456789012:function:orders"),
+				FunctionName: awssdk.String("orders"),
+				Role:         awssdk.String("arn:aws:iam::123456789012:role/LambdaOrdersRole"),
+				Runtime:      lambdatypes.RuntimePython312,
+				State:        lambdatypes.StateActive,
+				VpcConfig: &lambdatypes.VpcConfigResponse{
+					SecurityGroupIds: []string{"sg-lambda"},
+					SubnetIds:        []string{"subnet-lambda"},
+					VpcId:            awssdk.String("vpc-1"),
+				},
+			}},
+			ecsClusters:           []string{clusterARN},
+			ecsServiceARNs:        map[string][]string{clusterARN: []string{serviceARN}},
+			ecsServices:           map[string]ecstypes.Service{serviceARN: {ClusterArn: awssdk.String(clusterARN), ServiceArn: awssdk.String(serviceARN), ServiceName: awssdk.String("orders"), Status: awssdk.String("ACTIVE"), TaskDefinition: awssdk.String(taskDefinitionARN), DesiredCount: 2, RunningCount: 2}},
+			ecsTaskDefinitionARNs: []string{taskDefinitionARN},
+			ecsTaskDefinitions: map[string]ecstypes.TaskDefinition{taskDefinitionARN: {
+				ContainerDefinitions: []ecstypes.ContainerDefinition{{Name: awssdk.String("orders"), Image: awssdk.String("repo/orders:latest")}},
+				ExecutionRoleArn:     awssdk.String("arn:aws:iam::123456789012:role/ECSExecutionRole"),
+				Family:               awssdk.String("orders"),
+				RequiresCompatibilities: []ecstypes.Compatibility{
+					ecstypes.CompatibilityFargate,
+				},
+				Revision:          7,
+				Status:            ecstypes.TaskDefinitionStatusActive,
+				TaskDefinitionArn: awssdk.String(taskDefinitionARN),
+				TaskRoleArn:       awssdk.String("arn:aws:iam::123456789012:role/ECSTaskRole"),
+			}},
+		},
+	})
+	for _, tt := range []struct {
+		family string
+		kind   string
+		assert func(*testing.T, *cerebrov1.EventEnvelope)
+	}{
+		{
+			family: familyEC2Instance,
+			kind:   "aws.ec2_instance",
+			assert: func(t *testing.T, event *cerebrov1.EventEnvelope) {
+				if got := event.Attributes["role_arn"]; got != instanceRoleARN {
+					t.Fatalf("ec2 role_arn = %q, want %q", got, instanceRoleARN)
+				}
+				if got := event.Attributes["network_interface_ids"]; got != "eni-1" {
+					t.Fatalf("ec2 network_interface_ids = %q, want eni-1", got)
+				}
+			},
+		},
+		{
+			family: familyLambdaFunction,
+			kind:   "aws.lambda_function",
+			assert: func(t *testing.T, event *cerebrov1.EventEnvelope) {
+				if got := event.Attributes["role_name"]; got != "LambdaOrdersRole" {
+					t.Fatalf("lambda role_name = %q, want LambdaOrdersRole", got)
+				}
+			},
+		},
+		{
+			family: familyECSService,
+			kind:   "aws.ecs_service",
+			assert: func(t *testing.T, event *cerebrov1.EventEnvelope) {
+				if got := event.Attributes["task_definition_arn"]; got != taskDefinitionARN {
+					t.Fatalf("ecs service task_definition_arn = %q, want %q", got, taskDefinitionARN)
+				}
+			},
+		},
+		{
+			family: familyECSTaskDefinition,
+			kind:   "aws.ecs_task_definition",
+			assert: func(t *testing.T, event *cerebrov1.EventEnvelope) {
+				if got := event.Attributes["task_role_name"]; got != "ECSTaskRole" {
+					t.Fatalf("ecs task task_role_name = %q, want ECSTaskRole", got)
+				}
+			},
+		},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			tt.assert(t, pull.Events[0])
+		})
 	}
 }
 
@@ -902,6 +1032,20 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			},
 		}}
 	}
+	computeData := func(fake *recordingAWS) {
+		profileARN := "arn:aws:iam::123456789012:instance-profile/WebProfile"
+		taskDefinitionARN := "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7"
+		serviceARN := "arn:aws:ecs:us-east-1:123456789012:service/prod/orders"
+		clusterARN := "arn:aws:ecs:us-east-1:123456789012:cluster/prod"
+		fake.compute.instances = []ec2types.Instance{{InstanceId: awssdk.String("i-123"), IamInstanceProfile: &ec2types.IamInstanceProfile{Arn: awssdk.String(profileARN)}}}
+		fake.compute.instanceProfiles = map[string]iamtypes.InstanceProfile{"WebProfile": {Roles: []iamtypes.Role{{Arn: awssdk.String("arn:aws:iam::123456789012:role/WebInstanceRole"), RoleName: awssdk.String("WebInstanceRole")}}}}
+		fake.compute.lambdaFunctions = []lambdatypes.FunctionConfiguration{{FunctionArn: awssdk.String("arn:aws:lambda:us-east-1:123456789012:function:orders"), FunctionName: awssdk.String("orders"), Role: awssdk.String("arn:aws:iam::123456789012:role/LambdaOrdersRole")}}
+		fake.compute.ecsClusters = []string{clusterARN}
+		fake.compute.ecsServiceARNs = map[string][]string{clusterARN: []string{serviceARN}}
+		fake.compute.ecsServices = map[string]ecstypes.Service{serviceARN: {ClusterArn: awssdk.String(clusterARN), ServiceArn: awssdk.String(serviceARN), TaskDefinition: awssdk.String(taskDefinitionARN)}}
+		fake.compute.ecsTaskDefinitionARNs = []string{taskDefinitionARN}
+		fake.compute.ecsTaskDefinitions = map[string]ecstypes.TaskDefinition{taskDefinitionARN: {TaskDefinitionArn: awssdk.String(taskDefinitionARN), TaskRoleArn: awssdk.String("arn:aws:iam::123456789012:role/ECSTaskRole")}}
+	}
 	for _, tt := range []struct {
 		family  string
 		seed    func(*recordingAWS)
@@ -916,6 +1060,21 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyAssetMetadata,
 			seed:    assetMetadataData,
 			wantAPI: []string{"tagging:GetResources"},
+		},
+		{
+			family:  familyEC2Instance,
+			seed:    computeData,
+			wantAPI: []string{"ec2:DescribeInstances", "iam:GetInstanceProfile"},
+		},
+		{
+			family:  familyECSService,
+			seed:    computeData,
+			wantAPI: []string{"ecs:DescribeServices", "ecs:ListClusters", "ecs:ListServices"},
+		},
+		{
+			family:  familyECSTaskDefinition,
+			seed:    computeData,
+			wantAPI: []string{"ecs:DescribeTaskDefinition", "ecs:ListTaskDefinitions"},
 		},
 		{
 			family:  familyEffectivePermission,
@@ -947,6 +1106,11 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		{
 			family:  familyIAMUser,
 			wantAPI: []string{"iam:ListUsers"},
+		},
+		{
+			family:  familyLambdaFunction,
+			seed:    computeData,
+			wantAPI: []string{"lambda:ListFunctions"},
 		},
 		{
 			family:  familyPublicEndpoint,
@@ -1195,7 +1359,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, tagging: fake}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, tagging: fake}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1211,7 +1375,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, tagging: fake}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1274,6 +1438,7 @@ type fakeAWS struct {
 	inlinePolicyDocuments  map[string]string
 	cloudTrailEvents       []cloudtrailtypes.Event
 	cloudTrailLookup       func(context.Context, *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error)
+	compute                fakeAWSCompute
 	securityGroups         []ec2types.SecurityGroup
 	addresses              []ec2types.Address
 	networkInterfaces      []ec2types.NetworkInterface
@@ -1287,6 +1452,17 @@ type fakeAWS struct {
 	apiV2APIs              []apigatewayv2types.Api
 	taggedResources        []resourcegroupstaggingapitypes.ResourceTagMapping
 	getResources           func(context.Context, *resourcegroupstaggingapi.GetResourcesInput, ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error)
+}
+
+type fakeAWSCompute struct {
+	instances             []ec2types.Instance
+	instanceProfiles      map[string]iamtypes.InstanceProfile
+	lambdaFunctions       []lambdatypes.FunctionConfiguration
+	ecsClusters           []string
+	ecsServiceARNs        map[string][]string
+	ecsServices           map[string]ecstypes.Service
+	ecsTaskDefinitionARNs []string
+	ecsTaskDefinitions    map[string]ecstypes.TaskDefinition
 }
 
 type recordingAWS struct {
@@ -1378,6 +1554,11 @@ func (f *recordingAWS) GetRolePolicy(ctx context.Context, input *iam.GetRolePoli
 	return f.fakeAWS.GetRolePolicy(ctx, input, options...)
 }
 
+func (f *recordingAWS) GetInstanceProfile(ctx context.Context, input *iam.GetInstanceProfileInput, options ...func(*iam.Options)) (*iam.GetInstanceProfileOutput, error) {
+	f.record("iam:GetInstanceProfile")
+	return f.fakeAWS.GetInstanceProfile(ctx, input, options...)
+}
+
 func (f *recordingAWS) LookupEvents(ctx context.Context, input *cloudtrail.LookupEventsInput, options ...func(*cloudtrail.Options)) (*cloudtrail.LookupEventsOutput, error) {
 	f.record("cloudtrail:LookupEvents")
 	return f.fakeAWS.LookupEvents(ctx, input, options...)
@@ -1388,6 +1569,11 @@ func (f *recordingAWS) DescribeSecurityGroups(ctx context.Context, input *ec2.De
 	return f.fakeAWS.DescribeSecurityGroups(ctx, input, options...)
 }
 
+func (f *recordingAWS) DescribeInstances(ctx context.Context, input *ec2.DescribeInstancesInput, options ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
+	f.record("ec2:DescribeInstances")
+	return f.fakeAWS.DescribeInstances(ctx, input, options...)
+}
+
 func (f *recordingAWS) DescribeAddresses(ctx context.Context, input *ec2.DescribeAddressesInput, options ...func(*ec2.Options)) (*ec2.DescribeAddressesOutput, error) {
 	f.record("ec2:DescribeAddresses")
 	return f.fakeAWS.DescribeAddresses(ctx, input, options...)
@@ -1396,6 +1582,36 @@ func (f *recordingAWS) DescribeAddresses(ctx context.Context, input *ec2.Describ
 func (f *recordingAWS) DescribeNetworkInterfaces(ctx context.Context, input *ec2.DescribeNetworkInterfacesInput, options ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error) {
 	f.record("ec2:DescribeNetworkInterfaces")
 	return f.fakeAWS.DescribeNetworkInterfaces(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListFunctions(ctx context.Context, input *lambda.ListFunctionsInput, options ...func(*lambda.Options)) (*lambda.ListFunctionsOutput, error) {
+	f.record("lambda:ListFunctions")
+	return f.fakeAWS.ListFunctions(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListClusters(ctx context.Context, input *ecs.ListClustersInput, options ...func(*ecs.Options)) (*ecs.ListClustersOutput, error) {
+	f.record("ecs:ListClusters")
+	return f.fakeAWS.ListClusters(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListServices(ctx context.Context, input *ecs.ListServicesInput, options ...func(*ecs.Options)) (*ecs.ListServicesOutput, error) {
+	f.record("ecs:ListServices")
+	return f.fakeAWS.ListServices(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeServices(ctx context.Context, input *ecs.DescribeServicesInput, options ...func(*ecs.Options)) (*ecs.DescribeServicesOutput, error) {
+	f.record("ecs:DescribeServices")
+	return f.fakeAWS.DescribeServices(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListTaskDefinitions(ctx context.Context, input *ecs.ListTaskDefinitionsInput, options ...func(*ecs.Options)) (*ecs.ListTaskDefinitionsOutput, error) {
+	f.record("ecs:ListTaskDefinitions")
+	return f.fakeAWS.ListTaskDefinitions(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeTaskDefinition(ctx context.Context, input *ecs.DescribeTaskDefinitionInput, options ...func(*ecs.Options)) (*ecs.DescribeTaskDefinitionOutput, error) {
+	f.record("ecs:DescribeTaskDefinition")
+	return f.fakeAWS.DescribeTaskDefinition(ctx, input, options...)
 }
 
 func (f *recordingAWS) ListHostedZones(ctx context.Context, input *route53.ListHostedZonesInput, options ...func(*route53.Options)) (*route53.ListHostedZonesOutput, error) {
@@ -1514,6 +1730,15 @@ func (f fakeAWS) GetRolePolicy(_ context.Context, input *iam.GetRolePolicyInput,
 	return &iam.GetRolePolicyOutput{PolicyDocument: awssdk.String(f.inlinePolicyDocument(awssdk.ToString(input.PolicyName)))}, nil
 }
 
+func (f fakeAWS) GetInstanceProfile(_ context.Context, input *iam.GetInstanceProfileInput, _ ...func(*iam.Options)) (*iam.GetInstanceProfileOutput, error) {
+	name := awssdk.ToString(input.InstanceProfileName)
+	if f.compute.instanceProfiles != nil {
+		profile := f.compute.instanceProfiles[name]
+		return &iam.GetInstanceProfileOutput{InstanceProfile: &profile}, nil
+	}
+	return &iam.GetInstanceProfileOutput{InstanceProfile: &iamtypes.InstanceProfile{InstanceProfileName: awssdk.String(name)}}, nil
+}
+
 func (f fakeAWS) inlinePolicyDocument(policyName string) string {
 	if f.inlinePolicyDocuments != nil {
 		return f.inlinePolicyDocuments[policyName]
@@ -1543,6 +1768,36 @@ func paginateStringValues(values []string, marker string, limit int) ([]string, 
 	return values[start : start+limit], true, next
 }
 
+func paginateEC2Instances(values []ec2types.Instance, marker string, limit int) ([]ec2types.Instance, string) {
+	start := 0
+	if marker != "" {
+		parsed, err := strconv.Atoi(marker)
+		if err == nil && parsed >= 0 && parsed <= len(values) {
+			start = parsed
+		}
+	}
+	if limit <= 0 || start+limit >= len(values) {
+		return values[start:], ""
+	}
+	next := strconv.Itoa(start + limit)
+	return values[start : start+limit], next
+}
+
+func paginateLambdaFunctions(values []lambdatypes.FunctionConfiguration, marker string, limit int) ([]lambdatypes.FunctionConfiguration, string) {
+	start := 0
+	if marker != "" {
+		parsed, err := strconv.Atoi(marker)
+		if err == nil && parsed >= 0 && parsed <= len(values) {
+			start = parsed
+		}
+	}
+	if limit <= 0 || start+limit >= len(values) {
+		return values[start:], ""
+	}
+	next := strconv.Itoa(start + limit)
+	return values[start : start+limit], next
+}
+
 func paginateResourceTags(values []resourcegroupstaggingapitypes.ResourceTagMapping, marker string, limit int) ([]resourcegroupstaggingapitypes.ResourceTagMapping, string) {
 	start := 0
 	if marker != "" {
@@ -1569,12 +1824,55 @@ func (f fakeAWS) DescribeSecurityGroups(context.Context, *ec2.DescribeSecurityGr
 	return &ec2.DescribeSecurityGroupsOutput{SecurityGroups: f.securityGroups}, nil
 }
 
+func (f fakeAWS) DescribeInstances(_ context.Context, input *ec2.DescribeInstancesInput, _ ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
+	instances, next := paginateEC2Instances(f.compute.instances, awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
+	return &ec2.DescribeInstancesOutput{Reservations: []ec2types.Reservation{{Instances: instances}}, NextToken: stringPtr(next)}, nil
+}
+
 func (f fakeAWS) DescribeAddresses(context.Context, *ec2.DescribeAddressesInput, ...func(*ec2.Options)) (*ec2.DescribeAddressesOutput, error) {
 	return &ec2.DescribeAddressesOutput{Addresses: f.addresses}, nil
 }
 
 func (f fakeAWS) DescribeNetworkInterfaces(context.Context, *ec2.DescribeNetworkInterfacesInput, ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error) {
 	return &ec2.DescribeNetworkInterfacesOutput{NetworkInterfaces: f.networkInterfaces}, nil
+}
+
+func (f fakeAWS) ListFunctions(_ context.Context, input *lambda.ListFunctionsInput, _ ...func(*lambda.Options)) (*lambda.ListFunctionsOutput, error) {
+	functions, next := paginateLambdaFunctions(f.compute.lambdaFunctions, awssdk.ToString(input.Marker), int(awssdk.ToInt32(input.MaxItems)))
+	return &lambda.ListFunctionsOutput{Functions: functions, NextMarker: stringPtr(next)}, nil
+}
+
+func (f fakeAWS) ListClusters(context.Context, *ecs.ListClustersInput, ...func(*ecs.Options)) (*ecs.ListClustersOutput, error) {
+	return &ecs.ListClustersOutput{ClusterArns: f.compute.ecsClusters}, nil
+}
+
+func (f fakeAWS) ListServices(_ context.Context, input *ecs.ListServicesInput, _ ...func(*ecs.Options)) (*ecs.ListServicesOutput, error) {
+	if f.compute.ecsServiceARNs == nil {
+		return &ecs.ListServicesOutput{}, nil
+	}
+	return &ecs.ListServicesOutput{ServiceArns: f.compute.ecsServiceARNs[awssdk.ToString(input.Cluster)]}, nil
+}
+
+func (f fakeAWS) DescribeServices(_ context.Context, input *ecs.DescribeServicesInput, _ ...func(*ecs.Options)) (*ecs.DescribeServicesOutput, error) {
+	services := make([]ecstypes.Service, 0, len(input.Services))
+	for _, arn := range input.Services {
+		if f.compute.ecsServices != nil {
+			services = append(services, f.compute.ecsServices[arn])
+		}
+	}
+	return &ecs.DescribeServicesOutput{Services: services}, nil
+}
+
+func (f fakeAWS) ListTaskDefinitions(context.Context, *ecs.ListTaskDefinitionsInput, ...func(*ecs.Options)) (*ecs.ListTaskDefinitionsOutput, error) {
+	return &ecs.ListTaskDefinitionsOutput{TaskDefinitionArns: f.compute.ecsTaskDefinitionARNs}, nil
+}
+
+func (f fakeAWS) DescribeTaskDefinition(_ context.Context, input *ecs.DescribeTaskDefinitionInput, _ ...func(*ecs.Options)) (*ecs.DescribeTaskDefinitionOutput, error) {
+	if f.compute.ecsTaskDefinitions != nil {
+		task := f.compute.ecsTaskDefinitions[awssdk.ToString(input.TaskDefinition)]
+		return &ecs.DescribeTaskDefinitionOutput{TaskDefinition: &task}, nil
+	}
+	return &ecs.DescribeTaskDefinitionOutput{}, nil
 }
 
 func (f fakeAWS) ListHostedZones(context.Context, *route53.ListHostedZonesInput, ...func(*route53.Options)) (*route53.ListHostedZonesOutput, error) {
