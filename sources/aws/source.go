@@ -30,10 +30,14 @@ import (
 	cloudtrailtypes "github.com/aws/aws-sdk-go-v2/service/cloudtrail/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/ecs"
+	ecstypes "github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/lambda"
+	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
 	resourcegroupstaggingapitypes "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
@@ -65,6 +69,9 @@ const (
 	familyAccessKey           = "access_key"
 	familyAssetMetadata       = "asset_metadata"
 	familyCloudTrail          = "cloudtrail"
+	familyEC2Instance         = "ec2_instance"
+	familyECSService          = "ecs_service"
+	familyECSTaskDefinition   = "ecs_task_definition"
 	familyEffectivePermission = "effective_permission"
 	familyIAMGroup            = "iam_group"
 	familyIAMMembership       = "iam_group_membership"
@@ -74,6 +81,7 @@ const (
 	familyIAMUser             = "iam_user"
 	familyPublicEndpoint      = "public_endpoint"
 	familyResourceExposure    = "resource_exposure"
+	familyLambdaFunction      = "lambda_function"
 )
 
 // Source reads AWS IAM inventory and CloudTrail activity through the AWS SDK for Go v2.
@@ -118,8 +126,10 @@ type awsClients struct {
 	route53      awsRoute53API
 	cloudFront   awsCloudFrontAPI
 	elbv2        awsELBV2API
+	ecs          awsECSAPI
 	apiGateway   awsAPIGatewayAPI
 	apiGatewayV2 awsAPIGatewayV2API
+	lambda       awsLambdaAPI
 	tagging      awsResourceGroupsTaggingAPI
 }
 
@@ -140,6 +150,7 @@ type awsIAMAPI interface {
 	GetUserPolicy(context.Context, *iam.GetUserPolicyInput, ...func(*iam.Options)) (*iam.GetUserPolicyOutput, error)
 	GetGroupPolicy(context.Context, *iam.GetGroupPolicyInput, ...func(*iam.Options)) (*iam.GetGroupPolicyOutput, error)
 	GetRolePolicy(context.Context, *iam.GetRolePolicyInput, ...func(*iam.Options)) (*iam.GetRolePolicyOutput, error)
+	GetInstanceProfile(context.Context, *iam.GetInstanceProfileInput, ...func(*iam.Options)) (*iam.GetInstanceProfileOutput, error)
 }
 
 type awsCloudTrailAPI interface {
@@ -147,9 +158,18 @@ type awsCloudTrailAPI interface {
 }
 
 type awsEC2API interface {
+	DescribeInstances(context.Context, *ec2.DescribeInstancesInput, ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error)
 	DescribeAddresses(context.Context, *ec2.DescribeAddressesInput, ...func(*ec2.Options)) (*ec2.DescribeAddressesOutput, error)
 	DescribeNetworkInterfaces(context.Context, *ec2.DescribeNetworkInterfacesInput, ...func(*ec2.Options)) (*ec2.DescribeNetworkInterfacesOutput, error)
 	DescribeSecurityGroups(context.Context, *ec2.DescribeSecurityGroupsInput, ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error)
+}
+
+type awsECSAPI interface {
+	ListClusters(context.Context, *ecs.ListClustersInput, ...func(*ecs.Options)) (*ecs.ListClustersOutput, error)
+	ListServices(context.Context, *ecs.ListServicesInput, ...func(*ecs.Options)) (*ecs.ListServicesOutput, error)
+	DescribeServices(context.Context, *ecs.DescribeServicesInput, ...func(*ecs.Options)) (*ecs.DescribeServicesOutput, error)
+	ListTaskDefinitions(context.Context, *ecs.ListTaskDefinitionsInput, ...func(*ecs.Options)) (*ecs.ListTaskDefinitionsOutput, error)
+	DescribeTaskDefinition(context.Context, *ecs.DescribeTaskDefinitionInput, ...func(*ecs.Options)) (*ecs.DescribeTaskDefinitionOutput, error)
 }
 
 type awsRoute53API interface {
@@ -173,6 +193,10 @@ type awsAPIGatewayAPI interface {
 type awsAPIGatewayV2API interface {
 	GetApis(context.Context, *apigatewayv2.GetApisInput, ...func(*apigatewayv2.Options)) (*apigatewayv2.GetApisOutput, error)
 	GetDomainNames(context.Context, *apigatewayv2.GetDomainNamesInput, ...func(*apigatewayv2.Options)) (*apigatewayv2.GetDomainNamesOutput, error)
+}
+
+type awsLambdaAPI interface {
+	ListFunctions(context.Context, *lambda.ListFunctionsInput, ...func(*lambda.Options)) (*lambda.ListFunctionsOutput, error)
 }
 
 type awsResourceGroupsTaggingAPI interface {
@@ -251,6 +275,16 @@ type awsAssetMetadata struct {
 	ResourceType string
 	Region       string
 	Tags         map[string]string
+}
+
+type awsEC2Instance struct {
+	Instance ec2types.Instance
+	Role     iamtypes.Role
+}
+
+type awsECSService struct {
+	ClusterARN string
+	Service    ecstypes.Service
 }
 
 const (
@@ -420,6 +454,46 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(event cloudtrailtypes.Event) string { return awssdk.ToString(event.EventId) },
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsEC2Instance]{
+			Name:  familyEC2Instance,
+			Label: "aws ec2 instances",
+			List:  listEC2Instances,
+			Event: ec2InstanceEvent,
+			URN: func(settings settings, instance awsEC2Instance) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_ec2_instance:%s", settings.accountID, awssdk.ToString(instance.Instance.InstanceId)), nil
+			},
+			CursorFallback: func(instance awsEC2Instance) string { return awssdk.ToString(instance.Instance.InstanceId) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[lambdatypes.FunctionConfiguration]{
+			Name:  familyLambdaFunction,
+			Label: "aws lambda functions",
+			List:  listLambdaFunctions,
+			Event: lambdaFunctionEvent,
+			URN: func(settings settings, fn lambdatypes.FunctionConfiguration) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_lambda_function:%s", settings.accountID, firstNonEmpty(awssdk.ToString(fn.FunctionArn), awssdk.ToString(fn.FunctionName))), nil
+			},
+			CursorFallback: func(fn lambdatypes.FunctionConfiguration) string { return awssdk.ToString(fn.FunctionArn) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsECSService]{
+			Name:  familyECSService,
+			Label: "aws ecs services",
+			List:  listECSServices,
+			Event: ecsServiceEvent,
+			URN: func(settings settings, service awsECSService) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_ecs_service:%s", settings.accountID, awssdk.ToString(service.Service.ServiceArn)), nil
+			},
+			CursorFallback: func(service awsECSService) string { return awssdk.ToString(service.Service.ServiceArn) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[ecstypes.TaskDefinition]{
+			Name:  familyECSTaskDefinition,
+			Label: "aws ecs task definitions",
+			List:  listECSTaskDefinitions,
+			Event: ecsTaskDefinitionEvent,
+			URN: func(settings settings, task ecstypes.TaskDefinition) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_ecs_task_definition:%s", settings.accountID, awssdk.ToString(task.TaskDefinitionArn)), nil
+			},
+			CursorFallback: func(task ecstypes.TaskDefinition) string { return awssdk.ToString(task.TaskDefinitionArn) },
+		}),
 		awsFamily(s.clients, awsFamilyOptions[iamPolicyAssignment]{
 			Name:  familyEffectivePermission,
 			Label: "aws effective permissions",
@@ -578,8 +652,10 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		route53:      route53.NewFromConfig(cfg),
 		cloudFront:   cloudfront.NewFromConfig(cfg),
 		elbv2:        elbv2.NewFromConfig(cfg),
+		ecs:          ecs.NewFromConfig(cfg),
 		apiGateway:   apigateway.NewFromConfig(cfg),
 		apiGatewayV2: apigatewayv2.NewFromConfig(cfg),
+		lambda:       lambda.NewFromConfig(cfg),
 		tagging:      resourcegroupstaggingapi.NewFromConfig(cfg),
 	}, nil
 }
@@ -637,7 +713,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyCloudTrail, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyPublicEndpoint, familyResourceExposure:
+	case familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECSService, familyECSTaskDefinition, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyLambdaFunction, familyPublicEndpoint, familyResourceExposure:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -652,7 +728,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("aws principal_type must be user, group, or role when family=%q", familyIAMRoleAssign)
 		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, public_endpoint, or resource_exposure")
+		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, ec2_instance, ecs_service, ecs_task_definition, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, lambda_function, public_endpoint, or resource_exposure")
 	}
 	return settings, nil
 }
