@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	routePattern   = regexp.MustCompile(`mux\.HandleFunc\("(?:(GET|POST|PUT|PATCH|DELETE) )?([^"]+)"`)
+	routePattern   = regexp.MustCompile(`(?:mux\.HandleFunc\(|registerHTTPRoute\(mux,\s*)"(?:(GET|POST|PUT|PATCH|DELETE) )?([^"]+)"`)
 	pathPattern    = regexp.MustCompile(`^  (/[^:]+):\s*$`)
 	methodPattern  = regexp.MustCompile(`^    (get|post|put|patch|delete):\s*$`)
 	componentsLine = []byte("\ncomponents:\n")
@@ -26,7 +26,7 @@ func main() {
 	write := flag.Bool("write", false, "add placeholder OpenAPI paths for missing routes")
 	flag.Parse()
 
-	routes, err := registeredRoutes("internal/bootstrap/app.go")
+	routes, err := registeredRoutes("internal/bootstrap/app.go", "internal/bootstrap/routes.go")
 	if err != nil {
 		fail(err)
 	}
@@ -63,20 +63,22 @@ func main() {
 	os.Exit(1)
 }
 
-func registeredRoutes(path string) ([]route, error) {
-	payload, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	matches := routePattern.FindAllStringSubmatch(string(payload), -1)
+func registeredRoutes(paths ...string) ([]route, error) {
 	seen := map[route]struct{}{}
-	for _, match := range matches {
-		method := strings.ToLower(strings.TrimSpace(match[1]))
-		routePath := strings.TrimSpace(match[2])
-		if routePath == "" {
-			continue
+	for _, path := range paths {
+		payload, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
 		}
-		seen[route{Method: method, Path: routePath}] = struct{}{}
+		matches := routePattern.FindAllStringSubmatch(string(payload), -1)
+		for _, match := range matches {
+			method := strings.ToLower(strings.TrimSpace(match[1]))
+			routePath := strings.TrimSpace(match[2])
+			if routePath == "" {
+				continue
+			}
+			seen[route{Method: method, Path: routePath}] = struct{}{}
+		}
 	}
 	routes := make([]route, 0, len(seen))
 	for route := range seen {

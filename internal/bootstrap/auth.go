@@ -552,6 +552,9 @@ func isConnectProcedurePath(path string) bool {
 
 func scopeForHTTPRequest(r *http.Request) string {
 	path := strings.TrimSpace(r.URL.Path)
+	if path == "/api/v1/mcp" {
+		return scopeCosmoSecurityRead
+	}
 	if r.Method == http.MethodPost && path == "/grc/ask" {
 		return scopeCosmoSecurityRead
 	}
@@ -1152,6 +1155,9 @@ func accessAuditOperation(r *http.Request, route string) accessAuditOperationInf
 		}
 	}
 	operationType := accessAuditHTTPOperationType(r.Method)
+	if route == "GET /api/v1/mcp" || route == "POST /api/v1/mcp" {
+		operationType = "read"
+	}
 	return accessAuditOperationInfo{
 		Family:          accessAuditRouteFamily(route),
 		Type:            operationType,
@@ -1251,6 +1257,8 @@ func accessAuditRouteFamily(route string) string {
 		return "workflow"
 	case strings.Contains(route, "/platform/graph"):
 		return "graph"
+	case strings.Contains(route, "/api/v1/mcp"):
+		return "mcp"
 	case route == "":
 		return "unknown"
 	default:
@@ -1347,6 +1355,8 @@ var knownAccessAuditConnectProcedures = map[string]struct{}{
 func fallbackAccessAuditRoute(method string, path string) string {
 	prefix := strings.TrimSpace(method) + " "
 	switch {
+	case path == "/api/v1/mcp":
+		return prefix + "/api/v1/mcp"
 	case path == "/sources":
 		return prefix + "/sources"
 	case strings.HasPrefix(path, "/sources/"):

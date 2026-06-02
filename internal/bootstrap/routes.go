@@ -28,6 +28,7 @@ func (app *App) registerRoutes(mux *http.ServeMux, cfg config.Config, deps Depen
 	app.registerKnowledgeRoutes(mux)
 	app.registerGraphRoutes(mux)
 	app.registerSourceRuntimeRoutes(mux)
+	app.registerMCPRoutes(mux)
 	app.registerDeviceRoutes(mux)
 }
 
@@ -120,6 +121,11 @@ func (app *App) registerSourceRuntimeRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /source-runtimes/{runtimeID}/finding-candidates/evaluate", routeSurfacePlatformHTTP, app.handleEvaluateSourceRuntimeFindingCandidates)
 	registerHTTPRoute(mux, "POST /source-runtimes/{runtimeID}/finding-rules/evaluate", routeSurfacePlatformHTTP, app.handleEvaluateSourceRuntimeFindingRules)
 	registerHTTPRoute(mux, "POST /source-runtimes/{runtimeID}/findings/evaluate", routeSurfacePlatformHTTP, app.handleEvaluateSourceRuntimeFindings)
+}
+
+func (app *App) registerMCPRoutes(mux *http.ServeMux) {
+	registerHTTPRoute(mux, "GET /api/v1/mcp", routeSurfacePlatformHTTP, app.handleMCPStream)
+	registerHTTPRoute(mux, "POST /api/v1/mcp", routeSurfacePlatformHTTP, app.handleMCP)
 }
 
 func (app *App) registerDeviceRoutes(mux *http.ServeMux) {
