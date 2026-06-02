@@ -50,6 +50,13 @@ type IngestCheckpoint = graphstore.IngestCheckpoint
 type IngestRun = graphstore.IngestRun
 type IngestRunFilter = graphstore.IngestRunFilter
 
+func suppressedPathParams() map[string]any {
+	return map[string]any{
+		"suppressed_relation_pairs": graphstore.SuppressedTwoHopRelationPairKeys(),
+		"suppressed_relations":      graphstore.SuppressedTwoHopRelations(),
+	}
+}
+
 // Open opens a Neo4j-backed graph projection store.
 func Open(cfg config.GraphStoreConfig) (*Store, error) {
 	uri := strings.TrimSpace(cfg.Neo4jURI)
@@ -165,12 +172,16 @@ func (s *Store) SampleTraversals(ctx context.Context, limit int) (_ []Traversal,
 		return nil, nil
 	}
 	var traversals []Traversal
-	query := fmt.Sprintf(`MATCH (src:Entity)-[left:RELATION]->(mid:Entity)-[right:RELATION]->(dst:Entity)
+	query := fmt.Sprintf(`MATCH (src:Entity)-[left:RELATION]->(mid:Entity)
+WHERE NOT (left.relation IN $suppressed_relations)
+MATCH (mid)-[right:RELATION]->(dst:Entity)
+WHERE NOT (right.relation IN $suppressed_relations)
+  AND NOT ((left.relation + '|' + right.relation) IN $suppressed_relation_pairs)
 RETURN src.urn, src.label, left.relation, mid.urn, mid.label, right.relation, dst.urn, dst.label
 ORDER BY src.urn, left.relation, mid.urn, right.relation, dst.urn LIMIT %d`, limit)
 	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
 		traversals = traversals[:0]
-		result, err := tx.Run(ctx, query, nil)
+		result, err := tx.Run(ctx, query, suppressedPathParams())
 		if err != nil {
 			return nil, err
 		}
@@ -203,12 +214,16 @@ func (s *Store) PathPatterns(ctx context.Context, limit int) (_ []PathPattern, e
 		return nil, nil
 	}
 	var patterns []PathPattern
-	query := fmt.Sprintf(`MATCH (src:Entity)-[left:RELATION]->(mid:Entity)-[right:RELATION]->(dst:Entity)
+	query := fmt.Sprintf(`MATCH (src:Entity)-[left:RELATION]->(mid:Entity)
+WHERE NOT (left.relation IN $suppressed_relations)
+MATCH (mid)-[right:RELATION]->(dst:Entity)
+WHERE NOT (right.relation IN $suppressed_relations)
+  AND NOT ((left.relation + '|' + right.relation) IN $suppressed_relation_pairs)
 RETURN src.entity_type, left.relation, mid.entity_type, right.relation, dst.entity_type, count(*)
 ORDER BY count(*) DESC, src.entity_type, left.relation, mid.entity_type, right.relation, dst.entity_type LIMIT %d`, limit)
 	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
 		patterns = patterns[:0]
-		result, err := tx.Run(ctx, query, nil)
+		result, err := tx.Run(ctx, query, suppressedPathParams())
 		if err != nil {
 			return nil, err
 		}

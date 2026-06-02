@@ -198,14 +198,14 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	if got := result.StageConfirmations[5].AssertionsFailed; got != 0 {
 		t.Fatalf("verify_integrity assertions_failed = %d, want 0", got)
 	}
-	if got := result.StageConfirmations[6].PatternsVerified; got != 7 {
-		t.Fatalf("verify_path_patterns patterns_verified = %d, want 7", got)
+	if got := result.StageConfirmations[6].PatternsVerified; got != 6 {
+		t.Fatalf("verify_path_patterns patterns_verified = %d, want 6", got)
 	}
 	if got := result.StageConfirmations[7].TopologyBuckets; got != 4 {
 		t.Fatalf("verify_topology topology_buckets = %d, want 4", got)
 	}
-	if got := result.StageConfirmations[8].TraversalsVerified; got != 7 {
-		t.Fatalf("verify_traversals traversals_verified = %d, want 7", got)
+	if got := result.StageConfirmations[8].TraversalsVerified; got != 6 {
+		t.Fatalf("verify_traversals traversals_verified = %d, want 6", got)
 	}
 	if len(result.ReadPages) != 2 {
 		t.Fatalf("len(ReadPages) = %d, want 2", len(result.ReadPages))
@@ -250,8 +250,8 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	if !containsAssertion(result.GraphAssertions, "aws_public_endpoints_without_instance_link", 0, 0, true) {
 		t.Fatalf("GraphAssertions missing aws_public_endpoints_without_instance_link: %#v", result.GraphAssertions)
 	}
-	if len(result.GraphPathPatterns) != 7 {
-		t.Fatalf("len(GraphPathPatterns) = %d, want 7", len(result.GraphPathPatterns))
+	if len(result.GraphPathPatterns) != 6 {
+		t.Fatalf("len(GraphPathPatterns) = %d, want 6", len(result.GraphPathPatterns))
 	}
 	if !containsPathPatternPreview(result.GraphPathPatterns, "github.user -[authored]-> github.pull_request -[belongs_to]-> github.repo", 1) {
 		t.Fatalf("GraphPathPatterns missing authored pattern: %#v", result.GraphPathPatterns)
@@ -271,8 +271,8 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	if !containsTopologyPreview(result.GraphTopology, "intermediates", 4) {
 		t.Fatalf("GraphTopology missing intermediates bucket: %#v", result.GraphTopology)
 	}
-	if len(result.GraphTraversals) != 7 {
-		t.Fatalf("len(GraphTraversals) = %d, want 7", len(result.GraphTraversals))
+	if len(result.GraphTraversals) != 6 {
+		t.Fatalf("len(GraphTraversals) = %d, want 6", len(result.GraphTraversals))
 	}
 	if !containsTraversalPath(result.GraphTraversals, "octocat -[authored]-> writer/cerebro#418 -[belongs_to]-> writer/cerebro") {
 		t.Fatalf("GraphTraversals missing authored path: %#v", result.GraphTraversals)
@@ -654,23 +654,21 @@ func TestRebuildDryRunDefaultsToSinglePage(t *testing.T) {
 	if got := countValue(result.GraphEntityTypes, "github.repo"); got != 1 {
 		t.Fatalf("graph entity type github.repo = %d, want 1", got)
 	}
-	// The new identifier.login -> identity.login reverse edge opens
-	// additional traversal paths starting at the identifier and identity
-	// nodes (they used to be terminal sinks).
-	if len(result.GraphTraversals) != 5 {
-		t.Fatalf("len(GraphTraversals) = %d, want 5", len(result.GraphTraversals))
+	// The broad acted_on audit chain is suppressed from traversal previews.
+	if len(result.GraphTraversals) != 4 {
+		t.Fatalf("len(GraphTraversals) = %d, want 4", len(result.GraphTraversals))
 	}
 	if got := result.StageConfirmations[5].AssertionsPassed; got != 7 {
 		t.Fatalf("verify_integrity assertions_passed = %d, want 7", got)
 	}
-	if got := result.StageConfirmations[6].PatternsVerified; got != 5 {
-		t.Fatalf("verify_path_patterns patterns_verified = %d, want 5", got)
+	if got := result.StageConfirmations[6].PatternsVerified; got != 4 {
+		t.Fatalf("verify_path_patterns patterns_verified = %d, want 4", got)
 	}
 	if got := result.StageConfirmations[7].TopologyBuckets; got != 4 {
 		t.Fatalf("verify_topology topology_buckets = %d, want 4", got)
 	}
-	if got := result.StageConfirmations[8].TraversalsVerified; got != 5 {
-		t.Fatalf("verify_traversals traversals_verified = %d, want 5", got)
+	if got := result.StageConfirmations[8].TraversalsVerified; got != 4 {
+		t.Fatalf("verify_traversals traversals_verified = %d, want 4", got)
 	}
 	if len(result.ReadPages) != 1 {
 		t.Fatalf("len(ReadPages) = %d, want 1", len(result.ReadPages))
@@ -680,19 +678,19 @@ func TestRebuildDryRunDefaultsToSinglePage(t *testing.T) {
 		t.Fatalf("len(EventProjections) = %d, want 1", len(result.EventProjections))
 	}
 	assertEventProjection(t, result.EventProjections[0], "github-audit-1", "github.audit", 5, 6, 5, 6)
-	if len(result.GraphPathPatterns) != 5 {
-		t.Fatalf("len(GraphPathPatterns) = %d, want 5", len(result.GraphPathPatterns))
+	if len(result.GraphPathPatterns) != 4 {
+		t.Fatalf("len(GraphPathPatterns) = %d, want 4", len(result.GraphPathPatterns))
 	}
-	if !containsPathPatternPreview(result.GraphPathPatterns, "github.user -[acted_on]-> github.repo -[belongs_to]-> github.org", 1) {
-		t.Fatalf("GraphPathPatterns missing acted_on pattern: %#v", result.GraphPathPatterns)
+	if containsPathPatternPreview(result.GraphPathPatterns, "github.user -[acted_on]-> github.repo -[belongs_to]-> github.org", 1) {
+		t.Fatalf("GraphPathPatterns included suppressed acted_on pattern: %#v", result.GraphPathPatterns)
 	}
 	// identifier.login moved from sinks_only to intermediate after gaining
 	// the reverse represents_identity edge to identity.login.
 	if !containsTopologyPreview(result.GraphTopology, "isolated", 0) || !containsTopologyPreview(result.GraphTopology, "sources_only", 1) || !containsTopologyPreview(result.GraphTopology, "sinks_only", 1) || !containsTopologyPreview(result.GraphTopology, "intermediates", 3) {
 		t.Fatalf("GraphTopology unexpected values: %#v", result.GraphTopology)
 	}
-	if !containsTraversalPath(result.GraphTraversals, "octocat -[acted_on]-> writer/cerebro -[belongs_to]-> writer") {
-		t.Fatalf("GraphTraversals missing acted_on path: %#v", result.GraphTraversals)
+	if containsTraversalPath(result.GraphTraversals, "octocat -[acted_on]-> writer/cerebro -[belongs_to]-> writer") {
+		t.Fatalf("GraphTraversals included suppressed acted_on path: %#v", result.GraphTraversals)
 	}
 }
 

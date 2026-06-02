@@ -199,6 +199,9 @@ func (s *graphTestStore) PathPatterns(_ context.Context, limit int) ([]graphstor
 			if first.ToURN != second.FromURN {
 				continue
 			}
+			if graphstore.SuppressTwoHopPath(first.Relation, second.Relation) {
+				continue
+			}
 			from := s.entities[first.FromURN]
 			via := s.entities[first.ToURN]
 			to := s.entities[second.ToURN]
