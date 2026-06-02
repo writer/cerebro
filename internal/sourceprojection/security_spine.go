@@ -3,6 +3,8 @@ package sourceprojection
 import (
 	"strings"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
 )
@@ -44,11 +46,18 @@ func backstageComponentProjections(event *cerebrov1.EventEnvelope) ([]*ports.Pro
 			"data_class":           attrs["data_class"],
 			"score_grade":          attrs["score_grade"],
 			"source_product":       attrs["source_product"],
+			"source_url":           attrs["source_url"],
 		}),
 	})
 	addOwnerLink(entities, links, event, tenantID, componentURN, firstNonEmpty(attrs["owner"], nestedString(payload, "spec.owner")))
 	addSystemLink(entities, links, event, tenantID, componentURN, firstNonEmpty(attrs["system"], nestedString(payload, "spec.system")))
-	addRepoLink(entities, links, event, tenantID, componentURN, firstNonEmpty(attrs["repository"], backstageAnnotation(payload, "github.com/project-slug")))
+	addRepoLink(entities, links, event, tenantID, componentURN, firstNonEmpty(
+		attrs["repository"],
+		backstageAnnotation(payload, "github.com/project-slug"),
+		attrs["source_url"],
+		backstageAnnotation(payload, "backstage.io/source-location"),
+	))
+	addBackstageKubernetesLinks(entities, links, event, tenantID, componentURN, attrs, payload)
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
 	return projectedEntities, projectedLinks, nil
 }
@@ -157,9 +166,7 @@ func addOwnerLink(entities map[string]*ports.ProjectedEntity, links map[string]*
 	ownerURN := projectionURN(tenantID, "owner", normalizeBackstageRef(owner))
 	addEntity(entities, &ports.ProjectedEntity{URN: ownerURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "owner", Label: ownerLabel(owner), Attributes: map[string]string{"owner": owner}})
 	addLink(links, projectedLink(tenantID, event.GetSourceId(), fromURN, ownerURN, relationOwnedBy, map[string]string{"event_id": event.GetId()}))
-	if extractEmailIdentifier(owner) != "" {
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), ownerURN, owner, event.GetOccurredAt())
-	}
+	addOwnerIdentityLinks(entities, links, event, tenantID, ownerURN, owner)
 }
 
 func addSystemLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, event *cerebrov1.EventEnvelope, tenantID string, fromURN string, system string) {
@@ -174,6 +181,9 @@ func addSystemLink(entities map[string]*ports.ProjectedEntity, links map[string]
 
 func addRepoLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, event *cerebrov1.EventEnvelope, tenantID string, fromURN string, repository string) {
 	repository = strings.TrimSpace(repository)
+	if normalized := normalizeGitHubRepository(repository); normalized != "" {
+		repository = normalized
+	}
 	if repository == "" {
 		return
 	}
@@ -197,6 +207,159 @@ func addRepoLink(entities map[string]*ports.ProjectedEntity, links map[string]*p
 		"owner_login":  owner,
 		"source_scope": "repository_name",
 	}))
+}
+
+func addOwnerIdentityLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, event *cerebrov1.EventEnvelope, tenantID string, ownerURN string, owner string) {
+	for _, candidate := range ownerIdentifierCandidates(owner) {
+		if extractEmailIdentifier(candidate) != "" || strings.HasPrefix(strings.ToLower(strings.TrimSpace(owner)), "user:") {
+			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), ownerURN, candidate, event.GetOccurredAt())
+			continue
+		}
+		addOwnerIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), ownerURN, candidate, event.GetOccurredAt())
+	}
+}
+
+func addOwnerIdentifierLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, eventID string, ownerURN string, value string, occurredAt *timestamppb.Timestamp) {
+	identifierURN, identifierType, label := identifierURN(tenantID, value)
+	if identifierURN == "" || strings.TrimSpace(ownerURN) == "" {
+		return
+	}
+	attributes := identifierEvidenceAttributes(value, identifierType, label, eventID, occurredAt)
+	attributes["match_type"] = "backstage_owner_identifier"
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        identifierURN,
+		TenantID:   tenantID,
+		SourceID:   sourceID,
+		EntityType: identifierType,
+		Label:      label,
+		Attributes: map[string]string{"value": label},
+	})
+	addLink(links, projectedLink(tenantID, sourceID, ownerURN, identifierURN, relationHasIdentifier, attributes))
+}
+
+func ownerIdentifierCandidates(owner string) []string {
+	owner = strings.TrimSpace(owner)
+	if owner == "" {
+		return nil
+	}
+	candidates := []string{}
+	if email := extractEmailIdentifier(owner); email != "" {
+		candidates = append(candidates, email)
+	} else {
+		normalized := normalizeBackstageRef(owner)
+		if normalized != "" {
+			candidates = append(candidates, normalized)
+		}
+		label := ownerLabel(owner)
+		if label != "" {
+			candidates = append(candidates, label)
+		}
+	}
+	out := make([]string, 0, len(candidates))
+	seen := map[string]struct{}{}
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		key := normalizeIdentifier(candidate)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, candidate)
+	}
+	return out
+}
+
+func addBackstageKubernetesLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, event *cerebrov1.EventEnvelope, tenantID string, componentURN string, attrs map[string]string, payload map[string]any) {
+	kubernetesID := firstNonEmpty(
+		attrs["kubernetes_id"],
+		attrs["kubernetes-id"],
+		backstageAnnotation(payload, "backstage.io/kubernetes-id"),
+		backstageAnnotation(payload, "cerebro.io/kubernetes-id"),
+	)
+	workloadName := firstNonEmpty(
+		attrs["workload_name"],
+		attrs["kubernetes_workload_name"],
+		attrs["kubernetes_name"],
+		kubernetesID,
+	)
+	clusterID := firstNonEmpty(
+		attrs["cluster_id"],
+		attrs["kubernetes_cluster_id"],
+		backstageAnnotation(payload, "cerebro.io/kubernetes-cluster-id"),
+		backstageAnnotation(payload, "backstage.io/kubernetes-cluster-id"),
+	)
+	clusterName := firstNonEmpty(
+		attrs["cluster_name"],
+		attrs["kubernetes_cluster_name"],
+		backstageAnnotation(payload, "cerebro.io/kubernetes-cluster-name"),
+		backstageAnnotation(payload, "backstage.io/kubernetes-cluster-name"),
+	)
+	cloudProvider := firstNonEmpty(
+		attrs["cloud_provider"],
+		attrs["provider"],
+		backstageAnnotation(payload, "cerebro.io/cloud-provider"),
+	)
+	cloudAccountID := firstNonEmpty(
+		attrs["cloud_account_id"],
+		attrs["aws_account_id"],
+		attrs["gcp_project_id"],
+		attrs["project_id"],
+		backstageAnnotation(payload, "cerebro.io/cloud-account-id"),
+		backstageAnnotation(payload, "cerebro.io/aws-account-id"),
+		backstageAnnotation(payload, "cerebro.io/gcp-project-id"),
+	)
+	if strings.TrimSpace(workloadName) == "" || (strings.TrimSpace(clusterID) == "" && (strings.TrimSpace(clusterName) == "" || strings.TrimSpace(cloudAccountID) == "")) {
+		return
+	}
+	kubernetesAttrs := map[string]string{
+		"account_id":           cloudAccountID,
+		"aws_account_id":       cloudAccountID,
+		"cloud_account_id":     cloudAccountID,
+		"cloud_provider":       cloudProvider,
+		"cluster_id":           clusterID,
+		"cluster_name":         clusterName,
+		"gcp_project_id":       cloudAccountID,
+		"namespace":            firstNonEmpty(backstageAnnotation(payload, "backstage.io/kubernetes-namespace"), backstageAnnotation(payload, "cerebro.io/kubernetes-namespace"), attrs["kubernetes_namespace"], attrs["namespace"], "default"),
+		"provider":             cloudProvider,
+		"service_account_name": firstNonEmpty(attrs["service_account_name"], attrs["kubernetes_service_account"], backstageAnnotation(payload, "cerebro.io/kubernetes-service-account")),
+		"workload_kind":        firstNonEmpty(attrs["workload_kind"], attrs["kubernetes_workload_kind"], backstageAnnotation(payload, "cerebro.io/kubernetes-workload-kind"), "Deployment"),
+		"workload_name":        workloadName,
+		"workload_uid":         attrs["workload_uid"],
+	}
+	workloadURN := kubernetesWorkloadURN(tenantID, kubernetesAttrs)
+	if workloadURN == "" {
+		return
+	}
+	namespaceURN := kubernetesNamespaceURN(tenantID, kubernetesAttrs)
+	clusterURN := kubernetesClusterURN(tenantID, kubernetesAttrs)
+	serviceAccountURN := kubernetesServiceAccountURN(tenantID, kubernetesAttrs)
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        workloadURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: "kubernetes.workload",
+		Label:      workloadName,
+		Attributes: compactAttributes(kubernetesAttrs),
+	})
+	addKubernetesCluster(entities, tenantID, event.GetSourceId(), kubernetesAttrs, clusterURN)
+	addKubernetesNamespace(entities, tenantID, event.GetSourceId(), kubernetesAttrs, namespaceURN)
+	if serviceAccountURN != "" && strings.TrimSpace(kubernetesAttrs["service_account_name"]) != "" {
+		addEntity(entities, &ports.ProjectedEntity{URN: serviceAccountURN, TenantID: tenantID, SourceID: event.GetSourceId(), EntityType: "kubernetes.service_account", Label: kubernetesAttrs["service_account_name"]})
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), workloadURN, serviceAccountURN, relationRunsAs, map[string]string{"event_id": event.GetId(), "match_type": "backstage_kubernetes_service_account"}))
+	}
+	if namespaceURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), workloadURN, namespaceURN, relationBelongsTo, map[string]string{"event_id": event.GetId(), "match_type": "backstage_kubernetes_namespace"}))
+	}
+	addKubernetesClusterLinks(entities, links, tenantID, event.GetSourceId(), event, kubernetesAttrs, namespaceURN, clusterURN)
+	attrsOut := map[string]string{"event_id": event.GetId(), "match_type": "backstage_kubernetes_workload"}
+	addProjectedAttribute(attrsOut, "kubernetes_id", kubernetesID)
+	addProjectedAttribute(attrsOut, "workload_kind", kubernetesAttrs["workload_kind"])
+	addProjectedAttribute(attrsOut, "workload_name", workloadName)
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), componentURN, workloadURN, relationRepresents, attrsOut))
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), workloadURN, componentURN, relationRepresents, attrsOut))
 }
 
 func backstageComponentEntityType(componentType string) string {

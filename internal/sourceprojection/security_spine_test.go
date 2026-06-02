@@ -42,11 +42,12 @@ func TestProjectBackstageComponent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	if result.EntitiesProjected != 5 {
-		t.Fatalf("EntitiesProjected = %d, want 5", result.EntitiesProjected)
+	if result.EntitiesProjected != 7 {
+		t.Fatalf("EntitiesProjected = %d, want 7", result.EntitiesProjected)
 	}
 	serviceURN := "urn:cerebro:writer:service:component/default/cerebro"
 	ownerURN := "urn:cerebro:writer:owner:platform/security"
+	ownerIdentifierURN := "urn:cerebro:writer:identifier:login:security"
 	systemURN := "urn:cerebro:writer:system:security"
 	repoURN := "urn:cerebro:writer:github_repo:WriterInternal/cerebro"
 	orgURN := "urn:cerebro:writer:github_org:WriterInternal"
@@ -58,6 +59,58 @@ func TestProjectBackstageComponent(t *testing.T) {
 	assertProjectedLink(t, state, serviceURN, relationBelongsTo, systemURN)
 	assertProjectedLink(t, state, serviceURN, relationBelongsTo, repoURN)
 	assertProjectedLink(t, state, repoURN, relationBelongsTo, orgURN)
+	assertProjectedLink(t, state, ownerURN, relationHasIdentifier, ownerIdentifierURN)
+	assertProjectedLink(t, state, ownerURN, relationHasIdentifier, "urn:cerebro:writer:identifier:login:platform/security")
+	assertProjectedLinkMissing(t, state, ownerURN, relationRepresentsIdentity, "urn:cerebro:writer:identity:login:security")
+}
+
+func TestProjectBackstageComponentLinksKubernetesRuntime(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	event := &cerebrov1.EventEnvelope{
+		Id:         "evt-k8s",
+		TenantId:   "writer",
+		SourceId:   "backstage",
+		Kind:       "backstage.component",
+		OccurredAt: timestamppb.New(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)),
+		Attributes: map[string]string{
+			"name":      "cerebro",
+			"namespace": "default",
+			"type":      "service",
+		},
+		Payload: mustJSON(t, map[string]any{
+			"kind": "Component",
+			"metadata": map[string]any{
+				"name":      "cerebro",
+				"namespace": "default",
+				"annotations": map[string]any{
+					"backstage.io/kubernetes-id":            "cerebro",
+					"backstage.io/kubernetes-namespace":     "security",
+					"cerebro.io/aws-account-id":             "123456789012",
+					"cerebro.io/cloud-provider":             "aws",
+					"cerebro.io/kubernetes-cluster-id":      "prod-us1",
+					"cerebro.io/kubernetes-service-account": "cerebro-sa",
+					"cerebro.io/kubernetes-workload-kind":   "Deployment",
+				},
+			},
+		}),
+	}
+
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+
+	serviceURN := "urn:cerebro:writer:service:component/default/cerebro"
+	workloadURN := "urn:cerebro:writer:kubernetes_workload:prod-us1:security:Deployment/cerebro"
+	namespaceURN := "urn:cerebro:writer:kubernetes_namespace:prod-us1:security"
+	clusterURN := "urn:cerebro:writer:kubernetes_cluster:prod-us1"
+	serviceAccountURN := "urn:cerebro:writer:kubernetes_service_account:prod-us1:security:cerebro-sa"
+	assertProjectedLink(t, state, serviceURN, relationRepresents, workloadURN)
+	assertProjectedLink(t, state, workloadURN, relationRepresents, serviceURN)
+	assertProjectedLink(t, state, workloadURN, relationBelongsTo, namespaceURN)
+	assertProjectedLink(t, state, namespaceURN, relationBelongsTo, clusterURN)
+	assertProjectedLink(t, state, clusterURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
+	assertProjectedLink(t, state, workloadURN, relationRunsAs, serviceAccountURN)
 }
 
 func TestProjectSecurityToolingMapTool(t *testing.T) {
@@ -88,14 +141,15 @@ func TestProjectSecurityToolingMapTool(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	if result.EntitiesProjected != 9 {
-		t.Fatalf("EntitiesProjected = %d, want 9", result.EntitiesProjected)
+	if result.EntitiesProjected != 10 {
+		t.Fatalf("EntitiesProjected = %d, want 10", result.EntitiesProjected)
 	}
 	toolURN := "urn:cerebro:writer:security_tool:agent-gateway"
 	ownerURN := "urn:cerebro:writer:owner:security"
 	repoURN := "urn:cerebro:writer:github_repo:WriterInternal/agent-gateway"
 	orgURN := "urn:cerebro:writer:github_org:WriterInternal"
 	assertProjectedLink(t, state, toolURN, relationOwnedBy, ownerURN)
+	assertProjectedLink(t, state, ownerURN, relationHasIdentifier, "urn:cerebro:writer:identifier:login:security")
 	assertProjectedLink(t, state, toolURN, relationBelongsTo, repoURN)
 	assertProjectedLink(t, state, repoURN, relationBelongsTo, orgURN)
 	assertProjectedLink(t, state, toolURN, relationHasClassification, "urn:cerebro:writer:security_category:ai_security")
