@@ -153,6 +153,12 @@ class ValidateStackConfigTest(unittest.TestCase):
     def _messages(self, content: str) -> list[str]:
         return [finding.message for finding in self._validate(content)]
 
+    def _without_orchestrator_schedules(self, content: str) -> str:
+        start = "  cerebro:orchestratorSchedules:\n"
+        begin = content.index(start)
+        end = content.index("  cerebro:sourceRuntimes:\n", begin)
+        return content[:begin] + content[end:]
+
     def test_valid_stack_has_no_errors(self) -> None:
         findings = self._validate(BASE_STACK)
         self.assertEqual([finding for finding in findings if finding.severity == "error"], [])
@@ -210,6 +216,24 @@ class ValidateStackConfigTest(unittest.TestCase):
 
     def test_global_orchestrator_command_covers_source_runtimes(self) -> None:
         content = (
+            self._without_orchestrator_schedules(BASE_STACK).replace(
+                "  cerebro:sourceRuntimes:",
+                "  cerebro:orchestratorCommand:\n    - orchestrator\n    - run\n  cerebro:sourceRuntimes:",
+            )
+            + """    - id: writer-okta-user
+      sourceId: okta
+      tenantId: writer
+      config:
+        api_token: env:API_TOKEN
+"""
+        )
+        messages = self._messages(content)
+        self.assertFalse(
+            any("is not referenced by cerebro:orchestratorCommand" in message for message in messages)
+        )
+
+    def test_global_orchestrator_command_does_not_cover_custom_schedules(self) -> None:
+        content = (
             BASE_STACK.replace(
                 "  cerebro:orchestratorSchedules:",
                 "  cerebro:orchestratorCommand:\n    - orchestrator\n    - run\n  cerebro:orchestratorSchedules:",
@@ -222,8 +246,8 @@ class ValidateStackConfigTest(unittest.TestCase):
 """
         )
         messages = self._messages(content)
-        self.assertFalse(
-            any("is not referenced by cerebro:orchestratorCommand" in message for message in messages)
+        self.assertTrue(
+            any("source runtime 'writer-okta-user' is not referenced" in message for message in messages)
         )
 
     def test_unknown_top_level_orchestrator_runtime_is_error(self) -> None:
@@ -262,17 +286,17 @@ class ValidateStackConfigTest(unittest.TestCase):
         self.assertTrue(any(finding.severity == "error" and "graph_page_limit <= 1" in finding.message for finding in findings))
 
     def test_sec_dev_global_graph_page_limit_is_bounded_for_high_contention_runtimes(self) -> None:
-        content = BASE_STACK.replace(
-            "  cerebro:orchestratorSchedules:",
-            "  cerebro:orchestratorCommand:\n    - orchestrator\n    - run\n    - graph_page_limit=100\n  cerebro:orchestratorSchedules:",
+        content = self._without_orchestrator_schedules(BASE_STACK).replace(
+            "  cerebro:sourceRuntimes:",
+            "  cerebro:orchestratorCommand:\n    - orchestrator\n    - run\n    - graph_page_limit=100\n  cerebro:sourceRuntimes:",
         )
         findings = self._validate(content, name="Pulumi.sec-dev.yaml")
         self.assertTrue(any(finding.severity == "error" and "graph_page_limit <= 5" in finding.message for finding in findings))
 
     def test_sec_dev_global_page_limit_is_bounded_for_high_contention_runtimes(self) -> None:
-        content = BASE_STACK.replace(
-            "  cerebro:orchestratorSchedules:",
-            "  cerebro:orchestratorCommand:\n    - orchestrator\n    - run\n    - page_limit=20\n  cerebro:orchestratorSchedules:",
+        content = self._without_orchestrator_schedules(BASE_STACK).replace(
+            "  cerebro:sourceRuntimes:",
+            "  cerebro:orchestratorCommand:\n    - orchestrator\n    - run\n    - page_limit=20\n  cerebro:sourceRuntimes:",
         )
         findings = self._validate(content, name="Pulumi.sec-dev.yaml")
         self.assertTrue(any(finding.severity == "error" and "page_limit <= 5" in finding.message for finding in findings))
@@ -573,6 +597,16 @@ class ValidateStackConfigTest(unittest.TestCase):
                 finding.severity == "error"
                 and "writer-cosmo-" in finding.message
                 and ("page_limit" in finding.message or "event_limit" in finding.message)
+                for finding in findings
+            )
+        )
+
+    def test_actual_sec_dev_declared_runtimes_are_scheduled(self) -> None:
+        findings = validate_stack(Path(__file__).resolve().parents[1] / "aws/Pulumi.sec-dev.yaml")
+        self.assertFalse(
+            any(
+                finding.severity == "error"
+                and "is not referenced by cerebro:orchestratorCommand or cerebro:orchestratorSchedules" in finding.message
                 for finding in findings
             )
         )
