@@ -414,6 +414,125 @@ func TestAnalyzeFindingAttackPathsUsesRelationWeights(t *testing.T) {
 	}
 }
 
+func TestRiskDeltaSimulationRemovesPublicExposurePath(t *testing.T) {
+	finding := compoundRiskFinding("cloud-public-prod-secrets", cloudPublicResourceExposureRuleID, "HIGH", "", "", "urn:cerebro:writer:aws_secret_store:prod-secrets", "public_network_ingress")
+	finding.Attributes["internet_exposed"] = "true"
+	finding.Attributes["crown_jewel"] = "true"
+	neighborhood := map[string]*ports.EntityNeighborhood{
+		"cloud": {
+			Root: &ports.NeighborhoodNode{URN: "urn:cerebro:writer:aws_secret_store:prod-secrets", EntityType: "aws.secret_store", Label: "prod-secrets"},
+			Neighbors: []*ports.NeighborhoodNode{
+				{URN: "urn:cerebro:writer:aws_public_principal:public_internet", EntityType: "aws.public_principal", Label: "public internet"},
+				{URN: "urn:cerebro:writer:aws_role:admin", EntityType: "aws.role", Label: "admin"},
+				{URN: "urn:cerebro:writer:finding:cloud-public-prod-secrets", EntityType: "finding", Label: "cloud-public-prod-secrets"},
+			},
+			Relations: []*ports.NeighborhoodRelation{
+				{FromURN: "urn:cerebro:writer:aws_public_principal:public_internet", Relation: "can_reach", ToURN: "urn:cerebro:writer:aws_secret_store:prod-secrets"},
+				{FromURN: "urn:cerebro:writer:aws_role:admin", Relation: "can_admin", ToURN: "urn:cerebro:writer:aws_secret_store:prod-secrets"},
+				{FromURN: "urn:cerebro:writer:aws_secret_store:prod-secrets", Relation: "has_finding", ToURN: "urn:cerebro:writer:finding:cloud-public-prod-secrets"},
+			},
+		},
+	}
+	before := AnalyzeFindingAttackPaths([]*ports.FindingRecord{finding}, neighborhood, FindingExposureAnalysisOptions{Limit: 10})
+	after := AnalyzeFindingAttackPaths([]*ports.FindingRecord{finding}, cloneNeighborhoodWithoutRelation(neighborhood, "can_reach"), FindingExposureAnalysisOptions{Limit: 10})
+
+	if !attackPathContainsRelation(before, "can_reach") {
+		t.Fatalf("before paths = %#v, want public exposure path", before)
+	}
+	if attackPathContainsRelation(after, "can_reach") {
+		t.Fatalf("after paths = %#v, want public exposure path removed", after)
+	}
+	if len(before) == 0 || len(after) == 0 {
+		t.Fatalf("before=%#v after=%#v, want comparable path sets", before, after)
+	}
+	if sumAttackPathScores(before) <= sumAttackPathScores(after) {
+		t.Fatalf("total score before=%d after=%d, want public exposure removal to lower modeled attack-path score", sumAttackPathScores(before), sumAttackPathScores(after))
+	}
+}
+
+func TestRiskDeltaSimulationPatchVulnerabilityLowersModeledRisk(t *testing.T) {
+	now := time.Date(2026, 5, 29, 12, 0, 0, 0, time.UTC)
+	before := compoundRiskFinding("runtime-kev", githubDependabotOpenAlertRuleID, "HIGH", "", "writer/cerebro", "urn:cerebro:writer:container_image:sha256:abc", "scan.detected")
+	before.LastObservedAt = now
+	before.Attributes["is_kev"] = "true"
+	before.Attributes["epss_score"] = "0.91"
+	before.Attributes["cvss_score"] = "9.8"
+	before.Attributes["exploit_available"] = "true"
+	before.Attributes["internet_exposed"] = "true"
+	before.Attributes["environment"] = "production"
+	before.Attributes["crown_jewel"] = "true"
+
+	after := cloneFindingWithoutAttributes(before, "is_kev", "epss_score", "cvss_score", "exploit_available")
+	beforeContext := AnalyzeFindingRiskContext(before, now)
+	afterContext := AnalyzeFindingRiskContext(after, now)
+
+	for _, reason := range []string{"known_exploited", "epss_high", "cvss_critical", "exploit_available"} {
+		if !stringSliceContains(beforeContext.Reasons, reason) {
+			t.Fatalf("before reasons = %#v, want %q", beforeContext.Reasons, reason)
+		}
+		if stringSliceContains(afterContext.Reasons, reason) {
+			t.Fatalf("after reasons = %#v, want %q removed", afterContext.Reasons, reason)
+		}
+	}
+	if beforeContext.Score <= afterContext.Score {
+		t.Fatalf("risk score before=%d after=%d, want vulnerability patch simulation to lower modeled risk", beforeContext.Score, afterContext.Score)
+	}
+	if beforeContext.LikelihoodScore <= afterContext.LikelihoodScore {
+		t.Fatalf("likelihood before=%d after=%d, want vulnerability patch simulation to lower likelihood", beforeContext.LikelihoodScore, afterContext.LikelihoodScore)
+	}
+}
+
+func cloneNeighborhoodWithoutRelation(neighborhoods map[string]*ports.EntityNeighborhood, relation string) map[string]*ports.EntityNeighborhood {
+	cloned := make(map[string]*ports.EntityNeighborhood, len(neighborhoods))
+	for key, neighborhood := range neighborhoods {
+		if neighborhood == nil {
+			continue
+		}
+		copyNeighborhood := *neighborhood
+		copyNeighborhood.Relations = nil
+		for _, edge := range neighborhood.Relations {
+			if edge == nil || edge.Relation == relation {
+				continue
+			}
+			copyEdge := *edge
+			copyNeighborhood.Relations = append(copyNeighborhood.Relations, &copyEdge)
+		}
+		cloned[key] = &copyNeighborhood
+	}
+	return cloned
+}
+
+func attackPathContainsRelation(paths []FindingAttackPath, relation string) bool {
+	for _, path := range paths {
+		for _, step := range path.Steps {
+			if step.Relation == relation {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func sumAttackPathScores(paths []FindingAttackPath) int {
+	total := 0
+	for _, path := range paths {
+		total += path.Score
+	}
+	return total
+}
+
+func cloneFindingWithoutAttributes(finding *ports.FindingRecord, keys ...string) *ports.FindingRecord {
+	cloned := *finding
+	cloned.Attributes = make(map[string]string, len(finding.Attributes))
+	for key, value := range finding.Attributes {
+		cloned.Attributes[key] = value
+	}
+	for _, key := range keys {
+		delete(cloned.Attributes, key)
+	}
+	return &cloned
+}
+
 func stringSliceContains(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {
