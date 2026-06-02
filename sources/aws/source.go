@@ -1806,6 +1806,11 @@ func listCloudTrailEvents(ctx context.Context, clients awsClients, settings sett
 		input.EndTime = &parsed
 	}
 	out, err := clients.cloudTrail.LookupEvents(ctx, input)
+	var staleToken *cloudtrailtypes.InvalidNextTokenException
+	if err != nil && resume && strings.TrimSpace(state.Token) != "" && errors.As(err, &staleToken) {
+		input.NextToken = nil
+		out, err = clients.cloudTrail.LookupEvents(ctx, input)
+	}
 	if err != nil {
 		return nil, "", err
 	}

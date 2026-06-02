@@ -458,6 +458,53 @@ func TestReadAWSAssetMetadataRestartsExpiredPaginationToken(t *testing.T) {
 	}
 }
 
+func TestReadAWSCloudTrailRestartsInvalidNextToken(t *testing.T) {
+	var inputs []cloudtrail.LookupEventsInput
+	source := newTestSource(t, fakeAWS{cloudTrailLookup: func(_ context.Context, input *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error) {
+		inputs = append(inputs, *input)
+		switch {
+		case len(inputs) == 1:
+			return &cloudtrail.LookupEventsOutput{NextToken: awssdk.String("token-1")}, nil
+		case awssdk.ToString(input.NextToken) == "token-1":
+			return nil, &cloudtrailtypes.InvalidNextTokenException{}
+		default:
+			return &cloudtrail.LookupEventsOutput{Events: []cloudtrailtypes.Event{{
+				EventId: awssdk.String("evt-1"), EventName: awssdk.String("AttachUserPolicy"), EventTime: timePtr("2026-04-23T00:00:00Z"),
+			}}}, nil
+		}
+	}})
+	config := sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyCloudTrail, "since": "PT2H"})
+
+	first, err := source.Read(context.Background(), config, nil)
+	if err != nil {
+		t.Fatalf("Read(cloudtrail first) error = %v", err)
+	}
+	if first.NextCursor == nil {
+		t.Fatal("first.NextCursor = nil, want resumable cursor")
+	}
+
+	second, err := source.Read(context.Background(), config, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(cloudtrail resume) error = %v", err)
+	}
+
+	if len(inputs) != 3 {
+		t.Fatalf("LookupEvents calls = %d, want 3 (first, stale resume, restart)", len(inputs))
+	}
+	if got := awssdk.ToString(inputs[1].NextToken); got != "token-1" {
+		t.Fatalf("resume NextToken = %q, want token-1", got)
+	}
+	if inputs[2].NextToken != nil {
+		t.Fatalf("restart NextToken = %q, want nil after stale-token recovery", awssdk.ToString(inputs[2].NextToken))
+	}
+	if inputs[2].StartTime == nil {
+		t.Fatal("restart StartTime = nil, want preserved lookup window")
+	}
+	if len(second.Events) != 1 {
+		t.Fatalf("resume events = %d, want 1 after restart", len(second.Events))
+	}
+}
+
 func TestReadAWSRoleAndAccessKeyPreview(t *testing.T) {
 	source := newTestSource(t, fakeAWS{
 		roles: []iamtypes.Role{{
