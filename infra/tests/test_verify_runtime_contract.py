@@ -80,7 +80,28 @@ class RuntimeContractTest(unittest.TestCase):
         stack = {**STACK, "sourceRuntimes": [runtime]}
         self.assertTrue(any("unsupported github family" in error for error in verify_runtime_contract.verify_contract(CONTRACT, stack)))
 
-    def test_allows_aws_asset_metadata_compatibility_override(self) -> None:
+    def test_allows_aws_asset_metadata_when_contract_declares_it(self) -> None:
+        contract = {
+            **CONTRACT,
+            "sources": [
+                *CONTRACT["sources"],
+                {"source_id": "aws", "supported_families": ["iam_role", "asset_metadata"], "runtimes": []},
+            ],
+        }
+        stack = {
+            **STACK,
+            "sourceRuntimes": [
+                {
+                    "id": "writer-aws-test-asset-metadata",
+                    "sourceId": "aws",
+                    "tenantId": "writer",
+                    "config": {"family": "asset_metadata"},
+                }
+            ],
+        }
+        self.assertEqual(verify_runtime_contract.verify_contract(contract, stack), [])
+
+    def test_rejects_aws_asset_metadata_when_contract_omits_it(self) -> None:
         contract = {
             **CONTRACT,
             "sources": [
@@ -99,7 +120,9 @@ class RuntimeContractTest(unittest.TestCase):
                 }
             ],
         }
-        self.assertEqual(verify_runtime_contract.verify_contract(contract, stack), [])
+        self.assertTrue(
+            any("unsupported aws family 'asset_metadata'" in error for error in verify_runtime_contract.verify_contract(contract, stack))
+        )
 
     def test_rejects_missing_secret_ref(self) -> None:
         stack = {**STACK, "sourceSecretKeys": ["OKTA_API_TOKEN", "OKTA_DOMAIN"]}
@@ -139,6 +162,21 @@ class RuntimeContractTest(unittest.TestCase):
         self.assertTrue(
             any("runtime 'writer-github-audit' tenantId is 'other', expected 'writer'" in error for error in verify_runtime_contract.verify_contract(CONTRACT, stack, require_manifest_runtimes=True))
         )
+
+    def test_contract_drift_is_empty_when_stack_aligned(self) -> None:
+        self.assertEqual(verify_runtime_contract.contract_drift(CONTRACT, STACK), [])
+
+    def test_contract_drift_reports_missing_runtime_without_blocking(self) -> None:
+        stack = {**STACK, "sourceRuntimes": [STACK["sourceRuntimes"][1]]}
+        warnings = verify_runtime_contract.contract_drift(CONTRACT, stack)
+        self.assertTrue(any("contract runtime 'writer-github-audit' is not configured" in warning for warning in warnings))
+        self.assertEqual(verify_runtime_contract.verify_contract(CONTRACT, stack), [])
+
+    def test_contract_drift_counts_missing_secrets_without_names(self) -> None:
+        stack = {**STACK, "sourceSecretKeys": ["OKTA_API_TOKEN", "OKTA_DOMAIN"]}
+        warnings = verify_runtime_contract.contract_drift(CONTRACT, stack)
+        self.assertTrue(any("missing 1 contract-required sourceSecretKeys" in warning for warning in warnings))
+        self.assertFalse(any("GITHUB_TOKEN" in warning for warning in warnings))
 
 
 if __name__ == "__main__":
