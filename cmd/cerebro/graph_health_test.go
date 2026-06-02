@@ -34,6 +34,54 @@ func TestCheckGraphHealthPasses(t *testing.T) {
 	if result.Ingest.CurrentRuntimeCount != 1 {
 		t.Fatalf("current runtime count = %d, want 1", result.Ingest.CurrentRuntimeCount)
 	}
+	if result.Topology == nil || result.Topology.SourcesOnly != 1 || result.Topology.SinksOnly != 1 || result.Topology.Isolated != 0 {
+		t.Fatalf("topology = %#v, want sources_only=1 sinks_only=1 isolated=0", result.Topology)
+	}
+	if len(result.Warnings) != 0 {
+		t.Fatalf("warnings = %#v, want none for report-only topology", result.Warnings)
+	}
+}
+
+func TestCheckGraphHealthReportsTopologyAndRelationDrift(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
+	store := graphHealthFixtureStore(t, now)
+	if err := store.UpsertProjectedEntity(ctx, &ports.ProjectedEntity{
+		URN:        "urn:cerebro:writer:identity:orphan",
+		TenantID:   "writer",
+		SourceID:   "test",
+		EntityType: "identity",
+		Label:      "orphan",
+	}); err != nil {
+		t.Fatalf("UpsertProjectedEntity(orphan) error = %v", err)
+	}
+
+	result, err := checkGraphHealth(ctx, store, graphHealthOptions{
+		IngestLimit:       10,
+		MaxRunningMinutes: 60,
+		RequiredRelations: []string{"belongs_to"},
+		ReportRelations:   []string{"belongs_to", "can_assume"},
+		MaxIsolatedRatio:  0.1,
+	}, now)
+	if err != nil {
+		t.Fatalf("checkGraphHealth() error = %v", err)
+	}
+	if result.Status != "passed" {
+		t.Fatalf("health status = %q, want passed (topology and drift are non-blocking)", result.Status)
+	}
+	if result.Topology == nil || result.Topology.Isolated != 1 {
+		t.Fatalf("topology = %#v, want isolated=1", result.Topology)
+	}
+	if result.ReportedRelationCounts["belongs_to"] != 1 || result.ReportedRelationCounts["can_assume"] != 0 {
+		t.Fatalf("reported relation counts = %#v, want belongs_to=1 can_assume=0", result.ReportedRelationCounts)
+	}
+	joined := strings.Join(result.Warnings, "; ")
+	if !strings.Contains(joined, "isolated-node ratio") {
+		t.Fatalf("warnings = %#v, want isolated-node ratio warning", result.Warnings)
+	}
+	if !strings.Contains(joined, "zero edges for 1 reported relation(s): can_assume") {
+		t.Fatalf("warnings = %#v, want can_assume drift warning", result.Warnings)
+	}
 }
 
 func TestCheckGraphHealthFailsLatestFailedRunUnlessTransientAllowed(t *testing.T) {
@@ -115,6 +163,8 @@ func TestParseGraphHealthArgs(t *testing.T) {
 		"ingest_limit=100",
 		"max_running_minutes=15",
 		"relations=belongs_to,represents,belongs_to",
+		"report_relations=belongs_to,can_assume",
+		"max_isolated_ratio=0.25",
 		"declared_runtime_ids=aws-runtime, azure-runtime ",
 		"allow_transient_source_failures=true",
 	})
@@ -123,6 +173,12 @@ func TestParseGraphHealthArgs(t *testing.T) {
 	}
 	if options.IngestLimit != 100 || options.MaxRunningMinutes != 15 || !options.AllowTransientSourceFailures {
 		t.Fatalf("options = %#v, want parsed numeric and boolean fields", options)
+	}
+	if options.MaxIsolatedRatio != 0.25 {
+		t.Fatalf("max_isolated_ratio = %v, want 0.25", options.MaxIsolatedRatio)
+	}
+	if !reflect.DeepEqual(options.ReportRelations, []string{"belongs_to", "can_assume"}) {
+		t.Fatalf("report relations = %#v", options.ReportRelations)
 	}
 	if !reflect.DeepEqual(options.RequiredRelations, []string{"belongs_to", "represents"}) {
 		t.Fatalf("relations = %#v", options.RequiredRelations)

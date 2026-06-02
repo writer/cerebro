@@ -68,6 +68,10 @@ type graphIntegrityStore interface {
 	IntegrityChecks(context.Context) ([]graphstore.IntegrityCheck, error)
 }
 
+type graphTopologyStore interface {
+	Topology(context.Context) (graphstore.Topology, error)
+}
+
 type graphOpenFindingPrimaryLinkRepairStore interface {
 	RepairOpenFindingPrimaryLinks(context.Context, graphstore.OpenFindingPrimaryLinkRepairRequest) (graphstore.OpenFindingPrimaryLinkRepairResult, error)
 }
@@ -140,19 +144,23 @@ type graphHealthOptions struct {
 	IngestLimit                  int
 	MaxRunningMinutes            int
 	RequiredRelations            []string
+	ReportRelations              []string
+	MaxIsolatedRatio             float64
 	DeclaredRuntimeIDs           []string
 	AllowTransientSourceFailures bool
 }
 
 type graphHealthResult struct {
-	Status         string                    `json:"status"`
-	CheckedAt      time.Time                 `json:"checked_at"`
-	Counts         graphstore.Counts         `json:"counts"`
-	Integrity      graphIntegrityResult      `json:"integrity"`
-	RelationCounts graphstore.RelationCounts `json:"relation_counts,omitempty"`
-	Ingest         graphHealthIngestResult   `json:"ingest"`
-	Failures       []string                  `json:"failures,omitempty"`
-	Warnings       []string                  `json:"warnings,omitempty"`
+	Status                 string                    `json:"status"`
+	CheckedAt              time.Time                 `json:"checked_at"`
+	Counts                 graphstore.Counts         `json:"counts"`
+	Topology               *graphstore.Topology      `json:"topology,omitempty"`
+	Integrity              graphIntegrityResult      `json:"integrity"`
+	RelationCounts         graphstore.RelationCounts `json:"relation_counts,omitempty"`
+	ReportedRelationCounts graphstore.RelationCounts `json:"reported_relation_counts,omitempty"`
+	Ingest                 graphHealthIngestResult   `json:"ingest"`
+	Failures               []string                  `json:"failures,omitempty"`
+	Warnings               []string                  `json:"warnings,omitempty"`
 }
 
 type graphHealthIngestResult struct {
@@ -570,6 +578,22 @@ func checkGraphHealth(ctx context.Context, store ports.GraphStore, options graph
 		}
 	}
 
+	if topologyStore, ok := store.(graphTopologyStore); ok {
+		topology, err := topologyStore.Topology(ctx)
+		if err != nil {
+			addWarning("compute graph topology: %v", err)
+		} else {
+			result.Topology = &topology
+			total := topology.Isolated + topology.SourcesOnly + topology.SinksOnly + topology.Intermediates
+			if total > 0 && options.MaxIsolatedRatio > 0 {
+				ratio := float64(topology.Isolated) / float64(total)
+				if ratio > options.MaxIsolatedRatio {
+					addWarning("graph isolated-node ratio %.4f exceeds max %.4f (%d isolated of %d nodes)", ratio, options.MaxIsolatedRatio, topology.Isolated, total)
+				}
+			}
+		}
+	}
+
 	integrityStore, ok := store.(graphIntegrityStore)
 	if !ok {
 		addFailure("graph store does not support integrity checks")
@@ -604,6 +628,30 @@ func checkGraphHealth(ctx context.Context, store ports.GraphStore, options graph
 					if counts[relation] <= 0 {
 						addFailure("graph relation %q has zero relationships", relation)
 					}
+				}
+			}
+		}
+	}
+
+	if len(options.ReportRelations) != 0 {
+		relationStore, ok := store.(graphRelationCountsStore)
+		if !ok {
+			addWarning("graph store does not support relation counts for reporting")
+		} else {
+			counts, err := relationStore.RelationCounts(ctx, options.ReportRelations)
+			if err != nil {
+				addWarning("count reported graph relation records: %v", err)
+			} else {
+				result.ReportedRelationCounts = counts
+				var zeroed []string
+				for _, relation := range options.ReportRelations {
+					if counts[relation] <= 0 {
+						zeroed = append(zeroed, relation)
+					}
+				}
+				if len(zeroed) != 0 {
+					sort.Strings(zeroed)
+					addWarning("graph has zero edges for %d reported relation(s): %s", len(zeroed), strings.Join(zeroed, ", "))
 				}
 			}
 		}
@@ -952,6 +1000,20 @@ func parseGraphHealthArgs(args []string) (graphHealthOptions, error) {
 			if len(options.RequiredRelations) > 50 {
 				return graphHealthOptions{}, fmt.Errorf("relations must include at most 50 values")
 			}
+		case "report_relations":
+			options.ReportRelations = appendUniqueGraphHealthValues(options.ReportRelations, splitCleanupValues(value))
+			if len(options.ReportRelations) > 50 {
+				return graphHealthOptions{}, fmt.Errorf("report_relations must include at most 50 values")
+			}
+		case "max_isolated_ratio":
+			parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+			if err != nil {
+				return graphHealthOptions{}, fmt.Errorf("parse max_isolated_ratio: %w", err)
+			}
+			if parsed < 0 || parsed > 1 {
+				return graphHealthOptions{}, fmt.Errorf("max_isolated_ratio must be between 0 and 1")
+			}
+			options.MaxIsolatedRatio = parsed
 		case "declared_runtime_ids", "runtime_ids":
 			options.DeclaredRuntimeIDs = appendUniqueGraphHealthValues(options.DeclaredRuntimeIDs, splitCleanupValues(value))
 		case "allow_transient_source_failures":
