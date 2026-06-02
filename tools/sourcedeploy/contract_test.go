@@ -107,6 +107,35 @@ func TestRenderContractUsesRuntimeFamilyCatalogOverrides(t *testing.T) {
 	}
 }
 
+func TestAWSCatalogDeclaresAssetMetadataSupportedFamily(t *testing.T) {
+	t.Parallel()
+	catalogs, err := discoverCatalogs(filepath.Join("..", "..", "sources"))
+	if err != nil {
+		t.Fatalf("discoverCatalogs: %v", err)
+	}
+	var aws *contractCatalog
+	for i := range catalogs {
+		if catalogs[i].ID == "aws" {
+			aws = &catalogs[i]
+			break
+		}
+	}
+	if aws == nil {
+		t.Fatal("aws catalog not found under sources/")
+	}
+	families := supportedFamilies(aws.ID, aws.EmittedKinds, aws.RuntimeFamilies, nil)
+	found := false
+	for _, family := range families {
+		if family == "asset_metadata" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("aws supported families %v missing asset_metadata", families)
+	}
+}
+
 func mkSource(t *testing.T, root string, name string, catalog string, deploy string) {
 	t.Helper()
 	dir := filepath.Join(root, name)

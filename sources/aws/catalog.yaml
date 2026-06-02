@@ -14,3 +14,16 @@ emitted_kinds:
   - aws.iam_user
   - aws.public_endpoint
   - aws.resource_exposure
+runtime_families:
+  - access_key
+  - asset_metadata
+  - cloudtrail
+  - effective_permission
+  - iam_group
+  - iam_group_membership
+  - iam_role
+  - iam_role_assignment
+  - iam_role_trust
+  - iam_user
+  - public_endpoint
+  - resource_exposure
