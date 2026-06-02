@@ -81,7 +81,7 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 	for _, item := range tools {
 		names[item.(map[string]any)["name"].(string)] = true
 	}
-	for _, want := range []string{"cerebro.health", "cerebro.version", "cerebro.source_runtimes.list", "cerebro.findings.list", "cerebro.graph.neighborhood"} {
+	for _, want := range []string{"cerebro.health", "cerebro.version", "cerebro.source_runtimes.list", "cerebro.findings.list", "cerebro.findings.get", "cerebro.assets.search", "cerebro.risk.summary", "cerebro.graph.neighborhood"} {
 		if !names[want] {
 			t.Fatalf("tools/list missing %s in %#v", want, names)
 		}
@@ -177,6 +177,187 @@ func TestMCPFindingsListUsesRuntimeScope(t *testing.T) {
 	findings := result["structuredContent"].(map[string]any)["findings"].([]any)
 	if len(findings) != 1 {
 		t.Fatalf("len(findings) = %d, want 1", len(findings))
+	}
+}
+
+func TestMCPFindingsGet(t *testing.T) {
+	store := &stubRuntimeStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:        "finding-1",
+				RuntimeID: "writer-okta",
+				TenantID:  "writer",
+				RuleID:    "rule-1",
+				Title:     "Finding One",
+				Severity:  "critical",
+				Status:    "open",
+				FindingRisk: ports.FindingRisk{
+					RiskScore:       94,
+					LikelihoodScore: 87,
+					ImpactScore:     96,
+					RiskReasons:     []string{"internet exposed", "privileged asset"},
+				},
+				LastObservedAt: time.Now().UTC(),
+			},
+		},
+	}
+	server := newMCPTestServer(t, store)
+	defer server.Close()
+
+	response, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.findings.get",
+			"arguments": map[string]any{
+				"finding_id": "finding-1",
+			},
+		},
+	})
+	if response["error"] != nil {
+		t.Fatalf("tools/call error = %#v", response["error"])
+	}
+	finding := response["result"].(map[string]any)["structuredContent"].(map[string]any)["finding"].(map[string]any)
+	if finding["id"] != "finding-1" || finding["risk_score"] != float64(94) {
+		t.Fatalf("finding response = %#v", finding)
+	}
+}
+
+func TestMCPAssetsSearchUsesTenantScopedCypher(t *testing.T) {
+	graph := &stubGraphStore{cypherRows: [][]ports.CypherRow{{
+		{Values: map[string]any{
+			"urn":             "urn:cerebro:writer:asset:prod-db",
+			"tenant_id":       "writer",
+			"runtime_id":      "writer-aws",
+			"source_id":       "aws",
+			"entity_type":     "aws.rds.instance",
+			"label":           "prod-db",
+			"attributes_json": `{"account_id":"123456789012","environment":"prod"}`,
+		}},
+		{Values: map[string]any{
+			"urn":             "urn:cerebro:other:asset:prod-db",
+			"tenant_id":       "other",
+			"runtime_id":      "other-aws",
+			"source_id":       "aws",
+			"entity_type":     "aws.rds.instance",
+			"label":           "other-prod-db",
+			"attributes_json": `{}`,
+		}},
+	}}}
+	server := newMCPTestServerWithGraph(t, &stubRuntimeStore{}, graph)
+	defer server.Close()
+
+	response, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.assets.search",
+			"arguments": map[string]any{
+				"query":       "prod",
+				"entity_type": "aws.rds.instance",
+				"limit":       7,
+			},
+		},
+	})
+	if response["error"] != nil {
+		t.Fatalf("tools/call error = %#v", response["error"])
+	}
+	if len(graph.cypherRequests) != 1 {
+		t.Fatalf("cypher requests = %d, want 1", len(graph.cypherRequests))
+	}
+	if graph.cypherRequests[0].Params["tenant_id"] != "writer" || graph.cypherRequests[0].RowLimit != 7 {
+		t.Fatalf("cypher request = %#v", graph.cypherRequests[0])
+	}
+	assets := response["result"].(map[string]any)["structuredContent"].(map[string]any)["assets"].([]any)
+	if len(assets) != 1 {
+		t.Fatalf("len(assets) = %d, want 1", len(assets))
+	}
+	asset := assets[0].(map[string]any)
+	if asset["urn"] != "urn:cerebro:writer:asset:prod-db" {
+		t.Fatalf("asset = %#v", asset)
+	}
+	attributes := asset["attributes"].(map[string]any)
+	if attributes["environment"] != "prod" {
+		t.Fatalf("attributes = %#v", attributes)
+	}
+}
+
+func TestMCPRiskSummaryAggregatesScopedRuntimeFindings(t *testing.T) {
+	now := time.Now().UTC()
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-aws":    {Id: "writer-aws", SourceId: "aws", TenantId: "writer"},
+			"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer"},
+		},
+		findings: map[string]*ports.FindingRecord{
+			"finding-critical": {
+				ID:             "finding-critical",
+				RuntimeID:      "writer-aws",
+				TenantID:       "writer",
+				RuleID:         "rule-critical",
+				Title:          "Critical",
+				Severity:       "critical",
+				Status:         "open",
+				FindingRisk:    ports.FindingRisk{RiskScore: 95, RiskReasons: []string{"internet exposed", "privileged asset"}},
+				LastObservedAt: now,
+			},
+			"finding-high": {
+				ID:             "finding-high",
+				RuntimeID:      "writer-github",
+				TenantID:       "writer",
+				RuleID:         "rule-high",
+				Title:          "High",
+				Severity:       "high",
+				Status:         "open",
+				FindingRisk:    ports.FindingRisk{RiskScore: 75, RiskReasons: []string{"internet exposed"}},
+				LastObservedAt: now.Add(-time.Minute),
+			},
+			"finding-resolved": {
+				ID:             "finding-resolved",
+				RuntimeID:      "writer-github",
+				TenantID:       "writer",
+				RuleID:         "rule-low",
+				Title:          "Resolved",
+				Severity:       "low",
+				Status:         "resolved",
+				FindingRisk:    ports.FindingRisk{RiskScore: 10},
+				LastObservedAt: now.Add(-2 * time.Minute),
+			},
+		},
+	}
+	server := newMCPTestServer(t, store)
+	defer server.Close()
+
+	response, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.risk.summary",
+			"arguments": map[string]any{
+				"limit": 50,
+			},
+		},
+	})
+	if response["error"] != nil {
+		t.Fatalf("tools/call error = %#v", response["error"])
+	}
+	summary := response["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if summary["total_findings"] != float64(3) || summary["open_findings"] != float64(2) || summary["critical_open_findings"] != float64(1) || summary["high_open_findings"] != float64(1) {
+		t.Fatalf("summary counts = %#v", summary)
+	}
+	if summary["max_risk_score"] != float64(95) {
+		t.Fatalf("max_risk_score = %#v", summary["max_risk_score"])
+	}
+	reasons := summary["top_risk_reasons"].([]any)
+	if len(reasons) == 0 || reasons[0].(map[string]any)["reason"] != "internet exposed" || reasons[0].(map[string]any)["count"] != float64(2) {
+		t.Fatalf("top_risk_reasons = %#v", reasons)
+	}
+	recent := summary["recent_high_risk"].([]any)
+	if len(recent) == 0 || recent[0].(map[string]any)["id"] != "finding-critical" {
+		t.Fatalf("recent_high_risk = %#v", recent)
 	}
 }
 

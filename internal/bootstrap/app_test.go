@@ -6601,6 +6601,7 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 	copy(notes, finding.Notes)
 	tickets := make([]ports.FindingTicket, len(finding.Tickets))
 	copy(tickets, finding.Tickets)
+	riskReasons := append([]string(nil), finding.RiskReasons...)
 	attributes := make(map[string]string, len(finding.Attributes))
 	for key, value := range finding.Attributes {
 		attributes[key] = value
@@ -6630,6 +6631,16 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 			DueAt:           finding.DueAt,
 			StatusReason:    finding.StatusReason,
 			StatusUpdatedAt: finding.StatusUpdatedAt,
+		},
+		FindingRisk: ports.FindingRisk{
+			RiskScore:        finding.RiskScore,
+			LikelihoodScore:  finding.LikelihoodScore,
+			ImpactScore:      finding.ImpactScore,
+			ConfidenceScore:  finding.ConfidenceScore,
+			LikelihoodLevel:  finding.LikelihoodLevel,
+			ImpactLevel:      finding.ImpactLevel,
+			RiskReasons:      riskReasons,
+			RiskModelVersion: finding.RiskModelVersion,
 		},
 		Attributes:      attributes,
 		FirstObservedAt: finding.FirstObservedAt,
