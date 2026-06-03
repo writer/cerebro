@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -43,6 +44,7 @@ type authPrincipal struct {
 	CredentialID   string
 	ClientID       string
 	AuthMode       string
+	TokenResource  string
 	AllowedTenants []string
 	Scopes         []string
 	Groups         []string
@@ -110,7 +112,7 @@ func authMiddleware(cfg config.AuthConfig, deps AuthDependencies, next http.Hand
 		principal, deviceJKT, presentedToken, ok := authenticateRequest(cfg, deps.DeviceVerifier, r)
 		if !ok {
 			denialReason = "unauthenticated"
-			writeAuthError(recorder, http.StatusUnauthorized, "unauthorized")
+			writeAuthErrorForRequest(recorder, r, cfg, http.StatusUnauthorized, "unauthorized")
 			return
 		}
 		if deviceJKT != "" {
@@ -140,9 +142,14 @@ func authMiddleware(cfg config.AuthConfig, deps AuthDependencies, next http.Hand
 			principal.RiskScore = decision.Score
 			principal.RiskLevel = decision.Level
 		}
+		if err := authorizeMCPTokenResource(cfg, principal, r); err != nil {
+			denialReason = "resource_forbidden"
+			writeAuthErrorForRequest(recorder, r, cfg, http.StatusUnauthorized, "unauthorized")
+			return
+		}
 		if tenantID := auditResult.RequestedTenantID; tenantID != "" && !tenantAllowed(cfg, principal, tenantID) {
 			denialReason = "tenant_forbidden"
-			writeAuthError(recorder, http.StatusForbidden, "tenant forbidden")
+			writeAuthErrorForRequest(recorder, r, cfg, http.StatusForbidden, "tenant forbidden")
 			return
 		}
 		auth := authContext{
@@ -155,7 +162,7 @@ func authMiddleware(cfg config.AuthConfig, deps AuthDependencies, next http.Hand
 		}
 		if err := authorizeHTTPRequestScope(auth, r); err != nil {
 			denialReason = "scope_forbidden"
-			writeAuthError(recorder, http.StatusForbidden, "scope forbidden")
+			writeAuthErrorForRequest(recorder, r, cfg, http.StatusForbidden, "scope forbidden")
 			return
 		}
 		outcome = "allowed"
@@ -216,6 +223,10 @@ func isPublicPath(path string) bool {
 	case "/health", "/healthz", "/openapi.yaml":
 		return true
 	case "/.well-known/device-jwks.json":
+		return true
+	case oauthProtectedResourceMetadataPath, oauthProtectedResourceMetadataMCPPath, oauthAuthorizationServerMetadataPath:
+		return true
+	case oauthAuthorizePath, oauthCallbackPath, oauthTokenPath, oauthRegisterPath:
 		return true
 	default:
 		return false
@@ -371,6 +382,7 @@ func authenticateCapabilityToken(cfg config.AuthConfig, token string, now time.T
 		CredentialID:   strings.TrimSpace(claims.CredentialID),
 		ClientID:       strings.TrimSpace(claims.ClientID),
 		AuthMode:       "capability_token",
+		TokenResource:  strings.TrimSpace(claims.Resource),
 		AllowedTenants: allowedTenants,
 		Scopes:         scopes,
 		Groups:         normalizeAuthList(claims.Groups),
@@ -385,6 +397,7 @@ type capabilityClaims struct {
 	IssuedAt       int64    `json:"iat,omitempty"`
 	CredentialID   string   `json:"credential_id,omitempty"`
 	ClientID       string   `json:"client_id,omitempty"`
+	Resource       string   `json:"resource,omitempty"`
 	TenantID       string   `json:"tenant_id,omitempty"`
 	AllowedTenants []string `json:"allowed_tenants,omitempty"`
 	Scopes         []string `json:"scopes,omitempty"`
@@ -404,6 +417,42 @@ func validCapabilitySignature(signingInput []byte, signature []byte, secrets []s
 		}
 	}
 	return false
+}
+
+func issueCapabilityToken(cfg config.AuthConfig, claims capabilityClaims, ttl time.Duration, now time.Time) (string, error) {
+	if len(cfg.CapabilityTokenSecrets) == 0 {
+		return "", fmt.Errorf("capability token secret is required")
+	}
+	secret := strings.TrimSpace(cfg.CapabilityTokenSecrets[0])
+	if secret == "" {
+		return "", fmt.Errorf("capability token secret is empty")
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	if ttl <= 0 {
+		ttl = 10 * time.Minute
+	}
+	claims.IssuedAt = now.UTC().Unix()
+	claims.ExpiresAt = now.UTC().Add(ttl).Unix()
+	if strings.TrimSpace(claims.Audience) == "" {
+		claims.Audience = cfg.CapabilityTokenAudience
+	}
+	headerBytes, err := json.Marshal(map[string]string{"alg": "HS256", "typ": "JWT"})
+	if err != nil {
+		return "", fmt.Errorf("marshal capability token header: %w", err)
+	}
+	payloadBytes, err := json.Marshal(claims)
+	if err != nil {
+		return "", fmt.Errorf("marshal capability token claims: %w", err)
+	}
+	header := base64.RawURLEncoding.EncodeToString(headerBytes)
+	payload := base64.RawURLEncoding.EncodeToString(payloadBytes)
+	signingInput := header + "." + payload
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(signingInput))
+	signature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return signingInput + "." + signature, nil
 }
 
 func requestTenantHint(r *http.Request) string {
@@ -522,6 +571,19 @@ func authorizeHTTPRequestScope(auth authContext, r *http.Request) error {
 	}
 	scope := scopeForHTTPRequest(r)
 	return authorizePrincipalScope(auth.principal, scope)
+}
+
+func authorizeMCPTokenResource(cfg config.AuthConfig, principal authPrincipal, r *http.Request) error {
+	if !cfg.MCPOAuth.Enabled || principal.CredentialID != "mcp-oauth" {
+		return nil
+	}
+	if strings.TrimSpace(principal.TokenResource) != strings.TrimSpace(cfg.MCPOAuth.Resource) {
+		return errScopeForbidden
+	}
+	if r == nil || r.URL == nil || r.URL.Path != mcpEndpointPath {
+		return errScopeForbidden
+	}
+	return nil
 }
 
 func authorizeConnectProcedureScope(ctx context.Context, procedure string) error {
@@ -819,11 +881,22 @@ func appendTenantID(rawTenantID string, seen map[string]struct{}, tenants *[]str
 
 func writeAuthError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
-	if status == http.StatusUnauthorized || status == http.StatusForbidden {
+	if (status == http.StatusUnauthorized || status == http.StatusForbidden) && w.Header().Get("WWW-Authenticate") == "" {
 		w.Header().Set("WWW-Authenticate", "Bearer")
 	}
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+func writeAuthErrorForRequest(w http.ResponseWriter, r *http.Request, cfg config.AuthConfig, status int, message string) {
+	if cfg.MCPOAuth.Enabled && r != nil && r.URL != nil && r.URL.Path == mcpEndpointPath && (status == http.StatusUnauthorized || status == http.StatusForbidden) {
+		challenge := `Bearer resource_metadata="` + mcpOAuthResourceMetadataURL(r, cfg) + `", scope="` + scopeCosmoSecurityRead + `"`
+		if status == http.StatusForbidden {
+			challenge += `, error="insufficient_scope", error_description="MCP access requires the ` + scopeCosmoSecurityRead + ` scope"`
+		}
+		w.Header().Set("WWW-Authenticate", challenge)
+	}
+	writeAuthError(w, status, message)
 }
 
 type accessAuditResponseWriter struct {

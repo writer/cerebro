@@ -33,6 +33,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_PUBLIC_ORIGIN", "")
 	t.Setenv("CEREBRO_TRUSTED_PROXY_CIDRS", "")
 	t.Setenv("CEREBRO_TRUSTED_PROXY_COUNT", "")
+	clearMCPOAuthEnv(t)
 	clearDeviceAuthEnv(t)
 
 	cfg, err := Load()
@@ -96,6 +97,7 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_PUBLIC_ORIGIN", "https://api.writer.com")
 	t.Setenv("CEREBRO_TRUSTED_PROXY_CIDRS", "10.0.0.0/8, 192.168.0.0/16")
 	t.Setenv("CEREBRO_TRUSTED_PROXY_COUNT", "1")
+	clearMCPOAuthEnv(t)
 	clearDeviceAuthEnv(t)
 
 	cfg, err := Load()
@@ -178,6 +180,7 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_PUBLIC_ORIGIN", "")
 	t.Setenv("CEREBRO_TRUSTED_PROXY_CIDRS", "")
 	t.Setenv("CEREBRO_TRUSTED_PROXY_COUNT", "")
+	clearMCPOAuthEnv(t)
 	clearDeviceAuthEnv(t)
 }
 
@@ -215,6 +218,30 @@ func clearDeviceAuthEnv(t *testing.T) {
 	t.Setenv("CEREBRO_DEVICE_AUTH_APPLE_TEAM_ID", "")
 	t.Setenv("CEREBRO_DEVICE_AUTH_APPLE_BUNDLE_IDS", "")
 	t.Setenv("CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON", "")
+}
+
+func clearMCPOAuthEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("CEREBRO_MCP_OAUTH_ENABLED", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_ISSUER", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_RESOURCE", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_CLIENTS_JSON", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_ACCESS_TTL", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_REFRESH_TTL", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_CODE_TTL", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_STATE_TTL", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_TENANT_ID", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_ALLOWED_TENANTS", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_ISSUER", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_AUTHORIZATION_ENDPOINT", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_TOKEN_ENDPOINT", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_JWKS_URI", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_ID", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_SECRET", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_REDIRECT_URI", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_SCOPES", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_GROUPS_CLAIM", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_SECURITY_GROUPS", "")
 }
 
 func TestLoadRejectsRequiredDeviceAuthAttestationWithoutVerifier(t *testing.T) {
@@ -330,6 +357,149 @@ func TestLoadParsesCapabilityTokenConfig(t *testing.T) {
 	}
 	if cfg.Auth.CapabilityTokenAudience != "cerebro-api" {
 		t.Fatalf("CapabilityTokenAudience = %q, want cerebro-api", cfg.Auth.CapabilityTokenAudience)
+	}
+}
+
+func TestLoadParsesMCPOAuthConfig(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS", "secret-1")
+	t.Setenv("CEREBRO_PUBLIC_ORIGIN", "https://cerebro.example")
+	t.Setenv("CEREBRO_STATE_STORE_DRIVER", StateStoreDriverPostgres)
+	t.Setenv("CEREBRO_POSTGRES_DSN", "postgres://127.0.0.1:5432/cerebro?sslmode=disable")
+	t.Setenv("CEREBRO_MCP_OAUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_MCP_OAUTH_CLIENTS_JSON", `[{"client_id":"droid","redirect_uris":["http://127.0.0.1/callback"],"public":true}]`)
+	t.Setenv("CEREBRO_MCP_OAUTH_TENANT_ID", "writer")
+	t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_ISSUER", "https://sso.example")
+	t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_ID", "writer-client")
+	t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_SECRET", "writer-secret")
+	t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_REDIRECT_URI", "https://cerebro.example/oauth/callback")
+	t.Setenv("CEREBRO_MCP_OAUTH_SECURITY_GROUPS", "secops,secops")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !cfg.Auth.MCPOAuth.Enabled {
+		t.Fatal("MCPOAuth.Enabled = false, want true")
+	}
+	if cfg.Auth.MCPOAuth.Issuer != "https://cerebro.example" || cfg.Auth.MCPOAuth.Resource != "https://cerebro.example/api/v1/mcp" {
+		t.Fatalf("MCPOAuth issuer/resource = %#v", cfg.Auth.MCPOAuth)
+	}
+	if len(cfg.Auth.MCPOAuth.Clients) != 1 || cfg.Auth.MCPOAuth.Clients[0].ClientID != "droid" {
+		t.Fatalf("MCPOAuth.Clients = %#v", cfg.Auth.MCPOAuth.Clients)
+	}
+	if !cfg.Auth.MCPOAuth.DynamicClientRegistration {
+		t.Fatal("MCPOAuth.DynamicClientRegistration = false, want true")
+	}
+	if cfg.Auth.MCPOAuth.RefreshTTL != 24*time.Hour {
+		t.Fatalf("MCPOAuth.RefreshTTL = %v, want 24h", cfg.Auth.MCPOAuth.RefreshTTL)
+	}
+	if got := cfg.Auth.MCPOAuth.Upstream.SecurityGroups; len(got) != 1 || got[0] != "secops" {
+		t.Fatalf("SecurityGroups = %#v, want [secops]", got)
+	}
+}
+
+func TestLoadRejectsMCPOAuthHTTPNonLoopbackURLs(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		key   string
+		value string
+	}{
+		{name: "public origin", key: "CEREBRO_PUBLIC_ORIGIN", value: "http://cerebro.example"},
+		{name: "upstream issuer", key: "CEREBRO_MCP_OAUTH_UPSTREAM_ISSUER", value: "http://sso.example"},
+		{name: "upstream redirect", key: "CEREBRO_MCP_OAUTH_UPSTREAM_REDIRECT_URI", value: "http://cerebro.example/oauth/callback"},
+		{name: "upstream token endpoint", key: "CEREBRO_MCP_OAUTH_UPSTREAM_TOKEN_ENDPOINT", value: "http://sso.example/oauth/token"},
+		{name: "client redirect", key: "CEREBRO_MCP_OAUTH_CLIENTS_JSON", value: `[{"client_id":"droid","redirect_uris":["http://evil.example/callback"],"public":true}]`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			setValidMCPOAuthEnv(t)
+			t.Setenv(tt.key, tt.value)
+			if _, err := Load(); err == nil {
+				t.Fatal("Load() error = nil, want MCP OAuth HTTPS requirement error")
+			}
+		})
+	}
+}
+
+func TestLoadRejectsMCPOAuthPublicClientWithSecret(t *testing.T) {
+	setValidMCPOAuthEnv(t)
+	t.Setenv("CEREBRO_MCP_OAUTH_CLIENTS_JSON", `[{"client_id":"droid","client_secret":"secret","redirect_uris":["http://127.0.0.1/callback"],"public":true}]`)
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want public client secret rejection")
+	}
+}
+
+func setValidMCPOAuthEnv(t *testing.T) {
+	t.Helper()
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS", "secret-1")
+	t.Setenv("CEREBRO_PUBLIC_ORIGIN", "https://cerebro.example")
+	t.Setenv("CEREBRO_STATE_STORE_DRIVER", StateStoreDriverPostgres)
+	t.Setenv("CEREBRO_POSTGRES_DSN", "postgres://127.0.0.1:5432/cerebro?sslmode=disable")
+	t.Setenv("CEREBRO_MCP_OAUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_MCP_OAUTH_CLIENTS_JSON", `[{"client_id":"droid","redirect_uris":["http://127.0.0.1/callback"],"public":true}]`)
+	t.Setenv("CEREBRO_MCP_OAUTH_TENANT_ID", "writer")
+	t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_ISSUER", "https://sso.example")
+	t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_ID", "writer-client")
+	t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_SECRET", "writer-secret")
+	t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_REDIRECT_URI", "https://cerebro.example/oauth/callback")
+	t.Setenv("CEREBRO_MCP_OAUTH_SECURITY_GROUPS", "secops")
+}
+
+func TestLoadRejectsMCPOAuthWithoutClientsWhenDCRDisabled(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS", "secret-1")
+	t.Setenv("CEREBRO_PUBLIC_ORIGIN", "https://cerebro.example")
+	t.Setenv("CEREBRO_STATE_STORE_DRIVER", StateStoreDriverPostgres)
+	t.Setenv("CEREBRO_POSTGRES_DSN", "postgres://127.0.0.1:5432/cerebro?sslmode=disable")
+	t.Setenv("CEREBRO_MCP_OAUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_MCP_OAUTH_DYNAMIC_CLIENT_REGISTRATION_ENABLED", "false")
+	t.Setenv("CEREBRO_MCP_OAUTH_TENANT_ID", "writer")
+	t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_ISSUER", "https://sso.example")
+	t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_ID", "writer-client")
+	t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_SECRET", "writer-secret")
+	t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_REDIRECT_URI", "https://cerebro.example/oauth/callback")
+	t.Setenv("CEREBRO_MCP_OAUTH_SECURITY_GROUPS", "secops")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want client/DCR requirement error")
+	}
+}
+
+func TestLoadRejectsMCPOAuthWithoutProductionRequirements(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		unset string
+	}{
+		{name: "api auth", unset: "CEREBRO_API_AUTH_ENABLED"},
+		{name: "public origin", unset: "CEREBRO_PUBLIC_ORIGIN"},
+		{name: "state store", unset: "CEREBRO_POSTGRES_DSN"},
+		{name: "capability secret", unset: "CEREBRO_CAPABILITY_TOKEN_SECRETS"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			clearDependencyEnv(t)
+			t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
+			t.Setenv("CEREBRO_CAPABILITY_TOKEN_SECRETS", "secret-1")
+			t.Setenv("CEREBRO_PUBLIC_ORIGIN", "https://cerebro.example")
+			t.Setenv("CEREBRO_STATE_STORE_DRIVER", StateStoreDriverPostgres)
+			t.Setenv("CEREBRO_POSTGRES_DSN", "postgres://127.0.0.1:5432/cerebro?sslmode=disable")
+			t.Setenv("CEREBRO_MCP_OAUTH_ENABLED", "true")
+			t.Setenv("CEREBRO_MCP_OAUTH_CLIENTS_JSON", `[{"client_id":"droid","redirect_uris":["http://127.0.0.1/callback"],"public":true}]`)
+			t.Setenv("CEREBRO_MCP_OAUTH_TENANT_ID", "writer")
+			t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_ISSUER", "https://sso.example")
+			t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_ID", "writer-client")
+			t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_SECRET", "writer-secret")
+			t.Setenv("CEREBRO_MCP_OAUTH_UPSTREAM_REDIRECT_URI", "https://cerebro.example/oauth/callback")
+			t.Setenv("CEREBRO_MCP_OAUTH_SECURITY_GROUPS", "secops")
+			t.Setenv(tt.unset, "")
+
+			if _, err := Load(); err == nil {
+				t.Fatal("Load() error = nil, want MCP OAuth production requirement error")
+			}
+		})
 	}
 }
 
