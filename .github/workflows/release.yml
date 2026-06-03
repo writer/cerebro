@@ -62,6 +62,8 @@ jobs:
             command: make openapi-check openapi-lint
           - name: catalog
             command: make catalog-check detection-catalog-check
+          - name: readme
+            command: make readme-check
           - name: oss-audit
             command: make oss-audit
           - name: structural

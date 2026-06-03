@@ -29,7 +29,13 @@ Cerebro has historical and forward-looking docs in `docs/`. For current runtime 
 
 Cerebro exposes JSON HTTP, Connect RPC, CLI, and release artifacts. This repository does not ship an end-user web console, a SIEM/CSPM/CNAPP/EDR/SOAR replacement, an endpoint sensor, a plugin marketplace, a general-purpose graph database product, autonomous remediation, or a cloud-specific control plane.
 
+### Cross-repo contract
+
 This public repository is authoritative for runtime behavior, CLI/API contracts, source catalogs, configuration semantics, and release artifacts. Environment-specific deployment details, stack configuration, account wiring, hostnames, and rollout procedures intentionally live outside this public repo.
+
+The handoff to deployment repositories is the release payload: container images plus `cerebro-runtime-contract.json`. Treat that contract as the bridge between public runtime releases and environment-specific promotion/deploy automation.
+
+Volatile details should stay in their source-of-truth files and be linked from here: configuration variables in `docs/CONFIG_ENV_VARS.md`, API shape in `api/openapi.yaml`, source capabilities in `sources/*/catalog.yaml`, and release/deploy handoff data in `cerebro-runtime-contract.json`.
 
 See [Non-goals](docs/NON_GOALS.md) before changing storage shape, Source CDK boundaries, graph/Cypher behavior, findings workflow contracts, action/runtime response semantics, platform/security namespace boundaries, or public product language.
 

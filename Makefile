@@ -1,4 +1,4 @@
-.PHONY: build serve test workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke lint lint-bootstrap proto-lint proto-generate openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check oss-audit govulncheck droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: build serve test workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke lint lint-bootstrap proto-lint proto-generate openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check readme-check oss-audit govulncheck droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
@@ -130,6 +130,10 @@ detection-catalog-generate:
 detection-catalog-check:
 	go run ./tools/detectioncatalog --check
 
+readme-check:
+	git diff --check README.md
+	python3 scripts/readme_check.py
+
 oss-audit:
 	python3 scripts/oss_audit.py
 
@@ -181,4 +185,4 @@ check-arch:
 
 check-hook-integrity: check-arch
 
-verify: build test lint proto-lint openapi-check openapi-lint catalog-check detection-catalog-check oss-audit check-structural check-structural-test check-arch
+verify: build test lint proto-lint openapi-check openapi-lint catalog-check detection-catalog-check readme-check oss-audit check-structural check-structural-test check-arch
