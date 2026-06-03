@@ -942,7 +942,7 @@ func TestNetNewRetiredRulesNoEmit(t *testing.T) {
 func TestKeepAsIsRulesUnchanged(t *testing.T) {
 	metadataByID := rulepackAuditMetadataByID(t)
 	keepRules := rulepackAuditRulesByClass(t, rulepackAuditClassKeep)
-	if got, want := len(keepRules), 35; got != want {
+	if got, want := len(keepRules), 36; got != want {
 		t.Fatalf("KEEP_AS_IS rule count = %d, want %d", got, want)
 	}
 	for _, entry := range keepRules {
@@ -1158,6 +1158,7 @@ func fallbackRulepackAuditClassifications() []rulepackAuditClassification {
 		{RuleID: "cloud-privilege-path-granted", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "cloud"},
 		{RuleID: "cloud-public-exposure-privileged-principal", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "cloud"},
 		{RuleID: "cloud-current-public-exposure-review-needed", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "cloud"},
+		{RuleID: "cloud-exposed-privileged-compute-role", Classification: "KEEP_AS_IS", BulkCloseoutThreshold: "none", Source: "cloud"},
 		{RuleID: "cloud-public-resource-exposure", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "cloud"},
 		{RuleID: "data-sensitive-asset-risk", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "asset"},
 		{RuleID: "github-app-integration-installed", Classification: "CONVERT_TO_CURRENT_STATE", BulkCloseoutThreshold: ">7d", Source: "github"},
