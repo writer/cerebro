@@ -15,6 +15,11 @@ if [ -z "${image_tag}" ]; then
 fi
 web_image_tag="$(awk '$1 == "cerebro:webImageTag:" { print $2; exit }' "${config_file}")"
 
+is_transient_ecr_error() {
+  local err_file="$1"
+  grep -Eiq 'Connect timeout|Read timeout|timed out|EndpointConnectionError|RequestTimeout|RequestLimitExceeded|Throttl|TooManyRequests|InternalFailure|InternalServerError|ServiceUnavailable|Bad Gateway|Gateway Timeout|502|503|504|connection reset|EOF' "${err_file}"
+}
+
 wait_for_tag() {
   local image_tag="$1"
   local label="$2"
@@ -30,7 +35,9 @@ wait_for_tag() {
       return 0
     fi
 
-    if ! grep -q "ImageNotFoundException" "${err_file}"; then
+    if grep -q "ImageNotFoundException" "${err_file}"; then
+      last_error=""
+    elif is_transient_ecr_error "${err_file}"; then
       last_error="$(cat "${err_file}")"
       rm -f "${err_file}"
       if [ "${attempt}" -eq "${max_attempts}" ]; then
@@ -40,6 +47,11 @@ wait_for_tag() {
       printf '%s\n' "${last_error}" >&2
       sleep "${sleep_seconds}"
       continue
+    else
+      cat "${err_file}" >&2
+      rm -f "${err_file}"
+      echo "ERROR: failed to check ECR image availability"
+      exit 1
     fi
     rm -f "${err_file}"
 
