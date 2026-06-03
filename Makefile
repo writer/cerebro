@@ -1,4 +1,4 @@
-.PHONY: build serve test sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check oss-audit govulncheck droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: build serve test sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check readme-check oss-audit govulncheck droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
@@ -7,6 +7,7 @@ BUF := GOFLAGS= GOTOOLCHAIN=go1.26.3 go run github.com/bufbuild/buf/cmd/buf@v1.5
 GOVULNCHECK := GOFLAGS= GOTOOLCHAIN=go1.26.3 go run golang.org/x/vuln/cmd/govulncheck@v1.1.4
 SPECTRAL := npx --yes @stoplight/spectral-cli@6.15.0
 PROTO_BREAKING_BASE ?= origin/main
+README_CHECK_BASE ?= origin/main
 APP_PACKAGES := ./api/... ./cmd/... ./internal/... ./sources/...
 LINTER_MODULE := ./tools/linters
 LINTER_BIN := $(GO_BIN)/cerebrolint
@@ -148,6 +149,16 @@ detection-catalog-generate:
 detection-catalog-check:
 	go run ./tools/detectioncatalog --check
 
+readme-check:
+	@base_ref="$(README_CHECK_BASE)"; \
+	if git rev-parse --verify "$$base_ref" >/dev/null 2>&1; then \
+		base="$$(git merge-base HEAD "$$base_ref")"; \
+	else \
+		base="$$(git rev-list --max-parents=0 HEAD)"; \
+	fi; \
+	git diff --check "$$base"..HEAD -- README.md
+	python3 scripts/readme_check.py
+
 oss-audit:
 	python3 scripts/oss_audit.py
 
@@ -199,4 +210,4 @@ check-arch:
 
 check-hook-integrity: check-arch
 
-verify: build test sdk-test lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check detection-catalog-check oss-audit check-structural check-structural-test check-arch
+verify: build test sdk-test lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check detection-catalog-check readme-check oss-audit check-structural check-structural-test check-arch

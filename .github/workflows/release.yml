@@ -62,6 +62,8 @@ jobs:
             command: make openapi-check openapi-lint
           - name: catalog
             command: make catalog-check detection-catalog-check
+          - name: readme
+            command: make readme-check
           - name: oss-audit
             command: make oss-audit
           - name: structural
@@ -69,6 +71,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          fetch-depth: 0
           ref: ${{ needs.resolve-tag.outputs.tag }}
 
       - name: Set up Go
