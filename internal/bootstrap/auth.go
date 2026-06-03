@@ -819,6 +819,9 @@ func appendTenantID(rawTenantID string, seen map[string]struct{}, tenants *[]str
 
 func writeAuthError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
+	if status == http.StatusUnauthorized || status == http.StatusForbidden {
+		w.Header().Set("WWW-Authenticate", "Bearer")
+	}
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
