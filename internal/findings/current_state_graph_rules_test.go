@@ -33,6 +33,30 @@ func TestCurrentStateGraphRulesEmitStableFindings(t *testing.T) {
 			}},
 		},
 		{
+			name:    "cloud exposed privileged compute",
+			rule:    newCloudExposedPrivilegedComputeRoleRule(),
+			runtime: &cerebrov1.SourceRuntime{Id: "aws-ecs", SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "ecs_service"}},
+			row: ports.CypherRow{Values: map[string]any{
+				"primary_urn":     "urn:cerebro:writer:aws_ecs_service:orders",
+				"primary_label":   "orders",
+				"primary_type":    "aws.ecs.service",
+				"fingerprint_key": "urn:cerebro:writer:aws_ecs_service:orders|urn:cerebro:writer:aws_role:ECSTaskRole|urn:cerebro:writer:aws_iam_policy:AdministratorAccess",
+				"severity":        "CRITICAL",
+				"summary":         "Publicly reachable compute workload orders runs as privileged role ECSTaskRole",
+				"action":          "Remove unnecessary public reachability and reduce the compute runtime role privileges",
+				"resource_urns": []any{
+					"urn:cerebro:writer:aws_ecs_service:orders",
+					"urn:cerebro:writer:aws_ecs_task_definition:orders:7",
+					"urn:cerebro:writer:aws_role:ECSTaskRole",
+					"urn:cerebro:writer:aws_iam_policy:AdministratorAccess",
+				},
+				"evidence": []any{
+					map[string]any{"urn": "urn:cerebro:writer:aws_ecs_task_definition:orders:7", "label": "orders:7", "entity_type": "aws.ecs.task_definition", "relation": "depends_on", "attributes_json": `{}`},
+					map[string]any{"urn": "urn:cerebro:writer:aws_role:ECSTaskRole", "label": "ECSTaskRole", "entity_type": "aws.role", "relation": "runs_as", "attributes_json": `{}`},
+				},
+			}},
+		},
+		{
 			name:    "github credential",
 			rule:    newGitHubProgrammaticCredentialReviewRule(),
 			runtime: runtime,
@@ -158,6 +182,11 @@ func TestCurrentStateGraphRuleQueriesUseEnrichedCurrentState(t *testing.T) {
 			name: "cloud exposure uses recent reachability edge and current attributes",
 			rule: newCloudPublicResourceExposureGraphRule(),
 			want: []string{"relation: 'can_reach'", ".public_principal", `"internet_exposed":"true"`, `duration('P30D')`, "WITH DISTINCT resource"},
+		},
+		{
+			name: "cloud exposed privileged compute links reachability to runtime role privilege",
+			rule: newCloudExposedPrivilegedComputeRoleRule(),
+			want: []string{`entity_type: 'aws.ecs.task_definition'`, `relation: 'runs_as'`, `relation: 'depends_on'`, `relation: 'can_reach'`, `relation: 'member_of'`, `relation: 'attached_to'`, `access.relation IN ['can_admin', 'can_assume', 'can_perform']`, `duration('P30D')`},
 		},
 		{
 			name: "github credentials exclude inactive resources",
