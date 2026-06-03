@@ -243,6 +243,7 @@ jobs:
           CURRENT_TAG: ${{ steps.update.outputs.current_tag }}
           IMAGE_TAG: ${{ steps.image.outputs.tag }}
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          CONTRACT_PATH: ${{ steps.contract.outputs.path }}
           RELEASE_URL: ${{ steps.release.outputs.url }}
           VERIFY_SUMMARY: ${{ steps.verify.outputs.verify_summary }}
           DISPATCH_SOURCE_REPOSITORY: ${{ github.event.client_payload.source_repository || '' }}
@@ -257,6 +258,42 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          refresh_from_main_and_apply_update() {
+            local target_config="infra/aws/Pulumi.${STACK_NAME}.yaml"
+            local sec_dev_config="infra/aws/Pulumi.sec-dev.yaml"
+            local changed_paths=("${target_config}")
+            local refreshed_current_tag=""
+
+            git fetch origin main:refs/remotes/origin/main
+            git checkout -f -B "${branch}" origin/main
+
+            refreshed_current_tag="$(awk '$1 == "cerebro:imageTag:" { print $2; exit }' "${target_config}")"
+            echo "Refreshed ${branch} from origin/main; ${STACK_NAME} was ${refreshed_current_tag}, target is ${IMAGE_TAG}."
+
+            uv run --project infra python infra/scripts/set_image_tag.py --stack "${STACK_NAME}" --image-tag "${IMAGE_TAG}"
+            if [ "${STACK_NAME}" = "go-prod" ]; then
+              changed_paths+=("${sec_dev_config}")
+              uv run --project infra python infra/scripts/set_image_tag.py --stack sec-dev --image-tag "${IMAGE_TAG}" --ensure-at-least
+            fi
+
+            uv run --project infra python infra/scripts/validate_stack_config.py
+            if [ -n "${CONTRACT_PATH}" ]; then
+              uv run --project infra python infra/scripts/verify_runtime_contract.py \
+                --contract "${CONTRACT_PATH}" \
+                --stack-file "${target_config}"
+              if [ "${STACK_NAME}" = "go-prod" ] && ! git diff --quiet -- "${sec_dev_config}"; then
+                uv run --project infra python infra/scripts/verify_runtime_contract.py \
+                  --contract "${CONTRACT_PATH}" \
+                  --stack-file "${sec_dev_config}"
+              fi
+            fi
+
+            if git diff --quiet -- "${changed_paths[@]}"; then
+              echo "Stack ${STACK_NAME} already uses ${IMAGE_TAG} after refreshing origin/main."
+              exit 0
+            fi
+          }
+
           if [ "${APPLY_MODE}" = "direct_push" ]; then
             if [ "${STACK_NAME}" != "sec-dev" ]; then
               echo "direct_push is only allowed for sec-dev; got ${STACK_NAME}" >&2
@@ -270,6 +307,8 @@ jobs:
               echo "CEREBRO_AUTORELEASE_TOKEN is required for direct_push so the push triggers deploy workflows" >&2
               exit 1
             fi
+
+            refresh_from_main_and_apply_update
 
             changed_files="$(git diff --name-only)"
             expected_file="infra/aws/Pulumi.${STACK_NAME}.yaml"
@@ -344,7 +383,8 @@ jobs:
             exit 1
           fi
 
-          git checkout -B "${branch}"
+          refresh_from_main_and_apply_update
+
           git add "infra/aws/Pulumi.${STACK_NAME}.yaml"
           if [ "${STACK_NAME}" = "go-prod" ]; then
             git add "infra/aws/Pulumi.sec-dev.yaml"
