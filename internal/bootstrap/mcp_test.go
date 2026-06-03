@@ -73,11 +73,11 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 			t.Fatalf("initialize missing %s capability in %#v", capability, capabilities)
 		}
 	}
-	if sessionID == "" {
-		t.Fatal("Mcp-Session-Id header empty")
+	if sessionID != "" {
+		t.Fatalf("Mcp-Session-Id header = %q, want empty for stateless MCP", sessionID)
 	}
 
-	toolsResp, _ := postMCP(t, server, sessionID, map[string]any{
+	toolsResp, _ := postMCP(t, server, "", map[string]any{
 		"jsonrpc": "2.0",
 		"id":      2,
 		"method":  "tools/list",
@@ -134,6 +134,32 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 		if !names[want] {
 			t.Fatalf("tools/list missing %s in %#v", want, names)
 		}
+	}
+}
+
+func TestMCPStatelessGETIsNotSSEEndpoint(t *testing.T) {
+	server := newMCPTestServer(t, &stubRuntimeStore{})
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+mcpEndpointPath, nil)
+	if err != nil {
+		t.Fatalf("NewRequest GET MCP: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer test-key")
+	req.Header.Set("Accept", "text/event-stream")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET /api/v1/mcp error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("GET /api/v1/mcp status = %d, want %d", resp.StatusCode, http.StatusMethodNotAllowed)
+	}
+	if got := resp.Header.Get("Mcp-Session-Id"); got != "" {
+		t.Fatalf("GET /api/v1/mcp Mcp-Session-Id = %q, want empty", got)
+	}
+	if contentType := resp.Header.Get("Content-Type"); strings.HasPrefix(contentType, "text/event-stream") {
+		t.Fatalf("GET /api/v1/mcp Content-Type = %q, want non-SSE", contentType)
 	}
 }
 
@@ -1204,10 +1230,6 @@ func TestMCPOriginProtocolAndNotificationHandling(t *testing.T) {
 	if response["error"] != nil {
 		t.Fatalf("tools/list error = %#v", response["error"])
 	}
-	if got := sessionIDOrDefault(t, server, ""); got != "cerebro-stateless" {
-		t.Fatalf("stateless session id = %q, want cerebro-stateless", got)
-	}
-
 	unsupportedReq, err := http.NewRequest(http.MethodPost, server.URL+mcpEndpointPath, strings.NewReader(`{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{}}`))
 	if err != nil {
 		t.Fatalf("NewRequest unsupported: %v", err)
@@ -1316,17 +1338,6 @@ func postMCP(t *testing.T, server *httptest.Server, sessionID string, payload ma
 func postMCPWithoutAuth(t *testing.T, server *httptest.Server, payload map[string]any) (map[string]any, string) {
 	t.Helper()
 	return postMCPWithAuthHeader(t, server, "", payload, "")
-}
-
-func sessionIDOrDefault(t *testing.T, server *httptest.Server, sessionID string) string {
-	t.Helper()
-	_, returned := postMCP(t, server, sessionID, map[string]any{
-		"jsonrpc": "2.0",
-		"id":      999,
-		"method":  "ping",
-		"params":  map[string]any{},
-	})
-	return returned
 }
 
 func postMCPWithAuthHeader(t *testing.T, server *httptest.Server, sessionID string, payload map[string]any, authHeader string) (map[string]any, string) {
