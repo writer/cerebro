@@ -20,9 +20,9 @@ on:
         type: string
 
 permissions:
-  actions: write
   contents: write
   packages: read
+  pull-requests: write
 
 concurrency:
   group: propose-web-image-tag-${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'sec-dev' }}
@@ -51,14 +51,22 @@ jobs:
           set -euo pipefail
           tag="${DISPATCH_TAG:-${INPUT_TAG}}"
           env="${DISPATCH_ENV:-${INPUT_ENV:-sec-dev}}"
-          mode="${DISPATCH_MODE:-direct_push}"
+          mode="${DISPATCH_MODE:-pull_request}"
 
           if [ -z "${tag}" ]; then
             echo "No web image tag provided" >&2
             exit 1
           fi
+          if ! [[ "${tag}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "Invalid web image tag: ${tag}" >&2
+            exit 1
+          fi
           if [ "${env}" != "sec-dev" ]; then
             echo "Web image promotion is currently only supported for sec-dev" >&2
+            exit 1
+          fi
+          if [ "${mode}" != "pull_request" ]; then
+            echo "Web image promotion must use pull_request mode" >&2
             exit 1
           fi
 
@@ -123,11 +131,9 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.CEREBRO_AUTORELEASE_TOKEN || github.token }}
-          AUTORELEASE_TOKEN_CONFIGURED: ${{ secrets.CEREBRO_AUTORELEASE_TOKEN != '' }}
           STACK_NAME: ${{ steps.inputs.outputs.env }}
           IMAGE_TAG: ${{ steps.inputs.outputs.tag }}
           CURRENT_TAG: ${{ steps.update.outputs.current_tag }}
-          APPLY_MODE: ${{ steps.inputs.outputs.mode }}
           SOURCE_REPO: ${{ github.event.client_payload.source_repository || 'manual' }}
           SOURCE_REF: ${{ github.event.client_payload.source_ref || github.sha }}
         run: |
@@ -142,55 +148,33 @@ jobs:
             echo "Unexpected changed files: ${changed_files}" >&2
             exit 1
           fi
+          safe_tag="$(printf '%s' "${IMAGE_TAG}" | tr -c 'A-Za-z0-9._-' '-')"
+          branch="automation/cerebro-web-${STACK_NAME}-${safe_tag}"
+          title="chore: deploy ${STACK_NAME} cerebro-web ${IMAGE_TAG}"
 
           git add "${expected_file}"
-          git commit -m "chore: deploy ${STACK_NAME} cerebro-web ${IMAGE_TAG}" \
+          git commit -m "${title}" \
             -m "Source: ${SOURCE_REPO}@${SOURCE_REF}" \
             -m "Image: ${WEB_GHCR_IMAGE}:${IMAGE_TAG}" \
             -m "Previous: ${CURRENT_TAG}"
 
-          if [ "${APPLY_MODE}" = "direct_push" ] && [ "${STACK_NAME}" = "sec-dev" ]; then
-            if [ "${AUTORELEASE_TOKEN_CONFIGURED}" != "true" ]; then
-              echo "CEREBRO_AUTORELEASE_TOKEN is required for direct_push so deployment workflows run" >&2
-              exit 1
-            fi
+          git checkout -B "${branch}"
+          git push --force-with-lease origin "HEAD:${branch}"
 
-            deploy_sha="$(git rev-parse HEAD)"
-            git push "https://x-access-token:${GH_TOKEN}@github.com/WriterInternal/cerebro.git" "HEAD:main"
+          body="$(mktemp)"
+          {
+            echo "Updates \`${STACK_NAME}\` to \`${WEB_GHCR_IMAGE}:${IMAGE_TAG}\`."
+            echo
+            echo "- Source: \`${SOURCE_REPO}@${SOURCE_REF}\`"
+            echo "- Previous: \`${CURRENT_TAG}\`"
+            echo
+            echo "Deployment remains review-gated: merge this PR to let the existing mirror and Pulumi deploy workflows run."
+          } > "${body}"
 
-            dispatch_and_require_run() {
-              local workflow="$1"
-              shift
-              local run_id=""
-              local run_url=""
-              local run=""
-
-              gh workflow run "${workflow}" --ref main "$@"
-              for _ in {1..24}; do
-                run="$(gh run list \
-                  --workflow "${workflow}" \
-                  --event workflow_dispatch \
-                  --branch main \
-                  --limit 20 \
-                  --json databaseId,headSha,url \
-                  --jq ".[] | select(.headSha == \"${deploy_sha}\") | [.databaseId, .url] | @tsv" | head -n 1)"
-                if [ -n "${run}" ]; then
-                  IFS=$'\t' read -r run_id run_url <<< "${run}"
-                  echo "Created ${workflow} workflow_dispatch run ${run_id} for ${deploy_sha}: ${run_url}"
-                  return 0
-                fi
-                sleep 5
-              done
-              echo "Could not find ${workflow} workflow_dispatch run for ${deploy_sha}" >&2
-              exit 1
-            }
-
-            echo "Pushed ${STACK_NAME} web deploy commit; dispatching ordered sec-dev publish and deploy workflows."
-            dispatch_and_require_run ci.yml
-            dispatch_and_require_run infra-deploy.yml -f environment="${STACK_NAME}"
+          existing_pr="$(gh pr list --head "${branch}" --json url --jq '.[0].url // empty')"
+          if [ -n "${existing_pr}" ]; then
+            gh pr edit "${existing_pr}" --title "${title}" --body-file "${body}"
+            echo "Updated ${existing_pr}"
           else
-            branch="automation/cerebro-web-${STACK_NAME}-${IMAGE_TAG}"
-            git checkout -B "${branch}"
-            git push --force-with-lease origin "HEAD:${branch}"
-            echo "Pushed branch ${branch} for review."
+            gh pr create --base main --head "${branch}" --title "${title}" --body-file "${body}"
           fi

@@ -906,6 +906,15 @@ def validate_stack(path: Path) -> list[Finding]:
     environment = str(config.get("environment", stack)).lower()
     is_prod = stack.endswith("prod") or "prod" in environment
     is_sec_dev = stack == "sec-dev" or environment == "sec-dev"
+    if config.get("retainLegacyJobsTableForDeletionProtectionTransition") is True:
+        findings.append(
+            _finding(
+                "warning",
+                stack,
+                "cerebro:retainLegacyJobsTableForDeletionProtectionTransition",
+                "legacy jobs table transition flag is still enabled; remove it after confirming the table can be deleted",
+            )
+        )
     postgres_storage_type = str(config.get("postgresStorageType", "gp3")).strip().lower()
     postgres_allocated_storage = config.get("postgresAllocatedStorage")
     postgres_iops = config.get("postgresIops") or None

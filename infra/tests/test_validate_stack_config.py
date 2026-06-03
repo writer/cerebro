@@ -377,6 +377,19 @@ class ValidateStackConfigTest(unittest.TestCase):
         )
         self.assertTrue(any("at least two tasks" in message for message in self._messages(content)))
 
+    def test_legacy_jobs_transition_flag_warns(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:postgresDeletionProtection: true\n",
+            "  cerebro:postgresDeletionProtection: true\n  cerebro:retainLegacyJobsTableForDeletionProtectionTransition: true\n",
+        )
+        findings = self._validate(content)
+        self.assertTrue(
+            any(
+                finding.severity == "warning" and "legacy jobs table transition flag" in finding.message
+                for finding in findings
+            )
+        )
+
     def test_prod_postgres_must_not_use_gp2_storage(self) -> None:
         content = BASE_STACK.replace(
             "  cerebro:postgresBackupRetentionDays: 14\n",

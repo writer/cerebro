@@ -117,6 +117,10 @@ jobs:
             echo "ERROR: cerebro:imageTag not found in Pulumi.sec-dev.yaml"
             exit 1
           fi
+          if ! [[ "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "ERROR: invalid Cerebro image tag: ${tag}"
+            exit 1
+          fi
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "Resolved image tag: ${tag}"
 
@@ -141,6 +145,10 @@ jobs:
         shell: bash
         run: |
           tag=$(grep 'cerebro:webImageTag:' infra/aws/Pulumi.sec-dev.yaml | awk '{print $2}' || true)
+          if [ -n "${tag}" ] && ! [[ "${tag}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "ERROR: invalid Cerebro web image tag: ${tag}"
+            exit 1
+          fi
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           if [ -n "${tag}" ]; then
             echo "Resolved web image tag: ${tag}"
@@ -173,6 +181,52 @@ jobs:
             echo "::notice::Skipping sec-dev web ECR publish because ${WEB_GHCR_IMAGE}:${IMAGE_TAG} is not available in GHCR yet"
           fi
 
+      - name: Set up Go for cosign
+        if: steps.ghcr-image.outputs.available == 'true' || steps.web-ghcr-image.outputs.available == 'true'
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: "1.26.3"
+
+      - name: Install cosign
+        if: steps.ghcr-image.outputs.available == 'true' || steps.web-ghcr-image.outputs.available == 'true'
+        shell: bash
+        run: bash .github/scripts/install-cosign.sh
+
+      - name: Verify GHCR image signature and attestations
+        id: verify-ghcr-image
+        if: steps.ghcr-image.outputs.available == 'true'
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ steps.image-tag.outputs.tag }}
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          set -euo pipefail
+          escaped_tag="$(python3 - <<'PY'
+          import os
+          import re
+
+          print(re.escape(os.environ["IMAGE_TAG"]))
+          PY
+          )"
+          bash .github/scripts/verify-ghcr-image.sh \
+            "${GHCR_IMAGE}" \
+            "${IMAGE_TAG}" \
+            "^https://github\.com/writer/cerebro/\.github/workflows/release\.yml@refs/tags/${escaped_tag}$"
+
+      - name: Verify web GHCR image signature and attestations
+        id: verify-web-ghcr-image
+        if: steps.web-ghcr-image.outputs.available == 'true'
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ steps.web-image-tag.outputs.tag }}
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          set -euo pipefail
+          bash .github/scripts/verify-ghcr-image.sh \
+            "${WEB_GHCR_IMAGE}" \
+            "${IMAGE_TAG}" \
+            "(?i)^https://github\.com/writerinternal/cerebro-web/\.github/workflows/[^@]+@refs/heads/main$"
+
       - name: Configure AWS credentials (sec-dev)
         if: steps.ghcr-image.outputs.available == 'true' || steps.web-ghcr-image.outputs.available == 'true'
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
@@ -191,10 +245,12 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ steps.image-tag.outputs.tag }}
+          IMAGE_DIGEST: ${{ steps.verify-ghcr-image.outputs.digest }}
         run: |
           set -euo pipefail
           ecr_image="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
           echo "image=${ecr_image}" >> "$GITHUB_OUTPUT"
+          source_image="${GHCR_IMAGE}@${IMAGE_DIGEST}"
 
           if aws ecr describe-images --repository-name "${ECR_REPOSITORY}" --image-ids imageTag="${IMAGE_TAG}" >/dev/null 2>&1; then
             echo "pushed=false" >> "$GITHUB_OUTPUT"
@@ -202,14 +258,14 @@ jobs:
             exit 0
           fi
 
-          echo "Pulling ${GHCR_IMAGE}:${IMAGE_TAG} from GHCR..."
-          docker pull "${GHCR_IMAGE}:${IMAGE_TAG}"
+          echo "Pulling verified ${source_image} from GHCR..."
+          docker pull "${source_image}"
 
-          docker tag "${GHCR_IMAGE}:${IMAGE_TAG}" "${ecr_image}"
+          docker tag "${source_image}" "${ecr_image}"
           docker push "${ecr_image}"
 
           echo "pushed=true" >> "$GITHUB_OUTPUT"
-          echo "Pushed ${IMAGE_TAG} to sec-dev ECR"
+          echo "Pushed ${IMAGE_TAG} (${IMAGE_DIGEST}) to sec-dev ECR"
 
       - name: Pull web from GHCR, retag, and push to ECR
         id: publish-web
@@ -218,10 +274,12 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ steps.web-image-tag.outputs.tag }}
+          IMAGE_DIGEST: ${{ steps.verify-web-ghcr-image.outputs.digest }}
         run: |
           set -euo pipefail
           ecr_image="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
           echo "image=${ecr_image}" >> "$GITHUB_OUTPUT"
+          source_image="${WEB_GHCR_IMAGE}@${IMAGE_DIGEST}"
 
           if aws ecr describe-images --repository-name "${ECR_REPOSITORY}" --image-ids imageTag="${IMAGE_TAG}" >/dev/null 2>&1; then
             echo "pushed=false" >> "$GITHUB_OUTPUT"
@@ -229,14 +287,14 @@ jobs:
             exit 0
           fi
 
-          echo "Pulling ${WEB_GHCR_IMAGE}:${IMAGE_TAG} from GHCR..."
-          docker pull "${WEB_GHCR_IMAGE}:${IMAGE_TAG}"
+          echo "Pulling verified ${source_image} from GHCR..."
+          docker pull "${source_image}"
 
-          docker tag "${WEB_GHCR_IMAGE}:${IMAGE_TAG}" "${ecr_image}"
+          docker tag "${source_image}" "${ecr_image}"
           docker push "${ecr_image}"
 
           echo "pushed=true" >> "$GITHUB_OUTPUT"
-          echo "Pushed web ${IMAGE_TAG} to sec-dev ECR"
+          echo "Pushed web ${IMAGE_TAG} (${IMAGE_DIGEST}) to sec-dev ECR"
 
       - name: Scan sec-dev ECR image
         if: steps.publish.outputs.pushed == 'true'
@@ -316,8 +374,41 @@ jobs:
             echo "ERROR: cerebro:imageTag not found in Pulumi.go-prod.yaml"
             exit 1
           fi
+          if ! [[ "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "ERROR: invalid Cerebro image tag: ${tag}"
+            exit 1
+          fi
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "Resolved image tag: ${tag}"
+
+      - name: Set up Go for cosign
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: "1.26.3"
+
+      - name: Install cosign
+        shell: bash
+        run: bash .github/scripts/install-cosign.sh
+
+      - name: Verify GHCR image signature and attestations
+        id: verify-ghcr-image
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ steps.image-tag.outputs.tag }}
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          set -euo pipefail
+          escaped_tag="$(python3 - <<'PY'
+          import os
+          import re
+
+          print(re.escape(os.environ["IMAGE_TAG"]))
+          PY
+          )"
+          bash .github/scripts/verify-ghcr-image.sh \
+            "${GHCR_IMAGE}" \
+            "${IMAGE_TAG}" \
+            "^https://github\.com/writer/cerebro/\.github/workflows/release\.yml@refs/tags/${escaped_tag}$"
 
       - name: Configure AWS credentials (sec-prod)
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
@@ -334,11 +425,13 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ steps.image-tag.outputs.tag }}
+          IMAGE_DIGEST: ${{ steps.verify-ghcr-image.outputs.digest }}
         run: |
           set -euo pipefail
           echo "tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
           ecr_image="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
           echo "image=${ecr_image}" >> "$GITHUB_OUTPUT"
+          source_image="${GHCR_IMAGE}@${IMAGE_DIGEST}"
 
           if aws ecr describe-images --repository-name "${ECR_REPOSITORY}" --image-ids imageTag="${IMAGE_TAG}" >/dev/null 2>&1; then
             echo "pushed=false" >> "$GITHUB_OUTPUT"
@@ -346,14 +439,14 @@ jobs:
             exit 0
           fi
 
-          echo "Pulling ${GHCR_IMAGE}:${IMAGE_TAG} from GHCR..."
-          docker pull "${GHCR_IMAGE}:${IMAGE_TAG}"
+          echo "Pulling verified ${source_image} from GHCR..."
+          docker pull "${source_image}"
 
-          docker tag "${GHCR_IMAGE}:${IMAGE_TAG}" "${ecr_image}"
+          docker tag "${source_image}" "${ecr_image}"
           docker push "${ecr_image}"
 
           echo "pushed=true" >> "$GITHUB_OUTPUT"
-          echo "Pushed ${IMAGE_TAG} to sec-prod ECR"
+          echo "Pushed ${IMAGE_TAG} (${IMAGE_DIGEST}) to sec-prod ECR"
 
       - name: Scan sec-prod ECR image
         if: steps.publish.outputs.pushed == 'true'
