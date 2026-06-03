@@ -16,7 +16,9 @@ import (
 	"github.com/writer/cerebro/internal/findings"
 )
 
-const findingRuleUsage = "usage: %s finding-rule new <rule-id> source_id=<source> event_kinds=<kind[,kind]> [name=<name>] [output_kind=<kind>] [severity=<severity>] [status=<status>] [maturity=<maturity>] [tags=<tag[,tag]>] [required_attributes=<attr[,attr]>] [fingerprint_fields=<field[,field]>] [lifecycle_kind=<kind>] [lifecycle_anchor=<anchor>] [lifecycle_ttl=<duration>] [pack=<pack>] [output_dir=<dir>] [dry_run=true] [force=true]"
+const findingRuleNewUsage = "usage: %s finding-rule new <rule-id> source_id=<source> event_kinds=<kind[,kind]> [name=<name>] [output_kind=<kind>] [severity=<severity>] [status=<status>] [maturity=<maturity>] [tags=<tag[,tag]>] [required_attributes=<attr[,attr]>] [fingerprint_fields=<field[,field]>] [lifecycle_kind=<kind>] [lifecycle_anchor=<anchor>] [lifecycle_ttl=<duration>] [pack=<pack>] [output_dir=<dir>] [dry_run=true] [force=true]"
+
+const findingRuleGraphEvaluateUsage = "usage: %s finding-rule graph-evaluate <runtime-id> rule_id=<graph-rule-id>"
 
 var errScaffoldDurableStateDefaultFingerprint = errors.New("lifecycle_kind=durable_state requires fingerprint_fields to include stable non-default fields; default [event_id] is event-scoped")
 
@@ -84,7 +86,7 @@ type findingRuleTemplateFixture struct {
 
 func runFindingRule(args []string) error {
 	if len(args) == 0 {
-		return usageError(fmt.Sprintf(findingRuleUsage, os.Args[0]))
+		return usageError(fmt.Sprintf("%s\n%s", fmt.Sprintf(findingRuleNewUsage, os.Args[0]), fmt.Sprintf(findingRuleGraphEvaluateUsage, os.Args[0])))
 	}
 	switch args[0] {
 	case "new":
@@ -97,14 +99,16 @@ func runFindingRule(args []string) error {
 			return err
 		}
 		return printJSON(result)
+	case "graph-evaluate":
+		return runFindingRuleGraphEvaluate(args[1:])
 	default:
-		return usageError(fmt.Sprintf(findingRuleUsage, os.Args[0]))
+		return usageError(fmt.Sprintf("%s\n%s", fmt.Sprintf(findingRuleNewUsage, os.Args[0]), fmt.Sprintf(findingRuleGraphEvaluateUsage, os.Args[0])))
 	}
 }
 
 func parseFindingRuleNewArgs(args []string) (findingRuleScaffoldRequest, error) {
 	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
-		return findingRuleScaffoldRequest{}, usageError(fmt.Sprintf(findingRuleUsage, os.Args[0]))
+		return findingRuleScaffoldRequest{}, usageError(fmt.Sprintf(findingRuleNewUsage, os.Args[0]))
 	}
 	ruleID := strings.TrimSpace(args[0])
 	if err := validateScaffoldRuleID(ruleID); err != nil {
@@ -121,7 +125,7 @@ func parseFindingRuleNewArgs(args []string) (findingRuleScaffoldRequest, error) 
 	sourceID := values["source_id"]
 	eventKinds := splitCSV(values["event_kinds"])
 	if strings.TrimSpace(sourceID) == "" || len(eventKinds) == 0 {
-		return findingRuleScaffoldRequest{}, usageError(fmt.Sprintf(findingRuleUsage, os.Args[0]))
+		return findingRuleScaffoldRequest{}, usageError(fmt.Sprintf(findingRuleNewUsage, os.Args[0]))
 	}
 	outputKind := strings.TrimSpace(values["output_kind"])
 	if outputKind == "" {

@@ -11,6 +11,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/ports"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestParseFindingRuleNewArgsAppliesDefaults(t *testing.T) {
@@ -36,6 +42,82 @@ func TestParseFindingRuleNewArgsAppliesDefaults(t *testing.T) {
 	}
 	if !request.DryRun {
 		t.Fatal("DryRun = false, want true")
+	}
+}
+
+func TestParseFindingRuleGraphEvaluateArgs(t *testing.T) {
+	options, err := parseFindingRuleGraphEvaluateArgs([]string{"runtime-1", "rule_id=cloud-exposed-privileged-compute-role"})
+	if err != nil {
+		t.Fatalf("parseFindingRuleGraphEvaluateArgs() error = %v", err)
+	}
+	if options.RuntimeID != "runtime-1" || options.RuleID != "cloud-exposed-privileged-compute-role" {
+		t.Fatalf("options = %+v", options)
+	}
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "missing runtime", args: []string{"rule_id=cloud-exposed-privileged-compute-role"}},
+		{name: "missing rule id", args: []string{"runtime-1"}},
+		{name: "blank rule id", args: []string{"runtime-1", "rule_id="}},
+		{name: "duplicate rule id", args: []string{"runtime-1", "rule_id=one", "rule_id=two"}},
+		{name: "unknown key", args: []string{"runtime-1", "rule_id=one", "event_limit=100"}},
+		{name: "non key value", args: []string{"runtime-1", "rule_id=one", "extra"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := parseFindingRuleGraphEvaluateArgs(tt.args); err == nil {
+				t.Fatalf("parseFindingRuleGraphEvaluateArgs(%v) error = nil, want error", tt.args)
+			}
+		})
+	}
+}
+
+func TestSummarizeFindingRuleGraphEvaluation(t *testing.T) {
+	started := time.Date(2026, 6, 3, 4, 5, 6, 0, time.UTC)
+	finished := started.Add(2 * time.Second)
+	summary := summarizeFindingRuleGraphEvaluation(&findings.EvaluateGraphRulesResult{
+		Runtime: &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "aws", TenantId: "writer"},
+		Evaluations: []*findings.GraphRuleEvaluationResult{
+			{
+				Rule: &cerebrov1.RuleSpec{Id: "cloud-exposed-privileged-compute-role"},
+				Run: &cerebrov1.FindingEvaluationRun{
+					Id:         "run-1",
+					Status:     "completed",
+					StartedAt:  timestamppb.New(started),
+					FinishedAt: timestamppb.New(finished),
+				},
+				RowsRead:  3,
+				Truncated: true,
+				Findings: []*ports.FindingRecord{
+					{ID: "finding-1"},
+					{ID: "finding-2"},
+				},
+				Evidence: []*cerebrov1.FindingEvidence{
+					{Id: "evidence-1"},
+				},
+			},
+		},
+	})
+	if summary.RuntimeID != "runtime-1" || summary.SourceID != "aws" || summary.TenantID != "writer" {
+		t.Fatalf("runtime summary = %+v", summary)
+	}
+	if len(summary.Evaluations) != 1 {
+		t.Fatalf("len(Evaluations) = %d, want 1", len(summary.Evaluations))
+	}
+	evaluation := summary.Evaluations[0]
+	if evaluation.RuleID != "cloud-exposed-privileged-compute-role" || evaluation.RunID != "run-1" || evaluation.Status != "completed" {
+		t.Fatalf("evaluation metadata = %+v", evaluation)
+	}
+	if evaluation.RowsRead != 3 || !evaluation.Truncated || evaluation.FindingsEmitted != 2 || evaluation.EvidenceCount != 1 {
+		t.Fatalf("evaluation counts = %+v", evaluation)
+	}
+	if strings.Join(evaluation.FindingIDs, ",") != "finding-1,finding-2" {
+		t.Fatalf("FindingIDs = %#v", evaluation.FindingIDs)
+	}
+	if evaluation.StartedAt == "" || evaluation.FinishedAt == "" {
+		t.Fatalf("timestamps missing: %+v", evaluation)
 	}
 }
 
