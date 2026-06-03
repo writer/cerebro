@@ -146,6 +146,42 @@ config:
     type: integer
     default: 1
     description: Maximum API instances; values above 1 require cerebro:imageTag >= v2.1.25 (cross-task source-runtime cursor locking, writer/cerebro PR #554).
+  cerebro:mcpOauthEnabled:
+    type: boolean
+    default: false
+    description: Enable OAuth 2.1 authorization for MCP clients.
+  cerebro:mcpOauthUpstreamIssuer:
+    type: string
+    default: ""
+    description: Upstream OIDC issuer used to authenticate MCP users.
+  cerebro:mcpOauthUpstreamRedirectUri:
+    type: string
+    default: ""
+    description: Redirect URI registered with the upstream OIDC client for MCP OAuth.
+  cerebro:mcpOauthUpstreamClientIdSecretName:
+    type: string
+    default: CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_ID
+    description: Secret key under externalSecretsPrefix mounted as CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_ID.
+  cerebro:mcpOauthUpstreamClientSecretName:
+    type: string
+    default: CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_SECRET
+    description: Secret key under externalSecretsPrefix mounted as CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_SECRET.
+  cerebro:mcpOauthSecurityGroups:
+    type: array
+    items:
+      type: string
+    default: []
+    description: Upstream OIDC group names allowed to obtain MCP OAuth tokens.
+  cerebro:mcpOauthTenantId:
+    type: string
+    default: ""
+    description: Tenant assigned to MCP OAuth-issued access tokens.
+  cerebro:mcpOauthAllowedTenants:
+    type: array
+    items:
+      type: string
+    default: []
+    description: Tenant allowlist assigned to MCP OAuth-issued access tokens.
   cerebro:apiRequestCountPerTargetScalingTarget:
     type: integer
     default: 0
