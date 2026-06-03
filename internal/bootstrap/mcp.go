@@ -25,6 +25,7 @@ import (
 const (
 	mcpProtocolVersion       = "2025-03-26"
 	mcpEndpointPath          = "/api/v1/mcp"
+	mcpRedactedValue         = "[redacted]"
 	defaultMCPListLimit      = 25
 	maxMCPListLimit          = 100
 	defaultMCPAssetLimit     = 10
@@ -631,7 +632,7 @@ func mcpAssetSearchResultFromRow(row ports.CypherRow) (mcpAssetSearchResult, err
 		SourceID:   mcpAnyString(values["source_id"]),
 		EntityType: mcpAnyString(values["entity_type"]),
 		Label:      mcpAnyString(values["label"]),
-		Attributes: attributes,
+		Attributes: mcpRedactSensitiveAttributes(attributes),
 	}, nil
 }
 
@@ -788,6 +789,21 @@ func mcpStringMapFromJSON(raw string) (map[string]string, error) {
 		return nil, fmt.Errorf("%w: decode asset attributes", graphquery.ErrInvalidRequest)
 	}
 	return values, nil
+}
+
+func mcpRedactSensitiveAttributes(attributes map[string]string) map[string]string {
+	if len(attributes) == 0 {
+		return attributes
+	}
+	redacted := make(map[string]string, len(attributes))
+	for key, value := range attributes {
+		if sensitiveSourceConfigKey(key) {
+			redacted[key] = mcpRedactedValue
+			continue
+		}
+		redacted[key] = value
+	}
+	return redacted
 }
 
 func mcpAnyString(value any) string {
