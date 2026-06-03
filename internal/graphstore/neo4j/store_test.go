@@ -59,6 +59,28 @@ func TestEndpointOwnerIDLinkCleanupQueryOrdersLimitedBatch(t *testing.T) {
 	}
 }
 
+func TestValidateReadOnlyCypherRejectsMutatingClauses(t *testing.T) {
+	for _, query := range []string{
+		"MATCH (n) SET n.seen = true RETURN n",
+		"MATCH (n) DETACH DELETE n",
+		"MERGE (n:Entity {urn: $urn}) RETURN n",
+		"CALL db.labels()",
+	} {
+		if err := validateReadOnlyCypher(query); err == nil {
+			t.Fatalf("validateReadOnlyCypher(%q) error = nil, want non-nil", query)
+		}
+	}
+	for _, query := range []string{
+		"MATCH (asset:Entity) RETURN asset",
+		"MATCH (n) RETURN n.tenant_id AS tenant_id",
+		"// SET in a comment\nMATCH (n) RETURN n",
+	} {
+		if err := validateReadOnlyCypher(query); err != nil {
+			t.Fatalf("validateReadOnlyCypher(%q) error = %v, want nil", query, err)
+		}
+	}
+}
+
 func TestIntegrityChecksIncludeOpenFindingPrimaryAnchorInvariant(t *testing.T) {
 	checks, queries := integrityCheckDefinitions()
 	if len(checks) != len(queries) {

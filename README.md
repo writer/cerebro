@@ -303,6 +303,9 @@ make lint           # golangci-lint over app packages
 make proto-lint     # buf lint
 make check          # build, tests, lint, proto lint, structural checks, arch tests
 make verify         # CI-parity local verification
+make doctor         # check required local developer tools
+make release-smoke  # validate GoReleaser config
+make docker-smoke   # build the runtime Dockerfile locally
 make oss-audit      # public repository hygiene scan
 make clean          # remove bin/
 ```

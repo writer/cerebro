@@ -66,6 +66,8 @@ jobs:
             command: make readme-check
           - name: oss-audit
             command: make oss-audit
+          - name: release-smoke
+            command: make release-smoke
           - name: structural
             command: make check-structural check-structural-test check-arch
     steps:

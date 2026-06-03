@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 	"time"
@@ -83,12 +84,26 @@ func Open(cfg config.AppendLogConfig) (*Log, error) {
 	if err != nil {
 		return nil, err
 	}
-	nc, err := nats.Connect(
-		url,
+	options := []nats.Option{
 		nats.Name("cerebro"),
 		nats.Timeout(connectTimeout),
 		nats.RetryOnFailedConnect(false),
-	)
+		nats.MaxReconnects(-1),
+		nats.ReconnectWait(2 * time.Second),
+		nats.DisconnectErrHandler(func(_ *nats.Conn, err error) {
+			log.Printf("nats disconnected: %v", err)
+		}),
+		nats.ReconnectHandler(func(conn *nats.Conn) {
+			log.Printf("nats reconnected: %s", conn.ConnectedUrl())
+		}),
+		nats.ClosedHandler(func(_ *nats.Conn) {
+			log.Print("nats connection closed")
+		}),
+	}
+	if cfg.JetStreamDrainTimeout > 0 {
+		options = append(options, nats.DrainTimeout(cfg.JetStreamDrainTimeout))
+	}
+	nc, err := nats.Connect(url, options...)
 	if err != nil {
 		return nil, fmt.Errorf("connect nats: %w", err)
 	}
@@ -110,7 +125,10 @@ func (l *Log) Close() error {
 	if l == nil || l.conn == nil {
 		return nil
 	}
-	l.conn.Close()
+	if err := l.conn.Drain(); err != nil {
+		l.conn.Close()
+		return fmt.Errorf("drain nats connection: %w", err)
+	}
 	return nil
 }
 

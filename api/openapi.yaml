@@ -177,6 +177,10 @@ paths:
       responses:
         '200':
           description: Stored source runtime.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PutSourceRuntimeResponse'
     get:
       summary: Get source runtime configuration
       tags:
@@ -186,6 +190,10 @@ paths:
       responses:
         '200':
           description: Stored source runtime.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetSourceRuntimeResponse'
   /source-runtimes/{runtimeID}/sync:
     post:
       summary: Sync one source runtime through the append log and projections
@@ -216,15 +224,29 @@ paths:
       responses:
         '200':
           description: Claim list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListClaimsResponse'
     post:
       summary: Write claims for one runtime
       tags:
         - Sources
       parameters:
         - $ref: '#/components/parameters/runtimeID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WriteClaimsRequest'
       responses:
         '200':
           description: Claim write result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WriteClaimsResponse'
   /source-runtimes/{runtimeID}/findings:
     get:
       summary: List findings for one runtime
@@ -904,6 +926,10 @@ paths:
       responses:
         '200':
           description: Neighborhood result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetEntityNeighborhoodResponse'
   /platform/graph/impact/vulnerability/{id}:
     get:
       summary: Query vulnerability impact graph
@@ -1830,19 +1856,155 @@ components:
       required: [runtime]
       properties:
         runtime:
+          $ref: '#/components/schemas/SourceRuntime'
+    PutSourceRuntimeResponse:
+      type: object
+      properties:
+        runtime:
+          $ref: '#/components/schemas/SourceRuntime'
+    GetSourceRuntimeResponse:
+      type: object
+      properties:
+        runtime:
+          $ref: '#/components/schemas/SourceRuntime'
+    SourceRuntime:
+      type: object
+      required: [source_id, tenant_id]
+      properties:
+        id:
+          type: string
+        source_id:
+          type: string
+        tenant_id:
+          type: string
+        config:
           type: object
-          required: [id, sourceId, tenantId]
-          properties:
-            id:
-              type: string
-            sourceId:
-              type: string
-            tenantId:
-              type: string
-            config:
-              type: object
-              additionalProperties:
-                type: string
+          additionalProperties:
+            type: string
+        checkpoint:
+          type: object
+          additionalProperties: true
+        next_cursor:
+          type: object
+          additionalProperties: true
+        last_synced_at:
+          type: string
+          format: date-time
+    EntityRef:
+      type: object
+      required: [urn, entity_type]
+      properties:
+        urn:
+          type: string
+        entity_type:
+          type: string
+        label:
+          type: string
+    Claim:
+      type: object
+      required: [predicate]
+      properties:
+        id:
+          type: string
+        subject_urn:
+          type: string
+        subject_ref:
+          $ref: '#/components/schemas/EntityRef'
+        predicate:
+          type: string
+        object_urn:
+          type: string
+        object_ref:
+          $ref: '#/components/schemas/EntityRef'
+        object_value:
+          type: string
+        claim_type:
+          type: string
+        status:
+          type: string
+        source_event_id:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        valid_from:
+          type: string
+          format: date-time
+        valid_to:
+          type: string
+          format: date-time
+        attributes:
+          type: object
+          additionalProperties:
+            type: string
+    WriteClaimsRequest:
+      type: object
+      required: [claims]
+      properties:
+        runtime_id:
+          type: string
+          description: Optional in HTTP JSON; the path runtimeID is authoritative.
+        claims:
+          type: array
+          items:
+            $ref: '#/components/schemas/Claim'
+        replace_existing:
+          type: boolean
+    WriteClaimsResponse:
+      type: object
+      properties:
+        claims_written:
+          type: integer
+          minimum: 0
+        entities_upserted:
+          type: integer
+          minimum: 0
+        relation_links_projected:
+          type: integer
+          minimum: 0
+        claims_retracted:
+          type: integer
+          minimum: 0
+    ListClaimsResponse:
+      type: object
+      properties:
+        claims:
+          type: array
+          items:
+            $ref: '#/components/schemas/Claim'
+    GraphEntity:
+      type: object
+      required: [urn, entity_type, label]
+      properties:
+        urn:
+          type: string
+        entity_type:
+          type: string
+        label:
+          type: string
+    GraphRelation:
+      type: object
+      required: [from_urn, relation, to_urn]
+      properties:
+        from_urn:
+          type: string
+        relation:
+          type: string
+        to_urn:
+          type: string
+    GetEntityNeighborhoodResponse:
+      type: object
+      properties:
+        root:
+          $ref: '#/components/schemas/GraphEntity'
+        neighbors:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphEntity'
+        relations:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphRelation'
     FindingEvaluationRun:
       type: object
       properties:

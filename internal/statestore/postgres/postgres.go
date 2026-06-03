@@ -42,6 +42,18 @@ func Open(cfg config.StateStoreConfig) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open postgres: %w", err)
 	}
+	if cfg.PostgresMaxOpenConns > 0 {
+		db.SetMaxOpenConns(cfg.PostgresMaxOpenConns)
+	}
+	if cfg.PostgresMaxIdleConns > 0 {
+		db.SetMaxIdleConns(cfg.PostgresMaxIdleConns)
+	}
+	if cfg.PostgresConnMaxLifetime > 0 {
+		db.SetConnMaxLifetime(cfg.PostgresConnMaxLifetime)
+	}
+	if cfg.PostgresConnMaxIdleTime > 0 {
+		db.SetConnMaxIdleTime(cfg.PostgresConnMaxIdleTime)
+	}
 	return &Store{db: db}, nil
 }
 

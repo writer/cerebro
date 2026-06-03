@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -30,11 +31,13 @@ SET e.tenant_id = $tenant_id,
 RETURN coalesce(e.attributes_json, '{}'), coalesce(e.attributes_version, 0)`
 
 var errConcurrentAttributeMerge = errors.New("concurrent attribute merge")
+var mutatingCypherPattern = regexp.MustCompile(`(?i)\b(CREATE|MERGE|SET|DELETE|DETACH|REMOVE|DROP|LOAD\s+CSV)\b|\bCALL\s+(DB|APOC)\.`)
 
 // Store is a Neo4j/Aura-backed graph projection store implementation.
 type Store struct {
-	driver   neo4jdriver.DriverWithContext
-	database string
+	driver       neo4jdriver.DriverWithContext
+	database     string
+	queryTimeout time.Duration
 
 	mu          sync.Mutex
 	schemaReady bool
@@ -75,7 +78,7 @@ func Open(cfg config.GraphStoreConfig) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open neo4j: %w", err)
 	}
-	return &Store{driver: driver, database: database}, nil
+	return &Store{driver: driver, database: database, queryTimeout: cfg.Neo4jQueryTimeout}, nil
 }
 
 // CloseContext closes the underlying driver.
@@ -859,6 +862,9 @@ func (s *Store) ExecuteReadCypher(ctx context.Context, request ports.CypherQuery
 	if query == "" {
 		return nil, errors.New("cypher query is required")
 	}
+	if err := validateReadOnlyCypher(query); err != nil {
+		return nil, err
+	}
 	if err := s.requireConfigured(); err != nil {
 		return nil, err
 	}
@@ -903,6 +909,9 @@ func (s *Store) ExplainReadCypher(ctx context.Context, request ports.CypherQuery
 	query := strings.TrimSpace(request.Query)
 	if query == "" {
 		return nil, errors.New("cypher query is required")
+	}
+	if err := validateReadOnlyCypher(query); err != nil {
+		return nil, err
 	}
 	if err := s.requireConfigured(); err != nil {
 		return nil, err
@@ -1232,6 +1241,11 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 }
 
 func (s *Store) read(ctx context.Context, work neo4jdriver.ManagedTransactionWork) (any, error) {
+	if s.queryTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, s.queryTimeout)
+		defer cancel()
+	}
 	session := s.driver.NewSession(ctx, neo4jdriver.SessionConfig{DatabaseName: s.database})
 	defer func() { _ = session.Close(ctx) }()
 	return session.ExecuteRead(ctx, work)
@@ -1250,6 +1264,24 @@ func consume(ctx context.Context, tx neo4jdriver.ManagedTransaction, query strin
 	}
 	_, err = result.Consume(ctx)
 	return nil, err
+}
+
+func validateReadOnlyCypher(query string) error {
+	if match := mutatingCypherPattern.FindString(stripCypherComments(query)); match != "" {
+		return fmt.Errorf("read cypher must not contain mutating clause %q", strings.TrimSpace(match))
+	}
+	return nil
+}
+
+func stripCypherComments(query string) string {
+	lines := strings.Split(query, "\n")
+	for index, line := range lines {
+		if comment := strings.Index(line, "//"); comment >= 0 {
+			line = line[:comment]
+		}
+		lines[index] = line
+	}
+	return strings.Join(lines, "\n")
 }
 
 func queryOneValue(ctx context.Context, tx neo4jdriver.ManagedTransaction, query string, params map[string]any) (any, error) {
