@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -88,13 +89,26 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 	tools := toolsResp["result"].(map[string]any)["tools"].([]any)
 	names := map[string]bool{}
 	for _, item := range tools {
-		names[item.(map[string]any)["name"].(string)] = true
-		if item.(map[string]any)["outputSchema"] == nil {
+		tool := item.(map[string]any)
+		name := tool["name"].(string)
+		names[name] = true
+		if tool["outputSchema"] == nil {
 			t.Fatalf("tool missing outputSchema: %#v", item)
 		}
-		annotations := item.(map[string]any)["annotations"].(map[string]any)
+		annotations := tool["annotations"].(map[string]any)
 		if annotations["readOnlyHint"] != true {
 			t.Fatalf("tool missing readOnlyHint annotation: %#v", item)
+		}
+		if strings.HasSuffix(name, ".propose") {
+			inputSchema := tool["inputSchema"].(map[string]any)
+			dryRun := inputSchema["properties"].(map[string]any)["dry_run"].(map[string]any)
+			if dryRun["const"] != true {
+				t.Fatalf("%s dry_run schema = %#v, want const true", name, dryRun)
+			}
+			outputSchema := tool["outputSchema"].(map[string]any)
+			if outputSchema["additionalProperties"] != false {
+				t.Fatalf("%s outputSchema.additionalProperties = %#v, want false", name, outputSchema["additionalProperties"])
+			}
 		}
 	}
 	for _, want := range []string{
@@ -182,7 +196,11 @@ func TestMCPResourcesAndPrompts(t *testing.T) {
 		t.Fatalf("prompts/get error = %#v", promptResp["error"])
 	}
 	messages := promptResp["result"].(map[string]any)["messages"].([]any)
-	if len(messages) != 1 || !strings.Contains(messages[0].(map[string]any)["content"].(map[string]any)["text"].(string), "cerebro://investigation/finding/finding-1") {
+	if len(messages) != 1 {
+		t.Fatalf("prompt messages = %#v", messages)
+	}
+	text := messages[0].(map[string]any)["content"].(map[string]any)["text"].(string)
+	if !strings.Contains(text, "cerebro://investigation/finding/finding-1") || !strings.Contains(text, "never reveal redacted values") {
 		t.Fatalf("prompt messages = %#v", messages)
 	}
 }
@@ -340,6 +358,7 @@ func TestMCPFindingSearchRuntimeStatusEvidenceAndInvestigation(t *testing.T) {
 				Severity:       "high",
 				Status:         "open",
 				ResourceURNs:   []string{"urn:cerebro:writer:okta_user:00u1"},
+				Attributes:     map[string]string{"api_key": "finding-secret", "environment": "prod"},
 				FindingRisk:    ports.FindingRisk{RiskScore: 88, RiskReasons: []string{"privileged asset"}},
 				LastObservedAt: now,
 			},
@@ -352,6 +371,17 @@ func TestMCPFindingSearchRuntimeStatusEvidenceAndInvestigation(t *testing.T) {
 				FindingId:     "finding-1",
 				EventIds:      []string{"event-1"},
 				GraphRootUrns: []string{"urn:cerebro:writer:okta_user:00u1"},
+				Attributes:    map[string]string{"token": "evidence-secret", "environment": "prod"},
+				GraphRows: []*cerebrov1.GraphEvidenceRow{{
+					Label:      "identity_path",
+					Attributes: map[string]string{"private_key": "row-secret", "label": "admin"},
+					Paths: []*cerebrov1.GraphEvidencePath{{
+						FromUrn:    "urn:cerebro:writer:okta_user:00u1",
+						ToUrn:      "urn:cerebro:writer:asset:prod",
+						Relation:   "can_access",
+						Attributes: map[string]string{"password": "path-secret", "reason": "group membership"},
+					}},
+				}},
 			},
 		},
 	}
@@ -376,6 +406,31 @@ func TestMCPFindingSearchRuntimeStatusEvidenceAndInvestigation(t *testing.T) {
 	findings := searchResp["result"].(map[string]any)["structuredContent"].(map[string]any)["findings"].([]any)
 	if len(findings) != 1 || findings[0].(map[string]any)["id"] != "finding-1" {
 		t.Fatalf("findings.search findings = %#v", findings)
+	}
+	findingAttributes := findings[0].(map[string]any)["attributes"].(map[string]any)
+	if findingAttributes["api_key"] != "[redacted]" || findingAttributes["environment"] != "prod" {
+		t.Fatalf("finding attributes = %#v", findingAttributes)
+	}
+	searchMetadata := searchResp["result"].(map[string]any)["structuredContent"].(map[string]any)["metadata"].(map[string]any)
+	if searchMetadata["stateless"] != true || searchMetadata["generated_at"] == "" {
+		t.Fatalf("search metadata = %#v", searchMetadata)
+	}
+
+	secretSearchResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      7,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "cerebro.findings.search",
+			"arguments": map[string]any{"query": "finding-secret", "limit": 10},
+		},
+	})
+	if secretSearchResp["error"] != nil {
+		t.Fatalf("findings.search secret error = %#v", secretSearchResp["error"])
+	}
+	secretMatches := secretSearchResp["result"].(map[string]any)["structuredContent"].(map[string]any)["findings"].([]any)
+	if len(secretMatches) != 0 {
+		t.Fatalf("findings.search matched redacted attribute value: %#v", secretMatches)
 	}
 
 	statusResp, _ := postMCP(t, server, "", map[string]any{
@@ -419,6 +474,19 @@ func TestMCPFindingSearchRuntimeStatusEvidenceAndInvestigation(t *testing.T) {
 	if len(evidence) != 1 || evidence[0].(map[string]any)["id"] != "evidence-1" {
 		t.Fatalf("evidence.list evidence = %#v", evidence)
 	}
+	evidenceRecord := evidence[0].(map[string]any)
+	evidenceAttributes := evidenceRecord["attributes"].(map[string]any)
+	if evidenceAttributes["token"] != "[redacted]" || evidenceAttributes["environment"] != "prod" {
+		t.Fatalf("evidence attributes = %#v", evidenceAttributes)
+	}
+	graphRow := evidenceRecord["graph_rows"].([]any)[0].(map[string]any)
+	if graphRow["attributes"].(map[string]any)["private_key"] != "[redacted]" {
+		t.Fatalf("graph row attributes = %#v", graphRow["attributes"])
+	}
+	graphPath := graphRow["paths"].([]any)[0].(map[string]any)
+	if graphPath["attributes"].(map[string]any)["password"] != "[redacted]" {
+		t.Fatalf("graph path attributes = %#v", graphPath["attributes"])
+	}
 
 	evidenceGetResp, _ := postMCP(t, server, "", map[string]any{
 		"jsonrpc": "2.0",
@@ -434,6 +502,9 @@ func TestMCPFindingSearchRuntimeStatusEvidenceAndInvestigation(t *testing.T) {
 	}
 	if got := evidenceGetResp["result"].(map[string]any)["structuredContent"].(map[string]any)["evidence"].(map[string]any)["id"]; got != "evidence-1" {
 		t.Fatalf("evidence.get id = %#v", got)
+	}
+	if got := evidenceGetResp["result"].(map[string]any)["structuredContent"].(map[string]any)["evidence"].(map[string]any)["attributes"].(map[string]any)["token"]; got != "[redacted]" {
+		t.Fatalf("evidence.get token = %#v", got)
 	}
 
 	investigationResp, _ := postMCP(t, server, "", map[string]any{
@@ -456,6 +527,9 @@ func TestMCPFindingSearchRuntimeStatusEvidenceAndInvestigation(t *testing.T) {
 	if context["evidence_count"] != float64(1) || context["compact"] != true {
 		t.Fatalf("investigation context = %#v", context)
 	}
+	if context["metadata"].(map[string]any)["stateless"] != true {
+		t.Fatalf("investigation metadata = %#v", context["metadata"])
+	}
 
 	resourceResp, _ := postMCP(t, server, "", map[string]any{
 		"jsonrpc": "2.0",
@@ -469,6 +543,74 @@ func TestMCPFindingSearchRuntimeStatusEvidenceAndInvestigation(t *testing.T) {
 	contents := resourceResp["result"].(map[string]any)["contents"].([]any)
 	if len(contents) != 1 || !strings.Contains(contents[0].(map[string]any)["text"].(string), "finding-1") {
 		t.Fatalf("resource contents = %#v", contents)
+	}
+	if strings.Contains(contents[0].(map[string]any)["text"].(string), "finding-secret") {
+		t.Fatalf("resource leaked finding secret: %#v", contents)
+	}
+}
+
+func TestMCPIDLookupsDoNotRevealCrossTenantExistence(t *testing.T) {
+	store := &stubRuntimeStore{
+		findings: map[string]*ports.FindingRecord{
+			"other-finding": {ID: "other-finding", RuntimeID: "other-runtime", TenantID: "other", RuleID: "rule", Title: "Other"},
+		},
+	}
+	server := newMCPTestServer(t, store)
+	defer server.Close()
+
+	response, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "cerebro.findings.get",
+			"arguments": map[string]any{"finding_id": "other-finding"},
+		},
+	})
+	result := response["result"].(map[string]any)
+	if result["isError"] != true || !strings.Contains(result["content"].([]any)[0].(map[string]any)["text"].(string), "finding not found") {
+		t.Fatalf("cross-tenant finding response = %#v", response)
+	}
+}
+
+func TestMCPRuntimeIDToolsDoNotRevealCrossTenantExistence(t *testing.T) {
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"other-runtime": {Id: "other-runtime", SourceId: "okta", TenantId: "other"},
+		},
+		findings:        map[string]*ports.FindingRecord{},
+		findingEvidence: map[string]*cerebrov1.FindingEvidence{},
+	}
+	server := newMCPTestServer(t, store)
+	defer server.Close()
+
+	for _, tt := range []struct {
+		name      string
+		tool      string
+		arguments map[string]any
+	}{
+		{name: "findings.list", tool: "cerebro.findings.list", arguments: map[string]any{"runtime_id": "other-runtime"}},
+		{name: "findings.search", tool: "cerebro.findings.search", arguments: map[string]any{"runtime_id": "other-runtime"}},
+		{name: "evidence.list", tool: "cerebro.evidence.list", arguments: map[string]any{"runtime_id": "other-runtime"}},
+		{name: "assets.search", tool: "cerebro.assets.search", arguments: map[string]any{"runtime_id": "other-runtime"}},
+		{name: "risk.summary", tool: "cerebro.risk.summary", arguments: map[string]any{"runtime_id": "other-runtime"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			response, _ := postMCP(t, server, "", map[string]any{
+				"jsonrpc": "2.0",
+				"id":      1,
+				"method":  "tools/call",
+				"params": map[string]any{
+					"name":      tt.tool,
+					"arguments": tt.arguments,
+				},
+			})
+			result := response["result"].(map[string]any)
+			text := result["content"].([]any)[0].(map[string]any)["text"].(string)
+			if result["isError"] != true || !strings.Contains(text, "source runtime not found") || strings.Contains(text, "tenant forbidden") {
+				t.Fatalf("%s response = %#v", tt.name, response)
+			}
+		})
 	}
 }
 
@@ -518,6 +660,9 @@ func TestMCPAssetsSearchUsesTenantScopedCypher(t *testing.T) {
 	if graph.cypherRequests[0].Params["tenant_id"] != "writer" || graph.cypherRequests[0].RowLimit != 7 {
 		t.Fatalf("cypher request = %#v", graph.cypherRequests[0])
 	}
+	if strings.Contains(graph.cypherRequests[0].Query, "toLower(coalesce(e.attributes_json") {
+		t.Fatalf("asset search query matches raw sensitive attributes: %s", graph.cypherRequests[0].Query)
+	}
 	assets := response["result"].(map[string]any)["structuredContent"].(map[string]any)["assets"].([]any)
 	if len(assets) != 1 {
 		t.Fatalf("len(assets) = %d, want 1", len(assets))
@@ -555,6 +700,12 @@ func TestMCPAssetsGetGraphToolsAndDryRunProposals(t *testing.T) {
 			Neighbors: []*ports.NeighborhoodNode{
 				{URN: "urn:cerebro:writer:finding:finding-1", EntityType: "finding", Label: "Finding"},
 			},
+			Relations: []*ports.NeighborhoodRelation{{
+				FromURN:    "urn:cerebro:writer:asset:prod-db",
+				Relation:   "has_evidence",
+				ToURN:      "urn:cerebro:writer:finding:finding-1",
+				Attributes: map[string]string{"secret_access_key": "hidden", "confidence": "high"},
+			}},
 		},
 		cypherRows: [][]ports.CypherRow{
 			{{
@@ -639,10 +790,41 @@ func TestMCPAssetsGetGraphToolsAndDryRunProposals(t *testing.T) {
 	if got := impactResp["result"].(map[string]any)["structuredContent"].(map[string]any)["root_urn"]; got != "urn:cerebro:writer:asset:prod-db" {
 		t.Fatalf("graph.impact root_urn = %#v", got)
 	}
+	impact := impactResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	impactRelations := impact["relations"].([]any)
+	if len(impactRelations) != 1 {
+		t.Fatalf("graph.impact relations = %#v", impactRelations)
+	}
+	impactAttributes := impactRelations[0].(map[string]any)["attributes"].(map[string]any)
+	if impactAttributes["secret_access_key"] != "[redacted]" || impactAttributes["confidence"] != "high" {
+		t.Fatalf("graph.impact relation attributes = %#v", impactAttributes)
+	}
+	if impact["metadata"].(map[string]any)["returned"] == float64(0) {
+		t.Fatalf("graph.impact metadata = %#v", impact["metadata"])
+	}
+
+	crossTenantImpactResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      6,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.graph.impact",
+			"arguments": map[string]any{
+				"kind":       "asset",
+				"identifier": "urn:cerebro:other:asset:prod-db",
+				"depth":      1,
+				"limit":      10,
+			},
+		},
+	})
+	crossTenantImpact := crossTenantImpactResp["result"].(map[string]any)
+	if crossTenantImpact["isError"] != true || !strings.Contains(crossTenantImpact["content"].([]any)[0].(map[string]any)["text"].(string), "graph entity not found") {
+		t.Fatalf("cross-tenant graph.impact response = %#v", crossTenantImpactResp)
+	}
 
 	pathsResp, _ := postMCP(t, server, "", map[string]any{
 		"jsonrpc": "2.0",
-		"id":      3,
+		"id":      7,
 		"method":  "tools/call",
 		"params": map[string]any{
 			"name":      "cerebro.graph.paths",
@@ -659,7 +841,7 @@ func TestMCPAssetsGetGraphToolsAndDryRunProposals(t *testing.T) {
 
 	proposalResp, _ := postMCP(t, server, "", map[string]any{
 		"jsonrpc": "2.0",
-		"id":      4,
+		"id":      8,
 		"method":  "tools/call",
 		"params": map[string]any{
 			"name": "cerebro.findings.action.propose",
@@ -682,7 +864,7 @@ func TestMCPAssetsGetGraphToolsAndDryRunProposals(t *testing.T) {
 
 	refreshResp, _ := postMCP(t, server, "", map[string]any{
 		"jsonrpc": "2.0",
-		"id":      5,
+		"id":      9,
 		"method":  "tools/call",
 		"params": map[string]any{
 			"name":      "cerebro.source_runtimes.refresh.propose",
@@ -861,6 +1043,136 @@ func TestMCPGraphNeighborhood(t *testing.T) {
 	}
 }
 
+func TestMCPGraphToolMetadataNormalizesLimits(t *testing.T) {
+	graph := &stubGraphStore{
+		neighborhood: &ports.EntityNeighborhood{
+			Root: &ports.NeighborhoodNode{URN: "urn:cerebro:writer:asset:prod-db", EntityType: "asset", Label: "prod-db"},
+			Neighbors: []*ports.NeighborhoodNode{
+				{URN: "urn:cerebro:writer:finding:finding-1", EntityType: "finding", Label: "finding-1"},
+			},
+		},
+		cypherRows: [][]ports.CypherRow{
+			{{
+				Values: map[string]any{
+					"path_count":                 int64(1),
+					"exposed_resource_count":     int64(1),
+					"privileged_principal_count": int64(1),
+					"cloud_account_count":        int64(1),
+				},
+			}},
+			{{
+				Values: map[string]any{
+					"public_urn":             "urn:cerebro:writer:aws_public_principal:internet",
+					"public_entity_type":     "aws.public_principal",
+					"public_label":           "internet",
+					"exposed_urn":            "urn:cerebro:writer:asset:prod-db",
+					"exposed_entity_type":    "aws.rds.instance",
+					"exposed_label":          "prod-db",
+					"account_urn":            "urn:cerebro:writer:cloud_account:123",
+					"account_entity_type":    "cloud.account",
+					"account_label":          "123",
+					"principal_urn":          "urn:cerebro:writer:aws_role:admin",
+					"principal_entity_type":  "aws.role",
+					"principal_label":        "admin",
+					"permission_urn":         "urn:cerebro:writer:aws_policy:admin",
+					"permission_entity_type": "aws.policy",
+					"permission_label":       "admin",
+					"reach_relation":         "can_reach",
+					"access_relation":        "can_admin",
+				},
+			}},
+		},
+	}
+	server := newMCPTestServerWithGraph(t, &stubRuntimeStore{}, graph)
+	defer server.Close()
+
+	neighborhoodResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.graph.neighborhood",
+			"arguments": map[string]any{
+				"root_urn": "urn:cerebro:writer:asset:prod-db",
+				"limit":    1000,
+			},
+		},
+	})
+	if neighborhoodResp["error"] != nil {
+		t.Fatalf("graph.neighborhood error = %#v", neighborhoodResp["error"])
+	}
+	if graph.neighborhoodLimit != 50 {
+		t.Fatalf("graph.neighborhood limit = %d, want 50", graph.neighborhoodLimit)
+	}
+	neighborhoodMetadata := neighborhoodResp["result"].(map[string]any)["structuredContent"].(map[string]any)["metadata"].(map[string]any)
+	if neighborhoodMetadata["limit_applied"] != float64(50) {
+		t.Fatalf("graph.neighborhood metadata = %#v", neighborhoodMetadata)
+	}
+
+	exactNeighborhoodResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      4,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.graph.neighborhood",
+			"arguments": map[string]any{
+				"root_urn": "urn:cerebro:writer:asset:prod-db",
+				"limit":    1,
+			},
+		},
+	})
+	if exactNeighborhoodResp["error"] != nil {
+		t.Fatalf("graph.neighborhood exact error = %#v", exactNeighborhoodResp["error"])
+	}
+	exactNeighborhoodMetadata := exactNeighborhoodResp["result"].(map[string]any)["structuredContent"].(map[string]any)["metadata"].(map[string]any)
+	if exactNeighborhoodMetadata["truncated"] != false {
+		t.Fatalf("graph.neighborhood exact metadata = %#v", exactNeighborhoodMetadata)
+	}
+
+	impactResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.graph.impact",
+			"arguments": map[string]any{
+				"kind":     "asset",
+				"root_urn": "urn:cerebro:writer:asset:prod-db",
+			},
+		},
+	})
+	if impactResp["error"] != nil {
+		t.Fatalf("graph.impact error = %#v", impactResp["error"])
+	}
+	if graph.neighborhoodLimit != 100 {
+		t.Fatalf("graph.impact neighborhood limit = %d, want 100", graph.neighborhoodLimit)
+	}
+	impactMetadata := impactResp["result"].(map[string]any)["structuredContent"].(map[string]any)["metadata"].(map[string]any)
+	if impactMetadata["limit_applied"] != float64(100) || impactMetadata["returned"] == float64(0) {
+		t.Fatalf("graph.impact metadata = %#v", impactMetadata)
+	}
+
+	pathsResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "cerebro.graph.paths",
+			"arguments": map[string]any{"limit": 1000},
+		},
+	})
+	if pathsResp["error"] != nil {
+		t.Fatalf("graph.paths error = %#v", pathsResp["error"])
+	}
+	if len(graph.cypherRequests) != 2 || graph.cypherRequests[1].RowLimit != 100 {
+		t.Fatalf("graph.paths cypher requests = %#v, want sample limit 100", graph.cypherRequests)
+	}
+	pathsMetadata := pathsResp["result"].(map[string]any)["structuredContent"].(map[string]any)["metadata"].(map[string]any)
+	if pathsMetadata["limit_applied"] != float64(100) {
+		t.Fatalf("graph.paths metadata = %#v", pathsMetadata)
+	}
+}
+
 func TestMCPOriginProtocolAndNotificationHandling(t *testing.T) {
 	server := newMCPTestServer(t, &stubRuntimeStore{})
 	defer server.Close()
@@ -891,6 +1203,9 @@ func TestMCPOriginProtocolAndNotificationHandling(t *testing.T) {
 	})
 	if response["error"] != nil {
 		t.Fatalf("tools/list error = %#v", response["error"])
+	}
+	if got := sessionIDOrDefault(t, server, ""); got != "cerebro-stateless" {
+		t.Fatalf("stateless session id = %q, want cerebro-stateless", got)
 	}
 
 	unsupportedReq, err := http.NewRequest(http.MethodPost, server.URL+mcpEndpointPath, strings.NewReader(`{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{}}`))
@@ -938,6 +1253,39 @@ func TestMCPRouteUsesReadScope(t *testing.T) {
 	}
 }
 
+func TestMCPMethodScopeGate(t *testing.T) {
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, nil)
+	req := httptest.NewRequest(http.MethodPost, mcpEndpointPath, nil)
+	req = req.WithContext(context.WithValue(req.Context(), authContextKey{}, authContext{
+		principal: authPrincipal{
+			Name:     "scoped",
+			TenantID: "writer",
+			Scopes:   []string{"other.scope"},
+		},
+	}))
+	response := app.handleMCPRequest(req, mcpJSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      json.RawMessage(`1`),
+		Method:  "tools/list",
+	})
+	if response.Error == nil || response.Error.Message != "scope forbidden" {
+		t.Fatalf("scoped tools/list response = %#v", response)
+	}
+}
+
+func TestMCPMetadataDoesNotClaimUnknownTruncation(t *testing.T) {
+	metadata := mcpResponseMetadata(1, 1, nil)
+	if metadata["truncated"] != false {
+		t.Fatalf("metadata truncated = %#v, want false in %#v", metadata["truncated"], metadata)
+	}
+	if _, ok := metadata["truncation_reason"]; ok {
+		t.Fatalf("metadata should not include truncation_reason when truncation is unknown: %#v", metadata)
+	}
+	if metadata["more_results_possible"] != true {
+		t.Fatalf("metadata more_results_possible = %#v, want true", metadata["more_results_possible"])
+	}
+}
+
 func newMCPTestServer(t *testing.T, store *stubRuntimeStore) *httptest.Server {
 	t.Helper()
 	return newMCPTestServerWithGraph(t, store, nil)
@@ -968,6 +1316,17 @@ func postMCP(t *testing.T, server *httptest.Server, sessionID string, payload ma
 func postMCPWithoutAuth(t *testing.T, server *httptest.Server, payload map[string]any) (map[string]any, string) {
 	t.Helper()
 	return postMCPWithAuthHeader(t, server, "", payload, "")
+}
+
+func sessionIDOrDefault(t *testing.T, server *httptest.Server, sessionID string) string {
+	t.Helper()
+	_, returned := postMCP(t, server, sessionID, map[string]any{
+		"jsonrpc": "2.0",
+		"id":      999,
+		"method":  "ping",
+		"params":  map[string]any{},
+	})
+	return returned
 }
 
 func postMCPWithAuthHeader(t *testing.T, server *httptest.Server, sessionID string, payload map[string]any, authHeader string) (map[string]any, string) {
