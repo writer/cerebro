@@ -24,6 +24,8 @@ import (
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	ecstypes "github.com/aws/aws-sdk-go-v2/service/ecs/types"
+	"github.com/aws/aws-sdk-go-v2/service/eks"
+	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
@@ -316,7 +318,12 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyAssetMetadata, kind: "asset.data_sensitivity"},
 		{family: familyEC2Instance, kind: "aws.ec2_instance"},
 		{family: familyECSService, kind: "aws.ecs_service"},
+		{family: familyECSTask, kind: "aws.ecs_task"},
 		{family: familyECSTaskDefinition, kind: "aws.ecs_task_definition"},
+		{family: familyEKSCluster, kind: "aws.eks_cluster"},
+		{family: familyEKSNodegroup, kind: "aws.eks_nodegroup"},
+		{family: familyEKSFargateProfile, kind: "aws.eks_fargate_profile"},
+		{family: familyEKSPodIdentity, kind: "aws.eks_pod_identity_association"},
 		{family: familyEffectivePermission, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.effective_permission"},
 		{family: familyIAMUser, kind: "aws.iam_user"},
 		{family: familyLambdaFunction, kind: "aws.lambda_function"},
@@ -368,9 +375,22 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 	profileARN := "arn:aws:iam::123456789012:instance-profile/WebProfile"
 	instanceRoleARN := "arn:aws:iam::123456789012:role/WebInstanceRole"
 	taskDefinitionARN := "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7"
+	taskARN := "arn:aws:ecs:us-east-1:123456789012:task/prod/abcd1234"
 	serviceARN := "arn:aws:ecs:us-east-1:123456789012:service/prod/orders"
 	clusterARN := "arn:aws:ecs:us-east-1:123456789012:cluster/prod"
+	eksClusterName := "prod-eks"
+	eksClusterARN := "arn:aws:eks:us-east-1:123456789012:cluster/prod-eks"
+	nodegroupARN := "arn:aws:eks:us-east-1:123456789012:nodegroup/prod-eks/managed-linux/uuid"
+	fargateProfileARN := "arn:aws:eks:us-east-1:123456789012:fargateprofile/prod-eks/payments/uuid"
+	podIdentityARN := "arn:aws:eks:us-east-1:123456789012:podidentityassociation/prod-eks/a-123"
 	source := newTestSource(t, fakeAWS{
+		networkInterfaces: []ec2types.NetworkInterface{{
+			NetworkInterfaceId: awssdk.String("eni-task"),
+			Groups:             []ec2types.GroupIdentifier{{GroupId: awssdk.String("sg-task")}},
+			PrivateIpAddress:   awssdk.String("10.0.2.25"),
+			SubnetId:           awssdk.String("subnet-task"),
+			VpcId:              awssdk.String("vpc-1"),
+		}},
 		compute: fakeAWSCompute{
 			instances: []ec2types.Instance{{
 				InstanceId:   awssdk.String("i-123"),
@@ -407,9 +427,23 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 					VpcId:            awssdk.String("vpc-1"),
 				},
 			}},
-			ecsClusters:           []string{clusterARN},
-			ecsServiceARNs:        map[string][]string{clusterARN: []string{serviceARN}},
-			ecsServices:           map[string]ecstypes.Service{serviceARN: {ClusterArn: awssdk.String(clusterARN), ServiceArn: awssdk.String(serviceARN), ServiceName: awssdk.String("orders"), Status: awssdk.String("ACTIVE"), TaskDefinition: awssdk.String(taskDefinitionARN), DesiredCount: 2, RunningCount: 2}},
+			ecsClusters:    []string{clusterARN},
+			ecsServiceARNs: map[string][]string{clusterARN: []string{serviceARN}},
+			ecsServices:    map[string]ecstypes.Service{serviceARN: {ClusterArn: awssdk.String(clusterARN), ServiceArn: awssdk.String(serviceARN), ServiceName: awssdk.String("orders"), Status: awssdk.String("ACTIVE"), TaskDefinition: awssdk.String(taskDefinitionARN), DesiredCount: 2, RunningCount: 2}},
+			ecsTaskARNs:    map[string][]string{clusterARN: []string{taskARN}},
+			ecsTasks: map[string]ecstypes.Task{taskARN: {
+				Attachments: []ecstypes.Attachment{{Details: []ecstypes.KeyValuePair{
+					{Name: awssdk.String("networkInterfaceId"), Value: awssdk.String("eni-task")},
+					{Name: awssdk.String("subnetId"), Value: awssdk.String("subnet-task")},
+					{Name: awssdk.String("privateIPv4Address"), Value: awssdk.String("10.0.2.25")},
+				}}},
+				ClusterArn:        awssdk.String(clusterARN),
+				Group:             awssdk.String("service:orders"),
+				LastStatus:        awssdk.String("RUNNING"),
+				LaunchType:        ecstypes.LaunchTypeFargate,
+				TaskArn:           awssdk.String(taskARN),
+				TaskDefinitionArn: awssdk.String(taskDefinitionARN),
+			}},
 			ecsTaskDefinitionARNs: []string{taskDefinitionARN},
 			ecsTaskDefinitions: map[string]ecstypes.TaskDefinition{taskDefinitionARN: {
 				ContainerDefinitions: []ecstypes.ContainerDefinition{{Name: awssdk.String("orders"), Image: awssdk.String("repo/orders:latest")}},
@@ -422,6 +456,52 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 				Status:            ecstypes.TaskDefinitionStatusActive,
 				TaskDefinitionArn: awssdk.String(taskDefinitionARN),
 				TaskRoleArn:       awssdk.String("arn:aws:iam::123456789012:role/ECSTaskRole"),
+			}},
+			eksClusters: []ekstypes.Cluster{{
+				Arn:      awssdk.String(eksClusterARN),
+				Endpoint: awssdk.String("https://ABCDEF.gr7.us-east-1.eks.amazonaws.com"),
+				Name:     awssdk.String(eksClusterName),
+				ResourcesVpcConfig: &ekstypes.VpcConfigResponse{
+					ClusterSecurityGroupId: awssdk.String("sg-eks-control"),
+					EndpointPublicAccess:   true,
+					PublicAccessCidrs:      []string{"0.0.0.0/0"},
+					SecurityGroupIds:       []string{"sg-eks"},
+					SubnetIds:              []string{"subnet-eks"},
+					VpcId:                  awssdk.String("vpc-1"),
+				},
+				RoleArn: awssdk.String("arn:aws:iam::123456789012:role/EKSClusterRole"),
+				Status:  ekstypes.ClusterStatusActive,
+				Version: awssdk.String("1.30"),
+			}},
+			eksNodegroupNames: map[string][]string{eksClusterName: []string{"managed-linux"}},
+			eksNodegroups: map[string]ekstypes.Nodegroup{awsTestEKSChildKey(eksClusterName, "managed-linux"): {
+				ClusterName:   awssdk.String(eksClusterName),
+				InstanceTypes: []string{"m7g.large"},
+				NodegroupArn:  awssdk.String(nodegroupARN),
+				NodegroupName: awssdk.String("managed-linux"),
+				NodeRole:      awssdk.String("arn:aws:iam::123456789012:role/EKSNodeRole"),
+				Status:        ekstypes.NodegroupStatusActive,
+				Subnets:       []string{"subnet-eks"},
+				Version:       awssdk.String("1.30"),
+			}},
+			eksFargateNames: map[string][]string{eksClusterName: []string{"payments"}},
+			eksFargateProfiles: map[string]ekstypes.FargateProfile{awsTestEKSChildKey(eksClusterName, "payments"): {
+				ClusterName:         awssdk.String(eksClusterName),
+				FargateProfileArn:   awssdk.String(fargateProfileARN),
+				FargateProfileName:  awssdk.String("payments"),
+				PodExecutionRoleArn: awssdk.String("arn:aws:iam::123456789012:role/EKSFargatePodExecutionRole"),
+				Selectors:           []ekstypes.FargateProfileSelector{{Namespace: awssdk.String("payments"), Labels: map[string]string{"runtime": "fargate"}}},
+				Status:              ekstypes.FargateProfileStatusActive,
+				Subnets:             []string{"subnet-eks"},
+			}},
+			eksPodIdentityIDs: map[string][]string{eksClusterName: []string{"a-123"}},
+			eksPodIdentities: map[string]ekstypes.PodIdentityAssociation{awsTestEKSChildKey(eksClusterName, "a-123"): {
+				AssociationArn: awssdk.String(podIdentityARN),
+				AssociationId:  awssdk.String("a-123"),
+				ClusterName:    awssdk.String(eksClusterName),
+				Namespace:      awssdk.String("payments"),
+				RoleArn:        awssdk.String("arn:aws:iam::123456789012:role/EKSPaymentsPodRole"),
+				ServiceAccount: awssdk.String("api"),
 			}},
 		},
 	})
@@ -461,11 +541,65 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 			},
 		},
 		{
+			family: familyECSTask,
+			kind:   "aws.ecs_task",
+			assert: func(t *testing.T, event *cerebrov1.EventEnvelope) {
+				if got := event.Attributes["launch_type"]; got != "FARGATE" {
+					t.Fatalf("ecs task launch_type = %q, want FARGATE", got)
+				}
+				if got := event.Attributes["network_interface_ids"]; got != "eni-task" {
+					t.Fatalf("ecs task network_interface_ids = %q, want eni-task", got)
+				}
+			},
+		},
+		{
 			family: familyECSTaskDefinition,
 			kind:   "aws.ecs_task_definition",
 			assert: func(t *testing.T, event *cerebrov1.EventEnvelope) {
 				if got := event.Attributes["task_role_name"]; got != "ECSTaskRole" {
 					t.Fatalf("ecs task task_role_name = %q, want ECSTaskRole", got)
+				}
+			},
+		},
+		{
+			family: familyEKSCluster,
+			kind:   "aws.eks_cluster",
+			assert: func(t *testing.T, event *cerebrov1.EventEnvelope) {
+				if got := event.Attributes["endpoint_public_access"]; got != "true" {
+					t.Fatalf("eks cluster endpoint_public_access = %q, want true", got)
+				}
+				if got := event.Attributes["role_name"]; got != "EKSClusterRole" {
+					t.Fatalf("eks cluster role_name = %q, want EKSClusterRole", got)
+				}
+			},
+		},
+		{
+			family: familyEKSNodegroup,
+			kind:   "aws.eks_nodegroup",
+			assert: func(t *testing.T, event *cerebrov1.EventEnvelope) {
+				if got := event.Attributes["role_name"]; got != "EKSNodeRole" {
+					t.Fatalf("eks nodegroup role_name = %q, want EKSNodeRole", got)
+				}
+			},
+		},
+		{
+			family: familyEKSFargateProfile,
+			kind:   "aws.eks_fargate_profile",
+			assert: func(t *testing.T, event *cerebrov1.EventEnvelope) {
+				if got := event.Attributes["selector_namespaces"]; got != "payments" {
+					t.Fatalf("eks fargate selector_namespaces = %q, want payments", got)
+				}
+			},
+		},
+		{
+			family: familyEKSPodIdentity,
+			kind:   "aws.eks_pod_identity_association",
+			assert: func(t *testing.T, event *cerebrov1.EventEnvelope) {
+				if got := event.Attributes["role_name"]; got != "EKSPaymentsPodRole" {
+					t.Fatalf("eks pod identity role_name = %q, want EKSPaymentsPodRole", got)
+				}
+				if got := event.Attributes["service_account"]; got != "api" {
+					t.Fatalf("eks pod identity service_account = %q, want api", got)
 				}
 			},
 		},
@@ -1035,16 +1169,28 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 	computeData := func(fake *recordingAWS) {
 		profileARN := "arn:aws:iam::123456789012:instance-profile/WebProfile"
 		taskDefinitionARN := "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7"
+		taskARN := "arn:aws:ecs:us-east-1:123456789012:task/prod/abcd1234"
 		serviceARN := "arn:aws:ecs:us-east-1:123456789012:service/prod/orders"
 		clusterARN := "arn:aws:ecs:us-east-1:123456789012:cluster/prod"
+		eksClusterName := "prod-eks"
+		eksClusterARN := "arn:aws:eks:us-east-1:123456789012:cluster/prod-eks"
 		fake.compute.instances = []ec2types.Instance{{InstanceId: awssdk.String("i-123"), IamInstanceProfile: &ec2types.IamInstanceProfile{Arn: awssdk.String(profileARN)}}}
 		fake.compute.instanceProfiles = map[string]iamtypes.InstanceProfile{"WebProfile": {Roles: []iamtypes.Role{{Arn: awssdk.String("arn:aws:iam::123456789012:role/WebInstanceRole"), RoleName: awssdk.String("WebInstanceRole")}}}}
 		fake.compute.lambdaFunctions = []lambdatypes.FunctionConfiguration{{FunctionArn: awssdk.String("arn:aws:lambda:us-east-1:123456789012:function:orders"), FunctionName: awssdk.String("orders"), Role: awssdk.String("arn:aws:iam::123456789012:role/LambdaOrdersRole")}}
 		fake.compute.ecsClusters = []string{clusterARN}
 		fake.compute.ecsServiceARNs = map[string][]string{clusterARN: []string{serviceARN}}
 		fake.compute.ecsServices = map[string]ecstypes.Service{serviceARN: {ClusterArn: awssdk.String(clusterARN), ServiceArn: awssdk.String(serviceARN), TaskDefinition: awssdk.String(taskDefinitionARN)}}
+		fake.compute.ecsTaskARNs = map[string][]string{clusterARN: []string{taskARN}}
+		fake.compute.ecsTasks = map[string]ecstypes.Task{taskARN: {ClusterArn: awssdk.String(clusterARN), TaskArn: awssdk.String(taskARN), TaskDefinitionArn: awssdk.String(taskDefinitionARN)}}
 		fake.compute.ecsTaskDefinitionARNs = []string{taskDefinitionARN}
 		fake.compute.ecsTaskDefinitions = map[string]ecstypes.TaskDefinition{taskDefinitionARN: {TaskDefinitionArn: awssdk.String(taskDefinitionARN), TaskRoleArn: awssdk.String("arn:aws:iam::123456789012:role/ECSTaskRole")}}
+		fake.compute.eksClusters = []ekstypes.Cluster{{Arn: awssdk.String(eksClusterARN), Name: awssdk.String(eksClusterName), Status: ekstypes.ClusterStatusActive}}
+		fake.compute.eksNodegroupNames = map[string][]string{eksClusterName: []string{"managed-linux"}}
+		fake.compute.eksNodegroups = map[string]ekstypes.Nodegroup{awsTestEKSChildKey(eksClusterName, "managed-linux"): {ClusterName: awssdk.String(eksClusterName), NodegroupArn: awssdk.String("arn:aws:eks:us-east-1:123456789012:nodegroup/prod-eks/managed-linux/uuid"), NodegroupName: awssdk.String("managed-linux"), NodeRole: awssdk.String("arn:aws:iam::123456789012:role/EKSNodeRole")}}
+		fake.compute.eksFargateNames = map[string][]string{eksClusterName: []string{"payments"}}
+		fake.compute.eksFargateProfiles = map[string]ekstypes.FargateProfile{awsTestEKSChildKey(eksClusterName, "payments"): {ClusterName: awssdk.String(eksClusterName), FargateProfileArn: awssdk.String("arn:aws:eks:us-east-1:123456789012:fargateprofile/prod-eks/payments/uuid"), FargateProfileName: awssdk.String("payments"), PodExecutionRoleArn: awssdk.String("arn:aws:iam::123456789012:role/EKSFargatePodExecutionRole")}}
+		fake.compute.eksPodIdentityIDs = map[string][]string{eksClusterName: []string{"a-123"}}
+		fake.compute.eksPodIdentities = map[string]ekstypes.PodIdentityAssociation{awsTestEKSChildKey(eksClusterName, "a-123"): {AssociationArn: awssdk.String("arn:aws:eks:us-east-1:123456789012:podidentityassociation/prod-eks/a-123"), AssociationId: awssdk.String("a-123"), ClusterName: awssdk.String(eksClusterName), Namespace: awssdk.String("payments"), RoleArn: awssdk.String("arn:aws:iam::123456789012:role/EKSPaymentsPodRole"), ServiceAccount: awssdk.String("api")}}
 	}
 	for _, tt := range []struct {
 		family  string
@@ -1072,9 +1218,34 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			wantAPI: []string{"ecs:DescribeServices", "ecs:ListClusters", "ecs:ListServices"},
 		},
 		{
+			family:  familyECSTask,
+			seed:    computeData,
+			wantAPI: []string{"ecs:DescribeTasks", "ecs:ListClusters", "ecs:ListTasks"},
+		},
+		{
 			family:  familyECSTaskDefinition,
 			seed:    computeData,
 			wantAPI: []string{"ecs:DescribeTaskDefinition", "ecs:ListTaskDefinitions"},
+		},
+		{
+			family:  familyEKSCluster,
+			seed:    computeData,
+			wantAPI: []string{"eks:DescribeCluster", "eks:ListClusters"},
+		},
+		{
+			family:  familyEKSNodegroup,
+			seed:    computeData,
+			wantAPI: []string{"eks:DescribeNodegroup", "eks:ListClusters", "eks:ListNodegroups"},
+		},
+		{
+			family:  familyEKSFargateProfile,
+			seed:    computeData,
+			wantAPI: []string{"eks:DescribeFargateProfile", "eks:ListClusters", "eks:ListFargateProfiles"},
+		},
+		{
+			family:  familyEKSPodIdentity,
+			seed:    computeData,
+			wantAPI: []string{"eks:DescribePodIdentityAssociation", "eks:ListClusters", "eks:ListPodIdentityAssociations"},
 		},
 		{
 			family:  familyEffectivePermission,
@@ -1359,7 +1530,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, tagging: fake}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, tagging: fake}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1375,7 +1546,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1461,8 +1632,17 @@ type fakeAWSCompute struct {
 	ecsClusters           []string
 	ecsServiceARNs        map[string][]string
 	ecsServices           map[string]ecstypes.Service
+	ecsTaskARNs           map[string][]string
+	ecsTasks              map[string]ecstypes.Task
 	ecsTaskDefinitionARNs []string
 	ecsTaskDefinitions    map[string]ecstypes.TaskDefinition
+	eksClusters           []ekstypes.Cluster
+	eksNodegroupNames     map[string][]string
+	eksNodegroups         map[string]ekstypes.Nodegroup
+	eksFargateNames       map[string][]string
+	eksFargateProfiles    map[string]ekstypes.FargateProfile
+	eksPodIdentityIDs     map[string][]string
+	eksPodIdentities      map[string]ekstypes.PodIdentityAssociation
 }
 
 type recordingAWS struct {
@@ -1604,6 +1784,16 @@ func (f *recordingAWS) DescribeServices(ctx context.Context, input *ecs.Describe
 	return f.fakeAWS.DescribeServices(ctx, input, options...)
 }
 
+func (f *recordingAWS) ListTasks(ctx context.Context, input *ecs.ListTasksInput, options ...func(*ecs.Options)) (*ecs.ListTasksOutput, error) {
+	f.record("ecs:ListTasks")
+	return f.fakeAWS.ListTasks(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeTasks(ctx context.Context, input *ecs.DescribeTasksInput, options ...func(*ecs.Options)) (*ecs.DescribeTasksOutput, error) {
+	f.record("ecs:DescribeTasks")
+	return f.fakeAWS.DescribeTasks(ctx, input, options...)
+}
+
 func (f *recordingAWS) ListTaskDefinitions(ctx context.Context, input *ecs.ListTaskDefinitionsInput, options ...func(*ecs.Options)) (*ecs.ListTaskDefinitionsOutput, error) {
 	f.record("ecs:ListTaskDefinitions")
 	return f.fakeAWS.ListTaskDefinitions(ctx, input, options...)
@@ -1661,6 +1851,145 @@ func (f recordingAPIGatewayV2) GetApis(ctx context.Context, input *apigatewayv2.
 func (f recordingAPIGatewayV2) GetDomainNames(ctx context.Context, input *apigatewayv2.GetDomainNamesInput, options ...func(*apigatewayv2.Options)) (*apigatewayv2.GetDomainNamesOutput, error) {
 	f.fake.record("apigatewayv2:GetDomainNames")
 	return fakeAPIGatewayV2{domains: f.fake.apiV2Domains, apis: f.fake.apiV2APIs}.GetDomainNames(ctx, input, options...)
+}
+
+type fakeEKS struct {
+	compute fakeAWSCompute
+}
+
+type recordingEKS struct {
+	fake *recordingAWS
+}
+
+func (f recordingEKS) ListClusters(ctx context.Context, input *eks.ListClustersInput, options ...func(*eks.Options)) (*eks.ListClustersOutput, error) {
+	f.fake.record("eks:ListClusters")
+	return fakeEKS{compute: f.fake.compute}.ListClusters(ctx, input, options...)
+}
+
+func (f recordingEKS) DescribeCluster(ctx context.Context, input *eks.DescribeClusterInput, options ...func(*eks.Options)) (*eks.DescribeClusterOutput, error) {
+	f.fake.record("eks:DescribeCluster")
+	return fakeEKS{compute: f.fake.compute}.DescribeCluster(ctx, input, options...)
+}
+
+func (f recordingEKS) ListNodegroups(ctx context.Context, input *eks.ListNodegroupsInput, options ...func(*eks.Options)) (*eks.ListNodegroupsOutput, error) {
+	f.fake.record("eks:ListNodegroups")
+	return fakeEKS{compute: f.fake.compute}.ListNodegroups(ctx, input, options...)
+}
+
+func (f recordingEKS) DescribeNodegroup(ctx context.Context, input *eks.DescribeNodegroupInput, options ...func(*eks.Options)) (*eks.DescribeNodegroupOutput, error) {
+	f.fake.record("eks:DescribeNodegroup")
+	return fakeEKS{compute: f.fake.compute}.DescribeNodegroup(ctx, input, options...)
+}
+
+func (f recordingEKS) ListFargateProfiles(ctx context.Context, input *eks.ListFargateProfilesInput, options ...func(*eks.Options)) (*eks.ListFargateProfilesOutput, error) {
+	f.fake.record("eks:ListFargateProfiles")
+	return fakeEKS{compute: f.fake.compute}.ListFargateProfiles(ctx, input, options...)
+}
+
+func (f recordingEKS) DescribeFargateProfile(ctx context.Context, input *eks.DescribeFargateProfileInput, options ...func(*eks.Options)) (*eks.DescribeFargateProfileOutput, error) {
+	f.fake.record("eks:DescribeFargateProfile")
+	return fakeEKS{compute: f.fake.compute}.DescribeFargateProfile(ctx, input, options...)
+}
+
+func (f recordingEKS) ListPodIdentityAssociations(ctx context.Context, input *eks.ListPodIdentityAssociationsInput, options ...func(*eks.Options)) (*eks.ListPodIdentityAssociationsOutput, error) {
+	f.fake.record("eks:ListPodIdentityAssociations")
+	return fakeEKS{compute: f.fake.compute}.ListPodIdentityAssociations(ctx, input, options...)
+}
+
+func (f recordingEKS) DescribePodIdentityAssociation(ctx context.Context, input *eks.DescribePodIdentityAssociationInput, options ...func(*eks.Options)) (*eks.DescribePodIdentityAssociationOutput, error) {
+	f.fake.record("eks:DescribePodIdentityAssociation")
+	return fakeEKS{compute: f.fake.compute}.DescribePodIdentityAssociation(ctx, input, options...)
+}
+
+func (f fakeEKS) ListClusters(context.Context, *eks.ListClustersInput, ...func(*eks.Options)) (*eks.ListClustersOutput, error) {
+	names := make([]string, 0, len(f.compute.eksClusters))
+	for _, cluster := range f.compute.eksClusters {
+		name := awssdk.ToString(cluster.Name)
+		if name == "" {
+			name = pathBase(awssdk.ToString(cluster.Arn))
+		}
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+	return &eks.ListClustersOutput{Clusters: names}, nil
+}
+
+func (f fakeEKS) DescribeCluster(_ context.Context, input *eks.DescribeClusterInput, _ ...func(*eks.Options)) (*eks.DescribeClusterOutput, error) {
+	name := awssdk.ToString(input.Name)
+	for _, cluster := range f.compute.eksClusters {
+		if awssdk.ToString(cluster.Name) == name || pathBase(awssdk.ToString(cluster.Arn)) == name {
+			copy := cluster
+			return &eks.DescribeClusterOutput{Cluster: &copy}, nil
+		}
+	}
+	return &eks.DescribeClusterOutput{}, nil
+}
+
+func (f fakeEKS) ListNodegroups(_ context.Context, input *eks.ListNodegroupsInput, _ ...func(*eks.Options)) (*eks.ListNodegroupsOutput, error) {
+	if f.compute.eksNodegroupNames == nil {
+		return &eks.ListNodegroupsOutput{}, nil
+	}
+	return &eks.ListNodegroupsOutput{Nodegroups: f.compute.eksNodegroupNames[awssdk.ToString(input.ClusterName)]}, nil
+}
+
+func (f fakeEKS) DescribeNodegroup(_ context.Context, input *eks.DescribeNodegroupInput, _ ...func(*eks.Options)) (*eks.DescribeNodegroupOutput, error) {
+	if f.compute.eksNodegroups != nil {
+		nodegroup := f.compute.eksNodegroups[awsTestEKSChildKey(awssdk.ToString(input.ClusterName), awssdk.ToString(input.NodegroupName))]
+		return &eks.DescribeNodegroupOutput{Nodegroup: &nodegroup}, nil
+	}
+	return &eks.DescribeNodegroupOutput{}, nil
+}
+
+func (f fakeEKS) ListFargateProfiles(_ context.Context, input *eks.ListFargateProfilesInput, _ ...func(*eks.Options)) (*eks.ListFargateProfilesOutput, error) {
+	if f.compute.eksFargateNames == nil {
+		return &eks.ListFargateProfilesOutput{}, nil
+	}
+	return &eks.ListFargateProfilesOutput{FargateProfileNames: f.compute.eksFargateNames[awssdk.ToString(input.ClusterName)]}, nil
+}
+
+func (f fakeEKS) DescribeFargateProfile(_ context.Context, input *eks.DescribeFargateProfileInput, _ ...func(*eks.Options)) (*eks.DescribeFargateProfileOutput, error) {
+	if f.compute.eksFargateProfiles != nil {
+		profile := f.compute.eksFargateProfiles[awsTestEKSChildKey(awssdk.ToString(input.ClusterName), awssdk.ToString(input.FargateProfileName))]
+		return &eks.DescribeFargateProfileOutput{FargateProfile: &profile}, nil
+	}
+	return &eks.DescribeFargateProfileOutput{}, nil
+}
+
+func (f fakeEKS) ListPodIdentityAssociations(_ context.Context, input *eks.ListPodIdentityAssociationsInput, _ ...func(*eks.Options)) (*eks.ListPodIdentityAssociationsOutput, error) {
+	ids := f.compute.eksPodIdentityIDs[awssdk.ToString(input.ClusterName)]
+	summaries := make([]ekstypes.PodIdentityAssociationSummary, 0, len(ids))
+	for _, id := range ids {
+		summaries = append(summaries, ekstypes.PodIdentityAssociationSummary{AssociationId: awssdk.String(id), ClusterName: input.ClusterName})
+	}
+	return &eks.ListPodIdentityAssociationsOutput{Associations: summaries}, nil
+}
+
+func (f fakeEKS) DescribePodIdentityAssociation(_ context.Context, input *eks.DescribePodIdentityAssociationInput, _ ...func(*eks.Options)) (*eks.DescribePodIdentityAssociationOutput, error) {
+	if f.compute.eksPodIdentities != nil {
+		association := f.compute.eksPodIdentities[awsTestEKSChildKey(awssdk.ToString(input.ClusterName), awssdk.ToString(input.AssociationId))]
+		return &eks.DescribePodIdentityAssociationOutput{Association: &association}, nil
+	}
+	return &eks.DescribePodIdentityAssociationOutput{}, nil
+}
+
+func awsTestEKSChildKey(clusterName string, childName string) string {
+	return clusterName + "/" + childName
+}
+
+func pathBase(value string) string {
+	index := len(value) - 1
+	for index >= 0 && value[index] == '/' {
+		index--
+	}
+	if index < 0 {
+		return ""
+	}
+	start := index
+	for start >= 0 && value[start] != '/' {
+		start--
+	}
+	return value[start+1 : index+1]
 }
 
 func (f fakeAWS) ListUsers(context.Context, *iam.ListUsersInput, ...func(*iam.Options)) (*iam.ListUsersOutput, error) {
@@ -1861,6 +2190,23 @@ func (f fakeAWS) DescribeServices(_ context.Context, input *ecs.DescribeServices
 		}
 	}
 	return &ecs.DescribeServicesOutput{Services: services}, nil
+}
+
+func (f fakeAWS) ListTasks(_ context.Context, input *ecs.ListTasksInput, _ ...func(*ecs.Options)) (*ecs.ListTasksOutput, error) {
+	if f.compute.ecsTaskARNs == nil {
+		return &ecs.ListTasksOutput{}, nil
+	}
+	return &ecs.ListTasksOutput{TaskArns: f.compute.ecsTaskARNs[awssdk.ToString(input.Cluster)]}, nil
+}
+
+func (f fakeAWS) DescribeTasks(_ context.Context, input *ecs.DescribeTasksInput, _ ...func(*ecs.Options)) (*ecs.DescribeTasksOutput, error) {
+	tasks := make([]ecstypes.Task, 0, len(input.Tasks))
+	for _, arn := range input.Tasks {
+		if f.compute.ecsTasks != nil {
+			tasks = append(tasks, f.compute.ecsTasks[arn])
+		}
+	}
+	return &ecs.DescribeTasksOutput{Tasks: tasks}, nil
 }
 
 func (f fakeAWS) ListTaskDefinitions(context.Context, *ecs.ListTaskDefinitionsInput, ...func(*ecs.Options)) (*ecs.ListTaskDefinitionsOutput, error) {

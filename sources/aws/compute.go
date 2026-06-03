@@ -16,6 +16,8 @@ import (
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	ecstypes "github.com/aws/aws-sdk-go-v2/service/ecs/types"
+	"github.com/aws/aws-sdk-go-v2/service/eks"
+	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
@@ -27,6 +29,32 @@ import (
 type ecsServicePageCursor struct {
 	ClusterIndex int    `json:"cluster_index,omitempty"`
 	ServiceToken string `json:"service_token,omitempty"`
+}
+
+type ecsTaskPageCursor struct {
+	ClusterIndex int    `json:"cluster_index,omitempty"`
+	TaskToken    string `json:"task_token,omitempty"`
+}
+
+type eksChildPageCursor struct {
+	ClusterIndex int    `json:"cluster_index,omitempty"`
+	NextToken    string `json:"next_token,omitempty"`
+}
+
+type awsECSTask struct {
+	ClusterARN        string
+	Task              ecstypes.Task
+	NetworkInterfaces []ec2types.NetworkInterface
+}
+
+type awsEKSNodegroup struct {
+	ClusterName string
+	Nodegroup   ekstypes.Nodegroup
+}
+
+type awsEKSFargateProfile struct {
+	ClusterName string
+	Profile     ekstypes.FargateProfile
 }
 
 func listEC2Instances(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsEC2Instance, string, error) {
@@ -118,6 +146,60 @@ func listECSServices(ctx context.Context, clients awsClients, _ settings, cursor
 	return records, "", nil
 }
 
+func listECSTasks(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsECSTask, string, error) {
+	clusters, err := listAllECSClusters(ctx, clients)
+	if err != nil {
+		return nil, "", err
+	}
+	if len(clusters) == 0 {
+		return nil, "", nil
+	}
+	state, err := decodeECSTaskCursor(cursor)
+	if err != nil {
+		return nil, "", err
+	}
+	if state.ClusterIndex < 0 || state.ClusterIndex >= len(clusters) {
+		state.ClusterIndex = 0
+		state.TaskToken = ""
+	}
+	remaining := limit
+	if remaining <= 0 {
+		remaining = defaultPageSize
+	}
+	records := make([]awsECSTask, 0, remaining)
+	for state.ClusterIndex < len(clusters) && len(records) < remaining {
+		clusterARN := clusters[state.ClusterIndex]
+		output, err := clients.ecs.ListTasks(ctx, &ecs.ListTasksInput{
+			Cluster:       awssdk.String(clusterARN),
+			DesiredStatus: ecstypes.DesiredStatusRunning,
+			MaxResults:    awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 100))),
+			NextToken:     stringPtr(state.TaskToken),
+		})
+		if err != nil {
+			return nil, "", fmt.Errorf("list tasks for cluster %q: %w", clusterARN, err)
+		}
+		tasks, err := describeECSTasks(ctx, clients, clusterARN, output.TaskArns)
+		if err != nil {
+			return nil, "", err
+		}
+		tasks, err = enrichECSTaskNetworkInterfaces(ctx, clients, tasks)
+		if err != nil {
+			return nil, "", err
+		}
+		records = append(records, tasks...)
+		if awssdk.ToString(output.NextToken) != "" {
+			state.TaskToken = awssdk.ToString(output.NextToken)
+			return records, encodeECSTaskCursor(state), nil
+		}
+		state.ClusterIndex++
+		state.TaskToken = ""
+	}
+	if state.ClusterIndex < len(clusters) {
+		return records, encodeECSTaskCursor(state), nil
+	}
+	return records, "", nil
+}
+
 func listECSTaskDefinitions(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]ecstypes.TaskDefinition, string, error) {
 	output, err := clients.ecs.ListTaskDefinitions(ctx, &ecs.ListTaskDefinitionsInput{
 		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
@@ -137,6 +219,190 @@ func listECSTaskDefinitions(ctx context.Context, clients awsClients, _ settings,
 		}
 	}
 	return records, awssdk.ToString(output.NextToken), nil
+}
+
+func listEKSClusters(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]ekstypes.Cluster, string, error) {
+	output, err := clients.eks.ListClusters(ctx, &eks.ListClustersInput{
+		MaxResults: awssdk.Int32(int32(boundedAWSPageSize(limit, 1, 100))),
+		NextToken:  stringPtr(cursor),
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	records := make([]ekstypes.Cluster, 0, len(output.Clusters))
+	for _, name := range output.Clusters {
+		describe, err := clients.eks.DescribeCluster(ctx, &eks.DescribeClusterInput{Name: awssdk.String(name)})
+		if err != nil {
+			return nil, "", fmt.Errorf("describe eks cluster %q: %w", name, err)
+		}
+		if describe.Cluster != nil {
+			records = append(records, *describe.Cluster)
+		}
+	}
+	return records, awssdk.ToString(output.NextToken), nil
+}
+
+func listEKSNodegroups(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsEKSNodegroup, string, error) {
+	clusters, err := listAllEKSClusters(ctx, clients)
+	if err != nil {
+		return nil, "", err
+	}
+	if len(clusters) == 0 {
+		return nil, "", nil
+	}
+	state, err := decodeEKSChildCursor(cursor, "eks nodegroup")
+	if err != nil {
+		return nil, "", err
+	}
+	if state.ClusterIndex < 0 || state.ClusterIndex >= len(clusters) {
+		state.ClusterIndex = 0
+		state.NextToken = ""
+	}
+	remaining := limit
+	if remaining <= 0 {
+		remaining = defaultPageSize
+	}
+	records := make([]awsEKSNodegroup, 0, remaining)
+	for state.ClusterIndex < len(clusters) && len(records) < remaining {
+		clusterName := clusters[state.ClusterIndex]
+		output, err := clients.eks.ListNodegroups(ctx, &eks.ListNodegroupsInput{
+			ClusterName: awssdk.String(clusterName),
+			MaxResults:  awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 100))),
+			NextToken:   stringPtr(state.NextToken),
+		})
+		if err != nil {
+			return nil, "", fmt.Errorf("list eks nodegroups for cluster %q: %w", clusterName, err)
+		}
+		for _, name := range output.Nodegroups {
+			describe, err := clients.eks.DescribeNodegroup(ctx, &eks.DescribeNodegroupInput{ClusterName: awssdk.String(clusterName), NodegroupName: awssdk.String(name)})
+			if err != nil {
+				return nil, "", fmt.Errorf("describe eks nodegroup %q/%q: %w", clusterName, name, err)
+			}
+			if describe.Nodegroup != nil {
+				records = append(records, awsEKSNodegroup{ClusterName: clusterName, Nodegroup: *describe.Nodegroup})
+			}
+		}
+		if awssdk.ToString(output.NextToken) != "" {
+			state.NextToken = awssdk.ToString(output.NextToken)
+			return records, encodeEKSChildCursor(state), nil
+		}
+		state.ClusterIndex++
+		state.NextToken = ""
+	}
+	if state.ClusterIndex < len(clusters) {
+		return records, encodeEKSChildCursor(state), nil
+	}
+	return records, "", nil
+}
+
+func listEKSFargateProfiles(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]awsEKSFargateProfile, string, error) {
+	clusters, err := listAllEKSClusters(ctx, clients)
+	if err != nil {
+		return nil, "", err
+	}
+	if len(clusters) == 0 {
+		return nil, "", nil
+	}
+	state, err := decodeEKSChildCursor(cursor, "eks fargate profile")
+	if err != nil {
+		return nil, "", err
+	}
+	if state.ClusterIndex < 0 || state.ClusterIndex >= len(clusters) {
+		state.ClusterIndex = 0
+		state.NextToken = ""
+	}
+	remaining := limit
+	if remaining <= 0 {
+		remaining = defaultPageSize
+	}
+	records := make([]awsEKSFargateProfile, 0, remaining)
+	for state.ClusterIndex < len(clusters) && len(records) < remaining {
+		clusterName := clusters[state.ClusterIndex]
+		output, err := clients.eks.ListFargateProfiles(ctx, &eks.ListFargateProfilesInput{
+			ClusterName: awssdk.String(clusterName),
+			MaxResults:  awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 100))),
+			NextToken:   stringPtr(state.NextToken),
+		})
+		if err != nil {
+			return nil, "", fmt.Errorf("list eks fargate profiles for cluster %q: %w", clusterName, err)
+		}
+		for _, name := range output.FargateProfileNames {
+			describe, err := clients.eks.DescribeFargateProfile(ctx, &eks.DescribeFargateProfileInput{ClusterName: awssdk.String(clusterName), FargateProfileName: awssdk.String(name)})
+			if err != nil {
+				return nil, "", fmt.Errorf("describe eks fargate profile %q/%q: %w", clusterName, name, err)
+			}
+			if describe.FargateProfile != nil {
+				records = append(records, awsEKSFargateProfile{ClusterName: clusterName, Profile: *describe.FargateProfile})
+			}
+		}
+		if awssdk.ToString(output.NextToken) != "" {
+			state.NextToken = awssdk.ToString(output.NextToken)
+			return records, encodeEKSChildCursor(state), nil
+		}
+		state.ClusterIndex++
+		state.NextToken = ""
+	}
+	if state.ClusterIndex < len(clusters) {
+		return records, encodeEKSChildCursor(state), nil
+	}
+	return records, "", nil
+}
+
+func listEKSPodIdentityAssociations(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]ekstypes.PodIdentityAssociation, string, error) {
+	clusters, err := listAllEKSClusters(ctx, clients)
+	if err != nil {
+		return nil, "", err
+	}
+	if len(clusters) == 0 {
+		return nil, "", nil
+	}
+	state, err := decodeEKSChildCursor(cursor, "eks pod identity association")
+	if err != nil {
+		return nil, "", err
+	}
+	if state.ClusterIndex < 0 || state.ClusterIndex >= len(clusters) {
+		state.ClusterIndex = 0
+		state.NextToken = ""
+	}
+	remaining := limit
+	if remaining <= 0 {
+		remaining = defaultPageSize
+	}
+	records := make([]ekstypes.PodIdentityAssociation, 0, remaining)
+	for state.ClusterIndex < len(clusters) && len(records) < remaining {
+		clusterName := clusters[state.ClusterIndex]
+		output, err := clients.eks.ListPodIdentityAssociations(ctx, &eks.ListPodIdentityAssociationsInput{
+			ClusterName: awssdk.String(clusterName),
+			MaxResults:  awssdk.Int32(int32(boundedAWSPageSize(remaining-len(records), 1, 100))),
+			NextToken:   stringPtr(state.NextToken),
+		})
+		if err != nil {
+			return nil, "", fmt.Errorf("list eks pod identity associations for cluster %q: %w", clusterName, err)
+		}
+		for _, summary := range output.Associations {
+			associationID := awssdk.ToString(summary.AssociationId)
+			if associationID == "" {
+				continue
+			}
+			describe, err := clients.eks.DescribePodIdentityAssociation(ctx, &eks.DescribePodIdentityAssociationInput{ClusterName: awssdk.String(firstNonEmpty(awssdk.ToString(summary.ClusterName), clusterName)), AssociationId: awssdk.String(associationID)})
+			if err != nil {
+				return nil, "", fmt.Errorf("describe eks pod identity association %q/%q: %w", clusterName, associationID, err)
+			}
+			if describe.Association != nil {
+				records = append(records, *describe.Association)
+			}
+		}
+		if awssdk.ToString(output.NextToken) != "" {
+			state.NextToken = awssdk.ToString(output.NextToken)
+			return records, encodeEKSChildCursor(state), nil
+		}
+		state.ClusterIndex++
+		state.NextToken = ""
+	}
+	if state.ClusterIndex < len(clusters) {
+		return records, encodeEKSChildCursor(state), nil
+	}
+	return records, "", nil
 }
 
 func ec2InstanceEvent(settings settings, record awsEC2Instance) (*primitives.Event, error) {
@@ -258,6 +524,51 @@ func ecsServiceEvent(settings settings, record awsECSService) (*primitives.Event
 	return sourceEvent(settings, "aws-ecs-service-"+serviceARN, "aws.ecs_service", "aws/ecs_service/v1", payload, attributes, time.Now().UTC())
 }
 
+func ecsTaskEvent(settings settings, record awsECSTask) (*primitives.Event, error) {
+	task := record.Task
+	taskARN := awssdk.ToString(task.TaskArn)
+	taskDefinitionARN := awssdk.ToString(task.TaskDefinitionArn)
+	serviceName := ecsTaskServiceName(task)
+	serviceARN := ecsServiceARN(settings, record.ClusterARN, serviceName)
+	attributes := map[string]string{
+		"cluster_arn":            record.ClusterARN,
+		"cluster_name":           path.Base(record.ClusterARN),
+		"cpu":                    awssdk.ToString(task.Cpu),
+		"desired_status":         awssdk.ToString(task.DesiredStatus),
+		"domain":                 settings.accountID,
+		"enable_execute_command": strconv.FormatBool(task.EnableExecuteCommand),
+		"family":                 familyECSTask,
+		"group":                  awssdk.ToString(task.Group),
+		"health_status":          string(task.HealthStatus),
+		"last_status":            awssdk.ToString(task.LastStatus),
+		"launch_type":            string(task.LaunchType),
+		"memory":                 awssdk.ToString(task.Memory),
+		"network_interface_ids":  strings.Join(ecsTaskNetworkInterfaceIDs(record), ","),
+		"platform_family":        awssdk.ToString(task.PlatformFamily),
+		"platform_version":       awssdk.ToString(task.PlatformVersion),
+		"private_ips":            strings.Join(ecsTaskPrivateIPs(record), ","),
+		"region":                 settings.region,
+		"resource_id":            taskARN,
+		"resource_name":          firstNonEmpty(path.Base(taskARN), taskARN),
+		"resource_provider":      "aws",
+		"resource_type":          "ecs_task",
+		"security_group_ids":     strings.Join(ecsTaskSecurityGroupIDs(record), ","),
+		"service_arn":            serviceARN,
+		"service_name":           serviceName,
+		"subnet_ids":             strings.Join(ecsTaskSubnetIDs(record), ","),
+		"task_arn":               taskARN,
+		"task_definition_arn":    taskDefinitionARN,
+		"vpc_id":                 ecsTaskVPCID(record),
+	}
+	addTimeAttribute(attributes, "created_at", task.CreatedAt)
+	addTimeAttribute(attributes, "started_at", task.StartedAt)
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "cluster_arn": record.ClusterARN, "task": task, "network_interfaces": record.NetworkInterfaces})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "aws-ecs-task-"+taskARN, "aws.ecs_task", "aws/ecs_task/v1", payload, attributes, firstTime(task.StartedAt, task.CreatedAt))
+}
+
 func ecsTaskDefinitionEvent(settings settings, task ecstypes.TaskDefinition) (*primitives.Event, error) {
 	taskARN := awssdk.ToString(task.TaskDefinitionArn)
 	taskRoleARN := awssdk.ToString(task.TaskRoleArn)
@@ -294,6 +605,160 @@ func ecsTaskDefinitionEvent(settings settings, task ecstypes.TaskDefinition) (*p
 	return sourceEvent(settings, "aws-ecs-task-definition-"+taskARN, "aws.ecs_task_definition", "aws/ecs_task_definition/v1", payload, attributes, firstTime(task.RegisteredAt))
 }
 
+func eksClusterEvent(settings settings, cluster ekstypes.Cluster) (*primitives.Event, error) {
+	clusterName := awssdk.ToString(cluster.Name)
+	clusterARN := firstNonEmpty(awssdk.ToString(cluster.Arn), eksClusterARN(settings, clusterName))
+	roleARN := awssdk.ToString(cluster.RoleArn)
+	attributes := map[string]string{
+		"arn":                     clusterARN,
+		"cluster_arn":             clusterARN,
+		"cluster_name":            clusterName,
+		"domain":                  settings.accountID,
+		"endpoint":                awssdk.ToString(cluster.Endpoint),
+		"endpoint_private_access": strconv.FormatBool(eksEndpointPrivateAccess(cluster)),
+		"endpoint_public_access":  strconv.FormatBool(eksEndpointPublicAccess(cluster)),
+		"family":                  familyEKSCluster,
+		"platform_version":        awssdk.ToString(cluster.PlatformVersion),
+		"public_access_cidrs":     strings.Join(eksPublicAccessCIDRs(cluster), ","),
+		"region":                  settings.region,
+		"relationship":            "runs_as",
+		"resource_id":             clusterARN,
+		"resource_name":           clusterName,
+		"resource_provider":       "aws",
+		"resource_type":           "eks_cluster",
+		"role_arn":                roleARN,
+		"role_name":               roleNameFromARN(roleARN),
+		"security_group_ids":      strings.Join(eksClusterSecurityGroupIDs(cluster), ","),
+		"state":                   string(cluster.Status),
+		"subnet_ids":              strings.Join(eksClusterSubnetIDs(cluster), ","),
+		"tags":                    encodeAWSTags(cluster.Tags),
+		"version":                 awssdk.ToString(cluster.Version),
+		"vpc_id":                  eksClusterVPCID(cluster),
+	}
+	addTimeAttribute(attributes, "created_at", cluster.CreatedAt)
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "cluster": cluster})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "aws-eks-cluster-"+clusterARN, "aws.eks_cluster", "aws/eks_cluster/v1", payload, attributes, time.Now().UTC())
+}
+
+func eksNodegroupEvent(settings settings, record awsEKSNodegroup) (*primitives.Event, error) {
+	nodegroup := record.Nodegroup
+	clusterName := firstNonEmpty(awssdk.ToString(nodegroup.ClusterName), record.ClusterName)
+	clusterARN := eksClusterARN(settings, clusterName)
+	nodegroupARN := awssdk.ToString(nodegroup.NodegroupArn)
+	roleARN := awssdk.ToString(nodegroup.NodeRole)
+	attributes := map[string]string{
+		"ami_type":           string(nodegroup.AmiType),
+		"capacity_type":      string(nodegroup.CapacityType),
+		"cluster_arn":        clusterARN,
+		"cluster_name":       clusterName,
+		"domain":             settings.accountID,
+		"family":             familyEKSNodegroup,
+		"instance_types":     strings.Join(cleanStrings(nodegroup.InstanceTypes), ","),
+		"node_role_arn":      roleARN,
+		"node_role_name":     roleNameFromARN(roleARN),
+		"nodegroup_arn":      nodegroupARN,
+		"nodegroup_name":     awssdk.ToString(nodegroup.NodegroupName),
+		"region":             settings.region,
+		"relationship":       "runs_as",
+		"resource_id":        nodegroupARN,
+		"resource_name":      awssdk.ToString(nodegroup.NodegroupName),
+		"resource_provider":  "aws",
+		"resource_type":      "eks_nodegroup",
+		"role_arn":           roleARN,
+		"role_name":          roleNameFromARN(roleARN),
+		"security_group_ids": strings.Join(eksNodegroupSecurityGroupIDs(nodegroup), ","),
+		"state":              string(nodegroup.Status),
+		"subnet_ids":         strings.Join(cleanStrings(nodegroup.Subnets), ","),
+		"tags":               encodeAWSTags(nodegroup.Tags),
+		"version":            awssdk.ToString(nodegroup.Version),
+	}
+	addTimeAttribute(attributes, "created_at", nodegroup.CreatedAt)
+	addTimeAttribute(attributes, "modified_at", nodegroup.ModifiedAt)
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "cluster_name": clusterName, "nodegroup": nodegroup})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "aws-eks-nodegroup-"+firstNonEmpty(nodegroupARN, clusterName+"/"+awssdk.ToString(nodegroup.NodegroupName)), "aws.eks_nodegroup", "aws/eks_nodegroup/v1", payload, attributes, firstTime(nodegroup.ModifiedAt, nodegroup.CreatedAt))
+}
+
+func eksFargateProfileEvent(settings settings, record awsEKSFargateProfile) (*primitives.Event, error) {
+	profile := record.Profile
+	clusterName := firstNonEmpty(awssdk.ToString(profile.ClusterName), record.ClusterName)
+	clusterARN := eksClusterARN(settings, clusterName)
+	profileARN := awssdk.ToString(profile.FargateProfileArn)
+	roleARN := awssdk.ToString(profile.PodExecutionRoleArn)
+	attributes := map[string]string{
+		"cluster_arn":             clusterARN,
+		"cluster_name":            clusterName,
+		"domain":                  settings.accountID,
+		"family":                  familyEKSFargateProfile,
+		"fargate_profile_arn":     profileARN,
+		"fargate_profile_name":    awssdk.ToString(profile.FargateProfileName),
+		"pod_execution_role_arn":  roleARN,
+		"pod_execution_role_name": roleNameFromARN(roleARN),
+		"region":                  settings.region,
+		"relationship":            "runs_as",
+		"resource_id":             profileARN,
+		"resource_name":           awssdk.ToString(profile.FargateProfileName),
+		"resource_provider":       "aws",
+		"resource_type":           "eks_fargate_profile",
+		"role_arn":                roleARN,
+		"role_name":               roleNameFromARN(roleARN),
+		"selector_namespaces":     strings.Join(eksFargateSelectorNamespaces(profile.Selectors), ","),
+		"selectors":               encodeEKSFargateSelectors(profile.Selectors),
+		"state":                   string(profile.Status),
+		"subnet_ids":              strings.Join(cleanStrings(profile.Subnets), ","),
+		"tags":                    encodeAWSTags(profile.Tags),
+	}
+	addTimeAttribute(attributes, "created_at", profile.CreatedAt)
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "cluster_name": clusterName, "fargate_profile": profile})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "aws-eks-fargate-profile-"+firstNonEmpty(profileARN, clusterName+"/"+awssdk.ToString(profile.FargateProfileName)), "aws.eks_fargate_profile", "aws/eks_fargate_profile/v1", payload, attributes, firstTime(profile.CreatedAt))
+}
+
+func eksPodIdentityAssociationEvent(settings settings, association ekstypes.PodIdentityAssociation) (*primitives.Event, error) {
+	clusterName := awssdk.ToString(association.ClusterName)
+	clusterARN := eksClusterARN(settings, clusterName)
+	roleARN := firstNonEmpty(awssdk.ToString(association.RoleArn), awssdk.ToString(association.TargetRoleArn))
+	associationID := firstNonEmpty(awssdk.ToString(association.AssociationArn), awssdk.ToString(association.AssociationId))
+	attributes := map[string]string{
+		"association_arn":      awssdk.ToString(association.AssociationArn),
+		"association_id":       awssdk.ToString(association.AssociationId),
+		"cluster_arn":          clusterARN,
+		"cluster_name":         clusterName,
+		"disable_session_tags": strconv.FormatBool(awssdk.ToBool(association.DisableSessionTags)),
+		"domain":               settings.accountID,
+		"external_id":          awssdk.ToString(association.ExternalId),
+		"family":               familyEKSPodIdentity,
+		"namespace":            awssdk.ToString(association.Namespace),
+		"owner_arn":            awssdk.ToString(association.OwnerArn),
+		"region":               settings.region,
+		"relationship":         "can_assume",
+		"resource_id":          associationID,
+		"resource_name":        firstNonEmpty(awssdk.ToString(association.ServiceAccount), awssdk.ToString(association.AssociationId)),
+		"resource_provider":    "aws",
+		"resource_type":        "eks_pod_identity_association",
+		"role_arn":             roleARN,
+		"role_name":            roleNameFromARN(roleARN),
+		"service_account":      awssdk.ToString(association.ServiceAccount),
+		"tags":                 encodeAWSTags(association.Tags),
+		"target_role_arn":      awssdk.ToString(association.TargetRoleArn),
+		"target_role_name":     roleNameFromARN(awssdk.ToString(association.TargetRoleArn)),
+	}
+	addTimeAttribute(attributes, "created_at", association.CreatedAt)
+	addTimeAttribute(attributes, "modified_at", association.ModifiedAt)
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "region": settings.region, "association": association})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "aws-eks-pod-identity-association-"+associationID, "aws.eks_pod_identity_association", "aws/eks_pod_identity_association/v1", payload, attributes, firstTime(association.ModifiedAt, association.CreatedAt))
+}
+
 func listAllECSClusters(ctx context.Context, clients awsClients) ([]string, error) {
 	var clusters []string
 	var next *string
@@ -322,6 +787,69 @@ func describeECSServices(ctx context.Context, clients awsClients, clusterARN str
 		services = append(services, output.Services...)
 	}
 	return services, nil
+}
+
+func describeECSTasks(ctx context.Context, clients awsClients, clusterARN string, taskARNs []string) ([]awsECSTask, error) {
+	var tasks []awsECSTask
+	for _, batch := range stringBatches(taskARNs, 100) {
+		output, err := clients.ecs.DescribeTasks(ctx, &ecs.DescribeTasksInput{Cluster: awssdk.String(clusterARN), Tasks: batch})
+		if err != nil {
+			return nil, fmt.Errorf("describe tasks for cluster %q: %w", clusterARN, err)
+		}
+		for _, task := range output.Tasks {
+			tasks = append(tasks, awsECSTask{ClusterARN: clusterARN, Task: task})
+		}
+	}
+	return tasks, nil
+}
+
+func enrichECSTaskNetworkInterfaces(ctx context.Context, clients awsClients, tasks []awsECSTask) ([]awsECSTask, error) {
+	ids := make([]string, 0)
+	for _, task := range tasks {
+		ids = append(ids, ecsTaskAttachmentNetworkInterfaceIDs(task.Task)...)
+	}
+	ids = cleanStrings(ids)
+	if len(ids) == 0 {
+		return tasks, nil
+	}
+	interfaces := map[string]ec2types.NetworkInterface{}
+	for _, batch := range stringBatches(ids, 100) {
+		output, err := clients.ec2.DescribeNetworkInterfaces(ctx, &ec2.DescribeNetworkInterfacesInput{NetworkInterfaceIds: batch})
+		if err != nil {
+			return nil, fmt.Errorf("describe ecs task network interfaces: %w", err)
+		}
+		for _, iface := range output.NetworkInterfaces {
+			if id := awssdk.ToString(iface.NetworkInterfaceId); id != "" {
+				interfaces[id] = iface
+			}
+		}
+	}
+	for index := range tasks {
+		for _, id := range ecsTaskAttachmentNetworkInterfaceIDs(tasks[index].Task) {
+			if iface, ok := interfaces[id]; ok {
+				tasks[index].NetworkInterfaces = append(tasks[index].NetworkInterfaces, iface)
+			}
+		}
+	}
+	return tasks, nil
+}
+
+func listAllEKSClusters(ctx context.Context, clients awsClients) ([]string, error) {
+	var clusters []string
+	var next *string
+	for {
+		output, err := clients.eks.ListClusters(ctx, &eks.ListClustersInput{MaxResults: awssdk.Int32(100), NextToken: next})
+		if err != nil {
+			return nil, err
+		}
+		clusters = append(clusters, output.Clusters...)
+		if awssdk.ToString(output.NextToken) == "" {
+			break
+		}
+		next = output.NextToken
+	}
+	sort.Strings(clusters)
+	return clusters, nil
 }
 
 func boundedAWSPageSize(limit int, min int, max int) int {
@@ -529,6 +1057,177 @@ func ecsCompatibilities(values []ecstypes.Compatibility) []string {
 	return cleanStrings(out)
 }
 
+func ecsTaskAttachmentNetworkInterfaceIDs(task ecstypes.Task) []string {
+	return ecsTaskAttachmentValues(task, "networkInterfaceId")
+}
+
+func ecsTaskNetworkInterfaceIDs(record awsECSTask) []string {
+	ids := ecsTaskAttachmentNetworkInterfaceIDs(record.Task)
+	for _, iface := range record.NetworkInterfaces {
+		if id := awssdk.ToString(iface.NetworkInterfaceId); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return cleanStrings(ids)
+}
+
+func ecsTaskSubnetIDs(record awsECSTask) []string {
+	ids := ecsTaskAttachmentValues(record.Task, "subnetId")
+	for _, iface := range record.NetworkInterfaces {
+		if id := awssdk.ToString(iface.SubnetId); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return cleanStrings(ids)
+}
+
+func ecsTaskPrivateIPs(record awsECSTask) []string {
+	ids := ecsTaskAttachmentValues(record.Task, "privateIPv4Address")
+	for _, iface := range record.NetworkInterfaces {
+		if id := awssdk.ToString(iface.PrivateIpAddress); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return cleanStrings(ids)
+}
+
+func ecsTaskSecurityGroupIDs(record awsECSTask) []string {
+	var ids []string
+	for _, iface := range record.NetworkInterfaces {
+		for _, group := range iface.Groups {
+			if id := awssdk.ToString(group.GroupId); id != "" {
+				ids = append(ids, id)
+			}
+		}
+	}
+	return cleanStrings(ids)
+}
+
+func ecsTaskVPCID(record awsECSTask) string {
+	for _, iface := range record.NetworkInterfaces {
+		if id := awssdk.ToString(iface.VpcId); id != "" {
+			return id
+		}
+	}
+	return ""
+}
+
+func ecsTaskAttachmentValues(task ecstypes.Task, key string) []string {
+	var values []string
+	for _, attachment := range task.Attachments {
+		for _, detail := range attachment.Details {
+			if awssdk.ToString(detail.Name) == key {
+				values = append(values, awssdk.ToString(detail.Value))
+			}
+		}
+	}
+	return cleanStrings(values)
+}
+
+func ecsTaskServiceName(task ecstypes.Task) string {
+	group := awssdk.ToString(task.Group)
+	if strings.HasPrefix(group, "service:") {
+		return strings.TrimSpace(strings.TrimPrefix(group, "service:"))
+	}
+	return ""
+}
+
+func ecsServiceARN(settings settings, clusterARN string, serviceName string) string {
+	serviceName = strings.TrimSpace(serviceName)
+	if clusterARN == "" || serviceName == "" {
+		return ""
+	}
+	return fmt.Sprintf("arn:aws:ecs:%s:%s:service/%s/%s", settings.region, settings.accountID, path.Base(clusterARN), serviceName)
+}
+
+func eksClusterARN(settings settings, clusterName string) string {
+	clusterName = strings.TrimSpace(clusterName)
+	if clusterName == "" {
+		return ""
+	}
+	return fmt.Sprintf("arn:aws:eks:%s:%s:cluster/%s", settings.region, settings.accountID, clusterName)
+}
+
+func eksEndpointPublicAccess(cluster ekstypes.Cluster) bool {
+	return cluster.ResourcesVpcConfig != nil && cluster.ResourcesVpcConfig.EndpointPublicAccess
+}
+
+func eksEndpointPrivateAccess(cluster ekstypes.Cluster) bool {
+	return cluster.ResourcesVpcConfig != nil && cluster.ResourcesVpcConfig.EndpointPrivateAccess
+}
+
+func eksPublicAccessCIDRs(cluster ekstypes.Cluster) []string {
+	if cluster.ResourcesVpcConfig == nil {
+		return nil
+	}
+	return cleanStrings(cluster.ResourcesVpcConfig.PublicAccessCidrs)
+}
+
+func eksClusterSubnetIDs(cluster ekstypes.Cluster) []string {
+	if cluster.ResourcesVpcConfig == nil {
+		return nil
+	}
+	return cleanStrings(cluster.ResourcesVpcConfig.SubnetIds)
+}
+
+func eksClusterSecurityGroupIDs(cluster ekstypes.Cluster) []string {
+	if cluster.ResourcesVpcConfig == nil {
+		return nil
+	}
+	ids := append([]string{}, cluster.ResourcesVpcConfig.SecurityGroupIds...)
+	if id := awssdk.ToString(cluster.ResourcesVpcConfig.ClusterSecurityGroupId); id != "" {
+		ids = append(ids, id)
+	}
+	return cleanStrings(ids)
+}
+
+func eksClusterVPCID(cluster ekstypes.Cluster) string {
+	if cluster.ResourcesVpcConfig == nil {
+		return ""
+	}
+	return awssdk.ToString(cluster.ResourcesVpcConfig.VpcId)
+}
+
+func eksNodegroupSecurityGroupIDs(nodegroup ekstypes.Nodegroup) []string {
+	var ids []string
+	if nodegroup.RemoteAccess != nil {
+		ids = append(ids, nodegroup.RemoteAccess.SourceSecurityGroups...)
+	}
+	if nodegroup.Resources != nil {
+		if id := awssdk.ToString(nodegroup.Resources.RemoteAccessSecurityGroup); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return cleanStrings(ids)
+}
+
+func eksFargateSelectorNamespaces(selectors []ekstypes.FargateProfileSelector) []string {
+	namespaces := make([]string, 0, len(selectors))
+	for _, selector := range selectors {
+		namespaces = append(namespaces, awssdk.ToString(selector.Namespace))
+	}
+	return cleanStrings(namespaces)
+}
+
+func encodeEKSFargateSelectors(selectors []ekstypes.FargateProfileSelector) string {
+	if len(selectors) == 0 {
+		return ""
+	}
+	type selector struct {
+		Namespace string            `json:"namespace,omitempty"`
+		Labels    map[string]string `json:"labels,omitempty"`
+	}
+	values := make([]selector, 0, len(selectors))
+	for _, item := range selectors {
+		values = append(values, selector{Namespace: awssdk.ToString(item.Namespace), Labels: item.Labels})
+	}
+	payload, err := json.Marshal(values)
+	if err != nil {
+		return ""
+	}
+	return string(payload)
+}
+
 func stringBatches(values []string, size int) [][]string {
 	if size <= 0 || len(values) == 0 {
 		return nil
@@ -574,6 +1273,54 @@ func decodeECSServiceCursor(raw string) (ecsServicePageCursor, error) {
 }
 
 func encodeECSServiceCursor(cursor ecsServicePageCursor) string {
+	payload, err := json.Marshal(cursor)
+	if err != nil {
+		return ""
+	}
+	return base64.RawURLEncoding.EncodeToString(payload)
+}
+
+func decodeECSTaskCursor(raw string) (ecsTaskPageCursor, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ecsTaskPageCursor{}, nil
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		return ecsTaskPageCursor{}, fmt.Errorf("decode ecs task cursor: %w", err)
+	}
+	var cursor ecsTaskPageCursor
+	if err := json.Unmarshal(decoded, &cursor); err != nil {
+		return ecsTaskPageCursor{}, fmt.Errorf("parse ecs task cursor: %w", err)
+	}
+	return cursor, nil
+}
+
+func encodeECSTaskCursor(cursor ecsTaskPageCursor) string {
+	payload, err := json.Marshal(cursor)
+	if err != nil {
+		return ""
+	}
+	return base64.RawURLEncoding.EncodeToString(payload)
+}
+
+func decodeEKSChildCursor(raw string, label string) (eksChildPageCursor, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return eksChildPageCursor{}, nil
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		return eksChildPageCursor{}, fmt.Errorf("decode %s cursor: %w", label, err)
+	}
+	var cursor eksChildPageCursor
+	if err := json.Unmarshal(decoded, &cursor); err != nil {
+		return eksChildPageCursor{}, fmt.Errorf("parse %s cursor: %w", label, err)
+	}
+	return cursor, nil
+}
+
+func encodeEKSChildCursor(cursor eksChildPageCursor) string {
 	payload, err := json.Marshal(cursor)
 	if err != nil {
 		return ""

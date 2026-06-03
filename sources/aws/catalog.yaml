@@ -7,7 +7,12 @@ emitted_kinds:
   - aws.cloudtrail
   - aws.ec2_instance
   - aws.ecs_service
+  - aws.ecs_task
   - aws.ecs_task_definition
+  - aws.eks_cluster
+  - aws.eks_nodegroup
+  - aws.eks_fargate_profile
+  - aws.eks_pod_identity_association
   - aws.effective_permission
   - aws.iam_group
   - aws.iam_group_membership
@@ -24,7 +29,12 @@ runtime_families:
   - cloudtrail
   - ec2_instance
   - ecs_service
+  - ecs_task
   - ecs_task_definition
+  - eks_cluster
+  - eks_nodegroup
+  - eks_fargate_profile
+  - eks_pod_identity_association
   - effective_permission
   - iam_group
   - iam_group_membership
