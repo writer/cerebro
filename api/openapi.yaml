@@ -26,22 +26,33 @@ tags:
 paths:
   /health:
     get:
-      summary: Health check
+      summary: Readiness check
       tags:
         - Health
       security: []
       responses:
         '200':
-          description: Service health and dependency status.
+          description: Service is ready and configured dependencies are healthy.
+        '503':
+          description: Service is live but one or more configured dependencies are degraded.
   /healthz:
     get:
-      summary: Health check alias
+      summary: Liveness check
       tags:
         - Health
       security: []
       responses:
         '200':
-          description: Service health and dependency status.
+          description: Service process is live.
+  /livez:
+    get:
+      summary: Liveness check
+      tags:
+        - Health
+      security: []
+      responses:
+        '200':
+          description: Service process is live.
   /openapi.yaml:
     get:
       summary: Current OpenAPI contract
