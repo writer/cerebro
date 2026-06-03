@@ -1,0 +1,215 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts.source_runtime_coverage_report import (
+    _load_actual,
+    _normalize_api_url,
+    build_report,
+    format_json,
+    format_markdown,
+    format_tsv,
+)
+
+
+STACK_YAML = """
+config:
+  cerebro:domain: cerebro.adm.prod.writer.com
+  cerebro:sourceRuntimes:
+    - id: writer-okta-audit
+      sourceId: okta
+      tenantId: writer
+      config:
+        family: audit
+        per_page: "200"
+    - id: writer-aws-prod-us1-public-endpoint
+      sourceId: aws
+      tenantId: writer
+      config:
+        family: public_endpoint
+        account: prod
+        region: us-east-1
+    - id: writer-okta-audit-backfill
+      sourceId: okta
+      tenantId: writer
+      config:
+        family: audit
+        since: "2026-01-01T00:00:00Z"
+  cerebro:orchestratorSchedules:
+    - name: okta-audit
+      scheduleExpression: rate(10 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-okta-audit
+        - page_limit=20
+    - name: aws-public-endpoint
+      scheduleExpression: rate(15 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-prod-us1-public-endpoint
+    - name: okta-audit-backfill
+      scheduleExpression: rate(5 minutes)
+      taskCount: 1
+      removeAfter: "2026-08-15T00:00:00Z"
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-okta-audit-backfill
+"""
+
+
+class SourceRuntimeCoverageReportTest(unittest.TestCase):
+    def _stack_file(self, text: str = STACK_YAML, name: str = "Pulumi.go-prod.yaml") -> Path:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / name
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def test_build_report_from_stack_only_counts_runtime_coverage(self) -> None:
+        report = build_report(self._stack_file(), now=datetime(2026, 6, 1, tzinfo=UTC))
+
+        self.assertEqual(report.stack, "go-prod")
+        self.assertEqual(report.declared_runtime_count, 3)
+        self.assertEqual(report.scheduled_runtime_count, 3)
+        self.assertEqual(report.schedule_count, 3)
+        self.assertIsNone(report.live_runtime_count)
+        self.assertEqual(report.backfill_schedule_count, 1)
+        self.assertEqual(report.expired_backfill_count, 0)
+        self.assertEqual(report.sources, {"aws": 1, "okta": 2})
+        self.assertEqual(report.findings, [])
+
+    def test_missing_schedule_is_error(self) -> None:
+        stack = self._stack_file(STACK_YAML.replace("        - runtime_id=writer-okta-audit\n", "        - runtime_id=writer-okta-audit-missing\n", 1))
+
+        report = build_report(stack, now=datetime(2026, 6, 1, tzinfo=UTC))
+
+        self.assertTrue(any(f.severity == "error" and f.runtime_id == "writer-okta-audit" and f.check == "schedule" for f in report.findings))
+        self.assertTrue(any(f.severity == "warning" and f.runtime_id == "writer-okta-audit-missing" for f in report.findings))
+
+    def test_duplicate_schedule_is_error(self) -> None:
+        duplicate = """
+    - name: okta-audit-duplicate
+      scheduleExpression: rate(30 minutes)
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-okta-audit
+"""
+        stack = self._stack_file(STACK_YAML + duplicate)
+
+        report = build_report(stack, now=datetime(2026, 6, 1, tzinfo=UTC))
+
+        self.assertTrue(any(f.severity == "error" and "multiple" in f.message for f in report.findings))
+
+    def test_live_runtime_missing_is_error(self) -> None:
+        actual = [{"id": "writer-okta-audit", "source_id": "okta", "last_sync_at": "2026-06-01T00:00:00Z"}]
+
+        report = build_report(self._stack_file(), actual=actual, now=datetime(2026, 6, 1, tzinfo=UTC))
+
+        self.assertEqual(report.live_runtime_count, 1)
+        self.assertTrue(any(f.severity == "error" and f.check == "live" for f in report.findings))
+
+    def test_live_stale_runtime_is_warning(self) -> None:
+        actual = [
+            {"id": "writer-okta-audit", "source_id": "okta", "status": "ok", "last_sync_at": "2026-05-30T00:00:00Z"},
+            {"id": "writer-aws-prod-us1-public-endpoint", "source_id": "aws", "status": "ok", "last_sync_at": "2026-06-01T00:00:00Z"},
+            {"id": "writer-okta-audit-backfill", "source_id": "okta", "status": "ok", "last_sync_at": "2026-06-01T00:00:00Z"},
+        ]
+
+        report = build_report(
+            self._stack_file(),
+            actual=actual,
+            max_age_hours=24,
+            now=datetime(2026, 6, 1, tzinfo=UTC),
+        )
+
+        self.assertEqual(report.stale_runtime_count, 1)
+        self.assertEqual(report.healthy_runtime_count, 2)
+        self.assertTrue(any(f.severity == "warning" and f.check == "freshness" for f in report.findings))
+
+    def test_unexpected_live_runtime_is_warning(self) -> None:
+        actual = [
+            {"id": "writer-okta-audit", "source_id": "okta"},
+            {"id": "writer-aws-prod-us1-public-endpoint", "source_id": "aws"},
+            {"id": "writer-okta-audit-backfill", "source_id": "okta"},
+            {"id": "writer-extra-runtime", "source_id": "github"},
+        ]
+
+        report = build_report(self._stack_file(), actual=actual, now=datetime(2026, 6, 1, tzinfo=UTC))
+
+        self.assertTrue(any(f.severity == "warning" and f.runtime_id == "writer-extra-runtime" for f in report.findings))
+
+    def test_expired_backfill_is_warning(self) -> None:
+        stack = self._stack_file(STACK_YAML.replace('removeAfter: "2026-08-15T00:00:00Z"', 'removeAfter: "2026-01-15T00:00:00Z"'))
+
+        report = build_report(stack, now=datetime(2026, 6, 1, tzinfo=UTC))
+
+        self.assertEqual(report.expired_backfill_count, 1)
+        self.assertTrue(any(f.severity == "warning" and f.check == "backfill" for f in report.findings))
+
+    def test_markdown_includes_metrics_findings_and_rows(self) -> None:
+        report = build_report(self._stack_file(), now=datetime(2026, 6, 1, tzinfo=UTC))
+
+        markdown = format_markdown(report)
+
+        self.assertIn("Source Runtime Coverage", markdown)
+        self.assertIn("Declared runtimes", markdown)
+        self.assertIn("writer-okta-audit", markdown)
+        self.assertIn("No source runtime coverage gaps detected.", markdown)
+
+    def test_json_is_parseable(self) -> None:
+        report = build_report(self._stack_file(), now=datetime(2026, 6, 1, tzinfo=UTC))
+
+        payload = json.loads(format_json(report))
+
+        self.assertEqual(payload["stack"], "go-prod")
+        self.assertEqual(payload["declared_runtime_count"], 3)
+        self.assertEqual(len(payload["rows"]), 3)
+
+    def test_tsv_has_runtime_rows(self) -> None:
+        report = build_report(self._stack_file(), now=datetime(2026, 6, 1, tzinfo=UTC))
+
+        tsv = format_tsv(report)
+
+        self.assertIn("runtime_id", tsv.splitlines()[0])
+        self.assertIn("writer-aws-prod-us1-public-endpoint", tsv)
+
+    def test_load_actual_accepts_object_payload(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "actual.json"
+        path.write_text(json.dumps({"runtimes": [{"id": "writer-okta-audit"}]}), encoding="utf-8")
+
+        self.assertEqual(_load_actual(path, "", "", "writer", 20), [{"id": "writer-okta-audit"}])
+
+    def test_load_actual_accepts_list_payload(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "actual.json"
+        path.write_text(json.dumps([{"id": "writer-okta-audit"}]), encoding="utf-8")
+
+        self.assertEqual(_load_actual(path, "", "", "writer", 20), [{"id": "writer-okta-audit"}])
+
+    def test_normalize_api_url_uses_stack_domain_for_alb(self) -> None:
+        self.assertEqual(
+            _normalize_api_url("internal-cerebro-go-production-alb-123.us-east-1.elb.amazonaws.com", self._stack_file()),
+            "https://cerebro.adm.prod.writer.com",
+        )
+
+    def test_normalize_api_url_uses_stack_domain_when_missing(self) -> None:
+        self.assertEqual(_normalize_api_url("", self._stack_file()), "https://cerebro.adm.prod.writer.com")
+
+
+if __name__ == "__main__":
+    unittest.main()
