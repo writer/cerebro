@@ -18,9 +18,11 @@ web_image_tag="$(awk '$1 == "cerebro:webImageTag:" { print $2; exit }' "${config
 wait_for_tag() {
   local image_tag="$1"
   local label="$2"
+  local last_error=""
 
   echo "Waiting for ${label} ${ecr_repository}:${image_tag} in ${aws_region} before deploying ${stack_name}..."
   for attempt in $(seq 1 "${max_attempts}"); do
+    local err_file
     err_file="$(mktemp)"
     if aws ecr describe-images --repository-name "${ecr_repository}" --image-ids imageTag="${image_tag}" >/dev/null 2>"${err_file}"; then
       rm -f "${err_file}"
@@ -29,10 +31,15 @@ wait_for_tag() {
     fi
 
     if ! grep -q "ImageNotFoundException" "${err_file}"; then
-      cat "${err_file}" >&2
+      last_error="$(cat "${err_file}")"
       rm -f "${err_file}"
-      echo "ERROR: failed to check ECR image availability"
-      exit 1
+      if [ "${attempt}" -eq "${max_attempts}" ]; then
+        break
+      fi
+      echo "WARNING: failed to check ECR image availability for ${label} (attempt ${attempt}/${max_attempts}); retrying in ${sleep_seconds} seconds" >&2
+      printf '%s\n' "${last_error}" >&2
+      sleep "${sleep_seconds}"
+      continue
     fi
     rm -f "${err_file}"
 
@@ -43,6 +50,11 @@ wait_for_tag() {
     sleep "${sleep_seconds}"
   done
 
+  if [ -n "${last_error}" ]; then
+    echo "ERROR: failed to check ECR image availability after ${max_attempts} attempts" >&2
+    printf '%s\n' "${last_error}" >&2
+    exit 1
+  fi
   echo "ERROR: ${label} ${ecr_repository}:${image_tag} was not found in ECR after ${max_attempts} attempts"
   exit 1
 }
