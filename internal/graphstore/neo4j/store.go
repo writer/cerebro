@@ -1267,21 +1267,88 @@ func consume(ctx context.Context, tx neo4jdriver.ManagedTransaction, query strin
 }
 
 func validateReadOnlyCypher(query string) error {
-	if match := mutatingCypherPattern.FindString(stripCypherComments(query)); match != "" {
+	if match := mutatingCypherPattern.FindString(stripCypherNonCode(query)); match != "" {
 		return fmt.Errorf("read cypher must not contain mutating clause %q", strings.TrimSpace(match))
 	}
 	return nil
 }
 
-func stripCypherComments(query string) string {
-	lines := strings.Split(query, "\n")
-	for index, line := range lines {
-		if comment := strings.Index(line, "//"); comment >= 0 {
-			line = line[:comment]
+func stripCypherNonCode(query string) string {
+	var out strings.Builder
+	out.Grow(len(query))
+	for i := 0; i < len(query); {
+		if i+1 < len(query) && query[i] == '/' && query[i+1] == '/' {
+			i = writeCypherMaskedUntilNewline(&out, query, i)
+			continue
 		}
-		lines[index] = line
+		if i+1 < len(query) && query[i] == '/' && query[i+1] == '*' {
+			i = writeCypherMaskedBlockComment(&out, query, i)
+			continue
+		}
+		switch query[i] {
+		case '\'', '"', '`':
+			i = writeCypherMaskedQuoted(&out, query, i, query[i])
+		default:
+			out.WriteByte(query[i])
+			i++
+		}
 	}
-	return strings.Join(lines, "\n")
+	return out.String()
+}
+
+func writeCypherMaskedUntilNewline(out *strings.Builder, query string, start int) int {
+	for i := start; i < len(query); i++ {
+		if query[i] == '\n' {
+			out.WriteByte('\n')
+			return i + 1
+		}
+		out.WriteByte(' ')
+	}
+	return len(query)
+}
+
+func writeCypherMaskedBlockComment(out *strings.Builder, query string, start int) int {
+	for i := start; i < len(query); i++ {
+		if query[i] == '\n' {
+			out.WriteByte('\n')
+		} else {
+			out.WriteByte(' ')
+		}
+		if i > start && query[i-1] == '*' && query[i] == '/' {
+			return i + 1
+		}
+	}
+	return len(query)
+}
+
+func writeCypherMaskedQuoted(out *strings.Builder, query string, start int, quote byte) int {
+	out.WriteByte(' ')
+	for i := start + 1; i < len(query); i++ {
+		if query[i] == '\n' {
+			out.WriteByte('\n')
+		} else {
+			out.WriteByte(' ')
+		}
+		if query[i] == '\\' && quote != '`' && i+1 < len(query) {
+			i++
+			if query[i] == '\n' {
+				out.WriteByte('\n')
+			} else {
+				out.WriteByte(' ')
+			}
+			continue
+		}
+		if query[i] != quote {
+			continue
+		}
+		if i+1 < len(query) && query[i+1] == quote {
+			i++
+			out.WriteByte(' ')
+			continue
+		}
+		return i + 1
+	}
+	return len(query)
 }
 
 func queryOneValue(ctx context.Context, tx neo4jdriver.ManagedTransaction, query string, params map[string]any) (any, error) {

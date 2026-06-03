@@ -74,6 +74,10 @@ func TestValidateReadOnlyCypherRejectsMutatingClauses(t *testing.T) {
 		"MATCH (asset:Entity) RETURN asset",
 		"MATCH (n) RETURN n.tenant_id AS tenant_id",
 		"// SET in a comment\nMATCH (n) RETURN n",
+		"/* CREATE and REMOVE inside a block comment */\nMATCH (n) RETURN n",
+		"MATCH (n) RETURN 'SET password remediation by creating a ticket' AS remediation",
+		`MATCH (n) RETURN "DELETE stale permissions" AS remediation`,
+		"MATCH (n) RETURN `CREATE` AS quoted_identifier",
 	} {
 		if err := validateReadOnlyCypher(query); err != nil {
 			t.Fatalf("validateReadOnlyCypher(%q) error = %v, want nil", query, err)
