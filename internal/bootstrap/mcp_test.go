@@ -73,6 +73,9 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 			t.Fatalf("initialize missing %s capability in %#v", capability, capabilities)
 		}
 	}
+	if _, ok := capabilities["experimental"]; ok {
+		t.Fatalf("initialize experimental capabilities = %#v, want omitted for SDK compatibility", capabilities["experimental"])
+	}
 	if sessionID != "" {
 		t.Fatalf("Mcp-Session-Id header = %q, want empty for stateless MCP", sessionID)
 	}

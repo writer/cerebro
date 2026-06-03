@@ -342,15 +342,12 @@ func (app *App) mcpInitializeResult(r *http.Request, rawParams json.RawMessage) 
 			"tools":     map[string]any{"listChanged": false},
 			"resources": map[string]any{"subscribe": false, "listChanged": false},
 			"prompts":   map[string]any{"listChanged": false},
-			"experimental": map[string]any{
-				"stateless": true,
-			},
 		},
 		"serverInfo": map[string]any{
 			"name":        buildinfo.ServiceName,
 			"title":       "Cerebro",
 			"version":     buildinfo.Version,
-			"description": "Writer security graph and findings MCP server. POST requests are stateless; MCP session IDs are echoed for client correlation only.",
+			"description": "Writer security graph and findings MCP server. POST requests are stateless.",
 		},
 	}
 }
