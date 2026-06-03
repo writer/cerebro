@@ -404,21 +404,24 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
                 ),
                 patch("scripts.run_aws_deploy_verifications._create_graph_health_issue") as create_issue,
             ):
-                status = run_aws_deploy_verifications.main(
-                    [
-                        "--stack-file",
-                        "aws/Pulumi.go-prod.yaml",
-                        "--graph-health",
-                        "--graph-health-output",
-                        str(Path(temp_dir) / "graph.tsv"),
-                        "--allow-graph-health-degradation",
-                        "--graph-health-issue",
-                        "--graph-health-artifact-name",
-                        "graph-health-go-prod",
-                    ]
-                )
+                stdout = io.StringIO()
+                with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(io.StringIO()):
+                    status = run_aws_deploy_verifications.main(
+                        [
+                            "--stack-file",
+                            "aws/Pulumi.go-prod.yaml",
+                            "--graph-health",
+                            "--graph-health-output",
+                            str(Path(temp_dir) / "graph.tsv"),
+                            "--allow-graph-health-degradation",
+                            "--graph-health-issue",
+                            "--graph-health-artifact-name",
+                            "graph-health-go-prod",
+                        ]
+                    )
 
         self.assertEqual(status, 0)
+        self.assertIn("::warning::Graph health verification degraded after deployment", stdout.getvalue())
         create_issue.assert_called_once_with("go-prod", 23, "stale_ingest_run", "graph-health-go-prod")
 
     def test_graph_health_runtime_ids_parse_ingest_summaries(self) -> None:
