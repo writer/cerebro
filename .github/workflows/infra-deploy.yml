@@ -46,6 +46,8 @@ jobs:
       aws_go_prod_runtime_verify: ${{ steps.filter.outputs.aws_go_prod_runtime_verify }}
       aws_sec_dev_graph_health: ${{ steps.filter.outputs.aws_sec_dev_graph_health }}
       aws_go_prod_graph_health: ${{ steps.filter.outputs.aws_go_prod_graph_health }}
+      aws_sec_dev_graph_health_cache_allowed: ${{ steps.filter.outputs.aws_sec_dev_graph_health_cache_allowed }}
+      aws_go_prod_graph_health_cache_allowed: ${{ steps.filter.outputs.aws_go_prod_graph_health_cache_allowed }}
       gcp: ${{ steps.filter.outputs.gcp }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -79,12 +81,16 @@ jobs:
           gcp=false
           source_runtime_verifier_changed=false
           graph_health_verifier_changed=false
+          deploy_verifier_changed=false
 
-          if grep -Eq '^infra/scripts/(verify_source_runtime_ecs|run_aws_deploy_verifications)\.py$|^infra/tests/test_(verify_source_runtime_ecs|run_aws_deploy_verifications)\.py$' changed.txt; then
+          if grep -Eq '^infra/scripts/verify_source_runtime_ecs\.py$|^infra/tests/test_verify_source_runtime_ecs\.py$' changed.txt; then
             source_runtime_verifier_changed=true
           fi
-          if grep -Eq '^infra/scripts/(verify_graph_health_ecs|run_aws_deploy_verifications)\.py$|^infra/tests/test_(verify_graph_health_ecs|run_aws_deploy_verifications)\.py$' changed.txt; then
+          if grep -Eq '^infra/scripts/verify_graph_health_ecs\.py$|^infra/tests/test_verify_graph_health_ecs\.py$' changed.txt; then
             graph_health_verifier_changed=true
+          fi
+          if grep -Eq '^infra/scripts/run_aws_deploy_verifications\.py$|^infra/tests/test_run_aws_deploy_verifications\.py$|^infra/scripts/(download_graph_health_artifact|plan_aws_deploy_verifications)\.py$|^infra/tests/test_(download_graph_health_artifact|plan_aws_deploy_verifications)\.py$' changed.txt; then
+            deploy_verifier_changed=true
           fi
 
           if grep -Eq '^infra/aws/Pulumi\.sec-dev\.yaml$' changed.txt; then aws_sec_dev_deploy=true; fi
@@ -111,7 +117,7 @@ jobs:
             aws_sec_dev_graph_health=true
             aws_go_prod_graph_health=true
           fi
-          if [ "${graph_health_verifier_changed}" = "true" ]; then
+          if [ "${graph_health_verifier_changed}" = "true" ] || [ "${deploy_verifier_changed}" = "true" ]; then
             aws_sec_dev_graph_health=true
             aws_go_prod_graph_health=true
           fi
@@ -130,6 +136,14 @@ jobs:
           if [ "${aws_go_prod_deploy}" = "true" ] || [ "${aws_go_prod_runtime_verify}" = "true" ] || [ "${aws_go_prod_graph_health}" = "true" ]; then aws_go_prod=true; fi
           aws=false
           if [ "${aws_sec_dev}" = "true" ] || [ "${aws_go_prod}" = "true" ]; then aws=true; fi
+          aws_sec_dev_graph_health_cache_allowed=false
+          aws_go_prod_graph_health_cache_allowed=false
+          if [ "${aws_sec_dev_graph_health}" = "true" ] && [ "${aws_sec_dev_deploy}" != "true" ] && [ "${graph_health_verifier_changed}" != "true" ] && [ "${deploy_verifier_changed}" != "true" ]; then
+            aws_sec_dev_graph_health_cache_allowed=true
+          fi
+          if [ "${aws_go_prod_graph_health}" = "true" ] && [ "${aws_go_prod_deploy}" != "true" ] && [ "${graph_health_verifier_changed}" != "true" ] && [ "${deploy_verifier_changed}" != "true" ]; then
+            aws_go_prod_graph_health_cache_allowed=true
+          fi
           {
             echo "aws=${aws}"
             echo "aws_sec_dev=${aws_sec_dev}"
@@ -140,6 +154,8 @@ jobs:
             echo "aws_go_prod_runtime_verify=${aws_go_prod_runtime_verify}"
             echo "aws_sec_dev_graph_health=${aws_sec_dev_graph_health}"
             echo "aws_go_prod_graph_health=${aws_go_prod_graph_health}"
+            echo "aws_sec_dev_graph_health_cache_allowed=${aws_sec_dev_graph_health_cache_allowed}"
+            echo "aws_go_prod_graph_health_cache_allowed=${aws_go_prod_graph_health_cache_allowed}"
             echo "gcp=${gcp}"
           } >> "$GITHUB_OUTPUT"
           printf 'Changed infra paths:\n'
@@ -312,6 +328,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      actions: read
       issues: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -389,13 +406,30 @@ jobs:
         if: needs.changes.outputs.aws_sec_dev_deploy == 'true' && steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
         shell: bash
         working-directory: infra
-        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --source-id aws --family public_endpoint --run --succeed-after-graph-ingest --allow-lease-contention-skip --run-attempt-timeout-seconds 900 --max-age-minutes 60 --wait-timeout-seconds 1200 --poll-seconds 5
+        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.sec-dev.yaml --source-id aws --family public_endpoint --run --succeed-after-graph-ingest --allow-lease-contention-skip --run-attempt-timeout-seconds 900 --max-age-minutes 60 --wait-timeout-seconds 1200 --poll-seconds 5 --target-concurrency 4
 
       - name: Refresh AWS credentials for deployment verification (sec-dev)
         if: needs.changes.outputs.aws_sec_dev_runtime_verify == 'true' || needs.changes.outputs.aws_sec_dev_graph_health == 'true'
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
         with:
           assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
+
+      - name: Plan AWS deployment verification (sec-dev)
+        id: verification_plan
+        if: needs.changes.outputs.aws_sec_dev_runtime_verify == 'true' || needs.changes.outputs.aws_sec_dev_graph_health == 'true'
+        shell: bash
+        working-directory: infra
+        env:
+          BASE_SHA: ${{ github.event.before }}
+        run: uv run python scripts/plan_aws_deploy_verifications.py --stack-file aws/Pulumi.sec-dev.yaml --base-ref "${BASE_SHA}" --github-output "$GITHUB_OUTPUT"
+
+      - name: Restore recent graph health cache (sec-dev)
+        if: needs.changes.outputs.aws_sec_dev_graph_health_cache_allowed == 'true'
+        shell: bash
+        working-directory: infra
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: uv run python scripts/download_graph_health_artifact.py --artifact-name graph-health-sec-dev --output graph-health-sec-dev-cache.tsv --max-age-seconds 3600
 
       - name: Verify deployment health (sec-dev)
         id: deployment_health_sec_dev
@@ -407,10 +441,19 @@ jobs:
         run: |
           args=()
           if [ "${{ needs.changes.outputs.aws_sec_dev_runtime_verify }}" = "true" ]; then
-            args+=(--source-runtime-verify --stop-running-source-before-run)
+            args+=(--source-runtime-verify --source-id "${{ steps.verification_plan.outputs.source_id }}" --stop-running-source-before-run)
+            IFS=',' read -r -a runtime_ids <<< "${{ steps.verification_plan.outputs.runtime_ids }}"
+            for runtime_id in "${runtime_ids[@]}"; do
+              if [ -n "${runtime_id}" ]; then
+                args+=(--runtime-id "${runtime_id}")
+              fi
+            done
           fi
           if [ "${{ needs.changes.outputs.aws_sec_dev_graph_health }}" = "true" ]; then
             args+=(--graph-health --graph-health-output graph-health-sec-dev.tsv --allow-graph-health-degradation --graph-health-heal --graph-health-issue --graph-health-artifact-name graph-health-sec-dev --github-output "$GITHUB_OUTPUT")
+            if [ "${{ needs.changes.outputs.aws_sec_dev_graph_health_cache_allowed }}" = "true" ]; then
+              args+=(--allow-graph-health-cache --graph-health-cache-path graph-health-sec-dev-cache.tsv)
+            fi
           fi
           uv run python scripts/run_aws_deploy_verifications.py --stack-file aws/Pulumi.sec-dev.yaml "${args[@]}"
 
@@ -441,6 +484,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      actions: read
       issues: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -518,13 +562,30 @@ jobs:
         if: needs.changes.outputs.aws_go_prod_deploy == 'true' && steps.aws_public_endpoint_refresh.outputs.should_refresh == 'true'
         shell: bash
         working-directory: infra
-        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.go-prod.yaml --source-id aws --family public_endpoint --run --succeed-after-graph-ingest --allow-lease-contention-skip --run-attempt-timeout-seconds 900 --max-age-minutes 60 --wait-timeout-seconds 1200 --poll-seconds 5
+        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file aws/Pulumi.go-prod.yaml --source-id aws --family public_endpoint --run --succeed-after-graph-ingest --allow-lease-contention-skip --run-attempt-timeout-seconds 900 --max-age-minutes 60 --wait-timeout-seconds 1200 --poll-seconds 5 --target-concurrency 4
 
       - name: Refresh AWS credentials for deployment verification (sec-prod)
         if: needs.changes.outputs.aws_go_prod_runtime_verify == 'true' || needs.changes.outputs.aws_go_prod_graph_health == 'true'
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
         with:
           assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
+
+      - name: Plan AWS deployment verification (go-prod)
+        id: verification_plan
+        if: needs.changes.outputs.aws_go_prod_runtime_verify == 'true' || needs.changes.outputs.aws_go_prod_graph_health == 'true'
+        shell: bash
+        working-directory: infra
+        env:
+          BASE_SHA: ${{ github.event.before }}
+        run: uv run python scripts/plan_aws_deploy_verifications.py --stack-file aws/Pulumi.go-prod.yaml --base-ref "${BASE_SHA}" --github-output "$GITHUB_OUTPUT"
+
+      - name: Restore recent graph health cache (go-prod)
+        if: needs.changes.outputs.aws_go_prod_graph_health_cache_allowed == 'true'
+        shell: bash
+        working-directory: infra
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: uv run python scripts/download_graph_health_artifact.py --artifact-name graph-health-go-prod --output graph-health-go-prod-cache.tsv --max-age-seconds 3600
 
       - name: Verify deployment health (go-prod)
         id: deployment_health_go_prod
@@ -536,10 +597,19 @@ jobs:
         run: |
           args=()
           if [ "${{ needs.changes.outputs.aws_go_prod_runtime_verify }}" = "true" ]; then
-            args+=(--source-runtime-verify)
+            args+=(--source-runtime-verify --source-id "${{ steps.verification_plan.outputs.source_id }}")
+            IFS=',' read -r -a runtime_ids <<< "${{ steps.verification_plan.outputs.runtime_ids }}"
+            for runtime_id in "${runtime_ids[@]}"; do
+              if [ -n "${runtime_id}" ]; then
+                args+=(--runtime-id "${runtime_id}")
+              fi
+            done
           fi
           if [ "${{ needs.changes.outputs.aws_go_prod_graph_health }}" = "true" ]; then
             args+=(--graph-health --graph-health-output graph-health-go-prod.tsv --allow-graph-health-degradation --graph-health-heal --graph-health-issue --graph-health-artifact-name graph-health-go-prod --github-output "$GITHUB_OUTPUT")
+            if [ "${{ needs.changes.outputs.aws_go_prod_graph_health_cache_allowed }}" = "true" ]; then
+              args+=(--allow-graph-health-cache --graph-health-cache-path graph-health-go-prod-cache.tsv)
+            fi
           fi
           uv run python scripts/run_aws_deploy_verifications.py --stack-file aws/Pulumi.go-prod.yaml "${args[@]}"
 
@@ -836,7 +906,7 @@ jobs:
         working-directory: infra
         env:
           STACK_NAME: ${{ github.event.inputs.environment }}
-        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --source-id aws --family public_endpoint --run --succeed-after-graph-ingest --allow-lease-contention-skip --run-attempt-timeout-seconds 900 --max-age-minutes 60 --wait-timeout-seconds 1200 --poll-seconds 5
+        run: uv run python scripts/verify_source_runtime_ecs.py --stack-file "aws/Pulumi.${STACK_NAME}.yaml" --source-id aws --family public_endpoint --run --succeed-after-graph-ingest --allow-lease-contention-skip --run-attempt-timeout-seconds 900 --max-age-minutes 60 --wait-timeout-seconds 1200 --poll-seconds 5 --target-concurrency 4
 
       - name: Refresh AWS credentials for deployment verification (sec-dev)
         if: github.event.inputs.environment == 'sec-dev'

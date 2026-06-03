@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+from datetime import UTC, datetime, timedelta
 import io
 import os
 from pathlib import Path
@@ -42,6 +43,9 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
     def test_source_runtime_command_includes_parallelism_and_stop_flag(self) -> None:
         args = argparse.Namespace(
             stack_file=Path("aws/Pulumi.sec-dev.yaml"),
+            source_id="aws",
+            runtime_id=["writer-aws-sec-dev-us1-public-endpoint"],
+            family=["public_endpoint"],
             source_target_concurrency=2,
             stop_running_source_before_run=True,
         )
@@ -51,6 +55,11 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
         self.assertIn("scripts/verify_source_runtime_ecs.py", command)
         self.assertIn("--target-concurrency", command)
         self.assertEqual(command[command.index("--target-concurrency") + 1], "2")
+        self.assertEqual(command[command.index("--source-id") + 1], "aws")
+        self.assertIn("--runtime-id", command)
+        self.assertIn("writer-aws-sec-dev-us1-public-endpoint", command)
+        self.assertIn("--family", command)
+        self.assertIn("public_endpoint", command)
         self.assertEqual(command[command.index("--failed-run-retry-seconds") + 1], "0")
         self.assertEqual(command[command.index("--run-attempt-timeout-seconds") + 1], "300")
         self.assertEqual(command[command.index("--wait-timeout-seconds") + 1], "300")
@@ -67,6 +76,7 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
 
         self.assertEqual(command[command.index("--graph-command-retry-seconds") + 1], "300")
         self.assertEqual(command[command.index("--ingest-health-retry-seconds") + 1], "0")
+        self.assertIn("--require-bundled-health", command)
 
     def test_graph_health_command_allows_retry_overrides(self) -> None:
         args = argparse.Namespace(
@@ -79,6 +89,35 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
 
         self.assertEqual(command[command.index("--graph-command-retry-seconds") + 1], "42")
         self.assertEqual(command[command.index("--ingest-health-retry-seconds") + 1], "17")
+
+    def test_fresh_graph_health_cache_is_accepted(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache = Path(temp_dir) / "graph.tsv"
+            checked_at = datetime.now(UTC) - timedelta(minutes=5)
+            cache.write_text(
+                "checked_at\tstack\tnodes\trelations\tintegrity_passed\tintegrity_failed\tgraph_relations\tcurrent_ingest_runtimes\tdeclared_runtimes\tmissing_ingest_runtimes\tcounts_task\tintegrity_task\tpaths_task\tingest_runs_task\n"
+                f"{checked_at.isoformat()}\tgo-prod\t10\t20\t3\t0\tbelongs_to,represents\t4\t4\t\ttask\ttask\ttask\ttask\n",
+                encoding="utf-8",
+            )
+
+            fresh, reason = run_aws_deploy_verifications._fresh_graph_health_cache(cache, "go-prod", 3600)
+
+        self.assertTrue(fresh, reason)
+
+    def test_stale_graph_health_cache_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache = Path(temp_dir) / "graph.tsv"
+            checked_at = datetime.now(UTC) - timedelta(hours=2)
+            cache.write_text(
+                "checked_at\tstack\tnodes\trelations\tintegrity_passed\tintegrity_failed\tgraph_relations\tcurrent_ingest_runtimes\tdeclared_runtimes\tmissing_ingest_runtimes\tcounts_task\tintegrity_task\tpaths_task\tingest_runs_task\n"
+                f"{checked_at.isoformat()}\tgo-prod\t10\t20\t3\t0\tbelongs_to,represents\t4\t4\t\ttask\ttask\ttask\ttask\n",
+                encoding="utf-8",
+            )
+
+            fresh, reason = run_aws_deploy_verifications._fresh_graph_health_cache(cache, "go-prod", 3600)
+
+        self.assertFalse(fresh)
+        self.assertIn("exceeds", reason)
 
     def test_source_failure_reports_warning_but_does_not_fail_without_graph_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -330,6 +369,28 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
         self.assertEqual(status, 0)
         self.assertEqual(stream.call_count, 2)
         heal.assert_called_once()
+
+    def test_graph_failure_heals_runtime_ids_in_parallel(self) -> None:
+        args = argparse.Namespace(
+            stack_file=Path("aws/Pulumi.go-prod.yaml"),
+            graph_health_heal_concurrency=2,
+        )
+        diagnostics = (
+            "ERROR: latest graph ingest run failed for 2 runtime(s): "
+            "runtime-a:graph-ingest:runtime-a:20260601T000000Z:status=failed, "
+            "runtime-b:graph-ingest:runtime-b:20260601T000000Z:status=failed"
+        )
+        with (
+            patch("scripts.run_aws_deploy_verifications._source_id_for_runtime", return_value="aws"),
+            patch(
+                "scripts.run_aws_deploy_verifications.subprocess.run",
+                return_value=subprocess.CompletedProcess(["heal"], 0),
+            ) as run,
+        ):
+            healed = run_aws_deploy_verifications._attempt_graph_health_heal(args, diagnostics)
+
+        self.assertTrue(healed)
+        self.assertEqual(run.call_count, 2)
 
     def test_graph_degradation_can_create_followup_issue(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

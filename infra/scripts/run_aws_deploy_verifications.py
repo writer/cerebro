@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import csv
 from dataclasses import dataclass
+from datetime import UTC, datetime
 import json
 import os
 from pathlib import Path
@@ -25,6 +28,7 @@ class GraphHealthResult:
 
 DEFAULT_GRAPH_HEALTH_COMMAND_RETRY_SECONDS = 300
 DEFAULT_GRAPH_HEALTH_INGEST_RETRY_SECONDS = 0
+DEFAULT_GRAPH_HEALTH_CACHE_MAX_AGE_SECONDS = 3600
 
 
 def _stack_name(path: Path) -> str:
@@ -55,7 +59,7 @@ def _source_runtime_command(args: argparse.Namespace) -> list[str]:
         "--stack-file",
         str(args.stack_file),
         "--source-id",
-        "cosmo",
+        args.source_id,
         "--run",
         "--run-page-limit",
         "1",
@@ -80,6 +84,10 @@ def _source_runtime_command(args: argparse.Namespace) -> list[str]:
         "--target-concurrency",
         str(args.source_target_concurrency),
     ]
+    for runtime_id in args.runtime_id:
+        command.extend(["--runtime-id", runtime_id])
+    for family in args.family:
+        command.extend(["--family", family])
     if args.stop_running_source_before_run:
         command.append("--stop-running-before-run")
     return command
@@ -100,6 +108,7 @@ def _graph_health_command(args: argparse.Namespace) -> list[str]:
         "--poll-seconds",
         "5",
         "--allow-transient-source-failures",
+        "--require-bundled-health",
     ]
     return command
 
@@ -136,6 +145,75 @@ def _stream_graph_health(command: list[str], output_path: Path) -> GraphHealthRe
         stdout_thread.join()
         stderr_thread.join()
         return GraphHealthResult(status=status, diagnostics="".join(stderr_lines))
+
+
+def _parse_graph_health_checked_at(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _positive_field(row: dict[str, str], key: str) -> bool:
+    try:
+        return int(row.get(key, "") or "0") > 0
+    except ValueError:
+        return False
+
+
+def _fresh_graph_health_cache(
+    cache_path: Path,
+    stack: str,
+    max_age_seconds: int,
+    *,
+    now: datetime | None = None,
+) -> tuple[bool, str]:
+    if max_age_seconds <= 0:
+        return False, "cache disabled"
+    if not cache_path.exists():
+        return False, "cache missing"
+    rows: list[dict[str, str]]
+    with cache_path.open("r", encoding="utf-8") as handle:
+        rows = [row for row in csv.DictReader(handle, delimiter="\t") if row]
+    if not rows:
+        return False, "cache is empty"
+    row = rows[-1]
+    if row.get("stack") != stack:
+        return False, f"cache stack mismatch: {row.get('stack')}"
+    try:
+        checked_at = _parse_graph_health_checked_at(row.get("checked_at", ""))
+    except ValueError:
+        return False, "cache checked_at is invalid"
+    now = (now or datetime.now(UTC)).astimezone(UTC)
+    age_seconds = (now - checked_at).total_seconds()
+    if age_seconds < 0 or age_seconds > max_age_seconds:
+        return False, f"cache age {age_seconds:.0f}s exceeds {max_age_seconds}s"
+    if not _positive_field(row, "nodes") or not _positive_field(row, "relations"):
+        return False, "cache has non-positive graph size"
+    if str(row.get("integrity_failed") or "") != "0":
+        return False, "cache has failed integrity checks"
+    if str(row.get("missing_ingest_runtimes") or "").strip():
+        return False, "cache has missing ingest runtimes"
+    if not str(row.get("graph_relations") or "").strip():
+        return False, "cache has no graph relations"
+    return True, f"cache is fresh ({age_seconds:.0f}s old)"
+
+
+def _maybe_use_graph_health_cache(args: argparse.Namespace, stack: str) -> GraphHealthResult | None:
+    if not args.allow_graph_health_cache or args.graph_health_cache_path is None:
+        return None
+    fresh, reason = _fresh_graph_health_cache(
+        args.graph_health_cache_path,
+        stack,
+        args.graph_health_cache_max_age_seconds,
+    )
+    if not fresh:
+        print(f"Graph health cache miss for {stack}: {reason}", file=sys.stderr, flush=True)
+        return None
+    print(f"Using recent graph health cache for {stack}: {reason}", file=sys.stderr, flush=True)
+    if args.graph_health_cache_path.resolve() != args.graph_health_output.resolve():
+        args.graph_health_output.write_text(args.graph_health_cache_path.read_text(encoding="utf-8"), encoding="utf-8")
+    return GraphHealthResult(status=0, diagnostics="")
 
 
 def _finish_source_process(process: subprocess.Popen[str], grace_seconds: int | None) -> int:
@@ -329,18 +407,25 @@ def _attempt_graph_health_heal(args: argparse.Namespace, diagnostics: str) -> bo
             print(f"WARNING: graph-health primary-link repair command failed with exit code {completed.returncode}", file=sys.stderr)
         else:
             healed_any = True
-    for runtime_id in runtime_ids:
+
+    def heal_runtime(runtime_id: str) -> bool:
         source_id = _source_id_for_runtime(args.stack_file, runtime_id)
         if not source_id:
             print(f"WARNING: cannot heal graph health for {runtime_id}: source runtime is not declared", file=sys.stderr)
-            continue
+            return False
         command = _graph_health_heal_command(args, runtime_id, source_id)
         print(f"Running graph-health heal command: {' '.join(command)}", file=sys.stderr, flush=True)
         completed = subprocess.run(command, text=True)
         if completed.returncode != 0:
             print(f"WARNING: graph-health heal command failed for {runtime_id} with exit code {completed.returncode}", file=sys.stderr)
-            continue
-        healed_any = True
+            return False
+        return True
+
+    with ThreadPoolExecutor(max_workers=min(args.graph_health_heal_concurrency, max(1, len(runtime_ids)))) as executor:
+        futures = {executor.submit(heal_runtime, runtime_id): runtime_id for runtime_id in runtime_ids}
+        for future in as_completed(futures):
+            if future.result():
+                healed_any = True
     return healed_any
 
 
@@ -403,6 +488,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run AWS deployment verifications, overlapping non-blocking source checks with graph health.")
     parser.add_argument("--stack-file", type=Path, required=True)
     parser.add_argument("--source-runtime-verify", action="store_true")
+    parser.add_argument("--source-id", default="cosmo", help="Source ID to verify when --source-runtime-verify runs.")
+    parser.add_argument("--runtime-id", action="append", default=[], help="Restrict --source-runtime-verify to a declared runtime ID.")
+    parser.add_argument("--family", action="append", default=[], help="Restrict --source-runtime-verify to a runtime config family.")
     parser.add_argument("--graph-health", action="store_true")
     parser.add_argument("--graph-health-output", type=Path, default=Path("graph-health.tsv"))
     parser.add_argument(
@@ -411,8 +499,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Report graph health failures as degraded post-deploy health instead of failing the rollout job.",
     )
     parser.add_argument("--graph-health-heal", action="store_true", help="Try to re-run failed source runtimes before degrading graph health.")
+    parser.add_argument("--graph-health-heal-concurrency", type=_positive_int, default=4)
     parser.add_argument("--graph-health-issue", action="store_true", help="Create a GitHub issue when graph health is degraded.")
     parser.add_argument("--graph-health-artifact-name", default="graph-health", help="Artifact name to include in graph-health follow-up issues.")
+    parser.add_argument("--allow-graph-health-cache", action="store_true", help="Reuse a recent passing graph-health TSV for deploy gating when available.")
+    parser.add_argument("--graph-health-cache-path", type=Path, help="Path to a restored graph-health TSV cache.")
+    parser.add_argument(
+        "--graph-health-cache-max-age-seconds",
+        type=_non_negative_int,
+        default=DEFAULT_GRAPH_HEALTH_CACHE_MAX_AGE_SECONDS,
+    )
     parser.add_argument(
         "--graph-health-command-retry-seconds",
         type=_non_negative_int,
@@ -444,7 +540,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.source_runtime_verify:
             source_process = _start_process(_source_runtime_command(args))
         if args.graph_health:
-            graph_result = _stream_graph_health(_graph_health_command(args), args.graph_health_output)
+            graph_result = _maybe_use_graph_health_cache(args, stack) or _stream_graph_health(_graph_health_command(args), args.graph_health_output)
     finally:
         if source_process is not None:
             grace_seconds = args.source_runtime_grace_seconds if args.graph_health else None

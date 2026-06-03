@@ -1081,6 +1081,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--graph-command-retry-seconds", type=int, default=DEFAULT_GRAPH_COMMAND_RETRY_SECONDS)
     parser.add_argument("--ingest-health-retry-seconds", type=int, default=1800)
     parser.add_argument("--credential-safe-timeout-seconds", type=int, default=DEFAULT_CREDENTIAL_SAFE_TIMEOUT_SECONDS)
+    parser.add_argument(
+        "--require-bundled-health",
+        action="store_true",
+        help="Fail instead of falling back to multi-task graph checks when the image lacks the bundled graph health command.",
+    )
     parser.add_argument("--graph-command", nargs=argparse.REMAINDER, help="Run one graph command through ECS and print its JSON payload.")
     parser.add_argument(
         "--allow-transient-source-failures",
@@ -1141,7 +1146,11 @@ def main(argv: list[str] | None = None) -> int:
         attack_path_relations_supported=attack_path_relations_supported,
     )
 
-    if _supports_graph_health_command(config):
+    supports_graph_health_command = _supports_graph_health_command(config)
+    if args.require_bundled_health and not supports_graph_health_command:
+        raise RuntimeError("stack image does not support bundled graph health command")
+
+    if supports_graph_health_command:
         graph_health = _run_graph_health_command_with_retries(
             resource_prefix,
             service,

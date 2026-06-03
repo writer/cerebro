@@ -235,6 +235,24 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
         self.assertIn('"links_created": 1', stdout.getvalue())
         self.assertEqual(run_command.call_args.args[2], ["graph", "repair-open-finding-primary-links", "apply=true"])
 
+    def test_main_requires_bundled_graph_health_when_requested(self) -> None:
+        context = GraphCommandContext(
+            cluster="cluster",
+            task_definition="task-definition",
+            network_configuration={},
+            log_group="log-group",
+            stream_prefix="prefix",
+            has_source_runtime_bootstrap=True,
+        )
+        with (
+            patch("scripts.verify_graph_health_ecs._load_config", return_value={"environment": "sec-dev", "imageTag": "v2.1.139"}),
+            patch("scripts.verify_graph_health_ecs._verify_account"),
+            patch("scripts.verify_graph_health_ecs._describe_api_service", return_value={}),
+            patch("scripts.verify_graph_health_ecs._graph_command_context", return_value=context),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "bundled graph health"):
+                verify_graph_health_ecs.main(["--stack-file", "aws/Pulumi.sec-dev.yaml", "--require-bundled-health"])
+
     def test_run_graph_command_with_retries_recovers_after_transient_failure(self) -> None:
         original_run_graph_command = verify_graph_health_ecs._run_graph_command
         original_time = verify_graph_health_ecs.time.time
