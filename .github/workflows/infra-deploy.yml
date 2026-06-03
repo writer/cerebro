@@ -204,6 +204,7 @@ jobs:
   deploy-sec-dev:
     name: Preview sec-dev
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [changes, static-validation]
     if: github.event_name == 'pull_request' && needs.changes.outputs.aws_sec_dev_deploy == 'true'
     permissions:
@@ -262,6 +263,7 @@ jobs:
   preview-go-prod:
     name: Preview go-prod
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [changes, static-validation]
     if: github.event_name == 'pull_request' && needs.changes.outputs.aws_go_prod_deploy == 'true'
     permissions:
@@ -635,6 +637,7 @@ jobs:
   deploy-gcp-dev:
     name: Preview gcp-dev
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [changes, static-validation]
     if: github.event_name == 'pull_request' && needs.changes.outputs.gcp == 'true'
     permissions:
@@ -686,6 +689,7 @@ jobs:
   preview-gcp-prod:
     name: Preview gcp-prod
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [changes, static-validation]
     if: github.event_name == 'pull_request' && needs.changes.outputs.gcp == 'true'
     permissions:
