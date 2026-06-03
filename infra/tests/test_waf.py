@@ -45,6 +45,9 @@ class WafOAuthLoopbackAllowRuleTest(unittest.TestCase):
                 "allow-mcp-oauth-loopback-authorize-ipv4",
                 "allow-mcp-oauth-loopback-authorize-localhost",
                 "allow-mcp-oauth-loopback-authorize-ipv6",
+                "allow-mcp-oauth-loopback-token-ipv4",
+                "allow-mcp-oauth-loopback-token-localhost",
+                "allow-mcp-oauth-loopback-token-ipv6",
                 "allow-mcp-oauth-loopback-register-ipv4",
                 "allow-mcp-oauth-loopback-register-localhost",
                 "allow-mcp-oauth-loopback-register-ipv6",
@@ -53,8 +56,8 @@ class WafOAuthLoopbackAllowRuleTest(unittest.TestCase):
                 "aws-sqli",
             ],
         )
-        for rule in rules[1:7]:
-            self.assertLess(rule.priority, rules[7].priority)
+        for rule in rules[1:10]:
+            self.assertLess(rule.priority, rules[10].priority)
 
     def test_loopback_oauth_allow_rules_are_narrowly_scoped(self) -> None:
         rules = waf._mcp_oauth_loopback_allow_rules()
@@ -63,6 +66,7 @@ class WafOAuthLoopbackAllowRuleTest(unittest.TestCase):
 
         for expected in (
             "/oauth/authorize",
+            "/oauth/token",
             "/oauth/register",
             "GET",
             "POST",
