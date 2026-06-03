@@ -308,6 +308,7 @@ def _graph_health_degradation_category(status: int, diagnostics: str) -> str | N
         ("latest graph ingest run failed", "stale_or_transient_ingest_run"),
         ("latest graph ingest projected no graph records", "zero_projection_ingest_run"),
         ("did not emit valid json", "graph_command_no_json"),
+        ("getlogevents operation: the specified log stream does not exist", "graph_command_no_logs"),
         ("context deadline exceeded", "graph_command_timeout"),
     )
     for token, category in categories:

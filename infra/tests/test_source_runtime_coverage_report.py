@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from io import BytesIO
 import json
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from urllib.error import HTTPError
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts.source_runtime_coverage_report import (
@@ -200,6 +203,18 @@ class SourceRuntimeCoverageReportTest(unittest.TestCase):
         path.write_text(json.dumps([{"id": "writer-okta-audit"}]), encoding="utf-8")
 
         self.assertEqual(_load_actual(path, "", "", "writer", 20), [{"id": "writer-okta-audit"}])
+
+    def test_load_actual_includes_http_error_body(self) -> None:
+        error = HTTPError(
+            url="https://cerebro.example/source-runtimes",
+            code=400,
+            msg="Bad Request",
+            hdrs={},
+            fp=BytesIO(b'{"error":"invalid tenant_id"}'),
+        )
+        with patch("scripts.source_runtime_coverage_report.urlopen", side_effect=error):
+            with self.assertRaisesRegex(RuntimeError, "HTTP 400: .*invalid tenant_id"):
+                _load_actual(None, "https://cerebro.example", "token", "writer", 20)
 
     def test_normalize_api_url_uses_stack_domain_for_alb(self) -> None:
         self.assertEqual(

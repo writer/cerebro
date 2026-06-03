@@ -176,7 +176,9 @@ def _load_actual(path: Path | None, api_url: str, api_key: str, tenant_id: str, 
             with urlopen(request, timeout=timeout) as response:
                 payload = json.load(response)
         except HTTPError as err:
-            raise RuntimeError(f"source runtime API returned HTTP {err.code}") from err
+            body = err.read().decode("utf-8", errors="replace").strip()
+            detail = f": {body[:500]}" if body else ""
+            raise RuntimeError(f"source runtime API returned HTTP {err.code}{detail}") from err
         except URLError as err:
             raise RuntimeError(f"source runtime API request failed: {err.reason}") from err
     runtimes = payload.get("runtimes") if isinstance(payload, dict) else payload
