@@ -221,7 +221,7 @@ func authInterceptor(cfg config.AuthConfig) connect.Interceptor {
 
 func isPublicPath(path string) bool {
 	switch path {
-	case "/health", "/healthz", "/openapi.yaml":
+	case "/health", "/healthz", "/livez", "/openapi.yaml":
 		return true
 	case "/.well-known/device-jwks.json":
 		return true

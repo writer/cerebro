@@ -29,7 +29,7 @@ CLI / JSON HTTP / Connect clients
               +--> Neo4j/Aura graph store (optional)
 ```
 
-The service can start without optional stores and serve lightweight routes such as `/health`, `/healthz`, `/openapi.yaml`, and `/sources`. Durable runtime, claim, finding, report, replay, and graph operations require the configured store for that operation.
+The service can start without optional stores and serve lightweight routes such as `/health`, `/healthz`, `/livez`, `/openapi.yaml`, and `/sources`. `/health` reports dependency-aware readiness; `/healthz` and `/livez` are liveness-only. Durable runtime, claim, finding, report, replay, and graph operations require the configured store for that operation.
 
 ## Store boundaries
 
@@ -47,7 +47,7 @@ Kuzu and embedded/in-memory database backends are intentionally rejected by conf
 - Current platform routes prefer `/platform/*` for shared platform resources.
 - Legacy `/graph/*` aliases have been removed; use the `/platform/graph/*` routes or the matching Connect RPCs.
 - HTTP-only surfaces are route-grouped in `internal/bootstrap/routes.go` so platform, internal, and public routes are explicit while the remaining Connect coverage gap is closed.
-- Public unauthenticated routes are limited to `/health`, `/healthz`, and `/openapi.yaml` when API auth is enabled.
+- Public unauthenticated routes are limited to `/health`, `/healthz`, `/livez`, `/openapi.yaml`, OAuth metadata routes, and `/.well-known/device-jwks.json` when API auth is enabled.
 
 ## Postgres migrations
 

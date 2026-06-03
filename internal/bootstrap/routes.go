@@ -41,7 +41,8 @@ func (app *App) registerConnectRoutes(mux *http.ServeMux, cfg config.Config, dep
 
 func (app *App) registerPublicRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "/health", routeSurfacePublicHTTP, app.handleHealth)
-	registerHTTPRoute(mux, "/healthz", routeSurfacePublicHTTP, app.handleHealth)
+	registerHTTPRoute(mux, "/healthz", routeSurfacePublicHTTP, app.handleLiveness)
+	registerHTTPRoute(mux, "/livez", routeSurfacePublicHTTP, app.handleLiveness)
 	registerHTTPRoute(mux, "GET /openapi.yaml", routeSurfacePublicHTTP, app.handleOpenAPI)
 }
 

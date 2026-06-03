@@ -8,7 +8,7 @@ Cerebro is Writer's Go security operations platform for cloud/SaaS source ingest
 
 - API auth is configured in `internal/config` and enforced by `authMiddleware`, `authConnectInterceptor`, and tenant helpers in `internal/bootstrap/auth.go`.
 - Tenant-scoped API keys must be checked against explicit `tenant_id` fields, tenant-bearing URNs, runtime/findings/report records loaded by ID, and graph ingest/workflow operations that otherwise default to global scope.
-- `/health`, `/healthz`, and `/openapi.yaml` are intentionally public; most `/platform/*`, `/source-runtimes/*`, `/findings/*`, `/reports/*`, and Connect RPC paths are protected when `CEREBRO_API_AUTH_ENABLED=true`.
+- `/health`, `/healthz`, `/livez`, and `/openapi.yaml` are intentionally public; `/health` is dependency-aware readiness while `/healthz` and `/livez` are liveness-only. Most `/platform/*`, `/source-runtimes/*`, `/findings/*`, `/reports/*`, and Connect RPC paths are protected when `CEREBRO_API_AUTH_ENABLED=true`.
 
 ## Threat model
 

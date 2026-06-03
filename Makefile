@@ -1,4 +1,4 @@
-.PHONY: build serve test workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke lint lint-bootstrap proto-lint proto-generate openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check readme-check oss-audit govulncheck droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: build serve test sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check readme-check oss-audit govulncheck droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
@@ -6,6 +6,8 @@ GOLANGCI_LINT_VERSION ?= v2.11.4
 BUF := GOFLAGS= GOTOOLCHAIN=go1.26.3 go run github.com/bufbuild/buf/cmd/buf@v1.59.0
 GOVULNCHECK := GOFLAGS= GOTOOLCHAIN=go1.26.3 go run golang.org/x/vuln/cmd/govulncheck@v1.1.4
 SPECTRAL := npx --yes @stoplight/spectral-cli@6.15.0
+PROTO_BREAKING_BASE ?= origin/main
+README_CHECK_BASE ?= origin/main
 APP_PACKAGES := ./api/... ./cmd/... ./internal/... ./sources/...
 LINTER_MODULE := ./tools/linters
 LINTER_BIN := $(GO_BIN)/cerebrolint
@@ -54,6 +56,17 @@ serve: build
 
 test:
 	go test ./...
+
+sdk-test: sdk-python-test sdk-typescript-test sdk-typescript-check
+
+sdk-python-test:
+	cd sdk/python && python3 -m pip install 'protobuf>=5.29.5,<6' && python3 -m unittest discover -s tests
+
+sdk-typescript-test:
+	cd sdk/typescript && npm test
+
+sdk-typescript-check:
+	cd sdk/typescript && npm run typecheck
 
 workflow-e2e-test:
 	go test $(WORKFLOW_E2E_PACKAGES) -run '$(WORKFLOW_E2E_TESTS)$$' -count=1 -v
@@ -112,6 +125,12 @@ proto-lint:
 proto-generate:
 	$(BUF) generate
 
+proto-generate-check: proto-generate
+	git diff --exit-code -- gen sdk/python/cerebro/v1
+
+proto-breaking:
+	$(BUF) breaking --against '.git#branch=$(PROTO_BREAKING_BASE)'
+
 openapi-check:
 	go run ./scripts/openapi_route_parity.go
 
@@ -131,7 +150,13 @@ detection-catalog-check:
 	go run ./tools/detectioncatalog --check
 
 readme-check:
-	git diff --check README.md
+	@base_ref="$(README_CHECK_BASE)"; \
+	if git rev-parse --verify "$$base_ref" >/dev/null 2>&1; then \
+		base="$$(git merge-base HEAD "$$base_ref")"; \
+	else \
+		base="$$(git rev-list --max-parents=0 HEAD)"; \
+	fi; \
+	git diff --check "$$base"..HEAD -- README.md
 	python3 scripts/readme_check.py
 
 oss-audit:
@@ -169,7 +194,7 @@ hooks:
 pre-commit:
 	./scripts/pre_commit_checks.sh
 
-check: build test lint proto-lint check-structural check-structural-test check-arch
+check: build test sdk-test lint proto-lint proto-generate-check check-structural check-structural-test check-arch
 
 check-structural: check-structural-build
 	@$(LINTER_BIN) $(APP_PACKAGES)
@@ -185,4 +210,4 @@ check-arch:
 
 check-hook-integrity: check-arch
 
-verify: build test lint proto-lint openapi-check openapi-lint catalog-check detection-catalog-check readme-check oss-audit check-structural check-structural-test check-arch
+verify: build test sdk-test lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check detection-catalog-check readme-check oss-audit check-structural check-structural-test check-arch

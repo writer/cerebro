@@ -220,21 +220,10 @@ func (app *App) handleMCPStream(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 		return
 	}
-	if !app.mcpValidOrigin(r) {
-		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		return
-	}
-	sessionID := mcpSessionID(r)
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Mcp-Session-Id", sessionID)
+	w.Header().Set("Allow", http.MethodPost)
 	w.Header().Set("MCP-Protocol-Version", mcpProtocolVersion)
 	w.Header().Set("X-Cerebro-MCP-Stateless", "true")
-	_, _ = fmt.Fprintf(w, "event: ready\ndata: %s\n\n", mcpEndpointPath)
-	if flusher, ok := w.(http.Flusher); ok {
-		flusher.Flush()
-	}
+	http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 }
 
 func (app *App) handleMCPRequest(r *http.Request, request mcpJSONRPCRequest) mcpJSONRPCResponse {
@@ -2283,22 +2272,11 @@ func mcpUint32Arg(args map[string]any, key string) (uint32, error) {
 }
 
 func mcpWriteJSONRPC(w http.ResponseWriter, r *http.Request, response mcpJSONRPCResponse) {
-	sessionID := mcpSessionID(r)
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Mcp-Session-Id", sessionID)
 	w.Header().Set("MCP-Protocol-Version", mcpProtocolVersion)
 	w.Header().Set("X-Cerebro-MCP-Stateless", "true")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(response)
-}
-
-func mcpSessionID(r *http.Request) string {
-	if r != nil {
-		if sessionID := strings.TrimSpace(r.Header.Get("Mcp-Session-Id")); sessionID != "" {
-			return sessionID
-		}
-	}
-	return "cerebro-stateless"
 }
 
 func mcpNegotiatedProtocolVersion(r *http.Request, rawParams json.RawMessage) string {

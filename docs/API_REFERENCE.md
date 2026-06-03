@@ -12,8 +12,9 @@ Set `CEREBRO_API_AUTH_ENABLED=true` and pass `Authorization: Bearer <key>` or `X
 
 ## Public routes
 
-- `GET /health`
-- `GET /healthz`
+- `GET /health` - dependency-aware readiness; returns unavailable when configured dependencies are degraded.
+- `GET /healthz` - liveness-only process check.
+- `GET /livez` - liveness-only process check.
 - `GET /openapi.yaml`
 
 ## Preferred platform routes

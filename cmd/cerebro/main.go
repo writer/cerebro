@@ -380,9 +380,12 @@ func runSourceRuntime(args []string) error {
 		if err != nil {
 			return err
 		}
-		response, err := service.Sync(ctx, &cerebrov1.SyncSourceRuntimeRequest{
+		response, err := service.SyncWithLease(ctx, &cerebrov1.SyncSourceRuntimeRequest{
 			Id:        runtimeID,
 			PageLimit: pageLimit,
+		}, sourceruntime.SyncWithLeaseOptions{
+			LeaseStore: sourceRuntimeCommandLeaseStore(deps.StateStore),
+			LeaseOwner: sourceRuntimeCommandLeaseOwner(),
 		})
 		if err != nil {
 			return err
@@ -395,6 +398,18 @@ func runSourceRuntime(args []string) error {
 
 func configureSourceRuntimeCommandService(service *sourceruntime.Service) *sourceruntime.Service {
 	return service.WithConfigResolver(appconfig.ResolveSourceRuntimeConfigSecretReferences)
+}
+
+func sourceRuntimeCommandLeaseStore(store ports.StateStore) ports.SourceRuntimeLeaseStore {
+	leaseStore, ok := store.(ports.SourceRuntimeLeaseStore)
+	if !ok {
+		return nil
+	}
+	return leaseStore
+}
+
+func sourceRuntimeCommandLeaseOwner() string {
+	return strings.Replace(sourceruntime.DefaultAPILeaseOwner(), "cerebro-api:", "cerebro-cli:", 1)
 }
 
 func parseSourceCommandArgs(args []string) (string, map[string]string, *cerebrov1.SourceCursor, error) {
