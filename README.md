@@ -29,6 +29,8 @@ Cerebro has historical and forward-looking docs in `docs/`. For current runtime 
 
 Cerebro exposes JSON HTTP, Connect RPC, CLI, and release artifacts. This repository does not ship an end-user web console, a SIEM/CSPM/CNAPP/EDR/SOAR replacement, an endpoint sensor, a plugin marketplace, a general-purpose graph database product, autonomous remediation, or a cloud-specific control plane.
 
+This public repository is authoritative for runtime behavior, CLI/API contracts, source catalogs, configuration semantics, and release artifacts. Environment-specific deployment details, stack configuration, account wiring, hostnames, and rollout procedures intentionally live outside this public repo.
+
 See [Non-goals](docs/NON_GOALS.md) before changing storage shape, Source CDK boundaries, graph/Cypher behavior, findings workflow contracts, action/runtime response semantics, platform/security namespace boundaries, or public product language.
 
 ---
@@ -97,6 +99,20 @@ docker compose up --build
 ```
 
 The compose stack starts Cerebro with NATS JetStream, Postgres, and Neo4j using the `CEREBRO_*` environment variables documented below.
+
+---
+
+## Choose your path
+
+| Goal | Start here | Notes |
+| --- | --- | --- |
+| Run the lightweight server | `make serve` | Starts the API without external stores; useful for health, source catalog, and OpenAPI checks. |
+| Run the durable local stack | `docker compose up --build` | Starts Cerebro with NATS JetStream, Postgres, and Neo4j. |
+| Explore the API | `GET /openapi.yaml` or `api/openapi.yaml` | JSON HTTP routes are generated and checked against the OpenAPI contract. |
+| Preview a source | `./bin/cerebro source check/discover/read ...` | Source config is passed as `key=value` pairs or HTTP query parameters. |
+| Persist and sync a runtime | `source-runtime put/get/list/sync` | Requires Postgres; sync also requires JetStream. |
+| Work on graph behavior | `graph counts`, `graph health`, `graph ingest-runtime` | Requires Neo4j/Aura and, for runtime-backed operations, the configured runtime stores. |
+| Author policies or finding rules | `policies/`, `internal/findings`, and catalog checks | Run the relevant catalog and finding-rule tests before opening a PR. |
 
 ---
 
@@ -292,6 +308,18 @@ Public-facing docs, config, or example changes should run:
 ```bash
 python3 scripts/oss_audit.py
 ```
+
+Choose validators by change type:
+
+| Change type | Minimum local validation |
+| --- | --- |
+| README-only | `git diff --check README.md` and `make oss-audit` |
+| Go runtime/API change | `make test` plus focused package tests |
+| OpenAPI route or handler change | `make openapi-check openapi-lint` |
+| Proto change | `make proto-lint` and generated contract checks when applicable |
+| Source catalog or policy change | `make catalog-check detection-catalog-check` |
+| Public docs/config/examples | `make oss-audit` |
+| Broad PR preflight | `make verify` |
 
 ---
 
