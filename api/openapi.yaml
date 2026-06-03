@@ -1434,8 +1434,8 @@ paths:
           description: Authenticated human is not authorized for MCP access.
   /oauth/token:
     post:
-      summary: Exchange MCP OAuth authorization or refresh token
-      description: Issues a resource-bound bearer capability token for MCP after PKCE verification or refresh-token rotation.
+      summary: Exchange MCP OAuth token grants
+      description: Issues a resource-bound bearer capability token for MCP after PKCE verification, refresh-token rotation, or confidential client_credentials authentication.
       tags:
         - OAuth
       security: []
@@ -1451,7 +1451,7 @@ paths:
               properties:
                 grant_type:
                   type: string
-                  enum: [authorization_code, refresh_token]
+                  enum: [authorization_code, refresh_token, client_credentials]
                 client_id:
                   type: string
                 resource:
@@ -1488,6 +1488,39 @@ paths:
                     type: string
         '400':
           description: Invalid token request or grant.
+        '401':
+          description: Client authentication failed.
+  /oauth/revoke:
+    post:
+      summary: Revoke an MCP OAuth refresh token
+      description: Revokes the refresh-token family associated with a client-owned MCP OAuth refresh token. Access tokens remain short-lived and resource-bound.
+      tags:
+        - OAuth
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [token]
+              additionalProperties:
+                type: string
+              properties:
+                token:
+                  type: string
+                token_type_hint:
+                  type: string
+                  enum: [refresh_token]
+                client_id:
+                  type: string
+                client_secret:
+                  type: string
+      responses:
+        '200':
+          description: Token revocation processed.
+        '400':
+          description: Invalid revocation request.
         '401':
           description: Client authentication failed.
   /oauth/register:

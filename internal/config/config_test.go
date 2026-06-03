@@ -226,6 +226,8 @@ func clearMCPOAuthEnv(t *testing.T) {
 	t.Setenv("CEREBRO_MCP_OAUTH_ISSUER", "")
 	t.Setenv("CEREBRO_MCP_OAUTH_RESOURCE", "")
 	t.Setenv("CEREBRO_MCP_OAUTH_CLIENTS_JSON", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_DYNAMIC_CLIENT_REGISTRATION_ENABLED", "")
+	t.Setenv("CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON", "")
 	t.Setenv("CEREBRO_MCP_OAUTH_ACCESS_TTL", "")
 	t.Setenv("CEREBRO_MCP_OAUTH_REFRESH_TTL", "")
 	t.Setenv("CEREBRO_MCP_OAUTH_CODE_TTL", "")
@@ -389,14 +391,34 @@ func TestLoadParsesMCPOAuthConfig(t *testing.T) {
 	if len(cfg.Auth.MCPOAuth.Clients) != 1 || cfg.Auth.MCPOAuth.Clients[0].ClientID != "droid" {
 		t.Fatalf("MCPOAuth.Clients = %#v", cfg.Auth.MCPOAuth.Clients)
 	}
-	if !cfg.Auth.MCPOAuth.DynamicClientRegistration {
-		t.Fatal("MCPOAuth.DynamicClientRegistration = false, want true")
+	if cfg.Auth.MCPOAuth.DynamicClientRegistration {
+		t.Fatal("MCPOAuth.DynamicClientRegistration = true, want false by default")
 	}
 	if cfg.Auth.MCPOAuth.RefreshTTL != 24*time.Hour {
 		t.Fatalf("MCPOAuth.RefreshTTL = %v, want 24h", cfg.Auth.MCPOAuth.RefreshTTL)
 	}
 	if got := cfg.Auth.MCPOAuth.Upstream.SecurityGroups; len(got) != 1 || got[0] != "secops" {
 		t.Fatalf("SecurityGroups = %#v, want [secops]", got)
+	}
+}
+
+func TestLoadParsesMCPOAuthM2MClientAndEntitlements(t *testing.T) {
+	setValidMCPOAuthEnv(t)
+	t.Setenv("CEREBRO_MCP_OAUTH_CLIENTS_JSON", `[
+		{"client_id":"droid","redirect_uris":["http://127.0.0.1/callback"],"public":true},
+		{"client_id":"panopticon","client_secret":"secret","grant_types":["client_credentials"],"allowed_tenants":["writer"],"scopes":["cerebro.cosmo.security.read"]}
+	]`)
+	t.Setenv("CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON", `[{"groups":["secops"],"allowed_tenants":["writer"],"scopes":["cerebro.cosmo.security.read"]}]`)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := cfg.Auth.MCPOAuth.Clients[1].GrantTypes; len(got) != 1 || got[0] != "client_credentials" {
+		t.Fatalf("M2M grant types = %#v", got)
+	}
+	if len(cfg.Auth.MCPOAuth.Entitlements) != 1 || cfg.Auth.MCPOAuth.Entitlements[0].Groups[0] != "secops" {
+		t.Fatalf("Entitlements = %#v", cfg.Auth.MCPOAuth.Entitlements)
 	}
 }
 

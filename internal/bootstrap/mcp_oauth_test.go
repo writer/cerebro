@@ -249,6 +249,105 @@ func TestMCPOAuthFlowIssuesCapabilityTokenForMCP(t *testing.T) {
 	if !rotatedRefreshRecord.ExpiresAt.Equal(originalRefreshRecord.ExpiresAt) {
 		t.Fatalf("rotated refresh expiration = %v, want family expiration %v", rotatedRefreshRecord.ExpiresAt, originalRefreshRecord.ExpiresAt)
 	}
+	revokeResp := revokeMCPOAuthTokenRaw(t, server, url.Values{
+		"client_id": {"droid"},
+		"token":     {refreshed.RefreshToken},
+	})
+	_ = revokeResp.Body.Close()
+	if revokeResp.StatusCode != http.StatusOK {
+		t.Fatalf("revoke status = %d, want 200", revokeResp.StatusCode)
+	}
+	revokedRefresh := exchangeMCPOAuthTokenRaw(t, server, url.Values{
+		"grant_type":    {"refresh_token"},
+		"client_id":     {"droid"},
+		"resource":      {"https://cerebro.example/api/v1/mcp"},
+		"refresh_token": {refreshed.RefreshToken},
+	})
+	_ = revokedRefresh.Body.Close()
+	if revokedRefresh.StatusCode != http.StatusBadRequest {
+		t.Fatalf("revoked refresh status = %d, want 400", revokedRefresh.StatusCode)
+	}
+}
+
+func TestMCPOAuthClientCredentialsIssuesMCPOnlyToken(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer upstream.Close()
+
+	cfg := testMCPOAuthConfig("http://127.0.0.1/callback", upstream.URL)
+	cfg.Auth.MCPOAuth.Clients = []config.MCPOAuthClient{{
+		ClientID:       "panopticon",
+		ClientSecret:   "client-secret",
+		GrantTypes:     []string{"client_credentials"},
+		AllowedTenants: []string{"writer"},
+		Scopes:         []string{scopeCosmoSecurityRead},
+		Groups:         []string{"security"},
+	}}
+	app, err := NewWithError(cfg, Dependencies{StateStore: newMemoryMCPOAuthStore()}, nil)
+	if err != nil {
+		t.Fatalf("NewWithError: %v", err)
+	}
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	form := url.Values{
+		"grant_type": {"client_credentials"},
+		"resource":   {"https://cerebro.example/api/v1/mcp"},
+		"scope":      {scopeCosmoSecurityRead},
+	}
+	req, err := http.NewRequest(http.MethodPost, server.URL+oauthTokenPath, strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatalf("NewRequest token: %v", err)
+	}
+	req.SetBasicAuth("panopticon", "client-secret")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST token: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("client_credentials status = %d body=%s", resp.StatusCode, body)
+	}
+	var tokenResp mcpoauth.TokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		t.Fatalf("decode token response: %v", err)
+	}
+	if tokenResp.AccessToken == "" || tokenResp.RefreshToken != "" {
+		t.Fatalf("client_credentials token response = %#v", tokenResp)
+	}
+
+	mcpReq, err := http.NewRequest(http.MethodPost, server.URL+mcpEndpointPath, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`))
+	if err != nil {
+		t.Fatalf("NewRequest MCP: %v", err)
+	}
+	mcpReq.Header.Set("Authorization", "Bearer "+tokenResp.AccessToken)
+	mcpReq.Header.Set("Content-Type", "application/json")
+	mcpReq.Header.Set("MCP-Protocol-Version", mcpProtocolVersion)
+	mcpResp, err := server.Client().Do(mcpReq)
+	if err != nil {
+		t.Fatalf("POST MCP with M2M token: %v", err)
+	}
+	_ = mcpResp.Body.Close()
+	if mcpResp.StatusCode != http.StatusOK {
+		t.Fatalf("MCP status with M2M token = %d, want 200", mcpResp.StatusCode)
+	}
+
+	nonMCPReq, err := http.NewRequest(http.MethodGet, server.URL+"/reports", nil)
+	if err != nil {
+		t.Fatalf("NewRequest non-MCP: %v", err)
+	}
+	nonMCPReq.Header.Set("Authorization", "Bearer "+tokenResp.AccessToken)
+	nonMCPResp, err := server.Client().Do(nonMCPReq)
+	if err != nil {
+		t.Fatalf("GET reports with M2M token: %v", err)
+	}
+	_ = nonMCPResp.Body.Close()
+	if nonMCPResp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("non-MCP status with M2M token = %d, want 401", nonMCPResp.StatusCode)
+	}
 }
 
 func TestMCPOAuthCallbackRejectsMissingSecurityGroup(t *testing.T) {
@@ -578,6 +677,20 @@ func exchangeMCPOAuthTokenRaw(t *testing.T, server *httptest.Server, form url.Va
 	return resp
 }
 
+func revokeMCPOAuthTokenRaw(t *testing.T, server *httptest.Server, form url.Values) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, server.URL+oauthRevokePath, strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatalf("NewRequest revoke: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST revoke: %v", err)
+	}
+	return resp
+}
+
 func noRedirectClient(server *httptest.Server) *http.Client {
 	base := server.Client()
 	return &http.Client{
@@ -723,6 +836,17 @@ func (s *memoryMCPOAuthStore) RevokeOAuthRefreshFamily(_ context.Context, family
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.families[familyID] = true
+	return nil
+}
+
+func (s *memoryMCPOAuthStore) RevokeOAuthRefreshToken(_ context.Context, tokenHash [32]byte, clientID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.refresh[hashKey(tokenHash)]
+	if !ok || record.value.ClientID != clientID {
+		return nil
+	}
+	s.families[record.value.FamilyID] = true
 	return nil
 }
 

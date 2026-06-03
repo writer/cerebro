@@ -108,11 +108,29 @@ type AuthConfig struct {
 // MCPOAuthClient is one OAuth client allowed to request MCP access tokens from
 // Cerebro. Redirect URI comparison is exact-match.
 type MCPOAuthClient struct {
-	ClientID     string   `json:"client_id"`
-	ClientSecret string   `json:"client_secret,omitempty"`
-	Name         string   `json:"name,omitempty"`
-	RedirectURIs []string `json:"redirect_uris"`
-	Public       bool     `json:"public,omitempty"`
+	ClientID           string   `json:"client_id"`
+	ClientSecret       string   `json:"client_secret,omitempty"`
+	ClientSecretSHA256 string   `json:"client_secret_sha256,omitempty"`
+	Name               string   `json:"name,omitempty"`
+	RedirectURIs       []string `json:"redirect_uris"`
+	GrantTypes         []string `json:"grant_types,omitempty"`
+	Public             bool     `json:"public,omitempty"`
+	TenantID           string   `json:"tenant_id,omitempty"`
+	AllowedTenants     []string `json:"allowed_tenants,omitempty"`
+	Scopes             []string `json:"scopes,omitempty"`
+	Groups             []string `json:"groups,omitempty"`
+}
+
+// MCPOAuthEntitlement maps an authenticated upstream user/client to the
+// tenants and scopes Cerebro may place into OAuth-issued MCP tokens.
+type MCPOAuthEntitlement struct {
+	Subject        string   `json:"subject,omitempty"`
+	Email          string   `json:"email,omitempty"`
+	ClientID       string   `json:"client_id,omitempty"`
+	Groups         []string `json:"groups,omitempty"`
+	TenantID       string   `json:"tenant_id,omitempty"`
+	AllowedTenants []string `json:"allowed_tenants,omitempty"`
+	Scopes         []string `json:"scopes,omitempty"`
 }
 
 // MCPOAuthConfig configures Cerebro's OAuth 2.1 authorization-server surface
@@ -130,6 +148,7 @@ type MCPOAuthConfig struct {
 	StateTTL                  time.Duration
 	TenantID                  string
 	AllowedTenants            []string
+	Entitlements              []MCPOAuthEntitlement
 	Upstream                  MCPOAuthUpstreamConfig
 }
 

@@ -22,6 +22,7 @@ type Store interface {
 	SaveOAuthRefreshToken(ctx context.Context, token RefreshToken) error
 	ConsumeOAuthRefreshToken(ctx context.Context, tokenHash [32]byte, now time.Time) (RefreshToken, error)
 	RevokeOAuthRefreshFamily(ctx context.Context, familyID string) error
+	RevokeOAuthRefreshToken(ctx context.Context, tokenHash [32]byte, clientID string) error
 }
 
 // OAuthClient is a dynamically registered MCP OAuth client.
