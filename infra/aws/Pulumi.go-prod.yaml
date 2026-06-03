@@ -48,6 +48,16 @@ config:
   cerebro:capabilityTokenSecretName: CEREBRO_CAPABILITY_TOKEN_SECRETS_GO_PROD
   cerebro:allowedTenants:
     - writer
+  cerebro:mcpOauthEnabled: true
+  cerebro:mcpOauthUpstreamIssuer: https://writer.okta.com
+  cerebro:mcpOauthUpstreamRedirectUri: https://cerebro.adm.prod.writer.com/oauth/callback
+  cerebro:mcpOauthUpstreamClientIdSecretName: CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_ID_GO_PROD
+  cerebro:mcpOauthUpstreamClientSecretName: CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_SECRET_GO_PROD
+  cerebro:mcpOauthTenantId: writer
+  cerebro:mcpOauthAllowedTenants:
+    - writer
+  cerebro:mcpOauthSecurityGroups:
+    - "DEPT - SECURITY"
   cerebro:sourceSecretKeys:
     - BACKSTAGE_BASE_URL
     - BACKSTAGE_EXTERNAL_ACCESS_TOKEN
