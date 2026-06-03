@@ -3915,6 +3915,63 @@ func TestBootstrapHealthDegradesOnDependencyError(t *testing.T) {
 	}
 }
 
+func TestBootstrapReadinessReturnsUnavailableWhenDegraded(t *testing.T) {
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		StateStore: stubStore{err: errors.New("state store unavailable")},
+	}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/health")
+	if err != nil {
+		t.Fatalf("GET /health error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close /health response body: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("GET /health status = %d, want %d", resp.StatusCode, http.StatusServiceUnavailable)
+	}
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode /health response: %v", err)
+	}
+	if payload["status"] != "degraded" {
+		t.Fatalf("health status = %#v, want degraded", payload["status"])
+	}
+}
+
+func TestBootstrapLivenessDoesNotPingDependencies(t *testing.T) {
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		StateStore: stubStore{err: errors.New("state store unavailable")},
+	}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	for _, path := range []string{"/healthz", "/livez"} {
+		resp, err := server.Client().Get(server.URL + path)
+		if err != nil {
+			t.Fatalf("GET %s error = %v", path, err)
+		}
+		var payload map[string]any
+		if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+			_ = resp.Body.Close()
+			t.Fatalf("decode %s response: %v", path, err)
+		}
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close %s response body: %v", path, closeErr)
+		}
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET %s status = %d, want %d", path, resp.StatusCode, http.StatusOK)
+		}
+		if payload["status"] != "live" {
+			t.Fatalf("%s status = %#v, want live", path, payload["status"])
+		}
+	}
+}
+
 func TestBackfillFindingRiskSkipsMissingStateStore(t *testing.T) {
 	app := New(config.Config{}, Dependencies{}, nil)
 	if err := app.BackfillFindingRisk(context.Background()); err != nil {
