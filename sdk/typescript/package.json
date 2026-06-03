@@ -1,13 +1,34 @@
 {
   "name": "@writer/cerebro-sdk",
   "version": "0.1.0",
+  "description": "TypeScript SDK for the Cerebro Agent SDK and report runtime",
+  "license": "Apache-2.0",
   "type": "module",
   "main": "./src/index.js",
+  "types": "./src/index.ts",
+  "files": [
+    "src",
+    "examples",
+    "package.json"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/writer/cerebro.git",
+    "directory": "sdk/typescript"
+  },
   "scripts": {
-    "test": "node --test test/*.mjs"
+    "check": "npm run typecheck && npm test",
+    "test": "node --test test/*.mjs",
+    "typecheck": "npx --yes --package typescript tsc --noEmit"
   },
   "exports": {
-    ".": "./src/index.js",
-    "./jira": "./src/jira.js"
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.js"
+    },
+    "./jira": {
+      "types": "./src/jira.ts",
+      "default": "./src/jira.js"
+    }
   }
 }
