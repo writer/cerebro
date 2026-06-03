@@ -863,8 +863,9 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             ["can_assume", "can_perform"],
         )
 
-    def test_graph_relation_observation_includes_optional_can_reach(self) -> None:
+    def test_graph_relation_observation_includes_optional_aws_depth_edges(self) -> None:
         self.assertIn("can_reach", GRAPH_RELATIONS_TO_OBSERVE)
+        self.assertIn("runs_as", GRAPH_RELATIONS_TO_OBSERVE)
 
     def test_verify_required_graph_relations_reports_optional_attack_path_edges_for_aws(self) -> None:
         payload = {

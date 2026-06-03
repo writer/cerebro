@@ -537,7 +537,7 @@ class ValidateStackConfigTest(unittest.TestCase):
 
         findings = validate_stack(Path(__file__).resolve().parents[1] / "aws/Pulumi.go-prod.yaml")
 
-        self.assertEqual(len(aws_runtimes), 56)
+        self.assertEqual(len(aws_runtimes), 88)
         self.assertTrue(all(runtime["id"] in aws_scheduled_runtime_ids for runtime in aws_runtimes))
         self.assertEqual(
             {
@@ -547,6 +547,9 @@ class ValidateStackConfigTest(unittest.TestCase):
             {
                 "access_key",
                 "asset_metadata",
+                "ec2_instance",
+                "ecs_service",
+                "ecs_task_definition",
                 "effective_permission",
                 "iam_group",
                 "iam_group_membership",
@@ -554,6 +557,7 @@ class ValidateStackConfigTest(unittest.TestCase):
                 "iam_role_assignment",
                 "iam_role_trust",
                 "iam_user",
+                "lambda_function",
                 "public_endpoint",
                 "resource_exposure",
             },

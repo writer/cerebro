@@ -312,6 +312,86 @@ config:
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
+    - name: aws-sec-dev-us1-ec2
+      scheduleExpression: cron(24 0/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-us1-ec2-instance
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-sec-dev-us1-lambda
+      scheduleExpression: cron(26 0/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-us1-lambda-function
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-sec-dev-us1-ecs-svc
+      scheduleExpression: cron(28 0/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-us1-ecs-service
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-sec-dev-us1-ecs-td
+      scheduleExpression: cron(30 0/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-us1-ecs-task-definition
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-sec-dev-us2-ec2
+      scheduleExpression: cron(32 0/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-us2-ec2-instance
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-sec-dev-us2-lambda
+      scheduleExpression: cron(34 0/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-us2-lambda-function
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-sec-dev-us2-ecs-svc
+      scheduleExpression: cron(36 0/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-us2-ecs-service
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-sec-dev-us2-ecs-td
+      scheduleExpression: cron(38 0/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-us2-ecs-task-definition
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
     - name: aws-sec-dev-iam-user
       scheduleExpression: rate(2 hours)
       taskCount: 1
@@ -705,6 +785,86 @@ config:
         region: us-west-2
         role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
         since: PT15M
+    - id: writer-aws-sec-dev-us1-ec2-instance
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "944130631940"
+        family: ec2_instance
+        include_global: "true"
+        per_page: "100"
+        region: us-east-1
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+    - id: writer-aws-sec-dev-us1-lambda-function
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "944130631940"
+        family: lambda_function
+        include_global: "true"
+        per_page: "100"
+        region: us-east-1
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+    - id: writer-aws-sec-dev-us1-ecs-service
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "944130631940"
+        family: ecs_service
+        include_global: "true"
+        per_page: "100"
+        region: us-east-1
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+    - id: writer-aws-sec-dev-us1-ecs-task-definition
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "944130631940"
+        family: ecs_task_definition
+        include_global: "true"
+        per_page: "100"
+        region: us-east-1
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+    - id: writer-aws-sec-dev-us2-ec2-instance
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "944130631940"
+        family: ec2_instance
+        include_global: "false"
+        per_page: "100"
+        region: us-west-2
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+    - id: writer-aws-sec-dev-us2-lambda-function
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "944130631940"
+        family: lambda_function
+        include_global: "false"
+        per_page: "100"
+        region: us-west-2
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+    - id: writer-aws-sec-dev-us2-ecs-service
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "944130631940"
+        family: ecs_service
+        include_global: "false"
+        per_page: "100"
+        region: us-west-2
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+    - id: writer-aws-sec-dev-us2-ecs-task-definition
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "944130631940"
+        family: ecs_task_definition
+        include_global: "false"
+        per_page: "100"
+        region: us-west-2
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
     - id: writer-aws-sec-dev-iam-user
       sourceId: aws
       tenantId: writer

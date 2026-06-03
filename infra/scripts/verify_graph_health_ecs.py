@@ -38,7 +38,7 @@ AWS_CAN_REACH_REQUIRED_FAMILIES = {"resource_exposure"}
 AWS_CAN_ASSUME_REQUIRED_FAMILIES = {"iam_role_trust"}
 AWS_CAN_PERFORM_REQUIRED_FAMILIES = {"effective_permission"}
 AWS_ATTACK_PATH_RELATIONS = {"can_perform", "can_assume", "can_admin", "can_impersonate"}
-GRAPH_RELATIONS_TO_OBSERVE = AWS_ATTACK_PATH_RELATIONS | {"can_reach"}
+GRAPH_RELATIONS_TO_OBSERVE = AWS_ATTACK_PATH_RELATIONS | {"can_reach", "runs_as"}
 INGEST_RUN_ERROR_DETAIL_LIMIT = 500
 
 
@@ -490,7 +490,9 @@ def _run_graph_command(
     containers = task.get("containers") or []
     cerebro_container = next((container for container in containers if container.get("name") == "cerebro"), None)
     exit_code = cerebro_container.get("exitCode") if cerebro_container else None
-    fetch_messages = lambda: _task_messages(task, region, (context.log_group, context.stream_prefix))
+    def fetch_messages() -> list[str]:
+        return _task_messages(task, region, (context.log_group, context.stream_prefix))
+
     if exit_code != 0 and not allow_nonzero:
         messages = _wait_for_task_messages(fetch_messages)
         raise RuntimeError(f"graph command {' '.join(command)} exited with {exit_code}: {task_arn}; log tail: {_log_tail(messages)}")
