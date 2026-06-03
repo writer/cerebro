@@ -155,12 +155,28 @@ def _mcp_oauth_loopback_register_rule(suffix: str, loopback_origin: str, priorit
     )
 
 
+def _mcp_oauth_loopback_token_rule(suffix: str, loopback_origin: str, priority: int) -> aws.wafv2.WebAclRuleArgs:
+    return _mcp_oauth_loopback_allow_rule(
+        name=f"allow-mcp-oauth-loopback-token-{suffix}",
+        priority=priority,
+        statements=[
+            _method_match("POST"),
+            _uri_path_match("/oauth/token"),
+            _registration_body_match("redirect_uri="),
+            _registration_body_loopback_match(loopback_origin),
+        ],
+    )
+
+
 def _mcp_oauth_loopback_allow_rules() -> list[aws.wafv2.WebAclRuleArgs]:
     """Allow MCP OAuth loopback redirects through managed SSRF/RFI rules."""
     rules: list[aws.wafv2.WebAclRuleArgs] = []
     priority = 2
     for suffix, loopback_origin in MCP_OAUTH_LOOPBACK_ORIGINS:
         rules.append(_mcp_oauth_loopback_authorize_rule(suffix, loopback_origin, priority))
+        priority += 1
+    for suffix, loopback_origin in MCP_OAUTH_LOOPBACK_ORIGINS:
+        rules.append(_mcp_oauth_loopback_token_rule(suffix, loopback_origin, priority))
         priority += 1
     for suffix, loopback_origin in MCP_OAUTH_LOOPBACK_ORIGINS:
         rules.append(_mcp_oauth_loopback_register_rule(suffix, loopback_origin, priority))
@@ -225,7 +241,7 @@ def create_waf(
             # AWS Managed Rules - Common Rule Set
             aws.wafv2.WebAclRuleArgs(
                 name="aws-common-rules",
-                priority=10,
+                priority=20,
                 override_action=aws.wafv2.WebAclRuleOverrideActionArgs(
                     none=aws.wafv2.WebAclRuleOverrideActionNoneArgs(),
                 ),
@@ -244,7 +260,7 @@ def create_waf(
             # AWS Managed Rules - Known Bad Inputs
             aws.wafv2.WebAclRuleArgs(
                 name="aws-bad-inputs",
-                priority=20,
+                priority=30,
                 override_action=aws.wafv2.WebAclRuleOverrideActionArgs(
                     none=aws.wafv2.WebAclRuleOverrideActionNoneArgs(),
                 ),
@@ -263,7 +279,7 @@ def create_waf(
             # AWS Managed Rules - SQL Injection
             aws.wafv2.WebAclRuleArgs(
                 name="aws-sqli",
-                priority=30,
+                priority=40,
                 override_action=aws.wafv2.WebAclRuleOverrideActionArgs(
                     none=aws.wafv2.WebAclRuleOverrideActionNoneArgs(),
                 ),
