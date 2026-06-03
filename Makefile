@@ -59,7 +59,7 @@ test:
 sdk-test: sdk-python-test sdk-typescript-test sdk-typescript-check
 
 sdk-python-test:
-	cd sdk/python && python3 -m unittest discover -s tests
+	cd sdk/python && python3 -m pip install 'protobuf>=5.29.5,<6' && python3 -m unittest discover -s tests
 
 sdk-typescript-test:
 	cd sdk/typescript && npm test
