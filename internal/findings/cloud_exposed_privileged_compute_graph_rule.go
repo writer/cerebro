@@ -9,14 +9,19 @@ func newCloudExposedPrivilegedComputeRoleRule() Rule {
 		"Detect publicly reachable AWS compute workloads that run as admin-equivalent or privilege-escalating roles.",
 		"CRITICAL",
 		"finding.cloud_exposed_privileged_compute_role",
-		[]string{"cloud", "aws", "compute", "ecs", "lambda", "ec2", "attack-path", "public-exposure", "privilege-escalation", "attack.t1190", "attack.t1098"},
+		[]string{"cloud", "aws", "compute", "ecs", "eks", "fargate", "lambda", "ec2", "attack-path", "public-exposure", "privilege-escalation", "attack.t1190", "attack.t1098"},
 		[]string{"compute_workload_urn", "runtime_role_urn", "permission_urn"},
 	)
 	definition.EventKinds = []string{
 		"aws.ec2_instance",
 		"aws.lambda_function",
 		"aws.ecs_service",
+		"aws.ecs_task",
 		"aws.ecs_task_definition",
+		"aws.eks_cluster",
+		"aws.eks_nodegroup",
+		"aws.eks_fargate_profile",
+		"aws.eks_pod_identity_association",
 		"aws.effective_permission",
 		"aws.iam_role_assignment",
 		"aws.iam_role_trust",
@@ -32,13 +37,18 @@ func newCloudExposedPrivilegedComputeRoleRule() Rule {
 		"https://attack.mitre.org/techniques/T1190/",
 		"https://attack.mitre.org/techniques/T1098/",
 	}
-	definition.Runbook = "Validate the public entry point, remove unnecessary public ingress, and reduce the EC2 instance profile, Lambda role, or ECS task role to least privilege. For ECS services, review the linked task definition role first."
+	definition.Runbook = "Validate the public entry point, remove unnecessary public ingress, and reduce the EC2 instance profile, Lambda role, ECS task role, EKS cluster/node role, or EKS pod identity role to least privilege. For ECS services and tasks, review the linked task definition role first."
 	return newCoordinationGraphRule(definition, map[string][]string{
 		"aws": {
 			"ec2_instance",
 			"lambda_function",
 			"ecs_service",
+			"ecs_task",
 			"ecs_task_definition",
+			"eks_cluster",
+			"eks_nodegroup",
+			"eks_fargate_profile",
+			"eks_pod_identity_association",
 			"effective_permission",
 			"iam_role_assignment",
 			"iam_role_trust",
@@ -48,7 +58,7 @@ func newCloudExposedPrivilegedComputeRoleRule() Rule {
 	}, `MATCH (public:Entity {tenant_id: $tenant_id})-[reach:RELATION {relation: 'can_reach'}]->(entry:Entity {tenant_id: $tenant_id})
 MATCH (workload:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'belongs_to'}]->(account:Entity {tenant_id: $tenant_id, entity_type: 'cloud.account'})
 WHERE public.entity_type ENDS WITH '.public_principal'
-  AND workload.entity_type IN ['aws.ec2.instance', 'aws.lambda.function', 'aws.ecs.service']
+  AND workload.entity_type IN ['aws.ec2.instance', 'aws.lambda.function', 'aws.ecs.service', 'aws.ecs.task', 'aws.eks.cluster', 'aws.eks.nodegroup', 'aws.eks.fargate_profile', 'aws.eks.pod_identity_association']
   AND (
     entry = workload
     OR EXISTS {
@@ -66,7 +76,7 @@ OPTIONAL MATCH (workload)-[directRun:RELATION {relation: 'runs_as'}]->(directRol
 OPTIONAL MATCH (workload)-[taskLink:RELATION {relation: 'depends_on'}]->(taskDefinition:Entity {tenant_id: $tenant_id, entity_type: 'aws.ecs.task_definition'})-[taskRun:RELATION {relation: 'runs_as'}]->(taskRole:Entity {tenant_id: $tenant_id, entity_type: 'aws.role'})
 WITH public, reach, entry, workload, account, taskDefinition, coalesce(directRole, taskRole) AS role, coalesce(directRun.attributes_json, taskRun.attributes_json, '') AS run_attributes_json, taskLink
 WHERE role IS NOT NULL
-  AND (workload.entity_type <> 'aws.ecs.service' OR taskDefinition IS NOT NULL)
+  AND (NOT workload.entity_type IN ['aws.ecs.service', 'aws.ecs.task'] OR taskDefinition IS NOT NULL)
 MATCH (role)-[access:RELATION]->(permission:Entity {tenant_id: $tenant_id})
 WHERE access.relation IN ['can_admin', 'can_assume', 'can_perform']
   AND (

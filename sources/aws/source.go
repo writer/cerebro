@@ -32,6 +32,8 @@ import (
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	ecstypes "github.com/aws/aws-sdk-go-v2/service/ecs/types"
+	"github.com/aws/aws-sdk-go-v2/service/eks"
+	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
@@ -71,7 +73,12 @@ const (
 	familyCloudTrail          = "cloudtrail"
 	familyEC2Instance         = "ec2_instance"
 	familyECSService          = "ecs_service"
+	familyECSTask             = "ecs_task"
 	familyECSTaskDefinition   = "ecs_task_definition"
+	familyEKSCluster          = "eks_cluster"
+	familyEKSNodegroup        = "eks_nodegroup"
+	familyEKSFargateProfile   = "eks_fargate_profile"
+	familyEKSPodIdentity      = "eks_pod_identity_association"
 	familyEffectivePermission = "effective_permission"
 	familyIAMGroup            = "iam_group"
 	familyIAMMembership       = "iam_group_membership"
@@ -127,6 +134,7 @@ type awsClients struct {
 	cloudFront   awsCloudFrontAPI
 	elbv2        awsELBV2API
 	ecs          awsECSAPI
+	eks          awsEKSAPI
 	apiGateway   awsAPIGatewayAPI
 	apiGatewayV2 awsAPIGatewayV2API
 	lambda       awsLambdaAPI
@@ -168,8 +176,21 @@ type awsECSAPI interface {
 	ListClusters(context.Context, *ecs.ListClustersInput, ...func(*ecs.Options)) (*ecs.ListClustersOutput, error)
 	ListServices(context.Context, *ecs.ListServicesInput, ...func(*ecs.Options)) (*ecs.ListServicesOutput, error)
 	DescribeServices(context.Context, *ecs.DescribeServicesInput, ...func(*ecs.Options)) (*ecs.DescribeServicesOutput, error)
+	ListTasks(context.Context, *ecs.ListTasksInput, ...func(*ecs.Options)) (*ecs.ListTasksOutput, error)
+	DescribeTasks(context.Context, *ecs.DescribeTasksInput, ...func(*ecs.Options)) (*ecs.DescribeTasksOutput, error)
 	ListTaskDefinitions(context.Context, *ecs.ListTaskDefinitionsInput, ...func(*ecs.Options)) (*ecs.ListTaskDefinitionsOutput, error)
 	DescribeTaskDefinition(context.Context, *ecs.DescribeTaskDefinitionInput, ...func(*ecs.Options)) (*ecs.DescribeTaskDefinitionOutput, error)
+}
+
+type awsEKSAPI interface {
+	ListClusters(context.Context, *eks.ListClustersInput, ...func(*eks.Options)) (*eks.ListClustersOutput, error)
+	DescribeCluster(context.Context, *eks.DescribeClusterInput, ...func(*eks.Options)) (*eks.DescribeClusterOutput, error)
+	ListNodegroups(context.Context, *eks.ListNodegroupsInput, ...func(*eks.Options)) (*eks.ListNodegroupsOutput, error)
+	DescribeNodegroup(context.Context, *eks.DescribeNodegroupInput, ...func(*eks.Options)) (*eks.DescribeNodegroupOutput, error)
+	ListFargateProfiles(context.Context, *eks.ListFargateProfilesInput, ...func(*eks.Options)) (*eks.ListFargateProfilesOutput, error)
+	DescribeFargateProfile(context.Context, *eks.DescribeFargateProfileInput, ...func(*eks.Options)) (*eks.DescribeFargateProfileOutput, error)
+	ListPodIdentityAssociations(context.Context, *eks.ListPodIdentityAssociationsInput, ...func(*eks.Options)) (*eks.ListPodIdentityAssociationsOutput, error)
+	DescribePodIdentityAssociation(context.Context, *eks.DescribePodIdentityAssociationInput, ...func(*eks.Options)) (*eks.DescribePodIdentityAssociationOutput, error)
 }
 
 type awsRoute53API interface {
@@ -484,6 +505,16 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(service awsECSService) string { return awssdk.ToString(service.Service.ServiceArn) },
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsECSTask]{
+			Name:  familyECSTask,
+			Label: "aws ecs tasks",
+			List:  listECSTasks,
+			Event: ecsTaskEvent,
+			URN: func(settings settings, task awsECSTask) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_ecs_task:%s", settings.accountID, awssdk.ToString(task.Task.TaskArn)), nil
+			},
+			CursorFallback: func(task awsECSTask) string { return awssdk.ToString(task.Task.TaskArn) },
+		}),
 		awsFamily(s.clients, awsFamilyOptions[ecstypes.TaskDefinition]{
 			Name:  familyECSTaskDefinition,
 			Label: "aws ecs task definitions",
@@ -493,6 +524,54 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:aws_ecs_task_definition:%s", settings.accountID, awssdk.ToString(task.TaskDefinitionArn)), nil
 			},
 			CursorFallback: func(task ecstypes.TaskDefinition) string { return awssdk.ToString(task.TaskDefinitionArn) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[ekstypes.Cluster]{
+			Name:  familyEKSCluster,
+			Label: "aws eks clusters",
+			List:  listEKSClusters,
+			Event: eksClusterEvent,
+			URN: func(settings settings, cluster ekstypes.Cluster) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_eks_cluster:%s", settings.accountID, firstNonEmpty(awssdk.ToString(cluster.Arn), eksClusterARN(settings, awssdk.ToString(cluster.Name)))), nil
+			},
+			CursorFallback: func(cluster ekstypes.Cluster) string {
+				return firstNonEmpty(awssdk.ToString(cluster.Arn), awssdk.ToString(cluster.Name))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsEKSNodegroup]{
+			Name:  familyEKSNodegroup,
+			Label: "aws eks nodegroups",
+			List:  listEKSNodegroups,
+			Event: eksNodegroupEvent,
+			URN: func(settings settings, nodegroup awsEKSNodegroup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_eks_nodegroup:%s", settings.accountID, awssdk.ToString(nodegroup.Nodegroup.NodegroupArn)), nil
+			},
+			CursorFallback: func(nodegroup awsEKSNodegroup) string {
+				return firstNonEmpty(awssdk.ToString(nodegroup.Nodegroup.NodegroupArn), nodegroup.ClusterName+"/"+awssdk.ToString(nodegroup.Nodegroup.NodegroupName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsEKSFargateProfile]{
+			Name:  familyEKSFargateProfile,
+			Label: "aws eks fargate profiles",
+			List:  listEKSFargateProfiles,
+			Event: eksFargateProfileEvent,
+			URN: func(settings settings, profile awsEKSFargateProfile) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_eks_fargate_profile:%s", settings.accountID, awssdk.ToString(profile.Profile.FargateProfileArn)), nil
+			},
+			CursorFallback: func(profile awsEKSFargateProfile) string {
+				return firstNonEmpty(awssdk.ToString(profile.Profile.FargateProfileArn), profile.ClusterName+"/"+awssdk.ToString(profile.Profile.FargateProfileName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[ekstypes.PodIdentityAssociation]{
+			Name:  familyEKSPodIdentity,
+			Label: "aws eks pod identity associations",
+			List:  listEKSPodIdentityAssociations,
+			Event: eksPodIdentityAssociationEvent,
+			URN: func(settings settings, association ekstypes.PodIdentityAssociation) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_eks_pod_identity_association:%s", settings.accountID, firstNonEmpty(awssdk.ToString(association.AssociationArn), awssdk.ToString(association.AssociationId))), nil
+			},
+			CursorFallback: func(association ekstypes.PodIdentityAssociation) string {
+				return firstNonEmpty(awssdk.ToString(association.AssociationArn), awssdk.ToString(association.AssociationId))
+			},
 		}),
 		awsFamily(s.clients, awsFamilyOptions[iamPolicyAssignment]{
 			Name:  familyEffectivePermission,
@@ -653,6 +732,7 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		cloudFront:   cloudfront.NewFromConfig(cfg),
 		elbv2:        elbv2.NewFromConfig(cfg),
 		ecs:          ecs.NewFromConfig(cfg),
+		eks:          eks.NewFromConfig(cfg),
 		apiGateway:   apigateway.NewFromConfig(cfg),
 		apiGatewayV2: apigatewayv2.NewFromConfig(cfg),
 		lambda:       lambda.NewFromConfig(cfg),
@@ -713,7 +793,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECSService, familyECSTaskDefinition, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyLambdaFunction, familyPublicEndpoint, familyResourceExposure:
+	case familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyLambdaFunction, familyPublicEndpoint, familyResourceExposure:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -728,7 +808,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("aws principal_type must be user, group, or role when family=%q", familyIAMRoleAssign)
 		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, ec2_instance, ecs_service, ecs_task_definition, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, lambda_function, public_endpoint, or resource_exposure")
+		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, ec2_instance, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, lambda_function, public_endpoint, or resource_exposure")
 	}
 	return settings, nil
 }

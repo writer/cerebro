@@ -108,8 +108,13 @@
       "event_kinds": [
         "aws.ec2_instance",
         "aws.ecs_service",
+        "aws.ecs_task",
         "aws.ecs_task_definition",
         "aws.effective_permission",
+        "aws.eks_cluster",
+        "aws.eks_fargate_profile",
+        "aws.eks_nodegroup",
+        "aws.eks_pod_identity_association",
         "aws.iam_role_assignment",
         "aws.iam_role_trust",
         "aws.lambda_function",
@@ -129,6 +134,8 @@
         "compute",
         "ec2",
         "ecs",
+        "eks",
+        "fargate",
         "lambda",
         "privilege-escalation",
         "public-exposure"
@@ -142,7 +149,7 @@
         "Approved public compute endpoint whose runtime role is intentionally broad and protected by compensating controls not yet modeled in the graph.",
         "Temporary deployment or break-glass role attachment during a documented maintenance window."
       ],
-      "runbook": "Validate the public entry point, remove unnecessary public ingress, and reduce the EC2 instance profile, Lambda role, or ECS task role to least privilege. For ECS services, review the linked task definition role first.",
+      "runbook": "Validate the public entry point, remove unnecessary public ingress, and reduce the EC2 instance profile, Lambda role, ECS task role, EKS cluster/node role, or EKS pod identity role to least privilege. For ECS services and tasks, review the linked task definition role first.",
       "fingerprint_fields": [
         "compute_workload_urn",
         "runtime_role_urn",

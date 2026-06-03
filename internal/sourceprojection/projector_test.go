@@ -3277,6 +3277,29 @@ func TestProjectAWSComputeInventoryDepth(t *testing.T) {
 			},
 		},
 		{
+			Id:       "aws-ecs-task-orders",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.ecs_task",
+			Attributes: map[string]string{
+				"cluster_arn":           "arn:aws:ecs:us-east-1:123456789012:cluster/prod",
+				"cluster_name":          "prod",
+				"domain":                "123456789012",
+				"network_interface_ids": "eni-task",
+				"resource_id":           "arn:aws:ecs:us-east-1:123456789012:task/prod/abcd1234",
+				"resource_name":         "abcd1234",
+				"resource_provider":     "aws",
+				"resource_type":         "ecs_task",
+				"security_group_ids":    "sg-task",
+				"service_arn":           "arn:aws:ecs:us-east-1:123456789012:service/prod/orders",
+				"service_name":          "orders",
+				"subnet_ids":            "subnet-task",
+				"task_arn":              "arn:aws:ecs:us-east-1:123456789012:task/prod/abcd1234",
+				"task_definition_arn":   "arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7",
+				"vpc_id":                "vpc-1",
+			},
+		},
+		{
 			Id:       "aws-ecs-task-definition-orders",
 			TenantId: "writer",
 			SourceId: "aws",
@@ -3294,6 +3317,89 @@ func TestProjectAWSComputeInventoryDepth(t *testing.T) {
 				"task_role_name":      "ECSTaskRole",
 			},
 		},
+		{
+			Id:       "aws-eks-cluster-prod",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.eks_cluster",
+			Attributes: map[string]string{
+				"cluster_arn":            "arn:aws:eks:us-east-1:123456789012:cluster/prod-eks",
+				"cluster_name":           "prod-eks",
+				"domain":                 "123456789012",
+				"endpoint_public_access": "true",
+				"public_access_cidrs":    "0.0.0.0/0",
+				"resource_id":            "arn:aws:eks:us-east-1:123456789012:cluster/prod-eks",
+				"resource_name":          "prod-eks",
+				"resource_provider":      "aws",
+				"resource_type":          "eks_cluster",
+				"role_arn":               "arn:aws:iam::123456789012:role/EKSClusterRole",
+				"role_name":              "EKSClusterRole",
+				"security_group_ids":     "sg-eks,sg-eks-control",
+				"subnet_ids":             "subnet-eks",
+				"vpc_id":                 "vpc-1",
+			},
+		},
+		{
+			Id:       "aws-eks-nodegroup-managed-linux",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.eks_nodegroup",
+			Attributes: map[string]string{
+				"cluster_arn":       "arn:aws:eks:us-east-1:123456789012:cluster/prod-eks",
+				"cluster_name":      "prod-eks",
+				"domain":            "123456789012",
+				"nodegroup_arn":     "arn:aws:eks:us-east-1:123456789012:nodegroup/prod-eks/managed-linux/uuid",
+				"nodegroup_name":    "managed-linux",
+				"resource_id":       "arn:aws:eks:us-east-1:123456789012:nodegroup/prod-eks/managed-linux/uuid",
+				"resource_name":     "managed-linux",
+				"resource_provider": "aws",
+				"resource_type":     "eks_nodegroup",
+				"role_arn":          "arn:aws:iam::123456789012:role/EKSNodeRole",
+				"role_name":         "EKSNodeRole",
+				"subnet_ids":        "subnet-eks",
+			},
+		},
+		{
+			Id:       "aws-eks-fargate-profile-payments",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.eks_fargate_profile",
+			Attributes: map[string]string{
+				"cluster_arn":          "arn:aws:eks:us-east-1:123456789012:cluster/prod-eks",
+				"cluster_name":         "prod-eks",
+				"domain":               "123456789012",
+				"fargate_profile_arn":  "arn:aws:eks:us-east-1:123456789012:fargateprofile/prod-eks/payments/uuid",
+				"fargate_profile_name": "payments",
+				"resource_id":          "arn:aws:eks:us-east-1:123456789012:fargateprofile/prod-eks/payments/uuid",
+				"resource_name":        "payments",
+				"resource_provider":    "aws",
+				"resource_type":        "eks_fargate_profile",
+				"role_arn":             "arn:aws:iam::123456789012:role/EKSFargatePodExecutionRole",
+				"role_name":            "EKSFargatePodExecutionRole",
+				"selector_namespaces":  "payments",
+				"subnet_ids":           "subnet-eks",
+			},
+		},
+		{
+			Id:       "aws-eks-pod-identity-payments-api",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.eks_pod_identity_association",
+			Attributes: map[string]string{
+				"association_arn": "arn:aws:eks:us-east-1:123456789012:podidentityassociation/prod-eks/a-123",
+				"association_id":  "a-123",
+				"cluster_arn":     "arn:aws:eks:us-east-1:123456789012:cluster/prod-eks",
+				"cluster_name":    "prod-eks",
+				"domain":          "123456789012",
+				"namespace":       "payments",
+				"resource_id":     "arn:aws:eks:us-east-1:123456789012:podidentityassociation/prod-eks/a-123",
+				"resource_name":   "api",
+				"resource_type":   "eks_pod_identity_association",
+				"role_arn":        "arn:aws:iam::123456789012:role/EKSPaymentsPodRole",
+				"role_name":       "EKSPaymentsPodRole",
+				"service_account": "api",
+			},
+		},
 	}
 	for _, event := range events {
 		if _, err := service.Project(context.Background(), event); err != nil {
@@ -3304,7 +3410,14 @@ func TestProjectAWSComputeInventoryDepth(t *testing.T) {
 	ec2URN := "urn:cerebro:writer:aws_ec2_instance:i-123"
 	lambdaURN := "urn:cerebro:writer:aws_lambda_function:arn:aws:lambda:us-east-1:123456789012:function:orders"
 	ecsServiceURN := "urn:cerebro:writer:aws_ecs_service:arn:aws:ecs:us-east-1:123456789012:service/prod/orders"
+	ecsTaskURN := "urn:cerebro:writer:aws_ecs_task:arn:aws:ecs:us-east-1:123456789012:task/prod/abcd1234"
 	ecsTaskDefinitionURN := "urn:cerebro:writer:aws_ecs_task_definition:arn:aws:ecs:us-east-1:123456789012:task-definition/orders:7"
+	eksClusterURN := "urn:cerebro:writer:aws_eks_cluster:arn:aws:eks:us-east-1:123456789012:cluster/prod-eks"
+	eksNodegroupURN := "urn:cerebro:writer:aws_eks_nodegroup:arn:aws:eks:us-east-1:123456789012:nodegroup/prod-eks/managed-linux/uuid"
+	eksFargateProfileURN := "urn:cerebro:writer:aws_eks_fargate_profile:arn:aws:eks:us-east-1:123456789012:fargateprofile/prod-eks/payments/uuid"
+	eksPodIdentityURN := "urn:cerebro:writer:aws_eks_pod_identity_association:arn:aws:eks:us-east-1:123456789012:podidentityassociation/prod-eks/a-123"
+	kubernetesNamespaceURN := "urn:cerebro:writer:kubernetes_namespace:123456789012:prod-eks:payments"
+	kubernetesServiceAccountURN := "urn:cerebro:writer:kubernetes_service_account:123456789012:prod-eks:payments:api"
 	if entity := state.entities[ec2URN]; entity == nil || entity.EntityType != "aws.ec2.instance" {
 		t.Fatalf("ec2 entity missing or wrong type: %#v", entity)
 	}
@@ -3318,8 +3431,52 @@ func TestProjectAWSComputeInventoryDepth(t *testing.T) {
 	assertProjectedLink(t, state, lambdaURN, relationMemberOf, "urn:cerebro:writer:aws_security_group:sg-lambda")
 	assertProjectedLink(t, state, ecsServiceURN, relationBelongsTo, "urn:cerebro:writer:aws_ecs_cluster:arn:aws:ecs:us-east-1:123456789012:cluster/prod")
 	assertProjectedLink(t, state, ecsServiceURN, relationDependsOn, ecsTaskDefinitionURN)
+	assertProjectedLink(t, state, ecsTaskURN, relationBelongsTo, "urn:cerebro:writer:aws_ecs_cluster:arn:aws:ecs:us-east-1:123456789012:cluster/prod")
+	assertProjectedLink(t, state, ecsTaskURN, relationBelongsTo, ecsServiceURN)
+	assertProjectedLink(t, state, ecsTaskURN, relationDependsOn, ecsTaskDefinitionURN)
+	assertProjectedLink(t, state, ecsTaskURN, relationMemberOf, "urn:cerebro:writer:aws_security_group:sg-task")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_network_interface:eni-task", relationAttachedTo, ecsTaskURN)
 	assertProjectedLink(t, state, ecsTaskDefinitionURN, relationRunsAs, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/ECSTaskRole")
 	assertProjectedLink(t, state, ecsTaskDefinitionURN, relationRunsAs, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/ECSExecutionRole")
+	assertProjectedLink(t, state, eksClusterURN, relationRunsAs, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/EKSClusterRole")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_public_principal:public_internet", relationCanReach, eksClusterURN)
+	assertProjectedLink(t, state, eksNodegroupURN, relationBelongsTo, eksClusterURN)
+	assertProjectedLink(t, state, eksNodegroupURN, relationRunsAs, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/EKSNodeRole")
+	assertProjectedLink(t, state, eksFargateProfileURN, relationBelongsTo, eksClusterURN)
+	assertProjectedLink(t, state, eksFargateProfileURN, relationRunsAs, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/EKSFargatePodExecutionRole")
+	assertProjectedLink(t, state, eksFargateProfileURN, relationSupports, kubernetesNamespaceURN)
+	assertProjectedLink(t, state, eksPodIdentityURN, relationBelongsTo, eksClusterURN)
+	assertProjectedLink(t, state, eksPodIdentityURN, relationBelongsTo, kubernetesNamespaceURN)
+	assertProjectedLink(t, state, eksPodIdentityURN, relationSupports, kubernetesServiceAccountURN)
+	assertProjectedLink(t, state, kubernetesServiceAccountURN, relationCanAssume, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/EKSPaymentsPodRole")
+}
+
+func TestProjectAWSRestrictedEKSClusterDoesNotCreatePublicReachability(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	clusterURN := "urn:cerebro:writer:aws_eks_cluster:arn:aws:eks:us-east-1:123456789012:cluster/restricted-eks"
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-eks-cluster-restricted",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.eks_cluster",
+		Attributes: map[string]string{
+			"cluster_arn":            "arn:aws:eks:us-east-1:123456789012:cluster/restricted-eks",
+			"cluster_name":           "restricted-eks",
+			"domain":                 "123456789012",
+			"endpoint_public_access": "true",
+			"public_access_cidrs":    "203.0.113.0/24",
+			"resource_id":            "arn:aws:eks:us-east-1:123456789012:cluster/restricted-eks",
+			"resource_name":          "restricted-eks",
+			"resource_provider":      "aws",
+			"resource_type":          "eks_cluster",
+		},
+	}
+	if _, err := service.Project(context.Background(), event); err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:aws_public_principal:public_internet", relationCanReach, clusterURN)
+	assertProjectedLink(t, state, clusterURN, relationBelongsTo, "urn:cerebro:writer:cloud_account:123456789012")
 }
 
 func TestProjectAWSAccountTrustPrincipal(t *testing.T) {
