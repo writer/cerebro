@@ -212,6 +212,9 @@ func TestMCPOAuthFlowIssuesCapabilityTokenForMCP(t *testing.T) {
 		body, _ := io.ReadAll(mcpResp.Body)
 		t.Fatalf("MCP status = %d body=%s", mcpResp.StatusCode, body)
 	}
+	if got := mcpResp.Header.Get("Mcp-Session-Id"); got != "" {
+		t.Fatalf("MCP OAuth Mcp-Session-Id = %q, want empty for stateless MCP", got)
+	}
 	var mcpPayload map[string]any
 	if err := json.NewDecoder(mcpResp.Body).Decode(&mcpPayload); err != nil {
 		t.Fatalf("decode MCP payload: %v", err)
