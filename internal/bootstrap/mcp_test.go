@@ -233,7 +233,7 @@ func TestMCPAssetsSearchUsesTenantScopedCypher(t *testing.T) {
 			"source_id":       "aws",
 			"entity_type":     "aws.rds.instance",
 			"label":           "prod-db",
-			"attributes_json": `{"account_id":"123456789012","environment":"prod"}`,
+			"attributes_json": `{"account_id":"123456789012","api_key":"secret-api-key","environment":"prod","private_key":"secret-private-key","token_id":"token-123"}`,
 		}},
 		{Values: map[string]any{
 			"urn":             "urn:cerebro:other:asset:prod-db",
@@ -280,6 +280,14 @@ func TestMCPAssetsSearchUsesTenantScopedCypher(t *testing.T) {
 	}
 	attributes := asset["attributes"].(map[string]any)
 	if attributes["environment"] != "prod" {
+		t.Fatalf("attributes = %#v", attributes)
+	}
+	for _, key := range []string{"api_key", "private_key", "token_id"} {
+		if attributes[key] != "[redacted]" {
+			t.Fatalf("attributes[%q] = %#v, want redacted in %#v", key, attributes[key], attributes)
+		}
+	}
+	if attributes["account_id"] != "123456789012" {
 		t.Fatalf("attributes = %#v", attributes)
 	}
 }
