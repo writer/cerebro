@@ -67,6 +67,7 @@ type App struct {
 	observationStore      risk.ObservationStore
 	mcpOAuthService       *mcpoauth.Service
 	mcpOAuthRegisterLimit *deviceauth.TokenBucket
+	mcpOAuthEndpointLimit *deviceauth.TokenBucket
 }
 
 type bootstrapService struct {
@@ -155,6 +156,7 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 	}
 	if cfg.Auth.MCPOAuth.Enabled {
 		app.mcpOAuthRegisterLimit = deviceauth.NewTokenBucket(oauthRegisterRatePerSecond, oauthRegisterBurst)
+		app.mcpOAuthEndpointLimit = deviceauth.NewTokenBucket(oauthEndpointRatePerSecond, oauthEndpointBurst)
 		service, err := mcpoauth.NewService(cfg.Auth.MCPOAuth, oauthStore, func(ctx context.Context, grant mcpoauth.AccessGrant, ttl time.Duration, now time.Time) (string, error) {
 			return issueCapabilityToken(cfg.Auth, capabilityClaims{
 				Audience:       cfg.Auth.CapabilityTokenAudience,

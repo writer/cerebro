@@ -52,6 +52,7 @@ func (app *App) registerOAuthRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /oauth/authorize", routeSurfacePublicHTTP, app.handleOAuthAuthorize)
 	registerHTTPRoute(mux, "GET /oauth/callback", routeSurfacePublicHTTP, app.handleOAuthCallback)
 	registerHTTPRoute(mux, "POST /oauth/token", routeSurfacePublicHTTP, app.handleOAuthToken)
+	registerHTTPRoute(mux, "POST /oauth/revoke", routeSurfacePublicHTTP, app.handleOAuthRevoke)
 	registerHTTPRoute(mux, "POST /oauth/register", routeSurfacePublicHTTP, app.handleOAuthRegister)
 }
 

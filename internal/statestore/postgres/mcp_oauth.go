@@ -395,6 +395,22 @@ func (s *Store) RevokeOAuthRefreshFamily(ctx context.Context, familyID string) e
 	return nil
 }
 
+func (s *Store) RevokeOAuthRefreshToken(ctx context.Context, tokenHash [32]byte, clientID string) error {
+	if err := s.ensureMCPOAuthTables(ctx); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `
+UPDATE mcp_oauth_refresh_tokens
+SET family_revoked = TRUE
+WHERE family_id IN (
+  SELECT family_id FROM mcp_oauth_refresh_tokens WHERE token_hash = $1 AND client_id = $2
+)`, tokenHash[:], strings.TrimSpace(clientID))
+	if err != nil {
+		return fmt.Errorf("revoke mcp oauth refresh token: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) ensureMCPOAuthTables(ctx context.Context) error {
 	return s.ensureStatements(ctx, &s.mcpOAuthTablesReady, "mcp_oauth", ensureMCPOAuthStatements)
 }
