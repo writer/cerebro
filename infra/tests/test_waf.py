@@ -42,19 +42,24 @@ class WafOAuthLoopbackAllowRuleTest(unittest.TestCase):
             [rule.name for rule in rules],
             [
                 "rate-limit",
-                "allow-mcp-oauth-loopback-authorize",
-                "allow-mcp-oauth-loopback-register",
+                "allow-mcp-oauth-loopback-authorize-ipv4",
+                "allow-mcp-oauth-loopback-authorize-localhost",
+                "allow-mcp-oauth-loopback-authorize-ipv6",
+                "allow-mcp-oauth-loopback-register-ipv4",
+                "allow-mcp-oauth-loopback-register-localhost",
+                "allow-mcp-oauth-loopback-register-ipv6",
                 "aws-common-rules",
                 "aws-bad-inputs",
                 "aws-sqli",
             ],
         )
-        self.assertLess(rules[1].priority, rules[3].priority)
-        self.assertLess(rules[2].priority, rules[3].priority)
+        for rule in rules[1:7]:
+            self.assertLess(rule.priority, rules[7].priority)
 
     def test_loopback_oauth_allow_rules_are_narrowly_scoped(self) -> None:
         rules = waf._mcp_oauth_loopback_allow_rules()
         encoded = json.dumps(_to_data(rules), sort_keys=True)
+        self.assertNotIn("or_statement", encoded)
 
         for expected in (
             "/oauth/authorize",

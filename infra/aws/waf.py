@@ -8,6 +8,13 @@ import pulumi
 import pulumi_aws as aws
 
 
+MCP_OAUTH_LOOPBACK_ORIGINS = (
+    ("ipv4", "http://127.0.0.1"),
+    ("localhost", "http://localhost"),
+    ("ipv6", "http://[::1]"),
+)
+
+
 def _redacted_header(name: str) -> aws.wafv2.WebAclLoggingConfigurationRedactedFieldArgs:
     return aws.wafv2.WebAclLoggingConfigurationRedactedFieldArgs(
         single_header=aws.wafv2.WebAclLoggingConfigurationRedactedFieldSingleHeaderArgs(
@@ -60,106 +67,105 @@ def _uri_path_match(path: str) -> aws.wafv2.WebAclRuleStatementArgs:
     )
 
 
-def _redirect_uri_loopback_match() -> aws.wafv2.WebAclRuleStatementArgs:
-    query_argument = aws.wafv2.WebAclRuleStatementByteMatchStatementFieldToMatchArgs(
-        single_query_argument=aws.wafv2.WebAclRuleStatementByteMatchStatementFieldToMatchSingleQueryArgumentArgs(
-            name="redirect_uri",
+def _redirect_uri_loopback_match(loopback_origin: str) -> aws.wafv2.WebAclRuleStatementArgs:
+    return _byte_match_statement(
+        aws.wafv2.WebAclRuleStatementByteMatchStatementFieldToMatchArgs(
+            single_query_argument=aws.wafv2.WebAclRuleStatementByteMatchStatementFieldToMatchSingleQueryArgumentArgs(
+                name="redirect_uri",
+            ),
         ),
+        loopback_origin,
+        positional_constraint="STARTS_WITH",
+        transformations=("URL_DECODE", "LOWERCASE"),
     )
-    return aws.wafv2.WebAclRuleStatementArgs(
-        or_statement=aws.wafv2.WebAclRuleStatementOrStatementArgs(
-            statements=[
-                _byte_match_statement(
-                    query_argument,
-                    loopback_origin,
-                    positional_constraint="STARTS_WITH",
-                    transformations=("URL_DECODE", "LOWERCASE"),
-                )
-                for loopback_origin in ("http://127.0.0.1", "http://localhost", "http://[::1]")
-            ],
+
+
+def _registration_body_match(search_string: str) -> aws.wafv2.WebAclRuleStatementArgs:
+    return _byte_match_statement(
+        aws.wafv2.WebAclRuleStatementByteMatchStatementFieldToMatchArgs(
+            body=aws.wafv2.WebAclRuleStatementByteMatchStatementFieldToMatchBodyArgs(
+                oversize_handling="CONTINUE",
+            ),
+        ),
+        search_string,
+        positional_constraint="CONTAINS",
+        transformations=("LOWERCASE",),
+    )
+
+
+def _registration_body_loopback_match(loopback_origin: str) -> aws.wafv2.WebAclRuleStatementArgs:
+    return _byte_match_statement(
+        aws.wafv2.WebAclRuleStatementByteMatchStatementFieldToMatchArgs(
+            body=aws.wafv2.WebAclRuleStatementByteMatchStatementFieldToMatchBodyArgs(
+                oversize_handling="CONTINUE",
+            ),
+        ),
+        loopback_origin,
+        positional_constraint="CONTAINS",
+        transformations=("URL_DECODE", "LOWERCASE"),
+    )
+
+
+def _mcp_oauth_loopback_allow_rule(
+    name: str,
+    priority: int,
+    statements: list[aws.wafv2.WebAclRuleStatementArgs],
+) -> aws.wafv2.WebAclRuleArgs:
+    return aws.wafv2.WebAclRuleArgs(
+        name=name,
+        priority=priority,
+        action=aws.wafv2.WebAclRuleActionArgs(
+            allow=aws.wafv2.WebAclRuleActionAllowArgs(),
+        ),
+        statement=aws.wafv2.WebAclRuleStatementArgs(
+            and_statement=aws.wafv2.WebAclRuleStatementAndStatementArgs(
+                statements=statements,
+            ),
+        ),
+        visibility_config=aws.wafv2.WebAclRuleVisibilityConfigArgs(
+            cloudwatch_metrics_enabled=True,
+            metric_name=name,
+            sampled_requests_enabled=False,
         ),
     )
 
 
-def _registration_body_loopback_match() -> aws.wafv2.WebAclRuleStatementArgs:
-    body = aws.wafv2.WebAclRuleStatementByteMatchStatementFieldToMatchArgs(
-        body=aws.wafv2.WebAclRuleStatementByteMatchStatementFieldToMatchBodyArgs(
-            oversize_handling="CONTINUE",
-        ),
+def _mcp_oauth_loopback_authorize_rule(suffix: str, loopback_origin: str, priority: int) -> aws.wafv2.WebAclRuleArgs:
+    return _mcp_oauth_loopback_allow_rule(
+        name=f"allow-mcp-oauth-loopback-authorize-{suffix}",
+        priority=priority,
+        statements=[
+            _method_match("GET"),
+            _uri_path_match("/oauth/authorize"),
+            _redirect_uri_loopback_match(loopback_origin),
+        ],
     )
-    return aws.wafv2.WebAclRuleStatementArgs(
-        and_statement=aws.wafv2.WebAclRuleStatementAndStatementArgs(
-            statements=[
-                _byte_match_statement(
-                    body,
-                    '"redirect_uris"',
-                    positional_constraint="CONTAINS",
-                    transformations=("LOWERCASE",),
-                ),
-                aws.wafv2.WebAclRuleStatementArgs(
-                    or_statement=aws.wafv2.WebAclRuleStatementOrStatementArgs(
-                        statements=[
-                            _byte_match_statement(
-                                body,
-                                loopback_origin,
-                                positional_constraint="CONTAINS",
-                                transformations=("URL_DECODE", "LOWERCASE"),
-                            )
-                            for loopback_origin in ("http://127.0.0.1", "http://localhost", "http://[::1]")
-                        ],
-                    ),
-                ),
-            ],
-        ),
+
+
+def _mcp_oauth_loopback_register_rule(suffix: str, loopback_origin: str, priority: int) -> aws.wafv2.WebAclRuleArgs:
+    return _mcp_oauth_loopback_allow_rule(
+        name=f"allow-mcp-oauth-loopback-register-{suffix}",
+        priority=priority,
+        statements=[
+            _method_match("POST"),
+            _uri_path_match("/oauth/register"),
+            _registration_body_match('"redirect_uris"'),
+            _registration_body_loopback_match(loopback_origin),
+        ],
     )
 
 
 def _mcp_oauth_loopback_allow_rules() -> list[aws.wafv2.WebAclRuleArgs]:
     """Allow MCP OAuth loopback redirects through managed SSRF/RFI rules."""
-    return [
-        aws.wafv2.WebAclRuleArgs(
-            name="allow-mcp-oauth-loopback-authorize",
-            priority=2,
-            action=aws.wafv2.WebAclRuleActionArgs(
-                allow=aws.wafv2.WebAclRuleActionAllowArgs(),
-            ),
-            statement=aws.wafv2.WebAclRuleStatementArgs(
-                and_statement=aws.wafv2.WebAclRuleStatementAndStatementArgs(
-                    statements=[
-                        _method_match("GET"),
-                        _uri_path_match("/oauth/authorize"),
-                        _redirect_uri_loopback_match(),
-                    ],
-                ),
-            ),
-            visibility_config=aws.wafv2.WebAclRuleVisibilityConfigArgs(
-                cloudwatch_metrics_enabled=True,
-                metric_name="allow-mcp-oauth-loopback-authorize",
-                sampled_requests_enabled=False,
-            ),
-        ),
-        aws.wafv2.WebAclRuleArgs(
-            name="allow-mcp-oauth-loopback-register",
-            priority=3,
-            action=aws.wafv2.WebAclRuleActionArgs(
-                allow=aws.wafv2.WebAclRuleActionAllowArgs(),
-            ),
-            statement=aws.wafv2.WebAclRuleStatementArgs(
-                and_statement=aws.wafv2.WebAclRuleStatementAndStatementArgs(
-                    statements=[
-                        _method_match("POST"),
-                        _uri_path_match("/oauth/register"),
-                        _registration_body_loopback_match(),
-                    ],
-                ),
-            ),
-            visibility_config=aws.wafv2.WebAclRuleVisibilityConfigArgs(
-                cloudwatch_metrics_enabled=True,
-                metric_name="allow-mcp-oauth-loopback-register",
-                sampled_requests_enabled=False,
-            ),
-        ),
-    ]
+    rules: list[aws.wafv2.WebAclRuleArgs] = []
+    priority = 2
+    for suffix, loopback_origin in MCP_OAUTH_LOOPBACK_ORIGINS:
+        rules.append(_mcp_oauth_loopback_authorize_rule(suffix, loopback_origin, priority))
+        priority += 1
+    for suffix, loopback_origin in MCP_OAUTH_LOOPBACK_ORIGINS:
+        rules.append(_mcp_oauth_loopback_register_rule(suffix, loopback_origin, priority))
+        priority += 1
+    return rules
 
 
 def create_waf(
