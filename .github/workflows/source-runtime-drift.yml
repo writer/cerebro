@@ -110,6 +110,55 @@ jobs:
         shell: bash
         run: sudo tailscale status --json | jq -e '.BackendState == "Running"'
 
+      - name: Report runtime coverage
+        shell: bash
+        env:
+          STACK_NAME: ${{ github.event.inputs.stack || 'go-prod' }}
+          MAX_AGE_HOURS: ${{ github.event.inputs.max_age_hours || '24' }}
+        run: |
+          set -euo pipefail
+
+          case "${STACK_NAME}" in
+            go-prod)
+              api_url="${CEREBRO_API_URL_GO_PROD:-${CEREBRO_API_URL:-}}"
+              api_key="${CEREBRO_API_KEY_GO_PROD:-${CEREBRO_API_KEY:-}}"
+              ;;
+            sec-dev)
+              api_url="${CEREBRO_API_URL_SEC_DEV:-${CEREBRO_API_URL:-}}"
+              api_key="${CEREBRO_API_KEY_SEC_DEV:-${CEREBRO_API_KEY:-}}"
+              ;;
+            *)
+              echo "::error::Unsupported stack ${STACK_NAME}"
+              exit 1
+              ;;
+          esac
+
+          if [ -z "${api_url}" ] || [ -z "${api_key}" ]; then
+            echo "::error::CEREBRO_API_URL_${STACK_NAME^^} and CEREBRO_API_KEY_${STACK_NAME^^} secrets, or generic CEREBRO_API_URL/CEREBRO_API_KEY secrets, are required for live coverage checks."
+            exit 1
+          fi
+
+          uv run --project infra python infra/scripts/source_runtime_coverage_report.py \
+            --stack-file "infra/aws/Pulumi.${STACK_NAME}.yaml" \
+            --tenant-id writer \
+            --api-url "${api_url}" \
+            --api-key "${api_key}" \
+            --max-age-hours "${MAX_AGE_HOURS}" \
+            --format markdown \
+            --output "source-runtime-coverage-${STACK_NAME}.md" \
+            --json-output "source-runtime-coverage-${STACK_NAME}.json" \
+            --github-summary
+
+      - name: Upload runtime coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: source-runtime-coverage-${{ github.event.inputs.stack || 'go-prod' }}
+          path: |
+            source-runtime-coverage-${{ github.event.inputs.stack || 'go-prod' }}.md
+            source-runtime-coverage-${{ github.event.inputs.stack || 'go-prod' }}.json
+          if-no-files-found: ignore
+
       - name: Check runtime drift
         shell: bash
         env:
