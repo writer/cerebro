@@ -208,6 +208,26 @@ def _describe_tasks(cluster: str, task_arns: list[str], region: str) -> list[dic
     return response.get("tasks") or []
 
 
+def _task_stop_summary(task: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for key in ("stopCode", "stoppedReason"):
+        value = str(task.get(key) or "").strip()
+        if value:
+            parts.append(f"{key}={value}")
+    for container in task.get("containers") or []:
+        name = str(container.get("name") or "container")
+        fields = []
+        for key in ("lastStatus", "exitCode", "reason"):
+            value = container.get(key)
+            if value not in (None, ""):
+                fields.append(f"{key}={value}")
+        if fields:
+            parts.append(f"{name}({', '.join(fields)})")
+    if not parts:
+        return "no ECS stop reason available"
+    return "; ".join(parts)[:2000]
+
+
 def _latest_active_task_definition(task_definition: str, region: str) -> str:
     response = _aws(["ecs", "describe-task-definition", "--task-definition", task_definition], region)
     definition = response.get("taskDefinition") or {}
@@ -286,6 +306,8 @@ def _wait_for_task(cluster: str, task_arn: str, timeout_seconds: int, poll_secon
         tasks = _describe_tasks(cluster, [task_arn], region)
         status = str(tasks[0].get("lastStatus") or "UNKNOWN") if tasks else "UNKNOWN"
         if status == "STOPPED":
+            if tasks:
+                print(f"INFO graph command task={task_id} stopped: {_task_stop_summary(tasks[0])}", file=sys.stderr)
             return
         now = time.time()
         if now >= deadline:
@@ -494,9 +516,21 @@ def _run_graph_command(
         return _task_messages(task, region, (context.log_group, context.stream_prefix))
 
     if exit_code != 0 and not allow_nonzero:
-        messages = _wait_for_task_messages(fetch_messages)
+        try:
+            messages = _wait_for_task_messages(fetch_messages)
+        except Exception as exc:
+            raise RuntimeError(
+                f"graph command {' '.join(command)} exited with {exit_code}: {task_arn}; "
+                f"unable to fetch task logs: {exc}; ECS task stop: {_task_stop_summary(task)}"
+            ) from exc
         raise RuntimeError(f"graph command {' '.join(command)} exited with {exit_code}: {task_arn}; log tail: {_log_tail(messages)}")
-    messages, payload = _extract_graph_payload_with_retries(command, task_arn, fetch_messages)
+    try:
+        messages, payload = _extract_graph_payload_with_retries(command, task_arn, fetch_messages)
+    except Exception as exc:
+        raise RuntimeError(
+            f"graph command {' '.join(command)} failed for {task_arn}; "
+            f"ECS task stop: {_task_stop_summary(task)}; {exc}"
+        ) from exc
     return GraphCommandResult(command=command, task_arn=task_arn, exit_code=exit_code, payload=payload)
 
 

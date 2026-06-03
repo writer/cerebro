@@ -470,6 +470,26 @@ def _describe_tasks(cluster_arn: str, task_arns: list[str], region: str) -> list
     return response.get("tasks") or []
 
 
+def _task_stop_summary(task: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for key in ("stopCode", "stoppedReason"):
+        value = str(task.get(key) or "").strip()
+        if value:
+            parts.append(f"{key}={value}")
+    for container in task.get("containers") or []:
+        name = str(container.get("name") or "container")
+        fields = []
+        for key in ("lastStatus", "exitCode", "reason"):
+            value = container.get(key)
+            if value not in (None, ""):
+                fields.append(f"{key}={value}")
+        if fields:
+            parts.append(f"{name}({', '.join(fields)})")
+    if not parts:
+        return "no ECS stop reason available"
+    return "; ".join(parts)[:2000]
+
+
 def _wait_for_task(cluster_arn: str, task_arn: str, timeout_seconds: int, poll_seconds: int, region: str) -> None:
     task_id = _task_id(task_arn)
     started = time.time()
@@ -479,6 +499,8 @@ def _wait_for_task(cluster_arn: str, task_arn: str, timeout_seconds: int, poll_s
         tasks = _describe_tasks(cluster_arn, [task_arn], region)
         status = str(tasks[0].get("lastStatus") or "UNKNOWN") if tasks else "UNKNOWN"
         if status == "STOPPED":
+            if tasks:
+                print(f"INFO source runtime task={task_id} stopped: {_task_stop_summary(tasks[0])}", file=sys.stderr)
             return
         now = time.time()
         if now >= next_progress:
@@ -660,7 +682,7 @@ def _verify_task(target: RuntimeTarget, task_arn: str, region: str) -> Verificat
         try:
             log_summary = _summarize_log_messages(_task_logs(task, region))
         except Exception as exc:
-            log_summary = f"unable to fetch task logs: {exc}"
+            log_summary = f"unable to fetch task logs: {exc}; ECS task stop: {_task_stop_summary(task)}"
         raise RuntimeTaskFailedError(target.runtime_id, task_arn, exit_code, log_summary)
 
     messages = _task_logs(task, region)
@@ -713,7 +735,10 @@ def _verify_task_until_graph_ingested(
                 if result is not None:
                     return result
             if last_log_error is not None:
-                raise RuntimeError(f"unable to fetch stopped task logs for {target.runtime_id}: {last_log_error}") from last_log_error
+                raise RuntimeError(
+                    f"unable to fetch stopped task logs for {target.runtime_id}: {last_log_error}; "
+                    f"ECS task stop: {_task_stop_summary(task)}"
+                ) from last_log_error
             return _verify_task(target, task_arn, region)
         now = time.time()
         if now >= next_progress:

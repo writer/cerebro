@@ -519,6 +519,35 @@ class VerifySourceRuntimeEcsTest(unittest.TestCase):
         self.assertEqual(result.entities_projected, 5)
         self.assertEqual(result.links_projected, 3)
 
+    def test_verify_task_includes_ecs_stop_reason_when_logs_missing(self) -> None:
+        target = RuntimeTarget(
+            runtime_id="writer-cosmo-session",
+            schedule_name="cosmo-session",
+            rule_name="cerebro-go-production-orchestrator-cosmo-session",
+            target={"Arn": "cluster"},
+        )
+        task = {
+            "taskArn": "task-arn",
+            "taskDefinitionArn": "task-def",
+            "stopCode": "TaskFailedToStart",
+            "stoppedReason": "ResourceInitializationError: unable to pull secrets",
+            "containers": [
+                {
+                    "name": "cerebro",
+                    "lastStatus": "STOPPED",
+                    "exitCode": 1,
+                    "reason": "secret cerebro-go-production/MISSING was not found",
+                }
+            ],
+        }
+
+        with (
+            patch("scripts.verify_source_runtime_ecs._describe_tasks", return_value=[task]),
+            patch("scripts.verify_source_runtime_ecs._task_logs", side_effect=RuntimeError("log stream missing")),
+        ):
+            with self.assertRaisesRegex(RuntimeTaskFailedError, "ResourceInitializationError.*MISSING"):
+                _verify_task(target, "task-arn", "us-east-1")
+
     def test_task_logs_caches_log_options_by_task_definition(self) -> None:
         task = {
             "taskArn": "arn:aws:ecs:us-east-1:123:task/cluster/task-1",
