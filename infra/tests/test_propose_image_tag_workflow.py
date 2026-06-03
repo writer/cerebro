@@ -43,6 +43,13 @@ class ProposeImageTagWorkflowTest(unittest.TestCase):
                 job_block = workflow.split(f"name: {job_name}", 1)[1].split("    steps:", 1)[0]
                 self.assertIn("timeout-minutes: 20", job_block)
 
+    def test_main_aws_deploy_jobs_fetch_history_for_verification_diff(self) -> None:
+        workflow = INFRA_DEPLOY_WORKFLOW.read_text(encoding="utf-8")
+        for job_name in ("Deploy sec-dev", "Deploy go-prod"):
+            with self.subTest(job_name=job_name):
+                job_block = workflow.split(f"name: {job_name}", 1)[1].split("      - name: Install uv", 1)[0]
+                self.assertIn("fetch-depth: 0", job_block)
+
 
 if __name__ == "__main__":
     unittest.main()
