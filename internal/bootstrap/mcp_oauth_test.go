@@ -423,8 +423,12 @@ func TestMCPOAuthDynamicClientRegistration(t *testing.T) {
 	if metadata["registration_endpoint"] != "https://cerebro.example/oauth/register" {
 		t.Fatalf("registration_endpoint = %#v", metadata["registration_endpoint"])
 	}
+	authMethods, ok := metadata["token_endpoint_auth_methods_supported"].([]any)
+	if !ok || len(authMethods) == 0 || authMethods[0] != "none" {
+		t.Fatalf("token_endpoint_auth_methods_supported = %#v, want none first for public MCP clients", metadata["token_endpoint_auth_methods_supported"])
+	}
 
-	registerBody := strings.NewReader(`{"client_name":"Droid","redirect_uris":["` + clientRedirect + `"],"grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none"}`)
+	registerBody := strings.NewReader(`{"client_name":"Droid","redirect_uris":["` + clientRedirect + `"],"grant_types":["authorization_code","refresh_token"],"response_types":["code"]}`)
 	registerResp, err := server.Client().Post(server.URL+oauthRegisterPath, "application/json", registerBody)
 	if err != nil {
 		t.Fatalf("POST register: %v", err)
