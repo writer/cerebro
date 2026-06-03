@@ -129,6 +129,8 @@ type ClientRegistrationRequest struct {
 
 type ClientRegistrationResponse struct {
 	ClientID                string   `json:"client_id"`
+	ClientSecret            string   `json:"client_secret,omitempty"`
+	ClientSecretExpiresAt   *int64   `json:"client_secret_expires_at,omitempty"`
 	ClientName              string   `json:"client_name,omitempty"`
 	RedirectURIs            []string `json:"redirect_uris"`
 	GrantTypes              []string `json:"grant_types"`
@@ -159,31 +161,47 @@ func (s *Service) RegisterClient(ctx context.Context, request ClientRegistration
 	if method == "" {
 		method = "none"
 	}
-	if method != "none" {
-		return ClientRegistrationResponse{}, oauthError("invalid_client_metadata", "only public clients with token_endpoint_auth_method=none are supported", statusBadRequest)
+	switch method {
+	case "none", "client_secret_basic", "client_secret_post":
+	default:
+		return ClientRegistrationResponse{}, oauthError("invalid_client_metadata", "token_endpoint_auth_method must be none, client_secret_basic, or client_secret_post", statusBadRequest)
 	}
 	clientID, err := NewOpaqueToken("mcp_client")
 	if err != nil {
 		return ClientRegistrationResponse{}, fmt.Errorf("mcpoauth: generate dynamic client id: %w", err)
 	}
+	clientSecret := ""
+	if method != "none" {
+		clientSecret, err = NewOpaqueToken("mcp_client_secret")
+		if err != nil {
+			return ClientRegistrationResponse{}, fmt.Errorf("mcpoauth: generate dynamic client secret: %w", err)
+		}
+	}
 	client := OAuthClient{
 		ClientID:     clientID,
+		ClientSecret: storedClientSecret(clientSecret),
 		Name:         strings.TrimSpace(request.ClientName),
 		RedirectURIs: redirectURIs,
-		Public:       true,
+		Public:       clientSecret == "",
 		CreatedAt:    s.now().UTC(),
 	}
 	if err := s.store.SaveOAuthClient(ctx, client); err != nil {
 		return ClientRegistrationResponse{}, fmt.Errorf("mcpoauth: save dynamic client: %w", err)
 	}
-	return ClientRegistrationResponse{
+	response := ClientRegistrationResponse{
 		ClientID:                clientID,
+		ClientSecret:            clientSecret,
 		ClientName:              client.Name,
 		RedirectURIs:            cloneStrings(client.RedirectURIs),
 		GrantTypes:              []string{"authorization_code", "refresh_token"},
 		ResponseTypes:           []string{"code"},
-		TokenEndpointAuthMethod: "none",
-	}, nil
+		TokenEndpointAuthMethod: method,
+	}
+	if clientSecret != "" {
+		neverExpires := int64(0)
+		response.ClientSecretExpiresAt = &neverExpires
+	}
+	return response, nil
 }
 
 func (s *Service) Authorize(ctx context.Context, query url.Values) (string, error) {
@@ -595,6 +613,16 @@ func clientSecretMatches(client config.MCPOAuthClient, presented string) bool {
 	return constantTimeEqual(fmt.Sprintf("%x", sum[:]), expectedHash)
 }
 
+const storedClientSecretSHA256Prefix = "sha256:"
+
+func storedClientSecret(secret string) string {
+	if secret == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(secret))
+	return storedClientSecretSHA256Prefix + fmt.Sprintf("%x", sum[:])
+}
+
 type grantEntitlement struct {
 	TenantID       string
 	AllowedTenants []string
@@ -674,13 +702,19 @@ func (s *Service) client(ctx context.Context, clientID string) (config.MCPOAuthC
 	}
 	client, err := s.store.GetOAuthClient(ctx, clientID)
 	if err == nil {
-		return config.MCPOAuthClient{
+		result := config.MCPOAuthClient{
 			ClientID:     client.ClientID,
-			ClientSecret: client.ClientSecret,
 			Name:         client.Name,
 			RedirectURIs: cloneStrings(client.RedirectURIs),
 			Public:       client.Public,
-		}, true
+		}
+		storedSecret := strings.TrimSpace(client.ClientSecret)
+		if strings.HasPrefix(storedSecret, storedClientSecretSHA256Prefix) {
+			result.ClientSecretSHA256 = strings.TrimPrefix(storedSecret, storedClientSecretSHA256Prefix)
+		} else {
+			result.ClientSecret = storedSecret
+		}
+		return result, true
 	}
 	return config.MCPOAuthClient{}, false
 }
