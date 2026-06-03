@@ -390,6 +390,56 @@ class VerifyGraphHealthEcsTest(unittest.TestCase):
             verify_graph_health_ecs._aws = original_aws
             verify_graph_health_ecs._wait_for_task = original_wait_for_task
 
+    def test_run_graph_command_reports_ecs_stop_reason_when_logs_missing(self) -> None:
+        original_aws = verify_graph_health_ecs._aws
+        context = GraphCommandContext(
+            cluster="cluster",
+            task_definition="arn:aws:ecs:us-east-1:123:task-definition/cerebro-go-production:45",
+            network_configuration={
+                "awsvpcConfiguration": {
+                    "subnets": ["subnet-1"],
+                    "securityGroups": ["sg-1"],
+                    "assignPublicIp": "DISABLED",
+                }
+            },
+            log_group="/ecs/cerebro",
+            stream_prefix="runtime",
+            has_source_runtime_bootstrap=False,
+        )
+
+        def fake_aws(args, _region):
+            if args[:2] == ["ecs", "run-task"]:
+                return {"tasks": [{"taskArn": "task-arn"}]}
+            if args[:2] == ["ecs", "describe-tasks"]:
+                return {
+                    "tasks": [
+                        {
+                            "taskArn": "task-arn",
+                            "lastStatus": "STOPPED",
+                            "stopCode": "TaskFailedToStart",
+                            "stoppedReason": "ResourceInitializationError: unable to fetch secrets",
+                            "containers": [
+                                {
+                                    "name": "cerebro",
+                                    "lastStatus": "STOPPED",
+                                    "exitCode": 1,
+                                    "reason": "secret cerebro-go-production/MISSING was not found",
+                                }
+                            ],
+                        }
+                    ]
+                }
+            if args[:2] == ["logs", "get-log-events"]:
+                raise RuntimeError("ResourceNotFoundException: log stream does not exist")
+            raise AssertionError(f"unexpected args: {args}")
+
+        verify_graph_health_ecs._aws = fake_aws
+        try:
+            with self.assertRaisesRegex(RuntimeError, "ResourceInitializationError.*MISSING"):
+                _run_graph_command("prefix", {}, ["graph", "counts"], 10, 1, "us-east-1", context)
+        finally:
+            verify_graph_health_ecs._aws = original_aws
+
     def test_run_graph_command_allows_nonzero_graph_health_payload(self) -> None:
         original_aws = verify_graph_health_ecs._aws
         original_wait_for_task = verify_graph_health_ecs._wait_for_task
