@@ -2,9 +2,9 @@
 
 Generated-by-hand snapshot for the current bootstrap service. Source of truth: `api/openapi.yaml` and `proto/cerebro/v1/bootstrap.proto`.
 
-- HTTP operations: **67** across **65** paths.
+- HTTP operations: **68** across **66** paths.
 - Connect RPCs: **38**.
-- Public unauthenticated routes when auth is enabled: `/health`, `/healthz`, `/openapi.yaml`.
+- Public unauthenticated routes when auth is enabled: `/health`, `/healthz`, `/livez`, `/openapi.yaml`.
 - Preferred shared platform namespace: `/platform/*`.
 - Legacy `/graph/*` compatibility aliases have been removed; use `/platform/graph/*`.
 
@@ -12,7 +12,7 @@ Generated-by-hand snapshot for the current bootstrap service. Source of truth: `
 
 | Family | Routes |
 | --- | --- |
-| Health/contracts | `/health`, `/healthz`, `/openapi.yaml` |
+| Health/contracts | `/health` readiness, `/healthz` and `/livez` liveness, `/openapi.yaml` |
 | Sources | `/sources`, `/sources/{sourceID}/check`, `/sources/{sourceID}/discover`, `/sources/{sourceID}/read` |
 | Source runtimes | `/source-runtimes/{runtimeID}`, `/source-runtimes/{runtimeID}/sync`, `/source-runtimes/{runtimeID}/graph-ingest-runs` |
 | Claims/findings | `/source-runtimes/{runtimeID}/claims`, `/source-runtimes/{runtimeID}/findings`, finding lifecycle routes |

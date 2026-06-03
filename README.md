@@ -53,7 +53,7 @@ CLI / JSON HTTP / Connect / MCP clients
               +--> Optional graph store: Neo4j/Aura
 ```
 
-External dependency drivers are opt-in. With no external drivers configured, the server can start and serve lightweight routes such as `/health`, `/healthz`, and `/sources`. Durable runtime, claim, finding, report, replay, and graph operations require their corresponding stores.
+External dependency drivers are opt-in. With no external drivers configured, the server can start and serve lightweight routes such as `/health`, `/healthz`, `/livez`, and `/sources`. `/health` is the dependency-aware readiness check; `/healthz` and `/livez` are liveness-only checks. Durable runtime, claim, finding, report, replay, and graph operations require their corresponding stores.
 
 ---
 
@@ -266,7 +266,7 @@ Connect RPC procedures are served under `/cerebro.v1.BootstrapService/{Method}`.
 
 Major route groups include:
 
-- Public health and metadata: `/health`, `/healthz`, `/openapi.yaml`, OAuth protected-resource/authorization-server metadata.
+- Public health and metadata: `/health` readiness, `/healthz` and `/livez` liveness, `/openapi.yaml`, OAuth protected-resource/authorization-server metadata.
 - Source catalog and previews: `/sources`, `/sources/{sourceID}/check`, `/discover`, `/read`.
 - Source runtime operations: `/source-runtimes`, runtime `sync`, claims, findings, candidates, evidence, evaluation runs, and graph ingest runs.
 - Finding and candidate lifecycle: `/finding-rules`, `/findings/*`, `/finding-candidates/*`, `/finding-evidence/*`, `/finding-evaluation-runs/*`.
