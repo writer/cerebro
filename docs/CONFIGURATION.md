@@ -4,7 +4,7 @@ Cerebro `main` uses a small bootstrap configuration surface.
 
 ## Minimal local configuration
 
-No external stores are required for `/health`, `/healthz`, `/openapi.yaml`, `/sources`, and source preview routes that do not need provider credentials.
+No external stores are required for `/health`, `/healthz`, `/livez`, `/openapi.yaml`, `/sources`, and source preview routes that do not need provider credentials. `/health` reports dependency-aware readiness; `/healthz` and `/livez` are liveness-only.
 
 ```bash
 make serve
