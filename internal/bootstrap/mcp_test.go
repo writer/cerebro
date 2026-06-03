@@ -63,6 +63,15 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 	if serverInfo["name"] != "cerebro" {
 		t.Fatalf("serverInfo.name = %#v, want cerebro", serverInfo["name"])
 	}
+	if result["protocolVersion"] != mcpProtocolVersion {
+		t.Fatalf("protocolVersion = %#v, want %q", result["protocolVersion"], mcpProtocolVersion)
+	}
+	capabilities := result["capabilities"].(map[string]any)
+	for _, capability := range []string{"tools", "resources", "prompts"} {
+		if capabilities[capability] == nil {
+			t.Fatalf("initialize missing %s capability in %#v", capability, capabilities)
+		}
+	}
 	if sessionID == "" {
 		t.Fatal("Mcp-Session-Id header empty")
 	}
@@ -80,11 +89,101 @@ func TestMCPInitializeAndToolsList(t *testing.T) {
 	names := map[string]bool{}
 	for _, item := range tools {
 		names[item.(map[string]any)["name"].(string)] = true
+		if item.(map[string]any)["outputSchema"] == nil {
+			t.Fatalf("tool missing outputSchema: %#v", item)
+		}
+		annotations := item.(map[string]any)["annotations"].(map[string]any)
+		if annotations["readOnlyHint"] != true {
+			t.Fatalf("tool missing readOnlyHint annotation: %#v", item)
+		}
 	}
-	for _, want := range []string{"cerebro.health", "cerebro.version", "cerebro.source_runtimes.list", "cerebro.findings.list", "cerebro.findings.get", "cerebro.assets.search", "cerebro.risk.summary", "cerebro.graph.neighborhood"} {
+	for _, want := range []string{
+		"cerebro.health",
+		"cerebro.version",
+		"cerebro.source_runtimes.list",
+		"cerebro.findings.list",
+		"cerebro.findings.get",
+		"cerebro.findings.search",
+		"cerebro.runtimes.status",
+		"cerebro.evidence.list",
+		"cerebro.evidence.get",
+		"cerebro.assets.search",
+		"cerebro.assets.get",
+		"cerebro.risk.summary",
+		"cerebro.graph.neighborhood",
+		"cerebro.graph.impact",
+		"cerebro.graph.paths",
+		"cerebro.investigation.context",
+		"cerebro.findings.action.propose",
+		"cerebro.source_runtimes.refresh.propose",
+	} {
 		if !names[want] {
 			t.Fatalf("tools/list missing %s in %#v", want, names)
 		}
+	}
+}
+
+func TestMCPResourcesAndPrompts(t *testing.T) {
+	server := newMCPTestServer(t, &stubRuntimeStore{})
+	defer server.Close()
+
+	resourcesResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "resources/list",
+		"params":  map[string]any{"limit": 2},
+	})
+	if resourcesResp["error"] != nil {
+		t.Fatalf("resources/list error = %#v", resourcesResp["error"])
+	}
+	resourceResult := resourcesResp["result"].(map[string]any)
+	if len(resourceResult["resources"].([]any)) != 2 || resourceResult["nextCursor"] == "" {
+		t.Fatalf("resources/list result = %#v", resourceResult)
+	}
+
+	templatesResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "resources/templates/list",
+		"params":  map[string]any{},
+	})
+	if templatesResp["error"] != nil {
+		t.Fatalf("resources/templates/list error = %#v", templatesResp["error"])
+	}
+	templates := templatesResp["result"].(map[string]any)["resourceTemplates"].([]any)
+	if len(templates) == 0 {
+		t.Fatalf("resourceTemplates = %#v", templates)
+	}
+
+	promptsResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "prompts/list",
+		"params":  map[string]any{},
+	})
+	if promptsResp["error"] != nil {
+		t.Fatalf("prompts/list error = %#v", promptsResp["error"])
+	}
+	prompts := promptsResp["result"].(map[string]any)["prompts"].([]any)
+	if len(prompts) != 3 {
+		t.Fatalf("len(prompts) = %d, want 3", len(prompts))
+	}
+
+	promptResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      4,
+		"method":  "prompts/get",
+		"params": map[string]any{
+			"name":      "investigate_finding",
+			"arguments": map[string]any{"finding_id": "finding-1"},
+		},
+	})
+	if promptResp["error"] != nil {
+		t.Fatalf("prompts/get error = %#v", promptResp["error"])
+	}
+	messages := promptResp["result"].(map[string]any)["messages"].([]any)
+	if len(messages) != 1 || !strings.Contains(messages[0].(map[string]any)["content"].(map[string]any)["text"].(string), "cerebro://investigation/finding/finding-1") {
+		t.Fatalf("prompt messages = %#v", messages)
 	}
 }
 
@@ -224,6 +323,155 @@ func TestMCPFindingsGet(t *testing.T) {
 	}
 }
 
+func TestMCPFindingSearchRuntimeStatusEvidenceAndInvestigation(t *testing.T) {
+	now := time.Now().UTC()
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta": {Id: "writer-okta", SourceId: "okta", TenantId: "writer", Config: map[string]string{"domain": "writer.okta.com", "token": "secret"}},
+		},
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:             "finding-1",
+				RuntimeID:      "writer-okta",
+				TenantID:       "writer",
+				RuleID:         "rule-1",
+				Title:          "Privileged admin without MFA",
+				Summary:        "Admin account is missing MFA",
+				Severity:       "high",
+				Status:         "open",
+				ResourceURNs:   []string{"urn:cerebro:writer:okta_user:00u1"},
+				FindingRisk:    ports.FindingRisk{RiskScore: 88, RiskReasons: []string{"privileged asset"}},
+				LastObservedAt: now,
+			},
+		},
+		findingEvidence: map[string]*cerebrov1.FindingEvidence{
+			"evidence-1": {
+				Id:            "evidence-1",
+				RuntimeId:     "writer-okta",
+				RuleId:        "rule-1",
+				FindingId:     "finding-1",
+				EventIds:      []string{"event-1"},
+				GraphRootUrns: []string{"urn:cerebro:writer:okta_user:00u1"},
+			},
+		},
+	}
+	server := newMCPTestServer(t, store)
+	defer server.Close()
+
+	searchResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.findings.search",
+			"arguments": map[string]any{
+				"query": "mfa",
+				"limit": 10,
+			},
+		},
+	})
+	if searchResp["error"] != nil {
+		t.Fatalf("findings.search error = %#v", searchResp["error"])
+	}
+	findings := searchResp["result"].(map[string]any)["structuredContent"].(map[string]any)["findings"].([]any)
+	if len(findings) != 1 || findings[0].(map[string]any)["id"] != "finding-1" {
+		t.Fatalf("findings.search findings = %#v", findings)
+	}
+
+	statusResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "cerebro.runtimes.status",
+			"arguments": map[string]any{"runtime_id": "writer-okta"},
+		},
+	})
+	if statusResp["error"] != nil {
+		t.Fatalf("runtimes.status error = %#v", statusResp["error"])
+	}
+	status := statusResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	runtimeConfig := status["runtime"].(map[string]any)["config"].(map[string]any)
+	if runtimeConfig["token"] != "[redacted]" {
+		t.Fatalf("runtime config = %#v", runtimeConfig)
+	}
+
+	evidenceListResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.evidence.list",
+			"arguments": map[string]any{
+				"runtime_id": "writer-okta",
+				"finding_id": "finding-1",
+				"limit":      5,
+			},
+		},
+	})
+	if evidenceListResp["error"] != nil {
+		t.Fatalf("evidence.list error = %#v", evidenceListResp["error"])
+	}
+	if got := store.findingEvidenceListRequest.FindingID; got != "finding-1" {
+		t.Fatalf("findingEvidenceListRequest.FindingID = %q, want finding-1", got)
+	}
+	evidence := evidenceListResp["result"].(map[string]any)["structuredContent"].(map[string]any)["evidence"].([]any)
+	if len(evidence) != 1 || evidence[0].(map[string]any)["id"] != "evidence-1" {
+		t.Fatalf("evidence.list evidence = %#v", evidence)
+	}
+
+	evidenceGetResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      4,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "cerebro.evidence.get",
+			"arguments": map[string]any{"evidence_id": "evidence-1"},
+		},
+	})
+	if evidenceGetResp["error"] != nil {
+		t.Fatalf("evidence.get error = %#v", evidenceGetResp["error"])
+	}
+	if got := evidenceGetResp["result"].(map[string]any)["structuredContent"].(map[string]any)["evidence"].(map[string]any)["id"]; got != "evidence-1" {
+		t.Fatalf("evidence.get id = %#v", got)
+	}
+
+	investigationResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      5,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.investigation.context",
+			"arguments": map[string]any{
+				"finding_id": "finding-1",
+				"skip_graph": true,
+				"compact":    true,
+			},
+		},
+	})
+	if investigationResp["error"] != nil {
+		t.Fatalf("investigation.context error = %#v", investigationResp["error"])
+	}
+	context := investigationResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if context["evidence_count"] != float64(1) || context["compact"] != true {
+		t.Fatalf("investigation context = %#v", context)
+	}
+
+	resourceResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      6,
+		"method":  "resources/read",
+		"params":  map[string]any{"uri": "cerebro://finding/finding-1"},
+	})
+	if resourceResp["error"] != nil {
+		t.Fatalf("resources/read finding error = %#v", resourceResp["error"])
+	}
+	contents := resourceResp["result"].(map[string]any)["contents"].([]any)
+	if len(contents) != 1 || !strings.Contains(contents[0].(map[string]any)["text"].(string), "finding-1") {
+		t.Fatalf("resource contents = %#v", contents)
+	}
+}
+
 func TestMCPAssetsSearchUsesTenantScopedCypher(t *testing.T) {
 	graph := &stubGraphStore{cypherRows: [][]ports.CypherRow{{
 		{Values: map[string]any{
@@ -289,6 +537,219 @@ func TestMCPAssetsSearchUsesTenantScopedCypher(t *testing.T) {
 	}
 	if attributes["account_id"] != "123456789012" {
 		t.Fatalf("attributes = %#v", attributes)
+	}
+}
+
+func TestMCPAssetsGetGraphToolsAndDryRunProposals(t *testing.T) {
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-aws": {Id: "writer-aws", SourceId: "aws", TenantId: "writer"},
+		},
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {ID: "finding-1", RuntimeID: "writer-aws", TenantID: "writer", RuleID: "rule-1", Title: "Finding", Severity: "high", Status: "open"},
+		},
+	}
+	graph := &stubGraphStore{
+		neighborhood: &ports.EntityNeighborhood{
+			Root: &ports.NeighborhoodNode{URN: "urn:cerebro:writer:asset:prod-db", EntityType: "aws.rds.instance", Label: "prod-db"},
+			Neighbors: []*ports.NeighborhoodNode{
+				{URN: "urn:cerebro:writer:finding:finding-1", EntityType: "finding", Label: "Finding"},
+			},
+		},
+		cypherRows: [][]ports.CypherRow{
+			{{
+				Values: map[string]any{
+					"urn":             "urn:cerebro:writer:asset:prod-db",
+					"tenant_id":       "writer",
+					"runtime_id":      "writer-aws",
+					"source_id":       "aws",
+					"entity_type":     "aws.rds.instance",
+					"label":           "prod-db",
+					"attributes_json": `{"environment":"prod","secret_access_key":"hidden"}`,
+				},
+			}},
+			{{
+				Values: map[string]any{
+					"path_count":                 int64(1),
+					"exposed_resource_count":     int64(1),
+					"privileged_principal_count": int64(1),
+					"cloud_account_count":        int64(1),
+				},
+			}},
+			{{
+				Values: map[string]any{
+					"public_urn":             "urn:cerebro:writer:aws_public_principal:internet",
+					"public_entity_type":     "aws.public_principal",
+					"public_label":           "internet",
+					"exposed_urn":            "urn:cerebro:writer:asset:prod-db",
+					"exposed_entity_type":    "aws.rds.instance",
+					"exposed_label":          "prod-db",
+					"account_urn":            "urn:cerebro:writer:cloud_account:123",
+					"account_entity_type":    "cloud.account",
+					"account_label":          "123",
+					"principal_urn":          "urn:cerebro:writer:aws_role:admin",
+					"principal_entity_type":  "aws.role",
+					"principal_label":        "admin",
+					"permission_urn":         "urn:cerebro:writer:aws_policy:admin",
+					"permission_entity_type": "aws.policy",
+					"permission_label":       "admin",
+					"reach_relation":         "can_reach",
+					"access_relation":        "can_admin",
+				},
+			}},
+		},
+	}
+	server := newMCPTestServerWithGraph(t, store, graph)
+	defer server.Close()
+
+	assetResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "cerebro.assets.get",
+			"arguments": map[string]any{"urn": "urn:cerebro:writer:asset:prod-db"},
+		},
+	})
+	if assetResp["error"] != nil {
+		t.Fatalf("assets.get error = %#v", assetResp["error"])
+	}
+	asset := assetResp["result"].(map[string]any)["structuredContent"].(map[string]any)["asset"].(map[string]any)
+	if asset["attributes"].(map[string]any)["secret_access_key"] != "[redacted]" {
+		t.Fatalf("asset attributes = %#v", asset["attributes"])
+	}
+
+	impactResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.graph.impact",
+			"arguments": map[string]any{
+				"kind":     "asset",
+				"root_urn": "urn:cerebro:writer:asset:prod-db",
+				"depth":    1,
+				"limit":    10,
+			},
+		},
+	})
+	if impactResp["error"] != nil {
+		t.Fatalf("graph.impact error = %#v", impactResp["error"])
+	}
+	if got := impactResp["result"].(map[string]any)["structuredContent"].(map[string]any)["root_urn"]; got != "urn:cerebro:writer:asset:prod-db" {
+		t.Fatalf("graph.impact root_urn = %#v", got)
+	}
+
+	pathsResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "cerebro.graph.paths",
+			"arguments": map[string]any{"limit": 5},
+		},
+	})
+	if pathsResp["error"] != nil {
+		t.Fatalf("graph.paths error = %#v", pathsResp["error"])
+	}
+	paths := pathsResp["result"].(map[string]any)["structuredContent"].(map[string]any)["paths"].([]any)
+	if len(paths) != 1 {
+		t.Fatalf("paths = %#v", paths)
+	}
+
+	proposalResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      4,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.findings.action.propose",
+			"arguments": map[string]any{
+				"dry_run":    true,
+				"finding_id": "finding-1",
+				"action":     "update_status",
+				"status":     "resolved",
+				"reason":     "validated by agent",
+			},
+		},
+	})
+	if proposalResp["error"] != nil {
+		t.Fatalf("findings.action.propose error = %#v", proposalResp["error"])
+	}
+	proposal := proposalResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if proposal["dry_run"] != true || proposal["would_mutate"] != false {
+		t.Fatalf("proposal = %#v", proposal)
+	}
+
+	refreshResp, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      5,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "cerebro.source_runtimes.refresh.propose",
+			"arguments": map[string]any{"dry_run": true, "runtime_id": "writer-aws"},
+		},
+	})
+	if refreshResp["error"] != nil {
+		t.Fatalf("source_runtimes.refresh.propose error = %#v", refreshResp["error"])
+	}
+}
+
+func TestMCPRuntimeStatusAndProposalsHandleMissingTargets(t *testing.T) {
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	runtimeStatusResp, _ := postMCPWithoutAuth(t, server, map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "cerebro.runtimes.status",
+			"arguments": map[string]any{"runtime_id": "missing-runtime"},
+		},
+	})
+	if runtimeStatusResp["error"] != nil || runtimeStatusResp["result"].(map[string]any)["isError"] != true {
+		t.Fatalf("runtimes.status without store response = %#v", runtimeStatusResp)
+	}
+
+	store := &stubRuntimeStore{
+		runtimes:        map[string]*cerebrov1.SourceRuntime{},
+		findings:        map[string]*ports.FindingRecord{},
+		findingEvidence: map[string]*cerebrov1.FindingEvidence{},
+	}
+	app = New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{StateStore: store}, nil)
+	server = httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	findingProposalResp, _ := postMCPWithoutAuth(t, server, map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cerebro.findings.action.propose",
+			"arguments": map[string]any{
+				"dry_run":    true,
+				"finding_id": "missing-finding",
+				"action":     "add_note",
+				"note":       "not real",
+			},
+		},
+	})
+	if findingProposalResp["error"] != nil || findingProposalResp["result"].(map[string]any)["isError"] != true {
+		t.Fatalf("missing finding proposal response = %#v", findingProposalResp)
+	}
+
+	runtimeProposalResp, _ := postMCPWithoutAuth(t, server, map[string]any{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "cerebro.source_runtimes.refresh.propose",
+			"arguments": map[string]any{"dry_run": true, "runtime_id": "missing-runtime"},
+		},
+	})
+	if runtimeProposalResp["error"] != nil || runtimeProposalResp["result"].(map[string]any)["isError"] != true {
+		t.Fatalf("missing runtime proposal response = %#v", runtimeProposalResp)
 	}
 }
 
@@ -400,6 +861,76 @@ func TestMCPGraphNeighborhood(t *testing.T) {
 	}
 }
 
+func TestMCPOriginProtocolAndNotificationHandling(t *testing.T) {
+	server := newMCPTestServer(t, &stubRuntimeStore{})
+	defer server.Close()
+
+	body := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`)
+	req, err := http.NewRequest(http.MethodPost, server.URL+mcpEndpointPath, body)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("Authorization", "Bearer test-key")
+	req.Header.Set("Origin", "https://evil.example")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("bad origin POST error = %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("bad origin status = %d, want 403", resp.StatusCode)
+	}
+
+	response, _ := postMCP(t, server, "", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/list",
+		"params":  map[string]any{},
+	})
+	if response["error"] != nil {
+		t.Fatalf("tools/list error = %#v", response["error"])
+	}
+
+	unsupportedReq, err := http.NewRequest(http.MethodPost, server.URL+mcpEndpointPath, strings.NewReader(`{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{}}`))
+	if err != nil {
+		t.Fatalf("NewRequest unsupported: %v", err)
+	}
+	unsupportedReq.Header.Set("Content-Type", "application/json")
+	unsupportedReq.Header.Set("Accept", "application/json, text/event-stream")
+	unsupportedReq.Header.Set("Authorization", "Bearer test-key")
+	unsupportedReq.Header.Set("MCP-Protocol-Version", "1999-01-01")
+	unsupportedResp, err := server.Client().Do(unsupportedReq)
+	if err != nil {
+		t.Fatalf("unsupported protocol POST error = %v", err)
+	}
+	defer func() { _ = unsupportedResp.Body.Close() }()
+	var unsupported map[string]any
+	if err := json.NewDecoder(unsupportedResp.Body).Decode(&unsupported); err != nil {
+		t.Fatalf("Decode unsupported protocol: %v", err)
+	}
+	if unsupported["error"].(map[string]any)["message"] != "unsupported protocol version" {
+		t.Fatalf("unsupported response = %#v", unsupported)
+	}
+
+	notificationReq, err := http.NewRequest(http.MethodPost, server.URL+mcpEndpointPath, strings.NewReader(`{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}`))
+	if err != nil {
+		t.Fatalf("NewRequest notification: %v", err)
+	}
+	notificationReq.Header.Set("Content-Type", "application/json")
+	notificationReq.Header.Set("Accept", "application/json, text/event-stream")
+	notificationReq.Header.Set("Authorization", "Bearer test-key")
+	notificationResp, err := server.Client().Do(notificationReq)
+	if err != nil {
+		t.Fatalf("notification POST error = %v", err)
+	}
+	_ = notificationResp.Body.Close()
+	if notificationResp.StatusCode != http.StatusAccepted {
+		t.Fatalf("notification status = %d, want 202", notificationResp.StatusCode)
+	}
+}
+
 func TestMCPRouteUsesReadScope(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, mcpEndpointPath, nil)
 	if got := scopeForHTTPRequest(req); got != scopeCosmoSecurityRead {
@@ -431,6 +962,16 @@ func newMCPTestServerWithGraph(t *testing.T, store *stubRuntimeStore, graph *stu
 
 func postMCP(t *testing.T, server *httptest.Server, sessionID string, payload map[string]any) (map[string]any, string) {
 	t.Helper()
+	return postMCPWithAuthHeader(t, server, sessionID, payload, "Bearer test-key")
+}
+
+func postMCPWithoutAuth(t *testing.T, server *httptest.Server, payload map[string]any) (map[string]any, string) {
+	t.Helper()
+	return postMCPWithAuthHeader(t, server, "", payload, "")
+}
+
+func postMCPWithAuthHeader(t *testing.T, server *httptest.Server, sessionID string, payload map[string]any, authHeader string) (map[string]any, string) {
+	t.Helper()
 	body, err := json.Marshal(payload)
 	if err != nil {
 		t.Fatalf("Marshal MCP request: %v", err)
@@ -441,7 +982,10 @@ func postMCP(t *testing.T, server *httptest.Server, sessionID string, payload ma
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
-	req.Header.Set("Authorization", "Bearer test-key")
+	if authHeader != "" {
+		req.Header.Set("Authorization", authHeader)
+	}
+	req.Header.Set("MCP-Protocol-Version", mcpProtocolVersion)
 	if sessionID != "" {
 		req.Header.Set("Mcp-Session-Id", sessionID)
 	}
@@ -456,6 +1000,9 @@ func postMCP(t *testing.T, server *httptest.Server, sessionID string, payload ma
 	}
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("POST /api/v1/mcp status = %d body = %s", resp.StatusCode, raw)
+	}
+	if got := resp.Header.Get("MCP-Protocol-Version"); got != mcpProtocolVersion {
+		t.Fatalf("MCP-Protocol-Version response header = %q, want %q", got, mcpProtocolVersion)
 	}
 	var decoded map[string]any
 	if err := json.Unmarshal(raw, &decoded); err != nil {
