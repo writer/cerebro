@@ -389,7 +389,7 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 
 func projectedEntityAttributes(t *testing.T, ctx context.Context, store *Store, urn string) map[string]string {
 	t.Helper()
-	value, err := store.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+	value, err := store.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
 		return queryOneValue(ctx, tx, "MATCH (e:Entity {urn: $urn}) RETURN e.attributes_json", map[string]any{"urn": urn})
 	})
 	if err != nil {
@@ -404,7 +404,7 @@ func projectedEntityAttributes(t *testing.T, ctx context.Context, store *Store, 
 
 func projectedLinkAttributes(t *testing.T, ctx context.Context, store *Store, link *ports.ProjectedLink) map[string]string {
 	t.Helper()
-	values, err := store.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+	values, err := store.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
 		result, err := tx.Run(ctx, `MATCH (:Entity {urn: $from_urn})-[r:RELATION {relation: $relation}]->(:Entity {urn: $to_urn})
 RETURN count(r), collect(r.attributes_json)`, map[string]any{
 			"from_urn": link.FromURN,
@@ -439,7 +439,7 @@ RETURN count(r), collect(r.attributes_json)`, map[string]any{
 
 func neo4jProjectedLinkExists(t *testing.T, ctx context.Context, store *Store, link *ports.ProjectedLink) bool {
 	t.Helper()
-	value, err := store.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+	value, err := store.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
 		return queryOneValue(ctx, tx, `MATCH (:Entity {urn: $from_urn})-[r:RELATION {relation: $relation}]->(:Entity {urn: $to_urn}) RETURN count(r)`, map[string]any{
 			"from_urn": link.FromURN,
 			"relation": link.Relation,
