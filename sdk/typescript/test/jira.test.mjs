@@ -40,8 +40,11 @@ test("source bridge is importable at runtime", async () => {
 
   const pkg = JSON.parse(await readFile(path.resolve(here, "../package.json"), "utf8"));
   assert.equal(pkg.main, "./src/index.js");
-  assert.equal(pkg.exports["."], "./src/index.js");
-  assert.equal(pkg.exports["./jira"], "./src/jira.js");
+  assert.equal(pkg.types, "./src/index.ts");
+  assert.equal(pkg.exports["."].default, "./src/index.js");
+  assert.equal(pkg.exports["."].types, "./src/index.ts");
+  assert.equal(pkg.exports["./jira"].default, "./src/jira.js");
+  assert.equal(pkg.exports["./jira"].types, "./src/jira.ts");
 
   const jira = await import(path.join(srcDir, "jira.js"));
   assert.equal(typeof jira.buildJiraWorkspaceClaims, "function");
