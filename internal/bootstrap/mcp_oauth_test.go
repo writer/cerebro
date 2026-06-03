@@ -503,7 +503,8 @@ func TestMCPOAuthDynamicClientRegistration(t *testing.T) {
 	clientRedirect := "http://127.0.0.1:39123/callback"
 	cfg := testMCPOAuthConfig(clientRedirect, upstream.URL)
 	cfg.Auth.MCPOAuth.Clients = nil
-	app, err := NewWithError(cfg, Dependencies{StateStore: newMemoryMCPOAuthStore()}, nil)
+	store := newMemoryMCPOAuthStore()
+	app, err := NewWithError(cfg, Dependencies{StateStore: store}, nil)
 	if err != nil {
 		t.Fatalf("NewWithError: %v", err)
 	}
@@ -570,6 +571,86 @@ func TestMCPOAuthDynamicClientRegistration(t *testing.T) {
 	_ = badRegisterResp.Body.Close()
 	if badRegisterResp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("bad register status = %d, want 400", badRegisterResp.StatusCode)
+	}
+
+	confidentialRegisterResp, err := server.Client().Post(server.URL+oauthRegisterPath, "application/json", strings.NewReader(`{"client_name":"Droid confidential","redirect_uris":["`+clientRedirect+`"],"grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"client_secret_basic"}`))
+	if err != nil {
+		t.Fatalf("POST confidential register: %v", err)
+	}
+	defer func() { _ = confidentialRegisterResp.Body.Close() }()
+	if confidentialRegisterResp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(confidentialRegisterResp.Body)
+		t.Fatalf("confidential register status = %d body=%s", confidentialRegisterResp.StatusCode, body)
+	}
+	var confidential mcpoauth.ClientRegistrationResponse
+	if err := json.NewDecoder(confidentialRegisterResp.Body).Decode(&confidential); err != nil {
+		t.Fatalf("decode confidential register response: %v", err)
+	}
+	if confidential.ClientID == "" || confidential.ClientSecret == "" || confidential.TokenEndpointAuthMethod != "client_secret_basic" || confidential.ClientSecretExpiresAt == nil || *confidential.ClientSecretExpiresAt != 0 {
+		t.Fatalf("confidential client = %#v", confidential)
+	}
+	store.mu.Lock()
+	storedConfidential := store.clients[confidential.ClientID]
+	store.mu.Unlock()
+	if storedConfidential.Public || storedConfidential.ClientSecret == "" || storedConfidential.ClientSecret == confidential.ClientSecret {
+		t.Fatalf("stored confidential client = %#v", storedConfidential)
+	}
+	wrongSecretResp := exchangeMCPOAuthTokenRaw(t, server, url.Values{
+		"grant_type":    {"refresh_token"},
+		"client_id":     {confidential.ClientID},
+		"client_secret": {"wrong-secret"},
+		"resource":      {"https://cerebro.example/api/v1/mcp"},
+		"refresh_token": {"refresh_dummy"},
+	})
+	_ = wrongSecretResp.Body.Close()
+	if wrongSecretResp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("wrong confidential secret token status = %d, want 401", wrongSecretResp.StatusCode)
+	}
+	correctSecretReq, err := http.NewRequest(http.MethodPost, server.URL+oauthTokenPath, strings.NewReader(url.Values{
+		"grant_type":    {"refresh_token"},
+		"resource":      {"https://cerebro.example/api/v1/mcp"},
+		"refresh_token": {"refresh_dummy"},
+	}.Encode()))
+	if err != nil {
+		t.Fatalf("NewRequest confidential token: %v", err)
+	}
+	correctSecretReq.SetBasicAuth(confidential.ClientID, confidential.ClientSecret)
+	correctSecretReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	correctSecretResp, err := server.Client().Do(correctSecretReq)
+	if err != nil {
+		t.Fatalf("POST confidential token: %v", err)
+	}
+	_ = correctSecretResp.Body.Close()
+	if correctSecretResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("correct confidential secret token status = %d, want 400 invalid_grant", correctSecretResp.StatusCode)
+	}
+
+	postRegisterResp, err := server.Client().Post(server.URL+oauthRegisterPath, "application/json", strings.NewReader(`{"client_name":"Droid post","redirect_uris":["`+clientRedirect+`"],"grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"client_secret_post"}`))
+	if err != nil {
+		t.Fatalf("POST client_secret_post register: %v", err)
+	}
+	defer func() { _ = postRegisterResp.Body.Close() }()
+	if postRegisterResp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(postRegisterResp.Body)
+		t.Fatalf("client_secret_post register status = %d body=%s", postRegisterResp.StatusCode, body)
+	}
+	var postClient mcpoauth.ClientRegistrationResponse
+	if err := json.NewDecoder(postRegisterResp.Body).Decode(&postClient); err != nil {
+		t.Fatalf("decode client_secret_post response: %v", err)
+	}
+	if postClient.ClientID == "" || postClient.ClientSecret == "" || postClient.TokenEndpointAuthMethod != "client_secret_post" {
+		t.Fatalf("client_secret_post client = %#v", postClient)
+	}
+	postSecretResp := exchangeMCPOAuthTokenRaw(t, server, url.Values{
+		"grant_type":    {"refresh_token"},
+		"client_id":     {postClient.ClientID},
+		"client_secret": {postClient.ClientSecret},
+		"resource":      {"https://cerebro.example/api/v1/mcp"},
+		"refresh_token": {"refresh_dummy"},
+	})
+	_ = postSecretResp.Body.Close()
+	if postSecretResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("client_secret_post token status = %d, want 400 invalid_grant", postSecretResp.StatusCode)
 	}
 }
 
