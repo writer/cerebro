@@ -4,6 +4,11 @@ WriterInternal Cerebro owns the deployment and operations surface for the curren
 
 This repository is intentionally narrow: it deploys and operates Cerebro for Writer environments. Product/runtime source lives in the `writer/cerebro` image, and the optional web console ships as the `writerinternal/cerebro-web` image; this repository pins, verifies, mirrors, and deploys those artifacts.
 
+Repository split:
+
+- `writer/cerebro` is authoritative for runtime behavior, CLI/API contracts, source catalogs, release artifacts, and runtime deploy contracts.
+- `WriterInternal/cerebro` is authoritative for Pulumi stacks, environment config, image promotion, deployment workflows, and operational verification.
+
 ## Current responsibilities
 
 - **AWS runtime stacks** in `infra/aws` for `sec-dev` and `go-prod`.
@@ -75,6 +80,19 @@ The API service can run as a singleton or scale out within stack-configured boun
 
 Source runtimes are GitOps-managed in stack config. Add or change `cerebro:sourceRuntimes`, `cerebro:sourceSecretKeys`, `cerebro:orchestratorSchedules`, and optional `cerebro:s3Sources` in the target stack, then follow `docs/SOURCE_ONBOARDING.md`.
 
+## Common operator tasks
+
+| Task | Where to start | Validation / follow-up |
+| --- | --- | --- |
+| Promote a runtime image | Update `cerebro:imageTag` through `.github/workflows/propose-image-tag.yml` or a reviewed stack-config PR. | Confirm image verification, ECR mirror, Pulumi preview/deploy, and deploy verification. |
+| Promote a web console image | Use `.github/workflows/propose-web-image-tag.yml` for `cerebro:webImageTag`. | Confirm web image verification, ECR mirror, and affected stack preview/deploy. |
+| Change AWS stack config | Edit `infra/aws/Pulumi.<stack>.yaml`. | Run stack validation and review Pulumi preview for only intended resources. |
+| Change GCP WIF/scanner IAM | Edit `infra/gcp/Pulumi.<stack>.yaml` or `infra/gcp`. | Run GCP config validation and the relevant Pulumi preview. |
+| Add or change a source runtime | Follow `docs/SOURCE_ONBOARDING.md`. | Run stack validation, preview the target stack, then verify source runtime and graph health after deploy. |
+| Investigate source runtime drift | Dispatch `.github/workflows/source-runtime-drift.yml`. | Review coverage/drift artifacts and reconcile stack config or runtime state. |
+| Investigate graph health | Dispatch `.github/workflows/graph-health-insight.yml` or use deploy verification outputs. | Treat regressions as deploy blockers until explained or intentionally accepted. |
+| Run bulk closeout | Dispatch `.github/workflows/closeout.yml`. | Keep dry-run/apply inputs reviewed and preserve audit bucket output. |
+
 ## Local workflow
 
 Prerequisites:
@@ -101,6 +119,17 @@ uv run python scripts/validate_stack_config.py
 uv run python scripts/validate_gcp_config.py
 uv run python -m unittest discover -s tests
 ```
+
+Choose validators by change type:
+
+| Change type | Minimum local validation |
+| --- | --- |
+| README-only | `git diff --check README.md` |
+| AWS stack config | `uv run python scripts/validate_stack_config.py` plus `uv run pulumi preview --stack <stack>` from `infra/aws` |
+| GCP stack config | `uv run python scripts/validate_gcp_config.py` plus `uv run pulumi preview --stack <stack>` from `infra/gcp` |
+| Infra Python code or scripts | `uv run python -m compileall aws gcp scripts tests` and `uv run python -m unittest discover -s tests` |
+| Source runtime config | Stack validation, target AWS Pulumi preview, and post-deploy source runtime verification |
+| Workflow or promotion logic | Relevant unit tests under `infra/tests`, static validation, and careful review of changed workflow paths |
 
 Preview AWS changes:
 
@@ -157,6 +186,16 @@ git diff --check README.md
 - Deploy verification can check source runtime ECS runs, source role trust drift, graph health, and graph health regressions depending on the changed paths.
 - Scheduled/manual workflows maintain source runtime drift reports, graph health insight, and runtime/web image tag proposals.
 - `workflow_dispatch` supports manual deployment for `sec-dev`, `go-prod`, `gcp-dev`, and `gcp-prod`.
+
+Common CI failure triage:
+
+| Failure area | First check |
+| --- | --- |
+| Image verification or mirror | Confirm the GHCR tag exists, the release signature/attestations are present, and the stack config references the intended tag. |
+| Runtime contract verification | Compare the release `cerebro-runtime-contract.json` with changed stack source-runtime config. |
+| Pulumi preview | Confirm diffs are limited to the intended stack/resources before merging. |
+| Source runtime verification | Check task exit status and source role trust before widening schedules or retrying. |
+| Graph health insight | Compare ingest runs, graph lag, and recent deploy changes before accepting a degradation. |
 
 ## Security notes
 
