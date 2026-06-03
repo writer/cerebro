@@ -1,60 +1,105 @@
 # Cerebro
 
-WriterInternal Cerebro owns the internal deployment surface for the current Cerebro runtime. It keeps environment-specific infrastructure, stack configuration, image promotion, and deployment workflows in one place without renaming the repository or wiring automatic cross-repository promotion.
+WriterInternal Cerebro owns the deployment and operations surface for the current Cerebro runtime. It keeps environment-specific infrastructure, stack configuration, image promotion, runtime verification, and deployment workflows in one reviewed repository.
 
-This repository is intentionally narrow: it deploys and operates Cerebro for Writer environments. Product/runtime source code, UI console work, automation workflows, and historical v1 design notes should not be reintroduced here.
+This repository is intentionally narrow: it deploys and operates Cerebro for Writer environments. Product/runtime source lives in the `writer/cerebro` image, and the optional web console ships as the `writerinternal/cerebro-web` image; this repository pins, verifies, mirrors, and deploys those artifacts.
 
 ## Current responsibilities
 
 - **AWS runtime stacks** in `infra/aws` for `sec-dev` and `go-prod`.
 - **GCP Workload Identity Federation** in `infra/gcp` for AWS-to-GCP scanner access.
-- **Container image mirroring** from GHCR to environment ECR repositories using pinned image tags from Pulumi stack config.
-- **Private runtime networking**: VPC/subnets, internal ALB, ACM certificates, WAF, Tailscale access, and CloudWatch logging.
-- **Runtime dependencies**: RDS Postgres for current state, NATS JetStream for the append log, and Neo4j/Aura for graph projections.
-- **Secret boundaries**: Infisical sync role, AWS Secrets Manager imports, and Pulumi-encrypted stack values.
-- **Source runtime bootstrap**: declarative source runtime definitions and the ECS/EventBridge orchestrator schedules that execute them.
+- **Container image promotion** from GHCR to environment ECR repositories using pinned Pulumi stack config.
+- **Supply-chain checks** for runtime and web images before promotion, including signature and attestation verification.
+- **Private runtime networking**: VPC/subnets, internal ALBs, ACM certificates, WAF, Tailscale access, ALB access logs, and trusted proxy settings.
+- **Runtime services**: ECS Fargate API, optional web console service, EventBridge-scheduled orchestrator tasks, RDS Postgres, NATS JetStream, and Neo4j/Aura.
+- **Access controls**: API authentication, tenant allowlists, capability tokens, MCP OAuth configuration, optional web OIDC, and secret import boundaries.
+- **Source runtime bootstrap**: declarative source definitions, per-runtime schedules, S3 source IAM scopes, and drift/coverage verification.
+- **Observability and operations**: CloudWatch dashboards/alarms, graph health checks, source runtime verification, and bulk closeout audit storage.
 
 ## Non-goals
 
 - No repository rename.
-- No automatic repository-to-repository release linkage.
-- No application source code beyond deployment-specific IAM/config shims.
+- No product/runtime implementation beyond deployment-specific IAM and config shims.
+- No plaintext credentials or long-lived service account keys in source control.
 - No stale v1 platform docs or old provider tree.
-- No `cerebro-web` or `cerebro-automation` ownership in this repo.
+- No unreviewed production changes; deployment stays explicit, validated, and auditable.
+
+## Architecture
+
+`infra/aws` is the primary Pulumi program. Each AWS stack deploys or wires:
+
+- An ECS Fargate API service behind an ALB and WAF.
+- An optional ECS web console service behind its own ALB and optional OIDC listener auth.
+- EventBridge rules that launch orchestrator ECS tasks for source sync, finding evaluation, and graph ingest.
+- RDS Postgres for current state, NATS JetStream for the append log, and Neo4j/Aura for graph projections.
+- KMS keys, CloudWatch logs, dashboards, alarms, log metric filters, ECR repositories, and optional ALB access logs.
+- Optional Tailscale subnet routing for internal access.
+- External secret imports and Pulumi-encrypted stack values for runtime credentials.
+- A closeout audit S3 bucket with narrow write scope from the runtime task role.
+
+`infra/gcp` configures GCP Workload Identity Federation and scanner IAM so approved AWS task roles can access configured GCP projects without static service account keys.
 
 ## Repository layout
 
 | Path | Purpose |
 | --- | --- |
-| `.github/workflows/ci.yml` | Mirrors the pinned Cerebro image tag from GHCR into the target ECR repository. |
-| `.github/workflows/infra-deploy.yml` | Runs Pulumi previews on PRs and deploys selected stacks. |
-| `infra/aws` | AWS Pulumi program for ECS, ALB, WAF, Postgres, NATS, Neo4j/Aura, ECR, KMS, Tailscale, and source runtime bootstrap. |
-| `infra/aws/Pulumi.sec-dev.yaml` | sec-dev stack configuration and source runtime schedules. |
-| `infra/aws/Pulumi.go-prod.yaml` | go-prod stack configuration. |
-| `infra/gcp` | GCP Pulumi program for Workload Identity Federation and scanner IAM. |
-| `renovate.json` | Dependency maintenance for the infrastructure workspace. |
-| `docs/SOURCE_ONBOARDING.md` | Runbook for adding a new source runtime instance to a Cerebro stack. |
+| `.github/CODEOWNERS` | Review ownership for repository, stack, workflow, and docs changes. |
+| `.github/dependabot.yml` | Dependency update policy for GitHub Actions and infra Python dependencies. |
+| `.github/scripts` | Shared CI helpers for image verification and ECR availability checks. |
+| `.github/workflows/ci.yml` | Static CI plus runtime/web image mirroring into ECR. |
+| `.github/workflows/infra-deploy.yml` | Static infra validation, Pulumi previews on PRs, deploys on `main`, and deploy verification. |
+| `.github/workflows/propose-image-tag.yml` | Proposes or applies verified Cerebro runtime image tag updates. |
+| `.github/workflows/propose-web-image-tag.yml` | Proposes verified web console image tag updates. |
+| `.github/workflows/source-runtime-verify.yml` | Manually verifies recent or newly started source runtime ECS runs. |
+| `.github/workflows/source-runtime-drift.yml` | Scheduled/manual source runtime coverage and drift checks. |
+| `.github/workflows/graph-health-insight.yml` | Runs deep graph health insight after successful infra deploys or manual dispatch. |
+| `.github/workflows/closeout.yml` | Dispatches audited bulk closeout ECS tasks. |
+| `docs/SOURCE_ONBOARDING.md` | Canonical runbook for adding or changing source runtime instances. |
+| `infra/aws` | AWS Pulumi program for networking, compute, storage, auth, monitoring, and runtime bootstrap. |
+| `infra/aws/Pulumi.sec-dev.yaml` | `sec-dev` AWS stack configuration. |
+| `infra/aws/Pulumi.go-prod.yaml` | `go-prod` AWS stack configuration. |
+| `infra/gcp` | GCP Pulumi program for WIF and scanner IAM. |
+| `infra/gcp/Pulumi.gcp-dev.yaml` | Development GCP WIF/scanner stack configuration. |
+| `infra/gcp/Pulumi.gcp-prod.yaml` | Production GCP WIF/scanner stack configuration. |
+| `infra/scripts` | Validation, promotion, deploy verification, graph health, drift, and closeout helper scripts. |
+| `infra/tests` | Python `unittest` coverage for Pulumi helpers, scripts, workflows, and config validators. |
+| `infra/README.md` | Infra-focused runbook and emergency/manual deploy notes. |
 
 ## Operating model
 
-Image versions are explicit. Change `cerebro:imageTag` in the relevant Pulumi stack file, open a normal PR, review the image mirror/preview results, and then merge or dispatch the deployment workflow. Do not add an automatic promotion workflow between repositories; deployment remains an intentional infrastructure change.
+Image versions are explicit. Runtime deploys are driven by `cerebro:imageTag`; web console deploys are driven by `cerebro:webImageTag` when `cerebro:webEnabled` is true. Promotion workflows verify the referenced GHCR artifact, update the relevant stack config, and keep deployment auditable through PRs or the guarded `sec-dev` release-dispatch path.
 
-The AWS runtime has historically been singleton: `cerebro:apiMaxInstances` defaulted to `1` because source-runtime cursor advances were not cross-task safe. Starting with `cerebro:imageTag >= v2.1.25` the API serializes cursor advances behind the same postgres lease the orchestrator already uses (writer/cerebro PR #554), so `apiMaxInstances` may be raised. Stack validation rejects `apiMaxInstances > 1` on older image tags. The orchestrator still runs as scheduled ECS tasks through EventBridge rather than as a second long-running API service.
+The `go-prod` runtime image must not lag behind `sec-dev`. The image proposal workflow updates `sec-dev` alongside `go-prod` when needed so production is never ahead of development validation.
+
+The API service can run as a singleton or scale out within stack-configured bounds. `cerebro:apiMaxInstances` defaults to `1`; values above `1` require `cerebro:imageTag >= v2.1.25`, where source-runtime cursor advances are protected by the same Postgres lease used by orchestrator runs. The orchestrator remains scheduled ECS tasks through EventBridge, not a second long-running API service.
+
+Source runtimes are GitOps-managed in stack config. Add or change `cerebro:sourceRuntimes`, `cerebro:sourceSecretKeys`, `cerebro:orchestratorSchedules`, and optional `cerebro:s3Sources` in the target stack, then follow `docs/SOURCE_ONBOARDING.md`.
 
 ## Local workflow
 
 Prerequisites:
 
-- Python 3.11+
-- `uv`
-- Pulumi CLI and access to the `writer-ai` Pulumi organization
-- AWS/GCP credentials for the stack being previewed
+- Python 3.11+; CI runs Python 3.12.
+- `uv`.
+- Pulumi CLI and access to the `writer-ai` Pulumi organization.
+- AWS/GCP credentials for any cloud preview or deploy you run locally.
 
 Install dependencies:
 
 ```bash
 cd infra
 uv sync
+```
+
+Run local validators:
+
+```bash
+cd infra
+uv lock --check
+uv run python -m compileall aws gcp scripts tests
+uv run python scripts/validate_stack_config.py
+uv run python scripts/validate_gcp_config.py
+uv run python -m unittest discover -s tests
 ```
 
 Preview AWS changes:
@@ -73,35 +118,52 @@ uv run pulumi preview --stack gcp-dev
 uv run pulumi preview --stack gcp-prod
 ```
 
-## Key AWS config
+For README-only changes, at minimum run:
 
-| Key | Purpose |
+```bash
+git diff --check README.md
+```
+
+## Key config surfaces
+
+`infra/aws/Pulumi.yaml` and `infra/gcp/Pulumi.yaml` are authoritative. Common AWS config families include:
+
+| Key family | Purpose |
 | --- | --- |
-| `cerebro:ecrBaseUri` | ECR repository base URI. |
-| `cerebro:imageTag` | Explicit runtime image tag to deploy. |
-| `cerebro:useExistingVpc`, `cerebro:vpcId`, subnet IDs | Place runtime into an existing Writer VPC. |
-| `cerebro:apiCpu`, `cerebro:apiMemory`, `cerebro:apiMinInstances`, `cerebro:apiMaxInstances` | ECS API sizing. |
-| `cerebro:postgres*` | RDS Postgres sizing, backups, deletion protection, and multi-AZ behavior. |
-| `cerebro:natsCpu`, `cerebro:natsMemory`, `cerebro:jetstream*` | NATS JetStream runtime settings. |
-| `cerebro:neo4jAura*` | Neo4j/Aura graph projection settings. |
-| `cerebro:apiAuthEnabled`, `cerebro:apiKeys`, `cerebro:allowedTenants` | Runtime API authentication controls. |
-| `cerebro:sourceRuntimes` | Declarative source runtime bootstrap definitions. |
-| `cerebro:orchestrator*` | EventBridge schedule and ECS task settings for source runtime sync. |
-| `cerebro:s3Sources` | IAM read scope for S3-backed source runtimes. |
+| `cerebro:ecrBaseUri`, `cerebro:imageTag` | Runtime ECR target and pinned runtime image tag. |
+| `cerebro:web*` | Optional web console image, ALB, OIDC, proxy, and scaling settings. |
+| `cerebro:domain`, certificate keys, `cerebro:alb*` | API/web ALB exposure, certificates, idle timeouts, ingress CIDRs, and internal/public placement. |
+| `cerebro:publicOrigin`, `cerebro:trustedProxy*` | Runtime public origin and trusted forwarded-header boundary. |
+| `cerebro:apiCpu`, `cerebro:apiMemory`, `cerebro:apiMinInstances`, `cerebro:apiMaxInstances` | ECS API sizing and autoscaling bounds. |
+| `cerebro:apiRequestCountPerTarget*`, latency alarm keys | API/web ALB request saturation and p95 latency scaling or alarm thresholds. |
+| `cerebro:postgres*` | RDS Postgres sizing, backups, deletion protection, storage, and Multi-AZ behavior. |
+| `cerebro:nats*`, `cerebro:jetstream*` | NATS JetStream service settings and lag alarms. |
+| `cerebro:neo4jAura*` | Neo4j/Aura graph projection settings and imported graph secrets. |
+| `cerebro:apiAuthEnabled`, `cerebro:allowedTenants`, capability token keys | API authentication and tenant scoping. |
+| `cerebro:mcpOauth*` | MCP OAuth issuer, redirect, client secret references, group allowlist, and token tenant scope. |
+| `cerebro:sourceRuntimes`, `cerebro:sourceSecretKeys` | Declarative source runtime definitions and allowed secret-backed env references. |
+| `cerebro:orchestrator*` | Default and named EventBridge schedules plus ECS task sizing for source sync and graph ingest. |
+| `cerebro:s3Sources` | Least-privilege IAM read scope for S3-backed source runtimes. |
+| `cerebro:graphAgentLlm*`, `cerebro:openrouterApiKeySecret` | Optional graph agent LLM configuration and secret reference. |
+| `cerebro:accessAudit*`, `cerebro:dashboardLatency*`, `cerebro:alarm*` | Access audit, dashboard latency, and alarm notification settings. |
 | `cerebro:enableInfisicalSyncRole`, `cerebro:externalSecretsPrefix` | External secret import boundary. |
-| `cerebro:enableTailscale`, `cerebro:tailscaleAdvertiseRoutes` | Tailscale subnet router settings. |
+| `cerebro:enableTailscale`, `cerebro:tailscale*` | Optional Tailscale subnet router settings. |
 
 ## CI and deployment
 
-- Pull requests preview AWS and GCP Pulumi changes.
-- Pull requests also mirror the `sec-dev` image tag to ECR when the referenced GHCR image exists.
-- Merges to `main` mirror the `go-prod` image tag to prod ECR and run the `go-prod` Pulumi deployment.
-- `workflow_dispatch` supports manual stack deployment for `sec-dev`, `go-prod`, `gcp-dev`, and `gcp-prod`.
+- Pull requests run static infra validation for infra-relevant changes and Pulumi previews for affected stacks.
+- Pull requests mirror the `sec-dev` runtime and web images to ECR when the referenced GHCR artifacts exist and verify successfully.
+- Merges to `main` deploy affected AWS/GCP stacks through `Infrastructure Deploy`; `go-prod` uses the production environment gate.
+- Deploy verification can check source runtime ECS runs, source role trust drift, graph health, and graph health regressions depending on the changed paths.
+- Scheduled/manual workflows maintain source runtime drift reports, graph health insight, and runtime/web image tag proposals.
+- `workflow_dispatch` supports manual deployment for `sec-dev`, `go-prod`, `gcp-dev`, and `gcp-prod`.
 
 ## Security notes
 
 - Never commit plaintext credentials, tokens, API keys, or service-specific secrets.
 - Keep Pulumi secrets encrypted in stack config.
-- Use Infisical or AWS Secrets Manager imports for runtime secrets.
+- Use approved external secret imports for runtime credentials.
 - Keep ALBs internal unless there is an explicit reviewed reason to expose one.
 - Preserve least-privilege S3 source IAM scopes in `cerebro:s3Sources`.
+- Keep signed image, attestation, and runtime contract checks in the promotion path.
+- Keep source runtime role trust and GCP WIF changes reviewed in the owning repositories before production rollout.
