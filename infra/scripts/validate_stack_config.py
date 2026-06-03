@@ -64,7 +64,17 @@ SEC_DEV_AWS_GLOBAL_FAMILIES = {
     "iam_role_trust",
     "iam_user",
 }
-AWS_COMPUTE_REGIONAL_FAMILIES = {"ec2_instance", "ecs_service", "ecs_task_definition", "lambda_function"}
+AWS_COMPUTE_REGIONAL_FAMILIES = {
+    "ec2_instance",
+    "ecs_service",
+    "ecs_task",
+    "ecs_task_definition",
+    "eks_cluster",
+    "eks_fargate_profile",
+    "eks_nodegroup",
+    "eks_pod_identity_association",
+    "lambda_function",
+}
 SEC_DEV_AWS_REGIONAL_FAMILIES = {
     "asset_metadata",
     "cloudtrail",

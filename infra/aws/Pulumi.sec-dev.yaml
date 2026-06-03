@@ -7,7 +7,7 @@ config:
   cerebro:certificateDomain: cerebro.adm.dev.qordobadev.com
   cerebro:certificateImportArn: arn:aws:acm:us-east-1:944130631940:certificate/09143d7f-c377-4de4-9127-d8cb5c642ba3
   cerebro:ecrBaseUri: 944130631940.dkr.ecr.us-east-1.amazonaws.com/cerebro
-  cerebro:imageTag: v2.1.171
+  cerebro:imageTag: v2.1.172
   cerebro:webEnabled: true
   cerebro:webEcrBaseUri: 944130631940.dkr.ecr.us-east-1.amazonaws.com/cerebro
   cerebro:webImageTag: sha-23bfc07b15f0
@@ -389,6 +389,106 @@ config:
         - orchestrator
         - run
         - runtime_id=writer-aws-sec-dev-us2-ecs-task-definition
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-sec-dev-us1-ecs-task
+      scheduleExpression: cron(40 0/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-us1-ecs-task
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-sec-dev-us1-eks-cluster
+      scheduleExpression: cron(42 0/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-us1-eks-cluster
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-sec-dev-us1-eks-nodegroup
+      scheduleExpression: cron(44 0/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-us1-eks-nodegroup
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-sec-dev-us1-eks-fargate
+      scheduleExpression: cron(46 0/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-us1-eks-fargate-profile
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-sec-dev-us1-eks-pod-id
+      scheduleExpression: cron(48 0/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-us1-eks-pod-identity-association
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-sec-dev-us2-ecs-task
+      scheduleExpression: cron(50 0/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-us2-ecs-task
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-sec-dev-us2-eks-cluster
+      scheduleExpression: cron(52 0/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-us2-eks-cluster
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-sec-dev-us2-eks-nodegroup
+      scheduleExpression: cron(54 0/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-us2-eks-nodegroup
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-sec-dev-us2-eks-fargate
+      scheduleExpression: cron(56 0/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-us2-eks-fargate-profile
+        - page_limit=20
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: aws-sec-dev-us2-eks-pod-id
+      scheduleExpression: cron(58 0/2 * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-aws-sec-dev-us2-eks-pod-identity-association
         - page_limit=20
         - graph_page_limit=100
         - event_limit=1000
@@ -861,6 +961,106 @@ config:
       config:
         account_id: "944130631940"
         family: ecs_task_definition
+        include_global: "false"
+        per_page: "100"
+        region: us-west-2
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+    - id: writer-aws-sec-dev-us1-ecs-task
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "944130631940"
+        family: ecs_task
+        include_global: "true"
+        per_page: "100"
+        region: us-east-1
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+    - id: writer-aws-sec-dev-us1-eks-cluster
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "944130631940"
+        family: eks_cluster
+        include_global: "true"
+        per_page: "100"
+        region: us-east-1
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+    - id: writer-aws-sec-dev-us1-eks-nodegroup
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "944130631940"
+        family: eks_nodegroup
+        include_global: "true"
+        per_page: "100"
+        region: us-east-1
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+    - id: writer-aws-sec-dev-us1-eks-fargate-profile
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "944130631940"
+        family: eks_fargate_profile
+        include_global: "true"
+        per_page: "100"
+        region: us-east-1
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+    - id: writer-aws-sec-dev-us1-eks-pod-identity-association
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "944130631940"
+        family: eks_pod_identity_association
+        include_global: "true"
+        per_page: "100"
+        region: us-east-1
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+    - id: writer-aws-sec-dev-us2-ecs-task
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "944130631940"
+        family: ecs_task
+        include_global: "false"
+        per_page: "100"
+        region: us-west-2
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+    - id: writer-aws-sec-dev-us2-eks-cluster
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "944130631940"
+        family: eks_cluster
+        include_global: "false"
+        per_page: "100"
+        region: us-west-2
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+    - id: writer-aws-sec-dev-us2-eks-nodegroup
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "944130631940"
+        family: eks_nodegroup
+        include_global: "false"
+        per_page: "100"
+        region: us-west-2
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+    - id: writer-aws-sec-dev-us2-eks-fargate-profile
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "944130631940"
+        family: eks_fargate_profile
+        include_global: "false"
+        per_page: "100"
+        region: us-west-2
+        role_arn: arn:aws:iam::944130631940:role/cerebro-org-scan-role
+    - id: writer-aws-sec-dev-us2-eks-pod-identity-association
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "944130631940"
+        family: eks_pod_identity_association
         include_global: "false"
         per_page: "100"
         region: us-west-2
