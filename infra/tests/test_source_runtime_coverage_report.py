@@ -216,6 +216,26 @@ class SourceRuntimeCoverageReportTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "HTTP 400: .*invalid tenant_id"):
                 _load_actual(None, "https://cerebro.example", "token", "writer", 20)
 
+    def test_load_actual_uses_supported_live_api_limit(self) -> None:
+        class Response(BytesIO):
+            def __enter__(self) -> "Response":
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                self.close()
+
+        def fake_urlopen(request, timeout: int) -> Response:
+            self.assertIn("tenant_id=writer", request.full_url)
+            self.assertIn("limit=500", request.full_url)
+            self.assertEqual(timeout, 20)
+            return Response(b'{"runtimes":[{"id":"writer-okta-audit"}]}')
+
+        with patch("scripts.source_runtime_coverage_report.urlopen", side_effect=fake_urlopen):
+            self.assertEqual(
+                _load_actual(None, "https://cerebro.example.com", "token", "writer", 20),
+                [{"id": "writer-okta-audit"}],
+            )
+
     def test_normalize_api_url_uses_stack_domain_for_alb(self) -> None:
         self.assertEqual(
             _normalize_api_url("internal-cerebro-go-production-alb-123.us-east-1.elb.amazonaws.com", self._stack_file()),
