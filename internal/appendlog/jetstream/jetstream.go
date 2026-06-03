@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -94,7 +95,7 @@ func Open(cfg config.AppendLogConfig) (*Log, error) {
 			log.Printf("nats disconnected: %v", err)
 		}),
 		nats.ReconnectHandler(func(conn *nats.Conn) {
-			log.Printf("nats reconnected: %s", conn.ConnectedUrl())
+			log.Printf("nats reconnected: %s", redactNATSURL(conn.ConnectedUrl()))
 		}),
 		nats.ClosedHandler(func(_ *nats.Conn) {
 			log.Print("nats connection closed")
@@ -130,6 +131,19 @@ func (l *Log) Close() error {
 		return fmt.Errorf("drain nats connection: %w", err)
 	}
 	return nil
+}
+
+func redactNATSURL(raw string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return ""
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Host == "" {
+		return "<redacted>"
+	}
+	parsed.User = nil
+	return parsed.String()
 }
 
 // Ping verifies that JetStream is reachable.
