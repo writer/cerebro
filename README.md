@@ -4,10 +4,11 @@ WriterInternal Cerebro owns the deployment and operations surface for the curren
 
 This repository is intentionally narrow: it deploys and operates Cerebro for Writer environments. Product/runtime source lives in the `writer/cerebro` image, and the optional web console ships as the `writerinternal/cerebro-web` image; this repository pins, verifies, mirrors, and deploys those artifacts.
 
-Repository split:
+## Cross-repo contract
 
 - `writer/cerebro` is authoritative for runtime behavior, CLI/API contracts, source catalogs, release artifacts, and runtime deploy contracts.
 - `WriterInternal/cerebro` is authoritative for Pulumi stacks, environment config, image promotion, deployment workflows, and operational verification.
+- The release bridge is the signed runtime image plus `cerebro-runtime-contract.json`; promotion and deploy workflows should reject stack/runtime combinations that violate that contract.
 
 ## Current responsibilities
 
@@ -92,6 +93,17 @@ Source runtimes are GitOps-managed in stack config. Add or change `cerebro:sourc
 | Investigate source runtime drift | Dispatch `.github/workflows/source-runtime-drift.yml`. | Review coverage/drift artifacts and reconcile stack config or runtime state. |
 | Investigate graph health | Dispatch `.github/workflows/graph-health-insight.yml` or use deploy verification outputs. | Treat regressions as deploy blockers until explained or intentionally accepted. |
 | Run bulk closeout | Dispatch `.github/workflows/closeout.yml`. | Keep dry-run/apply inputs reviewed and preserve audit bucket output. |
+
+## Rollback and post-merge watch
+
+Rollback is a reviewed config change, not a manual mutation. Revert or adjust the relevant stack config, or use `.github/workflows/propose-image-tag.yml` / `.github/workflows/propose-web-image-tag.yml` to move the runtime or web console back to a verified tag, then let `infra-deploy.yml` preview, deploy, and verify the affected stack.
+
+After merges that change runtime images, source runtimes, graph health logic, or deploy verification, watch:
+
+- `infra-deploy.yml` for Pulumi preview/deploy, runtime verification, and graph health jobs.
+- `.github/workflows/source-runtime-verify.yml` for recent source runtime ECS task health.
+- `.github/workflows/source-runtime-drift.yml` for coverage and schedule drift.
+- `.github/workflows/graph-health-insight.yml` for graph lag, ingest, and quality regressions.
 
 ## Local workflow
 
