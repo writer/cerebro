@@ -3,10 +3,13 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+from io import BytesIO
 from pathlib import Path
+from urllib.error import HTTPError
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from scripts.check_source_runtime_drift import Drift, _normalize_api_url, _summary_markdown, find_drift
+from scripts.check_source_runtime_drift import Drift, _load_actual, _normalize_api_url, _summary_markdown, find_drift
 
 
 EXPECTED = {
@@ -118,6 +121,18 @@ class SourceRuntimeDriftTest(unittest.TestCase):
             ),
             "https://internal-cerebro-go-production-alb-1917539768.us-east-1.elb.amazonaws.com",
         )
+
+    def test_load_actual_includes_http_error_body(self) -> None:
+        error = HTTPError(
+            url="https://cerebro.example/source-runtimes",
+            code=400,
+            msg="Bad Request",
+            hdrs={},
+            fp=BytesIO(b'{"error":"limit must be <= 500"}'),
+        )
+        with patch("scripts.check_source_runtime_drift.urlopen", side_effect=error):
+            with self.assertRaisesRegex(RuntimeError, "HTTP 400: .*limit must be <= 500"):
+                _load_actual(None, "https://cerebro.example", "token", "writer", 20)
 
     def test_summary_markdown_lists_drift_counts(self) -> None:
         summary = _summary_markdown(
