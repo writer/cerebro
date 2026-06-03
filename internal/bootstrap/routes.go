@@ -21,6 +21,7 @@ const (
 func (app *App) registerRoutes(mux *http.ServeMux, cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) {
 	app.registerConnectRoutes(mux, cfg, deps, sources)
 	app.registerPublicRoutes(mux)
+	app.registerOAuthRoutes(mux)
 	app.registerReportRoutes(mux)
 	app.registerGRCRoutes(mux)
 	app.registerFindingRoutes(mux)
@@ -42,6 +43,16 @@ func (app *App) registerPublicRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "/health", routeSurfacePublicHTTP, app.handleHealth)
 	registerHTTPRoute(mux, "/healthz", routeSurfacePublicHTTP, app.handleHealth)
 	registerHTTPRoute(mux, "GET /openapi.yaml", routeSurfacePublicHTTP, app.handleOpenAPI)
+}
+
+func (app *App) registerOAuthRoutes(mux *http.ServeMux) {
+	registerHTTPRoute(mux, "GET /.well-known/oauth-protected-resource", routeSurfacePublicHTTP, app.handleOAuthProtectedResourceMetadata)
+	registerHTTPRoute(mux, "GET /.well-known/oauth-protected-resource/api/v1/mcp", routeSurfacePublicHTTP, app.handleOAuthProtectedResourceMetadata)
+	registerHTTPRoute(mux, "GET /.well-known/oauth-authorization-server", routeSurfacePublicHTTP, app.handleOAuthAuthorizationServerMetadata)
+	registerHTTPRoute(mux, "GET /oauth/authorize", routeSurfacePublicHTTP, app.handleOAuthAuthorize)
+	registerHTTPRoute(mux, "GET /oauth/callback", routeSurfacePublicHTTP, app.handleOAuthCallback)
+	registerHTTPRoute(mux, "POST /oauth/token", routeSurfacePublicHTTP, app.handleOAuthToken)
+	registerHTTPRoute(mux, "POST /oauth/register", routeSurfacePublicHTTP, app.handleOAuthRegister)
 }
 
 func (app *App) registerReportRoutes(mux *http.ServeMux) {

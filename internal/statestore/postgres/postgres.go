@@ -27,6 +27,7 @@ type Store struct {
 	findingCandidateReady     bool
 	vulnDBTablesReady         bool
 	deviceAuthTablesReady     bool
+	mcpOAuthTablesReady       bool
 	startupLeaseTableReady    bool
 	askTrajectoryReady        bool
 }

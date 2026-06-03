@@ -101,7 +101,51 @@ type AuthConfig struct {
 	CapabilityTokenAudience string
 	AllowedTenants          []string
 	DeviceAuth              DeviceAuthConfig
+	MCPOAuth                MCPOAuthConfig
 	RequestOrigin           RequestOriginConfig
+}
+
+// MCPOAuthClient is one OAuth client allowed to request MCP access tokens from
+// Cerebro. Redirect URI comparison is exact-match.
+type MCPOAuthClient struct {
+	ClientID     string   `json:"client_id"`
+	ClientSecret string   `json:"client_secret,omitempty"`
+	Name         string   `json:"name,omitempty"`
+	RedirectURIs []string `json:"redirect_uris"`
+	Public       bool     `json:"public,omitempty"`
+}
+
+// MCPOAuthConfig configures Cerebro's OAuth 2.1 authorization-server surface
+// for MCP clients. Cerebro acts as the authorization server to MCP clients and
+// delegates human login to the upstream Writer OIDC provider.
+type MCPOAuthConfig struct {
+	Enabled                   bool
+	Issuer                    string
+	Resource                  string
+	Clients                   []MCPOAuthClient
+	DynamicClientRegistration bool
+	AccessTTL                 time.Duration
+	RefreshTTL                time.Duration
+	CodeTTL                   time.Duration
+	StateTTL                  time.Duration
+	TenantID                  string
+	AllowedTenants            []string
+	Upstream                  MCPOAuthUpstreamConfig
+}
+
+// MCPOAuthUpstreamConfig describes the upstream Writer OIDC application that
+// authenticates the human before Cerebro issues an MCP capability token.
+type MCPOAuthUpstreamConfig struct {
+	Issuer                string
+	AuthorizationEndpoint string
+	TokenEndpoint         string
+	JWKSURI               string
+	ClientID              string
+	ClientSecret          string
+	RedirectURI           string
+	Scopes                []string
+	GroupsClaim           string
+	SecurityGroups        []string
 }
 
 // RequestOriginConfig controls how bootstrap reconstructs client IPs and public
@@ -235,6 +279,11 @@ func Load() (Config, error) {
 	if len(cfg.Auth.CapabilityTokenSecrets) > 0 && cfg.Auth.CapabilityTokenAudience == "" {
 		cfg.Auth.CapabilityTokenAudience = "cerebro-api"
 	}
+	mcpOAuth, err := loadMCPOAuthConfig(cfg.Auth.RequestOrigin.PublicOrigin)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.Auth.MCPOAuth = mcpOAuth
 	deviceAuth, err := loadDeviceAuthConfig()
 	if err != nil {
 		return Config{}, err
@@ -307,6 +356,20 @@ func Load() (Config, error) {
 	}
 	if cfg.Auth.Enabled && len(cfg.Auth.APIKeys) == 0 && len(cfg.Auth.APICredentials) == 0 && len(cfg.Auth.CapabilityTokenSecrets) == 0 {
 		return Config{}, fmt.Errorf("CEREBRO_API_KEYS, CEREBRO_API_CREDENTIALS_JSON, or CEREBRO_CAPABILITY_TOKEN_SECRETS is required when CEREBRO_API_AUTH_ENABLED=true")
+	}
+	if cfg.Auth.MCPOAuth.Enabled {
+		if !cfg.Auth.Enabled {
+			return Config{}, fmt.Errorf("CEREBRO_API_AUTH_ENABLED=true is required when CEREBRO_MCP_OAUTH_ENABLED=true")
+		}
+		if cfg.Auth.RequestOrigin.PublicOrigin == "" {
+			return Config{}, fmt.Errorf("CEREBRO_PUBLIC_ORIGIN is required when CEREBRO_MCP_OAUTH_ENABLED=true")
+		}
+		if cfg.StateStore.Driver != StateStoreDriverPostgres {
+			return Config{}, fmt.Errorf("CEREBRO_STATE_STORE_DRIVER=postgres and CEREBRO_POSTGRES_DSN are required when CEREBRO_MCP_OAUTH_ENABLED=true")
+		}
+		if len(cfg.Auth.CapabilityTokenSecrets) == 0 {
+			return Config{}, fmt.Errorf("CEREBRO_CAPABILITY_TOKEN_SECRETS is required when CEREBRO_MCP_OAUTH_ENABLED=true")
+		}
 	}
 	return cfg, nil
 }

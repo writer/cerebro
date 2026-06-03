@@ -17,6 +17,7 @@ tags:
   - name: Health
   - name: Knowledge
   - name: MCP
+  - name: OAuth
   - name: Platform
   - name: Reports
   - name: Sources
@@ -1323,6 +1324,240 @@ paths:
       responses:
         '200':
           description: JWK Set document.
+  /.well-known/oauth-authorization-server:
+    get:
+      summary: OAuth authorization server metadata
+      description: Publishes Cerebro's OAuth 2.1 authorization-server metadata for MCP clients.
+      tags:
+        - OAuth
+      security: []
+      responses:
+        '200':
+          description: Authorization server metadata document.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /.well-known/oauth-protected-resource:
+    get:
+      summary: OAuth protected resource metadata
+      description: Publishes OAuth protected-resource metadata for the Cerebro MCP resource.
+      tags:
+        - OAuth
+      security: []
+      responses:
+        '200':
+          description: Protected resource metadata document.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /.well-known/oauth-protected-resource/api/v1/mcp:
+    get:
+      summary: OAuth protected resource metadata for MCP
+      description: Path-specific OAuth protected-resource metadata for `/api/v1/mcp`.
+      tags:
+        - OAuth
+      security: []
+      responses:
+        '200':
+          description: Protected resource metadata document.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /oauth/authorize:
+    get:
+      summary: Start MCP OAuth authorization
+      description: Validates the downstream MCP OAuth request and redirects the human to upstream Writer SSO/OIDC.
+      tags:
+        - OAuth
+      security: []
+      parameters:
+        - name: response_type
+          in: query
+          schema:
+            type: string
+            enum: [code]
+        - name: client_id
+          in: query
+          schema:
+            type: string
+        - name: redirect_uri
+          in: query
+          schema:
+            type: string
+            format: uri
+        - name: scope
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: code_challenge
+          in: query
+          schema:
+            type: string
+        - name: code_challenge_method
+          in: query
+          schema:
+            type: string
+            enum: [S256]
+        - name: resource
+          in: query
+          schema:
+            type: string
+            format: uri
+      responses:
+        '302':
+          description: Redirect to upstream Writer SSO/OIDC.
+        '400':
+          description: Invalid OAuth authorization request.
+  /oauth/callback:
+    get:
+      summary: Complete upstream Writer SSO/OIDC callback
+      description: Consumes upstream OIDC callback state and redirects the MCP client with a one-time authorization code.
+      tags:
+        - OAuth
+      security: []
+      responses:
+        '302':
+          description: Redirect to the registered MCP client callback with an authorization code.
+        '400':
+          description: Invalid or expired callback state.
+        '403':
+          description: Authenticated human is not authorized for MCP access.
+  /oauth/token:
+    post:
+      summary: Exchange MCP OAuth authorization or refresh token
+      description: Issues a resource-bound bearer capability token for MCP after PKCE verification or refresh-token rotation.
+      tags:
+        - OAuth
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [grant_type, client_id, resource]
+              additionalProperties:
+                type: string
+              properties:
+                grant_type:
+                  type: string
+                  enum: [authorization_code, refresh_token]
+                client_id:
+                  type: string
+                resource:
+                  type: string
+                  format: uri
+                code:
+                  type: string
+                redirect_uri:
+                  type: string
+                  format: uri
+                code_verifier:
+                  type: string
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: OAuth token response.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [access_token, token_type, expires_in]
+                properties:
+                  access_token:
+                    type: string
+                  token_type:
+                    type: string
+                    enum: [Bearer]
+                  expires_in:
+                    type: integer
+                  refresh_token:
+                    type: string
+                  scope:
+                    type: string
+        '400':
+          description: Invalid token request or grant.
+        '401':
+          description: Client authentication failed.
+  /oauth/register:
+    post:
+      summary: Dynamically register an MCP OAuth client
+      description: Registers a public MCP client with loopback redirect URIs for OAuth authorization-code + PKCE.
+      tags:
+        - OAuth
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [redirect_uris]
+              properties:
+                client_name:
+                  type: string
+                redirect_uris:
+                  type: array
+                  items:
+                    type: string
+                    format: uri
+                grant_types:
+                  type: array
+                  items:
+                    type: string
+                    enum: [authorization_code, refresh_token]
+                response_types:
+                  type: array
+                  items:
+                    type: string
+                    enum: [code]
+                token_endpoint_auth_method:
+                  type: string
+                  enum: [none]
+      responses:
+        '201':
+          description: Dynamic client registration response.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [client_id, redirect_uris, grant_types, response_types, token_endpoint_auth_method]
+                properties:
+                  client_id:
+                    type: string
+                  client_name:
+                    type: string
+                  redirect_uris:
+                    type: array
+                    items:
+                      type: string
+                      format: uri
+                  grant_types:
+                    type: array
+                    items:
+                      type: string
+                  response_types:
+                    type: array
+                    items:
+                      type: string
+                  token_endpoint_auth_method:
+                    type: string
+                    enum: [none]
+        '400':
+          description: Invalid client metadata.
+        '429':
+          description: Per-client-IP dynamic registration rate limit exceeded.
 
 components:
   securitySchemes:

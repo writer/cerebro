@@ -32,6 +32,7 @@ import (
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/knowledge"
+	"github.com/writer/cerebro/internal/mcpoauth"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/reports"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -52,18 +53,20 @@ type Dependencies struct {
 
 // App is the minimal Connect/bootstrap composition root for the rewrite skeleton.
 type App struct {
-	cfg              config.Config
-	deps             Dependencies
-	sources          *sourcecdk.Registry
-	mux              *http.ServeMux
-	handler          http.Handler
-	server           *http.Server
-	deviceService    *deviceauth.Service
-	deviceHandler    *deviceAuthHTTPHandler
-	deviceVerifier   *deviceauth.JWTVerifier
-	dpopVerifier     *deviceauth.DPoPVerifier
-	riskScorer       *risk.Scorer
-	observationStore risk.ObservationStore
+	cfg                   config.Config
+	deps                  Dependencies
+	sources               *sourcecdk.Registry
+	mux                   *http.ServeMux
+	handler               http.Handler
+	server                *http.Server
+	deviceService         *deviceauth.Service
+	deviceHandler         *deviceAuthHTTPHandler
+	deviceVerifier        *deviceauth.JWTVerifier
+	dpopVerifier          *deviceauth.DPoPVerifier
+	riskScorer            *risk.Scorer
+	observationStore      risk.ObservationStore
+	mcpOAuthService       *mcpoauth.Service
+	mcpOAuthRegisterLimit *deviceauth.TokenBucket
 }
 
 type bootstrapService struct {
@@ -84,6 +87,9 @@ var (
 	errDeviceAuthRequiresAPIAuth          = errors.New("device-auth requires CEREBRO_API_AUTH_ENABLED=true")
 	errDeviceAuthRequiresStore            = errors.New("device-auth requires a device-auth capable state store")
 	errDeviceAuthRequiresSharedDPoPReplay = errors.New("device-auth DPoP replay protection requires shared state for multiple replicas")
+	errMCPOAuthRequiresAPIAuth            = errors.New("MCP OAuth requires CEREBRO_API_AUTH_ENABLED=true")
+	errMCPOAuthRequiresStore              = errors.New("MCP OAuth requires an OAuth-capable state store")
+	errMCPOAuthRequiresCapabilitySecrets  = errors.New("MCP OAuth requires CEREBRO_CAPABILITY_TOKEN_SECRETS")
 )
 
 // New constructs the minimal bootstrap app and registers the Connect handlers.
@@ -100,6 +106,12 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 	if cfg.Auth.DeviceAuth.Enabled && !cfg.Auth.Enabled {
 		return nil, errDeviceAuthRequiresAPIAuth
 	}
+	if cfg.Auth.MCPOAuth.Enabled && !cfg.Auth.Enabled {
+		return nil, errMCPOAuthRequiresAPIAuth
+	}
+	if cfg.Auth.MCPOAuth.Enabled && len(cfg.Auth.CapabilityTokenSecrets) == 0 {
+		return nil, errMCPOAuthRequiresCapabilitySecrets
+	}
 	if cfg.Auth.DeviceAuth.Enabled && deviceAuthReplicaCount(cfg.Auth.DeviceAuth) > 1 {
 		dpop := deviceauth.NewDPoPVerifier(cfg.Auth.DeviceAuth.ClockSkew, cfg.Auth.DeviceAuth.DPoPProofTTL)
 		if !dpop.ReplayStateShared() {
@@ -109,6 +121,10 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 	deviceStore := deviceAuthStore(deps.StateStore)
 	if cfg.Auth.DeviceAuth.Enabled && deviceStore == nil {
 		return nil, errDeviceAuthRequiresStore
+	}
+	oauthStore := mcpOAuthStore(deps.StateStore)
+	if cfg.Auth.MCPOAuth.Enabled && oauthStore == nil {
+		return nil, errMCPOAuthRequiresStore
 	}
 	if deviceStore != nil {
 		dpop := deviceauth.NewDPoPVerifier(cfg.Auth.DeviceAuth.ClockSkew, cfg.Auth.DeviceAuth.DPoPProofTTL)
@@ -136,6 +152,27 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 			app.observationStore = obsStore
 			app.deviceHandler = newDeviceAuthHTTPHandler(service, cfg.Auth.DeviceAuth, cfg.Auth.RequestOrigin)
 		}
+	}
+	if cfg.Auth.MCPOAuth.Enabled {
+		app.mcpOAuthRegisterLimit = deviceauth.NewTokenBucket(oauthRegisterRatePerSecond, oauthRegisterBurst)
+		service, err := mcpoauth.NewService(cfg.Auth.MCPOAuth, oauthStore, func(ctx context.Context, grant mcpoauth.AccessGrant, ttl time.Duration, now time.Time) (string, error) {
+			return issueCapabilityToken(cfg.Auth, capabilityClaims{
+				Audience:       cfg.Auth.CapabilityTokenAudience,
+				Subject:        grant.Subject,
+				IssuedAt:       now.Unix(),
+				CredentialID:   "mcp-oauth",
+				ClientID:       grant.ClientID,
+				Resource:       grant.Resource,
+				TenantID:       grant.TenantID,
+				AllowedTenants: grant.AllowedTenants,
+				Scopes:         grant.Scopes,
+				Groups:         grant.Groups,
+			}, ttl, now)
+		}, mcpoauth.WithOIDCProvider(newMCPOAuthOIDCClient(cfg.Auth.MCPOAuth.Upstream)))
+		if err != nil {
+			return nil, fmt.Errorf("MCP OAuth bootstrap failed: %w", err)
+		}
+		app.mcpOAuthService = service
 	}
 	mux := http.NewServeMux()
 	app.mux = mux
@@ -3234,6 +3271,14 @@ func deviceAuthStore(store ports.StateStore) deviceauth.Store {
 		return nil
 	}
 	return deviceStore
+}
+
+func mcpOAuthStore(store ports.StateStore) mcpoauth.Store {
+	oauthStore, ok := store.(mcpoauth.Store)
+	if !ok || isNilInterface(oauthStore) {
+		return nil
+	}
+	return oauthStore
 }
 
 func deviceRiskObservationStore(store ports.StateStore) risk.ObservationStore {
