@@ -56,6 +56,30 @@ class RunAwsDeployVerificationsTest(unittest.TestCase):
         self.assertEqual(command[command.index("--wait-timeout-seconds") + 1], "300")
         self.assertIn("--stop-running-before-run", command)
 
+    def test_graph_health_command_uses_fast_deploy_retry_defaults(self) -> None:
+        args = argparse.Namespace(
+            stack_file=Path("aws/Pulumi.go-prod.yaml"),
+            graph_health_command_retry_seconds=run_aws_deploy_verifications.DEFAULT_GRAPH_HEALTH_COMMAND_RETRY_SECONDS,
+            graph_health_ingest_retry_seconds=run_aws_deploy_verifications.DEFAULT_GRAPH_HEALTH_INGEST_RETRY_SECONDS,
+        )
+
+        command = run_aws_deploy_verifications._graph_health_command(args)
+
+        self.assertEqual(command[command.index("--graph-command-retry-seconds") + 1], "300")
+        self.assertEqual(command[command.index("--ingest-health-retry-seconds") + 1], "0")
+
+    def test_graph_health_command_allows_retry_overrides(self) -> None:
+        args = argparse.Namespace(
+            stack_file=Path("aws/Pulumi.sec-dev.yaml"),
+            graph_health_command_retry_seconds=42,
+            graph_health_ingest_retry_seconds=17,
+        )
+
+        command = run_aws_deploy_verifications._graph_health_command(args)
+
+        self.assertEqual(command[command.index("--graph-command-retry-seconds") + 1], "42")
+        self.assertEqual(command[command.index("--ingest-health-retry-seconds") + 1], "17")
+
     def test_source_failure_reports_warning_but_does_not_fail_without_graph_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             summary_path = Path(temp_dir) / "summary.md"

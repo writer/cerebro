@@ -23,6 +23,10 @@ class GraphHealthResult:
     diagnostics: str = ""
 
 
+DEFAULT_GRAPH_HEALTH_COMMAND_RETRY_SECONDS = 300
+DEFAULT_GRAPH_HEALTH_INGEST_RETRY_SECONDS = 0
+
+
 def _stack_name(path: Path) -> str:
     name = path.name
     if name.startswith("Pulumi.") and name.endswith(".yaml"):
@@ -90,7 +94,9 @@ def _graph_health_command(args: argparse.Namespace) -> list[str]:
         "--wait-timeout-seconds",
         "3600",
         "--graph-command-retry-seconds",
-        "1800",
+        str(args.graph_health_command_retry_seconds),
+        "--ingest-health-retry-seconds",
+        str(args.graph_health_ingest_retry_seconds),
         "--poll-seconds",
         "5",
         "--allow-transient-source-failures",
@@ -407,6 +413,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--graph-health-heal", action="store_true", help="Try to re-run failed source runtimes before degrading graph health.")
     parser.add_argument("--graph-health-issue", action="store_true", help="Create a GitHub issue when graph health is degraded.")
     parser.add_argument("--graph-health-artifact-name", default="graph-health", help="Artifact name to include in graph-health follow-up issues.")
+    parser.add_argument(
+        "--graph-health-command-retry-seconds",
+        type=_non_negative_int,
+        default=DEFAULT_GRAPH_HEALTH_COMMAND_RETRY_SECONDS,
+        help="Retry transient graph command launch/output failures for this many seconds during deploy health checks.",
+    )
+    parser.add_argument(
+        "--graph-health-ingest-retry-seconds",
+        type=_non_negative_int,
+        default=DEFAULT_GRAPH_HEALTH_INGEST_RETRY_SECONDS,
+        help="Retry failed/stale graph ingest health for this many seconds before using the degradation/heal path.",
+    )
     parser.add_argument("--github-output", type=Path, help="GitHub Actions output file for deployment health outputs.")
     parser.add_argument("--source-target-concurrency", type=_positive_int, default=4)
     parser.add_argument(
