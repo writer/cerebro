@@ -69,13 +69,14 @@ func SimulateRiskDelta(records []*ports.FindingRecord, options RiskDeltaSimulati
 	}
 	beforeRecords := cloneRiskDeltaFindings(records)
 	beforeNeighborhoods := cloneRiskDeltaNeighborhoods(options.GraphNeighborhoods)
-	beforePaths := AnalyzeFindingAttackPaths(beforeRecords, beforeNeighborhoods, FindingExposureAnalysisOptions{Limit: limit, GraphNeighborhoods: beforeNeighborhoods})
-	before := riskDeltaSnapshot(beforeRecords, beforePaths, options.Now)
+	beforeAllPaths := AnalyzeFindingAttackPaths(beforeRecords, beforeNeighborhoods, FindingExposureAnalysisOptions{GraphNeighborhoods: beforeNeighborhoods})
+	before := riskDeltaSnapshot(beforeRecords, beforeAllPaths, options.Now)
 
 	afterRecords, findingReasons := applyRiskDeltaFindingScenario(beforeRecords, scenarioType, targetURN, beforeNeighborhoods)
 	afterNeighborhoods, graphReasons := applyRiskDeltaGraphScenario(beforeNeighborhoods, scenarioType, targetURN)
-	afterPaths := AnalyzeFindingAttackPaths(afterRecords, afterNeighborhoods, FindingExposureAnalysisOptions{Limit: limit, GraphNeighborhoods: afterNeighborhoods})
-	after := riskDeltaSnapshot(afterRecords, afterPaths, options.Now)
+	afterAllPaths := AnalyzeFindingAttackPaths(afterRecords, afterNeighborhoods, FindingExposureAnalysisOptions{GraphNeighborhoods: afterNeighborhoods})
+	afterPaths := limitRiskDeltaAttackPaths(afterAllPaths, limit)
+	after := riskDeltaSnapshot(afterRecords, afterAllPaths, options.Now)
 
 	riskScoreReduction := before.TotalRiskScore - after.TotalRiskScore
 	attackPathScoreReduction := before.TotalAttackPathScore - after.TotalAttackPathScore
@@ -92,11 +93,18 @@ func SimulateRiskDelta(records []*ports.FindingRecord, options RiskDeltaSimulati
 		AttackPathScoreReduction: attackPathScoreReduction,
 		AttackPathCountReduction: attackPathCountReduction,
 		AffectedFindings:         riskDeltaFindingImpacts(beforeRecords, afterRecords, options.Now),
-		AddedAttackPaths:         addedRiskDeltaAttackPaths(beforePaths, afterPaths),
-		RemovedAttackPaths:       removedRiskDeltaAttackPaths(beforePaths, afterPaths),
+		AddedAttackPaths:         addedRiskDeltaAttackPaths(beforeAllPaths, afterAllPaths),
+		RemovedAttackPaths:       removedRiskDeltaAttackPaths(beforeAllPaths, afterAllPaths),
 		RemainingAttackPaths:     afterPaths,
 		Reasons:                  uniqueSortedStrings(append(findingReasons, graphReasons...)),
 	}
+}
+
+func limitRiskDeltaAttackPaths(paths []FindingAttackPath, limit int) []FindingAttackPath {
+	if limit <= 0 || len(paths) <= limit {
+		return paths
+	}
+	return paths[:limit]
 }
 
 func riskDeltaSnapshot(records []*ports.FindingRecord, paths []FindingAttackPath, now time.Time) RiskDeltaSnapshot {

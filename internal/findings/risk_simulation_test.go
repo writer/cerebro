@@ -94,6 +94,56 @@ func TestSimulateRiskDeltaPatchVulnerability(t *testing.T) {
 	}
 }
 
+func TestSimulateRiskDeltaDiffsUntruncatedAttackPaths(t *testing.T) {
+	target := compoundRiskFinding("runtime-kev", githubDependabotOpenAlertRuleID, "HIGH", "", "writer/cerebro", "urn:cerebro:writer:container_image:sha256:abc", "scan.detected")
+	target.Attributes["is_kev"] = "true"
+	target.Attributes["epss_score"] = "0.91"
+	target.Attributes["cvss_score"] = "9.8"
+	target.Attributes["exploit_available"] = "true"
+	other := compoundRiskFinding("privileged-role", cloudPrivilegePathGrantedRuleID, "HIGH", "", "", "urn:cerebro:writer:aws_role:admin", "can_admin")
+	neighborhoods := map[string]*ports.EntityNeighborhood{
+		"paths": {
+			Root: &ports.NeighborhoodNode{URN: "urn:cerebro:writer:container_image:sha256:abc", EntityType: "container_image", Label: "image"},
+			Neighbors: []*ports.NeighborhoodNode{
+				{URN: "urn:cerebro:writer:aws_public_principal:public_internet", EntityType: "aws.public_principal", Label: "public internet"},
+				{URN: "urn:cerebro:writer:aws_role:admin", EntityType: "aws.role", Label: "admin"},
+				{URN: "urn:cerebro:writer:aws_user:operator", EntityType: "aws.user", Label: "operator"},
+				{URN: "urn:cerebro:writer:finding:runtime-kev", EntityType: "finding", Label: "runtime-kev"},
+				{URN: "urn:cerebro:writer:finding:privileged-role", EntityType: "finding", Label: "privileged-role"},
+			},
+			Relations: []*ports.NeighborhoodRelation{
+				{FromURN: "urn:cerebro:writer:aws_public_principal:public_internet", Relation: "can_reach", ToURN: "urn:cerebro:writer:container_image:sha256:abc"},
+				{FromURN: "urn:cerebro:writer:container_image:sha256:abc", Relation: "has_finding", ToURN: "urn:cerebro:writer:finding:runtime-kev"},
+				{FromURN: "urn:cerebro:writer:aws_user:operator", Relation: "can_admin", ToURN: "urn:cerebro:writer:aws_role:admin"},
+				{FromURN: "urn:cerebro:writer:aws_role:admin", Relation: "has_finding", ToURN: "urn:cerebro:writer:finding:privileged-role"},
+			},
+		},
+	}
+	beforeTopPaths := AnalyzeFindingAttackPaths([]*ports.FindingRecord{target, other}, neighborhoods, FindingExposureAnalysisOptions{Limit: 1, GraphNeighborhoods: neighborhoods})
+	if len(beforeTopPaths) != 1 || beforeTopPaths[0].FindingID != target.ID {
+		t.Fatalf("before top paths = %#v, want vulnerability path first", beforeTopPaths)
+	}
+	report := SimulateRiskDelta([]*ports.FindingRecord{target, other}, RiskDeltaSimulationOptions{
+		ScenarioType:       RiskDeltaScenarioPatchVulnerability,
+		TargetURN:          "urn:cerebro:writer:container_image:sha256:abc",
+		Limit:              1,
+		GraphNeighborhoods: neighborhoods,
+	})
+
+	if len(report.RemainingAttackPaths) != 1 {
+		t.Fatalf("RemainingAttackPaths = %#v, want truncated top path", report.RemainingAttackPaths)
+	}
+	if report.RemainingAttackPaths[0].FindingID != other.ID {
+		t.Fatalf("RemainingAttackPaths = %#v, want non-target path after score reshuffle", report.RemainingAttackPaths)
+	}
+	if len(report.AddedAttackPaths) != 0 || len(report.RemovedAttackPaths) != 0 {
+		t.Fatalf("AddedAttackPaths = %#v, RemovedAttackPaths = %#v, want no structural path diff", report.AddedAttackPaths, report.RemovedAttackPaths)
+	}
+	if report.Before.AttackPathCount <= 1 || report.After.AttackPathCount != report.Before.AttackPathCount {
+		t.Fatalf("attack path counts = before %d after %d, want stable full counts", report.Before.AttackPathCount, report.After.AttackPathCount)
+	}
+}
+
 func TestSimulateRiskDeltaRemovePrivilege(t *testing.T) {
 	finding := compoundRiskFinding("privileged-role", cloudPrivilegePathGrantedRuleID, "HIGH", "", "", "urn:cerebro:writer:aws_role:admin", "can_admin")
 	finding.Attributes["privileged"] = "true"

@@ -543,6 +543,33 @@ func TestRunRiskDeltaReportSimulatesPublicExposureRemoval(t *testing.T) {
 	}
 }
 
+func TestRunRiskDeltaReportRejectsCrossTenantTargetURN(t *testing.T) {
+	graphStore := &stubGraphStore{
+		neighborhoods: map[string]*ports.EntityNeighborhood{
+			"urn:cerebro:other:aws_secret_store:prod-secrets": {
+				Root: &ports.NeighborhoodNode{URN: "urn:cerebro:other:aws_secret_store:prod-secrets", EntityType: "aws.secret_store", Label: "prod-secrets"},
+			},
+		},
+	}
+	service := New(&stubFindingStore{}, graphStore, &stubReportStore{})
+
+	_, err := service.Run(context.Background(), &cerebrov1.RunReportRequest{
+		ReportId: riskDeltaReportID,
+		Parameters: map[string]string{
+			reportParameterTenantID:     "writer",
+			reportParameterRuntimeID:    "writer-aws",
+			reportParameterScenarioType: findinganalysis.RiskDeltaScenarioRemovePublicExposure,
+			reportParameterTargetURN:    "urn:cerebro:other:aws_secret_store:prod-secrets",
+		},
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Run() error = %v, want %v", err, ErrInvalidRequest)
+	}
+	if graphStore.rootURN != "" {
+		t.Fatalf("GetEntityNeighborhood rootURN = %q, want no cross-tenant graph read", graphStore.rootURN)
+	}
+}
+
 func TestGetReportRunRequiresAvailableStore(t *testing.T) {
 	service := New(nil, nil, nil)
 	if _, err := service.Get(context.Background(), &cerebrov1.GetReportRunRequest{Id: "report-run-1"}); !errors.Is(err, ErrRuntimeUnavailable) {

@@ -354,6 +354,9 @@ func (s *Service) runRiskDelta(ctx context.Context, parameters map[string]string
 	if targetURN == "" {
 		return nil, fmt.Errorf("%w: report parameter %q is required", ErrInvalidRequest, reportParameterTargetURN)
 	}
+	if err := validateRiskDeltaTargetTenant(tenantID, targetURN); err != nil {
+		return nil, err
+	}
 	runtimeIDsCSV := strings.Join(runtimeIDs, ",")
 	resourceLimit, err := normalizePositiveLimit(parameters[reportParameterResourceLimit], defaultResourceEvidenceLimit, maxResourceEvidenceLimit, reportParameterResourceLimit)
 	if err != nil {
@@ -651,6 +654,25 @@ func normalizeRiskDeltaScenario(value string) (string, error) {
 	default:
 		return "", fmt.Errorf("%w: report parameter %q must be one of %s, %s, %s, %s", ErrInvalidRequest, reportParameterScenarioType, findinganalysis.RiskDeltaScenarioRemovePublicExposure, findinganalysis.RiskDeltaScenarioRemovePrivilege, findinganalysis.RiskDeltaScenarioPatchVulnerability, findinganalysis.RiskDeltaScenarioCompromiseIdentity)
 	}
+}
+
+func validateRiskDeltaTargetTenant(tenantID string, targetURN string) error {
+	targetTenantID := tenantIDFromRiskDeltaTargetURN(targetURN)
+	if targetTenantID == "" {
+		return fmt.Errorf("%w: report parameter %q must be a tenant-scoped cerebro urn", ErrInvalidRequest, reportParameterTargetURN)
+	}
+	if targetTenantID != strings.TrimSpace(tenantID) {
+		return fmt.Errorf("%w: report parameter %q tenant must match %q", ErrInvalidRequest, reportParameterTargetURN, reportParameterTenantID)
+	}
+	return nil
+}
+
+func tenantIDFromRiskDeltaTargetURN(urn string) string {
+	parts := strings.SplitN(strings.TrimSpace(urn), ":", 5)
+	if len(parts) < 5 || parts[0] != "urn" || parts[1] != "cerebro" {
+		return ""
+	}
+	return strings.TrimSpace(parts[2])
 }
 
 var sensitiveReportParameterTokens = []string{
