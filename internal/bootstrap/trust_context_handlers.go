@@ -110,7 +110,7 @@ func applyTrustContextFindings(r *http.Request, store ports.FindingStore, tenant
 		findings, err := store.ListFindings(r.Context(), ports.ListFindingsRequest{
 			TenantID:    tenantID,
 			RuntimeID:   runtimeID,
-			Status:      "active",
+			Status:      "open",
 			ResourceURN: root,
 			Limit:       100,
 		})

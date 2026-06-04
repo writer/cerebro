@@ -72,6 +72,7 @@ type deviceAuthMemStore struct {
 	identity *endpointidentity.MemoryStore
 	entities map[string]*ports.ProjectedEntity
 	links    []*ports.ProjectedLink
+	findings []*ports.FindingRecord
 }
 
 func newDeviceAuthMemStore() *deviceAuthMemStore {
@@ -90,6 +91,7 @@ var (
 	_ deviceauth.Store            = (*deviceAuthMemStore)(nil)
 	_ ports.ProjectionStateStore  = (*deviceAuthMemStore)(nil)
 	_ ports.EndpointIdentityStore = (*deviceAuthMemStore)(nil)
+	_ ports.FindingStore          = (*deviceAuthMemStore)(nil)
 )
 
 func (s *deviceAuthMemStore) UpsertProjectedEntity(_ context.Context, entity *ports.ProjectedEntity) error {
@@ -123,6 +125,66 @@ func (s *deviceAuthMemStore) ResolveEndpointIdentity(ctx context.Context, reques
 	return s.identity.ResolveEndpointIdentity(ctx, request)
 }
 
+func (s *deviceAuthMemStore) UpsertFinding(_ context.Context, finding *ports.FindingRecord) (*ports.FindingRecord, error) {
+	if finding == nil {
+		return nil, nil
+	}
+	clone := *finding
+	s.findings = append(s.findings, &clone)
+	return &clone, nil
+}
+
+func (s *deviceAuthMemStore) GetFinding(_ context.Context, id string) (*ports.FindingRecord, error) {
+	for _, finding := range s.findings {
+		if finding.ID == id {
+			clone := *finding
+			return &clone, nil
+		}
+	}
+	return nil, nil
+}
+
+func (s *deviceAuthMemStore) ListFindings(_ context.Context, request ports.ListFindingsRequest) ([]*ports.FindingRecord, error) {
+	var out []*ports.FindingRecord
+	for _, finding := range s.findings {
+		if request.TenantID != "" && finding.TenantID != request.TenantID {
+			continue
+		}
+		if request.RuntimeID != "" && finding.RuntimeID != request.RuntimeID {
+			continue
+		}
+		if request.Status != "" && finding.Status != request.Status {
+			continue
+		}
+		if request.ResourceURN != "" && !stringSliceContains(finding.ResourceURNs, request.ResourceURN) {
+			continue
+		}
+		clone := *finding
+		out = append(out, &clone)
+	}
+	return out, nil
+}
+
+func (s *deviceAuthMemStore) UpdateFindingStatus(_ context.Context, request ports.FindingStatusUpdate) (*ports.FindingRecord, error) {
+	return s.GetFinding(context.Background(), request.FindingID)
+}
+
+func (s *deviceAuthMemStore) UpdateFindingAssignee(_ context.Context, request ports.FindingAssigneeUpdate) (*ports.FindingRecord, error) {
+	return s.GetFinding(context.Background(), request.FindingID)
+}
+
+func (s *deviceAuthMemStore) UpdateFindingDueDate(_ context.Context, request ports.FindingDueDateUpdate) (*ports.FindingRecord, error) {
+	return s.GetFinding(context.Background(), request.FindingID)
+}
+
+func (s *deviceAuthMemStore) AddFindingNote(_ context.Context, request ports.FindingNoteCreate) (*ports.FindingRecord, error) {
+	return s.GetFinding(context.Background(), request.FindingID)
+}
+
+func (s *deviceAuthMemStore) LinkFindingTicket(_ context.Context, request ports.FindingTicketLink) (*ports.FindingRecord, error) {
+	return s.GetFinding(context.Background(), request.FindingID)
+}
+
 func cloneStringMapForDeviceTest(values map[string]string) map[string]string {
 	if values == nil {
 		return nil
@@ -132,6 +194,15 @@ func cloneStringMapForDeviceTest(values map[string]string) map[string]string {
 		out[key] = value
 	}
 	return out
+}
+
+func stringSliceContains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func encodePEMPublic(t *testing.T, pub ed25519.PublicKey) string {
@@ -357,6 +428,19 @@ func TestTrustContextResolvesEndpointIdentity(t *testing.T) {
 	if err := store.UpsertEndpointIdentityAliases(ctx, endpointidentity.AliasesFromDevice("writer", enroll.DeviceID, "hw-trust", "", "trust-laptop", time.Now())); err != nil {
 		t.Fatalf("UpsertEndpointIdentityAliases: %v", err)
 	}
+	deviceURN := trustEndpointAgentURN("writer", enroll.DeviceID)
+	if _, err := store.UpsertFinding(ctx, &ports.FindingRecord{
+		ID:             "finding-open",
+		TenantID:       "writer",
+		RuntimeID:      "trusted-endpoint",
+		Severity:       "high",
+		Status:         "open",
+		ResourceURNs:   []string{deviceURN},
+		FindingRisk:    ports.FindingRisk{RiskScore: 87},
+		LastObservedAt: time.Now().Add(-25 * time.Hour),
+	}); err != nil {
+		t.Fatalf("UpsertFinding: %v", err)
+	}
 	req := httptest.NewRequest(http.MethodPost, "/platform/graph/trust-context", strings.NewReader(`{"tenant_id":"writer","hardware_uuid":"hw-trust"}`))
 	req.Header.Set("Authorization", "Bearer operator-key")
 	req.Header.Set("Content-Type", "application/json")
@@ -366,13 +450,20 @@ func TestTrustContextResolvesEndpointIdentity(t *testing.T) {
 		t.Fatalf("trust-context status = %d, body=%s", resp.Code, resp.Body.String())
 	}
 	var body struct {
-		ResolvedDeviceID string `json:"resolved_device_id"`
+		ResolvedDeviceID   string `json:"resolved_device_id"`
+		ActiveFindingCount uint64 `json:"active_finding_count"`
+		MaxFindingSeverity string `json:"max_finding_severity"`
+		RiskScore          uint64 `json:"risk_score"`
+		StaleEvidenceCount uint64 `json:"stale_evidence_count"`
 	}
 	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode trust context: %v", err)
 	}
 	if body.ResolvedDeviceID != enroll.DeviceID {
 		t.Fatalf("resolved_device_id = %q, want %q", body.ResolvedDeviceID, enroll.DeviceID)
+	}
+	if body.ActiveFindingCount != 1 || body.MaxFindingSeverity != "high" || body.RiskScore != 87 || body.StaleEvidenceCount != 1 {
+		t.Fatalf("finding summary = %#v, want one stale high-risk open finding", body)
 	}
 }
 
