@@ -337,9 +337,11 @@ func (s *Service) Enroll(ctx context.Context, request EnrollRequest) (EnrollResp
 		}
 	}
 	priorJKT := ""
+	priorAttestationVendor := ""
 	existingHardwareBound := false
 	if existing.Metadata != nil {
 		priorJKT = strings.TrimSpace(existing.Metadata["dpop_jkt"])
+		priorAttestationVendor = strings.TrimSpace(existing.Metadata["attestation_vendor"])
 		existingHardwareBound = priorJKT != "" && strings.TrimSpace(existing.Metadata["assurance_level"]) == "hardware"
 	}
 	if attestationJKT == "" && existingHardwareBound && agentJKT != "" && !constantTimeStringEqual(agentJKT, priorJKT) {
@@ -360,6 +362,9 @@ func (s *Service) Enroll(ctx context.Context, request EnrollRequest) (EnrollResp
 	case existingHardwareBound:
 		metadata["dpop_jkt"] = priorJKT
 		metadata["assurance_level"] = "hardware"
+		if priorAttestationVendor != "" {
+			metadata["attestation_vendor"] = priorAttestationVendor
+		}
 	case agentJKT != "":
 		metadata["dpop_jkt"] = agentJKT
 	case priorJKT != "":
@@ -405,8 +410,8 @@ func (s *Service) Enroll(ctx context.Context, request EnrollRequest) (EnrollResp
 		RefreshExpires:    refreshExpires,
 		Scopes:            scopes,
 		TokenType:         "Bearer",
-		AssuranceLevel:    attResult.AssuranceLevel,
-		AttestationVendor: attResult.Vendor,
+		AssuranceLevel:    strings.TrimSpace(device.Metadata["assurance_level"]),
+		AttestationVendor: strings.TrimSpace(device.Metadata["attestation_vendor"]),
 	}, nil
 }
 

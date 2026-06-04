@@ -461,6 +461,12 @@ func TestServiceReenrollPreservesHardwareAssuranceToBlockTwoStepDowngrade(t *tes
 	if second.DeviceID != first.DeviceID {
 		t.Fatalf("second device_id = %q, want %q", second.DeviceID, first.DeviceID)
 	}
+	if second.AssuranceLevel != "hardware" {
+		t.Fatalf("second assurance_level = %q, want hardware", second.AssuranceLevel)
+	}
+	if second.AttestationVendor != "stub-appattest" {
+		t.Fatalf("second attestation_vendor = %q, want stub-appattest", second.AttestationVendor)
+	}
 	device, err = service.LookupDevice(ctx, first.DeviceID)
 	if err != nil {
 		t.Fatalf("LookupDevice after second enroll: %v", err)
@@ -470,6 +476,9 @@ func TestServiceReenrollPreservesHardwareAssuranceToBlockTwoStepDowngrade(t *tes
 	}
 	if got := strings.TrimSpace(device.Metadata["assurance_level"]); got != "hardware" {
 		t.Fatalf("assurance_level after second enroll = %q, want hardware", got)
+	}
+	if got := strings.TrimSpace(device.Metadata["attestation_vendor"]); got != "stub-appattest" {
+		t.Fatalf("attestation_vendor after second enroll = %q, want stub-appattest", got)
 	}
 
 	otherPub, _, _ := ed25519.GenerateKey(rand.Reader)
