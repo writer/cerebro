@@ -827,6 +827,33 @@ func TestListSNSTopicsDoesNotTruncateClientSide(t *testing.T) {
 	}
 }
 
+func TestSQSQueueEventEncryptionHonorsManagedSSEValue(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		attrs      map[string]string
+		encryption string
+	}{
+		{name: "kms key", attrs: map[string]string{"KmsMasterKeyId": "arn:aws:kms:us-east-1:123456789012:key/key-123"}, encryption: "true"},
+		{name: "managed sse enabled", attrs: map[string]string{"SqsManagedSseEnabled": "true"}, encryption: "true"},
+		{name: "managed sse disabled", attrs: map[string]string{"SqsManagedSseEnabled": "false"}, encryption: "false"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			event, err := sqsQueueEvent(settings{accountID: "123456789012", region: "us-east-1"}, awsSQSQueue{
+				ARN:        "arn:aws:sqs:us-east-1:123456789012:orders",
+				Name:       "orders",
+				URL:        "https://sqs.us-east-1.amazonaws.com/123456789012/orders",
+				Attributes: tt.attrs,
+			})
+			if err != nil {
+				t.Fatalf("sqsQueueEvent: %v", err)
+			}
+			if got := event.Attributes["encryption"]; got != tt.encryption {
+				t.Fatalf("encryption = %q, want %q", got, tt.encryption)
+			}
+		})
+	}
+}
+
 func TestReadAWSAssetMetadataPaginatesTaggedResources(t *testing.T) {
 	source := newTestSource(t, fakeAWS{taggedResources: []resourcegroupstaggingapitypes.ResourceTagMapping{
 		{ResourceARN: awssdk.String("arn:aws:ec2:us-east-1:123456789012:security-group/sg-1")},

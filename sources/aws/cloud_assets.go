@@ -385,7 +385,7 @@ func sqsQueueEvent(settings settings, queue awsSQSQueue) (*primitives.Event, err
 	attributes["arn"] = queue.ARN
 	attributes["queue_url"] = queue.URL
 	attributes["queue_name"] = queue.Name
-	attributes["encryption"] = boolString(firstNonEmpty(queue.Attributes["KmsMasterKeyId"], queue.Attributes["SqsManagedSseEnabled"]) != "")
+	attributes["encryption"] = boolString(queue.Attributes["KmsMasterKeyId"] != "" || strings.EqualFold(queue.Attributes["SqsManagedSseEnabled"], "true"))
 	attributes["kms_key_id"] = queue.Attributes["KmsMasterKeyId"]
 	attributes["sqs_managed_sse_enabled"] = queue.Attributes["SqsManagedSseEnabled"]
 	attributes["retention_seconds"] = queue.Attributes["MessageRetentionPeriod"]

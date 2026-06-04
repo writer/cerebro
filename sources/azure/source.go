@@ -1629,7 +1629,7 @@ func webSiteEvent(settings settings, record armTypedResourceRecord, family strin
 	addAzureIdentityAttributes(attributes, record.Identity)
 	setAttribute(attributes, "kind", record.Kind)
 	setAttribute(attributes, "enabled", propertyBoolString(record, "enabled"))
-	setAttribute(attributes, "https_only", boolPointerString(record.HTTPSOnly))
+	setAttribute(attributes, "https_only", propertyBoolString(record, "httpsOnly"))
 	setAttribute(attributes, "min_tls_version", firstNonEmpty(propertyString(record, "siteConfig", "minTlsVersion"), propertyString(record, "siteConfig", "minimumTlsVersion")))
 	setAttribute(attributes, "public_network_access", propertyString(record, "publicNetworkAccess"))
 	setAttribute(attributes, "public_host", propertyString(record, "defaultHostName"))
