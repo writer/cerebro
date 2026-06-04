@@ -294,6 +294,69 @@ api_auth_enabled = _config_bool("apiAuthEnabled", is_production)
 allowed_tenants = config.get_object("allowedTenants") or []
 capability_token_secret_name = config.get("capabilityTokenSecretName") or "CEREBRO_CAPABILITY_TOKEN_SECRETS"
 capability_token_audience = config.get("capabilityTokenAudience") or "cerebro-api"
+
+# =============================================================================
+# DEVICE-AUTH (secheck agent sender-constrained tokens)
+# =============================================================================
+# The secheck agent's DPoP replay protection is in-process per Cerebro replica
+# (see internal/deviceauth/dpop.go). With more than one API replica each
+# replica would maintain an isolated jti cache, so a legitimate proof routed
+# to a different replica than the one that initially saw it would falsely
+# look like a replay -> 401. The Cerebro server fails closed at startup in
+# that case (errDeviceAuthRequiresSharedDPoPReplay); we fail fast HERE so the
+# operator sees the message during `pulumi up` rather than after the rollout.
+#
+# Placement note: this block reads api_auth_enabled and api_max_instances,
+# both of which must be defined upstream of this point. Do NOT move this
+# block earlier -- the previous revision did, and crashed at runtime with
+# `NameError: name 'api_auth_enabled' is not defined` whenever
+# deviceAuthEnabled was true.
+device_auth_enabled = _config_bool("deviceAuthEnabled", False)
+device_auth_current_kid = config.get("deviceAuthCurrentKID") or ""
+device_auth_signing_keys_secret_name = config.get("deviceAuthSigningKeysSecretName") or ""
+device_auth_issuer = config.get("deviceAuthIssuer") or ""
+device_auth_audience = config.get("deviceAuthAudience") or ""
+device_auth_access_ttl = config.get("deviceAuthAccessTTL") or ""
+device_auth_refresh_ttl = config.get("deviceAuthRefreshTTL") or ""
+device_auth_bootstrap_token_ttl = config.get("deviceAuthBootstrapTokenTTL") or ""
+device_auth_dpop_proof_ttl = config.get("deviceAuthDPoPProofTTL") or ""
+device_auth_clock_skew = config.get("deviceAuthClockSkew") or ""
+device_auth_idempotency_ttl = config.get("deviceAuthIdempotencyTTL") or ""
+device_auth_attestation_required = _config_bool("deviceAuthAttestationRequired", False)
+device_auth_apple_team_id = config.get("deviceAuthAppleTeamID") or ""
+device_auth_apple_bundle_ids = config.get_object("deviceAuthAppleBundleIDs") or []
+
+if device_auth_enabled:
+    if not api_auth_enabled:
+        raise ValueError(
+            "cerebro:deviceAuthEnabled requires cerebro:apiAuthEnabled=true "
+            "(server-side: errDeviceAuthRequiresAPIAuth)."
+        )
+    if api_max_instances > 1:
+        raise ValueError(
+            "cerebro:deviceAuthEnabled is incompatible with cerebro:apiMaxInstances > 1 "
+            f"(current: {api_max_instances}). The secheck DPoP replay cache is in-process; "
+            "pin apiMaxInstances=1 or migrate to shared replay state before raising it."
+        )
+    if not device_auth_signing_keys_secret_name:
+        raise ValueError(
+            "cerebro:deviceAuthSigningKeysSecretName is required when "
+            "cerebro:deviceAuthEnabled is true. Provision an AWS SecretsManager "
+            "entry holding the JSON-encoded Ed25519 signing-key bundle "
+            "(see PR description) and set this config to its name."
+        )
+    if not device_auth_current_kid:
+        raise ValueError(
+            "cerebro:deviceAuthCurrentKID is required when cerebro:deviceAuthEnabled is true. "
+            "It must match one of the kid values inside the signing-keys JSON."
+        )
+    if device_auth_attestation_required and not (
+        device_auth_apple_team_id and device_auth_apple_bundle_ids
+    ):
+        raise ValueError(
+            "cerebro:deviceAuthAttestationRequired=true requires both "
+            "cerebro:deviceAuthAppleTeamID and a non-empty cerebro:deviceAuthAppleBundleIDs list."
+        )
 source_secret_keys = config.get_object("sourceSecretKeys") or []
 source_runtimes = config.get_object("sourceRuntimes") or []
 source_runtime_env_refs = _source_runtime_env_refs(source_runtimes)
@@ -593,9 +656,11 @@ if api_auth_enabled:
         secret_keys.append({"name": "CEREBRO_API_CREDENTIALS_JSON", "source": api_credentials_secret_name})
     if capability_token_secret_name:
         secret_keys.append({"name": "CEREBRO_CAPABILITY_TOKEN_SECRETS", "source": capability_token_secret_name})
-if mcp_oauth_enabled:
-    secret_keys.append({"name": "CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_ID", "source": mcp_oauth_upstream_client_id_secret_name})
-    secret_keys.append({"name": "CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_SECRET", "source": mcp_oauth_upstream_client_secret_name})
+if device_auth_enabled:
+    secret_keys.append({
+        "name": "CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON",
+        "source": device_auth_signing_keys_secret_name,
+    })
 secret_keys.extend(source_secret_keys)
 
 app_environment = {
@@ -615,6 +680,37 @@ app_environment = {
 }
 if not api_auth_enabled:
     app_environment["ALLOW_INSECURE_API"] = "true"
+if device_auth_enabled:
+    # Replica count is pinned to 1 by the guard above; surface it to the
+    # server explicitly so operators reading `aws ecs describe-task-definition`
+    # see the in-process DPoP replay protection invariant.
+    app_environment["CEREBRO_DEVICE_AUTH_ENABLED"] = "true"
+    app_environment["CEREBRO_DEVICE_AUTH_CURRENT_KID"] = device_auth_current_kid
+    app_environment["CEREBRO_DEVICE_AUTH_REPLICA_COUNT"] = str(api_max_instances)
+    if device_auth_issuer:
+        app_environment["CEREBRO_DEVICE_AUTH_ISSUER"] = device_auth_issuer
+    if device_auth_audience:
+        app_environment["CEREBRO_DEVICE_AUTH_AUDIENCE"] = device_auth_audience
+    if device_auth_access_ttl:
+        app_environment["CEREBRO_DEVICE_AUTH_ACCESS_TTL"] = device_auth_access_ttl
+    if device_auth_refresh_ttl:
+        app_environment["CEREBRO_DEVICE_AUTH_REFRESH_TTL"] = device_auth_refresh_ttl
+    if device_auth_bootstrap_token_ttl:
+        app_environment["CEREBRO_DEVICE_AUTH_BOOTSTRAP_TOKEN_TTL"] = device_auth_bootstrap_token_ttl
+    if device_auth_dpop_proof_ttl:
+        app_environment["CEREBRO_DEVICE_AUTH_DPOP_PROOF_TTL"] = device_auth_dpop_proof_ttl
+    if device_auth_clock_skew:
+        app_environment["CEREBRO_DEVICE_AUTH_CLOCK_SKEW"] = device_auth_clock_skew
+    if device_auth_idempotency_ttl:
+        app_environment["CEREBRO_DEVICE_AUTH_IDEMPOTENCY_TTL"] = device_auth_idempotency_ttl
+    if device_auth_attestation_required:
+        app_environment["CEREBRO_DEVICE_AUTH_ATTESTATION_REQUIRED"] = "true"
+        app_environment["CEREBRO_DEVICE_AUTH_APPLE_TEAM_ID"] = device_auth_apple_team_id
+        app_environment["CEREBRO_DEVICE_AUTH_APPLE_BUNDLE_IDS"] = ",".join(device_auth_apple_bundle_ids)
+    elif device_auth_apple_team_id:
+        app_environment["CEREBRO_DEVICE_AUTH_APPLE_TEAM_ID"] = device_auth_apple_team_id
+        if device_auth_apple_bundle_ids:
+            app_environment["CEREBRO_DEVICE_AUTH_APPLE_BUNDLE_IDS"] = ",".join(device_auth_apple_bundle_ids)
 if neo4j_database:
     app_environment["CEREBRO_NEO4J_DATABASE"] = neo4j_database
 if allowed_tenants:

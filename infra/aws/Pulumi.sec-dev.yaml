@@ -40,7 +40,12 @@ config:
   cerebro:apiCpu: 1024
   cerebro:apiMemory: 2048
   cerebro:apiMinInstances: 1
-  cerebro:apiMaxInstances: 2
+  # Pinned to 1 because cerebro:deviceAuthEnabled is true and the secheck
+  # DPoP replay cache is in-process per replica. The Pulumi __main__.py
+  # guard refuses to plan an apply with apiMaxInstances > 1 while
+  # deviceAuthEnabled is true; raise it only after shared replay state
+  # ships and the corresponding code-side guard is relaxed.
+  cerebro:apiMaxInstances: 1
   cerebro:apiRequestCountPerTargetScalingTarget: 300
   cerebro:apiRequestCountPerTargetAlarmThreshold: 600
   cerebro:apiLatencyP95AlarmThresholdSeconds: 3
@@ -64,6 +69,20 @@ config:
   cerebro:alarmActionArns:
     - arn:aws:sns:us-east-1:944130631940:aws-controltower-SecurityNotifications
   cerebro:apiAuthEnabled: true
+  # secheck-agent sender-constrained tokens (DPoP). The Ed25519 signing
+  # bundle lives in AWS SecretsManager under the configured name; provision
+  # it once with `scripts/devices/mint-deviceauth-signing-keys.sh` (see PR
+  # description) and rotate via the same flow. Defaults for ttl/skew/risk
+  # come from internal/config/device_auth.go and can be overridden here
+  # if the pilot demands tighter values.
+  cerebro:deviceAuthEnabled: true
+  cerebro:deviceAuthCurrentKID: secheck-pilot-1
+  cerebro:deviceAuthSigningKeysSecretName: cerebro-sec-dev/CEREBRO_DEVICE_AUTH_SIGNING_KEYS_JSON
+  cerebro:deviceAuthIssuer: cerebro-sec-dev
+  cerebro:deviceAuthAudience: cerebro-device
+  cerebro:deviceAuthRefreshTTL: 168h
+  cerebro:deviceAuthDPoPProofTTL: 60s
+  cerebro:deviceAuthClockSkew: 60s
   cerebro:accessAuditDeniedAlarmThreshold: 50
   cerebro:accessAuditAuthFailureAlarmThreshold: 25
   cerebro:accessAuditTenantMismatchAlarmThreshold: 0
