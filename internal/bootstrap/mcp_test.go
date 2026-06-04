@@ -265,6 +265,144 @@ func TestMCPNotificationReturnsAcceptedEmptyBody(t *testing.T) {
 	}
 }
 
+func TestMCPTelemetryIncludesSafeToolContext(t *testing.T) {
+	server := newMCPTestServer(t, &stubRuntimeStore{})
+	defer server.Close()
+
+	body, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "cerebro.version",
+			"arguments": map[string]any{},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal MCP request: %v", err)
+	}
+	stderr := captureBootstrapStderr(t, func() {
+		req, err := http.NewRequest(http.MethodPost, server.URL+mcpEndpointPath, bytes.NewReader(body))
+		if err != nil {
+			t.Fatalf("NewRequest POST MCP: %v", err)
+		}
+		req.Header.Set("Authorization", "Bearer test-key")
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("MCP-Protocol-Version", mcpProtocolVersion)
+		req.Header.Set("X-Request-ID", "req-mcp-123")
+		resp, err := server.Client().Do(req)
+		if err != nil {
+			t.Fatalf("POST /api/v1/mcp error = %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusOK {
+			raw, _ := io.ReadAll(resp.Body)
+			t.Fatalf("POST /api/v1/mcp status = %d body = %s", resp.StatusCode, raw)
+		}
+	})
+
+	payload := decodeMCPTelemetryPayload(t, stderr)
+	for key, want := range map[string]any{
+		"name":             "cerebro.mcp.request",
+		"http.method":      http.MethodPost,
+		"http.route":       "POST /api/v1/mcp",
+		"http.status_code": float64(http.StatusOK),
+		"mcp.method":       "tools/call",
+		"mcp.tool":         "cerebro.version",
+		"mcp.tool_known":   true,
+		"mcp.tool_family":  "version",
+		"mcp.outcome":      "ok",
+		"mcp.transport":    "stateless_http",
+		"mcp.stateless":    true,
+		"request_id":       "req-mcp-123",
+		"auth_mode":        "api_key",
+		"tenant_id":        "writer",
+		"principal":        "tester",
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	if _, exists := payload["arguments"]; exists {
+		t.Fatalf("telemetry recorded raw arguments: %#v", payload)
+	}
+}
+
+func TestMCPTelemetryClassifiesToolErrors(t *testing.T) {
+	server := newMCPTestServer(t, nil)
+	defer server.Close()
+
+	var response map[string]any
+	stderr := captureBootstrapStderr(t, func() {
+		response, _ = postMCP(t, server, "", map[string]any{
+			"jsonrpc": "2.0",
+			"id":      1,
+			"method":  "tools/call",
+			"params": map[string]any{
+				"name":      "cerebro.runtimes.status",
+				"arguments": map[string]any{"runtime_id": "writer-okta"},
+			},
+		})
+	})
+	result := response["result"].(map[string]any)
+	if result["isError"] != true {
+		t.Fatalf("tools/call result = %#v, want tool error", result)
+	}
+
+	payload := decodeMCPTelemetryPayload(t, stderr)
+	for key, want := range map[string]any{
+		"mcp.method":          "tools/call",
+		"mcp.tool":            "cerebro.runtimes.status",
+		"mcp.tool_family":     "runtimes",
+		"mcp.outcome":         "tool_error",
+		"mcp.tool_error":      true,
+		"mcp.tool_error_kind": "runtime_unavailable",
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	if _, exists := payload["error"]; exists {
+		t.Fatalf("telemetry recorded raw error: %#v", payload)
+	}
+}
+
+func TestMCPGETTelemetryRecordsStatelessRejection(t *testing.T) {
+	server := newMCPTestServer(t, &stubRuntimeStore{})
+	defer server.Close()
+
+	stderr := captureBootstrapStderr(t, func() {
+		req, err := http.NewRequest(http.MethodGet, server.URL+mcpEndpointPath, nil)
+		if err != nil {
+			t.Fatalf("NewRequest GET MCP: %v", err)
+		}
+		req.Header.Set("Authorization", "Bearer test-key")
+		req.Header.Set("Accept", "text/event-stream")
+		resp, err := server.Client().Do(req)
+		if err != nil {
+			t.Fatalf("GET /api/v1/mcp error = %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusMethodNotAllowed {
+			t.Fatalf("GET /api/v1/mcp status = %d, want %d", resp.StatusCode, http.StatusMethodNotAllowed)
+		}
+	})
+
+	payload := decodeMCPTelemetryPayload(t, stderr)
+	for key, want := range map[string]any{
+		"http.method":      http.MethodGet,
+		"http.route":       "GET /api/v1/mcp",
+		"http.status_code": float64(http.StatusMethodNotAllowed),
+		"mcp.outcome":      "stateless_get_rejected",
+		"mcp.transport":    "stateless_http",
+		"mcp.stateless":    true,
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+}
+
 func TestMCPResourcesAndPrompts(t *testing.T) {
 	server := newMCPTestServer(t, &stubRuntimeStore{})
 	defer server.Close()
@@ -1477,4 +1615,23 @@ func postMCPWithAuthHeader(t *testing.T, server *httptest.Server, sessionID stri
 		t.Fatalf("Unmarshal MCP response %s: %v", raw, err)
 	}
 	return decoded, resp.Header.Get("Mcp-Session-Id")
+}
+
+func decodeMCPTelemetryPayload(t *testing.T, stderr string) map[string]any {
+	t.Helper()
+	for _, line := range strings.Split(strings.TrimSpace(stderr), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		payload := map[string]any{}
+		if err := json.Unmarshal([]byte(line), &payload); err != nil {
+			continue
+		}
+		if payload["name"] == "cerebro.mcp.request" {
+			return payload
+		}
+	}
+	t.Fatalf("MCP telemetry event not found in stderr: %s", stderr)
+	return nil
 }
