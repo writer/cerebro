@@ -359,6 +359,7 @@ func (s *Service) Enroll(ctx context.Context, request EnrollRequest) (EnrollResp
 		metadata["dpop_jkt"] = attestationJKT
 	case existingHardwareBound:
 		metadata["dpop_jkt"] = priorJKT
+		metadata["assurance_level"] = "hardware"
 	case agentJKT != "":
 		metadata["dpop_jkt"] = agentJKT
 	case priorJKT != "":

@@ -413,6 +413,77 @@ func TestServiceReenrollRejectsSoftwareKeyDowngradeFromHardwareBinding(t *testin
 	}
 }
 
+func TestServiceReenrollPreservesHardwareAssuranceToBlockTwoStepDowngrade(t *testing.T) {
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	pubDER, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		t.Fatalf("marshal public key: %v", err)
+	}
+	verifier := &checkingAttestationVerifier{
+		wantHardwareUUID: "hw-two-step",
+		publicKey:        pubDER,
+	}
+	service.cfg.Attestations = attestation.NewRegistry(true, verifier)
+	firstBootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-two-step", TenantID: "writer"})
+	verifier.wantHash = attestationClientDataHash(firstBootstrap.Token, "hw-two-step")
+	first, err := service.Enroll(ctx, EnrollRequest{
+		BootstrapToken: firstBootstrap.Token,
+		HardwareUUID:   "hw-two-step",
+		OSType:         "darwin",
+		Attestation:    "stub-attestation",
+	})
+	if err != nil {
+		t.Fatalf("first Enroll: %v", err)
+	}
+	device, err := service.LookupDevice(ctx, first.DeviceID)
+	if err != nil {
+		t.Fatalf("LookupDevice: %v", err)
+	}
+	priorJKT := strings.TrimSpace(device.Metadata["dpop_jkt"])
+	if priorJKT == "" {
+		t.Fatal("first enrollment did not bind DPoP JKT")
+	}
+
+	service.cfg.Attestations = attestation.NewRegistry(false)
+	secondBootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-two-step", TenantID: "writer"})
+	second, err := service.Enroll(ctx, EnrollRequest{
+		BootstrapToken: secondBootstrap.Token,
+		HardwareUUID:   "hw-two-step",
+	})
+	if err != nil {
+		t.Fatalf("second Enroll: %v", err)
+	}
+	if second.DeviceID != first.DeviceID {
+		t.Fatalf("second device_id = %q, want %q", second.DeviceID, first.DeviceID)
+	}
+	device, err = service.LookupDevice(ctx, first.DeviceID)
+	if err != nil {
+		t.Fatalf("LookupDevice after second enroll: %v", err)
+	}
+	if got := strings.TrimSpace(device.Metadata["dpop_jkt"]); got != priorJKT {
+		t.Fatalf("dpop_jkt after second enroll = %q, want preserved %q", got, priorJKT)
+	}
+	if got := strings.TrimSpace(device.Metadata["assurance_level"]); got != "hardware" {
+		t.Fatalf("assurance_level after second enroll = %q, want hardware", got)
+	}
+
+	otherPub, _, _ := ed25519.GenerateKey(rand.Reader)
+	otherJWK, _ := makeEd25519JWK(t, otherPub)
+	thirdBootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-two-step", TenantID: "writer"})
+	if _, err := service.Enroll(ctx, EnrollRequest{
+		BootstrapToken: thirdBootstrap.Token,
+		HardwareUUID:   "hw-two-step",
+		DeviceJWK:      json.RawMessage(otherJWK),
+	}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("third Enroll err = %v, want ErrInvalidRequest", err)
+	}
+}
+
 func TestRefreshTokenRateLimitKeyRejectsConsumedTokens(t *testing.T) {
 	ctx := context.Background()
 	service, _, _ := newServiceForTest(t)
