@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -68,6 +69,18 @@ type EnrollRequest struct {
 	// when the registry is configured as required, an empty value rejects
 	// the enrollment.
 	Attestation string
+	// DeviceJWK, when non-empty, is the agent-supplied public JWK that the
+	// agent will use to sign DPoP proofs (RFC 9449). Accepting an
+	// agent-supplied key is what lets a software-assurance enrollment
+	// produce a sender-constrained access token: cnf.jkt is populated
+	// from this key's RFC 7638 thumbprint and every subsequent refresh
+	// (and any DPoP-protected resource call) must carry a proof signed
+	// by the matching private key. Only EC P-256 / EC P-384 / Ed25519
+	// are accepted; RSA is rejected to keep the signing surface narrow.
+	// When attestation also supplies a public key, the two thumbprints
+	// MUST match -- a hardware-attested key is authoritative and a
+	// mismatched JWK rejects the enrollment.
+	DeviceJWK json.RawMessage
 	// RemoteIP is the agent's source address as observed by the front
 	// door. Used for risk scoring and audit logging.
 	RemoteIP net.IP
@@ -204,7 +217,14 @@ func NewService(cfg ServiceConfig, store Store, issuer *JWTIssuer, verifier *JWT
 		cfg.AccessTTL = DefaultAccessTTL
 	}
 	if cfg.RefreshTTL <= 0 {
-		cfg.RefreshTTL = 30 * 24 * time.Hour
+		// 7 days is the pilot default. Shorter than the 30-day RFC-6749
+		// upper bound recommended for refresh tokens because in software
+		// assurance the refresh token IS the long-lived bearer secret;
+		// once hardware-bound DPoP is universally enforced this can be
+		// raised. Operators can override via
+		// CEREBRO_DEVICE_AUTH_REFRESH_TTL=720h to restore the prior 30d
+		// behavior.
+		cfg.RefreshTTL = 7 * 24 * time.Hour
 	}
 	if cfg.BootstrapTokenTTL <= 0 {
 		cfg.BootstrapTokenTTL = 24 * time.Hour
@@ -242,6 +262,20 @@ func (s *Service) KeySet() *KeySet {
 }
 
 // Enroll consumes a bootstrap token and provisions a device.
+//
+// Order of operations (security-critical):
+//  1. Parse and validate every caller-supplied input (bootstrap token,
+//     hardware UUID, agent-supplied JWK if any).
+//  2. Run device-bound attestation. The attestation envelope is signed over
+//     SHA-256("bootstrap_token" || "hardware_uuid"), both of which come
+//     from the request body, so attestation does not require the bootstrap
+//     row to be looked up first.
+//  3. Atomically consume the bootstrap token (SELECT ... FOR UPDATE).
+//  4. Persist the device record and mint the first access + refresh pair.
+//
+// Steps 1 and 2 run before step 3 so a malformed JWK or a busted attestation
+// envelope from a buggy or compromised agent does NOT burn the legitimate
+// agent's single-use bootstrap token.
 func (s *Service) Enroll(ctx context.Context, request EnrollRequest) (EnrollResponse, error) {
 	bootstrapToken, err := NormalizeOpaqueToken(request.BootstrapToken)
 	if err != nil {
@@ -251,7 +285,26 @@ func (s *Service) Enroll(ctx context.Context, request EnrollRequest) (EnrollResp
 	if hardwareUUID == "" {
 		return EnrollResponse{}, fmt.Errorf("%w: hardware_uuid", ErrInvalidRequest)
 	}
+	agentJKT, err := parseEnrollDeviceJWK(request.DeviceJWK)
+	if err != nil {
+		return EnrollResponse{}, fmt.Errorf("%w: device_key: %w", ErrInvalidRequest, err)
+	}
 	now := s.cfg.Now().UTC()
+	clientHash := attestationClientDataHash(bootstrapToken, hardwareUUID)
+	attResult, err := s.runAttestation(ctx, clientHash, request)
+	if err != nil {
+		return EnrollResponse{}, err
+	}
+	attestationJKT, err := computeJKTFromPublicKeyDER(attResult.PublicKey)
+	if err != nil {
+		return EnrollResponse{}, fmt.Errorf("%w: %w", ErrInvalidRequest, err)
+	}
+	// When both attestation AND the agent supply a key, they must agree.
+	// A mismatch means the agent is trying to bind a different key than
+	// the one its hardware just attested -- treat as an attack.
+	if agentJKT != "" && attestationJKT != "" && !constantTimeStringEqual(agentJKT, attestationJKT) {
+		return EnrollResponse{}, fmt.Errorf("%w: device_key thumbprint does not match attested key", ErrInvalidRequest)
+	}
 	hash := HashToken(bootstrapToken)
 	consumed, err := s.store.ConsumeBootstrapToken(ctx, hash, hardwareUUID, now, "agent")
 	if err != nil {
@@ -283,22 +336,21 @@ func (s *Service) Enroll(ctx context.Context, request EnrollRequest) (EnrollResp
 			return EnrollResponse{}, fmt.Errorf("deviceauth: generate device id: %w", err)
 		}
 	}
-	clientHash := attestationClientDataHash(bootstrapToken, hardwareUUID)
-	attResult, err := s.runAttestation(ctx, clientHash, request)
-	if err != nil {
-		return EnrollResponse{}, err
-	}
 	metadata := map[string]string{
 		"assurance_level":    attResult.AssuranceLevel,
 		"attestation_vendor": attResult.Vendor,
 	}
-	jkt, err := computeJKTFromPublicKeyDER(attResult.PublicKey)
-	if err != nil {
-		return EnrollResponse{}, fmt.Errorf("%w: %w", ErrInvalidRequest, err)
-	}
-	if jkt != "" {
-		metadata["dpop_jkt"] = jkt
-	} else if existing.Metadata != nil {
+	// Pin dpop_jkt in priority order: attestation-bound key (hardware
+	// proven), then agent-supplied key (software assurance), then prior
+	// enrollment's key (re-enroll case where the device retains its
+	// bound key across hardware UUID rebinding). Empty result means the
+	// device is in pure-Bearer mode -- audit logs will mark it as such.
+	switch {
+	case attestationJKT != "":
+		metadata["dpop_jkt"] = attestationJKT
+	case agentJKT != "":
+		metadata["dpop_jkt"] = agentJKT
+	case existing.Metadata != nil:
 		if priorJKT := strings.TrimSpace(existing.Metadata["dpop_jkt"]); priorJKT != "" {
 			metadata["dpop_jkt"] = priorJKT
 		}
@@ -721,6 +773,79 @@ func (s *Service) mintAccess(device DeviceRecord, scopes []string) (string, time
 		return "", time.Time{}, fmt.Errorf("deviceauth: issue access: %w", err)
 	}
 	return token, expires, nil
+}
+
+// parseEnrollDeviceJWK accepts the agent-supplied JWK from an EnrollRequest
+// and returns its RFC 7638 SHA-256 thumbprint. The function reuses the
+// package-internal parseJWK helper, so the same kty / curve allowlist that
+// applies to DPoP proofs (EC P-256, EC P-384, OKP Ed25519; **no RSA**)
+// applies here too. An empty input returns ("", nil) so callers can treat
+// "no key supplied" as a non-error condition (software assurance, no DPoP
+// binding requested).
+func parseEnrollDeviceJWK(raw json.RawMessage) (string, error) {
+	if len(raw) == 0 {
+		return "", nil
+	}
+	if len(raw) > maxEnrollDeviceJWKBytes {
+		return "", fmt.Errorf("device_key exceeds %d bytes", maxEnrollDeviceJWKBytes)
+	}
+	if !json.Valid(raw) {
+		return "", errors.New("device_key is not valid JSON")
+	}
+	if !looksLikeJSONObject(raw) {
+		return "", errors.New("device_key must be a JSON object")
+	}
+	_, jkt, err := parseJWK(raw)
+	if err != nil {
+		return "", err
+	}
+	if jkt == "" {
+		return "", errors.New("device_key produced an empty thumbprint")
+	}
+	return jkt, nil
+}
+
+// looksLikeJSONObject returns true iff raw, after leading whitespace, begins
+// with '{'. This guards parseJWK from being passed a JSON literal like
+// "null", "[]", "true", or a quoted string -- json.Valid would accept those
+// but parseJWK would crash trying to address its fields.
+func looksLikeJSONObject(raw json.RawMessage) bool {
+	for _, b := range raw {
+		switch b {
+		case ' ', '\t', '\r', '\n':
+			continue
+		case '{':
+			return true
+		default:
+			return false
+		}
+	}
+	return false
+}
+
+// maxEnrollDeviceJWKBytes caps a single agent-supplied JWK body. An Ed25519
+// public-key JWK is ~120 bytes; an EC P-384 JWK is ~250 bytes. 4 KiB leaves
+// headroom for canonicalization-safe representations without inviting
+// payload-amplification weirdness.
+const maxEnrollDeviceJWKBytes = 4 * 1024
+
+// constantTimeStringEqual reports whether a and b are byte-for-byte equal,
+// in constant time relative to the shorter input. Used for thumbprint
+// comparison so an attacker cannot use a timing side channel to learn how
+// many leading characters of an attested thumbprint match a guessed key.
+func constantTimeStringEqual(a, b string) bool {
+	return subtleByteEqual([]byte(a), []byte(b))
+}
+
+func subtleByteEqual(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	var v byte
+	for i := range a {
+		v |= a[i] ^ b[i]
+	}
+	return v == 0
 }
 
 // computeJKTFromPublicKeyDER returns the RFC 7638 JWK SHA-256 thumbprint of

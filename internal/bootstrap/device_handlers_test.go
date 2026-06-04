@@ -5,7 +5,9 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -672,4 +674,171 @@ func containsString(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+// TestDeviceAuthEnrollAndTokenSetNoStoreHeaders verifies that enroll, token,
+// and bootstrap-token mint set the Cache-Control / Pragma no-store headers
+// required by RFC 6749 §5.1 to prevent intermediate caches from holding
+// access / refresh / bootstrap secret material.
+func TestDeviceAuthEnrollAndTokenSetNoStoreHeaders(t *testing.T) {
+	app, _, _ := newAppForDeviceTest(t)
+	handler := app.Handler()
+
+	bootstrapBody := bytes.NewBufferString(`{"hardware_uuid":"hw-no-store","tenant_id":"writer","ttl_seconds":3600}`)
+	req := httptest.NewRequest(http.MethodPost, "/platform/devices/bootstrap-tokens", bootstrapBody)
+	req.Header.Set("Authorization", "Bearer operator-key")
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("bootstrap-token mint status = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	assertNoStoreHeaders(t, "POST /platform/devices/bootstrap-tokens", resp.Header())
+	var bootstrap struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &bootstrap); err != nil {
+		t.Fatalf("decode bootstrap response: %v", err)
+	}
+
+	enrollBody := []byte(`{"bootstrap_token":"` + bootstrap.Token + `","hardware_uuid":"hw-no-store","os_type":"darwin"}`)
+	req = httptest.NewRequest(http.MethodPost, "/platform/devices/enroll", bytes.NewReader(enrollBody))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("enroll status = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	assertNoStoreHeaders(t, "POST /platform/devices/enroll", resp.Header())
+	var enroll struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &enroll); err != nil {
+		t.Fatalf("decode enroll: %v", err)
+	}
+
+	rotateBody := []byte(`{"grant_type":"refresh_token","refresh_token":"` + enroll.RefreshToken + `"}`)
+	req = httptest.NewRequest(http.MethodPost, "/platform/devices/token", bytes.NewReader(rotateBody))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("token rotate status = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	assertNoStoreHeaders(t, "POST /platform/devices/token", resp.Header())
+}
+
+func assertNoStoreHeaders(t *testing.T, where string, h http.Header) {
+	t.Helper()
+	if got := h.Get("Cache-Control"); !strings.Contains(got, "no-store") {
+		t.Errorf("%s Cache-Control = %q, want to contain no-store", where, got)
+	}
+	if got := h.Get("Pragma"); got != "no-cache" {
+		t.Errorf("%s Pragma = %q, want no-cache", where, got)
+	}
+}
+
+// TestDeviceAuthEnrollAcceptsAgentDeviceKey verifies that an agent that
+// supplies a device_key in the enrollment body gets a sender-constrained
+// access token whose cnf.jkt matches the supplied key. Without device_key
+// the access token has no DPoP binding (software-bearer mode).
+func TestDeviceAuthEnrollAcceptsAgentDeviceKey(t *testing.T) {
+	app, _, _ := newAppForDeviceTest(t)
+	handler := app.Handler()
+
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	jwkBody := `{"crv":"Ed25519","kty":"OKP","x":"` + base64Raw(pub) + `"}`
+
+	bootstrapBody := bytes.NewBufferString(`{"hardware_uuid":"hw-jwk-e2e","tenant_id":"writer","ttl_seconds":3600}`)
+	req := httptest.NewRequest(http.MethodPost, "/platform/devices/bootstrap-tokens", bootstrapBody)
+	req.Header.Set("Authorization", "Bearer operator-key")
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("bootstrap status = %d", resp.Code)
+	}
+	var bootstrap struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &bootstrap); err != nil {
+		t.Fatalf("decode bootstrap response: %v", err)
+	}
+
+	enrollBody := []byte(`{"bootstrap_token":"` + bootstrap.Token +
+		`","hardware_uuid":"hw-jwk-e2e","os_type":"darwin","device_key":` + jwkBody + `}`)
+	req = httptest.NewRequest(http.MethodPost, "/platform/devices/enroll", bytes.NewReader(enrollBody))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("enroll status = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	var enroll struct {
+		AccessToken string `json:"access_token"`
+		DeviceID    string `json:"device_id"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &enroll); err != nil {
+		t.Fatalf("decode enroll: %v", err)
+	}
+	verifier := app.deviceService.Verifier()
+	tok, err := verifier.Verify(enroll.AccessToken)
+	if err != nil {
+		t.Fatalf("verify access token: %v", err)
+	}
+	if tok.DPoPJKT == "" {
+		t.Fatal("access token cnf.jkt is empty; expected sender-constrained binding")
+	}
+	wantJKT := jwkThumbprint(jwkBody)
+	if tok.DPoPJKT != wantJKT {
+		t.Fatalf("cnf.jkt = %q, want %q", tok.DPoPJKT, wantJKT)
+	}
+
+	// Reject RSA out-of-band: bootstrap is preserved on a malformed JWK.
+	rsaBootstrapBody := bytes.NewBufferString(`{"hardware_uuid":"hw-rsa-reject","tenant_id":"writer","ttl_seconds":3600}`)
+	req = httptest.NewRequest(http.MethodPost, "/platform/devices/bootstrap-tokens", rsaBootstrapBody)
+	req.Header.Set("Authorization", "Bearer operator-key")
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("rsa bootstrap status = %d", resp.Code)
+	}
+	var rsaBootstrap struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &rsaBootstrap); err != nil {
+		t.Fatalf("decode rsa bootstrap: %v", err)
+	}
+	rsaEnroll := []byte(`{"bootstrap_token":"` + rsaBootstrap.Token +
+		`","hardware_uuid":"hw-rsa-reject","os_type":"darwin","device_key":{"kty":"RSA","n":"abc","e":"AQAB"}}`)
+	req = httptest.NewRequest(http.MethodPost, "/platform/devices/enroll", bytes.NewReader(rsaEnroll))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("rsa enroll status = %d, want 400; body=%s", resp.Code, resp.Body.String())
+	}
+	// Retry with a valid Ed25519 jwk -- bootstrap must still be live.
+	retry := []byte(`{"bootstrap_token":"` + rsaBootstrap.Token +
+		`","hardware_uuid":"hw-rsa-reject","os_type":"darwin","device_key":` + jwkBody + `}`)
+	req = httptest.NewRequest(http.MethodPost, "/platform/devices/enroll", bytes.NewReader(retry))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("retry enroll status = %d, want 200 (bootstrap should not have been consumed); body=%s", resp.Code, resp.Body.String())
+	}
+}
+
+func base64Raw(b []byte) string {
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+func jwkThumbprint(jwkJSON string) string {
+	sum := sha256.Sum256([]byte(jwkJSON))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
