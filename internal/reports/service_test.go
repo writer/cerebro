@@ -563,8 +563,15 @@ func TestRunRiskDeltaReportSimulatesPublicExposureRemoval(t *testing.T) {
 	if !ok || len(removedRelations) != 1 || removedRelations[0] != "can_reach" {
 		t.Fatalf("after query removed_relations = %#v, want can_reach", graphStore.cypherRequests[1].Params["removed_relations"])
 	}
-	if got := result["risk_score_reduction"]; got.(float64) <= 0 {
-		t.Fatalf("risk_score_reduction = %#v, want positive", got)
+	primaryOutcome, ok := result["primary_outcome"].(map[string]any)
+	if !ok {
+		t.Fatalf("primary_outcome = %#v, want object", result["primary_outcome"])
+	}
+	if primaryOutcome["type"] != "attack_path_reduction" || primaryOutcome["metric"] != "attack_path_count" {
+		t.Fatalf("primary_outcome = %#v, want attack path count primary outcome", primaryOutcome)
+	}
+	if got := result["risk_score_reduction"]; got == nil {
+		t.Fatalf("risk_score_reduction missing from result")
 	}
 	if got := result["attack_path_score_reduction"]; got.(float64) <= 0 {
 		t.Fatalf("attack_path_score_reduction = %#v, want positive", got)

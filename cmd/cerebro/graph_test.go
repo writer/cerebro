@@ -308,6 +308,9 @@ func TestRunGraphRiskDeltaSmokeWithDepsReturnsJSONShape(t *testing.T) {
 	if result.Selected.BeforeAttackPathCount == 0 || result.Selected.AttackPathCountReduction <= 0 {
 		t.Fatalf("selected = %#v, want non-zero before count and positive reduction", result.Selected)
 	}
+	if result.Selected.PrimaryOutcome.Type != "attack_path_reduction" || result.Selected.PrimaryOutcome.Metric != "attack_path_count" {
+		t.Fatalf("selected primary outcome = %#v, want attack path reduction", result.Selected.PrimaryOutcome)
+	}
 	payload, err := json.Marshal(result)
 	if err != nil {
 		t.Fatalf("json.Marshal(result) error = %v", err)

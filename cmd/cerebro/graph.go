@@ -252,19 +252,20 @@ type graphRiskDeltaSmokeCandidate struct {
 }
 
 type graphRiskDeltaSmokeAttempt struct {
-	ScenarioType             string   `json:"scenario_type"`
-	TargetURN                string   `json:"target_urn"`
-	Relation                 string   `json:"relation,omitempty"`
-	FindingCount             int      `json:"finding_count"`
-	BeforeAttackPathCount    int      `json:"before_attack_path_count"`
-	AfterAttackPathCount     int      `json:"after_attack_path_count"`
-	AttackPathCountReduction int      `json:"attack_path_count_reduction"`
-	AttackPathScoreReduction int      `json:"attack_path_score_reduction"`
-	RiskScoreReduction       int      `json:"risk_score_reduction"`
-	RemovedAttackPathCount   int      `json:"removed_attack_path_count"`
-	ElapsedMs                int64    `json:"elapsed_ms"`
-	SkipReason               string   `json:"skip_reason,omitempty"`
-	Reasons                  []string `json:"reasons,omitempty"`
+	ScenarioType             string                                  `json:"scenario_type"`
+	TargetURN                string                                  `json:"target_urn"`
+	Relation                 string                                  `json:"relation,omitempty"`
+	PrimaryOutcome           findinganalysis.RiskDeltaPrimaryOutcome `json:"primary_outcome"`
+	FindingCount             int                                     `json:"finding_count"`
+	BeforeAttackPathCount    int                                     `json:"before_attack_path_count"`
+	AfterAttackPathCount     int                                     `json:"after_attack_path_count"`
+	AttackPathCountReduction int                                     `json:"attack_path_count_reduction"`
+	AttackPathScoreReduction int                                     `json:"attack_path_score_reduction"`
+	RiskScoreReduction       int                                     `json:"risk_score_reduction"`
+	RemovedAttackPathCount   int                                     `json:"removed_attack_path_count"`
+	ElapsedMs                int64                                   `json:"elapsed_ms"`
+	SkipReason               string                                  `json:"skip_reason,omitempty"`
+	Reasons                  []string                                `json:"reasons,omitempty"`
 }
 
 type graphRiskDeltaSmokeResult struct {
@@ -678,6 +679,7 @@ func runGraphRiskDeltaSmokeWithDeps(
 		}
 		attempt.BeforeAttackPathCount = report.Before.AttackPathCount
 		attempt.AfterAttackPathCount = report.After.AttackPathCount
+		attempt.PrimaryOutcome = report.PrimaryOutcome
 		attempt.AttackPathCountReduction = report.AttackPathCountReduction
 		attempt.AttackPathScoreReduction = report.AttackPathScoreReduction
 		attempt.RiskScoreReduction = report.RiskScoreReduction

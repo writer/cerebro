@@ -72,6 +72,9 @@ func TestSimulateRiskDeltaWithGraphRemovePublicExposure(t *testing.T) {
 	if report.AttackPathCountReduction != 1 {
 		t.Fatalf("AttackPathCountReduction = %d, want one graph path removed", report.AttackPathCountReduction)
 	}
+	if report.PrimaryOutcome.Type != "attack_path_reduction" || report.PrimaryOutcome.Metric != "attack_path_count" || report.PrimaryOutcome.Reduction != 1 {
+		t.Fatalf("PrimaryOutcome = %#v, want attack path count reduction", report.PrimaryOutcome)
+	}
 	if len(report.RemovedAttackPaths) != 1 || !riskSimulationAttackPathContainsRelation(report.RemovedAttackPaths, "can_reach") {
 		t.Fatalf("RemovedAttackPaths = %#v, want removed can_reach path", report.RemovedAttackPaths)
 	}
@@ -128,6 +131,42 @@ func TestSimulateRiskDeltaWithGraphCompromiseIdentityUsesBlastRadius(t *testing.
 	}
 	if !stringSliceContains(report.Reasons, "modeled_identity_blast_radius") {
 		t.Fatalf("Reasons = %#v, want modeled identity blast radius", report.Reasons)
+	}
+}
+
+func TestSimulateRiskDeltaWithGraphPrimaryOutcomeAllowsUnchangedRiskScore(t *testing.T) {
+	finding := compoundRiskFinding("cloud-public-prod-secrets", cloudPublicResourceExposureRuleID, "HIGH", "", "", "urn:cerebro:writer:aws_secret_store:prod-secrets", "public_network_ingress")
+	store := &stubRiskDeltaGraphStore{
+		rows: [][]ports.CypherRow{
+			{
+				riskDeltaGraphRow("cloud-public-prod-secrets", "urn:cerebro:writer:aws_secret_store:prod-secrets", "", ""),
+				riskDeltaGraphRow("cloud-public-prod-secrets", "urn:cerebro:writer:aws_secret_store:prod-secrets", "urn:cerebro:writer:aws_public_principal:public_internet", "can_reach"),
+			},
+			{
+				riskDeltaGraphRow("cloud-public-prod-secrets", "urn:cerebro:writer:aws_secret_store:prod-secrets", "", ""),
+			},
+		},
+	}
+
+	report, err := SimulateRiskDeltaWithGraph(context.Background(), []*ports.FindingRecord{finding}, store, RiskDeltaSimulationOptions{
+		TenantID:       "writer",
+		ScenarioType:   RiskDeltaScenarioRemovePublicExposure,
+		TargetURN:      "urn:cerebro:writer:aws_secret_store:prod-secrets",
+		Limit:          10,
+		GraphPathLimit: 1,
+	})
+	if err != nil {
+		t.Fatalf("SimulateRiskDeltaWithGraph() error = %v", err)
+	}
+
+	if report.RiskScoreReduction != 0 {
+		t.Fatalf("RiskScoreReduction = %d, want unchanged finding risk score", report.RiskScoreReduction)
+	}
+	if report.AttackPathCountReduction != 1 {
+		t.Fatalf("AttackPathCountReduction = %d, want graph path reduction", report.AttackPathCountReduction)
+	}
+	if report.PrimaryOutcome.Type != "attack_path_reduction" || report.PrimaryOutcome.Reduction != 1 {
+		t.Fatalf("PrimaryOutcome = %#v, want attack-path primary outcome", report.PrimaryOutcome)
 	}
 }
 

@@ -409,6 +409,10 @@ func (s *Service) runRiskDelta(ctx context.Context, parameters map[string]string
 	if err != nil {
 		return nil, fmt.Errorf("build risk delta report payload: %w", err)
 	}
+	primaryOutcome, err := jsonPayload(report.PrimaryOutcome)
+	if err != nil {
+		return nil, fmt.Errorf("build risk delta primary outcome payload: %w", err)
+	}
 	result, err := structpb.NewStruct(map[string]any{
 		reportParameterTenantID:       tenantID,
 		reportParameterRuntimeID:      resultRuntimeID,
@@ -419,6 +423,7 @@ func (s *Service) runRiskDelta(ctx context.Context, parameters map[string]string
 		"graph_evidence_status":       graphEvidenceStatus,
 		"graph_neighborhood_count":    0,
 		"risk_delta":                  riskDelta,
+		"primary_outcome":             primaryOutcome,
 		"risk_score_change":           report.RiskScoreChange,
 		"attack_path_score_change":    report.AttackPathScoreChange,
 		"attack_path_count_change":    report.AttackPathCountChange,
@@ -559,7 +564,7 @@ func riskDeltaDefinition() *cerebrov1.ReportDefinition {
 	return &cerebrov1.ReportDefinition{
 		Id:          riskDeltaReportID,
 		Name:        riskDeltaReportName,
-		Description: "Simulate a remediation scenario with graph-backed attack-path deltas plus persisted finding risk changes, returning before/after risk, attack-path, and affected-finding deltas without mutating stores.",
+		Description: "Simulate a remediation scenario with graph-backed attack-path deltas as the primary outcome and persisted finding risk deltas as separate score evidence, without mutating stores.",
 		Parameters: []*cerebrov1.ReportParameter{
 			{
 				Id:          reportParameterTenantID,

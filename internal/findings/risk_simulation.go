@@ -29,6 +29,7 @@ type RiskDeltaSimulationOptions struct {
 type RiskDeltaSimulationReport struct {
 	ScenarioType             string                   `json:"scenario_type"`
 	TargetURN                string                   `json:"target_urn"`
+	PrimaryOutcome           RiskDeltaPrimaryOutcome  `json:"primary_outcome"`
 	Before                   RiskDeltaSnapshot        `json:"before"`
 	After                    RiskDeltaSnapshot        `json:"after"`
 	RiskScoreChange          int                      `json:"risk_score_change"`
@@ -42,6 +43,14 @@ type RiskDeltaSimulationReport struct {
 	RemovedAttackPaths       []FindingAttackPath      `json:"removed_attack_paths,omitempty"`
 	RemainingAttackPaths     []FindingAttackPath      `json:"remaining_attack_paths,omitempty"`
 	Reasons                  []string                 `json:"reasons,omitempty"`
+}
+
+type RiskDeltaPrimaryOutcome struct {
+	Type      string `json:"type"`
+	Metric    string `json:"metric"`
+	Before    int    `json:"before"`
+	After     int    `json:"after"`
+	Reduction int    `json:"reduction"`
 }
 
 type RiskDeltaSnapshot struct {
@@ -86,6 +95,7 @@ func SimulateRiskDelta(records []*ports.FindingRecord, options RiskDeltaSimulati
 	return RiskDeltaSimulationReport{
 		ScenarioType:             scenarioType,
 		TargetURN:                targetURN,
+		PrimaryOutcome:           riskDeltaPrimaryOutcome(before, after, riskScoreReduction, attackPathScoreReduction, attackPathCountReduction),
 		Before:                   before,
 		After:                    after,
 		RiskScoreChange:          -riskScoreReduction,
@@ -99,6 +109,40 @@ func SimulateRiskDelta(records []*ports.FindingRecord, options RiskDeltaSimulati
 		RemovedAttackPaths:       removedRiskDeltaAttackPaths(beforeAllPaths, afterAllPaths),
 		RemainingAttackPaths:     afterPaths,
 		Reasons:                  uniqueSortedStrings(append(findingReasons, graphReasons...)),
+	}
+}
+
+func riskDeltaPrimaryOutcome(before RiskDeltaSnapshot, after RiskDeltaSnapshot, riskScoreReduction int, attackPathScoreReduction int, attackPathCountReduction int) RiskDeltaPrimaryOutcome {
+	switch {
+	case attackPathCountReduction > 0:
+		return RiskDeltaPrimaryOutcome{
+			Type:      "attack_path_reduction",
+			Metric:    "attack_path_count",
+			Before:    before.AttackPathCount,
+			After:     after.AttackPathCount,
+			Reduction: attackPathCountReduction,
+		}
+	case attackPathScoreReduction > 0:
+		return RiskDeltaPrimaryOutcome{
+			Type:      "attack_path_score_reduction",
+			Metric:    "total_attack_path_score",
+			Before:    before.TotalAttackPathScore,
+			After:     after.TotalAttackPathScore,
+			Reduction: attackPathScoreReduction,
+		}
+	case riskScoreReduction > 0:
+		return RiskDeltaPrimaryOutcome{
+			Type:      "risk_score_reduction",
+			Metric:    "total_risk_score",
+			Before:    before.TotalRiskScore,
+			After:     after.TotalRiskScore,
+			Reduction: riskScoreReduction,
+		}
+	default:
+		return RiskDeltaPrimaryOutcome{
+			Type:   "no_reduction",
+			Metric: "none",
+		}
 	}
 }
 

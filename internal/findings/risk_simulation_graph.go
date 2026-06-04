@@ -50,6 +50,7 @@ func SimulateRiskDeltaWithGraph(ctx context.Context, records []*ports.FindingRec
 	return RiskDeltaSimulationReport{
 		ScenarioType:             scenarioType,
 		TargetURN:                targetURN,
+		PrimaryOutcome:           riskDeltaPrimaryOutcome(before, after, riskScoreReduction, attackPathScoreReduction, attackPathCountReduction),
 		Before:                   before,
 		After:                    after,
 		RiskScoreChange:          -riskScoreReduction,
