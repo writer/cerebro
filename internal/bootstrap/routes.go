@@ -40,9 +40,9 @@ func (app *App) registerConnectRoutes(mux *http.ServeMux, cfg config.Config, dep
 }
 
 func (app *App) registerPublicRoutes(mux *http.ServeMux) {
-	registerHTTPRoute(mux, "/health", routeSurfacePublicHTTP, app.handleHealth)
-	registerHTTPRoute(mux, "/healthz", routeSurfacePublicHTTP, app.handleLiveness)
-	registerHTTPRoute(mux, "/livez", routeSurfacePublicHTTP, app.handleLiveness)
+	registerHTTPRoute(mux, "GET /health", routeSurfacePublicHTTP, app.handleHealth)
+	registerHTTPRoute(mux, "GET /healthz", routeSurfacePublicHTTP, app.handleLiveness)
+	registerHTTPRoute(mux, "GET /livez", routeSurfacePublicHTTP, app.handleLiveness)
 	registerHTTPRoute(mux, "GET /openapi.yaml", routeSurfacePublicHTTP, app.handleOpenAPI)
 }
 
@@ -92,7 +92,7 @@ func (app *App) registerFindingRoutes(mux *http.ServeMux) {
 }
 
 func (app *App) registerSourceRoutes(mux *http.ServeMux) {
-	registerHTTPRoute(mux, "/sources", routeSurfacePlatformHTTP, app.handleSources)
+	registerHTTPRoute(mux, "GET /sources", routeSurfacePlatformHTTP, app.handleSources)
 	registerHTTPRoute(mux, "GET /sources/{sourceID}/check", routeSurfacePlatformHTTP, app.handleCheckSource)
 	registerHTTPRoute(mux, "GET /sources/{sourceID}/discover", routeSurfacePlatformHTTP, app.handleDiscoverSource)
 	registerHTTPRoute(mux, "GET /sources/{sourceID}/read", routeSurfacePlatformHTTP, app.handleReadSource)
@@ -150,7 +150,7 @@ func (app *App) registerDeviceRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "POST /platform/devices/bootstrap-tokens", routeSurfacePlatformHTTP, app.deviceHandler.handleIssueBootstrapToken)
 	registerHTTPRoute(mux, "POST /platform/devices/{deviceID}/revoke", routeSurfacePlatformHTTP, app.deviceHandler.handleRevoke)
 	registerHTTPRoute(mux, "POST /platform/telemetry/ingest", routeSurfacePlatformHTTP, app.deviceHandler.handleIngestTelemetry)
-	registerHTTPRoute(mux, "GET /.well-known/device-jwks.json", routeSurfaceInternalHTTP, app.deviceHandler.handleJWKS)
+	registerHTTPRoute(mux, "GET /.well-known/device-jwks.json", routeSurfacePublicHTTP, app.deviceHandler.handleJWKS)
 }
 
 func registerHTTPRoute(mux *http.ServeMux, pattern string, _ bootstrapRouteSurface, handler http.HandlerFunc) {

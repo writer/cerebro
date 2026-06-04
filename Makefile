@@ -173,6 +173,7 @@ docker-smoke:
 	mkdir -p .dist
 	CGO_ENABLED=0 GOOS=linux GOARCH="$(DOCKER_SMOKE_GOARCH)" go build -trimpath -o .dist/cerebro ./cmd/cerebro
 	docker build -f Dockerfile.runtime -t "$(DOCKER_SMOKE_IMAGE)" .
+	@test -n "$$(docker run --rm "$(DOCKER_SMOKE_IMAGE)" version)"
 
 release-smoke:
 	$(GORELEASER) check

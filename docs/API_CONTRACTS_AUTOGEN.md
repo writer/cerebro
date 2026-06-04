@@ -4,7 +4,7 @@ Generated-by-hand snapshot for the current bootstrap service. Source of truth: `
 
 - HTTP operations: **68** across **66** paths.
 - Connect RPCs: **38**.
-- Public unauthenticated routes when auth is enabled: `/health`, `/healthz`, `/livez`, `/openapi.yaml`.
+- Public unauthenticated routes when auth is enabled: `/health`, `/healthz`, `/livez`, `/openapi.yaml`, OAuth metadata/authorization endpoints, `/.well-known/device-jwks.json`, `/platform/devices/enroll`, and `/platform/devices/token`.
 - Preferred shared platform namespace: `/platform/*`.
 - Legacy `/graph/*` compatibility aliases have been removed; use `/platform/graph/*`.
 
@@ -13,6 +13,7 @@ Generated-by-hand snapshot for the current bootstrap service. Source of truth: `
 | Family | Routes |
 | --- | --- |
 | Health/contracts | `/health` readiness, `/healthz` and `/livez` liveness, `/openapi.yaml` |
+| OAuth/device bootstrap | `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`, `/oauth/authorize`, `/oauth/callback`, `/oauth/token`, `/oauth/revoke`, `/oauth/register`, `/.well-known/device-jwks.json`, `/platform/devices/enroll`, `/platform/devices/token` |
 | Sources | `/sources`, `/sources/{sourceID}/check`, `/sources/{sourceID}/discover`, `/sources/{sourceID}/read` |
 | Source runtimes | `/source-runtimes/{runtimeID}`, `/source-runtimes/{runtimeID}/sync`, `/source-runtimes/{runtimeID}/graph-ingest-runs` |
 | Claims/findings | `/source-runtimes/{runtimeID}/claims`, `/source-runtimes/{runtimeID}/findings`, finding lifecycle routes |
