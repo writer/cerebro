@@ -244,7 +244,9 @@ jobs:
 
   droid-review:
     needs: droid-review-preflight
-    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository && needs.droid-review-preflight.outputs.run_droid_review == 'true'
+    # Dependabot pull_request runs cannot access FACTORY_API_KEY, so keep the
+    # preflight context but skip the secret-dependent Droid execution job.
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' && needs.droid-review-preflight.outputs.run_droid_review == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
