@@ -128,12 +128,12 @@ jobs:
 
       - name: Checkout repository
         if: steps.target.outputs.should_run == 'true'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 1
       - name: Run Droid Exec
         if: steps.target.outputs.should_run == 'true'
-        uses: Factory-AI/droid-action@8ea31f351ee6636ebef918ccb64682f477af7184 # main
+        uses: Factory-AI/droid-action@84946f2e382b390fd1dc9fb1e598bbb099155bf6 # main
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           # Keep manual @droid reviews as the escalation path after the fast
