@@ -14,12 +14,14 @@ import (
 )
 
 const sourceID = "trusted_endpoint"
+const runtimeID = "trusted-endpoint"
 
 // Principal identifies the authenticated device that submitted telemetry.
 type Principal struct {
 	TenantID     string
 	DeviceID     string
 	HardwareUUID string
+	SerialNumber string
 	Hostname     string
 }
 
@@ -50,6 +52,7 @@ func Normalize(body []byte, principal Principal, observedAt time.Time) ([]*cereb
 			"agent_id":          agentID,
 			"device_id":         principal.DeviceID,
 			"hardware_uuid":     principal.HardwareUUID,
+			"serial_number":     principal.SerialNumber,
 			"hostname":          principal.Hostname,
 			"observation_table": observationTable(payload.Posture),
 			"summary":           payload.Posture,
@@ -60,6 +63,7 @@ func Normalize(body []byte, principal Principal, observedAt time.Time) ([]*cereb
 			"hardware_key":      firstNonEmpty(principal.HardwareUUID, principal.DeviceID, principal.Hostname),
 			"hostname":          principal.Hostname,
 			"observation_table": observationTable(payload.Posture),
+			"serial_number":     principal.SerialNumber,
 		}, observedAt, len(envelopes))
 		if err != nil {
 			return nil, err
@@ -90,30 +94,34 @@ func normalizeEvent(raw map[string]any, principal Principal, agentID string) (st
 		findingID := firstString(raw, "finding_id", "findingId")
 		severity := firstNonEmpty(firstString(raw, "severity"), "unknown")
 		payload := map[string]any{
-			"agent_id":   agentID,
-			"device_id":  principal.DeviceID,
-			"finding_id": findingID,
-			"severity":   severity,
-			"source":     "endpoint_telemetry",
-			"raw":        raw,
+			"agent_id":      agentID,
+			"device_id":     principal.DeviceID,
+			"serial_number": principal.SerialNumber,
+			"finding_id":    findingID,
+			"severity":      severity,
+			"source":        "endpoint_telemetry",
+			"raw":           raw,
 		}
 		return "trusted_endpoint.security_finding", "trusted_endpoint/security_finding/v1", payload, map[string]string{
-			"agent_id":   agentID,
-			"device_id":  principal.DeviceID,
-			"finding_id": findingID,
-			"severity":   severity,
+			"agent_id":      agentID,
+			"device_id":     principal.DeviceID,
+			"serial_number": principal.SerialNumber,
+			"finding_id":    findingID,
+			"severity":      severity,
 		}
 	}
 	payload := map[string]any{
-		"agent_id":  agentID,
-		"device_id": principal.DeviceID,
-		"action":    action,
-		"outcome":   outcome,
-		"raw":       raw,
+		"agent_id":      agentID,
+		"device_id":     principal.DeviceID,
+		"serial_number": principal.SerialNumber,
+		"action":        action,
+		"outcome":       outcome,
+		"raw":           raw,
 	}
 	return "trusted_endpoint.action_outcome", "trusted_endpoint/action_outcome/v1", payload, map[string]string{
 		"agent_id":       agentID,
 		"device_id":      principal.DeviceID,
+		"serial_number":  principal.SerialNumber,
 		"action":         action,
 		"outcome_result": outcome,
 	}
@@ -199,6 +207,7 @@ func firstNonEmpty(values ...string) string {
 
 func trimAttrs(attrs map[string]string) map[string]string {
 	out := make(map[string]string, len(attrs))
+	out["source_runtime_id"] = runtimeID
 	for key, value := range attrs {
 		key = strings.TrimSpace(key)
 		value = strings.TrimSpace(value)

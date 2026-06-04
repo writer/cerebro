@@ -108,6 +108,7 @@ func (app *App) registerKnowledgeRoutes(mux *http.ServeMux) {
 
 func (app *App) registerGraphRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /platform/graph/neighborhood", routeSurfacePlatformHTTP, app.handleGetEntityNeighborhood)
+	registerHTTPRoute(mux, "POST /platform/graph/trust-context", routeSurfacePlatformHTTP, app.handleGetTrustContext)
 	registerHTTPRoute(mux, "GET /platform/graph/impact/vulnerability/{id}", routeSurfacePlatformHTTP, app.handleGetVulnerabilityImpact)
 	registerHTTPRoute(mux, "GET /platform/graph/impact/package", routeSurfacePlatformHTTP, app.handleGetPackageImpact)
 	registerHTTPRoute(mux, "GET /platform/graph/impact/asset", routeSurfacePlatformHTTP, app.handleGetAssetImpact)

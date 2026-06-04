@@ -35,6 +35,11 @@ the device has enrolled. Before enrollment, use the tuple:
 tenant_id + hardware_uuid + serial_number + hostname
 ```
 
+Cerebro persists endpoint aliases in `endpoint_identity_aliases` and resolves
+lookups by tenant-scoped alias type/value. Strong identifiers (`device_id`,
+`hardware_uuid`, `serial_number`) should win over hostname, and hostname matches
+may be marked ambiguous when multiple enrolled devices share the same name.
+
 ## Source Runtime Contract
 
 Trusted Endpoint has a first-class Cerebro source ID:
@@ -81,6 +86,10 @@ event envelopes:
 
 This keeps endpoint telemetry compatible with source-runtime replay and graph
 projection without writing high-volume raw telemetry directly into the graph.
+On the first accepted request for an idempotency key, Cerebro appends those
+events to the append log, runs source projection, upserts endpoint aliases, and
+emits `endpoint_telemetry.accepted` observability. Idempotent replays return the
+cached receipt without re-appending or re-projecting events.
 
 ## Trust-Gate Loop
 
@@ -98,6 +107,19 @@ Trust gates should be bidirectional:
    targeted Trusted Endpoint refresh rather than approving from stale context.
 5. Every trust-gate decision and downstream action outcome should be emitted
    back as evidence so future policy and agent decisions can learn from it.
+
+Trusted Endpoint can hydrate Cerebro context with:
+
+```text
+POST /platform/graph/trust-context
+```
+
+The request supplies tenant and endpoint identifiers (`agent_id`, `device_id`,
+`hardware_uuid`, `serial_number`, `hostname`, and optional `graph_root_urns`).
+Cerebro resolves the endpoint identity, returns candidate root URNs, and
+summarizes graph-linked active findings into the existing trust-gate context
+fields (`graph_neighborhood_loaded`, `active_finding_count`,
+`max_finding_severity`, `risk_score`, and `stale_evidence_count`).
 
 ## Security/Kairos Agent Loop
 

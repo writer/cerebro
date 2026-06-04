@@ -151,7 +151,14 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 			app.dpopVerifier = dpop
 			app.riskScorer = riskScorer
 			app.observationStore = obsStore
-			app.deviceHandler = newDeviceAuthHTTPHandler(service, cfg.Auth.DeviceAuth, cfg.Auth.RequestOrigin)
+			app.deviceHandler = newDeviceAuthHTTPHandler(
+				service,
+				cfg.Auth.DeviceAuth,
+				cfg.Auth.RequestOrigin,
+				deps.AppendLog,
+				sourceProjector(deps.StateStore, deps.GraphStore),
+				endpointIdentityStore(deps.StateStore),
+			)
 		}
 	}
 	if cfg.Auth.MCPOAuth.Enabled {
@@ -3304,6 +3311,14 @@ func deviceRiskObservationStore(store ports.StateStore) risk.ObservationStore {
 		return nil
 	}
 	return observationStore
+}
+
+func endpointIdentityStore(store ports.StateStore) ports.EndpointIdentityStore {
+	identityStore, ok := store.(ports.EndpointIdentityStore)
+	if !ok || isNilInterface(identityStore) {
+		return nil
+	}
+	return identityStore
 }
 
 type startupJobLeaseProvider interface {
