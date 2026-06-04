@@ -15,7 +15,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/apigateway v1.40.4
 	github.com/aws/aws-sdk-go-v2/service/apigatewayv2 v1.35.4
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.53.3
-	github.com/aws/aws-sdk-go-v2/service/cloudfront v1.64.4
+	github.com/aws/aws-sdk-go-v2/service/cloudfront v1.65.0
 	github.com/aws/aws-sdk-go-v2/service/cloudtrail v1.56.2
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.305.1
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.82.2
