@@ -15,6 +15,7 @@ import (
 var (
 	ErrInvalidRequest     = errors.New("invalid job request")
 	ErrRuntimeUnavailable = errors.New("job runtime is unavailable")
+	ErrJobPanic           = errors.New("job panic")
 )
 
 const (
@@ -154,7 +155,7 @@ func (s *Service) Run(ctx context.Context, jobID string) (err error) {
 }
 
 func (s *Service) failPanickedJob(ctx context.Context, jobID string, recovered any) error {
-	panicErr := fmt.Errorf("job panic: %v", recovered)
+	panicErr := fmt.Errorf("%w: %v", ErrJobPanic, recovered)
 	jobID = strings.TrimSpace(jobID)
 	if s == nil || s.store == nil || jobID == "" {
 		return panicErr

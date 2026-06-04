@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"testing"
 
@@ -69,7 +68,7 @@ func TestRunRecoversRunnerPanicAndMarksJobFailed(t *testing.T) {
 	})
 
 	err := service.Run(context.Background(), "job-panic")
-	if err == nil || !strings.Contains(err.Error(), "job panic: boom") {
+	if !errors.Is(err, ErrJobPanic) {
 		t.Fatalf("Run panic error = %v, want job panic", err)
 	}
 	job, err := store.GetJob(context.Background(), "job-panic")
@@ -79,7 +78,7 @@ func TestRunRecoversRunnerPanicAndMarksJobFailed(t *testing.T) {
 	if job.Status != ports.JobStatusFailed {
 		t.Fatalf("status = %q, want %q", job.Status, ports.JobStatusFailed)
 	}
-	if !strings.Contains(job.Error, "job panic: boom") {
+	if job.Error != "job panic: boom" {
 		t.Fatalf("job error = %q, want panic detail", job.Error)
 	}
 	if len(store.events) < 2 || store.events[len(store.events)-1].Type != "failed" {
