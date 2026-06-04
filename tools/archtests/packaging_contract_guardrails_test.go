@@ -86,6 +86,11 @@ func TestReleaseWorkflowKeepsCIParityAndStableLatestGuard(t *testing.T) {
 		"is_stable_release:",
 		`if [ "${{ needs.resolve-tag.outputs.is_stable_release }}" = "true" ]; then`,
 		"Skipping latest tag for prerelease",
+		"target_environment: sec-dev",
+		"apply_mode: direct_push",
+		"target_environment: go-prod",
+		"apply_mode: pull_request",
+		"TARGET_ENVIRONMENT: ${{ matrix.target_environment }}",
 	} {
 		if !strings.Contains(release, marker) {
 			t.Fatalf("release workflow missing required marker %q", marker)
@@ -95,6 +100,11 @@ func TestReleaseWorkflowKeepsCIParityAndStableLatestGuard(t *testing.T) {
 	stableGuardIndex := strings.Index(release, `if [ "${{ needs.resolve-tag.outputs.is_stable_release }}" = "true" ]; then`)
 	if latestIndex == -1 || stableGuardIndex == -1 || stableGuardIndex > latestIndex {
 		t.Fatal("release workflow must guard latest image publication behind stable-release check")
+	}
+	dispatchIndex := strings.Index(release, "Dispatch release deployment request")
+	matrixIndex := strings.Index(release, "target_environment: sec-dev")
+	if dispatchIndex == -1 || matrixIndex == -1 || matrixIndex > dispatchIndex {
+		t.Fatal("release workflow must fan out infra dispatches before the dispatch step")
 	}
 
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))

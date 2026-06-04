@@ -281,6 +281,14 @@ jobs:
   notify-infra-release:
     runs-on: ubuntu-latest
     needs: [resolve-tag, ghcr-publish, runtime-contract-upload]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target_environment: sec-dev
+            apply_mode: direct_push
+          - target_environment: go-prod
+            apply_mode: pull_request
     steps:
       - name: Dispatch release deployment request
         shell: bash
@@ -290,10 +298,12 @@ jobs:
           RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
           IMAGE_DIGEST: ${{ needs.ghcr-publish.outputs.digest }}
           SOURCE_REPOSITORY: ${{ github.repository }}
+          TARGET_ENVIRONMENT: ${{ matrix.target_environment }}
+          APPLY_MODE: ${{ matrix.apply_mode }}
         run: |
           set -euo pipefail
           if [ -z "${GH_TOKEN}" ]; then
-            echo "::warning::CEREBRO_INFRA_PROMOTION_TOKEN is not configured; skipping deploy dispatch for ${RELEASE_TAG}"
+            echo "::warning::CEREBRO_INFRA_PROMOTION_TOKEN is not configured; skipping ${TARGET_ENVIRONMENT} deploy dispatch for ${RELEASE_TAG}"
             exit 0
           fi
           if ! [[ "${INFRA_REPOSITORY}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
@@ -316,8 +326,6 @@ jobs:
           fi
 
           dispatch_target() {
-            local target_environment="$1"
-            local apply_mode="$2"
             local requested_at
             local request_id
             local deadline
@@ -325,7 +333,7 @@ jobs:
             local run_url
 
             requested_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            request_id="cerebro-${target_environment}-${RELEASE_TAG}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            request_id="cerebro-${TARGET_ENVIRONMENT}-${RELEASE_TAG}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 
             jq -n \
               --arg tag "${RELEASE_TAG}" \
@@ -334,8 +342,8 @@ jobs:
               --arg source_repository "${SOURCE_REPOSITORY}" \
               --arg source_ref "refs/tags/${RELEASE_TAG}" \
               --arg request_id "${request_id}" \
-              --arg target_environment "${target_environment}" \
-              --arg apply_mode "${apply_mode}" \
+              --arg target_environment "${TARGET_ENVIRONMENT}" \
+              --arg apply_mode "${APPLY_MODE}" \
               '{
                 event_type: "cerebro-release-published",
                 client_payload: {
@@ -373,19 +381,18 @@ jobs:
                     --jq ".[] | select(.databaseId == ${run_id}) | .url" \
                     | head -n 1
                 )"
-                echo "Dispatched ${target_environment} ${apply_mode} deploy request for ${RELEASE_TAG}@${IMAGE_DIGEST}: ${run_url}"
+                echo "Dispatched ${TARGET_ENVIRONMENT} ${APPLY_MODE} deploy request for ${RELEASE_TAG}@${IMAGE_DIGEST}: ${run_url}"
                 return 0
               fi
               sleep 5
             done
 
-            echo "ERROR: repository_dispatch was accepted, but no matching propose-image-tag.yml run appeared for ${target_environment} ${RELEASE_TAG}" >&2
+            echo "ERROR: repository_dispatch was accepted, but no matching propose-image-tag.yml run appeared for ${TARGET_ENVIRONMENT} ${RELEASE_TAG}" >&2
             echo "This usually means the downstream handler is absent or disabled; failing closed to avoid silent deploy loss." >&2
             exit 1
           }
 
-          dispatch_target sec-dev direct_push
-          dispatch_target go-prod pull_request
+          dispatch_target
 
   runtime-contract:
     runs-on: ubuntu-latest
