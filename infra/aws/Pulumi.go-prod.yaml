@@ -64,6 +64,7 @@ config:
     - CEREBRO_SOURCE_COSMO_BASE_URL
     - CEREBRO_SOURCE_COSMO_EXPORT_SECRET
     - CEREBRO_SOURCE_COSMO_TOKEN
+    - CEREBRO_SOURCE_SECURITY_TOOLING_MAP_TOKEN
     - VANTA_CLIENT_ID
     - VANTA_CLIENT_SECRET
     - VULNVIEW_PROVIDER_OKTA_ISSUER
@@ -79,6 +80,26 @@ config:
     - graph_page_limit=100
     - event_limit=1000
   cerebro:orchestratorSchedules:
+    - name: security-tooling-map-tools
+      scheduleExpression: cron(6 * * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-security-tooling-map-tools
+        - page_limit=100
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: security-tooling-map-controls
+      scheduleExpression: cron(16 * * * ? *)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-security-tooling-map-controls
+        - page_limit=100
+        - graph_page_limit=100
+        - event_limit=1000
     - name: backstage-component-inventory
       scheduleExpression: cron(8 * * * ? *)
       taskCount: 1
@@ -1560,6 +1581,24 @@ config:
         - graph_page_limit=100
         - event_limit=1000
   cerebro:sourceRuntimes:
+    - id: writer-security-tooling-map-tools
+      sourceId: security_tooling_map
+      tenantId: writer
+      config:
+        base_url: https://writerinternal.github.io/security-tooling-map/cerebro-source
+        family: tool
+        per_page: "100"
+        tenant_id: writer
+        token: env:CEREBRO_SOURCE_SECURITY_TOOLING_MAP_TOKEN
+    - id: writer-security-tooling-map-controls
+      sourceId: security_tooling_map
+      tenantId: writer
+      config:
+        base_url: https://writerinternal.github.io/security-tooling-map/cerebro-source
+        family: control_mapping
+        per_page: "100"
+        tenant_id: writer
+        token: env:CEREBRO_SOURCE_SECURITY_TOOLING_MAP_TOKEN
     - id: writer-backstage-component
       sourceId: backstage
       tenantId: writer
