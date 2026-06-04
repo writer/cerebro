@@ -8,6 +8,7 @@ import (
 
 	"github.com/writer/cerebro/internal/graphagent"
 	"github.com/writer/cerebro/internal/sourcehttp"
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 const maxHTTPDoerResponseBytes = 4 << 20
@@ -27,6 +28,9 @@ func (d *stdHTTPDoer) Post(ctx context.Context, url string, headers map[string]s
 	}
 	for k, v := range headers {
 		req.Header.Set(k, v)
+	}
+	if traceparent := telemetry.TraceParent(ctx); traceparent != "" && req.Header.Get("Traceparent") == "" {
+		req.Header.Set("Traceparent", traceparent)
 	}
 	resp, err := d.client.Do(req)
 	if err != nil {

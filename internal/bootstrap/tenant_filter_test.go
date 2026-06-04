@@ -1,0 +1,101 @@
+package bootstrap
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"testing"
+
+	"github.com/writer/cerebro/internal/config"
+)
+
+func TestEffectiveTenantFilterDefaultsPrincipalTenant(t *testing.T) {
+	ctx := context.WithValue(context.Background(), authContextKey{}, authContext{
+		principal: authPrincipal{TenantID: "writer"},
+	})
+
+	tenantID, err := effectiveTenantFilter(ctx, "")
+	if err != nil {
+		t.Fatalf("effectiveTenantFilter error = %v", err)
+	}
+	if tenantID != "writer" {
+		t.Fatalf("tenantID = %q, want writer", tenantID)
+	}
+}
+
+func TestEffectiveTenantFilterRejectsAmbiguousAllowedTenantScope(t *testing.T) {
+	ctx := context.WithValue(context.Background(), authContextKey{}, authContext{
+		cfg:       config.AuthConfig{AllowedTenants: []string{"writer"}},
+		principal: authPrincipal{},
+	})
+
+	_, err := effectiveTenantFilter(ctx, "")
+	if !errors.Is(err, errTenantForbidden) {
+		t.Fatalf("effectiveTenantFilter error = %v, want %v", err, errTenantForbidden)
+	}
+}
+
+func TestScopeForHTTPRequestCoversPlatformJobAndRuntimeResponseReads(t *testing.T) {
+	for _, path := range []string{
+		"/platform/jobs",
+		"/platform/jobs/job-123",
+		"/platform/jobs/job-123/events",
+		"/platform/runtime-response/capabilities",
+		"/platform/runtime-response/blocklist",
+	} {
+		request, err := http.NewRequest(http.MethodGet, path, nil)
+		if err != nil {
+			t.Fatalf("NewRequest(%q) error = %v", path, err)
+		}
+		if got := scopeForHTTPRequest(request); got != scopeCosmoSecurityRead {
+			t.Fatalf("scopeForHTTPRequest(%s) = %q, want %q", path, got, scopeCosmoSecurityRead)
+		}
+	}
+}
+
+func TestRuntimeResponseTrustedScopeIsServerDerived(t *testing.T) {
+	request, err := http.NewRequest(http.MethodPost, "/platform/runtime-response/actions", nil)
+	if err != nil {
+		t.Fatalf("NewRequest error = %v", err)
+	}
+	if got := scopeForHTTPRequest(request); got != scopeRuntimeResponseWrite {
+		t.Fatalf("scopeForHTTPRequest(runtime response action) = %q, want %q", got, scopeRuntimeResponseWrite)
+	}
+
+	restricted := context.WithValue(context.Background(), authContextKey{}, authContext{
+		principal: authPrincipal{Scopes: []string{scopeCosmoSecurityRead}},
+	})
+	if hasRuntimeResponseTrustedScope(restricted) {
+		t.Fatal("read-only scoped principal has trusted runtime response scope")
+	}
+
+	writer := context.WithValue(context.Background(), authContextKey{}, authContext{
+		principal: authPrincipal{Scopes: []string{scopeRuntimeResponseWrite}},
+	})
+	if !hasRuntimeResponseTrustedScope(writer) {
+		t.Fatal("runtime response write scope was not trusted")
+	}
+}
+
+func TestRequireMatchingJobTenantRejectsMismatchedTargetTenant(t *testing.T) {
+	if err := requireMatchingJobTenant("tenant-a", "tenant-a"); err != nil {
+		t.Fatalf("matching tenants error = %v", err)
+	}
+	if err := requireMatchingJobTenant("", "tenant-a"); err != nil {
+		t.Fatalf("empty job tenant should allow target-derived tenant, got %v", err)
+	}
+	if err := requireMatchingJobTenant("tenant-a", "tenant-b"); !errors.Is(err, errTenantForbidden) {
+		t.Fatalf("mismatched tenants error = %v, want %v", err, errTenantForbidden)
+	}
+}
+
+func TestEffectiveTenantFilterRejectsCrossTenantRequest(t *testing.T) {
+	ctx := context.WithValue(context.Background(), authContextKey{}, authContext{
+		principal: authPrincipal{TenantID: "writer"},
+	})
+
+	_, err := effectiveTenantFilter(ctx, "other")
+	if !errors.Is(err, errTenantForbidden) {
+		t.Fatalf("effectiveTenantFilter error = %v, want %v", err, errTenantForbidden)
+	}
+}

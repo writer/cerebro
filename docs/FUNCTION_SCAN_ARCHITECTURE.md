@@ -7,21 +7,21 @@ Cerebro's serverless function scanning pipeline should be durable, API-driven, a
 - Model function scan runs and lifecycle events as typed persisted records.
 - Acquire deployment packages through control-plane APIs instead of VM snapshots or ad hoc local exports.
 - Reconstruct the effective function filesystem safely enough for shared analyzer reuse.
-- Reuse the same execution-store durability boundary as workload and image scans.
+- Reuse the same platform job durability boundary as workload and image scans.
 - Keep provider-specific package acquisition behind narrow interfaces so deeper analyzers and graph integration can evolve independently.
 
 ## Runtime Model
 
-The runtime persists state through `internal/functionscan.SQLiteRunStore`, which now wraps the shared `internal/executionstore` schema.
+The current bootstrap repository does not ship a dedicated function-scan runtime package. Function-scan execution should persist through shared platform jobs and Postgres-backed job events.
 
 Persisted records:
 
-- `RunRecord`: one execution resource for a submitted function package scan
-- `RunEvent`: append-only lifecycle and debugging timeline
+- `Job`: one execution resource for a submitted function package scan
+- `JobEvent`: append-only lifecycle and debugging timeline
 - `FilesystemArtifact`: materialized package metadata, retention, and cleanup timestamps
 - `AppliedArtifact`: ordered package/layer application metadata
 
-By default, function scans now use the same `EXECUTION_STORE_FILE` fallback as workload and image scans. The underlying persistence schema is shared, with `namespace` separating execution resources by runtime type.
+The underlying persistence schema should be shared, with `kind` separating execution resources by runtime type.
 
 ## Execution Pipeline
 
@@ -36,13 +36,13 @@ Current run stages:
 
 The pipeline is intentionally narrow:
 
-- provider metadata/package acquisition belongs in `internal/functionscan`
+- provider metadata/package acquisition belongs in narrow provider adapters
 - vulnerability/secret/runtime analysis belongs in the shared filesystem analyzer seam
 - graph contextualization belongs in later issue `#182`
 
 ## Provider Substrate
 
-Current provider support:
+Target provider support:
 
 - `AWSProvider`
 - `GCPProvider`
@@ -116,7 +116,7 @@ The implementation is intentionally borrowing shape from a few mature projects:
 
 ## Known Limits
 
-- SQLite is durable, but still single-node.
+- The dedicated function scan runtime is not implemented in this bootstrap repository yet.
 - GCP v2 container-backed functions are described, but full container-image fallback should converge with the image-scan runtime instead of duplicating registry logic here.
 - Runtime EOL detection is currently curated/manual rather than sourced from a continuously-updated advisory feed.
 - The analyzer can now use the persisted vulnerability database, but richer advisory-source coverage and ecosystem-specific fix intelligence are still incomplete.

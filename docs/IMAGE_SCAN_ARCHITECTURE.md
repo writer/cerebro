@@ -8,19 +8,19 @@ Cerebro's container image scanning pipeline should be durable, registry-neutral,
 - Reuse the existing registry client surface instead of inventing one-off sync-only paths.
 - Resolve multi-arch manifests, config blobs, and layer downloads directly from registries.
 - Reconstruct root filesystems safely enough for shared analyzers without requiring a full local image pull.
-- Keep execution-state semantics compatible with the existing workload-scan runtime on top of one shared execution store.
+- Keep execution-state semantics compatible with platform jobs and the Postgres state store.
 
 ## Runtime Model
 
-The runtime persists state through `internal/imagescan.SQLiteRunStore`, which now wraps the shared `internal/executionstore` schema.
+The current bootstrap repository does not ship a dedicated image-scan runtime package. Image-scan execution should persist through shared platform jobs and Postgres-backed job events.
 
 Persisted records:
 
-- `RunRecord`: one execution resource for a submitted image scan
-- `RunEvent`: append-only lifecycle and debugging timeline
+- `Job`: one execution resource for a submitted image scan
+- `JobEvent`: append-only lifecycle and debugging timeline
 - `FilesystemArtifact`: materialized rootfs metadata, retention, and cleanup timestamps
 
-By default, image scans now use the same `EXECUTION_STORE_FILE` fallback as workload scans. The underlying persistence schema is shared, with `namespace` separating image/function/workload execution resources.
+The underlying persistence schema should be shared, with `kind` separating image, function, workload, and advisory execution resources.
 
 ## Execution Pipeline
 
@@ -35,13 +35,13 @@ Current run stages:
 
 The pipeline is intentionally narrow:
 
-- registry manifest/config/layer mechanics belong in `internal/scanner`
-- execution/state handling belongs in `internal/imagescan`
+- registry manifest/config/layer mechanics belong in provider/scanner adapters
+- execution/state handling belongs in the shared platform job service
 - vulnerability/package/secret analysis depth belongs in later analyzer issues
 
 ## Registry Substrate
 
-Current registry support is implemented through the existing scanner clients:
+Target registry support should be implemented through narrow scanner clients:
 
 - `ECRClient`
 - `GCRClient`
@@ -97,7 +97,7 @@ The current implementation intentionally borrows shape from a few mature project
 
 ## Known Limits
 
-- SQLite is durable, but still single-node.
+- The dedicated image scan runtime is not implemented in this bootstrap repository yet.
 - The rootfs materializer is local-disk based, not yet remote-worker aware.
 - The analyzer can now use the persisted vulnerability knowledge pipeline from issue `#181`, but broader source coverage and distro-specific matching are still incomplete.
 - Running-workload correlation and graph contextualization are later issues (`#179` / `#182`).

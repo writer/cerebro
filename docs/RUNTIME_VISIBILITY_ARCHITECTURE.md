@@ -7,7 +7,7 @@ The design goal is practical:
 - reuse the existing runtime detection, response, action-execution, and graph seams
 - ingest richer runtime telemetry than the current `RuntimeEvent` shape can represent safely
 - project runtime observations and response outcomes into the graph as durable evidence
-- keep high-volume raw telemetry out of the graph and out of the shared execution store hot path
+- keep high-volume raw telemetry out of the graph and out of the platform job hot path
 - make runtime visibility provider-pluggable instead of coupling the system to one sensor
 
 This document complements [RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md](./RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md) and [GRAPH_INTELLIGENCE_LAYER.md](./GRAPH_INTELLIGENCE_LAYER.md).
@@ -16,10 +16,10 @@ This document complements [RUNTIME_RESPONSE_EXECUTION_ARCHITECTURE.md](./RUNTIME
 
 Today Cerebro already has:
 
-- runtime event ingest under `POST /api/v1/runtime/events`
-- rule-based runtime detections in `internal/runtime`
-- runtime response execution through the shared action engine
-- durable execution state through `internal/executionstore`
+- runtime evidence modeled as source/runtime events and projected by the existing source-runtime pipeline
+- a runtime finding rule in `internal/findings` for active threat evidence
+- workflow decision/action/outcome events through `internal/knowledge` and `internal/workflowevents`
+- graph-level evidence modeling through promoted entities and links
 - graph-level causal modeling through `triggered_by` and `caused_by`
 
 That is the right control-plane skeleton, but it is not yet runtime visibility.
@@ -30,7 +30,7 @@ Current gaps:
 - raw runtime observations are not durably modeled as a first-class substrate.
 - runtime observations are not projected into the graph as `observation` or `evidence`.
 - response outcomes are not joined back into the same causal graph.
-- the shared execution store is the right place for ingestion jobs and checkpoints, not the right place for every raw runtime event.
+- platform jobs are the right place for ingestion jobs and checkpoints, not the right place for every raw runtime event.
 
 ## Principles
 
@@ -230,7 +230,7 @@ type RuntimeObservation struct {
 
 Important rule:
 
-- `internal/runtime.RuntimeEvent` should become a compatibility envelope or derived simplified view, not the canonical ingest model.
+- the current `runtime.evidence` event shape should become a compatibility envelope or derived simplified view, not the canonical ingest model.
 
 ## Observation Kinds
 
@@ -253,11 +253,11 @@ Do not overload one generic `event_type` string forever. Use a stable enum-like 
 
 Add provider adapters under a dedicated package such as:
 
-- `internal/runtime/adapters/tetragon`
-- `internal/runtime/adapters/hubble`
-- `internal/runtime/adapters/k8saudit`
-- `internal/runtime/adapters/otel`
-- `internal/runtime/adapters/falco`
+- `internal/runtimevisibility/adapters/tetragon`
+- `internal/runtimevisibility/adapters/hubble`
+- `internal/runtimevisibility/adapters/k8saudit`
+- `internal/runtimevisibility/adapters/otel`
+- `internal/runtimevisibility/adapters/falco`
 
 Each adapter should do only three things:
 
@@ -289,7 +289,7 @@ Recommended pipeline:
 
 1. provider adapter emits normalized `RuntimeObservation`
 2. observation is written to a streaming ingest path
-3. checkpoint/run metadata is persisted through `internal/executionstore`
+3. checkpoint/run metadata is persisted through platform jobs
 4. raw observations go to bounded short-retention storage
 5. detection engine evaluates normalized observations
 6. graph materialization promotes selected observations into graph state
@@ -298,7 +298,7 @@ Recommended pipeline:
 
 ## Storage Boundaries
 
-### Use `executionstore` For
+### Use Platform Jobs For
 
 - ingestion run metadata
 - source checkpoints and cursors
@@ -307,12 +307,12 @@ Recommended pipeline:
 - response execution history
 - replay and reconciliation state
 
-### Do Not Use `executionstore` For
+### Do Not Use Platform Jobs For
 
 - every raw runtime observation at production event rates
 - long retention of packet/process/file event streams
 
-The current backend-neutral execution contract is the right control-plane seam, not the raw telemetry lake.
+The platform job contract is the right control-plane seam, not the raw telemetry lake.
 
 ## Raw Retention Strategy
 
@@ -371,9 +371,9 @@ This is why the graph integration matters. Runtime visibility without entity bin
 
 ## Detection Integration
 
-The current detection engine should evolve from:
+The current detection layer should evolve from:
 
-- direct evaluation of narrow `RuntimeEvent`
+- direct evaluation of narrow `runtime.evidence` attributes
 
 to:
 
@@ -425,8 +425,8 @@ Examples:
 
 - define `RuntimeObservation`
 - add provider adapter seams
-- add ingestion-run/checkpoint persistence via `executionstore`
-- keep current `/api/v1/runtime/events` as a compatibility path
+- add ingestion-run/checkpoint persistence via platform jobs
+- keep current `runtime.evidence` event ingestion as a compatibility path
 
 ### Phase 2. First Real Sensor Path
 
@@ -494,15 +494,15 @@ Success criteria:
 
 - Do not make OpenTelemetry the only runtime source.
 - Do not treat Falco alerts as the canonical runtime graph model.
-- Do not write every raw runtime event into SQLite-backed execution state.
-- Do not create a second orchestration/execution subsystem beside `internal/actionengine`.
+- Do not write every raw runtime event into platform job state.
+- Do not create a second orchestration/execution subsystem beside platform jobs.
 - Do not store every syscall or flow forever in the graph.
 
 ## Initial API Direction
 
 Near-term compatibility:
 
-- preserve `POST /api/v1/runtime/events`
+- preserve `runtime.evidence` event ingestion through source runtimes and device telemetry where configured
 - add a typed internal ingest path for normalized observations
 
 Longer-term platform direction:
