@@ -1936,11 +1936,8 @@ components:
             - source_runtime_sync
             - graph_ingest_runtime
             - finding_rules_evaluate
-            - finding_candidates_evaluate
             - findings_evaluate
             - report_run
-            - vulndb_sync_job_run
-            - graph_rebuild_dry_run
         tenant_id:
           type: string
         subject_type:

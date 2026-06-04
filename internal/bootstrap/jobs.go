@@ -63,6 +63,12 @@ func (a *App) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	if request.Payload == nil {
 		request.Payload = map[string]any{}
 	}
+	tenantID, err := effectiveTenantFilter(r.Context(), request.TenantID)
+	if err != nil {
+		writeJobError(w, err)
+		return
+	}
+	request.TenantID = tenantID
 	if err := authorizeJobCreate(r.Context(), a.deps.StateStore, request); err != nil {
 		writeJobError(w, err)
 		return
@@ -96,15 +102,16 @@ func (a *App) handleListJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	filter := ports.JobFilter{
-		TenantID: r.URL.Query().Get("tenant_id"),
-		Kind:     r.URL.Query().Get("kind"),
-		Status:   r.URL.Query().Get("status"),
-		Limit:    limit,
+		Kind:   strings.TrimSpace(r.URL.Query().Get("kind")),
+		Status: strings.TrimSpace(r.URL.Query().Get("status")),
+		Limit:  limit,
 	}
-	if err := authorizeTenantID(r.Context(), filter.TenantID); err != nil {
+	tenantID, err := effectiveTenantFilter(r.Context(), r.URL.Query().Get("tenant_id"))
+	if err != nil {
 		writeJobError(w, err)
 		return
 	}
+	filter.TenantID = tenantID
 	jobs, err := a.jobService().List(r.Context(), filter)
 	if err != nil {
 		writeJobError(w, err)
@@ -281,7 +288,7 @@ func authorizeJobCreate(ctx context.Context, store ports.StateStore, request cre
 		}
 		return authorizeTenantID(ctx, parameters["tenant_id"])
 	default:
-		return nil
+		return fmt.Errorf("%w: unsupported job kind %q", platformjobs.ErrInvalidRequest, strings.TrimSpace(request.Kind))
 	}
 }
 

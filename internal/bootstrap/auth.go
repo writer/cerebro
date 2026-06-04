@@ -537,6 +537,22 @@ func authorizeTenantScopeRequired(ctx context.Context, tenantID string) error {
 	return authorizeTenantID(ctx, tenantID)
 }
 
+func effectiveTenantFilter(ctx context.Context, requestedTenantID string) (string, error) {
+	tenantID := strings.TrimSpace(requestedTenantID)
+	if tenantID == "" {
+		if auth, ok := ctx.Value(authContextKey{}).(authContext); ok {
+			tenantID = strings.TrimSpace(auth.principal.TenantID)
+		}
+	}
+	if tenantID == "" && requiresTenantFilter(ctx) {
+		return "", errTenantForbidden
+	}
+	if err := authorizeTenantID(ctx, tenantID); err != nil {
+		return "", err
+	}
+	return tenantID, nil
+}
+
 func authorizeTenantID(ctx context.Context, tenantID string) error {
 	auth, ok := ctx.Value(authContextKey{}).(authContext)
 	if !ok {

@@ -230,15 +230,32 @@ func (s *Store) UpdateJob(ctx context.Context, id string, update ports.JobUpdate
 	if !job.FinishedAt.IsZero() {
 		finished = job.FinishedAt
 	}
-	if _, err := s.db.ExecContext(ctx, `
+	allowedStatuses := normalizeJobStatuses(update.AllowedStatuses)
+	args := []any{id, job.Status, job.Progress, job.Message, job.Error, string(result), string(refs), started, finished, job.CancelRequested}
+	clauses := []string{"id = $1"}
+	if len(allowedStatuses) > 0 {
+		placeholders := make([]string, 0, len(allowedStatuses))
+		for _, status := range allowedStatuses {
+			args = append(args, status)
+			placeholders = append(placeholders, fmt.Sprintf("$%d", len(args)))
+		}
+		clauses = append(clauses, "status IN ("+strings.Join(placeholders, ", ")+")")
+	}
+	resultExec, err := s.db.ExecContext(ctx, fmt.Sprintf(`
 UPDATE platform_jobs
 SET status = $2, progress_percent = $3, message = $4, error = $5,
     result_json = $6::jsonb, result_refs_json = $7::jsonb,
     started_at = COALESCE($8, started_at), finished_at = COALESCE($9, finished_at),
     cancel_requested = $10, updated_at = NOW()
-WHERE id = $1`,
-		id, job.Status, job.Progress, job.Message, job.Error, string(result), string(refs), started, finished, job.CancelRequested); err != nil {
+WHERE %s`, strings.Join(clauses, " AND ")), args...)
+	if err != nil {
 		return nil, fmt.Errorf("update platform job %q: %w", id, err)
+	}
+	if rows, _ := resultExec.RowsAffected(); rows == 0 {
+		if len(allowedStatuses) > 0 {
+			return nil, fmt.Errorf("%w: %s", ports.ErrJobUpdateConflict, id)
+		}
+		return nil, fmt.Errorf("%w: %s", ports.ErrJobNotFound, id)
 	}
 	return s.GetJob(ctx, id)
 }
@@ -357,6 +374,23 @@ func scanJobEvent(row scanner) (*ports.JobEvent, error) {
 	event.Payload = map[string]any{}
 	_ = json.Unmarshal([]byte(payload), &event.Payload)
 	return event, nil
+}
+
+func normalizeJobStatuses(values []string) []string {
+	seen := map[string]struct{}{}
+	statuses := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		statuses = append(statuses, value)
+	}
+	return statuses
 }
 
 func addTextFilter(clauses *[]string, args *[]any, column string, value string) {

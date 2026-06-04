@@ -9,6 +9,9 @@ import (
 // ErrJobNotFound indicates that a platform job does not exist.
 var ErrJobNotFound = errors.New("platform job not found")
 
+// ErrJobUpdateConflict indicates that a conditional job state update lost a race.
+var ErrJobUpdateConflict = errors.New("platform job update conflict")
+
 const (
 	JobStatusQueued    = "queued"
 	JobStatusRunning   = "running"
@@ -79,6 +82,7 @@ type JobUpdate struct {
 	StartedAt       *time.Time
 	FinishedAt      *time.Time
 	CancelRequested *bool
+	AllowedStatuses []string
 }
 
 // JobStore persists platform jobs and their timeline events.

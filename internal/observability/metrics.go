@@ -85,12 +85,36 @@ func Middleware(next http.Handler) http.Handler {
 
 type statusRecorder struct {
 	http.ResponseWriter
-	status int
+	status      int
+	wroteHeader bool
 }
 
 func (r *statusRecorder) WriteHeader(status int) {
+	if r.wroteHeader {
+		return
+	}
 	r.status = status
+	r.wroteHeader = true
 	r.ResponseWriter.WriteHeader(status)
+}
+
+func (r *statusRecorder) Flush() {
+	if r == nil {
+		return
+	}
+	if !r.wroteHeader {
+		r.WriteHeader(http.StatusOK)
+	}
+	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func (r *statusRecorder) Unwrap() http.ResponseWriter {
+	if r == nil {
+		return nil
+	}
+	return r.ResponseWriter
 }
 
 func normalizeRouteLabel(path string) string {
@@ -98,23 +122,189 @@ func normalizeRouteLabel(path string) string {
 	if path == "" {
 		return "/"
 	}
-	parts := strings.Split(path, "/")
-	for i, part := range parts {
-		if looksVariable(part) {
-			parts[i] = "{id}"
-		}
+	if _, ok := exactRouteLabels[path]; ok {
+		return path
 	}
-	return strings.Join(parts, "/")
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if label, ok := dynamicRouteLabel(parts); ok {
+		return label
+	}
+	return unmatchedRouteLabel(parts)
 }
 
-func looksVariable(part string) bool {
-	if len(part) >= 12 && strings.HasPrefix(part, "job-") {
-		return true
+var exactRouteLabels = map[string]struct{}{
+	"/":                                     {},
+	"/health":                               {},
+	"/healthz":                              {},
+	"/livez":                                {},
+	"/metrics":                              {},
+	"/openapi.yaml":                         {},
+	"/.well-known/oauth-protected-resource": {},
+	"/.well-known/oauth-protected-resource/api/v1/mcp":                    {},
+	"/.well-known/oauth-authorization-server":                             {},
+	"/.well-known/device-jwks.json":                                       {},
+	"/oauth/authorize":                                                    {},
+	"/oauth/callback":                                                     {},
+	"/oauth/token":                                                        {},
+	"/oauth/revoke":                                                       {},
+	"/oauth/register":                                                     {},
+	"/reports":                                                            {},
+	"/grc/dashboard":                                                      {},
+	"/grc/ask":                                                            {},
+	"/grc/findings":                                                       {},
+	"/grc/controls":                                                       {},
+	"/grc/evidence":                                                       {},
+	"/finding-rules":                                                      {},
+	"/endpoint-vulnerability-findings":                                    {},
+	"/sources":                                                            {},
+	"/platform/knowledge/decisions":                                       {},
+	"/platform/knowledge/actions":                                         {},
+	"/platform/knowledge/actions/recommendation":                          {},
+	"/platform/knowledge/outcomes":                                        {},
+	"/platform/workflow/replay":                                           {},
+	"/platform/graph/neighborhood":                                        {},
+	"/platform/graph/impact/package":                                      {},
+	"/platform/graph/impact/asset":                                        {},
+	"/platform/graph/attack-paths":                                        {},
+	"/platform/graph/crown-jewel-rankings":                                {},
+	"/platform/graph/aws-public-endpoint-insights":                        {},
+	"/platform/graph/ingest-health":                                       {},
+	"/platform/graph/ingest-runs":                                         {},
+	"/platform/jobs":                                                      {},
+	"/platform/runtime-response/capabilities":                             {},
+	"/platform/runtime-response/actions":                                  {},
+	"/platform/runtime-response/blocklist":                                {},
+	"/platform/devices/enroll":                                            {},
+	"/platform/devices/token":                                             {},
+	"/platform/devices/bootstrap-tokens":                                  {},
+	"/platform/telemetry/ingest":                                          {},
+	"/source-runtimes":                                                    {},
+	"/api/v1/mcp":                                                         {},
+	"/cerebro.v1.BootstrapService/Health":                                 {},
+	"/cerebro.v1.BootstrapService/Ingest":                                 {},
+	"/cerebro.v1.BootstrapService/ListEvents":                             {},
+	"/cerebro.v1.BootstrapService/ListStreams":                            {},
+	"/cerebro.v1.BootstrapService/ListViews":                              {},
+	"/cerebro.v1.BootstrapService/ListRules":                              {},
+	"/cerebro.v1.BootstrapService/ListActions":                            {},
+	"/cerebro.v1.BootstrapService/ListAgents":                             {},
+	"/cerebro.v1.BootstrapService/ListSourceRuntimes":                     {},
+	"/cerebro.v1.BootstrapService/CheckSourceRuntime":                     {},
+	"/cerebro.v1.BootstrapService/DiscoverSourceRuntime":                  {},
+	"/cerebro.v1.BootstrapService/ReadSourceRuntime":                      {},
+	"/cerebro.v1.BootstrapService/PutSourceRuntime":                       {},
+	"/cerebro.v1.BootstrapService/GetSourceRuntime":                       {},
+	"/cerebro.v1.BootstrapService/SyncSourceRuntime":                      {},
+	"/cerebro.v1.BootstrapService/ListClaims":                             {},
+	"/cerebro.v1.BootstrapService/WriteClaims":                            {},
+	"/cerebro.v1.BootstrapService/ListFindings":                           {},
+	"/cerebro.v1.BootstrapService/ListFindingCandidates":                  {},
+	"/cerebro.v1.BootstrapService/ListFindingEvidence":                    {},
+	"/cerebro.v1.BootstrapService/ListFindingEvaluationRuns":              {},
+	"/cerebro.v1.BootstrapService/EvaluateSourceRuntimeFindingCandidates": {},
+	"/cerebro.v1.BootstrapService/EvaluateSourceRuntimeFindingRules":      {},
+	"/cerebro.v1.BootstrapService/EvaluateSourceRuntimeFindings":          {},
+}
+
+func dynamicRouteLabel(parts []string) (string, bool) {
+	switch {
+	case match(parts, "reports", "*", "runs"):
+		return "/reports/{reportID}/runs", true
+	case match(parts, "report-runs", "*"):
+		return "/report-runs/{runID}", true
+	case match(parts, "grc", "entities", "*", "impact"):
+		return "/grc/entities/{entityID}/impact", true
+	case match(parts, "grc", "audit-packets", "*"):
+		return "/grc/audit-packets/{packetID}", true
+	case match(parts, "findings", "*"):
+		return "/findings/{findingID}", true
+	case match(parts, "findings", "*", "resolve"):
+		return "/findings/{findingID}/resolve", true
+	case match(parts, "findings", "*", "suppress"):
+		return "/findings/{findingID}/suppress", true
+	case match(parts, "findings", "*", "assign"):
+		return "/findings/{findingID}/assign", true
+	case match(parts, "findings", "*", "due"):
+		return "/findings/{findingID}/due", true
+	case match(parts, "findings", "*", "notes"):
+		return "/findings/{findingID}/notes", true
+	case match(parts, "findings", "*", "tickets"):
+		return "/findings/{findingID}/tickets", true
+	case match(parts, "finding-candidates", "*"):
+		return "/finding-candidates/{candidateID}", true
+	case match(parts, "finding-candidates", "*", "promote"):
+		return "/finding-candidates/{candidateID}/promote", true
+	case match(parts, "finding-candidates", "*", "reject"):
+		return "/finding-candidates/{candidateID}/reject", true
+	case match(parts, "finding-evaluation-runs", "*"):
+		return "/finding-evaluation-runs/{runID}", true
+	case match(parts, "finding-evidence", "*"):
+		return "/finding-evidence/{evidenceID}", true
+	case match(parts, "sources", "*", "check"):
+		return "/sources/{sourceID}/check", true
+	case match(parts, "sources", "*", "discover"):
+		return "/sources/{sourceID}/discover", true
+	case match(parts, "sources", "*", "read"):
+		return "/sources/{sourceID}/read", true
+	case match(parts, "platform", "graph", "impact", "vulnerability", "*"):
+		return "/platform/graph/impact/vulnerability/{id}", true
+	case match(parts, "platform", "graph", "ingest-runs", "*"):
+		return "/platform/graph/ingest-runs/{runID}", true
+	case match(parts, "platform", "jobs", "*"):
+		return "/platform/jobs/{jobID}", true
+	case match(parts, "platform", "jobs", "*", "events"):
+		return "/platform/jobs/{jobID}/events", true
+	case match(parts, "platform", "jobs", "*", "cancel"):
+		return "/platform/jobs/{jobID}/cancel", true
+	case match(parts, "platform", "runtime-response", "blocklist", "*", "revoke"):
+		return "/platform/runtime-response/blocklist/{entryID}/revoke", true
+	case match(parts, "platform", "endpoints", "*", "vulnerability-findings"):
+		return "/platform/endpoints/{deviceKey}/vulnerability-findings", true
+	case match(parts, "platform", "devices", "*", "revoke"):
+		return "/platform/devices/{deviceID}/revoke", true
+	case match(parts, "source-runtimes", "*"):
+		return "/source-runtimes/{runtimeID}", true
+	case len(parts) == 3 && parts[0] == "source-runtimes":
+		return "/source-runtimes/{runtimeID}/" + parts[2], true
+	case len(parts) == 4 && parts[0] == "source-runtimes" && parts[2] == "finding-candidates" && parts[3] == "evaluate":
+		return "/source-runtimes/{runtimeID}/finding-candidates/evaluate", true
+	case len(parts) == 4 && parts[0] == "source-runtimes" && parts[2] == "finding-rules" && parts[3] == "evaluate":
+		return "/source-runtimes/{runtimeID}/finding-rules/evaluate", true
+	case len(parts) == 4 && parts[0] == "source-runtimes" && parts[2] == "findings" && parts[3] == "evaluate":
+		return "/source-runtimes/{runtimeID}/findings/evaluate", true
+	default:
+		return "", false
 	}
-	if len(part) >= 8 && strings.ContainsAny(part, "0123456789") {
-		return true
+}
+
+func match(parts []string, pattern ...string) bool {
+	if len(parts) != len(pattern) {
+		return false
 	}
-	return false
+	for i, want := range pattern {
+		if want == "*" {
+			if strings.TrimSpace(parts[i]) == "" {
+				return false
+			}
+			continue
+		}
+		if parts[i] != want {
+			return false
+		}
+	}
+	return true
+}
+
+func unmatchedRouteLabel(parts []string) string {
+	if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
+		return "/{unmatched}"
+	}
+	switch parts[0] {
+	case ".well-known", "api", "cerebro.v1.BootstrapService", "finding-candidates", "finding-evaluation-runs", "finding-evidence", "finding-rules", "findings", "grc", "health", "healthz", "livez", "metrics", "oauth", "openapi.yaml", "platform", "report-runs", "reports", "source-runtimes", "sources":
+		return "/" + parts[0] + "/{unmatched}"
+	default:
+		return "/{unmatched}"
+	}
 }
 
 func metricKey(name string, labels map[string]string) string {

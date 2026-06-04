@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/writer/cerebro/internal/ports"
 )
@@ -180,5 +179,3 @@ func scanRuntimeBlocklistEntry(row scanner) (*ports.RuntimeBlocklistEntry, error
 	}
 	return entry, nil
 }
-
-var _ = time.Time{}

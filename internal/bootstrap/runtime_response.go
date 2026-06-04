@@ -37,10 +37,12 @@ func (a *App) handleExecuteRuntimeResponse(w http.ResponseWriter, r *http.Reques
 		writeRuntimeResponseError(w, fmt.Errorf("%w: decode runtime response request: %w", runtimeresponse.ErrInvalidRequest, err))
 		return
 	}
-	if err := authorizeTenantID(r.Context(), request.TenantID); err != nil {
+	tenantID, err := effectiveTenantFilter(r.Context(), request.TenantID)
+	if err != nil {
 		writeRuntimeResponseError(w, err)
 		return
 	}
+	request.TenantID = tenantID
 	entry, err := a.runtimeResponseService().Execute(r.Context(), request)
 	if err != nil {
 		writeRuntimeResponseError(w, err)
@@ -56,7 +58,6 @@ func (a *App) handleListRuntimeBlocklist(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	filter := ports.RuntimeBlocklistFilter{
-		TenantID:       strings.TrimSpace(r.URL.Query().Get("tenant_id")),
 		Type:           strings.TrimSpace(r.URL.Query().Get("type")),
 		IncludeRevoked: false,
 		Limit:          limit,
@@ -69,10 +70,12 @@ func (a *App) handleListRuntimeBlocklist(w http.ResponseWriter, r *http.Request)
 		}
 		filter.IncludeRevoked = parsed
 	}
-	if err := authorizeTenantID(r.Context(), filter.TenantID); err != nil {
+	tenantID, err := effectiveTenantFilter(r.Context(), r.URL.Query().Get("tenant_id"))
+	if err != nil {
 		writeRuntimeResponseError(w, err)
 		return
 	}
+	filter.TenantID = tenantID
 	entries, err := a.runtimeResponseService().List(r.Context(), filter)
 	if err != nil {
 		writeRuntimeResponseError(w, err)
@@ -82,8 +85,8 @@ func (a *App) handleListRuntimeBlocklist(w http.ResponseWriter, r *http.Request)
 }
 
 func (a *App) handleRevokeRuntimeBlocklistEntry(w http.ResponseWriter, r *http.Request) {
-	tenantID := strings.TrimSpace(r.URL.Query().Get("tenant_id"))
-	if err := authorizeTenantID(r.Context(), tenantID); err != nil {
+	tenantID, err := effectiveTenantFilter(r.Context(), r.URL.Query().Get("tenant_id"))
+	if err != nil {
 		writeRuntimeResponseError(w, err)
 		return
 	}
