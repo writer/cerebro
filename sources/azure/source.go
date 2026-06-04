@@ -32,9 +32,11 @@ const (
 	familyActivityLog         = "activity_log"
 	familyAppRoleAssignment   = "app_role_assignment"
 	familyApplication         = "application"
+	familyAssetMetadata       = "asset_metadata"
 	familyCredential          = "credential"
 	familyDirectoryAudit      = "directory_audit"
 	familyDirectoryRoleAssign = "directory_role_assignment"
+	familyEffectivePermission = "effective_permission"
 	familyGroup               = "group"
 	familyGroupMember         = "group_membership"
 	familyIAMRoleAssign       = "iam_role_assignment"
@@ -212,6 +214,15 @@ type armRoleDefinitionRecord struct {
 type armRoleDefinition struct {
 	RoleName string `json:"roleName"`
 	Type     string `json:"type"`
+}
+
+type armResourceRecord struct {
+	ID       string            `json:"id"`
+	Name     string            `json:"name"`
+	Type     string            `json:"type"`
+	Location string            `json:"location"`
+	Tags     map[string]string `json:"tags"`
+	raw      json.RawMessage
 }
 
 type nsgRecord struct {
@@ -410,6 +421,15 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:azure_application:%s", tenantID(settings), firstNonEmpty(app.AppID, app.ID)), nil
 			},
 		}),
+		azureFamily(s, azureFamilyOptions[armResourceRecord]{
+			Name:  familyAssetMetadata,
+			Label: "azure asset metadata",
+			List:  listAssetMetadata,
+			Event: assetMetadataEvent,
+			URN: func(settings settings, asset armResourceRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:azure_asset_metadata:%s", tenantID(settings), firstNonEmpty(asset.ID, asset.Name)), nil
+			},
+		}),
 		azureFamily(s, azureFamilyOptions[credentialRecord]{
 			Name:  familyCredential,
 			Label: "azure application and service principal credentials",
@@ -438,6 +458,25 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Event: directoryRoleAssignmentEvent,
 			URN: func(settings settings, assignment directoryRoleAssignmentRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:azure_directory_role_assignment:%s", tenantID(settings), firstNonEmpty(assignment.ID, assignment.PrincipalID+":"+assignment.RoleDefinitionID)), nil
+			},
+		}),
+		azureFamily(s, azureFamilyOptions[armRoleAssignmentRecord]{
+			Name:  familyEffectivePermission,
+			Label: "azure effective permissions",
+			List:  listIAMRoleAssignments,
+			Check: listIAMRoleAssignmentsBase,
+			Event: effectivePermissionEvent,
+			URN: func(settings settings, assignment armRoleAssignmentRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:azure_effective_permission:%s", tenantID(settings), firstNonEmpty(assignment.ID, assignment.Name)), nil
+			},
+			Discover: func(ctx context.Context, source *Source, cfg settings) ([]sourcecdk.URN, error) {
+				records, _, err := listIAMRoleAssignmentsBase(ctx, source, cfg, "", cfg.perPage)
+				if err != nil {
+					return nil, fmt.Errorf("lookup azure effective permissions for %s: %w", tenantID(cfg), err)
+				}
+				return azureURNsFor(cfg, records, func(cfg settings, assignment armRoleAssignmentRecord) (string, error) {
+					return fmt.Sprintf("urn:cerebro:%s:azure_effective_permission:%s", tenantID(cfg), firstNonEmpty(assignment.ID, assignment.Name)), nil
+				})
 			},
 		}),
 		azureFamily(s, azureFamilyOptions[groupRecord]{
@@ -571,7 +610,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		return settings, fmt.Errorf("azure tenant_id is required")
 	}
 	switch settings.family {
-	case familyActivityLog, familyIAMRoleAssign, familyResourceExposure:
+	case familyActivityLog, familyAssetMetadata, familyEffectivePermission, familyIAMRoleAssign, familyResourceExposure:
 		if settings.subscriptionID == "" {
 			return settings, fmt.Errorf("azure subscription_id is required when family=%q", settings.family)
 		}
@@ -597,7 +636,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("azure graph_token or token is required when family=%q", settings.family)
 		}
 	default:
-		return settings, fmt.Errorf("azure family must be one of activity_log, app_role_assignment, application, credential, directory_audit, directory_role_assignment, group, group_membership, iam_role_assignment, resource_exposure, service_principal, or user")
+		return settings, fmt.Errorf("azure family must be one of activity_log, app_role_assignment, application, asset_metadata, credential, directory_audit, directory_role_assignment, effective_permission, group, group_membership, iam_role_assignment, resource_exposure, service_principal, or user")
 	}
 	return settings, nil
 }
@@ -772,6 +811,19 @@ func listIAMRoleAssignments(ctx context.Context, source *Source, settings settin
 		}
 	}
 	return records, next, nil
+}
+
+func listAssetMetadata(ctx context.Context, source *Source, settings settings, pageToken string, _ int) ([]armResourceRecord, string, error) {
+	query := url.Values{"api-version": {"2021-04-01"}}
+	var response armPage
+	path := "/subscriptions/" + url.PathEscape(settings.subscriptionID) + "/resources"
+	if err := getARMJSON(ctx, source, settings, http.MethodGet, firstNonEmpty(pageToken, path), queryForPageToken(pageToken, query), nil, &response); err != nil {
+		return nil, "", err
+	}
+	records, err := decodeAzureRecords(response.Value, "azure resource metadata", func(record *armResourceRecord, raw json.RawMessage) {
+		record.raw = append(json.RawMessage(nil), raw...)
+	})
+	return records, response.Next, err
 }
 
 type azurePrincipalLookup struct {
@@ -1035,6 +1087,74 @@ func iamRoleAssignmentEvent(settings settings, record armRoleAssignmentRecord) (
 		return nil, err
 	}
 	return sourceEvent(settings, "azure-iam-role-assignment-"+firstNonEmpty(record.Name, record.ID), "azure.iam_role_assignment", "azure/iam_role_assignment/v1", payload, attributes, time.Now().UTC())
+}
+
+func effectivePermissionEvent(settings settings, record armRoleAssignmentRecord) (*primitives.Event, error) {
+	roleName := firstNonEmpty(record.RoleName, record.Properties.RoleDefinitionID)
+	principal := record.Principal
+	subjectEmail := firstNonEmpty(emailLike(principal.Mail), emailLike(principal.UserPrincipalName), emailLike(record.Properties.PrincipalID))
+	admin := isAdminRole(roleName)
+	scope := firstNonEmpty(record.Properties.Scope, "/subscriptions/"+settings.subscriptionID)
+	attributes := map[string]string{
+		"actions":            roleName,
+		"domain":             tenantID(settings),
+		"effect":             "allow",
+		"family":             familyEffectivePermission,
+		"is_admin":           boolString(admin),
+		"permission":         roleName,
+		"privilege_level":    privilegeLevel(admin),
+		"resource_id":        scope,
+		"resource_name":      azureResourceNameFromID(scope),
+		"resource_type":      azureResourceTypeFromID(scope),
+		"role_assignment_id": firstNonEmpty(record.ID, record.Name),
+		"role_id":            firstNonEmpty(record.Properties.RoleDefinitionID, roleName),
+		"role_name":          roleName,
+		"role_type":          "azure_rbac_role",
+		"scope":              scope,
+		"subject_email":      subjectEmail,
+		"subject_id":         record.Properties.PrincipalID,
+		"subject_login":      subjectEmail,
+		"subject_name":       firstNonEmpty(principal.DisplayName, principal.UserPrincipalName),
+		"subject_type":       azurePrincipalType(record.Properties.PrincipalType, principal),
+		"subscription_id":    settings.subscriptionID,
+	}
+	payload, err := payloadWithRaw(record.raw, map[string]any{"subscription_id": settings.subscriptionID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "azure-effective-permission-"+firstNonEmpty(record.Name, record.ID), "azure.effective_permission", "azure/effective_permission/v1", payload, attributes, time.Now().UTC())
+}
+
+func assetMetadataEvent(settings settings, record armResourceRecord) (*primitives.Event, error) {
+	tags := record.Tags
+	resourceID := firstNonEmpty(record.ID, record.Name)
+	attributes := map[string]string{
+		"asset_criticality":   firstNonEmpty(tagLookup(tags, "asset_criticality", "business_criticality", "criticality", "tier"), criticalityFromTags(tags)),
+		"contains_pci":        tagLookup(tags, "contains_pci", "pci"),
+		"contains_phi":        tagLookup(tags, "contains_phi", "phi"),
+		"contains_pii":        tagLookup(tags, "contains_pii", "pii"),
+		"contains_secrets":    tagLookup(tags, "contains_secrets", "secrets"),
+		"crown_jewel":         boolString(crownJewelFromTags(tags)),
+		"data_classification": tagLookup(tags, "data_classification", "DataClassification", "data-classification", "classification", "sensitivity", "data_sensitivity"),
+		"domain":              tenantID(settings),
+		"environment":         tagLookup(tags, "environment", "env", "stage"),
+		"internet_exposed":    tagLookup(tags, "internet_exposed", "internet-exposed", "externally_exposed", "external_exposure"),
+		"owner":               tagLookup(tags, "owner", "application_owner", "business_owner", "service_owner"),
+		"public":              tagLookup(tags, "public", "public_access"),
+		"region":              record.Location,
+		"resource_id":         resourceID,
+		"resource_name":       firstNonEmpty(record.Name, resourceID),
+		"resource_provider":   "azure",
+		"resource_type":       firstNonEmpty(record.Type, "resource"),
+		"source_provider":     "azure",
+		"subscription_id":     settings.subscriptionID,
+		"team":                tagLookup(tags, "team", "squad", "group"),
+	}
+	payload, err := payloadWithRaw(record.raw, map[string]any{"subscription_id": settings.subscriptionID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "azure-asset-metadata-"+firstNonEmpty(resourceID, record.Type), "asset.data_sensitivity", "asset/data_sensitivity/v1", payload, attributes, time.Now().UTC())
 }
 
 func resourceExposureEvent(settings settings, record azureResourceExposure) (*primitives.Event, error) {
@@ -1473,6 +1593,13 @@ func isAdminRole(value string) bool {
 		strings.Contains(role, "admin")
 }
 
+func privilegeLevel(admin bool) string {
+	if admin {
+		return "admin"
+	}
+	return "standard"
+}
+
 func nsgRulePublicIngress(rule nsgRule) bool {
 	return strings.EqualFold(rule.Properties.Access, "Allow") &&
 		strings.EqualFold(rule.Properties.Direction, "Inbound") &&
@@ -1536,6 +1663,75 @@ func emailLike(value string) string {
 		return strings.ToLower(trimmed)
 	}
 	return ""
+}
+
+func tagLookup(tags map[string]string, keys ...string) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	normalized := map[string]string{}
+	for key, value := range tags {
+		normalized[normalizeTagKey(key)] = value
+	}
+	for _, key := range keys {
+		if value := strings.TrimSpace(normalized[normalizeTagKey(key)]); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func normalizeTagKey(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.ReplaceAll(value, "-", "_")
+	value = strings.ReplaceAll(value, " ", "_")
+	return value
+}
+
+func criticalityFromTags(tags map[string]string) string {
+	for _, value := range tags {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		switch normalized {
+		case "critical", "high", "tier0", "tier_0", "tier-0", "crown_jewel", "crown-jewel":
+			return "critical"
+		}
+	}
+	return ""
+}
+
+func crownJewelFromTags(tags map[string]string) bool {
+	for _, key := range []string{"crown_jewel", "crown-jewel", "tier0", "tier_0", "business_critical"} {
+		if value := strings.ToLower(tagLookup(tags, key)); value == "true" || value == "yes" || value == "1" || value == "critical" {
+			return true
+		}
+	}
+	return strings.EqualFold(criticalityFromTags(tags), "critical")
+}
+
+func azureResourceNameFromID(value string) string {
+	parts := strings.Split(strings.Trim(strings.TrimSpace(value), "/"), "/")
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[len(parts)-1]
+}
+
+func azureResourceTypeFromID(value string) string {
+	parts := strings.Split(strings.Trim(strings.TrimSpace(value), "/"), "/")
+	for i, part := range parts {
+		if strings.EqualFold(part, "providers") && i+2 < len(parts) {
+			return parts[i+1] + "/" + parts[i+2]
+		}
+	}
+	if len(parts) >= 2 && strings.EqualFold(parts[0], "subscriptions") {
+		if len(parts) == 2 {
+			return "subscription"
+		}
+		if len(parts) >= 4 && strings.EqualFold(parts[2], "resourceGroups") {
+			return "resource_group"
+		}
+	}
+	return "azure_resource"
 }
 
 func firstNonEmpty(values ...string) string {

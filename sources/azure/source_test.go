@@ -49,9 +49,11 @@ func TestNewFixtureReplaysAzureFamilies(t *testing.T) {
 		{family: familyActivityLog, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.activity_log"},
 		{family: familyAppRoleAssignment, config: map[string]string{"service_principal_id": "sp-resource-1"}, kind: "azure.app_role_assignment"},
 		{family: familyApplication, kind: "azure.application"},
+		{family: familyAssetMetadata, config: map[string]string{"subscription_id": "sub-1"}, kind: "asset.data_sensitivity"},
 		{family: familyCredential, kind: "azure.credential"},
 		{family: familyDirectoryAudit, kind: "azure.directory_audit"},
 		{family: familyDirectoryRoleAssign, kind: "azure.directory_role_assignment"},
+		{family: familyEffectivePermission, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.effective_permission"},
 		{family: familyGroup, kind: "azure.group"},
 		{family: familyGroupMember, config: map[string]string{"group_id": "group-1"}, kind: "azure.group_membership"},
 		{family: familyIAMRoleAssign, config: map[string]string{"subscription_id": "sub-1"}, kind: "azure.iam_role_assignment"},
@@ -159,6 +161,8 @@ func TestReadLiveAzureARMPreview(t *testing.T) {
 		want   string
 	}{
 		{family: familyIAMRoleAssign, kind: "azure.iam_role_assignment", attr: "role_name", want: "Owner"},
+		{family: familyEffectivePermission, kind: "azure.effective_permission", attr: "privilege_level", want: "admin"},
+		{family: familyAssetMetadata, kind: "asset.data_sensitivity", attr: "data_classification", want: "restricted"},
 		{family: familyActivityLog, kind: "azure.activity_log", attr: "actor_email", want: "admin@writer.com"},
 		{family: familyResourceExposure, kind: "azure.resource_exposure", attr: "internet_exposed", want: "true"},
 		{family: familyAppRoleAssignment, config: map[string]string{"service_principal_id": "sp-resource-1"}, kind: "azure.app_role_assignment", attr: "relationship", want: "assigned_to"},
@@ -327,6 +331,8 @@ func newAzureAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/providers/Microsoft.Authorization/roleAssignments/ra-1", "name": "ra-1", "type": "Microsoft.Authorization/roleAssignments", "properties": map[string]any{"principalId": "user-1", "principalType": "User", "roleDefinitionId": "/subscriptions/sub-1/providers/Microsoft.Authorization/roleDefinitions/owner-role", "scope": "/subscriptions/sub-1"}}}})
 		case "/subscriptions/sub-1/providers/Microsoft.Authorization/roleDefinitions/owner-role":
 			writeJSON(t, w, map[string]any{"id": "/subscriptions/sub-1/providers/Microsoft.Authorization/roleDefinitions/owner-role", "name": "owner-role", "properties": map[string]any{"roleName": "Owner", "type": "BuiltInRole"}})
+		case "/subscriptions/sub-1/resources":
+			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Storage/storageAccounts/data", "name": "data", "type": "Microsoft.Storage/storageAccounts", "location": "eastus", "tags": map[string]string{"data_classification": "restricted", "owner": "security@writer.com", "tier": "critical", "pii": "true", "env": "prod"}}}})
 		case "/subscriptions/sub-1/providers/Microsoft.Network/networkSecurityGroups":
 			writeJSON(t, w, map[string]any{"value": []map[string]any{{"id": "/subscriptions/sub-1/resourceGroups/prod/providers/Microsoft.Network/networkSecurityGroups/web-nsg", "name": "web-nsg", "location": "eastus", "type": "Microsoft.Network/networkSecurityGroups", "properties": map[string]any{"securityRules": []map[string]any{{"id": "nsg-rule-1", "name": "AllowHTTPS", "properties": map[string]any{"access": "Allow", "direction": "Inbound", "protocol": "Tcp", "sourceAddressPrefix": "Internet", "destinationPortRange": "443", "priority": 100}}}}}}})
 		case "/subscriptions/sub-1/providers/microsoft.insights/eventtypes/management/values":

@@ -2,15 +2,32 @@ id: azure
 name: Azure
 description: Azure Entra ID, RBAC, and activity/audit source.
 emitted_kinds:
+  - asset.data_sensitivity
   - azure.activity_log
   - azure.app_role_assignment
   - azure.application
   - azure.credential
   - azure.directory_audit
   - azure.directory_role_assignment
+  - azure.effective_permission
   - azure.group
   - azure.group_membership
   - azure.iam_role_assignment
   - azure.resource_exposure
   - azure.service_principal
   - azure.user
+runtime_families:
+  - activity_log
+  - app_role_assignment
+  - application
+  - asset_metadata
+  - credential
+  - directory_audit
+  - directory_role_assignment
+  - effective_permission
+  - group
+  - group_membership
+  - iam_role_assignment
+  - resource_exposure
+  - service_principal
+  - user

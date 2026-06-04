@@ -26,17 +26,19 @@ import (
 var catalogFS embed.FS
 
 const (
-	defaultFamily          = familyAudit
-	defaultPageSize        = 10
-	maxPageSize            = 200
-	familyAudit            = "audit"
-	familyGroup            = "group"
-	familyGroupMember      = "group_membership"
-	familyRoleAssign       = "iam_role_assignment"
-	familyResourceExposure = "resource_exposure"
-	familySAImpersonation  = "service_account_impersonation"
-	familyServiceAcct      = "service_account"
-	familySAKey            = "service_account_key"
+	defaultFamily             = familyAudit
+	defaultPageSize           = 10
+	maxPageSize               = 200
+	familyAssetMetadata       = "asset_metadata"
+	familyAudit               = "audit"
+	familyEffectivePermission = "effective_permission"
+	familyGroup               = "group"
+	familyGroupMember         = "group_membership"
+	familyRoleAssign          = "iam_role_assignment"
+	familyResourceExposure    = "resource_exposure"
+	familySAImpersonation     = "service_account_impersonation"
+	familyServiceAcct         = "service_account"
+	familySAKey               = "service_account_key"
 )
 
 // Source reads GCP IAM, Cloud Identity, and Cloud Audit surfaces.
@@ -67,6 +69,7 @@ type pageResponse struct {
 	Memberships   []json.RawMessage `json:"memberships"`
 	Entries       []json.RawMessage `json:"entries"`
 	Keys          []json.RawMessage `json:"keys"`
+	Results       []json.RawMessage `json:"results"`
 	NextPageToken string            `json:"nextPageToken"`
 }
 
@@ -136,6 +139,17 @@ type roleAssignmentRecord struct {
 	Role   string
 	Member string
 	raw    json.RawMessage
+}
+
+type assetMetadataRecord struct {
+	Name        string            `json:"name"`
+	AssetType   string            `json:"assetType"`
+	Project     string            `json:"project"`
+	DisplayName string            `json:"displayName"`
+	Description string            `json:"description"`
+	Location    string            `json:"location"`
+	Labels      map[string]string `json:"labels"`
+	raw         json.RawMessage
 }
 
 type firewallRecord struct {
@@ -245,6 +259,15 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 	return sourcecdk.NewFamilyEngine(parseSettings, func(settings settings) string { return settings.family },
+		gcpFamily(s, gcpFamilyOptions[assetMetadataRecord]{
+			Name:  familyAssetMetadata,
+			Label: "gcp asset metadata",
+			List:  listAssetMetadata,
+			Event: assetMetadataEvent,
+			URN: func(settings settings, asset assetMetadataRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:gcp_asset_metadata:%s", tenantID(settings), firstNonEmpty(asset.Name, asset.DisplayName)), nil
+			},
+		}),
 		gcpFamily(s, gcpFamilyOptions[auditRecord]{
 			Name:  familyAudit,
 			Label: "gcp audit logs",
@@ -282,6 +305,15 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Event: roleAssignmentEvent,
 			URN: func(settings settings, assignment roleAssignmentRecord) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_iam_role_assignment:%s:%s", tenantID(settings), sanitizeURNPart(assignment.Member), sanitizeURNPart(assignment.Role)), nil
+			},
+		}),
+		gcpFamily(s, gcpFamilyOptions[roleAssignmentRecord]{
+			Name:  familyEffectivePermission,
+			Label: "gcp effective permissions",
+			List:  listRoleAssignments,
+			Event: effectivePermissionEvent,
+			URN: func(settings settings, assignment roleAssignmentRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:gcp_effective_permission:%s:%s", tenantID(settings), sanitizeURNPart(assignment.Member), sanitizeURNPart(assignment.Role)), nil
 			},
 		}),
 		gcpFamily(s, gcpFamilyOptions[firewallRecord]{
@@ -379,7 +411,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		return settings, fmt.Errorf("gcp token is required")
 	}
 	switch settings.family {
-	case familyAudit, familyResourceExposure, familyRoleAssign, familyServiceAcct:
+	case familyAssetMetadata, familyAudit, familyEffectivePermission, familyResourceExposure, familyRoleAssign, familyServiceAcct:
 		if settings.projectID == "" {
 			return settings, fmt.Errorf("gcp project_id is required when family=%q", settings.family)
 		}
@@ -399,7 +431,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("gcp group_key is required when family=%q", familyGroupMember)
 		}
 	default:
-		return settings, fmt.Errorf("gcp family must be one of audit, group, group_membership, iam_role_assignment, resource_exposure, service_account, service_account_impersonation, or service_account_key")
+		return settings, fmt.Errorf("gcp family must be one of asset_metadata, audit, effective_permission, group, group_membership, iam_role_assignment, resource_exposure, service_account, service_account_impersonation, or service_account_key")
 	}
 	return settings, nil
 }
@@ -488,6 +520,20 @@ func listRoleAssignments(ctx context.Context, source *Source, settings settings,
 		}
 	}
 	return records, "", nil
+}
+
+func listAssetMetadata(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]assetMetadataRecord, string, error) {
+	query := url.Values{"pageSize": {strconv.Itoa(limit)}}
+	addQuery(query, "pageToken", pageToken)
+	var response pageResponse
+	path := "/v1/projects/" + url.PathEscape(settings.projectID) + ":searchAllResources"
+	if err := getJSON(ctx, source, settings, cloudAssetBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
+		return nil, "", err
+	}
+	records, _, err := decodeRecords(response.Results, "gcp asset metadata", func(record *assetMetadataRecord, raw json.RawMessage) {
+		record.raw = append(json.RawMessage(nil), raw...)
+	})
+	return records, response.NextPageToken, err
 }
 
 func listResourceExposures(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]firewallRecord, string, error) {
@@ -650,6 +696,73 @@ func roleAssignmentEvent(settings settings, record roleAssignmentRecord) (*primi
 	}
 	id := fmt.Sprintf("gcp-iam-role-assignment-%s-%s", sanitizeURNPart(memberID), sanitizeURNPart(record.Role))
 	return sourceEvent(settings, id, "gcp.iam_role_assignment", "gcp/iam_role_assignment/v1", payload, attributes, time.Now().UTC())
+}
+
+func effectivePermissionEvent(settings settings, record roleAssignmentRecord) (*primitives.Event, error) {
+	memberType, memberID, memberEmail := parseMember(record.Member)
+	projectResource := "projects/" + settings.projectID
+	admin := isAdminRole(record.Role)
+	attributes := map[string]string{
+		"actions":         record.Role,
+		"domain":          tenantID(settings),
+		"effect":          "allow",
+		"family":          familyEffectivePermission,
+		"is_admin":        boolString(admin),
+		"permission":      record.Role,
+		"privilege_level": privilegeLevel(admin),
+		"project_id":      settings.projectID,
+		"resource_id":     projectResource,
+		"resource_name":   settings.projectID,
+		"resource_type":   "project",
+		"role_id":         record.Role,
+		"role_name":       record.Role,
+		"role_type":       "gcp_iam_role",
+		"scope":           projectResource,
+		"subject_email":   memberEmail,
+		"subject_id":      memberID,
+		"subject_type":    memberType,
+	}
+	payload, err := payloadWithRaw(record.raw, map[string]any{"project_id": settings.projectID})
+	if err != nil {
+		return nil, err
+	}
+	id := fmt.Sprintf("gcp-effective-permission-%s-%s", sanitizeURNPart(memberID), sanitizeURNPart(record.Role))
+	return sourceEvent(settings, id, "gcp.effective_permission", "gcp/effective_permission/v1", payload, attributes, time.Now().UTC())
+}
+
+func assetMetadataEvent(settings settings, record assetMetadataRecord) (*primitives.Event, error) {
+	labels := record.Labels
+	resourceID := firstNonEmpty(record.Name, record.DisplayName)
+	resourceType := firstNonEmpty(record.AssetType, "resource")
+	attributes := map[string]string{
+		"asset_criticality":   firstNonEmpty(labelLookup(labels, "asset_criticality", "business_criticality", "criticality", "tier"), criticalityFromLabels(labels)),
+		"contains_pci":        labelLookup(labels, "contains_pci", "pci"),
+		"contains_phi":        labelLookup(labels, "contains_phi", "phi"),
+		"contains_pii":        labelLookup(labels, "contains_pii", "pii"),
+		"contains_secrets":    labelLookup(labels, "contains_secrets", "secrets"),
+		"crown_jewel":         boolString(crownJewelFromLabels(labels)),
+		"data_classification": labelLookup(labels, "data_classification", "data-classification", "classification", "sensitivity", "data_sensitivity"),
+		"description":         record.Description,
+		"domain":              tenantID(settings),
+		"environment":         labelLookup(labels, "environment", "env", "stage"),
+		"gcp_project_id":      settings.projectID,
+		"internet_exposed":    labelLookup(labels, "internet_exposed", "internet-exposed", "externally_exposed", "external_exposure"),
+		"owner":               labelLookup(labels, "owner", "application_owner", "business_owner", "service_owner"),
+		"project_id":          settings.projectID,
+		"public":              labelLookup(labels, "public", "public_access"),
+		"region":              record.Location,
+		"resource_id":         resourceID,
+		"resource_name":       firstNonEmpty(record.DisplayName, resourceID),
+		"resource_provider":   "gcp",
+		"resource_type":       resourceType,
+		"source_provider":     "gcp",
+		"team":                labelLookup(labels, "team", "squad", "group"),
+	}
+	payload, err := payloadWithRaw(record.raw, map[string]any{"project_id": settings.projectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-asset-metadata-"+firstNonEmpty(resourceID, resourceType), "asset.data_sensitivity", "asset/data_sensitivity/v1", payload, attributes, time.Now().UTC())
 }
 
 func resourceExposureEvent(settings settings, record firewallRecord) (*primitives.Event, error) {
@@ -932,6 +1045,13 @@ func isAdminRole(value string) bool {
 	return strings.Contains(role, "owner") || strings.Contains(role, "editor") || strings.Contains(role, "admin")
 }
 
+func privilegeLevel(admin bool) string {
+	if admin {
+		return "admin"
+	}
+	return "standard"
+}
+
 func firewallPublicIngress(record firewallRecord) bool {
 	return strings.EqualFold(record.Direction, "INGRESS") && !record.Disabled && firstPublicCIDR(record.SourceRanges) != "" && len(record.Allowed) != 0
 }
@@ -982,6 +1102,7 @@ func tenantID(settings settings) string {
 	return firstNonEmpty(settings.projectID, settings.customerID, settings.groupKey)
 }
 
+func cloudAssetBaseURL() string      { return "https://cloudasset.googleapis.com" }
 func serviceBaseURL() string         { return "https://iam.googleapis.com" }
 func computeBaseURL() string         { return "https://www.googleapis.com" }
 func identityBaseURL() string        { return "https://cloudidentity.googleapis.com" }
@@ -1005,6 +1126,49 @@ func emailLike(value string) string {
 		return strings.ToLower(trimmed)
 	}
 	return ""
+}
+
+func labelLookup(labels map[string]string, keys ...string) string {
+	if len(labels) == 0 {
+		return ""
+	}
+	normalized := map[string]string{}
+	for key, value := range labels {
+		normalized[normalizeLabelKey(key)] = value
+	}
+	for _, key := range keys {
+		if value := strings.TrimSpace(normalized[normalizeLabelKey(key)]); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func normalizeLabelKey(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.ReplaceAll(value, "-", "_")
+	value = strings.ReplaceAll(value, " ", "_")
+	return value
+}
+
+func criticalityFromLabels(labels map[string]string) string {
+	for _, value := range labels {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		switch normalized {
+		case "critical", "high", "tier0", "tier_0", "tier-0", "crown_jewel", "crown-jewel":
+			return "critical"
+		}
+	}
+	return ""
+}
+
+func crownJewelFromLabels(labels map[string]string) bool {
+	for _, key := range []string{"crown_jewel", "crown-jewel", "tier0", "tier_0", "business_critical"} {
+		if value := strings.ToLower(labelLookup(labels, key)); value == "true" || value == "yes" || value == "1" || value == "critical" {
+			return true
+		}
+	}
+	return strings.EqualFold(criticalityFromLabels(labels), "critical")
 }
 
 func firstNonEmpty(values ...string) string {

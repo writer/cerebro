@@ -56,11 +56,13 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		config map[string]string
 		kind   string
 	}{
+		{family: familyAssetMetadata, kind: "asset.data_sensitivity"},
 		{family: familyServiceAcct, kind: "gcp.service_account"},
 		{family: familyGroup, config: map[string]string{"customer_id": "C01"}, kind: "gcp.group"},
 		{family: familyGroupMember, config: map[string]string{"group_key": "security@writer.com"}, kind: "gcp.group_membership"},
 		{family: familyResourceExposure, kind: "gcp.resource_exposure"},
 		{family: familyRoleAssign, kind: "gcp.iam_role_assignment"},
+		{family: familyEffectivePermission, kind: "gcp.effective_permission"},
 		{family: familySAImpersonation, config: map[string]string{"service_account_email": "sa@writer-prod.iam.gserviceaccount.com"}, kind: "gcp.service_account_impersonation"},
 		{family: familyAudit, kind: "gcp.audit"},
 		{family: familySAKey, config: map[string]string{"service_account_email": "sa@writer-prod.iam.gserviceaccount.com"}, kind: "gcp.service_account_key"},
@@ -129,6 +131,7 @@ func TestReadLiveGCPRoleAndAuditPreview(t *testing.T) {
 		kind   string
 	}{
 		{family: familyRoleAssign, kind: "gcp.iam_role_assignment"},
+		{family: familyEffectivePermission, kind: "gcp.effective_permission"},
 		{family: familyAudit, kind: "gcp.audit"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
@@ -143,6 +146,32 @@ func TestReadLiveGCPRoleAndAuditPreview(t *testing.T) {
 				t.Fatalf("kind = %q, want %q", got, tt.kind)
 			}
 		})
+	}
+}
+
+func TestReadLiveGCPAssetMetadataPreview(t *testing.T) {
+	server := httptest.NewServer(newGCPAPIHandler(t))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"base_url": server.URL, "family": familyAssetMetadata, "project_id": "writer-prod", "token": "test-token"}), nil)
+	if err != nil {
+		t.Fatalf("Read(asset_metadata) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	event := pull.Events[0]
+	if event.Kind != "asset.data_sensitivity" {
+		t.Fatalf("kind = %q, want asset.data_sensitivity", event.Kind)
+	}
+	if got := event.Attributes["resource_provider"]; got != "gcp" {
+		t.Fatalf("resource_provider = %q, want gcp", got)
+	}
+	if got := event.Attributes["data_classification"]; got != "restricted" {
+		t.Fatalf("data_classification = %q, want restricted", got)
 	}
 }
 
@@ -275,6 +304,8 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"memberships": []map[string]any{{"name": "groups/abc/memberships/member-1", "preferredMemberKey": map[string]any{"id": "user:admin@writer.com"}, "roles": []map[string]any{{"name": "MEMBER"}}}}})
 		case "/v1/projects/writer-prod:getIamPolicy":
 			writeJSON(t, w, map[string]any{"bindings": []map[string]any{{"role": "roles/owner", "members": []string{"serviceAccount:sa@writer-prod.iam.gserviceaccount.com"}}}})
+		case "/v1/projects/writer-prod:searchAllResources":
+			writeJSON(t, w, map[string]any{"results": []map[string]any{{"name": "//storage.googleapis.com/projects/_/buckets/data", "assetType": "storage.googleapis.com/Bucket", "displayName": "data", "location": "us", "labels": map[string]string{"data_classification": "restricted", "owner": "security@writer.com", "tier": "critical", "pii": "true", "env": "prod"}}}})
 		case "/v2/entries:list":
 			writeJSON(t, w, map[string]any{"entries": []map[string]any{{"insertId": "audit-1", "timestamp": "2026-04-23T00:00:00Z", "protoPayload": map[string]any{"methodName": "SetIamPolicy", "serviceName": "cloudresourcemanager.googleapis.com", "resourceName": "projects/writer-prod", "authenticationInfo": map[string]any{"principalEmail": "admin@writer.com"}}, "resource": map[string]any{"type": "project", "labels": map[string]string{"project_id": "writer-prod"}}}}})
 		default:
