@@ -119,6 +119,9 @@ func authMiddleware(cfg config.AuthConfig, deps AuthDependencies, next http.Hand
 		if deviceJKT != "" {
 			if err := verifyDPoPHeader(deps.DPoPVerifier, r, origin.PublicURL, deviceJKT, presentedToken); err != nil {
 				denialReason = "dpop_invalid"
+				if errors.Is(err, deviceauth.ErrDPoPVerifierUnavailable) {
+					denialReason = "dpop_unavailable"
+				}
 				writeDeviceAuthServiceError(recorder, err)
 				return
 			}
@@ -179,7 +182,7 @@ func authMiddleware(cfg config.AuthConfig, deps AuthDependencies, next http.Hand
 // must equal the expected jkt that was bound at enroll time.
 func verifyDPoPHeader(verifier *deviceauth.DPoPVerifier, r *http.Request, publicURL string, expectedJKT string, accessToken string) error {
 	if verifier == nil {
-		return nil
+		return deviceauth.ErrDPoPVerifierUnavailable
 	}
 	proof := strings.TrimSpace(r.Header.Get("DPoP"))
 	if proof == "" {

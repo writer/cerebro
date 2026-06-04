@@ -475,6 +475,8 @@ func writeDeviceAuthServiceError(w http.ResponseWriter, err error) {
 		writeDeviceAuthError(w, http.StatusBadRequest, "invalid_attestation", err.Error())
 	case errors.Is(err, deviceauth.ErrDPoPMissing):
 		writeDeviceAuthError(w, http.StatusUnauthorized, "dpop_required", err.Error())
+	case errors.Is(err, deviceauth.ErrDPoPVerifierUnavailable):
+		writeDeviceAuthError(w, http.StatusServiceUnavailable, "dpop_unavailable", err.Error())
 	case errors.Is(err, deviceauth.ErrDPoPMalformed),
 		errors.Is(err, deviceauth.ErrDPoPInvalidHeader),
 		errors.Is(err, deviceauth.ErrDPoPInvalidJWK):
