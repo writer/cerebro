@@ -46,6 +46,13 @@ func TestOpenAPIContractDescribesCurrentBootstrapSurface(t *testing.T) {
 	if !strings.Contains(endpointFindings, "#/components/schemas/EndpointVulnerabilityFindingsResponse") {
 		t.Fatal("/endpoint-vulnerability-findings must use the endpoint vulnerability response contract")
 	}
+	bootstrapTokenSchema, _, ok := strings.Cut(string(body), "    IssueBootstrapTokenResponse:")
+	if !ok {
+		t.Fatal("api/openapi.yaml missing IssueBootstrapTokenResponse schema")
+	}
+	if !strings.Contains(bootstrapTokenSchema, "        ttl_seconds:\n          type: integer\n          minimum: 0") {
+		t.Fatal("IssueBootstrapTokenRequest.ttl_seconds must allow 0 to select the default TTL")
+	}
 	endpointTenantParam, _, ok := strings.Cut(endpointFindings, "        - name: device_id")
 	if !ok {
 		t.Fatal("/endpoint-vulnerability-findings must document the device_id query parameter")
@@ -97,6 +104,69 @@ func TestSDKHTTPRoutesExistInOpenAPI(t *testing.T) {
 		for _, marker := range []string{"/source-runtimes/", "/platform/graph/neighborhood"} {
 			if !bytes.Contains(body, []byte(marker)) {
 				t.Fatalf("%s no longer references expected SDK route marker %q; update SDK route parity guardrail", rel, marker)
+			}
+		}
+	}
+}
+
+func TestBootstrapPublicHTTPRoutesStayMethodScopedAndDocumented(t *testing.T) {
+	root := repoRoot(t)
+	routes, err := os.ReadFile(filepath.Join(root, "internal", "bootstrap", "routes.go"))
+	if err != nil {
+		t.Fatalf("read routes.go: %v", err)
+	}
+	for _, marker := range []string{
+		`registerHTTPRoute(mux, "GET /health", routeSurfacePublicHTTP`,
+		`registerHTTPRoute(mux, "GET /healthz", routeSurfacePublicHTTP`,
+		`registerHTTPRoute(mux, "GET /livez", routeSurfacePublicHTTP`,
+		`registerHTTPRoute(mux, "GET /openapi.yaml", routeSurfacePublicHTTP`,
+		`registerHTTPRoute(mux, "GET /.well-known/device-jwks.json", routeSurfacePublicHTTP`,
+		`registerHTTPRoute(mux, "GET /sources", routeSurfacePlatformHTTP`,
+	} {
+		if !bytes.Contains(routes, []byte(marker)) {
+			t.Fatalf("routes.go missing method-scoped route marker %q", marker)
+		}
+	}
+	for _, stale := range []string{
+		`registerHTTPRoute(mux, "/health"`,
+		`registerHTTPRoute(mux, "/healthz"`,
+		`registerHTTPRoute(mux, "/livez"`,
+		`registerHTTPRoute(mux, "/sources"`,
+		`"GET /.well-known/device-jwks.json", routeSurfaceInternalHTTP`,
+	} {
+		if bytes.Contains(routes, []byte(stale)) {
+			t.Fatalf("routes.go contains stale route marker %q", stale)
+		}
+	}
+
+	auth, err := os.ReadFile(filepath.Join(root, "internal", "bootstrap", "auth.go"))
+	if err != nil {
+		t.Fatalf("read auth.go: %v", err)
+	}
+	for _, public := range []string{
+		`"/.well-known/device-jwks.json"`,
+		`oauthProtectedResourceMetadataPath`,
+		`oauthAuthorizationServerMetadataPath`,
+		`oauthTokenPath`,
+		`oauthRegisterPath`,
+	} {
+		if !bytes.Contains(auth, []byte(public)) {
+			t.Fatalf("auth.go missing public route marker %q", public)
+		}
+	}
+	for _, doc := range []string{"docs/API_REFERENCE.md", "docs/API_CONTRACTS_AUTOGEN.md"} {
+		body, err := os.ReadFile(filepath.Join(root, doc))
+		if err != nil {
+			t.Fatalf("read %s: %v", doc, err)
+		}
+		for _, marker := range []string{
+			"/.well-known/device-jwks.json",
+			"/.well-known/oauth-authorization-server",
+			"/oauth/token",
+			"/oauth/register",
+		} {
+			if !bytes.Contains(body, []byte(marker)) {
+				t.Fatalf("%s missing public route marker %q", doc, marker)
 			}
 		}
 	}

@@ -72,6 +72,40 @@ func TestDockerfileCanBuildCurrentBootstrapBinary(t *testing.T) {
 	}
 }
 
+func TestReleaseWorkflowKeepsCIParityAndStableLatestGuard(t *testing.T) {
+	root := repoRoot(t)
+	releaseBody, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatalf("read release workflow: %v", err)
+	}
+	release := string(releaseBody)
+	for _, marker := range []string{
+		"command: make sdk-test",
+		"command: make proto-lint proto-generate-check proto-breaking",
+		"command: make docker-smoke",
+		"is_stable_release:",
+		`if [ "${{ needs.resolve-tag.outputs.is_stable_release }}" = "true" ]; then`,
+		"Skipping latest tag for prerelease",
+	} {
+		if !strings.Contains(release, marker) {
+			t.Fatalf("release workflow missing required marker %q", marker)
+		}
+	}
+	latestIndex := strings.Index(release, `docker buildx imagetools create -t "${IMAGE_BASE}:latest"`)
+	stableGuardIndex := strings.Index(release, `if [ "${{ needs.resolve-tag.outputs.is_stable_release }}" = "true" ]; then`)
+	if latestIndex == -1 || stableGuardIndex == -1 || stableGuardIndex > latestIndex {
+		t.Fatal("release workflow must guard latest image publication behind stable-release check")
+	}
+
+	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
+	if err != nil {
+		t.Fatalf("read Makefile: %v", err)
+	}
+	if !strings.Contains(string(makefile), `docker run --rm "$(DOCKER_SMOKE_IMAGE)" version`) {
+		t.Fatal("docker-smoke must run the built image entrypoint, not only build it")
+	}
+}
+
 func TestSDKDoesNotReferenceRetiredAgentSDKRoutes(t *testing.T) {
 	root := repoRoot(t)
 	for _, rel := range []string{

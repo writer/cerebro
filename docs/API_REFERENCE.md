@@ -16,6 +16,10 @@ Set `CEREBRO_API_AUTH_ENABLED=true` and pass `Authorization: Bearer <key>` or `X
 - `GET /healthz` - liveness-only process check.
 - `GET /livez` - liveness-only process check.
 - `GET /openapi.yaml`
+- `GET /.well-known/oauth-protected-resource` and `GET /.well-known/oauth-authorization-server` - MCP OAuth metadata.
+- `GET /oauth/authorize`, `GET /oauth/callback`, `POST /oauth/token`, `POST /oauth/revoke`, and `POST /oauth/register` - OAuth authorization-server endpoints.
+- `GET /.well-known/device-jwks.json` - public device-token signing keys.
+- `POST /platform/devices/enroll` and `POST /platform/devices/token` - unauthenticated device bootstrap/token exchange routes; requests are validated with bootstrap tokens, refresh tokens, DPoP, and rate limits.
 
 ## Preferred platform routes
 

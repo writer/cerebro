@@ -25,6 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}
+      is_stable_release: ${{ steps.resolve.outputs.is_stable_release }}
     steps:
       - name: Resolve release tag
         id: resolve
@@ -39,8 +40,14 @@ jobs:
             echo "ERROR: tag '${tag}' must match vMAJOR.MINOR.PATCH[-PRERELEASE]"
             exit 1
           fi
+          if [[ "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            is_stable_release=true
+          else
+            is_stable_release=false
+          fi
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "Resolved release tag: ${tag}"
+          echo "is_stable_release=${is_stable_release}" >> "$GITHUB_OUTPUT"
+          echo "Resolved release tag: ${tag} (stable=${is_stable_release})"
 
   release-verify:
     name: Verify release (${{ matrix.name }})
@@ -54,10 +61,12 @@ jobs:
             command: make build
           - name: test
             command: make test
+          - name: sdk
+            command: make sdk-test
           - name: lint
             command: make lint
-          - name: proto-lint
-            command: make proto-lint
+          - name: proto
+            command: make proto-lint proto-generate-check proto-breaking
           - name: openapi
             command: make openapi-check openapi-lint
           - name: catalog
@@ -68,6 +77,8 @@ jobs:
             command: make oss-audit
           - name: release-smoke
             command: make release-smoke
+          - name: docker-smoke
+            command: make docker-smoke
           - name: structural
             command: make check-structural check-structural-test check-arch
     steps:
@@ -236,9 +247,13 @@ jobs:
             "${IMAGE_BASE}:${RELEASE_TAG}-amd64" \
             "${IMAGE_BASE}:${RELEASE_TAG}-arm64"
 
-          docker buildx imagetools create -t "${IMAGE_BASE}:latest" \
-            "${IMAGE_BASE}:${RELEASE_TAG}-amd64" \
-            "${IMAGE_BASE}:${RELEASE_TAG}-arm64"
+          if [ "${{ needs.resolve-tag.outputs.is_stable_release }}" = "true" ]; then
+            docker buildx imagetools create -t "${IMAGE_BASE}:latest" \
+              "${IMAGE_BASE}:${RELEASE_TAG}-amd64" \
+              "${IMAGE_BASE}:${RELEASE_TAG}-arm64"
+          else
+            echo "Skipping latest tag for prerelease ${RELEASE_TAG}"
+          fi
 
           digest="$(docker buildx imagetools inspect "${IMAGE_BASE}:${RELEASE_TAG}" --format '{{.Manifest.Digest}}')"
           if [ -z "${digest}" ]; then
