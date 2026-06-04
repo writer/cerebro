@@ -860,6 +860,12 @@ func TestS3BucketLocationRegionHandlesLegacyEU(t *testing.T) {
 	}
 }
 
+func TestS3BucketPublicTreatsMissingPublicAccessBlockAsExposed(t *testing.T) {
+	if !s3BucketPublic(awsS3Bucket{}) {
+		t.Fatal("missing public access block should be treated as exposed")
+	}
+}
+
 func TestListS3BucketsUsesBucketRegionForOptionalMetadata(t *testing.T) {
 	base := fakeAWS{fakeAWSData: fakeAWSData{
 		s3Buckets: []s3types.Bucket{{Name: awssdk.String("legacy-eu")}},

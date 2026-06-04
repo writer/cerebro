@@ -501,7 +501,7 @@ func s3EncryptionSummary(config *s3types.ServerSideEncryptionConfiguration) (str
 func s3BucketPublic(record awsS3Bucket) bool {
 	block := record.PublicAccessBlock
 	if block == nil {
-		return false
+		return true
 	}
 	return !awssdk.ToBool(block.BlockPublicAcls) || !awssdk.ToBool(block.BlockPublicPolicy) || !awssdk.ToBool(block.IgnorePublicAcls) || !awssdk.ToBool(block.RestrictPublicBuckets)
 }
