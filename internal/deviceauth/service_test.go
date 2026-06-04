@@ -416,6 +416,64 @@ func TestServiceIngestTelemetryIdempotent(t *testing.T) {
 	}
 }
 
+func TestServiceIngestTelemetryRunsAcceptedHookOnce(t *testing.T) {
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	bootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
+	enroll, _ := service.Enroll(ctx, EnrollRequest{BootstrapToken: bootstrap.Token, HardwareUUID: "hw-1"})
+
+	calls := 0
+	payload := IngestPayload{
+		DeviceID:       enroll.DeviceID,
+		IdempotencyKey: "accepted-hook",
+		Body:           []byte(`{"events":[{"type":"login"}]}`),
+		OnAccepted: func(_ context.Context, accepted TelemetryAccepted) error {
+			calls++
+			if accepted.Device.DeviceID != enroll.DeviceID {
+				t.Fatalf("accepted device = %q, want %q", accepted.Device.DeviceID, enroll.DeviceID)
+			}
+			return nil
+		},
+	}
+	if _, err := service.IngestTelemetry(ctx, payload); err != nil {
+		t.Fatalf("first IngestTelemetry: %v", err)
+	}
+	if _, err := service.IngestTelemetry(ctx, payload); err != nil {
+		t.Fatalf("second IngestTelemetry: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("OnAccepted calls = %d, want 1", calls)
+	}
+}
+
+func TestServiceIngestTelemetryDoesNotCacheFailedAcceptedHook(t *testing.T) {
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	bootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-1", TenantID: "writer"})
+	enroll, _ := service.Enroll(ctx, EnrollRequest{BootstrapToken: bootstrap.Token, HardwareUUID: "hw-1"})
+
+	hookErr := errors.New("publish failed")
+	payload := IngestPayload{
+		DeviceID:       enroll.DeviceID,
+		IdempotencyKey: "failed-hook",
+		Body:           []byte(`{"events":[{"type":"login"}]}`),
+		OnAccepted: func(context.Context, TelemetryAccepted) error {
+			return hookErr
+		},
+	}
+	if _, err := service.IngestTelemetry(ctx, payload); !errors.Is(err, hookErr) {
+		t.Fatalf("first IngestTelemetry err = %v, want hookErr", err)
+	}
+	payload.OnAccepted = nil
+	result, err := service.IngestTelemetry(ctx, payload)
+	if err != nil {
+		t.Fatalf("retry IngestTelemetry: %v", err)
+	}
+	if result.Cached {
+		t.Fatalf("retry after hook failure was cached")
+	}
+}
+
 func TestServiceIngestTelemetryIdempotencyPreservesBodyWhitespace(t *testing.T) {
 	ctx := context.Background()
 	service, _, _ := newServiceForTest(t)

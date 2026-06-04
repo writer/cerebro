@@ -18,6 +18,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/deviceauth"
 	"github.com/writer/cerebro/internal/deviceauth/attestation"
+	"github.com/writer/cerebro/internal/endpointidentity"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -57,7 +58,7 @@ func newAppForDeviceTest(t *testing.T) (*App, []byte, []byte) {
 		},
 	}
 	store := newDeviceAuthMemStore()
-	app := New(cfg, Dependencies{StateStore: store}, nil)
+	app := New(cfg, Dependencies{StateStore: store, AppendLog: &recordingAppendLog{}}, nil)
 	if app.deviceService == nil {
 		t.Fatal("device service was not wired")
 	}
@@ -68,19 +69,70 @@ func newAppForDeviceTest(t *testing.T) (*App, []byte, []byte) {
 // (Ping) so it can be passed via Dependencies.
 type deviceAuthMemStore struct {
 	*deviceauth.MemStore
+	identity *endpointidentity.MemoryStore
+	entities map[string]*ports.ProjectedEntity
+	links    []*ports.ProjectedLink
 }
 
 func newDeviceAuthMemStore() *deviceAuthMemStore {
-	return &deviceAuthMemStore{MemStore: deviceauth.NewMemStore()}
+	return &deviceAuthMemStore{
+		MemStore: deviceauth.NewMemStore(),
+		identity: endpointidentity.NewMemoryStore(),
+		entities: map[string]*ports.ProjectedEntity{},
+	}
 }
 
 // Ping satisfies ports.StateStore.
 func (s *deviceAuthMemStore) Ping(_ context.Context) error { return nil }
 
 var (
-	_ ports.StateStore = (*deviceAuthMemStore)(nil)
-	_ deviceauth.Store = (*deviceAuthMemStore)(nil)
+	_ ports.StateStore            = (*deviceAuthMemStore)(nil)
+	_ deviceauth.Store            = (*deviceAuthMemStore)(nil)
+	_ ports.ProjectionStateStore  = (*deviceAuthMemStore)(nil)
+	_ ports.EndpointIdentityStore = (*deviceAuthMemStore)(nil)
 )
+
+func (s *deviceAuthMemStore) UpsertProjectedEntity(_ context.Context, entity *ports.ProjectedEntity) error {
+	if entity == nil {
+		return nil
+	}
+	if s.entities == nil {
+		s.entities = map[string]*ports.ProjectedEntity{}
+	}
+	clone := *entity
+	clone.Attributes = cloneStringMapForDeviceTest(entity.Attributes)
+	s.entities[entity.URN] = &clone
+	return nil
+}
+
+func (s *deviceAuthMemStore) UpsertProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
+	if link == nil {
+		return nil
+	}
+	clone := *link
+	clone.Attributes = cloneStringMapForDeviceTest(link.Attributes)
+	s.links = append(s.links, &clone)
+	return nil
+}
+
+func (s *deviceAuthMemStore) UpsertEndpointIdentityAliases(ctx context.Context, aliases []ports.EndpointIdentityAlias) error {
+	return s.identity.UpsertEndpointIdentityAliases(ctx, aliases)
+}
+
+func (s *deviceAuthMemStore) ResolveEndpointIdentity(ctx context.Context, request ports.EndpointIdentityResolveRequest) (ports.EndpointIdentityResolution, error) {
+	return s.identity.ResolveEndpointIdentity(ctx, request)
+}
+
+func cloneStringMapForDeviceTest(values map[string]string) map[string]string {
+	if values == nil {
+		return nil
+	}
+	out := make(map[string]string, len(values))
+	for key, value := range values {
+		out[key] = value
+	}
+	return out
+}
 
 func encodePEMPublic(t *testing.T, pub ed25519.PublicKey) string {
 	t.Helper()
@@ -162,6 +214,31 @@ func TestDeviceAuthEndToEnd(t *testing.T) {
 		t.Fatalf("ingest status = %d, body=%s", resp.Code, resp.Body.String())
 	}
 	firstBody := resp.Body.String()
+	appendLog := app.deps.AppendLog.(*recordingAppendLog)
+	if len(appendLog.events) != 1 {
+		t.Fatalf("appended telemetry events = %d, want 1", len(appendLog.events))
+	}
+	if appendLog.events[0].GetKind() != "trusted_endpoint.action_outcome" {
+		t.Fatalf("appended kind = %q, want trusted_endpoint.action_outcome", appendLog.events[0].GetKind())
+	}
+	store := app.deps.StateStore.(*deviceAuthMemStore)
+	if len(store.entities) == 0 || len(store.links) == 0 {
+		t.Fatalf("expected projected telemetry entities and links, got entities=%d links=%d", len(store.entities), len(store.links))
+	}
+	resolution, err := store.ResolveEndpointIdentity(context.Background(), ports.EndpointIdentityResolveRequest{
+		TenantID: "writer",
+		Aliases: []ports.EndpointIdentityAlias{{
+			TenantID:   "writer",
+			AliasType:  endpointidentity.AliasHardwareUUID,
+			AliasValue: "hw-1",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("ResolveEndpointIdentity: %v", err)
+	}
+	if resolution.CanonicalDeviceID != enroll.DeviceID {
+		t.Fatalf("resolved device = %q, want %q", resolution.CanonicalDeviceID, enroll.DeviceID)
+	}
 
 	resp = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/platform/telemetry/ingest", bytes.NewReader(telemetry))
@@ -177,6 +254,9 @@ func TestDeviceAuthEndToEnd(t *testing.T) {
 	}
 	if resp.Body.String() != firstBody {
 		t.Errorf("idempotent body mismatch")
+	}
+	if len(appendLog.events) != 1 {
+		t.Fatalf("replay appended events = %d, want still 1", len(appendLog.events))
 	}
 
 	// Conflicting body with the same idempotency key returns 409.
@@ -251,6 +331,48 @@ func TestDeviceAuthRevokeAuthorizesTargetDeviceTenant(t *testing.T) {
 	}
 	if device.Status == "revoked" {
 		t.Fatal("cross-tenant revoke changed target device status")
+	}
+}
+
+func TestTrustContextResolvesEndpointIdentity(t *testing.T) {
+	app, _, _ := newAppForDeviceTest(t)
+	handler := app.Handler()
+	ctx := context.Background()
+	bootstrap, err := app.deviceService.IssueBootstrapToken(ctx, deviceauth.IssueBootstrapTokenRequest{
+		HardwareUUID: "hw-trust",
+		TenantID:     "writer",
+	})
+	if err != nil {
+		t.Fatalf("IssueBootstrapToken: %v", err)
+	}
+	enroll, err := app.deviceService.Enroll(ctx, deviceauth.EnrollRequest{
+		BootstrapToken: bootstrap.Token,
+		HardwareUUID:   "hw-trust",
+		Hostname:       "trust-laptop",
+	})
+	if err != nil {
+		t.Fatalf("Enroll: %v", err)
+	}
+	store := app.deps.StateStore.(*deviceAuthMemStore)
+	if err := store.UpsertEndpointIdentityAliases(ctx, endpointidentity.AliasesFromDevice("writer", enroll.DeviceID, "hw-trust", "", "trust-laptop", time.Now())); err != nil {
+		t.Fatalf("UpsertEndpointIdentityAliases: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/platform/graph/trust-context", strings.NewReader(`{"tenant_id":"writer","hardware_uuid":"hw-trust"}`))
+	req.Header.Set("Authorization", "Bearer operator-key")
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("trust-context status = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	var body struct {
+		ResolvedDeviceID string `json:"resolved_device_id"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode trust context: %v", err)
+	}
+	if body.ResolvedDeviceID != enroll.DeviceID {
+		t.Fatalf("resolved_device_id = %q, want %q", body.ResolvedDeviceID, enroll.DeviceID)
 	}
 }
 

@@ -934,6 +934,70 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetEntityNeighborhoodResponse'
+  /platform/graph/trust-context:
+    post:
+      summary: Hydrate endpoint trust context
+      tags:
+        - Graph
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tenant_id
+              properties:
+                tenant_id:
+                  type: string
+                runtime_id:
+                  type: string
+                agent_id:
+                  type: string
+                device_id:
+                  type: string
+                hardware_uuid:
+                  type: string
+                serial_number:
+                  type: string
+                hostname:
+                  type: string
+                max_allowed_severity:
+                  type: string
+                graph_root_urns:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Trust context result.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  graph_neighborhood_loaded:
+                    type: boolean
+                  active_finding_count:
+                    type: integer
+                  max_finding_severity:
+                    type: string
+                  risk_score:
+                    type: integer
+                  stale_evidence_count:
+                    type: integer
+                  graph_root_urns:
+                    type: array
+                    items:
+                      type: string
+                  resolved_device_id:
+                    type: string
+                  candidate_device_ids:
+                    type: array
+                    items:
+                      type: string
+                  ambiguous_identity:
+                    type: boolean
   /platform/graph/impact/vulnerability/{id}:
     get:
       summary: Query vulnerability impact graph

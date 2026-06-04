@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"context"
 	"crypto/ed25519"
 	"encoding/json"
 	"errors"
@@ -11,11 +12,15 @@ import (
 	"strings"
 	"time"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/deviceauth"
 	"github.com/writer/cerebro/internal/deviceauth/attestation"
 	"github.com/writer/cerebro/internal/deviceauth/risk"
+	"github.com/writer/cerebro/internal/endpointidentity"
 	"github.com/writer/cerebro/internal/endpointtelemetry"
+	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 // buildDeviceAuthService wires the deviceauth.Service against the configured
@@ -137,15 +142,21 @@ type deviceAuthHTTPHandler struct {
 	tokenLimit   *deviceauth.TokenBucket
 	originConfig config.RequestOriginConfig
 	now          func() time.Time
+	appendLog    ports.AppendLog
+	projector    ports.SourceProjector
+	identity     ports.EndpointIdentityStore
 }
 
-func newDeviceAuthHTTPHandler(service *deviceauth.Service, cfg config.DeviceAuthConfig, originConfig config.RequestOriginConfig) *deviceAuthHTTPHandler {
+func newDeviceAuthHTTPHandler(service *deviceauth.Service, cfg config.DeviceAuthConfig, originConfig config.RequestOriginConfig, appendLog ports.AppendLog, projector ports.SourceProjector, identity ports.EndpointIdentityStore) *deviceAuthHTTPHandler {
 	return &deviceAuthHTTPHandler{
 		service:      service,
 		enrollLimit:  deviceauth.NewTokenBucket(cfg.EnrollPerIPRatePerSecond, cfg.EnrollPerIPBurst),
 		tokenLimit:   deviceauth.NewTokenBucket(cfg.TokenPerDeviceRatePerSecond, cfg.TokenPerDeviceBurst),
 		originConfig: originConfig,
 		now:          time.Now,
+		appendLog:    appendLog,
+		projector:    projector,
+		identity:     identity,
 	}
 }
 
@@ -229,6 +240,25 @@ func (h *deviceAuthHTTPHandler) handleEnroll(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		writeDeviceAuthServiceError(w, err)
 		return
+	}
+	if h.identity != nil {
+		device, err := h.service.LookupDevice(r.Context(), response.DeviceID)
+		if err != nil {
+			writeDeviceAuthServiceError(w, err)
+			return
+		}
+		aliases := endpointidentity.AliasesFromDevice(
+			device.TenantID,
+			response.DeviceID,
+			body.HardwareUUID,
+			body.SerialNumber,
+			body.Hostname,
+			h.now(),
+		)
+		if err := h.identity.UpsertEndpointIdentityAliases(r.Context(), aliases); err != nil {
+			writeDeviceAuthError(w, http.StatusServiceUnavailable, "identity_unavailable", err.Error())
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, tokenResponseBody{
 		AccessToken:       response.AccessToken,
@@ -388,11 +418,20 @@ func (h *deviceAuthHTTPHandler) handleIngestTelemetry(w http.ResponseWriter, r *
 		writeDeviceAuthError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
-	if _, err := endpointtelemetry.Normalize(body, endpointtelemetry.Principal{
-		TenantID:     auth.principal.TenantID,
-		DeviceID:     auth.principal.DeviceID,
-		HardwareUUID: auth.principal.HardwareUUID,
-	}, time.Now()); err != nil {
+	device, err := h.service.LookupDevice(r.Context(), auth.principal.DeviceID)
+	if err != nil {
+		writeDeviceAuthServiceError(w, err)
+		return
+	}
+	observedAt := h.now()
+	events, err := endpointtelemetry.Normalize(body, endpointtelemetry.Principal{
+		TenantID:     device.TenantID,
+		DeviceID:     device.DeviceID,
+		HardwareUUID: firstNonEmpty(device.HardwareUUID, auth.principal.HardwareUUID),
+		SerialNumber: device.SerialNumber,
+		Hostname:     device.Hostname,
+	}, observedAt)
+	if err != nil {
 		writeDeviceAuthError(w, http.StatusBadRequest, "invalid_telemetry", err.Error())
 		return
 	}
@@ -401,6 +440,9 @@ func (h *deviceAuthHTTPHandler) handleIngestTelemetry(w http.ResponseWriter, r *
 		DeviceID:       auth.principal.DeviceID,
 		IdempotencyKey: idempotencyKey,
 		Body:           body,
+		OnAccepted: func(ctx context.Context, accepted deviceauth.TelemetryAccepted) error {
+			return h.publishEndpointTelemetry(ctx, accepted, events)
+		},
 	})
 	if err != nil {
 		writeDeviceAuthServiceError(w, err)
@@ -412,6 +454,54 @@ func (h *deviceAuthHTTPHandler) handleIngestTelemetry(w http.ResponseWriter, r *
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(result.Status)
 	_, _ = w.Write(result.Body)
+}
+
+func (h *deviceAuthHTTPHandler) publishEndpointTelemetry(ctx context.Context, accepted deviceauth.TelemetryAccepted, events []*cerebrov1.EventEnvelope) error {
+	if h.identity != nil {
+		aliases := endpointidentity.AliasesFromTrustedEndpoint(
+			accepted.Device.TenantID,
+			accepted.Device.DeviceID,
+			accepted.Device.DeviceID,
+			accepted.Device.HardwareUUID,
+			accepted.Device.SerialNumber,
+			accepted.Device.Hostname,
+			accepted.ReceivedAt,
+		)
+		if err := h.identity.UpsertEndpointIdentityAliases(ctx, aliases); err != nil {
+			return fmt.Errorf("endpoint telemetry identity: %w", err)
+		}
+	}
+	appended := 0
+	projectedEntities := uint32(0)
+	projectedLinks := uint32(0)
+	for _, event := range events {
+		if event == nil {
+			continue
+		}
+		if h.appendLog != nil {
+			if err := h.appendLog.Append(ctx, event); err != nil {
+				return fmt.Errorf("append endpoint telemetry event: %w", err)
+			}
+			appended++
+		}
+		if h.projector != nil {
+			result, err := h.projector.Project(ctx, event)
+			if err != nil {
+				return fmt.Errorf("project endpoint telemetry event: %w", err)
+			}
+			projectedEntities += result.EntitiesProjected
+			projectedLinks += result.LinksProjected
+		}
+	}
+	telemetry.Event(ctx, "endpoint_telemetry.accepted", telemetry.Attrs(
+		telemetry.Field{Key: "tenant_id", Value: accepted.Device.TenantID},
+		telemetry.Field{Key: "device_id", Value: accepted.Device.DeviceID},
+		telemetry.Field{Key: "normalized_events", Value: len(events)},
+		telemetry.Field{Key: "appended_events", Value: appended},
+		telemetry.Field{Key: "projected_entities", Value: projectedEntities},
+		telemetry.Field{Key: "projected_links", Value: projectedLinks},
+	))
+	return nil
 }
 
 func validateTelemetryBody(body []byte) error {

@@ -645,6 +645,7 @@ type IngestPayload struct {
 	DeviceID       string
 	IdempotencyKey string
 	Body           []byte
+	OnAccepted     func(context.Context, TelemetryAccepted) error
 }
 
 // IngestResult is the outcome of [Service.IngestTelemetry].
@@ -653,6 +654,16 @@ type IngestResult struct {
 	Body       []byte
 	Cached     bool
 	ReceivedAt time.Time
+}
+
+// TelemetryAccepted is passed to the optional IngestPayload.OnAccepted hook
+// after device validation and idempotency conflict checks, but before the
+// successful idempotency response is cached.
+type TelemetryAccepted struct {
+	Device         DeviceRecord
+	IdempotencyKey string
+	Body           []byte
+	ReceivedAt     time.Time
 }
 
 // IngestTelemetry validates the device, enforces the Idempotency-Key
@@ -693,6 +704,16 @@ func (s *Service) IngestTelemetry(ctx context.Context, payload IngestPayload) (I
 	}
 	if err := s.store.MarkSeen(ctx, deviceID, now); err != nil {
 		return IngestResult{}, fmt.Errorf("deviceauth: mark seen: %w", err)
+	}
+	if payload.OnAccepted != nil {
+		if err := payload.OnAccepted(ctx, TelemetryAccepted{
+			Device:         device,
+			IdempotencyKey: idempotencyKey,
+			Body:           append([]byte(nil), payload.Body...),
+			ReceivedAt:     now,
+		}); err != nil {
+			return IngestResult{}, err
+		}
 	}
 	receipt := fmt.Sprintf(`{"status":"accepted","device_id":%q,"received_at":%q,"bytes":%d}`, deviceID, now.Format(time.RFC3339Nano), len(payload.Body))
 	body := []byte(receipt)
