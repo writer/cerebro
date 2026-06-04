@@ -73,7 +73,7 @@ func Middleware(next http.Handler) http.Handler {
 		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(recorder, r)
 		labels := map[string]string{
-			"method":      r.Method,
+			"method":      normalizeMethodLabel(r.Method),
 			"route":       normalizeRouteLabel(r.URL.Path),
 			"status_code": strconv.Itoa(recorder.status),
 		}
@@ -115,6 +115,31 @@ func (r *statusRecorder) Unwrap() http.ResponseWriter {
 		return nil
 	}
 	return r.ResponseWriter
+}
+
+func normalizeMethodLabel(method string) string {
+	switch strings.ToUpper(strings.TrimSpace(method)) {
+	case http.MethodConnect:
+		return http.MethodConnect
+	case http.MethodDelete:
+		return http.MethodDelete
+	case http.MethodGet:
+		return http.MethodGet
+	case http.MethodHead:
+		return http.MethodHead
+	case http.MethodOptions:
+		return http.MethodOptions
+	case http.MethodPatch:
+		return http.MethodPatch
+	case http.MethodPost:
+		return http.MethodPost
+	case http.MethodPut:
+		return http.MethodPut
+	case http.MethodTrace:
+		return http.MethodTrace
+	default:
+		return "OTHER"
+	}
 }
 
 func normalizeRouteLabel(path string) string {

@@ -2,6 +2,7 @@ package observability
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -14,6 +15,15 @@ func TestNormalizeRouteLabelBoundsUnknownPaths(t *testing.T) {
 	}
 	if got := normalizeRouteLabel("/platform/random-attacker-path"); got != "/platform/{unmatched}" {
 		t.Fatalf("unknown platform route label = %q", got)
+	}
+}
+
+func TestNormalizeMethodLabelBoundsUnknownMethods(t *testing.T) {
+	if got := normalizeMethodLabel("post"); got != http.MethodPost {
+		t.Fatalf("method label = %q, want %q", got, http.MethodPost)
+	}
+	if got := normalizeMethodLabel("BREW-COFFEE-" + strings.Repeat("x", 128)); got != "OTHER" {
+		t.Fatalf("unknown method label = %q, want OTHER", got)
 	}
 }
 
