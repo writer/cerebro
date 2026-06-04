@@ -20,18 +20,20 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - name: Install Semgrep
-        run: python3 -m pip install --user semgrep
+        run: |
+          python3 -m pip install --user semgrep
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Run Semgrep
         run: |
           set -euo pipefail
-          python3 -m semgrep scan \
+          semgrep scan \
             --config .semgrep/cerebro.yml \
             --sarif \
             --output semgrep.sarif
 
       - name: Upload Semgrep SARIF
-        if: always()
+        if: always() && hashFiles('semgrep.sarif') != ''
         uses: github/codeql-action/upload-sarif@411bbbe57033eedfc1a82d68c01345aa96c737d7 # v4
         with:
           sarif_file: semgrep.sarif

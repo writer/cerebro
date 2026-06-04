@@ -935,13 +935,6 @@ func (w *accessAuditResponseWriter) WriteHeader(status int) {
 	}
 }
 
-func (w *accessAuditResponseWriter) Write(data []byte) (int, error) {
-	if w.status == 0 {
-		w.WriteHeader(http.StatusOK)
-	}
-	return w.ResponseWriter.Write(data)
-}
-
 func (w *accessAuditResponseWriter) Flush() {
 	if w == nil {
 		return
