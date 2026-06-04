@@ -157,6 +157,7 @@ Useful local validation:
 ```bash
 go test ./internal/bootstrap -run 'TestMCP' -count=1
 go test ./internal/bootstrap -count=1
+make mcp-contract-check mcp-sdk-compat
 make lint-bootstrap openapi-check openapi-lint
 ```
 
@@ -215,6 +216,12 @@ For native Droid validation, verify both:
 
 - OAuth authentication completes.
 - The server reconnects as `connected` and tool listing is populated.
+
+For a deployed endpoint with a short-lived bearer/API token available locally, run:
+
+```bash
+CEREBRO_BASE_URL=https://<cerebro-origin> CEREBRO_MCP_BEARER_TOKEN=<redacted> scripts/mcp_smoke.py
+```
 
 ## Security notes
 

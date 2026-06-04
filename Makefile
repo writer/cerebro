@@ -1,4 +1,4 @@
-.PHONY: build serve test sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check readme-check oss-audit govulncheck docker-smoke release-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: build serve test sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check readme-check oss-audit govulncheck docker-smoke release-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
@@ -35,6 +35,9 @@ GRAPH_REBUILD_PAGE_LIMIT ?= 1
 GRAPH_REBUILD_EVENT_LIMIT ?= 100
 GRAPH_REBUILD_PREVIEW_LIMIT ?= 10
 CANDIDATE_SMOKE_EVENT_LIMIT ?= 25
+MCP_SDK_ROOT ?= tmp/mcp-sdk-compat
+MCP_SDK_PACKAGE ?= @modelcontextprotocol/sdk@latest
+MCP_SDK_TEST_TOKEN ?= mcp-sdk-test-key
 DROID_REVIEW_BASE ?= origin/main
 DROID_REVIEW_HEAD ?= HEAD
 DROID_PREFLIGHT_JSON_OUT ?= tmp/droid-preflight.json
@@ -115,6 +118,25 @@ graph-rebuild-dryrun: build
 candidate-smoke:
 	@if [ -z "$(RUNTIME_ID)" ]; then echo "RUNTIME_ID is required, e.g. make candidate-smoke RUNTIME_ID=writer-okta-audit RULE_ID=rule-id CEREBRO_BASE_URL=https://..." >&2; exit 2; fi
 	CEREBRO_CANDIDATE_SMOKE_RUNTIME_ID="$(RUNTIME_ID)" CEREBRO_CANDIDATE_SMOKE_RULE_ID="$(RULE_ID)" CEREBRO_CANDIDATE_SMOKE_EVENT_LIMIT="$(CANDIDATE_SMOKE_EVENT_LIMIT)" python3 scripts/candidate_smoke.py
+
+mcp-contract-check:
+	python3 scripts/mcp_contract_check.py
+
+mcp-smoke:
+	python3 scripts/mcp_smoke.py
+
+mcp-sdk-compat: build
+	@set -e; \
+	mkdir -p "$(MCP_SDK_ROOT)"; \
+	if [ ! -f "$(MCP_SDK_ROOT)/package.json" ]; then printf '%s\n' '{"type":"module","private":true}' > "$(MCP_SDK_ROOT)/package.json"; fi; \
+	npm install --prefix "$(MCP_SDK_ROOT)" --no-audit --no-fund "$(MCP_SDK_PACKAGE)"; \
+	port=$$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()'); \
+	log="tmp/mcp-sdk-compat-server.log"; \
+	CEREBRO_HTTP_ADDR="127.0.0.1:$$port" CEREBRO_API_AUTH_ENABLED=true CEREBRO_API_KEYS="$(MCP_SDK_TEST_TOKEN):mcp-sdk:writer" ./bin/cerebro serve > "$$log" 2>&1 & pid=$$!; \
+	trap 'kill "$$pid" >/dev/null 2>&1 || true; wait "$$pid" >/dev/null 2>&1 || true' EXIT; \
+	for _ in $$(seq 1 50); do python3 -c 'import sys, urllib.request; url=sys.argv[1]; urllib.request.urlopen(url, timeout=0.5).read()' "http://127.0.0.1:$$port/health" >/dev/null 2>&1 && break; sleep 0.1; done; \
+	CEREBRO_BASE_URL="http://127.0.0.1:$$port" CEREBRO_MCP_BEARER_TOKEN="$(MCP_SDK_TEST_TOKEN)" python3 scripts/mcp_smoke.py --skip-unauthenticated-check; \
+	CEREBRO_MCP_URL="http://127.0.0.1:$$port/api/v1/mcp" CEREBRO_MCP_BEARER_TOKEN="$(MCP_SDK_TEST_TOKEN)" CEREBRO_MCP_SDK_ROOT="$(CURDIR)/$(MCP_SDK_ROOT)" node scripts/mcp_sdk_compat.mjs
 
 lint: lint-bootstrap
 	$(GOLANGCI_LINT) run --timeout 5m $(APP_PACKAGES)
@@ -234,4 +256,4 @@ check-arch:
 
 check-hook-integrity: check-arch
 
-verify: build test sdk-test lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check detection-catalog-check readme-check oss-audit release-smoke check-structural check-structural-test check-arch
+verify: build test sdk-test mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check detection-catalog-check readme-check oss-audit release-smoke check-structural check-structural-test check-arch

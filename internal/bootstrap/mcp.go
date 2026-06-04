@@ -19,6 +19,7 @@ import (
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourceruntime"
+	"github.com/writer/cerebro/internal/telemetry"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
@@ -182,13 +183,16 @@ type mcpRiskReasonCount struct {
 }
 
 func (app *App) handleMCP(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		mcpTelemetryEvent(r, "", "", http.StatusMethodNotAllowed, 0, "http_method", time.Since(started))
 		return
 	}
 	if !app.mcpValidOrigin(r) {
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		mcpTelemetryEvent(r, "", "", http.StatusForbidden, 0, "origin_forbidden", time.Since(started))
 		return
 	}
 	defer func() { _ = r.Body.Close() }()
@@ -200,18 +204,27 @@ func (app *App) handleMCP(w http.ResponseWriter, r *http.Request) {
 			JSONRPC: "2.0",
 			Error:   &mcpError{Code: -32700, Message: "parse error"},
 		})
+		mcpTelemetryEvent(r, "", "", http.StatusOK, -32700, "parse_error", time.Since(started))
 		return
 	}
 	if request.Method == "" && (len(request.Result) != 0 || request.Error != nil) {
 		w.WriteHeader(http.StatusAccepted)
+		mcpTelemetryEvent(r, "", "", http.StatusAccepted, 0, "client_message", time.Since(started))
 		return
 	}
 	if len(request.ID) == 0 && strings.TrimSpace(request.Method) != "" {
 		w.WriteHeader(http.StatusAccepted)
+		mcpTelemetryEvent(r, request.Method, mcpToolNameFromParams(request.Method, request.Params), http.StatusAccepted, 0, "notification", time.Since(started))
+		return
+	}
+	if request.Method != "initialize" && !mcpSupportedProtocolVersion(strings.TrimSpace(r.Header.Get("MCP-Protocol-Version"))) {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		mcpTelemetryEvent(r, request.Method, mcpToolNameFromParams(request.Method, request.Params), http.StatusBadRequest, -32600, "unsupported_protocol_version", time.Since(started))
 		return
 	}
 	response := app.handleMCPRequest(r, request)
 	mcpWriteJSONRPC(w, r, response)
+	mcpTelemetryEvent(r, request.Method, mcpToolNameFromParams(request.Method, request.Params), http.StatusOK, mcpResponseErrorCode(response), mcpResponseOutcome(response), time.Since(started))
 }
 
 func (app *App) handleMCPStream(w http.ResponseWriter, r *http.Request) {
@@ -233,10 +246,6 @@ func (app *App) handleMCPRequest(r *http.Request, request mcpJSONRPCRequest) mcp
 	}
 	if request.JSONRPC != "2.0" || strings.TrimSpace(request.Method) == "" {
 		response.Error = &mcpError{Code: -32600, Message: "invalid request"}
-		return response
-	}
-	if request.Method != "initialize" && !mcpSupportedProtocolVersion(strings.TrimSpace(r.Header.Get("MCP-Protocol-Version"))) {
-		response.Error = &mcpError{Code: -32600, Message: "unsupported protocol version"}
 		return response
 	}
 	if err := authorizeMCPMethodScope(r.Context(), request.Method); err != nil {
@@ -1164,7 +1173,7 @@ func mcpTools() []mcpTool {
 				"runtime_id": map[string]any{"type": "string"},
 				"tenant_id":  map[string]any{"type": "string"},
 				"source_id":  map[string]any{"type": "string"},
-				"limit":      map[string]any{"type": "integer", "minimum": 1},
+				"limit":      mcpLimitSchema(maxMCPListLimit, "runtimes"),
 			}, nil),
 			OutputSchema: mcpOutputSchema(map[string]any{"runtimes": map[string]any{"type": "array"}}),
 			Annotations:  mcpReadOnlyAnnotations("List Source Runtimes"),
@@ -1182,7 +1191,7 @@ func mcpTools() []mcpTool {
 				"resource_urn": map[string]any{"type": "string"},
 				"event_id":     map[string]any{"type": "string"},
 				"policy_id":    map[string]any{"type": "string"},
-				"limit":        map[string]any{"type": "integer", "minimum": 1},
+				"limit":        mcpLimitSchema(maxMCPListLimit, "findings"),
 				"order":        map[string]any{"type": "string", "enum": []string{"last_observed", "priority", "risk_score"}},
 			}, []string{"runtime_id"}),
 			OutputSchema: mcpOutputSchema(map[string]any{"findings": map[string]any{"type": "array"}}),
@@ -1212,7 +1221,7 @@ func mcpTools() []mcpTool {
 				"resource_urn": map[string]any{"type": "string"},
 				"event_id":     map[string]any{"type": "string"},
 				"policy_id":    map[string]any{"type": "string"},
-				"limit":        map[string]any{"type": "integer", "minimum": 1, "maximum": maxMCPListLimit},
+				"limit":        mcpLimitSchema(maxMCPListLimit, "findings"),
 			}, nil),
 			OutputSchema: mcpOutputSchema(map[string]any{"findings": map[string]any{"type": "array"}}),
 			Annotations:  mcpReadOnlyAnnotations("Search Findings"),
@@ -1240,7 +1249,7 @@ func mcpTools() []mcpTool {
 				"event_id":       map[string]any{"type": "string"},
 				"graph_root_urn": map[string]any{"type": "string"},
 				"graph_path_urn": map[string]any{"type": "string"},
-				"limit":          map[string]any{"type": "integer", "minimum": 1, "maximum": maxMCPEvidenceLimit},
+				"limit":          mcpLimitSchema(maxMCPEvidenceLimit, "evidence records"),
 			}, []string{"runtime_id"}),
 			OutputSchema: mcpOutputSchema(map[string]any{"evidence": map[string]any{"type": "array"}}),
 			Annotations:  mcpReadOnlyAnnotations("List Finding Evidence"),
@@ -1265,7 +1274,7 @@ func mcpTools() []mcpTool {
 				"entity_type": map[string]any{"type": "string"},
 				"tenant_id":   map[string]any{"type": "string"},
 				"runtime_id":  map[string]any{"type": "string"},
-				"limit":       map[string]any{"type": "integer", "minimum": 1, "maximum": maxMCPAssetLimit},
+				"limit":       mcpLimitSchema(maxMCPAssetLimit, "assets"),
 			}, nil),
 			OutputSchema: mcpOutputSchema(map[string]any{"assets": map[string]any{"type": "array"}}),
 			Annotations:  mcpReadOnlyAnnotations("Search Assets"),
@@ -1288,7 +1297,7 @@ func mcpTools() []mcpTool {
 				"tenant_id":  map[string]any{"type": "string"},
 				"runtime_id": map[string]any{"type": "string"},
 				"status":     map[string]any{"type": "string", "enum": []string{"open", "resolved", "suppressed"}},
-				"limit":      map[string]any{"type": "integer", "minimum": 1, "maximum": maxMCPRiskLimit},
+				"limit":      mcpLimitSchema(maxMCPRiskLimit, "risk findings"),
 			}, nil),
 			OutputSchema: mcpOutputSchema(nil),
 			Annotations:  mcpReadOnlyAnnotations("Risk Summary"),
@@ -1299,7 +1308,7 @@ func mcpTools() []mcpTool {
 			Description: "Return a bounded graph neighborhood around a Cerebro URN visible to the authenticated caller.",
 			InputSchema: mcpObjectSchema(map[string]any{
 				"root_urn": map[string]any{"type": "string"},
-				"limit":    map[string]any{"type": "integer", "minimum": 1},
+				"limit":    mcpLimitSchema(maxMCPNeighborhoodLimit, "graph neighbors"),
 			}, []string{"root_urn"}),
 			OutputSchema: mcpOutputSchema(nil),
 			Annotations:  mcpReadOnlyAnnotations("Graph Neighborhood"),
@@ -1314,7 +1323,7 @@ func mcpTools() []mcpTool {
 				"identifier": map[string]any{"type": "string"},
 				"root_urn":   map[string]any{"type": "string"},
 				"depth":      map[string]any{"type": "integer", "minimum": 1},
-				"limit":      map[string]any{"type": "integer", "minimum": 1},
+				"limit":      mcpLimitSchema(maxMCPImpactLimit, "impact rows"),
 			}, nil),
 			OutputSchema: mcpOutputSchema(nil),
 			Annotations:  mcpReadOnlyAnnotations("Graph Impact"),
@@ -1326,7 +1335,7 @@ func mcpTools() []mcpTool {
 			InputSchema: mcpObjectSchema(map[string]any{
 				"tenant_id":  map[string]any{"type": "string"},
 				"account_id": map[string]any{"type": "string"},
-				"limit":      map[string]any{"type": "integer", "minimum": 1, "maximum": maxMCPGraphLimit},
+				"limit":      mcpLimitSchema(maxMCPGraphLimit, "attack path rows"),
 			}, nil),
 			OutputSchema: mcpOutputSchema(nil),
 			Annotations:  mcpReadOnlyAnnotations("Graph Attack Paths"),
@@ -1337,8 +1346,8 @@ func mcpTools() []mcpTool {
 			Description: "Bundle finding, evidence, assets, and graph context for one finding so an agent can investigate without many round trips.",
 			InputSchema: mcpObjectSchema(map[string]any{
 				"finding_id":  map[string]any{"type": "string"},
-				"limit":       map[string]any{"type": "integer", "minimum": 1, "maximum": maxMCPEvidenceLimit},
-				"asset_limit": map[string]any{"type": "integer", "minimum": 1, "maximum": maxMCPAssetLimit},
+				"limit":       mcpLimitSchema(maxMCPEvidenceLimit, "evidence records"),
+				"asset_limit": mcpLimitSchema(maxMCPAssetLimit, "related assets"),
 				"skip_graph":  map[string]any{"type": "boolean"},
 				"compact":     map[string]any{"type": "boolean"},
 			}, []string{"finding_id"}),
@@ -1426,6 +1435,15 @@ func mcpOutputSchema(properties map[string]any) map[string]any {
 	}
 }
 
+func mcpLimitSchema(max int, itemName string) map[string]any {
+	return map[string]any{
+		"type":        "integer",
+		"minimum":     1,
+		"maximum":     max,
+		"description": fmt.Sprintf("Maximum %s to return. Values above %d are clamped.", itemName, max),
+	}
+}
+
 func cloneMCPProperties(properties map[string]any) map[string]any {
 	cloned := make(map[string]any, len(properties)+1)
 	for key, value := range properties {
@@ -1442,6 +1460,95 @@ func mcpReadOnlyAnnotations(title string) map[string]any {
 		"idempotentHint":  true,
 		"openWorldHint":   true,
 	}
+}
+
+func mcpTelemetryEvent(r *http.Request, method string, tool string, statusCode int, jsonRPCErrorCode int, outcome string, duration time.Duration) {
+	if r == nil {
+		return
+	}
+	method = mcpSanitizeTelemetryValue(method, 96)
+	tool = mcpSanitizeTelemetryValue(tool, 128)
+	outcome = mcpSanitizeTelemetryValue(outcome, 64)
+	attrs := telemetry.Attrs(
+		telemetry.Field{Key: "http.method", Value: r.Method},
+		telemetry.Field{Key: "http.route", Value: "POST /api/v1/mcp"},
+		telemetry.Field{Key: "http.status_code", Value: statusCode},
+		telemetry.Field{Key: "mcp.method", Value: method},
+		telemetry.Field{Key: "mcp.outcome", Value: outcome},
+		telemetry.Field{Key: "mcp.protocol_version", Value: mcpSanitizeTelemetryValue(r.Header.Get("MCP-Protocol-Version"), 32)},
+		telemetry.Field{Key: "duration_ms", Value: duration.Milliseconds()},
+	)
+	if tool != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "mcp.tool", Value: tool})
+	}
+	if jsonRPCErrorCode != 0 {
+		attrs = attrs.WithField(telemetry.Field{Key: "mcp.jsonrpc_error_code", Value: jsonRPCErrorCode})
+	}
+	if auth, ok := r.Context().Value(authContextKey{}).(authContext); ok {
+		if tenantID := strings.TrimSpace(auth.principal.TenantID); tenantID != "" {
+			attrs = attrs.WithField(telemetry.Field{Key: "tenant_id", Value: mcpSanitizeTelemetryValue(tenantID, 128)})
+		}
+		if principal := strings.TrimSpace(auth.principal.Name); principal != "" {
+			attrs = attrs.WithField(telemetry.Field{Key: "principal", Value: mcpSanitizeTelemetryValue(principal, 128)})
+		}
+	}
+	telemetry.Event(r.Context(), "cerebro.mcp.request", attrs)
+}
+
+func mcpResponseErrorCode(response mcpJSONRPCResponse) int {
+	if response.Error == nil {
+		return 0
+	}
+	return response.Error.Code
+}
+
+func mcpResponseOutcome(response mcpJSONRPCResponse) string {
+	if response.Error != nil {
+		return mcpJSONRPCErrorOutcome(response.Error)
+	}
+	return "ok"
+}
+
+func mcpJSONRPCErrorOutcome(err *mcpError) string {
+	if err == nil {
+		return "ok"
+	}
+	switch err.Code {
+	case -32700:
+		return "parse_error"
+	case -32600:
+		return "invalid_request"
+	case -32601:
+		return "method_not_found"
+	case -32602:
+		return "invalid_params"
+	default:
+		return "jsonrpc_error"
+	}
+}
+
+func mcpToolNameFromParams(method string, rawParams json.RawMessage) string {
+	if method != "tools/call" || len(rawParams) == 0 {
+		return ""
+	}
+	var params mcpToolCallParams
+	if err := decodeMCPJSON(rawParams, &params); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(params.Name)
+}
+
+func mcpSanitizeTelemetryValue(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	replacer := strings.NewReplacer("\n", " ", "\r", " ", "\t", " ")
+	value = replacer.Replace(value)
+	if limit > 0 && len(value) > limit {
+		value = value[:limit]
+	}
+	return value
 }
 
 func mcpResources() []mcpResource {
@@ -2279,24 +2386,47 @@ func mcpWriteJSONRPC(w http.ResponseWriter, r *http.Request, response mcpJSONRPC
 func mcpNegotiatedProtocolVersion(r *http.Request, rawParams json.RawMessage) string {
 	version := strings.TrimSpace(r.Header.Get("MCP-Protocol-Version"))
 	if mcpSupportedProtocolVersion(version) && version != "" {
-		return version
+		return mcpFirstProtocolVersion(version)
 	}
 	params := map[string]any{}
 	if len(rawParams) != 0 && decodeMCPJSON(rawParams, &params) == nil {
 		if requested := mcpStringArg(params, "protocolVersion"); mcpSupportedProtocolVersion(requested) && requested != "" {
-			return requested
+			return mcpFirstProtocolVersion(requested)
 		}
 	}
 	return mcpProtocolVersion
 }
 
 func mcpSupportedProtocolVersion(version string) bool {
-	switch strings.TrimSpace(version) {
-	case "", mcpProtocolVersion, "2025-06-18", "2025-03-26":
+	version = strings.TrimSpace(version)
+	if version == "" {
 		return true
-	default:
-		return false
 	}
+	sawVersion := false
+	values := strings.Split(version, ",")
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		sawVersion = true
+		switch strings.TrimSpace(value) {
+		case mcpProtocolVersion, "2025-06-18", "2025-03-26":
+			continue
+		default:
+			return false
+		}
+	}
+	return sawVersion
+}
+
+func mcpFirstProtocolVersion(version string) string {
+	for _, value := range strings.Split(strings.TrimSpace(version), ",") {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (app *App) mcpValidOrigin(r *http.Request) bool {

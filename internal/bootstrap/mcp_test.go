@@ -166,6 +166,105 @@ func TestMCPStatelessGETIsNotSSEEndpoint(t *testing.T) {
 	}
 }
 
+func TestMCPRejectsUnsupportedProtocolVersionWithHTTPBadRequest(t *testing.T) {
+	server := newMCPTestServer(t, &stubRuntimeStore{})
+	defer server.Close()
+
+	request := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/list",
+		"params":  map[string]any{},
+	}
+	body, err := json.Marshal(request)
+	if err != nil {
+		t.Fatalf("marshal MCP request: %v", err)
+	}
+	req, err := http.NewRequest(http.MethodPost, server.URL+mcpEndpointPath, bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("NewRequest POST MCP: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer test-key")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("MCP-Protocol-Version", "2099-01-01")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST /api/v1/mcp error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("POST /api/v1/mcp status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+}
+
+func TestMCPSupportsDuplicateCompatibleProtocolHeaders(t *testing.T) {
+	server := newMCPTestServer(t, &stubRuntimeStore{})
+	defer server.Close()
+
+	body, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/list",
+		"params":  map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("marshal MCP request: %v", err)
+	}
+	req, err := http.NewRequest(http.MethodPost, server.URL+mcpEndpointPath, bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("NewRequest POST MCP: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer test-key")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Add("MCP-Protocol-Version", mcpProtocolVersion)
+	req.Header.Add("MCP-Protocol-Version", mcpProtocolVersion)
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST /api/v1/mcp error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /api/v1/mcp status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+}
+
+func TestMCPNotificationReturnsAcceptedEmptyBody(t *testing.T) {
+	server := newMCPTestServer(t, &stubRuntimeStore{})
+	defer server.Close()
+
+	body, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "notifications/initialized",
+		"params":  map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("marshal MCP notification: %v", err)
+	}
+	req, err := http.NewRequest(http.MethodPost, server.URL+mcpEndpointPath, bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("NewRequest POST MCP: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer test-key")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("MCP-Protocol-Version", mcpProtocolVersion)
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST /api/v1/mcp notification error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("POST /api/v1/mcp notification status = %d, want %d", resp.StatusCode, http.StatusAccepted)
+	}
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read notification response: %v", err)
+	}
+	if len(data) != 0 {
+		t.Fatalf("notification response body = %q, want empty", data)
+	}
+}
+
 func TestMCPResourcesAndPrompts(t *testing.T) {
 	server := newMCPTestServer(t, &stubRuntimeStore{})
 	defer server.Close()
@@ -1246,12 +1345,8 @@ func TestMCPOriginProtocolAndNotificationHandling(t *testing.T) {
 		t.Fatalf("unsupported protocol POST error = %v", err)
 	}
 	defer func() { _ = unsupportedResp.Body.Close() }()
-	var unsupported map[string]any
-	if err := json.NewDecoder(unsupportedResp.Body).Decode(&unsupported); err != nil {
-		t.Fatalf("Decode unsupported protocol: %v", err)
-	}
-	if unsupported["error"].(map[string]any)["message"] != "unsupported protocol version" {
-		t.Fatalf("unsupported response = %#v", unsupported)
+	if unsupportedResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("unsupported protocol status = %d, want %d", unsupportedResp.StatusCode, http.StatusBadRequest)
 	}
 
 	notificationReq, err := http.NewRequest(http.MethodPost, server.URL+mcpEndpointPath, strings.NewReader(`{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}`))

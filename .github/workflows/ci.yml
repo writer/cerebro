@@ -21,6 +21,8 @@ jobs:
             command: make test
           - name: sdk
             command: make sdk-test
+          - name: mcp
+            command: make mcp-contract-check mcp-sdk-compat
           - name: lint
             command: make lint
           - name: proto
