@@ -55,6 +55,34 @@ export class Client {
         }
         return this.requestJson("GET", `/platform/graph/neighborhood?${query.toString()}`);
     }
+    async createJob(request, idempotencyKey = "") {
+        const headers = {};
+        if (idempotencyKey) {
+            headers["Idempotency-Key"] = idempotencyKey;
+        }
+        return this.requestJson("POST", "/platform/jobs", request, headers);
+    }
+    async listJobs(options = {}) {
+        const query = new URLSearchParams();
+        for (const [key, value] of Object.entries(options)) {
+            if (value === undefined || value === null || value === "") {
+                continue;
+            }
+            query.set(key, String(value));
+        }
+        const suffix = query.toString() ? `?${query.toString()}` : "";
+        return this.requestJson("GET", `/platform/jobs${suffix}`);
+    }
+    async getJob(jobId) {
+        return this.requestJson("GET", `/platform/jobs/${encodeURIComponent(jobId)}`);
+    }
+    async listJobEvents(jobId, limit = 0) {
+        const suffix = limit > 0 ? `?limit=${encodeURIComponent(String(limit))}` : "";
+        return this.requestJson("GET", `/platform/jobs/${encodeURIComponent(jobId)}/events${suffix}`);
+    }
+    async cancelJob(jobId) {
+        return this.requestJson("POST", `/platform/jobs/${encodeURIComponent(jobId)}/cancel`);
+    }
     integration(options) {
         return new IntegrationClient(this, options);
     }

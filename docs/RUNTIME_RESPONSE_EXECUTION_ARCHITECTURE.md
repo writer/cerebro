@@ -22,31 +22,24 @@ These are actions Cerebro can perform itself without a remote agent:
 
 - `block_ip`
 - `block_domain`
-- `scale_down`
 
 Current behavior:
 
 - `block_ip` and `block_domain` update the runtime blocklist immediately
-- `scale_down` uses a Kubernetes client when the finding carries an explicit workload target
-
-For `scale_down`, the target must resolve to a typed workload reference like:
-
-- `deployment:namespace/name`
-- `statefulset:namespace/name`
-
-Resolution currently uses runtime finding metadata first, then explicit resource identifiers where available.
+- `scale_down` is advertised as unsupported until a Kubernetes executor is wired in
 
 ### 2. Ensemble-delegated executors
 
 These actions depend on a host, container, or cloud-side actuator:
 
+- `scale_down`
 - `kill_process`
 - `isolate_container`
 - `isolate_host`
 - `quarantine_file`
 - `revoke_credentials`
 
-They use the same remote tool invocation path as remediation:
+The intended future path is the same remote tool invocation path as remediation:
 
 - `RemoteTools.CallTool(...)`
 
@@ -61,9 +54,9 @@ Default tool names are:
 - `security.runtime.block_ip`
 - `security.runtime.block_domain`
 
-If no remote tool provider is configured, these actions fail with a typed capability error instead of silently pretending to succeed.
+Until a remote tool provider is configured and wired, these actions fail with a typed capability error instead of silently pretending to succeed.
 
-If no trusted actuation scope is attached to the execution context, these actions fail closed before any local or remote containment target is invoked.
+If no server-derived trusted actuation scope is attached to the execution context, these actions fail closed before any local or remote containment target is invoked.
 
 ### 3. Control-plane side effects handled elsewhere
 
@@ -96,7 +89,7 @@ The local blocklist update is the guaranteed action.
 
 ### Kubernetes scale down
 
-`scale_down` uses a Kubernetes client loaded from:
+`scale_down` is a planned direct executor. It should use a Kubernetes client loaded from:
 
 - explicit kubeconfig/context if configured in the scaler
 - otherwise normal default kubeconfig loading
@@ -107,9 +100,9 @@ This is intentionally narrow:
 - `deployment`
 - `statefulset`
 
-Anything else must resolve through metadata or fall back to a remote tool.
+Anything else should resolve through metadata or fall back to a remote tool.
 
-`scale_down`, `block_ip`, and `block_domain` also require a trusted actuation scope. Cerebro will not mutate containment state from unauthenticated runtime target identifiers.
+`block_ip` and `block_domain` require a server-derived trusted actuation scope. Cerebro will not mutate containment state from unauthenticated runtime target identifiers.
 
 ## Follow-On Gaps
 

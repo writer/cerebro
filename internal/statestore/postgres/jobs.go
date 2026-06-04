@@ -214,6 +214,10 @@ func (s *Store) UpdateJob(ctx context.Context, id string, update ports.JobUpdate
 	if update.CancelRequested != nil {
 		job.CancelRequested = *update.CancelRequested
 	}
+	var cancelRequested any
+	if update.CancelRequested != nil {
+		cancelRequested = job.CancelRequested
+	}
 	result, err := json.Marshal(job.Result)
 	if err != nil {
 		return nil, err
@@ -231,7 +235,7 @@ func (s *Store) UpdateJob(ctx context.Context, id string, update ports.JobUpdate
 		finished = job.FinishedAt
 	}
 	allowedStatuses := normalizeJobStatuses(update.AllowedStatuses)
-	args := []any{id, job.Status, job.Progress, job.Message, job.Error, string(result), string(refs), started, finished, job.CancelRequested}
+	args := []any{id, job.Status, job.Progress, job.Message, job.Error, string(result), string(refs), started, finished, cancelRequested}
 	clauses := []string{"id = $1"}
 	if len(allowedStatuses) > 0 {
 		placeholders := make([]string, 0, len(allowedStatuses))
@@ -246,7 +250,7 @@ UPDATE platform_jobs
 SET status = $2, progress_percent = $3, message = $4, error = $5,
     result_json = $6::jsonb, result_refs_json = $7::jsonb,
     started_at = COALESCE($8, started_at), finished_at = COALESCE($9, finished_at),
-    cancel_requested = $10, updated_at = NOW()
+    cancel_requested = COALESCE($10, cancel_requested), updated_at = NOW()
 WHERE %s`, strings.Join(clauses, " AND ")), args...)
 	if err != nil {
 		return nil, fmt.Errorf("update platform job %q: %w", id, err)

@@ -577,6 +577,7 @@ func authorizeFindingCandidatePromotion(ctx context.Context) error {
 const (
 	scopeCosmoSecurityRead       = "cerebro.cosmo.security.read"
 	scopeFindingCandidatePromote = "cerebro.finding_candidates.promote"
+	scopeRuntimeResponseWrite    = "cerebro.runtime_response.write"
 )
 
 func scopeForDeviceRoute(method string, path string) string {
@@ -644,6 +645,14 @@ func authorizePrincipalScope(principal authPrincipal, required string) error {
 	return nil
 }
 
+func hasRuntimeResponseTrustedScope(ctx context.Context) bool {
+	auth, ok := ctx.Value(authContextKey{}).(authContext)
+	if !ok || !principalScopeRestricted(auth.principal) {
+		return true
+	}
+	return containsAuthValue(auth.principal.Scopes, scopeRuntimeResponseWrite)
+}
+
 func principalScopeRestricted(principal authPrincipal) bool {
 	return len(principal.Scopes) > 0
 }
@@ -666,6 +675,9 @@ func scopeForHTTPRequest(r *http.Request) string {
 	if r.Method != http.MethodGet {
 		if r.Method == http.MethodPost && strings.HasPrefix(path, "/finding-candidates/") && (strings.HasSuffix(path, "/promote") || strings.HasSuffix(path, "/reject")) {
 			return scopeFindingCandidatePromote
+		}
+		if r.Method == http.MethodPost && (path == "/platform/runtime-response/actions" || (strings.HasPrefix(path, "/platform/runtime-response/blocklist/") && strings.HasSuffix(path, "/revoke"))) {
+			return scopeRuntimeResponseWrite
 		}
 		return ""
 	}
@@ -697,6 +709,10 @@ func scopeForHTTPRequest(r *http.Request) string {
 	case path == "/platform/graph/ingest-runs", strings.HasPrefix(path, "/platform/graph/ingest-runs/"):
 		return scopeCosmoSecurityRead
 	case strings.HasPrefix(path, "/report-runs/"):
+		return scopeCosmoSecurityRead
+	case path == "/platform/jobs", strings.HasPrefix(path, "/platform/jobs/"):
+		return scopeCosmoSecurityRead
+	case path == "/platform/runtime-response/capabilities", path == "/platform/runtime-response/blocklist":
 		return scopeCosmoSecurityRead
 	default:
 		return ""

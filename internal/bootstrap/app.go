@@ -242,21 +242,30 @@ func authorizeSourceRuntimeIDTenant(ctx context.Context, store ports.SourceRunti
 	if !hasAuthContext(ctx) {
 		return nil
 	}
+	_, err := sourceRuntimeTenantID(ctx, store, runtimeID, allowMissing)
+	return err
+}
+
+func sourceRuntimeTenantID(ctx context.Context, store ports.SourceRuntimeStore, runtimeID string, allowMissing bool) (string, error) {
 	id := strings.TrimSpace(runtimeID)
 	if id == "" {
-		return nil
+		return "", nil
 	}
 	if store == nil {
-		return sourceruntime.ErrRuntimeUnavailable
+		return "", sourceruntime.ErrRuntimeUnavailable
 	}
 	runtime, err := store.GetSourceRuntime(ctx, id)
 	if err != nil {
 		if allowMissing && errors.Is(err, ports.ErrSourceRuntimeNotFound) {
-			return nil
+			return "", nil
 		}
-		return err
+		return "", err
 	}
-	return authorizeTenantScopeRequired(ctx, runtime.GetTenantId())
+	tenantID := strings.TrimSpace(runtime.GetTenantId())
+	if err := authorizeTenantScopeRequired(ctx, tenantID); err != nil {
+		return "", err
+	}
+	return tenantID, nil
 }
 
 func authorizePutSourceRuntimeTenant(ctx context.Context, store ports.SourceRuntimeStore, runtime *cerebrov1.SourceRuntime) error {

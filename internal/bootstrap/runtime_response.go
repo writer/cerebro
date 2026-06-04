@@ -43,6 +43,7 @@ func (a *App) handleExecuteRuntimeResponse(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	request.TenantID = tenantID
+	request.TrustedScope = hasRuntimeResponseTrustedScope(r.Context())
 	entry, err := a.runtimeResponseService().Execute(r.Context(), request)
 	if err != nil {
 		writeRuntimeResponseError(w, err)

@@ -37,6 +37,10 @@ test("jira subpath imports the exported source entrypoint", async () => {
 test("source bridge is importable at runtime", async () => {
   const mod = await import(path.join(srcDir, "index.js"));
   assert.equal(typeof mod.Client, "function");
+  const client = new mod.Client({ baseUrl: "https://cerebro.example.com" });
+  for (const method of ["createJob", "listJobs", "getJob", "listJobEvents", "cancelJob"]) {
+    assert.equal(typeof client[method], "function");
+  }
 
   const pkg = JSON.parse(await readFile(path.resolve(here, "../package.json"), "utf8"));
   assert.equal(pkg.main, "./src/index.js");

@@ -290,7 +290,7 @@ func dynamicRouteLabel(parts []string) (string, bool) {
 	case match(parts, "source-runtimes", "*"):
 		return "/source-runtimes/{runtimeID}", true
 	case len(parts) == 3 && parts[0] == "source-runtimes":
-		return "/source-runtimes/{runtimeID}/" + parts[2], true
+		return sourceRuntimeSubresourceRouteLabel(parts[2]), true
 	case len(parts) == 4 && parts[0] == "source-runtimes" && parts[2] == "finding-candidates" && parts[3] == "evaluate":
 		return "/source-runtimes/{runtimeID}/finding-candidates/evaluate", true
 	case len(parts) == 4 && parts[0] == "source-runtimes" && parts[2] == "finding-rules" && parts[3] == "evaluate":
@@ -299,6 +299,15 @@ func dynamicRouteLabel(parts []string) (string, bool) {
 		return "/source-runtimes/{runtimeID}/findings/evaluate", true
 	default:
 		return "", false
+	}
+}
+
+func sourceRuntimeSubresourceRouteLabel(subresource string) string {
+	switch subresource {
+	case "sync", "graph-ingest-runs", "claims", "findings", "finding-candidates", "finding-evidence", "finding-evaluation-runs":
+		return "/source-runtimes/{runtimeID}/" + subresource
+	default:
+		return "/source-runtimes/{runtimeID}/{subresource}"
 	}
 }
 

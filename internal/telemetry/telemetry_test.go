@@ -79,6 +79,25 @@ func TestTelemetryFieldsDoNotUseRawErrorKey(t *testing.T) {
 	}
 }
 
+func TestParseTraceParentValidatesTraceFlags(t *testing.T) {
+	traceID, spanID, ok := ParseTraceParent("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
+	if !ok {
+		t.Fatal("valid traceparent was rejected")
+	}
+	if traceID != "4bf92f3577b34da6a3ce929d0e0e4736" || spanID != "00f067aa0ba902b7" {
+		t.Fatalf("traceparent parsed as traceID=%q spanID=%q", traceID, spanID)
+	}
+	for _, header := range []string{
+		"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-0",
+		"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-001",
+		"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-zz",
+	} {
+		if _, _, ok := ParseTraceParent(header); ok {
+			t.Fatalf("malformed traceparent flags accepted: %q", header)
+		}
+	}
+}
+
 func captureOutput(t *testing.T, fn func()) (string, string) {
 	t.Helper()
 	oldStdout := os.Stdout

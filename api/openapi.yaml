@@ -225,6 +225,39 @@ paths:
         - Sources
       parameters:
         - $ref: '#/components/parameters/runtimeID'
+        - name: claim_id
+          in: query
+          schema:
+            type: string
+        - name: subject_urn
+          in: query
+          schema:
+            type: string
+        - name: predicate
+          in: query
+          schema:
+            type: string
+        - name: object_urn
+          in: query
+          schema:
+            type: string
+        - name: object_value
+          in: query
+          schema:
+            type: string
+        - name: claim_type
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: source_event_id
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/limitQuery'
       responses:
         '200':
           description: Claim list.
@@ -1686,6 +1719,13 @@ paths:
       summary: Create a platform job
       tags:
         - Platform
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            maxLength: 255
       requestBody:
         required: true
         content:
@@ -2057,7 +2097,6 @@ components:
         - tenant_id
         - action
         - target
-        - trusted_scope
       properties:
         tenant_id:
           type: string
@@ -2074,7 +2113,8 @@ components:
           type: string
         trusted_scope:
           type: boolean
-          description: Must be true for mutating runtime response actions.
+          readOnly: true
+          description: Server-derived authorization marker for mutating runtime response actions.
         attributes:
           type: object
           additionalProperties:

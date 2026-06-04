@@ -103,7 +103,8 @@ func ParseTraceParent(header string) (string, string, bool) {
 	}
 	traceID := strings.ToLower(parts[1])
 	spanID := strings.ToLower(parts[2])
-	if len(traceID) != 32 || len(spanID) != 16 || allZero(traceID) || allZero(spanID) || !isLowerHex(traceID) || !isLowerHex(spanID) {
+	flags := strings.ToLower(parts[3])
+	if len(traceID) != 32 || len(spanID) != 16 || len(flags) != 2 || allZero(traceID) || allZero(spanID) || !isLowerHex(traceID) || !isLowerHex(spanID) || !isLowerHex(flags) {
 		return "", "", false
 	}
 	return traceID, spanID, true

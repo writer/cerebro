@@ -69,10 +69,12 @@ func (a *App) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	request.TenantID = tenantID
-	if err := authorizeJobCreate(r.Context(), a.deps.StateStore, request); err != nil {
+	tenantID, err = authorizeJobCreate(r.Context(), a.deps.StateStore, request)
+	if err != nil {
 		writeJobError(w, err)
 		return
 	}
+	request.TenantID = tenantID
 	job, created, err := a.jobService().Create(r.Context(), ports.CreateJobRequest{
 		Kind:           request.Kind,
 		TenantID:       request.TenantID,
@@ -273,23 +275,46 @@ func (a *App) runReportJob(ctx context.Context, job *ports.Job, _ *platformjobs.
 	return protoToMap(response), refs, nil
 }
 
-func authorizeJobCreate(ctx context.Context, store ports.StateStore, request createJobHTTPRequest) error {
+func authorizeJobCreate(ctx context.Context, store ports.StateStore, request createJobHTTPRequest) (string, error) {
 	if err := authorizeTenantID(ctx, request.TenantID); err != nil {
-		return err
+		return "", err
 	}
 	switch strings.TrimSpace(request.Kind) {
 	case platformjobs.KindSourceRuntimeSync, platformjobs.KindGraphIngestRuntime, platformjobs.KindFindingRulesEvaluate, platformjobs.KindFindingsEvaluate:
 		runtimeID := stringPayload(request.Payload, "runtime_id", request.SubjectID)
-		return authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(store), runtimeID, false)
+		runtimeTenantID, err := sourceRuntimeTenantID(ctx, sourceRuntimeStore(store), runtimeID, false)
+		if err != nil {
+			return "", err
+		}
+		if err := requireMatchingJobTenant(request.TenantID, runtimeTenantID); err != nil {
+			return "", err
+		}
+		return firstNonEmpty(request.TenantID, runtimeTenantID), nil
 	case platformjobs.KindReportRun:
 		parameters := stringMapPayload(request.Payload, "parameters")
 		if request.TenantID != "" && parameters["tenant_id"] == "" {
 			parameters["tenant_id"] = request.TenantID
 		}
-		return authorizeTenantID(ctx, parameters["tenant_id"])
+		reportTenantID := parameters["tenant_id"]
+		if err := authorizeTenantID(ctx, reportTenantID); err != nil {
+			return "", err
+		}
+		if err := requireMatchingJobTenant(request.TenantID, reportTenantID); err != nil {
+			return "", err
+		}
+		return firstNonEmpty(request.TenantID, reportTenantID), nil
 	default:
-		return fmt.Errorf("%w: unsupported job kind %q", platformjobs.ErrInvalidRequest, strings.TrimSpace(request.Kind))
+		return "", fmt.Errorf("%w: unsupported job kind %q", platformjobs.ErrInvalidRequest, strings.TrimSpace(request.Kind))
 	}
+}
+
+func requireMatchingJobTenant(jobTenantID string, targetTenantID string) error {
+	jobTenantID = strings.TrimSpace(jobTenantID)
+	targetTenantID = strings.TrimSpace(targetTenantID)
+	if jobTenantID == "" || targetTenantID == "" || jobTenantID == targetTenantID {
+		return nil
+	}
+	return errTenantForbidden
 }
 
 func writeJobError(w http.ResponseWriter, err error) {
