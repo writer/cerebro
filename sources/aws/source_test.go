@@ -49,7 +49,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	snstypes "github.com/aws/aws-sdk-go-v2/service/sns/types"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
-	"github.com/aws/smithy-go"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -861,16 +860,31 @@ func TestS3BucketLocationRegionHandlesLegacyEU(t *testing.T) {
 	}
 }
 
-func TestListS3BucketsIgnoresPermanentRedirectForOptionalMetadata(t *testing.T) {
-	records, _, err := listS3Buckets(context.Background(), awsClients{s3: fakeAWS{
-		fakeAWSData: fakeAWSData{
-			s3Buckets: []s3types.Bucket{{Name: awssdk.String("legacy-eu")}},
-			s3BucketRegions: map[string]s3types.BucketLocationConstraint{
-				"legacy-eu": s3types.BucketLocationConstraint("EU"),
-			},
-			s3OptionalError: &smithy.GenericAPIError{Code: "PermanentRedirect", Message: "wrong region"},
+func TestListS3BucketsUsesBucketRegionForOptionalMetadata(t *testing.T) {
+	base := fakeAWS{fakeAWSData: fakeAWSData{
+		s3Buckets: []s3types.Bucket{{Name: awssdk.String("legacy-eu")}},
+		s3BucketRegions: map[string]s3types.BucketLocationConstraint{
+			"legacy-eu": s3types.BucketLocationConstraint("EU"),
 		},
-	}}, settings{region: "us-east-1"}, "", 0)
+	}}
+	regional := fakeAWS{fakeAWSData: fakeAWSData{
+		s3Tags: map[string][]s3types.Tag{"legacy-eu": {{Key: awssdk.String("owner"), Value: awssdk.String("security")}}},
+		s3Encryption: map[string]*s3types.ServerSideEncryptionConfiguration{"legacy-eu": {Rules: []s3types.ServerSideEncryptionRule{{
+			ApplyServerSideEncryptionByDefault: &s3types.ServerSideEncryptionByDefault{SSEAlgorithm: s3types.ServerSideEncryptionAes256},
+		}}}},
+		s3Versioning: map[string]s3types.BucketVersioningStatus{"legacy-eu": s3types.BucketVersioningStatusEnabled},
+		s3Logging:    map[string]bool{"legacy-eu": true},
+	}}
+	records, _, err := listS3Buckets(context.Background(), awsClients{
+		cfg: awssdk.Config{Region: "us-east-1"},
+		s3:  base,
+		s3ByRegion: func(region string) awsS3API {
+			if region != "eu-west-1" {
+				t.Fatalf("regional client requested for %q, want eu-west-1", region)
+			}
+			return regional
+		},
+	}, settings{region: "us-east-1"}, "", 0)
 	if err != nil {
 		t.Fatalf("listS3Buckets: %v", err)
 	}
@@ -879,6 +893,18 @@ func TestListS3BucketsIgnoresPermanentRedirectForOptionalMetadata(t *testing.T) 
 	}
 	if records[0].Region != "eu-west-1" {
 		t.Fatalf("region = %q, want eu-west-1", records[0].Region)
+	}
+	if records[0].Tags["owner"] != "security" {
+		t.Fatalf("owner tag = %q, want security", records[0].Tags["owner"])
+	}
+	if records[0].Encryption != "AES256" {
+		t.Fatalf("encryption = %q, want AES256", records[0].Encryption)
+	}
+	if records[0].Versioning != string(s3types.BucketVersioningStatusEnabled) {
+		t.Fatalf("versioning = %q, want Enabled", records[0].Versioning)
+	}
+	if !records[0].LoggingEnabled {
+		t.Fatalf("logging enabled = false, want true")
 	}
 }
 

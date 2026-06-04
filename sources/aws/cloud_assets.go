@@ -98,29 +98,30 @@ func listS3Buckets(ctx context.Context, clients awsClients, settings settings, _
 		} else if !optionalAWSError(err, "NoSuchBucket") {
 			return nil, "", fmt.Errorf("get bucket location %q: %w", name, err)
 		}
-		if tags, err := clients.s3.GetBucketTagging(ctx, &s3.GetBucketTaggingInput{Bucket: awssdk.String(name)}); err == nil {
+		bucketS3 := s3ClientForRegion(clients, record.Region)
+		if tags, err := bucketS3.GetBucketTagging(ctx, &s3.GetBucketTaggingInput{Bucket: awssdk.String(name)}); err == nil {
 			record.Tags = s3TagMap(tags.TagSet)
-		} else if !optionalAWSError(err, "NoSuchTagSet", "NoSuchBucket", "PermanentRedirect") {
+		} else if !optionalAWSError(err, "NoSuchTagSet", "NoSuchBucket") {
 			return nil, "", fmt.Errorf("get bucket tags %q: %w", name, err)
 		}
-		if encryption, err := clients.s3.GetBucketEncryption(ctx, &s3.GetBucketEncryptionInput{Bucket: awssdk.String(name)}); err == nil {
+		if encryption, err := bucketS3.GetBucketEncryption(ctx, &s3.GetBucketEncryptionInput{Bucket: awssdk.String(name)}); err == nil {
 			record.Encryption, record.KMSKeyID, record.BucketKeyEnabled = s3EncryptionSummary(encryption.ServerSideEncryptionConfiguration)
-		} else if !optionalAWSError(err, "ServerSideEncryptionConfigurationNotFoundError", "NoSuchBucket", "PermanentRedirect") {
+		} else if !optionalAWSError(err, "ServerSideEncryptionConfigurationNotFoundError", "NoSuchBucket") {
 			return nil, "", fmt.Errorf("get bucket encryption %q: %w", name, err)
 		}
-		if versioning, err := clients.s3.GetBucketVersioning(ctx, &s3.GetBucketVersioningInput{Bucket: awssdk.String(name)}); err == nil {
+		if versioning, err := bucketS3.GetBucketVersioning(ctx, &s3.GetBucketVersioningInput{Bucket: awssdk.String(name)}); err == nil {
 			record.Versioning = string(versioning.Status)
-		} else if !optionalAWSError(err, "NoSuchBucket", "PermanentRedirect") {
+		} else if !optionalAWSError(err, "NoSuchBucket") {
 			return nil, "", fmt.Errorf("get bucket versioning %q: %w", name, err)
 		}
-		if logging, err := clients.s3.GetBucketLogging(ctx, &s3.GetBucketLoggingInput{Bucket: awssdk.String(name)}); err == nil {
+		if logging, err := bucketS3.GetBucketLogging(ctx, &s3.GetBucketLoggingInput{Bucket: awssdk.String(name)}); err == nil {
 			record.LoggingEnabled = logging.LoggingEnabled != nil
-		} else if !optionalAWSError(err, "NoSuchBucket", "PermanentRedirect") {
+		} else if !optionalAWSError(err, "NoSuchBucket") {
 			return nil, "", fmt.Errorf("get bucket logging %q: %w", name, err)
 		}
-		if block, err := clients.s3.GetPublicAccessBlock(ctx, &s3.GetPublicAccessBlockInput{Bucket: awssdk.String(name)}); err == nil {
+		if block, err := bucketS3.GetPublicAccessBlock(ctx, &s3.GetPublicAccessBlockInput{Bucket: awssdk.String(name)}); err == nil {
 			record.PublicAccessBlock = block.PublicAccessBlockConfiguration
-		} else if !optionalAWSError(err, "NoSuchPublicAccessBlockConfiguration", "NoSuchBucket", "PermanentRedirect") {
+		} else if !optionalAWSError(err, "NoSuchPublicAccessBlockConfiguration", "NoSuchBucket") {
 			return nil, "", fmt.Errorf("get bucket public access block %q: %w", name, err)
 		}
 		records = append(records, record)
@@ -464,6 +465,14 @@ func s3BucketARN(name string) string {
 		return ""
 	}
 	return "arn:aws:s3:::" + strings.TrimSpace(name)
+}
+
+func s3ClientForRegion(clients awsClients, region string) awsS3API {
+	region = strings.TrimSpace(region)
+	if clients.s3ByRegion == nil || region == "" || region == clients.cfg.Region {
+		return clients.s3
+	}
+	return clients.s3ByRegion(region)
 }
 
 func s3BucketLocationRegion(value s3types.BucketLocationConstraint) string {

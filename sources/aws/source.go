@@ -141,6 +141,7 @@ type settings struct {
 type awsClientFactory func(context.Context, settings) (awsClients, error)
 
 type awsClients struct {
+	cfg          awssdk.Config
 	iam          awsIAMAPI
 	cloudTrail   awsCloudTrailAPI
 	ec2          awsEC2API
@@ -155,6 +156,7 @@ type awsClients struct {
 	lambda       awsLambdaAPI
 	tagging      awsResourceGroupsTaggingAPI
 	s3           awsS3API
+	s3ByRegion   func(string) awsS3API
 	rds          awsRDSAPI
 	kms          awsKMSAPI
 	secrets      awsSecretsManagerAPI
@@ -866,6 +868,7 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		cfg.Credentials = awssdk.NewCredentialsCache(provider)
 	}
 	return awsClients{
+		cfg:          cfg,
 		iam:          iam.NewFromConfig(cfg),
 		cloudTrail:   cloudtrail.NewFromConfig(cfg),
 		ec2:          ec2.NewFromConfig(cfg),
@@ -880,11 +883,16 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		lambda:       lambda.NewFromConfig(cfg),
 		tagging:      resourcegroupstaggingapi.NewFromConfig(cfg),
 		s3:           s3.NewFromConfig(cfg),
-		rds:          rds.NewFromConfig(cfg),
-		kms:          kms.NewFromConfig(cfg),
-		secrets:      secretsmanager.NewFromConfig(cfg),
-		sqs:          sqs.NewFromConfig(cfg),
-		sns:          sns.NewFromConfig(cfg),
+		s3ByRegion: func(region string) awsS3API {
+			regionalCfg := cfg
+			regionalCfg.Region = region
+			return s3.NewFromConfig(regionalCfg)
+		},
+		rds:     rds.NewFromConfig(cfg),
+		kms:     kms.NewFromConfig(cfg),
+		secrets: secretsmanager.NewFromConfig(cfg),
+		sqs:     sqs.NewFromConfig(cfg),
+		sns:     sns.NewFromConfig(cfg),
 	}, nil
 }
 
