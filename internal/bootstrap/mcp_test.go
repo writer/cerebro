@@ -288,6 +288,7 @@ func TestMCPTelemetryIncludesSafeToolContext(t *testing.T) {
 		}
 		req.Header.Set("Authorization", "Bearer test-key")
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
 		req.Header.Set("MCP-Protocol-Version", mcpProtocolVersion)
 		req.Header.Set("X-Request-ID", "req-mcp-123")
 		resp, err := server.Client().Do(req)
@@ -303,21 +304,31 @@ func TestMCPTelemetryIncludesSafeToolContext(t *testing.T) {
 
 	payload := decodeMCPTelemetryPayload(t, stderr)
 	for key, want := range map[string]any{
-		"name":             "cerebro.mcp.request",
-		"http.method":      http.MethodPost,
-		"http.route":       "POST /api/v1/mcp",
-		"http.status_code": float64(http.StatusOK),
-		"mcp.method":       "tools/call",
-		"mcp.tool":         "cerebro.version",
-		"mcp.tool_known":   true,
-		"mcp.tool_family":  "version",
-		"mcp.outcome":      "ok",
-		"mcp.transport":    "stateless_http",
-		"mcp.stateless":    true,
-		"request_id":       "req-mcp-123",
-		"auth_mode":        "api_key",
-		"tenant_id":        "writer",
-		"principal":        "tester",
+		"name":                           "cerebro.mcp.request",
+		"http.method":                    http.MethodPost,
+		"http.route":                     "POST /api/v1/mcp",
+		"http.status_code":               float64(http.StatusOK),
+		"mcp.method":                     "tools/call",
+		"mcp.request_kind":               "request",
+		"mcp.tool":                       "cerebro.version",
+		"mcp.tool_known":                 true,
+		"mcp.tool_family":                "version",
+		"mcp.outcome":                    "ok",
+		"mcp.transport":                  "stateless_http",
+		"mcp.stateless":                  true,
+		"mcp.accepts_json":               true,
+		"mcp.accepts_sse":                false,
+		"mcp.content_type":               "application/json",
+		"mcp.jsonrpc_id_present":         true,
+		"mcp.params_present":             true,
+		"mcp.response_shape":             "tool_result",
+		"mcp.tool_result_error":          false,
+		"mcp.tool_result_content_count":  float64(1),
+		"mcp.structured_content_present": true,
+		"request_id":                     "req-mcp-123",
+		"auth_mode":                      "api_key",
+		"tenant_id":                      "writer",
+		"principal":                      "tester",
 	} {
 		if got := payload[key]; got != want {
 			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
@@ -351,12 +362,14 @@ func TestMCPTelemetryClassifiesToolErrors(t *testing.T) {
 
 	payload := decodeMCPTelemetryPayload(t, stderr)
 	for key, want := range map[string]any{
-		"mcp.method":          "tools/call",
-		"mcp.tool":            "cerebro.runtimes.status",
-		"mcp.tool_family":     "runtimes",
-		"mcp.outcome":         "tool_error",
-		"mcp.tool_error":      true,
-		"mcp.tool_error_kind": "runtime_unavailable",
+		"mcp.method":            "tools/call",
+		"mcp.tool":              "cerebro.runtimes.status",
+		"mcp.tool_family":       "runtimes",
+		"mcp.outcome":           "tool_error",
+		"mcp.tool_error":        true,
+		"mcp.tool_error_kind":   "runtime_unavailable",
+		"mcp.response_shape":    "tool_result",
+		"mcp.tool_result_error": true,
 	} {
 		if got := payload[key]; got != want {
 			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
@@ -394,8 +407,10 @@ func TestMCPGETTelemetryRecordsStatelessRejection(t *testing.T) {
 		"http.route":       "GET /api/v1/mcp",
 		"http.status_code": float64(http.StatusMethodNotAllowed),
 		"mcp.outcome":      "stateless_get_rejected",
+		"mcp.request_kind": "transport_reject",
 		"mcp.transport":    "stateless_http",
 		"mcp.stateless":    true,
+		"mcp.accepts_sse":  true,
 	} {
 		if got := payload[key]; got != want {
 			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)

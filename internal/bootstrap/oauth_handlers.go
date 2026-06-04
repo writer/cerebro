@@ -218,13 +218,14 @@ func (app *App) handleOAuthRegister(w http.ResponseWriter, r *http.Request) {
 		writeOAuthError(w, mcpoauthOAuthError("invalid_client_metadata", "invalid JSON body", http.StatusBadRequest))
 		return
 	}
+	auditFields := oauthAuditRegistrationFields(request)
 	response, err := app.mcpOAuthService.RegisterClient(r.Context(), request)
 	if err != nil {
-		app.emitOAuthAuditEvent(r, "register", oauthErrorStatus(err), oauthAuditOutcome(err), oauthErrorCode(err), "", started)
+		app.emitOAuthAuditEvent(r, "register", oauthErrorStatus(err), oauthAuditOutcome(err), oauthErrorCode(err), "", started, auditFields...)
 		writeOAuthError(w, err)
 		return
 	}
-	app.emitOAuthAuditEvent(r, "register", http.StatusCreated, "success", "", response.ClientID, started)
+	app.emitOAuthAuditEvent(r, "register", http.StatusCreated, "success", "", response.ClientID, started, auditFields...)
 	writeOAuthJSON(w, http.StatusCreated, response)
 }
 
@@ -263,7 +264,7 @@ func (app *App) allowOAuthEndpoint(w http.ResponseWriter, r *http.Request, opera
 	return true
 }
 
-func (app *App) emitOAuthAuditEvent(r *http.Request, operation string, status int, outcome string, reason string, clientID string, started time.Time) {
+func (app *App) emitOAuthAuditEvent(r *http.Request, operation string, status int, outcome string, reason string, clientID string, started time.Time, extraFields ...telemetry.Field) {
 	if r == nil {
 		return
 	}
@@ -289,7 +290,120 @@ func (app *App) emitOAuthAuditEvent(r *http.Request, operation string, status in
 	if reason = strings.TrimSpace(reason); reason != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "reason", Value: reason})
 	}
+	if requestID := accessAuditRequestID(r); requestID != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "request_id", Value: requestID})
+	}
+	for _, field := range app.oauthAuditRequestFields(r) {
+		attrs = attrs.WithField(field)
+	}
+	for _, field := range extraFields {
+		attrs = attrs.WithField(field)
+	}
 	telemetry.Event(r.Context(), "cerebro.oauth.mcp", attrs)
+}
+
+func (app *App) oauthAuditRequestFields(r *http.Request) []telemetry.Field {
+	if r == nil || r.Form == nil {
+		return nil
+	}
+	path := ""
+	if r.URL != nil {
+		path = r.URL.Path
+	}
+	var fields []telemetry.Field
+	switch path {
+	case oauthTokenPath:
+		grantType := oauthAuditGrantType(r.Form.Get("grant_type"))
+		if grantType != "" {
+			fields = append(fields, telemetry.Field{Key: "oauth.grant_type", Value: grantType})
+		}
+		fields = append(fields,
+			telemetry.Field{Key: "oauth.client_auth_method", Value: oauthAuditTokenAuthMethod(r)},
+			telemetry.Field{Key: "oauth.scope_count", Value: len(strings.Fields(r.Form.Get("scope")))},
+		)
+		resourcePresent, resourceMatchesMCP := app.oauthAuditResourceShape(r)
+		fields = append(fields,
+			telemetry.Field{Key: "oauth.resource_present", Value: resourcePresent},
+			telemetry.Field{Key: "oauth.resource_matches_mcp", Value: resourceMatchesMCP},
+		)
+	case oauthRevokePath:
+		fields = append(fields,
+			telemetry.Field{Key: "oauth.client_auth_method", Value: oauthAuditTokenAuthMethod(r)},
+			telemetry.Field{Key: "oauth.token_type_hint_present", Value: strings.TrimSpace(r.Form.Get("token_type_hint")) != ""},
+		)
+	}
+	return fields
+}
+
+func oauthAuditRegistrationFields(request mcpoauth.ClientRegistrationRequest) []telemetry.Field {
+	return []telemetry.Field{
+		{Key: "oauth.redirect_uri_count", Value: len(normalizeAuthList(request.RedirectURIs))},
+		{Key: "oauth.grant_type_count", Value: len(normalizeAuthList(request.GrantTypes))},
+		{Key: "oauth.response_type_count", Value: len(normalizeAuthList(request.ResponseTypes))},
+		{Key: "oauth.client_auth_method", Value: oauthAuditClientAuthMethod(request.TokenEndpointAuthMethod)},
+	}
+}
+
+func oauthAuditGrantType(raw string) string {
+	switch strings.TrimSpace(raw) {
+	case "authorization_code", "refresh_token", "client_credentials":
+		return strings.TrimSpace(raw)
+	case "":
+		return ""
+	default:
+		return "other"
+	}
+}
+
+func oauthAuditTokenAuthMethod(r *http.Request) string {
+	if r == nil {
+		return "unknown"
+	}
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(r.Header.Get("Authorization"))), "basic ") {
+		return "client_secret_basic"
+	}
+	if r.Form != nil && strings.TrimSpace(r.Form.Get("client_secret")) != "" {
+		return "client_secret_post"
+	}
+	if r.Form != nil && strings.TrimSpace(r.Form.Get("client_id")) != "" {
+		return "none"
+	}
+	return "unknown"
+}
+
+func oauthAuditClientAuthMethod(raw string) string {
+	switch strings.TrimSpace(raw) {
+	case "", "none":
+		return "none"
+	case "client_secret_basic", "client_secret_post":
+		return strings.TrimSpace(raw)
+	default:
+		return "other"
+	}
+}
+
+func (app *App) oauthAuditResourceShape(r *http.Request) (bool, bool) {
+	if r == nil || r.Form == nil {
+		return false, false
+	}
+	resources := r.Form["resource"]
+	resourcePresent := false
+	resourceMatchesMCP := false
+	expected := strings.TrimSpace(app.cfg.Auth.MCPOAuth.Resource)
+	if expected == "" {
+		expected = externalOrigin(r, app.cfg.Auth.RequestOrigin) + mcpEndpointPath
+	}
+	for _, resource := range resources {
+		resource = strings.TrimSpace(resource)
+		if resource == "" {
+			continue
+		}
+		resourcePresent = true
+		if resource == expected {
+			resourceMatchesMCP = true
+		}
+	}
+	return resourcePresent, resourceMatchesMCP
 }
 
 func oauthErrorStatus(err error) int {
