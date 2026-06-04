@@ -8,7 +8,7 @@ Cerebro's workload filesystem analyzer is now the shared catalog-and-finding sub
 - Separate execution orchestration from filesystem cataloging.
 - Keep package inventory, secret detection, misconfiguration analysis, and SBOM generation under one contract.
 - Treat vulnerability matching as a pluggable layer so the analyzer can use the persisted vulnerability knowledge pipeline from issue `#181` without hard-coding one scanner backend.
-- Keep scan runtimes on one shared execution-store schema instead of growing per-runtime persistence silos.
+- Keep scan runtimes on shared platform job semantics instead of growing per-runtime persistence silos.
 
 ## Current Contract
 
@@ -55,13 +55,7 @@ Current analyzer responsibilities:
 
 ## Runtime Integration
 
-The analyzer is now reused by:
-
-- `internal/workloadscan.FilesystemAnalyzer`
-- `internal/imagescan.FilesystemAnalyzer`
-- `internal/functionscan.FilesystemAnalyzer`
-
-That means the execution runtimes are now responsible for:
+The analyzer contract is intended to be reused by workload, image, and function scan adapters. Those adapters are responsible for:
 
 - acquisition and materialization
 - lifecycle events
@@ -76,24 +70,14 @@ And the analyzer is responsible for:
 
 This is the correct boundary.
 
-## Shared Execution Store
+## Shared Execution State
 
-The scan runtimes no longer persist through three independent SQLite schemas hidden behind separate implementations.
+Scan runtimes should not persist through per-runtime local stores. They should use the shared platform job model:
 
-Shared package:
-
-- `internal/executionstore`
-
-Current behavior:
-
-- one shared `execution_runs` table keyed by `namespace + run_id`
-- one shared `execution_events` table keyed by `namespace + run_id + sequence`
-- runtime wrappers in:
-  - `internal/workloadscan`
-  - `internal/imagescan`
-  - `internal/functionscan`
-
-This is still SQLite-backed and single-node, but it is now one execution substrate instead of three similar stores pretending to be separate systems.
+- one shared job table keyed by job ID and tenant
+- one shared job-event timeline keyed by job ID and sequence
+- job `kind` values for workload, image, function, vulnerability-sync, graph, and finding execution
+- Postgres-backed leases for worker-safe execution
 
 ## OSS Patterns Reused
 
@@ -133,4 +117,4 @@ Cerebro should keep those stages separate.
 1. Extend the vulnerability database with NVD, GitHub Advisory, and distro feeds.
 2. Extend the now-landed workload scan graph projection from issue `#182` to image/function scan families and richer claim/evidence projection.
 3. Extend package coverage for RPM, Ruby gems, and .NET `.deps.json`.
-4. Move execution resources and vuln sync jobs onto a multi-worker backend if SQLite becomes the scaling bottleneck.
+4. Move scan execution resources and vulnerability sync jobs onto the shared platform job backend.

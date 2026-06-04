@@ -1,4 +1,4 @@
-.PHONY: build serve test sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check readme-check oss-audit govulncheck docker-smoke release-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: build serve test sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check sdk-dependency-audit workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check docs-drift-check readme-check oss-audit govulncheck docker-smoke release-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
@@ -73,6 +73,10 @@ sdk-typescript-test:
 
 sdk-typescript-check:
 	cd sdk/typescript && npm ci && npm run typecheck
+
+sdk-dependency-audit:
+	python3 -m pip install --user pip-audit
+	python3 scripts/sdk_dependency_audit.py
 
 workflow-e2e-test:
 	go test $(WORKFLOW_E2E_PACKAGES) -run '$(WORKFLOW_E2E_TESTS)$$' -count=1 -v
@@ -174,6 +178,9 @@ detection-catalog-generate:
 detection-catalog-check:
 	go run ./tools/detectioncatalog --check
 
+docs-drift-check:
+	python3 scripts/docs_drift_check.py
+
 readme-check:
 	@base_ref="$(README_CHECK_BASE)"; \
 	if git rev-parse --verify "$$base_ref" >/dev/null 2>&1; then \
@@ -241,7 +248,7 @@ hooks:
 pre-commit:
 	./scripts/pre_commit_checks.sh
 
-check: build test sdk-test lint proto-lint proto-generate-check check-structural check-structural-test check-arch
+check: build test sdk-test lint proto-lint proto-generate-check docs-drift-check check-structural check-structural-test check-arch
 
 check-structural: check-structural-build
 	@$(LINTER_BIN) $(APP_PACKAGES)
@@ -257,4 +264,4 @@ check-arch:
 
 check-hook-integrity: check-arch
 
-verify: build test sdk-test mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check detection-catalog-check readme-check oss-audit release-smoke check-structural check-structural-test check-arch
+verify: build test sdk-test sdk-dependency-audit mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check detection-catalog-check docs-drift-check readme-check oss-audit release-smoke check-structural check-structural-test check-arch

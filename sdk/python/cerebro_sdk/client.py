@@ -60,6 +60,38 @@ class Client:
         result, _ = self._request_json("GET", f"/platform/graph/neighborhood?{parse.urlencode(query)}")
         return result
 
+    def create_job(self, payload: Dict[str, Any], idempotency_key: str = "") -> Any:
+        headers = {"Idempotency-Key": idempotency_key} if idempotency_key else None
+        result, _ = self._request_json("POST", "/platform/jobs", payload, headers)
+        return result
+
+    def list_jobs(self, filters: Optional[Dict[str, Any]] = None) -> Any:
+        query: Dict[str, str] = {}
+        for key, value in (filters or {}).items():
+            if value in (None, ""):
+                continue
+            query[key] = str(value)
+        path = "/platform/jobs"
+        if query:
+            path = f"{path}?{parse.urlencode(query)}"
+        result, _ = self._request_json("GET", path)
+        return result
+
+    def get_job(self, job_id: str) -> Any:
+        result, _ = self._request_json("GET", f"/platform/jobs/{parse.quote(job_id, safe='')}")
+        return result
+
+    def list_job_events(self, job_id: str, limit: int = 0) -> Any:
+        path = f"/platform/jobs/{parse.quote(job_id, safe='')}/events"
+        if limit > 0:
+            path = f"{path}?{parse.urlencode({'limit': str(limit)})}"
+        result, _ = self._request_json("GET", path)
+        return result
+
+    def cancel_job(self, job_id: str) -> Any:
+        result, _ = self._request_json("POST", f"/platform/jobs/{parse.quote(job_id, safe='')}/cancel")
+        return result
+
     def integration(self, runtime_id: str, tenant_id: str, integration: str) -> "IntegrationClient":
         return IntegrationClient(self, runtime_id=runtime_id, tenant_id=tenant_id, integration=integration)
 

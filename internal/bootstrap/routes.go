@@ -28,6 +28,8 @@ func (app *App) registerRoutes(mux *http.ServeMux, cfg config.Config, deps Depen
 	app.registerSourceRoutes(mux)
 	app.registerKnowledgeRoutes(mux)
 	app.registerGraphRoutes(mux)
+	app.registerJobRoutes(mux)
+	app.registerRuntimeResponseRoutes(mux)
 	app.registerSourceRuntimeRoutes(mux)
 	app.registerMCPRoutes(mux)
 	app.registerDeviceRoutes(mux)
@@ -43,6 +45,7 @@ func (app *App) registerPublicRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /health", routeSurfacePublicHTTP, app.handleHealth)
 	registerHTTPRoute(mux, "GET /healthz", routeSurfacePublicHTTP, app.handleLiveness)
 	registerHTTPRoute(mux, "GET /livez", routeSurfacePublicHTTP, app.handleLiveness)
+	registerHTTPRoute(mux, "GET /metrics", routeSurfacePlatformHTTP, app.handleMetrics)
 	registerHTTPRoute(mux, "GET /openapi.yaml", routeSurfacePublicHTTP, app.handleOpenAPI)
 }
 
@@ -117,6 +120,21 @@ func (app *App) registerGraphRoutes(mux *http.ServeMux) {
 	registerHTTPRoute(mux, "GET /platform/graph/ingest-health", routeSurfacePlatformHTTP, app.handleCheckGraphIngestHealth)
 	registerHTTPRoute(mux, "GET /platform/graph/ingest-runs", routeSurfacePlatformHTTP, app.handleListGraphIngestRuns)
 	registerHTTPRoute(mux, "GET /platform/graph/ingest-runs/{runID}", routeSurfacePlatformHTTP, app.handleGetGraphIngestRun)
+}
+
+func (app *App) registerJobRoutes(mux *http.ServeMux) {
+	registerHTTPRoute(mux, "POST /platform/jobs", routeSurfacePlatformHTTP, app.handleCreateJob)
+	registerHTTPRoute(mux, "GET /platform/jobs", routeSurfacePlatformHTTP, app.handleListJobs)
+	registerHTTPRoute(mux, "GET /platform/jobs/{jobID}", routeSurfacePlatformHTTP, app.handleGetJob)
+	registerHTTPRoute(mux, "GET /platform/jobs/{jobID}/events", routeSurfacePlatformHTTP, app.handleListJobEvents)
+	registerHTTPRoute(mux, "POST /platform/jobs/{jobID}/cancel", routeSurfacePlatformHTTP, app.handleCancelJob)
+}
+
+func (app *App) registerRuntimeResponseRoutes(mux *http.ServeMux) {
+	registerHTTPRoute(mux, "GET /platform/runtime-response/capabilities", routeSurfacePlatformHTTP, app.handleRuntimeResponseCapabilities)
+	registerHTTPRoute(mux, "POST /platform/runtime-response/actions", routeSurfacePlatformHTTP, app.handleExecuteRuntimeResponse)
+	registerHTTPRoute(mux, "GET /platform/runtime-response/blocklist", routeSurfacePlatformHTTP, app.handleListRuntimeBlocklist)
+	registerHTTPRoute(mux, "POST /platform/runtime-response/blocklist/{entryID}/revoke", routeSurfacePlatformHTTP, app.handleRevokeRuntimeBlocklistEntry)
 }
 
 func (app *App) registerSourceRuntimeRoutes(mux *http.ServeMux) {

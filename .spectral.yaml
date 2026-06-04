@@ -6,6 +6,9 @@ rules:
   operation-tags: error
   operation-description: off
   operation-operationId: off
+  # Cerebro documents intentional rejection operations, such as GET /api/v1/mcp
+  # returning 405 to prevent clients from treating it as an SSE transport.
+  operation-success-response: off
 
   no-undocumented-tag:
     description: Placeholder tags are not allowed in committed OpenAPI contracts.

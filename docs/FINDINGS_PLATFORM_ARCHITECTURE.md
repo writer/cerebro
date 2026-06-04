@@ -162,25 +162,22 @@ curl \
 
 This reads normalized persisted findings, not transient rule output.
 
-## Current Built-In Rule
+## Current Built-In Catalog
 
-Today the built-in catalog contains one rule:
+The built-in public detection catalog currently contains 74 rules across cloud, identity, GitHub, GRC, runtime, endpoint, and vulnerability domains. The generated public catalog lives at `internal/findings/public_detection_catalog.json`; `make detection-catalog-check` verifies that it stays in sync with the registered rule metadata.
 
-- `identity-okta-policy-rule-lifecycle-tampering`
-
-It lives in `internal/findings/okta_policy_rule_lifecycle_tampering_rule.go`.
-
-Why it was extracted into its own file:
+Rules live as small files under `internal/findings/` and register through the built-in registry. The original Okta lifecycle-tampering detector is now one example in a broader catalog, not the only supported rule. This shape keeps the service generic:
 
 - the service should not know Okta-specific event semantics
-- rule logic should be independently testable
-- future rules should look like sibling registrations, not more service branching
+- rule logic stays independently testable
+- future rules remain sibling registrations, not service branching
 
 ## Code Map
 
 - `internal/findings/registry.go` — rule interface and rule catalog
 - `internal/findings/service.go` — replay orchestration, explicit rule selection, and durable evaluation run lifecycle
-- `internal/findings/okta_policy_rule_lifecycle_tampering_rule.go` — first built-in finding rule
+- `internal/findings/*_rule.go` — built-in signal and graph-backed finding rules
+- `internal/findings/public_detection_catalog.json` — generated public detection catalog
 - `internal/statestore/postgres/findingevaluationruns.go` — persisted evaluation run storage and query filters
 - `internal/bootstrap/app.go` — HTTP and ConnectRPC exposure
 - `proto/cerebro/v1/bootstrap.proto` — transport contract for rule listing, rule-scoped evaluation, and run inspection

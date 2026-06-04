@@ -15,6 +15,7 @@ permissions:
   contents: write
   packages: write
   id-token: write
+  attestations: write
 
 concurrency:
   group: release-${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
@@ -144,6 +145,13 @@ jobs:
             mkdir -p ".dist/linux-${arch}"
             CGO_ENABLED=0 GOOS=linux GOARCH="${arch}" go build -trimpath -ldflags "${ldflags}" -o ".dist/linux-${arch}/cerebro" ./cmd/cerebro
           done
+
+      - name: Attest runtime binaries
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-path: |
+            .dist/linux-amd64/cerebro
+            .dist/linux-arm64/cerebro
 
       - name: Upload linux/amd64 runtime binary
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -277,6 +285,13 @@ jobs:
         run: |
           set -euo pipefail
           cosign sign --yes "${IMAGE_BASE}@${DIGEST}"
+
+      - name: Attest release image provenance
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-name: ghcr.io/${{ github.repository }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
+          push-to-registry: true
 
   notify-infra-release:
     runs-on: ubuntu-latest

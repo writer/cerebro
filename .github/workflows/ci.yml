@@ -21,6 +21,8 @@ jobs:
             command: make test
           - name: sdk
             command: make sdk-test
+          - name: sdk-dependency-audit
+            command: make sdk-dependency-audit
           - name: mcp
             command: make mcp-contract-check mcp-sdk-compat
           - name: lint
@@ -31,6 +33,8 @@ jobs:
             command: make openapi-check openapi-lint
           - name: catalog
             command: make catalog-check detection-catalog-check
+          - name: docs-drift
+            command: make docs-drift-check
           - name: readme
             command: make readme-check
           - name: oss-audit

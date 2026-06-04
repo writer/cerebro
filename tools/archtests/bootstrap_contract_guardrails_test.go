@@ -200,6 +200,7 @@ func TestSourceCDKOwnsExternalHTTPClients(t *testing.T) {
 			}
 			if strings.HasPrefix(rel, "sources"+string(filepath.Separator)) ||
 				strings.HasPrefix(rel, filepath.Join("internal", "bootstrap")+string(filepath.Separator)) ||
+				strings.HasPrefix(rel, filepath.Join("internal", "observability")+string(filepath.Separator)) ||
 				strings.HasPrefix(rel, filepath.Join("internal", "sourcehttp")+string(filepath.Separator)) {
 				continue
 			}

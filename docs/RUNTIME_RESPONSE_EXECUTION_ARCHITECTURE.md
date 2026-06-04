@@ -90,7 +90,7 @@ That is better than a half-local, half-stubbed action set where policies "succee
 
 `block_ip` and `block_domain` now produce immediate containment state inside the runtime blocklist.
 
-If a remote tool provider is present, Cerebro also attempts best-effort remote enforcement with the matching `security.runtime.*` tool.
+The blocklist is persisted through the Postgres state store and exposed through `/platform/runtime-response/blocklist`, so multiple bootstrap replicas see the same containment state.
 
 The local blocklist update is the guaranteed action.
 
@@ -117,10 +117,12 @@ This cut is intentionally not the end state.
 
 Still missing:
 
-1. Persisted/runtime-distributed blocklist propagation instead of process-local memory only.
+1. Remote propagation from the durable blocklist into concrete network/device controls.
 2. Stronger target resolution from graph identity instead of heuristic runtime metadata.
 3. Provider-native credential revocation and host/network isolation for common clouds.
-4. Typed API visibility into runtime action capability coverage and executor mode.
+4. Kubernetes `scale_down` and remote-tool executors wired behind the same trusted-scope checks.
+
+Capability coverage is visible at `/platform/runtime-response/capabilities`; unsupported actions return typed errors instead of successful-looking no-ops.
 
 ## GitHub Reference Points
 

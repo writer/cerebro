@@ -1,0 +1,27 @@
+# Default ownership for broad platform changes.
+* @writer/security
+
+# Runtime, contracts, release, and supply-chain surfaces require explicit review.
+/.github/ @writer/security
+/.goreleaser.yaml @writer/security
+/Dockerfile @writer/security
+/Dockerfile.runtime @writer/security
+/Makefile @writer/security
+/go.mod @writer/security
+/go.sum @writer/security
+/api/ @writer/security
+/proto/ @writer/security
+/gen/ @writer/security
+/internal/bootstrap/ @writer/security
+/internal/config/ @writer/security
+/internal/statestore/ @writer/security
+/internal/graphstore/ @writer/security
+/internal/findings/ @writer/security
+/internal/deviceauth/ @writer/security
+/internal/mcpoauth/ @writer/security
+/scripts/ @writer/security
+/tools/ @writer/security
+/policies/ @writer/security
+/sources/ @writer/security
+/sdk/python/ @writer/security
+/sdk/typescript/ @writer/security

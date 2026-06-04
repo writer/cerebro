@@ -29,13 +29,13 @@ The pipeline is intentionally split so later issues can swap analyzers, transfer
 
 ## Persisted Runtime Model
 
-The runtime persists state through `internal/workloadscan.SQLiteRunStore`, which now wraps the shared `internal/executionstore` schema.
+The current bootstrap repository does not ship a dedicated workload-scan runtime package. Workload-scan execution should persist through the shared platform job model and the Postgres state store, not through a scan-specific embedded store.
 
 Persisted records:
 
-- `RunRecord`: one execution resource for a submitted workload scan
+- `Job`: one platform execution resource for a submitted workload scan
 - `VolumeScanRecord`: per-source-volume progress, artifacts, and cleanup state
-- `RunEvent`: append-only lifecycle/event timeline for debugging and future API surfacing
+- `JobEvent`: append-only lifecycle/event timeline for debugging and API surfacing
 
 This is the current durability boundary:
 
@@ -43,7 +43,7 @@ This is the current durability boundary:
 - reconciliation can find leaked artifacts from persisted failed/incomplete runs
 - cleanup is not dependent on the original process remaining alive
 
-This is explicitly better than a process-local in-memory queue, but it is not yet the final distributed execution architecture.
+This is intentionally aligned with the three-store architecture: JetStream for events, Postgres for current execution state, and Neo4j/Aura for graph projection.
 
 ## Provider Seams
 
@@ -57,10 +57,8 @@ The runtime depends on narrow interfaces:
 
 Current concrete implementations:
 
-- `AWSProvider`
-- `LocalMounter`
-- `FilesystemAnalyzer`
-- `SQLiteRunStore`
+- provider, mounter, and analyzer adapters should live behind the platform job execution boundary
+- durable state should be stored in Postgres through the shared job tables
 
 This allows the issue stack to progress in layers:
 
@@ -109,6 +107,7 @@ The runtime emits webhook-compatible lifecycle events:
 These events are a bridge into the broader intelligence/reporting platform without making workload scanning a one-off subsystem.
 
 Successful workload scans are also projected into the security graph during graph activation from the shared execution store. That projection currently creates:
+Successful workload scans should project into the security graph from durable scan/job records and emitted lifecycle events. That projection should create:
 
 - `workload_scan` nodes
 - `package` nodes
@@ -124,7 +123,6 @@ Older successful scans for the same workload are retained with temporal superses
 
 Current controls:
 
-- `WORKLOAD_SCAN_STATE_FILE`
 - `WORKLOAD_SCAN_MOUNT_BASE_PATH`
 - `WORKLOAD_SCAN_MAX_CONCURRENT_SNAPSHOTS`
 - `WORKLOAD_SCAN_CLEANUP_TIMEOUT`
@@ -141,9 +139,9 @@ These are meant to bound:
 
 ## Known Limits
 
-- The runtime is SQLite-backed and single-node durable today, not yet multi-worker/distributed.
+- The dedicated workload scan runtime is not implemented in this bootstrap repository yet.
 - The analyzer now catalogs OS/package/SBOM/secret/config data through the shared filesystem analyzer, but RPM/Windows/deeper ecosystem coverage is still incomplete.
-- The execution surface is CLI-first; there is no first-class platform API/job resource yet.
+- The execution surface should use first-class platform jobs rather than scan-specific run storage.
 - Persisted run state is durable and now hydrates into the security graph on graph activation, but real-time graph refresh still depends on the next graph rebuild/incremental-apply cycle.
 
 ## Next Steps
@@ -153,4 +151,4 @@ These are meant to bound:
 3. Expose run resources and events through the platform API.
 4. Project package/vulnerability matches into first-class observations/evidence/claims instead of node/edge projection alone.
 5. Add a real-time graph refresh path for `security.workload_scan.completed`.
-6. Decide whether the long-term state backend remains SQLite or moves to a multi-worker execution store.
+6. Implement provider adapters on top of the shared platform job backend.
