@@ -213,6 +213,96 @@ func TestReadLiveAzureARMPreview(t *testing.T) {
 	}
 }
 
+func TestListSQLDatabasesDrainsServerAndDatabasePages(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/subscriptions/sub-1/providers/Microsoft.Sql/servers":
+			if r.URL.Query().Get("page") == "2" {
+				writeJSON(t, w, map[string]any{"value": []map[string]any{azureSQLServerPayload("sql-b")}})
+				return
+			}
+			writeJSON(t, w, map[string]any{
+				"value":    []map[string]any{azureSQLServerPayload("sql-a")},
+				"nextLink": serverURL(r) + "/subscriptions/sub-1/providers/Microsoft.Sql/servers?page=2",
+			})
+		case "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Sql/servers/sql-a/databases":
+			if r.URL.Query().Get("page") == "2" {
+				writeJSON(t, w, map[string]any{"value": []map[string]any{azureSQLDatabasePayload("sql-a", "db-a2")}})
+				return
+			}
+			writeJSON(t, w, map[string]any{
+				"value":    []map[string]any{azureSQLDatabasePayload("sql-a", "db-a1")},
+				"nextLink": serverURL(r) + "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Sql/servers/sql-a/databases?page=2",
+			})
+		case "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Sql/servers/sql-b/databases":
+			writeJSON(t, w, map[string]any{"value": []map[string]any{azureSQLDatabasePayload("sql-b", "db-b1")}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	source, settings := newAzurePaginationTestSource(t, server, familySQLDatabase)
+
+	records, next, err := listSQLDatabases(context.Background(), source, settings, "", 1)
+	if err != nil {
+		t.Fatalf("listSQLDatabases: %v", err)
+	}
+	if next != "" {
+		t.Fatalf("next = %q, want empty after draining nested pages", next)
+	}
+	if got, want := len(records), 3; got != want {
+		t.Fatalf("len(records) = %d, want %d", got, want)
+	}
+	if records[0].Database.Name != "db-a1" || records[1].Database.Name != "db-a2" || records[2].Database.Name != "db-b1" {
+		t.Fatalf("database order = %q, %q, %q", records[0].Database.Name, records[1].Database.Name, records[2].Database.Name)
+	}
+}
+
+func TestListKeyVaultChildrenDrainsVaultAndChildPages(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/subscriptions/sub-1/providers/Microsoft.KeyVault/vaults":
+			if r.URL.Query().Get("page") == "2" {
+				writeJSON(t, w, map[string]any{"value": []map[string]any{azureKeyVaultPayload("kv-b")}})
+				return
+			}
+			writeJSON(t, w, map[string]any{
+				"value":    []map[string]any{azureKeyVaultPayload("kv-a")},
+				"nextLink": serverURL(r) + "/subscriptions/sub-1/providers/Microsoft.KeyVault/vaults?page=2",
+			})
+		case "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.KeyVault/vaults/kv-a/keys":
+			if r.URL.Query().Get("page") == "2" {
+				writeJSON(t, w, map[string]any{"value": []map[string]any{azureKeyVaultKeyPayload("kv-a", "key-a2")}})
+				return
+			}
+			writeJSON(t, w, map[string]any{
+				"value":    []map[string]any{azureKeyVaultKeyPayload("kv-a", "key-a1")},
+				"nextLink": serverURL(r) + "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.KeyVault/vaults/kv-a/keys?page=2",
+			})
+		case "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.KeyVault/vaults/kv-b/keys":
+			writeJSON(t, w, map[string]any{"value": []map[string]any{azureKeyVaultKeyPayload("kv-b", "key-b1")}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	source, settings := newAzurePaginationTestSource(t, server, familyKeyVaultKey)
+
+	records, next, err := listKeyVaultKeys(context.Background(), source, settings, "", 1)
+	if err != nil {
+		t.Fatalf("listKeyVaultKeys: %v", err)
+	}
+	if next != "" {
+		t.Fatalf("next = %q, want empty after draining nested pages", next)
+	}
+	if got, want := len(records), 3; got != want {
+		t.Fatalf("len(records) = %d, want %d", got, want)
+	}
+	if records[0].Resource.Name != "key-a1" || records[1].Resource.Name != "key-a2" || records[2].Resource.Name != "key-b1" {
+		t.Fatalf("key order = %q, %q, %q", records[0].Resource.Name, records[1].Resource.Name, records[2].Resource.Name)
+	}
+}
+
 func TestAzureAppRoleAssignmentDerivesUserPrincipalEmail(t *testing.T) {
 	event, err := appRoleAssignmentEvent(settings{tenantID: "tenant-1"}, appRoleAssignmentRecord{
 		ID:                   "app-role-assignment-1",
@@ -394,6 +484,78 @@ func newAzureAPIHandler(t *testing.T) http.Handler {
 			http.NotFound(w, r)
 		}
 	})
+}
+
+func newAzurePaginationTestSource(t *testing.T, server *httptest.Server, family string) (*Source, settings) {
+	t.Helper()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("newLiveTestSource: %v", err)
+	}
+	source.client = server.Client()
+	return source, settings{
+		armBaseURL:     server.URL,
+		armToken:       "test-token",
+		family:         family,
+		perPage:        1,
+		subscriptionID: "sub-1",
+		tenantID:       "tenant-1",
+	}
+}
+
+func serverURL(r *http.Request) string {
+	return "http://" + r.Host
+}
+
+func azureSQLServerPayload(name string) map[string]any {
+	return map[string]any{
+		"id":       "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Sql/servers/" + name,
+		"name":     name,
+		"type":     "Microsoft.Sql/servers",
+		"location": "eastus",
+		"properties": map[string]any{
+			"fullyQualifiedDomainName": name + ".database.windows.net",
+			"publicNetworkAccess":      "Enabled",
+		},
+	}
+}
+
+func azureSQLDatabasePayload(serverName string, name string) map[string]any {
+	return map[string]any{
+		"id":       "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.Sql/servers/" + serverName + "/databases/" + name,
+		"name":     name,
+		"type":     "Microsoft.Sql/servers/databases",
+		"location": "eastus",
+		"properties": map[string]any{
+			"currentBackupStorageRedundancy": "Geo",
+			"status":                         "Online",
+		},
+	}
+}
+
+func azureKeyVaultPayload(name string) map[string]any {
+	return map[string]any{
+		"id":       "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.KeyVault/vaults/" + name,
+		"name":     name,
+		"type":     "Microsoft.KeyVault/vaults",
+		"location": "eastus",
+		"properties": map[string]any{
+			"enablePurgeProtection": true,
+			"vaultUri":              "https://" + name + ".example.com/",
+		},
+	}
+}
+
+func azureKeyVaultKeyPayload(vaultName string, name string) map[string]any {
+	return map[string]any{
+		"id":   "/subscriptions/sub-1/resourceGroups/rg-prod/providers/Microsoft.KeyVault/vaults/" + vaultName + "/keys/" + name,
+		"name": name,
+		"type": "Microsoft.KeyVault/vaults/keys",
+		"properties": map[string]any{
+			"attributes": map[string]any{"enabled": true, "recoveryLevel": "Recoverable+Purgeable"},
+			"kty":        "RSA",
+		},
+	}
 }
 
 func writeJSON(t *testing.T, w http.ResponseWriter, value any) {

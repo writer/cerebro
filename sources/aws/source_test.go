@@ -805,6 +805,28 @@ func TestReadAWSAssetMetadataPreview(t *testing.T) {
 	}
 }
 
+func TestListSNSTopicsDoesNotTruncateClientSide(t *testing.T) {
+	topics := make([]snstypes.Topic, 0, 12)
+	attributes := make(map[string]map[string]string, 12)
+	for index := 0; index < 12; index++ {
+		arn := "arn:aws:sns:us-east-1:123456789012:topic-" + strconv.Itoa(index)
+		topics = append(topics, snstypes.Topic{TopicArn: awssdk.String(arn)})
+		attributes[arn] = map[string]string{"TopicArn": arn}
+	}
+	records, _, err := listSNSTopics(context.Background(), awsClients{sns: fakeSNS{fake: &fakeAWS{
+		fakeAWSData: fakeAWSData{
+			snsTopics:     topics,
+			snsAttributes: attributes,
+		},
+	}}}, settings{}, "", 10)
+	if err != nil {
+		t.Fatalf("listSNSTopics: %v", err)
+	}
+	if len(records) != 12 {
+		t.Fatalf("len(records) = %d, want 12", len(records))
+	}
+}
+
 func TestReadAWSAssetMetadataPaginatesTaggedResources(t *testing.T) {
 	source := newTestSource(t, fakeAWS{taggedResources: []resourcegroupstaggingapitypes.ResourceTagMapping{
 		{ResourceARN: awssdk.String("arn:aws:ec2:us-east-1:123456789012:security-group/sg-1")},

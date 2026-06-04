@@ -1112,20 +1112,30 @@ func listSQLDatabases(ctx context.Context, source *Source, settings settings, pa
 		}
 		return listSQLDatabasesForServer(ctx, source, settings, server, nextToken)
 	}
-	servers, _, err := listSQLServers(ctx, source, settings, "", limit)
-	if err != nil {
-		return nil, "", err
-	}
 	records := make([]azureSQLDatabaseRecord, 0)
-	for _, server := range servers {
-		databases, next, err := listSQLDatabasesForServer(ctx, source, settings, server, "")
+	for serverToken := pageToken; ; {
+		servers, nextServers, err := listSQLServers(ctx, source, settings, serverToken, limit)
 		if err != nil {
 			return nil, "", err
 		}
-		records = append(records, databases...)
-		if next != "" {
-			return records, prefixedNestedNext("db", server.ID, next), nil
+		for _, server := range servers {
+			childToken := ""
+			for {
+				databases, nextDatabases, err := listSQLDatabasesForServer(ctx, source, settings, server, childToken)
+				if err != nil {
+					return nil, "", err
+				}
+				records = append(records, databases...)
+				if nextDatabases == "" {
+					break
+				}
+				childToken = nextDatabases
+			}
 		}
+		if nextServers == "" {
+			break
+		}
+		serverToken = nextServers
 	}
 	return records, "", nil
 }
@@ -1175,20 +1185,30 @@ func listKeyVaultChildren(ctx context.Context, source *Source, settings settings
 		}
 		return listKeyVaultChildrenForVault(ctx, source, settings, vault, nextToken, childPath, label)
 	}
-	vaults, _, err := listKeyVaults(ctx, source, settings, "", limit)
-	if err != nil {
-		return nil, "", err
-	}
 	records := make([]azureKeyVaultChildRecord, 0)
-	for _, vault := range vaults {
-		children, next, err := listKeyVaultChildrenForVault(ctx, source, settings, vault, "", childPath, label)
+	for vaultToken := pageToken; ; {
+		vaults, nextVaults, err := listKeyVaults(ctx, source, settings, vaultToken, limit)
 		if err != nil {
 			return nil, "", err
 		}
-		records = append(records, children...)
-		if next != "" {
-			return records, prefixedNestedNext(childPath, vault.ID, next), nil
+		for _, vault := range vaults {
+			childToken := ""
+			for {
+				children, nextChildren, err := listKeyVaultChildrenForVault(ctx, source, settings, vault, childToken, childPath, label)
+				if err != nil {
+					return nil, "", err
+				}
+				records = append(records, children...)
+				if nextChildren == "" {
+					break
+				}
+				childToken = nextChildren
+			}
 		}
+		if nextVaults == "" {
+			break
+		}
+		vaultToken = nextVaults
 	}
 	return records, "", nil
 }
@@ -2171,13 +2191,6 @@ func unixTimeString(value string) string {
 		return value
 	}
 	return time.Unix(seconds, 0).UTC().Format(time.RFC3339)
-}
-
-func prefixedNestedNext(prefix string, parentID string, next string) string {
-	if strings.TrimSpace(next) == "" {
-		return ""
-	}
-	return prefix + ":" + parentID + "|" + next
 }
 
 func parseNestedPageToken(value string) (string, string, bool) {

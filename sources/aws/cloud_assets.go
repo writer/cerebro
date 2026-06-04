@@ -229,12 +229,8 @@ func listSNSTopics(ctx context.Context, clients awsClients, _ settings, cursor s
 	if err != nil {
 		return nil, "", err
 	}
-	topics := out.Topics
-	if limit > 0 && len(topics) > limit {
-		topics = topics[:limit]
-	}
-	records := make([]awsSNSTopic, 0, len(topics))
-	for _, topic := range topics {
+	records := make([]awsSNSTopic, 0, len(out.Topics))
+	for _, topic := range out.Topics {
 		arn := awssdk.ToString(topic.TopicArn)
 		if arn == "" {
 			continue
