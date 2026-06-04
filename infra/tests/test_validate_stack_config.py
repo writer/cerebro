@@ -370,6 +370,33 @@ class ValidateStackConfigTest(unittest.TestCase):
         content = BASE_STACK.replace("  cerebro:apiMaxInstances: 2", "  cerebro:apiMaxInstances: 1")
         self.assertTrue(any("at least two API tasks" in message for message in self._messages(content)))
 
+    def test_device_auth_enabled_exempts_api_headroom_rule(self) -> None:
+        # When deviceAuthEnabled=true the in-process DPoP replay cache forces
+        # apiMaxInstances=1; the latency-headroom rule must NOT fire because
+        # raising replicas would silently break replay protection.
+        content = BASE_STACK.replace(
+            "  cerebro:apiMaxInstances: 2",
+            "  cerebro:apiMaxInstances: 1\n  cerebro:deviceAuthEnabled: true",
+        )
+        messages = self._messages(content)
+        self.assertFalse(
+            any("at least two API tasks" in message for message in messages),
+            f"latency-headroom rule fired despite deviceAuthEnabled=true: {messages!r}",
+        )
+
+    def test_device_auth_enabled_forbids_multi_replica(self) -> None:
+        # Conversely: deviceAuthEnabled=true with apiMaxInstances>1 must be
+        # rejected, because the in-process replay cache cannot protect a
+        # multi-replica deployment.
+        content = BASE_STACK.replace(
+            "  cerebro:apiMaxInstances: 2",
+            "  cerebro:apiMaxInstances: 2\n  cerebro:deviceAuthEnabled: true",
+        )
+        self.assertTrue(
+            any("requires apiMaxInstances=1" in message for message in self._messages(content)),
+            "deviceAuthEnabled=true with apiMaxInstances>1 should fail validation",
+        )
+
     def test_enabled_web_console_requires_headroom(self) -> None:
         content = BASE_STACK.replace(
             "  cerebro:apiMaxInstances: 2\n",

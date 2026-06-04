@@ -623,7 +623,24 @@ def validate_stack(path: Path) -> list[Finding]:
                 "values above 1 require cerebro:imageTag >= v2.1.25",
             )
         )
-    if (stack == "sec-dev" or "prod" in str(config.get("environment", stack)).lower() or stack.endswith("prod")) and (
+    # Active environments normally require >=2 API tasks for latency
+    # headroom, but the secheck device-auth surface protects against DPoP
+    # proof replay using an in-process per-replica jti cache (see
+    # internal/deviceauth/dpop.go). When device-auth is enabled, raising
+    # apiMaxInstances above 1 would make a legitimate proof routed to a
+    # different replica than the one that initially saw it look like a
+    # replay -> 401. The Cerebro server fails closed at startup
+    # (errDeviceAuthRequiresSharedDPoPReplay); we mirror that invariant
+    # HERE so the latency-headroom rule does not lie about what is
+    # actually safe to deploy. Once shared replay state ships
+    # (Phase-2: Redis-backed jti cache) this exemption can be removed.
+    device_auth_enabled = config.get("deviceAuthEnabled") is True
+    in_active_env = (
+        stack == "sec-dev"
+        or "prod" in str(config.get("environment", stack)).lower()
+        or stack.endswith("prod")
+    )
+    if in_active_env and not device_auth_enabled and (
         not isinstance(api_max_instances, int) or api_max_instances < 2
     ):
         findings.append(
@@ -632,6 +649,16 @@ def validate_stack(path: Path) -> list[Finding]:
                 stack,
                 "cerebro:apiMaxInstances",
                 "active Cerebro environments must allow at least two API tasks for latency headroom",
+            )
+        )
+    if device_auth_enabled and isinstance(api_max_instances, int) and api_max_instances > 1:
+        findings.append(
+            _finding(
+                "error",
+                stack,
+                "cerebro:apiMaxInstances",
+                "cerebro:deviceAuthEnabled requires apiMaxInstances=1 (in-process DPoP replay cache); "
+                "lift this only after shared replay state is configured",
             )
         )
     graph_agent_llm_provider = str(config.get("graphAgentLlmProvider", "")).strip().lower()
