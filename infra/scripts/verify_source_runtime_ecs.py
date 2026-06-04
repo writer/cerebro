@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import json
@@ -38,6 +39,32 @@ class VerificationResult:
     graph_ingest_status: str
     events_appended: int | None
     pages_read: int | None
+    entities_projected: int | None = None
+    links_projected: int | None = None
+
+
+@dataclass(frozen=True)
+class TaskLogOptions:
+    log_group: str
+    stream_prefix: str
+
+
+@dataclass(frozen=True)
+class VerificationOptions:
+    run: bool = False
+    wait_timeout_seconds: int = 3600
+    poll_seconds: int = 10
+    region: str = "us-east-1"
+    run_page_limit: int | None = None
+    run_graph_page_limit: int | None = None
+    run_event_limit: int | None = None
+    allow_lease_contention_skip: bool = False
+    stop_running_before_run: bool = False
+    stop_timeout_seconds: int = 180
+    failed_run_retry_seconds: int = 0
+    run_attempt_timeout_seconds: int = 0
+    succeed_after_graph_ingest: bool = False
+    max_age_minutes: int = 180
 
 
 class RuntimeSkippedError(RuntimeError):
@@ -56,6 +83,15 @@ class RuntimeTaskFailedError(RuntimeError):
         self.exit_code = exit_code
         detail = f"\nRecent task logs:\n{log_summary}" if log_summary else ""
         super().__init__(f"{runtime_id} task exited with {exit_code}: {task_arn}{detail}")
+
+
+class RuntimeVerificationFailedError(RuntimeError):
+    def __init__(self, runtime_id: str, task_arn: str, phase: str, status: str) -> None:
+        self.runtime_id = runtime_id
+        self.task_arn = task_arn
+        self.phase = phase
+        self.status = status
+        super().__init__(f"{runtime_id} {phase} status is {status}: {task_arn}")
 
 
 def _stack_name(path: Path) -> str:
@@ -86,6 +122,44 @@ def _runtime_id_from_command(command: Any) -> str:
         if text.startswith("runtime_id="):
             return text.split("=", 1)[1].strip()
     return ""
+
+
+def _container_override_command(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return []
+    overrides = value.get("containerOverrides") or []
+    if not isinstance(overrides, list):
+        return []
+    for override in overrides:
+        if not isinstance(override, dict) or override.get("name") != "cerebro":
+            continue
+        command = override.get("command")
+        if isinstance(command, list):
+            return [str(part) for part in command]
+    return []
+
+
+def _target_command(target: RuntimeTarget) -> list[str]:
+    raw_input = target.target.get("Input")
+    if not raw_input:
+        return []
+    try:
+        return _container_override_command(json.loads(str(raw_input)))
+    except json.JSONDecodeError:
+        return []
+
+
+def _task_command(task: dict[str, Any]) -> list[str]:
+    return _container_override_command(task.get("overrides") or {})
+
+
+def _task_matches_target(task: dict[str, Any], target: RuntimeTarget) -> bool:
+    runtime_id = _runtime_id_from_command(_task_command(task))
+    if runtime_id:
+        return runtime_id == target.runtime_id
+    if _target_command(target):
+        return False
+    return _task_family(str(task.get("taskDefinitionArn") or "")) == _task_family(target.target["EcsParameters"]["TaskDefinitionArn"])
 
 
 def _schedule_suffix(value: str) -> str:
@@ -251,11 +325,12 @@ def _run_task(target: RuntimeTarget, region: str, command_override: list[str] | 
         "--network-configuration",
         f"awsvpcConfiguration={{subnets=[{subnets}],securityGroups=[{security_groups}],assignPublicIp={assign_public_ip}}}",
     ]
-    if command_override is not None:
+    effective_command = command_override if command_override is not None else _target_command(target)
+    if effective_command:
         args.extend(
             [
                 "--overrides",
-                json.dumps({"containerOverrides": [{"name": "cerebro", "command": command_override}]}),
+                json.dumps({"containerOverrides": [{"name": "cerebro", "command": effective_command}]}),
             ]
         )
     response = _aws(args, region)
@@ -285,7 +360,11 @@ def _running_task_arns(target: RuntimeTarget, region: str) -> list[str]:
         ],
         region,
     )
-    return [str(task_arn) for task_arn in response.get("taskArns") or []]
+    task_arns = [str(task_arn) for task_arn in response.get("taskArns") or []]
+    if not task_arns:
+        return []
+    tasks = _describe_tasks(target.target["Arn"], task_arns, region)
+    return [str(task["taskArn"]) for task in tasks if _task_matches_target(task, target)]
 
 
 def _stop_running_tasks(
@@ -361,7 +440,7 @@ def _latest_task(target: RuntimeTarget, max_age_minutes: int, region: str) -> st
             "--family",
             family,
             "--max-results",
-            "10",
+            "100",
         ],
         region,
     )
@@ -372,6 +451,8 @@ def _latest_task(target: RuntimeTarget, max_age_minutes: int, region: str) -> st
     now = datetime.now(UTC)
     fresh_tasks = []
     for task in tasks:
+        if not _task_matches_target(task, target):
+            continue
         stopped_at = _parse_aws_datetime(task.get("stoppedAt")) or _parse_aws_datetime(task.get("createdAt"))
         if stopped_at is not None and now - stopped_at <= timedelta(minutes=max_age_minutes):
             fresh_tasks.append(task)
@@ -389,12 +470,51 @@ def _describe_tasks(cluster_arn: str, task_arns: list[str], region: str) -> list
     return response.get("tasks") or []
 
 
+def _task_stop_summary(task: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for key in ("stopCode", "stoppedReason"):
+        value = str(task.get(key) or "").strip()
+        if value:
+            parts.append(f"{key}={value}")
+    for container in task.get("containers") or []:
+        name = str(container.get("name") or "container")
+        fields = []
+        for key in ("lastStatus", "exitCode", "reason"):
+            value = container.get(key)
+            if value not in (None, ""):
+                fields.append(f"{key}={value}")
+        if fields:
+            parts.append(f"{name}({', '.join(fields)})")
+    if not parts:
+        return "no ECS stop reason available"
+    return "; ".join(parts)[:2000]
+
+
 def _wait_for_task(cluster_arn: str, task_arn: str, timeout_seconds: int, poll_seconds: int, region: str) -> None:
+    task_id = _task_id(task_arn)
+    started = time.time()
     deadline = time.time() + timeout_seconds
+    next_progress = 0.0
     while time.time() < deadline:
         tasks = _describe_tasks(cluster_arn, [task_arn], region)
-        if tasks and tasks[0].get("lastStatus") == "STOPPED":
+        status = str(tasks[0].get("lastStatus") or "UNKNOWN") if tasks else "UNKNOWN"
+        if status == "STOPPED":
+            if tasks:
+                print(f"INFO source runtime task={task_id} stopped: {_task_stop_summary(tasks[0])}", file=sys.stderr)
             return
+        now = time.time()
+        if now >= next_progress:
+            elapsed = int(now - started)
+            width = 20
+            progress = min(1.0, elapsed / max(1, timeout_seconds))
+            filled = int(progress * width)
+            bar = "#" * filled + "-" * (width - filled)
+            print(
+                f"WAIT source runtime task={task_id} status={status} [{bar}] {elapsed}s/{timeout_seconds}s",
+                file=sys.stderr,
+                flush=True,
+            )
+            next_progress = now + max(30, poll_seconds)
         time.sleep(poll_seconds)
     raise TimeoutError(f"task {task_arn} did not stop within {timeout_seconds} seconds")
 
@@ -403,21 +523,37 @@ def _task_id(task_arn: str) -> str:
     return task_arn.rsplit("/", 1)[-1]
 
 
-def _task_logs(task: dict[str, Any], region: str) -> list[dict[str, Any]]:
-    task_definition = task["taskDefinitionArn"]
+def _task_log_options(
+    task_definition: str,
+    region: str,
+    cache: dict[str, TaskLogOptions] | None = None,
+) -> TaskLogOptions:
+    if cache is not None and task_definition in cache:
+        return cache[task_definition]
     response = _aws(["ecs", "describe-task-definition", "--task-definition", task_definition], region)
     container_definitions = response["taskDefinition"]["containerDefinitions"]
     cerebro_container = next(container for container in container_definitions if container.get("name") == "cerebro")
     options = cerebro_container["logConfiguration"]["options"]
-    log_group = options["awslogs-group"]
-    stream_prefix = options["awslogs-stream-prefix"]
-    stream = f"{stream_prefix}/cerebro/{_task_id(task['taskArn'])}"
+    result = TaskLogOptions(options["awslogs-group"], options["awslogs-stream-prefix"])
+    if cache is not None:
+        cache[task_definition] = result
+    return result
+
+
+def _task_logs(
+    task: dict[str, Any],
+    region: str,
+    log_options_cache: dict[str, TaskLogOptions] | None = None,
+) -> list[dict[str, Any]]:
+    task_definition = task["taskDefinitionArn"]
+    options = _task_log_options(task_definition, region, log_options_cache)
+    stream = f"{options.stream_prefix}/cerebro/{_task_id(task['taskArn'])}"
     events = _aws(
         [
             "logs",
             "get-log-events",
             "--log-group-name",
-            log_group,
+            options.log_group,
             "--log-stream-name",
             stream,
             "--limit",
@@ -446,6 +582,8 @@ def _summarize_log_messages(messages: list[dict[str, Any]], limit: int = 20) -> 
         "reason",
         "events_appended",
         "pages_read",
+        "entities_projected",
+        "links_projected",
     )
     lines = []
     for message in messages[-limit:]:
@@ -465,6 +603,13 @@ def _latest_span(messages: list[dict[str, Any]], name: str) -> dict[str, Any] | 
     return None
 
 
+def _first_present(*values: Any) -> Any:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
 def _runtime_skip_reason(runtime_span: dict[str, Any] | None) -> str:
     if not runtime_span:
         return ""
@@ -473,6 +618,59 @@ def _runtime_skip_reason(runtime_span: dict[str, Any] | None) -> str:
 
 def _runtime_skip_retryable(reason: str) -> bool:
     return reason == "lease_not_acquired"
+
+
+def _verification_result_from_logs(
+    target: RuntimeTarget,
+    task_arn: str,
+    exit_code: int | None,
+    messages: list[dict[str, Any]],
+    require_runtime_completed: bool,
+) -> VerificationResult | None:
+    runtime_span = _latest_span(messages, "orchestrator.runtime")
+    sync_span = _latest_span(messages, "source_runtime.sync")
+    graph_ingest_span = _latest_span(messages, "orchestrator.graph_ingest")
+    graph_runtime_span = _latest_span(messages, "graph.ingest_runtime")
+    runtime_status = str((runtime_span or {}).get("status") or "missing")
+    sync_status = str((sync_span or {}).get("status") or "missing")
+    graph_ingest_status = str((graph_ingest_span or {}).get("status") or "missing")
+    if runtime_status == "skipped":
+        raise RuntimeSkippedError(target.runtime_id, task_arn, _runtime_skip_reason(runtime_span))
+    if sync_status == "failed":
+        raise RuntimeVerificationFailedError(target.runtime_id, task_arn, "source sync", sync_status)
+    if graph_ingest_status == "failed":
+        raise RuntimeVerificationFailedError(target.runtime_id, task_arn, "graph ingest", graph_ingest_status)
+    if require_runtime_completed and runtime_status != "completed":
+        raise RuntimeError(f"{target.runtime_id} orchestrator runtime status is {runtime_status}")
+    if sync_status != "completed":
+        if require_runtime_completed:
+            raise RuntimeError(f"{target.runtime_id} source sync status is {sync_status}")
+        return None
+    if graph_ingest_status != "completed":
+        if require_runtime_completed:
+            raise RuntimeError(f"{target.runtime_id} graph ingest status is {graph_ingest_status}")
+        return None
+
+    return VerificationResult(
+        runtime_id=target.runtime_id,
+        task_arn=task_arn,
+        exit_code=exit_code,
+        runtime_status=runtime_status if runtime_status != "missing" else "running",
+        sync_status=sync_status,
+        graph_ingest_status=graph_ingest_status,
+        events_appended=sync_span.get("events_appended") if sync_span else None,
+        pages_read=sync_span.get("pages_read") if sync_span else None,
+        entities_projected=_first_present(
+            (graph_runtime_span or {}).get("entities_projected"),
+            (graph_ingest_span or {}).get("entities_projected"),
+            (sync_span or {}).get("entities_projected"),
+        ),
+        links_projected=_first_present(
+            (graph_runtime_span or {}).get("links_projected"),
+            (graph_ingest_span or {}).get("links_projected"),
+            (sync_span or {}).get("links_projected"),
+        ),
+    )
 
 
 def _verify_task(target: RuntimeTarget, task_arn: str, region: str) -> VerificationResult:
@@ -484,35 +682,87 @@ def _verify_task(target: RuntimeTarget, task_arn: str, region: str) -> Verificat
         try:
             log_summary = _summarize_log_messages(_task_logs(task, region))
         except Exception as exc:
-            log_summary = f"unable to fetch task logs: {exc}"
+            log_summary = f"unable to fetch task logs: {exc}; ECS task stop: {_task_stop_summary(task)}"
         raise RuntimeTaskFailedError(target.runtime_id, task_arn, exit_code, log_summary)
 
     messages = _task_logs(task, region)
-    runtime_span = _latest_span(messages, "orchestrator.runtime")
-    sync_span = _latest_span(messages, "source_runtime.sync")
-    graph_ingest_span = _latest_span(messages, "orchestrator.graph_ingest")
-    runtime_status = str((runtime_span or {}).get("status") or "missing")
-    sync_status = str((sync_span or {}).get("status") or "missing")
-    graph_ingest_status = str((graph_ingest_span or {}).get("status") or "missing")
-    if runtime_status == "skipped":
-        raise RuntimeSkippedError(target.runtime_id, task_arn, _runtime_skip_reason(runtime_span))
-    if runtime_status != "completed":
-        raise RuntimeError(f"{target.runtime_id} orchestrator runtime status is {runtime_status}")
-    if sync_status != "completed":
-        raise RuntimeError(f"{target.runtime_id} source sync status is {sync_status}")
-    if graph_ingest_status != "completed":
-        raise RuntimeError(f"{target.runtime_id} graph ingest status is {graph_ingest_status}")
+    result = _verification_result_from_logs(target, task_arn, exit_code, messages, require_runtime_completed=True)
+    if result is None:
+        raise RuntimeError(f"{target.runtime_id} verification did not produce source sync and graph ingest spans")
+    return result
 
-    return VerificationResult(
-        runtime_id=target.runtime_id,
-        task_arn=task_arn,
-        exit_code=exit_code,
-        runtime_status=runtime_status,
-        sync_status=sync_status,
-        graph_ingest_status=graph_ingest_status,
-        events_appended=sync_span.get("events_appended") if sync_span else None,
-        pages_read=sync_span.get("pages_read") if sync_span else None,
-    )
+
+def _verify_task_until_graph_ingested(
+    target: RuntimeTarget,
+    task_arn: str,
+    timeout_seconds: int,
+    poll_seconds: int,
+    region: str,
+) -> VerificationResult:
+    task_id = _task_id(task_arn)
+    started = time.time()
+    deadline = time.time() + timeout_seconds
+    next_progress = 0.0
+    last_task: dict[str, Any] | None = None
+    last_log_error: Exception | None = None
+    log_options_cache: dict[str, TaskLogOptions] = {}
+    while time.time() < deadline:
+        tasks = _describe_tasks(target.target["Arn"], [task_arn], region)
+        task = tasks[0] if tasks else {}
+        last_task = task
+        status = str(task.get("lastStatus") or "UNKNOWN")
+        containers = task.get("containers") or []
+        cerebro_container = next((container for container in containers if container.get("name") == "cerebro"), None)
+        exit_code = cerebro_container.get("exitCode") if cerebro_container else None
+        messages: list[dict[str, Any]] = []
+        if task and status in {"RUNNING", "STOPPED"}:
+            try:
+                messages = _task_logs(task, region, log_options_cache)
+                last_log_error = None
+            except Exception as exc:
+                last_log_error = exc
+        if messages:
+            result = _verification_result_from_logs(target, task_arn, exit_code, messages, require_runtime_completed=False)
+            if result is not None:
+                print(
+                    f"INFO: {target.runtime_id} source sync and graph ingest completed; task may continue finding-rule work",
+                    file=sys.stderr,
+                )
+                return result
+        if status == "STOPPED":
+            if messages:
+                result = _verification_result_from_logs(target, task_arn, exit_code, messages, require_runtime_completed=True)
+                if result is not None:
+                    return result
+            if last_log_error is not None:
+                raise RuntimeError(
+                    f"unable to fetch stopped task logs for {target.runtime_id}: {last_log_error}; "
+                    f"ECS task stop: {_task_stop_summary(task)}"
+                ) from last_log_error
+            return _verify_task(target, task_arn, region)
+        now = time.time()
+        if now >= next_progress:
+            elapsed = int(now - started)
+            width = 20
+            progress = min(1.0, elapsed / max(1, timeout_seconds))
+            filled = int(progress * width)
+            bar = "#" * filled + "-" * (width - filled)
+            print(
+                f"WAIT source runtime graph ingest task={task_id} status={status} [{bar}] {elapsed}s/{timeout_seconds}s",
+                file=sys.stderr,
+                flush=True,
+            )
+            next_progress = now + max(30, poll_seconds)
+        time.sleep(poll_seconds)
+    if last_task is not None:
+        try:
+            messages = _task_logs(last_task, region, log_options_cache)
+            result = _verification_result_from_logs(target, task_arn, None, messages, require_runtime_completed=False)
+            if result is not None:
+                return result
+        except Exception:
+            pass
+    raise TimeoutError(f"task {task_arn} did not complete source sync and graph ingest within {timeout_seconds} seconds")
 
 
 def _run_and_verify_task_with_retries(
@@ -526,6 +776,7 @@ def _run_and_verify_task_with_retries(
     stop_timeout_seconds: int = 180,
     failed_run_retry_seconds: int = 0,
     run_attempt_timeout_seconds: int = 0,
+    succeed_after_graph_ingest: bool = False,
 ) -> VerificationResult:
     if stop_running_before_run:
         _stop_running_tasks(
@@ -543,8 +794,11 @@ def _run_and_verify_task_with_retries(
         task_arn = _run_task(target, region, command_override)
         attempt_timeout = min(remaining, run_attempt_timeout_seconds) if run_attempt_timeout_seconds > 0 else remaining
         try:
-            _wait_for_task(target.target["Arn"], task_arn, attempt_timeout, poll_seconds, region)
-            return _verify_task(target, task_arn, region)
+            if succeed_after_graph_ingest:
+                return _verify_task_until_graph_ingested(target, task_arn, attempt_timeout, poll_seconds, region)
+            else:
+                _wait_for_task(target.target["Arn"], task_arn, attempt_timeout, poll_seconds, region)
+                return _verify_task(target, task_arn, region)
         except TimeoutError:
             now = time.time()
             if failed_run_retry_deadline is None or now >= failed_run_retry_deadline:
@@ -593,7 +847,7 @@ def _run_and_verify_task_with_retries(
                 file=sys.stderr,
             )
             time.sleep(min(poll_seconds, remaining))
-        except RuntimeTaskFailedError:
+        except (RuntimeTaskFailedError, RuntimeVerificationFailedError):
             now = time.time()
             if failed_run_retry_deadline is None or now >= failed_run_retry_deadline:
                 raise
@@ -617,6 +871,57 @@ def _verify_account(stack: str, region: str) -> None:
         raise RuntimeError(f"stack {stack} must run in AWS account {expected}, got {actual}")
 
 
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be >= 1")
+    return parsed
+
+
+def _verify_runtime_target(target: RuntimeTarget, options: VerificationOptions) -> VerificationResult:
+    if options.run:
+        command_override = _verification_command(
+            target.runtime_id,
+            options.run_page_limit,
+            options.run_graph_page_limit,
+            options.run_event_limit,
+        )
+        return _run_and_verify_task_with_retries(
+            target,
+            options.wait_timeout_seconds,
+            options.poll_seconds,
+            options.region,
+            command_override,
+            options.allow_lease_contention_skip,
+            options.stop_running_before_run,
+            options.stop_timeout_seconds,
+            options.failed_run_retry_seconds,
+            options.run_attempt_timeout_seconds,
+            options.succeed_after_graph_ingest,
+        )
+    task_arn = _latest_task(target, options.max_age_minutes, options.region)
+    return _verify_task(target, task_arn, options.region)
+
+
+def _verify_runtime_targets(
+    targets: list[RuntimeTarget],
+    options: VerificationOptions,
+    target_concurrency: int,
+) -> list[VerificationResult]:
+    if target_concurrency <= 1 or len(targets) <= 1:
+        return [_verify_runtime_target(target, options) for target in targets]
+
+    results: list[VerificationResult | None] = [None] * len(targets)
+    with ThreadPoolExecutor(max_workers=min(target_concurrency, len(targets))) as executor:
+        future_indexes = {
+            executor.submit(_verify_runtime_target, target, options): index
+            for index, target in enumerate(targets)
+        }
+        for future in as_completed(future_indexes):
+            results[future_indexes[future]] = future.result()
+    return [result for result in results if result is not None]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Verify ECS source runtime executions from GitOps-declared schedules.")
     parser.add_argument("--stack-file", type=Path, required=True)
@@ -638,8 +943,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-age-minutes", type=int, default=180)
     parser.add_argument("--failed-run-retry-seconds", type=int, default=0, help="Retry failed verification tasks for this many seconds before failing.")
     parser.add_argument("--run-attempt-timeout-seconds", type=int, default=0, help="Stop and retry a --run verification task if one attempt runs longer than this.")
-    parser.add_argument("--wait-timeout-seconds", type=int, default=900)
+    parser.add_argument(
+        "--succeed-after-graph-ingest",
+        action="store_true",
+        help="For --run, return after source sync and graph ingest complete instead of waiting for post-ingest work.",
+    )
+    parser.add_argument("--wait-timeout-seconds", type=int, default=3600)
     parser.add_argument("--poll-seconds", type=int, default=10)
+    parser.add_argument("--target-concurrency", type=_positive_int, default=1, help="Verify up to this many source runtime targets concurrently.")
     args = parser.parse_args(argv)
 
     stack = _stack_name(args.stack_file)
@@ -657,34 +968,28 @@ def main(argv: list[str] | None = None) -> int:
 
     _verify_account(stack, args.region)
     targets = _runtime_targets(config, runtime_ids, resource_prefix, args.region)
-    results = []
-    for target in targets:
-        if args.run:
-            command_override = _verification_command(
-                target.runtime_id,
-                args.run_page_limit,
-                args.run_graph_page_limit,
-                args.run_event_limit,
-            )
-            results.append(
-                _run_and_verify_task_with_retries(
-                    target,
-                    args.wait_timeout_seconds,
-                    args.poll_seconds,
-                    args.region,
-                    command_override,
-                    args.allow_lease_contention_skip,
-                    args.stop_running_before_run,
-                    args.stop_timeout_seconds,
-                    args.failed_run_retry_seconds,
-                    args.run_attempt_timeout_seconds,
-                )
-            )
-        else:
-            task_arn = _latest_task(target, args.max_age_minutes, args.region)
-            results.append(_verify_task(target, task_arn, args.region))
+    results = _verify_runtime_targets(
+        targets,
+        VerificationOptions(
+            run=args.run,
+            wait_timeout_seconds=args.wait_timeout_seconds,
+            poll_seconds=args.poll_seconds,
+            region=args.region,
+            run_page_limit=args.run_page_limit,
+            run_graph_page_limit=args.run_graph_page_limit,
+            run_event_limit=args.run_event_limit,
+            allow_lease_contention_skip=args.allow_lease_contention_skip,
+            stop_running_before_run=args.stop_running_before_run,
+            stop_timeout_seconds=args.stop_timeout_seconds,
+            failed_run_retry_seconds=args.failed_run_retry_seconds,
+            run_attempt_timeout_seconds=args.run_attempt_timeout_seconds,
+            succeed_after_graph_ingest=args.succeed_after_graph_ingest,
+            max_age_minutes=args.max_age_minutes,
+        ),
+        args.target_concurrency,
+    )
 
-    print("runtime_id\texit\tsync\tevents_appended\tpages_read\tgraph_ingest\ttask_arn")
+    print("runtime_id\texit\tsync\tevents_appended\tpages_read\tgraph_ingest\tentities_projected\tlinks_projected\ttask_arn")
     for result in results:
         print(
             "\t".join(
@@ -695,6 +1000,8 @@ def main(argv: list[str] | None = None) -> int:
                     str(result.events_appended),
                     str(result.pages_read),
                     result.graph_ingest_status,
+                    str(result.entities_projected),
+                    str(result.links_projected),
                     result.task_arn,
                 ]
             )

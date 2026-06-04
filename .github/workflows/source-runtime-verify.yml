@@ -20,10 +20,20 @@ on:
           - recent
           - run
       runtime_id:
-        description: Optional single runtime id. Leave blank to verify all Cosmo runtimes.
+        description: Optional single runtime id. Leave blank to verify all runtimes for the source.
         required: false
         default: ''
         type: string
+      source_id:
+        description: Source id to verify.
+        required: false
+        default: cosmo
+        type: string
+      succeed_after_graph_ingest:
+        description: For run mode, pass once source sync and graph ingest complete.
+        required: false
+        default: false
+        type: boolean
       max_age_minutes:
         description: Maximum age for recent-mode stopped tasks
         required: false
@@ -35,7 +45,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: source-runtime-verify-${{ github.event.inputs.stack }}-${{ github.event.inputs.runtime_id || 'cosmo' }}
+  group: source-runtime-verify-${{ github.event.inputs.stack }}-${{ github.event.inputs.source_id || 'cosmo' }}-${{ github.event.inputs.runtime_id || 'all' }}
   cancel-in-progress: false
 
 jobs:
@@ -69,17 +79,25 @@ jobs:
         with:
           assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
 
-      - name: Verify Cosmo source runtimes
+      - name: Check source role trust drift
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.sec-dev.yaml --same-account-only
+
+      - name: Verify source runtimes
         shell: bash
         working-directory: infra
         env:
           VERIFY_MODE: ${{ github.event.inputs.mode }}
           RUNTIME_ID: ${{ github.event.inputs.runtime_id }}
+          SOURCE_ID: ${{ github.event.inputs.source_id || 'cosmo' }}
+          SUCCEED_AFTER_GRAPH_INGEST: ${{ github.event.inputs.succeed_after_graph_ingest || 'false' }}
           MAX_AGE_MINUTES: ${{ github.event.inputs.max_age_minutes }}
         run: |
           set -euo pipefail
-          args=(--stack-file aws/Pulumi.sec-dev.yaml --source-id cosmo --max-age-minutes "${MAX_AGE_MINUTES}")
+          args=(--stack-file aws/Pulumi.sec-dev.yaml --source-id "${SOURCE_ID}" --max-age-minutes "${MAX_AGE_MINUTES}")
           if [ "${VERIFY_MODE}" = "run" ]; then args+=(--run); fi
+          if [ "${SUCCEED_AFTER_GRAPH_INGEST}" = "true" ]; then args+=(--succeed-after-graph-ingest); fi
           if [ -n "${RUNTIME_ID}" ]; then args+=(--runtime-id "${RUNTIME_ID}"); fi
           uv run python scripts/verify_source_runtime_ecs.py "${args[@]}"
 
@@ -114,16 +132,24 @@ jobs:
         with:
           assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
 
-      - name: Verify Cosmo source runtimes
+      - name: Check source role trust drift
+        shell: bash
+        working-directory: infra
+        run: uv run python scripts/verify_aws_scan_role_trust.py --stack-file aws/Pulumi.go-prod.yaml --same-account-only
+
+      - name: Verify source runtimes
         shell: bash
         working-directory: infra
         env:
           VERIFY_MODE: ${{ github.event.inputs.mode }}
           RUNTIME_ID: ${{ github.event.inputs.runtime_id }}
+          SOURCE_ID: ${{ github.event.inputs.source_id || 'cosmo' }}
+          SUCCEED_AFTER_GRAPH_INGEST: ${{ github.event.inputs.succeed_after_graph_ingest || 'false' }}
           MAX_AGE_MINUTES: ${{ github.event.inputs.max_age_minutes }}
         run: |
           set -euo pipefail
-          args=(--stack-file aws/Pulumi.go-prod.yaml --source-id cosmo --max-age-minutes "${MAX_AGE_MINUTES}")
+          args=(--stack-file aws/Pulumi.go-prod.yaml --source-id "${SOURCE_ID}" --max-age-minutes "${MAX_AGE_MINUTES}")
           if [ "${VERIFY_MODE}" = "run" ]; then args+=(--run); fi
+          if [ "${SUCCEED_AFTER_GRAPH_INGEST}" = "true" ]; then args+=(--succeed-after-graph-ingest); fi
           if [ -n "${RUNTIME_ID}" ]; then args+=(--runtime-id "${RUNTIME_ID}"); fi
           uv run python scripts/verify_source_runtime_ecs.py "${args[@]}"

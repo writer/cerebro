@@ -11,6 +11,12 @@ def _safe_resource_suffix(value: str) -> str:
     return suffix[:80] or "item"
 
 
+def _orchestrator_rule_alarm_resource_name(name: str, index: int, schedule: dict | None) -> str:
+    schedule_name = str((schedule or {}).get("name") or "").strip()
+    suffix = _safe_resource_suffix(schedule_name) if schedule_name else str(index)
+    return f"{name}-orchestrator-rule-{suffix}-failed-invocations"
+
+
 def _runtime_id_from_command(command) -> str:
     if not isinstance(command, list):
         return ""
@@ -617,8 +623,9 @@ def create_monitoring(
         )
 
     for index, rule_name in enumerate(orchestrator_rule_names or []):
+        schedule = (orchestrator_schedules or [])[index] if index < len(orchestrator_schedules or []) else None
         aws.cloudwatch.MetricAlarm(
-            f"{name}-orchestrator-rule-{index}-failed-invocations",
+            _orchestrator_rule_alarm_resource_name(name, index, schedule),
             name=pulumi.Output.concat(rule_name, "-failed-invocations"),
             comparison_operator="GreaterThanThreshold",
             evaluation_periods=1,

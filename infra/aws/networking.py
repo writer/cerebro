@@ -290,26 +290,6 @@ def create_vpc(
             tags={"Name": f"{name}-flow-logs-role"},
         )
 
-        # IAM policy for writing to CloudWatch Logs
-        aws.iam.RolePolicy(
-            f"{name}-flow-logs-policy",
-            role=flow_logs_role.name,
-            policy=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Action": [
-                        "logs:CreateLogGroup",
-                        "logs:CreateLogStream",
-                        "logs:PutLogEvents",
-                        "logs:DescribeLogGroups",
-                        "logs:DescribeLogStreams",
-                    ],
-                    "Resource": "*",
-                }],
-            }),
-        )
-
         # CloudWatch Log Group for flow logs
         flow_log_group = aws.cloudwatch.LogGroup(
             f"{name}-flow-logs",
@@ -317,6 +297,35 @@ def create_vpc(
             retention_in_days=flow_logs_retention_days,
             kms_key_id=flow_logs_kms_key_arn,
             tags={"Name": f"{name}-flow-logs"},
+        )
+
+        # IAM policy for writing to the pre-created CloudWatch Logs group.
+        aws.iam.RolePolicy(
+            f"{name}-flow-logs-policy",
+            role=flow_logs_role.name,
+            policy=flow_log_group.arn.apply(
+                lambda arn: json.dumps({
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Sid": "DescribeLogGroups",
+                            "Effect": "Allow",
+                            "Action": ["logs:DescribeLogGroups"],
+                            "Resource": "*",
+                        },
+                        {
+                            "Sid": "WriteFlowLogStreams",
+                            "Effect": "Allow",
+                            "Action": [
+                                "logs:CreateLogStream",
+                                "logs:PutLogEvents",
+                                "logs:DescribeLogStreams",
+                            ],
+                            "Resource": f"{arn}:*",
+                        },
+                    ],
+                })
+            ),
         )
 
         # VPC Flow Log

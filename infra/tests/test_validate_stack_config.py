@@ -153,6 +153,12 @@ class ValidateStackConfigTest(unittest.TestCase):
     def _messages(self, content: str) -> list[str]:
         return [finding.message for finding in self._validate(content)]
 
+    def _without_orchestrator_schedules(self, content: str) -> str:
+        start = "  cerebro:orchestratorSchedules:\n"
+        begin = content.index(start)
+        end = content.index("  cerebro:sourceRuntimes:\n", begin)
+        return content[:begin] + content[end:]
+
     def test_valid_stack_has_no_errors(self) -> None:
         findings = self._validate(BASE_STACK)
         self.assertEqual([finding for finding in findings if finding.severity == "error"], [])
@@ -160,6 +166,24 @@ class ValidateStackConfigTest(unittest.TestCase):
     def test_latency_alarm_thresholds_must_be_non_negative(self) -> None:
         content = BASE_STACK + "  cerebro:dashboardLatencyP95AlarmThresholdMs: -1\n"
         self.assertTrue(any("must be a non-negative integer" in message for message in self._messages(content)))
+
+    def test_openrouter_provider_requires_explicit_model(self) -> None:
+        content = BASE_STACK + "  cerebro:graphAgentLlmProvider: openrouter\n"
+        self.assertTrue(any("OpenRouter provider must set an explicit OpenRouter model id" in message for message in self._messages(content)))
+
+    def test_openrouter_provider_rejects_anthropic_dated_model_id(self) -> None:
+        content = BASE_STACK + (
+            "  cerebro:graphAgentLlmProvider: openrouter\n"
+            "  cerebro:graphAgentLlmModel: anthropic/claude-sonnet-4-20250514\n"
+        )
+        self.assertTrue(any("not an Anthropic dated model id" in message for message in self._messages(content)))
+
+    def test_openrouter_provider_accepts_openrouter_slug(self) -> None:
+        content = BASE_STACK + (
+            "  cerebro:graphAgentLlmProvider: openrouter\n"
+            "  cerebro:graphAgentLlmModel: anthropic/claude-sonnet-4.6\n"
+        )
+        self.assertFalse(any("OpenRouter model" in message for message in self._messages(content)))
 
     def test_missing_source_secret_is_error(self) -> None:
         content = BASE_STACK.replace(f"    - {API_TOKEN_KEY}\n", "")
@@ -192,6 +216,24 @@ class ValidateStackConfigTest(unittest.TestCase):
 
     def test_global_orchestrator_command_covers_source_runtimes(self) -> None:
         content = (
+            self._without_orchestrator_schedules(BASE_STACK).replace(
+                "  cerebro:sourceRuntimes:",
+                "  cerebro:orchestratorCommand:\n    - orchestrator\n    - run\n  cerebro:sourceRuntimes:",
+            )
+            + """    - id: writer-okta-user
+      sourceId: okta
+      tenantId: writer
+      config:
+        api_token: env:API_TOKEN
+"""
+        )
+        messages = self._messages(content)
+        self.assertFalse(
+            any("is not referenced by cerebro:orchestratorCommand" in message for message in messages)
+        )
+
+    def test_global_orchestrator_command_does_not_cover_custom_schedules(self) -> None:
+        content = (
             BASE_STACK.replace(
                 "  cerebro:orchestratorSchedules:",
                 "  cerebro:orchestratorCommand:\n    - orchestrator\n    - run\n  cerebro:orchestratorSchedules:",
@@ -204,8 +246,8 @@ class ValidateStackConfigTest(unittest.TestCase):
 """
         )
         messages = self._messages(content)
-        self.assertFalse(
-            any("is not referenced by cerebro:orchestratorCommand" in message for message in messages)
+        self.assertTrue(
+            any("source runtime 'writer-okta-user' is not referenced" in message for message in messages)
         )
 
     def test_unknown_top_level_orchestrator_runtime_is_error(self) -> None:
@@ -231,18 +273,30 @@ class ValidateStackConfigTest(unittest.TestCase):
         findings = self._validate(content, name="Pulumi.sec-dev.yaml")
         self.assertTrue(any(finding.severity == "error" and "page_limit <= 5" in finding.message for finding in findings))
 
-    def test_sec_dev_global_graph_page_limit_is_bounded_for_high_contention_runtimes(self) -> None:
+    def test_sec_dev_aurelius_findings_schedule_graph_budget_is_bounded(self) -> None:
         content = BASE_STACK.replace(
-            "  cerebro:orchestratorSchedules:",
-            "  cerebro:orchestratorCommand:\n    - orchestrator\n    - run\n    - graph_page_limit=100\n  cerebro:orchestratorSchedules:",
+            "        - runtime_id=writer-okta-audit\n",
+            "        - runtime_id=writer-aurelius-findings\n        - page_limit=2\n        - graph_page_limit=2\n",
+        ).replace(
+            "    - id: writer-okta-audit\n      sourceId: okta\n",
+            "    - id: writer-aurelius-findings\n      sourceId: aurelius\n",
+        )
+        findings = self._validate(content, name="Pulumi.sec-dev.yaml")
+        self.assertTrue(any(finding.severity == "error" and "page_limit <= 1" in finding.message for finding in findings))
+        self.assertTrue(any(finding.severity == "error" and "graph_page_limit <= 1" in finding.message for finding in findings))
+
+    def test_sec_dev_global_graph_page_limit_is_bounded_for_high_contention_runtimes(self) -> None:
+        content = self._without_orchestrator_schedules(BASE_STACK).replace(
+            "  cerebro:sourceRuntimes:",
+            "  cerebro:orchestratorCommand:\n    - orchestrator\n    - run\n    - graph_page_limit=100\n  cerebro:sourceRuntimes:",
         )
         findings = self._validate(content, name="Pulumi.sec-dev.yaml")
         self.assertTrue(any(finding.severity == "error" and "graph_page_limit <= 5" in finding.message for finding in findings))
 
     def test_sec_dev_global_page_limit_is_bounded_for_high_contention_runtimes(self) -> None:
-        content = BASE_STACK.replace(
-            "  cerebro:orchestratorSchedules:",
-            "  cerebro:orchestratorCommand:\n    - orchestrator\n    - run\n    - page_limit=20\n  cerebro:orchestratorSchedules:",
+        content = self._without_orchestrator_schedules(BASE_STACK).replace(
+            "  cerebro:sourceRuntimes:",
+            "  cerebro:orchestratorCommand:\n    - orchestrator\n    - run\n    - page_limit=20\n  cerebro:sourceRuntimes:",
         )
         findings = self._validate(content, name="Pulumi.sec-dev.yaml")
         self.assertTrue(any(finding.severity == "error" and "page_limit <= 5" in finding.message for finding in findings))
@@ -322,6 +376,19 @@ class ValidateStackConfigTest(unittest.TestCase):
             "  cerebro:apiMaxInstances: 2\n  cerebro:webEnabled: true\n  cerebro:webMaxInstances: 1\n",
         )
         self.assertTrue(any("at least two tasks" in message for message in self._messages(content)))
+
+    def test_legacy_jobs_transition_flag_warns(self) -> None:
+        content = BASE_STACK.replace(
+            "  cerebro:postgresDeletionProtection: true\n",
+            "  cerebro:postgresDeletionProtection: true\n  cerebro:retainLegacyJobsTableForDeletionProtectionTransition: true\n",
+        )
+        findings = self._validate(content)
+        self.assertTrue(
+            any(
+                finding.severity == "warning" and "legacy jobs table transition flag" in finding.message
+                for finding in findings
+            )
+        )
 
     def test_prod_postgres_must_not_use_gp2_storage(self) -> None:
         content = BASE_STACK.replace(
@@ -451,6 +518,72 @@ class ValidateStackConfigTest(unittest.TestCase):
         findings = self._validate(content, name="Pulumi.sec-dev.yaml")
         self.assertTrue(any(finding.severity == "error" and "effective_permission" in finding.message and "v2.1.46" in finding.message for finding in findings))
 
+    def test_go_prod_aws_public_endpoint_requires_expanded_graph_coverage(self) -> None:
+        content = BASE_STACK.replace(
+            "    - id: writer-okta-audit\n      sourceId: okta\n      tenantId: writer\n      config:\n        api_token: env:API_TOKEN\n",
+            """    - id: writer-aws-sec-prod-us1-public-endpoint
+      sourceId: aws
+      tenantId: writer
+      config:
+        account_id: "837279440628"
+        family: public_endpoint
+        include_global: "true"
+        per_page: "100"
+        region: us-east-1
+        role_arn: arn:aws:iam::837279440628:role/cerebro-org-scan-role
+""",
+        ).replace("runtime_id=writer-okta-audit", "runtime_id=writer-aws-sec-prod-us1-public-endpoint")
+
+        findings = self._validate(content, name="Pulumi.go-prod.yaml")
+
+        self.assertTrue(any(finding.severity == "error" and "writer-aws-prod-effective-permission" in finding.message for finding in findings))
+        self.assertTrue(any(finding.severity == "error" and "writer-aws-sec-prod-us1-resource-exposure" in finding.message for finding in findings))
+
+    def test_go_prod_actual_aws_graph_coverage_is_expanded(self) -> None:
+        config = validator._load_config(Path(__file__).resolve().parents[1] / "aws/Pulumi.go-prod.yaml")
+        aws_runtimes = [runtime for runtime in config["sourceRuntimes"] if runtime.get("sourceId") == "aws"]
+        aws_scheduled_runtime_ids = {
+            validator._runtime_id_from_command(schedule.get("command"))
+            for schedule in config["orchestratorSchedules"]
+            if isinstance(schedule, dict)
+        }
+
+        findings = validate_stack(Path(__file__).resolve().parents[1] / "aws/Pulumi.go-prod.yaml")
+
+        self.assertEqual(len(aws_runtimes), 128)
+        self.assertTrue(all(runtime["id"] in aws_scheduled_runtime_ids for runtime in aws_runtimes))
+        self.assertEqual(
+            {
+                str(runtime.get("config", {}).get("family", ""))
+                for runtime in aws_runtimes
+            },
+            {
+                "access_key",
+                "asset_metadata",
+                "ec2_instance",
+                "ecs_service",
+                "ecs_task",
+                "ecs_task_definition",
+                "eks_cluster",
+                "eks_fargate_profile",
+                "eks_nodegroup",
+                "eks_pod_identity_association",
+                "effective_permission",
+                "iam_group",
+                "iam_group_membership",
+                "iam_role",
+                "iam_role_assignment",
+                "iam_role_trust",
+                "iam_user",
+                "lambda_function",
+                "public_endpoint",
+                "resource_exposure",
+            },
+        )
+        self.assertFalse(
+            any(finding.severity == "error" and "go-prod AWS coverage" in finding.message for finding in findings)
+        )
+
     def test_cosmo_requires_token_auth_release(self) -> None:
         content = BASE_STACK.replace("  cerebro:imageTag: v2.1.36", "  cerebro:imageTag: v2.1.35")
         findings = self._validate(content)
@@ -465,6 +598,41 @@ class ValidateStackConfigTest(unittest.TestCase):
         content = BASE_STACK.replace("runtime_id=writer-cosmo-fact", "runtime_id=writer-cosmo-fact-disabled", 1)
         findings = self._validate(content)
         self.assertTrue(any(finding.severity == "error" and "required Cosmo schedule for 'writer-cosmo-fact' is missing" in finding.message for finding in findings))
+
+    def test_sec_dev_cosmo_graph_budgets_are_bounded(self) -> None:
+        content = BASE_STACK.replace(
+            "        - runtime_id=writer-cosmo-session\n",
+            "        - runtime_id=writer-cosmo-session\n"
+            "        - page_limit=20\n"
+            "        - graph_page_limit=100\n"
+            "        - event_limit=1000\n",
+            1,
+        )
+        findings = self._validate(content, name="Pulumi.sec-dev.yaml")
+        self.assertTrue(any(finding.severity == "error" and "page_limit <= 5" in finding.message for finding in findings))
+        self.assertTrue(any(finding.severity == "error" and "graph_page_limit <= 5" in finding.message for finding in findings))
+        self.assertTrue(any(finding.severity == "error" and "event_limit <= 500" in finding.message for finding in findings))
+
+    def test_actual_sec_dev_cosmo_graph_budgets_are_capped(self) -> None:
+        findings = validate_stack(Path(__file__).resolve().parents[1] / "aws/Pulumi.sec-dev.yaml")
+        self.assertFalse(
+            any(
+                finding.severity == "error"
+                and "writer-cosmo-" in finding.message
+                and ("page_limit" in finding.message or "event_limit" in finding.message)
+                for finding in findings
+            )
+        )
+
+    def test_actual_sec_dev_declared_runtimes_are_scheduled(self) -> None:
+        findings = validate_stack(Path(__file__).resolve().parents[1] / "aws/Pulumi.sec-dev.yaml")
+        self.assertFalse(
+            any(
+                finding.severity == "error"
+                and "is not referenced by cerebro:orchestratorCommand or cerebro:orchestratorSchedules" in finding.message
+                for finding in findings
+            )
+        )
 
     def test_cosmo_must_use_dedicated_token_secret(self) -> None:
         content = BASE_STACK.replace(f"{TOKEN_FIELD}: env:{COSMO_TOKEN_KEY}", f"{TOKEN_FIELD}: env:GITHUB_{TOKEN_SUFFIX}", 1)

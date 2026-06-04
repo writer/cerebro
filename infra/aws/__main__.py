@@ -141,6 +141,7 @@ web_max_instances = _config_int("webMaxInstances", 1)
 web_container_port = _config_int("webContainerPort", 3000)
 web_api_base = config.get("webApiBase") or (f"https://{domain}" if domain else "")
 web_forward_auth_headers = _config_bool("webForwardAuthHeaders", False)
+web_proxy_timeout_ms = _config_int("webProxyTimeoutMs", 600000)
 web_api_key_secret_name = config.get("webApiKeySecretName") or "CEREBRO_API_KEYS"
 web_oidc_enabled = _config_bool("webOidcEnabled", False)
 web_oidc_issuer = (config.get("webOidcIssuer") or "").rstrip("/")
@@ -181,6 +182,8 @@ if web_oidc_enabled:
     }
 
 alb_internal = _config_bool("albInternal", True)
+alb_idle_timeout_seconds = _config_int("albIdleTimeoutSeconds", 300)
+web_alb_idle_timeout_seconds = _config_int("webAlbIdleTimeoutSeconds", alb_idle_timeout_seconds)
 configured_alb_ingress_cidrs = config.get_object("albIngressCidrs") or None
 is_production = "prod" in environment.lower()
 
@@ -358,6 +361,49 @@ source_secret_keys = config.get_object("sourceSecretKeys") or []
 source_runtimes = config.get_object("sourceRuntimes") or []
 source_runtime_env_refs = _source_runtime_env_refs(source_runtimes)
 _validate_source_secret_refs(source_secret_keys, source_runtime_env_refs)
+mcp_oauth_enabled = _config_bool("mcpOauthEnabled", False)
+mcp_oauth_public_origin = (config.get("publicOrigin") or (f"https://{domain}" if domain else "")).rstrip("/")
+mcp_oauth_upstream_issuer = (config.get("mcpOauthUpstreamIssuer") or "").rstrip("/")
+mcp_oauth_upstream_redirect_uri = (
+    config.get("mcpOauthUpstreamRedirectUri")
+    or (f"{mcp_oauth_public_origin}/oauth/callback" if mcp_oauth_public_origin else "")
+)
+mcp_oauth_upstream_client_id_secret_name = (
+    config.get("mcpOauthUpstreamClientIdSecretName") or "CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_ID"
+)
+mcp_oauth_upstream_client_secret_name = (
+    config.get("mcpOauthUpstreamClientSecretName") or "CEREBRO_MCP_OAUTH_UPSTREAM_CLIENT_SECRET"
+)
+mcp_oauth_security_groups = [
+    str(group).strip()
+    for group in (config.get_object("mcpOauthSecurityGroups") or [])
+    if str(group).strip()
+]
+mcp_oauth_tenant_id = (config.get("mcpOauthTenantId") or "").strip()
+mcp_oauth_allowed_tenants = [
+    str(tenant).strip()
+    for tenant in (config.get_object("mcpOauthAllowedTenants") or allowed_tenants)
+    if str(tenant).strip()
+]
+if mcp_oauth_enabled:
+    if not api_auth_enabled:
+        raise ValueError("cerebro:apiAuthEnabled must be true when cerebro:mcpOauthEnabled is true")
+    if not capability_token_secret_name:
+        raise ValueError("cerebro:capabilityTokenSecretName is required when cerebro:mcpOauthEnabled is true")
+    if not mcp_oauth_public_origin:
+        raise ValueError("cerebro:domain is required when cerebro:mcpOauthEnabled is true")
+    if not mcp_oauth_upstream_issuer:
+        raise ValueError("cerebro:mcpOauthUpstreamIssuer is required when cerebro:mcpOauthEnabled is true")
+    if not mcp_oauth_upstream_redirect_uri:
+        raise ValueError("cerebro:mcpOauthUpstreamRedirectUri is required when cerebro:mcpOauthEnabled is true")
+    if not mcp_oauth_upstream_client_id_secret_name:
+        raise ValueError("cerebro:mcpOauthUpstreamClientIdSecretName is required when cerebro:mcpOauthEnabled is true")
+    if not mcp_oauth_upstream_client_secret_name:
+        raise ValueError("cerebro:mcpOauthUpstreamClientSecretName is required when cerebro:mcpOauthEnabled is true")
+    if not mcp_oauth_security_groups:
+        raise ValueError("cerebro:mcpOauthSecurityGroups is required when cerebro:mcpOauthEnabled is true")
+    if not mcp_oauth_tenant_id and not mcp_oauth_allowed_tenants:
+        raise ValueError("cerebro:mcpOauthTenantId or cerebro:mcpOauthAllowedTenants is required when cerebro:mcpOauthEnabled is true")
 
 # Optional IAM grants for S3-backed sources. Source configuration now lives in
 # source runtimes, not process env; this only scopes task-role permissions.
@@ -433,6 +479,12 @@ else:
         flow_logs_kms_key_arn=logs_kms_key["key_arn"] if logs_kms_key else None,
         app_ingress_ports=app_ingress_ports,
     )
+
+public_origin = config.get("publicOrigin") or f"https://{domain}"
+trusted_proxy_cidrs = config.get_object("trustedProxyCIDRs")
+if trusted_proxy_cidrs is None:
+    trusted_proxy_cidrs = [vpc_cidr] if alb_internal else []
+trusted_proxy_count = _config_int("trustedProxyCount", 1 if trusted_proxy_cidrs else 0)
 
 # =============================================================================
 # RUNTIME BACKING SERVICES
@@ -563,6 +615,7 @@ alb_stack = load_balancer.create_alb(
     enable_deletion_protection=enable_alb_deletion_protection,
     enable_access_logs=enable_alb_access_logs,
     access_logs_retention_days=alb_access_logs_retention_days,
+    idle_timeout_seconds=alb_idle_timeout_seconds,
     allowed_hostnames=[domain] if domain else None,
 )
 
@@ -583,6 +636,7 @@ if web_enabled:
         access_logs_retention_days=alb_access_logs_retention_days,
         allowed_hostnames=[web_domain] if web_domain else None,
         oidc_auth=web_oidc_auth,
+        idle_timeout_seconds=web_alb_idle_timeout_seconds,
     )
 
 # =============================================================================
@@ -615,6 +669,8 @@ app_environment = {
     "CEREBRO_IMAGE_TAG": image_tag,
     "CEREBRO_API_AUTH_ENABLED": str(api_auth_enabled).lower(),
     "API_AUTH_ENABLED": str(api_auth_enabled).lower(),
+    "CEREBRO_PUBLIC_ORIGIN": public_origin,
+    "CEREBRO_TRUSTED_PROXY_COUNT": str(trusted_proxy_count),
     "CEREBRO_CAPABILITY_TOKEN_AUDIENCE": capability_token_audience,
     "CEREBRO_APPEND_LOG_DRIVER": "jetstream",
     "CEREBRO_JETSTREAM_URL": nats_stack["url"],
@@ -660,8 +716,32 @@ if neo4j_database:
 if allowed_tenants:
     app_environment["CEREBRO_ALLOWED_TENANTS"] = ",".join(allowed_tenants)
     app_environment["ALLOWED_TENANTS"] = ",".join(allowed_tenants)
+if mcp_oauth_enabled:
+    app_environment.update({
+        "CEREBRO_MCP_OAUTH_ENABLED": "true",
+        "CEREBRO_MCP_OAUTH_UPSTREAM_ISSUER": mcp_oauth_upstream_issuer,
+        "CEREBRO_MCP_OAUTH_UPSTREAM_REDIRECT_URI": mcp_oauth_upstream_redirect_uri,
+        "CEREBRO_MCP_OAUTH_SECURITY_GROUPS": ",".join(mcp_oauth_security_groups),
+        "CEREBRO_MCP_OAUTH_DYNAMIC_CLIENT_REGISTRATION_ENABLED": "true",
+    })
+    if mcp_oauth_tenant_id:
+        app_environment["CEREBRO_MCP_OAUTH_TENANT_ID"] = mcp_oauth_tenant_id
+    if mcp_oauth_allowed_tenants:
+        app_environment["CEREBRO_MCP_OAUTH_ALLOWED_TENANTS"] = ",".join(mcp_oauth_allowed_tenants)
+if trusted_proxy_cidrs:
+    app_environment["CEREBRO_TRUSTED_PROXY_CIDRS"] = ",".join(trusted_proxy_cidrs)
 if source_runtime_env_refs:
     app_environment["CEREBRO_SOURCE_CONFIG_ENV_ALLOWLIST"] = ",".join(source_runtime_env_refs)
+
+graph_agent_llm_provider = config.get("graphAgentLlmProvider")
+if graph_agent_llm_provider:
+    app_environment["CEREBRO_GRAPH_AGENT_LLM_PROVIDER"] = graph_agent_llm_provider
+graph_agent_llm_model = config.get("graphAgentLlmModel")
+if graph_agent_llm_model:
+    app_environment["CEREBRO_GRAPH_AGENT_LLM_MODEL"] = graph_agent_llm_model
+openrouter_api_key_secret = config.get("openrouterApiKeySecret")
+if openrouter_api_key_secret:
+    secret_keys.append({"name": "CEREBRO_OPENROUTER_API_KEY", "source": openrouter_api_key_secret})
 
 runtime_dependencies = [
     postgres_stack["secret_version"],
@@ -728,6 +808,7 @@ if web_enabled:
         environment={
             "CEREBRO_API_BASE": web_api_base,
             "CEREBRO_FORWARD_AUTH_HEADERS": str(web_forward_auth_headers).lower(),
+            "CEREBRO_PROXY_TIMEOUT_MS": str(web_proxy_timeout_ms),
             "NEXT_TELEMETRY_DISABLED": "1",
         },
         secret_keys=web_secret_keys,

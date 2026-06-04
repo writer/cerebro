@@ -8,12 +8,180 @@ import pulumi
 import pulumi_aws as aws
 
 
+MCP_OAUTH_LOOPBACK_ORIGINS = (
+    ("ipv4", "http://127.0.0.1"),
+    ("localhost", "http://localhost"),
+    ("ipv6", "http://[::1]"),
+)
+
+
 def _redacted_header(name: str) -> aws.wafv2.WebAclLoggingConfigurationRedactedFieldArgs:
     return aws.wafv2.WebAclLoggingConfigurationRedactedFieldArgs(
         single_header=aws.wafv2.WebAclLoggingConfigurationRedactedFieldSingleHeaderArgs(
             name=name,
         ),
     )
+
+
+def _text_transformations(*types: str) -> list[aws.wafv2.WebAclRuleStatementByteMatchStatementTextTransformationArgs]:
+    return [
+        aws.wafv2.WebAclRuleStatementByteMatchStatementTextTransformationArgs(
+            priority=index,
+            type=transformation_type,
+        )
+        for index, transformation_type in enumerate(types)
+    ]
+
+
+def _byte_match_statement(
+    field_to_match: aws.wafv2.WebAclRuleStatementByteMatchStatementFieldToMatchArgs,
+    search_string: str,
+    positional_constraint: str = "EXACTLY",
+    transformations: tuple[str, ...] = ("NONE",),
+) -> aws.wafv2.WebAclRuleStatementArgs:
+    return aws.wafv2.WebAclRuleStatementArgs(
+        byte_match_statement=aws.wafv2.WebAclRuleStatementByteMatchStatementArgs(
+            field_to_match=field_to_match,
+            positional_constraint=positional_constraint,
+            search_string=search_string,
+            text_transformations=_text_transformations(*transformations),
+        ),
+    )
+
+
+def _method_match(method: str) -> aws.wafv2.WebAclRuleStatementArgs:
+    return _byte_match_statement(
+        aws.wafv2.WebAclRuleStatementByteMatchStatementFieldToMatchArgs(
+            method=aws.wafv2.WebAclRuleStatementByteMatchStatementFieldToMatchMethodArgs(),
+        ),
+        method,
+    )
+
+
+def _uri_path_match(path: str) -> aws.wafv2.WebAclRuleStatementArgs:
+    return _byte_match_statement(
+        aws.wafv2.WebAclRuleStatementByteMatchStatementFieldToMatchArgs(
+            uri_path=aws.wafv2.WebAclRuleStatementByteMatchStatementFieldToMatchUriPathArgs(),
+        ),
+        path,
+    )
+
+
+def _redirect_uri_loopback_match(loopback_origin: str) -> aws.wafv2.WebAclRuleStatementArgs:
+    return _byte_match_statement(
+        aws.wafv2.WebAclRuleStatementByteMatchStatementFieldToMatchArgs(
+            single_query_argument=aws.wafv2.WebAclRuleStatementByteMatchStatementFieldToMatchSingleQueryArgumentArgs(
+                name="redirect_uri",
+            ),
+        ),
+        loopback_origin,
+        positional_constraint="STARTS_WITH",
+        transformations=("URL_DECODE", "LOWERCASE"),
+    )
+
+
+def _registration_body_match(search_string: str) -> aws.wafv2.WebAclRuleStatementArgs:
+    return _byte_match_statement(
+        aws.wafv2.WebAclRuleStatementByteMatchStatementFieldToMatchArgs(
+            body=aws.wafv2.WebAclRuleStatementByteMatchStatementFieldToMatchBodyArgs(
+                oversize_handling="CONTINUE",
+            ),
+        ),
+        search_string,
+        positional_constraint="CONTAINS",
+        transformations=("LOWERCASE",),
+    )
+
+
+def _registration_body_loopback_match(loopback_origin: str) -> aws.wafv2.WebAclRuleStatementArgs:
+    return _byte_match_statement(
+        aws.wafv2.WebAclRuleStatementByteMatchStatementFieldToMatchArgs(
+            body=aws.wafv2.WebAclRuleStatementByteMatchStatementFieldToMatchBodyArgs(
+                oversize_handling="CONTINUE",
+            ),
+        ),
+        loopback_origin,
+        positional_constraint="CONTAINS",
+        transformations=("URL_DECODE", "LOWERCASE"),
+    )
+
+
+def _mcp_oauth_loopback_allow_rule(
+    name: str,
+    priority: int,
+    statements: list[aws.wafv2.WebAclRuleStatementArgs],
+) -> aws.wafv2.WebAclRuleArgs:
+    return aws.wafv2.WebAclRuleArgs(
+        name=name,
+        priority=priority,
+        action=aws.wafv2.WebAclRuleActionArgs(
+            allow=aws.wafv2.WebAclRuleActionAllowArgs(),
+        ),
+        statement=aws.wafv2.WebAclRuleStatementArgs(
+            and_statement=aws.wafv2.WebAclRuleStatementAndStatementArgs(
+                statements=statements,
+            ),
+        ),
+        visibility_config=aws.wafv2.WebAclRuleVisibilityConfigArgs(
+            cloudwatch_metrics_enabled=True,
+            metric_name=name,
+            sampled_requests_enabled=False,
+        ),
+    )
+
+
+def _mcp_oauth_loopback_authorize_rule(suffix: str, loopback_origin: str, priority: int) -> aws.wafv2.WebAclRuleArgs:
+    return _mcp_oauth_loopback_allow_rule(
+        name=f"allow-mcp-oauth-loopback-authorize-{suffix}",
+        priority=priority,
+        statements=[
+            _method_match("GET"),
+            _uri_path_match("/oauth/authorize"),
+            _redirect_uri_loopback_match(loopback_origin),
+        ],
+    )
+
+
+def _mcp_oauth_loopback_register_rule(suffix: str, loopback_origin: str, priority: int) -> aws.wafv2.WebAclRuleArgs:
+    return _mcp_oauth_loopback_allow_rule(
+        name=f"allow-mcp-oauth-loopback-register-{suffix}",
+        priority=priority,
+        statements=[
+            _method_match("POST"),
+            _uri_path_match("/oauth/register"),
+            _registration_body_match('"redirect_uris"'),
+            _registration_body_loopback_match(loopback_origin),
+        ],
+    )
+
+
+def _mcp_oauth_loopback_token_rule(suffix: str, loopback_origin: str, priority: int) -> aws.wafv2.WebAclRuleArgs:
+    return _mcp_oauth_loopback_allow_rule(
+        name=f"allow-mcp-oauth-loopback-token-{suffix}",
+        priority=priority,
+        statements=[
+            _method_match("POST"),
+            _uri_path_match("/oauth/token"),
+            _registration_body_match("redirect_uri="),
+            _registration_body_loopback_match(loopback_origin),
+        ],
+    )
+
+
+def _mcp_oauth_loopback_allow_rules() -> list[aws.wafv2.WebAclRuleArgs]:
+    """Allow MCP OAuth loopback redirects through managed SSRF/RFI rules."""
+    rules: list[aws.wafv2.WebAclRuleArgs] = []
+    priority = 2
+    for suffix, loopback_origin in MCP_OAUTH_LOOPBACK_ORIGINS:
+        rules.append(_mcp_oauth_loopback_authorize_rule(suffix, loopback_origin, priority))
+        priority += 1
+    for suffix, loopback_origin in MCP_OAUTH_LOOPBACK_ORIGINS:
+        rules.append(_mcp_oauth_loopback_token_rule(suffix, loopback_origin, priority))
+        priority += 1
+    for suffix, loopback_origin in MCP_OAUTH_LOOPBACK_ORIGINS:
+        rules.append(_mcp_oauth_loopback_register_rule(suffix, loopback_origin, priority))
+        priority += 1
+    return rules
 
 
 def create_waf(
@@ -69,10 +237,11 @@ def create_waf(
                     sampled_requests_enabled=False,
                 ),
             ),
+            *_mcp_oauth_loopback_allow_rules(),
             # AWS Managed Rules - Common Rule Set
             aws.wafv2.WebAclRuleArgs(
                 name="aws-common-rules",
-                priority=2,
+                priority=20,
                 override_action=aws.wafv2.WebAclRuleOverrideActionArgs(
                     none=aws.wafv2.WebAclRuleOverrideActionNoneArgs(),
                 ),
@@ -91,7 +260,7 @@ def create_waf(
             # AWS Managed Rules - Known Bad Inputs
             aws.wafv2.WebAclRuleArgs(
                 name="aws-bad-inputs",
-                priority=3,
+                priority=30,
                 override_action=aws.wafv2.WebAclRuleOverrideActionArgs(
                     none=aws.wafv2.WebAclRuleOverrideActionNoneArgs(),
                 ),
@@ -110,7 +279,7 @@ def create_waf(
             # AWS Managed Rules - SQL Injection
             aws.wafv2.WebAclRuleArgs(
                 name="aws-sqli",
-                priority=4,
+                priority=40,
                 override_action=aws.wafv2.WebAclRuleOverrideActionArgs(
                     none=aws.wafv2.WebAclRuleOverrideActionNoneArgs(),
                 ),

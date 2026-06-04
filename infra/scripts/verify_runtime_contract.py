@@ -176,6 +176,40 @@ def verify_contract(contract: dict[str, Any], stack: dict[str, Any], require_man
     return errors
 
 
+def contract_drift(contract: dict[str, Any], stack: dict[str, Any]) -> list[str]:
+    """Non-blocking drift signals between the signed contract and the stack.
+
+    Restores the visibility the removed manifest-parity gate used to provide
+    without failing the deploy. Secret names are never emitted.
+    """
+    warnings: list[str] = []
+
+    contract_required_secrets = {
+        str(value).strip()
+        for value in (contract.get("required_secrets") or [])
+        if str(value).strip()
+    }
+    source_secret_keys = {
+        str(value).strip()
+        for value in (stack.get("sourceSecretKeys") or [])
+        if str(value).strip()
+    }
+    missing_secrets = contract_required_secrets - source_secret_keys
+    if missing_secrets:
+        warnings.append(f"stack is missing {len(missing_secrets)} contract-required sourceSecretKeys")
+
+    stack_runtime_ids = {
+        str(runtime.get("id") or "").strip()
+        for runtime in (stack.get("sourceRuntimes") or [])
+        if isinstance(runtime, dict) and str(runtime.get("id") or "").strip()
+    }
+    for runtime_id in sorted(_contract_runtimes(contract)):
+        if runtime_id not in stack_runtime_ids:
+            warnings.append(f"contract runtime {runtime_id!r} is not configured on the stack")
+
+    return warnings
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Verify a signed runtime deploy contract against a Cerebro stack file.")
     parser.add_argument("--contract", type=Path, required=True)
@@ -183,7 +217,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--require-manifest-runtimes", action="store_true")
     args = parser.parse_args(argv)
 
-    errors = verify_contract(_load_contract(args.contract), _load_stack(args.stack_file), args.require_manifest_runtimes)
+    contract = _load_contract(args.contract)
+    stack = _load_stack(args.stack_file)
+    errors = verify_contract(contract, stack, args.require_manifest_runtimes)
+    for warning in contract_drift(contract, stack):
+        print(f"::warning::{warning}")
     for error in errors:
         print(f"ERROR: {error}", file=sys.stderr)
     return 1 if errors else 0

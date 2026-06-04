@@ -30,7 +30,7 @@ permissions:
 
 concurrency:
   group: propose-cerebro-image-tag-${{ github.event.client_payload.target_environment || github.event.inputs.environment || 'go-prod' }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   GHCR_IMAGE: ghcr.io/writer/cerebro
@@ -53,10 +53,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Set up Go
-        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+      - name: Set up cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
-          go-version: "1.26.3"
+          cosign-release: v2.6.1
 
       - name: Install dependencies
         shell: bash
@@ -145,10 +145,9 @@ jobs:
           COSIGN_EXPERIMENTAL: "true"
         run: |
           set -euo pipefail
-          GOBIN="${RUNNER_TEMP}/cosign" go install github.com/sigstore/cosign/v2/cmd/cosign@v2.6.1
           image_ref="${GHCR_IMAGE}@${IMAGE_DIGEST}"
 
-          "${RUNNER_TEMP}/cosign/cosign" verify \
+          cosign verify \
             --certificate-identity-regexp "https://github.com/writer/cerebro/.github/workflows/release.yml@refs/tags/${IMAGE_TAG}" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
             "${image_ref}" > cosign-verify.json
@@ -184,8 +183,7 @@ jobs:
             --pattern cerebro-runtime-contract.json.sig \
             --pattern cerebro-runtime-contract.json.pem
 
-          GOBIN="${RUNNER_TEMP}/cosign" go install github.com/sigstore/cosign/v2/cmd/cosign@v2.6.1
-          "${RUNNER_TEMP}/cosign/cosign" verify-blob \
+          cosign verify-blob \
             --certificate runtime-contract/cerebro-runtime-contract.json.pem \
             --signature runtime-contract/cerebro-runtime-contract.json.sig \
             --certificate-identity-regexp "https://github.com/writer/cerebro/.github/workflows/release.yml@refs/tags/${IMAGE_TAG}" \
@@ -203,22 +201,29 @@ jobs:
         run: |
           set -euo pipefail
 
-          current_tag="$(awk '$1 == "cerebro:imageTag:" { print $2; exit }' "infra/aws/Pulumi.${STACK_NAME}.yaml")"
+          target_config="infra/aws/Pulumi.${STACK_NAME}.yaml"
+          changed_paths=("${target_config}")
+          current_tag="$(awk '$1 == "cerebro:imageTag:" { print $2; exit }' "${target_config}")"
           echo "current_tag=${current_tag}" >> "$GITHUB_OUTPUT"
           uv run --project infra python infra/scripts/set_image_tag.py --stack "${STACK_NAME}" --image-tag "${IMAGE_TAG}"
-          uv run --project infra python infra/scripts/validate_stack_config.py "infra/aws/Pulumi.${STACK_NAME}.yaml"
+          if [ "${STACK_NAME}" = "go-prod" ]; then
+            sec_dev_config="infra/aws/Pulumi.sec-dev.yaml"
+            changed_paths+=("${sec_dev_config}")
+            uv run --project infra python infra/scripts/set_image_tag.py --stack sec-dev --image-tag "${IMAGE_TAG}" --ensure-at-least
+          fi
+          uv run --project infra python infra/scripts/validate_stack_config.py
           if [ -n "${CONTRACT_PATH}" ]; then
-            contract_args=()
-            if [ "${STACK_NAME}" = "sec-dev" ]; then
-              contract_args+=(--require-manifest-runtimes)
-            fi
             uv run --project infra python infra/scripts/verify_runtime_contract.py \
               --contract "${CONTRACT_PATH}" \
-              --stack-file "infra/aws/Pulumi.${STACK_NAME}.yaml" \
-              "${contract_args[@]}"
+              --stack-file "${target_config}"
+            if [ "${STACK_NAME}" = "go-prod" ] && ! git diff --quiet -- "${sec_dev_config}"; then
+              uv run --project infra python infra/scripts/verify_runtime_contract.py \
+                --contract "${CONTRACT_PATH}" \
+                --stack-file "${sec_dev_config}"
+            fi
           fi
 
-          if git diff --quiet -- "infra/aws/Pulumi.${STACK_NAME}.yaml"; then
+          if git diff --quiet -- "${changed_paths[@]}"; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "Stack ${STACK_NAME} already uses ${IMAGE_TAG}"
             exit 0
@@ -238,8 +243,11 @@ jobs:
           CURRENT_TAG: ${{ steps.update.outputs.current_tag }}
           IMAGE_TAG: ${{ steps.image.outputs.tag }}
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          CONTRACT_PATH: ${{ steps.contract.outputs.path }}
           RELEASE_URL: ${{ steps.release.outputs.url }}
           VERIFY_SUMMARY: ${{ steps.verify.outputs.verify_summary }}
+          DISPATCH_SOURCE_REPOSITORY: ${{ github.event.client_payload.source_repository || '' }}
+          DISPATCH_SOURCE_REF: ${{ github.event.client_payload.source_ref || '' }}
         run: |
           set -euo pipefail
 
@@ -249,6 +257,42 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          refresh_from_main_and_apply_update() {
+            local target_config="infra/aws/Pulumi.${STACK_NAME}.yaml"
+            local sec_dev_config="infra/aws/Pulumi.sec-dev.yaml"
+            local changed_paths=("${target_config}")
+            local refreshed_current_tag=""
+
+            git fetch origin main:refs/remotes/origin/main
+            git checkout -f -B "${branch}" origin/main
+
+            refreshed_current_tag="$(awk '$1 == "cerebro:imageTag:" { print $2; exit }' "${target_config}")"
+            echo "Refreshed ${branch} from origin/main; ${STACK_NAME} was ${refreshed_current_tag}, target is ${IMAGE_TAG}."
+
+            uv run --project infra python infra/scripts/set_image_tag.py --stack "${STACK_NAME}" --image-tag "${IMAGE_TAG}"
+            if [ "${STACK_NAME}" = "go-prod" ]; then
+              changed_paths+=("${sec_dev_config}")
+              uv run --project infra python infra/scripts/set_image_tag.py --stack sec-dev --image-tag "${IMAGE_TAG}" --ensure-at-least
+            fi
+
+            uv run --project infra python infra/scripts/validate_stack_config.py
+            if [ -n "${CONTRACT_PATH}" ]; then
+              uv run --project infra python infra/scripts/verify_runtime_contract.py \
+                --contract "${CONTRACT_PATH}" \
+                --stack-file "${target_config}"
+              if [ "${STACK_NAME}" = "go-prod" ] && ! git diff --quiet -- "${sec_dev_config}"; then
+                uv run --project infra python infra/scripts/verify_runtime_contract.py \
+                  --contract "${CONTRACT_PATH}" \
+                  --stack-file "${sec_dev_config}"
+              fi
+            fi
+
+            if git diff --quiet -- "${changed_paths[@]}"; then
+              echo "Stack ${STACK_NAME} already uses ${IMAGE_TAG} after refreshing origin/main."
+              exit 0
+            fi
+          }
 
           if [ "${APPLY_MODE}" = "direct_push" ]; then
             if [ "${STACK_NAME}" != "sec-dev" ]; then
@@ -263,6 +307,8 @@ jobs:
               echo "CEREBRO_AUTORELEASE_TOKEN is required for direct_push so the push triggers deploy workflows" >&2
               exit 1
             fi
+
+            refresh_from_main_and_apply_update
 
             changed_files="$(git diff --name-only)"
             expected_file="infra/aws/Pulumi.${STACK_NAME}.yaml"
@@ -283,44 +329,52 @@ jobs:
             deploy_sha="$(git rev-parse HEAD)"
             git push "https://x-access-token:${GH_TOKEN}@github.com/WriterInternal/cerebro.git" "HEAD:main"
 
-            wait_for_run() {
+            dispatch_and_require_run() {
               local workflow="$1"
-              local event="$2"
+              shift
               local run_id=""
+              local run_url=""
+              local run=""
+
+              gh workflow run "${workflow}" --ref main "$@"
               for _ in {1..24}; do
-                run_id="$(gh run list \
+                run="$(gh run list \
                   --workflow "${workflow}" \
-                  --event "${event}" \
+                  --event workflow_dispatch \
                   --branch main \
                   --limit 20 \
-                  --json databaseId,headSha \
-                  --jq ".[] | select(.headSha == \"${deploy_sha}\") | .databaseId" | head -n 1)"
-                if [ -n "${run_id}" ]; then
-                  break
+                  --json databaseId,headSha,url \
+                  --jq ".[] | select(.headSha == \"${deploy_sha}\") | [.databaseId, .url] | @tsv" | head -n 1)"
+                if [ -n "${run}" ]; then
+                  IFS=$'\t' read -r run_id run_url <<< "${run}"
+                  echo "Created ${workflow} workflow_dispatch run ${run_id} for ${deploy_sha}: ${run_url}"
+                  return 0
                 fi
                 sleep 5
               done
-              if [ -z "${run_id}" ]; then
-                echo "Could not find ${workflow} run for ${deploy_sha}" >&2
-                exit 1
-              fi
-
-              while true; do
-                status="$(gh run view "${run_id}" --json status,conclusion --jq '.status + ":" + (.conclusion // "")')"
-                echo "${workflow} ${run_id}: ${status}"
-                case "${status}" in
-                  completed:success) break ;;
-                  completed:*) exit 1 ;;
-                esac
-                sleep 30
-              done
+              echo "Could not find ${workflow} workflow_dispatch run for ${deploy_sha}" >&2
+              exit 1
             }
 
-            echo "Pushed ${STACK_NAME} deploy commit for ${IMAGE_TAG}; dispatching ordered sec-dev publish and deploy workflows."
-            gh workflow run ci.yml --ref main
-            wait_for_run ci.yml workflow_dispatch
-            gh workflow run infra-deploy.yml --ref main -f environment="${STACK_NAME}"
-            wait_for_run infra-deploy.yml workflow_dispatch
+            # Clean up stale sec-dev automation branches and PRs from prior runs
+            gh pr list --state open --json number,headRefName \
+              --jq ".[] | select(.headRefName | startswith(\"automation/cerebro-image-${STACK_NAME}-\")) | .number" \
+            | while read -r old_pr; do
+              echo "Closing superseded PR #${old_pr}"
+              gh pr close "${old_pr}" --comment "Superseded by direct-push of ${IMAGE_TAG}." --delete-branch || true
+            done
+            mapfile -t stale_branches < <(
+              gh api "repos/${GITHUB_REPOSITORY}/branches" --paginate -q '.[].name' \
+              | grep -E "^automation/cerebro-image-${STACK_NAME}-" || true
+            )
+            for old_branch in "${stale_branches[@]}"; do
+              echo "Deleting stale branch ${old_branch}"
+              gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${old_branch}" 2>/dev/null || true
+            done
+
+            echo "Pushed ${STACK_NAME} deploy commit for ${IMAGE_TAG}; dispatching sec-dev publish and deploy workflows."
+            dispatch_and_require_run ci.yml
+            dispatch_and_require_run infra-deploy.yml -f environment="${STACK_NAME}"
             exit 0
           fi
 
@@ -329,8 +383,12 @@ jobs:
             exit 1
           fi
 
-          git checkout -B "${branch}"
+          refresh_from_main_and_apply_update
+
           git add "infra/aws/Pulumi.${STACK_NAME}.yaml"
+          if [ "${STACK_NAME}" = "go-prod" ]; then
+            git add "infra/aws/Pulumi.sec-dev.yaml"
+          fi
           git commit -m "${title}"
           git push --force-with-lease "https://x-access-token:${GH_TOKEN}@github.com/WriterInternal/cerebro.git" "HEAD:${branch}"
 
@@ -340,6 +398,9 @@ jobs:
             echo
             if [ -n "${CURRENT_TAG}" ]; then
               echo "- Compare: https://github.com/writer/cerebro/compare/${CURRENT_TAG}...${IMAGE_TAG}"
+            fi
+            if [ "${STACK_NAME}" = "go-prod" ]; then
+              echo "- Keeps \`sec-dev\` at least \`${IMAGE_TAG}\` so it cannot lag production."
             fi
             echo "- Image: \`${GHCR_IMAGE}:${IMAGE_TAG}\`"
             if [ -n "${IMAGE_DIGEST}" ]; then
@@ -353,10 +414,87 @@ jobs:
             echo "Deployment remains review-gated: merge this PR to let the existing mirror and Pulumi deploy workflows run."
           } > "${body}"
 
+          # Close superseded automation PRs and delete their branches
+          gh pr list --state open --json number,headRefName \
+            --jq ".[] | select(.headRefName | startswith(\"automation/cerebro-image-${STACK_NAME}-\")) | select(.headRefName != \"${branch}\") | .number" \
+          | while read -r old_pr; do
+            echo "Closing superseded PR #${old_pr}"
+            gh pr close "${old_pr}" --comment "Superseded by ${IMAGE_TAG}." --delete-branch || true
+          done
+
+          # Delete stale automation branches with no open PR
+          mapfile -t stale_branches < <(
+            gh api "repos/${GITHUB_REPOSITORY}/branches" --paginate -q '.[].name' \
+            | grep -E "^automation/cerebro-image-${STACK_NAME}-" \
+            | grep -v "^${branch}$" || true
+          )
+          for old_branch in "${stale_branches[@]}"; do
+            echo "Deleting stale branch ${old_branch}"
+            gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${old_branch}" 2>/dev/null || true
+          done
+
           existing_pr="$(gh pr list --head "${branch}" --json url --jq '.[0].url // empty')"
           if [ -n "${existing_pr}" ]; then
-            gh pr edit "${existing_pr}" --title "${title}" --body-file "${body}"
-            echo "Updated ${existing_pr}"
+            pr_url="${existing_pr}"
+            gh pr edit "${pr_url}" --title "${title}" --body-file "${body}"
+            echo "Updated ${pr_url}"
           else
-            gh pr create --base main --head "${branch}" --title "${title}" --body-file "${body}"
+            pr_url="$(gh pr create --base main --head "${branch}" --title "${title}" --body-file "${body}")"
+            echo "Created ${pr_url}"
           fi
+
+          auto_merge_trusted_pr() {
+            local pr_url="$1"
+            local expected_file="infra/aws/Pulumi.${STACK_NAME}.yaml"
+            local expected_sec_dev_file="infra/aws/Pulumi.sec-dev.yaml"
+            local expected_files=""
+            local changed_files=""
+            local check_count=""
+
+            if [ "${EVENT_NAME}" != "repository_dispatch" ] || [ "${STACK_NAME}" != "go-prod" ] || [ "${APPLY_MODE}" != "pull_request" ]; then
+              return 0
+            fi
+            if [ "${AUTORELEASE_TOKEN_CONFIGURED}" != "true" ]; then
+              echo "::notice::CEREBRO_AUTORELEASE_TOKEN is not configured; leaving ${pr_url} for manual merge."
+              return 0
+            fi
+            if [ "${DISPATCH_SOURCE_REPOSITORY}" != "writer/cerebro" ] || [ "${DISPATCH_SOURCE_REF}" != "refs/tags/${IMAGE_TAG}" ]; then
+              echo "Refusing to auto-merge untrusted dispatch source ${DISPATCH_SOURCE_REPOSITORY} ${DISPATCH_SOURCE_REF}" >&2
+              exit 1
+            fi
+
+            changed_files="$(gh pr diff "${pr_url}" --name-only | sort)"
+            expected_files="${expected_file}"
+            if [ "${STACK_NAME}" = "go-prod" ]; then
+              expected_files="$(printf '%s\n%s\n' "${expected_file}" "${expected_sec_dev_file}" | sort)"
+            fi
+            if [ "${changed_files}" != "${expected_file}" ] \
+              && [ "${changed_files}" != "${expected_files}" ] \
+              && { [ "${STACK_NAME}" != "go-prod" ] || [ "${changed_files}" != "${expected_sec_dev_file}" ]; }; then
+              echo "Refusing to auto-merge ${pr_url}; expected ${expected_files}, got:" >&2
+              printf '%s\n' "${changed_files}" >&2
+              exit 1
+            fi
+
+            registered=false
+            for _ in {1..60}; do
+              check_count="$(gh pr checks "${pr_url}" --required --json name --jq 'length' 2>/dev/null || true)"
+              if [[ "${check_count}" =~ ^[0-9]+$ ]] && [ "${check_count}" -gt 0 ]; then
+                registered=true
+                break
+              fi
+              sleep 10
+            done
+            if [ "${registered}" != "true" ]; then
+              echo "::notice::Required PR checks for ${pr_url} did not register within the wait window; leaving it open for the review-gated merge."
+              return 0
+            fi
+
+            if ! gh pr checks "${pr_url}" --required --watch --interval 10 --fail-fast; then
+              echo "::notice::Required PR checks for ${pr_url} did not all pass; leaving it open for the review-gated merge."
+              return 0
+            fi
+            gh pr merge "${pr_url}" --merge --delete-branch
+          }
+
+          auto_merge_trusted_pr "${pr_url}"

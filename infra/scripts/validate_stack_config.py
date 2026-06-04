@@ -26,15 +26,25 @@ COSMO_RUNTIME_FAMILIES = {
     "writer-cosmo-message": "message",
     "writer-cosmo-survey-feedback": "survey_feedback",
 }
+COSMO_GRAPH_BUDGETED_RUNTIMES = {"writer-cosmo-session", "writer-cosmo-fact"}
+COSMO_MAX_GRAPH_BUDGET_PAGE_LIMIT = 5
+COSMO_MAX_GRAPH_BUDGET_GRAPH_PAGE_LIMIT = 5
+COSMO_MAX_GRAPH_BUDGET_EVENT_LIMIT = 500
 SEC_DEV_HIGH_CONTENTION_GRAPH_RUNTIMES = {
     "writer-github-audit",
     "writer-github-audit-writerinternal",
     "writer-okta-audit",
     "writer-okta-audit-2026-04",
     "writer-okta-audit-2026-q1",
+    "writer-aurelius-findings",
 }
 SEC_DEV_MAX_HIGH_CONTENTION_PAGE_LIMIT = 5
 SEC_DEV_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT = 5
+SEC_DEV_STRICT_GRAPH_RUNTIMES = {
+    "writer-aurelius-findings",
+}
+SEC_DEV_MAX_STRICT_PAGE_LIMIT = 1
+SEC_DEV_MAX_STRICT_GRAPH_PAGE_LIMIT = 1
 PROD_HIGH_CONTENTION_GRAPH_RUNTIMES = {
     "writer-grc-vulnerable-asset",
     "writer-vulnview-dns-alert",
@@ -54,8 +64,34 @@ SEC_DEV_AWS_GLOBAL_FAMILIES = {
     "iam_role_trust",
     "iam_user",
 }
-SEC_DEV_AWS_REGIONAL_FAMILIES = {"cloudtrail", "public_endpoint", "resource_exposure"}
+AWS_COMPUTE_REGIONAL_FAMILIES = {
+    "ec2_instance",
+    "ecs_service",
+    "ecs_task",
+    "ecs_task_definition",
+    "eks_cluster",
+    "eks_fargate_profile",
+    "eks_nodegroup",
+    "eks_pod_identity_association",
+    "lambda_function",
+}
+SEC_DEV_AWS_REGIONAL_FAMILIES = {
+    "asset_metadata",
+    "cloudtrail",
+    "public_endpoint",
+    "resource_exposure",
+    *AWS_COMPUTE_REGIONAL_FAMILIES,
+}
 SEC_DEV_AWS_CLOUDTRAIL_SINCE = "PT15M"
+GO_PROD_AWS_ACCOUNTS = {
+    "sec-prod": "837279440628",
+    "prod": "009160076449",
+    "devops": "381491964434",
+    "sec-dev": "944130631940",
+}
+GO_PROD_AWS_GLOBAL_FAMILIES = SEC_DEV_AWS_GLOBAL_FAMILIES
+GO_PROD_AWS_REGIONAL_FAMILIES = {"asset_metadata", "public_endpoint", "resource_exposure", *AWS_COMPUTE_REGIONAL_FAMILIES}
+GO_PROD_AWS_REGIONS = {"us1": "us-east-1", "us2": "us-west-2"}
 
 
 @dataclass(frozen=True)
@@ -128,6 +164,25 @@ def _source_secret_names(source_secret_keys: Any) -> set[str]:
     return names
 
 
+def _s3_source_role_requirements(s3_sources: Any) -> list[tuple[str, str, str]]:
+    requirements: list[tuple[str, str, str]] = []
+    if not isinstance(s3_sources, list):
+        return requirements
+    for source in s3_sources:
+        if not isinstance(source, dict):
+            continue
+        role_arn = str(source.get("roleArn", "")).strip()
+        bucket = str(source.get("bucket", "")).strip()
+        prefixes = source.get("prefixes") or []
+        if not role_arn or not bucket or not isinstance(prefixes, list):
+            continue
+        for prefix in prefixes:
+            prefix_text = str(prefix).strip()
+            if prefix_text:
+                requirements.append((bucket, prefix_text, role_arn))
+    return requirements
+
+
 def _runtime_id_from_command(command: Any) -> str | None:
     if not isinstance(command, list):
         return None
@@ -189,7 +244,10 @@ def _finding(severity: str, stack: str, path: str, message: str) -> Finding:
 
 
 def _validate_graph_page_budget(stack: str, runtime_id: str, command: Any, path: str, findings: list[Finding]) -> None:
-    if stack == "sec-dev" and runtime_id in SEC_DEV_HIGH_CONTENTION_GRAPH_RUNTIMES:
+    if stack == "sec-dev" and runtime_id in SEC_DEV_STRICT_GRAPH_RUNTIMES:
+        max_page_limit = SEC_DEV_MAX_STRICT_PAGE_LIMIT
+        max_graph_page_limit = SEC_DEV_MAX_STRICT_GRAPH_PAGE_LIMIT
+    elif stack == "sec-dev" and runtime_id in SEC_DEV_HIGH_CONTENTION_GRAPH_RUNTIMES:
         max_page_limit = SEC_DEV_MAX_HIGH_CONTENTION_PAGE_LIMIT
         max_graph_page_limit = SEC_DEV_MAX_HIGH_CONTENTION_GRAPH_PAGE_LIMIT
     elif stack == "go-prod" and runtime_id in PROD_HIGH_CONTENTION_GRAPH_RUNTIMES:
@@ -335,6 +393,38 @@ def _validate_cosmo_gitops(
                 findings.append(_finding("error", stack, f"{schedule_path}.name", f"{runtime_id} schedule must be named {expected_name!r}"))
             if schedule.get("taskCount", 1) != 1:
                 findings.append(_finding("error", stack, f"{schedule_path}.taskCount", f"{runtime_id} schedule must run exactly one task"))
+            if stack == "sec-dev" and runtime_id in COSMO_GRAPH_BUDGETED_RUNTIMES:
+                command = schedule.get("command")
+                page_limit = _uint_arg_from_command(command, "page_limit")
+                graph_page_limit = _uint_arg_from_command(command, "graph_page_limit")
+                event_limit = _uint_arg_from_command(command, "event_limit")
+                if page_limit is None or page_limit > COSMO_MAX_GRAPH_BUDGET_PAGE_LIMIT:
+                    findings.append(
+                        _finding(
+                            "error",
+                            stack,
+                            f"{schedule_path}.command",
+                            f"{runtime_id} must set page_limit <= {COSMO_MAX_GRAPH_BUDGET_PAGE_LIMIT}",
+                        )
+                    )
+                if graph_page_limit is None or graph_page_limit > COSMO_MAX_GRAPH_BUDGET_GRAPH_PAGE_LIMIT:
+                    findings.append(
+                        _finding(
+                            "error",
+                            stack,
+                            f"{schedule_path}.command",
+                            f"{runtime_id} must set graph_page_limit <= {COSMO_MAX_GRAPH_BUDGET_GRAPH_PAGE_LIMIT}",
+                        )
+                    )
+                if event_limit is None or event_limit > COSMO_MAX_GRAPH_BUDGET_EVENT_LIMIT:
+                    findings.append(
+                        _finding(
+                            "error",
+                            stack,
+                            f"{schedule_path}.command",
+                            f"{runtime_id} must set event_limit <= {COSMO_MAX_GRAPH_BUDGET_EVENT_LIMIT}",
+                        )
+                    )
 
 
 def _validate_sec_dev_aws_coverage(
@@ -435,6 +525,83 @@ def _validate_sec_dev_aws_coverage(
             findings.append(_finding("error", stack, "cerebro:orchestratorSchedules", f"required sec-dev AWS schedule for {runtime_id!r} is missing"))
 
 
+def _validate_go_prod_aws_coverage(
+    stack: str,
+    source_runtimes: list[Any],
+    schedules: list[Any],
+    findings: list[Finding],
+) -> None:
+    if stack != "go-prod":
+        return
+
+    runtime_entries: dict[str, tuple[int, dict[str, Any]]] = {}
+    has_aws_public_endpoint = False
+    for index, runtime in enumerate(source_runtimes):
+        if not isinstance(runtime, dict):
+            continue
+        runtime_id = str(runtime.get("id", "")).strip()
+        if runtime_id:
+            runtime_entries[runtime_id] = (index, runtime)
+        if str(runtime.get("sourceId", "")).strip() != "aws":
+            continue
+        runtime_config = runtime.get("config") or {}
+        if isinstance(runtime_config, dict) and str(runtime_config.get("family", "")).strip() == "public_endpoint":
+            has_aws_public_endpoint = True
+
+    if not has_aws_public_endpoint:
+        return
+
+    schedules_by_runtime: dict[str, list[int]] = {}
+    for index, schedule in enumerate(schedules):
+        if isinstance(schedule, dict):
+            runtime_id = _runtime_id_from_command(schedule.get("command"))
+            if runtime_id:
+                schedules_by_runtime.setdefault(runtime_id, []).append(index)
+
+    required: dict[str, dict[str, str]] = {}
+    for account_slug, account_id in sorted(GO_PROD_AWS_ACCOUNTS.items()):
+        role_arn = f"arn:aws:iam::{account_id}:role/cerebro-org-scan-role"
+        for family in sorted(GO_PROD_AWS_GLOBAL_FAMILIES):
+            required[f"writer-aws-{account_slug}-{family.replace('_', '-')}"] = {
+                "account_id": account_id,
+                "family": family,
+                "include_global": "true",
+                "region": "us-east-1",
+                "role_arn": role_arn,
+            }
+        for region_slug, region in sorted(GO_PROD_AWS_REGIONS.items()):
+            for family in sorted(GO_PROD_AWS_REGIONAL_FAMILIES):
+                required[f"writer-aws-{account_slug}-{region_slug}-{family.replace('_', '-')}"] = {
+                    "account_id": account_id,
+                    "family": family,
+                    "include_global": "true" if region == "us-east-1" else "false",
+                    "per_page": "100",
+                    "region": region,
+                    "role_arn": role_arn,
+                }
+
+    for runtime_id, expected_config in sorted(required.items()):
+        runtime_entry = runtime_entries.get(runtime_id)
+        if runtime_entry is None:
+            findings.append(_finding("error", stack, "cerebro:sourceRuntimes", f"required go-prod AWS coverage runtime {runtime_id!r} is missing"))
+            continue
+        runtime_index, runtime = runtime_entry
+        runtime_path = f"cerebro:sourceRuntimes[{runtime_index}]"
+        if str(runtime.get("sourceId", "")).strip() != "aws":
+            findings.append(_finding("error", stack, f"{runtime_path}.sourceId", f"{runtime_id} must use sourceId aws"))
+        if str(runtime.get("tenantId", "")).strip() != "writer":
+            findings.append(_finding("error", stack, f"{runtime_path}.tenantId", f"{runtime_id} must use tenantId writer"))
+        runtime_config = runtime.get("config") or {}
+        if isinstance(runtime_config, dict):
+            for key, expected in expected_config.items():
+                actual = str(runtime_config.get(key, "")).strip()
+                if actual != expected:
+                    findings.append(_finding("error", stack, f"{runtime_path}.config.{key}", f"{runtime_id} must set {key} to {expected!r}"))
+
+        if runtime_id not in schedules_by_runtime:
+            findings.append(_finding("error", stack, "cerebro:orchestratorSchedules", f"required go-prod AWS schedule for {runtime_id!r} is missing"))
+
+
 def validate_stack(path: Path) -> list[Finding]:
     stack = _stack_name(path)
     config = _load_config(path)
@@ -467,6 +634,15 @@ def validate_stack(path: Path) -> list[Finding]:
                 "active Cerebro environments must allow at least two API tasks for latency headroom",
             )
         )
+    graph_agent_llm_provider = str(config.get("graphAgentLlmProvider", "")).strip().lower()
+    graph_agent_llm_model = str(config.get("graphAgentLlmModel", "")).strip()
+    if graph_agent_llm_provider == "openrouter":
+        if not graph_agent_llm_model:
+            findings.append(_finding("error", stack, "cerebro:graphAgentLlmModel", "OpenRouter provider must set an explicit OpenRouter model id"))
+        elif "/" not in graph_agent_llm_model:
+            findings.append(_finding("error", stack, "cerebro:graphAgentLlmModel", "OpenRouter model must use provider/model form"))
+        elif re.search(r"claude-[a-z0-9.-]+-\d{8}$", graph_agent_llm_model):
+            findings.append(_finding("error", stack, "cerebro:graphAgentLlmModel", "OpenRouter model must use an OpenRouter slug, not an Anthropic dated model id"))
     web_max_instances = config.get("webMaxInstances", 1)
     if config.get("webEnabled") is True and (not isinstance(web_max_instances, int) or web_max_instances < 2):
         findings.append(
@@ -572,6 +748,7 @@ def validate_stack(path: Path) -> list[Finding]:
 
     runtime_ids: set[str] = set()
     source_secret_names = _source_secret_names(config.get("sourceSecretKeys") or [])
+    s3_role_requirements = _s3_source_role_requirements(config.get("s3Sources") or [])
     for index, runtime in enumerate(source_runtimes):
         runtime_path = f"cerebro:sourceRuntimes[{index}]"
         if not isinstance(runtime, dict):
@@ -595,15 +772,29 @@ def validate_stack(path: Path) -> list[Finding]:
             findings.append(_finding("error", stack, f"{runtime_path}.config", "runtime config must be an object"))
             continue
 
-        if str(runtime.get("sourceId", "")).strip() == "aws":
-            account_id = str(runtime_config.get("account_id", "")).strip()
-            role_arn = str(runtime_config.get("role_arn", "")).strip()
-            if role_arn:
-                match = AWS_ROLE_ARN_RE.match(role_arn)
-                if not match:
-                    findings.append(_finding("error", stack, f"{runtime_path}.config.role_arn", "must be an IAM role ARN"))
-                elif account_id and match.group(2) != account_id:
-                    findings.append(_finding("error", stack, f"{runtime_path}.config.role_arn", "account must match account_id"))
+        account_id = str(runtime_config.get("account_id", "")).strip()
+        role_arn = str(runtime_config.get("role_arn", "")).strip()
+        if role_arn:
+            match = AWS_ROLE_ARN_RE.match(role_arn)
+            if not match:
+                findings.append(_finding("error", stack, f"{runtime_path}.config.role_arn", "must be an IAM role ARN"))
+            elif str(runtime.get("sourceId", "")).strip() == "aws" and account_id and match.group(2) != account_id:
+                findings.append(_finding("error", stack, f"{runtime_path}.config.role_arn", "account must match account_id"))
+
+        runtime_bucket = str(runtime_config.get("bucket", "")).strip()
+        runtime_prefix = str(runtime_config.get("prefix", "")).strip()
+        for bucket, prefix, required_role_arn in s3_role_requirements:
+            if runtime_bucket != bucket or runtime_prefix != prefix:
+                continue
+            if role_arn != required_role_arn:
+                findings.append(
+                    _finding(
+                        "error",
+                        stack,
+                        f"{runtime_path}.config.role_arn",
+                        f"S3 source runtime for s3://{bucket}/{prefix} must set role_arn to the configured s3Sources roleArn",
+                    )
+                )
 
         for env_name, env_path in _env_refs(runtime_config, f"{runtime_path}.config"):
             if not env_name:
@@ -639,7 +830,8 @@ def validate_stack(path: Path) -> list[Finding]:
     top_level_runtime_id = _runtime_id_from_command(top_level_command)
     if top_level_command:
         if top_level_runtime_id is None:
-            scheduled_runtime_ids.update(runtime_ids)
+            if not schedules:
+                scheduled_runtime_ids.update(runtime_ids)
         elif top_level_runtime_id not in runtime_ids:
             findings.append(
                 _finding(
@@ -650,10 +842,12 @@ def validate_stack(path: Path) -> list[Finding]:
                 )
             )
         else:
-            scheduled_runtime_ids.add(top_level_runtime_id)
-        guarded_runtime_ids = [top_level_runtime_id] if top_level_runtime_id is not None else sorted(runtime_ids)
-        for guarded_runtime_id in guarded_runtime_ids:
-            _validate_graph_page_budget(stack, guarded_runtime_id, top_level_command, "cerebro:orchestratorCommand", findings)
+            if not schedules:
+                scheduled_runtime_ids.add(top_level_runtime_id)
+        if not schedules:
+            guarded_runtime_ids = [top_level_runtime_id] if top_level_runtime_id is not None else sorted(runtime_ids)
+            for guarded_runtime_id in guarded_runtime_ids:
+                _validate_graph_page_budget(stack, guarded_runtime_id, top_level_command, "cerebro:orchestratorCommand", findings)
 
     schedule_names: set[str] = set()
     for index, schedule in enumerate(schedules):
@@ -717,10 +911,20 @@ def validate_stack(path: Path) -> list[Finding]:
 
     _validate_cosmo_gitops(stack, config, source_runtimes, schedules, source_secret_names, findings)
     _validate_sec_dev_aws_coverage(stack, config, source_runtimes, schedules, findings)
+    _validate_go_prod_aws_coverage(stack, source_runtimes, schedules, findings)
 
     environment = str(config.get("environment", stack)).lower()
     is_prod = stack.endswith("prod") or "prod" in environment
     is_sec_dev = stack == "sec-dev" or environment == "sec-dev"
+    if config.get("retainLegacyJobsTableForDeletionProtectionTransition") is True:
+        findings.append(
+            _finding(
+                "warning",
+                stack,
+                "cerebro:retainLegacyJobsTableForDeletionProtectionTransition",
+                "legacy jobs table transition flag is still enabled; remove it after confirming the table can be deleted",
+            )
+        )
     postgres_storage_type = str(config.get("postgresStorageType", "gp3")).strip().lower()
     postgres_allocated_storage = config.get("postgresAllocatedStorage")
     postgres_iops = config.get("postgresIops") or None

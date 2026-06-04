@@ -21,6 +21,7 @@ def create_alb(
     enable_deletion_protection: bool = False,
     enable_access_logs: bool = False,
     access_logs_retention_days: int = 90,
+    idle_timeout_seconds: int = 300,
     allowed_hostnames: list[str] = None,
     oidc_auth: dict = None,
 ) -> dict:
@@ -40,6 +41,7 @@ def create_alb(
         enable_deletion_protection: Prevent accidental ALB deletion
         enable_access_logs: Enable ALB access logs to S3
         access_logs_retention_days: Days to retain access logs
+        idle_timeout_seconds: ALB idle timeout for long-lived HTTP/SSE streams
         allowed_hostnames: Host headers allowed to reach the target group
         oidc_auth: Optional ALB OIDC authentication settings
     """
@@ -223,6 +225,7 @@ def create_alb(
         subnets=subnet_ids,
         enable_deletion_protection=enable_deletion_protection,
         enable_http2=True,
+        idle_timeout=idle_timeout_seconds,
         drop_invalid_header_fields=True,
         access_logs=(
             aws.lb.LoadBalancerAccessLogsArgs(

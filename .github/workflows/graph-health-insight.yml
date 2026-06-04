@@ -1,0 +1,193 @@
+name: Graph Health Insight
+
+on:
+  workflow_run:
+    workflows: ["Infrastructure Deploy"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to inspect'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - both
+          - sec-dev
+          - go-prod
+
+env:
+  AWS_REGION: us-east-1
+  TAILSCALE_OAUTH_CLIENT_ID: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
+  TAILSCALE_OAUTH_CLIENT_SECRET: ${{ secrets.TAILSCALE_OAUTH_CLIENT_SECRET }}
+
+jobs:
+  changes:
+    name: Detect graph insight need
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      aws_insight: ${{ steps.filter.outputs.aws_insight }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Filter changed paths
+        id: filter
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws_insight=false
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            aws_insight=true
+          else
+            if git rev-parse HEAD^ >/dev/null 2>&1; then
+              git diff --name-only HEAD^ HEAD > changed.txt
+            else
+              git ls-files > changed.txt
+            fi
+            if grep -Eq '^infra/aws/|^infra/scripts/(verify_graph_health_ecs|run_aws_deploy_verifications)\.py$|^infra/tests/test_(verify_graph_health_ecs|run_aws_deploy_verifications)\.py$' changed.txt; then
+              aws_insight=true
+            fi
+          fi
+          echo "aws_insight=${aws_insight}" >> "$GITHUB_OUTPUT"
+          printf 'Graph insight path filter: %s\n' "${aws_insight}"
+
+  graph-insight-sec-dev:
+    name: Graph insight sec-dev
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: >-
+      needs.changes.outputs.aws_insight == 'true' &&
+      ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'both' || github.event.inputs.environment == 'sec-dev')))
+    concurrency:
+      group: graph-health-insight-sec-dev
+      cancel-in-progress: true
+    permissions:
+      id-token: write
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "infra/pyproject.toml"
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: bash
+        working-directory: infra
+        run: uv sync
+
+      - name: Configure AWS credentials (sec-dev)
+        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
+        with:
+          assume-role-arn: arn:aws:iam::944130631940:role/writer-aws-deployment-role
+
+      - name: Run deep graph insight (sec-dev)
+        id: graph_insight_sec_dev
+        shell: bash
+        working-directory: infra
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >
+          uv run python scripts/run_aws_deploy_verifications.py
+          --stack-file aws/Pulumi.sec-dev.yaml
+          --graph-health
+          --graph-health-output graph-health-sec-dev.tsv
+          --allow-graph-health-degradation
+          --graph-health-heal
+          --graph-health-issue
+          --graph-health-artifact-name graph-health-sec-dev
+          --graph-health-command-retry-seconds 600
+          --graph-health-ingest-retry-seconds 600
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: Upload graph insight artifact (sec-dev)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: graph-health-sec-dev
+          path: infra/graph-health-sec-dev.tsv
+          if-no-files-found: ignore
+
+  graph-insight-go-prod:
+    name: Graph insight go-prod
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: >-
+      needs.changes.outputs.aws_insight == 'true' &&
+      ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'both' || github.event.inputs.environment == 'go-prod')))
+    concurrency:
+      group: graph-health-insight-go-prod
+      cancel-in-progress: true
+    permissions:
+      id-token: write
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "infra/pyproject.toml"
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: bash
+        working-directory: infra
+        run: uv sync
+
+      - name: Configure AWS credentials (sec-prod)
+        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
+        with:
+          assume-role-arn: arn:aws:iam::837279440628:role/writer-aws-deployment-role
+
+      - name: Run deep graph insight (go-prod)
+        id: graph_insight_go_prod
+        shell: bash
+        working-directory: infra
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >
+          uv run python scripts/run_aws_deploy_verifications.py
+          --stack-file aws/Pulumi.go-prod.yaml
+          --graph-health
+          --graph-health-output graph-health-go-prod.tsv
+          --allow-graph-health-degradation
+          --graph-health-heal
+          --graph-health-issue
+          --graph-health-artifact-name graph-health-go-prod
+          --graph-health-command-retry-seconds 600
+          --graph-health-ingest-retry-seconds 600
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: Upload graph insight artifact (go-prod)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: graph-health-go-prod
+          path: infra/graph-health-go-prod.tsv
+          if-no-files-found: ignore
