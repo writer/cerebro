@@ -70,6 +70,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Auth.DeviceAuth.ReplicaCount != 1 {
 		t.Fatalf("DeviceAuth.ReplicaCount = %d, want 1", cfg.Auth.DeviceAuth.ReplicaCount)
 	}
+	if cfg.Auth.DeviceAuth.RefreshTTL != defaultDeviceAuthRefreshTTL {
+		t.Fatalf("DeviceAuth.RefreshTTL = %v, want %v", cfg.Auth.DeviceAuth.RefreshTTL, defaultDeviceAuthRefreshTTL)
+	}
 }
 
 func TestLoadFromEnv(t *testing.T) {
