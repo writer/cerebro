@@ -19,6 +19,7 @@ import (
 	sdksource "github.com/writer/cerebro/sources/sdk"
 	securitytoolingmapsource "github.com/writer/cerebro/sources/securitytoolingmap"
 	sentineloneSource "github.com/writer/cerebro/sources/sentinelone"
+	trustedendpointsource "github.com/writer/cerebro/sources/trustedendpoint"
 	vulnviewsource "github.com/writer/cerebro/sources/vulnview"
 )
 
@@ -116,6 +117,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "security_tooling_map",
 		load: func() (sourcecdk.Source, error) {
 			return securitytoolingmapsource.New()
+		},
+	},
+	{
+		name: "trusted_endpoint",
+		load: func() (sourcecdk.Source, error) {
+			return trustedendpointsource.New()
 		},
 	},
 	{

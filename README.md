@@ -260,6 +260,7 @@ Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-
 | `sdk` | Generic SDK push source for onboarded applications | validates pushed integration config; preview reads are empty |
 | `sentinelone` | SentinelOne endpoint posture and threat source | agents, threats, activities, applications, exclusions, groups, sites |
 | `security_tooling_map` | Security tooling inventory source | configured tooling-map families |
+| `trusted_endpoint` | Trusted Endpoint posture, AI trust, GRC evidence, and trust-gate source | metadata-only endpoint posture, AI risk, evidence, findings, and action outcomes |
 | `vulnview` | Vulnerability and attack-surface source | sites, scans, vulnerabilities, assets, DNS alerts |
 
 Source-specific configuration is passed as `key=value` pairs in CLI calls or query parameters in HTTP calls. Required keys vary by source and family.
@@ -360,6 +361,7 @@ Some files in `docs/` describe broader or historical architecture and may be ahe
 | [MCP native Droid setup](docs/MCP_DROID_SETUP.md) | native Droid MCP setup, OAuth flow, transport compatibility, and troubleshooting |
 | [Graph ontology](docs/GRAPH_ONTOLOGY_AUTOGEN.md) | generated graph ontology reference |
 | [Graph report contracts](docs/GRAPH_REPORT_CONTRACTS_AUTOGEN.md) | generated graph/report contract reference |
+| [Endpoint security platform integration](docs/ENDPOINT_SECURITY_PLATFORM_INTEGRATION.md) | trusted-endpoint, secheck, Security/Kairos, identity, telemetry, and trust-gate integration contract |
 | [Non-goals](docs/NON_GOALS.md) | what Cerebro intentionally does not try to do, with rationale and enforcement pointers |
 | [Policies](docs/POLICIES.md) | policy catalog and authoring notes |
 | [Packages](docs/PACKAGES.md) | package overview; verify against current code before relying on details |
