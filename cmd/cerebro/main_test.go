@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -24,6 +25,23 @@ func TestRunRejectsUnsupportedCommand(t *testing.T) {
 	var usage usageError
 	if !errors.As(err, &usage) {
 		t.Fatalf("run(unsupported) error = %v, want usageError", err)
+	}
+}
+
+func TestSourceRuntimeCommandSignalsIncludeSIGTERM(t *testing.T) {
+	signals := sourceRuntimeCommandSignals()
+	if len(signals) != 2 || signals[0] != os.Interrupt || signals[1] != syscall.SIGTERM {
+		t.Fatalf("sourceRuntimeCommandSignals() = %#v, want interrupt and SIGTERM", signals)
+	}
+}
+
+func TestSourceRuntimeCommandContextCanBeCanceled(t *testing.T) {
+	ctx, cancel := sourceRuntimeCommandContext()
+	cancel()
+	select {
+	case <-ctx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("source runtime command context did not cancel")
 	}
 }
 
