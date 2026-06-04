@@ -339,6 +339,81 @@ func TestMCPTelemetryIncludesSafeToolContext(t *testing.T) {
 	}
 }
 
+func TestMCPTelemetryIncludesInitializeShape(t *testing.T) {
+	server := newMCPTestServer(t, &stubRuntimeStore{})
+	defer server.Close()
+
+	stderr := captureBootstrapStderr(t, func() {
+		postMCP(t, server, "", map[string]any{
+			"jsonrpc": "2.0",
+			"id":      1,
+			"method":  "initialize",
+			"params": map[string]any{
+				"protocolVersion": mcpProtocolVersion,
+				"clientInfo": map[string]any{
+					"name":    "droid-test",
+					"version": "0.0.0",
+				},
+				"capabilities": map[string]any{},
+			},
+		})
+	})
+
+	payload := decodeMCPTelemetryPayload(t, stderr)
+	for key, want := range map[string]any{
+		"mcp.method":                      "initialize",
+		"mcp.request_kind":                "request",
+		"mcp.outcome":                     "ok",
+		"mcp.accepts_json":                true,
+		"mcp.accepts_sse":                 true,
+		"mcp.jsonrpc_id_present":          true,
+		"mcp.params_present":              true,
+		"mcp.session_header_present":      false,
+		"mcp.response_shape":              "initialize",
+		"mcp.initialize_protocol_version": mcpProtocolVersion,
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+}
+
+func TestMCPTelemetryIncludesListShape(t *testing.T) {
+	server := newMCPTestServer(t, &stubRuntimeStore{})
+	defer server.Close()
+
+	stderr := captureBootstrapStderr(t, func() {
+		postMCP(t, server, "client-session", map[string]any{
+			"jsonrpc": "2.0",
+			"id":      1,
+			"method":  "tools/list",
+			"params":  map[string]any{},
+		})
+	})
+
+	payload := decodeMCPTelemetryPayload(t, stderr)
+	for key, want := range map[string]any{
+		"mcp.method":                 "tools/list",
+		"mcp.request_kind":           "request",
+		"mcp.outcome":                "ok",
+		"mcp.response_shape":         "list",
+		"mcp.list_key":               "tools",
+		"mcp.list_has_next_cursor":   false,
+		"mcp.session_header_present": true,
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	count, ok := payload["mcp.list_count"].(float64)
+	if !ok || count < 1 {
+		t.Fatalf("telemetry mcp.list_count = %#v, want positive number; payload=%#v", payload["mcp.list_count"], payload)
+	}
+	if _, exists := payload["tools"]; exists {
+		t.Fatalf("telemetry recorded raw tools list: %#v", payload)
+	}
+}
+
 func TestMCPTelemetryClassifiesToolErrors(t *testing.T) {
 	server := newMCPTestServer(t, nil)
 	defer server.Close()

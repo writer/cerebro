@@ -771,6 +771,42 @@ func TestMCPOAuthAuditTelemetryIncludesSafeRegistrationShape(t *testing.T) {
 	}
 }
 
+func TestMCPOAuthAuditTelemetryIncludesSafeRevocationShape(t *testing.T) {
+	app := &App{cfg: testMCPOAuthConfig("http://127.0.0.1:39123/callback", "https://writer-sso.example")}
+	form := url.Values{
+		"client_id":       {"droid"},
+		"token":           {"test-token"},
+		"token_type_hint": {"refresh_token"},
+	}
+	req := httptest.NewRequest(http.MethodPost, oauthRevokePath, strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if err := req.ParseForm(); err != nil {
+		t.Fatalf("ParseForm: %v", err)
+	}
+
+	stderr := captureBootstrapStderr(t, func() {
+		app.emitOAuthAuditEvent(req, "revoke", http.StatusOK, "success", "", "droid", time.Now())
+	})
+	payload := decodeBootstrapTelemetryPayload(t, stderr)
+	for key, want := range map[string]any{
+		"name":                          "cerebro.oauth.mcp",
+		"operation":                     "revoke",
+		"outcome":                       "success",
+		"status_code":                   float64(http.StatusOK),
+		"oauth.client_auth_method":      "none",
+		"oauth.token_type_hint_present": true,
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	for _, key := range []string{"token", "token_type_hint", "client_secret", "access_token", "refresh_token"} {
+		if _, exists := payload[key]; exists {
+			t.Fatalf("telemetry recorded sensitive revocation field %q: %#v", key, payload)
+		}
+	}
+}
+
 func testMCPOAuthConfig(clientRedirect string, upstreamBase string) config.Config {
 	return config.Config{
 		HTTPAddr:        "127.0.0.1:0",
