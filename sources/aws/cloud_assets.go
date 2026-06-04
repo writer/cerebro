@@ -100,27 +100,27 @@ func listS3Buckets(ctx context.Context, clients awsClients, settings settings, _
 		}
 		if tags, err := clients.s3.GetBucketTagging(ctx, &s3.GetBucketTaggingInput{Bucket: awssdk.String(name)}); err == nil {
 			record.Tags = s3TagMap(tags.TagSet)
-		} else if !optionalAWSError(err, "NoSuchTagSet", "NoSuchBucket") {
+		} else if !optionalAWSError(err, "NoSuchTagSet", "NoSuchBucket", "PermanentRedirect") {
 			return nil, "", fmt.Errorf("get bucket tags %q: %w", name, err)
 		}
 		if encryption, err := clients.s3.GetBucketEncryption(ctx, &s3.GetBucketEncryptionInput{Bucket: awssdk.String(name)}); err == nil {
 			record.Encryption, record.KMSKeyID, record.BucketKeyEnabled = s3EncryptionSummary(encryption.ServerSideEncryptionConfiguration)
-		} else if !optionalAWSError(err, "ServerSideEncryptionConfigurationNotFoundError", "NoSuchBucket") {
+		} else if !optionalAWSError(err, "ServerSideEncryptionConfigurationNotFoundError", "NoSuchBucket", "PermanentRedirect") {
 			return nil, "", fmt.Errorf("get bucket encryption %q: %w", name, err)
 		}
 		if versioning, err := clients.s3.GetBucketVersioning(ctx, &s3.GetBucketVersioningInput{Bucket: awssdk.String(name)}); err == nil {
 			record.Versioning = string(versioning.Status)
-		} else if !optionalAWSError(err, "NoSuchBucket") {
+		} else if !optionalAWSError(err, "NoSuchBucket", "PermanentRedirect") {
 			return nil, "", fmt.Errorf("get bucket versioning %q: %w", name, err)
 		}
 		if logging, err := clients.s3.GetBucketLogging(ctx, &s3.GetBucketLoggingInput{Bucket: awssdk.String(name)}); err == nil {
 			record.LoggingEnabled = logging.LoggingEnabled != nil
-		} else if !optionalAWSError(err, "NoSuchBucket") {
+		} else if !optionalAWSError(err, "NoSuchBucket", "PermanentRedirect") {
 			return nil, "", fmt.Errorf("get bucket logging %q: %w", name, err)
 		}
 		if block, err := clients.s3.GetPublicAccessBlock(ctx, &s3.GetPublicAccessBlockInput{Bucket: awssdk.String(name)}); err == nil {
 			record.PublicAccessBlock = block.PublicAccessBlockConfiguration
-		} else if !optionalAWSError(err, "NoSuchPublicAccessBlockConfiguration", "NoSuchBucket") {
+		} else if !optionalAWSError(err, "NoSuchPublicAccessBlockConfiguration", "NoSuchBucket", "PermanentRedirect") {
 			return nil, "", fmt.Errorf("get bucket public access block %q: %w", name, err)
 		}
 		records = append(records, record)
@@ -362,7 +362,7 @@ func secretEvent(settings settings, secret secretsmanagertypesSecret) (*primitiv
 	attributes["arn"] = arn
 	attributes["secret_name"] = name
 	attributes["kms_key_id"] = awssdk.ToString(secret.KmsKeyId)
-	attributes["encryption"] = boolString(awssdk.ToString(secret.KmsKeyId) != "")
+	attributes["encryption"] = boolString(true)
 	attributes["rotation"] = boolString(awssdk.ToBool(secret.RotationEnabled))
 	attributes["rotation_lambda_arn"] = awssdk.ToString(secret.RotationLambdaARN)
 	attributes["owning_service"] = awssdk.ToString(secret.OwningService)
@@ -468,8 +468,10 @@ func s3BucketARN(name string) string {
 
 func s3BucketLocationRegion(value s3types.BucketLocationConstraint) string {
 	switch value {
-	case "", s3types.BucketLocationConstraint("EU"):
+	case "":
 		return "us-east-1"
+	case s3types.BucketLocationConstraint("EU"):
+		return "eu-west-1"
 	default:
 		return string(value)
 	}

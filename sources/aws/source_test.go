@@ -49,6 +49,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	snstypes "github.com/aws/aws-sdk-go-v2/service/sns/types"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/smithy-go"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -851,6 +852,49 @@ func TestSQSQueueEventEncryptionHonorsManagedSSEValue(t *testing.T) {
 				t.Fatalf("encryption = %q, want %q", got, tt.encryption)
 			}
 		})
+	}
+}
+
+func TestS3BucketLocationRegionHandlesLegacyEU(t *testing.T) {
+	if got := s3BucketLocationRegion(s3types.BucketLocationConstraint("EU")); got != "eu-west-1" {
+		t.Fatalf("legacy EU region = %q, want eu-west-1", got)
+	}
+}
+
+func TestListS3BucketsIgnoresPermanentRedirectForOptionalMetadata(t *testing.T) {
+	records, _, err := listS3Buckets(context.Background(), awsClients{s3: fakeAWS{
+		fakeAWSData: fakeAWSData{
+			s3Buckets: []s3types.Bucket{{Name: awssdk.String("legacy-eu")}},
+			s3BucketRegions: map[string]s3types.BucketLocationConstraint{
+				"legacy-eu": s3types.BucketLocationConstraint("EU"),
+			},
+			s3OptionalError: &smithy.GenericAPIError{Code: "PermanentRedirect", Message: "wrong region"},
+		},
+	}}, settings{region: "us-east-1"}, "", 0)
+	if err != nil {
+		t.Fatalf("listS3Buckets: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("len(records) = %d, want 1", len(records))
+	}
+	if records[0].Region != "eu-west-1" {
+		t.Fatalf("region = %q, want eu-west-1", records[0].Region)
+	}
+}
+
+func TestSecretEventReportsDefaultEncryption(t *testing.T) {
+	event, err := secretEvent(settings{accountID: "123456789012", region: "us-east-1"}, secretsmanagertypes.SecretListEntry{
+		ARN:  awssdk.String("arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/api-key-AbCd"),
+		Name: awssdk.String("prod/api-key"),
+	})
+	if err != nil {
+		t.Fatalf("secretEvent: %v", err)
+	}
+	if got := event.Attributes["encryption"]; got != "true" {
+		t.Fatalf("encryption = %q, want true", got)
+	}
+	if got := event.Attributes["kms_key_id"]; got != "" {
+		t.Fatalf("kms_key_id = %q, want empty for default key", got)
 	}
 }
 
@@ -1902,6 +1946,7 @@ type fakeAWSData struct {
 	s3Versioning         map[string]s3types.BucketVersioningStatus
 	s3Logging            map[string]bool
 	s3PublicAccessBlocks map[string]*s3types.PublicAccessBlockConfiguration
+	s3OptionalError      error
 	rdsInstances         []rdstypes.DBInstance
 	kmsKeys              []kmstypes.KeyMetadata
 	kmsTags              map[string][]kmstypes.Tag
@@ -2695,18 +2740,30 @@ func (f fakeAWS) GetBucketLocation(_ context.Context, input *s3.GetBucketLocatio
 }
 
 func (f fakeAWS) GetBucketTagging(_ context.Context, input *s3.GetBucketTaggingInput, _ ...func(*s3.Options)) (*s3.GetBucketTaggingOutput, error) {
+	if f.s3OptionalError != nil {
+		return nil, f.s3OptionalError
+	}
 	return &s3.GetBucketTaggingOutput{TagSet: f.s3Tags[awssdk.ToString(input.Bucket)]}, nil
 }
 
 func (f fakeAWS) GetBucketEncryption(_ context.Context, input *s3.GetBucketEncryptionInput, _ ...func(*s3.Options)) (*s3.GetBucketEncryptionOutput, error) {
+	if f.s3OptionalError != nil {
+		return nil, f.s3OptionalError
+	}
 	return &s3.GetBucketEncryptionOutput{ServerSideEncryptionConfiguration: f.s3Encryption[awssdk.ToString(input.Bucket)]}, nil
 }
 
 func (f fakeAWS) GetBucketVersioning(_ context.Context, input *s3.GetBucketVersioningInput, _ ...func(*s3.Options)) (*s3.GetBucketVersioningOutput, error) {
+	if f.s3OptionalError != nil {
+		return nil, f.s3OptionalError
+	}
 	return &s3.GetBucketVersioningOutput{Status: f.s3Versioning[awssdk.ToString(input.Bucket)]}, nil
 }
 
 func (f fakeAWS) GetBucketLogging(_ context.Context, input *s3.GetBucketLoggingInput, _ ...func(*s3.Options)) (*s3.GetBucketLoggingOutput, error) {
+	if f.s3OptionalError != nil {
+		return nil, f.s3OptionalError
+	}
 	if f.s3Logging[awssdk.ToString(input.Bucket)] {
 		return &s3.GetBucketLoggingOutput{LoggingEnabled: &s3types.LoggingEnabled{}}, nil
 	}
@@ -2714,6 +2771,9 @@ func (f fakeAWS) GetBucketLogging(_ context.Context, input *s3.GetBucketLoggingI
 }
 
 func (f fakeAWS) GetPublicAccessBlock(_ context.Context, input *s3.GetPublicAccessBlockInput, _ ...func(*s3.Options)) (*s3.GetPublicAccessBlockOutput, error) {
+	if f.s3OptionalError != nil {
+		return nil, f.s3OptionalError
+	}
 	return &s3.GetPublicAccessBlockOutput{PublicAccessBlockConfiguration: f.s3PublicAccessBlocks[awssdk.ToString(input.Bucket)]}, nil
 }
 
