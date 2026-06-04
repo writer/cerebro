@@ -1,4 +1,4 @@
-.PHONY: build serve test sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check readme-check oss-audit govulncheck droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: build serve test sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check readme-check oss-audit govulncheck docker-smoke release-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
@@ -6,8 +6,11 @@ GOLANGCI_LINT_VERSION ?= v2.11.4
 BUF := GOFLAGS= GOTOOLCHAIN=go1.26.3 go run github.com/bufbuild/buf/cmd/buf@v1.59.0
 GOVULNCHECK := GOFLAGS= GOTOOLCHAIN=go1.26.3 go run golang.org/x/vuln/cmd/govulncheck@v1.1.4
 SPECTRAL := npx --yes @stoplight/spectral-cli@6.15.0
+GORELEASER := GOFLAGS= GOTOOLCHAIN=go1.26.3 go run github.com/goreleaser/goreleaser/v2@v2.16.0
 PROTO_BREAKING_BASE ?= origin/main
 README_CHECK_BASE ?= origin/main
+DOCKER_SMOKE_IMAGE ?= cerebro-runtime-smoke:local
+DOCKER_SMOKE_GOARCH ?= amd64
 APP_PACKAGES := ./api/... ./cmd/... ./internal/... ./sources/...
 LINTER_MODULE := ./tools/linters
 LINTER_BIN := $(GO_BIN)/cerebrolint
@@ -66,7 +69,7 @@ sdk-typescript-test:
 	cd sdk/typescript && npm test
 
 sdk-typescript-check:
-	cd sdk/typescript && npm run typecheck
+	cd sdk/typescript && npm ci && npm run typecheck
 
 workflow-e2e-test:
 	go test $(WORKFLOW_E2E_PACKAGES) -run '$(WORKFLOW_E2E_TESTS)$$' -count=1 -v
@@ -165,6 +168,27 @@ oss-audit:
 govulncheck:
 	$(GOVULNCHECK) ./...
 
+docker-smoke:
+	@command -v docker >/dev/null || { echo "docker is required for docker-smoke" >&2; exit 2; }
+	mkdir -p .dist
+	CGO_ENABLED=0 GOOS=linux GOARCH="$(DOCKER_SMOKE_GOARCH)" go build -trimpath -o .dist/cerebro ./cmd/cerebro
+	docker build -f Dockerfile.runtime -t "$(DOCKER_SMOKE_IMAGE)" .
+
+release-smoke:
+	$(GORELEASER) check
+
+doctor:
+	@command -v git >/dev/null || { echo "missing required tool: git" >&2; exit 2; }
+	@command -v go >/dev/null || { echo "missing required tool: go" >&2; exit 2; }
+	@command -v python3 >/dev/null || { echo "missing required tool: python3" >&2; exit 2; }
+	@command -v npm >/dev/null || { echo "missing required tool: npm" >&2; exit 2; }
+	@command -v docker >/dev/null || echo "optional tool missing: docker (needed for make docker-smoke)"
+	@command -v gh >/dev/null || echo "optional tool missing: gh (needed for PR/release triage)"
+	@go version
+	@python3 --version
+	@npm --version
+	@echo "developer toolchain looks ready"
+
 droid-review-preflight:
 	go test ./tools/droidreview/...
 	go run ./tools/droidreview --base "$(DROID_REVIEW_BASE)" --head "$(DROID_REVIEW_HEAD)" --json-out "$(DROID_PREFLIGHT_JSON_OUT)"
@@ -210,4 +234,4 @@ check-arch:
 
 check-hook-integrity: check-arch
 
-verify: build test sdk-test lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check detection-catalog-check readme-check oss-audit check-structural check-structural-test check-arch
+verify: build test sdk-test lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check detection-catalog-check readme-check oss-audit release-smoke check-structural check-structural-test check-arch

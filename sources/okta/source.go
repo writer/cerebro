@@ -941,26 +941,18 @@ func (s *Source) getJSON(ctx context.Context, settings settings, requestPath str
 	} else {
 		client = oktaHTTPClientNoRedirect(client, s != nil && s.allowLoopbackBaseURL, oktaLookupIPAddrs(s))
 	}
-	resp, err := client.Do(req)
+	resp, err := sourcehttp.DoWithRetry(ctx, client, req, sourcehttp.RetryOptions{MaxBodyBytes: maxOktaBodyBytes})
 	if err != nil {
 		return nil, fmt.Errorf("request %s: %w", requestPath, err)
 	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
 	headers := resp.Header.Clone()
-
-	body, err := sourcehttp.ReadLimitedBodyWithLimit(resp.Body, maxOktaBodyBytes)
-	if err != nil {
-		return headers, fmt.Errorf("read %s response: %w", requestPath, err)
-	}
 	if resp.StatusCode >= http.StatusMultipleChoices {
-		return headers, decodeResponseError(resp.StatusCode, body)
+		return headers, decodeResponseError(resp.StatusCode, resp.Body)
 	}
-	if target == nil || len(body) == 0 {
+	if target == nil || len(resp.Body) == 0 {
 		return headers, nil
 	}
-	if err := json.Unmarshal(body, target); err != nil {
+	if err := json.Unmarshal(resp.Body, target); err != nil {
 		return headers, fmt.Errorf("decode %s response: %w", requestPath, err)
 	}
 	return headers, nil

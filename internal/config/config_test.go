@@ -15,13 +15,19 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", "")
 	t.Setenv("CEREBRO_JETSTREAM_URL", "")
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "")
+	t.Setenv("CEREBRO_JETSTREAM_DRAIN_TIMEOUT", "")
 	t.Setenv("CEREBRO_STATE_STORE_DRIVER", "")
 	t.Setenv("CEREBRO_POSTGRES_DSN", "")
+	t.Setenv("CEREBRO_POSTGRES_MAX_OPEN_CONNS", "")
+	t.Setenv("CEREBRO_POSTGRES_MAX_IDLE_CONNS", "")
+	t.Setenv("CEREBRO_POSTGRES_CONN_MAX_LIFETIME", "")
+	t.Setenv("CEREBRO_POSTGRES_CONN_MAX_IDLE_TIME", "")
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", "")
 	t.Setenv("CEREBRO_NEO4J_URI", "")
 	t.Setenv("CEREBRO_NEO4J_USERNAME", "")
 	t.Setenv("CEREBRO_NEO4J_PASSWORD", "")
 	t.Setenv("CEREBRO_NEO4J_DATABASE", "")
+	t.Setenv("CEREBRO_NEO4J_QUERY_TIMEOUT", "")
 	clearGraphAgentEnv(t)
 	t.Setenv("CEREBRO_KUZU_PATH", "")
 	t.Setenv("CEREBRO_API_AUTH_ENABLED", "")
@@ -73,13 +79,19 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", AppendLogDriverJetStream)
 	t.Setenv("CEREBRO_JETSTREAM_URL", "nats://127.0.0.1:4222")
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "cerebro.events")
+	t.Setenv("CEREBRO_JETSTREAM_DRAIN_TIMEOUT", "4s")
 	t.Setenv("CEREBRO_STATE_STORE_DRIVER", StateStoreDriverPostgres)
 	t.Setenv("CEREBRO_POSTGRES_DSN", "postgres://127.0.0.1:5432/cerebro?sslmode=disable")
+	t.Setenv("CEREBRO_POSTGRES_MAX_OPEN_CONNS", "20")
+	t.Setenv("CEREBRO_POSTGRES_MAX_IDLE_CONNS", "5")
+	t.Setenv("CEREBRO_POSTGRES_CONN_MAX_LIFETIME", "30m")
+	t.Setenv("CEREBRO_POSTGRES_CONN_MAX_IDLE_TIME", "5m")
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", GraphStoreDriverNeo4j)
 	t.Setenv("CEREBRO_NEO4J_URI", "neo4j+s://example.databases.neo4j.io")
 	t.Setenv("CEREBRO_NEO4J_USERNAME", "neo4j")
 	t.Setenv("CEREBRO_NEO4J_PASSWORD", "test-password")
 	t.Setenv("CEREBRO_NEO4J_DATABASE", "cerebro")
+	t.Setenv("CEREBRO_NEO4J_QUERY_TIMEOUT", "45s")
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_PROVIDER", "stub")
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MODEL", "claude-sonnet-4-6")
 	t.Setenv("CEREBRO_GRAPH_AGENT_LLM_MODEL_SONNET", "anthropic.claude-sonnet-example")
@@ -119,11 +131,20 @@ func TestLoadFromEnv(t *testing.T) {
 	if cfg.AppendLog.JetStreamSubjectPrefix != "cerebro.events" {
 		t.Fatalf("JetStreamSubjectPrefix = %q, want %q", cfg.AppendLog.JetStreamSubjectPrefix, "cerebro.events")
 	}
+	if cfg.AppendLog.JetStreamDrainTimeout != 4*time.Second {
+		t.Fatalf("JetStreamDrainTimeout = %v, want 4s", cfg.AppendLog.JetStreamDrainTimeout)
+	}
 	if cfg.StateStore.Driver != StateStoreDriverPostgres {
 		t.Fatalf("StateStore.Driver = %q, want %q", cfg.StateStore.Driver, StateStoreDriverPostgres)
 	}
+	if cfg.StateStore.PostgresMaxOpenConns != 20 || cfg.StateStore.PostgresMaxIdleConns != 5 || cfg.StateStore.PostgresConnMaxLifetime != 30*time.Minute || cfg.StateStore.PostgresConnMaxIdleTime != 5*time.Minute {
+		t.Fatalf("StateStore pool config = %#v", cfg.StateStore)
+	}
 	if cfg.GraphStore.Driver != GraphStoreDriverNeo4j {
 		t.Fatalf("GraphStore.Driver = %q, want %q", cfg.GraphStore.Driver, GraphStoreDriverNeo4j)
+	}
+	if cfg.GraphStore.Neo4jQueryTimeout != 45*time.Second {
+		t.Fatalf("Neo4jQueryTimeout = %v, want 45s", cfg.GraphStore.Neo4jQueryTimeout)
 	}
 	if cfg.GraphAgentLLM.Provider != "stub" || cfg.GraphAgentLLM.MaxTokens != 900 || cfg.GraphAgentLLM.Temperature != 0.25 {
 		t.Fatalf("GraphAgentLLM = %#v", cfg.GraphAgentLLM)
@@ -162,13 +183,19 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", "")
 	t.Setenv("CEREBRO_JETSTREAM_URL", "")
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "")
+	t.Setenv("CEREBRO_JETSTREAM_DRAIN_TIMEOUT", "")
 	t.Setenv("CEREBRO_STATE_STORE_DRIVER", "")
 	t.Setenv("CEREBRO_POSTGRES_DSN", "")
+	t.Setenv("CEREBRO_POSTGRES_MAX_OPEN_CONNS", "")
+	t.Setenv("CEREBRO_POSTGRES_MAX_IDLE_CONNS", "")
+	t.Setenv("CEREBRO_POSTGRES_CONN_MAX_LIFETIME", "")
+	t.Setenv("CEREBRO_POSTGRES_CONN_MAX_IDLE_TIME", "")
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", "")
 	t.Setenv("CEREBRO_NEO4J_URI", "")
 	t.Setenv("CEREBRO_NEO4J_USERNAME", "")
 	t.Setenv("CEREBRO_NEO4J_PASSWORD", "")
 	t.Setenv("CEREBRO_NEO4J_DATABASE", "")
+	t.Setenv("CEREBRO_NEO4J_QUERY_TIMEOUT", "")
 	clearGraphAgentEnv(t)
 	t.Setenv("CEREBRO_KUZU_PATH", "")
 	t.Setenv("CEREBRO_API_AUTH_ENABLED", "")

@@ -66,6 +66,42 @@ func TestOpenAPIContractDescribesCurrentBootstrapSurface(t *testing.T) {
 	}
 }
 
+func TestSDKHTTPRoutesExistInOpenAPI(t *testing.T) {
+	root := repoRoot(t)
+	openAPI, err := os.ReadFile(filepath.Join(root, "api", "openapi.yaml"))
+	if err != nil {
+		t.Fatalf("read openapi.yaml: %v", err)
+	}
+	contracts := map[string][]string{
+		filepath.Join("sdk", "typescript", "src", "index.ts"): {
+			"/source-runtimes/{runtimeID}:",
+			"/source-runtimes/{runtimeID}/claims:",
+			"/platform/graph/neighborhood:",
+		},
+		filepath.Join("sdk", "python", "cerebro_sdk", "client.py"): {
+			"/source-runtimes/{runtimeID}:",
+			"/source-runtimes/{runtimeID}/claims:",
+			"/platform/graph/neighborhood:",
+		},
+	}
+	for rel, routes := range contracts {
+		body, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			t.Fatalf("read %s: %v", rel, err)
+		}
+		for _, route := range routes {
+			if !bytes.Contains(openAPI, []byte("  "+route)) {
+				t.Fatalf("api/openapi.yaml missing SDK route %s required by %s", route, rel)
+			}
+		}
+		for _, marker := range []string{"/source-runtimes/", "/platform/graph/neighborhood"} {
+			if !bytes.Contains(body, []byte(marker)) {
+				t.Fatalf("%s no longer references expected SDK route marker %q; update SDK route parity guardrail", rel, marker)
+			}
+		}
+	}
+}
+
 func TestSourceCDKOwnsExternalHTTPClients(t *testing.T) {
 	root := repoRoot(t)
 	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {

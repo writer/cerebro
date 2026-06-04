@@ -100,8 +100,8 @@ func serve() error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	startGRCReadModelWarmup(ctx, deps.StateStore, log.Printf)
-	startFindingRiskBackfill(ctx, app, log.Printf)
+	grcWarmupDone := startGRCReadModelWarmup(ctx, deps.StateStore, log.Printf)
+	riskBackfillDone := startFindingRiskBackfill(ctx, app, log.Printf)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -123,7 +123,21 @@ func serve() error {
 		if err := <-errCh; err != nil {
 			return fmt.Errorf("serve: %w", err)
 		}
+		waitForStartupJobs(shutdownCtx, grcWarmupDone, riskBackfillDone)
 		return nil
+	}
+}
+
+func waitForStartupJobs(ctx context.Context, jobs ...<-chan struct{}) {
+	for _, job := range jobs {
+		if job == nil {
+			continue
+		}
+		select {
+		case <-job:
+		case <-ctx.Done():
+			return
+		}
 	}
 }
 

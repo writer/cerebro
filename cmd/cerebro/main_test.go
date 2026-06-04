@@ -55,6 +55,26 @@ func TestStartFindingRiskBackfillDoesNotBlockStartup(t *testing.T) {
 	}
 }
 
+func TestWaitForStartupJobsWaitsForCompletion(t *testing.T) {
+	done := make(chan struct{})
+	waited := make(chan struct{})
+	go func() {
+		waitForStartupJobs(context.Background(), done)
+		close(waited)
+	}()
+	select {
+	case <-waited:
+		t.Fatal("waitForStartupJobs returned before job completed")
+	default:
+	}
+	close(done)
+	select {
+	case <-waited:
+	case <-time.After(time.Second):
+		t.Fatal("waitForStartupJobs did not return after job completed")
+	}
+}
+
 func TestStartFindingRiskBackfillLogsErrors(t *testing.T) {
 	backfiller := &errorFindingRiskBackfiller{err: errors.New("boom")}
 	logged := make(chan string, 1)

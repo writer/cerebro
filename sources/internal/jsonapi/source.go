@@ -282,22 +282,17 @@ func (s *Source) getJSON(ctx context.Context, settings settings, query url.Value
 			LookupIPAddrs: lookupIPAddrs(s),
 		})
 	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	body, err := sourcehttp.ReadLimitedBody(resp.Body)
+	resp, err := sourcehttp.DoWithRetry(ctx, client, req, sourcehttp.RetryOptions{})
 	if err != nil {
 		return err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return decodeResponseError(s.options.SourceID, resp.StatusCode, body)
+		return decodeResponseError(s.options.SourceID, resp.StatusCode, resp.Body)
 	}
 	if target == nil {
 		return nil
 	}
-	if err := json.Unmarshal(body, target); err != nil {
+	if err := json.Unmarshal(resp.Body, target); err != nil {
 		return fmt.Errorf("decode %s response: %w", s.options.SourceID, err)
 	}
 	return nil
