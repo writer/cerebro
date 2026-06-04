@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -31,6 +32,26 @@ func (s *cleanupStateStore) CleanupEndpointOwnerIDLinks(_ context.Context, reque
 func (s *cleanupStateStore) CleanupProjectedEntities(_ context.Context, request ports.ProjectionCleanupRequest) (ports.ProjectionCleanupResult, error) {
 	s.projectionRequest = request
 	return s.projectionResult, nil
+}
+
+type riskDeltaSmokeGraphStore struct {
+	requests []ports.CypherQueryRequest
+	rows     [][]ports.CypherRow
+}
+
+func (s *riskDeltaSmokeGraphStore) Ping(context.Context) error { return nil }
+
+func (s *riskDeltaSmokeGraphStore) GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error) {
+	return nil, ports.ErrGraphEntityNotFound
+}
+
+func (s *riskDeltaSmokeGraphStore) ExecuteReadCypher(_ context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+	s.requests = append(s.requests, request)
+	idx := len(s.requests) - 1
+	if idx >= len(s.rows) {
+		return nil, nil
+	}
+	return s.rows[idx], nil
 }
 
 func TestParseGraphIngestArgs(t *testing.T) {
@@ -188,6 +209,117 @@ func TestParseGraphEndpointOwnerIDCleanupArgsRequiresApplyForDeletes(t *testing.
 	}
 	if options.DryRun {
 		t.Fatalf("DryRun = true, want apply mode")
+	}
+}
+
+func TestParseGraphRiskDeltaSmokeArgs(t *testing.T) {
+	options, err := parseGraphRiskDeltaSmokeArgs([]string{
+		"tenant_id=writer",
+		"limit=7",
+		"candidate_limit=11",
+		"graph_path_limit=2",
+	})
+	if err != nil {
+		t.Fatalf("parseGraphRiskDeltaSmokeArgs() error = %v", err)
+	}
+	if options.TenantID != "writer" || options.Limit != 7 || options.CandidateLimit != 11 || options.GraphPathLimit != 2 {
+		t.Fatalf("options = %#v, want parsed risk-delta smoke options", options)
+	}
+}
+
+func TestParseGraphRiskDeltaSmokeArgsRequiresTenant(t *testing.T) {
+	if _, err := parseGraphRiskDeltaSmokeArgs([]string{"limit=5"}); err == nil {
+		t.Fatal("parseGraphRiskDeltaSmokeArgs() error = nil, want tenant usage error")
+	}
+}
+
+func TestGraphRiskDeltaSmokeCandidatesUsesReadOnlyCypher(t *testing.T) {
+	store := &riskDeltaSmokeGraphStore{rows: [][]ports.CypherRow{
+		{
+			{Values: map[string]any{
+				"scenario_type": "remove_public_exposure",
+				"target_urn":    "urn:cerebro:writer:aws_secret_store:prod-secrets",
+				"finding_urn":   "urn:cerebro:writer:finding:cloud-public-prod-secrets",
+				"relation":      "can_reach",
+			}},
+		},
+	}}
+	candidates, err := graphRiskDeltaSmokeCandidates(context.Background(), store, graphRiskDeltaSmokeOptions{
+		TenantID:       "writer",
+		CandidateLimit: 3,
+	})
+	if err != nil {
+		t.Fatalf("graphRiskDeltaSmokeCandidates() error = %v", err)
+	}
+	if len(candidates) != 1 || candidates[0].TargetURN != "urn:cerebro:writer:aws_secret_store:prod-secrets" {
+		t.Fatalf("candidates = %#v, want public exposure candidate", candidates)
+	}
+	if len(store.requests) != 1 {
+		t.Fatalf("ExecuteReadCypher calls = %d, want one", len(store.requests))
+	}
+	if store.requests[0].Params["tenant_id"] != "writer" || store.requests[0].Params["candidate_limit"] != int64(3) {
+		t.Fatalf("candidate params = %#v, want tenant and bounded limit", store.requests[0].Params)
+	}
+	if !strings.Contains(store.requests[0].Query, "can_reach") || strings.Contains(strings.ToLower(store.requests[0].Query), "delete") {
+		t.Fatalf("candidate query = %q, want bounded read query", store.requests[0].Query)
+	}
+}
+
+func TestRunGraphRiskDeltaSmokeWithDepsReturnsJSONShape(t *testing.T) {
+	targetURN := "urn:cerebro:writer:aws_secret_store:prod-secrets"
+	store := &riskDeltaSmokeGraphStore{rows: [][]ports.CypherRow{
+		{
+			{Values: map[string]any{
+				"scenario_type": "remove_public_exposure",
+				"target_urn":    targetURN,
+				"finding_urn":   "urn:cerebro:writer:finding:cloud-public-prod-secrets",
+				"relation":      "can_reach",
+			}},
+		},
+		{
+			riskDeltaSmokeGraphPathRow("cloud-public-prod-secrets", targetURN, "", ""),
+			riskDeltaSmokeGraphPathRow("cloud-public-prod-secrets", targetURN, "urn:cerebro:writer:aws_public_principal:public_internet", "can_reach"),
+		},
+		{
+			riskDeltaSmokeGraphPathRow("cloud-public-prod-secrets", targetURN, "", ""),
+		},
+	}}
+	loader := func(_ context.Context, dsn string, tenantID string, requestedTargetURN string, fallbackFindingIDs []string, limit int) ([]*ports.FindingRecord, error) {
+		if dsn != "postgres://example" || tenantID != "writer" || requestedTargetURN != targetURN || limit != 500 {
+			t.Fatalf("loader args = dsn:%q tenant:%q target:%q limit:%d", dsn, tenantID, requestedTargetURN, limit)
+		}
+		if len(fallbackFindingIDs) != 1 || fallbackFindingIDs[0] != "cloud-public-prod-secrets" {
+			t.Fatalf("fallbackFindingIDs = %#v, want finding id from urn", fallbackFindingIDs)
+		}
+		return []*ports.FindingRecord{riskDeltaSmokeFinding(targetURN)}, nil
+	}
+	result, err := runGraphRiskDeltaSmokeWithDeps(context.Background(), store, "postgres://example", graphRiskDeltaSmokeOptions{
+		TenantID:       "writer",
+		Limit:          10,
+		CandidateLimit: 5,
+		GraphPathLimit: 1,
+	}, loader, time.Date(2026, 6, 3, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("runGraphRiskDeltaSmokeWithDeps() error = %v", err)
+	}
+	if result.Status != "passed" || result.Selected == nil {
+		t.Fatalf("result = %#v, want passed selected smoke result", result)
+	}
+	if result.Selected.BeforeAttackPathCount == 0 || result.Selected.AttackPathCountReduction <= 0 {
+		t.Fatalf("selected = %#v, want non-zero before count and positive reduction", result.Selected)
+	}
+	payload, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("json.Marshal(result) error = %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal(result) error = %v", err)
+	}
+	for _, key := range []string{"status", "tenant_id", "checked_at", "candidate_count", "attempts", "selected"} {
+		if _, ok := decoded[key]; !ok {
+			t.Fatalf("result JSON missing %q: %s", key, string(payload))
+		}
 	}
 }
 
@@ -535,4 +667,42 @@ func TestParseGraphRebuildArgsRejectsUnknownKey(t *testing.T) {
 	if err == nil {
 		t.Fatal("parseGraphRebuildArgs() error = nil, want usage error")
 	}
+}
+
+func riskDeltaSmokeFinding(resourceURN string) *ports.FindingRecord {
+	return &ports.FindingRecord{
+		ID:           "cloud-public-prod-secrets",
+		Fingerprint:  "cloud-public-prod-secrets",
+		TenantID:     "writer",
+		RuntimeID:    "writer-aws-resource-exposure",
+		RuleID:       "cloud-public-resource-exposure",
+		Title:        "Public resource exposure",
+		Severity:     "HIGH",
+		Status:       "open",
+		Summary:      "resource is reachable from the internet",
+		ResourceURNs: []string{resourceURN},
+		Attributes: map[string]string{
+			"crown_jewel":       "true",
+			"internet_exposed":  "true",
+			"exposure_type":     "public_network_ingress",
+			"data_sensitivity":  "restricted",
+			"risk_reason_count": "3",
+		},
+		FirstObservedAt: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+		LastObservedAt:  time.Date(2026, 6, 2, 0, 0, 0, 0, time.UTC),
+	}
+}
+
+func riskDeltaSmokeGraphPathRow(findingID string, resourceURN string, upstreamURN string, upstreamRelation string) ports.CypherRow {
+	values := map[string]any{
+		"resource_urn":         resourceURN,
+		"resource_entity_type": "aws.secret_store",
+		"finding_id":           findingID,
+		"finding_urn":          "urn:cerebro:writer:finding:" + findingID,
+		"finding_entity_type":  "finding",
+		"upstream_urn":         upstreamURN,
+		"upstream_entity_type": "aws.public_principal",
+		"upstream_relation":    upstreamRelation,
+	}
+	return ports.CypherRow{Values: values}
 }

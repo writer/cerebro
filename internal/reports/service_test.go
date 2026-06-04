@@ -126,9 +126,11 @@ func (s *stubFindingStore) LinkFindingTicket(_ context.Context, request ports.Fi
 }
 
 type stubGraphStore struct {
-	rootURN       string
-	limit         int
-	neighborhoods map[string]*ports.EntityNeighborhood
+	rootURN        string
+	limit          int
+	neighborhoods  map[string]*ports.EntityNeighborhood
+	cypherRequests []ports.CypherQueryRequest
+	cypherRows     [][]ports.CypherRow
 }
 
 func (s *stubGraphStore) Ping(context.Context) error { return nil }
@@ -143,8 +145,13 @@ func (s *stubGraphStore) GetEntityNeighborhood(_ context.Context, rootURN string
 	return cloneNeighborhood(neighborhood), nil
 }
 
-func (s *stubGraphStore) ExecuteReadCypher(_ context.Context, _ ports.CypherQueryRequest) ([]ports.CypherRow, error) {
-	return nil, nil
+func (s *stubGraphStore) ExecuteReadCypher(_ context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+	s.cypherRequests = append(s.cypherRequests, request)
+	idx := len(s.cypherRequests) - 1
+	if idx >= len(s.cypherRows) {
+		return nil, nil
+	}
+	return s.cypherRows[idx], nil
 }
 
 type stubReportStore struct {
@@ -485,17 +492,40 @@ func TestRunRiskDeltaReportSimulatesPublicExposureRemoval(t *testing.T) {
 		},
 	}
 	graphStore := &stubGraphStore{
-		neighborhoods: map[string]*ports.EntityNeighborhood{
-			"urn:cerebro:writer:aws_secret_store:prod-secrets": {
-				Root: &ports.NeighborhoodNode{URN: "urn:cerebro:writer:aws_secret_store:prod-secrets", EntityType: "aws.secret_store", Label: "prod-secrets"},
-				Neighbors: []*ports.NeighborhoodNode{
-					{URN: "urn:cerebro:writer:aws_public_principal:public_internet", EntityType: "aws.public_principal", Label: "public internet"},
-					{URN: "urn:cerebro:writer:finding:cloud-public-prod-secrets", EntityType: "finding", Label: "cloud-public-prod-secrets"},
-				},
-				Relations: []*ports.NeighborhoodRelation{
-					{FromURN: "urn:cerebro:writer:aws_public_principal:public_internet", Relation: "can_reach", ToURN: "urn:cerebro:writer:aws_secret_store:prod-secrets"},
-					{FromURN: "urn:cerebro:writer:aws_secret_store:prod-secrets", Relation: "has_finding", ToURN: "urn:cerebro:writer:finding:cloud-public-prod-secrets"},
-				},
+		cypherRows: [][]ports.CypherRow{
+			{
+				{Values: map[string]any{
+					"resource_urn":         "urn:cerebro:writer:aws_secret_store:prod-secrets",
+					"resource_entity_type": "aws.secret_store",
+					"finding_id":           "cloud-public-prod-secrets",
+					"finding_urn":          "urn:cerebro:writer:finding:cloud-public-prod-secrets",
+					"finding_entity_type":  "finding",
+					"upstream_urn":         "",
+					"upstream_entity_type": "",
+					"upstream_relation":    "",
+				}},
+				{Values: map[string]any{
+					"resource_urn":         "urn:cerebro:writer:aws_secret_store:prod-secrets",
+					"resource_entity_type": "aws.secret_store",
+					"finding_id":           "cloud-public-prod-secrets",
+					"finding_urn":          "urn:cerebro:writer:finding:cloud-public-prod-secrets",
+					"finding_entity_type":  "finding",
+					"upstream_urn":         "urn:cerebro:writer:aws_public_principal:public_internet",
+					"upstream_entity_type": "aws.public_principal",
+					"upstream_relation":    "can_reach",
+				}},
+			},
+			{
+				{Values: map[string]any{
+					"resource_urn":         "urn:cerebro:writer:aws_secret_store:prod-secrets",
+					"resource_entity_type": "aws.secret_store",
+					"finding_id":           "cloud-public-prod-secrets",
+					"finding_urn":          "urn:cerebro:writer:finding:cloud-public-prod-secrets",
+					"finding_entity_type":  "finding",
+					"upstream_urn":         "",
+					"upstream_entity_type": "",
+					"upstream_relation":    "",
+				}},
 			},
 		},
 	}
@@ -517,11 +547,21 @@ func TestRunRiskDeltaReportSimulatesPublicExposureRemoval(t *testing.T) {
 	if got := result[reportParameterScenarioType]; got != findinganalysis.RiskDeltaScenarioRemovePublicExposure {
 		t.Fatalf("scenario_type = %#v, want remove_public_exposure", got)
 	}
-	if got := result["graph_evidence_status"]; got != graphEvidenceStatusIncluded {
-		t.Fatalf("graph_evidence_status = %#v, want included", got)
+	if got := result["graph_evidence_status"]; got != graphEvidenceStatusGraphQuery {
+		t.Fatalf("graph_evidence_status = %#v, want graph query", got)
 	}
-	if got := result["graph_neighborhood_count"]; got != float64(1) {
-		t.Fatalf("graph_neighborhood_count = %#v, want 1", got)
+	if got := result["graph_neighborhood_count"]; got != float64(0) {
+		t.Fatalf("graph_neighborhood_count = %#v, want 0", got)
+	}
+	if len(graphStore.cypherRequests) != 2 {
+		t.Fatalf("ExecuteReadCypher calls = %d, want before and after queries", len(graphStore.cypherRequests))
+	}
+	if graphStore.rootURN != "" {
+		t.Fatalf("GetEntityNeighborhood rootURN = %q, want no simulation neighborhood expansion", graphStore.rootURN)
+	}
+	removedRelations, ok := graphStore.cypherRequests[1].Params["removed_relations"].([]string)
+	if !ok || len(removedRelations) != 1 || removedRelations[0] != "can_reach" {
+		t.Fatalf("after query removed_relations = %#v, want can_reach", graphStore.cypherRequests[1].Params["removed_relations"])
 	}
 	if got := result["risk_score_reduction"]; got.(float64) <= 0 {
 		t.Fatalf("risk_score_reduction = %#v, want positive", got)

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -18,6 +19,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/bootstrap"
 	"github.com/writer/cerebro/internal/config"
+	findinganalysis "github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/graphrebuild"
@@ -27,6 +29,8 @@ import (
 	"github.com/writer/cerebro/internal/sourceregistry"
 	"github.com/writer/cerebro/internal/telemetry"
 	"google.golang.org/protobuf/proto"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 const (
@@ -225,6 +229,47 @@ type graphRelationCountsResult struct {
 	Relations graphstore.RelationCounts `json:"relations"`
 }
 
+type graphRiskDeltaSmokeOptions struct {
+	TenantID       string
+	Limit          int
+	CandidateLimit int
+	GraphPathLimit int
+}
+
+type graphRiskDeltaSmokeCandidate struct {
+	ScenarioType string `json:"scenario_type"`
+	TargetURN    string `json:"target_urn"`
+	FindingURN   string `json:"finding_urn"`
+	Relation     string `json:"relation"`
+}
+
+type graphRiskDeltaSmokeAttempt struct {
+	ScenarioType             string   `json:"scenario_type"`
+	TargetURN                string   `json:"target_urn"`
+	Relation                 string   `json:"relation,omitempty"`
+	FindingCount             int      `json:"finding_count"`
+	BeforeAttackPathCount    int      `json:"before_attack_path_count"`
+	AfterAttackPathCount     int      `json:"after_attack_path_count"`
+	AttackPathCountReduction int      `json:"attack_path_count_reduction"`
+	AttackPathScoreReduction int      `json:"attack_path_score_reduction"`
+	RiskScoreReduction       int      `json:"risk_score_reduction"`
+	RemovedAttackPathCount   int      `json:"removed_attack_path_count"`
+	ElapsedMs                int64    `json:"elapsed_ms"`
+	SkipReason               string   `json:"skip_reason,omitempty"`
+	Reasons                  []string `json:"reasons,omitempty"`
+}
+
+type graphRiskDeltaSmokeResult struct {
+	Status         string                       `json:"status"`
+	TenantID       string                       `json:"tenant_id"`
+	CheckedAt      time.Time                    `json:"checked_at"`
+	CandidateCount int                          `json:"candidate_count"`
+	Attempts       []graphRiskDeltaSmokeAttempt `json:"attempts"`
+	Selected       *graphRiskDeltaSmokeAttempt  `json:"selected,omitempty"`
+}
+
+type graphRiskDeltaSmokeFindingLoader func(context.Context, string, string, string, []string, int) ([]*ports.FindingRecord, error)
+
 type graphIntegrityResult struct {
 	Checks []graphstore.IntegrityCheck `json:"checks"`
 	Passed uint32                      `json:"passed"`
@@ -339,6 +384,8 @@ func runGraph(args []string) error {
 		return err
 	case "health":
 		return runGraphHealth(args[1:])
+	case "risk-delta-smoke":
+		return runGraphRiskDeltaSmoke(args[1:])
 	case "counts", "neighborhood", "paths", "relation-counts", "integrity":
 		return runGraphInspect(args)
 	case "cve-impact", "package-exposure", "asset-vulns":
@@ -394,7 +441,7 @@ func runGraph(args []string) error {
 }
 
 func graphUsage() string {
-	return fmt.Sprintf("usage: %s graph [health|counts|neighborhood|paths|relation-counts|integrity|cve-impact|package-exposure|asset-vulns|ingest|ingest-runtime|ingest-run|ingest-runs|cleanup-endpoint-owner-id-links|cleanup-projected-entities|repair-open-finding-primary-links|rebuild|inspect] ...", os.Args[0])
+	return fmt.Sprintf("usage: %s graph [health|risk-delta-smoke|counts|neighborhood|paths|relation-counts|integrity|cve-impact|package-exposure|asset-vulns|ingest|ingest-runtime|ingest-run|ingest-runs|cleanup-endpoint-owner-id-links|cleanup-projected-entities|repair-open-finding-primary-links|rebuild|inspect] ...", os.Args[0])
 }
 
 func graphIngestUsage() string {
@@ -415,6 +462,10 @@ func graphInspectUsage() string {
 
 func graphImpactUsage() string {
 	return fmt.Sprintf("usage: %s graph [cve-impact <CVE|GHSA>|package-exposure <package|purl>|asset-vulns <urn>] tenant_id=<tenant-id> [limit=N] [depth=N]", os.Args[0])
+}
+
+func graphRiskDeltaSmokeUsage() string {
+	return fmt.Sprintf("usage: %s graph risk-delta-smoke tenant_id=<tenant-id> [limit=N] [candidate_limit=N] [graph_path_limit=N]", os.Args[0])
 }
 
 func graphEndpointOwnerIDCleanupUsage() string {
@@ -535,6 +586,348 @@ func runGraphHealth(args []string) error {
 		return printErr
 	}
 	return err
+}
+
+func runGraphRiskDeltaSmoke(args []string) error {
+	options, err := parseGraphRiskDeltaSmokeArgs(args)
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+	if strings.TrimSpace(cfg.StateStore.PostgresDSN) == "" {
+		return fmt.Errorf("postgres dsn is required")
+	}
+	deps, closeDeps, err := bootstrap.OpenDependencies(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("open dependencies: %w", err)
+	}
+	defer logClose(closeDeps)
+	graphStore, ok := deps.GraphStore.(ports.GraphQueryStore)
+	if !ok {
+		return fmt.Errorf("graph store does not support read cypher")
+	}
+	result, runErr := runGraphRiskDeltaSmokeWithDeps(ctx, graphStore, cfg.StateStore.PostgresDSN, options, loadGraphRiskDeltaSmokeFindings, time.Now().UTC())
+	if printErr := printJSON(result); printErr != nil {
+		return printErr
+	}
+	return runErr
+}
+
+func runGraphRiskDeltaSmokeWithDeps(
+	ctx context.Context,
+	graphStore ports.GraphQueryStore,
+	postgresDSN string,
+	options graphRiskDeltaSmokeOptions,
+	loadFindings graphRiskDeltaSmokeFindingLoader,
+	now time.Time,
+) (graphRiskDeltaSmokeResult, error) {
+	result := graphRiskDeltaSmokeResult{
+		Status:    "failed",
+		TenantID:  strings.TrimSpace(options.TenantID),
+		CheckedAt: now.UTC(),
+	}
+	candidates, err := graphRiskDeltaSmokeCandidates(ctx, graphStore, options)
+	if err != nil {
+		return result, err
+	}
+	result.CandidateCount = len(candidates)
+	if len(candidates) == 0 {
+		return result, fmt.Errorf("no graph risk-delta smoke candidates found for tenant %q", result.TenantID)
+	}
+	for _, candidate := range candidates {
+		attempt := graphRiskDeltaSmokeAttempt{
+			ScenarioType: candidate.ScenarioType,
+			TargetURN:    candidate.TargetURN,
+			Relation:     candidate.Relation,
+		}
+		findingIDs := []string{graphRiskDeltaSmokeFindingIDFromURN(result.TenantID, candidate.FindingURN)}
+		records, err := loadFindings(ctx, postgresDSN, result.TenantID, candidate.TargetURN, findingIDs, options.Limit*50)
+		if err != nil {
+			return result, fmt.Errorf("load persisted findings for %q: %w", candidate.TargetURN, err)
+		}
+		attempt.FindingCount = len(records)
+		if len(records) == 0 {
+			attempt.SkipReason = "no_persisted_findings"
+			result.Attempts = append(result.Attempts, attempt)
+			continue
+		}
+		startedAt := time.Now()
+		report, err := findinganalysis.SimulateRiskDeltaWithGraph(ctx, records, graphStore, findinganalysis.RiskDeltaSimulationOptions{
+			TenantID:       result.TenantID,
+			ScenarioType:   candidate.ScenarioType,
+			TargetURN:      candidate.TargetURN,
+			Limit:          options.Limit,
+			GraphPathLimit: options.GraphPathLimit,
+			Now:            now,
+		})
+		attempt.ElapsedMs = time.Since(startedAt).Milliseconds()
+		if err != nil {
+			return result, fmt.Errorf("simulate graph risk delta for %q: %w", candidate.TargetURN, err)
+		}
+		attempt.BeforeAttackPathCount = report.Before.AttackPathCount
+		attempt.AfterAttackPathCount = report.After.AttackPathCount
+		attempt.AttackPathCountReduction = report.AttackPathCountReduction
+		attempt.AttackPathScoreReduction = report.AttackPathScoreReduction
+		attempt.RiskScoreReduction = report.RiskScoreReduction
+		attempt.RemovedAttackPathCount = len(report.RemovedAttackPaths)
+		attempt.Reasons = report.Reasons
+		result.Attempts = append(result.Attempts, attempt)
+		if report.Before.AttackPathCount > 0 && report.AttackPathCountReduction > 0 && len(report.RemovedAttackPaths) > 0 {
+			selected := attempt
+			result.Selected = &selected
+			result.Status = "passed"
+			return result, nil
+		}
+	}
+	return result, fmt.Errorf("no graph risk-delta candidate produced a removed attack path")
+}
+
+const graphRiskDeltaSmokeCandidateQuery = `CALL {
+  MATCH (public:Entity {tenant_id: $tenant_id})-[reach:RELATION {relation: 'can_reach'}]->(resource:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+  WHERE public.entity_type ENDS WITH '.public_principal'
+  RETURN 0 AS priority,
+         'remove_public_exposure' AS scenario_type,
+         resource.urn AS target_urn,
+         finding.urn AS finding_urn,
+         reach.relation AS relation
+  UNION ALL
+  MATCH (principal:Entity {tenant_id: $tenant_id})-[access:RELATION]->(resource:Entity {tenant_id: $tenant_id})-[:RELATION {relation: 'has_finding'}]->(finding:Entity {tenant_id: $tenant_id, entity_type: 'finding'})
+  WHERE access.relation IN ['can_admin', 'can_assume', 'can_impersonate', 'can_perform']
+  RETURN 1 AS priority,
+         'remove_privilege' AS scenario_type,
+         resource.urn AS target_urn,
+         finding.urn AS finding_urn,
+         access.relation AS relation
+}
+RETURN scenario_type, target_urn, finding_urn, relation
+ORDER BY priority, target_urn, finding_urn
+LIMIT $candidate_limit`
+
+func graphRiskDeltaSmokeCandidates(ctx context.Context, graphStore ports.GraphQueryStore, options graphRiskDeltaSmokeOptions) ([]graphRiskDeltaSmokeCandidate, error) {
+	rows, err := graphStore.ExecuteReadCypher(ctx, ports.CypherQueryRequest{
+		Query: graphRiskDeltaSmokeCandidateQuery,
+		Params: map[string]any{
+			"candidate_limit": int64(options.CandidateLimit),
+			"tenant_id":       strings.TrimSpace(options.TenantID),
+		},
+		RowLimit: options.CandidateLimit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	candidates := make([]graphRiskDeltaSmokeCandidate, 0, len(rows))
+	for _, row := range rows {
+		candidate := graphRiskDeltaSmokeCandidate{
+			ScenarioType: graphRiskDeltaSmokeCypherString(row, "scenario_type"),
+			TargetURN:    graphRiskDeltaSmokeCypherString(row, "target_urn"),
+			FindingURN:   graphRiskDeltaSmokeCypherString(row, "finding_urn"),
+			Relation:     graphRiskDeltaSmokeCypherString(row, "relation"),
+		}
+		if candidate.ScenarioType == "" || candidate.TargetURN == "" || candidate.FindingURN == "" {
+			continue
+		}
+		candidates = append(candidates, candidate)
+	}
+	return candidates, nil
+}
+
+func loadGraphRiskDeltaSmokeFindings(ctx context.Context, dsn string, tenantID string, targetURN string, fallbackFindingIDs []string, limit int) ([]*ports.FindingRecord, error) {
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("open postgres: %w", err)
+	}
+	defer func() { _ = db.Close() }()
+	db.SetMaxOpenConns(1)
+	if err := db.PingContext(ctx); err != nil {
+		return nil, fmt.Errorf("ping postgres: %w", err)
+	}
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("begin read-only postgres transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	targetPayload, err := json.Marshal([]string{strings.TrimSpace(targetURN)})
+	if err != nil {
+		return nil, err
+	}
+	query, args := graphRiskDeltaSmokeFindingQuery(tenantID, string(targetPayload), fallbackFindingIDs, limit)
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query findings: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	records := []*ports.FindingRecord{}
+	for rows.Next() {
+		record := &ports.FindingRecord{}
+		var riskReasonsRaw string
+		var resourceURNsRaw string
+		var eventIDsRaw string
+		var attributesRaw string
+		if err := rows.Scan(
+			&record.ID,
+			&record.Fingerprint,
+			&record.TenantID,
+			&record.RuntimeID,
+			&record.RuleID,
+			&record.Title,
+			&record.Severity,
+			&record.Status,
+			&record.Summary,
+			&record.RiskScore,
+			&record.LikelihoodScore,
+			&record.ImpactScore,
+			&record.ConfidenceScore,
+			&record.LikelihoodLevel,
+			&record.ImpactLevel,
+			&riskReasonsRaw,
+			&record.RiskModelVersion,
+			&resourceURNsRaw,
+			&eventIDsRaw,
+			&attributesRaw,
+			&record.FirstObservedAt,
+			&record.LastObservedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan finding: %w", err)
+		}
+		if record.RiskReasons, err = graphRiskDeltaSmokeStringSlice(riskReasonsRaw); err != nil {
+			return nil, fmt.Errorf("decode risk reasons for finding %q: %w", record.ID, err)
+		}
+		if record.ResourceURNs, err = graphRiskDeltaSmokeStringSlice(resourceURNsRaw); err != nil {
+			return nil, fmt.Errorf("decode resource urns for finding %q: %w", record.ID, err)
+		}
+		if record.EventIDs, err = graphRiskDeltaSmokeStringSlice(eventIDsRaw); err != nil {
+			return nil, fmt.Errorf("decode event ids for finding %q: %w", record.ID, err)
+		}
+		if record.Attributes, err = graphRiskDeltaSmokeStringMap(attributesRaw); err != nil {
+			return nil, fmt.Errorf("decode attributes for finding %q: %w", record.ID, err)
+		}
+		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate findings: %w", err)
+	}
+	return records, nil
+}
+
+func graphRiskDeltaSmokeFindingQuery(tenantID string, targetURNJSON string, fallbackFindingIDs []string, limit int) (string, []any) {
+	if limit <= 0 {
+		limit = 500
+	}
+	args := []any{strings.TrimSpace(tenantID), targetURNJSON, limit}
+	conditions := []string{"resource_urns_json @> $2::jsonb"}
+	for _, id := range fallbackFindingIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		args = append(args, id)
+		conditions = append(conditions, fmt.Sprintf("id = $%d", len(args)))
+	}
+	query := `SELECT id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
+  risk_score, likelihood_score, impact_score, confidence_score, likelihood_level, impact_level, risk_reasons_json::text, risk_model_version,
+  resource_urns_json::text, event_ids_json::text, attributes_json::text, first_observed_at, last_observed_at
+FROM findings
+WHERE tenant_id = $1
+  AND status = 'open'
+  AND tombstoned = false
+  AND (` + strings.Join(conditions, " OR ") + `)
+ORDER BY risk_score DESC, last_observed_at DESC, id
+LIMIT $3`
+	return query, args
+}
+
+func parseGraphRiskDeltaSmokeArgs(args []string) (graphRiskDeltaSmokeOptions, error) {
+	options := graphRiskDeltaSmokeOptions{Limit: 10, CandidateLimit: 25, GraphPathLimit: 1}
+	for _, arg := range args {
+		key, value, ok := strings.Cut(arg, "=")
+		if !ok {
+			return graphRiskDeltaSmokeOptions{}, usageError(fmt.Sprintf("expected key=value argument, got %q", arg))
+		}
+		switch strings.TrimSpace(key) {
+		case "tenant_id":
+			options.TenantID = strings.TrimSpace(value)
+		case "limit":
+			parsed, err := strconv.Atoi(strings.TrimSpace(value))
+			if err != nil {
+				return graphRiskDeltaSmokeOptions{}, fmt.Errorf("parse limit: %w", err)
+			}
+			if parsed < 1 || parsed > 100 {
+				return graphRiskDeltaSmokeOptions{}, fmt.Errorf("limit must be between 1 and 100")
+			}
+			options.Limit = parsed
+		case "candidate_limit":
+			parsed, err := strconv.Atoi(strings.TrimSpace(value))
+			if err != nil {
+				return graphRiskDeltaSmokeOptions{}, fmt.Errorf("parse candidate_limit: %w", err)
+			}
+			if parsed < 1 || parsed > 100 {
+				return graphRiskDeltaSmokeOptions{}, fmt.Errorf("candidate_limit must be between 1 and 100")
+			}
+			options.CandidateLimit = parsed
+		case "graph_path_limit":
+			parsed, err := strconv.Atoi(strings.TrimSpace(value))
+			if err != nil {
+				return graphRiskDeltaSmokeOptions{}, fmt.Errorf("parse graph_path_limit: %w", err)
+			}
+			if parsed < 1 || parsed > 30 {
+				return graphRiskDeltaSmokeOptions{}, fmt.Errorf("graph_path_limit must be between 1 and 30")
+			}
+			options.GraphPathLimit = parsed
+		default:
+			return graphRiskDeltaSmokeOptions{}, usageError(fmt.Sprintf("unsupported graph risk-delta-smoke argument %q", key))
+		}
+	}
+	if options.TenantID == "" {
+		return graphRiskDeltaSmokeOptions{}, usageError(graphRiskDeltaSmokeUsage())
+	}
+	return options, nil
+}
+
+func graphRiskDeltaSmokeFindingIDFromURN(tenantID string, findingURN string) string {
+	prefix := "urn:cerebro:" + strings.TrimSpace(tenantID) + ":finding:"
+	return strings.TrimPrefix(strings.TrimSpace(findingURN), prefix)
+}
+
+func graphRiskDeltaSmokeCypherString(row ports.CypherRow, key string) string {
+	if row.Values == nil {
+		return ""
+	}
+	switch value := row.Values[key].(type) {
+	case string:
+		return strings.TrimSpace(value)
+	case fmt.Stringer:
+		return strings.TrimSpace(value.String())
+	case nil:
+		return ""
+	default:
+		return strings.TrimSpace(fmt.Sprint(value))
+	}
+}
+
+func graphRiskDeltaSmokeStringSlice(raw string) ([]string, error) {
+	values := []string{}
+	if strings.TrimSpace(raw) == "" {
+		return values, nil
+	}
+	if err := json.Unmarshal([]byte(raw), &values); err != nil {
+		return nil, err
+	}
+	return values, nil
+}
+
+func graphRiskDeltaSmokeStringMap(raw string) (map[string]string, error) {
+	values := map[string]string{}
+	if strings.TrimSpace(raw) == "" {
+		return values, nil
+	}
+	if err := json.Unmarshal([]byte(raw), &values); err != nil {
+		return nil, err
+	}
+	return values, nil
 }
 
 func checkGraphHealth(ctx context.Context, store ports.GraphStore, options graphHealthOptions, now time.Time) (graphHealthResult, error) {

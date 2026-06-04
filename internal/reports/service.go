@@ -38,6 +38,7 @@ const (
 	defaultNeighborhoodEvidenceLimit = 3
 	maxNeighborhoodEvidenceLimit     = 10
 	graphEvidenceStatusIncluded      = "included"
+	graphEvidenceStatusGraphQuery    = "graph_query"
 	graphEvidenceStatusUnconfigured  = "unconfigured"
 	graphEvidenceEntryStatusIncluded = "included"
 	graphEvidenceEntryStatusNotFound = "not_found"
@@ -382,20 +383,28 @@ func (s *Service) runRiskDelta(ctx context.Context, parameters map[string]string
 		return nil, fmt.Errorf("list findings for tenant %q runtimes %q: %w", tenantID, runtimeIDsCSV, err)
 	}
 	graphEvidenceStatus := graphEvidenceStatusUnconfigured
-	graphNeighborhoods := map[string]*ports.EntityNeighborhood{}
-	if s.graphStore != nil {
-		graphEvidenceStatus = graphEvidenceStatusIncluded
-		graphNeighborhoods, err = s.riskDeltaGraphNeighborhoods(ctx, targetURN, findings, resourceLimit, graphLimit)
+	var report findinganalysis.RiskDeltaSimulationReport
+	if s.graphStore == nil {
+		report = findinganalysis.SimulateRiskDelta(findings, findinganalysis.RiskDeltaSimulationOptions{
+			TenantID:       tenantID,
+			ScenarioType:   scenarioType,
+			TargetURN:      targetURN,
+			Limit:          10,
+			GraphPathLimit: graphLimit,
+		})
+	} else {
+		graphEvidenceStatus = graphEvidenceStatusGraphQuery
+		report, err = findinganalysis.SimulateRiskDeltaWithGraph(ctx, findings, s.graphStore, findinganalysis.RiskDeltaSimulationOptions{
+			TenantID:       tenantID,
+			ScenarioType:   scenarioType,
+			TargetURN:      targetURN,
+			Limit:          10,
+			GraphPathLimit: graphLimit,
+		})
 		if err != nil {
 			return nil, err
 		}
 	}
-	report := findinganalysis.SimulateRiskDelta(findings, findinganalysis.RiskDeltaSimulationOptions{
-		ScenarioType:       scenarioType,
-		TargetURN:          targetURN,
-		Limit:              10,
-		GraphNeighborhoods: graphNeighborhoods,
-	})
 	riskDelta, err := jsonPayload(report)
 	if err != nil {
 		return nil, fmt.Errorf("build risk delta report payload: %w", err)
@@ -408,7 +417,7 @@ func (s *Service) runRiskDelta(ctx context.Context, parameters map[string]string
 		reportParameterTargetURN:      targetURN,
 		"total_findings":              len(findings),
 		"graph_evidence_status":       graphEvidenceStatus,
-		"graph_neighborhood_count":    len(graphNeighborhoods),
+		"graph_neighborhood_count":    0,
 		"risk_delta":                  riskDelta,
 		"risk_score_change":           report.RiskScoreChange,
 		"attack_path_score_change":    report.AttackPathScoreChange,
@@ -511,47 +520,6 @@ func (s *Service) graphEvidence(ctx context.Context, resourceCounts map[string]i
 	return evidence, neighborhoods, nil
 }
 
-func (s *Service) riskDeltaGraphNeighborhoods(ctx context.Context, targetURN string, findings []*ports.FindingRecord, resourceLimit int, graphLimit int) (map[string]*ports.EntityNeighborhood, error) {
-	roots := []string{strings.TrimSpace(targetURN)}
-	resourceCounts := map[string]int{}
-	for _, finding := range findings {
-		if resourceURN := primaryResourceURN(finding); resourceURN != "" {
-			resourceCounts[resourceURN]++
-		}
-	}
-	for _, entry := range sortedCountEntries(resourceCounts) {
-		if len(roots) >= resourceLimit {
-			break
-		}
-		roots = append(roots, entry.Key)
-	}
-	seen := map[string]struct{}{}
-	neighborhoods := map[string]*ports.EntityNeighborhood{}
-	for _, rootURN := range roots {
-		rootURN = strings.TrimSpace(rootURN)
-		if rootURN == "" {
-			continue
-		}
-		if _, ok := seen[rootURN]; ok {
-			continue
-		}
-		seen[rootURN] = struct{}{}
-		neighborhood, err := s.graphStore.GetEntityNeighborhood(ctx, rootURN, graphLimit)
-		switch {
-		case err == nil:
-			if neighborhood == nil {
-				neighborhood = &ports.EntityNeighborhood{}
-			}
-			neighborhoods[rootURN] = neighborhood
-		case errors.Is(err, ports.ErrGraphEntityNotFound):
-			continue
-		default:
-			return nil, fmt.Errorf("load risk delta graph neighborhood for %q: %w", rootURN, err)
-		}
-	}
-	return neighborhoods, nil
-}
-
 func findingSummaryDefinition() *cerebrov1.ReportDefinition {
 	return &cerebrov1.ReportDefinition{
 		Id:          findingSummaryReportID,
@@ -591,7 +559,7 @@ func riskDeltaDefinition() *cerebrov1.ReportDefinition {
 	return &cerebrov1.ReportDefinition{
 		Id:          riskDeltaReportID,
 		Name:        riskDeltaReportName,
-		Description: "Simulate an in-memory remediation scenario against persisted findings and bounded graph neighborhoods, returning before/after risk, attack-path, and affected-finding deltas without mutating stores.",
+		Description: "Simulate a remediation scenario with graph-backed attack-path deltas plus persisted finding risk changes, returning before/after risk, attack-path, and affected-finding deltas without mutating stores.",
 		Parameters: []*cerebrov1.ReportParameter{
 			{
 				Id:          reportParameterTenantID,

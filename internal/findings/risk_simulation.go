@@ -17,9 +17,11 @@ const (
 )
 
 type RiskDeltaSimulationOptions struct {
+	TenantID           string
 	ScenarioType       string
 	TargetURN          string
 	Limit              int
+	GraphPathLimit     int
 	GraphNeighborhoods map[string]*ports.EntityNeighborhood
 	Now                time.Time
 }
