@@ -94,10 +94,17 @@ func (s *Service) StartAsync(parent context.Context, job *ports.Job) {
 	}()
 }
 
-func (s *Service) Run(ctx context.Context, jobID string) error {
+func (s *Service) Run(ctx context.Context, jobID string) (err error) {
 	if s == nil || s.store == nil {
 		return ErrRuntimeUnavailable
 	}
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			return
+		}
+		err = s.failPanickedJob(context.WithoutCancel(ctx), jobID, recovered)
+	}()
 	job, err := s.store.GetJob(ctx, jobID)
 	if err != nil {
 		return err
@@ -144,6 +151,30 @@ func (s *Service) Run(ctx context.Context, jobID string) error {
 		_, _ = s.store.AppendJobEvent(context.WithoutCancel(ctx), ports.JobEvent{JobID: job.ID, Type: "completed", Status: ports.JobStatusCompleted, Message: "job completed"})
 	}
 	return err
+}
+
+func (s *Service) failPanickedJob(ctx context.Context, jobID string, recovered any) error {
+	panicErr := fmt.Errorf("job panic: %v", recovered)
+	jobID = strings.TrimSpace(jobID)
+	if s == nil || s.store == nil || jobID == "" {
+		return panicErr
+	}
+	finished := s.now()
+	_, err := s.store.UpdateJob(ctx, jobID, ports.JobUpdate{
+		Status:          ports.JobStatusFailed,
+		Message:         "job failed",
+		Error:           panicErr.Error(),
+		FinishedAt:      &finished,
+		AllowedStatuses: []string{ports.JobStatusQueued, ports.JobStatusRunning},
+	})
+	if err != nil {
+		if errors.Is(err, ports.ErrJobUpdateConflict) {
+			return panicErr
+		}
+		return fmt.Errorf("%w; mark job failed: %w", panicErr, err)
+	}
+	_, _ = s.store.AppendJobEvent(ctx, ports.JobEvent{JobID: jobID, Type: "failed", Status: ports.JobStatusFailed, Message: panicErr.Error()})
+	return panicErr
 }
 
 func (s *Service) Get(ctx context.Context, id string) (*ports.Job, error) {

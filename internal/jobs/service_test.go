@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -56,6 +57,33 @@ func TestCancelRunningJobRequestsCancellationWithoutTerminalTransition(t *testin
 	}
 	if len(store.events) != 1 || store.events[0].Type != "cancellation_requested" {
 		t.Fatalf("events = %#v, want one cancellation_requested event", store.events)
+	}
+}
+
+func TestRunRecoversRunnerPanicAndMarksJobFailed(t *testing.T) {
+	store := newMemoryJobStore()
+	store.jobs["job-panic"] = &ports.Job{ID: "job-panic", Kind: KindReportRun, Status: ports.JobStatusQueued}
+	service := New(store)
+	service.WithRunner(KindReportRun, func(context.Context, *ports.Job, *Service) (map[string]any, map[string]string, error) {
+		panic("boom")
+	})
+
+	err := service.Run(context.Background(), "job-panic")
+	if err == nil || !strings.Contains(err.Error(), "job panic: boom") {
+		t.Fatalf("Run panic error = %v, want job panic", err)
+	}
+	job, err := store.GetJob(context.Background(), "job-panic")
+	if err != nil {
+		t.Fatalf("GetJob error = %v", err)
+	}
+	if job.Status != ports.JobStatusFailed {
+		t.Fatalf("status = %q, want %q", job.Status, ports.JobStatusFailed)
+	}
+	if !strings.Contains(job.Error, "job panic: boom") {
+		t.Fatalf("job error = %q, want panic detail", job.Error)
+	}
+	if len(store.events) < 2 || store.events[len(store.events)-1].Type != "failed" {
+		t.Fatalf("events = %#v, want final failed event", store.events)
 	}
 }
 
