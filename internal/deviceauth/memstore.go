@@ -13,13 +13,14 @@ import (
 // production: the bootstrap binary is required to use a real driver per
 // docs/NON_GOALS.md.
 type MemStore struct {
-	mu              sync.Mutex
-	devices         map[string]DeviceRecord
-	bootstrapTokens map[[32]byte]BootstrapToken
-	refreshTokens   map[[32]byte]RefreshToken
-	refreshByFamily map[string]map[[32]byte]struct{}
-	idempotency     map[string]idempotencyEntry
-	now             func() time.Time
+	mu                        sync.Mutex
+	devices                   map[string]DeviceRecord
+	bootstrapTokens           map[[32]byte]BootstrapToken
+	refreshTokens             map[[32]byte]RefreshToken
+	refreshByFamily           map[string]map[[32]byte]struct{}
+	idempotency               map[string]idempotencyEntry
+	now                       func() time.Time
+	createBootstrapTokenFault error
 }
 
 type idempotencyEntry struct {
@@ -111,10 +112,23 @@ func (s *MemStore) RevokeDevice(_ context.Context, deviceID string, at time.Time
 	return nil
 }
 
+// SetCreateBootstrapTokenFault is a test seam: when set, the next
+// (and every subsequent) call to CreateBootstrapToken returns the
+// supplied error WITHOUT mutating the store. Used to assert callers
+// emit audit events only AFTER the durable write succeeds.
+func (s *MemStore) SetCreateBootstrapTokenFault(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.createBootstrapTokenFault = err
+}
+
 // CreateBootstrapToken inserts a new bootstrap token row.
 func (s *MemStore) CreateBootstrapToken(_ context.Context, token BootstrapToken) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.createBootstrapTokenFault != nil {
+		return s.createBootstrapTokenFault
+	}
 	s.bootstrapTokens[token.TokenHash] = token
 	return nil
 }

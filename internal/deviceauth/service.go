@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -186,7 +187,45 @@ type ServiceConfig struct {
 	// Observations, if set, is the per-device geo/ASN observation store
 	// the risk pipeline reads from and writes to.
 	Observations risk.ObservationStore
+	// Audit, if set, is invoked once per business-level lifecycle event
+	// on the device-auth surface (currently: bootstrap-token issuance).
+	// Production wiring should publish the event to the AppendLog so
+	// SOC tooling can correlate mints to subsequent enrollments. The
+	// callback is invoked synchronously after the database write
+	// succeeds; implementations MUST be non-blocking and MUST NOT
+	// return errors that should fail the request -- a logged-but-not-
+	// emitted audit event is preferable to a denied legitimate mint.
+	Audit AuditEmitter
 }
+
+// AuditEvent describes a single device-auth business-level event.
+//
+// HardwareUUIDHash holds the SHA-256 (lower-hex) digest of the raw
+// hardware UUID rather than the UUID itself, so the audit pipeline
+// can correlate without storing the raw identifier in plain text in
+// long-term log retention.
+type AuditEvent struct {
+	Kind             string
+	OccurredAt       time.Time
+	TenantID         string
+	IssuedBy         string
+	TokenID          string
+	HardwareUUIDHash string
+	Scopes           []string
+	TTL              time.Duration
+	ExpiresAt        time.Time
+}
+
+// AuditEmitter is the optional callback invoked once per device-auth
+// lifecycle event. See [ServiceConfig.Audit] for invariants.
+type AuditEmitter func(ctx context.Context, event AuditEvent)
+
+// Audit kinds. These are the canonical strings the audit pipeline
+// matches on; do not rename without coordinating with downstream
+// consumers.
+const (
+	AuditKindBootstrapTokenIssued = "deviceauth.bootstrap_token.issued"
+)
 
 // Service is the device-auth orchestration layer. It owns the lifecycle of
 // devices, bootstrap tokens, and refresh tokens, and is the only entry point
@@ -671,6 +710,27 @@ func (s *Service) IssueBootstrapToken(ctx context.Context, request IssueBootstra
 	}
 	if err := s.store.CreateBootstrapToken(ctx, token); err != nil {
 		return IssueBootstrapTokenResponse{}, fmt.Errorf("deviceauth: create bootstrap token: %w", err)
+	}
+	// Emit the business-level audit event AFTER the durable write
+	// succeeds. Order matters: emitting before the write would create
+	// a forensic trail entry for a token that does not exist in the
+	// database, leaving SOC investigators chasing ghosts. The Audit
+	// callback is documented as non-failing; we deliberately ignore
+	// any side-channel errors it might surface so a log-pipeline
+	// outage cannot deny legitimate mints.
+	if s.cfg.Audit != nil {
+		hardwareHash := sha256.Sum256([]byte(hardwareUUID))
+		s.cfg.Audit(ctx, AuditEvent{
+			Kind:             AuditKindBootstrapTokenIssued,
+			OccurredAt:       now,
+			TenantID:         tenantID,
+			IssuedBy:         strings.TrimSpace(request.IssuedBy),
+			TokenID:          tokenID,
+			HardwareUUIDHash: hex.EncodeToString(hardwareHash[:]),
+			Scopes:           append([]string(nil), scopes...),
+			TTL:              ttl,
+			ExpiresAt:        token.ExpiresAt,
+		})
 	}
 	return IssueBootstrapTokenResponse{
 		TokenID:   tokenID,
