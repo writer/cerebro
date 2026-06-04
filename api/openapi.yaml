@@ -64,16 +64,12 @@ paths:
           description: Embedded OpenAPI YAML.
   /api/v1/mcp:
     get:
-      summary: Open MCP Streamable HTTP event stream
+      summary: Reject MCP stateful event-stream transport
       tags:
         - MCP
       responses:
-        '200':
-          description: MCP server-sent event stream.
-          content:
-            text/event-stream:
-              schema:
-                type: string
+        '405':
+          description: Cerebro's MCP route is stateless Streamable HTTP over POST only; GET is not an SSE endpoint.
     post:
       summary: Invoke MCP JSON-RPC method
       tags:
@@ -93,6 +89,14 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+        '202':
+          description: Accepted MCP notification or client message with no response body.
+        '400':
+          description: Unsupported or invalid MCP protocol version.
+        '401':
+          description: Authentication is required.
+        '403':
+          description: Request origin or authorization scope is not allowed.
   /sources:
     get:
       summary: List registered sources
