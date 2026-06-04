@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -355,6 +357,142 @@ func TestServiceReenrollActiveHardwarePreservesDPoPBinding(t *testing.T) {
 	}
 }
 
+func TestServiceReenrollRejectsSoftwareKeyDowngradeFromHardwareBinding(t *testing.T) {
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	pubDER, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		t.Fatalf("marshal public key: %v", err)
+	}
+	verifier := &checkingAttestationVerifier{
+		wantHardwareUUID: "hw-downgrade",
+		publicKey:        pubDER,
+	}
+	service.cfg.Attestations = attestation.NewRegistry(true, verifier)
+	firstBootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-downgrade", TenantID: "writer"})
+	verifier.wantHash = attestationClientDataHash(firstBootstrap.Token, "hw-downgrade")
+	first, err := service.Enroll(ctx, EnrollRequest{
+		BootstrapToken: firstBootstrap.Token,
+		HardwareUUID:   "hw-downgrade",
+		OSType:         "darwin",
+		Attestation:    "stub-attestation",
+	})
+	if err != nil {
+		t.Fatalf("first Enroll: %v", err)
+	}
+	device, err := service.LookupDevice(ctx, first.DeviceID)
+	if err != nil {
+		t.Fatalf("LookupDevice: %v", err)
+	}
+	priorJKT := strings.TrimSpace(device.Metadata["dpop_jkt"])
+	if priorJKT == "" {
+		t.Fatal("first enrollment did not bind DPoP JKT")
+	}
+
+	service.cfg.Attestations = attestation.NewRegistry(false)
+	otherPub, _, _ := ed25519.GenerateKey(rand.Reader)
+	otherJWK, _ := makeEd25519JWK(t, otherPub)
+	secondBootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-downgrade", TenantID: "writer"})
+	if _, err := service.Enroll(ctx, EnrollRequest{
+		BootstrapToken: secondBootstrap.Token,
+		HardwareUUID:   "hw-downgrade",
+		DeviceJWK:      json.RawMessage(otherJWK),
+	}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("software downgrade Enroll err = %v, want ErrInvalidRequest", err)
+	}
+	device, err = service.LookupDevice(ctx, first.DeviceID)
+	if err != nil {
+		t.Fatalf("LookupDevice after failed downgrade: %v", err)
+	}
+	if got := strings.TrimSpace(device.Metadata["dpop_jkt"]); got != priorJKT {
+		t.Fatalf("dpop_jkt after failed downgrade = %q, want preserved %q", got, priorJKT)
+	}
+}
+
+func TestServiceReenrollPreservesHardwareAssuranceToBlockTwoStepDowngrade(t *testing.T) {
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	pubDER, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		t.Fatalf("marshal public key: %v", err)
+	}
+	verifier := &checkingAttestationVerifier{
+		wantHardwareUUID: "hw-two-step",
+		publicKey:        pubDER,
+	}
+	service.cfg.Attestations = attestation.NewRegistry(true, verifier)
+	firstBootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-two-step", TenantID: "writer"})
+	verifier.wantHash = attestationClientDataHash(firstBootstrap.Token, "hw-two-step")
+	first, err := service.Enroll(ctx, EnrollRequest{
+		BootstrapToken: firstBootstrap.Token,
+		HardwareUUID:   "hw-two-step",
+		OSType:         "darwin",
+		Attestation:    "stub-attestation",
+	})
+	if err != nil {
+		t.Fatalf("first Enroll: %v", err)
+	}
+	device, err := service.LookupDevice(ctx, first.DeviceID)
+	if err != nil {
+		t.Fatalf("LookupDevice: %v", err)
+	}
+	priorJKT := strings.TrimSpace(device.Metadata["dpop_jkt"])
+	if priorJKT == "" {
+		t.Fatal("first enrollment did not bind DPoP JKT")
+	}
+
+	service.cfg.Attestations = attestation.NewRegistry(false)
+	secondBootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-two-step", TenantID: "writer"})
+	second, err := service.Enroll(ctx, EnrollRequest{
+		BootstrapToken: secondBootstrap.Token,
+		HardwareUUID:   "hw-two-step",
+	})
+	if err != nil {
+		t.Fatalf("second Enroll: %v", err)
+	}
+	if second.DeviceID != first.DeviceID {
+		t.Fatalf("second device_id = %q, want %q", second.DeviceID, first.DeviceID)
+	}
+	if second.AssuranceLevel != "hardware" {
+		t.Fatalf("second assurance_level = %q, want hardware", second.AssuranceLevel)
+	}
+	if second.AttestationVendor != "stub-appattest" {
+		t.Fatalf("second attestation_vendor = %q, want stub-appattest", second.AttestationVendor)
+	}
+	device, err = service.LookupDevice(ctx, first.DeviceID)
+	if err != nil {
+		t.Fatalf("LookupDevice after second enroll: %v", err)
+	}
+	if got := strings.TrimSpace(device.Metadata["dpop_jkt"]); got != priorJKT {
+		t.Fatalf("dpop_jkt after second enroll = %q, want preserved %q", got, priorJKT)
+	}
+	if got := strings.TrimSpace(device.Metadata["assurance_level"]); got != "hardware" {
+		t.Fatalf("assurance_level after second enroll = %q, want hardware", got)
+	}
+	if got := strings.TrimSpace(device.Metadata["attestation_vendor"]); got != "stub-appattest" {
+		t.Fatalf("attestation_vendor after second enroll = %q, want stub-appattest", got)
+	}
+
+	otherPub, _, _ := ed25519.GenerateKey(rand.Reader)
+	otherJWK, _ := makeEd25519JWK(t, otherPub)
+	thirdBootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-two-step", TenantID: "writer"})
+	if _, err := service.Enroll(ctx, EnrollRequest{
+		BootstrapToken: thirdBootstrap.Token,
+		HardwareUUID:   "hw-two-step",
+		DeviceJWK:      json.RawMessage(otherJWK),
+	}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("third Enroll err = %v, want ErrInvalidRequest", err)
+	}
+}
+
 func TestRefreshTokenRateLimitKeyRejectsConsumedTokens(t *testing.T) {
 	ctx := context.Background()
 	service, _, _ := newServiceForTest(t)
@@ -559,5 +697,175 @@ func TestKeyDecodeRoundTrip(t *testing.T) {
 	}
 	if string(gotPriv) != string(priv) {
 		t.Errorf("private key round-trip mismatch")
+	}
+}
+
+// makeEd25519JWK returns a JSON-encoded RFC 7517 Ed25519 public JWK and the
+// matching RFC 7638 thumbprint, derived from the supplied public key.
+func makeEd25519JWK(t *testing.T, pub ed25519.PublicKey) ([]byte, string) {
+	t.Helper()
+	x := base64.RawURLEncoding.EncodeToString(pub)
+	jwk := []byte(`{"crv":"Ed25519","kty":"OKP","x":"` + x + `"}`)
+	sum := sha256.Sum256(jwk)
+	return jwk, base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+func TestServiceEnrollAcceptsAgentSuppliedJWKAndPinsCnfJKT(t *testing.T) {
+	ctx := context.Background()
+	service, store, _ := newServiceForTest(t)
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	jwk, wantJKT := makeEd25519JWK(t, pub)
+
+	bootstrap, err := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-jwk", TenantID: "writer"})
+	if err != nil {
+		t.Fatalf("IssueBootstrapToken: %v", err)
+	}
+	enroll, err := service.Enroll(ctx, EnrollRequest{
+		BootstrapToken: bootstrap.Token,
+		HardwareUUID:   "hw-jwk",
+		DeviceJWK:      json.RawMessage(jwk),
+	})
+	if err != nil {
+		t.Fatalf("Enroll: %v", err)
+	}
+	device, err := store.LookupDevice(ctx, enroll.DeviceID)
+	if err != nil {
+		t.Fatalf("LookupDevice: %v", err)
+	}
+	if got := device.Metadata["dpop_jkt"]; got != wantJKT {
+		t.Fatalf("dpop_jkt = %q, want %q", got, wantJKT)
+	}
+	verified, err := service.Verifier().Verify(enroll.AccessToken)
+	if err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	if verified.DPoPJKT != wantJKT {
+		t.Fatalf("access token cnf.jkt = %q, want %q", verified.DPoPJKT, wantJKT)
+	}
+}
+
+func TestServiceEnrollPreservesBootstrapTokenOnInvalidJWK(t *testing.T) {
+	// Soft-DoS regression: a malformed device_key MUST NOT consume the
+	// bootstrap token. The legitimate agent must be able to retry with a
+	// fixed JWK without operator intervention.
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	bootstrap, err := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-soft-dos", TenantID: "writer"})
+	if err != nil {
+		t.Fatalf("IssueBootstrapToken: %v", err)
+	}
+	if _, err := service.Enroll(ctx, EnrollRequest{
+		BootstrapToken: bootstrap.Token,
+		HardwareUUID:   "hw-soft-dos",
+		DeviceJWK:      json.RawMessage(`{"kty":"RSA","n":"abc","e":"AQAB"}`),
+	}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Enroll with RSA jwk err = %v, want ErrInvalidRequest", err)
+	}
+	pub, _, _ := ed25519.GenerateKey(rand.Reader)
+	jwk, wantJKT := makeEd25519JWK(t, pub)
+	enroll, err := service.Enroll(ctx, EnrollRequest{
+		BootstrapToken: bootstrap.Token,
+		HardwareUUID:   "hw-soft-dos",
+		DeviceJWK:      json.RawMessage(jwk),
+	})
+	if err != nil {
+		t.Fatalf("retry Enroll after RSA reject: %v", err)
+	}
+	verified, err := service.Verifier().Verify(enroll.AccessToken)
+	if err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	if verified.DPoPJKT != wantJKT {
+		t.Fatalf("retry cnf.jkt = %q, want %q", verified.DPoPJKT, wantJKT)
+	}
+}
+
+func TestServiceEnrollRejectsMalformedDeviceJWK(t *testing.T) {
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	cases := map[string]string{
+		"not-json":    `not-json`,
+		"json-array":  `["x"]`,
+		"json-string": `"hello"`,
+		"json-null":   `null`,
+		"unknown-kty": `{"kty":"RSA","n":"abc","e":"AQAB"}`,
+		"bad-curve":   `{"kty":"EC","crv":"P-521","x":"AAAA","y":"AAAA"}`,
+		"bad-okp":     `{"kty":"OKP","crv":"X25519","x":"AAAA"}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			bootstrap, err := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-" + name, TenantID: "writer"})
+			if err != nil {
+				t.Fatalf("IssueBootstrapToken: %v", err)
+			}
+			_, err = service.Enroll(ctx, EnrollRequest{
+				BootstrapToken: bootstrap.Token,
+				HardwareUUID:   "hw-" + name,
+				DeviceJWK:      json.RawMessage(body),
+			})
+			if !errors.Is(err, ErrInvalidRequest) {
+				t.Fatalf("Enroll(%s) err = %v, want ErrInvalidRequest", name, err)
+			}
+		})
+	}
+}
+
+func TestServiceEnrollRejectsAgentJWKMismatchWithAttestation(t *testing.T) {
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	// Attestation reports one Ed25519 public key.
+	attestedPub, _, _ := ed25519.GenerateKey(rand.Reader)
+	attestedDER, err := x509.MarshalPKIXPublicKey(attestedPub)
+	if err != nil {
+		t.Fatalf("MarshalPKIXPublicKey: %v", err)
+	}
+	verifier := &checkingAttestationVerifier{wantHardwareUUID: "hw-mismatch", publicKey: attestedDER}
+	registry := attestation.NewRegistry(true, verifier)
+	service.cfg.Attestations = registry
+	bootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-mismatch", TenantID: "writer"})
+	verifier.wantHash = attestationClientDataHash(bootstrap.Token, "hw-mismatch")
+
+	// Agent submits a DIFFERENT public key in device_key. Treat as attack.
+	otherPub, _, _ := ed25519.GenerateKey(rand.Reader)
+	otherJWK, _ := makeEd25519JWK(t, otherPub)
+	if _, err := service.Enroll(ctx, EnrollRequest{
+		BootstrapToken: bootstrap.Token,
+		HardwareUUID:   "hw-mismatch",
+		Attestation:    "stub",
+		OSType:         "darwin",
+		DeviceJWK:      json.RawMessage(otherJWK),
+	}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("mismatch Enroll err = %v, want ErrInvalidRequest", err)
+	}
+
+	// Submitting the matching key succeeds.
+	matchingJWK, _ := makeEd25519JWK(t, attestedPub)
+	if _, err := service.Enroll(ctx, EnrollRequest{
+		BootstrapToken: bootstrap.Token,
+		HardwareUUID:   "hw-mismatch",
+		Attestation:    "stub",
+		OSType:         "darwin",
+		DeviceJWK:      json.RawMessage(matchingJWK),
+	}); err != nil {
+		t.Fatalf("matched Enroll err = %v, want nil", err)
+	}
+}
+
+func TestNewServiceDefaultRefreshTTLIs7Days(t *testing.T) {
+	store := NewMemStore()
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	signer, _ := NewLocalSigner([]SigningKey{{KID: "test", Public: pub, Private: priv}})
+	keyset := &KeySet{Keys: []SigningKey{{KID: "test", Public: pub}}}
+	issuer, _ := NewJWTIssuer(IssuerConfig{}, signer)
+	verifier, _ := NewJWTVerifier(VerifierConfig{}, keyset)
+	service, err := NewService(ServiceConfig{}, store, issuer, verifier, keyset)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	if got, want := service.cfg.RefreshTTL, 7*24*time.Hour; got != want {
+		t.Fatalf("default RefreshTTL = %v, want %v", got, want)
 	}
 }

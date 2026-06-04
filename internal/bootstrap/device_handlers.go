@@ -161,6 +161,13 @@ type enrollRequestBody struct {
 	// Attest CBOR attestationObject on macOS or a TPM 2.0 quote bundle on
 	// Windows. Required when CEREBRO_DEVICE_AUTH_ATTESTATION_REQUIRED=true.
 	Attestation string `json:"attestation,omitempty"`
+	// DeviceKey is the agent-supplied public JWK that the agent will sign
+	// DPoP proofs with. When present, cnf.jkt on the access token is set
+	// to the RFC 7638 thumbprint of this key, and every refresh and
+	// DPoP-protected resource call must carry a proof signed by the
+	// matching private key. Allowed kty/crv values: EC P-256, EC P-384,
+	// OKP Ed25519. RSA is rejected. Maximum encoded size: 4 KiB.
+	DeviceKey json.RawMessage `json:"device_key,omitempty"`
 }
 
 type tokenResponseBody struct {
@@ -224,12 +231,14 @@ func (h *deviceAuthHTTPHandler) handleEnroll(w http.ResponseWriter, r *http.Requ
 		OSVersion:      body.OSVersion,
 		AgentVersion:   body.AgentVersion,
 		Attestation:    body.Attestation,
+		DeviceJWK:      body.DeviceKey,
 		RemoteIP:       net.ParseIP(clientIP),
 	})
 	if err != nil {
 		writeDeviceAuthServiceError(w, err)
 		return
 	}
+	setNoStoreHeaders(w)
 	writeJSON(w, http.StatusOK, tokenResponseBody{
 		AccessToken:       response.AccessToken,
 		TokenType:         response.TokenType,
@@ -241,6 +250,15 @@ func (h *deviceAuthHTTPHandler) handleEnroll(w http.ResponseWriter, r *http.Requ
 		AssuranceLevel:    response.AssuranceLevel,
 		AttestationVendor: response.AttestationVendor,
 	})
+}
+
+// setNoStoreHeaders sets the response headers required by RFC 6749 §5.1 for
+// any endpoint that returns a token. The headers also defeat any
+// well-meaning intermediate cache that might otherwise hold an access /
+// refresh token long enough to leak it across requests.
+func setNoStoreHeaders(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, private")
+	w.Header().Set("Pragma", "no-cache")
 }
 
 func (h *deviceAuthHTTPHandler) handleToken(w http.ResponseWriter, r *http.Request) {
@@ -276,6 +294,7 @@ func (h *deviceAuthHTTPHandler) handleToken(w http.ResponseWriter, r *http.Reque
 		writeDeviceAuthServiceError(w, err)
 		return
 	}
+	setNoStoreHeaders(w)
 	writeJSON(w, http.StatusOK, tokenResponseBody{
 		AccessToken:    response.AccessToken,
 		TokenType:      response.TokenType,
@@ -325,6 +344,7 @@ func (h *deviceAuthHTTPHandler) handleIssueBootstrapToken(w http.ResponseWriter,
 		writeDeviceAuthServiceError(w, err)
 		return
 	}
+	setNoStoreHeaders(w)
 	writeJSON(w, http.StatusCreated, bootstrapTokenResponseBody{
 		TokenID:   response.TokenID,
 		Token:     response.Token,

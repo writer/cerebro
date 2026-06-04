@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+const defaultDeviceAuthRefreshTTL = 7 * 24 * time.Hour
+
 func loadDeviceAuthConfig() (DeviceAuthConfig, error) {
 	enabled, err := parseBoolEnv("CEREBRO_DEVICE_AUTH_ENABLED", false)
 	if err != nil {
@@ -28,7 +30,7 @@ func loadDeviceAuthConfig() (DeviceAuthConfig, error) {
 	if cfg.AccessTTL, err = parseDurationEnv("CEREBRO_DEVICE_AUTH_ACCESS_TTL", 10*time.Minute); err != nil {
 		return DeviceAuthConfig{}, err
 	}
-	if cfg.RefreshTTL, err = parseDurationEnv("CEREBRO_DEVICE_AUTH_REFRESH_TTL", 30*24*time.Hour); err != nil {
+	if cfg.RefreshTTL, err = parseDurationEnv("CEREBRO_DEVICE_AUTH_REFRESH_TTL", defaultDeviceAuthRefreshTTL); err != nil {
 		return DeviceAuthConfig{}, err
 	}
 	if cfg.BootstrapTokenTTL, err = parseDurationEnv("CEREBRO_DEVICE_AUTH_BOOTSTRAP_TOKEN_TTL", 24*time.Hour); err != nil {
