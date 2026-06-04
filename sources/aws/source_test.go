@@ -22,6 +22,8 @@ import (
 	cloudtrailtypes "github.com/aws/aws-sdk-go-v2/service/cloudtrail/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/ecr"
+	ecrtypes "github.com/aws/aws-sdk-go-v2/service/ecr/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	ecstypes "github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
@@ -30,12 +32,23 @@ import (
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
+	kmstypes "github.com/aws/aws-sdk-go-v2/service/kms/types"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
+	"github.com/aws/aws-sdk-go-v2/service/rds"
+	rdstypes "github.com/aws/aws-sdk-go-v2/service/rds/types"
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
 	resourcegroupstaggingapitypes "github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi/types"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+	secretsmanagertypes "github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
+	"github.com/aws/aws-sdk-go-v2/service/sns"
+	snstypes "github.com/aws/aws-sdk-go-v2/service/sns/types"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -317,6 +330,7 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyAccessKey, config: map[string]string{"user_name": "admin@writer.com"}, kind: "aws.access_key"},
 		{family: familyAssetMetadata, kind: "asset.data_sensitivity"},
 		{family: familyEC2Instance, kind: "aws.ec2_instance"},
+		{family: familyECRRepository, kind: "aws.ecr_repository"},
 		{family: familyECSService, kind: "aws.ecs_service"},
 		{family: familyECSTask, kind: "aws.ecs_task"},
 		{family: familyECSTaskDefinition, kind: "aws.ecs_task_definition"},
@@ -326,7 +340,13 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyEKSPodIdentity, kind: "aws.eks_pod_identity_association"},
 		{family: familyEffectivePermission, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.effective_permission"},
 		{family: familyIAMUser, kind: "aws.iam_user"},
+		{family: familyKMSKey, kind: "aws.kms_key"},
 		{family: familyLambdaFunction, kind: "aws.lambda_function"},
+		{family: familyRDSInstance, kind: "aws.rds_instance"},
+		{family: familyS3Bucket, kind: "aws.s3_bucket"},
+		{family: familySecret, kind: "aws.secret"},
+		{family: familySNSTopic, kind: "aws.sns_topic"},
+		{family: familySQSQueue, kind: "aws.sqs_queue"},
 		{family: familyIAMRole, kind: "aws.iam_role"},
 		{family: familyIAMRoleTrust, kind: "aws.iam_role_trust"},
 		{family: familyIAMGroup, kind: "aws.iam_group"},
@@ -616,6 +636,130 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 				t.Fatalf("kind = %q, want %q", got, tt.kind)
 			}
 			tt.assert(t, pull.Events[0])
+		})
+	}
+}
+
+func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
+	rdsARN := "arn:aws:rds:us-east-1:123456789012:db:orders-db"
+	kmsARN := "arn:aws:kms:us-east-1:123456789012:key/key-123"
+	secretARN := "arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/api-key-AbCd"
+	sqsARN := "arn:aws:sqs:us-east-1:123456789012:orders"
+	sqsURL := "https://sqs.us-east-1.amazonaws.com/123456789012/orders"
+	snsARN := "arn:aws:sns:us-east-1:123456789012:orders"
+	ecrARN := "arn:aws:ecr:us-east-1:123456789012:repository/orders"
+	source := newTestSource(t, fakeAWS{
+		s3Buckets: []s3types.Bucket{{
+			Name:         awssdk.String("prod-data"),
+			CreationDate: timePtr("2026-04-23T00:00:00Z"),
+		}},
+		s3BucketRegions: map[string]s3types.BucketLocationConstraint{"prod-data": ""},
+		s3Tags:          map[string][]s3types.Tag{"prod-data": {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}}},
+		s3Encryption: map[string]*s3types.ServerSideEncryptionConfiguration{"prod-data": {
+			Rules: []s3types.ServerSideEncryptionRule{{
+				ApplyServerSideEncryptionByDefault: &s3types.ServerSideEncryptionByDefault{
+					SSEAlgorithm:   s3types.ServerSideEncryptionAwsKms,
+					KMSMasterKeyID: awssdk.String(kmsARN),
+				},
+			}},
+		}},
+		s3Versioning: map[string]s3types.BucketVersioningStatus{"prod-data": s3types.BucketVersioningStatusEnabled},
+		s3Logging:    map[string]bool{"prod-data": true},
+		s3PublicAccessBlocks: map[string]*s3types.PublicAccessBlockConfiguration{"prod-data": {
+			BlockPublicAcls:       awssdk.Bool(true),
+			BlockPublicPolicy:     awssdk.Bool(true),
+			IgnorePublicAcls:      awssdk.Bool(true),
+			RestrictPublicBuckets: awssdk.Bool(true),
+		}},
+		rdsInstances: []rdstypes.DBInstance{{
+			DBInstanceArn:         awssdk.String(rdsARN),
+			DBInstanceIdentifier:  awssdk.String("orders-db"),
+			Engine:                awssdk.String("postgres"),
+			StorageEncrypted:      awssdk.Bool(true),
+			KmsKeyId:              awssdk.String(kmsARN),
+			DeletionProtection:    awssdk.Bool(true),
+			BackupRetentionPeriod: awssdk.Int32(7),
+			PubliclyAccessible:    awssdk.Bool(false),
+			InstanceCreateTime:    timePtr("2026-04-23T00:00:00Z"),
+			TagList:               []rdstypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
+		}},
+		kmsKeys: []kmstypes.KeyMetadata{{
+			Arn:          awssdk.String(kmsARN),
+			KeyId:        awssdk.String("key-123"),
+			CreationDate: timePtr("2026-04-23T00:00:00Z"),
+			Enabled:      true,
+			KeyManager:   kmstypes.KeyManagerTypeCustomer,
+			KeyState:     kmstypes.KeyStateEnabled,
+			KeySpec:      kmstypes.KeySpecSymmetricDefault,
+			KeyUsage:     kmstypes.KeyUsageTypeEncryptDecrypt,
+			Origin:       kmstypes.OriginTypeAwsKms,
+		}},
+		kmsTags:     map[string][]kmstypes.Tag{"key-123": {{TagKey: awssdk.String("Owner"), TagValue: awssdk.String("security@writer.com")}}},
+		kmsRotation: map[string]bool{"key-123": true},
+		secrets: []secretsmanagertypes.SecretListEntry{{
+			ARN:             awssdk.String(secretARN),
+			Name:            awssdk.String("prod/api-key"),
+			CreatedDate:     timePtr("2026-04-23T00:00:00Z"),
+			KmsKeyId:        awssdk.String(kmsARN),
+			RotationEnabled: awssdk.Bool(true),
+			Tags:            []secretsmanagertypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("platform@writer.com")}},
+		}},
+		sqsQueueURLs: []string{sqsURL},
+		sqsAttributes: map[string]map[string]string{sqsURL: {
+			"QueueArn":               sqsARN,
+			"KmsMasterKeyId":         kmsARN,
+			"MessageRetentionPeriod": "1209600",
+			"CreatedTimestamp":       "1776902400",
+		}},
+		sqsTags:   map[string]map[string]string{sqsURL: {"Team": "payments"}},
+		snsTopics: []snstypes.Topic{{TopicArn: awssdk.String(snsARN)}},
+		snsAttributes: map[string]map[string]string{snsARN: {
+			"TopicArn":       snsARN,
+			"KmsMasterKeyId": kmsARN,
+		}},
+		snsTags: map[string][]snstypes.Tag{snsARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+		ecrRepositories: []ecrtypes.Repository{{
+			RepositoryArn:  awssdk.String(ecrARN),
+			RepositoryName: awssdk.String("orders"),
+			RepositoryUri:  awssdk.String("123456789012.dkr.ecr.us-east-1.amazonaws.com/orders"),
+			CreatedAt:      timePtr("2026-04-23T00:00:00Z"),
+			EncryptionConfiguration: &ecrtypes.EncryptionConfiguration{
+				EncryptionType: ecrtypes.EncryptionTypeKms,
+				KmsKey:         awssdk.String(kmsARN),
+			},
+			ImageScanningConfiguration: &ecrtypes.ImageScanningConfiguration{ScanOnPush: true},
+			ImageTagMutability:         ecrtypes.ImageTagMutabilityImmutable,
+		}},
+		ecrTags: map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+	})
+	for _, tt := range []struct {
+		family string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{family: familyS3Bucket, kind: "aws.s3_bucket", attr: "versioning", want: "Enabled"},
+		{family: familyRDSInstance, kind: "aws.rds_instance", attr: "deletion_protection", want: "true"},
+		{family: familyKMSKey, kind: "aws.kms_key", attr: "rotation", want: "true"},
+		{family: familySecret, kind: "aws.secret", attr: "rotation", want: "true"},
+		{family: familySQSQueue, kind: "aws.sqs_queue", attr: "encryption", want: "true"},
+		{family: familySNSTopic, kind: "aws.sns_topic", attr: "encryption", want: "true"},
+		{family: familyECRRepository, kind: "aws.ecr_repository", attr: "scan_on_push", want: "true"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
+			}
 		})
 	}
 }
@@ -1192,6 +1336,30 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.compute.eksPodIdentityIDs = map[string][]string{eksClusterName: []string{"a-123"}}
 		fake.compute.eksPodIdentities = map[string]ekstypes.PodIdentityAssociation{awsTestEKSChildKey(eksClusterName, "a-123"): {AssociationArn: awssdk.String("arn:aws:eks:us-east-1:123456789012:podidentityassociation/prod-eks/a-123"), AssociationId: awssdk.String("a-123"), ClusterName: awssdk.String(eksClusterName), Namespace: awssdk.String("payments"), RoleArn: awssdk.String("arn:aws:iam::123456789012:role/EKSPaymentsPodRole"), ServiceAccount: awssdk.String("api")}}
 	}
+	cloudAssetData := func(fake *recordingAWS) {
+		kmsARN := "arn:aws:kms:us-east-1:123456789012:key/key-123"
+		sqsURL := "https://sqs.us-east-1.amazonaws.com/123456789012/orders"
+		snsARN := "arn:aws:sns:us-east-1:123456789012:orders"
+		ecrARN := "arn:aws:ecr:us-east-1:123456789012:repository/orders"
+		fake.s3Buckets = []s3types.Bucket{{Name: awssdk.String("prod-data")}}
+		fake.s3Tags = map[string][]s3types.Tag{"prod-data": {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}}}
+		fake.s3Encryption = map[string]*s3types.ServerSideEncryptionConfiguration{"prod-data": {}}
+		fake.s3Versioning = map[string]s3types.BucketVersioningStatus{"prod-data": s3types.BucketVersioningStatusEnabled}
+		fake.s3PublicAccessBlocks = map[string]*s3types.PublicAccessBlockConfiguration{"prod-data": {}}
+		fake.rdsInstances = []rdstypes.DBInstance{{DBInstanceArn: awssdk.String("arn:aws:rds:us-east-1:123456789012:db:orders-db"), DBInstanceIdentifier: awssdk.String("orders-db")}}
+		fake.kmsKeys = []kmstypes.KeyMetadata{{Arn: awssdk.String(kmsARN), KeyId: awssdk.String("key-123")}}
+		fake.kmsTags = map[string][]kmstypes.Tag{"key-123": {{TagKey: awssdk.String("Owner"), TagValue: awssdk.String("security@writer.com")}}}
+		fake.kmsRotation = map[string]bool{"key-123": true}
+		fake.secrets = []secretsmanagertypes.SecretListEntry{{ARN: awssdk.String("arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/api-key-AbCd"), Name: awssdk.String("prod/api-key")}}
+		fake.sqsQueueURLs = []string{sqsURL}
+		fake.sqsAttributes = map[string]map[string]string{sqsURL: {"QueueArn": "arn:aws:sqs:us-east-1:123456789012:orders"}}
+		fake.sqsTags = map[string]map[string]string{sqsURL: {"Team": "payments"}}
+		fake.snsTopics = []snstypes.Topic{{TopicArn: awssdk.String(snsARN)}}
+		fake.snsAttributes = map[string]map[string]string{snsARN: {"TopicArn": snsARN}}
+		fake.snsTags = map[string][]snstypes.Tag{snsARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
+		fake.ecrRepositories = []ecrtypes.Repository{{RepositoryArn: awssdk.String(ecrARN), RepositoryName: awssdk.String("orders")}}
+		fake.ecrTags = map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
+	}
 	for _, tt := range []struct {
 		family  string
 		seed    func(*recordingAWS)
@@ -1211,6 +1379,41 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyEC2Instance,
 			seed:    computeData,
 			wantAPI: []string{"ec2:DescribeInstances", "iam:GetInstanceProfile"},
+		},
+		{
+			family:  familyS3Bucket,
+			seed:    cloudAssetData,
+			wantAPI: []string{"s3:GetBucketEncryption", "s3:GetBucketLocation", "s3:GetBucketLogging", "s3:GetBucketTagging", "s3:GetBucketVersioning", "s3:GetPublicAccessBlock", "s3:ListBuckets"},
+		},
+		{
+			family:  familyRDSInstance,
+			seed:    cloudAssetData,
+			wantAPI: []string{"rds:DescribeDBInstances"},
+		},
+		{
+			family:  familyKMSKey,
+			seed:    cloudAssetData,
+			wantAPI: []string{"kms:DescribeKey", "kms:GetKeyRotationStatus", "kms:ListKeys", "kms:ListResourceTags"},
+		},
+		{
+			family:  familySecret,
+			seed:    cloudAssetData,
+			wantAPI: []string{"secretsmanager:ListSecrets"},
+		},
+		{
+			family:  familySQSQueue,
+			seed:    cloudAssetData,
+			wantAPI: []string{"sqs:GetQueueAttributes", "sqs:ListQueueTags", "sqs:ListQueues"},
+		},
+		{
+			family:  familySNSTopic,
+			seed:    cloudAssetData,
+			wantAPI: []string{"sns:GetTopicAttributes", "sns:ListTagsForResource", "sns:ListTopics"},
+		},
+		{
+			family:  familyECRRepository,
+			seed:    cloudAssetData,
+			wantAPI: []string{"ecr:DescribeRepositories", "ecr:ListTagsForResource"},
 		},
 		{
 			family:  familyECSService,
@@ -1530,7 +1733,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, tagging: fake}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1546,7 +1749,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1623,6 +1826,26 @@ type fakeAWS struct {
 	apiV2APIs              []apigatewayv2types.Api
 	taggedResources        []resourcegroupstaggingapitypes.ResourceTagMapping
 	getResources           func(context.Context, *resourcegroupstaggingapi.GetResourcesInput, ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error)
+	s3Buckets              []s3types.Bucket
+	s3BucketRegions        map[string]s3types.BucketLocationConstraint
+	s3Tags                 map[string][]s3types.Tag
+	s3Encryption           map[string]*s3types.ServerSideEncryptionConfiguration
+	s3Versioning           map[string]s3types.BucketVersioningStatus
+	s3Logging              map[string]bool
+	s3PublicAccessBlocks   map[string]*s3types.PublicAccessBlockConfiguration
+	rdsInstances           []rdstypes.DBInstance
+	kmsKeys                []kmstypes.KeyMetadata
+	kmsTags                map[string][]kmstypes.Tag
+	kmsRotation            map[string]bool
+	secrets                []secretsmanagertypes.SecretListEntry
+	sqsQueueURLs           []string
+	sqsAttributes          map[string]map[string]string
+	sqsTags                map[string]map[string]string
+	snsTopics              []snstypes.Topic
+	snsAttributes          map[string]map[string]string
+	snsTags                map[string][]snstypes.Tag
+	ecrRepositories        []ecrtypes.Repository
+	ecrTags                map[string][]ecrtypes.Tag
 }
 
 type fakeAWSCompute struct {
@@ -1839,6 +2062,86 @@ func (f *recordingAWS) GetResources(ctx context.Context, input *resourcegroupsta
 	return f.fakeAWS.GetResources(ctx, input, options...)
 }
 
+func (f *recordingAWS) ListBuckets(ctx context.Context, input *s3.ListBucketsInput, options ...func(*s3.Options)) (*s3.ListBucketsOutput, error) {
+	f.record("s3:ListBuckets")
+	return f.fakeAWS.ListBuckets(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetBucketLocation(ctx context.Context, input *s3.GetBucketLocationInput, options ...func(*s3.Options)) (*s3.GetBucketLocationOutput, error) {
+	f.record("s3:GetBucketLocation")
+	return f.fakeAWS.GetBucketLocation(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetBucketTagging(ctx context.Context, input *s3.GetBucketTaggingInput, options ...func(*s3.Options)) (*s3.GetBucketTaggingOutput, error) {
+	f.record("s3:GetBucketTagging")
+	return f.fakeAWS.GetBucketTagging(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetBucketEncryption(ctx context.Context, input *s3.GetBucketEncryptionInput, options ...func(*s3.Options)) (*s3.GetBucketEncryptionOutput, error) {
+	f.record("s3:GetBucketEncryption")
+	return f.fakeAWS.GetBucketEncryption(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetBucketVersioning(ctx context.Context, input *s3.GetBucketVersioningInput, options ...func(*s3.Options)) (*s3.GetBucketVersioningOutput, error) {
+	f.record("s3:GetBucketVersioning")
+	return f.fakeAWS.GetBucketVersioning(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetBucketLogging(ctx context.Context, input *s3.GetBucketLoggingInput, options ...func(*s3.Options)) (*s3.GetBucketLoggingOutput, error) {
+	f.record("s3:GetBucketLogging")
+	return f.fakeAWS.GetBucketLogging(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetPublicAccessBlock(ctx context.Context, input *s3.GetPublicAccessBlockInput, options ...func(*s3.Options)) (*s3.GetPublicAccessBlockOutput, error) {
+	f.record("s3:GetPublicAccessBlock")
+	return f.fakeAWS.GetPublicAccessBlock(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeDBInstances(ctx context.Context, input *rds.DescribeDBInstancesInput, options ...func(*rds.Options)) (*rds.DescribeDBInstancesOutput, error) {
+	f.record("rds:DescribeDBInstances")
+	return f.fakeAWS.DescribeDBInstances(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListKeys(ctx context.Context, input *kms.ListKeysInput, options ...func(*kms.Options)) (*kms.ListKeysOutput, error) {
+	f.record("kms:ListKeys")
+	return f.fakeAWS.ListKeys(ctx, input, options...)
+}
+
+func (f *recordingAWS) DescribeKey(ctx context.Context, input *kms.DescribeKeyInput, options ...func(*kms.Options)) (*kms.DescribeKeyOutput, error) {
+	f.record("kms:DescribeKey")
+	return f.fakeAWS.DescribeKey(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListResourceTags(ctx context.Context, input *kms.ListResourceTagsInput, options ...func(*kms.Options)) (*kms.ListResourceTagsOutput, error) {
+	f.record("kms:ListResourceTags")
+	return f.fakeAWS.ListResourceTags(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetKeyRotationStatus(ctx context.Context, input *kms.GetKeyRotationStatusInput, options ...func(*kms.Options)) (*kms.GetKeyRotationStatusOutput, error) {
+	f.record("kms:GetKeyRotationStatus")
+	return f.fakeAWS.GetKeyRotationStatus(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListSecrets(ctx context.Context, input *secretsmanager.ListSecretsInput, options ...func(*secretsmanager.Options)) (*secretsmanager.ListSecretsOutput, error) {
+	f.record("secretsmanager:ListSecrets")
+	return f.fakeAWS.ListSecrets(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListQueues(ctx context.Context, input *sqs.ListQueuesInput, options ...func(*sqs.Options)) (*sqs.ListQueuesOutput, error) {
+	f.record("sqs:ListQueues")
+	return f.fakeAWS.ListQueues(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetQueueAttributes(ctx context.Context, input *sqs.GetQueueAttributesInput, options ...func(*sqs.Options)) (*sqs.GetQueueAttributesOutput, error) {
+	f.record("sqs:GetQueueAttributes")
+	return f.fakeAWS.GetQueueAttributes(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListQueueTags(ctx context.Context, input *sqs.ListQueueTagsInput, options ...func(*sqs.Options)) (*sqs.ListQueueTagsOutput, error) {
+	f.record("sqs:ListQueueTags")
+	return f.fakeAWS.ListQueueTags(ctx, input, options...)
+}
+
 type recordingAPIGatewayV2 struct {
 	fake *recordingAWS
 }
@@ -1851,6 +2154,67 @@ func (f recordingAPIGatewayV2) GetApis(ctx context.Context, input *apigatewayv2.
 func (f recordingAPIGatewayV2) GetDomainNames(ctx context.Context, input *apigatewayv2.GetDomainNamesInput, options ...func(*apigatewayv2.Options)) (*apigatewayv2.GetDomainNamesOutput, error) {
 	f.fake.record("apigatewayv2:GetDomainNames")
 	return fakeAPIGatewayV2{domains: f.fake.apiV2Domains, apis: f.fake.apiV2APIs}.GetDomainNames(ctx, input, options...)
+}
+
+type fakeSNS struct {
+	fake *fakeAWS
+}
+
+type recordingSNS struct {
+	fake *recordingAWS
+}
+
+func (f recordingSNS) ListTopics(ctx context.Context, input *sns.ListTopicsInput, options ...func(*sns.Options)) (*sns.ListTopicsOutput, error) {
+	f.fake.record("sns:ListTopics")
+	return fakeSNS{fake: &f.fake.fakeAWS}.ListTopics(ctx, input, options...)
+}
+
+func (f recordingSNS) GetTopicAttributes(ctx context.Context, input *sns.GetTopicAttributesInput, options ...func(*sns.Options)) (*sns.GetTopicAttributesOutput, error) {
+	f.fake.record("sns:GetTopicAttributes")
+	return fakeSNS{fake: &f.fake.fakeAWS}.GetTopicAttributes(ctx, input, options...)
+}
+
+func (f recordingSNS) ListTagsForResource(ctx context.Context, input *sns.ListTagsForResourceInput, options ...func(*sns.Options)) (*sns.ListTagsForResourceOutput, error) {
+	f.fake.record("sns:ListTagsForResource")
+	return fakeSNS{fake: &f.fake.fakeAWS}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f fakeSNS) ListTopics(context.Context, *sns.ListTopicsInput, ...func(*sns.Options)) (*sns.ListTopicsOutput, error) {
+	return &sns.ListTopicsOutput{Topics: f.fake.snsTopics}, nil
+}
+
+func (f fakeSNS) GetTopicAttributes(_ context.Context, input *sns.GetTopicAttributesInput, _ ...func(*sns.Options)) (*sns.GetTopicAttributesOutput, error) {
+	return &sns.GetTopicAttributesOutput{Attributes: f.fake.snsAttributes[awssdk.ToString(input.TopicArn)]}, nil
+}
+
+func (f fakeSNS) ListTagsForResource(_ context.Context, input *sns.ListTagsForResourceInput, _ ...func(*sns.Options)) (*sns.ListTagsForResourceOutput, error) {
+	return &sns.ListTagsForResourceOutput{Tags: f.fake.snsTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeECR struct {
+	fake *fakeAWS
+}
+
+type recordingECR struct {
+	fake *recordingAWS
+}
+
+func (f recordingECR) DescribeRepositories(ctx context.Context, input *ecr.DescribeRepositoriesInput, options ...func(*ecr.Options)) (*ecr.DescribeRepositoriesOutput, error) {
+	f.fake.record("ecr:DescribeRepositories")
+	return fakeECR{fake: &f.fake.fakeAWS}.DescribeRepositories(ctx, input, options...)
+}
+
+func (f recordingECR) ListTagsForResource(ctx context.Context, input *ecr.ListTagsForResourceInput, options ...func(*ecr.Options)) (*ecr.ListTagsForResourceOutput, error) {
+	f.fake.record("ecr:ListTagsForResource")
+	return fakeECR{fake: &f.fake.fakeAWS}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f fakeECR) DescribeRepositories(context.Context, *ecr.DescribeRepositoriesInput, ...func(*ecr.Options)) (*ecr.DescribeRepositoriesOutput, error) {
+	return &ecr.DescribeRepositoriesOutput{Repositories: f.fake.ecrRepositories}, nil
+}
+
+func (f fakeECR) ListTagsForResource(_ context.Context, input *ecr.ListTagsForResourceInput, _ ...func(*ecr.Options)) (*ecr.ListTagsForResourceOutput, error) {
+	return &ecr.ListTagsForResourceOutput{Tags: f.fake.ecrTags[awssdk.ToString(input.ResourceArn)]}, nil
 }
 
 type fakeEKS struct {
@@ -2251,6 +2615,84 @@ func (f fakeAWS) GetResources(ctx context.Context, input *resourcegroupstagginga
 	}
 	records, next := paginateResourceTags(f.taggedResources, awssdk.ToString(input.PaginationToken), int(awssdk.ToInt32(input.ResourcesPerPage)))
 	return &resourcegroupstaggingapi.GetResourcesOutput{ResourceTagMappingList: records, PaginationToken: stringPtr(next)}, nil
+}
+
+func (f fakeAWS) ListBuckets(context.Context, *s3.ListBucketsInput, ...func(*s3.Options)) (*s3.ListBucketsOutput, error) {
+	return &s3.ListBucketsOutput{Buckets: f.s3Buckets}, nil
+}
+
+func (f fakeAWS) GetBucketLocation(_ context.Context, input *s3.GetBucketLocationInput, _ ...func(*s3.Options)) (*s3.GetBucketLocationOutput, error) {
+	return &s3.GetBucketLocationOutput{LocationConstraint: f.s3BucketRegions[awssdk.ToString(input.Bucket)]}, nil
+}
+
+func (f fakeAWS) GetBucketTagging(_ context.Context, input *s3.GetBucketTaggingInput, _ ...func(*s3.Options)) (*s3.GetBucketTaggingOutput, error) {
+	return &s3.GetBucketTaggingOutput{TagSet: f.s3Tags[awssdk.ToString(input.Bucket)]}, nil
+}
+
+func (f fakeAWS) GetBucketEncryption(_ context.Context, input *s3.GetBucketEncryptionInput, _ ...func(*s3.Options)) (*s3.GetBucketEncryptionOutput, error) {
+	return &s3.GetBucketEncryptionOutput{ServerSideEncryptionConfiguration: f.s3Encryption[awssdk.ToString(input.Bucket)]}, nil
+}
+
+func (f fakeAWS) GetBucketVersioning(_ context.Context, input *s3.GetBucketVersioningInput, _ ...func(*s3.Options)) (*s3.GetBucketVersioningOutput, error) {
+	return &s3.GetBucketVersioningOutput{Status: f.s3Versioning[awssdk.ToString(input.Bucket)]}, nil
+}
+
+func (f fakeAWS) GetBucketLogging(_ context.Context, input *s3.GetBucketLoggingInput, _ ...func(*s3.Options)) (*s3.GetBucketLoggingOutput, error) {
+	if f.s3Logging[awssdk.ToString(input.Bucket)] {
+		return &s3.GetBucketLoggingOutput{LoggingEnabled: &s3types.LoggingEnabled{}}, nil
+	}
+	return &s3.GetBucketLoggingOutput{}, nil
+}
+
+func (f fakeAWS) GetPublicAccessBlock(_ context.Context, input *s3.GetPublicAccessBlockInput, _ ...func(*s3.Options)) (*s3.GetPublicAccessBlockOutput, error) {
+	return &s3.GetPublicAccessBlockOutput{PublicAccessBlockConfiguration: f.s3PublicAccessBlocks[awssdk.ToString(input.Bucket)]}, nil
+}
+
+func (f fakeAWS) DescribeDBInstances(context.Context, *rds.DescribeDBInstancesInput, ...func(*rds.Options)) (*rds.DescribeDBInstancesOutput, error) {
+	return &rds.DescribeDBInstancesOutput{DBInstances: f.rdsInstances}, nil
+}
+
+func (f fakeAWS) ListKeys(context.Context, *kms.ListKeysInput, ...func(*kms.Options)) (*kms.ListKeysOutput, error) {
+	keys := make([]kmstypes.KeyListEntry, 0, len(f.kmsKeys))
+	for _, key := range f.kmsKeys {
+		keys = append(keys, kmstypes.KeyListEntry{KeyArn: key.Arn, KeyId: key.KeyId})
+	}
+	return &kms.ListKeysOutput{Keys: keys}, nil
+}
+
+func (f fakeAWS) DescribeKey(_ context.Context, input *kms.DescribeKeyInput, _ ...func(*kms.Options)) (*kms.DescribeKeyOutput, error) {
+	keyID := awssdk.ToString(input.KeyId)
+	for _, key := range f.kmsKeys {
+		if awssdk.ToString(key.KeyId) == keyID || awssdk.ToString(key.Arn) == keyID {
+			copy := key
+			return &kms.DescribeKeyOutput{KeyMetadata: &copy}, nil
+		}
+	}
+	return &kms.DescribeKeyOutput{}, nil
+}
+
+func (f fakeAWS) ListResourceTags(_ context.Context, input *kms.ListResourceTagsInput, _ ...func(*kms.Options)) (*kms.ListResourceTagsOutput, error) {
+	return &kms.ListResourceTagsOutput{Tags: f.kmsTags[awssdk.ToString(input.KeyId)]}, nil
+}
+
+func (f fakeAWS) GetKeyRotationStatus(_ context.Context, input *kms.GetKeyRotationStatusInput, _ ...func(*kms.Options)) (*kms.GetKeyRotationStatusOutput, error) {
+	return &kms.GetKeyRotationStatusOutput{KeyRotationEnabled: f.kmsRotation[awssdk.ToString(input.KeyId)]}, nil
+}
+
+func (f fakeAWS) ListSecrets(context.Context, *secretsmanager.ListSecretsInput, ...func(*secretsmanager.Options)) (*secretsmanager.ListSecretsOutput, error) {
+	return &secretsmanager.ListSecretsOutput{SecretList: f.secrets}, nil
+}
+
+func (f fakeAWS) ListQueues(context.Context, *sqs.ListQueuesInput, ...func(*sqs.Options)) (*sqs.ListQueuesOutput, error) {
+	return &sqs.ListQueuesOutput{QueueUrls: f.sqsQueueURLs}, nil
+}
+
+func (f fakeAWS) GetQueueAttributes(_ context.Context, input *sqs.GetQueueAttributesInput, _ ...func(*sqs.Options)) (*sqs.GetQueueAttributesOutput, error) {
+	return &sqs.GetQueueAttributesOutput{Attributes: f.sqsAttributes[awssdk.ToString(input.QueueUrl)]}, nil
+}
+
+func (f fakeAWS) ListQueueTags(_ context.Context, input *sqs.ListQueueTagsInput, _ ...func(*sqs.Options)) (*sqs.ListQueueTagsOutput, error) {
+	return &sqs.ListQueueTagsOutput{Tags: f.sqsTags[awssdk.ToString(input.QueueUrl)]}, nil
 }
 
 type fakeAPIGatewayV2 struct {

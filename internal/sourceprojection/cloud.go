@@ -79,6 +79,279 @@ func gcpEffectivePermissionProjections(event *cerebrov1.EventEnvelope) ([]*ports
 	return cloudEffectivePermissionProjections(event, gcpIdentityProfile)
 }
 
+func awsCloudResourceProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return cloudResourceMetadataProjections(event, awsIdentityProfile, cloudResourceProjectionOptions{})
+}
+
+func azureCloudResourceProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return cloudResourceMetadataProjections(event, azureIdentityProfile, cloudResourceProjectionOptions{})
+}
+
+func gcpCloudResourceProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return cloudResourceMetadataProjections(event, gcpIdentityProfile, cloudResourceProjectionOptions{})
+}
+
+type cloudResourceProjectionOptions struct {
+	CrownJewelEvent              bool
+	DefaultUnknownClassification bool
+	Provider                     string
+}
+
+func cloudResourceMetadataProjections(event *cerebrov1.EventEnvelope, profile identityProjectionProfile, options cloudResourceProjectionOptions) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	provider := normalizeCloudProvider(firstNonEmpty(options.Provider, profile.Provider, attributes["source_provider"], attributes["resource_provider"], event.GetSourceId()))
+	if provider == "" {
+		return nil, nil, nil
+	}
+	resourceType := cloudResourceProjectionType(event, provider, attributes)
+	resourceID := cloudResourceProjectionID(attributes)
+	resourceURN := firstNonEmpty(attributes["resource_urn"], projectionURN(tenantID, provider+"_"+resourceType, resourceID))
+	if resourceURN == "" {
+		return nil, nil, nil
+	}
+
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	resourceAttributes := compactAttributes(cloneStringMap(attributes))
+	resourceAttributes["resource_id"] = resourceID
+	resourceAttributes["resource_provider"] = provider
+	resourceAttributes["resource_type"] = resourceType
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        resourceURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: provider + "." + strings.ReplaceAll(resourceType, "_", "."),
+		Label:      firstNonEmpty(attributes["resource_name"], attributes["name"], resourceID, resourceURN),
+		Attributes: resourceAttributes,
+	})
+
+	if accountID := cloudResourceAccountID(provider, attributes, resourceID, resourceURN); accountID != "" {
+		addCloudAccountLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, accountID, provider)
+	}
+	addAzureResourceGroupLinks(entities, links, tenantID, event.GetSourceId(), event, identityProjectionProfile{Provider: provider}, attributes, resourceURN)
+	addCloudResourceOwnerLink(entities, links, tenantID, event, resourceURN, firstNonEmpty(attributes["owner"], attributes["team"]))
+	addCloudResourceClassificationLinks(entities, links, tenantID, event, resourceURN, attributes, options)
+	addCloudResourcePublicReachability(entities, links, tenantID, event, resourceURN, provider, attributes)
+	addCloudResourceRuntimeIdentityLinks(entities, links, tenantID, event, resourceURN, provider, attributes)
+	return identityProjectionResult(entities, links)
+}
+
+func normalizeCloudProvider(value string) string {
+	switch normalizeIdentifier(value) {
+	case "amazon_web_services":
+		return "aws"
+	case "microsoft_azure":
+		return "azure"
+	case "google_cloud", "google_cloud_platform":
+		return "gcp"
+	default:
+		return normalizeIdentifier(value)
+	}
+}
+
+func cloudResourceProjectionType(event *cerebrov1.EventEnvelope, provider string, attributes map[string]string) string {
+	if kind := strings.TrimSpace(event.GetKind()); strings.HasPrefix(kind, provider+".") {
+		resourceType := strings.TrimPrefix(kind, provider+".")
+		switch resourceType {
+		case "", "asset_metadata", "effective_permission", "resource_exposure", "public_endpoint":
+		default:
+			return normalizeCloudType(resourceType)
+		}
+	}
+	return normalizeCloudType(firstNonEmpty(attributes["resource_type"], attributes["family"], "resource"))
+}
+
+func cloudResourceProjectionID(attributes map[string]string) string {
+	return firstNonEmpty(
+		attributes["resource_urn"],
+		attributes["resource_arn"],
+		attributes["resource_id"],
+		attributes["id"],
+		attributes["name"],
+		attributes["resource_name"],
+		attributes["endpoint_id"],
+		attributes["host"],
+		attributes["ip"],
+	)
+}
+
+func cloudResourceAccountID(provider string, attributes map[string]string, resourceID string, resourceURN string) string {
+	switch provider {
+	case "aws":
+		return firstNonEmpty(
+			awsAccountID(attributes["aws_account_id"]),
+			awsAccountID(attributes["account_id"]),
+			awsAccountID(attributes["domain"]),
+			awsAccountIDFromARN(attributes["resource_arn"]),
+			awsAccountIDFromARN(resourceID),
+			awsAccountIDFromARN(resourceURN),
+			awsAccountIDFromARN(attributes["scope"]),
+		)
+	case "azure":
+		return firstNonEmpty(
+			attributes["subscription_id"],
+			azureSubscriptionIDFromScope(resourceID),
+			azureSubscriptionIDFromScope(resourceURN),
+			azureSubscriptionIDFromScope(attributes["scope"]),
+		)
+	case "gcp":
+		return firstNonEmpty(
+			attributes["gcp_project_id"],
+			attributes["project_id"],
+			gcpProjectIDFromResource(resourceID),
+			gcpProjectIDFromResource(resourceURN),
+			attributes["domain"],
+		)
+	default:
+		return ""
+	}
+}
+
+func addCloudResourceOwnerLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, resourceURN string, owner string) {
+	owner = strings.TrimSpace(owner)
+	if resourceURN == "" || owner == "" {
+		return
+	}
+	ownerURN := projectionURN(tenantID, "owner", owner)
+	if ownerURN == "" {
+		return
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        ownerURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: "owner",
+		Label:      owner,
+		Attributes: map[string]string{"owner": owner},
+	})
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, ownerURN, relationOwnedBy, map[string]string{"event_id": event.GetId()}))
+	if extractEmailIdentifier(owner) != "" {
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), ownerURN, owner, event.GetOccurredAt())
+	}
+}
+
+func addCloudResourceClassificationLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, resourceURN string, attributes map[string]string, options cloudResourceProjectionOptions) {
+	classification := firstNonEmpty(attributes["data_classification"], attributes["data_sensitivity"], attributes["sensitivity"])
+	if classification == "" && options.DefaultUnknownClassification {
+		classification = "unknown"
+	}
+	if classificationURN := projectionURN(tenantID, "data_classification", classification); resourceURN != "" && classificationURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        classificationURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "data.classification",
+			Label:      classification,
+			Attributes: map[string]string{"classification": classification},
+		})
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, classificationURN, relationHasClassification, map[string]string{"event_id": event.GetId()}))
+	}
+	if (options.CrownJewelEvent || projectionBool(firstNonEmpty(attributes["crown_jewel"], attributes["tier0"], attributes["business_critical"]))) && resourceURN != "" {
+		tagURN := projectionURN(tenantID, "asset_tag", "crown_jewel")
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        tagURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "asset.tag",
+			Label:      "crown_jewel",
+			Attributes: map[string]string{"tag": "crown_jewel"},
+		})
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, tagURN, relationTaggedAs, map[string]string{"event_id": event.GetId()}))
+	}
+}
+
+func addCloudResourcePublicReachability(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, resourceURN string, provider string, attributes map[string]string) {
+	if resourceURN == "" || !cloudResourcePubliclyReachable(attributes) {
+		return
+	}
+	publicURN := identityPrincipalURN(tenantID, provider, "public", "public_internet", "")
+	if publicURN == "" {
+		return
+	}
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        publicURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: provider + ".public_principal",
+		Label:      "public internet",
+		Attributes: map[string]string{"principal_type": "public"},
+	})
+	reachabilityAttrs := compactAttributes(map[string]string{
+		"at":              eventObservedAt(event),
+		"direction":       "ingress",
+		"event_id":        event.GetId(),
+		"exposure_type":   firstNonEmpty(attributes["exposure_type"], "public_resource"),
+		"host":            firstNonEmpty(attributes["public_host"], attributes["host"]),
+		"ip":              firstNonEmpty(attributes["public_ip"], attributes["ip"]),
+		"public_endpoint": firstNonEmpty(attributes["public_endpoint"], attributes["uri"], attributes["endpoint"]),
+	})
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), publicURN, resourceURN, relationCanReach, reachabilityAttrs))
+	reverseAttrs := cloneStringMap(reachabilityAttrs)
+	reverseAttrs["direction"] = "ingress_reverse"
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, publicURN, relationCanReach, reverseAttrs))
+}
+
+func cloudResourcePubliclyReachable(attributes map[string]string) bool {
+	if exposure := firstNonEmpty(attributes["internet_exposed"], attributes["external_exposure"], attributes["public"], attributes["public_network_access"]); strings.TrimSpace(exposure) != "" {
+		return projectionBool(exposure)
+	}
+	return strings.TrimSpace(firstNonEmpty(attributes["public_endpoint"], attributes["uri"], attributes["endpoint"])) != ""
+}
+
+func addCloudResourceRuntimeIdentityLinks(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, resourceURN string, provider string, attributes map[string]string) {
+	switch provider {
+	case "aws":
+		addAWSComputeRoleLink(entities, links, tenantID, event.GetSourceId(), event, resourceURN, firstNonEmpty(attributes["role_arn"], attributes["runtime_role_arn"]), firstNonEmpty(attributes["role_name"], attributes["runtime_role_name"]), "primary")
+	case "gcp":
+		for _, email := range splitCloudAttributeList(firstNonEmpty(attributes["service_account_email"], attributes["runtime_identity"], attributes["runtime_service_account"])) {
+			addCloudResourceRuntimePrincipalLink(entities, links, tenantID, event, resourceURN, provider, "service_account", email, email, "gcp_runtime_service_account")
+		}
+	case "azure":
+		for _, principalID := range splitCloudAttributeList(firstNonEmpty(attributes["identity_principal_id"], attributes["runtime_identity"])) {
+			addCloudResourceRuntimePrincipalLink(entities, links, tenantID, event, resourceURN, provider, "service_principal", principalID, "", "azure_system_assigned_identity")
+		}
+		for _, principalID := range splitCloudAttributeList(attributes["user_assigned_principal_ids"]) {
+			addCloudResourceRuntimePrincipalLink(entities, links, tenantID, event, resourceURN, provider, "service_principal", principalID, "", "azure_user_assigned_identity")
+		}
+	}
+}
+
+func addCloudResourceRuntimePrincipalLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, event *cerebrov1.EventEnvelope, resourceURN string, provider string, principalType string, principalID string, principalEmail string, matchType string) {
+	principalID = strings.TrimSpace(principalID)
+	resourceURN = strings.TrimSpace(resourceURN)
+	if resourceURN == "" || principalID == "" {
+		return
+	}
+	principalURN := identityPrincipalURN(tenantID, provider, principalType, principalID, principalEmail)
+	if principalURN == "" {
+		return
+	}
+	entityType := identityProjectionProfile{Provider: provider}.entityType(identityPrincipalType(principalType))
+	addEntity(entities, &ports.ProjectedEntity{
+		URN:        principalURN,
+		TenantID:   tenantID,
+		SourceID:   event.GetSourceId(),
+		EntityType: entityType,
+		Label:      firstNonEmpty(principalEmail, principalID),
+		Attributes: compactAttributes(map[string]string{
+			"email":          principalEmail,
+			"principal_id":   principalID,
+			"principal_type": identityPrincipalType(principalType),
+		}),
+	})
+	addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), principalURN, firstNonEmpty(principalEmail, principalID), event.GetOccurredAt())
+	addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, principalURN, relationRunsAs, map[string]string{
+		"event_id":       event.GetId(),
+		"match_type":     matchType,
+		"principal_id":   principalID,
+		"principal_type": identityPrincipalType(principalType),
+	}))
+}
+
 func cloudResourceExposureProjections(event *cerebrov1.EventEnvelope, profile identityProjectionProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {

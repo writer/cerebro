@@ -12,6 +12,7 @@ import (
 func TestCloudExposedPrivilegedComputeRoleGraphRuleSupportsAWSProducerRuntimes(t *testing.T) {
 	rule := newCloudExposedPrivilegedComputeRoleRule().(GraphRule)
 	for _, family := range []string{
+		"asset_metadata",
 		"ec2_instance",
 		"lambda_function",
 		"ecs_service",
@@ -32,9 +33,22 @@ func TestCloudExposedPrivilegedComputeRoleGraphRuleSupportsAWSProducerRuntimes(t
 			t.Fatalf("SupportsRuntime(aws/%s) = false, want true", family)
 		}
 	}
+	for sourceID, families := range map[string][]string{
+		"azure": {"asset_metadata", "virtual_machine", "aks_cluster", "app_service", "function_app", "effective_permission", "resource_exposure"},
+		"gcp":   {"asset_metadata", "compute_instance", "gke_cluster", "cloud_run_service", "cloud_function", "cloud_sql_instance", "effective_permission", "resource_exposure"},
+	} {
+		for _, family := range families {
+			runtime := &cerebrov1.SourceRuntime{SourceId: sourceID, TenantId: "writer", Config: map[string]string{"family": family}}
+			if !rule.SupportsRuntime(runtime) {
+				t.Fatalf("SupportsRuntime(%s/%s) = false, want true", sourceID, family)
+			}
+		}
+	}
 	for _, runtime := range []*cerebrov1.SourceRuntime{
 		{SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "cloudtrail"}},
 		{SourceId: "aws", TenantId: "writer", Config: map[string]string{"family": "iam_user"}},
+		{SourceId: "azure", TenantId: "writer", Config: map[string]string{"family": "user"}},
+		{SourceId: "gcp", TenantId: "writer", Config: map[string]string{"family": "audit"}},
 		{SourceId: "okta", TenantId: "writer", Config: map[string]string{"family": "user"}},
 	} {
 		if rule.SupportsRuntime(runtime) {
@@ -59,12 +73,16 @@ func TestCloudExposedPrivilegedComputeRoleGraphRuleQueryShape(t *testing.T) {
 		"aws.eks.pod_identity_association",
 		"aws.lambda.function",
 		"aws.ec2.instance",
+		"gcp.cloud.run.service",
+		"gcp.compute.instance",
+		"azure.virtual.machine",
+		"azure.function.app",
 		"relation: 'can_reach'",
 		"relation: 'attached_to'",
 		"relation: 'member_of'",
 		"relation: 'depends_on'",
 		"relation: 'runs_as'",
-		"access.relation IN ['can_admin', 'can_assume', 'can_perform']",
+		"access.relation IN ['can_admin', 'can_assume', 'can_impersonate', 'can_perform']",
 		`"is_admin":"true"`,
 		`"privilege_level":"admin"`,
 		"AdministratorAccess",

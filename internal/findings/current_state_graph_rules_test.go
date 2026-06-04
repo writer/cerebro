@@ -186,7 +186,7 @@ func TestCurrentStateGraphRuleQueriesUseEnrichedCurrentState(t *testing.T) {
 		{
 			name: "cloud exposed privileged compute links reachability to runtime role privilege",
 			rule: newCloudExposedPrivilegedComputeRoleRule(),
-			want: []string{`entity_type: 'aws.ecs.task_definition'`, `relation: 'runs_as'`, `relation: 'depends_on'`, `relation: 'can_reach'`, `relation: 'member_of'`, `relation: 'attached_to'`, `access.relation IN ['can_admin', 'can_assume', 'can_perform']`, `duration('P30D')`},
+			want: []string{`entity_type: 'aws.ecs.task_definition'`, `relation: 'runs_as'`, `relation: 'depends_on'`, `relation: 'can_reach'`, `relation: 'member_of'`, `relation: 'attached_to'`, `access.relation IN ['can_admin', 'can_assume', 'can_impersonate', 'can_perform']`, `duration('P30D')`},
 		},
 		{
 			name: "github credentials exclude inactive resources",

@@ -57,13 +57,23 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		kind   string
 	}{
 		{family: familyAssetMetadata, kind: "asset.data_sensitivity"},
+		{family: familyArtifactImage, config: map[string]string{"artifact_repository": "projects/writer-prod/locations/us/repositories/app"}, kind: "gcp.artifact_registry_image"},
+		{family: familyArtifactRepo, kind: "gcp.artifact_registry_repository"},
 		{family: familyServiceAcct, kind: "gcp.service_account"},
+		{family: familyCloudFunction, kind: "gcp.cloud_function"},
+		{family: familyCloudRunService, kind: "gcp.cloud_run_service"},
+		{family: familyCloudSQLInstance, kind: "gcp.cloud_sql_instance"},
+		{family: familyComputeInstance, kind: "gcp.compute_instance"},
+		{family: familyGCSBucket, kind: "gcp.gcs_bucket"},
+		{family: familyGKECluster, kind: "gcp.gke_cluster"},
 		{family: familyGroup, config: map[string]string{"customer_id": "C01"}, kind: "gcp.group"},
 		{family: familyGroupMember, config: map[string]string{"group_key": "security@writer.com"}, kind: "gcp.group_membership"},
+		{family: familyKMSKey, config: map[string]string{"location": "us", "key_ring": "prod"}, kind: "gcp.kms_key"},
 		{family: familyResourceExposure, kind: "gcp.resource_exposure"},
 		{family: familyRoleAssign, kind: "gcp.iam_role_assignment"},
 		{family: familyEffectivePermission, kind: "gcp.effective_permission"},
 		{family: familySAImpersonation, config: map[string]string{"service_account_email": "sa@writer-prod.iam.gserviceaccount.com"}, kind: "gcp.service_account_impersonation"},
+		{family: familySecret, kind: "gcp.secret_manager_secret"},
 		{family: familyAudit, kind: "gcp.audit"},
 		{family: familySAKey, config: map[string]string{"service_account_email": "sa@writer-prod.iam.gserviceaccount.com"}, kind: "gcp.service_account_key"},
 	} {
@@ -172,6 +182,53 @@ func TestReadLiveGCPAssetMetadataPreview(t *testing.T) {
 	}
 	if got := event.Attributes["data_classification"]; got != "restricted" {
 		t.Fatalf("data_classification = %q, want restricted", got)
+	}
+}
+
+func TestReadLiveGCPTypedCloudResourceFamiliesPreview(t *testing.T) {
+	server := httptest.NewServer(newGCPAPIHandler(t))
+	defer server.Close()
+	source, err := newLiveTestSource()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	for _, tt := range []struct {
+		family string
+		config map[string]string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{family: familyComputeInstance, kind: "gcp.compute_instance", attr: "service_account_email", want: "vm@writer-prod.iam.gserviceaccount.com"},
+		{family: familyGKECluster, kind: "gcp.gke_cluster", attr: "network_tags", want: "gke"},
+		{family: familyCloudRunService, kind: "gcp.cloud_run_service", attr: "internet_exposed", want: "true"},
+		{family: familyCloudFunction, kind: "gcp.cloud_function", attr: "runtime_identity", want: "fn@writer-prod.iam.gserviceaccount.com"},
+		{family: familyCloudSQLInstance, kind: "gcp.cloud_sql_instance", attr: "backup_enabled", want: "true"},
+		{family: familyGCSBucket, kind: "gcp.gcs_bucket", attr: "versioning_enabled", want: "true"},
+		{family: familySecret, kind: "gcp.secret_manager_secret", attr: "rotation_enabled", want: "true"},
+		{family: familyKMSKey, config: map[string]string{"location": "us", "key_ring": "prod"}, kind: "gcp.kms_key", attr: "protection_level", want: "HSM"},
+		{family: familyArtifactRepo, kind: "gcp.artifact_registry_repository", attr: "immutable_tags", want: "true"},
+		{family: familyArtifactImage, config: map[string]string{"artifact_repository": "projects/writer-prod/locations/us/repositories/app"}, kind: "gcp.artifact_registry_image", attr: "digest", want: "sha256:abc"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			config := map[string]string{"base_url": server.URL, "family": tt.family, "project_id": "writer-prod", "token": "test-token"}
+			for key, value := range tt.config {
+				config[key] = value
+			}
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(config), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -306,6 +363,29 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 			writeJSON(t, w, map[string]any{"bindings": []map[string]any{{"role": "roles/owner", "members": []string{"serviceAccount:sa@writer-prod.iam.gserviceaccount.com"}}}})
 		case "/v1/projects/writer-prod:searchAllResources":
 			writeJSON(t, w, map[string]any{"results": []map[string]any{{"name": "//storage.googleapis.com/projects/_/buckets/data", "assetType": "storage.googleapis.com/Bucket", "displayName": "data", "location": "us", "labels": map[string]string{"data_classification": "restricted", "owner": "security@writer.com", "tier": "critical", "pii": "true", "env": "prod"}}}})
+		case "/compute/v1/projects/writer-prod/aggregated/instances":
+			writeJSON(t, w, map[string]any{"items": map[string]any{"zones/us-central1-a": map[string]any{"instances": []map[string]any{{"id": "123456789", "name": "web-1", "zone": "projects/writer-prod/zones/us-central1-a", "machineType": "projects/writer-prod/zones/us-central1-a/machineTypes/e2-medium", "status": "RUNNING", "labels": map[string]string{"env": "prod"}, "tags": map[string]any{"items": []string{"web"}}, "networkInterfaces": []map[string]any{{"network": "projects/writer-prod/global/networks/default", "subnetwork": "projects/writer-prod/regions/us-central1/subnetworks/default", "networkIP": "10.0.0.5", "accessConfigs": []map[string]any{{"type": "ONE_TO_ONE_NAT", "natIP": "34.1.2.3"}}}}, "serviceAccounts": []map[string]any{{"email": "vm@writer-prod.iam.gserviceaccount.com"}}, "disks": []map[string]any{{"boot": true, "diskEncryptionKey": map[string]string{"kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/vm"}}}}}}}})
+		case "/v1/projects/writer-prod/locations/-/clusters":
+			writeJSON(t, w, map[string]any{"clusters": []map[string]any{{"name": "prod", "selfLink": "https://container.googleapis.com/v1/projects/writer-prod/locations/us-central1/clusters/prod", "location": "us-central1", "endpoint": "35.1.2.3", "status": "RUNNING", "network": "projects/writer-prod/global/networks/default", "subnetwork": "projects/writer-prod/regions/us-central1/subnetworks/default", "currentMasterVersion": "1.30.1", "resourceLabels": map[string]string{"env": "prod"}, "nodeConfig": map[string]any{"serviceAccount": "gke@writer-prod.iam.gserviceaccount.com", "tags": []string{"gke"}}, "masterAuthorizedNetworksConfig": map[string]any{"enabled": true, "cidrBlocks": []map[string]string{{"cidrBlock": "0.0.0.0/0"}}}, "databaseEncryption": map[string]string{"state": "ENCRYPTED", "keyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/gke"}}}})
+		case "/v2/projects/writer-prod/locations/-/services":
+			writeJSON(t, w, map[string]any{"services": []map[string]any{{"name": "projects/writer-prod/locations/us-central1/services/api", "uid": "run-1", "uri": "https://api.run.app", "ingress": "INGRESS_TRAFFIC_ALL", "labels": map[string]string{"env": "prod"}, "template": map[string]any{"serviceAccount": "run@writer-prod.iam.gserviceaccount.com", "containers": []map[string]string{{"image": "us-docker.pkg.dev/writer-prod/app/api@sha256:abc"}}, "vpcAccess": map[string]string{"connector": "projects/writer-prod/locations/us-central1/connectors/serverless"}}}}})
+		case "/v2/projects/writer-prod/locations/-/functions":
+			writeJSON(t, w, map[string]any{"functions": []map[string]any{{"name": "projects/writer-prod/locations/us-central1/functions/ingest", "state": "ACTIVE", "environment": "GEN_2", "labels": map[string]string{"env": "prod"}, "serviceConfig": map[string]string{"serviceAccountEmail": "fn@writer-prod.iam.gserviceaccount.com", "uri": "https://ingest.cloudfunctions.net", "ingressSettings": "ALLOW_ALL", "vpcConnector": "projects/writer-prod/locations/us-central1/connectors/serverless"}}}})
+		case "/sql/v1beta4/projects/writer-prod/instances":
+			writeJSON(t, w, map[string]any{"items": []map[string]any{{"name": "prod-sql", "selfLink": "https://sqladmin.googleapis.com/sql/v1beta4/projects/writer-prod/instances/prod-sql", "region": "us-central1", "gceZone": "us-central1-a", "databaseVersion": "POSTGRES_15", "state": "RUNNABLE", "serviceAccountEmailAddress": "sql@writer-prod.iam.gserviceaccount.com", "settings": map[string]any{"userLabels": map[string]string{"env": "prod"}, "storageAutoResize": true, "deletionProtectionEnabled": true, "backupConfiguration": map[string]any{"enabled": true, "pointInTimeRecoveryEnabled": true, "startTime": "03:00"}, "ipConfiguration": map[string]any{"ipv4Enabled": true, "privateNetwork": "projects/writer-prod/global/networks/default", "authorizedNetworks": []map[string]string{{"name": "all", "value": "0.0.0.0/0"}}}}, "ipAddresses": []map[string]string{{"type": "PRIMARY", "ipAddress": "35.2.3.4"}, {"type": "PRIVATE", "ipAddress": "10.10.0.3"}}, "diskEncryptionConfiguration": map[string]string{"kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/sql"}}}})
+		case "/storage/v1/b":
+			if got := r.URL.Query().Get("project"); got != "writer-prod" {
+				t.Fatalf("storage project = %q, want writer-prod", got)
+			}
+			writeJSON(t, w, map[string]any{"items": []map[string]any{{"id": "data", "name": "data", "location": "US", "storageClass": "STANDARD", "labels": map[string]string{"env": "prod"}, "encryption": map[string]string{"defaultKmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/storage"}, "versioning": map[string]bool{"enabled": true}, "iamConfiguration": map[string]any{"uniformBucketLevelAccess": map[string]bool{"enabled": true}, "publicAccessPrevention": "enforced"}}}})
+		case "/v1/projects/writer-prod/secrets":
+			writeJSON(t, w, map[string]any{"secrets": []map[string]any{{"name": "projects/writer-prod/secrets/api-key", "labels": map[string]string{"env": "prod"}, "expireTime": "2027-04-23T00:00:00Z", "replication": map[string]any{"userManaged": map[string]any{"replicas": []map[string]any{{"location": "us-central1", "customerManagedEncryption": map[string]string{"kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/secrets"}}}}}, "rotation": map[string]string{"nextRotationTime": "2026-05-23T00:00:00Z", "rotationPeriod": "2592000s"}}}})
+		case "/v1/projects/writer-prod/locations/us/keyRings/prod/cryptoKeys":
+			writeJSON(t, w, map[string]any{"cryptoKeys": []map[string]any{{"name": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/app", "purpose": "ENCRYPT_DECRYPT", "nextRotationTime": "2026-05-23T00:00:00Z", "rotationPeriod": "2592000s", "labels": map[string]string{"env": "prod"}, "versionTemplate": map[string]string{"protectionLevel": "HSM", "algorithm": "GOOGLE_SYMMETRIC_ENCRYPTION"}, "primary": map[string]string{"name": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/app/cryptoKeyVersions/1", "state": "ENABLED", "protectionLevel": "HSM", "algorithm": "GOOGLE_SYMMETRIC_ENCRYPTION"}}}})
+		case "/v1/projects/writer-prod/locations/-/repositories":
+			writeJSON(t, w, map[string]any{"repositories": []map[string]any{{"name": "projects/writer-prod/locations/us/repositories/app", "format": "DOCKER", "mode": "STANDARD_REPOSITORY", "kmsKeyName": "projects/writer-prod/locations/us/keyRings/prod/cryptoKeys/artifacts", "labels": map[string]string{"env": "prod"}, "dockerConfig": map[string]bool{"immutableTags": true}}}})
+		case "/v1/projects/writer-prod/locations/us/repositories/app/dockerImages":
+			writeJSON(t, w, map[string]any{"dockerImages": []map[string]any{{"name": "projects/writer-prod/locations/us/repositories/app/dockerImages/us-docker.pkg.dev%2Fwriter-prod%2Fapp%2Fapi@sha256:abc", "uri": "us-docker.pkg.dev/writer-prod/app/api@sha256:abc", "tags": []string{"latest", "prod"}, "imageSizeBytes": "12345", "mediaType": "application/vnd.docker.distribution.manifest.v2+json", "uploadTime": "2026-04-23T00:00:00Z"}}})
 		case "/v2/entries:list":
 			writeJSON(t, w, map[string]any{"entries": []map[string]any{{"insertId": "audit-1", "timestamp": "2026-04-23T00:00:00Z", "protoPayload": map[string]any{"methodName": "SetIamPolicy", "serviceName": "cloudresourcemanager.googleapis.com", "resourceName": "projects/writer-prod", "authenticationInfo": map[string]any{"principalEmail": "admin@writer.com"}}, "resource": map[string]any{"type": "project", "labels": map[string]string{"project_id": "writer-prod"}}}}})
 		default:
