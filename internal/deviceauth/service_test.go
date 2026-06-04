@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -868,4 +869,139 @@ func TestNewServiceDefaultRefreshTTLIs7Days(t *testing.T) {
 	if got, want := service.cfg.RefreshTTL, 7*24*time.Hour; got != want {
 		t.Fatalf("default RefreshTTL = %v, want %v", got, want)
 	}
+}
+
+// newServiceWithAuditForTest mirrors newServiceForTest but installs a
+// caller-supplied AuditEmitter so tests can assert on the emitted
+// payload shape.
+func newServiceWithAuditForTest(t *testing.T, audit AuditEmitter) (*Service, *MemStore, time.Time) {
+	t.Helper()
+	store := NewMemStore()
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	signer, err := NewLocalSigner([]SigningKey{{KID: "test", Public: pub, Private: priv}})
+	if err != nil {
+		t.Fatalf("NewLocalSigner: %v", err)
+	}
+	keyset := &KeySet{Keys: []SigningKey{{KID: "test", Public: pub}}}
+	now := time.Date(2026, 5, 22, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	store.SetClock(clock)
+	issuer, _ := NewJWTIssuer(IssuerConfig{Now: clock}, signer)
+	verifier, _ := NewJWTVerifier(VerifierConfig{Now: clock}, keyset)
+	service, err := NewService(ServiceConfig{
+		AccessTTL:         5 * time.Minute,
+		RefreshTTL:        24 * time.Hour,
+		BootstrapTokenTTL: time.Hour,
+		IdempotencyTTL:    time.Hour,
+		Now:               clock,
+		Audit:             audit,
+	}, store, issuer, verifier, keyset)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	return service, store, now
+}
+
+// TestIssueBootstrapTokenEmitsAuditEvent pins the forensic-trail
+// invariant: every successful mint MUST surface a structured audit
+// event downstream so SOC tooling can correlate "token id X was
+// minted by operator Y at time Z" with subsequent enrollments using
+// the same token id. Hardware UUID is hashed (SHA-256, lower-hex)
+// rather than logged in plaintext so long-term retention does not
+// hold a raw device-correlatable identifier.
+func TestIssueBootstrapTokenEmitsAuditEvent(t *testing.T) {
+	ctx := context.Background()
+	var captured []AuditEvent
+	emit := func(_ context.Context, event AuditEvent) {
+		captured = append(captured, event)
+	}
+	service, _, now := newServiceWithAuditForTest(t, emit)
+	resp, err := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{
+		HardwareUUID: "hw-audit-1",
+		TenantID:     "writer",
+		Scopes:       []string{ScopeDevicesToken, ScopeTelemetryIngest},
+		TTL:          15 * time.Minute,
+		IssuedBy:     "operator:ben",
+	})
+	if err != nil {
+		t.Fatalf("IssueBootstrapToken: %v", err)
+	}
+	if len(captured) != 1 {
+		t.Fatalf("audit emit count = %d, want 1", len(captured))
+	}
+	event := captured[0]
+	if event.Kind != AuditKindBootstrapTokenIssued {
+		t.Errorf("event.Kind = %q, want %q", event.Kind, AuditKindBootstrapTokenIssued)
+	}
+	if event.TokenID != resp.TokenID {
+		t.Errorf("event.TokenID = %q, want %q", event.TokenID, resp.TokenID)
+	}
+	if event.IssuedBy != "operator:ben" {
+		t.Errorf("event.IssuedBy = %q, want %q", event.IssuedBy, "operator:ben")
+	}
+	if event.TenantID != "writer" {
+		t.Errorf("event.TenantID = %q, want %q", event.TenantID, "writer")
+	}
+	wantHash := sha256Hex("hw-audit-1")
+	if event.HardwareUUIDHash != wantHash {
+		t.Errorf("event.HardwareUUIDHash = %q, want %q (SHA-256(hw-audit-1))", event.HardwareUUIDHash, wantHash)
+	}
+	if !event.OccurredAt.Equal(now) {
+		t.Errorf("event.OccurredAt = %v, want %v", event.OccurredAt, now)
+	}
+	if event.TTL != 15*time.Minute {
+		t.Errorf("event.TTL = %v, want %v", event.TTL, 15*time.Minute)
+	}
+	if !event.ExpiresAt.Equal(now.Add(15 * time.Minute)) {
+		t.Errorf("event.ExpiresAt = %v, want %v", event.ExpiresAt, now.Add(15*time.Minute))
+	}
+	if len(event.Scopes) != 2 || event.Scopes[0] != ScopeDevicesToken || event.Scopes[1] != ScopeTelemetryIngest {
+		t.Errorf("event.Scopes = %v, want [%s %s]", event.Scopes, ScopeDevicesToken, ScopeTelemetryIngest)
+	}
+}
+
+// TestIssueBootstrapTokenAuditEventNotEmittedOnStoreFailure pins the
+// ordering invariant: the audit event MUST be emitted AFTER the
+// durable store write succeeds. Otherwise SOC investigators would
+// chase token ids that never actually existed.
+func TestIssueBootstrapTokenAuditEventNotEmittedOnStoreFailure(t *testing.T) {
+	ctx := context.Background()
+	emitted := 0
+	emit := func(context.Context, AuditEvent) { emitted++ }
+	service, store, _ := newServiceWithAuditForTest(t, emit)
+	store.SetCreateBootstrapTokenFault(errors.New("forced failure"))
+	_, err := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{
+		HardwareUUID: "hw-fail",
+		TenantID:     "writer",
+		Scopes:       []string{ScopeDevicesToken},
+	})
+	if err == nil {
+		t.Fatal("IssueBootstrapToken returned nil error despite store fault")
+	}
+	if emitted != 0 {
+		t.Errorf("audit emit count = %d on failed mint, want 0", emitted)
+	}
+}
+
+// TestIssueBootstrapTokenAuditEmitterOptional confirms backward
+// compatibility: services constructed without an Audit emitter
+// continue to work unchanged.
+func TestIssueBootstrapTokenAuditEmitterOptional(t *testing.T) {
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	if _, err := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{
+		HardwareUUID: "hw-no-audit",
+		TenantID:     "writer",
+		Scopes:       []string{ScopeDevicesToken},
+	}); err != nil {
+		t.Fatalf("IssueBootstrapToken without audit emitter: %v", err)
+	}
+}
+
+func sha256Hex(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(h[:])
 }
