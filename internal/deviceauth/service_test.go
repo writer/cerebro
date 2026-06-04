@@ -357,6 +357,62 @@ func TestServiceReenrollActiveHardwarePreservesDPoPBinding(t *testing.T) {
 	}
 }
 
+func TestServiceReenrollRejectsSoftwareKeyDowngradeFromHardwareBinding(t *testing.T) {
+	ctx := context.Background()
+	service, _, _ := newServiceForTest(t)
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	pubDER, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		t.Fatalf("marshal public key: %v", err)
+	}
+	verifier := &checkingAttestationVerifier{
+		wantHardwareUUID: "hw-downgrade",
+		publicKey:        pubDER,
+	}
+	service.cfg.Attestations = attestation.NewRegistry(true, verifier)
+	firstBootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-downgrade", TenantID: "writer"})
+	verifier.wantHash = attestationClientDataHash(firstBootstrap.Token, "hw-downgrade")
+	first, err := service.Enroll(ctx, EnrollRequest{
+		BootstrapToken: firstBootstrap.Token,
+		HardwareUUID:   "hw-downgrade",
+		OSType:         "darwin",
+		Attestation:    "stub-attestation",
+	})
+	if err != nil {
+		t.Fatalf("first Enroll: %v", err)
+	}
+	device, err := service.LookupDevice(ctx, first.DeviceID)
+	if err != nil {
+		t.Fatalf("LookupDevice: %v", err)
+	}
+	priorJKT := strings.TrimSpace(device.Metadata["dpop_jkt"])
+	if priorJKT == "" {
+		t.Fatal("first enrollment did not bind DPoP JKT")
+	}
+
+	service.cfg.Attestations = attestation.NewRegistry(false)
+	otherPub, _, _ := ed25519.GenerateKey(rand.Reader)
+	otherJWK, _ := makeEd25519JWK(t, otherPub)
+	secondBootstrap, _ := service.IssueBootstrapToken(ctx, IssueBootstrapTokenRequest{HardwareUUID: "hw-downgrade", TenantID: "writer"})
+	if _, err := service.Enroll(ctx, EnrollRequest{
+		BootstrapToken: secondBootstrap.Token,
+		HardwareUUID:   "hw-downgrade",
+		DeviceJWK:      json.RawMessage(otherJWK),
+	}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("software downgrade Enroll err = %v, want ErrInvalidRequest", err)
+	}
+	device, err = service.LookupDevice(ctx, first.DeviceID)
+	if err != nil {
+		t.Fatalf("LookupDevice after failed downgrade: %v", err)
+	}
+	if got := strings.TrimSpace(device.Metadata["dpop_jkt"]); got != priorJKT {
+		t.Fatalf("dpop_jkt after failed downgrade = %q, want preserved %q", got, priorJKT)
+	}
+}
+
 func TestRefreshTokenRateLimitKeyRejectsConsumedTokens(t *testing.T) {
 	ctx := context.Background()
 	service, _, _ := newServiceForTest(t)

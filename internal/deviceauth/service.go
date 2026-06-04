@@ -336,24 +336,33 @@ func (s *Service) Enroll(ctx context.Context, request EnrollRequest) (EnrollResp
 			return EnrollResponse{}, fmt.Errorf("deviceauth: generate device id: %w", err)
 		}
 	}
+	priorJKT := ""
+	existingHardwareBound := false
+	if existing.Metadata != nil {
+		priorJKT = strings.TrimSpace(existing.Metadata["dpop_jkt"])
+		existingHardwareBound = priorJKT != "" && strings.TrimSpace(existing.Metadata["assurance_level"]) == "hardware"
+	}
+	if attestationJKT == "" && existingHardwareBound && agentJKT != "" && !constantTimeStringEqual(agentJKT, priorJKT) {
+		return EnrollResponse{}, fmt.Errorf("%w: device_key cannot replace existing hardware-bound key without attestation", ErrInvalidRequest)
+	}
 	metadata := map[string]string{
 		"assurance_level":    attResult.AssuranceLevel,
 		"attestation_vendor": attResult.Vendor,
 	}
 	// Pin dpop_jkt in priority order: attestation-bound key (hardware
-	// proven), then agent-supplied key (software assurance), then prior
-	// enrollment's key (re-enroll case where the device retains its
-	// bound key across hardware UUID rebinding). Empty result means the
-	// device is in pure-Bearer mode -- audit logs will mark it as such.
+	// proven), then an existing hardware-bound key, then agent-supplied
+	// key (software assurance), then prior non-hardware enrollment key.
+	// Empty result means the device is in pure-Bearer mode -- audit logs
+	// will mark it as such.
 	switch {
 	case attestationJKT != "":
 		metadata["dpop_jkt"] = attestationJKT
+	case existingHardwareBound:
+		metadata["dpop_jkt"] = priorJKT
 	case agentJKT != "":
 		metadata["dpop_jkt"] = agentJKT
-	case existing.Metadata != nil:
-		if priorJKT := strings.TrimSpace(existing.Metadata["dpop_jkt"]); priorJKT != "" {
-			metadata["dpop_jkt"] = priorJKT
-		}
+	case priorJKT != "":
+		metadata["dpop_jkt"] = priorJKT
 	}
 	if attResult.KeyID != "" {
 		metadata["attestation_keyid"] = attResult.KeyID
