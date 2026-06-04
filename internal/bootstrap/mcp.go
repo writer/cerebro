@@ -187,12 +187,12 @@ func (app *App) handleMCP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
-		mcpTelemetryEvent(r, "", "", http.StatusMethodNotAllowed, 0, "http_method", time.Since(started))
+		mcpTelemetryEvent(r, "", "", http.StatusMethodNotAllowed, 0, "http_method", "", time.Since(started))
 		return
 	}
 	if !app.mcpValidOrigin(r) {
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		mcpTelemetryEvent(r, "", "", http.StatusForbidden, 0, "origin_forbidden", time.Since(started))
+		mcpTelemetryEvent(r, "", "", http.StatusForbidden, 0, "origin_forbidden", "", time.Since(started))
 		return
 	}
 	defer func() { _ = r.Body.Close() }()
@@ -204,39 +204,42 @@ func (app *App) handleMCP(w http.ResponseWriter, r *http.Request) {
 			JSONRPC: "2.0",
 			Error:   &mcpError{Code: -32700, Message: "parse error"},
 		})
-		mcpTelemetryEvent(r, "", "", http.StatusOK, -32700, "parse_error", time.Since(started))
+		mcpTelemetryEvent(r, "", "", http.StatusOK, -32700, "parse_error", "", time.Since(started))
 		return
 	}
 	if request.Method == "" && (len(request.Result) != 0 || request.Error != nil) {
 		w.WriteHeader(http.StatusAccepted)
-		mcpTelemetryEvent(r, "", "", http.StatusAccepted, 0, "client_message", time.Since(started))
+		mcpTelemetryEvent(r, "", "", http.StatusAccepted, 0, "client_message", "", time.Since(started))
 		return
 	}
 	if len(request.ID) == 0 && strings.TrimSpace(request.Method) != "" {
 		w.WriteHeader(http.StatusAccepted)
-		mcpTelemetryEvent(r, request.Method, mcpToolNameFromParams(request.Method, request.Params), http.StatusAccepted, 0, "notification", time.Since(started))
+		mcpTelemetryEvent(r, request.Method, mcpToolNameFromParams(request.Method, request.Params), http.StatusAccepted, 0, "notification", "", time.Since(started))
 		return
 	}
 	if request.Method != "initialize" && !mcpSupportedProtocolVersion(strings.TrimSpace(r.Header.Get("MCP-Protocol-Version"))) {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		mcpTelemetryEvent(r, request.Method, mcpToolNameFromParams(request.Method, request.Params), http.StatusBadRequest, -32600, "unsupported_protocol_version", time.Since(started))
+		mcpTelemetryEvent(r, request.Method, mcpToolNameFromParams(request.Method, request.Params), http.StatusBadRequest, -32600, "unsupported_protocol_version", "", time.Since(started))
 		return
 	}
 	response := app.handleMCPRequest(r, request)
 	mcpWriteJSONRPC(w, r, response)
-	mcpTelemetryEvent(r, request.Method, mcpToolNameFromParams(request.Method, request.Params), http.StatusOK, mcpResponseErrorCode(response), mcpResponseOutcome(response), time.Since(started))
+	mcpTelemetryEvent(r, request.Method, mcpToolNameFromParams(request.Method, request.Params), http.StatusOK, mcpResponseErrorCode(response), mcpResponseOutcome(response), mcpResponseToolErrorKind(response), time.Since(started))
 }
 
 func (app *App) handleMCPStream(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", http.MethodGet)
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		mcpTelemetryEvent(r, "", "", http.StatusMethodNotAllowed, 0, "http_method", "", time.Since(started))
 		return
 	}
 	w.Header().Set("Allow", http.MethodPost)
 	w.Header().Set("MCP-Protocol-Version", mcpProtocolVersion)
 	w.Header().Set("X-Cerebro-MCP-Stateless", "true")
 	http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+	mcpTelemetryEvent(r, "", "", http.StatusMethodNotAllowed, 0, "stateless_get_rejected", "", time.Since(started))
 }
 
 func (app *App) handleMCPRequest(r *http.Request, request mcpJSONRPCRequest) mcpJSONRPCResponse {
@@ -1462,27 +1465,43 @@ func mcpReadOnlyAnnotations(title string) map[string]any {
 	}
 }
 
-func mcpTelemetryEvent(r *http.Request, method string, tool string, statusCode int, jsonRPCErrorCode int, outcome string, duration time.Duration) {
+func mcpTelemetryEvent(r *http.Request, method string, tool string, statusCode int, jsonRPCErrorCode int, outcome string, toolErrorKind string, duration time.Duration) {
 	if r == nil {
 		return
 	}
 	method = mcpSanitizeTelemetryValue(method, 96)
 	tool = mcpSanitizeTelemetryValue(tool, 128)
 	outcome = mcpSanitizeTelemetryValue(outcome, 64)
+	toolErrorKind = mcpSanitizeTelemetryValue(toolErrorKind, 64)
 	attrs := telemetry.Attrs(
 		telemetry.Field{Key: "http.method", Value: r.Method},
-		telemetry.Field{Key: "http.route", Value: "POST /api/v1/mcp"},
+		telemetry.Field{Key: "http.route", Value: mcpTelemetryHTTPRoute(r)},
 		telemetry.Field{Key: "http.status_code", Value: statusCode},
 		telemetry.Field{Key: "mcp.method", Value: method},
 		telemetry.Field{Key: "mcp.outcome", Value: outcome},
 		telemetry.Field{Key: "mcp.protocol_version", Value: mcpSanitizeTelemetryValue(r.Header.Get("MCP-Protocol-Version"), 32)},
+		telemetry.Field{Key: "mcp.transport", Value: "stateless_http"},
+		telemetry.Field{Key: "mcp.stateless", Value: true},
 		telemetry.Field{Key: "duration_ms", Value: duration.Milliseconds()},
 	)
+	if requestID := accessAuditRequestID(r); requestID != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "request_id", Value: requestID})
+	}
 	if tool != "" {
 		attrs = attrs.WithField(telemetry.Field{Key: "mcp.tool", Value: tool})
+		attrs = attrs.WithField(telemetry.Field{Key: "mcp.tool_known", Value: mcpKnownTool(tool)})
+		if family := mcpToolFamily(tool); family != "" {
+			attrs = attrs.WithField(telemetry.Field{Key: "mcp.tool_family", Value: family})
+		}
 	}
 	if jsonRPCErrorCode != 0 {
 		attrs = attrs.WithField(telemetry.Field{Key: "mcp.jsonrpc_error_code", Value: jsonRPCErrorCode})
+	}
+	if outcome == "tool_error" {
+		attrs = attrs.WithField(telemetry.Field{Key: "mcp.tool_error", Value: true})
+	}
+	if toolErrorKind != "" {
+		attrs = attrs.WithField(telemetry.Field{Key: "mcp.tool_error_kind", Value: toolErrorKind})
 	}
 	if auth, ok := r.Context().Value(authContextKey{}).(authContext); ok {
 		if tenantID := strings.TrimSpace(auth.principal.TenantID); tenantID != "" {
@@ -1491,8 +1510,28 @@ func mcpTelemetryEvent(r *http.Request, method string, tool string, statusCode i
 		if principal := strings.TrimSpace(auth.principal.Name); principal != "" {
 			attrs = attrs.WithField(telemetry.Field{Key: "principal", Value: mcpSanitizeTelemetryValue(principal, 128)})
 		}
+		if authMode := strings.TrimSpace(auth.principal.AuthMode); authMode != "" {
+			attrs = attrs.WithField(telemetry.Field{Key: "auth_mode", Value: mcpSanitizeTelemetryValue(authMode, 64)})
+		}
+		if credentialID := strings.TrimSpace(auth.principal.CredentialID); credentialID != "" {
+			attrs = attrs.WithField(telemetry.Field{Key: "credential_id", Value: mcpSanitizeTelemetryValue(credentialID, 128)})
+		}
+		if clientID := strings.TrimSpace(auth.principal.ClientID); clientID != "" {
+			attrs = attrs.WithField(telemetry.Field{Key: "client_id", Value: mcpSanitizeTelemetryValue(clientID, 128)})
+		}
 	}
 	telemetry.Event(r.Context(), "cerebro.mcp.request", attrs)
+}
+
+func mcpTelemetryHTTPRoute(r *http.Request) string {
+	if r == nil {
+		return mcpEndpointPath
+	}
+	method := strings.TrimSpace(r.Method)
+	if method == "" {
+		return mcpEndpointPath
+	}
+	return method + " " + mcpEndpointPath
 }
 
 func mcpResponseErrorCode(response mcpJSONRPCResponse) int {
@@ -1506,7 +1545,54 @@ func mcpResponseOutcome(response mcpJSONRPCResponse) string {
 	if response.Error != nil {
 		return mcpJSONRPCErrorOutcome(response.Error)
 	}
+	if mcpResponseToolError(response) {
+		return "tool_error"
+	}
 	return "ok"
+}
+
+func mcpResponseToolErrorKind(response mcpJSONRPCResponse) string {
+	result, ok := response.Result.(mcpToolResult)
+	if !ok || !result.IsError {
+		return ""
+	}
+	return mcpToolErrorKindFromMessage(mcpToolResultText(result))
+}
+
+func mcpResponseToolError(response mcpJSONRPCResponse) bool {
+	result, ok := response.Result.(mcpToolResult)
+	return ok && result.IsError
+}
+
+func mcpToolResultText(result mcpToolResult) string {
+	for _, content := range result.Content {
+		if text := strings.TrimSpace(content.Text); text != "" {
+			return text
+		}
+	}
+	return ""
+}
+
+func mcpToolErrorKindFromMessage(message string) string {
+	message = strings.ToLower(strings.TrimSpace(message))
+	switch {
+	case message == "":
+		return "execution_failed"
+	case strings.Contains(message, "scope forbidden"):
+		return "scope_forbidden"
+	case strings.Contains(message, "tenant forbidden"):
+		return "tenant_forbidden"
+	case strings.Contains(message, "not found"):
+		return "not_found"
+	case strings.Contains(message, "unavailable"):
+		return "runtime_unavailable"
+	case strings.Contains(message, "invalid"):
+		return "invalid_request"
+	case strings.Contains(message, "forbidden"):
+		return "authorization_failed"
+	default:
+		return "execution_failed"
+	}
 }
 
 func mcpJSONRPCErrorOutcome(err *mcpError) string {
@@ -1536,6 +1622,28 @@ func mcpToolNameFromParams(method string, rawParams json.RawMessage) string {
 		return ""
 	}
 	return strings.TrimSpace(params.Name)
+}
+
+func mcpKnownTool(name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	for _, tool := range mcpTools() {
+		if tool.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func mcpToolFamily(name string) string {
+	name = strings.TrimPrefix(strings.TrimSpace(name), "cerebro.")
+	if name == "" {
+		return ""
+	}
+	family, _, _ := strings.Cut(name, ".")
+	return mcpSanitizeTelemetryValue(family, 64)
 }
 
 func mcpSanitizeTelemetryValue(value string, limit int) string {
