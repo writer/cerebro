@@ -3979,6 +3979,19 @@ func TestBackfillFindingRiskSkipsMissingStateStore(t *testing.T) {
 	}
 }
 
+func TestPublicCollectionRoutesRejectUndocumentedMethods(t *testing.T) {
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, nil)
+	handler := app.Handler()
+	for _, path := range []string{"/health", "/healthz", "/livez", "/sources"} {
+		req := httptest.NewRequest(http.MethodPost, path, nil)
+		resp := httptest.NewRecorder()
+		handler.ServeHTTP(resp, req)
+		if resp.Code != http.StatusMethodNotAllowed {
+			t.Fatalf("POST %s status = %d, want %d", path, resp.Code, http.StatusMethodNotAllowed)
+		}
+	}
+}
+
 func TestBootstrapHealthPingsUseTimeoutContext(t *testing.T) {
 	stateStore := &deadlineAwareStore{}
 	response := healthResponse(context.Background(), config.Config{ImageTag: "v9.9.9"}, Dependencies{StateStore: stateStore})
@@ -6442,8 +6455,8 @@ func TestReportEndpoints(t *testing.T) {
 		t.Fatalf("decode /reports response: %v", err)
 	}
 	reportsPayload, ok := listPayload["reports"].([]any)
-	if !ok || len(reportsPayload) != 1 {
-		t.Fatalf("/reports payload = %#v, want 1 entry", listPayload["reports"])
+	if !ok || len(reportsPayload) != 2 {
+		t.Fatalf("/reports payload = %#v, want 2 entries", listPayload["reports"])
 	}
 
 	runReq, err := http.NewRequest(http.MethodPost, server.URL+"/reports/finding-summary/runs?tenant_id=writer&runtime_id=writer-okta-audit&graph_limit=2", nil)
@@ -6539,8 +6552,8 @@ func TestReportEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListReportDefinitions() error = %v", err)
 	}
-	if len(listReportsResp.Msg.GetReports()) != 1 {
-		t.Fatalf("len(ListReportDefinitions.Reports) = %d, want 1", len(listReportsResp.Msg.GetReports()))
+	if len(listReportsResp.Msg.GetReports()) != 2 {
+		t.Fatalf("len(ListReportDefinitions.Reports) = %d, want 2", len(listReportsResp.Msg.GetReports()))
 	}
 	runReportResp, err := client.RunReport(context.Background(), connect.NewRequest(&cerebrov1.RunReportRequest{
 		ReportId: "finding-summary",

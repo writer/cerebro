@@ -42,21 +42,27 @@ type AppendLogConfig struct {
 	Driver                 string
 	JetStreamURL           string
 	JetStreamSubjectPrefix string
+	JetStreamDrainTimeout  time.Duration
 }
 
 // StateStoreConfig selects and configures the current-state store driver.
 type StateStoreConfig struct {
-	Driver      string
-	PostgresDSN string
+	Driver                  string
+	PostgresDSN             string
+	PostgresMaxOpenConns    int
+	PostgresMaxIdleConns    int
+	PostgresConnMaxLifetime time.Duration
+	PostgresConnMaxIdleTime time.Duration
 }
 
 // GraphStoreConfig selects and configures the graph projection store driver.
 type GraphStoreConfig struct {
-	Driver        string
-	Neo4jURI      string
-	Neo4jUsername string
-	Neo4jPassword string
-	Neo4jDatabase string
+	Driver            string
+	Neo4jURI          string
+	Neo4jUsername     string
+	Neo4jPassword     string
+	Neo4jDatabase     string
+	Neo4jQueryTimeout time.Duration
 }
 
 // GraphAgentLLMConfig selects and configures the graph ask LLM adapter.
@@ -315,6 +321,24 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.GraphAgentLLM.Temperature, err = parseFloatEnv("CEREBRO_GRAPH_AGENT_LLM_TEMPERATURE", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.AppendLog.JetStreamDrainTimeout, err = parseDurationEnv("CEREBRO_JETSTREAM_DRAIN_TIMEOUT", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.StateStore.PostgresMaxOpenConns, err = parseIntEnv("CEREBRO_POSTGRES_MAX_OPEN_CONNS", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.StateStore.PostgresMaxIdleConns, err = parseIntEnv("CEREBRO_POSTGRES_MAX_IDLE_CONNS", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.StateStore.PostgresConnMaxLifetime, err = parseDurationEnv("CEREBRO_POSTGRES_CONN_MAX_LIFETIME", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.StateStore.PostgresConnMaxIdleTime, err = parseDurationEnv("CEREBRO_POSTGRES_CONN_MAX_IDLE_TIME", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.GraphStore.Neo4jQueryTimeout, err = parseDurationEnv("CEREBRO_NEO4J_QUERY_TIMEOUT", 0); err != nil {
 		return Config{}, err
 	}
 	cfg.GraphAgentLLM.OpenRouterAPIKey = strings.TrimSpace(os.Getenv("CEREBRO_OPENROUTER_API_KEY"))

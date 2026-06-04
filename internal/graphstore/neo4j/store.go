@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -30,11 +31,13 @@ SET e.tenant_id = $tenant_id,
 RETURN coalesce(e.attributes_json, '{}'), coalesce(e.attributes_version, 0)`
 
 var errConcurrentAttributeMerge = errors.New("concurrent attribute merge")
+var mutatingCypherPattern = regexp.MustCompile(`(?i)\b(CREATE|MERGE|SET|DELETE|DETACH|REMOVE|DROP|LOAD\s+CSV)\b|\bCALL\s+(DB|APOC)\.`)
 
 // Store is a Neo4j/Aura-backed graph projection store implementation.
 type Store struct {
-	driver   neo4jdriver.DriverWithContext
-	database string
+	driver       neo4jdriver.DriverWithContext
+	database     string
+	queryTimeout time.Duration
 
 	mu          sync.Mutex
 	schemaReady bool
@@ -75,7 +78,7 @@ func Open(cfg config.GraphStoreConfig) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open neo4j: %w", err)
 	}
-	return &Store{driver: driver, database: database}, nil
+	return &Store{driver: driver, database: database, queryTimeout: cfg.Neo4jQueryTimeout}, nil
 }
 
 // CloseContext closes the underlying driver.
@@ -91,7 +94,7 @@ func (s *Store) Ping(ctx context.Context) error {
 	if s == nil || s.driver == nil {
 		return errors.New("neo4j is not configured")
 	}
-	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+	if _, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
 		value, err := queryOneValue(ctx, tx, "RETURN 1 AS ok", nil)
 		if err != nil {
 			return nil, err
@@ -112,7 +115,7 @@ func (s *Store) Counts(ctx context.Context) (Counts, error) {
 		return Counts{}, err
 	}
 	var counts Counts
-	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+	if _, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
 		var err error
 		counts.Nodes, err = countQuery(ctx, tx, "MATCH (e:Entity) RETURN count(e)", nil)
 		if err != nil {
@@ -138,7 +141,7 @@ func (s *Store) RelationCounts(ctx context.Context, relations []string) (_ Relat
 		return RelationCounts{}, nil
 	}
 	counts := make(RelationCounts, len(relations))
-	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+	if _, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
 		result, err := tx.Run(ctx, `UNWIND $relations AS relation
 OPTIONAL MATCH ()-[r:RELATION]->()
 WHERE r.relation = relation
@@ -179,7 +182,7 @@ WHERE NOT (right.relation IN $suppressed_relations)
   AND NOT ((left.relation + '|' + right.relation) IN $suppressed_relation_pairs)
 RETURN src.urn, src.label, left.relation, mid.urn, mid.label, right.relation, dst.urn, dst.label
 ORDER BY src.urn, left.relation, mid.urn, right.relation, dst.urn LIMIT %d`, limit)
-	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+	if _, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
 		traversals = traversals[:0]
 		result, err := tx.Run(ctx, query, suppressedPathParams())
 		if err != nil {
@@ -221,7 +224,7 @@ WHERE NOT (right.relation IN $suppressed_relations)
   AND NOT ((left.relation + '|' + right.relation) IN $suppressed_relation_pairs)
 RETURN src.entity_type, left.relation, mid.entity_type, right.relation, dst.entity_type, count(*)
 ORDER BY count(*) DESC, src.entity_type, left.relation, mid.entity_type, right.relation, dst.entity_type LIMIT %d`, limit)
-	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+	if _, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
 		patterns = patterns[:0]
 		result, err := tx.Run(ctx, query, suppressedPathParams())
 		if err != nil {
@@ -260,7 +263,7 @@ func (s *Store) Topology(ctx context.Context) (Topology, error) {
 		{func(v int64) { topology.SinksOnly = v }, "MATCH (e:Entity) WHERE (:Entity)-[:RELATION]->(e) AND NOT (e)-[:RELATION]->(:Entity) RETURN count(e)"},
 		{func(v int64) { topology.Intermediates = v }, "MATCH (e:Entity) WHERE (:Entity)-[:RELATION]->(e) AND (e)-[:RELATION]->(:Entity) RETURN count(e)"},
 	}
-	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+	if _, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
 		for _, item := range queries {
 			value, err := countQuery(ctx, tx, item.query, nil)
 			if err != nil {
@@ -281,7 +284,7 @@ func (s *Store) IntegrityChecks(ctx context.Context) ([]IntegrityCheck, error) {
 		return nil, err
 	}
 	checks, queries := integrityCheckDefinitions()
-	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+	if _, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
 		for i, query := range queries {
 			actual, err := countQuery(ctx, tx, query, nil)
 			if err != nil {
@@ -322,7 +325,7 @@ WITH resource, finding
 ORDER BY finding.urn
 LIMIT $limit`
 	if request.DryRun {
-		value, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		value, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
 			return queryOneValue(ctx, tx, query+`
 RETURN count(finding)`, params)
 		})
@@ -611,7 +614,7 @@ WITH collect(DISTINCT e) AS entities, count(DISTINCT rel) AS links
 `
 	if request.DryRun {
 		var matchedEntities, matchedLinks int64
-		if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		if _, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
 			result, err := tx.Run(ctx, query+`RETURN size(entities), links`, params)
 			if err != nil {
 				return nil, err
@@ -678,7 +681,7 @@ func (s *Store) CleanupEndpointOwnerIDLinks(ctx context.Context, request ports.P
 	query := endpointOwnerIDLinkCleanupQuery(conditions, request.DryRun)
 	if request.DryRun {
 		var matched int64
-		if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		if _, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
 			value, err := queryOneValue(ctx, tx, query, params)
 			if err != nil {
 				return nil, err
@@ -810,7 +813,7 @@ func (s *Store) GetEntityNeighborhood(ctx context.Context, rootURN string, limit
 		Neighbors: []*ports.NeighborhoodNode{},
 		Relations: []*ports.NeighborhoodRelation{},
 	}
-	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+	if _, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
 		neighborhood = &ports.EntityNeighborhood{
 			Neighbors: []*ports.NeighborhoodNode{},
 			Relations: []*ports.NeighborhoodRelation{},
@@ -859,6 +862,9 @@ func (s *Store) ExecuteReadCypher(ctx context.Context, request ports.CypherQuery
 	if query == "" {
 		return nil, errors.New("cypher query is required")
 	}
+	if err := validateReadOnlyCypher(query); err != nil {
+		return nil, err
+	}
 	if err := s.requireConfigured(); err != nil {
 		return nil, err
 	}
@@ -867,7 +873,7 @@ func (s *Store) ExecuteReadCypher(ctx context.Context, request ports.CypherQuery
 		rowLimit = ports.MaxCypherQueryRows
 	}
 	var rows []ports.CypherRow
-	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+	if _, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
 		rows = nil
 		result, err := tx.Run(ctx, query, request.Params)
 		if err != nil {
@@ -904,11 +910,14 @@ func (s *Store) ExplainReadCypher(ctx context.Context, request ports.CypherQuery
 	if query == "" {
 		return nil, errors.New("cypher query is required")
 	}
+	if err := validateReadOnlyCypher(query); err != nil {
+		return nil, err
+	}
 	if err := s.requireConfigured(); err != nil {
 		return nil, err
 	}
 	var plan *ports.CypherPlan
-	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+	if _, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
 		result, err := tx.Run(ctx, "EXPLAIN "+query, request.Params)
 		if err != nil {
 			return nil, err
@@ -967,7 +976,7 @@ func (s *Store) GetIngestCheckpoint(ctx context.Context, id string) (IngestCheck
 	}
 	var checkpoint IngestCheckpoint
 	var found bool
-	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+	if _, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
 		checkpoint = IngestCheckpoint{}
 		found = false
 		result, err := tx.Run(ctx, `MATCH (c:IngestCheckpoint {id: $id})
@@ -1120,7 +1129,7 @@ func (s *Store) GetIngestRun(ctx context.Context, id string) (IngestRun, bool, e
 	}
 	var run IngestRun
 	var found bool
-	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+	if _, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
 		run = IngestRun{}
 		found = false
 		result, err := tx.Run(ctx, ingestRunReturnQuery("MATCH (r:IngestRun {id: $id})"), map[string]any{"id": normalizedID})
@@ -1174,7 +1183,7 @@ func (s *Store) ListIngestRuns(ctx context.Context, filter IngestRunFilter) (_ [
 	}
 	query := ingestRunReturnQuery(prefix) + fmt.Sprintf(" ORDER BY coalesce(r.started_at, '') DESC, r.id DESC LIMIT %d", limit)
 	var runs []IngestRun
-	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+	if _, err := s.read(ctx, func(ctx context.Context, tx neo4jdriver.ManagedTransaction) (any, error) {
 		runs = runs[:0]
 		result, err := tx.Run(ctx, query, params)
 		if err != nil {
@@ -1231,10 +1240,17 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 	return nil
 }
 
-func (s *Store) read(ctx context.Context, work neo4jdriver.ManagedTransactionWork) (any, error) {
+func (s *Store) read(ctx context.Context, work func(context.Context, neo4jdriver.ManagedTransaction) (any, error)) (any, error) {
+	if s.queryTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, s.queryTimeout)
+		defer cancel()
+	}
 	session := s.driver.NewSession(ctx, neo4jdriver.SessionConfig{DatabaseName: s.database})
 	defer func() { _ = session.Close(ctx) }()
-	return session.ExecuteRead(ctx, work)
+	return session.ExecuteRead(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		return work(ctx, tx)
+	})
 }
 
 func (s *Store) write(ctx context.Context, work neo4jdriver.ManagedTransactionWork) (any, error) {
@@ -1250,6 +1266,91 @@ func consume(ctx context.Context, tx neo4jdriver.ManagedTransaction, query strin
 	}
 	_, err = result.Consume(ctx)
 	return nil, err
+}
+
+func validateReadOnlyCypher(query string) error {
+	if match := mutatingCypherPattern.FindString(stripCypherNonCode(query)); match != "" {
+		return fmt.Errorf("read cypher must not contain mutating clause %q", strings.TrimSpace(match))
+	}
+	return nil
+}
+
+func stripCypherNonCode(query string) string {
+	var out strings.Builder
+	out.Grow(len(query))
+	for i := 0; i < len(query); {
+		if i+1 < len(query) && query[i] == '/' && query[i+1] == '/' {
+			i = writeCypherMaskedUntilNewline(&out, query, i)
+			continue
+		}
+		if i+1 < len(query) && query[i] == '/' && query[i+1] == '*' {
+			i = writeCypherMaskedBlockComment(&out, query, i)
+			continue
+		}
+		switch query[i] {
+		case '\'', '"', '`':
+			i = writeCypherMaskedQuoted(&out, query, i, query[i])
+		default:
+			out.WriteByte(query[i])
+			i++
+		}
+	}
+	return out.String()
+}
+
+func writeCypherMaskedUntilNewline(out *strings.Builder, query string, start int) int {
+	for i := start; i < len(query); i++ {
+		if query[i] == '\n' {
+			out.WriteByte('\n')
+			return i + 1
+		}
+		out.WriteByte(' ')
+	}
+	return len(query)
+}
+
+func writeCypherMaskedBlockComment(out *strings.Builder, query string, start int) int {
+	for i := start; i < len(query); i++ {
+		if query[i] == '\n' {
+			out.WriteByte('\n')
+		} else {
+			out.WriteByte(' ')
+		}
+		if i > start && query[i-1] == '*' && query[i] == '/' {
+			return i + 1
+		}
+	}
+	return len(query)
+}
+
+func writeCypherMaskedQuoted(out *strings.Builder, query string, start int, quote byte) int {
+	out.WriteByte(' ')
+	for i := start + 1; i < len(query); i++ {
+		if query[i] == '\n' {
+			out.WriteByte('\n')
+		} else {
+			out.WriteByte(' ')
+		}
+		if query[i] == '\\' && quote != '`' && i+1 < len(query) {
+			i++
+			if query[i] == '\n' {
+				out.WriteByte('\n')
+			} else {
+				out.WriteByte(' ')
+			}
+			continue
+		}
+		if query[i] != quote {
+			continue
+		}
+		if i+1 < len(query) && query[i+1] == quote {
+			i++
+			out.WriteByte(' ')
+			continue
+		}
+		return i + 1
+	}
+	return len(query)
 }
 
 func queryOneValue(ctx context.Context, tx neo4jdriver.ManagedTransaction, query string, params map[string]any) (any, error) {

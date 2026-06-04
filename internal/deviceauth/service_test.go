@@ -198,6 +198,58 @@ func TestServiceIssueTokenRejectsWrongGrant(t *testing.T) {
 	}
 }
 
+func TestServiceIssueTokenRejectsBoundDeviceWhenDPoPVerifierUnavailable(t *testing.T) {
+	ctx := context.Background()
+	service, store, now := newServiceForTest(t)
+	_, err := store.EnrollDevice(ctx, DeviceRecord{
+		DeviceID:     "dev-bound",
+		HardwareUUID: "hw-bound",
+		TenantID:     "writer",
+		Status:       "active",
+		EnrolledAt:   now,
+		LastSeenAt:   now,
+		Metadata:     map[string]string{"dpop_jkt": "expected-jkt"},
+	})
+	if err != nil {
+		t.Fatalf("EnrollDevice: %v", err)
+	}
+	refreshToken, err := GenerateOpaqueToken()
+	if err != nil {
+		t.Fatalf("GenerateOpaqueToken: %v", err)
+	}
+	familyID, err := NewFamilyID()
+	if err != nil {
+		t.Fatalf("NewFamilyID: %v", err)
+	}
+	if err := store.IssueRefreshToken(ctx, RefreshToken{
+		TokenHash:  HashToken(refreshToken),
+		DeviceID:   "dev-bound",
+		FamilyID:   familyID,
+		Generation: 1,
+		Scopes:     DefaultDeviceScopes,
+		CreatedAt:  now,
+		ExpiresAt:  now.Add(time.Hour),
+	}); err != nil {
+		t.Fatalf("IssueRefreshToken: %v", err)
+	}
+
+	_, err = service.IssueToken(ctx, TokenRequest{
+		GrantType:    "refresh_token",
+		RefreshToken: refreshToken,
+		DPoPProof:    "proof-present-but-unverifiable",
+	})
+	if !errors.Is(err, ErrDPoPVerifierUnavailable) {
+		t.Fatalf("IssueToken err = %v, want ErrDPoPVerifierUnavailable", err)
+	}
+	row, err := store.LookupRefreshToken(ctx, HashToken(refreshToken), now)
+	if err != nil {
+		t.Fatalf("LookupRefreshToken: %v", err)
+	}
+	if !row.ConsumedAt.IsZero() {
+		t.Fatalf("refresh token was consumed despite unavailable DPoP verifier")
+	}
+}
+
 func TestServiceRevokeBlocksRefresh(t *testing.T) {
 	ctx := context.Background()
 	service, _, _ := newServiceForTest(t)

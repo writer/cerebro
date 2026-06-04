@@ -21,6 +21,8 @@ jobs:
             command: make test
           - name: sdk
             command: make sdk-test
+          - name: mcp
+            command: make mcp-contract-check mcp-sdk-compat
           - name: lint
             command: make lint
           - name: proto
@@ -33,6 +35,10 @@ jobs:
             command: make readme-check
           - name: oss-audit
             command: make oss-audit
+          - name: release-smoke
+            command: make release-smoke
+          - name: docker-smoke
+            command: make docker-smoke
           - name: structural
             command: make check-structural check-structural-test check-arch
     steps:

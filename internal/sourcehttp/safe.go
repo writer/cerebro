@@ -7,12 +7,16 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
 
 const MaxBodyBytes = 8 << 20
 const DefaultTimeout = 30 * time.Second
+const DefaultRetryMaxAttempts = 3
+const DefaultRetryBackoff = 250 * time.Millisecond
+const MaxRetryAfter = 5 * time.Second
 
 type ClientOptions struct {
 	SourceID      string
@@ -20,6 +24,18 @@ type ClientOptions struct {
 	BaseTransport http.RoundTripper
 	AllowLoopback bool
 	LookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)
+}
+
+type RetryOptions struct {
+	MaxAttempts  int
+	Backoff      time.Duration
+	MaxBodyBytes int
+}
+
+type ResponseBody struct {
+	StatusCode int
+	Header     http.Header
+	Body       []byte
 }
 
 func NewClient(options ClientOptions) *http.Client {
@@ -170,6 +186,7 @@ func pinnedHostTransport(base http.RoundTripper, host string, ip net.IP) (http.R
 	}
 	clone := transport.Clone()
 	clone.Proxy = nil
+	clone.DisableKeepAlives = true
 	clone.DialTLSContext = nil
 	dialContext := clone.DialContext
 	if dialContext == nil {
@@ -247,6 +264,114 @@ func IsLoopbackHost(host string) bool {
 
 func ReadLimitedBody(body io.Reader) ([]byte, error) {
 	return ReadLimitedBodyWithLimit(body, MaxBodyBytes)
+}
+
+func DoWithRetry(ctx context.Context, client *http.Client, req *http.Request, options RetryOptions) (ResponseBody, error) {
+	if client == nil {
+		client = http.DefaultClient
+	}
+	if req == nil {
+		return ResponseBody{}, fmt.Errorf("request is required")
+	}
+	attempts := options.MaxAttempts
+	if attempts <= 0 {
+		attempts = DefaultRetryMaxAttempts
+	}
+	backoff := options.Backoff
+	if backoff <= 0 {
+		backoff = DefaultRetryBackoff
+	}
+	if !requestBodyReplayable(req) {
+		attempts = 1
+	}
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		nextReq, err := requestForRetryAttempt(ctx, req, attempt)
+		if err != nil {
+			return ResponseBody{}, err
+		}
+		resp, err := client.Do(nextReq)
+		if err != nil {
+			lastErr = err
+		} else {
+			body, readErr := ReadLimitedBodyWithLimit(resp.Body, options.MaxBodyBytes)
+			_ = resp.Body.Close()
+			if readErr != nil {
+				return ResponseBody{}, readErr
+			}
+			result := ResponseBody{StatusCode: resp.StatusCode, Header: resp.Header.Clone(), Body: body}
+			if attempt == attempts || !RetryableStatus(resp.StatusCode) {
+				return result, nil
+			}
+			if err := sleepRetry(ctx, retryDelay(resp.Header.Get("Retry-After"), backoff, attempt)); err != nil {
+				return ResponseBody{}, err
+			}
+			continue
+		}
+		if attempt == attempts {
+			return ResponseBody{}, lastErr
+		}
+		if err := sleepRetry(ctx, retryDelay("", backoff, attempt)); err != nil {
+			return ResponseBody{}, err
+		}
+	}
+	return ResponseBody{}, lastErr
+}
+
+func requestBodyReplayable(req *http.Request) bool {
+	if req == nil || req.Body == nil || req.Body == http.NoBody {
+		return true
+	}
+	return req.GetBody != nil
+}
+
+func requestForRetryAttempt(ctx context.Context, req *http.Request, attempt int) (*http.Request, error) {
+	nextReq := req.Clone(ctx)
+	if req.Body == nil || req.Body == http.NoBody {
+		return nextReq, nil
+	}
+	if attempt == 1 {
+		nextReq.Body = req.Body
+		return nextReq, nil
+	}
+	body, err := req.GetBody()
+	if err != nil {
+		return nil, err
+	}
+	nextReq.Body = body
+	return nextReq, nil
+}
+
+func RetryableStatus(status int) bool {
+	return status == http.StatusTooManyRequests || status == http.StatusBadGateway || status == http.StatusServiceUnavailable || status == http.StatusGatewayTimeout || status >= 500
+}
+
+func retryDelay(rawRetryAfter string, backoff time.Duration, attempt int) time.Duration {
+	if seconds, err := strconv.Atoi(strings.TrimSpace(rawRetryAfter)); err == nil && seconds > 0 {
+		if delay := time.Duration(seconds) * time.Second; delay < MaxRetryAfter {
+			return delay
+		}
+		return MaxRetryAfter
+	}
+	delay := backoff
+	for i := 1; i < attempt; i++ {
+		delay *= 2
+	}
+	if delay > MaxRetryAfter {
+		return MaxRetryAfter
+	}
+	return delay
+}
+
+func sleepRetry(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func ReadLimitedBodyWithLimit(body io.Reader, maxBytes int) ([]byte, error) {
