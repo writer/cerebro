@@ -2,6 +2,8 @@ package sourcehttp
 
 import (
 	"context"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -85,5 +87,74 @@ func TestDoWithRetryPreservesCustomBodyLimit(t *testing.T) {
 	}
 	if _, err := DoWithRetry(context.Background(), server.Client(), req, RetryOptions{MaxBodyBytes: 5}); err == nil {
 		t.Fatal("DoWithRetry() error = nil, want oversized response error")
+	}
+}
+
+func TestDoWithRetryReplaysRequestBodyWithGetBody(t *testing.T) {
+	var bodies []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("ReadAll request body: %v", err)
+		}
+		bodies = append(bodies, string(body))
+		if len(bodies) == 1 {
+			http.Error(w, "try again", http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+	req, err := http.NewRequest(http.MethodPost, server.URL, strings.NewReader("payload"))
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	resp, err := DoWithRetry(context.Background(), server.Client(), req, RetryOptions{Backoff: time.Nanosecond})
+	if err != nil {
+		t.Fatalf("DoWithRetry() error = %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if got := strings.Join(bodies, ","); got != "payload,payload" {
+		t.Fatalf("request bodies = %q, want payload replayed on retry", got)
+	}
+}
+
+func TestDoWithRetryDoesNotRetryNonReplayableBody(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		_, _ = io.ReadAll(r.Body)
+		http.Error(w, "try again", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	req, err := http.NewRequest(http.MethodPost, server.URL, io.NopCloser(strings.NewReader("payload")))
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	resp, err := DoWithRetry(context.Background(), server.Client(), req, RetryOptions{Backoff: time.Nanosecond})
+	if err != nil {
+		t.Fatalf("DoWithRetry() error = %v", err)
+	}
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusServiceUnavailable)
+	}
+	if attempts != 1 {
+		t.Fatalf("attempts = %d, want 1 for non-replayable body", attempts)
+	}
+}
+
+func TestPinnedHostTransportDisablesKeepAlives(t *testing.T) {
+	rt, err := pinnedHostTransport(&http.Transport{}, "api.example.com", net.ParseIP("203.0.113.10"))
+	if err != nil {
+		t.Fatalf("pinnedHostTransport() error = %v", err)
+	}
+	transport, ok := rt.(*http.Transport)
+	if !ok {
+		t.Fatalf("pinnedHostTransport() returned %T, want *http.Transport", rt)
+	}
+	if !transport.DisableKeepAlives {
+		t.Fatal("pinned transport must disable keep-alives")
 	}
 }

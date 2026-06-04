@@ -475,7 +475,7 @@ func (s *Service) verifyDPoPForRefresh(device DeviceRecord, request TokenRequest
 		return nil
 	}
 	if s.cfg.DPoP == nil {
-		return nil
+		return ErrDPoPVerifierUnavailable
 	}
 	proof := strings.TrimSpace(request.DPoPProof)
 	if proof == "" {

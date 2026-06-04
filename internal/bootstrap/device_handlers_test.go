@@ -363,6 +363,7 @@ func TestWriteDeviceAuthServiceErrorMapsAttestationFailures(t *testing.T) {
 		{name: "invalid statement", err: attestation.ErrInvalidStatement, status: http.StatusBadRequest, code: "invalid_attestation"},
 		{name: "invalid chain", err: attestation.ErrChainInvalid, status: http.StatusBadRequest, code: "invalid_attestation"},
 		{name: "nonce mismatch", err: attestation.ErrNonceMismatch, status: http.StatusBadRequest, code: "invalid_attestation"},
+		{name: "dpop verifier unavailable", err: deviceauth.ErrDPoPVerifierUnavailable, status: http.StatusServiceUnavailable, code: "dpop_unavailable"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -379,6 +380,55 @@ func TestWriteDeviceAuthServiceErrorMapsAttestationFailures(t *testing.T) {
 				t.Fatalf("error code = %q, want %q; body=%s", body["error"], tt.code, resp.Body.String())
 			}
 		})
+	}
+}
+
+func TestAuthMiddlewareRejectsBoundDeviceTokenWhenDPoPVerifierUnavailable(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	signer, err := deviceauth.NewLocalSigner([]deviceauth.SigningKey{{KID: "k1", Public: pub, Private: priv}})
+	if err != nil {
+		t.Fatalf("NewLocalSigner: %v", err)
+	}
+	keyset := &deviceauth.KeySet{Keys: []deviceauth.SigningKey{{KID: "k1", Public: pub}}}
+	clock := func() time.Time { return time.Date(2026, 5, 22, 12, 0, 0, 0, time.UTC) }
+	issuer, err := deviceauth.NewJWTIssuer(deviceauth.IssuerConfig{Now: clock}, signer)
+	if err != nil {
+		t.Fatalf("NewJWTIssuer: %v", err)
+	}
+	verifier, err := deviceauth.NewJWTVerifier(deviceauth.VerifierConfig{Now: clock}, keyset)
+	if err != nil {
+		t.Fatalf("NewJWTVerifier: %v", err)
+	}
+	token, err := issuer.IssueAccessWithOptions(
+		deviceauth.DeviceRecord{DeviceID: "dev-1", TenantID: "writer", HardwareUUID: "hw-1"},
+		[]string{deviceauth.ScopeTelemetryIngest},
+		deviceauth.AccessOptions{DPoPJKT: "expected-jkt"},
+	)
+	if err != nil {
+		t.Fatalf("IssueAccessWithOptions: %v", err)
+	}
+	handler := authMiddleware(config.AuthConfig{Enabled: true}, AuthDependencies{
+		DeviceVerifier: verifier,
+	}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("next handler should not be called without a DPoP verifier")
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/platform/telemetry/ingest", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503; body=%s", resp.Code, resp.Body.String())
+	}
+	var body map[string]string
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["error"] != "dpop_unavailable" {
+		t.Fatalf("error = %q, want dpop_unavailable; body=%s", body["error"], resp.Body.String())
 	}
 }
 
