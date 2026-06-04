@@ -22,30 +22,3 @@ func assetClassificationProjections(event *cerebrov1.EventEnvelope, crownJewelEv
 		Provider:                     provider,
 	})
 }
-
-func assetCloudAccountID(provider string, resourceID string, resourceURN string, attributes map[string]string) string {
-	provider = normalizeIdentifier(provider)
-	switch provider {
-	case "aws":
-		return firstNonEmpty(
-			awsAccountID(attributes["aws_account_id"]),
-			awsAccountIDFromARN(resourceID),
-			awsAccountIDFromARN(resourceURN),
-		)
-	case "azure":
-		return firstNonEmpty(
-			attributes["subscription_id"],
-			azureSubscriptionIDFromScope(resourceID),
-			azureSubscriptionIDFromScope(resourceURN),
-		)
-	case "gcp":
-		return firstNonEmpty(
-			attributes["gcp_project_id"],
-			attributes["project_id"],
-			gcpProjectIDFromResource(resourceID),
-			gcpProjectIDFromResource(resourceURN),
-		)
-	default:
-		return ""
-	}
-}

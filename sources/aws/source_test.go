@@ -404,13 +404,15 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 	fargateProfileARN := "arn:aws:eks:us-east-1:123456789012:fargateprofile/prod-eks/payments/uuid"
 	podIdentityARN := "arn:aws:eks:us-east-1:123456789012:podidentityassociation/prod-eks/a-123"
 	source := newTestSource(t, fakeAWS{
-		networkInterfaces: []ec2types.NetworkInterface{{
-			NetworkInterfaceId: awssdk.String("eni-task"),
-			Groups:             []ec2types.GroupIdentifier{{GroupId: awssdk.String("sg-task")}},
-			PrivateIpAddress:   awssdk.String("10.0.2.25"),
-			SubnetId:           awssdk.String("subnet-task"),
-			VpcId:              awssdk.String("vpc-1"),
-		}},
+		fakeAWSNetwork: fakeAWSNetwork{
+			networkInterfaces: []ec2types.NetworkInterface{{
+				NetworkInterfaceId: awssdk.String("eni-task"),
+				Groups:             []ec2types.GroupIdentifier{{GroupId: awssdk.String("sg-task")}},
+				PrivateIpAddress:   awssdk.String("10.0.2.25"),
+				SubnetId:           awssdk.String("subnet-task"),
+				VpcId:              awssdk.String("vpc-1"),
+			}},
+		},
 		compute: fakeAWSCompute{
 			instances: []ec2types.Instance{{
 				InstanceId:   awssdk.String("i-123"),
@@ -649,88 +651,90 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 	snsARN := "arn:aws:sns:us-east-1:123456789012:orders"
 	ecrARN := "arn:aws:ecr:us-east-1:123456789012:repository/orders"
 	source := newTestSource(t, fakeAWS{
-		s3Buckets: []s3types.Bucket{{
-			Name:         awssdk.String("prod-data"),
-			CreationDate: timePtr("2026-04-23T00:00:00Z"),
-		}},
-		s3BucketRegions: map[string]s3types.BucketLocationConstraint{"prod-data": ""},
-		s3Tags:          map[string][]s3types.Tag{"prod-data": {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}}},
-		s3Encryption: map[string]*s3types.ServerSideEncryptionConfiguration{"prod-data": {
-			Rules: []s3types.ServerSideEncryptionRule{{
-				ApplyServerSideEncryptionByDefault: &s3types.ServerSideEncryptionByDefault{
-					SSEAlgorithm:   s3types.ServerSideEncryptionAwsKms,
-					KMSMasterKeyID: awssdk.String(kmsARN),
-				},
+		fakeAWSData: fakeAWSData{
+			s3Buckets: []s3types.Bucket{{
+				Name:         awssdk.String("prod-data"),
+				CreationDate: timePtr("2026-04-23T00:00:00Z"),
 			}},
-		}},
-		s3Versioning: map[string]s3types.BucketVersioningStatus{"prod-data": s3types.BucketVersioningStatusEnabled},
-		s3Logging:    map[string]bool{"prod-data": true},
-		s3PublicAccessBlocks: map[string]*s3types.PublicAccessBlockConfiguration{"prod-data": {
-			BlockPublicAcls:       awssdk.Bool(true),
-			BlockPublicPolicy:     awssdk.Bool(true),
-			IgnorePublicAcls:      awssdk.Bool(true),
-			RestrictPublicBuckets: awssdk.Bool(true),
-		}},
-		rdsInstances: []rdstypes.DBInstance{{
-			DBInstanceArn:         awssdk.String(rdsARN),
-			DBInstanceIdentifier:  awssdk.String("orders-db"),
-			Engine:                awssdk.String("postgres"),
-			StorageEncrypted:      awssdk.Bool(true),
-			KmsKeyId:              awssdk.String(kmsARN),
-			DeletionProtection:    awssdk.Bool(true),
-			BackupRetentionPeriod: awssdk.Int32(7),
-			PubliclyAccessible:    awssdk.Bool(false),
-			InstanceCreateTime:    timePtr("2026-04-23T00:00:00Z"),
-			TagList:               []rdstypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
-		}},
-		kmsKeys: []kmstypes.KeyMetadata{{
-			Arn:          awssdk.String(kmsARN),
-			KeyId:        awssdk.String("key-123"),
-			CreationDate: timePtr("2026-04-23T00:00:00Z"),
-			Enabled:      true,
-			KeyManager:   kmstypes.KeyManagerTypeCustomer,
-			KeyState:     kmstypes.KeyStateEnabled,
-			KeySpec:      kmstypes.KeySpecSymmetricDefault,
-			KeyUsage:     kmstypes.KeyUsageTypeEncryptDecrypt,
-			Origin:       kmstypes.OriginTypeAwsKms,
-		}},
-		kmsTags:     map[string][]kmstypes.Tag{"key-123": {{TagKey: awssdk.String("Owner"), TagValue: awssdk.String("security@writer.com")}}},
-		kmsRotation: map[string]bool{"key-123": true},
-		secrets: []secretsmanagertypes.SecretListEntry{{
-			ARN:             awssdk.String(secretARN),
-			Name:            awssdk.String("prod/api-key"),
-			CreatedDate:     timePtr("2026-04-23T00:00:00Z"),
-			KmsKeyId:        awssdk.String(kmsARN),
-			RotationEnabled: awssdk.Bool(true),
-			Tags:            []secretsmanagertypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("platform@writer.com")}},
-		}},
-		sqsQueueURLs: []string{sqsURL},
-		sqsAttributes: map[string]map[string]string{sqsURL: {
-			"QueueArn":               sqsARN,
-			"KmsMasterKeyId":         kmsARN,
-			"MessageRetentionPeriod": "1209600",
-			"CreatedTimestamp":       "1776902400",
-		}},
-		sqsTags:   map[string]map[string]string{sqsURL: {"Team": "payments"}},
-		snsTopics: []snstypes.Topic{{TopicArn: awssdk.String(snsARN)}},
-		snsAttributes: map[string]map[string]string{snsARN: {
-			"TopicArn":       snsARN,
-			"KmsMasterKeyId": kmsARN,
-		}},
-		snsTags: map[string][]snstypes.Tag{snsARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
-		ecrRepositories: []ecrtypes.Repository{{
-			RepositoryArn:  awssdk.String(ecrARN),
-			RepositoryName: awssdk.String("orders"),
-			RepositoryUri:  awssdk.String("123456789012.dkr.ecr.us-east-1.amazonaws.com/orders"),
-			CreatedAt:      timePtr("2026-04-23T00:00:00Z"),
-			EncryptionConfiguration: &ecrtypes.EncryptionConfiguration{
-				EncryptionType: ecrtypes.EncryptionTypeKms,
-				KmsKey:         awssdk.String(kmsARN),
-			},
-			ImageScanningConfiguration: &ecrtypes.ImageScanningConfiguration{ScanOnPush: true},
-			ImageTagMutability:         ecrtypes.ImageTagMutabilityImmutable,
-		}},
-		ecrTags: map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+			s3BucketRegions: map[string]s3types.BucketLocationConstraint{"prod-data": ""},
+			s3Tags:          map[string][]s3types.Tag{"prod-data": {{Key: awssdk.String("Owner"), Value: awssdk.String("data@writer.com")}}},
+			s3Encryption: map[string]*s3types.ServerSideEncryptionConfiguration{"prod-data": {
+				Rules: []s3types.ServerSideEncryptionRule{{
+					ApplyServerSideEncryptionByDefault: &s3types.ServerSideEncryptionByDefault{
+						SSEAlgorithm:   s3types.ServerSideEncryptionAwsKms,
+						KMSMasterKeyID: awssdk.String(kmsARN),
+					},
+				}},
+			}},
+			s3Versioning: map[string]s3types.BucketVersioningStatus{"prod-data": s3types.BucketVersioningStatusEnabled},
+			s3Logging:    map[string]bool{"prod-data": true},
+			s3PublicAccessBlocks: map[string]*s3types.PublicAccessBlockConfiguration{"prod-data": {
+				BlockPublicAcls:       awssdk.Bool(true),
+				BlockPublicPolicy:     awssdk.Bool(true),
+				IgnorePublicAcls:      awssdk.Bool(true),
+				RestrictPublicBuckets: awssdk.Bool(true),
+			}},
+			rdsInstances: []rdstypes.DBInstance{{
+				DBInstanceArn:         awssdk.String(rdsARN),
+				DBInstanceIdentifier:  awssdk.String("orders-db"),
+				Engine:                awssdk.String("postgres"),
+				StorageEncrypted:      awssdk.Bool(true),
+				KmsKeyId:              awssdk.String(kmsARN),
+				DeletionProtection:    awssdk.Bool(true),
+				BackupRetentionPeriod: awssdk.Int32(7),
+				PubliclyAccessible:    awssdk.Bool(false),
+				InstanceCreateTime:    timePtr("2026-04-23T00:00:00Z"),
+				TagList:               []rdstypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("database@writer.com")}},
+			}},
+			kmsKeys: []kmstypes.KeyMetadata{{
+				Arn:          awssdk.String(kmsARN),
+				KeyId:        awssdk.String("key-123"),
+				CreationDate: timePtr("2026-04-23T00:00:00Z"),
+				Enabled:      true,
+				KeyManager:   kmstypes.KeyManagerTypeCustomer,
+				KeyState:     kmstypes.KeyStateEnabled,
+				KeySpec:      kmstypes.KeySpecSymmetricDefault,
+				KeyUsage:     kmstypes.KeyUsageTypeEncryptDecrypt,
+				Origin:       kmstypes.OriginTypeAwsKms,
+			}},
+			kmsTags:     map[string][]kmstypes.Tag{"key-123": {{TagKey: awssdk.String("Owner"), TagValue: awssdk.String("security@writer.com")}}},
+			kmsRotation: map[string]bool{"key-123": true},
+			secrets: []secretsmanagertypes.SecretListEntry{{
+				ARN:             awssdk.String(secretARN),
+				Name:            awssdk.String("prod/api-key"),
+				CreatedDate:     timePtr("2026-04-23T00:00:00Z"),
+				KmsKeyId:        awssdk.String(kmsARN),
+				RotationEnabled: awssdk.Bool(true),
+				Tags:            []secretsmanagertypes.Tag{{Key: awssdk.String("Owner"), Value: awssdk.String("platform@writer.com")}},
+			}},
+			sqsQueueURLs: []string{sqsURL},
+			sqsAttributes: map[string]map[string]string{sqsURL: {
+				"QueueArn":               sqsARN,
+				"KmsMasterKeyId":         kmsARN,
+				"MessageRetentionPeriod": "1209600",
+				"CreatedTimestamp":       "1776902400",
+			}},
+			sqsTags:   map[string]map[string]string{sqsURL: {"Team": "payments"}},
+			snsTopics: []snstypes.Topic{{TopicArn: awssdk.String(snsARN)}},
+			snsAttributes: map[string]map[string]string{snsARN: {
+				"TopicArn":       snsARN,
+				"KmsMasterKeyId": kmsARN,
+			}},
+			snsTags: map[string][]snstypes.Tag{snsARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+			ecrRepositories: []ecrtypes.Repository{{
+				RepositoryArn:  awssdk.String(ecrARN),
+				RepositoryName: awssdk.String("orders"),
+				RepositoryUri:  awssdk.String("123456789012.dkr.ecr.us-east-1.amazonaws.com/orders"),
+				CreatedAt:      timePtr("2026-04-23T00:00:00Z"),
+				EncryptionConfiguration: &ecrtypes.EncryptionConfiguration{
+					EncryptionType: ecrtypes.EncryptionTypeKms,
+					KmsKey:         awssdk.String(kmsARN),
+				},
+				ImageScanningConfiguration: &ecrtypes.ImageScanningConfiguration{ScanOnPush: true},
+				ImageTagMutability:         ecrtypes.ImageTagMutabilityImmutable,
+			}},
+			ecrTags: map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}},
+		},
 	})
 	for _, tt := range []struct {
 		family string
@@ -1060,13 +1064,15 @@ func TestReadAWSExposureAndTrustPreview(t *testing.T) {
 		roles: []iamtypes.Role{{
 			Arn: awssdk.String("arn:aws:iam::123456789012:role/AdminRole"), RoleId: awssdk.String("AROADMIN"), RoleName: awssdk.String("AdminRole"), AssumeRolePolicyDocument: awssdk.String(trustPolicy), CreateDate: timePtr("2026-01-01T00:00:00Z"),
 		}},
-		securityGroups: []ec2types.SecurityGroup{{
-			GroupId: awssdk.String("sg-1"), GroupName: awssdk.String("prod-web"), SecurityGroupArn: awssdk.String("arn:aws:ec2:us-east-1:123456789012:security-group/sg-1"), VpcId: awssdk.String("vpc-1"),
-			IpPermissions: []ec2types.IpPermission{{
-				IpProtocol: awssdk.String("tcp"), FromPort: awssdk.Int32(443), ToPort: awssdk.Int32(443), IpRanges: []ec2types.IpRange{{CidrIp: awssdk.String("0.0.0.0/0")}},
+		fakeAWSNetwork: fakeAWSNetwork{
+			securityGroups: []ec2types.SecurityGroup{{
+				GroupId: awssdk.String("sg-1"), GroupName: awssdk.String("prod-web"), SecurityGroupArn: awssdk.String("arn:aws:ec2:us-east-1:123456789012:security-group/sg-1"), VpcId: awssdk.String("vpc-1"),
+				IpPermissions: []ec2types.IpPermission{{
+					IpProtocol: awssdk.String("tcp"), FromPort: awssdk.Int32(443), ToPort: awssdk.Int32(443), IpRanges: []ec2types.IpRange{{CidrIp: awssdk.String("0.0.0.0/0")}},
+				}},
 			}},
-		}},
-		addresses: []ec2types.Address{{AllocationId: awssdk.String("eipalloc-1"), PublicIp: awssdk.String("203.0.113.10"), NetworkInterfaceId: awssdk.String("eni-1"), InstanceId: awssdk.String("i-1")}},
+			addresses: []ec2types.Address{{AllocationId: awssdk.String("eipalloc-1"), PublicIp: awssdk.String("203.0.113.10"), NetworkInterfaceId: awssdk.String("eni-1"), InstanceId: awssdk.String("i-1")}},
+		},
 	})
 	for _, tt := range []struct {
 		family string
@@ -1514,17 +1520,19 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 
 func TestReadAWSNetworkInterfacePublicEndpointIncludesAttachedInstance(t *testing.T) {
 	endpoints, _, err := listNetworkInterfacePublicEndpoints(context.Background(), awsClients{ec2: fakeAWS{
-		networkInterfaces: []ec2types.NetworkInterface{{
-			NetworkInterfaceId: awssdk.String("eni-1"),
-			Description:        awssdk.String("prod-web-eni"),
-			Association: &ec2types.NetworkInterfaceAssociation{
-				PublicDnsName: awssdk.String("ec2-203-0-113-10.compute-1.amazonaws.com"),
-				PublicIp:      awssdk.String("203.0.113.10"),
-			},
-			Attachment: &ec2types.NetworkInterfaceAttachment{
-				InstanceId: awssdk.String("i-1234567890abcdef0"),
-			},
-		}},
+		fakeAWSNetwork: fakeAWSNetwork{
+			networkInterfaces: []ec2types.NetworkInterface{{
+				NetworkInterfaceId: awssdk.String("eni-1"),
+				Description:        awssdk.String("prod-web-eni"),
+				Association: &ec2types.NetworkInterfaceAssociation{
+					PublicDnsName: awssdk.String("ec2-203-0-113-10.compute-1.amazonaws.com"),
+					PublicIp:      awssdk.String("203.0.113.10"),
+				},
+				Attachment: &ec2types.NetworkInterfaceAttachment{
+					InstanceId: awssdk.String("i-1234567890abcdef0"),
+				},
+			}},
+		},
 	}}, settings{accountID: "123456789012", region: "us-east-1"}, publicEndpointCursor{}, 10)
 	if err != nil {
 		t.Fatalf("listNetworkInterfacePublicEndpoints() error = %v", err)
@@ -1546,30 +1554,32 @@ func TestReadAWSNetworkInterfacePublicEndpointIncludesAttachedInstance(t *testin
 
 func TestReadAWSPublicEndpointCollectsDNSAndEdgeHosts(t *testing.T) {
 	source := newTestSource(t, fakeAWS{
-		hostedZones: []route53types.HostedZone{{
-			Id:     awssdk.String("/hostedzone/Z123"),
-			Name:   awssdk.String("writer.com."),
-			Config: &route53types.HostedZoneConfig{PrivateZone: false},
-		}},
-		recordSets: []route53types.ResourceRecordSet{{
-			Name: awssdk.String("app.writer.com."),
-			Type: route53types.RRTypeCname,
-			ResourceRecords: []route53types.ResourceRecord{{
-				Value: awssdk.String("d111111abcdef8.cloudfront.net."),
+		fakeAWSNetwork: fakeAWSNetwork{
+			hostedZones: []route53types.HostedZone{{
+				Id:     awssdk.String("/hostedzone/Z123"),
+				Name:   awssdk.String("writer.com."),
+				Config: &route53types.HostedZoneConfig{PrivateZone: false},
 			}},
-		}},
-		distributions: []cloudfronttypes.DistributionSummary{{
-			ARN:        awssdk.String("arn:aws:cloudfront::123456789012:distribution/EDFDVBD632BHDS5"),
-			Id:         awssdk.String("EDFDVBD632BHDS5"),
-			DomainName: awssdk.String("d111111abcdef8.cloudfront.net"),
-			Aliases:    &cloudfronttypes.Aliases{Items: []string{"app.writer.com"}},
-			Enabled:    awssdk.Bool(true),
-		}, {
-			ARN:        awssdk.String("arn:aws:cloudfront::123456789012:distribution/DISABLED"),
-			Id:         awssdk.String("DISABLED"),
-			DomainName: awssdk.String("disabled.cloudfront.net"),
-			Enabled:    awssdk.Bool(false),
-		}},
+			recordSets: []route53types.ResourceRecordSet{{
+				Name: awssdk.String("app.writer.com."),
+				Type: route53types.RRTypeCname,
+				ResourceRecords: []route53types.ResourceRecord{{
+					Value: awssdk.String("d111111abcdef8.cloudfront.net."),
+				}},
+			}},
+			distributions: []cloudfronttypes.DistributionSummary{{
+				ARN:        awssdk.String("arn:aws:cloudfront::123456789012:distribution/EDFDVBD632BHDS5"),
+				Id:         awssdk.String("EDFDVBD632BHDS5"),
+				DomainName: awssdk.String("d111111abcdef8.cloudfront.net"),
+				Aliases:    &cloudfronttypes.Aliases{Items: []string{"app.writer.com"}},
+				Enabled:    awssdk.Bool(true),
+			}, {
+				ARN:        awssdk.String("arn:aws:cloudfront::123456789012:distribution/DISABLED"),
+				Id:         awssdk.String("DISABLED"),
+				DomainName: awssdk.String("disabled.cloudfront.net"),
+				Enabled:    awssdk.Bool(false),
+			}},
+		},
 	})
 
 	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyPublicEndpoint}), nil)
@@ -1608,35 +1618,37 @@ func TestReadAWSPublicEndpointCollectsDNSAndEdgeHosts(t *testing.T) {
 
 func TestReadAWSPublicEndpointCollectsDefaultAPIGatewayHosts(t *testing.T) {
 	source := newTestSource(t, fakeAWS{
-		restAPIs: []apigatewaytypes.RestApi{{
-			Id:   awssdk.String("rest123"),
-			Name: awssdk.String("orders"),
-			EndpointConfiguration: &apigatewaytypes.EndpointConfiguration{
-				Types: []apigatewaytypes.EndpointType{apigatewaytypes.EndpointTypeRegional},
-			},
-		}, {
-			Id:                        awssdk.String("restdisabled"),
-			Name:                      awssdk.String("disabled"),
-			DisableExecuteApiEndpoint: true,
-		}, {
-			Id:   awssdk.String("restprivate"),
-			Name: awssdk.String("private"),
-			EndpointConfiguration: &apigatewaytypes.EndpointConfiguration{
-				Types: []apigatewaytypes.EndpointType{apigatewaytypes.EndpointTypePrivate},
-			},
-		}},
-		apiV2APIs: []apigatewayv2types.Api{{
-			ApiId:        awssdk.String("v2abc"),
-			ApiEndpoint:  awssdk.String("https://v2abc.execute-api.us-east-1.amazonaws.com"),
-			Name:         awssdk.String("events"),
-			ProtocolType: apigatewayv2types.ProtocolTypeHttp,
-		}, {
-			ApiId:                     awssdk.String("v2disabled"),
-			ApiEndpoint:               awssdk.String("https://v2disabled.execute-api.us-east-1.amazonaws.com"),
-			Name:                      awssdk.String("disabled"),
-			ProtocolType:              apigatewayv2types.ProtocolTypeHttp,
-			DisableExecuteApiEndpoint: awssdk.Bool(true),
-		}},
+		fakeAWSNetwork: fakeAWSNetwork{
+			restAPIs: []apigatewaytypes.RestApi{{
+				Id:   awssdk.String("rest123"),
+				Name: awssdk.String("orders"),
+				EndpointConfiguration: &apigatewaytypes.EndpointConfiguration{
+					Types: []apigatewaytypes.EndpointType{apigatewaytypes.EndpointTypeRegional},
+				},
+			}, {
+				Id:                        awssdk.String("restdisabled"),
+				Name:                      awssdk.String("disabled"),
+				DisableExecuteApiEndpoint: true,
+			}, {
+				Id:   awssdk.String("restprivate"),
+				Name: awssdk.String("private"),
+				EndpointConfiguration: &apigatewaytypes.EndpointConfiguration{
+					Types: []apigatewaytypes.EndpointType{apigatewaytypes.EndpointTypePrivate},
+				},
+			}},
+			apiV2APIs: []apigatewayv2types.Api{{
+				ApiId:        awssdk.String("v2abc"),
+				ApiEndpoint:  awssdk.String("https://v2abc.execute-api.us-east-1.amazonaws.com"),
+				Name:         awssdk.String("events"),
+				ProtocolType: apigatewayv2types.ProtocolTypeHttp,
+			}, {
+				ApiId:                     awssdk.String("v2disabled"),
+				ApiEndpoint:               awssdk.String("https://v2disabled.execute-api.us-east-1.amazonaws.com"),
+				Name:                      awssdk.String("disabled"),
+				ProtocolType:              apigatewayv2types.ProtocolTypeHttp,
+				DisableExecuteApiEndpoint: awssdk.Bool(true),
+			}},
+		},
 	})
 	config := sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": familyPublicEndpoint})
 
@@ -1813,39 +1825,47 @@ type fakeAWS struct {
 	cloudTrailEvents       []cloudtrailtypes.Event
 	cloudTrailLookup       func(context.Context, *cloudtrail.LookupEventsInput) (*cloudtrail.LookupEventsOutput, error)
 	compute                fakeAWSCompute
-	securityGroups         []ec2types.SecurityGroup
-	addresses              []ec2types.Address
-	networkInterfaces      []ec2types.NetworkInterface
-	hostedZones            []route53types.HostedZone
-	recordSets             []route53types.ResourceRecordSet
-	distributions          []cloudfronttypes.DistributionSummary
-	loadBalancers          []elbv2types.LoadBalancer
-	apiDomains             []apigatewaytypes.DomainName
-	restAPIs               []apigatewaytypes.RestApi
-	apiV2Domains           []apigatewayv2types.DomainName
-	apiV2APIs              []apigatewayv2types.Api
-	taggedResources        []resourcegroupstaggingapitypes.ResourceTagMapping
-	getResources           func(context.Context, *resourcegroupstaggingapi.GetResourcesInput, ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error)
-	s3Buckets              []s3types.Bucket
-	s3BucketRegions        map[string]s3types.BucketLocationConstraint
-	s3Tags                 map[string][]s3types.Tag
-	s3Encryption           map[string]*s3types.ServerSideEncryptionConfiguration
-	s3Versioning           map[string]s3types.BucketVersioningStatus
-	s3Logging              map[string]bool
-	s3PublicAccessBlocks   map[string]*s3types.PublicAccessBlockConfiguration
-	rdsInstances           []rdstypes.DBInstance
-	kmsKeys                []kmstypes.KeyMetadata
-	kmsTags                map[string][]kmstypes.Tag
-	kmsRotation            map[string]bool
-	secrets                []secretsmanagertypes.SecretListEntry
-	sqsQueueURLs           []string
-	sqsAttributes          map[string]map[string]string
-	sqsTags                map[string]map[string]string
-	snsTopics              []snstypes.Topic
-	snsAttributes          map[string]map[string]string
-	snsTags                map[string][]snstypes.Tag
-	ecrRepositories        []ecrtypes.Repository
-	ecrTags                map[string][]ecrtypes.Tag
+	fakeAWSNetwork
+	taggedResources []resourcegroupstaggingapitypes.ResourceTagMapping
+	getResources    func(context.Context, *resourcegroupstaggingapi.GetResourcesInput, ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error)
+	fakeAWSData
+}
+
+type fakeAWSNetwork struct {
+	securityGroups    []ec2types.SecurityGroup
+	addresses         []ec2types.Address
+	networkInterfaces []ec2types.NetworkInterface
+	hostedZones       []route53types.HostedZone
+	recordSets        []route53types.ResourceRecordSet
+	distributions     []cloudfronttypes.DistributionSummary
+	loadBalancers     []elbv2types.LoadBalancer
+	apiDomains        []apigatewaytypes.DomainName
+	restAPIs          []apigatewaytypes.RestApi
+	apiV2Domains      []apigatewayv2types.DomainName
+	apiV2APIs         []apigatewayv2types.Api
+}
+
+type fakeAWSData struct {
+	s3Buckets            []s3types.Bucket
+	s3BucketRegions      map[string]s3types.BucketLocationConstraint
+	s3Tags               map[string][]s3types.Tag
+	s3Encryption         map[string]*s3types.ServerSideEncryptionConfiguration
+	s3Versioning         map[string]s3types.BucketVersioningStatus
+	s3Logging            map[string]bool
+	s3PublicAccessBlocks map[string]*s3types.PublicAccessBlockConfiguration
+	rdsInstances         []rdstypes.DBInstance
+	kmsKeys              []kmstypes.KeyMetadata
+	kmsTags              map[string][]kmstypes.Tag
+	kmsRotation          map[string]bool
+	secrets              []secretsmanagertypes.SecretListEntry
+	sqsQueueURLs         []string
+	sqsAttributes        map[string]map[string]string
+	sqsTags              map[string]map[string]string
+	snsTopics            []snstypes.Topic
+	snsAttributes        map[string]map[string]string
+	snsTags              map[string][]snstypes.Tag
+	ecrRepositories      []ecrtypes.Repository
+	ecrTags              map[string][]ecrtypes.Tag
 }
 
 type fakeAWSCompute struct {

@@ -496,7 +496,7 @@ func s3BucketPublic(record awsS3Bucket) bool {
 	if block == nil {
 		return false
 	}
-	return !(awssdk.ToBool(block.BlockPublicAcls) && awssdk.ToBool(block.BlockPublicPolicy) && awssdk.ToBool(block.IgnorePublicAcls) && awssdk.ToBool(block.RestrictPublicBuckets))
+	return !awssdk.ToBool(block.BlockPublicAcls) || !awssdk.ToBool(block.BlockPublicPolicy) || !awssdk.ToBool(block.IgnorePublicAcls) || !awssdk.ToBool(block.RestrictPublicBuckets)
 }
 
 func s3PublicBlockBool(block *s3types.PublicAccessBlockConfiguration, field string) bool {
