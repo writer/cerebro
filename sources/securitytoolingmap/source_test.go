@@ -38,8 +38,10 @@ func TestReadToolFamily(t *testing.T) {
 					"name":            "agent-gateway",
 					"org":             "WriterInternal",
 					"repo":            "agent-gateway",
+					"repository":      "WriterInternal/agent-gateway",
 					"status":          "beta",
 					"lifecycle_owner": "Security",
+					"owners":          []string{"Security"},
 					"categories":      []string{"ai_security", "dlp"},
 					"depends_on":      []string{"security"},
 				},
@@ -71,6 +73,9 @@ func TestReadToolFamily(t *testing.T) {
 	}
 	if event.Attributes["tool_id"] != "agent-gateway" || event.Attributes["repo"] != "agent-gateway" {
 		t.Fatalf("attrs = %#v, want tool inventory attributes", event.Attributes)
+	}
+	if event.Attributes["repository"] != "WriterInternal/agent-gateway" || event.Attributes["owners"] != "Security" {
+		t.Fatalf("attrs = %#v, want repository and owners attributes", event.Attributes)
 	}
 	if event.Attributes["categories"] != "ai_security,dlp" {
 		t.Fatalf("categories = %q, want ai_security,dlp", event.Attributes["categories"])

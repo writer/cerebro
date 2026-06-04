@@ -1,0 +1,231 @@
+# MCP native Droid setup
+
+This guide covers the Cerebro MCP endpoint from the perspective of native Droid and other Streamable HTTP MCP clients. It focuses on the production-quality contract, local client setup, OAuth behavior, compatibility pitfalls, and the validation path for changes.
+
+## Endpoint contract
+
+Cerebro serves MCP at:
+
+```text
+POST /api/v1/mcp
+```
+
+The endpoint is a stateless Streamable HTTP MCP endpoint:
+
+- Clients send JSON-RPC MCP requests with `POST`.
+- Successful request/response operations return `Content-Type: application/json`.
+- Fire-and-forget JSON-RPC notifications can return `202 Accepted` with an empty body.
+- The server does not issue `Mcp-Session-Id` for stateless responses.
+- `GET /api/v1/mcp` is not an SSE endpoint and returns `405 Method Not Allowed`.
+
+Do not advertise or emulate a stateful SSE session on this route. Native Droid uses the MCP SDK Streamable HTTP client for `type: "http"` servers, and it treats stateful session/SSE signals as part of the transport contract.
+
+## Native Droid client configuration
+
+Use an HTTP MCP server entry. Keep the URL on the MCP route itself, not just the origin.
+
+```json
+{
+  "mcpServers": {
+    "cerebro-prod": {
+      "type": "http",
+      "url": "https://<cerebro-origin>/api/v1/mcp",
+      "disabled": false,
+      "oauth": {
+        "scopes": ["cerebro.cosmo.security.read"],
+        "callbackPort": 53682
+      }
+    }
+  }
+}
+```
+
+For most Droid setups, omit `oauth.clientId`. Omitting it lets Droid use dynamic client registration and register the local callback redirect it actually needs, such as:
+
+```text
+http://localhost:53682/callback
+```
+
+Only configure a static `oauth.clientId` when that client is known to allow the exact Droid redirect URI and requested scopes.
+
+## OAuth flow
+
+Cerebro exposes MCP OAuth metadata so clients can discover authorization behavior from the resource server:
+
+```text
+/.well-known/oauth-protected-resource/api/v1/mcp
+```
+
+When an unauthenticated client calls `POST /api/v1/mcp`, Cerebro returns `401` with a `WWW-Authenticate: Bearer ...` challenge that includes resource metadata and scope information. Droid then:
+
+1. Discovers the protected-resource metadata.
+2. Discovers the authorization server.
+3. Registers or loads an OAuth client.
+4. Opens the browser authorization flow.
+5. Receives the callback on the configured local port.
+6. Exchanges the authorization code for tokens.
+7. Reconnects to `POST /api/v1/mcp` with `Authorization: Bearer <token>`.
+
+Do not log tokens, authorization codes, client secrets, refresh tokens, or full browser callback URLs.
+
+## Initialize response compatibility
+
+Native Droid validates the server initialize response with the MCP SDK schema. The response must keep capability fields schema-compatible with the SDK.
+
+Expected shape:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "protocolVersion": "2025-11-25",
+    "capabilities": {
+      "tools": { "listChanged": false },
+      "resources": { "subscribe": false, "listChanged": false },
+      "prompts": { "listChanged": false }
+    },
+    "serverInfo": {
+      "name": "cerebro",
+      "title": "Cerebro",
+      "version": "<release-version>"
+    }
+  }
+}
+```
+
+Avoid non-standard primitive values under `capabilities.experimental`. For example, do not return:
+
+```json
+{
+  "capabilities": {
+    "experimental": {
+      "stateless": true
+    }
+  }
+}
+```
+
+Some MCP SDK versions validate experimental capability values as object-shaped values. A boolean there can make the authenticated reconnect fail even when OAuth token exchange succeeds.
+
+## Troubleshooting
+
+### `Authentication flow did not start`
+
+Likely causes:
+
+- The configured `oauth.callbackPort` is already bound by another Droid process.
+- A stale Droid/tmux validation session is still running.
+- The MCP config has multiple enabled remote OAuth servers trying to reserve incompatible callback ports.
+
+Checks:
+
+```bash
+lsof -nP -iTCP:<callback-port> -sTCP:LISTEN
+```
+
+Fix:
+
+- Stop stale Droid sessions that own the port, or use a free callback port.
+- Prefer one active Droid authentication attempt per callback port.
+
+### Browser shows `redirect_uri is not registered for client`
+
+Likely cause:
+
+- A static OAuth client is configured, but its allowed redirects do not include Droid's local callback URI.
+
+Fix:
+
+- Remove `oauth.clientId` from the Droid MCP entry and let dynamic client registration create a compatible client.
+- If a static client is required, register the exact callback URI and scope set with the authorization server.
+
+### OAuth token exchange succeeds, then reconnect fails
+
+This means OAuth completed, but the MCP SDK could not complete `client.connect()` against the authenticated transport.
+
+Check the server response for:
+
+- Invalid initialize response schema.
+- Unexpected `Mcp-Session-Id` on a stateless endpoint.
+- `GET /api/v1/mcp` advertising SSE behavior for an HTTP server.
+- Wrong `Content-Type`; JSON-RPC responses should return `application/json`.
+- `401` after successful authentication, usually from missing scopes, expired tokens, or tenant/auth mapping.
+
+Useful local validation:
+
+```bash
+go test ./internal/bootstrap -run 'TestMCP' -count=1
+go test ./internal/bootstrap -count=1
+make mcp-contract-check mcp-sdk-compat
+make lint-bootstrap openapi-check openapi-lint
+```
+
+When debugging with an MCP SDK probe, keep token handling local and redacted. Print only response status, selected headers, server version, and whether capabilities contain unexpected fields.
+
+### Droid shows connected but fewer tools than expected
+
+Check:
+
+- The caller has the needed OAuth scopes.
+- Tool registration did not fail server-side.
+- The deployment is running the expected Cerebro image tag.
+- The MCP tools UI is not filtering disabled tools.
+
+For a healthy production connection, the Droid MCP details screen should show:
+
+```text
+Status: connected
+Type: HTTP
+Tools: <enabled>/<total> enabled
+```
+
+## Server-side implementation rules
+
+Keep the MCP route small and predictable:
+
+- Return JSON-RPC errors as JSON-RPC envelopes.
+- Keep response bodies bounded and redacted.
+- Keep all production tools read-only unless a future change adds explicit dry-run or approval semantics.
+- Preserve tenant authorization before service logic runs.
+- Do not expose source credentials, runtime config secrets, tokens, or raw sensitive asset attributes.
+- Add tests for any transport, auth, or initialize response contract change.
+
+Compatibility regression tests should cover:
+
+- Initialize capabilities are SDK-compatible.
+- Stateless responses do not emit `Mcp-Session-Id`.
+- `GET /api/v1/mcp` is not an SSE endpoint.
+- OAuth-authenticated MCP responses preserve stateless behavior.
+
+## Release and deployment checklist
+
+For public runtime changes:
+
+1. Run focused MCP tests first.
+2. Run the bootstrap package tests.
+3. Run lint/OpenAPI validation when route behavior or docs mention route behavior.
+4. Open a PR and wait for CI.
+5. Merge after checks pass.
+6. Confirm the next public release tag includes the merge commit.
+7. Promote the new image tag through the deployment repository.
+8. Wait for deployment verification.
+9. Re-test native Droid through `/mcp`.
+
+For native Droid validation, verify both:
+
+- OAuth authentication completes.
+- The server reconnects as `connected` and tool listing is populated.
+
+For a deployed endpoint with a short-lived bearer/API token available locally, run:
+
+```bash
+CEREBRO_BASE_URL=https://<cerebro-origin> CEREBRO_MCP_BEARER_TOKEN=<redacted> scripts/mcp_smoke.py
+```
+
+## Security notes
+
+- Never paste OAuth tokens, refresh tokens, authorization codes, or client secrets into PRs, logs, issues, or docs.
+- Sanitize MCP tool outputs before sharing screenshots or terminal captures.
+- Prefer counts, statuses, headers, and versions over raw records when reporting validation evidence.
+- Keep environment-specific hostnames, account IDs, and deployment internals in their environment repository or runbook, not in public documentation.

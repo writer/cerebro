@@ -57,6 +57,7 @@ func New() (*Source, error) {
 					"url":              "url",
 					"status":           "status",
 					"lifecycle_owner":  "lifecycle_owner",
+					"owners":           "owners",
 					"primary_language": "primary_language",
 					"categories":       "categories",
 					"capabilities":     "capabilities",

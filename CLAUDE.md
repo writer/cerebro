@@ -15,8 +15,8 @@ Only repo-specific, non-obvious guidance lives here.
 
 ## Preferred validation entrypoints
 
-- Use `make devex-changed` for diff-aware local preflight.
-- Use `make devex-pr` for broader PR-parity validation.
+- Use focused `make` targets while iterating, then `make verify` for broader PR-parity validation.
+- Use `make sdk-test` after SDK changes and `make proto-generate-check proto-breaking` after proto changes.
 - Prefer `make openapi-check` / `make openapi-sync` instead of hand-editing route placeholders.
 - Run `python3 scripts/oss_audit.py` after public-facing docs/config/example changes.
 

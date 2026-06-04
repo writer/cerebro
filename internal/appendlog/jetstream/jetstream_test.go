@@ -100,6 +100,18 @@ func TestAppendPublishesEnvelope(t *testing.T) {
 	}
 }
 
+func TestRedactNATSURLRemovesCredentials(t *testing.T) {
+	if got := redactNATSURL("nats://user:secret@nats.example:4222"); got != "nats://nats.example:4222" {
+		t.Fatalf("redactNATSURL() = %q, want credential-free URL", got)
+	}
+	if got := redactNATSURL("nats://token@nats.example:4222"); got != "nats://nats.example:4222" {
+		t.Fatalf("redactNATSURL() token URL = %q, want credential-free URL", got)
+	}
+	if got := redactNATSURL("://user:secret@nats.example:4222"); got != "<redacted>" {
+		t.Fatalf("redactNATSURL() malformed URL = %q, want <redacted>", got)
+	}
+}
+
 func TestAppendPublishesCanonicalSecuritySubjectWithoutLegacyPrefix(t *testing.T) {
 	pub := &fakePublisher{}
 	log := &Log{js: pub, subjectPrefix: "events"}

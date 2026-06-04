@@ -65,7 +65,7 @@ func loadMCPOAuthConfig(publicOrigin string) (MCPOAuthConfig, error) {
 	if cfg.StateTTL, err = parseDurationEnv("CEREBRO_MCP_OAUTH_STATE_TTL", defaultMCPOAuthStateTTL); err != nil {
 		return MCPOAuthConfig{}, err
 	}
-	if cfg.DynamicClientRegistration, err = parseBoolEnv("CEREBRO_MCP_OAUTH_DYNAMIC_CLIENT_REGISTRATION_ENABLED", true); err != nil {
+	if cfg.DynamicClientRegistration, err = parseBoolEnv("CEREBRO_MCP_OAUTH_DYNAMIC_CLIENT_REGISTRATION_ENABLED", false); err != nil {
 		return MCPOAuthConfig{}, err
 	}
 	clients, err := parseMCPOAuthClients(os.Getenv("CEREBRO_MCP_OAUTH_CLIENTS_JSON"))
@@ -73,6 +73,11 @@ func loadMCPOAuthConfig(publicOrigin string) (MCPOAuthConfig, error) {
 		return MCPOAuthConfig{}, err
 	}
 	cfg.Clients = clients
+	entitlements, err := parseMCPOAuthEntitlements(os.Getenv("CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON"))
+	if err != nil {
+		return MCPOAuthConfig{}, err
+	}
+	cfg.Entitlements = entitlements
 	if cfg.Enabled {
 		if err := validateMCPOAuthConfig(cfg); err != nil {
 			return MCPOAuthConfig{}, err
@@ -93,18 +98,37 @@ func parseMCPOAuthClients(raw string) ([]MCPOAuthClient, error) {
 	for index := range clients {
 		clients[index].ClientID = strings.TrimSpace(clients[index].ClientID)
 		clients[index].ClientSecret = strings.TrimSpace(clients[index].ClientSecret)
+		clients[index].ClientSecretSHA256 = strings.ToLower(strings.TrimSpace(clients[index].ClientSecretSHA256))
 		clients[index].Name = strings.TrimSpace(clients[index].Name)
 		clients[index].RedirectURIs = normalizeStringSlice(clients[index].RedirectURIs)
+		var err error
+		clients[index].GrantTypes, err = normalizeOAuthGrantTypes(clients[index].GrantTypes)
+		if err != nil {
+			return nil, fmt.Errorf("CEREBRO_MCP_OAUTH_CLIENTS_JSON[%d]: %w", index, err)
+		}
+		clients[index].TenantID = strings.TrimSpace(clients[index].TenantID)
+		clients[index].AllowedTenants = normalizeStringSlice(clients[index].AllowedTenants)
+		clients[index].Scopes = normalizeStringSlice(clients[index].Scopes)
+		clients[index].Groups = normalizeStringSlice(clients[index].Groups)
 		if clients[index].ClientID == "" {
 			return nil, fmt.Errorf("CEREBRO_MCP_OAUTH_CLIENTS_JSON[%d] requires client_id", index)
 		}
-		if clients[index].Public && clients[index].ClientSecret != "" {
-			return nil, fmt.Errorf("CEREBRO_MCP_OAUTH_CLIENTS_JSON[%d] must not set client_secret when public=true", index)
+		if clients[index].Public && (clients[index].ClientSecret != "" || clients[index].ClientSecretSHA256 != "") {
+			return nil, fmt.Errorf("CEREBRO_MCP_OAUTH_CLIENTS_JSON[%d] must not set client_secret or client_secret_sha256 when public=true", index)
 		}
-		if clients[index].ClientSecret == "" {
+		if clients[index].ClientSecret == "" && clients[index].ClientSecretSHA256 == "" {
 			clients[index].Public = true
 		}
-		if len(clients[index].RedirectURIs) == 0 {
+		if containsString(clients[index].GrantTypes, "client_credentials") && clients[index].Public {
+			return nil, fmt.Errorf("CEREBRO_MCP_OAUTH_CLIENTS_JSON[%d] must set client_secret or client_secret_sha256 for client_credentials", index)
+		}
+		if clients[index].ClientSecretSHA256 != "" && !validSHA256Hex(clients[index].ClientSecretSHA256) {
+			return nil, fmt.Errorf("CEREBRO_MCP_OAUTH_CLIENTS_JSON[%d] client_secret_sha256 must be a SHA-256 hex digest", index)
+		}
+		if containsString(clients[index].GrantTypes, "client_credentials") && clients[index].TenantID == "" && len(clients[index].AllowedTenants) == 0 {
+			return nil, fmt.Errorf("CEREBRO_MCP_OAUTH_CLIENTS_JSON[%d] requires tenant_id or allowed_tenants for client_credentials", index)
+		}
+		if containsString(clients[index].GrantTypes, "authorization_code") && len(clients[index].RedirectURIs) == 0 {
 			return nil, fmt.Errorf("CEREBRO_MCP_OAUTH_CLIENTS_JSON[%d] requires at least one redirect_uri", index)
 		}
 		for _, redirectURI := range clients[index].RedirectURIs {
@@ -114,6 +138,58 @@ func parseMCPOAuthClients(raw string) ([]MCPOAuthClient, error) {
 		}
 	}
 	return clients, nil
+}
+
+func parseMCPOAuthEntitlements(raw string) ([]MCPOAuthEntitlement, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	var entitlements []MCPOAuthEntitlement
+	if err := json.Unmarshal([]byte(raw), &entitlements); err != nil {
+		return nil, fmt.Errorf("parse CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON: %w", err)
+	}
+	for index := range entitlements {
+		entitlements[index].Subject = strings.TrimSpace(entitlements[index].Subject)
+		entitlements[index].Email = strings.TrimSpace(entitlements[index].Email)
+		entitlements[index].ClientID = strings.TrimSpace(entitlements[index].ClientID)
+		entitlements[index].Groups = normalizeStringSlice(entitlements[index].Groups)
+		entitlements[index].TenantID = strings.TrimSpace(entitlements[index].TenantID)
+		entitlements[index].AllowedTenants = normalizeStringSlice(entitlements[index].AllowedTenants)
+		entitlements[index].Scopes = normalizeStringSlice(entitlements[index].Scopes)
+		if entitlements[index].Subject == "" && entitlements[index].Email == "" && entitlements[index].ClientID == "" && len(entitlements[index].Groups) == 0 {
+			return nil, fmt.Errorf("CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON[%d] requires subject, email, client_id, or groups", index)
+		}
+		if entitlements[index].TenantID == "" && len(entitlements[index].AllowedTenants) == 0 {
+			return nil, fmt.Errorf("CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON[%d] requires tenant_id or allowed_tenants", index)
+		}
+	}
+	return entitlements, nil
+}
+
+func normalizeOAuthGrantTypes(values []string) ([]string, error) {
+	values = normalizeStringSlice(values)
+	if len(values) == 0 {
+		return []string{"authorization_code", "refresh_token"}, nil
+	}
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		switch value {
+		case "authorization_code", "refresh_token", "client_credentials":
+		default:
+			return nil, fmt.Errorf("unsupported grant_type %q", value)
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	if len(out) == 0 {
+		return []string{"authorization_code", "refresh_token"}, nil
+	}
+	return out, nil
 }
 
 func validateMCPOAuthConfig(cfg MCPOAuthConfig) error {
@@ -132,8 +208,11 @@ func validateMCPOAuthConfig(cfg MCPOAuthConfig) error {
 	if len(cfg.Clients) == 0 && !cfg.DynamicClientRegistration {
 		return fmt.Errorf("CEREBRO_MCP_OAUTH_CLIENTS_JSON or CEREBRO_MCP_OAUTH_DYNAMIC_CLIENT_REGISTRATION_ENABLED=true is required when CEREBRO_MCP_OAUTH_ENABLED=true")
 	}
-	if cfg.TenantID == "" && len(cfg.AllowedTenants) == 0 {
-		return fmt.Errorf("CEREBRO_MCP_OAUTH_TENANT_ID or CEREBRO_MCP_OAUTH_ALLOWED_TENANTS is required when CEREBRO_MCP_OAUTH_ENABLED=true")
+	if requiresInteractiveEntitlement(cfg) && cfg.TenantID == "" && len(cfg.AllowedTenants) == 0 && len(cfg.Entitlements) == 0 {
+		return fmt.Errorf("CEREBRO_MCP_OAUTH_TENANT_ID, CEREBRO_MCP_OAUTH_ALLOWED_TENANTS, or CEREBRO_MCP_OAUTH_ENTITLEMENTS_JSON is required for authorization_code when CEREBRO_MCP_OAUTH_ENABLED=true")
+	}
+	if !requiresInteractiveEntitlement(cfg) && !hasClientCredentialsTenantGrant(cfg.Clients) {
+		return fmt.Errorf("client_credentials clients require tenant_id or allowed_tenants when CEREBRO_MCP_OAUTH_ENABLED=true")
 	}
 	if cfg.Upstream.Issuer == "" {
 		return fmt.Errorf("CEREBRO_MCP_OAUTH_UPSTREAM_ISSUER is required when CEREBRO_MCP_OAUTH_ENABLED=true")
@@ -172,6 +251,27 @@ func validateMCPOAuthConfig(cfg MCPOAuthConfig) error {
 		}
 	}
 	return nil
+}
+
+func hasClientCredentialsTenantGrant(clients []MCPOAuthClient) bool {
+	for _, client := range clients {
+		if containsString(client.GrantTypes, "client_credentials") && (client.TenantID != "" || len(client.AllowedTenants) > 0) {
+			return true
+		}
+	}
+	return false
+}
+
+func requiresInteractiveEntitlement(cfg MCPOAuthConfig) bool {
+	if cfg.DynamicClientRegistration {
+		return true
+	}
+	for _, client := range cfg.Clients {
+		if containsString(client.GrantTypes, "authorization_code") {
+			return true
+		}
+	}
+	return false
 }
 
 func validateAbsoluteHTTPOrigin(name string, raw string) error {
@@ -215,4 +315,28 @@ func isLoopbackOAuthHost(host string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+func containsString(values []string, needle string) bool {
+	for _, value := range values {
+		if value == needle {
+			return true
+		}
+	}
+	return false
+}
+
+func validSHA256Hex(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	for _, r := range value {
+		switch {
+		case r >= '0' && r <= '9':
+		case r >= 'a' && r <= 'f':
+		default:
+			return false
+		}
+	}
+	return true
 }

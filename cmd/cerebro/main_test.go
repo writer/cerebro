@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -24,6 +25,23 @@ func TestRunRejectsUnsupportedCommand(t *testing.T) {
 	var usage usageError
 	if !errors.As(err, &usage) {
 		t.Fatalf("run(unsupported) error = %v, want usageError", err)
+	}
+}
+
+func TestSourceRuntimeCommandSignalsIncludeSIGTERM(t *testing.T) {
+	signals := sourceRuntimeCommandSignals()
+	if len(signals) != 2 || signals[0] != os.Interrupt || signals[1] != syscall.SIGTERM {
+		t.Fatalf("sourceRuntimeCommandSignals() = %#v, want interrupt and SIGTERM", signals)
+	}
+}
+
+func TestSourceRuntimeCommandContextCanBeCanceled(t *testing.T) {
+	ctx, cancel := sourceRuntimeCommandContext()
+	cancel()
+	select {
+	case <-ctx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("source runtime command context did not cancel")
 	}
 }
 
@@ -52,6 +70,26 @@ func TestStartFindingRiskBackfillDoesNotBlockStartup(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("backfill did not finish after release")
+	}
+}
+
+func TestWaitForStartupJobsWaitsForCompletion(t *testing.T) {
+	done := make(chan struct{})
+	waited := make(chan struct{})
+	go func() {
+		waitForStartupJobs(context.Background(), done)
+		close(waited)
+	}()
+	select {
+	case <-waited:
+		t.Fatal("waitForStartupJobs returned before job completed")
+	default:
+	}
+	close(done)
+	select {
+	case <-waited:
+	case <-time.After(time.Second):
+		t.Fatal("waitForStartupJobs did not return after job completed")
 	}
 }
 
@@ -386,6 +424,42 @@ func TestConfigureSourceRuntimeCommandServiceResolvesEnvReferences(t *testing.T)
 	}
 }
 
+func TestSourceRuntimeCommandSyncUsesLeaseStore(t *testing.T) {
+	source := &commandTokenSource{}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &commandRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-command-token": {
+			Id:       "writer-command-token",
+			SourceId: "command_token",
+			Config:   map[string]string{"token": "inline-token"},
+		},
+	}}
+
+	service := configureSourceRuntimeCommandService(sourceruntime.New(registry, store, &commandAppendLog{}, nil))
+	if _, err := service.SyncWithLease(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-command-token"}, sourceruntime.SyncWithLeaseOptions{
+		LeaseStore: sourceRuntimeCommandLeaseStore(store),
+		LeaseOwner: "cli-test-owner",
+		LeaseTTL:   time.Hour,
+	}); err != nil {
+		t.Fatalf("SyncWithLease() error = %v", err)
+	}
+	if store.leaseID != "writer-command-token" || store.releaseID != "writer-command-token" {
+		t.Fatalf("lease/release = %q/%q, want writer-command-token/writer-command-token", store.leaseID, store.releaseID)
+	}
+	if store.leaseOwner != "cli-test-owner" || store.releaseOwner != "cli-test-owner" {
+		t.Fatalf("lease owners = %q/%q, want cli-test-owner", store.leaseOwner, store.releaseOwner)
+	}
+}
+
+func TestSourceRuntimeCommandLeaseOwnerIdentifiesCLI(t *testing.T) {
+	if owner := sourceRuntimeCommandLeaseOwner(); !strings.HasPrefix(owner, "cerebro-cli:") {
+		t.Fatalf("sourceRuntimeCommandLeaseOwner() = %q, want cerebro-cli prefix", owner)
+	}
+}
+
 func TestParseSourceCommandArgsAllowsUnsetSensitiveEnvReference(t *testing.T) {
 	_, _, _, err := parseSourceCommandArgs([]string{"github", "token=env:CEREBRO_MISSING_TOKEN"})
 	if err != nil {
@@ -480,7 +554,11 @@ func (s *commandTokenSource) Read(_ context.Context, config sourcecdk.Config, _ 
 }
 
 type commandRuntimeStore struct {
-	runtimes map[string]*cerebrov1.SourceRuntime
+	runtimes     map[string]*cerebrov1.SourceRuntime
+	leaseID      string
+	leaseOwner   string
+	releaseID    string
+	releaseOwner string
 }
 
 type basicStateStore struct{}
@@ -585,6 +663,22 @@ func (s *commandRuntimeStore) GetSourceRuntime(_ context.Context, id string) (*c
 		return nil, ports.ErrSourceRuntimeNotFound
 	}
 	return runtime, nil
+}
+
+func (s *commandRuntimeStore) AcquireSourceRuntimeLease(_ context.Context, runtimeID string, owner string, _ time.Duration) (bool, error) {
+	s.leaseID = runtimeID
+	s.leaseOwner = owner
+	return true, nil
+}
+
+func (s *commandRuntimeStore) RenewSourceRuntimeLease(context.Context, string, string, time.Duration) (bool, error) {
+	return true, nil
+}
+
+func (s *commandRuntimeStore) ReleaseSourceRuntimeLease(_ context.Context, runtimeID string, owner string) error {
+	s.releaseID = runtimeID
+	s.releaseOwner = owner
+	return nil
 }
 
 type commandAppendLog struct{}

@@ -19,6 +19,7 @@ vendor/
 # Go
 *.test
 go.work
+tmp/
 
 # Environment
 .env

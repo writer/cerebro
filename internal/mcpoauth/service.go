@@ -117,6 +117,8 @@ type TokenResponse struct {
 	Scope        string `json:"scope,omitempty"`
 }
 
+type RevokeResponse struct{}
+
 type ClientRegistrationRequest struct {
 	ClientName              string   `json:"client_name,omitempty"`
 	RedirectURIs            []string `json:"redirect_uris"`
@@ -127,6 +129,8 @@ type ClientRegistrationRequest struct {
 
 type ClientRegistrationResponse struct {
 	ClientID                string   `json:"client_id"`
+	ClientSecret            string   `json:"client_secret,omitempty"`
+	ClientSecretExpiresAt   *int64   `json:"client_secret_expires_at,omitempty"`
 	ClientName              string   `json:"client_name,omitempty"`
 	RedirectURIs            []string `json:"redirect_uris"`
 	GrantTypes              []string `json:"grant_types"`
@@ -157,31 +161,47 @@ func (s *Service) RegisterClient(ctx context.Context, request ClientRegistration
 	if method == "" {
 		method = "none"
 	}
-	if method != "none" {
-		return ClientRegistrationResponse{}, oauthError("invalid_client_metadata", "only public clients with token_endpoint_auth_method=none are supported", statusBadRequest)
+	switch method {
+	case "none", "client_secret_basic", "client_secret_post":
+	default:
+		return ClientRegistrationResponse{}, oauthError("invalid_client_metadata", "token_endpoint_auth_method must be none, client_secret_basic, or client_secret_post", statusBadRequest)
 	}
 	clientID, err := NewOpaqueToken("mcp_client")
 	if err != nil {
 		return ClientRegistrationResponse{}, fmt.Errorf("mcpoauth: generate dynamic client id: %w", err)
 	}
+	clientSecret := ""
+	if method != "none" {
+		clientSecret, err = NewOpaqueToken("mcp_client_secret")
+		if err != nil {
+			return ClientRegistrationResponse{}, fmt.Errorf("mcpoauth: generate dynamic client secret: %w", err)
+		}
+	}
 	client := OAuthClient{
 		ClientID:     clientID,
+		ClientSecret: storedClientSecret(clientSecret),
 		Name:         strings.TrimSpace(request.ClientName),
 		RedirectURIs: redirectURIs,
-		Public:       true,
+		Public:       clientSecret == "",
 		CreatedAt:    s.now().UTC(),
 	}
 	if err := s.store.SaveOAuthClient(ctx, client); err != nil {
 		return ClientRegistrationResponse{}, fmt.Errorf("mcpoauth: save dynamic client: %w", err)
 	}
-	return ClientRegistrationResponse{
+	response := ClientRegistrationResponse{
 		ClientID:                clientID,
+		ClientSecret:            clientSecret,
 		ClientName:              client.Name,
 		RedirectURIs:            cloneStrings(client.RedirectURIs),
 		GrantTypes:              []string{"authorization_code", "refresh_token"},
 		ResponseTypes:           []string{"code"},
-		TokenEndpointAuthMethod: "none",
-	}, nil
+		TokenEndpointAuthMethod: method,
+	}
+	if clientSecret != "" {
+		neverExpires := int64(0)
+		response.ClientSecretExpiresAt = &neverExpires
+	}
+	return response, nil
 }
 
 func (s *Service) Authorize(ctx context.Context, query url.Values) (string, error) {
@@ -191,6 +211,9 @@ func (s *Service) Authorize(ctx context.Context, query url.Values) (string, erro
 	client, ok := s.client(ctx, query.Get("client_id"))
 	if !ok {
 		return "", oauthError("unauthorized_client", "unknown OAuth client", statusBadRequest)
+	}
+	if !clientGrantAllowed(client, "authorization_code") {
+		return "", oauthError("unauthorized_client", "client is not allowed to use authorization_code", statusUnauthorized)
 	}
 	redirectURI := strings.TrimSpace(query.Get("redirect_uri"))
 	if !redirectURIAllowed(client, redirectURI) {
@@ -275,6 +298,10 @@ func (s *Service) Callback(ctx context.Context, query url.Values) (string, error
 	if !containsAny(identity.Groups, s.cfg.Upstream.SecurityGroups) {
 		return "", oauthError("access_denied", "authenticated user is not in an authorized security group", statusForbidden)
 	}
+	entitlement, err := s.entitlementForIdentity(identity, login.ClientID, login.Scopes)
+	if err != nil {
+		return "", err
+	}
 	codeToken, err := NewOpaqueToken("code")
 	if err != nil {
 		return "", fmt.Errorf("mcpoauth: generate code: %w", err)
@@ -287,9 +314,9 @@ func (s *Service) Callback(ctx context.Context, query url.Values) (string, error
 		Resource:       login.Resource,
 		Subject:        firstNonEmpty(identity.Email, identity.Subject),
 		Email:          identity.Email,
-		TenantID:       strings.TrimSpace(s.cfg.TenantID),
-		AllowedTenants: cloneStrings(s.cfg.AllowedTenants),
-		Scopes:         cloneStrings(login.Scopes),
+		TenantID:       entitlement.TenantID,
+		AllowedTenants: cloneStrings(entitlement.AllowedTenants),
+		Scopes:         cloneStrings(entitlement.Scopes),
 		Groups:         []string{"security"},
 		CodeChallenge:  login.CodeChallenge,
 		CreatedAt:      now,
@@ -319,12 +346,42 @@ func (s *Service) Token(ctx context.Context, authorizationHeader string, form ur
 	}
 	switch form.Get("grant_type") {
 	case "authorization_code":
+		if !clientGrantAllowed(client, "authorization_code") {
+			return TokenResponse{}, oauthError("unauthorized_client", "client is not allowed to use authorization_code", statusUnauthorized)
+		}
 		return s.exchangeAuthorizationCode(ctx, client, resource, form)
 	case "refresh_token":
+		if !clientGrantAllowed(client, "refresh_token") {
+			return TokenResponse{}, oauthError("unauthorized_client", "client is not allowed to use refresh_token", statusUnauthorized)
+		}
 		return s.exchangeRefreshToken(ctx, client, resource, form)
+	case "client_credentials":
+		if !clientGrantAllowed(client, "client_credentials") {
+			return TokenResponse{}, oauthError("unauthorized_client", "client is not allowed to use client_credentials", statusUnauthorized)
+		}
+		return s.exchangeClientCredentials(ctx, client, resource, form)
 	default:
-		return TokenResponse{}, oauthError("unsupported_grant_type", "grant_type must be authorization_code or refresh_token", statusBadRequest)
+		return TokenResponse{}, oauthError("unsupported_grant_type", "grant_type must be authorization_code, refresh_token, or client_credentials", statusBadRequest)
 	}
+}
+
+func (s *Service) Revoke(ctx context.Context, authorizationHeader string, form url.Values) (RevokeResponse, error) {
+	client, err := s.authenticateClient(ctx, authorizationHeader, form)
+	if err != nil {
+		return RevokeResponse{}, err
+	}
+	rawToken := form.Get("token")
+	if strings.TrimSpace(rawToken) == "" {
+		return RevokeResponse{}, oauthError("invalid_request", "token is required", statusBadRequest)
+	}
+	token, err := NormalizeOpaqueToken(rawToken)
+	if err != nil {
+		return RevokeResponse{}, nil
+	}
+	if err := s.store.RevokeOAuthRefreshToken(ctx, HashToken(token), client.ClientID); err != nil {
+		return RevokeResponse{}, fmt.Errorf("mcpoauth: revoke refresh token: %w", err)
+	}
+	return RevokeResponse{}, nil
 }
 
 func (s *Service) tokenRequestResource(form url.Values) (string, error) {
@@ -388,6 +445,48 @@ func (s *Service) exchangeRefreshToken(ctx context.Context, client config.MCPOAu
 		return TokenResponse{}, oauthError("invalid_target", "refresh token was issued for a different resource", statusBadRequest)
 	}
 	return s.issueTokenPair(ctx, refreshGrantFromRefresh(record), record.Generation+1)
+}
+
+func (s *Service) exchangeClientCredentials(ctx context.Context, client config.MCPOAuthClient, resource string, form url.Values) (TokenResponse, error) {
+	if client.Public || !clientSecretConfigured(client) {
+		return TokenResponse{}, oauthError("unauthorized_client", "client_credentials requires confidential client authentication", statusUnauthorized)
+	}
+	scopes, err := normalizeRequestedScopes(form.Get("scope"))
+	if err != nil {
+		return TokenResponse{}, err
+	}
+	allowedScopes := cloneStrings(client.Scopes)
+	if len(allowedScopes) == 0 {
+		allowedScopes = []string{ScopeSecurityRead}
+	}
+	if !scopesAllowed(scopes, allowedScopes) {
+		return TokenResponse{}, oauthError("invalid_scope", "requested scope is not allowed for client", statusBadRequest)
+	}
+	grant := AccessGrant{
+		Subject:        "service:" + client.ClientID,
+		ClientID:       client.ClientID,
+		Resource:       resource,
+		TenantID:       strings.TrimSpace(client.TenantID),
+		AllowedTenants: cloneStrings(client.AllowedTenants),
+		Scopes:         scopes,
+		Groups:         []string{"security"},
+	}
+	if len(client.Groups) > 0 {
+		grant.Groups = cloneStrings(client.Groups)
+	}
+	if grant.TenantID == "" && len(grant.AllowedTenants) == 0 {
+		return TokenResponse{}, oauthError("invalid_client", "client_credentials client has no tenant grant", statusUnauthorized)
+	}
+	access, err := s.issueToken(ctx, grant, s.cfg.AccessTTL, s.now().UTC())
+	if err != nil {
+		return TokenResponse{}, err
+	}
+	return TokenResponse{
+		AccessToken: access,
+		TokenType:   "Bearer",
+		ExpiresIn:   int64(s.cfg.AccessTTL.Seconds()),
+		Scope:       strings.Join(scopes, " "),
+	}, nil
 }
 
 func (s *Service) issueTokenPair(ctx context.Context, grant RefreshToken, generation int) (TokenResponse, error) {
@@ -489,13 +588,109 @@ func (s *Service) authenticateClient(ctx context.Context, authorizationHeader st
 	if !ok {
 		return config.MCPOAuthClient{}, oauthError("invalid_client", "unknown OAuth client", statusUnauthorized)
 	}
-	if client.ClientSecret == "" {
+	if !clientSecretConfigured(client) {
 		return client, nil
 	}
-	if !hasSecret || !constantTimeEqual(secret, client.ClientSecret) {
+	if !hasSecret || !clientSecretMatches(client, secret) {
 		return config.MCPOAuthClient{}, oauthError("invalid_client", "client authentication failed", statusUnauthorized)
 	}
 	return client, nil
+}
+
+func clientSecretConfigured(client config.MCPOAuthClient) bool {
+	return strings.TrimSpace(client.ClientSecret) != "" || strings.TrimSpace(client.ClientSecretSHA256) != ""
+}
+
+func clientSecretMatches(client config.MCPOAuthClient, presented string) bool {
+	if secret := strings.TrimSpace(client.ClientSecret); secret != "" && constantTimeEqual(presented, secret) {
+		return true
+	}
+	expectedHash := strings.ToLower(strings.TrimSpace(client.ClientSecretSHA256))
+	if expectedHash == "" {
+		return false
+	}
+	sum := sha256.Sum256([]byte(presented))
+	return constantTimeEqual(fmt.Sprintf("%x", sum[:]), expectedHash)
+}
+
+const storedClientSecretSHA256Prefix = "sha256:"
+
+func storedClientSecret(secret string) string {
+	if secret == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(secret))
+	return storedClientSecretSHA256Prefix + fmt.Sprintf("%x", sum[:])
+}
+
+type grantEntitlement struct {
+	TenantID       string
+	AllowedTenants []string
+	Scopes         []string
+}
+
+func (s *Service) entitlementForIdentity(identity Identity, clientID string, requestedScopes []string) (grantEntitlement, error) {
+	if len(s.cfg.Entitlements) == 0 {
+		return grantEntitlement{
+			TenantID:       strings.TrimSpace(s.cfg.TenantID),
+			AllowedTenants: cloneStrings(s.cfg.AllowedTenants),
+			Scopes:         cloneStrings(requestedScopes),
+		}, nil
+	}
+	for _, entitlement := range s.cfg.Entitlements {
+		if !entitlementMatches(entitlement, identity, clientID) {
+			continue
+		}
+		allowedScopes := cloneStrings(entitlement.Scopes)
+		if len(allowedScopes) == 0 {
+			allowedScopes = []string{ScopeSecurityRead}
+		}
+		if !scopesAllowed(requestedScopes, allowedScopes) {
+			return grantEntitlement{}, oauthError("invalid_scope", "requested scope is not allowed for user", statusBadRequest)
+		}
+		return grantEntitlement{
+			TenantID:       strings.TrimSpace(entitlement.TenantID),
+			AllowedTenants: cloneStrings(entitlement.AllowedTenants),
+			Scopes:         cloneStrings(requestedScopes),
+		}, nil
+	}
+	return grantEntitlement{}, oauthError("access_denied", "authenticated user has no Cerebro tenant entitlement", statusForbidden)
+}
+
+func entitlementMatches(entitlement config.MCPOAuthEntitlement, identity Identity, clientID string) bool {
+	if entitlement.ClientID != "" && entitlement.ClientID != strings.TrimSpace(clientID) {
+		return false
+	}
+	if entitlement.Subject != "" && entitlement.Subject != strings.TrimSpace(identity.Subject) {
+		return false
+	}
+	if entitlement.Email != "" && !strings.EqualFold(entitlement.Email, strings.TrimSpace(identity.Email)) {
+		return false
+	}
+	if len(entitlement.Groups) > 0 && !containsAny(identity.Groups, entitlement.Groups) {
+		return false
+	}
+	return entitlement.ClientID != "" || entitlement.Subject != "" || entitlement.Email != "" || len(entitlement.Groups) > 0
+}
+
+func clientGrantAllowed(client config.MCPOAuthClient, grant string) bool {
+	grants := client.GrantTypes
+	if len(grants) == 0 {
+		grants = []string{"authorization_code", "refresh_token"}
+	}
+	return containsString(grants, grant)
+}
+
+func scopesAllowed(requested []string, allowed []string) bool {
+	if len(requested) == 0 {
+		return false
+	}
+	for _, scope := range requested {
+		if !containsString(allowed, scope) {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Service) client(ctx context.Context, clientID string) (config.MCPOAuthClient, bool) {
@@ -507,15 +702,30 @@ func (s *Service) client(ctx context.Context, clientID string) (config.MCPOAuthC
 	}
 	client, err := s.store.GetOAuthClient(ctx, clientID)
 	if err == nil {
-		return config.MCPOAuthClient{
+		result := config.MCPOAuthClient{
 			ClientID:     client.ClientID,
-			ClientSecret: client.ClientSecret,
 			Name:         client.Name,
 			RedirectURIs: cloneStrings(client.RedirectURIs),
 			Public:       client.Public,
-		}, true
+		}
+		storedSecret := strings.TrimSpace(client.ClientSecret)
+		if strings.HasPrefix(storedSecret, storedClientSecretSHA256Prefix) {
+			result.ClientSecretSHA256 = strings.TrimPrefix(storedSecret, storedClientSecretSHA256Prefix)
+		} else {
+			result.ClientSecret = storedSecret
+		}
+		return result, true
 	}
 	return config.MCPOAuthClient{}, false
+}
+
+func containsString(values []string, needle string) bool {
+	for _, value := range values {
+		if value == needle {
+			return true
+		}
+	}
+	return false
 }
 
 func redirectURIAllowed(client config.MCPOAuthClient, redirectURI string) bool {

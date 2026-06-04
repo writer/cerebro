@@ -100,8 +100,8 @@ func serve() error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	startGRCReadModelWarmup(ctx, deps.StateStore, log.Printf)
-	startFindingRiskBackfill(ctx, app, log.Printf)
+	grcWarmupDone := startGRCReadModelWarmup(ctx, deps.StateStore, log.Printf)
+	riskBackfillDone := startFindingRiskBackfill(ctx, app, log.Printf)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -123,7 +123,21 @@ func serve() error {
 		if err := <-errCh; err != nil {
 			return fmt.Errorf("serve: %w", err)
 		}
+		waitForStartupJobs(shutdownCtx, grcWarmupDone, riskBackfillDone)
 		return nil
+	}
+}
+
+func waitForStartupJobs(ctx context.Context, jobs ...<-chan struct{}) {
+	for _, job := range jobs {
+		if job == nil {
+			continue
+		}
+		select {
+		case <-job:
+		case <-ctx.Done():
+			return
+		}
 	}
 }
 
@@ -295,7 +309,8 @@ func runSourceRuntime(args []string) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
-	ctx := context.Background()
+	ctx, stop := sourceRuntimeCommandContext()
+	defer stop()
 	deps, closeDeps, err := bootstrap.OpenDependencies(ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("open dependencies: %w", err)
@@ -380,9 +395,12 @@ func runSourceRuntime(args []string) error {
 		if err != nil {
 			return err
 		}
-		response, err := service.Sync(ctx, &cerebrov1.SyncSourceRuntimeRequest{
+		response, err := service.SyncWithLease(ctx, &cerebrov1.SyncSourceRuntimeRequest{
 			Id:        runtimeID,
 			PageLimit: pageLimit,
+		}, sourceruntime.SyncWithLeaseOptions{
+			LeaseStore: sourceRuntimeCommandLeaseStore(deps.StateStore),
+			LeaseOwner: sourceRuntimeCommandLeaseOwner(),
 		})
 		if err != nil {
 			return err
@@ -395,6 +413,26 @@ func runSourceRuntime(args []string) error {
 
 func configureSourceRuntimeCommandService(service *sourceruntime.Service) *sourceruntime.Service {
 	return service.WithConfigResolver(appconfig.ResolveSourceRuntimeConfigSecretReferences)
+}
+
+func sourceRuntimeCommandLeaseStore(store ports.StateStore) ports.SourceRuntimeLeaseStore {
+	leaseStore, ok := store.(ports.SourceRuntimeLeaseStore)
+	if !ok {
+		return nil
+	}
+	return leaseStore
+}
+
+func sourceRuntimeCommandLeaseOwner() string {
+	return strings.Replace(sourceruntime.DefaultAPILeaseOwner(), "cerebro-api:", "cerebro-cli:", 1)
+}
+
+func sourceRuntimeCommandContext() (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(context.Background(), sourceRuntimeCommandSignals()...)
+}
+
+func sourceRuntimeCommandSignals() []os.Signal {
+	return []os.Signal{os.Interrupt, syscall.SIGTERM}
 }
 
 func parseSourceCommandArgs(args []string) (string, map[string]string, *cerebrov1.SourceCursor, error) {

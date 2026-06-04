@@ -2,7 +2,7 @@
 
 **Operations data platform for cloud, SaaS, identity, workflow, finding, and graph signals.**
 
-Cerebro is Writer's original operations platform repository. The current `main` branch is centered on a Go bootstrap service with Connect and JSON HTTP APIs, built-in source integrations, source runtime sync, finding and report workflows, append-log replay, and optional graph projection/query tooling.
+Cerebro is Writer's original operations platform repository. The current `main` branch is centered on a Go bootstrap service with Connect and JSON HTTP APIs, built-in source integrations, source runtime sync, finding and report workflows, append-log replay, MCP access, device-authenticated telemetry, and optional graph projection/query tooling.
 
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
@@ -11,22 +11,40 @@ Cerebro is Writer's original operations platform repository. The current `main` 
 
 ## Current capabilities
 
-- **Bootstrap API service** — `net/http` plus Connect RPC handlers for health, sources, runtimes, claims, findings, reports, workflow events, and graph queries.
-- **Source previews and runtime sync** — built-in sources can be checked, discovered, read, persisted as source runtimes, synced through an append log, and projected into state/graph stores when configured.
-- **Finding workflows** — built-in finding rules can evaluate source runtime events, persist evidence/evaluation runs, and drive finding lifecycle actions.
+- **Bootstrap API service** — `net/http` plus Connect RPC handlers for health, source, runtime, claim, finding, candidate, report, workflow, MCP, device, and graph routes.
+- **Source previews and runtime sync** — built-in sources can be checked, discovered, read, bootstrapped from config, persisted as source runtimes, synced through an append log, and projected into state/graph stores when configured.
+- **Finding workflows** — built-in finding rules can evaluate source runtime events, produce candidates, persist evidence/evaluation runs, promote or reject candidates, and drive finding lifecycle actions.
 - **Report runs** — report definitions can be listed and executed with durable run retrieval when a state store is configured.
 - **Workflow event replay** — knowledge decisions, actions, and outcomes can be written and replayed through append-log-backed projections.
-- **Graph operations** — Neo4j/Aura-backed graph counts, neighborhoods, path summaries, integrity checks, source ingest, runtime ingest, and ingest run status, plus isolated dry-run rebuilds.
+- **Graph operations** — Neo4j/Aura-backed graph counts, relation counts, neighborhoods, path summaries, impact queries, graph health, source/runtime ingest, ingest run status, repair/cleanup helpers, and isolated dry-run rebuilds.
+- **MCP and agent surfaces** — an authenticated MCP endpoint, optional OAuth 2.1 authorization-server flow for MCP clients, and an optional graph agent LLM adapter.
+- **Device telemetry surface** — optional first-party device enrollment, token, telemetry ingest, and device vulnerability finding routes.
 - **Policy catalog** — JSON policy definitions under `policies/` for cloud, identity, GitHub, Kubernetes, SaaS, runtime, vulnerability, compliance, and business-operation checks.
 
 Cerebro has historical and forward-looking docs in `docs/`. For current runtime behavior, treat `cmd/cerebro`, `internal/config`, `internal/bootstrap`, `proto/cerebro/v1/bootstrap.proto`, and the Makefile as the source of truth.
 
 ---
 
+## Public boundaries and non-goals
+
+Cerebro exposes JSON HTTP, Connect RPC, CLI, and release artifacts. This repository does not ship an end-user web console, a SIEM/CSPM/CNAPP/EDR/SOAR replacement, an endpoint sensor, a plugin marketplace, a general-purpose graph database product, autonomous remediation, or a cloud-specific control plane.
+
+### Cross-repo contract
+
+This public repository is authoritative for runtime behavior, CLI/API contracts, source catalogs, configuration semantics, and release artifacts. Environment-specific deployment details, stack configuration, account wiring, hostnames, and rollout procedures intentionally live outside this public repo.
+
+The handoff to deployment repositories is the release payload: container images plus `cerebro-runtime-contract.json`. Treat that contract as the bridge between public runtime releases and environment-specific promotion/deploy automation.
+
+Volatile details should stay in their source-of-truth files and be linked from here: configuration variables in `docs/CONFIG_ENV_VARS.md`, API shape in `api/openapi.yaml`, source capabilities in `sources/*/catalog.yaml`, and release/deploy handoff data in `cerebro-runtime-contract.json`.
+
+See [Non-goals](docs/NON_GOALS.md) before changing storage shape, Source CDK boundaries, graph/Cypher behavior, findings workflow contracts, action/runtime response semantics, platform/security namespace boundaries, or public product language.
+
+---
+
 ## Architecture
 
 ```text
-CLI / JSON HTTP / Connect clients
+CLI / JSON HTTP / Connect / MCP clients
               |
               v
       Bootstrap service
@@ -34,13 +52,14 @@ CLI / JSON HTTP / Connect clients
               |
               +--> Source registry, preview, and runtime sync
               +--> Claim, finding, report, workflow, and graph services
+              +--> Optional MCP OAuth and device-auth services
               |
               +--> Optional append log: NATS JetStream
               +--> Optional state store: Postgres
               +--> Optional graph store: Neo4j/Aura
 ```
 
-External dependency drivers are opt-in. With no external drivers configured, the server can start and serve lightweight routes such as `/health`, `/healthz`, and `/sources`. Durable runtime, claim, finding, report, replay, and graph operations require their corresponding stores.
+External dependency drivers are opt-in. With no external drivers configured, the server can start and serve lightweight routes such as `/health`, `/healthz`, `/livez`, and `/sources`. `/health` is the dependency-aware readiness check; `/healthz` and `/livez` are liveness-only checks. Durable runtime, claim, finding, report, replay, and graph operations require their corresponding stores.
 
 ---
 
@@ -48,7 +67,7 @@ External dependency drivers are opt-in. With no external drivers configured, the
 
 ### Prerequisites
 
-- Go 1.26+; this repo pins toolchain `go1.26.2`.
+- Go 1.26+; this repo pins toolchain `go1.26.3`.
 - Optional: NATS JetStream for append-log-backed sync/replay.
 - Optional: Postgres for durable source runtime, claim, finding, evidence, evaluation, and report state.
 - Optional: Neo4j or AuraDB for graph projection/query operations.
@@ -89,17 +108,37 @@ The compose stack starts Cerebro with NATS JetStream, Postgres, and Neo4j using 
 
 ---
 
+## Choose your path
+
+| Goal | Start here | Notes |
+| --- | --- | --- |
+| Run the lightweight server | `make serve` | Starts the API without external stores; useful for health, source catalog, and OpenAPI checks. |
+| Run the durable local stack | `docker compose up --build` | Starts Cerebro with NATS JetStream, Postgres, and Neo4j. |
+| Explore the API | `GET /openapi.yaml` or `api/openapi.yaml` | JSON HTTP routes are generated and checked against the OpenAPI contract. |
+| Preview a source | `./bin/cerebro source check/discover/read ...` | Source config is passed as `key=value` pairs or HTTP query parameters. |
+| Persist and sync a runtime | `source-runtime put/get/list/sync` | Requires Postgres; sync also requires JetStream. |
+| Work on graph behavior | `graph counts`, `graph health`, `graph ingest-runtime` | Requires Neo4j/Aura and, for runtime-backed operations, the configured runtime stores. |
+| Author policies or finding rules | `policies/`, `internal/findings`, and catalog checks | Run the relevant catalog and finding-rule tests before opening a PR. |
+
+---
+
 ## Configuration
 
-The bootstrap binary currently reads these environment variables:
+The bootstrap binary currently reads core, auth, store, graph-agent, MCP OAuth, device-auth, and source-config environment variables through `internal/config`.
+
+Core runtime and store variables:
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
 | `CEREBRO_HTTP_ADDR` | HTTP listen address | `:8080` |
 | `CEREBRO_SHUTDOWN_TIMEOUT` | graceful shutdown timeout | `10s` |
+| `CEREBRO_IMAGE_TAG` | image tag exported by release/deploy tooling | unset |
 | `CEREBRO_API_AUTH_ENABLED` | require bearer/API-key auth for non-public routes | `false` |
 | `CEREBRO_API_KEYS` | comma-separated `key[:principal[:tenant_id]]` entries | unset |
+| `CEREBRO_API_CREDENTIALS_JSON` | structured bearer credentials with scopes and tenant metadata | unset |
 | `CEREBRO_ALLOWED_TENANTS` | optional tenant allowlist for unscoped API keys | unset |
+| `CEREBRO_CAPABILITY_TOKEN_SECRETS` | comma-separated HMAC secrets for capability-token auth | unset |
+| `CEREBRO_CAPABILITY_TOKEN_AUDIENCE` | expected capability-token audience | `cerebro-api` |
 | `CEREBRO_PUBLIC_ORIGIN` | canonical external origin for DPoP and proxy-aware URL reconstruction | request host |
 | `CEREBRO_TRUSTED_PROXY_CIDRS` | comma-separated trusted proxy/load-balancer CIDRs for forwarded headers | private/link-local remotes |
 | `CEREBRO_TRUSTED_PROXY_COUNT` | trusted trailing `X-Forwarded-For` hops | `0` |
@@ -113,6 +152,15 @@ The bootstrap binary currently reads these environment variables:
 | `CEREBRO_NEO4J_USERNAME` | Neo4j/Aura username | unset |
 | `CEREBRO_NEO4J_PASSWORD` | Neo4j/Aura password | unset |
 | `CEREBRO_NEO4J_DATABASE` | optional Neo4j database name; empty uses the server default | unset |
+
+Advanced config families include:
+
+| Variable family | Purpose |
+| --- | --- |
+| `source-runtime bootstrap env=<env-var>`, `CEREBRO_SOURCE_CONFIG_ENV_ALLOWLIST`, `CEREBRO_AWS_ASSUME_ROLE_ARNS` | bootstrap source runtimes and allow `env:` source config references |
+| `CEREBRO_GRAPH_AGENT_LLM_*`, `CEREBRO_OPENROUTER_API_KEY` | optional graph-agent LLM provider/model settings |
+| `CEREBRO_MCP_OAUTH_*` | optional OAuth 2.1 authorization-server surface for MCP clients |
+| `CEREBRO_DEVICE_AUTH_*` | optional first-party device enrollment, token, DPoP, attestation, and telemetry controls |
 
 Driver selection is inferred when a driver-specific setting is present. For example, `CEREBRO_POSTGRES_DSN` selects the Postgres state store, and `CEREBRO_NEO4J_URI` selects the Neo4j graph store.
 
@@ -144,6 +192,8 @@ export CEREBRO_NEO4J_PASSWORD='local-password'
 | Workflow replay | NATS JetStream append log plus configured projection stores |
 | Graph query/ingest operations | Neo4j/Aura graph store; runtime-backed graph operations also need Postgres and/or JetStream |
 | Graph rebuild dry-runs | Postgres state store; replay mode also needs NATS JetStream append log |
+| MCP endpoint | API auth; OAuth mode additionally requires Postgres, public origin, client/upstream config, and capability-token secrets |
+| Device-auth telemetry | API auth, device-auth signing keys, and a device-auth-capable state store |
 
 ---
 
@@ -163,26 +213,31 @@ Build first with `make build`, then run `./bin/cerebro`.
 ./bin/cerebro source read github owner=writer repo=cerebro per_page=1
 
 # Source runtimes require configured stores
-./bin/cerebro source-runtime put writer-github github tenant_id=writer owner=writer repo=cerebro
-./bin/cerebro source-runtime get writer-github
-./bin/cerebro source-runtime sync writer-github page_limit=1
+./bin/cerebro source-runtime list
+./bin/cerebro source-runtime bootstrap env=SOURCE_RUNTIMES_JSON
+./bin/cerebro source-runtime put example-github github tenant_id=example owner=writer repo=cerebro
+./bin/cerebro source-runtime get example-github
+./bin/cerebro source-runtime sync example-github page_limit=1
 
-# Finding rule scaffolding
+# Finding rule scaffolding and graph-backed evaluation
 ./bin/cerebro finding-rule new identity-example source_id=okta event_kinds=okta.user name="Example identity rule" dry_run=true
+./bin/cerebro finding-rule graph-evaluate <rule-id> tenant_id=example limit=10
 
 # Graph inspection and ingest require a configured graph store
 ./bin/cerebro graph counts
+./bin/cerebro graph relation-counts
 ./bin/cerebro graph neighborhood <root-urn> limit=10
 ./bin/cerebro graph paths limit=10
 ./bin/cerebro graph integrity
-./bin/cerebro graph ingest github tenant_id=writer owner=writer repo=cerebro page_limit=1
-./bin/cerebro graph ingest-runtime writer-github page_limit=1
+./bin/cerebro graph health
+./bin/cerebro graph ingest github tenant_id=example owner=writer repo=cerebro page_limit=1
+./bin/cerebro graph ingest-runtime example-github page_limit=1
 ./bin/cerebro graph ingest-run <run-id>
-./bin/cerebro graph ingest-runs runtime_id=writer-github
-./bin/cerebro graph rebuild writer-github dry_run=true mode=replay
+./bin/cerebro graph ingest-runs runtime_id=example-github
+./bin/cerebro graph rebuild example-github dry_run=true mode=replay
 ```
 
-Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-rule`, and `graph`.
+Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-rule`, `graph`, `orchestrator`, `vulndb`, and `closeout`.
 
 ---
 
@@ -190,13 +245,22 @@ Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-
 
 | Source ID | Description | Emitted kinds / families |
 | --- | --- | --- |
-| `aws` | AWS IAM inventory and CloudTrail source | `aws.access_key`, `aws.cloudtrail`, `aws.iam_*`, `aws.resource_exposure` |
-| `azure` | Azure Entra ID, RBAC, activity, and audit source | `azure.activity_log`, `azure.directory_audit`, `azure.user`, `azure.group`, `azure.*assignment`, `azure.resource_exposure` |
-| `gcp` | GCP IAM, Cloud Identity, service-account, and audit source | `gcp.audit`, `gcp.group`, `gcp.iam_role_assignment`, `gcp.service_account*`, `gcp.resource_exposure` |
-| `github` | GitHub audit, Dependabot, and pull request source | `github.audit`, `github.dependabot_alert`, `github.pull_request` |
-| `google_workspace` | Google Workspace Directory and Admin audit source | `google_workspace.audit`, `google_workspace.group`, `google_workspace.group_member`, `google_workspace.role_assignment`, `google_workspace.user` |
-| `okta` | Okta audit, identity inventory, app, group, assignment, and admin role source | `okta.audit`, `okta.admin_role`, `okta.app_assignment`, `okta.application`, `okta.group`, `okta.group_membership`, `okta.user` |
+| `aurelius` | SaaS/business-operation export source | configured catalog families |
+| `aws` | AWS IAM, cloud, workload, network exposure, and CloudTrail source | access keys, IAM users/groups/roles/trust, EC2, ECS, EKS, Lambda, public endpoints, resource exposure, CloudTrail |
+| `azure` | Azure Entra ID, RBAC, activity, and audit source | activity logs, directory audit, users, groups, role/app assignments, service principals, credentials, resource exposure |
+| `backstage` | Backstage catalog source | components |
+| `cosmo` | Cosmo workflow and message source | messages, survey feedback, configured families |
+| `gcp` | GCP IAM, Cloud Identity, service-account, and audit source | audit, groups, IAM role assignments, service accounts, resource exposure |
+| `github` | GitHub audit, repository, Dependabot, and pull request source | audit, repository, Dependabot alerts, pull requests |
+| `google_workspace` | Google Workspace Directory and Admin audit source | audit, groups, group members, role assignments, users |
+| `grc` | Governance/risk/compliance source | configured GRC families |
+| `kandji` | Kandji device/application/vulnerability source | devices, applications, vulnerabilities |
+| `kolide` | Kolide device posture source | configured catalog families |
+| `okta` | Okta audit, identity inventory, app, group, authenticator, assignment, and admin role source | audit, users, groups, applications, assignments, admin roles, authenticators, threat insight |
 | `sdk` | Generic SDK push source for onboarded applications | validates pushed integration config; preview reads are empty |
+| `sentinelone` | SentinelOne endpoint posture and threat source | agents, threats, activities, applications, exclusions, groups, sites |
+| `security_tooling_map` | Security tooling inventory source | configured tooling-map families |
+| `vulnview` | Vulnerability and attack-surface source | sites, scans, vulnerabilities, assets, DNS alerts |
 
 Source-specific configuration is passed as `key=value` pairs in CLI calls or query parameters in HTTP calls. Required keys vary by source and family.
 
@@ -204,44 +268,20 @@ Source-specific configuration is passed as `key=value` pairs in CLI calls or que
 
 ## HTTP and Connect API surface
 
-Connect RPC procedures are served under `/cerebro.v1.BootstrapService/{Method}`. The server also registers JSON HTTP routes:
+Connect RPC procedures are served under `/cerebro.v1.BootstrapService/{Method}`. JSON HTTP is described by `api/openapi.yaml` and is served by the binary at `GET /openapi.yaml`.
 
-| Route | Purpose |
-| --- | --- |
-| `GET /health`, `GET /healthz` | service and dependency health |
-| `GET /sources` | list registered sources |
-| `GET /sources/{sourceID}/check` | validate source configuration |
-| `GET /sources/{sourceID}/discover` | discover source collections |
-| `GET /sources/{sourceID}/read` | preview source events |
-| `PUT /source-runtimes/{runtimeID}` | create/update a source runtime |
-| `GET /source-runtimes/{runtimeID}` | load a source runtime |
-| `POST /source-runtimes/{runtimeID}/sync` | sync a source runtime |
-| `GET /source-runtimes/{runtimeID}/claims` | list runtime claims |
-| `POST /source-runtimes/{runtimeID}/claims` | write runtime claims |
-| `GET /source-runtimes/{runtimeID}/findings` | list runtime findings |
-| `GET /source-runtimes/{runtimeID}/finding-evidence` | list runtime finding evidence |
-| `GET /source-runtimes/{runtimeID}/finding-evaluation-runs` | list runtime finding evaluation runs |
-| `POST /source-runtimes/{runtimeID}/finding-rules/evaluate` | evaluate finding rules |
-| `POST /source-runtimes/{runtimeID}/findings/evaluate` | evaluate findings |
-| `GET /finding-rules` | list built-in finding rules |
-| `GET /findings/{findingID}` | get finding details |
-| `POST /findings/{findingID}/resolve` | resolve a finding |
-| `POST /findings/{findingID}/suppress` | suppress a finding |
-| `PUT /findings/{findingID}/assign` | assign a finding |
-| `PUT /findings/{findingID}/due` | set a finding due date |
-| `POST /findings/{findingID}/notes` | add a finding note |
-| `POST /findings/{findingID}/tickets` | link a ticket |
-| `GET /finding-evidence/{evidenceID}` | get finding evidence |
-| `GET /finding-evaluation-runs/{runID}` | get evaluation run details |
-| `GET /reports` | list report definitions |
-| `POST /reports/{reportID}/runs` | run a report |
-| `GET /report-runs/{runID}` | get a report run |
-| `POST /platform/knowledge/decisions` | write a knowledge decision |
-| `POST /platform/knowledge/actions` | write a workflow action |
-| `POST /platform/knowledge/actions/recommendation` | write an action recommendation |
-| `POST /platform/knowledge/outcomes` | write a workflow outcome |
-| `POST /platform/workflow/replay` | replay workflow events |
-| `GET /platform/graph/neighborhood` | query graph neighborhood |
+Major route groups include:
+
+- Public health and metadata: `/health` readiness, `/healthz` and `/livez` liveness, `/openapi.yaml`, OAuth protected-resource/authorization-server metadata.
+- Source catalog and previews: `/sources`, `/sources/{sourceID}/check`, `/discover`, `/read`.
+- Source runtime operations: `/source-runtimes`, runtime `sync`, claims, findings, candidates, evidence, evaluation runs, and graph ingest runs.
+- Finding and candidate lifecycle: `/finding-rules`, `/findings/*`, `/finding-candidates/*`, `/finding-evidence/*`, `/finding-evaluation-runs/*`.
+- Reports and workflow events: `/reports`, `/report-runs`, `/platform/knowledge/*`, `/platform/workflow/replay`.
+- Graph platform APIs: `/platform/graph/neighborhood`, impact, attack paths, crown-jewel rankings, AWS public endpoint insights, ingest health, and ingest run retrieval.
+- MCP: `/api/v1/mcp` over GET/POST.
+- Device auth and telemetry when enabled: `/platform/devices/*`, `/platform/telemetry/ingest`, and `/.well-known/device-jwks.json`.
+
+When auth is enabled, only health/OpenAPI and OAuth/device metadata-style routes are public; platform, source, finding, report, graph, MCP, and device mutation routes require appropriate authentication and scopes.
 
 ---
 
@@ -263,10 +303,47 @@ make lint           # golangci-lint over app packages
 make proto-lint     # buf lint
 make check          # build, tests, lint, proto lint, structural checks, arch tests
 make verify         # CI-parity local verification
+make doctor         # check required local developer tools
+make release-smoke  # validate GoReleaser config
+make docker-smoke   # build the runtime Dockerfile locally
+make oss-audit      # public repository hygiene scan
 make clean          # remove bin/
 ```
 
-Focused validation and utility targets include `make workflow-e2e-test`, `make workflow-replay-test`, `make finding-rule-test`, `make graph-rebuild-dryrun`, `make workflow-replay`, and `make workflow-neighborhood`.
+Focused validation and utility targets include `make openapi-check`, `make openapi-lint`, `make catalog-check`, `make detection-catalog-check`, `make workflow-e2e-test`, `make workflow-replay-test`, `make finding-rule-test`, `make graph-rebuild-dryrun`, `make workflow-replay`, and `make workflow-neighborhood`.
+
+Public-facing docs, config, or example changes should run:
+
+```bash
+python3 scripts/oss_audit.py
+```
+
+Choose validators by change type:
+
+| Change type | Minimum local validation |
+| --- | --- |
+| README-only | `git diff --check README.md` and `make oss-audit` |
+| Go runtime/API change | `make test` plus focused package tests |
+| OpenAPI route or handler change | `make openapi-check openapi-lint` |
+| Proto change | `make proto-lint` and generated contract checks when applicable |
+| Source catalog or policy change | `make catalog-check detection-catalog-check` |
+| Public docs/config/examples | `make oss-audit` |
+| Broad PR preflight | `make verify` |
+
+---
+
+## Release and deploy artifacts
+
+Releases are tag-driven (`vMAJOR.MINOR.PATCH[-PRERELEASE]`). The release workflow runs the same verify shards as CI, publishes GoReleaser binaries, builds multi-arch runtime images at `ghcr.io/writer/cerebro:<tag>`, signs images and runtime deploy contracts with cosign, and uploads `cerebro-runtime-contract.json` plus its signature/certificate to the GitHub release.
+
+`cmd/sourcedeploy` renders source deployment fragments and the runtime deploy contract from `sources/*/deploy.yaml` manifests:
+
+```bash
+go run ./cmd/sourcedeploy -env <env> -tenant <tenant> -format yaml
+go run ./cmd/sourcedeploy -env <env> -tenant <tenant> -format contract-json -image-tag vX.Y.Z
+```
+
+If release-promotion secrets are configured, release publishes can dispatch downstream deployment proposal workflows. The repository still treats deployments as explicit, validated, and reviewable.
 
 ---
 
@@ -277,7 +354,10 @@ Some files in `docs/` describe broader or historical architecture and may be ahe
 | Document | Notes |
 | --- | --- |
 | [API contracts](docs/API_CONTRACTS_AUTOGEN.md) | current bootstrap HTTP and Connect contract reference |
+| [API reference](docs/API_REFERENCE.md) | OpenAPI-oriented route reference |
 | [CloudEvents](docs/CLOUDEVENTS_AUTOGEN.md) | generated event contract reference |
+| [Configuration](docs/CONFIGURATION.md) | configuration and deployment notes |
+| [MCP native Droid setup](docs/MCP_DROID_SETUP.md) | native Droid MCP setup, OAuth flow, transport compatibility, and troubleshooting |
 | [Graph ontology](docs/GRAPH_ONTOLOGY_AUTOGEN.md) | generated graph ontology reference |
 | [Graph report contracts](docs/GRAPH_REPORT_CONTRACTS_AUTOGEN.md) | generated graph/report contract reference |
 | [Non-goals](docs/NON_GOALS.md) | what Cerebro intentionally does not try to do, with rationale and enforcement pointers |
@@ -291,15 +371,15 @@ Some files in `docs/` describe broader or historical architecture and may be ahe
 
 | Component | Technology |
 | --- | --- |
-| Language | Go 1.26+ (`go1.26.2` toolchain) |
+| Language | Go 1.26+ (`go1.26.3` toolchain) |
 | HTTP server | Go `net/http` `ServeMux` |
 | RPC | Connect |
 | CLI | Standard Go CLI under `cmd/cerebro` |
 | Append log | NATS JetStream |
 | State store | Postgres |
 | Graph store | Neo4j/Aura |
-| Source integrations | AWS, Azure, GCP, GitHub, Google Workspace, Okta, SDK |
-| Validation | `go test`, `golangci-lint`, Buf, custom structural linters, arch tests |
+| Source integrations | Aurelius, AWS, Azure, Backstage, Cosmo, GCP, GitHub, Google Workspace, GRC, Kandji, Kolide, Okta, SDK, SentinelOne, Security Tooling Map, VulnView |
+| Validation | `go test`, `golangci-lint`, Buf, Spectral, catalog checks, OSS audit, custom structural linters, arch tests |
 
 ---
 

@@ -26,22 +26,33 @@ tags:
 paths:
   /health:
     get:
-      summary: Health check
+      summary: Readiness check
       tags:
         - Health
       security: []
       responses:
         '200':
-          description: Service health and dependency status.
+          description: Service is ready and configured dependencies are healthy.
+        '503':
+          description: Service is live but one or more configured dependencies are degraded.
   /healthz:
     get:
-      summary: Health check alias
+      summary: Liveness check
       tags:
         - Health
       security: []
       responses:
         '200':
-          description: Service health and dependency status.
+          description: Service process is live.
+  /livez:
+    get:
+      summary: Liveness check
+      tags:
+        - Health
+      security: []
+      responses:
+        '200':
+          description: Service process is live.
   /openapi.yaml:
     get:
       summary: Current OpenAPI contract
@@ -53,16 +64,12 @@ paths:
           description: Embedded OpenAPI YAML.
   /api/v1/mcp:
     get:
-      summary: Open MCP Streamable HTTP event stream
+      summary: Reject MCP stateful event-stream transport
       tags:
         - MCP
       responses:
-        '200':
-          description: MCP server-sent event stream.
-          content:
-            text/event-stream:
-              schema:
-                type: string
+        '405':
+          description: Cerebro's MCP route is stateless Streamable HTTP over POST only; GET is not an SSE endpoint.
     post:
       summary: Invoke MCP JSON-RPC method
       tags:
@@ -82,6 +89,14 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+        '202':
+          description: Accepted MCP notification or client message with no response body.
+        '400':
+          description: Unsupported or invalid MCP protocol version.
+        '401':
+          description: Authentication is required.
+        '403':
+          description: Request origin or authorization scope is not allowed.
   /sources:
     get:
       summary: List registered sources
@@ -166,6 +181,10 @@ paths:
       responses:
         '200':
           description: Stored source runtime.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PutSourceRuntimeResponse'
     get:
       summary: Get source runtime configuration
       tags:
@@ -175,6 +194,10 @@ paths:
       responses:
         '200':
           description: Stored source runtime.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetSourceRuntimeResponse'
   /source-runtimes/{runtimeID}/sync:
     post:
       summary: Sync one source runtime through the append log and projections
@@ -205,15 +228,29 @@ paths:
       responses:
         '200':
           description: Claim list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListClaimsResponse'
     post:
       summary: Write claims for one runtime
       tags:
         - Sources
       parameters:
         - $ref: '#/components/parameters/runtimeID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WriteClaimsRequest'
       responses:
         '200':
           description: Claim write result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WriteClaimsResponse'
   /source-runtimes/{runtimeID}/findings:
     get:
       summary: List findings for one runtime
@@ -893,6 +930,10 @@ paths:
       responses:
         '200':
           description: Neighborhood result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetEntityNeighborhoodResponse'
   /platform/graph/impact/vulnerability/{id}:
     get:
       summary: Query vulnerability impact graph
@@ -1434,8 +1475,8 @@ paths:
           description: Authenticated human is not authorized for MCP access.
   /oauth/token:
     post:
-      summary: Exchange MCP OAuth authorization or refresh token
-      description: Issues a resource-bound bearer capability token for MCP after PKCE verification or refresh-token rotation.
+      summary: Exchange MCP OAuth token grants
+      description: Issues a resource-bound bearer capability token for MCP after PKCE verification, refresh-token rotation, or confidential client_credentials authentication.
       tags:
         - OAuth
       security: []
@@ -1451,7 +1492,7 @@ paths:
               properties:
                 grant_type:
                   type: string
-                  enum: [authorization_code, refresh_token]
+                  enum: [authorization_code, refresh_token, client_credentials]
                 client_id:
                   type: string
                 resource:
@@ -1490,10 +1531,43 @@ paths:
           description: Invalid token request or grant.
         '401':
           description: Client authentication failed.
+  /oauth/revoke:
+    post:
+      summary: Revoke an MCP OAuth refresh token
+      description: Revokes the refresh-token family associated with a client-owned MCP OAuth refresh token. Access tokens remain short-lived and resource-bound.
+      tags:
+        - OAuth
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [token]
+              additionalProperties:
+                type: string
+              properties:
+                token:
+                  type: string
+                token_type_hint:
+                  type: string
+                  enum: [refresh_token]
+                client_id:
+                  type: string
+                client_secret:
+                  type: string
+      responses:
+        '200':
+          description: Token revocation processed.
+        '400':
+          description: Invalid revocation request.
+        '401':
+          description: Client authentication failed.
   /oauth/register:
     post:
       summary: Dynamically register an MCP OAuth client
-      description: Registers a public MCP client with loopback redirect URIs for OAuth authorization-code + PKCE.
+      description: Registers an MCP client with loopback redirect URIs for OAuth authorization-code + PKCE. Confidential dynamic clients receive a generated client secret.
       tags:
         - OAuth
       security: []
@@ -1524,7 +1598,7 @@ paths:
                     enum: [code]
                 token_endpoint_auth_method:
                   type: string
-                  enum: [none]
+                  enum: [none, client_secret_basic, client_secret_post]
       responses:
         '201':
           description: Dynamic client registration response.
@@ -1536,6 +1610,11 @@ paths:
                 properties:
                   client_id:
                     type: string
+                  client_secret:
+                    type: string
+                  client_secret_expires_at:
+                    type: integer
+                    description: Zero means the generated dynamic client secret does not expire.
                   client_name:
                     type: string
                   redirect_uris:
@@ -1553,7 +1632,7 @@ paths:
                       type: string
                   token_endpoint_auth_method:
                     type: string
-                    enum: [none]
+                    enum: [none, client_secret_basic, client_secret_post]
         '400':
           description: Invalid client metadata.
         '429':
@@ -1732,7 +1811,8 @@ components:
             type: string
         ttl_seconds:
           type: integer
-          minimum: 1
+          minimum: 0
+          description: Optional override in seconds. Omit or set 0 to use the configured default TTL.
     IssueBootstrapTokenResponse:
       type: object
       required: [token_id, token, expires_at]
@@ -1781,19 +1861,155 @@ components:
       required: [runtime]
       properties:
         runtime:
+          $ref: '#/components/schemas/SourceRuntime'
+    PutSourceRuntimeResponse:
+      type: object
+      properties:
+        runtime:
+          $ref: '#/components/schemas/SourceRuntime'
+    GetSourceRuntimeResponse:
+      type: object
+      properties:
+        runtime:
+          $ref: '#/components/schemas/SourceRuntime'
+    SourceRuntime:
+      type: object
+      required: [source_id, tenant_id]
+      properties:
+        id:
+          type: string
+        source_id:
+          type: string
+        tenant_id:
+          type: string
+        config:
           type: object
-          required: [id, sourceId, tenantId]
-          properties:
-            id:
-              type: string
-            sourceId:
-              type: string
-            tenantId:
-              type: string
-            config:
-              type: object
-              additionalProperties:
-                type: string
+          additionalProperties:
+            type: string
+        checkpoint:
+          type: object
+          additionalProperties: true
+        next_cursor:
+          type: object
+          additionalProperties: true
+        last_synced_at:
+          type: string
+          format: date-time
+    EntityRef:
+      type: object
+      required: [urn, entity_type]
+      properties:
+        urn:
+          type: string
+        entity_type:
+          type: string
+        label:
+          type: string
+    Claim:
+      type: object
+      required: [predicate]
+      properties:
+        id:
+          type: string
+        subject_urn:
+          type: string
+        subject_ref:
+          $ref: '#/components/schemas/EntityRef'
+        predicate:
+          type: string
+        object_urn:
+          type: string
+        object_ref:
+          $ref: '#/components/schemas/EntityRef'
+        object_value:
+          type: string
+        claim_type:
+          type: string
+        status:
+          type: string
+        source_event_id:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        valid_from:
+          type: string
+          format: date-time
+        valid_to:
+          type: string
+          format: date-time
+        attributes:
+          type: object
+          additionalProperties:
+            type: string
+    WriteClaimsRequest:
+      type: object
+      required: [claims]
+      properties:
+        runtime_id:
+          type: string
+          description: Optional in HTTP JSON; the path runtimeID is authoritative.
+        claims:
+          type: array
+          items:
+            $ref: '#/components/schemas/Claim'
+        replace_existing:
+          type: boolean
+    WriteClaimsResponse:
+      type: object
+      properties:
+        claims_written:
+          type: integer
+          minimum: 0
+        entities_upserted:
+          type: integer
+          minimum: 0
+        relation_links_projected:
+          type: integer
+          minimum: 0
+        claims_retracted:
+          type: integer
+          minimum: 0
+    ListClaimsResponse:
+      type: object
+      properties:
+        claims:
+          type: array
+          items:
+            $ref: '#/components/schemas/Claim'
+    GraphEntity:
+      type: object
+      required: [urn, entity_type, label]
+      properties:
+        urn:
+          type: string
+        entity_type:
+          type: string
+        label:
+          type: string
+    GraphRelation:
+      type: object
+      required: [from_urn, relation, to_urn]
+      properties:
+        from_urn:
+          type: string
+        relation:
+          type: string
+        to_urn:
+          type: string
+    GetEntityNeighborhoodResponse:
+      type: object
+      properties:
+        root:
+          $ref: '#/components/schemas/GraphEntity'
+        neighbors:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphEntity'
+        relations:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphRelation'
     FindingEvaluationRun:
       type: object
       properties:

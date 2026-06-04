@@ -67,6 +67,7 @@ type App struct {
 	observationStore      risk.ObservationStore
 	mcpOAuthService       *mcpoauth.Service
 	mcpOAuthRegisterLimit *deviceauth.TokenBucket
+	mcpOAuthEndpointLimit *deviceauth.TokenBucket
 }
 
 type bootstrapService struct {
@@ -155,6 +156,7 @@ func NewWithError(cfg config.Config, deps Dependencies, sources *sourcecdk.Regis
 	}
 	if cfg.Auth.MCPOAuth.Enabled {
 		app.mcpOAuthRegisterLimit = deviceauth.NewTokenBucket(oauthRegisterRatePerSecond, oauthRegisterBurst)
+		app.mcpOAuthEndpointLimit = deviceauth.NewTokenBucket(oauthEndpointRatePerSecond, oauthEndpointBurst)
 		service, err := mcpoauth.NewService(cfg.Auth.MCPOAuth, oauthStore, func(ctx context.Context, grant mcpoauth.AccessGrant, ttl time.Duration, now time.Time) (string, error) {
 			return issueCapabilityToken(cfg.Auth, capabilityClaims{
 				Audience:       cfg.Auth.CapabilityTokenAudience,
@@ -214,7 +216,15 @@ func (a *App) Shutdown(ctx context.Context) error {
 
 func (a *App) handleHealth(w http.ResponseWriter, r *http.Request) {
 	response := publicHealthResponse(r.Context(), a.deps)
-	writeProtoJSON(w, http.StatusOK, response)
+	statusCode := http.StatusOK
+	if response.GetStatus() == "degraded" {
+		statusCode = http.StatusServiceUnavailable
+	}
+	writeProtoJSON(w, statusCode, response)
+}
+
+func (a *App) handleLiveness(w http.ResponseWriter, _ *http.Request) {
+	writeProtoJSON(w, http.StatusOK, publicLivenessResponse())
 }
 
 func (a *App) handleOpenAPI(w http.ResponseWriter, _ *http.Request) {
@@ -2549,6 +2559,13 @@ func publicHealthResponse(ctx context.Context, deps Dependencies) *cerebrov1.Che
 		Status:     status,
 		CheckedAt:  timestamppb.Now(),
 		Components: components,
+	}
+}
+
+func publicLivenessResponse() *cerebrov1.CheckHealthResponse {
+	return &cerebrov1.CheckHealthResponse{
+		Status:    "live",
+		CheckedAt: timestamppb.Now(),
 	}
 }
 

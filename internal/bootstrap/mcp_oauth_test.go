@@ -212,6 +212,9 @@ func TestMCPOAuthFlowIssuesCapabilityTokenForMCP(t *testing.T) {
 		body, _ := io.ReadAll(mcpResp.Body)
 		t.Fatalf("MCP status = %d body=%s", mcpResp.StatusCode, body)
 	}
+	if got := mcpResp.Header.Get("Mcp-Session-Id"); got != "" {
+		t.Fatalf("MCP OAuth Mcp-Session-Id = %q, want empty for stateless MCP", got)
+	}
 	var mcpPayload map[string]any
 	if err := json.NewDecoder(mcpResp.Body).Decode(&mcpPayload); err != nil {
 		t.Fatalf("decode MCP payload: %v", err)
@@ -248,6 +251,105 @@ func TestMCPOAuthFlowIssuesCapabilityTokenForMCP(t *testing.T) {
 	store.mu.Unlock()
 	if !rotatedRefreshRecord.ExpiresAt.Equal(originalRefreshRecord.ExpiresAt) {
 		t.Fatalf("rotated refresh expiration = %v, want family expiration %v", rotatedRefreshRecord.ExpiresAt, originalRefreshRecord.ExpiresAt)
+	}
+	revokeResp := revokeMCPOAuthTokenRaw(t, server, url.Values{
+		"client_id": {"droid"},
+		"token":     {refreshed.RefreshToken},
+	})
+	_ = revokeResp.Body.Close()
+	if revokeResp.StatusCode != http.StatusOK {
+		t.Fatalf("revoke status = %d, want 200", revokeResp.StatusCode)
+	}
+	revokedRefresh := exchangeMCPOAuthTokenRaw(t, server, url.Values{
+		"grant_type":    {"refresh_token"},
+		"client_id":     {"droid"},
+		"resource":      {"https://cerebro.example/api/v1/mcp"},
+		"refresh_token": {refreshed.RefreshToken},
+	})
+	_ = revokedRefresh.Body.Close()
+	if revokedRefresh.StatusCode != http.StatusBadRequest {
+		t.Fatalf("revoked refresh status = %d, want 400", revokedRefresh.StatusCode)
+	}
+}
+
+func TestMCPOAuthClientCredentialsIssuesMCPOnlyToken(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer upstream.Close()
+
+	cfg := testMCPOAuthConfig("http://127.0.0.1/callback", upstream.URL)
+	cfg.Auth.MCPOAuth.Clients = []config.MCPOAuthClient{{
+		ClientID:       "panopticon",
+		ClientSecret:   "client-secret",
+		GrantTypes:     []string{"client_credentials"},
+		AllowedTenants: []string{"writer"},
+		Scopes:         []string{scopeCosmoSecurityRead},
+		Groups:         []string{"security"},
+	}}
+	app, err := NewWithError(cfg, Dependencies{StateStore: newMemoryMCPOAuthStore()}, nil)
+	if err != nil {
+		t.Fatalf("NewWithError: %v", err)
+	}
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	form := url.Values{
+		"grant_type": {"client_credentials"},
+		"resource":   {"https://cerebro.example/api/v1/mcp"},
+		"scope":      {scopeCosmoSecurityRead},
+	}
+	req, err := http.NewRequest(http.MethodPost, server.URL+oauthTokenPath, strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatalf("NewRequest token: %v", err)
+	}
+	req.SetBasicAuth("panopticon", "client-secret")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST token: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("client_credentials status = %d body=%s", resp.StatusCode, body)
+	}
+	var tokenResp mcpoauth.TokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		t.Fatalf("decode token response: %v", err)
+	}
+	if tokenResp.AccessToken == "" || tokenResp.RefreshToken != "" {
+		t.Fatalf("client_credentials token response = %#v", tokenResp)
+	}
+
+	mcpReq, err := http.NewRequest(http.MethodPost, server.URL+mcpEndpointPath, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`))
+	if err != nil {
+		t.Fatalf("NewRequest MCP: %v", err)
+	}
+	mcpReq.Header.Set("Authorization", "Bearer "+tokenResp.AccessToken)
+	mcpReq.Header.Set("Content-Type", "application/json")
+	mcpReq.Header.Set("MCP-Protocol-Version", mcpProtocolVersion)
+	mcpResp, err := server.Client().Do(mcpReq)
+	if err != nil {
+		t.Fatalf("POST MCP with M2M token: %v", err)
+	}
+	_ = mcpResp.Body.Close()
+	if mcpResp.StatusCode != http.StatusOK {
+		t.Fatalf("MCP status with M2M token = %d, want 200", mcpResp.StatusCode)
+	}
+
+	nonMCPReq, err := http.NewRequest(http.MethodGet, server.URL+"/reports", nil)
+	if err != nil {
+		t.Fatalf("NewRequest non-MCP: %v", err)
+	}
+	nonMCPReq.Header.Set("Authorization", "Bearer "+tokenResp.AccessToken)
+	nonMCPResp, err := server.Client().Do(nonMCPReq)
+	if err != nil {
+		t.Fatalf("GET reports with M2M token: %v", err)
+	}
+	_ = nonMCPResp.Body.Close()
+	if nonMCPResp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("non-MCP status with M2M token = %d, want 401", nonMCPResp.StatusCode)
 	}
 }
 
@@ -404,7 +506,8 @@ func TestMCPOAuthDynamicClientRegistration(t *testing.T) {
 	clientRedirect := "http://127.0.0.1:39123/callback"
 	cfg := testMCPOAuthConfig(clientRedirect, upstream.URL)
 	cfg.Auth.MCPOAuth.Clients = nil
-	app, err := NewWithError(cfg, Dependencies{StateStore: newMemoryMCPOAuthStore()}, nil)
+	store := newMemoryMCPOAuthStore()
+	app, err := NewWithError(cfg, Dependencies{StateStore: store}, nil)
 	if err != nil {
 		t.Fatalf("NewWithError: %v", err)
 	}
@@ -423,8 +526,12 @@ func TestMCPOAuthDynamicClientRegistration(t *testing.T) {
 	if metadata["registration_endpoint"] != "https://cerebro.example/oauth/register" {
 		t.Fatalf("registration_endpoint = %#v", metadata["registration_endpoint"])
 	}
+	authMethods, ok := metadata["token_endpoint_auth_methods_supported"].([]any)
+	if !ok || len(authMethods) == 0 || authMethods[0] != "none" {
+		t.Fatalf("token_endpoint_auth_methods_supported = %#v, want none first for public MCP clients", metadata["token_endpoint_auth_methods_supported"])
+	}
 
-	registerBody := strings.NewReader(`{"client_name":"Droid","redirect_uris":["` + clientRedirect + `"],"grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none"}`)
+	registerBody := strings.NewReader(`{"client_name":"Droid","redirect_uris":["` + clientRedirect + `"],"grant_types":["authorization_code","refresh_token"],"response_types":["code"]}`)
 	registerResp, err := server.Client().Post(server.URL+oauthRegisterPath, "application/json", registerBody)
 	if err != nil {
 		t.Fatalf("POST register: %v", err)
@@ -468,6 +575,86 @@ func TestMCPOAuthDynamicClientRegistration(t *testing.T) {
 	if badRegisterResp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("bad register status = %d, want 400", badRegisterResp.StatusCode)
 	}
+
+	confidentialRegisterResp, err := server.Client().Post(server.URL+oauthRegisterPath, "application/json", strings.NewReader(`{"client_name":"Droid confidential","redirect_uris":["`+clientRedirect+`"],"grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"client_secret_basic"}`))
+	if err != nil {
+		t.Fatalf("POST confidential register: %v", err)
+	}
+	defer func() { _ = confidentialRegisterResp.Body.Close() }()
+	if confidentialRegisterResp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(confidentialRegisterResp.Body)
+		t.Fatalf("confidential register status = %d body=%s", confidentialRegisterResp.StatusCode, body)
+	}
+	var confidential mcpoauth.ClientRegistrationResponse
+	if err := json.NewDecoder(confidentialRegisterResp.Body).Decode(&confidential); err != nil {
+		t.Fatalf("decode confidential register response: %v", err)
+	}
+	if confidential.ClientID == "" || confidential.ClientSecret == "" || confidential.TokenEndpointAuthMethod != "client_secret_basic" || confidential.ClientSecretExpiresAt == nil || *confidential.ClientSecretExpiresAt != 0 {
+		t.Fatalf("confidential client = %#v", confidential)
+	}
+	store.mu.Lock()
+	storedConfidential := store.clients[confidential.ClientID]
+	store.mu.Unlock()
+	if storedConfidential.Public || storedConfidential.ClientSecret == "" || storedConfidential.ClientSecret == confidential.ClientSecret {
+		t.Fatalf("stored confidential client = %#v", storedConfidential)
+	}
+	wrongSecretResp := exchangeMCPOAuthTokenRaw(t, server, url.Values{
+		"grant_type":    {"refresh_token"},
+		"client_id":     {confidential.ClientID},
+		"client_secret": {"wrong-secret"},
+		"resource":      {"https://cerebro.example/api/v1/mcp"},
+		"refresh_token": {"refresh_dummy"},
+	})
+	_ = wrongSecretResp.Body.Close()
+	if wrongSecretResp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("wrong confidential secret token status = %d, want 401", wrongSecretResp.StatusCode)
+	}
+	correctSecretReq, err := http.NewRequest(http.MethodPost, server.URL+oauthTokenPath, strings.NewReader(url.Values{
+		"grant_type":    {"refresh_token"},
+		"resource":      {"https://cerebro.example/api/v1/mcp"},
+		"refresh_token": {"refresh_dummy"},
+	}.Encode()))
+	if err != nil {
+		t.Fatalf("NewRequest confidential token: %v", err)
+	}
+	correctSecretReq.SetBasicAuth(confidential.ClientID, confidential.ClientSecret)
+	correctSecretReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	correctSecretResp, err := server.Client().Do(correctSecretReq)
+	if err != nil {
+		t.Fatalf("POST confidential token: %v", err)
+	}
+	_ = correctSecretResp.Body.Close()
+	if correctSecretResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("correct confidential secret token status = %d, want 400 invalid_grant", correctSecretResp.StatusCode)
+	}
+
+	postRegisterResp, err := server.Client().Post(server.URL+oauthRegisterPath, "application/json", strings.NewReader(`{"client_name":"Droid post","redirect_uris":["`+clientRedirect+`"],"grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"client_secret_post"}`))
+	if err != nil {
+		t.Fatalf("POST client_secret_post register: %v", err)
+	}
+	defer func() { _ = postRegisterResp.Body.Close() }()
+	if postRegisterResp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(postRegisterResp.Body)
+		t.Fatalf("client_secret_post register status = %d body=%s", postRegisterResp.StatusCode, body)
+	}
+	var postClient mcpoauth.ClientRegistrationResponse
+	if err := json.NewDecoder(postRegisterResp.Body).Decode(&postClient); err != nil {
+		t.Fatalf("decode client_secret_post response: %v", err)
+	}
+	if postClient.ClientID == "" || postClient.ClientSecret == "" || postClient.TokenEndpointAuthMethod != "client_secret_post" {
+		t.Fatalf("client_secret_post client = %#v", postClient)
+	}
+	postSecretResp := exchangeMCPOAuthTokenRaw(t, server, url.Values{
+		"grant_type":    {"refresh_token"},
+		"client_id":     {postClient.ClientID},
+		"client_secret": {postClient.ClientSecret},
+		"resource":      {"https://cerebro.example/api/v1/mcp"},
+		"refresh_token": {"refresh_dummy"},
+	})
+	_ = postSecretResp.Body.Close()
+	if postSecretResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("client_secret_post token status = %d, want 400 invalid_grant", postSecretResp.StatusCode)
+	}
 }
 
 func TestMCPOAuthDynamicClientRegistrationRateLimitsByClientIP(t *testing.T) {
@@ -499,6 +686,124 @@ func TestMCPOAuthDynamicClientRegistrationRateLimitsByClientIP(t *testing.T) {
 	handler.ServeHTTP(resp, req)
 	if resp.Code != http.StatusTooManyRequests {
 		t.Fatalf("rate-limited registration status = %d body=%s, want 429", resp.Code, resp.Body.String())
+	}
+}
+
+func TestMCPOAuthAuditTelemetryIncludesSafeTokenShape(t *testing.T) {
+	cfg := testMCPOAuthConfig("http://127.0.0.1:39123/callback", "https://writer-sso.example")
+	app := &App{cfg: cfg}
+	form := url.Values{
+		"grant_type": {"authorization_code"},
+		"client_id":  {"droid"},
+		"resource":   {"https://cerebro.example/api/v1/mcp"},
+		"scope":      {scopeCosmoSecurityRead},
+		"code":       {"test-code"},
+	}
+	req := httptest.NewRequest(http.MethodPost, oauthTokenPath, strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte("droid:test-client-credential")))
+	req.Header.Set("X-Request-ID", "oauth-req-1")
+	if err := req.ParseForm(); err != nil {
+		t.Fatalf("ParseForm: %v", err)
+	}
+
+	stderr := captureBootstrapStderr(t, func() {
+		app.emitOAuthAuditEvent(req, "token", http.StatusBadRequest, "rejected", "invalid_target", "droid", time.Now())
+	})
+	payload := decodeBootstrapTelemetryPayload(t, stderr)
+	for key, want := range map[string]any{
+		"name":                       "cerebro.oauth.mcp",
+		"operation":                  "token",
+		"outcome":                    "rejected",
+		"status_code":                float64(http.StatusBadRequest),
+		"reason":                     "invalid_target",
+		"request_id":                 "oauth-req-1",
+		"oauth.grant_type":           "authorization_code",
+		"oauth.client_auth_method":   "client_secret_basic",
+		"oauth.resource_present":     true,
+		"oauth.resource_matches_mcp": true,
+		"oauth.scope_count":          float64(1),
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	for _, key := range []string{"resource", "code", "client_secret", "access_token", "refresh_token"} {
+		if _, exists := payload[key]; exists {
+			t.Fatalf("telemetry recorded sensitive OAuth field %q: %#v", key, payload)
+		}
+	}
+}
+
+func TestMCPOAuthAuditTelemetryIncludesSafeRegistrationShape(t *testing.T) {
+	app := &App{cfg: testMCPOAuthConfig("http://127.0.0.1:39123/callback", "https://writer-sso.example")}
+	request := mcpoauth.ClientRegistrationRequest{
+		ClientName:              "Droid",
+		RedirectURIs:            []string{"http://127.0.0.1:39123/callback"},
+		GrantTypes:              []string{"authorization_code", "refresh_token"},
+		ResponseTypes:           []string{"code"},
+		TokenEndpointAuthMethod: "none",
+	}
+	req := httptest.NewRequest(http.MethodPost, oauthRegisterPath, nil)
+
+	stderr := captureBootstrapStderr(t, func() {
+		app.emitOAuthAuditEvent(req, "register", http.StatusCreated, "success", "", "mcp_client_redacted", time.Now(), oauthAuditRegistrationFields(request)...)
+	})
+	payload := decodeBootstrapTelemetryPayload(t, stderr)
+	for key, want := range map[string]any{
+		"name":                      "cerebro.oauth.mcp",
+		"operation":                 "register",
+		"outcome":                   "success",
+		"status_code":               float64(http.StatusCreated),
+		"oauth.redirect_uri_count":  float64(1),
+		"oauth.grant_type_count":    float64(2),
+		"oauth.response_type_count": float64(1),
+		"oauth.client_auth_method":  "none",
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	for _, key := range []string{"redirect_uris", "client_name", "client_secret"} {
+		if _, exists := payload[key]; exists {
+			t.Fatalf("telemetry recorded raw registration field %q: %#v", key, payload)
+		}
+	}
+}
+
+func TestMCPOAuthAuditTelemetryIncludesSafeRevocationShape(t *testing.T) {
+	app := &App{cfg: testMCPOAuthConfig("http://127.0.0.1:39123/callback", "https://writer-sso.example")}
+	form := url.Values{
+		"client_id":       {"droid"},
+		"token":           {"test-token"},
+		"token_type_hint": {"refresh_token"},
+	}
+	req := httptest.NewRequest(http.MethodPost, oauthRevokePath, strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if err := req.ParseForm(); err != nil {
+		t.Fatalf("ParseForm: %v", err)
+	}
+
+	stderr := captureBootstrapStderr(t, func() {
+		app.emitOAuthAuditEvent(req, "revoke", http.StatusOK, "success", "", "droid", time.Now())
+	})
+	payload := decodeBootstrapTelemetryPayload(t, stderr)
+	for key, want := range map[string]any{
+		"name":                          "cerebro.oauth.mcp",
+		"operation":                     "revoke",
+		"outcome":                       "success",
+		"status_code":                   float64(http.StatusOK),
+		"oauth.client_auth_method":      "none",
+		"oauth.token_type_hint_present": true,
+	} {
+		if got := payload[key]; got != want {
+			t.Fatalf("telemetry %s = %#v, want %#v; payload=%#v", key, got, want, payload)
+		}
+	}
+	for _, key := range []string{"token", "token_type_hint", "client_secret", "access_token", "refresh_token"} {
+		if _, exists := payload[key]; exists {
+			t.Fatalf("telemetry recorded sensitive revocation field %q: %#v", key, payload)
+		}
 	}
 }
 
@@ -570,6 +875,20 @@ func exchangeMCPOAuthTokenRaw(t *testing.T, server *httptest.Server, form url.Va
 	resp, err := server.Client().Do(req)
 	if err != nil {
 		t.Fatalf("POST token: %v", err)
+	}
+	return resp
+}
+
+func revokeMCPOAuthTokenRaw(t *testing.T, server *httptest.Server, form url.Values) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, server.URL+oauthRevokePath, strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatalf("NewRequest revoke: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST revoke: %v", err)
 	}
 	return resp
 }
@@ -719,6 +1038,17 @@ func (s *memoryMCPOAuthStore) RevokeOAuthRefreshFamily(_ context.Context, family
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.families[familyID] = true
+	return nil
+}
+
+func (s *memoryMCPOAuthStore) RevokeOAuthRefreshToken(_ context.Context, tokenHash [32]byte, clientID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.refresh[hashKey(tokenHash)]
+	if !ok || record.value.ClientID != clientID {
+		return nil
+	}
+	s.families[record.value.FamilyID] = true
 	return nil
 }
 

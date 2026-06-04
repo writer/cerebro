@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
@@ -118,6 +119,9 @@ func authMiddleware(cfg config.AuthConfig, deps AuthDependencies, next http.Hand
 		if deviceJKT != "" {
 			if err := verifyDPoPHeader(deps.DPoPVerifier, r, origin.PublicURL, deviceJKT, presentedToken); err != nil {
 				denialReason = "dpop_invalid"
+				if errors.Is(err, deviceauth.ErrDPoPVerifierUnavailable) {
+					denialReason = "dpop_unavailable"
+				}
 				writeDeviceAuthServiceError(recorder, err)
 				return
 			}
@@ -178,7 +182,7 @@ func authMiddleware(cfg config.AuthConfig, deps AuthDependencies, next http.Hand
 // must equal the expected jkt that was bound at enroll time.
 func verifyDPoPHeader(verifier *deviceauth.DPoPVerifier, r *http.Request, publicURL string, expectedJKT string, accessToken string) error {
 	if verifier == nil {
-		return nil
+		return deviceauth.ErrDPoPVerifierUnavailable
 	}
 	proof := strings.TrimSpace(r.Header.Get("DPoP"))
 	if proof == "" {
@@ -220,13 +224,13 @@ func authInterceptor(cfg config.AuthConfig) connect.Interceptor {
 
 func isPublicPath(path string) bool {
 	switch path {
-	case "/health", "/healthz", "/openapi.yaml":
+	case "/health", "/healthz", "/livez", "/openapi.yaml":
 		return true
 	case "/.well-known/device-jwks.json":
 		return true
 	case oauthProtectedResourceMetadataPath, oauthProtectedResourceMetadataMCPPath, oauthAuthorizationServerMetadataPath:
 		return true
-	case oauthAuthorizePath, oauthCallbackPath, oauthTokenPath, oauthRegisterPath:
+	case oauthAuthorizePath, oauthCallbackPath, oauthTokenPath, oauthRevokePath, oauthRegisterPath:
 		return true
 	default:
 		return false
@@ -346,6 +350,7 @@ func authenticateCapabilityToken(cfg config.AuthConfig, token string, now time.T
 	var header struct {
 		Algorithm string `json:"alg"`
 		Type      string `json:"typ"`
+		KeyID     string `json:"kid,omitempty"`
 	}
 	if err := json.Unmarshal(headerBytes, &header); err != nil || header.Algorithm != "HS256" {
 		return authPrincipal{}, false
@@ -402,6 +407,7 @@ type capabilityClaims struct {
 	AllowedTenants []string `json:"allowed_tenants,omitempty"`
 	Scopes         []string `json:"scopes,omitempty"`
 	Groups         []string `json:"groups,omitempty"`
+	JWTID          string   `json:"jti,omitempty"`
 }
 
 func validCapabilitySignature(signingInput []byte, signature []byte, secrets []string) bool {
@@ -438,7 +444,14 @@ func issueCapabilityToken(cfg config.AuthConfig, claims capabilityClaims, ttl ti
 	if strings.TrimSpace(claims.Audience) == "" {
 		claims.Audience = cfg.CapabilityTokenAudience
 	}
-	headerBytes, err := json.Marshal(map[string]string{"alg": "HS256", "typ": "JWT"})
+	if strings.TrimSpace(claims.JWTID) == "" {
+		jti, err := randomTokenID()
+		if err != nil {
+			return "", err
+		}
+		claims.JWTID = jti
+	}
+	headerBytes, err := json.Marshal(map[string]string{"alg": "HS256", "typ": "JWT", "kid": "0"})
 	if err != nil {
 		return "", fmt.Errorf("marshal capability token header: %w", err)
 	}
@@ -453,6 +466,14 @@ func issueCapabilityToken(cfg config.AuthConfig, claims capabilityClaims, ttl ti
 	_, _ = mac.Write([]byte(signingInput))
 	signature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 	return signingInput + "." + signature, nil
+}
+
+func randomTokenID() (string, error) {
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", fmt.Errorf("generate token id: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(raw[:]), nil
 }
 
 func requestTenantHint(r *http.Request) string {
@@ -574,8 +595,11 @@ func authorizeHTTPRequestScope(auth authContext, r *http.Request) error {
 }
 
 func authorizeMCPTokenResource(cfg config.AuthConfig, principal authPrincipal, r *http.Request) error {
-	if !cfg.MCPOAuth.Enabled || principal.CredentialID != "mcp-oauth" {
+	if principal.CredentialID != "mcp-oauth" {
 		return nil
+	}
+	if !cfg.MCPOAuth.Enabled {
+		return errScopeForbidden
 	}
 	if strings.TrimSpace(principal.TokenResource) != strings.TrimSpace(cfg.MCPOAuth.Resource) {
 		return errScopeForbidden

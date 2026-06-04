@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,6 +7,19 @@ name = "cerebro-sdk"
 version = "0.1.0"
 description = "Generated Python SDK for the Cerebro Agent SDK and report runtime"
 requires-python = ">=3.10"
+license = "Apache-2.0"
+dependencies = [
+  "protobuf>=5.29.5,<6",
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+
+[project.urls]
+Repository = "https://github.com/writer/cerebro"
 
 [tool.setuptools.packages.find]
 where = ["."]

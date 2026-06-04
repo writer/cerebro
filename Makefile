@@ -1,4 +1,4 @@
-.PHONY: build serve test workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke lint lint-bootstrap proto-lint proto-generate openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check oss-audit govulncheck droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: build serve test sdk-test sdk-python-test sdk-typescript-test sdk-typescript-check workflow-e2e-test workflow-replay-test finding-rule-test github-findings-e2e github-findings-graph-preview github-audit-findings-graph-preview workflow-replay workflow-neighborhood graph-rebuild-dryrun candidate-smoke mcp-contract-check mcp-smoke mcp-sdk-compat lint lint-bootstrap proto-lint proto-generate proto-generate-check proto-breaking openapi-check openapi-lint openapi-sync catalog-check detection-catalog-generate detection-catalog-check readme-check oss-audit govulncheck docker-smoke release-smoke doctor droid-review-preflight droid-review-sast droid-ci-context droid-review-context droid-post-merge-health droid-feedback clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
@@ -6,6 +6,11 @@ GOLANGCI_LINT_VERSION ?= v2.11.4
 BUF := GOFLAGS= GOTOOLCHAIN=go1.26.3 go run github.com/bufbuild/buf/cmd/buf@v1.59.0
 GOVULNCHECK := GOFLAGS= GOTOOLCHAIN=go1.26.3 go run golang.org/x/vuln/cmd/govulncheck@v1.1.4
 SPECTRAL := npx --yes @stoplight/spectral-cli@6.15.0
+GORELEASER := GOFLAGS= GOTOOLCHAIN=go1.26.3 go run github.com/goreleaser/goreleaser/v2@v2.16.0
+PROTO_BREAKING_BASE ?= origin/main
+README_CHECK_BASE ?= origin/main
+DOCKER_SMOKE_IMAGE ?= cerebro-runtime-smoke:local
+DOCKER_SMOKE_GOARCH ?= amd64
 APP_PACKAGES := ./api/... ./cmd/... ./internal/... ./sources/...
 LINTER_MODULE := ./tools/linters
 LINTER_BIN := $(GO_BIN)/cerebrolint
@@ -30,6 +35,9 @@ GRAPH_REBUILD_PAGE_LIMIT ?= 1
 GRAPH_REBUILD_EVENT_LIMIT ?= 100
 GRAPH_REBUILD_PREVIEW_LIMIT ?= 10
 CANDIDATE_SMOKE_EVENT_LIMIT ?= 25
+MCP_SDK_ROOT ?= tmp/mcp-sdk-compat
+MCP_SDK_PACKAGE ?= @modelcontextprotocol/sdk@latest
+MCP_SDK_TEST_TOKEN ?= mcp-sdk-test-key
 DROID_REVIEW_BASE ?= origin/main
 DROID_REVIEW_HEAD ?= HEAD
 DROID_PREFLIGHT_JSON_OUT ?= tmp/droid-preflight.json
@@ -54,6 +62,17 @@ serve: build
 
 test:
 	go test ./...
+
+sdk-test: sdk-python-test sdk-typescript-test sdk-typescript-check
+
+sdk-python-test:
+	cd sdk/python && python3 -m pip install 'protobuf>=5.29.5,<6' && python3 -m unittest discover -s tests
+
+sdk-typescript-test:
+	cd sdk/typescript && npm test
+
+sdk-typescript-check:
+	cd sdk/typescript && npm ci && npm run typecheck
 
 workflow-e2e-test:
 	go test $(WORKFLOW_E2E_PACKAGES) -run '$(WORKFLOW_E2E_TESTS)$$' -count=1 -v
@@ -100,6 +119,25 @@ candidate-smoke:
 	@if [ -z "$(RUNTIME_ID)" ]; then echo "RUNTIME_ID is required, e.g. make candidate-smoke RUNTIME_ID=writer-okta-audit RULE_ID=rule-id CEREBRO_BASE_URL=https://..." >&2; exit 2; fi
 	CEREBRO_CANDIDATE_SMOKE_RUNTIME_ID="$(RUNTIME_ID)" CEREBRO_CANDIDATE_SMOKE_RULE_ID="$(RULE_ID)" CEREBRO_CANDIDATE_SMOKE_EVENT_LIMIT="$(CANDIDATE_SMOKE_EVENT_LIMIT)" python3 scripts/candidate_smoke.py
 
+mcp-contract-check:
+	python3 scripts/mcp_contract_check.py
+
+mcp-smoke:
+	python3 scripts/mcp_smoke.py
+
+mcp-sdk-compat: build
+	@set -e; \
+	mkdir -p "$(MCP_SDK_ROOT)"; \
+	if [ ! -f "$(MCP_SDK_ROOT)/package.json" ]; then printf '%s\n' '{"type":"module","private":true}' > "$(MCP_SDK_ROOT)/package.json"; fi; \
+	npm install --prefix "$(MCP_SDK_ROOT)" --no-audit --no-fund "$(MCP_SDK_PACKAGE)"; \
+	port=$$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()'); \
+	log="tmp/mcp-sdk-compat-server.log"; \
+	CEREBRO_HTTP_ADDR="127.0.0.1:$$port" CEREBRO_API_AUTH_ENABLED=true CEREBRO_API_KEYS="$(MCP_SDK_TEST_TOKEN):mcp-sdk:writer" ./bin/cerebro serve > "$$log" 2>&1 & pid=$$!; \
+	trap 'kill "$$pid" >/dev/null 2>&1 || true; wait "$$pid" >/dev/null 2>&1 || true' EXIT; \
+	for _ in $$(seq 1 50); do python3 -c 'import sys, urllib.request; url=sys.argv[1]; urllib.request.urlopen(url, timeout=0.5).read()' "http://127.0.0.1:$$port/health" >/dev/null 2>&1 && break; sleep 0.1; done; \
+	CEREBRO_BASE_URL="http://127.0.0.1:$$port" CEREBRO_MCP_BEARER_TOKEN="$(MCP_SDK_TEST_TOKEN)" python3 scripts/mcp_smoke.py --skip-unauthenticated-check; \
+	CEREBRO_MCP_URL="http://127.0.0.1:$$port/api/v1/mcp" CEREBRO_MCP_BEARER_TOKEN="$(MCP_SDK_TEST_TOKEN)" CEREBRO_MCP_SDK_ROOT="$(CURDIR)/$(MCP_SDK_ROOT)" node scripts/mcp_sdk_compat.mjs
+
 lint: lint-bootstrap
 	$(GOLANGCI_LINT) run --timeout 5m $(APP_PACKAGES)
 
@@ -111,6 +149,12 @@ proto-lint:
 
 proto-generate:
 	$(BUF) generate
+
+proto-generate-check: proto-generate
+	git diff --exit-code -- gen sdk/python/cerebro/v1
+
+proto-breaking:
+	$(BUF) breaking --against '.git#branch=$(PROTO_BREAKING_BASE)'
 
 openapi-check:
 	go run ./scripts/openapi_route_parity.go
@@ -130,11 +174,43 @@ detection-catalog-generate:
 detection-catalog-check:
 	go run ./tools/detectioncatalog --check
 
+readme-check:
+	@base_ref="$(README_CHECK_BASE)"; \
+	if git rev-parse --verify "$$base_ref" >/dev/null 2>&1; then \
+		base="$$(git merge-base HEAD "$$base_ref")"; \
+	else \
+		base="$$(git rev-list --max-parents=0 HEAD)"; \
+	fi; \
+	git diff --check "$$base"..HEAD -- README.md
+	python3 scripts/readme_check.py
+
 oss-audit:
 	python3 scripts/oss_audit.py
 
 govulncheck:
 	$(GOVULNCHECK) ./...
+
+docker-smoke:
+	@command -v docker >/dev/null || { echo "docker is required for docker-smoke" >&2; exit 2; }
+	mkdir -p .dist
+	CGO_ENABLED=0 GOOS=linux GOARCH="$(DOCKER_SMOKE_GOARCH)" go build -trimpath -o .dist/cerebro ./cmd/cerebro
+	docker build -f Dockerfile.runtime -t "$(DOCKER_SMOKE_IMAGE)" .
+	@test -n "$$(docker run --rm "$(DOCKER_SMOKE_IMAGE)" version)"
+
+release-smoke:
+	$(GORELEASER) check
+
+doctor:
+	@command -v git >/dev/null || { echo "missing required tool: git" >&2; exit 2; }
+	@command -v go >/dev/null || { echo "missing required tool: go" >&2; exit 2; }
+	@command -v python3 >/dev/null || { echo "missing required tool: python3" >&2; exit 2; }
+	@command -v npm >/dev/null || { echo "missing required tool: npm" >&2; exit 2; }
+	@command -v docker >/dev/null || echo "optional tool missing: docker (needed for make docker-smoke)"
+	@command -v gh >/dev/null || echo "optional tool missing: gh (needed for PR/release triage)"
+	@go version
+	@python3 --version
+	@npm --version
+	@echo "developer toolchain looks ready"
 
 droid-review-preflight:
 	go test ./tools/droidreview/...
@@ -165,7 +241,7 @@ hooks:
 pre-commit:
 	./scripts/pre_commit_checks.sh
 
-check: build test lint proto-lint check-structural check-structural-test check-arch
+check: build test sdk-test lint proto-lint proto-generate-check check-structural check-structural-test check-arch
 
 check-structural: check-structural-build
 	@$(LINTER_BIN) $(APP_PACKAGES)
@@ -181,4 +257,4 @@ check-arch:
 
 check-hook-integrity: check-arch
 
-verify: build test lint proto-lint openapi-check openapi-lint catalog-check detection-catalog-check oss-audit check-structural check-structural-test check-arch
+verify: build test sdk-test mcp-contract-check mcp-sdk-compat lint proto-lint proto-generate-check proto-breaking openapi-check openapi-lint catalog-check detection-catalog-check readme-check oss-audit release-smoke check-structural check-structural-test check-arch

@@ -42,21 +42,27 @@ type AppendLogConfig struct {
 	Driver                 string
 	JetStreamURL           string
 	JetStreamSubjectPrefix string
+	JetStreamDrainTimeout  time.Duration
 }
 
 // StateStoreConfig selects and configures the current-state store driver.
 type StateStoreConfig struct {
-	Driver      string
-	PostgresDSN string
+	Driver                  string
+	PostgresDSN             string
+	PostgresMaxOpenConns    int
+	PostgresMaxIdleConns    int
+	PostgresConnMaxLifetime time.Duration
+	PostgresConnMaxIdleTime time.Duration
 }
 
 // GraphStoreConfig selects and configures the graph projection store driver.
 type GraphStoreConfig struct {
-	Driver        string
-	Neo4jURI      string
-	Neo4jUsername string
-	Neo4jPassword string
-	Neo4jDatabase string
+	Driver            string
+	Neo4jURI          string
+	Neo4jUsername     string
+	Neo4jPassword     string
+	Neo4jDatabase     string
+	Neo4jQueryTimeout time.Duration
 }
 
 // GraphAgentLLMConfig selects and configures the graph ask LLM adapter.
@@ -108,11 +114,29 @@ type AuthConfig struct {
 // MCPOAuthClient is one OAuth client allowed to request MCP access tokens from
 // Cerebro. Redirect URI comparison is exact-match.
 type MCPOAuthClient struct {
-	ClientID     string   `json:"client_id"`
-	ClientSecret string   `json:"client_secret,omitempty"`
-	Name         string   `json:"name,omitempty"`
-	RedirectURIs []string `json:"redirect_uris"`
-	Public       bool     `json:"public,omitempty"`
+	ClientID           string   `json:"client_id"`
+	ClientSecret       string   `json:"client_secret,omitempty"`
+	ClientSecretSHA256 string   `json:"client_secret_sha256,omitempty"`
+	Name               string   `json:"name,omitempty"`
+	RedirectURIs       []string `json:"redirect_uris"`
+	GrantTypes         []string `json:"grant_types,omitempty"`
+	Public             bool     `json:"public,omitempty"`
+	TenantID           string   `json:"tenant_id,omitempty"`
+	AllowedTenants     []string `json:"allowed_tenants,omitempty"`
+	Scopes             []string `json:"scopes,omitempty"`
+	Groups             []string `json:"groups,omitempty"`
+}
+
+// MCPOAuthEntitlement maps an authenticated upstream user/client to the
+// tenants and scopes Cerebro may place into OAuth-issued MCP tokens.
+type MCPOAuthEntitlement struct {
+	Subject        string   `json:"subject,omitempty"`
+	Email          string   `json:"email,omitempty"`
+	ClientID       string   `json:"client_id,omitempty"`
+	Groups         []string `json:"groups,omitempty"`
+	TenantID       string   `json:"tenant_id,omitempty"`
+	AllowedTenants []string `json:"allowed_tenants,omitempty"`
+	Scopes         []string `json:"scopes,omitempty"`
 }
 
 // MCPOAuthConfig configures Cerebro's OAuth 2.1 authorization-server surface
@@ -130,6 +154,7 @@ type MCPOAuthConfig struct {
 	StateTTL                  time.Duration
 	TenantID                  string
 	AllowedTenants            []string
+	Entitlements              []MCPOAuthEntitlement
 	Upstream                  MCPOAuthUpstreamConfig
 }
 
@@ -296,6 +321,24 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.GraphAgentLLM.Temperature, err = parseFloatEnv("CEREBRO_GRAPH_AGENT_LLM_TEMPERATURE", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.AppendLog.JetStreamDrainTimeout, err = parseDurationEnv("CEREBRO_JETSTREAM_DRAIN_TIMEOUT", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.StateStore.PostgresMaxOpenConns, err = parseIntEnv("CEREBRO_POSTGRES_MAX_OPEN_CONNS", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.StateStore.PostgresMaxIdleConns, err = parseIntEnv("CEREBRO_POSTGRES_MAX_IDLE_CONNS", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.StateStore.PostgresConnMaxLifetime, err = parseDurationEnv("CEREBRO_POSTGRES_CONN_MAX_LIFETIME", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.StateStore.PostgresConnMaxIdleTime, err = parseDurationEnv("CEREBRO_POSTGRES_CONN_MAX_IDLE_TIME", 0); err != nil {
+		return Config{}, err
+	}
+	if cfg.GraphStore.Neo4jQueryTimeout, err = parseDurationEnv("CEREBRO_NEO4J_QUERY_TIMEOUT", 0); err != nil {
 		return Config{}, err
 	}
 	cfg.GraphAgentLLM.OpenRouterAPIKey = strings.TrimSpace(os.Getenv("CEREBRO_OPENROUTER_API_KEY"))
