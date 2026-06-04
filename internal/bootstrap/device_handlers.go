@@ -15,6 +15,7 @@ import (
 	"github.com/writer/cerebro/internal/deviceauth"
 	"github.com/writer/cerebro/internal/deviceauth/attestation"
 	"github.com/writer/cerebro/internal/deviceauth/risk"
+	"github.com/writer/cerebro/internal/endpointtelemetry"
 )
 
 // buildDeviceAuthService wires the deviceauth.Service against the configured
@@ -385,6 +386,14 @@ func (h *deviceAuthHTTPHandler) handleIngestTelemetry(w http.ResponseWriter, r *
 	}
 	if err := validateTelemetryBody(body); err != nil {
 		writeDeviceAuthError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	if _, err := endpointtelemetry.Normalize(body, endpointtelemetry.Principal{
+		TenantID:     auth.principal.TenantID,
+		DeviceID:     auth.principal.DeviceID,
+		HardwareUUID: auth.principal.HardwareUUID,
+	}, time.Now()); err != nil {
+		writeDeviceAuthError(w, http.StatusBadRequest, "invalid_telemetry", err.Error())
 		return
 	}
 	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))

@@ -112,4 +112,11 @@ func TestBuiltin(t *testing.T) {
 	if securityToolingMap.Spec().Name != "Security Tooling Map" {
 		t.Fatalf("security_tooling_map Spec().Name = %q, want %q", securityToolingMap.Spec().Name, "Security Tooling Map")
 	}
+	trustedEndpoint, ok := registry.Get("trusted_endpoint")
+	if !ok {
+		t.Fatal("Get(trusted_endpoint) = false, want true")
+	}
+	if trustedEndpoint.Spec().Name != "Trusted Endpoint" {
+		t.Fatalf("trusted_endpoint Spec().Name = %q, want %q", trustedEndpoint.Spec().Name, "Trusted Endpoint")
+	}
 }

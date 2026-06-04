@@ -1,0 +1,16 @@
+{
+  "events": [
+    {
+      "type": "remediation.remediated",
+      "finding_id": "finding-1",
+      "severity": "high",
+      "package": "openssl",
+      "manager": "brew",
+      "result": "success"
+    }
+  ],
+  "posture": {
+    "observation_table": "secheck.heartbeat",
+    "status": "ok"
+  }
+}

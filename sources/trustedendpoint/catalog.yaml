@@ -1,0 +1,92 @@
+id: trusted_endpoint
+name: Trusted Endpoint
+description: Metadata-only endpoint posture, AI trust, GRC evidence, and trust-gate source for Writer-managed workstations.
+emitted_kinds:
+  - trusted_endpoint.agent_identity
+  - trusted_endpoint.host_posture
+  - trusted_endpoint.repo_worktree_context
+  - trusted_endpoint.ai_session_summary
+  - trusted_endpoint.ai_workflow_risk
+  - trusted_endpoint.security_finding
+  - trusted_endpoint.grc_evidence
+  - trusted_endpoint.trust_gate_decision
+  - trusted_endpoint.action_outcome
+event_contracts:
+  - kind: trusted_endpoint.agent_identity
+    schema_ref: trusted_endpoint/agent_identity/v1
+    required_attributes:
+      - agent_id
+      - hostname
+      - hardware_key
+    required_payload_fields:
+      - agent_id
+      - hostname
+  - kind: trusted_endpoint.host_posture
+    schema_ref: trusted_endpoint/host_posture/v1
+    required_attributes:
+      - agent_id
+      - observation_table
+    required_payload_fields:
+      - agent_id
+      - observation_table
+  - kind: trusted_endpoint.repo_worktree_context
+    schema_ref: trusted_endpoint/repo_worktree_context/v1
+    required_attributes:
+      - agent_id
+      - repo_path_hash
+    required_payload_fields:
+      - agent_id
+      - repo_path_hash
+  - kind: trusted_endpoint.ai_session_summary
+    schema_ref: trusted_endpoint/ai_session_summary/v1
+    required_attributes:
+      - agent_id
+      - session_surface
+    required_payload_fields:
+      - agent_id
+      - risk_score
+  - kind: trusted_endpoint.ai_workflow_risk
+    schema_ref: trusted_endpoint/ai_workflow_risk/v1
+    required_attributes:
+      - agent_id
+      - repo_path_hash
+    required_payload_fields:
+      - agent_id
+      - risk_score
+  - kind: trusted_endpoint.security_finding
+    schema_ref: trusted_endpoint/security_finding/v1
+    required_attributes:
+      - agent_id
+      - finding_id
+      - severity
+    required_payload_fields:
+      - agent_id
+      - finding_id
+      - severity
+  - kind: trusted_endpoint.grc_evidence
+    schema_ref: trusted_endpoint/grc_evidence/v1
+    required_attributes:
+      - agent_id
+      - control_id
+    required_payload_fields:
+      - agent_id
+      - control_id
+      - status
+  - kind: trusted_endpoint.trust_gate_decision
+    schema_ref: trusted_endpoint/trust_gate_decision/v1
+    required_attributes:
+      - agent_id
+      - action
+      - decision
+    required_payload_fields:
+      - action
+      - decision
+  - kind: trusted_endpoint.action_outcome
+    schema_ref: trusted_endpoint/action_outcome/v1
+    required_attributes:
+      - agent_id
+      - action
+      - outcome_result
+    required_payload_fields:
+      - action
+      - outcome
