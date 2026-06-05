@@ -187,6 +187,8 @@ func awsBackupProjectedResourceFamily(resourceType string) string {
 		return "ebs_volume"
 	case "rds":
 		return "rds_instance"
+	case "ec2":
+		return "ec2_instance"
 	case "s3":
 		return "s3_bucket"
 	default:
