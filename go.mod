@@ -15,26 +15,48 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/acm v1.39.5
 	github.com/aws/aws-sdk-go-v2/service/apigateway v1.40.5
 	github.com/aws/aws-sdk-go-v2/service/apigatewayv2 v1.35.5
+	github.com/aws/aws-sdk-go-v2/service/apprunner v1.40.5
+	github.com/aws/aws-sdk-go-v2/service/athena v1.58.3
+	github.com/aws/aws-sdk-go-v2/service/backup v1.57.5
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.53.4
 	github.com/aws/aws-sdk-go-v2/service/cloudfront v1.65.1
 	github.com/aws/aws-sdk-go-v2/service/cloudtrail v1.56.3
+	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.58.2
+	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.75.1
+	github.com/aws/aws-sdk-go-v2/service/datasync v1.59.5
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.305.2
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.58.2
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.82.3
 	github.com/aws/aws-sdk-go-v2/service/eks v1.84.5
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.55.3
+	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.46.5
+	github.com/aws/aws-sdk-go-v2/service/firehose v1.43.1
+	github.com/aws/aws-sdk-go-v2/service/globalaccelerator v1.36.5
+	github.com/aws/aws-sdk-go-v2/service/glue v1.143.0
 	github.com/aws/aws-sdk-go-v2/service/iam v1.54.3
+	github.com/aws/aws-sdk-go-v2/service/identitystore v1.37.5
+	github.com/aws/aws-sdk-go-v2/service/kafka v1.52.5
+	github.com/aws/aws-sdk-go-v2/service/kinesis v1.44.1
 	github.com/aws/aws-sdk-go-v2/service/kms v1.53.2
+	github.com/aws/aws-sdk-go-v2/service/lakeformation v1.48.2
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.92.2
+	github.com/aws/aws-sdk-go-v2/service/organizations v1.51.9
+	github.com/aws/aws-sdk-go-v2/service/pipes v1.24.5
 	github.com/aws/aws-sdk-go-v2/service/rds v1.119.0
 	github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi v1.33.2
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.63.2
 	github.com/aws/aws-sdk-go-v2/service/route53resolver v1.45.3
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.103.2
+	github.com/aws/aws-sdk-go-v2/service/s3control v1.71.4
+	github.com/aws/aws-sdk-go-v2/service/scheduler v1.18.5
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.42.1
+	github.com/aws/aws-sdk-go-v2/service/sfn v1.42.2
 	github.com/aws/aws-sdk-go-v2/service/sns v1.39.21
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.43.1
+	github.com/aws/aws-sdk-go-v2/service/ssm v1.69.2
+	github.com/aws/aws-sdk-go-v2/service/ssoadmin v1.39.5
 	github.com/aws/aws-sdk-go-v2/service/sts v1.43.2
+	github.com/aws/aws-sdk-go-v2/service/vpclattice v1.22.1
 	github.com/aws/smithy-go v1.27.1
 	github.com/google/go-github/v66 v66.0.0
 	github.com/jackc/pgx/v5 v5.10.0

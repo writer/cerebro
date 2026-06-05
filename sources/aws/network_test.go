@@ -98,7 +98,7 @@ func newNetworkManagerTestSource(t *testing.T, fake fakeAWSNetworkManager) *Sour
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{acm: fake, route53Resolver: fake}, nil
+		return awsClients{awsPlatformClients: awsPlatformClients{acm: fake, route53Resolver: fake}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
