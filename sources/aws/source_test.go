@@ -36,6 +36,8 @@ import (
 	kmstypes "github.com/aws/aws-sdk-go-v2/service/kms/types"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	lambdatypes "github.com/aws/aws-sdk-go-v2/service/lambda/types"
+	"github.com/aws/aws-sdk-go-v2/service/organizations"
+	organizationstypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
 	rdstypes "github.com/aws/aws-sdk-go-v2/service/rds/types"
 	"github.com/aws/aws-sdk-go-v2/service/resourcegroupstaggingapi"
@@ -342,6 +344,10 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyIAMUser, kind: "aws.iam_user"},
 		{family: familyKMSKey, kind: "aws.kms_key"},
 		{family: familyLambdaFunction, kind: "aws.lambda_function"},
+		{family: familyOrganizationsAccount, kind: "aws.organizations_account"},
+		{family: familyOrganizationsOU, kind: "aws.organizations_organizational_unit"},
+		{family: familyOrganizationsPolicy, kind: "aws.organizations_policy"},
+		{family: familyOrganizationsRoot, kind: "aws.organizations_root"},
 		{family: familyRDSInstance, kind: "aws.rds_instance"},
 		{family: familyS3Bucket, kind: "aws.s3_bucket"},
 		{family: familySecret, kind: "aws.secret"},
@@ -749,6 +755,100 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 		{family: familySQSQueue, kind: "aws.sqs_queue", attr: "encryption", want: "true"},
 		{family: familySNSTopic, kind: "aws.sns_topic", attr: "encryption", want: "true"},
 		{family: familyECRRepository, kind: "aws.ecr_repository", attr: "scan_on_push", want: "true"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReadAWSOrganizationsInventoryEvents(t *testing.T) {
+	rootID := "r-root"
+	ouID := "ou-r-root-security"
+	accountID := "222222222222"
+	policyID := "p-service-control"
+	source := newTestSource(t, fakeAWS{
+		organizationsRoots: []organizationstypes.Root{{
+			Arn:  awssdk.String("arn:aws:organizations::111111111111:root/o-exampleorgid/r-root"),
+			Id:   awssdk.String(rootID),
+			Name: awssdk.String("Root"),
+			PolicyTypes: []organizationstypes.PolicyTypeSummary{{
+				Type:   organizationstypes.PolicyTypeServiceControlPolicy,
+				Status: organizationstypes.PolicyTypeStatusEnabled,
+			}},
+		}},
+		organizationsOUs: map[string][]organizationstypes.OrganizationalUnit{
+			rootID: {{
+				Arn:  awssdk.String("arn:aws:organizations::111111111111:ou/o-exampleorgid/ou-r-root-security"),
+				Id:   awssdk.String(ouID),
+				Name: awssdk.String("Security"),
+			}},
+		},
+		organizationsAccounts: []organizationstypes.Account{{
+			Arn:             awssdk.String("arn:aws:organizations::111111111111:account/o-exampleorgid/222222222222"),
+			Email:           awssdk.String("security@example.com"),
+			Id:              awssdk.String(accountID),
+			JoinedMethod:    organizationstypes.AccountJoinedMethodCreated,
+			JoinedTimestamp: timePtr("2026-01-01T00:00:00Z"),
+			Name:            awssdk.String("Security"),
+			State:           organizationstypes.AccountStateActive,
+			Status:          organizationstypes.AccountStatusActive,
+		}},
+		organizationsParents: map[string]organizationstypes.Parent{
+			accountID: {Id: awssdk.String(ouID), Type: organizationstypes.ParentTypeOrganizationalUnit},
+		},
+		organizationsPolicies: map[organizationstypes.PolicyType][]organizationstypes.PolicySummary{
+			organizationstypes.PolicyTypeServiceControlPolicy: {{
+				Arn:         awssdk.String("arn:aws:organizations::111111111111:policy/o-exampleorgid/service_control_policy/p-service-control"),
+				Description: awssdk.String("Deny leaving the organization"),
+				Id:          awssdk.String(policyID),
+				Name:        awssdk.String("DenyLeaveOrganization"),
+				Type:        organizationstypes.PolicyTypeServiceControlPolicy,
+			}},
+		},
+		organizationsPolicyDetails: map[string]organizationstypes.Policy{
+			policyID: {
+				Content: awssdk.String(`{"Version":"2012-10-17","Statement":[]}`),
+				PolicySummary: &organizationstypes.PolicySummary{
+					Arn:         awssdk.String("arn:aws:organizations::111111111111:policy/o-exampleorgid/service_control_policy/p-service-control"),
+					Description: awssdk.String("Deny leaving the organization"),
+					Id:          awssdk.String(policyID),
+					Name:        awssdk.String("DenyLeaveOrganization"),
+					Type:        organizationstypes.PolicyTypeServiceControlPolicy,
+				},
+			},
+		},
+		organizationsPolicyTargets: map[string][]organizationstypes.PolicyTargetSummary{
+			policyID: {{
+				Arn:      awssdk.String("arn:aws:organizations::111111111111:ou/o-exampleorgid/ou-r-root-security"),
+				Name:     awssdk.String("Security"),
+				TargetId: awssdk.String(ouID),
+				Type:     organizationstypes.TargetTypeOrganizationalUnit,
+			}},
+		},
+	})
+	for _, tt := range []struct {
+		family string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{family: familyOrganizationsRoot, kind: "aws.organizations_root", attr: "policy_types", want: "SERVICE_CONTROL_POLICY:ENABLED"},
+		{family: familyOrganizationsOU, kind: "aws.organizations_organizational_unit", attr: "parent_id", want: rootID},
+		{family: familyOrganizationsAccount, kind: "aws.organizations_account", attr: "parent_id", want: ouID},
+		{family: familyOrganizationsPolicy, kind: "aws.organizations_policy", attr: "target_ids", want: ouID},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
@@ -1870,7 +1970,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake}}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, organizations: fakeOrganizations{fake: &fake}, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1886,7 +1986,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake}}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, organizations: recordingOrganizations{fake: fake}, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1954,6 +2054,13 @@ type fakeAWS struct {
 	taggedResources []resourcegroupstaggingapitypes.ResourceTagMapping
 	getResources    func(context.Context, *resourcegroupstaggingapi.GetResourcesInput, ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error)
 	fakeAWSData
+	organizationsAccounts      []organizationstypes.Account
+	organizationsParents       map[string]organizationstypes.Parent
+	organizationsRoots         []organizationstypes.Root
+	organizationsOUs           map[string][]organizationstypes.OrganizationalUnit
+	organizationsPolicies      map[organizationstypes.PolicyType][]organizationstypes.PolicySummary
+	organizationsPolicyDetails map[string]organizationstypes.Policy
+	organizationsPolicyTargets map[string][]organizationstypes.PolicyTargetSummary
 }
 
 type fakeAWSNetwork struct {
@@ -2361,6 +2468,104 @@ func (f fakeECR) DescribeRepositories(context.Context, *ecr.DescribeRepositories
 
 func (f fakeECR) ListTagsForResource(_ context.Context, input *ecr.ListTagsForResourceInput, _ ...func(*ecr.Options)) (*ecr.ListTagsForResourceOutput, error) {
 	return &ecr.ListTagsForResourceOutput{Tags: f.fake.ecrTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeOrganizations struct {
+	fake *fakeAWS
+}
+
+type recordingOrganizations struct {
+	fake *recordingAWS
+}
+
+func (f recordingOrganizations) ListAccounts(ctx context.Context, input *organizations.ListAccountsInput, options ...func(*organizations.Options)) (*organizations.ListAccountsOutput, error) {
+	f.fake.record("organizations:ListAccounts")
+	return fakeOrganizations{fake: &f.fake.fakeAWS}.ListAccounts(ctx, input, options...)
+}
+
+func (f recordingOrganizations) ListRoots(ctx context.Context, input *organizations.ListRootsInput, options ...func(*organizations.Options)) (*organizations.ListRootsOutput, error) {
+	f.fake.record("organizations:ListRoots")
+	return fakeOrganizations{fake: &f.fake.fakeAWS}.ListRoots(ctx, input, options...)
+}
+
+func (f recordingOrganizations) ListOrganizationalUnitsForParent(ctx context.Context, input *organizations.ListOrganizationalUnitsForParentInput, options ...func(*organizations.Options)) (*organizations.ListOrganizationalUnitsForParentOutput, error) {
+	f.fake.record("organizations:ListOrganizationalUnitsForParent")
+	return fakeOrganizations{fake: &f.fake.fakeAWS}.ListOrganizationalUnitsForParent(ctx, input, options...)
+}
+
+func (f recordingOrganizations) ListParents(ctx context.Context, input *organizations.ListParentsInput, options ...func(*organizations.Options)) (*organizations.ListParentsOutput, error) {
+	f.fake.record("organizations:ListParents")
+	return fakeOrganizations{fake: &f.fake.fakeAWS}.ListParents(ctx, input, options...)
+}
+
+func (f recordingOrganizations) ListPolicies(ctx context.Context, input *organizations.ListPoliciesInput, options ...func(*organizations.Options)) (*organizations.ListPoliciesOutput, error) {
+	f.fake.record("organizations:ListPolicies")
+	return fakeOrganizations{fake: &f.fake.fakeAWS}.ListPolicies(ctx, input, options...)
+}
+
+func (f recordingOrganizations) DescribePolicy(ctx context.Context, input *organizations.DescribePolicyInput, options ...func(*organizations.Options)) (*organizations.DescribePolicyOutput, error) {
+	f.fake.record("organizations:DescribePolicy")
+	return fakeOrganizations{fake: &f.fake.fakeAWS}.DescribePolicy(ctx, input, options...)
+}
+
+func (f recordingOrganizations) ListTargetsForPolicy(ctx context.Context, input *organizations.ListTargetsForPolicyInput, options ...func(*organizations.Options)) (*organizations.ListTargetsForPolicyOutput, error) {
+	f.fake.record("organizations:ListTargetsForPolicy")
+	return fakeOrganizations{fake: &f.fake.fakeAWS}.ListTargetsForPolicy(ctx, input, options...)
+}
+
+func (f fakeOrganizations) ListAccounts(_ context.Context, input *organizations.ListAccountsInput, _ ...func(*organizations.Options)) (*organizations.ListAccountsOutput, error) {
+	accounts, next := paginateOrganizationsValues(f.fake.organizationsAccounts, awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
+	return &organizations.ListAccountsOutput{Accounts: accounts, NextToken: stringPtr(next)}, nil
+}
+
+func (f fakeOrganizations) ListRoots(_ context.Context, input *organizations.ListRootsInput, _ ...func(*organizations.Options)) (*organizations.ListRootsOutput, error) {
+	roots, next := paginateOrganizationsValues(f.fake.organizationsRoots, awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
+	return &organizations.ListRootsOutput{Roots: roots, NextToken: stringPtr(next)}, nil
+}
+
+func (f fakeOrganizations) ListOrganizationalUnitsForParent(_ context.Context, input *organizations.ListOrganizationalUnitsForParentInput, _ ...func(*organizations.Options)) (*organizations.ListOrganizationalUnitsForParentOutput, error) {
+	units, next := paginateOrganizationsValues(f.fake.organizationsOUs[awssdk.ToString(input.ParentId)], awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
+	return &organizations.ListOrganizationalUnitsForParentOutput{OrganizationalUnits: units, NextToken: stringPtr(next)}, nil
+}
+
+func (f fakeOrganizations) ListParents(_ context.Context, input *organizations.ListParentsInput, _ ...func(*organizations.Options)) (*organizations.ListParentsOutput, error) {
+	parent, ok := f.fake.organizationsParents[awssdk.ToString(input.ChildId)]
+	if !ok {
+		return &organizations.ListParentsOutput{}, nil
+	}
+	return &organizations.ListParentsOutput{Parents: []organizationstypes.Parent{parent}}, nil
+}
+
+func (f fakeOrganizations) ListPolicies(_ context.Context, input *organizations.ListPoliciesInput, _ ...func(*organizations.Options)) (*organizations.ListPoliciesOutput, error) {
+	policies, next := paginateOrganizationsValues(f.fake.organizationsPolicies[input.Filter], awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
+	return &organizations.ListPoliciesOutput{Policies: policies, NextToken: stringPtr(next)}, nil
+}
+
+func (f fakeOrganizations) DescribePolicy(_ context.Context, input *organizations.DescribePolicyInput, _ ...func(*organizations.Options)) (*organizations.DescribePolicyOutput, error) {
+	if policy, ok := f.fake.organizationsPolicyDetails[awssdk.ToString(input.PolicyId)]; ok {
+		return &organizations.DescribePolicyOutput{Policy: &policy}, nil
+	}
+	return &organizations.DescribePolicyOutput{}, nil
+}
+
+func (f fakeOrganizations) ListTargetsForPolicy(_ context.Context, input *organizations.ListTargetsForPolicyInput, _ ...func(*organizations.Options)) (*organizations.ListTargetsForPolicyOutput, error) {
+	targets, next := paginateOrganizationsValues(f.fake.organizationsPolicyTargets[awssdk.ToString(input.PolicyId)], awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
+	return &organizations.ListTargetsForPolicyOutput{Targets: targets, NextToken: stringPtr(next)}, nil
+}
+
+func paginateOrganizationsValues[T any](values []T, token string, limit int) ([]T, string) {
+	start := 0
+	if token != "" {
+		parsed, err := strconv.Atoi(token)
+		if err == nil && parsed >= 0 && parsed <= len(values) {
+			start = parsed
+		}
+	}
+	if limit <= 0 || start+limit >= len(values) {
+		return values[start:], ""
+	}
+	next := strconv.Itoa(start + limit)
+	return values[start : start+limit], next
 }
 
 type fakeEKS struct {

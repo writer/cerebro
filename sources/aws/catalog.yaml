@@ -23,6 +23,10 @@ emitted_kinds:
   - aws.iam_user
   - aws.kms_key
   - aws.public_endpoint
+  - aws.organizations_account
+  - aws.organizations_organizational_unit
+  - aws.organizations_policy
+  - aws.organizations_root
   - aws.rds_instance
   - aws.resource_exposure
   - aws.s3_bucket
@@ -51,6 +55,10 @@ runtime_families:
   - iam_role_trust
   - iam_user
   - kms_key
+  - organizations_account
+  - organizations_organizational_unit
+  - organizations_policy
+  - organizations_root
   - public_endpoint
   - rds_instance
   - resource_exposure
