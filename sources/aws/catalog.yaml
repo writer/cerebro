@@ -15,6 +15,9 @@ emitted_kinds:
   - aws.eks_fargate_profile
   - aws.eks_pod_identity_association
   - aws.effective_permission
+  - aws.global_accelerator_accelerator
+  - aws.global_accelerator_listener
+  - aws.global_accelerator_endpoint_group
   - aws.iam_group
   - aws.iam_group_membership
   - aws.iam_role
@@ -30,6 +33,9 @@ emitted_kinds:
   - aws.sns_topic
   - aws.sqs_queue
   - aws.lambda_function
+  - aws.vpc_lattice_service
+  - aws.vpc_lattice_listener
+  - aws.vpc_lattice_target_group
 runtime_families:
   - access_key
   - asset_metadata
@@ -44,6 +50,9 @@ runtime_families:
   - eks_fargate_profile
   - eks_pod_identity_association
   - effective_permission
+  - global_accelerator_accelerator
+  - global_accelerator_listener
+  - global_accelerator_endpoint_group
   - iam_group
   - iam_group_membership
   - iam_role
@@ -59,3 +68,6 @@ runtime_families:
   - sns_topic
   - sqs_queue
   - lambda_function
+  - vpc_lattice_service
+  - vpc_lattice_listener
+  - vpc_lattice_target_group

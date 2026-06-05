@@ -37,6 +37,7 @@ import (
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/globalaccelerator"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
@@ -52,6 +53,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/aws/aws-sdk-go-v2/service/vpclattice"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -67,42 +69,48 @@ var emailPattern = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2
 var awsRoleARNPattern = regexp.MustCompile(`^arn:(aws|aws-us-gov|aws-cn):iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+$`)
 
 const (
-	defaultFamily             = familyCloudTrail
-	defaultRegion             = "us-east-1"
-	defaultPageSize           = 10
-	maxPageSize               = 200
-	cloudTrailCursorVersion   = 1
-	cloudTrailCursorMaxAge    = 55 * time.Minute
-	publicEndpointCursorV2    = 2
-	awsAssumeRoleSessionName  = "cerebro-source-runtime"
-	familyAccessKey           = "access_key"
-	familyAssetMetadata       = "asset_metadata"
-	familyCloudTrail          = "cloudtrail"
-	familyEC2Instance         = "ec2_instance"
-	familyECRRepository       = "ecr_repository"
-	familyECSService          = "ecs_service"
-	familyECSTask             = "ecs_task"
-	familyECSTaskDefinition   = "ecs_task_definition"
-	familyEKSCluster          = "eks_cluster"
-	familyEKSNodegroup        = "eks_nodegroup"
-	familyEKSFargateProfile   = "eks_fargate_profile"
-	familyEKSPodIdentity      = "eks_pod_identity_association"
-	familyEffectivePermission = "effective_permission"
-	familyIAMGroup            = "iam_group"
-	familyIAMMembership       = "iam_group_membership"
-	familyIAMRoleTrust        = "iam_role_trust"
-	familyIAMRoleAssign       = "iam_role_assignment"
-	familyIAMRole             = "iam_role"
-	familyIAMUser             = "iam_user"
-	familyKMSKey              = "kms_key"
-	familyPublicEndpoint      = "public_endpoint"
-	familyRDSInstance         = "rds_instance"
-	familyResourceExposure    = "resource_exposure"
-	familyS3Bucket            = "s3_bucket"
-	familySecret              = "secret"
-	familySNSTopic            = "sns_topic"
-	familySQSQueue            = "sqs_queue"
-	familyLambdaFunction      = "lambda_function"
+	defaultFamily                        = familyCloudTrail
+	defaultRegion                        = "us-east-1"
+	defaultPageSize                      = 10
+	maxPageSize                          = 200
+	cloudTrailCursorVersion              = 1
+	cloudTrailCursorMaxAge               = 55 * time.Minute
+	publicEndpointCursorV2               = 2
+	awsAssumeRoleSessionName             = "cerebro-source-runtime"
+	familyAccessKey                      = "access_key"
+	familyAssetMetadata                  = "asset_metadata"
+	familyCloudTrail                     = "cloudtrail"
+	familyEC2Instance                    = "ec2_instance"
+	familyECRRepository                  = "ecr_repository"
+	familyECSService                     = "ecs_service"
+	familyECSTask                        = "ecs_task"
+	familyECSTaskDefinition              = "ecs_task_definition"
+	familyEKSCluster                     = "eks_cluster"
+	familyEKSNodegroup                   = "eks_nodegroup"
+	familyEKSFargateProfile              = "eks_fargate_profile"
+	familyEKSPodIdentity                 = "eks_pod_identity_association"
+	familyEffectivePermission            = "effective_permission"
+	familyGlobalAcceleratorAccelerator   = "global_accelerator_accelerator"
+	familyGlobalAcceleratorListener      = "global_accelerator_listener"
+	familyGlobalAcceleratorEndpointGroup = "global_accelerator_endpoint_group"
+	familyIAMGroup                       = "iam_group"
+	familyIAMMembership                  = "iam_group_membership"
+	familyIAMRoleTrust                   = "iam_role_trust"
+	familyIAMRoleAssign                  = "iam_role_assignment"
+	familyIAMRole                        = "iam_role"
+	familyIAMUser                        = "iam_user"
+	familyKMSKey                         = "kms_key"
+	familyPublicEndpoint                 = "public_endpoint"
+	familyRDSInstance                    = "rds_instance"
+	familyResourceExposure               = "resource_exposure"
+	familyS3Bucket                       = "s3_bucket"
+	familySecret                         = "secret"
+	familySNSTopic                       = "sns_topic"
+	familySQSQueue                       = "sqs_queue"
+	familyLambdaFunction                 = "lambda_function"
+	familyVPCLatticeService              = "vpc_lattice_service"
+	familyVPCLatticeListener             = "vpc_lattice_listener"
+	familyVPCLatticeTargetGroup          = "vpc_lattice_target_group"
 )
 
 // Source reads AWS IAM inventory and CloudTrail activity through the AWS SDK for Go v2.
@@ -141,27 +149,29 @@ type settings struct {
 type awsClientFactory func(context.Context, settings) (awsClients, error)
 
 type awsClients struct {
-	cfg          awssdk.Config
-	iam          awsIAMAPI
-	cloudTrail   awsCloudTrailAPI
-	ec2          awsEC2API
-	route53      awsRoute53API
-	cloudFront   awsCloudFrontAPI
-	elbv2        awsELBV2API
-	ecs          awsECSAPI
-	eks          awsEKSAPI
-	ecr          awsECRAPI
-	apiGateway   awsAPIGatewayAPI
-	apiGatewayV2 awsAPIGatewayV2API
-	lambda       awsLambdaAPI
-	tagging      awsResourceGroupsTaggingAPI
-	s3           awsS3API
-	s3ByRegion   func(string) awsS3API
-	rds          awsRDSAPI
-	kms          awsKMSAPI
-	secrets      awsSecretsManagerAPI
-	sqs          awsSQSAPI
-	sns          awsSNSAPI
+	cfg               awssdk.Config
+	iam               awsIAMAPI
+	cloudTrail        awsCloudTrailAPI
+	ec2               awsEC2API
+	route53           awsRoute53API
+	cloudFront        awsCloudFrontAPI
+	elbv2             awsELBV2API
+	ecs               awsECSAPI
+	eks               awsEKSAPI
+	ecr               awsECRAPI
+	globalAccelerator awsGlobalAcceleratorAPI
+	apiGateway        awsAPIGatewayAPI
+	apiGatewayV2      awsAPIGatewayV2API
+	lambda            awsLambdaAPI
+	tagging           awsResourceGroupsTaggingAPI
+	s3                awsS3API
+	s3ByRegion        func(string) awsS3API
+	rds               awsRDSAPI
+	kms               awsKMSAPI
+	secrets           awsSecretsManagerAPI
+	sqs               awsSQSAPI
+	sns               awsSNSAPI
+	vpcLattice        awsVPCLatticeAPI
 }
 
 type awsIAMAPI interface {
@@ -219,6 +229,13 @@ type awsEKSAPI interface {
 type awsECRAPI interface {
 	DescribeRepositories(context.Context, *ecr.DescribeRepositoriesInput, ...func(*ecr.Options)) (*ecr.DescribeRepositoriesOutput, error)
 	ListTagsForResource(context.Context, *ecr.ListTagsForResourceInput, ...func(*ecr.Options)) (*ecr.ListTagsForResourceOutput, error)
+}
+
+type awsGlobalAcceleratorAPI interface {
+	ListAccelerators(context.Context, *globalaccelerator.ListAcceleratorsInput, ...func(*globalaccelerator.Options)) (*globalaccelerator.ListAcceleratorsOutput, error)
+	ListListeners(context.Context, *globalaccelerator.ListListenersInput, ...func(*globalaccelerator.Options)) (*globalaccelerator.ListListenersOutput, error)
+	ListEndpointGroups(context.Context, *globalaccelerator.ListEndpointGroupsInput, ...func(*globalaccelerator.Options)) (*globalaccelerator.ListEndpointGroupsOutput, error)
+	ListTagsForResource(context.Context, *globalaccelerator.ListTagsForResourceInput, ...func(*globalaccelerator.Options)) (*globalaccelerator.ListTagsForResourceOutput, error)
 }
 
 type awsRoute53API interface {
@@ -287,6 +304,17 @@ type awsSNSAPI interface {
 	ListTopics(context.Context, *sns.ListTopicsInput, ...func(*sns.Options)) (*sns.ListTopicsOutput, error)
 	GetTopicAttributes(context.Context, *sns.GetTopicAttributesInput, ...func(*sns.Options)) (*sns.GetTopicAttributesOutput, error)
 	ListTagsForResource(context.Context, *sns.ListTagsForResourceInput, ...func(*sns.Options)) (*sns.ListTagsForResourceOutput, error)
+}
+
+type awsVPCLatticeAPI interface {
+	ListServices(context.Context, *vpclattice.ListServicesInput, ...func(*vpclattice.Options)) (*vpclattice.ListServicesOutput, error)
+	GetService(context.Context, *vpclattice.GetServiceInput, ...func(*vpclattice.Options)) (*vpclattice.GetServiceOutput, error)
+	ListListeners(context.Context, *vpclattice.ListListenersInput, ...func(*vpclattice.Options)) (*vpclattice.ListListenersOutput, error)
+	GetListener(context.Context, *vpclattice.GetListenerInput, ...func(*vpclattice.Options)) (*vpclattice.GetListenerOutput, error)
+	ListTargetGroups(context.Context, *vpclattice.ListTargetGroupsInput, ...func(*vpclattice.Options)) (*vpclattice.ListTargetGroupsOutput, error)
+	GetTargetGroup(context.Context, *vpclattice.GetTargetGroupInput, ...func(*vpclattice.Options)) (*vpclattice.GetTargetGroupOutput, error)
+	ListTargets(context.Context, *vpclattice.ListTargetsInput, ...func(*vpclattice.Options)) (*vpclattice.ListTargetsOutput, error)
+	ListTagsForResource(context.Context, *vpclattice.ListTagsForResourceInput, ...func(*vpclattice.Options)) (*vpclattice.ListTagsForResourceOutput, error)
 }
 
 type awsFamilyOptions[T any] struct {
@@ -605,6 +633,40 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return firstNonEmpty(awssdk.ToString(repository.Repository.RepositoryArn), awssdk.ToString(repository.Repository.RepositoryName))
 			},
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsGlobalAcceleratorAccelerator]{
+			Name:  familyGlobalAcceleratorAccelerator,
+			Label: "aws global accelerator accelerators",
+			List:  listGlobalAcceleratorAccelerators,
+			Event: globalAcceleratorAcceleratorEvent,
+			URN: func(settings settings, record awsGlobalAcceleratorAccelerator) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_global_accelerator_accelerator:%s", settings.accountID, firstNonEmpty(awssdk.ToString(record.Accelerator.AcceleratorArn), awssdk.ToString(record.Accelerator.Name))), nil
+			},
+			CursorFallback: func(record awsGlobalAcceleratorAccelerator) string {
+				return firstNonEmpty(awssdk.ToString(record.Accelerator.AcceleratorArn), awssdk.ToString(record.Accelerator.Name))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsGlobalAcceleratorListener]{
+			Name:  familyGlobalAcceleratorListener,
+			Label: "aws global accelerator listeners",
+			List:  listGlobalAcceleratorListeners,
+			Event: globalAcceleratorListenerEvent,
+			URN: func(settings settings, record awsGlobalAcceleratorListener) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_global_accelerator_listener:%s", settings.accountID, awssdk.ToString(record.Listener.ListenerArn)), nil
+			},
+			CursorFallback: func(record awsGlobalAcceleratorListener) string { return awssdk.ToString(record.Listener.ListenerArn) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsGlobalAcceleratorEndpointGroup]{
+			Name:  familyGlobalAcceleratorEndpointGroup,
+			Label: "aws global accelerator endpoint groups",
+			List:  listGlobalAcceleratorEndpointGroups,
+			Event: globalAcceleratorEndpointGroupEvent,
+			URN: func(settings settings, record awsGlobalAcceleratorEndpointGroup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_global_accelerator_endpoint_group:%s", settings.accountID, awssdk.ToString(record.EndpointGroup.EndpointGroupArn)), nil
+			},
+			CursorFallback: func(record awsGlobalAcceleratorEndpointGroup) string {
+				return awssdk.ToString(record.EndpointGroup.EndpointGroupArn)
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[cloudtrailtypes.Event]{
 			Name:  familyCloudTrail,
 			Label: "aws cloudtrail events",
@@ -714,6 +776,42 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(association ekstypes.PodIdentityAssociation) string {
 				return firstNonEmpty(awssdk.ToString(association.AssociationArn), awssdk.ToString(association.AssociationId))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsVPCLatticeService]{
+			Name:  familyVPCLatticeService,
+			Label: "aws vpc lattice services",
+			List:  listVPCLatticeServices,
+			Event: vpcLatticeServiceEvent,
+			URN: func(settings settings, record awsVPCLatticeService) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_vpc_lattice_service:%s", settings.accountID, firstNonEmpty(awssdk.ToString(record.Service.Arn), awssdk.ToString(record.Service.Id), awssdk.ToString(record.Service.Name))), nil
+			},
+			CursorFallback: func(record awsVPCLatticeService) string {
+				return firstNonEmpty(awssdk.ToString(record.Service.Arn), awssdk.ToString(record.Service.Id), awssdk.ToString(record.Service.Name))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsVPCLatticeListener]{
+			Name:  familyVPCLatticeListener,
+			Label: "aws vpc lattice listeners",
+			List:  listVPCLatticeListeners,
+			Event: vpcLatticeListenerEvent,
+			URN: func(settings settings, record awsVPCLatticeListener) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_vpc_lattice_listener:%s", settings.accountID, firstNonEmpty(awssdk.ToString(record.Listener.Arn), awssdk.ToString(record.Listener.Id), awssdk.ToString(record.Listener.Name))), nil
+			},
+			CursorFallback: func(record awsVPCLatticeListener) string {
+				return firstNonEmpty(awssdk.ToString(record.Listener.Arn), awssdk.ToString(record.Listener.Id), awssdk.ToString(record.Listener.Name))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsVPCLatticeTargetGroup]{
+			Name:  familyVPCLatticeTargetGroup,
+			Label: "aws vpc lattice target groups",
+			List:  listVPCLatticeTargetGroups,
+			Event: vpcLatticeTargetGroupEvent,
+			URN: func(settings settings, record awsVPCLatticeTargetGroup) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_vpc_lattice_target_group:%s", settings.accountID, firstNonEmpty(awssdk.ToString(record.TargetGroup.Arn), awssdk.ToString(record.TargetGroup.Id), awssdk.ToString(record.TargetGroup.Name))), nil
+			},
+			CursorFallback: func(record awsVPCLatticeTargetGroup) string {
+				return firstNonEmpty(awssdk.ToString(record.TargetGroup.Arn), awssdk.ToString(record.TargetGroup.Id), awssdk.ToString(record.TargetGroup.Name))
 			},
 		}),
 		awsFamily(s.clients, awsFamilyOptions[iamPolicyAssignment]{
@@ -868,31 +966,33 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		cfg.Credentials = awssdk.NewCredentialsCache(provider)
 	}
 	return awsClients{
-		cfg:          cfg,
-		iam:          iam.NewFromConfig(cfg),
-		cloudTrail:   cloudtrail.NewFromConfig(cfg),
-		ec2:          ec2.NewFromConfig(cfg),
-		route53:      route53.NewFromConfig(cfg),
-		cloudFront:   cloudfront.NewFromConfig(cfg),
-		elbv2:        elbv2.NewFromConfig(cfg),
-		ecs:          ecs.NewFromConfig(cfg),
-		eks:          eks.NewFromConfig(cfg),
-		ecr:          ecr.NewFromConfig(cfg),
-		apiGateway:   apigateway.NewFromConfig(cfg),
-		apiGatewayV2: apigatewayv2.NewFromConfig(cfg),
-		lambda:       lambda.NewFromConfig(cfg),
-		tagging:      resourcegroupstaggingapi.NewFromConfig(cfg),
-		s3:           s3.NewFromConfig(cfg),
+		cfg:               cfg,
+		iam:               iam.NewFromConfig(cfg),
+		cloudTrail:        cloudtrail.NewFromConfig(cfg),
+		ec2:               ec2.NewFromConfig(cfg),
+		route53:           route53.NewFromConfig(cfg),
+		cloudFront:        cloudfront.NewFromConfig(cfg),
+		elbv2:             elbv2.NewFromConfig(cfg),
+		ecs:               ecs.NewFromConfig(cfg),
+		eks:               eks.NewFromConfig(cfg),
+		ecr:               ecr.NewFromConfig(cfg),
+		globalAccelerator: globalaccelerator.NewFromConfig(cfg),
+		apiGateway:        apigateway.NewFromConfig(cfg),
+		apiGatewayV2:      apigatewayv2.NewFromConfig(cfg),
+		lambda:            lambda.NewFromConfig(cfg),
+		tagging:           resourcegroupstaggingapi.NewFromConfig(cfg),
+		s3:                s3.NewFromConfig(cfg),
 		s3ByRegion: func(region string) awsS3API {
 			regionalCfg := cfg
 			regionalCfg.Region = region
 			return s3.NewFromConfig(regionalCfg)
 		},
-		rds:     rds.NewFromConfig(cfg),
-		kms:     kms.NewFromConfig(cfg),
-		secrets: secretsmanager.NewFromConfig(cfg),
-		sqs:     sqs.NewFromConfig(cfg),
-		sns:     sns.NewFromConfig(cfg),
+		rds:        rds.NewFromConfig(cfg),
+		kms:        kms.NewFromConfig(cfg),
+		secrets:    secretsmanager.NewFromConfig(cfg),
+		sqs:        sqs.NewFromConfig(cfg),
+		sns:        sns.NewFromConfig(cfg),
+		vpcLattice: vpclattice.NewFromConfig(cfg),
 	}, nil
 }
 
@@ -949,7 +1049,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
+	case familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyGlobalAcceleratorAccelerator, familyGlobalAcceleratorListener, familyGlobalAcceleratorEndpointGroup, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue, familyVPCLatticeService, familyVPCLatticeListener, familyVPCLatticeTargetGroup:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -964,7 +1064,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("aws principal_type must be user, group, or role when family=%q", familyIAMRoleAssign)
 		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, sns_topic, or sqs_queue")
+		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, global_accelerator_accelerator, global_accelerator_listener, global_accelerator_endpoint_group, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, sns_topic, sqs_queue, vpc_lattice_service, vpc_lattice_listener, or vpc_lattice_target_group")
 	}
 	return settings, nil
 }

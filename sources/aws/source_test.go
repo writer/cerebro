@@ -30,6 +30,8 @@ import (
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2types "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/globalaccelerator"
+	globalacceleratortypes "github.com/aws/aws-sdk-go-v2/service/globalaccelerator/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
@@ -49,6 +51,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	snstypes "github.com/aws/aws-sdk-go-v2/service/sns/types"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/vpclattice"
+	vpclatticetypes "github.com/aws/aws-sdk-go-v2/service/vpclattice/types"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -339,6 +343,9 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyEKSFargateProfile, kind: "aws.eks_fargate_profile"},
 		{family: familyEKSPodIdentity, kind: "aws.eks_pod_identity_association"},
 		{family: familyEffectivePermission, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.effective_permission"},
+		{family: familyGlobalAcceleratorAccelerator, kind: "aws.global_accelerator_accelerator"},
+		{family: familyGlobalAcceleratorListener, kind: "aws.global_accelerator_listener"},
+		{family: familyGlobalAcceleratorEndpointGroup, kind: "aws.global_accelerator_endpoint_group"},
 		{family: familyIAMUser, kind: "aws.iam_user"},
 		{family: familyKMSKey, kind: "aws.kms_key"},
 		{family: familyLambdaFunction, kind: "aws.lambda_function"},
@@ -355,6 +362,9 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		{family: familyCloudTrail, kind: "aws.cloudtrail"},
 		{family: familyPublicEndpoint, kind: "aws.public_endpoint"},
 		{family: familyResourceExposure, kind: "aws.resource_exposure"},
+		{family: familyVPCLatticeService, kind: "aws.vpc_lattice_service"},
+		{family: familyVPCLatticeListener, kind: "aws.vpc_lattice_listener"},
+		{family: familyVPCLatticeTargetGroup, kind: "aws.vpc_lattice_target_group"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			config := map[string]string{"account_id": "123456789012", "family": tt.family}
@@ -638,6 +648,137 @@ func TestReadAWSComputeInventoryEvents(t *testing.T) {
 				t.Fatalf("kind = %q, want %q", got, tt.kind)
 			}
 			tt.assert(t, pull.Events[0])
+		})
+	}
+}
+
+func TestReadAWSNetworkServiceInventoryEvents(t *testing.T) {
+	acceleratorARN := "arn:aws:globalaccelerator::123456789012:accelerator/ga-123"
+	listenerARN := acceleratorARN + "/listener/listener-123"
+	endpointGroupARN := listenerARN + "/endpoint-group/eg-123"
+	serviceARN := "arn:aws:vpc-lattice:us-east-1:123456789012:service/svc-123"
+	latticeListenerARN := serviceARN + "/listener/listener-123"
+	targetGroupARN := "arn:aws:vpc-lattice:us-east-1:123456789012:targetgroup/tg-123"
+	source := newTestSource(t, fakeAWS{
+		fakeAWSNetworkServices: fakeAWSNetworkServices{
+			globalAccelerators: []globalacceleratortypes.Accelerator{{
+				AcceleratorArn: awssdk.String(acceleratorARN),
+				DnsName:        awssdk.String("a123.awsglobalaccelerator.com"),
+				Enabled:        awssdk.Bool(true),
+				IpAddressType:  globalacceleratortypes.IpAddressTypeIpv4,
+				IpSets:         []globalacceleratortypes.IpSet{{IpAddressFamily: globalacceleratortypes.IpAddressFamilyIPv4, IpAddresses: []string{"198.51.100.10", "198.51.100.11"}}},
+				Name:           awssdk.String("edge-prod"),
+				Status:         globalacceleratortypes.AcceleratorStatusDeployed,
+			}},
+			globalAcceleratorListeners: map[string][]globalacceleratortypes.Listener{
+				acceleratorARN: {{
+					ClientAffinity: globalacceleratortypes.ClientAffinitySourceIp,
+					ListenerArn:    awssdk.String(listenerARN),
+					PortRanges:     []globalacceleratortypes.PortRange{{FromPort: awssdk.Int32(443), ToPort: awssdk.Int32(443)}},
+					Protocol:       globalacceleratortypes.ProtocolTcp,
+				}},
+			},
+			globalAcceleratorEndpointGroups: map[string][]globalacceleratortypes.EndpointGroup{
+				listenerARN: {{
+					EndpointDescriptions: []globalacceleratortypes.EndpointDescription{{
+						EndpointId:  awssdk.String("arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/orders/abc"),
+						HealthState: globalacceleratortypes.HealthStateHealthy,
+						Weight:      awssdk.Int32(128),
+					}},
+					EndpointGroupArn:      awssdk.String(endpointGroupARN),
+					EndpointGroupRegion:   awssdk.String("us-east-1"),
+					HealthCheckProtocol:   globalacceleratortypes.HealthCheckProtocolTcp,
+					TrafficDialPercentage: awssdk.Float32(100),
+				}},
+			},
+			globalAcceleratorTags: map[string][]globalacceleratortypes.Tag{
+				acceleratorARN:   {{Key: awssdk.String("Team"), Value: awssdk.String("edge")}},
+				listenerARN:      {{Key: awssdk.String("Team"), Value: awssdk.String("edge")}},
+				endpointGroupARN: {{Key: awssdk.String("Team"), Value: awssdk.String("edge")}},
+			},
+			vpcLatticeServices: []vpclatticetypes.ServiceSummary{{
+				Arn: awssdk.String(serviceARN),
+				Id:  awssdk.String("svc-123"),
+			}},
+			vpcLatticeServiceDetails: map[string]vpclattice.GetServiceOutput{
+				serviceARN: {
+					Arn:      awssdk.String(serviceARN),
+					AuthType: vpclatticetypes.AuthTypeAwsIam,
+					DnsEntry: &vpclatticetypes.DnsEntry{DomainName: awssdk.String("orders.7d67968.vpc-lattice-svcs.us-east-1.on.aws"), HostedZoneId: awssdk.String("Z123")},
+					Id:       awssdk.String("svc-123"),
+					Name:     awssdk.String("orders"),
+					Status:   vpclatticetypes.ServiceStatusActive,
+				},
+			},
+			vpcLatticeListeners: map[string][]vpclatticetypes.ListenerSummary{
+				serviceARN: {{Arn: awssdk.String(latticeListenerARN), Id: awssdk.String("listener-123")}},
+			},
+			vpcLatticeListenerDetails: map[string]vpclattice.GetListenerOutput{
+				latticeListenerARN: {
+					Arn:        awssdk.String(latticeListenerARN),
+					Id:         awssdk.String("listener-123"),
+					Name:       awssdk.String("https"),
+					Port:       awssdk.Int32(443),
+					Protocol:   vpclatticetypes.ListenerProtocolHttps,
+					ServiceArn: awssdk.String(serviceARN),
+					ServiceId:  awssdk.String("svc-123"),
+					DefaultAction: &vpclatticetypes.RuleActionMemberForward{Value: vpclatticetypes.ForwardAction{
+						TargetGroups: []vpclatticetypes.WeightedTargetGroup{{TargetGroupIdentifier: awssdk.String(targetGroupARN), Weight: awssdk.Int32(100)}},
+					}},
+				},
+			},
+			vpcLatticeTargetGroups: []vpclatticetypes.TargetGroupSummary{{
+				Arn: awssdk.String(targetGroupARN),
+				Id:  awssdk.String("tg-123"),
+			}},
+			vpcLatticeTargetGroupDetails: map[string]vpclattice.GetTargetGroupOutput{
+				targetGroupARN: {
+					Arn:         awssdk.String(targetGroupARN),
+					Config:      &vpclatticetypes.TargetGroupConfig{HealthCheck: &vpclatticetypes.HealthCheckConfig{Enabled: awssdk.Bool(true)}, IpAddressType: vpclatticetypes.IpAddressTypeIpv4, Port: awssdk.Int32(8080), Protocol: vpclatticetypes.TargetGroupProtocolHttp, ProtocolVersion: vpclatticetypes.TargetGroupProtocolVersionHttp1, VpcIdentifier: awssdk.String("vpc-1")},
+					Id:          awssdk.String("tg-123"),
+					Name:        awssdk.String("orders-tg"),
+					ServiceArns: []string{serviceARN},
+					Status:      vpclatticetypes.TargetGroupStatusActive,
+					Type:        vpclatticetypes.TargetGroupTypeInstance,
+				},
+			},
+			vpcLatticeTargets: map[string][]vpclatticetypes.TargetSummary{
+				targetGroupARN: {{Id: awssdk.String("i-123"), Port: awssdk.Int32(8080), Status: vpclatticetypes.TargetStatusHealthy}},
+			},
+			vpcLatticeTags: map[string]map[string]string{
+				serviceARN:         {"Team": "payments"},
+				latticeListenerARN: {"Team": "payments"},
+				targetGroupARN:     {"Team": "payments"},
+			},
+		},
+	})
+	for _, tt := range []struct {
+		family string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{family: familyGlobalAcceleratorAccelerator, kind: "aws.global_accelerator_accelerator", attr: "ip_addresses", want: "198.51.100.10,198.51.100.11"},
+		{family: familyGlobalAcceleratorListener, kind: "aws.global_accelerator_listener", attr: "port_ranges", want: "443"},
+		{family: familyGlobalAcceleratorEndpointGroup, kind: "aws.global_accelerator_endpoint_group", attr: "endpoint_ids", want: "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/orders/abc"},
+		{family: familyVPCLatticeService, kind: "aws.vpc_lattice_service", attr: "auth_type", want: "AWS_IAM"},
+		{family: familyVPCLatticeListener, kind: "aws.vpc_lattice_listener", attr: "target_group_ids", want: targetGroupARN},
+		{family: familyVPCLatticeTargetGroup, kind: "aws.vpc_lattice_target_group", attr: "target_ids", want: "i-123"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
+			}
 		})
 	}
 }
@@ -1491,6 +1632,30 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.ecrRepositories = []ecrtypes.Repository{{RepositoryArn: awssdk.String(ecrARN), RepositoryName: awssdk.String("orders")}}
 		fake.ecrTags = map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
 	}
+	networkServicesData := func(fake *recordingAWS) {
+		acceleratorARN := "arn:aws:globalaccelerator::123456789012:accelerator/ga-123"
+		listenerARN := acceleratorARN + "/listener/listener-123"
+		endpointGroupARN := listenerARN + "/endpoint-group/eg-123"
+		serviceARN := "arn:aws:vpc-lattice:us-east-1:123456789012:service/svc-123"
+		latticeListenerARN := serviceARN + "/listener/listener-123"
+		targetGroupARN := "arn:aws:vpc-lattice:us-east-1:123456789012:targetgroup/tg-123"
+		fake.globalAccelerators = []globalacceleratortypes.Accelerator{{AcceleratorArn: awssdk.String(acceleratorARN), Name: awssdk.String("edge-prod")}}
+		fake.globalAcceleratorListeners = map[string][]globalacceleratortypes.Listener{acceleratorARN: {{ListenerArn: awssdk.String(listenerARN)}}}
+		fake.globalAcceleratorEndpointGroups = map[string][]globalacceleratortypes.EndpointGroup{listenerARN: {{EndpointGroupArn: awssdk.String(endpointGroupARN)}}}
+		fake.globalAcceleratorTags = map[string][]globalacceleratortypes.Tag{
+			acceleratorARN:   {{Key: awssdk.String("Team"), Value: awssdk.String("edge")}},
+			listenerARN:      {{Key: awssdk.String("Team"), Value: awssdk.String("edge")}},
+			endpointGroupARN: {{Key: awssdk.String("Team"), Value: awssdk.String("edge")}},
+		}
+		fake.vpcLatticeServices = []vpclatticetypes.ServiceSummary{{Arn: awssdk.String(serviceARN), Id: awssdk.String("svc-123")}}
+		fake.vpcLatticeServiceDetails = map[string]vpclattice.GetServiceOutput{serviceARN: {Arn: awssdk.String(serviceARN), Id: awssdk.String("svc-123"), Name: awssdk.String("orders")}}
+		fake.vpcLatticeListeners = map[string][]vpclatticetypes.ListenerSummary{serviceARN: {{Arn: awssdk.String(latticeListenerARN), Id: awssdk.String("listener-123")}}}
+		fake.vpcLatticeListenerDetails = map[string]vpclattice.GetListenerOutput{latticeListenerARN: {Arn: awssdk.String(latticeListenerARN), Id: awssdk.String("listener-123"), ServiceArn: awssdk.String(serviceARN), DefaultAction: &vpclatticetypes.RuleActionMemberForward{Value: vpclatticetypes.ForwardAction{TargetGroups: []vpclatticetypes.WeightedTargetGroup{{TargetGroupIdentifier: awssdk.String(targetGroupARN)}}}}}}
+		fake.vpcLatticeTargetGroups = []vpclatticetypes.TargetGroupSummary{{Arn: awssdk.String(targetGroupARN), Id: awssdk.String("tg-123")}}
+		fake.vpcLatticeTargetGroupDetails = map[string]vpclattice.GetTargetGroupOutput{targetGroupARN: {Arn: awssdk.String(targetGroupARN), Id: awssdk.String("tg-123"), Name: awssdk.String("orders-tg")}}
+		fake.vpcLatticeTargets = map[string][]vpclatticetypes.TargetSummary{targetGroupARN: {{Id: awssdk.String("i-123")}}}
+		fake.vpcLatticeTags = map[string]map[string]string{serviceARN: {"Team": "payments"}, latticeListenerARN: {"Team": "payments"}, targetGroupARN: {"Team": "payments"}}
+	}
 	for _, tt := range []struct {
 		family  string
 		seed    func(*recordingAWS)
@@ -1545,6 +1710,21 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyECRRepository,
 			seed:    cloudAssetData,
 			wantAPI: []string{"ecr:DescribeRepositories", "ecr:ListTagsForResource"},
+		},
+		{
+			family:  familyGlobalAcceleratorAccelerator,
+			seed:    networkServicesData,
+			wantAPI: []string{"globalaccelerator:ListAccelerators", "globalaccelerator:ListTagsForResource"},
+		},
+		{
+			family:  familyGlobalAcceleratorListener,
+			seed:    networkServicesData,
+			wantAPI: []string{"globalaccelerator:ListAccelerators", "globalaccelerator:ListListeners", "globalaccelerator:ListTagsForResource"},
+		},
+		{
+			family:  familyGlobalAcceleratorEndpointGroup,
+			seed:    networkServicesData,
+			wantAPI: []string{"globalaccelerator:ListAccelerators", "globalaccelerator:ListEndpointGroups", "globalaccelerator:ListListeners", "globalaccelerator:ListTagsForResource"},
 		},
 		{
 			family:  familyECSService,
@@ -1616,6 +1796,21 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyLambdaFunction,
 			seed:    computeData,
 			wantAPI: []string{"lambda:ListFunctions"},
+		},
+		{
+			family:  familyVPCLatticeService,
+			seed:    networkServicesData,
+			wantAPI: []string{"vpc-lattice:GetService", "vpc-lattice:ListServices", "vpc-lattice:ListTagsForResource"},
+		},
+		{
+			family:  familyVPCLatticeListener,
+			seed:    networkServicesData,
+			wantAPI: []string{"vpc-lattice:GetListener", "vpc-lattice:ListListeners", "vpc-lattice:ListServices", "vpc-lattice:ListTagsForResource"},
+		},
+		{
+			family:  familyVPCLatticeTargetGroup,
+			seed:    networkServicesData,
+			wantAPI: []string{"vpc-lattice:GetTargetGroup", "vpc-lattice:ListTagsForResource", "vpc-lattice:ListTargetGroups", "vpc-lattice:ListTargets"},
 		},
 		{
 			family:  familyPublicEndpoint,
@@ -1870,7 +2065,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake}}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake}, globalAccelerator: fakeGlobalAccelerator{fake: &fake}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake}, vpcLattice: fakeVPCLattice{fake: &fake}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1886,7 +2081,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake}}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake}, globalAccelerator: recordingGlobalAccelerator{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake}, vpcLattice: recordingVPCLattice{fake: fake}}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1954,6 +2149,7 @@ type fakeAWS struct {
 	taggedResources []resourcegroupstaggingapitypes.ResourceTagMapping
 	getResources    func(context.Context, *resourcegroupstaggingapi.GetResourcesInput, ...func(*resourcegroupstaggingapi.Options)) (*resourcegroupstaggingapi.GetResourcesOutput, error)
 	fakeAWSData
+	fakeAWSNetworkServices
 }
 
 type fakeAWSNetwork struct {
@@ -2012,6 +2208,21 @@ type fakeAWSCompute struct {
 	eksFargateProfiles    map[string]ekstypes.FargateProfile
 	eksPodIdentityIDs     map[string][]string
 	eksPodIdentities      map[string]ekstypes.PodIdentityAssociation
+}
+
+type fakeAWSNetworkServices struct {
+	globalAccelerators              []globalacceleratortypes.Accelerator
+	globalAcceleratorListeners      map[string][]globalacceleratortypes.Listener
+	globalAcceleratorEndpointGroups map[string][]globalacceleratortypes.EndpointGroup
+	globalAcceleratorTags           map[string][]globalacceleratortypes.Tag
+	vpcLatticeServices              []vpclatticetypes.ServiceSummary
+	vpcLatticeServiceDetails        map[string]vpclattice.GetServiceOutput
+	vpcLatticeListeners             map[string][]vpclatticetypes.ListenerSummary
+	vpcLatticeListenerDetails       map[string]vpclattice.GetListenerOutput
+	vpcLatticeTargetGroups          []vpclatticetypes.TargetGroupSummary
+	vpcLatticeTargetGroupDetails    map[string]vpclattice.GetTargetGroupOutput
+	vpcLatticeTargets               map[string][]vpclatticetypes.TargetSummary
+	vpcLatticeTags                  map[string]map[string]string
 }
 
 type recordingAWS struct {
@@ -2363,6 +2574,156 @@ func (f fakeECR) ListTagsForResource(_ context.Context, input *ecr.ListTagsForRe
 	return &ecr.ListTagsForResourceOutput{Tags: f.fake.ecrTags[awssdk.ToString(input.ResourceArn)]}, nil
 }
 
+type fakeGlobalAccelerator struct {
+	fake *fakeAWS
+}
+
+type recordingGlobalAccelerator struct {
+	fake *recordingAWS
+}
+
+func (f recordingGlobalAccelerator) ListAccelerators(ctx context.Context, input *globalaccelerator.ListAcceleratorsInput, options ...func(*globalaccelerator.Options)) (*globalaccelerator.ListAcceleratorsOutput, error) {
+	f.fake.record("globalaccelerator:ListAccelerators")
+	return fakeGlobalAccelerator{fake: &f.fake.fakeAWS}.ListAccelerators(ctx, input, options...)
+}
+
+func (f recordingGlobalAccelerator) ListListeners(ctx context.Context, input *globalaccelerator.ListListenersInput, options ...func(*globalaccelerator.Options)) (*globalaccelerator.ListListenersOutput, error) {
+	f.fake.record("globalaccelerator:ListListeners")
+	return fakeGlobalAccelerator{fake: &f.fake.fakeAWS}.ListListeners(ctx, input, options...)
+}
+
+func (f recordingGlobalAccelerator) ListEndpointGroups(ctx context.Context, input *globalaccelerator.ListEndpointGroupsInput, options ...func(*globalaccelerator.Options)) (*globalaccelerator.ListEndpointGroupsOutput, error) {
+	f.fake.record("globalaccelerator:ListEndpointGroups")
+	return fakeGlobalAccelerator{fake: &f.fake.fakeAWS}.ListEndpointGroups(ctx, input, options...)
+}
+
+func (f recordingGlobalAccelerator) ListTagsForResource(ctx context.Context, input *globalaccelerator.ListTagsForResourceInput, options ...func(*globalaccelerator.Options)) (*globalaccelerator.ListTagsForResourceOutput, error) {
+	f.fake.record("globalaccelerator:ListTagsForResource")
+	return fakeGlobalAccelerator{fake: &f.fake.fakeAWS}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f fakeGlobalAccelerator) ListAccelerators(_ context.Context, input *globalaccelerator.ListAcceleratorsInput, _ ...func(*globalaccelerator.Options)) (*globalaccelerator.ListAcceleratorsOutput, error) {
+	accelerators, next := paginateGlobalAccelerators(f.fake.globalAccelerators, awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
+	return &globalaccelerator.ListAcceleratorsOutput{Accelerators: accelerators, NextToken: stringPtr(next)}, nil
+}
+
+func (f fakeGlobalAccelerator) ListListeners(_ context.Context, input *globalaccelerator.ListListenersInput, _ ...func(*globalaccelerator.Options)) (*globalaccelerator.ListListenersOutput, error) {
+	listeners := f.fake.globalAcceleratorListeners[awssdk.ToString(input.AcceleratorArn)]
+	page, next := paginateGlobalAcceleratorListeners(listeners, awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
+	return &globalaccelerator.ListListenersOutput{Listeners: page, NextToken: stringPtr(next)}, nil
+}
+
+func (f fakeGlobalAccelerator) ListEndpointGroups(_ context.Context, input *globalaccelerator.ListEndpointGroupsInput, _ ...func(*globalaccelerator.Options)) (*globalaccelerator.ListEndpointGroupsOutput, error) {
+	groups := f.fake.globalAcceleratorEndpointGroups[awssdk.ToString(input.ListenerArn)]
+	page, next := paginateGlobalAcceleratorEndpointGroups(groups, awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
+	return &globalaccelerator.ListEndpointGroupsOutput{EndpointGroups: page, NextToken: stringPtr(next)}, nil
+}
+
+func (f fakeGlobalAccelerator) ListTagsForResource(_ context.Context, input *globalaccelerator.ListTagsForResourceInput, _ ...func(*globalaccelerator.Options)) (*globalaccelerator.ListTagsForResourceOutput, error) {
+	return &globalaccelerator.ListTagsForResourceOutput{Tags: f.fake.globalAcceleratorTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
+type fakeVPCLattice struct {
+	fake *fakeAWS
+}
+
+type recordingVPCLattice struct {
+	fake *recordingAWS
+}
+
+func (f recordingVPCLattice) ListServices(ctx context.Context, input *vpclattice.ListServicesInput, options ...func(*vpclattice.Options)) (*vpclattice.ListServicesOutput, error) {
+	f.fake.record("vpc-lattice:ListServices")
+	return fakeVPCLattice{fake: &f.fake.fakeAWS}.ListServices(ctx, input, options...)
+}
+
+func (f recordingVPCLattice) GetService(ctx context.Context, input *vpclattice.GetServiceInput, options ...func(*vpclattice.Options)) (*vpclattice.GetServiceOutput, error) {
+	f.fake.record("vpc-lattice:GetService")
+	return fakeVPCLattice{fake: &f.fake.fakeAWS}.GetService(ctx, input, options...)
+}
+
+func (f recordingVPCLattice) ListListeners(ctx context.Context, input *vpclattice.ListListenersInput, options ...func(*vpclattice.Options)) (*vpclattice.ListListenersOutput, error) {
+	f.fake.record("vpc-lattice:ListListeners")
+	return fakeVPCLattice{fake: &f.fake.fakeAWS}.ListListeners(ctx, input, options...)
+}
+
+func (f recordingVPCLattice) GetListener(ctx context.Context, input *vpclattice.GetListenerInput, options ...func(*vpclattice.Options)) (*vpclattice.GetListenerOutput, error) {
+	f.fake.record("vpc-lattice:GetListener")
+	return fakeVPCLattice{fake: &f.fake.fakeAWS}.GetListener(ctx, input, options...)
+}
+
+func (f recordingVPCLattice) ListTargetGroups(ctx context.Context, input *vpclattice.ListTargetGroupsInput, options ...func(*vpclattice.Options)) (*vpclattice.ListTargetGroupsOutput, error) {
+	f.fake.record("vpc-lattice:ListTargetGroups")
+	return fakeVPCLattice{fake: &f.fake.fakeAWS}.ListTargetGroups(ctx, input, options...)
+}
+
+func (f recordingVPCLattice) GetTargetGroup(ctx context.Context, input *vpclattice.GetTargetGroupInput, options ...func(*vpclattice.Options)) (*vpclattice.GetTargetGroupOutput, error) {
+	f.fake.record("vpc-lattice:GetTargetGroup")
+	return fakeVPCLattice{fake: &f.fake.fakeAWS}.GetTargetGroup(ctx, input, options...)
+}
+
+func (f recordingVPCLattice) ListTargets(ctx context.Context, input *vpclattice.ListTargetsInput, options ...func(*vpclattice.Options)) (*vpclattice.ListTargetsOutput, error) {
+	f.fake.record("vpc-lattice:ListTargets")
+	return fakeVPCLattice{fake: &f.fake.fakeAWS}.ListTargets(ctx, input, options...)
+}
+
+func (f recordingVPCLattice) ListTagsForResource(ctx context.Context, input *vpclattice.ListTagsForResourceInput, options ...func(*vpclattice.Options)) (*vpclattice.ListTagsForResourceOutput, error) {
+	f.fake.record("vpc-lattice:ListTagsForResource")
+	return fakeVPCLattice{fake: &f.fake.fakeAWS}.ListTagsForResource(ctx, input, options...)
+}
+
+func (f fakeVPCLattice) ListServices(_ context.Context, input *vpclattice.ListServicesInput, _ ...func(*vpclattice.Options)) (*vpclattice.ListServicesOutput, error) {
+	services, next := paginateVPCLatticeServices(f.fake.vpcLatticeServices, awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
+	return &vpclattice.ListServicesOutput{Items: services, NextToken: stringPtr(next)}, nil
+}
+
+func (f fakeVPCLattice) GetService(_ context.Context, input *vpclattice.GetServiceInput, _ ...func(*vpclattice.Options)) (*vpclattice.GetServiceOutput, error) {
+	if f.fake.vpcLatticeServiceDetails != nil {
+		if service, ok := f.fake.vpcLatticeServiceDetails[awssdk.ToString(input.ServiceIdentifier)]; ok {
+			return &service, nil
+		}
+	}
+	return &vpclattice.GetServiceOutput{}, nil
+}
+
+func (f fakeVPCLattice) ListListeners(_ context.Context, input *vpclattice.ListListenersInput, _ ...func(*vpclattice.Options)) (*vpclattice.ListListenersOutput, error) {
+	listeners := f.fake.vpcLatticeListeners[awssdk.ToString(input.ServiceIdentifier)]
+	page, next := paginateVPCLatticeListeners(listeners, awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
+	return &vpclattice.ListListenersOutput{Items: page, NextToken: stringPtr(next)}, nil
+}
+
+func (f fakeVPCLattice) GetListener(_ context.Context, input *vpclattice.GetListenerInput, _ ...func(*vpclattice.Options)) (*vpclattice.GetListenerOutput, error) {
+	if f.fake.vpcLatticeListenerDetails != nil {
+		if listener, ok := f.fake.vpcLatticeListenerDetails[awssdk.ToString(input.ListenerIdentifier)]; ok {
+			return &listener, nil
+		}
+	}
+	return &vpclattice.GetListenerOutput{}, nil
+}
+
+func (f fakeVPCLattice) ListTargetGroups(_ context.Context, input *vpclattice.ListTargetGroupsInput, _ ...func(*vpclattice.Options)) (*vpclattice.ListTargetGroupsOutput, error) {
+	groups, next := paginateVPCLatticeTargetGroups(f.fake.vpcLatticeTargetGroups, awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
+	return &vpclattice.ListTargetGroupsOutput{Items: groups, NextToken: stringPtr(next)}, nil
+}
+
+func (f fakeVPCLattice) GetTargetGroup(_ context.Context, input *vpclattice.GetTargetGroupInput, _ ...func(*vpclattice.Options)) (*vpclattice.GetTargetGroupOutput, error) {
+	if f.fake.vpcLatticeTargetGroupDetails != nil {
+		if group, ok := f.fake.vpcLatticeTargetGroupDetails[awssdk.ToString(input.TargetGroupIdentifier)]; ok {
+			return &group, nil
+		}
+	}
+	return &vpclattice.GetTargetGroupOutput{}, nil
+}
+
+func (f fakeVPCLattice) ListTargets(_ context.Context, input *vpclattice.ListTargetsInput, _ ...func(*vpclattice.Options)) (*vpclattice.ListTargetsOutput, error) {
+	targets := f.fake.vpcLatticeTargets[awssdk.ToString(input.TargetGroupIdentifier)]
+	page, next := paginateVPCLatticeTargets(targets, awssdk.ToString(input.NextToken), int(awssdk.ToInt32(input.MaxResults)))
+	return &vpclattice.ListTargetsOutput{Items: page, NextToken: stringPtr(next)}, nil
+}
+
+func (f fakeVPCLattice) ListTagsForResource(_ context.Context, input *vpclattice.ListTagsForResourceInput, _ ...func(*vpclattice.Options)) (*vpclattice.ListTagsForResourceOutput, error) {
+	return &vpclattice.ListTagsForResourceOutput{Tags: f.fake.vpcLatticeTags[awssdk.ToString(input.ResourceArn)]}, nil
+}
+
 type fakeEKS struct {
 	compute fakeAWSCompute
 }
@@ -2635,6 +2996,81 @@ func paginateLambdaFunctions(values []lambdatypes.FunctionConfiguration, marker 
 	}
 	next := strconv.Itoa(start + limit)
 	return values[start : start+limit], next
+}
+
+func paginateGlobalAccelerators(values []globalacceleratortypes.Accelerator, marker string, limit int) ([]globalacceleratortypes.Accelerator, string) {
+	start := paginationStart(marker, len(values))
+	if limit <= 0 || start+limit >= len(values) {
+		return values[start:], ""
+	}
+	next := strconv.Itoa(start + limit)
+	return values[start : start+limit], next
+}
+
+func paginateGlobalAcceleratorListeners(values []globalacceleratortypes.Listener, marker string, limit int) ([]globalacceleratortypes.Listener, string) {
+	start := paginationStart(marker, len(values))
+	if limit <= 0 || start+limit >= len(values) {
+		return values[start:], ""
+	}
+	next := strconv.Itoa(start + limit)
+	return values[start : start+limit], next
+}
+
+func paginateGlobalAcceleratorEndpointGroups(values []globalacceleratortypes.EndpointGroup, marker string, limit int) ([]globalacceleratortypes.EndpointGroup, string) {
+	start := paginationStart(marker, len(values))
+	if limit <= 0 || start+limit >= len(values) {
+		return values[start:], ""
+	}
+	next := strconv.Itoa(start + limit)
+	return values[start : start+limit], next
+}
+
+func paginateVPCLatticeServices(values []vpclatticetypes.ServiceSummary, marker string, limit int) ([]vpclatticetypes.ServiceSummary, string) {
+	start := paginationStart(marker, len(values))
+	if limit <= 0 || start+limit >= len(values) {
+		return values[start:], ""
+	}
+	next := strconv.Itoa(start + limit)
+	return values[start : start+limit], next
+}
+
+func paginateVPCLatticeListeners(values []vpclatticetypes.ListenerSummary, marker string, limit int) ([]vpclatticetypes.ListenerSummary, string) {
+	start := paginationStart(marker, len(values))
+	if limit <= 0 || start+limit >= len(values) {
+		return values[start:], ""
+	}
+	next := strconv.Itoa(start + limit)
+	return values[start : start+limit], next
+}
+
+func paginateVPCLatticeTargetGroups(values []vpclatticetypes.TargetGroupSummary, marker string, limit int) ([]vpclatticetypes.TargetGroupSummary, string) {
+	start := paginationStart(marker, len(values))
+	if limit <= 0 || start+limit >= len(values) {
+		return values[start:], ""
+	}
+	next := strconv.Itoa(start + limit)
+	return values[start : start+limit], next
+}
+
+func paginateVPCLatticeTargets(values []vpclatticetypes.TargetSummary, marker string, limit int) ([]vpclatticetypes.TargetSummary, string) {
+	start := paginationStart(marker, len(values))
+	if limit <= 0 || start+limit >= len(values) {
+		return values[start:], ""
+	}
+	next := strconv.Itoa(start + limit)
+	return values[start : start+limit], next
+}
+
+func paginationStart(marker string, length int) int {
+	start := 0
+	if marker == "" {
+		return start
+	}
+	parsed, err := strconv.Atoi(marker)
+	if err == nil && parsed >= 0 && parsed <= length {
+		start = parsed
+	}
+	return start
 }
 
 func paginateResourceTags(values []resourcegroupstaggingapitypes.ResourceTagMapping, marker string, limit int) ([]resourcegroupstaggingapitypes.ResourceTagMapping, string) {
