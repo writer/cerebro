@@ -4,6 +4,10 @@ description: AWS IAM inventory and CloudTrail source.
 emitted_kinds:
   - aws.access_key
   - asset.data_sensitivity
+  - aws.backup_vault
+  - aws.backup_plan
+  - aws.backup_protected_resource
+  - aws.backup_recovery_point
   - aws.cloudtrail
   - aws.ec2_instance
   - aws.ecr_repository
@@ -33,6 +37,10 @@ emitted_kinds:
 runtime_families:
   - access_key
   - asset_metadata
+  - backup_vault
+  - backup_plan
+  - backup_protected_resource
+  - backup_recovery_point
   - cloudtrail
   - ec2_instance
   - ecr_repository

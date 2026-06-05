@@ -16,6 +16,8 @@ import (
 	apigatewaytypes "github.com/aws/aws-sdk-go-v2/service/apigateway/types"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
 	apigatewayv2types "github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/backup"
+	backuptypes "github.com/aws/aws-sdk-go-v2/service/backup/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
@@ -329,6 +331,10 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 	}{
 		{family: familyAccessKey, config: map[string]string{"user_name": "admin@writer.com"}, kind: "aws.access_key"},
 		{family: familyAssetMetadata, kind: "asset.data_sensitivity"},
+		{family: familyBackupVault, kind: "aws.backup_vault"},
+		{family: familyBackupPlan, kind: "aws.backup_plan"},
+		{family: familyBackupProtected, kind: "aws.backup_protected_resource"},
+		{family: familyBackupRecoveryPoint, kind: "aws.backup_recovery_point"},
 		{family: familyEC2Instance, kind: "aws.ec2_instance"},
 		{family: familyECRRepository, kind: "aws.ecr_repository"},
 		{family: familyECSService, kind: "aws.ecs_service"},
@@ -749,6 +755,108 @@ func TestReadAWSCloudAssetInventoryEvents(t *testing.T) {
 		{family: familySQSQueue, kind: "aws.sqs_queue", attr: "encryption", want: "true"},
 		{family: familySNSTopic, kind: "aws.sns_topic", attr: "encryption", want: "true"},
 		{family: familyECRRepository, kind: "aws.ecr_repository", attr: "scan_on_push", want: "true"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("%s = %q, want %q", tt.attr, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReadAWSBackupInventoryEvents(t *testing.T) {
+	vaultARN := "arn:aws:backup:us-east-1:123456789012:backup-vault:prod-vault"
+	planARN := "arn:aws:backup:us-east-1:123456789012:backup-plan:plan-123"
+	recoveryPointARN := "arn:aws:backup:us-east-1:123456789012:recovery-point:rp-123"
+	resourceARN := "arn:aws:rds:us-east-1:123456789012:db:orders-db"
+	kmsARN := "arn:aws:kms:us-east-1:123456789012:key/key-123"
+	source := newTestSource(t, fakeAWS{fakeAWSData: fakeAWSData{
+		backupVaults: []backuptypes.BackupVaultListMember{{
+			BackupVaultArn:         awssdk.String(vaultARN),
+			BackupVaultName:        awssdk.String("prod-vault"),
+			CreationDate:           timePtr("2026-04-23T00:00:00Z"),
+			EncryptionKeyArn:       awssdk.String(kmsARN),
+			EncryptionKeyType:      backuptypes.EncryptionKeyTypeCustomerManagedKmsKey,
+			Locked:                 awssdk.Bool(true),
+			MaxRetentionDays:       awssdk.Int64(365),
+			MinRetentionDays:       awssdk.Int64(35),
+			NumberOfRecoveryPoints: 3,
+			VaultState:             backuptypes.VaultStateAvailable,
+		}},
+		backupVaultTags: map[string]map[string]string{vaultARN: {"Owner": "backup@writer.com"}},
+		backupPlans: []backuptypes.BackupPlansListMember{{
+			BackupPlanArn:  awssdk.String(planARN),
+			BackupPlanId:   awssdk.String("plan-123"),
+			BackupPlanName: awssdk.String("prod-plan"),
+			CreationDate:   timePtr("2026-04-23T00:00:00Z"),
+			VersionId:      awssdk.String("v1"),
+		}},
+		backupPlanDetails: map[string]backup.GetBackupPlanOutput{"plan-123": {
+			BackupPlanArn: awssdk.String(planARN),
+			BackupPlanId:  awssdk.String("plan-123"),
+			BackupPlan: &backuptypes.BackupPlan{
+				BackupPlanName: awssdk.String("prod-plan"),
+				Rules: []backuptypes.BackupRule{{
+					EnableContinuousBackup:  awssdk.Bool(true),
+					Lifecycle:               &backuptypes.Lifecycle{DeleteAfterDays: awssdk.Int64(365), MoveToColdStorageAfterDays: awssdk.Int64(35)},
+					RuleId:                  awssdk.String("rule-1"),
+					RuleName:                awssdk.String("daily"),
+					ScheduleExpression:      awssdk.String("cron(0 5 ? * * *)"),
+					TargetBackupVaultName:   awssdk.String("prod-vault"),
+					StartWindowMinutes:      awssdk.Int64(60),
+					CompletionWindowMinutes: awssdk.Int64(180),
+				}},
+			},
+		}},
+		backupPlanTags: map[string]map[string]string{planARN: {"Team": "platform"}},
+		backupProtectedResources: []backuptypes.ProtectedResource{{
+			LastBackupTime:       timePtr("2026-04-24T00:00:00Z"),
+			LastBackupVaultArn:   awssdk.String(vaultARN),
+			LastRecoveryPointArn: awssdk.String(recoveryPointARN),
+			ResourceArn:          awssdk.String(resourceARN),
+			ResourceName:         awssdk.String("orders-db"),
+			ResourceType:         awssdk.String("RDS"),
+		}},
+		backupRecoveryPoints: map[string][]backuptypes.RecoveryPointByBackupVault{"prod-vault": {{
+			BackupVaultArn:   awssdk.String(vaultARN),
+			BackupVaultName:  awssdk.String("prod-vault"),
+			CreationDate:     timePtr("2026-04-24T00:00:00Z"),
+			EncryptionKeyArn: awssdk.String(kmsARN),
+			CreatedBy: &backuptypes.RecoveryPointCreator{
+				BackupPlanArn: awssdk.String(planARN),
+				BackupPlanId:  awssdk.String("plan-123"),
+				BackupRuleId:  awssdk.String("rule-1"),
+			},
+			IamRoleArn:       awssdk.String("arn:aws:iam::123456789012:role/AWSBackupRole"),
+			IsEncrypted:      true,
+			Lifecycle:        &backuptypes.Lifecycle{DeleteAfterDays: awssdk.Int64(365), MoveToColdStorageAfterDays: awssdk.Int64(35)},
+			RecoveryPointArn: awssdk.String(recoveryPointARN),
+			ResourceArn:      awssdk.String(resourceARN),
+			ResourceName:     awssdk.String("orders-db"),
+			ResourceType:     awssdk.String("RDS"),
+			Status:           backuptypes.RecoveryPointStatusCompleted,
+		}}},
+	}})
+	for _, tt := range []struct {
+		family string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{family: familyBackupVault, kind: "aws.backup_vault", attr: "encryption_key_arn", want: kmsARN},
+		{family: familyBackupPlan, kind: "aws.backup_plan", attr: "retention_days", want: "365"},
+		{family: familyBackupProtected, kind: "aws.backup_protected_resource", attr: "last_recovery_point_arn", want: recoveryPointARN},
+		{family: familyBackupRecoveryPoint, kind: "aws.backup_recovery_point", attr: "backup_plan_id", want: "plan-123"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{"account_id": "123456789012", "family": tt.family}), nil)
@@ -1491,6 +1599,18 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 		fake.ecrRepositories = []ecrtypes.Repository{{RepositoryArn: awssdk.String(ecrARN), RepositoryName: awssdk.String("orders")}}
 		fake.ecrTags = map[string][]ecrtypes.Tag{ecrARN: {{Key: awssdk.String("Team"), Value: awssdk.String("payments")}}}
 	}
+	backupData := func(fake *recordingAWS) {
+		vaultARN := "arn:aws:backup:us-east-1:123456789012:backup-vault:prod-vault"
+		planARN := "arn:aws:backup:us-east-1:123456789012:backup-plan:plan-123"
+		resourceARN := "arn:aws:rds:us-east-1:123456789012:db:orders-db"
+		fake.backupVaults = []backuptypes.BackupVaultListMember{{BackupVaultArn: awssdk.String(vaultARN), BackupVaultName: awssdk.String("prod-vault")}}
+		fake.backupVaultTags = map[string]map[string]string{vaultARN: {"Owner": "backup@writer.com"}}
+		fake.backupPlans = []backuptypes.BackupPlansListMember{{BackupPlanArn: awssdk.String(planARN), BackupPlanId: awssdk.String("plan-123"), BackupPlanName: awssdk.String("prod-plan")}}
+		fake.backupPlanDetails = map[string]backup.GetBackupPlanOutput{"plan-123": {BackupPlanArn: awssdk.String(planARN), BackupPlanId: awssdk.String("plan-123"), BackupPlan: &backuptypes.BackupPlan{BackupPlanName: awssdk.String("prod-plan"), Rules: []backuptypes.BackupRule{{TargetBackupVaultName: awssdk.String("prod-vault"), Lifecycle: &backuptypes.Lifecycle{DeleteAfterDays: awssdk.Int64(35)}}}}}}
+		fake.backupPlanTags = map[string]map[string]string{planARN: {"Team": "platform"}}
+		fake.backupProtectedResources = []backuptypes.ProtectedResource{{ResourceArn: awssdk.String(resourceARN), ResourceName: awssdk.String("orders-db"), ResourceType: awssdk.String("RDS")}}
+		fake.backupRecoveryPoints = map[string][]backuptypes.RecoveryPointByBackupVault{"prod-vault": {{RecoveryPointArn: awssdk.String("arn:aws:backup:us-east-1:123456789012:recovery-point:rp-123"), BackupVaultArn: awssdk.String(vaultARN), BackupVaultName: awssdk.String("prod-vault"), ResourceArn: awssdk.String(resourceARN), ResourceType: awssdk.String("RDS")}}}
+	}
 	for _, tt := range []struct {
 		family  string
 		seed    func(*recordingAWS)
@@ -1505,6 +1625,26 @@ func TestExpandedAWSGraphFamiliesUseExpectedAPIs(t *testing.T) {
 			family:  familyAssetMetadata,
 			seed:    assetMetadataData,
 			wantAPI: []string{"tagging:GetResources"},
+		},
+		{
+			family:  familyBackupVault,
+			seed:    backupData,
+			wantAPI: []string{"backup:ListBackupVaults", "backup:ListTags"},
+		},
+		{
+			family:  familyBackupPlan,
+			seed:    backupData,
+			wantAPI: []string{"backup:GetBackupPlan", "backup:ListBackupPlans", "backup:ListTags"},
+		},
+		{
+			family:  familyBackupProtected,
+			seed:    backupData,
+			wantAPI: []string{"backup:ListProtectedResources"},
+		},
+		{
+			family:  familyBackupRecoveryPoint,
+			seed:    backupData,
+			wantAPI: []string{"backup:ListBackupVaults", "backup:ListRecoveryPointsByBackupVault"},
 		},
 		{
 			family:  familyEC2Instance,
@@ -1870,7 +2010,7 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake}}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: fakeEKS{compute: fake.compute}, ecr: fakeECR{fake: &fake}, apiGateway: fake, apiGatewayV2: fakeAPIGatewayV2{domains: fake.apiV2Domains, apis: fake.apiV2APIs}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: fakeSNS{fake: &fake}, backup: fake}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1886,7 +2026,7 @@ func newRecordingSource(t *testing.T, fake *recordingAWS) *Source {
 		t.Fatalf("loadSpec() error = %v", err)
 	}
 	source := &Source{spec: spec, clients: func(context.Context, settings) (awsClients, error) {
-		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake}}, nil
+		return awsClients{iam: fake, cloudTrail: fake, ec2: fake, route53: fake, cloudFront: fake, elbv2: fake, ecs: fake, eks: recordingEKS{fake: fake}, ecr: recordingECR{fake: fake}, apiGateway: fake, apiGatewayV2: recordingAPIGatewayV2{fake: fake}, lambda: fake, tagging: fake, s3: fake, rds: fake, kms: fake, secrets: fake, sqs: fake, sns: recordingSNS{fake: fake}, backup: fake}, nil
 	}}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -1971,27 +2111,34 @@ type fakeAWSNetwork struct {
 }
 
 type fakeAWSData struct {
-	s3Buckets            []s3types.Bucket
-	s3BucketRegions      map[string]s3types.BucketLocationConstraint
-	s3Tags               map[string][]s3types.Tag
-	s3Encryption         map[string]*s3types.ServerSideEncryptionConfiguration
-	s3Versioning         map[string]s3types.BucketVersioningStatus
-	s3Logging            map[string]bool
-	s3PublicAccessBlocks map[string]*s3types.PublicAccessBlockConfiguration
-	s3OptionalError      error
-	rdsInstances         []rdstypes.DBInstance
-	kmsKeys              []kmstypes.KeyMetadata
-	kmsTags              map[string][]kmstypes.Tag
-	kmsRotation          map[string]bool
-	secrets              []secretsmanagertypes.SecretListEntry
-	sqsQueueURLs         []string
-	sqsAttributes        map[string]map[string]string
-	sqsTags              map[string]map[string]string
-	snsTopics            []snstypes.Topic
-	snsAttributes        map[string]map[string]string
-	snsTags              map[string][]snstypes.Tag
-	ecrRepositories      []ecrtypes.Repository
-	ecrTags              map[string][]ecrtypes.Tag
+	s3Buckets                []s3types.Bucket
+	s3BucketRegions          map[string]s3types.BucketLocationConstraint
+	s3Tags                   map[string][]s3types.Tag
+	s3Encryption             map[string]*s3types.ServerSideEncryptionConfiguration
+	s3Versioning             map[string]s3types.BucketVersioningStatus
+	s3Logging                map[string]bool
+	s3PublicAccessBlocks     map[string]*s3types.PublicAccessBlockConfiguration
+	s3OptionalError          error
+	rdsInstances             []rdstypes.DBInstance
+	kmsKeys                  []kmstypes.KeyMetadata
+	kmsTags                  map[string][]kmstypes.Tag
+	kmsRotation              map[string]bool
+	secrets                  []secretsmanagertypes.SecretListEntry
+	sqsQueueURLs             []string
+	sqsAttributes            map[string]map[string]string
+	sqsTags                  map[string]map[string]string
+	snsTopics                []snstypes.Topic
+	snsAttributes            map[string]map[string]string
+	snsTags                  map[string][]snstypes.Tag
+	ecrRepositories          []ecrtypes.Repository
+	ecrTags                  map[string][]ecrtypes.Tag
+	backupVaults             []backuptypes.BackupVaultListMember
+	backupVaultTags          map[string]map[string]string
+	backupPlans              []backuptypes.BackupPlansListMember
+	backupPlanDetails        map[string]backup.GetBackupPlanOutput
+	backupPlanTags           map[string]map[string]string
+	backupProtectedResources []backuptypes.ProtectedResource
+	backupRecoveryPoints     map[string][]backuptypes.RecoveryPointByBackupVault
 }
 
 type fakeAWSCompute struct {
@@ -2286,6 +2433,36 @@ func (f *recordingAWS) GetQueueAttributes(ctx context.Context, input *sqs.GetQue
 func (f *recordingAWS) ListQueueTags(ctx context.Context, input *sqs.ListQueueTagsInput, options ...func(*sqs.Options)) (*sqs.ListQueueTagsOutput, error) {
 	f.record("sqs:ListQueueTags")
 	return f.fakeAWS.ListQueueTags(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListBackupVaults(ctx context.Context, input *backup.ListBackupVaultsInput, options ...func(*backup.Options)) (*backup.ListBackupVaultsOutput, error) {
+	f.record("backup:ListBackupVaults")
+	return f.fakeAWS.ListBackupVaults(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListBackupPlans(ctx context.Context, input *backup.ListBackupPlansInput, options ...func(*backup.Options)) (*backup.ListBackupPlansOutput, error) {
+	f.record("backup:ListBackupPlans")
+	return f.fakeAWS.ListBackupPlans(ctx, input, options...)
+}
+
+func (f *recordingAWS) GetBackupPlan(ctx context.Context, input *backup.GetBackupPlanInput, options ...func(*backup.Options)) (*backup.GetBackupPlanOutput, error) {
+	f.record("backup:GetBackupPlan")
+	return f.fakeAWS.GetBackupPlan(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListProtectedResources(ctx context.Context, input *backup.ListProtectedResourcesInput, options ...func(*backup.Options)) (*backup.ListProtectedResourcesOutput, error) {
+	f.record("backup:ListProtectedResources")
+	return f.fakeAWS.ListProtectedResources(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListRecoveryPointsByBackupVault(ctx context.Context, input *backup.ListRecoveryPointsByBackupVaultInput, options ...func(*backup.Options)) (*backup.ListRecoveryPointsByBackupVaultOutput, error) {
+	f.record("backup:ListRecoveryPointsByBackupVault")
+	return f.fakeAWS.ListRecoveryPointsByBackupVault(ctx, input, options...)
+}
+
+func (f *recordingAWS) ListTags(ctx context.Context, input *backup.ListTagsInput, options ...func(*backup.Options)) (*backup.ListTagsOutput, error) {
+	f.record("backup:ListTags")
+	return f.fakeAWS.ListTags(ctx, input, options...)
 }
 
 type recordingAPIGatewayV2 struct {
@@ -2854,6 +3031,38 @@ func (f fakeAWS) GetQueueAttributes(_ context.Context, input *sqs.GetQueueAttrib
 
 func (f fakeAWS) ListQueueTags(_ context.Context, input *sqs.ListQueueTagsInput, _ ...func(*sqs.Options)) (*sqs.ListQueueTagsOutput, error) {
 	return &sqs.ListQueueTagsOutput{Tags: f.sqsTags[awssdk.ToString(input.QueueUrl)]}, nil
+}
+
+func (f fakeAWS) ListBackupVaults(context.Context, *backup.ListBackupVaultsInput, ...func(*backup.Options)) (*backup.ListBackupVaultsOutput, error) {
+	return &backup.ListBackupVaultsOutput{BackupVaultList: f.backupVaults}, nil
+}
+
+func (f fakeAWS) ListBackupPlans(context.Context, *backup.ListBackupPlansInput, ...func(*backup.Options)) (*backup.ListBackupPlansOutput, error) {
+	return &backup.ListBackupPlansOutput{BackupPlansList: f.backupPlans}, nil
+}
+
+func (f fakeAWS) GetBackupPlan(_ context.Context, input *backup.GetBackupPlanInput, _ ...func(*backup.Options)) (*backup.GetBackupPlanOutput, error) {
+	if f.backupPlanDetails != nil {
+		details := f.backupPlanDetails[awssdk.ToString(input.BackupPlanId)]
+		return &details, nil
+	}
+	return &backup.GetBackupPlanOutput{BackupPlanId: input.BackupPlanId}, nil
+}
+
+func (f fakeAWS) ListProtectedResources(context.Context, *backup.ListProtectedResourcesInput, ...func(*backup.Options)) (*backup.ListProtectedResourcesOutput, error) {
+	return &backup.ListProtectedResourcesOutput{Results: f.backupProtectedResources}, nil
+}
+
+func (f fakeAWS) ListRecoveryPointsByBackupVault(_ context.Context, input *backup.ListRecoveryPointsByBackupVaultInput, _ ...func(*backup.Options)) (*backup.ListRecoveryPointsByBackupVaultOutput, error) {
+	return &backup.ListRecoveryPointsByBackupVaultOutput{RecoveryPoints: f.backupRecoveryPoints[awssdk.ToString(input.BackupVaultName)]}, nil
+}
+
+func (f fakeAWS) ListTags(_ context.Context, input *backup.ListTagsInput, _ ...func(*backup.Options)) (*backup.ListTagsOutput, error) {
+	arn := awssdk.ToString(input.ResourceArn)
+	if tags := f.backupVaultTags[arn]; tags != nil {
+		return &backup.ListTagsOutput{Tags: tags}, nil
+	}
+	return &backup.ListTagsOutput{Tags: f.backupPlanTags[arn]}, nil
 }
 
 type fakeAPIGatewayV2 struct {

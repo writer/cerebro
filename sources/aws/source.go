@@ -24,6 +24,7 @@ import (
 	apigatewaytypes "github.com/aws/aws-sdk-go-v2/service/apigateway/types"
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
 	apigatewayv2types "github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types"
+	"github.com/aws/aws-sdk-go-v2/service/backup"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	cloudfronttypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
@@ -77,6 +78,10 @@ const (
 	awsAssumeRoleSessionName  = "cerebro-source-runtime"
 	familyAccessKey           = "access_key"
 	familyAssetMetadata       = "asset_metadata"
+	familyBackupVault         = "backup_vault"
+	familyBackupPlan          = "backup_plan"
+	familyBackupProtected     = "backup_protected_resource"
+	familyBackupRecoveryPoint = "backup_recovery_point"
 	familyCloudTrail          = "cloudtrail"
 	familyEC2Instance         = "ec2_instance"
 	familyECRRepository       = "ecr_repository"
@@ -162,6 +167,7 @@ type awsClients struct {
 	secrets      awsSecretsManagerAPI
 	sqs          awsSQSAPI
 	sns          awsSNSAPI
+	backup       awsBackupAPI
 }
 
 type awsIAMAPI interface {
@@ -287,6 +293,15 @@ type awsSNSAPI interface {
 	ListTopics(context.Context, *sns.ListTopicsInput, ...func(*sns.Options)) (*sns.ListTopicsOutput, error)
 	GetTopicAttributes(context.Context, *sns.GetTopicAttributesInput, ...func(*sns.Options)) (*sns.GetTopicAttributesOutput, error)
 	ListTagsForResource(context.Context, *sns.ListTagsForResourceInput, ...func(*sns.Options)) (*sns.ListTagsForResourceOutput, error)
+}
+
+type awsBackupAPI interface {
+	ListBackupVaults(context.Context, *backup.ListBackupVaultsInput, ...func(*backup.Options)) (*backup.ListBackupVaultsOutput, error)
+	ListBackupPlans(context.Context, *backup.ListBackupPlansInput, ...func(*backup.Options)) (*backup.ListBackupPlansOutput, error)
+	GetBackupPlan(context.Context, *backup.GetBackupPlanInput, ...func(*backup.Options)) (*backup.GetBackupPlanOutput, error)
+	ListProtectedResources(context.Context, *backup.ListProtectedResourcesInput, ...func(*backup.Options)) (*backup.ListProtectedResourcesOutput, error)
+	ListRecoveryPointsByBackupVault(context.Context, *backup.ListRecoveryPointsByBackupVaultInput, ...func(*backup.Options)) (*backup.ListRecoveryPointsByBackupVaultOutput, error)
+	ListTags(context.Context, *backup.ListTagsInput, ...func(*backup.Options)) (*backup.ListTagsOutput, error)
 }
 
 type awsFamilyOptions[T any] struct {
@@ -526,6 +541,50 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:aws_asset_metadata:%s", settings.accountID, firstNonEmpty(asset.ResourceARN, asset.ResourceID)), nil
 			},
 			CursorFallback: func(asset awsAssetMetadata) string { return firstNonEmpty(asset.ResourceARN, asset.ResourceID) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsBackupVault]{
+			Name:  familyBackupVault,
+			Label: "aws backup vaults",
+			List:  listBackupVaults,
+			Event: backupVaultEvent,
+			URN: func(settings settings, vault awsBackupVault) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_backup_vault:%s", settings.accountID, firstNonEmpty(vault.ARN, backupVaultARN(settings, vault.Name), vault.Name)), nil
+			},
+			CursorFallback: func(vault awsBackupVault) string { return firstNonEmpty(vault.ARN, vault.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsBackupPlan]{
+			Name:  familyBackupPlan,
+			Label: "aws backup plans",
+			List:  listBackupPlans,
+			Event: backupPlanEvent,
+			URN: func(settings settings, plan awsBackupPlan) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_backup_plan:%s", settings.accountID, firstNonEmpty(plan.ARN, plan.ID, plan.Name)), nil
+			},
+			CursorFallback: func(plan awsBackupPlan) string { return firstNonEmpty(plan.ARN, plan.ID, plan.Name) },
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsBackupProtectedResource]{
+			Name:  familyBackupProtected,
+			Label: "aws backup protected resources",
+			List:  listBackupProtectedResources,
+			Event: backupProtectedResourceEvent,
+			URN: func(settings settings, resource awsBackupProtectedResource) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_backup_protected_resource:%s", settings.accountID, firstNonEmpty(awssdk.ToString(resource.ResourceArn), awssdk.ToString(resource.ResourceName))), nil
+			},
+			CursorFallback: func(resource awsBackupProtectedResource) string {
+				return firstNonEmpty(awssdk.ToString(resource.ResourceArn), awssdk.ToString(resource.ResourceName))
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[awsBackupRecoveryPoint]{
+			Name:  familyBackupRecoveryPoint,
+			Label: "aws backup recovery points",
+			List:  listBackupRecoveryPoints,
+			Event: backupRecoveryPointEvent,
+			URN: func(settings settings, point awsBackupRecoveryPoint) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_backup_recovery_point:%s", settings.accountID, firstNonEmpty(awssdk.ToString(point.RecoveryPointArn), awssdk.ToString(point.ResourceArn))), nil
+			},
+			CursorFallback: func(point awsBackupRecoveryPoint) string {
+				return firstNonEmpty(awssdk.ToString(point.RecoveryPointArn), awssdk.ToString(point.ResourceArn))
+			},
 		}),
 		awsFamily(s.clients, awsFamilyOptions[awsS3Bucket]{
 			Name:  familyS3Bucket,
@@ -893,6 +952,7 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 		secrets: secretsmanager.NewFromConfig(cfg),
 		sqs:     sqs.NewFromConfig(cfg),
 		sns:     sns.NewFromConfig(cfg),
+		backup:  backup.NewFromConfig(cfg),
 	}, nil
 }
 
@@ -949,7 +1009,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyAssetMetadata, familyCloudTrail, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
+	case familyAssetMetadata, familyBackupVault, familyBackupPlan, familyBackupProtected, familyBackupRecoveryPoint, familyCloudTrail, familyEC2Instance, familyECRRepository, familyECSService, familyECSTask, familyECSTaskDefinition, familyEKSCluster, familyEKSNodegroup, familyEKSFargateProfile, familyEKSPodIdentity, familyEffectivePermission, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyKMSKey, familyLambdaFunction, familyPublicEndpoint, familyRDSInstance, familyResourceExposure, familyS3Bucket, familySecret, familySNSTopic, familySQSQueue:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -964,7 +1024,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("aws principal_type must be user, group, or role when family=%q", familyIAMRoleAssign)
 		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, cloudtrail, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, sns_topic, or sqs_queue")
+		return settings, fmt.Errorf("aws family must be one of access_key, asset_metadata, backup_vault, backup_plan, backup_protected_resource, backup_recovery_point, cloudtrail, ec2_instance, ecr_repository, ecs_service, ecs_task, ecs_task_definition, eks_cluster, eks_nodegroup, eks_fargate_profile, eks_pod_identity_association, effective_permission, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, kms_key, lambda_function, public_endpoint, rds_instance, resource_exposure, s3_bucket, secret, sns_topic, or sqs_queue")
 	}
 	return settings, nil
 }
